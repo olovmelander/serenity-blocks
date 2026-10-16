@@ -863,6 +863,347 @@
     }
 }
 
+/* ---- The ascent: looking around the tower (Infinity) -------------------------------------
+ * src/ui/infinity/ascent/ascent-overlay.js draws in the well: the height ruler on its wall,
+ * the milestones as floors of light, the tower's memories, the way home with the ring that
+ * fills before the view flies back, and the altimeter. Every part is placed by a transform
+ * from the camera row; --ia-presence fades the whole with the look.
+ * src/ui/infinity/ascent/ascent-sky-stage.js lays the sky between the theme and the board.
+ * ----------------------------------------------------------------------------------------- */
+.ia-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 4;
+    overflow: hidden;
+    visibility: hidden;
+    opacity: var(--ia-presence, 0);
+    pointer-events: none;
+}
+
+.ia-overlay.is-shown {
+    visibility: visible;
+}
+
+.ia-ruler {
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 48px;
+}
+
+.ia-tick {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 10px;
+    height: 1px;
+    background: rgba(var(--sb-cream-rgb), 0.5);
+    will-change: transform;
+}
+
+.ia-tick.is-major {
+    width: 16px;
+    background: rgba(var(--sb-aqua-rgb), 0.85);
+}
+
+.ia-tick__label {
+    position: absolute;
+    top: -5px;
+    left: 14px;
+    color: rgba(var(--sb-cream-rgb), 0.62);
+    font: 600 9px / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.08em;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+.ia-tick.is-major .ia-tick__label {
+    left: 20px;
+    color: rgba(var(--sb-aqua-rgb), 0.92);
+}
+
+.ia-floor {
+    position: absolute;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: 2px;
+    margin-top: -1px;
+    background: linear-gradient(90deg, transparent, rgba(var(--sb-cream-rgb), 0.34) 12%, rgba(var(--sb-cream-rgb), 0.34) 88%, transparent);
+    box-shadow: 0 0 10px rgba(var(--sb-cream-rgb), 0.18);
+    will-change: transform;
+}
+
+.ia-floor.is-reached {
+    background: linear-gradient(90deg, transparent, rgba(var(--sb-gold-rgb), 0.95) 10%, rgba(var(--sb-gold-rgb), 0.95) 90%, transparent);
+    box-shadow: 0 0 14px rgba(var(--sb-gold-rgb), 0.5);
+}
+
+.ia-floor__label {
+    position: absolute;
+    right: 10px;
+    bottom: 6px;
+    color: rgba(var(--sb-cream-rgb), 0.72);
+    font: 600 9px / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
+}
+
+.ia-floor.is-reached .ia-floor__label {
+    color: var(--sb-gold);
+}
+
+/* The element only moves (its transform is the camera's); the diamond is its ::before, so the
+   rotation never turns the translation (a `rotate` property here would apply after it). */
+.ia-mark {
+    position: absolute;
+    top: 0;
+    right: 7px;
+    width: 8px;
+    height: 8px;
+    margin-top: -4px;
+    will-change: transform;
+}
+
+.ia-mark::before {
+    position: absolute;
+    inset: 0;
+    border-radius: 1px;
+    background: var(--sb-aqua);
+    box-shadow: 0 0 10px rgba(var(--sb-aqua-rgb), 0.85);
+    content: '';
+    transform: rotate(45deg);
+}
+
+.ia-mark[data-kind='lines']::before {
+    background: var(--sb-cream);
+    box-shadow: 0 0 10px rgba(var(--sb-cream-rgb), 0.7);
+}
+
+.ia-mark[data-kind='perfect']::before {
+    background: var(--sb-gold);
+    box-shadow: 0 0 12px rgba(var(--sb-gold-rgb), 0.9);
+}
+
+.ia-caption {
+    position: absolute;
+    top: 0;
+    right: 22px;
+    margin-top: -12px;
+    padding: 6px 11px;
+    border: 1px solid rgba(var(--sb-aqua-rgb), 0.38);
+    border-radius: 999px;
+    background: rgba(9, 8, 24, 0.82);
+    color: var(--sb-cream);
+    font: 600 11px / 1.1 var(--sb-font-text);
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity var(--sb-dur-3) ease;
+}
+
+.ia-caption.is-shown {
+    opacity: 1;
+}
+
+/* The way home: a badge in the well's right corner, on the side the player's rows lie (the
+   altimeter, top left, says it in words). */
+.ia-home {
+    position: absolute;
+    right: 10px;
+    bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 11px 4px 4px;
+    border: 1px solid rgba(var(--sb-aqua-rgb), 0.4);
+    border-radius: 999px;
+    background: rgba(9, 8, 24, 0.82);
+    color: var(--sb-cream);
+    font: 600 11px / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity var(--sb-dur-3) ease;
+}
+
+.ia-home.is-up {
+    top: 12px;
+    bottom: auto;
+}
+
+.ia-home.is-shown {
+    opacity: 1;
+}
+
+.ia-home__ring {
+    width: 22px;
+    height: 22px;
+    flex: 0 0 auto;
+    transform: rotate(-90deg);
+}
+
+.ia-home__track,
+.ia-home__fill {
+    fill: none;
+    stroke-width: 2;
+}
+
+.ia-home__track {
+    stroke: rgba(var(--sb-cream-rgb), 0.2);
+}
+
+.ia-home__fill {
+    stroke: var(--sb-aqua);
+    stroke-linecap: round;
+}
+
+.ia-home__arrow {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    display: grid;
+    width: 22px;
+    height: 22px;
+    place-items: center;
+    color: var(--sb-aqua);
+    font: 700 12px / 1 var(--sb-font-text);
+}
+
+.ia-home__arrow::before {
+    content: '\2193';
+}
+
+.ia-home.is-up .ia-home__arrow::before {
+    content: '\2191';
+}
+
+.ia-home.is-returning {
+    border-color: rgba(var(--sb-aqua-rgb), 0.75);
+    box-shadow: 0 0 18px rgba(var(--sb-aqua-rgb), 0.25);
+}
+
+.ia-altimeter {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    align-items: baseline;
+    justify-items: start;
+    column-gap: 6px;
+    padding: 9px 13px 10px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 12px;
+    background: rgba(9, 8, 24, 0.74);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+
+.ia-altimeter__label {
+    grid-column: 1 / -1;
+    margin-bottom: 5px;
+    color: rgba(var(--sb-aqua-rgb), 0.88);
+    font: 600 8px / 1 var(--sb-font-display);
+    letter-spacing: 0.24em;
+    text-transform: uppercase;
+}
+
+.ia-altimeter__value {
+    color: var(--sb-cream);
+    font: 600 24px / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+}
+
+.ia-altimeter__unit {
+    color: var(--sb-text-muted);
+    font: 600 10px / 1 var(--sb-font-text);
+}
+
+.ia-altimeter__sub {
+    grid-column: 1 / -1;
+    margin-top: 6px;
+    color: var(--sb-text-muted);
+    font: 600 10px / 1.2 var(--sb-font-text);
+}
+
+.ia-altimeter__hint {
+    display: none;
+    grid-column: 1 / -1;
+    max-width: 156px;
+    margin-top: 7px;
+    color: var(--sb-text-faint);
+    font: 500 9px / 1.4 var(--sb-font-text);
+}
+
+.ia-altimeter.is-first .ia-altimeter__hint {
+    display: block;
+}
+
+/* The sky between the theme and the board: after the theme layer at its z-index, so it wins on
+   document order and stays under the well. Its canvas is transparent where it covers nothing. */
+.ia-sky {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.ia-sky.is-shown {
+    visibility: visible;
+}
+
+.ia-sky__canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+/* Without a renderer: two gradients stand in for the night and the depths. */
+.ia-sky__css-night,
+.ia-sky__css-deep {
+    position: absolute;
+    inset: 0;
+}
+
+.ia-sky__css-night {
+    background: linear-gradient(180deg,
+        rgb(var(--ia-night-rgb, 8, 9, 24)) 0%,
+        rgb(var(--ia-night-rgb, 8, 9, 24)) 45%,
+        rgba(var(--ia-glow-rgb, 104, 116, 168), 0.6) 78%,
+        transparent 100%);
+    opacity: calc(var(--ia-presence, 0) * min(1, var(--ia-sky, 0) * 1.4));
+    transform: scaleY(calc(0.2 + var(--ia-sky, 0) * 1.6));
+    transform-origin: top;
+}
+
+.ia-sky__css-deep {
+    background: linear-gradient(0deg,
+        rgb(var(--ia-ground-rgb, 26, 22, 44)) 0%,
+        rgba(var(--ia-ground-rgb, 26, 22, 44), 0.6) 45%,
+        transparent 100%);
+    opacity: calc(var(--ia-presence, 0) * var(--ia-deep, 0));
+}
+
+@media (max-aspect-ratio: 1/1) {
+    .ia-altimeter {
+        top: 8px;
+        left: 8px;
+        padding: 7px 10px 8px;
+    }
+
+    .ia-altimeter__value {
+        font-size: 18px;
+    }
+
+    .ia-altimeter.is-first .ia-altimeter__hint,
+    .ia-tick__label,
+    .ia-floor__label {
+        display: none;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .single-player-stage[data-board='well'][data-danger] #single-player-border,
     #infinity-hud .ih-milestone.is-new {
@@ -870,7 +1211,9 @@
     }
 
     .single-player-stage[data-board='well'] .single-player-stats-bar .sp-level-fill,
-    #infinity-hud .ih-next__fill {
+    #infinity-hud .ih-next__fill,
+    .ia-caption,
+    .ia-home {
         transition: none;
     }
 }

@@ -53,6 +53,12 @@ const AXIS_MAP = {
     RIGHT_STICK_Y: 3,
 };
 
+/** Buttons that play the game: pressed while looking around Infinity's tower, the view goes home. */
+const EXPLORATION_GAME_BUTTONS = Object.freeze([
+    BUTTON_MAP.A, BUTTON_MAP.B, BUTTON_MAP.X, BUTTON_MAP.Y, BUTTON_MAP.LB, BUTTON_MAP.RB,
+    BUTTON_MAP.D_UP, BUTTON_MAP.D_DOWN, BUTTON_MAP.D_LEFT, BUTTON_MAP.D_RIGHT,
+]);
+
 /**
  * Default gamepad configuration for each player
  * (Used as fallback if custom bindings are not available)
@@ -1891,29 +1897,32 @@ export class GamepadController {
             this.processSerenityModeInput(gamepad, slot);
         }
 
-        // Handle Exploration Input (Right Stick Button Hold + Axis Scroll)
+        // Infinity's exploration (InfinityAscent): the right stick looks around the tower (a pull
+        // first, then the game pauses); pressed in (R3) it looks at once. While looking, a game
+        // button sends the view home, and that press is held back from the game until released
+        // (pressing B to return must not hard-drop).
         if (slot === 0 && this.explorationCallbacks) {
-            const r3Pressed = gamepad.buttons[BUTTON_MAP.R_STICK]?.pressed;
-            const rightStickY = gamepad.axes[AXIS_MAP.RIGHT_STICK_Y];
-
-            // Activation: Hold R3
-            if (r3Pressed) {
-                if (!this.explorationActive) {
-                    this.explorationActive = true;
-                    this.explorationCallbacks.onStart?.();
+            const callbacks = this.explorationCallbacks;
+            const held = Boolean(gamepad.buttons[BUTTON_MAP.R_STICK]?.pressed);
+            callbacks.onStick?.(gamepad.axes[AXIS_MAP.RIGHT_STICK_Y] ?? 0, { held, index: gamepad.index });
+            const gameInput = EXPLORATION_GAME_BUTTONS.some((index) => gamepad.buttons[index]?.pressed)
+                || Math.abs(gamepad.axes[AXIS_MAP.LEFT_STICK_X] ?? 0) > 0.6
+                || Math.abs(gamepad.axes[AXIS_MAP.LEFT_STICK_Y] ?? 0) > 0.6;
+            if (callbacks.isExploring?.()) {
+                if (gameInput && !prevState.explorationGameInput) {
+                    prevState.explorationLatch = true;
+                    callbacks.onGameInput?.();
                 }
-
-                // Always stream input while held
-                this.explorationCallbacks.onInput?.(rightStickY);
-
-                // Suppress standard input while controlling camera
+                prevState.explorationGameInput = gameInput;
                 return;
-            } if (this.explorationActive) {
-                // Released R3 -> End exploration
-                this.explorationActive = false;
-                this.explorationCallbacks.onEnd?.();
-                // Do NOT return here, allow frame to proceed to standard input immediately
             }
+            prevState.explorationGameInput = gameInput;
+            if (prevState.explorationLatch) {
+                if (gameInput) return;
+                prevState.explorationLatch = false;
+            }
+            // R3 held keeps its old meaning in Infinity: the stick looks, play waits.
+            if (held) return;
         }
 
         // Use custom bindings if available, otherwise use default
@@ -2396,18 +2405,22 @@ export class GamepadController {
     }
 
     /**
-     * Enable Exploration Mode (Right Stick control)
-     * @param {Object} callbacks - onStart, onInput(value), onEnd
+     * Enable Exploration Mode (Infinity: the right stick looks around the tower).
+     * @param {{onStick?: (value: number, options: {held: boolean, index: number}) => void,
+     *   onGameInput?: () => void, isExploring?: () => boolean}} callbacks
      */
     enableExplorationMode(callbacks) {
         this.explorationCallbacks = callbacks;
-        this.explorationActive = false;
         console.log('[Gamepad] Exploration Mode enabled');
     }
 
     disableExplorationMode() {
         this.explorationCallbacks = null;
-        this.explorationActive = false;
+        this.previousStates?.forEach?.((state) => {
+            if (!state) return;
+            state.explorationGameInput = false;
+            state.explorationLatch = false;
+        });
         console.log('[Gamepad] Exploration Mode disabled');
     }
 

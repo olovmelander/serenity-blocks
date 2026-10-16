@@ -7,7 +7,8 @@
  * above the summit. A young tower is drawn as wide as the map, with sky above it; as
  * it grows the map zooms out and the tower narrows, centred, keeping its true shape.
  * The rows the board shows are framed, the summit is marked, and a slim rail along
- * the side tracks the climb toward the ceiling with its milestones. Drag (or touch) the
+ * the side tracks the climb toward the ceiling with its milestones; in Infinity, beads on
+ * the tower's edge mark where its big moments happened (setMarks). Drag (or touch) the
  * map to look around the tower: the mode pauses and moves its camera
  * ('minimap-exploration-start', 'minimap-jump', 'minimap-exploration-end').
  *
@@ -30,6 +31,12 @@ const SPAN_STEP = 10;
 /** Milestones along the rail, as shares of the ceiling. */
 const MILESTONES = [0.1, 0.25, 0.5, 0.75, 1];
 const SLATE = [74, 80, 104];
+/** The tower's memory marks (src/ui/infinity/ascent/tower-memory.js), by kind. */
+const MARK_COLORS = {
+    chain: 'rgba(126, 227, 209, 0.95)',
+    lines: 'rgba(255, 246, 233, 0.9)',
+    perfect: 'rgba(255, 209, 128, 1)',
+};
 
 const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
@@ -84,6 +91,10 @@ export class InfinityMinimap {
         this._build = null;
         this._colors = new Map();
         this._viewport = null;
+
+        // The tower's memory (Infinity's ascent): marks at the heights big moments happened.
+        this.marks = [];
+        this._marksVersion = 0;
 
         // ~60 Hz at most; most frames change nothing and are skipped entirely.
         this.lastUpdateTime = 0;
@@ -166,6 +177,16 @@ export class InfinityMinimap {
         const now = performance.now();
         if (now - this.lastUpdateTime < this.updateInterval) return;
         this.lastUpdateTime = now;
+        this.render();
+    }
+
+    /**
+     * The tower's memory: each mark's height (rows from the floor) and kind, drawn as a bead on
+     * the tower's edge. @param {Array<{height: number, kind?: string}>} marks
+     */
+    setMarks(marks) {
+        this.marks = Array.isArray(marks) ? marks.slice() : [];
+        this._marksVersion += 1;
         this.render();
     }
 
@@ -267,7 +288,8 @@ export class InfinityMinimap {
         const maxRows = this._maxRows();
         const drawn = this._drawn;
         if (!buildStale && drawn && drawn.cameraRow === this.cameraRow && drawn.visibleRows === this.visibleRows
-            && drawn.width === geometry.width && drawn.height === geometry.height && drawn.maxRows === maxRows) return;
+            && drawn.width === geometry.width && drawn.height === geometry.height && drawn.maxRows === maxRows
+            && drawn.marks === this._marksVersion) return;
         if (buildStale || this._build.span !== geometry.span) {
             this._paintBuild(board, rowsTotal, topRow, geometry.span, version);
         }
@@ -278,6 +300,7 @@ export class InfinityMinimap {
             width: geometry.width,
             height: geometry.height,
             maxRows,
+            marks: this._marksVersion,
         };
     }
 
@@ -362,6 +385,15 @@ export class InfinityMinimap {
             ctx.fillStyle = 'rgba(255, 209, 128, 0.95)';
             ctx.fillRect(x0, Math.max(y0, yOf(topRow) - line), drawW, line);
         }
+
+        // The tower's memory: a bead on its right edge where each big moment happened.
+        const bead = Math.max(2, Math.round(width * 0.045));
+        this.marks.forEach((mark) => {
+            const y = yOf(rowsTotal - mark.height);
+            if (!Number.isFinite(y) || y < y0 || y > height) return;
+            ctx.fillStyle = MARK_COLORS[mark.kind] || MARK_COLORS.chain;
+            ctx.fillRect(Math.min(width - bead, x0 + drawW + 1), Math.round(y - bead / 2), bead, bead);
+        });
 
         // The rail: the climb toward the ceiling, with its milestones.
         const build = Math.max(0, rowsTotal - topRow);

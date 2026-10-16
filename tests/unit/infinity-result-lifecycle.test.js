@@ -109,10 +109,7 @@ function createMode() {
     // Keep these tests on lifecycle and result ownership. Infinity's visual,
     // input, and loop behavior have their own contracts and are unchanged.
     mode._applyInfinityLayout = vi.fn();
-    mode._cleanupScrollState = vi.fn();
-    mode._disableGamepadExploration = vi.fn();
-    mode._enableGamepadExploration = vi.fn();
-    mode._enableScrollExploration = vi.fn();
+    mode._startAscent = vi.fn();
     mode._initBoardJuice = vi.fn();
     mode._preparePhaserScene = vi.fn(() => {
         mode.physicsCallbacks = null;
@@ -466,31 +463,28 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
             mode.usingHybridLoop = true;
             frameRateController.isRunning = true;
             mode._calculatePieceCameraPosition = vi.fn(() => 19);
-            mode.cosmicExploration = {
-                start: vi.fn(),
-                stop: vi.fn(),
-            };
+            mode.ascent = { onExplorationEnded: vi.fn(), stop: vi.fn(), dispose: vi.fn() };
 
-            expect(await mode._beginMinimapExploration()).toBe(true);
-            expect(await mode._beginMinimapExploration()).toBe(false);
+            expect(await mode._beginExploration()).toBe(true);
+            expect(await mode._beginExploration()).toBe(false);
             expect(mode.isPaused).toBe(true);
             expect(session.gameState.isPaused).toBe(true);
             expect(frameRateController.pauseHybridLoop).toHaveBeenCalledOnce();
             expect(boardScene.enableManualCameraControl).toHaveBeenCalledOnce();
-            expect(mode.cosmicExploration.start).toHaveBeenCalledOnce();
 
-            expect(mode._endMinimapExploration()).toBe(true);
-            expect(mode._endMinimapExploration()).toBe(false);
+            expect(mode._endExploration()).toBe(true);
+            expect(mode._endExploration()).toBe(false);
             expect(mode.isPaused).toBe(false);
             expect(session.gameState.isPaused).toBe(false);
             expect(frameRateController.resumeHybridLoop).toHaveBeenCalledOnce();
             expect(boardScene.disableManualCameraControl).toHaveBeenCalledOnce();
             expect(boardScene.updateCameraPosition).toHaveBeenCalledWith(19);
-            expect(mode.cosmicExploration.stop).toHaveBeenCalledOnce();
+            // The ascent hears that the look is over (its sky, sound and signal go home).
+            expect(mode.ascent.onExplorationEnded).toHaveBeenCalledOnce();
 
             // A later exploration invalidates the first return timer, so it
             // cannot restore an obsolete lerp policy into the same scene.
-            expect(await mode._beginMinimapExploration()).toBe(true);
+            expect(await mode._beginExploration()).toBe(true);
             vi.advanceTimersByTime(400);
             expect(boardScene.cameraSettings.lerpSpeed).toBe(0.15);
             expect(frameRateController.pauseHybridLoop).toHaveBeenCalledTimes(2);
@@ -510,26 +504,23 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
                 enableManualCameraControl: vi.fn(),
                 updateCameraPosition: vi.fn(),
             };
-            const cosmicExploration = {
-                start: vi.fn(),
-                stop: vi.fn(),
-            };
+            const ascent = { onExplorationEnded: vi.fn(), stop: vi.fn(), dispose: vi.fn() };
             mode.boardScene = boardScene;
             mode.usingHybridLoop = true;
             frameRateController.isRunning = true;
             mode._calculatePieceCameraPosition = vi.fn(() => 19);
-            mode.cosmicExploration = cosmicExploration;
+            mode.ascent = ascent;
 
-            expect(await mode._beginMinimapExploration()).toBe(true);
+            expect(await mode._beginExploration()).toBe(true);
             mode.onPause();
 
-            expect(mode._endMinimapExploration()).toBe(true);
+            expect(mode._endExploration()).toBe(true);
             expect(mode.isInExplorationMode).toBe(false);
             expect(mode.isPaused).toBe(true);
             expect(session.gameState.isPaused).toBe(true);
             expect(frameRateController.resumeHybridLoop).not.toHaveBeenCalled();
             expect(boardScene.disableManualCameraControl).toHaveBeenCalledOnce();
-            expect(cosmicExploration.stop).toHaveBeenCalledOnce();
+            expect(ascent.onExplorationEnded).toHaveBeenCalledOnce();
 
             mode.onResume();
 
@@ -537,7 +528,47 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
             expect(session.gameState.isPaused).toBe(false);
             expect(frameRateController.resumeHybridLoop).toHaveBeenCalledOnce();
             expect(boardScene.disableManualCameraControl).toHaveBeenCalledOnce();
-            expect(cosmicExploration.stop).toHaveBeenCalledOnce();
+            expect(ascent.onExplorationEnded).toHaveBeenCalledOnce();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('ends a look for a menu without resuming, so the menu owns the pause (Escape)', async () => {
+        vi.useFakeTimers();
+        try {
+            const { frameRateController, mode } = createMode();
+            const session = await startSession(mode);
+            const boardScene = {
+                cameraSettings: { currentTopRow: 24, lerpSpeed: 0.08 },
+                disableManualCameraControl: vi.fn(),
+                enableManualCameraControl: vi.fn(),
+                updateCameraPosition: vi.fn(),
+            };
+            mode.boardScene = boardScene;
+            mode.usingHybridLoop = true;
+            frameRateController.isRunning = true;
+            mode._calculatePieceCameraPosition = vi.fn(() => 19);
+            mode.ascent = { onExplorationEnded: vi.fn(), stop: vi.fn(), dispose: vi.fn() };
+            mode.minimap = { isExploring: true, isDragging: true, onPause: vi.fn(), onUnpause: vi.fn() };
+
+            expect(mode.endExplorationForMenu()).toBe(false);
+            expect(await mode._beginExploration()).toBe(true);
+            expect(mode.endExplorationForMenu()).toBe(true);
+
+            expect(mode.isInExplorationMode).toBe(false);
+            expect(mode.isPaused).toBe(true);
+            expect(session.gameState.isPaused).toBe(true);
+            expect(frameRateController.resumeHybridLoop).not.toHaveBeenCalled();
+            expect(boardScene.disableManualCameraControl).toHaveBeenCalledOnce();
+            expect(mode.ascent.onExplorationEnded).toHaveBeenCalledOnce();
+            expect(mode.minimap.isExploring).toBe(false);
+            expect(mode.minimap.isDragging).toBe(false);
+
+            // Closing the menu is the resume.
+            mode.onResume();
+            expect(mode.isPaused).toBe(false);
+            expect(frameRateController.resumeHybridLoop).toHaveBeenCalledOnce();
         } finally {
             vi.useRealTimers();
         }
@@ -577,7 +608,7 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
         }
     });
 
-    it('restores legacy input wrappers on stop and keeps wheel cleanup session-local', async () => {
+    it('restores legacy input wrappers on stop and keeps the ascent\'s wheel session-local', async () => {
         const addEventListener = vi.fn();
         const removeEventListener = vi.fn();
         document.addEventListener = addEventListener;
@@ -589,6 +620,7 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
         window.rotate = originalRotate;
 
         const { mode } = createMode();
+        mode._startAscent = InfinityMode.prototype._startAscent;
         mode._initBoardJuice = vi.fn(() => {
             mode.boardJuice = {
                 destroy: vi.fn(),
@@ -600,33 +632,25 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
         await startSession(mode);
         const firstMoveWrapper = window.move;
         const firstRotateWrapper = window.rotate;
-        InfinityMode.prototype._enableScrollExploration.call(mode);
-        const firstWheelHandler = mode._wheelHandler;
-        const staleWheelCleanup = mode.cleanupHandlers.at(-1);
+        const wheel = addEventListener.mock.calls.find(([type]) => type === 'wheel');
 
         expect(firstMoveWrapper).not.toBe(originalMove);
         expect(firstRotateWrapper).not.toBe(originalRotate);
-        expect(addEventListener).toHaveBeenCalledWith(
-            'wheel',
-            firstWheelHandler,
-            { passive: false },
-        );
+        expect(mode.ascent?.running).toBe(true);
+        expect(wheel?.[2]).toEqual({ passive: false });
 
         await mode.onStop();
 
         expect(window.move).toBe(originalMove);
         expect(window.rotate).toBe(originalRotate);
-        expect(removeEventListener).toHaveBeenCalledWith('wheel', firstWheelHandler);
-        expect(mode._wheelHandler).toBeNull();
+        expect(mode.ascent.running).toBe(false);
+        expect(removeEventListener).toHaveBeenCalledWith('wheel', wheel[1], { passive: false });
 
+        // The next session listens again, once.
+        addEventListener.mockClear();
         await startSession(mode);
-        InfinityMode.prototype._enableScrollExploration.call(mode);
-        const replacementWheelHandler = mode._wheelHandler;
-
-        expect(replacementWheelHandler).not.toBe(firstWheelHandler);
-        staleWheelCleanup();
-        expect(mode._wheelHandler).toBe(replacementWheelHandler);
-        expect(removeEventListener).toHaveBeenLastCalledWith('wheel', firstWheelHandler);
+        expect(addEventListener.mock.calls.filter(([type]) => type === 'wheel')).toHaveLength(1);
+        await mode.onStop();
     });
 
     it('still shows results when the local score save fails (audit SCORE-05)', async () => {

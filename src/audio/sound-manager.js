@@ -75,6 +75,8 @@ export class SoundManager {
         this.volumeFadeToken = 0;
         this.musicGainNode = null;
         this.musicGainWired = false;
+        // A low-pass after the music's gain, made on first use (setMusicMuffle).
+        this.musicMuffleNode = null;
         this.sfxBusNode = null;
         this.sfxLimiterNode = null;
         this.preloadAudioElement = null;
@@ -191,6 +193,46 @@ export class SoundManager {
             return this.audioContext.destination;
         }
         return this.ensureSfxBus() || this.audioContext.destination;
+    }
+
+    /**
+     * Muffle the music, or open it again: a low-pass after its gain that Infinity's ascent closes
+     * while the player looks around the tower. Only once the music runs through Web Audio (the
+     * analyser's wiring, asked for here); otherwise there is nothing to filter.
+     * @param {number} amount 0 open .. 1 muffled
+     * @param {number} [seconds] how long the change takes (about)
+     * @returns {boolean} whether the music is filtered
+     */
+    setMusicMuffle(amount, seconds = 0.6) {
+        if (!this.audioContext || !this.musicGainNode) return false;
+        if (!this.musicGainWired) this.getAnalyzer(true);
+        if (!this.musicGainWired) return false;
+        const open = Math.min(20000, (this.audioContext.sampleRate || 44100) / 2 - 100);
+        if (!this.musicMuffleNode) {
+            if (!(amount > 0)) return true;
+            try {
+                const filter = this.audioContext.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.value = open;
+                filter.Q.value = 0.5;
+                this.musicGainNode.disconnect(this.audioContext.destination);
+                this.musicGainNode.connect(filter);
+                filter.connect(this.audioContext.destination);
+                this.musicMuffleNode = filter;
+            } catch (error) {
+                console.warn('[SoundManager] Could not muffle the music:', error?.message || error);
+                return false;
+            }
+        }
+        const share = Math.min(1, Math.max(0, Number(amount) || 0));
+        // Between open and 700 Hz on a log scale, so the change sounds even.
+        const hz = open * ((700 / open) ** share);
+        const { frequency } = this.musicMuffleNode;
+        const now = this.audioContext.currentTime;
+        frequency.cancelScheduledValues(now);
+        frequency.setValueAtTime(frequency.value, now);
+        frequency.setTargetAtTime(hz, now, Math.max(0.01, seconds / 3));
+        return true;
     }
 
     disposeSfxBus() {
@@ -491,7 +533,8 @@ export class SoundManager {
                     try {
                         this.audioAnalyzer.analyserNode.disconnect(this.audioContext.destination);
                         this.audioAnalyzer.analyserNode.connect(this.musicGainNode);
-                        this.musicGainNode.connect(this.audioContext.destination);
+                        // Through the muffle when one exists (a duplicate connect is a no-op).
+                        this.musicGainNode.connect(this.musicMuffleNode || this.audioContext.destination);
                         this.musicGainWired = true;
                     } catch (e) {
                         console.warn('[SoundManager] Could not wire musicGainNode:', e.message);
@@ -2024,6 +2067,7 @@ export class SoundManager {
         }
         this.audioContext = null;
         this.musicGainNode = null;
+        this.musicMuffleNode = null;
 
         this.playPromise = null;
         this.currentTrackId = null;

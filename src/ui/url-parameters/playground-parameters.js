@@ -5760,4 +5760,28 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 't=<seconds> gives a deterministic capture, and t=23.85 shows the first stack locking.',
         sources: ['src/playground/effects/intro-world.effect.js'],
     })),
+    ...[
+        ['ascentRise', 'Hold the view this many rows above the player\'s rows (negative: below them).',
+            'Rows; about -60 to 30.', '14.', '-40'],
+        ['ascentSpeed', 'Move the view at this speed, so the motes stream past and streak.',
+            'Rows a second; positive rises.', '0.', '-30'],
+        ['ascentPresence', 'How present the look is (a peek before the game pauses shows less of it).',
+            '0 to 1.', '1.', '0.45'],
+        ['ascentTheme', 'Borrow a theme\'s colours from its icon, as the game does.',
+            'A theme id.', 'The default dusk.', 'sunset'],
+        ['ascentBoard', 'Leave the stand-in well out.', '0 disables.', 'On.', '0'],
+        ['ascentMotion', 'Reduced motion: no streaks, sway or twinkle.', '0 enables.', 'Off.', '0'],
+        ['ascentQuality', 'The sky\'s tier.', 'High, Medium or Low.', 'High.', 'Low'],
+    ].map(([name, description, values, defaultValue, value]) => ({
+        name,
+        category: 'Playground',
+        scope: 'playground.html — infinity-ascent',
+        description,
+        values,
+        defaultValue,
+        example: `${name}=${value}`,
+        notes: 'Use on playground.html with effect=infinity-ascent (the sky between the theme and the '
+            + 'board while the player looks around Infinity\'s tower); t=<seconds> gives a deterministic capture.',
+        sources: ['src/playground/effects/infinity-ascent.effect.js'],
+    })),
 ];

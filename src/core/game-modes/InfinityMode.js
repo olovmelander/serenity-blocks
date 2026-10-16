@@ -28,6 +28,7 @@ import { updateStats } from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { InfinityHUD } from '../../ui/infinity/InfinityHUD.js';
+import { InfinityAscent } from '../../ui/infinity/ascent/infinity-ascent.js';
 import { installLegacyBoardJuiceInputWrapper } from '../../ui/infinity/legacy-board-juice-input-wrapper.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
@@ -55,7 +56,6 @@ import {
     applyFixedPerfectClearHitStop,
 } from '../fixed-hit-stop-policy.js';
 import { INPUT_DISPOSITIONS } from '../simulation-tick.js';
-import { normalizeWheelDeltaToPixels, shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
 import { canWriteLegacySimulationResults } from './single-player-result-compatibility.js';
 import { saveRunScore } from '../progression/run-score.js';
 import { bindLegacySessionRng, generateSessionSeed } from '../session-rng.js';
@@ -92,9 +92,12 @@ export class InfinityMode extends BaseGameMode {
         // Cleanup handlers
         this.cleanupHandlers = [];
 
-        // Exploration mode state (for minimap drag-to-explore)
+        // Exploration: looking around the tower (the wheel, the right stick, the tower map). The
+        // ascent director (src/ui/infinity/ascent/) owns the motion, the world and the senses;
+        // the mode owns the pause it asks for.
         this.isInExplorationMode = false;
         this.explorationStartCameraRow = 0;
+        this.ascent = null;
 
         // Track if we were following a soft-dropping piece
         this.wasFollowingPiece = false;
@@ -126,15 +129,6 @@ export class InfinityMode extends BaseGameMode {
         this.lastCameraUpdateTime = 0;
         this.minCameraUpdateInterval = 32; // Minimum 32ms between updates (~30fps camera tracking)
 
-        // Scroll-to-explore state (two-phase: buffer → explore)
-        this._scrollIdleTimer = null;
-        this._scrollAccumulator = 0;
-        this._scrollBufferAccumulator = 0;
-        this._scrollBufferTimer = null;
-        this.isScrollExploring = false;
-        this.isScrollBuffering = false;
-        this._wheelHandler = null;
-        this._scrollExitKeyHandler = null;
         this._explorationSession = null;
         this._explorationOwnsPause = false;
         this._explorationTransitionGeneration = 0;
@@ -361,45 +355,6 @@ export class InfinityMode extends BaseGameMode {
             height: ROWS * BLOCK_SIZE + 20,
         });
         this.minimap.show();
-
-        // Setup minimap exploration event handlers
-        this.minimap.container.addEventListener('minimap-exploration-start', () => {
-            this._beginMinimapExploration();
-        });
-
-        this.minimap.container.addEventListener('minimap-exploration-end', () => {
-            this._endMinimapExploration();
-        });
-
-        // Setup minimap jump handler (used during exploration)
-        this.minimap.container.addEventListener('minimap-jump', (event) => {
-            // Only process jumps when in exploration mode
-            if (this.boardScene && this.isInExplorationMode) {
-                const centerRow = event.detail.targetRow;
-                const visibleRows = this.boardScene.cameraSettings?.visibleRows || this.visibleRows;
-                const totalRows = this.gameState.board.length;
-
-                // Calculate target top row (centerRow - half viewport)
-                let targetTopRow = centerRow - Math.floor(visibleRows / 2);
-
-                // Clamp to valid camera range
-                const maxCameraRow = Math.max(0, totalRows - visibleRows);
-                targetTopRow = Math.max(0, Math.min(maxCameraRow, targetTopRow));
-
-                // During exploration, update camera position directly (responsive drag)
-                this.boardScene.updateCameraPosition(targetTopRow, true);
-                this._updateMinimapView();
-
-                // Update cosmic exploration effect with camera position
-                if (this.cosmicExploration) {
-                    const now = performance.now();
-                    const deltaTime = (now - (this._lastExplorationTime || now)) / 1000;
-                    this._lastExplorationTime = now;
-                    this.cosmicExploration.updateCameraPosition(targetTopRow, deltaTime);
-                }
-            }
-        });
-
         console.log('[Infinity] Minimap initialized');
 
         // Initialize height HUD
@@ -419,11 +374,8 @@ export class InfinityMode extends BaseGameMode {
             this._installLegacyBoardJuiceInputWrappers();
         }
 
-        // Enable gamepad exploration control
-        this._enableGamepadExploration();
-
-        // Enable scroll-to-explore on the game canvas
-        this._enableScrollExploration();
+        // Looking around the tower: the wheel, the right stick and the tower map.
+        this._startAscent();
 
         console.log('[Infinity] Game started! Phase 3-5 Complete: ✅ Camera + Minimap + HUD + 🎮 Gamepad');
     }
@@ -463,7 +415,7 @@ export class InfinityMode extends BaseGameMode {
         if (this.isInExplorationMode && !explorationOwnsThisResume) {
             // External resume wins the pause stack. Retire manual camera/effect
             // ownership before the simulation becomes live again.
-            this._endMinimapExploration({ resumeMode: false });
+            this._endExploration({ resumeMode: false });
         }
         super.onResume();
 
@@ -485,7 +437,6 @@ export class InfinityMode extends BaseGameMode {
         this.isInExplorationMode = false;
         this._explorationSession = null;
         this._explorationOwnsPause = false;
-        this._cleanupScrollState();
 
         // Trigger minimap unpause effect
         if (this.minimap) {
@@ -494,13 +445,13 @@ export class InfinityMode extends BaseGameMode {
     }
 
     /**
-     * Enter minimap exploration through the mode pause template so the hybrid
-     * timer, simulation state, and future fixed input binding share one owner.
-     * The lazy effect import is fenced against end/stop/restart.
+     * Enter exploration (the ascent's pull gave way, or the tower map was pressed) through the
+     * mode pause template so the hybrid timer, simulation state, and future fixed input binding
+     * share one owner. Async for its callers; it settles at once.
      * @returns {Promise<boolean>}
      * @private
      */
-    async _beginMinimapExploration() {
+    async _beginExploration() {
         const session = this._activeSession;
         const gameState = session?.gameState;
         if (
@@ -515,43 +466,31 @@ export class InfinityMode extends BaseGameMode {
             return false;
         }
 
-        console.log('[Infinity] Minimap exploration started - pausing game');
-        const transitionGeneration = ++this._explorationTransitionGeneration;
+        console.log('[Infinity] Exploration started - pausing game');
+        this._explorationTransitionGeneration += 1;
         this._explorationSession = session;
         this._explorationOwnsPause = true;
         this.explorationStartCameraRow = this.boardScene?.cameraSettings?.currentTopRow ?? 0;
         this.isInExplorationMode = true;
-        this._lastExplorationTime = performance.now();
 
         this.onPause({ owner: 'infinity-exploration', session });
         this.boardScene?.enableManualCameraControl?.();
         this.minimap?.onPause?.();
+        return true;
+    }
 
-        const stillOwnsExploration = () => (
-            this._activeSession === session
-            && this.gameState === gameState
-            && this._explorationSession === session
-            && this._explorationTransitionGeneration === transitionGeneration
-            && this.isInExplorationMode
-        );
-
-        if (!this.cosmicExploration) {
-            try {
-                const { CosmicExplorationEffect } = await import('../../ui/effects/CosmicExplorationEffect.js');
-                if (!stillOwnsExploration()) return false;
-                this.cosmicExploration = new CosmicExplorationEffect({
-                    quality: this.deps.settingsManager.get('graphicsQuality') || 'High',
-                    gameState,
-                });
-            } catch (err) {
-                console.error('[Infinity] Failed to load cosmic exploration effect:', err);
-            }
+    /**
+     * Leave exploration for a menu opened over it (Escape): the camera goes home and the game
+     * stays paused under the menu, whose own resume ends the pause.
+     * @returns {boolean}
+     */
+    endExplorationForMenu() {
+        if (!this.isInExplorationMode) return false;
+        if (this.minimap) {
+            this.minimap.isExploring = false;
+            this.minimap.isDragging = false;
         }
-        if (stillOwnsExploration()) {
-            this.cosmicExploration?.start?.();
-            return true;
-        }
-        return false;
+        return this._endExploration({ resumeMode: false });
     }
 
     /**
@@ -562,7 +501,7 @@ export class InfinityMode extends BaseGameMode {
      * @returns {boolean}
      * @private
      */
-    _endMinimapExploration(options = {}) {
+    _endExploration(options = {}) {
         const session = this._explorationSession;
         if (
             !session
@@ -573,12 +512,12 @@ export class InfinityMode extends BaseGameMode {
             return false;
         }
 
-        console.log('[Infinity] Minimap exploration ended - resuming game');
+        console.log('[Infinity] Exploration ended - resuming game');
         const shouldResumeMode = options.resumeMode !== false && this._explorationOwnsPause;
         this.isInExplorationMode = false;
         this._explorationOwnsPause = false;
         const transitionGeneration = ++this._explorationTransitionGeneration;
-        this.cosmicExploration?.stop?.();
+        this.ascent?.onExplorationEnded();
 
         const pieceTargetRow = this._calculatePieceCameraPosition();
         const returnScene = this.boardScene;
@@ -606,9 +545,39 @@ export class InfinityMode extends BaseGameMode {
             this.onResume({ owner: 'infinity-exploration', session });
         } else {
             this._explorationSession = null;
-            this._cleanupScrollState();
         }
         return true;
+    }
+
+    /**
+     * Start the ascent director for this session: it moves the camera while the player looks
+     * around and asks the mode for the pause.
+     * @private
+     */
+    _startAscent() {
+        if (!this._activeSession) return;
+        if (!this.ascent) {
+            // One director for the mode; every callback reads the live session.
+            this.ascent = new InfinityAscent({
+                getBoardScene: () => this.boardScene,
+                getGameState: () => this.gameState,
+                getMinimap: () => this.minimap,
+                getBoardJuice: () => this.boardJuice,
+                isRunning: () => this.isRunning && Boolean(this.gameState) && !this.gameState.isGameOver,
+                isExternallyPaused: () => this.isPaused && !this.isInExplorationMode,
+                isExploring: () => this.isInExplorationMode,
+                beginExploration: () => this._beginExploration(),
+                endExploration: () => this._endExploration(),
+                homeTop: () => this._calculatePieceCameraPosition(),
+                summitRow: () => this._findHighestBlockRow(),
+                updateMinimapView: (top) => this._updateMinimapView(top),
+                settings: () => this.deps.settingsManager?.get?.() || {},
+                soundManager: this.deps.soundManager,
+                themeManager: this.deps.themeManager,
+                gamepadController: this.deps.gamepadController,
+            });
+        }
+        this.ascent.start();
     }
 
     /**
@@ -696,10 +665,8 @@ export class InfinityMode extends BaseGameMode {
         this._explorationSession = null;
         this._explorationOwnsPause = false;
         this._explorationTransitionGeneration += 1;
-        this._cleanupScrollState();
         this._cleanupEventListeners(this.cleanupHandlers);
-        this._disableGamepadExploration();
-        this.cosmicExploration?.stop?.();
+        this.ascent?.stop();
         this._cameraSnapGeneration += 1;
         this._restoreLegacyBoardJuiceInputWrappers();
 
@@ -724,10 +691,6 @@ export class InfinityMode extends BaseGameMode {
         if (this.heightHUD) {
             this.heightHUD.destroy();
             this.heightHUD = null;
-        }
-        if (this.cosmicExploration) {
-            this.cosmicExploration.dispose?.();
-            this.cosmicExploration = null;
         }
 
         console.log('[Infinity] Game stopped');
@@ -763,8 +726,9 @@ export class InfinityMode extends BaseGameMode {
         // Clean up event listeners
         this._cleanupEventListeners(this.cleanupHandlers);
 
-        // Disable gamepad exploration
-        this._disableGamepadExploration();
+        // The ascent: its listeners, its sky and its signal.
+        this.ascent?.dispose();
+        this.ascent = null;
 
         // Destroy minimap component
         if (this.minimap) {
@@ -776,12 +740,6 @@ export class InfinityMode extends BaseGameMode {
         if (this.heightHUD) {
             this.heightHUD.destroy();
             this.heightHUD = null;
-        }
-
-        // Dispose cosmic exploration effect
-        if (this.cosmicExploration) {
-            this.cosmicExploration.dispose();
-            this.cosmicExploration = null;
         }
 
         // Stop normally retires these synchronously; this is idempotent for a
@@ -1781,7 +1739,11 @@ export class InfinityMode extends BaseGameMode {
         }
     }
 
-    _updateMinimapView() {
+    /**
+     * @param {number} [topRow] the rows on screen when the ascent moves the view; by default the
+     *   camera's, plus the peek's presentation offset
+     */
+    _updateMinimapView(topRow) {
         if (!this.minimap || !this.boardScene?.cameraSettings) {
             return;
         }
@@ -1790,7 +1752,9 @@ export class InfinityMode extends BaseGameMode {
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
 
         // Minimap expects the TOP row of the viewport, not the center
-        const cameraTopRow = cameraSettings.currentTopRow || 0;
+        const cameraTopRow = Number.isFinite(topRow)
+            ? topRow
+            : (cameraSettings.currentTopRow || 0) + (cameraSettings.viewOffsetRows || 0);
 
         this.minimap.update(this.gameState, cameraTopRow, visibleRows);
     }
@@ -2419,296 +2383,6 @@ export class InfinityMode extends BaseGameMode {
         const boardSection = container?.closest('.player-board-section');
         if (boardSection) {
             this.boardJuice = new BoardJuice(boardSection);
-        }
-    }
-
-    /**
-     * Enable gamepad exploration controls
-     * @private
-     */
-    _enableGamepadExploration() {
-        const { gamepadController } = this.deps;
-        if (!gamepadController) return;
-
-        console.log('[Infinity] Enabling gamepad exploration mode...');
-
-        gamepadController.enableExplorationMode({
-            onStart: () => {
-                // Trigger start exploration event (handled by existing listener)
-                if (this.minimap && this.minimap.container) {
-                    this.minimap.container.dispatchEvent(new CustomEvent('minimap-exploration-start'));
-                }
-            },
-            onInput: (value) => {
-                // Handle scrolling
-                // value is -1 (up) to 1 (down)
-                this._handleGamepadScroll(value);
-            },
-            onEnd: () => {
-                // Trigger end exploration event
-                if (this.minimap && this.minimap.container) {
-                    this.minimap.container.dispatchEvent(new CustomEvent('minimap-exploration-end'));
-                }
-            },
-        });
-    }
-
-    /**
-     * Disable gamepad exploration controls
-     * @private
-     */
-    _disableGamepadExploration() {
-        const { gamepadController } = this.deps;
-        if (gamepadController) {
-            gamepadController.disableExplorationMode();
-        }
-    }
-
-    /**
-     * Enable scroll-to-explore on the game board
-     * @private
-     */
-    _enableScrollExploration() {
-        if (this._wheelHandler) {
-            document.removeEventListener('wheel', this._wheelHandler);
-        }
-        const wheelHandler = this._onWheelScroll.bind(this);
-        this._wheelHandler = wheelHandler;
-        document.addEventListener('wheel', wheelHandler, { passive: false });
-
-        this.cleanupHandlers.push(() => {
-            document.removeEventListener('wheel', wheelHandler);
-            if (this._wheelHandler === wheelHandler) {
-                this._wheelHandler = null;
-            }
-            this._cleanupScrollState();
-        });
-
-        console.log('[Infinity] Scroll exploration enabled');
-    }
-
-    /**
-     * Normalize wheel deltaY to pixels across all deltaMode types
-     * @param {WheelEvent} event
-     * @returns {number} deltaY in pixels
-     * @private
-     */
-    _normalizeWheelDelta(event) {
-        return normalizeWheelDeltaToPixels(event, {
-            lineHeight: 20,
-            pageHeight: 400,
-            clampPx: null,
-        });
-    }
-
-    /**
-     * Handle wheel/trackpad scroll — two-phase buffer then explore
-     * @param {WheelEvent} event
-     * @private
-     */
-    _onWheelScroll(event) {
-        if (!this.gameState || this.gameState.isGameOver || !this.boardScene) return;
-
-        if (!shouldCaptureWheelEvent({ event })) {
-            return;
-        }
-
-        // Block if externally paused (not by our own exploration) — let the
-        // event propagate so settings/hub menus can still scroll normally
-        if (!this.isInExplorationMode && !this.isScrollBuffering && this.gameState.isPaused) return;
-
-        // Only prevent default page scroll when we're handling the event
-        event.preventDefault();
-
-        const PIXELS_PER_ROW = 30;
-        const BUFFER_THRESHOLD_ROWS = 3;
-        const MAX_DELTA_ROWS = 10;
-        const IDLE_TIMEOUT_MS = 1500;
-
-        const deltaY = this._normalizeWheelDelta(event);
-        const deltaRows = deltaY / PIXELS_PER_ROW;
-
-        // === PHASE 1: BUFFERING (game still running) ===
-        if (!this.isInExplorationMode && !this.isScrollExploring) {
-            if (!this.isScrollBuffering) {
-                this.isScrollBuffering = true;
-                this._scrollBufferAccumulator = 0;
-            }
-
-            this._scrollBufferAccumulator += deltaRows;
-
-            // Reset buffer timeout — if no scroll for 300ms, reset buffer
-            clearTimeout(this._scrollBufferTimer);
-            this._scrollBufferTimer = setTimeout(() => {
-                this.isScrollBuffering = false;
-                this._scrollBufferAccumulator = 0;
-            }, 300);
-
-            // Check if buffer threshold reached → commit to exploration
-            if (Math.abs(this._scrollBufferAccumulator) >= BUFFER_THRESHOLD_ROWS) {
-                clearTimeout(this._scrollBufferTimer);
-                this._scrollBufferTimer = null;
-                const bufferedDelta = this._scrollBufferAccumulator;
-                this._scrollBufferAccumulator = 0;
-                this.isScrollBuffering = false;
-
-                this._startScrollExploration();
-
-                // Apply the buffered scroll offset immediately
-                this._applyScrollDelta(Math.trunc(bufferedDelta));
-            }
-            return;
-        }
-
-        // === PHASE 2: EXPLORING (game paused, free scroll) ===
-        this._scrollAccumulator += deltaRows;
-
-        const wholeRows = Math.sign(this._scrollAccumulator)
-            * Math.min(Math.abs(Math.trunc(this._scrollAccumulator)), MAX_DELTA_ROWS);
-
-        if (wholeRows !== 0) {
-            this._scrollAccumulator -= wholeRows;
-            this._applyScrollDelta(wholeRows);
-        }
-
-        // Reset idle timer — exit exploration after 1.5s of no scrolling
-        clearTimeout(this._scrollIdleTimer);
-        this._scrollIdleTimer = setTimeout(() => this._endScrollExploration(), IDLE_TIMEOUT_MS);
-    }
-
-    /**
-     * Commit to scroll exploration mode (from buffer phase)
-     * @private
-     */
-    _startScrollExploration() {
-        this.isScrollExploring = true;
-        this._scrollAccumulator = 0;
-
-        // Dispatch exploration-start (reuses existing pause/cosmic/minimap logic)
-        if (this.minimap?.container) {
-            this.minimap.container.dispatchEvent(
-                new CustomEvent('minimap-exploration-start', { bubbles: true }),
-            );
-        }
-
-        // Register game-key exit: any game action key instantly exits exploration
-        this._scrollExitKeyHandler = (e) => {
-            const key = e.key === ' ' ? 'Space' : e.key;
-            const bindings = window.settings?.keyBindings || {};
-            const action = Object.keys(bindings).find((k) => bindings[k] === key);
-            const exitActions = ['moveLeft', 'moveRight', 'rotateLeft', 'rotateRight', 'softDrop', 'hardDrop', 'flip'];
-            if (action && exitActions.includes(action)) {
-                this._endScrollExploration();
-            }
-        };
-        document.addEventListener('keydown', this._scrollExitKeyHandler);
-    }
-
-    /**
-     * Apply a scroll delta to the camera during exploration
-     * @param {number} deltaRows - Number of rows to scroll (positive = down)
-     * @private
-     */
-    _applyScrollDelta(deltaRows) {
-        if (!this.boardScene || !this.isInExplorationMode) return;
-
-        const currentTop = this.boardScene.cameraSettings?.currentTopRow ?? 0;
-        const visibleRows = this.boardScene.cameraSettings?.visibleRows || this.visibleRows;
-        const totalRows = this.gameState?.board?.length || 0;
-        const maxCameraRow = Math.max(0, totalRows - visibleRows);
-
-        const targetTopRow = Math.max(0, Math.min(maxCameraRow, currentTop + deltaRows));
-
-        this.boardScene.updateCameraPosition(targetTopRow, true);
-        this._updateMinimapView();
-
-        if (this.cosmicExploration) {
-            const now = performance.now();
-            const dt = Math.max((now - (this._lastExplorationTime || now)) / 1000, 0.016);
-            this._lastExplorationTime = now;
-            this.cosmicExploration.updateCameraPosition(targetTopRow, dt);
-        }
-    }
-
-    /**
-     * End scroll-triggered exploration mode
-     * @private
-     */
-    _endScrollExploration() {
-        if (!this.isScrollExploring) return;
-
-        this._cleanupScrollState();
-
-        // Dispatch exploration-end (reuses existing resume/snap-back logic)
-        if (this.minimap?.container) {
-            this.minimap.container.dispatchEvent(
-                new CustomEvent('minimap-exploration-end', { bubbles: true }),
-            );
-        }
-    }
-
-    /**
-     * Clean up all scroll exploration state and listeners
-     * @private
-     */
-    _cleanupScrollState() {
-        this.isScrollExploring = false;
-        this.isScrollBuffering = false;
-        this._scrollAccumulator = 0;
-        this._scrollBufferAccumulator = 0;
-
-        if (this._scrollIdleTimer) {
-            clearTimeout(this._scrollIdleTimer);
-            this._scrollIdleTimer = null;
-        }
-        if (this._scrollBufferTimer) {
-            clearTimeout(this._scrollBufferTimer);
-            this._scrollBufferTimer = null;
-        }
-        if (this._scrollExitKeyHandler) {
-            document.removeEventListener('keydown', this._scrollExitKeyHandler);
-            this._scrollExitKeyHandler = null;
-        }
-    }
-
-    /**
-     * Handle gamepad scroll input
-     * @param {number} value - Input value from -1 to 1
-     * @private
-     */
-    _handleGamepadScroll(value) {
-        if (!this.boardScene || !this.isInExplorationMode) return;
-
-        // Configuration
-        const SCROLL_SPEED = 2.0; // Rows per frame (approx)
-
-        // Calculate delta (stick down = positive = increase row index = scroll down)
-        const delta = value * SCROLL_SPEED;
-
-        // Get current position
-        const currentTop = this.boardScene.cameraSettings?.currentTopRow ?? 0;
-        let targetTopRow = currentTop + delta;
-
-        // Clamp to valid range
-        const visibleRows = this.boardScene.cameraSettings?.visibleRows || this.visibleRows;
-        const totalRows = this.gameState?.board?.length || 0;
-        const maxCameraRow = Math.max(0, totalRows - visibleRows);
-
-        targetTopRow = Math.max(0, Math.min(maxCameraRow, targetTopRow));
-
-        // Update camera immediately for responsive control
-        this.boardScene.updateCameraPosition(targetTopRow, true);
-        this._updateMinimapView();
-
-        // Update cosmic effect
-        if (this.cosmicExploration) {
-            // Use fixed delta time invocation for smoothness, or track actual time
-            const now = performance.now();
-            const dt = (now - (this._lastExplorationTime || now)) / 1000;
-            this._lastExplorationTime = now;
-            // Provide a minimum dt to ensure updates happen even if very fast
-            const safeDt = Math.max(dt, 0.016);
-            this.cosmicExploration.updateCameraPosition(targetTopRow, safeDt);
         }
     }
 }
