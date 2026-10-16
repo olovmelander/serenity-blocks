@@ -6,48 +6,32 @@
  * these sits over a live game scene.
  * ============================================================================== */
 
-/* ---- Cinematic loading: small type joins the Keystone family --------------------- */
-#cinematic-loading-overlay .cinematic-loading__tagline,
-#cinematic-loading-overlay .cinematic-loading__caption,
-#cinematic-loading-overlay .cinematic-loading__eyebrow,
-#cinematic-loading-overlay .cinematic-loading__variant {
-    font-family: var(--sb-font-display);
-    font-weight: 600;
-    letter-spacing: 0.32em;
-}
-
-#cinematic-loading-overlay .cinematic-loading__eyebrow,
-#cinematic-loading-overlay .cinematic-loading__variant {
-    color: rgba(var(--sb-cream-rgb), 0.72);
-}
-
+/* ---- Cinematic loading: the cover's type is the boot loading screen's (cinematic-loading.css);
+   only a name without lettering artwork takes the Keystone display face. ---------------- */
 #cinematic-loading-overlay span.cinematic-loading__wordmark {
     font-family: var(--sb-font-display);
     font-weight: 800;
     letter-spacing: 0.02em;
 }
 
-/* ---- Countdown: the spectrum walks down the count, GO is coral ------------------- */
+/* ---- Countdown: a ring of light per count over the void; the spectrum walks down the
+   count, GO is coral (cinematic-loading-overlay.js sets the colours and opens each ring
+   with a transform/opacity animation; nothing here repaints). ------------------------- */
 .cinematic-countdown {
-    --cd-w: min(80vw, 420px);
-    --cd-h: min(32vh, 250px);
+    --cd-size: min(46vh, 330px);
 }
 
 .cinematic-countdown__plate {
     position: absolute;
     top: 50%;
     left: 50%;
-    width: var(--cd-w);
-    min-width: 260px;
-    height: var(--cd-h);
-    min-height: 200px;
+    width: var(--cd-size);
+    min-width: 220px;
+    height: var(--cd-size);
+    min-height: 220px;
     transform: translate(-50%, -50%);
-    border-radius: var(--sb-r-xl);
+    border-radius: 50%;
     pointer-events: none;
-    transition:
-        background var(--sb-dur-2) var(--sb-ease-lock),
-        border-color var(--sb-dur-2) var(--sb-ease-lock),
-        box-shadow var(--sb-dur-2) var(--sb-ease-lock);
 }
 
 .cinematic-countdown__text {

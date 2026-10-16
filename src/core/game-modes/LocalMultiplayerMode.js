@@ -24,10 +24,8 @@ import { LocalVersusHud, versusGoal } from '../../ui/local-versus-hud.js';
 import { applyVersusLayout, readVersusViewport, versusLayout } from '../../ui/local-versus-layout.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
-    showCinematicLoadingOverlay,
-    waitForCinematicLoadingOverlayPresented,
-    dismissCinematicLoadingOverlay,
-    transitionCinematicLoadingOverlayToCountdown,
+    showCinematicLoadingOverlay, waitForCinematicLoadingOverlayPresented, dismissCinematicLoadingOverlay,
+    setCinematicLoadingProgress, transitionCinematicLoadingOverlayToCountdown,
 } from '../../ui/cinematic-loading-overlay.js';
 import { createLocalMultiplayerBoards, destroyLocalMultiplayerBoards } from '../../rendering/phaser/local-board-hosts.js';
 import {
@@ -182,6 +180,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             // Now setup the UI for the configured number of players.
             await this._setupMultiplayerUI();
             if (!ownsConfiguration()) return;
+            setCinematicLoadingProgress('activated');
 
             console.log('[LocalMultiplayer] UI setup complete, starting match...');
 
@@ -393,6 +392,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             await this.deps.themeManager.waitForThemeReady(3000);
             if (!ownsStart()) return;
         }
+        setCinematicLoadingProgress('themeReady');
         if (this.deps.soundManager?.ensureTrackPlaybackSynced) {
             await this.deps.soundManager.ensureTrackPlaybackSynced({
                 reason: 'local-multiplayer-start',

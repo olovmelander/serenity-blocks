@@ -20,6 +20,7 @@ vi.mock('../../src/ui/cinematic-loading-overlay.js', () => ({
     waitForCinematicLoadingOverlayPresented: vi.fn(() => Promise.resolve()),
     transitionCinematicLoadingOverlayToCountdown: vi.fn(),
     setCinematicLoadingOverlayBuilding: vi.fn(),
+    setCinematicLoadingProgress: vi.fn(),
 }));
 
 import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';

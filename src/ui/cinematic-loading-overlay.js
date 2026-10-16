@@ -1,9 +1,14 @@
 /**
- * @fileoverview Reusable branded loading overlay with compositor-driven aurora,
- * wordmark and loading lights. Used for game mode transitions.
+ * @fileoverview Every mode's loading cover, in the loading language of the boot's loading
+ * screen (First Light): the opening world's first frame painted in CSS (a near-black void,
+ * abyssal light rising from below, motes, a breathing halo behind the mode's name), a guide to
+ * breathe by and a progress line that follows the mode's real entry milestones. Motion is
+ * transform/opacity only (ADR-0020). The shared parts live in main.css (.sb-void-*,
+ * .sb-breath-guide, .sb-progress-line); the cover's layout in cinematic-loading.css.
  */
 
 import { createCinematicLoadingSurface } from './cinematic-loading-surface.js';
+import { COUNTDOWN_HUES, countdownGlow, countdownHueKey } from './countdown-light.js';
 import { getModeLoadingWordmark } from './mode-loading-wordmarks.js';
 
 const OVERLAY_ID = 'cinematic-loading-overlay';
@@ -13,19 +18,45 @@ const ROLE_BACKDROP = 'backdrop';
 const ROLE_STARS = 'stars';
 const ROLE_CONTENT = 'content';
 const ROLE_TITLE = 'title';
-const ROLE_DOTS = 'dots';
+const ROLE_LOADING = 'loading';
+const ROLE_PROGRESS = 'progress';
 const ROLE_COUNTDOWN_LAYER = 'countdown-layer';
 const ROLE_COUNTDOWN_PLATE = 'countdown-plate';
 const ROLE_COUNTDOWN_TEXT = 'countdown-text';
 
 /**
+ * A mode entry's milestones on the progress line, in the order entry reaches them. A mode
+ * marks the ones it has; the line never runs back, and it fills as the cover lifts.
+ */
+export const MODE_LOADING_STEPS = Object.freeze({
+    shown: 0.06,
+    presented: 0.16, // the cover is painted; heavy work may start
+    prepared: 0.3, // pending pipelines / theme switch drained
+    activated: 0.48, // the mode's UI and board are built
+    started: 0.6, // the mode (and its theme) started
+    themeReady: 0.74,
+    contentLoaded: 0.86, // the theme's streamed content is in
+    settled: 0.95, // its pipelines have settled
+    done: 1,
+});
+
+/**
  * Show a cinematic loading overlay with the given title text.
+ * A cover for the same title that is still loading is kept (a mode that shows its own cover
+ * adopts the one main put up the moment its card was chosen), so the motion never restarts.
  * @param {string} title - Text to display (e.g. "SINGLE PLAYER", "INFINITY", "ODYSSEY")
  * @param {{ themeManager?: object }} [options] Optional owner for async theme loading.
  * @returns {{ shownAt: number }} Metadata for minimum display time tracking
  */
 export function showCinematicLoadingOverlay(title, { themeManager } = {}) {
     const existing = document.getElementById(OVERLAY_ID);
+    if (existing && existing.dataset.phase === 'loading' && existing.dataset.leaving !== 'true'
+        && existing.dataset.title === String(title ?? '')) {
+        if (themeManager && !loadingSurfaces.has(existing)) {
+            loadingSurfaces.set(existing, createCinematicLoadingSurface(themeManager));
+        }
+        return { shownAt: Number(existing.dataset.shownAt) || Date.now() };
+    }
     if (existing) {
         _releaseLoadingSurface(existing, false);
         existing.remove();
@@ -38,8 +69,32 @@ export function showCinematicLoadingOverlay(title, { themeManager } = {}) {
 
     const shownAt = Date.now();
     overlay.dataset.shownAt = String(shownAt);
+    _writeProgress(overlay, MODE_LOADING_STEPS.shown);
 
     return { shownAt };
+}
+
+/**
+ * Move the cover's progress line to a milestone (a MODE_LOADING_STEPS name or 0..1). It only
+ * moves forward; light runs along it in between.
+ * @param {keyof typeof MODE_LOADING_STEPS | number} step
+ * @returns {number|null} the line's value, or null when no cover is up
+ */
+export function setCinematicLoadingProgress(step) {
+    const overlay = document.getElementById(OVERLAY_ID);
+    if (!overlay) return null;
+    const value = typeof step === 'number' ? step : MODE_LOADING_STEPS[step];
+    if (!Number.isFinite(value)) return Number(overlay.dataset.progress) || 0;
+    return _writeProgress(overlay, value);
+}
+
+function _writeProgress(overlay, value) {
+    const current = Number(overlay.dataset.progress) || 0;
+    const next = Math.max(current, Math.min(1, Math.max(0, value)));
+    if (next === current && overlay.dataset.progress) return current;
+    overlay.dataset.progress = next.toFixed(3);
+    overlay.style.setProperty?.('--sb-progress', next.toFixed(3));
+    return next;
 }
 
 /**
@@ -79,6 +134,8 @@ export async function waitForCinematicLoadingOverlayPresented() {
             });
         });
     });
+    // The cover is up and painted: the first milestone on its progress line.
+    if (overlay.isConnected) _writeProgress(overlay, MODE_LOADING_STEPS.presented);
 }
 
 function _waitForLoadingArtwork(overlay) {
@@ -134,6 +191,7 @@ export function transitionCinematicLoadingOverlayToCountdown(options = {}) {
 
     overlay.dataset.phase = 'countdown';
     overlay.ariaBusy = 'false';
+    _writeProgress(overlay, MODE_LOADING_STEPS.done);
     _releaseLoadingSurface(overlay);
 
     const backdrop = overlay.querySelector(`[data-cinematic-role="${ROLE_BACKDROP}"]`);
@@ -280,6 +338,8 @@ export function dismissCinematicLoadingOverlay(options = 800) {
 
     const overlay = document.getElementById(OVERLAY_ID);
     if (!overlay) return Promise.resolve();
+    // On its way out: a new show for the same mode builds a fresh cover instead of adopting it.
+    overlay.dataset.leaving = 'true';
 
     const shownAt = Number(overlay.dataset.shownAt || Date.now());
     const elapsedMs = Date.now() - shownAt;
@@ -293,6 +353,7 @@ export function dismissCinematicLoadingOverlay(options = 800) {
             }
 
             _releaseLoadingSurface(overlay);
+            _writeProgress(overlay, MODE_LOADING_STEPS.done);
             _playRevealTransition(overlay, fadeOutMs);
 
             setTimeout(() => {
@@ -335,14 +396,9 @@ export function setCinematicLoadingOverlayBuilding(building) {
     if (overlay) overlay.dataset.building = building ? 'true' : 'false';
 }
 
-// Keystone countdown: the logo's spectrum walks down the count (lavender, aqua, mint)
-// and lands on coral for GO, the colour of every primary action.
-const COUNTDOWN_HUES = Object.freeze({
-    high: { color: '#b8a4ff', rgb: '184, 164, 255' },
-    two: { color: '#9ee8ed', rgb: '158, 232, 237' },
-    one: { color: '#c5f1cf', rgb: '197, 241, 207' },
-    go: { color: '#ffac88', rgb: '255, 172, 136' },
-});
+// The countdown (countdown-light.js, shared with the online one): the logo's spectrum walks down
+// the count and lands on coral for GO. Each count is a ring of light in its colour over the void
+// (as the opening's wave and the stack's lock are), not a panel.
 
 const COUNTDOWN_BACKDROP_OPACITY = Object.freeze({
     high: '0.84',
@@ -358,25 +414,15 @@ const COUNTDOWN_STARS_OPACITY = Object.freeze({
 });
 
 function _getCountdownVisualState(value) {
-    let key = 'one';
-    if (value === 'GO') key = 'go';
-    else if (value >= 3) key = 'high';
-    else if (value === 2) key = 'two';
+    const key = countdownHueKey(value);
     const { color, rgb } = COUNTDOWN_HUES[key];
     return {
         key,
         textColor: color,
-        textShadow: `0 0 26px rgba(${rgb}, 0.5), 0 0 64px rgba(${rgb}, 0.26)`,
-        plateBackground: [
-            `radial-gradient(circle at 50% 30%, rgba(${rgb}, 0.2) 0%, transparent 62%), `,
-            'linear-gradient(180deg, rgba(27, 23, 60, 0.97) 0%, rgba(12, 10, 30, 0.98) 100%)',
-        ].join(''),
+        textShadow: countdownGlow(rgb),
+        plateBackground: `radial-gradient(circle, rgba(${rgb}, 0.14) 0%, rgba(${rgb}, 0.05) 42%, transparent 70%)`,
         plateBorder: `1px solid rgba(${rgb}, 0.34)`,
-        plateShadow: [
-            '0 26px 68px rgba(2, 6, 23, 0.62)',
-            'inset 0 1px 0 rgba(255, 246, 233, 0.08)',
-            `0 0 44px rgba(${rgb}, 0.14)`,
-        ].join(', '),
+        plateShadow: `0 0 46px rgba(${rgb}, 0.16), inset 0 0 38px rgba(${rgb}, 0.1)`,
         backdropOpacity: COUNTDOWN_BACKDROP_OPACITY[key],
         starsOpacity: COUNTDOWN_STARS_OPACITY[key],
     };
@@ -415,6 +461,16 @@ function _applyCountdownVisualState({
             { duration: 320, easing: 'cubic-bezier(0.2, 0.9, 0.1, 1)' },
         );
     }
+    // ...and its ring opens out to meet it.
+    if (!reduced && typeof plate.animate === 'function') {
+        plate.animate(
+            [
+                { opacity: 0.3, transform: 'translate(-50%, -50%) scale(0.84)' },
+                { opacity: 1, transform: 'translate(-50%, -50%) scale(1)' },
+            ],
+            { duration: 560, easing: 'cubic-bezier(0.2, 0.9, 0.1, 1)' },
+        );
+    }
 }
 
 function _createOverlayElement(title) {
@@ -428,6 +484,7 @@ function _createOverlayElement(title) {
     overlay.id = OVERLAY_ID;
     overlay.dataset.odysseyWheelLock = 'true';
     overlay.dataset.phase = 'loading';
+    overlay.dataset.title = String(title ?? '');
     overlay.role = 'status';
     overlay.ariaLive = 'polite';
     overlay.ariaBusy = 'true';
@@ -436,22 +493,24 @@ function _createOverlayElement(title) {
     // expose the menu while its renderer is busy preparing the selected mode.
     overlay.style.opacity = '1';
 
+    // The world's first frame: the void, and the light rising from below, breathing.
     const backdrop = element('div', 'cinematic-loading__backdrop', ROLE_BACKDROP);
     backdrop.ariaHidden = 'true';
-    const aurora = element('img', 'cinematic-loading__aurora');
-    aurora.src = './assets/branding/serenity-aurora.svg';
-    aurora.alt = '';
-    backdrop.appendChild(aurora);
-    backdrop.appendChild(element('div', 'cinematic-loading__nebula'));
+    backdrop.appendChild(element('div', 'cinematic-loading__light sb-void-light'));
     overlay.appendChild(backdrop);
+    // Stars thinning toward the light, and motes rising through it at two depths.
     const sky = element('div', 'cinematic-loading__sky', ROLE_STARS);
     sky.ariaHidden = 'true';
-    sky.appendChild(element('div', 'cinematic-loading__stars sb-starfield'));
+    sky.appendChild(element('div', 'cinematic-loading__stars sb-starfield sb-void-stars'));
+    const motes = element('div', 'cinematic-loading__motes sb-void-motes');
+    motes.appendChild(document.createElement('i'));
+    motes.appendChild(document.createElement('i'));
+    sky.appendChild(motes);
     overlay.appendChild(sky);
-    overlay.appendChild(element('div', 'cinematic-loading__vignette'));
+    overlay.appendChild(element('div', 'cinematic-loading__vignette sb-void-vignette'));
 
     const content = element('div', 'cinematic-loading__content', ROLE_CONTENT);
-    const glow = element('div', 'cinematic-loading__glow');
+    const glow = element('div', 'cinematic-loading__glow sb-void-halo');
     glow.ariaHidden = 'true';
     content.appendChild(glow);
     const wordmark = getModeLoadingWordmark(title);
@@ -485,14 +544,19 @@ function _createOverlayElement(title) {
     content.appendChild(tagline);
     overlay.appendChild(content);
 
-    const footer = element('div', 'cinematic-loading__footer', ROLE_DOTS);
+    // Below: a guide to breathe by (the world's breath, in 4 s, out 6 s) and the progress line.
+    const footer = element('div', 'cinematic-loading__footer', ROLE_LOADING);
     footer.ariaHidden = 'true';
-    const dots = element('div', 'cinematic-loading__dots');
-    for (let d = 0; d < 5; d++) dots.appendChild(element('i', 'cinematic-loading__dot'));
-    footer.appendChild(dots);
-    const caption = element('span', 'cinematic-loading__caption');
-    caption.textContent = 'Preparing your space';
-    footer.appendChild(caption);
+    const breath = element('div', 'cinematic-loading__breath sb-breath-guide');
+    for (const [kind, words] of [['in', 'Breathe in'], ['out', 'Breathe out'], ['still', 'Preparing your space']]) {
+        const word = element('span', `sb-breath-guide__word sb-breath-guide__word--${kind}`);
+        word.textContent = words;
+        breath.appendChild(word);
+    }
+    footer.appendChild(breath);
+    const progress = element('div', 'cinematic-loading__progress sb-progress-line', ROLE_PROGRESS);
+    progress.appendChild(element('i', 'sb-progress-line__fill'));
+    footer.appendChild(progress);
     overlay.appendChild(footer);
     return overlay;
 }

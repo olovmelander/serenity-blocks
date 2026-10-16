@@ -4226,6 +4226,29 @@ body.start-modal-open #invite-toast-container {
     letter-spacing: 0.04em;
 }
 
+/* The loading language's countdown (as cinematic-loading-overlay.js draws local versus'): a
+   ring of light per count in its colour (--cd-rgb, set per count), behind the numeral. It
+   rides the numeral's own scale pulse, so it opens with each count. */
+#multiplayer-countdown.multiplayer-countdown::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    z-index: -1;
+    width: min(46vh, 330px);
+    min-width: 220px;
+    height: min(46vh, 330px);
+    min-height: 220px;
+    border: 1px solid rgba(var(--cd-rgb, 184, 164, 255), 0.34);
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(var(--cd-rgb, 184, 164, 255), 0.14) 0%,
+        rgba(var(--cd-rgb, 184, 164, 255), 0.05) 42%, transparent 70%);
+    box-shadow: 0 0 46px rgba(var(--cd-rgb, 184, 164, 255), 0.16),
+        inset 0 0 38px rgba(var(--cd-rgb, 184, 164, 255), 0.1);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+}
+
 @keyframes countdownFadeInScale {
     from { scale: 0.92; }
     to { scale: 1; }

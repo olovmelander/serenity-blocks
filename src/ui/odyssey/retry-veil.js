@@ -30,9 +30,7 @@ export async function showRetryVeil() {
         pointer-events: auto;
         opacity: 0;
         z-index: 10001;
-        background:
-            radial-gradient(circle at 50% 42%, rgba(255, 150, 120, 0.05), rgba(0, 0, 0, 0) 22%),
-            radial-gradient(circle at 50% 50%, rgba(16, 10, 16, 0.94), rgba(0, 0, 0, 0.99) 72%);
+        background: var(--sb-void-sky, #03040a); /* the loading language's void (main.css) */
         transition: opacity ${RETRY_VEIL_FADE_MS}ms ease-out;
     `;
     document.body.appendChild(veil);
