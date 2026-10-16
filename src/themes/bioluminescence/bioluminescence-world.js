@@ -58,7 +58,10 @@ import {
     powerForCombo,
     smooth,
 } from './bioluminescence-tsl.js';
-import { PARASOL, buildPlan, capCentre } from './bioluminescence-layout.js';
+import {
+    PARASOL, PLAN_SEED, buildPlan, capCentre, planReaders,
+} from './bioluminescence-layout.js';
+import { takeBakedPlan } from './bioluminescence-bakes.js';
 import { tierFor } from './bioluminescence-quality.js';
 import {
     createBackdrop, createFloor, createIslets, createSpikes, createVault,
@@ -73,6 +76,7 @@ import { createRowJets, createRunners, createSpores } from './bioluminescence-fx
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './bioluminescence-composition.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 /** The rest camera: standing in the shallows, looking down the pool and a little up at the caps. */
 export const REST_RIG = Object.freeze({
@@ -138,8 +142,12 @@ export class BioluminescenceWorld {
         this.tier = tierFor(quality);
         this.renderer = renderer;
         this.capture = capture;
-        this.noiseField = bakeNoise();
-        this.plan = buildPlan(this.noiseField, NOISE_SIZE, seed);
+        // A first visit's worker baked the noise and the plan (bioluminescence-bakes.js): taken once.
+        const baked = takeBakedPlan(seed ?? PLAN_SEED);
+        this.noiseField = baked ? baked.noise : bakeNoise();
+        this.plan = baked
+            ? { ...baked.plan, ...planReaders(baked.plan, baked.noise, NOISE_SIZE) }
+            : buildPlan(this.noiseField, NOISE_SIZE, seed);
         this.root = new THREE.Group();
         this.root.name = 'Bioluminescence';
         this.parts = {};
@@ -229,6 +237,16 @@ export class BioluminescenceWorld {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, the heavy parts a step each: run at once by build(), or with a breath
+     * between steps while the theme comes in (shared/build-steps.js), so no single task holds the
+     * page for the whole build. The same parts in the same order.
+     */
+    * buildSteps() {
         const noise = createNoiseTexture(this.noiseField, NOISE_SIZE);
         const heights = createHeightTexture(this.plan.heights);
         this.textures.push(noise, heights);
@@ -238,22 +256,28 @@ export class BioluminescenceWorld {
             scatter: Math.min(tier.scatter, plan.emitters.length),
         });
         this.u = u;
+        yield 'textures';
 
         this.addPart('backdrop', createBackdrop(u));
         this.addPart('vault', createVault(u, plan));
+        yield 'vault';
         this.addPart('floor', createFloor(u, plan));
+        yield 'floor';
         this.addPart('islets', createIslets(u, plan));
+        yield 'islets';
         this.addPart('spikes', createSpikes(u, plan, tier.spikes));
         const water = createWater(u, plan, { reflectionScale: tier.reflection, sparkle: tier.sparkle });
         this.addPart('water', water);
         if (water.reflectorTarget) this.root.add(water.reflectorTarget);
         this.reflection = water.reflection;
         if (tier.pads > 0) this.addPart('pads', createPads(u, plan, tier.pads));
+        yield 'water';
 
         this.mushrooms = createMushrooms(u, plan, { count: tier.mushrooms, sprouts: tier.sprouts });
         this.mushrooms.parts.forEach(([name, part]) => this.addPart(name, part));
         this.crystals = createCrystals(u, plan, { count: tier.crystals });
         this.addPart('crystals', this.crystals);
+        yield 'mushrooms and crystals';
 
         const worms = createWorms(u, plan, tier.worms, tier.threads);
         this.addPart('worms', worms.worms);
@@ -262,6 +286,7 @@ export class BioluminescenceWorld {
         if (tier.motes > 0) this.addPart('motes', createMotes(u, tier.motes));
         this.jellies = createJellies(u, plan, tier.jellies);
         this.addPart('jellies', this.jellies);
+        yield 'air';
 
         // ── Gameplay effects (pools, always drawn) ──
         this.spores = createSpores(u, tier.spores);
@@ -277,7 +302,6 @@ export class BioluminescenceWorld {
         this.jellies.reset(this.time);
         this.updateLamps(this.time);
         this.scene.add(this.root);
-        return this;
     }
 
     addPart(name, part, { reflected = true } = {}) {
