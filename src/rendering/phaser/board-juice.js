@@ -109,6 +109,11 @@ export class BoardJuice {
         this.maxRotation = options.maxRotation ?? 0.6; // degrees
         this.maxScale = options.maxScale ?? 0.015; // ±1.5% from 1.0
 
+        // A held pose while Infinity's view flies (setFlight): a tip about the horizontal axis
+        // (degrees, + the top leans back) and a stretch along the motion.
+        this.flightLean = 0;
+        this.flightStretch = 0;
+
         // Animation loop
         this._rafId = null;
         this._lastTime = 0;
@@ -184,6 +189,26 @@ export class BoardJuice {
         this._ensureRunning();
     }
 
+    /**
+     * Hold a pose while Infinity's view flies along the tower: the well tips with the speed (its
+     * top leans back as the view rises, toward you as it falls) and stretches a hair along the
+     * motion. The springs play on top; (0, 0) lets the pose go.
+     * @param {number} lean degrees, + the top leans back
+     * @param {number} stretch share of the height, 0..0.03
+     */
+    setFlight(lean = 0, stretch = 0) {
+        if (this.disabled) return;
+        const l = clamp(Number(lean) || 0, -4, 4);
+        const s = clamp(Number(stretch) || 0, 0, 0.03);
+        const quiet = Math.abs(l) < 0.002 && s < 0.0001;
+        const nextLean = quiet ? 0 : l;
+        const nextStretch = quiet ? 0 : s;
+        if (Math.abs(nextLean - this.flightLean) < 0.002 && Math.abs(nextStretch - this.flightStretch) < 0.0001) return;
+        this.flightLean = nextLean;
+        this.flightStretch = nextStretch;
+        this._ensureRunning();
+    }
+
     // ─── Animation Loop ───────────────────────────────────────
 
     _ensureRunning() {
@@ -213,8 +238,9 @@ export class BoardJuice {
             && this.rotation.isAtRest()
             && this.scaleX.isAtRest()
             && this.scaleY.isAtRest();
+        const flying = this.flightLean !== 0 || this.flightStretch !== 0;
 
-        if (atRest) {
+        if (atRest && !flying) {
             this._applyTransform('');
             this._running = false;
             return;
@@ -225,14 +251,20 @@ export class BoardJuice {
         const ty = clamp(this.y.value, -this.maxTranslate, this.maxTranslate);
         const rot = clamp(this.rotation.value, -this.maxRotation, this.maxRotation);
         const sx = 1 + clamp(this.scaleX.value, -this.maxScale, this.maxScale);
-        const sy = 1 + clamp(this.scaleY.value, -this.maxScale, this.maxScale);
+        const sy = 1 + clamp(this.scaleY.value, -this.maxScale, this.maxScale) + this.flightStretch;
 
-        // Apply CSS transform
-        const transform = `translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) `
+        // Apply CSS transform (the flight's tip first: it is about the well's foot)
+        const tip = flying ? `perspective(1600px) rotateX(${this.flightLean.toFixed(3)}deg) ` : '';
+        const transform = `${tip}translate(${tx.toFixed(2)}px, ${ty.toFixed(2)}px) `
             + `rotate(${rot.toFixed(3)}deg) `
             + `scale(${sx.toFixed(4)}, ${sy.toFixed(4)})`;
         this._applyTransform(transform);
 
+        // A held pose with the springs at rest needs no frames until it changes.
+        if (atRest) {
+            this._running = false;
+            return;
+        }
         this._rafId = requestAnimationFrame(this._boundTick);
     }
 
@@ -253,6 +285,8 @@ export class BoardJuice {
         this.rotation?.reset();
         this.scaleX?.reset();
         this.scaleY?.reset();
+        this.flightLean = 0;
+        this.flightStretch = 0;
         if (this.element) {
             this.element.style.transform = '';
         }

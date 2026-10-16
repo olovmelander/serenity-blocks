@@ -253,6 +253,31 @@ describe('Phaser board presentation ownership', () => {
         expect(scene._visibleRowRangeCache).toBeNull();
     });
 
+    it('shows Infinity\'s peek as a presentation offset, leaving the camera\'s rows alone', () => {
+        const scene = board();
+        const gameState = new GameState({ isInfinityMode: true, initialInfinityRows: 44 });
+        scene.syncFromGameState(gameState);
+        scene.updateCameraPosition(20, true);
+        const camera = scene.cameras.main;
+        camera.centerOn = vi.fn();
+        const block = scene.boardConfig.blockSize;
+        const rows = scene.cameraSettings.visibleRows;
+        const centreOf = (top) => top * block + (rows * block) / 2;
+
+        scene.setViewOffsetRows(-2);
+        expect(camera.centerOn).toHaveBeenLastCalledWith(expect.any(Number), centreOf(18));
+        expect(scene.cameraSettings.currentTopRow).toBe(20);
+        expect(scene.cameraSettings.activeTopRow).toBe(20);
+        // The follow camera's own updates keep the peek on top.
+        scene.updateCameraPosition(20, true);
+        expect(camera.centerOn).toHaveBeenLastCalledWith(expect.any(Number), centreOf(18));
+        scene.setViewOffsetRows(0);
+        expect(camera.centerOn).toHaveBeenLastCalledWith(expect.any(Number), centreOf(20));
+        camera.centerOn.mockClear();
+        scene.setViewOffsetRows(0);
+        expect(camera.centerOn).not.toHaveBeenCalled();
+    });
+
     it('returns an expanded Infinity round to its starting view after an in-place reset', () => {
         const scene = board();
         const gameState = new GameState({

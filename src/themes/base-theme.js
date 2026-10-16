@@ -12,6 +12,7 @@ import {
     createFramePacer, resetFramePacer, shouldRenderAtTargetFps, resolveTargetFps,
 } from './theme-frame-pacer.js';
 import { readFlag } from '../core/flags.js';
+import { readExplorationSignal } from '../core/exploration-signal.js';
 import { adoptRendererForTheme } from '../rendering/async-render-pipelines.js';
 
 // Global render scale (set by settings system)
@@ -1358,6 +1359,34 @@ export class BaseTheme {
     }
 
     /**
+     * The timestamp a theme's frame runs on (what safeAnimate hands its render function): the
+     * rAF time, slowed while Infinity's exploration asks the world to hold its breath
+     * (src/core/exploration-signal.js, `timeScale`). It is integrated, never the clock times a
+     * changing rate, so a theme's clock stays continuous and monotonic, and the scale eases on
+     * real time. With no exploration it advances exactly as the rAF time does. What must stay
+     * in real time (audio analysis) reads `this.realFrameDelta`, seconds since the last frame.
+     * @param {number} [time] rAF timestamp, ms (a direct call passes none)
+     * @returns {number} ms
+     */
+    themeTime(time) {
+        const raw = Number.isFinite(time) ? time : performance.now();
+        if (!this._themeClock) this._themeClock = { raw, offset: 0, scale: 1 };
+        const clock = this._themeClock;
+        // A frame skipped by the frame-rate cap still counts: the delta is since the last frame drawn.
+        const delta = Math.min(1000, Math.max(0, raw - clock.raw));
+        clock.raw = raw;
+        this.realFrameDelta = delta / 1000;
+        const wanted = readExplorationSignal()?.timeScale ?? 1;
+        if (clock.scale !== wanted) {
+            clock.scale += (wanted - clock.scale) * (1 - Math.exp(-delta / 350));
+            if (Math.abs(wanted - clock.scale) < 0.002) clock.scale = wanted;
+        }
+        // The time the world did not play accumulates, so the theme's time = rAF time - offset.
+        clock.offset += delta * (1 - clock.scale);
+        return raw - clock.offset;
+    }
+
+    /**
      * Create a safe animation loop wrapper.
      * Catches errors per frame (so one bad frame doesn't kill the theme),
      * respects shouldRenderFrame() for throttling, and auto-registers the
@@ -1395,7 +1424,7 @@ export class BaseTheme {
             if (!this.shouldRenderFrame()) return;
 
             try {
-                renderFn(time);
+                renderFn(this.themeTime(time));
                 consecutiveErrors = 0;
             } catch (err) {
                 consecutiveErrors++;
