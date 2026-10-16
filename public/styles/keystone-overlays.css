@@ -2542,6 +2542,215 @@ body:not(.serenity-mode) #serenity-world-bar {
     }
 }
 
+/* ---- Serenity Mode: the effects tray (src/ui/serenity-mode/serenity-effects-tray.js) ------
+   Every reaction a theme has to play, on demand. At the right edge, clear of the middle where
+   the board would be and where themes play their effects; along the bottom on a phone. The
+   world bar's panel and chip language; motion is opacity and transform only, no blur. */
+#serenity-effects {
+    position: fixed;
+    top: 50%;
+    right: max(var(--sb-play-inset), env(safe-area-inset-right));
+    z-index: 1000;
+    display: grid;
+    gap: 12px;
+    width: min(320px, calc(100vw - 32px));
+    max-height: calc(100vh - 2 * (var(--sb-play-inset) + var(--sb-play-tile) + 20px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 14px 14px 12px;
+    border: 1px solid var(--sb-line);
+    border-radius: var(--sb-r-md);
+    background: linear-gradient(180deg, rgba(27, 23, 60, 0.84), rgba(12, 10, 30, 0.9));
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
+    color: var(--sb-text);
+    font-family: var(--sb-font-text);
+    opacity: 0;
+    transform: translate(10px, -50%);
+    transition: opacity 0.35s ease, transform 0.35s var(--sb-ease-breathe);
+}
+
+#serenity-effects[hidden] { display: none; }
+
+#serenity-effects.is-open {
+    opacity: 1;
+    transform: translate(0, -50%);
+}
+
+#serenity-effects.is-covered,
+body.serenity-hub-open #serenity-effects,
+body:not(.serenity-mode) #serenity-effects {
+    visibility: hidden;
+    opacity: 0;
+    pointer-events: none;
+}
+
+#serenity-effects .serenity-effects__head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: start;
+    gap: 8px;
+}
+
+#serenity-effects .serenity-effects__eyebrow {
+    margin: 0 0 4px;
+    color: var(--sb-mint);
+    font: 600 var(--sb-fs-label) / 1.2 var(--sb-font-display);
+    letter-spacing: var(--sb-track-label);
+    text-transform: uppercase;
+}
+
+#serenity-effects .serenity-effects__subtitle {
+    margin: 0;
+    color: var(--sb-text-muted);
+    font-size: var(--sb-fs-small);
+    line-height: 1.35;
+}
+
+#serenity-effects .serenity-effects__groups {
+    display: grid;
+    gap: 10px;
+}
+
+#serenity-effects .serenity-effects__group-label {
+    margin: 0 0 6px;
+    color: var(--sb-text-faint);
+    font: 600 0.625rem / 1.2 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+#serenity-effects .serenity-effects__list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+#serenity-effects :is(.serenity-effects__effect, .serenity-effects__all, .serenity-effects__close) {
+    min-height: 34px;
+    padding: 0 12px;
+    border-radius: 9px;
+    border: 1px solid var(--sb-line-strong);
+    background: rgba(12, 10, 30, 0.72);
+    color: var(--sb-text-muted);
+    font: 600 0.75rem / 1 var(--sb-font-text);
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        color var(--sb-dur-2) var(--sb-ease-lock),
+        background var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#serenity-effects .serenity-effects__all {
+    font: 600 0.625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+#serenity-effects .serenity-effects__close {
+    width: 34px;
+    padding: 0;
+    font: 500 1.125rem / 1 var(--sb-font-display);
+}
+
+#serenity-effects :is(.serenity-effects__effect, .serenity-effects__all, .serenity-effects__close):hover {
+    border-color: rgba(var(--sb-cream-rgb), 0.36);
+    color: var(--sb-text);
+}
+
+#serenity-effects :is(.serenity-effects__effect, .serenity-effects__all, .serenity-effects__close):active {
+    transform: translateY(1px);
+}
+
+/* The effect that is playing, and Play all while it walks through them. */
+#serenity-effects :is(.serenity-effects__effect.is-playing, .serenity-effects__all.is-on) {
+    border-color: rgba(var(--sb-mint-rgb), 0.55);
+    background: rgba(var(--sb-mint-rgb), 0.1);
+    color: var(--sb-mint);
+}
+
+#serenity-effects :is(.serenity-effects__effect, .serenity-effects__all, .serenity-effects__close):focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 2px;
+}
+
+#serenity-effects .serenity-effects__note {
+    margin: 0;
+    padding: 8px 10px;
+    border-radius: 9px;
+    border: 1px solid rgba(var(--sb-gold-rgb), 0.3);
+    background: rgba(var(--sb-gold-rgb), 0.08);
+    color: var(--sb-gold);
+    font-size: var(--sb-fs-small);
+    line-height: 1.35;
+}
+
+#serenity-effects .serenity-effects__note[hidden] { display: none; }
+
+#serenity-effects .serenity-effects__hint {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 6px;
+    margin: 0;
+    color: var(--sb-text-faint);
+    font-size: 0.75rem;
+}
+
+#serenity-effects .serenity-effects__hint span + kbd { margin-left: 8px; }
+
+/* No keys to show on a touch screen. */
+@media (pointer: coarse) {
+    #serenity-effects .serenity-effects__hint { display: none; }
+}
+
+/* A phone: along the bottom, each group one row that scrolls sideways, so the middle of the
+   screen (where the effects play) stays in view. Notices step up above it. */
+@media (max-width: 640px) {
+    #serenity-effects {
+        top: auto;
+        right: 16px;
+        bottom: max(16px, env(safe-area-inset-bottom));
+        left: 16px;
+        width: auto;
+        max-height: 44vh;
+        gap: 10px;
+        padding: 12px;
+        transform: translateY(10px);
+    }
+
+    #serenity-effects.is-open { transform: translateY(0); }
+
+    #serenity-effects .serenity-effects__groups { gap: 8px; }
+
+    #serenity-effects .serenity-effects__group {
+        display: grid;
+        grid-template-columns: 76px minmax(0, 1fr);
+        align-items: center;
+        gap: 8px;
+    }
+
+    #serenity-effects .serenity-effects__group-label {
+        margin: 0;
+        font-size: 0.5625rem;
+        letter-spacing: 0.08em;
+    }
+
+    #serenity-effects .serenity-effects__effect { padding: 0 10px; }
+
+    #serenity-effects .serenity-effects__list {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+
+    #serenity-effects .serenity-effects__list::-webkit-scrollbar { display: none; }
+
+    body.serenity-mode.serenity-effects-open #serenity-notification {
+        bottom: calc(44vh + 28px);
+    }
+}
+
 /* ---- Serenity Mode: notices, the first-visit hints, the rest veil, the touch ripple ------ */
 body.serenity-mode #serenity-notification {
     top: auto;
@@ -2672,4 +2881,15 @@ body.serenity-mode .serenity-click-ripple {
         transform: translate(-50%, -50%);
         animation: serenity-touch-fade 0.9s ease forwards;
     }
+
+    #serenity-effects,
+    #serenity-effects.is-open {
+        transform: translate(0, -50%);
+        transition: opacity 0.3s ease;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) and (max-width: 640px) {
+    #serenity-effects,
+    #serenity-effects.is-open { transform: none; }
 }

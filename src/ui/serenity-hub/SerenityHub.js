@@ -1203,6 +1203,7 @@ export class SerenityHub {
             [[keyName('previousTheme'), keyName('nextTheme')], 'Change theme'],
             [[keyName('randomTheme')], 'Random theme'],
             [[keyName('toggleDrift')], 'Drift between themes'],
+            [[keyName('toggleEffects')], 'Theme effects'],
             [[keyName('toggleBreathing')], 'Breathing guide'],
             [[keyName('cycleBreathingTechnique')], 'Next breathing world'],
             [[keyName('volumeDown'), keyName('volumeUp')], 'Music volume'],

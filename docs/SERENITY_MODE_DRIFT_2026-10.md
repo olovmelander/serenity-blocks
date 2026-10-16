@@ -46,6 +46,7 @@ the input you use (keyboard, controller or touch), once the mode's loading veil 
 | ← → | Previous / next theme (in a practice: its breathing world, as before) | D-pad ← → (with the Hub closed) |
 | B | Random theme (kept as your choice) | L3 |
 | D | Drift on / off (at the last pace chosen) | the Hub's Themes tab |
+| E | The effects tray: every reaction the theme has to play (focus moves into it) | — |
 | ↑ ↓ | Music volume (repeats while held) | LT / RT (one step every 60 ms) |
 | , . | Previous / next song | LB / RB |
 | M | Mute music | — |
@@ -121,6 +122,58 @@ in twelve seconds the ring still answers and the theme rests. On a touch screen 
 changes the theme. Presses on any control (the bar, the play rail, the Hub, dialogs, the guide)
 are theirs alone.
 
+## Theme effects
+
+`src/ui/serenity-mode/serenity-effects.js` (the effects), `serenity-effects-tray.js` (the tray).
+Everything a theme does when you play, on demand, so you can watch each world's reactions without
+playing a game. **E**, or the world bar's **Effects** chip, opens the tray:
+
+```
+EFFECTS                                   [ PLAY ALL ]  [ × ]
+What Forest does when you play
+Pieces       [Lock] [Hard drop]
+Line clears  [Single] [Double] [Triple] [Quad]
+Cascades     [3 waves] [6 waves] [10 waves]
+Chains       [Combo ×5] [Back-to-back]
+Moments      [T-spin] [Perfect clear] [Level up]
+← → another theme · E closes
+```
+
+- **Press an effect** and the theme on screen plays it; the button stays lit while it runs. The
+  arrows still change the theme, so one effect can be compared across worlds: press, →, press.
+  **Play all** walks through every effect with a quiet pause after each and names each one in a
+  notice ("Quad · four lines · 6 of 14"); press it again, or any effect, to stop.
+- **What the themes receive is what play sends.** Each effect is a short script of the gameplay
+  events in the pinned physics order (ADR-0011, `physics-callback-schedule.test.js`): HARD_DROP
+  and PIECE_LOCK in one tick; then per wave COMBO (the cascade depth, from the second wave),
+  LEVEL_UP when the clear crosses a level, LINE_CLEAR, TSPIN, B2B; PERFECT_CLEAR once the last
+  wave has settled. Waves are 360 ms apart (the rows' 160 ms hold and the fall), combo locks
+  720 ms. Payloads go through the canonical emitters (`src/events/gameplay-events.js`) with real
+  pieces (shape, position on the 10 × 24 matrix, the theme's own tetromino colour) and real
+  cleared rows; the one addition is `source: 'serenity-effects'`, which no theme reads. Only
+  themes listen to these events, so nothing is scored, saved or unlocked.
+- **Each effect stands on its own.** Themes count combos from the lock sequence
+  (`src/core/combo-tracker.js`), so a Double right after a Single would be the second step of a
+  combo. When the last lock cleared lines, a clearing effect first sets down one plain piece
+  (900 ms before), as play would. Back-to-back puts a plain piece between its two quads for the
+  same reason. Repeated presses vary: Lock walks through the seven shapes and the columns, Level
+  up climbs one level each time.
+- One effect at a time: a new one ends the one before it (play never overlaps two locks).
+- The tray stands at the right edge on a wide screen, clear of the middle where the board would
+  be and where themes play their effects; on a phone it lies along the bottom, each group one row
+  that scrolls sideways, and notices step up above it. It stays until closed (E, Esc, its ×, the
+  chip), steps aside with the world bar whenever something else has the screen (the Hub, the
+  breathing guide, a Hale session, the rest veil) and ends what it was playing. Drift holds while
+  it is open, so the world you are trying stays. While it is in view it owns Esc, as the Hub
+  does (it listens on the way down, before Settings' handler in `controls.js`).
+- If **Background reacts to combos** is off (Settings › Visual), the tray says so: themes ignore
+  these events then.
+- For captures and scripts: `serenityBlocks.gameModeManager.getCurrentMode().playEffect('quad')`
+  plays one effect (ids in `EFFECTS`), with or without the tray.
+
+Not here yet: a controller path into the tray (the pad's D-pad and A keep their theme and touch
+meanings), and the game's own sound effects with each effect.
+
 ## What was wrong
 
 | Found | Now |
@@ -151,11 +204,12 @@ are theirs alone.
 | `serenity-drift.js`, `serenity-options.js` | Drift (timers injected); the choices and their words, shared with the Hub. |
 | `serenity-rest.js`, `serenity-rest-veil.js` | The rest clock; the dimming layer. |
 | `serenity-touch.js`, `serenity-notice.js` | Touching the world; notices and the first-visit hints. |
+| `serenity-effects.js`, `serenity-effects-tray.js` | The theme effects as event scripts and their player (timers injected); the tray. |
 | `serenity-wake-lock.js`, `serenity-media-session.js` | Screen wake lock; media keys and system media controls. |
 | `src/ui/serenity-hub/serenity-drift-panel.js` | The Themes tab's Serenity Mode panel. |
 | `src/core/breath-signal.js` | The breath being followed: no DOM, no clock, no imports (boot-safe). |
 
-Styles: `public/styles/keystone-overlays.css` (bar, notices, hints, rest veil, ripple),
+Styles: `public/styles/keystone-overlays.css` (bar, notices, hints, rest veil, ripple, effects tray),
 `breathing-guide.css` (over the theme), `keystone-hub.css` (the drift panel). Motion is opacity
 and transform only, every piece has a reduced-motion path, no backdrop blur.
 
@@ -169,7 +223,10 @@ D-pad, waking from rest on a controller), `serenity-mode-drift.test.js` (drift p
 the arrows' order, delay and save, the rest timer, touch rhythm), `camera-breath-signal.test.js`
 (the signal, the camera following and returning without a jump, holds, reduced motion),
 `breathing-guide.test.js` (over the theme: no stage, the theme drawing, the signal, moving
-between the two places, GPU release, never in a session or outside Serenity), and the updated
+between the two places, GPU release, never in a session or outside Serenity),
+`serenity-effects.test.js` (every effect's events against the physics order, through the real
+emitters and the consumer-audit payload rules, effects standing on their own against
+`ComboTracker`, the player's timing, Play all, stopping), and the updated
 `serenity-random-theme.test.js` / `serenity-breathing-session-input.test.js`.
 
 ## Verification
@@ -193,6 +250,16 @@ Heart Glow breathed (five in, five out): its pitch followed the published breath
 breath's travel (no jump on arrival). That run also found a real fault, fixed here: the guide is
 created by deferred boot, so entering Serenity quickly left it unaware the mode allowed breathing
 over the theme; it now asks the page when it was not told.
+
+**Theme effects on SwiftShader** (same URL, 1280×720 and 390×844 with touch, Forest and Aurora;
+SwiftShader in that container drew about one frame a second, so captures show an effect's early
+frames): the chip and E open the tray (E puts focus on Lock; Tab and Enter play the next one); the
+playing button lights; Forest's fireflies swarm on 6 and 10 waves and glow on Combo ×5; the bus
+carried PIECE_LOCK, LINE_CLEAR, COMBO and PERFECT_CLEAR in the scripted order to the theme's two
+listeners each; Esc closed the tray both with focus inside it and on the page, and only the next
+Esc opened Settings; no horizontal scroll on either size; no console errors or warnings besides
+SwiftShader's own driver notes. The phone pass found group labels running into the buttons, fixed
+before commit.
 
 Captures were taken in the session's scratch space and are not committed.
 

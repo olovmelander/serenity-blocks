@@ -1,7 +1,8 @@
 /**
  * Everything Serenity Mode puts on screen and keeps running beside the theme, in one place:
- * the world bar and its arrows, Drift, the rest timer and its veil, touching the world, short
- * notices, the first-visit key hints, the screen wake lock and the media keys.
+ * the world bar and its arrows, Drift, the rest timer and its veil, touching the world, the
+ * effects tray, short notices, the first-visit key hints, the screen wake lock and the media
+ * keys.
  *
  * SerenityMode (src/core/game-modes/SerenityMode.js) owns the lifecycle and the key map and
  * calls in here; this module owns the DOM, so the mode stays free of it. Record:
@@ -21,6 +22,8 @@ import {
 import { REST_FADE_MS, SerenityRestTimer } from './serenity-rest.js';
 import { SerenityRestVeil } from './serenity-rest-veil.js';
 import { SerenityTouch } from './serenity-touch.js';
+import { SerenityEffects } from './serenity-effects.js';
+import { SerenityEffectsTray } from './serenity-effects-tray.js';
 import {
     hideSerenityNotice, showFirstHints, showSerenityNotice, takeHintVisit,
 } from './serenity-notice.js';
@@ -48,6 +51,8 @@ export class SerenityModeUi {
         this.deps = mode.deps || {};
         this.bar = null;
         this.touch = null;
+        this.effects = null;
+        this.effectsTray = null;
         this.resting = false;
         this.restAsleep = false;
         this.restTimer = null;
@@ -99,6 +104,7 @@ export class SerenityModeUi {
             onStep: (direction) => this.stepWorld(direction),
             onDrift: () => this.setDrift(nextDriftOption(this.drift.pace)),
             onRest: () => this.setRest(nextRestOption(this.restTimer.minutes)),
+            onEffects: () => this.toggleEffects(),
         });
         this.drift = new SerenityDrift({
             activeTheme: () => themeManager?.activeThemeName || null,
@@ -120,6 +126,21 @@ export class SerenityModeUi {
             isLive: () => this.worldVisible,
             onSwipe: (direction) => this.stepWorld(direction),
             onTouch: () => this.bar?.wake(),
+        });
+        this.effects = new SerenityEffects({
+            colorFor: (shapeKey) => this.pieceColor(shapeKey),
+            onChange: (state) => this.effectsTray?.setState(state),
+            onTourStep: (effect, index, total) => showSerenityNotice(`${effect.name} · ${index + 1} of ${total}`, 3200),
+        });
+        this.effectsTray = new SerenityEffectsTray({
+            onPlay: (id) => this.playEffect(id),
+            onPlayAll: () => this.playAllEffects(),
+            onClose: () => this.closeEffects(),
+            keys: {
+                effects: keycap(this.mode.keyFor('toggleEffects')),
+                previous: keycap(this.mode.keyFor('previousTheme')),
+                next: keycap(this.mode.keyFor('nextTheme')),
+            },
         });
         this.wakeLock = new ScreenWakeLock();
         this.wakeLock.acquire();
@@ -174,6 +195,10 @@ export class SerenityModeUi {
         this.restVeil?.destroy();
         this.touch?.destroy();
         this.touch = null;
+        this.effects?.destroy();
+        this.effects = null;
+        this.effectsTray?.destroy();
+        this.effectsTray = null;
         this.bar?.destroy();
         this.bar = null;
         this.wakeLock?.release();
@@ -210,6 +235,10 @@ export class SerenityModeUi {
         const { guide } = this;
         const guideActive = Boolean(guide?.isActive);
         this.bar.setCovered(this.hubOpen || guideActive || this.resting);
+        // The tray steps aside with the bar, and what it was playing ends.
+        const effectsCovered = this.hubOpen || guideActive || this.resting || this.sessionHolds;
+        this.effectsTray?.setCovered(effectsCovered);
+        if (effectsCovered) this.effects?.stop();
         if (this.hubOpen) this.drift.hold('hub');
         else this.drift.release('hub');
         // Breathing over the theme leaves the world to drift; its own world or a session covers it.
@@ -237,7 +266,10 @@ export class SerenityModeUi {
             restLabel: restLeft > 0
                 ? `Rest timer: ${restChipLabel(restLeft).replace('Rest · ', '')}` : 'Rest timer: off',
             arriving: Boolean(this.stepper.target) || Boolean(themeManager?.isTransitioning),
+            effectsOpen: this.effectsOpen,
         });
+        this.effectsTray?.setTheme(themeName(shown));
+        this.effectsTray?.setNote(this.effectsNote());
         if (announce) this.bar.announce();
     }
 
@@ -283,6 +315,81 @@ export class SerenityModeUi {
     touchWorld() {
         if (this.wakeFromRest()) return;
         if (this.worldVisible && !this.guide?.isActive) this.touch?.touch();
+    }
+
+    // ── Effects ─────────────────────────────────────────────────────────────────────────
+
+    get effectsOpen() {
+        return this.effectsTray?.isOpen === true;
+    }
+
+    /**
+     * E and the bar's chip: the effects tray open or closed.
+     * @param {{ fromKey?: boolean }} [options] from the keyboard, focus moves into the tray
+     */
+    toggleEffects({ fromKey = false } = {}) {
+        if (this.wakeFromRest()) return;
+        if (this.effectsOpen) this.closeEffects();
+        else this.openEffects({ focus: fromKey });
+    }
+
+    /** @param {{ focus?: boolean }} [options] */
+    openEffects({ focus = false } = {}) {
+        if (!this.effectsTray || this.effectsOpen) return;
+        if (!this.worldVisible) {
+            showSerenityNotice('Effects play over the theme · close what covers it first');
+            return;
+        }
+        this.removeHints?.();
+        // The world you are watching stays while you try its effects.
+        this.drift.hold('effects');
+        this.effectsTray.open({ focus });
+        this.refresh();
+    }
+
+    /** E, Esc (the tray's own), its ×: close it. @returns {boolean} whether it was open */
+    closeEffects() {
+        if (!this.effectsOpen) return false;
+        this.effects?.stop();
+        this.effectsTray.close();
+        this.drift.release('effects');
+        this.refresh();
+        return true;
+    }
+
+    /**
+     * Play one effect on the theme on screen (the tray, or the console:
+     * `serenityBlocks.gameModeManager.getCurrentMode().playEffect('quad')`).
+     * @param {string} id one of EFFECTS (src/ui/serenity-mode/serenity-effects.js)
+     * @returns {boolean} whether it played
+     */
+    playEffect(id) {
+        if (this.wakeFromRest() || !this.worldVisible || !this.effects) return false;
+        return this.effects.play(id);
+    }
+
+    /** Every effect in turn; a second press stops. */
+    playAllEffects() {
+        if (this.wakeFromRest() || !this.worldVisible || !this.effects) return;
+        if (this.effects.touring) {
+            this.effects.stop();
+            hideSerenityNotice();
+            return;
+        }
+        this.effects.playAll();
+    }
+
+    /** Why the theme may not answer: its reactions are switched off in Settings. */
+    effectsNote() {
+        return this.settings.backgroundComboEffects === false
+            ? 'Theme reactions are off · Settings › Visual › Background reacts to combos'
+            : '';
+    }
+
+    /** A piece in the theme's own colours, as a game paints it (game.js resolveActiveTetrominoColor). */
+    pieceColor(shapeKey) {
+        if (this.settings.themeBasedTetrominos === false) return null;
+        return this.deps.themeManager?.activeTheme?.getTetrominoConfig?.()?.colors?.[shapeKey] || null;
     }
 
     // ── Drift and rest ──────────────────────────────────────────────────────────────────

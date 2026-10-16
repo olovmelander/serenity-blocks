@@ -316,6 +316,7 @@ export const DEFAULT_SETTINGS = {
         nextTrack: '.',
         toggleMute: 'm',
         toggleDrift: 'd',
+        toggleEffects: 'e',
     },
     // Gamepad bindings (Player 1)
     gamepadBindings: {

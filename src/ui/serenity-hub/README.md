@@ -119,7 +119,8 @@ H, F and / reach the mode. Bindings for the controls overlay come from
 keyboard defaults are `DEFAULT_SETTINGS.serenityKeyBindings` in `src/core/constants.js`).
 
 With the Hub closed, in Serenity Mode: ← → (D-pad ← →) change the theme, ↑ ↓ (LT / RT) the
-music volume, , . (LB / RB) the song, M mutes, D drifts, A touches the world; the full table is in
+music volume, , . (LB / RB) the song, M mutes, D drifts, E opens the theme effects tray, A touches
+the world; the full table is in
 [docs/SERENITY_MODE_DRIFT_2026-10.md](../../../docs/SERENITY_MODE_DRIFT_2026-10.md#keys).
 
 ## Styles
