@@ -40,3 +40,28 @@ export async function runStepsBreathing(steps, isCurrent = () => true, pause = b
     }
     return true;
 }
+
+/**
+ * Build a world (its `buildSteps()` breathing, or its `build()` at once) and hand it over only when
+ * it is whole. Between the breaths the theme has no world: a resume, a resize or a setting changed
+ * meanwhile finds none, as during any other wait of a start, never a half-built one. A start
+ * stopped meanwhile, or a build that throws half-way, disposes the world here.
+ * @param {{ build: () => unknown, buildSteps?: () => Generator, dispose?: () => void }} world
+ * @param {() => boolean} [isCurrent]
+ * @param {() => Promise<void>} [pause]
+ * @returns {Promise<boolean>} true when built: the caller owns the world from here
+ */
+export async function buildWorldBreathing(world, isCurrent = () => true, pause = breathe) {
+    try {
+        if (typeof world.buildSteps !== 'function') {
+            world.build();
+            return true;
+        }
+        if (await runStepsBreathing(world.buildSteps(), isCurrent, pause)) return true;
+    } catch (error) {
+        world.dispose?.();
+        throw error;
+    }
+    world.dispose?.();
+    return false;
+}
