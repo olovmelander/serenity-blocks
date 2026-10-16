@@ -36,6 +36,7 @@ beforeEach(() => {
         stepSong: vi.fn(),
         toggleMute: vi.fn(),
         toggleDrift: vi.fn(),
+        toggleEffects: vi.fn(),
         randomWorld: vi.fn(),
         toggleFullscreen: vi.fn(),
         wakeFromRest: vi.fn(() => true),
@@ -89,6 +90,18 @@ describe('Serenity keys', () => {
         expect(ui.toggleMute).toHaveBeenCalledOnce();
         expect(ui.toggleDrift).toHaveBeenCalledOnce();
         expect(ui.randomWorld).toHaveBeenCalledOnce();
+    });
+
+    it('open and close the effects tray with E (from the keyboard, focus moves into it)', () => {
+        press('e');
+        press('E');
+        expect(ui.toggleEffects.mock.calls).toEqual([[{ fromKey: true }], [{ fromKey: true }]]);
+    });
+
+    it('leave the effects to the Hub while it is open', () => {
+        mode.serenityHub.isOpen = true;
+        press('e');
+        expect(ui.toggleEffects).not.toHaveBeenCalled();
     });
 
     it('repeat while held only for the volume', () => {
