@@ -63,6 +63,8 @@ import * as WolfhourPostFactories from './wolfhour-post.js';
 import { createLunarHaloFallbackMaterial } from './wolfhour-fallback-materials.js';
 import { createWolfhourSky } from './wolfhour-sky.js';
 import { createWolfhourLandscape } from './wolfhour-landscape.js';
+import { LANDSCAPE_SEED } from './wolfhour-landscape-bake.js';
+import { wolfhourLandscapeBakes } from './wolfhour-landscape-bakes.js';
 import { createWolfhourMeteor, setWolfhourRibbon } from './wolfhour-meteor.js';
 import { updateWolfhourCamera } from './wolfhour-composition.js';
 import { easedMotion, prefersReducedMotion } from '../shared/reduced-motion.js';
@@ -1334,8 +1336,14 @@ export default class WolfhourTheme extends BaseTheme {
         }
         this.container = container;
 
+        // The landscape's ranges and granite (0.15-0.2 s of main thread on a first visit) bake in a
+        // worker while the renderer comes up; createAmbientScene finds them in the bake cache.
+        const baking = wolfhourLandscapeBakes(this.activeQualityLevel, LANDSCAPE_SEED);
         const rendererReady = await this.initRenderer(container, ownerGeneration);
         if (!rendererReady) return;
+        await baking;
+        // A stop or a newer start meanwhile owns the theme now (its cleanup took the renderer).
+        if (ownerGeneration !== this.lifecycleGeneration || !this.isActive || this.cleanupComplete) return;
 
         this.materialFactories = null;
         this.computeFactories = null;
@@ -1684,7 +1692,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.alpineLandscape = createWolfhourLandscape({
             scene: this.scene,
             quality: this.activeQualityLevel,
-            seed: 73013,
+            seed: LANDSCAPE_SEED,
         });
         this.alpineLandscape.resize(window.innerWidth / window.innerHeight);
         // The existing bounded lunar reaction director owns the pulse state;
