@@ -7,6 +7,8 @@
  * atlas is a signed-distance field, so a tube stays a clean line of light at any size.
  */
 
+import { bakeOnce } from '../shared/bake-cache.js';
+
 const LATIN = {
     0: '1,0 0,1 0,5 1,6 3,6 4,5 4,1 3,0 1,0|0.7,1.1 3.3,4.9',
     1: '1,5 2,6 2,0|1,0 3,0',
@@ -112,7 +114,7 @@ export function glyphSegments() {
  * cell row 0 (texture v up), so glyph g sits at column g % 8, row floor(g / 8).
  * @returns {{ data: Uint8Array, size: number }}
  */
-export function bakeGlyphAtlas() {
+function computeGlyphAtlas() {
     const glyphs = glyphSegments();
     const size = GLYPH_GRID * GLYPH_CELL;
     const data = new Uint8Array(size * size);
@@ -147,4 +149,12 @@ export function bakeGlyphAtlas() {
         }
     }
     return { data, size };
+}
+
+/** The bake cache's key for the atlas (it depends on nothing but this module). */
+export const GLYPH_ATLAS_KEY = 'neon-district:glyph-atlas';
+
+/** The atlas, baked once (read-only: the texture's bytes). */
+export function bakeGlyphAtlas() {
+    return bakeOnce(GLYPH_ATLAS_KEY, computeGlyphAtlas);
 }
