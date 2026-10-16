@@ -12,15 +12,38 @@ The audit that led here (2026-10-16, in conversation) found the problems listed 
 
 ## What you see
 
-**The world bar** (top centre, `src/ui/serenity-mode/serenity-world-bar.js`):
+Everything Serenity Mode says over the theme speaks the **breathing guide's language**
+(2026-10-16, after Olov found the guide's words and presentation finer than the bar's purple
+cards): words on the world itself, never panels, carried by soft night shades that come and go
+with them; the guide's three levels (an eyebrow with its small square, a title in Unbounded, a
+line in Manrope); quiet tiles for what you can do; and each theme's **own light** as its accent,
+as each breathing world has one. The accent is read from the theme's artwork, its round icon: the
+most vivid bright hue in it, lifted to read on the shade (`serenity-theme-accent.js`, worked out
+once per theme; the category's hue stands in until then or where the picture cannot be read). It
+colours the eyebrow, the music note, the lit cell of the strip, a tile that is on, the arrows
+under the pointer, the notices' square, the effects tray and the controls card.
+
+**The world caption** (top centre, `src/ui/serenity-mode/serenity-world-bar.js`):
 
 ```
-‹    THEME 3 OF 15 · Firefly Night · ♪ Echoes of the Soul    ›
-          [ DRIFT · WITH THE MUSIC ]   [ REST OFF ]
+                    ■ NATURE · 7 OF 10
+        ‹              Crystal Cave               ›
+                     ♪ Crystal Cave
+                   ▪▪▪▪▪▪█▪▪▪
+
+   [ ◌ DRIFT · WITH THE MUSIC ]  [ ☾ REST OFF ]  [ ✦ EFFECTS ]      (the dock, bottom centre)
 ```
 
-- It names the theme and the song, and its arrows step between the themes you have collected,
-  in the Hub's order, the way the breathing guide's arrows step between its worlds.
+- It names the theme, its category and its place among yours, and the song; its arrows step
+  between the themes you have collected, in the Hub's order, the way the breathing guide's
+  arrows step between its worlds.
+- The strip under it is your collection at a glance, like the guide's breath: one cell per theme,
+  the one on screen lit. While the world drifts, that cell fills toward the next theme: with the
+  music, as the song plays; on a timer, by the clock (a compositor animation, restarted only when
+  it is shown).
+- What you can do sits along the bottom in the guide's tiles: Drift, Rest, Effects. A layer the
+  size of the screen holds both, but only its buttons take the pointer, so a press anywhere else
+  still touches the world.
 - It is there when you reach for it (pointer movement, a key, a press on it) and when something
   changes (a theme or a song, by you or by drift, and the theme you arrive in); it leaves after a
   few still seconds, with the cursor and the play rail. It never shows over the Hub, the breathing
@@ -33,11 +56,16 @@ The audit that led here (2026-10-16, in conversation) found the problems listed 
 - With only one theme collected (every new profile) the arrows are dimmed and say where more
   come from, instead of doing nothing.
 
-**Notices** sit at the bottom centre and name what happened ("Music 60%", "Drift · every 20 min",
-"Ocean Tide · Space to begin"); a newer one replaces an older one with its own full time.
+**Notices** are one line of words above the dock, with the theme's square, over a soft round
+shade, and name what happened ("Music 60%", "Drift · every 20 min", "Ocean Tide · Space to
+begin"); a newer one replaces an older one with its own full time.
 
-**First visits** (the first three) show one line of keys along the bottom for nine seconds, in
-the input you use (keyboard, controller or touch), once the mode's loading veil has gone.
+**First visits** (the first three) show one line of keycaps just above the dock for nine seconds,
+in the input you use (keyboard, controller or touch), once the mode's loading veil has gone.
+
+**The controls card** (`/`, Select) is a title card over the dimmed world: the eyebrow in the
+theme's light, "Serenity controls", the keys in two columns under hairline section names. A press
+anywhere, the key again, or ten seconds, and it is gone.
 
 ## Keys
 
@@ -126,11 +154,14 @@ are theirs alone.
 
 `src/ui/serenity-mode/serenity-effects.js` (the effects), `serenity-effects-tray.js` (the tray).
 Everything a theme does when you play, on demand, so you can watch each world's reactions without
-playing a game. **E**, or the world bar's **Effects** chip, opens the tray:
+playing a game. **E**, or the dock's **Effects** tile, opens the tray. It holds the right edge over
+its own night shade, deepening toward the edge, in the guide's words and tiles (along the bottom
+on a phone); while it is open the caption and the dock centre on the rest of the screen:
 
 ```
-EFFECTS                                   [ PLAY ALL ]  [ × ]
-What Forest does when you play
+■ EFFECTS                                 [ PLAY ALL ]  [ × ]
+Forest
+What it does when you play
 Pieces       [Lock] [Hard drop]
 Line clears  [Single] [Double] [Triple] [Quad]
 Cascades     [3 waves] [6 waves] [10 waves]
