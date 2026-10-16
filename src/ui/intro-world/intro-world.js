@@ -509,7 +509,7 @@ export class IntroWorld {
                 z: p.z,
                 scale: p.scale,
                 q: p.q,
-                glow: 0.05 + breath * 0.06 + this.audio * 0.05,
+                glow: 0.028 + breath * 0.033 + this.audio * 0.03,
                 flash: Math.max(this.flash[i], stackFlash.get(i) ?? 0),
                 presence: Math.max(0.0001, this.presence[i]),
                 seed: lane.seed,
@@ -566,7 +566,7 @@ export class IntroWorld {
         }
         return {
             exposure: (0.88 + 0.12 * open.light) * (1 - 0.12 * menu),
-            vignette: 0.42 + 0.08 * menu,
+            vignette: 0.5 + 0.08 * menu,
             waves,
             calm,
             time: this.time,
