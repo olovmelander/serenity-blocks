@@ -11,6 +11,7 @@ import { assetManager } from '../utils/asset-manager.js';
 import { performanceMonitor } from '../utils/performance-monitor.js';
 import { readFlag } from '../core/flags.js';
 import { ThemePlaybackAccess } from './theme-playback-access.js';
+import { LevelThemeJourney, dealOnTop, shuffleInPlace } from './level-theme-journey.js';
 import {
     beginAsyncRenderPipelines,
     getAsyncRenderPipelineDiagnostics,
@@ -140,8 +141,14 @@ export class ThemeManager {
         this.isDisposed = false;
         this.themeAccess = new ThemePlaybackAccess(themeCollection);
         this.themeRuntimeContext = null;
-        this.unsubscribeThemeCollection = themeCollection?.subscribe(() => {
-            this.themeShuffleDeck = [];
+        this.knownOwnedThemes = new Set(this.getAvailableThemes());
+        this.unsubscribeThemeCollection = themeCollection?.subscribe(() => this._dealNewThemesOnTop());
+        /** Background mode "As you level up" (level-theme-journey.js). */
+        this.levelJourney = new LevelThemeJourney({
+            onScreen: () => (this.activeThemeName && this.isThemeUnlocked(this.activeThemeName)
+                ? this.activeThemeName : this.themeAccess.getRestoreTheme()),
+            drawNext: (current) => this.getRandomTheme(current),
+            isOwned: (id) => this.isThemeUnlocked(id),
         });
 
         // LRU cache management
@@ -2486,15 +2493,23 @@ export class ThemeManager {
     }
 
     /**
-     * Get theme for a specific level (for level-based theme progression)
+     * Background mode "As you level up": the theme for `level`'s stretch of levels.
      * @param {number} level - Current game level
      * @returns {string} Theme name
      */
     getThemeForLevel(level) {
-        // Map levels to themes with a progression
-        const themes = this.getAvailableThemes();
-        const themeIndex = Math.max(0, Math.floor((level - 1) / 3)) % themes.length;
-        return themes[themeIndex];
+        return this.levelJourney.themeFor(level);
+    }
+
+    /** Start the journey over (a new game, or the mode just chosen); returns its first theme. */
+    restartLevelJourney(level = 1, startTheme = null) {
+        return this.levelJourney.restart(level, startTheme && resolveThemeId(startTheme));
+    }
+
+    /** Called as a game runs in that mode: switches once when a new stretch of levels begins. */
+    followLevelJourney(level) {
+        const theme = this.levelJourney.nextSwitch(level, this.activeThemeName);
+        return theme ? this.switchTheme(theme) : null;
     }
 
     getAvailableThemes() {
@@ -2526,35 +2541,39 @@ export class ThemeManager {
 
     /**
      * Shuffle the theme deck to ensure all themes are visited before repeating
-     * Uses Fisher-Yates shuffle algorithm
+     * @param {string|null} exclude - the theme showing now, left out of the new deck
      * @private
      */
-    _shuffleThemeDeck() {
-        // Get all themes except the current one
-        const availableThemes = this.getAvailableThemes().filter((name) => name !== this.activeThemeName);
-
-        // Fisher-Yates shuffle
-        for (let i = availableThemes.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [availableThemes[i], availableThemes[j]] = [availableThemes[j], availableThemes[i]];
-        }
-
-        this.themeShuffleDeck = availableThemes;
+    _shuffleThemeDeck(exclude = this.activeThemeName) {
+        this.themeShuffleDeck = shuffleInPlace(this.getAvailableThemes().filter((name) => name !== exclude));
         console.log(`[ThemeManager] Shuffled theme deck with ${this.themeShuffleDeck.length} themes`);
+    }
+
+    /**
+     * A theme the collection just granted goes on top of the deck, so the next random or
+     * level change shows it. Other collection updates (a theme marked seen) keep the deck.
+     * @private
+     */
+    _dealNewThemesOnTop() {
+        const owned = this.getAvailableThemes();
+        const fresh = owned.filter((id) => !this.knownOwnedThemes.has(id));
+        this.knownOwnedThemes = new Set(owned);
+        if (fresh.length > 0) this.themeShuffleDeck = dealOnTop(this.themeShuffleDeck || [], fresh);
     }
 
     /**
      * Get a random theme (excluding current) using shuffle deck system
      * Ensures all themes are visited before any theme repeats
+     * @param {string|null} exclude - the theme not to draw (defaults to the active one)
      * @returns {string} Theme name
      */
-    getRandomTheme() {
+    getRandomTheme(exclude = this.activeThemeName) {
         this.themeShuffleDeck = (this.themeShuffleDeck || []).filter(
-            (id) => id !== this.activeThemeName && this.isThemeUnlocked(id),
+            (id) => id !== exclude && this.isThemeUnlocked(id),
         );
         // If deck is empty or doesn't exist, reshuffle
         if (!this.themeShuffleDeck || this.themeShuffleDeck.length === 0) {
-            this._shuffleThemeDeck();
+            this._shuffleThemeDeck(exclude);
         }
 
         // Draw from the top of the deck

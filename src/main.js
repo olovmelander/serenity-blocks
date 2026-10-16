@@ -2525,7 +2525,7 @@ class SerenityBlocks {
             initialTheme = settings.backgroundTheme || 'forest';
             break;
         case 'Level':
-            initialTheme = this.themeManager.getThemeForLevel(1);
+            initialTheme = this.themeManager.restartLevelJourney(1, settings.backgroundTheme);
             break;
         case 'Random':
             initialTheme = this.themeManager.getRandomTheme();
@@ -3109,10 +3109,8 @@ class SerenityBlocks {
                         );
                     }
                 } else if (mode === 'Level') {
-                    const levelTheme = this.themeManager.getThemeForLevel(
-                        this.gameState?.level || 1,
-                    );
-                    this.themeManager.switchTheme(levelTheme);
+                    // The journey goes on from the theme on screen: no switch now.
+                    this.themeManager.restartLevelJourney(this.getActiveGameState()?.level || 1);
                     this.themeManager.stopRandomThemeInterval();
                 }
             },
@@ -3353,10 +3351,8 @@ class SerenityBlocks {
                 emitPieceLock({ piece });
             },
             updateBackground: (level) => {
-                const settings = this.settingsManager.get();
-                if (settings.backgroundMode === 'Level') {
-                    const levelTheme = this.themeManager.getThemeForLevel(level);
-                    this.themeManager.switchTheme(levelTheme);
+                if (this.settingsManager.get().backgroundMode === 'Level') {
+                    this.themeManager.followLevelJourney(level);
                 }
             },
             spawnPiece: () => {
