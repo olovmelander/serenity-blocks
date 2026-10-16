@@ -20,7 +20,7 @@ import { GoldenForestWorld } from './golden-forest-world.js';
 import { GoldenForestReactions } from './golden-forest-reactions.js';
 import { GoldenForestPost } from './golden-forest-post.js';
 import { GOLDEN_FOREST_TIERS } from './golden-forest-quality.js';
-import { runStepsBreathing } from '../shared/build-steps.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -290,15 +290,13 @@ export default class GoldenForestTheme extends BaseTheme {
         const seed = rawSeed === null || rawSeed === '' ? 271 : Number(rawSeed);
         const rng = seededRandom(Number.isFinite(seed) ? seed : 271);
         this.reactions = new GoldenForestReactions({ quality: this.quality, rng });
-        this.world = new GoldenForestWorld({
+        const world = new GoldenForestWorld({
             scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
         });
-        // Keep ownership even if an art module throws halfway through its build.
-        if (typeof this.world.buildSteps === 'function') {
-            if (!(await runStepsBreathing(this.world.buildSteps(), isCurrent))) return false;
-        } else {
-            this.world.build();
-        }
+        // Built in steps with a breath between them (one long task otherwise), and the theme's only
+        // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
+        if (!(await buildWorldBreathing(world, isCurrent))) return false;
+        this.world = world;
         // GoldenForestPost retains the same artwork on both node backends.
         this.post = new GoldenForestPost({
             renderer: this.renderer,

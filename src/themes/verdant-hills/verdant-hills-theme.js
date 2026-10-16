@@ -21,7 +21,7 @@ import { VerdantHillsWorld } from './verdant-hills-world.js';
 import { VerdantHillsReactions } from './verdant-hills-reactions.js';
 import { VerdantHillsPost } from './verdant-hills-post.js';
 import { VERDANT_HILLS_TIERS } from './verdant-hills-quality.js';
-import { runStepsBreathing } from '../shared/build-steps.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -301,15 +301,13 @@ export default class VerdantHillsTheme extends BaseTheme {
         const seed = rawSeed === null || rawSeed === '' ? DEFAULT_SEED : Number(rawSeed);
         const rng = seededRandom(Number.isFinite(seed) ? seed : DEFAULT_SEED);
         this.reactions = new VerdantHillsReactions({ quality: this.quality, rng });
-        this.world = new VerdantHillsWorld({
+        const world = new VerdantHillsWorld({
             scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
         });
-        // Keep ownership even if an art module throws halfway through its build.
-        if (typeof this.world.buildSteps === 'function') {
-            if (!(await runStepsBreathing(this.world.buildSteps(), isCurrent))) return false;
-        } else {
-            this.world.build();
-        }
+        // Built in steps with a breath between them (one long task otherwise), and the theme's only
+        // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
+        if (!(await buildWorldBreathing(world, isCurrent))) return false;
+        this.world = world;
         // VerdantHillsPost retains the same artwork on both node backends.
         this.post = new VerdantHillsPost({
             renderer: this.renderer,

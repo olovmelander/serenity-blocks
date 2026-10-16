@@ -63,7 +63,7 @@ import { bakeInWorker } from '../shared/bake-worker-client.js';
 import { POST_LOOK, MoonlitGreenhousePost, createPassThroughPipeline } from './moonlit-greenhouse-post.js';
 import { PLAYER_SLOTS, readLayoutRects } from './moonlit-greenhouse-composition.js';
 import { MOONLIT_GREENHOUSE_EVENT_HANDLERS, MoonlitGreenhouseDirector } from './moonlit-greenhouse-director.js';
-import { runStepsBreathing } from '../shared/build-steps.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'moonlit-greenhouse';
 const LOG_PREFIX = '[Moonlit Greenhouse]';
@@ -257,20 +257,17 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
         if (!isCurrent()) return;
 
         try {
-            // Owned before it is built: a build that fails half-way is still disposed. The world
-            // needs the renderer: it may paint a target inside update().
-            this.world = new MoonlitGreenhouseWorld({
+            // The world needs the renderer: it may paint a target inside update().
+            const world = new MoonlitGreenhouseWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
             });
-            // The world builds in steps with a breath between them (one long task otherwise).
-            if (typeof this.world.buildSteps === 'function') {
-                if (!(await runStepsBreathing(this.world.buildSteps(), isCurrent))) return;
-            } else {
-                this.world.build();
-            }
+            // Built in steps with a breath between them (one long task otherwise), and the theme's only
+            // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();
