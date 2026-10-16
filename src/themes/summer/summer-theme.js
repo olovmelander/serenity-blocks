@@ -21,6 +21,7 @@ import { SummerWorld } from './summer-world.js';
 import { SummerReactions } from './summer-reactions.js';
 import { SummerPost } from './summer-post.js';
 import { SUMMER_TIERS } from './summer-quality.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -222,7 +223,12 @@ export default class SummerTheme extends BaseTheme {
             this.applyQualityPreset(loadedSettingsQuality);
         }
         try {
-            this.buildScene();
+            // The world builds in steps with a breath between them (0.4-0.5 s of main thread in one
+            // task otherwise): stopped meanwhile, this start keeps nothing.
+            if (await this.buildScene(current) === false) {
+                if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+                return;
+            }
             const { width, height } = getViewport();
             this.resize(width, height);
             this.setupEventListeners();
@@ -274,7 +280,13 @@ export default class SummerTheme extends BaseTheme {
         return loadSummerAssets({ isCurrent });
     }
 
-    buildScene() {
+    /**
+     * The scene, its world and its lens. A world that builds in steps (buildSteps) gets a breath
+     * between them; resolves false when `isCurrent` turned false meanwhile (the caller disposes
+     * what was made). A world without steps builds at once, before the first await.
+     * @param {() => boolean} [isCurrent]
+     */
+    async buildScene(isCurrent = () => true) {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(50, 1, 0.3, 3400);
         this.camera.position.set(0, 4.7, 14.5);
@@ -284,11 +296,13 @@ export default class SummerTheme extends BaseTheme {
         const rng = seededRandom(Number.isFinite(seed) ? seed : 624);
         this.reactions = new SummerReactions({ quality: this.quality, rng });
         this.reactions.restoreNight(this.night);
-        this.world = new SummerWorld({
+        const world = new SummerWorld({
             scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
         });
-        // Keep ownership even if an art module throws halfway through its build.
-        this.world.build();
+        // Built in steps with a breath between them (one long task otherwise), and the theme's only
+        // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
+        if (!(await buildWorldBreathing(world, isCurrent))) return false;
+        this.world = world;
         // SummerPost retains the same artwork on both node backends.
         this.post = new SummerPost({
             renderer: this.renderer,
@@ -298,6 +312,7 @@ export default class SummerTheme extends BaseTheme {
             light: this.world.light,
         });
         this.boardPoll = 0;
+        return true;
     }
 
     setupGpuResilience() {

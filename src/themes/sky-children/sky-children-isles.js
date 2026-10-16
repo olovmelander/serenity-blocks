@@ -34,6 +34,7 @@ import { mulberry32, smooth } from './sky-children-core.js';
 import {
     airColour, earthShadowAt, horizonHaze, scHash21, scWrap, scWrapPi, seaTone, skyBase,
 } from './sky-children-tsl.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 /** Stone kinds (attribute aMat). */
 export const MAT = Object.freeze({
@@ -2767,12 +2768,22 @@ export function isleGroves(plan, tier, cascades) {
  *   anchors: object, outlets: object, place(placement: object): void, dispose(): void }}
  *   pools: [{ isle, local {x,y,z}, radius, level, world [x,y,z] }]; casters: [{ a, b, radius }]
  */
-export function createIsles({
+export function createIsles(args) {
+    return drainSteps(createIslesSteps(args));
+}
+
+/**
+ * createIsles as steps (0.2 s of main thread in one call otherwise, play-feel probe 2026-10-16): the
+ * same pieces in the same order, a yield between the cascades, the crags, each isle and the far
+ * archipelago, so the world's stepped build can breathe between them. Returns what createIsles does.
+ */
+export function* createIslesSteps({
     plan, tier, U, tex,
 }) {
     // The cascades first: the stone's apron follows their flow lines, and the groves and the
     // outcrops keep off every dam and pool.
     const cascades = { spring: isleCascade(plan, tier, 'spring'), twin: isleCascade(plan, tier, 'twin') };
+    yield 'cascades';
     const material = createStoneMaterial({
         U,
         tex,
@@ -2794,6 +2805,7 @@ export function createIsles({
     });
     const cornerL = buildParapet(true);
     const cornerR = buildParapet(false);
+    yield 'crags';
     // The crags lie in the overlook's shadow; only a line along their tops stands in the sun. No
     // mineral drips (lipY far above them).
     const cornerMaterial = createStoneMaterial({
@@ -2865,6 +2877,7 @@ export function createIsles({
     // The groves keep off the gateway's terrace (and the path's foot at its door), the aqueduct's line.
     const groves = isleGroves(plan, tier, cascades);
     const trees = buildGrove(groves.spring, 41);
+    yield 'spring grove';
     // Outcrops on the crown, clear of the cascade, the path and the gateway.
     const outcrops = springOutcrops(plan, tier, cascades.spring);
     // Rocks adrift beside the Spring Isle and under it (none in front of the Mother Fall).
@@ -2883,6 +2896,7 @@ export function createIsles({
         terraces: cascades.spring,
         extra: [arch, trees, springRocks, outcrops],
     });
+    yield 'spring';
 
     // ── The Twin Isle: the aqueduct's stub reaching toward the card (local −x) ──
     const aqA = anchors.aqueduct;
@@ -2902,6 +2916,7 @@ export function createIsles({
         extra: [aq, twinTrees, twinRocks],
         material: twinMaterial,
     });
+    yield 'twin';
 
     // ── The Far Gate: a colossal broken arch on a far isle's crown ──
     const gateP = plan.gate;
@@ -2917,6 +2932,7 @@ export function createIsles({
     const gateMesh = isle('gate', gateBase, {
         radial: 40, rings: 28, segments: 32, ...GATE_BUILD, pinnacles: 3, pinnacleRadial: 8, extra: [gateArch], material: gateMaterial,
     });
+    yield 'gate';
 
     // ── The foreground: two dark crags in the overlook's shadow ──
     geometries.push(cornerL, cornerR);
@@ -2945,6 +2961,7 @@ export function createIsles({
     // The archipelago: the far isles' shapes posed per layout into ONE merged draw (its vertices are
     // rewritten only when the frame is re-solved).
     const count = tier.archipelago;
+    yield 'bell';
     const variants = buildFarIsles(tier.archipelago >= 12 ? 1.2 : 1);
     const slotOf = (i) => variants[(i * 3) % variants.length];
     const farGeo = mergeGeometries(Array.from({ length: count }, (_, i) => slotOf(i)), false);

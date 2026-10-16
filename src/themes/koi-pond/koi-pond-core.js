@@ -158,8 +158,14 @@ export const NOISE_SIZE = 256;
  *   B  fine (grain, pebble tone)                 A  finest (sparkle seeds)
  * Returned as bytes (RGBA8) so the renderer can upload it as-is.
  */
-export function bakeNoise(seed = 20261008, size = NOISE_SIZE) {
-    return bakeOnce(`koi-pond:noise:${seed}:${size}`, () => computeNoise(seed, size));
+/** The seed the pond's noise is baked with. */
+export const NOISE_SEED = 20261008;
+
+/** The bake cache's key for the noise. */
+export const noiseKey = (seed, size) => `koi-pond:noise:${seed}:${size}`;
+
+export function bakeNoise(seed = NOISE_SEED, size = NOISE_SIZE) {
+    return bakeOnce(noiseKey(seed, size), () => computeNoise(seed, size));
 }
 
 function computeNoise(seed, size) {
@@ -234,4 +240,47 @@ export function sampleNoise(data, u, v, channel = 0, size = NOISE_SIZE) {
     const c = at(x0, y0 + 1);
     const d = at(x0 + 1, y0 + 1);
     return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
+}
+
+// ── The water mask ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Where waves may travel: 1 in open water, falling to 0 on the bank and inside standing rocks.
+ * @param {number} width
+ * @param {number} height
+ * @param {Array<{x:number,z:number,radius:number}>} rocks  rocks that break the surface
+ */
+export function bakeWaterMask(width, height, rocks = []) {
+    const data = new Uint8Array(width * height * 4);
+    for (let j = 0; j < height; j += 1) {
+        const z = POND.minZ + ((j + 0.5) / height) * POND_LENGTH;
+        for (let i = 0; i < width; i += 1) {
+            const x = POND.minX + ((i + 0.5) / width) * POND_WIDTH;
+            let open = smooth(0.015, 0.11, -groundHeight(x, z));
+            for (let r = 0; r < rocks.length; r += 1) {
+                const rock = rocks[r];
+                const d = Math.hypot(x - rock.x, z - rock.z);
+                open *= smooth(rock.radius * 0.82, rock.radius * 1.12, d);
+            }
+            const at = (j * width + i) * 4;
+            const byte = Math.round(clamp01(open) * 255);
+            data[at] = byte;
+            data[at + 1] = byte;
+            data[at + 2] = byte;
+            data[at + 3] = 255;
+        }
+    }
+    return data;
+}
+
+/** The bake cache's key for a water mask: its size and the rocks that break the surface. */
+export const waterMaskKey = (width, height, rocks = []) => `koi-pond:water-mask:${width}x${height}:${
+    rocks.map((r) => `${r.x},${r.z},${r.radius}`).join(';')}`;
+
+/**
+ * bakeWaterMask once per size and rocks (0.15-0.2 s on the page; a first visit bakes it in a
+ * worker): the bytes are shared and read-only (the mask's DataTexture).
+ */
+export function bakeWaterMaskOnce(width, height, rocks = []) {
+    return bakeOnce(waterMaskKey(width, height, rocks), () => bakeWaterMask(width, height, rocks));
 }

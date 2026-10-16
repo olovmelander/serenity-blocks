@@ -17,8 +17,10 @@ import {
     ELDER,
     EMITTER_MAX,
     JELLY_MAX,
+    NOISE_SIZE,
     TAU,
     TERRAIN,
+    bakeNoise,
     mulberry32,
     sampleNoise,
     smooth,
@@ -144,12 +146,35 @@ export function vaultHeight(x, z, noise, size) {
     return base + 17 * Math.exp(-d2 / 900) + 5 * smooth(-20, -70, z) - 0.02 * Math.max(0, s - 4) ** 2;
 }
 
+/** A bilinear reader of a field laid over the terrain's rectangle (gx × gz samples). */
+function gridReader(field, gx, gz) {
+    const {
+        x0, x1, z0, z1,
+    } = TERRAIN;
+    return (x, z) => {
+        const fx = Math.max(0, Math.min(gx - 1.001, ((x - x0) / (x1 - x0)) * (gx - 1)));
+        const fz = Math.max(0, Math.min(gz - 1.001, ((z - z0) / (z1 - z0)) * (gz - 1)));
+        const i = Math.floor(fx);
+        const j = Math.floor(fz);
+        const tx = fx - i;
+        const tz = fz - j;
+        const a = field[j * gx + i];
+        const b = field[j * gx + i + 1];
+        const c = field[(j + 1) * gx + i];
+        const d = field[(j + 1) * gx + i + 1];
+        return (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz;
+    };
+}
+
+/** The seed the theme's plan is built with. */
+export const PLAN_SEED = 20261008;
+
 /**
  * @param {Float32Array} noise  the baked noise field (bakeNoise)
  * @param {number} size         its edge length
  * @param {number} [seed]
  */
-export function buildPlan(noise, size, seed = 20261008) {
+export function buildPlan(noise, size, seed = PLAN_SEED) {
     const rand = mulberry32(seed);
     const {
         nx, nz, x0, x1, z0, z1,
@@ -177,19 +202,7 @@ export function buildPlan(noise, size, seed = 20261008) {
             vault[j * VAULT.nx + i] = vaultHeight(x, z, noise, size);
         }
     }
-    const grid = (field, gx, gz) => (x, z) => {
-        const fx = Math.max(0, Math.min(gx - 1.001, ((x - x0) / (x1 - x0)) * (gx - 1)));
-        const fz = Math.max(0, Math.min(gz - 1.001, ((z - z0) / (z1 - z0)) * (gz - 1)));
-        const i = Math.floor(fx);
-        const j = Math.floor(fz);
-        const tx = fx - i;
-        const tz = fz - j;
-        const a = field[j * gx + i];
-        const b = field[j * gx + i + 1];
-        const c = field[(j + 1) * gx + i];
-        const d = field[(j + 1) * gx + i + 1];
-        return (a + (b - a) * tx) * (1 - tz) + (c + (d - c) * tx) * tz;
-    };
+    const grid = gridReader;
     /** The floor at a point: the exact function (the grid is too coarse for an outcrop's top). */
     const floorAt = (x, z) => floorHeight(x, z, noise, size);
     /** The grid's own reading: enough where a metre does not matter (and a thousand times asked). */
@@ -525,6 +538,30 @@ export function buildPlan(noise, size, seed = 20261008) {
         pads,
         emitters,
     };
+}
+
+/**
+ * The plan's readings at a point (floorAt, shoreAt, vaultAt): closures over its fields and the
+ * noise, the same buildPlan returns. A plan a worker posted comes without them (bakePlan).
+ */
+export function planReaders(plan, noise, size) {
+    return {
+        floorAt: (x, z) => floorHeight(x, z, noise, size),
+        shoreAt: gridReader(plan.shore, TERRAIN.nx, TERRAIN.nz),
+        vaultAt: gridReader(plan.vault, VAULT.nx, VAULT.nz),
+    };
+}
+
+/**
+ * The noise and the plan as plain data, without the readers (closures a worker cannot post): a
+ * first visit's worker bake (bioluminescence-bakes.js). The world adds the readers (planReaders).
+ */
+export function bakePlan(seed = PLAN_SEED) {
+    const noise = bakeNoise();
+    const {
+        floorAt, shoreAt, vaultAt, ...plan
+    } = buildPlan(noise, NOISE_SIZE, seed);
+    return { noise, plan };
 }
 
 /** The cap's centre (where its gills hang) for a planned mushroom. */

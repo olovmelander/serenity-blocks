@@ -28,6 +28,7 @@ import { POST_LOOK, HighCoastPost, createPassThroughPipeline } from './high-coas
 import { PLAYER_SLOTS, readLayoutRects } from './high-coast-composition.js';
 import { HIGH_COAST_EVENT_HANDLERS, HighCoastDirector } from './high-coast-director.js';
 import { approach } from './high-coast-core.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'high-coast';
 const LOG_PREFIX = '[High Coast]';
@@ -229,14 +230,16 @@ export default class HighCoastTheme extends BaseTheme {
                 if (this.bakeAbort === bakeAbort) this.bakeAbort = null;
             }
             if (!isCurrent()) return;
-            // Owned before it is built: a build that fails half-way is still disposed.
-            this.world = new HighCoastWorld({
+            const world = new HighCoastWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 prepared,
             });
-            this.world.build();
+            // Built in steps with a breath between them (one long task otherwise), and the theme's only
+            // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

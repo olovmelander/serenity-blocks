@@ -24,7 +24,7 @@ import {
     Fn, Loop, cos, dot, exp, float, max, min, mix, sin, smoothstep, texture, uniform, uniformArray, uv, vec2, vec4,
 } from 'three/tsl';
 import {
-    POND, POND_LENGTH, POND_WIDTH, clamp01, groundHeight, mulberry32, smooth,
+    bakeWaterMaskOnce, mulberry32, POND, POND_WIDTH,
 } from './koi-pond-core.js';
 import { WAVE_SPEED } from './koi-pond-light.js';
 
@@ -72,34 +72,8 @@ function renderTarget(width, height, name) {
     return target;
 }
 
-/**
- * Where waves may travel: 1 in open water, falling to 0 on the bank and inside standing rocks.
- * @param {number} width
- * @param {number} height
- * @param {Array<{x:number,z:number,radius:number}>} rocks  rocks that break the surface
- */
-export function bakeWaterMask(width, height, rocks = []) {
-    const data = new Uint8Array(width * height * 4);
-    for (let j = 0; j < height; j += 1) {
-        const z = POND.minZ + ((j + 0.5) / height) * POND_LENGTH;
-        for (let i = 0; i < width; i += 1) {
-            const x = POND.minX + ((i + 0.5) / width) * POND_WIDTH;
-            let open = smooth(0.015, 0.11, -groundHeight(x, z));
-            for (let r = 0; r < rocks.length; r += 1) {
-                const rock = rocks[r];
-                const d = Math.hypot(x - rock.x, z - rock.z);
-                open *= smooth(rock.radius * 0.82, rock.radius * 1.12, d);
-            }
-            const at = (j * width + i) * 4;
-            const byte = Math.round(clamp01(open) * 255);
-            data[at] = byte;
-            data[at + 1] = byte;
-            data[at + 2] = byte;
-            data[at + 3] = 255;
-        }
-    }
-    return data;
-}
+// The mask's bake is three-free (koi-pond-core.js): a first visit bakes it in a worker.
+export { bakeWaterMask } from './koi-pond-core.js';
 
 export class PondSurface {
     /**
@@ -122,7 +96,7 @@ export class PondSurface {
         this.steps = 0;
         this.disposed = false;
 
-        const maskData = bakeWaterMask(simW, simH, rocks);
+        const maskData = bakeWaterMaskOnce(simW, simH, rocks);
         this.maskTexture = new THREE.DataTexture(maskData, simW, simH, THREE.RGBAFormat, THREE.UnsignedByteType);
         this.maskTexture.name = 'koi-pond-water-mask';
         this.maskTexture.magFilter = THREE.LinearFilter;

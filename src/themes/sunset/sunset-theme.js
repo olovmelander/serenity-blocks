@@ -56,6 +56,7 @@ import { POST_LOOK, SunsetPost, createPassThroughPipeline } from './sunset-post.
 import { PLAYER_SLOTS, readLayoutRects } from './sunset-composition.js';
 import { SUNSET_EVENT_HANDLERS, SunsetDirector } from './sunset-director.js';
 import { approach } from './sunset-core.js';
+import { sunsetBakes } from './sunset-bakes.js';
 
 const THEME_ID = 'sunset';
 const LOG_PREFIX = '[Sunset]';
@@ -204,6 +205,9 @@ export default class SunsetTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The sky's and the sea's noise (about 0.33 s of main thread on a first visit) bake in a
+        // worker while the renderer comes up; the build below finds them in the bake cache.
+        const baking = sunsetBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -225,6 +229,9 @@ export default class SunsetTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             this.world = new SunsetWorld({

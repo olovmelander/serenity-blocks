@@ -44,6 +44,8 @@ import { POST_LOOK, BioluminescencePost, createPassThroughPipeline } from './bio
 import { PLAYER_SLOTS, readLayoutRects } from './bioluminescence-composition.js';
 import { BIOLUMINESCENCE_EVENT_HANDLERS, BioluminescenceDirector } from './bioluminescence-director.js';
 import { approach } from './bioluminescence-core.js';
+import { bioluminescenceBakes } from './bioluminescence-bakes.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'bioluminescence';
 const LOG_PREFIX = '[Bioluminescence]';
@@ -189,6 +191,9 @@ export default class BioluminescenceTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The noise and the plan (0.14 s of main thread on a first visit) bake in a worker while the
+        // renderer comes up; the world takes them.
+        const baking = bioluminescenceBakes();
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -211,13 +216,20 @@ export default class BioluminescenceTheme extends BaseTheme {
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
+        await baking;
+        if (!isCurrent()) return;
+
         try {
-            this.world = new BioluminescenceWorld({
+            const world = new BioluminescenceWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
-            }).build();
+            });
+            // Built in steps with a breath between them (one long task otherwise), and the theme's only
+            // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

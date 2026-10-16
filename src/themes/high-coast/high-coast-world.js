@@ -51,6 +51,7 @@ import { createFleet } from './high-coast-fleet.js';
 import { MOTE_KIND, Motes } from './high-coast-motes.js';
 import { createLife } from './high-coast-life.js';
 import { cardUnion, fallbackLayout } from './high-coast-composition.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 export const HIGH_COAST_PARTS = Object.freeze(['land', 'sea', 'sky', 'cumulus', 'forest', 'props', 'hamlet', 'fleet', 'life', 'motes']);
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
@@ -213,7 +214,17 @@ export class HighCoastWorld {
     }
 
     build() {
-        if (this.root.parent) return this;
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, a part to a step: run at once by build(), or with a breath between steps
+     * while the theme comes in (shared/build-steps.js), so no single task holds the page for the
+     * whole build (the pine and the props alone were 0.18 s). The same parts in the same order.
+     */
+    * buildSteps() {
+        if (this.root.parent) return;
         const prepared = this.prepared || HighCoastWorld.prepareSync(this.quality);
         this.prepared = null;
         this.source = prepared.source;
@@ -247,12 +258,19 @@ export class HighCoastWorld {
                 material.dispose();
             },
         });
+        yield 'land';
         this.addPart('sea', createSea(this.u, this.textures, tier));
+        yield 'sea';
         this.addPart('forest', createForest(this.u, this.textures, tier, this.fields));
+        yield 'forest';
         this.addPart('props', createProps(this.u, this.textures, tier, this.fields));
+        yield 'props';
         this.addPart('hamlet', createHamlet(this.u, this.textures, tier, this.fields));
+        yield 'hamlet';
         this.addPart('fleet', createFleet(this.u, this.textures, tier));
+        yield 'fleet';
         this.addPart('life', createLife(this.u, this.textures, tier, this.parts.hamlet.lantern));
+        yield 'life';
         this.motes = new Motes(this.u, tier.motes);
         this.addPart('motes', {
             mesh: this.motes.mesh,
@@ -260,9 +278,9 @@ export class HighCoastWorld {
             dispose: () => this.motes.dispose(),
         });
         this.addPart('sky', createSky(this.u, this.textures, tier));
+        yield 'sky';
         this.addPart('cumulus', createCumulus(this.u, this.textures, tier, tier.banks));
         this.scene.add(this.root);
-        return this;
     }
 
     addPart(name, part) {

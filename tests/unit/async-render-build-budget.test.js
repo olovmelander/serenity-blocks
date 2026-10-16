@@ -17,11 +17,13 @@ import {
  *
  * The renderer double mirrors three r186: `_renderObjectDirect` looks the render object up in a chain
  * map keyed [object, material, renderContext, lightsNode] per passId and builds it when missing
- * (the build costs BUILD_MS of the fake clock).
+ * (the build costs buildMs of the fake clock). The budget is spent per task: a frame is one task,
+ * and the next frame runs after a macrotask (nextTask).
  */
 
-const BUILD_MS = 3;
+let buildMs = 3;
 let now = 0;
+const nextTask = () => new Promise((resolve) => { setTimeout(resolve, 0); });
 
 class FakeBackend {
     createRenderPipeline() {}
@@ -54,7 +56,7 @@ class FakeRenderer {
     _renderObjectDirect(object, material, scene, camera, lightsNode, group, clippingContext, passId) {
         const map = this._objects.getChainMap(passId);
         if (map.get([object, material]) === undefined) {
-            now += BUILD_MS;
+            now += buildMs;
             map.set([object, material], { object });
             this.built.push(object.id);
         }
@@ -85,6 +87,7 @@ const objects = (n) => Array.from({ length: n }, (_, id) => ({ id, material: { i
 
 beforeEach(async () => {
     now = 0;
+    buildMs = 3;
     vi.spyOn(performance, 'now').mockImplementation(() => now);
     await preloadAsyncRenderPipelines(() => ({ WebGPUBackend: FakeBackend, Renderer: FakeRenderer }));
 });
@@ -96,7 +99,7 @@ afterEach(async () => {
 });
 
 describe('the async session build budget', () => {
-    it('builds new render objects until the frame budget is spent, and the rest on later frames', () => {
+    it('builds new render objects until the frame budget is spent, and the rest on later frames', async () => {
         const renderer = new FakeRenderer();
         const theme = { name: 'summer', renderer };
         const session = beginAsyncRenderPipelines(theme, { buildBudgetMs: 8 });
@@ -107,20 +110,22 @@ describe('the async session build budget', () => {
         expect(session.deferredBuilds).toBe(7);
         expect(renderer.drawn).toEqual([0, 1, 2]);
 
-        renderer.renderFrame(scene);
-        renderer.renderFrame(scene);
-        renderer.renderFrame(scene);
+        for (let frame = 0; frame < 3; frame += 1) {
+            await nextTask(); // eslint-disable-line no-await-in-loop
+            renderer.renderFrame(scene);
+        }
         expect(renderer.built).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
         // Built objects draw every frame and are never deferred again.
         expect(session.deferredBuilds).toBe(7 + 4 + 1);
         renderer.drawn.length = 0;
+        await nextTask();
         renderer.renderFrame(scene);
         expect(renderer.drawn).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
         expect(session.buildMs).toBe(30);
         session.end();
     });
 
-    it('counts the open time of a build that draws a pass inside it (a post quad and its scene)', () => {
+    it('counts the open time of a build that draws a pass inside it (a post quad and its scene)', async () => {
         const renderer = new FakeRenderer();
         const session = beginAsyncRenderPipelines({ name: 'verdant-hills', renderer }, { buildBudgetMs: 8 });
         const quad = { id: 'quad', material: { id: 'post' }, pass: objects(10) };
@@ -130,14 +135,17 @@ describe('the async session build budget', () => {
         expect(renderer.built).toEqual(['quad', 0, 1]);
         expect(session.buildMs).toBe(9);
 
-        for (let frame = 0; frame < 4; frame += 1) renderer.renderFrame([quad]);
+        for (let frame = 0; frame < 4; frame += 1) {
+            await nextTask(); // eslint-disable-line no-await-in-loop
+            renderer.renderFrame([quad]);
+        }
         expect(renderer.built).toEqual(['quad', 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
         // Each later frame charges the scene's builds one by one (three a frame), not the quad.
         expect(session.buildMs).toBe(33);
         session.end();
     });
 
-    it('is not quiet while builds are deferred', () => {
+    it('is not quiet while builds are deferred', async () => {
         const renderer = new FakeRenderer();
         const session = beginAsyncRenderPipelines({ name: 'summer', renderer }, { buildBudgetMs: 8 });
         const scene = objects(12); // four frames of three builds each
@@ -145,11 +153,32 @@ describe('the async session build budget', () => {
             renderer.renderFrame(scene);
             session.noteFrame();
             expect(session.isQuiet(2)).toBe(false);
+            await nextTask(); // eslint-disable-line no-await-in-loop
         }
         renderer.renderFrame(scene); // the last three: nothing deferred any more
         session.noteFrame();
         session.noteFrame();
         expect(session.isQuiet(2)).toBe(true);
+        session.end();
+    });
+
+    it('spends the budget per task: a frame of long builds does not reopen it from its own length', async () => {
+        buildMs = 20; // each build longer than the old 14 ms wall-clock window, which each one reopened
+        const renderer = new FakeRenderer();
+        const session = beginAsyncRenderPipelines({ name: 'koi-pond', renderer }, { buildBudgetMs: 8 });
+        const scene = objects(6);
+        renderer.renderFrame(scene);
+        // The task's first build always runs; every one after it waits for a later task.
+        expect(renderer.built).toEqual([0]);
+        expect(session.deferredBuilds).toBe(5);
+        renderer.renderFrame(scene); // the same task still: nothing more
+        expect(renderer.built).toEqual([0]);
+        for (let frame = 1; frame < 6; frame += 1) {
+            await nextTask(); // eslint-disable-line no-await-in-loop
+            renderer.renderFrame(scene);
+            expect(renderer.built).toHaveLength(frame + 1); // one build a task
+        }
+        expect(renderer.built).toEqual([0, 1, 2, 3, 4, 5]);
         session.end();
     });
 
