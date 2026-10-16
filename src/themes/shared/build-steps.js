@@ -24,21 +24,21 @@ export function drainSteps(steps) {
 }
 
 /**
- * Run the steps with a breath after each. Resolves true when all of them ran, false as soon as
- * `isCurrent()` turns false after a breath (the rest is not run: the caller disposes what was made).
+ * Run the steps with a breath before each, the first included: the build never shares a task with
+ * what came before it (the world's constructor, the renderer's setup). Resolves true when all of
+ * them ran, false as soon as `isCurrent()` turns false after a breath (the rest is not run: the
+ * caller disposes what was made, which may be nothing).
  * @param {Generator} steps
  * @param {() => boolean} [isCurrent]
  * @param {() => Promise<void>} [pause]
  */
 export async function runStepsBreathing(steps, isCurrent = () => true, pause = breathe) {
-    let next = steps.next();
-    while (!next.done) {
+    for (;;) {
         // eslint-disable-next-line no-await-in-loop
         await pause();
         if (!isCurrent()) return false;
-        next = steps.next();
+        if (steps.next().done) return true;
     }
-    return true;
 }
 
 /**

@@ -28,7 +28,7 @@ describe('drainSteps', () => {
 });
 
 describe('runStepsBreathing', () => {
-    it('runs the same steps in the same order with a pause after each', async () => {
+    it('runs the same steps in the same order with a pause before each', async () => {
         const log = [];
         let pauses = 0;
         const pause = () => {
@@ -37,27 +37,32 @@ describe('runStepsBreathing', () => {
             return Promise.resolve();
         };
         await expect(runStepsBreathing(parts(log), () => true, pause)).resolves.toBe(true);
-        expect(log).toEqual(['a', 'pause 1', 'b', 'pause 2', 'c']);
+        expect(log).toEqual(['pause 1', 'a', 'pause 2', 'b', 'pause 3', 'c']);
     });
 
     it('stops after a pause once the start is no longer current, and runs nothing more', async () => {
         const log = [];
-        let current = true;
+        let pauses = 0;
         const pause = () => {
-            current = false;
+            pauses += 1;
             return Promise.resolve();
         };
-        await expect(runStepsBreathing(parts(log), () => current, pause)).resolves.toBe(false);
+        await expect(runStepsBreathing(parts(log), () => pauses < 2, pause)).resolves.toBe(false);
         expect(log).toEqual(['a']);
+        // Stopped before the first step: nothing is built at all.
+        const none = [];
+        await expect(runStepsBreathing(parts(none), () => false, pause)).resolves.toBe(false);
+        expect(none).toEqual([]);
     });
 
-    it('breathes with a macrotask by default (the page draws between steps)', async () => {
+    it('breathes with a macrotask by default, before the first step too', async () => {
         const log = [];
         const order = [];
-        // A task queued before the build runs between its first and second step: the steps
-        // never share one task.
-        setTimeout(() => order.push(`timer saw ${log.join('')}`), 0);
         const done = runStepsBreathing(parts(log)).then(() => order.push('built'));
+        // Nothing runs in the caller's task (a world's constructor stays a task of its own)...
+        expect(log).toEqual([]);
+        // ...and a task queued now runs between the first step and the second: no two share a task.
+        setTimeout(() => order.push(`timer saw ${log.join('')}`), 0);
         await done;
         expect(order[0]).toBe('timer saw a');
         expect(log).toEqual(['a', 'b', 'c']);
@@ -86,12 +91,20 @@ describe('buildWorldBreathing', () => {
         expect(built.disposed).toBe(0);
     });
 
-    it('disposes the world itself when the start stops between steps', async () => {
+    it('disposes the world itself when the start stops between steps, or before the first', async () => {
         const log = [];
         const built = world(log);
-        await expect(buildWorldBreathing(built, () => false, now)).resolves.toBe(false);
+        let breaths = 0;
+        const counted = () => {
+            breaths += 1;
+            return Promise.resolve();
+        };
+        await expect(buildWorldBreathing(built, () => breaths < 2, counted)).resolves.toBe(false);
         expect(log).toEqual(['a']);
         expect(built.disposed).toBe(1);
+        const unbuilt = world([]);
+        await expect(buildWorldBreathing(unbuilt, () => false, now)).resolves.toBe(false);
+        expect(unbuilt.disposed).toBe(1);
     });
 
     it('disposes the world itself when a part throws half-way, and throws on', async () => {
