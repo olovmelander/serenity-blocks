@@ -47,7 +47,7 @@ import { createSky } from './sky-children-sky.js';
 import { createSea } from './sky-children-sea.js';
 import { createCumulus, cumulusPlan } from './sky-children-cumulus.js';
 import { PLAN, placePlan } from './sky-children-plan.js';
-import { createIsles, entryToWorld, outletAt } from './sky-children-isles.js';
+import { createIslesSteps, entryToWorld, outletAt } from './sky-children-isles.js';
 import { createPools } from './sky-children-water.js';
 import { GliderFlock } from './sky-children-flock.js';
 import { createGliders } from './sky-children-gliders.js';
@@ -62,6 +62,7 @@ import { EventEffects, LOCK, SPARKS } from './sky-children-events.js';
 import { FlashGovernor } from './sky-children-flash.js';
 import { boardFor } from './sky-children-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 export { REST_RIG, fovForAspect };
 
@@ -492,6 +493,16 @@ export class SkyChildrenWorld {
 
     /** Bake, build every part, add them to the scene. Returns this. */
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, a part (an isle) to a step: run at once by build(), or with a breath
+     * between steps while the theme comes in (shared/build-steps.js), so no single task holds the
+     * page for the whole build. The same parts in the same order.
+     */
+    * buildSteps() {
         const { tier, U } = this;
         const args = bakeArgs(tier, this.seed);
         const noise = createNoiseTexture(bakeSkyNoise(...args.sky), tier.skyNoise, 'sky-children-sky-noise');
@@ -504,17 +515,21 @@ export class SkyChildrenWorld {
         this.tex = {
             noise, stone, lut, puff, sea,
         };
+        yield 'textures';
 
         this.parts.sky = createSky({ tier, U, tex: this.tex });
         this.root.add(this.parts.sky.mesh);
+        yield 'sky';
         this.parts.sea = createSea({ tier, U, tex: this.tex });
         this.root.add(this.parts.sea.mesh);
         this.parts.cumulus = createCumulus({ tier, U, tex: this.tex });
         this.root.add(this.parts.cumulus.mesh);
-        this.parts.isles = createIsles({
+        yield 'sea and cumulus';
+        this.parts.isles = yield* createIslesSteps({
             plan: PLAN, tier, U, tex: this.tex,
         });
         this.parts.isles.meshes.forEach((m) => this.root.add(m));
+        yield 'isles';
         this.parts.pools = createPools({ capacity: tier.pools, U, tex: this.tex });
         this.root.add(this.parts.pools.mesh);
         this.held = Array.from({ length: tier.pools }, () => ({
@@ -526,6 +541,7 @@ export class SkyChildrenWorld {
         for (let i = 0; i < FALL_SLOTS; i++) clearFall(U.falls, i);
         this.parts.falls = createFalls({ tier, U, tex: this.tex });
         this.root.add(this.parts.falls.mesh);
+        yield 'falls';
         this.parts.spray = createSpray({ capacity: tier.spray, U, tex: this.tex });
         this.parts.spray.meshes = [this.parts.spray.mesh];
         this.root.add(this.parts.spray.mesh);
@@ -543,7 +559,6 @@ export class SkyChildrenWorld {
         this.applyFrame();
         this.applyHour(0);
         this.built = true;
-        return this;
     }
 
     bindCamera(camera) {

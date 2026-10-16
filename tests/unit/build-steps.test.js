@@ -6,9 +6,9 @@ import { buildWorldBreathing, drainSteps, runStepsBreathing } from '../../src/th
 
 /**
  * A world's build as steps (src/themes/shared/build-steps.js): the forest family's worlds (and
- * Moonlit Greenhouse's, High Coast's, Cinder Drift's) built every part in one synchronous task,
- * 0.2-0.5 s of main thread while the theme came in. They now yield between parts, and their themes
- * breathe between the steps, taking the world only once it is whole.
+ * Moonlit Greenhouse's, High Coast's, Cinder Drift's, Sky Children's) built every part in one
+ * synchronous task, 0.2-0.5 s of main thread while the theme came in. They now yield between parts,
+ * and their themes breathe between the steps, taking the world only once it is whole.
  */
 function* parts(log) {
     log.push('a');
@@ -111,7 +111,7 @@ describe('buildWorldBreathing', () => {
 describe('the stepped themes build their worlds in steps', () => {
     const source = (path) => readFileSync(new URL(`../../src/themes/${path}`, import.meta.url), 'utf8');
     const family = ['summer', 'verdant-hills', 'forest', 'golden-forest'];
-    const stepped = [...family, 'moonlit-greenhouse', 'high-coast', 'cinder-drift'];
+    const stepped = [...family, 'moonlit-greenhouse', 'high-coast', 'cinder-drift', 'sky-children'];
     it.each(stepped)('%s: build() drains buildSteps(); the theme owns the world once whole', (id) => {
         const world = source(`${id}/${id}-world.js`);
         expect(world).toMatch(/\n {4}build\(\) \{\n {8}drainSteps\(this\.buildSteps\(\)\);\n {8}return this;\n {4}\}/);
