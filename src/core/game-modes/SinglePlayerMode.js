@@ -271,6 +271,10 @@ export class SinglePlayerMode extends BaseGameMode {
         });
         this._stoppedSession = null;
         this._comboTracker.reset();
+        // "As you level up": each game starts its journey on the theme already on screen.
+        if (this.deps.settingsManager.get().backgroundMode === 'Level') {
+            this.deps.themeManager.restartLevelJourney(this.gameState.level);
+        }
 
         // Reset game over processing flag so game over can trigger again
         this.isProcessingGameOver = false;
@@ -322,10 +326,7 @@ export class SinglePlayerMode extends BaseGameMode {
                 // Handle theme switching if needed
                 const settings = this.deps.settingsManager.get();
                 if (settings.backgroundMode === 'Level') {
-                    const levelTheme = this.deps.themeManager.getThemeForLevel(this.gameState.level);
-                    if (levelTheme !== this.deps.themeManager.activeThemeName) {
-                        this.deps.themeManager.switchTheme(levelTheme);
-                    }
+                    this.deps.themeManager.followLevelJourney(this.gameState.level);
                 }
             };
 
@@ -941,10 +942,7 @@ export class SinglePlayerMode extends BaseGameMode {
 
             const settings = this.deps.settingsManager.get();
             if (settings.backgroundMode === 'Level') {
-                const levelTheme = this.deps.themeManager.getThemeForLevel(this.gameState.level);
-                if (levelTheme !== this.deps.themeManager.activeThemeName) {
-                    this.deps.themeManager.switchTheme(levelTheme);
-                }
+                this.deps.themeManager.followLevelJourney(this.gameState.level);
             }
         };
 
