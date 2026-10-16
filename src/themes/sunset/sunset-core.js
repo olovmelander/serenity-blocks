@@ -255,6 +255,12 @@ function cellField(size, rand, cells) {
 
 const toByte = (v) => Math.round(clamp01(v) * 255);
 
+/** The noise bakes' seeds, and the bake cache's keys for them (a first visit bakes them in a worker). */
+export const SKY_NOISE_SEED = 20261011;
+export const SEA_NOISE_SEED = 20261012;
+export const skyNoiseKey = (size, seed = SKY_NOISE_SEED) => `sunset:sky:${size}:${seed}`;
+export const seaNoiseKey = (size, seed = SEA_NOISE_SEED) => `sunset:sea:${size}:${seed}`;
+
 /**
  * The sky's noise, as bytes (RGBA8), tileable:
  *   R  broad fBm (the shape of a cloud field)
@@ -262,8 +268,8 @@ const toByte = (v) => Math.round(clamp01(v) * 255);
  *   B  a second, independent fBm (where there is cloud at all; cirrus; the Milky Way's dust)
  *   A  fine fBm (the torn edge of everything)
  */
-export function bakeSkyNoise(size = 256, seed = 20261011) {
-    return bakeOnce(`sunset:sky:${size}:${seed}`, () => computeSkyNoise(size, seed));
+export function bakeSkyNoise(size = 256, seed = SKY_NOISE_SEED) {
+    return bakeOnce(skyNoiseKey(size, seed), () => computeSkyNoise(size, seed));
 }
 
 function computeSkyNoise(size, seed) {
@@ -293,8 +299,8 @@ function computeSkyNoise(size, seed) {
  *   A     a second, independent height.
  * `slopeScale` is returned beside the bytes: a byte's full swing, in height per texel.
  */
-export function bakeSeaNoise(size = 256, seed = 20261012) {
-    return bakeOnce(`sunset:sea:${size}:${seed}`, () => computeSeaNoise(size, seed));
+export function bakeSeaNoise(size = 256, seed = SEA_NOISE_SEED) {
+    return bakeOnce(seaNoiseKey(size, seed), () => computeSeaNoise(size, seed));
 }
 
 function computeSeaNoise(size, seed) {
