@@ -2915,9 +2915,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'msaa',
         category: 'Playground',
-        scope: 'playground.html — chiral-gold, chromadelic-highway, geode, halcyon-apex, himalayan-peak, '
-            + 'ice-temple, lunara, neon-district, neon-dusk, ocean, stellar-drift, stillwater, '
-            + 'vesper-chrysalis, void-ember, winter',
+        scope: 'playground.html — chiral-gold, chromadelic-highway, fall, forest, geode, golden-forest, '
+            + 'halcyon-apex, himalayan-peak, ice-temple, lunara, neon-district, neon-dusk, ocean, '
+            + 'sakura-twilight, stellar-drift, stillwater, summer, verdant-hills, vesper-chrysalis, '
+            + 'void-ember, winter',
         description: 'Override post-processing multisample anti-aliasing.',
         values: 'Nonnegative sample count; use supported counts such as 0 or 4.',
         defaultValue: 'Effect quality preset.',
@@ -2926,7 +2927,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/chiral-gold.effect.js',
             'src/playground/effects/chromadelic-highway.effect.js',
+            'src/playground/effects/fall.effect.js',
+            'src/playground/effects/forest.effect.js',
             'src/playground/effects/geode.effect.js',
+            'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/halcyon-apex.effect.js',
             'src/playground/effects/himalayan-peak.effect.js',
             'src/playground/effects/ice-temple.effect.js',
@@ -2934,8 +2938,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/neon-district.effect.js',
             'src/playground/effects/neon-dusk.effect.js',
             'src/playground/effects/ocean.effect.js',
+            'src/playground/effects/sakura-twilight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
             'src/playground/effects/stillwater.effect.js',
+            'src/playground/effects/summer.effect.js',
+            'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
             'src/playground/effects/void-ember.effect.js',
             'src/playground/effects/winter.effect.js',
@@ -5638,6 +5645,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
             '1',
         ],
         ['bloom', 'Override the tier’s bloom.', '0 or 1.', 'The tier’s.', '0'],
+        [
+            'msaa',
+            'Override the scene pass’s multisample count; the pine’s needles cut out by coverage above 1.',
+            '0 or 4 (0 gives Medium and Low their FXAA).',
+            'The tier’s: 4 from High up, else 0.',
+            '0',
+        ],
         ['px', 'Hold the pointer parallax horizontally.', '−1 to 1.', '0.', '0.5'],
         ['py', 'Hold the pointer parallax vertically.', '−1 to 1.', '0.', '-0.3'],
         [

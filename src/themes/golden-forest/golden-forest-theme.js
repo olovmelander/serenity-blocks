@@ -21,6 +21,7 @@ import { GoldenForestReactions } from './golden-forest-reactions.js';
 import { GoldenForestPost } from './golden-forest-post.js';
 import { GOLDEN_FOREST_TIERS } from './golden-forest-quality.js';
 import { buildWorldBreathing } from '../shared/build-steps.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
 import { goldenForestBakes } from './golden-forest-bakes.js';
 
 const INIT_TIMEOUT_MS = 5500;
@@ -295,8 +296,10 @@ export default class GoldenForestTheme extends BaseTheme {
         const seed = rawSeed === null || rawSeed === '' ? 271 : Number(rawSeed);
         const rng = seededRandom(Number.isFinite(seed) ? seed : 271);
         this.reactions = new GoldenForestReactions({ quality: this.quality, rng });
+        // The scene pass's samples (4× MSAA from High up with the game's antialiasing on).
+        const samples = sceneSamples(this.quality, this.getAntialiasEnabled());
         const world = new GoldenForestWorld({
-            scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
+            scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets, samples,
         });
         // Built in steps with a breath between them (one long task otherwise), and the theme's only
         // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
@@ -309,6 +312,7 @@ export default class GoldenForestTheme extends BaseTheme {
             camera: this.camera,
             quality: this.quality,
             light: this.world.light,
+            samples,
         });
         this.boardPoll = 0;
         return true;

@@ -11,7 +11,8 @@
  *   and event flash → "night filmic" tone map (hue preserving, the hottest cores roll to white)
  *   → grade (lifted, tinted shadows: the dark of a watercolour is a wash, not a hole) → the
  *   brush (premium tiers: a Kuwahara pass that lays the picture down in flat washes, held off
- *   the card) → vignette → sRGB → paper grain and triangular dither.
+ *   the card and off hard edges, which keep the scene pass's MSAA) → vignette → sRGB → paper
+ *   grain and triangular dither → FXAA (Medium, Low: the single-sampled tiers).
  *
  * Tone mapping happens exactly once: renderer.toneMapping = NoToneMapping and the pipeline's
  * outputColorTransform is off (the output node encodes sRGB itself).
@@ -44,6 +45,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import {
     swBell, swHash21, swLuma, swMax3,
@@ -52,9 +54,11 @@ import {
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no shafts). `shafts` is a tap count
  * (0 = off); `fringe` = the chromatic split (two more scene taps); `msaa` = scene-pass samples;
- * `brush` = the painterly pass (0 = off, else its radius in pixels at 1080p).
+ * `brush` = the painterly pass (0 = off, else its radius in pixels at 1080p); `fxaa` smooths a
+ * single-sampled pass (Medium and Low).
  */
-export const POST_LOOK = Object.freeze({
+const FXAA_TIERS = Object.freeze(['Medium', 'Low']);
+const LOOKS = {
     Extreme: {
         bloom: true, bloomStrength: 0.6, bloomResolution: 0.5, shafts: 16, fringe: true, msaa: 4, brush: 3,
     },
@@ -73,7 +77,9 @@ export const POST_LOOK = Object.freeze({
     Minimal: {
         bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: 0, fringe: false, msaa: 0, brush: 0,
     },
-});
+};
+export const POST_LOOK = Object.freeze(Object.fromEntries(Object.entries(LOOKS)
+    .map(([tier, look]) => [tier, { ...look, fxaa: FXAA_TIERS.includes(tier) }])));
 
 export const BLOOM_THRESHOLD = 0.72;
 export const BLOOM_KNEE = 0.4;
@@ -117,13 +123,16 @@ export class StillwaterPost {
      * @param {THREE.Camera} camera
      * @param {object} params
      * @param {object} params.look        POST_LOOK entry
+     * @param {number} [params.samples]   the scene pass's samples (default: the look's `msaa`)
+     * @param {boolean} [params.antialias=true] the game's antialiasing setting (off: no FXAA)
      * @param {boolean} [params.falseColor=false]
      */
     constructor(renderer, scene, camera, params = {}) {
         const look = params.look || POST_LOOK.High;
         this.look = look;
+        this.samples = params.samples ?? look.msaa ?? 0;
         this.pipeline = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera, { samples: params.samples ?? look.msaa ?? 0 });
+        this.scenePass = pass(scene, camera, { samples: this.samples });
         const sceneColor = this.scenePass.getTextureNode('output');
 
         this.uAspect = uniform(16 / 9);
@@ -206,6 +215,7 @@ export class StillwaterPost {
                     const step1 = this.uSrcTexel.mul(max(hScale.mul(brush * 0.5), 1.0));
                     const best = vec3(S).toVar();
                     const bestVar = float(1e9).toVar();
+                    const worstVar = float(0.0).toVar();
                     [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([qx, qy]) => {
                         const mean = vec3(0.0).toVar();
                         const sq = float(0.0).toVar();
@@ -222,6 +232,7 @@ export class StillwaterPost {
                         mean.divAssign(9.0);
                         const lm = swLuma(mean).div(swLuma(mean).add(0.25));
                         const variance = sq.div(9.0).sub(lm.mul(lm));
+                        worstVar.assign(max(worstVar, variance));
                         If(variance.lessThan(bestVar), () => {
                             bestVar.assign(variance);
                             best.assign(mean);
@@ -229,7 +240,11 @@ export class StillwaterPost {
                     });
                     // The lights themselves stay crisp: they are drawn, not washed.
                     const keep = smoothstep(0.5, 1.6, swMax3(S));
-                    S.assign(mix(S, best, room.mul(float(1.0).sub(keep)).mul(0.85)));
+                    // A hard edge through the window (one quadrant flat, another split across it) keeps
+                    // the scene pass's antialiased edge: re-drawn from whichever quadrant is calmest, it
+                    // would step along the pixel grid. Washes inside a form are untouched.
+                    const edge = smoothstep(0.0015, 0.008, worstVar.sub(bestVar));
+                    S.assign(mix(S, best, room.mul(float(1.0).sub(keep)).mul(float(1.0).sub(edge)).mul(0.85)));
                 });
             }
 
@@ -325,7 +340,10 @@ export class StillwaterPost {
         });
 
         this.pipeline.outputColorTransform = false;
-        this.pipeline.outputNode = outputFn();
+        // FXAA only over a single-sampled pass, and never over the false-colour view.
+        const smooth = look.fxaa && this.samples === 0 && params.antialias !== false && !falseColor;
+        this.fxaaNode = smooth ? fxaa(outputFn()) : null;
+        this.pipeline.outputNode = this.fxaaNode || outputFn();
         this.pipeline.needsUpdate = true;
     }
 
@@ -373,9 +391,12 @@ export class StillwaterPost {
     dispose() {
         this.scenePass?.dispose();
         if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
+        // FXAA reads the graded picture through a render target of its own.
+        this.fxaaNode?.textureNode?.dispose?.();
         this.pipeline?.dispose();
         this.scenePass = null;
         this.bloomNode = null;
+        this.fxaaNode = null;
         this.pipeline = null;
     }
 }

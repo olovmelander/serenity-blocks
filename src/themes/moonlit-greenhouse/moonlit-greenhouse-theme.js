@@ -371,6 +371,7 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
             // The post walks the air with the world's moon, lights and noise.
             this.post = new MoonlitGreenhousePost(this.renderer, this.scene, this.camera, {
                 look,
+                antialias: this.getAntialiasEnabled(),
                 falseColor: this.flags.falseColor,
                 U: this.world.U,
                 noise: this.world.noise,

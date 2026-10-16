@@ -20,6 +20,7 @@ import { SakuraWorld } from './sakura-world.js';
 import { SakuraReactions } from './sakura-reactions.js';
 import { SakuraPost } from './sakura-post.js';
 import { buildWorldBreathing } from '../shared/build-steps.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -275,6 +276,8 @@ export default class SakuraTwilightTheme extends BaseTheme {
         const seed = rawSeed === null || rawSeed === '' ? DEFAULT_SEED : Number(rawSeed);
         const rng = seededRandom(Number.isFinite(seed) ? seed : DEFAULT_SEED);
         this.reactions = new SakuraReactions({ quality: this.quality, rng });
+        // The scene pass's samples (4× MSAA from High up with the game's antialiasing on).
+        const samples = sceneSamples(this.quality, this.getAntialiasEnabled());
         const world = new SakuraWorld({
             scene: this.scene,
             camera: this.camera,
@@ -284,6 +287,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             // The petals step in a worker in play (2-3 ms of a storm frame on the page otherwise);
             // ?sakuraSyncPetals=1 keeps them on the page.
             petalWorker: !enabledParam(searchParams(), 'sakuraSyncPetals'),
+            samples,
         });
         // Built in steps with a breath between them (one long task otherwise), and the theme's only
         // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
@@ -296,6 +300,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             camera: this.camera,
             quality: this.quality,
             light: this.world.light,
+            samples,
             prime: () => this.world.primeShadows(this.renderer),
         });
         this.boardPoll = 0;

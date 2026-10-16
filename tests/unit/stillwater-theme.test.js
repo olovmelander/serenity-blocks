@@ -110,7 +110,9 @@ const mocks = vi.hoisted(() => {
     };
     state.postModule = {
         POST_LOOK: Object.freeze(Object.fromEntries(
-            ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'].map((tier) => [tier, Object.freeze({ tier })]),
+            ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'].map((tier, i) => [
+                tier, Object.freeze({ tier, msaa: i >= 3 ? 4 : 0 }),
+            ]),
         )),
         StillwaterPost: class {
             constructor(renderer, scene, camera, params) {
@@ -571,12 +573,14 @@ describe('Stillwater theme: one node renderer on both backends', () => {
         const [{ world, params }] = mocks.worlds;
         expect(theme.world).toBe(world);
         expect(world).toBeInstanceOf(mocks.worldModule.StillwaterWorld);
-        expect(Object.keys(params).sort()).toEqual(['capture', 'quality', 'renderer', 'scene']);
+        expect(Object.keys(params).sort()).toEqual(['capture', 'quality', 'renderer', 'samples', 'scene']);
         expect(params.scene).toBe(theme.scene);
         expect(params.scene).toBeInstanceOf(THREE.Scene);
         expect(params.renderer).toBe(theme.renderer);
         expect(params.quality).toBe('High');
         expect(params.capture).toBe(false);
+        // The water's mirror takes the scene pass's samples (High: the look's 4× MSAA).
+        expect(params.samples).toBe(4);
         expect(world.build).toHaveBeenCalledOnce();
         expect(world.bindCamera).toHaveBeenCalledOnce();
         expect(world.bindCamera).toHaveBeenCalledWith(theme.camera);
@@ -622,7 +626,8 @@ describe('Stillwater theme: one node renderer on both backends', () => {
         expect(built.renderer).toBe(theme.renderer);
         expect(built.scene).toBe(theme.scene);
         expect(built.camera).toBe(theme.camera);
-        expect(built.params).toEqual({ look: POST_LOOK.High, falseColor: false });
+        // The game's antialiasing setting rides along (it gates FXAA on the single-sampled tiers).
+        expect(built.params).toEqual({ look: POST_LOOK.High, antialias: true, falseColor: false });
         expect(built.post.setSize).toHaveBeenCalledWith(1280, 720, ...buffer);
         expect(theme.passThrough).toBeNull();
         expect(mocks.passThroughs).toHaveLength(0);

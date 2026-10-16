@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **726 parameter names in 868 scoped entries**.
+The catalog documents **726 parameter names in 869 scoped entries**.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -119,6 +119,9 @@ The Rainbark rebuild added the capture flags `rainbarkForceWebGL`, `rainbarkTime
 effect, which reads 27 parameters its sibling effects already had and adds `sheds`, with
 entries of its own for `b2b`, `cascade`, `dist`, `peak` and `session`; Cosmic Chimes, the theme
 it replaces, read nothing from the URL, so no reader was retired.
+The scene-antialiasing pass (2026-10-16) put the `fall`, `forest`, `golden-forest`,
+`sakura-twilight`, `summer` and `verdant-hills` playground effects on the shared `msaa` entry
+and gave `high-coast` an `msaa` entry of its own (one more entry, no new name).
 
 Painted Ages adds the capture flags `paintedAgesForceWebGL`, `paintedAgesTime`,
 `paintedAgesFixedDt`, `paintedAgesParts` and `paintedAgesFalseColor`, plus the

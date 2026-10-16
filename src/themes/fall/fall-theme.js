@@ -19,6 +19,7 @@ import { FALL_TETROMINOS } from './fall-tetrominos.js';
 import { FallWorld } from './fall-world.js';
 import { FallReactions } from './fall-reactions.js';
 import { FallPost } from './fall-post.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -290,6 +291,8 @@ export default class FallTheme extends BaseTheme {
         const seed = rawSeed === null || rawSeed === '' ? 271 : Number(rawSeed);
         const rng = seededRandom(Number.isFinite(seed) ? seed : 271);
         this.reactions = new FallReactions({ quality: this.quality, rng });
+        // The scene pass's samples (4× MSAA from High up with the game's antialiasing on).
+        const samples = sceneSamples(this.quality, this.getAntialiasEnabled());
         this.world = new FallWorld({
             scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
         });
@@ -302,6 +305,7 @@ export default class FallTheme extends BaseTheme {
             camera: this.camera,
             quality: this.quality,
             light: this.world.light,
+            samples,
         });
         this.boardPoll = 0;
     }

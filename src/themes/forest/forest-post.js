@@ -4,8 +4,9 @@
  * Medium tiers and above print the night through a RenderPipeline: volumetric moonbeams
  * raymarched through the old trees' real shadow map (three's GodraysNode), a hue-preserving
  * bloom that lets the moon and the fireflies glow without bleaching them, a filmic curve
- * with deep blue shadows, and FXAA for the needle edges. Low and Minimal draw the same
- * scene directly with ACES tone mapping.
+ * with deep blue shadows, and smooth needle edges: 4× MSAA in the scene pass from High up
+ * (`samples`, shared/scene-antialias.js), FXAA on a single-sampled pass. Low and Minimal draw
+ * the same scene directly with ACES tone mapping (the canvas's own MSAA).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -23,7 +24,7 @@ const BLOOM_STRENGTH = 0.3;
 
 export class ForestPost {
     constructor({
-        renderer, scene, camera, quality = 'High', light = null,
+        renderer, scene, camera, quality = 'High', light = null, samples = 0,
     }) {
         this.renderer = renderer;
         this.scene = scene;
@@ -32,6 +33,7 @@ export class ForestPost {
         this.tier = forestTier(quality);
         this.light = light;
         this.disabled = !this.tier.post;
+        this.samples = this.disabled ? 0 : samples;
         this.useMRT = false;
         this.disposed = false;
         this.uAspect = uniform(16 / 9);
@@ -46,7 +48,7 @@ export class ForestPost {
         this.moonPoint = new THREE.Vector3();
         if (this.disabled) return;
         this.pipeline = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera, { samples: 0 });
+        this.scenePass = pass(scene, camera, { samples: this.samples });
         const sceneColor = this.scenePass.getTextureNode('output');
         const sceneDepth = this.scenePass.getTextureNode('depth');
         let lit = sceneColor.rgb;
@@ -91,7 +93,8 @@ export class ForestPost {
             toned.mulAssign(float(1).sub(smoothstep(0.7, 1.7, radius).mul(0.3)));
             return renderOutput(vec4(clamp(toned, 0, 1), 1), THREE.NoToneMapping);
         })();
-        this.pipeline.outputNode = fxaa(graded);
+        // A multisampled pass is already smooth; FXAA over it would only soften the needles.
+        this.pipeline.outputNode = this.samples > 0 ? graded : fxaa(graded);
     }
 
     /**
@@ -106,7 +109,7 @@ export class ForestPost {
             renderer.render(scene, camera);
             return;
         }
-        const target = new THREE.RenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 0 });
+        const target = new THREE.RenderTarget(4, 4, { type: THREE.HalfFloatType, samples: this.samples });
         target.depthTexture = new THREE.DepthTexture(4, 4);
         const previous = renderer.getRenderTarget?.() ?? null;
         try {

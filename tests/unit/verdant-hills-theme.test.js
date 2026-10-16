@@ -2194,9 +2194,11 @@ describe('Verdant Hills built around its artwork', () => {
         expect(scene.children).toEqual([world.group]);
         expect(theme.getWarmupRoots()).toEqual([world.group]);
         // The lens: the same scene and camera, on this renderer, lit by the world's own light.
-        expect(Object.keys(post.options).sort()).toEqual(['camera', 'light', 'quality', 'renderer', 'scene']);
+        expect(Object.keys(post.options).sort())
+            .toEqual(['camera', 'light', 'quality', 'renderer', 'samples', 'scene']);
+        // High with the game's antialiasing on: a 4× MSAA scene pass (shared/scene-antialias.js).
         expect(post.options).toMatchObject({
-            renderer, scene, camera, quality: 'High',
+            renderer, scene, camera, quality: 'High', samples: 4,
         });
         // (The world only has a light once it is built: the lens is made after, not before.)
         expect(post.options.light).toBe(world.light);

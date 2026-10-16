@@ -625,8 +625,13 @@ function woodMaterial(u, t) {
     return material;
 }
 
-/** The needle tufts: alpha-tested crossed cards shaded as the plate they belong to. */
-function needleMaterial(u, t, needles) {
+/**
+ * The needle tufts: alpha-tested crossed cards shaded as the plate they belong to. With
+ * `coverage` (a multisampled scene pass) the test is three's alpha-to-coverage one: the same
+ * threshold, sharpened to a pixel, so each needle's edge covers some of the pixel's samples
+ * instead of all or none.
+ */
+function needleMaterial(u, t, needles, coverage = false) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'HighCoastPineNeedles';
     material.fog = false;
@@ -640,7 +645,12 @@ function needleMaterial(u, t, needles) {
         const flutter = sin(u.time.mul(3.1).add(seed.x.mul(40.0))).mul(0.018).mul(uv().y);
         return p.add(sway(u, p)).add(vec3(flutter, flutter.mul(0.5), flutter.mul(0.7)));
     })();
-    material.maskNode = card.a.greaterThan(0.5);
+    if (coverage) {
+        material.alphaTest = 0.5;
+        material.alphaToCoverage = true;
+    } else {
+        material.maskNode = card.a.greaterThan(0.5);
+    }
     material.colorNode = Fn(() => {
         const P = positionWorld;
         const n = normalize(modelWorldMatrix.mul(vec4(tuft.xyz, 0.0)).xyz);
@@ -673,7 +683,8 @@ function needleMaterial(u, t, needles) {
             .mul(open.mul(0.5).add(0.5));
         lit.addAssign(u.sun.mul(u.sunUp).mul(shadow).mul(vec3(0.3, 0.4, 0.1)).mul(through)
             .mul(card.r.mul(0.6).add(0.6)));
-        return vec4(aerial(u, P, lit), 1.0);
+        // Under alpha-to-coverage the card's alpha is the needle's coverage of the pixel.
+        return vec4(aerial(u, P, lit), coverage ? card.a : 1.0);
     })();
     return material;
 }
@@ -820,7 +831,7 @@ function shadowPatch(u, t, ground, casters, frame) {
  * The old pine: `ground(x, z)` gives the summit's height (the land's own sampling), `foot` where
  * the trunk stands. Returns its meshes (wood, needles, and on props tiers ≥ 1 the shadow patch).
  */
-export function createPine(u, t, tier, ground, foot) {
+export function createPine(u, t, tier, ground, foot, { coverage = false } = {}) {
     const frame = pineFrame(foot.x, foot.y, foot.z);
     const eyeLocal = new THREE.Vector3(EYE.x, EYE.y, EYE.z).applyMatrix4(frame.inverse);
     const w = new THREE.Vector3();
@@ -836,7 +847,7 @@ export function createPine(u, t, tier, ground, foot) {
     wood.name = 'HighCoastPineWood';
     const { texture: needleTex } = bakeNeedleTexture(level > 0 ? 128 : 64);
     const { geometry: needleGeo, tufts } = needleGeometry(plan.plates, { density: PINE_FOLIAGE.density[level] });
-    const needleMat = needleMaterial(u, t, needleTex);
+    const needleMat = needleMaterial(u, t, needleTex, coverage);
     const needles = new THREE.Mesh(needleGeo, needleMat);
     needles.name = 'HighCoastPineNeedles';
     const group = new THREE.Group();

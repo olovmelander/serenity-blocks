@@ -4,7 +4,9 @@
  * Medium tiers and above grade the garden through a RenderPipeline: moonbeams raymarched
  * through the garden's real shadow map (three's GodraysNode), a hue-preserving bloom for
  * the lanterns, the moon and lit blossom, a filmic curve that keeps the shadows violet,
- * and FXAA for the petal edges. Low and Minimal draw the same scene directly with ACES.
+ * and smooth petal and branch edges: 4× MSAA in the scene pass from High up (`samples`,
+ * shared/scene-antialias.js; the lake's mirror matches it), FXAA on a single-sampled pass. Low
+ * and Minimal draw the same scene directly with ACES (the canvas's MSAA).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -22,7 +24,7 @@ const LUMA = vec3(0.2126, 0.7152, 0.0722);
 
 export class SakuraPost {
     constructor({
-        renderer, scene, camera, quality = 'High', light = null, prime = null,
+        renderer, scene, camera, quality = 'High', light = null, samples = 0, prime = null,
     }) {
         this.renderer = renderer;
         this.scene = scene;
@@ -31,6 +33,7 @@ export class SakuraPost {
         this.tier = sakuraTier(quality);
         this.light = light;
         this.disabled = !this.tier.post;
+        this.samples = this.disabled ? 0 : samples;
         this.useMRT = false;
         this.disposed = false;
         this.uAspect = uniform(16 / 9);
@@ -41,7 +44,7 @@ export class SakuraPost {
         this.moonPoint = new THREE.Vector3();
         if (this.disabled) return;
         this.pipeline = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera, { samples: 0 });
+        this.scenePass = pass(scene, camera, { samples: this.samples });
         const sceneColor = this.scenePass.getTextureNode('output');
         const sceneDepth = this.scenePass.getTextureNode('depth');
         let lit = sceneColor.rgb;
@@ -91,7 +94,8 @@ export class SakuraPost {
             toned.mulAssign(float(1).sub(smoothstep(0.75, 1.75, radius).mul(0.26)));
             return renderOutput(vec4(clamp(toned, 0, 1), 1), THREE.NoToneMapping);
         })();
-        this.pipeline.outputNode = fxaa(graded);
+        // A multisampled pass is already smooth; FXAA over it would only soften the edges.
+        this.pipeline.outputNode = this.samples > 0 ? graded : fxaa(graded);
     }
 
     update(frame = {}) {

@@ -1,8 +1,9 @@
 /**
  * Shifting Sands — post stack (TSL RenderPipeline, both WebGPURenderer backends).
  *
- * One scene pass (no MRT; MSAA only on the showcase tiers), one bloom chain (Medium and up) and
- * ONE full-screen output pass:
+ * One scene pass (no MRT; 4× MSAA from High up, shared/scene-antialias.js, so the crests, the
+ * butte and the worm step smoothly against the sky), one bloom chain (Medium and up) and ONE
+ * full-screen output pass (then FXAA on Medium and Low, the single-sampled tiers):
  *
  *   heat haze (a shimmer band just above the far erg, strongest toward the suns; one noise fetch,
  *   and the scene is still sampled once) → calm zones (what shows through the translucent board
@@ -46,32 +47,41 @@ import {
     vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
 import {
     ssHash21, ssLuma, ssMax3, ssTexNoise,
 } from './shifting-sands-tsl.js';
 
-/** Per-tier look. `bloom: false` builds no BloomNode; `rays` = shaft taps (0 = none). */
-export const POST_LOOK = Object.freeze({
+/**
+ * Per-tier look. `bloom: false` builds no BloomNode; `rays` = shaft taps (0 = none); `msaa` = the
+ * scene pass's samples (the shared table: 4 from High up); `fxaa` smooths a single-sampled pass.
+ */
+const FXAA_TIERS = Object.freeze(['Medium', 'Low']);
+const LOOKS = {
     Extreme: {
-        bloom: true, bloomStrength: 0.48, bloomResolution: 0.4, rays: 10, grain: true, msaa: 4, haze: true,
+        bloom: true, bloomStrength: 0.48, bloomResolution: 0.4, rays: 10, grain: true, haze: true,
     },
     Ultra: {
-        bloom: true, bloomStrength: 0.46, bloomResolution: 0.375, rays: 8, grain: true, msaa: 4, haze: true,
+        bloom: true, bloomStrength: 0.46, bloomResolution: 0.375, rays: 8, grain: true, haze: true,
     },
     High: {
-        bloom: true, bloomStrength: 0.45, bloomResolution: 0.33, rays: 8, grain: true, msaa: 0, haze: true,
+        bloom: true, bloomStrength: 0.45, bloomResolution: 0.33, rays: 8, grain: true, haze: true,
     },
     Medium: {
-        bloom: true, bloomStrength: 0.42, bloomResolution: 0.25, rays: 5, grain: false, msaa: 0, haze: true,
+        bloom: true, bloomStrength: 0.42, bloomResolution: 0.25, rays: 5, grain: false, haze: true,
     },
     Low: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, rays: 0, grain: false, msaa: 0, haze: false,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, rays: 0, grain: false, haze: false,
     },
     Minimal: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, rays: 0, grain: false, msaa: 0, haze: false,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, rays: 0, grain: false, haze: false,
     },
-});
+};
+export const POST_LOOK = Object.freeze(Object.fromEntries(Object.entries(LOOKS).map(([tier, look]) => [
+    tier, { ...look, msaa: sceneSamples(tier), fxaa: FXAA_TIERS.includes(tier) },
+])));
 
 export const BLOOM_THRESHOLD = 2.1;
 export const BLOOM_KNEE = 0.7;
@@ -117,7 +127,8 @@ export class ShiftingSandsPost {
      * @param {object} params
      * @param {object} params.look        POST_LOOK entry
      * @param {object} params.shared      world shared uniforms (uTime, uDusk, noiseTex)
-     * @param {number} [params.samples]
+     * @param {number} [params.samples]   the scene pass's samples (default: the look's `msaa`)
+     * @param {boolean} [params.antialias=true] the game's antialiasing setting (off: no FXAA)
      * @param {boolean} [params.grain=true]
      * @param {boolean} [params.falseColor=false]
      */
@@ -125,8 +136,9 @@ export class ShiftingSandsPost {
         const look = params.look || POST_LOOK.High;
         const { shared } = params;
         this.look = look;
+        this.samples = params.samples ?? look.msaa ?? 0;
         this.pipeline = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera, { samples: params.samples ?? look.msaa ?? 0 });
+        this.scenePass = pass(scene, camera, { samples: this.samples });
         const sceneColor = this.scenePass.getTextureNode('output');
         const sceneViewZ = this.scenePass.getViewZNode();
 
@@ -307,7 +319,10 @@ export class ShiftingSandsPost {
         });
 
         this.pipeline.outputColorTransform = false;
-        this.pipeline.outputNode = outputFn();
+        // FXAA only over a single-sampled pass, and never over the false-colour view.
+        const smooth = look.fxaa && this.samples === 0 && params.antialias !== false && !falseColor;
+        this.fxaaNode = smooth ? fxaa(outputFn()) : null;
+        this.pipeline.outputNode = this.fxaaNode || outputFn();
         this.pipeline.needsUpdate = true;
     }
 
@@ -356,9 +371,12 @@ export class ShiftingSandsPost {
     dispose() {
         this.scenePass?.dispose();
         if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
+        // FXAA reads the graded picture through a render target of its own.
+        this.fxaaNode?.textureNode?.dispose?.();
         this.pipeline?.dispose();
         this.scenePass = null;
         this.bloomNode = null;
+        this.fxaaNode = null;
         this.pipeline = null;
     }
 }

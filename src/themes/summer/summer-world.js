@@ -27,12 +27,14 @@ import { drainSteps } from '../shared/build-steps.js';
 
 export class SummerWorld {
     constructor({
-        scene, camera, quality = 'High', rng = Math.random, assets,
+        scene, camera, quality = 'High', rng = Math.random, assets, samples = 0,
     }) {
         this.scene = scene;
         this.camera = camera;
         this.quality = quality;
         this.tier = summerTier(quality);
+        /** The scene pass's samples; the lake's mirror takes the same (shared/scene-antialias.js). */
+        this.samples = samples;
         this.rng = rng;
         this.assets = assets;
         this.group = new THREE.Group();
@@ -113,7 +115,9 @@ export class SummerWorld {
         });
         this.group.add(this.petals.group);
         this.petals.build();
-        this.lake = new SummerLake({ light, tier, lakeMap: this.terrain.lakeMap });
+        this.lake = new SummerLake({
+            light, tier, lakeMap: this.terrain.lakeMap, samples: this.samples,
+        });
         this.group.add(this.lake.group);
         this.lake.build();
         // The meadow lies behind its own crest as the lake sees it, so it is left out of the mirror.
