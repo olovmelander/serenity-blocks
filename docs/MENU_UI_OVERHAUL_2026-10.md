@@ -122,7 +122,7 @@ open-corner notch the hero panels cut for it. What it marked is still marked:
 | The tile on a dropdown's chosen option | A cream check |
 
 Coral stays on the primary button, a meter's current cell, Hale's practised-today cell,
-the countdown's GO, the next Odyssey level's frame, the loading lights and a few thin bars
+the countdown's GO, the next Odyssey level's frame and a few thin bars
 and outlines. `@keyframes sb-key-drop` stays (the local results crown uses it).
 
 ### 1.7 Performance rules (unchanged from CORE_UI_PERFORMANCE_FIXES_2026-10)

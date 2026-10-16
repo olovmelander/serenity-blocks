@@ -307,7 +307,8 @@
 
 /* ---- Transit: an opaque, centred briefing --------------------------------------- */
 .ody-flow[data-layout='transit'] { opacity: 0; }
-.ody-flow[data-layout='transit']::before { opacity: 1; background: #080713; transition-duration: 160ms; }
+/* Opaque between orbs: the loading language's void (main.css --sb-void-sky), as every cover. */
+.ody-flow[data-layout='transit']::before { opacity: 1; background: var(--sb-void-sky, #080713); transition-duration: 160ms; }
 .ody-flow[data-layout='transit'][data-covered='true'] { opacity: 1; }
 .ody-flow[data-layout='transit'] .ody-flow__progress,
 .ody-flow[data-layout='transit'] .ody-flow__preference { visibility: hidden; }
@@ -321,7 +322,7 @@
 .ody-flow[data-layout][data-revealing='true'] { opacity: 0; pointer-events: none; }
 .ody-flow[data-layout][data-visibility-held='true'] { opacity: 1; pointer-events: auto; }
 .ody-flow[data-layout][data-retained='true'] { opacity: 1; pointer-events: auto; transition: none; }
-.ody-flow[data-layout][data-retained='true']::before { opacity: 1; background: #080713; transition: none; }
+.ody-flow[data-layout][data-retained='true']::before { opacity: 1; background: var(--sb-void-sky, #080713); transition: none; }
 
 /* ---- Scenic: a docked briefing over the real world ------------------------------ */
 .ody-flow[data-world-stage] { z-index: 10050; }

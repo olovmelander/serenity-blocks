@@ -7,9 +7,11 @@ import {
     vi,
 } from 'vitest';
 import {
+    MODE_LOADING_STEPS,
     showCinematicLoadingOverlay,
     dismissCinematicLoadingOverlay,
     setCinematicLoadingOverlayBuilding,
+    setCinematicLoadingProgress,
     waitForCinematicLoadingOverlayPresented,
     transitionCinematicLoadingOverlayToCountdown,
 } from '../../src/ui/cinematic-loading-overlay.js';
@@ -243,6 +245,8 @@ describe('cinematic loading overlay countdown', () => {
         await presented;
         expect(ready).toHaveBeenCalledOnce();
         expect(vi.getTimerCount()).toBe(0);
+        // Painted: the progress line's first milestone.
+        expect(overlay.dataset.progress).toBe(MODE_LOADING_STEPS.presented.toFixed(3));
     });
 
     it('decodes new mode lettering before presenting its animation and allowing mode setup', async () => {
@@ -290,14 +294,103 @@ describe('cinematic loading overlay countdown', () => {
         showCinematicLoadingOverlay('SINGLE PLAYER');
         setCinematicLoadingOverlayBuilding(true);
         const overlay = document.getElementById('cinematic-loading-overlay');
-        const dots = overlay.querySelector('[data-cinematic-role="dots"]');
+        const loading = overlay.querySelector('[data-cinematic-role="loading"]');
         const title = overlay.querySelector('[data-cinematic-role="title"]');
         expect(overlay.dataset.building).toBe('true');
-        expect(dots.style.opacity).not.toBe('0');
+        expect(loading.style.opacity).not.toBe('0');
         expect(title.style.animationPlayState).not.toBe('paused');
-        expect(dots.children[0].children).toHaveLength(5);
+        // The boot loading screen's language: a guide to breathe by and a progress line.
+        const [guide, line] = loading.children;
+        expect(guide.className).toContain('sb-breath-guide');
+        expect(guide.children.map((word) => word.textContent))
+            .toEqual(['Breathe in', 'Breathe out', 'Preparing your space']);
+        expect(line.dataset.cinematicRole).toBe('progress');
+        expect(line.className).toContain('sb-progress-line');
         setCinematicLoadingOverlayBuilding(false);
         expect(overlay.dataset.building).toBe('false');
+    });
+
+    it('paints the opening world behind the name, in the shared loading language', () => {
+        showCinematicLoadingOverlay('INFINITY');
+        const overlay = document.getElementById('cinematic-loading-overlay');
+        const backdrop = overlay.querySelector('[data-cinematic-role="backdrop"]');
+        const sky = overlay.querySelector('[data-cinematic-role="stars"]');
+        expect(backdrop.children[0].className).toContain('sb-void-light');
+        expect(sky.children.map((child) => child.className).join(' '))
+            .toMatch(/sb-starfield sb-void-stars.*sb-void-motes/);
+        expect(sky.children[1].children).toHaveLength(2); // two depths of motes
+        const content = overlay.querySelector('[data-cinematic-role="content"]');
+        expect(content.children[0].className).toContain('sb-void-halo');
+        // Only the name's lettering is artwork now (no aurora image to decode).
+        expect(overlay.querySelectorAll('img')).toHaveLength(1);
+    });
+
+    it('moves the progress line forward only, by milestone, and fills it as the cover lifts', async () => {
+        expect(setCinematicLoadingProgress('presented')).toBeNull(); // no cover, nothing to move
+        showCinematicLoadingOverlay('SERENITY');
+        const overlay = document.getElementById('cinematic-loading-overlay');
+        expect(overlay.dataset.progress).toBe(MODE_LOADING_STEPS.shown.toFixed(3));
+        expect(setCinematicLoadingProgress('activated')).toBe(MODE_LOADING_STEPS.activated);
+        expect(setCinematicLoadingProgress('presented')).toBe(MODE_LOADING_STEPS.activated);
+        expect(setCinematicLoadingProgress('no-such-step')).toBe(MODE_LOADING_STEPS.activated);
+        expect(setCinematicLoadingProgress(0.9)).toBe(0.9);
+        expect(overlay.dataset.progress).toBe('0.900');
+        const dismissed = dismissCinematicLoadingOverlay({ minVisibleMs: 0, fadeOutMs: 20 });
+        expect(overlay.dataset.progress).toBe('1.000');
+        await vi.advanceTimersByTimeAsync(100);
+        await dismissed;
+    });
+
+    it('fills the progress line when the cover turns into the countdown', async () => {
+        showCinematicLoadingOverlay('FREE-FOR-ALL');
+        setCinematicLoadingProgress('settled');
+        const countdown = transitionCinematicLoadingOverlayToCountdown({
+            startCount: 1, countIntervalMs: 10, goHoldMs: 10, overlayFadeMs: 10,
+        });
+        expect(document.getElementById('cinematic-loading-overlay').dataset.progress).toBe('1.000');
+        animationFrames.flush();
+        await vi.advanceTimersByTimeAsync(200);
+        await countdown;
+    });
+
+    it('lets a mode adopt the cover main put up for it, without restarting it', () => {
+        const first = showCinematicLoadingOverlay('ODYSSEY');
+        const cover = document.getElementById('cinematic-loading-overlay');
+        setCinematicLoadingProgress('presented');
+        vi.advanceTimersByTime(300);
+        const release = Object.assign(vi.fn(), { uncover: vi.fn() });
+        const themeManager = { beginLoadingSurface: vi.fn(() => release) };
+        const adopted = showCinematicLoadingOverlay('ODYSSEY', { themeManager });
+        expect(document.getElementById('cinematic-loading-overlay')).toBe(cover);
+        expect(adopted.shownAt).toBe(first.shownAt);
+        expect(cover.dataset.progress).toBe(MODE_LOADING_STEPS.presented.toFixed(3));
+        expect(themeManager.beginLoadingSurface).toHaveBeenCalledWith('cinematic-loading');
+        // Another mode's cover replaces it, and lets its loading surface go.
+        showCinematicLoadingOverlay('INFINITY');
+        expect(document.getElementById('cinematic-loading-overlay')).not.toBe(cover);
+        expect(release).toHaveBeenCalledOnce();
+    });
+
+    it('never adopts a cover that is already on its way out', async () => {
+        showCinematicLoadingOverlay('SINGLE PLAYER');
+        const leaving = document.getElementById('cinematic-loading-overlay');
+        const dismissed = dismissCinematicLoadingOverlay({ minVisibleMs: 100, fadeOutMs: 20 });
+        showCinematicLoadingOverlay('SINGLE PLAYER');
+        const fresh = document.getElementById('cinematic-loading-overlay');
+        expect(fresh).not.toBe(leaving);
+        await vi.advanceTimersByTimeAsync(200);
+        await dismissed;
+        expect(document.getElementById('cinematic-loading-overlay')).toBe(fresh);
+    });
+
+    it('orders the entry milestones as entry reaches them', () => {
+        const order = ['shown', 'presented', 'prepared', 'activated', 'started', 'themeReady',
+            'contentLoaded', 'settled', 'done'];
+        expect(Object.keys(MODE_LOADING_STEPS)).toEqual(order);
+        for (let i = 1; i < order.length; i++) {
+            expect(MODE_LOADING_STEPS[order[i]]).toBeGreaterThan(MODE_LOADING_STEPS[order[i - 1]]);
+        }
+        expect(MODE_LOADING_STEPS.done).toBe(1);
     });
 
     it.each([

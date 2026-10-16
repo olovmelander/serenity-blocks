@@ -98,6 +98,7 @@ import {
     showCinematicLoadingOverlay,
     dismissCinematicLoadingOverlay,
     setCinematicLoadingOverlayBuilding,
+    setCinematicLoadingProgress,
     waitForCinematicLoadingOverlayPresented,
 } from './ui/cinematic-loading-overlay.js';
 // Cosmic Serenity main-menu micro-interactions (cursor spotlight + parallax tilt).
@@ -2789,6 +2790,11 @@ class SerenityBlocks {
                 const overlayShown = !modeHandlesStartupOverlay && Boolean(displayName);
                 if (overlayShown) {
                     showCinematicLoadingOverlay(displayName);
+                } else if (mode === GAME_MODES.ODYSSEY) {
+                    // Odyssey owns its cover, but builds it only after its chunk has loaded and
+                    // its audio has settled: cover the menu now, and it adopts this one.
+                    showCinematicLoadingOverlay('ODYSSEY');
+                    await waitForCinematicLoadingOverlayPresented();
                 }
 
                 // Music fade-out is handled by performTrackSwitch when the
@@ -2803,6 +2809,8 @@ class SerenityBlocks {
 
                 // Paint and promote the cover before scene/board creation can block JS.
                 if (overlayShown) await waitForCinematicLoadingOverlayPresented();
+                // The cover's progress line follows this entry's milestones (never back).
+                const progress = (step) => { if (overlayShown) setCinematicLoadingProgress(step); };
 
                 // Now safe to hide modal (invisible behind overlay)
                 this.modalManager.hideAll();
@@ -2817,6 +2825,7 @@ class SerenityBlocks {
                 if (tm?.switchDrainPromise) {
                     await this._withStartupBudget(tm.switchDrainPromise, 3000, 'theme switch drain');
                 }
+                progress('prepared');
                 const pendingThemeWarm = tm?.pendingThemeInstance?.hasStarted === true;
                 const asyncFirstEntry = tm?.canUseAsyncLoadingSurface?.() === true;
                 const targetThemeName = tm?.pendingThemeName || tm?.activeThemeName;
@@ -2827,10 +2836,12 @@ class SerenityBlocks {
 
                 // Activate the mode (sets up UI/DOM elements)
                 await this.gameModeManager.activateMode(mode);
+                progress('activated');
 
                 // Start the game (includes theme resume)
                 await this.gameModeManager.startCurrentMode();
                 await focusThemeCollectionTarget(this, e.detail);
+                progress('started');
                 if (overlayShown) setCinematicLoadingOverlayBuilding(false);
 
                 // --- Phase 3: Wait for theme to be ready ---
@@ -2839,6 +2850,7 @@ class SerenityBlocks {
                         asyncFirstEntry && !pendingThemeWarm ? 6000 : 3000,
                     );
                     console.log('[Main] Theme ready:', themeReady);
+                    progress('themeReady');
                     // Lift the overlay onto a complete frame, not objects popping in: first the
                     // theme's streamed content (a cold neon-district builds its city in chunks, so
                     // its pipelines read quiet before most are even requested), then its pipelines.
@@ -2851,8 +2863,10 @@ class SerenityBlocks {
                         () => this.themeManager?.activeTheme || null,
                         { maxWaitMs: 7500 },
                     );
+                    progress('contentLoaded');
                     const settleBudgetMs = Math.max(1500, 9000 - (performance.now() - settleT0));
                     const settled = await this.themeManager.whenLoadingSurfacePipelinesSettled?.(settleBudgetMs);
+                    progress('settled');
                     performanceMonitor.recordEvent('mode_entry_pipelines_settle', {
                         mode,
                         theme: targetThemeName,

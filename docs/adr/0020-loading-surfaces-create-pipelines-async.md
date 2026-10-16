@@ -101,6 +101,22 @@ The warp's overlay (`boot-aurora-scene.js`) is a soft glow bridging the two halo
 own opening plays underneath from the handoff. The CSS fallback now plays the same connected
 wordmark arrival as the warp.
 
+**2026-10-16 one loading language:** every mode's cover (`cinematic-loading-overlay.js`: Single
+Player, Infinity, Serenity, Online and Local Versus, Odyssey) now speaks the boot loading screen's
+language, and both share its parts from `main.css`: the `--sb-void-*` tokens and the
+`.sb-void-light/-motes/-stars/-vignette/-halo`, `.sb-breath-guide` and `.sb-progress-line` classes
+(the boot shell carries them beside its own classes, so its static/paused/warp states are as
+before). Still transform/opacity only. The aurora image and the five lights are gone; the cover
+has a breath guide and a progress line fed by entry milestones (`MODE_LOADING_STEPS`,
+`setCinematicLoadingProgress`; main, Local Versus and Odyssey mark theirs; it never runs back and
+fills as the cover lifts). Main now covers an Odyssey entry the moment its card is chosen, and
+Odyssey adopts that cover (`showCinematicLoadingOverlay` keeps a still-loading cover of the same
+title, attaching the mode's loading surface to it) instead of the menu vanishing while its chunk
+loads. Both countdowns are a ring of light per count; Odyssey's transit/retained covers, retry veil
+and fallback backdrops use `--sb-void-sky`. Record:
+[`INTRO_FIRST_LIGHT_OVERHAUL_2026-10.md`](../INTRO_FIRST_LIGHT_OVERHAUL_2026-10.md) (Every loading
+screen).
+
 **2026-10-01 mode-loading redesign:** cinematic covers feature each mode's name in the opening's
 custom vector lettering, with the dotted tagline and aurora. Local multiplayer acquires async
 loading protection before board/theme
