@@ -55,10 +55,10 @@ import {
     LOCK_SLOTS,
     LOCK_TAU,
     STREET,
-    TAU,
     linRGB,
-    mulberry32,
 } from './neon-district-core.js';
+import { NOISE_SEED, NOISE_SIZE, bakeNoiseLevels } from './neon-district-bake.js';
+import { derivedOnce } from '../shared/bake-cache.js';
 
 export * from './neon-district-core.js';
 
@@ -128,7 +128,8 @@ export const ndBoxAA = (p, lo, hi, aa) => {
 
 // ── The noise texture ───────────────────────────────────────────────────────────
 
-export const NOISE_SIZE = 256;
+// The bake is pure and three-free (neon-district-bake.js): a first visit runs it in a worker.
+export { NOISE_SIZE } from './neon-district-bake.js';
 
 /**
  * A tileable RGBA fBm texture: four decorrelated channels of periodic gradient noise (five
@@ -136,89 +137,17 @@ export const NOISE_SIZE = 256;
  * grazing angles; generating half-float mips on the GPU is not portable to every WebGL2 device).
  * Baked once (≈ 45 ms); every cloud, grime streak and puddle in the district is a fetch of it.
  */
-export function createNoiseTexture(seed = 9029, size = NOISE_SIZE) {
+export function createNoiseTexture(seed = NOISE_SEED, size = NOISE_SIZE) {
     const n = size;
-    const rand = mulberry32(seed);
-    const base = new Float32Array(n * n * 4);
-    const field = new Float32Array(n * n);
-    const fade = (v) => v * v * v * (v * (v * 6 - 15) + 10);
-    for (let c = 0; c < 4; c++) {
-        field.fill(0);
-        let amp = 1;
-        for (let o = 0; o < 5; o++) {
-            const period = 4 << o;
-            const gx = new Float32Array(period * period);
-            const gy = new Float32Array(period * period);
-            for (let i = 0; i < gx.length; i++) {
-                const a = rand() * TAU;
-                gx[i] = Math.cos(a);
-                gy[i] = Math.sin(a);
-            }
-            const scale = period / n;
-            for (let y = 0; y < n; y++) {
-                const fy = y * scale;
-                const y0 = Math.floor(fy);
-                const ty = fy - y0;
-                const y1 = (y0 + 1) % period;
-                const sy = fade(ty);
-                for (let x = 0; x < n; x++) {
-                    const fx = x * scale;
-                    const x0 = Math.floor(fx);
-                    const tx = fx - x0;
-                    const x1 = (x0 + 1) % period;
-                    const sx = fade(tx);
-                    const i00 = y0 * period + x0;
-                    const i10 = y0 * period + x1;
-                    const i01 = y1 * period + x0;
-                    const i11 = y1 * period + x1;
-                    const d00 = gx[i00] * tx + gy[i00] * ty;
-                    const d10 = gx[i10] * (tx - 1) + gy[i10] * ty;
-                    const d01 = gx[i01] * tx + gy[i01] * (ty - 1);
-                    const d11 = gx[i11] * (tx - 1) + gy[i11] * (ty - 1);
-                    const top = d00 + (d10 - d00) * sx;
-                    const bottom = d01 + (d11 - d01) * sx;
-                    field[y * n + x] += (top + (bottom - top) * sy) * amp;
-                }
-            }
-            amp *= 0.5;
-        }
-        let lo = Infinity;
-        let hi = -Infinity;
-        for (let i = 0; i < field.length; i++) {
-            if (field[i] < lo) lo = field[i];
-            if (field[i] > hi) hi = field[i];
-        }
-        const inv = 1 / Math.max(1e-6, hi - lo);
-        for (let i = 0; i < field.length; i++) base[i * 4 + c] = (field[i] - lo) * inv;
-    }
-    // Mip chain: 2×2 box filter down to 1×1.
-    const mipmaps = [];
-    let level = base;
-    let w = n;
-    for (;;) {
-        const half = new Uint16Array(level.length);
-        for (let i = 0; i < level.length; i++) half[i] = THREE.DataUtils.toHalfFloat(level[i]);
-        mipmaps.push({ data: half, width: w, height: w });
-        if (w === 1) break;
-        const nw = w >> 1;
-        const next = new Float32Array(nw * nw * 4);
-        for (let y = 0; y < nw; y++) {
-            for (let x = 0; x < nw; x++) {
-                const a = (y * 2 * w + x * 2) * 4;
-                const b2 = a + 4;
-                const c2 = a + w * 4;
-                const d2 = c2 + 4;
-                const o = (y * nw + x) * 4;
-                for (let c = 0; c < 4; c++) {
-                    next[o + c] = (level[a + c] + level[b2 + c] + level[c2 + c] + level[d2 + c]) * 0.25;
-                }
-            }
-        }
-        level = next;
-        w = nw;
-    }
+    // The levels' half floats, made once per bake (the bytes three uploads; never written).
+    const levels = bakeNoiseLevels(seed, size);
+    const mipmaps = derivedOnce(levels, 'half', () => levels.map(({ data, width, height }) => {
+        const half = new Uint16Array(data.length);
+        for (let i = 0; i < data.length; i++) half[i] = THREE.DataUtils.toHalfFloat(data[i]);
+        return { data: half, width, height };
+    }));
     const tex = new THREE.DataTexture(mipmaps[0].data, n, n, THREE.RGBAFormat, THREE.HalfFloatType);
-    tex.mipmaps = mipmaps;
+    tex.mipmaps = mipmaps.map((level) => ({ ...level }));
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.magFilter = THREE.LinearFilter;

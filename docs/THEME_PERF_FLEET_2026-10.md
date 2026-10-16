@@ -602,3 +602,38 @@ material built as `NodeManager` builds it, warm and cold ms, `--dump=` writes th
 "chunk" of a profile with no idle sample can be many frames back to back: count tasks with the
 probe's long-task numbers, not with profile chunks.
 
+### 10.3 The sweep after the merge, and a second round (2026-10-16, afternoon)
+
+The fleet on main after §10.1 (9a9d477b), all 63 themes at 120 fps: no load task over 235 ms
+(sakura 235, rainbark 210, misty-lake 195, shifting-sands 194, aurora 186, moonrise-summit 172,
+neon-district 170, supernova 162, golden-forest 161, fall 154, thermal-bloom 154, high-coast 148;
+eleven more at 100-146 ms). Every theme holds 127-131 fps at rest and in storms except summer
+(124 / 125) and sakura (125 / 121, 44-104 frames a storm over 12 ms). Profiles of the worst
+loads and both storms, then a second round on branch `perf/theme-pass-2026-10-16b`:
+
+| Change | Longest load task, ms, main → branch (two runs each) |
+|---|---|
+| Cinder Drift: the plan bakes in the worker; its readers are a module function of the seed (`planReaders`), made back on the page (d0c83475) | 92 / 97 → 0 / 50 |
+| Supernova: the 3D noise in a worker (f4fcc173) | 143 / 137 → none over 50 |
+| Neon District: the noise's float levels and the glyph atlas in a worker; the page makes the half floats once (7537438c) | 158 / 161 → 118 / 125 |
+| Golden Forest: the lake map in a worker, reading the shores once a texel (it read them twice) (3494e6a9) | 168 / 161 → 54 / 51 |
+| Shifting Sands: the world in steps (2175ec74) | 190 / 193 → 90 / 94 |
+| Sakura: the world in steps (a8bd7a8b) | 179 / 176 → none over 50 |
+| Sakura: the petals step in a worker in play, one frame behind; the page copies the last result into the render buffers (fcd71fca). A test runs the worker module and matches the page simulation frame for frame | storms, frames over 12 ms a storm: 37 / 46 and 4 / 5 → 21 / 27 and 0 / 4 (storms read 124.8-129.6 fps on main, 126.3-131 on the branch) |
+
+Every bake is byte-identical to main's; every stepped world hashes identical (Sakura's with the
+real asset pack, through vitest). Storm shots match main's.
+
+Left after this round:
+- **Summer's storms** (124 / 125 fps): its frame is three's render (about 4.9 ms of CPU under the
+  profiler) plus its petal simulation (1.3 ms). The simulation can step in a worker as Sakura's
+  does; it also returns the lake touches (ripples), so its proxy carries those across.
+- **Heavy single materials**: rainbark's sky and trunks build 110-150 ms each in Node, 120-148 KB
+  of fragment shader, and the cost is spread over three's whole node traversal (no single hot
+  function): it follows the graph's size. Laying out the canopy's cell lookup saved 5 KB and a few
+  ms only; the large repeats are the air's transmittance and the canopy read, which take the
+  uniform bag (the module's rule keeps such builders inlined), so shrinking them means rewriting
+  them as pure functions of their uniforms.
+- Neon District's remaining 118-125 ms and Shifting Sands' formations step (100 ms) were not
+  profiled further.
+

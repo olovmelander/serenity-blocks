@@ -37,6 +37,7 @@ import { POST_LOOK, ShiftingSandsPost, createPassThroughPipeline } from './shift
 import {
     REST_RIG, readLayoutRects, restVerticalFov,
 } from './shifting-sands-composition.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'shifting-sands';
 const LOG_PREFIX = '[ShiftingSands]';
@@ -205,11 +206,15 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(REST_RIG.fov, aspect, REST_RIG.near, REST_RIG.far);
 
         try {
-            this.world = new ShiftingSandsWorld({
+            const world = new ShiftingSandsWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
-            }).build();
+            });
+            // Built in steps with a breath between them (one long task otherwise), and the theme's only
+            // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();
         } catch (error) {

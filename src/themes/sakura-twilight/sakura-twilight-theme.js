@@ -19,6 +19,7 @@ import { SAKURA_TWILIGHT_TETROMINOS } from './sakura-twilight-tetrominos.js';
 import { SakuraWorld } from './sakura-world.js';
 import { SakuraReactions } from './sakura-reactions.js';
 import { SakuraPost } from './sakura-post.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
@@ -204,7 +205,12 @@ export default class SakuraTwilightTheme extends BaseTheme {
             this.applyQualityPreset(loadedSettingsQuality);
         }
         try {
-            this.buildScene();
+            // The world builds in steps with a breath between them (0.17 s of main thread in one
+            // task otherwise): stopped meanwhile, this start keeps nothing.
+            if (await this.buildScene(current) === false) {
+                if (runtimeGeneration === this.runtimeGeneration) this.disposeRuntime();
+                return;
+            }
             const { width, height } = getViewport();
             this.resize(width, height);
             this.setupEventListeners();
@@ -256,7 +262,11 @@ export default class SakuraTwilightTheme extends BaseTheme {
         return loadSakuraAssets({ isCurrent });
     }
 
-    buildScene() {
+    /**
+     * The scene, the world (in steps: false when the start stopped meanwhile) and the post.
+     * @param {() => boolean} [isCurrent]
+     */
+    async buildScene(isCurrent = () => true) {
         this.scene = new THREE.Scene();
         this.camera = new THREE.PerspectiveCamera(50, 1, 0.3, 4000);
         this.camera.position.copy(this.restPosition);
@@ -265,11 +275,20 @@ export default class SakuraTwilightTheme extends BaseTheme {
         const seed = rawSeed === null || rawSeed === '' ? DEFAULT_SEED : Number(rawSeed);
         const rng = seededRandom(Number.isFinite(seed) ? seed : DEFAULT_SEED);
         this.reactions = new SakuraReactions({ quality: this.quality, rng });
-        this.world = new SakuraWorld({
-            scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
+        const world = new SakuraWorld({
+            scene: this.scene,
+            camera: this.camera,
+            quality: this.quality,
+            rng,
+            assets: this.assets,
+            // The petals step in a worker in play (2-3 ms of a storm frame on the page otherwise);
+            // ?sakuraSyncPetals=1 keeps them on the page.
+            petalWorker: !enabledParam(searchParams(), 'sakuraSyncPetals'),
         });
-        // Keep ownership even if an art module throws halfway through its build.
-        this.world.build();
+        // Built in steps with a breath between them (one long task otherwise), and the theme's only
+        // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
+        if (!(await buildWorldBreathing(world, isCurrent))) return false;
+        this.world = world;
         // SakuraPost retains the same artwork on both node backends.
         this.post = new SakuraPost({
             renderer: this.renderer,
@@ -280,6 +299,7 @@ export default class SakuraTwilightTheme extends BaseTheme {
             prime: () => this.world.primeShadows(this.renderer),
         });
         this.boardPoll = 0;
+        return true;
     }
 
     setupGpuResilience() {
