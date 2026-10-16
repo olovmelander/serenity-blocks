@@ -7,10 +7,10 @@
  *
  * A piece is shaded as polished solid colour, by its own light (nothing in the scene is a
  * three.js light):
- *   - its body: its colour lit by a cream key from above, by the haze's light from below
- *     (lavender to aqua across the frame), with a soft glow of its own;
+ *   - its body: its colour (deepened, a touch desaturated) lit by a cream key from above, by the
+ *     glow from below (deep violet to abyssal cyan across the frame), with a faint glow of its own;
  *   - a clear coat (Fresnel) mirroring the sky function, so the lacquer holds the light that
- *     surrounds it, and the key's highlight;
+ *     surrounds it, the key's highlight, and a cool rim (cyan below, violet above);
  *   - air: the far pieces sink into the sky behind them, so depth reads at a glance;
  *   - a touch (a click, a press) flashes it; a piece that must leave the frame's quiet zones
  *     shrinks away with a glow.
@@ -42,7 +42,9 @@ import {
 import {
     PIECE_CELLS, PIECE_COLORS, PIECE_KEYS, srgbToLinear,
 } from './intro-world-core.js';
-import { flFresnel, flQuatRotate, flSkySoft } from './intro-world-tsl.js';
+import {
+    flFresnel, flLuma, flQuatRotate, flSkySoft,
+} from './intro-world-tsl.js';
 
 /** Floats per piece: place (xyz, scale), turn (quaternion), tint (rgb, glow), state (flash, presence, seed, air). */
 export const PIECE_STRIDE = 16;
@@ -197,20 +199,22 @@ export function createPieces(u, { count = 8, bevel = 3 } = {}) {
         const N = normalize(vNormal).toVar();
         const cosI = clamp(dot(V, N).negate(), 0.0, 1.0).toVar();
         const F = flFresnel(cosI, 0.05).toVar();
-        const { rgb } = vTint;
+        // The lacquer, deepened and a touch desaturated, so it sits in the dark rather than on it.
+        const rgb = mix(vec3(flLuma(vTint.rgb)), vTint.rgb, 0.8).mul(0.82);
         const flash = vState.x;
 
         // ── The body ──
         const key = max(dot(N, KEY_DIR), 0.0);
         const keyCol = vec3(1.0, 0.94, 0.86);
         const up = clamp(N.y.negate().mul(0.5).add(0.5), 0.0, 1.0);
-        const hazeCol = mix(vec3(0.48, 0.37, 1.0), vec3(0.34, 0.80, 0.84), clamp(N.x.mul(0.5).add(0.5), 0.0, 1.0));
+        // The glow from below: deep violet on the left, abyssal cyan on the right.
+        const hazeCol = mix(vec3(0.254, 0.147, 1.0), vec3(0.0, 0.55, 0.74), clamp(N.x.mul(0.5).add(0.5), 0.0, 1.0));
         // A light of its own, deeper toward the piece's middle (seen face on): the lacquer glows a
         // little from within, as the wordmark does.
-        const own = float(0.075).add(vTint.w).add(cosI.mul(cosI).mul(0.06));
+        const own = float(0.04).add(vTint.w).add(cosI.mul(cosI).mul(0.03));
         // Lit faces against shaded ones: the key is squared so a piece has a light side and a dark one.
-        const lit = keyCol.mul(key.mul(key).mul(0.78)).add(hazeCol.mul(up.mul(up).mul(0.5)));
-        const diffuse = rgb.mul(lit.add(0.03).add(own));
+        const lit = keyCol.mul(key.mul(key).mul(0.78)).add(hazeCol.mul(up.mul(up).mul(0.28)));
+        const diffuse = rgb.mul(lit.add(0.016).add(own));
 
         // ── The clear coat: the sky off the surface, the key's highlight ──
         const R = reflect(V, N);
@@ -219,7 +223,10 @@ export function createPieces(u, { count = 8, bevel = 3 } = {}) {
         const nh = clamp(dot(N, H), 0.0, 1.0);
         const spec = pow(nh, 96.0).mul(1.6).add(pow(nh, 18.0).mul(0.12));
         const m = float(1.0).sub(cosI);
-        const rim = hazeCol.mul(m.mul(m).mul(up).mul(0.6)).add(mix(rgb, vec3(1.0), 0.5).mul(m.mul(m).mul(m).mul(0.3)));
+        // A cool Fresnel rim: cyan (#4AD8FF) on the edges facing the glow below, violet (#8A6BFF)
+        // above, with a faint wash of the glow itself.
+        const rimCol = mix(vec3(0.254, 0.147, 1.0), vec3(0.0685, 0.687, 1.0), up);
+        const rim = rimCol.mul(m.mul(m).mul(m).mul(0.55)).add(hazeCol.mul(m.mul(m).mul(up).mul(0.15)));
 
         const col = diffuse.mul(float(1.0).sub(F)).add(reflected.mul(F)).add(keyCol.mul(spec)).add(rim)
             .toVar();

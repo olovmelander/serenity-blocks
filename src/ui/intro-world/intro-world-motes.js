@@ -88,14 +88,14 @@ export function createMotes(u, { count = 1400 } = {}) {
         const shape = mix(point, disc, vNear);
         const s = vSeed;
         const tint = mix(
-            mix(vec3(1.0, 0.94, 0.86), vec3(0.62, 0.55, 1.0), fract(s.w.mul(3.7))),
-            vec3(0.55, 0.92, 0.95),
+            mix(vec3(0.86, 0.92, 1.0), vec3(0.42, 0.34, 1.0), fract(s.w.mul(3.7))),
+            vec3(0.3, 0.86, 1.0),
             fract(s.w.mul(11.3)).mul(0.6),
         );
         const twinkle = sin(u.time.mul(fract(s.w.mul(5.1)).mul(2.0).add(0.6)).add(s.x.mul(31.0))).mul(0.3).add(0.75);
         // Brighter low down, where they rise out of the light.
         const low = vEdge.mul(0.8).add(0.5);
-        const gain = mix(float(1.0), float(0.07), vNear).mul(u.moteGain);
+        const gain = mix(float(0.85), float(0.05), vNear).mul(u.moteGain);
         const rgb = tint.mul(shape).mul(twinkle).mul(low).mul(u.breath.mul(0.4).add(0.8))
             .mul(gain);
         return vec4(max(rgb, vec3(0.0)), 0.0);

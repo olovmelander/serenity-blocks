@@ -10,19 +10,22 @@ handoff, menu wordmark flight, parked menu renderer) is kept and fed by the new 
 
 ## The picture
 
-Deep ink overhead, indigo toward eye level, and **light rising from below**: a luminous haze in
-the logo's own spectrum (lavender on the left, aqua ahead, mint to the right) with soft grain in
-it, as if a sea of light lay far beneath. Sheets of **silk light** (four veils) billow across the
-sky: the hero veil passes under the title and climbs out past its right shoulder, a thin thread
-of silk crosses above it, a faint veil hangs high and far, and a soft one crosses the foot of the
-frame as if out of focus. Folds that turn edge-on to the eye glow brightest, as a sheet of light
-does. A **halo** stands behind the wordmark, the first light.
+A deep, dark cosmos (since the 2026-10-16 pass below): a near-black void overhead, a faint violet
+nebula in wisps just under the title, and **light rising from below**: an abyssal glow (deep
+violet on the left, abyssal teal with a cyan mid-glow ahead, sea-green to the right) broken into
+wisps by soft grain, as if a sea of light lay far beneath. Sheets of **silk light** (four veils)
+billow across the sky: the hero veil passes under the title and climbs out past its right
+shoulder, a thin thread of silk crosses above it, a faint veil hangs high and far, and a soft
+one crosses the foot of the frame as if out of focus. Each is a deep jewel-toned sheet with one
+razor-thin cyan core; folds that turn edge-on to the eye glow brighter, as a sheet of light does.
+A cool **halo** stands behind the wordmark, the first light.
 
 The **pieces** rise at every depth on either side of the title, never through its column:
-solid tetrominoes (one fused rounded block each, never four cells) in lacquer of the logo's
-colours, lit by a cream key from above and by the haze from below, a clear coat mirroring the
-sky, the far ones sinking into the air. **Motes** of light rise through the whole depth; one in a
-hundred is close enough to open into a soft disc.
+solid tetrominoes (one fused rounded block each, never four cells) in a deepened lacquer of the
+logo's colours, lit by a cream key from above and faintly by the glow from below, a clear coat
+mirroring the sky, a cool rim (cyan below, violet above), the far ones sinking into the dark.
+**Motes** of light rise through the whole depth; one in a hundred is close enough to open into a
+soft disc.
 
 The whole world **breathes**: in for 4 s, out for 6 s (six breaths a minute). The haze, the
 halo, the veils' billow and the motes swell on the in-breath, and everything that rises rises a
@@ -114,6 +117,27 @@ down. The intro still draws at the Target Frame Rate and not at all while hidden
   `npm run build` with the boot-closure guard (the world is a 44.7 kB lazy chunk, 17.5 kB
   gzipped). Full unit suite: 955 of 957 files; the two failures are this machine's known
   environmental ones (`odyssey-level-briefing` locale, `tts-recorder-e2e` symlink EPERM).
+
+## Deep cosmos pass (2026-10-16)
+
+The first build read as a bright pastel nebula. This pass changed only colours, shader falloffs,
+blending and lighting; the choreography, timings, camera, ring, ribbon motion, geometry and UI
+layout are as they were, and so is the piece palette (the legal gate's input). The knobs, for
+fine-tuning:
+
+| Part | Before → after |
+|---|---|
+| Sky (`fl_sky`) | zenith / eye level `#020311` / `#0d1238` → `#03040A` / `#070A17`; violet lift `#2d235d` x0.8, exp(-30x²) → `#1F1647` x0.4 x grain wisps (0.15–1.45), exp(-70x²); low glow pastel (luma ~0.7) → band `#1F1647`/`#093542`/`#07383A` x0.85 (width 0.17 → 0.12) + core `#2A1E66`/`#007A8C`/`#007A78` x0.55, grain contrast x(0.55–1.45) → x(0.1–1.5); halo 0.17·exp(-42a²) + 0.065·exp(-8a²) → 0.06·exp(-110a²) + 0.008·exp(-30a²), `#8A6BFF` to cool white |
+| Veils | colours to deep jewel tones (hero `#2a1e6e #007a8c #035563`), gains hero/thread/far/near 1.0/1.35/0.42/0.5 → 1.0/1.0/0.15/0.22; body across² → across⁴ (soft veils keep across²); fold gain cap 2.6 → 2.0 plus a soft knee body/(1 + 0.5·body); hems 0.07/0.05 → 0.045/0.035 in the body's tone; new core: exp(-(v·halfWidth/0.15)²) in `#6CEBFF` → `#8FFFE0` at 0.85 x (1 − soft)³ |
+| Pieces | lacquer 20 % desaturated x0.82; uplight 0.5 → 0.28 in `#8A6BFF` / `#00C4DF`; ambient 0.03 → 0.016; own glow 0.075 + 0.06cos² → 0.04 + 0.03cos² (world glow 0.05 + 0.06b → 0.028 + 0.033b); rim → m³·0.55 `#8A6BFF` above to `#4AD8FF` below; key and specular unchanged |
+| Post | bloom threshold/knee/radius 0.9/0.45/0.7 → 1.0/0.35/0.45, strength High/Medium 0.62/0.58 → 0.52/0.48; wave edge width 0.012 → 0.009 at 0.12, wash 0.035 → 0.012, colour `#ede4f8` → `#ddf3ff` (bend unchanged); vignette 0.42 → 0.5 |
+| Motes | cool white / violet / cyan, gain 1.0 → 0.85, near discs 0.07 → 0.05 |
+| Loading screen, CSS fallback, bridge glow | the same void, abyssal teal and violet in `main.css` / `intro-animation.css`; `boot-aurora-scene.js` glow `#8A6BFF` to cool white at 0.16 / 0.04 (was 0.22 / 0.08, cream to lavender) |
+
+Measured on the playground title frame (stars eroded out): the background at or under `#120C2B`
+went from 3 % to 54 % (menu 78 %, under the loading screen 50 %, the opening's ring frame 41 %);
+corners `#2d324c` → `#02030a`. Real boot film: the loading screen hands into the opening with no
+bright step; clean console.
 
 ## Open
 
