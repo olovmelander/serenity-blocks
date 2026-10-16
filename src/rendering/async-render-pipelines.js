@@ -47,6 +47,10 @@
  * (Renderer.js:3858, Nodes.updateBefore), which render the scene through the same handler. Those
  * inner builds see the time the open outer build has spent, so a theme's first frame cannot build
  * its whole scene inside the quad's one charge (verdant-hills: 470 ms in one task, 2026-10-15).
+ * The budget is spent per TASK (a frame's callback, a createScene run): it opens at the task's first
+ * new build and closes at the next macrotask. It was a 14 ms wall-clock window, which a long frame
+ * refilled from its own length: each build over 14 ms reopened it for the next, so a frame of heavy
+ * materials never deferred one (koi-pond: 375 ms, sky-children: 213 ms in one frame, 2026-10-16).
  */
 const CUBE_UV_REFLECTION_MAPPING = 306; // three/src/constants.js
 const sessions = new Set();
@@ -61,8 +65,8 @@ let budgetPatched = null; // { proto, original, wrapped }
 let chargeDepth = 0;
 let chargeStart = 0;
 const budgetSessions = new Set();
-/** A budget window: build work beyond the budget inside one window waits for the next. */
-const BUDGET_WINDOW_MS = 14;
+/** Run `fn` at the next macrotask: the end of the task now running (a budget window's close). */
+const afterThisTask = (fn) => { setTimeout(fn, 0); };
 const diagnostics = { unownedSyncDuringSession: 0 };
 // Set while one of our wrappers runs: a copy of ours left inside a foreign wrapper chain (see
 // uninstallIfIdle) is then a pure pass-through instead of counting every create twice.
@@ -280,7 +284,8 @@ export function beginAsyncRenderPipelines(theme, {
     const stats = {
         async: 0, syncExempt: 0, failed: 0, errorScopeRepaired: 0, maxInFlight: 0,
     };
-    let budgetWindowStart = -Infinity;
+    // The budget window: open from a task's first new build until the next macrotask.
+    let budgetWindowOpen = false;
     let budgetSpent = 0;
     const adopted = new WeakSet();
     const engagedListeners = [];
@@ -304,14 +309,15 @@ export function beginAsyncRenderPipelines(theme, {
         deferredBuilds: 0,
         buildMs: 0,
         /**
-         * Whether a new render object may be built now (the budget window has room). `open` is the
-         * time an outer build still in progress has spent (not charged until it returns).
+         * Whether a new render object may be built now (this task's budget has room). `open` is the
+         * time an outer build still in progress has spent (not charged until it returns). A task's
+         * first build always may: the budget defers the ones after it.
          */
         chargeable(open = 0) {
-            const now = performance.now();
-            if (now - budgetWindowStart >= BUDGET_WINDOW_MS) {
-                budgetWindowStart = now;
+            if (!budgetWindowOpen) {
+                budgetWindowOpen = true;
                 budgetSpent = 0;
+                afterThisTask(() => { budgetWindowOpen = false; });
             }
             return budgetSpent + open < session.buildBudgetMs;
         },
