@@ -19,10 +19,14 @@ import { SAKURA_WATER_LEVEL, createSakuraBedTexture, sakuraBedUv } from './sakur
 export const SAKURA_UNMIRRORED_LAYER = 1;
 
 export class SakuraWater {
-    constructor({ light, sky, tier }) {
+    constructor({
+        light, sky, tier, samples = 0,
+    }) {
         this.light = light;
         this.sky = sky;
         this.tier = tier;
+        /** Samples of the mirror's target: the scene pass's, so a mirrored material builds one pipeline. */
+        this.samples = samples;
         this.group = new THREE.Group();
         this.group.name = 'SakuraLake';
         this.reflection = null;
@@ -63,7 +67,7 @@ export class SakuraWater {
         const material = new THREE.MeshBasicNodeMaterial({ fog: false });
         material.name = 'SakuraLake';
         if (tier.mirror > 0) {
-            this.reflection = reflector({ resolutionScale: tier.mirror, bounces: false, samples: 0 });
+            this.reflection = reflector({ resolutionScale: tier.mirror, bounces: false, samples: this.samples });
             this.reflection.target.rotation.x = -Math.PI / 2;
             this.reflection.target.position.y = SAKURA_WATER_LEVEL;
             this.group.add(this.reflection.target);

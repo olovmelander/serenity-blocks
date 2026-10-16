@@ -169,7 +169,9 @@ banks, the number of trees (4,000 … 38,000), the near props and the mote pool.
   against the other plates), so a plate shades as a mass and glows at its thin edge against a
   low sun. The needle texture is a bottlebrush shoot drawn in code, and its mip chain rescales each
   level's alpha to keep the alpha test's coverage (alpha-tested foliage otherwise thins to nothing
-  with distance; the scene pass has no MSAA, so alpha-to-coverage is not available). Bark carries
+  with distance). Since 2026-10-16 the scene pass is 4× MSAA from High up and the needles cut out
+  by three's alpha-to-coverage there (the same threshold, sharpened to a pixel; captures showed
+  no stipple), with the plain alpha test below High (docs/THEME_SCENE_ANTIALIASING_2026-10.md). Bark carries
   coordinates in metres round and along each stem with the seam turned away from the eye: long
   warped plates and furrows of varying width low down, papery orange flakes higher up. A patch of
   the summit round the tree multiplies in its shadow: each point's ray toward the sun is tested

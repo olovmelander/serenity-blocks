@@ -23,7 +23,7 @@
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
  *   brush=0|1                override the tier's painterly pass
- *   msaa=<n>                 override the scene pass's samples
+ *   msaa=<n>                 override the scene pass's samples (the water's mirror follows it)
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
  *   icon=1                   the theme-icon framing: a longer lens (compose for a small circle:
@@ -122,8 +122,14 @@ export function create({
     const saved = {
         fov: camera.fov, near: camera.near, far: camera.far, toneMapping: renderer.toneMapping,
     };
+    const look = { ...(POST_LOOK[quality] || POST_LOOK.High) };
+    if (params.has('bloom')) look.bloom = params.get('bloom') === '1';
+    if (params.has('brush')) look.brush = params.get('brush') === '1' ? (look.brush || 2) : 0;
+    if (params.has('msaa')) look.msaa = Math.max(0, Math.round(num(params, 'msaa')));
+    const noPost = params.get('noPost') === '1';
+    // The water's mirror takes the scene pass's samples, as in the theme.
     const world = new StillwaterWorld({
-        scene, quality, capture: true, renderer,
+        scene, quality, capture: true, renderer, samples: noPost ? 0 : look.msaa,
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
@@ -144,11 +150,6 @@ export function create({
         assets = 'failed';
     });
 
-    const look = { ...(POST_LOOK[quality] || POST_LOOK.High) };
-    if (params.has('bloom')) look.bloom = params.get('bloom') === '1';
-    if (params.has('brush')) look.brush = params.get('brush') === '1' ? (look.brush || 2) : 0;
-    if (params.has('msaa')) look.msaa = Math.max(0, Math.round(num(params, 'msaa')));
-    const noPost = params.get('noPost') === '1';
     const post = noPost ? null : new StillwaterPost(renderer, scene, camera, {
         look,
         falseColor: params.get('falseColor') === '1',

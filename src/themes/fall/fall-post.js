@@ -3,8 +3,9 @@
  *
  * Medium tiers and above grade the grove through a RenderPipeline: volumetric sun shafts
  * raymarched through the grove's real shadow map (three's GodraysNode), a restrained
- * hue-preserving bloom, a filmic curve with cool shadows, and FXAA for the leaf edges.
- * Low and Minimal draw the same scene directly with ACES tone mapping.
+ * hue-preserving bloom, a filmic curve with cool shadows, and smooth leaf edges: 4× MSAA in
+ * the scene pass from High up (`samples`, shared/scene-antialias.js), FXAA on a single-sampled
+ * pass. Low and Minimal draw the same scene directly with ACES tone mapping (the canvas's MSAA).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -20,7 +21,7 @@ import { fallTier } from './fall-quality.js';
 
 export class FallPost {
     constructor({
-        renderer, scene, camera, quality = 'High', light = null,
+        renderer, scene, camera, quality = 'High', light = null, samples = 0,
     }) {
         this.renderer = renderer;
         this.scene = scene;
@@ -29,6 +30,7 @@ export class FallPost {
         this.tier = fallTier(quality);
         this.light = light;
         this.disabled = !this.tier.post;
+        this.samples = this.disabled ? 0 : samples;
         this.useMRT = false;
         this.disposed = false;
         this.uAspect = uniform(16 / 9);
@@ -38,7 +40,7 @@ export class FallPost {
         this.sunPoint = new THREE.Vector3();
         if (this.disabled) return;
         this.pipeline = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera, { samples: 0 });
+        this.scenePass = pass(scene, camera, { samples: this.samples });
         const sceneColor = this.scenePass.getTextureNode('output');
         const sceneDepth = this.scenePass.getTextureNode('depth');
         let lit = sceneColor.rgb;
@@ -78,7 +80,8 @@ export class FallPost {
             toned.mulAssign(float(1).sub(smoothstep(0.7, 1.7, radius).mul(0.2)));
             return renderOutput(vec4(clamp(toned, 0, 1), 1), THREE.NoToneMapping);
         })();
-        this.pipeline.outputNode = fxaa(graded);
+        // A multisampled pass is already smooth; FXAA over it would only soften the edges.
+        this.pipeline.outputNode = this.samples > 0 ? graded : fxaa(graded);
     }
 
     /**
@@ -93,7 +96,7 @@ export class FallPost {
             renderer.render(scene, camera);
             return;
         }
-        const target = new THREE.RenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 0 });
+        const target = new THREE.RenderTarget(4, 4, { type: THREE.HalfFloatType, samples: this.samples });
         target.depthTexture = new THREE.DepthTexture(4, 4);
         const previous = renderer.getRenderTarget?.() ?? null;
         try {

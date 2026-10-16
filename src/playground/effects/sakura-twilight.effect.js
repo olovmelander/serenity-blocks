@@ -1,4 +1,5 @@
 import * as THREE from 'three/webgpu';
+import { sceneSamples } from '../../themes/shared/scene-antialias.js';
 import { loadSakuraAssets, disposeSakuraAssets } from '../../themes/sakura-twilight/sakura-assets.js';
 import { SakuraWorld } from '../../themes/sakura-twilight/sakura-world.js';
 import { SakuraReactions } from '../../themes/sakura-twilight/sakura-reactions.js';
@@ -22,6 +23,9 @@ export function create({
         shadows: renderer.shadowMap.enabled,
     };
     const quality = params.get('quality') || 'High';
+    // ?msaa=<n> overrides the scene pass's samples (the theme's own: 4 from High up, else 0 + FXAA).
+    const samples = params.has('msaa')
+        ? Math.max(0, Math.round(Number(params.get('msaa')) || 0)) : sceneSamples(quality);
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1;
     renderer.shadowMap.enabled = true;
@@ -67,10 +71,10 @@ export function create({
         }
         assets = loaded;
         world = new SakuraWorld({
-            scene, camera, quality, rng, assets,
+            scene, camera, quality, rng, assets, samples,
         }).build();
         post = new SakuraPost({
-            renderer, scene, camera, quality, light: world.light, prime: () => world.primeShadows(renderer),
+            renderer, scene, camera, quality, light: world.light, samples, prime: () => world.primeShadows(renderer),
         });
         post.setSize(window.innerWidth, window.innerHeight);
         frameIcon();

@@ -605,8 +605,9 @@ describe('Moonlit Greenhouse theme: one node renderer on both backends', () => {
         expect(theme.post).toBe(mocks.posts[0]);
         expect(theme.post).toMatchObject({ renderer: theme.renderer, scene: theme.scene, camera: theme.camera });
         // The post walks the air with the world's own uniforms and noise (the built world's).
+        // The game's antialiasing setting rides along: it gates the FXAA.
         expect(theme.post.params).toEqual({
-            look: POST_LOOK.High, falseColor: false, U: theme.world.U, noise: theme.world.noise,
+            look: POST_LOOK.High, antialias: true, falseColor: false, U: theme.world.U, noise: theme.world.noise,
         });
         expect(theme.post.params.U).toBe(theme.world.U);
         expect(theme.post.params.noise).toBe(theme.world.noise);

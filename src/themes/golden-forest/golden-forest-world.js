@@ -25,12 +25,14 @@ import { drainSteps } from '../shared/build-steps.js';
 
 export class GoldenForestWorld {
     constructor({
-        scene, camera, quality = 'High', rng = Math.random, assets,
+        scene, camera, quality = 'High', rng = Math.random, assets, samples = 0,
     }) {
         this.scene = scene;
         this.camera = camera;
         this.quality = quality;
         this.tier = goldenForestTier(quality);
+        /** The scene pass's samples; the lake's mirror takes the same (shared/scene-antialias.js). */
+        this.samples = samples;
         this.rng = rng;
         this.assets = assets;
         this.group = new THREE.Group();
@@ -102,7 +104,9 @@ export class GoldenForestWorld {
         this.group.add(this.sparks.group);
         this.sparks.build();
         yield 'sparks';
-        this.lake = new GoldenForestLake({ light, tier, lakeMap: this.terrain.lakeMap });
+        this.lake = new GoldenForestLake({
+            light, tier, lakeMap: this.terrain.lakeMap, samples: this.samples,
+        });
         this.group.add(this.lake.group);
         this.lake.build();
         yield 'lake';

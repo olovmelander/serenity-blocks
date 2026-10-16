@@ -92,11 +92,13 @@ async function loadBundle({
     return assets;
 }
 
-function createWorld(quality, assets, { seed = 187, aspect = LANDSCAPE, track = true } = {}) {
+function createWorld(quality, assets, {
+    seed = 187, aspect = LANDSCAPE, track = true, samples,
+} = {}) {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(50, aspect, 0.3, 4000);
     const world = new SakuraWorld({
-        scene, camera, quality, rng: seededRandom(seed), assets,
+        scene, camera, quality, rng: seededRandom(seed), assets, samples,
     });
     if (track) owned.push(world);
     return {
@@ -2982,5 +2984,17 @@ describe('Sakura post tier ownership', () => {
         camera.aspect = LANDSCAPE;
         camera.updateProjectionMatrix();
         world.prepareCamera(LANDSCAPE);
+    });
+});
+
+describe('Sakura Twilight mirror samples', () => {
+    it('takes the scene pass\'s sample count, so a mirrored material builds one pipeline', async () => {
+        // From High up with antialiasing on the theme hands its world 4 (shared/scene-antialias.js).
+        const { world } = await buildWorld('High', { samples: 4 });
+        expect(world.samples).toBe(4);
+        expect(world.water.reflection.reflector.samples).toBe(4);
+        // Without it (a single-sampled pass, or no option at all) the mirror stays single-sampled.
+        const plain = (await buildWorld('High')).world;
+        expect(plain.water.reflection.reflector.samples).toBe(0);
     });
 });

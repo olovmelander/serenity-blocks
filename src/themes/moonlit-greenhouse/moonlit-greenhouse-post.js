@@ -16,7 +16,10 @@
  *   → the air laid over the scene (extinction by distance, then its light)
  *   → calm zones (what shows through the translucent card and HUD is soft-clipped, its glare
  *   attenuated) → bloom → the night's exposure, the event flash → a hue-preserving filmic curve
- *   → the night's grade → vignette → sRGB → grain and dither (→ FXAA on Medium).
+ *   → the night's grade → vignette → sRGB → grain and dither → FXAA (every tier but Minimal: on
+ *   Medium and Low it smooths a single-sampled pass; from High up it follows the MSAA, for the
+ *   leaves' and the lattice's cut-out edges, which a discard draws whole-pixel and coverage
+ *   cannot smooth here without a stipple, see moonlit-greenhouse-flora.js).
  *
  * Tone mapping happens exactly once: renderer.toneMapping = NoToneMapping and the pipeline's
  * outputColorTransform is off (the output node encodes sRGB itself).
@@ -35,23 +38,23 @@ import { mgCanopy, mgMoonlightBay } from './moonlit-greenhouse-tsl.js';
 /**
  * Per-tier look. `bloom: false` builds no BloomNode; `march` is the number of steps each pixel
  * walks through the air and `marchScale` the size of its target; `msaa` the scene pass's
- * samples; `fxaa` smooths a single-sample pass.
+ * samples; `fxaa` smooths the cut-out edges (and, on a single-sample pass, every edge).
  */
 export const POST_LOOK = Object.freeze({
     Extreme: {
-        msaa: true, bloom: true, bloomStrength: 0.42, bloomResolution: 0.5, march: 36, marchScale: 0.5, fxaa: false,
+        msaa: true, bloom: true, bloomStrength: 0.42, bloomResolution: 0.5, march: 36, marchScale: 0.5, fxaa: true,
     },
     Ultra: {
-        msaa: true, bloom: true, bloomStrength: 0.42, bloomResolution: 0.5, march: 30, marchScale: 0.5, fxaa: false,
+        msaa: true, bloom: true, bloomStrength: 0.42, bloomResolution: 0.5, march: 30, marchScale: 0.5, fxaa: true,
     },
     High: {
-        msaa: true, bloom: true, bloomStrength: 0.4, bloomResolution: 0.45, march: 24, marchScale: 0.5, fxaa: false,
+        msaa: true, bloom: true, bloomStrength: 0.4, bloomResolution: 0.45, march: 24, marchScale: 0.5, fxaa: true,
     },
     Medium: {
         msaa: false, bloom: true, bloomStrength: 0.38, bloomResolution: 0.33, march: 18, marchScale: 0.4, fxaa: true,
     },
     Low: {
-        msaa: false, bloom: false, bloomStrength: 0, bloomResolution: 0.25, march: 13, marchScale: 0.33, fxaa: false,
+        msaa: false, bloom: false, bloomStrength: 0, bloomResolution: 0.25, march: 13, marchScale: 0.33, fxaa: true,
     },
     Minimal: {
         msaa: false, bloom: false, bloomStrength: 0, bloomResolution: 0.25, march: 9, marchScale: 0.25, fxaa: false,
@@ -125,6 +128,7 @@ export class MoonlitGreenhousePost {
      * @param {THREE.Camera} camera
      * @param {object} params
      * @param {object} params.look        POST_LOOK entry
+     * @param {boolean} [params.antialias=true] the game's antialiasing setting (off: no FXAA)
      * @param {boolean} [params.falseColor=false]
      * @param {object} [params.U]         the world's uniforms (the moon, the night, the lights)
      * @param {THREE.Texture} [params.noise]  the world's noise (the mist's billows)
@@ -269,7 +273,7 @@ export class MoonlitGreenhousePost {
 
         this.pipeline.outputColorTransform = false;
         // FXAA renders its input to a hidden target of its own: kept, so dispose() can free it.
-        this.fxaaNode = look.fxaa && !falseColor ? fxaa(outputFn()) : null;
+        this.fxaaNode = look.fxaa && params.antialias !== false && !falseColor ? fxaa(outputFn()) : null;
         this.pipeline.outputNode = this.fxaaNode || outputFn();
         this.pipeline.needsUpdate = true;
     }

@@ -5,8 +5,10 @@
  * raymarched through the real shadow map (three's GodraysNode), so the birch and the
  * maypole cut their own beams out of the evening air; a hue-preserving bloom that lets the
  * sun, the glitter on the lake and backlit petals glow without washing out; a filmic curve
- * that keeps the greens fresh and the shadows cool; and FXAA for the grass. Low and Minimal
- * draw the same scene directly with ACES tone mapping.
+ * that keeps the greens fresh and the shadows cool; and smooth grass and birch edges: 4× MSAA
+ * in the scene pass from High up (`samples`, shared/scene-antialias.js; the lake's mirror
+ * matches it), FXAA on a single-sampled pass. Low and Minimal draw the same scene directly
+ * with ACES tone mapping (the canvas's MSAA).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -24,7 +26,7 @@ const BLOOM_STRENGTH = 0.2;
 
 export class SummerPost {
     constructor({
-        renderer, scene, camera, quality = 'High', light = null,
+        renderer, scene, camera, quality = 'High', light = null, samples = 0,
     }) {
         this.renderer = renderer;
         this.scene = scene;
@@ -33,6 +35,7 @@ export class SummerPost {
         this.tier = summerTier(quality);
         this.light = light;
         this.disabled = !this.tier.post;
+        this.samples = this.disabled ? 0 : samples;
         this.useMRT = false;
         this.disposed = false;
         this.uAspect = uniform(16 / 9);
@@ -44,7 +47,7 @@ export class SummerPost {
         this.sunPoint = new THREE.Vector3();
         if (this.disabled) return;
         this.pipeline = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera, { samples: 0 });
+        this.scenePass = pass(scene, camera, { samples: this.samples });
         const sceneColor = this.scenePass.getTextureNode('output');
         const sceneDepth = this.scenePass.getTextureNode('depth');
         let lit = sceneColor.rgb;
@@ -88,7 +91,8 @@ export class SummerPost {
             toned.mulAssign(float(1).sub(smoothstep(0.78, 1.75, radius).mul(0.2)));
             return renderOutput(vec4(clamp(toned, 0, 1), 1), THREE.NoToneMapping);
         })();
-        this.pipeline.outputNode = fxaa(graded);
+        // A multisampled pass is already smooth; FXAA over it would only soften the edges.
+        this.pipeline.outputNode = this.samples > 0 ? graded : fxaa(graded);
     }
 
     /**
@@ -103,7 +107,7 @@ export class SummerPost {
             renderer.render(scene, camera);
             return;
         }
-        const target = new THREE.RenderTarget(4, 4, { type: THREE.HalfFloatType, samples: 0 });
+        const target = new THREE.RenderTarget(4, 4, { type: THREE.HalfFloatType, samples: this.samples });
         target.depthTexture = new THREE.DepthTexture(4, 4);
         const previous = renderer.getRenderTarget?.() ?? null;
         try {

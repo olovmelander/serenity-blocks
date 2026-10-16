@@ -31,7 +31,7 @@ const LAKE_HEART_Z = -22;
 
 export class SakuraWorld {
     constructor({
-        scene, camera, quality = 'High', rng = Math.random, assets, petalWorker = false,
+        scene, camera, quality = 'High', rng = Math.random, assets, petalWorker = false, samples = 0,
     }) {
         this.scene = scene;
         /** Step the petals in a worker (the theme in play; never tests and captures). */
@@ -39,6 +39,8 @@ export class SakuraWorld {
         this.camera = camera;
         this.quality = quality;
         this.tier = sakuraTier(quality);
+        /** The scene pass's samples; the lake's mirror takes the same (shared/scene-antialias.js). */
+        this.samples = samples;
         this.rng = rng;
         this.assets = assets;
         this.group = new THREE.Group();
@@ -108,7 +110,9 @@ export class SakuraWorld {
         this.group.add(this.foxes.group);
         this.foxes.build();
         yield 'foxes';
-        this.water = new SakuraWater({ light, sky: this.sky, tier });
+        this.water = new SakuraWater({
+            light, sky: this.sky, tier, samples: this.samples,
+        });
         this.group.add(this.water.group);
         this.water.build();
         yield 'water';

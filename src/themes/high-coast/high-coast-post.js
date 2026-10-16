@@ -1,14 +1,16 @@
 /**
  * High Coast — post stack (TSL RenderPipeline, both WebGPURenderer backends).
  *
- * One scene pass (no MRT, no MSAA), one bloom chain (Medium and up), sun shafts (High and up: a
- * short double march toward the sun's place on screen over the sky the land has not covered),
- * and ONE full-screen output pass:
+ * One scene pass (no MRT; 4× MSAA from High up, `params.samples` from shared/scene-antialias.js,
+ * so the islands, the tree lines and the pine's needles step smoothly against the bright sea and
+ * sky), one bloom chain (Medium and up), sun shafts (High and up: a short double march toward the
+ * sun's place on screen over the sky the land has not covered), and ONE full-screen output pass:
  *
  *   calm zones (what shows through the translucent board card and HUD is soft-clipped and its
  *   bloom held back) → bloom + shafts → exposure (the hour's) → filmic (a hue-preserving shoulder
  *   on the max channel; only the hottest values roll toward white) → grade (warm lights, cool
- *   shadows, a touch of saturation) → vignette → sRGB → grain and dither.
+ *   shadows, a touch of saturation) → vignette → sRGB → grain and dither → FXAA (Low, Medium:
+ *   the single-sampled tiers).
  *
  * Tone mapping happens exactly once: renderer.toneMapping = NoToneMapping and the pipeline's
  * outputColorTransform is off (the output node encodes sRGB itself).
@@ -41,30 +43,38 @@ import {
     vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
 import { hcHash21, hcLuma, hcMax3 } from './high-coast-tsl.js';
 
-/** Per-tier look. `bloom: false` builds no BloomNode; `shafts` the sun's shafts. */
-export const POST_LOOK = Object.freeze({
+/**
+ * Per-tier look. `bloom: false` builds no BloomNode; `shafts` the sun's shafts; `msaa` the scene
+ * pass's samples with the game's antialiasing on (the shared table); `fxaa` smooths a
+ * single-sampled pass (the MSAA tiers need none).
+ */
+const LOOKS = {
     Extreme: {
-        bloom: true, bloomStrength: 0.34, bloomResolution: 0.5, shafts: true,
+        bloom: true, bloomStrength: 0.34, bloomResolution: 0.5, shafts: true, fxaa: false,
     },
     Ultra: {
-        bloom: true, bloomStrength: 0.34, bloomResolution: 0.5, shafts: true,
+        bloom: true, bloomStrength: 0.34, bloomResolution: 0.5, shafts: true, fxaa: false,
     },
     High: {
-        bloom: true, bloomStrength: 0.32, bloomResolution: 0.45, shafts: true,
+        bloom: true, bloomStrength: 0.32, bloomResolution: 0.45, shafts: true, fxaa: false,
     },
     Medium: {
-        bloom: true, bloomStrength: 0.3, bloomResolution: 0.33, shafts: false,
+        bloom: true, bloomStrength: 0.3, bloomResolution: 0.33, shafts: false, fxaa: true,
     },
     Low: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: false,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: false, fxaa: true,
     },
     Minimal: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: false,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: false, fxaa: false,
     },
-});
+};
+export const POST_LOOK = Object.freeze(Object.fromEntries(Object.entries(LOOKS)
+    .map(([tier, look]) => [tier, { ...look, msaa: sceneSamples(tier) }])));
 
 export const BLOOM_THRESHOLD = 1.05;
 export const BLOOM_KNEE = 0.45;
@@ -106,13 +116,16 @@ export class HighCoastPost {
      * @param {THREE.Camera} camera
      * @param {object} params
      * @param {object} params.look        POST_LOOK entry
+     * @param {number} [params.samples=0] the scene pass's MSAA samples (shared/scene-antialias.js)
+     * @param {boolean} [params.antialias=true] the game's antialiasing setting (off: no FXAA either)
      * @param {boolean} [params.falseColor=false]
      */
     constructor(renderer, scene, camera, params = {}) {
         const look = params.look || POST_LOOK.High;
         this.look = look;
+        this.samples = params.samples ?? 0;
         this.pipeline = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera, { samples: 0 });
+        this.scenePass = pass(scene, camera, { samples: this.samples });
         const sceneColor = this.scenePass.getTextureNode('output');
         const sceneDepth = look.shafts ? this.scenePass.getTextureNode('depth') : null;
 
@@ -264,7 +277,10 @@ export class HighCoastPost {
         });
 
         this.pipeline.outputColorTransform = false;
-        this.pipeline.outputNode = outputFn();
+        // FXAA only over a single-sampled pass, and never over the false-colour view.
+        const smooth = look.fxaa && this.samples === 0 && params.antialias !== false && !falseColor;
+        this.fxaaNode = smooth ? fxaa(outputFn()) : null;
+        this.pipeline.outputNode = this.fxaaNode || outputFn();
         this.pipeline.needsUpdate = true;
     }
 
@@ -314,9 +330,12 @@ export class HighCoastPost {
     dispose() {
         this.scenePass?.dispose();
         if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
+        // FXAA reads the graded picture through a render target of its own.
+        this.fxaaNode?.textureNode?.dispose?.();
         this.pipeline?.dispose();
         this.scenePass = null;
         this.bloomNode = null;
+        this.fxaaNode = null;
         this.pipeline = null;
     }
 }
