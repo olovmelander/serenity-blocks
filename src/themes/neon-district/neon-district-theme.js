@@ -43,6 +43,7 @@ import { POST_LOOK, NeonDistrictPost, createPassThroughPipeline } from './neon-d
 import { PLAYER_SLOTS, readLayoutRects } from './neon-district-composition.js';
 import { NEON_DISTRICT_EVENT_HANDLERS, NeonDistrictDirector } from './neon-district-director.js';
 import { approach } from './neon-district-core.js';
+import { neonDistrictBakes } from './neon-district-bakes.js';
 
 const THEME_ID = 'neon-district';
 const LOG_PREFIX = '[NeonDistrict]';
@@ -188,6 +189,9 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The noise and the glyph atlas (0.11 s of main thread on a first visit) bake in a worker
+        // while the renderer comes up; the build below finds them in the bake cache.
+        const baking = neonDistrictBakes();
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -209,6 +213,9 @@ export default class NeonDistrictTheme extends BaseTheme {
         this.scene = new THREE.Scene();
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+
+        await baking;
+        if (!isCurrent()) return;
 
         try {
             this.world = new NeonDistrictWorld({
