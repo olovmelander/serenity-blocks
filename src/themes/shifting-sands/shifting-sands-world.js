@@ -23,6 +23,7 @@ import { WORM_SLOTS, WormDirector, createWorm } from './shifting-sands-worm.js';
 import {
     BLOW_SLOTS, FX_TIERS, createSpiceBlows, createSpiceMotes, createSpindrift, createWormSand,
 } from './shifting-sands-fx.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 const DEG = Math.PI / 180;
 
@@ -91,6 +92,16 @@ export class ShiftingSandsWorld {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, the heavy parts a step each (the formations' lathes, the terrain's bake):
+     * run at once by build(), or with a breath between steps while the theme comes in
+     * (shared/build-steps.js). The same parts in the same order.
+     */
+    * buildSteps() {
         const wind = windDirXZ();
         const sunA = dirFromAzEl(SUNS.a.az, SUNS.a.el);
         const sunB = dirFromAzEl(SUNS.b.az, SUNS.b.el);
@@ -129,6 +140,7 @@ export class ShiftingSandsWorld {
         }));
         this.appliedDusk = -1;
         this.applyDusk(0);
+        yield 'atmosphere';
 
         // ── The erg ──
         this.field = new DuneField({ wind, offset: { x: 1830, z: -420 } });
@@ -136,11 +148,13 @@ export class ShiftingSandsWorld {
         this.rocks = createFormations({ field: this.field, shared: s, detail: this.tier.rockDetail ?? 1 });
         this.field.extraHeight = this.rocks.heightAt;
         this.group.add(this.rocks.mesh);
+        yield 'formations';
         const mid = sunA.clone().add(sunB).multiplyScalar(0.5).normalize();
         this.terrain = createTerrain({
             field: this.field, shared: s, tierName: this.quality, shadowDir: mid,
         });
         this.group.add(this.terrain.mesh);
+        yield 'terrain';
 
         // ── Sky ──
         this.sky = createSky(s, {
@@ -166,6 +180,7 @@ export class ShiftingSandsWorld {
         });
         this.flash = 0;
         this.rumble = 0;
+        yield 'sky and worm';
 
         // ── Sand, spice and dust ──
         const fx = FX_TIERS[this.quality] || FX_TIERS.High;
@@ -197,7 +212,6 @@ export class ShiftingSandsWorld {
         this.director.idleBreach(0);
 
         this.scene.add(this.group);
-        return this;
     }
 
     /** Debug/perf: draw only these parts (dunes, sky, rocks, worm, fx). */
