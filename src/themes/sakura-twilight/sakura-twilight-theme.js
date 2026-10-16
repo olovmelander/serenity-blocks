@@ -276,7 +276,14 @@ export default class SakuraTwilightTheme extends BaseTheme {
         const rng = seededRandom(Number.isFinite(seed) ? seed : DEFAULT_SEED);
         this.reactions = new SakuraReactions({ quality: this.quality, rng });
         const world = new SakuraWorld({
-            scene: this.scene, camera: this.camera, quality: this.quality, rng, assets: this.assets,
+            scene: this.scene,
+            camera: this.camera,
+            quality: this.quality,
+            rng,
+            assets: this.assets,
+            // The petals step in a worker in play (2-3 ms of a storm frame on the page otherwise);
+            // ?sakuraSyncPetals=1 keeps them on the page.
+            petalWorker: !enabledParam(searchParams(), 'sakuraSyncPetals'),
         });
         // Built in steps with a breath between them (one long task otherwise), and the theme's only
         // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.

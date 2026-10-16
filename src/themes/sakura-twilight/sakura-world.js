@@ -31,9 +31,11 @@ const LAKE_HEART_Z = -22;
 
 export class SakuraWorld {
     constructor({
-        scene, camera, quality = 'High', rng = Math.random, assets,
+        scene, camera, quality = 'High', rng = Math.random, assets, petalWorker = false,
     }) {
         this.scene = scene;
+        /** Step the petals in a worker (the theme in play; never tests and captures). */
+        this.petalWorker = petalWorker;
         this.camera = camera;
         this.quality = quality;
         this.tier = sakuraTier(quality);
@@ -118,7 +120,7 @@ export class SakuraWorld {
         yield 'spirits';
         const crownPoints = this.forest.sampleCrownPoints(Math.min(1200, tier.petals));
         this.petals = new SakuraPetals({
-            light, blossoms: assets.blossoms, tier, rng, crownPoints,
+            light, blossoms: assets.blossoms, tier, rng, crownPoints, worker: this.petalWorker,
         });
         this.group.add(this.petals.group);
         this.petals.build();
