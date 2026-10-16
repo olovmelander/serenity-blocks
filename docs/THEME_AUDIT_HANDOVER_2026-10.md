@@ -52,7 +52,9 @@ owner at the machine.
 > - **2026-10-16 afternoon, branch `perf/theme-pass-2026-10-16b`** (record §10.3): a fleet sweep on
 >   the merged main (no load task over 235 ms), then Cinder Drift's plan, Supernova, Neon District
 >   and Golden Forest bakes in workers, Shifting Sands and Sakura in steps, and Sakura's petals in a
->   worker in play. Left: Summer's storms (its petal sim in a worker), rainbark's heavy shaders.
+>   worker in play. A same-build on/off test confirmed Sakura's petal worker and rejected the same
+>   worker for Summer (it lost frames although the main thread got lighter): test any per-frame
+>   offload that way. Left: Summer's storms (GPU side), rainbark's heavy shaders.
 > - **The worktree** `C:\Users\olov_\repos\serenity-blocks-thmaudit` is left detached at
 >   `origin/main`. Every probe and raw result is in its git-ignored `.cache/theme-audit/`.
 > - **Branching for the perf pass:** one working branch, one commit per fix, merges at batch
