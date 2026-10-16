@@ -2012,78 +2012,99 @@ body.custom-cursor-active.serenity-volume-dragging * {
 }
 
 /* =================================================================================
- * Controls overlay (/ or Select in Serenity Mode)
+ * Controls overlay (/ or Select in Serenity Mode): a title card over the world, in the
+ * breathing guide's language. No panel: the world dims beneath an even night, the words sit
+ * centred on it, and the eyebrow wears the theme's own light (--serenity-accent). A press
+ * anywhere, the key again, or ten seconds, and it is gone.
  * ================================================================================ */
 #gamepad-hints-overlay.gamepad-hints {
-    --sb-accent-rgb: var(--sb-mint-rgb);
+    --hint-accent: var(--serenity-accent, var(--sb-mint-rgb));
     position: fixed;
-    right: 20px;
-    bottom: 20px;
+    inset: 0;
     z-index: 3000;
-    width: min(460px, calc(100vw - 32px));
+    display: grid;
+    align-content: center;
+    justify-items: center;
+    width: auto;
     max-width: none;
-    max-height: calc(100vh - 40px);
+    max-height: none;
     overflow-y: auto;
     box-sizing: border-box;
-    padding: 24px 24px 18px;
-    border-radius: var(--sb-r-lg);
-    border: 1px solid var(--sb-line);
+    padding: 56px 24px;
+    border: 0;
+    border-radius: 0;
     background:
-        radial-gradient(90% 60% at 100% 0%, rgba(var(--sb-mint-rgb), 0.08), transparent 70%),
-        linear-gradient(180deg, rgba(27, 23, 60, 0.95), rgba(12, 10, 30, 0.97));
-    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
-    color: var(--sb-text);
+        radial-gradient(ellipse 60% 50% at 50% 30%, rgba(var(--hint-accent), 0.08), transparent 70%),
+        radial-gradient(ellipse 80% 80% at 50% 50%, rgba(7, 6, 22, 0.84), rgba(7, 6, 22, 0.72));
+    box-shadow: none;
+    color: rgb(var(--sb-cream-rgb));
     font-family: var(--sb-font-text);
+    cursor: default;
     opacity: 0;
-    translate: 0 10px;
+    translate: 0 0;
     transform: none;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(var(--sb-cream-rgb), 0.2) transparent;
-    transition:
-        opacity 0.3s linear,
-        translate 0.3s var(--sb-ease-lock);
+    scrollbar-width: none;
+    transition: opacity 0.45s ease;
+    -webkit-font-smoothing: antialiased;
 }
 
-#gamepad-hints-overlay.gamepad-hints.visible {
-    opacity: 1;
-    translate: 0 0;
-    animation: sb-rise-in 0.42s var(--sb-ease-lock) both;
-}
+#gamepad-hints-overlay.gamepad-hints.visible { opacity: 1; }
 
 #gamepad-hints-overlay .hint-head {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    margin-bottom: 18px;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 34px;
+    text-align: center;
 }
+
+#gamepad-hints-overlay .hint-head .sb-eyebrow { color: rgb(var(--hint-accent)); }
+#gamepad-hints-overlay .hint-head .sb-eyebrow::before { background: currentColor; }
 
 #gamepad-hints-overlay .hint-heading {
     margin: 0;
-    font: 700 1.25rem / 1.1 var(--sb-font-display);
-    letter-spacing: -0.005em;
+    font: 700 clamp(26px, 2.8vw, 38px) / 1.1 var(--sb-font-display);
+    letter-spacing: -0.01em;
+    text-shadow: 0 2px 22px rgba(0, 0, 0, 0.7);
+}
+
+#gamepad-hints-overlay .hint-section {
+    width: min(760px, 92vw);
 }
 
 #gamepad-hints-overlay .hint-section + .hint-section {
-    margin-top: 18px;
-    padding-top: 16px;
-    border-top: 1px solid var(--sb-line);
+    margin-top: 30px;
+    padding-top: 0;
+    border-top: 0;
 }
 
 #gamepad-hints-overlay .hint-title {
-    margin: 0 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin: 0 0 16px;
     padding: 0;
     border: 0;
-    color: var(--sb-text-faint);
+    color: rgba(var(--sb-cream-rgb), 0.5);
     font: 600 0.5625rem / 1 var(--sb-font-display);
     letter-spacing: 0.22em;
     text-align: left;
     text-transform: uppercase;
 }
 
+/* A hairline runs from the section's name to the edge, as the guide's bar does. */
+#gamepad-hints-overlay .hint-title::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: linear-gradient(90deg, rgba(var(--sb-cream-rgb), 0.18), transparent);
+}
+
 #gamepad-hints-overlay .hint-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px 18px;
+    gap: 14px 40px;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -2092,45 +2113,62 @@ body.custom-cursor-active.serenity-volume-dragging * {
 #gamepad-hints-overlay .hint-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
     min-width: 0;
     padding: 0;
     border-radius: 0;
     background: none;
-    color: var(--sb-text-muted);
-    font: 500 var(--sb-fs-small) / 1.3 var(--sb-font-text);
+    color: rgba(var(--sb-cream-rgb), 0.84);
+    font: 500 0.9375rem / 1.3 var(--sb-font-text);
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
     transform: none;
 }
 
 #gamepad-hints-overlay .hint-keys {
     display: inline-flex;
     flex: none;
+    justify-content: flex-end;
     gap: 4px;
+    min-width: 64px;
 }
 
 #gamepad-hints-overlay .sb-kbd {
-    min-width: 26px;
-    height: 24px;
-    padding: 0 7px;
-    color: var(--sb-text);
-    font: 600 0.625rem / 1 var(--sb-font-display);
+    min-width: 30px;
+    height: 28px;
+    padding: 0 8px;
+    color: rgb(var(--sb-cream-rgb));
+    font: 600 0.6875rem / 1 var(--sb-font-display);
     letter-spacing: 0.04em;
     text-transform: none;
 }
 
 #gamepad-hints-overlay .hint-footer {
-    margin: 18px 0 0;
-    padding: 14px 0 0;
-    border-top: 1px solid var(--sb-line);
-    color: var(--sb-text-faint);
-    font: 500 0.75rem / 1.4 var(--sb-font-text);
+    margin: 34px 0 0;
+    padding: 0;
+    border-top: 0;
+    color: rgba(var(--sb-cream-rgb), 0.5);
+    font: 500 0.8125rem / 1.4 var(--sb-font-text);
     font-style: normal;
-    text-align: left;
+    text-align: center;
 }
 
 #gamepad-hints-overlay .hint-footer .sb-kbd {
     margin: 0 3px;
     vertical-align: middle;
+}
+
+@media (max-width: 640px) {
+    #gamepad-hints-overlay.gamepad-hints {
+        align-content: start;
+        padding: calc(var(--sb-play-inset, 16px) + var(--sb-play-tile, 40px) + 24px) 20px 32px;
+    }
+
+    #gamepad-hints-overlay .hint-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+    }
+
+    #gamepad-hints-overlay .hint-item { font-size: 0.875rem; }
 }
 
 /* =================================================================================

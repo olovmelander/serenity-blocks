@@ -569,7 +569,8 @@ export class SerenityHub {
         }, { signal });
         // …and where you breathe (its own world, or over the theme): the guide's own button.
         window.addEventListener('breathingOverThemeChange', (event) => {
-            this.serenityMode?.deps?.settingsManager?.update?.({ breathingOverTheme: Boolean(event.detail?.overTheme) });
+            const overTheme = Boolean(event.detail?.overTheme);
+            this.serenityMode?.deps?.settingsManager?.update?.({ breathingOverTheme: overTheme });
         }, { signal });
 
         // Panel mouse enter/leave handlers
@@ -1249,7 +1250,9 @@ export class SerenityHub {
                 <h3 class="hint-title">With the hub open</h3>
                 <ul class="hint-grid">${rows(inHub)}</ul>
             </section>
-            <p class="hint-footer">Press <kbd class="sb-kbd">${hideKey}</kbd> again to hide</p>`;
+            <p class="hint-footer">Press <kbd class="sb-kbd">${hideKey}</kbd> again, or anywhere, to hide</p>`;
+        // It covers the world like a title card: a press anywhere puts it away.
+        overlay.addEventListener('click', () => this.toggleButtonHints());
         document.body.appendChild(overlay);
 
         // Steps away by itself after ten seconds.
