@@ -65,7 +65,9 @@ import {
 } from './cinder-drift-tsl.js';
 import { HeatField } from './cinder-drift-heat.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
-import { SHORE_SIZE, buildPlan } from './cinder-drift-layout.js';
+import {
+    buildPlan, PLAN_SEED, planFromData, SHORE_SIZE,
+} from './cinder-drift-layout.js';
 import { tierFor } from './cinder-drift-quality.js';
 import { createLake } from './cinder-drift-lake.js';
 import { createColumns, createShell } from './cinder-drift-rock.js';
@@ -78,6 +80,7 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './cinder-drift-composition.js';
 import { drainSteps } from '../shared/build-steps.js';
+import { takeBakedPlan } from './cinder-drift-bakes.js';
 
 /** The rest camera: standing on a ledge over the lake, looking down the chamber. */
 export const REST_RIG = Object.freeze({
@@ -133,7 +136,9 @@ export class CinderDriftWorld {
         this.tier = tierFor(quality);
         this.renderer = renderer;
         this.capture = capture;
-        this.plan = buildPlan({ seed, detail: this.tier.detail });
+        // A first visit's worker baked the plan (cinder-drift-bakes.js): taken once, readers made here.
+        const baked = takeBakedPlan(seed ?? PLAN_SEED, this.tier.detail);
+        this.plan = baked ? planFromData(baked) : buildPlan({ seed, detail: this.tier.detail });
         this.heat = new HeatField();
         /** Where lava can drip from: the ends of the pipes that hang over the chamber in view. */
         this.tips = [];

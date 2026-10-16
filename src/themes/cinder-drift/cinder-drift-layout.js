@@ -105,13 +105,15 @@ export function farWallZ(x) {
     return -232 + 6 * Math.sin(x * 0.06 + 1.0);
 }
 
+/** The seed the theme's plan is built with. */
+export const PLAN_SEED = 0x51cd;
+
 /**
- * Build the plan.
- * @param {object} [options]
- * @param {number} [options.seed]
- * @param {number} [options.detail=1]  column spacing scale (a lower tier asks for coarser columns)
+ * The plan's readers for a seed: where the rock stands and how high, the roof, the cliffs and the
+ * islands. Pure functions of the seed (each call makes its own shared records: `wall`, `isle`),
+ * so a plan a worker posted as data gets them back here (bakePlanData).
  */
-export function buildPlan({ seed = 0x51cd, detail = 1 } = {}) {
+export function planReaders(seed = PLAN_SEED) {
     const s0 = seed | 0;
 
     /** Roof height over a point. */
@@ -205,6 +207,24 @@ export function buildPlan({ seed = 0x51cd, detail = 1 } = {}) {
         // (The roof is nowhere lower than this: only tall rock needs to ask where it is.)
         return h > 18 ? Math.min(h, ceilingAt(x, z)) : h;
     };
+
+    return {
+        ceilingAt, depthAt, foreshore, foreshoreAlong, heightAt, isle, islandAt, mouthX, wallAt, wallDepth,
+    };
+}
+
+/**
+ * Build the plan.
+ * @param {object} [options]
+ * @param {number} [options.seed]
+ * @param {number} [options.detail=1]  column spacing scale (a lower tier asks for coarser columns)
+ */
+export function buildPlan({ seed = PLAN_SEED, detail = 1 } = {}) {
+    const s0 = seed | 0;
+
+    const {
+        ceilingAt, depthAt, foreshore, heightAt, isle, islandAt, mouthX, wallDepth,
+    } = planReaders(s0);
 
     // ── The great fall and the fissures a chain of clears opens ──
     const fallWall = mouthX;
@@ -421,6 +441,27 @@ export function buildPlan({ seed = 0x51cd, detail = 1 } = {}) {
         depthAt,
         wallDepth,
     };
+}
+
+/** The plan's readers, as buildPlan returns them (the rest of the plan is data). */
+export const PLAN_READERS = Object.freeze(['heightAt', 'ceilingAt', 'depthAt', 'wallDepth']);
+
+/**
+ * The plan as plain data, without its readers (closures a worker cannot post): a first visit's
+ * worker bake (cinder-drift-bakes.js). The world adds the readers back (planReaders).
+ */
+export function bakePlanData(seed = PLAN_SEED, detail = 1) {
+    const plan = buildPlan({ seed, detail });
+    PLAN_READERS.forEach((name) => { delete plan[name]; });
+    return plan;
+}
+
+/** A plan from its posted data: the module's islands and the readers made here. */
+export function planFromData(data) {
+    const readers = planReaders(data.seed);
+    const plan = { ...data, islands: ISLANDS };
+    PLAN_READERS.forEach((name) => { plan[name] = readers[name]; });
+    return plan;
 }
 
 /**
