@@ -24,11 +24,8 @@ import { LocalVersusHud, versusGoal } from '../../ui/local-versus-hud.js';
 import { applyVersusLayout, readVersusViewport, versusLayout } from '../../ui/local-versus-layout.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import {
-    showCinematicLoadingOverlay,
-    waitForCinematicLoadingOverlayPresented,
-    dismissCinematicLoadingOverlay,
-    setCinematicLoadingProgress,
-    transitionCinematicLoadingOverlayToCountdown,
+    showCinematicLoadingOverlay, waitForCinematicLoadingOverlayPresented, dismissCinematicLoadingOverlay,
+    setCinematicLoadingProgress, transitionCinematicLoadingOverlayToCountdown,
 } from '../../ui/cinematic-loading-overlay.js';
 import { createLocalMultiplayerBoards, destroyLocalMultiplayerBoards } from '../../rendering/phaser/local-board-hosts.js';
 import {
@@ -179,7 +176,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
             // Commit the cover and async theme loading before preparing boards.
             await waitForCinematicLoadingOverlayPresented();
             if (!ownsConfiguration()) return;
-            setCinematicLoadingProgress('presented');
 
             // Now setup the UI for the configured number of players.
             await this._setupMultiplayerUI();
@@ -392,7 +388,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
             await this.deps.themeManager.resumeThemes();
             if (!ownsStart()) return;
         }
-        setCinematicLoadingProgress('started');
         if (this.deps.themeManager?.waitForThemeReady) {
             await this.deps.themeManager.waitForThemeReady(3000);
             if (!ownsStart()) return;
@@ -501,7 +496,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         await this.deps.themeManager?.whenLoadingSurfacePipelinesSettled?.(5000);
         if (!ownsStart()) return;
-        setCinematicLoadingProgress('settled');
         await this._waitForMatchStartLoadingOverlayMinVisible();
         if (!ownsStart()) return;
         await introDismissPromise;

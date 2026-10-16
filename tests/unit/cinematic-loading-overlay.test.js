@@ -245,6 +245,8 @@ describe('cinematic loading overlay countdown', () => {
         await presented;
         expect(ready).toHaveBeenCalledOnce();
         expect(vi.getTimerCount()).toBe(0);
+        // Painted: the progress line's first milestone.
+        expect(overlay.dataset.progress).toBe(MODE_LOADING_STEPS.presented.toFixed(3));
     });
 
     it('decodes new mode lettering before presenting its animation and allowing mode setup', async () => {
