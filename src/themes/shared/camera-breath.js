@@ -44,9 +44,19 @@
  * the wander quietens, so a hold is still. It eases from the clock's breath to the guide's
  * over FOLLOW_SECONDS of the theme's clock and back when the guide ends. cameraBreath() stays
  * a pure function: the followed breath is passed to it.
+ *
+ * ── Rising with the player ──────────────────────────────────────────────────────────
+ * While the player looks around Infinity's tower, its ascent publishes where the view is and
+ * how it moves (src/core/exploration-signal.js). applyCameraBreath() then cranes the camera
+ * with the view (explorationCrane): up as the view rises above the rows the game plays in, down
+ * as it descends the tower, with a little lead in the direction of travel. A camera with a
+ * subject distance moves and turns back toward the subject, so near layers slide past it and
+ * far ones the other way; one without turns up or down. The signal is eased in real time by
+ * the ascent; reduced motion (scale 0) leaves the camera as the theme set it.
  */
 
 import { readBreathSignal } from '../../core/breath-signal.js';
+import { readExplorationSignal } from '../../core/exploration-signal.js';
 
 const TAU = Math.PI * 2;
 const DEG2RAD = Math.PI / 180;
@@ -120,6 +130,26 @@ export function cameraBreath(time, scale = 1, out = { x: 0, y: 0, z: 0 }, follow
 }
 
 export { easedMotion, prefersReducedMotion } from './reduced-motion.js';
+
+/** The exploration crane: at full rise, and its lead at full speed (fractions of viewport height). */
+export const CAMERA_CRANE = Object.freeze({
+    RISE: 0.045,
+    LEAD: 0.01,
+});
+
+/**
+ * How far the camera cranes with Infinity's exploration now: a lift in fractions of viewport
+ * height (+ up), 0 when nobody explores.
+ * @param {number} [scale] multiplier; 0 for reduced motion
+ * @returns {number}
+ */
+export function explorationCrane(scale = 1) {
+    const k = Number.isFinite(scale) ? Math.max(0, scale) : 0;
+    if (k === 0) return 0;
+    const signal = readExplorationSignal();
+    if (!signal) return 0;
+    return k * signal.weight * (signal.rise * CAMERA_CRANE.RISE + signal.speed * CAMERA_CRANE.LEAD);
+}
 
 const _breath = { x: 0, y: 0, z: 0 };
 
@@ -241,7 +271,8 @@ export function applyCameraBreath(camera, time, options = {}) {
     if (!camera || typeof camera.rotateX !== 'function' || typeof camera.rotateY !== 'function') return false;
     const { distance, scale = 1 } = options;
     const b = cameraBreath(time, breathScale(camera, time, scale), _breath, followedBreath(camera, time));
-    if (b.x === 0 && b.y === 0 && b.z === 0) return false;
+    const crane = explorationCrane(scale);
+    if (b.x === 0 && b.y === 0 && b.z === 0 && crane === 0) return false;
 
     // Viewport height at one unit of distance: the screen fraction → world conversion.
     const fov = Number.isFinite(camera.fov) && camera.fov > 0 ? camera.fov : 50;
@@ -252,21 +283,24 @@ export function applyCameraBreath(camera, time, options = {}) {
     if (Number.isFinite(distance) && distance > 0) {
         // Move along the camera's own axes, then turn back so the subject (`distance`
         // ahead) holds its place on screen. The turn is the same angle whatever the
-        // distance, which is what keeps the motion the same size in every theme.
+        // distance, which is what keeps the motion the same size in every theme. The
+        // exploration's crane is one more lift on the same axis.
         const d = /** @type {number} */ (distance);
         const lean = b.z * d;
+        const lift = (b.y + crane) * span * d;
         camera.translateX(b.x * span * d);
-        camera.translateY(b.y * span * d);
+        camera.translateY(lift);
         camera.translateZ(-lean);
         const ahead = Math.max(d - lean, d * 0.5);
         camera.rotateY(Math.atan((b.x * span * d) / ahead));
-        camera.rotateX(-Math.atan((b.y * span * d) / ahead));
+        camera.rotateX(-Math.atan(lift / ahead));
         return true;
     }
 
     // No subject to orbit: turn the view through the same angles. Infinitely distant
-    // layers then move exactly as they do above.
+    // layers then move exactly as they do above. Rising with the exploration turns the
+    // view up, so the world sinks on screen as it does in the themes that move.
     camera.rotateY(turnX);
-    camera.rotateX(-turnY);
+    camera.rotateX(Math.atan(crane * span) - turnY);
     return true;
 }

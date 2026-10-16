@@ -611,7 +611,8 @@ export default class ChiralGoldTheme extends BaseTheme {
         }
 
         this.processLayoutReads();
-        this.readAudio(wall);
+        // The music plays in real time even while Infinity's exploration slows this clock.
+        this.readAudio(Number.isFinite(this.realFrameDelta) ? Math.min(MAX_DELTA_S, this.realFrameDelta) : wall);
         const sim = this.buildSim(delta);
         // The camera first (events aim through it), then the gameplay staged since the last
         // frame, then the world.
