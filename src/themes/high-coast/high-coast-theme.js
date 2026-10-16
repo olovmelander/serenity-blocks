@@ -28,6 +28,7 @@ import { POST_LOOK, HighCoastPost, createPassThroughPipeline } from './high-coas
 import { PLAYER_SLOTS, readLayoutRects } from './high-coast-composition.js';
 import { HIGH_COAST_EVENT_HANDLERS, HighCoastDirector } from './high-coast-director.js';
 import { approach } from './high-coast-core.js';
+import { runStepsBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'high-coast';
 const LOG_PREFIX = '[High Coast]';
@@ -236,7 +237,12 @@ export default class HighCoastTheme extends BaseTheme {
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 prepared,
             });
-            this.world.build();
+            // The world builds in steps with a breath between them (one long task otherwise).
+            if (typeof this.world.buildSteps === 'function') {
+                if (!(await runStepsBreathing(this.world.buildSteps(), isCurrent))) return;
+            } else {
+                this.world.build();
+            }
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();
