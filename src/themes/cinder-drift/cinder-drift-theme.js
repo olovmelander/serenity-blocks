@@ -48,6 +48,8 @@ import { POST_LOOK, CinderDriftPost, createPassThroughPipeline } from './cinder-
 import { PLAYER_SLOTS, readLayoutRects } from './cinder-drift-composition.js';
 import { CINDER_DRIFT_EVENT_HANDLERS, CinderDriftDirector } from './cinder-drift-director.js';
 import { approach } from './cinder-drift-core.js';
+import { cinderDriftBakes } from './cinder-drift-bakes.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'cinder-drift';
 const LOG_PREFIX = '[CinderDrift]';
@@ -193,6 +195,9 @@ export default class CinderDriftTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
+        // The noise and the plates (about 0.14 s of main thread on a first visit) bake in a worker
+        // while the renderer comes up; the build below finds them in the bake cache.
+        const baking = cinderDriftBakes();
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -215,13 +220,20 @@ export default class CinderDriftTheme extends BaseTheme {
         const aspect = Math.max(1, width) / Math.max(1, height);
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
+        await baking;
+        if (!isCurrent()) return;
+
         try {
-            this.world = new CinderDriftWorld({
+            const world = new CinderDriftWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
-            }).build();
+            });
+            // Built in steps with a breath between them (one long task otherwise), and the theme's only
+            // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();

@@ -7,6 +7,8 @@ import { RAINY_WINDOW_TETROMINOS } from './rainy-window-tetrominos.js';
 
 /** Longest step one drawn frame takes; a longer gap (the theme was covered) is not replayed. */
 const MAX_FRAME_DELTA = 0.25;
+/** The most the start waits for the storm's programs to link (see precompile). */
+const PRECOMPILE_CEILING_MS = 4000;
 
 export default class RainyWindowTheme extends BaseTheme {
     constructor() {
@@ -112,6 +114,12 @@ export default class RainyWindowTheme extends BaseTheme {
         // Setup Lighting
         this.setupLighting();
 
+        // Link the programs before the first frame (it linked them one by one: 0.8 s of frozen page,
+        // play-feel probe 2026-10-16). Stopped meanwhile: the stop has torn the storm down.
+        const { renderer } = this;
+        await this.precompile();
+        if (this.renderer !== renderer || !this.scene) return;
+
         // Start Loop
         this.animate();
 
@@ -122,6 +130,41 @@ export default class RainyWindowTheme extends BaseTheme {
         this.scheduleNextLightning();
 
         console.log('⛈️ RainyWindow: Storm Scene Initialized');
+    }
+
+    /**
+     * Link the storm's programs in parallel, off the page's thread where the driver allows it
+     * (KHR_parallel_shader_compile), for both places it is drawn: the canvas, and the water's mirror
+     * target (Water.js renders the scene into a half-float target first; a program for a target is
+     * another variant, linear and without the canvas's output transform, and the mirror's own target
+     * is private, so a stand-in of its kind is bound). compileAsync builds the programs in the call
+     * and only waits after, so each target is bound for its call alone. Never held on it: past the
+     * ceiling the first frame links whatever is left, as before.
+     */
+    async precompile() {
+        const { renderer } = this;
+        if (typeof renderer?.compileAsync !== 'function' || !this.scene || !this.camera) return;
+        const mirror = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType });
+        try {
+            const previous = renderer.getRenderTarget();
+            const linked = [];
+            for (const target of [null, mirror]) {
+                renderer.setRenderTarget(target);
+                try {
+                    linked.push(renderer.compileAsync(this.scene, this.camera));
+                } finally {
+                    renderer.setRenderTarget(previous);
+                }
+            }
+            let ceiling = null;
+            const cap = new Promise((resolve) => { ceiling = setTimeout(resolve, PRECOMPILE_CEILING_MS); });
+            await Promise.race([Promise.all(linked), cap]);
+            clearTimeout(ceiling);
+        } catch (error) {
+            console.warn('⛈️ RainyWindow: Shader precompile failed; the first frame compiles instead.', error);
+        } finally {
+            mirror.dispose();
+        }
     }
 
     initThreeJS() {

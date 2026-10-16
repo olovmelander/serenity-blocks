@@ -66,6 +66,7 @@ import {
 import { createBlooms, createQueen } from './moonlit-greenhouse-blooms.js';
 import { createGlows } from './moonlit-greenhouse-glows.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 export { REST_RIG, fovForAspect };
 
@@ -283,9 +284,20 @@ export class MoonlitGreenhouseWorld {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, the plan and then a part to a step: run at once by build(), or with a
+     * breath between steps while the theme comes in (shared/build-steps.js), so no single task
+     * holds the page for the whole build. The same parts in the same order.
+     */
+    * buildSteps() {
         const { tier, U } = this;
         this.noise = createGardenNoise(tier.noise);
         this.plan = planGarden(tier, this.seed);
+        yield 'plan';
         const ctx = {
             tier, U, noise: this.noise, plan: this.plan, seed: this.seed,
         };
@@ -309,9 +321,10 @@ export class MoonlitGreenhouseWorld {
             blooms: createBlooms,
             queen: createQueen,
         };
-        Object.keys(make).forEach((name) => {
+        for (const name of Object.keys(make)) {
             this.parts[name] = make[name](ctx);
-        });
+            yield name;
+        }
         this.parts.glows = createGlows({ capacity: tier.glows, U });
         Object.values(this.parts).forEach((part) => this.group.add(part.mesh));
         this.scene.add(this.group);
@@ -331,7 +344,6 @@ export class MoonlitGreenhouseWorld {
         this._crownMoon = new THREE.Vector3(0, -1, 0);
         this._turned = { x: 0, y: 0, z: 0 };
         this.pickCrowns();
-        return this;
     }
 
     bindCamera(camera) {

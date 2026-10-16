@@ -77,6 +77,7 @@ import {
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './cinder-drift-composition.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 /** The rest camera: standing on a ledge over the lake, looking down the chamber. */
 export const REST_RIG = Object.freeze({
@@ -232,6 +233,16 @@ export class CinderDriftWorld {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, a part to a step: run at once by build(), or with a breath between steps
+     * while the theme comes in (shared/build-steps.js), so no single task holds the page for the
+     * whole build. The same parts in the same order.
+     */
+    * buildSteps() {
         const noise = createFieldTexture(bakeNoise(), NOISE_SIZE, 'cinder-drift-noise');
         const plates = createFieldTexture(bakePlates(), PLATE_SIZE, 'cinder-drift-plates');
         const shore = createScalarTexture(this.plan.shore, SHORE_SIZE, 'cinder-drift-shore');
@@ -251,28 +262,45 @@ export class CinderDriftWorld {
 
         // Solids, nearest first; then the air, back to front by kind.
         this.addPart('columns', createColumns(u, plan));
+        yield 'columns';
         this.addPart('lake', createLake(u, { fine: tier.lakeFine, glint: tier.lakeGlint }));
+        yield 'lake';
         this.addPart('shell', createShell(u, plan));
+        yield 'shell';
         this.addPart('fissure', createFissure(u));
+        yield 'fissure';
         this.falls = createFalls(u, plan);
         this.addPart('falls', this.falls);
-        if (tier.smoke > 0) this.addPart('smoke', createSmoke(u, tier.smoke));
-        if (tier.shaft) this.addPart('shaft', createShaft(u));
-        if (tier.embers > 0) this.addPart('embers', createEmbers(u, tier.embers, plan));
+        yield 'falls';
+        if (tier.smoke > 0) {
+            this.addPart('smoke', createSmoke(u, tier.smoke));
+            yield 'smoke';
+        }
+        if (tier.shaft) {
+            this.addPart('shaft', createShaft(u));
+            yield 'shaft';
+        }
+        if (tier.embers > 0) {
+            this.addPart('embers', createEmbers(u, tier.embers, plan));
+            yield 'embers';
+        }
 
         // ── Gameplay effects (pools, always drawn) ──
         this.spatter = createSpatter(u, tier.spatter);
         this.addPart('spatter', this.spatter);
+        yield 'spatter';
         this.bombs = createBombs(u);
         this.addPart('bombs', this.bombs);
+        yield 'bombs';
         this.flashes = createFlashes(u);
         this.addPart('flashes', this.flashes);
+        yield 'flashes';
         this.jets = createRowJets(u);
         this.addPart('jets', this.jets);
+        yield 'jets';
 
         this.applyPalette(1);
         this.scene.add(this.root);
-        return this;
     }
 
     addPart(name, part) {

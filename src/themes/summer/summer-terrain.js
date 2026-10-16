@@ -14,6 +14,7 @@ import {
     cameraPosition, color, dot, float, length, mix, normalWorld, normalize, positionWorld, pow, reflect, saturate,
     smoothstep, texture, vec2, vec3, vec4,
 } from 'three/tsl';
+import { drainSteps } from '../shared/build-steps.js';
 
 export const SUMMER_BOUNDS = Object.freeze({
     minX: -380, maxX: 380, minZ: -470, maxZ: 46,
@@ -262,6 +263,12 @@ export class SummerTerrain {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /** The terrain in three steps for the world's breathing build: the ground, the lake's map, the rest. */
+    * buildSteps() {
         const {
             minX, maxX, minZ, maxZ,
         } = SUMMER_BOUNDS;
@@ -290,7 +297,9 @@ export class SummerTerrain {
         geometry.setIndex(indices);
         geometry.computeVertexNormals();
         geometry.computeBoundingSphere();
+        yield 'ground';
         this.lakeMap = createLakeMap();
+        yield 'lake map';
         this.meadowMap = createMeadowMap();
         const material = this.createMaterial();
         const mesh = new THREE.Mesh(geometry, material);
@@ -301,7 +310,6 @@ export class SummerTerrain {
         this.group.add(mesh);
         this.owned.push(geometry, material, this.lakeMap, this.meadowMap);
         this.mesh = mesh;
-        return this;
     }
 
     createMaterial() {

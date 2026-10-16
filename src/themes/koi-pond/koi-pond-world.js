@@ -60,6 +60,7 @@ import { tierFor } from './koi-pond-quality.js';
 import {
     REST_RIG, boardFor, boardPoint, cardUnion, distanceForAspect, fallbackLayout, fovForAspect, restEye,
 } from './koi-pond-composition.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 export { REST_RIG, fovForAspect };
 
@@ -222,19 +223,32 @@ export class KoiPondWorld {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, the heavy parts a step each: run at once by build(), or with a breath
+     * between steps while the theme comes in (shared/build-steps.js), so no single task holds the
+     * page for the whole build. The same parts in the same order.
+     */
+    * buildSteps() {
         const { tier } = this;
         const light = new PondLight({ tier });
         this.light = light;
         light.addTo(this.root);
         this.composeMoon();
+        yield 'light';
 
         this.addPart('ground', createBed(light, tier));
+        yield 'bed';
 
         // ── The garden round the water ──
         const garden = planGarden();
         this.garden = garden;
         this.rocks = garden.standing;
         this.addPart('stones', createStones(light, garden));
+        yield 'stones';
         this.lantern = createLanternGlow(light, garden);
         this.addPart('lantern', this.lantern);
         this.maples = createMaples(light, growMaples(tier.leaves));
@@ -242,6 +256,7 @@ export class KoiPondWorld {
         this.addPart('leaves', this.maples.leaves);
         this.iris = createIris(light, garden);
         this.addPart('iris', this.iris);
+        yield 'maples and iris';
 
         // ── What floats ──
         const flora = planFlora({ pads: tier.pads, lotus: tier.lotus, rocks: garden.standing });
@@ -269,6 +284,7 @@ export class KoiPondWorld {
         for (let i = 0; i < tier.koi; i += 1) writeKoiLook(this.koi.look, i, this.school.fish[i]);
         this.koi.commitLook();
         this.addPart('koi', this.koi);
+        yield 'koi';
         if (tier.dragon > 0) {
             this.dragon = new Dragon(light, tier.dragon);
             this.addPart('dragon', this.dragon);
@@ -299,6 +315,7 @@ export class KoiPondWorld {
         this.spray = new Spray(light, tier.droplets);
         this.addPart('spray', this.spray);
 
+        yield 'water and air';
         if (this.renderer) {
             this.surface = new PondSurface({ light, tier, rocks: this.rocks });
             this.surface.reset(this.renderer, this.time);
@@ -314,7 +331,6 @@ export class KoiPondWorld {
         this.koi.commit();
         this.writeLilies(0, true);
         this.scene.add(this.root);
-        return this;
     }
 
     addPart(name, part) {

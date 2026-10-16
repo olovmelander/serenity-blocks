@@ -23,6 +23,7 @@ import { VerdantHillsSky } from './verdant-hills-sky.js';
 import { VerdantHillsStage } from './verdant-hills-stage.js';
 import { VERDANT_HILLS_PLACES, VerdantHillsTerrain, verdantHillsGroundHeight } from './verdant-hills-terrain.js';
 import { VerdantHillsTrees } from './verdant-hills-trees.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 export class VerdantHillsWorld {
     constructor({
@@ -41,8 +42,19 @@ export class VerdantHillsWorld {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, a part (or the half of the meadow) to a step: run at once by build(), or
+     * with a breath between steps while the theme comes in (shared/build-steps.js), so no single
+     * task holds the page for the whole 0.4 s. The same parts in the same order, drawing from the
+     * same random sequence.
+     */
+    * buildSteps() {
         if (this.disposed) throw new Error('Cannot rebuild a disposed VerdantHillsWorld.');
-        if (this.built) return this;
+        if (this.built) return;
         this.built = true;
         this.scene.add(this.group);
         this.light = new VerdantHillsLight({ tier: this.tier, rng: this.rng, clouds: this.assets?.clouds || null });
@@ -53,7 +65,9 @@ export class VerdantHillsWorld {
         const { light, tier, rng } = this;
         this.terrain = new VerdantHillsTerrain({ light, landMap: this.assets?.land || null });
         this.group.add(this.terrain.group);
+        yield 'light';
         this.terrain.build();
+        yield 'terrain';
         this.sky = new VerdantHillsSky({ light, tier });
         this.group.add(this.sky.group);
         this.sky.build();
@@ -67,20 +81,24 @@ export class VerdantHillsWorld {
             });
             this.group.add(this.trees.group);
             this.trees.build();
+            yield 'trees';
             this.backdrop = new VerdantHillsBackdrop({
                 light, impostors: this.assets.impostors, tier, rng,
             });
             this.group.add(this.backdrop.group);
             this.backdrop.build();
+            yield 'backdrop';
             this.homestead = new VerdantHillsHomestead({
                 light, props: this.assets.props, tier, rng, oak: this.assets.trees?.['oak-hero'] || null,
             });
             this.group.add(this.homestead.group);
             this.homestead.build();
+            yield 'homestead';
         }
         this.meadow = new VerdantHillsMeadow({ light, tier, rng });
         this.group.add(this.meadow.group);
-        this.meadow.build();
+        yield* this.meadow.buildSteps();
+        yield 'meadow';
         this.life = new VerdantHillsLife({ light, tier, rng });
         this.group.add(this.life.group);
         this.life.build();
@@ -109,7 +127,6 @@ export class VerdantHillsWorld {
                 x: oak.x + 1.5, y: verdantHillsGroundHeight(oak.x, oak.z) + 9.5, z: oak.z, radius: 8,
             },
         });
-        return this;
     }
 
     /** The measured board card in screen fractions (y down), or null for the default. */

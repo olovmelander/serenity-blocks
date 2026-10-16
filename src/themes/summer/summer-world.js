@@ -23,6 +23,7 @@ import { summerTier } from './summer-quality.js';
 import { SummerShore } from './summer-shore.js';
 import { SUMMER_STAGE_DEPTH, SummerStage } from './summer-stage.js';
 import { SummerTerrain, summerGroundHeight } from './summer-terrain.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 export class SummerWorld {
     constructor({
@@ -42,8 +43,19 @@ export class SummerWorld {
     }
 
     build() {
+        drainSteps(this.buildSteps());
+        return this;
+    }
+
+    /**
+     * The build as steps, a part (or a half of the terrain or the meadow) to a step: run at once by
+     * build(), or with a breath between steps while the theme comes in (shared/build-steps.js), so
+     * no single task holds the page for the whole 0.4-0.5 s. The same parts in the same order,
+     * drawing from the same random sequence.
+     */
+    * buildSteps() {
         if (this.disposed) throw new Error('Cannot rebuild a disposed SummerWorld.');
-        if (this.built) return this;
+        if (this.built) return;
         if (!this.assets) throw new Error('[Summer] The world needs its loaded assets before it can build.');
         this.built = true;
         this.scene.add(this.group);
@@ -56,17 +68,21 @@ export class SummerWorld {
         const { impostors, props } = this.assets;
         this.terrain = new SummerTerrain({ light });
         this.group.add(this.terrain.group);
-        this.terrain.build();
+        yield 'light';
+        yield* this.terrain.buildSteps();
+        yield 'terrain';
         this.forest = new SummerForest({
             light, assets: this.assets, tier, rng,
         });
         this.group.add(this.forest.group);
         this.forest.build();
+        yield 'forest';
         this.backdrop = new SummerBackdrop({
             light, impostors, tier, rng,
         });
         this.group.add(this.backdrop.group);
         this.backdrop.build();
+        yield 'backdrop';
         this.atmosphere = new SummerAtmosphere({ light, tier, rng });
         this.group.add(this.atmosphere.group);
         this.atmosphere.build();
@@ -75,14 +91,17 @@ export class SummerWorld {
         });
         this.group.add(this.homestead.group);
         this.homestead.build();
+        yield 'homestead';
         this.meadow = new SummerMeadow({ light, tier, rng });
         this.group.add(this.meadow.group);
-        this.meadow.build();
+        yield* this.meadow.buildSteps();
+        yield 'meadow';
         this.shore = new SummerShore({
             light, tier, rng, meadow: this.meadow,
         });
         this.group.add(this.shore.group);
         this.shore.build();
+        yield 'shore';
         this.life = new SummerLife({ light, tier, rng });
         this.group.add(this.life.group);
         this.life.build();
@@ -114,7 +133,6 @@ export class SummerWorld {
             groundHeight: summerGroundHeight,
             maypole: this.homestead.bouquetAnchors(),
         });
-        return this;
     }
 
     /** Put these parts of the scene in the lake's mirror, except what marks itself as never seen there. */

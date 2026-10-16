@@ -23,6 +23,7 @@ import {
     VERDANT_HILLS_FLOWERS, createVerdantHillsFlowerGeometry, createVerdantHillsGrassGeometry,
 } from './verdant-hills-flora.js';
 import { VERDANT_HILLS_PLACES, verdantHillsNoise, verdantHillsPathDistance } from './verdant-hills-terrain.js';
+import { drainSteps } from '../shared/build-steps.js';
 
 const FLOWER_VARIANTS = 2;
 const { smoothstep: ramp, degToRad } = THREE.MathUtils;
@@ -64,9 +65,14 @@ export class VerdantHillsMeadow {
     }
 
     build() {
-        this.buildGrass();
-        this.buildFlowers();
+        drainSteps(this.buildSteps());
         return this;
+    }
+
+    /** The meadow in two steps for the world's breathing build: the near grass, then the rest. */
+    * buildSteps() {
+        yield* this.grassSteps();
+        this.buildFlowers();
     }
 
     /**
@@ -187,6 +193,10 @@ export class VerdantHillsMeadow {
     }
 
     buildGrass() {
+        drainSteps(this.grassSteps());
+    }
+
+    * grassSteps() {
         const { rng, tier } = this;
         const material = this.createGrassMaterial();
         const scatter = (wanted, nearest, farthest, far) => {
@@ -211,6 +221,7 @@ export class VerdantHillsMeadow {
         const near = this.own(createVerdantHillsGrassGeometry({ far: false, seed: 11 }));
         const far = this.own(createVerdantHillsGrassGeometry({ far: true, seed: 23 }));
         const nearPlants = scatter(tier.grassNear, 1.3, 17, false);
+        yield 'grass near';
         const farPlants = scatter(tier.grassFar, 12, 150, true);
         this.plant(near, material, nearPlants, 'VerdantHillsGrass near');
         this.plant(far, material, farPlants, 'VerdantHillsGrass far');
