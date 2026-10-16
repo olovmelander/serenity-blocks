@@ -63,6 +63,7 @@ import { bakeInWorker } from '../shared/bake-worker-client.js';
 import { POST_LOOK, MoonlitGreenhousePost, createPassThroughPipeline } from './moonlit-greenhouse-post.js';
 import { PLAYER_SLOTS, readLayoutRects } from './moonlit-greenhouse-composition.js';
 import { MOONLIT_GREENHOUSE_EVENT_HANDLERS, MoonlitGreenhouseDirector } from './moonlit-greenhouse-director.js';
+import { runStepsBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'moonlit-greenhouse';
 const LOG_PREFIX = '[Moonlit Greenhouse]';
@@ -264,7 +265,12 @@ export default class MoonlitGreenhouseTheme extends BaseTheme {
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
             });
-            this.world.build();
+            // The world builds in steps with a breath between them (one long task otherwise).
+            if (typeof this.world.buildSteps === 'function') {
+                if (!(await runStepsBreathing(this.world.buildSteps(), isCurrent))) return;
+            } else {
+                this.world.build();
+            }
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();
