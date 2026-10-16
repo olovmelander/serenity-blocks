@@ -301,6 +301,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
                 look,
                 shared: this.world.shared,
                 samples: this.getAntialiasEnabled() ? look.msaa : 0,
+                antialias: this.getAntialiasEnabled(),
                 grain: this.flags.time === null,
                 falseColor: this.flags.falseColor,
             });

@@ -29,6 +29,7 @@ import { PLAYER_SLOTS, readLayoutRects } from './high-coast-composition.js';
 import { HIGH_COAST_EVENT_HANDLERS, HighCoastDirector } from './high-coast-director.js';
 import { approach } from './high-coast-core.js';
 import { buildWorldBreathing } from '../shared/build-steps.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
 
 const THEME_ID = 'high-coast';
 const LOG_PREFIX = '[High Coast]';
@@ -230,11 +231,15 @@ export default class HighCoastTheme extends BaseTheme {
                 if (this.bakeAbort === bakeAbort) this.bakeAbort = null;
             }
             if (!isCurrent()) return;
+            // The scene pass's samples (4× MSAA from High up with the game's antialiasing on); the
+            // world needs them too, for the pine's needles.
+            this.sceneSamples = sceneSamples(this.quality, this.getAntialiasEnabled());
             const world = new HighCoastWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 prepared,
+                samples: this.sceneSamples,
             });
             // Built in steps with a breath between them (one long task otherwise), and the theme's only
             // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
@@ -351,6 +356,8 @@ export default class HighCoastTheme extends BaseTheme {
         try {
             this.post = new HighCoastPost(this.renderer, this.scene, this.camera, {
                 look,
+                samples: this.sceneSamples ?? 0,
+                antialias: this.getAntialiasEnabled(),
                 falseColor: this.flags.falseColor,
             });
         } catch (error) {

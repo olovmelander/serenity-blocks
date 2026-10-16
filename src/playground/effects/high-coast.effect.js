@@ -20,6 +20,8 @@
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
+ *   msaa=<n>                 override the scene pass's samples (the theme's: 4 from High up, else
+ *                            0, with FXAA on Medium and Low); the pine's needles follow it
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
  *   look=x,y,z,fov           inspection lens: from the eye, look at a world point with this fov
@@ -133,6 +135,7 @@ export function create({
     const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
     const look = { ...(POST_LOOK[quality] || POST_LOOK.High) };
     if (params.has('bloom')) look.bloom = params.get('bloom') === '1';
+    const samples = params.has('msaa') ? Math.max(0, Math.round(num(params, 'msaa'))) : look.msaa;
     const noPost = params.get('noPost') === '1';
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
     let post = null;
@@ -291,7 +294,7 @@ export function create({
     HighCoastWorld.prepare(quality).then((prepared) => {
         if (disposed) return;
         world = new HighCoastWorld({
-            scene, quality, capture: true, prepared,
+            scene, quality, capture: true, prepared, samples: noPost ? 0 : samples,
         }).build();
         world.bindCamera(camera);
         world.setReducedMotion(params.get('reduce') === '1');
@@ -301,6 +304,7 @@ export function create({
         if (!noPost) {
             post = new HighCoastPost(renderer, scene, camera, {
                 look,
+                samples,
                 falseColor: params.get('falseColor') === '1',
             });
         }

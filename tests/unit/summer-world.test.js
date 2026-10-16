@@ -98,11 +98,13 @@ async function loadBundle({
     return assets;
 }
 
-function createWorld(quality, assets, { seed = SEED, aspect = LANDSCAPE, track = true } = {}) {
+function createWorld(quality, assets, {
+    seed = SEED, aspect = LANDSCAPE, track = true, samples,
+} = {}) {
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(50, aspect, 0.3, 3400);
     const world = new SummerWorld({
-        scene, camera, quality, rng: seededRandom(seed), assets,
+        scene, camera, quality, rng: seededRandom(seed), assets, samples,
     });
     if (track) owned.push(world);
     return {
@@ -287,7 +289,7 @@ function targetRenderer(previous = null) {
 }
 
 function createPost(quality = 'Low', {
-    render = vi.fn(), renderer = fakeRenderer(render), light, scene, camera,
+    render = vi.fn(), renderer = fakeRenderer(render), light, scene, camera, samples,
 } = {}) {
     const options = {
         renderer,
@@ -296,6 +298,7 @@ function createPost(quality = 'Low', {
         quality,
     };
     if (light !== undefined) options.light = light;
+    if (samples !== undefined) options.samples = samples;
     const post = new SummerPost(options);
     owned.push(post);
     return { ...options, post };
@@ -2281,6 +2284,13 @@ describe('Summer post tier ownership', () => {
         expect(restored).toBe(canvas);
         expect(current()).toBe(canvas);
         expect(log.disposed).toEqual([target]);
+        // A multisampled scene pass (High up with antialiasing on) primes through a target of the
+        // same sample count, so the pipelines it compiles are still the ones the pass will use.
+        const msaa = targetRenderer(canvas);
+        const { post: smooth } = createPost('High', { ...lit(), renderer: msaa.renderer, samples: 4 });
+        expect(smooth.scenePass.options.samples).toBe(4);
+        expect(msaa.log.bound[0].samples).toBe(4);
+        expect(msaa.log.bound[0].texture.type).toBe(THREE.HalfFloatType);
         // Tiers without shafts never need the rig, and so never touch the renderer's target.
         for (const quality of DIRECT) {
             const direct = targetRenderer(canvas);
@@ -2402,5 +2412,17 @@ describe('Summer post tier ownership', () => {
         const before = blind.uSunScreen.value.clone();
         blind.update({ warmth: 1 });
         expect(blind.uSunScreen.value.equals(before)).toBe(true);
+    });
+});
+
+describe('Summer mirror samples', () => {
+    it('takes the scene pass\'s sample count, so a mirrored material builds one pipeline', async () => {
+        // From High up with antialiasing on the theme hands its world 4 (shared/scene-antialias.js).
+        const { world } = await buildWorld('Minimal', { samples: 4 });
+        expect(world.samples).toBe(4);
+        expect(world.lake.reflection.reflector.samples).toBe(4);
+        // Without it (a single-sampled pass, or no option at all) the mirror stays single-sampled.
+        const plain = (await buildWorld('Minimal')).world;
+        expect(plain.lake.reflection.reflector.samples).toBe(0);
     });
 });
