@@ -54,7 +54,11 @@ import { bakeInWorker } from '../shared/bake-worker-client.js';
 import { POST_LOOK, KoiPondPost, createPassThroughPipeline } from './koi-pond-post.js';
 import { PLAYER_SLOTS, readLayoutRects } from './koi-pond-composition.js';
 import { KOI_POND_EVENT_HANDLERS, KoiPondDirector } from './koi-pond-director.js';
-import { approach } from './koi-pond-core.js';
+import {
+    NOISE_SEED, NOISE_SIZE, approach, noiseKey, waterMaskKey,
+} from './koi-pond-core.js';
+import { planGarden } from './koi-pond-garden.js';
+import { buildWorldBreathing } from '../shared/build-steps.js';
 
 const THEME_ID = 'koi-pond';
 const LOG_PREFIX = '[KoiPond]';
@@ -140,11 +144,28 @@ function boolSetting(value, fallback) {
     return value === true;
 }
 
+/** A first visit's CPU bakes as worker jobs: the pebble field, the noise, the water mask. */
+export function koiPondBakeJobs(quality) {
+    const tier = tierFor(quality);
+    const [simW, simH] = tier.sim;
+    return [
+        { kind: 'pebbles', args: [tier.pebbles, KOI_PEBBLES_SEED] },
+        { kind: 'noise', args: [NOISE_SEED, NOISE_SIZE] },
+        // (The stones standing in the water: planGarden is pure and cheap; the mask is not.)
+        { kind: 'mask', args: [simW, simH, planGarden().standing] },
+    ];
+}
+
+const KOI_BAKE_KEYS = { pebbles: pebblesKey, noise: noiseKey, mask: waterMaskKey };
+
+/** The bake cache key a job's bake keeps its result under. */
+export const koiPondBakeKey = ({ kind, args }) => KOI_BAKE_KEYS[kind](...args);
+
 /** A first visit's CPU bakes, in a worker (shared/bake-worker-client.js). */
 export function koiPondBakes(quality) {
     return bakeInWorker({
-        jobs: [{ kind: 'pebbles', args: [tierFor(quality).pebbles, KOI_PEBBLES_SEED] }],
-        keyOf: ({ args }) => pebblesKey(...args),
+        jobs: koiPondBakeJobs(quality),
+        keyOf: koiPondBakeKey,
         createWorker: () => new Worker(new URL('./koi-pond-bake.worker.js', import.meta.url), { type: 'module' }),
     });
 }
@@ -214,8 +235,8 @@ export default class KoiPondTheme extends BaseTheme {
         this.quality = this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality'));
         this.pendingQuality = null;
 
-        // The bed's pebble field (about 0.7 s of main thread on a first visit) bakes in a worker
-        // while the renderer comes up; the build below then finds it in the bake cache.
+        // The bed's pebble field, the noise and the water mask (about 0.7 + 0.25 s of main thread on a
+        // first visit) bake in a worker while the renderer comes up; the build finds them cached.
         const baking = koiPondBakes(this.quality);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
@@ -243,12 +264,16 @@ export default class KoiPondTheme extends BaseTheme {
         if (!isCurrent()) return;
 
         try {
-            this.world = new KoiPondWorld({
+            const world = new KoiPondWorld({
                 scene: this.scene,
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
-            }).build();
+            });
+            // Built in steps with a breath between them (one long task otherwise), and the theme's only
+            // once whole: a stop meanwhile, or a part that throws half-way, disposes it there.
+            if (!(await buildWorldBreathing(world, isCurrent))) return;
+            this.world = world;
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
             this.setupPost();
