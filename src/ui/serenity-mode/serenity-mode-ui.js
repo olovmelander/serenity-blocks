@@ -12,7 +12,10 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { THEME_MUSIC_CATALOG, resolveMusicTrackKey } from '../../core/progression/theme-music-catalog.js';
 import { describeKey } from '../settings.js';
 import { resolveHubThemeThumbnailUrl } from '../serenity-hub/theme-thumbnail-manifest.js';
+import { getThemeMeta } from '../../themes/theme-registry.js';
+import { CATEGORY_LABELS } from '../serenity-hub/ThemesTab.js';
 import { SerenityWorldBar } from './serenity-world-bar.js';
+import { knownAccent, themeAccent } from './serenity-theme-accent.js';
 import { SerenityWorldStepper, saveThemeChoice, themeName } from './serenity-world-stepper.js';
 import { SerenityDrift } from './serenity-drift.js';
 import {
@@ -204,6 +207,7 @@ export class SerenityModeUi {
         this.wakeLock?.release();
         this.media?.stop();
         hideSerenityNotice();
+        document.documentElement.style.removeProperty('--serenity-accent');
     }
 
     _listen() {
@@ -255,10 +259,15 @@ export class SerenityModeUi {
         const { index, total } = this.stepper.position(shown);
         const drift = driftOption(this.drift.pace);
         const restLeft = this.restTimer.msLeft;
+        const accent = this.accentFor(shown);
+        this.lastRefreshAt = Date.now();
         this.bar.update({
             name: themeName(shown),
+            group: CATEGORY_LABELS[getThemeMeta(shown)?.group] || '',
             index,
             total,
+            accent,
+            driftFill: this.driftFill(),
             song: songOf(soundManager?.musicTrack)?.title || '',
             driftChip: drift.chip,
             driftLabel: `Drift between themes: ${drift.label.toLowerCase()}`,
@@ -273,14 +282,49 @@ export class SerenityModeUi {
         if (announce) this.bar.announce();
     }
 
+    /**
+     * The theme's own light (from its artwork, worked out once): known at once when it has been
+     * seen, its category's hue until then. Also lent to the notices, the tray and the overlays.
+     */
+    accentFor(themeId) {
+        const accent = knownAccent(themeId);
+        document.documentElement.style.setProperty('--serenity-accent', accent.join(', '));
+        if (themeId && themeId !== this.accentPending) {
+            this.accentPending = themeId;
+            themeAccent(themeId).then((rgb) => {
+                const shown = this.stepper?.target || this.deps.themeManager?.activeThemeName;
+                if (this.bar && shown === themeId && rgb.join() !== accent.join()) this.refresh();
+            });
+        }
+        return accent;
+    }
+
+    /**
+     * How far the world has come toward its next drift: with the music, the song's own progress
+     * while it plays; otherwise drift's clock. Null when it does not drift (or waits).
+     */
+    driftFill() {
+        if (this.drift.pace === 'music') {
+            const audio = this.deps.soundManager?.audioElement;
+            const { duration, currentTime } = audio || {};
+            if (audio && !audio.paused && !this.deps.soundManager?.isMuted && Number.isFinite(duration) && duration > 0
+                && !this.drift.isHeld) {
+                return { from: currentTime / duration, ms: (duration - currentTime) * 1000 };
+            }
+        }
+        return this.drift.progress();
+    }
+
     describeSong() {
         const song = songOf(this.deps.soundManager?.musicTrack);
         if (song) this.media?.describe({ title: song.title, artwork: resolveHubThemeThumbnailUrl(song.themeId) || '' });
     }
 
-    /** The pointer moved: the bar is there for a while. */
+    /** The pointer moved: the caption is there for a while (and says where drift has got to). */
     activity() {
-        if (this.worldVisible) this.bar?.wake();
+        if (!this.worldVisible) return;
+        if (Date.now() - (this.lastRefreshAt || 0) > 2000) this.refresh();
+        this.bar?.wake();
     }
 
     sayAlone() {

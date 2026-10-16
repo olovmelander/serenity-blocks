@@ -2356,39 +2356,34 @@ body:has(#sb-play-rail > #odyssey-navigator-btn.visible) #sb-play-rail {
     }
 }
 
-/* ---- Serenity Mode: the world bar (src/ui/serenity-mode/serenity-world-bar.js) ------------
-   The mode's one piece of chrome, top centre: the theme's name and song between two arrows,
-   the drift and rest chips beneath. It wakes when you reach for it and leaves when you are
-   still; never over the Hub, the breathing guide or the rest veil. Arrows look like the
-   breathing guide's. Motion is opacity and transform only; no backdrop blur. */
+/* ==== Serenity Mode over the theme, in the breathing guide's language ====================
+   (src/ui/serenity-mode/). Words on the world itself, never panels: the guide's three levels
+   (an eyebrow in the world's own light with its small square, a title in Unbounded, a line in
+   Manrope), carried by soft night shades that come and go with them, and quiet tiles for what
+   you can do. Each theme lends its light (--world-accent on the caption, --serenity-accent on
+   the page for everything else; serenity-theme-accent.js). Motion is opacity and transform
+   only; no backdrop blur: the theme beneath is live. */
+
+/* ---- The world caption (serenity-world-bar.js) --------------------------------------- */
 #serenity-world-bar {
+    --world-accent: var(--serenity-accent, var(--sb-mint-rgb));
+    --world-ink: var(--sb-cream-rgb);
+    --world-tray: 0px;
     position: fixed;
-    top: max(var(--sb-play-inset), env(safe-area-inset-top));
-    left: 50%;
+    inset: 0;
     z-index: 1000;
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    grid-template-areas:
-        'prev label next'
-        'chips chips chips';
-    align-items: center;
-    column-gap: 10px;
-    row-gap: 8px;
-    width: min(560px, calc(100vw - 2 * (var(--sb-play-inset) + 2 * var(--sb-play-tile) + 28px)));
-    transform: translate(-50%, -6px);
+    color: rgb(var(--world-ink));
+    font-family: var(--sb-font-text);
     opacity: 0;
     pointer-events: none;
-    color: var(--sb-text);
-    font-family: var(--sb-font-text);
-    transition: opacity 0.9s ease, transform 0.9s var(--sb-ease-breathe);
+    transition: opacity 0.9s ease;
+    -webkit-font-smoothing: antialiased;
 }
 
 #serenity-world-bar.is-awake,
 #serenity-world-bar:focus-within {
-    transform: translate(-50%, 0);
     opacity: 1;
-    pointer-events: auto;
-    transition-duration: 0.35s;
+    transition-duration: 0.45s;
 }
 
 #serenity-world-bar.is-covered,
@@ -2396,76 +2391,183 @@ body.serenity-hub-open #serenity-world-bar,
 body:not(.serenity-mode) #serenity-world-bar {
     visibility: hidden;
     opacity: 0;
+}
+
+/* Only the buttons take the pointer, and only while they can be seen. */
+#serenity-world-bar button { pointer-events: none; }
+
+#serenity-world-bar:is(.is-awake, :focus-within):not(.is-covered) button { pointer-events: auto; }
+
+/* The night shades the words stand on: deep at the edge, gone a third of the way in, with a
+   breath of the world's light where its name is. */
+#serenity-world-bar .serenity-world__shade {
+    position: absolute;
+    left: 0;
+    right: 0;
     pointer-events: none;
 }
 
-#serenity-world-bar .serenity-world-bar__label {
-    grid-area: label;
+#serenity-world-bar .serenity-world__shade--top {
+    top: 0;
+    height: min(46vh, 380px);
+    background:
+        radial-gradient(ellipse 34% 62% at 50% 0%, rgba(var(--world-accent), 0.14), transparent 72%),
+        linear-gradient(180deg, rgba(7, 6, 22, 0.7) 0%, rgba(7, 6, 22, 0.36) 40%, rgba(7, 6, 22, 0) 100%);
+}
+
+#serenity-world-bar .serenity-world__shade--bottom {
+    bottom: 0;
+    height: min(36vh, 300px);
+    background: linear-gradient(0deg, rgba(7, 6, 22, 0.74) 0%, rgba(7, 6, 22, 0.42) 40%, rgba(7, 6, 22, 0) 100%);
+}
+
+#serenity-world-bar .serenity-world__caption {
+    position: absolute;
+    top: max(4.5vh, 22px);
+    left: calc((100% - var(--world-tray)) / 2);
+    display: grid;
+    /* The arrows keep close to the words they change, however short the name. */
+    grid-template-columns: 52px fit-content(640px) 52px;
+    justify-content: center;
+    align-items: center;
+    column-gap: 28px;
+    width: min(92vw, 780px, calc(100vw - var(--world-tray) - 32px));
+    transform: translate(-50%, -8px);
+    transition: transform 0.9s var(--sb-ease-breathe), left 0.45s var(--sb-ease-breathe);
+}
+
+#serenity-world-bar:is(.is-awake, :focus-within) .serenity-world__caption {
+    transform: translate(-50%, 0);
+    transition-duration: 0.45s;
+}
+
+#serenity-world-bar .serenity-world__words {
     min-width: 0;
-    padding: 9px 18px 10px;
-    border: 1px solid var(--sb-line);
-    border-radius: var(--sb-r-md);
-    background: linear-gradient(180deg, rgba(27, 23, 60, 0.82), rgba(12, 10, 30, 0.88));
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
     text-align: center;
 }
 
-#serenity-world-bar .serenity-world-bar__eyebrow {
-    margin: 0 0 4px;
-    color: var(--sb-mint);
-    font: 600 var(--sb-fs-label) / 1.2 var(--sb-font-display);
+#serenity-world-bar .serenity-world__eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 12px;
+    color: rgb(var(--world-accent));
+    font: 600 var(--sb-fs-label) / 1.4 var(--sb-font-display);
     letter-spacing: var(--sb-track-label);
     text-transform: uppercase;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
 }
 
-#serenity-world-bar .serenity-world-bar__name {
+#serenity-world-bar .serenity-world__eyebrow::before {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: currentColor;
+    box-shadow: 0 0 10px rgba(var(--world-accent), 0.6);
+}
+
+#serenity-world-bar .serenity-world__name {
     margin: 0;
     overflow: hidden;
-    color: var(--sb-text);
-    font: 600 1.25rem / 1.25 var(--sb-font-display);
+    color: rgb(var(--world-ink));
+    font: 700 clamp(26px, 3.1vw, 44px) / 1.12 var(--sb-font-display);
+    letter-spacing: -0.01em;
     text-overflow: ellipsis;
     white-space: nowrap;
+    text-shadow: 0 2px 24px rgba(0, 0, 0, 0.75), 0 0 40px rgba(var(--world-accent), 0.18);
 }
 
-#serenity-world-bar.is-arriving .serenity-world-bar__name {
+/* A theme seen for the first time takes a moment to build: its name breathes until it is here. */
+#serenity-world-bar.is-arriving .serenity-world__name {
     animation: serenity-world-arriving 1.6s var(--sb-ease-breathe) infinite;
 }
 
 @keyframes serenity-world-arriving {
-    50% { opacity: 0.55; }
+    50% { opacity: 0.5; }
 }
 
-#serenity-world-bar .serenity-world-bar__song {
+#serenity-world-bar .serenity-world__song {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 6px;
-    margin: 5px 0 0;
+    gap: 8px;
+    margin: 10px 0 0;
     overflow: hidden;
-    color: var(--sb-text-muted);
-    font-size: var(--sb-fs-small);
+    color: rgba(var(--world-ink), 0.76);
+    font: 500 clamp(13px, 1.1vw, 15px) / 1.5 var(--sb-font-text);
     white-space: nowrap;
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.85);
 }
 
-#serenity-world-bar .serenity-world-bar__song[hidden] { display: none; }
-#serenity-world-bar .serenity-world-bar__note { display: inline-flex; color: var(--sb-aqua); }
+#serenity-world-bar .serenity-world__song[hidden] { display: none; }
 
-#serenity-world-bar .serenity-world-bar__song-text {
+#serenity-world-bar .serenity-world__note {
+    display: inline-flex;
+    flex: none;
+    color: rgb(var(--world-accent));
+}
+
+#serenity-world-bar .serenity-world__song-text {
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
-#serenity-world-bar .serenity-world-bar__arrow {
+/* Your themes at a glance, like the guide's breath: the one on screen lit, and while the
+   world drifts, filling toward the next. */
+#serenity-world-bar .serenity-world__strip {
+    display: flex;
+    gap: 3px;
+    width: min(64vw, 380px);
+    margin: 18px auto 0;
+}
+
+#serenity-world-bar .serenity-world__strip[hidden] { display: none; }
+
+#serenity-world-bar .serenity-world__strip i {
+    position: relative;
+    flex: 1 1 0;
+    min-width: 2px;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: rgba(var(--world-ink), 0.16);
+}
+
+#serenity-world-bar .serenity-world__strip i.is-here {
+    background: rgb(var(--world-accent));
+    box-shadow: 0 0 10px rgba(var(--world-accent), 0.6);
+}
+
+#serenity-world-bar .serenity-world__strip i.is-here:has(b) { background: rgba(var(--world-accent), 0.3); }
+
+#serenity-world-bar .serenity-world__strip b {
+    position: absolute;
+    inset: 0;
+    background: rgb(var(--world-accent));
+    transform-origin: left center;
+    animation: serenity-drift-fill linear forwards;
+}
+
+@keyframes serenity-drift-fill {
+    from { transform: scaleX(var(--fill-from, 0)); }
+    to { transform: scaleX(1); }
+}
+
+/* The arrows: the guide's tiles, lighter, beside the name they change. */
+#serenity-world-bar .serenity-world__arrow {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    border: 1px solid rgba(var(--sb-cream-rgb), 0.22);
-    background: linear-gradient(180deg, rgba(27, 23, 60, 0.78), rgba(12, 10, 30, 0.84));
-    color: rgba(var(--sb-cream-rgb), 0.86);
-    font: 500 1.25rem / 1 var(--sb-font-display);
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    border: 1px solid rgba(var(--world-ink), 0.2);
+    background: rgba(7, 6, 22, 0.3);
+    color: rgba(var(--world-ink), 0.88);
+    font: 400 1.6rem / 1 var(--sb-font-display);
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
     cursor: pointer;
     transition:
         background var(--sb-dur-2) var(--sb-ease-lock),
@@ -2473,107 +2575,167 @@ body:not(.serenity-mode) #serenity-world-bar {
         color var(--sb-dur-2) var(--sb-ease-lock);
 }
 
-#serenity-world-bar .serenity-world-bar__arrow--prev { grid-area: prev; }
-#serenity-world-bar .serenity-world-bar__arrow--next { grid-area: next; }
-
-#serenity-world-bar .serenity-world-bar__arrow:hover:not(:disabled) {
-    border-color: rgba(var(--sb-cream-rgb), 0.4);
-    background: linear-gradient(180deg, rgba(38, 33, 80, 0.86), rgba(16, 13, 38, 0.9));
-    color: var(--sb-text);
+#serenity-world-bar .serenity-world__arrow:hover:not(:disabled) {
+    border-color: rgba(var(--world-accent), 0.6);
+    background: rgba(7, 6, 22, 0.5);
+    color: rgb(var(--world-accent));
 }
 
-#serenity-world-bar .serenity-world-bar__arrow:active:not(:disabled) { transform: translateY(1px); }
-#serenity-world-bar .serenity-world-bar__arrow:disabled { opacity: 0.38; cursor: default; }
+#serenity-world-bar .serenity-world__arrow:active:not(:disabled) { transform: translateY(1px); }
+#serenity-world-bar .serenity-world__arrow:disabled { opacity: 0.3; cursor: default; }
 
-#serenity-world-bar .serenity-world-bar__chips {
-    grid-area: chips;
+/* The dock: what you can do, along the bottom, in the guide's own tiles. */
+#serenity-world-bar .serenity-world__dock {
+    position: absolute;
+    bottom: max(4vh, 22px, env(safe-area-inset-bottom));
+    left: calc((100% - var(--world-tray)) / 2);
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
     gap: 8px;
+    width: max-content;
+    max-width: calc(100vw - var(--world-tray) - 32px);
+    transform: translate(-50%, 8px);
+    transition: transform 0.9s var(--sb-ease-breathe), left 0.45s var(--sb-ease-breathe);
 }
 
-#serenity-world-bar .serenity-world-bar__chip {
-    min-height: 32px;
-    padding: 0 12px;
-    border-radius: 9px;
-    border: 1px solid var(--sb-line-strong);
-    background: rgba(12, 10, 30, 0.72);
-    color: var(--sb-text-muted);
-    font: 600 0.625rem / 1 var(--sb-font-display);
+#serenity-world-bar:is(.is-awake, :focus-within) .serenity-world__dock {
+    transform: translate(-50%, 0);
+    transition-duration: 0.45s;
+}
+
+#serenity-world-bar .serenity-world__tile {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 44px;
+    padding: 0 16px 0 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(var(--world-ink), 0.22);
+    background: linear-gradient(180deg, rgba(27, 23, 60, 0.66), rgba(12, 10, 30, 0.76));
+    color: rgba(var(--world-ink), 0.86);
+    font: 600 0.6875rem / 1 var(--sb-font-display);
     letter-spacing: 0.14em;
     text-transform: uppercase;
     white-space: nowrap;
     cursor: pointer;
-    transition: border-color var(--sb-dur-2) var(--sb-ease-lock), color var(--sb-dur-2) var(--sb-ease-lock);
+    transition:
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        color var(--sb-dur-2) var(--sb-ease-lock);
 }
 
-#serenity-world-bar .serenity-world-bar__chip:hover {
-    border-color: rgba(var(--sb-cream-rgb), 0.36);
-    color: var(--sb-text);
+#serenity-world-bar .serenity-world__tile-icon {
+    display: inline-flex;
+    color: rgba(var(--world-ink), 0.56);
+    transition: color var(--sb-dur-2) var(--sb-ease-lock);
 }
 
-#serenity-world-bar .serenity-world-bar__chip.is-on {
-    border-color: rgba(var(--sb-mint-rgb), 0.5);
-    color: var(--sb-mint);
+#serenity-world-bar .serenity-world__tile:hover {
+    border-color: rgba(var(--world-ink), 0.4);
+    background: linear-gradient(180deg, rgba(38, 33, 80, 0.8), rgba(16, 13, 38, 0.86));
+    color: rgb(var(--world-ink));
 }
 
-#serenity-world-bar :is(.serenity-world-bar__arrow, .serenity-world-bar__chip):focus-visible {
+#serenity-world-bar .serenity-world__tile:active { transform: translateY(1px); }
+
+#serenity-world-bar .serenity-world__tile.is-on {
+    border-color: rgba(var(--world-accent), 0.55);
+    color: rgb(var(--world-accent));
+}
+
+#serenity-world-bar .serenity-world__tile.is-on .serenity-world__tile-icon { color: rgb(var(--world-accent)); }
+
+#serenity-world-bar :is(.serenity-world__arrow, .serenity-world__tile):focus-visible {
     outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
     outline-offset: 3px;
 }
 
-/* A phone: the rail holds the corner, so the bar starts below it and spans the width. */
-@media (max-width: 640px) {
-    #serenity-world-bar {
-        top: calc(max(var(--sb-play-inset), env(safe-area-inset-top)) + var(--sb-play-tile) + 18px);
-        width: calc(100vw - 32px);
-        column-gap: 8px;
-    }
-
-    #serenity-world-bar .serenity-world-bar__label { padding: 8px 12px; }
-    #serenity-world-bar .serenity-world-bar__name { font-size: 1.0625rem; }
+/* While the effects tray holds the right edge, the caption and the dock centre on what is left. */
+@media (min-width: 641px) {
+    body.serenity-effects-open #serenity-world-bar { --world-tray: max(360px, min(480px, 42vw)); }
 }
 
-/* A narrower window: while the rail unrolls its names (the first visits), the bar steps
+/* A narrower window: while the rail unrolls its names (the first visits), the caption steps
    below it rather than under it. */
 @media (min-width: 641px) and (max-width: 1199px) {
-    body:has(#sb-play-rail.is-peek, #sb-play-rail.is-folding) #serenity-world-bar {
+    body:has(#sb-play-rail.is-peek, #sb-play-rail.is-folding) #serenity-world-bar .serenity-world__caption {
         top: calc(max(var(--sb-play-inset), env(safe-area-inset-top)) + var(--sb-play-tile) + 18px);
     }
 }
 
-/* ---- Serenity Mode: the effects tray (src/ui/serenity-mode/serenity-effects-tray.js) ------
-   Every reaction a theme has to play, on demand. At the right edge, clear of the middle where
-   the board would be and where themes play their effects; along the bottom on a phone. The
-   world bar's panel and chip language; motion is opacity and transform only, no blur. */
+/* A phone: the rail holds the corner, so the caption starts below it and spans the width. */
+@media (max-width: 640px) {
+    #serenity-world-bar .serenity-world__caption {
+        top: calc(max(var(--sb-play-inset), env(safe-area-inset-top)) + var(--sb-play-tile) + 16px);
+        grid-template-columns: 44px minmax(0, 1fr) 44px;
+        column-gap: 8px;
+        width: calc(100vw - 24px);
+    }
+
+    #serenity-world-bar .serenity-world__arrow {
+        width: 44px;
+        height: 44px;
+        border-radius: 13px;
+        font-size: 1.35rem;
+    }
+
+    #serenity-world-bar .serenity-world__eyebrow { margin-bottom: 8px; letter-spacing: 0.16em; }
+    #serenity-world-bar .serenity-world__name { font-size: 22px; }
+    #serenity-world-bar .serenity-world__strip { width: 62vw; margin-top: 14px; }
+    #serenity-world-bar .serenity-world__dock { gap: 6px; }
+
+    #serenity-world-bar .serenity-world__tile {
+        min-height: 40px;
+        padding: 0 12px 0 10px;
+        gap: 8px;
+        letter-spacing: 0.1em;
+    }
+}
+
+/* ---- The effects tray (serenity-effects-tray.js): the right edge's own night ------------
+   Every reaction a theme has to play, on demand: the guide's words and tiles over a shade that
+   deepens toward the edge, clear of the middle where the themes play their effects; along the
+   bottom on a phone. */
 #serenity-effects {
+    --fx-accent: var(--serenity-accent, var(--sb-mint-rgb));
     position: fixed;
-    top: 50%;
-    right: max(var(--sb-play-inset), env(safe-area-inset-right));
+    top: 0;
+    right: 0;
+    bottom: 0;
     z-index: 1000;
-    display: grid;
-    gap: 12px;
-    width: min(320px, calc(100vw - 32px));
-    max-height: calc(100vh - 2 * (var(--sb-play-inset) + var(--sb-play-tile) + 20px));
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 18px;
+    width: min(480px, 42vw);
+    min-width: 360px;
+    box-sizing: border-box;
+    max-height: none;
     overflow-y: auto;
     overscroll-behavior: contain;
-    padding: 14px 14px 12px;
-    border: 1px solid var(--sb-line);
-    border-radius: var(--sb-r-md);
-    background: linear-gradient(180deg, rgba(27, 23, 60, 0.84), rgba(12, 10, 30, 0.9));
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
-    color: var(--sb-text);
+    padding: calc(var(--sb-play-inset) + var(--sb-play-tile) + 28px) max(28px, env(safe-area-inset-right)) 36px 104px;
+    border: 0;
+    border-radius: 0;
+    /* Dense where the words are, fading only in the margin before them. */
+    background: linear-gradient(270deg, rgba(7, 6, 22, 0.92) 0%, rgba(7, 6, 22, 0.86) 66%, rgba(7, 6, 22, 0.5) 84%, rgba(7, 6, 22, 0) 100%);
+    box-shadow: none;
+    color: rgb(var(--sb-cream-rgb));
     font-family: var(--sb-font-text);
+    scrollbar-width: none;
     opacity: 0;
-    transform: translate(10px, -50%);
-    transition: opacity 0.35s ease, transform 0.35s var(--sb-ease-breathe);
+    transform: translateX(18px);
+    transition: opacity 0.45s ease, transform 0.45s var(--sb-ease-breathe);
+    -webkit-font-smoothing: antialiased;
 }
+
+#serenity-effects::-webkit-scrollbar { display: none; }
 
 #serenity-effects[hidden] { display: none; }
 
 #serenity-effects.is-open {
     opacity: 1;
-    transform: translate(0, -50%);
+    transform: none;
 }
 
 #serenity-effects.is-covered,
@@ -2584,39 +2746,75 @@ body:not(.serenity-mode) #serenity-effects {
     pointer-events: none;
 }
 
+/* The eyebrow shares its row with Play all and ×; the theme's name has the width to itself. */
 #serenity-effects .serenity-effects__head {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto auto;
-    align-items: start;
-    gap: 8px;
+    grid-template-areas:
+        'eyebrow all close'
+        'title title title'
+        'line line line';
+    align-items: center;
+    column-gap: 8px;
 }
 
+#serenity-effects .serenity-effects__titles { display: contents; }
+#serenity-effects .serenity-effects__head .serenity-effects__eyebrow { grid-area: eyebrow; }
+#serenity-effects .serenity-effects__head .serenity-effects__title { grid-area: title; margin-top: 10px; }
+#serenity-effects .serenity-effects__head .serenity-effects__subtitle { grid-area: line; }
+#serenity-effects .serenity-effects__head .serenity-effects__all { grid-area: all; }
+#serenity-effects .serenity-effects__head .serenity-effects__close { grid-area: close; }
+
 #serenity-effects .serenity-effects__eyebrow {
-    margin: 0 0 4px;
-    color: var(--sb-mint);
-    font: 600 var(--sb-fs-label) / 1.2 var(--sb-font-display);
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    margin: 0 0 10px;
+    color: rgb(var(--fx-accent));
+    font: 600 var(--sb-fs-label) / 1.4 var(--sb-font-display);
     letter-spacing: var(--sb-track-label);
     text-transform: uppercase;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.7);
+}
+
+#serenity-effects .serenity-effects__eyebrow::before {
+    content: '';
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: currentColor;
+    box-shadow: 0 0 10px rgba(var(--fx-accent), 0.6);
+}
+
+#serenity-effects .serenity-effects__title {
+    margin: 0;
+    overflow: hidden;
+    font: 700 clamp(20px, 1.8vw, 26px) / 1.15 var(--sb-font-display);
+    letter-spacing: -0.005em;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75);
 }
 
 #serenity-effects .serenity-effects__subtitle {
-    margin: 0;
-    color: var(--sb-text-muted);
-    font-size: var(--sb-fs-small);
-    line-height: 1.35;
+    margin: 8px 0 0;
+    color: rgba(var(--sb-cream-rgb), 0.72);
+    font: 500 0.875rem / 1.5 var(--sb-font-text);
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.8);
 }
 
 #serenity-effects .serenity-effects__groups {
     display: grid;
-    gap: 10px;
+    gap: 16px;
 }
 
 #serenity-effects .serenity-effects__group-label {
-    margin: 0 0 6px;
-    color: var(--sb-text-faint);
-    font: 600 0.625rem / 1.2 var(--sb-font-display);
-    letter-spacing: 0.14em;
+    margin: 0 0 8px;
+    color: rgba(var(--sb-cream-rgb), 0.64);
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.22em;
     text-transform: uppercase;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.9);
 }
 
 #serenity-effects .serenity-effects__list {
@@ -2626,47 +2824,54 @@ body:not(.serenity-mode) #serenity-effects {
 }
 
 #serenity-effects :is(.serenity-effects__effect, .serenity-effects__all, .serenity-effects__close) {
-    min-height: 34px;
-    padding: 0 12px;
-    border-radius: 9px;
-    border: 1px solid var(--sb-line-strong);
-    background: rgba(12, 10, 30, 0.72);
-    color: var(--sb-text-muted);
-    font: 600 0.75rem / 1 var(--sb-font-text);
+    min-height: 38px;
+    padding: 0 13px;
+    border-radius: 11px;
+    border: 1px solid rgba(var(--sb-cream-rgb), 0.2);
+    background: linear-gradient(180deg, rgba(27, 23, 60, 0.6), rgba(12, 10, 30, 0.7));
+    color: rgba(var(--sb-cream-rgb), 0.86);
+    font: 600 0.625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
     white-space: nowrap;
     cursor: pointer;
     transition:
         border-color var(--sb-dur-2) var(--sb-ease-lock),
         color var(--sb-dur-2) var(--sb-ease-lock),
-        background var(--sb-dur-2) var(--sb-ease-lock);
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        box-shadow var(--sb-dur-2) var(--sb-ease-lock);
 }
 
 #serenity-effects .serenity-effects__all {
-    font: 600 0.625rem / 1 var(--sb-font-display);
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
+    min-height: 40px;
+    border-color: rgba(var(--fx-accent), 0.45);
+    color: rgb(var(--fx-accent));
 }
 
 #serenity-effects .serenity-effects__close {
-    width: 34px;
+    width: 40px;
+    min-height: 40px;
     padding: 0;
-    font: 500 1.125rem / 1 var(--sb-font-display);
+    font: 400 1.25rem / 1 var(--sb-font-display);
+    letter-spacing: 0;
 }
 
 #serenity-effects :is(.serenity-effects__effect, .serenity-effects__all, .serenity-effects__close):hover {
-    border-color: rgba(var(--sb-cream-rgb), 0.36);
-    color: var(--sb-text);
+    border-color: rgba(var(--sb-cream-rgb), 0.42);
+    background: linear-gradient(180deg, rgba(38, 33, 80, 0.8), rgba(16, 13, 38, 0.86));
+    color: rgb(var(--sb-cream-rgb));
 }
 
 #serenity-effects :is(.serenity-effects__effect, .serenity-effects__all, .serenity-effects__close):active {
     transform: translateY(1px);
 }
 
-/* The effect that is playing, and Play all while it walks through them. */
+/* The effect that is playing, and Play all while it walks through them: the world's light. */
 #serenity-effects :is(.serenity-effects__effect.is-playing, .serenity-effects__all.is-on) {
-    border-color: rgba(var(--sb-mint-rgb), 0.55);
-    background: rgba(var(--sb-mint-rgb), 0.1);
-    color: var(--sb-mint);
+    border-color: rgba(var(--fx-accent), 0.7);
+    background: rgba(var(--fx-accent), 0.12);
+    color: rgb(var(--fx-accent));
+    box-shadow: 0 0 18px rgba(var(--fx-accent), 0.28);
 }
 
 #serenity-effects :is(.serenity-effects__effect, .serenity-effects__all, .serenity-effects__close):focus-visible {
@@ -2676,13 +2881,12 @@ body:not(.serenity-mode) #serenity-effects {
 
 #serenity-effects .serenity-effects__note {
     margin: 0;
-    padding: 8px 10px;
-    border-radius: 9px;
-    border: 1px solid rgba(var(--sb-gold-rgb), 0.3);
-    background: rgba(var(--sb-gold-rgb), 0.08);
+    padding: 0;
+    border: 0;
+    background: none;
     color: var(--sb-gold);
-    font-size: var(--sb-fs-small);
-    line-height: 1.35;
+    font: 500 0.8125rem / 1.45 var(--sb-font-text);
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.8);
 }
 
 #serenity-effects .serenity-effects__note[hidden] { display: none; }
@@ -2691,52 +2895,56 @@ body:not(.serenity-mode) #serenity-effects {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 4px 6px;
-    margin: 0;
-    color: var(--sb-text-faint);
-    font-size: 0.75rem;
+    gap: 6px 8px;
+    margin: 4px 0 0;
+    color: rgba(var(--sb-cream-rgb), 0.56);
+    font: 500 0.75rem / 1.4 var(--sb-font-text);
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.8);
 }
 
-#serenity-effects .serenity-effects__hint span + kbd { margin-left: 8px; }
+#serenity-effects .serenity-effects__hint span + kbd { margin-left: 10px; }
 
 /* No keys to show on a touch screen. */
 @media (pointer: coarse) {
     #serenity-effects .serenity-effects__hint { display: none; }
 }
 
-/* A phone: along the bottom, each group one row that scrolls sideways, so the middle of the
-   screen (where the effects play) stays in view. Notices step up above it. */
+/* A phone: along the bottom over its own shade, each group one row that scrolls sideways, so
+   the middle of the screen (where the effects play) stays in view. Notices step up above it. */
 @media (max-width: 640px) {
     #serenity-effects {
         top: auto;
-        right: 16px;
-        bottom: max(16px, env(safe-area-inset-bottom));
-        left: 16px;
+        left: 0;
         width: auto;
-        max-height: 44vh;
-        gap: 10px;
-        padding: 12px;
-        transform: translateY(10px);
+        min-width: 0;
+        max-height: 56vh;
+        justify-content: flex-end;
+        gap: 12px;
+        padding: 40px 16px max(16px, env(safe-area-inset-bottom));
+        background: linear-gradient(0deg, rgba(7, 6, 22, 0.92) 0%, rgba(7, 6, 22, 0.8) 66%, rgba(7, 6, 22, 0) 100%);
+        transform: translateY(14px);
     }
 
-    #serenity-effects.is-open { transform: translateY(0); }
+    #serenity-effects.is-open { transform: none; }
 
-    #serenity-effects .serenity-effects__groups { gap: 8px; }
+    #serenity-effects .serenity-effects__eyebrow { margin-bottom: 6px; }
+    #serenity-effects .serenity-effects__title { font-size: 18px; }
+    #serenity-effects .serenity-effects__subtitle { display: none; }
+    #serenity-effects .serenity-effects__groups { gap: 10px; }
 
     #serenity-effects .serenity-effects__group {
         display: grid;
-        grid-template-columns: 76px minmax(0, 1fr);
+        grid-template-columns: 74px minmax(0, 1fr);
         align-items: center;
         gap: 8px;
     }
 
     #serenity-effects .serenity-effects__group-label {
         margin: 0;
-        font-size: 0.5625rem;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.12em;
     }
 
-    #serenity-effects .serenity-effects__effect { padding: 0 10px; }
+    #serenity-effects .serenity-effects__effect { padding: 0 11px; }
 
     #serenity-effects .serenity-effects__list {
         flex-wrap: nowrap;
@@ -2746,35 +2954,65 @@ body:not(.serenity-mode) #serenity-effects {
 
     #serenity-effects .serenity-effects__list::-webkit-scrollbar { display: none; }
 
-    body.serenity-mode.serenity-effects-open #serenity-notification {
-        bottom: calc(44vh + 28px);
+    body.serenity-mode.serenity-effects-open #serenity-notification { bottom: calc(56vh + 12px); }
+
+    /* The tray lies over the dock's place: the dock steps out while it is open. */
+    body.serenity-effects-open #serenity-world-bar .serenity-world__dock {
+        visibility: hidden;
+        opacity: 0;
     }
 }
 
-/* ---- Serenity Mode: notices, the first-visit hints, the rest veil, the touch ripple ------ */
+/* ---- Notices: one line of words over the world, above the dock -------------------------- */
 body.serenity-mode #serenity-notification {
     top: auto;
-    bottom: max(28px, 5vh, env(safe-area-inset-bottom));
-    transform: translateX(-50%) translateY(12px);
+    bottom: calc(max(4vh, 22px) + 100px);
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    max-width: calc(100vw - 32px);
+    padding: 18px 52px;
+    border: 0;
+    border-radius: 999px;
+    background: radial-gradient(closest-side, rgba(7, 6, 22, 0.86), rgba(7, 6, 22, 0.62) 58%, rgba(7, 6, 22, 0));
+    box-shadow: none;
+    color: rgb(var(--sb-cream-rgb));
+    font: 600 0.9375rem / 1.4 var(--sb-font-text);
+    letter-spacing: 0.005em;
+    text-align: center;
+    text-shadow: 0 1px 12px rgba(0, 0, 0, 0.85);
+    transform: translateX(-50%) translateY(10px);
+}
+
+body.serenity-mode #serenity-notification::before {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: rgb(var(--serenity-accent, var(--sb-mint-rgb)));
+    box-shadow: 0 0 10px rgba(var(--serenity-accent, var(--sb-mint-rgb)), 0.6);
 }
 
 body.serenity-mode #serenity-notification.visible {
     transform: translateX(-50%) translateY(0);
 }
 
+/* ---- The first visits' keys: a line of keycaps over the world, just above the dock ------ */
 #serenity-first-hints {
     position: fixed;
     left: 50%;
-    bottom: max(84px, 11vh, env(safe-area-inset-bottom));
+    bottom: calc(max(4vh, 22px) + 58px);
     z-index: 1000;
     max-width: calc(100vw - 32px);
-    padding: 10px 16px;
-    border: 1px solid var(--sb-line);
-    border-radius: var(--sb-r-md);
-    background: linear-gradient(180deg, rgba(27, 23, 60, 0.82), rgba(12, 10, 30, 0.88));
-    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
-    color: var(--sb-text-muted);
-    font: 500 var(--sb-fs-small) / 1.4 var(--sb-font-text);
+    padding: 16px 52px;
+    border: 0;
+    border-radius: 999px;
+    background: radial-gradient(closest-side, rgba(7, 6, 22, 0.84), rgba(7, 6, 22, 0.6) 60%, rgba(7, 6, 22, 0));
+    box-shadow: none;
+    color: rgba(var(--sb-cream-rgb), 0.94);
+    font: 600 var(--sb-fs-small) / 1.4 var(--sb-font-text);
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 1px 12px rgba(0, 0, 0, 0.85);
     opacity: 0;
     transform: translate(-50%, 10px);
     pointer-events: none;
@@ -2790,7 +3028,7 @@ body.serenity-mode #serenity-notification.visible {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
-    gap: 6px 18px;
+    gap: 8px 22px;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -2799,7 +3037,7 @@ body.serenity-mode #serenity-notification.visible {
 #serenity-first-hints li {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 7px;
 }
 
 body.serenity-hub-open #serenity-first-hints,
@@ -2807,7 +3045,7 @@ body:not(.serenity-mode) #serenity-first-hints {
     visibility: hidden;
 }
 
-/* The rest veil: the screen dims to night over the fade, then stays dark. */
+/* ---- The rest veil: the screen dims to night over the fade, then stays dark ------------- */
 #serenity-rest-veil {
     position: fixed;
     inset: 0;
@@ -2846,12 +3084,14 @@ body:not(.serenity-mode) #serenity-first-hints {
     20%, 70% { opacity: 1; }
 }
 
-/* A touch on the world: one soft ring of light, in the interface's cream. */
+/* ---- A touch on the world: one soft ring of light, in the world's own colour ------------ */
 body.serenity-mode .serenity-click-ripple {
     width: 46px;
     height: 46px;
-    border: 1px solid rgba(var(--sb-cream-rgb), 0.6);
-    box-shadow: 0 0 14px rgba(var(--sb-cream-rgb), 0.28), inset 0 0 10px rgba(var(--sb-cream-rgb), 0.14);
+    border: 1px solid rgba(var(--serenity-accent, var(--sb-cream-rgb)), 0.66);
+    box-shadow:
+        0 0 14px rgba(var(--serenity-accent, var(--sb-cream-rgb)), 0.3),
+        inset 0 0 10px rgba(var(--serenity-accent, var(--sb-cream-rgb)), 0.16);
     animation: serenity-touch-ring 1.1s var(--sb-ease-breathe) forwards;
 }
 
@@ -2866,16 +3106,22 @@ body.serenity-mode .serenity-click-ripple {
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #serenity-world-bar,
-    #serenity-world-bar.is-awake,
-    #serenity-world-bar:focus-within,
+    #serenity-world-bar .serenity-world__caption,
+    #serenity-world-bar:is(.is-awake, :focus-within) .serenity-world__caption,
+    #serenity-world-bar .serenity-world__dock,
+    #serenity-world-bar:is(.is-awake, :focus-within) .serenity-world__dock {
+        transform: translate(-50%, 0);
+        transition: none;
+    }
+
+    #serenity-world-bar { transition: opacity 0.3s ease; }
+    #serenity-world-bar.is-arriving .serenity-world__name { animation: none; }
+
     #serenity-first-hints,
     #serenity-first-hints.visible {
         transform: translate(-50%, 0);
         transition: opacity 0.3s ease;
     }
-
-    #serenity-world-bar.is-arriving .serenity-world-bar__name { animation: none; }
 
     body.serenity-mode .serenity-click-ripple {
         transform: translate(-50%, -50%);
@@ -2884,12 +3130,7 @@ body.serenity-mode .serenity-click-ripple {
 
     #serenity-effects,
     #serenity-effects.is-open {
-        transform: translate(0, -50%);
+        transform: none;
         transition: opacity 0.3s ease;
     }
-}
-
-@media (prefers-reduced-motion: reduce) and (max-width: 640px) {
-    #serenity-effects,
-    #serenity-effects.is-open { transform: none; }
 }
