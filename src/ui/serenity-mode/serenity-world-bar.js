@@ -1,24 +1,32 @@
 /**
- * The world bar: Serenity Mode's one piece of chrome, at the top centre.
+ * The world caption: what Serenity Mode says over the theme, in the breathing guide's language.
+ * No panels: words on the world itself, over a soft shade that comes and goes with them, in the
+ * theme's own light (--world-accent, serenity-theme-accent.js).
  *
- *     ‹   Theme 3 of 15 · Firefly Night · ♪ Echoes of the Soul   ›
- *         [ Drift · with the music ]  [ Rest off ]  [ Effects ]
+ *                        ■ NATURE · 7 OF 10
+ *            ‹              Crystal Cave               ›
+ *                         ♪ Crystal Cave
+ *                       ▪▪▪▪▪▪█▪▪▪            (your themes; the one on screen lit,
+ *                                              filling toward the next when it drifts)
  *
- * It names what you are watching and listening to, and its arrows step between themes the
- * way the breathing guide's arrows step between its worlds (the same keys, ← and →). It is
- * there when you reach for it — pointer movement, a key, a change of theme or song — and
- * leaves when you are still, so the theme has the screen. It never shows over the Hub, the
- * breathing guide or the rest veil.
+ *       [ ◌ Drift · with the music ]  [ ☾ Rest off ]  [ ✦ Effects ]      (the dock, below)
  *
- * Styles: public/styles/keystone-overlays.css (`#serenity-world-bar`). `.serenity-hub` keeps
- * a press on it from also touching the world behind it.
+ * The arrows step between your themes as the guide's step between its worlds (the same keys,
+ * ← and →). It is there when you reach for it — pointer movement, a key, a change of theme or
+ * song — and leaves when you are still, so the theme has the screen. It never shows over the
+ * Hub, the breathing guide or the rest veil.
+ *
+ * The layer covers the screen but only its buttons take the pointer, so a press anywhere else
+ * still touches the world. Styles: public/styles/keystone-overlays.css (`#serenity-world-bar`).
  */
 import { csIcon } from '../components/cosmic-icons.js';
 import { TRAY_ID } from './serenity-effects-tray.js';
 
-/** How long the bar stays after you reach for it, and after it has something to announce. */
+/** How long the caption stays after you reach for it, and after it has something to announce. */
 export const AWAKE_MS = 3200;
 export const ANNOUNCE_MS = 5200;
+/** More themes than this and the collection strip would be dust: it is left out. */
+const STRIP_MAX = 80;
 
 const el = (tag, className, text) => {
     const node = document.createElement(tag);
@@ -31,9 +39,9 @@ export class SerenityWorldBar {
     /**
      * @param {object} options
      * @param {(direction: number) => void} options.onStep
-     * @param {() => void} options.onDrift a press on the drift chip
-     * @param {() => void} options.onRest a press on the rest chip
-     * @param {() => void} [options.onEffects] a press on the effects chip
+     * @param {() => void} options.onDrift a press on the drift tile
+     * @param {() => void} options.onRest a press on the rest tile
+     * @param {() => void} [options.onEffects] a press on the effects tile
      * @param {HTMLElement} [options.host]
      */
     constructor({
@@ -45,53 +53,78 @@ export class SerenityWorldBar {
         this.onEffects = onEffects;
         this.timer = null;
         this.covered = false;
+        this.stripTotal = -1;
+        this.fillKey = '';
         this.abort = new AbortController();
         this._build(host);
     }
 
     _build(host) {
-        const root = el('div', 'serenity-world-bar serenity-hub');
+        const root = el('div', 'serenity-world serenity-hub');
         root.id = 'serenity-world-bar';
         root.setAttribute('role', 'group');
         root.setAttribute('aria-label', 'Theme');
-        const arrow = (direction, label, glyph, key) => {
+        const top = el('div', 'serenity-world__shade serenity-world__shade--top');
+        const bottom = el('div', 'serenity-world__shade serenity-world__shade--bottom');
+        top.setAttribute('aria-hidden', 'true');
+        bottom.setAttribute('aria-hidden', 'true');
+
+        const arrow = (direction, label, key) => {
             const side = direction < 0 ? 'prev' : 'next';
-            const button = el('button', `serenity-world-bar__arrow serenity-world-bar__arrow--${side}`, glyph);
+            const glyph = direction < 0 ? '‹' : '›';
+            const button = el('button', `serenity-world__arrow serenity-world__arrow--${side}`, glyph);
             button.type = 'button';
             button.dataset.step = String(direction);
             button.setAttribute('aria-label', label);
             button.setAttribute('aria-keyshortcuts', key);
             return button;
         };
-        this.prev = arrow(-1, 'Previous theme', '‹', 'ArrowLeft');
-        this.next = arrow(1, 'Next theme', '›', 'ArrowRight');
-        const label = el('div', 'serenity-world-bar__label');
-        this.eyebrow = el('p', 'serenity-world-bar__eyebrow');
-        this.name = el('p', 'serenity-world-bar__name');
+        this.prev = arrow(-1, 'Previous theme', 'ArrowLeft');
+        this.next = arrow(1, 'Next theme', 'ArrowRight');
+        const words = el('div', 'serenity-world__words');
+        this.eyebrow = el('p', 'serenity-world__eyebrow');
+        this.name = el('h2', 'serenity-world__name');
         this.name.setAttribute('aria-live', 'polite');
-        this.song = el('p', 'serenity-world-bar__song');
-        this.songIcon = el('span', 'serenity-world-bar__note');
-        this.songIcon.setAttribute('aria-hidden', 'true');
-        this.songIcon.innerHTML = csIcon('note', 13);
-        this.songText = el('span', 'serenity-world-bar__song-text');
-        this.song.append(this.songIcon, this.songText);
-        label.append(this.eyebrow, this.name, this.song);
-        const chips = el('div', 'serenity-world-bar__chips');
-        const chip = (kind) => {
-            const button = el('button', `serenity-world-bar__chip serenity-world-bar__chip--${kind}`);
+        this.song = el('p', 'serenity-world__song');
+        const note = el('span', 'serenity-world__note');
+        note.setAttribute('aria-hidden', 'true');
+        note.innerHTML = csIcon('note', 14);
+        this.songText = el('span', 'serenity-world__song-text');
+        this.song.append(note, this.songText);
+        this.strip = el('div', 'serenity-world__strip');
+        this.strip.setAttribute('aria-hidden', 'true');
+        words.append(this.eyebrow, this.name, this.song, this.strip);
+        const caption = el('header', 'serenity-world__caption');
+        caption.append(this.prev, words, this.next);
+
+        const tile = (kind, icon) => {
+            const button = el('button', `serenity-world__tile serenity-world__tile--${kind}`);
             button.type = 'button';
             button.dataset.chip = kind;
-            return button;
+            const glyph = el('span', 'serenity-world__tile-icon');
+            glyph.setAttribute('aria-hidden', 'true');
+            glyph.innerHTML = csIcon(icon, 16);
+            const text = el('span', 'serenity-world__tile-text');
+            button.append(glyph, text);
+            return { button, text };
         };
-        this.driftChip = chip('drift');
-        this.restChip = chip('rest');
-        this.effectsChip = chip('effects');
-        this.effectsChip.textContent = 'Effects';
+        const drift = tile('drift', 'cycle');
+        const rest = tile('rest', 'moon');
+        const effects = tile('effects', 'burst');
+        this.driftChip = drift.button;
+        this.driftText = drift.text;
+        this.restChip = rest.button;
+        this.restText = rest.text;
+        this.effectsChip = effects.button;
+        effects.text.textContent = 'Effects';
         this.effectsChip.setAttribute('aria-controls', TRAY_ID);
         this.effectsChip.setAttribute('aria-expanded', 'false');
         this.effectsChip.setAttribute('aria-label', 'Theme effects: watch what this theme does when you play');
-        chips.append(this.driftChip, this.restChip, this.effectsChip);
-        root.append(this.prev, label, this.next, chips);
+        const dock = el('nav', 'serenity-world__dock');
+        dock.setAttribute('aria-label', 'Serenity');
+        dock.append(this.driftChip, this.restChip, this.effectsChip);
+
+        root.append(top, bottom, caption, dock);
 
         const { signal } = this.abort;
         root.addEventListener('click', (event) => {
@@ -109,7 +142,8 @@ export class SerenityWorldBar {
             const activates = event.key === ' ' || event.key === 'Enter';
             if (activates && event.target.closest?.('button')) event.stopPropagation();
         }, { signal });
-        root.addEventListener('pointerenter', () => this.wake(), { signal });
+        // Only the buttons take the pointer; reaching one keeps everything in view.
+        [caption, dock].forEach((part) => part.addEventListener('pointerover', () => this.wake(), { signal }));
         this.root = root;
         host.appendChild(root);
     }
@@ -117,9 +151,13 @@ export class SerenityWorldBar {
     /**
      * @param {object} state
      * @param {string} state.name the theme's name
+     * @param {string} [state.group] its category's name (Nature, Cosmic…)
      * @param {number} state.index its place among your themes (0-based; -1 unknown)
      * @param {number} state.total how many themes you have
      * @param {string} [state.song] the song's title
+     * @param {number[]} [state.accent] the theme's light, [r, g, b]
+     * @param {{from: number, ms: number}|null} [state.driftFill] how far the world has come
+     *   toward its next drift (0..1) and how long is left; null when it does not drift
      * @param {string} state.driftChip @param {string} state.driftLabel
      * @param {string} state.restChip @param {string} state.restLabel
      * @param {boolean} [state.arriving] the theme is still being built
@@ -127,16 +165,20 @@ export class SerenityWorldBar {
      */
     update(state) {
         const alone = !(state.total > 1);
-        let eyebrow = 'Your theme · Odyssey brings more';
-        if (!alone) eyebrow = state.index >= 0 ? `Theme ${state.index + 1} of ${state.total}` : `${state.total} themes`;
+        const group = state.group ? `${state.group} · ` : '';
+        let eyebrow = 'Your first theme · the Odyssey brings more';
+        if (!alone && state.index >= 0) eyebrow = `${group}${state.index + 1} of ${state.total}`;
+        else if (!alone) eyebrow = `${state.total} themes`;
         setText(this.eyebrow, eyebrow);
         setText(this.name, state.name || '');
         setText(this.songText, state.song || '');
         this.song.hidden = !state.song;
-        setText(this.driftChip, state.driftChip);
+        if (Array.isArray(state.accent)) setStyle(this.root, '--world-accent', state.accent.join(', '));
+        this._renderStrip(alone ? 0 : state.total, state.index, state.driftFill || null);
+        setText(this.driftText, state.driftChip);
         this.driftChip.setAttribute('aria-label', state.driftLabel);
         this.driftChip.classList.toggle('is-on', state.driftChip !== 'Drift off');
-        setText(this.restChip, state.restChip);
+        setText(this.restText, state.restChip);
         this.restChip.setAttribute('aria-label', state.restLabel);
         this.restChip.classList.toggle('is-on', state.restChip !== 'Rest off');
         this.effectsChip.classList.toggle('is-on', Boolean(state.effectsOpen));
@@ -147,7 +189,30 @@ export class SerenityWorldBar {
         this.next.disabled = alone;
     }
 
-    /** Show the bar for a while (pointer movement, a key, a press on it). */
+    /** One cell per theme you have, the one on screen lit; drifting, it fills toward the next. */
+    _renderStrip(total, index, fill) {
+        const count = total > 1 && total <= STRIP_MAX ? total : 0;
+        if (count !== this.stripTotal) {
+            this.stripTotal = count;
+            this.strip.replaceChildren(...Array.from({ length: count }, () => el('i', '', undefined)));
+            this.fillKey = '';
+        }
+        this.strip.hidden = count === 0;
+        [...this.strip.children].forEach((cell, i) => cell.classList.toggle('is-here', i === index));
+        const here = this.strip.children[index];
+        const key = fill && here ? `${index}:${Math.round(fill.from * 1000)}:${Math.round(fill.ms / 1000)}` : '';
+        if (key === this.fillKey) return;
+        this.fillKey = key;
+        [...this.strip.children].forEach((cell) => cell.replaceChildren());
+        if (!key) return;
+        // The fill runs on the compositor: from where drift stands now to full, over what is left.
+        const bar = el('b');
+        bar.style.setProperty('--fill-from', String(Math.max(0, Math.min(1, fill.from))));
+        bar.style.animationDuration = `${Math.max(0, fill.ms)}ms`;
+        here.appendChild(bar);
+    }
+
+    /** Show the caption for a while (pointer movement, a key, a press on it). */
     wake(ms = AWAKE_MS) {
         if (this.covered) return;
         this.root.classList.add('is-awake');
@@ -186,4 +251,8 @@ export class SerenityWorldBar {
 
 function setText(node, text) {
     if (node.textContent !== text) node.textContent = text;
+}
+
+function setStyle(node, property, value) {
+    if (node.style.getPropertyValue(property) !== value) node.style.setProperty(property, value);
 }

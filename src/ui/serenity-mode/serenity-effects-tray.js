@@ -1,8 +1,9 @@
 /**
  * The effects tray: press an effect and watch what the theme does with it.
  *
- *     EFFECTS                                   [ Play all ]  [ × ]
- *     What Firefly Night does when you play
+ *     ■ EFFECTS                                 [ Play all ]  [ × ]
+ *     Firefly Night
+ *     What it does when you play
  *     Pieces       [Lock] [Hard drop]
  *     Line clears  [Single] [Double] [Triple] [Quad]
  *     Cascades     [3 waves] [6 waves] [10 waves]
@@ -61,10 +62,12 @@ export class SerenityEffectsTray {
 
         const head = el('header', 'serenity-effects__head');
         const titles = el('div', 'serenity-effects__titles');
-        const title = el('h2', 'serenity-effects__eyebrow', 'Effects');
-        title.id = `${TRAY_ID}-title`;
-        this.subtitle = el('p', 'serenity-effects__subtitle', 'What this theme does when you play');
-        titles.append(title, this.subtitle);
+        // The guide's three levels: where you are (Effects), the place (the theme), the line.
+        const eyebrow = el('p', 'serenity-effects__eyebrow', 'Effects');
+        this.title = el('h2', 'serenity-effects__title', 'This theme');
+        this.title.id = `${TRAY_ID}-title`;
+        this.subtitle = el('p', 'serenity-effects__subtitle', 'What it does when you play');
+        titles.append(eyebrow, this.title, this.subtitle);
         this.playAll = el('button', 'serenity-effects__all', 'Play all');
         this.playAll.type = 'button';
         this.playAll.dataset.action = 'all';
@@ -170,8 +173,8 @@ export class SerenityEffectsTray {
 
     /** @param {string} name the theme on screen */
     setTheme(name) {
-        const text = name ? `What ${name} does when you play` : 'What this theme does when you play';
-        if (this.subtitle.textContent !== text) this.subtitle.textContent = text;
+        const text = name || 'This theme';
+        if (this.title.textContent !== text) this.title.textContent = text;
     }
 
     /** @param {string} text a word about why nothing may show ('' for none) */

@@ -100,6 +100,17 @@ export class SerenityDrift {
         this._restart();
     }
 
+    /**
+     * How far the world has come toward its next drift by the clock, and how long is left.
+     * @returns {{from: number, ms: number}|null} null while off or held
+     */
+    progress() {
+        if (!this.isOn || this.isHeld || this.timer === null) return null;
+        const interval = this._interval();
+        const left = Math.max(0, this.dueAt - this.now());
+        return { from: Math.min(1, Math.max(0, 1 - left / interval)), ms: left };
+    }
+
     destroy() {
         this._clear();
         this.holds.clear();
