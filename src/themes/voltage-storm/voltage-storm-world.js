@@ -80,6 +80,7 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './voltage-storm-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { CLOUD_SEED } from './voltage-storm-bake.js';
 
 /** The rest camera: a moderately wide lens a few metres over the water. */
 export const REST_RIG = Object.freeze({
@@ -252,7 +253,7 @@ export class VoltageStormWorld {
     build() {
         const { tier } = this;
         const noise = createNoiseTexture(bakeNoise());
-        const cloud = createCloudTexture(bakeCloudNoise(9001, tier.noise3d), tier.noise3d);
+        const cloud = createCloudTexture(bakeCloudNoise(CLOUD_SEED, tier.noise3d), tier.noise3d);
         const placeholder = new THREE.DataTexture(new Uint8Array([0, 0, 0, 255]), 1, 1);
         placeholder.needsUpdate = true;
         this.textures.push(noise, cloud, placeholder);
