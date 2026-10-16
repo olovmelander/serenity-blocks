@@ -41,6 +41,14 @@ owner at the machine.
 >   Next is §9.5: Chiral Gold's heavy single materials, Verdant's and Summer's terrain scatter in a
 >   worker, a generic warm of `getWarmupRoots()`, then a fleet rerun on main. Never run vitest while
 >   a probe batch measures.
+> - **2026-10-16, branch `perf/theme-pass-2026-10-16`: load freezes, theme by theme** (record §10).
+>   Worlds build in steps (`shared/build-steps.js`, `buildWorldBreathing`: a theme takes its world
+>   only once whole), more first-visit bakes in workers, Rainy Window links before its first frame,
+>   and the switch's build budget is spent per task (it reset every 14 ms of wall clock, so heavy
+>   frames deferred nothing). Fifteen themes went from 200-790 ms of longest load task to 0-160 ms;
+>   every refactored build hashes identical to main's. Left (§10.2): heavy single materials
+>   (rainbark's trunks, sky-children's sky), the generic warm of parked effects, Cinder Drift's
+>   plan, Sakura's storms.
 > - **The worktree** `C:\Users\olov_\repos\serenity-blocks-thmaudit` is left detached at
 >   `origin/main`. Every probe and raw result is in its git-ignored `.cache/theme-audit/`.
 > - **Branching for the perf pass:** one working branch, one commit per fix, merges at batch
