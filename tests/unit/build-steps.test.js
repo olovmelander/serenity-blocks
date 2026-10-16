@@ -126,6 +126,7 @@ describe('the stepped themes build their worlds in steps', () => {
     const family = ['summer', 'verdant-hills', 'forest', 'golden-forest'];
     const stepped = [
         ...family, 'moonlit-greenhouse', 'high-coast', 'cinder-drift', 'sky-children', 'bioluminescence', 'koi-pond',
+        'shifting-sands',
     ];
     it.each(stepped)('%s: build() drains buildSteps(); the theme owns the world once whole', (id) => {
         const world = source(`${id}/${id}-world.js`);
