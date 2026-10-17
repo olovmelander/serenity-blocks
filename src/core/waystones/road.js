@@ -3,14 +3,17 @@
 /**
  * The Waystones road: five stops drawn from a seed over the worlds the player has collected.
  *
- * Stop one is the world on screen ("the road begins where you stand"); every later stop
- * offers two worlds, each with its own climate, and the player chooses one between stops.
- * The last stop is the Keeper's: the same climates, a bigger ask. Everything here is pure
- * and seeded, so a road can be shared by its seed and replayed.
+ * Stop one is the world on screen ("the road begins where you stand") under a gentle
+ * climate; every later stop offers two worlds, each with its own climate, and the player
+ * chooses one between stops. The last stop is the Keeper's: the same climates, a bigger
+ * ask. Everything here is pure and seeded, so a road can be shared by its seed and
+ * walked again.
  */
 
-import { CLIMATES, climateById } from './climates.js';
-import { CHARMS, KEEL_FACTOR } from './charms.js';
+import { CLIMATES, climateById, isGentle } from './climates.js';
+import {
+    BALLAST_FACTOR, CHARMS, KEEL_FACTOR, TIDE_FACTOR,
+} from './charms.js';
 
 /** @typedef {import('./climates.js').Climate} Climate */
 /** @typedef {{ id: string, name: string }} World */
@@ -22,6 +25,8 @@ export const STOP_COUNT = 5;
 export const OFFERS_PER_STOP = 2;
 /** The Keeper asks this much more; a cascade goal asks one more cascade. */
 export const KEEPER_FACTOR = 1.5;
+/** Points a banked stack pays for each row of blocks carried, once the next stop is cleared. */
+export const BANK_TOLL_PER_ROW = 60;
 
 /** FNV-1a over the seed's characters: any string becomes a 32-bit state. */
 export function hashSeed(seed) {
@@ -110,7 +115,7 @@ export function generateRoad({
         /** @type {Offer[]} */
         let offers;
         if (index === 0) {
-            const [climate] = pickDistinct(rng, CLIMATES, 1, (c) => c.modifiers.length <= 1);
+            const [climate] = pickDistinct(rng, CLIMATES, 1, isGentle);
             offers = [{ world: startWorld, climateId: climate.id }];
         } else {
             // Two different worlds, neither the one just left when the collection allows it,
@@ -133,21 +138,34 @@ export function generateRoad({
 
 /**
  * What a stop asks once the road's rules are applied: the carried stack raises it (a
- * banked stack is material, not a head start), the Keeper raises it, Keel lowers it.
+ * banked stack is material, not a head start; Ballast halves its weight), the Keeper
+ * raises it, Keel lowers it.
  * @param {Climate} climate
- * @param {{ carriedRows?: number, keeper?: boolean, keel?: boolean }} [terms]
+ * @param {{ carriedRows?: number, keeper?: boolean, keel?: boolean, ballast?: boolean }} [terms]
  * @returns {{ type: import('./climates.js').ClimateGoalType, target: number }}
  */
-export function scaledGoal(climate, { carriedRows = 0, keeper = false, keel = false } = {}) {
+export function scaledGoal(climate, {
+    carriedRows = 0, keeper = false, keel = false, ballast = false,
+} = {}) {
     const { type, base } = climate.goal;
+    const rows = ballast ? carriedRows * BALLAST_FACTOR : carriedRows;
     let target;
-    if (type === 'lines') target = base + Math.ceil(carriedRows / 2);
-    else if (type === 'score') target = base * (1 + 0.04 * carriedRows);
-    else target = base + (carriedRows >= 8 ? 1 : 0);
+    if (type === 'lines') target = base + Math.ceil(rows / 2);
+    else if (type === 'score') target = base * (1 + 0.04 * rows);
+    else target = base + (rows >= 8 ? 1 : 0);
     if (keeper) target = type === 'cascades' ? target + 1 : target * KEEPER_FACTOR;
-    if (keel) target *= KEEL_FACTOR;
+    if (keel) target = type === 'cascades' ? Math.max(1, target - 1) : target * KEEL_FACTOR;
     if (type === 'score') return { type, target: Math.max(100, Math.round(target / 100) * 100) };
     return { type, target: Math.max(1, Math.round(target)) };
+}
+
+/**
+ * What a banked stack pays once the next stop is cleared.
+ * @param {number} rows rows of blocks carried
+ * @param {{ tide?: boolean }} [charms]
+ */
+export function tollFor(rows, { tide = false } = {}) {
+    return Math.max(0, Math.floor(rows)) * BANK_TOLL_PER_ROW * (tide ? TIDE_FACTOR : 1);
 }
 
 /**

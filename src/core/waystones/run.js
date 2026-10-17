@@ -5,14 +5,22 @@
  *
  * Pure state, no engine: WaystonesMode feeds it what happened on the board (lines, points,
  * cascades, a top-out) and asks it what the stop wants next. Between stops the player
- * settles the stack (bank or release), may take a charm, then chooses the next world; the
- * run accepts those in that order and refuses anything out of turn.
+ * settles the stack (bank or release), may take a charm, may relight a lantern with
+ * points, then chooses the next world; the run accepts those in that order and refuses
+ * anything out of turn.
+ *
+ * The economy: a banked stack pays its toll only once the next stop is cleared (a top-out
+ * there loses the stack and the toll with it), and points buy lanterns back. So the
+ * choice between stops is carried risk now against safety later, and the score charms
+ * are a currency, not a vanity.
  */
 
 import { charmById } from './charms.js';
 import {
-    draftCharms, generateRoad, offerClimate, scaledGoal,
+    draftCharms, generateRoad, offerClimate, scaledGoal, tollFor,
 } from './road.js';
+
+export { BANK_TOLL_PER_ROW } from './road.js';
 
 /** @typedef {import('./road.js').Road} Road */
 /** @typedef {import('./road.js').Offer} Offer */
@@ -21,8 +29,8 @@ import {
 
 /** Lanterns at the start of a road. */
 export const LANTERNS = 3;
-/** Points for each row carried into the next stop. */
-export const BANK_TOLL_PER_ROW = 60;
+/** Points to relight a lantern between stops. */
+export const RELIGHT_COST = 1500;
 
 /**
  * @typedef {Object} StopState
@@ -34,18 +42,21 @@ export const BANK_TOLL_PER_ROW = 60;
  * @property {number} lines cleared at this stop
  * @property {number} score scored at this stop
  * @property {number} cascades two waves deep or more at this stop
- * @property {number} carriedRows the stack's height when the stop began
+ * @property {number} carriedRows rows of blocks banked into this stop
+ * @property {number} carriedToll points the banked stack pays once this stop is cleared
  * @property {number} topOuts at this stop
  */
 
 /**
  * @typedef {Object} BetweenState
  * @property {boolean | null} banked null until the stack is settled
+ * @property {boolean} autoReleased the well was already empty: nothing to settle
  * @property {number} carriedRows rows carried on (0 after a release)
- * @property {number} toll points the bank paid
+ * @property {number} toll what the bank will pay once the next stop is cleared
  * @property {string[]} draft charm ids on offer
  * @property {string | null} charmTaken
- * @property {boolean} charmSettled taken or skipped
+ * @property {boolean} charmSettled taken or passed
+ * @property {boolean} relit a lantern was bought back here
  */
 
 /**
@@ -57,8 +68,11 @@ export const BANK_TOLL_PER_ROW = 60;
  * @property {number} lanterns
  * @property {number} lanternsMax
  * @property {string[]} charms
+ * @property {boolean} hearthUsed Hearth forgives one top-out a road
  * @property {number} bankedRows over the whole road
- * @property {number} toll points paid for banking over the whole road
+ * @property {number} toll points banked stacks have paid over the whole road
+ * @property {number} lastPayout what the last cleared stop paid for its banked stack
+ * @property {number} relights lanterns bought back over the whole road
  * @property {StopState} stop
  * @property {BetweenState | null} between
  * @property {StopState[]} history stops completed
@@ -67,24 +81,40 @@ export const BANK_TOLL_PER_ROW = 60;
 
 /**
  * @param {WaystonesRun} run
+ * @param {Climate} climate
+ * @param {number} index
+ * @param {number} carriedRows
+ */
+function askFor(run, climate, index, carriedRows) {
+    return scaledGoal(climate, {
+        carriedRows,
+        keeper: Boolean(run.road.stops[index]?.keeper),
+        keel: run.charms.includes('keel'),
+        ballast: run.charms.includes('ballast'),
+    });
+}
+
+/**
+ * @param {WaystonesRun} run
  * @param {Offer} offer
  * @param {number} index
  * @param {number} carriedRows
+ * @param {number} carriedToll
  * @returns {StopState}
  */
-function startStop(run, offer, index, carriedRows) {
+function startStop(run, offer, index, carriedRows, carriedToll) {
     const climate = offerClimate(offer);
-    const { keeper } = run.road.stops[index];
     return {
         index,
         world: offer.world,
         climate,
-        goal: scaledGoal(climate, { carriedRows, keeper, keel: run.charms.includes('keel') }),
+        goal: askFor(run, climate, index, carriedRows),
         progress: 0,
         lines: 0,
         score: 0,
         cascades: 0,
         carriedRows,
+        carriedToll,
         topOuts: 0,
     };
 }
@@ -110,20 +140,28 @@ export function createRun({
         lanterns,
         lanternsMax: lanterns,
         charms: [],
+        hearthUsed: false,
         bankedRows: 0,
         toll: 0,
+        lastPayout: 0,
+        relights: 0,
         stop: /** @type {StopState} */ (/** @type {unknown} */ (null)),
         between: null,
         history: [],
         ended: null,
     };
-    run.stop = startStop(run, road.stops[0].offers[0], 0, 0);
+    run.stop = startStop(run, road.stops[0].offers[0], 0, 0, 0);
     return run;
 }
 
 /** @param {WaystonesRun} run */
 export function isLastStop(run) {
     return run.stopIndex >= run.road.stops.length - 1;
+}
+
+/** The ask of the next stop's offer under the current settlement and charms. @param {WaystonesRun} run */
+export function offerAsk(run, offer, carriedRows) {
+    return askFor(run, offerClimate(offer), run.stopIndex + 1, carriedRows);
 }
 
 /**
@@ -142,12 +180,16 @@ export function recordStop(run, { lines, score, cascades }) {
 }
 
 /**
- * The stop's goal is met: the road ends at the Keeper, otherwise the between-stops
- * choices open with a draft of three charms.
+ * The stop's goal is met: a banked stack pays out, and the road ends at the Keeper or the
+ * between-stops choices open with a draft of three charms. An empty well has nothing to
+ * settle and counts as released.
  * @param {WaystonesRun} run
+ * @param {{ material?: number }} [board] rows of blocks standing in the well
  */
-export function completeStop(run) {
+export function completeStop(run, { material = 1 } = {}) {
     if (run.phase !== 'play' || run.stop.progress < run.stop.goal.target) return run;
+    run.lastPayout = run.stop.carriedToll;
+    run.toll += run.stop.carriedToll;
     run.history.push(run.stop);
     if (isLastStop(run)) {
         run.phase = 'ended';
@@ -157,31 +199,36 @@ export function completeStop(run) {
     run.phase = 'between';
     run.between = {
         banked: null,
+        autoReleased: false,
         carriedRows: 0,
         toll: 0,
         draft: draftCharms(run.seed, run.stopIndex, run.charms),
         charmTaken: null,
         charmSettled: false,
+        relit: false,
     };
+    if (material <= 0) {
+        run.between.banked = false;
+        run.between.autoReleased = true;
+    }
     return run;
 }
 
 /**
- * Keep the stack: it pays a toll now and raises the next ask.
+ * Keep the stack: it raises the next ask and pays once that stop is cleared.
  * @param {WaystonesRun} run
- * @param {number} rows the stack's height
- * @returns {number} the toll paid, or -1 when the stack cannot be banked now
+ * @param {number} rows rows of blocks standing in the well
+ * @returns {number} what the bank will pay, or -1 when the stack cannot be banked now
  */
 export function bank(run, rows) {
     const { between } = run;
     if (run.phase !== 'between' || !between || between.banked !== null) return -1;
     const carried = Math.max(0, Math.floor(rows));
-    const toll = carried * BANK_TOLL_PER_ROW * (run.charms.includes('tide') ? 2 : 1);
+    const toll = tollFor(carried, { tide: run.charms.includes('tide') });
     between.banked = true;
     between.carriedRows = carried;
     between.toll = toll;
     run.bankedRows += carried;
-    run.toll += toll;
     return toll;
 }
 
@@ -206,7 +253,7 @@ export function takeCharm(run, charmId) {
     run.charms.push(charmId);
     between.charmTaken = charmId;
     between.charmSettled = true;
-    if (charmId === 'lantern') {
+    if (charmId === 'wick') {
         run.lanterns += 1;
         run.lanternsMax = Math.max(run.lanternsMax, run.lanterns);
     }
@@ -221,6 +268,34 @@ export function skipCharm(run) {
     return true;
 }
 
+/**
+ * Whether a lantern can be bought back now, and if not, why.
+ * @param {WaystonesRun} run
+ * @param {number} score the road's points
+ * @returns {{ can: boolean, why: 'done' | 'full' | 'short' | null }}
+ */
+export function canRelight(run, score) {
+    if (run.phase !== 'between' || !run.between) return { can: false, why: null };
+    if (run.between.relit) return { can: false, why: 'done' };
+    if (run.lanterns >= run.lanternsMax) return { can: false, why: 'full' };
+    if (score < RELIGHT_COST) return { can: false, why: 'short' };
+    return { can: true, why: null };
+}
+
+/**
+ * Buys a lantern back for RELIGHT_COST points, once between stops. The caller takes the
+ * points off the score.
+ * @param {WaystonesRun} run
+ * @param {{ score: number }} board
+ */
+export function relightLantern(run, { score }) {
+    if (!canRelight(run, score).can || !run.between) return false;
+    run.lanterns += 1;
+    run.relights += 1;
+    run.between.relit = true;
+    return true;
+}
+
 /** The next stop's offers, once the stack is settled. @param {WaystonesRun} run */
 export function nextOffers(run) {
     if (run.phase !== 'between') return [];
@@ -229,7 +304,7 @@ export function nextOffers(run) {
 
 /**
  * Set out for one of the next stop's worlds. The stack must be settled first; an unsettled
- * draft counts as skipped.
+ * draft counts as passed.
  * @param {WaystonesRun} run
  * @param {number} offerIndex
  */
@@ -240,24 +315,30 @@ export function choose(run, offerIndex) {
     if (!offer) return false;
     between.charmSettled = true;
     run.stopIndex += 1;
-    run.stop = startStop(run, offer, run.stopIndex, between.carriedRows);
+    run.stop = startStop(run, offer, run.stopIndex, between.carriedRows, between.toll);
     run.between = null;
     run.phase = 'play';
     return true;
 }
 
 /**
- * The stack reached the top. Hearth forgives the first at each stop; otherwise a lantern
- * goes out, and the road ends in the dark when the last one does.
+ * The stack reached the top. The well clears either way, so the banked stack and its
+ * toll are gone and the ask falls back to the base. Hearth forgives the first top-out of
+ * the road; otherwise a lantern goes out, and the road ends in the dark when the last does.
  * @param {WaystonesRun} run
  * @returns {{ forgiven: boolean, ended: boolean }}
  */
 export function spendLantern(run) {
     if (run.phase !== 'play') return { forgiven: false, ended: run.phase === 'ended' };
     const { stop } = run;
-    const forgiven = run.charms.includes('hearth') && stop.topOuts === 0;
     stop.topOuts += 1;
-    if (forgiven) return { forgiven: true, ended: false };
+    stop.carriedRows = 0;
+    stop.carriedToll = 0;
+    stop.goal = askFor(run, stop.climate, stop.index, 0);
+    if (run.charms.includes('hearth') && !run.hearthUsed) {
+        run.hearthUsed = true;
+        return { forgiven: true, ended: false };
+    }
     run.lanterns -= 1;
     if (run.lanterns <= 0) {
         run.lanterns = 0;
@@ -274,18 +355,20 @@ export function spendLantern(run) {
  * @param {number} score the board's score for the whole road
  */
 export function summary(run, score) {
-    const stopsCleared = run.history.length;
+    const worlds = run.history.map((stop) => stop.world.name);
     return {
         seed: run.seed,
         won: run.ended?.won === true,
         reason: run.ended?.reason || null,
-        stopsCleared,
+        stopsCleared: run.history.length,
         stopCount: run.road.stops.length,
         score,
         toll: run.toll,
         bankedRows: run.bankedRows,
+        relights: run.relights,
         lanternsLeft: run.lanterns,
         charms: run.charms.slice(),
-        worlds: run.history.map((stop) => stop.world.name),
+        worlds,
+        uniqueWorlds: new Set(worlds).size,
     };
 }

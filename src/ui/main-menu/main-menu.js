@@ -297,8 +297,9 @@ class MainMenu {
         this.stage = root.querySelector('.sb-stage');
         if (readFlag('faultLines', false)) installFaultLinesHud();
         else root.querySelector('.game-mode-card[data-mode="fault-lines"]')?.remove();
-        if (readFlag('waystones', false)) installWaystonesHud();
-        else root.querySelector('.game-mode-card[data-mode="waystones"]')?.remove();
+        // The HUD idles until a road is published, so any way into the mode has its panel.
+        installWaystonesHud();
+        if (!readFlag('waystones', false)) root.querySelector('.game-mode-card[data-mode="waystones"]')?.remove();
         this.cards = Array.from(root.querySelectorAll('.game-mode-card'));
         this.current = null;
         this.hoverTimer = null;
@@ -621,7 +622,7 @@ class MainMenu {
             facts.push(['Stops', String(STOP_COUNT)]);
             facts.push(['Worlds on the road', formatNumber(owned)]);
             facts.push(['Lanterns', '3']);
-            note = 'Preview. Top-outs cost lanterns, not the run. Charms between stops; the Keeper at the end.';
+            note = 'Preview. A top-out costs a lantern; the third ends the road. Charms between stops; the Keeper at the end.';
         } else if (mode === 'local-multiplayer') {
             facts.push(['Players', '2–4']);
             facts.push(['Bots', 'Any seat']);

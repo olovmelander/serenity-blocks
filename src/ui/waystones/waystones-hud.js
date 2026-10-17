@@ -3,20 +3,27 @@
  *
  * It shows what WaystonesMode publishes on EVENTS.WAYSTONES_STATE (the stop, its climate
  * and goal, the lanterns, the charms, the road) and sends the between-stops choices back
- * on EVENTS.WAYSTONES_COMMAND: bank or release the stack, take a charm or pass, choose the
- * next world; set out again once the road has ended. Styles: public/styles/waystones.css.
+ * on EVENTS.WAYSTONES_COMMAND: bank or release the stack, take a charm or pass, relight a
+ * lantern, choose the next world; set out again once the road has ended. Styles:
+ * public/styles/waystones.css.
  *
- * Keys: the sheet's buttons are reached with Tab and pressed with Enter; Enter alone sets
- * out again once the road has ended. The piece keys stay the board's.
+ * Keys: the sheet's buttons are reached with Tab and pressed with Enter; after each choice
+ * the focus lands on the next step's heading, never on a button, so a held Enter cannot
+ * choose for you. Enter alone sets out again once the road has ended. The piece keys stay
+ * the board's.
  */
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { escapeHtml } from '../../utils/dom-safety.js';
 import { csIcon } from '../components/cosmic-icons.js';
 import { goalText } from '../../core/waystones/climates.js';
 
+/** A click right after the panel re-rendered would land on whatever took the pressed button's place. */
+const CLICK_GRACE_MS = 250;
+
 const format = (n) => Number(n || 0).toLocaleString('en-US');
 const plural = (count, one, many) => `${format(count)} ${count === 1 ? one : many}`;
 const key = (label) => `<kbd class="sb-kbd" data-key aria-hidden="true">${escapeHtml(label)}</kbd>`;
+const check = () => csIcon('check', 14, 'btn-icon-svg');
 
 function modifierChips(climate) {
     if (!climate.modifiers.length) return '<span class="ws-chip ws-chip--plain">No rules bent</span>';
@@ -29,7 +36,8 @@ function lanternsHtml(state) {
     const lit = Array.from({ length: state.lanternsMax }, (_, index) => (
         `<i class="ws-lantern${index < state.lanterns ? ' is-lit' : ''}" aria-hidden="true"></i>`
     )).join('');
-    return `<p class="ws-lanterns" aria-label="${plural(state.lanterns, 'lantern', 'lanterns')} lit">${lit}</p>`;
+    const label = `${plural(state.lanterns, 'lantern', 'lanterns')} lit of ${state.lanternsMax}`;
+    return `<p class="ws-lanterns" role="img" aria-label="${label}">${lit}</p>`;
 }
 
 function roadHtml(state) {
@@ -44,8 +52,8 @@ function roadHtml(state) {
 function progressHtml(goal) {
     const share = Math.max(0, Math.min(1, goal.progress / goal.target));
     const done = goal.progress >= goal.target;
-    return `<div class="ws-progress${done ? ' is-done' : ''}" role="progressbar" aria-valuemin="0"
-            aria-valuemax="${goal.target}" aria-valuenow="${Math.min(goal.progress, goal.target)}">
+    return `<div class="ws-progress${done ? ' is-done' : ''}" role="progressbar" aria-label="${escapeHtml(goal.text)}"
+            aria-valuemin="0" aria-valuemax="${goal.target}" aria-valuenow="${Math.min(goal.progress, goal.target)}">
             <div class="ws-bar"><i style="width:${Math.round(share * 100)}%"></i></div>
             <span class="ws-progress__count">${format(Math.min(goal.progress, goal.target))} / ${format(goal.target)}</span>
         </div>`;
@@ -58,62 +66,94 @@ function charmsHtml(state) {
     )).join('')}</ul>`;
 }
 
-/** The stack, the charm, the world: three choices in that order. */
-function betweenHtml(state) {
-    const { between } = state;
-    let stack;
+/** The stack: bank it (it pays once the next stop is cleared) or release it. */
+function stackHtml(between) {
+    if (between.autoReleased) return `<p class="ws-settled">${check()} The well was empty. Nothing to bank.</p>`;
     if (!between.settled) {
-        stack = `<div class="ws-choice">
-            <button type="button" class="sb-btn sb-btn--primary" data-ws="bank" ${between.stackRows ? '' : 'disabled'}>
+        const why = between.tooTall ? '<p class="ws-muted">The stack reaches the roof; it cannot be carried.</p>' : '';
+        return `<div class="ws-choice">
+            <button type="button" class="sb-btn sb-btn--primary" data-ws="bank" ${between.canBank ? '' : 'disabled'}>
                 ${csIcon('line-stack', 14, 'btn-icon-svg')}<span>Bank it</span>
-                <small>${plural(between.stackRows, 'row', 'rows')} · +${format(between.tollIfBanked)}</small>
+                <small>${plural(between.stackRows, 'row', 'rows')} · pays ${format(between.tollIfBanked)} when cleared</small>
             </button>
             <button type="button" class="sb-btn sb-btn--quiet" data-ws="release">
                 ${csIcon('wave', 14, 'btn-icon-svg')}<span>Release it</span><small>An empty well</small>
             </button>
         </div>
-        <p class="ws-muted">A banked stack pays its toll now and raises the next ask. A released one asks the base.</p>`;
-    } else if (between.banked) {
-        stack = `<p class="ws-settled">${csIcon('check', 14, 'btn-icon-svg')} Banked ${plural(between.carriedRows, 'row', 'rows')} · +${format(between.toll)}</p>`;
-    } else {
-        stack = `<p class="ws-settled">${csIcon('check', 14, 'btn-icon-svg')} Released. The well is empty.</p>`;
+        ${why}
+        <p class="ws-muted">A banked stack raises the next stop's ask and pays once that stop is cleared. A released one asks its usual.</p>`;
     }
+    if (between.banked) {
+        return `<p class="ws-settled">${check()} Banked ${plural(between.carriedRows, 'row', 'rows')} · pays ${format(between.toll)} when the next stop is cleared.</p>`;
+    }
+    return `<p class="ws-settled">${check()} Released. The well is empty.</p>`;
+}
 
-    let charm;
+function charmHtml(state, between) {
     if (!between.charmSettled) {
-        charm = `<div class="ws-draft">${between.draft.map((entry) => (
+        return `<div class="ws-draft">${between.draft.map((entry) => (
             `<button type="button" class="ws-card" data-ws="charm" data-charm="${escapeHtml(entry.id)}">
                 <b>${escapeHtml(entry.name)}</b><span>${escapeHtml(entry.line)}</span></button>`
         )).join('')}
             <button type="button" class="sb-btn sb-btn--quiet ws-pass" data-ws="skip-charm"><span>Pass</span></button>
         </div>`;
-    } else if (between.charmTaken) {
-        const taken = state.charms.find((entry) => entry.id === between.charmTaken);
-        charm = `<p class="ws-settled">${csIcon('star', 14, 'btn-icon-svg')} ${escapeHtml(taken?.name || between.charmTaken)}: ${escapeHtml(taken?.line || '')}</p>`;
-    } else {
-        charm = '<p class="ws-settled">No charm this time.</p>';
     }
+    if (between.charmTaken) {
+        const taken = state.charms.find((entry) => entry.id === between.charmTaken);
+        return `<p class="ws-settled">${csIcon('star', 14, 'btn-icon-svg')} ${escapeHtml(taken?.name || between.charmTaken)}: ${escapeHtml(taken?.line || '')}</p>`;
+    }
+    return '<p class="ws-settled">No charm this time.</p>';
+}
 
-    const offers = between.offers.map((offer) => {
-        let ask = null;
-        if (between.settled) ask = between.banked ? offer.goalIfBanked : offer.goalIfReleased;
-        const askHtml = ask
-            ? `<em>${escapeHtml(goalText(ask))}</em>`
-            : `<em>Banked: ${escapeHtml(goalText(offer.goalIfBanked))} · Released: ${escapeHtml(goalText(offer.goalIfReleased))}</em>`;
-        return `<button type="button" class="ws-card ws-card--world" data-ws="choose" data-offer="${offer.index}" ${between.settled ? '' : 'disabled'}>
-            <b>${escapeHtml(offer.world.name)}</b>
-            <span class="ws-card__climate">${escapeHtml(offer.climate.name)} · ${escapeHtml(offer.climate.line)}</span>
-            <span class="ws-card__chips">${modifierChips(offer.climate)}</span>
-            ${askHtml}
+/** Points buy a lantern back, once between stops. */
+function relightHtml(state, between) {
+    const { relight } = between;
+    if (relight.why === 'done') return `<p class="ws-settled">${csIcon('candle', 14, 'btn-icon-svg')} A lantern relit.</p>`;
+    if (relight.why === 'full') return '<p class="ws-settled">All lanterns are lit.</p>';
+    const short = relight.why === 'short' ? ` · you have ${format(state.score)}` : '';
+    return `<button type="button" class="sb-btn sb-btn--quiet ws-relight" data-ws="relight" ${relight.can ? '' : 'disabled'}>
+            ${csIcon('candle', 14, 'btn-icon-svg')}<span>Relight a lantern</span>
+            <small>${format(relight.cost)} points${short}</small>
         </button>`;
-    }).join('');
+}
 
+/** An offer card leads with the weather, which is what changes; the world is its eyebrow. */
+function offerHtml(offer, between) {
+    const ready = between.settled && between.charmSettled;
+    let ask = null;
+    if (between.settled) ask = between.banked ? offer.goalIfBanked : offer.goalIfReleased;
+    const askHtml = ask
+        ? `<em>${escapeHtml(goalText(ask))}</em>`
+        : `<em>Banked: ${escapeHtml(goalText(offer.goalIfBanked))} · Released: ${escapeHtml(goalText(offer.goalIfReleased))}</em>`;
+    return `<button type="button" class="ws-card ws-card--world" data-ws="choose" data-offer="${offer.index}" ${ready ? '' : 'disabled'}>
+            ${between.sameWorld ? '' : `<span class="ws-card__world">${escapeHtml(offer.world.name)}</span>`}
+            <b>${escapeHtml(offer.climate.name)} <small>· ${escapeHtml(offer.climate.pace)}</small></b>
+            ${askHtml}
+            <span class="ws-card__climate">${escapeHtml(offer.climate.line)}</span>
+            <span class="ws-card__chips">${modifierChips(offer.climate)}</span>
+        </button>`;
+}
+
+/** The stack, a charm, a lantern, the world: four steps in that order. */
+function betweenHtml(state) {
+    const { between } = state;
+    const ready = between.settled && between.charmSettled;
+    const worldLabel = between.keeperNext ? 'The Keeper\'s stop' : 'The next world';
+    const paid = state.lastPayout > 0
+        ? `<p class="ws-settled">${check()} The banked stack paid ${format(state.lastPayout)}.</p>` : '';
     return `<section class="ws-between" aria-label="Between stops">
-            <p class="ws-label">The stack</p>${stack}
-            <p class="ws-label">A charm</p>${charm}
-            <p class="ws-label">${state.stopIndex + 2 === state.stopCount ? "The Keeper's stop" : 'The next world'}</p>
-            <div class="ws-offers">${offers}</div>
-            ${between.settled ? '' : '<p class="ws-muted">Settle the stack first.</p>'}
+            ${paid}
+            <h3 class="ws-label ws-step" tabindex="-1" data-step="stack">The stack</h3>
+            ${stackHtml(between)}
+            <h3 class="ws-label ws-step" tabindex="-1" data-step="charm">A charm</h3>
+            ${charmHtml(state, between)}
+            <h3 class="ws-label ws-step" tabindex="-1" data-step="lantern">A lantern</h3>
+            ${relightHtml(state, between)}
+            <h3 class="ws-label ws-step" tabindex="-1" data-step="world">${worldLabel}</h3>
+            ${between.keeperNext ? '<p class="ws-muted">The Keeper asks half again as much.</p>' : ''}
+            ${between.sameWorld ? `<p class="ws-muted">Both roads lead through ${escapeHtml(between.offers[0].world.name)}.</p>` : ''}
+            <div class="ws-offers">${between.offers.map((offer) => offerHtml(offer, between)).join('')}</div>
+            ${ready ? '' : '<p class="ws-muted">Settle the stack and the charm first.</p>'}
         </section>`;
 }
 
@@ -121,22 +161,26 @@ function endedHtml(state) {
     const { ended } = state;
     const title = ended.won ? 'The Keeper\'s light' : 'The road ends here';
     const line = ended.won
-        ? `Five stops across ${ended.worlds.length === 5 ? 'five worlds' : plural(new Set(ended.worlds).size, 'world', 'worlds')}, and the stack came with you.`
+        ? `Five stops, ${plural(ended.uniqueWorlds, 'world', 'worlds')}, ${plural(ended.bankedRows, 'row', 'rows')} carried.`
         : `The last lantern went out at stop ${state.stopIndex + 1} of ${state.stopCount}.`;
     const facts = [
         ['Stops', `${ended.stopsCleared} / ${ended.stopCount}`],
-        ['Score', format(ended.score)],
-        ['Banked', `${plural(ended.bankedRows, 'row', 'rows')} · +${format(ended.toll)}`],
+        ['Road score', format(ended.score)],
+        ['Banked', `${plural(ended.bankedRows, 'row', 'rows')} · paid ${format(ended.toll)}`],
+        ['Relit', plural(ended.relights, 'lantern', 'lanterns')],
         ['Charms', ended.charms.length ? state.charms.map((charm) => escapeHtml(charm.name)).join(', ') : 'none'],
         ['Road', escapeHtml(ended.seed)],
     ];
     return `<section class="ws-ended ws-ended--${ended.won ? 'won' : 'lost'}" aria-label="The road's end">
-            <h3 class="ws-ended__title">${title}</h3>
+            <h3 class="ws-ended__title" tabindex="-1">${title}</h3>
             <p class="ws-muted">${line}</p>
             <dl class="ws-facts">${facts.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
             <div class="ws-actions">
                 <button type="button" class="sb-btn sb-btn--primary" data-ws="again">
                     ${csIcon('cycle', 14, 'btn-icon-svg')}<span>Set out again</span>${key('Enter')}
+                </button>
+                <button type="button" class="sb-btn sb-btn--quiet" data-ws="again-same" data-seed="${escapeHtml(ended.seed)}">
+                    ${csIcon('prev', 14, 'btn-icon-svg')}<span>Walk this road again</span>
                 </button>
                 <button type="button" class="sb-btn sb-btn--quiet" data-ws="menu">
                     ${csIcon('home', 14, 'btn-icon-svg')}<span>Menu</span>
@@ -152,6 +196,7 @@ class WaystonesHud {
         this.content = null;
         this.stage = null;
         this.state = null;
+        this.renderedAt = 0;
         eventBus.on(EVENTS.WAYSTONES_STATE, (state) => this.onState(state));
         document.addEventListener('keydown', (event) => this.onKeyDown(event));
     }
@@ -225,7 +270,7 @@ class WaystonesHud {
         if (!state || !live) return;
         let text = '';
         if (state.phase === 'between' && previous?.phase !== 'between') {
-            text = `${state.world.name} cleared. Settle the stack, then choose the next world.`;
+            text = `Stop ${state.stopIndex + 1} cleared. Settle the stack, then choose the next world.`;
         } else if (state.phase === 'ended' && previous?.phase !== 'ended') {
             text = state.ended.won ? 'The Keeper\'s light. The road is walked.' : 'The last lantern went out.';
         } else if (state.phase === 'play' && (!previous || previous.stopIndex !== state.stopIndex || previous.phase !== 'play')) {
@@ -234,6 +279,24 @@ class WaystonesHud {
             text = state.lastLantern.forgiven ? 'The hearth kept the lantern lit.' : `A lantern went out. ${plural(state.lanterns, 'lantern', 'lanterns')} left.`;
         }
         if (text) live.textContent = text;
+    }
+
+    /** Where the keyboard rests after a render: the pressed control if it is still there, else the step's heading. */
+    settleFocus(focused) {
+        const { state, content } = this;
+        const pressed = focused ? content.querySelector(`[data-ws="${focused}"]`) : null;
+        if (pressed && !pressed.disabled) {
+            pressed.focus?.({ preventScroll: true });
+            return;
+        }
+        if (state.phase === 'between') {
+            let step = 'world';
+            if (!state.between.settled) step = 'stack';
+            else if (!state.between.charmSettled) step = 'charm';
+            content.querySelector(`.ws-step[data-step="${step}"]`)?.focus?.({ preventScroll: true });
+        } else if (state.phase === 'ended') {
+            content.querySelector('.ws-ended__title')?.focus?.({ preventScroll: true });
+        }
     }
 
     render() {
@@ -256,8 +319,13 @@ class WaystonesHud {
             body = endedHtml(state);
         } else if (state.lastLantern) {
             body = `<section class="ws-note"><p class="ws-muted">${state.lastLantern.forgiven
-                ? 'The hearth kept the lantern lit. The well is clear; the ask stands.'
-                : `A lantern went out. The well is clear; the ask stands. ${plural(state.lanterns, 'lantern', 'lanterns')} left.`}</p></section>`;
+                ? 'The hearth kept the lantern lit. The well is clear; the stop asks its usual.'
+                : `A lantern went out. The well is clear; the stop asks its usual. ${plural(state.lanterns, 'lantern', 'lanterns')} left.`}</p></section>`;
+        }
+        let carried = '';
+        if (state.carriedRows) {
+            carried = `<p class="ws-muted">${plural(state.carriedRows, 'row', 'rows')} carried in`
+                + `${state.carriedToll ? ` · pays ${format(state.carriedToll)} when cleared` : ''}.</p>`;
         }
         this.content.innerHTML = `
             <header class="ws-head">
@@ -270,19 +338,17 @@ class WaystonesHud {
                 <p class="ws-label">Goal</p>
                 <p class="ws-goal__text">${escapeHtml(state.goal.text)}</p>
                 ${progressHtml(state.goal)}
-                ${state.carriedRows ? `<p class="ws-muted">${plural(state.carriedRows, 'row', 'rows')} carried in.</p>` : ''}
+                ${carried}
             </section>
             <section class="ws-run">
                 <div class="ws-run__row"><p class="ws-label">Lanterns</p>${lanternsHtml(state)}</div>
-                <div class="ws-run__row"><p class="ws-label">Score</p><p class="ws-score">${format(state.score)}</p></div>
+                <div class="ws-run__row"><p class="ws-label">Road score</p><p class="ws-score">${format(state.score)}</p></div>
                 <p class="ws-label">Charms</p>${charmsHtml(state)}
             </section>
             ${body}
             <nav class="ws-road-strip">${roadHtml(state)}</nav>`;
-        if (focused) this.content.querySelector(`[data-ws="${focused}"]`)?.focus?.({ preventScroll: true });
-        else if (state.phase === 'between' || state.phase === 'ended') {
-            this.content.querySelector('[data-ws]:not([disabled])')?.focus?.({ preventScroll: true });
-        }
+        this.renderedAt = performance.now();
+        this.settleFocus(focused);
     }
 
     send(type, extra = {}) {
@@ -297,6 +363,7 @@ class WaystonesHud {
     onClick(event) {
         const button = event.target.closest?.('[data-ws]');
         if (!button || button.disabled) return;
+        if (event.detail > 0 && performance.now() - this.renderedAt < CLICK_GRACE_MS) return;
         const action = button.dataset.ws;
         if (action === 'menu') {
             eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
@@ -304,8 +371,9 @@ class WaystonesHud {
         }
         if (action === 'charm') this.send('charm', { charmId: button.dataset.charm });
         else if (action === 'choose') this.send('choose', { offer: Number(button.dataset.offer) });
+        else if (action === 'again-same') this.send('again', { seed: button.dataset.seed });
         else this.send(action);
-        // A pointer click hands the keys back to the board; a keyboard press keeps its place.
+        // A pointer click hands the keys back to the board once play goes on.
         if (event.detail > 0 && this.state?.phase === 'play') document.activeElement?.blur?.();
     }
 
