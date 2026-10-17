@@ -1,0 +1,19 @@
+"lang"
+{
+	"Language"	"english"
+	"Tokens"
+	{
+		"#Menu"	"In the menu"
+		"#SinglePlayer"	"Single Player"
+		"#SinglePlayerLevel"	"Single Player · Level %level%"
+		"#Infinity"	"Infinity"
+		"#Odyssey"	"Odyssey"
+		"#OdysseyLevel"	"Odyssey · Chapter %chapter% · %levelname%"
+		"#Serenity"	"In Serenity"
+		"#LocalVersus"	"Local Versus"
+		"#LocalVersusPlayers"	"Local Versus · %players% players"
+		"#OnlineVersus"	"Online Versus"
+		"#OnlineVersusLobby"	"Online Versus · Waiting in a lobby (%players%/%maxplayers%)"
+		"#OnlineVersusMatch"	"Online Versus · %players%-player match"
+	}
+}

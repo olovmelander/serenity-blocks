@@ -16,6 +16,7 @@ import { csIcon } from './components/cosmic-icons.js';
 import { normalizeWheelDeltaToPixels } from '../utils/wheel-routing.js';
 import { installSheetInput } from './sheet-input.js';
 import { isGameOverArmed, markGameOverShown } from './game-over-arm.js';
+import { statisticsForMode } from '../core/progression/score-statistics.js';
 
 const MENU_SURFACES = '.modal, .serenity-hub-panel, .match-config-modal, #lobby-browser, .hale-flow, #breathing-guide';
 
@@ -378,6 +379,7 @@ export async function showGameOverModal(
     modalManager.gameOverLeaderboardPanel = null;
 
     const figures = computeResultFigures(gameState, Date.now() - startTime);
+    const mode = gameState?.isInfinityMode ? 'infinity' : 'single';
     const modeName = gameState?.isInfinityMode ? 'Infinity' : 'Single Player';
     setText('game-over-eyebrow', `${modeName} · Game over`);
 
@@ -400,9 +402,10 @@ export async function showGameOverModal(
     }
 
     try {
-        // Get rank and statistics
-        const rank = await highScoreManager.getRank(score);
-        const stats = await highScoreManager.getStatistics();
+        // Rank and career against this mode's own games: an Infinity run is not a
+        // Single Player record, and the other way round.
+        const rank = await highScoreManager.getRank(score, { mode });
+        const stats = statisticsForMode(await highScoreManager.getStatistics(), mode);
 
         if (!shouldPresent()) {
             return false;

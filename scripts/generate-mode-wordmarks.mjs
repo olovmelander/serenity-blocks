@@ -63,7 +63,6 @@ function rowPaths(text) {
 
 const modes = [
     ['single-player', 'Single Player', ['SINGLE', 'PLAYER']],
-    ['multiplayer', 'Multiplayer', ['MULTI', 'PLAYER']],
     ['local-versus', 'Local Versus', ['LOCAL', 'VERSUS']],
     ['online-versus', 'Online Versus', ['ONLINE', 'VERSUS']],
     ['infinity', 'Infinity', ['INFINITY']],

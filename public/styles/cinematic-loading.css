@@ -39,12 +39,10 @@
 .cinematic-loading__glow { inset: -34vh -26vw; }
 /* The name arrives as the boot's logo does: a short rise into place, then a slow pulse. */
 .cinematic-loading__title,
-.cinematic-loading__eyebrow,
 .cinematic-loading__variant,
 .cinematic-loading__tagline {
     animation: cinematic-loading-arrive 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
-.cinematic-loading__eyebrow,
 .cinematic-loading__variant,
 .cinematic-loading__tagline { animation-delay: 0.18s; }
 .cinematic-loading__title {
@@ -78,7 +76,6 @@
     text-transform: uppercase;
     white-space: nowrap;
 }
-.cinematic-loading__eyebrow,
 .cinematic-loading__variant {
     position: relative;
     color: #fff6e9b8;
@@ -87,7 +84,6 @@
     text-indent: 0.3em;
     text-transform: uppercase;
 }
-.cinematic-loading__eyebrow { margin: 0 0 22px; }
 .cinematic-loading__variant { margin: 22px 0 0; }
 .cinematic-loading__variant + .cinematic-loading__tagline { margin-top: 16px; color: #aabbd0; }
 .cinematic-loading__footer {
@@ -116,7 +112,6 @@
     .cinematic-loading__title--wide { width: min(420px, 82vw, 100svh); }
     .cinematic-loading__content { transform: translateY(-22px); }
     .cinematic-loading__tagline { margin-top: 12px; font-size: 8px; }
-    .cinematic-loading__eyebrow { margin-bottom: 10px; font-size: 8px; }
     .cinematic-loading__variant { margin-top: 10px; font-size: 8px; }
     .cinematic-loading__variant + .cinematic-loading__tagline { margin-top: 10px; }
     .cinematic-loading__footer { bottom: 6%; gap: 12px; }

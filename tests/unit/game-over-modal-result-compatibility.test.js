@@ -96,11 +96,53 @@ describe('game-over modal result compatibility', () => {
         );
 
         expect(presented).toBe(true);
-        expect(highScoreManager.getRank).toHaveBeenCalledWith(4321);
+        expect(highScoreManager.getRank).toHaveBeenCalledWith(4321, { mode: 'single' });
         expect(highScoreManager.getStatistics).toHaveBeenCalledOnce();
         expect(harness.finalStats.innerHTML).toContain('Rank #7');
         expect(harness.finalStats.innerHTML).toContain('Career Best');
         expect(harness.modalManager.show).toHaveBeenCalledWith('gameOver');
+    });
+
+    it('measures an Infinity run against Infinity alone, and a Single Player game against its own', async () => {
+        const stats = {
+            highestLevel: 30,
+            highestScore: 987654,
+            totalGames: 3,
+            totalLines: 330,
+            totalScore: 1000000,
+            byMode: {
+                single: {
+                    totalGames: 2, totalScore: 12346, totalLines: 30, highestScore: 8025, highestLevel: 4,
+                },
+                infinity: {
+                    totalGames: 1, totalScore: 987654, totalLines: 300, highestScore: 987654, highestLevel: 30,
+                },
+            },
+        };
+        const single = createModalHarness();
+        const singleScores = {
+            getRank: vi.fn().mockResolvedValue(2),
+            getStatistics: vi.fn().mockResolvedValue(stats),
+        };
+        await showGameOverModal(single.modalManager, createResultState(), singleScores);
+        expect(singleScores.getRank).toHaveBeenCalledWith(4321, { mode: 'single' });
+        // The career card is Single Player's: its best is 8,025, not the Infinity run's 987,654.
+        expect(single.finalStats.innerHTML).toContain('8,025');
+        expect(single.finalStats.innerHTML).not.toContain('987,654');
+
+        const infinity = createModalHarness();
+        const infinityScores = {
+            getRank: vi.fn().mockResolvedValue(1),
+            getStatistics: vi.fn().mockResolvedValue(stats),
+        };
+        await showGameOverModal(
+            infinity.modalManager,
+            { ...createResultState(), isInfinityMode: true, score: 987654 },
+            infinityScores,
+        );
+        expect(infinityScores.getRank).toHaveBeenCalledWith(987654, { mode: 'infinity' });
+        expect(infinity.finalStats.innerHTML).toContain('New record');
+        expect(infinity.finalStats.innerHTML).not.toContain('8,025');
     });
 
     it('abandons presentation when async ownership expires', async () => {

@@ -514,11 +514,6 @@ function _createOverlayElement(title) {
     glow.ariaHidden = 'true';
     content.appendChild(glow);
     const wordmark = getModeLoadingWordmark(title);
-    if (wordmark?.eyebrow) {
-        const eyebrow = element('p', 'cinematic-loading__eyebrow');
-        eyebrow.textContent = wordmark.eyebrow;
-        content.appendChild(eyebrow);
-    }
     const titleEl = element('h2', 'cinematic-loading__title', ROLE_TITLE);
     if (wordmark) {
         if (wordmark.wide) titleEl.className += ' cinematic-loading__title--wide';
