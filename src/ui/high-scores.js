@@ -4,7 +4,9 @@
  */
 
 import { eventBus, EVENTS } from '../events/event-bus.js';
-import { mergeStatisticsSnapshots } from '../core/progression/score-statistics.js';
+import {
+    addGameToModeStatistics, mergeStatisticsSnapshots, modeStatisticsOf,
+} from '../core/progression/score-statistics.js';
 
 /**
  * Scores imported from another device through Steam Cloud (audit SCORE-17). Keep only
@@ -120,10 +122,13 @@ export class HighScoreManager {
      * @param {string} scoreData.theme - Active theme
      * @param {string} scoreData.musicTrack - Music track played
      * @param {number} [scoreData.demoId] - Optional linked demo ID
+     * @param {string} [scoreData.mode] - The mode played ('infinity'); Single Player by default
      * @returns {Promise<Object>} The saved game record
      */
     async saveScore(scoreData) {
         if (!this.db) await this.init();
+
+        const mode = typeof scoreData.mode === 'string' && scoreData.mode ? scoreData.mode : 'single';
 
         const gameRecord = {
             score: scoreData.score,
@@ -174,6 +179,9 @@ export class HighScoreManager {
                             highestLevel: 0,
                             bestScorePerLevel: {},
                         };
+                        // Read before the lifetime counters change: a record from before the
+                        // split counts its history as Single Player.
+                        stats.byMode = addGameToModeStatistics(modeStatisticsOf(stats), mode, gameRecord);
                         stats.totalGames++;
                         stats.totalScore += gameRecord.score;
                         stats.totalLines += gameRecord.lines;
