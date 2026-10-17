@@ -24,6 +24,7 @@ import { haleSessionName } from '../effects/breathing/breath-openings.js';
 import { formatPracticeTime, readPracticeLog, summarizePractice } from '../effects/breathwork-practice-log.js';
 import { statisticsForMode } from '../../core/progression/score-statistics.js';
 import { MENU_ART_DIR, StageArt } from './stage-art.js';
+import { odysseyMeterHtml } from '../keystone/odyssey-meter.js';
 
 const LAST_MODE_KEY = 'serenity.menu.lastMode';
 const ODYSSEY_PROGRESS_KEY = 'serenityBlocks_odysseyProgress';
@@ -646,19 +647,10 @@ class MainMenu {
     }
 
     odysseyMeter(shape, progress) {
-        const cells = [];
-        const next = progress?.currentLevel || 1;
-        shape.chapters.forEach((chapter, chapterIndex) => {
-            chapter.levels.forEach((id, index) => {
-                const classes = [];
-                if (progress?.completedIds.has(id)) classes.push('is-filled');
-                if (id === next) classes.push('is-current');
-                if (index === chapter.levels.length - 1 && chapterIndex < shape.chapters.length - 1) classes.push('is-break');
-                cells.push(`<i${classes.length ? ` class="${classes.join(' ')}"` : ''}></i>`);
-            });
+        return odysseyMeterHtml(shape.chapters, {
+            completedIds: progress?.completedIds,
+            next: progress?.currentLevel || 1,
         });
-        const done = progress?.completedCount || 0;
-        return `<div class="sb-meter" role="img" aria-label="${done} of ${shape.levelCount} levels cleared">${cells.join('')}</div>`;
     }
 
     renderStage() {

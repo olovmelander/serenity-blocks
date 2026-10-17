@@ -41,6 +41,26 @@ describe('score statistics per mode', () => {
         expect(next.infinity).toBe(byMode.infinity);
     });
 
+    it("keeps Infinity's bests (deepest cascade, longest run) and leaves Single Player without them", () => {
+        let byMode = addGameToModeStatistics({}, 'infinity', {
+            score: 400000, lines: 120, level: 12, cascade: 9, duration: 600,
+        });
+        byMode = addGameToModeStatistics(byMode, 'infinity', {
+            score: 300000, lines: 90, level: 10, cascade: 6, duration: 1500,
+        });
+        byMode = addGameToModeStatistics(byMode, 'single', { score: 9000, lines: 30, level: 4 });
+        expect(byMode.infinity).toMatchObject({ totalGames: 2, bestCascade: 9, longestRun: 1500 });
+        expect(byMode.single).not.toHaveProperty('bestCascade');
+        expect(byMode.single).not.toHaveProperty('longestRun');
+
+        const merged = mergeStatisticsSnapshots(
+            { totalGames: 3, byMode },
+            { totalGames: 3, byMode: { infinity: { ...byMode.infinity, bestCascade: 11 } } },
+        );
+        expect(merged.byMode.infinity).toMatchObject({ bestCascade: 11, longestRun: 1500 });
+        expect(merged.byMode.single).not.toHaveProperty('bestCascade');
+    });
+
     it('merges two devices mode by mode, keeping the larger counters', () => {
         const desktop = {
             ...LEGACY,

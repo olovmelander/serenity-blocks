@@ -1,5 +1,5 @@
 import {
-    afterEach, describe, expect, it, vi,
+    afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import { HighScoreManager } from '../../src/ui/high-scores.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
@@ -35,7 +35,12 @@ function harness({ stats, failAdd, failStats } = {}) {
     };
 }
 
-afterEach(() => vi.restoreAllMocks());
+// Each mode's scores are trimmed through a (mode, score) key range.
+beforeEach(() => vi.stubGlobal('IDBKeyRange', { bound: (lower, upper) => ({ lower, upper }) }));
+afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+});
 
 const game = {
     score: 200, lines: 4, level: 3, speedMultiplier: 1.5,

@@ -1,64 +1,69 @@
 import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
-import { HighScoreManager } from '../../src/ui/high-scores.js';
+import { HighScoreManager, keepTopScoresPerMode } from '../../src/ui/high-scores.js';
 
-/** A manager whose score index walks `higher` (the saved scores above the one ranked). */
-function managerWithHigherScores(higher) {
+/** A manager whose indexes answer count() with `above` (the saved scores above the one ranked). */
+function managerCounting(above) {
     const manager = new HighScoreManager();
-    const request = {};
-    manager.db = {
-        transaction: vi.fn(() => ({
-            objectStore: () => ({ index: () => ({ openCursor: vi.fn(() => request) }) }),
-        })),
-    };
-    const walk = () => {
-        let at = 0;
-        const step = () => {
-            const value = higher[at];
-            at += 1;
-            request.onsuccess({ target: { result: value ? { value, continue: () => queueMicrotask(step) } : null } });
-        };
-        queueMicrotask(step);
-    };
-    return { manager, walk };
+    const index = vi.fn((name) => ({
+        count: vi.fn((range) => {
+            const request = {};
+            queueMicrotask(() => {
+                request.result = above(name, range);
+                request.onsuccess();
+            });
+            return request;
+        }),
+    }));
+    manager.db = { transaction: vi.fn(() => ({ objectStore: () => ({ index }) })) };
+    return { manager, index };
 }
 
 describe('the rank of a score', () => {
     beforeEach(() => {
-        vi.stubGlobal('IDBKeyRange', { lowerBound: (value, open) => ({ value, open }) });
+        vi.stubGlobal('IDBKeyRange', {
+            lowerBound: (value, open) => ({ lower: value, open }),
+            bound: (lower, upper, lowerOpen) => ({ lower, upper, lowerOpen }),
+        });
     });
     afterEach(() => vi.unstubAllGlobals());
 
-    const higher = [
-        { score: 987654, mode: 'infinity' },
-        { score: 9000, mode: 'single' },
-        // Saved before scores carried their mode: counted as Single Player.
-        { score: 7000 },
-        { score: 6000, mode: 'infinity' },
-    ];
-
-    it('counts every saved score by default, as Records lists them', async () => {
-        const { manager, walk } = managerWithHigherScores(higher);
-        const rank = manager.getRank(5000);
-        walk();
-        expect(await rank).toBe(5);
+    it('counts every saved score by default, as Records once listed them', async () => {
+        const { manager, index } = managerCounting(() => 4);
+        expect(await manager.getRank(5000)).toBe(5);
+        expect(index).toHaveBeenCalledWith('score');
     });
 
-    it('counts only its own mode, so an Infinity run never outranks a Single Player game', async () => {
-        const single = managerWithHigherScores(higher);
-        const singleRank = single.manager.getRank(5000, { mode: 'single' });
-        single.walk();
-        expect(await singleRank).toBe(3);
+    it('counts only its own mode through the (mode, score) index', async () => {
+        const { manager, index } = managerCounting((name, range) => (range.lower[0] === 'single' ? 2 : 0));
+        expect(await manager.getRank(5000, { mode: 'single' })).toBe(3);
+        expect(index).toHaveBeenCalledWith('mode_score');
+        // Above 5,000 in that mode only, and not 5,000 itself.
+        expect(index.mock.results[0].value.count).toHaveBeenCalledWith({
+            lower: ['single', 5000], upper: ['single', Infinity], lowerOpen: true,
+        });
+        expect(await manager.getRank(5000, { mode: 'infinity' })).toBe(1);
+    });
+});
 
-        const infinity = managerWithHigherScores(higher);
-        const infinityRank = infinity.manager.getRank(5000, { mode: 'infinity' });
-        infinity.walk();
-        expect(await infinityRank).toBe(3);
+describe('scores kept per mode', () => {
+    it("keeps each mode's best, so Infinity runs never push Single Player scores out", () => {
+        const infinityRuns = Array.from({ length: 5 }, (_, i) => ({ score: 900000 + i, mode: 'infinity' }));
+        const single = [{ score: 3000, mode: 'single' }, { score: 2000 }, { score: 1000, mode: 'single' }];
+        const kept = keepTopScoresPerMode([...single, ...infinityRuns], 3);
+        expect(kept.filter((entry) => entry.mode === 'infinity').map((entry) => entry.score))
+            .toEqual([900004, 900003, 900002]);
+        // A score without a mode is Single Player's.
+        expect(kept.filter((entry) => (entry.mode || 'single') === 'single').map((entry) => entry.score))
+            .toEqual([3000, 2000, 1000]);
+    });
 
-        const best = managerWithHigherScores([{ score: 987654, mode: 'infinity' }]);
-        const bestRank = best.manager.getRank(5000, { mode: 'single' });
-        best.walk();
-        expect(await bestRank).toBe(1);
+    it('ranks ties newest first', () => {
+        const kept = keepTopScoresPerMode([
+            { score: 500, timestamp: 1, mode: 'single' },
+            { score: 500, timestamp: 2, mode: 'single' },
+        ], 1);
+        expect(kept).toEqual([{ score: 500, timestamp: 2, mode: 'single' }]);
     });
 });

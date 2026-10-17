@@ -133,7 +133,9 @@
 }
 
 /* ---- Section tabs ---------------------------------------------------------------------- */
-#settings-modal .settings-tabs {
+/* Records' mode tabs (#high-scores-modal .hs-tabs) share this strip. */
+#settings-modal .settings-tabs,
+#high-scores-modal .hs-tabs {
     display: flex;
     flex: none;
     justify-content: flex-start;
@@ -149,11 +151,13 @@
     scrollbar-width: none;
 }
 
-#settings-modal .settings-tabs::-webkit-scrollbar {
+#settings-modal .settings-tabs::-webkit-scrollbar,
+#high-scores-modal .hs-tabs::-webkit-scrollbar {
     display: none;
 }
 
-#settings-modal .settings-tab {
+#settings-modal .settings-tab,
+#high-scores-modal .hs-tab {
     position: relative;
     display: inline-flex;
     flex: 1 1 0;
@@ -188,13 +192,15 @@
     opacity: 0.8;
 }
 
-#settings-modal .settings-tab:hover {
+#settings-modal .settings-tab:hover,
+#high-scores-modal .hs-tab:hover {
     color: var(--sb-text);
     background: rgba(var(--sb-cream-rgb), 0.05);
     transform: none;
 }
 
-#settings-modal .settings-tab.active {
+#settings-modal .settings-tab.active,
+#high-scores-modal .hs-tab.active {
     border-color: var(--sb-line-strong);
     background: linear-gradient(180deg, rgba(var(--sb-cream-rgb), 0.11), rgba(var(--sb-cream-rgb), 0.05));
     box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.08);
@@ -206,7 +212,8 @@
     color: var(--sb-accent);
 }
 
-#settings-modal .settings-tab:focus-visible {
+#settings-modal .settings-tab:focus-visible,
+#high-scores-modal .hs-tab:focus-visible {
     outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
     outline-offset: 2px;
     box-shadow: none;
@@ -1048,11 +1055,13 @@
         padding: 11px 6px;
     }
 
-    #settings-modal .settings-tabs {
+    #settings-modal .settings-tabs,
+    #high-scores-modal .hs-tabs {
         margin-bottom: 10px;
     }
 
-    #settings-modal .settings-tab {
+    #settings-modal .settings-tab,
+    #high-scores-modal .hs-tab {
         min-height: 38px;
     }
 
@@ -1166,6 +1175,7 @@
     }
 
     #settings-modal .settings-tab,
+    #high-scores-modal .hs-tab,
     #settings-modal .controls-subtab,
     #settings-modal .key-input,
     #settings-modal .setting-select,

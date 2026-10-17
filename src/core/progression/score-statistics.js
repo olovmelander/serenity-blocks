@@ -24,6 +24,8 @@
  * @property {number} totalLines
  * @property {number} highestScore
  * @property {number} highestLevel
+ * @property {number} [bestCascade] Infinity: the deepest cascade of any run
+ * @property {number} [longestRun] Infinity: the longest run, in seconds
  */
 
 /**
@@ -44,6 +46,13 @@ export const LEGACY_SCORE_MODE = 'single';
 /** @type {readonly (keyof ModeStatistics)[]} */
 const MODE_COUNTERS = ['totalGames', 'totalScore', 'totalLines', 'highestScore', 'highestLevel'];
 
+/**
+ * Bests a mode keeps besides its score (Infinity's), each from a field of the saved run.
+ * A mode that never reports one has no such key.
+ * @type {readonly [keyof ModeStatistics, string][]}
+ */
+const MODE_BESTS = [['bestCascade', 'cascade'], ['longestRun', 'duration']];
+
 /** @param {unknown} value */
 const count = (value) => {
     const number = Number(value);
@@ -56,13 +65,18 @@ const count = (value) => {
  */
 function modeCounters(source) {
     const s = source || {};
-    return {
+    /** @type {ModeStatistics} */
+    const counters = {
         totalGames: count(s.totalGames),
         totalScore: count(s.totalScore),
         totalLines: count(s.totalLines),
         highestScore: count(s.highestScore),
         highestLevel: count(s.highestLevel),
     };
+    MODE_BESTS.forEach(([key]) => {
+        if (count(s[key]) > 0) counters[key] = count(s[key]);
+    });
+    return counters;
 }
 
 /**
@@ -97,21 +111,25 @@ export function statisticsForMode(stats, mode) {
  *
  * @param {Record<string, ModeStatistics>} byMode from modeStatisticsOf(), before this game
  * @param {string} mode
- * @param {{ score?: number, lines?: number, level?: number }} game
+ * @param {{ score?: number, lines?: number, level?: number, cascade?: number, duration?: number }} game
  * @returns {Record<string, ModeStatistics>}
  */
 export function addGameToModeStatistics(byMode, mode, game) {
     const entry = modeCounters(byMode[mode]);
-    return {
-        ...byMode,
-        [mode]: {
-            totalGames: entry.totalGames + 1,
-            totalScore: entry.totalScore + count(game.score),
-            totalLines: entry.totalLines + count(game.lines),
-            highestScore: Math.max(entry.highestScore, count(game.score)),
-            highestLevel: Math.max(entry.highestLevel, count(game.level)),
-        },
+    /** @type {ModeStatistics} */
+    const next = {
+        ...entry,
+        totalGames: entry.totalGames + 1,
+        totalScore: entry.totalScore + count(game.score),
+        totalLines: entry.totalLines + count(game.lines),
+        highestScore: Math.max(entry.highestScore, count(game.score)),
+        highestLevel: Math.max(entry.highestLevel, count(game.level)),
     };
+    MODE_BESTS.forEach(([key, field]) => {
+        const best = Math.max(count(entry[key]), count(game[field]));
+        if (best > 0) next[key] = best;
+    });
+    return { ...byMode, [mode]: next };
 }
 
 /** @returns {ScoreStatistics} */
@@ -154,7 +172,8 @@ export function mergeStatisticsSnapshots(local, incoming) {
         Object.entries(modes).forEach(([mode, entry]) => {
             const kept = byMode[mode] || modeCounters(null);
             byMode[mode] = modeCounters(Object.fromEntries(
-                MODE_COUNTERS.map((key) => [key, Math.max(kept[key], entry[key])]),
+                [...MODE_COUNTERS, ...MODE_BESTS.map(([key]) => key)]
+                    .map((key) => [key, Math.max(count(kept[key]), count(entry[key]))]),
             ));
         });
     }
