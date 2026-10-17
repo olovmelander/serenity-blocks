@@ -293,6 +293,7 @@ in the corner. It now opens with a picture of the mode, taken from the game itse
 | Single Player's best score and games counted Infinity runs; one Infinity run hid the new-player note | Per-mode counters (`byMode`), merged across devices like the totals; a save from before the split counts as Single Player |
 | The loading screen after Local or Online Versus still said "Multiplayer", and a team match "Free-for-all" | The Versus wordmarks; under Local Versus, how the match is played (`LOCAL VERSUS · TEAMS · HOT POTATO`, `mode-loading-wordmarks.js`) |
 | The game-over career card, comparisons and record chip counted Infinity runs against Single Player | Per mode: `statisticsForMode()`, and scores now carry their mode for `getRank(score, { mode })` |
+| Records mixed every mode in one top-10 and one set of statistics; Infinity runs pushed Single Player scores out of the shared top 100 | A tab per mode with its own facts and list; scores stored and trimmed per mode (§5.1) |
 | Steam's status line used old names ("Local Multiplayer", "FFA Match", "Level 1" forever) and raw text that the friends list never shows | Menu names, only reported details, and localization tokens (`steam/rich-presence/`, to upload in Steamworks) |
 | Mode copy: Local Versus promised "outlast everyone" (matches are won by frags, lines, score or time); Infinity's "build upward instead of down"; Hale listed its last four sessions as if open | Copy audit 2026-10-17: rewritten, Hale shows sessions open (1 / 9) |
 | The desktop game had no way to quit from its menus (Alt+F4 only, in fullscreen) | Quit in the main menu dock, two presses |
@@ -391,9 +392,17 @@ on close.
 - **Pause:** pausing opens Settings as a "Paused" sheet — a strip with the mode
   ("Single Player waits where you left it"), Resume as the primary (focused first),
   Serenity Hub and Main menu. From the main menu the strip is hidden.
-- **Records:** "Your best", a ranked list (rank tiles in gold/silver/bronze for 1–3,
-  level · lines, date, Watch when a replay exists) and six statistics as fact tiles;
-  empty and error states.
+- **Records:** "Your best", one tab per mode that keeps records (Single Player · Infinity ·
+  Odyssey; `src/ui/records/records-view.js`). Each tab leads with four fact tiles for what
+  its mode is about, then its list: Single Player's top scores (level · lines, Watch when a
+  replay exists); Infinity's best runs by cascade and run length; Odyssey's stars, levels,
+  chapters and three-star levels, the journey as cells (`keystone/odyssey-meter.js`, shared
+  with the menu stage) and a row per chapter (Complete, Up next). It opens on the mode
+  being played, else the menu stage's mode, else the tab shown last; ←/→ on the tabs, Q/E
+  in the sheet and LB/RB switch tabs (the Settings strip's look); a record set today says
+  "Today"; an empty tab offers its mode from the main menu; all modes' lifetime totals are
+  one quiet line in the footer. Scores are stored per mode (IndexedDB v2, a (mode, score)
+  index, 100 kept per mode here and in Steam Cloud), so one mode's runs never trim another's.
 - **Replays:** cards with a mode chip, date, time and four stats; icon buttons with
   names; Import in the header; a status line instead of `alert`/`confirm`; delete asks
   for a second press; empty, loading and error states.

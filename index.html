@@ -2101,10 +2101,23 @@
                     </button>
                 </div>
             </header>
-            <div class="sb-sheet__body hs-body">
-                <div id="high-scores-list" class="hs-list"></div>
-                <div id="statistics-section" class="hs-stats"></div>
+            <!-- One tab per mode that keeps records (src/ui/records/records-view.js). -->
+            <div class="hs-tabs" id="hs-tabs" role="tablist" aria-label="Records by mode">
+                <button type="button" class="hs-tab active" data-mode="single" role="tab" id="hs-tab-single" aria-selected="true" aria-controls="hs-panel">Single Player</button>
+                <button type="button" class="hs-tab" data-mode="infinity" role="tab" id="hs-tab-infinity" aria-selected="false" aria-controls="hs-panel" tabindex="-1">Infinity</button>
+                <button type="button" class="hs-tab" data-mode="odyssey" role="tab" id="hs-tab-odyssey" aria-selected="false" aria-controls="hs-panel" tabindex="-1">Odyssey</button>
             </div>
+            <div class="sb-sheet__body hs-body" id="hs-panel" role="tabpanel" aria-labelledby="hs-tab-single">
+                <div id="statistics-section" class="hs-stats"></div>
+                <div id="high-scores-list" class="hs-list"></div>
+            </div>
+            <footer class="sb-sheet__foot hs-foot">
+                <p class="hs-all-modes" id="hs-all-modes"></p>
+                <ul class="sb-hints sb-sheet__hints">
+                    <li><kbd class="sb-kbd" data-key>Q</kbd><kbd class="sb-kbd" data-key>E</kbd><kbd class="sb-kbd" data-pad>LB</kbd><kbd class="sb-kbd" data-pad>RB</kbd>Switch mode</li>
+                    <li><kbd class="sb-kbd" data-key>Esc</kbd><kbd class="sb-kbd" data-pad>B</kbd>Close</li>
+                </ul>
+            </footer>
         </div>
     </div>
 
