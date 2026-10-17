@@ -342,7 +342,7 @@ describe('cinematic loading overlay countdown', () => {
     });
 
     it('fills the progress line when the cover turns into the countdown', async () => {
-        showCinematicLoadingOverlay('FREE-FOR-ALL');
+        showCinematicLoadingOverlay('LOCAL VERSUS · FREE-FOR-ALL');
         setCinematicLoadingProgress('settled');
         const countdown = transitionCinematicLoadingOverlayToCountdown({
             startCount: 1, countIntervalMs: 10, goHoldMs: 10, overlayFadeMs: 10,
@@ -395,8 +395,8 @@ describe('cinematic loading overlay countdown', () => {
 
     it.each([
         ['SINGLE PLAYER', 'single-player', 'SINGLE PLAYER'],
-        ['ONLINE MULTIPLAYER', 'multiplayer', 'MULTIPLAYER'],
-        ['FREE-FOR-ALL', 'multiplayer', 'MULTIPLAYER'],
+        ['ONLINE VERSUS', 'online-versus', 'ONLINE VERSUS'],
+        ['LOCAL VERSUS · FREE-FOR-ALL', 'local-versus', 'LOCAL VERSUS'],
         ['INFINITY', 'infinity', 'INFINITY'],
         ['ODYSSEY', 'odyssey', 'ODYSSEY'],
         ['SERENITY', 'serenity', 'SERENITY'],

@@ -1798,11 +1798,15 @@ export class InfinityMode extends BaseGameMode {
         if (writesLegacyResults) {
             // Save high score (using standard system for now). A storage failure still
             // shows the results, marked unsaved.
+            // Records shows a run by its deepest cascade and its length (timed as on Steam).
+            const runStart = gameState.infinityStats?.sessionStartTime || gameState.startTime || Date.now();
             scoreSaved = await saveRunScore(this.deps.highScoreManager, {
                 score: gameState.score,
                 lines: gameState.lines,
                 level: gameState.level,
                 mode: 'infinity', // Tag as infinity mode
+                cascade: gameState.infinityStats?.maxComboDepth || 0,
+                duration: Math.max(1, Math.round((Date.now() - runStart) / 1000)),
             }, '[Infinity]');
 
             // Sync Steam stats/leaderboards in the background (best-effort).

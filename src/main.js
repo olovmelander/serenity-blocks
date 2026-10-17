@@ -2762,7 +2762,7 @@ class SerenityBlocks {
         // Handle card-based mode selection (new UI)
         const MODE_DISPLAY_NAMES = {
             [GAME_MODES.SINGLE_PLAYER]: 'SINGLE PLAYER',
-            [GAME_MODES.ONLINE_MULTIPLAYER]: 'ONLINE MULTIPLAYER',
+            [GAME_MODES.ONLINE_MULTIPLAYER]: 'ONLINE VERSUS',
             [GAME_MODES.INFINITY]: 'INFINITY',
             [GAME_MODES.SERENITY]: 'SERENITY',
         };
@@ -3032,7 +3032,9 @@ class SerenityBlocks {
                 this.resumeGame();
             },
             onHighScoresOpen: () => {
-                showHighScoresModal(this.modalManager, this.highScoreManager, (demoId) => this._playDemoById(demoId));
+                showHighScoresModal(this.modalManager, this.highScoreManager, (demoId) => this._playDemoById(demoId), {
+                    mode: this._runningModeId(),
+                });
             },
             onHighScoresClose: () => {
                 // Modal closes automatically
@@ -3514,7 +3516,9 @@ class SerenityBlocks {
             if (this.modalManager.isVisible('highScores')) {
                 closeHighScoresModal(this.modalManager);
             } else {
-                showHighScoresModal(this.modalManager, this.highScoreManager, (demoId) => this._playDemoById(demoId));
+                showHighScoresModal(this.modalManager, this.highScoreManager, (demoId) => this._playDemoById(demoId), {
+                    mode: this._runningModeId(),
+                });
             }
         };
 
@@ -4240,6 +4244,12 @@ class SerenityBlocks {
 
         await this.gameModeManager.activateMode('single');
         await this.gameModeManager.startCurrentMode({ demo });
+    }
+
+    /** The mode being played, for Records to open on (the menu's own mode otherwise). */
+    _runningModeId() {
+        const mode = this.gameModeManager?.getCurrentMode?.();
+        return mode?.isRunning ? mode.getModeId?.() || null : null;
     }
 
     async _playDemoById(demoId) {

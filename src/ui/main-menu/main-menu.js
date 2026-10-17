@@ -18,10 +18,13 @@ import { getThemeIds, getThemeMeta } from '../../themes/theme-registry.js';
 import { getThemeCollection } from '../../themes/theme-collection.js';
 import { BREATH_WORLDS, breathPosterUrl } from '../effects/breathing/breath-catalogue.js';
 import { getBreathCollection as breathCollectionNow } from '../effects/breathing/breath-collection-store.js';
+import { BREATH_LADDER, STARTER_SESSIONS } from '../effects/breathing/breath-collection.js';
 import { driftOption } from '../serenity-mode/serenity-options.js';
 import { haleSessionName } from '../effects/breathing/breath-openings.js';
 import { formatPracticeTime, readPracticeLog, summarizePractice } from '../effects/breathwork-practice-log.js';
+import { statisticsForMode } from '../../core/progression/score-statistics.js';
 import { MENU_ART_DIR, StageArt } from './stage-art.js';
+import { odysseyMeterHtml } from '../keystone/odyssey-meter.js';
 
 const LAST_MODE_KEY = 'serenity.menu.lastMode';
 const ODYSSEY_PROGRESS_KEY = 'serenityBlocks_odysseyProgress';
@@ -40,11 +43,11 @@ const QUIT_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" s
  */
 const MODES = {
     single: {
-        eyebrow: 'Stack',
+        eyebrow: 'Stack · Classic',
         title: 'Single Player',
         art: { file: 'single' },
         wordmark: { file: 'single-player', tall: true },
-        lede: 'The classic climb. Clear lines to raise the level — each one drops the pieces a little faster. Keep the stack low and chase your best.',
+        lede: 'The classic climb. Clear lines to raise the level — every level drops the pieces a little faster. Keep the stack low and chase your best.',
         action: 'Play',
     },
     infinity: {
@@ -52,22 +55,22 @@ const MODES = {
         title: 'Infinity',
         art: { file: 'infinity' },
         wordmark: { file: 'infinity' },
-        lede: 'A well one thousand rows tall. Build upward instead of down, keep the shape healthy, and chain cascades as far as one run will carry you.',
+        lede: 'A well one thousand rows tall. Your stack can rise far above the screen, and the run ends only at the roof. Leave few holes and chain cascades as far as one run will carry you.',
         action: 'Play',
     },
     'local-multiplayer': {
         eyebrow: 'Stack · Local versus',
         title: 'Local Versus',
         art: { file: 'local-versus' },
-        wordmark: { file: 'multiplayer', tall: true },
-        lede: 'Up to four players on one screen — keyboards, controllers or bots. Clear lines to send pressure across and outlast everyone else.',
+        wordmark: { file: 'local-versus', tall: true },
+        lede: 'Up to four players on one screen — keyboards, controllers or bots. Clear lines to send garbage across, and win by frags, lines, score or time: you set the rules.',
         action: 'Set up a match',
     },
     'online-multiplayer': {
         eyebrow: 'Stack · Online versus',
         title: 'Online Versus',
         art: { file: 'online-versus' },
-        wordmark: { file: 'multiplayer', tall: true },
+        wordmark: { file: 'online-versus', tall: true },
         lede: 'Free-for-all lobbies for two to eight players. Create a match, browse the open ones, or drop into a game already under way.',
         action: 'Find a match',
         unavailableNote: 'Online play runs through Steam. Start Serenity Blocks from Steam to create and join lobbies.',
@@ -83,7 +86,7 @@ const MODES = {
     hale: {
         eyebrow: 'Breath · Guided breathwork',
         title: 'Hale Sessions',
-        lede: 'Nine journeys with a voice through the breathing worlds, from a short First Breath to the deep holds of Base and Elixir. The Odyssey and your practice open them, one by one.',
+        lede: 'Nine voice-guided sessions in the breathing worlds, from the short Hale First Breath to the deep holds of Hale Elixir. The Odyssey and your practice open them, one by one.',
         action: 'Choose a session',
     },
     odyssey: {
@@ -96,6 +99,9 @@ const MODES = {
 };
 
 const MODE_ORDER = ['single', 'infinity', 'local-multiplayer', 'online-multiplayer', 'serenity', 'hale', 'odyssey'];
+
+/** Hale sessions in the order the breath path opens them (breath-collection.js). */
+const HALE_SESSION_ORDER = [...STARTER_SESSIONS, ...BREATH_LADDER.map((step) => step.session)];
 
 const numberFormat = typeof Intl !== 'undefined' ? new Intl.NumberFormat() : null;
 const formatNumber = (value) => (numberFormat ? numberFormat.format(value) : String(value));
@@ -124,6 +130,16 @@ function readSerenityState() {
     const settings = typeof window !== 'undefined' ? window.settingsManager?.get?.() || window.settings : null;
     state.drift = settings?.serenityDrift || 'off';
     return state;
+}
+
+/** How many Hale sessions the player has open, or null when the collection cannot be read. */
+function readHaleOpenCount() {
+    try {
+        const collection = breathCollectionNow();
+        return HALE_SESSION_ORDER.filter((id) => collection.isSessionOpen(id)).length;
+    } catch {
+        return null;
+    }
 }
 
 /**
@@ -243,15 +259,11 @@ function loadHaleNewest() {
     if (!haleNewestLoader) {
         haleNewestLoader = Promise.all([
             import('../effects/breathing/breath-collection-store.js'),
-            import('../effects/breathing/breath-collection.js'),
             import('../effects/breathing/session-worlds.js'),
-        ]).then(([{ getBreathCollection }, { BREATH_LADDER, STARTER_SESSIONS }, { SESSION_WORLDS }]) => {
-            const order = [...STARTER_SESSIONS, ...BREATH_LADDER.map((step) => step.session)];
-            return () => {
-                const collection = getBreathCollection();
-                const id = newestOpenSession(order, (session) => collection.isSessionOpen(session));
-                return { id, world: SESSION_WORLDS[id]?.featured || null };
-            };
+        ]).then(([{ getBreathCollection }, { SESSION_WORLDS }]) => () => {
+            const collection = getBreathCollection();
+            const id = newestOpenSession(HALE_SESSION_ORDER, (session) => collection.isSessionOpen(session));
+            return { id, world: SESSION_WORLDS[id]?.featured || null };
         }).catch(() => null);
     }
     return haleNewestLoader;
@@ -556,41 +568,42 @@ class MainMenu {
         let { action } = MODES[mode];
 
         if (mode === 'single') {
-            const stats = this.scoreStats;
+            // Records counts Infinity runs too; this stage is Single Player's own.
+            const stats = this.scoreStats ? statisticsForMode(this.scoreStats, 'single') : null;
             if (stats && stats.totalGames > 0) {
                 facts.push(['Best score', formatNumber(stats.highestScore || 0)]);
                 facts.push(['Highest level', formatNumber(stats.highestLevel || 0)]);
                 facts.push(['Games', formatNumber(stats.totalGames)]);
             } else {
-                note = 'Your first game sets the record. Records keeps every score after that.';
+                note = 'Your first game sets the record. Find every score after that in Records.';
             }
         } else if (mode === 'infinity') {
             facts.push(['Rows', formatNumber(1000)]);
-            facts.push(['Goal', 'Endurance']);
+            facts.push(['Goal', 'Biggest cascade']);
         } else if (mode === 'local-multiplayer') {
-            facts.push(['Players', '2 – 4']);
+            facts.push(['Players', '2–4']);
             facts.push(['Bots', 'Any seat']);
             facts.push(['Teams', 'Optional']);
         } else if (mode === 'online-multiplayer') {
-            facts.push(['Players', '2 – 8']);
-            facts.push(['Lobbies', 'Public · Friends']);
-            if (this.isDisabled(this.cardFor(mode))) {
-                const label = this.cardFor(mode)?.dataset.disabledLabel;
-                note = MODES[mode].unavailableNote;
-                eyebrow = `${eyebrow}${label ? ` · ${label}` : ''}`;
-            }
+            facts.push(['Players', '2–8']);
+            facts.push(['Who can join', 'Anyone · Friends · Invite only']);
+            // The card's chip already says why; the note says what to do.
+            if (this.isDisabled(this.cardFor(mode))) note = MODES[mode].unavailableNote;
         } else if (mode === 'serenity') {
             const serenity = serenityFacts(readSerenityState());
             facts.push(...serenity.facts);
             ({ note } = serenity);
         } else if (mode === 'hale') {
             const summary = summarizePractice(readPracticeLog());
-            facts.push(['Sessions', 'Base · Elixir · Rest · Flow']);
+            const open = readHaleOpenCount();
+            facts.push(open === null
+                ? ['Sessions', formatNumber(HALE_SESSION_ORDER.length)]
+                : ['Sessions open', `${formatNumber(open)} / ${formatNumber(HALE_SESSION_ORDER.length)}`]);
             if (summary.hasHistory) {
                 facts.push(['Streak', `${summary.streak} ${summary.streak === 1 ? 'day' : 'days'}`]);
                 facts.push(['Practised', formatPracticeTime(summary.seconds)]);
             } else {
-                note = 'Breathwork asks a little of your body. Read each session’s notes before you begin.';
+                note = 'Some sessions include long breath holds. Read each session’s notes before you begin.';
             }
         } else if (mode === 'odyssey') {
             const progress = readOdysseyProgress();
@@ -634,19 +647,10 @@ class MainMenu {
     }
 
     odysseyMeter(shape, progress) {
-        const cells = [];
-        const next = progress?.currentLevel || 1;
-        shape.chapters.forEach((chapter, chapterIndex) => {
-            chapter.levels.forEach((id, index) => {
-                const classes = [];
-                if (progress?.completedIds.has(id)) classes.push('is-filled');
-                if (id === next) classes.push('is-current');
-                if (index === chapter.levels.length - 1 && chapterIndex < shape.chapters.length - 1) classes.push('is-break');
-                cells.push(`<i${classes.length ? ` class="${classes.join(' ')}"` : ''}></i>`);
-            });
+        return odysseyMeterHtml(shape.chapters, {
+            completedIds: progress?.completedIds,
+            next: progress?.currentLevel || 1,
         });
-        const done = progress?.completedCount || 0;
-        return `<div class="sb-meter" role="img" aria-label="${done} of ${shape.levelCount} levels cleared">${cells.join('')}</div>`;
     }
 
     renderStage() {

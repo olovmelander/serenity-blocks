@@ -12,30 +12,67 @@
 import steamService from './steam-service.js';
 import { GAME_MODES } from '../constants.js';
 
-// Rich Presence string templates per mode
-const PRESENCE_TEMPLATES = {
-    menu: 'In Menus',
-    [GAME_MODES.SINGLE_PLAYER]: (data) => `Single Player - Level ${data.level || 1}`,
-    [GAME_MODES.ODYSSEY]: (data) => {
-        if (data.chapter && data.levelName) {
-            return `Odyssey - ${data.chapter}: ${data.levelName}`;
-        }
-        return `Odyssey Mode - Chapter ${data.chapter || 1}`;
-    },
-    [GAME_MODES.INFINITY]: (data) => `Infinity Mode - Level ${data.level || 1}`,
-    [GAME_MODES.SERENITY]: () => 'Serenity Mode - Relaxing',
-    [GAME_MODES.LOCAL_MULTIPLAYER]: (data) => `Local Multiplayer - ${data.playerCount || 2} Players`,
+/**
+ * What friends see, mode by mode, with the main menu's names. Each entry is the line as a
+ * localization token from steam/rich-presence/english.vdf with the keys it fills in (Steam
+ * shows `steam_display` only as a `#token` the uploaded file defines), and the same line as
+ * plain text for the `status` key. A detail the game does not report is left out, not
+ * guessed: no "Level 1" when the level is unknown.
+ */
+const PRESENCE = {
+    menu: () => presence('#Menu', 'In the menu'),
+    [GAME_MODES.SINGLE_PLAYER]: (data) => (data.level
+        ? presence('#SinglePlayerLevel', `Single Player · Level ${data.level}`, { level: data.level })
+        : presence('#SinglePlayer', 'Single Player')),
+    [GAME_MODES.INFINITY]: () => presence('#Infinity', 'Infinity'),
+    [GAME_MODES.ODYSSEY]: (data) => (data.chapter && data.levelName
+        ? presence('#OdysseyLevel', `Odyssey · Chapter ${data.chapter} · ${data.levelName}`, {
+            chapter: data.chapter, levelname: data.levelName,
+        })
+        : presence('#Odyssey', 'Odyssey')),
+    [GAME_MODES.SERENITY]: () => presence('#Serenity', 'In Serenity'),
+    [GAME_MODES.LOCAL_MULTIPLAYER]: (data) => (data.playerCount
+        ? presence('#LocalVersusPlayers', `Local Versus · ${data.playerCount} players`, { players: data.playerCount })
+        : presence('#LocalVersus', 'Local Versus')),
     [GAME_MODES.ONLINE_MULTIPLAYER]: (data) => {
-        if (data.inMatch) {
-            const position = data.position || 1;
-            return `FFA Match - ${ordinal(position)} Place`;
+        if (data.inMatch && data.playerCount) {
+            return presence('#OnlineVersusMatch', `Online Versus · ${data.playerCount}-player match`, {
+                players: data.playerCount,
+            });
         }
         if (data.inLobby) {
-            return `FFA Lobby (${data.playerCount || 1}/${data.maxPlayers || 8}) - Waiting`;
+            const players = data.playerCount || 1;
+            const maxplayers = data.maxPlayers || 8;
+            return presence('#OnlineVersusLobby', `Online Versus · Waiting in a lobby (${players}/${maxplayers})`, {
+                players, maxplayers,
+            });
         }
-        return 'Online Multiplayer';
+        return presence('#OnlineVersus', 'Online Versus');
     },
 };
+
+/**
+ * @param {string} token
+ * @param {string} text
+ * @param {Record<string, string|number>} [params]
+ * @returns {{ token: string, text: string, params: Record<string, string> }}
+ */
+function presence(token, text, params = {}) {
+    return {
+        token,
+        text,
+        params: Object.fromEntries(Object.entries(params).map(([key, value]) => [key, String(value)])),
+    };
+}
+
+/**
+ * The presence for a mode and what is known about the game in it.
+ * @param {string} modeId a GAME_MODES value or 'menu'
+ * @param {object} [data]
+ */
+export function buildRichPresence(modeId, data = {}) {
+    return (PRESENCE[modeId] || PRESENCE.menu)(data);
+}
 
 // Minimum update intervals (ms) to avoid spamming Steam
 const UPDATE_INTERVALS = {
@@ -47,15 +84,6 @@ const UPDATE_INTERVALS = {
     [GAME_MODES.LOCAL_MULTIPLAYER]: 0, // Instant on start
     [GAME_MODES.ONLINE_MULTIPLAYER]: 5000, // More frequent for competitive
 };
-
-/**
- * Convert number to ordinal string (1st, 2nd, 3rd, etc.)
- */
-function ordinal(n) {
-    const s = ['th', 'st', 'nd', 'rd'];
-    const v = n % 100;
-    return n + (s[(v - 20) % 10] || s[v] || s[0]);
-}
 
 /**
  * RichPresenceManager Singleton
@@ -100,8 +128,11 @@ class RichPresenceManager {
             gameModeManager.on('modeActivated', ({ modeId }) => {
                 this.setMode(modeId);
             }),
-            gameModeManager.on('modeStarted', ({ modeId }) => {
-                this.setMode(modeId, { started: true });
+            gameModeManager.on('modeStarted', ({ modeId, mode }) => {
+                // A new Single Player game: the level it starts on (later ones arrive as
+                // game:levelChange).
+                const level = modeId === GAME_MODES.SINGLE_PLAYER ? mode?.gameState?.level : undefined;
+                this.setMode(modeId, { started: true, ...(level ? { level } : {}) });
             }),
             gameModeManager.on('modeStopped', () => {
                 this.setMode('menu');
@@ -250,37 +281,20 @@ class RichPresenceManager {
      * Actually perform the Steam Rich Presence update
      */
     async _doUpdate() {
-        const presenceString = this._buildPresenceString();
+        const { token, text, params } = buildRichPresence(this.currentMode, this.currentData);
 
-        // Don't update if string hasn't changed
-        if (presenceString === this.lastPresenceString) {
+        // Don't update if the line hasn't changed
+        if (text === this.lastPresenceString) {
             return;
         }
 
-        const success = await steamService.setRichPresence(presenceString);
+        const success = await steamService.setRichPresence(text, { token, params });
 
         if (success) {
-            this.lastPresenceString = presenceString;
+            this.lastPresenceString = text;
             this.lastUpdateTime = Date.now();
-            console.log(`[RichPresenceManager] Updated: "${presenceString}"`);
+            console.log(`[RichPresenceManager] Updated: "${text}"`);
         }
-    }
-
-    /**
-     * Build the presence string for current mode + data
-     */
-    _buildPresenceString() {
-        const template = PRESENCE_TEMPLATES[this.currentMode];
-
-        if (!template) {
-            return PRESENCE_TEMPLATES.menu;
-        }
-
-        if (typeof template === 'function') {
-            return template(this.currentData);
-        }
-
-        return template;
     }
 
     /**

@@ -137,7 +137,7 @@ describe('Replay menu payload ownership', () => {
 describe('Cloud high-score imports', () => {
     it('commits sorted, deduplicated and bounded results in one transaction', async () => {
         const h = scoreStore();
-        h.manager.getTopScores = vi.fn(async () => [{
+        h.manager.getAllScores = vi.fn(async () => [{
             id: 1, score: 500, lines: 2, level: 1, timestamp: 10,
         }]);
         const incoming = Array.from({ length: 105 }, (_, index) => ({
@@ -162,7 +162,7 @@ describe('Cloud high-score imports', () => {
 
     it('imports only scores, with numeric counters and no link to another device\'s replay (SCORE-17)', async () => {
         const h = scoreStore();
-        h.manager.getTopScores = vi.fn(async () => [{
+        h.manager.getAllScores = vi.fn(async () => [{
             id: 1, score: 900, lines: 9, level: 3, timestamp: 50, demoId: 4,
         }]);
         const pending = h.manager.importHighScores([
@@ -183,10 +183,28 @@ describe('Cloud high-score imports', () => {
             {
                 score: 900, lines: 9, level: 3, timestamp: 50, demoId: 4,
             },
-            { score: 300, lines: 12 },
+            // A score from before scores carried their mode is Single Player's.
+            { score: 300, lines: 12, mode: 'single' },
         ]);
         h.transaction.oncomplete();
         await expect(pending).resolves.toBe(2);
+    });
+
+    it("keeps each mode's own 100, so Infinity runs from the Cloud never push Single Player out", async () => {
+        const h = scoreStore();
+        h.manager.getAllScores = vi.fn(async () => [{
+            id: 1, score: 4000, lines: 30, level: 5, timestamp: 1, mode: 'single',
+        }]);
+        const runs = Array.from({ length: 120 }, (_, index) => ({
+            score: 900000 + index, lines: 200, level: 20, timestamp: 100 + index, mode: 'infinity', cascade: 7,
+        }));
+        const pending = h.manager.importHighScores(runs);
+        await Promise.resolve();
+        expect(h.records.filter((record) => record.mode === 'infinity')).toHaveLength(100);
+        expect(h.records.filter((record) => record.mode === 'single').map((record) => record.score)).toEqual([4000]);
+        expect(h.records.find((record) => record.mode === 'infinity').cascade).toBe(7);
+        h.transaction.oncomplete();
+        await expect(pending).resolves.toBe(101);
     });
 
     it('aborts the replacement on a write failure and rejects transaction aborts', async () => {

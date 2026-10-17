@@ -1469,17 +1469,22 @@ class SteamService {
 
     /**
      * Set Rich Presence status (shows in Steam Friends)
-     * @param {string} status - Status string to display
+     * @param {string} status - The line as plain text, for the `status` key (game info)
+     * @param {{ token?: string|null, params?: Record<string, string> }} [display] - The
+     *   friends-list line: a `#token` from steam/rich-presence/english.vdf and the keys it
+     *   fills in. Steam shows `steam_display` only as a token the uploaded file defines.
      */
-    async setRichPresence(status) {
+    async setRichPresence(status, { token = null, params = {} } = {}) {
         if (!ipcRenderer || !this.isOnline) {
             return false;
         }
 
         try {
-            // Steam uses 'steam_display' key for the main status
-            await ipcRenderer.invoke('steam:setRichPresence', 'steam_display', status);
-            // Also set 'status' for games that read it differently
+            // The keys first, so the line never names a token whose values are missing.
+            await Promise.all(Object.entries(params).map(
+                ([key, value]) => ipcRenderer.invoke('steam:setRichPresence', key, value),
+            ));
+            if (token) await ipcRenderer.invoke('steam:setRichPresence', 'steam_display', token);
             await ipcRenderer.invoke('steam:setRichPresence', 'status', status);
             console.log(`[SteamService] Rich Presence: ${status}`);
             return true;

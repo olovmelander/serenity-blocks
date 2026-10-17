@@ -1,5 +1,5 @@
 import {
-    afterEach, describe, expect, it, vi,
+    afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import { HighScoreManager } from '../../src/ui/high-scores.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
@@ -35,7 +35,12 @@ function harness({ stats, failAdd, failStats } = {}) {
     };
 }
 
-afterEach(() => vi.restoreAllMocks());
+// Each mode's scores are trimmed through a (mode, score) key range.
+beforeEach(() => vi.stubGlobal('IDBKeyRange', { bound: (lower, upper) => ({ lower, upper }) }));
+afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+});
 
 const game = {
     score: 200, lines: 4, level: 3, speedMultiplier: 1.5,
@@ -51,7 +56,7 @@ describe('atomic local score saves', () => {
         expect(h.manager.db.transaction).toHaveBeenCalledExactlyOnceWith(
             ['highScores', 'statistics', 'gameHistory'], 'readwrite',
         );
-        const record = { ...game, timestamp: 1234 };
+        const record = { ...game, mode: 'single', timestamp: 1234 };
         expect(h.scores.add).toHaveBeenCalledExactlyOnceWith(record);
         expect(h.history.add).toHaveBeenCalledExactlyOnceWith(record);
         expect(h.statistics.get).toHaveBeenCalledExactlyOnceWith('stats');
@@ -73,6 +78,11 @@ describe('atomic local score saves', () => {
         expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith({
             id: 'stats', totalGames: 1, totalScore: 200, totalLines: 4,
             highestScore: 200, highestLevel: 3, bestScorePerLevel: { 3: 200 },
+            byMode: {
+                single: {
+                    totalGames: 1, totalScore: 200, totalLines: 4, highestScore: 200, highestLevel: 3,
+                },
+            },
         });
         h.transaction.oncomplete();
         await pending;
@@ -90,6 +100,12 @@ describe('atomic local score saves', () => {
         expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith({
             id: 'stats', totalGames: 6, totalScore: 5200, totalLines: 94,
             highestScore: 1000, highestLevel: 9, bestScorePerLevel: { 2: 700, 3: 600 },
+            // The stored record predates per-mode counters: its history counts as Single Player.
+            byMode: {
+                single: {
+                    totalGames: 6, totalScore: 5200, totalLines: 94, highestScore: 1000, highestLevel: 9,
+                },
+            },
         });
         h.transaction.oncomplete();
         await pending;
@@ -164,6 +180,11 @@ describe('statistics import', () => {
         const merged = {
             id: 'stats', totalGames: 13, totalScore: 500, totalLines: 41,
             highestScore: 90, highestLevel: 4, bestScorePerLevel: { 3: 90, 4: 80 },
+            byMode: {
+                single: {
+                    totalGames: 13, totalScore: 500, totalLines: 41, highestScore: 90, highestLevel: 4,
+                },
+            },
         };
         expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith(merged);
         await Promise.resolve();
@@ -176,9 +197,17 @@ describe('statistics import', () => {
         const h = harness({ stats: stored });
         const pending = h.manager.importStatistics(incoming, { merge: false });
         expect(h.statistics.get).not.toHaveBeenCalled();
-        expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith(incoming);
+        const replaced = {
+            ...incoming,
+            byMode: {
+                single: {
+                    totalGames: 13, totalScore: 400, totalLines: 41, highestScore: 80, highestLevel: 4,
+                },
+            },
+        };
+        expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith(replaced);
         h.transaction.oncomplete();
-        expect(await pending).toEqual(incoming);
+        expect(await pending).toEqual(replaced);
     });
 
     it('aborts a failed write and rejects with its original error', async () => {

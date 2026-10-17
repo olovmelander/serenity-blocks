@@ -338,6 +338,8 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
             lines: 17,
             level: 4,
             mode: 'infinity',
+            cascade: 5,
+            duration: expect.any(Number),
         });
         expect(moduleMocks.incrementStat).toHaveBeenCalledTimes(3);
         expect(moduleMocks.setStatMax).toHaveBeenCalledTimes(2);
@@ -404,6 +406,8 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
             lines: 12,
             level: 3,
             mode: 'infinity',
+            cascade: 0,
+            duration: expect.any(Number),
         }));
 
         await mode.onStart();
