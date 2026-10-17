@@ -10,6 +10,7 @@ mkdirSync(output, { recursive: true });
 // S/E/R/N/I/T/Y/L/O are the original logo's outlines, translated to the origin.
 const glyphs = {
     A: [88, 'M0 100L29 0H59L88 100H64L58 78H30L24 100ZM36 56H52L44 26Z'],
+    C: [80, 'M80 0V22H33Q22 22 22 34V66Q22 78 33 78H80V100H30Q0 100 0 70V30Q0 0 30 0Z'],
     D: [82, 'M0 0H49Q82 0 82 32V68Q82 100 49 100H0ZM22 22V78H47Q60 78 60 65V35Q60 22 47 22Z'],
     E: [76, 'M76 0H10Q0 0 0 10V90Q0 100 10 100H76V78H22V61H65V39H22V22H76Z'],
     F: [76, 'M0 100V10Q0 0 10 0H76V22H22V42H65V64H22V100Z'],
@@ -24,6 +25,7 @@ const glyphs = {
     S: [80, 'M78 0H26Q0 0 0 26V36Q0 61 26 61H52Q58 61 58 67V72Q58 78 52 78H2V100H54Q80 100 80 74V64Q80 39 54 39H28Q22 39 22 33V28Q22 22 28 22H78Z'],
     T: [78, 'M0 0H78V22H50V100H28V22H0Z'],
     U: [82, 'M0 0H22V68Q22 78 32 78H50Q60 78 60 68V0H82V70Q82 100 52 100H30Q0 100 0 70Z'],
+    V: [88, 'M0 0H24L44 74L64 0H88L59 100H29Z'],
     Y: [84, 'M0 0H25L42 34L59 0H84L53 59V100H31V59Z'],
 };
 
@@ -62,6 +64,8 @@ function rowPaths(text) {
 const modes = [
     ['single-player', 'Single Player', ['SINGLE', 'PLAYER']],
     ['multiplayer', 'Multiplayer', ['MULTI', 'PLAYER']],
+    ['local-versus', 'Local Versus', ['LOCAL', 'VERSUS']],
+    ['online-versus', 'Online Versus', ['ONLINE', 'VERSUS']],
     ['infinity', 'Infinity', ['INFINITY']],
     ['serenity', 'Serenity', ['SERENITY']],
     ['odyssey', 'Odyssey', ['ODYSSEY']],

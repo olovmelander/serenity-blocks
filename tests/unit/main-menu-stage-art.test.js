@@ -1,4 +1,4 @@
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -51,6 +51,15 @@ describe('main menu stage art', () => {
         });
         Object.entries(SESSION_WORLDS).forEach(([session, worlds]) => {
             expect(existsSync(path.join(PUBLIC, 'assets/breathing', `${worlds.featured}.webp`)), session).toBe(true);
+        });
+    });
+
+    it('titles each mode with its own name: Local and Online Versus are not "Multiplayer"', () => {
+        Object.entries(MAIN_MENU_MODES).forEach(([mode, spec]) => {
+            if (!spec.wordmark) return;
+            const file = path.join(PUBLIC, 'assets/branding/modes', `${spec.wordmark.file}.svg`);
+            expect(existsSync(file), mode).toBe(true);
+            expect(readFileSync(file, 'utf8'), mode).toContain(`<title id="title">${spec.title}</title>`);
         });
     });
 });

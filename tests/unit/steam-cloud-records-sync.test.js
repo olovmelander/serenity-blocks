@@ -242,6 +242,12 @@ describe('mergeStatisticsSnapshots', () => {
             highestScore: 90,
             highestLevel: 5,
             bestScorePerLevel: { 1: 60, 3: 90, 5: 80 },
+            // Neither snapshot has per-mode counters, so both histories count as Single Player.
+            byMode: {
+                single: {
+                    totalGames: 10, totalScore: 900, totalLines: 41, highestScore: 90, highestLevel: 5,
+                },
+            },
         });
     });
 
@@ -249,7 +255,15 @@ describe('mergeStatisticsSnapshots', () => {
         const stats = { ...createEmptyStatistics(), totalGames: 4, bestScorePerLevel: { 2: 30 } };
         expect(mergeStatisticsSnapshots(stats, stats)).toEqual(mergeStatisticsSnapshots(null, stats));
         expect(mergeStatisticsSnapshots(null, { totalGames: '3', totalScore: -5, highestLevel: Number.NaN }))
-            .toEqual({ ...createEmptyStatistics(), totalGames: 3 });
+            .toEqual({
+                ...createEmptyStatistics(),
+                totalGames: 3,
+                byMode: {
+                    single: {
+                        totalGames: 3, totalScore: 0, totalLines: 0, highestScore: 0, highestLevel: 0,
+                    },
+                },
+            });
         expect(mergeStatisticsSnapshots(undefined, undefined)).toEqual(createEmptyStatistics());
     });
 });
