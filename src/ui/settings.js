@@ -1077,6 +1077,7 @@ const PAUSED_MODE_NAMES = {
     odyssey: 'Odyssey',
     'local-multiplayer': 'Local Versus',
     'online-multiplayer': 'Online Versus',
+    'fault-lines': 'Fault Lines',
 };
 
 /**

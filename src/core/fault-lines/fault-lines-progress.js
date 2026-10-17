@@ -17,10 +17,14 @@ const known = (/** @type {unknown} */ id) => typeof id === 'string'
     && FAULT_LINES_PUZZLES.some((puzzle) => puzzle.id === id);
 
 export const faultLinesProgress = {
-    /** @param {Iterable<unknown>} ids saved solves; unknown ids are dropped */
+    /**
+     * Saved solves. An id the bank no longer has (a puzzle renamed or retired) is kept
+     * and written back untouched, so a save never loses a solve.
+     * @param {Iterable<unknown>} ids
+     */
     restore(ids) {
         solved.clear();
-        for (const id of ids) if (known(id)) solved.add(/** @type {string} */ (id));
+        for (const id of ids) if (typeof id === 'string') solved.add(id);
     },
 
     /** @returns {string[]} */
@@ -58,7 +62,8 @@ export const faultLinesProgress = {
     },
 
     /**
-     * The open puzzle after `id`, preferring unsolved ones; null at the end.
+     * The puzzle to go on to after `id`: the next open unsolved one, else an earlier open
+     * unsolved one, else the next open one; null when nothing else is open.
      * @param {string} id
      * @returns {string | null}
      */
@@ -66,6 +71,13 @@ export const faultLinesProgress = {
         const open = openPuzzleIds(solved);
         const index = FAULT_LINES_PUZZLES.findIndex((p) => p.id === id);
         const later = FAULT_LINES_PUZZLES.slice(index + 1).filter((p) => open.has(p.id));
-        return (later.find((p) => !solved.has(p.id)) || later[0])?.id ?? null;
+        const earlier = FAULT_LINES_PUZZLES.slice(0, Math.max(0, index)).filter((p) => open.has(p.id));
+        const unsolved = (/** @type {{ id: string }} */ p) => !solved.has(p.id);
+        return (later.find(unsolved) || earlier.find(unsolved) || later[0])?.id ?? null;
+    },
+
+    /** @returns {boolean} whether every puzzle in the bank is solved */
+    allSolved() {
+        return FAULT_LINES_PUZZLES.every((p) => solved.has(p.id));
     },
 };

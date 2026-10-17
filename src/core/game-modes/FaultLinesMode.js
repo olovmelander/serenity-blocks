@@ -10,21 +10,30 @@
  * either deals the next piece or ends the puzzle. Nothing is scored or saved to Records.
  *
  * The mode stays headless: it publishes its state on EVENTS.FAULT_LINES_STATE and takes
- * undo / restart / next / load from EVENTS.FAULT_LINES_COMMAND. The HUD
+ * undo / restart / hint / next / load from EVENTS.FAULT_LINES_COMMAND. The HUD
  * (ui/fault-lines/fault-lines-hud.js) draws one and sends the other.
  */
 
 import { SinglePlayerMode } from './SinglePlayerMode.js';
 import { GameState, restoreBoardState, spawnPiece } from '../game.js';
-import { createBoardGrid, markBoardDirty, rebuildBoardGridFromPieces } from '../board.js';
+import {
+    createBoardGrid, invalidateGhostCache, markBoardDirty, rebuildBoardGridFromPieces,
+} from '../board.js';
 import { GAME_MODES } from '../constants.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { piecePool } from '../../utils/object-pool.js';
 import { buildPuzzle } from '../fault-lines/fault-lines-puzzle.js';
-import { dealIntoView, judge } from '../fault-lines/fault-lines-sim.js';
+import {
+    applyPlacement, boardFor, cellsOf, countCells, createRun, dealIntoView, failReason, judge, sameBoard,
+    solutionPlacement,
+} from '../fault-lines/fault-lines-sim.js';
+import { solveFrom } from '../fault-lines/fault-lines-solver.js';
 import { FAULT_LINES_PUZZLES, bankPuzzle } from '../fault-lines/puzzle-bank.js';
 import { faultLinesProgress } from '../fault-lines/fault-lines-progress.js';
 
 /** @typedef {import('../fault-lines/fault-lines-puzzle.js').FaultLinesPuzzle} FaultLinesPuzzle */
+/** @typedef {import('../fault-lines/fault-lines-sim.js').FaultLinesPlacement} FaultLinesPlacement */
+/** @typedef {import('../fault-lines/fault-lines-sim.js').FaultLinesRun} FaultLinesRun */
 
 /**
  * The board between two pieces: everything undo needs to deal a piece again.
@@ -51,10 +60,14 @@ export class FaultLinesMode extends SinglePlayerMode {
         this._turns = [];
         /** @type {'open'|'solved'|'failed'} */
         this._outcome = 'open';
+        /** @type {'spent'|'blocked'|'relic-lost'|null} */
+        this._reason = null;
         this._dealt = 0;
         this._bestWaves = 0;
         this._lockWaves = 0;
         this._firstSolve = false;
+        this._hintShown = false;
+        this._hintRestarted = false;
         /** @type {(() => void) | null} */
         this._stopCommands = null;
     }
@@ -76,11 +89,10 @@ export class FaultLinesMode extends SinglePlayerMode {
     /** @param {Object} [options] */
     async onStart(options = {}) {
         await super.onStart(options);
+        if (!this.isRunning || !this.puzzle) return;
         // Single Player deals the first piece after _dealSessionPieces; bring it into view.
-        if (this.isRunning && this.puzzle) {
-            dealIntoView(this.gameState);
-            this._publish();
-        }
+        dealIntoView(this.gameState);
+        this._publish();
     }
 
     async onDeactivate() {
@@ -95,8 +107,11 @@ export class FaultLinesMode extends SinglePlayerMode {
 
     /** @param {Object} options */
     _createSessionGameState(options) {
-        const gameState = new GameState({ ...options, finiteSupply: true, gravityWaits: true });
+        const gameState = new GameState({
+            ...options, finiteSupply: true, gravityWaits: true, disableLevelProgression: true,
+        });
         gameState.showBodySeams = true;
+        gameState.moveSummaryVocabulary = 'wave'; // the cascade banner counts waves, the panel's word
         return gameState;
     }
 
@@ -120,6 +135,7 @@ export class FaultLinesMode extends SinglePlayerMode {
             onPieceLock: (piece) => {
                 this._dealt += 1;
                 this._lockWaves = 0;
+                this._clearHint();
                 callbacks.onPieceLock(piece);
             },
             onLineClear: (lineCount, ...rest) => {
@@ -134,13 +150,23 @@ export class FaultLinesMode extends SinglePlayerMode {
     }
 
     /**
-     * A spawn the structure blocks ends the puzzle; nothing is scored. The turn that
-     * could not deal is dropped, so undo returns to the piece before it.
+     * A dealt piece the structure blocks fails the puzzle; nothing is scored. spawnPiece
+     * has marked the session over and left the blocked piece in hand: both are undone
+     * here, because the game loop stops drawing on isGameOver and undo must still work.
+     * The turn that could not deal is dropped, so undo returns to the piece before it.
      */
     async _handleGameOver() {
-        if (!this.gameState || !this.puzzle) return;
+        const { gameState } = this;
+        if (!gameState || !this.puzzle) return;
+        gameState.isGameOver = false;
+        if (gameState.currentPiece) {
+            piecePool.release(gameState.currentPiece);
+            gameState.currentPiece = null;
+            invalidateGhostCache(gameState);
+        }
         if (this._turns.length > 1) this._turns.pop();
         this._outcome = 'failed';
+        this._reason = 'blocked';
         this._publish();
     }
 
@@ -159,7 +185,6 @@ export class FaultLinesMode extends SinglePlayerMode {
             this.gameState.relicPieceId = goal.type === 'relic-floor' ? bodyIds[/** @type {string} */ (goal.body)] : null;
         }
         this._turns = [];
-        this._firstSolve = false;
         this._restoreTurn({
             lockedPieces: this.puzzle.lockedPieces,
             nextPieces: this.puzzle.supply,
@@ -171,7 +196,9 @@ export class FaultLinesMode extends SinglePlayerMode {
     }
 
     /**
-     * Puts the board back to the start of a turn and records it as the latest turn.
+     * Puts the board back to the start of a turn and records it as the latest turn. The
+     * piece in hand, if any, stays until the deal replaces it (spawnPiece returns it to
+     * the pool).
      * @param {FaultLinesTurn} turn
      * @param {{ deal?: boolean }} [options]
      */
@@ -182,8 +209,8 @@ export class FaultLinesMode extends SinglePlayerMode {
         restoreBoardState(gameState, {
             grid: rebuildBoardGridFromPieces(lockedPieces, createBoardGrid()),
             lockedPieces,
-            currentPiece: null,
         }, { adoptBoard: true });
+        gameState.hintCells = null;
         markBoardDirty(gameState);
         gameState.nextPieces = turn.nextPieces.slice();
         gameState._pieceIdCounter = turn.pieceIdCounter;
@@ -194,6 +221,10 @@ export class FaultLinesMode extends SinglePlayerMode {
         this._dealt = turn.dealt;
         this._lockWaves = 0;
         this._outcome = 'open';
+        this._reason = null;
+        this._firstSolve = false;
+        this._hintShown = false;
+        this._hintRestarted = false;
         this._turns.push({ ...turn, lockedPieces: clonePieces(turn.lockedPieces), nextPieces: turn.nextPieces.slice() });
         if (deal) this._deal();
         else this._publish();
@@ -203,16 +234,16 @@ export class FaultLinesMode extends SinglePlayerMode {
         const { gameState } = this;
         if (!gameState) return;
         spawnPiece(gameState, () => this._refreshNextQueue(), () => this._handleGameOver());
+        if (this._outcome === 'failed') return; // the deal was blocked; _handleGameOver published
         dealIntoView(gameState);
         this._refreshNextQueue();
         this._publish();
     }
 
-    _afterCascade() {
+    /** The puzzle as the board stands now, in the certifier's terms. */
+    _liveRun() {
         const { gameState, puzzle } = this;
-        if (!gameState || !puzzle || !this.isRunning) return;
-        this._bestWaves = Math.max(this._bestWaves, this._lockWaves);
-        this._outcome = judge({
+        return /** @type {FaultLinesRun} */ ({
             puzzle,
             lockedPieces: gameState.lockedPieces,
             dealt: this._dealt,
@@ -221,12 +252,22 @@ export class FaultLinesMode extends SinglePlayerMode {
             bestWaves: this._bestWaves,
             outcome: 'open',
         });
+    }
+
+    _afterCascade() {
+        const { gameState, puzzle } = this;
+        if (!gameState || !puzzle || !this.isRunning) return;
+        this._bestWaves = Math.max(this._bestWaves, this._lockWaves);
+        const run = this._liveRun();
+        this._outcome = judge(run);
         if (this._outcome === 'solved') {
             this._firstSolve = faultLinesProgress.markSolved(puzzle.id);
+            this.deps.soundManager?.sfxPlayer?.playLevelUp?.();
             this._publish();
             return;
         }
         if (this._outcome === 'failed') {
+            this._reason = failReason(run);
             this._publish();
             return;
         }
@@ -248,6 +289,7 @@ export class FaultLinesMode extends SinglePlayerMode {
         if (this._outcome === 'open') this._turns.pop();
         const turn = /** @type {FaultLinesTurn} */ (this._turns.pop());
         this._restoreTurn(turn);
+        this.deps.soundManager?.sfxPlayer?.playMove?.();
         return true;
     }
 
@@ -258,6 +300,56 @@ export class FaultLinesMode extends SinglePlayerMode {
         this._turns = [];
         this._restoreTurn(first);
         return true;
+    }
+
+    /**
+     * Lights a landing on the board: the stored solution's next step while the pieces
+     * placed so far follow it, else the first step of any straight line on from here.
+     * Only when no line on exists does the puzzle start over, and the state says so.
+     */
+    hint() {
+        const { gameState, puzzle } = this;
+        if (!gameState || !puzzle || puzzle.solution.length === 0 || gameState.isProcessingPhysics) return false;
+        if (this._outcome === 'open') {
+            let run = createRun(puzzle);
+            let step = 0;
+            for (; step < this._dealt; step += 1) {
+                const placement = solutionPlacement(run, puzzle.solution[step]);
+                if (!placement) break;
+                ({ run } = applyPlacement(run, placement));
+            }
+            if (step === this._dealt && sameBoard(boardFor(run.lockedPieces), gameState.boardGrid)) {
+                const placement = solutionPlacement(run, puzzle.solution[step]);
+                if (placement) return this._showHint(placement, false);
+            }
+            const line = solveFrom(this._liveRun());
+            if (line?.length) return this._showHint(line[0], false);
+        }
+        const first = solutionPlacement(createRun(puzzle), puzzle.solution[0]);
+        if (!first || !this.restart()) return false;
+        return this._showHint(first, true);
+    }
+
+    /**
+     * @param {FaultLinesPlacement} placement
+     * @param {boolean} restarted
+     */
+    _showHint(placement, restarted) {
+        const { gameState } = this;
+        if (!gameState) return false;
+        gameState.hintCells = cellsOf(placement);
+        markBoardDirty(gameState);
+        this._hintShown = true;
+        this._hintRestarted = restarted;
+        this._publish();
+        return true;
+    }
+
+    _clearHint() {
+        const { gameState } = this;
+        if (!gameState?.hintCells) return;
+        gameState.hintCells = null;
+        markBoardDirty(gameState);
     }
 
     _canUndo() {
@@ -272,6 +364,7 @@ export class FaultLinesMode extends SinglePlayerMode {
         const type = command?.type;
         if (type === 'undo') this.undo();
         else if (type === 'restart') this.restart();
+        else if (type === 'hint') this.hint();
         else if (type === 'load' && command.puzzleId && faultLinesProgress.openIds().has(command.puzzleId)) {
             this._loadPuzzle(command.puzzleId);
         } else if (type === 'next' && this.puzzle) {
@@ -301,10 +394,16 @@ export class FaultLinesMode extends SinglePlayerMode {
             remaining: [inHand, ...gameState.nextPieces].filter(Boolean),
             lines: gameState.lines,
             bestWaves: this._bestWaves,
+            cellsLeft: countCells(gameState.lockedPieces),
             outcome: this._outcome,
-            firstSolve: this._firstSolve,
+            reason: this._outcome === 'failed' ? this._reason : null,
+            firstSolve: this._outcome === 'solved' && this._firstSolve,
             canUndo: this._canUndo(),
+            canHint: puzzle.solution.length > 0,
+            hintShown: this._hintShown,
+            hintRestarted: this._hintRestarted,
             next: faultLinesProgress.after(puzzle.id),
+            allSolved: faultLinesProgress.allSolved(),
             bank: FAULT_LINES_PUZZLES.map((entry) => ({
                 id: entry.id,
                 title: entry.title,

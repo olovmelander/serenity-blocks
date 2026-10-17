@@ -38,13 +38,22 @@
     background: var(--sb-coral);
 }
 
-.fl-panel > * {
+.fl-panel__content > * {
     padding: 14px 16px 14px 18px;
     border-top: 1px solid var(--sb-line);
 }
 
-.fl-panel > :first-child {
+.fl-panel__content > :first-child {
     border-top: 0;
+}
+
+.fl-live {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
 }
 
 .fl-eyebrow,
@@ -86,8 +95,14 @@
 .fl-progress {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 10px;
+}
+
+.fl-progress__count {
+    margin-left: auto;
+    color: var(--sb-text-muted);
+    font: 600 12px / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
 }
 
 .fl-pips {
@@ -132,6 +147,21 @@
     background: linear-gradient(90deg, rgba(var(--sb-coral-rgb), 0.12), transparent);
 }
 
+.fl-outcome--hint {
+    background: linear-gradient(90deg, rgba(var(--sb-cream-rgb), 0.08), transparent);
+}
+
+.fl-tier__note {
+    margin-left: 6px;
+    color: var(--sb-text-faint);
+    letter-spacing: 0.08em;
+    text-transform: none;
+}
+
+.fl-puzzle.is-locked {
+    opacity: 0.55;
+}
+
 .fl-outcome__title {
     display: flex;
     align-items: center;
@@ -166,6 +196,17 @@
 
 .fl-actions .sb-btn[data-fl='list'] {
     grid-column: 1 / -1;
+}
+
+/* The hint, once offered, takes a row of its own above the list button. */
+.fl-actions .fl-hint-btn {
+    grid-column: 1 / -1;
+    border-color: rgba(var(--sb-gold-rgb), 0.45);
+    color: var(--sb-gold);
+}
+
+.fl-actions .fl-hint-btn[disabled] {
+    opacity: 0.6;
 }
 
 .fl-actions .sb-kbd {
@@ -230,15 +271,56 @@
     text-align: center;
 }
 
-/* Portrait: the panel becomes a strip under the board, as the ledger does. */
-@media (max-aspect-ratio: 4 / 5) {
+/* Portrait: the panel becomes a strip under the board, as the ledger does, on the same
+   breakpoint as keystone-solo.css; the stage reserves the strip's height so the board
+   shrinks instead of being covered. */
+@media (max-aspect-ratio: 1 / 1) {
+    .single-player-stage[data-board='well'][data-fault-lines='on'] {
+        --sp-strip: clamp(148px, calc(var(--sp-vh) * 0.24), 220px);
+    }
+
     .single-player-stage[data-board='well'] .fl-panel {
-        top: auto;
-        bottom: var(--sp-bottom);
+        top: calc(var(--sp-top) + var(--sp-next-h) + var(--sp-queue-gap) + var(--board-height) + 12px);
         left: 50%;
-        width: min(92vw, 420px);
-        max-height: 34vh;
+        width: var(--board-width);
+        min-width: min(92vw, 400px);
+        max-height: var(--sp-strip);
         transform: translateX(-50%);
+    }
+
+    .fl-panel__content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .fl-panel__content > * {
+        padding: 10px 14px;
+        border-top: 0;
+    }
+
+    .fl-panel__content > .fl-goal {
+        border-left: 1px solid var(--sb-line);
+    }
+
+    .fl-panel__content > .fl-outcome,
+    .fl-panel__content > .fl-actions,
+    .fl-panel__content > .fl-bank {
+        grid-column: 1 / -1;
+        border-top: 1px solid var(--sb-line);
+    }
+
+    .fl-title {
+        margin: 4px 0;
+        font-size: 18px;
+    }
+
+    .fl-actions {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .fl-actions .sb-btn[data-fl='list'],
+    .fl-actions .fl-hint-btn {
+        grid-column: auto;
     }
 }
 

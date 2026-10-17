@@ -66,7 +66,7 @@ const MODES = {
         eyebrow: 'Stack · Puzzles',
         title: 'Fault Lines',
         art: { file: 'fault-lines' },
-        lede: 'A structure, a few pieces and one goal. Gravity waits while you choose; then the cascade runs. Each body falls as one, and bodies never stick together.',
+        lede: 'A structure, a few pieces and one goal. Gravity waits while you choose; then the cascade runs. Each body falls as one, and bodies never glue together.',
         action: 'Play',
     },
     'local-multiplayer': {
@@ -601,7 +601,8 @@ class MainMenu {
             const openTiers = new Set(FAULT_LINES_PUZZLES.filter((puzzle) => open.has(puzzle.id)).map((p) => p.tier));
             facts.push(['Puzzles solved', `${formatNumber(solved)} / ${formatNumber(FAULT_LINES_PUZZLES.length)}`]);
             facts.push(['Tiers open', `${openTiers.size} / ${tiers.size}`]);
-            if (solved === 0) note = 'Preview. Two solved puzzles open the next tier. Backspace takes back a piece.';
+            if (solved > 0) action = 'Continue';
+            else note = 'Preview. Solve three in a tier to open the next. Every piece can be taken back.';
         } else if (mode === 'local-multiplayer') {
             facts.push(['Players', '2–4']);
             facts.push(['Bots', 'Any seat']);

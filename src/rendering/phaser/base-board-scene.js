@@ -851,6 +851,7 @@ export function createBaseBoardScene(
                 this.drawBoardFromGrid();
                 // drawLockedPieceOutlines intentionally removed: pieces render as fused shapes with no internal borders
                 if (this.gameState.showBodySeams) this.drawBodySeams();
+                if (this.gameState.hintCells) this.drawHintCells();
             }
 
             // Dynamic layer - render every frame
@@ -1132,6 +1133,18 @@ export function createBaseBoardScene(
                     layer.fillTriangle(cx, cy - r, cx - r, cy, cx, cy + r);
                 }
             }
+        }
+
+        /** Fault Lines: the landing a hint suggests, as a lit outline on the static layer. */
+        drawHintCells() {
+            const cells = this.gameState?.hintCells;
+            const layer = this.boardGraphics;
+            if (!Array.isArray(cells) || cells.length === 0 || !layer) return;
+            const bs = this.blockSize;
+            layer.fillStyle(0xfff6e9, 0.14);
+            cells.forEach(([x, y]) => layer.fillRect(x * bs, y * bs, bs, bs));
+            const group = new Set(cells.map(([x, y]) => `${x},${y}`));
+            this.strokeLoops(layer, this.traceLoops(group, 0, 0), 0xfff6e9, Math.max(2, bs * 0.08), 0.9);
         }
 
         drawLockedPieceOutlines() {

@@ -19,6 +19,7 @@ describe('puzzle rule gates', () => {
         const gameState = game();
         expect(gameState.finiteSupply).toBe(false);
         expect(gameState.gravityWaits).toBe(false);
+        expect(gameState.moveSummaryVocabulary).toBe('combo');
         gameState.nextPieces = ['T'];
         spawnPiece(gameState);
         expect(gameState.nextPieces.length).toBeGreaterThanOrEqual(10);
