@@ -46,6 +46,13 @@ export const GOAL_TYPES = Object.freeze(['waves', 'lines', 'clear-all', 'relic-f
  */
 
 /**
+ * @typedef {Object} SolutionStep
+ * @property {string} piece the supply piece this step places
+ * @property {number} rotation right rotations from the dealt orientation, 0–3
+ * @property {number} x the column of the shape matrix's origin, as the solver reports it
+ */
+
+/**
  * @typedef {Object} FaultLinesDefinition
  * @property {string} id
  * @property {string} title
@@ -53,6 +60,7 @@ export const GOAL_TYPES = Object.freeze(['waves', 'lines', 'clear-all', 'relic-f
  * @property {string[]} rows
  * @property {string[]} supply
  * @property {FaultLinesGoal} goal
+ * @property {SolutionStep[]} [solution] one straight-drop solution, for hints; CI checks it
  */
 
 /**
@@ -74,6 +82,7 @@ export const GOAL_TYPES = Object.freeze(['waves', 'lines', 'clear-all', 'relic-f
  * @property {string} lesson
  * @property {string[]} supply
  * @property {FaultLinesGoal} goal
+ * @property {SolutionStep[]} solution
  * @property {LockedBody[]} lockedPieces
  * @property {Record<string, number>} bodyIds authored letter → pieceId
  * @property {number} nextPieceId first id free for dealt pieces
@@ -123,6 +132,20 @@ export function validatePuzzleDefinition(definition) {
                 problems.push(`unknown supply piece '${key}'`);
             }
         });
+    }
+
+    if (def.solution !== undefined) {
+        const steps = Array.isArray(def.solution) ? def.solution : null;
+        if (!steps || (supply && steps.length !== supply.length)) {
+            problems.push('solution must list one step per supply piece');
+        } else {
+            steps.forEach((step, index) => {
+                if (!step || step.piece !== supply?.[index] || !Number.isInteger(step.rotation)
+                    || step.rotation < 0 || step.rotation > 3 || !Number.isInteger(step.x)) {
+                    problems.push(`solution step ${index} must name supply piece ${index}, a rotation 0–3 and a column`);
+                }
+            });
+        }
     }
 
     const { goal } = def;
@@ -188,6 +211,7 @@ export function buildPuzzle(definition) {
         lesson: definition.lesson || '',
         supply: definition.supply.slice(),
         goal: { ...definition.goal },
+        solution: (definition.solution || []).map((step) => ({ ...step })),
         lockedPieces,
         bodyIds,
         nextPieceId: pieceId + 1,

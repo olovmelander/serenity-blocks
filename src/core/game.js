@@ -646,10 +646,17 @@ export class GameState {
         // piece down or locks it, so only a hard drop places it.
         this.finiteSupply = options.finiteSupply === true;
         this.gravityWaits = options.gravityWaits === true;
-        // Fault Lines' board marks: a seam where two bodies touch, and the relic's body.
+        // Fault Lines' board marks: a seam where two bodies touch, the relic's body, and
+        // the cells a hint lights up.
         this.showBodySeams = false;
         /** @type {number | null} */
         this.relicPieceId = null;
+        /** @type {Array<[number, number]> | null} */
+        this.hintCells = null;
+        // What the board's cascade banner counts: combos, or a puzzle's waves. The scene
+        // reads it from whichever GameState it draws, so a rebuilt scene keeps the word.
+        /** @type {'combo' | 'wave'} */
+        this.moveSummaryVocabulary = 'combo';
         this.lockTimer = 0;
         this.lockTimerTicks = 0;
         this.lockResetCount = 0;

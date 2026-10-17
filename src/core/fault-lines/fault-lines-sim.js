@@ -68,19 +68,35 @@ export function currentShapeKey(/** @type {FaultLinesRun} */ run) {
 export const DEAL_ROW = HIDDEN_ROWS;
 
 /**
- * A dealt piece where Fault Lines shows it: game.js createActivePiece's column, on DEAL_ROW.
+ * A dealt piece as the live game places it: game.js createActivePiece's column and spawn
+ * row, lowered to DEAL_ROW when the board leaves that row free (dealIntoView). A board
+ * that blocks the spawn row itself blocks the deal, and listPlacements finds nothing.
  * @param {string} shapeKey
+ * @param {Array<Array<unknown>>} [boardGrid]
  */
-export function spawnPiece(shapeKey) {
+export function spawnPiece(shapeKey, boardGrid) {
     const shape = SHAPES[shapeKey].map((row) => row.slice());
-    return {
+    const piece = {
         shapeKey,
         type: shapeKey,
         shape,
         rotation: 0,
         x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2),
-        y: DEAL_ROW,
+        y: HIDDEN_ROWS - 2,
     };
+    if (boardGrid && fits(boardGrid, piece, piece.x, DEAL_ROW)) piece.y = DEAL_ROW;
+    return piece;
+}
+
+/** The pathfinder's placement test, for the deal row. */
+function fits(boardGrid, piece, atX, atY) {
+    return piece.shape.every((row, localY) => row.every((cell, localX) => {
+        if (cell <= 0) return true;
+        const x = atX + localX;
+        const y = atY + localY;
+        if (x < 0 || x >= COLS || y >= boardGrid.length) return false;
+        return y < 0 || boardGrid[y][x] === null;
+    }));
 }
 
 /**
@@ -111,9 +127,10 @@ export function boardFor(lockedPieces) {
 export function listPlacements(run) {
     const shapeKey = currentShapeKey(run);
     if (!shapeKey || run.outcome !== 'open') return [];
+    const boardGrid = boardFor(run.lockedPieces);
     const placements = findReachablePlacements({
-        boardGrid: boardFor(run.lockedPieces),
-        currentPiece: spawnPiece(shapeKey),
+        boardGrid,
+        currentPiece: spawnPiece(shapeKey, boardGrid),
     });
     /** @type {Map<string, FaultLinesPlacement & {pathCost: number}>} */
     const byFootprint = new Map();
@@ -204,6 +221,55 @@ export function judge(run) {
     }
     if (solved) return 'solved';
     return run.dealt >= run.puzzle.supply.length ? 'failed' : 'open';
+}
+
+/**
+ * Why a failed run failed: the relic body was cleared away, or the supply ran out short
+ * of the goal. A deal the structure blocks is the mode's to report ('blocked').
+ * @param {FaultLinesRun} run
+ * @returns {'relic-lost' | 'spent' | null}
+ */
+export function failReason(run) {
+    const { goal } = run.puzzle;
+    if (goal.type === 'relic-floor') {
+        const relicId = run.puzzle.bodyIds[/** @type {string} */ (goal.body)];
+        if (!run.lockedPieces.some((piece) => piece.pieceId === relicId)) return 'relic-lost';
+    }
+    return run.dealt >= run.puzzle.supply.length ? 'spent' : null;
+}
+
+/**
+ * How many cells the bodies on the board hold.
+ * @param {Array<{ shape: number[][] }>} pieces
+ */
+export function countCells(pieces) {
+    return pieces.reduce((sum, piece) => sum + cellsOf(/** @type {any} */ (piece)).length, 0);
+}
+
+/**
+ * The reachable landing a stored solution step names, or null if the controls cannot
+ * reach it on this board. Steps name the piece, how many right rotations, and the column
+ * (the shape matrix's origin, as listPlacements reports it); the landing row follows.
+ * @param {FaultLinesRun} run
+ * @param {{ piece: string, rotation: number, x: number }} step
+ * @returns {FaultLinesPlacement | null}
+ */
+export function solutionPlacement(run, step) {
+    if (!step || currentShapeKey(run) !== step.piece) return null;
+    return listPlacements(run).find((placement) => (
+        placement.rotation === step.rotation && placement.x === step.x
+    )) || null;
+}
+
+/**
+ * Whether two boards hold the same bodies in the same cells.
+ * @param {Array<Array<{ id?: unknown } | null>>} a
+ * @param {Array<Array<{ id?: unknown } | null>>} b
+ */
+export function sameBoard(a, b) {
+    if (a.length !== b.length) return false;
+    return a.every((row, y) => row.length === b[y].length
+        && row.every((cell, x) => (cell ? cell.id : null) === (b[y][x] ? b[y][x].id : null)));
 }
 
 /**
