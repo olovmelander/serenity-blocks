@@ -51,7 +51,7 @@ describe('atomic local score saves', () => {
         expect(h.manager.db.transaction).toHaveBeenCalledExactlyOnceWith(
             ['highScores', 'statistics', 'gameHistory'], 'readwrite',
         );
-        const record = { ...game, timestamp: 1234 };
+        const record = { ...game, mode: 'single', timestamp: 1234 };
         expect(h.scores.add).toHaveBeenCalledExactlyOnceWith(record);
         expect(h.history.add).toHaveBeenCalledExactlyOnceWith(record);
         expect(h.statistics.get).toHaveBeenCalledExactlyOnceWith('stats');

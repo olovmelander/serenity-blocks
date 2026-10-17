@@ -291,6 +291,9 @@ in the corner. It now opens with a picture of the mode, taken from the game itse
 | Odyssey copy promised 56 levels in 7 chapters | Read from the level registry (59 in 8) |
 | Local and Online Versus were titled "Multiplayer" on the stage | Their own wordmarks (`local-versus.svg`, `online-versus.svg`; C and V added to the alphabet in `generate-mode-wordmarks.mjs`) |
 | Single Player's best score and games counted Infinity runs; one Infinity run hid the new-player note | Per-mode counters (`byMode`), merged across devices like the totals; a save from before the split counts as Single Player |
+| The loading screen after Local or Online Versus still said "Multiplayer", and a team match "Free-for-all" | The Versus wordmarks; under Local Versus, how the match is played (`LOCAL VERSUS · TEAMS · HOT POTATO`, `mode-loading-wordmarks.js`) |
+| The game-over career card, comparisons and record chip counted Infinity runs against Single Player | Per mode: `statisticsForMode()`, and scores now carry their mode for `getRank(score, { mode })` |
+| Steam's status line used old names ("Local Multiplayer", "FFA Match", "Level 1" forever) and raw text that the friends list never shows | Menu names, only reported details, and localization tokens (`steam/rich-presence/`, to upload in Steamworks) |
 | Mode copy: Local Versus promised "outlast everyone" (matches are won by frags, lines, score or time); Infinity's "build upward instead of down"; Hale listed its last four sessions as if open | Copy audit 2026-10-17: rewritten, Hale shows sessions open (1 / 9) |
 | The desktop game had no way to quit from its menus (Alt+F4 only, in fullscreen) | Quit in the main menu dock, two presses |
 | A failed game start raised a browser `alert` | A Keystone toast (the toast listener now installs at boot, with the main menu) |

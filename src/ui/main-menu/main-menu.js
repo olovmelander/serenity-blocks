@@ -22,7 +22,7 @@ import { BREATH_LADDER, STARTER_SESSIONS } from '../effects/breathing/breath-col
 import { driftOption } from '../serenity-mode/serenity-options.js';
 import { haleSessionName } from '../effects/breathing/breath-openings.js';
 import { formatPracticeTime, readPracticeLog, summarizePractice } from '../effects/breathwork-practice-log.js';
-import { modeStatisticsOf } from '../../core/progression/score-statistics.js';
+import { statisticsForMode } from '../../core/progression/score-statistics.js';
 import { MENU_ART_DIR, StageArt } from './stage-art.js';
 
 const LAST_MODE_KEY = 'serenity.menu.lastMode';
@@ -568,7 +568,7 @@ class MainMenu {
 
         if (mode === 'single') {
             // Records counts Infinity runs too; this stage is Single Player's own.
-            const stats = this.scoreStats ? modeStatisticsOf(this.scoreStats).single : null;
+            const stats = this.scoreStats ? statisticsForMode(this.scoreStats, 'single') : null;
             if (stats && stats.totalGames > 0) {
                 facts.push(['Best score', formatNumber(stats.highestScore || 0)]);
                 facts.push(['Highest level', formatNumber(stats.highestLevel || 0)]);

@@ -2210,6 +2210,12 @@ export class OdysseyMode extends BaseGameMode {
         this.levelRunStarted = true;
         this._odysseyThemeCommittedToken = this.themeRevealToken;
         this.entryPhase = 'running';
+        // Steam Rich Presence: "Odyssey · Chapter 1 · Ashen Dawn" for friends.
+        if (this.currentLevelConfig?.chapter && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('game:odysseyProgress', {
+                detail: { chapter: this.currentLevelConfig.chapter, levelName: this.currentLevelConfig.name },
+            }));
+        }
         return true;
     }
 

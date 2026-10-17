@@ -2762,7 +2762,7 @@ class SerenityBlocks {
         // Handle card-based mode selection (new UI)
         const MODE_DISPLAY_NAMES = {
             [GAME_MODES.SINGLE_PLAYER]: 'SINGLE PLAYER',
-            [GAME_MODES.ONLINE_MULTIPLAYER]: 'ONLINE MULTIPLAYER',
+            [GAME_MODES.ONLINE_MULTIPLAYER]: 'ONLINE VERSUS',
             [GAME_MODES.INFINITY]: 'INFINITY',
             [GAME_MODES.SERENITY]: 'SERENITY',
         };

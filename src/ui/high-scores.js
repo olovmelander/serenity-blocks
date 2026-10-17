@@ -5,7 +5,7 @@
 
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import {
-    addGameToModeStatistics, mergeStatisticsSnapshots, modeStatisticsOf,
+    LEGACY_SCORE_MODE, addGameToModeStatistics, mergeStatisticsSnapshots, modeStatisticsOf,
 } from '../core/progression/score-statistics.js';
 
 /**
@@ -29,6 +29,8 @@ function sanitizeImportedScore(entry) {
     }
     delete clone.id;
     delete clone.demoId;
+    // The mode ranks the score among its own ('single', 'infinity'); anything else is dropped.
+    if (typeof clone.mode !== 'string' || !/^[a-z-]{1,32}$/.test(clone.mode)) delete clone.mode;
     return clone;
 }
 
@@ -128,7 +130,7 @@ export class HighScoreManager {
     async saveScore(scoreData) {
         if (!this.db) await this.init();
 
-        const mode = typeof scoreData.mode === 'string' && scoreData.mode ? scoreData.mode : 'single';
+        const mode = typeof scoreData.mode === 'string' && scoreData.mode ? scoreData.mode : LEGACY_SCORE_MODE;
 
         const gameRecord = {
             score: scoreData.score,
@@ -137,6 +139,7 @@ export class HighScoreManager {
             speedMultiplier: scoreData.speedMultiplier,
             theme: scoreData.theme,
             musicTrack: scoreData.musicTrack,
+            mode,
             timestamp: Date.now(),
         };
 
@@ -294,11 +297,13 @@ export class HighScoreManager {
     }
 
     /**
-     * Gets the rank of a score among all scores
+     * Gets the rank of a score among all scores, or among one mode's
      * @param {number} score - Score to rank
+     * @param {{ mode?: string|null }} [options] - Rank among this mode's scores only; a score
+     *   saved before scores carried their mode counts as Single Player
      * @returns {Promise<number>} Rank (1-based)
      */
-    async getRank(score) {
+    async getRank(score, { mode = null } = {}) {
         if (!this.db) await this.init();
 
         return new Promise((resolve, reject) => {
@@ -311,7 +316,7 @@ export class HighScoreManager {
             request.onsuccess = (event) => {
                 const cursor = event.target.result;
                 if (cursor) {
-                    rank++;
+                    if (!mode || (cursor.value?.mode || LEGACY_SCORE_MODE) === mode) rank++;
                     cursor.continue();
                 } else {
                     resolve(rank);

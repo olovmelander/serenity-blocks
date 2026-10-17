@@ -1206,6 +1206,10 @@ export class SinglePlayerMode extends BaseGameMode {
             },
             onLevelUp: (level) => {
                 emitLevelUp({ level });
+                // Steam Rich Presence: "Single Player · Level 7" for friends.
+                if (typeof window !== 'undefined') {
+                    window.dispatchEvent(new CustomEvent('game:levelChange', { detail: { level } }));
+                }
                 this.deps.soundManager.sfxPlayer.playLevelUp();
                 this._getBoardScene()?.sharedEffects?.playLevelUp?.(level);
             },

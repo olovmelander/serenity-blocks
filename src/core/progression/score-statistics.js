@@ -38,6 +38,9 @@
  * @property {Record<string, ModeStatistics>} [byMode] the counters per mode ('single', 'infinity')
  */
 
+/** The mode of a score or statistics record saved before records carried their mode. */
+export const LEGACY_SCORE_MODE = 'single';
+
 /** @type {readonly (keyof ModeStatistics)[]} */
 const MODE_COUNTERS = ['totalGames', 'totalScore', 'totalLines', 'highestScore', 'highestLevel'];
 
@@ -75,7 +78,18 @@ export function modeStatisticsOf(stats) {
     if (stats?.byMode && typeof stats.byMode === 'object') {
         return Object.fromEntries(Object.entries(stats.byMode).map(([mode, entry]) => [mode, modeCounters(entry)]));
     }
-    return count(stats?.totalGames) > 0 ? { single: modeCounters(stats) } : {};
+    return count(stats?.totalGames) > 0 ? { [LEGACY_SCORE_MODE]: modeCounters(stats) } : {};
+}
+
+/**
+ * One mode's counters, zero for a mode not played yet.
+ *
+ * @param {Partial<ScoreStatistics> | null | undefined} stats
+ * @param {string} mode
+ * @returns {ModeStatistics}
+ */
+export function statisticsForMode(stats, mode) {
+    return modeCounters(modeStatisticsOf(stats)[mode]);
 }
 
 /**
