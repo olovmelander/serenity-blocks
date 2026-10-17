@@ -641,6 +641,15 @@ export class GameState {
         this.lockDelay = options.lockDelay ?? LOCK_DELAY_MS;
         this.lockDelayTicks = durationMsToTicks(this.lockDelay, this.simTickMs);
         this.lockResetLimit = options.lockResetLimit ?? LOCK_RESET_LIMIT;
+        // Puzzle rules (Fault Lines), off for every other mode. A finite supply deals
+        // only the queued pieces, never a fresh bag; waiting gravity never pulls the
+        // piece down or locks it, so only a hard drop places it.
+        this.finiteSupply = options.finiteSupply === true;
+        this.gravityWaits = options.gravityWaits === true;
+        // Fault Lines' board marks: a seam where two bodies touch, and the relic's body.
+        this.showBodySeams = false;
+        /** @type {number | null} */
+        this.relicPieceId = null;
         this.lockTimer = 0;
         this.lockTimerTicks = 0;
         this.lockResetCount = 0;
@@ -867,7 +876,7 @@ export function spawnPiece(gameState, drawNextPiecesCallback, gameOverCallback) 
     gameState.dropCounter = 0;
 
     const rng = typeof gameState.randomGenerator === 'function' ? gameState.randomGenerator : Math.random;
-    fillBag(gameState.nextPieces, rng);
+    if (!gameState.finiteSupply) fillBag(gameState.nextPieces, rng);
     if (drawNextPiecesCallback) drawNextPiecesCallback();
     gameState.piecesPlaced++;
 
@@ -1069,7 +1078,7 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks, options 
     }
 
     updateGroundedState(gameState, 0);
-    if (shouldLockGroundedPiece(gameState, fixedTick)) {
+    if (!gameState.gravityWaits && shouldLockGroundedPiece(gameState, fixedTick)) {
         lockPiece(gameState, playDropCallback, physicsCallbacks, { fixedTick, inputPhase });
     }
     return false;
@@ -1088,6 +1097,7 @@ export function softDrop(gameState, playDropCallback, physicsCallbacks, options 
  */
 export function processAutoDrop(gameState, delta, playDropCallback, physicsCallbacks, timing = {}) {
     if (!gameState || !gameState.currentPiece || gameState.isProcessingPhysics) return;
+    if (gameState.gravityWaits) return;
     if (!Number.isFinite(delta) || delta <= 0) return;
 
     const fixedTick = timing?.fixedTick === true;

@@ -8,7 +8,8 @@
  */
 
 import { COLS, HIDDEN_ROWS, SHAPES } from '../constants.js';
-import { createBoardGrid, rebuildBoardGridFromPieces } from '../board.js';
+import { createBoardGrid, invalidateGhostCache, rebuildBoardGridFromPieces } from '../board.js';
+import { canPlacePiece } from '../game.js';
 import { resolveCascade } from '../cascade-resolver.js';
 import { findReachablePlacements } from '../ai/reachability-pathfinder.js';
 import { FAULT_LINES_BOARD_HEIGHT } from './fault-lines-puzzle.js';
@@ -60,7 +61,14 @@ export function currentShapeKey(/** @type {FaultLinesRun} */ run) {
 }
 
 /**
- * A dealt piece where the game spawns it (game.js createActivePiece, non-Infinity).
+ * The row a dealt piece waits on. The game spawns pieces in the hidden rows above the
+ * well and lets gravity bring them into view; gravity waits here, so the mode lowers
+ * each dealt piece to the first visible row instead (dealIntoView).
+ */
+export const DEAL_ROW = HIDDEN_ROWS;
+
+/**
+ * A dealt piece where Fault Lines shows it: game.js createActivePiece's column, on DEAL_ROW.
  * @param {string} shapeKey
  */
 export function spawnPiece(shapeKey) {
@@ -71,8 +79,19 @@ export function spawnPiece(shapeKey) {
         shape,
         rotation: 0,
         x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2),
-        y: HIDDEN_ROWS - 2,
+        y: DEAL_ROW,
     };
+}
+
+/**
+ * Lowers the piece the game just spawned onto DEAL_ROW, where the player can see it.
+ * @param {{ currentPiece: { x: number, y: number } | null }} gameState a live GameState
+ */
+export function dealIntoView(gameState) {
+    const piece = gameState?.currentPiece;
+    if (!piece || piece.y >= DEAL_ROW || !canPlacePiece(gameState, piece, piece.x, DEAL_ROW)) return;
+    piece.y = DEAL_ROW;
+    invalidateGhostCache(gameState);
 }
 
 /**

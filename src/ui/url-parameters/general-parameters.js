@@ -205,6 +205,14 @@ export const GENERAL_URL_PARAMETERS = [
         'src/themes/theme-manager.js',
     ),
     sharedFlag(
+        'faultLines',
+        'General',
+        'List the Fault Lines cascade-puzzle preview in the main menu.',
+        'Main menu; the mode itself runs only once chosen there',
+        'src/ui/main-menu/main-menu.js',
+        'Without it the menu removes the Fault Lines entry. Record: docs/FAULT_LINES_2026-10.md.',
+    ),
+    sharedFlag(
         'fixedTick',
         'Simulation',
         'Enable the experimental fixed 60 Hz game simulation.',
