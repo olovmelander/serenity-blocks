@@ -341,3 +341,118 @@ describe('resolveCascade ≡ processPhysics (seeded random boards)', () => {
         expect(JSON.stringify(context)).toBe(contextBefore);
     });
 });
+
+describe('resolveCascade ≡ processPhysics (multi-cell bodies)', () => {
+    // The seeded boards above hold only 1×1 blocks and full rows, so a body that a
+    // clear splits into fragments, or a wide body held up by one end, never reached
+    // the gate. Authored structures (Fault Lines) are made of exactly those.
+    const CASES = 120;
+
+    /** Grows random connected bodies over `cells` (a Set of 'x,y'), largest first. */
+    function partition(rng, cells, maxSize) {
+        const bodies = [];
+        const free = new Set(cells);
+        while (free.size > 0) {
+            const keys = [...free];
+            const seed = keys[rng.nextInt(keys.length)];
+            const body = [seed];
+            free.delete(seed);
+            const size = 1 + rng.nextInt(maxSize);
+            while (body.length < size) {
+                const frontier = [];
+                for (const key of body) {
+                    const [x, y] = key.split(',').map(Number);
+                    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+                        const next = `${x + dx},${y + dy}`;
+                        if (free.has(next)) frontier.push(next);
+                    }
+                }
+                if (frontier.length === 0) break;
+                const pick = frontier[rng.nextInt(frontier.length)];
+                free.delete(pick);
+                body.push(pick);
+            }
+            bodies.push(body.map((key) => key.split(',').map(Number)));
+        }
+        return bodies;
+    }
+
+    function bodyPiece(cells, id) {
+        const xs = cells.map(([x]) => x);
+        const ys = cells.map(([, y]) => y);
+        const minX = Math.min(...xs);
+        const minY = Math.min(...ys);
+        const shape = Array.from({ length: Math.max(...ys) - minY + 1 }, () => Array(Math.max(...xs) - minX + 1).fill(0));
+        cells.forEach(([x, y]) => { shape[y - minY][x - minX] = 1; });
+        const type = 'IOTSZJL'[id % 7];
+        return {
+            pieceId: id, color: type, type, shapeKey: type, x: minX, y: minY, shape,
+        };
+    }
+
+    function bodyScenario(rng) {
+        const stackRows = 2 + rng.nextInt(5);
+        const cells = new Set();
+        for (let r = 0; r < stackRows; r += 1) {
+            const y = BOTTOM - r;
+            const holes = new Set();
+            const holeCount = rng.nextInt(3); // 0 holes = a row that clears at once
+            for (let h = 0; h < holeCount; h += 1) holes.add(rng.nextInt(COLS));
+            for (let x = 0; x < COLS; x += 1) if (!holes.has(x)) cells.add(`${x},${y}`);
+        }
+        // Hanging bodies a few rows above the stack: they only move once a row clears.
+        // Most hang over a hole, so their fall can complete the row below.
+        const holeColumns = [...Array(COLS).keys()].filter((x) => !cells.has(`${x},${BOTTOM}`)
+            || !cells.has(`${x},${BOTTOM - 1}`));
+        const hanging = new Set();
+        const hangingCount = 1 + rng.nextInt(4);
+        for (let k = 0; k < hangingCount; k += 1) {
+            const overHole = holeColumns.length > 0 && rng.nextInt(3) > 0;
+            const x = Math.min(COLS - 2, overHole ? holeColumns[rng.nextInt(holeColumns.length)] : rng.nextInt(COLS - 1));
+            const y = BOTTOM - stackRows - 1 - rng.nextInt(4);
+            hanging.add(`${x},${y}`);
+            if (rng.nextInt(2) === 1) hanging.add(`${x + 1},${y}`);
+            if (rng.nextInt(3) === 0) hanging.add(`${x},${y - 1}`);
+        }
+        const bodies = [...partition(rng, cells, 9), ...partition(rng, hanging, 3)];
+        const pieces = bodies.map((body, index) => bodyPiece(body, index + 1));
+        const footprint = [];
+        for (let f = 0; f < 4; f += 1) footprint.push({ x: rng.nextInt(COLS), y: BOTTOM - rng.nextInt(stackRows) });
+        return {
+            pieces,
+            context: baseContext({
+                comboState: {
+                    lockFootprint: footprint, manualColumns: [rng.nextInt(COLS)], depth: 0, complexity: 0,
+                },
+                disableLevelProgression: true,
+            }),
+        };
+    }
+
+    it(`${CASES} seeded boards of multi-cell bodies are bit-identical across both paths`, async () => {
+        const rng = new RandomStream('differential-bodies', 'cases');
+        let cascades = 0;
+        let splits = 0;
+        for (let i = 0; i < CASES; i += 1) {
+            const { pieces, context } = bodyScenario(rng);
+            const result = resolveCascade(clonePieces(pieces), context);
+            if (result.cascadeCount >= 2) cascades += 1;
+            if (result.lockedPiecesAfter.length > pieces.length) splits += 1;
+            // eslint-disable-next-line no-await-in-loop
+            await compare(pieces, context, `bodies-${i}`);
+        }
+        // The corpus must actually exercise what it exists for.
+        expect(cascades).toBeGreaterThan(10);
+        expect(splits).toBeGreaterThan(10);
+    }, 60000);
+
+    it('a wide body held by one end stays up while its other end hangs over a hole', () => compare([
+        fullRowPiece(BOTTOM - 1, 'clears'),
+        {
+            pieceId: 'pillar', color: '#555', type: 'O', x: 0, y: BOTTOM, shape: [[1]],
+        },
+        {
+            pieceId: 'beam', color: '#777', type: 'I', x: 0, y: BOTTOM - 3, shape: [[1, 1, 1, 1, 1], [1, 0, 0, 0, 0]],
+        },
+    ], baseContext(), 'held-beam'));
+});
