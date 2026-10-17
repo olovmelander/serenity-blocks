@@ -166,6 +166,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         this.matchConfig = config;
         this.configuredForStart = true;
+        // Steam Rich Presence: "Local Versus · 3 players" for friends.
+        if (config?.numPlayers && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('game:localPlayers', { detail: { playerCount: config.numPlayers } }));
+        }
 
         this.matchStartLoadingOverlay = showCinematicLoadingOverlay(
             this._getMatchStartLoadingTitle(config),
@@ -301,14 +305,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
         console.log('[LocalMultiplayer] UI setup complete');
     }
 
+    /** The loading title: the mode's wordmark, then how this match is played. */
     _getMatchStartLoadingTitle(config = this.matchConfig) {
-        if (config?.isInfinityLMS) {
-            return 'LAST STANDING';
-        }
-        if (config?.hotPotato || config?.attackStyle === 'hot_potato') {
-            return 'HOT POTATO';
-        }
-        return 'FREE-FOR-ALL';
+        const format = config?.isTeamMode ? 'TEAMS' : 'FREE-FOR-ALL';
+        const parts = ['LOCAL VERSUS'];
+        if (config?.isInfinityLMS) parts.push('INFINITY');
+        parts.push(format);
+        if (config?.hotPotato || config?.attackStyle === 'hot_potato') parts.push('HOT POTATO');
+        return parts.join(' · ');
     }
 
     async _dismissMatchStartLoadingOverlay({

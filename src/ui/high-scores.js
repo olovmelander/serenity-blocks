@@ -4,7 +4,40 @@
  */
 
 import { eventBus, EVENTS } from '../events/event-bus.js';
-import { mergeStatisticsSnapshots } from '../core/progression/score-statistics.js';
+import {
+    LEGACY_SCORE_MODE, addGameToModeStatistics, mergeStatisticsSnapshots, modeStatisticsOf,
+} from '../core/progression/score-statistics.js';
+
+/** What a run records besides its score (Infinity): its deepest cascade and its seconds. */
+const RUN_DETAILS = ['cascade', 'duration'];
+
+/** Scores kept for each mode, here and in the Steam Cloud copy. */
+const SCORES_PER_MODE = 100;
+
+/** The keys of one mode's scores in the (mode, score) index. */
+function modeScores(mode) {
+    return IDBKeyRange.bound([mode, -Infinity], [mode, Infinity]);
+}
+
+/**
+ * Each mode's best `limit` scores, highest first (ties: the newest first), so one mode's
+ * runs never push another's out (pure, for the tests).
+ * @param {Array<{score?: number, timestamp?: number, mode?: string}>} entries
+ * @param {number} [limit]
+ */
+export function keepTopScoresPerMode(entries, limit = SCORES_PER_MODE) {
+    const sorted = [...entries].sort((a, b) => {
+        if ((b.score ?? 0) !== (a.score ?? 0)) return (b.score ?? 0) - (a.score ?? 0);
+        return (b.timestamp ?? 0) - (a.timestamp ?? 0);
+    });
+    const kept = new Map();
+    return sorted.filter((entry) => {
+        const mode = entry.mode || LEGACY_SCORE_MODE;
+        const count = kept.get(mode) || 0;
+        kept.set(mode, count + 1);
+        return count < limit;
+    });
+}
 
 /**
  * Scores imported from another device through Steam Cloud (audit SCORE-17). Keep only
@@ -18,7 +51,7 @@ function sanitizeImportedScore(entry) {
     const score = Number(entry.score);
     if (!Number.isFinite(score) || score < 0) return null;
     const clone = { ...entry, score };
-    for (const key of ['lines', 'level', 'timestamp']) {
+    for (const key of ['lines', 'level', 'timestamp', ...RUN_DETAILS]) {
         if (key in clone) {
             const value = Number(clone[key]);
             if (Number.isFinite(value)) clone[key] = value;
@@ -27,6 +60,9 @@ function sanitizeImportedScore(entry) {
     }
     delete clone.id;
     delete clone.demoId;
+    // The mode ranks the score among its own ('single', 'infinity'); a score from before
+    // scores carried their mode, or with anything else there, is Single Player's.
+    if (typeof clone.mode !== 'string' || !/^[a-z-]{1,32}$/.test(clone.mode)) clone.mode = LEGACY_SCORE_MODE;
     return clone;
 }
 
@@ -37,7 +73,7 @@ export class HighScoreManager {
     constructor() {
         this.db = null;
         this.DB_NAME = 'SerenityBlocksDB';
-        this.DB_VERSION = 1;
+        this.DB_VERSION = 2;
         this.STORES = {
             HIGH_SCORES: 'highScores',
             STATISTICS: 'statistics',
@@ -85,6 +121,22 @@ export class HighScoreManager {
                     });
                     historyStore.createIndex('timestamp', 'timestamp', { unique: false });
                 }
+
+                // v2: scores per mode. Each mode keeps its own top 100, read and ranked through
+                // a (mode, score) index. A score saved before scores carried their mode is
+                // Single Player's, as in score-statistics.js; it needs the mode to be indexed.
+                const scores = event.target.transaction.objectStore(this.STORES.HIGH_SCORES);
+                if (!scores.indexNames.contains('mode_score')) {
+                    scores.createIndex('mode_score', ['mode', 'score'], { unique: false });
+                }
+                if (event.oldVersion > 0 && event.oldVersion < 2) {
+                    scores.openCursor().onsuccess = (cursorEvent) => {
+                        const cursor = cursorEvent.target.result;
+                        if (!cursor) return;
+                        if (!cursor.value.mode) cursor.update({ ...cursor.value, mode: LEGACY_SCORE_MODE });
+                        cursor.continue();
+                    };
+                }
             };
         });
     }
@@ -120,10 +172,15 @@ export class HighScoreManager {
      * @param {string} scoreData.theme - Active theme
      * @param {string} scoreData.musicTrack - Music track played
      * @param {number} [scoreData.demoId] - Optional linked demo ID
+     * @param {string} [scoreData.mode] - The mode played ('infinity'); Single Player by default
+     * @param {number} [scoreData.cascade] - Infinity: the run's deepest cascade
+     * @param {number} [scoreData.duration] - Infinity: the run's length in seconds
      * @returns {Promise<Object>} The saved game record
      */
     async saveScore(scoreData) {
         if (!this.db) await this.init();
+
+        const mode = typeof scoreData.mode === 'string' && scoreData.mode ? scoreData.mode : LEGACY_SCORE_MODE;
 
         const gameRecord = {
             score: scoreData.score,
@@ -132,6 +189,7 @@ export class HighScoreManager {
             speedMultiplier: scoreData.speedMultiplier,
             theme: scoreData.theme,
             musicTrack: scoreData.musicTrack,
+            mode,
             timestamp: Date.now(),
         };
 
@@ -139,6 +197,10 @@ export class HighScoreManager {
         if (scoreData.demoId) {
             gameRecord.demoId = scoreData.demoId;
         }
+        RUN_DETAILS.forEach((key) => {
+            const value = Number(scoreData[key]);
+            if (Number.isFinite(value) && value > 0) gameRecord[key] = value;
+        });
 
         // Store, trim and aggregate in the same transaction. Concurrent saves
         // serialize their statistics reads and no partial game survives failure.
@@ -160,7 +222,7 @@ export class HighScoreManager {
                 const statistics = transaction.objectStore(this.STORES.STATISTICS);
                 scores.add(gameRecord);
                 history.add(gameRecord);
-                this._trimStore(scores, 'score', 100);
+                this._trimStore(scores, 'mode_score', SCORES_PER_MODE, modeScores(mode));
                 this._trimStore(history, 'timestamp', 50);
                 const request = statistics.get('stats');
                 request.onsuccess = () => {
@@ -174,6 +236,9 @@ export class HighScoreManager {
                             highestLevel: 0,
                             bestScorePerLevel: {},
                         };
+                        // Read before the lifetime counters change: a record from before the
+                        // split counts its history as Single Player.
+                        stats.byMode = addGameToModeStatistics(modeStatisticsOf(stats), mode, gameRecord);
                         stats.totalGames++;
                         stats.totalScore += gameRecord.score;
                         stats.totalLines += gameRecord.lines;
@@ -202,18 +267,21 @@ export class HighScoreManager {
     }
 
     /**
-     * Retrieves top scores
+     * Retrieves top scores, of every mode or of one
      * @param {number} limit - Number of top scores to retrieve
+     * @param {{ mode?: string|null }} [options] - Only this mode's scores ('single', 'infinity')
      * @returns {Promise<Array<Object>>} Array of top scores
      */
-    async getTopScores(limit = 10) {
+    async getTopScores(limit = 10, { mode = null } = {}) {
         if (!this.db) await this.init();
 
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction([this.STORES.HIGH_SCORES], 'readonly');
             const store = transaction.objectStore(this.STORES.HIGH_SCORES);
-            const index = store.index('score');
-            const request = index.openCursor(null, 'prev'); // Descending order
+            // Descending order; one mode's scores through the (mode, score) index.
+            const request = mode
+                ? store.index('mode_score').openCursor(modeScores(mode), 'prev')
+                : store.index('score').openCursor(null, 'prev');
 
             const scores = [];
             request.onsuccess = (event) => {
@@ -286,29 +354,34 @@ export class HighScoreManager {
     }
 
     /**
-     * Gets the rank of a score among all scores
+     * Gets the rank of a score among all scores, or among one mode's
      * @param {number} score - Score to rank
+     * @param {{ mode?: string|null }} [options] - Rank among this mode's scores only
      * @returns {Promise<number>} Rank (1-based)
      */
-    async getRank(score) {
+    async getRank(score, { mode = null } = {}) {
         if (!this.db) await this.init();
 
         return new Promise((resolve, reject) => {
             const transaction = this.db.transaction([this.STORES.HIGH_SCORES], 'readonly');
             const store = transaction.objectStore(this.STORES.HIGH_SCORES);
-            const index = store.index('score');
-            const request = index.openCursor(IDBKeyRange.lowerBound(score, true), 'prev');
+            // One more than the scores above it.
+            const request = mode
+                ? store.index('mode_score').count(IDBKeyRange.bound([mode, score], [mode, Infinity], true))
+                : store.index('score').count(IDBKeyRange.lowerBound(score, true));
+            request.onsuccess = () => resolve(request.result + 1);
+            request.onerror = () => reject(request.error);
+        });
+    }
 
-            let rank = 1;
-            request.onsuccess = (event) => {
-                const cursor = event.target.result;
-                if (cursor) {
-                    rank++;
-                    cursor.continue();
-                } else {
-                    resolve(rank);
-                }
-            };
+    /** Every saved score, any mode, in store order. */
+    async getAllScores() {
+        if (!this.db) await this.init();
+
+        return new Promise((resolve, reject) => {
+            const transaction = this.db.transaction([this.STORES.HIGH_SCORES], 'readonly');
+            const request = transaction.objectStore(this.STORES.HIGH_SCORES).getAll();
+            request.onsuccess = () => resolve(request.result || []);
             request.onerror = () => reject(request.error);
         });
     }
@@ -319,8 +392,8 @@ export class HighScoreManager {
      * Trims a store inside its caller's transaction without reading retained values.
      * @private
      */
-    _trimStore(store, indexName, limit) {
-        const request = store.index(indexName).openKeyCursor(null, 'prev');
+    _trimStore(store, indexName, limit, range = null) {
+        const request = store.index(indexName).openKeyCursor(range, 'prev');
         let skippedRetained = false;
         request.onsuccess = (event) => {
             const cursor = event.target.result;
@@ -341,8 +414,8 @@ export class HighScoreManager {
     // Cloud Sync Helpers
     // ============================================================
 
-    async exportHighScores(limit = 100) {
-        const scores = await this.getTopScores(limit);
+    async exportHighScores(limit = SCORES_PER_MODE) {
+        const scores = keepTopScoresPerMode(await this.getAllScores(), limit);
         return scores.map((entry) => {
             const clone = { ...entry };
             delete clone.id;
@@ -357,7 +430,7 @@ export class HighScoreManager {
     async importHighScores(entries = [], { merge = true } = {}) {
         if (!this.db) await this.init();
         const incoming = (Array.isArray(entries) ? entries : []).map(sanitizeImportedScore).filter(Boolean);
-        const existing = merge ? await this.getTopScores(200) : [];
+        const existing = merge ? await this.getAllScores() : [];
 
         const combined = [...existing, ...incoming].map((entry) => {
             const clone = { ...entry };
@@ -379,14 +452,7 @@ export class HighScoreManager {
             deduped.push(entry);
         }
 
-        deduped.sort((a, b) => {
-            if ((b.score ?? 0) !== (a.score ?? 0)) {
-                return (b.score ?? 0) - (a.score ?? 0);
-            }
-            return (b.timestamp ?? 0) - (a.timestamp ?? 0);
-        });
-
-        const trimmed = deduped.slice(0, 100);
+        const trimmed = keepTopScoresPerMode(deduped);
         // One commit prevents repeated transaction overhead and keeps the old
         // scores intact if any imported record fails to write.
         await new Promise((resolve, reject) => {

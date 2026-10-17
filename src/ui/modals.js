@@ -16,6 +16,10 @@ import { csIcon } from './components/cosmic-icons.js';
 import { normalizeWheelDeltaToPixels } from '../utils/wheel-routing.js';
 import { installSheetInput } from './sheet-input.js';
 import { isGameOverArmed, markGameOverShown } from './game-over-arm.js';
+import { statisticsForMode } from '../core/progression/score-statistics.js';
+import {
+    RECORD_MODES, allModesLine, loadOdysseyRecords, odysseyTabHtml, recordModeName, scoresTabHtml,
+} from './records/records-view.js';
 
 const MENU_SURFACES = '.modal, .serenity-hub-panel, .match-config-modal, #lobby-browser, .hale-flow, #breathing-guide';
 
@@ -228,8 +232,6 @@ const LEVEL_SPEEDS = [
     50,
 ];
 
-const MEDALS = ['gold', 'silver', 'bronze'];
-
 /** Keycaps for a sheet's primary button: Enter, or A on a controller. */
 const PRIMARY_KEYS = '<kbd class="sb-kbd" data-key aria-hidden="true">Enter</kbd>'
     + '<kbd class="sb-kbd" data-pad aria-hidden="true">A</kbd>';
@@ -378,6 +380,7 @@ export async function showGameOverModal(
     modalManager.gameOverLeaderboardPanel = null;
 
     const figures = computeResultFigures(gameState, Date.now() - startTime);
+    const mode = gameState?.isInfinityMode ? 'infinity' : 'single';
     const modeName = gameState?.isInfinityMode ? 'Infinity' : 'Single Player';
     setText('game-over-eyebrow', `${modeName} · Game over`);
 
@@ -400,9 +403,10 @@ export async function showGameOverModal(
     }
 
     try {
-        // Get rank and statistics
-        const rank = await highScoreManager.getRank(score);
-        const stats = await highScoreManager.getStatistics();
+        // Rank and career against this mode's own games: an Infinity run is not a
+        // Single Player record, and the other way round.
+        const rank = await highScoreManager.getRank(score, { mode });
+        const stats = statisticsForMode(await highScoreManager.getStatistics(), mode);
 
         if (!shouldPresent()) {
             return false;
@@ -682,113 +686,142 @@ export function showSettingsModal(modalManager) {
     // Menu navigation is enabled in show() method
 }
 
-function formatRecordDate(timestamp) {
-    if (!timestamp) return '';
-    const date = new Date(timestamp);
-    if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-// Records can arrive from another device through Steam Cloud: render their counters as
-// numbers only, never as markup (audit SCORE-17).
-const recordNumber = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
-
-function recordRow(score, index, { showReplay, canPlay }) {
-    const medal = MEDALS[index] || '';
-    const points = recordNumber(score.score).toLocaleString();
-    const lines = recordNumber(score.lines);
-    const lineWord = lines === 1 ? 'line' : 'lines';
-    const demoId = Number(score.demoId);
-    let replay = '';
-    if (showReplay) {
-        replay = Number.isSafeInteger(demoId) && demoId > 0 && canPlay
-            ? `<button type="button" class="play-demo-btn hs-play sb-btn" data-demo-id="${demoId}"
-                    aria-label="Watch the replay of ${points}">
-                    ${csIcon('play', 12, 'btn-icon-svg')}<span>Watch</span>
-                </button>`
-            : '<span class="hs-play hs-play--empty" aria-hidden="true"></span>';
-    }
-    const stamp = score.timestamp ? new Date(score.timestamp) : null;
-    const iso = stamp && !Number.isNaN(stamp.getTime()) ? stamp.toISOString() : '';
-    return `
-        <li class="hs-row${medal ? ` hs-row--${medal}` : ''}">
-            <span class="hs-rank">${index + 1}</span>
-            <div class="hs-main">
-                <div class="hs-score">${points}</div>
-                <div class="hs-meta">Level ${recordNumber(score.level)} · ${lines} ${lineWord}</div>
-            </div>
-            <time class="hs-date"${iso ? ` datetime="${iso}"` : ''}>${formatRecordDate(score.timestamp)}</time>
-            ${replay}
-        </li>`;
-}
+/** The Records tab shown last, for an opening where the menu names no mode with records. */
+let recordsMode = null;
+/** What the open Records sheet renders with, set each time it opens. */
+let recordsContext = null;
+let recordsRender = 0;
 
 /**
- * Shows the high scores modal with scores and statistics
- * @param {ModalManager} modalManager - Modal manager instance
- * @param {Object} highScoreManager - High score manager instance
- * @param {Function} [onPlayDemo] - Optional callback to play a demo by ID: (demoId) => void
+ * Records opens on the asked mode, else the one on the main menu's stage (hovered, focused
+ * or last played, so the mode just played after a game over), else the tab shown last.
  */
-export async function showHighScoresModal(modalManager, highScoreManager, onPlayDemo = null) {
+function pickRecordsMode(requested) {
+    if (RECORD_MODES.includes(requested)) return requested;
+    const current = document.querySelector?.('#start-modal .sb-menu')?.dataset?.current;
+    if (RECORD_MODES.includes(current)) return current;
+    return recordsMode || RECORD_MODES[0];
+}
+
+function syncRecordsTabs(mode) {
+    const tabs = Array.from(document.querySelectorAll?.('#high-scores-modal .hs-tab') || []);
+    tabs.forEach((tab) => {
+        const selected = tab.dataset.mode === mode;
+        tab.classList.toggle('active', selected);
+        tab.setAttribute('aria-selected', String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+        if (selected) document.getElementById('hs-panel')?.setAttribute('aria-labelledby', tab.id);
+    });
+}
+
+async function renderRecordsTab(mode) {
+    const { modalManager, highScoreManager, onPlayDemo } = recordsContext;
     const list = document.getElementById('high-scores-list');
     const statistics = document.getElementById('statistics-section');
+    const render = ++recordsRender;
+    recordsMode = mode;
+    syncRecordsTabs(mode);
     try {
-        const topScores = await highScoreManager.getTopScores(10);
         const stats = await highScoreManager.getStatistics();
-
-        if (topScores.length === 0) {
-            list.innerHTML = `
-                <div class="sb-empty hs-empty">
-                    <span class="sb-empty__icon" aria-hidden="true">${csIcon('trophy', 26)}</span>
-                    <p class="sb-empty__title">No records yet — your first game will set one.</p>
-                    <button type="button" class="sb-btn hs-empty__close">Close</button>
-                </div>`;
-            statistics.innerHTML = '';
-            list.querySelector('.hs-empty__close')?.addEventListener('click', () => {
-                document.getElementById('close-high-scores')?.click();
+        // An empty tab offers its mode, from the main menu only (never over a game).
+        const canStart = Boolean(document.getElementById('start-modal')?.classList?.contains('visible'));
+        const view = mode === 'odyssey'
+            ? odysseyTabHtml(await loadOdysseyRecords(), { canStart })
+            : scoresTabHtml(mode, {
+                scores: await highScoreManager.getTopScores(10, { mode }),
+                stats,
+                canWatch: Boolean(onPlayDemo),
+                canStart,
             });
-        } else {
-            const showReplay = topScores.some((score) => score.demoId);
-            const rows = topScores
-                .map((score, index) => recordRow(score, index, { showReplay, canPlay: Boolean(onPlayDemo) }))
-                .join('');
-            list.innerHTML = `
-                <h2 class="sb-sheet__section-title">Top scores</h2>
-                <ol class="hs-leaderboard${showReplay ? ' hs-leaderboard--demos' : ''}">${rows}</ol>`;
+        // A newer tab is on its way.
+        if (render !== recordsRender) return;
+        statistics.innerHTML = view.facts;
+        list.innerHTML = view.list;
+        const allModes = document.getElementById('hs-all-modes');
+        if (allModes) allModes.textContent = allModesLine(stats);
 
-            if (onPlayDemo) {
-                list.querySelectorAll('.play-demo-btn').forEach((btn) => {
-                    btn.addEventListener('click', (e) => {
-                        const demoId = parseInt(e.currentTarget.dataset.demoId, 10);
-                        modalManager.hide('highScores');
-                        onPlayDemo(demoId);
-                    });
-                });
-            }
-
-            const games = recordNumber(stats.totalGames);
-            const totalScore = recordNumber(stats.totalScore);
-            const totalLines = recordNumber(stats.totalLines);
-            const facts = [
-                ['Games', games.toLocaleString()],
-                ['Best score', recordNumber(stats.highestScore).toLocaleString()],
-                ['Highest level', recordNumber(stats.highestLevel)],
-                ['Lines cleared', totalLines.toLocaleString()],
-                ['Average score', games > 0 ? Math.round(totalScore / games).toLocaleString() : '0'],
-                ['Average lines', games > 0 ? Math.round(totalLines / games).toLocaleString() : '0'],
-            ];
-            statistics.innerHTML = `
-                <h2 class="sb-sheet__section-title">Statistics</h2>
-                <dl class="hs-stats-grid">${facts.map(([label, value]) => `
-                    <div class="hs-stat">
-                        <dt class="hs-stat-label">${label}</dt><dd class="hs-stat-value">${value}</dd>
-                    </div>`).join('')}
-                </dl>`;
-        }
+        list.querySelectorAll('.play-demo-btn').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                const demoId = parseInt(e.currentTarget.dataset.demoId, 10);
+                modalManager.hide('highScores');
+                onPlayDemo(demoId);
+            });
+        });
+        list.querySelectorAll('.hs-empty__play').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                document.getElementById('close-high-scores')?.click();
+                document.getElementById(btn.dataset.playCard)?.click();
+            });
+        });
     } catch (error) {
-        console.error('Error loading high scores:', error);
+        if (render !== recordsRender) return;
+        console.error(`Error loading ${recordModeName(mode)} records:`, error);
         list.innerHTML = '<p class="hs-error">Records could not be loaded. Close this and try again.</p>';
         statistics.innerHTML = '';
     }
+}
+
+/**
+ * Move to the previous or next Records tab (Q/E anywhere in the sheet, LB/RB, arrow keys
+ * on the tabs). Returns the newly selected tab.
+ */
+export function stepRecordsTab(direction, from = recordsMode) {
+    if (!recordsContext) return null;
+    const tabs = Array.from(document.querySelectorAll?.('#high-scores-modal .hs-tab') || []);
+    if (!tabs.length) return null;
+    const current = Math.max(0, tabs.findIndex((tab) => tab.dataset.mode === from));
+    const next = tabs[(current + direction + tabs.length) % tabs.length];
+    renderRecordsTab(next.dataset.mode);
+    return next;
+}
+
+function installRecordsTabs() {
+    const tabList = document.getElementById('hs-tabs');
+    if (!tabList || tabList.dataset.wired === 'true') return;
+    tabList.dataset.wired = 'true';
+    tabList.addEventListener('click', (event) => {
+        const tab = event.target.closest('.hs-tab');
+        if (tab && recordsContext) renderRecordsTab(tab.dataset.mode);
+    });
+    // Arrow keys move along the tabs and select as they go (WAI-ARIA tabs).
+    tabList.addEventListener('keydown', (event) => {
+        const tabs = Array.from(tabList.querySelectorAll('.hs-tab'));
+        let next = null;
+        if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+            const from = event.target.closest('.hs-tab')?.dataset.mode;
+            next = stepRecordsTab(event.key === 'ArrowRight' ? 1 : -1, from);
+        } else if (event.key === 'Home' || event.key === 'End') {
+            next = event.key === 'Home' ? tabs[0] : tabs[tabs.length - 1];
+            renderRecordsTab(next.dataset.mode);
+        } else {
+            return;
+        }
+        event.preventDefault();
+        next?.focus();
+    });
+    // Q and E switch modes from anywhere in the sheet, as in Settings.
+    document.addEventListener('keydown', (event) => {
+        if (!document.getElementById('high-scores-modal')?.classList.contains('visible')) return;
+        if (event.ctrlKey || event.metaKey || event.altKey || event.repeat) return;
+        if (event.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+        const key = event.key?.toLowerCase();
+        if (key !== 'q' && key !== 'e') return;
+        event.preventDefault();
+        stepRecordsTab(key === 'e' ? 1 : -1);
+    });
+}
+
+/**
+ * Shows Records: one tab per mode that keeps them (records-view.js)
+ * @param {ModalManager} modalManager - Modal manager instance
+ * @param {Object} highScoreManager - High score manager instance
+ * @param {Function} [onPlayDemo] - Optional callback to play a demo by ID: (demoId) => void
+ * @param {{ mode?: string }} [options] - The tab to open on ('single', 'infinity', 'odyssey')
+ */
+export async function showHighScoresModal(modalManager, highScoreManager, onPlayDemo = null, { mode = null } = {}) {
+    recordsContext = { modalManager, highScoreManager, onPlayDemo };
+    installRecordsTabs();
+    await renderRecordsTab(pickRecordsMode(mode));
 
     modalManager.show('highScores');
     // Menu navigation is enabled in show() method

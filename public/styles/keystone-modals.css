@@ -394,6 +394,18 @@ body.sb-input-gamepad :is(#game-over-modal, #demo-complete-modal, #settings-moda
     white-space: nowrap;
 }
 
+/* A record set today, a chapter complete: lit in the sheet's gold. */
+#high-scores-modal .hs-date--lit {
+    color: var(--sb-accent);
+    font-weight: 600;
+}
+
+/* Odyssey's chapter rows: a name, not a number. */
+#high-scores-modal .hs-score--name {
+    font-size: 1.0625rem;
+    letter-spacing: 0;
+}
+
 #high-scores-modal .hs-play {
     --sb-btn-h: 36px;
     justify-self: end;
@@ -421,8 +433,9 @@ body.sb-input-gamepad :is(#game-over-modal, #demo-complete-modal, #settings-moda
     background: none;
 }
 
+/* The tab's facts lead, above its list. */
 #high-scores-modal .hs-stats {
-    margin-top: 28px;
+    margin: 2px 0 26px;
     padding: 0;
     border: 0;
 }
@@ -434,7 +447,7 @@ body.sb-input-gamepad :is(#game-over-modal, #demo-complete-modal, #settings-moda
 /* Fact tiles, in the main-menu stage style: the number, then its name in small caps. */
 #high-scores-modal .hs-stats-grid {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 8px;
     margin: 0;
 }
@@ -455,7 +468,7 @@ body.sb-input-gamepad :is(#game-over-modal, #demo-complete-modal, #settings-moda
 #high-scores-modal .hs-stat-value {
     margin: 0;
     color: var(--sb-text);
-    font: 600 1.375rem / 1 var(--sb-font-display);
+    font: 600 1.25rem / 1 var(--sb-font-display);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
@@ -466,6 +479,22 @@ body.sb-input-gamepad :is(#game-over-modal, #demo-complete-modal, #settings-moda
     font: 600 0.5625rem / 1.2 var(--sb-font-display);
     letter-spacing: 0.22em;
     text-transform: uppercase;
+}
+
+/* Odyssey: the journey as cells, under its facts. */
+#high-scores-modal .hs-progress {
+    margin-top: 16px;
+}
+
+/* All modes' lifetime totals: one quiet line beside the hints. */
+#high-scores-modal .hs-all-modes {
+    margin: 0;
+    color: var(--sb-text-faint);
+    font: 500 0.8125rem / 1.4 var(--sb-font-text);
+}
+
+#high-scores-modal .hs-all-modes:empty {
+    display: none;
 }
 
 #high-scores-modal .hs-error {

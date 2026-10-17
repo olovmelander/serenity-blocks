@@ -1365,6 +1365,14 @@ export class GamepadController {
                 // We don't necessarily focus the tab, as the user might be focused on content
             }
         }
+
+        // Records: one tab per mode.
+        const recordsModal = document.getElementById('high-scores-modal');
+        if (recordsModal && recordsModal.classList.contains('visible')) {
+            const tabs = Array.from(recordsModal.querySelectorAll('.hs-tab'));
+            const current = tabs.findIndex((tab) => tab.getAttribute('aria-selected') === 'true');
+            if (tabs.length > 0) tabs[(current + direction + tabs.length) % tabs.length].click();
+        }
     }
 
     /**
