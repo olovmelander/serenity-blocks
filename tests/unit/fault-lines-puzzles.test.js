@@ -14,7 +14,7 @@ import {
     buildPuzzle, validatePuzzleDefinition, MAX_SUPPLY,
 } from '../../src/core/fault-lines/fault-lines-puzzle.js';
 import {
-    applyPlacement, boardFor, createRun, judge, listPlacements,
+    applyPlacement, boardFor, createRun, dealIntoView, judge, listPlacements,
 } from '../../src/core/fault-lines/fault-lines-sim.js';
 import { solvePuzzle } from '../../src/core/fault-lines/fault-lines-solver.js';
 import { FAULT_LINES_PUZZLES, openPuzzleIds } from '../../src/core/fault-lines/puzzle-bank.js';
@@ -41,6 +41,7 @@ function liveGame(puzzle) {
         spawnPiece: () => {},
     };
     spawnPiece(gameState);
+    dealIntoView(gameState);
     return { gameState, physicsCallbacks, waves };
 }
 
@@ -54,7 +55,10 @@ async function playLive(live, placement) {
     }
     hardDrop(gameState, null, physicsCallbacks);
     await gameState.latestPhysicsPromise;
-    if (gameState.nextPieces.length > 0) spawnPiece(gameState);
+    if (gameState.nextPieces.length > 0) {
+        spawnPiece(gameState);
+        dealIntoView(gameState);
+    }
 }
 
 describe('Fault Lines puzzle bank', () => {

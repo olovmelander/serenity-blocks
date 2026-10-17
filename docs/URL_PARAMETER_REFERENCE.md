@@ -5,7 +5,8 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **733 parameter names in 876 scoped entries**.
+The catalog documents **734 parameter names in 877 scoped entries**. Fault Lines added
+`faultLines`, the flag that lists its preview in the main menu.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,

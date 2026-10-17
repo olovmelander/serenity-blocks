@@ -233,6 +233,10 @@ export const EVENTS = {
     // Odyssey Mode Victory Lap
     ODYSSEY_GOAL_COMPLETE: 'odysseyGoalComplete',
     ODYSSEY_VICTORY_LAP_END: 'odysseyVictoryLapEnd',
+    // Fault Lines: the mode publishes its puzzle state; the HUD sends commands back
+    // ({ type: 'undo' | 'restart' | 'next' | 'load', puzzleId? }).
+    FAULT_LINES_STATE: 'faultLinesState',
+    FAULT_LINES_COMMAND: 'faultLinesCommand',
     // Demo System
     OPEN_DEMO_BROWSER: 'openDemoBrowser',
     EXIT_TO_MAIN_MENU: 'exitToMainMenu',
