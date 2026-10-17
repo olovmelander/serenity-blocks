@@ -237,6 +237,10 @@ export const EVENTS = {
     // ({ type: 'undo' | 'restart' | 'next' | 'load', puzzleId? }).
     FAULT_LINES_STATE: 'faultLinesState',
     FAULT_LINES_COMMAND: 'faultLinesCommand',
+    // Waystones: the mode publishes the road's state; the HUD sends the between-stops
+    // choices back ({ type: 'bank' | 'release' | 'charm' | 'skip-charm' | 'choose' | 'again' }).
+    WAYSTONES_STATE: 'waystonesState',
+    WAYSTONES_COMMAND: 'waystonesCommand',
     // Demo System
     OPEN_DEMO_BROWSER: 'openDemoBrowser',
     EXIT_TO_MAIN_MENU: 'exitToMainMenu',

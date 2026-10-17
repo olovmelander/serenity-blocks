@@ -9,7 +9,7 @@
  * pauses: freezing one peer's simulation desyncs the session. "Pause when the game loses
  * focus" in Settings turns this off.
  */
-export const FOCUS_PAUSE_MODES = Object.freeze(['single', 'local-multiplayer', 'infinity', 'odyssey', 'fault-lines']);
+export const FOCUS_PAUSE_MODES = Object.freeze(['single', 'local-multiplayer', 'infinity', 'odyssey', 'fault-lines', 'waystones']);
 
 /**
  * @param {{

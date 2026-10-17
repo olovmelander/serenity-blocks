@@ -1078,6 +1078,7 @@ const PAUSED_MODE_NAMES = {
     'local-multiplayer': 'Local Versus',
     'online-multiplayer': 'Online Versus',
     'fault-lines': 'Fault Lines',
+    waystones: 'Waystones',
 };
 
 /**
