@@ -73,6 +73,11 @@ describe('atomic local score saves', () => {
         expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith({
             id: 'stats', totalGames: 1, totalScore: 200, totalLines: 4,
             highestScore: 200, highestLevel: 3, bestScorePerLevel: { 3: 200 },
+            byMode: {
+                single: {
+                    totalGames: 1, totalScore: 200, totalLines: 4, highestScore: 200, highestLevel: 3,
+                },
+            },
         });
         h.transaction.oncomplete();
         await pending;
@@ -90,6 +95,12 @@ describe('atomic local score saves', () => {
         expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith({
             id: 'stats', totalGames: 6, totalScore: 5200, totalLines: 94,
             highestScore: 1000, highestLevel: 9, bestScorePerLevel: { 2: 700, 3: 600 },
+            // The stored record predates per-mode counters: its history counts as Single Player.
+            byMode: {
+                single: {
+                    totalGames: 6, totalScore: 5200, totalLines: 94, highestScore: 1000, highestLevel: 9,
+                },
+            },
         });
         h.transaction.oncomplete();
         await pending;
@@ -164,6 +175,11 @@ describe('statistics import', () => {
         const merged = {
             id: 'stats', totalGames: 13, totalScore: 500, totalLines: 41,
             highestScore: 90, highestLevel: 4, bestScorePerLevel: { 3: 90, 4: 80 },
+            byMode: {
+                single: {
+                    totalGames: 13, totalScore: 500, totalLines: 41, highestScore: 90, highestLevel: 4,
+                },
+            },
         };
         expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith(merged);
         await Promise.resolve();
@@ -176,9 +192,17 @@ describe('statistics import', () => {
         const h = harness({ stats: stored });
         const pending = h.manager.importStatistics(incoming, { merge: false });
         expect(h.statistics.get).not.toHaveBeenCalled();
-        expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith(incoming);
+        const replaced = {
+            ...incoming,
+            byMode: {
+                single: {
+                    totalGames: 13, totalScore: 400, totalLines: 41, highestScore: 80, highestLevel: 4,
+                },
+            },
+        };
+        expect(h.statistics.put).toHaveBeenCalledExactlyOnceWith(replaced);
         h.transaction.oncomplete();
-        expect(await pending).toEqual(incoming);
+        expect(await pending).toEqual(replaced);
     });
 
     it('aborts a failed write and rejects with its original error', async () => {
