@@ -329,11 +329,11 @@ const RAW_THEME_REGISTRY = [
         icon: './nimbus-veil/nimbus-veil-theme-icon.png',
     },
     {
-        id: 'sky-children',
-        displayName: 'Sky Children',
-        module: './sky-children/sky-children-theme.js',
+        id: 'rainbow-terraces',
+        displayName: 'Rainbow Terraces',
+        module: './rainbow-terraces/rainbow-terraces-theme.js',
         group: 'sky',
-        icon: './sky-children/sky-children-theme-icon.png',
+        icon: './rainbow-terraces/rainbow-terraces-theme-icon.png',
     },
     {
         id: 'cinder-drift',
@@ -484,7 +484,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'chiral-gold',
     'chromatic-impasto',
     'nimbus-veil',
-    'sky-children',
+    'rainbow-terraces',
     'cinder-drift',
     'pyrestorm',
     'neon-dusk',
@@ -517,11 +517,15 @@ const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
 /**
  * Retired theme ids that must still resolve.
  *
- * The Sky Children rebuild shipped under the working id `sky-children-v2`
- * alongside a `sky-children` alias entry, so the hub listed one theme twice.
- * The rebuild is now the only Sky Children and is published under the original
- * id; persisted settings naming the retired id resolve here instead of failing
- * the `getThemeMeta` guard in ThemeManager.switchTheme().
+ * The theme now called Rainbow Terraces was first rebuilt under the working id
+ * `sky-children-v2` alongside a `sky-children` alias entry, so the hub listed one
+ * theme twice; the rebuild then took the id `sky-children`. Persisted settings
+ * naming a retired id resolve here instead of failing the `getThemeMeta` guard in
+ * ThemeManager.switchTheme().
+ *
+ * `sky-children` was renamed Rainbow Terraces (2026-10-18; the old name was another
+ * game's): the same theme under a new id, so a saved selection, an earned
+ * collection entry and an Odyssey completion that name either old id still mean it.
  *
  * `pyrestorm-v2` was deleted outright (2026-08-16); saves that had it selected
  * fall back to its predecessor.
@@ -543,7 +547,8 @@ const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
  * name the old id now mean Kaleidosonic.
  */
 const RETIRED_THEME_IDS = new Map([
-    ['sky-children-v2', 'sky-children'],
+    ['sky-children-v2', 'rainbow-terraces'],
+    ['sky-children', 'rainbow-terraces'],
     ['pyrestorm-v2', 'pyrestorm'],
     ['electric-dreams-v3', 'murmuration'],
     ['cosmic-chimes', 'rainbark'],

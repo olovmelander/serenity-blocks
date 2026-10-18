@@ -233,6 +233,8 @@ export const EVENTS = {
     // Odyssey Mode Victory Lap
     ODYSSEY_GOAL_COMPLETE: 'odysseyGoalComplete',
     ODYSSEY_VICTORY_LAP_END: 'odysseyVictoryLapEnd',
+    // Odyssey pause sheet: Retry orb / Back to map, emitted once the sheet has closed
+    ODYSSEY_PAUSE_ACTION: 'odysseyPauseAction',
     // Fault Lines: the mode publishes its puzzle state; the HUD sends commands back
     // ({ type: 'undo' | 'restart' | 'next' | 'load', puzzleId? }).
     FAULT_LINES_STATE: 'faultLinesState',

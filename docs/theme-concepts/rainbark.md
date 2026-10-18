@@ -1891,7 +1891,7 @@ surprise, and the name. The judge was strict about resemblance.
   (7 themes use it). Softened because the "vista" is haze and more trunks.
 - **It is a forest**, and the fleet has five: forest, fall, moonlit-forest, golden-forest and
   stillwater.
-- **The cloud tide brushes the sea-of-clouds trope** of nimbus-veil and sky-children.
+- **The cloud tide brushes the sea-of-clouds trope** of nimbus-veil and rainbow-terraces.
 - **The bark mosaic could read as camouflage, tie-dye or psychedelia.** The proposal itself called
   the combo "a living aurora of bark".
 - **Kino "bleeding" from a "wound"** is a tonal risk in a game named Serenity Blocks.
@@ -1925,7 +1925,7 @@ never "held then released"; and source a clear's colours from the real cells of 
   split carry cause and effect: light from the open right lands on the hero's card-facing face
   (§2.4).
 - Golden hour is the fleet's most overused light (halcyon, himalayan, sunset, summer, fall,
-  tornado, golden-forest, waves, shifting-sands, nimbus, sky-children). High sun is the open slot,
+  tornado, golden-forest, waves, shifting-sands, nimbus, rainbow-terraces). High sun is the open slot,
   and Rainbark's sun never drops below 50° elevation (§3.2).
 
 ### 11.2 Rendering lead: 8.5 (1st of 6)

@@ -835,7 +835,7 @@ playground-first loop in `CLAUDE.md`, one part per capture session.
 | **chromatic-impasto** | "The board paints a permanent picture" | The Sun Rug is a live mirror. Cleared rows vanish from the light because they vanish from the glass. |
 | **sakura-twilight** | Garden props | Persian, not Japanese. No blossom, lanterns, foxes or torii. |
 | **halcyon-apex** | Dawn and architecture | No temple, no sun disc in frame, no lagoon or crystals. |
-| **nimbus-veil / sky-children** | Golden motes | Haft Rang's dust exists only inside light slabs and takes their colours. |
+| **nimbus-veil / rainbow-terraces** | Golden motes | Haft Rang's dust exists only inside light slabs and takes their colours. |
 
 #### The fleet avoid list, item by item
 
@@ -1545,7 +1545,7 @@ includes the §3 amendments.
    | `singing-bowl` | orb 56, ch7, "Recursive Infinity", `boss` | legacy classic WebGL, `meditation`, no `world.js`, no effect | placeholder | Weak: abstract chapter, boss beat; only if the user wants the calm interior there. |
 
    Whichever slot: if `OLD_ID` is itself the *target* of an existing `RETIRED_THEME_IDS` alias (today
-   `sky-children`, `pyrestorm`, `murmuration`, `rainbark`), re-point that alias to `haft-rang` too:
+   `rainbow-terraces`, `pyrestorm`, `murmuration`, `rainbark`), re-point that alias to `haft-rang` too:
    `resolveThemeId` follows only one hop.
 3. **Worked example:** commits `0c747dd` and `585ab55` replaced Cosmic Chimes with Rainbark.
    [PLAYBOOK.md §4](PLAYBOOK.md#4-rename-and-retire-checklist) is that change generalised into a 21-step

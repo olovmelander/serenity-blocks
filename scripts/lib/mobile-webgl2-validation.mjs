@@ -16,7 +16,7 @@ export const MOBILE_WEBGL2_NODE_IDS = Object.freeze([
     'crystal-cave', 'fluid-dreams', 'forest', 'galaxy', 'geode', 'golden-forest',
     'ice-temple', 'lunara', 'ocean', 'stellar-drift', 'stellar-velocity', 'supernova',
     'murmuration', 'himalayan-peak', 'waves', 'winter', 'starlight', 'stillwater', 'sunset', 'vesper-chrysalis',
-    'wolfhour', 'shifting-sands', 'moonlit-forest', 'sky-children', 'void-ember', 'voltage-storm',
+    'wolfhour', 'shifting-sands', 'moonlit-forest', 'rainbow-terraces', 'void-ember', 'voltage-storm',
     'tornado', 'solar-eclipse', 'serenity-warp', 'moonlit-greenhouse', 'nebula-flow', 'painted-ages',
     'thermal-bloom', 'rainbark', 'high-coast', 'luminous-tides', 'pyrestorm', 'kaleidosonic',
 ]);

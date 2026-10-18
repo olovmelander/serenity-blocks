@@ -61,7 +61,7 @@
 | 45 | `cosmic-noir` | Cosmic Noir | `cosmic` | heavy | [§44](#cosmic-noir) |
 | 46 | `chiral-gold` | Chiral Gold | `cosmic` | heavy | [§45](#chiral-gold) |
 | 47 | `nimbus-veil` | Nimbus Veil | `atmospheric` | heavy | [§46](#nimbus-veil) |
-| 48 | `sky-children` | Sky Children | `sky` | heavy | [§47](#sky-children) |
+| 48 | `rainbow-terraces` | Rainbow Terraces | `sky` | heavy | [§47](#rainbow-terraces) |
 | 49 | `cinder-drift` | Cinder Drift | `atmospheric` | heavy | [§48](#cinder-drift) |
 | 50 | `pyrestorm` | Pyrestorm | `fantasy` | heavy | [§49](#pyrestorm) |
 | 51 | `neon-dusk` | Neon Dusk | `urban` | heavy | [§50](#neon-dusk) |
@@ -282,7 +282,7 @@ Registry groups: every theme here is `group: 'biomes'` except `tornado` (`'atmos
 - **Replaced** the legacy DOM/CSS `mountain` on 2026-10-13. `mountain` is an alias in `RETIRED_THEME_IDS`, the track key `Mountain` resolves to `HighCoast`, and Odyssey orb id 25 is "The High Coast".
 - **Icon:** An old Scots pine with a heavy tufted crown stands on lichen-crusted granite beside the HÖGA KUSTEN trail sign, over a stepped red-granite cliff and a blue bay of pine islands, with the low golden sun beyond.
 - **Setting:** Höga Kusten on Sweden's Bothnian coast, seen from a bare granite summit 152 m above the sea. On the left an old Scots pine and a trail sign (HÖGA KUSTEN / VÄRLDSARV), with a stepped red-granite headland cliff behind them. A bay of skerries and pine islands. A hamlet of Falu-red cottages on the near right, with a jetty and the Swedish flag. A lighthouse in the outer archipelago, a fleet of sailboats, gulls, and cumulus banks on the horizon.
-- **Palette:** blue sky, Baltic blue-violet sea, red-grey granite, dark pine green and Falu red. Six hours (`high-coast-hours.js`): golden hour, sunset, light night, dawn mist, morning and afternoon. Each hour lasts 100 s and rests 15 % at each end; a level-up adds one hour.
+- **Palette:** blue sky, Baltic blue-violet sea, red-grey granite, dark pine green and Falu red. A whole midsummer day at 63° north (`high-coast-hours.js`), named by six stations: golden hour, sunset, light night, dawn mist, morning and afternoon. The day takes 600 s of clock and never rests (Sunset's model: a timetable, the sun at its real height, its light fading with the height); a level-up adds one station.
 - **Pieces** (`high-coast-tetrominos.js`): I `#3B78E0`, O `#B5322A`, T `#F59A2E`, S `#C44AA0`, Z `#D7EA6A`, J `#F2B4A2`, L `#1E8C6E`, GARBAGE `#363C45`. Spinnaker cloth; the palette gate scores 0/7.
 - **Motion:** domain-warped ripple trains with glint variance, the islands mirrored in a heightfield march, drifting cloud shadows, the fleet reaching round its loops, gulls, the pine's crown in the wind.
 - **Gameplay FX:**
@@ -1280,7 +1280,7 @@ sheet/curtain materials other than aurora; organic growth that is not plants-in-
 
 Read-only survey, done 2026-10-11. Sources for each theme: the icon PNG (viewed), the `docs/*` overhaul doc (when there is one), the theme module header, the piece colours and any capture images under `docs/*-captures`, `docs/*-overhaul`, `reports/*-overhaul` and `docs/theme-screenshots`.
 
-Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: nimbus-veil and cinder-drift `atmospheric`; sky-children and parhelion `sky`; pyrestorm and vesper-chrysalis `fantasy`; neon-dusk, neon-district and synthwave-sunset `urban`; chromadelic-highway `abstract`; stillwater `biomes`; blood-moon, astral-weave, stellar-velocity and stellar-drift `cosmic`.
+Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: nimbus-veil and cinder-drift `atmospheric`; rainbow-terraces and parhelion `sky`; pyrestorm and vesper-chrysalis `fantasy`; neon-dusk, neon-district and synthwave-sunset `urban`; chromadelic-highway `abstract`; stillwater `biomes`; blood-moon, astral-weave, stellar-velocity and stellar-drift `cosmic`.
 
 <a id="nimbus-veil"></a>
 
@@ -1315,19 +1315,19 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 - **Tech.** WebGPURenderer with its WebGL2 backend (ADR-0019). Node materials, no compute, no MRT, analytic vertex animation, instanced Sprites. Post (`nimbus-veil-post.js`): bloom, light rays, grade. Dynamic resolution.
 - **Avoid reusing.** A sea of clouds seen from above; pastel peach/lavender sunset sky; cumulus towers; golden motes; crepuscular rays from a low sun; a "fly over the clouds" camera.
 
-<a id="sky-children"></a>
+<a id="rainbow-terraces"></a>
 
-### 47. sky-children — "Irisfall: the high country with the sun behind you" (`docs/SKY_CHILDREN_VISUAL_OVERHAUL_2026-10.md`)
+### 47. rainbow-terraces — "Rainbow Terraces: the high country with the sun behind you" (`docs/RAINBOW_TERRACES_VISUAL_OVERHAUL_2026-10.md`)
 
-- **Files.** Module `src/themes/sky-children/`; icon at `src/themes/sky-children/sky-children-theme-icon.png` (registry `:336`), copied to `public/assets/themes/sky-children-theme-icon.png`. The old V2 module (`src/themes/sky-children-v2/`) is retired (the registry maps its id here).
+- **Files.** Module `src/themes/rainbow-terraces/`; icon at `src/themes/rainbow-terraces/rainbow-terraces-theme-icon.png` (registry `:336`), copied to `public/assets/themes/rainbow-terraces-theme-icon.png`. The theme was called Sky Children (id `sky-children`) until 2026-10-18; the old V2 module (`src/themes/sky-children-v2/`) was deleted that day. The registry maps both old ids here.
 - **Icon.** The Spring Isle close up at the gilded hour: a moss crown with cypresses and a stone gateway hung with a bronze bell, a cream travertine cascade of jade pools, the Mother Fall pouring off its shoulder with the bow's leg standing in her spray, a cumulus tower over a slate storm behind.
 - **Setting.** The eye stands on a stone overlook (a balustrade, a mossy travertine outcrop) at the edge of a high country with the sun low behind it, so the whole frame is composed round the antisolar point.
   - The Spring Isle: an upturned mountain of bedded rock (leaning, lobed), its crown with trees, the gateway and the cascade, the Mother Fall dropping the frame's height into the Deep.
   - The Twin Isle with a broken two-tier aqueduct and threads of falls; the Far Gate, a colossal ruined arch on its own mesa; a far archipelago in bands.
   - The Deep: a cloud sea a kilometre down, its domes lit full face, holes onto luminous depth; a storm wall with a lit crown behind a cumulus tower; cirrus; an altocumulus drift.
   - Every droplet optic from one CPU-baked spectral table: the bow, the secondary, Alexander's band, supernumeraries, the fogbow, the opposition glow, the glory. Paper gliders (the children) in two flocks.
-- **Palette.** Five hours on a wheel, 110 s an hour by the clock (resting 15 % at each end), a level turning one hour (`sky-children-hours.js`): Jade Morning, Gilded Afternoon, Rose Hour (the Belt of Venus, the Earth's shadow climbing the stone, alpenglow on the crowns), Moonbow Night, Pearl Dawn. Accents `#6fd6b0`, `#ffbe55`, `#ff6f8a`, `#8fb4ff`, `#9fd8e6`.
-- **Pieces** (`sky-children-tetrominos.js`, `renderMode: 'glow'`): I `#ffd04a`, O `#c46bf0`, T `#6fe3a6`, S `#ff6b5e`, Z `#45d0e6`, J `#ff9a45`, L `#6577ff`, GARBAGE `#3a4260`.
+- **Palette.** Five hours on a wheel, 110 s an hour by the clock (resting 15 % at each end), a level turning one hour (`rainbow-terraces-hours.js`): Jade Morning, Gilded Afternoon, Rose Hour (the Belt of Venus, the Earth's shadow climbing the stone, alpenglow on the crowns), Moonbow Night, Pearl Dawn. Accents `#6fd6b0`, `#ffbe55`, `#ff6f8a`, `#8fb4ff`, `#9fd8e6`.
+- **Pieces** (`rainbow-terraces-tetrominos.js`, `renderMode: 'glow'`): I `#ffd04a`, O `#c46bf0`, T `#6fe3a6`, S `#ff6b5e`, Z `#45d0e6`, J `#ff9a45`, L `#6577ff`, GARBAGE `#3a4260`.
 - **Gameplay FX.**
   - Lock: a light-copy of the piece at the card's edge melts into light-water and arcs to a terrace pool, which holds the colour as a jewel; a hard drop fires at once as a jet.
   - Clear: each row's light leaps off both sides of the card like a fountain and falls into the Deep; a surge runs down every fall, the oldest held colours ride down them as bands.
@@ -1666,7 +1666,7 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 ### Cross-cutting: what is already taken (across this set; survey 4)
 
 **Settings already used.**
-- Clouds seen from above (nimbus-veil, sky-children).
+- Clouds seen from above (nimbus-veil, rainbow-terraces).
 - Lava or volcano (cinder-drift, pyrestorm).
 - Neon dusk or outrun (neon-dusk, synthwave-sunset).
 - Rainy cyber-city (neon-district).
@@ -1686,7 +1686,7 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 - Ringed planets: chromadelic-highway, stellar-drift, vesper-chrysalis.
 - Nebula skies: astral-weave, stellar-velocity, stellar-drift, chromadelic-highway, blood-moon.
 - Rings or hoops: astral-weave, stellar-velocity, chromadelic-highway, parhelion.
-- Golden motes or sparkles: nimbus-veil, sky-children.
+- Golden motes or sparkles: nimbus-veil, rainbow-terraces.
 - Shooting stars or meteors on combo: neon-dusk, synthwave-sunset, chromadelic-highway, stellar-drift.
 
 **Gameplay FX patterns that are already house clichés.**
@@ -1713,7 +1713,7 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 - Crimson monochrome (blood-moon).
 - Magenta, cyan and plum neon (neon-dusk, synthwave-sunset, neon-district, chromadelic-highway).
 - Peach and lavender pastel clouds (nimbus-veil).
-- Cyan day to gold meadow (sky-children).
+- Cyan day to gold meadow (rainbow-terraces).
 - Teal-blue moonlit folklore (stillwater).
 - Rose, violet and amber dusk with cyan crystal (vesper-chrysalis).
 - Teal, violet and rose nebula with pearl to gold (astral-weave, stellar-velocity, stellar-drift).

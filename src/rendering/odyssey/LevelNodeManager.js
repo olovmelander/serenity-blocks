@@ -168,11 +168,21 @@ const LOCK_PLACEMENT = Object.freeze({ up: 1.32, toward: 1.0, size: 0.5 });
 const LOCK_NEAR_FADE = Object.freeze({ start: 5, end: 14 });
 // Whole-orb near-lens fade (world units from the camera to the orb's seat).
 const NODE_NEAR_FADE = Object.freeze({ start: 4, end: 13 });
+// Rival and boss markers hang under the orb (the lock and stars live above it), so a chapter's
+// duel and its boss read on the path itself, not only in the panel.
+const MARKER_PLACEMENT = Object.freeze({ up: -1.38, toward: 1.0, size: 0.56 });
 const STAR_PLACEMENT = Object.freeze([
     Object.freeze({ right: -0.6, up: 1.5, toward: 0.9 }),
     Object.freeze({ right: 0.0, up: 1.72, toward: 0.95 }),
     Object.freeze({ right: 0.6, up: 1.5, toward: 0.9 }),
 ]);
+
+/** The marker an orb wears on the path: a rival duel, a chapter boss, or none. */
+export function resolveOdysseyNodeMarker(levelConfig) {
+    if (levelConfig?.mechanics?.versus) return 'rival';
+    if (levelConfig?.role === 'boss') return 'boss';
+    return null;
+}
 
 /**
  * LevelNodeManager - Manages level selection orbs
@@ -208,6 +218,7 @@ export class LevelNodeManager {
         this.fallbackIconTexture = this.createFallbackIconTexture();
         this.sharedLockTextures = this._createSharedLockTextures();
         this.sharedStarTexture = this.createStarTexture(128);
+        this.sharedMarkerTextures = this._createSharedMarkerTextures();
         this.sharedGlowTexture = this.createGlowTexture(64);
 
         this.pathEvaluator = null;
@@ -218,6 +229,8 @@ export class LevelNodeManager {
         this.glowInstancedMesh = null;
         this.lockInstancedMesh = null;
         this.starInstancedMesh = null;
+        this.rivalMarkerMesh = null;
+        this.bossMarkerMesh = null;
         this.particleSystem = null;
         this.instanceIdMap = new Map(); // levelId -> instanceIndex
         this.nodeIds = []; // index -> levelId
@@ -438,6 +451,52 @@ export class LevelNodeManager {
         return { lockTexture, lockGlowTexture };
     }
 
+    _createSharedMarkerTextures() {
+        // White glyphs tinted per node like the padlock: crossed blades for a rival duel, a
+        // three-point crown for a chapter boss. Both read at the lock's size from any angle.
+        const glyph = (draw) => {
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, 128, 128);
+            ctx.strokeStyle = '#ffffff';
+            ctx.fillStyle = '#ffffff';
+            ctx.lineWidth = 11;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            draw(ctx);
+            const texture = new THREE.CanvasTexture(canvas);
+            texture.colorSpace = THREE.SRGBColorSpace;
+            texture.needsUpdate = true;
+            return texture;
+        };
+        const rivalTexture = glyph((ctx) => {
+            ctx.beginPath();
+            ctx.moveTo(30, 30);
+            ctx.lineTo(98, 98);
+            ctx.moveTo(98, 30);
+            ctx.lineTo(30, 98);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.arc(64, 64, 9, 0, Math.PI * 2);
+            ctx.fill();
+        });
+        const bossTexture = glyph((ctx) => {
+            ctx.beginPath();
+            ctx.moveTo(24, 96);
+            ctx.lineTo(24, 46);
+            ctx.lineTo(46, 68);
+            ctx.lineTo(64, 30);
+            ctx.lineTo(82, 68);
+            ctx.lineTo(104, 46);
+            ctx.lineTo(104, 96);
+            ctx.closePath();
+            ctx.fill();
+        });
+        return { rivalTexture, bossTexture };
+    }
+
     rebuildPositionCache() {
         this.nodes.forEach((node) => {
             const point = this._getPathPoint(node.pathPosition);
@@ -514,15 +573,21 @@ export class LevelNodeManager {
         this.glowInstancedMesh.instanceMatrix.needsUpdate = true;
         this.lockInstancedMesh.instanceMatrix.needsUpdate = true;
         this.starInstancedMesh.instanceMatrix.needsUpdate = true;
+        if (this.rivalMarkerMesh) this.rivalMarkerMesh.instanceMatrix.needsUpdate = true;
+        if (this.bossMarkerMesh) this.bossMarkerMesh.instanceMatrix.needsUpdate = true;
         // Padlock glyph tint = the node's chapter light (it was a pink sticker everywhere).
         this.nodes.forEach((node) => {
             const idx = this.instanceIdMap.get(node.config.id);
             const tint = node.group.userData.chapterColor;
             if (Number.isInteger(idx) && tint) {
                 this.lockInstancedMesh.setColorAt(idx, this._scratchLockColor.copy(tint).multiplyScalar(0.9));
+                this.rivalMarkerMesh?.setColorAt(idx, this._scratchLockColor.copy(tint).multiplyScalar(1.05));
+                this.bossMarkerMesh?.setColorAt(idx, this._scratchLockColor.copy(tint).multiplyScalar(1.05));
             }
         });
         if (this.lockInstancedMesh.instanceColor) this.lockInstancedMesh.instanceColor.needsUpdate = true;
+        if (this.rivalMarkerMesh?.instanceColor) this.rivalMarkerMesh.instanceColor.needsUpdate = true;
+        if (this.bossMarkerMesh?.instanceColor) this.bossMarkerMesh.instanceColor.needsUpdate = true;
 
         console.log('[LevelNodes] Created', this.nodes.size, 'level nodes in batches with instancing');
     }
@@ -660,6 +725,30 @@ export class LevelNodeManager {
         this.starInstancedMesh.frustumCulled = false;
         this.scene.add(this.starInstancedMesh);
 
+        // 4b. Rival and boss markers (Plane Mesh each) — the same treatment as the lock: in
+        // front of the orb, painted after the shells, depth-tested, one pass, never culled whole.
+        const createMarkerMesh = (texture) => {
+            const geometry = new THREE.PlaneGeometry(0.9, 0.9);
+            const material = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+                opacity: 0.92,
+                alphaTest: 0.1,
+                depthWrite: false,
+                side: THREE.DoubleSide,
+                forceSinglePass: true,
+            });
+            const mesh = new THREE.InstancedMesh(geometry, material, count);
+            mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+            mesh.renderOrder = 10;
+            mesh.frustumCulled = false;
+            for (let i = 0; i < count; i += 1) mesh.setColorAt(i, this._fallbackColor);
+            this.scene.add(mesh);
+            return mesh;
+        };
+        this.rivalMarkerMesh = createMarkerMesh(this.sharedMarkerTextures.rivalTexture);
+        this.bossMarkerMesh = createMarkerMesh(this.sharedMarkerTextures.bossTexture);
+
         // 5. High-Fidelity Particles (instanced billboard quads on WebGPU)
         // 96 particles per node * 55 nodes = ~5280 particles in one draw call.
         // THREE.Points renders as 1px on WebGPU, so the sparkle cloud is drawn as
@@ -732,6 +821,7 @@ export class LevelNodeManager {
         group.userData.locked = true;
         group.userData.completed = false;
         group.userData.stars = 0;
+        group.userData.marker = resolveOdysseyNodeMarker(levelConfig);
         const chapter = levelConfig.chapter || 1;
         const chapterColor = this.getChapterColor(chapter);
         const baseScale = CHAPTER_NODE_BASE_SCALE[chapter] ?? 1.0;
@@ -1341,8 +1431,9 @@ export class LevelNodeManager {
             const levelId = this.nodeIds[instanceId];
             const node = this.nodes.get(levelId);
 
-            // Only interact if not locked
-            if (node && !node.group.userData.locked) {
+            // Locked orbs answer too: hovering and selecting one opens its read-only panel
+            // (what it asks, what unlocks it); only Play stays closed.
+            if (node) {
                 return levelId;
             }
         }
@@ -1557,6 +1648,8 @@ export class LevelNodeManager {
         this.glowInstancedMesh.instanceMatrix.needsUpdate = true;
         this.lockInstancedMesh.instanceMatrix.needsUpdate = true;
         this.starInstancedMesh.instanceMatrix.needsUpdate = true;
+        if (this.rivalMarkerMesh) this.rivalMarkerMesh.instanceMatrix.needsUpdate = true;
+        if (this.bossMarkerMesh) this.bossMarkerMesh.instanceMatrix.needsUpdate = true;
         if (this.innerCoreMesh && aCoreAttr) {
             this.innerCoreMesh.instanceMatrix.needsUpdate = true;
             aCoreAttr.needsUpdate = true;
@@ -1656,10 +1749,30 @@ export class LevelNodeManager {
                     this.starInstancedMesh.setMatrixAt(idx * 3 + s, matrix.makeScale(0, 0, 0));
                 }
             }
+
+            // Rival or boss marker — one billboard hung under the orb, facing the camera.
+            const { marker } = node.group.userData;
+            [['rival', this.rivalMarkerMesh], ['boss', this.bossMarkerMesh]].forEach(([kind, mesh]) => {
+                if (!mesh) return;
+                if (marker !== kind) {
+                    mesh.setMatrixAt(idx, matrix.makeScale(0, 0, 0));
+                    return;
+                }
+                matrix.copy(this.camera.matrixWorld);
+                matrix.setPosition(this._scratchIndicatorPos.copy(pos)
+                    .addScaledVector(camUp, MARKER_PLACEMENT.up * scale)
+                    .addScaledVector(toCam, MARKER_PLACEMENT.toward * scale));
+                const markerScale = scale * MARKER_PLACEMENT.size
+                    * THREE.MathUtils.smoothstep(camPos.distanceTo(pos), LOCK_NEAR_FADE.start, LOCK_NEAR_FADE.end);
+                matrix.scale(scaleVec.set(markerScale, markerScale, markerScale));
+                mesh.setMatrixAt(idx, matrix);
+            });
         });
 
         this.lockInstancedMesh.instanceMatrix.needsUpdate = true;
         this.starInstancedMesh.instanceMatrix.needsUpdate = true;
+        if (this.rivalMarkerMesh) this.rivalMarkerMesh.instanceMatrix.needsUpdate = true;
+        if (this.bossMarkerMesh) this.bossMarkerMesh.instanceMatrix.needsUpdate = true;
     }
 
     /**
@@ -1683,6 +1796,8 @@ export class LevelNodeManager {
             this.glowInstancedMesh,
             this.lockInstancedMesh,
             this.starInstancedMesh,
+            this.rivalMarkerMesh,
+            this.bossMarkerMesh,
             this.particleSystem,
             // innerCoreMesh WAS MISSING (fixed 2026-08-12) and it is the one that mattered
             // most: 60,720 of the group's 190,740 triangles, and the only OPAQUE,
@@ -1716,6 +1831,8 @@ export class LevelNodeManager {
         this.sharedLockTextures?.lockTexture?.dispose();
         this.sharedLockTextures?.lockGlowTexture?.dispose();
         this.sharedStarTexture?.dispose();
+        this.sharedMarkerTextures?.rivalTexture?.dispose();
+        this.sharedMarkerTextures?.bossTexture?.dispose();
         this.sharedGlowTexture?.dispose();
 
         // Dispose instanced meshes
@@ -1740,6 +1857,12 @@ export class LevelNodeManager {
             this.starInstancedMesh.material.dispose();
             this.scene.remove(this.starInstancedMesh);
         }
+        [this.rivalMarkerMesh, this.bossMarkerMesh].forEach((mesh) => {
+            if (!mesh) return;
+            mesh.geometry.dispose();
+            mesh.material.dispose();
+            this.scene.remove(mesh);
+        });
 
         if (this.particleSystem) {
             this.particleSystem.geometry.dispose();

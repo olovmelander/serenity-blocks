@@ -332,7 +332,7 @@ export function createSea(u, t, tier) {
         const bottom = mix(vec3(0.17, 0.11, 0.08), vec3(0.22, 0.2, 0.15), texture(t.noise, xz.div(7.0)).a).mul(light);
         // The deep: scattered light the colour of the hour's water, brighter toward the sun.
         const forward = clamp(dot(V.negate(), normalize(vec3(u.sunDir.x, 0.0, u.sunDir.z))), 0.0, 1.0);
-        const deep = u.water.mul(float(1.0).add(forward.mul(forward).mul(1.6))).mul(u.sunUp.mul(0.7).add(0.3)).add(u.fill.mul(0.04));
+        const deep = u.water.mul(float(1.0).add(forward.mul(forward).mul(1.6))).mul(u.day.mul(0.7).add(0.3)).add(u.fill.mul(0.04));
         const body = bottom.mul(trans).add(deep.mul(vec3(1.0).sub(trans))).toVar();
 
         const water = body.mul(float(1.0).sub(fresnel)).add(mirrored.mul(fresnel)).toVar();

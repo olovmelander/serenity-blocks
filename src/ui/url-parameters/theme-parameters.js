@@ -162,11 +162,11 @@ const captureThemes = [
 
     ['rainbark', 'rainbark', 'Rainbark', 'sky, trunks, mist, curls, fx, life'],
 
+    ['rainbow-terraces', 'rainbowTerraces', 'Rainbow Terraces', 'sky, sea, cumulus, isles, falls, spray, pools, gliders, fx'],
+
     ['serenity-warp', 'serenityWarp', 'Serenity Warp', 'sky, glass, stars, motes, streams, flares'],
 
     ['shifting-sands', 'shiftingSands', 'Shifting Sands', 'sky, dunes, rocks, worm, fx'],
-
-    ['sky-children', 'skyChildren', 'Sky Children', 'sky, sea, cumulus, isles, falls, spray, pools, gliders, fx'],
 
     ['solar-eclipse', 'eclipse', 'Solar Eclipse', 'sky, motes'],
 

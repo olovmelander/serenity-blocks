@@ -41,6 +41,7 @@ export async function completeOdysseyLevel(mode, results) {
     // Calculate stars
     const stars = mode._calculateStars(finalResults, hybridEngine);
     finalResults.stars = stars;
+    finalResults.charms = session.charmRun?.charms?.slice() || [];
 
     // Evaluate bonuses
     const bonuses = mode._evaluateBonuses(finalResults, hybridEngine);
@@ -95,7 +96,8 @@ export async function completeOdysseyLevel(mode, results) {
         });
     }
 
-    await flourish;
+    // The ceremony arrives through the showpiece's afterglow when the well played one.
+    if (await flourish === true) finalResults.showpiece = true;
     if (!mode._isLevelSessionCurrent(session, retirementGeneration)) return;
 
     // Show results

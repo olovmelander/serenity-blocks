@@ -75,8 +75,8 @@ The original Bioluminescence remains the final cave scene.
 | 1 | Cinder Drift (`cinder-drift`) | Magma, rock, smoke, and embers establish the volcanic core. |
 | 2 | Crystal Cave (`crystal-cave`) | Rock halls, mineral crystals, and a reflective pool remain subterranean. |
 | 3 | Geode (`geode`) | Crystalline mineral geometry continues the journey through the earth. |
-| 4 | Pyrestorm (`pyrestorm`) | Fire and molten energy provide an intense volcanic scene. |
-| 5 | Bioluminescence (`bioluminescence`) | Glowing mushrooms, crystals, spores, and wet rock bring life to the cave finale. |
+| 4 | Bioluminescence (`bioluminescence`) | Glowing mushrooms, crystals, spores, and wet rock bring life to the cave finale. |
+| 5 | Pyrestorm (`pyrestorm`) | Fire and molten energy provide an intense volcanic scene. |
 
 Completing all five orbs of this chapter (any stars) also grants **Thermal Bloom**
 (`thermal-bloom`), a steaming hydrothermal basin and the one theme with no orb of its own: the
@@ -93,8 +93,8 @@ Bioluminescence II scene has no replacement inside this chapter.
 | 6 | Ocean (`ocean`) | Underwater kelp, coral, fish, and volumetric light establish depth. |
 | 7 | Luminous Tides (`luminous-tides`) | A night beach where the breaking surf, the swash and the wet sand flash blue with plankton; extends the liquid-world identity. |
 | 8 | Koi Pond (`koi-pond`) | A pond sanctuary introduces an intimate aquatic habitat. |
-| 9 | Waves (`waves`) | A sculpted, sunlit surf barrel explores water in motion. |
-| 10 | Stillwater (`stillwater`) | Reflective black water and surrounding woodland prepare the surface arrival. |
+| 9 | Stillwater (`stillwater`) | Reflective black water and surrounding woodland prepare the surface arrival. |
+| 10 | Waves (`waves`) | A sculpted, sunlit surf barrel explores water in motion. |
 
 ### Chapter 3 — Surface World & Living Landscapes, orbs 11–18
 
@@ -108,9 +108,9 @@ mountain setting. Halcyon is a fantasy ruin, but its terrestrial scenery support
 | 13 | Golden Forest (`golden-forest`) | Spruce, pine, and a Nordic lake in golden light continue the woodland setting. |
 | 14 | Moonlit Greenhouse (`moonlit-greenhouse`) | Plants, dewdrops, moths, and blooming reactions add cultivated life. |
 | 15 | Tornado (`tornado`) | Ground-connected weather sets the surface landscape in motion. |
-| 16 | Midsommar (`summer`) | A summer meadow expresses seasonal growth and abundance. |
-| 17 | Fall (`fall`) | An autumn grove and living leaves provide seasonal contrast. |
-| 18 | Halcyon Apex (`halcyon-apex`) | A lake, islands, temple causeway, and mountain silhouettes lead toward the ascent. |
+| 16 | Fall (`fall`) | An autumn grove and living leaves provide seasonal contrast. |
+| 17 | Halcyon Apex (`halcyon-apex`) | A lake, islands, temple causeway, and mountain silhouettes lead toward the ascent. |
+| 18 | Midsommar (`summer`) | A summer meadow expresses seasonal growth and abundance. |
 
 ### Chapter 4 — Mountains & Thin-Air Ascension, orbs 19–26
 
@@ -125,8 +125,8 @@ and summit light. Sakura's position is based on its scene, not just an orb title
 | 22 | Wolfhour (`wolfhour`) | Mystical mountain scenery continues the nocturnal highland mood. |
 | 23 | Himalayan Peak (`himalayan-peak`) | Himalayan ridges and alpenglow make altitude explicit. |
 | 24 | High Coast (`high-coast`) | The rising land: red granite cliffs over a pine archipelago; every clear lifts the coast out of the sea. |
-| 25 | Winter (`winter`) | Snow, wind, mountains, and aurora express exposed cold altitude. |
-| 26 | Moonrise Summit (`moonrise-summit`) | Alpine ridges, moonrise, and an upward gaze finish the climb toward the sky. |
+| 25 | Moonrise Summit (`moonrise-summit`) | Alpine ridges, moonrise, and an upward gaze finish the climb toward the sky. |
+| 26 | Winter (`winter`) | Snow, wind, mountains, and aurora express exposed cold altitude. |
 
 ### Chapter 5 — Sky & Atmospheric Drift, orbs 27–34
 
@@ -140,9 +140,9 @@ night-sky view; Lunara deliberately crosses toward the next chapter's cosmic lan
 | 29 | Aurora (`aurora`) | Auroral curtains dominate above a reflective lake and snowy peaks. |
 | 30 | Nimbus Veil (`nimbus-veil`) | Cloud tops, cumulus, mist, and rays place the player above a cloud sea. |
 | 31 | Rainy Window (`rainy-window`) | Rain, storm clouds, and lightning focus on atmospheric weather. |
-| 32 | Sky Children (`sky-children`) | Cloud seas, floating islands, and luminous skies fit the airborne setting. |
-| 33 | Parhelion (`parhelion`) | A hidden sun, 22-degree halo, and sundogs make atmospheric optics the subject. |
-| 34 | Lunara (`lunara`) | Twin moons and aurora above a crystal valley form the sky-to-cosmos threshold. |
+| 32 | Parhelion (`parhelion`) | A hidden sun, 22-degree halo, and sundogs make atmospheric optics the subject. |
+| 33 | Lunara (`lunara`) | Twin moons and aurora above a crystal valley form the sky-to-cosmos threshold. |
+| 34 | Rainbow Terraces (`rainbow-terraces`) | Cloud seas, floating islands, and luminous skies fit the airborne setting. |
 
 ### Chapter 6 — Space & Cosmic Expanse, orbs 35–48
 
@@ -161,11 +161,11 @@ resumes through the stars.
 | 41 | Astral Weave (`astral-weave`) | A luminous loom in a river of nebula adds celestial geometry. |
 | 42 | Shifting Sands (`shifting-sands`) | Twin suns, moons, dunes, and an alien creature create a planetary stop. |
 | 43 | Vesper Chrysalis (`vesper-chrysalis`) | Prominent planets overlook a mirror lake, mountain basin, and awakening crystalline relic. |
-| 44 | Stellar Velocity (`stellar-velocity`) | Warp trails, nebulae, and asteroids resume travel through space. |
-| 45 | Stellar Drift (`stellar-drift`) | A large planet, orbital debris, stars, and nebula atmosphere support planetary scale. |
-| 46 | Solar Eclipse (`solar-eclipse`) | Sun, moon, corona, flares, and orbital debris create a distinct alignment. |
-| 47 | Rainbark (`rainbark`) | Colossal painted trees in blue air above a floor of mist: a rare pocket of quiet before the singularity. |
-| 48 | Black Hole (`black-hole`) | A black-hole shadow, lensed background, and accretion disk mark the threshold beyond space. |
+| 44 | Stellar Drift (`stellar-drift`) | A large planet, orbital debris, stars, and nebula atmosphere support planetary scale. |
+| 45 | Solar Eclipse (`solar-eclipse`) | Sun, moon, corona, flares, and orbital debris create a distinct alignment. |
+| 46 | Rainbark (`rainbark`) | Colossal painted trees in blue air above a floor of mist: a rare pocket of quiet before the singularity. |
+| 47 | Black Hole (`black-hole`) | A black-hole shadow, lensed background, and accretion disk mark the threshold beyond space. |
+| 48 | Stellar Velocity (`stellar-velocity`) | Warp trails, nebulae, and asteroids resume travel through space. |
 
 ### Chapter 7 — Black Hole & Abstract Transcendence, orbs 49–56
 
@@ -178,10 +178,10 @@ energy. Serenity Warp adds game-shaped geometry before Kaleidosonic's fractal fi
 | 50 | Nebula Flow (`nebula-flow`) | Autonomous coloured fluid fields read as visual abstraction. |
 | 51 | Chiral Gold (`chiral-gold`) | Braided gold towers, a transforming ring, and black water form a geometric ritual hall. |
 | 52 | Voltage Storm (`voltage-storm`) | Electric fluid, lightning-like energy, and shockwaves continue the nonliteral imagery. |
-| 53 | Chromatic Impasto (`chromatic-impasto`) | Thick paint-like flow and expressionist colour move fully into abstraction. |
-| 54 | Murmuration (`murmuration`) | A swarm of light wheels through a dark nebula and gathers into figures, keeping the setting abstract and weightless. |
-| 55 | Serenity Warp (`serenity-warp`) | Floating tetromino geometry, luminous particles, and warp imagery turn the game itself into an abstract world. |
-| 56 | Kaleidosonic (`kaleidosonic`) | A kaleidoscopic fractal temple of resonant light, rung by every lock and folded deeper by every cascade, completes the abstract chapter. |
+| 53 | Murmuration (`murmuration`) | A swarm of light wheels through a dark nebula and gathers into figures, keeping the setting abstract and weightless. |
+| 54 | Serenity Warp (`serenity-warp`) | Floating tetromino geometry, luminous particles, and warp imagery turn the game itself into an abstract world. |
+| 55 | Kaleidosonic (`kaleidosonic`) | A kaleidoscopic fractal temple of resonant light, rung by every lock and folded deeper by every cascade, completes the abstract chapter. |
+| 56 | Chromatic Impasto (`chromatic-impasto`) | Thick paint-like flow and expressionist colour move fully into abstraction. |
 
 ### Chapter 8 — Urban Dreams Encore, orbs 57–60
 
@@ -192,8 +192,8 @@ city, ending in Neon District's rain canyon.
 |---|---|---|
 | 57 | Chromadelic Highway (`chromadelic-highway`) | A prism-glass neon highway carries the player from abstraction into the encore. |
 | 58 | Neon Dusk (`neon-dusk`) | Neon ridges, a glass grid, a setting sun, and VHS texture establish the outrun mood. |
-| 59 | Synthwave Sunset (`synthwave-sunset`) | A neon grid, palms, wireframe mountains, and city skyline approach the urban destination. |
-| 60 | Neon District (`neon-district`) | A rain-soaked street canyon, shopfronts, and reflected towers provide the city finale. |
+| 59 | Neon District (`neon-district`) | A rain-soaked street canyon, shopfronts, and reflected towers provide the city finale. |
+| 60 | Synthwave Sunset (`synthwave-sunset`) | A neon grid, palms, wireframe mountains, and city skyline approach the urban destination. |
 
 ## Orb identity changes
 

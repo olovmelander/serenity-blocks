@@ -195,7 +195,8 @@ export function createCumulus(u, t, tier, count = 9) {
         const height = clamp(p.y.div(aspect), 0.0, 1.0);
         // The base is flat and darker; the sides take the sky's blue.
         const shade = mix(u.cloudShade.mul(0.85), u.cloudShade.mul(1.35).add(u.fill.mul(0.6)), smoothstep(0.0, 0.5, height));
-        const lit = u.cloudLit.mul(lambert).mul(u.sunUp.mul(0.85).add(0.15));
+        // A heap up in the air keeps the sun a while after the ground has lost it: the sky's daylight.
+        const lit = u.cloudLit.mul(lambert).mul(u.day.mul(0.85).add(0.15));
         // The crowns catch the most light (they stand in the sun above the others' shadow).
         const crown = smoothstep(0.35, 1.0, height).mul(0.35).add(0.8);
         const body = mix(shade, lit.mul(crown), smoothstep(0.18, 0.92, lambert)).toVar();

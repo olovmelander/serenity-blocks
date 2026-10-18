@@ -124,19 +124,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'foxWhich',
-        category: 'Playground',
-        scope: 'playground.html — sakura-twilight',
-        description: 'Which of the two foxes foxCam follows and foxAct stops.',
-        values: '0 (the larger) or 1.',
-        defaultValue: '0.',
-        example: 'foxWhich=1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>; needs foxCam or foxAct.',
-        sources: [
-            'src/playground/effects/sakura-twilight.effect.js',
-        ],
-    },
-    {
         name: 'aerialH',
         category: 'Playground',
         scope: 'playground.html — odyssey-world',
@@ -270,19 +257,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'bare',
         category: 'Playground',
-        scope: 'playground.html — sky-children-detail',
-        description: 'Show the bare Sky Children detail scene.',
-        values: '1 enables.',
-        defaultValue: 'Full scene.',
-        example: 'bare=1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/sky-children-detail.effect.js',
-        ],
-    },
-    {
-        name: 'bare',
-        category: 'Playground',
         scope: 'playground.html — verdant-hills',
         description: 'Build Verdant Hills without its Blender asset pack: the land, the sky and the grass alone.',
         values: '1 enables.',
@@ -323,11 +297,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'bloom',
         category: 'Playground',
         scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
-            + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, '
-            + 'moonlit-greenhouse, nebula-flow, neon-district, neon-dusk, ocean, rainbark, '
-            + 'serenity-warp, shifting-sands, sky-children, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
-            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
+            + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, moonlit-greenhouse, '
+            + 'nebula-flow, neon-district, neon-dusk, ocean, rainbark, rainbow-terraces, serenity-warp, '
+            + 'shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, '
+            + 'supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Enable effect bloom.',
         values: '1 enables; 0 disables. Neon Dusk treats every value except 0 as enabled.',
         defaultValue: 'Quality preset.',
@@ -354,7 +327,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -388,13 +361,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'board',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, '
-            + 'luminous-tides, lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
-            + 'neon-dusk, nimbus-veil, ocean, parhelion, rainbark, sakura-twilight, serenity-warp, '
-            + 'shifting-sands, sky-children, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
-            + 'stillwater, summer, sunset, supernova, synthwave-sunset, thermal-bloom, tornado, '
-            + 'verdant-hills, vesper-chrysalis, void-ember, voltage-storm, waves, winter, wolfhour',
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
+            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
+            + 'lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, '
+            + 'parhelion, rainbark, rainbow-terraces, sakura-twilight, serenity-warp, shifting-sands, '
+            + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, summer, sunset, supernova, '
+            + 'synthwave-sunset, thermal-bloom, tornado, verdant-hills, vesper-chrysalis, void-ember, '
+            + 'voltage-storm, waves, winter, wolfhour',
         description: 'Draw a mock game board to assess framing and reactions.',
         values: '1 shows; 0 hides.',
         defaultValue: 'Off, except Neon Dusk, Nimbus Veil and Synthwave Sunset default on.',
@@ -434,7 +407,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sakura-twilight.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -648,12 +621,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'color',
         category: 'Playground',
-        scope: 'playground.html — aurora, black-hole, chiral-gold, fluid-dreams, galaxy, geode, '
-            + 'halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
-            + 'lunara, moonlit-greenhouse, nebula-flow, neon-district, ocean, rainbark, serenity-warp, '
-            + 'sky-children, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, '
-            + 'sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, '
-            + 'waves, winter',
+        scope: 'playground.html — aurora, black-hole, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
+            + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, moonlit-greenhouse, '
+            + 'nebula-flow, neon-district, ocean, rainbark, rainbow-terraces, serenity-warp, solar-eclipse, '
+            + 'starlight, stellar-drift, stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
+            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Set the piece/reaction color.',
         values: 'CSS color; encode # as %23; hex works across these previews.',
         defaultValue: 'Effect palette (Aurora #6cf5ff; Black Hole #f8b24f).',
@@ -679,7 +651,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/ocean.effect.js',
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -714,19 +686,18 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'combo',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, '
-            + 'luminous-tides, lunara, moonlit-forest-master, moonlit-greenhouse, murmuration, '
-            + 'nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, rainbark, sakura-twilight, '
-            + 'serenity-warp, shifting-sands, sky-children, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, summer, sunset, supernova, synthwave-sunset, '
-            + 'thermal-bloom, tornado, verdant-hills, vesper-chrysalis, void-ember, voltage-storm, '
-            + 'waves, winter; game themes: Moonlit Forest',
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
+            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
+            + 'lunara, moonlit-forest-master, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
+            + 'neon-dusk, nimbus-veil, ocean, rainbark, rainbow-terraces, sakura-twilight, serenity-warp, '
+            + 'shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, summer, '
+            + 'sunset, supernova, synthwave-sunset, thermal-bloom, tornado, verdant-hills, vesper-chrysalis, '
+            + 'void-ember, voltage-storm, waves, winter; game themes: Moonlit Forest',
         description: 'Set the preview combo length or held combo state.',
         values: 'Nonnegative integer; reaction previews often require at least 2. In Stillwater it is how '
             + 'far the spirit and the troll have come toward the board. In Starlight it is how far the '
             + 'shutter is open (the length of the star trails). In Sunset it is how far the sky is on '
-            + 'fire; from three the gulls cross the light. In Sky Children it is how much of the bow '
+            + 'fire; from three the gulls cross the light. In Rainbow Terraces it is how much of the bow '
             + 'the gliders have painted, one stroke a link (0 to 13: seven strokes close the primary '
             + 'circle, five more paint the secondary). In Moonlit Greenhouse it is a chain of that many '
             + 'clears held: the fireflies fall into step and the moss climbs the columns. In Rainbark '
@@ -771,7 +742,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sakura-twilight.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -937,19 +908,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'detail',
-        category: 'Playground',
-        scope: 'playground.html — sky-children-detail',
-        description: 'Enable Sky Children fine surface detail.',
-        values: '0 disables.',
-        defaultValue: 'On.',
-        example: 'detail=0',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/sky-children-detail.effect.js',
-        ],
-    },
-    {
         name: 'disk',
         category: 'Playground',
         scope: 'playground.html — black-hole',
@@ -1081,6 +1039,33 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'eagle',
+        category: 'Playground',
+        scope: 'playground.html — himalayan-peak',
+        description: 'Leave the eagle out: its model is never fetched.',
+        values: '0 leaves it out.',
+        defaultValue: 'The eagle is fetched and joins its round when it arrives.',
+        example: 'eagle=0',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/himalayan-peak.effect.js',
+        ],
+    },
+    {
+        name: 'eagleLens',
+        category: 'Playground',
+        scope: 'playground.html — himalayan-peak',
+        description: 'Follow the eagle with a long lens from the pass; its flight and light are untouched.',
+        values: 'Vertical field of view in degrees.',
+        defaultValue: 'The game camera.',
+        example: 'eagleLens=4',
+        notes: 'Use on playground.html with effect=<the matching effect ID>. The bouts of wingbeats '
+            + 'start 14.0, 40.0 and 69.5 s into each 84 s round.',
+        sources: [
+            'src/playground/effects/himalayan-peak.effect.js',
+        ],
+    },
+    {
         name: 'effect',
         category: 'Playground',
         scope: 'playground.html (all effects)',
@@ -1110,14 +1095,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'event',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, '
-            + 'luminous-tides, lunara, moonlit-forest-master, moonlit-greenhouse, murmuration, '
-            + 'nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, rainbark, sakura-twilight, '
-            + 'serenity-warp, shifting-sands, sky-children, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, summer, sunset, supernova, synthwave-sunset, '
-            + 'thermal-bloom, tornado, verdant-hills, vesper-chrysalis, void-ember, voltage-storm, '
-            + 'waves, winter, wolfhour, wolfhour-lunar-sigil; game themes: Moonlit Forest',
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
+            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
+            + 'lunara, moonlit-forest-master, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
+            + 'neon-dusk, nimbus-veil, ocean, rainbark, rainbow-terraces, sakura-twilight, serenity-warp, '
+            + 'shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, summer, '
+            + 'sunset, supernova, synthwave-sunset, thermal-bloom, tornado, verdant-hills, vesper-chrysalis, '
+            + 'void-ember, voltage-storm, waves, winter, wolfhour, wolfhour-lunar-sigil; game themes: Moonlit '
+            + 'Forest',
         description: 'Replay a gameplay reaction in the selected preview.',
         values: 'Effect-specific cue, commonly lock, clear, combo, quad, tspin, perfect or levelUp (Koi '
             + 'Pond, Nebula Flow, Serenity Warp, Stellar Drift, Stellar Velocity and Void Ember: lock, '
@@ -1126,7 +1111,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'quad, tspin, perfect, levelUp, break); cue names are case-sensitive in most effects. '
             + 'Summer: lock, drop, clear, double, triple, quad, combo, streak, spin, perfect, level, '
             + 'over or bouquet. Verdant Hills: lock, drop, clear, double, triple, quad, combo, streak, '
-            + 'spin, perfect, level, over or festival. Sky Children: lock, drop, clear, quad, tspin, '
+            + 'spin, perfect, level, over or festival. Rainbow Terraces: lock, drop, clear, quad, tspin, '
             + 'b2b, perfect, levelUp, newRun, gameOver or break. Rainbark: lock, drop, clear, quad, '
             + 'tspin, perfect, levelUp, release (the chain held by peak breaks), b2b (the sunshower '
             + 'starts) or gameOver (Mistfall). Kaleidosonic: lock, drop, clear, quad, tspin, perfect, '
@@ -1170,7 +1155,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sakura-twilight.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -1196,16 +1181,16 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'eventAge',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, '
-            + 'luminous-tides, lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
-            + 'neon-dusk, nimbus-veil, ocean, rainbark, sakura-twilight, serenity-warp, shifting-sands, '
-            + 'sky-children, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, '
-            + 'summer, sunset, supernova, synthwave-sunset, thermal-bloom, tornado, verdant-hills, '
-            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter, wolfhour',
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
+            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
+            + 'lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, '
+            + 'rainbark, rainbow-terraces, sakura-twilight, serenity-warp, shifting-sands, solar-eclipse, '
+            + 'starlight, stellar-drift, stellar-velocity, stillwater, summer, sunset, supernova, synthwave-sunset, '
+            + 'thermal-bloom, tornado, verdant-hills, vesper-chrysalis, void-ember, voltage-storm, waves, winter, '
+            + 'wolfhour',
         description: 'Set how many seconds the captured frame follows the preview event.',
         values: 'Nonnegative seconds; Blood Moon clamps to 8.',
-        defaultValue: 'Usually 0.35–0.5; Highway 0.25; Kaleidosonic, Koi Pond, Sky Children, Stillwater and Waves 0.6.',
+        defaultValue: 'Usually 0.35–0.5; Highway 0.25; Kaleidosonic, Koi Pond, Rainbow Terraces, Stillwater and Waves 0.6.',
         example: 'eventAge=0.4',
         notes: 'Use on playground.html with effect=<the matching effect ID>. For deterministic replay, '
             + 'pair with t=<capture seconds> where supported.',
@@ -1242,7 +1227,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sakura-twilight.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -1267,11 +1252,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'eventLevel',
         category: 'Playground',
         scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
-            + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, '
-            + 'moonlit-greenhouse, murmuration, nebula-flow, neon-district, ocean, rainbark, '
-            + 'serenity-warp, sky-children, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
-            + 'stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, '
-            + 'voltage-storm, waves, winter',
+            + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, moonlit-greenhouse, '
+            + 'murmuration, nebula-flow, neon-district, ocean, rainbark, rainbow-terraces, serenity-warp, '
+            + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, supernova, '
+            + 'thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Set the new level for a preview level-up reaction.',
         values: 'Positive integer.',
         defaultValue: 'Current preview level plus 1.',
@@ -1297,7 +1281,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/ocean.effect.js',
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -1412,12 +1396,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'falseColor',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, galaxy, '
-            + 'geode, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
-            + 'lunara, moonlit-greenhouse, nebula-flow, neon-district, ocean, rainbark, serenity-warp, '
-            + 'shifting-sands, sky-children, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
-            + 'stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, '
-            + 'voltage-storm, waves, winter',
+        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, galaxy, geode, '
+            + 'halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, '
+            + 'moonlit-greenhouse, nebula-flow, neon-district, ocean, rainbark, rainbow-terraces, serenity-warp, '
+            + 'shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, '
+            + 'supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Display the effect post-process false-color debug output.',
         values: '1 enables.',
         defaultValue: 'Off.',
@@ -1444,7 +1427,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -1883,12 +1866,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'icon',
         category: 'Playground',
         scope: 'playground.html — aurora, black-hole, chiral-gold, fluid-dreams, forest, galaxy, geode, '
-            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, '
-            + 'luminous-tides, lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
-            + 'ocean, rainbark, sakura-twilight, serenity-warp, shifting-sands, sky-children, '
-            + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, summer, sunset, '
-            + 'supernova, thermal-bloom, tornado, verdant-hills, vesper-chrysalis, void-ember, '
-            + 'voltage-storm, waves, winter',
+            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
+            + 'lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, ocean, rainbark, '
+            + 'rainbow-terraces, sakura-twilight, serenity-warp, shifting-sands, solar-eclipse, starlight, '
+            + 'stellar-drift, stellar-velocity, stillwater, summer, sunset, supernova, thermal-bloom, tornado, '
+            + 'verdant-hills, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Use the authored camera pose for a theme icon capture.',
         values: '1 enables. In Moonlit Greenhouse it is a tighter lens on the moon through the glass over '
             + 'the canal (capture a square frame). In Kaleidosonic it aims from the eye at the core and '
@@ -1921,7 +1903,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/sakura-twilight.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -1969,18 +1951,18 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'iconFov',
         category: 'Playground',
-        scope: 'playground.html — aurora, black-hole, fluid-dreams, galaxy, geode, halcyon-apex, '
-            + 'himalayan-peak, kaleidosonic, luminous-tides, lunara, moonlit-greenhouse, murmuration, '
-            + 'nebula-flow, ocean, rainbark, serenity-warp, shifting-sands, sky-children, '
-            + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, '
-            + 'supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, winter',
+        scope: 'playground.html — aurora, black-hole, fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, '
+            + 'kaleidosonic, luminous-tides, lunara, moonlit-greenhouse, murmuration, nebula-flow, ocean, rainbark, '
+            + 'rainbow-terraces, serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, '
+            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, '
+            + 'void-ember, voltage-storm, winter',
         description: 'Override the icon camera field of view.',
         values: 'Degrees (Nebula Flow: half the square frame\'s height, in nursery units); requires icon=1.',
         defaultValue: 'Black Hole 27; Aurora 48; Shifting Sands 26; Lunara 46; Halcyon Apex 40; Fluid Dreams '
             + '44; Himalayan Peak 30; Geode 62; Galaxy 36; Murmuration 34; Winter 30; Voltage Storm 30; '
             + 'Supernova 20; Void Ember 40; Vesper Chrysalis 30; Tornado 30; Stillwater 30; Stellar '
             + 'Drift 26; Starlight 46; Stellar Velocity 46; Sunset 30; Solar Eclipse 13; Serenity Warp '
-            + '34; Sky Children 30; Moonlit Greenhouse 36; Nebula Flow 0.9 nursery units; Rainbark 30; '
+            + '34; Rainbow Terraces 30; Moonlit Greenhouse 36; Nebula Flow 0.9 nursery units; Rainbark 30; '
             + 'Luminous Tides 32; Kaleidosonic 34.',
         example: 'iconFov=35',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
@@ -2002,7 +1984,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -2061,23 +2043,23 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'iconPitch',
         category: 'Playground',
-        scope: 'playground.html — fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, '
-            + 'kaleidosonic, luminous-tides, lunara, moonlit-greenhouse, nebula-flow, ocean, rainbark, '
-            + 'serenity-warp, shifting-sands, sky-children, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
-            + 'vesper-chrysalis, void-ember, voltage-storm, winter',
+        scope: 'playground.html — fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, kaleidosonic, '
+            + 'luminous-tides, lunara, moonlit-greenhouse, nebula-flow, ocean, rainbark, rainbow-terraces, '
+            + 'serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
+            + 'stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, '
+            + 'winter',
         description: 'Tilt the icon camera.',
         values: 'Kaleidosonic, Shifting Sands and Rainbark: degrees; Lunara, Halcyon Apex, Fluid Dreams, '
             + 'Himalayan Peak, Geode, Galaxy, Voltage Storm, Supernova, Void Ember, Vesper Chrysalis, '
             + 'Tornado, Stillwater, Stellar Drift, Starlight, Stellar Velocity, Sunset, Serenity Warp, '
-            + 'Sky Children, Moonlit Greenhouse and Luminous Tides: radians; Nebula Flow: nursery '
+            + 'Rainbow Terraces, Moonlit Greenhouse and Luminous Tides: radians; Nebula Flow: nursery '
             + 'units, moving the frame in y. Requires icon=1.',
         defaultValue: 'Shifting Sands 1.5 degrees; Lunara 0.1 radians; Halcyon Apex 0.36 radians; Fluid Dreams '
             + '0.14 radians; Himalayan Peak 0.12 radians; Geode 0 radians; Galaxy 0 radians; Winter '
             + '0.27 radians; Voltage Storm 0 radians; Supernova 0 radians; Void Ember 0 radians; Vesper '
             + 'Chrysalis 0.05 radians; Tornado 0 radians; Stillwater 0 radians; Stellar Drift 0 '
             + 'radians; Starlight 0 radians; Stellar Velocity 0 radians; Sunset -0.05 radians; Serenity '
-            + 'Warp 0 radians; Sky Children -0.05 radians; Moonlit Greenhouse 0.12 radians; Nebula Flow '
+            + 'Warp 0 radians; Rainbow Terraces -0.05 radians; Moonlit Greenhouse 0.12 radians; Nebula Flow '
             + '0; Rainbark 8 degrees; Luminous Tides -0.12 radians; Kaleidosonic 0 degrees.',
         example: 'iconPitch=0.1',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
@@ -2096,7 +2078,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -2205,21 +2187,21 @@ export const PLAYGROUND_URL_PARAMETERS = [
         category: 'Playground',
         scope: 'playground.html — aurora, fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, '
             + 'kaleidosonic, luminous-tides, lunara, moonlit-greenhouse, nebula-flow, ocean, rainbark, '
-            + 'serenity-warp, shifting-sands, sky-children, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
-            + 'vesper-chrysalis, void-ember, voltage-storm, winter',
+            + 'rainbow-terraces, serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, '
+            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, '
+            + 'void-ember, voltage-storm, winter',
         description: 'Turn the icon camera.',
         values: 'Aurora/Shifting Sands/Rainbark/Kaleidosonic: degrees; Lunara, Halcyon Apex, Fluid '
             + 'Dreams, Himalayan Peak, Geode, Galaxy, Voltage Storm, Supernova, Void Ember, Vesper '
             + 'Chrysalis, Tornado, Stillwater, Stellar Drift, Starlight, Stellar Velocity, Sunset, '
-            + 'Serenity Warp, Sky Children, Moonlit Greenhouse and Luminous Tides: radians; Nebula '
+            + 'Serenity Warp, Rainbow Terraces, Moonlit Greenhouse and Luminous Tides: radians; Nebula '
             + 'Flow: nursery units, moving the frame in x. Requires icon=1.',
         defaultValue: 'Aurora 7 degrees; Shifting Sands 27 degrees; Lunara 0.2 radians; Halcyon Apex 0.11 '
             + 'radians; Fluid Dreams 0.1 radians; Himalayan Peak 0.42 radians; Geode 0 radians; Galaxy '
             + '0 radians; Winter 0.13 radians; Voltage Storm 0 radians; Supernova 0 radians; Void Ember '
             + '0 radians; Vesper Chrysalis 0 radians; Tornado 0 radians; Stillwater 0 radians; Stellar '
             + 'Drift 0 radians; Starlight 0 radians; Stellar Velocity 0 radians; Sunset 0.36 radians; '
-            + 'Serenity Warp 0 radians; Sky Children 0.5 radians; Moonlit Greenhouse 0.32 radians; '
+            + 'Serenity Warp 0 radians; Rainbow Terraces 0.5 radians; Moonlit Greenhouse 0.32 radians; '
             + 'Nebula Flow 0; Rainbark 24 degrees; Luminous Tides 0.42 radians; Kaleidosonic 0 degrees.',
         example: 'iconYaw=0.2',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
@@ -2239,7 +2221,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -2383,18 +2365,18 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'level',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, forest, '
-            + 'galaxy, geode, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, '
-            + 'luminous-tides, lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
-            + 'ocean, rainbark, serenity-warp, shifting-sands, sky-children, solar-eclipse, starlight, '
-            + 'stellar-drift, stellar-velocity, stillwater, summer, sunset, supernova, thermal-bloom, '
-            + 'tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
+        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, forest, galaxy, '
+            + 'geode, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, '
+            + 'moonlit-greenhouse, murmuration, nebula-flow, neon-district, ocean, rainbark, rainbow-terraces, '
+            + 'serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
+            + 'stillwater, summer, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, '
+            + 'voltage-storm, waves, winter',
         description: 'Set preview progression level or level-up strength.',
         values: 'Positive integer. In Stillwater the night rests on the hour of that level and holds it '
             + '(seven hours; without it the night also drifts an hour every 110 s). In Starlight it is '
             + "that level's hour, with the sky swung one hour on for every level before it. In Sunset "
             + "it is that level's hour, one hour further round the wheel for every level before it. In "
-            + 'Sky Children it is likewise one hour further round its wheel of five hours for every '
+            + 'Rainbow Terraces it is likewise one hour further round its wheel of five hours for every '
             + "level (level 1 is Jade Morning). In Moonlit Greenhouse it rests on that level's night, "
             + 'one night further round the wheel of six for every level before it. In Rainbark it is '
             + 'the storey the walkway hangs on (12 m a level, five zones; 13 is the lowest again). In '
@@ -2426,7 +2408,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -2448,12 +2430,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'lines',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
-            + 'chromadelic-highway, fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, '
-            + 'ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, moonlit-greenhouse, '
-            + 'murmuration, nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, rainbark, '
-            + 'serenity-warp, shifting-sands, sky-children, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, sunset, supernova, synthwave-sunset, thermal-bloom, '
-            + 'tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
+            + 'chromadelic-highway, fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, ice-temple, '
+            + 'kaleidosonic, koi-pond, luminous-tides, lunara, moonlit-greenhouse, murmuration, nebula-flow, '
+            + 'neon-district, neon-dusk, nimbus-veil, ocean, rainbark, rainbow-terraces, serenity-warp, '
+            + 'shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, '
+            + 'supernova, synthwave-sunset, thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, '
+            + 'waves, winter',
         description: 'Set the number of lines in a preview clear.',
         values: 'Integer 1–4; some adapters accept any number.',
         defaultValue: 'Commonly 2; Aurora/Black Hole 1; Blood Moon 4.',
@@ -2486,7 +2468,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -2520,15 +2502,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'locks',
         category: 'Playground',
-        scope: 'playground.html — fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, '
-            + 'kaleidosonic, koi-pond, luminous-tides, lunara, moonlit-greenhouse, nebula-flow, ocean, '
-            + 'rainbark, serenity-warp, sky-children, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
-            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
+        scope: 'playground.html — fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, kaleidosonic, '
+            + 'koi-pond, luminous-tides, lunara, moonlit-greenhouse, nebula-flow, ocean, rainbark, '
+            + 'rainbow-terraces, serenity-warp, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
+            + 'stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, '
+            + 'waves, winter',
         description: 'Warm up the preview with simulated piece locks.',
         values: 'Nonnegative integer. In Stillwater each lock leaves a wisp standing over the water. In '
             + 'Starlight each lock kindles a star of the constellation being drawn. In Sunset each lock '
-            + "sets a lantern of its piece's colour on the sea beside the card. In Sky Children each "
+            + "sets a lantern of its piece's colour on the sea beside the card. In Rainbow Terraces each "
             + "lock (0.45 s apart, every fourth a hard drop) pours its piece's colour into a terraced "
             + 'pool, which holds it. In Nebula Flow each lock kindles a star in the pillars. In Moonlit '
             + 'Greenhouse they open that many blooms in the garden before anything else. In Rainbark '
@@ -2553,7 +2535,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/ocean.effect.js',
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -2683,128 +2665,142 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'hour',
         category: 'Playground',
-        scope: 'playground.html — sky-children',
-        description: 'Hold the Sky Children light at a place on its wheel of five hours, whatever the level '
+        scope: 'playground.html — rainbow-terraces',
+        description: 'Hold the Rainbow Terraces light at a place on its wheel of five hours, whatever the level '
             + 'and the clock say.',
         values: 'A place on the wheel: 0 Jade Morning, 1 Gilded Afternoon, 2 Rose Hour, 3 Moonbow Night, '
             + '4 Pearl Dawn; fractions are on the way between two hours (3.5 is half-way from night to '
             + 'dawn), and the wheel wraps after 5.',
         defaultValue: 'Off (the level and the clock turn the wheel, an hour every 110 s).',
         example: 'hour=2',
-        notes: 'Use on playground.html with effect=sky-children.',
+        notes: 'Use on playground.html with effect=rainbow-terraces.',
         sources: [
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
         ],
     },
     {
         name: 'held',
         category: 'Playground',
-        scope: 'playground.html — sky-children',
+        scope: 'playground.html — rainbow-terraces',
         description: 'Before anything else, let this many pools take a colour silently (the piece colours '
             + 'in turn), so a clear has colours to send down the falls.',
         values: 'Nonnegative integer.',
         defaultValue: '0.',
         example: 'held=6&event=clear',
-        notes: 'Use on playground.html with effect=sky-children.',
+        notes: 'Use on playground.html with effect=rainbow-terraces.',
         sources: [
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
         ],
     },
     {
         name: 'links',
         category: 'Playground',
-        scope: 'playground.html — sky-children',
+        scope: 'playground.html — rainbow-terraces',
         description: 'With combo, the pieces whose locks made links 1..n: each stroke of the bow carries a '
             + 'thread of that piece\'s colour.',
         values: 'Piece letters I, O, T, S, Z, J, L in link order (case-insensitive).',
         defaultValue: 'A fixed cycle through the seven pieces.',
         example: 'combo=5&links=TTSZL',
-        notes: 'Use on playground.html with effect=sky-children.',
+        notes: 'Use on playground.html with effect=rainbow-terraces.',
         sources: [
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
         ],
     },
     {
         name: 'trueBow',
         category: 'Playground',
-        scope: 'playground.html — sky-children',
+        scope: 'playground.html — rainbow-terraces',
         description: 'With combo=7 or more, make links 1..7 from seven different pieces (the links '
             + 'SJITZLO), the hidden true bow: the threads melt into one continuous spectrum.',
         values: '1 enables; it replaces links.',
         defaultValue: 'Off (links, or its fixed cycle).',
         example: 'combo=7&trueBow=1',
-        notes: 'Use on playground.html with effect=sky-children.',
+        notes: 'Use on playground.html with effect=rainbow-terraces.',
         sources: [
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
         ],
     },
     {
         name: 'dropRows',
         category: 'Playground',
-        scope: 'playground.html — sky-children',
+        scope: 'playground.html — rainbow-terraces',
         description: 'With event=drop, how many rows the hard-dropped piece fell (in the game the theme '
             + 'forwards the real drop distance).',
         values: 'Nonnegative integer.',
         defaultValue: '8.',
         example: 'event=drop&dropRows=14',
-        notes: 'Use on playground.html with effect=sky-children.',
+        notes: 'Use on playground.html with effect=rainbow-terraces.',
         sources: [
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
         ],
     },
     {
         name: 'shape',
         category: 'Playground',
-        scope: 'playground.html — sky-children',
+        scope: 'playground.html — rainbow-terraces',
         description: 'The piece of the preview lock or drop event; it also sets the event colour unless '
             + 'color is given.',
         values: 'I, O, T, S, Z, J or L (case-insensitive).',
         defaultValue: 'T.',
         example: 'event=lock&shape=L',
-        notes: 'Use on playground.html with effect=sky-children.',
+        notes: 'Use on playground.html with effect=rainbow-terraces.',
         sources: [
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
         ],
     },
     {
         name: 'players',
         category: 'Playground',
-        scope: 'playground.html — sky-children',
+        scope: 'playground.html — rainbow-terraces',
         description: 'With board=1, draw this many mock cards side by side (the local multiplayer '
             + 'framing).',
         values: 'Positive integer, normally 1, 2 or 4; a portrait viewport always draws one card.',
         defaultValue: '1.',
         example: 'board=1&players=2',
-        notes: 'Use on playground.html with effect=sky-children.',
+        notes: 'Use on playground.html with effect=rainbow-terraces.',
         sources: [
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
+        ],
+    },
+    {
+        name: 'quads',
+        category: 'Playground',
+        scope: 'playground.html — fluid-dreams',
+        description: 'Play this many four-line clears (6 s apart) before the frame: each carries the '
+            + 'Great Drop to a new home, where it dives in and hangs afterwards.',
+        values: 'Nonnegative integer. The homes are drawn from a seeded sequence, so a shot reproduces.',
+        defaultValue: '0.',
+        example: 'board=1&quads=3',
+        notes: 'Use on playground.html with effect=fluid-dreams.',
+        sources: [
+            'src/playground/effects/fluid-dreams.effect.js',
         ],
     },
     {
         name: 'values',
         category: 'Playground',
-        scope: 'playground.html — sky-children',
+        scope: 'playground.html — rainbow-terraces',
         description: 'Show the post value study: the frame in five grey bands of lightness.',
         values: '1 enables; needs post-processing (not with noPost=1).',
         defaultValue: 'Off.',
         example: 'values=1',
-        notes: 'Use on playground.html with effect=sky-children.',
+        notes: 'Use on playground.html with effect=rainbow-terraces.',
         sources: [
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
         ],
     },
     {
         name: 'ripple',
         category: 'Playground',
-        scope: 'playground.html — sky-children',
+        scope: 'playground.html — rainbow-terraces',
         description: 'Preview with the pieceLockRipple setting off: locks are silent (no light-copy, '
             + 'thread or splash), but the chosen pool still takes the colour.',
         values: '0 turns the lock reactions off.',
         defaultValue: 'On.',
         example: 'ripple=0&locks=8',
-        notes: 'Use on playground.html with effect=sky-children.',
+        notes: 'Use on playground.html with effect=rainbow-terraces.',
         sources: [
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
         ],
     },
     {
@@ -2995,13 +2991,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'noPost',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, galaxy, '
-            + 'geode, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
-            + 'lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, neon-dusk, '
-            + 'nimbus-veil, ocean, rainbark, serenity-warp, shifting-sands, sky-children, '
-            + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, '
-            + 'supernova, synthwave-sunset, thermal-bloom, tornado, vesper-chrysalis, void-ember, '
-            + 'voltage-storm, waves, winter, wolfhour',
+        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, galaxy, geode, '
+            + 'halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, '
+            + 'moonlit-greenhouse, murmuration, nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, '
+            + 'rainbark, rainbow-terraces, serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, '
+            + 'stellar-velocity, stillwater, sunset, supernova, synthwave-sunset, thermal-bloom, tornado, '
+            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter, wolfhour',
         description: 'Disable effect post-processing for comparison or profiling.',
         values: '1 disables.',
         defaultValue: 'Post-processing follows the effect quality preset.',
@@ -3031,7 +3026,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -3337,12 +3332,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'parts',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, galaxy, '
-            + 'geode, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
-            + 'lunara, moonlit-greenhouse, nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, '
-            + 'rainbark, serenity-warp, shifting-sands, sky-children, solar-eclipse, starlight, '
-            + 'stellar-drift, stellar-velocity, stillwater, sunset, supernova, synthwave-sunset, '
-            + 'thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
+        scope: 'playground.html — astral-weave, chiral-gold, chromadelic-highway, fluid-dreams, galaxy, geode, '
+            + 'halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, '
+            + 'moonlit-greenhouse, nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, rainbark, '
+            + 'rainbow-terraces, serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, '
+            + 'stellar-velocity, stillwater, sunset, supernova, synthwave-sunset, thermal-bloom, tornado, '
+            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Show only named parts of an effect to isolate rendering costs.',
         values: 'Comma-separated part IDs accepted by that effect world. Void Ember also takes rocks for '
             + 'its three classes of stone, Stellar Drift ice for its boulders, shards and motes. '
@@ -3375,7 +3370,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -3770,11 +3765,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'px',
         category: 'Playground',
         scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
-            + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, '
-            + 'moonlit-greenhouse, murmuration, nebula-flow, neon-district, ocean, rainbark, '
-            + 'serenity-warp, shifting-sands, sky-children, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
-            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
+            + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, moonlit-greenhouse, '
+            + 'murmuration, nebula-flow, neon-district, ocean, rainbark, rainbow-terraces, serenity-warp, '
+            + 'shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, '
+            + 'supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Set horizontal pointer parallax in the effect preview.',
         values: 'Number, normally -1 to 1.',
         defaultValue: '0.',
@@ -3801,7 +3795,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -3822,11 +3816,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'py',
         category: 'Playground',
         scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
-            + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, '
-            + 'moonlit-greenhouse, murmuration, nebula-flow, neon-district, ocean, rainbark, '
-            + 'serenity-warp, shifting-sands, sky-children, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, '
-            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
+            + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, moonlit-greenhouse, '
+            + 'murmuration, nebula-flow, neon-district, ocean, rainbark, rainbow-terraces, serenity-warp, '
+            + 'shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, '
+            + 'supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Set vertical pointer parallax in the effect preview.',
         values: 'Number, normally -1 to 1.',
         defaultValue: '0.',
@@ -3853,7 +3846,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -3874,15 +3867,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'quality',
         category: 'Playground',
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, breathing, chiral-gold, '
-            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, '
-            + 'luminous-tides, lunara, moonlit-forest-master, moonlit-greenhouse, murmuration, '
-            + 'nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, parhelion, rainbark, '
-            + 'sakura-twilight, serenity-warp, shifting-sands, '
-            + 'sky-children, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, '
-            + 'summer, sunset, supernova, synthwave-sunset, thermal-bloom, tornado, verdant-hills, '
-            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter, wolfhour; game themes: '
-            + 'Moonlit Forest',
+            + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
+            + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
+            + 'lunara, moonlit-forest-master, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
+            + 'neon-dusk, nimbus-veil, ocean, parhelion, rainbark, rainbow-terraces, sakura-twilight, '
+            + 'serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
+            + 'stillwater, summer, sunset, supernova, synthwave-sunset, thermal-bloom, tornado, verdant-hills, '
+            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter, wolfhour; game themes: Moonlit Forest',
         description: 'Choose the preview rendering quality.',
         values: 'Minimal, Low, Medium, High, Ultra, Extreme where supported; individual effects can limit tiers.',
         defaultValue: 'Usually High; mobile/fluid previews use Low.',
@@ -3925,7 +3916,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -3988,12 +3979,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'reduce',
         category: 'Playground',
-        scope: 'playground.html — aurora, black-hole, breathing, fluid-dreams, galaxy, geode, '
-            + 'halcyon-apex, himalayan-peak, kaleidosonic, koi-pond, luminous-tides, lunara, '
-            + 'moonlit-greenhouse, nebula-flow, ocean, rainbark, serenity-warp, sky-children, '
-            + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, '
-            + 'supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, waves, '
-            + 'winter',
+        scope: 'playground.html — aurora, black-hole, breathing, fluid-dreams, galaxy, geode, halcyon-apex, '
+            + 'himalayan-peak, kaleidosonic, koi-pond, luminous-tides, lunara, moonlit-greenhouse, nebula-flow, '
+            + 'ocean, rainbark, rainbow-terraces, serenity-warp, solar-eclipse, starlight, stellar-drift, '
+            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, '
+            + 'void-ember, voltage-storm, waves, winter',
         description: 'Preview the effect with reduced motion.',
         values: '1 enables.',
         defaultValue: 'Off.',
@@ -4017,7 +4007,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/ocean.effect.js',
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -4167,13 +4157,12 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'row',
         category: 'Playground',
-        scope: 'playground.html — astral-weave, black-hole, chiral-gold, crystal-cave, fall, '
-            + 'fluid-dreams, forest, galaxy, geode, golden-forest, halcyon-apex, himalayan-peak, '
-            + 'ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, moonlit-greenhouse, '
-            + 'murmuration, nebula-flow, neon-district, ocean, rainbark, sakura-twilight, '
-            + 'serenity-warp, sky-children, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
-            + 'stillwater, summer, sunset, supernova, thermal-bloom, tornado, verdant-hills, '
-            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter',
+        scope: 'playground.html — astral-weave, black-hole, chiral-gold, crystal-cave, fall, fluid-dreams, '
+            + 'forest, galaxy, geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, '
+            + 'koi-pond, luminous-tides, lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
+            + 'ocean, rainbark, rainbow-terraces, sakura-twilight, serenity-warp, solar-eclipse, starlight, '
+            + 'stellar-drift, stellar-velocity, stillwater, summer, sunset, supernova, thermal-bloom, tornado, '
+            + 'verdant-hills, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Set the board row used by a reaction preview.',
         values: 'Board row number, normally 0–19; Black Hole accepts 20.',
         defaultValue: 'Effect-dependent: 12–20; Void Ember 9; Stellar Velocity 9; Serenity Warp 9; Nebula '
@@ -4207,7 +4196,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/sakura-twilight.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -4288,7 +4277,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         values: 'Integer; the playground clock seed is converted to unsigned 32-bit.',
         defaultValue: 'Harness: 1470239127; Blood Moon 724461, Cosmic Noir 12345, Golden Forest 271, Koi Pond '
             + '7411 (its school of koi), Luminous Tides 31 (its world), Moonlit Greenhouse 1861 (the '
-            + 'garden\'s seed), Sky Children 33 (its world), Summer 624, Verdant Hills 1107, Wolfhour '
+            + 'garden\'s seed), Rainbow Terraces 33 (its world), Summer 624, Verdant Hills 1107, Wolfhour '
             + '73013, Logo Warp 98643728.',
         example: 'seed=12345',
         notes: 'Use on playground.html. Also read by the listed game themes while active.',
@@ -4301,7 +4290,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/logo-warp-transition.effect.js',
             'src/playground/effects/luminous-tides.effect.js',
             'src/playground/effects/moonlit-greenhouse.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/summer.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
@@ -4554,11 +4543,10 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'statsHud',
         category: 'Playground',
         scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
-            + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, '
-            + 'moonlit-greenhouse, nebula-flow, neon-district, ocean, rainbark, serenity-warp, '
-            + 'shifting-sands, sky-children, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
-            + 'stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, '
-            + 'voltage-storm, waves, winter',
+            + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, moonlit-greenhouse, '
+            + 'nebula-flow, neon-district, ocean, rainbark, rainbow-terraces, serenity-warp, shifting-sands, '
+            + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, supernova, '
+            + 'thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Show mock-board score and statistics.',
         values: '0 hides; other values show. Requires board=1.',
         defaultValue: 'On when board is enabled.',
@@ -4584,7 +4572,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
             'src/playground/effects/shifting-sands.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -4599,6 +4587,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/voltage-storm.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/winter.effect.js',
+        ],
+    },
+    {
+        name: 'cardAlpha',
+        category: 'Playground',
+        scope: 'playground.html — rainbow-terraces',
+        description: 'Set the mock card\'s opacity, to judge the sky through it as through the game\'s '
+            + 'translucent card.',
+        values: 'A number from 0 (clear) to 1 (opaque). Requires board=1.',
+        defaultValue: '0.866.',
+        example: 'cardAlpha=0.55',
+        notes: 'Use on playground.html with effect=rainbow-terraces.',
+        sources: [
+            'src/playground/effects/rainbow-terraces.effect.js',
         ],
     },
     {
@@ -4657,7 +4659,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/forest.effect.js',
             'src/playground/effects/golden-forest.effect.js',
             'src/playground/effects/sakura-twilight.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
             'src/playground/effects/waves.effect.js',
@@ -4766,14 +4768,13 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'u',
         category: 'Playground',
         scope: 'playground.html — astral-weave, chiral-gold, fluid-dreams, galaxy, geode, halcyon-apex, '
-            + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, '
-            + 'moonlit-greenhouse, murmuration, nebula-flow, neon-district, ocean, rainbark, '
-            + 'serenity-warp, sky-children, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
-            + 'stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, '
-            + 'voltage-storm, waves, winter',
+            + 'himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, lunara, moonlit-greenhouse, '
+            + 'murmuration, nebula-flow, neon-district, ocean, rainbark, rainbow-terraces, serenity-warp, '
+            + 'solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, sunset, supernova, '
+            + 'thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, waves, winter',
         description: 'Set the horizontal normalized position of a preview reaction.',
         values: 'Number from 0 to 1.',
-        defaultValue: '0.3; Sky Children 0.2; Kaleidosonic 0.22.',
+        defaultValue: '0.3; Rainbow Terraces 0.2; Kaleidosonic 0.22.',
         example: 'u=0.3',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -4796,7 +4797,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/ocean.effect.js',
             'src/playground/effects/rainbark.effect.js',
             'src/playground/effects/serenity-warp.effect.js',
-            'src/playground/effects/sky-children.effect.js',
+            'src/playground/effects/rainbow-terraces.effect.js',
             'src/playground/effects/solar-eclipse.effect.js',
             'src/playground/effects/starlight.effect.js',
             'src/playground/effects/stellar-drift.effect.js',
@@ -4876,32 +4877,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/crystal-cave.effect.js',
-        ],
-    },
-    {
-        name: 'view',
-        category: 'Playground',
-        scope: 'playground.html — sky-children-detail',
-        description: 'Frame Sky Children island surface details.',
-        values: 'islands selects the close island view; other values use normal framing.',
-        defaultValue: 'Normal framing.',
-        example: 'view=islands',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/sky-children-detail.effect.js',
-        ],
-    },
-    {
-        name: 'warm',
-        category: 'Playground',
-        scope: 'playground.html — sky-children-detail',
-        description: 'Set Sky Children warm color contribution.',
-        values: 'Number clamped to 0–1.',
-        defaultValue: '0.18.',
-        example: 'warm=0.18',
-        notes: 'Use on playground.html with effect=<the matching effect ID>.',
-        sources: [
-            'src/playground/effects/sky-children-detail.effect.js',
         ],
     },
     {

@@ -2,8 +2,8 @@ import { formatOdysseyMapObjective } from './objective-copy.js';
 
 const CASCADE_RULE = 'A cascade counts when falling blocks clear again.';
 const CHAIN_RULE = 'One locked piece must trigger the whole chain; the first clear is wave one.';
-const ATTACK_RULE = 'Clear lines to send attacks; attack knockouts earn frags.';
-const RESET_RULE = 'Both boards reset after a knockout.';
+const ATTACK_RULE = 'Clear lines to send attacks; topping out the rival with an attack scores a knockout.';
+const RESET_RULE = 'Both wells reset after a knockout.';
 const MULTIPLIER_RULE = 'Clears on consecutive pieces raise your score multiplier.';
 const MIRROR_RULE = 'Left and right controls are reversed.';
 
@@ -54,11 +54,11 @@ function hasSpeedProgression(level) {
 
 function getGoal(level) {
     const primary = level?.victory?.primary;
-    if (!primary || !positiveNumber(primary.target)) return 'Complete the level';
+    if (!primary || !positiveNumber(primary.target)) return 'Clear the orb';
     if (primary.type === 'tetrises') return `Clear ${primary.target} quads`;
     if (primary.type === 'height') return `Build to ${primary.target} rows`;
     if (!['lines', 'score', 'cascade', 'time', 'combo', 'frags'].includes(primary.type)) {
-        return 'Complete the level';
+        return 'Clear the orb';
     }
     return formatOdysseyMapObjective(primary);
 }
@@ -71,7 +71,7 @@ function getGoal(level) {
 export function getOdysseyLevelBriefing(nextLevel, previousLevel = null) {
     if (!nextLevel || typeof nextLevel !== 'object') {
         return {
-            goal: 'Complete the level', changes: [], rules: [], deadline: null,
+            goal: 'Clear the orb', changes: [], rules: [], deadline: null,
         };
     }
     const goal = getGoal(nextLevel);

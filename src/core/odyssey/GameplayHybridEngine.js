@@ -163,6 +163,14 @@ export class GameplayHybridEngine {
                 * (initialLevelInterval / fixedDropInterval);
         }
 
+        // A held pace charm (Still Air) lengthens the fall through every level-up: the drop
+        // interval now, and the multiplier the level-up recompute divides by.
+        const paceFactor = Number(mechanics.speed.paceFactor) || 1;
+        if (paceFactor > 0 && paceFactor !== 1) {
+            this.gameState.dropInterval *= paceFactor;
+            this.gameState.speedMultiplier = (this.gameState.speedMultiplier || 1) / paceFactor;
+        }
+
         this.seedStartingRows();
 
         console.log('[HybridEngine] GameState created:', {
@@ -188,7 +196,9 @@ export class GameplayHybridEngine {
             return;
         }
 
-        const entries = buildStartingRowEntries(rowCount, this.levelConfig?.id || 0);
+        // A challenge keeps its authored opening board wherever the campaign order places it.
+        const seedId = Number(this.levelConfig?.boardSeedId) || this.levelConfig?.id || 0;
+        const entries = buildStartingRowEntries(rowCount, seedId);
         // Board mutation + grid/cache repair live in the ONE boundary (§5.1).
         const result = applyGarbage(this.gameState, entries, { settleFloatingBlocks: false });
 

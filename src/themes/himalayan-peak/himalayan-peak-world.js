@@ -297,11 +297,12 @@ export class HimalayanPeakWorld {
         this.eagleReady = !this.wantsEagle ? Promise.resolve(false) : loadEagle().then((gltf) => {
             if (!gltf || this.disposed || !this.u) return false;
             this.eagle = createEagle(this.u, gltf);
-            this.eagle.space = 'far';
+            // Its place is squeezed with the world on upright screens, its shape is not.
+            this.eagle.space = 'free';
             this.parts.eagle = this.eagle;
             if (this.shown) this.eagle.mesh.visible = this.shown.has('eagle');
-            this.root.add(this.eagle.mesh);
-            this.eagle.update(this.time);
+            this.scene.add(this.eagle.mesh);
+            this.eagle.update(this.time, this.eagleAir());
             return true;
         });
         return this;
@@ -318,6 +319,15 @@ export class HimalayanPeakWorld {
         else if (space === 'free') this.scene.add(part.mesh);
         else this.root.add(part.mesh);
         this.disposables.push(part);
+    }
+
+    /** What the eagle flies in: the eased gale, reduced motion, and the world's squeeze. */
+    eagleAir() {
+        const air = this._eagleAir || (this._eagleAir = {});
+        air.gale = this.gale;
+        air.reduced = this.reducedMotion;
+        air.squeeze = this.squeeze;
+        return air;
     }
 
     /** Draw only the named parts (captures, bisecting a look). */
@@ -942,7 +952,7 @@ export class HimalayanPeakWorld {
         u.cloudCol.value.set(p.cloud[0], p.cloud[1], p.cloud[2]);
         u.stars.value = this._hourStars;
 
-        this.eagle?.update(t);
+        this.eagle?.update(t, this.eagleAir());
         const sky = this.parts.sky?.mesh;
         if (sky && camera) {
             sky.position.copy(camera.position);
@@ -1018,6 +1028,7 @@ export class HimalayanPeakWorld {
             part.geometry?.dispose?.();
             part.material?.dispose?.();
         });
+        if (this.eagle) this.scene?.remove(this.eagle.mesh);
         this.eagle?.dispose();
         this.eagle = null;
         this.textures.forEach((t) => t.dispose());

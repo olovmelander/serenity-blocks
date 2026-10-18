@@ -2,20 +2,20 @@
 
 ## Golden eagle (`eagle.glb`) — the bird
 
-The lone soaring bird is a real golden eagle reconstructed from a single photo
-(`eagle-source.png`) with **TRELLIS.2-4B** (Microsoft, MIT) run locally on an
-RTX 5080, then auto-rigged with a hand-authored flap cycle in **Blender** (skinned
-glTF, `Flap` clip; ~30k tris). It's rendered as a dark, cool-toned silhouette with
-a warm alpenglow rim that tracks the live sun, so it reads against the sky and
-sits in the scene's palette. Self-generated asset — TRELLIS.2 is MIT-licensed, so
-no third-party attribution is required.
+The soaring adult golden eagle is generated, not captured: `scripts/blender/himalayan_eagle.py`
+builds it in headless Blender from the theme's own measurements (a lofted body and hooked bill,
+cambered wings with an S-curved trailing edge, seven fingered primaries, a twelve-feather tail),
+paints its plumage into vertex colours (alpha marks thin feather for the light that shines
+through it), skins it to 26 axis-aligned bones and writes a 2,300-triangle GLB with no animation:
+`himalayan-peak-eagle-flight.js` poses every joint in code. No photograph, scan or third-party
+model is involved, so there is nothing to attribute. Regenerate with
 
-> An earlier **TripoSR** pass on the same photo came out as a volumetric blob (no
-> thin spread wings). **TRELLIS.2**'s multi-stage sparse-voxel reconstruction
-> resolved the full spread wings + fanned tail.
+    blender --background --factory-startup --python scripts/blender/himalayan_eagle.py -- \
+        --out src/themes/himalayan-peak/assets/eagle.glb [--preview <dir>]
 
-_Previously this scene also flew a procedural code-built eagle and a recolored
-three.js "Stork" model; both were removed in favour of the single TRELLIS.2 eagle._
+_It replaced (2026-10-18) a TRELLIS.2 reconstruction of a photographed eagle: a 30k-triangle
+mesh in the photo's wings-raised pose with one looping flap clip. Before that the scene flew a
+code-built eagle and a recoloured three.js "Stork"._
 
 ## The amphitheatre (`massif.png`, `massif-manifest.json`)
 

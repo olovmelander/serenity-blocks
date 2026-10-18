@@ -623,7 +623,7 @@ Three judges scored all six concepts independently, each from one lens, 0–10.
 **Weaknesses.**
 - **The Long Golden Hour sits in the fleet's most overused light.** The research lists the
   "gold/peach low sun with lavender" palette as taken. (Golden hour is used by halcyon, himalayan,
-  sunset, summer, fall, tornado, golden-forest, waves, shifting-sands, nimbus and sky-children.
+  sunset, summer, fall, tornado, golden-forest, waves, shifting-sands, nimbus and rainbow-terraces.
   "High sun or morning daylight is the open slot. Painted Ages is the only concept that stays at
   golden hour.")
 - **Heavy overlap with shifting-sands:** warm sandstone, violet shadows, sand veils off the crests

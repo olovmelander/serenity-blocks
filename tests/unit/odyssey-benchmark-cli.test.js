@@ -7,16 +7,17 @@ describe('Odyssey benchmark command configuration', () => {
     it('includes all 60 current orbs and accepts the new finale without reusing historical scenario positions', () => {
         expect(parseOptions([]).levelIds).toEqual(Array.from({ length: 60 }, (_, index) => index + 1));
         const options = parseOptions(['--levels=59-60', '--samples=1', '--profiles=stacker', '--scenarios=all']);
+        // Neon District (Electric Apex) is orb 59 again now that the chapter 8 rival closes the campaign.
         expect(buildTasks(options).filter((task) => task.scenarioId.startsWith('orb59'))
-            .map((task) => task.levelId)).toEqual([60, 60]);
-        expect(parseOptions(['--construction-levels=49,56,60']).constructionLevelIds).toEqual([49, 56, 60]);
+            .map((task) => task.levelId)).toEqual([59, 59]);
+        expect(parseOptions(['--construction-levels=49,55,59']).constructionLevelIds).toEqual([49, 55, 59]);
     });
     it('keeps the four established policies as defaults and requires explicit experimental selection', () => {
         expect(parseOptions([]).profileIds).toEqual(['stacker', 'cascade', 'expert', 'quad']);
         expect(parseOptions(['--profiles=chain']).profileIds).toEqual(['chain']);
         expect(parseOptions(['--profiles=duelist']).profileIds).toEqual(['duelist']);
         expect(parseOptions(['--profiles=chain,duelist,chain']).profileIds).toEqual(['chain', 'duelist']);
-        const all = parseOptions(['--levels=56', '--samples=1', '--profiles=all']);
+        const all = parseOptions(['--levels=55', '--samples=1', '--profiles=all']);
         expect(all.profileIds).toEqual(['stacker', 'cascade', 'expert', 'quad', 'duelist', 'chain']);
         expect(buildTasks(all).map((task) => task.profile)).toEqual(all.profileIds);
     });
@@ -60,7 +61,7 @@ describe('Odyssey benchmark command configuration', () => {
     });
 
     it('defaults to bounded empty-board construction without expanding the timed campaign', () => {
-        const options = parseOptions(['--levels=60', '--profiles=chain', '--samples=1']);
+        const options = parseOptions(['--levels=59', '--profiles=chain', '--samples=1']);
         expect(options.constructionLevelIds).toEqual([]);
         expect(options.constructionSeeds).toEqual([1001, 1002, 1003]);
         expect(options.constructionMaxPieces).toBe(40);
@@ -70,10 +71,10 @@ describe('Odyssey benchmark command configuration', () => {
     it('keeps authored solo construction, seeds and piece budgets separate from timed attempt settings', () => {
         const options = parseOptions([
             '--levels=1', '--profiles=chain', '--samples=2', '--seed-start=42', '--max-pieces=75',
-            '--construction-levels=49,56,60,56', '--construction-seeds=0,4294967295',
+            '--construction-levels=49,55,59,55', '--construction-seeds=0,4294967295',
             '--construction-pieces=128',
         ]);
-        expect(options.constructionLevelIds).toEqual([49, 56, 60]);
+        expect(options.constructionLevelIds).toEqual([49, 55, 59]);
         expect(options.constructionSeeds).toEqual([0, 4294967295]);
         expect(options.constructionMaxPieces).toBe(128);
         const tasks = buildTasks(options);
@@ -84,14 +85,14 @@ describe('Odyssey benchmark command configuration', () => {
         expect(parseOptions(['--construction-pieces=1']).constructionMaxPieces).toBe(1);
     });
 
-    it.each([4, 9, 16, 25, 32, 44, 53, 59])('rejects authored construction for duel orb %i', (levelId) => {
-        expect(() => parseOptions([`--construction-levels=56,${levelId}`]))
+    it.each([5, 10, 18, 26, 34, 48, 56, 60])('rejects authored construction for duel orb %i', (levelId) => {
+        expect(() => parseOptions([`--construction-levels=55,${levelId}`]))
             .toThrow(/solo orbs only/);
     });
 
     it.each([
         ['--construction-levels=all'], ['--construction-levels=0'], ['--construction-levels=61'],
-        ['--construction-levels=60-56'], ['--construction-levels='],
+        ['--construction-levels=59-55'], ['--construction-levels='],
         ['--construction-seeds=42,42'], ['--construction-seeds=01,1'],
         ['--construction-seeds=-1'], ['--construction-seeds=4294967296'],
         ['--construction-seeds=2.5'], ['--construction-seeds=1e3'], ['--construction-seeds='],
@@ -103,7 +104,7 @@ describe('Odyssey benchmark command configuration', () => {
 
     it('pairs scenarios and cadences independently without creating unsupported orb experiments', () => {
         const options = parseOptions([
-            '--levels=51,60', '--profiles=cascade', '--scenarios=all',
+            '--levels=51,59', '--profiles=cascade', '--scenarios=all',
             '--cadences=native,steady', '--samples=2', '--seed-start=42', '--lap-seconds=full',
         ]);
         const tasks = buildTasks(options);
@@ -122,14 +123,14 @@ describe('Odyssey benchmark command configuration', () => {
 
     it('refuses to mix changed application rules, runtime or experiment settings into a checkpoint', () => {
         const config = {
-            ...parseOptions(['--levels=60', '--profiles=cascade']),
+            ...parseOptions(['--levels=59', '--profiles=cascade']),
             revision: {
                 head: 'fixed-head',
                 benchmarkHash: 'fixed-benchmark',
                 applicationHash: 'original-rules',
                 runtime: { node: 'v24.14.0', platform: 'win32', arch: 'x64' },
             },
-            effectiveLevels: [{ scenarioId: 'baseline', level: { id: 60, target: 160000 } }],
+            effectiveLevels: [{ scenarioId: 'baseline', level: { id: 59, target: 160000 } }],
             visiblePreviews: 3,
             humanPlanningPreviewLimit: 3,
             opponentKnowledgePolicy: 'production-full-real-bag',
@@ -140,7 +141,7 @@ describe('Odyssey benchmark command configuration', () => {
         for (const changed of [
             { revision: { ...config.revision, applicationHash: 'changed-physics' } },
             { revision: { ...config.revision, runtime: { ...config.revision.runtime, node: 'v25.0.0' } } },
-            { effectiveLevels: [{ scenarioId: 'baseline', level: { id: 60, target: 150000 } }] },
+            { effectiveLevels: [{ scenarioId: 'baseline', level: { id: 59, target: 150000 } }] },
             { cadenceIds: ['steady'] }, { lapWindowSeconds: 60 }, { capabilitiesOnly: true },
             { humanPlanningPreviewLimit: 4 }, { opponentVisiblePreviewCount: 4 },
             { opponentKnowledgePolicy: 'restricted-three-previews' }, { opponentPlanningPreviewLimit: 3 },
@@ -153,7 +154,7 @@ describe('Odyssey benchmark command configuration', () => {
 
     it('refuses to reuse capability evidence after changing construction contexts, seeds or budget', () => {
         const config = parseOptions([
-            '--profiles=chain', '--construction-levels=56,60', '--construction-seeds=41,42',
+            '--profiles=chain', '--construction-levels=55,59', '--construction-seeds=41,42',
             '--construction-pieces=128', '--capabilities-only',
         ]);
         expect(() => validateResumeConfiguration(config, { ...config, workers: 1 })).not.toThrow();
