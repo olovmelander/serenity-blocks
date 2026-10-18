@@ -73,9 +73,6 @@ beside the decoder files in `public/assets/vendor/draco/`.
 
 ## 2. CC0 / Public-Domain assets (attribution not required, credited as good practice)
 
-- **Poly Haven** (CC0) — texture detail maps used luminance-only in several themes:
-  Sky Children V2 (`leafy_grass`, `dirt`, `gray_rocks`, `cliff_side`, `rock_05`).
-  Source: https://polyhaven.com
 - **Quaternius** (CC0, via Poly Pizza / Poly Pizza bundles) — Odyssey Chapter 3 stylized
   nature kit (trees, pines, twisted trees, bushes, ferns, clover, rocks, pebble, bird,
   pigeon). Profile:

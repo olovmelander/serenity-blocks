@@ -18,7 +18,7 @@
  *
  * What it cannot see: the WGSL and GLSL are not compiled (Tint, ANGLE), BloomNode's own passes are
  * built lazily by the renderer, and there is no compute. The harness is
- * tests/unit/sky-children-shaders.test.js's.
+ * tests/unit/rainbow-terraces-shaders.test.js's.
  */
 import {
     afterAll, beforeAll, describe, expect, it, vi,
@@ -35,7 +35,7 @@ vi.setConfig({ testTimeout: 60_000 });
 const TIERS = ['High', 'Minimal'];
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
 /**
- * Per stage, as the sibling gates (Himalayan Peak, Sky Children; Painted Ages allows its fragments
+ * Per stage, as the sibling gates (Himalayan Peak, Rainbow Terraces; Painted Ages allows its fragments
  * 96 KiB). At the time of writing the heaviest stages are the fragments at High: the land's (35 KB
  * of WGSL, 44 KB of GLSL), the sea's (34 KB / 39 KB) and the cumulus' (35 KB / 32 KB).
  */

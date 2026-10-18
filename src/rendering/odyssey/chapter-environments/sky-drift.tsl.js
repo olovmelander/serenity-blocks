@@ -124,7 +124,7 @@ export function createSkyGradientTSL(options = {}) {
     const lowBand = mix(horizon, midSky, smoothstep(0.0, 0.30, t));
     let color = mix(lowBand, zenith, smoothstep(0.30, 1.0, t));
 
-    // Painterly FBM break (sky-children sky-dome discipline) so the gradient never reads as a
+    // Painterly FBM break (the painterly sky-dome discipline) so the gradient never reads as a
     // clean ramp — a faint cloudy mottle riding the dome. 3 octaves (was the default 5): this is
     // a near-invisible 0.035-amplitude tint on a fullscreen backstop dome, so the fine octaves
     // are imperceptible while their per-pixel cost over the whole frame is not.

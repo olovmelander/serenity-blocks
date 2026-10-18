@@ -2221,7 +2221,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 33,
-        name: 'Ethereal Heights',
+        name: 'Where Color Falls',
         chapter: 5,
         chapterLevel: 3,
         isChapterStart: false,
@@ -2229,7 +2229,7 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.593,
 
         theme: {
-            primary: 'sky-children',
+            primary: 'rainbow-terraces',
             overlays: [],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -2283,9 +2283,10 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Float among ethereal lights. Combine cascades and combos for transcendence.',
+            description: 'Floating terraces pour every piece\'s color down the high falls. '
+                + 'Chain your clears and the rainbow is painted across the sky.',
             difficulty: 8,
-            tip: 'The aurora answers your cascades. The deeper they run, the brighter it burns.',
+            tip: 'Clear four lines and the light draws the whole rainbow over the falls.',
         },
     },
 
@@ -4645,8 +4646,9 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         },
         metadata: {
             difficulty: 7,
-            description: 'Thin light and drifting mist turn the board into a luminous balancing act. Stabilize first, then score hard.',
-            tip: 'Alternate between cleanup and scoring turns. This level rewards controlled tempo changes.',
+            description: 'Color pours from the terraces down the falls, and every chain paints the rainbow a stroke further. '
+                + 'Steady the well first, then score.',
+            tip: 'Alternate cleanup and scoring turns; a chain kept alive finishes the rainbow.',
         },
     },
     34: {
