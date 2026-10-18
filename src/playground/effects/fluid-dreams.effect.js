@@ -13,6 +13,8 @@
  *   combo=<n>                hold a combo of n (the sea's charge, the Drop's satellites)
  *   level=<n>                rest on level n's palette
  *   locks=<n>                before anything else, play n locks (the sea holding their colours)
+ *   quads=<n>                then n four-line clears, 6 s apart: each carries the Great Drop to
+ *                            a new home (the sequence is seeded, so a shot reproduces)
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>)
@@ -191,6 +193,8 @@ export function create({
     const holdCombo = Math.max(0, Math.round(num(params, 'combo', 0)));
     const level = Math.max(1, Math.round(num(params, 'level', 1)));
     const warmLocks = Math.max(0, Math.round(num(params, 'locks', 0)));
+    const warmQuads = Math.max(0, Math.round(num(params, 'quads', 0)));
+    const QUAD_GAP = 6;
     const colorParam = params.get('color');
     const eventColor = colorParam ? `#${colorParam.replace('#', '')}` : PIECE_COLORS[2];
     const fireEvent = () => {
@@ -211,7 +215,7 @@ export function create({
     };
 
     const seekTo = (time) => {
-        const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.5;
+        const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.5 + warmQuads * QUAD_GAP;
         const start = Math.max(0, time - lead);
         world.seek(start);
         if (level > 1) world.levelUp(level, { silent: true });
@@ -229,6 +233,13 @@ export function create({
                 color: PIECE_COLORS[i % PIECE_COLORS.length],
                 hardDrop: i % 4 === 3,
             });
+        }
+        // Four-line clears before the event: the Great Drop's travels.
+        for (let i = 0; i < warmQuads; i += 1) {
+            const at = cursor + (i === 0 ? 0.5 : QUAD_GAP);
+            stepTo(cursor, at, 0.1);
+            cursor = at;
+            world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
         }
         const eventTime = eventName ? time - eventAge : time;
         if (eventTime > cursor) stepTo(cursor, eventTime, 0.1);
