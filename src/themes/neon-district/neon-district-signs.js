@@ -140,6 +140,25 @@ export function ndLogoFrames(anim, period, time, seed, breath) {
     return vec3(g, b, a);
 }
 
+/**
+ * A sign that switches itself back on letter by letter now and then — one sign in three, every
+ * 25 to 55 s: its characters light one after another (0.18 s apart), then the whole sign flashes
+ * twice and stays on. Returns 1 for a lit character, 0 for one the run has not reached yet.
+ * `idx` is the character, `n` the sign's length.
+ */
+export function ndSpellOut(time, seed, idx, n) {
+    const on = step(0.64, ndHash21(vec2(seed, 21.0)));
+    const period = ndHash21(vec2(seed, 22.0)).mul(30.0).add(25.0);
+    const secs = fract(time.div(period).add(ndHash21(vec2(seed, 23.0)))).mul(period);
+    const writing = step(secs, n.mul(0.18));
+    const letter = step(idx.add(0.5), secs.div(0.18));
+    const after = secs.sub(n.mul(0.18));
+    const flashing = step(0.0, after).mul(step(after, 0.6));
+    const flash = step(0.5, fract(after.mul(3.3)));
+    const v = mix(mix(float(1.0), letter, writing), flash, flashing);
+    return mix(float(1.0), v, on);
+}
+
 /** Pulses evaluated per vertex (signs are small): lock shells + clear fronts, and the afterglow. */
 function vertexPulses(u, world) {
     const clear = ndClearLight(u, world.z);
@@ -236,9 +255,15 @@ export function createSigns(u, signs, glyphTex) {
         const buzz = mix(float(1.0), step(0.3, ndHash21(vec2(floor(u.time.mul(13.0)), seed))).mul(0.6).add(0.4), buzzing);
         const tear = step(ndHash21(vec2(idx.add(floor(u.time.mul(19.0))), seed.add(7.0))), float(1.0).sub(u.glitch.mul(0.75)));
         const hum = sin(u.time.mul(37.0).add(seed)).mul(0.03).add(0.97);
-        const live = charOn.mul(buzz).mul(tear).mul(hum).mul(u.neon);
+        const spell = ndSpellOut(u.time, seed, idx, n);
+        const live = charOn.mul(buzz).mul(tear).mul(hum).mul(u.neon)
+            .mul(spell);
 
-        const tint = mix(col.rgb, vec3(1.0, 0.72, 0.26), u.heat.mul(0.7));
+        // One sign in seven is two-tone: it swaps to a second colour and back every few seconds.
+        const twoTone = step(0.86, ndHash21(vec2(seed, 31.0)));
+        const swap = smoothstep(0.42, 0.58, abs(fract(u.time.div(ndHash21(vec2(seed, 32.0)).mul(2.0).add(1.8)).add(seed.mul(0.1))).mul(2.0).sub(1.0)));
+        const base = mix(col.rgb, vec3(col.z, col.x, col.y), swap.mul(twoTone));
+        const tint = mix(base, vec3(1.0, 0.72, 0.26), u.heat.mul(0.7));
         const white = mix(tint, vec3(1.0), 0.72);
 
         // ── Tubes on a dark panel (style 0) ──
@@ -249,8 +274,12 @@ export function createSigns(u, signs, glyphTex) {
         const inset = min(min(metres.x, dim.x.sub(metres.x)), min(metres.y, dim.y.sub(metres.y)));
         const framed = step(0.45, ndHash21(vec2(seed, 11.0)));
         const fd = abs(inset.sub(0.085));
-        const frame = float(1.0).sub(smoothstep(0.012, 0.012 + 0.02, fd)).mul(framed);
-        const frameGlow = exp(fd.mul(-22.0)).mul(0.3).mul(framed);
+        // A brighter run of light chases round some frames.
+        const around = metres.x.add(metres.y);
+        const chase = exp(abs(fract(around.div(2.4).sub(u.time.mul(0.45)).add(seed.mul(0.1))).sub(0.5)).mul(-10.0))
+            .mul(step(0.6, ndHash21(vec2(seed, 12.0)))).mul(1.2).add(1.0);
+        const frame = float(1.0).sub(smoothstep(0.012, 0.012 + 0.02, fd)).mul(framed).mul(chase);
+        const frameGlow = exp(fd.mul(-22.0)).mul(0.3).mul(framed).mul(chase);
         const tubes = white.mul(core.mul(3.4)).add(tint.mul(halo.mul(1.5)))
             .mul(live)
             .add(tint.mul(frame.mul(1.9).add(frameGlow)).mul(u.neon).mul(buzz));
@@ -261,13 +290,21 @@ export function createSigns(u, signs, glyphTex) {
         const edge = smoothstep(0.0, 0.07, inset);
         // Lit from tubes behind the acrylic: brighter bands where they run.
         const tubesBehind = sin(st.y.mul(dim.y).mul(5.2)).mul(0.14).add(0.86);
+        const boxOn = ndSpellOut(u.time, seed, float(0.0), float(1.0));
         const slab = tint.mul(0.5).mul(tubesBehind).mul(float(1.0).sub(ink.mul(0.94))).mul(edge)
             .mul(u.neon)
             .mul(buzz)
-            .mul(hum);
+            .mul(hum)
+            .mul(boxOn);
+        // Marquee bulbs round most lit boxes, the lit ones running.
+        const bulbAt = around.div(0.16);
+        const bulbD = length(vec2(fract(bulbAt).sub(0.5).mul(0.16), abs(inset.sub(0.05))));
+        const bulb = smoothstep(0.034, 0.016, bulbD).mul(step(0.4, ndHash21(vec2(seed, 13.0))));
+        const lit = step(0.5, fract(floor(bulbAt).div(3.0).sub(u.time.mul(2.4))));
+        const bulbs = vec3(1.0, 0.86, 0.6).mul(bulb).mul(lit.mul(2.6).add(0.12)).mul(u.neon);
 
         const lightbox = step(0.5, style);
-        const emit = mix(panel.add(tubes), slab.add(vec3(0.006).mul(float(1.0).sub(edge))), lightbox).toVar();
+        const emit = mix(panel.add(tubes), slab.add(vec3(0.006).mul(float(1.0).sub(edge))).add(bulbs), lightbox).toVar();
         // Pulses: the front makes the tubes flare, the afterglow overdrives them a moment longer.
         const body = mix(core.add(halo.mul(0.5)).add(frame), float(1.0).sub(ink), lightbox);
         emit.addAssign(pulses.light.mul(body).mul(1.9));
@@ -293,7 +330,10 @@ const adMotion = (cell) => AD_MOTION[cell.motion] ?? AD_MOTION.none;
  * @param {object} atlas      TextureNode over the billboard atlas
  * @param {object} fade       uniform 0..1
  */
-export function createScreens(u, screens, atlas, fade) {
+export function createScreens(u, screens, atlas, fade, opts = {}) {
+    const { glyphTex, textTex } = opts;
+    const textRows = Math.max(1, opts.textRows || 1);
+    const withTicker = Boolean(glyphTex && textTex);
     const count = Math.max(1, screens.length);
     const aPos = new Float32Array(count * 4);
     const aDim = new Float32Array(count * 4);
@@ -302,7 +342,10 @@ export function createScreens(u, screens, atlas, fade) {
     const aRectC = new Float32Array(count * 4);
     const aPlay = new Float32Array(count * 4);
     const aRing = new Float32Array(count * 4);
+    // Ticker rows: row + length / 100 per slot (a length is at most 48), w = 1 when it has one.
+    const aTicker = new Float32Array(count * 4);
     screens.forEach((s, i) => {
+        if (s.ticker) aTicker.set([...s.ticker.map((k) => k.row + k.length / 100), 1], i * 4);
         const cells = s.playlist.map((c) => BILLBOARD_CELLS[c]);
         aPos.set([s.x, s.y, s.z, s.seed], i * 4);
         aDim.set([s.w, s.h, s.pitch, s.period], i * 4);
@@ -322,6 +365,7 @@ export function createScreens(u, screens, atlas, fade) {
         aRectC: [aRectC, 4],
         aPlay: [aPlay, 4],
         aRing: [aRing, 4],
+        aTicker: [aTicker, 4],
     }, { interleave: true });
     const pos = attribute('aPos', 'vec4');
     const dim = attribute('aDim', 'vec4');
@@ -330,6 +374,7 @@ export function createScreens(u, screens, atlas, fade) {
     const rectC = attribute('aRectC', 'vec4');
     const play = attribute('aPlay', 'vec4');
     const ring = attribute('aRing', 'vec4');
+    const ticker = attribute('aTicker', 'vec4');
 
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
     material.name = 'NeonDistrictScreens';
@@ -374,10 +419,11 @@ export function createScreens(u, screens, atlas, fade) {
         const rectNext = pick(nextSlot, rectA, rectB, rectC);
         const motionNow = pick(slot, play.x, play.y, play.z);
         const motionNext = pick(nextSlot, play.x, play.y, play.z);
-        // A travel poster drifts a few percent as it shows (its words are baked in: keep it small).
+        // Every advert creeps in a little as it shows, a travel poster a little more (the words
+        // are baked in: keep it small).
         const drift = (p, motion, phase) => {
             const pan = step(1.5, motion);
-            const zoom = phase.mul(0.035).mul(pan).add(1.0);
+            const zoom = phase.mul(pan.mul(0.02).add(0.015)).add(1.0);
             return p.sub(0.5).div(zoom).add(0.5).add(vec2(phase.sub(0.5).mul(0.012).mul(pan), 0.0));
         };
         const sample = (r, p) => atlas.sample(vec2(mix(r.x, r.z, p.x), float(1.0).sub(mix(r.w, r.y, p.y)))).rgb;
@@ -415,8 +461,36 @@ export function createScreens(u, screens, atlas, fade) {
         // The refresh bar rolling up the wall.
         const roll = exp(abs(fract(img.y.sub(u.time.mul(0.11)).add(seed.mul(0.1))).sub(0.5)).mul(-18.0)).mul(0.22).add(0.9);
 
+        // A gloss of light sweeps across the wall now and then.
+        const sweepAt = fract(u.time.div(ndHash21(vec2(seed, 41.0)).mul(5.0).add(7.0)).add(seed.mul(0.3))).mul(2.4).sub(0.6);
+        const sweep = exp(abs(img.x.mul(0.8).add(img.y.mul(0.35)).sub(sweepAt)).mul(-28.0)).mul(0.22);
+
+        // ── The ticker under the advert: its slogan scrolling in amber LEDs ──
+        let tickerLight = vec3(0.0);
+        let tickerBand = float(0.0);
+        if (withTicker) {
+            const slotLine = pick(slot, ticker.x, ticker.y, ticker.z);
+            const row = floor(slotLine);
+            const len = floor(fract(slotLine).mul(100.0).add(0.5));
+            const bandH = min(imgSize.y.mul(0.11), 0.55);
+            tickerBand = step(img.y.mul(imgSize.y), bandH).mul(ticker.w);
+            const th = bandH.mul(0.7);
+            const cw = th.mul(0.78);
+            const along = img.x.mul(imgSize.x).add(u.time.mul(0.9)).add(seed.mul(0.7)).div(cw);
+            const span = len.add(5.0);
+            const at = mod(along, span);
+            const idx = floor(at);
+            const cellY = img.y.mul(imgSize.y).sub(bandH.sub(th).mul(0.5)).div(th);
+            const inLine = step(idx, len.sub(0.5)).mul(step(0.0, cellY)).mul(step(cellY, 1.0));
+            const dTick = ndTextDistance(textTex, glyphTex, textRows, TEXT_WIDTH, row, clamp(idx, 0.0, max(len.sub(1.0), 0.0)), vec2(fract(at), cellY))
+                .add(float(1.0).sub(inLine));
+            const ink = float(1.0).sub(smoothstep(0.03, 0.06, dTick));
+            tickerLight = vec3(1.0, 0.62, 0.16).mul(ink.mul(2.2).add(exp(dTick.mul(-14.0)).mul(0.25))).mul(tickerBand);
+        }
+
         const peak = ndMax3(picture);
-        const emit = picture.mul(peak.mul(1.5).add(0.75)).add(ringLight).mul(dots).mul(roll)
+        const shown = picture.mul(peak.mul(1.5).add(0.75)).add(ringLight).add(vec3(sweep));
+        const emit = mix(shown, vec3(0.01, 0.008, 0.006).add(tickerLight), tickerBand).mul(dots).mul(roll)
             .add(vec3(0.7, 0.9, 1.0).mul(wipeGlow).mul(1.4))
             .mul(u.neon.mul(0.94).add(0.06))
             .mul(fade)
