@@ -8,6 +8,7 @@ export const MOBILE_WEBGL2_SMOKE_IDS = Object.freeze([
     'chiral-gold', 'waves', 'solar-eclipse', 'stellar-drift', 'stellar-velocity',
     'void-ember', 'rainy-window', 'nebula-flow', 'serenity-warp',
     'pyrestorm', 'fall', 'painted-ages', 'thermal-bloom', 'rainbark', 'high-coast', 'luminous-tides', 'kaleidosonic',
+    'grainfields',
 ]);
 
 // These authored node scenes must not quietly select their old classic twins.
@@ -18,7 +19,7 @@ export const MOBILE_WEBGL2_NODE_IDS = Object.freeze([
     'murmuration', 'himalayan-peak', 'waves', 'winter', 'starlight', 'stillwater', 'sunset', 'vesper-chrysalis',
     'wolfhour', 'shifting-sands', 'moonlit-forest', 'rainbow-terraces', 'void-ember', 'voltage-storm',
     'tornado', 'solar-eclipse', 'serenity-warp', 'moonlit-greenhouse', 'nebula-flow', 'painted-ages',
-    'thermal-bloom', 'rainbark', 'high-coast', 'luminous-tides', 'pyrestorm', 'kaleidosonic',
+    'thermal-bloom', 'rainbark', 'high-coast', 'luminous-tides', 'pyrestorm', 'kaleidosonic', 'grainfields',
 ]);
 
 const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];

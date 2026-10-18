@@ -45,7 +45,7 @@ describe('one soundtrack per collectible theme', () => {
     it.each([
         ['ocean', 'OceanDeep'], ['geode', 'GeodeCrystalline'],
         ['murmuration', 'Murmuration'], ['parhelion', 'EtherealEchoes'],
-        ['rainbark', 'Rainbark'],
+        ['rainbark', 'Rainbark'], ['grainfields', 'Grainfields'],
     ])('preserves the authored %s recording as %s', (themeId, trackKey) => {
         expect(getThemeMusic(themeId)).toMatchObject({ trackKey, placeholder: false });
     });
@@ -93,6 +93,27 @@ describe('one soundtrack per collectible theme', () => {
         expect(getThemeMusic('singing-bowl')).toBe(getThemeMusic('kaleidosonic'));
         expect(THEME_MUSIC_CATALOG.map((song) => song.trackKey)).not.toContain('SingingBowl');
         expect(files).not.toContain('singing-bowl-placeholder-song.mp3');
+    });
+
+    it('keeps the key and the theme id the Grainfields recording had while it was titled Misty Lake', () => {
+        expect(getThemeMusic('grainfields')).toMatchObject({
+            name: 'Grainfields',
+            trackKey: 'Grainfields',
+            file: 'grainfields.mp3',
+            placeholder: false,
+        });
+        expect(getThemeForMusic('MistyLake')).toBe('grainfields');
+        expect(getThemeMusic('misty-lake')).toBe(getThemeMusic('grainfields'));
+        expect(THEME_MUSIC_CATALOG.map((song) => song.trackKey)).not.toContain('MistyLake');
+        expect(files).not.toContain('misty-lake.mp3');
+        // The recording's own title tag was retitled with it: ID3v2.3, TIT2 in UTF-16 with a BOM.
+        const head = readFileSync(`${musicFolder}/grainfields.mp3`).subarray(0, 4096);
+        expect(head.subarray(0, 4).toString('latin1')).toBe('ID3\u0003');
+        const at = head.indexOf('TIT2', 10, 'latin1');
+        expect(at).toBeGreaterThan(9);
+        const body = head.subarray(at + 10, at + 10 + head.readUInt32BE(at + 4));
+        expect([...body.subarray(0, 3)]).toEqual([1, 0xff, 0xfe]);
+        expect(body.subarray(3).toString('utf16le')).toBe('Grainfields');
     });
 
     it('resolves known retired aliases, but never revives Bioluminescence II', () => {

@@ -21,7 +21,7 @@ const AUTHORED_SONGS = Object.freeze({
     geode: ['Geode Crystalline', 'geode-crystalline.mp3'],
     bioluminescence: ['Bioluminescence', 'bioluminescence.mp3'],
     'shifting-sands': ['Shifting Sands', 'shifting-sands.mp3'],
-    'misty-lake': ['Misty Lake', 'misty-lake.mp3'],
+    grainfields: ['Grainfields', 'grainfields.mp3'],
     waves: ['Waves', 'waves.mp3'],
     'fluid-dreams': ['Fluid Dreams', 'fluid-dreams.mp3'],
     'crystal-cave': ['Crystal Cave', 'crystal-cave.mp3'],
@@ -70,7 +70,8 @@ const themesByTrack = new Map(THEME_MUSIC_CATALOG.map((song) => [song.trackKey, 
  * (2026-10-11). A placeholder song is titled after its theme, so "Mountain" became
  * "High Coast" when High Coast took its orb (2026-10-13), "Singing Bowl" became
  * "Kaleidosonic" when Kaleidosonic took its orb (2026-10-13), and "Sky Children" became
- * "Rainbow Terraces" with its theme (2026-10-18).
+ * "Rainbow Terraces" with its theme (2026-10-18). An authored recording retitled for the theme
+ * that took its orb changes key too: "Misty Lake" became "Grainfields" (2026-10-18).
  */
 const RETIRED_TRACK_KEYS = new Map([
     ['ElectricDreams', 'Murmuration'],
@@ -78,6 +79,7 @@ const RETIRED_TRACK_KEYS = new Map([
     ['Mountain', 'HighCoast'],
     ['SingingBowl', 'Kaleidosonic'],
     ['SkyChildren', 'RainbowTerraces'],
+    ['MistyLake', 'Grainfields'],
 ]);
 
 /**

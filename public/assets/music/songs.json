@@ -158,6 +158,14 @@
     "placeholderSource": "blood-moon.mp3"
   },
   {
+    "themeId": "grainfields",
+    "trackKey": "Grainfields",
+    "name": "Grainfields",
+    "file": "grainfields.mp3",
+    "path": "./assets/music/grainfields.mp3",
+    "placeholder": false
+  },
+  {
     "themeId": "halcyon-apex",
     "trackKey": "HalcyonApex",
     "name": "Halcyon Apex",
@@ -234,14 +242,6 @@
     "path": "./assets/music/summer-placeholder-song.mp3",
     "placeholder": true,
     "placeholderSource": "blood-moon.mp3"
-  },
-  {
-    "name": "Misty Lake",
-    "file": "misty-lake.mp3",
-    "path": "./assets/music/misty-lake.mp3",
-    "themeId": "misty-lake",
-    "trackKey": "MistyLake",
-    "placeholder": false
   },
   {
     "name": "Moonlit Forest",

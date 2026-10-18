@@ -3,9 +3,10 @@
  * MOONRISE SUMMIT - GLSL Shader Library
  * ═══════════════════════════════════════════════════════════════════════════
  *
- * AAA cinematic alpine moonrise. Adapted liberally from the Misty Lake theme
- * (proven, ships-today) with a Moonrise-distinct palette, anamorphic streak,
- * sharper alpine silhouettes, and Switch-title-screen focal-moon framing.
+ * AAA cinematic alpine moonrise. Adapted liberally from the classic lake theme
+ * whose orb Grainfields took in 2026-10 (its code is in the history before that),
+ * with a Moonrise-distinct palette, anamorphic streak, sharper alpine
+ * silhouettes, and Switch-title-screen focal-moon framing.
  *
  * Conventions:
  * - All meshes render through standard ShaderMaterial — works on both

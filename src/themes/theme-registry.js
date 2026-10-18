@@ -196,11 +196,11 @@ const RAW_THEME_REGISTRY = [
         icon: './shifting-sands/shifting-sands-theme-icon.png',
     },
     {
-        id: 'misty-lake',
-        displayName: 'Misty Lake',
-        module: './misty-lake/misty-lake-theme.js',
+        id: 'grainfields',
+        displayName: 'Grainfields',
+        module: './grainfields/grainfields-theme.js',
         group: 'biomes',
-        icon: './misty-lake/misty-lake-theme-icon.png',
+        icon: './grainfields/grainfields-theme-icon.png',
     },
     {
         id: 'waves',
@@ -467,7 +467,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'geode',
     'bioluminescence',
     'shifting-sands',
-    'misty-lake',
+    'grainfields',
     'waves',
     'luminous-tides',
     'fluid-dreams',
@@ -545,6 +545,10 @@ const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
  * `singing-bowl` was replaced by Kaleidosonic (2026-10-13) at the same Odyssey orb:
  * a saved selection, an earned collection entry and an Odyssey completion that
  * name the old id now mean Kaleidosonic.
+ *
+ * `misty-lake` was replaced by Grainfields (2026-10-18) at the same Odyssey orb:
+ * a saved selection, an earned collection entry and an Odyssey completion that
+ * name the old id now mean Grainfields.
  */
 const RETIRED_THEME_IDS = new Map([
     ['sky-children-v2', 'rainbow-terraces'],
@@ -554,6 +558,7 @@ const RETIRED_THEME_IDS = new Map([
     ['cosmic-chimes', 'rainbark'],
     ['mountain', 'high-coast'],
     ['singing-bowl', 'kaleidosonic'],
+    ['misty-lake', 'grainfields'],
 ]);
 
 /**

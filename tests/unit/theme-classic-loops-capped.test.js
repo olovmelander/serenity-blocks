@@ -3,16 +3,15 @@ import {
 } from 'vitest';
 import * as THREE from 'three';
 
-import MistyLakeTheme from '../../src/themes/misty-lake/misty-lake-theme.js';
 import RainyWindowTheme from '../../src/themes/rainy-window/rainy-window-theme.js';
 
 /**
- * Misty Lake and Rainy Window run their own classic WebGL loops, and neither asked
- * BaseTheme.shouldRenderFrame(): they drew on every display refresh, ~131 times a second on the
- * 165 Hz laptop panel, at about three times the GPU power of a capped theme (theme and rendering
- * audit 2026-10: THM-180, THM-229/230, PIPE-16). Rainy Window also stepped its storm by 1/60 s a
- * frame, so on that panel it ran 2.2 times too fast, and every extra start stacked another loop
- * (PIPE-17).
+ * Rainy Window runs its own classic WebGL loop, and did not ask BaseTheme.shouldRenderFrame(): it
+ * drew on every display refresh, ~131 times a second on the 165 Hz laptop panel, at about three
+ * times the GPU power of a capped theme (theme and rendering audit 2026-10: THM-180, THM-229/230,
+ * PIPE-16). It also stepped its storm by 1/60 s a frame, so on that panel it ran 2.2 times too
+ * fast, and every extra start stacked another loop (PIPE-17). (The audit's other classic loop went
+ * with its theme when Grainfields replaced it, 2026-10-18.)
  */
 
 const VSYNC_MS = 1000 / 131.6; // what this laptop's rAF really runs at
@@ -43,39 +42,6 @@ function runVsyncs(seconds) {
     }
 }
 
-function mistyLake() {
-    const theme = Object.create(MistyLakeTheme.prototype);
-    Object.assign(theme, {
-        name: 'misty-lake',
-        isActive: true,
-        isPaused: false,
-        animationIds: [],
-        animationFrameId: null,
-        renderFrameToken: 0,
-        _themeFpsCapEnabled: true,
-        clock: {
-            last: null,
-            getDelta() {
-                const d = this.last === null ? 0 : (now - this.last) / 1000;
-                this.last = now;
-                return d;
-            },
-        },
-        time: 0,
-        renderer: { render: vi.fn(), info: null },
-        scene: {},
-        camera: {},
-        water: null,
-        composer: null,
-        qualityPreset: { enableBloom: false, bloomStrength: 1 },
-        flags: {},
-    });
-    for (const step of ['updateUniforms', 'animateCamera', 'animateEffects', 'updateRipples', 'updateMistBursts']) {
-        theme[step] = vi.fn();
-    }
-    return theme;
-}
-
 function rainyWindow() {
     const theme = new RainyWindowTheme();
     Object.assign(theme, {
@@ -90,7 +56,7 @@ function rainyWindow() {
     return theme;
 }
 
-describe('the classic WebGL themes draw at the Target Frame Rate', () => {
+describe('the classic WebGL theme draws at the Target Frame Rate', () => {
     beforeEach(() => {
         now = 0;
         frames = [];
@@ -103,63 +69,6 @@ describe('the classic WebGL themes draw at the Target Frame Rate', () => {
     afterEach(() => {
         vi.unstubAllGlobals();
         vi.restoreAllMocks();
-    });
-
-    it('misty-lake: about 66 frames a second at a 60 fps target on a 131.6 Hz display, not 131', () => {
-        stubWindow(60);
-        const theme = mistyLake();
-        theme.startRenderLoop();
-        runVsyncs(4);
-        const perSecond = theme.renderer.render.mock.calls.length / 4;
-        expect(perSecond).toBeGreaterThan(60);
-        expect(perSecond).toBeLessThan(70);
-        // The skipped refreshes still keep the loop alive and the clock whole.
-        expect(frames).toHaveLength(1);
-        expect(theme.time).toBeCloseTo(4, 1);
-    });
-
-    it('misty-lake: draws every refresh when the Target Frame Rate is unlimited', () => {
-        stubWindow(0);
-        const theme = mistyLake();
-        theme.startRenderLoop();
-        runVsyncs(2);
-        expect(theme.renderer.render.mock.calls.length).toBeGreaterThan(255);
-    });
-
-    it('misty-lake: its glow, bloom and birds keep their pace at any frame rate', () => {
-        const run = (delta, steps) => {
-            const theme = Object.create(MistyLakeTheme.prototype);
-            Object.assign(theme, {
-                time: 0,
-                glowIntensity: 0,
-                targetGlowIntensity: 1,
-                bloomBoost: 1,
-                bloomPass: { strength: 0 },
-                qualityPreset: { bloomStrength: 0.5 },
-                mistMaterials: [],
-                mountainMaterials: [],
-                treeMaterials: [],
-                lilyPadMaterials: [],
-                reedMaterials: [],
-                birdMaterials: [{ uniforms: { uTime: { value: 0 }, uBirdPos: { value: new THREE.Vector3() } } }],
-                birdData: [{
-                    x: 0, y: 10, z: -50, speed: 1, phase: 0,
-                }],
-            });
-            for (let i = 0; i < steps; i++) {
-                theme.time += delta;
-                theme.updateUniforms(delta);
-                theme.animateEffects(delta);
-            }
-            return theme;
-        };
-        const at60 = run(1 / 60, 60);
-        const at144 = run(1 / 144, 144);
-        expect(at144.targetGlowIntensity).toBeCloseTo(at60.targetGlowIntensity, 6);
-        expect(at144.bloomBoost).toBeCloseTo(at60.bloomBoost, 6);
-        expect(at144.glowIntensity).toBeCloseTo(at60.glowIntensity, 2);
-        expect(at60.birdData[0].x).toBeCloseTo(1.2, 9); // 0.02 a frame at 60 fps
-        expect(at144.birdData[0].x).toBeCloseTo(1.2, 9);
     });
 
     it('rainy-window: about 66 frames a second at a 60 fps target, and its storm clock keeps real time', () => {

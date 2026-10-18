@@ -122,10 +122,14 @@ describe('Odyssey v4 challenge identity migration', () => {
             version: 2, completedLevels: { 10: { stars: 1 } },
         }));
         const owned = collection();
+        // The frozen v2 table stamps orb 10 with misty-lake, which Grainfields replaced (2026-10-18):
+        // the alias grants the theme that holds its slot today, under its live id.
         expect(owned.isUnlocked('misty-lake')).toBe(true);
+        expect(owned.isUnlocked('grainfields')).toBe(true);
         expect(owned.isUnlocked('stillwater')).toBe(false);
         expect(owned.isUnlocked('bioluminescence')).toBe(false);
-        expect(owned.exportData().grants['misty-lake'].levelId).toBeUndefined();
+        expect(owned.exportData().grants['misty-lake']).toBeUndefined();
+        expect(owned.exportData().grants.grainfields.levelId).toBeUndefined();
     });
 
     it('keeps retired BioII grants as evidence without counting or replacing them', () => {
