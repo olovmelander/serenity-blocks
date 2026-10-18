@@ -309,7 +309,10 @@ export function createUniforms() {
         pixelAngle: uniform(0.0007),
 
         sunDir: uniform(new THREE.Vector3(0.42, 0.08, -0.9)),
+        /** How much of the disc stands clear of the far shore: the direct light's last gate. */
         sunUp: uniform(1),
+        /** How far the sky is in daylight (0 the light night, 1 day): a few degrees either side of the horizon. */
+        day: uniform(1),
         sun: colour(3.7, 2.25, 1.05),
         fill: colour(0.12, 0.19, 0.4),
         bounce: colour(0.16, 0.1, 0.07),

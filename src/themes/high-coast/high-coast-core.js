@@ -267,10 +267,11 @@ export const SHAPE_KEYS = Object.freeze(Object.keys(SHAPES));
 // ── Timings (seconds) ─────────────────────────────────────────────────────────────
 
 export const TIMING = Object.freeze({
-    /** One hour of light per this many seconds of theme clock (the wheel's clock term). */
+    /**
+     * The wheel's clock term: from one station of the day to the next per this many seconds of
+     * theme clock (the light is on its way between them all the time; it never rests).
+     */
     hour: 100,
-    /** Share of an hour step the light rests on the hour's own palette, at each end. */
-    hourRest: 0.15,
     /** A level-up's turn of the wheel eases over this long. */
     levelTurn: 5,
     /** Newly risen rock stays wet this long (time constant of the drying line). */

@@ -357,13 +357,11 @@ describe('High Coast timings', () => {
         Object.entries(TIMING).forEach(([key, value]) => {
             expect(Number.isFinite(value) && value > 0, key).toBe(true);
         });
-        // The light rests 15 % of each step at each end and is on its way for the rest.
-        expect(TIMING.hourRest).toBe(0.15);
+        // One station of the day to the next per 80–120 s of clock, never resting on one.
+        expect(TIMING).not.toHaveProperty('hourRest');
         expect(TIMING.hour).toBeGreaterThanOrEqual(80);
         expect(TIMING.hour).toBeLessThanOrEqual(120);
         expect(TIMING.levelTurn).toBeLessThan(TIMING.hour);
-        // The light is already moving within the first minute of a level.
-        expect(TIMING.hourRest * TIMING.hour).toBeLessThan(60);
         // The sea returns more slowly than the chain's swell runs in.
         expect(UPLIFT.relax).toBeGreaterThan(TIMING.swell);
     });

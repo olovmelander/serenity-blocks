@@ -729,6 +729,7 @@ export class HighCoastWorld {
         const L = this.dusk > 0.001 ? blendLight(this._hourLight, this._duskLight, this.dusk * 0.85, this.light) : copyLight(this._hourLight, this.light);
         u.sunDir.value.set(L.dir[0], L.dir[1], L.dir[2]);
         u.sunUp.value = L.sunUp;
+        u.day.value = L.day;
         u.sun.value.set(L.sun[0], L.sun[1], L.sun[2]);
         u.fill.value.set(L.fill[0], L.fill[1], L.fill[2]);
         u.bounce.value.set(L.bounce[0], L.bounce[1], L.bounce[2]);
@@ -831,7 +832,16 @@ export class HighCoastWorld {
             time: this.time,
             level: this.level,
             hour: {
-                place: this.light.place, from: this.light.from, to: this.light.to, mix: this.light.mix, az: this.light.az, el: this.light.el, name: HOURS[this.light.from].name,
+                place: this.light.place,
+                from: this.light.from,
+                to: this.light.to,
+                mix: this.light.mix,
+                az: this.light.az,
+                el: this.light.el,
+                name: HOURS[this.light.from].name,
+                of: this.light.hour,
+                day: this.light.day,
+                sunUp: this.light.sunUp,
             },
             counts: { ...this.counts },
             combo: this.combo,
