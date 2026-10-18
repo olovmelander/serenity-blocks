@@ -11,6 +11,9 @@ import { normalizeCursorSettings } from './components/custom-cursor.js';
 import { resolveThemeId } from '../themes/theme-registry.js';
 import { resolveMusicTrackKey } from '../core/progression/theme-music-catalog.js';
 
+/** Saved game modes the game has since renamed: Fault Lines became Stillfall (2026-10-18). */
+const RENAMED_GAME_MODES = Object.freeze({ 'fault-lines': GAME_MODES.STILLFALL });
+
 const DEFAULT_CONFIG = {
     gameMode: 'single',
     odysseyAutoContinue: true,
@@ -534,10 +537,12 @@ export class SettingsManager {
                 const sanitizedMusicTrack = resolveMusicTrackKey(
                     loaded.musicTrack ?? DEFAULT_CONFIG.musicTrack,
                 );
-                // And for a saved mode the game has since retired (Waystones, 2026-10-18):
-                // startup preloads the saved mode, and an unknown id throws there.
-                const sanitizedGameMode = Object.values(GAME_MODES).includes(loaded.gameMode)
-                    ? loaded.gameMode
+                // And for a saved mode the game has since renamed or retired (Fault Lines became
+                // Stillfall and Waystones was removed, 2026-10-18): startup preloads the saved
+                // mode, and an unknown id throws there.
+                const savedGameMode = RENAMED_GAME_MODES[loaded.gameMode] ?? loaded.gameMode;
+                const sanitizedGameMode = Object.values(GAME_MODES).includes(savedGameMode)
+                    ? savedGameMode
                     : DEFAULT_CONFIG.gameMode;
 
                 this.settings = {
@@ -1085,7 +1090,7 @@ const PAUSED_MODE_NAMES = {
     odyssey: 'Odyssey',
     'local-multiplayer': 'Local Versus',
     'online-multiplayer': 'Online Versus',
-    'fault-lines': 'Fault Lines',
+    stillfall: 'Stillfall',
 };
 
 /**

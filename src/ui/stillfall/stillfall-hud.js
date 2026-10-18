@@ -1,25 +1,27 @@
 /**
- * @fileoverview Fault Lines HUD: the panel beside the well while a puzzle is on the board.
+ * @fileoverview Stillfall HUD: the panel beside the well while a puzzle is on the board.
  *
- * It shows what FaultLinesMode publishes on EVENTS.FAULT_LINES_STATE (the puzzle, its
+ * It shows what StillfallMode publishes on EVENTS.STILLFALL_STATE (the puzzle, its
  * goal and progress, the pieces left, the outcome) and sends the player's undo / restart /
- * hint / next / load back on EVENTS.FAULT_LINES_COMMAND. It also keeps the solved puzzles
- * in localStorage, so the mode never touches storage. Styles: public/styles/fault-lines.css.
+ * hint / next / load back on EVENTS.STILLFALL_COMMAND. It also keeps the solved puzzles
+ * in localStorage, so the mode never touches storage. Styles: public/styles/stillfall.css.
  *
  * Keys: Backspace (or Ctrl+Z) takes back a piece, R restarts, ? asks for a hint, Enter
  * goes on after a solve. Gamepad: LB takes back, RB restarts, LT asks for a hint, A goes
  * on. The pad is read here (navigator.getGamepads) while a puzzle is on the board; the
  * gamepad controller keeps the piece controls. Select opens the puzzle list, which then
- * owns the pad (fault-lines-pad-list.js): up and down walk it, A plays, B closes.
+ * owns the pad (stillfall-pad-list.js): up and down walk it, A plays, B closes.
  */
 import { eventBus, EVENTS } from '../../events/event-bus.js';
-import { faultLinesProgress } from '../../core/fault-lines/fault-lines-progress.js';
-import { SOLVES_TO_OPEN_NEXT_TIER, TIERS, tierName } from '../../core/fault-lines/puzzle-bank.js';
+import { stillfallProgress } from '../../core/stillfall/stillfall-progress.js';
+import { SOLVES_TO_OPEN_NEXT_TIER, TIERS, tierName } from '../../core/stillfall/puzzle-bank.js';
 import { escapeHtml } from '../../utils/dom-safety.js';
 import { csIcon } from '../components/cosmic-icons.js';
-import { createPuzzleListPadControls } from './fault-lines-pad-list.js';
+import { createPuzzleListPadControls } from './stillfall-pad-list.js';
 
-const SOLVED_KEY = 'serenity.faultLines.solved';
+const SOLVED_KEY = 'serenity.stillfall.solved';
+/** Where the solves were kept while the mode was called Fault Lines (until 2026-10-18). */
+const LEGACY_SOLVED_KEY = 'serenity.faultLines.solved';
 /** Failed attempts on a puzzle before its hint is offered. */
 const HINT_AFTER_FAILS = 2;
 /** A press right as the cascade solves must not skip the result. */
@@ -31,9 +33,17 @@ const PAD = {
 const KEY_LABELS = { ' ': 'Space', Space: 'Space', Backspace: '⌫' };
 
 /** @returns {string[]} the puzzles solved on this device */
-export function readSolvedFaultLines() {
+export function readSolvedStillfall() {
     try {
-        const saved = JSON.parse(localStorage.getItem(SOLVED_KEY) || '[]');
+        let stored = localStorage.getItem(SOLVED_KEY);
+        if (stored === null) {
+            stored = localStorage.getItem(LEGACY_SOLVED_KEY);
+            if (stored !== null) {
+                localStorage.setItem(SOLVED_KEY, stored);
+                localStorage.removeItem(LEGACY_SOLVED_KEY);
+            }
+        }
+        const saved = JSON.parse(stored || '[]');
         return Array.isArray(saved) ? saved.filter((id) => typeof id === 'string') : [];
     } catch {
         return [];
@@ -63,18 +73,18 @@ function progressHtml(state) {
     if (goal.type === 'waves' || goal.type === 'lines') {
         const value = goal.type === 'waves' ? state.bestWaves : state.lines;
         const pips = Array.from({ length: goal.atLeast }, (_, i) => (
-            `<span class="fl-pip${i < value ? ' is-lit' : ''}"></span>`)).join('');
+            `<span class="stillfall-pip${i < value ? ' is-lit' : ''}"></span>`)).join('');
         const label = goal.type === 'waves' ? 'Deepest cascade' : 'Lines cleared';
-        return `<div class="fl-progress" role="img" aria-label="${label}: ${value} of ${goal.atLeast}">
-                <span class="fl-progress__label">${label}</span>
-                <span class="fl-pips" aria-hidden="true">${pips}</span>
-                <span class="fl-progress__count">${value} / ${goal.atLeast}</span>
+        return `<div class="stillfall-progress" role="img" aria-label="${label}: ${value} of ${goal.atLeast}">
+                <span class="stillfall-progress__label">${label}</span>
+                <span class="stillfall-pips" aria-hidden="true">${pips}</span>
+                <span class="stillfall-progress__count">${value} / ${goal.atLeast}</span>
             </div>`;
     }
     const hint = goal.type === 'relic-floor'
-        ? '<span class="fl-relic" aria-hidden="true"></span> marks the relic.'
+        ? '<span class="stillfall-relic" aria-hidden="true"></span> marks the relic.'
         : `Every block must go. ${plural(state.cellsLeft, 'remains', 'remain')}.`;
-    return `<p class="fl-hint">${hint}</p>`;
+    return `<p class="stillfall-hint">${hint}</p>`;
 }
 
 /** Where the supply stands: "Piece 1 of 2", "Last piece", "No pieces left". */
@@ -102,32 +112,32 @@ function outcomeHtml(state) {
     if (state.outcome === 'solved') {
         let next;
         if (state.next) {
-            next = `<button type="button" class="sb-btn sb-btn--primary fl-next" data-fl="next">
+            next = `<button type="button" class="sb-btn sb-btn--primary stillfall-next" data-stillfall-action="next">
                     <span>Next puzzle</span>${key('Enter')}${pad('A')}
                 </button>`;
         } else if (state.allSolved) {
-            next = `<p class="fl-hint">All ${state.bank.length} solved. That is every puzzle, for now.</p>`;
+            next = `<p class="stillfall-hint">All ${state.bank.length} solved. That is every puzzle, for now.</p>`;
         } else {
-            next = '<p class="fl-hint">Nothing further is open yet.</p>';
+            next = '<p class="stillfall-hint">Nothing further is open yet.</p>';
         }
         const first = state.firstSolve ? ' <span class="sb-chip sb-chip--gold">First solve</span>' : '';
-        return `<div class="fl-outcome fl-outcome--solved">
-                <p class="fl-outcome__title">Solved${first}</p>
-                ${state.unlockedTier ? `<p class="fl-hint">The next tier, ${escapeHtml(state.unlockedTier)}, is open.</p>` : ''}
+        return `<div class="stillfall-outcome stillfall-outcome--solved">
+                <p class="stillfall-outcome__title">Solved${first}</p>
+                ${state.unlockedTier ? `<p class="stillfall-hint">The next tier, ${escapeHtml(state.unlockedTier)}, is open.</p>` : ''}
                 ${next}
             </div>`;
     }
     if (state.outcome === 'failed') {
-        return `<div class="fl-outcome fl-outcome--failed">
-                <p class="fl-outcome__title">${escapeHtml(failureTitle(state))}</p>
-                <p class="fl-hint">Take a piece back, or start again.</p>
+        return `<div class="stillfall-outcome stillfall-outcome--failed">
+                <p class="stillfall-outcome__title">${escapeHtml(failureTitle(state))}</p>
+                <p class="stillfall-hint">Take a piece back, or start again.</p>
             </div>`;
     }
     if (state.hintShown) {
         const note = state.hintRestarted
             ? 'No way on from there, so the puzzle started over. The first piece is lit.'
             : 'The lit outline is where this piece goes.';
-        return `<div class="fl-outcome fl-outcome--hint"><p class="fl-hint">${note}</p></div>`;
+        return `<div class="stillfall-outcome stillfall-outcome--hint"><p class="stillfall-hint">${note}</p></div>`;
     }
     return '';
 }
@@ -141,8 +151,8 @@ function bankHtml(state) {
         if (!entries.some((e) => e.open)) {
             const count = plural(entries.length, 'puzzle', 'puzzles');
             return `
-        <div class="fl-tier is-locked">
-            <p class="fl-tier__name">${escapeHtml(name)} <span class="fl-tier__note">${count} · locked</span></p>
+        <div class="stillfall-tier is-locked">
+            <p class="stillfall-tier__name">${escapeHtml(name)} <span class="stillfall-tier__note">${count} · locked</span></p>
         </div>`;
         }
         const next = TIERS[index + 1];
@@ -152,17 +162,17 @@ function bankHtml(state) {
             note += ` · ${SOLVES_TO_OPEN_NEXT_TIER} open ${escapeHtml(next.name)}`;
         }
         return `
-        <div class="fl-tier">
-            <p class="fl-tier__name">${escapeHtml(name)} <span class="fl-tier__note">${note}</span></p>
-            <ol class="fl-tier__list">${entries.map((entry) => {
+        <div class="stillfall-tier">
+            <p class="stillfall-tier__name">${escapeHtml(name)} <span class="stillfall-tier__note">${note}</span></p>
+            <ol class="stillfall-tier__list">${entries.map((entry) => {
         const current = entry.id === state.puzzle.id;
         let mark = entry.open ? '' : '·';
         if (entry.solved) mark = '✓';
-        const classes = `fl-puzzle${current ? ' is-current' : ''}${entry.solved ? ' is-solved' : ''}${entry.open ? '' : ' is-locked'}`;
-        return `<li><button type="button" class="${classes}" data-fl="load" data-puzzle="${escapeHtml(entry.id)}"
+        const classes = `stillfall-puzzle${current ? ' is-current' : ''}${entry.solved ? ' is-solved' : ''}${entry.open ? '' : ' is-locked'}`;
+        return `<li><button type="button" class="${classes}" data-stillfall-action="load" data-puzzle="${escapeHtml(entry.id)}"
                     ${entry.open ? '' : 'disabled aria-disabled="true"'} ${current ? 'aria-current="true"' : ''}
                     aria-label="${escapeHtml(entry.title)}${entry.solved ? ', solved' : ''}${entry.open ? '' : ', locked'}">
-                    <span class="fl-puzzle__mark" aria-hidden="true">${mark}</span>
+                    <span class="stillfall-puzzle__mark" aria-hidden="true">${mark}</span>
                     <span>${escapeHtml(entry.title)}</span>
                 </button></li>`;
     }).join('')}</ol>
@@ -170,7 +180,7 @@ function bankHtml(state) {
     }).join('');
 }
 
-class FaultLinesHud {
+class StillfallHud {
     constructor() {
         this.panel = null;
         this.live = null;
@@ -185,8 +195,8 @@ class FaultLinesHud {
         /** The list's pad owner while a puzzle is on the board, and where the pad is in the list. */
         this.padList = null;
         this.padFocusId = null;
-        faultLinesProgress.restore(readSolvedFaultLines());
-        eventBus.on(EVENTS.FAULT_LINES_STATE, (state) => this.onState(state));
+        stillfallProgress.restore(readSolvedStillfall());
+        eventBus.on(EVENTS.STILLFALL_STATE, (state) => this.onState(state));
         document.addEventListener('keydown', (event) => this.onKeyDown(event));
     }
 
@@ -199,7 +209,7 @@ class FaultLinesHud {
         const samePuzzle = previous?.puzzle.id === state.puzzle.id;
         const previousOpen = new Set((previous?.bank || []).filter((e) => e.open).map((e) => e.id));
         if (state.outcome === 'solved') {
-            writeSolved(faultLinesProgress.solvedIds());
+            writeSolved(stillfallProgress.solvedIds());
             if (!samePuzzle || previous.outcome !== 'solved') this.solvedAt = performance.now();
         }
         if (state.outcome === 'failed' && (!samePuzzle || previous.outcome !== 'failed')) {
@@ -226,8 +236,8 @@ class FaultLinesHud {
         this.stage = document.querySelector('.single-player-stage');
         if (!this.stage) return false;
         this.panel = document.createElement('aside');
-        this.panel.className = 'fl-panel';
-        this.panel.setAttribute('aria-label', 'Fault Lines puzzle');
+        this.panel.className = 'stillfall-panel';
+        this.panel.setAttribute('aria-label', 'Stillfall puzzle');
         this.panel.addEventListener('click', (event) => this.onClick(event));
         // Space belongs to the board (the drop), never to a focused panel button.
         this.panel.addEventListener('keydown', (event) => {
@@ -237,11 +247,11 @@ class FaultLinesHud {
             }
         });
         this.live = document.createElement('p');
-        this.live.className = 'fl-live';
+        this.live.className = 'stillfall-live';
         this.live.setAttribute('aria-live', 'polite');
         this.panel.appendChild(this.live);
         this.content = document.createElement('div');
-        this.content.className = 'fl-panel__content';
+        this.content.className = 'stillfall-panel__content';
         this.panel.appendChild(this.content);
         this.stage.appendChild(this.panel);
         return true;
@@ -254,7 +264,7 @@ class FaultLinesHud {
         this.panel = null;
         this.live = null;
         this.content = null;
-        if (this.stage) delete this.stage.dataset.faultLines;
+        if (this.stage) delete this.stage.dataset.stillfall;
         this.showLedger(true);
         if (this.padFrame) cancelAnimationFrame(this.padFrame);
         this.padFrame = null;
@@ -296,9 +306,9 @@ class FaultLinesHud {
     }
 
     markPadFocus() {
-        this.content?.querySelectorAll('.fl-puzzle.is-pad-focus').forEach((el) => el.classList.remove('is-pad-focus'));
+        this.content?.querySelectorAll('.stillfall-puzzle.is-pad-focus').forEach((el) => el.classList.remove('is-pad-focus'));
         const button = this.padFocusId
-            ? this.content?.querySelector(`.fl-puzzle[data-puzzle="${this.padFocusId}"]`)
+            ? this.content?.querySelector(`.stillfall-puzzle[data-puzzle="${this.padFocusId}"]`)
             : null;
         button?.classList.add('is-pad-focus');
         button?.scrollIntoView?.({ block: 'nearest' });
@@ -343,7 +353,7 @@ class FaultLinesHud {
     render() {
         const { state } = this;
         if (!state || !this.mount()) return;
-        this.stage.dataset.faultLines = 'on';
+        this.stage.dataset.stillfall = 'on';
         this.showLedger(false);
         const inTier = state.bank.filter((entry) => entry.tier === state.bank.find((e) => e.id === state.puzzle.id)?.tier);
         const position = inTier.findIndex((entry) => entry.id === state.puzzle.id);
@@ -352,44 +362,44 @@ class FaultLinesHud {
         const firstPuzzle = state.bank[0]?.id === state.puzzle.id && state.dealt === 0 && state.outcome === 'open';
         let hintButton = '';
         if (state.hintOffered) {
-            hintButton = `<button type="button" class="sb-btn sb-btn--quiet fl-hint-btn" data-fl="hint"${state.hintShown ? ' disabled' : ''}>
+            hintButton = `<button type="button" class="sb-btn sb-btn--quiet stillfall-hint-btn" data-stillfall-action="hint"${state.hintShown ? ' disabled' : ''}>
                     ${csIcon('star', 14, 'btn-icon-svg')}<span>${state.hintShown ? 'Hint shown' : 'Hint'}</span>${key('?')}${pad('LT')}
                 </button>`;
         }
         this.content.innerHTML = `
-            <header class="fl-head">
-                <p class="fl-eyebrow">${escapeHtml(tierName(tier))} · ${position + 1} of ${inTier.length}</p>
-                <h2 class="fl-title">${escapeHtml(state.puzzle.title)}</h2>
-                <p class="fl-lesson">${escapeHtml(state.puzzle.lesson)}</p>
+            <header class="stillfall-head">
+                <p class="stillfall-eyebrow">${escapeHtml(tierName(tier))} · ${position + 1} of ${inTier.length}</p>
+                <h2 class="stillfall-title">${escapeHtml(state.puzzle.title)}</h2>
+                <p class="stillfall-lesson">${escapeHtml(state.puzzle.lesson)}</p>
             </header>
-            <section class="fl-goal">
-                <p class="fl-label">Goal</p>
-                <p class="fl-goal__text">${escapeHtml(goalText(state.puzzle.goal))}</p>
+            <section class="stillfall-goal">
+                <p class="stillfall-label">Goal</p>
+                <p class="stillfall-goal__text">${escapeHtml(goalText(state.puzzle.goal))}</p>
                 ${progressHtml(state)}
-                <p class="fl-pieces">${supplyText(state)}</p>
-                ${firstPuzzle ? `<p class="fl-hint">${key(this.dropKeyLabel())}${pad('B')} drops the piece. Nothing locks until you do.</p>` : ''}
+                <p class="stillfall-pieces">${supplyText(state)}</p>
+                ${firstPuzzle ? `<p class="stillfall-hint">${key(this.dropKeyLabel())}${pad('B')} drops the piece. Nothing locks until you do.</p>` : ''}
             </section>
             ${outcomeHtml(state)}
-            <div class="fl-actions">
-                <button type="button" class="sb-btn sb-btn--quiet" data-fl="undo"${state.canUndo ? '' : ' disabled'}>
+            <div class="stillfall-actions">
+                <button type="button" class="sb-btn sb-btn--quiet" data-stillfall-action="undo"${state.canUndo ? '' : ' disabled'}>
                     ${csIcon('prev', 14, 'btn-icon-svg')}<span>Undo</span>${key('⌫')}${pad('LB')}
                 </button>
-                <button type="button" class="sb-btn sb-btn--quiet" data-fl="restart"${canRestart ? '' : ' disabled'}>
+                <button type="button" class="sb-btn sb-btn--quiet" data-stillfall-action="restart"${canRestart ? '' : ' disabled'}>
                     ${csIcon('cycle', 14, 'btn-icon-svg')}<span>Restart</span>${key('R')}${pad('RB')}
                 </button>
                 ${hintButton}
-                <button type="button" class="sb-btn sb-btn--quiet fl-list-btn" data-fl="list" aria-expanded="${this.listOpen}">
+                <button type="button" class="sb-btn sb-btn--quiet stillfall-list-btn" data-stillfall-action="list" aria-expanded="${this.listOpen}">
                     ${csIcon('line-stack', 14, 'btn-icon-svg')}<span>Puzzles</span>${pad('Select')}
                 </button>
             </div>
-            ${this.listOpen ? `<nav class="fl-bank" aria-label="Puzzles">${bankHtml(state)}</nav>` : ''}`;
+            ${this.listOpen ? `<nav class="stillfall-bank" aria-label="Puzzles">${bankHtml(state)}</nav>` : ''}`;
         if (!this.listOpen) this.padFocusId = null;
         else if (this.padFocusId) this.markPadFocus();
-        else this.content.querySelector('.fl-puzzle.is-current')?.scrollIntoView?.({ block: 'nearest' });
+        else this.content.querySelector('.stillfall-puzzle.is-current')?.scrollIntoView?.({ block: 'nearest' });
     }
 
     send(type, extra = {}) {
-        eventBus.emit(EVENTS.FAULT_LINES_COMMAND, { type, ...extra });
+        eventBus.emit(EVENTS.STILLFALL_COMMAND, { type, ...extra });
     }
 
     /** Nothing here acts while a sheet (pause, settings, results) or the Hub covers the game. */
@@ -406,16 +416,16 @@ class FaultLinesHud {
     }
 
     onClick(event) {
-        const button = event.target.closest?.('[data-fl]');
+        const button = event.target.closest?.('[data-stillfall-action]');
         if (!button || button.disabled) return;
-        const action = button.dataset.fl;
+        const action = button.dataset.stillfallAction;
         // A pointer click hands the keys back to the board, so Space drops the piece
         // instead of pressing this button again; a keyboard press keeps its place.
         const byPointer = event.detail > 0;
         if (action === 'list') {
             this.listOpen = !this.listOpen;
             this.render();
-            if (!byPointer) this.content?.querySelector('[data-fl="list"]')?.focus();
+            if (!byPointer) this.content?.querySelector('[data-stillfall-action="list"]')?.focus();
             return;
         }
         if (action === 'load') {
@@ -431,7 +441,7 @@ class FaultLinesHud {
         this.send(action);
         // The panel re-rendered on the mode's reply: put the keyboard back where it was.
         if (byPointer) document.activeElement?.blur?.();
-        else this.content?.querySelector(`[data-fl="${action}"]`)?.focus();
+        else this.content?.querySelector(`[data-stillfall-action="${action}"]`)?.focus();
     }
 
     onKeyDown(event) {
@@ -488,7 +498,7 @@ class FaultLinesHud {
             Object.entries(PAD).forEach(([action, index]) => { now[action] = Boolean(gamepad.buttons[index]?.pressed); });
             const prev = this.padPrev.get(gamepad.index) || {};
             this.padPrev.set(gamepad.index, now);
-            // The open list owns the pad (fault-lines-pad-list.js): its A plays a puzzle.
+            // The open list owns the pad (stillfall-pad-list.js): its A plays a puzzle.
             if (covered || this.listOpen) continue;
             if (now.undo && !prev.undo) this.send('undo');
             if (now.restart && !prev.restart) this.send('restart');
@@ -500,8 +510,8 @@ class FaultLinesHud {
 
 let hud = null;
 
-/** Installs the HUD once; it stays idle until Fault Lines publishes a puzzle. */
-export function installFaultLinesHud() {
-    if (!hud && typeof document !== 'undefined') hud = new FaultLinesHud();
+/** Installs the HUD once; it stays idle until Stillfall publishes a puzzle. */
+export function installStillfallHud() {
+    if (!hud && typeof document !== 'undefined') hud = new StillfallHud();
     return hud;
 }

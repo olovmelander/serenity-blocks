@@ -1093,7 +1093,7 @@ export function createBaseBoardScene(
         }
 
         /**
-         * Fault Lines: a dark seam wherever two different bodies touch, and a glyph on
+         * Stillfall: a dark seam wherever two different bodies touch, and a glyph on
          * the relic. Bodies stay fused inside; only the line between two of them shows,
          * because there one can fall and the other stay.
          */
@@ -1135,7 +1135,7 @@ export function createBaseBoardScene(
             }
         }
 
-        /** Fault Lines: the landing a hint suggests, as a lit outline on the static layer. */
+        /** Stillfall: the landing a hint suggests, as a lit outline on the static layer. */
         drawHintCells() {
             const cells = this.gameState?.hintCells;
             const layer = this.boardGraphics;

@@ -59,7 +59,7 @@ const SCENES = [
         frame: '.single-player-stage { transform: translate(230px, -70px) scale(0.55) !important; }', cropTop: 0.117,
     },
     {
-        name: 'fault-lines', theme: 'cinder-drift', mode: 'fault-lines', stage: 'faultLines', options: { puzzle: 'floor-last' }, settleMs: 12000,
+        name: 'stillfall', theme: 'cinder-drift', mode: 'stillfall', stage: 'stillfall', options: { puzzle: 'floor-last' }, settleMs: 12000,
         frame: '.single-player-stage { transform: translate(210px, -70px) scale(0.55) !important; }', cropTop: 0.176,
     },
     {
@@ -144,10 +144,10 @@ const STAGES = {
         await modeRunning('infinity');
         return () => stage('stageInfinity', scene.options);
     },
-    async faultLines(scene) {
-        await startMode('fault-lines');
-        await modeRunning('fault-lines');
-        return () => stage('stageFaultLines', scene.options);
+    async stillfall(scene) {
+        await startMode('stillfall');
+        await modeRunning('stillfall');
+        return () => stage('stageStillfall', scene.options);
     },
     async local(scene) {
         await startMode('local-multiplayer');

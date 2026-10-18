@@ -140,7 +140,7 @@ export class GamepadController {
         this.menuOwners = [null, null, null, null]; // the menu that owned each pad last poll
         this.odysseyShowcaseControls = null;
         this.odysseyMapControls = null;
-        // A panel over the board that owns the first pad while it wants it (the Fault Lines
+        // A panel over the board that owns the first pad while it wants it (the Stillfall
         // puzzle list): its process() returning true takes the whole poll from gameplay.
         this.panelControls = null;
         this.connected = [false, false, false, false];

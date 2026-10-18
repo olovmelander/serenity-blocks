@@ -1,5 +1,5 @@
 /**
- * FaultLinesMode on a live GameState and the live physics: it deals the supply, judges
+ * StillfallMode on a live GameState and the live physics: it deals the supply, judges
  * the goal once each cascade settles, takes back pieces, hints, and publishes state for
  * the HUD.
  */
@@ -10,25 +10,25 @@ import {
     hardDrop, move, rotate, softDrop,
 } from '../../src/core/game.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
-import { buildPuzzle } from '../../src/core/fault-lines/fault-lines-puzzle.js';
-import { solvePuzzle } from '../../src/core/fault-lines/fault-lines-solver.js';
+import { buildPuzzle } from '../../src/core/stillfall/stillfall-puzzle.js';
+import { solvePuzzle } from '../../src/core/stillfall/stillfall-solver.js';
 import {
     applyPlacement, cellsOf, createRun, listPlacements, solutionPlacement,
-} from '../../src/core/fault-lines/fault-lines-sim.js';
-import { bankPuzzle, FAULT_LINES_PUZZLES } from '../../src/core/fault-lines/puzzle-bank.js';
-import { faultLinesProgress } from '../../src/core/fault-lines/fault-lines-progress.js';
+} from '../../src/core/stillfall/stillfall-sim.js';
+import { bankPuzzle, STILLFALL_PUZZLES } from '../../src/core/stillfall/puzzle-bank.js';
+import { stillfallProgress } from '../../src/core/stillfall/stillfall-progress.js';
 
 vi.mock('../../src/rendering/phaser/board-juice.js', () => ({ BoardJuice: class BoardJuice {} }));
 vi.mock('../../src/ui/next-queue-ui.js', () => ({ updateNextQueue: vi.fn() }));
 
-const { FaultLinesMode } = await import('../../src/core/game-modes/FaultLinesMode.js');
+const { StillfallMode } = await import('../../src/core/game-modes/StillfallMode.js');
 const { SinglePlayerMode } = await import('../../src/core/game-modes/SinglePlayerMode.js');
 
 const playLevelUp = vi.fn();
 const sfxPlayer = new Proxy({ playLevelUp }, { get: (target, name) => target[name] || (() => {}) });
 
 function startMode(puzzleId) {
-    const mode = new FaultLinesMode({
+    const mode = new StillfallMode({
         settingsManager: { get: () => ({}) },
         soundManager: { sfxPlayer },
     });
@@ -53,16 +53,16 @@ async function play(mode, placement) {
 }
 
 const solutionOf = (id) => solvePuzzle(buildPuzzle(bankPuzzle(id))).solution;
-const tier = (n) => FAULT_LINES_PUZZLES.filter((p) => p.tier === n).map((p) => p.id);
+const tier = (n) => STILLFALL_PUZZLES.filter((p) => p.tier === n).map((p) => p.id);
 
 const states = [];
 let stop;
 beforeEach(() => {
     vi.stubGlobal('document', { getElementById: () => null, querySelector: () => null });
-    faultLinesProgress.restore([]);
+    stillfallProgress.restore([]);
     states.length = 0;
     playLevelUp.mockClear();
-    stop = eventBus.on(EVENTS.FAULT_LINES_STATE, (state) => states.push(state));
+    stop = eventBus.on(EVENTS.STILLFALL_STATE, (state) => states.push(state));
 });
 afterEach(() => {
     stop();
@@ -70,7 +70,7 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-describe('FaultLinesMode', () => {
+describe('StillfallMode', () => {
     it('latches puzzle rules on its GameState, and Single Player keeps its own', () => {
         const mode = startMode('first-fall');
         expect(mode.gameState.finiteSupply).toBe(true);
@@ -101,7 +101,7 @@ describe('FaultLinesMode', () => {
         expect(states.at(-1)).toMatchObject({
             outcome: 'solved', bestWaves: 2, firstSolve: true, canUndo: true,
         });
-        expect(faultLinesProgress.solvedIds()).toEqual(['second-wave']);
+        expect(stillfallProgress.solvedIds()).toEqual(['second-wave']);
         expect(mode.gameState.currentPiece).toBeNull();
         expect(playLevelUp).toHaveBeenCalledOnce();
     });
@@ -127,7 +127,7 @@ describe('FaultLinesMode', () => {
             .find((placement) => placement.footprint !== winning);
         await play(mode, losing);
         expect(states.at(-1)).toMatchObject({ outcome: 'failed', reason: 'spent', canUndo: true });
-        expect(faultLinesProgress.solvedIds()).toEqual([]);
+        expect(stillfallProgress.solvedIds()).toEqual([]);
         expect(playLevelUp).not.toHaveBeenCalled();
 
         expect(mode.restart()).toBe(true);
@@ -239,10 +239,10 @@ describe('FaultLinesMode', () => {
     });
 
     it('keeps a saved solve for a puzzle the bank no longer has', () => {
-        faultLinesProgress.restore(['first-fall', 'retired-puzzle', 42]);
-        expect(faultLinesProgress.solvedIds()).toEqual(['first-fall', 'retired-puzzle']);
-        expect(faultLinesProgress.allSolved()).toBe(false);
-        expect([...faultLinesProgress.openIds()]).toEqual(tier(1));
+        stillfallProgress.restore(['first-fall', 'retired-puzzle', 42]);
+        expect(stillfallProgress.solvedIds()).toEqual(['first-fall', 'retired-puzzle']);
+        expect(stillfallProgress.allSolved()).toBe(false);
+        expect([...stillfallProgress.openIds()]).toEqual(tier(1));
     });
 
     it('lights the stored solution as a hint, restarts when the board left it, and clears on lock', async () => {
@@ -285,16 +285,16 @@ describe('FaultLinesMode', () => {
     });
 
     it('goes on to an earlier unsolved puzzle when nothing later is open', () => {
-        faultLinesProgress.restore(tier(1).slice(1)); // all but the first: tier 2 is open
-        expect(faultLinesProgress.after(tier(1).at(-1))).toBe(tier(2)[0]);
-        faultLinesProgress.restore([...tier(1).slice(1), ...tier(2)]);
-        expect(faultLinesProgress.after(tier(2).at(-1))).toBe(tier(3)[0]);
-        const last = tier(Math.max(...FAULT_LINES_PUZZLES.map((p) => p.tier)));
-        faultLinesProgress.restore(FAULT_LINES_PUZZLES.map((p) => p.id).filter((id) => id !== tier(1)[0]));
-        expect(faultLinesProgress.after(last.at(-1))).toBe(tier(1)[0]);
-        expect(faultLinesProgress.allSolved()).toBe(false);
-        faultLinesProgress.restore(FAULT_LINES_PUZZLES.map((p) => p.id));
-        expect(faultLinesProgress.allSolved()).toBe(true);
-        expect(faultLinesProgress.after(last.at(-1))).toBeNull();
+        stillfallProgress.restore(tier(1).slice(1)); // all but the first: tier 2 is open
+        expect(stillfallProgress.after(tier(1).at(-1))).toBe(tier(2)[0]);
+        stillfallProgress.restore([...tier(1).slice(1), ...tier(2)]);
+        expect(stillfallProgress.after(tier(2).at(-1))).toBe(tier(3)[0]);
+        const last = tier(Math.max(...STILLFALL_PUZZLES.map((p) => p.tier)));
+        stillfallProgress.restore(STILLFALL_PUZZLES.map((p) => p.id).filter((id) => id !== tier(1)[0]));
+        expect(stillfallProgress.after(last.at(-1))).toBe(tier(1)[0]);
+        expect(stillfallProgress.allSolved()).toBe(false);
+        stillfallProgress.restore(STILLFALL_PUZZLES.map((p) => p.id));
+        expect(stillfallProgress.allSolved()).toBe(true);
+        expect(stillfallProgress.after(last.at(-1))).toBeNull();
     });
 });

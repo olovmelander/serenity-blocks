@@ -10,7 +10,7 @@ playground effect added `quads` (four-line clears played before the frame); Saku
 keeping one fox retired `foxWhich`; Rainbow Terraces (Sky Children until 2026-10-18) added
 `cardAlpha` and took the V2 detail effect's four entries with it. The preview flags
 `faultLines` and `waystones` were retired on 2026-10-18, when Waystones was removed and Fault
-Lines joined the main menu.
+Lines (now Stillfall) joined the main menu.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,

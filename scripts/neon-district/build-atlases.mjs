@@ -160,13 +160,13 @@ const TRANSIT_MODES = [
         images: [{ image: 'public/assets/menu-art/infinity.webp', crop: [70, 0, 730, 640] }],
     },
     {
-        id: 'fault-lines',
-        name: 'FAULT LINES',
+        id: 'stillfall',
+        name: 'STILLFALL',
         line: 'GRAVITY WAITS WHILE YOU CHOOSE',
         sub: 'A FEW PIECES AND ONE GOAL',
         accent: 0xffac88,
         stops: 6,
-        images: [{ image: 'public/assets/menu-art/fault-lines.webp', crop: [100, 0, 730, 640] }],
+        images: [{ image: 'public/assets/menu-art/stillfall.webp', crop: [100, 0, 730, 640] }],
     },
     {
         id: 'odyssey',

@@ -6,7 +6,7 @@ const WORDMARKS = {
     INFINITY: ['infinity', 538, 104],
     SERENITY: ['serenity', 652, 104],
     ODYSSEY: ['odyssey', 628, 104],
-    'FAULT LINES': ['fault-lines', 434, 246],
+    STILLFALL: ['stillfall', 704, 104],
 };
 
 /**

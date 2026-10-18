@@ -1,11 +1,11 @@
 /**
- * @fileoverview The Fault Lines puzzle list on a gamepad. Select opens the list; while it is
+ * @fileoverview The Stillfall puzzle list on a gamepad. Select opens the list; while it is
  * open the list owns the first pad: D-pad or stick up and down walk the puzzles (holding
  * repeats), A plays the one marked, B or Select closes. Every press the list takes is
  * latched for gameplay (the controller's held-input release), so the A that chose a puzzle
  * cannot also rotate the new piece. Start always passes through to the pause sheet.
  *
- * The HUD supplies the callbacks (fault-lines-hud.js); the controller consults this before
+ * The HUD supplies the callbacks (stillfall-hud.js); the controller consults this before
  * gameplay through GamepadController.setPanelControls.
  */
 
