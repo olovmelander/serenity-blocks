@@ -352,6 +352,15 @@
     "placeholder": false
   },
   {
+    "themeId": "rainbow-terraces",
+    "trackKey": "RainbowTerraces",
+    "name": "Rainbow Terraces",
+    "file": "rainbow-terraces-placeholder-song.mp3",
+    "path": "./assets/music/rainbow-terraces-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
+  },
+  {
     "name": "Rainy Window",
     "file": "rainy-window.mp3",
     "path": "./assets/music/rainy-window.mp3",
@@ -384,15 +393,6 @@
     "themeId": "shifting-sands",
     "trackKey": "ShiftingSands",
     "placeholder": false
-  },
-  {
-    "themeId": "sky-children",
-    "trackKey": "SkyChildren",
-    "name": "Sky Children",
-    "file": "sky-children-placeholder-song.mp3",
-    "path": "./assets/music/sky-children-placeholder-song.mp3",
-    "placeholder": true,
-    "placeholderSource": "blood-moon.mp3"
   },
   {
     "themeId": "solar-eclipse",

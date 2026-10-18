@@ -182,7 +182,7 @@ export const CHAPTER_CONFIGS = [
         themes: {
             primary: [
                 'sunset', 'starlight', 'aurora', 'nimbus-veil',
-                'rainy-window', 'parhelion', 'lunara', 'sky-children',
+                'rainy-window', 'parhelion', 'lunara', 'rainbow-terraces',
             ],
             supporting: [],
         },

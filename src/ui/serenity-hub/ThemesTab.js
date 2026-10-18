@@ -304,7 +304,7 @@ export class ThemesTab {
             Rainbark: 'bamboo',
             Kaleidosonic: 'spiral',
             Starlight: 'star',
-            'Sky Children': 'cloud',
+            'Rainbow Terraces': 'cloud',
             'Golden Forest': 'tree',
             Geode: 'gem',
             Bioluminescence: 'jellyfish',

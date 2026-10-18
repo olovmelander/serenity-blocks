@@ -743,7 +743,7 @@ from the composition so optics land in frame (`bowAnchor`); the game-over drain.
 3. **Composition template.** Every concept puts a hero on the left and a secondary on the right, the
    template the catalogue asks us to break.
 4. **Lighting slot.** Golden hour is the fleet's most overused light (halcyon, himalayan, sunset,
-   summer, fall, tornado, golden-forest, waves, shifting-sands, nimbus and sky-children all use it).
+   summer, fall, tornado, golden-forest, waves, shifting-sands, nimbus and rainbow-terraces all use it).
    High sun or morning daylight is the open slot.
 5. **"Whatever wins":** use the rainbow no more than once; keep the decay world-native (bleach, green,
    ripen), never "held then released"; source a clear's colours from the real cells of the cleared row
@@ -1554,7 +1554,7 @@ Every Stage A step runs PLAYBOOK §3.3's loop: build → acceptance shots plus a
 an independent critic with a fresh context → fix → repeat until the critic passes it. Montage the rest
 frame against `docs/theme-screenshots/<id>.png` of the neighbours each step is most at risk of
 resembling: A1 geode and cinder-drift (bands round a centre; geothermal), A2 halcyon-apex (turquoise
-terraces), A3 nimbus-veil and sky-children (white vapour masses) plus Rainbark's mist, A4 pyrestorm and
+terraces), A3 nimbus-veil and rainbow-terraces (white vapour masses) plus Rainbark's mist, A4 pyrestorm and
 luminous-tides (eruptions; "a geyser of light") and parhelion (daylight optics), A5 the full rest frame
 against Rainbark at the 80 px picker size (§4.2). Every Stage B beat captures an age sequence
 (`eventAge=0.25, 0.75, 1.8, 4` or the beat's own times below), as PLAYBOOK §3.4 asks.

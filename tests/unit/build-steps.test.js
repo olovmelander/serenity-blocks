@@ -6,7 +6,7 @@ import { buildWorldBreathing, drainSteps, runStepsBreathing } from '../../src/th
 
 /**
  * A world's build as steps (src/themes/shared/build-steps.js): the forest family's worlds (and
- * Moonlit Greenhouse's, High Coast's, Cinder Drift's, Sky Children's) built every part in one
+ * Moonlit Greenhouse's, High Coast's, Cinder Drift's, Rainbow Terraces') built every part in one
  * synchronous task, 0.2-0.5 s of main thread while the theme came in. They now yield between parts,
  * and their themes breathe between the steps, taking the world only once it is whole.
  */
@@ -125,7 +125,7 @@ describe('the stepped themes build their worlds in steps', () => {
     const source = (path) => readFileSync(new URL(`../../src/themes/${path}`, import.meta.url), 'utf8');
     const family = ['summer', 'verdant-hills', 'forest', 'golden-forest'];
     const stepped = [
-        ...family, 'moonlit-greenhouse', 'high-coast', 'cinder-drift', 'sky-children', 'bioluminescence', 'koi-pond',
+        ...family, 'moonlit-greenhouse', 'high-coast', 'cinder-drift', 'rainbow-terraces', 'bioluminescence', 'koi-pond',
         'shifting-sands', 'sakura-twilight',
     ];
     /** A theme's world module (Sakura's carries the short name). */
