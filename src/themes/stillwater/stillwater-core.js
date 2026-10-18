@@ -117,17 +117,21 @@ export const SPIRIT = Object.freeze({
     height: 1.72,
 });
 
-/** The troll's seat by the right bank's great spruce, and the water's edge he comes down to. */
+/**
+ * The troll: where he stands by his seat stone under the right bank's great spruce, the water's
+ * edge a chain brings him down to, and the shallows a long one walks him into (shin-deep).
+ */
 export const TROLL = Object.freeze({
     home: Object.freeze([8.75, 0.5, -11.6]),
     reach: Object.freeze([7.55, 0.13, -10.5]),
+    shallows: Object.freeze([6.6, -0.2, -9.62]),
+    /** The low flat stone he sits on, just behind where he stands (its top is the seat). */
+    seat: Object.freeze([9.25, 0.94, -11.66]),
     /** Metres from sole to the top of his back. */
     height: 2.9,
-    /**
-     * Metres of ground one cycle of his walk covers at that height: a quarter of his height, as
-     * the cycle was authored (short, heavy steps).
-     */
-    stride: 0.72,
+    /** Metres a second he walks (short, heavy steps), and the length of one step. */
+    pace: 0.55,
+    step: 0.46,
 });
 
 /** The gold heart that lies on the tarn's bed, behind where the card stands. */

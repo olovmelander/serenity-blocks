@@ -33,7 +33,7 @@ const read = [...new Set([
 const PARAMETERS = [
     'bloom', 'board', 'brush', 'color', 'combo', 'demo', 'event', 'eventAge', 'eventLevel', 'falseColor', 'icon',
     'iconFov', 'iconPitch', 'iconX', 'iconY', 'iconYaw', 'iconZ', 'level', 'lines', 'locks', 'msaa', 'noPost', 'parts',
-    'px', 'py', 'quality', 'reduce', 'row', 'statsHud', 'u',
+    'px', 'py', 'quality', 'reduce', 'row', 'statsHud', 'story', 'trollLook', 'u',
 ];
 
 const told = (name) => new RegExp(`(?<![A-Za-z])${name}(?![A-Za-z])`).test(header);
