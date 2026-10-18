@@ -14,6 +14,7 @@
  */
 import { el } from './keystone-sheet.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
+import { createOdysseyStarNotes } from './odyssey-star-notes.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
 import { describeOpenings } from '../effects/breathing/breath-openings.js';
 import { breathPosterUrl } from '../effects/breathing/breath-catalogue.js';
@@ -149,6 +150,10 @@ export function createJourneyFlowOverlay({
         if (tallyText) score.appendChild(el('p', 'ody-flow__tally', tallyText));
         content.appendChild(score);
     }
+    // Why these stars: each goal marked, and the next one's shortfall in the player's numbers.
+    const starNotes = variant === 'completion'
+        ? createOdysseyStarNotes(level, results, { className: 'ody-flow__star-notes' }) : null;
+    if (starNotes) content.appendChild(starNotes.list);
     const themeReward = variant === 'completion'
         ? createThemeUnlockReward(results?.themeUnlock, { reducedMotion, variant: 'ceremony', nowPlaying }) : null;
     if (themeReward) {
@@ -300,7 +305,14 @@ export function createJourneyFlowOverlay({
     const autoContinueMs = getCompletionHoldMs({
         hasReward: Boolean(themeReward),
         rewardWords: themeReward?.readingWords || 0,
-        briefingWords: countWords(nextEyebrow?.textContent, breathOpening?.textContent, titleNode.textContent, briefing?.goal, briefing?.changes),
+        briefingWords: countWords(
+            nextEyebrow?.textContent,
+            breathOpening?.textContent,
+            titleNode.textContent,
+            briefing?.goal,
+            briefing?.changes,
+            starNotes?.readingWords,
+        ),
     });
     modal.autoContinueMs = autoContinueMs;
     modal.style.setProperty('--ody-flow-hold', `${autoContinueMs}ms`);

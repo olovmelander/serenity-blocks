@@ -191,6 +191,38 @@
     100% { opacity: 1; transform: none; }
 }
 
+/* Why these stars: each goal marked earned or not, then the next one's shortfall. */
+.sb-ody-star-notes {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 22px;
+    margin: -8px 0 22px;
+    padding: 0;
+    color: var(--sb-text-faint);
+    font: 500 0.8125rem / 1.5 var(--sb-font-text);
+}
+
+.sb-ody-star-notes__tier {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+.sb-ody-star-notes__tier.is-earned {
+    color: var(--sb-text);
+}
+
+.sb-ody-star-notes__tier.is-earned .sb-ody-star-notes__glyph {
+    color: var(--sb-gold);
+}
+
+.sb-ody-star-notes__next {
+    flex-basis: 100%;
+    color: var(--sb-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
 .sb-ody-facts {
     display: flex;
     flex-wrap: wrap;
@@ -767,10 +799,15 @@
     background: rgba(var(--sb-cream-rgb), 0.03);
 }
 
-#odyssey-board-overlay .level-objectives div {
-    padding: 2px 0;
+#odyssey-board-overlay .level-objectives > * {
+    margin: 0;
+    padding: 0;
     color: var(--sb-text-muted);
     font: 500 0.875rem / 1.5 var(--sb-font-text);
+}
+
+#odyssey-board-overlay .level-objectives > * + * {
+    margin-top: 6px;
 }
 
 #odyssey-board-overlay .level-objectives strong {
@@ -778,9 +815,54 @@
     font-weight: 700;
 }
 
+#odyssey-board-overlay .level-objectives__label {
+    color: var(--sb-text-faint);
+    font: 600 0.625rem / 1.4 var(--sb-font-display);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+}
+
+#odyssey-board-overlay .level-objectives > .level-objectives__label {
+    margin-top: 12px;
+}
+
+#odyssey-board-overlay .level-objectives ul {
+    list-style: none;
+}
+
+#odyssey-board-overlay .level-objectives li + li {
+    margin-top: 3px;
+}
+
+#odyssey-board-overlay .level-star-goals li {
+    font-variant-numeric: tabular-nums;
+}
+
 #odyssey-board-overlay .level-objectives .level-tip {
-    margin-top: 6px;
+    margin-top: 10px;
     color: rgba(var(--sb-mint-rgb), 0.9);
+}
+
+#odyssey-board-overlay .level-kind {
+    margin: -6px 0 10px;
+    color: rgba(var(--sb-mint-rgb), 0.9);
+    font: 600 0.6875rem / 1.4 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+}
+
+#odyssey-board-overlay .level-kind[data-kind='rival'] {
+    color: rgba(var(--sb-gold-rgb), 0.92);
+}
+
+#odyssey-board-overlay .level-kind[data-kind='boss'] {
+    color: var(--sb-lavender);
+}
+
+#odyssey-board-overlay .level-lock-hint {
+    margin: -6px 0 14px;
+    color: var(--sb-text-faint);
+    font: 500 0.8125rem / 1.5 var(--sb-font-text);
 }
 
 #odyssey-board-overlay .level-play-btn {

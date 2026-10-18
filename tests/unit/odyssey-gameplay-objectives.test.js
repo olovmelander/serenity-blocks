@@ -15,6 +15,7 @@ import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';
 import { OdysseyStateManager } from '../../src/core/odyssey/OdysseyStateManager.js';
 import { getLevelById } from '../../src/core/odyssey/data/levels.js';
 import { createFailureModal } from '../../src/ui/odyssey/FailureModal.js';
+import { formatOdysseyMapObjective } from '../../src/ui/odyssey/objective-copy.js';
 import { hardDrop, move } from '../../src/core/game.js';
 import { markBoardDirty, rebuildBoardGridFromPieces } from '../../src/core/board.js';
 import {
@@ -147,9 +148,8 @@ async function finishFailureView({ mode }) {
 }
 
 describe('OdysseyMode gameplay objectives', () => {
-    it('uses the same chain-wave wording before entering an orb', () => {
-        const mode = Object.create(OdysseyMode.prototype);
-        expect(mode._formatObjective({ type: 'combo', target: 18 }))
+    it('uses the same chain-wave wording on the map panel before entering an orb', () => {
+        expect(formatOdysseyMapObjective({ type: 'combo', target: 18 }))
             .toBe('Trigger a chain of at least 18 waves');
     });
 
