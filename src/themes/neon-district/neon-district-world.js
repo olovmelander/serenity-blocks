@@ -42,14 +42,17 @@ import {
     linRGB,
     smooth,
 } from './neon-district-tsl.js';
-import { GLOW_TEXELS, buildLayout } from './neon-district-layout.js';
+import { GLOW_TEXELS, TEXT_WIDTH, buildLayout } from './neon-district-layout.js';
 import { tierFor } from './neon-district-quality.js';
 import { createFacades } from './neon-district-facades.js';
 import { createSky } from './neon-district-sky.js';
 import { createStreet } from './neon-district-street.js';
 import {
-    createGlyphTexture, createPlaceholderTexture, createScreens, createShopfronts, createSigns,
+    createGlyphTexture, createLogoTexture, createMarks, createPlaceholderTexture, createScreens, createSigns, logoBinding,
 } from './neon-district-signs.js';
+import { createPrints } from './neon-district-prints.js';
+import { createGeneratedShops, createPaintedShops } from './neon-district-shops.js';
+import { createTextTexture } from './neon-district-text.js';
 import { BILLBOARD_ATLAS, SHOPFRONT_ATLAS } from './neon-district-atlas.js';
 import { createRain, createSteam } from './neon-district-weather.js';
 import {
@@ -62,7 +65,8 @@ import {
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './neon-district-composition.js';
-import { applyCameraBreath } from '../shared/camera-breath.js';
+import { applyCameraBreath, breathFill } from '../shared/camera-breath.js';
+import { readBreathSignal } from '../../core/breath-signal.js';
 
 const DEG = Math.PI / 180;
 
@@ -128,7 +132,7 @@ const GOLD = Object.freeze([1.0, 0.72, 0.22]);
 const HOT_MIST = Object.freeze([0.085, 0.036, 0.014]);
 
 const PARTS = [
-    'sky', 'mega', 'facades', 'street', 'shopfronts', 'signs', 'screens', 'lamps', 'cables', 'lanterns',
+    'sky', 'mega', 'facades', 'street', 'shopfronts', 'shops', 'signs', 'marks', 'screens', 'prints', 'lamps', 'cables', 'lanterns',
     'halos', 'cones', 'beacons', 'traffic', 'sparks', 'counter', 'dragon', 'steam', 'rain', 'beams',
 ];
 
@@ -260,13 +264,23 @@ export class NeonDistrictWorld {
         // ── Everything that advertises ──
         const glyphs = createGlyphTexture();
         const blank = createPlaceholderTexture();
-        this.textures.push(glyphs, blank);
+        const lines = createTextTexture(plan.texts, TEXT_WIDTH);
+        const logoTex = createLogoTexture();
+        const logos = logoBinding(logoTex);
+        this.textures.push(glyphs, blank, lines, logoTex);
         this.atlases = {
             shop: texture(blank), shopFade: uniform(0), ads: texture(blank), adsFade: uniform(0),
         };
-        this.addPart('shopfronts', createShopfronts(u, plan.shopfronts, this.atlases.shop, this.atlases.shopFade));
+        this.addPart('shopfronts', createPaintedShops(u, plan.shops.filter((s) => s.kind === 0), this.atlases.shop, this.atlases.shopFade));
+        this.addPart('shops', createGeneratedShops(u, plan.shops.filter((s) => s.kind === 1), {
+            glyphTex: glyphs, textTex: lines, textRows: plan.texts.length, rooms: tier.rooms, logos,
+        }));
         this.addPart('signs', createSigns(u, plan.signs, glyphs));
+        this.addPart('marks', createMarks(u, plan.marks, {
+            glyphTex: glyphs, textTex: lines, textRows: plan.texts.length, logos,
+        }));
         this.addPart('screens', createScreens(u, plan.screens, this.atlases.ads, this.atlases.adsFade));
+        this.addPart('prints', createPrints(u, plan.prints, this.atlases.ads, this.atlases.adsFade));
 
         // ── The street's hardware ──
         createKit(u, plan.kit).parts.forEach((part) => this.addPart(part.name, part));
@@ -690,6 +704,8 @@ export class NeonDistrictWorld {
         // ── Uniforms ──
         u.time.value = t;
         u.scroll.value = this.scroll;
+        // Hale's adverts breathe with the guide when a session leads one, else on the game's breath.
+        u.breath.value = readBreathSignal() ?? breathFill(t);
         u.power.value = this.power;
         u.heat.value = this.heat;
         u.glitch.value = still ? 0 : Math.min(1, this.glitch + blackout * 0.5);
@@ -813,7 +829,8 @@ export class NeonDistrictWorld {
             boxes: this.plan.boxes.length,
             megaBoxes: this.plan.megaBoxes.length,
             signs: this.plan.signs.length,
-            shopfronts: this.plan.shopfronts.length,
+            shopfronts: this.plan.shops.filter((s) => s.kind === 0).length,
+            shops: this.plan.shops.length,
             kit: this.plan.kit.length,
             reflection: this.tier.reflection,
             period: STREET.period,

@@ -2,9 +2,10 @@
  * Neon District — the sign-maker's alphabet (CPU only).
  *
  * Every tube sign in the district is bent from these strokes: digits and Latin capitals for the
- * trade words, and twenty-eight characters of the district's own script (built from the strokes a
- * brush-written sign would use, spelling nothing). Strokes live on a 4 × 6 grid (y up); the
- * atlas is a signed-distance field, so a tube stays a clean line of light at any size.
+ * trade words, twenty-eight characters of the district's own script (built from the strokes a
+ * brush-written sign would use, spelling nothing), and the punctuation the shop fascias and the
+ * adverts' lines need. Strokes live on a 4 × 6 grid (y up); the atlas is a signed-distance field,
+ * so a tube stays a clean line of light at any size.
  */
 
 import { bakeOnce } from '../shared/bake-cache.js';
@@ -80,7 +81,47 @@ const SCRIPT = [
     '0,6 0,2 2,0 4,2 4,6|0,4 4,4',
 ];
 
-export const GLYPH_GRID = 8;
+/** Punctuation, in atlas order after the script. A dot is a tiny closed loop. */
+const PUNCTUATION = [
+    ['&', '4,0 1,4.2 1,5.2 2,6 3,5.2 3,4.4 0,2 0,0.8 1,0 2.4,0 4,2'],
+    ['-', '0.8,3 3.2,3'],
+    ['.', '1.8,0 2.2,0 2.2,0.4 1.8,0.4 1.8,0'],
+    ['!', '2,6 2,1.6|2,0.4 2,0'],
+    ['?', '0,5 1,6 3,6 4,5 4,4 2,2.6 2,1.6|2,0.4 2,0'],
+    ["'", '2,6 2,4.6'],
+    [':', '2,4.2 2,3.8|2,1.2 2,0.8'],
+    ['/', '0,0 4,6'],
+    ['+', '2,1 2,5|0,3 4,3'],
+    ['#', '1,0 1.6,6|2.4,0 3,6|0,2 4,2|0,4 4,4'],
+    ['%', '0,0 4,6|0,6 0,5 1,5 1,6 0,6|3,0 3,1 4,1 4,0 3,0'],
+    ['*', '2,1.4 2,4.6|0.6,2.2 3.4,3.8|0.6,3.8 3.4,2.2'],
+    ['<', '4,5 0,3 4,1'],
+    ['>', '0,5 4,3 0,1'],
+    ['=', '0,2 4,2|0,4 4,4'],
+    ['·', '1.8,2.8 2.2,2.8 2.2,3.2 1.8,3.2 1.8,2.8'],
+    ['(', '2.8,6 1.6,4.8 1.2,3 1.6,1.2 2.8,0'],
+];
+
+/** Atlas layout: 0-9 A-Z, then the script, then the punctuation. */
+export const GLYPH_LATIN = 36;
+export const GLYPH_SCRIPT = SCRIPT.length;
+export const GLYPH_PUNCT = GLYPH_LATIN + GLYPH_SCRIPT;
+export const GLYPH_COUNT = GLYPH_PUNCT + PUNCTUATION.length;
+/** The id a space (or any character the atlas lacks) encodes to: the shaders draw nothing. */
+export const GLYPH_BLANK = 255;
+
+const PUNCT_INDEX = new Map(PUNCTUATION.map(([ch], i) => [ch, GLYPH_PUNCT + i]));
+
+/** The atlas cell for one character of a sign's text (GLYPH_BLANK for a space). */
+export function glyphFor(ch) {
+    const code = ch.charCodeAt(0);
+    if (code >= 48 && code <= 57) return code - 48;
+    if (code >= 65 && code <= 90) return 10 + code - 65;
+    if (code >= 97 && code <= 122) return 10 + code - 97;
+    return PUNCT_INDEX.get(ch) ?? GLYPH_BLANK;
+}
+
+export const GLYPH_GRID = 9;
 export const GLYPH_CELL = 64;
 /** Distance (in cells) that maps to 0 in the atlas; 255 is the stroke's centre line. */
 export const GLYPH_RANGE = 0.25;
@@ -100,18 +141,19 @@ function parse(spec) {
     return segments;
 }
 
-/** Segment lists for all 64 glyphs: 0-9, A-Z, then the district's script. */
+/** Segment lists for every glyph: 0-9, A-Z, the district's script, then the punctuation. */
 export function glyphSegments() {
     const order = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const glyphs = Array.from(order, (ch) => parse(LATIN[ch]));
     SCRIPT.forEach((spec) => glyphs.push(parse(spec)));
+    PUNCTUATION.forEach(([, spec]) => glyphs.push(parse(spec)));
     return glyphs;
 }
 
 /**
  * Bake the atlas: GLYPH_GRID² cells of GLYPH_CELL² texels, one byte per texel
  * (255 = on a stroke, 0 = GLYPH_RANGE cells away or more). Row 0 of the data is the BOTTOM row of
- * cell row 0 (texture v up), so glyph g sits at column g % 8, row floor(g / 8).
+ * cell row 0 (texture v up), so glyph g sits at column g % GLYPH_GRID, row floor(g / GLYPH_GRID).
  * @returns {{ data: Uint8Array, size: number }}
  */
 function computeGlyphAtlas() {

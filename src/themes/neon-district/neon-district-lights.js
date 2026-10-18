@@ -54,7 +54,7 @@ import {
     ndQuadGeometry,
     ndWrapZ,
 } from './neon-district-tsl.js';
-import { BILLBOARD_CELLS, SHOPFRONT_CELLS } from './neon-district-atlas.js';
+import { SHOPFRONT_CELLS } from './neon-district-atlas.js';
 
 const finish = (name, geometry, material, renderOrder = 0) => {
     const mesh = new THREE.Mesh(geometry, material);
@@ -80,7 +80,7 @@ function spriteClip(u, centre, sizeMetres, minPx = 0) {
 
 /**
  * @param {object} u
- * @param {object} plan  the city plan (signs, shopfronts, screens, lamps)
+ * @param {object} plan  the city plan (signs, shops, screens, lamps)
  */
 export function createHalos(u, plan) {
     const items = [];
@@ -89,15 +89,18 @@ export function createHalos(u, plan) {
             x: s.x - s.side * 0.2, y: s.y, z: s.z, w: s.w, h: s.h, rgb: s.rgb, k: s.style ? 0.8 : 1,
         });
     });
-    plan.shopfronts.forEach((s) => {
-        const cell = SHOPFRONT_CELLS[s.cell];
+    plan.shops.forEach((s) => {
+        // A painting glows in its own colour; a generated shop in its room's light, unless shut.
+        const cell = s.kind === 0 ? SHOPFRONT_CELLS[s.cell] : null;
+        const rgb = cell ? cell.glow : s.light.map((c, i) => c * 0.7 + s.rgb[i] * 0.3);
+        const k = cell ? 0.9 + cell.luma * 6 : 1.1 * (1 - Math.min(1, s.shutter) * 0.8);
         items.push({
-            x: s.side * (STREET.halfStreet - 0.7), y: s.h * 0.55, z: s.z, w: s.w * 0.8, h: s.h * 0.8, rgb: cell.glow, k: 0.9 + cell.luma * 6,
+            x: s.side * (STREET.halfStreet - 0.7), y: s.h * 0.55, z: s.z, w: s.w * 0.8, h: s.h * 0.8, rgb, k,
         });
     });
     plan.screens.forEach((s) => {
         items.push({
-            x: s.x, y: s.y, z: s.z + 0.3, w: s.w, h: s.h, rgb: BILLBOARD_CELLS[s.cell].glow, k: 0.9,
+            x: s.x, y: s.y, z: s.z + 0.3, w: s.w, h: s.h, rgb: s.glow, k: 0.9,
         });
     });
     const count = items.length;
