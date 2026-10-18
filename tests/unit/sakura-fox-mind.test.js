@@ -1,12 +1,11 @@
 /**
- * Sakura Twilight — what the two foxes do (sakura-fox-mind.js): their course by the
- * stepping-stone path and the pair of fox minds that go round it. No renderer, no GPU.
+ * Sakura Twilight — what the fox does (sakura-fox-mind.js): its course by the stepping-stone
+ * path and the fox mind that goes round it. No renderer, no GPU.
  *
  * What is pinned is the garden's side of it: the course is a closed round over dry ground that
- * stops beside the stone lanterns; the two are a pair — the second lies down and leaps a moment
- * after the first, they look round at each other when they are near — and the same steps give
- * the same pair. (What one fox mind does on a course: shared-fox-mind.test.js; what the garden
- * asks of them and how they are drawn: sakura-world.test.js.)
+ * stops beside the stone lanterns; there is one fox on it (the pair lost one, 2026-10-18), and
+ * the same steps give the same fox. (What a fox mind does on a course: shared-fox-mind.test.js;
+ * what the garden asks of it and how it is drawn: sakura-world.test.js.)
  */
 
 import { readFileSync } from 'node:fs';
@@ -15,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { SAKURA_STONE_LANTERNS, SAKURA_VIEWS } from '../../src/themes/sakura-twilight/sakura-composition.js';
 import {
-    SAKURA_FOX_LANTERNS, SAKURA_FOX_PAIR, SAKURA_FOX_REACH, SakuraFoxMind, sakuraFoxCourse,
+    SAKURA_FOX_LANTERNS, SAKURA_FOX_PLANS, SAKURA_FOX_REACH, SakuraFoxMind, sakuraFoxCourse,
 } from '../../src/themes/sakura-twilight/sakura-fox-mind.js';
 import {
     SAKURA_WATER_LEVEL, sakuraLand, sakuraPathZ, sakuraTerrainHeight,
@@ -42,7 +41,6 @@ const makeMind = () => new SakuraFoxMind(GARDEN);
 const COURSE = sakuraFoxCourse(GARDEN);
 /** The two stone lanterns that stand by the path. */
 const LANTERNS = SAKURA_STONE_LANTERNS.slice(0, 2);
-const between = (a, b) => Math.hypot(a.pose.x - b.pose.x, a.pose.z - b.pose.z);
 /** How far a place is from the middle of the stepping-stone path (m, over the ground). */
 function fromPath(x, z) {
     let least = Infinity;
@@ -50,7 +48,7 @@ function fromPath(x, z) {
     return least;
 }
 
-/** Step a pair `seconds` on from `from`; `each` sees it after every step. The time it ends at. */
+/** Step a mind `seconds` on from `from`; `each` sees it after every step. The time it ends at. */
 function run(mind, from, seconds, env = REST, each = null) {
     const steps = Math.round(seconds / DT);
     let time = from;
@@ -88,22 +86,18 @@ describe('sakura fox mind: the module', () => {
         expect(source).not.toMatch(/\bTHREE\b|\bdocument\b|\bwindow\b|performance\.now|Date\.now|Math\.random/);
     });
 
-    it('plans a pair: two foxes of two sizes, each its own seed, starting far apart on the course', () => {
-        expect(Object.isFrozen(SAKURA_FOX_PAIR)).toBe(true);
-        expect(SAKURA_FOX_PAIR).toHaveLength(2);
-        const [a, b] = SAKURA_FOX_PAIR;
-        [a, b].forEach((plan) => {
+    it('plans one fox: a size that reads from the game, its own seed, a start on the course', () => {
+        expect(Object.isFrozen(SAKURA_FOX_PLANS)).toBe(true);
+        // (The garden had a pair; Olov asked for one of them to go.)
+        expect(SAKURA_FOX_PLANS).toHaveLength(1);
+        SAKURA_FOX_PLANS.forEach((plan) => {
             expect(Object.isFrozen(plan)).toBe(true);
             expect(plan.scale).toBeGreaterThan(0.7);
             expect(plan.scale).toBeLessThan(1.4);
             expect(plan.start).toBeGreaterThanOrEqual(0);
             expect(plan.start).toBeLessThan(1);
+            expect(Number.isInteger(plan.seed)).toBe(true);
         });
-        expect(a.scale).not.toBe(b.scale);
-        expect(a.seed).not.toBe(b.seed);
-        // More than a quarter of the way round from each other, whichever way it is counted.
-        const gap = Math.abs(a.start - b.start);
-        expect(Math.min(gap, 1 - gap)).toBeGreaterThan(0.25);
         // The lanterns they stop by and go round are the garden's own.
         const places = (lanterns) => lanterns.map((lantern) => [lantern.x, lantern.z]);
         expect(SAKURA_FOX_LANTERNS.map((lantern) => [...lantern])).toEqual(places(LANTERNS));
@@ -225,8 +219,8 @@ describe('sakura fox mind: the course', () => {
             expect(beside, `the lantern at x ${lantern.x}`).toHaveLength(2);
             const places = beside.map((station) => COURSE.at(station));
             places.forEach(([x, z]) => expect(Math.hypot(x - lantern.x, z - lantern.z)).toBeGreaterThan(1.15));
-            // One on the way out and one on the way back, and not side by side: two foxes
-            // stopped by the one lantern have room.
+            // One on the way out and one on the way back, and not side by side: the stop going
+            // out and the stop coming back are two places.
             expect(beside.map((station) => station < COURSE.length / 2).sort()).toEqual([false, true]);
             expect(Math.hypot(places[0][0] - places[1][0], places[0][1] - places[1][1])).toBeGreaterThan(1.4);
         });
@@ -277,7 +271,7 @@ describe('sakura fox mind: the course', () => {
         const before = mind.foxes.map((fox) => fox.toViewer(mind.course.at(fox.s)));
         const { viewer } = mind.course;
         mind.setViewer(-14, 19);
-        // (The same course, told in place: both foxes' minds read it there.)
+        // (The same course, told in place: the fox's mind reads it there.)
         expect(mind.course.viewer).toBe(viewer);
         expect(mind.course.viewer).toEqual([-14, 19]);
         mind.foxes.forEach((fox, i) => {
@@ -292,14 +286,14 @@ describe('sakura fox mind: the course', () => {
     });
 });
 
-describe('sakura fox mind: the pair', () => {
-    it('is two fox minds on the one course, each its own size, under way from its own start', () => {
+describe('sakura fox mind: the fox', () => {
+    it('is one fox mind on the course, its own size, under way from its own start', () => {
         const mind = makeMind();
-        expect(mind.foxes).toHaveLength(2);
+        expect(mind.foxes).toHaveLength(1);
+        expect(mind.poses).toHaveLength(1);
         expect(mind.asleep).toBe(false);
-        expect(mind.leaps).toEqual([]);
         mind.foxes.forEach((fox, i) => {
-            const plan = SAKURA_FOX_PAIR[i];
+            const plan = SAKURA_FOX_PLANS[i];
             expect(fox).toBeInstanceOf(FoxMind);
             expect(fox.course).toBe(mind.course);
             expect(mind.poses[i]).toBe(fox.pose);
@@ -308,7 +302,7 @@ describe('sakura fox mind: the pair', () => {
             expect(fox.s).toBe(plan.start * mind.course.length);
             expect(fox.mode).toBe('gait');
             expect(fox.pose.y).toBe(sakuraTerrainHeight(fox.pose.x, fox.pose.z));
-            // Their own paces: an amble, a run the chain's stream of petals sets them at, and no
+            // Its own paces: an amble, a run the chain's stream of petals sets it at, and no
             // prints (the grass keeps none).
             expect(fox.speed).toBe(fox.paces.trot);
             expect(fox.paces.run(0)).toBeGreaterThan(fox.paces.trot);
@@ -316,19 +310,17 @@ describe('sakura fox mind: the pair', () => {
             expect(fox.paces.run(1, 1)).toBeGreaterThan(fox.paces.run(1));
             expect(fox.paces.printStep).toBe(0);
             expect(fox.paces.leapHigh).toBeGreaterThan(fox.paces.leapLow);
+            // Alone on its course: nothing ahead of it to leave room for.
+            expect(fox.ahead).toBe(Infinity);
+            expect(fox.paces.room).toBe(0);
         });
-        const [a, b] = mind.foxes;
-        // One either side of the board; the larger leaps higher and looks from higher up.
-        expect(Math.sign(a.pose.x)).toBe(-Math.sign(b.pose.x));
-        expect(between(a, b)).toBeGreaterThan(5);
-        const larger = a.rig.scale > b.rig.scale ? a : b;
-        const smaller = larger === a ? b : a;
-        expect(larger.paces.leapHigh).toBeGreaterThan(smaller.paces.leapHigh);
-        expect(larger.paces.eye).toBeGreaterThan(smaller.paces.eye);
-        expect(a.nextStop).not.toBe(b.nextStop);
+        // It opens on the left of the board, near the lantern there.
+        const [fox] = mind.foxes;
+        expect(fox.pose.x).toBeLessThan(-3);
+        expect(Math.hypot(fox.pose.x - LANTERNS[0].x, fox.pose.z - LANTERNS[0].z)).toBeLessThan(3);
     });
 
-    it('is deterministic: the same evening twice is the same pair, and a reset replays it', () => {
+    it('is deterministic: the same evening twice is the same fox, and a reset replays it', () => {
         const one = makeMind();
         const two = makeMind();
         expect(snapshot(two)).toEqual(snapshot(one));
@@ -339,33 +331,30 @@ describe('sakura fox mind: the pair', () => {
         after.forEach((fox) => Object.entries(fox.pose).forEach(([key, value]) => {
             if (typeof value === 'number') expect(Number.isFinite(value), key).toBe(true);
         }));
-        // Left asleep with a leap put off: a reset forgets it and the evening comes round the same.
+        // Left asleep just after a leap: a reset forgets it and the evening comes round the same.
         one.pounce(ended);
         one.sleep(ended + 0.1);
         run(one, ended, 0.3);
         one.reset(0);
-        expect(one.leaps).toEqual([]);
         expect(one.asleep).toBe(false);
         expect(snapshot(one)).toEqual(snapshot(makeMind()));
         evening(one);
         expect(snapshot(one)).toEqual(after);
     });
 
-    it('lies down to sleep one after the other where they are, and wakes together', () => {
+    it('lies down to sleep where it is, and wakes when the garden stirs', () => {
         const mind = makeMind();
         let time = run(mind, 0, 6);
         mind.sleep(time);
         expect(mind.asleep).toBe(true);
-        // One settles first; the other a little after.
-        const lay = [null, null];
+        // It settles at once.
+        let lay = null;
         const told = time;
-        time = run(mind, time, 2, REST, (m, now) => m.foxes.forEach((fox, i) => {
-            if (lay[i] === null && fox.asleep) lay[i] = now - told;
-        }));
-        expect(lay[0]).toBeLessThan(2 * DT);
-        expect(lay[1]).toBeGreaterThan(0.4);
-        expect(lay[1]).toBeLessThan(1.2);
-        // Curled up, their eyes shut, on the ground, each on the side its tail is to the viewer.
+        time = run(mind, time, 2, REST, (m, now) => {
+            if (lay === null && m.foxes[0].asleep) lay = now - told;
+        });
+        expect(lay).toBeLessThan(2 * DT);
+        // Curled up, its eyes shut, on the ground, on the side its tail is to the viewer.
         time = run(mind, time, 4);
         const places = mind.foxes.map((fox) => [fox.pose.x, fox.pose.z, fox.s]);
         time = run(mind, time, 20, { power: 0.9, surge: 0.5 });
@@ -381,7 +370,7 @@ describe('sakura fox mind: the pair', () => {
             expect(sakuraLand(fox.pose.x, fox.pose.z)).toBeGreaterThan(0);
             expect(Math.abs(fox.pose.side)).toBe(1);
         });
-        // The wind stirs: both are up at once, stretching, and go on their way.
+        // The wind stirs: it is up at once, stretching, and goes on its way.
         mind.wake(time);
         expect(mind.asleep).toBe(false);
         mind.foxes.forEach((fox) => expect([fox.asleep, fox.mode, fox.clip]).toEqual([false, 'idle', 'Stretch']));
@@ -390,100 +379,53 @@ describe('sakura fox mind: the pair', () => {
             expect(fox.asleep).toBe(false);
             expect(fox.s).toBeGreaterThan(places[i][2]);
         });
-        // Woken before the second has lain down, it does not lie down after all.
+        // Laid down and woken a moment later, it is up again.
         mind.sleep(time);
         time = run(mind, time, 0.2);
-        expect(mind.foxes.map((fox) => fox.asleep)).toEqual([true, false]);
+        expect(mind.foxes.map((fox) => fox.asleep)).toEqual([true]);
         mind.wake(time);
         run(mind, time, 3);
-        expect(mind.foxes.map((fox) => fox.asleep)).toEqual([false, false]);
-        expect(mind.leaps).toEqual([]);
+        expect(mind.foxes.map((fox) => fox.asleep)).toEqual([false]);
     });
 
-    it('leaps on four lines one after the other, each as high as its own size', () => {
+    it('leaps on four lines at once, as high as its own size', () => {
         const mind = makeMind();
         let time = run(mind, 0, 4);
         const told = time;
         mind.pounce(time);
-        const began = [null, null];
-        const took = [null, null];
-        const peak = [0, 0];
-        const landings = [0, 0];
+        const [fox] = mind.foxes;
+        let began = null;
+        let peak = 0;
+        let landings = 0;
         const wrong = [];
-        time = run(mind, time, 3, REST, (m, now) => m.foxes.forEach((fox, i) => {
-            if (began[i] === null && fox.mode === 'pounce') began[i] = now - told;
-            if (took[i] === null && fox.pose.lift > 0) took[i] = now - told;
-            peak[i] = Math.max(peak[i], fox.pose.lift);
-            landings[i] += fox.events.filter((event) => event.type === 'land' && !event.soft).length;
-            if (!(sakuraLand(fox.pose.x, fox.pose.z) > 0)) wrong.push(`fox ${i} is over the water`);
-        }));
-        expect(wrong.slice(0, 5)).toEqual([]);
-        // The first at once, the second a moment after it — a third of a second, give or take a frame.
-        expect(began[0]).toBeLessThan(2 * DT);
-        expect(began[1] - began[0]).toBeGreaterThan(0.2);
-        expect(began[1] - began[0]).toBeLessThan(0.45);
-        expect(took[1] - took[0]).toBeCloseTo(began[1] - began[0], 1);
-        mind.foxes.forEach((fox, i) => {
-            expect(peak[i]).toBeGreaterThan(fox.paces.leapHigh * 0.98);
-            expect(peak[i]).toBeLessThanOrEqual(fox.paces.leapHigh);
-            // Clear of the grass by more than it stands tall, and down again once.
-            expect(peak[i]).toBeGreaterThan(0.6 * fox.rig.scale);
-            expect(landings[i]).toBe(1);
-            expect(fox.mode).toBe('gait');
-            expect(fox.pose.lift).toBe(0);
+        time = run(mind, time, 3, REST, (m, now) => {
+            if (began === null && fox.mode === 'pounce') began = now - told;
+            peak = Math.max(peak, fox.pose.lift);
+            landings += fox.events.filter((event) => event.type === 'land' && !event.soft).length;
+            if (!(sakuraLand(fox.pose.x, fox.pose.z) > 0)) wrong.push('it is over the water');
         });
-        expect(mind.leaps).toEqual([]);
-        // Asleep, four lines have them up and over in one move, the second still after the first.
+        expect(wrong.slice(0, 5)).toEqual([]);
+        expect(began).toBeLessThan(2 * DT);
+        expect(peak).toBeGreaterThan(fox.paces.leapHigh * 0.98);
+        expect(peak).toBeLessThanOrEqual(fox.paces.leapHigh);
+        // Clear of the grass by more than it stands tall, and down again once.
+        expect(peak).toBeGreaterThan(0.6 * fox.rig.scale);
+        expect(landings).toBe(1);
+        expect(fox.mode).toBe('gait');
+        expect(fox.pose.lift).toBe(0);
+        // Asleep, four lines have it up and over in one move.
         mind.sleep(time);
         time = run(mind, time, 3);
-        expect(mind.foxes.map((fox) => fox.asleep)).toEqual([true, true]);
+        expect(fox.asleep).toBe(true);
         mind.pounce(time);
         expect(mind.asleep).toBe(false);
         time = run(mind, time, 0.2);
-        expect(mind.foxes.map((fox) => fox.mode)).toEqual(['pounce', 'sleep']);
+        expect(fox.mode).toBe('pounce');
         run(mind, time, 0.3);
-        expect(mind.foxes.map((fox) => fox.mode)).toEqual(['pounce', 'pounce']);
-        expect(mind.foxes.map((fox) => fox.asleep)).toEqual([false, false]);
+        expect([fox.mode, fox.asleep]).toEqual(['pounce', false]);
     });
 
-    it('look round at each other when they are near, unless the garden has their eyes', () => {
-        const mind = makeMind();
-        const [a, b] = mind.foxes;
-        // Far apart at first: neither has the other in mind.
-        let time = run(mind, 0, 1);
-        expect(between(a, b)).toBeGreaterThan(5);
-        mind.foxes.forEach((fox) => expect(fox.attending?.pair).not.toBe(true));
-        expect(Math.abs(a.pose.lookYaw)).toBeLessThan(0.2);
-        // One comes up three metres behind the other on the same lane.
-        b.s = a.s - 3;
-        time = run(mind, time, 1.5);
-        expect(between(a, b)).toBeGreaterThan(0.4);
-        expect(between(a, b)).toBeLessThan(4.5);
-        mind.foxes.forEach((fox, i) => {
-            const other = mind.foxes[1 - i];
-            expect(fox.attending.pair).toBe(true);
-            expect(fox.attending.until).toBeGreaterThan(time);
-            // What it looks at is the other's head, where the other was a step ago.
-            expect(Math.hypot(fox.attending.x - other.pose.x, fox.attending.z - other.pose.z)).toBeLessThan(0.1);
-            expect(fox.attending.y).toBeGreaterThan(other.pose.y + 0.3);
-        });
-        // The one ahead looks back over its shoulder; the one behind looks on ahead, at it.
-        expect(Math.abs(a.pose.lookYaw)).toBeGreaterThan(0.3);
-        expect(Math.abs(a.pose.lookYaw)).toBeGreaterThan(Math.abs(b.pose.lookYaw));
-        // A piece locks, the lanterns breathe: they look out over the water, not at each other…
-        mind.attend(0, 2.5, -6, time + 1.1, 0.8);
-        time = run(mind, time, 0.6);
-        mind.foxes.forEach((fox) => {
-            expect(fox.attending.pair).not.toBe(true);
-            expect([fox.attending.x, fox.attending.y, fox.attending.z]).toEqual([0, 2.5, -6]);
-        });
-        // …and when that has passed, at each other again.
-        time = run(mind, time, 1);
-        mind.foxes.forEach((fox) => expect(fox.attending.pair).toBe(true));
-        expect(Number.isFinite(a.pose.lookYaw + a.pose.lookPitch + b.pose.lookYaw + b.pose.lookPitch)).toBe(true);
-    });
-
-    it('answers the garden: a startle sets both dashing, a chain sets both running, a rehearsal stops one', () => {
+    it('answers the garden: a startle sets it dashing, a chain sets it running, the lanterns turn its head', () => {
         const mind = makeMind();
         let time = run(mind, 0, 1);
         const amble = mind.foxes.map((fox) => fox.speed);
@@ -493,7 +435,7 @@ describe('sakura fox mind: the pair', () => {
             expect(fox.mode).toBe('gait');
             expect(fox.speed).toBeGreaterThan(amble[i] * 1.5);
         });
-        // The stream of petals a chain winds up: the more of it, the faster they go.
+        // The stream of petals a chain winds up: the more of it, the faster it goes.
         const pace = (power) => {
             const runner = makeMind();
             run(runner, 0, 6, { power, surge: 0 });
@@ -506,67 +448,27 @@ describe('sakura fox mind: the pair', () => {
             expect(fast[i]).toBeGreaterThan(slow[i] + 0.5);
             expect(fast[i]).toBeCloseTo(fox.paces.run(0.9), 1);
         });
-        // A rehearsal is for the first of them, or the one it names; nobody for a name it has not.
+        // A piece locks, the lanterns breathe: it looks out over the water where the ring runs.
+        mind.attend(0, 2.5, -6, time + 1.1, 0.8);
+        mind.foxes.forEach((fox) => expect(fox.attending).toEqual({
+            x: 0, y: 2.5, z: -6, until: time + 1.1, weight: 0.8,
+        }));
+        // A rehearsal is for the fox, or the one it names; nobody for a name it has not.
         time = run(mind, time, 4);
-        mind.rehearse(['Sit'], time, 1);
-        expect(mind.foxes.map((fox) => fox.mode)).toEqual(['gait', 'idle']);
-        expect(mind.foxes[1].clip).toBe('Sit');
-        mind.rehearse(['Greet'], time);
-        expect(mind.foxes.map((fox) => fox.clip)).toEqual(['Greet', 'Sit']);
-        expect(() => mind.rehearse(['Sit'], time, 5)).not.toThrow();
+        mind.rehearse(['Sit'], time);
+        expect(mind.foxes.map((fox) => [fox.mode, fox.clip])).toEqual([['idle', 'Sit']]);
+        expect(() => mind.rehearse(['Greet'], time, 5)).not.toThrow();
         run(mind, time, 1);
-        expect(mind.foxes.map((fox) => fox.clip)).toEqual(['Greet', 'Sit']);
+        expect(mind.foxes.map((fox) => fox.clip)).toEqual(['Sit']);
     });
 
-    it('leaves the one ahead room: coming up behind a fox that has stopped, the other stops short of it', () => {
+    it('keeps on dry ground, out of the lanterns and whole, through ten quiet minutes of the garden', () => {
         const mind = makeMind();
-        const [a, b] = mind.foxes;
-        const { length } = mind.course;
-        const gap = () => (((a.s - b.s) % length) + length) % length;
-        // The first sits a long while, well away from the stopping places; the second is put
-        // six metres behind it and comes on.
-        a.s = (mind.course.stations[0] + mind.course.stations[1]) / 2;
-        b.s = a.s - 6;
-        mind.rehearse(['Sit', 'Sit', 'Sit', 'Sit'], 0, 0);
-        let least = Infinity;
-        const did = new Set();
-        const time = run(mind, 0, 14, REST, () => {
-            least = Math.min(least, gap());
-            if (b.mode === 'idle') did.add(b.clip);
-        });
-        // It pulled up a fox's length and a little behind, made a stop of the wait, and what it
-        // did there was not a hunt (whose leap would land it on the other).
-        expect(a.mode).toBe('idle');
-        expect(did.size).toBeGreaterThan(0);
-        expect(least).toBeGreaterThan(2.3);
-        expect(gap()).toBeLessThan(3.2);
-        expect(between(a, b)).toBeGreaterThan(2);
-        expect(did.has('Pounce')).toBe(false);
-        // When the first goes on, so does the second, and it does not close up on it.
-        const from = b.s;
-        a.leaveIdle();
-        run(mind, time, 20, REST, () => { least = Math.min(least, gap()); });
-        expect(least).toBeGreaterThan(2.3);
-        expect(b.s - from).toBeGreaterThan(3);
-        // Running, both at the pace the chain gives them, the one behind keeps off its heels.
-        run(mind, time + 20, 12, { power: 0.9, surge: 0.5 }, () => { least = Math.min(least, gap()); });
-        expect(least).toBeGreaterThan(2.3);
-    });
-
-    it('keeps the two apart, on dry ground and whole, through ten quiet minutes of the garden', () => {
-        // (Each leaves the other room along the course, so they are never in one place; the
-        // nearest they come is passing each other on the two lanes, shoulder to shoulder.)
-        const mind = makeMind();
-        const [a, b] = mind.foxes;
         const wrong = [];
-        const stops = [0, 0];
-        const was = ['gait', 'gait'];
-        let closest = Infinity;
+        const stops = [0];
+        const was = ['gait'];
         run(mind, 0, 600, REST, (m, now) => {
-            const far = between(a, b);
-            closest = Math.min(closest, far);
-            if (!(far > 0.4)) wrong.push(`${now.toFixed(1)} s: ${far.toFixed(2)} m apart`);
-            // Neither is ever in a lantern.
+            // It is never in a lantern.
             m.foxes.forEach((fox, i) => {
                 LANTERNS.forEach((lantern) => {
                     if (!(Math.hypot(fox.pose.x - lantern.x, fox.pose.z - lantern.z) > 1)) {
@@ -584,11 +486,10 @@ describe('sakura fox mind: the pair', () => {
             });
         });
         expect(wrong.slice(0, 5)).toEqual([]);
-        expect(closest).toBeGreaterThan(0.4);
-        // Both went on round and stopped by the lanterns a good many times meanwhile.
+        // It went on round and stopped by the lanterns a good many times meanwhile.
         stops.forEach((count) => expect(count).toBeGreaterThan(8));
         mind.foxes.forEach((fox, i) => {
-            expect(fox.s - SAKURA_FOX_PAIR[i].start * mind.course.length).toBeGreaterThan(mind.course.length);
+            expect(fox.s - SAKURA_FOX_PLANS[i].start * mind.course.length).toBeGreaterThan(mind.course.length);
         });
     });
 });

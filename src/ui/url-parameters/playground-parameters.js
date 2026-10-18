@@ -124,19 +124,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'foxWhich',
-        category: 'Playground',
-        scope: 'playground.html — sakura-twilight',
-        description: 'Which of the two foxes foxCam follows and foxAct stops.',
-        values: '0 (the larger) or 1.',
-        defaultValue: '0.',
-        example: 'foxWhich=1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>; needs foxCam or foxAct.',
-        sources: [
-            'src/playground/effects/sakura-twilight.effect.js',
-        ],
-    },
-    {
         name: 'aerialH',
         category: 'Playground',
         scope: 'playground.html — odyssey-world',

@@ -1,11 +1,11 @@
 /**
- * Sakura Twilight — the two foxes, drawn.
+ * Sakura Twilight — the fox, drawn.
  *
  * The model is the garden's red fox (assets/sakura-fox.glb: the glTF sample fox, rounded and
  * put on the fox rig by scripts/sakura/rig-fox.mjs — see assets/ATTRIBUTION.md). It carries no
- * clips: every frame each fox's pose, resolved by the pair's mind (sakura-fox-mind.js), is
- * solved by the rig (sakura-fox-rig.js on ../shared/fox-rig.js) and the rotations are copied
- * onto its bones.
+ * clips: every frame the fox's pose, resolved by its mind (sakura-fox-mind.js), is solved by
+ * the rig (sakura-fox-rig.js on ../shared/fox-rig.js) and the rotations are copied onto its
+ * bones.
  *
  * It is lit by the garden's own rig — the moon, the violet sky, the lanterns it sits beside —
  * instead of scene lights, so it sits in the picture on both backends. Its coat is fur, not
@@ -25,7 +25,7 @@ import {
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import { SAKURA_STONE_LANTERNS } from './sakura-composition.js';
 import { sakuraPathZ, sakuraTerrainHeight } from './sakura-terrain.js';
-import { SAKURA_FOX_PAIR, SakuraFoxMind } from './sakura-fox-mind.js';
+import { SAKURA_FOX_PLANS, SakuraFoxMind } from './sakura-fox-mind.js';
 import { SAKURA_FOX_BONES, SAKURA_FOX_MARKS, createSakuraFoxRig } from './sakura-fox-rig.js';
 
 /** Shells of fur over the skin at each quality (0: the coat is painted on the skin). */
@@ -90,8 +90,8 @@ export class SakuraFoxes {
          * the petal simulation, which lifts whatever lies there (each lives a fifth of a second).
          */
         this.kicks = [];
-        /** How far their eyes are shut (one number for the pair would blink them together). */
-        this.uEyes = [uniform(0), uniform(0)];
+        /** How far each fox's eyes are shut. */
+        this.uEyes = SAKURA_FOX_PLANS.map(() => uniform(0));
     }
 
     own(resource) {
@@ -234,7 +234,7 @@ export class SakuraFoxes {
         const shadeMaterial = this.createShadeMaterial();
         let coats = null;
         let warned = false;
-        SAKURA_FOX_PAIR.forEach((plan, index) => {
+        SAKURA_FOX_PLANS.forEach((plan, index) => {
             const model = SkeletonUtils.clone(this.fox.scene);
             model.name = `SakuraFoxModel ${index}`;
             const skins = [];
@@ -248,7 +248,7 @@ export class SakuraFoxes {
                     material: materials.skin, castShadow: false, receiveShadow: false, frustumCulled: false,
                 });
                 if (!materials.fur) return;
-                // (Both foxes are the same mesh: one geometry of shells does for the pair.)
+                // (Every fox is the same mesh: one geometry of shells does for them all.)
                 if (!coats) coats = this.own(shelled(skin.geometry, this.shells));
                 const fur = new THREE.SkinnedMesh(coats, materials.fur);
                 fur.name = `SakuraFoxFur ${index}`;
@@ -329,25 +329,25 @@ export class SakuraFoxes {
         const hush = read(frame.hush);
         const moon = read(frame.moon);
         const lanterns = read(frame.lanterns);
-        // The wind dies and the lanterns burn low: they sleep; when it stirs again they wake.
+        // The wind dies and the lanterns burn low: it sleeps; when it stirs again it wakes.
         if (hush > 0.5 && !mind.asleep) mind.sleep(time);
         else if (hush < 0.2 && mind.asleep) mind.wake(time);
         if (!mind.asleep) {
-            // A hard gust startles them once; they settle before it can happen again.
+            // A hard gust startles it once; it settles before it can happen again.
             this.startled = Math.max(0, this.startled - dt);
             if (gust > 0.6 && this.startled === 0) {
                 this.startled = 5;
                 mind.startle(1);
             }
-            // Four lines flare the moon: they leap for it.
+            // Four lines flare the moon: it leaps for it.
             if (moon > 0.85 && signals.moon <= 0.85) mind.pounce(time);
-            // A piece locks and the lanterns breathe: they look up from what they are doing,
-            // out over the water where the ring runs.
+            // A piece locks and the lanterns breathe: it looks up from what it is doing, out
+            // over the water where the ring runs.
             if (lanterns > signals.lanterns + 0.12) mind.attend(0, 2.5, -6, time + 1.1, 0.8);
         }
         signals.moon = moon;
         signals.lanterns = lanterns;
-        // The stream of petals a chain winds up sets them running.
+        // The stream of petals a chain winds up sets it running.
         mind.step(dt, time, { power: read(frame.heat) * 0.9, surge: 0 });
         // What a fox does to the petals lying where it is.
         this.kicks = this.kicks.filter((kick) => {
