@@ -103,7 +103,8 @@ export async function completeOdysseyLevel(mode, results) {
         });
     }
 
-    await flourish;
+    // The ceremony arrives through the showpiece's afterglow when the well played one.
+    if (await flourish === true) finalResults.showpiece = true;
     if (!mode._isLevelSessionCurrent(session, retirementGeneration)) return;
 
     // Show results

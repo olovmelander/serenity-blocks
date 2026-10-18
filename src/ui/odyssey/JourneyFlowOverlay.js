@@ -92,6 +92,7 @@ export function createJourneyFlowOverlay({
     reducedMotion = false,
     nowPlaying = false,
     orientation = [],
+    entrance = 'direct',
     onChoose = () => {},
     onAutoContinueChange = () => {},
 } = {}) {
@@ -103,6 +104,8 @@ export function createJourneyFlowOverlay({
     modal.id = 'odyssey-flow-overlay';
     modal.dataset.odysseyWheelLock = 'true';
     modal.dataset.variant = variant;
+    // 'afterglow': the well just played its showpiece; the scrim dims slowly over its last light.
+    modal.dataset.entrance = entrance;
     modal.dataset.reducedMotion = String(reducedMotion);
     modal.dataset.crossesChapter = String(crossesChapter);
     modal.role = 'dialog';

@@ -290,6 +290,20 @@
         rgba(6, 5, 16, 0.84);
     animation: ody-flow-scrim-in 700ms var(--ody-ease) both;
 }
+/* Afterglow: the well just played its showpiece. The scrim dims slowly over its last light and
+   the ceremony's words arrive a beat later, so the reel hands over instead of cutting. */
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony']::before {
+    animation: ody-flow-scrim-in 1300ms var(--ody-ease) both;
+}
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__eyebrow { animation-delay: 360ms; }
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__achievement { animation-delay: 440ms; }
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__stars span {
+    animation-delay: calc(700ms + var(--i, 0) * 170ms);
+}
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__tally { animation-delay: 940ms; }
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__star-notes { animation-delay: 1080ms; }
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__next { animation-delay: 1220ms; }
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__preference { animation-delay: 860ms; }
 .ody-flow[data-layout='ceremony'] .ody-flow__content { width: min(660px, 100%); }
 /* Centre the ceremony when it fits; auto margins collapse to zero instead of hiding its top. */
 .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__content { margin: auto; }
