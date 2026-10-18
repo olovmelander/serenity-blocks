@@ -2,13 +2,14 @@
 /**
  * Stillwater — the troll as he stands in the scene: his sculpt, his staff and his lantern.
  *
- * The sculpt (assets/troll-lod0..3.glb, rebuilt in Blender from the theme's own troll by
- * scripts/blender/stillwater_figures.py: a solid body under a cloak of hair to his knees, a
- * skeleton of twenty-one bones) is posed every frame by his body (stillwater-troll-body.js). The
- * file's colour says what each vertex is (skin, how shut in it is, pelt, the pelt's own shade), and
- * he is shaded as part of the place: dark moss and lichen for his hair, earth for his skin, his
- * nose and hands warm in his lantern's light, an edge of moonlight on the shag. The cloak hangs
- * free below his shoulders: it sways in the air and swings after him when he moves.
+ * His body (assets/troll-lod0..3.glb, drawn clean from numbers in Blender in the character of the
+ * theme's own sculpt by scripts/blender/stillwater_assets.py: smooth masses under a mane of matted
+ * moss locks, a moss beard and brows, a loincloth, a few mushrooms in his moss; a skeleton of
+ * twenty-one bones) is posed every frame by stillwater-troll-body.js. The file's colour says what
+ * each vertex is (his ruddy face, his hide, moss and the shade of its lock, leather, an eye, a
+ * mushroom) and how shut in it is, and he is shaded in a few big masses as part of the place: moss
+ * for his mane, earth for his hide, his face warm in his lantern's light, an edge of moonlight on
+ * his outline. The mane hangs free below his shoulders: it sways in the air and swings after him.
  *
  * The lantern hangs from the crook of a gnarled staff he walks with; its flame is the shared
  * `lanternAt` uniform, so the bank, the troll and the water all take the same light.
@@ -20,6 +21,7 @@ import {
     abs,
     attribute,
     cameraPosition,
+    clamp,
     cross,
     dFdx,
     dFdy,
@@ -64,49 +66,48 @@ import { Spring3 } from './stillwater-motion.js';
 const TROLL_URLS = [trollLod0Url, trollLod1Url, trollLod2Url, trollLod3Url];
 
 /**
- * Ways to colour him (scene-linear albedos; `hour` = the share of the hour's own palette in them,
- * `lampWhite` = how far his lantern's light on him is whitened, `fungus` = glowing caps in his moss).
+ * Ways to colour him (scene-linear albedos: `skin` his ruddy face, `bare` his hide, `hide` the
+ * leather of his loincloth, `mossLo`/`mossHi` the darkest and palest of his locks; `hour` = the share
+ * of the hour's own palette in them, `lampWhite` = how far his lantern's light on him is whitened,
+ * `fungus` = how much the mushrooms in his moss glow).
  */
-/** How he is coloured unless asked otherwise: moss and earth, with caps in his moss. */
+/** How he is coloured unless asked otherwise: moss and earth, with glowing mushrooms in his moss. */
 export const DEFAULT_LOOK = 'forest';
 
 export const TROLL_LOOKS = Object.freeze({
-    // As first rebuilt: everything near the hour's own moss and stone.
+    // Everything near the hour's own moss and stone.
     stone: Object.freeze({
         skin: [0.21, 0.165, 0.13],
-        bare: [0.19, 0.15, 0.12],
-        hide: [0.1, 0.085, 0.07],
+        bare: [0.17, 0.15, 0.12],
+        hide: [0.08, 0.068, 0.056],
         mossLo: [0.033, 0.09, 0.031],
         mossHi: [0.07, 0.165, 0.077],
-        lichen: [0.24, 0.26, 0.22],
         hour: 0.5,
         lampWhite: 0,
         lampGain: 1,
         fungus: 0,
     }),
-    // Earth and moss: a rosier hide on his nose and hands, dark leather, deep moss, pale sage lichen.
+    // Earth and moss: a ruddy face, an earthen hide, dark leather, deep moss.
     earth: Object.freeze({
-        skin: [0.36, 0.2, 0.16],
-        bare: [0.24, 0.17, 0.13],
-        hide: [0.05, 0.03, 0.02],
-        mossLo: [0.04, 0.1, 0.025],
-        mossHi: [0.13, 0.25, 0.07],
-        lichen: [0.42, 0.46, 0.38],
+        skin: [0.34, 0.19, 0.15],
+        bare: [0.2, 0.165, 0.125],
+        hide: [0.075, 0.045, 0.028],
+        mossLo: [0.035, 0.09, 0.024],
+        mossHi: [0.12, 0.24, 0.07],
         hour: 0.25,
-        lampWhite: 0.7,
+        lampWhite: 0.82,
         lampGain: 0.65,
         fungus: 0,
     }),
-    // Earth and moss, and glowing caps growing in his moss that wake with the chain.
+    // Earth and moss, and small mushrooms growing in his moss that glow and wake with the chain.
     forest: Object.freeze({
-        skin: [0.36, 0.2, 0.16],
-        bare: [0.24, 0.17, 0.13],
-        hide: [0.05, 0.03, 0.02],
-        mossLo: [0.04, 0.1, 0.025],
-        mossHi: [0.13, 0.25, 0.07],
-        lichen: [0.42, 0.46, 0.38],
+        skin: [0.34, 0.19, 0.15],
+        bare: [0.2, 0.165, 0.125],
+        hide: [0.075, 0.045, 0.028],
+        mossLo: [0.035, 0.09, 0.024],
+        mossHi: [0.12, 0.24, 0.07],
         hour: 0.25,
-        lampWhite: 0.7,
+        lampWhite: 0.82,
         lampGain: 0.65,
         fungus: 1,
     }),
@@ -171,7 +172,6 @@ export function createTroll(u, opts = {}) {
         hide: uniform(new THREE.Color()),
         mossLo: uniform(new THREE.Color()),
         mossHi: uniform(new THREE.Color()),
-        lichen: uniform(new THREE.Color()),
         hour: uniform(0.5),
         lampWhite: uniform(0),
         lampGain: uniform(1),
@@ -201,15 +201,21 @@ export function createTroll(u, opts = {}) {
         const skin = col.x;
         const ao = col.y;
         const hair = col.z;
-        const shade = col.w;
+        const kind = col.w;
         const M = vModel;
-        // Strands: grooves that run down his hair, and lichen on what faces the sky.
-        // (Clumps of dreadlocks with fine strands in them, both running down him.)
-        const clump = u.noise(vec2(M.x.mul(9.0).add(M.z.mul(7.0)), M.y.mul(1.6))).r;
-        const strand = u.noise(vec2(M.x.mul(38.0).add(M.z.mul(31.0)), M.y.mul(4.0))).g;
-        const groove = smoothstep(0.15, 0.8, clump.mul(0.6).add(strand.mul(0.4)));
-        // The strands in relief (a surface-gradient bump from the screen derivatives of their height).
-        const height = clump.mul(0.45).add(strand.mul(0.55)).mul(hair).mul(0.014);
+        // What he is (the file's colour: skin 1 his ruddy face and ears, 0.65 his hide, 0.2 an eye;
+        // moss, with its lock's shade in `kind` (0..0.6); kind 0.7 an eye, 1 a mushroom; nothing = the
+        // leather of his loincloth).
+        const notHair = float(1.0).sub(hair);
+        const fleshy = smoothstep(0.3, 0.55, skin);
+        const rosy = smoothstep(0.75, 0.95, skin);
+        const eye = smoothstep(0.1, 0.16, skin).mul(float(1.0).sub(smoothstep(0.24, 0.3, skin)))
+            .mul(smoothstep(0.55, 0.65, kind)).mul(notHair);
+        const cap = smoothstep(0.85, 0.95, kind).mul(notHair).mul(float(1.0).sub(fleshy));
+        // Fine strands down his locks, in light relief (the locks themselves are the shape; a
+        // surface-gradient bump from the screen derivatives of their height).
+        const strand = u.noise(vec2(M.x.mul(46.0).add(M.z.mul(39.0)), M.y.mul(5.0))).g;
+        const height = strand.mul(hair).mul(0.004);
         const dpx = dFdx(P);
         const dpy = dFdy(P);
         const r1 = cross(dpy, N0);
@@ -217,25 +223,20 @@ export function createTroll(u, opts = {}) {
         const det = dot(dpx, r1);
         const grad = r1.mul(dFdx(height)).add(r2.mul(dFdy(height))).mul(sign(det));
         const N = normalize(abs(det).mul(N0).sub(grad)).toVar();
-        const fleck = u.noise(vec2(M.x.mul(21.0).sub(M.z.mul(17.0)), M.y.mul(13.0))).g;
-        const upward = smoothstep(-0.1, 0.8, N.y);
-        // Old moss and grey lichen (lighter than the bark they grow on), darker down the grooves.
-        // (His colours are his own, leaned a share toward the hour's so he belongs to the night.)
+        const upward = smoothstep(-0.2, 0.9, N.y);
+        // Moss: each lock its own shade, paler where it faces the sky, a little darker down its
+        // strands. (His colours are his own, leaned a share toward the hour's so he belongs to the night.)
         const { hour } = look;
         const mossLo = mix(look.mossLo, u.moss.mul(1.1), hour);
         const mossHi = mix(look.mossHi, u.moss.mul(1.6).add(u.stone.mul(0.5)), hour);
-        const moss = mix(mossLo, mossHi, smoothstep(0.3, 0.8, groove.mul(0.6).add(upward.mul(0.5))));
-        const lichen = mix(look.lichen, u.stone.mul(1.8), hour);
-        const pelt = mix(moss, lichen, smoothstep(0.62, 0.84, fleck).mul(upward.mul(0.6).add(0.4)))
-            .mul(groove.mul(0.85).add(0.32))
-            .mul(shade.mul(0.45).add(0.8));
-        // What he is (the file's colour: skin 1 on his face, ears, hands and feet, 0.65 on his bare
-        // arms, legs and belly; pelt; neither = the leather of his loincloth).
-        const fleshy = smoothstep(0.3, 0.55, skin);
-        const rosy = smoothstep(0.75, 0.95, skin);
+        const shadeOfLock = clamp(kind.div(0.6).mul(0.7).add(upward.mul(0.45)).sub(0.12), 0.0, 1.0);
+        const pelt = mix(mossLo, mossHi, shadeOfLock).mul(strand.mul(0.3).add(0.82));
         const leather = mix(look.hide, u.stone, hour.mul(0.6));
         const flesh = mix(mix(look.bare, look.skin, rosy), u.stone.mul(1.3), hour.mul(0.6));
-        const albedo = mix(mix(leather, pelt, hair), flesh, fleshy.mul(float(1.0).sub(hair))).mul(ao.mul(0.85).add(0.15));
+        const body = mix(mix(leather, pelt, hair), flesh, fleshy.mul(notHair));
+        // Dark wet eyes; pale mushroom caps.
+        const withParts = mix(mix(body, vec3(0.012, 0.009, 0.007), eye), vec3(0.42, 0.4, 0.33), cap);
+        const albedo = withParts.mul(ao.mul(0.85).add(0.15));
         const lit = swLight(u, albedo, N, P, { wrap: 0.6, local: look.lampGain.mul(0.25) }).toVar();
         // His own lantern, close by: it warms what faces it and falls away fast, so the side of
         // him the moon has stays cool and mossy.
@@ -243,7 +244,7 @@ export function createTroll(u, opts = {}) {
         const dLantern = length(toLantern);
         const facingLantern = max(dot(N, toLantern.div(max(dLantern, 1e-3))), 0.0);
         // (His lantern's light on him, a share whitened so his own colours survive it.)
-        const lampOnHim = mix(u.lantern, vec3(1.0, 0.82, 0.62).mul(swLuma(u.lantern).mul(1.3)), look.lampWhite)
+        const lampOnHim = mix(u.lantern, vec3(1.0, 0.9, 0.78).mul(swLuma(u.lantern).mul(1.25)), look.lampWhite)
             .mul(look.lampGain);
         lit.addAssign(albedo.mul(lampOnHim).mul(facingLantern.mul(0.85).add(0.15))
             .div(dLantern.mul(dLantern).mul(1.6).add(1.0)).mul(u.lanternAt.w)
@@ -256,22 +257,24 @@ export function createTroll(u, opts = {}) {
         const toMoon = max(dot(N, u.moonDir).mul(0.5).add(0.5), 0.0);
         lit.addAssign(u.moonLight.mul(e3).mul(toMoon).mul(0.8).mul(hair.mul(0.6).add(0.4))
             .mul(u.breath.mul(0.5).add(0.5)));
-        // Wet moss catches the moon along the strands.
+        // Wet moss catches the moon a little; his eyes catch it and his lantern as two small lights.
         const R = V.sub(N.mul(dot(V, N).mul(2.0)));
-        const glint = max(dot(R, u.moonDir), 0.0).pow(14.0).mul(groove.mul(0.8).add(0.2)).mul(hair);
-        lit.addAssign(u.moonLight.mul(glint).mul(0.22).mul(u.breath.mul(0.5).add(0.5)));
+        const glint = max(dot(R, u.moonDir), 0.0).pow(14.0).mul(strand.mul(0.6).add(0.4)).mul(hair);
+        lit.addAssign(u.moonLight.mul(glint).mul(0.12).mul(u.breath.mul(0.5).add(0.5)));
         const toLamp = u.lanternAt.xyz.sub(P);
         const lampD = length(toLamp);
-        const lampRim = e3.mul(max(dot(N0, toLamp.div(max(lampD, 1e-3))), 0.0)).div(lampD.mul(lampD).mul(0.4).add(1.0));
+        const lampDir = toLamp.div(max(lampD, 1e-3));
+        const catchLight = max(dot(R, lampDir), 0.0).pow(40.0).mul(u.lanternAt.w).mul(1.6)
+            .add(max(dot(R, u.moonDir), 0.0).pow(30.0).mul(0.5));
+        lit.addAssign(mix(u.moonLight, u.lantern, 0.6).mul(catchLight).mul(eye));
+        const lampRim = e3.mul(max(dot(N0, lampDir), 0.0)).div(lampD.mul(lampD).mul(0.4).add(1.0));
         lit.addAssign(lampOnHim.mul(lampRim).mul(u.lanternAt.w).mul(albedo.mul(1.5).add(0.25)));
-        // Fungus in his moss: tiny glowing caps on what faces the sky, the colour of the ones on the
-        // banks, faint at rest and waking with the chain as theirs do.
-        const spore = u.noise(vec2(M.x.mul(47.0).add(M.z.mul(53.0)), M.y.mul(29.0).sub(M.x.mul(11.0)))).r;
-        const caps = smoothstep(0.74, 0.84, spore).mul(smoothstep(0.1, 0.7, N.y)).mul(hair).mul(ao.mul(0.5).add(0.5));
+        // The mushrooms in his moss glow the colour of the ones on the banks, faint at rest and
+        // waking with the chain as theirs do.
         const wake = u.caps.y.mul(0.85).add(0.15);
-        lit.addAssign(mix(u.crest, u.firefly, 0.3).mul(caps).mul(wake).mul(look.fungus)
+        lit.addAssign(mix(u.crest, u.firefly, 0.3).mul(cap).mul(wake).mul(look.fungus)
             .mul(u.breath)
-            .mul(3.0));
+            .mul(1.6));
         return vec4(swFog(u, lit, P), 1.0);
     })();
 
@@ -283,7 +286,8 @@ export function createTroll(u, opts = {}) {
     staffMaterial.fragmentNode = Fn(() => {
         const P = positionWorld;
         const N = normalize(normalWorld);
-        const grain = u.noise(vec2(positionGeometry.y.mul(3.0), positionGeometry.x.add(positionGeometry.z).mul(40.0))).r;
+        const G = positionGeometry;
+        const grain = u.noise(vec2(G.y.mul(3.0), G.x.add(G.z).mul(40.0))).r;
         const wood = u.bark.mul(grain.mul(0.5).add(0.65)).add(vec3(0.02, 0.014, 0.008));
         return vec4(swFog(u, swLight(u, wood, N, P, { wrap: 0.6, local: 0.8 }), P), 1.0);
     })();
@@ -373,7 +377,7 @@ export function createTroll(u, opts = {}) {
     /** Colour him one of TROLL_LOOKS (by name). */
     part.setLook = (name) => {
         const preset = TROLL_LOOKS[name] || TROLL_LOOKS[DEFAULT_LOOK];
-        ['skin', 'bare', 'hide', 'mossLo', 'mossHi', 'lichen'].forEach((key) => {
+        ['skin', 'bare', 'hide', 'mossLo', 'mossHi'].forEach((key) => {
             const [r, g, b] = preset[key];
             look[key].value.setRGB(r, g, b);
         });
