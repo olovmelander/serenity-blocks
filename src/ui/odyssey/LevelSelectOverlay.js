@@ -10,7 +10,8 @@
 
 /**
  * Build + mount the level-select shell.
- * @returns {HTMLElement} the container (caller wires #odyssey-back-btn and populates chapters)
+ * @returns {HTMLElement} the container (caller wires #odyssey-back-btn and the new-journey
+ *   confirmation via odyssey-new-journey.js, and populates chapters)
  */
 export function createLevelSelectOverlay() {
     const container = document.createElement('div');
@@ -29,6 +30,18 @@ export function createLevelSelectOverlay() {
         <div class="odyssey-chapters" id="odyssey-chapters"></div>
         <div class="odyssey-actions">
             <button id="odyssey-back-btn" class="odyssey-btn">Back to menu</button>
+            <button id="odyssey-new-journey-btn" class="odyssey-btn odyssey-btn--quiet"
+                aria-expanded="false" aria-controls="odyssey-new-journey-confirm">Start a new journey</button>
+            <div id="odyssey-new-journey-confirm" class="odyssey-new-journey" role="group"
+                aria-label="Start a new journey" hidden>
+                <p class="odyssey-new-journey__copy">This erases your orbs, stars and gems and begins again at
+                    Orb 1. Themes you have earned stay yours.</p>
+                <div class="odyssey-new-journey__actions">
+                    <button id="odyssey-new-journey-confirm-btn"
+                        class="odyssey-btn odyssey-btn--danger">Erase and start over</button>
+                    <button id="odyssey-new-journey-cancel-btn" class="odyssey-btn">Keep my journey</button>
+                </div>
+            </div>
         </div>
     `;
 

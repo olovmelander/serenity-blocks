@@ -575,6 +575,10 @@
 }
 
 #odyssey-level-select .odyssey-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
     margin: 26px 0 0;
 }
 
@@ -603,6 +607,58 @@
 #odyssey-level-select .odyssey-btn:focus-visible {
     outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
     outline-offset: 3px;
+}
+
+#odyssey-level-select .odyssey-btn[hidden] {
+    display: none;
+}
+
+#odyssey-level-select .odyssey-btn--quiet {
+    border-color: var(--sb-line);
+    background: none;
+    color: var(--sb-text-muted);
+}
+
+#odyssey-level-select .odyssey-btn--danger {
+    border-color: rgba(var(--sb-coral-rgb), 0.6);
+    color: var(--sb-text);
+    background: rgba(var(--sb-coral-rgb), 0.12);
+}
+
+#odyssey-level-select .odyssey-btn--danger:hover {
+    background: rgba(var(--sb-coral-rgb), 0.22);
+    border-color: rgba(var(--sb-coral-rgb), 0.8);
+}
+
+/* Start a new journey: the consequence sits beside the choice, and only the second press erases. */
+#odyssey-level-select .odyssey-new-journey {
+    display: flex;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 18px;
+    margin: 6px 0 0;
+    padding: 14px 16px;
+    border-radius: var(--sb-r-sm);
+    border: 1px solid var(--sb-line);
+    background: rgba(var(--sb-cream-rgb), 0.03);
+}
+
+#odyssey-level-select .odyssey-new-journey[hidden] {
+    display: none;
+}
+
+#odyssey-level-select .odyssey-new-journey__copy {
+    flex: 1 1 32ch;
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 500 0.875rem / 1.5 var(--sb-font-text);
+}
+
+#odyssey-level-select .odyssey-new-journey__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
 }
 
 /* ==================================================================================
