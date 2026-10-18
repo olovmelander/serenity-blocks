@@ -892,6 +892,11 @@ export function createEarthCoreEnvironment(options = {}) {
         // so _collectOpacityTargets reaches TSL materials (fixes the 16→17 confetti pop
         // and the magma assets bleeding into frames 17–19).
         uOpacity: uniform(1),
+        // THE VAULT LEAVES WITH THE CAVERN (audit 2026-10-18). The manager's ecotone fades the
+        // vault over +-0.0222 like every seam, so for the first stretch of chapter 2 the brown
+        // dome hung over the seabed's horizon — a cavern sky under the sea, met by the bed along
+        // a hard line. This closes it just past the 1->2 boundary, while the quench is still dense.
+        uVaultExit: uniform(1),
         // PERF (QW9): baked-bounce strength for the lit rock material. The 4 crater
         // accents + per-cluster magma-bounce PointLights were cut; this drives a baked
         // warm emissive floor on the molten-pocket/column material so the rock still
@@ -1658,7 +1663,7 @@ function createVolcanoBackground(uniforms) {
         uniforms.uPulseIntensity,
         // The crack at the crown widens with the climb: uDescent is chapter-local progress
         // (0 at birth -> 1 at the crack) despite its legacy name.
-        { uAscent: uniforms.uDescent },
+        { uAscent: uniforms.uDescent, uExit: uniforms.uVaultExit },
     );
     return sphere;
 }
@@ -2195,6 +2200,9 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
                 THREE.MathUtils.smoothstep(local, 0.70, 0.86),
                 THREE.MathUtils.smoothstep(cameraProgress, 0.074, 0.086),
             );
+        }
+        if (uniforms.uVaultExit) {
+            uniforms.uVaultExit.value = 1 - THREE.MathUtils.smoothstep(cameraProgress, tEnd + 0.0005, tEnd + 0.005);
         }
     }
 

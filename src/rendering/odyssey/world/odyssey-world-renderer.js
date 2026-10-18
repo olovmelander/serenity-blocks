@@ -30,6 +30,8 @@ import {
     ODYSSEY_GROUND_STRATA,
 } from './odyssey-ground-palette.js';
 import { buildHeroCloudGeometry } from './odyssey-hero-clouds.js';
+import { noise2 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
+import { buildKelpGeometry, buildSpireGeometry, planOceanForms } from './odyssey-ocean-forms.js';
 import { buildCloudFieldGeometry } from './odyssey-cloud-field.js';
 import { CLOUD_FIELD_ANCHOR, ODYSSEY_CLOUD_FIELD_SPECS } from './odyssey-cloud-field-specs.js';
 import { buildForestTreeGeometry } from './odyssey-forest-geometry.js';
@@ -184,6 +186,14 @@ const GROUND_CLOUD_SHADOW = Object.freeze({
  * saturate the strip's window; REPLACING it with the fall line drew a pinstriped stone tent.)
  */
 const GROUND_SNOW_FALL_LINE = Object.freeze([0.25, 1.35]);
+/**
+ * THE HERO'S FLUTES (audit 2026-10-18, see `heroFields`): the two harmonics' counts around the
+ * cone (integers, so the pattern closes across the atan cut), how far the flute walls tilt the
+ * lighting normal, and how much of the round relief's crest strip the flutes take over.
+ */
+const HERO_FLUTES = Object.freeze([13, 29]);
+const HERO_FLUTE_DEPTH = 0.24;
+const HERO_CREST_RELIEF = 0.7;
 /**
  * Must match the bake's floor, or `openness` never reaches 0 in the deepest hollow.
  *
@@ -654,6 +664,19 @@ const FOREST_BAND_JITTER = 0.17;
  */
 /** Saturation gain applied to the far tone BEFORE the aerial haze — see the note at use. */
 const FOREST_FAR_PRESAT = 2.0;
+/**
+ * The forest's draw distance from the rail, PER TREE (audit 2026-10-18). Chunks used to switch
+ * on and off whole when their CENTRE crossed 1450 u, and a far chunk is 1,680 u wide, so ~500
+ * trees as close as ~830 u popped in or out together while scrolling (forest-stats capture:
+ * p 0.186 -> 0.190). Now each tree sinks into the ground across NEAR..FAR by its own
+ * distance, and a chunk draws while its nearest tree is inside FAR, i.e. it switches only
+ * where every tree in it is already sunk. Measured over Act II at 0.004 steps: about +3%
+ * forest vertices for about the same number of standing trees.
+ */
+const FOREST_DRAW_NEAR = 1450;
+const FOREST_DRAW_FAR = 1650;
+// Deeper than the tallest roster tree (~35 u) plus a crown overhanging a steep slope.
+const FOREST_FADE_SINK = 90;
 const FOREST_FLAT_NEAR = 220;
 const FOREST_FLAT_FAR = 950;
 // The backlit gold: the Ghibli glow, and the half of §1b R7 that a near tree can show.
@@ -1462,6 +1485,10 @@ export function createOdysseyWorld({
         // that it also caps the atlas's bandwidth to the near field is the bonus.
         const detailMelt = float(1)
             .sub(smoothstep(float(GROUND_MELT[0]), float(GROUND_MELT[1]), footprint)).toVar();
+        // The seabed's sand ripples are a 3.7 u stripe: they need ~4 px a period to read as
+        // ripples rather than moire, so they melt far sooner than the general grain (built here,
+        // on the root path, because the shore branch below may not take derivatives).
+        const bedRippleMelt = float(1).sub(smoothstep(float(0.35), float(1.6), footprint)).toVar();
         const tooth = atlas.a.div(float(atlasAvg[3])).toVar();
         // Signed and mean-zero, so a boundary it perturbs wanders without drifting.
         const edgeBreak = tooth.sub(1).toVar();
@@ -1524,18 +1551,67 @@ export function createOdysseyWorld({
             float(heroMassif.radius * 0.95),
             heroR,
         )).toVar();
-        const couloir = Fn(() => {
-            const c = float(0).toVar();
+        /**
+         * THE FLUTES (Odyssey audit 2026-10-18: "the peak reads as camouflage"). The fingers
+         * above organise the snowline, but the cone itself stayed smooth, so all the eye found on
+         * it up close was round blobs of rock and shadow from the ~450 u relief. Real alpine
+         * faces are FLUTED: narrow ribs and runnels down every fall line, catching the sun on one
+         * wall and holding shadow on the other, snow lying in the runnels and the ribs bare.
+         *
+         * Shaded, not sculpted (the height field is pinned by the rail's clearances and the
+         * bakes): `y` tilts the LIGHTING normal across the flutes, `z` is the rib (1 on a crest
+         * line, 0 in a runnel) that strips the snow to stone in streaks. Two integer harmonics
+         * keep the pattern seamless across the atan cut; the jitter and a slight twist with
+         * radius make the flutes meander as they descend. Same branch as the fingers: one atan,
+         * four trig, no derivative and no fetch.
+         */
+        const heroFields = Fn(() => {
+            const heroOut = vec3(0, 0, 0).toVar();
             If(heroW.greaterThan(0.001), () => {
-                const az = atan(heroRel.y, heroRel.x);
-                const fin = sin(az.mul(11).add(snowJitterRaw.mul(2.4)).add(heroR.mul(0.0045))).mul(0.62)
-                    .add(sin(az.mul(17).add(heroR.mul(0.006)).add(1.7)).mul(0.38));
+                const heroAz = atan(heroRel.y, heroRel.x);
+                const fin = sin(heroAz.mul(11).add(snowJitterRaw.mul(2.4)).add(heroR.mul(0.0045))).mul(0.62)
+                    .add(sin(heroAz.mul(17).add(heroR.mul(0.006)).add(1.7)).mul(0.38));
                 // -1 on a rib, +1 down a couloir; drawn rather than ramped (a narrow-ish window),
                 // so tongues read as painted shapes.
-                c.assign(smoothstep(float(-0.20), float(0.50), fin).mul(2).sub(1).mul(heroW));
+                const couloirSigned = smoothstep(float(-0.20), float(0.50), fin).mul(2).sub(1).mul(heroW);
+                const fluteAz = heroAz.add(snowJitterRaw.mul(0.30)).add(heroR.mul(0.0011));
+                const fluteArg1 = fluteAz.mul(HERO_FLUTES[0]).add(heroR.mul(0.0035));
+                const fluteArg2 = fluteAz.mul(HERO_FLUTES[1]).add(1.3);
+                const fluteWave = sin(fluteArg1).mul(0.6).add(sin(fluteArg2).mul(0.4));
+                const fluteWaveDaz = cos(fluteArg1).mul(0.6 * HERO_FLUTES[0])
+                    .add(cos(fluteArg2).mul(0.4 * HERO_FLUTES[1]));
+                // On the cone above the meadows only: no flutes on the skirt or the plateau.
+                const fluteW = heroW
+                    .mul(smoothstep(float(470), float(620), height))
+                    .mul(smoothstep(float(0.10), float(0.26), slope));
+                // Ribs come and go down the fall line: a slow wave in radius, offset per flute,
+                // breaks each rib into outcrops and lets each flute deepen and fade, so the cone
+                // reads as stone under snow rather than as pleated cloth.
+                const ribBreak = sin(heroR.mul(0.021).add(fluteArg1.mul(0.5)).add(snowJitterRaw.mul(3.1)))
+                    .mul(0.5).add(0.5);
+                heroOut.assign(vec3(
+                    couloirSigned,
+                    // d(rib)/d(azimuth), normalised to [-1, 1]
+                    sign(fluteWave).negate().mul(fluteWaveDaz)
+                        .div(0.6 * HERO_FLUTES[0] + 0.4 * HERO_FLUTES[1])
+                        .mul(fluteW)
+                        .mul(mix(float(0.35), float(1), ribBreak)),
+                    float(1).sub(abs(fluteWave)).mul(fluteW).mul(mix(float(0.6), float(1.05), ribBreak)),
+                ));
             });
-            return c;
+            return heroOut;
         })().toVar();
+        const couloir = heroFields.x;
+        // The lighting normal tilts across the flutes, along the cone's azimuthal tangent.
+        const heroTangent = vec3(heroRel.y.negate(), 0, heroRel.x).div(max(heroR, float(1)));
+        const litNormal = normalize(normal.sub(heroTangent.mul(heroFields.y.mul(HERO_FLUTE_DEPTH)))).toVar();
+        const fluteRib = smoothstep(float(0.80), float(0.95), heroFields.z).toVar();
+        // The hero's whole cone, wider than `heroW` (which ramps out from 0.55 of the radius).
+        const heroCrestW = float(1).sub(smoothstep(
+            float(heroMassif.radius * 0.80),
+            float(heroMassif.radius * 1.05),
+            heroR,
+        )).toVar();
         // The jitter halves on the hero (the fingers own its structure now), not elsewhere.
         const snowJitter = snowJitterRaw.sub(0.5).mul(mix(float(92), float(46), heroW));
         const snowHeight = height.add(snowJitter).add(edgeBreak.mul(9))
@@ -1568,13 +1644,18 @@ export function createOdysseyWorld({
             .mul(float(1).sub(smoothstep(
                 float(0.18),
                 float(0.40),
-                // `couloir` is +1 down a couloir, -1 on a rib, and already 0 off the massif.
+                // `couloir` is +1 down a couloir, -1 on a rib, and already 0 off the massif. On the
+                // hero the flutes now carve the stone, so the round relief crests strip far less.
                 crest.mul(mix(
                     float(1),
                     mix(float(GROUND_SNOW_FALL_LINE[1]), float(GROUND_SNOW_FALL_LINE[0]), couloir.mul(0.5).add(0.5)),
                     heroW,
-                )),
-            ).mul(float(GROUND_SNOW_CREST_STRIP))));
+                ))
+                    // over the whole hero cone, not only its fingered core (orbs 29-30 sit outside it)
+                    .mul(float(1).sub(heroCrestW.mul(HERO_CREST_RELIEF))),
+            ).mul(float(GROUND_SNOW_CREST_STRIP))))
+            // ...and the flute ribs are scoured to stone, in streaks down the fall line.
+            .mul(float(1).sub(fluteRib.mul(0.85)));
         // The SLOPE half takes the same patch rule as the altitude half below: on the massif's
         // mid flanks (slope 0.2-0.35, the whole ch4 view) a 0.17..0.40 ramp made every fragment
         // part stone, part grass — the khaki. Off the massif the ramp is kept as it was.
@@ -1665,9 +1746,16 @@ export function createOdysseyWorld({
          * of four authored amounts. The `mix(1, ratio, t)` form keeps the Wolfire mean of 1 at
          * every distance, so melting the detail away cannot brighten or darken the island.
          */
+        // Under the sea the sand's straight stripes give way to the seabed's own ripple field (the
+        // shore branch below), which melts before it can moire; this grain only keeps the beach.
+        const sandTooth = mix(
+            atlas.b.div(float(atlasAvg[2])),
+            float(1),
+            smoothstep(float(ODYSSEY_SEA_LEVEL - 4), float(ODYSSEY_SEA_LEVEL - 30), height),
+        );
         const toothMat = atlas.r.div(float(atlasAvg[0])).mul(kGrass)
             .add(atlas.g.div(float(atlasAvg[1])).mul(kRock))
-            .add(atlas.b.div(float(atlasAvg[2])).mul(kSand))
+            .add(sandTooth.mul(kSand))
             .add(tooth.mul(kSnow));
         const toothAmt = float(GROUND_TOOTH.grass).mul(kGrass)
             .add(float(GROUND_TOOTH.rock).mul(kRock))
@@ -1717,8 +1805,39 @@ export function createOdysseyWorld({
                 // (mean-preserving, like the tooth).
                 const seabed = smoothstep(float(ODYSSEY_SEA_LEVEL - 4), float(ODYSSEY_SEA_LEVEL - 30), height)
                     .mul(kSand);
-                const bedSpeckle = mix(float(1), atlas.b.div(float(atlasAvg[2])), float(0.55));
-                a.assign(mix(a, vec3(0.20, 0.31, 0.28).mul(bedSpeckle), seabed.mul(0.75)));
+                /**
+                 * A FIELD, NOT A CARPET (Odyssey audit 2026-10-18). The bed read the atlas's sand
+                 * channel straight — parallel crests every 3.7 u, repeating every 22 u tile — at
+                 * +-40 % with no distance melt: from the rail it was knitted carpet behind every
+                 * chapter-2 orb, and at grazing angles a moire. Now the crests bend through a slow
+                 * domain warp and turn ~60 degrees in the patches where another current ran,
+                 * melt by the footprint before they can alias, and the bed breaks into sea-grass
+                 * meadows and pale sand fans a few tens of metres across. Two `noise2` calls and
+                 * two pinned fetches, on seabed fragments only.
+                 */
+                const bedXZ = positionWorld.xz;
+                const bendX = noise2(bedXZ.div(float(26)).add(vec2(5.1, 1.7))).sub(0.5);
+                const bendZ = noise2(bedXZ.div(float(26)).add(vec2(9.7, 3.3))).sub(0.5);
+                const crestUv = bedXZ.div(float(GROUND_ATLAS_WORLD)).add(vec2(bendX, bendZ).mul(0.4));
+                const crestA = texture(groundTex, crestUv).level(0).b;
+                const crestUvB = vec2(
+                    crestUv.x.mul(0.5).sub(crestUv.y.mul(0.866)),
+                    crestUv.x.mul(0.866).add(crestUv.y.mul(0.5)),
+                ).mul(1.35);
+                const crestB = texture(groundTex, crestUvB).level(0).b;
+                const patch = noise2(bedXZ.div(float(38))).mul(0.65)
+                    .add(noise2(bedXZ.div(float(13)).add(vec2(17.3, 4.1))).mul(0.35)).toVar();
+                const bedCrest = mix(crestA, crestB, smoothstep(float(0.42), float(0.58), patch))
+                    .div(float(atlasAvg[2]));
+                const bedRipple = mix(float(1), bedCrest, bedRippleMelt.mul(0.24));
+                const meadow = smoothstep(float(0.60), float(0.74), patch);
+                const fan = smoothstep(float(0.36), float(0.24), patch);
+                const bedColor = mix(
+                    mix(vec3(0.20, 0.31, 0.28), vec3(0.10, 0.23, 0.15), meadow.mul(0.85)),
+                    vec3(0.27, 0.33, 0.29),
+                    fan.mul(0.45),
+                );
+                a.assign(mix(a, bedColor.mul(bedRipple), seabed.mul(0.75)));
             });
             return a;
         })();
@@ -1826,7 +1945,7 @@ export function createOdysseyWorld({
          * Every colour term below is luma-preserving BY CONSTRUCTION, so the measured shade:lit
          * RATIO is produced in exactly one place — `value`.
          */
-        const ndl = max(dot(normal, uSunDir), 0);
+        const ndl = max(dot(litNormal, uSunDir), 0);
         // Drifting cloud shadows on the upper massif (see GROUND_CLOUD_SHADOW).
         const cloudLight = q.cloudShadows
             ? float(1).sub(
@@ -1851,7 +1970,8 @@ export function createOdysseyWorld({
         const albLuma = dot(albedo, vec3(...ODYSSEY_GROUND_LUMA)).toVar();
         const mineralW = clamp(kRock.add(kSnow), 0, 1).toVar();
         const shadeChroma = mix(albedo, vec3(albLuma), mineralW.mul(float(ODYSSEY_GROUND_SHADE.mineral.desat)));
-        const shadeIce = mix(shadeChroma, albLuma.mul(vec3(...GROUND_SNOW_SHADE)), kSnow.mul(0.9));
+        // Less ice on the hero's shaded snow: across its flutes, full ice-blue walls read as chrome.
+        const shadeIce = mix(shadeChroma, albLuma.mul(vec3(...GROUND_SNOW_SHADE)), kSnow.mul(mix(float(0.9), float(0.55), heroW)));
         // The warm, red-enriched deep tint is the SOIL and ROCK law; snow is exempt (item 5) —
         // warming a blue snow shadow is exactly how it turned beige.
         const shadeCol = shadeIce.mul(mix(
@@ -1898,6 +2018,8 @@ export function createOdysseyWorld({
         );
         // Rim: unlit-compatible fake translucency on snow only, cool and weak.
         const viewDir = normalize(cameraPosition.sub(positionWorld));
+        // The rim reads the FORM's normal: on the flutes' tilted one it lit every flute edge,
+        // and the cone turned to brushed chrome.
         const rim = float(1).sub(abs(dot(normal, viewDir))).pow(4)
             .mul(kSnow)
             .mul(0.14);
@@ -3478,7 +3600,9 @@ export function createOdysseyWorld({
         // base's rim as a hard bright ellipse; a shaft of light has no end-cap). The depth
         // exponent steepened 1.15 -> 1.6 so the shaft melts out by mid-depth instead of
         // standing as a full-height pipe.
-        const vFade = float(1).sub(rUv.y).pow(1.6).mul(smoothstep(float(0.0), float(0.14), rUv.y));
+        // 1.6 -> 2.4 (audit 2026-10-18): seen from beside or above, the deep half still glowed
+        // where the floor cut it, and the shafts read as glass rods standing on the bed.
+        const vFade = float(1).sub(rUv.y).pow(2.4).mul(smoothstep(float(0.0), float(0.14), rUv.y));
         // FACING fade, not a uv.x feather. On a ConeGeometry uv.x runs around the
         // CIRCUMFERENCE, so the ported `abs(uv.x - 0.5)` lit one side of the cone and left a
         // hard seam on the other — in-game that read as solid triangular wedges, not light.
@@ -3493,6 +3617,10 @@ export function createOdysseyWorld({
         // NEAR fade: the rail passes THROUGH these shafts, and a 220 u cone a few metres from
         // the eye fills the frame with one flat wedge. Same lesson as the cloud deck.
         const rayNear = smoothstep(float(14), float(85), length(positionWorld.sub(cameraPosition)));
+        // FROM ABOVE: light pouring down is seen looking UP it (the climb's hero read). Looked
+        // down on — an orb close-up, the arrival orbit — a shell has no volume to sell, so it
+        // steps back to a quarter instead of standing as a lit tube.
+        const rayAbove = float(1).sub(smoothstep(float(0.1), float(0.65), rayView.y).mul(0.75));
         // SHIMMER FROM THE RESIDENT DETAIL TILE, not a per-fragment simplex (the file's header
         // law: "detail comes from a tiled texture, ~1 ALU against ~100"). One fetch, sampled
         // ANISOTROPICALLY — three repeats round the circumference against a fifth of one down the
@@ -3526,7 +3654,9 @@ export function createOdysseyWorld({
         // shafts read as solid pipes.
         // x uLife: the shafts arrive with the ocean as the quench veil thins (1->2 carry), never
         // as additive light inside Earth Core's cavern.
-        rayMat.opacityNode = vFade.mul(eFade).mul(rayNear).mul(rayShimmerSafe).mul(uSubmerged)
+        rayMat.opacityNode = vFade.mul(eFade).mul(rayNear).mul(rayAbove)
+            .mul(rayShimmerSafe)
+            .mul(uSubmerged)
             .mul(uLife)
             // 0.52 -> 0.62: the streaked shimmer's mean sits ~a quarter under the simplex's.
             .mul(0.62)
@@ -3994,6 +4124,94 @@ export function createOdysseyWorld({
         group.add(fishMesh);
     }
 
+    // ── ocean forms (Odyssey audit 2026-10-18): what stands in the blue around the column ──
+    // Spires in the deep bowl and kelp on the shelf (odyssey-ocean-forms.js), so a look away from
+    // the rail — an orb close-up, the arrival orbit — finds silhouettes layered by the water's
+    // own extinction instead of one flat teal field. Shaded like the fish: facet normals from
+    // derivatives (instancing-safe), the surface as the only lamp, the shared water colour, and
+    // the same `uLife` haze so nothing stands crisp in Earth Core's steam.
+    const oceanPlan = planOceanForms({
+        heightAt: (x, z) => relief.sample(x, z),
+        rail: openWater,
+        seaLevel: ODYSSEY_SEA_LEVEL,
+        quality,
+    });
+    let spireMesh = null;
+    let spireMat = null;
+    let kelpMesh = null;
+    let kelpMat = null;
+    const formEye = normalize(cameraPosition.sub(positionWorld));
+    const formNormal = (() => {
+        const n = normalize(cross(dFdx(positionWorld), dFdy(positionWorld)));
+        return n.mul(sign(dot(n, formEye)).add(0.0001));
+    })();
+    const formDepth = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(200), 0, 1);
+    const formLifeHaze = float(1).sub(uLife);
+    if (oceanPlan.spires.length > 0) {
+        spireMat = new THREE.MeshBasicNodeMaterial();
+        const sH = positionGeometry.y;
+        // Dark green-grey rock that lifts toward the crown the light reaches.
+        const sAlbedo = mix(vec3(0.07, 0.10, 0.10), vec3(0.21, 0.27, 0.24), smoothstep(float(0), float(1), sH));
+        const sDown = clamp(formNormal.y.mul(0.5).add(0.5), 0, 1);
+        const sLight = mix(float(0.42), float(1.1), sDown.pow(1.3)).mul(float(1).sub(formDepth.mul(0.5)));
+        const sLit = sAlbedo.mul(sLight);
+        spireMat.colorNode = toOutput(applyAerial(sLit, positionWorld, AERIAL_CEIL_WATER, 1, false, formLifeHaze));
+        spireMat.fog = false;
+        spireMesh = new THREE.InstancedMesh(buildSpireGeometry(), spireMat, oceanPlan.spires.length);
+        const sm4 = new THREE.Matrix4();
+        const sq = new THREE.Quaternion();
+        const se = new THREE.Euler();
+        oceanPlan.spires.forEach((s, i) => {
+            sq.setFromEuler(se.set(s.leanX, s.yaw, s.leanZ, 'YXZ'));
+            const sPos = new THREE.Vector3(s.x, s.y, s.z);
+            spireMesh.setMatrixAt(i, sm4.compose(sPos, sq, new THREE.Vector3(s.radius, s.height, s.radius)));
+        });
+        spireMesh.instanceMatrix.needsUpdate = true;
+        spireMesh.computeBoundingSphere();
+        spireMesh.name = 'odyssey-world-spires';
+        group.add(spireMesh);
+    }
+    if (oceanPlan.kelp.length > 0) {
+        const kGeo = buildKelpGeometry();
+        const kAttr = new Float32Array(oceanPlan.kelp.length * 2);
+        oceanPlan.kelp.forEach((k, i) => { kAttr[i * 2] = k.phase; kAttr[(i * 2) + 1] = k.height; });
+        kGeo.setAttribute('aKelp', new THREE.InstancedBufferAttribute(kAttr, 2));
+        kelpMat = new THREE.MeshBasicNodeMaterial();
+        const kA = attribute('aKelp', 'vec2');
+        const kY = positionGeometry.y;
+        // The current bends the fronds more toward their tips; two slow waves so a stand never
+        // sways in lock-step. positionLocal already carries the instance transform.
+        const kBend = kY.pow(1.6);
+        const kSwayX = sin(uTime.mul(0.55).add(kA.x).add(kY.mul(2.4))).mul(kA.y.mul(0.07)).mul(kBend);
+        const kSwayZ = sin(uTime.mul(0.37).add(kA.x.mul(1.7)).add(kY.mul(3.1))).mul(kA.y.mul(0.045)).mul(kBend);
+        kelpMat.positionNode = positionLocal.add(vec3(kSwayX, 0, kSwayZ));
+        const kAlbedo = mix(vec3(0.12, 0.15, 0.06), vec3(0.40, 0.44, 0.15), kY);
+        const kDown = clamp(formNormal.y.mul(0.5).add(0.5), 0, 1);
+        // Seen from below, a frond glows: the surface light comes THROUGH the blade.
+        const kBack = smoothstep(float(0.15), float(0.75), formEye.negate().y).mul(kY);
+        const kLit = kAlbedo.mul(mix(float(0.55), float(1.0), kDown))
+            .add(vec3(0.26, 0.34, 0.10).mul(kBack))
+            .mul(float(1).sub(formDepth.mul(0.45)));
+        kelpMat.colorNode = toOutput(applyAerial(kLit, positionWorld, AERIAL_CEIL_WATER, 1, false, formLifeHaze));
+        kelpMat.side = THREE.DoubleSide;
+        kelpMat.fog = false;
+        kelpMesh = new THREE.InstancedMesh(kGeo, kelpMat, oceanPlan.kelp.length);
+        const km4 = new THREE.Matrix4();
+        const kq = new THREE.Quaternion();
+        const yAxis = new THREE.Vector3(0, 1, 0);
+        oceanPlan.kelp.forEach((k, i) => {
+            kq.setFromAxisAngle(yAxis, k.yaw);
+            const kPos = new THREE.Vector3(k.x, k.y, k.z);
+            kelpMesh.setMatrixAt(i, km4.compose(kPos, kq, new THREE.Vector3(k.width, k.height, 1)));
+        });
+        kelpMesh.instanceMatrix.needsUpdate = true;
+        // The sway moves tips a few units outside the static bounds: pad the sphere.
+        kelpMesh.computeBoundingSphere();
+        kelpMesh.boundingSphere.radius += 12;
+        kelpMesh.name = 'odyssey-world-kelp';
+        group.add(kelpMesh);
+    }
+
     // ── forest ──
     // MEASUREMENT LEVER (see the `forest` option). When off, the scatter never runs, so no
     // chunk is bucketed, no InstancedMesh is built and `treeMat` never reaches a render —
@@ -4033,6 +4251,14 @@ export function createOdysseyWorld({
         buckets.get(key).push(t);
     });
 
+    // Each tree sinks out of the draw distance by its own distance from the rail (see
+    // FOREST_DRAW_NEAR). Measured per vertex, not per tree: one crown is a few percent of the
+    // 200 u band, so the lean that adds is far below a pixel at that range.
+    const forestReachSink = () => smoothstep(
+        float(FOREST_DRAW_NEAR),
+        float(FOREST_DRAW_FAR),
+        length(positionWorld.xz.sub(uLodCenter)),
+    ).mul(-FOREST_FADE_SINK);
     const treeMat = new THREE.MeshBasicNodeMaterial();
     const gShade = attribute('aShade', 'float');
     const gPhase = attribute('aPhase', 'float');
@@ -4043,7 +4269,7 @@ export function createOdysseyWorld({
     // positionLocal, not positionGeometry: setupPosition() applies the instance matrix into
     // positionLocal and then positionNode REPLACES it, so building from the raw attribute
     // would discard the instance transform entirely.
-    treeMat.positionNode = positionLocal.add(vec3(gust, 0, gust.mul(0.55)));
+    treeMat.positionNode = positionLocal.add(vec3(gust, forestReachSink(), gust.mul(0.55)));
     const treeBase = mix(
         vec3(0.050, 0.105, 0.070),
         vec3(0.235, 0.375, 0.175),
@@ -4156,6 +4382,7 @@ export function createOdysseyWorld({
         );
         mesh.frustumCulled = true;
         mesh.userData.centre = new THREE.Vector2(cx / n, cz / n);
+        mesh.userData.radius = list.reduce((r, t) => Math.max(r, Math.hypot(t.x - (cx / n), t.z - (cz / n))), 0);
         mesh.name = 'odyssey-world-forest-chunk';
         group.add(mesh);
         treeMeshes.push(mesh);
@@ -4206,7 +4433,7 @@ export function createOdysseyWorld({
         .mul(fvMask.mul(fvMask));
     // positionLocal, not positionGeometry: setupPosition() applies the instance matrix into
     // positionLocal and positionNode REPLACES it (the file's own header law).
-    forestV2Mat.positionNode = positionLocal.add(vec3(fvGust, 0, fvGust.mul(0.55)));
+    forestV2Mat.positionNode = positionLocal.add(vec3(fvGust, forestReachSink(), fvGust.mul(0.55)));
 
     // Snow rides the crown's upper surface on the SAME shell — no second mesh, so nothing can
     // swim or z-fight against its own tree under wind.
@@ -4421,6 +4648,10 @@ export function createOdysseyWorld({
             );
             mesh.frustumCulled = true;
             mesh.userData.centre = new THREE.Vector2(cx / n, cz / n);
+            mesh.userData.radius = bucket.items.reduce(
+                (r, t) => Math.max(r, Math.hypot(t.x - (cx / n), t.z - (cz / n))),
+                0,
+            );
             // Keeps `?worldOnly=forest` working, which is the compile-bisect lever.
             mesh.name = `odyssey-world-forest-v2-${bucket.lod}`;
             group.add(mesh);
@@ -4500,6 +4731,8 @@ export function createOdysseyWorld({
         godRays: rayCount > 2 ? rayCount : 0,
         motes: moteMesh ? 640 : 0,
         fish: fishMesh ? FISH : 0,
+        spires: oceanPlan.spires.length,
+        kelp: oceanPlan.kelp.length,
         skyRadius: domeRadius,
         bakeMs: { relief: +(t1 - t0).toFixed(1), total: +(t2 - t0).toFixed(1) },
         // Item 2.1: which bakes arrived pre-baked (worker) — 'relief' above is then the wrap cost.
@@ -4541,6 +4774,26 @@ export function createOdysseyWorld({
             const gone = Math.min(Math.max((f - 0.55) / (0.92 - 0.55), 0), 1);
             uFieldGone.value = gone * gone * (3 - (2 * gone));
             if (colour) uWorldFadeColour.value.copy(colour);
+        },
+        /**
+         * The recession below (odyssey-world-act-gate.js `worldDepartureRecede`): shrink the
+         * whole group by `scale` toward the sea-level point beneath `eye`. Every material
+         * builds its geometry in the group's local space, so the world shrinks as one piece;
+         * its colour is already flat when the caller starts this, so only the edge moves.
+         * @param {number} scale 1 = untouched
+         * @param {{x:number,z:number}} eye camera position
+         */
+        setDepartureRecede(scale, eye) {
+            const s = Number.isFinite(scale) ? Math.min(Math.max(scale, 1e-3), 1) : 1;
+            if (s === 1 || !eye) {
+                if (group.scale.x !== 1) {
+                    group.scale.setScalar(1);
+                    group.position.set(0, 0, 0);
+                }
+                return;
+            }
+            group.scale.setScalar(s);
+            group.position.set(eye.x * (1 - s), ODYSSEY_SEA_LEVEL * (1 - s), eye.z * (1 - s));
         },
         /**
          * ATMOSPHERIC THINNING (Wave 3 / F3). `setAtmosphericThin(t)` collapses the cloud
@@ -4761,6 +5014,8 @@ export function createOdysseyWorld({
             if (rayMesh) rayMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             if (moteMesh) moteMesh.visible = uSubmerged.value > 0.001 || spray > 0;
             if (fishMesh) fishMesh.visible = uSubmerged.value > 0.001 && lifeOn;
+            if (spireMesh) spireMesh.visible = uSubmerged.value > 0.001 && lifeOn;
+            if (kelpMesh) kelpMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             const forestDrawable = uSubmerged.value < 0.999;
             for (let i = 0; i < treeMeshes.length; i += 1) {
                 const c = treeMeshes[i].userData.centre;
@@ -4771,8 +5026,11 @@ export function createOdysseyWorld({
                 // forest in the frame. That is the repo's own worst failure mode — a lever
                 // that reports innocence rather than absence — and it was found while trying
                 // to isolate one LOD tier for a wind capture.
+                // Drawn while its NEAREST tree is inside the far edge of the per-tree sink, so a
+                // chunk only ever switches where all of its trees are already underground.
                 treeMeshes[i].visible = authored(treeMeshes[i]) && forestDrawable
-                    && Math.hypot(c.x - railPoint.x, c.y - railPoint.z) < 1450;
+                    && Math.hypot(c.x - railPoint.x, c.y - railPoint.z) - treeMeshes[i].userData.radius
+                        < FOREST_DRAW_FAR;
             }
         },
         dispose() {
@@ -4788,6 +5046,8 @@ export function createOdysseyWorld({
             // fishMat was missing here (the same SB-15 teardown class heroMat was): every world
             // dispose leaked the compiled fish material.
             if (fishMat) fishMat.dispose();
+            if (spireMat) spireMat.dispose();
+            if (kelpMat) kelpMat.dispose();
             if (moteMesh) moteMesh.geometry.dispose();
             if (rayMesh) rayMesh.geometry.dispose();
             [heightTex, sunVisTex, groundTex, detailTex, macroTex].forEach((t) => t.dispose());

@@ -46,6 +46,10 @@ const CHAPTER_1_LOOK_FADE_RANGE = 0.035;
 const CHAPTER_1_LAVA_SURFACE_Y = -40; // world; chapterRange.start.y (-30) + LAVA_LAKE_Y (-10)
 const CHAPTER_1_EYE_CLEARANCE = 6; // eye stays this far above the lava, never in or on it
 const FREE_CAMERA_WORLD_UP = new THREE.Vector3(0, 1, 0);
+// The most a glide, focus or portal move advances in one frame (ms). They ran on the wall
+// clock, so a 400 ms main-thread stall moved a glide 8.8% in one frame (audit 2026-10-18);
+// past this step a stall now lengthens the move instead of jumping it.
+const MAX_MOVE_STEP_MS = 50;
 const PATH_FRAME_GRAVITY_UP = new THREE.Vector3(0, 1, 0);
 const ACT_TRAVEL_SPEEDS = Object.freeze({
     [ODYSSEY_ACTS.ORIGIN]: 7.5,
@@ -1129,7 +1133,10 @@ export class OdysseyCameraController {
             return;
         }
 
-        if (this.pathTravel?.active || (this.isAnimating && this.mode === 'focus')) {
+        // A wheel hands focus back to the path, mid-animation or settled on an orb. Settled focus
+        // (an orb click, a return from a level) has no frame of its own that leaves it: the wheel
+        // only moved the target while the camera sat at the orb (Odyssey audit 2026-10-18).
+        if (this.pathTravel?.active || (this.mode === 'focus' && !this.portalApproach?.active)) {
             this._cancelActiveAnimation(false);
             this.mode = 'follow';
         }
@@ -1241,6 +1248,9 @@ export class OdysseyCameraController {
         if (duration <= 0) {
             this.pathTravel = null;
             this.setCurrentPosition(clampedPosition);
+            // A cut settles everything, the lens too, even when it lands where the camera was: a
+            // scenic return cuts to its orb from the entry zoom's FOV 42 and eased out on screen.
+            this._teleportPending = true;
             this.updateFollowPosition({ position: clampedPosition, direct: true });
             return Promise.resolve(true);
         }
@@ -1299,12 +1309,20 @@ export class OdysseyCameraController {
 
         this.animationStartLookAt.copy(this.lookAtTarget);
         this.animationEndLookAt.copy(nodePosition);
+        // Land on the path camera's own lens. A return from a level focuses here straight after
+        // the entry zoom (FOV 42) or the portal plunge (34), and focus never re-applies the base.
         this.animationStartFov = this.camera.fov;
-        this.animationEndFov = this.camera.fov;
+        this.animationEndFov = this._resolveBaseFov();
+        // Focus leaves the travel model alone, so a scroll's velocity would never decay and the
+        // map would read as "still scrolling" (background warming waits on it).
+        this.travelModel.velocity = 0;
+        this.travelModel.inputVelocity = 0;
 
         if (duration <= 0) {
             this.camera.position.copy(this.animationEndPos);
             this.lookAtTarget.copy(this.animationEndLookAt);
+            this.camera.fov = this.animationEndFov;
+            this.camera.updateProjectionMatrix();
             this.isAnimating = false;
             this.animationKind = null;
             return Promise.resolve(true);
@@ -1865,7 +1883,9 @@ export class OdysseyCameraController {
         const dt = Math.max(0, deltaTime || 0);
         const lastInput = this.travelModel.lastInputAt || 0;
         const idleFor = lastInput > 0 ? (performance.now() - lastInput) / 1000 : Infinity;
+        // Reduced motion: the 24-degree orbit and push-in never start.
         const resting = this.mode === 'follow'
+            && !this.prefersReducedMotion()
             && !this.isAnimating
             && !this.pathTravel?.active
             && this.currentPosition >= ARRIVAL_SHOT.start
@@ -2134,11 +2154,14 @@ export class OdysseyCameraController {
     }
 
     updateTravelCurrent(deltaTime) {
+        const dt = Math.max(0, deltaTime || 0);
+        // The player's share decays whatever holds the drift (drift off, the frontier): the board
+        // reads it as "still scrolling" and keeps background warming waiting until it does.
+        this.travelModel.inputVelocity *= Math.exp(-dt * 2.4);
         if (!this.config.idleAutoDrift || this.mode !== 'follow') {
             return;
         }
 
-        const dt = Math.max(0, deltaTime || 0);
         // Stop integrating at the frontier too, so drift velocity does not accumulate against
         // a wall and then lurch the moment the chapter ahead becomes ready.
         if (dt <= 0 || this.targetPosition >= this.maxTravelPosition()) {
@@ -2151,12 +2174,12 @@ export class OdysseyCameraController {
         const seamSlowdown = this._getSeamSlowdown(this.currentPosition);
         const beatSurge = this.directorCamera.beatPulse * this.config.beatDriftScale;
         const energyLift = this.directorCamera.energy * 0.28;
-        const autoVelocity = (worldSpeed / this.travelModel.pathLength)
+        // Reduced motion: no idle drift; the camera moves only when the player moves it.
+        const autoVelocity = this.prefersReducedMotion() ? 0 : (worldSpeed / this.travelModel.pathLength)
             * this.config.autoDriftScale
             * (1 + beatSurge + energyLift)
             * seamSlowdown;
 
-        this.travelModel.inputVelocity *= Math.exp(-dt * 2.4);
         const targetVelocity = autoVelocity + this.travelModel.inputVelocity;
         const lerp = 1 - Math.exp(-dt * 2.8);
         this.travelModel.velocity = THREE.MathUtils.lerp(this.travelModel.velocity, targetVelocity, lerp);
@@ -2632,8 +2655,31 @@ export class OdysseyCameraController {
         return this.lookAtOffset.copy(CHAPTER_1_LOOK_DOWN).multiplyScalar(fade * downScale);
     }
 
+    /**
+     * A move's start time, pushed forward by however much of the gap since its last frame went
+     * past MAX_MOVE_STEP_MS, so a stall resumes the move where it was instead of jumping it.
+     * @param {number} startTime the move's start (performance.now() clock)
+     * @param {object} tick per-move scratch: its last frame time and the start it belonged to
+     * @param {number} now
+     * @returns {number} the start time to use from now on
+     * @private
+     */
+    _capMoveStep(startTime, tick, now) {
+        let start = startTime;
+        if (tick.tickFor === startTime && Number.isFinite(tick.tickAt)) {
+            const gap = now - tick.tickAt;
+            if (gap > MAX_MOVE_STEP_MS) start += gap - MAX_MOVE_STEP_MS;
+        }
+        tick.tickAt = now;
+        tick.tickFor = start;
+        return start;
+    }
+
     updateAnimation() {
-        const elapsed = performance.now() - this.animationStartTime;
+        const now = performance.now();
+        this._animationTick = this._animationTick || {};
+        this.animationStartTime = this._capMoveStep(this.animationStartTime, this._animationTick, now);
+        const elapsed = now - this.animationStartTime;
         let t = Math.min(elapsed / this.animationDuration, 1);
 
         // Ease in-out
@@ -2688,7 +2734,9 @@ export class OdysseyCameraController {
         const paused = travel.isPaused?.() === true;
         // Include only intervals observed wholly unpaused. The first frame after Resume
         // holds its position too, so a background-tab gap cannot jump to the destination.
-        if (!paused && !travel.paused) travel.elapsed += Math.max(0, now - travel.lastUpdatedAt);
+        if (!paused && !travel.paused) {
+            travel.elapsed += Math.min(MAX_MOVE_STEP_MS, Math.max(0, now - travel.lastUpdatedAt));
+        }
         travel.lastUpdatedAt = now;
         travel.paused = paused;
         if (paused) return;
@@ -2728,7 +2776,9 @@ export class OdysseyCameraController {
         const approach = this.portalApproach;
         if (!approach?.active) return;
 
-        const elapsed = performance.now() - approach.startTime;
+        const now = performance.now();
+        approach.startTime = this._capMoveStep(approach.startTime, approach, now);
+        const elapsed = now - approach.startTime;
         const t = Math.min(elapsed / approach.duration, 1);
         const alignEnd = 220 / 650;
         const dollyEnd = 520 / 650;
@@ -2812,7 +2862,8 @@ export class OdysseyCameraController {
      * @returns {number}
      */
     getSeamBeatStrength() {
-        if (!this.positionSeamBeat) return 0;
+        // Reduced motion: no lean at the seams (audit 2026-10-18: only breathing honoured it).
+        if (!this.positionSeamBeat || this.prefersReducedMotion()) return 0;
         return this.positionSeamBeat.envelope * (this.positionSeamBeat.intensity || 0);
     }
 
@@ -2826,7 +2877,7 @@ export class OdysseyCameraController {
      */
     getVistaBeatStrength() {
         const seam = this.positionSeamBeat;
-        if (!seam) return 0;
+        if (!seam || this.prefersReducedMotion()) return 0;
         const strength = Number.isFinite(seam.vista) ? seam.vista : (this.vistaBeat?.intensity ?? 0.9);
         return seam.envelope * seam.envelope * strength;
     }

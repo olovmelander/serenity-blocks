@@ -1197,8 +1197,14 @@ export class ChapterEnvironmentManager {
                         && nextBoundary > boundary56
                         && this.cameraProgress > boundary56) {
                         const spaceSpan = nextBoundary - boundary56;
-                        const holdEnd = boundary56 + spaceSpan * SEAM_56_CARRY_HOLD_BAND;
-                        const carryEnd = boundary56 + spaceSpan * SEAM_56_AURORA_CARRY_BAND;
+                        // Gone before chapter 7 arrives (audit 2026-10-18): carried to 0.8534
+                        // while chapter 7 appeared at 0.8487, three lit chapters overran the
+                        // light pool's adjacent-pair slots and the dropped lights popped.
+                        const carryEnd = Math.min(
+                            boundary56 + spaceSpan * SEAM_56_AURORA_CARRY_BAND,
+                            nextBoundary - seamHalfWidth(6),
+                        );
+                        const holdEnd = Math.min(boundary56 + spaceSpan * SEAM_56_CARRY_HOLD_BAND, carryEnd);
                         // Hold fully present, then ease to 0 over the tail — a long graceful
                         // dissolve of the inherited peaks/aurora instead of a hard pop.
                         const carry = this.cameraProgress <= holdEnd

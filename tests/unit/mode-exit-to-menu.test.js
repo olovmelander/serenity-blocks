@@ -45,6 +45,7 @@ describe.each([['Odyssey', OdysseyMode], ['Serenity', SerenityMode]])('%s "Back 
 
 it('main.js answers EXIT_TO_MAIN_MENU by stopping and deactivating the mode through the manager', () => {
     const main = readFileSync(new URL('../../src/main.js', import.meta.url), 'utf8');
-    expect(main).toMatch(/eventBus\.on\(EVENTS\.EXIT_TO_MAIN_MENU, \(\) => \{\s*this\._returnToMainMenu\(\);/);
+    // The handler takes the payload: a GPU loss says why the game returned (audit 2026-10-18).
+    expect(main).toMatch(/eventBus\.on\(EVENTS\.EXIT_TO_MAIN_MENU, \((?:payload)?\) => \{\s*this\._returnToMainMenu\(\);/);
     expect(main).toMatch(/async _returnToMainMenu\(\) \{[\s\S]*?await this\.gameModeManager\.stopCurrentMode\(\);\s*await this\.gameModeManager\.deactivateCurrentMode\(\);[\s\S]*?this\.modalManager\.show\('start'\);/);
 });

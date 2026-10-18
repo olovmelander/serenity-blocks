@@ -17,6 +17,17 @@ export const GOAL_FLOURISH_MS = odysseyShowpieceDuration(buildOdysseyShowpiece()
 const REDUCED_FLOURISH_MS = 280;
 /** The CSS flare and sweep finish within this; the ceremony covers the well by then. */
 const FLARE_LIFETIME_MS = GOAL_FLOURISH_MS + 900;
+
+// The flourish in flight: its timers and its promise. Untracked, a player leaving within the
+// ~1.5 s reel still sent the theme's showpiece events to whatever theme came next (audit
+// 2026-10-18); clearOdysseyGoalFlourish cancels them and settles the promise with false.
+let inFlight = null;
+
+function later(callback, ms) {
+    const timer = setTimeout(callback, ms);
+    inFlight?.timers.push(timer);
+    return timer;
+}
 const CHAPTER_COLORS = [
     '#f3ac77', '#8cd3ed', '#b5d4a2', '#c8d3f0',
     '#c8b2ed', '#b5a0ee', '#e6a9dd', '#f3b29d',
@@ -56,6 +67,7 @@ export function playOdysseyGoalFlourish(mode, session, { reducedMotion = false }
         return Promise.resolve();
     }
     clearOdysseyGoalFlourish();
+    inFlight = { timers: [], resolve: null };
     const color = CHAPTER_COLORS[(session.levelConfig?.chapter || 1) - 1] || CHAPTER_COLORS[0];
     well.style.setProperty('--odyssey-goal-color', color);
     well.dataset.goalReducedMotion = String(reducedMotion);
@@ -72,18 +84,30 @@ export function playOdysseyGoalFlourish(mode, session, { reducedMotion = false }
             }
         };
         if (step.at <= 0) play();
-        else setTimeout(play, step.at);
+        else later(play, step.at);
     });
     // A stage hidden mid-flare would replay it when shown again: always retire the classes.
-    setTimeout(clearOdysseyGoalFlourish, FLARE_LIFETIME_MS);
+    later(removeFlareClasses, FLARE_LIFETIME_MS);
+    const flight = inFlight;
     return new Promise((resolve) => {
-        setTimeout(() => resolve(true), reducedMotion ? REDUCED_FLOURISH_MS : GOAL_FLOURISH_MS);
+        flight.resolve = resolve;
+        later(() => resolve(true), reducedMotion ? REDUCED_FLOURISH_MS : GOAL_FLOURISH_MS);
     });
 }
 
-/** A new attempt or the map must not inherit a flaring well. */
-export function clearOdysseyGoalFlourish() {
+function removeFlareClasses() {
     const border = document.getElementById?.('single-player-border');
     border?.classList.remove('odyssey-goal-flare');
     border?.parentElement?.classList.remove('odyssey-goal-sweep');
+}
+
+/** A new attempt or the map must not inherit a flaring well, nor its pending showpiece. */
+export function clearOdysseyGoalFlourish() {
+    if (inFlight) {
+        const { timers, resolve } = inFlight;
+        inFlight = null;
+        timers.forEach((timer) => clearTimeout(timer));
+        resolve?.(false);
+    }
+    if (typeof document !== 'undefined') removeFlareClasses();
 }

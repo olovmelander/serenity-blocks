@@ -128,6 +128,8 @@ export function resolveCh7LensDrive(directorState) {
 const SHARPEN_SCALE_FULL = 0.95; // at/above this scale the frame is left untouched (no node)
 const SHARPEN_SCALE_FLOOR = 0.65; // the board's DRS legibility floor — full ramp here
 const SHARPEN_MAX_AMOUNT = 0.35; // lobe fraction at the floor (≈ sharpness 1.5 stops)
+const SHARPEN_WRAPPER_SLOTS = 2; // a seam's lens on/off pair (see the constructor)
+const BLOOM_GATE_FADE_S = 0.8; // adaptive quality's bloom off/on glide (see _bloomGate)
 
 // ── Master film stock (constant across all 8 chapters) ──────────────────────────
 // The single look every chapter shares. Tasteful, display-space, post-ACES — these are
@@ -326,6 +328,10 @@ export class OdysseyTslPipeline {
         // director's bloom weight (the LEAN no-bloom variant is forced in update()). Honors
         // the constructor enableBloom (no node ⇒ never allowed). No-op for existing callers.
         this._bloomAllowed = this.enableBloom;
+        // 0..1 glide behind that gate: the glow fades out before the node detaches and back in
+        // after it returns. Switched in one frame, the ch7 disk and ch8 neon vanished (audit
+        // 2026-10-18).
+        this._bloomGate = this._bloomAllowed ? 1 : 0;
         this._baseGrain = params.grain ?? 0.012; // grain anchor the scale multiplies; halved 2026-07-05 (was 0.022 → softened/veiled the frame)
 
         this.postProcessing = new THREE.RenderPipeline(renderer);
@@ -495,17 +501,17 @@ export class OdysseyTslPipeline {
         // variant is, with outputColorTransform back on, exactly as before —
         // the TSL gotcha is that a zero uniform never dead-code-eliminates a pass, so the
         // gate is a JS graph swap (edge-triggered, same path as the lens/bloom swaps).
-        // Memory is bounded to ONE wrapper (2 RTs at DRS size): a base-variant change
-        // while sharpened disposes the old wrapper and builds a new one (one recompile,
-        // same cadence as the base swap it rides on). Not warmed at startup — the first
-        // DRS drop pays one compile of three trivial quad pipelines.
+        // Memory is bounded to TWO wrappers (2 RTs each at DRS size), least recently used
+        // out: the 6-7 and 7-8 seams flip the lens on and off, and with one slot every flip
+        // disposed and rebuilt the wrapper while DRS sat below full (audit 2026-10-18). Not
+        // warmed at startup — the first DRS drop pays one compile of three trivial quads.
         this._sharpenEnabled = params.sharpen !== false; // ?odysseySharpen=0 opt-out (controller)
         this._sharpenMaxAmount = Number.isFinite(params.sharpenMaxAmount)
             ? Math.min(1, Math.max(0, params.sharpenMaxAmount))
             : SHARPEN_MAX_AMOUNT;
         this._sharpenAmount = 0; // 0 = detached; (0,1] = RCAS lobe fraction
         this._activeSharpen = false; // whether the bound node is the sharpen wrapper
-        this._sharpenSlot = null; // { key, node } — the single cached wrapper
+        this._sharpenSlots = []; // [{ key, node }], most recently used last (SHARPEN_WRAPPER_SLOTS)
         this.uSharpness = uniform(2.0); // RCAS stops; rewritten by setSharpenAmount()
         // Default look: lean graph (no lens), bloom on iff this tier enables bloom. Matches
         // the legacy behaviour for chapters 1–6/8 with the lens uniforms left at their no-op
@@ -599,17 +605,25 @@ export class OdysseyTslPipeline {
 
     /**
      * Return the RCAS wrapper `sharpen(rtt(renderOutput(baseNode)))` for a base variant,
-     * reusing the single cached slot when it already wraps this key and otherwise disposing
-     * the old wrapper's two render targets + quad materials before building the new one.
+     * reusing a cached slot when one already wraps this key and otherwise disposing the
+     * least recently used wrapper's two render targets + quad materials (once both slots
+     * are taken) before building the new one.
      * @param {string} key base variant key ('lens|bloom')
      * @param {*} baseNode the cached base vec4 output node
      * @returns {*} SharpenNode (a vec4 TempNode)
      * @private
      */
     _sharpenVariant(key, baseNode) {
-        const slot = this._sharpenSlot;
-        if (slot && slot.key === key) return slot.node;
-        if (slot) OdysseyTslPipeline._disposeSharpenWrapper(slot.node);
+        const slots = this._sharpenSlots;
+        const hit = slots.findIndex((slot) => slot.key === key);
+        if (hit >= 0) {
+            const [slot] = slots.splice(hit, 1);
+            slots.push(slot);
+            return slot.node;
+        }
+        while (slots.length >= SHARPEN_WRAPPER_SLOTS) {
+            OdysseyTslPipeline._disposeSharpenWrapper(slots.shift().node);
+        }
         // Apply the display transform INSIDE the wrapper (what RenderPipeline would have
         // appended: no tone mapping — the graph's ACES already ran — then the working→output
         // sRGB encode) so RCAS sees the perceptual frame. sharpen() wraps its non-texture
@@ -621,7 +635,7 @@ export class OdysseyTslPipeline {
             this.renderer?.outputColorSpace || THREE.SRGBColorSpace,
         );
         const node = sharpen(encoded, this.uSharpness);
-        this._sharpenSlot = { key, node };
+        slots.push({ key, node });
         return node;
     }
 
@@ -1068,9 +1082,12 @@ export class OdysseyTslPipeline {
             this._smBloomRadius = lerp(this._smBloomRadius, 1, k);
         }
         if (this.bloomNode) {
+            this._bloomGate = this._bloomAllowed
+                ? Math.min(1, this._bloomGate + (dt / BLOOM_GATE_FADE_S))
+                : Math.max(0, this._bloomGate - (dt / BLOOM_GATE_FADE_S));
             // Uniform writes only (strength / threshold / radius are BloomNode uniforms).
-            this.bloomNode.strength.value = this._baseBloom * bloomWeight * this._smBloomStrength
-                + this._seamBoost;
+            this.bloomNode.strength.value = (this._baseBloom * bloomWeight * this._smBloomStrength
+                + this._seamBoost) * this._bloomGate;
             this.bloomNode.threshold.value = this._baseBloomThreshold * this._smBloomThreshold;
             this.bloomNode.radius.value = this._baseBloomRadius * this._smBloomRadius;
         }
@@ -1099,7 +1116,7 @@ export class OdysseyTslPipeline {
         // ch8 shadow-floor lift tracks ignition (deep-indigo floor, peak ~0.5 lift).
         this.uShadowFloorLift.value = this._smIgnition * 0.5;
         // ch8 IGNITION bloom push: ignited spire blooms hardest (added on top of director).
-        if (this.bloomNode) this.bloomNode.strength.value += this._smIgnition * 0.18;
+        if (this.bloomNode) this.bloomNode.strength.value += this._smIgnition * 0.18 * this._bloomGate;
 
         // ── Batch5/QW14: edge-triggered output-variant swap (NOT per-frame) ──────────────
         // Pick the cheapest graph that still looks right for the current chapter:
@@ -1133,7 +1150,8 @@ export class OdysseyTslPipeline {
             // Wave 2 Tier-1: a hard controller override wins over the director weight — when
             // the adaptive controller has shut bloom off under pressure, force the no-bloom
             // variant (detaches the bloom node, skips its passes) until it restores bloom.
-            if (!this._bloomAllowed) wantBloom = false;
+            // The node stays attached while the gate fades the glow out (see _bloomGate).
+            if (!this._bloomAllowed && this._bloomGate <= 0) wantBloom = false;
             this._selectVariant(wantLens, wantBloom);
         }
 
@@ -1285,8 +1303,9 @@ export class OdysseyTslPipeline {
     dispose() {
         this.scenePass.dispose?.();
         disposeBloomNodeDeep(this.bloomNode); // null on the no-bloom (enableBloom:false) tier
-        OdysseyTslPipeline._disposeSharpenWrapper(this._sharpenSlot?.node); // null unless DRS ever dropped
-        this._sharpenSlot = null;
+        // Empty unless DRS ever dropped.
+        this._sharpenSlots.forEach((slot) => OdysseyTslPipeline._disposeSharpenWrapper(slot.node));
+        this._sharpenSlots = [];
         this.postProcessing.dispose?.();
     }
 }

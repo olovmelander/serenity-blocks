@@ -152,13 +152,19 @@ describe('world build failure report', () => {
             ),
             'utf8',
         );
+        // Both fallbacks (a failed build, and a failed post-reveal compile — audit
+        // 2026-10-18) go through one method, so the order is pinned there.
         const catchIdx = src.indexOf("console.error('[OdysseyBoard] One World failed to build");
         expect(catchIdx).toBeGreaterThan(-1);
-        const catchBlock = src.slice(catchIdx, catchIdx + 1200);
-        const resetIdx = catchBlock.indexOf('suppressedChapters = new Set()');
-        const reportIdx = catchBlock.indexOf('reportWorldBuildFailure(error)');
+        expect(src.slice(catchIdx, catchIdx + 600)).toContain('this._abandonOneWorld(error)');
+        expect(src).toMatch(/label === 'one-world'[^\n]*\n\s*this\._abandonOneWorld\(error\)/);
+        const methodIdx = src.indexOf('_abandonOneWorld(error) {');
+        expect(methodIdx).toBeGreaterThan(-1);
+        const body = src.slice(methodIdx, methodIdx + 1200);
+        const resetIdx = body.indexOf('suppressedChapters = new Set()');
+        const reportIdx = body.indexOf('reportWorldBuildFailure(error)');
         expect(resetIdx).toBeGreaterThan(-1);
         expect(reportIdx).toBeGreaterThan(resetIdx);
-        expect(catchBlock.slice(0, reportIdx)).toMatch(/try\s*\{\s*$/m);
+        expect(body.slice(0, reportIdx)).toMatch(/try\s*\{\s*$/m);
     });
 });

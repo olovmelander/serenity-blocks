@@ -835,7 +835,11 @@ export function updateStats(stats) {
     }
     if (pulseElements.length > 0) {
         pulseElements.forEach((el) => el.classList.remove('pulse'));
-        void pulseElements[0].offsetWidth;
-        pulseElements.forEach((el) => el.classList.add('pulse'));
+        // Re-add on the next frame: the frame's own style pass restarts the CSS animation, where
+        // reading offsetWidth forced a whole-page layout on almost every lock (Odyssey audit
+        // 2026-10-18). Without a frame clock (tests, workers) it restarts in place as before.
+        const restart = () => pulseElements.forEach((el) => el.classList.add('pulse'));
+        if (typeof requestAnimationFrame === 'function') requestAnimationFrame(restart);
+        else restart();
     }
 }

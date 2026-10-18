@@ -14,12 +14,12 @@ export const FOCUS_PAUSE_MODES = Object.freeze(['single', 'local-multiplayer', '
 /**
  * @param {{
  *   enabled?: boolean, modeId?: string | null, isRunning?: boolean, isPaused?: boolean,
- *   isGameOver?: boolean, modalOpen?: boolean, hubOpen?: boolean,
+ *   isGameOver?: boolean, modalOpen?: boolean, hubOpen?: boolean, outcomeOpen?: boolean,
  * }} state
  * @returns {boolean}
  */
 export function shouldPauseOnFocusLoss({
-    enabled, modeId, isRunning, isPaused, isGameOver, modalOpen, hubOpen,
+    enabled, modeId, isRunning, isPaused, isGameOver, modalOpen, hubOpen, outcomeOpen,
 }) {
     return enabled !== false
         && FOCUS_PAUSE_MODES.includes(modeId ?? '')
@@ -29,7 +29,10 @@ export function shouldPauseOnFocusLoss({
         // A results screen or Settings already has the player's attention, and the
         // Serenity hub holds the game paused on its own.
         && modalOpen !== true
-        && hubOpen !== true;
+        && hubOpen !== true
+        // So does an Odyssey failure or completion sheet (its own overlay, not a managed
+        // modal): Settings over it lost Escape and Enter to the sheet (audit 2026-10-18).
+        && outcomeOpen !== true;
 }
 
 /** @param {any} app @param {Document} doc */
@@ -45,6 +48,8 @@ function readFocusPauseState(app, doc) {
         isGameOver: app.gameState?.isGameOver === true,
         modalOpen: Object.keys(modals?.modals || {}).some((name) => modals.isVisible(name)),
         hubOpen: doc.body?.classList?.contains('serenity-hub-open') === true,
+        // Odyssey marks an attempt that is over (won or failed) until its sheet is answered.
+        outcomeOpen: mode?.levelCompleting === true,
     };
 }
 

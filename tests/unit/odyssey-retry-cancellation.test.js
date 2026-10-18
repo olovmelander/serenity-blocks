@@ -286,4 +286,43 @@ describe('Odyssey in-place retry cancellation', () => {
         expect(mode.beginLevelRun).not.toHaveBeenCalled();
         expect(document.getElementById('odyssey-flow-overlay')).toBeNull();
     });
+
+    // Audit 2026-10-18: Retry from the pause sheet resumed play under the veil's fade, and a
+    // top-out in that window opened the failure sheet beneath a veil nothing lifted.
+    it('stops a live attempt the moment Retry is chosen, before the cover fades in', async () => {
+        const mode = createMode();
+        const live = bindAttempt(mode); // the pause sheet's attempt: still running
+        const cover = deferred();
+        showRetryVeil.mockReturnValueOnce(cover.promise);
+        const retry = mode._restartLevelInPlace();
+        expect(live.retired).toBe(true);
+        expect(live.gameState.isStopped).toBe(true);
+        cover.resolve();
+        await retry;
+        expect(mode.beginLevelRun).toHaveBeenCalledTimes(1);
+    });
+
+    it('lifts its own cover when the attempt changes hands during the fade', async () => {
+        const mode = createMode();
+        const veil = { id: 'odyssey-retry-veil' };
+        const cover = deferred();
+        showRetryVeil.mockReturnValueOnce(cover.promise);
+        const retry = mode._restartLevelInPlace();
+        mode._retireLevelSession(); // not a stop: the mode stays active
+        cover.resolve(veil);
+        await retry;
+        expect(clearRetryVeil).toHaveBeenCalledWith(veil);
+        expect(mode.prepareLevelStart).not.toHaveBeenCalled();
+    });
+
+    it('lifts the cover and returns to the map when preparing the retry throws', async () => {
+        const mode = createMode();
+        const veil = { id: 'odyssey-retry-veil' };
+        showRetryVeil.mockResolvedValueOnce(veil);
+        mode.prepareLevelStart.mockRejectedValueOnce(new Error('theme rebuild failed'));
+        await expect(mode._restartLevelInPlace()).resolves.toBeUndefined();
+        expect(clearRetryVeil).toHaveBeenCalledWith(veil);
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+        expect(mode.beginLevelRun).not.toHaveBeenCalled();
+    });
 });

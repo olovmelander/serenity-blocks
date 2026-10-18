@@ -135,7 +135,9 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
             } else if (!prefersOdysseyReducedMotion(mode)) {
                 gameState.hitStopRemaining = Math.max(gameState.hitStopRemaining || 0, 30);
             }
-            mode.deps.soundManager?.sfxPlayer?.playDrop();
+            // The lock that follows plays the drop sound; playDrop here doubled it in one tick
+            // (audit 2026-10-18). The hard drop's own sound, as Infinity plays it.
+            mode.deps.soundManager?.sfxPlayer?.playHardDrop?.();
             mode._getBoardScene()?.playHardDropEffect?.(dropData);
             mode.boardJuice?.dip(4);
             mode.boardJuice?.bounce();

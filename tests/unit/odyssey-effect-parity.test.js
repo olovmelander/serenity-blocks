@@ -236,6 +236,8 @@ describe('Odyssey Phaser effect parity', () => {
         expect(juice.dip.mock.calls.filter(([amount]) => amount === 4)).toHaveLength(1);
         expect(juice.bounce).toHaveBeenCalledOnce();
         expect(state.piecesPlaced).toBe(2);
+        // One drop sound, from the lock (audit 2026-10-18: the hard drop played it a second time).
+        expect(mode.deps.soundManager.sfxPlayer.playDrop.mock.calls.length).toBeLessThanOrEqual(1);
         if (fixed) {
             expect(state.hitStopRemaining).toBe(FIXED_HARD_DROP_HIT_STOP_MS);
             expect(window.matchMedia).not.toHaveBeenCalled();

@@ -18,6 +18,7 @@ function wait(ms) {
 /**
  * Mount the veil over everything (including any open modal) and fade it to
  * opaque. Resolves once the fade completes and the screen is fully covered.
+ * @returns {Promise<HTMLElement>} this veil, the owner token for clearRetryVeil
  */
 export async function showRetryVeil() {
     clearRetryVeil();
@@ -38,6 +39,7 @@ export async function showRetryVeil() {
     veil.getBoundingClientRect(); // force reflow so the opacity transition actually plays
     veil.style.opacity = '1';
     await wait(RETRY_VEIL_FADE_MS);
+    return veil;
 }
 
 /**
@@ -51,8 +53,12 @@ export async function hideRetryVeil() {
     clearRetryVeil();
 }
 
-/** Remove the veil immediately (no fade), if present. */
-export function clearRetryVeil() {
+/**
+ * Remove the veil immediately (no fade), if present.
+ * @param {HTMLElement} [owner] only this veil: a stale retry must not lift a newer one's cover
+ */
+export function clearRetryVeil(owner) {
+    if (owner && owner !== activeVeil) return;
     if (activeVeil) {
         activeVeil.remove();
         activeVeil = null;

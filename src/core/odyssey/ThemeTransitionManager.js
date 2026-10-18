@@ -395,9 +395,11 @@ export class ThemeTransitionManager {
      * Wait until the active theme is safe to reveal for gameplay.
      * @param {Object} levelConfig
      * @param {number} timeoutMs
+     * @param {{settleFade?: boolean}} [options] settleFade: the caller is still behind the
+     *   entry's cover, so finish the container's CSS fade-in now rather than after the reveal
      * @returns {Promise<boolean>}
      */
-    async waitForThemeCriticalReady(levelConfig, timeoutMs = 1800) {
+    async waitForThemeCriticalReady(levelConfig, timeoutMs = 1800, { settleFade = false } = {}) {
         const themeName = levelConfig?.theme?.primary;
         if (!themeName || !this.themeManager) {
             return false;
@@ -418,7 +420,15 @@ export class ThemeTransitionManager {
             return false;
         }
 
+        // `.theme-container.active` fades opacity in over 2.5 s from the moment the class
+        // lands, and this check only waits for the class: most of that fade played AFTER the
+        // reveal, over the first seconds of play (audit 2026-10-18). Behind the cover, cancel
+        // it for the two frames below; the value stays at 1 when the transition comes back.
+        const container = settleFade ? document.getElementById(`${themeName}-theme`) : null;
+        const priorTransition = container?.style?.transition ?? '';
+        if (container?.style) container.style.transition = 'none';
         const frameReady = await this.waitForAnimationFrames(2, this.getRemainingTime(deadline));
+        if (container?.style) container.style.transition = priorTransition;
         if (!frameReady) {
             return false;
         }

@@ -59,4 +59,39 @@ describe('FrameRateController hybrid logic ownership', () => {
         expect(schedule).not.toHaveBeenCalled();
         expect(controller.logicTimeoutId).toBe(31);
     });
+
+    it('runs display-synced logic once per render frame, with no timer, and honours pause', () => {
+        // Odyssey audit 2026-10-18: the duel's timer-driven logic gave each shown frame 0, 1 or
+        // 2 updates at a 60 cap on a 120-165 Hz panel.
+        const frames = [];
+        vi.stubGlobal('requestAnimationFrame', (callback) => { frames.push(callback); return frames.length; });
+        vi.stubGlobal('cancelAnimationFrame', () => {});
+        const timeout = vi.spyOn(globalThis, 'setTimeout');
+        try {
+            const controller = new FrameRateController();
+            const logic = vi.fn();
+            const render = vi.fn();
+            controller.startHybridLoop(logic, render, { displaySynced: true });
+            const start = controller.lastLogicTime;
+            expect(timeout).not.toHaveBeenCalled();
+
+            frames.shift()(start + 7.6);
+            frames.shift()(start + 15.2);
+            expect(logic.mock.calls.map(([, delta]) => delta))
+                .toEqual([expect.closeTo(7.6, 6), expect.closeTo(7.6, 6)]);
+            expect(render).toHaveBeenCalledTimes(2);
+
+            controller.pauseHybridLoop();
+            frames.shift()(start + 22.8);
+            expect(logic).toHaveBeenCalledTimes(2); // held, while the paused screen still draws
+            expect(render).toHaveBeenCalledTimes(3);
+            controller.resumeHybridLoop();
+            expect(timeout).not.toHaveBeenCalled();
+
+            controller.stopHybridLoop();
+            expect(controller.displaySynced).toBe(false);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+    });
 });

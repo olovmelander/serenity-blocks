@@ -2831,6 +2831,19 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'lookPitch',
+        category: 'Playground',
+        scope: 'playground.html — odyssey-world',
+        description: 'Tilt the rail camera up (+) or down (-) from its framing, in degrees.',
+        values: 'Number of degrees.',
+        defaultValue: '0.',
+        example: 'lookPitch=-35',
+        notes: 'Use on playground.html with effect=odyssey-world; reviews a chapter from every angle.',
+        sources: [
+            'src/playground/effects/odyssey-world.effect.js',
+        ],
+    },
+    {
         name: 'lookX',
         category: 'Playground',
         scope: 'playground.html — ch3-surface-world',
@@ -2854,6 +2867,19 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/ch3-surface-world.effect.js',
+        ],
+    },
+    {
+        name: 'lookYaw',
+        category: 'Playground',
+        scope: 'playground.html — odyssey-world',
+        description: 'Turn the rail camera about the vertical axis from its framing, in degrees.',
+        values: 'Number of degrees (+ turns left).',
+        defaultValue: '0.',
+        example: 'lookYaw=120',
+        notes: 'Use on playground.html with effect=odyssey-world; reviews a chapter from every angle.',
+        sources: [
+            'src/playground/effects/odyssey-world.effect.js',
         ],
     },
     {

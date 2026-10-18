@@ -146,6 +146,20 @@ function boardCacheKey(boardGrid) {
         .join('|');
 }
 
+/**
+ * Run a planning step generator to its end. The synchronous planner IS the sliced one, drained,
+ * so both make the same calls in the same order — the same random draws, the same choice.
+ * @template T @param {Generator<undefined, T>} steps @returns {T}
+ */
+function drain(steps) {
+    let step = steps.next();
+    while (!step.done) step = steps.next();
+    return step.value;
+}
+
+/** The head start a sliced plan takes on the reaction delay (game ms; see `planUnitsPerMs`). */
+const PLAN_LEAD_MS = 160;
+
 export class PuzzleBotController {
     constructor(options) {
         this.playerIndex = options.playerIndex;
@@ -160,6 +174,19 @@ export class PuzzleBotController {
         // Persistent multi-piece machine plan — survives spawns (the fix for
         // "builds the lane but never caps/loads/fires it").
         this.machinePlan = null;
+        // SLICED PLANNING (Odyssey audit 2026-10-18). A plan is 86-341 placement simulations at
+        // tiers 4-8: done in one go it held a frame for 20-28 ms (538 ms once), every time the
+        // bot took a new piece. With `planUnitsPerMs` > 0 the plan runs as a step generator,
+        // that many simulations per millisecond of GAME time, so it takes as long at 60 Hz as at
+        // 165 Hz. It starts PLAN_LEAD_MS ahead of the reaction delay and is adopted when the
+        // delay ends, never earlier: the bot's timing, and so its difficulty, is unchanged.
+        // Game time, not wall time: the same state gives the same plan on the same tick.
+        // 0 (the default) keeps the one-shot plan.
+        this.planUnitsPerMs = Math.max(0, Number(options.planUnitsPerMs) || 0);
+        this.planJob = null;
+        this.pendingPlan = undefined;
+        this.planUnitCredit = 0;
+        this.planBoardKey = null;
     }
 
     reset() {
@@ -168,6 +195,8 @@ export class PuzzleBotController {
         this.readyAtMs = 0;
         this.lastPlan = null;
         this.machinePlan = null;
+        this.planJob = null;
+        this.pendingPlan = undefined;
     }
 
     update(deltaMs, nowMs) {
@@ -194,20 +223,79 @@ export class PuzzleBotController {
             this.currentSpawnToken = spawnToken;
             this.scheduler.clear();
             this.lastPlan = null;
+            this.planJob = null;
+            this.pendingPlan = undefined;
             this.readyAtMs = nowMs + rollReactionDelay(this.config, this.rng);
         }
 
-        if (!this.lastPlan && nowMs >= this.readyAtMs) {
-            this.lastPlan = this.plan();
-            if (this.lastPlan?.actions?.length) {
-                this.scheduler.setActions(this.lastPlan.actions);
-            }
+        if (!this.lastPlan) {
+            if (this.planUnitsPerMs > 0) this.stepSlicedPlan(deltaMs, nowMs);
+            else if (nowMs >= this.readyAtMs) this.adoptPlan(this.plan());
         }
 
         this.scheduler.update(deltaMs);
     }
 
+    /** @param {object|null} plan */
+    adoptPlan(plan) {
+        this.lastPlan = plan;
+        if (plan?.actions?.length) {
+            this.scheduler.setActions(plan.actions);
+        }
+    }
+
+    /**
+     * One update's share of a sliced plan (see `planUnitsPerMs`): at least one simulation,
+     * then as many as this update's game time has paid for.
+     * @param {number} deltaMs @param {number} nowMs
+     */
+    stepSlicedPlan(deltaMs, nowMs) {
+        const boardKey = () => boardCacheKey(this.playerState.boardGrid || this.playerState.board);
+        if (!this.planJob && this.pendingPlan === undefined && nowMs >= this.readyAtMs - PLAN_LEAD_MS) {
+            this.planJob = this.planSteps();
+            this.planBoardKey = boardKey();
+            this.planUnitCredit = 0;
+        }
+        if (this.planJob) {
+            this.planUnitCredit += this.planUnitsPerMs * Math.max(0, Number(deltaMs) || 0);
+            let step = this.planJob.next();
+            this.planUnitCredit -= 1;
+            while (!step.done && this.planUnitCredit >= 1) {
+                step = this.planJob.next();
+                this.planUnitCredit -= 1;
+            }
+            if (step.done) {
+                this.planJob = null;
+                this.pendingPlan = step.value;
+            }
+        }
+        if (this.pendingPlan !== undefined && nowMs >= this.readyAtMs) {
+            const plan = this.pendingPlan;
+            this.pendingPlan = undefined;
+            // Garbage landed while the plan came together or waited: plan again on the board as
+            // it is (the next update starts at once, the delay being over).
+            if (boardKey() === this.planBoardKey) this.adoptPlan(plan);
+        }
+    }
+
     plan() {
+        return drain(this.planSteps());
+    }
+
+    /**
+     * One planning stage as steps, deferring to a subclass's synchronous override of it: the
+     * benchmark's bots override evaluatePlacements and evaluateFuture, and the step generators
+     * must not route around them. An override runs whole; the base runs sliced.
+     * @param {'evaluatePlacements'|'applyLookahead'|'evaluateFuture'} name
+     */
+    * planningStep(name, ...args) {
+        const own = this[name];
+        if (own !== PuzzleBotController.prototype[name]) return own.apply(this, args);
+        return yield* this[`${name}Steps`](...args);
+    }
+
+    /** The plan as steps: one yield per placement simulated (here and in the lookahead). */
+    * planSteps() {
         const placements = findReachablePlacements(this.playerState);
         if (placements.length === 0) return null;
 
@@ -216,9 +304,14 @@ export class PuzzleBotController {
         const boardOptions = { hiddenRows: this.playerState.isInfinityMode ? 0 : HIDDEN_ROWS };
         const preparationBefore = analyzeCascadePreparation(boardGrid, nextShapeKeys, boardOptions);
 
-        const candidates = this.evaluatePlacements(this.playerState, placements, preparationBefore);
+        const candidates = yield* this.planningStep(
+            'evaluatePlacements',
+            this.playerState,
+            placements,
+            preparationBefore,
+        );
         const rankedFull = rankCandidates(candidates, this.config, this.rng);
-        let ranked = this.applyLookahead(rankedFull);
+        let ranked = yield* this.planningStep('applyLookahead', rankedFull);
 
         // Tactical layer: persistent plan commitment, build-vs-fire, danger gate.
         const tactics = this.assessTactics(boardGrid, preparationBefore);
@@ -403,6 +496,10 @@ export class PuzzleBotController {
     }
 
     evaluatePlacements(searchState, placements, sharedPreparationBefore = null) {
+        return drain(this.evaluatePlacementsSteps(searchState, placements, sharedPreparationBefore));
+    }
+
+    * evaluatePlacementsSteps(searchState, placements, sharedPreparationBefore = null) {
         const candidates = [];
         if (!searchState) return candidates;
 
@@ -414,23 +511,29 @@ export class PuzzleBotController {
 
         for (const placement of placements) {
             const simulation = simulatePlacement(searchState, placement);
-            if (!simulation) continue;
-
-            candidates.push({
-                ...placement,
-                ...simulation,
-                actions: placement.actions,
-                hiddenRows: boardOptions.hiddenRows,
-                nextShapeKeys,
-                pathCost: placement.pathCost,
-                preparationAfter: analyzeCascadePreparation(simulation.boardGrid, nextShapeKeys, boardOptions),
-                preparationBefore,
-            });
+            if (simulation) {
+                candidates.push({
+                    ...placement,
+                    ...simulation,
+                    actions: placement.actions,
+                    hiddenRows: boardOptions.hiddenRows,
+                    nextShapeKeys,
+                    pathCost: placement.pathCost,
+                    preparationAfter: analyzeCascadePreparation(simulation.boardGrid, nextShapeKeys, boardOptions),
+                    preparationBefore,
+                });
+            }
+            // One unit of planning work: a placement simulated and analysed.
+            yield;
         }
         return candidates;
     }
 
     applyLookahead(rankedCandidates) {
+        return drain(this.applyLookaheadSteps(rankedCandidates));
+    }
+
+    * applyLookaheadSteps(rankedCandidates) {
         const nextShapeKeys = getNextShapeKeys(this.playerState)
             .slice(0, Math.max(0, this.config.lookaheadDepth || 0));
         if (
@@ -447,8 +550,10 @@ export class PuzzleBotController {
         );
         const deterministicConfig = withDeterministicEvaluation(this.config);
         const lookaheadCache = new Map();
-        const expanded = rankedCandidates.slice(0, breadth).map((candidate) => {
-            const futurePlan = this.evaluateFuture(
+        const expanded = [];
+        for (const candidate of rankedCandidates.slice(0, breadth)) {
+            const futurePlan = yield* this.planningStep(
+                'evaluateFuture',
                 candidate.boardGrid,
                 nextShapeKeys,
                 nextShapeKeys.length,
@@ -458,7 +563,7 @@ export class PuzzleBotController {
             const futureScore = futurePlan?.score ?? -100000;
             const score = candidate.evaluation.score + futureScore * (this.config.lookaheadWeight || 0.65);
 
-            return {
+            expanded.push({
                 ...candidate,
                 evaluation: {
                     ...candidate.evaluation,
@@ -469,13 +574,17 @@ export class PuzzleBotController {
                 },
                 futurePlan: futurePlan || null,
                 nextCandidate: futurePlan?.candidate || null,
-            };
-        });
+            });
+        }
 
         return expanded.sort((a, b) => b.evaluation.score - a.evaluation.score);
     }
 
     evaluateFuture(boardGrid, shapeKeys, depth, config, cache) {
+        return drain(this.evaluateFutureSteps(boardGrid, shapeKeys, depth, config, cache));
+    }
+
+    * evaluateFutureSteps(boardGrid, shapeKeys, depth, config, cache) {
         if (depth <= 0 || shapeKeys.length === 0) {
             return {
                 candidate: null,
@@ -514,11 +623,8 @@ export class PuzzleBotController {
             return result;
         }
 
-        const ranked = rankCandidates(
-            this.evaluatePlacements(searchState, placements),
-            config,
-            this.rng,
-        );
+        const evaluated = yield* this.planningStep('evaluatePlacements', searchState, placements);
+        const ranked = rankCandidates(evaluated, config, this.rng);
         const futureDivisor = depth >= 3 ? 4 : 6;
         const breadth = Math.min(
             ranked.length,
@@ -528,7 +634,8 @@ export class PuzzleBotController {
         let best = null;
 
         for (const candidate of ranked.slice(0, breadth)) {
-            const child = this.evaluateFuture(
+            const child = yield* this.planningStep(
+                'evaluateFuture',
                 candidate.boardGrid,
                 remainingShapeKeys,
                 depth - 1,

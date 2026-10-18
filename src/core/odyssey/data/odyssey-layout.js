@@ -81,7 +81,10 @@ const AUTHORED_LEVEL_POSITIONS_BY_ID = Object.freeze({
     2: 0.0132,
     3: 0.0258,
     4: 0.0393,
-    5: 0.0516,
+    // Up the shaft, ~9 u ABOVE the seabed it breaks through at p 0.053 (2026-10-18 audit). At
+    // 0.0516 the rival's orb sat 2.8 u under the drawn bed — One World draws from cp1 - 0.0222,
+    // chapter 1's orbs are never ground-seated — so it could not be seen or hovered on the map.
+    5: 0.056,
     6: 0.0649,
     7: 0.0774,
     8: 0.0908,

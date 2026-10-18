@@ -182,7 +182,7 @@ describe('OdysseyMode gameplay objectives', () => {
         const harness = createMode(config);
         const { mode, session } = harness;
         mode.levelStartTime = 1000000;
-        vi.spyOn(Date, 'now').mockReturnValue(1001001);
+        vi.spyOn(performance, 'now').mockReturnValue(1001001);
         session.hybridEngine.victoryEvaluator.onLineClear(20);
         session.hybridEngine.updateTime(0.9);
         mode._checkVictoryConditions(session);
@@ -311,7 +311,7 @@ describe('OdysseyMode gameplay objectives', () => {
         const harness = createMode(getLevelById(59));
         const { mode, session } = harness;
         mode.levelStartTime = 1000000;
-        const now = vi.spyOn(Date, 'now').mockReturnValue(1200000);
+        const now = vi.spyOn(performance, 'now').mockReturnValue(1200000);
         session.gameState.score = session.levelConfig.victory.primary.target;
         session.gameState.isProcessingPhysics = true;
         mode._checkVictoryConditions(session);
@@ -435,7 +435,7 @@ describe('OdysseyMode gameplay objectives', () => {
         mode.levelStartTime = 1000000;
         mode.levelPausedMs = 12000;
         mode._pauseStartedAt = 1040000;
-        const now = vi.spyOn(Date, 'now').mockReturnValue(1047000);
+        const now = vi.spyOn(performance, 'now').mockReturnValue(1047000);
 
         mode.failLevel('top-out');
         expect(session.retired).toBe(true);
@@ -466,7 +466,7 @@ describe('OdysseyMode gameplay objectives', () => {
         const { mode, session } = harness;
         session.hybridEngine.updateTime(17.5);
         mode.levelStartTime = 1000000;
-        vi.spyOn(Date, 'now').mockReturnValue(1080000);
+        vi.spyOn(performance, 'now').mockReturnValue(1080000);
 
         mode.failLevel('time');
         const view = await finishFailureView(harness);

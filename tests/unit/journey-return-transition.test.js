@@ -154,6 +154,19 @@ describe('JourneyReturnTransition', () => {
         vi.restoreAllMocks();
     });
 
+    it('centres an off-screen departure instead of opening at a clamped screen edge', () => {
+        // Audit 2026-10-18: the entry had this guard; the return clamped the projection.
+        const transition = new JourneyReturnTransition({ windowRef: {} });
+        const run = transition.createRun({
+            departureAnchor: {
+                x: 1.7, y: -0.4, radius: 0.2, onScreen: false,
+            },
+        });
+        expect(run.departureAnchor).toEqual({
+            x: 0.5, y: 0.5, radius: 0.14, onScreen: false,
+        });
+    });
+
     it('runs blackout before reveal and waits for readiness before completing', async () => {
         const harness = createRafHarness();
         const dom = createDomHarness();

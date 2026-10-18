@@ -366,6 +366,20 @@ describe('Odyssey duel garbage meter ownership', () => {
         } finally { match.stop(); }
     });
 
+    it('redraws only the rival board on a frame where nothing in the panel changed', () => {
+        // Audit 2026-10-18: the whole panel (text, aria, queue, metrics) was rewritten every frame.
+        const { hud } = duelHudFixture();
+        hud.opponentBoard = { update: vi.fn() };
+        hud.updateDuel({ playerPendingGarbage: 2, botPendingGarbage: 1, round: 1 });
+        const metrics = vi.spyOn(hud, 'updateMetrics');
+        hud.updateDuel({ playerPendingGarbage: 2, botPendingGarbage: 1, round: 1 });
+        expect(metrics).not.toHaveBeenCalled();
+        expect(hud.opponentBoard.update).toHaveBeenCalledTimes(2);
+        hud.updateDuel({ playerPendingGarbage: 3, botPendingGarbage: 1, round: 1 });
+        expect(metrics).toHaveBeenCalledOnce();
+        expect(hud.playerGarbageDisplay.textContent).toBe('Incoming: 3 lines');
+    });
+
     it('keeps both queues independent as attacks arrive and are consumed', () => {
         const { hud } = duelHudFixture();
         hud.updateDuel({ playerPendingGarbage: 2, botPendingGarbage: 30 });

@@ -150,4 +150,39 @@ describe('OdysseyCameraController cinematic language (2026-10)', () => {
             performance.now = realNow;
         }
     });
+
+    it('lands a return focus on the path lens, and the wheel takes a settled focus back to the path', () => {
+        // Audit 2026-10-18: a return from a level focused its orb at the entry zoom's FOV 42 and
+        // stayed there; the wheel moved only the target, so the map sat frozen on the orb.
+        const { controller, camera } = createRealPathController(0.1);
+        controller.setCurrentPosition(0.1);
+        for (let i = 0; i < 30; i += 1) controller.update(1 / 60);
+        const base = controller._resolveBaseFov();
+        camera.fov = 42;
+        camera.updateProjectionMatrix();
+        const realNow = performance.now.bind(performance);
+        let now = realNow();
+        performance.now = () => now;
+        try {
+            controller.focusOnNode(controller.getPathDataAt(0.1).position.clone(), 300);
+            for (let i = 0; i < 40; i += 1) {
+                now += 1000 / 60;
+                controller.update(1 / 60);
+            }
+            expect(controller.mode).toBe('focus');
+            expect(controller.isAnimating).toBe(false);
+            expect(camera.fov).toBeCloseTo(base, 3);
+
+            controller.scroll(0.5);
+            expect(controller.mode).toBe('follow');
+            for (let i = 0; i < 240; i += 1) {
+                now += 1000 / 60;
+                controller.update(1 / 60);
+            }
+            expect(controller.currentPosition).toBeGreaterThan(0.11);
+            expect(Math.abs(controller.travelModel.inputVelocity)).toBeLessThan(1e-3);
+        } finally {
+            performance.now = realNow;
+        }
+    });
 });

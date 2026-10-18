@@ -44,6 +44,8 @@ const SWIM_DEPTH = 42;
 /** Camera-depth window in which the pair draws: below this the haze has them; above, the surface. */
 const VISIBLE_DEPTH_MAX = 190;
 const VISIBLE_DEPTH_MIN = 14;
+/** Seconds the pair takes to fade in once its compile lands with the camera already in range. */
+const ARRIVAL_FADE_S = 1.6;
 
 /**
  * Model-space bounds from the BIND-POSE geometry bounds. `Box3.setFromObject` on a skinned mesh
@@ -118,6 +120,9 @@ export function createWhalePass({
     const actors = [];
     let ready = false;
     let loaded = false;
+    // 0..1 time ramp from the moment the pair may show: its idle-gated compile can land with
+    // the camera mid-ocean, and the depth fades alone switched it on whole (audit 2026-10-18).
+    let arrival = 0;
     const scratchColour = new THREE.Color();
 
     async function addActor(url, bodyLength, phase, radius, depth) {
@@ -181,7 +186,8 @@ export function createWhalePass({
             // switched on.
             const fadeDeep = THREE.MathUtils.smoothstep(VISIBLE_DEPTH_MAX - depth, 0, 40);
             const fadeSurface = THREE.MathUtils.smoothstep(depth - VISIBLE_DEPTH_MIN, 0, 18);
-            uFade.value = show ? Math.min(fadeDeep, fadeSurface) * life : 0;
+            arrival = show ? Math.min(1, arrival + (Math.max(0, delta || 0) / ARRIVAL_FADE_S)) : 0;
+            uFade.value = show ? Math.min(fadeDeep, fadeSurface) * life * arrival : 0;
             group.visible = show && uFade.value > 0.01;
             if (!group.visible) return;
 

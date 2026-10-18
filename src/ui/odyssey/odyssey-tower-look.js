@@ -155,7 +155,13 @@ export function endOdysseyLookForMenu(mode) {
         mode.minimap.isDragging = false;
     }
     const ended = endOdysseyLook(mode, { resumeMode: false });
-    if (ended) mode.odysseyHUD?.setPaused(true);
+    if (ended) {
+        mode.odysseyHUD?.setPaused(true);
+        // The look's own pause skipped the board's presentation pause (exploring), and the mode
+        // stays paused, so nothing paused it again: the board animated under Settings (audit
+        // 2026-10-18).
+        mode._setBoardPresentationPaused?.(true);
+    }
     return ended;
 }
 

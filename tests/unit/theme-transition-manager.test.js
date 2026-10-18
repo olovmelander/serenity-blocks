@@ -187,6 +187,58 @@ describe('ThemeTransitionManager', () => {
         expect(whenCriticalReady).toHaveBeenCalledTimes(1);
     });
 
+    it('finishes the container fade behind the entry cover, then hands the transition back', async () => {
+        // Audit 2026-10-18: `.theme-container.active` fades in over 2.5 s from the class
+        // landing, and readiness only waited for the class, so the fade played over play.
+        const rafHarness = createRafHarness();
+        const themeContainer = {
+            classList: { contains: vi.fn((className) => className === 'active') },
+            style: { transition: '' },
+        };
+        vi.stubGlobal('document', {
+            getElementById: vi.fn((id) => (id === 'forest-theme' ? themeContainer : null)),
+            querySelector: vi.fn(() => null),
+        });
+        vi.stubGlobal('requestAnimationFrame', rafHarness.requestAnimationFrame);
+        const themeManager = createThemeManagerStub({
+            activeThemeName: 'forest',
+            activeTheme: { isActive: true, whenCriticalReady: vi.fn().mockResolvedValue(true) },
+        });
+        const manager = new ThemeTransitionManager(themeManager);
+
+        const level = { theme: { primary: 'forest' } };
+        const readiness = manager.waitForThemeCriticalReady(level, 500, { settleFade: true });
+        await flushRafHarness(rafHarness, 1);
+        expect(themeContainer.style.transition).toBe('none');
+        await flushRafHarness(rafHarness, 4);
+        await expect(readiness).resolves.toBe(true);
+        expect(themeContainer.style.transition).toBe('');
+    });
+
+    it('leaves the fade alone when the caller is not behind a cover', async () => {
+        const rafHarness = createRafHarness();
+        const themeContainer = {
+            classList: { contains: vi.fn((className) => className === 'active') },
+            style: { transition: '' },
+        };
+        vi.stubGlobal('document', {
+            getElementById: vi.fn((id) => (id === 'forest-theme' ? themeContainer : null)),
+            querySelector: vi.fn(() => null),
+        });
+        vi.stubGlobal('requestAnimationFrame', rafHarness.requestAnimationFrame);
+        const themeManager = createThemeManagerStub({
+            activeThemeName: 'forest',
+            activeTheme: { isActive: true, whenCriticalReady: vi.fn().mockResolvedValue(true) },
+        });
+        const manager = new ThemeTransitionManager(themeManager);
+
+        const readiness = manager.waitForThemeCriticalReady({ theme: { primary: 'forest' } }, 500);
+        await flushRafHarness(rafHarness, 1);
+        expect(themeContainer.style.transition).toBe('');
+        await flushRafHarness(rafHarness, 4);
+        await expect(readiness).resolves.toBe(true);
+    });
+
     it('treats full readiness as satisfied when no explicit full-ready hook exists', async () => {
         const rafHarness = createRafHarness();
         const themeContainer = {

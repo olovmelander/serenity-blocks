@@ -3015,8 +3015,10 @@ class SerenityBlocks {
         });
 
         // Listen for return to main menu requests
-        eventBus.on(EVENTS.EXIT_TO_MAIN_MENU, () => {
+        eventBus.on(EVENTS.EXIT_TO_MAIN_MENU, (payload) => {
             this._returnToMainMenu();
+            // A GPU loss used to drop the player at the menu with no word why (audit 2026-10-18).
+            if (payload?.reason === 'gpu-loss-unrecoverable') window.dispatchEvent(new CustomEvent('serenity:toast', { detail: { type: 'warning', message: 'The graphics device stopped responding, so the game returned to the menu.' } }));
         });
 
         // Listen for "Watch Again" replay requests from the Demo Complete modal
