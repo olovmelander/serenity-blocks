@@ -244,7 +244,7 @@ export class SinglePlayerMode extends BaseGameMode {
             : !this._prefersReducedMotion();
         // Input handling is match state, not a live UI dependency. Replays
         // latch their recorded handling; new matches latch current settings.
-        this.gameState = new GameState({
+        this.gameState = this._createSessionGameState({
             inputHandling: inputHandlingSettings,
             hitStopEnabled,
         });
@@ -254,7 +254,7 @@ export class SinglePlayerMode extends BaseGameMode {
                 this.gameState,
                 options.seed !== undefined ? options.seed : generateSessionSeed(),
             );
-        this._fixedTickEnabled = !options.demo && readFlag('fixedTick', false);
+        this._fixedTickEnabled = !options.demo && this._allowsFixedTick() && readFlag('fixedTick', false);
         if (this._fixedTickEnabled && !this.deps.frameRateController?.startHybridLoop) {
             console.warn('[SinglePlayer] fixedTick requires FrameRateController; using legacy loop');
             this._fixedTickEnabled = false;
@@ -381,7 +381,7 @@ export class SinglePlayerMode extends BaseGameMode {
         console.log('[SinglePlayer] Settings autoRecordDemos:', settings.autoRecordDemos);
 
         // FORCE TRUE to ensure buttons appear while debugging settings
-        const shouldRecord = true; // settings.autoRecordDemos !== false;
+        const shouldRecord = this._recordsDemos(); // settings.autoRecordDemos !== false;
 
         if (shouldRecord) {
             console.log('[SinglePlayer] Auto-recording enabled');
@@ -399,10 +399,7 @@ export class SinglePlayerMode extends BaseGameMode {
         this._applyEffectQuality(settings.effectQuality || 'high');
 
         // Fill piece bag
-        fillBag(
-            this.gameState.nextPieces,
-            this.gameState.randomGenerator,
-        );
+        this._dealSessionPieces();
 
         // Spawn first piece
         this.gameState.lastTime = performance.now();
@@ -437,6 +434,34 @@ export class SinglePlayerMode extends BaseGameMode {
         this._startGameLoop();
 
         console.log('[SinglePlayer] Game started!');
+    }
+
+    /**
+     * Session hooks a mode built on this one (Fault Lines) overrides.
+     * @param {Object} options GameState options latched for the session
+     * @returns {GameState}
+     * @protected
+     */
+    _createSessionGameState(options) {
+        return new GameState(options);
+    }
+
+    /** Fills the queue before the first spawn. @protected */
+    _dealSessionPieces() {
+        fillBag(
+            this.gameState.nextPieces,
+            this.gameState.randomGenerator,
+        );
+    }
+
+    /** Whether a session records a replay. @protected */
+    _recordsDemos() {
+        return true;
+    }
+
+    /** Whether a session may run on the fixedTick flag's clock. @protected */
+    _allowsFixedTick() {
+        return true;
     }
 
     /**
@@ -1157,7 +1182,7 @@ export class SinglePlayerMode extends BaseGameMode {
 
     /**
      * Get physics callbacks for sound effects and piece spawning
-     * @private
+     * @protected
      */
     _getPhysicsCallbacks() {
         const callbackSession = this._activeSession;
@@ -1293,7 +1318,7 @@ export class SinglePlayerMode extends BaseGameMode {
 
     /**
      * Refresh next piece queue display
-     * @private
+     * @protected
      */
     _refreshNextQueue() {
         // Update next piece preview canvases
@@ -1311,7 +1336,7 @@ export class SinglePlayerMode extends BaseGameMode {
 
     /**
      * Handle game over
-     * @private
+     * @protected
      */
     async _handleGameOver(expectedGeneration = this._activeSession?.generation) {
         console.log('[SinglePlayer] _handleGameOver() called!');
