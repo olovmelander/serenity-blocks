@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 import {
     beforeAll, describe, expect, it,
 } from 'vitest';
-import { SAKURA_FOX_PAIR } from '../../src/themes/sakura-twilight/sakura-fox-mind.js';
+import { SAKURA_FOX_PLANS } from '../../src/themes/sakura-twilight/sakura-fox-mind.js';
 import {
     SAKURA_FOX_BONES, SAKURA_FOX_MARKS, SAKURA_FOX_RIG, SAKURA_FOX_SIZE, createSakuraFoxRig,
 } from '../../src/themes/sakura-twilight/sakura-fox-rig.js';
@@ -110,7 +110,7 @@ describe('sakura fox rig: the module', () => {
         expect(SAKURA_FOX_MARKS.eye[2]).toBeLessThan(SAKURA_FOX_MARKS.nose[2]);
     });
 
-    it('makes a rig for a fox of any size: the model\'s own, and each of the pair\'s', () => {
+    it('makes a rig for a fox of any size: the model\'s own, and the garden fox\'s', () => {
         expect(SAKURA_FOX_SIZE).toBeGreaterThan(1);
         expect(RIG.scale).toBe(1);
         expect(RIG.size).toBe(SAKURA_FOX_SIZE);
@@ -118,7 +118,7 @@ describe('sakura fox rig: the module', () => {
         expect(RIG.marks).toBe(SAKURA_FOX_MARKS);
         // Every act the mind may ask of it has a length, its own way of sitting and sleeping included.
         Object.keys(FOX_ACTS).forEach((name) => expect(RIG.lengths[name], name).toBe(FOX_ACTS[name]));
-        SAKURA_FOX_PAIR.forEach((plan) => {
+        SAKURA_FOX_PLANS.forEach((plan) => {
             const rig = createSakuraFoxRig(plan.scale);
             expect(rig.scale).toBe(plan.scale);
             expect(rig.size).toBe(SAKURA_FOX_SIZE);
@@ -435,11 +435,11 @@ describe('sakura fox rig: the animal', () => {
         ['Sit', 'Listen', 'Shake'].forEach((name) => expect(worst[name], name).toBeLessThan(0.5 * CM));
     });
 
-    it('does not slide a paw in stance at any pace, at either fox\'s size', () => {
+    it('does not slide a paw in stance at any pace, at the model\'s size and the garden fox\'s', () => {
         const CYCLE = 240;
         const step = 0.37 / CYCLE;
         const wrong = [];
-        [1, ...SAKURA_FOX_PAIR.map((plan) => plan.scale)].forEach((scale) => {
+        [1, ...SAKURA_FOX_PLANS.map((plan) => plan.scale)].forEach((scale) => {
             const rig = createSakuraFoxRig(scale);
             const a = rig.createPosture();
             const b = rig.createPosture();
