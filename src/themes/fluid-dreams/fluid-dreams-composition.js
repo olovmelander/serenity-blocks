@@ -6,6 +6,8 @@
  *
  *   LEFT   — the Great Drop on its thread, and the sea beneath it holding its mirror image.
  *   RIGHT  — the dream sun low on the sea line, its path of light on the water, the Drop's kin.
+ *            (Each four-line clear carries the Drop to a random home in the open sea on either
+ *            side, and the kin keep to the side it is not on: FluidDreamsWorld.pickSite.)
  *   BELOW  — the near sea: where a locking piece's droplet lands, and the packet a clear sends out.
  *   ABOVE  — the ink adrift in the sky, the ring of split light a four-line clear opens.
  *

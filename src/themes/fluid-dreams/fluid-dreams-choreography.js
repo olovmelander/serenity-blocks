@@ -15,9 +15,10 @@
  *            Great Drop, which swells and takes the colour;
  *   combo    the Drop buds one satellite per step of the chain and the whole sea charges;
  *   T-spin   the sea under the Drop winds into a funnel;
- *   four lines   the sea holds its breath, the Drop lets go of its thread and falls: a crown of
- *            liquid stands up round the crater, a ring of split light crosses the sky, and the
- *            Drop is lifted back into the air on the column that follows;
+ *   four lines   the sea holds its breath, the Drop lets go of its thread and falls (or, when the
+ *            world gives it a new home, leaps there in an arc and dives in): a crown of liquid
+ *            stands up round the crater, a ring of split light crosses the sky, and the Drop is
+ *            lifted back into the air on the column that follows, and hangs there;
  *   perfect  the sea turns to glass and a double ring opens overhead.
  *
  * Everything here is a function of the event history and the clock, stepped with the frame's
@@ -42,6 +43,7 @@ import {
     HERO,
     HUSH_HOLD,
     JET_TIME,
+    LEAP,
     MAX_BALLS,
     PLUNGE,
     RING_FADE,
@@ -73,6 +75,8 @@ const CROWN_SPOKES = 10;
 const JET_COLUMN = Object.freeze([[0.28, 0.3], [0.66, 0.21]]);
 /** How much the Great Drop draws itself in before it falls. */
 const SQUEEZE = 0.05;
+/** How briskly the kin follow their anchor across the sea (rad/s of a critically damped follow). */
+const KIN_DRIFT = 0.8;
 const WHITE = Object.freeze([1, 1, 1]);
 
 function rows(count) {
@@ -153,6 +157,9 @@ export class FluidChoreography {
         this.random = mulberry32(90210);
         this.reducedMotion = false;
         this._tmp = [0, 0, 0];
+        /** Where the kin float now (they drift to their anchor when it moves); null = at it. */
+        this.kinAt = null;
+        this.kinDrift = [0, 0, 0];
         this.reset();
     }
 
@@ -180,8 +187,18 @@ export class FluidChoreography {
         this.dyePool = Array.from({ length: DYE_SLOTS }, () => ({ active: false, t0: -1e9 }));
         this.wavePool = Array.from({ length: WAVE_SLOTS }, () => ({ active: false, t0: -1e9 }));
         this.gulps = [{ at: Infinity }, { at: Infinity }];
+        // `from`: where the Drop hung when the clear came; `reach`: how far it travels to its home
         this.plunge = {
-            active: false, t0: 0, impact: false, rain: -1, at: [0, 0],
+            active: false,
+            t0: 0,
+            impact: false,
+            rain: -1,
+            shed: -1,
+            at: [0, 0],
+            from: [0, 0, 0],
+            reach: 0,
+            fall: PLUNGE.fall,
+            total: PLUNGE.total,
         };
         this.twist = { active: false, t0: 0 };
         this.glass = { active: false, t0: 0 };
@@ -200,10 +217,11 @@ export class FluidChoreography {
         this.reducedMotion = reduced === true;
     }
 
-    /** Jump the clock (captures). Clears every event in flight. */
+    /** Jump the clock (captures). Clears every event in flight; the kin stand at their anchor. */
     seek(time) {
         this.reset();
         this.time = Math.max(0, time);
+        this.kinAt = null;
     }
 
     // ── events ──────────────────────────────────────────────────────────────────
@@ -254,11 +272,15 @@ export class FluidChoreography {
     }
 
     /**
-     * Lines cleared. `origin` is the sea point under the board the packet leaves from.
-     * @param {{ origin: number[], lines: number, tspin?: boolean, perfect?: boolean }} clear
+     * Lines cleared. `origin` is the sea point under the board the packet leaves from; `site`
+     * (four lines only) is where the Great Drop will hang afterwards, [x, y, z]: it leaps there
+     * and dives in, and the scene's hero anchor moves there. Without one it falls where it hangs.
+     * @param {{ origin: number[], lines: number, tspin?: boolean, perfect?: boolean, site?: number[] }} clear
+     * @returns {boolean} true when this clear sent the Drop down (a four-line clear that arrives
+     *     while it is still down only sends its wave)
      */
     clear({
-        origin, lines, tspin = false, perfect = false,
+        origin, lines, tspin = false, perfect = false, site = null,
     }) {
         const n = Math.max(1, Math.min(4, Math.round(lines)));
         const { time } = this;
@@ -277,7 +299,7 @@ export class FluidChoreography {
         this.flash = Math.max(this.flash, 0.25 + n * 0.12);
         this.kick = Math.max(this.kick, 0.2 + n * 0.12);
         this.filmShift += 0.06 * n;
-        if (quad) this._startPlunge();
+        const plunged = quad && this._startPlunge(site);
         if (tspin) {
             this.twist.active = true;
             this.twist.t0 = time;
@@ -285,8 +307,9 @@ export class FluidChoreography {
         if (perfect) {
             // (after four lines the sea turns to glass once the crown has gone up)
             this.glass.active = true;
-            this.glass.t0 = time + (quad ? HUSH_HOLD + PLUNGE.fall + 1.6 : 0);
+            this.glass.t0 = time + (quad ? HUSH_HOLD + this.plunge.fall + 1.6 : 0);
         }
+        return plunged;
     }
 
     _wave(x, z, lines, power, delay) {
@@ -307,14 +330,25 @@ export class FluidChoreography {
         free.amp = amp;
     }
 
-    _startPlunge() {
+    _startPlunge(site) {
         const p = this.plunge;
         // a second four-line clear while the Drop is still down only sends its wave
-        if (p.active && this.time - p.t0 < PLUNGE.total - 0.8) return;
+        if (p.active && this.time - p.t0 < p.total - 0.8) return false;
         p.active = true;
         p.t0 = this.time + HUSH_HOLD;
         p.impact = false;
         p.rain = -1;
+        p.shed = -1;
+        // it leaves from where it hangs, and comes up where it will hang next
+        const home = this.scene.hero;
+        for (let i = 0; i < 3; i += 1) {
+            p.from[i] = home[i];
+            if (site && Number.isFinite(site[i])) home[i] = site[i];
+        }
+        p.reach = Math.hypot(home[0] - p.from[0], home[2] - p.from[2]);
+        p.fall = PLUNGE.fall + Math.min(LEAP.most, p.reach * LEAP.perMetre);
+        p.total = PLUNGE.total + (p.fall - PLUNGE.fall);
+        return true;
     }
 
     /** The true combo (0 = the chain broke). */
@@ -423,7 +457,7 @@ export class FluidChoreography {
 
         this.live.fill(0);
         this._updateHero(time, dt, palette, pt, calm);
-        this._updateKin(time, palette, calm);
+        this._updateKin(time, dt, palette, calm);
         this._updateFlights(time);
         this._updateJets(time);
         this._updateSea(time, glass);
@@ -489,10 +523,14 @@ export class FluidChoreography {
 
         const swellR = 1 + HERO.swell * this.charge + this.gulp * 0.07;
         let R = HERO.radius * scale * swellR;
-        // where it hangs at rest; a plunge leaves from here and returns to here, so nothing jumps
-        const cx = sc.hero[0] + Math.sin(time * 0.21) * 0.35 * calm;
-        let cy = sc.hero[1] + Math.sin(time * 0.37) * 0.3 * calm;
-        const cz = sc.hero[2] + Math.cos(time * 0.17) * 0.3 * calm;
+        // Where it hangs at rest. A plunge leaves from where it hung when the clear came and comes
+        // up at its home, the same place unless the clear gave it a new one, so nothing jumps.
+        const swayX = Math.sin(time * 0.21) * 0.35 * calm;
+        const swayZ = Math.cos(time * 0.17) * 0.3 * calm;
+        const hung = p.active && pt < p.fall ? p.from : sc.hero;
+        let cx = hung[0] + swayX;
+        let cy = hung[1] + Math.sin(time * 0.37) * 0.3 * calm;
+        let cz = hung[2] + swayZ;
         let spread = 1; // how far the lobes stand out of the core
         let stemOn = 1;
         let stemFoot = 0.8;
@@ -506,19 +544,33 @@ export class FluidChoreography {
                 spread = 1 - 0.55 * k;
                 R *= 1 - SQUEEZE * k;
                 cy += 0.25 * k;
-            } else if (pt < PLUNGE.fall) {
-                const k = pt / PLUNGE.fall;
+            } else if (pt < p.fall) {
+                // it falls; given a new home it leaps there in an arc, leaving from rest and
+                // diving in at speed
+                const k = pt / p.fall;
+                const e = k * k * (2 - k);
                 R *= 1 - SQUEEZE;
-                cy = lerp(cy + 0.25, -R * 0.55, k * k);
+                cx = lerp(cx, sc.hero[0] + swayX, e);
+                cz = lerp(cz, sc.hero[2] + swayZ, e);
+                const arc = Math.min(LEAP.arcMost * scale, p.reach * LEAP.arc) * Math.sin(Math.PI * k);
+                cy = lerp(cy + 0.25, -R * 0.55, k * k) + arc;
                 spread = 0.45;
                 stemOn = 0;
+                if (p.reach > 2) {
+                    // it sheds a string of fine drops behind it
+                    const shed = Math.floor(pt / 0.045);
+                    if (shed !== p.shed) {
+                        p.shed = shed;
+                        this._burst('trail', cx, cy - R * 0.45, cz, this.heroTint, 2);
+                    }
+                }
             } else {
                 if (!p.impact) {
                     p.impact = true;
                     p.at = [cx, cz];
                     this._impact(cx, cz, R);
                 }
-                crownAge = pt - PLUNGE.fall;
+                crownAge = pt - p.fall;
                 const riseAt = 0.55;
                 if (crownAge < riseAt) {
                     R *= 1 - SQUEEZE;
@@ -537,7 +589,7 @@ export class FluidChoreography {
                     stemWaist = lerp(1.25, stemWaist, smooth(0.15, 0.95, k));
                     stemFoot = lerp(2.4, 0.8, smooth(0.2, 1, k));
                 }
-                if (pt > PLUNGE.total) p.active = false;
+                if (pt > p.total) p.active = false;
             }
         }
 
@@ -700,12 +752,24 @@ export class FluidChoreography {
 
     // ── the kin ─────────────────────────────────────────────────────────────────
 
-    _updateKin(time, palette, calm) {
+    _updateKin(time, dt, palette, calm) {
         const sc = this.scene;
         const s = sc.heroScale;
         const c0 = mix3([0, 0, 0], palette.inkB, WHITE, 0.45);
         const c1 = mix3([0, 0, 0], palette.inkA, WHITE, 0.45);
-        const [kx, ky, kz] = sc.kin;
+        // when their anchor moves (the Great Drop has come to their side) they drift over to it,
+        // easing out and in (a critically damped follow, a few seconds)
+        if (!this.kinAt) {
+            this.kinAt = [...sc.kin];
+            this.kinDrift = [0, 0, 0];
+        }
+        const w = KIN_DRIFT;
+        for (let i = 0; i < 3; i += 1) {
+            const pull = w * w * (sc.kin[i] - this.kinAt[i]) - 2 * w * this.kinDrift[i];
+            this.kinDrift[i] += pull * dt;
+            this.kinAt[i] += this.kinDrift[i] * dt;
+        }
+        const [kx, ky, kz] = this.kinAt;
         const bob = (f, ph) => Math.sin(time * f + ph) * 0.35 * calm;
         const bodies = [
             [kx, ky + bob(0.31, 0.4), kz, 1.7 * s, c0],

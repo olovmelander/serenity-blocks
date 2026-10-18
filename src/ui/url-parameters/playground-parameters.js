@@ -2781,6 +2781,20 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'quads',
+        category: 'Playground',
+        scope: 'playground.html — fluid-dreams',
+        description: 'Play this many four-line clears (6 s apart) before the frame: each carries the '
+            + 'Great Drop to a new home, where it dives in and hangs afterwards.',
+        values: 'Nonnegative integer. The homes are drawn from a seeded sequence, so a shot reproduces.',
+        defaultValue: '0.',
+        example: 'board=1&quads=3',
+        notes: 'Use on playground.html with effect=fluid-dreams.',
+        sources: [
+            'src/playground/effects/fluid-dreams.effect.js',
+        ],
+    },
+    {
         name: 'values',
         category: 'Playground',
         scope: 'playground.html — sky-children',

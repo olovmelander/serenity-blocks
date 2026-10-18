@@ -14,9 +14,11 @@
  * crosses flaring and letting go while a bead of that light climbs the thread into the Great
  * Drop; a chain of clears charges the sea (the Drop swells and buds one satellite per step, the
  * ink brightens, the mist rises faster); a T-spin winds the sea under the Drop into a funnel;
- * and four lines make the sea hold its breath, then the Drop lets go of its thread and falls: a
- * crown of liquid stands up round the crater, a ring of split light crosses the sky, and the
- * Drop is lifted back into the air on the column that follows.
+ * and four lines make the sea hold its breath, then the Drop lets go of its thread and leaps in
+ * an arc to a new home somewhere in the open sea (a random place clear of the board and the
+ * stats bar; its kin drift over to the other side to make room) and dives in there: a crown of
+ * liquid stands up round the crater, a ring of split light crosses the sky, and the Drop is
+ * lifted back into the air on the column that follows, and hangs there until the next four.
  *
  * Content lives in FluidDreamsWorld (fluid-dreams-world.js), shared with the playground effect
  * src/playground/effects/fluid-dreams.effect.js, so what is iterated there ships. This class owns
