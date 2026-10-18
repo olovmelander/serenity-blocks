@@ -62,7 +62,7 @@ describe('Odyssey campaign objectives', () => {
         }
         expect(duels.map((level) => level.theme.primary)).toEqual([
             'pyrestorm', 'waves', 'summer', 'winter',
-            'sky-children', 'stellar-velocity', 'chromatic-impasto', 'synthwave-sunset',
+            'rainbow-terraces', 'stellar-velocity', 'chromatic-impasto', 'synthwave-sunset',
         ]);
     });
 

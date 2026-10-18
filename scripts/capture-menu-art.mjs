@@ -63,7 +63,7 @@ const SCENES = [
         frame: '#multiplayer-container { transform: translate(60px, -40px) scale(0.64) !important; }', cropTop: 0.082,
     },
     {
-        name: 'online-versus', theme: 'sky-children', mode: 'online-multiplayer', stage: 'online', settleMs: 7000,
+        name: 'online-versus', theme: 'rainbow-terraces', mode: 'online-multiplayer', stage: 'online', settleMs: 7000,
         frame: '#online-multiplayer-container { transform: translate(180px, -40px) scale(0.72) !important; }', cropTop: 0.07,
     },
     { name: 'serenity', theme: 'golden-forest', mode: 'serenity', settleMs: 15000, cropTop: 0.047 },

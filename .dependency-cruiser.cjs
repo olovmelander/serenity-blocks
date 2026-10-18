@@ -47,8 +47,8 @@ module.exports = {
                 path: '^src/themes/([^/]+)/',
                 // The shrink-only baseline of known cross-theme imports (measured
                 // 2026-07-10) is now empty; never add an entry.
-                // (sky-children-legacy entry removed 2026-07-16 with the deletion
-                // of the unregistered sky-children v1 theme; pyrestorm-v2 entry
+                // (the legacy v1 sky theme's entry removed 2026-07-16 with the
+                // deletion of that unregistered theme; pyrestorm-v2 entry
                 // removed 2026-08-16 with the deletion of the theme itself; the
                 // last one, winter/sim/snow-sim.js borrowing a starlight TSL noise
                 // lib, went with the Winter rebuild on 2026-10-09.)
