@@ -2,11 +2,14 @@
  * The map's orb panel: what an orb is, what it asks for, what each star needs, and what changes
  * from the orb before it. This is the briefing a player reads before pressing Play from the map,
  * so a rule change (a taller well, a deadline, cascade physics) is never a surprise on arrival.
- * Pure DOM by id; the mode owns selection, prefetch and the Play button.
+ * The charms gathered sit above the goal as carry toggles, and the goal, stars and rules below
+ * describe the orb as the carried charms make it. Pure DOM by id; the mode owns selection,
+ * prefetch, the Play button and the charm bag.
  */
 import { formatOdysseyMapObjective, formatOdysseyStarCondition } from './objective-copy.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
-import { applyOdysseyCharmsToLevel, describeOdysseyCharms } from '../../core/odyssey/odyssey-charms.js';
+import { odysseyUncarriedHelp } from './odyssey-charm-carry.js';
+import { ODYSSEY_CHARM_SLOTS, applyOdysseyCharmsToLevel, describeOdysseyCharms } from '../../core/odyssey/odyssey-charms.js';
 
 /** The kind of orb, as the map marks it: a rival duel, the chapter's boss, a showcase, or none. */
 export function describeOdysseyOrbKind(level) {
@@ -28,11 +31,15 @@ function setText(doc, id, text) {
     return node;
 }
 
+function clearChildren(node) {
+    if (typeof node.replaceChildren === 'function') node.replaceChildren();
+    else node.innerHTML = '';
+}
+
 function fillList(doc, id, items) {
     const list = doc.getElementById(id);
     if (!list) return;
-    list.replaceChildren?.();
-    if (!list.replaceChildren) list.innerHTML = '';
+    clearChildren(list);
     items.forEach((text) => {
         const item = doc.createElement('li');
         item.textContent = text;
@@ -42,22 +49,71 @@ function fillList(doc, id, items) {
 }
 
 /**
+ * The charm block: every gathered charm as a carry toggle (pressed when carried), and one line
+ * under them: a notice from the last toggle, the uncarried charms that would ease this orb, or
+ * how many are carried. Hidden until a charm has been gathered.
+ * @param {Document} doc
+ * @param {object} level the authored orb
+ * @param {{ gathered: string[], carried: string[], notice?: string | null, onToggle?: function(string): void } | null} bag
+ */
+export function renderOdysseyPanelCharms(doc, level, bag) {
+    const block = doc.getElementById('level-panel-charms');
+    if (!block) return;
+    const gathered = describeOdysseyCharms(bag?.gathered);
+    block.hidden = gathered.length === 0;
+    if (!gathered.length) return;
+    const carried = bag.carried || [];
+    const list = doc.getElementById('level-panel-charm-list');
+    if (list) {
+        clearChildren(list);
+        gathered.forEach((charm) => {
+            const chip = doc.createElement('button');
+            const isCarried = carried.includes(charm.id);
+            chip.type = 'button';
+            chip.className = 'level-charm';
+            chip.ariaPressed = String(isCarried);
+            chip.setAttribute?.('aria-pressed', String(isCarried));
+            if (chip.dataset) {
+                chip.dataset.charm = charm.id;
+                chip.dataset.carried = String(isCarried);
+            }
+            chip.title = `${charm.line} ${isCarried ? 'Carried: tap to set it down.' : 'In the bag: tap to carry it.'}`;
+            chip.textContent = `${isCarried ? '◆' : '◇'} ${charm.name}`;
+            chip.addEventListener?.('click', () => bag.onToggle?.(charm.id));
+            list.appendChild(chip);
+        });
+    }
+    const hint = doc.getElementById('level-panel-charm-hint');
+    if (!hint) return;
+    const help = odysseyUncarriedHelp(bag, level);
+    if (bag.notice) hint.textContent = bag.notice;
+    else if (help.length) {
+        hint.textContent = `Not carried here: ${help.map(({ charm, effect }) => `${charm.name} (${effect})`).join(' · ')}.`;
+    } else if (carried.length) {
+        hint.textContent = `Carrying ${carried.length} of ${ODYSSEY_CHARM_SLOTS}. The goal and rules below count them.`;
+    } else hint.textContent = `Tap a charm to carry it. You can carry ${ODYSSEY_CHARM_SLOTS}.`;
+    if (hint.dataset) hint.dataset.notice = String(Boolean(bag.notice));
+}
+
+/**
  * @param {object} options
  * @param {object} options.level the resolved presentation of the selected orb
  * @param {object|null} [options.previousLevel] the orb before it on the route
  * @param {object|null} [options.completion] the saved completion, if any
  * @param {boolean} options.unlocked whether the orb can be played now
  * @param {string} [options.chapterName]
- * @param {string[]} [options.charms] the charms held: the goal, stars and rules show the orb as they make it
+ * @param {{ gathered: string[], carried: string[], notice?: string | null, onToggle?: function(string): void } | null}
+ *   [options.charms] the charm bag; the goal, stars and rules show the orb as the carried charms make it
  * @param {Document} [doc]
  */
 export function renderOdysseyLevelPanel({
-    level, previousLevel = null, completion = null, unlocked = false, chapterName = '', charms = [],
+    level, previousLevel = null, completion = null, unlocked = false, chapterName = '', charms = null,
 }, doc = globalThis.document) {
     if (!level || !doc) return;
-    // The orb as the held charms make it: what the panel promises is what will be played.
-    const played = applyOdysseyCharmsToLevel(level, charms);
-    const playedBefore = previousLevel ? applyOdysseyCharmsToLevel(previousLevel, charms) : null;
+    // The orb as the carried charms make it: what the panel promises is what will be played.
+    const carried = charms?.carried || [];
+    const played = applyOdysseyCharmsToLevel(level, carried);
+    const playedBefore = previousLevel ? applyOdysseyCharmsToLevel(previousLevel, carried) : null;
     const stars = Math.max(0, Math.min(3, Number(completion?.stars) || 0));
     const kind = describeOdysseyOrbKind(level);
     const kindNode = doc.getElementById('level-panel-kind');
@@ -80,14 +136,7 @@ export function renderOdysseyLevelPanel({
         starsNode.setAttribute?.('aria-label', `${stars} of 3 stars earned`);
     }
 
-    const charmsNode = doc.getElementById('level-panel-charms');
-    if (charmsNode) {
-        const held = describeOdysseyCharms(charms);
-        charmsNode.textContent = held.length
-            ? `Your charms: ${held.map((charm) => charm.name).join(' · ')}. The goal and rules below count them.`
-            : '';
-        charmsNode.hidden = held.length === 0;
-    }
+    renderOdysseyPanelCharms(doc, level, charms);
 
     setText(doc, 'level-panel-goal', formatOdysseyMapObjective(played.victory?.primary));
     const starGoals = ['one', 'two', 'three'].map((tier, index) => (

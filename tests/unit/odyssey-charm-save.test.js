@@ -35,53 +35,74 @@ describe('Odyssey charms in the save', () => {
             saved.set(key, JSON.stringify(data));
         });
     };
+    const ids = (draft) => draft.charms.map((charm) => charm.id);
 
-    it('starts with a seed and no charms, offers Chapter 1’s draft, and keeps what is taken across reloads', () => {
+    it('starts with an empty bag, offers Chapter 1’s charms, and keeps what is taken and carried across reloads', () => {
         const state = manager();
-        expect(state.getCharms()).toEqual([]);
-        const draft = state.getCharmDraft('chapter:1');
+        expect(state.getCharmBag()).toEqual({ gathered: [], carried: [] });
+        expect(state.getCarriedCharms()).toEqual([]);
+        const draft = state.getChapterCharmDraft(1);
         expect(draft.key).toBe('chapter:1');
-        expect(draft.charms).toHaveLength(3);
-        const [pick] = draft.charms;
-        expect(state.takeCharm('chapter:1', 'not-offered')).toBe(false);
-        expect(state.takeCharm('chapter:1', pick.id)).toBe(true);
-        expect(state.getCharms()).toEqual([pick.id]);
-        expect(state.getCharmDraft('chapter:1')).toBeNull();
+        expect(ids(draft)).toEqual(['kindle', 'keel', 'hearth']);
+        expect(state.takeCharm(draft, 'not-offered')).toBeNull();
+        expect(state.takeCharm(draft, 'keel')).toEqual({ setDown: null });
+        expect(state.getCharmBag()).toEqual({ gathered: ['keel'], carried: ['keel'] });
+        expect(state.getChapterCharmDraft(1)).toBeNull();
 
         const again = reload();
-        expect(again.getCharms()).toEqual([pick.id]);
-        expect(again.getCharmDraft('chapter:1')).toBeNull();
-        // The same journey offers the same Chapter 2 draft before and after a reload, never the charm held.
-        expect(again.getCharmDraft('chapter:2')).toEqual(state.getCharmDraft('chapter:2'));
-        expect(again.getCharmDraft('chapter:2').charms.map((charm) => charm.id)).not.toContain(pick.id);
-        expect(again.passCharm('chapter:2')).toBe(true);
-        expect(reload().getCharmDraft('chapter:2')).toBeNull();
-        expect(reload().passCharm('chapter:2')).toBe(false);
-        expect(reload().getCharms()).toEqual([pick.id]);
+        expect(again.getCharmBag()).toEqual({ gathered: ['keel'], carried: ['keel'] });
+        expect(again.getChapterCharmDraft(1)).toBeNull();
+        // Chapter 3's offer leaves out the charm in the bag and tops up from the catalogue.
+        expect(ids(again.getChapterCharmDraft(3))).toEqual(['long-breath', 'swell', 'kindle']);
+        expect(again.passCharm(again.getChapterCharmDraft(3))).toBe(true);
+        expect(reload().getChapterCharmDraft(3)).toBeNull();
+        expect(reload().passCharm({ key: 'chapter:3', charms: [] })).toBe(false);
+        expect(reload().getCarriedCharms()).toEqual(['keel']);
     });
 
-    it('remembers each fall and opens the road’s mercy on the third, but not for an orb already cleared', () => {
+    it('carries three at a time: a fourth sets the oldest down, and the map can set down and carry again', () => {
         const state = manager();
-        expect(state.recordAttempt(3)).toEqual({ levelId: 3, falls: 1 });
-        state.recordAttempt(3);
-        expect(state.getMercyDraft(3)).toBeNull();
-        expect(state.recordAttempt(3).falls).toBe(ODYSSEY_MERCY_FALLS);
-        const mercy = state.getMercyDraft(3);
-        expect(mercy.key).toBe('orb:3');
-        expect(mercy.charms).toHaveLength(3);
-        expect(reload().getMercyDraft(3)).toEqual(mercy);
-        expect(state.getMercyDraft(4)).toBeNull();
-        expect(state.takeCharm(mercy.key, mercy.charms[1].id)).toBe(true);
-        expect(reload().getCharms()).toEqual([mercy.charms[1].id]);
-        expect(state.getMercyDraft(3)).toBeNull();
+        const taken = [];
+        for (let chapter = 1; chapter <= 4; chapter += 1) {
+            const draft = state.getChapterCharmDraft(chapter);
+            taken.push(state.takeCharm(draft, draft.charms[0].id));
+        }
+        expect(taken).toEqual([{ setDown: null }, { setDown: null }, { setDown: null }, { setDown: 'kindle' }]);
+        expect(state.getCharmBag()).toEqual({
+            gathered: ['kindle', 'low-tide', 'long-breath', 'still-air'],
+            carried: ['low-tide', 'long-breath', 'still-air'],
+        });
+        expect(state.toggleCarriedCharm('kindle')).toEqual({ carried: false, refused: true });
+        expect(state.toggleCarriedCharm('long-breath')).toEqual({ carried: false, refused: false });
+        expect(state.toggleCarriedCharm('kindle')).toEqual({ carried: true, refused: false });
+        expect(state.toggleCarriedCharm('hearth')).toEqual({ carried: false, refused: true });
+        expect(reload().getCarriedCharms()).toEqual(['low-tide', 'still-air', 'kindle']);
+        expect(reload().getCharmBag().gathered).toHaveLength(4);
+    });
+
+    it('remembers each fall and offers the orb’s own mercy on the third, but not for an orb already cleared', () => {
+        const state = manager();
+        expect(state.recordAttempt(15)).toEqual({ levelId: 15, falls: 1 });
+        state.recordAttempt(15);
+        expect(state.getMercyDraft(15)).toBeNull();
+        expect(state.recordAttempt(15).falls).toBe(ODYSSEY_MERCY_FALLS);
+        const mercy = state.getMercyDraft(15);
+        expect(mercy.key).toBe('orb:15');
+        expect(ids(mercy)).toEqual(['long-breath', 'keel', 'hearth']); // Orb 15 is timed and asks lines
+        expect(reload().getMercyDraft(15)).toEqual(mercy);
+        expect(state.getMercyDraft(16)).toBeNull();
+        expect(state.takeCharm(mercy, 'long-breath')).toEqual({ setDown: null });
+        expect(reload().getCharmBag()).toEqual({ gathered: ['long-breath'], carried: ['long-breath'] });
+        expect(state.getMercyDraft(15)).toBeNull();
         // Falls on another orb count on their own; a cleared orb needs no mercy.
-        state.recordAttempt(4);
-        state.recordAttempt(4);
-        state.recordAttempt(4);
-        state.completeLevel(4, {
+        state.recordAttempt(6);
+        state.recordAttempt(6);
+        state.recordAttempt(6);
+        expect(ids(state.getMercyDraft(6))).toEqual(['low-tide', 'keel', 'hearth']);
+        state.completeLevel(6, {
             stars: 1, score: 10, time: 10, bonuses: [],
         });
-        expect(state.getMercyDraft(4)).toBeNull();
+        expect(state.getMercyDraft(6)).toBeNull();
         expect(reload().statistics.totalAttempts).toBe(7);
     });
 
@@ -93,43 +114,38 @@ describe('Odyssey charms in the save', () => {
         rewriteSave((data) => { delete data.charms; });
         const older = reload();
         expect(older.isLevelCompleted(1)).toBe(true);
-        expect(older.getCharms()).toEqual([]);
-        expect(older.charms.seed).toMatch(/\S/);
-        expect(older.getCharmDraft('chapter:1').charms).toHaveLength(3);
+        expect(older.getCharmBag()).toEqual({ gathered: [], carried: [] });
+        expect(older.getChapterCharmDraft(1).charms).toHaveLength(3);
 
         rewriteSave((data) => {
             data.charms = {
-                seed: 'kept',
-                owned: ['keel', 'bogus'],
+                owned: ['keel', 'bogus', 'hearth', 'swell', 'kindle'],
                 drafts: { 'chapter:1': 'keel', 'chapter:2': 'bogus' },
-                falls: { 2: '3' },
+                falls: { 15: '3' },
             };
         });
         const mended = reload();
-        expect(mended.charms.seed).toBe('kept');
-        expect(mended.getCharms()).toEqual(['keel']);
-        expect(mended.getCharmDraft('chapter:1')).toBeNull();
-        expect(mended.getCharmDraft('chapter:2').charms.map((charm) => charm.id)).not.toContain('keel');
-        expect(mended.getMercyDraft(2)).not.toBeNull();
+        expect(mended.getCharmBag()).toEqual({
+            gathered: ['keel', 'hearth', 'swell', 'kindle'], carried: ['hearth', 'swell', 'kindle'],
+        });
+        expect(mended.getChapterCharmDraft(1)).toBeNull();
+        expect(ids(mended.getChapterCharmDraft(2))).toEqual(['low-tide', 'afterglow', 'long-breath']);
+        expect(ids(mended.getMercyDraft(15))).toEqual(['long-breath', 'still-air']);
     });
 
-    it('a new journey forgets its charms and draws a new seed, so its drafts are its own', () => {
+    it('a new journey empties the bag and opens every chapter’s offer again', () => {
         const state = manager();
-        const { seed } = state.charms;
-        const draft = state.getCharmDraft('chapter:1');
-        state.takeCharm('chapter:1', draft.charms[0].id);
+        const draft = state.getChapterCharmDraft(1);
+        state.takeCharm(draft, 'keel');
         state.recordAttempt(2);
         state.recordAttempt(2);
         state.recordAttempt(2);
         expect(state.getMercyDraft(2)).not.toBeNull();
         state.reset();
         state.save();
-        expect(state.getCharms()).toEqual([]);
+        expect(state.getCharmBag()).toEqual({ gathered: [], carried: [] });
         expect(state.getMercyDraft(2)).toBeNull();
-        expect(state.charms.seed).not.toBe(seed);
-        expect(state.getCharmDraft('chapter:1').charms).toHaveLength(3);
-        const fresh = reload();
-        expect(fresh.getCharms()).toEqual([]);
-        expect(fresh.charms.seed).toBe(state.charms.seed);
+        expect(ids(state.getChapterCharmDraft(1))).toEqual(['kindle', 'keel', 'hearth']);
+        expect(reload().getCharmBag()).toEqual({ gathered: [], carried: [] });
     });
 });

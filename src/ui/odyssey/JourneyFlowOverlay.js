@@ -367,14 +367,17 @@ export function createJourneyFlowOverlay({
         if (typeof node.replaceChildren === 'function') node.replaceChildren();
         else if (Array.isArray(node.children)) node.children.splice(0);
     };
-    const settleCharm = (taken) => {
+    const settleCharm = (taken, setDown = null) => {
         charmSettled = true;
         charmNodes = [];
         clearNode(charmBlock);
         modal.dataset.charmPending = 'false';
-        const settled = el('p', 'ody-flow__charm-settled', taken
-            ? `${taken.name} is yours for the rest of the road. ${taken.line}`
-            : 'No charm this time. The road offers another at the next chapter.');
+        let line = 'No charm this time. The road offers more ahead.';
+        if (taken && setDown) {
+            line = `${taken.name} is yours and carried from here. ${setDown.name} was set down to make room; `
+                + 'change what you carry on the map.';
+        } else if (taken) line = `${taken.name} is yours and carried from here. ${taken.line}`;
+        const settled = el('p', 'ody-flow__charm-settled', line);
         settled.role = 'status';
         charmBlock.appendChild(settled);
         status.textContent = '';
@@ -392,7 +395,7 @@ export function createJourneyFlowOverlay({
         charmBlock.hidden = false;
         modal.dataset.charmPending = 'true';
         charmBlock.appendChild(el('p', 'ody-flow__charms-label', 'The road offers a charm'));
-        const hint = el('p', 'ody-flow__charms-hint', 'Take one and keep it for the rest of the way, or pass.');
+        const hint = el('p', 'ody-flow__charms-hint', 'Take one and keep it, or pass. You carry up to three at a time.');
         charmBlock.appendChild(hint);
         const list = el('div', 'ody-flow__charm-list');
         list.role = 'group';
@@ -407,8 +410,9 @@ export function createJourneyFlowOverlay({
             card.appendChild(el('span', 'ody-charm__line', charm.line));
             card.addEventListener('click', () => {
                 if (disposed || retained || charmSettled) return;
-                if (draft.onTake?.(charm.id) === false) return;
-                settleCharm(charm);
+                const outcome = draft.onTake?.(charm.id);
+                if (outcome === false || outcome === null) return;
+                settleCharm(charm, outcome?.setDown || null);
             });
             list.appendChild(card);
             charmNodes.push(card);

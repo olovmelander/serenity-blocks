@@ -11,7 +11,6 @@
  */
 
 import { CLIMATES, climateById, isGentle } from './climates.js';
-import { pickDistinct, seededRng } from '../seeded-stream.js';
 import {
     BALLAST_FACTOR, CHARMS, KEEL_FACTOR, TIDE_FACTOR,
 } from './charms.js';
@@ -29,9 +28,59 @@ export const KEEPER_FACTOR = 1.5;
 /** Points a banked stack pays for each row of blocks carried, once the next stop is cleared. */
 export const BANK_TOLL_PER_ROW = 60;
 
-export {
-    hashSeed, mulberry32, seededRng,
-} from '../seeded-stream.js';
+/** FNV-1a over the seed's characters: any string becomes a 32-bit state. */
+export function hashSeed(seed) {
+    let hash = 0x811c9dc5;
+    const text = String(seed);
+    for (let i = 0; i < text.length; i += 1) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193) >>> 0;
+    }
+    return hash >>> 0;
+}
+
+/**
+ * mulberry32: a small, well-mixed generator for authoring, never for the piece bag
+ * (that stays on the session RNG, src/core/session-rng.js).
+ * @param {number} state
+ * @returns {() => number} uniform in [0, 1)
+ */
+export function mulberry32(state) {
+    let a = state >>> 0;
+    return () => {
+        a = (a + 0x6d2b79f5) >>> 0;
+        let t = a;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+}
+
+/** A stream of the road seed for one purpose (the road, a stop's draft), so each is stable. */
+export function seededRng(seed, purpose) {
+    return mulberry32(hashSeed(`${seed}:${purpose}`));
+}
+
+/** @param {() => number} rng @param {number} count */
+function pickIndex(rng, count) {
+    return Math.min(count - 1, Math.floor(rng() * count));
+}
+
+/**
+ * @template T
+ * @param {() => number} rng
+ * @param {readonly T[]} items
+ * @param {number} count
+ * @param {(item: T) => boolean} [allowed]
+ */
+function pickDistinct(rng, items, count, allowed = () => true) {
+    const pool = items.filter(allowed);
+    const picked = [];
+    while (picked.length < count && pool.length > 0) {
+        picked.push(pool.splice(pickIndex(rng, pool.length), 1)[0]);
+    }
+    return picked;
+}
 
 /** Today's road, the same for everyone who sets out on it. */
 export function dailySeed(date = new Date()) {
