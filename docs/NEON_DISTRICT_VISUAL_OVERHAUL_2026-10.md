@@ -225,6 +225,46 @@ with the shops against 129.9 and 130.1 without, at Electron's frame cap. All sho
 (every tier, forced WebGL2, the four-line overdrive, rooms, frame strips of the people, poster
 walls, screens) have clean consoles on WebGPU.
 
+## Rain on the glass (2026-10-19)
+
+The owner asked for realistic raindrops on the screen, pointing at a DaVinci Resolve rain-on-lens
+tutorial. The district is now seen through a pane of glass in the rain
+(`neon-district-glass.js`), drawn in the post's one output pass, before the bloom is added:
+
+- **Beads.** Drops of two sizes on a jittered grid. Each is born (a raindrop lands), sits, and
+  shrinks as it evaporates, then another lands elsewhere in its cell (a cell's lifetime is 9 to
+  23 s).
+- **Runners.** Heavier drops, one per column, slide down in jerks: stuck, then a sudden slide, eight
+  steps a run, along a wavering path. Each wipes a trail through the mist that grows back behind
+  it and leaves a line of shrinking beads.
+- **Mist.** Fine condensation, heavier toward the foot and the sides of the pane, softens the
+  street behind the glass. On High and up it mixes toward a quarter-resolution Gaussian blur of
+  the scene (`GaussianBlurNode`); on Medium it only lifts the darks. The trails wipe it, and it
+  thins round the drops.
+- **Optics.** Every drop is a small lens. The scene is sampled at an offset against the drop's
+  outward normal, five drop radii at the rim, so the street is seen through it upside down and
+  shrunk. The inside gathers a little light. The rim darkens where the light turns away, a glint
+  coloured by the neon behind sits on the shoulder facing the lamps overhead, and the foot
+  catches a little caustic.
+
+Placement and switches:
+
+- It stays off the board card and HUD (the post's calm zones).
+- It has its own clock in the world's post state (`rainTime`), which holds still under reduced
+  motion.
+- Tiers: two layers of each kind on High, Ultra and Extreme; one on Medium; none on Low and
+  Minimal (`POST_LOOK[tier].glass` and `glassBlur`).
+- `?neonDistrictGlass=0` (game) and `glass=0` (playground) take it off for an A/B.
+
+Written for this theme. The best-known real-time shader of this effect is licensed for
+non-commercial use only, so none of its code is used.
+
+![Rain on the glass: the street at High, and in game beside the board](neon-district-captures/glass.webp)
+
+Verified on WebGPU (RTX 3070): clean consoles at every tier, on forced WebGL2 and in the
+four-line overdrive. In game at Ultra (1584 × 813, two alternating rounds) the street read 131.0
+and 131.2 fps with the glass against 130.9 and 131.1 without, at Electron's frame cap.
+
 ## How it is built
 
 | File | Role |
