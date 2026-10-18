@@ -12,6 +12,13 @@
 
 import { STREET, mulberry32, linRGB } from './neon-district-core.js';
 import { BILLBOARD_CELLS, SHOPFRONT_CELLS } from './neon-district-atlas.js';
+import {
+    GLYPH_COUNT, GLYPH_LATIN, GLYPH_SCRIPT, glyphFor,
+} from './neon-district-glyphs.js';
+import {
+    ARCHETYPE_LIGHT, BRANDS, BRAND_WORDS, CAMPAIGNS, HALE, TRADE_SHOPS, WINDOW_SIGNS, archetypeIndex, logoIndex,
+} from './neon-district-campaigns.js';
+import { PAINTED_OPENINGS } from './neon-district-openings.js';
 
 /** Sign colours (sRGB hex) and how often each is drawn. */
 export const NEON_PALETTE = Object.freeze([
@@ -32,10 +39,15 @@ export const SIGN_WORDS = Object.freeze([
     'VR', 'DISCO', 'KARAOKE', 'TATTOO', 'PARTS', 'CHIPS', 'DINER', 'BATHS',
 ]);
 
-/** Glyph atlas: cells 0..35 are 0-9 A-Z, the rest are the district's own script. */
-export const GLYPH_LATIN = 36;
-export const GLYPH_COUNT = 64;
+/** Glyph atlas: cells 0..35 are 0-9 A-Z, then the district's own script, then punctuation. */
+export { GLYPH_COUNT, GLYPH_LATIN };
 export const MAX_SIGN_GLYPHS = 8;
+
+/** Characters a line of text (a fascia, a window sign) can hold: the text texture's width. */
+export const TEXT_WIDTH = 32;
+
+/** The shopfront band: a shop is this tall, from the pavement to just under the first floor. */
+export const SHOP_HEIGHT = STREET.plinth - 0.35;
 
 export const GLOW_TEXELS = 160;
 
@@ -67,11 +79,20 @@ function shuffled(rand, n) {
     return order;
 }
 
-function glyphIndex(ch) {
-    const code = ch.charCodeAt(0);
-    if (code >= 48 && code <= 57) return code - 48;
-    if (code >= 65 && code <= 90) return 10 + code - 65;
-    return 0;
+/** The shop identities a period deals out: every brand shop, every trade, a few twice. */
+function shopDeck() {
+    const deck = [];
+    const brandShop = (c) => ({
+        name: c.name, mark: c.short, shop: c.shop, a: c.a, b: c.b, logo: c.logo, brand: c.id,
+    });
+    BRANDS.filter((c) => c.shop).forEach((c) => deck.push(brandShop(c)));
+    deck.push(brandShop(HALE));
+    // The noodle chain and the laundromat have a branch on each side of the street.
+    deck.push(brandShop(CAMPAIGNS.combo), brandShop(CAMPAIGNS.spin), brandShop(HALE));
+    TRADE_SHOPS.forEach((t) => deck.push({
+        name: t.name, mark: t.name, shop: t.shop, a: t.a, b: 0xffffff, logo: t.logo ?? null, brand: null,
+    }));
+    return deck;
 }
 
 /**
@@ -92,9 +113,12 @@ export function buildLayout(seed = 0x0d15721c) {
         blocks: [],
         boxes: [],
         megaBoxes: [],
-        shopfronts: [],
+        shops: [],
+        texts: [],
         signs: [],
+        marks: [],
         screens: [],
+        prints: [],
         lamps: [],
         cables: [],
         lanterns: [],
@@ -111,11 +135,78 @@ export function buildLayout(seed = 0x0d15721c) {
         });
     };
 
-    const shopOrder = [shuffled(rand, SHOPFRONT_CELLS.length), shuffled(rand, SHOPFRONT_CELLS.length)];
-    const shopCursor = [0, 3];
-    let screenCursor = 0;
-    const squareAds = BILLBOARD_CELLS.map((c, i) => (c.aspect < 1.4 ? i : -1)).filter((i) => i >= 0);
-    const wideAds = BILLBOARD_CELLS.map((c, i) => (c.aspect >= 1.4 ? i : -1)).filter((i) => i >= 0);
+    /** A line of text for the text texture; returns its row (identical lines share one). */
+    const textRows = new Map();
+    const addText = (text) => {
+        const line = text.toUpperCase().slice(0, TEXT_WIDTH);
+        if (!textRows.has(line)) {
+            textRows.set(line, plan.texts.length);
+            plan.texts.push(line);
+        }
+        return textRows.get(line);
+    };
+
+    // The painted shopfronts are dealt once per period across both sides; the generated shops'
+    // identities come from a shuffled deck, reshuffled when it runs out.
+    const paintedOrder = shuffled(rand, SHOPFRONT_CELLS.length);
+    let paintedCursor = 0;
+    const deck = shopDeck();
+    let deckOrder = shuffled(rand, deck.length);
+    let deckCursor = 0;
+    const nextIdentity = () => {
+        if (deckCursor >= deckOrder.length) {
+            deckOrder = shuffled(rand, deck.length);
+            deckCursor = 0;
+        }
+        return deck[deckOrder[deckCursor++]];
+    };
+    // Adverts are dealt from one shuffled deck per shape, so every campaign comes round.
+    const adDecks = {};
+    const dealAd = (shape, avoid = []) => {
+        if (!adDecks[shape] || adDecks[shape].cursor >= adDecks[shape].order.length) {
+            const cells = BILLBOARD_CELLS.map((c, i) => (c.shape === shape ? i : -1)).filter((i) => i >= 0);
+            adDecks[shape] = { order: shuffled(rand, cells.length).map((k) => cells[k]), cursor: 0 };
+        }
+        const deckNow = adDecks[shape];
+        for (let tries = 0; tries < deckNow.order.length; tries++) {
+            const cell = deckNow.order[deckNow.cursor % deckNow.order.length];
+            deckNow.cursor += 1;
+            if (!avoid.includes(cell)) return cell;
+        }
+        return deckNow.order[0];
+    };
+    /** Three adverts of one shape for a screen to cycle, Hale's at most once. */
+    const playlist = (shape) => {
+        const list = [];
+        while (list.length < 3) {
+            const cell = dealAd(shape, list);
+            const hale = BILLBOARD_CELLS[cell].family === 'hale';
+            if (!hale || !list.some((c) => BILLBOARD_CELLS[c].family === 'hale')) list.push(cell);
+        }
+        return list;
+    };
+    const meanGlow = (cells) => [0, 1, 2].map((c) => cells.reduce((a, k) => a + BILLBOARD_CELLS[k].glow[c], 0) / cells.length);
+    const SHAPE_ASPECT = { wide: 16 / 9, portrait: 2 / 3, square: 1 };
+    const addScreen = (screen) => {
+        const cells = playlist(screen.shape);
+        const glow = meanGlow(cells);
+        plan.screens.push({
+            pitch: 0.055, ...screen, playlist: cells, glow, period: range(9, 14), transition: int(0, 2), seed: seedInt(),
+        });
+        addGlow(screen.side, screen.z, glow, 0.05 * screen.w * screen.h + 0.4, 9);
+    };
+    /** An advert for print: never one that leaves room for a screen's breathing ring. */
+    const dealPrint = (shape, avoid = []) => {
+        let cell = dealAd(shape, avoid);
+        for (let tries = 0; tries < 4 && BILLBOARD_CELLS[cell].ring; tries++) cell = dealAd(shape, [...avoid, cell]);
+        return cell;
+    };
+    /** A printed poster: paper or vinyl, lit by the street (a roof board also by its floodlights). */
+    const addPrint = (print) => {
+        plan.prints.push({
+            flood: 0, tear: 0, ...print, seed: seedInt(),
+        });
+    };
 
     const addBox = (box) => {
         plan.boxes.push({
@@ -158,7 +249,7 @@ export function buildLayout(seed = 0x0d15721c) {
     };
 
     const addSign = (sign) => {
-        const colour = NEON_PALETTE[sign.palette].hex;
+        const colour = sign.hex ?? NEON_PALETTE[sign.palette].hex;
         const rgb = linRGB(colour);
         plan.signs.push({
             glyphs: [], vertical: true, flicker: rand(), style: 0, seed: seedInt(), ...sign, rgb,
@@ -172,10 +263,72 @@ export function buildLayout(seed = 0x0d15721c) {
             const fits = SIGN_WORDS.filter((word) => word.length <= count && word.length >= Math.min(3, count));
             if (fits.length) {
                 const word = fits[Math.floor(rand() * fits.length)];
-                return Array.from(word, glyphIndex);
+                return Array.from(word, glyphFor);
             }
         }
-        return Array.from({ length: count }, () => GLYPH_LATIN + int(0, GLYPH_COUNT - GLYPH_LATIN - 1));
+        return Array.from({ length: count }, () => GLYPH_LATIN + int(0, GLYPH_SCRIPT - 1));
+    };
+    /** A campaign's word that fits `count` characters, and its colour; or null. */
+    const brandWord = (count) => {
+        const fits = BRAND_WORDS.filter(({ word }) => word.length <= count && word.length >= Math.min(3, count));
+        if (!fits.length) return null;
+        const pick = fits[Math.floor(rand() * fits.length)];
+        return { glyphs: Array.from(pick.word, glyphFor), hex: CAMPAIGNS[pick.id].a };
+    };
+
+    /** A tube logo hung off the wall: the mark over its name, facing down the street. */
+    const addMark = ({
+        side, z, y, size, logo, name, rgb, rgb2,
+    }) => {
+        const w = size * 1.12;
+        const h = size * 1.5;
+        plan.marks.push({
+            side,
+            x: side * (STREET.halfStreet - 0.3 - w / 2),
+            y,
+            z,
+            w,
+            h,
+            logo,
+            nameRow: addText(name),
+            nameLength: Math.min(TEXT_WIDTH, name.length),
+            rgb,
+            rgb2,
+            seed: seedInt(),
+        });
+        addGlow(side, z, rgb, 0.12 * w * h, 6);
+    };
+
+    /**
+     * A stretch of wall pasted with posters, the way a campaign is fly-posted: two to five of one
+     * poster side by side, then the next. Some are torn.
+     */
+    const pasteWall = (side, z0, width, yLo, yHi) => {
+        const ph = 1.55;
+        const pw = ph * (2 / 3);
+        const rows = Math.max(1, Math.floor((yHi - yLo) / (ph + 0.06)));
+        const cols = Math.max(1, Math.floor(width / (pw + 0.04)));
+        let cell = dealPrint('portrait');
+        let run = int(2, 5);
+        for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+                if (run <= 0) {
+                    cell = dealPrint('portrait', [cell]);
+                    run = int(2, 5);
+                }
+                run -= 1;
+                addPrint({
+                    side,
+                    x: side * (STREET.halfStreet - 0.06),
+                    y: yLo + r * (ph + 0.06) + ph / 2 + range(-0.04, 0.04),
+                    z: z0 + c * (pw + 0.04) + pw / 2,
+                    w: pw,
+                    h: ph,
+                    cell,
+                    tear: chance(0.35) ? range(0.15, 0.6) : 0,
+                });
+            }
+        }
     };
 
     for (let s = 0; s < 2; s++) {
@@ -256,51 +409,120 @@ export function buildLayout(seed = 0x0d15721c) {
             }
             plan.blocks.push(block);
 
-            // ── Shopfronts: two where the block is long enough, a pier between them ──
-            const shopH = STREET.plinth - 0.35;
-            const nextCell = () => {
-                const cellIndex = shopOrder[s][shopCursor[s] % SHOPFRONT_CELLS.length];
-                shopCursor[s] += 1;
-                return cellIndex;
-            };
-            const first = nextCell();
-            const widths = [Math.min(len - 1.4, shopH * SHOPFRONT_CELLS[first].aspect)];
-            const cells = [first];
-            const second = shopOrder[s][shopCursor[s] % SHOPFRONT_CELLS.length];
-            const secondW = shopH * SHOPFRONT_CELLS[second].aspect;
-            if (widths[0] + secondW + 2.4 <= len) {
-                cells.push(nextCell());
-                widths.push(secondW);
+            // ── Shops: the block's whole frontage, painted shopfronts and generated shops ──
+            // A run of vending machines takes one end of some blocks.
+            let machineEnd = 0;
+            if (chance(0.4)) machineEnd = chance(0.5) ? -1 : 1;
+            const machines = machineEnd ? int(2, 3) : 0;
+            const machineRun = machines ? machines * 1.12 + 0.5 : 0;
+            let shopZ = z - len / 2 + 0.6 + (machineEnd < 0 ? machineRun : 0);
+            const shopEnd = z + len / 2 - 0.6 - (machineEnd > 0 ? machineRun : 0);
+            if (machines) {
+                const startZ = machineEnd < 0 ? z - len / 2 + 1.1 : z + len / 2 - 1.1;
+                const dir = machineEnd < 0 ? 1.12 : -1.12;
+                for (let m = 0; m < machines; m++) {
+                    // Most of the district's machines sell its cola.
+                    const rgb = chance(0.55) ? linRGB(CAMPAIGNS.cascade.a) : VENDING_TINTS[int(0, VENDING_TINTS.length - 1)];
+                    addKit('vending', side, { z: startZ + m * dir, rgb });
+                }
+                addGlow(side, startZ, [0.9, 0.5, 0.5], 0.35 * machines, 3.5);
             }
-            const run = widths.reduce((a, b2) => a + b2, 0) + (cells.length - 1) * 0.9;
-            let shopZ = z - run / 2 + range(-0.5, 0.5) * Math.max(0, len - run - 1.4);
-            for (let k = 0; k < cells.length; k++) {
-                const cell = SHOPFRONT_CELLS[cells[k]];
-                const w = widths[k];
-                const centre = shopZ + w / 2;
-                const h = w / cell.aspect;
-                plan.shopfronts.push({
-                    side, z: centre, w, h, cell: cells[k], seed: seedInt(),
-                });
-                addGlow(side, centre, cell.glow, 1.3 + cell.luma * 14, 6.5);
-                // A canopy over most of them, lit from its lip in the shop's own colour.
-                if (chance(0.7)) {
+            // About one block in two shows one of the painted shopfronts, until the period's set
+            // is dealt.
+            let wantPainted = paintedCursor < paintedOrder.length && chance(0.62);
+            const firstShop = plan.shops.length;
+            while (shopEnd - shopZ > 3.6) {
+                const room = shopEnd - shopZ;
+                let shop = null;
+                if (!wantPainted && room >= 4.4 && chance(0.09)) {
+                    // A shop between tenants: a hoarding, fly-posted with one campaign after another.
+                    const w = Math.min(room, range(4.4, 8));
+                    pasteWall(side, shopZ, w, 0.4, 3.8);
+                    shopZ += w + range(0.6, 0.9);
+                    continue; // eslint-disable-line no-continue
+                }
+                if (wantPainted) {
+                    wantPainted = false;
+                    const cellIndex = paintedOrder[paintedCursor];
+                    const cell = SHOPFRONT_CELLS[cellIndex];
+                    const w = SHOP_HEIGHT * cell.aspect;
+                    if (w <= room) {
+                        paintedCursor += 1;
+                        const [u0, v0, u1, v1] = PAINTED_OPENINGS[cell.src] ?? [0.1, 0.45, 0.9, 0.98];
+                        shop = {
+                            kind: 0,
+                            side,
+                            z: shopZ + w / 2,
+                            w,
+                            h: SHOP_HEIGHT,
+                            cell: cellIndex,
+                            // The painting's windows and door, set back into the wall (v up).
+                            open: [u0, 1 - v1, u1, 1 - v0],
+                            recess: range(0.3, 0.46),
+                            rgb: cell.glow,
+                            seed: seedInt(),
+                        };
+                        addGlow(side, shop.z, cell.glow, 1.3 + cell.luma * 14, 6.5);
+                    }
+                }
+                if (!shop) {
+                    const id = nextIdentity();
+                    let w = Math.min(room, range(4.4, 7.4));
+                    // Never leave a sliver too narrow for another shop: this one takes it.
+                    if (room - w - 0.75 < 4.4) w = Math.min(room, 9.5);
+                    const fascia = range(0.95, 1.2);
+                    const pier = range(0.22, 0.42);
+                    // Some trade shops have closed for the night, or are closing.
+                    let shutter = 0;
+                    if (!id.brand && chance(0.22)) shutter = chance(0.45) ? 1 : range(0.35, 0.7);
+                    const sign = shutter < 1 && chance(0.55) ? WINDOW_SIGNS[int(0, WINDOW_SIGNS.length - 1)] : '';
+                    const light = ARCHETYPE_LIGHT[id.shop];
+                    shop = {
+                        kind: 1,
+                        side,
+                        z: shopZ + w / 2,
+                        w,
+                        h: SHOP_HEIGHT,
+                        archetype: archetypeIndex(id.shop),
+                        brand: id.brand,
+                        name: id.name,
+                        nameRow: addText(id.name),
+                        sign,
+                        signRow: sign ? addText(sign) : -1,
+                        // 0 tubes on a dark board, 1 a lit box with dark letters, 2 lit channel letters.
+                        style: int(0, 2),
+                        logo: logoIndex(id.logo),
+                        rgb: linRGB(id.a),
+                        rgb2: linRGB(id.b),
+                        light,
+                        open: [pier / w, 0.02, 1 - pier / w, 1 - (fascia + 0.14) / SHOP_HEIGHT],
+                        fascia: fascia / SHOP_HEIGHT,
+                        recess: range(0.32, 0.55),
+                        shutter,
+                        door: chance(0.5) ? range(0.1, 0.28) : range(0.72, 0.9),
+                        seed: seedInt(),
+                    };
+                    shop.mark = id.mark;
+                    const lit = 1 - Math.min(1, shutter) * 0.75;
+                    addGlow(side, shop.z, light, (1.0 + 0.12 * w) * lit, 6);
+                    addGlow(side, shop.z, shop.rgb, 0.5, 5);
+                    // Posters pasted on a shutter that is down for the night.
+                    if (shutter >= 1) {
+                        const span = w - 2 * pier - 0.3;
+                        const n = Math.min(int(2, 4), Math.floor(span / 1.07));
+                        if (n > 0) {
+                            pasteWall(side, shopZ + pier + 0.15 + range(0, Math.max(0, span - n * 1.07)), n * 1.07, 0.6, 2.25);
+                        }
+                    }
+                }
+                plan.shops.push(shop);
+                // A canopy over some of them, lit from its lip in the shop's own colour.
+                if (chance(0.5)) {
                     addKit('awning', side, {
-                        y: 0.12 + h + 0.12, z: centre, sz: w + 0.5, rgb: cell.glow,
+                        y: 0.12 + shop.h + 0.12, z: shop.z, sz: shop.w + 0.5, rgb: shop.rgb,
                     });
                 }
-                shopZ += w + 0.9;
-            }
-            // Vending machines in the gap a short run of shops leaves.
-            const gap = len - run - 1.4;
-            if (gap > 2.4 && chance(0.75)) {
-                const machines = Math.min(3, Math.floor(gap / 1.15));
-                const startZ = z + (chance(0.5) ? -1 : 1) * (len / 2 - 0.9);
-                const step = startZ > z ? -1.12 : 1.12;
-                for (let m = 0; m < machines; m++) {
-                    addKit('vending', side, { z: startZ + m * step, rgb: VENDING_TINTS[int(0, VENDING_TINTS.length - 1)] });
-                }
-                addGlow(side, startZ, [0.7, 0.9, 1.0], 0.35 * machines, 3.5);
+                shopZ += shop.w + range(0.6, 0.9);
             }
             // A fire escape up some facades, a pipe run up others.
             if (floors >= 2 && chance(0.42)) {
@@ -315,6 +537,40 @@ export function buildLayout(seed = 0x0d15721c) {
                 });
             }
 
+            // ── Tube logos: over most shops that have a mark; a brand with no shop on some walls ──
+            const firstMark = plan.marks.length;
+            for (let k = firstShop; k < plan.shops.length; k++) {
+                const shop = plan.shops[k];
+                if (shop.kind === 1 && shop.logo >= 0 && shop.shutter < 1 && chance(0.8)) {
+                    addMark({
+                        side,
+                        z: shop.z + range(-0.25, 0.25) * shop.w,
+                        y: STREET.plinth + 0.9 + 1.0,
+                        size: 1.5,
+                        logo: shop.logo,
+                        name: shop.mark,
+                        rgb: shop.rgb,
+                        rgb2: shop.rgb2,
+                    });
+                }
+            }
+            if (!plan.shops.slice(firstShop).some((shop) => shop.brand) && chance(0.35)) {
+                const c = [CAMPAIGNS.cascade, CAMPAIGNS.next, CAMPAIGNS.transit][int(0, 2)];
+                const size = range(1.9, 2.5);
+                const room = Math.max(0, wallH - STREET.plinth - 2.4 - size * 1.5);
+                addMark({
+                    side,
+                    z: z + range(-0.3, 0.3) * len,
+                    y: STREET.plinth + 1.2 + size * 0.75 + range(0, room),
+                    size,
+                    logo: logoIndex(c.logo),
+                    name: c.short,
+                    rgb: linRGB(c.a),
+                    rgb2: linRGB(c.b),
+                });
+            }
+            const marksHere = plan.marks.slice(firstMark);
+
             // ── Signs: blades over the pavement, the odd banner flat on the wall ──
             const blades = int(1, side < 0 ? 4 : 3);
             for (let b = 0; b < blades; b++) {
@@ -325,20 +581,31 @@ export function buildLayout(seed = 0x0d15721c) {
                 const glyphCount = Math.max(1, Math.min(MAX_SIGN_GLYPHS, Math.round(fit)));
                 const yLo = STREET.plinth + 0.6 + h / 2;
                 const yHi = Math.max(yLo + 0.1, wallH + 1.5 - h / 2);
+                let bz = z + range(-0.46, 0.46) * len;
+                // Never in the same plane as a logo sign.
+                marksHere.forEach((m) => {
+                    if (Math.abs(bz - m.z) < 0.7) bz += bz > m.z ? 1.4 : -1.4;
+                });
+                const latin = chance(0.42);
+                const brand = latin && chance(0.4) ? brandWord(glyphCount) : null;
                 addSign({
                     side,
                     kind: 'blade',
                     x: side * (STREET.halfStreet - 0.3 - w / 2),
                     y: range(yLo, yHi),
-                    z: z + range(-0.46, 0.46) * len,
+                    z: bz,
                     w,
                     h,
                     vertical,
-                    glyphs: signGlyphs(glyphCount, chance(0.42)),
+                    glyphs: brand ? brand.glyphs : signGlyphs(glyphCount, latin),
                     palette: chance(0.45) ? accent : pickWeighted(rand, NEON_PALETTE),
+                    hex: brand ? brand.hex : undefined,
                     style: h < 6 && chance(0.2) ? 1 : 0,
                 });
             }
+            // The street screen and the tower's tall blade share one end of the block, the tower's
+            // screen takes the other.
+            const screenEnd = chance(0.5) ? -1 : 1;
             if (block.hasTower && chance(0.5)) {
                 // A tall blade climbing the tower's corner.
                 const w = range(1.6, 2.4);
@@ -348,7 +615,7 @@ export function buildLayout(seed = 0x0d15721c) {
                     kind: 'blade',
                     x: side * (STREET.halfStreet + 4.5 - 0.3 - w / 2),
                     y: wallH + 1.5 + h / 2 + range(0, 8),
-                    z: z + (chance(0.5) ? -1 : 1) * (len / 2 - 2.6),
+                    z: z + screenEnd * (len / 2 - 2.6),
                     w,
                     h,
                     vertical: true,
@@ -359,47 +626,73 @@ export function buildLayout(seed = 0x0d15721c) {
             }
             // ── A billboard screen on roughly every third block, facing down the street ──
             if ((i + s) % 3 === 0) {
-                const wide = chance(0.45);
-                const pool = wide ? wideAds : squareAds;
-                const ad = pool[screenCursor % pool.length];
-                screenCursor += 1;
-                const cellAd = BILLBOARD_CELLS[ad];
-                const h = wide ? range(3.6, 4.6) : range(4.8, 6.6);
-                const w = h * cellAd.aspect;
-                const y = Math.min(wallH + 2 + h / 2, STREET.plinth + 4 + h / 2 + range(0, 6));
-                const sz = z + (chance(0.5) ? -1 : 1) * (len / 2 - 1.2);
-                plan.screens.push({
+                const roll = rand();
+                let shape = 'square';
+                if (roll < 0.45) shape = 'wide';
+                else if (roll < 0.85) shape = 'portrait';
+                const heights = { wide: [3.6, 4.6], portrait: [5.6, 7.2], square: [4.4, 5.6] }[shape];
+                const h = range(heights[0], heights[1]);
+                const w = h * SHAPE_ASPECT[shape];
+                addScreen({
                     side,
+                    shape,
                     x: side * (STREET.halfStreet - 0.4 - w / 2),
-                    y,
-                    z: sz,
+                    y: Math.min(wallH + 2 + h / 2, STREET.plinth + 4 + h / 2 + range(0, 6)),
+                    z: z + screenEnd * (len / 2 - 1.2),
                     w,
                     h,
-                    cell: ad,
-                    next: pool[(screenCursor + 1) % pool.length],
-                    seed: seedInt(),
                 });
-                addGlow(side, sz, cellAd.glow, 0.05 * w * h + 0.4, 9);
+            }
+            // A tall screen hung off the corner of some towers, high over the street.
+            if (block.hasTower && block.towerH > 40 && chance(0.4)) {
+                const h = range(9, 13);
+                const w = h * SHAPE_ASPECT.portrait;
+                addScreen({
+                    side,
+                    shape: 'portrait',
+                    x: side * (STREET.halfStreet + 4.5 - 0.4 - w / 2),
+                    y: Math.min(block.towerH - h / 2 - 2, wallH + 3 + h / 2 + range(0, 8)),
+                    z: z - screenEnd * (len / 2 - 3.2),
+                    w,
+                    h,
+                    pitch: 0.09,
+                });
             }
             // ── Roof clutter ──
             const roofProps = int(1, 3);
             for (let r = 0; r < roofProps; r++) {
                 const kind = ['tank', 'aircon', 'mast', 'frame'][int(0, 3)];
                 const edge = kind === 'frame';
+                const kz = z + range(-0.4, 0.4) * len;
                 plan.kit.push({
                     kind,
                     x: side * (STREET.halfStreet + (edge ? 0.5 : range(1.5, block.hasTower ? 3.4 : 9))),
                     y: wallH,
-                    z: z + range(-0.4, 0.4) * len,
-                    // Scaffolds face the street; everything else sits as it fell.
+                    z: kz,
+                    // Scaffolds face the street (+x of a piece points out from its wall); everything
+                    // else sits as it fell.
                     yaw: edge ? 0 : range(0, Math.PI * 2),
                     sx: 1,
                     sy: 1,
                     sz: 1,
-                    mirror: edge ? side < 0 : false,
+                    mirror: edge ? side > 0 : false,
                     rgb: [0.85, 0.92, 1.0],
                     seed: seedInt(),
                 });
+                // A scaffold carries a printed campaign under its floodlights (the board's face is
+                // 0.1 m in front of the scaffold's line, 1.2 to 4.3 m up).
+                if (edge) {
+                    addPrint({
+                        side,
+                        x: side * (STREET.halfStreet + 0.5 - 0.12),
+                        y: wallH + 2.75,
+                        z: kz,
+                        w: 5.4,
+                        h: 5.4 / (16 / 9),
+                        cell: dealPrint('wide'),
+                        flood: 1,
+                    });
+                }
             }
         }
         // ── Second row: mid-rises behind the street wall ──

@@ -617,11 +617,11 @@
   "setting": "A rain-soaked cyberpunk street canyon seen from its centre line; the city scrolls past forever (docs/NEON_DISTRICT_VISUAL_OVERHAUL_2026-10.md, captures in docs/neon-district-captures/).",
   "timeOfDay": "night, raining",
   "dominantPalette": "Hot pink, teal, ultraviolet and acid-gold neon on wet dark asphalt. Five level palettes: signal, harbour, arcade, lantern, ultraviolet. Pieces I #ff2ea6 O #7a5cff T #20e0d0 S #ff6a1a Z #3a86ff J #ffd21a L #c04bff, garbage #444466.",
-  "keyMotifs": "Shopfronts, tube-neon signs with glyph script, interior-mapped lit windows, lanterns and cables, skybridges, megatowers in smog, wet-road mirror, rain and steam, flying traffic, combo hologram ('x3'), drone-show dragon.",
+  "keyMotifs": "Shops set back behind wet glass with interior-mapped rooms by trade (some shuttered and fly-posted), tube-neon signs with glyph script, the district's own campaigns on every surface (eight board-verb brands, Hale's breathing adverts, Serenity Transit travel posters for the other worlds) as LED playlists, floodlit roof boards, paste-up poster walls, animated tube logos and blade words; interior-mapped lit windows, lanterns and cables, skybridges, megatowers in smog, wet-road mirror, rain and steam, flying traffic, combo hologram ('x3'), drone-show dragon.",
   "motion": "The city scrolls and the camera stays put. Rain, steam, kerb-strip chases, flying traffic.",
   "gameplayFx": "Lock sends a ring through the puddles in the piece colour and a light shell up the walls that switches windows on, plus sparks and kerb comets. Clear fires row beams out of the card, then a wave rushes up the street flaring signs. Combo charges the district and warms it to gold, with a hologram counter. Four lines: 0.2 s blackout, then a gold wave, sheet lightning and a dragon. T-spin glitches the signs.",
   "tech": "About 30 instanced draws, rendered twice for the planar mirror. Fragment-shader facades with interior mapping; SDF glyph atlas; ndWrapZ scrolling; director/composition/ComboTracker; one-pass post.",
-  "motifsToAvoidReusing": "Cities, neon signs, rain, wet reflections, holographic counters, drone dragons, power-circuit metaphor."
+  "motifsToAvoidReusing": "Cities, neon signs, rain, wet reflections, holographic counters, drone dragons, power-circuit metaphor, in-world ad campaigns for the game's own worlds and brands named for the board's verbs."
  },
  {
   "id": "synthwave-sunset",

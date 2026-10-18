@@ -24,6 +24,7 @@
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   icon=1                   the theme-icon framing: a long lens straight down the canyon, a
  *                            touch brighter (compose for a small circle: capture a square frame)
+ *   cam=x,y,z,lx,ly,lz[,fov] an inspection camera: stand at (x, y, z), look at (lx, ly, lz)
  */
 import * as THREE from 'three/webgpu';
 import { NeonDistrictWorld } from '../../themes/neon-district/neon-district-world.js';
@@ -133,6 +134,8 @@ export function create({
 
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
+    const camPose = (params.get('cam') || '').split(',').map(Number.parseFloat);
+    const inspect = camPose.length >= 6 && camPose.slice(0, 6).every(Number.isFinite);
     const size = new THREE.Vector2(1, 1);
     const syncViewport = () => {
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
@@ -162,6 +165,16 @@ export function create({
             camera.fov = 54;
             camera.rotateX(-0.15);
             camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
+        if (inspect) {
+            camera.position.set(camPose[0], camPose[1], camPose[2]);
+            if (Number.isFinite(camPose[6])) {
+                camera.fov = camPose[6];
+                camera.updateProjectionMatrix();
+            }
+            camera.up.set(0, 1, 0);
+            camera.lookAt(camPose[3], camPose[4], camPose[5]);
             camera.updateMatrixWorld();
         }
     };
