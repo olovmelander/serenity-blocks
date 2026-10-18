@@ -116,9 +116,9 @@ describe('Fault Lines puzzle bank', () => {
             expect([...openPuzzleIds(solved)]).toEqual([...below, tiers[index]].flatMap(tierOf));
             expect([...openPuzzleIds(solved.slice(0, -1))]).toEqual(below.flatMap(tierOf));
         }
-        // Any three of the five first-light puzzles include a lantern puzzle.
-        const lanternPuzzles = FAULT_LINES_PUZZLES.filter((p) => p.tier === 1 && p.rows.some((row) => /[a-z]/.test(row)));
-        expect(lanternPuzzles.length).toBeGreaterThanOrEqual(3);
+        // Any three first-light solves include a lantern puzzle: fewer puzzles go without one.
+        const withoutLanterns = FAULT_LINES_PUZZLES.filter((p) => p.tier === 1 && !p.rows.some((row) => /[a-z]/.test(row)));
+        expect(withoutLanterns.length).toBeLessThan(SOLVES_TO_OPEN_NEXT_TIER);
     });
 
     describe.each(FAULT_LINES_PUZZLES.map((definition) => [definition.id, definition]))('%s', (id, definition) => {

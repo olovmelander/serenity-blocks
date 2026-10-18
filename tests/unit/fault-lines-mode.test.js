@@ -285,7 +285,7 @@ describe('FaultLinesMode', () => {
     });
 
     it('goes on to an earlier unsolved puzzle when nothing later is open', () => {
-        faultLinesProgress.restore(tier(1).slice(1)); // four of five: tier 2 is open
+        faultLinesProgress.restore(tier(1).slice(1)); // all but the first: tier 2 is open
         expect(faultLinesProgress.after(tier(1).at(-1))).toBe(tier(2)[0]);
         faultLinesProgress.restore([...tier(1).slice(1), ...tier(2)]);
         expect(faultLinesProgress.after(tier(2).at(-1))).toBe(tier(3)[0]);

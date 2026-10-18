@@ -8,6 +8,9 @@ three-piece certifier needed to stay fast in CI. The Puzzles list shows a locked
 The search that found the new structures is `scripts/fault-lines-search.mjs`. The same day the
 owner removed Waystones, the road preview built beside Fault Lines (it is in git history before
 this change); a saved `gameMode: 'waystones'` heals to Single Player when settings load.
+Later that day the bank doubled to seventy-two: every tier twice its size (10, 14, 14, 12, 12,
+10), the new puzzles from the same search (`--pieces=1` for First light) and the same
+certifier, each lesson written after replaying its solution wave by wave.
 
 **Status: preview.** The menu lists Fault Lines only with `?faultLines=1` (or
 `localStorage['serenity.faultLines'] = '1'`), registered in `src/core/flags.js`. Everything
@@ -59,30 +62,42 @@ away, or when a dealt piece has no room. The panel says which, in the goal's own
 
 ## The puzzle bank
 
-Thirty-six puzzles in six tiers (`src/core/fault-lines/puzzle-bank.js`):
+Seventy-two puzzles in six tiers (`src/core/fault-lines/puzzle-bank.js`):
 
-- **First light** (one piece each): First fall, Second wave, Lanterns, Lantern rain,
-  Staircase. Each teaches one idea: a clear drops what it held; what falls can finish the
-  row beneath it (a wave); lanterns (hanging bodies) fall at the first clear; each falls
-  straight down; one clear lets the next lantern down.
-- **Undertow** (two pieces): The relic, Footing, Lantern home, Slip, Top down, Clean sweep,
-  Undermine. Both pieces matter: park a piece over a gap, a lantern as the relic, a clear cuts a
-  piece and the rest keeps falling, what is left of a cut piece finishes the rows below, a lone
-  block drops when the row under it opens, a leftover opens the floor under the relic.
-- **Deep fault** (two pieces): Stairwell, Lantern well, Ride the lantern, Trapdoor, Lean-to,
-  Four gaps, Landslide. A standing piece rides each clear down, with and without lanterns; a
-  piece resting on a lantern falls with it; a lone block over a gap is a trapdoor; four gaps from
-  two pieces; a lantern and its rider fill four rows.
-- **Rift** (three pieces): Double footing, Row of your own, On the ledge, Side by side,
-  Overhead, Clear path. Two pieces are set and the third fires: a piece over each low gap, a row
-  built from your own pieces, two pieces on one ledge, lanterns counted as fillers, a lantern's
-  path kept clear to the floor. Two or three first landings win.
-- **Bedrock** (three pieces, one way in): Riders, Crown, Keep the relic, Lantern fall,
-  Nothing left, Third row. Each has exactly one winning first landing, a unique straight line,
+- **First light** (one piece each): First fall, Second wave, Lanterns, Clean break, Footstep,
+  Lantern rain, Look below, Leftovers, Domino, Staircase. Each teaches one idea: a clear drops
+  what it held; what falls can finish the row beneath it (a wave); lanterns (hanging bodies)
+  fall at the first clear; one piece can empty the well, its leftover finishing the row below;
+  each lantern falls straight down; a falling lantern finishes a row; a body resting on a
+  lantern follows it down; one clear lets the next lantern down. Eight of the ten have
+  lanterns, so any three solves meet one.
+- **Undertow** (two pieces): The relic, Footing, Lantern home, Square peg, Slant, Long wait,
+  Slip, Top down, Two by two, Lantern row, Clean sweep, Half a relic, Step by step, Undermine.
+  Both pieces matter: park a piece over a gap (the square over a double gap, the Z over gaps
+  that lean its way, the long piece over the deepest one), a lantern as the relic, a clear cuts
+  a piece and the rest keeps falling, what is left of a cut piece finishes the rows below,
+  lanterns count toward a row, a lone block drops when the row under it opens, a clear may cut
+  the relic as long as some of it is left, a leftover opens the floor under the relic.
+- **Deep fault** (two pieces): Stairwell, Lantern well, Ride the lantern, Trapdoor, Two
+  columns, Last in line, Wide gap, Lean-to, Four gaps, Double drop, Foundation, Underpass,
+  Above the floor, Landslide. A standing piece rides each clear down, with and without lanterns;
+  a piece resting on a lantern falls with it; a lone block over a gap is a trapdoor; two columns
+  of gaps, one piece each; four gaps from two pieces; one piece clears two rows at once; the
+  relic's row must stand while the floor goes; a four-row cascade that leaves the floor; a
+  lantern and its rider fill four rows. The new seven have one winning first landing each.
+- **Rift** (three pieces): Double footing, Row of your own, Standing relic, On the ledge, Side
+  by side, Roof, Lintel, Overhead, Twin rows, Wings, Clear path, Bookends. Two pieces are set and
+  the third fires: a piece over each low gap, a row built from your own pieces, two pieces on one
+  ledge, two laid flat and bridged, one on each side of the gap or at each end, lanterns counted
+  as fillers, a lantern's path kept clear to the floor. Two or three first landings win.
+- **Bedrock** (three pieces, one way in): Riders, Escort, Crown, Twice over, Keep the relic,
+  Loose stone, Lantern fall, Pillars, Two and three, Nothing left, Clean slate, Third row. Each
+  has exactly one winning first landing, a unique straight line,
   an opening that clears nothing, and a greedy opening (the biggest clear on offer) that loses.
-- **Epicentre** (three pieces, one way in): Corners, Standing stone, Two hooks, Fault line,
-  Plumb line. The deepest goals: five-wave cascades, six lines from six rows, and Plumb line's
-  six waves from one lock.
+- **Epicentre** (three pieces, one way in): Corners, Keystone, Standing stone, Long drops,
+  Two hooks, Right hand, Avalanche, Fault line, Floor last, Plumb line. The deepest goals:
+  five-wave cascades, six lines from six rows (in one column, in three waves, or five at once
+  and then the floor), and Plumb line's six waves from one lock.
 
 ### The standard every puzzle meets
 
@@ -196,7 +211,7 @@ wave.
 
 ## Verified
 
-- Unit: the certifier (150 cases over thirty-six puzzles), the reachability differential
+- Unit: the certifier (294 cases over seventy-two puzzles), the reachability differential
   (`tests/unit/fault-lines-reach.test.js`: every bank puzzle's openings and the boards after
   each, plus 168 random boards with caves where tucks and spins matter, landing for landing and
   action for action against `findReachablePlacements`), the mode (deal, solve, undo across
@@ -224,10 +239,14 @@ wave.
   refused: a hard drop sets Single Player's 30 ms hit-stop, which drains per frame, and commands
   are refused while it runs (two to four frames at a normal frame rate). A harness that drives
   this mode must confirm each key on the live piece.
+- After the doubling, the same run on Clean break, Escort and Avalanche: all three solved from
+  their stored lines (an empty well from one piece, the lantern on the floor between two pieces,
+  six lines in exactly three waves), the panel's "First light · 4 of 10" and "Epicentre · 7 of
+  10", the doubled tiers in the list, no console errors.
 
 ## Before it ships unflagged
 
-1. **Owner playtest** of the thirty-six puzzles and the difficulty curve between tiers.
+1. **Owner playtest** of the seventy-two puzzles and the difficulty curve between tiers.
 2. **Name clearance** for "Fault Lines" before it is player-facing outside the flag.
    Names already in the mode's vocabulary if it fails: Seams, Fault.
 3. **Menu art.** `public/assets/menu-art/fault-lines.webp` is a capture of the mode in the
