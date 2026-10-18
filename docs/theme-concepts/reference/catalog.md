@@ -742,32 +742,37 @@ Status split:
 
 <a id="grainfields"></a>
 
-### 28. grainfields — "ripe barley under a breaking storm" (record doc to come)
+### 28. grainfields — "ripe barley under a breaking storm" ([record](../../GRAINFIELDS_VISUAL_OVERHAUL_2026-10.md))
 
 - **Replaced** the legacy classic-WebGL Misty Lake on 2026-10-18 (its moonlit lake, aurora, fireflies and tree-trunk
   framing are gone with it). The old id is an alias in `RETIRED_THEME_IDS`, its track key resolves to `Grainfields`
   (the same recording, retitled), and Odyssey orb 11 (authored id 12, chapter 3's opener) is "Grainfields".
 - Registry: group `biomes`, heavy. `src/themes/grainfields/` (the house module split, plus the Lapporten gate's own
   module and the Blender-built trees' assets).
-- **Icon**: a placeholder (the retired theme's picture) until the real one is rendered.
+- **Icon**: the golden hour through the gate (Lapporten's U over the gold field, larch and birch either side).
 - **Setting / time**: grain country at harvest, seen from low in a stand of ripe barley. Rolling fields and
-  shelterbelts of larch, spruce and birch run out to Lapporten on the horizon, the U-shaped glacial gate near Abisko:
+  shelterbelts of larch, spruce and birch run out past a ruined keep on a knoll to Lapporten on the horizon, the U-shaped glacial gate near Abisko:
   a flat-topped massif with a cliffed inner wall on the left, a steep wall rising to a shoulder and a long ridge on the
   right, a broad trough between them, birch on their skirts and a little snow in the cirques. A storm deck hangs over
   everything and is breaking; sunbeams come through its gaps (and through the gate) and walk across the fields, and the
-  wind runs through the grain. The day turns through five stations (`grainfields-hours.js`): storm break, golden hour,
+  wind runs through the grain. A herd of Hokkaido native horses (Dosanko) grazes in the barley right of the card, and
+  skeins of geese cross the sky (Lapporten's Sami name, Čuonjávággi, is the goose valley). The day turns through five stations (`grainfields-hours.js`): storm break, golden hour,
   dusk, dawn mist and morning, 100 s of clock a station, never resting; a level-up steps it forward.
 - **Palette**: ripe-barley gold, storm-deck slate and blue, larch and spruce greens, birch white. Pieces
   (`grainfields-tetrominos.js`): I `#E9B53B`, O `#E5482C`, T `#25A26B`, S `#3A6CE2`, Z `#9356D8`, J `#F2EDE1`,
   L `#D7356E`, GARBAGE `#2E3238`: the mineral pigments of a gold-leaf screen of autumn fields. Palette gate 0/7.
-- **Gameplay FX** (as designed): a lock opens a gap in the deck and a sunbeam stands on the field; a clear sends wind
-  running out through the barley; a chain breaks the storm open; four lines tear the sky wide over the gate; a perfect
-  clear clears the sky; game over brings dusk.
+- **Gameplay FX**: a lock opens a gap in the deck and a sunbeam stands in the barley beside the card (pigment motes of
+  the piece's colour lift through it; a hard drop adds a ring of wind through the stalks); a clear sends a lane of wind
+  running out through the barley; a chain breaks the storm open and sets the horses running; a T-spin wheels the wind
+  (a column of chaff) and the herd; four lines tear the sky wide over the gate and run a front of light over the
+  fields; a perfect clear clears the sky; a level-up sends a skein of geese out through the gate; game over brings
+  dusk.
 - **Tech**: `WebGPURenderer` + TSL with the WebGL2 fallback; a fan-mesh land, instanced barley, Blender-built
-  shelterbelt trees (GLB) with sprites far out; one storm deck that the sky, the land's shadows and the post's march
+  shelterbelt trees and a Dosanko horse (GLB) with sprites far out; one storm deck that the sky, the land's shadows and the post's march
   through the air all read, so every gap stands in the air as a shaft.
 - **Avoid reusing**: ripe grain seen from inside the stand, sunbeams walking the land through a breaking storm deck, a
-  U-shaped glacial gate on the horizon, shelterbelts across fields.
+  U-shaped glacial gate on the horizon, shelterbelts across fields, a herd grazing in the grain, geese flying out
+  through a gate.
 
 <a id="waves"></a>
 
