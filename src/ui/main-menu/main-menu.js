@@ -63,6 +63,7 @@ const MODES = {
     'fault-lines': {
         eyebrow: 'Stack · Puzzles',
         title: 'Fault Lines',
+        wordmark: { file: 'fault-lines', tall: true },
         art: { file: 'fault-lines' },
         lede: 'A structure, a few pieces and one goal. Gravity waits while you choose; then the cascade runs. Each body falls as one, and bodies never glue together.',
         action: 'Play',
