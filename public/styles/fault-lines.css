@@ -12,6 +12,17 @@
     --fl-side: clamp(236px, 18vw, 300px);
 }
 
+/* The queue is the puzzle's supply: it shows only what is still to come. An empty slot keeps
+   its place, and with the last piece in hand the row (and its "Next") steps aside. */
+.single-player-stage[data-board='well'][data-fault-lines='on'] #single-player-container .player-next-piece.empty {
+    visibility: hidden;
+}
+
+.single-player-stage[data-board='well'][data-fault-lines='on'] #single-player-container
+.single-player-piece-previews:not(:has(.player-next-piece:not(.empty))) {
+    visibility: hidden;
+}
+
 .single-player-stage[data-board='well'] .fl-panel {
     position: absolute;
     top: calc(var(--sp-top) + var(--sp-next-h) + var(--sp-queue-gap));
