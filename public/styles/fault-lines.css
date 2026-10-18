@@ -252,7 +252,8 @@
 }
 
 .fl-puzzle:hover:not([disabled]),
-.fl-puzzle:focus-visible {
+.fl-puzzle:focus-visible,
+.fl-puzzle.is-pad-focus {
     border-color: var(--sb-line);
     background: rgba(var(--sb-cream-rgb), 0.05);
 }

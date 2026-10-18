@@ -10,6 +10,7 @@
 		"#Odyssey"	"Odyssey"
 		"#OdysseyLevel"	"Odyssey · Chapter %chapter% · %levelname%"
 		"#Serenity"	"In Serenity"
+		"#FaultLines"	"Fault Lines"
 		"#LocalVersus"	"Local Versus"
 		"#LocalVersusPlayers"	"Local Versus · %players% players"
 		"#OnlineVersus"	"Online Versus"

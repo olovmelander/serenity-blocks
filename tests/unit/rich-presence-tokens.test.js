@@ -22,6 +22,7 @@ const CASES = [
     [GAME_MODES.ODYSSEY, {}],
     [GAME_MODES.ODYSSEY, { chapter: 1, levelName: 'Ashen Dawn' }],
     [GAME_MODES.SERENITY, {}],
+    [GAME_MODES.FAULT_LINES, {}],
     [GAME_MODES.LOCAL_MULTIPLAYER, {}],
     [GAME_MODES.LOCAL_MULTIPLAYER, { playerCount: 3 }],
     [GAME_MODES.ONLINE_MULTIPLAYER, {}],

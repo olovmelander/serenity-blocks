@@ -12,9 +12,9 @@ Later that day the bank doubled to seventy-two: every tier twice its size (10, 1
 10), the new puzzles from the same search (`--pieces=1` for First light) and the same
 certifier, each lesson written after replaying its solution wave by wave.
 
-**Status: preview.** The menu lists Fault Lines only with `?faultLines=1` (or
-`localStorage['serenity.faultLines'] = '1'`), registered in `src/core/flags.js`. Everything
-below works and is tested; what it needs before it ships unflagged is listed at the end.
+**Status: in the main menu since 2026-10-18,** between Infinity and Local Versus, with no
+URL parameter (the `faultLines` preview flag is retired; an old `?faultLines=1` is simply
+ignored). What it still needs from the owner is listed at the end.
 
 ## What it is
 
@@ -47,7 +47,13 @@ away, or when a dealt piece has no room. The panel says which, in the goal's own
 - **Backspace** (or Ctrl+Z) takes back a piece, **R** restarts, **Enter** goes to the next
   puzzle after a solve. A key the player has bound to a move keeps that move; held keys
   do not repeat. A key bound to a move or a Serenity action (H opens the Hub) keeps it. On
-  a gamepad: **LB** takes back, **RB** restarts, **LT** asks for a hint, **A** goes on.
+  a gamepad: **LB** takes back, **RB** restarts, **LT** asks for a hint, **A** goes on, and
+  **Select** opens the Puzzles list, which then owns the pad: up and down walk it (holding
+  repeats), **A** plays the marked puzzle, **B** or **Select** closes it. Presses the list takes
+  are latched, so the A that chose a puzzle never rotates the new piece; Start still pauses
+  (`src/ui/fault-lines/fault-lines-pad-list.js`, through `GamepadController.setPanelControls`).
+- Steam rich presence shows "Fault Lines" while a puzzle is on the board (`#FaultLines` in
+  `steam/rich-presence/english.vdf`).
 - **Hints.** After two failed attempts on a puzzle, a Hint button (**?**) lights the next
   landing of the puzzle's stored solution. If the pieces placed so far left that line but a
   straight line on still exists, the hint follows that instead; only when no line on
@@ -183,6 +189,7 @@ wave.
 | Solved set, chosen puzzle, what comes next | `src/core/fault-lines/fault-lines-progress.js` | headless |
 | The mode | `src/core/game-modes/FaultLinesMode.js` | headless, extends `SinglePlayerMode` |
 | Panel, keys, gamepad, saved solves | `src/ui/fault-lines/fault-lines-hud.js`, `public/styles/fault-lines.css` | UI |
+| The puzzle list on a gamepad | `src/ui/fault-lines/fault-lines-pad-list.js` (a panel owner in `gamepad-controller.js`) | UI |
 | Seams, relic mark, hint outline | `drawBodySeams`, `drawHintCells` in `src/rendering/phaser/base-board-scene.js` | rendering |
 | "Wave n" banner | `GameState.moveSummaryVocabulary`, read by `src/rendering/phaser/shared-effects.js` (finale kicker and the depth popup) | rendering |
 
@@ -244,17 +251,18 @@ wave.
   six lines in exactly three waves), the panel's "First light · 4 of 10" and "Epicentre · 7 of
   10", the doubled tiers in the list, no console errors.
 
-## Before it ships unflagged
+## Still open (owner)
+
+The owner shipped it to the main menu on 2026-10-18. Gamepad list navigation and Steam rich
+presence, which this list used to name, are done. What remains:
 
 1. **Owner playtest** of the seventy-two puzzles and the difficulty curve between tiers.
-2. **Name clearance** for "Fault Lines" before it is player-facing outside the flag.
-   Names already in the mode's vocabulary if it fails: Seams, Fault.
-3. **Menu art.** `public/assets/menu-art/fault-lines.webp` is a capture of the mode in the
+2. **Name clearance** for "Fault Lines", which is now player-facing. Names already in the
+   mode's vocabulary if it fails: Seams, Fault.
+3. **Steamworks upload** of `steam/rich-presence/english.vdf`: until the file with
+   `#FaultLines` is uploaded, Steam shows no line for the mode (the game sends the token).
+4. **Menu art.** `public/assets/menu-art/fault-lines.webp` is a capture of the mode in the
    Forest theme from a headless browser; replace it with curated art.
-4. **Gamepad list navigation.** Undo, restart, hint and next work on a pad; the Puzzles
-   list is keyboard and pointer only.
-5. **Steam rich presence** shows the menu while Fault Lines runs (`rich-presence-manager.js`
-   has no token for it yet).
-6. Later, from the game-mode study: a daily set of five puzzles, more pyramids per world,
+5. Later, from the game-mode study: a daily set of five puzzles, more pyramids per world,
    a wave-by-wave replay of a miss, and an editor (the validator and solver are ready for
    one).
