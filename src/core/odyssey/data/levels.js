@@ -104,9 +104,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Clear 20 lines to complete your first level! A gentle introduction to the odyssey.',
+            description: 'Clear 20 lines to light your first orb. A gentle beginning to the odyssey.',
             difficulty: 1,
-            tip: 'Build flat stacks and clear multiple lines at once. Clearing 2+ lines is more efficient than singles! Keep playing after goal for more stars.',
+            tip: 'Build flat stacks and clear several lines at once; doubles and triples carry you further than singles.',
         },
     },
 
@@ -178,7 +178,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Learn the power of cascading clears. Watch blocks fall and chain together.',
             difficulty: 2,
-            tip: 'Build towers with gaps - when you clear a line, blocks above will fall and may trigger chain reactions! Keep playing after goal for more stars.',
+            tip: 'Build towers with gaps beneath them. When a line clears, the blocks above fall and can clear again.',
         },
     },
 
@@ -250,7 +250,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Trigger 4 cascades in the crystal geode. A cascade is a clear made by the blocks that fall after a clear.',
             difficulty: 2,
-            tip: 'Build tall stacks with gaps underneath. Clear the bottom line and watch the cascade chain! Keep playing after goal for more stars.',
+            tip: 'Build tall stacks with gaps underneath. Clear the bottom line and watch the cascade run.',
         },
     },
 
@@ -320,9 +320,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'TIME ATTACK! Clear 30 lines before the 3-minute timer runs out.',
+            description: 'A race against the clock. Clear 30 lines before three minutes pass.',
             difficulty: 3,
-            tip: 'This is your first time attack level! Speed matters more than perfection - keep clearing lines to beat the clock.',
+            tip: 'Your first race against the clock. Steady clears matter more than perfect ones.',
         },
     },
 
@@ -395,7 +395,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Clear 40 lines in the crystal cavern. Cascades are active: falling blocks can clear again.',
             difficulty: 4,
-            tip: 'This level combines line clearing with cascades. The 6 starting rows create cascade opportunities - use them! Keep playing after goal for more stars.',
+            tip: 'Line clears and cascades together. The 6 starting rows are cascade openings; use them.',
         },
     },
 
@@ -462,7 +462,7 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Start under pressure with a half-filled board. Dig your way out!',
+            description: 'Begin with a half-filled well and dig your way back to open air.',
             difficulty: 5,
             tip: 'Clear the starting garbage quickly to make room for building.',
         },
@@ -672,7 +672,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Ride the glowing tides. Build combos to maximize your score.',
             difficulty: 4,
-            tip: 'Consecutive clears build combos. Keep the rhythm going!',
+            tip: 'Consecutive clears build combos. Keep the rhythm going.',
         },
     },
 
@@ -811,9 +811,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Race the waves! Speed and precision combine in this high-tempo challenge.',
+            description: 'Ride the waves. Speed and precision meet in this quick-tempo orb.',
             difficulty: 6,
-            tip: 'The speed increases - stay focused and keep clearing!',
+            tip: 'The pace rises as you clear. Stay settled and keep clearing.',
         },
     },
 
@@ -1090,9 +1090,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'The summer sun beats down. Move fast before the heat overwhelms!',
+            description: 'The summer sun beats down. Move quickly, before the heat settles in.',
             difficulty: 6,
-            tip: 'Speed is key - keep pieces flowing!',
+            tip: 'Keep the pieces flowing; pace is what this orb asks for.',
         },
     },
 
@@ -1162,7 +1162,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Gather the autumn harvest. Combine cascades and Quads for maximum yield.',
             difficulty: 6,
-            tip: 'The starting blocks are your harvest - collect points from them!',
+            tip: 'The starting blocks are your harvest. Clear them for points.',
         },
     },
 
@@ -1444,9 +1444,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Chapter finale! Trigger 10 cascades on the tall 40-row board.',
+            description: 'The chapter\'s finale. Trigger 10 cascades on the tall 40-row well.',
             difficulty: 7,
-            tip: 'Build tall towers with gaps - the 40-row board gives space for epic chain reactions! Keep playing after goal for more stars.',
+            tip: 'Build tall towers with gaps; the 40-row well leaves room for long chains.',
         },
     },
 
@@ -1795,9 +1795,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Clear 30 lines starting from a half-filled board! Dig out fast.',
+            description: 'Clear 30 lines from a half-filled well. Dig out with purpose.',
             difficulty: 8,
-            tip: 'Half the board is garbage - clear it quickly and build for Quads. Keep playing after goal for more stars!',
+            tip: 'Half the well is rubble. Clear it steadily and build for quads.',
         },
     },
 
@@ -2077,7 +2077,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Dance beneath the northern lights. Build combos like waves of color.',
             difficulty: 7,
-            tip: 'The aurora pulses with your combos - keep them flowing!',
+            tip: 'The aurora pulses with your combos. Keep them flowing.',
         },
     },
 
@@ -2285,7 +2285,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Float among ethereal lights. Combine cascades and combos for transcendence.',
             difficulty: 8,
-            tip: 'The aurora responds to your cascades - make them spectacular!',
+            tip: 'The aurora answers your cascades. The deeper they run, the brighter it burns.',
         },
     },
 
@@ -2356,9 +2356,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Trigger 18 cascades at the edge of space. Build tall for chain reactions!',
+            description: 'Trigger 18 cascades at the edge of space. Build tall and let the chains fall.',
             difficulty: 9,
-            tip: 'The 30-row board with 12 starting rows creates cascade opportunities. Build upward! Keep playing after goal for more stars.',
+            tip: 'A 30-row well with 12 starting rows is full of cascade openings. Build upward.',
         },
     },
 
@@ -2639,9 +2639,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Clear 35 lines under the blood moon! 8 rows of garbage and fast drops.',
+            description: 'Clear 35 lines under the blood moon, through 8 rows of rubble and quick drops.',
             difficulty: 8,
-            tip: 'Fast 450ms drops with garbage - work quickly but stay calm. Every line counts!',
+            tip: 'Quick 450 ms drops over rubble. Work briskly and stay calm; every line counts.',
         },
     },
 
@@ -2852,9 +2852,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Race the expanding shockwave! Clear 60 lines before time runs out.',
+            description: 'Outrun the expanding shockwave. Clear 60 lines before the time is gone.',
             difficulty: 9,
-            tip: 'Speed is critical - use Quads (4-line clears) for maximum efficiency. Keep playing after goal for more stars!',
+            tip: 'Pace decides this one. Quads, four lines at once, are the most efficient way forward.',
         },
     },
 
@@ -3258,9 +3258,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Chapter 6 finale! Trigger 18 cascades at the singularity.',
+            description: 'The sixth chapter\'s finale. Trigger 18 cascades at the singularity.',
             difficulty: 9,
-            tip: 'The 28-row board is your canvas for massive chain reactions. Build tall and let gravity do the work! Keep playing after goal for more stars.',
+            tip: 'The 28-row well is your canvas for long chains. Build tall and let gravity do the work.',
         },
     },
 
@@ -3470,9 +3470,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Clear 40 lines on the chromadelic highway! Ultra-fast 400ms drops.',
+            description: 'Clear 40 lines on the chromadelic highway, with pieces falling every 400 ms.',
             difficulty: 9,
-            tip: 'At level 13 speed with 400ms drops, trust your reflexes. Fast but clean stacking wins!',
+            tip: 'With pieces falling every 400 ms, trust your reflexes. Quick, clean stacking wins.',
         },
     },
 
@@ -3545,7 +3545,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Harness the voltage. Trigger 25 cascades on the tall storm board.',
             difficulty: 10,
-            tip: 'With 16 starting rows and 32 total rows, this board is built for epic cascades. Build strategically! Keep playing after goal for more stars.',
+            tip: 'With 16 starting rows in a 32-row well, this orb is built for deep cascades. Build with intent.',
         },
     },
 
@@ -3615,7 +3615,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'The ultimate speed challenge. Maximum intensity before transcendence.',
             difficulty: 10,
-            tip: 'This is the storm before the calm. Give everything!',
+            tip: 'This is the storm before the calm. Bring everything you have learned.',
         },
     },
 
@@ -3685,9 +3685,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Clear 40 lines beneath the murmuration! Cascades and combos active.',
+            description: 'Clear 40 lines beneath the murmuration, with cascades and combos in play.',
             difficulty: 9,
-            tip: 'Gravity cascades are active - use them to chain clears for faster progress!',
+            tip: 'Gravity cascades are in play. Use them to chain clears and move faster.',
         },
     },
 
@@ -4051,7 +4051,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'The ultimate urban challenge. Retro-futuristic sun sets over chrome mountains as you push for the high score.',
             difficulty: 9,
-            tip: 'This is the bonus chapter finale. Go for glory with maximum cascade chains!',
+            tip: 'The bonus chapter\'s finale. Build the longest cascade chains you can.',
         },
     },
 ];
