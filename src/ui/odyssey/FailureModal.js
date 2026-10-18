@@ -22,6 +22,8 @@ import { ODYSSEY_CHARM_KIND_LABELS, ODYSSEY_MERCY_FALLS } from '../../core/odyss
  * @param {string} [deps.failureReason] outcome code, independent of the displayed title
  * @param {?{charms: object[], onTake: function(string), onPass: function}} [deps.charmDraft]
  *   the road's mercy: a draft of charms after the third fall on this orb
+ * @param {?string} [deps.charmHint] a word on a gathered charm that would ease this orb, when no
+ *   draft is offered
  * @returns {HTMLElement} the modal root element (caller mounts + later removes it)
  */
 export function createFailureModal({
@@ -35,6 +37,7 @@ export function createFailureModal({
     metrics = null,
     failureReason = null,
     charmDraft = null,
+    charmHint = null,
 }) {
     // Keystone sheet (keystone-overlays.css). A failed level is a pause for breath, not
     // an alarm: no red, the reason in plain words, Retry as the one primary action.
@@ -69,21 +72,23 @@ export function createFailureModal({
         mercy.ariaLabel = 'The road offers a charm';
         mercy.appendChild(el('strong', '', 'The road offers a charm'));
         mercy.appendChild(el('p', '', `After ${ODYSSEY_MERCY_FALLS} falls on one orb the road offers a charm. `
-            + 'Take one and keep it for the rest of the way, or pass.'));
+            + 'Take one to carry from the next attempt, or pass.'));
         const list = el('div', 'sb-ody-charm-list');
         list.role = 'group';
         list.ariaLabel = 'Charms offered';
         const pass = el('button', 'sb-btn sb-ody-charm-pass', 'Not now');
         pass.type = 'button';
         let settled = false;
-        const settle = (taken) => {
+        const settle = (taken, setDown = null) => {
             settled = true;
             list.hidden = true;
             pass.hidden = true;
             charmNodes.splice(0);
-            const line = el('p', 'sb-ody-charm-settled', taken
-                ? `${taken.name} is yours for the rest of the road. ${taken.line}`
-                : 'No charm this time. The road offers another at the next chapter.');
+            let text = 'No charm this time. The road offers more ahead.';
+            if (taken && setDown) {
+                text = `${taken.name} is yours, carried from the next attempt. ${setDown.name} was set down to make room.`;
+            } else if (taken) text = `${taken.name} is yours, carried from the next attempt. ${taken.line}`;
+            const line = el('p', 'sb-ody-charm-settled', text);
             line.role = 'status';
             mercy.appendChild(line);
             focusPrimary();
@@ -97,8 +102,9 @@ export function createFailureModal({
             card.appendChild(el('span', 'sb-ody-charm__line', charm.line));
             card.addEventListener('click', () => {
                 if (settled || resolved) return;
-                if (charmDraft.onTake?.(charm.id) === false) return;
-                settle(charm);
+                const outcome = charmDraft.onTake?.(charm.id);
+                if (outcome === false || outcome === null) return;
+                settle(charm, outcome?.setDown || null);
             });
             list.appendChild(card);
             charmNodes.push(card);
@@ -112,6 +118,12 @@ export function createFailureModal({
         mercy.appendChild(pass);
         charmNodes.push(pass);
         content.appendChild(mercy);
+    } else if (charmHint) {
+        // The bag already holds what would ease this orb: say which, and where to carry it.
+        const hint = el('div', 'sb-ody-note sb-ody-charm-hint');
+        hint.appendChild(el('strong', '', 'Your charms'));
+        hint.appendChild(el('span', '', charmHint));
+        content.appendChild(hint);
     }
 
     if (debrief) {

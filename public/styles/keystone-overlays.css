@@ -911,10 +911,52 @@
     text-shadow: 0 0 14px rgba(var(--sb-gold-rgb), 0.45);
 }
 
+/* The charm bag: every charm gathered as a carry toggle; the goal below counts the carried. */
 #odyssey-board-overlay .level-charms {
-    margin: -8px 0 14px;
+    margin: -4px 0 14px;
+}
+
+#odyssey-board-overlay .level-charm-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 6px;
+}
+
+#odyssey-board-overlay .level-charm {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-height: 30px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--sb-line);
+    background: rgba(var(--sb-cream-rgb), 0.03);
+    color: var(--sb-text-muted);
+    font: 600 0.75rem / 1.3 var(--sb-font-text);
+    cursor: pointer;
+}
+
+#odyssey-board-overlay .level-charm:hover,
+#odyssey-board-overlay .level-charm:focus-visible {
+    border-color: rgba(var(--sb-lavender-rgb), 0.7);
+    color: var(--sb-text);
+}
+
+#odyssey-board-overlay .level-charm[aria-pressed='true'] {
+    border-color: rgba(var(--sb-lavender-rgb), 0.55);
+    background: rgba(var(--sb-lavender-rgb), 0.14);
     color: var(--sb-lavender);
-    font: 500 0.8125rem / 1.5 var(--sb-font-text);
+}
+
+#odyssey-board-overlay .level-charm-hint {
+    margin: 8px 0 0;
+    color: var(--sb-text-muted);
+    font: 500 0.75rem / 1.5 var(--sb-font-text);
+}
+
+#odyssey-board-overlay .level-charm-hint[data-notice='true'] {
+    color: var(--sb-gold);
 }
 
 #odyssey-board-overlay .level-nav-hint {

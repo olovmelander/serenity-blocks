@@ -89,7 +89,7 @@ describe('Odyssey charm draft: the chapter arrival overlay', () => {
         const modal = arrival({ charmDraft: draft, onChoose });
         expect(modal.dataset.charmPending).toBe('true');
         expect(markup(modal)).toContain('The road offers a charm');
-        expect(markup(modal)).toContain('Take one and keep it for the rest of the way, or pass.');
+        expect(markup(modal)).toContain('Take one and keep it, or pass. You carry up to three at a time.');
         expect(cards(modal).map((card) => card.dataset.charm)).toEqual(['keel', 'kindle', 'hearth']);
         expect(cards(modal).map((card) => card.dataset.kind)).toEqual(['goal', 'score', 'safety']);
         expect(cards(modal)[0].children.map((part) => part.textContent))
@@ -108,7 +108,7 @@ describe('Odyssey charm draft: the chapter arrival overlay', () => {
         expect(modal.dataset.charmPending).toBe('false');
         expect(cards(modal)).toEqual([]);
         expect(action(modal, 'pass-charm')).toBeUndefined();
-        expect(markup(modal)).toContain(`Keel is yours for the rest of the road. ${odysseyCharmById('keel').line}`);
+        expect(markup(modal)).toContain(`Keel is yours and carried from here. ${odysseyCharmById('keel').line}`);
         expect(status.textContent).toBe('');
         expect(document.activeElement).toBe(action(modal, 'next'));
         action(modal, 'next').dispatch('click');
@@ -124,12 +124,21 @@ describe('Odyssey charm draft: the chapter arrival overlay', () => {
         expect(pass.textContent).toBe('Pass');
         pass.dispatch('click');
         expect(draft.onPass).toHaveBeenCalledOnce();
-        expect(markup(modal)).toContain('No charm this time. The road offers another at the next chapter.');
+        expect(markup(modal)).toContain('No charm this time. The road offers more ahead.');
         pass.dispatch('click');
         expect(draft.onPass).toHaveBeenCalledOnce();
         expect(draft.onTake).not.toHaveBeenCalled();
         document.dispatch('keydown', { key: 'Escape' });
         expect(onChoose).toHaveBeenCalledExactlyOnceWith('map');
+        modal.dispose();
+    });
+
+    it('says what was set down when a taken charm filled the three slots', () => {
+        const full = { ...offer(), onTake: vi.fn(() => ({ taken: true, setDown: odysseyCharmById('swell') })) };
+        const modal = arrival({ charmDraft: full });
+        cards(modal)[2].dispatch('click');
+        expect(markup(modal)).toContain('Hearth is yours and carried from here. Swell was set down to make room; '
+            + 'change what you carry on the map.');
         modal.dispose();
     });
 
@@ -267,7 +276,7 @@ describe('Odyssey charm draft: the road’s mercy on the failure sheet', () => {
         expect(draft.onTake).toHaveBeenCalledExactlyOnceWith('swell');
         expect(all(modal).find((node) => node.className === 'sb-ody-charm-list').hidden).toBe(true);
         expect(notNow.hidden).toBe(true);
-        expect(text(modal)).toContain(`Swell is yours for the rest of the road. ${odysseyCharmById('swell').line}`);
+        expect(text(modal)).toContain(`Swell is yours, carried from the next attempt. ${odysseyCharmById('swell').line}`);
         cards[0].dispatch('click');
         notNow.dispatch('click');
         expect(draft.onTake).toHaveBeenCalledOnce();
@@ -278,17 +287,42 @@ describe('Odyssey charm draft: the road’s mercy on the failure sheet', () => {
         expect(onChoose).toHaveBeenCalledExactlyOnceWith('retry');
     });
 
-    it('lets the player decline, and shows no offer without a draft', () => {
+    it('lets the player decline, names a set-down charm, and shows no offer without a draft', () => {
         const draft = offer();
         const modal = createFailureModal({
             attemptNumber: 4, reasonText: 'Time ran out!', onChoose: vi.fn(), charmDraft: draft,
         });
         all(modal).find((node) => node.textContent === 'Not now').dispatch('click');
         expect(draft.onPass).toHaveBeenCalledOnce();
-        expect(text(modal)).toContain('No charm this time.');
+        expect(text(modal)).toContain('No charm this time. The road offers more ahead.');
+        const full = { ...offer(), onTake: vi.fn(() => ({ taken: true, setDown: odysseyCharmById('kindle') })) };
+        const crowded = createFailureModal({
+            attemptNumber: 3, reasonText: 'Time ran out!', onChoose: vi.fn(), charmDraft: full,
+        });
+        all(crowded).find((node) => node.className === 'sb-ody-charm').dispatch('click');
+        expect(text(crowded)).toContain('Keel is yours, carried from the next attempt. Kindle was set down to make room.');
         const plain = createFailureModal({ attemptNumber: 1, reasonText: 'Time ran out!', onChoose: vi.fn() });
         expect(text(plain)).not.toContain('charm');
         expect(all(plain).some((node) => node.className === 'sb-ody-charm')).toBe(false);
+    });
+
+    it('says which charm in the bag would help when the road has nothing new to offer', () => {
+        const hinted = createFailureModal({
+            attemptNumber: 3,
+            reasonText: 'Time ran out!',
+            onChoose: vi.fn(),
+            charmHint: 'In your bag, not carried: Long Breath (30 more seconds on the clock). Change what you carry on the map.',
+        });
+        const note = all(hinted).find((node) => node.className === 'sb-ody-note sb-ody-charm-hint');
+        expect(note.children.map((part) => part.textContent)).toEqual([
+            'Your charms',
+            'In your bag, not carried: Long Breath (30 more seconds on the clock). Change what you carry on the map.',
+        ]);
+        // A draft on offer outranks the hint.
+        const both = createFailureModal({
+            attemptNumber: 3, reasonText: 'Time ran out!', onChoose: vi.fn(), charmDraft: offer(), charmHint: 'unused',
+        });
+        expect(text(both)).not.toContain('unused');
     });
 });
 
@@ -315,8 +349,10 @@ describe('Odyssey charm draft: a chapter arrival the map still owes', () => {
                 markArrivalSeen: vi.fn(),
                 currentChapter: 2,
                 currentLevel: 8,
-                getCharmDraft: vi.fn((key) => (key === 'chapter:2' ? { key, charms: offer().charms } : null)),
-                takeCharm: vi.fn(() => true),
+                getChapterCharmDraft: vi.fn((chapterId) => (
+                    chapterId === 2 ? { key: 'chapter:2', charms: offer().charms } : null
+                )),
+                takeCharm: vi.fn(() => ({ setDown: null })),
                 passCharm: vi.fn(() => true),
                 ...state,
             },
@@ -354,7 +390,8 @@ describe('Odyssey charm draft: a chapter arrival the map still owes', () => {
         expect(mode.odysseyState.markArrivalSeen).not.toHaveBeenCalled();
         expect(mode._chapterFlowActive).toBe(true);
         byClass(modal, 'ody-charm')[0].dispatch('click');
-        expect(mode.odysseyState.takeCharm).toHaveBeenCalledExactlyOnceWith('chapter:2', 'keel');
+        expect(mode.odysseyState.takeCharm)
+            .toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ key: 'chapter:2' }), 'keel');
         action(modal, 'next').dispatch('click');
         expect(await run).toBe('next');
         expect(mode._chapterFlowActive).toBe(false);
@@ -370,7 +407,7 @@ describe('Odyssey charm draft: a chapter arrival the map still owes', () => {
         action(modal, 'map').dispatch('click');
         expect(mode.odysseyState.passCharm).not.toHaveBeenCalled();
         action(modal, 'pass-charm').dispatch('click');
-        expect(mode.odysseyState.passCharm).toHaveBeenCalledExactlyOnceWith('chapter:2');
+        expect(mode.odysseyState.passCharm).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ key: 'chapter:2' }));
         action(modal, 'map').dispatch('click');
         expect(await run).toBe('map');
         expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
@@ -378,7 +415,7 @@ describe('Odyssey charm draft: a chapter arrival the map still owes', () => {
     });
 
     it('owes nothing for a settled draft, a fresh journey asked only for a pending one, or elsewhere', async () => {
-        const settled = createMode({ state: { getCharmDraft: vi.fn(() => null) } });
+        const settled = createMode({ state: { getChapterCharmDraft: vi.fn(() => null) } });
         expect(describeOdysseyArrival(settled)).toBeNull();
         expect(await presentOdysseyArrival(settled, { onlyPending: true })).toBeNull();
         const fresh = createMode({ state: { isFreshJourney: () => true, hasSeenArrival: () => false } });
@@ -398,18 +435,21 @@ describe('Odyssey charm draft: a chapter arrival the map still owes', () => {
                 hasSeenArrival: () => false,
                 currentChapter: 1,
                 currentLevel: 1,
-                getCharmDraft: vi.fn((key) => (key === 'chapter:1' ? { key, charms: offer().charms } : null)),
+                getChapterCharmDraft: vi.fn((chapterId) => (
+                    chapterId === 1 ? { key: 'chapter:1', charms: offer().charms } : null
+                )),
             },
         });
         const { run, modal } = await open(mode);
         expect(markup(modal)).toContain('Chapter 1 · A new horizon');
-        expect(markup(modal)).toContain('the road offers three charms');
+        expect(markup(modal)).toContain('offers a charm to keep');
         expect(byClass(modal, 'ody-charm')).toHaveLength(3);
         expect(mode.odysseyState.markArrivalSeen).toHaveBeenCalledOnce();
         action(modal, 'next').dispatch('click');
         expect(mode.launchOdysseyLevel).not.toHaveBeenCalled();
         byClass(modal, 'ody-charm')[1].dispatch('click');
-        expect(mode.odysseyState.takeCharm).toHaveBeenCalledExactlyOnceWith('chapter:1', 'kindle');
+        expect(mode.odysseyState.takeCharm)
+            .toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ key: 'chapter:1' }), 'kindle');
         action(modal, 'next').dispatch('click');
         expect(await run).toBe('next');
         expect(mode.launchOdysseyLevel).toHaveBeenCalledExactlyOnceWith(1, { source: 'first-arrival' });
@@ -458,11 +498,15 @@ describe('Odyssey charms on the map and the results sheet', () => {
         'level-panel-kind', 'level-panel-number', 'level-panel-name', 'level-panel-chapter',
         'level-panel-description', 'level-panel-stars', 'level-panel-goal', 'level-panel-star-goals-label',
         'level-panel-star-goals', 'level-panel-rules-label', 'level-panel-rules', 'level-panel-tip',
-        'level-panel-lock', 'level-panel-play-btn', 'level-panel-charms',
+        'level-panel-lock', 'level-panel-play-btn', 'level-panel-charms', 'level-panel-charm-list',
+        'level-panel-charm-hint',
     ];
     function createNode(tagName = 'div') {
+        const listeners = new Map();
         return {
             tagName,
+            addEventListener(type, listener) { listeners.set(type, listener); },
+            dispatch(type) { listeners.get(type)?.(); },
             textContent: '',
             className: '',
             hidden: false,
@@ -488,14 +532,15 @@ describe('Odyssey charms on the map and the results sheet', () => {
         vi.unstubAllGlobals();
     });
 
-    it('briefs the orb as the held charms make it and names them, or says nothing without charms', () => {
+    it('briefs the orb as the carried charms make it, with the bag as carry toggles above the goal', () => {
         const doc = createPanelDocument();
         const level = getLevelById(2);
-        const charms = ['keel', 'swell'];
+        const onToggle = vi.fn();
+        const bag = { gathered: ['keel', 'swell', 'kindle'], carried: ['keel', 'swell'], onToggle };
         renderOdysseyLevelPanel({
-            level, previousLevel: getLevelById(1), unlocked: true, chapterName: 'Earth Core', charms,
+            level, previousLevel: getLevelById(1), unlocked: true, chapterName: 'Earth Core', charms: bag,
         }, doc);
-        const played = applyOdysseyCharmsToLevel(level, charms);
+        const played = applyOdysseyCharmsToLevel(level, bag.carried);
         expect(played.victory.primary.target).toBeLessThan(level.victory.primary.target);
         expect(doc.nodes.get('level-panel-goal').textContent).toBe(formatOdysseyMapObjective(played.victory.primary));
         const starGoals = texts(doc.nodes.get('level-panel-star-goals'));
@@ -503,16 +548,41 @@ describe('Odyssey charms on the map and the results sheet', () => {
         expect(starGoals[1]).toBe(`2 ★ ${formatOdysseyStarCondition(played.stars.two, 1)}`);
         expect(starGoals[1]).not.toBe(`2 ★ ${formatOdysseyStarCondition(level.stars.two, 1)}`);
         expect(texts(doc.nodes.get('level-panel-rules')))
-            .toEqual(getOdysseyLevelBriefing(played, applyOdysseyCharmsToLevel(getLevelById(1), charms)).changes);
-        const note = doc.nodes.get('level-panel-charms');
-        expect(note.hidden).toBe(false);
-        expect(note.textContent).toBe('Your charms: Keel · Swell. The goal and rules below count them.');
+            .toEqual(getOdysseyLevelBriefing(played, applyOdysseyCharmsToLevel(getLevelById(1), bag.carried)).changes);
+        expect(doc.nodes.get('level-panel-charms').hidden).toBe(false);
+        const chips = doc.nodes.get('level-panel-charm-list').children;
+        expect(chips.map((chip) => chip.textContent)).toEqual(['◆ Keel', '◆ Swell', '◇ Kindle']);
+        expect(chips.map((chip) => chip.attributes['aria-pressed'])).toEqual(['true', 'true', 'false']);
+        expect(chips.map((chip) => chip.dataset.charm)).toEqual(['keel', 'swell', 'kindle']);
+        expect(chips[2].title).toContain('tap to carry it');
+        chips[2].dispatch('click');
+        expect(onToggle).toHaveBeenCalledExactlyOnceWith('kindle');
+        expect(doc.nodes.get('level-panel-charm-hint').textContent)
+            .toBe('Carrying 2 of 3. The goal and rules below count them.');
+
+        // A charm in the bag that would ease this orb, left uncarried, is named with what it would do.
+        const timed = createPanelDocument();
+        renderOdysseyLevelPanel({
+            level: getLevelById(15), unlocked: true, charms: { gathered: ['keel', 'long-breath'], carried: ['keel'] },
+        }, timed);
+        expect(timed.nodes.get('level-panel-charm-hint').textContent)
+            .toBe('Not carried here: Long Breath (30 more seconds on the clock).');
+        // A notice from the last toggle outranks the rest, once.
+        const crowded = createPanelDocument();
+        renderOdysseyLevelPanel({
+            level, unlocked: true, charms: { gathered: ['keel'], carried: [], notice: 'You carry 3. Set one down to carry another.' },
+        }, crowded);
+        expect(crowded.nodes.get('level-panel-charm-hint').textContent).toBe('You carry 3. Set one down to carry another.');
+        expect(crowded.nodes.get('level-panel-charm-hint').dataset.notice).toBe('true');
+        expect(crowded.nodes.get('level-panel-goal').textContent).toBe(formatOdysseyMapObjective(level.victory.primary));
 
         const bare = createPanelDocument();
         renderOdysseyLevelPanel({ level, previousLevel: getLevelById(1), unlocked: true }, bare);
         expect(bare.nodes.get('level-panel-goal').textContent).toBe(formatOdysseyMapObjective(level.victory.primary));
         expect(bare.nodes.get('level-panel-charms').hidden).toBe(true);
-        expect(bare.nodes.get('level-panel-charms').textContent).toBe('');
+        const empty = createPanelDocument();
+        renderOdysseyLevelPanel({ level, unlocked: true, charms: { gathered: [], carried: [] } }, empty);
+        expect(empty.nodes.get('level-panel-charms').hidden).toBe(true);
     });
 
     it('carries the header’s charm line and the panel’s charm note in the board overlay', () => {
@@ -521,6 +591,8 @@ describe('Odyssey charms on the map and the results sheet', () => {
         expect(overlay.innerHTML).toContain('id="odyssey-header-charms"');
         expect(overlay.innerHTML).toContain('◇ No charms yet');
         expect(overlay.innerHTML).toContain('id="level-panel-charms"');
+        expect(overlay.innerHTML).toContain('id="level-panel-charm-list"');
+        expect(overlay.innerHTML).toContain('Charms · carry up to three');
         expect(overlay.innerHTML).not.toContain('gem');
     });
 

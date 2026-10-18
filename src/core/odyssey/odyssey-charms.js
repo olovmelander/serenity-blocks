@@ -1,27 +1,28 @@
 // @ts-check
 
 /**
- * Odyssey charms: picked at the road's waystones and kept for the rest of the journey.
+ * Odyssey charms: gathered along the road, three carried at a time.
  *
- * A charm is a passive. Three pay points, four move the asks, one keeps an orb alive. The
- * shape (id, name, one line, kind) and two of the names are Waystones' (core/waystones/
- * charms.js), so a player who knows one mode knows the other; the catalogue is Odyssey's own
- * because this road has stars, deadlines, rubble and rivals rather than lanterns and banks.
+ * A charm is a passive in the Waystones shape (core/waystones/charms.js: id, name, kind, one
+ * line), so a player who knows one mode knows the other; the catalogue is Odyssey's own, because
+ * this road has stars, deadlines, rubble and rivals rather than lanterns and banks. Where
+ * Waystones draws a run's drafts by seed, Odyssey's road is authored: each chapter's arrival
+ * offers the three charms that suit its orbs (ODYSSEY_CHAPTER_CHARMS), and the road's mercy,
+ * after the third fall on one orb, offers the charms that would ease that very orb.
  *
- * Where they are gathered: a draft of three at every chapter's arrival (take one or pass),
- * and the road's mercy, a draft after the third fall on one orb. Drafts are seeded by the
- * journey, so a draft offers the same three however often the player looks at it, and a
- * charm is never offered twice. Nothing here touches a game state: `applyOdysseyCharmsToLevel`
- * writes the goal, safety and pace charms into the orb the engine is configured with, and
- * core/odyssey/odyssey-charm-effects.js pays the score charms during play.
+ * What is gathered stays in the bag for the rest of the journey. Up to three charms are
+ * carried onto an orb (ODYSSEY_CHARM_SLOTS), chosen on the map, so the late chapters keep the
+ * challenge they were authored with and the choice of what to carry is the player's. Nothing
+ * here touches a game state: `applyOdysseyCharmsToLevel` writes the goal, safety and pace
+ * charms into the orb the engine is configured with, and core/odyssey/odyssey-charm-effects.js
+ * pays the score charms during play.
  */
-import { pickDistinct, seededRng, freshSeed } from '../seeded-stream.js';
 
 /**
  * @typedef {Object} OdysseyCharm
  * @property {string} id
  * @property {string} name
- * @property {string} line one sentence for the draft
+ * @property {string} line one sentence for the draft card
  * @property {'score' | 'goal' | 'safety'} kind
  */
 
@@ -75,17 +76,37 @@ export const LONG_BREATH_SECONDS = 30;
 export const STILL_AIR_FACTOR = 1.25;
 /** Low Tide: rows of rubble an orb begins without. */
 export const LOW_TIDE_ROWS = 2;
+/** Charms carried onto an orb at once. */
+export const ODYSSEY_CHARM_SLOTS = 3;
 /** A draft offers this many. */
 export const ODYSSEY_CHARM_DRAFT_SIZE = 3;
 /** The road's mercy: a draft after this many falls on one orb. */
 export const ODYSSEY_MERCY_FALLS = 3;
+
+/**
+ * Each chapter's arrival offers the charms that suit the road ahead, in this order. The early
+ * chapters teach the three kinds; a chapter with deadlines offers Long Breath, one deep in rubble
+ * Low Tide, a fast one Still Air, a scoring one the points charms. Every charm is offered in at
+ * least two chapters, so a pass is never a loss.
+ * @type {Readonly<Record<number, readonly string[]>>}
+ */
+export const ODYSSEY_CHAPTER_CHARMS = Object.freeze({
+    1: ['kindle', 'keel', 'hearth'], // Earth Core: the first cascades, the first wall, the first fall
+    2: ['low-tide', 'kindle', 'hearth'], // Deep Ocean: rubble five and eight deep, cascade goals
+    3: ['long-breath', 'swell', 'keel'], // Surface World: the first deadline, long line goals
+    4: ['still-air', 'swell', 'low-tide'], // Mountains: the pace quickens, rubble returns
+    5: ['long-breath', 'afterglow', 'keel'], // Sky: two deadlines, score goals, a showcase boss
+    6: ['kindle', 'long-breath', 'still-air'], // Space: fourteen orbs, three timed, big scores
+    7: ['low-tide', 'hearth', 'afterglow'], // Black Hole: rubble ten and thirty deep, the longest asks
+    8: ['swell', 'keel', 'still-air'], // Urban Encore: one last electric dream, fast and scored
+});
 
 /** @param {string} id */
 export function odysseyCharmById(id) {
     return ODYSSEY_CHARMS.find((charm) => charm.id === id) || null;
 }
 
-/** The charm objects for a list of ids, unknown ids dropped. @param {readonly string[]} ids */
+/** The charm objects for a list of ids, unknown ids dropped. @param {readonly string[]} [ids] */
 export function describeOdysseyCharms(ids) {
     return (ids || []).map((id) => odysseyCharmById(id)).filter(Boolean);
 }
@@ -94,96 +115,6 @@ export function describeOdysseyCharms(ids) {
 export const odysseyChapterDraftKey = (chapterId) => `chapter:${chapterId}`;
 /** The draft key of an orb's mercy. @param {number} levelId */
 export const odysseyMercyDraftKey = (levelId) => `orb:${levelId}`;
-
-/**
- * The three charms a draft offers: seeded by the journey and the draft's key, never one the
- * player holds. Fewer when fewer remain; none when every charm is held.
- * @param {string} seed
- * @param {string} key
- * @param {readonly string[]} owned
- * @returns {string[]} charm ids
- */
-export function draftOdysseyCharms(seed, key, owned, count = ODYSSEY_CHARM_DRAFT_SIZE) {
-    const rng = seededRng(seed, `draft:${key}`);
-    return pickDistinct(rng, ODYSSEY_CHARMS, count, (charm) => !owned.includes(charm.id)).map((charm) => charm.id);
-}
-
-/**
- * @typedef {Object} OdysseyCharmState
- * @property {string} seed the journey's draft seed
- * @property {string[]} owned charm ids, in the order taken
- * @property {Record<string, string | null>} drafts settled drafts: the charm taken, or null for a pass
- * @property {Record<string, number>} falls attempts lost per orb id this journey
- */
-
-/** @returns {OdysseyCharmState} */
-export function createOdysseyCharmState({ seed = freshSeed() } = {}) {
-    return {
-        seed: String(seed), owned: [], drafts: {}, falls: {},
-    };
-}
-
-const whole = (value) => Math.max(0, Math.floor(Number(value) || 0));
-
-/** A saved charm state made whole: unknown charms dropped, counts whole, a seed always present. */
-export function normalizeOdysseyCharmState(raw) {
-    const state = createOdysseyCharmState({ seed: typeof raw?.seed === 'string' && raw.seed ? raw.seed : undefined });
-    const owned = Array.isArray(raw?.owned) ? raw.owned : [];
-    state.owned = [...new Set(owned.filter((id) => odysseyCharmById(id)))];
-    Object.entries(raw?.drafts || {}).forEach(([key, value]) => {
-        if (value === null || odysseyCharmById(value)) state.drafts[key] = value;
-    });
-    Object.entries(raw?.falls || {}).forEach(([levelId, count]) => {
-        const falls = whole(count);
-        if (falls > 0) state.falls[levelId] = falls;
-    });
-    return state;
-}
-
-/**
- * The draft a key offers now: null once it was taken or passed, or when nothing is left.
- * @param {OdysseyCharmState} state
- * @param {string} key
- * @returns {{ key: string, charms: OdysseyCharm[] } | null}
- */
-export function odysseyCharmDraft(state, key) {
-    if (!state || key in state.drafts) return null;
-    const charms = describeOdysseyCharms(draftOdysseyCharms(state.seed, key, state.owned));
-    return charms.length ? { key, charms } : null;
-}
-
-/**
- * Take one charm of a draft and keep it for the rest of the road.
- * @param {OdysseyCharmState} state
- * @returns {boolean} whether the charm was in the draft and is now held
- */
-export function takeOdysseyCharm(state, key, charmId) {
-    const draft = odysseyCharmDraft(state, key);
-    if (!draft || !draft.charms.some((charm) => charm.id === charmId)) return false;
-    state.owned.push(charmId);
-    state.drafts[key] = charmId;
-    return true;
-}
-
-/** Pass a draft; it is not offered again. @param {OdysseyCharmState} state */
-export function passOdysseyCharm(state, key) {
-    if (!state || key in state.drafts) return false;
-    state.drafts[key] = null;
-    return true;
-}
-
-/** One more fall on an orb. @param {OdysseyCharmState} state @returns {number} the orb's falls */
-export function recordOdysseyFall(state, levelId) {
-    const id = String(levelId);
-    state.falls[id] = whole(state.falls[id]) + 1;
-    return state.falls[id];
-}
-
-/** The road's mercy for an orb: its draft once it has been fallen on three times. */
-export function odysseyMercyDraft(state, levelId) {
-    if (!state || whole(state.falls[String(levelId)]) < ODYSSEY_MERCY_FALLS) return null;
-    return odysseyCharmDraft(state, odysseyMercyDraftKey(levelId));
-}
 
 const PRIMARY_METRIC = Object.freeze({
     lines: 'lines', score: 'score', cascade: 'cascades', combo: 'combo',
@@ -198,7 +129,193 @@ export function keelTarget(type, target) {
 }
 
 /**
- * The orb as the held charms make it: the goal Keel lowers (and the star tier that mirrors
+ * Whether a charm eases this orb: changes what it asks, lengthens its clock, clears its rubble,
+ * slows its fall or forgives a top-out. The points charms never do; they pay.
+ * @param {object | undefined} level the authored orb
+ * @param {string} charmId
+ */
+export function odysseyCharmEases(level, charmId) {
+    const primary = level?.victory?.primary;
+    switch (charmId) {
+    case 'keel':
+        return Boolean(primary && PRIMARY_METRIC[primary.type]) && keelTarget(primary.type, primary.target) !== primary.target;
+    case 'long-breath':
+        return level?.victory?.failure?.type === 'time' && Number.isFinite(level.victory.failure.value);
+    case 'low-tide':
+        return (Number(level?.mechanics?.board?.startingRows) || 0) > 0;
+    case 'still-air':
+    case 'hearth':
+        return true;
+    default:
+        return false;
+    }
+}
+
+/**
+ * The charms a chapter's arrival offers now: the chapter's own three, less what the bag already
+ * holds, topped up from the catalogue so the arrival offers three while charms remain.
+ * @param {number} chapterId
+ * @param {readonly string[]} gathered
+ * @returns {string[]} charm ids
+ */
+export function odysseyChapterCharms(chapterId, gathered) {
+    const authored = ODYSSEY_CHAPTER_CHARMS[chapterId] || [];
+    const offered = authored.filter((id) => !gathered.includes(id));
+    for (const charm of ODYSSEY_CHARMS) {
+        if (offered.length >= ODYSSEY_CHARM_DRAFT_SIZE) break;
+        if (!gathered.includes(charm.id) && !offered.includes(charm.id)) offered.push(charm.id);
+    }
+    return offered.slice(0, ODYSSEY_CHARM_DRAFT_SIZE);
+}
+
+/**
+ * The road's mercy for an orb: the charms that would ease this orb and are not yet in the bag,
+ * the most particular first (its clock, its rubble, its ask), then the ones that help anywhere.
+ * @param {object | undefined} level the authored orb
+ * @param {readonly string[]} gathered
+ * @returns {string[]} charm ids, possibly fewer than a full draft
+ */
+export function odysseyMercyCharms(level, gathered) {
+    return ['long-breath', 'low-tide', 'keel', 'hearth', 'still-air']
+        .filter((id) => !gathered.includes(id) && odysseyCharmEases(level, id))
+        .slice(0, ODYSSEY_CHARM_DRAFT_SIZE);
+}
+
+/**
+ * @typedef {Object} OdysseyCharmState
+ * @property {string[]} gathered charm ids, in the order taken; the bag
+ * @property {string[]} carried the charms carried onto the next orb, in the order taken up
+ * @property {Record<string, string | null>} drafts settled drafts: the charm taken, or null for a pass
+ * @property {Record<string, number>} falls attempts lost per orb id this journey
+ */
+
+/** @returns {OdysseyCharmState} */
+export function createOdysseyCharmState() {
+    return {
+        gathered: [], carried: [], drafts: {}, falls: {},
+    };
+}
+
+const whole = (value) => Math.max(0, Math.floor(Number(value) || 0));
+const knownUnique = (ids) => [...new Set((Array.isArray(ids) ? ids : []).filter((id) => odysseyCharmById(id)))];
+
+/**
+ * A saved charm state made whole: unknown charms dropped, the carried charms a subset of the
+ * bag and never more than the slots, counts whole. A save that only names what was gathered
+ * carries the last three taken.
+ */
+export function normalizeOdysseyCharmState(raw) {
+    const state = createOdysseyCharmState();
+    state.gathered = knownUnique(Array.isArray(raw?.gathered) ? raw.gathered : raw?.owned);
+    state.carried = Array.isArray(raw?.carried)
+        ? knownUnique(raw.carried).filter((id) => state.gathered.includes(id)).slice(-ODYSSEY_CHARM_SLOTS)
+        : state.gathered.slice(-ODYSSEY_CHARM_SLOTS);
+    Object.entries(raw?.drafts || {}).forEach(([key, value]) => {
+        if (value === null || odysseyCharmById(value)) state.drafts[key] = value;
+    });
+    Object.entries(raw?.falls || {}).forEach(([levelId, count]) => {
+        const falls = whole(count);
+        if (falls > 0) state.falls[levelId] = falls;
+    });
+    return state;
+}
+
+/**
+ * @typedef {Object} OdysseyCharmDraft
+ * @property {string} key
+ * @property {OdysseyCharm[]} charms
+ */
+
+/**
+ * A chapter arrival's draft: null once it was taken or passed, or when the bag holds every charm.
+ * @param {OdysseyCharmState} state
+ * @param {number} chapterId
+ * @returns {OdysseyCharmDraft | null}
+ */
+export function odysseyChapterDraft(state, chapterId) {
+    const key = odysseyChapterDraftKey(chapterId);
+    if (!state || key in state.drafts) return null;
+    const charms = describeOdysseyCharms(odysseyChapterCharms(chapterId, state.gathered));
+    return charms.length ? { key, charms } : null;
+}
+
+/**
+ * The road's mercy for an orb: once it has been fallen on three times, the charms that would
+ * ease it; null when the bag already holds them all, or once the draft was taken or passed.
+ * @param {OdysseyCharmState} state
+ * @param {object} [level] the authored orb
+ * @param {number} [levelId] the orb's id when no orb is at hand
+ * @returns {OdysseyCharmDraft | null}
+ */
+export function odysseyMercyDraft(state, level, levelId = level?.id) {
+    const key = odysseyMercyDraftKey(levelId);
+    if (!state || key in state.drafts || whole(state.falls[String(levelId)]) < ODYSSEY_MERCY_FALLS) return null;
+    const charms = describeOdysseyCharms(odysseyMercyCharms(level, state.gathered));
+    return charms.length ? { key, charms } : null;
+}
+
+/**
+ * Carry a charm from the bag. When the slots are full the charm carried longest is set down.
+ * @param {OdysseyCharmState} state
+ * @param {string} charmId
+ * @returns {string | null} the charm set down, if any
+ */
+export function carryOdysseyCharm(state, charmId) {
+    if (state.carried.includes(charmId)) return null;
+    state.carried.push(charmId);
+    return state.carried.length > ODYSSEY_CHARM_SLOTS ? state.carried.shift() : null;
+}
+
+/**
+ * Take one charm of a draft: into the bag for the rest of the journey, and carried from here.
+ * @param {OdysseyCharmState} state
+ * @param {OdysseyCharmDraft | null} draft the draft as offered
+ * @param {string} charmId
+ * @returns {{ setDown: string | null } | null} what was set down to carry it, or null when refused
+ */
+export function takeOdysseyCharm(state, draft, charmId) {
+    if (!state || !draft || draft.key in state.drafts) return null;
+    if (!draft.charms.some((charm) => charm.id === charmId) || state.gathered.includes(charmId)) return null;
+    state.gathered.push(charmId);
+    state.drafts[draft.key] = charmId;
+    return { setDown: carryOdysseyCharm(state, charmId) };
+}
+
+/** Pass a draft; that arrival or that orb's mercy is settled. @param {OdysseyCharmState} state */
+export function passOdysseyCharm(state, draft) {
+    if (!state || !draft || draft.key in state.drafts) return false;
+    state.drafts[draft.key] = null;
+    return true;
+}
+
+/**
+ * Carry a gathered charm, or set a carried one down. Refused for a charm not in the bag, and
+ * for a fourth charm while three are carried: setting one down is the player's call.
+ * @param {OdysseyCharmState} state
+ * @param {string} charmId
+ * @returns {{ carried: boolean, refused: boolean }}
+ */
+export function toggleOdysseyCarriedCharm(state, charmId) {
+    if (!state?.gathered.includes(charmId)) return { carried: false, refused: true };
+    const index = state.carried.indexOf(charmId);
+    if (index >= 0) {
+        state.carried.splice(index, 1);
+        return { carried: false, refused: false };
+    }
+    if (state.carried.length >= ODYSSEY_CHARM_SLOTS) return { carried: false, refused: true };
+    state.carried.push(charmId);
+    return { carried: true, refused: false };
+}
+
+/** One more fall on an orb. @param {OdysseyCharmState} state @returns {number} the orb's falls */
+export function recordOdysseyFall(state, levelId) {
+    const id = String(levelId);
+    state.falls[id] = whole(state.falls[id]) + 1;
+    return state.falls[id];
+}
+
+/**
+ * The orb as the carried charms make it: the goal Keel lowers (and the star tier that mirrors
  * it), the deadline Long Breath lengthens, the rubble Low Tide clears, the pace Still Air
  * slows. Pure; the authored orb is untouched. Without charms the orb is returned as is.
  * @param {object} level the authored orb (a registry level or its presentation)

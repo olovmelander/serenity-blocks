@@ -1132,7 +1132,7 @@ describe('Odyssey journey flow', () => {
                 id: 'keel', name: 'Keel', kind: 'goal', line: 'Asks less.',
             }],
         };
-        mode.odysseyState.getCharmDraft = vi.fn((key) => (key === 'chapter:2' ? draft : null));
+        mode.odysseyState.getChapterCharmDraft = vi.fn((chapterId) => (chapterId === 2 ? draft : null));
         mode._describeCharmDraft = vi.fn((offer) => (
             offer ? { charms: offer.charms, onTake: vi.fn(), onPass: vi.fn() } : null
         ));
@@ -1142,7 +1142,7 @@ describe('Odyssey journey flow', () => {
         expect(await completion).toBe('next');
         const pending = continueOdysseyJourney(mode, destination);
         await flush();
-        expect(mode.odysseyState.getCharmDraft).toHaveBeenCalledWith('chapter:2');
+        expect(mode.odysseyState.getChapterCharmDraft).toHaveBeenCalledWith(2);
         expect(mode._describeCharmDraft).toHaveBeenCalledWith(draft);
         expect(modal.showChapter.mock.calls[0][0].charmDraft)
             .toEqual({ charms: draft.charms, onTake: expect.any(Function), onPass: expect.any(Function) });

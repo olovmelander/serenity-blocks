@@ -11,13 +11,14 @@
  */
 import { createJourneyFlowOverlay } from './JourneyFlowOverlay.js';
 import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physics-callbacks.js';
-import { odysseyChapterDraftKey } from '../../core/odyssey/odyssey-charms.js';
+import { describeOdysseyCharmDraft } from './odyssey-charm-carry.js';
 
 /** What a new traveller needs to know, in the order they will meet it. */
 export const ODYSSEY_FIRST_ARRIVAL_NOTES = Object.freeze([
     'Each orb is one short puzzle with a goal. Clear it and the path opens to the next.',
     'Every orb offers three stars. Its panel on the map shows what each star asks before you play.',
-    'At every chapter’s arrival the road offers three charms. Take one and keep it for the rest of the way.',
+    'Each chapter’s arrival offers a charm to keep: some pay points, some ease the ask. '
+        + 'You carry up to three; choose which on the map.',
     'Pause any time for Retry orb, Back to map and Settings.',
 ]);
 
@@ -25,15 +26,6 @@ export const ODYSSEY_FIRST_ARRIVAL_NOTES = Object.freeze([
 export function shouldOfferOdysseyFirstArrival(mode) {
     const state = mode?.odysseyState;
     return Boolean(state?.isFreshJourney?.() && !state.hasSeenArrival?.());
-}
-
-function charmDraftFor(mode, draft) {
-    if (!draft?.charms?.length) return null;
-    return {
-        charms: draft.charms,
-        onTake: (charmId) => mode.odysseyState?.takeCharm?.(draft.key, charmId),
-        onPass: () => mode.odysseyState?.passCharm?.(draft.key),
-    };
 }
 
 /**
@@ -44,8 +36,8 @@ export function pendingOdysseyChapterArrival(mode) {
     const state = mode?.odysseyState;
     const registry = mode?.levelRegistry;
     const chapterId = Number(state?.currentChapter) || 0;
-    if (!chapterId || !state?.getCharmDraft || !registry?.getChapter) return null;
-    const draft = state.getCharmDraft(odysseyChapterDraftKey(chapterId));
+    if (!chapterId || !state?.getChapterCharmDraft || !registry?.getChapter) return null;
+    const draft = state.getChapterCharmDraft(chapterId);
     if (!draft) return null;
     const chapter = registry.getChapter(chapterId);
     const firstId = chapter?.levelRange?.[0];
@@ -64,7 +56,7 @@ export function describeOdysseyArrival(mode, { onlyPending = false } = {}) {
         const level = mode.levelRegistry?.getLevel?.(1);
         const chapter = mode.levelRegistry?.getChapter?.(level?.chapter || 1);
         if (!level || !chapter) return null;
-        const draft = mode.odysseyState.getCharmDraft?.(odysseyChapterDraftKey(chapter.id)) || null;
+        const draft = mode.odysseyState.getChapterCharmDraft?.(chapter.id) || null;
         return {
             chapterId: chapter.id, chapter, level, draft, fresh: true,
         };
@@ -105,7 +97,7 @@ export async function presentOdysseyArrival(mode, options = {}) {
             nextLevel: level,
             chapter,
             orientation: arrival.fresh ? ODYSSEY_FIRST_ARRIVAL_NOTES : [],
-            charmDraft: charmDraftFor(mode, arrival.draft),
+            charmDraft: describeOdysseyCharmDraft(mode, arrival.draft),
             destinationPrefix: firstOfChapter ? 'First' : 'Next',
             arrivalEyebrow: arrival.fresh ? null : `Chapter ${chapter.id} · The road offers a charm`,
             arrivalPrimary,

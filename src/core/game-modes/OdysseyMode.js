@@ -81,11 +81,14 @@ import { installOdysseyShowcaseInput } from '../../ui/odyssey/odyssey-showcase-i
 import { createBoardInfoOverlay } from '../../ui/odyssey/BoardInfoOverlay.js';
 import { createLevelSelectOverlay } from '../../ui/odyssey/LevelSelectOverlay.js';
 import { presentOdysseyArrival } from '../../ui/odyssey/odyssey-first-arrival.js';
+import {
+    describeOdysseyCharmDraft, describeOdysseyMercy, odysseyPanelCharms, renderOdysseyCharmHeader,
+} from '../../ui/odyssey/odyssey-charm-carry.js';
 import { startOdysseyNewJourney, wireOdysseyNewJourney } from '../../ui/odyssey/odyssey-new-journey.js';
 import { handleOdysseyPauseAction } from '../../ui/odyssey/odyssey-pause-actions.js';
 import { renderOdysseyNavigatorList } from '../../ui/odyssey/odyssey-navigator-list.js';
 import { installOdysseyMapInput } from '../../ui/odyssey/odyssey-map-input.js';
-import { applyOdysseyCharmsToLevel, describeOdysseyCharms } from '../odyssey/odyssey-charms.js';
+import { applyOdysseyCharmsToLevel } from '../odyssey/odyssey-charms.js';
 import {
     createOdysseyCharmRun, describeOdysseyCharmRun, tryOdysseyHearth,
 } from '../odyssey/odyssey-charm-effects.js';
@@ -1901,10 +1904,10 @@ export class OdysseyMode extends BaseGameMode {
         this._removeVictoryLapInputs();
 
         if (canWriteLegacySimulationResults(session.simulationClock)) {
-            this.odysseyState.recordAttempt(session.levelId);
-            // The road's mercy: after the third fall on this orb, a draft of charms rides on
-            // the attempt so the failure sheet can offer it.
-            session.charmDraft = this.odysseyState.getMercyDraft?.(session.levelId) || null;
+            const attempt = this.odysseyState.recordAttempt(session.levelId);
+            // The road's mercy: after the third fall on this orb a draft of charms rides on the
+            // attempt for the failure sheet, or a word on the bag's charm that would help here.
+            Object.assign(session, describeOdysseyMercy(this, session, attempt?.falls));
         }
 
         // Show failure screen and honor the player's choice.
@@ -2114,9 +2117,10 @@ export class OdysseyMode extends BaseGameMode {
             preparationGeneration !== this._levelSessionGeneration
             || this.currentLevelConfig !== authoredLevelConfig
         ) return false;
-        // The orb as the held charms make it: Keel's ask, Long Breath's deadline, Low Tide's
+        // The orb as the carried charms make it: Keel's ask, Long Breath's deadline, Low Tide's
         // rubble and Still Air's pace are written into the orb the engine is configured with.
-        const levelConfig = applyOdysseyCharmsToLevel(authoredLevelConfig, this.odysseyState.getCharms?.() || []);
+        const carried = this.odysseyState.getCarriedCharms?.() || [];
+        const levelConfig = applyOdysseyCharmsToLevel(authoredLevelConfig, carried);
 
         // Reset completion flag for new level
         this.levelCompleting = false;
@@ -3330,14 +3334,7 @@ export class OdysseyMode extends BaseGameMode {
             const pct = this.odysseyState.getOverallProgress();
             progress.textContent = `Progress: ${pct}%`;
         }
-        const charms = document.getElementById('odyssey-header-charms');
-        if (charms) {
-            const held = describeOdysseyCharms(this.odysseyState.getCharms?.() || []);
-            charms.textContent = held.length ? `◇ ${held.map((charm) => charm.name).join(' · ')}` : '◇ No charms yet';
-            charms.title = held.length
-                ? held.map((charm) => `${charm.name}: ${charm.line}`).join('\n')
-                : 'Charms: pick one at each chapter\u2019s arrival and keep it for the rest of the road.';
-        }
+        renderOdysseyCharmHeader(this);
     }
 
     /**
@@ -3381,7 +3378,7 @@ export class OdysseyMode extends BaseGameMode {
             completion: this.odysseyState.getLevelCompletion(levelId),
             unlocked: this.odysseyState.isLevelUnlocked(levelId),
             chapterName: this._getChapterName(level.chapter),
-            charms: this.odysseyState.getCharms?.() || [],
+            charms: odysseyPanelCharms(this, levelId),
         });
 
         // Show panel
@@ -3791,7 +3788,8 @@ export class OdysseyMode extends BaseGameMode {
                 score: session.gameState.score,
             } : null,
             failureReason: reason,
-            charmDraft: this._describeCharmDraft(session?.charmDraft),
+            charmDraft: session?.charmDraft || null,
+            charmHint: session?.charmHint || null,
             includeLegacyResults: session
                 ? canWriteLegacySimulationResults(session.simulationClock)
                 : true,
@@ -3814,12 +3812,7 @@ export class OdysseyMode extends BaseGameMode {
 
     /** A draft of charms as the sheets take it: the cards, and what taking or passing does. */
     _describeCharmDraft(draft) {
-        if (!draft?.charms?.length) return null;
-        return {
-            charms: draft.charms,
-            onTake: (charmId) => this.odysseyState.takeCharm(draft.key, charmId),
-            onPass: () => this.odysseyState.passCharm(draft.key),
-        };
+        return describeOdysseyCharmDraft(this, draft);
     }
 
     /** Retry orb / Back to map chosen on the pause sheet (ui/odyssey/odyssey-pause-actions.js). */
@@ -3981,7 +3974,7 @@ export class OdysseyMode extends BaseGameMode {
             onFinish: () => this._finishVictoryLap(),
         });
 
-        // Set level configuration: the orb as the held charms make it, and the charms held.
+        // Set level configuration: the orb as the carried charms make it, and the charms carried.
         const session = this._activeLevelSession;
         this.odysseyHUD.setLevel(this.currentLevelId, session?.levelConfig);
         this.odysseyHUD.updateCharms?.(describeOdysseyCharmRun(session?.charmRun));

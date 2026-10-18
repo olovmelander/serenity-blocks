@@ -15,8 +15,8 @@ import {
     migrateV4OdysseyCampaign,
 } from './odyssey-progress-schema.js';
 import {
-    createOdysseyCharmState, normalizeOdysseyCharmState, odysseyCharmDraft, odysseyMercyDraft, passOdysseyCharm,
-    recordOdysseyFall, takeOdysseyCharm,
+    createOdysseyCharmState, normalizeOdysseyCharmState, odysseyChapterDraft, odysseyMercyDraft, passOdysseyCharm,
+    recordOdysseyFall, takeOdysseyCharm, toggleOdysseyCarriedCharm,
 } from './odyssey-charms.js';
 
 const STORAGE_KEY = 'serenityBlocks_odysseyProgress';
@@ -106,7 +106,7 @@ export class OdysseyStateManager {
 
         // Onboarding marks travel with the journey; a new journey starts them over
         this.onboarding = { arrivalSeen: false };
-        // Charms: picked at the road's waystones and kept for the rest of the journey
+        // Charms: gathered at the road's waystones for the whole journey; three carried onto an orb
         this.charms = createOdysseyCharmState();
 
         // Statistics
@@ -148,8 +148,8 @@ export class OdysseyStateManager {
             statistics: { ...this.statistics },
             onboarding: { ...this.onboarding },
             charms: {
-                seed: this.charms.seed,
-                owned: [...this.charms.owned],
+                gathered: [...this.charms.gathered],
+                carried: [...this.charms.carried],
                 drafts: { ...this.charms.drafts },
                 falls: { ...this.charms.falls },
             },
@@ -464,33 +464,53 @@ export class OdysseyStateManager {
     // Charms
     // =============================
 
-    /** The charms held this journey, in the order taken. */
-    getCharms() {
-        return [...(this.charms?.owned || [])];
+    /** The bag: every charm gathered this journey, and the ones carried onto the next orb. */
+    getCharmBag() {
+        return {
+            gathered: [...(this.charms?.gathered || [])],
+            carried: [...(this.charms?.carried || [])],
+        };
     }
 
-    /** A draft still open under this key, or null once it was taken or passed (or nothing is left). */
-    getCharmDraft(key) {
-        return odysseyCharmDraft(this.charms, key);
+    /** The charms carried onto the next orb, in the order taken up. */
+    getCarriedCharms() {
+        return [...(this.charms?.carried || [])];
     }
 
-    /** The road's mercy for an orb fallen on three times and not yet cleared. */
+    /** A chapter arrival's draft, or null once taken or passed (or when the bag holds every charm). */
+    getChapterCharmDraft(chapterId) {
+        return odysseyChapterDraft(this.charms, Number(chapterId));
+    }
+
+    /** The road's mercy for an orb fallen on three times and not yet cleared: what would ease it. */
     getMercyDraft(levelId) {
         if (this.isLevelCompleted(levelId)) return null;
-        return odysseyMercyDraft(this.charms, levelId);
+        return odysseyMercyDraft(this.charms, this.levelRegistry?.getLevel?.(levelId), Number(levelId));
     }
 
-    takeCharm(key, charmId) {
-        if (!takeOdysseyCharm(this.charms, key, charmId)) return false;
-        console.log(`[OdysseyState] Charm taken: ${charmId} (${key})`);
+    /**
+     * Take a charm of a draft into the bag and carry it from here.
+     * @returns {{ setDown: string | null } | null} what was set down to carry it, or null when refused
+     */
+    takeCharm(draft, charmId) {
+        const outcome = takeOdysseyCharm(this.charms, draft, charmId);
+        if (!outcome) return null;
+        console.log(`[OdysseyState] Charm taken: ${charmId} (${draft.key})`);
         this.save();
-        return true;
+        return outcome;
     }
 
-    passCharm(key) {
-        if (!passOdysseyCharm(this.charms, key)) return false;
+    passCharm(draft) {
+        if (!passOdysseyCharm(this.charms, draft)) return false;
         this.save({ emitEvent: false });
         return true;
+    }
+
+    /** Carry a gathered charm or set it down; refused for a fourth while three are carried. */
+    toggleCarriedCharm(charmId) {
+        const result = toggleOdysseyCarriedCharm(this.charms, charmId);
+        if (!result.refused) this.save({ emitEvent: false });
+        return result;
     }
 
     // =============================
