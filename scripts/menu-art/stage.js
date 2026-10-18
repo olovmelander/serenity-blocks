@@ -141,7 +141,7 @@ export function prepare() {
     window.settingsManager.update({ pauseOnFocusLoss: false, backgroundTabBehavior: 'continue' });
     window.serenityBlocks.backgroundTabBehavior = 'continue';
     localStorage.setItem('serenity.playRail.peeks', JSON.stringify({
-        single: 3, infinity: 3, 'local-multiplayer': 3, 'online-multiplayer': 3, odyssey: 3, serenity: 3,
+        single: 3, infinity: 3, 'fault-lines': 3, 'local-multiplayer': 3, 'online-multiplayer': 3, odyssey: 3, serenity: 3,
     }));
     document.body.classList.add('cursor-hidden');
     document.hasFocus = () => true;
@@ -185,6 +185,24 @@ export function stageInfinity({ seed = 5, pieces = 170, extraRows = 56, cameraLe
     m._updateMinimapView?.();
     hide(['#infinity-hud']);
     return { top, rows, built: rows - top };
+}
+
+/**
+ * Fault Lines: a puzzle on the board with its piece in hand and the hint's cream outline on
+ * its landing, the panel out of the picture. The bank is opened in memory only (the capture
+ * profile is thrown away; nothing is saved).
+ */
+export async function stageFaultLines({ puzzle = 'floor-last', hint = true } = {}) {
+    const [{ eventBus, EVENTS }, { faultLinesProgress }, { FAULT_LINES_PUZZLES }] = await Promise.all([
+        import('/src/events/event-bus.js'),
+        import('/src/core/fault-lines/fault-lines-progress.js'),
+        import('/src/core/fault-lines/puzzle-bank.js'),
+    ]);
+    faultLinesProgress.restore(FAULT_LINES_PUZZLES.map((p) => p.id));
+    eventBus.emit(EVENTS.FAULT_LINES_COMMAND, { type: 'load', puzzleId: puzzle });
+    if (hint) eventBus.emit(EVENTS.FAULT_LINES_COMMAND, { type: 'hint' });
+    hide(['.fl-panel']);
+    return { puzzle: currentMode()?.puzzle?.id ?? null };
 }
 
 /** Local versus: skips the setup sheet with a peaceful match of bots. */

@@ -11,7 +11,7 @@ import { COLS, HIDDEN_ROWS, SHAPES } from '../constants.js';
 import { createBoardGrid, invalidateGhostCache, rebuildBoardGridFromPieces } from '../board.js';
 import { canPlacePiece } from '../game.js';
 import { resolveCascade } from '../cascade-resolver.js';
-import { findReachablePlacements } from '../ai/reachability-pathfinder.js';
+import { reachableLandings } from './fault-lines-reach.js';
 import { FAULT_LINES_BOARD_HEIGHT } from './fault-lines-puzzle.js';
 
 /** @typedef {import('./fault-lines-puzzle.js').FaultLinesPuzzle} FaultLinesPuzzle */
@@ -120,7 +120,8 @@ export function boardFor(lockedPieces) {
 
 /**
  * Every distinct landing for the piece in hand. Landings that fill the same cells are one
- * outcome; the cheapest input path is kept.
+ * outcome; the cheapest input path is kept. The search is the bot pathfinder's
+ * (fault-lines-reach.js mirrors findReachablePlacements, and a test holds it to it).
  * @param {FaultLinesRun} run
  * @returns {FaultLinesPlacement[]}
  */
@@ -128,10 +129,7 @@ export function listPlacements(run) {
     const shapeKey = currentShapeKey(run);
     if (!shapeKey || run.outcome !== 'open') return [];
     const boardGrid = boardFor(run.lockedPieces);
-    const placements = findReachablePlacements({
-        boardGrid,
-        currentPiece: spawnPiece(shapeKey, boardGrid),
-    });
+    const placements = reachableLandings(boardGrid, spawnPiece(shapeKey, boardGrid));
     /** @type {Map<string, FaultLinesPlacement & {pathCost: number}>} */
     const byFootprint = new Map();
     for (const placement of placements) {
