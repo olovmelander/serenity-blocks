@@ -31,6 +31,7 @@ import { OdysseyStateManager } from '../odyssey/OdysseyStateManager.js';
 import { getLevelRegistry } from '../odyssey/LevelRegistry.js';
 import { GameplayHybridEngine } from '../odyssey/GameplayHybridEngine.js';
 import { OdysseyBotMatch } from '../odyssey/OdysseyBotMatch.js';
+import { ODYSSEY_VISIBLE_ROWS } from '../odyssey/odyssey-board-shape.js';
 import { startOdysseyGameplayLoop } from './odyssey-gameplay-loop.js';
 import {
     createOdysseyLevelSession,
@@ -174,7 +175,8 @@ export class OdysseyMode extends BaseGameMode {
 
         // Minimap for tall boards (30+ rows)
         this.minimap = null;
-        this.MINIMAP_ROW_THRESHOLD = 30;
+        // Any well taller than the visible twenty rows scrolls, so it gets the minimap.
+        this.MINIMAP_ROW_THRESHOLD = ODYSSEY_VISIBLE_ROWS + 1;
 
         // Tall board camera system (ported from InfinityMode)
         this.visibleRows = 20;
