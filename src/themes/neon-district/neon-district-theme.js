@@ -23,6 +23,7 @@
  *   ?neonDistrictTime=<s>      seek to t and freeze the simulation (captures)
  *   ?neonDistrictFixedDt=<ms>  fixed frame step
  *   ?neonDistrictParts=sky,facades,street,...   draw only these parts
+ *   ?neonDistrictGlass=0                       no rain on the glass
  *   ?neonDistrictFalseColor=1  post debug view
  *
  * Warm: none (every pool is always drawn with zero-size dormant slots, so the first frame
@@ -87,6 +88,8 @@ function readFlags() {
             ? params.get('neonDistrictParts').split(',').map((p) => p.trim())
             : null,
         falseColor: bool('neonDistrictFalseColor'),
+        // ?neonDistrictGlass=0 takes the rain off the glass (A/B and captures).
+        glass: params.get('neonDistrictGlass') === '0' ? 0 : null,
     };
 }
 
@@ -321,7 +324,8 @@ export default class NeonDistrictTheme extends BaseTheme {
     }
 
     setupPost() {
-        const look = POST_LOOK[this.quality] || POST_LOOK.High;
+        const tierLook = POST_LOOK[this.quality] || POST_LOOK.High;
+        const look = this.flags.glass === 0 ? { ...tierLook, glass: 0 } : tierLook;
         this.post = null;
         this.passThrough = null;
         try {

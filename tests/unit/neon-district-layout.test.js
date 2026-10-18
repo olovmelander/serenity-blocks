@@ -425,5 +425,12 @@ describe('neon district tiers', () => {
         }
         expect(QUALITY.Minimal.drones).toBe(0);
         expect(POST_LOOK.High.bloom).toBe(true);
+        // The rain on the glass: none on the low tiers, more layers as the tier rises.
+        for (let i = 1; i < QUALITY_NAMES.length; i++) {
+            expect(POST_LOOK[QUALITY_NAMES[i]].glass).toBeGreaterThanOrEqual(POST_LOOK[QUALITY_NAMES[i - 1]].glass);
+        }
+        expect(POST_LOOK.Low.glass).toBe(0);
+        expect(POST_LOOK.Minimal.glass).toBe(0);
+        expect(POST_LOOK.High.glass).toBeGreaterThan(0);
     });
 });
