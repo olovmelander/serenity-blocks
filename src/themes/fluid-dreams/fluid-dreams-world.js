@@ -62,6 +62,52 @@ export function restRay(sx, sy, aspect, out = [0, 0, -1]) {
     return out;
 }
 
+/**
+ * Where a world point stands for the rest camera: [x, y] screen fractions (y down) and its depth
+ * along the view axis (metres). The inverse of restRay.
+ */
+export function restProject(px, py, pz, aspect, out = [0, 0, 0]) {
+    const tanV = Math.tan((fovForAspect(aspect) * DEG) / 2);
+    const c = Math.cos(REST_RIG.pitch);
+    const s = Math.sin(REST_RIG.pitch);
+    const vy = py - REST_RIG.height;
+    const up = vy * c + pz * s;
+    const depth = vy * s - pz * c;
+    const d = Math.max(depth, 1e-6);
+    out[0] = (px / d / (tanV * aspect) + 1) / 2;
+    out[1] = (1 - up / d / tanV) / 2;
+    out[2] = depth;
+    return out;
+}
+
+/**
+ * The screen box a sphere fills for the rest camera, [x0, y0, x1, y1] in fractions (y down),
+ * or null when the eye is inside it or it is not in front. Exact for a sphere's outline: each
+ * edge is the tangent from the eye, so a sphere off to the side is drawn wider, as it is.
+ */
+export function restBounds(px, py, pz, radius, aspect, out = [0, 0, 1, 1]) {
+    const tanV = Math.tan((fovForAspect(aspect) * DEG) / 2);
+    const c = Math.cos(REST_RIG.pitch);
+    const s = Math.sin(REST_RIG.pitch);
+    const vy = py - REST_RIG.height;
+    const up = vy * c + pz * s;
+    const depth = vy * s - pz * c;
+    const across = Math.hypot(px, depth);
+    const tall = Math.hypot(up, depth);
+    if (!(depth > 0) || radius >= across || radius >= tall) return null;
+    const ax = Math.asin(radius / across);
+    const ay = Math.asin(radius / tall);
+    const tx = Math.atan2(px, depth);
+    const ty = Math.atan2(up, depth);
+    const edge = Math.PI / 2 - 1e-3;
+    if (Math.abs(tx) + ax >= edge || Math.abs(ty) + ay >= edge) return null;
+    out[0] = (Math.tan(tx - ax) / (tanV * aspect) + 1) / 2;
+    out[2] = (Math.tan(tx + ax) / (tanV * aspect) + 1) / 2;
+    out[1] = (1 - Math.tan(ty + ay) / tanV) / 2;
+    out[3] = (1 - Math.tan(ty - ay) / tanV) / 2;
+    return out;
+}
+
 /** Screen height (fraction, y down) of the sea line for the rest camera. */
 export function horizonY(aspect) {
     const tanV = Math.tan((fovForAspect(aspect) * DEG) / 2);
@@ -70,6 +116,24 @@ export function horizonY(aspect) {
 
 /** How far out a lock's droplet lands (metres): near enough to read, never at the viewer's feet. */
 const LANDING = Object.freeze({ near: 9, far: 19 });
+
+/**
+ * Where a four-line clear may carry the Great Drop: a screen point (fractions, y down) for its
+ * centre, in the open sea beside the cards and the stats bar, and a distance from the eye, drawn
+ * at random until the Drop's silhouette (`footprint` radii, lobes and all) clears every card, the
+ * stats bar and the frame by `margin` (screen heights), and it travels at least `move` radii.
+ * Half the time the first half of the draws look only on the far side of the board from where it
+ * hangs, so it does not keep to one side.
+ */
+export const SITE = Object.freeze({
+    tries: 96,
+    y: [0.2, 0.44],
+    near: 23,
+    far: 40,
+    footprint: 1.4,
+    margin: 0.02,
+    move: 2.4,
+});
 
 const PARTS = Object.freeze(['liquid', 'motes', 'spray']);
 
@@ -115,6 +179,12 @@ export class FluidDreamsWorld {
         this._pt = { x: 0.5, y: 0.5 };
         this._lockCount = 0;
         this.random = mulberry32(0xd4ea);
+        /** Where the Great Drop hangs once a four-line clear has moved it ({ x, y, d }), else null. */
+        this.site = null;
+        this.siteRandom = mulberry32(0x5173);
+        this._site = [0, 0, 0];
+        this._seen = [0, 0, 0];
+        this._box = [0, 0, 1, 1];
         this.parts = {};
         this.group = null;
         this.u = null;
@@ -201,15 +271,15 @@ export class FluidDreamsWorld {
         const anchors = sceneAnchors(aspect);
         const sc = this.choreo.scene;
         const eyeY = REST_RIG.height;
-        const scale = anchors.heroScale;
-        const ray = restRay(anchors.hero.x, anchors.hero.y, aspect, this._tmp);
-        const reach = HERO.distance;
-        sc.heroScale = scale;
-        sc.hero[0] = ray[0] * reach;
-        // never so low that the thread has no room
-        sc.hero[1] = Math.max(eyeY + ray[1] * reach, HERO.radius * scale * 1.25 + 2.6);
-        sc.hero[2] = ray[2] * reach;
-        const kin = restRay(anchors.kin.x, anchors.kin.y, aspect, this._tmp);
+        sc.heroScale = anchors.heroScale;
+        // the Great Drop: where a four-line clear carried it, while that still fits the frame
+        if (this.site && !this.siteFits(this.site)) this.site = null;
+        this.sitePoint(this.site || this.homeSite(), sc.hero);
+        // its kin keep to the other side of the board from it
+        const card = cardUnion(this.layout);
+        const middle = card ? (card.x0 + card.x1) * 0.5 : 0.5;
+        const crowded = this.site && (this.site.x < middle) === (anchors.kin.x < middle);
+        const kin = restRay(crowded ? 1 - anchors.kin.x : anchors.kin.x, anchors.kin.y, aspect, this._tmp);
         sc.kin[0] = kin[0] * 38;
         sc.kin[1] = Math.max(eyeY + kin[1] * 38, 4.2);
         sc.kin[2] = kin[2] * 38;
@@ -221,6 +291,101 @@ export class FluidDreamsWorld {
         const foot = this.footOf(boardFor(this.layout, 0) || cardUnion(this.layout));
         sc.foot[0] = foot[0];
         sc.foot[1] = foot[1];
+    }
+
+    /** Where the composition stands the Great Drop before anything has moved it. */
+    homeSite() {
+        const { hero } = sceneAnchors(this.aspect);
+        return { x: hero.x, y: hero.y, d: HERO.distance };
+    }
+
+    /** A site's place in the world, [x, y, z]: along the rest camera's ray, `d` metres out. */
+    sitePoint(site, out = [0, 0, 0]) {
+        const ray = restRay(site.x, site.y, this.aspect, this._tmp);
+        const scale = sceneAnchors(this.aspect).heroScale;
+        out[0] = ray[0] * site.d;
+        // never so low that the thread has no room
+        out[1] = Math.max(REST_RIG.height + ray[1] * site.d, HERO.radius * scale * 1.25 + 2.6);
+        out[2] = ray[2] * site.d;
+        return out;
+    }
+
+    /**
+     * True when the Great Drop hung at this site stays clear of every card, the stats bar and the
+     * frame's edges, its thread included (rest camera, the current layout).
+     */
+    siteFits(site) {
+        const { aspect } = this;
+        const p = this.sitePoint(site, this._site);
+        const r = SITE.footprint * HERO.radius * sceneAnchors(aspect).heroScale;
+        const box = restBounds(p[0], p[1], p[2], r, aspect, this._box);
+        if (!box) return false;
+        // in screen heights from here on, so a margin is the same both ways
+        const m = SITE.margin;
+        const [x0, y0, x1, y1] = [box[0] * aspect, box[1], box[2] * aspect, box[3]];
+        if (y0 < m || x0 < m || aspect - x1 < m) return false;
+        const mid = (x0 + x1) / 2;
+        const sea = horizonY(aspect);
+        const rects = this.layout.hud ? [...this.layout.cards, this.layout.hud] : this.layout.cards;
+        for (let i = 0; i < rects.length; i += 1) {
+            const b = rects[i];
+            const dx = Math.max(b.x0 * aspect - x1, x0 - b.x1 * aspect, 0);
+            const dy = Math.max(b.y0 - y1, y0 - b.y1, 0);
+            if (Math.hypot(dx, dy) < m) return false;
+            // its thread runs straight down to the sea
+            if (mid > b.x0 * aspect - m && mid < b.x1 * aspect + m && b.y1 > y1 && b.y0 < sea) return false;
+        }
+        return true;
+    }
+
+    /**
+     * A new home for the Great Drop, drawn at random (seeded: a seek replays it), or null when
+     * the frame has no room for one (a phone, a row of boards).
+     */
+    pickSite() {
+        const rand = this.siteRandom;
+        const now = this.sitePoint(this.site || this.homeSite(), [0, 0, 0]);
+        const nowX = restProject(now[0], now[1], now[2], this.aspect, this._seen)[0];
+        const card = cardUnion(this.layout);
+        const middle = card ? (card.x0 + card.x1) * 0.5 : 0.5;
+        // the open sea beside the cards and the stats bar, as spans of screen x
+        const rects = this.layout.hud ? [...this.layout.cards, this.layout.hud] : this.layout.cards;
+        const blocked = rects.map((r) => [r.x0, r.x1]).sort((a, b) => a[0] - b[0]);
+        const open = [];
+        let edge = 0;
+        for (let i = 0; i < blocked.length; i += 1) {
+            if (blocked[i][0] > edge + 0.02) open.push([edge, blocked[i][0]]);
+            edge = Math.max(edge, blocked[i][1]);
+        }
+        if (edge < 0.98) open.push([edge, 1]);
+        if (!open.length) return null;
+        const far = open.filter(([a, b]) => ((a + b) * 0.5 < middle) !== (nowX < middle));
+        // half the time it looks first on the other side of the board
+        const across = far.length > 0 && rand() < 0.5;
+        const least = SITE.move * HERO.radius * sceneAnchors(this.aspect).heroScale;
+        for (let i = 0; i < SITE.tries; i += 1) {
+            const spans = across && i < SITE.tries / 2 ? far : open;
+            // a span by its width, then a place in it
+            let pick = rand() * spans.reduce((sum, [a, b]) => sum + b - a, 0);
+            let span = spans[spans.length - 1];
+            for (let j = 0; j < spans.length; j += 1) {
+                pick -= spans[j][1] - spans[j][0];
+                if (pick <= 0) {
+                    span = spans[j];
+                    break;
+                }
+            }
+            const site = {
+                x: lerp(span[0], span[1], rand()),
+                y: lerp(SITE.y[0], SITE.y[1], rand()),
+                d: lerp(SITE.near, SITE.far, rand()),
+            };
+            if (!this.siteFits(site)) continue;
+            const p = this.sitePoint(site, this._site);
+            if (Math.hypot(p[0] - now[0], p[1] - now[1], p[2] - now[2]) < least) continue;
+            return site;
+        }
+        return null;
     }
 
     /** The sea point just under a board (rest camera), as [x, z]. */
@@ -380,9 +545,20 @@ export class FluidDreamsWorld {
         } else if (board) {
             origin = this.footOf(board, this._to);
         }
-        this.choreo.clear({
-            origin, lines, tspin: clear.tspin === true, perfect: clear.perfect === true,
+        // four lines carry the Great Drop somewhere new: it dives in there and hangs there after
+        // (not under reduced motion: a leap across the frame is the motion that asks to be spared)
+        const site = lines >= 4 && !this.reducedMotion ? this.pickSite() : null;
+        const plunged = this.choreo.clear({
+            origin,
+            lines,
+            tspin: clear.tspin === true,
+            perfect: clear.perfect === true,
+            site: site ? this.sitePoint(site, this._site) : null,
         });
+        if (plunged && site) {
+            this.site = site;
+            this.compose(); // its kin may have to make room
+        }
         // rows pour only out of a card that is really on screen
         if (!board || !this.layoutLive || clear.screen) return;
         // the cleared rows pour out of the two sides of the card that holds this board
@@ -441,6 +617,10 @@ export class FluidDreamsWorld {
         this.parts.spray?.reset();
         this.random = mulberry32(0xd4ea);
         this._lockCount = 0;
+        // the Drop goes back to where the composition stands it, and its travels start over
+        this.site = null;
+        this.siteRandom = mulberry32(0x5173);
+        this.compose();
         this.levelUp(1, { silent: true });
     }
 
@@ -523,6 +703,8 @@ export class FluidDreamsWorld {
             stains: c?.counts.dye ?? 0,
             waves: c?.counts.waves ?? 0,
             layoutLive: this.layoutLive,
+            // where a four-line clear carried the Great Drop: [x, y] on screen and metres out
+            site: this.site ? [this.site.x, this.site.y, this.site.d] : null,
         };
     }
 

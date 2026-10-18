@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
     CLEAR_REACH, CLEAR_TRAVEL, DYE_HOLD, DYE_SLOTS, FLIGHT_TIME, FLUID_PALETTES, GROUP_CAPACITY, GROUP_COUNT,
-    GROUP_HERO, GROUP_KIN, GROUP_LEFT, GROUP_RIGHT, GROUP_START, HERO, HUSH_HOLD, JET_TIME, MAX_BALLS, PALETTE_KEYS,
-    PLUNGE, RING_REACH, RING_SLOTS, RING_TAU, WAVE_SLOTS, approach, clamp01, clearRadius, lerp, linRGB, mulberry32,
-    pieceColor, powerForCombo, ringRadius, sceneAnchors, smooth,
+    GROUP_HERO, GROUP_KIN, GROUP_LEFT, GROUP_RIGHT, GROUP_START, HERO, HUSH_HOLD, JET_TIME, LEAP, MAX_BALLS,
+    PALETTE_KEYS, PLUNGE, RING_REACH, RING_SLOTS, RING_TAU, WAVE_SLOTS, approach, clamp01, clearRadius, lerp, linRGB,
+    mulberry32, pieceColor, powerForCombo, ringRadius, sceneAnchors, smooth,
 } from '../../src/themes/fluid-dreams/fluid-dreams-core.js';
 import { FluidChoreography, clearPassTime } from '../../src/themes/fluid-dreams/fluid-dreams-choreography.js';
 import { fallbackLayout } from '../../src/themes/fluid-dreams/fluid-dreams-composition.js';
@@ -812,8 +812,12 @@ describe('fluid dreams choreography: clears', () => {
         };
         const t0 = choreo.time;
         const anchor = [...choreo.scene.hero];
-        choreo.clear({ origin: [...choreo.scene.foot], lines: 4 });
+        // Given no new home, it falls where it hangs.
+        expect(choreo.clear({ origin: [...choreo.scene.foot], lines: 4 })).toBe(true);
         expect(choreo.isBusy()).toBe(true);
+        expect(choreo.plunge.reach).toBe(0);
+        expect(choreo.plunge.fall).toBe(PLUNGE.fall);
+        expect(choreo.scene.hero).toEqual(anchor);
 
         // ── The hush: the sea stills, the Drop still hangs on its thread ──
         both(HUSH_HOLD * 0.75);
@@ -904,6 +908,118 @@ describe('fluid dreams choreography: clears', () => {
         run(choreo, HUSH_HOLD + PLUNGE.fall + 2 * DT);
         expect(kinds(bursts, 'crown')).toHaveLength(2);
         expect(settle(choreo)).toBeLessThan(PLUNGE.total);
+    });
+
+    it('carries the Great Drop to a new home on four lines: it leaps there, bursts there and hangs there', () => {
+        const FINE = 1 / 480;
+        const { choreo, bursts } = make();
+        const twin = make().choreo; // the same sea, its Drop already hanging at the new home
+        const from = [...choreo.scene.hero];
+        const site = [from[0] + 26, from[1] - 1.5, from[2] - 7];
+        twin.scene.hero.splice(0, 3, ...site);
+        const t0 = choreo.time;
+        expect(choreo.clear({ origin: [...choreo.scene.foot], lines: 4, site })).toBe(true);
+        // The anchor moves at once (the world stands the picture up round it); the Drop does not.
+        expect(choreo.scene.hero).toEqual(site);
+        const { fall, total, reach } = choreo.plunge;
+        expect(reach).toBeCloseTo(Math.hypot(26, 7), 9);
+        expect(fall).toBeGreaterThan(PLUNGE.fall);
+        expect(fall).toBeLessThanOrEqual(PLUNGE.fall + LEAP.most + 1e-9);
+        expect(total - fall).toBeCloseTo(PLUNGE.total - PLUNGE.fall, 9);
+        let last = [choreo.hero.x, choreo.hero.y, choreo.hero.z];
+        let jump = 0;
+        let top = -Infinity;
+        let strayed = 0;
+        let crown = null;
+        let firstProblem = null;
+        const steps = Math.round((HUSH_HOLD + total + 0.5) / FINE);
+        for (let i = 1; i <= steps; i++) {
+            const time = t0 + i * FINE;
+            choreo.update(time, FINE, PALETTE);
+            twin.update(time, FINE, PALETTE);
+            firstProblem ??= problem(choreo);
+            const now = [choreo.hero.x, choreo.hero.y, choreo.hero.z];
+            jump = Math.max(jump, Math.hypot(now[0] - last[0], now[1] - last[1], now[2] - last[2]));
+            last = now;
+            const pt = time - choreo.plunge.t0;
+            // the hush: it still hangs where it hung
+            if (pt < 0) strayed = Math.max(strayed, Math.hypot(now[0] - from[0], now[2] - from[2]));
+            else if (pt < fall) top = Math.max(top, now[1]);
+            if (!crown && kinds(bursts, 'crown').length) {
+                [crown] = kinds(bursts, 'crown');
+                // It meets the sea under its new home: the crown, the packet and the rings start there.
+                expect(crown.x).toBeCloseTo(twin.hero.x, 9);
+                expect(crown.z).toBeCloseTo(twin.hero.z, 9);
+                expect(crown.at - t0).toBeCloseTo(HUSH_HOLD + fall, 1);
+                expect(rowAt(choreo, 'waves', [crown.x, crown.z])).toBeTruthy();
+                expect(rowAt(choreo, 'rings', [crown.x, crown.z])).toBeTruthy();
+            }
+        }
+        expect(firstProblem).toBeNull();
+        expect(strayed).toBeLessThan(0.6);
+        expect(crown).toBeTruthy();
+        // A leap, not a slide: it rises over where it hung before it dives.
+        expect(top).toBeGreaterThan(from[1] + 1);
+        // It moves the whole way; it is never set anywhere (1/480 s: even leaping, a step is centimetres).
+        expect(jump).toBeLessThan(0.25);
+        // It sheds a string of fine drops on the way, and only on the way.
+        const trail = kinds(bursts, 'trail');
+        expect(trail.length).toBeGreaterThan(8);
+        for (const drop of trail) {
+            expect(drop.at - t0).toBeGreaterThanOrEqual(HUSH_HOLD - 1e-9);
+            expect(drop.at - t0).toBeLessThan(HUSH_HOLD + fall);
+        }
+        // And it hangs there on its thread, exactly as a Drop that lived there would.
+        expect(choreo.isBusy()).toBe(false);
+        expect(threadOn(choreo)).toBe(true);
+        expect(choreo.hero.x).toBeCloseTo(twin.hero.x, 9);
+        expect(choreo.hero.y).toBeCloseTo(twin.hero.y, 9);
+        expect(choreo.hero.z).toBeCloseTo(twin.hero.z, 9);
+        expect(choreo.stem.x).toBeCloseTo(twin.stem.x, 9);
+        expect(choreo.stem.z).toBeCloseTo(twin.stem.z, 9);
+        // A T-spin now winds the sea under its new home.
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 2, tspin: true });
+        run(choreo, 0.5);
+        expect([choreo.vortex.x, choreo.vortex.z]).toEqual([site[0], site[2]]);
+    });
+
+    it('keeps it on its way when a second four-line clear names another home while it is down', () => {
+        const { choreo } = make();
+        const from = [...choreo.scene.hero];
+        const site = [from[0] + 20, from[1], from[2] - 4];
+        expect(choreo.clear({ origin: [...choreo.scene.foot], lines: 4, site })).toBe(true);
+        run(choreo, HUSH_HOLD + 0.3);
+        const other = [from[0] - 6, from[1] + 1, from[2] + 3];
+        expect(choreo.clear({ origin: [...choreo.scene.foot], lines: 4, site: other })).toBe(false);
+        expect(choreo.scene.hero).toEqual(site);
+        settle(choreo);
+        expect(Math.hypot(choreo.hero.x - site[0], choreo.hero.z - site[2])).toBeLessThan(0.6);
+    });
+
+    it('lets the kin drift to a new anchor instead of jumping, and stands them at it after a seek', () => {
+        const { choreo } = make();
+        run(choreo, 1);
+        const kinX = () => ballsOf(choreo, GROUP_KIN)[0].x;
+        const target = [-choreo.scene.kin[0], choreo.scene.kin[1], choreo.scene.kin[2]];
+        choreo.scene.kin.splice(0, 3, ...target);
+        let last = kinX();
+        let step = 0;
+        run(choreo, 12, () => {
+            step = Math.max(step, Math.abs(kinX() - last));
+            last = kinX();
+        });
+        expect(step).toBeGreaterThan(0.02);
+        expect(step).toBeLessThan(0.4);
+        expect(Math.abs(kinX() - target[0])).toBeLessThan(0.1);
+        // A held frame holds them.
+        const held = kinX();
+        choreo.update(choreo.time, 0, PALETTE);
+        expect(kinX()).toBe(held);
+        // A seek stands them at their anchor.
+        choreo.scene.kin[0] = 3;
+        choreo.seek(40);
+        choreo.update(40, 0, PALETTE);
+        expect(kinX()).toBe(3);
     });
 
     it('throws the crown as spray only on a tier that does not draw it as liquid', () => {

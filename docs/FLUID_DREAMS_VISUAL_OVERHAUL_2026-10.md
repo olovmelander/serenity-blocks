@@ -43,7 +43,7 @@ carries what the sea is holding up the thread into the Great Drop.
 | Hard drop | The same, harder: three droplets, a bigger one between two small ones. The big one raises a taller jet and a wider ring and leaves the stain; the small ones splash and ring; the lens jumps. |
 | Line clear | The cleared rows pour out of both sides of the card as fans of droplets at their own heights. A wave packet leaves the foot of the board, one crest per line, and runs out through the sea: every stain it crosses flares and lets go, and when it reaches the foot of the thread a bead of that light climbs to the Great Drop, which swallows it, swells and takes the colour. |
 | Combo | The sea charges. The Great Drop grows and buds one satellite for every step of the chain (up to eight), each lit from inside and circling it; its ink and the sky's burn brighter; light pools on the sea under it; the mist rises faster. When the chain breaks the satellites sink back into it. |
-| Four lines | The sea holds its breath: the swell flattens and the Drop gathers itself for a quarter of a second. Then it lets go of its thread and falls. A crown of liquid stands up round the crater and each of its points throws a bead; a ring of split light crosses the sky; the wave goes out; what the crown threw comes back down as rain; and the Drop is lifted back into the air on the column that follows it, which thins to the thread again. |
+| Four lines | The sea holds its breath: the swell flattens and the Drop gathers itself for a quarter of a second. Then it lets go of its thread and **leaps in an arc to a new home** (added 2026-10-18, see below), shedding fine drops, and dives in there. A crown of liquid stands up round the crater and each of its points throws a bead; a ring of split light crosses the sky; the wave goes out; what the crown threw comes back down as rain; and the Drop is lifted back into the air on the column that follows it, which thins to the thread again, and hangs there until the next four lines. |
 | T-spin | The sea under the Drop winds into a funnel with spiral arms, and the Drop and its satellites spin up. |
 | Perfect clear | The sea turns to glass for a few seconds and a wide pale ring opens overhead (after four lines, once the crown has gone up and its own ring has let go of the sky). |
 | Level up | The dusk changes colours in about a second, under a breath of light: five palettes, cycled (amethyst dusk, lagoon, rose gold, ultraviolet, aurora mint), with a soft packet from the foot of the board. A new run starts on the first again. |
@@ -56,6 +56,27 @@ holding.
 ![Lock, hard drop, clear and chain](fluid-dreams-overhaul/desktop-events.webp)
 
 ![Four lines: the fall, the crown, the return](fluid-dreams-overhaul/desktop-quad.webp)
+
+### The wandering Drop (2026-10-18)
+
+Olov: the big blob always rose on the left and burst in the same place; it should come up and
+burst at different, random places. Now every four-line clear gives the Drop a new home:
+
+- `FluidDreamsWorld.pickSite()` draws a screen point in the open sea beside the cards and the
+  stats bar, a height (`SITE.y`) and a distance (23–40 m), and keeps the first draw whose
+  silhouette (1.4 radii, as the rest camera really draws it: `restBounds` takes the tangents
+  from the eye, so a Drop near the frame's edge is wider) clears every card, the stats bar and
+  the frame, whose thread stands in open sea, and which is at least 2.4 radii from where it
+  hangs. Half the time the first half of the draws look only on the other side of the board.
+  The sequence is seeded and reseeded on a seek, so captures reproduce.
+- The choreography leaps it there: the fall takes 0.02 s longer per metre (at most 0.7 s more),
+  leaves from rest, rises in an arc of up to 4 m and dives in at speed; the crown, the rings,
+  the packet and the sky's ring all start at the new home, and the column lifts it there.
+  Without a site (no room in the frame, or reduced motion) it falls where it hangs, as before.
+- Its kin keep to the other side of the board: their anchor mirrors when the Drop takes their
+  side, and they drift over on a critically damped follow (a few seconds; a seek stands them).
+- The home survives a new run; a frame change that leaves no room where it was stands it at the
+  composition's home. Playground: `quads=<n>` plays n four-line clears first.
 
 ## How it is built
 
