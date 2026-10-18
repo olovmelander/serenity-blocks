@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **737 parameter names in 902 scoped entries**. The `odyssey-world`
+The catalog documents **739 parameter names in 935 scoped entries**. The `odyssey-world`
 playground effect added `lookPitch` and `lookYaw` (turn the camera off the path, for checking a
 chapter from every angle). The `fluid-dreams`
 playground effect added `quads` (four-line clears played before the frame); Sakura Twilight
@@ -14,6 +14,8 @@ keeping one fox retired `foxWhich`; Rainbow Terraces (Sky Children until 2026-10
 `faultLines` and `waystones` were retired on 2026-10-18, when Waystones was removed and Fault
 Lines (now Stillfall) joined the main menu. Grainfields (in Misty Lake's place, 2026-10-18)
 retired Misty Lake's eight flags and added its own theme flags and playground effect.
+Spring (in Moonlit Forest's place, 2026-10-18) retired Moonlit Forest's readers and added its
+own theme flags and playground effect.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -201,6 +203,18 @@ holds the light on the wheel of the day. The eight `mistyLake*` readers of the t
 `NoCompute` and `Debug`) are retired with it. Use `effect=grainfields&t=10&hour=<place>` for a
 deterministic playground capture; the part names are `grain`, `land`, `lapporten`, `trees`, `sky`,
 `beams` and `motes`.
+
+Spring (2026-10-18), a new theme in Moonlit Forest's place, adds the capture flags
+`springForceWebGL`, `springTime`, `springFixedDt`, `springParts` and `springFalseColor`; the part
+names are `land`, `river`, `rocks`, `trees`, `woods`, `meadow`, `fx` and `sky`. Its `spring`
+playground effect reads 35 parameters, catalogued as its own rows; three of them are new names,
+`iconEye` and `iconBearing` (the icon lens's position and bearing) and `atlas` (shows the
+woods' impostor atlas, albedo or normals, instead of the world), and the rest are names its
+sibling effects already had (`shape`, the piece a replayed lock locks, among them). Moonlit Forest's
+readers are retired with it: `moonlitForceWebGL`, `moonlitQuality` and its `quality` fallback,
+`moonlitPerf` and `moonlitBaseline`, its share of `baseline`, and the `boardGuide` and
+`eventPhase` controls of the removed `moonlit-forest-master` playground effect, which also leaves
+the `combo`, `event` and `quality` rows (the old theme read all three while active).
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 

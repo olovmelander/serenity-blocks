@@ -262,7 +262,7 @@ export const ODYSSEY_CHAPTER_PROFILES = Object.freeze([
         },
         node: { style: ODYSSEY_NODE_STYLES.SEED_LANTERN },
         anchor: 'distantRange',
-        audioTrack: 'MoonlitForest',
+        audioTrack: 'Spring',
         transitionOut: '3-4',
         transition: {
             id: '3-4',

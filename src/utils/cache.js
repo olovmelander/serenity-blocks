@@ -6,7 +6,6 @@
  * Theme-specific canvas caches for procedurally generated backgrounds
  * These caches prevent regenerating expensive canvas operations on every theme switch
  */
-export const moonlitForestTreeCache = new Map();
 export const sakuraTwilightTreeCache = new Map();
 export const wolfhourBackgroundCache = new Map();
 export const iceTempleCache = new Map();
@@ -43,7 +42,6 @@ export function getGridCache() {
  * Clear all theme caches (useful for memory cleanup)
  */
 export function clearThemeCaches() {
-    moonlitForestTreeCache.clear();
     sakuraTwilightTreeCache.clear();
     wolfhourBackgroundCache.clear();
     iceTempleCache.clear();

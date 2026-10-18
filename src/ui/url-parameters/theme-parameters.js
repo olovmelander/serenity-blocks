@@ -3,7 +3,6 @@ const ON = '1, true, yes, on, or an empty value; other values disable (case-inse
 const ON_SHORT = '1, true, yes, or an empty value; other values disable (case-insensitive)';
 const PRESENCE = 'Any present value enables, including 0; remove the parameter to disable';
 const PRESENT_UNLESS_FALSE = 'Any present value except the exact strings 0 and false enables';
-const QUALITY = 'Minimal, Low, Medium, High, Ultra, Extreme (case-insensitive)';
 const source = (id) => `src/themes/${id}/${id}-theme.js`;
 const entry = (name, scope, description, values, defaultValue, example, sources, notes = '') => ({
     name,
@@ -172,6 +171,8 @@ const captureThemes = [
 
     ['solar-eclipse', 'eclipse', 'Solar Eclipse', 'sky, motes'],
 
+    ['spring', 'spring', 'Spring', 'land, river, rocks, trees, woods, meadow, fx, sky'],
+
     ['starlight', 'starlight', 'Starlight', 'sky, stars, figures, streaks'],
 
     ['stellar-drift', 'stellarDrift', 'Stellar Drift', 'space, boulders, shards, motes, sparks, meteors, resonances'],
@@ -269,7 +270,6 @@ const rendererAliases = [
     ['fall', 'fallForceWebGL', 'Fall', ON],
     ['forest', 'forestForceWebGL', 'Forest', ON],
     ['golden-forest', 'goldenForestForceWebGL', 'Golden Forest', ON],
-    ['moonlit-forest', 'moonlitForceWebGL', 'Moonlit Forest', ON],
     ['parhelion', 'parhelionForceWebGL', 'Parhelion', ON],
     ['sakura-twilight', 'sakuraForceWebGL', 'Sakura Twilight', ON],
     ['summer', 'summerForceWebGL', 'Summer', ON],
@@ -535,9 +535,9 @@ export const THEME_URL_PARAMETERS = [
     )),
     toggle(
         'baseline',
-        'Cosmic Noir, Moonlit Forest, Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
+        'Cosmic Noir, Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
         'Enable the theme baseline or performance capture helpers.',
-        ['cosmic-noir', 'moonlit-forest', 'neon-dusk', 'nimbus-veil', 'synthwave-sunset', 'wolfhour'].map(source),
+        ['cosmic-noir', 'neon-dusk', 'nimbus-veil', 'synthwave-sunset', 'wolfhour'].map(source),
         'Use 1; other accepted boolean spellings vary by theme',
     ),
     ...aliases(
@@ -745,34 +745,5 @@ export const THEME_URL_PARAMETERS = [
         'Measured frame time',
         '16.6667',
         [source('parhelion')],
-    ),
-    ...[
-        ['moonlit-forest', 'moonlitQuality', 'Moonlit Forest'],
-    ].map(([id, name, label]) => entry(
-        name,
-        label,
-        'Override the theme graphics-quality tier.',
-        QUALITY,
-        'Current graphics setting, or High',
-        'High',
-        [source(id)],
-        'Takes priority over quality.',
-    )),
-    entry(
-        'quality',
-        'Moonlit Forest',
-        'Fallback graphics-quality override for this theme.',
-        QUALITY,
-        'Current graphics setting, or High',
-        'High',
-        [source('moonlit-forest')],
-        'A theme-specific quality override takes priority.',
-    ),
-    ...aliases(
-        ['moonlitPerf',
-            'moonlitBaseline'],
-        'Moonlit Forest',
-        'Record theme baseline/performance samples.',
-        [source('moonlit-forest')],
     ),
 ];

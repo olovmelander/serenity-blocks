@@ -3066,9 +3066,9 @@ body.serenity-hub-open .theme-container.active {
     }
 }
 
-/* --- Moonlit Forest Theme --- */
-#moonlit-forest-theme {
-    background: transparent;
+/* --- Spring Theme (a Norrland river in its spring flood: a WebGPU canvas, src/themes/spring/) --- */
+#spring-theme {
+    background: #8ea6c4;
     overflow: hidden;
 }
 

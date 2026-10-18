@@ -48,16 +48,16 @@
   "motifsToAvoidReusing": "Ice or crystal architecture, cathedral naves, cracked ice floors, aurora, snowflakes, cyan-violet cold palette, a glowing core behind the board"
  },
  {
-  "id": "moonlit-forest",
-  "name": "Moonlit Forest — Silverheart Glade",
-  "setting": "Low-poly night glade: faceted broadleaf trees frame left and right, a teal/navy layered forest and ridges receding into teal fog, a small white moon with one shaft, a black-water pool in the centre, teal/yellow mushrooms, rocks, ferns. Icon: dark conifer silhouettes, wide slanted white-blue light shafts, glowing mist ground band. No overhaul doc; scene lives in src/playground/effects/moonlit-forest-master.effect.js (1,605 lines), wrapper at src/themes/moonlit-forest/moonlit-forest-theme.js",
-  "timeOfDay": "Night",
-  "dominantPalette": "PALETTE (effect.js:104-111): sky 0x050812, foreground 0x1c2b3b, bark 0x25263a, midForest 0x21364a, mist 0x386675, silver 0xc5d8dc, fungal 0x62d9bd, firefly 0xebcb69. Pieces (:13-20): I #c5d8dc, O #62d9bd, T #9d89c7, S #5f9f82, Z #7194a5, J #ebcb69, L #82baa8, GARBAGE #344854",
-  "keyMotifs": "Low-poly trees, moon shaft, black pool, bioluminescent fungi, fireflies, layered teal fog ridges",
-  "motion": "Noise-driven shaft and veil, fireflies, mist layers",
-  "gameplayFx": "Burst names (moonlit-forest-fx-controller.js:14-24): fireflies, spores, enchantedLeaves, wisps, sparkles, runes, mist, shootingStars, auroraStrength. Lock: a fungal-teal contact ring on the water. Combo: a combo ring (0x748bb5) and an additive 'lunar veil' of aurora-like bands, 0x51466f to 0x58aaa2 (effect.js:638-672).",
-  "tech": "WebGPU/TSL but uses MaterialX mx_noise_float / mx_fractal_noise_float and fog(rangeFogFactor); instanced scenery; production wrapper imports the playground create()",
-  "motifsToAvoidReusing": "Night forest glade, moon shaft, teal fog, black pool, glowing mushrooms, low-poly faceted trees, aurora veil"
+  "id": "spring",
+  "name": "Spring — the river in its spring flood",
+  "setting": "A Norrland river at the end of May at 65° N in its spring flood (after Tännforsen), seen from a flowering granite knoll at the outside of a bend: up to the left a fall over a step of dark layered schist in tongues (the main one leaping free from a recess under the lip, the left down a stair of slabs, the right off a ledge, ribs of wet rock between), a plunge pool boiling where they land, rapids in uneven ledges down to the knoll, the river leaving right through spruce and birch in first leaf toward fells with snow in their gullies. Icon: over the knoll's flowers to the fall. Doc: docs/SPRING_VISUAL_OVERHAUL_2026-10.md",
+  "timeOfDay": "Six stations (morning, afternoon, golden evening, sunset behind the western rim, the light night, dawn mist) in spring-hours.js; the real sun height at 65.5° N on a measured skyline; turns with the clock, a level-up steps a station; no rests (worst 0.095 stops/s)",
+  "dominantPalette": "Fresh spring greens, white water and dark wet rock, the meadow's flowers. Pieces (solid, spring-tetrominos.js): I #F6E76E globeflower, O #EE8512 marsh marigold, T #F8F4EC wood anemone, S #279DF1 hepatica, Z #E8508C red campion, J #D9BDF5 lady's smock, L #C756D2 violet, GARBAGE #2E3826; CVD-separated (worst ΔE > 14)",
+  "keyMotifs": "A layered-rock fall in tongues, a boiling plunge pool, rapids, a flowering knoll, spruce and birch woods (cards of the modelled trees), snow-patched fells, a light night, ice floes, whooper swans and cranes",
+  "motion": "The fall's water streaking down at its true speed, the pool's boil, foam lines drifting down the rapids, mist off the foot, the meadow in the breeze, cloud shadows on the fells, birds",
+  "gameplayFx": "Lock: a patch of the piece's own flower bursts into bloom on the knoll where it landed (on the water: a splash). Clear: a surge down the river, the bigger the more lines, its steep front breaking white like a bore; the knoll flushes into bloom. Chain: the spring flood rises (the river swells and runs whiter in streaks, the mist thickens) and falls back when the chain breaks. Four lines: the great surge, and the ice goes out. T-spin: a whirl in the pool. B2B: the river glitters. Perfect: two surges and swans. Level up: cranes. Game over: dusk.",
+  "tech": "WebGPU/TSL with WebGL2 fallback; a fall plan read by the rock face, the water sheet, the boil and the mist (each column's path traced over the sculpted face; the sheet read by launch time); a valley baked offline into three grids; a flow-mapped river with fwidth-antialiased foam; the far woods as cards from an impostor atlas the modelled trees' own materials draw once",
+  "motifsToAvoidReusing": "A layered-rock fall in tongues across a plunge pool, a flowering knoll as the standpoint, surges with breaking fronts as clears, the flood as the chain, ice going out for four lines"
  },
  {
   "id": "wolfhour",

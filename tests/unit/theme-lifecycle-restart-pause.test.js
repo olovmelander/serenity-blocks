@@ -111,11 +111,13 @@ describe('theme lifecycle: restart and pause', () => {
         expect(theme.scheduleRuntimeRebuild).toHaveBeenCalledOnce();
     });
 
-    it('moonlit-forest and parhelion keep a paused theme from drawing after a rebuild', () => {
-        const moonlit = readFileSync(path.join(ROOT, 'src/themes/moonlit-forest/moonlit-forest-theme.js'), 'utf8');
-        const rebuild = moonlit.indexOf('this.createScene().catch((error) => {\n                        console.error(\'[MoonlitForest] Quality rebuild failed:\'');
+    it('spring and parhelion keep a paused theme from drawing after a rebuild', () => {
+        const spring = readFileSync(path.join(ROOT, 'src/themes/spring/spring-theme.js'), 'utf8');
+        // A settings rebuild queued while paused waits for resume; a build that finishes paused starts no loop.
+        const rebuild = spring.indexOf('this.createScene().catch((error) => {');
         expect(rebuild).toBeGreaterThan(-1);
-        expect(moonlit.slice(rebuild - 260, rebuild)).toContain('if (this.isPaused) {');
+        expect(spring.slice(rebuild - 260, rebuild)).toContain('if (this.isPaused) {');
+        expect(spring).toContain('if (!this.isPaused) this.animate();');
         const parhelion = readFileSync(path.join(ROOT, 'src/themes/parhelion/parhelion-theme.js'), 'utf8');
         expect(parhelion).toContain('if (!this.isPaused) this.animate();');
     });

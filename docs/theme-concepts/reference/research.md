@@ -236,7 +236,7 @@ Phone risk ratings used below:
 - **Palette:** #9BE04A chartreuse, #2F8F5B green, #3F6FD0 blue, #7D4BB5 purple, #E0662B orange, #8A4B2A brown, #DDE8D8 mist.
 - **Gameplay:** Each cleared line peels a strip of bark, revealing fresh chartreuse that then ages over the session (driven by an age texture). Combo peels faster; four lines peel the whole grove at once.
 - **Phone risk:** Moderate.
-- **Similarity:** Moderate. Trees overlap with forest, golden-forest and moonlit-forest.
+- **Similarity:** Moderate. Trees overlap with forest, golden-forest and moonlit-forest (Spring replaced it on 2026-10-18).
 
 ### 14. DESERT BLOOM (alt: Desierto Florido). Atacama flowering desert
 - **Sources:** https://www.csmonitor.com/layout/set/amphtml/Environment/2015/1030/Why-carpets-of-flowers-are-now-thriving-in-the-driest-place-on-earth, https://www.bluewin.ch/en/news/a-rare-sea-of-flowers-in-the-middle-of-the-desert-whats-behind-it-li.2921256

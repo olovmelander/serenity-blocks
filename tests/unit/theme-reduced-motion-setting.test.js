@@ -5,15 +5,16 @@ import {
 } from 'vitest';
 
 import MoonriseSummitTheme from '../../src/themes/moonrise-summit/moonrise-summit-theme.js';
-import MoonlitForestTheme from '../../src/themes/moonlit-forest/moonlit-forest-theme.js';
+import SpringTheme from '../../src/themes/spring/spring-theme.js';
 
 /**
  * Settings > Reduce motion reaches the eight themes that used to read only the system
  * preference (theme and rendering audit 2026-10, recommendation A2).
  *
  * Six of them are built from one template and share the same few lines, so those lines are
- * pinned here and forest's own suite runs the behaviour. moonrise-summit and moonlit-forest
- * read it their own way and are run directly.
+ * pinned here and forest's own suite runs the behaviour. moonrise-summit reads it its own way
+ * and is run directly. The eighth was retired when Spring took its place (2026-10-18); Spring's
+ * adapter reads both inputs in its reaction settings, and is run directly too.
  */
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -92,16 +93,18 @@ describe('reduced motion: the in-game setting as well as the system preference',
         });
     });
 
-    describe('moonlit-forest', () => {
-        const intensity = (options) => {
+    describe('spring', () => {
+        const reduced = (options) => {
             stubWindow(options);
-            return Object.create(MoonlitForestTheme.prototype).getReactiveIntensity();
+            const theme = Object.create(SpringTheme.prototype);
+            theme.applyReactionSettings(null);
+            return theme.reducedMotion;
         };
 
-        it('damps event pulses for either input', () => {
-            expect(intensity()).toBe(1);
-            expect(intensity({ setting: true })).toBe(0.45);
-            expect(intensity({ system: true })).toBe(0.45);
+        it('reduces motion for either input', () => {
+            expect(reduced()).toBe(false);
+            expect(reduced({ setting: true })).toBe(true);
+            expect(reduced({ system: true })).toBe(true);
         });
     });
 });
