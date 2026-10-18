@@ -22,6 +22,8 @@
  *   bloom=0|1                override the tier's bloom
  *   msaa=<n>                 override the scene pass's samples
  *   glass=0|1|2              override the rain on the glass (layers; 0 = none)
+ *   glassDebug=1             draw the glass alone (drops pale, mist and wiped trails violet);
+ *                            pair with bloom=0
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   icon=1                   the theme-icon framing: a long lens straight down the canyon, a
  *                            touch brighter (compose for a small circle: capture a square frame)
@@ -125,6 +127,7 @@ export function create({
     const look = { ...(POST_LOOK[quality] || POST_LOOK.High) };
     if (params.has('bloom')) look.bloom = params.get('bloom') === '1';
     if (params.has('msaa')) look.msaa = Math.max(0, Math.round(num(params, 'msaa')));
+    if (params.get('glassDebug') === '1') look.glassDebug = true;
     if (params.has('glass')) look.glass = Math.max(0, Math.min(2, Math.round(num(params, 'glass'))));
     const noPost = params.get('noPost') === '1';
     const post = noPost ? null : new NeonDistrictPost(renderer, scene, camera, {
