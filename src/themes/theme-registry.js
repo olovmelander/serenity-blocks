@@ -28,11 +28,11 @@ const RAW_THEME_REGISTRY = [
         icon: './ice-temple/ice-temple-theme-icon.png',
     },
     {
-        id: 'moonlit-forest',
-        displayName: 'Moonlit Forest',
-        module: './moonlit-forest/moonlit-forest-theme.js',
+        id: 'spring',
+        displayName: 'Spring',
+        module: './spring/spring-theme.js',
         group: 'biomes',
-        icon: './moonlit-forest/moonlit-forest-theme-icon.png',
+        icon: './spring/spring-theme-icon.png',
     },
     {
         id: 'wolfhour',
@@ -447,7 +447,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'halcyon-apex',
     'ice-temple',
     'koi-pond',
-    'moonlit-forest',
+    'spring',
     'wolfhour',
     'ocean',
     'sunset',
@@ -549,6 +549,10 @@ const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
  * `misty-lake` was replaced by Grainfields (2026-10-18) at the same Odyssey orb:
  * a saved selection, an earned collection entry and an Odyssey completion that
  * name the old id now mean Grainfields.
+ *
+ * `moonlit-forest` was replaced by Spring (2026-10-18) at the same Odyssey orb:
+ * a saved selection, an earned collection entry and an Odyssey completion that
+ * name the old id now mean Spring.
  */
 const RETIRED_THEME_IDS = new Map([
     ['sky-children-v2', 'rainbow-terraces'],
@@ -559,6 +563,7 @@ const RETIRED_THEME_IDS = new Map([
     ['mountain', 'high-coast'],
     ['singing-bowl', 'kaleidosonic'],
     ['misty-lake', 'grainfields'],
+    ['moonlit-forest', 'spring'],
 ]);
 
 /**

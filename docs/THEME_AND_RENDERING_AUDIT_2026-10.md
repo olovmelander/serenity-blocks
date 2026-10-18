@@ -898,6 +898,9 @@ imports `shared/warm-hidden-drawables.js`).
 
 #### Batch B6 — high-coast, ocean, halcyon-apex, aether-tides, stellar-drift, nebula-flow, misty-lake, neon-dusk, moonlit-forest
 
+> Note (2026-10-18): moonlit-forest was retired when Spring took its slot; THM-182, THM-192 and
+> THM-223 to THM-226 left with its code.
+
 3 High, 15 Med, 29 Low, no Critical. The coordinator re-read all three Highs:
 
 - **THM-180 (misty-lake), refined:** the theme file never reads `shouldRenderFrame`,

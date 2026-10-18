@@ -286,7 +286,7 @@ export class ThemesTab {
             Forest: 'tree',
             'Himalayan Peak': 'mountain',
             'Ice Temple': 'snowflake',
-            'Moonlit Forest': 'moon',
+            Spring: 'flower',
             Wolfhour: 'wolf',
             Ocean: 'wave',
             Sunset: 'sunrise',
