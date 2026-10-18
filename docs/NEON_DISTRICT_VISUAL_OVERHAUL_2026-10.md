@@ -234,9 +234,8 @@ tutorial. The district is now seen through a pane of glass in the rain
 - **Beads.** Drops of two sizes on a jittered grid. Each is born (a raindrop lands), sits, and
   shrinks as it evaporates, then another lands elsewhere in its cell (a cell's lifetime is 9 to
   23 s).
-- **Runners.** Heavier drops, one per column, slide down in jerks: stuck, then a sudden slide, eight
-  steps a run, along a wavering path. Each wipes a trail through the mist that grows back behind
-  it and leaves a line of shrinking beads.
+- **Runners.** Heavier drops, one per column, running down the pane in stick-slip runs, wiping a
+  trail through the mist that grows back behind them (how they move: "How the water moves" below).
 - **Mist.** Fine condensation, heavier toward the foot and the sides of the pane, softens the
   street behind the glass. On High and up it mixes toward a quarter-resolution Gaussian blur of
   the scene (`GaussianBlurNode`); on Medium it only lifts the darks. The trails wipe it, and it
@@ -264,6 +263,52 @@ non-commercial use only, so none of its code is used.
 Verified on WebGPU (RTX 3070): clean consoles at every tier, on forced WebGL2 and in the
 four-line overdrive. In game at Ultra (1584 × 813, two alternating rounds) the street read 131.0
 and 131.2 fps with the glass against 130.9 and 131.1 without, at Electron's frame cap.
+
+### How the water moves (2026-10-19)
+
+The owner liked the glass and asked for the dripping and the water running down it to look more
+natural. The first runners slid in eight equal jerks, round, down the same sine-wave path every
+run, and their trail beads moved with them. Now:
+
+- **Each run is its own.** A run (16 to 30 s per column) has its own size, start height, path and
+  kind. The drop gathers out of nothing where it starts and swells while it is pinned.
+- **Stick-slip with an uneven rhythm.** Four runs in five rest at eight heights jittered so every
+  slip is its own length. In each rest the drop breaks loose at its own moment, eases into the
+  slide and stops short; heavier drops slide faster. It swells while pinned and is thinner after a
+  slip, having left water behind. From the last rest, near the foot of the pane, it slips out of
+  the frame, and its trail fades over the rest of the run.
+- **Heavy runs.** One run in five is a heavier drop that gathers, then goes the whole way in one
+  run, gaining speed.
+- **A teardrop.** The head is a circle joined to a smaller circle up the tail by the lines tangent
+  to both, so it stays a true lens. At rest it is a slightly egg-shaped drop, fuller at the foot.
+  Sliding, the tail stretches to nearly three radii and points up the way it came (along the
+  path). As it stops it squashes and stretches for half a second.
+- **A kinked path.** The path is a slow wander plus sharper turns between straight runs, where the
+  water was held up. It stays inside the column, so a head is never cut off at a column edge.
+- **Film, then beads.** Behind a slip a thin film of water necks between bead sites and swells at
+  them, then breaks up within about half a second (behind a heavy runner, a few drop-lengths
+  back). It leaves trail beads fixed to the glass where they were left, of uneven size and a
+  little off the line, drying as the drop goes on. Where the drop rested it leaves a bigger
+  bead.
+- **It sweeps up beads.** A bead the head comes down over since it landed is taken up, and
+  shrinks back in as that trail dries.
+- **Beads land and creep.** A landing bead spreads past its size and settles back, and the
+  heaviest beads slip a little way down their cell in a jerk or two.
+
+All of it is still a function of screen position and time: no particles and no state. It shows
+the same at any `seek` and holds still under reduced motion. A run's slips need no loop: each
+rest height is the even split plus a jitter of under half a step, so the rests stay in order and
+each slot reads only its own two rests.
+
+![A heavy runner, 0.3 s apart: the glass alone (playground glassDebug=1) and over the street](neon-district-captures/glass-flow.webp)
+
+`glassDebug=1` on the playground draws the glass alone: the drops pale, and the mist with
+the trails wiped through it violet. It is how this pass was judged. Through the street the
+drops are easy to lose; on their own their shapes and timing read at once.
+
+Verified on WebGPU (RTX 3070): clean consoles on High and Medium, on forced WebGL2, and in game.
+In game at Ultra (1584 × 813, two alternating rounds) the street read 130.7 and 131.0 fps with
+the glass against 130.8 and 130.6 without, at Electron's frame cap.
 
 ## How it is built
 

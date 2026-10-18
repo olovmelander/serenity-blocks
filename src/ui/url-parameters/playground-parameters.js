@@ -5909,4 +5909,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=neon-district.',
         sources: ['src/playground/effects/neon-district.effect.js', 'src/themes/neon-district/neon-district-glass.js'],
     },
+    {
+        name: 'glassDebug',
+        category: 'Playground',
+        scope: 'playground.html — neon-district',
+        description: 'Draw the rain on the glass alone, to judge the drops’ shapes and how the water moves.',
+        values: '1 (drops pale; the mist and the trails the runners wipe through it violet).',
+        defaultValue: 'Off: the glass over the street.',
+        example: 'glassDebug=1&bloom=0',
+        notes: 'Use on playground.html with effect=neon-district; bloom=0 keeps the neon glow off it.',
+        sources: ['src/playground/effects/neon-district.effect.js', 'src/themes/neon-district/neon-district-post.js'],
+    },
 ];

@@ -61,7 +61,8 @@ import { ndGlass } from './neon-district-glass.js';
  * Per-tier look. `bloom: false` builds no BloomNode (and so no streaks or rays). `streak` and
  * `rays` are tap counts (0 = off); `fringe` = the chromatic split (two more scene taps);
  * `msaa` = scene-pass samples; `glass` = layers of rain on the glass (0 = none);
- * `glassBlur` = the mist softens the street with a blurred copy (else only lifts it).
+ * `glassBlur` = the mist softens the street with a blurred copy (else only lifts it);
+ * `glassDebug` (playground only) = draw the glass alone.
  */
 export const POST_LOOK = Object.freeze({
     Extreme: {
@@ -242,6 +243,12 @@ export class NeonDistrictPost {
                 // The mist: the street softened and its darks lifted by the light it scatters.
                 const misted = mix(S, soft.mul(0.95).add(vec3(0.004, 0.005, 0.008)), mist.mul(0.7));
                 S.assign(mix(misted, drop, cover));
+                // Playground diagnostic: the glass alone (drops pale, the mist and its wiped
+                // trails in violet), to judge the water's shapes and motion.
+                if (look.glassDebug) {
+                    const pale = cover.mul(0.85);
+                    S.assign(vec3(pale.add(mist.mul(0.12)), pale, mist.mul(0.3).add(cover.mul(0.6))));
+                }
             }
 
             // What shows through the card is soft-clipped (hue-preserving).
