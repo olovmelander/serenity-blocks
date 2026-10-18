@@ -42,7 +42,7 @@
 | 26 | `geode` | Geode | `cosmic` | heavy | [§25](#geode) |
 | 27 | `bioluminescence` | Bioluminescence | `cosmic` | heavy | [§26](#bioluminescence) |
 | 28 | `shifting-sands` | Shifting Sands | `biomes` | heavy | [§27](#shifting-sands) |
-| 29 | `misty-lake` | Misty Lake | `biomes` | heavy | [§28](#misty-lake) |
+| 29 | `grainfields` | Grainfields | `biomes` | heavy | [§28](#grainfields) |
 | 30 | `waves` | Waves | `biomes` | heavy | [§29](#waves) |
 | 31 | `luminous-tides` | Luminous Tides | `biomes` | heavy | [§30](#luminous-tides) |
 | 32 | `fluid-dreams` | Fluid Dreams | `abstract` | heavy | [§31](#fluid-dreams) |
@@ -422,7 +422,7 @@ Registry groups: every theme here is `group: 'biomes'` except `tornado` (`'atmos
   - lavender or tulip fields
   - liquid-rainbow rivers (Caño Cristales)
   - surreal abstract art
-- These are covered in Parts 2–4 below: shifting-sands, crystal-cave, geode, bioluminescence, koi-pond, misty-lake, stillwater, verdant-hills, golden-forest, parhelion, nimbus-veil, chromatic-impasto, fluid-dreams, vesper-chrysalis and others.
+- These are covered in Parts 2–4 below: shifting-sands, crystal-cave, geode, bioluminescence, koi-pond, grainfields, stillwater, verdant-hills, golden-forest, parhelion, nimbus-veil, chromatic-impasto, fluid-dreams, vesper-chrysalis and others.
 - **A piece palette must score at most 5/7 on the palette gate** (6/7 warns, 7/7 fails); 0/7 is the house ideal, as in Summer and Ocean.
 
 ## Part 2. Survey 2: galaxy to luminous-tides (15 themes)
@@ -439,7 +439,7 @@ Status split:
   at event time), a director + composition module that read the live card/board/HUD rects, 6 tiers
   (Minimal…Extreme), and one post stack (max-channel knee bloom, hue-preserving filmic, calm zones over card/HUD).
 - **4 legacy classic-WebGL themes** (rainy-window, singing-bowl, misty-lake, luminous-tides; Kaleidosonic has
-  since replaced singing-bowl, §22): one big
+  since replaced singing-bowl, §22, and Grainfields misty-lake, §28): one big
   `THREE.WebGLRenderer` class with GLSL `ShaderMaterial`s and `EffectComposer`/`UnrealBloomPass`; events are
   random-position pulses, not aimed at the board. Their icons do not match their scenes well (noted per theme).
 
@@ -740,25 +740,34 @@ Status split:
 - **Avoid reusing**: dunes/sand, orange-apricot dusk desert, twin suns, mesas, a giant creature breaching, geysers of
   dust, golden ring across the ground on lock.
 
-<a id="misty-lake"></a>
+<a id="grainfields"></a>
 
-### 28. Misty Lake (`misty-lake`) — legacy moonlit lake
+### 28. grainfields — "ripe barley under a breaking storm" (record doc to come)
 
-- Registry `:199-204`, group `biomes`. `misty-lake-theme.js` (2410 lines), `-shaders.js`, `-water.js`. No overhaul doc.
-- **Icon**: big full moon top-centre, gold firefly specks, green aurora wisps, blue mountain silhouettes, mist on a calm
-  reflective lake (soft painterly AI look).
-- **Actual scene** (`docs/theme-screenshots/misty-lake.png`): very dark navy; tall black tree-trunk silhouettes framing
-  left and right; moon with a horizontal lens streak; faint aurora; firefly specks; dim water with moon glints.
-  Header `:1-22` lists water with caustics + moon reflection, mist + god rays, layered mountains, aurora, stars,
-  fireflies, lily pads, reeds/cattails, petals, silhouette trees, distant lanterns, birds.
-- **Time**: moonlit night. **Palette** (`:110-160`): sky `0x020510`/`0x0a1530`/`0x2a3860`, water `0x000510`/`0x102540`,
-  moon `0xfff5e0` + lavender halo `0xc0b0ff`, aurora `0x20ffaa`/`0x9040ff`, firefly `0xffd28a`, lotus `0xffa850`.
-  Pieces (`misty-lake-tetrominos.js:12-19`): I `#ffd59a`, O `#cfc2ff`, T `#9efad2`, S `#ffa9c4`, Z `#7a92d5`, J
-  `#ffe388`, L `#b1e5ff`.
-- **Gameplay FX** (`:2183-2259`): clear → 2n+1 ripples at random lake positions + glow; combo → mist bursts, light burst
-  at combo ≥4; lock → 40 % chance of one small random ripple. Not aimed at the board.
-- **Tech**: classic `WebGLRenderer` + `EffectComposer`/`UnrealBloomPass`/`ShaderPass`, forked water.
-- **Avoid reusing**: moon over lake, aurora ribbons, fireflies, misty mountains, tree-trunk framing, navy night.
+- **Replaced** the legacy classic-WebGL Misty Lake on 2026-10-18 (its moonlit lake, aurora, fireflies and tree-trunk
+  framing are gone with it). The old id is an alias in `RETIRED_THEME_IDS`, its track key resolves to `Grainfields`
+  (the same recording, retitled), and Odyssey orb 11 (authored id 12, chapter 3's opener) is "Grainfields".
+- Registry: group `biomes`, heavy. `src/themes/grainfields/` (the house module split, plus the Lapporten gate's own
+  module and the Blender-built trees' assets).
+- **Icon**: a placeholder (the retired theme's picture) until the real one is rendered.
+- **Setting / time**: grain country at harvest, seen from low in a stand of ripe barley. Rolling fields and
+  shelterbelts of larch, spruce and birch run out to Lapporten on the horizon, the U-shaped glacial gate near Abisko:
+  a flat-topped massif with a cliffed inner wall on the left, a steep wall rising to a shoulder and a long ridge on the
+  right, a broad trough between them, birch on their skirts and a little snow in the cirques. A storm deck hangs over
+  everything and is breaking; sunbeams come through its gaps (and through the gate) and walk across the fields, and the
+  wind runs through the grain. The day turns through five stations (`grainfields-hours.js`): storm break, golden hour,
+  dusk, dawn mist and morning, 100 s of clock a station, never resting; a level-up steps it forward.
+- **Palette**: ripe-barley gold, storm-deck slate and blue, larch and spruce greens, birch white. Pieces
+  (`grainfields-tetrominos.js`): I `#E9B53B`, O `#E5482C`, T `#25A26B`, S `#3A6CE2`, Z `#9356D8`, J `#F2EDE1`,
+  L `#D7356E`, GARBAGE `#2E3238`: the mineral pigments of a gold-leaf screen of autumn fields. Palette gate 0/7.
+- **Gameplay FX** (as designed): a lock opens a gap in the deck and a sunbeam stands on the field; a clear sends wind
+  running out through the barley; a chain breaks the storm open; four lines tear the sky wide over the gate; a perfect
+  clear clears the sky; game over brings dusk.
+- **Tech**: `WebGPURenderer` + TSL with the WebGL2 fallback; a fan-mesh land, instanced barley, Blender-built
+  shelterbelt trees (GLB) with sprites far out; one storm deck that the sky, the land's shadows and the post's march
+  through the air all read, so every gap stands in the air as a shaft.
+- **Avoid reusing**: ripe grain seen from inside the stand, sunbeams walking the land through a breaking storm deck, a
+  U-shaped glacial gate on the horizon, shelterbelts across fields.
 
 <a id="waves"></a>
 
@@ -826,29 +835,28 @@ The new theme should break these, not repeat them:
 4. **Combo = something circling/winding round the board or a centre.** Koi (fish ring), Golden Forest (firefly river),
    Verdant (ribbon whirl), Aether (maelstrom), Galaxy (rings round nucleus), Geode (crystal rings), Serenity Warp
    (warp winds up), Kaleidosonic (the kaleidoscope's crown of jewels turns round the card).
-5. **Rings/ripples on water under the piece column.** Koi, Golden Forest, Starlight, Waves, Bioluminescence, Misty
-   Lake, Luminous Tides; Shifting Sands does it with sand, Kaleidosonic on stone beside the card.
-6. **Reflective water / mirror surface.** Starlight, Golden Forest, Bioluminescence, Koi, Misty Lake, Rainy Window,
-   Waves, Luminous Tides (8 of 15).
+5. **Rings/ripples on water under the piece column.** Koi, Golden Forest, Starlight, Waves, Bioluminescence, Luminous
+   Tides; Shifting Sands does it with sand, Kaleidosonic on stone beside the card.
+6. **Reflective water / mirror surface.** Starlight, Golden Forest, Bioluminescence, Koi, Rainy Window, Waves,
+   Luminous Tides (7 of 15).
 7. **Level = palette wheel + clock drift 90–100 s per step.** Koi (6 nights), Geode (6 minerals), Bioluminescence
    (5), Serenity Warp (6), Starlight (6 hours), Waves (6 hours), Galaxy/Aether (5 palettes on level), Kaleidosonic
    (6 moods).
-8. **Fireflies / floating motes / bokeh.** Golden Forest, Koi, Misty Lake, Bioluminescence (spores),
-   Shifting Sands (spice motes).
-9. **Night or darkness as the base.** Galaxy, Aether, Serenity Warp, Starlight, Koi, Misty Lake, Rainy Window,
-   Bioluminescence, Luminous Tides, Kaleidosonic, Geode (interior). Only Verdant Hills (midday), Golden Forest and
-   Waves (golden hour) and Shifting Sands (dusk) are lit by a sun.
+8. **Fireflies / floating motes / bokeh.** Golden Forest, Koi, Bioluminescence (spores), Shifting Sands (spice
+   motes).
+9. **Night or darkness as the base.** Galaxy, Aether, Serenity Warp, Starlight, Koi, Rainy Window, Bioluminescence,
+   Luminous Tides, Kaleidosonic, Geode (interior). Only Verdant Hills (midday), Golden Forest and Waves (golden hour),
+   Shifting Sands (dusk) and Grainfields (a storm breaking into sunbeams) are lit by a sun.
 10. **Palette families already owned**: violet/magenta/blue space gas (Galaxy, Aether, Serenity Warp); teal/cyan
     glow on black (Bioluminescence, Luminous Tides); amber-gold monochrome (Golden Forest); apricot/rose dusk
     (Shifting Sands, Waves golden hour); jade water (Koi, Waves); violet+orange jewels (Geode); saturated grass green +
-    sky blue (Verdant Hills); navy moonlight (Misty Lake, Starlight); grey storm (Rainy Window); black-light neon on
-    near-black pearl (Kaleidosonic).
+    sky blue (Verdant Hills); navy moonlight (Starlight); grey storm (Rainy Window); ripe-barley gold under storm
+    slate (Grainfields); black-light neon on near-black pearl (Kaleidosonic).
 11. **Composition tropes**: radial tunnel to a glowing centre (Geode, Serenity Warp, Waves eye); low sun on a horizon
     behind silhouettes (Golden Forest, Shifting Sands, Waves); tree framing at screen edges (Golden Forest, Verdant,
-    Misty Lake, Koi maple).
+    Koi maple); shafts through a breaking storm deck walking the land (Grainfields).
 12. **Piece-colour tables** mostly reuse the same soft pastel set (`#ffd…` amber I, lavender O, mint T, pink S,
-    indigo Z, cream J, pale cyan L): Rainy Window, Misty Lake, Golden Forest, Shifting Sands, Starlight,
-    Koi Pond. A new theme should pick a distinct, saturated set tied to its world, and must keep
+    indigo Z, cream J, pale cyan L): Rainy Window, Golden Forest, Shifting Sands, Starlight, Koi Pond. A new theme should pick a distinct, saturated set tied to its world, and must keep
     `npm run check:palette` (`scripts/palette-guideline-check.mjs`) from flagging it: bands I cyan 160–210°, O yellow
     32–75°, T purple 245–315°, S green 90–170°, Z red 320–20°, J blue 200–250°, L orange 20–50°; FAIL at 7/7, WARN at
     6/7. Verdant Hills, Galaxy, Aether Tides score 0/7.
@@ -1719,7 +1727,7 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 - Teal, violet and rose nebula with pearl to gold (astral-weave, stellar-velocity, stellar-drift).
 - Cobalt and gold snow (parhelion).
 
-**Palettes not yet claimed within this set.** These are only gaps in this subset; the other parts of this catalog cover the remaining themes (aurora, bioluminescence, koi-pond, crystal-cave, geode, shifting-sands, misty-lake, ocean and others), so cross-check before choosing.
+**Palettes not yet claimed within this set.** These are only gaps in this subset; the other parts of this catalog cover the remaining themes (aurora, bioluminescence, koi-pond, crystal-cave, geode, shifting-sands, grainfields, ocean and others), so cross-check before choosing.
 - Saturated mineral or chemical colour fields: sulfur yellow with acid turquoise, travertine white and aqua.
 - Emerald-dominant scenes.
 - High-key white and turquoise daylight.

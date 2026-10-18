@@ -100,7 +100,7 @@ export const CHAPTER_CONFIGS = [
 
         themes: {
             primary: [
-                'misty-lake', 'moonlit-forest', 'golden-forest', 'moonlit-greenhouse',
+                'grainfields', 'moonlit-forest', 'golden-forest', 'moonlit-greenhouse',
                 'tornado', 'fall', 'halcyon-apex', 'summer',
             ],
             supporting: [],

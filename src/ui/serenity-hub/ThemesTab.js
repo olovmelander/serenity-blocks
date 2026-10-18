@@ -311,7 +311,7 @@ export class ThemesTab {
             'Void Ember': 'flame',
             'Desert Oasis': 'island',
             'Bamboo Grove': 'bamboo',
-            'Misty Lake': 'mist',
+            Grainfields: 'sprout',
             Waves: 'wave',
             'Luminous Tides': 'ocean-tide',
             'Fluid Dreams': 'droplet',
