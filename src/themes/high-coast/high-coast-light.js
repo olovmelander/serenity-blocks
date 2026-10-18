@@ -85,9 +85,9 @@ export function skyColour(u, dir, { withSun = true } = {}) {
     base.addAssign(u.haze.mul(exp(abs(up).mul(45.0).negate())).mul(0.22));
     // The sun's aureole, strongest low in the sky (where the light comes through the most air).
     const glow = sunGlow(mu).mul(u.glow).mul(smoothstep(-0.12, 0.02, up)).mul(exp(e.mul(-3.5)).mul(0.5).add(0.5));
-    base.addAssign(glow.mul(mix(float(1.0), float(0.45), u.sunUp.oneMinus())));
+    base.addAssign(glow.mul(mix(float(1.0), float(0.45), u.day.oneMinus())));
     // The twilight wedge: the sun below the horizon still lights the band above where it set.
-    const twilight = smoothstep(-0.25, 0.9, mu).mul(exp(max(up, 0.0).mul(-9.0))).mul(u.sunUp.oneMinus());
+    const twilight = smoothstep(-0.25, 0.9, mu).mul(exp(max(up, 0.0).mul(-9.0))).mul(u.day.oneMinus());
     base.addAssign(u.glow.mul(twilight).mul(0.35));
     if (withSun) {
         // The disc: 0.28° radius, limb darkened, only where it stands above the land's line.

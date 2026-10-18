@@ -5,8 +5,11 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **735 parameter names in 878 scoped entries**. Fault Lines added
-`faultLines` and Waystones `waystones`, the flags that list their previews in the main menu.
+The catalog documents **736 parameter names in 877 scoped entries**. Fault Lines added
+`faultLines` and Waystones `waystones`, the flags that list their previews in the main menu;
+the `fluid-dreams` playground effect added `quads` (four-line clears played before the frame);
+Sakura Twilight keeping one fox retired `foxWhich`; Rainbow Terraces (Sky Children until
+2026-10-18) added `cardAlpha` and took the V2 detail effect's four entries with it.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -36,7 +39,8 @@ playground `nopost`, which the theme used to forward from the page URL, and the 
 `vesperChrysalisFalseColor` plus the controls of the rebuilt `vesper-chrysalis` playground
 effect. The foxes' rebuild (Winter's, then Sakura Twilight's, on one shared rig) added `foxCam`,
 `foxCamYaw`, `foxCamFov`, `foxAct` and `foxActAge` to the `winter` and `sakura-twilight` playground
-effects, and `foxWhich` to the latter.
+effects, and `foxWhich` to the latter; Sakura Twilight keeping one fox of its pair
+(2026-10-18) retired `foxWhich` again.
 The Tornado rebuild added the capture flags `tornadoForceWebGL`, `tornadoTime`,
 `tornadoFixedDt`, `tornadoParts` and `tornadoFalseColor` plus the `tornado` playground effect
 (it reads 25 parameters the other full-world effects already had, so it adds no name of its
@@ -89,14 +93,16 @@ the theme itself read only `serenityWarpForceWebGL`) and added the capture flags
 `serenityWarpTime`, `serenityWarpFixedDt`, `serenityWarpParts` and `serenityWarpFalseColor`
 plus the rewritten `serenity-warp` playground effect, which reads 26 parameters its sibling
 effects already had and adds `turns`.
-The Sky Children rebuild retired the readers of the replaced V2 module (`skyV2NoPost`,
-`skyV2NoMRT`, `skyV2NoCompute`, `skyV2UseMRT`, `skyV2Debug`, and its readings of `noPost`,
-`noMRT` and `noCompute`, which Cosmic Noir and its siblings still read) and added the capture
-flags `skyChildrenForceWebGL`, `skyChildrenTime`, `skyChildrenFixedDt`, `skyChildrenParts` and
-`skyChildrenFalseColor` plus the `sky-children` playground effect, which reads 26 parameters its
-sibling effects already had and adds `held`, `links`, `trueBow`, `dropRows`, `players`, `values`
-and `ripple` with entries of its own for `hour` and `shape`; the old `sky-children-detail`
-effect keeps its `bare`, `detail`, `view` and `warm` entries.
+The Rainbow Terraces rebuild (the theme was called Sky Children until 2026-10-18) retired the
+readers of the replaced V2 module (`skyV2NoPost`, `skyV2NoMRT`, `skyV2NoCompute`, `skyV2UseMRT`,
+`skyV2Debug`, and its readings of `noPost`, `noMRT` and `noCompute`, which Cosmic Noir and its
+siblings still read) and added the capture flags `rainbowTerracesForceWebGL`,
+`rainbowTerracesTime`, `rainbowTerracesFixedDt`, `rainbowTerracesParts` and
+`rainbowTerracesFalseColor` (named `skyChildren…` before the rename) plus the `rainbow-terraces`
+playground effect, which reads 26 parameters its sibling effects already had and adds `held`,
+`links`, `trueBow`, `dropRows`, `players`, `values`, `ripple` and `cardAlpha`, with entries of its
+own for `hour` and `shape`. The V2 module's detail effect and its `bare`, `detail`, `view` and
+`warm` entries were deleted with the rename.
 The Moonlit Greenhouse rebuild added the capture flags `greenhouseForceWebGL`, `greenhouseTime`,
 `greenhouseFixedDt`, `greenhouseParts` and `greenhouseFalseColor` plus the `moonlit-greenhouse`
 playground effect, which reads 26 parameters its sibling effects already had and adds an entry
@@ -127,6 +133,7 @@ Infinity's ascent (looking around the tower, 2026-10-16) added the `infinity-asc
 effect with seven names of its own: `ascentRise`, `ascentSpeed`, `ascentPresence`, `ascentTheme`,
 `ascentBoard`, `ascentMotion` and `ascentQuality`. Its game layer reads only `forceWebGL`, as the
 breathing guide does; the classic-WebGL exploration effect it replaces read nothing from the URL.
+The Himalayan Peak eagle pass (2026-10-18) catalogued `eagle` and `eagleLens`.
 
 Painted Ages adds the capture flags `paintedAgesForceWebGL`, `paintedAgesTime`,
 `paintedAgesFixedDt`, `paintedAgesParts` and `paintedAgesFalseColor`, plus the

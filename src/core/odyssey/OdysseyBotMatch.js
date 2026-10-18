@@ -30,6 +30,8 @@ export class OdysseyBotMatch {
         this.completedScore = 0;
         this.presentation = {};
         this.visualCallbacks = [{}, {}];
+        // A hook that may absorb the human well's top-out (Hearth); returns true when it did.
+        this.topOutGuard = null;
         this.targetFrags = session.levelConfig.mechanics.versus.fragsToWin;
         this.difficulty = session.levelConfig.mechanics.versus.botDifficulty;
         this.botName = session.levelConfig.mechanics.versus.botName || 'Challenger';
@@ -74,7 +76,8 @@ export class OdysseyBotMatch {
         state.disableGarbage = false;
         state.disableLevelProgression = true;
         state.level = speed.startLevel || 1;
-        state.dropInterval = speed.fixedDropInterval || 1000;
+        // A pace charm slows the human well only; the rival keeps the chapter's pace.
+        state.dropInterval = (speed.fixedDropInterval || 1000) * (index === 0 ? (Number(speed.paceFactor) || 1) : 1);
         state.suppressExternalInput = index === 1;
         state.isPaused = this.paused;
         bindLegacySessionRng(state, seed);
@@ -158,6 +161,7 @@ export class OdysseyBotMatch {
 
     markTopOut(index) {
         if (!this._ownsRound(this.roundGeneration) || !this.players[index]?.isAlive) return;
+        if (index === 0 && !this.pendingDeaths.has(0) && this.topOutGuard?.()) return;
         if (!this.pendingDeaths.has(index)) {
             this.deathAttackers.set(index, this.multiplayer.lastAttackerIds[index]);
             this._callVisual(index, 'onTopOut');

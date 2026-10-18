@@ -1,3 +1,5 @@
+import { isOdysseyTallBoard } from '../../core/odyssey/odyssey-board-shape.js';
+
 /** Odyssey gameplay opts into the shared solo well; the mode owns its observers. */
 const layouts = new WeakMap();
 
@@ -26,7 +28,7 @@ export function mountOdysseyBoardLayout({
         if (options.mechanics || options.levelConfig) {
             configuration = options.mechanics || options.levelConfig.mechanics || {};
         }
-        const tall = Number(configuration.board?.rows) >= 30;
+        const tall = isOdysseyTallBoard(configuration.board?.rows);
         let flavor = tall ? 'tower' : 'standard';
         if (configuration.versus) flavor = 'duel';
         stage.dataset.board = 'well';

@@ -111,37 +111,37 @@ and Painted Ages follow their Chapter 1 and Chapter 4 completion rewards.
 | 1 | Cinder Drift | `cinder-drift.mp3` | Existing |
 | 2 | Crystal Cave | `crystal-cave.mp3` | Existing |
 | 3 | Geode | `geode-crystalline.mp3` | Existing |
-| 4 | Pyrestorm | `pyrestorm-placeholder-song.mp3` | Blood Moon placeholder |
-| 5 | Bioluminescence | `bioluminescence.mp3` | Existing |
+| 4 | Bioluminescence | `bioluminescence.mp3` | Existing |
+| 5 | Pyrestorm | `pyrestorm-placeholder-song.mp3` | Blood Moon placeholder |
 | 6 | Ocean | `ocean-deep.mp3` | Existing |
 | 7 | Luminous Tides | `luminous-tides-placeholder-song.mp3` | Blood Moon placeholder |
 | 8 | Koi Pond | `koi-pond-placeholder-song.mp3` | Blood Moon placeholder |
-| 9 | Waves | `waves.mp3` | Existing |
-| 10 | Stillwater | `stillwater.mp3` | Existing |
+| 9 | Stillwater | `stillwater.mp3` | Existing |
+| 10 | Waves | `waves.mp3` | Existing |
 | 11 | Misty Lake | `misty-lake.mp3` | Existing |
 | 12 | Moonlit Forest | `moonlit-forest.mp3` | Existing |
 | 13 | Golden Forest | `golden-forest-placeholder-song.mp3` | Blood Moon placeholder |
 | 14 | Moonlit Greenhouse | `moonlit-greenhouse.mp3` | Existing |
 | 15 | Tornado | `tornado-placeholder-song.mp3` | Blood Moon placeholder |
-| 16 | Midsommar | `summer-placeholder-song.mp3` | Blood Moon placeholder |
-| 17 | Fall | `fall-placeholder-song.mp3` | Blood Moon placeholder |
-| 18 | Halcyon Apex | `halcyon-apex-placeholder-song.mp3` | Blood Moon placeholder |
+| 16 | Fall | `fall-placeholder-song.mp3` | Blood Moon placeholder |
+| 17 | Halcyon Apex | `halcyon-apex-placeholder-song.mp3` | Blood Moon placeholder |
+| 18 | Midsommar | `summer-placeholder-song.mp3` | Blood Moon placeholder |
 | 19 | Sakura Twilight | `sakura-twilight-placeholder-song.mp3` | Blood Moon placeholder |
 | 20 | Verdant Hills | `verdant-hills-placeholder-song.mp3` | Blood Moon placeholder |
 | 21 | Ice Temple | `ice-temple.mp3` | Existing |
 | 22 | Wolfhour | `wolfhour.mp3` | Existing |
 | 23 | Himalayan Peak | `himalayan-peak.mp3` | Existing |
 | 24 | High Coast | `high-coast-placeholder-song.mp3` | Blood Moon placeholder |
-| 25 | Winter | `winter-placeholder-song.mp3` | Blood Moon placeholder |
-| 26 | Moonrise Summit | `moonrise-summit-placeholder-song.mp3` | Blood Moon placeholder |
+| 25 | Moonrise Summit | `moonrise-summit-placeholder-song.mp3` | Blood Moon placeholder |
+| 26 | Winter | `winter-placeholder-song.mp3` | Blood Moon placeholder |
 | 27 | Sunset | `sunset-placeholder-song.mp3` | Blood Moon placeholder |
 | 28 | Starlight | `starlight.mp3` | Existing |
 | 29 | Aurora | `aurora.mp3` | Existing |
 | 30 | Nimbus Veil | `nimbus-veil-placeholder-song.mp3` | Blood Moon placeholder |
 | 31 | Rainy Window | `rainy-window.mp3` | Existing |
-| 32 | Sky Children | `sky-children-placeholder-song.mp3` | Blood Moon placeholder |
-| 33 | Parhelion | `ethereal-echoes.mp3` | Existing |
-| 34 | Lunara | `lunara.mp3` | Existing |
+| 32 | Parhelion | `ethereal-echoes.mp3` | Existing |
+| 33 | Lunara | `lunara.mp3` | Existing |
+| 34 | Rainbow Terraces | `rainbow-terraces-placeholder-song.mp3` | Blood Moon placeholder |
 | 35 | Galaxy | `galaxy.mp3` | Existing |
 | 36 | Cosmic Noir | `cosmic-noir.mp3` | Existing |
 | 37 | Supernova | `supernova-placeholder-song.mp3` | Blood Moon placeholder |
@@ -151,23 +151,23 @@ and Painted Ages follow their Chapter 1 and Chapter 4 completion rewards.
 | 41 | Astral Weave | `astral-weave-placeholder-song.mp3` | Blood Moon placeholder |
 | 42 | Shifting Sands | `shifting-sands.mp3` | Existing |
 | 43 | Vesper Chrysalis | `vesper-chrysalis-placeholder-song.mp3` | Blood Moon placeholder |
-| 44 | Stellar Velocity | `stellar-velocity-placeholder-song.mp3` | Blood Moon placeholder |
-| 45 | Stellar Drift | `stellar-drift.mp3` | Existing |
-| 46 | Solar Eclipse | `solar-eclipse-placeholder-song.mp3` | Blood Moon placeholder |
-| 47 | Rainbark | `rainbark.mp3` | Existing |
-| 48 | Black Hole | `black-hole.mp3` | Existing |
+| 44 | Stellar Drift | `stellar-drift.mp3` | Existing |
+| 45 | Solar Eclipse | `solar-eclipse-placeholder-song.mp3` | Blood Moon placeholder |
+| 46 | Rainbark | `rainbark.mp3` | Existing |
+| 47 | Black Hole | `black-hole.mp3` | Existing |
+| 48 | Stellar Velocity | `stellar-velocity-placeholder-song.mp3` | Blood Moon placeholder |
 | 49 | Fluid Dreams | `fluid-dreams.mp3` | Existing |
 | 50 | Nebula Flow | `nebula-flow-placeholder-song.mp3` | Blood Moon placeholder |
 | 51 | Chiral Gold | `chiral-gold-placeholder-song.mp3` | Blood Moon placeholder |
 | 52 | Voltage Storm | `voltage-storm-placeholder-song.mp3` | Blood Moon placeholder |
-| 53 | Chromatic Impasto | `chromatic-impasto-placeholder-song.mp3` | Blood Moon placeholder |
-| 54 | Murmuration | `murmuration.mp3` | Existing |
-| 55 | Serenity Warp | `serenity-warp-placeholder-song.mp3` | Blood Moon placeholder |
-| 56 | Kaleidosonic | `kaleidosonic-placeholder-song.mp3` | Blood Moon placeholder |
+| 53 | Murmuration | `murmuration.mp3` | Existing |
+| 54 | Serenity Warp | `serenity-warp-placeholder-song.mp3` | Blood Moon placeholder |
+| 55 | Kaleidosonic | `kaleidosonic-placeholder-song.mp3` | Blood Moon placeholder |
+| 56 | Chromatic Impasto | `chromatic-impasto-placeholder-song.mp3` | Blood Moon placeholder |
 | 57 | Chromadelic Highway | `chromadelic-highway-placeholder-song.mp3` | Blood Moon placeholder |
 | 58 | Neon Dusk | `neon-dusk.mp3` | Existing |
-| 59 | Synthwave Sunset | `synthwave-sunset-placeholder-song.mp3` | Blood Moon placeholder |
-| 60 | Neon District | `neon-district.mp3` | Existing |
+| 59 | Neon District | `neon-district.mp3` | Existing |
+| 60 | Synthwave Sunset | `synthwave-sunset-placeholder-song.mp3` | Blood Moon placeholder |
 | Chapter 1 bonus | Thermal Bloom | `thermal-bloom-placeholder-song.mp3` | Blood Moon placeholder |
 | Chapter 4 bonus | Painted Ages | `painted-ages-placeholder-song.mp3` | Blood Moon placeholder |
 

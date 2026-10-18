@@ -68,14 +68,16 @@ const themesByTrack = new Map(THEME_MUSIC_CATALOG.map((song) => [song.trackKey, 
  * retitled song gets a new one: "Electric Dreams" became "Murmuration" with its theme
  * (2026-10-08), and "Cosmic Chimes" became "Rainbark" when Rainbark took its orb
  * (2026-10-11). A placeholder song is titled after its theme, so "Mountain" became
- * "High Coast" when High Coast took its orb (2026-10-13), and "Singing Bowl" became
- * "Kaleidosonic" when Kaleidosonic took its orb (2026-10-13).
+ * "High Coast" when High Coast took its orb (2026-10-13), "Singing Bowl" became
+ * "Kaleidosonic" when Kaleidosonic took its orb (2026-10-13), and "Sky Children" became
+ * "Rainbow Terraces" with its theme (2026-10-18).
  */
 const RETIRED_TRACK_KEYS = new Map([
     ['ElectricDreams', 'Murmuration'],
     ['CosmicChimes', 'Rainbark'],
     ['Mountain', 'HighCoast'],
     ['SingingBowl', 'Kaleidosonic'],
+    ['SkyChildren', 'RainbowTerraces'],
 ]);
 
 /**

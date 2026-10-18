@@ -727,7 +727,7 @@ a CPU lab first]**
 - *fall* and *forest*: they use shafts through a canopy *from above*. Sunfall's shaft comes through rock into a
   canopy *below the viewer*, and nothing is thrown from the card.
 - *ocean*: sun shafts underwater. Sunfall has no water volume, caustics or fish.
-- *nimbus-veil* and *sky-children*: a sea of clouds seen from above. Sunfall's clouds sit *under a ceiling*,
+- *nimbus-veil* and *rainbow-terraces*: a sea of clouds seen from above. Sunfall's clouds sit *under a ceiling*,
   seen from the side.
 - *parhelion*: ice-halo optics. A rainbow in spray is different optics, and it never forms a ring across the
   sky.
@@ -838,7 +838,7 @@ motion, surprise, and the name. "I was strict about resemblance."
 3. **Composition template.** Every concept puts a hero on the left and a secondary on the right, the template
    the catalogue asks us to break. Haft Rang does the most with it (cause on the right, effect on the left).
 4. **Lighting slot.** Golden hour is the fleet's most overused light (halcyon, himalayan, sunset, summer, fall,
-   tornado, golden-forest, waves, shifting-sands, nimbus, sky-children). High sun or morning daylight is the
+   tornado, golden-forest, waves, shifting-sands, nimbus, rainbow-terraces). High sun or morning daylight is the
    open slot.
 
 **Verdict line on Sunfall:** "Sunfall's name and its exhale and shaft-count beats are worth grafting, but its

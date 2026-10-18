@@ -102,7 +102,7 @@ each unbuilt concept overrides section 1; section 5 already folds section 3 in.
 | WebGPU / WebGL2 guards | §4.14 | §5.9 | §5.11 | §5.9 | §5.9 | §5.9 |
 | Tests and verification commands | §7.1 (tests), §8 (sweep) | §5.10, §5.11 | §5.12 | §5.10, §5.11 | §5.10, §5.11 | §5.10, §5.11 |
 | Hero prototype on the CPU first | §10 (done: ribbon splats; §10.8 re-runs it) | §5.12 | §5.6 (Stage A0) | §5.12 | §5.12 | §5.12 |
-| Compare against (fleet neighbours) | forest, fall, moonlit-forest, golden-forest, stillwater, chiral-gold, ice-temple, nimbus-veil, sky-children (§13.3, §11.1) | halcyon-apex, geode, cinder-drift, pyrestorm, luminous-tides, parhelion, rainbark | shifting-sands, himalayan-peak, solar-eclipse, mountain, parhelion, rainbark | koi-pond, ocean, halcyon-apex, waves, verdant-hills, rainbark | chromadelic-highway, ice-temple, crystal-cave, neon-dusk, synthwave-sunset, aether-tides, chromatic-impasto, moonlit-greenhouse, sakura-twilight, halcyon-apex, rainbark, kaleidosonic (owns a kaleidoscope as its chain and its T-spin turn since 2026-10-13: rework the four-line projection and the T-spin twist) | crystal-cave, cinder-drift, bioluminescence, forest, fall, golden-forest, ocean, verdant-hills, rainbark |
+| Compare against (fleet neighbours) | forest, fall, moonlit-forest, golden-forest, stillwater, chiral-gold, ice-temple, nimbus-veil, rainbow-terraces (§13.3, §11.1) | halcyon-apex, geode, cinder-drift, pyrestorm, luminous-tides, parhelion, rainbark | shifting-sands, himalayan-peak, solar-eclipse, mountain, parhelion, rainbark | koi-pond, ocean, halcyon-apex, waves, verdant-hills, rainbark | chromadelic-highway, ice-temple, crystal-cave, neon-dusk, synthwave-sunset, aether-tides, chromatic-impasto, moonlit-greenhouse, sakura-twilight, halcyon-apex, rainbark, kaleidosonic (owns a kaleidoscope as its chain and its T-spin turn since 2026-10-13: rework the four-line projection and the T-spin twist) | crystal-cave, cinder-drift, bioluminescence, forest, fall, golden-forest, ocean, verdant-hills, rainbark |
 | Best-fit slots the file suggests (ask the user) | — | pyrestorm or luminous-tides (subject overlap); misty-lake or moonlit-greenhouse (chapter fit) | **mountain** (best fit; High Coast took it 2026-10-13); moonrise-summit, sakura-twilight, pyrestorm | none named: run the PLAYBOOK §1a script | **moonlit-greenhouse** (best fit); misty-lake, rainy-window, singing-bowl (Kaleidosonic took it 2026-10-13) | an un-rebuilt theme in an Earth chapter, for example mountain (High Coast took it 2026-10-13); its close neighbours are all rebuilt |
 
 The stage names (0a core and palette, 0b scaffold and rename, A environment, B effects, C post,
@@ -210,7 +210,7 @@ These findings bear on any concept, including ones not yet written.
    template the catalog asks to break. If you keep the split, make it carry meaning (Haft Rang: the
    right field is the light source, the left is where it lands).
 4. **Lighting slot.** Golden hour is the fleet's most overused light (halcyon-apex, himalayan-peak,
-   sunset, summer, fall, tornado, golden-forest, waves, shifting-sands, nimbus-veil, sky-children).
+   sunset, summer, fall, tornado, golden-forest, waves, shifting-sands, nimbus-veil, rainbow-terraces).
    **High sun or morning daylight is the open slot.**
 5. **Whatever wins:** use the rainbow no more than once; keep the decay world-native (bleach, green,
    ripen), never "held then released"; source a clear's colours from the real cells of the cleared row
@@ -349,7 +349,7 @@ catalog too.
   opal, Naica and quartz-led concepts are high risk).
 - **Hexagonal columns:** cinder-drift (columnar basalt), ice-temple (rules out Giant's Causeway and
   Fingal's Cave).
-- **Seas of clouds:** nimbus-veil, sky-children (tepui and Zhangjiajie concepts are only partly safe).
+- **Seas of clouds:** nimbus-veil, rainbow-terraces (tepui and Zhangjiajie concepts are only partly safe).
 - **Radial tunnel to a glowing centre:** geode, serenity-warp, waves (the eye of the tube).
 - **One hero object in the free space left of the card, secondary right;** upright phones move the
   hero above the card.
@@ -363,7 +363,7 @@ catalog too.
 - **Dusk and night dominate.** Almost every rebuild is set at dusk, night or in the void. The bright,
   saturated exceptions are verdant-hills (windy day), summer, halcyon-apex (dawn) and nimbus-veil
   (golden), and most other sunlit themes sit at golden hour or dusk (golden-forest, waves,
-  shifting-sands, fall, tornado, himalayan-peak, sunset, sky-children). **A high-key,
+  shifting-sands, fall, tornado, himalayan-peak, sunset, rainbow-terraces). **A high-key,
   mineral-saturated daylight palette was the biggest open slot.** (The research said "daylight or
   golden hour"; the art judge narrowed it to high sun or morning daylight, because golden hour is
   the fleet's most overused light. Rainbark now uses high-sun blue air; Iris Springs, Painted Ages'
@@ -382,7 +382,7 @@ catalog too.
 - Teal and cyan glow on black (bioluminescence, luminous-tides); gold and orange on black (chiral-gold,
   black-hole, void-ember, supernova); heat spectrum (cinder-drift, pyrestorm); crimson monochrome
   (blood-moon); greyscale (cosmic-noir, wolfhour).
-- Peach and lavender pastel clouds (nimbus-veil); cyan day to gold meadow (sky-children); saturated
+- Peach and lavender pastel clouds (nimbus-veil); cyan day to gold meadow (rainbow-terraces); saturated
   grass green and sky blue (verdant-hills); grey storm (rainy-window); black-light neon on
   near-black pearl (kaleidosonic); cobalt and gold snow (parhelion).
 - **Piece palettes:** many reuse the same soft pastel set (amber I, lavender O, mint T, pink S, indigo
@@ -529,9 +529,9 @@ transmission or dispersion passes, raymarched volumes, many lights.
 
 | # | Candidate (alternate names) | Real inspiration | The idea in one line | Closest existing themes (similarity) | Phone risk | Status |
 |---|---|---|---|---|---|---|
-| 23 | **Tepui Falls** (Lost World, Roraima) | Mount Roraima and Kerepakupai Merú (Angel Falls) | Black hoodoos, rose-quartz pools and pitcher plants on a tepui summit; a waterfall leaps off the edge and dissolves into mist over a sea of clouds at sunrise | Moderate–high: the cloud sea (nimbus-veil, sky-children), quartz (geode, lunara) | Moderate | Open |
+| 23 | **Tepui Falls** (Lost World, Roraima) | Mount Roraima and Kerepakupai Merú (Angel Falls) | Black hoodoos, rose-quartz pools and pitcher plants on a tepui summit; a waterfall leaps off the edge and dissolves into mist over a sea of clouds at sunrise | Moderate–high: the cloud sea (nimbus-veil, rainbow-terraces), quartz (geode, lunara) | Moderate | Open |
 | 24 | **Pillar Mist** (Shan Shui) | Wulingyuan and Zhangjiajie | More than 3,000 quartzite-sandstone pillars rising from valley mist, possibly drawn as an ink landscape | Moderate: mist and clouds (nimbus-veil), painted style (chromatic-impasto), peaks (himalayan-peak) | — | Open |
-| 25 | **Roll Cloud Dawn** | The Morning Glory cloud, Burketown | A roll cloud up to 700 km long at dawn | **High:** nimbus-veil, sky-children | — | Rejected |
+| 25 | **Roll Cloud Dawn** | The Morning Glory cloud, Burketown | A roll cloud up to 700 km long at dawn | **High:** nimbus-veil, rainbow-terraces | — | Rejected |
 | 26 | **Kelvin-Helmholtz Billows** | Kelvin-Helmholtz clouds and mammatus at sunset | Breaking-wave cloud billows | **High:** nimbus-veil, tornado (mammatus), voltage-storm | — | Rejected |
 
 ### F. Abstract art and materials
@@ -541,7 +541,7 @@ transmission or dispersion passes, raymarched volumes, many lights.
 | 27 | **Suminagashi** ("floating ink") | Japanese marbling, 12th century | An infinite pale water surface on washi; a lock drops concentric ink rings in the piece's colour, a clear combs them into marbling, four lines lift the paper to reveal the print | Moderate: chromatic-impasto (paint), fluid-dreams (liquid), koi-pond (Japanese pond); fairly flat and 2D | Low | Open |
 | 28 | **Thin Film** (Bubbleglass) | Soap-film interference and Marangoni swirls | Giant drifting soap films and bubbles over a pale landscape, swirling interference bands and black spots before popping; a clear pops a row of bubbles | Moderate: fluid-dreams (thin-film liquid drops) | Low | Open |
 | 29 | **Oscillator Garden** | Belousov–Zhabotinsky reaction waves | A vast petri landscape of travelling chemical spirals in orange and blue; a lock seeds a wave, a T-spin seeds a spiral (shear is the real trigger) | Moderate: abstract and 2D (nebula-flow, fluid-dreams) | Low–moderate (ping-pong render targets) | Open |
-| 30 | **Topographic Arches** | Roger Dean's floating islands and arches | Biomorphic stone arches and floating islands with waterfalls pouring into the void, alien flora | Moderate–high: floating islands (sky-children, halcyon-apex); reads as derivative of Avatar | — | Open (weak) |
+| 30 | **Topographic Arches** | Roger Dean's floating islands and arches | Biomorphic stone arches and floating islands with waterfalls pouring into the void, alien flora | Moderate–high: floating islands (rainbow-terraces, halcyon-apex); reads as derivative of Avatar | — | Open (weak) |
 | 31 | **Ten Largest** | Hilma af Klint's *The Ten Largest* (1907) | A 3D walk through her pastel tempera spirals, petals and looping script | Moderate: painterly worlds (chromatic-impasto); niche reference | — | Open |
 | 32 | **Ganzfeld** (Skyspace) | James Turrell | A minimal elliptical room whose oculus frames a sky shifting through impossible gradients | Low, but too sparse to be breathtaking | — | Borrowed as a lighting idea by Haft Rang (its perfect clear) |
 | 33 | **Weather Project** | Olafur Eliasson, Tate Modern (2003) | A semicircular sun of mono-frequency lamps doubled by a mirror ceiling, in mist, leaving a yellow and black duotone | Moderate–high: big-sun pictures (parhelion, solar-eclipse, sunset, synthwave-sunset) | — | Rejected |

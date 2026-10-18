@@ -8,7 +8,7 @@ import {
 } from 'vitest';
 import { BaseTheme } from '../../src/themes/base-theme.js';
 import TornadoTheme from '../../src/themes/tornado/tornado-theme.js';
-import SkyChildrenTheme from '../../src/themes/sky-children/sky-children-theme.js';
+import RainbowTerracesTheme from '../../src/themes/rainbow-terraces/rainbow-terraces-theme.js';
 
 const loaderMocks = vi.hoisted(() => ({
     loadAsync: vi.fn(),
@@ -37,14 +37,14 @@ vi.mock('../../src/themes/tornado/tornado-post.js', () => ({
     POST_LOOK: {},
     createPassThroughPipeline: () => null,
 }));
-// The same for Sky Children: its lifecycle, not its world or its post stack.
-vi.mock('../../src/themes/sky-children/sky-children-world.js', () => ({
-    SkyChildrenWorld: vi.fn(),
+// The same for Rainbow Terraces: its lifecycle, not its world or its post stack.
+vi.mock('../../src/themes/rainbow-terraces/rainbow-terraces-world.js', () => ({
+    RainbowTerracesWorld: vi.fn(),
     REST_RIG: { near: 0.3, far: 60000 },
     fovForAspect: () => 52,
 }));
-vi.mock('../../src/themes/sky-children/sky-children-post.js', () => ({
-    SkyChildrenPost: vi.fn(),
+vi.mock('../../src/themes/rainbow-terraces/rainbow-terraces-post.js', () => ({
+    RainbowTerracesPost: vi.fn(),
     POST_LOOK: {},
     createPassThroughPipeline: () => null,
 }));
@@ -108,9 +108,9 @@ describe('theme async lifecycle cancellation', () => {
         expect(theme.lastFrameMs).toBe(1234);
     });
 
-    it('does not let Sky Children resume when BaseTheme rejects the resume', () => {
+    it('does not let Rainbow Terraces resume when BaseTheme rejects the resume', () => {
         vi.spyOn(BaseTheme.prototype, 'resume').mockReturnValue(false);
-        const theme = new SkyChildrenTheme();
+        const theme = new RainbowTerracesTheme();
 
         // Everything a resume needs is there, and a quality rebuild is waiting for it.
         theme.world = {};

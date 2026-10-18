@@ -3,8 +3,9 @@
  * Three-free: the choreography, the director and their tests import only this.
  *
  * The dreaming sea (metres): the camera stands a little above a sea of liquid light (y = 0),
- * looking down −Z. The Great Drop hangs upper left on a thread of liquid drawn up out of the sea,
- * its kin float far right, and everything liquid in the picture is one smooth-min distance field:
+ * looking down −Z. The Great Drop hangs upper left on a thread of liquid drawn up out of the sea
+ * (until a four-line clear carries it to a new home), its kin float far right, and everything
+ * liquid in the picture is one smooth-min distance field:
  * drops merge with each other and with the sea, and pinch off again, by construction.
  */
 
@@ -85,6 +86,18 @@ export const PLUNGE = Object.freeze({
     crown: 1.7,
     rise: 2.3,
     total: 4.6,
+});
+
+/**
+ * A four-line clear can carry the Drop to a new home: it leaps there in an arc and dives in
+ * where it will hang next. The fall takes `perMetre` longer for every metre it travels (never
+ * more than `most`), and the arc stands `arc` of the way above it (never more than `arcMost`).
+ */
+export const LEAP = Object.freeze({
+    perMetre: 0.02,
+    most: 0.7,
+    arc: 0.12,
+    arcMost: 4,
 });
 
 /** mulberry32: a tiny seeded [0, 1) generator. */

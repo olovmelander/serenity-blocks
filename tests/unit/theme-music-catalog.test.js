@@ -96,7 +96,8 @@ describe('one soundtrack per collectible theme', () => {
     });
 
     it('resolves known retired aliases, but never revives Bioluminescence II', () => {
-        expect(getThemeMusic('sky-children-v2')).toBe(getThemeMusic('sky-children'));
+        expect(getThemeMusic('sky-children-v2')).toBe(getThemeMusic('rainbow-terraces'));
+        expect(getThemeMusic('sky-children')).toBe(getThemeMusic('rainbow-terraces'));
         expect(getThemeMusic('pyrestorm-v2')).toBe(getThemeMusic('pyrestorm'));
         expect(getThemeMusic('bioluminescence-2')).toBeNull();
         expect(getThemeForMusic('Bioluminescence2')).toBeNull();

@@ -3,11 +3,11 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    FluidDreamsWorld, REST_RIG, fovForAspect, horizonY, restRay,
+    FluidDreamsWorld, REST_RIG, SITE, fovForAspect, horizonY, restBounds, restProject, restRay,
 } from '../../src/themes/fluid-dreams/fluid-dreams-world.js';
 import {
-    DEG, DREAMFIRE, FLIGHT_TIME, FLUID_PALETTES, GROUP_COUNT, GROUP_HERO, GROUP_LEFT, GROUP_RIGHT, HERO, HUSH_HOLD,
-    JET_TIME, PALETTE_KEYS, PLUNGE, pieceColor, powerForCombo, sceneAnchors,
+    DEG, DREAMFIRE, FLIGHT_TIME, FLUID_PALETTES, GROUP_COUNT, GROUP_HERO, GROUP_KIN, GROUP_LEFT, GROUP_RIGHT,
+    GROUP_START, HERO, HUSH_HOLD, JET_TIME, PALETTE_KEYS, PLUNGE, pieceColor, powerForCombo, sceneAnchors,
 } from '../../src/themes/fluid-dreams/fluid-dreams-core.js';
 import { QUALITY, QUALITY_NAMES, tierFor } from '../../src/themes/fluid-dreams/fluid-dreams-quality.js';
 import {
@@ -83,8 +83,8 @@ function recordClears(world) {
     const clears = [];
     const clear = world.choreo.clear.bind(world.choreo);
     vi.spyOn(world.choreo, 'clear').mockImplementation((request) => {
-        clears.push({ ...request, origin: [...request.origin] });
-        clear(request);
+        clears.push({ ...request, origin: [...request.origin], site: request.site ? [...request.site] : null });
+        return clear(request);
     });
     return clears;
 }
@@ -626,7 +626,12 @@ describe('fluid dreams world: camera and composition', () => {
         world.onLock({
             u: 0.2, rows: [8], hardDrop: true, color: '#FF2D95',
         });
+        const home = [...world.choreo.scene.hero];
         world.onClear({ lines: 4, rows: [19, 18, 17, 16] });
+        // Four lines drop the Drop where it hangs: it does not leap across the frame.
+        expect(world.getState().site).toBeNull();
+        expect(world.choreo.plunge.reach).toBe(0);
+        expect(world.choreo.scene.hero).toEqual(home);
         world.onCombo(8);
         let flash = 0;
         for (let i = 0; i < 120; i++) {
@@ -1121,6 +1126,10 @@ describe('fluid dreams world: clears, combos and levels', () => {
         expect(rest.shafts).toBeGreaterThan(0);
         world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
         expect(world.choreo.isBusy()).toBe(true);
+        // It is carried somewhere new, so it leaps there: a longer fall than a straight drop.
+        expect(world.getState().site).not.toBeNull();
+        const { fall } = world.choreo.plunge;
+        expect(fall).toBeGreaterThan(PLUNGE.fall);
         // The breath it holds dims the picture a little.
         run(world, camera, HUSH_HOLD * 0.9);
         expect(world.getPostState().exposure).toBeLessThan(1);
@@ -1128,13 +1137,13 @@ describe('fluid dreams world: clears, combos and levels', () => {
         expect(world.u.swell.value).toBeLessThan(1);
         expect(spray.some((burst) => burst.kind === 'crown')).toBe(false);
         // The Drop meets the sea: the crown, the flash, the shafts, the overdrive.
-        run(world, camera, HUSH_HOLD * 0.1 + PLUNGE.fall * 0.9);
+        run(world, camera, HUSH_HOLD * 0.1 + fall * 0.9);
         const falling = { ...world.getPostState() };
-        run(world, camera, PLUNGE.fall * 0.1 + 2 / 60);
+        run(world, camera, fall * 0.1 + 2 / 60);
         const crowns = spray.filter((burst) => burst.kind === 'crown');
         expect(crowns).toHaveLength(1);
-        // Under where it hung: its anchor, give or take the idle sway it fell with (well inside its
-        // own footprint), and where the thread will stand again.
+        // Under its new home, give or take the idle sway it fell with (well inside its own
+        // footprint), and where the thread will stand again.
         expect(Math.hypot(crowns[0].x - world.choreo.scene.hero[0], crowns[0].z - world.choreo.scene.hero[2]))
             .toBeLessThan(HERO.radius * 0.5);
         expect(Math.hypot(crowns[0].x - world.u.hero.value.x, crowns[0].z - world.u.hero.value.z))
@@ -1176,6 +1185,148 @@ describe('fluid dreams world: clears, combos and levels', () => {
         expect(cooled.bloomBoost).toBeCloseTo(rest.bloomBoost, 3);
         expect(cooled.shafts).toBeCloseTo(rest.shafts, 3);
         expect(world.u.swell.value).toBeCloseTo(1, 3);
+        world.dispose();
+    });
+
+    it('carries the Great Drop somewhere new on every four-line clear, never behind the board', () => {
+        for (const [width, height] of [[1600, 900], [1920, 1080], [2560, 1080], [1600, 769]]) {
+            const frame = `${width}x${height}`;
+            const { camera, world } = makeWorld('Minimal', { width, height });
+            const aspect = width / height;
+            const layout = fallbackLayout(width, height);
+            const card = layout.cards[0];
+            const middle = (card.x0 + card.x1) / 2;
+            const sides = { left: 0, right: 0 };
+            let before = [...world.choreo.scene.hero];
+            for (let i = 0; i < 10; i++) {
+                const label = `${frame}, clear ${i + 1}`;
+                world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+                const { site } = world.getState();
+                expect(site, label).not.toBeNull();
+                const home = [...world.choreo.scene.hero];
+                // It travels: far enough that the move reads.
+                const moved = Math.hypot(home[0] - before[0], home[1] - before[1], home[2] - before[2]);
+                expect(moved, label).toBeGreaterThanOrEqual(SITE.move * HERO.radius * world.choreo.scene.heroScale);
+                // Its whole silhouette (lobes and all, drawn wider off to the side) clears the card,
+                // the stats bar and the frame.
+                const r = SITE.footprint * HERO.radius * world.choreo.scene.heroScale;
+                const box = restBounds(...home, r, aspect);
+                expect(box, label).not.toBeNull();
+                expect(box[0], label).toBeGreaterThan(0);
+                expect(box[2], label).toBeLessThan(1);
+                expect(box[1], label).toBeGreaterThan(0);
+                for (const rect of [card, layout.hud]) {
+                    const apart = box[2] < rect.x0 || box[0] > rect.x1 || box[3] < rect.y0 || box[1] > rect.y1;
+                    expect(apart, `${label}: clear of ${JSON.stringify(rect)}`).toBe(true);
+                }
+                // Its thread stands in open sea, and it is no lower than the thread needs.
+                expect(home[1] - HERO.radius * world.choreo.scene.heroScale, label).toBeGreaterThan(1);
+                const centre = restProject(...home, aspect);
+                sides[centre[0] < middle ? 'left' : 'right'] += 1;
+                // Its kin keep to the other side of the board.
+                const kin = restProject(...world.choreo.scene.kin, aspect);
+                expect(kin[0] < middle, label).toBe(centre[0] >= middle);
+                // It dives in there and comes up there.
+                const spray = recordSpray(world);
+                run(world, camera, HUSH_HOLD + world.choreo.plunge.total + 0.2);
+                const [crown] = spray.filter((burst) => burst.kind === 'crown');
+                expect(Math.hypot(crown.x - home[0], crown.z - home[2]), label).toBeLessThan(HERO.radius * 0.5);
+                expect(world.choreo.isBusy(), label).toBe(false);
+                expect(Math.hypot(world.u.hero.value.x - home[0], world.u.hero.value.z - home[2]), label)
+                    .toBeLessThan(0.6);
+                vi.restoreAllMocks();
+                before = home;
+            }
+            // It does not keep to one side.
+            expect(sides.left, frame).toBeGreaterThanOrEqual(2);
+            expect(sides.right, frame).toBeGreaterThanOrEqual(2);
+            world.dispose();
+        }
+    });
+
+    it('lets the kin drift over to make room instead of jumping', () => {
+        const { camera, world } = makeWorld('Minimal');
+        // the largest of the kin (it does not bob sideways: its x is where the kin are)
+        const kinX = () => world.choreo.tables.balls[GROUP_START[GROUP_KIN] * 2].x;
+        let crossings = 0;
+        for (let i = 0; i < 10; i++) {
+            const anchor = [...world.choreo.scene.kin];
+            world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+            const target = [...world.choreo.scene.kin];
+            if (Math.abs(target[0] - anchor[0]) < 1) {
+                run(world, camera, 7);
+                continue;
+            }
+            crossings += 1;
+            // Their anchor went across the board; they set off from where they floated...
+            let last = kinX();
+            expect(Math.abs(last - anchor[0])).toBeLessThan(0.1); // (still settling from the last time)
+            let step = 0;
+            for (let k = 0; k < 12 * 60; k++) {
+                run(world, camera, 1 / 60, 1);
+                step = Math.max(step, Math.abs(kinX() - last));
+                last = kinX();
+            }
+            // ...drift (never a jump, at 60 fps)...
+            expect(step).toBeGreaterThan(0.02);
+            expect(step).toBeLessThan(0.4);
+            // ...and are there a few seconds later.
+            expect(Math.abs(kinX() - target[0])).toBeLessThan(0.1);
+        }
+        expect(crossings).toBeGreaterThanOrEqual(2);
+        // A seek stands them at their anchor at once.
+        world.seek(30);
+        world.update({ time: 30, delta: 0 }, camera);
+        expect(kinX()).toBeCloseTo(world.choreo.scene.kin[0], 9);
+        world.dispose();
+    });
+
+    it('lets a Drop that cannot be moved fall where it hangs: a frame with no open sea', () => {
+        const { camera, world } = makeWorld('Minimal');
+        const anchor = [...world.choreo.scene.hero];
+        // One card across the whole frame: nowhere to go.
+        const wall = {
+            x0: 0.01, y0: 0.01, x1: 0.99, y1: 0.99,
+        };
+        world.setLayout(layoutOf([wall], [wall]), 16 / 9);
+        expect(world.choreo.scene.hero).toEqual(anchor);
+        const spray = recordSpray(world);
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        expect(world.getState().site).toBeNull();
+        expect(world.choreo.plunge.reach).toBe(0);
+        expect(world.choreo.plunge.fall).toBe(PLUNGE.fall);
+        run(world, camera, HUSH_HOLD + PLUNGE.total + 0.2);
+        const [crown] = spray.filter((burst) => burst.kind === 'crown');
+        expect(Math.hypot(crown.x - anchor[0], crown.z - anchor[2])).toBeLessThan(HERO.radius * 0.5);
+        expect(world.choreo.scene.hero).toEqual(anchor);
+        world.dispose();
+    });
+
+    it('keeps the Drop where it was carried through a new run, and stands it home again on a seek', () => {
+        const { camera, world } = makeWorld('Minimal');
+        const home = [...world.choreo.scene.hero];
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        run(world, camera, HUSH_HOLD + world.choreo.plunge.total + 0.2);
+        const carried = [...world.choreo.scene.hero];
+        expect(Math.hypot(carried[0] - home[0], carried[2] - home[2])).toBeGreaterThan(1);
+        // A new run: the sea goes back to rest, the picture stays where it stood.
+        world.resetSession();
+        run(world, camera, 0.5);
+        expect(world.choreo.scene.hero).toEqual(carried);
+        expect(world.getState().site).not.toBeNull();
+        // The frame changes shape and there is no room where it was: it is stood up at home.
+        const wall = {
+            x0: 0.01, y0: 0.01, x1: 0.99, y1: 0.99,
+        };
+        world.setLayout(layoutOf([wall], [wall]), 16 / 9);
+        expect(world.getState().site).toBeNull();
+        expect(world.choreo.scene.hero).toEqual(home);
+        // A seek (a capture) starts its travels over: the same clear sends it to the same place.
+        world.setLayout(fallbackLayout(1600, 900), 1600 / 900);
+        world.seek(10);
+        expect(world.choreo.scene.hero).toEqual(home);
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        expect(world.choreo.scene.hero).toEqual(carried);
         world.dispose();
     });
 

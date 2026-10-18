@@ -71,11 +71,12 @@ afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Odyssey campaign leaderboard identity', () => {
     it('assigns new boards to the reordered 60-orb campaign', () => {
-        expect(STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX).toBe('OdysseyLevelTime_v3_');
-        expect(STEAM_LEADERBOARDS.ODYSSEY_TOTAL_STARS).toBe('OdysseyTotalStars_v2');
+        // Campaign v5 ends every chapter on its rival duel, so slot ids name different challenges.
+        expect(STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX).toBe('OdysseyLevelTime_v4_');
+        expect(STEAM_LEADERBOARDS.ODYSSEY_TOTAL_STARS).toBe('OdysseyTotalStars_v3');
     });
 
-    it.each(['OdysseyLevelTime_v1_42', 'OdysseyLevelTime_v2_46', 'OdysseyLevelTime_v3_60'])(
+    it.each(['OdysseyLevelTime_v1_42', 'OdysseyLevelTime_v2_46', 'OdysseyLevelTime_v3_60', 'OdysseyLevelTime_v4_59'])(
         'retains the fastest offline result and creates %s ascending',
         async (name) => {
             const harness = createNativeHarness();
@@ -133,11 +134,11 @@ describe('Odyssey campaign leaderboard identity', () => {
         const harness = createNativeHarness({ Ascending: 101, Descending: 202 });
         const service = await createService(harness);
         service.isOnline = true;
-        await service.uploadScore('OdysseyLevelTime_v3_60', 20000);
-        await service.uploadScore('OdysseyLevelTime_v3_60', 19000);
-        await service.uploadScore('OdysseyTotalStars_v2', 180);
+        await service.uploadScore('OdysseyLevelTime_v4_59', 20000);
+        await service.uploadScore('OdysseyLevelTime_v4_59', 19000);
+        await service.uploadScore('OdysseyTotalStars_v3', 180);
         expect(harness.api.findOrCreateLeaderboard.mock.calls).toEqual([
-            ['OdysseyLevelTime_v3_60', 101, 1], ['OdysseyTotalStars_v2', 202, 1],
+            ['OdysseyLevelTime_v4_59', 101, 1], ['OdysseyTotalStars_v3', 202, 1],
         ]);
         expect(harness.api.uploadLeaderboardScore).toHaveBeenCalledTimes(3);
     });

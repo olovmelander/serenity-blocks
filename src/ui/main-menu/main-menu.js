@@ -651,11 +651,11 @@ class MainMenu {
         } else if (mode === 'odyssey') {
             const progress = readOdysseyProgress();
             const shape = this.odysseyShape;
-            if (shape) eyebrow = `Ascend · ${shape.chapters.length} chapters · ${shape.levelCount} levels`;
+            if (shape) eyebrow = `Ascend · ${shape.chapters.length} chapters · ${shape.levelCount} orbs`;
             if (progress?.started) {
                 action = 'Continue';
                 const total = shape?.levelCount;
-                facts.push(['Levels cleared', total ? `${progress.completedCount} / ${total}` : formatNumber(progress.completedCount)]);
+                facts.push(['Orbs cleared', total ? `${progress.completedCount} / ${total}` : formatNumber(progress.completedCount)]);
                 facts.push(['Stars', total ? `${progress.stars} / ${total * 3}` : formatNumber(progress.stars)]);
                 const chapter = this.odysseyChapter(progress);
                 if (chapter?.name) facts.push([`Chapter ${chapter.id}`, chapter.name.split(' & ')[0]]);

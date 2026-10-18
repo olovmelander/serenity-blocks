@@ -50,7 +50,7 @@
  * The budget is spent per TASK (a frame's callback, a createScene run): it opens at the task's first
  * new build and closes at the next macrotask. It was a 14 ms wall-clock window, which a long frame
  * refilled from its own length: each build over 14 ms reopened it for the next, so a frame of heavy
- * materials never deferred one (koi-pond: 375 ms, sky-children: 213 ms in one frame, 2026-10-16).
+ * materials never deferred one (koi-pond: 375 ms, rainbow-terraces: 213 ms in one frame, 2026-10-16).
  */
 const CUBE_UV_REFLECTION_MAPPING = 306; // three/src/constants.js
 const sessions = new Set();

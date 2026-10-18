@@ -112,9 +112,9 @@ describe('theme ownership enforcement', () => {
     });
 
     it('checks ownership using the canonical theme for retired saved identifiers', async () => {
-        const { manager } = makeManager(['forest', 'sky-children']);
-        await expect(manager.switchTheme('sky-children-v2')).resolves.toBe('sky-children');
-        expect(manager.loadTheme).toHaveBeenCalledWith('sky-children');
+        const { manager } = makeManager(['forest', 'rainbow-terraces']);
+        await expect(manager.switchTheme('sky-children-v2')).resolves.toBe('rainbow-terraces');
+        expect(manager.loadTheme).toHaveBeenCalledWith('rainbow-terraces');
     });
 
     it('a timed random switch stays owned while an Odyssey permission exists', async () => {

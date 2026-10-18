@@ -13,7 +13,8 @@
 
 import { ASCENT, milestoneHeights } from './ascent-model.js';
 
-const TICKS = 4;
+/** Enough ticks for twenty rows at the short well's step. */
+const TICKS = 5;
 const FLOORS = 5;
 const MARKS = 8;
 const RING_LENGTH = 2 * Math.PI * 9;
@@ -40,6 +41,8 @@ function el(tag, className, parent) {
  * @property {string|null} caption the memory near the view, in words
  * @property {number|null} captionHeight where that memory is
  * @property {boolean} [firstLook] show the how-to line
+ * @property {number} [tickRows] the ruler's step (ASCENT.TICK_ROWS by default)
+ * @property {number[]} [milestones] the floors' heights (the ceiling's shares by default)
  */
 
 export class AscentOverlay {
@@ -122,8 +125,9 @@ export class AscentOverlay {
         const topHeight = frame.boardLength - frame.top;
         const bottomHeight = topHeight - rows;
 
-        // The ruler: a tick every TICK_ROWS of height, the number beside it.
-        const step = ASCENT.TICK_ROWS;
+        // The ruler: a tick every step of height, the number beside it; every fifth is major.
+        const step = frame.tickRows && frame.tickRows > 0 ? frame.tickRows : ASCENT.TICK_ROWS;
+        const major = step * 5;
         let h = Math.ceil(Math.max(step, bottomHeight) / step) * step;
         this.ticks.forEach((item) => {
             const show = h <= topHeight + 0.5;
@@ -133,14 +137,15 @@ export class AscentOverlay {
                 if (item.value !== h) {
                     item.value = h;
                     item.label.textContent = h.toLocaleString();
-                    item.tick.classList.toggle('is-major', h % 50 === 0);
+                    item.tick.classList.toggle('is-major', h % major === 0);
                 }
             }
             h += step;
         });
 
         // Milestones: the floors to come and the ones built past.
-        const milestones = milestoneHeights(frame.maxRows).filter((m) => m >= bottomHeight - 1 && m <= topHeight + 1);
+        const milestones = (frame.milestones || milestoneHeights(frame.maxRows))
+            .filter((m) => m >= bottomHeight - 1 && m <= topHeight + 1);
         this.floors.forEach((item, i) => {
             const m = milestones[i];
             if (m === undefined) {

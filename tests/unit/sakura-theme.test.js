@@ -1874,7 +1874,7 @@ describe('Sakura with its real artwork', () => {
         expect(renderer.render).toHaveBeenCalledExactlyOnceWith(scene, camera);
         expect(world.getDiagnostics().trees).toBeGreaterThan(8);
         expect(world.petals.sim.count).toBe(SAKURA_TIERS.High.petals);
-        expect(world.foxes.foxes).toHaveLength(2);
+        expect(world.foxes.foxes).toHaveLength(1);
         // Framed by the world for this window, and the theme rests exactly there.
         const view = sakuraViewFor(1440 / 900);
         expect(camera.aspect).toBe(1440 / 900);
