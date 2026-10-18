@@ -870,6 +870,16 @@
     font: 500 0.8125rem / 1.5 var(--sb-font-text);
 }
 
+#odyssey-board-overlay .level-nav-hint {
+    margin: 10px 0 0;
+    color: var(--sb-text-faint);
+    font: 500 0.6875rem / 1.7 var(--sb-font-text);
+}
+
+#odyssey-board-overlay .level-nav-hint .sb-kbd {
+    margin-right: 2px;
+}
+
 #odyssey-board-overlay .level-objectives {
     margin: 0 0 18px;
     padding: 12px 14px;
