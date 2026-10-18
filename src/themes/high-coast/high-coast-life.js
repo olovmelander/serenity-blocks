@@ -135,7 +135,7 @@ export function createLife(u, t, tier, lantern) {
         const core = exp(across.mul(across).mul(-3.5));
         const fade = exp(st.x.mul(-2.6)).mul(smoothstep(0.0, 0.03, st.x));
         // Seen in the haze: stronger the more air the hour holds and the darker the sky.
-        const air = u.hazeDensity.mul(0.5).add(u.mistDensity).add(0.3).mul(float(1.0).sub(u.sunUp.mul(0.7)));
+        const air = u.hazeDensity.mul(0.5).add(u.mistDensity).add(0.3).mul(float(1.0).sub(u.day.mul(0.7)));
         return vec4(vec3(1.0, 0.88, 0.66).mul(core).mul(fade).mul(air)
             .mul(u.beacon.x)
             .mul(beamAcross)

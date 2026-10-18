@@ -11,11 +11,12 @@
  *   quality=High|Ultra|...   content tier (default High)
  *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules)
  *   statsHud=0               with board=1: board only, no HUD mock
- *   level=<n>                level n's hour (the light also turns with the clock alone: one hour
- *                            every 100 s of `t`, resting 15 s at each end, so t=10 is still on the
- *                            level's own hour)
+ *   level=<n>                level n's station of the day (the light also turns with the clock
+ *                            alone, one station every 100 s of `t` and never resting, so t=10 is
+ *                            already a little past the level's own station)
  *   hour=<place>             hold the light at a wheel place (0 golden hour, 1 sunset, 2 light
- *                            night, 3 dawn mist, 4 morning, 5 afternoon; fractions mix)
+ *                            night, 3 dawn mist, 4 morning, 5 afternoon; fractions run the day
+ *                            between them)
  *   parts=land,sea           draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
