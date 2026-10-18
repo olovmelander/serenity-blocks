@@ -19,12 +19,14 @@ import {
     exp,
     float,
     floor,
+    fract,
     max,
     mix,
     normalize,
     positionGeometry,
     positionWorld,
     pow,
+    sin,
     smoothstep,
     step,
     uv,
@@ -96,7 +98,19 @@ export function createPrints(u, prints, atlas, fade) {
         const edge = max(abs(st.x.sub(0.5)).mul(0.6), float(1.0).sub(st.y).mul(0.45));
         const torn = step(float(1.0).sub(look.x), n.mul(0.6).add(edge)).mul(step(0.01, look.x));
         const under = mix(vec3(0.22, 0.21, 0.2), vec3(0.32, 0.12, 0.1), step(0.6, ndHash21(vec2(floor(metres.y.mul(3.0)), seed))));
-        const albedo = mix(mix(paper, printed, fade), under, torn).mul(0.82).mul(grain.mul(0.16).add(0.92));
+        // Rain runs down the paper in streaks, darkening it where it has soaked.
+        const lane = floor(metres.x.div(0.05));
+        const lh = ndHash21(vec2(lane, seed));
+        const head = dim.y.add(0.4).sub(fract(u.time.mul(lh.mul(0.05).add(0.04)).add(lh.mul(7.0))).mul(dim.y.add(1.2)));
+        const above = metres.y.sub(head);
+        const drip = step(0.72, lh).mul(step(0.0, above)).mul(exp(above.mul(-1.4)))
+            .mul(smoothstep(0.32, 0.12, abs(fract(metres.x.div(0.05)).sub(0.5))));
+        // A torn flap stirs in the draught: its edge catches the light and loses it.
+        const flapEdge = smoothstep(0.08, 0.0, abs(n.mul(0.6).add(edge).sub(float(1.0).sub(look.x)))).mul(step(0.01, look.x));
+        const flutter = sin(u.time.mul(6.0).add(metres.x.mul(5.0)).add(seed)).mul(0.5).add(0.5);
+        const albedo = mix(mix(paper, printed, fade), under, torn).mul(0.82).mul(grain.mul(0.16).add(0.92))
+            .mul(float(1.0).sub(drip.mul(0.35)))
+            .mul(flapEdge.mul(flutter).mul(0.5).add(1.0));
 
         // ── Light: the street, the gameplay, and a roof board's floodlights ──
         const clear = ndClearLight(u, pW.z);
@@ -112,7 +126,8 @@ export function createPrints(u, prints, atlas, fade) {
             .add(flood)
             .mul(clear.w.mul(0.3).add(1.0));
         // Wet paper: a sheen of the street's light at a glancing look.
-        const sheen = pow(float(1.0).sub(ndv), 3.0).mul(u.rain).mul(glow.mul(0.08).add(u.hazeLow.mul(0.25)));
+        const sheen = pow(float(1.0).sub(ndv), 3.0).mul(u.rain).mul(glow.mul(0.08).add(u.hazeLow.mul(0.25)))
+            .add(glow.add(u.hazeLow).mul(drip).mul(0.06));
         const lit = albedo.mul(light).add(sheen).add(flood.mul(albedo).mul(smoothstep(0.85, 1.0, st.y)).mul(0.3));
         return ndAtmosphere(u, lit, pW);
     })();
