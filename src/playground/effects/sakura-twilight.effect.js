@@ -79,7 +79,7 @@ export function create({
         post.setSize(window.innerWidth, window.innerHeight);
         frameIcon();
     });
-    // ?foxCam=<metres> is a lens that keeps that far from a fox (?foxWhich=0|1) and follows it:
+    // ?foxCam=<metres> is a lens that keeps that far from the fox and follows it:
     // round it from its front by ?foxCamYaw=<deg> (or `viewer`: the side the game sees it from),
     // with ?foxCamFov=<deg>. ?foxAct=<acts|hunt> stops that fox ?foxActAge seconds before the
     // frame and has it do them (Sit, LookAround, Stretch, Greet, CurlSleep…).
@@ -88,11 +88,10 @@ export function create({
         return params.has(name) && Number.isFinite(value) ? value : fallback;
     };
     const foxCam = number('foxCam', 0);
-    const foxWhich = number('foxWhich', 0) === 1 ? 1 : 0;
     const foxAct = (params.get('foxAct') || '').split(',').map((name) => name.trim()).filter(Boolean);
     const foxLook = new THREE.Vector3();
     const frameFox = () => {
-        const fox = world?.foxes?.foxes[foxWhich];
+        const fox = world?.foxes?.foxes[0];
         if (!(foxCam > 0) || !fox) return;
         const { pose } = fox.mind;
         const around = params.get('foxCamYaw') === 'viewer'
@@ -172,7 +171,7 @@ export function create({
             if (!acted && i * dt >= actTime) {
                 acted = true;
                 const { foxes } = world;
-                foxes.mind.rehearse(foxAct[0] === 'hunt' ? ['Listen', 'Pounce', 'Dig', 'Shake'] : foxAct, foxes.time, foxWhich);
+                foxes.mind.rehearse(foxAct[0] === 'hunt' ? ['Listen', 'Pounce', 'Dig', 'Shake'] : foxAct, foxes.time);
             }
             update(i * dt, dt);
         }

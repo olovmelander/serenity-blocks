@@ -233,6 +233,13 @@ where the game stands. `node scripts/fox/preview-fox.mjs --fox=sakura --act=Sit`
 one with a close lens (`foxWhich=0|1`, `foxCamYaw=<deg>|viewer`, `foxCamFov=<deg>`) and
 `foxAct=<acts|hunt>` with `foxActAge=<s>` stops it and has it do something.
 
+**2026-10-18: one fox.** On Olov's "Can we remove one of the foxes in sakura-twilight theme!"
+the smaller fox (0.98) went; the larger (1.12, starting by the left lantern) keeps the round
+alone. What only a pair did went with it — looking round at each other, settling together,
+keeping room on the one course, the second leap and the second lying down a moment late — and
+so did the playground's `foxWhich`. `SAKURA_FOX_PAIR` is now `SAKURA_FOX_PLANS`, a list of one;
+a second fox put back on the one course would need the room-keeping (`ahead`) back as well.
+
 ![A look, sitting by the lantern, the leap of the hunt, digging, asleep, and four lines](sakura-twilight-overhaul/foxes.webp)
 
 ## Verification

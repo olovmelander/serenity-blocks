@@ -947,13 +947,14 @@ describe('Sakura world scene contracts', () => {
         expect(world.spirits.waterAmbient).toBeGreaterThan(0);
         expect(world.spirits.waterAmbient).toBeLessThan(tier.waterLanterns);
 
-        // The two foxes: the skin of each, its fur where the tier has shells of it, and its shade.
+        // The fox (one: the pair lost one, 2026-10-18): its skin, its fur where the tier has
+        // shells of it, and its shade.
         const furred = SAKURA_FOX_FUR[quality] > 0;
-        expect(world.foxes.foxes).toHaveLength(2);
+        expect(world.foxes.foxes).toHaveLength(1);
         expect(world.foxes.shells).toBe(SAKURA_FOX_FUR[quality]);
-        expect(named(world.group, FOX_SKIN)).toHaveLength(2);
-        expect(named(world.group, /^SakuraFoxFur /)).toHaveLength(furred ? 2 : 0);
-        expect(named(world.group, /^SakuraFoxShade /)).toHaveLength(2);
+        expect(named(world.group, FOX_SKIN)).toHaveLength(1);
+        expect(named(world.group, /^SakuraFoxFur /)).toHaveLength(furred ? 1 : 0);
+        expect(named(world.group, /^SakuraFoxShade /)).toHaveLength(1);
         for (const fox of world.foxes.foxes) expect(fox.rigged).toBe(true);
 
         // The eye sees everything; the lake's second view of the garden is spared the near,
@@ -2140,10 +2141,10 @@ describe('Sakura small lights and foxes', () => {
         light.update(0, {});
     });
 
-    it('keeps the two foxes to the stepping-stone path, wandering, and sets them running at a hard gust', () => {
+    it('keeps the fox to the stepping-stone path, wandering, and sets it running at a hard gust', () => {
         const { foxes } = built.world;
         foxes.reset();
-        expect(foxes.foxes).toHaveLength(2);
+        expect(foxes.foxes).toHaveLength(1);
         /** What is wrong with where a fox is, or null: by the path, on dry ground, its shade under it. */
         const trouble = (fox) => {
             const { x, y, z } = fox.model.position;
@@ -2164,9 +2165,9 @@ describe('Sakura small lights and foxes', () => {
         const troubles = new Set();
         const watch = (fox) => { if (trouble(fox)) troubles.add(trouble(fox)); };
         const startle = vi.spyOn(foxes.mind, 'startle');
-        // One either side of the board, both on their way along the path.
+        // On the left of the board, on its way along the path.
         const opening = foxes.foxes.map((fox) => fox.model.position.clone());
-        expect(Math.sign(opening[0].x)).toBe(-Math.sign(opening[1].x));
+        expect(opening[0].x).toBeLessThan(-3);
         for (const fox of foxes.foxes) {
             expect(fox.mind.mode).toBe('gait');
             expect(trouble(fox)).toBeNull();
@@ -2175,7 +2176,7 @@ describe('Sakura small lights and foxes', () => {
         const did = new Set();
         const travelled = foxes.foxes.map(() => 0);
         const speeds = { ambling: 0, running: 0 };
-        /** One thirtieth of a second for both foxes; returns how far each went over the ground. */
+        /** One thirtieth of a second for the foxes; returns how far each went over the ground. */
         const tick = (frame) => {
             const before = foxes.foxes.map((fox) => fox.model.position.clone());
             foxes.update(1 / 30, frame);
@@ -2202,15 +2203,15 @@ describe('Sakura small lights and foxes', () => {
             expect([...modes].sort()).toEqual(['gait', 'idle']);
             expect(travelled[index]).toBeGreaterThan(2);
         }
-        // They did something where they stopped, and never ran.
+        // It did something where it stopped, and never ran.
         expect(did.size).toBeGreaterThan(1);
         expect(did).not.toContain('CurlSleep');
         expect(ambling).toBeGreaterThan(0);
         expect(ambling).toBeLessThan(paces.run(0));
         expect(startle).not.toHaveBeenCalled();
 
-        // A hard gust startles both at once; whatever they were at, they run on along the path,
-        // faster than they amble.
+        // A hard gust startles it at once; whatever it was at, it runs on along the path, faster
+        // than it ambles.
         const from = foxes.foxes.map((fox) => fox.mind.s);
         tick({ gust: 0.9 });
         expect(startle).toHaveBeenCalledExactlyOnceWith(1);
@@ -2224,8 +2225,8 @@ describe('Sakura small lights and foxes', () => {
             expect(topSpeeds[index]).toBeGreaterThan(paces.run(0));
             expect(fox.mind.s).toBeGreaterThan(from[index] + 1);
         });
-        // The gust keeps blowing, but they are not kept running by it: it startles them once,
-        // and they settle before it can again.
+        // The gust keeps blowing, but does not keep the fox running: it startles it once, and
+        // the fox settles before it can again.
         const runFrames = foxes.foxes.map(() => 0);
         const frames = 30 * 13;
         for (let frame = 0; frame < frames; frame += 1) {
@@ -2251,7 +2252,7 @@ describe('Sakura small lights and foxes', () => {
         });
     });
 
-    it('lays the foxes down to sleep when the garden falls quiet, and wakes them when it stirs', () => {
+    it('lays the fox down to sleep when the garden falls quiet, and wakes it when it stirs', () => {
         const { foxes } = built.world;
         foxes.reset();
         const startle = vi.spyOn(foxes.mind, 'startle');
@@ -2259,17 +2260,15 @@ describe('Sakura small lights and foxes', () => {
             for (let i = 0; i < Math.round(seconds * 30); i += 1) foxes.update(1 / 30, frame);
         };
         step({ hush: 0.1 }, 3);
-        // Not quiet enough yet: they go on.
+        // Not quiet enough yet: it goes on.
         step({ hush: 0.4 }, 1);
         expect(foxes.mind.asleep).toBe(false);
-        // The wind dies and the lanterns burn low: one lies down, the other a moment after it.
+        // The wind dies and the lanterns burn low: it lies down.
         step({ hush: 1 });
         expect(foxes.mind.asleep).toBe(true);
-        expect(foxes.foxes.map((fox) => fox.mind.asleep)).toEqual([true, false]);
-        step({ hush: 1 }, 1);
-        expect(foxes.foxes.map((fox) => fox.mind.asleep)).toEqual([true, true]);
-        step({ hush: 1 }, 3);
-        // Curled up where they were, their eyes shut, they stay put — whatever the wind does.
+        expect(foxes.foxes.map((fox) => fox.mind.asleep)).toEqual([true]);
+        step({ hush: 1 }, 4);
+        // Curled up where it was, its eyes shut, it stays put — whatever the wind does.
         const asleep = foxes.foxes.map((fox) => fox.model.position.clone());
         step({ hush: 1, gust: 1, moon: 0.2 }, 20);
         // (Stirring a little is not waking.)
@@ -2288,7 +2287,7 @@ describe('Sakura small lights and foxes', () => {
             expect(fox.shade.scale.z).toBeLessThan(1.25 * fox.plan.scale);
             expect(sakuraLand(x, z)).toBeGreaterThan(0);
         });
-        // It stirs: both are up, stretch, and go on their way.
+        // It stirs: the fox is up, stretches, and goes on its way.
         step({ hush: 0.1 });
         expect(foxes.mind.asleep).toBe(false);
         for (const fox of foxes.foxes) {
@@ -2300,7 +2299,7 @@ describe('Sakura small lights and foxes', () => {
             expect(fox.model.position.distanceTo(asleep[index])).toBeGreaterThan(0.3);
             expect(foxes.uEyes[index].value).toBeLessThan(1);
         });
-        // Asleep when the game begins again, they are awake at the opening.
+        // Asleep when the game begins again, it is awake at the opening.
         step({ hush: 1 }, 2);
         expect(foxes.mind.asleep).toBe(true);
         foxes.reset();
@@ -2308,14 +2307,14 @@ describe('Sakura small lights and foxes', () => {
         for (const fox of foxes.foxes) expect([fox.mind.asleep, fox.mind.mode]).toEqual([false, 'gait']);
     });
 
-    it('sends the foxes leaping one after the other on four lines, and lifts the petals where they land', () => {
+    it('sends the fox leaping on four lines, and lifts the petals where it lands', () => {
         const { foxes } = built.world;
         foxes.reset();
         const DT = 1 / 30;
         for (let frame = 0; frame < 30; frame += 1) foxes.update(DT, { moon: 0.3 });
         expect(foxes.kicks).toEqual([]);
         for (const fox of foxes.foxes) expect(fox.mind.mode).toBe('gait');
-        const took = foxes.foxes.map(() => null);
+        const began = foxes.foxes.map(() => null);
         const peak = foxes.foxes.map(() => 0);
         const leaps = foxes.foxes.map(() => 0);
         const landings = [];
@@ -2329,7 +2328,7 @@ describe('Sakura small lights and foxes', () => {
                 const { pose } = fox.mind;
                 const ground = sakuraTerrainHeight(pose.x, pose.z);
                 if (fox.mind.mode === 'pounce' && before[index] !== 'pounce') leaps[index] += 1;
-                if (took[index] === null && pose.lift > 0) took[index] = frame * DT;
+                if (began[index] === null && fox.mind.mode === 'pounce') began[index] = frame * DT;
                 peak[index] = Math.max(peak[index], fox.model.position.y - ground);
                 // Its shade stays on the ground under it, and is gone while it is high over it.
                 if (fox.shade.visible !== pose.lift < 0.9) wrong.push(`frame ${frame}: shade of fox ${index}`);
@@ -2345,16 +2344,14 @@ describe('Sakura small lights and foxes', () => {
             });
         }
         expect(wrong.slice(0, 5)).toEqual([]);
-        expect(leaps).toEqual([1, 1]);
-        // The second goes a moment after the first, and both clear the grass by more than their own height.
-        expect(took[1] - took[0]).toBeGreaterThan(0.2);
-        expect(took[1] - took[0]).toBeLessThan(0.5);
+        expect(leaps).toEqual([1]);
+        // It goes on the frame the moon flares, and clears the grass by more than its own height.
+        expect(began[0]).toBe(DT);
         foxes.foxes.forEach((fox, index) => {
             expect(peak[index]).toBeGreaterThan(fox.mind.paces.leapHigh * 0.9);
             expect(peak[index]).toBeLessThanOrEqual(fox.mind.paces.leapHigh);
         });
-        expect(peak[0]).toBeGreaterThan(peak[1]); // (the larger fox leaps higher)
-        expect(landings).toHaveLength(2);
+        expect(landings).toHaveLength(1);
         landings.forEach((kick) => {
             expect(kick).toMatchObject({ kind: 'burst', age: 0 });
             expect(kick.radius).toBeGreaterThan(1);
@@ -2365,9 +2362,8 @@ describe('Sakura small lights and foxes', () => {
             expect(kick.y).toBeLessThan(sakuraTerrainHeight(kick.x, kick.z));
             expect(kick.y).toBeGreaterThan(sakuraTerrainHeight(kick.x, kick.z) - 0.5);
         });
-        expect(landings[1].frame).toBeGreaterThan(landings[0].frame);
         expect(foxes.kicks).toEqual([]);
-        // What they scrape out of the ground and shake off lifts the petals too, less hard.
+        // What it scrapes out of the ground and shakes off lifts the petals too, less hard.
         foxes.reset();
         const lesser = [];
         foxes.mind.rehearse(['Listen', 'Pounce', 'Dig', 'Shake'], 0, 0);
@@ -2389,10 +2385,10 @@ describe('Sakura small lights and foxes', () => {
         expect(foxes.kicks).toEqual([]);
     });
 
-    it('lights the foxes with the garden\'s own rig: one borrowed mesh and one coat of fur between them', () => {
+    it('lights the fox with the garden\'s own rig: a borrowed mesh and a coat of fur over it', () => {
         const { world, assets } = built;
         const skins = named(world.group, FOX_SKIN);
-        expect(skins).toHaveLength(2);
+        expect(skins).toHaveLength(1);
         let original = null;
         assets.fox.scene.traverse((object) => { if (object.isMesh) original = object; });
         skins.forEach((skin, index) => {
@@ -2403,21 +2399,18 @@ describe('Sakura small lights and foxes', () => {
             // The one borrowed mesh; the model in the bundle keeps the material it came with.
             expect(skin.geometry).toBe(original.geometry);
             expect(skin.material).not.toBe(original.material);
-            // The static shadow map cannot follow them: a soft patch under each does instead.
+            // The static shadow map cannot follow it: a soft patch under it does instead.
             expect(skin.castShadow).toBe(false);
             // It is posed bone by bone: the bones the theme turns are this skin's own.
             const { bones } = world.foxes.foxes[index];
             expect(bones.length).toBeGreaterThan(0);
             expect(bones.every((bone) => skin.skeleton.bones.includes(bone))).toBe(true);
         });
-        // Each fox is its own skeleton over that mesh, with its own eyes: they do not blink together.
-        expect(skins[0].skeleton).not.toBe(skins[1].skeleton);
-        expect(skins[0].material).not.toBe(skins[1].material);
-        expect(world.foxes.uEyes[0]).not.toBe(world.foxes.uEyes[1]);
-        // The fur is the same mesh again, drawn in shells in one call: one geometry of them for the pair.
+        // Its own eyes, which it blinks.
+        expect(world.foxes.uEyes).toHaveLength(1);
+        // The fur is the same mesh again, drawn in shells in one call.
         const furs = named(world.group, /^SakuraFoxFur /);
-        expect(furs).toHaveLength(2);
-        expect(furs[0].geometry).toBe(furs[1].geometry);
+        expect(furs).toHaveLength(1);
         expect(furs[0].geometry.isInstancedBufferGeometry).toBe(true);
         expect(furs[0].geometry.instanceCount).toBe(SAKURA_FOX_FUR.Low);
         expect(furs[0].geometry.attributes.position).toBe(original.geometry.attributes.position);
@@ -2433,8 +2426,7 @@ describe('Sakura small lights and foxes', () => {
             expect(fur.castShadow).toBe(false);
         });
         const shades = named(world.group, /^SakuraFoxShade /);
-        expect(shades[0].material).toBe(shades[1].material);
-        expect(shades[0].geometry).toBe(shades[1].geometry);
+        expect(shades).toHaveLength(1);
         expect(shades[0].material.transparent).toBe(true);
         expect(shades[0].material.depthWrite).toBe(false);
     });

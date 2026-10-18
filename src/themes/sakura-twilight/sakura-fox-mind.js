@@ -1,19 +1,17 @@
 /**
- * Sakura Twilight — what the two foxes do. Three-free and renderer-free: each is a fox mind
- * (../shared/fox-mind.js) on these foxes' own rig (sakura-fox-rig.js), given the garden's
- * ground to go over; sakura-foxes.js draws the poses this resolves.
+ * Sakura Twilight — what the fox does. Three-free and renderer-free: it is a fox mind
+ * (../shared/fox-mind.js) on the fox's own rig (sakura-fox-rig.js), given the garden's ground
+ * to go over; sakura-foxes.js draws the pose this resolves.
  *
- * They keep to the stepping-stone path across the knoll, out along the water's side of it and
- * back along the near side, and they stop where the stone lanterns stand: to sit in the
+ * It keeps to the stepping-stone path across the knoll, out along the water's side of it and
+ * back along the near side, and it stops where the stone lanterns stand: to sit in the
  * lantern's light and look up at the moon, to look about, to stretch — or, having heard
  * something in the grass, to listen with a paw raised, leap on it nose first, dig it out and
- * shake themselves off. They are a pair: when one is near the other it looks round at it, and
- * when one settles the other soon does.
+ * shake itself off.
  *
- * The garden moves them too: the stream of petals a chain winds up sets them running, a hard
- * gust or a big clear startles them into a dash, four lines sends them leaping high over the
- * grass one after the other, and when the wind dies and the lanterns burn low they curl up and
- * sleep.
+ * The garden moves it too: the stream of petals a chain winds up sets it running, a hard gust
+ * or a big clear startles it into a dash, four lines sends it leaping high over the grass, and
+ * when the wind dies and the lanterns burn low it curls up and sleeps.
  */
 
 import { FoxMind, MOUSING, foxCourse } from '../shared/fox-mind.js';
@@ -25,14 +23,18 @@ const smooth = (lo, hi, v) => {
     return t * t * (3 - 2 * t);
 };
 
-/** How far to either side of the middle the path is walked (m), and the pair: its scale, where it starts. */
+/** How far to either side of the middle the path is walked (m). */
 export const SAKURA_FOX_REACH = 9.6;
-export const SAKURA_FOX_PAIR = Object.freeze([
+/**
+ * The garden's foxes: each one's scale, where it starts, its seed. One, alone on its course
+ * (Olov asked for the second of the pair to go, 2026-10-18): the minds keep no room between
+ * foxes on the one course, so a second would walk through it.
+ */
+export const SAKURA_FOX_PLANS = Object.freeze([
     Object.freeze({ scale: 1.12, start: 0.06, seed: 0x5a17 }),
-    Object.freeze({ scale: 0.98, start: 0.56, seed: 0x1c3b }),
 ]);
 /**
- * Where the stone lanterns by the path stand (x, z): the foxes stop beside them, and go round
+ * Where the stone lanterns by the path stand (x, z): the fox stops beside them, and goes round
  * them (sakura-composition.js places them; a test holds the two to each other).
  */
 export const SAKURA_FOX_LANTERNS = Object.freeze([Object.freeze([-6.4, 2.1]), Object.freeze([7.8, 2.2])]);
@@ -42,7 +44,7 @@ const laneOff = (x) => 0.5 + 0.6 * smooth(SAKURA_FOX_REACH - 3, SAKURA_FOX_REACH
 
 /** How near the course passes a lantern (m): its foot, and a fox turned side-on to the path. */
 const CLEAR = 1.1;
-/** How far apart the lanes are by a lantern (m): one fox sits there while the other goes by. */
+/** How far apart the lanes are by a lantern (m): its stop on the way out and on the way back are not one place. */
 const APART = 0.9;
 /** How far along the path, either way, a lane takes to go round a lantern (m). */
 const DETOUR = 4;
@@ -106,7 +108,7 @@ function nearest(line, x, z, from = 0, to = line.length) {
 }
 
 /**
- * The foxes' course: out (toward +x) along the water's side of the path, round, and back along
+ * The fox's course: out (toward +x) along the water's side of the path, round, and back along
  * the near side. Where a stone lantern stands in a lane's way the lanes go round it, whichever
  * way is least out of their way and keeps them off the water: both to one side, or one to
  * either side of it.
@@ -241,11 +243,6 @@ const STOPS = Object.freeze([
     ['Listen', 'LookAround'],
 ]);
 
-/** How near the other has to be for one to look round at it (m). */
-const NOTICE = 4.5;
-/** How much of the course a fox leaves the one ahead of it (m): a fox, and a little grass. */
-const ROOM = 2.6;
-
 export class SakuraFoxMind {
     /**
      * @param {object} [o]
@@ -260,7 +257,7 @@ export class SakuraFoxMind {
         this.course = sakuraFoxCourse({
             pathZ, height, viewer, lanterns,
         });
-        this.foxes = SAKURA_FOX_PAIR.map((plan) => {
+        this.foxes = SAKURA_FOX_PLANS.map((plan) => {
             const rig = createSakuraFoxRig(plan.scale);
             return new FoxMind({
                 rig,
@@ -280,7 +277,6 @@ export class SakuraFoxMind {
                     // (The grass keeps no prints.)
                     printStep: 0,
                     eye: 0.66 * plan.scale,
-                    room: ROOM,
                 },
             });
         });
@@ -291,50 +287,43 @@ export class SakuraFoxMind {
 
     reset(time = 0) {
         this.foxes.forEach((fox) => fox.reset(time));
-        this.leaps = [];
         this.asleep = false;
     }
 
-    /** Where the viewer stands (the camera's place on the ground): they turn to face it. */
+    /** Where the viewer stands (the camera's place on the ground): it turns to face it. */
     setViewer(x, z) {
         this.course.viewer[0] = x;
         this.course.viewer[1] = z;
     }
 
-    /** A hard gust, a big clear: both dash. */
+    /** A hard gust, a big clear: it dashes. */
     startle(strength = 1) {
         this.foxes.forEach((fox) => fox.startle(strength));
     }
 
-    /** Four lines: they leap, one a moment after the other. */
+    /** Four lines: it leaps. */
     pounce(time) {
         this.asleep = false;
-        this.leaps = this.foxes.map((fox, i) => ({ fox, at: time + i * 0.32 }));
+        this.foxes.forEach((fox) => fox.pounce(time));
     }
 
-    /** The wind dies: they curl up where they are. */
+    /** The wind dies: it curls up where it is. */
     sleep(time) {
         this.asleep = true;
-        this.leaps = [];
-        this.foxes.forEach((fox, i) => {
-            // (One settles first; the other a little after.)
-            if (i === 0) fox.sleep(time);
-            else this.leaps.push({ fox, at: time + 0.7, sleep: true });
-        });
+        this.foxes.forEach((fox) => fox.sleep(time));
     }
 
     wake(time) {
         this.asleep = false;
-        this.leaps = this.leaps.filter((leap) => !leap.sleep);
         this.foxes.forEach((fox) => fox.wake(time));
     }
 
-    /** Stop the first fox (or both) and have it do these acts (captures, tuning). */
+    /** Stop the fox (or the one named) and have it do these acts (captures, tuning). */
     rehearse(clips, time, which = 0) {
         this.foxes[which]?.rehearse(clips, time);
     }
 
-    /** Something worth a look, for both. */
+    /** Something worth a look. */
     attend(x, y, z, until, weight = 1) {
         this.foxes.forEach((fox) => fox.attend(x, y, z, until, weight));
     }
@@ -345,36 +334,6 @@ export class SakuraFoxMind {
      * @param {{ power: number, surge: number }} env
      */
     step(dt, time, env) {
-        // What was put off a moment (the second leap, the second fox lying down).
-        this.leaps = this.leaps.filter((leap) => {
-            if (time < leap.at) return true;
-            if (leap.sleep) leap.fox.sleep(time);
-            else leap.fox.pounce(time);
-            return false;
-        });
-        const [a, b] = this.foxes;
-        // They are a pair: near each other and not asked to look elsewhere, each looks round at
-        // the other; and when one has settled at a stop the other is soon minded to as well.
-        const far = Math.hypot(a.pose.x - b.pose.x, a.pose.z - b.pose.z);
-        if (far < NOTICE && far > 0.4) {
-            this.foxes.forEach((fox, i) => {
-                const other = this.foxes[1 - i];
-                if (fox.attending && time < fox.attending.until && fox.attending.pair !== true) return;
-                const weight = 0.75 * (1 - far / NOTICE) + 0.25;
-                fox.attend(other.pose.x, other.pose.y + other.paces.eye, other.pose.z, time + 0.4, weight);
-                fox.attending.pair = true;
-            });
-        }
-        const { length } = this.course;
-        this.foxes.forEach((fox, i) => {
-            const other = this.foxes[1 - i];
-            if (other.mode === 'idle' && other.act && fox.mode === 'gait' && fox.nextStop > time + 3) {
-                fox.nextStop = time + 1.5 + i;
-            }
-            // They go the same way round the one course: each leaves the other room ahead of it.
-            fox.ahead = (((other.s - fox.s) % length) + length) % length;
-            fox.aheadSpeed = other.speed;
-            fox.step(dt, time, env);
-        });
+        this.foxes.forEach((fox) => fox.step(dt, time, env));
     }
 }
