@@ -1104,6 +1104,12 @@ export function applySettingsContext(settingsModal) {
     set('.settings-pause__title', online ? 'Match in progress' : 'Paused');
     let note = name ? `${name} waits where you left it.` : 'Your game waits where you left it.';
     if (online) note = 'Online matches keep going while Settings is open.';
+    // Odyssey: an orb in progress can be retried or left for the map from here.
+    const orb = modeId === 'odyssey' && !mode.isInBoardView ? mode.currentLevelConfig : null;
+    settingsModal.querySelectorAll?.('.settings-pause__odyssey').forEach((button) => {
+        button.hidden = !orb;
+    });
+    if (orb) note = `Orb ${orb.id} · ${orb.name} waits where you left it.`;
     set('#settings-pause-note', note);
     set('#settings-resume-btn > span', online ? 'Back to the match' : 'Resume');
     return context;
@@ -1163,6 +1169,15 @@ function setupSettingsSheet(listen) {
             document.getElementById('serenity-hub-icon')?.click();
         });
     }
+
+    // Odyssey: Retry orb and Back to map close the sheet as Resume does, then hand the choice
+    // to the mode, which owns the veil, the restart and the return to the map.
+    settingsModal.querySelectorAll?.('.settings-pause__odyssey').forEach((button) => {
+        listen(button, 'click', () => {
+            document.getElementById('close-settings')?.click();
+            eventBus.emit(EVENTS.ODYSSEY_PAUSE_ACTION, { action: button.dataset?.odysseyAction });
+        });
+    });
 
     listen(settingsModal, 'input', (event) => {
         if (event.target?.type === 'range') syncRangeFill(event.target);

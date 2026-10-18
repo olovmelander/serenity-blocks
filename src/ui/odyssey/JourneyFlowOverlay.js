@@ -90,6 +90,7 @@ export function createJourneyFlowOverlay({
     autoContinue = true,
     reducedMotion = false,
     nowPlaying = false,
+    orientation = [],
     onChoose = () => {},
     onAutoContinueChange = () => {},
 } = {}) {
@@ -194,6 +195,13 @@ export function createJourneyFlowOverlay({
         if (chapter?.subtitle) chapterCopy.push(el('p', 'ody-flow__subtitle', chapter.subtitle));
         if (chapter?.narrative?.intro) {
             chapterCopy.push(el('p', 'ody-flow__narrative', chapter.narrative.intro));
+        }
+        // A first arrival carries the few things a new traveller needs to know.
+        if (orientation.length) {
+            const notes = el('ul', 'ody-flow__orientation');
+            notes.ariaLabel = 'How the journey works';
+            orientation.forEach((line) => notes.appendChild(el('li', '', line)));
+            chapterCopy.push(notes);
         }
         chapterCopy.forEach((node) => {
             node.hidden = variant !== 'chapter';

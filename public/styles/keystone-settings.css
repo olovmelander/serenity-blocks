@@ -116,6 +116,11 @@
     min-width: 150px;
 }
 
+/* Odyssey's Retry orb and Back to map only exist while an orb is in progress. */
+#settings-modal .settings-pause__actions .sb-btn[hidden] {
+    display: none;
+}
+
 /* In a game, Resume is the way back; Close would only say it twice. */
 #settings-modal[data-context='pause'] #close-settings {
     display: none;

@@ -80,6 +80,10 @@ import { createGoalCompleteOverlay } from '../../ui/odyssey/GoalCompleteOverlay.
 import { installOdysseyShowcaseInput } from '../../ui/odyssey/odyssey-showcase-input.js';
 import { createBoardInfoOverlay } from '../../ui/odyssey/BoardInfoOverlay.js';
 import { createLevelSelectOverlay } from '../../ui/odyssey/LevelSelectOverlay.js';
+import { presentOdysseyFirstArrival } from '../../ui/odyssey/odyssey-first-arrival.js';
+import { startOdysseyNewJourney, wireOdysseyNewJourney } from '../../ui/odyssey/odyssey-new-journey.js';
+import { handleOdysseyPauseAction } from '../../ui/odyssey/odyssey-pause-actions.js';
+import { renderOdysseyNavigatorList } from '../../ui/odyssey/odyssey-navigator-list.js';
 import { createOdysseyMinimap } from '../../ui/odyssey/odyssey-minimap-controls.js';
 import { mountOdysseyBoardLayout } from '../../ui/odyssey/odyssey-board-layout.js';
 import {
@@ -344,6 +348,14 @@ export class OdysseyMode extends BaseGameMode {
             this.boardViewReadyPromise = null;
         }
 
+        // Retry orb and Back to map arrive from the pause sheet once it has closed and resumed play.
+        this._pauseActionUnsubscribe?.();
+        this._pauseActionUnsubscribe = eventBus.on(EVENTS.ODYSSEY_PAUSE_ACTION, (payload) => {
+            this._handlePauseAction(payload);
+        });
+        // A brand-new journey is welcomed by its first chapter before the map is handed over.
+        this._offerFirstArrival();
+
         // Console debug handles — DEV/capture-tooling only. testOdysseyLevel unlocks levels
         // into the real save, so exposing it in the shipped game makes the Steam leaderboard
         // console-gameable (masterplan §2 #4). Gated behind DEV / capture-harness flags.
@@ -600,6 +612,9 @@ export class OdysseyMode extends BaseGameMode {
      */
     async onDeactivate() {
         this._odysseyAudioActive = false;
+        this._pauseActionUnsubscribe?.();
+        this._pauseActionUnsubscribe = null;
+        this._firstArrival?.cancel();
         releaseOdysseyLevelMusic(this);
         if (this.boardController) releaseOdysseyBoardMusic(this.boardController);
         cancelOdysseyEntryPresence(this);
@@ -3586,95 +3601,14 @@ export class OdysseyMode extends BaseGameMode {
         document.getElementById('odyssey-back-btn').addEventListener('click', () => {
             this._exitToMenu();
         });
+        wireOdysseyNewJourney(container, () => this.startNewJourney());
 
         return container;
     }
 
-    /**
-     * Update the level select UI with current progress
-     * @private
-     */
+    /** Fill the navigator's chapter and orb list (ui/odyssey/odyssey-navigator-list.js). */
     _updateLevelSelectUI(focusChapter = null) {
-        const progress = this.odysseyState.getProgressSummary();
-
-        // Update header stats
-        document.getElementById('odyssey-total-stars').textContent = progress.totalStars;
-        document.getElementById('odyssey-max-stars').textContent = progress.maxStars;
-        document.getElementById('odyssey-progress-pct').textContent = progress.overallProgress;
-        const progressFill = document.getElementById('odyssey-progress-fill');
-        if (progressFill) progressFill.style.width = `${progress.overallProgress}%`;
-
-        // Build chapters
-        const chaptersContainer = document.getElementById('odyssey-chapters');
-        chaptersContainer.innerHTML = '';
-
-        const chapters = this.levelRegistry.getAllChapters();
-
-        for (const chapter of chapters) {
-            const chapterProgress = this.odysseyState.getChapterProgress(chapter.id);
-            const levels = this.levelRegistry.getLevelsInChapter(chapter.id);
-
-            const chapterEl = document.createElement('div');
-            chapterEl.className = 'odyssey-chapter';
-            if (focusChapter === chapter.id) {
-                chapterEl.classList.add('current');
-            }
-            if (chapterProgress.maxStars > 0 && chapterProgress.stars === chapterProgress.maxStars) {
-                chapterEl.classList.add('complete');
-            }
-            chapterEl.innerHTML = `
-                <div class="odyssey-chapter-header">
-                    <span class="odyssey-chapter-name"><small>Chapter ${chapter.id}</small>${chapter.name}</span>
-                    <span class="odyssey-chapter-stars">${chapterProgress.stars}/${chapterProgress.maxStars} ★</span>
-                </div>
-                <div class="odyssey-levels" id="odyssey-chapter-${chapter.id}-levels"></div>
-            `;
-
-            chaptersContainer.appendChild(chapterEl);
-
-            const header = chapterEl.querySelector('.odyssey-chapter-header');
-            if (header) {
-                header.style.cursor = 'pointer';
-                header.addEventListener('click', () => {
-                    this.navigateToChapter(chapter.id).catch((error) => {
-                        console.warn(`[Odyssey] Chapter navigation failed for ${chapter.id}:`, error);
-                    });
-                });
-            }
-
-            // Add level buttons
-            const levelsContainer = document.getElementById(`odyssey-chapter-${chapter.id}-levels`);
-
-            for (const level of levels) {
-                const isUnlocked = this.odysseyState.isLevelUnlocked(level.id);
-                const isCompleted = this.odysseyState.isLevelCompleted(level.id);
-                const stars = this.odysseyState.getLevelStars(level.id);
-                const isCurrent = level.id === progress.currentLevel;
-
-                const btn = document.createElement('button');
-                btn.className = 'odyssey-level-btn';
-                if (!isUnlocked) btn.classList.add('locked');
-                if (isCompleted) btn.classList.add('completed');
-                if (isCurrent && isUnlocked && !isCompleted) btn.classList.add('current');
-
-                btn.innerHTML = `
-                    <span>${level.id}</span>
-                    <span class="odyssey-level-stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span>
-                `;
-
-                btn.title = `${level.name}\n${level.metadata.description}`;
-
-                if (isUnlocked) {
-                    btn.addEventListener('click', () => {
-                        this._launchLevelFromNavigator(level.id).catch((error) => {
-                            console.warn(`[Odyssey] Navigator launch failed for ${level.id}:`, error);
-                        });
-                    });
-                }
-
-                levelsContainer.appendChild(btn);
-            }
-        }
+        renderOdysseyNavigatorList(this, focusChapter);
     }
 
     /**
@@ -3849,6 +3783,24 @@ export class OdysseyMode extends BaseGameMode {
      */
     async _exitToMenu() {
         eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
+    }
+
+    /** Retry orb / Back to map chosen on the pause sheet (ui/odyssey/odyssey-pause-actions.js). */
+    _handlePauseAction(payload) {
+        return handleOdysseyPauseAction(this, payload);
+    }
+
+    /** The Chapter 1 arrival for a journey nothing has been played in yet. Never throws. */
+    _offerFirstArrival() {
+        return presentOdysseyFirstArrival(this).catch((error) => {
+            console.warn('[Odyssey] First arrival could not be shown:', error);
+            return null;
+        });
+    }
+
+    /** Erase the campaign save and begin again at Orb 1 (ui/odyssey/odyssey-new-journey.js). */
+    startNewJourney() {
+        return startOdysseyNewJourney(this);
     }
 
     // =============================

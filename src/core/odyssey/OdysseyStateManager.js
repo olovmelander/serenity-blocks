@@ -100,6 +100,9 @@ export class OdysseyStateManager {
         this.completedLevels = new Map(); // levelId → LevelCompletion
         this.retiredCompletions = {}; // Stable retired identity → historical completion
 
+        // Onboarding marks travel with the journey; a new journey starts them over
+        this.onboarding = { arrivalSeen: false };
+
         // Statistics
         this.statistics = {
             totalPlayTime: 0,
@@ -137,6 +140,7 @@ export class OdysseyStateManager {
             completedLevels: Object.fromEntries(this.completedLevels),
             retiredCompletions: { ...this.retiredCompletions },
             statistics: { ...this.statistics },
+            onboarding: { ...this.onboarding },
             lastSaveDate: new Date().toISOString(),
         };
     }
@@ -192,6 +196,7 @@ export class OdysseyStateManager {
             this.completedLevels = new Map(Object.entries(data.completedLevels || {}));
             this.retiredCompletions = { ...data.retiredCompletions };
             this.statistics = { ...this.statistics, ...data.statistics };
+            this.onboarding = { arrivalSeen: data.onboarding?.arrivalSeen === true };
             this._normalizeProgressState();
 
             console.log('[OdysseyState] Progress loaded successfully');
@@ -255,6 +260,7 @@ export class OdysseyStateManager {
         this.unlockedLevels = new Set([1]);
         this.completedLevels = new Map();
         this.retiredCompletions = {};
+        this.onboarding = { arrivalSeen: false };
         this.statistics = {
             totalPlayTime: 0,
             totalAttempts: 0,
@@ -278,6 +284,23 @@ export class OdysseyStateManager {
     // =============================
     // Level Progression
     // =============================
+
+    /** A journey with nothing played yet: no orb cleared and no attempt recorded. */
+    isFreshJourney() {
+        return this.completedLevels.size === 0 && (this.statistics.totalAttempts || 0) === 0;
+    }
+
+    /** Whether the Chapter 1 arrival has already welcomed this journey. */
+    hasSeenArrival() {
+        return this.onboarding?.arrivalSeen === true;
+    }
+
+    /** Remember the welcome, so it shows once per journey even if the player leaves at once. */
+    markArrivalSeen() {
+        if (this.hasSeenArrival()) return;
+        this.onboarding = { ...this.onboarding, arrivalSeen: true };
+        this.save({ emitEvent: false });
+    }
 
     /**
      * Check if a level is unlocked

@@ -497,6 +497,29 @@
 /* Arrival focuses the static heading for reading; only actions need the focus ring. */
 .ody-flow__subtitle { margin: 16px 0 0; color: var(--ody-flow-color); font-size: 1.08rem; line-height: 1.5; }
 .ody-flow__narrative { max-width: 55ch; margin: 16px 0 0; color: #e5deeb; font-size: 0.95rem; line-height: 1.65; text-wrap: pretty; }
+/* A first arrival's orientation: how orbs, stars, gems and the pause sheet work. */
+.ody-flow__orientation {
+    list-style: none;
+    max-width: 58ch;
+    margin: 18px 0 0;
+    padding: 14px 0 0;
+    border-top: 1px solid rgba(255, 246, 233, 0.12);
+    color: #c8c0d7;
+    font-size: 0.88rem;
+    line-height: 1.55;
+}
+.ody-flow__orientation li { position: relative; padding-left: 18px; }
+.ody-flow__orientation li + li { margin-top: 6px; }
+.ody-flow__orientation li::before {
+    content: '✦';
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: var(--ody-flow-color);
+    font-size: 0.7em;
+    line-height: 2.2;
+}
+.ody-flow[data-layout='chapter'] .ody-flow__orientation { animation: ody-flow-rise 800ms 1000ms var(--ody-ease-out) backwards; }
 .ody-flow[data-layout='chapter'] .ody-flow__destination { border-left: 1px solid var(--ody-flow-color); padding-left: 16px; margin-top: 24px; }
 .ody-flow[data-layout='chapter'] .ody-flow__changes { margin-left: 0; max-width: 55ch; }
 .ody-flow[data-layout='chapter'] .ody-flow__status:empty { display: none; }
