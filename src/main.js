@@ -4359,13 +4359,11 @@ class SerenityBlocks {
         if (this.gameModeManager && this.gameModeManager.getCurrentMode()?.isRunning) {
             const currentMode = this.gameModeManager.getCurrentMode();
 
-            // In Infinity Mode, check if we're in exploration mode (minimap drag)
-            // If so, ignore P key since the game is already paused during exploration
-            if (currentMode.getModeId && currentMode.getModeId() === 'infinity') {
-                if (currentMode.isInExplorationMode) {
-                    console.log('[Main] Infinity Mode in exploration mode - P key ignored');
-                    return;
-                }
+            // Looking around the tower (Infinity, or an Odyssey tall well) already holds the
+            // game: P is ignored while the look lasts.
+            if (currentMode.isInExplorationMode) {
+                console.log('[Main] Looking around the tower - P key ignored');
+                return;
             }
 
             // Pause and show settings modal (same behavior for all modes)

@@ -17,13 +17,15 @@
  *
  * InfinityMode owns the game: pausing, resuming and the session. It gives the director a `host`
  * of callbacks and calls start() / stop(); the director never pauses the game itself, it asks.
+ * Odyssey's tall wells use the same director (core/game-modes/odyssey-tower-look.js): a well
+ * that scrolls less than the sky's reach holds the whole journey within its range (towerScale).
  * Reduced motion (Settings or the system): no parallax, crane, lean or streaks; the light, the
  * sounds and the slow clock stay.
  */
 
 import { TowerFlight } from './tower-flight.js';
 import {
-    ASCENT, clamp, crossings, milestoneHeights, themeShift, viewMetrics,
+    ASCENT, clamp, crossings, milestoneHeights, themeShift, tickRows, towerScale, viewMetrics,
 } from './ascent-model.js';
 import { TowerMemory } from './tower-memory.js';
 import { AscentAudio } from './ascent-audio.js';
@@ -65,7 +67,8 @@ export class InfinityAscent {
      *   getBoardScene, getGameState, getMinimap, getBoardJuice, isRunning, isExternallyPaused,
      *   isExploring, beginExploration (→ Promise<boolean>), endExploration({reason}),
      *   homeTop, summitRow, updateMinimapView(top), settings, soundManager, themeManager,
-     *   gamepadController
+     *   gamepadController; optional milestones() (the floors' heights; by default the shares of
+     *   the game's ceiling, `maxRows`)
      */
     constructor(host) {
         this.host = host;
@@ -414,13 +417,15 @@ export class InfinityAscent {
         }
         const looking = frame.phase === 'free' || frame.phase === 'landing' || frame.phase === 'landed';
 
-        // Where the view is, and what it passes.
+        // Where the view is, and what it passes (a short well holds the whole journey).
         const summitRow = this.host.summitRow?.() ?? boardLength;
+        const scale = towerScale(boardLength - rows);
         const m = viewMetrics({
-            top: frame.top, home, visibleRows: rows, boardLength, summitRow,
+            top: frame.top, home, visibleRows: rows, boardLength, summitRow, scale,
         });
+        const milestones = this._milestones(state);
         this._events(frame.events);
-        if (looking && Number.isFinite(this.prevHeight)) this._passing(this.prevHeight, m);
+        if (looking && Number.isFinite(this.prevHeight)) this._passing(this.prevHeight, m, scale, milestones);
         this.prevHeight = looking ? m.height : NaN;
         if (frame.phase === 'landed') this._endLook('landed');
         this.prevPhase = frame.phase;
@@ -446,7 +451,7 @@ export class InfinityAscent {
         const boardHeight = this.overlay?.height || this.viewport.height * 0.8;
         const rowPx = boardHeight / rows;
         const vh = this.viewport.height || 900;
-        const shift = motion * this.presence * themeShift(m.riseRows, rowPx, vh);
+        const shift = motion * this.presence * themeShift(m.riseRows, rowPx, vh, scale);
         this._applyThemeShift(shift);
         const rowScreen = rowPx / vh;
         const sky = m.sky * this.presence;
@@ -490,6 +495,8 @@ export class InfinityAscent {
             caption: near ? this.memory.caption(near) : null,
             captionHeight: near ? near.height : null,
             firstLook: looking && this.looks <= FIRST_LOOKS,
+            tickRows: tickRows(scale),
+            milestones,
         });
         if (looking) this.host.updateMinimapView?.(frame.top);
 
@@ -535,21 +542,27 @@ export class InfinityAscent {
         }
     }
 
+    /** The floors' heights: the host's, or the shares of the game's ceiling. @param {any} state */
+    _milestones(state) {
+        const heights = this.host.milestones?.();
+        return Array.isArray(heights) ? heights : milestoneHeights(state?.maxRows || 1000);
+    }
+
     /**
-     * Ticks every ten rows, bells at the milestones, a shimmer past the summit.
+     * Ticks every ten rows (five in a short well), bells at the milestones, a shimmer past the
+     * summit. A short well's ticks climb in pitch as its journey does.
      * @param {number} from height last frame @param {import('./ascent-model.js').ViewMetrics} m
+     * @param {number} scale towerScale() @param {number[]} milestones
      */
-    _passing(from, m) {
-        const lines = crossings(from, m.height, ASCENT.TICK_ROWS);
+    _passing(from, m, scale, milestones) {
+        const lines = crossings(from, m.height, tickRows(scale));
         if (!lines.length && !(from < m.summitHeight && m.height >= m.summitHeight)) return;
-        const state = this.host.getGameState?.();
-        const milestones = milestoneHeights(state?.maxRows || 1000);
         for (const h of lines) {
             if (milestones.includes(h)) {
                 this.audio.chime(m.summitHeight >= h);
                 this.haptics.pulse('milestone');
             } else {
-                this.audio.tick(h);
+                this.audio.tick(h / scale);
                 this.haptics.pulse('tick');
             }
         }
