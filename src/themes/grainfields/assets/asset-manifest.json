@@ -1,0 +1,286 @@
+{
+  "schemaVersion": 1,
+  "author": "Serenity Blocks original procedural Blender authoring",
+  "license": "MIT-project-local",
+  "glTFUpAxis": "Y",
+  "assets": [
+    {
+      "file": "birch-grove-a.glb",
+      "bytes": 81724,
+      "sha256": "bae36891156e93f658b156b0427256553a44151abf3085d5a74707ae3d3efc64",
+      "kind": "tree",
+      "species": "birch",
+      "role": "grove",
+      "sites": 170,
+      "barkTriangles": 3072
+    },
+    {
+      "file": "birch-grove-b.glb",
+      "bytes": 88276,
+      "sha256": "2667d89dfa22378f3dc719b67bb93a5cdbda20dbfb4bff1c012533dda2ef8be0",
+      "kind": "tree",
+      "species": "birch",
+      "role": "grove",
+      "sites": 163,
+      "barkTriangles": 3342
+    },
+    {
+      "file": "birch-grove-c.glb",
+      "bytes": 132340,
+      "sha256": "2b7d55dcf8ca2f252c60133e6cd5c3c48a3fda367b2713d77d28c8bd573b827d",
+      "kind": "tree",
+      "species": "birch",
+      "role": "grove",
+      "sites": 263,
+      "barkTriangles": 5164
+    },
+    {
+      "file": "grainfields-foliage.glb",
+      "bytes": 24032,
+      "sha256": "3af6e770726bf8fb1c59ab87be59e8481fe73b30da183f1ceaea30bf835b30be",
+      "kind": "foliage",
+      "meshes": {
+        "birch_sprig_0": {
+          "leaves": 14,
+          "triangles": 80
+        },
+        "birch_sprig_1": {
+          "leaves": 12,
+          "triangles": 72
+        },
+        "spruce_frond_0": {
+          "shoots": 7,
+          "triangles": 64
+        },
+        "spruce_frond_1": {
+          "shoots": 7,
+          "triangles": 64
+        },
+        "larch_tuft_0": {
+          "tufts": 8,
+          "triangles": 96
+        },
+        "larch_tuft_1": {
+          "tufts": 7,
+          "triangles": 84
+        }
+      }
+    },
+    {
+      "file": "grainfields-horse.glb",
+      "bytes": 71732,
+      "sha256": "067b25062240dcb40d2b4420931cd3556148c4caefa372f1e20e1f1e0f35cdc3",
+      "kind": "horse",
+      "name": "grainfields-horse",
+      "breed": "Hokkaido native horse (Dosanko)",
+      "triangles": 4982,
+      "vertices": 2493,
+      "parts": {
+        "body": 0,
+        "neck": 1,
+        "frontLeft": 2,
+        "frontRight": 3,
+        "hindLeft": 4,
+        "hindRight": 5,
+        "tail": 6
+      },
+      "partScale": 8,
+      "pivots": {
+        "neck": [
+          0.0,
+          1.195,
+          0.545
+        ],
+        "frontLeft": [
+          0.14,
+          1.0,
+          0.48
+        ],
+        "frontRight": [
+          -0.14,
+          1.0,
+          0.48
+        ],
+        "hindLeft": [
+          0.15,
+          1.0,
+          -0.5
+        ],
+        "hindRight": [
+          -0.15,
+          1.0,
+          -0.5
+        ],
+        "tail": [
+          0.0,
+          1.24,
+          -0.72
+        ]
+      },
+      "withersHeight": 1.3512,
+      "bodyLength": 1.6186,
+      "length": 2.4174,
+      "height": 1.9707
+    },
+    {
+      "file": "grainfields-impostors.png",
+      "bytes": 489175,
+      "sha256": "1590777da87325baf50a843aba4a35a6e3eaab9077f8a4c5234c7c3f514d3d69",
+      "kind": "impostors",
+      "atlasWidth": 1120,
+      "atlasHeight": 256,
+      "tiles": [
+        {
+          "asset": "birch-grove-a",
+          "species": "birch",
+          "x": 0,
+          "pixels": 120,
+          "width": 8.02219485825185,
+          "height": 17.114015697603946,
+          "trunk": -0.029171037049868214,
+          "coverage": 0.22786458333333334
+        },
+        {
+          "asset": "birch-grove-b",
+          "species": "birch",
+          "x": 120,
+          "pixels": 144,
+          "width": 8.01138517963578,
+          "height": 14.242462541574723,
+          "trunk": -0.046076987070542516,
+          "coverage": 0.2419976128472222
+        },
+        {
+          "asset": "birch-grove-c",
+          "species": "birch",
+          "x": 264,
+          "pixels": 160,
+          "width": 11.783150844323366,
+          "height": 18.853041350917387,
+          "trunk": -0.05361326109976463,
+          "coverage": 0.2182861328125
+        },
+        {
+          "asset": "spruce-grove-a",
+          "species": "spruce",
+          "x": 424,
+          "pixels": 88,
+          "width": 6.989784692770071,
+          "height": 20.333919106240206,
+          "trunk": -0.013849412801915782,
+          "coverage": 0.3576438210227273
+        },
+        {
+          "asset": "spruce-grove-b",
+          "species": "spruce",
+          "x": 512,
+          "pixels": 80,
+          "width": 7.354213787336184,
+          "height": 23.53348411947579,
+          "trunk": -0.04253775164718582,
+          "coverage": 0.349658203125
+        },
+        {
+          "asset": "spruce-grove-c",
+          "species": "spruce",
+          "x": 592,
+          "pixels": 88,
+          "width": 5.897765055325263,
+          "height": 17.157134706400765,
+          "trunk": 0.03988965292454045,
+          "coverage": 0.3753995028409091
+        },
+        {
+          "asset": "larch-grove-a",
+          "species": "larch",
+          "x": 680,
+          "pixels": 152,
+          "width": 13.42136241439179,
+          "height": 22.604399855817753,
+          "trunk": 0.027841918403807363,
+          "coverage": 0.19384765625
+        },
+        {
+          "asset": "larch-grove-b",
+          "species": "larch",
+          "x": 832,
+          "pixels": 120,
+          "width": 12.016658742323663,
+          "height": 25.63553865029048,
+          "trunk": 0.0058803116392822635,
+          "coverage": 0.17171223958333334
+        },
+        {
+          "asset": "larch-grove-c",
+          "species": "larch",
+          "x": 952,
+          "pixels": 168,
+          "width": 12.814978720712935,
+          "height": 19.527586622038758,
+          "trunk": -0.011036025860020546,
+          "coverage": 0.21707589285714285
+        }
+      ]
+    },
+    {
+      "file": "larch-grove-a.glb",
+      "bytes": 206864,
+      "sha256": "28f3aa1e02e85d2f5060f5e8295e0cb0b4ad3c9b3ebbd9a5f507d31b489a8705",
+      "kind": "tree",
+      "species": "larch",
+      "role": "grove",
+      "sites": 244,
+      "barkTriangles": 7980
+    },
+    {
+      "file": "larch-grove-b.glb",
+      "bytes": 187428,
+      "sha256": "46ed226c30e364004b049d4cbb286f552161aaa885c4806952ac36412d243daf",
+      "kind": "tree",
+      "species": "larch",
+      "role": "grove",
+      "sites": 211,
+      "barkTriangles": 7226
+    },
+    {
+      "file": "larch-grove-c.glb",
+      "bytes": 187168,
+      "sha256": "14830007fdeec45b7ecaf8eff3a0cc129f6055cdcd5408d2622321cd9728e0e6",
+      "kind": "tree",
+      "species": "larch",
+      "role": "grove",
+      "sites": 231,
+      "barkTriangles": 7220
+    },
+    {
+      "file": "spruce-grove-a.glb",
+      "bytes": 137332,
+      "sha256": "e6d2784ad032964120a6cf4e2935883d776e766d1d17fdba71890497386ad532",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 209,
+      "barkTriangles": 5384
+    },
+    {
+      "file": "spruce-grove-b.glb",
+      "bytes": 137096,
+      "sha256": "8cda1ce538190f07e333b5cdb18844c098f200438c8c8e31b8117d22428a67fe",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 201,
+      "barkTriangles": 5384
+    },
+    {
+      "file": "spruce-grove-c.glb",
+      "bytes": 134244,
+      "sha256": "d1b733d5bfcea50ca427c8550b13814f5cd9bcb2a4803ea993404aafde7623de",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 208,
+      "barkTriangles": 5258
+    }
+  ]
+}

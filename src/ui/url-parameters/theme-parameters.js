@@ -94,6 +94,8 @@ const captureThemes = [
 
     ['geode', 'geode', 'Geode', 'shell, druzy, crystals, glints, beams, air, shards, wisps, rowBeams'],
 
+    ['grainfields', 'grainfields', 'Grainfields', 'grain, land, lapporten, fort, trees, herd, geese, sky, beams, motes'],
+
     ['halcyon-apex',
         'halcyonApex',
         'Halcyon Apex',
@@ -267,7 +269,6 @@ const rendererAliases = [
     ['fall', 'fallForceWebGL', 'Fall', ON],
     ['forest', 'forestForceWebGL', 'Forest', ON],
     ['golden-forest', 'goldenForestForceWebGL', 'Golden Forest', ON],
-    ['misty-lake', 'mistyLakeForceWebGL', 'Misty Lake', ON],
     ['moonlit-forest', 'moonlitForceWebGL', 'Moonlit Forest', ON],
     ['parhelion', 'parhelionForceWebGL', 'Parhelion', ON],
     ['sakura-twilight', 'sakuraForceWebGL', 'Sakura Twilight', ON],
@@ -708,28 +709,6 @@ export const THEME_URL_PARAMETERS = [
         'road,rails',
         [source('chromadelic-highway'), 'src/themes/chromadelic-highway/chromadelic-highway-world.js'],
     ),
-    toggle('mistyLakeNoPost', 'Misty Lake', 'Disable bloom post-processing.', [source('misty-lake')]),
-    toggle(
-        'mistyLakeNoReflection',
-        'Misty Lake',
-        'Disable reflection even when the opt-in reflection flag is set.',
-        [source('misty-lake')],
-    ),
-
-    ...aliases(
-        ['mistyLakeReflection',
-            'mistyLakeEnableReflection'],
-        'Misty Lake',
-        'Opt in to water reflection.',
-        [source('misty-lake')],
-    ),
-
-    ...['mistyLakeNoMRT', 'mistyLakeNoCompute', 'mistyLakeDebug'].map((name) => toggle(
-        name,
-        'Misty Lake / compatibility',
-        'Compatibility parameter; currently no effect.',
-        [source('misty-lake')],
-    )),
     numeric(
         'bloodMoonTime',
         'Blood Moon',

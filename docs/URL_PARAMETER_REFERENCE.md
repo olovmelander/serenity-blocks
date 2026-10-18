@@ -5,12 +5,13 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **734 parameter names in 875 scoped entries**. The `fluid-dreams`
+The catalog documents **735 parameter names in 900 scoped entries**. The `fluid-dreams`
 playground effect added `quads` (four-line clears played before the frame); Sakura Twilight
 keeping one fox retired `foxWhich`; Rainbow Terraces (Sky Children until 2026-10-18) added
 `cardAlpha` and took the V2 detail effect's four entries with it. The preview flags
 `faultLines` and `waystones` were retired on 2026-10-18, when Waystones was removed and Fault
-Lines (now Stillfall) joined the main menu.
+Lines (now Stillfall) joined the main menu. Grainfields (in Misty Lake's place, 2026-10-18)
+retired Misty Lake's eight flags and added its own theme flags and playground effect.
 The 2026-10-08 audit counted 682 names in 733 entries and left every runtime reader
 unchanged; the theme rebuilds merged since then account for the difference. The Koi Pond
 rebuild retired that theme's old readers (`koiQuality`, `koiPerf`, `koiProfile`,
@@ -188,6 +189,16 @@ own: `phase` (`boot`, `open`, `title` or `menu`), `opening` (seconds into the op
 entry with them. `introV2=0` and `forceWebGL=1` still put the intro on its fallback, which is
 now the same world on three's WebGL2 backend. Use `effect=intro-world&t=23.85` to see the
 first stack lock.
+
+Grainfields (2026-10-18), a new theme in Misty Lake's place, adds the capture flags
+`grainfieldsForceWebGL`, `grainfieldsTime`, `grainfieldsFixedDt`, `grainfieldsParts` and
+`grainfieldsFalseColor`, plus the `grainfields` playground effect, which reads 26 parameters:
+`air` (switch the light in the air off) and `airGain` (scale it) are names of its own, and `hour`
+holds the light on the wheel of the day. The eight `mistyLake*` readers of the theme it replaces
+(`ForceWebGL`, `NoPost`, `NoReflection`, `Reflection`, `EnableReflection`, `NoMRT`,
+`NoCompute` and `Debug`) are retired with it. Use `effect=grainfields&t=10&hour=<place>` for a
+deterministic playground capture; the part names are `grain`, `land`, `lapporten`, `trees`, `sky`,
+`beams` and `motes`.
 
 Use `?` for the first URL parameter and `&` for additional ones, before any `#` fragment:
 
