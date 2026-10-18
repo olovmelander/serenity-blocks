@@ -102,6 +102,9 @@ export function createResultsModal({
     if (results.duel) {
         stats.unshift({ label: 'Knockouts', value: `${results.duel.playerFrags}–${results.duel.botFrags}` });
     }
+    if (results.gemsEarned > 0) {
+        stats.push({ label: 'Gems', value: `+${results.gemsEarned} · ${results.gemCount ?? '?'} in hand` });
+    }
     const statsContainer = el('dl', 'sb-ody-facts');
     stats.forEach((stat) => {
         const fact = el('div', 'sb-ody-fact');

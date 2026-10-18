@@ -110,6 +110,18 @@
     font: 500 1rem / 1.55 var(--sb-font-text);
 }
 
+/* A fall's gem: the mercy the next attempt can spend. */
+.sb-ody-gems {
+    margin: -10px 0 22px;
+    color: var(--sb-text-muted);
+    font: 500 0.875rem / 1.5 var(--sb-font-text);
+}
+
+.sb-ody-gems strong {
+    color: var(--sb-lavender);
+    font-weight: 700;
+}
+
 .sb-ody-note {
     display: flex;
     flex-direction: column;
@@ -720,6 +732,11 @@
     border-color: rgba(var(--sb-gold-rgb), 0.3);
 }
 
+#odyssey-board-overlay #odyssey-header-gems {
+    color: var(--sb-lavender);
+    border-color: rgba(var(--sb-lavender-rgb), 0.3);
+}
+
 #odyssey-board-overlay .odyssey-chapter-arrival-card {
     position: absolute;
     left: 50%;
@@ -845,6 +862,12 @@
 #odyssey-board-overlay .level-stars[data-earned='true'] {
     color: var(--sb-gold);
     text-shadow: 0 0 14px rgba(var(--sb-gold-rgb), 0.45);
+}
+
+#odyssey-board-overlay .level-aided {
+    margin: -8px 0 14px;
+    color: var(--sb-lavender);
+    font: 500 0.8125rem / 1.5 var(--sb-font-text);
 }
 
 #odyssey-board-overlay .level-objectives {
@@ -1209,6 +1232,88 @@
     color: var(--sb-text-muted);
     font-size: 12px;
     line-height: 1.6;
+}
+
+/* Gems: the wallet count and three abilities, each usable once per attempt. */
+#odyssey-hud .gems-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+#odyssey-hud .gems-count {
+    color: var(--sb-lavender);
+    font: 700 13px / 1.4 var(--sb-font-text);
+    font-variant-numeric: tabular-nums;
+}
+
+#odyssey-hud .gems-section[data-empty='true'] .gems-count {
+    color: var(--sb-text-faint);
+}
+
+#odyssey-hud .gems-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+#odyssey-hud .gem-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--sb-line);
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    color: var(--sb-text);
+    font: 600 12px / 1.4 var(--sb-font-text);
+    text-align: left;
+    cursor: pointer;
+}
+
+#odyssey-hud .gem-chip:hover:not(:disabled) {
+    border-color: rgba(var(--sb-lavender-rgb), 0.6);
+    background: rgba(var(--sb-lavender-rgb), 0.12);
+}
+
+#odyssey-hud .gem-chip:focus-visible {
+    outline: 2px solid var(--sb-keystone);
+    outline-offset: 2px;
+}
+
+#odyssey-hud .gem-chip:disabled {
+    cursor: default;
+    color: var(--sb-text-faint);
+}
+
+#odyssey-hud .gem-chip[data-state='active'],
+#odyssey-hud .gem-chip[data-state='armed'] {
+    color: var(--sb-lavender);
+    border-color: rgba(var(--sb-lavender-rgb), 0.55);
+}
+
+#odyssey-hud .gem-chip__name {
+    flex: 1;
+}
+
+#odyssey-hud .gem-chip__state {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+#odyssey-hud .gem-chip .sb-kbd[hidden] {
+    display: none;
+}
+
+#odyssey-hud .gems-note {
+    margin: 8px 0 0;
+    color: var(--sb-text-muted);
+    font-size: 11px;
+    line-height: 1.5;
 }
 
 #odyssey-hud.is-paused {

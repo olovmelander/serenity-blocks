@@ -15,6 +15,7 @@ import { COLS, ROWS } from '../core/constants.js';
 import { advanceDas, advanceSoftDrop } from '../core/das.js';
 import { clearPlayerInput, enqueueInputEdge } from '../core/player-input-state.js';
 import { createOdysseyShowcasePadControls } from './odyssey/odyssey-showcase-input.js';
+import { createOdysseyGemPadControls } from './odyssey/odyssey-gem-input.js';
 import { isGameOverArmed } from './game-over-arm.js';
 
 const INSTANT_DAS_REPEAT_LIMIT = COLS;
@@ -138,6 +139,7 @@ export class GamepadController {
         this.odysseyHeldInputs = [null, null, null, null];
         this.menuOwners = [null, null, null, null]; // the menu that owned each pad last poll
         this.odysseyShowcaseControls = null;
+        this.odysseyGemControls = null;
         this.connected = [false, false, false, false];
         this.deadzone = 0.25; // Analog stick deadzone
         this.pollInterval = null;
@@ -361,7 +363,10 @@ export class GamepadController {
         this.odysseySheetElements[slot] = null;
         this.odysseyHeldInputs[slot] = null;
         this.menuOwners[slot] = null;
-        if (slot === 0) this.odysseyShowcaseControls?.reset();
+        if (slot === 0) {
+            this.odysseyShowcaseControls?.reset();
+            this.odysseyGemControls?.reset();
+        }
         this.clearFixedTickInput({ dropPhysicalLatches: true, slot });
         this.clearDasTimers(slot);
 
@@ -672,6 +677,7 @@ export class GamepadController {
             }
 
             if (this.odysseyShowcaseControls?.process(freshGamepad, slot)) continue;
+            this.odysseyGemControls?.process(freshGamepad, slot);
 
             // The Serenity Hub is a top-layer input owner. Start/game-over
             // modals and game-mode cards can remain visible underneath it, so
@@ -760,6 +766,16 @@ export class GamepadController {
         this.odysseyShowcaseControls = controls;
         controls.dispose = () => {
             if (this.odysseyShowcaseControls === controls) this.odysseyShowcaseControls = null;
+        };
+        return controls;
+    }
+
+    /** One attempt's gem abilities on the first controller's spare buttons. */
+    setOdysseyGemControls(callbacks) {
+        const controls = createOdysseyGemPadControls(this, callbacks);
+        this.odysseyGemControls = controls;
+        controls.dispose = () => {
+            if (this.odysseyGemControls === controls) this.odysseyGemControls = null;
         };
         return controls;
     }
@@ -2242,6 +2258,7 @@ export class GamepadController {
      */
     clearAllDasTimers() {
         this.odysseyShowcaseControls?.reset();
+        this.odysseyGemControls?.reset();
         this.clearFixedTickInput();
         for (let i = 0; i < this.gamepads.length; i++) {
             this.clearDasTimers(i);

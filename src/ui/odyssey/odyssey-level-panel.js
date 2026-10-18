@@ -75,6 +75,13 @@ export function renderOdysseyLevelPanel({
         starsNode.setAttribute?.('aria-label', `${stars} of 3 stars earned`);
     }
 
+    const aidedNode = doc.getElementById('level-panel-aided');
+    if (aidedNode) {
+        const aided = completion?.aided === true;
+        aidedNode.textContent = aided ? 'Cleared with a gem\u2019s help. An unaided clear earns its stars.' : '';
+        aidedNode.hidden = !aided;
+    }
+
     setText(doc, 'level-panel-goal', formatOdysseyMapObjective(level.victory?.primary));
     const starGoals = ['one', 'two', 'three'].map((tier, index) => (
         level.stars?.[tier] ? `${index + 1} ★ ${formatOdysseyStarCondition(level.stars[tier], index)}` : null

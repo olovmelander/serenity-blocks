@@ -14,6 +14,9 @@ import {
     ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds, snapshotLegacyOdysseyThemes, migrateV3OdysseyCampaign,
     migrateV4OdysseyCampaign,
 } from './odyssey-progress-schema.js';
+import {
+    ODYSSEY_GEMS_PER_CLEAR, ODYSSEY_GEMS_PER_FALL, awardOdysseyGems, normalizeOdysseyGemWallet, spendOdysseyGem,
+} from './odyssey-gems.js';
 
 const STORAGE_KEY = 'serenityBlocks_odysseyProgress';
 // v2 (2026-08-15, space lengthening): chapter 6 grew 36-44 → 36-48, so every level
@@ -102,6 +105,8 @@ export class OdysseyStateManager {
 
         // Onboarding marks travel with the journey; a new journey starts them over
         this.onboarding = { arrivalSeen: false };
+        // Gems: earned by finishing or falling, spent on abilities during an orb
+        this.gems = normalizeOdysseyGemWallet(null);
 
         // Statistics
         this.statistics = {
@@ -141,6 +146,7 @@ export class OdysseyStateManager {
             retiredCompletions: { ...this.retiredCompletions },
             statistics: { ...this.statistics },
             onboarding: { ...this.onboarding },
+            gems: { ...this.gems },
             lastSaveDate: new Date().toISOString(),
         };
     }
@@ -197,6 +203,7 @@ export class OdysseyStateManager {
             this.retiredCompletions = { ...data.retiredCompletions };
             this.statistics = { ...this.statistics, ...data.statistics };
             this.onboarding = { arrivalSeen: data.onboarding?.arrivalSeen === true };
+            this.gems = normalizeOdysseyGemWallet(data.gems);
             this._normalizeProgressState();
 
             console.log('[OdysseyState] Progress loaded successfully');
@@ -261,6 +268,7 @@ export class OdysseyStateManager {
         this.completedLevels = new Map();
         this.retiredCompletions = {};
         this.onboarding = { arrivalSeen: false };
+        this.gems = normalizeOdysseyGemWallet(null);
         this.statistics = {
             totalPlayTime: 0,
             totalAttempts: 0,
@@ -295,11 +303,13 @@ export class OdysseyStateManager {
         return this.onboarding?.arrivalSeen === true;
     }
 
-    /** Remember the welcome, so it shows once per journey even if the player leaves at once. */
+    /**
+     * Remember the welcome. The mark travels with the next save (an orb's result, the session's
+     * end), so a read-only experimental session never writes the campaign file for it.
+     */
     markArrivalSeen() {
         if (this.hasSeenArrival()) return;
         this.onboarding = { ...this.onboarding, arrivalSeen: true };
-        this.save({ emitEvent: false });
     }
 
     /**
@@ -364,9 +374,14 @@ export class OdysseyStateManager {
      * @param {number} results.maxCascadeDepth - Deepest cascade
      * @param {number} [results.cascadeDepth] - Legacy alias for deepest cascade
      */
-    completeLevel(levelId, results, { themeId = this.levelRegistry.getLevel(levelId)?.theme?.primary } = {}) {
+    completeLevel(levelId, results, {
+        themeId = this.levelRegistry.getLevel(levelId)?.theme?.primary,
+        aided = false,
+    } = {}) {
         const levelKey = String(levelId);
         const existing = this.completedLevels.get(levelKey);
+        // An orb stays "aided" only until it has been cleared without a gem once.
+        const stillAided = aided && !(existing && existing.aided !== true);
 
         const completion = {
             stars: Math.max(results.stars || 0, existing?.stars || 0),
@@ -384,6 +399,7 @@ export class OdysseyStateManager {
             themeIds: getOdysseyCompletionThemeIds({
                 themeId, themeIds: getOdysseyCompletionThemeIds(existing),
             }),
+            ...(stillAided ? { aided: true } : {}),
         };
 
         this.completedLevels.set(levelKey, completion);
@@ -407,10 +423,12 @@ export class OdysseyStateManager {
         }
 
         console.log(`[OdysseyState] Level ${levelId} completed with ${completion.stars} stars`);
+        const gemsEarned = this._awardGems(ODYSSEY_GEMS_PER_CLEAR);
         const persisted = this.save();
         // Keep the historical completion shape in JSON and callers, while
         // exposing durability to reward presentation at the completion boundary.
         Object.defineProperty(completion, 'persisted', { value: persisted, enumerable: false });
+        Object.defineProperty(completion, 'gemsEarned', { value: gemsEarned, enumerable: false });
 
         return completion;
     }
@@ -438,7 +456,41 @@ export class OdysseyStateManager {
         // Persist to the aggregate so FAILED attempts aren't lost (the per-level completion
         // record's `attempts` only counts completions — masterplan §2 #5).
         this.statistics.totalAttempts = (this.statistics.totalAttempts || 0) + 1;
+        // A fall still earns its gem: persistence is what erodes a hard orb.
+        const gemsEarned = this._awardGems(ODYSSEY_GEMS_PER_FALL);
         this.save();
+        return { levelId, gemsEarned };
+    }
+
+    // =============================
+    // Gems
+    // =============================
+
+    getGemCount() {
+        return this.gems?.count || 0;
+    }
+
+    /** Add gems under the cap without saving; completion and attempt recording save once. */
+    _awardGems(amount) {
+        const { wallet, awarded } = awardOdysseyGems(this.gems, amount);
+        this.gems = wallet;
+        return awarded;
+    }
+
+    /** @returns {number} how many gems fit under the cap */
+    awardGems(amount = 1) {
+        const awarded = this._awardGems(amount);
+        if (awarded > 0) this.save();
+        return awarded;
+    }
+
+    /** @returns {boolean} whether a gem was in hand to spend */
+    spendGem() {
+        const { wallet, spent } = spendOdysseyGem(this.gems);
+        if (!spent) return false;
+        this.gems = wallet;
+        this.save({ emitEvent: false });
+        return true;
     }
 
     // =============================
