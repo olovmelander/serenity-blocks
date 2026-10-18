@@ -289,7 +289,7 @@ describe('OdysseyMode gameplay objectives', () => {
     });
 
     it('keeps authored showcase goals playable until the player finishes the victory lap', async () => {
-        const harness = createMode(getLevelById(33));
+        const harness = createMode(getLevelById(32));
         const { mode, session } = harness;
         for (let sequence = 0; sequence < session.levelConfig.victory.primary.target; sequence++) {
             session.hybridEngine.victoryEvaluator.onCascade(4);
@@ -308,7 +308,7 @@ describe('OdysseyMode gameplay objectives', () => {
     });
 
     it('accepts the Electric Apex goal at 200 seconds and preserves its showcase beyond the deadline', async () => {
-        const harness = createMode(getLevelById(60));
+        const harness = createMode(getLevelById(59));
         const { mode, session } = harness;
         mode.levelStartTime = 1000000;
         const now = vi.spyOn(Date, 'now').mockReturnValue(1200000);
@@ -343,7 +343,7 @@ describe('OdysseyMode gameplay objectives', () => {
         expect(mode.completeLevel).toHaveBeenCalledTimes(1);
         await finishUi(harness, true);
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledTimes(1);
-        expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(60, expect.objectContaining({
+        expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(59, expect.objectContaining({
             score: 165000, time: 211, stars: 1,
         }), { themeId: 'neon-district' });
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
@@ -508,7 +508,7 @@ describe('OdysseyMode gameplay objectives', () => {
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
     });
 
-    it.each([56, 60])('preserves orb %i showcase rewards when a later real spawn tops out', async (levelId) => {
+    it.each([55, 59])('preserves orb %i showcase rewards when a later real spawn tops out', async (levelId) => {
         const harness = createMode(getLevelById(levelId));
         const { mode, session, frameRateController } = harness;
         const { gameState, hybridEngine, levelConfig } = session;
@@ -523,11 +523,12 @@ describe('OdysseyMode gameplay objectives', () => {
         const tier = levelConfig.stars.three;
         gameState.score = tier.score;
         for (let sequence = 0; sequence < tier.cascades; sequence++) {
-            hybridEngine.victoryEvaluator.onCascade(tier.combo);
+            hybridEngine.victoryEvaluator.onCascade(tier.maxCascadeDepth);
         }
-        hybridEngine.victoryEvaluator.onCombo(tier.combo);
+        hybridEngine.victoryEvaluator.onCombo(tier.maxCascadeDepth);
         hybridEngine.updateTime(levelConfig.victory.failure.value + 1);
-        const expectedBonuses = levelId === 56 ? [true, true, false, true] : [true, true, true];
+        // Indra's Net also asks for Quads, which this fixture never clears.
+        const expectedBonuses = levelId === 55 ? [true, true, false] : [true, true];
         expect(hybridEngine.calculateStars()).toBe(3);
         expect(hybridEngine.evaluateBonuses()).toEqual(expectedBonuses);
         mode._checkVictoryConditions(session);
@@ -552,7 +553,7 @@ describe('OdysseyMode gameplay objectives', () => {
             stars: 3,
             bonuses: expectedBonuses,
             cascades: tier.cascades,
-            maxCascadeDepth: tier.combo,
+            maxCascadeDepth: tier.maxCascadeDepth,
         }), { themeId: levelConfig.theme.primary });
         expect(mode.failLevel).not.toHaveBeenCalled();
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
@@ -579,7 +580,7 @@ describe('OdysseyMode gameplay objectives', () => {
     });
 
     it('restarts an individual unassisted duel top-out without ending the orb', async () => {
-        const harness = createMode(getLevelById(4));
+        const harness = createMode(getLevelById(5));
         const { mode, session } = harness;
         await mode._handleGameOver(session);
         session.duel.update(100, 16, {});
@@ -599,16 +600,16 @@ describe('OdysseyMode gameplay objectives', () => {
         session.duel.stop();
     });
 
-    it('completes the duel only at seven credited human frags and retains the match result', async () => {
-        const harness = createMode(getLevelById(4));
+    it('completes the duel only at three credited human knockouts and retains the match result', async () => {
+        const harness = createMode(getLevelById(5));
         const { mode, session } = harness;
-        for (let frag = 1; frag <= 7; frag++) {
+        for (let frag = 1; frag <= 3; frag++) {
             session.gameState.score = frag * 100;
             // Each completed round must settle before the next round can start.
             // eslint-disable-next-line no-await-in-loop
             await resolveDeath(session, 1, 0);
             mode._checkVictoryConditions(session);
-            if (frag < 7) {
+            if (frag < 3) {
                 expect(mode.completeLevel).not.toHaveBeenCalled();
                 expect(mode.failLevel).not.toHaveBeenCalled();
                 nextRound(session);
@@ -620,22 +621,22 @@ describe('OdysseyMode gameplay objectives', () => {
 
         const result = mode._showLevelResults.mock.calls[0][0];
         expect(result).toMatchObject({
-            score: 2800,
+            score: 600,
             stars: 3,
             duel: {
-                playerFrags: 7, botFrags: 0, targetFrags: 7, deaths: 0, difficulty: 1,
+                playerFrags: 3, botFrags: 0, targetFrags: 3, deaths: 0, difficulty: 1,
             },
         });
         expect(result.duel.botGrid).toBeUndefined();
         expect(mode.odysseyState.completeLevel).toHaveBeenCalledTimes(1);
-        expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(4, result, { themeId: 'pyrestorm' });
+        expect(mode.odysseyState.completeLevel).toHaveBeenCalledWith(5, result, { themeId: 'pyrestorm' });
         expect(mode.odysseyState.recordAttempt).not.toHaveBeenCalled();
     });
 
-    it.each([false, true])('fails a duel at the bot target, with simultaneous seventh frags draw=%s', async (draw) => {
-        const harness = createMode(getLevelById(4));
+    it.each([false, true])('fails a duel at the rival target, with simultaneous third knockouts draw=%s', async (draw) => {
+        const harness = createMode(getLevelById(5));
         const { mode, session } = harness;
-        session.duel.multiplayer.frags = draw ? [6, 6] : [0, 6];
+        session.duel.multiplayer.frags = draw ? [2, 2] : [0, 2];
         session.duel.multiplayer.lastAttackerIds = [1, draw ? 0 : null];
         await mode._handleGameOver(session);
         if (draw) session.duel.markTopOut(1);
@@ -650,11 +651,11 @@ describe('OdysseyMode gameplay objectives', () => {
         await finishUi(harness, false);
         expect(mode.odysseyState.recordAttempt).toHaveBeenCalledTimes(1);
         expect(mode._showLevelFailure).toHaveBeenCalledWith(draw ? 'draw' : 'bot', session);
-        expect(session.duel.getResult().botFrags).toBe(7);
+        expect(session.duel.getResult().botFrags).toBe(3);
     });
 
     it('uses legacy timing for a requested fixed-tick duel and preserves the fixed clock for the next solo orb', () => {
-        const { mode, session, frameRateController } = createMode(getLevelById(4), { fixed: true });
+        const { mode, session, frameRateController } = createMode(getLevelById(5), { fixed: true });
         expect(mode._activationSimulationClock).toBe(DEMO_FIXED_SIMULATION_CLOCK);
         expect(session.simulationClock).toBe(DEMO_LEGACY_SIMULATION_CLOCK);
         mode._startGameLoop(session);

@@ -188,7 +188,9 @@ export class GameplayHybridEngine {
             return;
         }
 
-        const entries = buildStartingRowEntries(rowCount, this.levelConfig?.id || 0);
+        // A challenge keeps its authored opening board wherever the campaign order places it.
+        const seedId = Number(this.levelConfig?.boardSeedId) || this.levelConfig?.id || 0;
+        const entries = buildStartingRowEntries(rowCount, seedId);
         // Board mutation + grid/cache repair live in the ONE boundary (§5.1).
         const result = applyGarbage(this.gameState, entries, { settleFloatingBlocks: false });
 

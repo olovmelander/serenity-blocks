@@ -36,7 +36,7 @@ export function createFailureModal({
     // an alarm: no red, the reason in plain words, Retry as the one primary action.
     const { modal, panel: content } = createKeystoneSheet({
         id: 'odyssey-failure-modal',
-        label: 'Level failed',
+        label: 'Orb not cleared',
         variant: 'failed',
     });
 
@@ -44,23 +44,23 @@ export function createFailureModal({
     if (Number.isFinite(attemptNumber)) {
         content.appendChild(el('p', 'sb-eyebrow sb-ody-eyebrow', `Attempt ${attemptNumber}`));
     }
-    content.appendChild(el('h2', 'sb-ody-title', String(reasonText || 'Level failed').replace(/!+$/, '.')));
+    content.appendChild(el('h2', 'sb-ody-title', String(reasonText || 'Orb not cleared').replace(/!+$/, '.')));
     const debrief = duel ? null : getOdysseyRetryDebrief(levelConfig, metrics, failureReason);
     const retryText = duel
-        ? `Final frags: ${duel.playerFrags ?? 0}–${duel.botFrags ?? 0}. `
-            + `First to ${duel.targetFrags || 7} wins. Retry begins at 0–0.`
+        ? `Knockouts: ${duel.playerFrags ?? 0}–${duel.botFrags ?? 0}. `
+            + `First to ${duel.targetFrags || 3} wins. Retry begins at 0–0.`
         : 'Take a breath. Retry starts a fresh attempt.';
     content.appendChild(el('p', 'sb-ody-lede', retryText));
 
     if (debrief) {
         const progress = el('section', 'sb-ody-note sb-ody-debrief');
-        progress.ariaLabel = 'Main objective progress for this attempt';
-        progress.appendChild(el('strong', '', 'This attempt · Main objective'));
+        progress.ariaLabel = 'Main goal progress for this attempt';
+        progress.appendChild(el('strong', '', 'This attempt · Main goal'));
         progress.appendChild(el('p', '', debrief.objective));
         progress.appendChild(el('p', 'sb-ody-debrief__value', debrief.progressLabel));
         const track = el('div', 'sb-ody-debrief__track');
         track.role = 'progressbar';
-        track.ariaLabel = 'Main objective progress for this attempt';
+        track.ariaLabel = 'Main goal progress for this attempt';
         track.ariaValueMin = '0';
         track.ariaValueMax = String(debrief.target);
         track.ariaValueNow = String(Math.min(debrief.value, debrief.target));

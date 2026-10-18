@@ -305,7 +305,7 @@ describe('Odyssey benchmark real gameplay runtime', () => {
         const unrelatedPiece = piecePool.acquire();
         const baseline = piecePool.active.size;
         try {
-            for (const levelId of [1, 4, 2, 4]) {
+            for (const levelId of [1, 5, 2, 5]) {
                 // A worker's virtual attempts and their cleanup run sequentially.
                 // eslint-disable-next-line no-await-in-loop
                 const result = await runAttempt({
@@ -340,7 +340,7 @@ describe('Odyssey benchmark real gameplay runtime', () => {
                 actions.hardDrop();
             },
         });
-        const result = await runAttempt({ levelId: 4, seed: 42, maxSimSeconds: 2 });
+        const result = await runAttempt({ levelId: 5, seed: 42, maxSimSeconds: 2 });
         expect(result).toMatchObject({
             outcome: 'censored',
             reason: 'simulation-budget',
@@ -368,7 +368,7 @@ describe('Odyssey benchmark real gameplay runtime', () => {
         expect(telemetry.activeSeconds + telemetry.resolutionSeconds + telemetry.intermissionSeconds).toBeCloseTo(2);
     });
 
-    it.each([4, 9, 16, 25, 32, 44, 53, 59])('preserves real opponent knowledge and three player previews through a round reset on orb %i', async (levelId) => {
+    it.each([5, 10, 18, 26, 34, 48, 56, 60])('preserves real opponent knowledge and three player previews through a round reset on orb %i', async (levelId) => {
         const originalPrepare = OdysseyBotMatch.prototype.prepareBot;
         const originalUpdate = OdysseyBotMatch.prototype.update;
         const originalOpponentPlan = PuzzleBotController.prototype.plan;
@@ -470,7 +470,7 @@ describe('Odyssey benchmark real gameplay runtime', () => {
             };
         };
         const result = await runAttempt({
-            levelId: 4, seed: 42, cadenceId: 'steady', scenarioId: 'duel-fall850', maxSimSeconds: 3,
+            levelId: 5, seed: 42, cadenceId: 'steady', scenarioId: 'duel-fall850', maxSimSeconds: 3,
         });
         expect(result).toMatchObject({
             scenarioId: 'duel-fall850',

@@ -111,8 +111,8 @@ describe('Odyssey results modal compatibility', () => {
                 duel: { playerFrags: 7, botFrags: 3, targetFrags: 7, botName: 'Quartz' } },
         });
         const markup = collectMarkup(modal);
-        expect(markup).toContain('You beat Quartz, 7–3. First to 7 frags.');
-        expect(markup).toContain('Final frags');
+        expect(markup).toContain('You defeated Quartz, 7–3. First to 7 knockouts.');
+        expect(markup).toContain('Knockouts');
     });
 
     it('retires the owned Steam panel once when either close action dismisses the modal', () => {

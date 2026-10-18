@@ -12,6 +12,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { getLevelRegistry } from './LevelRegistry.js';
 import {
     ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds, snapshotLegacyOdysseyThemes, migrateV3OdysseyCampaign,
+    migrateV4OdysseyCampaign,
 } from './odyssey-progress-schema.js';
 
 const STORAGE_KEY = 'serenityBlocks_odysseyProgress';
@@ -59,6 +60,7 @@ export function migrateOdysseyProgressData(data) {
 
     if (version < 3) snapshotLegacyOdysseyThemes(data);
     if (version < 4) migrateV3OdysseyCampaign(data);
+    if (version < 5) migrateV4OdysseyCampaign(data);
     data.version = ODYSSEY_SAVE_VERSION;
     return data;
 }

@@ -3,8 +3,8 @@ import { getLevelById, LEVEL_CONFIGS } from '../../src/core/odyssey/data/levels.
 import { resolveScenario, supportsScenario } from '../../scripts/odyssey-benchmark/scenarios.mjs';
 
 describe('isolated Odyssey balance experiments', () => {
-    it('keeps the historical orb59 scenario on Neon District after it moves to orb 60', () => {
-        const original = getLevelById(60);
+    it('keeps the historical orb59 scenario on Neon District wherever Electric Apex sits', () => {
+        const original = getLevelById(59);
         expect(original.theme.primary).toBe('neon-district');
         const before = structuredClone(original);
         for (const deadline of [210, 240]) {
@@ -15,7 +15,7 @@ describe('isolated Odyssey balance experiments', () => {
         }
         expect(original).toEqual(before);
         expect(() => resolveScenario(getLevelById(51), 'orb59-deadline210')).toThrow();
-        expect(() => resolveScenario(getLevelById(59), 'orb59-deadline210')).toThrow();
+        expect(() => resolveScenario(getLevelById(60), 'orb59-deadline210')).toThrow();
         expect(() => resolveScenario(getLevelById(55), 'orb59-deadline210')).toThrow();
     });
 
@@ -29,12 +29,12 @@ describe('isolated Odyssey balance experiments', () => {
         expect(original).toEqual(before);
     });
 
-    it('changes duel gravity while preserving first-to-seven and the authored opponent', () => {
-        const original = getLevelById(4);
+    it('changes duel gravity while preserving first-to-three and the authored opponent', () => {
+        const original = getLevelById(5);
         const variant = resolveScenario(original, 'duel-fall700');
         expect(variant.mechanics.speed.fixedDropInterval).toBe(700);
         expect(variant.mechanics.versus).toEqual(original.mechanics.versus);
-        expect(variant.mechanics.versus.fragsToWin).toBe(7);
+        expect(variant.mechanics.versus.fragsToWin).toBe(3);
         expect(variant.stars).toEqual(original.stars);
         expect(original.mechanics.speed.fixedDropInterval).toBe(1000);
     });
@@ -43,8 +43,8 @@ describe('isolated Odyssey balance experiments', () => {
         const expected = LEVEL_CONFIGS.filter((level) => level.mechanics?.versus).map((level) => level.id);
         expect(LEVEL_CONFIGS.filter((level) => supportsScenario('duel-fall700', level)).map((level) => level.id))
             .toEqual(expected);
-        expect(expected).toEqual([4, 9, 16, 25, 32, 44, 53, 59]);
-        [43, 55, 56, 60].forEach((id) => expect(supportsScenario('duel-fall850', getLevelById(id))).toBe(false));
+        expect(expected).toEqual([5, 10, 18, 26, 34, 48, 56, 60]);
+        [43, 54, 55, 59].forEach((id) => expect(supportsScenario('duel-fall850', getLevelById(id))).toBe(false));
     });
 
     it('returns an independent baseline and rejects unsupported or unknown experiments', () => {

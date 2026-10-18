@@ -98,8 +98,8 @@ describe('Records, Odyssey', () => {
         expect(facts).toContain('8 / 18');
         expect(facts).toContain('3 / 6');
         expect(facts).toContain('1 / 3');
-        expect(facts).toContain('aria-label="3 of 6 levels cleared"');
-        expect(list).toContain('2 of 2 levels · 5 of 6 stars');
+        expect(facts).toContain('aria-label="3 of 6 orbs cleared"');
+        expect(list).toContain('2 of 2 orbs · 5 of 6 stars');
         expect(list).toMatch(/Earth Core[\s\S]*Complete/);
         expect(list).toMatch(/Deep &lt;Ocean&gt;[\s\S]*Up next/);
         expect(list).not.toContain('<Ocean>');
@@ -107,7 +107,7 @@ describe('Records, Odyssey', () => {
 
     it('invites a new traveller to begin', () => {
         const fresh = odysseyTabHtml({ ...odyssey, summary: { ...odyssey.summary, completedOrbs: 0 } }, { canStart: true });
-        expect(fresh.list).toContain('No Odyssey levels cleared yet');
+        expect(fresh.list).toContain('No Odyssey orbs cleared yet');
         expect(fresh.list).toContain('Begin the journey');
     });
 });

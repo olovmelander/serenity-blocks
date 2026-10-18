@@ -155,10 +155,11 @@ export const STEAM_DEFAULTS = {
 export const STEAM_LEADERBOARDS = {
     SINGLE_PLAYER_HIGH_SCORE: 'SinglePlayerHighScore_v1',
     SINGLE_PLAYER_LINES: 'SinglePlayerLines_v1',
-    // Campaign v4 has 60 orbs and reordered challenge IDs. Keep its stars and times
-    // separate from the earlier campaigns; queued scores retain their original names.
-    ODYSSEY_TOTAL_STARS: 'OdysseyTotalStars_v2',
-    ODYSSEY_LEVEL_TIME_PREFIX: 'OdysseyLevelTime_v3_', // Append level id
+    // Campaign v5 ends every chapter on its rival duel, so slot ids name different
+    // challenges than v4 did. Keep stars and times separate from the earlier campaigns;
+    // queued scores retain their original names.
+    ODYSSEY_TOTAL_STARS: 'OdysseyTotalStars_v3',
+    ODYSSEY_LEVEL_TIME_PREFIX: 'OdysseyLevelTime_v4_', // Append level id
     INFINITY_HIGH_SCORE: 'InfinityHighScore_v1',
     INFINITY_SURVIVAL_TIME: 'InfinitySurvivalTime_v1',
     INFINITY_BEST_CASCADE: 'InfinityBestCascade_v1',

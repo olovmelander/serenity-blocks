@@ -137,7 +137,7 @@ describe('Thermal Bloom, the chapter 1 collection bonus', () => {
 
         const receipt = complete(collection, state, 5);
         expect(receipt).toEqual({
-            themeIds: ['bioluminescence', THEME], totalOwned: 8, totalThemes: 63, persisted: true, sourceLevelId: 5,
+            themeIds: ['pyrestorm', THEME], totalOwned: 8, totalThemes: 63, persisted: true, sourceLevelId: 5,
         });
         expect(collection.isUnlocked(THEME)).toBe(true);
         expect(collection.exportData().grants[THEME]).toEqual({
