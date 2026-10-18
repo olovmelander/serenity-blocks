@@ -84,6 +84,11 @@ import { presentOdysseyFirstArrival } from '../../ui/odyssey/odyssey-first-arriv
 import { startOdysseyNewJourney, wireOdysseyNewJourney } from '../../ui/odyssey/odyssey-new-journey.js';
 import { handleOdysseyPauseAction } from '../../ui/odyssey/odyssey-pause-actions.js';
 import { renderOdysseyNavigatorList } from '../../ui/odyssey/odyssey-navigator-list.js';
+import { installOdysseyGemInput } from '../../ui/odyssey/odyssey-gem-input.js';
+import { createOdysseyGemRun } from '../odyssey/odyssey-gems.js';
+import {
+    activateOdysseyGem, syncOdysseyGemHud, tryOdysseySecondBreath,
+} from '../odyssey/odyssey-gem-effects.js';
 import { createOdysseyMinimap } from '../../ui/odyssey/odyssey-minimap-controls.js';
 import { mountOdysseyBoardLayout } from '../../ui/odyssey/odyssey-board-layout.js';
 import {
@@ -448,6 +453,8 @@ export class OdysseyMode extends BaseGameMode {
         if (ownsDrivers) {
             this._stopFixedTickSession();
             this._restoreInputs();
+            this._disposeGemInput?.();
+            this._disposeGemInput = null;
             if (this.deps.frameRateController?.isRunning) {
                 this.deps.frameRateController.stopHybridLoop();
             }
@@ -1899,7 +1906,8 @@ export class OdysseyMode extends BaseGameMode {
         this._removeVictoryLapInputs();
 
         if (canWriteLegacySimulationResults(session.simulationClock)) {
-            this.odysseyState.recordAttempt(session.levelId);
+            // The fall's gem rides on the attempt so the failure sheet can show it.
+            session.gemAward = this.odysseyState.recordAttempt(session.levelId) || null;
         }
 
         // Show failure screen and honor the player's choice.
@@ -2065,6 +2073,7 @@ export class OdysseyMode extends BaseGameMode {
         this.gameState = gameState;
         this._activeLevelSession = session;
         session.isReplay = this.odysseyState.isLevelCompleted(session.levelId);
+        session.gems = createOdysseyGemRun();
         if (mechanics.versus) {
             session.duel = new OdysseyBotMatch(session, {
                 seed: seed === undefined ? generateSessionSeed() : seed,
@@ -2078,6 +2087,7 @@ export class OdysseyMode extends BaseGameMode {
                 },
                 onAttack: () => this.deps.soundManager?.sfxPlayer?.playGarbageSend?.(),
             });
+            session.duel.topOutGuard = () => this._tryOdysseySecondBreath(session);
             session.rngDescriptor = gameState.rngDescriptor;
         }
 
@@ -2207,6 +2217,7 @@ export class OdysseyMode extends BaseGameMode {
         console.log('[Odyssey] Beginning level run...');
         try {
             this._hookInputs();
+            this._installGemInput(session);
             session.gameState.isPaused = false;
             session.gameState.lastTime = session.simulationClock === DEMO_FIXED_SIMULATION_CLOCK
                 ? session.gameState.simTimeMs
@@ -2494,6 +2505,7 @@ export class OdysseyMode extends BaseGameMode {
      */
     async _handleGameOver(session = this._activeLevelSession) {
         if (!this._isLevelSessionActive(session)) return;
+        if (this._tryOdysseySecondBreath(session)) return;
         if (session.duel) {
             session.duel.markTopOut(0);
             return;
@@ -3319,6 +3331,11 @@ export class OdysseyMode extends BaseGameMode {
             const pct = this.odysseyState.getOverallProgress();
             progress.textContent = `Progress: ${pct}%`;
         }
+        const gems = document.getElementById('odyssey-header-gems');
+        if (gems) {
+            const count = this.odysseyState.getGemCount?.() ?? 0;
+            gems.textContent = `◆ ${count} ${count === 1 ? 'gem' : 'gems'}`;
+        }
     }
 
     /**
@@ -3681,7 +3698,8 @@ export class OdysseyMode extends BaseGameMode {
                     leaderboard: 'odyssey_total_stars',
                 },
             ),
-            steamService.uploadScore(
+            // An aided clear holds one star and stays off the clock board.
+            results.aided ? Promise.resolve() : steamService.uploadScore(
                 levelBoard,
                 levelTimeMs,
                 {
@@ -3770,6 +3788,8 @@ export class OdysseyMode extends BaseGameMode {
                 score: session.gameState.score,
             } : null,
             failureReason: reason,
+            gemsEarned: session?.gemAward?.gemsEarned || 0,
+            gemCount: this.odysseyState.getGemCount?.() ?? 0,
             includeLegacyResults: session
                 ? canWriteLegacySimulationResults(session.simulationClock)
                 : true,
@@ -3783,6 +3803,20 @@ export class OdysseyMode extends BaseGameMode {
      */
     async _exitToMenu() {
         eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
+    }
+
+    /** Spend a gem on an ability during the current orb (core/odyssey/odyssey-gem-effects.js). */
+    useOdysseyGem(abilityId) {
+        return activateOdysseyGem(this, abilityId);
+    }
+
+    _tryOdysseySecondBreath(session) {
+        return tryOdysseySecondBreath(this, session);
+    }
+
+    _installGemInput(session) {
+        this._disposeGemInput?.();
+        this._disposeGemInput = installOdysseyGemInput(this, session);
     }
 
     /** Retry orb / Back to map chosen on the pause sheet (ui/odyssey/odyssey-pause-actions.js). */
@@ -3931,10 +3965,12 @@ export class OdysseyMode extends BaseGameMode {
         this.odysseyHUD = new OdysseyHUD({
             levelId: this.currentLevelId,
             onFinish: () => this._finishVictoryLap(),
+            onUseGem: (abilityId) => this.useOdysseyGem(abilityId),
         });
 
         // Set level configuration
         this.odysseyHUD.setLevel(this.currentLevelId);
+        syncOdysseyGemHud(this, this._activeLevelSession);
         const duel = this._activeLevelSession?.duel;
         if (duel) {
             this.odysseyHUD.setDuel({
@@ -3974,6 +4010,8 @@ export class OdysseyMode extends BaseGameMode {
             deaths: metrics.deaths,
             bonusResults: this.hybridEngine.evaluateBonuses(),
         });
+
+        syncOdysseyGemHud(this, this._activeLevelSession);
 
         // Update time (excludes paused time — masterplan §2 #2)
         if (this.levelStartTime) {

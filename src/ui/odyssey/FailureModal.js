@@ -31,6 +31,8 @@ export function createFailureModal({
     levelConfig = null,
     metrics = null,
     failureReason = null,
+    gemsEarned = 0,
+    gemCount = 0,
 }) {
     // Keystone sheet (keystone-overlays.css). A failed level is a pause for breath, not
     // an alarm: no red, the reason in plain words, Retry as the one primary action.
@@ -51,6 +53,13 @@ export function createFailureModal({
             + `First to ${duel.targetFrags || 3} wins. Retry begins at 0–0.`
         : 'Take a breath. Retry starts a fresh attempt.';
     content.appendChild(el('p', 'sb-ody-lede', retryText));
+    if (gemsEarned > 0) {
+        const gems = el('p', 'sb-ody-gems');
+        gems.appendChild(el('strong', '', `+${gemsEarned} gem for the attempt`));
+        gems.appendChild(el('span', '', ` · ${gemCount} ${gemCount === 1 ? 'gem' : 'gems'} to spend. `
+            + 'Press 1, 2 or 3 during an orb to use one.'));
+        content.appendChild(gems);
+    }
 
     if (debrief) {
         const progress = el('section', 'sb-ody-note sb-ody-debrief');

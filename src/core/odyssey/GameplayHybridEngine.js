@@ -251,6 +251,11 @@ export class GameplayHybridEngine {
      * Update time metric
      * @param {number} elapsedSeconds
      */
+    /** Lengthen a deadline orb's limit (Still Air). */
+    extendTimeLimit(seconds) {
+        return this.victoryEvaluator.extendTimeLimit(seconds);
+    }
+
     updateTime(elapsedSeconds) {
         this.victoryEvaluator.updateTime(elapsedSeconds);
     }

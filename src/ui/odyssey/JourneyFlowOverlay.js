@@ -43,6 +43,7 @@ function formatTally(results) {
         const seconds = Math.floor(results.time);
         tally.push(`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`);
     }
+    if (results?.gemsEarned > 0) tally.push(`+${results.gemsEarned} gem`);
     return tally.join(' · ');
 }
 

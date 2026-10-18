@@ -29,6 +29,9 @@ describe('Odyssey save: onboarding marks', () => {
 
         state.markArrivalSeen();
         expect(state.hasSeenArrival()).toBe(true);
+        // The mark rides on the next save rather than forcing one of its own.
+        expect(store.size).toBe(0);
+        state.save();
         expect(JSON.parse(store.get('serenityBlocksOdyssey') ?? [...store.values()][0]).onboarding)
             .toEqual({ arrivalSeen: true });
         const reloaded = create();
