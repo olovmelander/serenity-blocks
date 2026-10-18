@@ -1,12 +1,12 @@
 """Author Stillwater's two figures (Blender 4.5 LTS, headless).
 
     blender --background --factory-startup --python scripts/blender/stillwater_assets.py -- \
-        --out src/themes/stillwater/assets [--only troll,spirit] [--source <troll.glb>] [--preview <dir>]
+        --out src/themes/stillwater/assets [--only troll,spirit] [--preview <dir>] [--voxel 0.003]
 
-* troll-lod0..3.glb: the theme's own troll (assets/troll.glb, the author's sculpt reconstructed
-  with TRELLIS.2) rebuilt into a body that can be posed: the shard pelt thickened and voxel-
-  remeshed into one solid surface, masks carried over from its paint, skin, bare hide, pelt and loincloth
-  told apart by place and thinness, four LODs, a 21-bone skeleton, baked occlusion (scripts/blender/stillwater/troll.py);
+* troll-lod0..3.glb: the theme's own troll, drawn clean from numbers in the character of the
+  author's sculpt (assets/troll.glb): one signed distance field of smooth masses under a mane of
+  matted moss locks (scripts/blender/stillwater/troll_shape.py), meshed once, four LODs, a 21-bone
+  skeleton, every vertex told what it is, baked occlusion (scripts/blender/stillwater/troll.py);
 * spirit-lod0..1.glb: the spirit, built from numbers (scripts/blender/stillwater/spirit.py).
 
 Both are written in the compact layout src/themes/stillwater/stillwater-rig.js reads
@@ -49,12 +49,11 @@ def main():
     out = Path(args.get('out', REPO / 'src/themes/stillwater/assets'))
     out.mkdir(parents=True, exist_ok=True)
     only = set(str(args.get('only', 'troll,spirit')).split(','))
-    source = Path(args.get('source', REPO / 'src/themes/stillwater/assets/troll.glb'))
     preview = Path(args['preview']) if 'preview' in args else None
     if preview is not None:
         preview.mkdir(parents=True, exist_ok=True)
     if 'troll' in only:
-        troll_figure.build(source, out, log=log, preview_dir=preview)
+        troll_figure.build(out, log=log, preview_dir=preview, voxel=float(args.get('voxel', 0.003)))
     if 'spirit' in only:
         spirit_figure.build(out, log=log)
     log('done')

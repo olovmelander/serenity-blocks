@@ -1,216 +1,153 @@
-"""The troll: the theme's own sculpt (assets/troll.glb) rebuilt into a body that can be posed.
+"""The troll: the old troll of the wood, built from numbers (troll_shape.py) into a body that can be posed.
 
-The source is the TRELLIS reconstruction of the author's troll: its pelt is a soup of thin
-triangle shards that rendered as torn paper, and its rig was thirteen bones weighted by distance.
-Here the shards are thickened and the whole is voxel-remeshed into one solid surface (the sculpt's
-own shape: the long nose, the ears, the belly and loincloth, big hands and feet, a cloak of matted
-hair to his knees), the sculpt's paint is carried over as masks, the hair is told from the body by
-how thin it is, and the result is cut into four LODs, weighted to a 21-bone skeleton (bone heat
-for the body; the cloak hangs from the torso by height) and given baked ambient occlusion.
+He keeps the character of the theme's own sculpt (assets/troll.glb: a stocky old troll with a long
+nose, long ears, big hands and feet and a cloak of matted hair to his knees) but is drawn clean:
+smooth masses blended into one another under a mane of matted moss locks, a moss beard and bushy
+brows, a wrapped loincloth and a few small mushrooms in his moss. The surface is one signed
+distance field meshed once, cut into four LODs, weighted to the 21-bone skeleton (bone heat for
+the body; the mane hangs from his head and torso), and given baked ambient occlusion. Every vertex
+carries what it is (face, hide, moss and which lock, leather, eye, mushroom) for the runtime's
+shader.
 """
-
-import math
 
 import bmesh
 import bpy
-from mathutils import Vector
-from mathutils.bvhtree import BVHTree
+import numpy as np
 
+from . import troll_shape as ts
 from .figure_glb import write_figure
 from .rigs import TROLL, build_armature
 
 #: Triangles per LOD (Ultra/Extreme, High, Medium, Low/Minimal).
 LOD_TRIANGLES = (32000, 17000, 9700, 3700)
 
+#: What each part is packed as: (r skin, a kind); b is the moss share, g the occlusion.
+#: r: 1 his ruddy face, 0.65 his hide, 0.2 an eye. a: the lock's tone (0..0.6) on moss, 0.7 an eye,
+#: 1 a mushroom. Leather is all zero.
+PACK = {
+    'skin': (1.0, 0.0),
+    'hide': (0.65, 0.0),
+    'pelt': (0.0, None),
+    'leather': (0.0, 0.0),
+    'eye': (0.2, 0.7),
+    'cap': (0.0, 1.0),
+}
+
 
 def _clear():
     bpy.ops.wm.read_factory_settings(use_empty=True)
 
 
-def rebuild_surface(source, voxel=0.0075, thick=0.0065, log=print):
-    """One solid surface from the shard soup, with masks: r skin, g the paint's light, b (later) pelt."""
-    _clear()
-    bpy.ops.import_scene.gltf(filepath=str(source))
-    for o in list(bpy.data.objects):
-        if o.name.startswith('Icosphere'):
-            bpy.data.objects.remove(o)
-    src = next(o for o in bpy.data.objects if o.type == 'MESH')
-    arm = next((o for o in bpy.data.objects if o.type == 'ARMATURE'), None)
-    for m in list(src.modifiers):
-        src.modifiers.remove(m)
-    mw = src.matrix_world.copy()
-    src.parent = None
-    src.matrix_world = mw
-    if arm:
-        bpy.data.objects.remove(arm)
-    bpy.context.view_layer.objects.active = src
-    src.select_set(True)
-    bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
-    # The paint per face (corner colours averaged) for the transfer.
-    me = src.data
-    col = me.color_attributes['Color']
-    face_rgb = []
-    for poly in me.polygons:
-        r = g = b = 0.0
-        for li in poly.loop_indices:
-            c = col.data[li].color
-            r += c[0]
-            g += c[1]
-            b += c[2]
-        n = len(poly.loop_indices)
-        face_rgb.append((r / n, g / n, b / n))
-    src_bvh = BVHTree.FromObject(src, bpy.context.evaluated_depsgraph_get())
-    bpy.ops.object.select_all(action='DESELECT')
-    src.select_set(True)
-    bpy.context.view_layer.objects.active = src
-    bpy.ops.object.duplicate()
-    work = bpy.context.active_object
-    work.name = 'TrollSurface'
-    # The shards stay separate (welding them makes spikes); thickened, the remesh can close them.
-    sol = work.modifiers.new('solid', 'SOLIDIFY')
-    sol.thickness = thick
-    sol.offset = 0.0
-    sol.use_even_offset = False
-    bpy.ops.object.modifier_apply(modifier='solid')
-    rem = work.modifiers.new('remesh', 'REMESH')
-    rem.mode = 'VOXEL'
-    rem.voxel_size = voxel
-    rem.adaptivity = 0.0
-    bpy.ops.object.modifier_apply(modifier='remesh')
-    sm = work.modifiers.new('smooth', 'CORRECTIVE_SMOOTH')
-    sm.iterations = 3
-    sm.smooth_type = 'SIMPLE'
-    sm.use_only_smooth = True
-    bpy.ops.object.modifier_apply(modifier='smooth')
-    # Drop the remesh's crumbs.
+def _tidy(me, triangulate=False, outer_only=False, log=print):
+    """Drop degenerate faces and any vertex no face uses (it would carry no normal); with
+    `outer_only`, keep only his outer surface (the field also closes small pockets between the
+    mantle and his back, which mesh as little inside-out shells of their own)."""
     bm = bmesh.new()
-    bm.from_mesh(work.data)
-    bm.verts.ensure_lookup_table()
-    seen = set()
-    islands = []
-    for v in bm.verts:
-        if v.index in seen:
-            continue
-        stack = [v]
-        comp = []
-        seen.add(v.index)
-        while stack:
-            a = stack.pop()
-            comp.append(a)
-            for e in a.link_edges:
-                b = e.other_vert(a)
-                if b.index not in seen:
-                    seen.add(b.index)
-                    stack.append(b)
-        islands.append(comp)
-    islands.sort(key=len, reverse=True)
-    drop = [v for comp in islands[1:] if len(comp) < 400 for v in comp]
-    bmesh.ops.delete(bm, geom=drop, context='VERTS')
-    bm.to_mesh(work.data)
+    bm.from_mesh(me)
+    bmesh.ops.dissolve_degenerate(bm, edges=bm.edges[:], dist=1e-7)
+    if triangulate:
+        bmesh.ops.triangulate(bm, faces=bm.faces[:])
+    drop = [v for v in bm.verts if not v.link_faces]
+    if outer_only:
+        bm.verts.ensure_lookup_table()
+        seen = set()
+        islands = []
+        for v in bm.verts:
+            if v.index in seen or not v.link_faces:
+                continue
+            stack, comp = [v], []
+            seen.add(v.index)
+            while stack:
+                a = stack.pop()
+                comp.append(a)
+                for e in a.link_edges:
+                    b = e.other_vert(a)
+                    if b.index not in seen:
+                        seen.add(b.index)
+                        stack.append(b)
+            islands.append(comp)
+        islands.sort(key=len, reverse=True)
+        for comp in islands[1:]:
+            drop.extend(comp)
+        if len(islands) > 1:
+            log(f'troll surface: kept the outer shell, dropped {len(islands) - 1} inner pockets '
+                f'({sum(len(c) for c in islands[1:])} vertices; the largest {len(islands[1])})')
+    if drop:
+        bmesh.ops.delete(bm, geom=drop, context='VERTS')
+    bm.to_mesh(me)
     bm.free()
-    # Masks from the paint: skin is pinkish (red over green); the pelt and body are olive or grey.
-    for a in list(work.data.color_attributes):
-        work.data.color_attributes.remove(a)
-    mask = work.data.color_attributes.new('Mask', 'FLOAT_COLOR', 'POINT')
-    for i, v in enumerate(work.data.vertices):
-        _, _, idx, _ = src_bvh.find_nearest(v.co)
-        r, g, b = face_rgb[idx] if idx is not None else (0.5, 0.5, 0.5)
-        skin = max(0.0, min(1.0, (r - g - 0.04) / 0.1))
-        luma = 0.2126 * r + 0.7152 * g + 0.0722 * b
-        mask.data[i].color = (skin, luma, 0.0, 1.0)
-    bpy.data.objects.remove(src)
-    log(f'troll surface: {len(work.data.vertices)} vertices, {len(islands)} islands ({len(drop)} crumb vertices dropped)')
-    return work
+    me.update()
 
 
-def _segment_distance(p, a, b):
-    ab = b - a
-    t = max(0.0, min(1.0, (p - a).dot(ab) / max(ab.length_squared, 1e-12)))
-    return (p - (a + ab * t)).length
+def build_surface(voxel=0.003, log=print):
+    """The whole of him as one mesh object, and the primitives he was made from."""
+    _clear()
+    prims = ts.design(log=log)
+    verts, quads = ts.surface(prims, voxel=voxel, log=log)
+    me = bpy.data.meshes.new('TrollSurface')
+    me.from_pydata(verts.tolist(), [], quads.tolist())
+    me.validate()
+    work = bpy.data.objects.new('TrollSurface', me)
+    bpy.context.scene.collection.objects.link(work)
+    _tidy(me, outer_only=True, log=log)
+    centre = verts.mean(0)
+    fn = np.array([p.normal[:] for p in me.polygons])
+    fc = np.array([p.center[:] for p in me.polygons])
+    if (np.einsum('ij,ij->i', fn, fc - centre) > 0).mean() < 0.5:
+        me.flip_normals()
+    for p in me.polygons:
+        p.use_smooth = True
+    log(f'troll surface: {len(me.vertices)} vertices, {len(me.polygons)} faces')
+    return work, prims
+
+
+def pack_parts(obj, prims):
+    """Write `Pack` = (skin, 0, moss, kind) for each vertex of `obj`; return the part shares and lock groups."""
+    me = obj.data
+    P = np.array([v.co[:] for v in me.vertices])
+    W, tone, group = ts.parts_at(prims, P)
+    ix = {name: i for i, name in enumerate(ts.PARTS)}
+    r = sum(W[:, ix[k]] * PACK[k][0] for k in PACK)
+    a = sum(W[:, ix[k]] * (tone if PACK[k][1] is None else PACK[k][1]) for k in PACK)
+    b = W[:, ix['pelt']]
+    pack = me.color_attributes.new('Pack', 'FLOAT_COLOR', 'POINT')
+    pack.data.foreach_set('color', np.stack([r, np.zeros_like(r), b, a], 1).ravel().astype(np.float32))
+    return W, group
 
 
 def _ramp(a, b, x):
-    return max(0.0, min(1.0, (x - a) / (b - a)))
+    return np.clip((np.asarray(x, float) - a) / (b - a), 0.0, 1.0)
 
 
-def classify_parts(work):
-    """What each part of him is: skin, bare hide, pelt or the leather of his loincloth.
-
-    The paint cannot tell hair from body (both are olive), and in the source the hair is flaps of
-    the one connected surface, so the parts are told by where they are and how thin they are:
-    skin where the paint is pinkish (face, ears, hands, feet); leather in the loincloth's place at
-    his front waist; pelt where the surface is a thin sheet (dreadlocks anywhere), on the cloak that
-    stands off his back and sides, and over the top and back of his head; bare hide (arms, legs,
-    belly) for the rest. Writes Mask = (skin: 1 skin / 0.65 bare hide / 0 else, paint light,
-    pelt, leather).
-    """
-    me = work.data
-    mask = me.color_attributes['Mask']
-    bvh = BVHTree.FromObject(work, bpy.context.evaluated_depsgraph_get())
-    spine_a, spine_b = Vector((0.0, 0.03, -0.24)), Vector((0.0, -0.06, 0.16))
-    head_a, head_b = Vector((0.0, -0.13, 0.2)), Vector((0.0, -0.2, 0.43))
-    n_verts = len(me.vertices)
-    pelt = [0.0] * n_verts
-    leather = [0.0] * n_verts
-    for v in me.vertices:
-        p = v.co
-        n = v.normal
-        hit = bvh.ray_cast(p - n * 0.0012, -n, 0.15)
-        d = hit[3] if hit[0] is not None else 0.15
-        thin = _ramp(0.085, 0.05, d)
-        # The cloak: off his back and sides, well away from the line of his spine.
-        behind = _ramp(-0.08, 0.02, p.y)
-        off_spine = _ramp(0.15, 0.21, _segment_distance(p, spine_a, spine_b))
-        cloak = behind * off_spine * _ramp(-0.47, -0.4, p.z)
-        # The top and back of his head (not his face).
-        crown = _ramp(0.24, 0.3, p.z) * _ramp(-0.26, -0.2, p.y) * _ramp(0.05, 0.09, _segment_distance(p, head_a, head_b))
-        # The loincloth: a box before his hips and thighs.
-        box = _ramp(-0.46, -0.42, p.z) * _ramp(-0.2, -0.24, p.z) * _ramp(0.03, -0.02, p.y) * _ramp(0.24, 0.2, abs(p.x))
-        leather[v.index] = box
-        pelt[v.index] = max(thin, cloak, crown) * (1.0 - box)
-    bm = bmesh.new()
-    bm.from_mesh(me)
-    bm.verts.ensure_lookup_table()
-    for _ in range(3):
-        nxt_p, nxt_l = pelt[:], leather[:]
-        for v in bm.verts:
-            nb = [e.other_vert(v).index for e in v.link_edges]
-            if nb:
-                nxt_p[v.index] = 0.5 * pelt[v.index] + 0.5 * sum(pelt[i] for i in nb) / len(nb)
-                nxt_l[v.index] = 0.5 * leather[v.index] + 0.5 * sum(leather[i] for i in nb) / len(nb)
-        pelt, leather = nxt_p, nxt_l
-    bm.free()
-    for i in range(n_verts):
-        c = mask.data[i].color
-        skin_paint = _ramp(0.35, 0.7, c[0])
-        hair = pelt[i] * (1.0 - skin_paint)
-        cloth = leather[i] * (1.0 - skin_paint) * (1.0 - hair)
-        bare = (1.0 - hair) * (1.0 - cloth)
-        skin = max(skin_paint, 0.65 * bare)
-        mask.data[i].color = (skin, c[1], hair, cloth)
+def mane_weights(P, group):
+    """How the mane hangs: beard and brows on his head; the crown's locks from his head, then down
+    his torso by height; the mantle by height down his torso, its shoulder locks partly on his
+    collarbones (which shrug)."""
+    z = P[:, 2]
+    on_head = np.isin(group, ['beard', 'fringe'])
+    crown = group == 'crown'
+    head = np.where(on_head, 1.0, np.where(crown, _ramp(0.15, 0.25, z), 0.0))
+    rest = 1.0 - head
+    chest = _ramp(-0.04, 0.07, z) * rest
+    spine = _ramp(-0.18, -0.08, z) * (rest - chest)
+    hips = np.maximum(rest - chest - spine, 0.0)
+    shoulder = np.where(on_head, 0.0, 0.55 * _ramp(0.13, 0.21, np.abs(P[:, 0])) * _ramp(-0.12, 0.0, z))
+    out = []
+    for i in range(len(P)):
+        keep = 1.0 - shoulder[i]
+        w = {'head': head[i] * keep, 'chest': chest[i] * keep, 'spine': spine[i] * keep, 'hips': hips[i] * keep}
+        if shoulder[i] > 0:
+            w['clavL' if P[i, 0] > 0 else 'clavR'] = shoulder[i]
+        out.append({k: v for k, v in w.items() if v > 1e-4})
+    return out
 
 
-def classify_hair(work):
-    """Kept for the name: see classify_parts."""
-    classify_parts(work)
-
-
-def _torso_weights(z):
-    """The cloak hangs from the body: weights by height along the torso chain (Blender z)."""
-    def ramp(a, b, x):
-        return max(0.0, min(1.0, (x - a) / (b - a)))
-    head = ramp(0.17, 0.26, z)
-    chest = ramp(-0.02, 0.08, z) * (1 - head)
-    spine = ramp(-0.17, -0.07, z) * (1 - head - chest)
-    hips = max(0.0, 1 - head - chest - spine)
-    return {k: v for k, v in (('head', head), ('chest', chest), ('spine', spine), ('hips', hips)) if v > 1e-4}
-
-
-def make_lods(work, log=print):
-    """Decimate to each LOD, bind to the skeleton (bone heat), hang the cloak from the torso."""
+def make_lods(work, prims, log=print):
+    """Decimate to each LOD, pack its parts, bind it (bone heat), hang the mane from head and torso."""
     arm = build_armature(bpy, TROLL, 'TrollRig')
     order = list(TROLL.keys())
     src_tris = sum(len(p.vertices) - 2 for p in work.data.polygons)
+    ix = {name: i for i, name in enumerate(ts.PARTS)}
     lods = []
     for li, target in enumerate(LOD_TRIANGLES):
         bpy.ops.object.select_all(action='DESELECT')
@@ -223,42 +160,45 @@ def make_lods(work, log=print):
         dec.decimate_type = 'COLLAPSE'
         dec.ratio = min(1.0, target / src_tris)
         bpy.ops.object.modifier_apply(modifier='dec')
-        bm = bmesh.new()
-        bm.from_mesh(lod.data)
-        bmesh.ops.triangulate(bm, faces=bm.faces)
-        bm.to_mesh(lod.data)
-        bm.free()
+        _tidy(lod.data, triangulate=True)
+        W, group = pack_parts(lod, prims)
         bpy.ops.object.select_all(action='DESELECT')
         lod.select_set(True)
         arm.select_set(True)
         bpy.context.view_layer.objects.active = arm
         bpy.ops.object.parent_set(type='ARMATURE_AUTO')
         lme = lod.data
-        lmask = lme.color_attributes['Mask']
+        P = np.array([v.co[:] for v in lme.vertices])
+        # (The mushrooms grow in the moss and hang with it; an eye is of his head.)
+        moss = np.minimum(W[:, ix['pelt']] + W[:, ix['cap']], 1.0)
+        eye = W[:, ix['eye']]
+        hang = mane_weights(P, group)
         groups = {g.name: g for g in lod.vertex_groups}
         gindex = {g.index: g.name for g in lod.vertex_groups}
         unweighted = 0
         for v in lme.vertices:
+            i = v.index
             auto = {gindex[g.group]: g.weight for g in v.groups if g.weight > 1e-5}
             total = sum(auto.values())
-            # (The cloak and the loincloth hang from the torso; the body follows its bones.)
-            hair = max(lmask.data[v.index].color[2], lmask.data[v.index].color[3])
-            torso = _torso_weights(v.co.z)
+            m = float(moss[i])
             if total < 1e-3:
                 unweighted += 1
-                hair, auto, total = 1.0, {}, 1.0
+                m, auto, total = 1.0, {}, 1.0
             blend = {}
             for k, val in auto.items():
-                blend[k] = blend.get(k, 0.0) + (1 - hair) * val / total
-            for k, val in torso.items():
-                blend[k] = blend.get(k, 0.0) + hair * val
+                blend[k] = blend.get(k, 0.0) + (1 - m) * (1 - eye[i]) * val / total
+            for k, val in hang[i].items():
+                blend[k] = blend.get(k, 0.0) + m * (1 - eye[i]) * val
+            blend['head'] = blend.get('head', 0.0) + eye[i]
             top = sorted(blend.items(), key=lambda kv: -kv[1])[:4]
             s = sum(val for _, val in top) or 1.0
             for name in order:
-                groups[name].remove([v.index])
+                groups[name].remove([i])
             for k, val in top:
-                groups[k].add([v.index], val / s, 'REPLACE')
-        log(f'troll LOD{li}: {len(lme.polygons)} triangles, {len(lme.vertices)} vertices ({unweighted} weighted by the torso alone)')
+                if val > 1e-5:
+                    groups[k].add([i], val / s, 'REPLACE')
+        log(f'troll LOD{li}: {len(lme.polygons)} triangles, {len(lme.vertices)} vertices '
+            f'({unweighted} hung by the mane rule alone)')
         lods.append(lod)
     return lods
 
@@ -290,32 +230,31 @@ def bake_ao(objects, samples=48, log=print):
 
 
 def preview(obj, out_dir, log=print):
-    """False colour of what each part is (pink skin, tan bare hide, green pelt, brown leather)."""
+    """False colour of what each part is (rose face, tan hide, green moss, brown leather, white caps)."""
+    from mathutils import Vector
+    me = obj.data
+    pack = me.color_attributes['Pack']
+    n = len(me.vertices)
+    raw = np.zeros(n * 4, np.float32)
+    pack.data.foreach_get('color', raw)
+    c = raw.reshape(n, 4)
+    skin, moss, kind = c[:, 0], c[:, 2], c[:, 3]
+    rosy = np.clip((skin - 0.75) / 0.2, 0, 1)[:, None]
+    flesh = np.clip((skin - 0.3) / 0.25, 0, 1)[:, None]
+    hide = np.array([0.55, 0.42, 0.3]) * (1 - rosy) + np.array([0.95, 0.5, 0.45]) * rosy
+    base = np.array([0.25, 0.12, 0.05]) * (1 - flesh) + hide * flesh
+    green = np.array([0.1, 0.4, 0.1]) + np.array([0.15, 0.25, 0.05]) * (kind / 0.6)[:, None]
+    col = base * (1 - moss)[:, None] + green * moss[:, None]
+    cap = (np.clip((kind - 0.85) / 0.1, 0, 1) * (1 - moss))[:, None]
+    col = col * (1 - cap) + cap
+    look = me.color_attributes.new('Look', 'FLOAT_COLOR', 'POINT')
+    look.data.foreach_set('color', np.concatenate([col, np.ones((n, 1))], 1).ravel().astype(np.float32))
     mat = bpy.data.materials.new('parts')
     mat.use_nodes = True
     nt = mat.node_tree
-    bsdf = nt.nodes['Principled BSDF']
     attr = nt.nodes.new('ShaderNodeVertexColor')
-    attr.layer_name = 'Mask'
-    sep = nt.nodes.new('ShaderNodeSeparateColor')
-    nt.links.new(attr.outputs['Color'], sep.inputs['Color'])
-    alpha = nt.nodes.new('ShaderNodeVertexColor')
-    alpha.layer_name = 'Mask'
-
-    def mix_node(a, b, fac):
-        m = nt.nodes.new('ShaderNodeMix')
-        m.data_type = 'RGBA'
-        if isinstance(a, tuple):
-            m.inputs['A'].default_value = a
-        else:
-            nt.links.new(a, m.inputs['A'])
-        m.inputs['B'].default_value = b
-        nt.links.new(fac, m.inputs['Factor'])
-        return m.outputs['Result']
-    base = mix_node((0.55, 0.42, 0.3, 1), (0.95, 0.5, 0.45, 1), sep.outputs['Red'])
-    with_pelt = mix_node(base, (0.15, 0.55, 0.15, 1), sep.outputs['Blue'])
-    with_cloth = mix_node(with_pelt, (0.25, 0.12, 0.05, 1), alpha.outputs['Alpha'])
-    nt.links.new(with_cloth, bsdf.inputs['Base Color'])
+    attr.layer_name = 'Look'
+    nt.links.new(attr.outputs['Color'], nt.nodes['Principled BSDF'].inputs['Base Color'])
     obj.data.materials.clear()
     obj.data.materials.append(mat)
     scene = bpy.context.scene
@@ -343,27 +282,26 @@ def preview(obj, out_dir, log=print):
     log(f'previews written to {out_dir}')
 
 
-def build(source, out_dir, log=print, preview_dir=None):
-    """The whole troll: surface, pelt, LODs, weights, occlusion, four files."""
-    work = rebuild_surface(source, log=log)
-    classify_hair(work)
-    lods = make_lods(work, log=log)
+def build(out_dir, log=print, preview_dir=None, voxel=0.003):
+    """The whole troll: surface, LODs, parts, weights, occlusion, four files."""
+    work, prims = build_surface(voxel=voxel, log=log)
+    lods = make_lods(work, prims, log=log)
     bake_ao(lods, log=log)
     if preview_dir is not None:
         preview(lods[0], preview_dir, log=log)
     written = []
     for li, lod in enumerate(lods):
-        mask = lod.data.color_attributes['Mask']
+        pack = lod.data.color_attributes['Pack']
         ao = lod.data.color_attributes['AO']
 
-        def colour(i, mask=mask, ao=ao):
-            m = mask.data[i].color
-            return (m[0], ao.data[i].color[0], m[2], m[1])  # skin, AO, pelt, the paint's light
+        def colour(i, pack=pack, ao=ao):
+            p = pack.data[i].color
+            return (p[0], ao.data[i].color[0], p[2], p[3])
         path = out_dir / f'troll-lod{li}.glb'
-        n, tris, size = write_figure(lod, TROLL, colour, str(path), 'Serenity Blocks - Stillwater troll (Blender rebuild)', {
-            'stillwaterTroll': 2,
-            'colour': "r skin (1 skin, 0.65 bare hide), g ambient occlusion, b pelt, a the paint's light; "
-                      'neither skin nor pelt = leather',
+        n, tris, size = write_figure(lod, TROLL, colour, str(path), 'Serenity Blocks - Stillwater troll (Blender, built from numbers)', {
+            'stillwaterTroll': 3,
+            'colour': 'r skin (1 his ruddy face, 0.65 his hide, 0.2 an eye), g ambient occlusion, b moss, '
+                      "a kind (the moss lock's tone 0..0.6, 0.7 an eye, 1 a mushroom); all but g zero = leather",
         })
         log(f'wrote {path.name}: {n} vertices, {tris} triangles, {size} bytes')
         written.append(path)
