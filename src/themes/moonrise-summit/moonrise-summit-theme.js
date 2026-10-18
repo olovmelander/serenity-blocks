@@ -1,11 +1,12 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════
  *  🌙 MOONRISE SUMMIT 🌙
- *  AAA cinematic alpine moonrise — rebuild v3 (Misty Lake pattern)
+ *  AAA cinematic alpine moonrise — rebuild v3 (the classic lake theme's pattern)
  * ═══════════════════════════════════════════════════════════════════════════
  *
  *  Architecture:
- *    - ShaderMaterial throughout (Misty Lake-proven pattern)
+ *    - ShaderMaterial throughout (the pattern the classic lake theme proved;
+ *      Grainfields took its orb in 2026-10)
  *    - WebGLRenderer (WebGPURenderer is incompatible with ShaderMaterial-based
  *      EffectComposer chain — verified at runtime)
  *    - EffectComposer + UnrealBloomPass(threshold 0.4) + Ghibli grade pass

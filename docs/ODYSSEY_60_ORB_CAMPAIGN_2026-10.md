@@ -103,7 +103,7 @@ mountain setting. Halcyon is a fantasy ruin, but its terrestrial scenery support
 
 | Orb | Theme | Scenery fit |
 |---|---|---|
-| 11 | Misty Lake (`misty-lake`) | A wooded lakeshore connects the water chapter to a living surface landscape. |
+| 11 | Grainfields (`grainfields`) | Ripe barley seen from low in the stand opens the surface world: sunbeams through a breaking storm walk the fields toward Lapporten, the Lapland gate. |
 | 12 | Moonlit Forest (`moonlit-forest`) | A moonlit glade establishes a forest environment. |
 | 13 | Golden Forest (`golden-forest`) | Spruce, pine, and a Nordic lake in golden light continue the woodland setting. |
 | 14 | Moonlit Greenhouse (`moonlit-greenhouse`) | Plants, dewdrops, moths, and blooming reactions add cultivated life. |

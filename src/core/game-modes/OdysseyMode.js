@@ -1058,6 +1058,7 @@ export class OdysseyMode extends BaseGameMode {
             'stellar-velocity',
             'kaleidosonic',
             'voltage-storm',
+            'grainfields',
         ]);
 
         let maxBlackoutHoldMs = 6800;
@@ -1108,6 +1109,7 @@ export class OdysseyMode extends BaseGameMode {
             'stellar-velocity',
             'kaleidosonic',
             'voltage-storm',
+            'grainfields',
         ]);
 
         let maxBlackoutHoldMs = 7200;

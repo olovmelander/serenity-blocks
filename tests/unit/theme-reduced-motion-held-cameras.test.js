@@ -5,13 +5,12 @@ import * as THREE from 'three';
 
 import { updateWolfhourCamera } from '../../src/themes/wolfhour/wolfhour-composition.js';
 import WolfhourTheme from '../../src/themes/wolfhour/wolfhour-theme.js';
-import MistyLakeTheme from '../../src/themes/misty-lake/misty-lake-theme.js';
 
 /**
- * Reduced motion in themes that read neither input before (theme and rendering audit 2026-10:
- * THM-232 wolfhour, THM-191 misty-lake). Settings > Reduce motion or the system preference holds
- * the camera at rest and stops what crosses or shakes the screen. Crystal Cave and Cosmic Noir are
- * pinned in their own suites.
+ * Reduced motion in a theme that read neither input before (theme and rendering audit 2026-10:
+ * THM-232 wolfhour; THM-191's theme was replaced by Grainfields, which holds its camera itself).
+ * Settings > Reduce motion or the system preference holds the camera at rest and stops what
+ * crosses or shakes the screen. Crystal Cave and Cosmic Noir are pinned in their own suites.
  */
 
 function stubWindow(reducedMotion) {
@@ -62,29 +61,5 @@ describe('reduced motion holds these cameras at rest', () => {
         stubWindow(false);
         theme.updateMeteors();
         expect(theme.createMeteor).toHaveBeenCalledOnce();
-    });
-
-    it('misty-lake: the camera rests on its base pose, then eases back into its sway', () => {
-        stubWindow(true);
-        const theme = Object.create(MistyLakeTheme.prototype);
-        Object.assign(theme, {
-            camera: new THREE.PerspectiveCamera(55, 16 / 9, 0.1, 2000),
-            baseCameraPos: new THREE.Vector3(0, 6, 28),
-            cameraBreathPhase: 0,
-            time: 0,
-        });
-        for (let frame = 0; frame < 240; frame++) {
-            theme.time += 1 / 60;
-            theme.animateCamera(1 / 60);
-            expect(theme.camera.position.distanceTo(theme.baseCameraPos)).toBeLessThan(1e-9);
-        }
-        window.settings.reducedMotion = false;
-        let moved = 0;
-        for (let frame = 0; frame < 600; frame++) {
-            theme.time += 1 / 60;
-            theme.animateCamera(1 / 60);
-            moved = Math.max(moved, theme.camera.position.distanceTo(theme.baseCameraPos));
-        }
-        expect(moved).toBeGreaterThan(0.2);
     });
 });

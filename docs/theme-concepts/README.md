@@ -103,7 +103,7 @@ each unbuilt concept overrides section 1; section 5 already folds section 3 in.
 | Tests and verification commands | §7.1 (tests), §8 (sweep) | §5.10, §5.11 | §5.12 | §5.10, §5.11 | §5.10, §5.11 | §5.10, §5.11 |
 | Hero prototype on the CPU first | §10 (done: ribbon splats; §10.8 re-runs it) | §5.12 | §5.6 (Stage A0) | §5.12 | §5.12 | §5.12 |
 | Compare against (fleet neighbours) | forest, fall, moonlit-forest, golden-forest, stillwater, chiral-gold, ice-temple, nimbus-veil, rainbow-terraces (§13.3, §11.1) | halcyon-apex, geode, cinder-drift, pyrestorm, luminous-tides, parhelion, rainbark | shifting-sands, himalayan-peak, solar-eclipse, mountain, parhelion, rainbark | koi-pond, ocean, halcyon-apex, waves, verdant-hills, rainbark | chromadelic-highway, ice-temple, crystal-cave, neon-dusk, synthwave-sunset, aether-tides, chromatic-impasto, moonlit-greenhouse, sakura-twilight, halcyon-apex, rainbark, kaleidosonic (owns a kaleidoscope as its chain and its T-spin turn since 2026-10-13: rework the four-line projection and the T-spin twist) | crystal-cave, cinder-drift, bioluminescence, forest, fall, golden-forest, ocean, verdant-hills, rainbark |
-| Best-fit slots the file suggests (ask the user) | — | pyrestorm or luminous-tides (subject overlap); misty-lake or moonlit-greenhouse (chapter fit) | **mountain** (best fit; High Coast took it 2026-10-13); moonrise-summit, sakura-twilight, pyrestorm | none named: run the PLAYBOOK §1a script | **moonlit-greenhouse** (best fit); misty-lake, rainy-window, singing-bowl (Kaleidosonic took it 2026-10-13) | an un-rebuilt theme in an Earth chapter, for example mountain (High Coast took it 2026-10-13); its close neighbours are all rebuilt |
+| Best-fit slots the file suggests (ask the user) | — | pyrestorm or luminous-tides (subject overlap); misty-lake (Grainfields took it 2026-10-18) or moonlit-greenhouse (chapter fit) | **mountain** (best fit; High Coast took it 2026-10-13); moonrise-summit, sakura-twilight, pyrestorm | none named: run the PLAYBOOK §1a script | **moonlit-greenhouse** (best fit); misty-lake (Grainfields took it 2026-10-18), rainy-window, singing-bowl (Kaleidosonic took it 2026-10-13) | an un-rebuilt theme in an Earth chapter, for example mountain (High Coast took it 2026-10-13); its close neighbours are all rebuilt |
 
 The stage names (0a core and palette, 0b scaffold and rename, A environment, B effects, C post,
 tiers, phone, icon and docs, then the final adversarial review) are PLAYBOOK §3's.
@@ -327,19 +327,18 @@ catalog too.
 
 - **Big moon, top right, blue night:** forest, moonlit-forest, wolfhour, winter, sakura-twilight,
   ice-temple (moon on the left), sunset (at night). Seven themes. Moons also in lunara,
-  moonrise-summit, moonlit-greenhouse, misty-lake, blood-moon, koi-pond (in the water).
+  moonrise-summit, moonlit-greenhouse, blood-moon, koi-pond (in the water).
 - **Framing trees left and right, open vista in the middle:** forest, fall, summer, sakura-twilight,
-  winter, aurora, moonlit-forest; also golden-forest, verdant-hills, misty-lake, koi-pond (maple),
-  stillwater.
+  winter, aurora, moonlit-forest; also golden-forest, verdant-hills, koi-pond (maple), stillwater.
 - **A still mirror of water under the board** (planar `reflector()` on Medium and up is the default
   technique): halcyon-apex, vesper-chrysalis, lunara, chiral-gold, ice-temple, golden-forest, summer,
-  stillwater, misty-lake, crystal-cave, koi-pond, sunset, sakura-twilight, aurora, moonlit-forest,
+  stillwater, crystal-cave, koi-pond, sunset, sakura-twilight, aurora, moonlit-forest,
   winter, starlight, bioluminescence, rainy-window, waves, luminous-tides, fluid-dreams, voltage-storm,
   moonrise-summit, moonlit-greenhouse (pond), neon-district, neon-dusk, synthwave-sunset. Salt-flat mirrors (Uyuni) and "tufa or
   pillars standing in a still lake" land in the same place.
 - **Hero mountain or peak:** himalayan-peak, wolfhour, mountain, aurora, sakura-twilight, winter,
   halcyon-apex, ice-temple; silhouette ridge layers with mist in solar-eclipse, moonrise-summit,
-  lunara.
+  lunara; a U-shaped glacial gate (Lapporten) on the horizon in grainfields.
 - **Low sun on the horizon with god rays:** halcyon-apex, himalayan-peak, sunset, summer, fall,
   tornado, golden-forest, shifting-sands, waves; a big sun at the vanishing point beside the board in
   nimbus-veil, neon-dusk, synthwave-sunset, stellar-velocity, chromadelic-highway, parhelion.
@@ -369,7 +368,7 @@ catalog too.
   the fleet's most overused light. Rainbark now uses high-sun blue air; Iris Springs, Painted Ages'
   morning revision and Riverbloom also aim there.)
 - Navy or ink night with a silver-white moon (forest, moonlit-forest, wolfhour, ice-temple, winter,
-  misty-lake, starlight, moonrise-summit, moonlit-greenhouse).
+  starlight, moonrise-summit, moonlit-greenhouse).
 - Oxygen-green and magenta aurora on dark teal (aurora, winter, ice-temple).
 - Gold, peach and orange low sun with lavender sky (halcyon-apex, himalayan-peak, sunset, tornado,
   fall, summer); amber-gold monochrome (golden-forest); apricot and rose dusk (shifting-sands, waves).
@@ -503,7 +502,7 @@ transmission or dispersion passes, raymarched volumes, many lights.
 | 9 | **Liquid Rainbow** (Cristales, River of Five Colours) | Caño Cristales, Colombia | Crimson and magenta riverweed streaming in shallow clear rapids over pale potholed sandstone, caustics everywhere, a table mountain behind; a five-colour combo ladder | Low–moderate: koi-pond (water garden), ocean (reef plants), waves | Moderate | Developed as **Riverbloom**; research rank 3 |
 | 10 | **Lençóis Lagoons** (Bedsheet Dunes) | Lençóis Maranhenses, Brazil | White dunes with turquoise, emerald and cobalt rain lagoons in the hollows under towering cumulus; four lines bring a downpour that fills new lagoons, then sun and a rainbow | Moderate: shifting-sands (dunes), though the palette is the opposite | Low | Open; a runner-up ("lovely airy palette, too close to shifting-sands in genre") |
 | 11 | **Marble Chapels** | Capillas de Mármol, General Carrera Lake, Patagonia | Swirled blue, white and grey marble arches with caustics dancing on the walls over glacial turquoise water, seen from boat level | Moderate: a cave over water (crystal-cave, geode) | Low–moderate | Open |
-| 12 | **Turquoise Cascades** | Plitvice; Jiuzhaigou (Five Flower Lake) | Stepped turquoise lakes joined by hundreds of small falls through forest, sunken trees in clear water; a clear overflows one lake into the next | Moderate: forest and lake (golden-forest, misty-lake, fall) | Moderate | Absorbed into #2 |
+| 12 | **Turquoise Cascades** | Plitvice; Jiuzhaigou (Five Flower Lake) | Stepped turquoise lakes joined by hundreds of small falls through forest, sunken trees in clear water; a clear overflows one lake into the next | Moderate: forest and lake (golden-forest, fall) | Moderate | Absorbed into #2 |
 
 ### C. Living colour (plants and animals)
 
@@ -561,7 +560,7 @@ transmission or dispersion passes, raymarched volumes, many lights.
 | Catatumbo lightning | voltage-storm |
 | Light pillars / Brocken glory | parhelion (ice-crystal halo optics) |
 | Noctilucent clouds | aurora, nimbus-veil |
-| Mono Lake tufa | mirror trope, misty-lake |
+| Mono Lake tufa | mirror trope |
 | Kusama infinity rooms | starlight, galaxy (fields of infinite points), kaleidosonic (a jewel in every cell of an endless lattice) |
 | Ferrofluid | cosmic-noir, void-ember (dark and black) |
 | Cymatics | kaleidosonic (Chladni floors and standing-wave veins; singing-bowl before it) |

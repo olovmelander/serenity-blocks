@@ -186,8 +186,8 @@ Criteria to put in front of the user:
 2. **Prefer a theme that has not had a masterpiece rebuild**: a legacy DOM/CSS theme (Cosmic
    Chimes and Mountain were the last two; High Coast replaced Mountain on 2026-10-13, so none is
    left) or a classic `WebGLRenderer` theme
-   (at `585ab55`: luminous-tides, misty-lake, moonrise-summit, pyrestorm, rainy-window and
-   singing-bowl, which Kaleidosonic replaced on 2026-10-13; re-list them with `grep -rlE "new (THREE\.)?WebGLRenderer\(" src/themes`).
+   (at `585ab55`: luminous-tides, misty-lake, which Grainfields replaced on 2026-10-18,
+   moonrise-summit, pyrestorm, rainy-window and singing-bowl, which Kaleidosonic replaced on 2026-10-13; re-list them with `grep -rlE "new (THREE\.)?WebGLRenderer\(" src/themes`).
    Rows without `world.js` and `effect` above are the candidates. Replacing a recent rebuild throws
    away finished work.
 3. **Subject overlap.** If the new concept and an existing theme share a subject (two forests, two

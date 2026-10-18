@@ -111,7 +111,7 @@ describe('durable Odyssey theme collection', () => {
         expect(receipts[4].themeIds).toEqual(['pyrestorm', 'thermal-bloom']);
         expect(receipts[3].themeIds).toEqual(['bioluminescence']);
         expect(receipts[8].themeIds).toEqual(['stillwater']);
-        expect(receipts[10].themeIds).toEqual(['misty-lake']);
+        expect(receipts[10].themeIds).toEqual(['grainfields']);
         expect(receipts[16].themeIds).toEqual(['halcyon-apex']);
         expect(receipts[42].themeIds).toEqual(['vesper-chrysalis']);
         expect(receipts[53].themeIds).toEqual(['serenity-warp']);
@@ -217,7 +217,7 @@ describe('durable Odyssey theme collection', () => {
         }));
         const collection = createCollection();
         expect(collection.getOwnedThemeIds()).toEqual(['forest', 'aurora']);
-        expect(collection.isUnlocked('misty-lake')).toBe(false);
+        expect(collection.isUnlocked('grainfields')).toBe(false);
         expect(collection.isUnlocked('ice-temple')).toBe(false);
         storage.getItem.mockClear();
         expect(collection.getThemeStatus('ice-temple').requirement.label)

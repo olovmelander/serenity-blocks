@@ -16,7 +16,7 @@ Research only (no repo files were changed): 49 web searches across geothermal an
 
 These patterns already appear in many themes. The new theme should avoid them, or the judges will see it as another variant.
 
-1. **A still mirror of water under the board.** This shows up in halcyon-apex (lagoon), vesper-chrysalis (lake), lunara (mirror flats), chiral-gold (black water), ice-temple (frozen lake), golden-forest (mirror lake), summer (mirror lake), stillwater, misty-lake, crystal-cave (still pool), koi-pond, and sunset (lantern sea). Salt-flat mirrors such as Uyuni, and any "tufa or pillars standing in a still lake" idea, would land in the same place.
+1. **A still mirror of water under the board.** This shows up in halcyon-apex (lagoon), vesper-chrysalis (lake), lunara (mirror flats), chiral-gold (black water), ice-temple (frozen lake), golden-forest (mirror lake), summer (mirror lake), stillwater, crystal-cave (still pool), koi-pond, and sunset (lantern sea). Salt-flat mirrors such as Uyuni, and any "tufa or pillars standing in a still lake" idea, would land in the same place.
 2. **Crystals and gems.** geode (jewel druzy), crystal-cave, lunara (crystal spires), halcyon-apex (the "Halcyon" diamond), vesper-chrysalis (cut-crystal chrysalis), ice-temple. Opal, Naica and quartz-led concepts are therefore high risk.
 3. **Hexagonal columns.** cinder-drift (columnar basalt magma chamber) and ice-temple (hexagonal ice columns). Rules out Giant's Causeway and Fingal's Cave.
 4. **Seas of clouds.** nimbus-veil (golden cloud sea) and rainbow-terraces (cloud sea). Tepui and Zhangjiajie concepts are only partly safe.
@@ -225,7 +225,7 @@ Phone risk ratings used below:
 - **Palette:** #36C5C1, #0E8F9C, #BFE7D7, #F2E3B3, #4E7D3A, #A9612C.
 - **Gameplay:** A clear makes a lake overflow into the next one down.
 - **Phone risk:** Moderate.
-- **Similarity:** Moderate. Forest and lake overlap with golden-forest, misty-lake and fall. Absorbed into #2.
+- **Similarity:** Moderate. Forest and lake overlap with golden-forest and fall. Absorbed into #2.
 
 ## C. Living colour (plants and animals)
 
@@ -431,7 +431,7 @@ Phone risk ratings used below:
 | Catatumbo lightning | https://en.wikipedia.org/wiki/Catatumbo_lightning | voltage-storm |
 | Light pillars / Brocken glory | https://winnipeg.ctvnews.ca/cold-causes-laser-like-beams-to-light-up-winnipeg-sky-1.4236354, https://atoptics.co.uk/fz29.htm | parhelion (ice-crystal halo optics) |
 | Noctilucent clouds | https://scied.ucar.edu/noctilucent-clouds | aurora, nimbus-veil |
-| Mono Lake tufa | https://www.livescience.com/16018-tufa-towers-mono-lake-california/2.html | mirror trope, misty-lake |
+| Mono Lake tufa | https://www.livescience.com/16018-tufa-towers-mono-lake-california/2.html | mirror trope |
 | Kusama infinity rooms | https://crystalbridges.org/artworks/2019-2 | starlight, galaxy (fields of infinite points), kaleidosonic (a jewel in every cell of an endless lattice) |
 | Ferrofluid | https://flowvis.org/OldGalleries/2009/Team-2/Reports/Ives.pdf | cosmic-noir, void-ember (dark and black) |
 | Cymatics | https://www.sciencefriday.com/articles/seeing-the-patterns-in-sound/ | kaleidosonic (Chladni floors and standing-wave veins; singing-bowl before it) |

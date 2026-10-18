@@ -1413,9 +1413,9 @@ file owners, then integrate; Rainbark's is `585ab55`). Before either, settle the
      not rebuilt; its avoid list names "a geyser of light"). Replacing one of them removes the nearest
      eruption/geyser neighbour from the fleet.
    - **Chapter fit** (criterion 4): a daylight Earth basin fits chapter 1 (geothermal, "Earth Core") or
-     chapter 3 "Surface World & Living Landscapes" (not-rebuilt themes there include `misty-lake`,
-     orb 11, and `moonlit-greenhouse`, orb 14, both with authored songs). It fits chapters 6 and 7 (space,
-     abstraction) worst.
+     chapter 3 "Surface World & Living Landscapes" (not-rebuilt themes there include
+     `moonlit-greenhouse`, orb 14, with an authored song; `misty-lake`, orb 11, was taken by Grainfields
+     on 2026-10-18). It fits chapters 6 and 7 (space, abstraction) worst.
    - **Do not** pick a recent masterpiece rebuild with a world and an effect (halcyon-apex, geode,
      cinder-drift are the closest neighbours but all are rebuilt), and never Forest.
 2. **Worked example:** commit `585ab55` replaced Cosmic Chimes with Rainbark. Follow the same list for
