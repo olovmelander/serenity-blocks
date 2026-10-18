@@ -1,11 +1,11 @@
 /**
- * Fault Lines puzzle search: the offline tool the puzzle bank's later tiers came from.
+ * Stillfall puzzle search: the offline tool the puzzle bank's later tiers came from.
  *
  * Search (worker threads, time-boxed; appends one JSON line per candidate):
- *   node scripts/fault-lines-search.mjs --out=candidates.jsonl --pieces=3 --minutes=20 --workers=4
+ *   node scripts/stillfall-search.mjs --out=candidates.jsonl --pieces=3 --minutes=20 --workers=4
  *     [--style=strata|deep] [--seed=7]
  * Rank what a search found (one goal per structure and supply, the hardest):
- *   node scripts/fault-lines-search.mjs --rank=candidates.jsonl [--pieces=3] [--goal=waves]
+ *   node scripts/stillfall-search.mjs --rank=candidates.jsonl [--pieces=3] [--goal=waves]
  *     [--top=20] [--maxRows=10] [--maxBodies=16] [--lanterns]
  *
  * One piece (--pieces=1) searches for First light: a cascade or lines from two up, or an empty
@@ -20,7 +20,7 @@
  * tenth of the openings win (two openings for two-piece supplies), and some winning lock
  * cascades at least two waves deep. Straight drops only: the certifier's real solver (tucks
  * and kicks included) has the last word, so a candidate goes into puzzle-bank.js without a
- * solution and tests/unit/fault-lines-puzzles.test.js decides (docs/FAULT_LINES_2026-10.md,
+ * solution and tests/unit/stillfall-puzzles.test.js decides (docs/STILLFALL_2026-10.md,
  * "Adding a puzzle").
  *
  * The rank's hardness rewards few winning openings and few solutions, an opening that clears
@@ -97,7 +97,7 @@ function search(args) {
                 fs.appendFileSync(args.out, `${JSON.stringify(message.candidate)}\n`);
             }
         });
-        worker.on('error', (error) => console.error('[fault-lines-search] worker failed', error));
+        worker.on('error', (error) => console.error('[stillfall-search] worker failed', error));
         return worker;
     });
     const started = Date.now();
@@ -112,10 +112,10 @@ function search(args) {
 }
 
 async function work() {
-    const { buildPuzzle, validatePuzzleDefinition } = await import(core('fault-lines/fault-lines-puzzle.js'));
+    const { buildPuzzle, validatePuzzleDefinition } = await import(core('stillfall/stillfall-puzzle.js'));
     const {
         createRun, applyPlacement, boardFor, cellsOf,
-    } = await import(core('fault-lines/fault-lines-sim.js'));
+    } = await import(core('stillfall/stillfall-sim.js'));
     const { SHAPES, COLS, HIDDEN_ROWS } = await import(core('constants.js'));
     const { rotateShapeMatrix } = await import(core('game.js'));
     const { pieces, style } = workerData;

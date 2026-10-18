@@ -1,20 +1,26 @@
-# Fault Lines: cascade puzzles (preview, October 2026)
+# Stillfall: cascade puzzles (October 2026)
+
+**Named Fault Lines until 2026-10-18,** when the owner chose a name that suits Serenity Blocks:
+still (gravity waits; nothing moves until you choose) and fall (one drop, and every body falls as
+one). The mode id, files, events, styles and Steam token were renamed with it; solves saved
+under `serenity.faultLines.solved`, a saved `gameMode: 'fault-lines'` and the menu's remembered
+`fault-lines` all carry over.
 
 **2026-10-18:** the bank grew from fifteen puzzles in three tiers to thirty-six in six. Two more
 in Undertow and in Deep fault, then three new three-piece tiers (Rift, Bedrock, Epicentre), the
 last two certified to have exactly one winning first landing. Landings now come from
-`fault-lines-reach.js`, the bot pathfinder's search without its allocations, which the
+`stillfall-reach.js`, the bot pathfinder's search without its allocations, which the
 three-piece certifier needed to stay fast in CI. The Puzzles list shows a locked tier as one line.
-The search that found the new structures is `scripts/fault-lines-search.mjs`. The same day the
-owner removed Waystones, the road preview built beside Fault Lines (it is in git history before
+The search that found the new structures is `scripts/stillfall-search.mjs`. The same day the
+owner removed Waystones, the road preview built beside Stillfall (it is in git history before
 this change); a saved `gameMode: 'waystones'` heals to Single Player when settings load.
 Later that day the bank doubled to seventy-two: every tier twice its size (10, 14, 14, 12, 12,
 10), the new puzzles from the same search (`--pieces=1` for First light) and the same
 certifier, each lesson written after replaying its solution wave by wave.
 
 **Status: in the main menu since 2026-10-18,** between Infinity and Local Versus, with no
-URL parameter (the `faultLines` preview flag is retired; an old `?faultLines=1` is simply
-ignored). What it still needs from the owner is listed at the end.
+URL parameter (the preview flag, `faultLines` from the mode's first name, is retired; an old
+`?faultLines=1` is simply ignored). What it still needs from the owner is listed at the end.
 
 ## What it is
 
@@ -51,8 +57,8 @@ away, or when a dealt piece has no room. The panel says which, in the goal's own
   **Select** opens the Puzzles list, which then owns the pad: up and down walk it (holding
   repeats), **A** plays the marked puzzle, **B** or **Select** closes it. Presses the list takes
   are latched, so the A that chose a puzzle never rotates the new piece; Start still pauses
-  (`src/ui/fault-lines/fault-lines-pad-list.js`, through `GamepadController.setPanelControls`).
-- Steam rich presence shows "Fault Lines" while a puzzle is on the board (`#FaultLines` in
+  (`src/ui/stillfall/stillfall-pad-list.js`, through `GamepadController.setPanelControls`).
+- Steam rich presence shows "Stillfall" while a puzzle is on the board (`#Stillfall` in
   `steam/rich-presence/english.vdf`).
 - **Hints.** After two failed attempts on a puzzle, a Hint button (**?**) lights the next
   landing of the puzzle's stored solution. If the pieces placed so far left that line but a
@@ -66,7 +72,7 @@ away, or when a dealt piece has no room. The panel says which, in the goal's own
   `scripts/generate-mode-wordmarks.mjs`) on the menu stage and the loading cover. Its hue is
   coral, in the menu (the list item, the stage's aura and its note, `keystone-menu.css`) as in
   play (the well walls and the panel's edge). The stage's picture is a real-game capture like
-  the others (`scripts/capture-menu-art.mjs --only=fault-lines`: Floor last in Cinder Drift,
+  the others (`scripts/capture-menu-art.mjs --only=stillfall`: Floor last in Cinder Drift,
   the hint's outline on the first landing). The queue is the supply: it shows only what is
   still to come, and with the last piece in hand the row steps aside.
 - The board draws a dark seam wherever two bodies touch, and a cream diamond on the
@@ -76,7 +82,7 @@ away, or when a dealt piece has no room. The panel says which, in the goal's own
 
 ## The puzzle bank
 
-Seventy-two puzzles in six tiers (`src/core/fault-lines/puzzle-bank.js`):
+Seventy-two puzzles in six tiers (`src/core/stillfall/puzzle-bank.js`):
 
 - **First light** (one piece each): First fall, Second wave, Lanterns, Clean break, Footstep,
   Lantern rain, Look below, Leftovers, Domino, Staircase. Each teaches one idea: a clear drops
@@ -115,7 +121,7 @@ Seventy-two puzzles in six tiers (`src/core/fault-lines/puzzle-bank.js`):
 
 ### The standard every puzzle meets
 
-The certifier (`tests/unit/fault-lines-puzzles.test.js`) proves, on every CI run:
+The certifier (`tests/unit/stillfall-puzzles.test.js`) proves, on every CI run:
 
 1. **A straight-drop solution exists**: rotate and move at the top, then drop. A solution
    that needs a soft drop and a slide (a tuck) or a rotation at the bottom (a kick) is
@@ -137,7 +143,7 @@ A rules change that breaks a shipped puzzle (kicks, spawn, cascade order) fails 
 
 The cascade differential gate (`tests/unit/cascade-resolver-differential.test.js`) also
 holds 120 seeded boards of multi-cell bodies that clears split and that hang over holes,
-plus a wide body held by one end. Before Fault Lines it held only single cells and full rows.
+plus a wide body held by one end. Before Stillfall it held only single cells and full rows.
 
 ### Format
 
@@ -165,15 +171,15 @@ touching bodies match (the board draws same-coloured neighbours as one shape).
 
 0. To find one, search and rank (worker threads, time-boxed; straight drops on the real
    resolver, every goal the structure allows judged on one tree):
-   `node scripts/fault-lines-search.mjs --out=c.jsonl --pieces=3 --minutes=20 --workers=4`
+   `node scripts/stillfall-search.mjs --out=c.jsonl --pieces=3 --minutes=20 --workers=4`
    (`--style=deep` for taller, nearly full strata and deep cascades), then
-   `node scripts/fault-lines-search.mjs --rank=c.jsonl --pieces=3 --top=20`. The rank rewards
+   `node scripts/stillfall-search.mjs --rank=c.jsonl --pieces=3 --top=20`. The rank rewards
    few winning openings and solutions, a set-up opening, a greedy opening that loses, traps
    and deeper goals. On a busy machine a two-piece search kept about two hundred candidates a
    minute per worker and a three-piece one about ten; most are not worth a name, so rank, then
    read the best few lock by lock before writing a lesson.
 1. Write the definition in `puzzle-bank.js` without a `solution`.
-2. Run `npx vitest run tests/unit/fault-lines-puzzles.test.js`. It fails with the id if the
+2. Run `npx vitest run tests/unit/stillfall-puzzles.test.js`. It fails with the id if the
    puzzle is unsolvable, has no straight solution, solves early, wastes a piece, or lets
    too many openings win.
 3. `solvePuzzle(buildPuzzle(def))` returns `straightSolutions`; copy the first as
@@ -188,16 +194,16 @@ wave.
 
 | Part | File | Layer |
 |---|---|---|
-| Definitions, validation, body colours | `src/core/fault-lines/fault-lines-puzzle.js` | headless |
-| Deal (the real spawn row), landings, lock + cascade, goal judge, failure reasons | `src/core/fault-lines/fault-lines-sim.js` | headless |
-| Every reachable landing: the bot pathfinder's search (same transitions, kicks, cap and path choice) without its allocations | `src/core/fault-lines/fault-lines-reach.js` | headless |
-| Exhaustive solver, straightness, every-piece-matters, a line on from any position | `src/core/fault-lines/fault-lines-solver.js` | headless |
-| Bank, tiers and the unlock rule | `src/core/fault-lines/puzzle-bank.js` | headless |
-| Puzzle search and rank (offline) | `scripts/fault-lines-search.mjs` | tool |
-| Solved set, chosen puzzle, what comes next | `src/core/fault-lines/fault-lines-progress.js` | headless |
-| The mode | `src/core/game-modes/FaultLinesMode.js` | headless, extends `SinglePlayerMode` |
-| Panel, keys, gamepad, saved solves | `src/ui/fault-lines/fault-lines-hud.js`, `public/styles/fault-lines.css` | UI |
-| The puzzle list on a gamepad | `src/ui/fault-lines/fault-lines-pad-list.js` (a panel owner in `gamepad-controller.js`) | UI |
+| Definitions, validation, body colours | `src/core/stillfall/stillfall-puzzle.js` | headless |
+| Deal (the real spawn row), landings, lock + cascade, goal judge, failure reasons | `src/core/stillfall/stillfall-sim.js` | headless |
+| Every reachable landing: the bot pathfinder's search (same transitions, kicks, cap and path choice) without its allocations | `src/core/stillfall/stillfall-reach.js` | headless |
+| Exhaustive solver, straightness, every-piece-matters, a line on from any position | `src/core/stillfall/stillfall-solver.js` | headless |
+| Bank, tiers and the unlock rule | `src/core/stillfall/puzzle-bank.js` | headless |
+| Puzzle search and rank (offline) | `scripts/stillfall-search.mjs` | tool |
+| Solved set, chosen puzzle, what comes next | `src/core/stillfall/stillfall-progress.js` | headless |
+| The mode | `src/core/game-modes/StillfallMode.js` | headless, extends `SinglePlayerMode` |
+| Panel, keys, gamepad, saved solves | `src/ui/stillfall/stillfall-hud.js`, `public/styles/stillfall.css` | UI |
+| The puzzle list on a gamepad | `src/ui/stillfall/stillfall-pad-list.js` (a panel owner in `gamepad-controller.js`) | UI |
 | Seams, relic mark, hint outline | `drawBodySeams`, `drawHintCells` in `src/rendering/phaser/base-board-scene.js` | rendering |
 | "Wave n" banner | `GameState.moveSummaryVocabulary`, read by `src/rendering/phaser/shared-effects.js` (finale kicker and the depth popup) | rendering |
 
@@ -210,16 +216,17 @@ wave.
   reaches into the scene).
 - **Single Player hooks.** `SinglePlayerMode` gained four overridable session hooks
   (`_createSessionGameState`, `_dealSessionPieces`, `_recordsDemos`, `_allowsFixedTick`);
-  its own behaviour is unchanged. Fault Lines records no replay and stays on the legacy
+  its own behaviour is unchanged. Stillfall records no replay and stays on the legacy
   clock.
 - **A blocked deal is not a game over.** `spawnPiece` marks the session over when a piece
   has no room, and the game loop stops on that flag; the mode's own game-over handler
   clears it, returns the blocked piece to the pool, and fails the puzzle instead, so undo
   still works and the board keeps drawing.
 - **The mode stays headless.** It may not import UI (the `core-stays-headless` boundary
-  has a closed carve-out list), so it publishes `EVENTS.FAULT_LINES_STATE` and takes
-  `EVENTS.FAULT_LINES_COMMAND`. Board writes go through `restoreBoardState`.
-- **Saved progress** is `localStorage['serenity.faultLines.solved']`, read and written only
+  has a closed carve-out list), so it publishes `EVENTS.STILLFALL_STATE` and takes
+  `EVENTS.STILLFALL_COMMAND`. Board writes go through `restoreBoardState`.
+- **Saved progress** is `localStorage['serenity.stillfall.solved']` (moved from
+  `serenity.faultLines.solved` on first read), read and written only
   by the HUD. Ids the bank no longer has are kept and written back, so a renamed puzzle
   never loses a player's solve.
 - **Nothing reaches Records, Steam stats or leaderboards.**
@@ -227,7 +234,7 @@ wave.
 ## Verified
 
 - Unit: the certifier (294 cases over seventy-two puzzles), the reachability differential
-  (`tests/unit/fault-lines-reach.test.js`: every bank puzzle's openings and the boards after
+  (`tests/unit/stillfall-reach.test.js`: every bank puzzle's openings and the boards after
   each, plus 168 random boards with caves where tucks and spins matter, landing for landing and
   action for action against `findReachablePlacements`), the mode (deal, solve, undo across
   turns, restart, failure reasons, a blocked deal, hints on and off the stored line, first
@@ -265,10 +272,10 @@ The owner shipped it to the main menu on 2026-10-18. Gamepad list navigation and
 presence, which this list used to name, are done. What remains:
 
 1. **Owner playtest** of the seventy-two puzzles and the difficulty curve between tiers.
-2. **Name clearance** for "Fault Lines", which is now player-facing. Names already in the
+2. **Name clearance** for "Stillfall", which is now player-facing. Names already in the
    mode's vocabulary if it fails: Seams, Fault.
 3. **Steamworks upload** of `steam/rich-presence/english.vdf`: until the file with
-   `#FaultLines` is uploaded, Steam shows no line for the mode (the game sends the token).
+   `#Stillfall` is uploaded, Steam shows no line for the mode (the game sends the token).
 4. Later, from the game-mode study: a daily set of five puzzles, more pyramids per world,
    a wave-by-wave replay of a miss, and an editor (the validator and solver are ready for
    one).

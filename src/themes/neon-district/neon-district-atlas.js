@@ -630,7 +630,7 @@ export const BILLBOARD_CELLS = Object.freeze([
         luma: 0.1171,
     },
     {
-        id: 'transit-mode-fault-lines',
+        id: 'transit-mode-stillfall',
         family: 'transit',
         brand: 'transit',
         shape: 'wide',
@@ -639,8 +639,8 @@ export const BILLBOARD_CELLS = Object.freeze([
         src: null,
         rect: [0.29639, 0.83203, 0.44092, 0.99463],
         aspect: 1.7778,
-        glow: [1, 0.86, 0.652],
-        luma: 0.0431,
+        glow: [1, 0.863, 0.649],
+        luma: 0.0453,
     },
     {
         id: 'transit-mode-odyssey',

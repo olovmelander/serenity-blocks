@@ -235,10 +235,10 @@ export const EVENTS = {
     ODYSSEY_VICTORY_LAP_END: 'odysseyVictoryLapEnd',
     // Odyssey pause sheet: Retry orb / Back to map, emitted once the sheet has closed
     ODYSSEY_PAUSE_ACTION: 'odysseyPauseAction',
-    // Fault Lines: the mode publishes its puzzle state; the HUD sends commands back
+    // Stillfall: the mode publishes its puzzle state; the HUD sends commands back
     // ({ type: 'undo' | 'restart' | 'next' | 'load', puzzleId? }).
-    FAULT_LINES_STATE: 'faultLinesState',
-    FAULT_LINES_COMMAND: 'faultLinesCommand',
+    STILLFALL_STATE: 'stillfallState',
+    STILLFALL_COMMAND: 'stillfallCommand',
     // Demo System
     OPEN_DEMO_BROWSER: 'openDemoBrowser',
     EXIT_TO_MAIN_MENU: 'exitToMainMenu',

@@ -400,7 +400,7 @@ describe('cinematic loading overlay countdown', () => {
         ['INFINITY', 'infinity', 'INFINITY'],
         ['ODYSSEY', 'odyssey', 'ODYSSEY'],
         ['SERENITY', 'serenity', 'SERENITY'],
-        ['FAULT LINES', 'fault-lines', 'FAULT LINES'],
+        ['STILLFALL', 'stillfall', 'STILLFALL'],
     ])('uses the mode name as the hero wordmark for %s', (title, asset, label) => {
         showCinematicLoadingOverlay(title);
         const heading = document.querySelector('[data-cinematic-role="title"]');
