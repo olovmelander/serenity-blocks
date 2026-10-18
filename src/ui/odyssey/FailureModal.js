@@ -8,6 +8,7 @@
 
 import { appendKeyHint, createKeystoneSheet, el } from './keystone-sheet.js';
 import { getOdysseyRetryDebrief } from './objective-copy.js';
+import { ODYSSEY_CHARM_KIND_LABELS, ODYSSEY_MERCY_FALLS } from '../../core/odyssey/odyssey-charms.js';
 
 /**
  * Build the level-failed sheet.
@@ -19,6 +20,8 @@ import { getOdysseyRetryDebrief } from './objective-copy.js';
  * @param {object} [deps.levelConfig] authored objective for this attempt
  * @param {object} [deps.metrics] final metrics after in-flight physics settles
  * @param {string} [deps.failureReason] outcome code, independent of the displayed title
+ * @param {?{charms: object[], onTake: function(string), onPass: function}} [deps.charmDraft]
+ *   the road's mercy: a draft of charms after the third fall on this orb
  * @returns {HTMLElement} the modal root element (caller mounts + later removes it)
  */
 export function createFailureModal({
@@ -31,8 +34,7 @@ export function createFailureModal({
     levelConfig = null,
     metrics = null,
     failureReason = null,
-    gemsEarned = 0,
-    gemCount = 0,
+    charmDraft = null,
 }) {
     // Keystone sheet (keystone-overlays.css). A failed level is a pause for breath, not
     // an alarm: no red, the reason in plain words, Retry as the one primary action.
@@ -53,12 +55,63 @@ export function createFailureModal({
             + `First to ${duel.targetFrags || 3} wins. Retry begins at 0–0.`
         : 'Take a breath. Retry starts a fresh attempt.';
     content.appendChild(el('p', 'sb-ody-lede', retryText));
-    if (gemsEarned > 0) {
-        const gems = el('p', 'sb-ody-gems');
-        gems.appendChild(el('strong', '', `+${gemsEarned} gem for the attempt`));
-        gems.appendChild(el('span', '', ` · ${gemCount} ${gemCount === 1 ? 'gem' : 'gems'} to spend. `
-            + 'Press 1, 2 or 3 during an orb to use one.'));
-        content.appendChild(gems);
+
+    // Single-fire choice state, declared early because the charm cards consult it.
+    let resolved = false;
+    let disposed = false;
+    let focusPrimary = () => {};
+
+    // The road's mercy: after the third fall on one orb a draft of charms rides on the sheet.
+    // Taking one or passing settles it here; Retry then plays with the charm held.
+    const charmNodes = [];
+    if (charmDraft?.charms?.length) {
+        const mercy = el('section', 'sb-ody-note sb-ody-charms');
+        mercy.ariaLabel = 'The road offers a charm';
+        mercy.appendChild(el('strong', '', 'The road offers a charm'));
+        mercy.appendChild(el('p', '', `After ${ODYSSEY_MERCY_FALLS} falls on one orb the road offers a charm. `
+            + 'Take one and keep it for the rest of the way, or pass.'));
+        const list = el('div', 'sb-ody-charm-list');
+        list.role = 'group';
+        list.ariaLabel = 'Charms offered';
+        const pass = el('button', 'sb-btn sb-ody-charm-pass', 'Not now');
+        pass.type = 'button';
+        let settled = false;
+        const settle = (taken) => {
+            settled = true;
+            list.hidden = true;
+            pass.hidden = true;
+            charmNodes.splice(0);
+            const line = el('p', 'sb-ody-charm-settled', taken
+                ? `${taken.name} is yours for the rest of the road. ${taken.line}`
+                : 'No charm this time. The road offers another at the next chapter.');
+            line.role = 'status';
+            mercy.appendChild(line);
+            focusPrimary();
+        };
+        charmDraft.charms.forEach((charm) => {
+            const card = el('button', 'sb-ody-charm');
+            card.type = 'button';
+            if (card.dataset) card.dataset.charm = charm.id;
+            card.appendChild(el('i', 'sb-ody-charm__kind', ODYSSEY_CHARM_KIND_LABELS[charm.kind] || ''));
+            card.appendChild(el('b', 'sb-ody-charm__name', charm.name));
+            card.appendChild(el('span', 'sb-ody-charm__line', charm.line));
+            card.addEventListener('click', () => {
+                if (settled || resolved) return;
+                if (charmDraft.onTake?.(charm.id) === false) return;
+                settle(charm);
+            });
+            list.appendChild(card);
+            charmNodes.push(card);
+        });
+        mercy.appendChild(list);
+        pass.addEventListener('click', () => {
+            if (settled || resolved) return;
+            charmDraft.onPass?.();
+            settle(null);
+        });
+        mercy.appendChild(pass);
+        charmNodes.push(pass);
+        content.appendChild(mercy);
     }
 
     if (debrief) {
@@ -99,6 +152,7 @@ export function createFailureModal({
     const retryBtn = el('button', 'sb-btn sb-btn--primary', 'Retry');
     retryBtn.type = 'button';
     appendKeyHint(retryBtn, 'R', 'A');
+    focusPrimary = () => retryBtn.focus?.({ preventScroll: true });
     const mapBtn = el('button', 'sb-btn', 'Back to Map');
     mapBtn.type = 'button';
     appendKeyHint(mapBtn, 'Esc', 'B');
@@ -108,8 +162,6 @@ export function createFailureModal({
 
     // Single-fire choice dispatch shared by buttons + keyboard. The caller owns
     // removing the modal (a retry keeps the backdrop up while the board resets).
-    let resolved = false;
-    let disposed = false;
     let onKeyDown = null;
     let focusTimer = null;
     const detachInput = () => {
@@ -135,9 +187,10 @@ export function createFailureModal({
             return;
         }
         // A focused button owns Enter/Space (tabbing to Back to Map and pressing Enter
-        // used to retry).
+        // used to retry); so does a charm card or Not now.
         const focused = document.activeElement;
-        if ((e.key === 'Enter' || e.key === ' ') && (focused === retryBtn || focused === mapBtn)) return;
+        if ((e.key === 'Enter' || e.key === ' ')
+            && (focused === retryBtn || focused === mapBtn || charmNodes.includes(focused))) return;
         switch (e.key) {
         case 'Enter':
         case ' ':

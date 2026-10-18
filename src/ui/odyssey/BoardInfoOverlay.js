@@ -26,7 +26,7 @@ export function createBoardInfoOverlay({ autoContinue = true, onAutoContinueChan
             <div class="odyssey-progress-info">
                 <span id="odyssey-header-stars">★ 0</span>
                 <span id="odyssey-header-progress">Progress: 0%</span>
-                <span id="odyssey-header-gems" title="Gems: earned by finishing or falling, spent on abilities during an orb">◆ 0 gems</span>
+                <span id="odyssey-header-charms" title="Charms: pick one at each chapter’s arrival and keep it for the rest of the road.">◇ No charms yet</span>
             </div>
         </div>
         <div id="odyssey-chapter-arrival-card" class="odyssey-chapter-arrival-card" aria-live="polite">
@@ -41,7 +41,7 @@ export function createBoardInfoOverlay({ autoContinue = true, onAutoContinueChan
             <p id="level-panel-chapter" class="level-chapter">Chapter 1</p>
             <p id="level-panel-description" class="level-description"></p>
             <div id="level-panel-stars" class="level-stars" role="img" aria-label="0 of 3 stars earned">☆☆☆</div>
-            <p id="level-panel-aided" class="level-aided" hidden></p>
+            <p id="level-panel-charms" class="level-charms" hidden></p>
             <div id="level-panel-objectives" class="level-objectives">
                 <p class="level-goal"><strong>Goal</strong> <span id="level-panel-goal"></span></p>
                 <p id="level-panel-star-goals-label" class="level-objectives__label">Star goals</p>

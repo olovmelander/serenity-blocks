@@ -1,7 +1,6 @@
 import { DEMO_LEGACY_SIMULATION_CLOCK } from '../demo/DemoRecorder.js';
 import { canWriteLegacySimulationResults } from './single-player-result-compatibility.js';
 import { getOdysseyCampaignSummary } from '../odyssey/odyssey-campaign-summary.js';
-import { capOdysseyAidedStars } from '../odyssey/odyssey-gems.js';
 
 /** Save one retired attempt before choosing the next step of the journey. */
 export async function completeOdysseyLevel(mode, results) {
@@ -39,13 +38,10 @@ export async function completeOdysseyLevel(mode, results) {
         ...results,
     };
 
-    // Calculate stars. A gem's help clears the orb and opens the path, but holds one star.
+    // Calculate stars
     const stars = mode._calculateStars(finalResults, hybridEngine);
-    finalResults.stars = capOdysseyAidedStars(stars, session.gems);
-    if (session.gems?.spent > 0) {
-        finalResults.aided = true;
-        finalResults.gemsUsed = session.gems.spent;
-    }
+    finalResults.stars = stars;
+    finalResults.charms = session.charmRun?.charms?.slice() || [];
 
     // Evaluate bonuses
     const bonuses = mode._evaluateBonuses(finalResults, hybridEngine);
@@ -57,10 +53,7 @@ export async function completeOdysseyLevel(mode, results) {
         const wasComplete = getOdysseyCampaignSummary(mode.levelRegistry, mode.odysseyState).complete;
         const completion = mode.odysseyState.completeLevel(levelId, finalResults, {
             themeId: session.levelConfig?.theme?.primary,
-            ...(finalResults.aided ? { aided: true } : {}),
         });
-        finalResults.gemsEarned = completion?.gemsEarned || 0;
-        finalResults.gemCount = mode.odysseyState.getGemCount?.() ?? 0;
         // Ownership is durable before any outcome view can celebrate it. The
         // exact attempt's authored theme stays authoritative through prefetch.
         const collection = mode.deps?.themeCollection;

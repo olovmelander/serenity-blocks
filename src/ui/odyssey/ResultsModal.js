@@ -17,6 +17,7 @@ import { appendKeyHint, createKeystoneSheet, el } from './keystone-sheet.js';
 import { FOCUSABLE_SELECTOR } from '../spatial-navigation.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
 import { createOdysseyStarNotes } from './odyssey-star-notes.js';
+import { describeOdysseyCharms } from '../../core/odyssey/odyssey-charms.js';
 
 /**
  * Build the level-complete results sheet.
@@ -102,9 +103,8 @@ export function createResultsModal({
     if (results.duel) {
         stats.unshift({ label: 'Knockouts', value: `${results.duel.playerFrags}–${results.duel.botFrags}` });
     }
-    if (results.gemsEarned > 0) {
-        stats.push({ label: 'Gems', value: `+${results.gemsEarned} · ${results.gemCount ?? '?'} in hand` });
-    }
+    const charms = describeOdysseyCharms(results.charms);
+    if (charms.length) stats.push({ label: 'Charms', value: charms.map((charm) => charm.name).join(' · ') });
     const statsContainer = el('dl', 'sb-ody-facts');
     stats.forEach((stat) => {
         const fact = el('div', 'sb-ody-fact');

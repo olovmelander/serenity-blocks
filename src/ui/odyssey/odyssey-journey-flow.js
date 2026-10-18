@@ -6,6 +6,7 @@ import { createCinematicLoadingSurface } from '../cinematic-loading-surface.js';
 import { canWriteLegacySimulationResults } from '../../core/game-modes/single-player-result-compatibility.js';
 import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physics-callbacks.js';
 import { getThemeMusic } from '../../core/progression/theme-music-catalog.js';
+import { odysseyChapterDraftKey } from '../../core/odyssey/odyssey-charms.js';
 
 export {
     createOdysseyEntryPresence, cancelOdysseyEntryPresence,
@@ -378,7 +379,14 @@ async function continueAcrossChapter(mode, operation) {
     const completedChapter = summarizeOdysseyChapter(mode, operation.previousLevel?.chapter);
     const choice = await new Promise((resolve) => {
         operation.resolveChoice = resolve;
-        modal.showChapter({ onChoose: resolve, completedChapter });
+        // The new chapter's draft of charms rides on its arrival; the mode wires take and pass.
+        modal.showChapter({
+            onChoose: resolve,
+            completedChapter,
+            charmDraft: mode._describeCharmDraft?.(
+                mode.odysseyState?.getCharmDraft?.(odysseyChapterDraftKey(nextLevel.chapter)),
+            ) || null,
+        });
     });
     if (!canProceed(mode, operation)) return false;
     if (choice !== 'next') {

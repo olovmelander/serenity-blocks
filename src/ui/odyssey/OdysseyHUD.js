@@ -14,7 +14,6 @@ import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
 import {
     ODYSSEY_DUEL_KNOCKOUTS, formatOdysseyDuelGoal, formatOdysseyRival,
 } from '../../core/odyssey/data/duel-rules.js';
-import { ODYSSEY_GEM_ABILITIES } from '../../core/odyssey/odyssey-gems.js';
 
 const setText = (element, value) => {
     const text = String(value);
@@ -45,9 +44,8 @@ export class OdysseyHUD {
         this.bonusesDisplay = null;
         this.finishHint = null;
         this.onFinish = options.onFinish;
-        this.onUseGem = options.onUseGem;
-        this.gemsSection = null;
-        this.gemChips = new Map();
+        this.charmsSection = null;
+        this.charmsList = null;
         this.duel = null;
         this.duelPanel = null;
         this.opponentBoard = null;
@@ -91,7 +89,7 @@ export class OdysseyHUD {
         this._createTimeSection();
         this._createStarsSection();
         this._createBonusesSection();
-        this._createGemsSection();
+        this._createCharmsSection();
         this._createFinishHint();
         this._createPauseHint();
 
@@ -250,94 +248,57 @@ export class OdysseyHUD {
         this.container.appendChild(section);
     }
 
-    _createGemsSection() {
+    _createCharmsSection() {
         const section = document.createElement('div');
-        section.className = 'hud-section gems-section';
+        section.className = 'hud-section charms-section';
         section.hidden = true;
 
-        const head = document.createElement('div');
-        head.className = 'gems-head';
         const label = document.createElement('div');
         label.className = 'hud-label';
-        label.textContent = 'Gems';
-        head.appendChild(label);
-        this.gemsCount = document.createElement('div');
-        this.gemsCount.className = 'gems-count';
-        this.gemsCount.textContent = '◆ 0';
-        head.appendChild(this.gemsCount);
-        section.appendChild(head);
+        label.textContent = 'Charms';
+        section.appendChild(label);
 
-        this.gemsList = document.createElement('div');
-        this.gemsList.className = 'gems-list';
-        this.gemsList.role = 'group';
-        this.gemsList.ariaLabel = 'Gem abilities';
-        for (const ability of ODYSSEY_GEM_ABILITIES) {
-            const chip = document.createElement('button');
-            chip.type = 'button';
-            chip.className = 'gem-chip';
-            chip.dataset.ability = ability.id;
-            chip.title = ability.summary;
-            chip.innerHTML = `<kbd class="sb-kbd" data-key>${ability.key}</kbd><kbd class="sb-kbd" data-pad hidden></kbd>`
-                + `<span class="gem-chip__name">${ability.name}</span><span class="gem-chip__state"></span>`;
-            chip.addEventListener('click', () => this.onUseGem?.(ability.id));
-            this.gemsList.appendChild(chip);
-            this.gemChips.set(ability.id, chip);
-        }
-        section.appendChild(this.gemsList);
+        this.charmsList = document.createElement('ul');
+        this.charmsList.className = 'charms-list';
+        this.charmsList.ariaLabel = 'Charms held';
+        section.appendChild(this.charmsList);
 
-        this.gemsNote = document.createElement('p');
-        this.gemsNote.className = 'gems-note';
-        this.gemsNote.hidden = true;
-        this.gemsNote.textContent = 'Cleared with a gem: one star. The others ask for an unaided clear.';
-        section.appendChild(this.gemsNote);
-
-        this.gemsSection = section;
+        this.charmsSection = section;
         this.container.appendChild(section);
     }
 
-    /** Gems in hand and each ability's state for this attempt; null hides the tray. */
-    updateGems(view) {
-        if (!this.gemsSection) return;
-        if (!view) {
-            this.gemsSection.hidden = true;
+    /** The charms held this journey, each with its line; a spent Hearth is marked. Null or none hides the list. */
+    updateCharms(view) {
+        if (!this.charmsSection || !this.charmsList) return;
+        const charms = view?.charms || [];
+        if (!charms.length) {
+            this.charmsSection.hidden = true;
             return;
         }
-        this.gemsSection.hidden = false;
-        if (this.gemsSection.dataset) this.gemsSection.dataset.empty = String(view.count === 0);
-        setText(this.gemsCount, `◆ ${view.count}`);
-        view.abilities.forEach((ability) => {
-            const chip = this.gemChips.get(ability.id);
-            if (!chip) return;
-            const stateText = {
-                active: ability.remainingMs > 0 ? `${Math.ceil(ability.remainingMs / 1000)} s` : '',
-                armed: 'armed',
-                used: 'used',
-            }[ability.state] || '';
-            if (chip.dataset) chip.dataset.state = ability.state;
-            chip.disabled = ability.state !== 'ready';
-            chip.ariaLabel = `${ability.name}: ${ability.summary}${stateText ? ` (${stateText})` : ''}`;
-            const stateNode = chip.querySelector?.('.gem-chip__state');
-            if (stateNode) setText(stateNode, stateText);
+        this.charmsSection.hidden = false;
+        if (typeof this.charmsList.replaceChildren === 'function') this.charmsList.replaceChildren();
+        charms.forEach((charm) => {
+            const item = document.createElement('li');
+            item.className = 'charm-chip';
+            if (item.dataset) {
+                item.dataset.charm = charm.id;
+                item.dataset.kind = charm.kind;
+                item.dataset.spent = String(charm.spent === true);
+            }
+            item.title = charm.line;
+            item.ariaLabel = `${charm.name}: ${charm.line}${charm.spent ? ' (spent this orb)' : ''}`;
+            const name = document.createElement('span');
+            name.className = 'charm-chip__name';
+            name.textContent = charm.name;
+            item.appendChild(name);
+            if (charm.spent) {
+                const state = document.createElement('span');
+                state.className = 'charm-chip__state';
+                state.textContent = 'spent';
+                item.appendChild(state);
+            }
+            this.charmsList.appendChild(item);
         });
-        if (this.gemsNote) this.gemsNote.hidden = !(view.spent > 0);
-    }
-
-    /** Controller labels per ability, from the attempt's pad controls; missing labels hide. */
-    setGemPadHints(labels = {}) {
-        this.gemChips.forEach((chip, abilityId) => {
-            const hint = chip.querySelector?.('[data-pad]');
-            if (!hint) return;
-            const label = labels?.[abilityId] || '';
-            hint.textContent = label;
-            hint.hidden = !label;
-        });
-    }
-
-    /** Still Air on a deadline orb: the clock gains the seconds it bought. */
-    extendTimeLimit(seconds) {
-        if (!this.timeLimit) return;
-        this.timeLimit += Math.max(0, Number(seconds) || 0);
-        this.updateTime(this.elapsedTime);
     }
 
     _createFinishHint() {
@@ -505,10 +466,12 @@ export class OdysseyHUD {
     /**
      * Set level and update display.
      * @param {number} levelId - Level ID to display.
+     * @param {object} [levelConfig] the orb as it will be played (the held charms applied);
+     *   the authored orb when omitted.
      */
-    setLevel(levelId) {
+    setLevel(levelId, levelConfig = null) {
         this.levelId = levelId;
-        this.levelConfig = getLevelById(levelId);
+        this.levelConfig = levelConfig || getLevelById(levelId);
 
         if (!this.levelConfig) {
             console.error('[OdysseyHUD] Level not found:', levelId);
