@@ -1,5 +1,5 @@
 /**
- * Fault Lines' two GameState switches: a finite supply (no bag refill) and waiting
+ * Stillfall' two GameState switches: a finite supply (no bag refill) and waiting
  * gravity (no fall, no auto-lock; only a hard drop places a piece). Both default off,
  * and every other mode keeps today's rules.
  */

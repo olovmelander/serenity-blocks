@@ -1,7 +1,7 @@
 // @ts-check
 
 /**
- * Every landing the real controls can reach, for the Fault Lines solver. It is the same
+ * Every landing the real controls can reach, for the Stillfall solver. It is the same
  * breadth-first search as ai/reachability-pathfinder.js (findReachablePlacements): the same
  * start, the same transitions in the same order (move left, move right, rotate left, rotate
  * right, flip, soft drop), the same kick tables, the same state cap, and the same choice
@@ -10,7 +10,7 @@
  * parent links and kick lists are looked up once, so a three-piece puzzle solves several
  * times faster.
  *
- * tests/unit/fault-lines-reach.test.js holds it to findReachablePlacements, landing for
+ * tests/unit/stillfall-reach.test.js holds it to findReachablePlacements, landing for
  * landing and action for action, on every bank puzzle's openings and on random boards with
  * caves and overhangs where tucks and spins matter.
  */

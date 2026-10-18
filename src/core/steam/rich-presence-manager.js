@@ -31,7 +31,7 @@ const PRESENCE = {
         })
         : presence('#Odyssey', 'Odyssey')),
     [GAME_MODES.SERENITY]: () => presence('#Serenity', 'In Serenity'),
-    [GAME_MODES.FAULT_LINES]: () => presence('#FaultLines', 'Fault Lines'),
+    [GAME_MODES.STILLFALL]: () => presence('#Stillfall', 'Stillfall'),
     [GAME_MODES.LOCAL_MULTIPLAYER]: (data) => (data.playerCount
         ? presence('#LocalVersusPlayers', `Local Versus · ${data.playerCount} players`, { players: data.playerCount })
         : presence('#LocalVersus', 'Local Versus')),
@@ -82,7 +82,7 @@ const UPDATE_INTERVALS = {
     [GAME_MODES.ODYSSEY]: 0, // Instant on level start
     [GAME_MODES.INFINITY]: 15000, // Every 15s (more dynamic mode)
     [GAME_MODES.SERENITY]: 0, // Instant, rarely changes
-    [GAME_MODES.FAULT_LINES]: 0, // Instant on start
+    [GAME_MODES.STILLFALL]: 0, // Instant on start
     [GAME_MODES.LOCAL_MULTIPLAYER]: 0, // Instant on start
     [GAME_MODES.ONLINE_MULTIPLAYER]: 5000, // More frequent for competitive
 };

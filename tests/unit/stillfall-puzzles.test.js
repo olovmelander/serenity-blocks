@@ -1,5 +1,5 @@
 /**
- * The Fault Lines certifier. Every shipped puzzle must be valid and solvable by straight
+ * The Stillfall certifier. Every shipped puzzle must be valid and solvable by straight
  * drops (rotate and move at the top, then drop: no tuck, no kick), its stored solution
  * must be one such line, two-piece puzzles must need every piece, and every solution must
  * play out the same through the real game: the real controls from the deal row, a real
@@ -13,14 +13,14 @@ import {
 import { rebuildBoardGridFromPieces, markBoardDirty } from '../../src/core/board.js';
 import {
     buildPuzzle, validatePuzzleDefinition, MAX_SUPPLY,
-} from '../../src/core/fault-lines/fault-lines-puzzle.js';
+} from '../../src/core/stillfall/stillfall-puzzle.js';
 import {
     applyPlacement, boardFor, createRun, dealIntoView, judge, listPlacements, solutionPlacement,
-} from '../../src/core/fault-lines/fault-lines-sim.js';
-import { everyPieceMatters, isStraight, solvePuzzle } from '../../src/core/fault-lines/fault-lines-solver.js';
+} from '../../src/core/stillfall/stillfall-sim.js';
+import { everyPieceMatters, isStraight, solvePuzzle } from '../../src/core/stillfall/stillfall-solver.js';
 import {
-    FAULT_LINES_PUZZLES, SOLVES_TO_OPEN_NEXT_TIER, TIERS, openPuzzleIds,
-} from '../../src/core/fault-lines/puzzle-bank.js';
+    STILLFALL_PUZZLES, SOLVES_TO_OPEN_NEXT_TIER, TIERS, openPuzzleIds,
+} from '../../src/core/stillfall/puzzle-bank.js';
 
 /** The share of first landings that may lead to a solution, per tier. */
 const MAX_WINNING_OPENINGS = {
@@ -91,11 +91,11 @@ async function certifyLine(puzzle, line, label) {
     expect(live.waves.length, label).toBeGreaterThan(0);
 }
 
-describe('Fault Lines puzzle bank', () => {
+describe('Stillfall puzzle bank', () => {
     it('holds valid puzzles with unique ids, lessons and stored solutions', () => {
-        const ids = FAULT_LINES_PUZZLES.map((puzzle) => puzzle.id);
+        const ids = STILLFALL_PUZZLES.map((puzzle) => puzzle.id);
         expect(new Set(ids).size).toBe(ids.length);
-        for (const definition of FAULT_LINES_PUZZLES) {
+        for (const definition of STILLFALL_PUZZLES) {
             expect(validatePuzzleDefinition(definition), definition.id).toEqual([]);
             expect(definition.lesson, definition.id).toBeTruthy();
             expect(definition.solution?.length, definition.id).toBe(definition.supply.length);
@@ -103,8 +103,8 @@ describe('Fault Lines puzzle bank', () => {
     });
 
     it('opens a tier once three puzzles in the tier below are solved, so lanterns come first', () => {
-        const tierOf = (tier) => FAULT_LINES_PUZZLES.filter((p) => p.tier === tier).map((p) => p.id);
-        const tiers = [...new Set(FAULT_LINES_PUZZLES.map((p) => p.tier))];
+        const tierOf = (tier) => STILLFALL_PUZZLES.filter((p) => p.tier === tier).map((p) => p.id);
+        const tiers = [...new Set(STILLFALL_PUZZLES.map((p) => p.tier))];
         expect(tiers).toEqual(TIERS.map((entry) => entry.tier));
         expect(SOLVES_TO_OPEN_NEXT_TIER).toBe(3);
         expect([...openPuzzleIds([])]).toEqual(tierOf(1));
@@ -117,11 +117,11 @@ describe('Fault Lines puzzle bank', () => {
             expect([...openPuzzleIds(solved.slice(0, -1))]).toEqual(below.flatMap(tierOf));
         }
         // Any three first-light solves include a lantern puzzle: fewer puzzles go without one.
-        const withoutLanterns = FAULT_LINES_PUZZLES.filter((p) => p.tier === 1 && !p.rows.some((row) => /[a-z]/.test(row)));
+        const withoutLanterns = STILLFALL_PUZZLES.filter((p) => p.tier === 1 && !p.rows.some((row) => /[a-z]/.test(row)));
         expect(withoutLanterns.length).toBeLessThan(SOLVES_TO_OPEN_NEXT_TIER);
     });
 
-    describe.each(FAULT_LINES_PUZZLES.map((definition) => [definition.id, definition]))('%s', (id, definition) => {
+    describe.each(STILLFALL_PUZZLES.map((definition) => [definition.id, definition]))('%s', (id, definition) => {
         const puzzle = buildPuzzle(definition);
         const report = solvePuzzle(puzzle);
 
@@ -158,7 +158,7 @@ describe('Fault Lines puzzle bank', () => {
     });
 });
 
-describe('Fault Lines rules', () => {
+describe('Stillfall rules', () => {
     const definition = {
         id: 'rules', title: 'Rules', rows: ['....R.....', 'AAAAAAAA..'], supply: ['O', 'O'],
     };
@@ -189,7 +189,7 @@ describe('Fault Lines rules', () => {
     });
 
     it('never gives touching bodies the same colour', () => {
-        for (const bank of FAULT_LINES_PUZZLES) {
+        for (const bank of STILLFALL_PUZZLES) {
             const grid = boardFor(buildPuzzle(bank).lockedPieces);
             grid.forEach((row, y) => row.forEach((cell, x) => {
                 for (const other of [row[x + 1], grid[y + 1]?.[x]]) {

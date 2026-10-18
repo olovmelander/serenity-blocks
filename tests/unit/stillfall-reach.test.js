@@ -1,5 +1,5 @@
 /**
- * The Fault Lines lister (fault-lines-reach.js) must find exactly what the bot pathfinder
+ * The Stillfall lister (stillfall-reach.js) must find exactly what the bot pathfinder
  * finds: every landing, and for each the same rotation, column, row and input path. The
  * solver, the certifier and the hint all trust it, so it is held to findReachablePlacements
  * on every bank puzzle's opening boards and the boards after each first landing, and on
@@ -8,11 +8,11 @@
 import { describe, expect, it } from 'vitest';
 import { COLS, PIECE_KEYS } from '../../src/core/constants.js';
 import { findReachablePlacements } from '../../src/core/ai/reachability-pathfinder.js';
-import { buildPuzzle } from '../../src/core/fault-lines/fault-lines-puzzle.js';
+import { buildPuzzle } from '../../src/core/stillfall/stillfall-puzzle.js';
 import {
     applyPlacement, boardFor, cellsOf, createRun, currentShapeKey, listPlacements, spawnPiece,
-} from '../../src/core/fault-lines/fault-lines-sim.js';
-import { FAULT_LINES_PUZZLES } from '../../src/core/fault-lines/puzzle-bank.js';
+} from '../../src/core/stillfall/stillfall-sim.js';
+import { STILLFALL_PUZZLES } from '../../src/core/stillfall/puzzle-bank.js';
 
 /** listPlacements as it was built on the bot pathfinder: the oracle. */
 function referencePlacements(run) {
@@ -77,8 +77,8 @@ function randomBoardRun(seed, shapeKey) {
     return createRun(puzzle);
 }
 
-describe('Fault Lines reachability', () => {
-    it.each(FAULT_LINES_PUZZLES.map((definition) => [definition.id, definition]))(
+describe('Stillfall reachability', () => {
+    it.each(STILLFALL_PUZZLES.map((definition) => [definition.id, definition]))(
         'finds what the bot pathfinder finds on %s and after each opening',
         (id, definition) => {
             const start = createRun(buildPuzzle(definition));

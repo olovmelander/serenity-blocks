@@ -1592,7 +1592,7 @@ export class SharedEffects {
      *
      * @param {number} comboCount - Combo count
      */
-    /** True when the board counts a puzzle's waves rather than combos (Fault Lines). */
+    /** True when the board counts a puzzle's waves rather than combos (Stillfall). */
     _countsWaves() {
         return this.scene?.gameState?.moveSummaryVocabulary === 'wave';
     }
