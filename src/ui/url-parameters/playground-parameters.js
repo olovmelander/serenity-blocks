@@ -5759,4 +5759,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'board while the player looks around Infinity\'s tower); t=<seconds> gives a deterministic capture.',
         sources: ['src/playground/effects/infinity-ascent.effect.js'],
     })),
+    {
+        name: 'glass',
+        category: 'Playground',
+        scope: 'playground.html — neon-district',
+        description: 'Override the rain on the glass: the drops, runners and mist over the street.',
+        values: '0 (none), 1 (beads and one layer of runners) or 2 (two layers of each).',
+        defaultValue: 'The tier’s: 2 from High up, 1 on Medium, 0 on Low and Minimal.',
+        example: 'glass=0',
+        notes: 'Use on playground.html with effect=neon-district.',
+        sources: ['src/playground/effects/neon-district.effect.js', 'src/themes/neon-district/neon-district-glass.js'],
+    },
 ];
