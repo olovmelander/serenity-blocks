@@ -6,7 +6,11 @@
  *     [--style=strata|deep] [--seed=7]
  * Rank what a search found (one goal per structure and supply, the hardest):
  *   node scripts/fault-lines-search.mjs --rank=candidates.jsonl [--pieces=3] [--goal=waves]
- *     [--top=20] [--maxRows=10] [--maxBodies=16]
+ *     [--top=20] [--maxRows=10] [--maxBodies=16] [--lanterns]
+ *
+ * One piece (--pieces=1) searches for First light: a cascade or lines from two up, or an empty
+ * well, with at most a quarter of the openings winning and no relic (Undertow introduces it).
+ * --lanterns keeps only structures with a lantern (First light's other puzzles assume them).
  *
  * Each candidate is a random structure (rows with one to three gaps, split into bodies, some
  * joined into two-row bodies, lanterns above) and a random supply. Every straight-drop line of
@@ -61,6 +65,7 @@ function rank(args) {
         if (Number(args.pieces || c.supply.length) !== c.supply.length) continue;
         if (c.rows.length > Number(args.maxRows || 11) || c.bodies > Number(args.maxBodies || 18)) continue;
         if (args.goal && c.goal.type !== args.goal) continue;
+        if (args.lanterns && !c.rows.some((row) => /[a-z]/.test(row))) continue;
         const h = hardness(c);
         if (!seen.has(key) || seen.get(key).h < h) seen.set(key, { ...c, h });
     }
@@ -364,11 +369,12 @@ async function work() {
         const maxWaves = Math.max(...nodes.map((n) => n.bestWaves));
         const maxLines = Math.max(...nodes.map((n) => n.lines));
         const goals = [];
-        if (maxWaves >= (deep ? 4 : 3)) goals.push({ type: 'waves', atLeast: maxWaves });
+        const tutorial = pieces === 1;
+        if (maxWaves >= (deep ? 4 : 3) || (tutorial && maxWaves >= 2)) goals.push({ type: 'waves', atLeast: maxWaves });
         if (maxWaves >= (deep ? 5 : 4)) goals.push({ type: 'waves', atLeast: maxWaves - 1 });
-        if (maxLines >= (deep ? 5 : 4)) goals.push({ type: 'lines', atLeast: maxLines });
+        if (maxLines >= (deep ? 5 : 4) || (tutorial && maxLines >= 2)) goals.push({ type: 'lines', atLeast: maxLines });
         if (nodes.some((n) => n.empty && n.depth > 0)) goals.push({ type: 'clear-all' });
-        if (!deep) {
+        if (!deep && !tutorial) {
             relicLetters.forEach((body, relicIndex) => {
                 if (nodes.some((n) => n.relic[relicIndex] === 2)) goals.push({ type: 'relic-floor', body, relicIndex });
             });
@@ -376,7 +382,8 @@ async function work() {
         for (const { relicIndex, ...goal } of goals) {
             const verdict = judge(nodes, goal, relicIndex);
             if (!verdict.solvable || verdict.minDepth !== pieces || verdict.deepLock < 2) continue;
-            if (verdict.winOpenings / verdict.openings > 0.1 && !(pieces === 2 && verdict.winOpenings <= 2)) continue;
+            const share = verdict.winOpenings / verdict.openings;
+            if (tutorial ? share > 0.25 : share > 0.1 && !(pieces === 2 && verdict.winOpenings <= 2)) continue;
             // Every piece matters: without the leading pieces the goal is out of reach.
             let matters = true;
             for (let skip = 1; skip < pieces && matters; skip += 1) {
