@@ -18,10 +18,16 @@ import {
     applyPlacement, boardFor, createRun, dealIntoView, judge, listPlacements, solutionPlacement,
 } from '../../src/core/fault-lines/fault-lines-sim.js';
 import { everyPieceMatters, isStraight, solvePuzzle } from '../../src/core/fault-lines/fault-lines-solver.js';
-import { FAULT_LINES_PUZZLES, SOLVES_TO_OPEN_NEXT_TIER, openPuzzleIds } from '../../src/core/fault-lines/puzzle-bank.js';
+import {
+    FAULT_LINES_PUZZLES, SOLVES_TO_OPEN_NEXT_TIER, TIERS, openPuzzleIds,
+} from '../../src/core/fault-lines/puzzle-bank.js';
 
 /** The share of first landings that may lead to a solution, per tier. */
-const MAX_WINNING_OPENINGS = { 1: 0.25, 2: 0.25, 3: 0.1 };
+const MAX_WINNING_OPENINGS = {
+    1: 0.25, 2: 0.25, 3: 0.1, 4: 0.1, 5: 0.06, 6: 0.06,
+};
+/** From this tier on, exactly one first landing leads to a solution. */
+const ONE_WAY_IN_FROM_TIER = 5;
 
 /** Every cell as `type:id`, so two boards match only if the same bodies hold the same cells. */
 function cellMap(grid) {
@@ -98,12 +104,18 @@ describe('Fault Lines puzzle bank', () => {
 
     it('opens a tier once three puzzles in the tier below are solved, so lanterns come first', () => {
         const tierOf = (tier) => FAULT_LINES_PUZZLES.filter((p) => p.tier === tier).map((p) => p.id);
+        const tiers = [...new Set(FAULT_LINES_PUZZLES.map((p) => p.tier))];
+        expect(tiers).toEqual(TIERS.map((entry) => entry.tier));
         expect(SOLVES_TO_OPEN_NEXT_TIER).toBe(3);
         expect([...openPuzzleIds([])]).toEqual(tierOf(1));
         expect([...openPuzzleIds(tierOf(1).slice(0, 2))]).toEqual(tierOf(1));
-        expect([...openPuzzleIds(tierOf(1).slice(0, 3))]).toEqual([...tierOf(1), ...tierOf(2)]);
-        expect([...openPuzzleIds([...tierOf(1).slice(0, 3), ...tierOf(2).slice(0, 3)])])
-            .toEqual([...tierOf(1), ...tierOf(2), ...tierOf(3)]);
+        // Three in each tier below opens the next one, and only that one.
+        for (let index = 1; index < tiers.length; index += 1) {
+            const below = tiers.slice(0, index);
+            const solved = below.flatMap((tier) => tierOf(tier).slice(0, 3));
+            expect([...openPuzzleIds(solved)]).toEqual([...below, tiers[index]].flatMap(tierOf));
+            expect([...openPuzzleIds(solved.slice(0, -1))]).toEqual(below.flatMap(tierOf));
+        }
         // Any three of the five first-light puzzles include a lantern puzzle.
         const lanternPuzzles = FAULT_LINES_PUZZLES.filter((p) => p.tier === 1 && p.rows.some((row) => /[a-z]/.test(row)));
         expect(lanternPuzzles.length).toBeGreaterThanOrEqual(3);
@@ -118,6 +130,7 @@ describe('Fault Lines puzzle bank', () => {
             expect(report.straightSolutions.length, 'a solution with no tuck or kick').toBeGreaterThan(0);
             expect(report.winningOpenings / report.openingMoves)
                 .toBeLessThanOrEqual(MAX_WINNING_OPENINGS[definition.tier]);
+            if (definition.tier >= ONE_WAY_IN_FROM_TIER) expect(report.winningOpenings, 'one way in').toBe(1);
         });
 
         it('needs every piece, and is not solved before the last one lands', () => {

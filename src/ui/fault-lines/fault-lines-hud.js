@@ -135,6 +135,14 @@ function bankHtml(state) {
     return TIERS.map(({ tier, name }, index) => {
         const entries = state.bank.filter((e) => e.tier === tier);
         if (entries.length === 0) return '';
+        // A tier that is not open yet is one line; its puzzles are listed once it opens.
+        if (!entries.some((e) => e.open)) {
+            const count = plural(entries.length, 'puzzle', 'puzzles');
+            return `
+        <div class="fl-tier is-locked">
+            <p class="fl-tier__name">${escapeHtml(name)} <span class="fl-tier__note">${count} · locked</span></p>
+        </div>`;
+        }
         const next = TIERS[index + 1];
         const nextOpen = next && entries.some((e) => e.open) && state.bank.some((e) => e.tier === next.tier && e.open);
         let note = `${solvedIn(tier)} of ${entries.length} solved`;

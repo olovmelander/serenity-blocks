@@ -158,7 +158,8 @@
     text-transform: none;
 }
 
-.fl-puzzle.is-locked {
+.fl-puzzle.is-locked,
+.fl-tier.is-locked {
     opacity: 0.55;
 }
 
