@@ -12,7 +12,12 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { getLevelRegistry } from './LevelRegistry.js';
 import {
     ODYSSEY_SAVE_VERSION, getOdysseyCompletionThemeIds, snapshotLegacyOdysseyThemes, migrateV3OdysseyCampaign,
+    migrateV4OdysseyCampaign,
 } from './odyssey-progress-schema.js';
+import {
+    createOdysseyCharmState, normalizeOdysseyCharmState, odysseyChapterDraft, odysseyMercyDraft, passOdysseyCharm,
+    recordOdysseyFall, takeOdysseyCharm, toggleOdysseyCarriedCharm,
+} from './odyssey-charms.js';
 
 const STORAGE_KEY = 'serenityBlocks_odysseyProgress';
 // v2 (2026-08-15, space lengthening): chapter 6 grew 36-44 → 36-48, so every level
@@ -59,6 +64,7 @@ export function migrateOdysseyProgressData(data) {
 
     if (version < 3) snapshotLegacyOdysseyThemes(data);
     if (version < 4) migrateV3OdysseyCampaign(data);
+    if (version < 5) migrateV4OdysseyCampaign(data);
     data.version = ODYSSEY_SAVE_VERSION;
     return data;
 }
@@ -98,6 +104,11 @@ export class OdysseyStateManager {
         this.completedLevels = new Map(); // levelId → LevelCompletion
         this.retiredCompletions = {}; // Stable retired identity → historical completion
 
+        // Onboarding marks travel with the journey; a new journey starts them over
+        this.onboarding = { arrivalSeen: false };
+        // Charms: gathered at the road's waystones for the whole journey; three carried onto an orb
+        this.charms = createOdysseyCharmState();
+
         // Statistics
         this.statistics = {
             totalPlayTime: 0,
@@ -135,6 +146,13 @@ export class OdysseyStateManager {
             completedLevels: Object.fromEntries(this.completedLevels),
             retiredCompletions: { ...this.retiredCompletions },
             statistics: { ...this.statistics },
+            onboarding: { ...this.onboarding },
+            charms: {
+                gathered: [...this.charms.gathered],
+                carried: [...this.charms.carried],
+                drafts: { ...this.charms.drafts },
+                falls: { ...this.charms.falls },
+            },
             lastSaveDate: new Date().toISOString(),
         };
     }
@@ -190,6 +208,8 @@ export class OdysseyStateManager {
             this.completedLevels = new Map(Object.entries(data.completedLevels || {}));
             this.retiredCompletions = { ...data.retiredCompletions };
             this.statistics = { ...this.statistics, ...data.statistics };
+            this.onboarding = { arrivalSeen: data.onboarding?.arrivalSeen === true };
+            this.charms = normalizeOdysseyCharmState(data.charms);
             this._normalizeProgressState();
 
             console.log('[OdysseyState] Progress loaded successfully');
@@ -253,6 +273,8 @@ export class OdysseyStateManager {
         this.unlockedLevels = new Set([1]);
         this.completedLevels = new Map();
         this.retiredCompletions = {};
+        this.onboarding = { arrivalSeen: false };
+        this.charms = createOdysseyCharmState();
         this.statistics = {
             totalPlayTime: 0,
             totalAttempts: 0,
@@ -276,6 +298,25 @@ export class OdysseyStateManager {
     // =============================
     // Level Progression
     // =============================
+
+    /** A journey with nothing played yet: no orb cleared and no attempt recorded. */
+    isFreshJourney() {
+        return this.completedLevels.size === 0 && (this.statistics.totalAttempts || 0) === 0;
+    }
+
+    /** Whether the Chapter 1 arrival has already welcomed this journey. */
+    hasSeenArrival() {
+        return this.onboarding?.arrivalSeen === true;
+    }
+
+    /**
+     * Remember the welcome. The mark travels with the next save (an orb's result, the session's
+     * end), so a read-only experimental session never writes the campaign file for it.
+     */
+    markArrivalSeen() {
+        if (this.hasSeenArrival()) return;
+        this.onboarding = { ...this.onboarding, arrivalSeen: true };
+    }
 
     /**
      * Check if a level is unlocked
@@ -413,7 +454,63 @@ export class OdysseyStateManager {
         // Persist to the aggregate so FAILED attempts aren't lost (the per-level completion
         // record's `attempts` only counts completions — masterplan §2 #5).
         this.statistics.totalAttempts = (this.statistics.totalAttempts || 0) + 1;
+        // The road remembers each fall: the third on one orb opens its mercy draft.
+        const falls = recordOdysseyFall(this.charms, levelId);
         this.save();
+        return { levelId, falls };
+    }
+
+    // =============================
+    // Charms
+    // =============================
+
+    /** The bag: every charm gathered this journey, and the ones carried onto the next orb. */
+    getCharmBag() {
+        return {
+            gathered: [...(this.charms?.gathered || [])],
+            carried: [...(this.charms?.carried || [])],
+        };
+    }
+
+    /** The charms carried onto the next orb, in the order taken up. */
+    getCarriedCharms() {
+        return [...(this.charms?.carried || [])];
+    }
+
+    /** A chapter arrival's draft, or null once taken or passed (or when the bag holds every charm). */
+    getChapterCharmDraft(chapterId) {
+        return odysseyChapterDraft(this.charms, Number(chapterId));
+    }
+
+    /** The road's mercy for an orb fallen on three times and not yet cleared: what would ease it. */
+    getMercyDraft(levelId) {
+        if (this.isLevelCompleted(levelId)) return null;
+        return odysseyMercyDraft(this.charms, this.levelRegistry?.getLevel?.(levelId), Number(levelId));
+    }
+
+    /**
+     * Take a charm of a draft into the bag and carry it from here.
+     * @returns {{ setDown: string | null } | null} what was set down to carry it, or null when refused
+     */
+    takeCharm(draft, charmId) {
+        const outcome = takeOdysseyCharm(this.charms, draft, charmId);
+        if (!outcome) return null;
+        console.log(`[OdysseyState] Charm taken: ${charmId} (${draft.key})`);
+        this.save();
+        return outcome;
+    }
+
+    passCharm(draft) {
+        if (!passOdysseyCharm(this.charms, draft)) return false;
+        this.save({ emitEvent: false });
+        return true;
+    }
+
+    /** Carry a gathered charm or set it down; refused for a fourth while three are carried. */
+    toggleCarriedCharm(charmId) {
+        const result = toggleOdysseyCarriedCharm(this.charms, charmId);
+        if (!result.refused) this.save({ emitEvent: false });
+        return result;
     }
 
     // =============================

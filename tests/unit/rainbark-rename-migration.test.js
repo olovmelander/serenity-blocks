@@ -115,7 +115,8 @@ describe('Rainbark took the Cosmic Chimes orb: what a player already has now mea
     it('keeps the orb, renamed for the grove it now plays', () => {
         const orb = LEVEL_CONFIGS.find((level) => level.theme?.primary === 'rainbark');
         expect(orb).toBeDefined();
-        expect(orb.id).toBe(47);
+        // Orb 46 since the chapter 6 rival duel took the chapter's last slot.
+        expect(orb.id).toBe(46);
         expect(orb.name).toBe('The Painted Giants');
         expect(orb.metadata.description).toMatch(/pocket of quiet/);
         expect(JSON.stringify(LEVEL_CONFIGS)).not.toMatch(/cosmic-chimes|Cosmic Chimes/);

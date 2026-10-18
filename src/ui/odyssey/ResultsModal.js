@@ -16,6 +16,8 @@ import {
 import { appendKeyHint, createKeystoneSheet, el } from './keystone-sheet.js';
 import { FOCUSABLE_SELECTOR } from '../spatial-navigation.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
+import { createOdysseyStarNotes } from './odyssey-star-notes.js';
+import { describeOdysseyCharms } from '../../core/odyssey/odyssey-charms.js';
 
 /**
  * Build the level-complete results sheet.
@@ -43,11 +45,11 @@ export function createResultsModal({
     // and numbers below, one primary action.
     const { modal, panel: content } = createKeystoneSheet({
         id: 'odyssey-results-modal',
-        label: 'Level complete',
+        label: 'Orb complete',
         variant: 'results',
     });
 
-    content.appendChild(el('p', 'sb-eyebrow sb-ody-eyebrow', 'Level complete'));
+    content.appendChild(el('p', 'sb-eyebrow sb-ody-eyebrow', 'Orb complete'));
     const title = el('h2', 'sb-ody-title', levelConfig?.name || 'Odyssey');
     title.tabIndex = -1;
     content.appendChild(title);
@@ -56,12 +58,12 @@ export function createResultsModal({
     if (themeReward) content.appendChild(themeReward);
     if (results.duel) {
         const {
-            playerFrags = 0, botFrags = 0, targetFrags = 7, botName = 'the bot',
+            playerFrags = 0, botFrags = 0, targetFrags = 3, botName = 'the rival',
         } = results.duel;
         content.appendChild(el(
             'p',
             'sb-ody-lede',
-            `You beat ${botName}, ${playerFrags}–${botFrags}. First to ${targetFrags} frags.`,
+            `You defeated ${botName}, ${playerFrags}–${botFrags}. First to ${targetFrags} knockouts.`,
         ));
     }
 
@@ -89,6 +91,9 @@ export function createResultsModal({
         starsContainer.appendChild(star);
     }
     content.appendChild(starsContainer);
+    // Why these stars: each goal marked, and the next one's shortfall in the player's numbers.
+    const starNotes = createOdysseyStarNotes(levelConfig, results, { className: 'sb-ody-star-notes' });
+    if (starNotes) content.appendChild(starNotes.list);
 
     const stats = [
         { label: 'Score', value: results.score.toLocaleString() },
@@ -96,8 +101,10 @@ export function createResultsModal({
         { label: 'Time', value: formatTime(results.time * 1000) },
     ];
     if (results.duel) {
-        stats.unshift({ label: 'Final frags', value: `${results.duel.playerFrags}–${results.duel.botFrags}` });
+        stats.unshift({ label: 'Knockouts', value: `${results.duel.playerFrags}–${results.duel.botFrags}` });
     }
+    const charms = describeOdysseyCharms(results.charms);
+    if (charms.length) stats.push({ label: 'Charms', value: charms.map((charm) => charm.name).join(' · ') });
     const statsContainer = el('dl', 'sb-ody-facts');
     stats.forEach((stat) => {
         const fact = el('div', 'sb-ody-fact');
@@ -119,18 +126,18 @@ export function createResultsModal({
         const levelTimeMs = Math.max(1, Math.round((results.time || 0) * 1000));
 
         leaderboardPanel = new SteamLeaderboardPanel({
-            title: 'Odyssey Leaderboards',
+            title: 'Odyssey leaderboards',
             boards: [
                 {
                     id: 'level-time',
-                    label: 'Level Time',
+                    label: 'Orb time',
                     name: levelBoard,
                     currentScore: levelTimeMs,
                     formatScore: formatMilliseconds,
                 },
                 {
                     id: 'total-stars',
-                    label: 'Total Stars',
+                    label: 'Total stars',
                     name: STEAM_LEADERBOARDS.ODYSSEY_TOTAL_STARS,
                     currentScore: totalStars,
                     formatScore: formatNumber,

@@ -155,7 +155,7 @@ describe('Odyssey beat-the-bot match', () => {
     });
 
     it('keeps the authored challenger through round resets, final results and a retry', async () => {
-        const level = getLevelById(4);
+        const level = getLevelById(5);
         const { match } = createMatch(level);
         expect(match.getSnapshot()).toMatchObject({ botName: 'Cinder', round: 1 });
 
@@ -332,5 +332,25 @@ describe('Odyssey beat-the-bot match', () => {
         expect(match.players[1].lockedPieces.length).toBeGreaterThan(0);
         expect(match.players[1].piecesPlaced).toBeGreaterThan(1);
         expect(match.players[0].lockedPieces).toHaveLength(0);
+    });
+
+    it('lets a Second Breath guard absorb the human top-out without touching the round or the bot', () => {
+        const { match } = createMatch();
+        const human = { onTopOut: vi.fn() };
+        match.setPresentation({ getHumanCallbacks: () => human });
+        match.topOutGuard = vi.fn(() => true);
+        match.markTopOut(0);
+        expect(match.topOutGuard).toHaveBeenCalledOnce();
+        expect(match.pendingDeaths.size).toBe(0);
+        expect(human.onTopOut).not.toHaveBeenCalled();
+        expect(match.players[0].isPaused).toBe(false);
+        // Spent: the next top-out is a knockout as usual, and the bot's never consults the guard.
+        match.topOutGuard = vi.fn(() => false);
+        match.markTopOut(1);
+        expect(match.topOutGuard).not.toHaveBeenCalled();
+        match.markTopOut(0);
+        expect(match.topOutGuard).toHaveBeenCalledOnce();
+        expect(match.pendingDeaths.has(0)).toBe(true);
+        expect(human.onTopOut).toHaveBeenCalledOnce();
     });
 });

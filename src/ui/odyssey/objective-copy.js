@@ -1,4 +1,6 @@
-/** Player-facing explanations of Odyssey's existing objective and finish rules. */
+import { formatOdysseyDuelGoal } from '../../core/odyssey/data/duel-rules.js';
+
+/** Player-facing explanations of Odyssey's existing goal and finish rules. */
 export function getOdysseyChainTarget(condition = {}) {
     // Both metrics receive the same wave ordinal from a single piece's cascade.
     // Keep the authored conditions intact; present their strongest requirement.
@@ -10,14 +12,14 @@ export function formatOdysseyChainGoal(target) {
 }
 
 export function formatOdysseyMapObjective(primary) {
-    if (!primary) return 'Complete the level';
+    if (!primary) return 'Clear the orb';
     switch (primary.type) {
     case 'lines': return `Clear ${primary.target} lines`;
     case 'score': return `Score ${primary.target.toLocaleString()} points`;
     case 'cascade': return `Trigger ${primary.target} cascades`;
     case 'time': return `Survive ${primary.target} seconds`;
     case 'combo': return formatOdysseyChainGoal(primary.target);
-    case 'frags': return primary.description || `Beat the bot · First to ${primary.target} frags`;
+    case 'frags': return primary.description || formatOdysseyDuelGoal('the rival', primary.target);
     default: return `Complete: ${primary.type} (${primary.target})`;
     }
 }
@@ -47,13 +49,13 @@ export function getOdysseyLevelGuide(level) {
     }
 
     if (level.victoryLapPolicy === 'none') {
-        parts.push('The level ends automatically at the goal, after the full cascade settles. '
+        parts.push('The orb ends automatically at the goal, after the full cascade settles. '
             + 'Every wave of that final cascade counts toward your stars.');
     } else if (level.victoryLapPolicy === 'showcase') {
         if (level.victory?.failure?.type === 'time') {
             parts.push('Reach the goal within the time limit.');
         }
-        parts.push('After the goal, keep playing for stars until you choose Finish level or top out.');
+        parts.push('After the goal, keep playing for stars until you choose Finish orb or top out.');
     }
     return parts.filter(Boolean).join(' ');
 }
@@ -79,7 +81,7 @@ export function getOdysseyRetryDebrief(level, metrics, reason) {
     const remaining = Math.ceil(Math.max(0, target - value));
     let remainingText = `${count(remaining, units[type])} short of the goal.`;
     if (type === 'combo') remainingText = `Aim for ${count(target, 'wave')} in one chain.`;
-    if (value >= target) remainingText = 'The final total met the target, but the level was not completed.';
+    if (value >= target) remainingText = 'The final total met the target, but the orb was not cleared.';
 
     const cues = {
         lines: 'Take safe line clears and leave space to place the next piece.',
@@ -112,4 +114,178 @@ export function getOdysseyRetryDebrief(level, metrics, reason) {
         remainingText,
         tip,
     };
+}
+
+/** One star tier's conditions as the HUD, map panel and results all phrase them. */
+export function formatOdysseyStarCondition(condition, starIndex = 0) {
+    const parts = [];
+    let hasChainRequirement = false;
+    for (const [key, value] of Object.entries(condition || {})) {
+        switch (key) {
+        case 'lines':
+            parts.push(starIndex === 0 ? 'Clear the orb' : `${value} lines`);
+            break;
+        case 'score':
+            parts.push(starIndex === 0 ? 'Clear the orb' : `${value.toLocaleString()}+ pts`);
+            break;
+        case 'cascades':
+            parts.push(starIndex === 0 ? 'Clear the orb' : `${value}+ cascades`);
+            break;
+        case 'time':
+            parts.push(formatOdysseyUnderTime(value));
+            break;
+        case 'tetrises':
+            parts.push(`${value}+ quads`);
+            break;
+        case 'maxCascadeDepth':
+        case 'combo':
+            if (!hasChainRequirement) {
+                parts.push(`${getOdysseyChainTarget(condition)}-wave chain`);
+                hasChainRequirement = true;
+            }
+            break;
+        case 'bonuses':
+            parts.push(value === 1 ? 'Get bonus' : `${value} bonuses`);
+            break;
+        case 'frags':
+            parts.push(starIndex === 0 ? 'Win the match' : `Win ${value} knockouts`);
+            break;
+        case 'maxDeaths':
+            parts.push(value === 0 ? 'No top-outs' : `At most ${value} top-out${value === 1 ? '' : 's'}`);
+            break;
+        default:
+            break;
+        }
+    }
+    if (parts.length === 0 && starIndex === 0) parts.push('Clear the orb');
+    return parts.join(' + ') || '...';
+}
+
+function formatOdysseyUnderTime(seconds) {
+    if (seconds >= 60) {
+        const mins = Math.floor(seconds / 60);
+        const secs = seconds % 60;
+        return secs === 0 ? `Under ${mins} min` : `Under ${mins}:${String(secs).padStart(2, '0')}`;
+    }
+    return `Under ${seconds}s`;
+}
+
+function formatOdysseyClock(seconds) {
+    const whole = Math.max(0, Math.floor(Number(seconds) || 0));
+    return `${Math.floor(whole / 60)}:${String(whole % 60).padStart(2, '0')}`;
+}
+
+/** A number from the results, or null when the attempt never reported that metric. */
+function readOdysseyMetric(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
+/** The numbers a finished attempt reports, in the units star conditions use; null when unknown. */
+function readOdysseyStarMetrics(results = {}) {
+    const chainReadings = [results.maxCascadeDepth, results.combo, results.maxCombo]
+        .map(readOdysseyMetric).filter((value) => value !== null);
+    const chain = chainReadings.length ? Math.max(...chainReadings) : null;
+    const bonuses = Array.isArray(results.bonuses)
+        ? results.bonuses.filter((bonus) => bonus === true || bonus?.earned === true).length
+        : readOdysseyMetric(results.bonuses);
+    return {
+        lines: readOdysseyMetric(results.lines),
+        score: readOdysseyMetric(results.score),
+        cascades: readOdysseyMetric(results.cascades),
+        maxCascadeDepth: chain,
+        combo: chain,
+        tetrises: readOdysseyMetric(results.tetrises),
+        time: readOdysseyMetric(results.time),
+        bonuses,
+        frags: readOdysseyMetric(results.duel?.playerFrags ?? results.frags),
+        maxDeaths: readOdysseyMetric(results.duel?.deaths ?? results.deaths),
+    };
+}
+
+/** true or false against the condition, or null when the attempt did not report the metric. */
+function odysseyStarPartMet(key, value, metrics) {
+    const actual = metrics[key];
+    if (actual === null || actual === undefined) return null;
+    if (key === 'time' || key === 'maxDeaths') return actual <= value;
+    return actual >= value;
+}
+
+/** What the player actually did, phrased in the same unit as the condition it is measured against. */
+export function formatOdysseyStarActual(key, metrics) {
+    const actual = metrics?.[key];
+    if (actual === null || actual === undefined) return '';
+    const plural = (amount, singular, pluralForm = `${singular}s`) => (
+        `${Number(amount).toLocaleString()} ${amount === 1 ? singular : pluralForm}`
+    );
+    switch (key) {
+    case 'lines': return plural(actual, 'line');
+    case 'score': return `${actual.toLocaleString()} pts`;
+    case 'cascades': return plural(actual, 'cascade');
+    case 'maxCascadeDepth':
+    case 'combo': return `${actual}-wave chain`;
+    case 'tetrises': return plural(actual, 'quad');
+    case 'time': return formatOdysseyClock(actual);
+    case 'bonuses': return plural(actual, 'bonus', 'bonuses');
+    case 'frags': return plural(actual, 'knockout');
+    case 'maxDeaths': return plural(actual, 'top-out');
+    default: return '';
+    }
+}
+
+/**
+ * Explain a finished attempt's stars: which tiers were earned (the engine's count is the truth)
+ * and, for the ones that were not, which condition fell short and by what the player did.
+ */
+export function describeOdysseyStarOutcome(level, results = {}) {
+    const stars = Math.max(0, Math.min(3, Math.floor(Number(results?.stars) || 0)));
+    const metrics = readOdysseyStarMetrics(results || {});
+    const tiers = ['one', 'two', 'three'].map((tier, index) => {
+        const condition = level?.stars?.[tier];
+        if (!condition) return null;
+        let chainSeen = false;
+        const parts = Object.entries(condition).flatMap(([key, value]) => {
+            if (key === 'combo' || key === 'maxCascadeDepth') {
+                if (chainSeen) return [];
+                chainSeen = true;
+                const target = getOdysseyChainTarget(condition);
+                return [{
+                    key: 'maxCascadeDepth',
+                    value: target,
+                    label: `${target}-wave chain`,
+                    met: odysseyStarPartMet('maxCascadeDepth', target, metrics),
+                    actual: formatOdysseyStarActual('maxCascadeDepth', metrics),
+                }];
+            }
+            return [{
+                key,
+                value,
+                label: formatOdysseyStarCondition({ [key]: value }, 1),
+                met: odysseyStarPartMet(key, value, metrics),
+                actual: formatOdysseyStarActual(key, metrics),
+            }];
+        });
+        return {
+            tier, index, earned: index < stars, label: formatOdysseyStarCondition(condition, index), parts,
+        };
+    }).filter(Boolean);
+    const next = tiers.find((entry) => !entry.earned) || null;
+    return {
+        stars,
+        tiers,
+        next: next ? { ...next, missed: next.parts.filter((part) => part.met === false) } : null,
+    };
+}
+
+/** One line for the ceremony and results: the next star and what it still needs. */
+export function formatOdysseyNextStar(outcome) {
+    if (!outcome?.tiers?.length) return null;
+    if (!outcome.next) return 'All three stars earned.';
+    const { next } = outcome;
+    if (!next.missed.length) return `Next star: ${next.label}.`;
+    const shortfall = next.missed
+        .map((part) => (part.actual ? `${part.label} (you: ${part.actual})` : part.label))
+        .join(' · ');
+    return `Next star: ${shortfall}`;
 }

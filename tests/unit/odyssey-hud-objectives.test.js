@@ -107,7 +107,7 @@ afterEach(() => {
 
 describe('Odyssey orb-level objective presentation', () => {
     it.each([
-        [49, 8], [56, 18], [60, 12],
+        [49, 5], [55, 6], [59, 6],
     ])('shows orb %i mastery as one effective %i-wave chain without changing its conditions', (levelId, waves) => {
         const hud = hudFixture();
         const condition = getLevelById(levelId).stars.three;
@@ -117,8 +117,9 @@ describe('Odyssey orb-level objective presentation', () => {
         expect(text.match(/-wave chain/g)).toHaveLength(1);
         expect(text).not.toContain('x combo');
         expect(condition).toEqual(original);
-        if (levelId === 56) expect(condition).toMatchObject({ maxCascadeDepth: 10, combo: 18 });
-        if (levelId === 60) expect(condition).toMatchObject({ maxCascadeDepth: 7, combo: 12 });
+        expect(condition.combo).toBeUndefined();
+        if (levelId === 55) expect(condition).toMatchObject({ maxCascadeDepth: 6, cascades: 28, score: 400000 });
+        if (levelId === 59) expect(condition).toMatchObject({ maxCascadeDepth: 6, cascades: 20, score: 240000 });
     });
 
     it('keeps the stronger chain requirement regardless of condition field order', () => {
@@ -129,7 +130,7 @@ describe('Odyssey orb-level objective presentation', () => {
 
     it('renders chain bonus and primary labels consistently with the evaluated metric', () => {
         const hud = hudFixture();
-        const level = getLevelById(56);
+        const level = getLevelById(55);
         const original = structuredClone(level.victory.bonuses);
         hud.levelConfig = level;
         hud.bonusesDisplay = node();
@@ -137,9 +138,9 @@ describe('Odyssey orb-level objective presentation', () => {
         vi.stubGlobal('document', { createElement: () => node() });
         hud._updateBonusesDisplay();
         const labels = hud.bonusesDisplay.children.map((item) => item.children[1].textContent);
-        expect(labels).toContain('Trigger a chain of at least 10 waves');
-        expect(labels).toContain('Trigger a chain of at least 18 waves');
-        expect(labels).toContain('Clear 20 Quads');
+        expect(labels).toContain('Trigger a chain of at least 6 waves');
+        expect(labels.filter((label) => label.includes('chain'))).toHaveLength(1);
+        expect(labels).toContain('Clear 12 Quads');
         expect(level.victory.bonuses).toEqual(original);
 
         hud.levelConfig = { victory: { primary: { type: 'combo', target: 8 } } };
@@ -182,7 +183,7 @@ describe('Odyssey orb-level objective presentation', () => {
         expect(hud.levelRules.hidden).toBe(false);
         expect(hud.guide.open).not.toBe(true);
         expect(hud.timeLimit).toBe(270);
-        expect(hud.timeLabel.textContent).toBe('TIME LEFT');
+        expect(hud.timeLabel.textContent).toBe('Time left');
 
         hud.setLevel(7);
         expect(hud.levelRules.children.map((item) => item.textContent)).toEqual([
@@ -198,7 +199,7 @@ describe('Odyssey orb-level objective presentation', () => {
 
     it('retires the timed-failure reminder and countdown when a showcase goal has been secured', () => {
         const hud = hudFixture();
-        hud.levelConfig = getLevelById(56);
+        hud.levelConfig = getLevelById(55);
         hud.timeLimit = 480;
         hud.container = node();
         hud.levelRules = node();
@@ -213,7 +214,7 @@ describe('Odyssey orb-level objective presentation', () => {
         expect(hud.levelRules.children[0].textContent).toBe('Reach the goal within 8:00.');
 
         hud.enterVictoryLap();
-        expect(hud.timeLabel.textContent).toBe('ELAPSED');
+        expect(hud.timeLabel.textContent).toBe('Elapsed');
         expect(hud.timeDisplay.textContent).toBe('7:50');
         expect(hud.timeDisplay.classList.contains('is-danger')).toBe(false);
         expect(hud.levelRules.children.map((item) => item.textContent)).toEqual([
@@ -222,15 +223,15 @@ describe('Odyssey orb-level objective presentation', () => {
         ]);
 
         hud.exitVictoryLap();
-        expect(hud.timeLabel.textContent).toBe('TIME LEFT');
+        expect(hud.timeLabel.textContent).toBe('Time left');
         expect(hud.timeDisplay.textContent).toBe('0:10');
         expect(hud.levelRules.children[0].textContent).toBe('Reach the goal within 8:00.');
     });
 
-    it.each([56, 60])('explains orb %i acquisition timing and optional showcase continuation', (levelId) => {
+    it.each([55, 59])('explains orb %i acquisition timing and optional showcase continuation', (levelId) => {
         const text = getOdysseyLevelGuide(getLevelById(levelId));
         expect(text).toContain('Reach the goal within the time limit.');
-        expect(text).toContain('After the goal, keep playing for stars until you choose Finish level or top out.');
+        expect(text).toContain('After the goal, keep playing for stars until you choose Finish orb or top out.');
         expect(text).not.toContain('ends automatically');
     });
 
@@ -251,7 +252,7 @@ describe('Odyssey orb-level objective presentation', () => {
     it('shows higher line targets instead of silently dropping them from star requirements', () => {
         const hud = hudFixture();
         expect(hud._formatStarCondition({ lines: 25, time: 150 }, 1)).toBe('25 lines + Under 2:30');
-        expect(hud._formatStarCondition({ frags: 7, maxDeaths: 0 }, 2)).toBe('Win 7 frags + No top-outs');
+        expect(hud._formatStarCondition({ frags: 7, maxDeaths: 0 }, 2)).toBe('Win 7 knockouts + No top-outs');
         expect(hud._formatStarCondition({ maxDeaths: 1 }, 2)).toBe('At most 1 top-out');
     });
 

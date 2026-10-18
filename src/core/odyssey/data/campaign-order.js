@@ -81,6 +81,38 @@ function createWarpLevel(template, pathPosition) {
     };
 }
 
+/**
+ * Every chapter ends on its rival. The duel takes the chapter's last slot and the orbs that
+ * followed it each step one slot earlier. Slots keep their public ids and path positions, so
+ * the world geometry, layout data and chapter boundaries are untouched; only which challenge
+ * sits in which slot changes. Saves re-key through odyssey-progress-schema's V4_TO_V5 table.
+ */
+export function rotateDuelsToChapterEnd(levels) {
+    const byChapter = new Map();
+    [...levels].sort((left, right) => left.id - right.id).forEach((level) => {
+        if (!byChapter.has(level.chapter)) byChapter.set(level.chapter, []);
+        byChapter.get(level.chapter).push(level);
+    });
+    const rotated = [];
+    byChapter.forEach((chapterLevels) => {
+        const slots = chapterLevels.map((level) => ({ id: level.id, pathPosition: level.pathPosition }));
+        const duelIndex = chapterLevels.findIndex((level) => level.mechanics?.versus);
+        const order = duelIndex === -1
+            ? chapterLevels
+            : [...chapterLevels.filter((_, index) => index !== duelIndex), chapterLevels[duelIndex]];
+        // The opening garbage pattern is seeded from boardSeedId, so a challenge keeps the same
+        // opening board in its new slot (the balance benchmark was measured on those boards).
+        order.forEach((level, index) => rotated.push({ ...level, boardSeedId: level.id, ...slots[index] }));
+    });
+    return rotated.sort((left, right) => left.id - right.id);
+}
+
+/** Public id of the challenge that occupied a v4 slot, after the chapter-end rotation. */
+export function mapV4SlotToRotatedId(levels, v4Id) {
+    const level = levels.find((entry) => entry.v4Id === v4Id);
+    return level ? level.id : null;
+}
+
 /** Compose after all old tuning so inserting a collectible never retunes an existing challenge. */
 export function assembleOdysseyCampaign(authoredLevels) {
     const authored = new Map(authoredLevels.map((level) => [level.id, level]));
@@ -93,7 +125,9 @@ export function assembleOdysseyCampaign(authoredLevels) {
     }));
     levels.push(createVesperLevel(structuredClone(authored.get(45)), positions[43]));
     levels.push(createWarpLevel(structuredClone(authored.get(54)), positions[55]));
-    return levels.sort((left, right) => left.id - right.id).map((level) => {
+    const v4Levels = levels.sort((left, right) => left.id - right.id)
+        .map((level) => ({ ...level, v4Id: level.id }));
+    return rotateDuelsToChapterEnd(v4Levels).map((level) => {
         const chapter = CHAPTER_CONFIGS.find((entry) => entry.id === level.chapter);
         return {
             ...level,
