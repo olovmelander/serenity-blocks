@@ -81,6 +81,18 @@ export class GameModeManager {
             'Odyssey',
             async () => (await import('./OdysseyMode.js')).OdysseyMode,
         );
+        // Preview: the menu offers it only behind ?faultLines=1 (ui/fault-lines/).
+        this.registerModeFactory(
+            GAME_MODES.FAULT_LINES,
+            'Fault Lines',
+            async () => (await import('./FaultLinesMode.js')).FaultLinesMode,
+        );
+        // Preview: the menu offers it only behind ?waystones=1 (ui/waystones/).
+        this.registerModeFactory(
+            GAME_MODES.WAYSTONES,
+            'Waystones',
+            async () => (await import('./WaystonesMode.js')).WaystonesMode,
+        );
     }
 
     registerModeFactory(modeId, displayName, loader) {
