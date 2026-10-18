@@ -1039,6 +1039,33 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'eagle',
+        category: 'Playground',
+        scope: 'playground.html — himalayan-peak',
+        description: 'Leave the eagle out: its model is never fetched.',
+        values: '0 leaves it out.',
+        defaultValue: 'The eagle is fetched and joins its round when it arrives.',
+        example: 'eagle=0',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
+        sources: [
+            'src/playground/effects/himalayan-peak.effect.js',
+        ],
+    },
+    {
+        name: 'eagleLens',
+        category: 'Playground',
+        scope: 'playground.html — himalayan-peak',
+        description: 'Follow the eagle with a long lens from the pass; its flight and light are untouched.',
+        values: 'Vertical field of view in degrees.',
+        defaultValue: 'The game camera.',
+        example: 'eagleLens=4',
+        notes: 'Use on playground.html with effect=<the matching effect ID>. The bouts of wingbeats '
+            + 'start 14.0, 40.0 and 69.5 s into each 84 s round.',
+        sources: [
+            'src/playground/effects/himalayan-peak.effect.js',
+        ],
+    },
+    {
         name: 'effect',
         category: 'Playground',
         scope: 'playground.html (all effects)',

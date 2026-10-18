@@ -70,7 +70,8 @@ board is holding.
 | `himalayan-peak-flags.js` | The flags and the cords: closed-form cloth, gusts, the light each flag holds. |
 | `himalayan-peak-snow.js` | Spindrift along the crests, the hero's banner, the avalanche. |
 | `himalayan-peak-fx.js` | Paper horses, row beams, diamond dust. |
-| `himalayan-peak-eagle.js` | The eagle on its round. |
+| `himalayan-peak-eagle-flight.js` | Three-free: the eagle's round in the thermal, its lean into each turn, its bouts of wingbeats and the pose of all 26 joints, closed form in the clock. |
+| `himalayan-peak-eagle.js` | Loads the eagle, lights its plumage in the amphitheatre's light and applies the flight to its bones. |
 | `himalayan-peak-world.js` | Owns the uniforms, the parts, the camera rig and the choreography. Shared with the playground effect, so what is iterated there ships. |
 | `himalayan-peak-director.js` | Renderer-free: stages bus events per player and resolves one lock and one clear per frame. |
 | `himalayan-peak-composition.js` | Three-free: reads the live card, board and HUD rects and maps board columns and rows onto the screen. |
@@ -78,6 +79,7 @@ board is holding.
 | `himalayan-peak-quality.js` | The six tiers. |
 | `himalayan-peak-theme.js` | Lifecycle, renderer selection, settings, layout watch, GPU-loss recovery, capture flags. |
 | `scripts/himalayan-peak/bake-massif.mjs` | Evaluates the plan, erodes it, measures sky visibility, writes the asset and its manifest; can ray-cast previews on the CPU. |
+| `scripts/blender/himalayan_eagle.py` | Builds the eagle in headless Blender (mesh, plumage, skin, axis-aligned bones) and writes `assets/eagle.glb`; `--preview` renders it in four poses. |
 
 Techniques worth knowing before changing it:
 
@@ -164,11 +166,58 @@ and green, sky visibility in blue. It is generated (no elevation data, no third-
 seconds, and `--preview=<dir>` ray-casts the result from the viewer's eye on the CPU for a few
 sun elevations, which is how the plan was shaped before any shader existed.
 
-`assets/eagle.glb` is the theme's own golden eagle, kept from the earlier theme (see
-`assets/ATTRIBUTION.md`). It loads off the frame; nothing waits for it.
+`assets/eagle.glb` (105 KB) is the theme's own golden eagle, built by
+`scripts/blender/himalayan_eagle.py` (see "The eagle" below and `assets/ATTRIBUTION.md`). It
+loads off the frame; nothing waits for it.
 
-Everything else is generated in code. Blender was not needed: the chorten is a lathe and three
-boxes, the cairn is a pile of boxes, and what makes the mountains is the bake.
+Everything else is generated in code: the chorten is a lathe and three boxes, the cairn is a pile
+of boxes, and what makes the mountains is the bake.
+
+## The eagle (2026-10-18)
+
+The first eagle was a TRELLIS.2 reconstruction of a photograph kept from the earlier theme: 30k
+triangles in the photo's wings-raised pose, one 1.4 s flap clip looped for ever, drawn as a dark
+shape with a rim on every facet. Looked at closely it had four faults, two of them in the code:
+
+- **It rolled over once a round.** Its frame came from `setFromUnitVectors(+z, heading)`, which
+  is unstable as the heading swings through −z: near t ≈ 63 s of each 74 s round it turned belly
+  up for about a second and a half.
+- **It banked out of its turns.** `rotateZ(+bank)` lifts the model's left wing, and the bird
+  always turned left: the inside wing was up for most of the round.
+- **It never soared.** The clip beat from the photo's deep V to flat and back every 2.4 s.
+- **It was rarely seen.** At 5.8° over the eye it flew below the right-hand skyline (about 7.8°
+  there), so for most of the round it was a dark shape on a dark wall, behind the board or the
+  HUD, or out of the frame; where it showed against the sky it was 10 to 20 px across, and the
+  facets' rims made a tangle of orange lines rather than a bird.
+
+The bird now is built for the job. **The model** is a soaring adult (lofted body and hooked bill,
+cambered wings with an S-curved trailing edge, seven fingered primaries, a twelve-feather tail,
+plumage with the golden nape and the tawny bar across the upper wing; alpha marks thin feather),
+2,300 triangles on 26 bones whose rest rotations are the identity, so a pose written in code
+reads in the bird's own frame. **The flight** (`himalayan-peak-eagle-flight.js`) circles a thermal
+centred 30° right of the view axis, 300 m out and 76 m over the eye, three turns in an 84 s round
+while the thermal itself loops: bearing 18° to 43°, elevation 11° to 19°, so the bird is in the
+open sky between the HUD and the frame's edge two thirds of the time, over the skyline, around
+the sun's bearing (with a chain, it circles in front of the sun). It leans into every turn as a
+thermalling eagle does, 25° to 45° (more than a coordinated turn of its size needs: on the near
+side that shows the eye the whole spread of its wings), rides on a 7° V with the hand turned up
+and the primaries splayed and curled, corrects the small rolls the air gives it (more in a
+gale), looks into its turn with its head held level, and three times a round puts in a bout of
+three to five deep beats at 1.6 Hz (the downstroke quicker, the wing folding and the hand
+supinating on the way up, the tip following the arm, the body riding the beat). The gale changes
+amplitudes only; every clock is multiplied by a constant. Reduced motion: it only glides. **The
+light**: the hour's shade and sky above, the cloud sea below, the sun only out of the wall's
+shadow in the air (`hpAirLight` at the bird), the sun through the thin feathers when it is between
+the eye and the sun, a grazing rim, and in shadow the sky behind it wrapping its edges.
+
+It is drawn at 11 m (five times life: against the sky nothing tells its distance, only its size
+on the screen, 35 to 55 px across at 1080p) and hangs on the scene, not under the squeezed root:
+upright screens move its place with the world but never squash its shape.
+
+`tests/unit/himalayan-peak-eagle.test.js` holds it to that: the round, the sky window, the lean's
+side and size, a frame that never turns over, whole-beat bouts at one pace however long the game
+has run, joint motion at 60 Hz in a rising and falling storm, reduced motion, and the model's
+skeleton.
 
 ## Verification
 
@@ -251,7 +300,8 @@ holds the sun at an elevation (about -7 under the wall to 22). `demo=1` (without
 looping script. `parts=` draws only the named parts; `falseColor=1` bands the pre-tone-map peak;
 `noPost=1` shows the raw scene; `forceWebGL=1` uses the WebGL2 backend; `reduce=1` is reduced
 motion; `plan=1` draws the generated stand-in instead of the baked massif; `eagle=0` leaves the
-eagle out. In the game: `?himalayanTime=`, `?himalayanFixedDt=`, `?himalayanParts=`,
+eagle out; `eagleLens=<degrees>` turns the camera onto the eagle with a long lens (the bouts of
+wingbeats start 14.0, 40.0 and 69.5 s into each 84 s round). In the game: `?himalayanTime=`, `?himalayanFixedDt=`, `?himalayanParts=`,
 `?himalayanFalseColor=1`, `?himalayanForceWebGL=1`.
 
 The theme icon is a frame of the scene through the playground's icon lens, the sun held at 13°
