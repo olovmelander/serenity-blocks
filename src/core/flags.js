@@ -129,6 +129,24 @@ export const FLAG_REGISTRY = [
         reader: 'flags',
     },
 
+    // ── Game modes ──
+    {
+        name: 'faultLines',
+        default: false,
+        purpose: 'list the Fault Lines cascade-puzzle preview in the main menu (src/ui/main-menu/main-menu.js)',
+        kind: 'refactor',
+        graduationBar: 'docs/FAULT_LINES_2026-10.md: owner playtest, name clearance and menu art; then the entry ships unflagged and this is deleted',
+        reader: 'flags',
+    },
+    {
+        name: 'waystones',
+        default: false,
+        purpose: 'list the Waystones road preview in the main menu (src/ui/main-menu/main-menu.js)',
+        kind: 'refactor',
+        graduationBar: 'docs/WAYSTONES_2026-10.md: owner playtest of the lite road, charm tuning, name clearance and menu art; then the entry ships unflagged and this is deleted',
+        reader: 'flags',
+    },
+
     // ── Boot / intro (local readers in main.js / boot-warp-transition.js / intro-animation.js;
     //    themeWarmAsync goes through readFlag, ADR-0020) ──
     {

@@ -186,6 +186,8 @@ const GAMEPLAY_DYNAMIC_RESOLUTION_MODES = new Set([
     GAME_MODES.ONLINE_MULTIPLAYER,
     GAME_MODES.INFINITY,
     GAME_MODES.ODYSSEY,
+    GAME_MODES.FAULT_LINES,
+    GAME_MODES.WAYSTONES,
 ]);
 
 if (typeof window !== 'undefined') {
@@ -2377,7 +2379,7 @@ class SerenityBlocks {
             this.serenityHub.setPauseResumeCallbacks(
                 () => {
                     const currentMode = this.gameModeManager?.getCurrentModeId();
-                    const pausableModes = ['single', 'local-multiplayer', 'infinity', 'odyssey'];
+                    const pausableModes = ['single', 'local-multiplayer', 'infinity', 'odyssey', 'fault-lines', 'waystones'];
 
                     if (pausableModes.includes(currentMode)) {
                         console.log('[SerenityHub] Pausing game for mode:', currentMode);
@@ -2388,7 +2390,7 @@ class SerenityBlocks {
                 },
                 () => {
                     const currentMode = this.gameModeManager?.getCurrentModeId();
-                    const pausableModes = ['single', 'local-multiplayer', 'infinity', 'odyssey'];
+                    const pausableModes = ['single', 'local-multiplayer', 'infinity', 'odyssey', 'fault-lines', 'waystones'];
 
                     if (pausableModes.includes(currentMode)) {
                         console.log('[SerenityHub] Resuming game for mode:', currentMode);
@@ -2765,6 +2767,8 @@ class SerenityBlocks {
             [GAME_MODES.ONLINE_MULTIPLAYER]: 'ONLINE VERSUS',
             [GAME_MODES.INFINITY]: 'INFINITY',
             [GAME_MODES.SERENITY]: 'SERENITY',
+            [GAME_MODES.FAULT_LINES]: 'FAULT LINES',
+            [GAME_MODES.WAYSTONES]: 'WAYSTONES',
         };
         const MODES_WITH_INTERNAL_STARTUP_OVERLAY = new Set([
             GAME_MODES.LOCAL_MULTIPLAYER,
@@ -2947,7 +2951,8 @@ class SerenityBlocks {
         const boardCovers = new Set();
         const updateCoveredBoards = () => {
             const mode = this.gameModeManager?.getCurrentMode?.();
-            const pausableBoardMode = ['single', 'local-multiplayer', 'infinity', 'odyssey'].includes(mode?.getModeId?.());
+            const pausableBoardMode = ['single', 'local-multiplayer', 'infinity', 'odyssey', 'fault-lines', 'waystones']
+                .includes(mode?.getModeId?.());
             const covered = pausableBoardMode && mode?.isPaused && boardCovers.size > 0;
             const scenes = new Set([
                 mode?.boardScene,

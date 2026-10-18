@@ -270,21 +270,15 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Hide single player container
         const singlePlayerContainer = document.getElementById('single-player-container');
-        if (singlePlayerContainer) {
-            singlePlayerContainer.style.display = 'none';
-        }
+        if (singlePlayerContainer) singlePlayerContainer.style.display = 'none';
 
         // Hide single player stats bar
         const statsBar = document.querySelector('.single-player-stats-bar');
-        if (statsBar) {
-            statsBar.style.display = 'none';
-        }
+        if (statsBar) statsBar.style.display = 'none';
 
         // Show multiplayer container
         const multiplayerContainer = document.getElementById('multiplayer-container');
-        if (multiplayerContainer) {
-            multiplayerContainer.style.display = 'flex';
-        }
+        if (multiplayerContainer) multiplayerContainer.style.display = 'flex';
 
         // Update layout for player count
         this._updatePlayerLayout(numPlayers);
@@ -307,10 +301,9 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
     /** The loading title: the mode's wordmark, then how this match is played. */
     _getMatchStartLoadingTitle(config = this.matchConfig) {
-        const format = config?.isTeamMode ? 'TEAMS' : 'FREE-FOR-ALL';
         const parts = ['LOCAL VERSUS'];
         if (config?.isInfinityLMS) parts.push('INFINITY');
-        parts.push(format);
+        parts.push(config?.isTeamMode ? 'TEAMS' : 'FREE-FOR-ALL');
         if (config?.hotPotato || config?.attackStyle === 'hot_potato') parts.push('HOT POTATO');
         return parts.join(' · ');
     }
