@@ -302,12 +302,8 @@ export class OdysseyMode extends BaseGameMode {
         if (this.deps?.themeManager && !this.transitionManager) {
             this.transitionManager = new ThemeTransitionManager(this.deps.themeManager);
         }
-        if (!this.journeyEntryTransition) {
-            this.journeyEntryTransition = new JourneyEntryTransition();
-        }
-        if (!this.journeyReturnTransition) {
-            this.journeyReturnTransition = new JourneyReturnTransition();
-        }
+        if (!this.journeyEntryTransition) this.journeyEntryTransition = new JourneyEntryTransition();
+        if (!this.journeyReturnTransition) this.journeyReturnTransition = new JourneyReturnTransition();
 
         // ═══════════════════════════════════════════════════════════════════
         // PERFORMANCE: Suspend the active theme's render loop while in
@@ -486,9 +482,7 @@ export class OdysseyMode extends BaseGameMode {
             }
 
             // Trigger minimap pause highlight effect
-            if (this.minimap) {
-                this.minimap.onPause();
-            }
+            if (this.minimap) this.minimap.onPause();
         }
     }
 
@@ -537,9 +531,7 @@ export class OdysseyMode extends BaseGameMode {
             }
 
             // Trigger minimap unpause effect
-            if (this.minimap) {
-                this.minimap.onUnpause();
-            }
+            if (this.minimap) this.minimap.onUnpause();
         }
     }
 
@@ -2211,10 +2203,9 @@ export class OdysseyMode extends BaseGameMode {
         this._odysseyThemeCommittedToken = this.themeRevealToken;
         this.entryPhase = 'running';
         // Steam Rich Presence: "Odyssey · Chapter 1 · Ashen Dawn" for friends.
-        if (this.currentLevelConfig?.chapter && typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('game:odysseyProgress', {
-                detail: { chapter: this.currentLevelConfig.chapter, levelName: this.currentLevelConfig.name },
-            }));
+        const { chapter, name: levelName } = this.currentLevelConfig ?? {};
+        if (chapter && typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('game:odysseyProgress', { detail: { chapter, levelName } }));
         }
         return true;
     }

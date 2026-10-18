@@ -73,6 +73,8 @@ export class GameModeUI {
         this.serenityBtn = document.getElementById('serenity-btn') || document.getElementById('serenity-card-btn');
         this.infinityBtn = document.getElementById('infinity-btn') || document.getElementById('infinity-card-btn');
         this.odysseyBtn = document.getElementById('odyssey-btn') || document.getElementById('odyssey-card-btn');
+        this.faultLinesBtn = document.getElementById('fault-lines-card-btn');
+        this.waystonesBtn = document.getElementById('waystones-card-btn');
 
         // Mode description elements (may not exist with card design)
         this.singlePlayerDesc = document.getElementById('single-player-desc');
@@ -140,6 +142,8 @@ export class GameModeUI {
         bind(this.serenityBtn, GAME_MODES.SERENITY);
         bind(this.infinityBtn, GAME_MODES.INFINITY);
         bind(this.odysseyBtn, GAME_MODES.ODYSSEY);
+        bind(this.faultLinesBtn, GAME_MODES.FAULT_LINES);
+        bind(this.waystonesBtn, GAME_MODES.WAYSTONES);
     }
 
     /**

@@ -446,6 +446,21 @@ export class SharedEffects {
     }
 
     /**
+     * A word from the road (Waystones: "Stop 2 cleared / The road waits"), mid-well, in
+     * the chain finale's banner so it reads as the board's own voice.
+     * @param {string} kicker
+     * @param {string} title
+     */
+    playRoadBanner(kicker, title) {
+        if (!this.scene?.add?.text) return;
+        this._dismissRecentCallout?.();
+        const boardHeight = this.scene.rows * this.scene.blockSize;
+        this._showBanner({
+            kicker, title, y: boardHeight * 0.46, titleSize: 30, accent: TONE.LAVENDER, hold: 900, depth: 56,
+        });
+    }
+
+    /**
      * A chain's finale: "Combo ×3 / 7 lines" in the chain's tone, low on the board
      * where the chain happened; from ten waves the big "×n / Cascade".
      * @param {number} waves
@@ -461,7 +476,7 @@ export class SharedEffects {
         const boardHeight = this.scene.rows * this.scene.blockSize;
         const tone = this._comboTone(waves);
         this._showBanner({
-            kicker: `Combo \u00d7${waves}`,
+            kicker: this._countsWaves() ? `Wave ${waves}` : `Combo \u00d7${waves}`,
             title: `${lines} line${lines === 1 ? '' : 's'}`,
             y: boardHeight * 0.62,
             titleSize: 30 + 2 * Math.min(waves, 6),
@@ -1592,6 +1607,11 @@ export class SharedEffects {
      *
      * @param {number} comboCount - Combo count
      */
+    /** True when the board counts a puzzle's waves rather than combos (Fault Lines). */
+    _countsWaves() {
+        return this.scene?.gameState?.moveSummaryVocabulary === 'wave';
+    }
+
     showComboPopup(comboCount) {
         // Deliberately does NOT touch currentComboCount. The popup number is
         // CASCADE DEPTH (fired per cascade wave), while tint/intensity state is
@@ -1608,6 +1628,8 @@ export class SharedEffects {
         const reduced = this._reducedMotion();
         const tier = this._comboTier(comboCount);
         const glow = toneCss(tier.accent);
+        let caption = 'COMBO';
+        if (this._countsWaves()) caption = comboCount === 1 ? 'WAVE' : 'WAVES';
 
         const originX = boardWidth / 2;
         const originY = boardHeight * 0.28;
@@ -1615,7 +1637,7 @@ export class SharedEffects {
         const container = this.scene.add.container?.(originX, originY);
         if (!container) {
             // Very old/stubbed scene: fall back to a plain label rather than nothing.
-            const plain = this.scene.add.text(originX, originY, `${comboCount}x COMBO`, {
+            const plain = this.scene.add.text(originX, originY, `${comboCount}x ${caption}`, {
                 fontSize: `${Math.round(tier.numberSize * u * 0.6)}px`, fontFamily: DISPLAY_FONT, color: CREAM_CSS,
             });
             plain.setOrigin(0.5);
@@ -1655,7 +1677,7 @@ export class SharedEffects {
         }
 
         // The caption sits under the glyphs (they ride high in the text box).
-        const label = this.scene.add.text(0, Math.round(boxH * 0.34), 'COMBO', {
+        const label = this.scene.add.text(0, Math.round(boxH * 0.34), caption, {
             fontSize: `${Math.round(tier.labelSize * u)}px`,
             fontFamily: TEXT_FONT,
             fontStyle: '800',
