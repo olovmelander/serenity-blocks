@@ -8,10 +8,12 @@ import { CHAPTER_CONFIGS } from '../../core/odyssey/data/chapters.js';
 import { OdysseyOpponentBoard } from '../../rendering/phaser/odyssey-opponent-board.js';
 import { updateNextQueue } from '../next-queue-ui.js';
 import {
-    formatOdysseyBonusObjective, formatOdysseyChainGoal, getOdysseyChainTarget, getOdysseyLevelGuide,
+    formatOdysseyBonusObjective, formatOdysseyChainGoal, formatOdysseyStarCondition, getOdysseyLevelGuide,
 } from './objective-copy.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
-import { ODYSSEY_DUEL_KNOCKOUTS, formatOdysseyDuelGoal, formatOdysseyRival } from '../../core/odyssey/data/duel-rules.js';
+import {
+    ODYSSEY_DUEL_KNOCKOUTS, formatOdysseyDuelGoal, formatOdysseyRival,
+} from '../../core/odyssey/data/duel-rules.js';
 
 const setText = (element, value) => {
     const text = String(value);
@@ -151,7 +153,7 @@ export class OdysseyHUD {
         this.progressBar = document.createElement('div');
         this.progressBar.className = 'progress-fill';
         barContainer.role = 'progressbar';
-        barContainer.ariaLabel = 'Level progress';
+        barContainer.ariaLabel = 'Orb progress';
         barContainer.ariaValueMin = '0';
         this.progressTrack = barContainer;
         barContainer.appendChild(this.progressBar);
@@ -470,66 +472,7 @@ export class OdysseyHUD {
     }
 
     _formatStarCondition(condition, starIndex) {
-        const parts = [];
-        let hasChainRequirement = false;
-
-        for (const [key, value] of Object.entries(condition)) {
-            switch (key) {
-            case 'lines':
-                parts.push(starIndex === 0 ? 'Clear the orb' : `${value} lines`);
-                break;
-            case 'score':
-                if (starIndex === 0) {
-                    parts.push('Clear the orb');
-                } else {
-                    parts.push(`${value.toLocaleString()}+ pts`);
-                }
-                break;
-            case 'cascades':
-                if (starIndex === 0) {
-                    parts.push('Clear the orb');
-                } else {
-                    parts.push(`${value}+ cascades`);
-                }
-                break;
-            case 'time':
-                if (value >= 60) {
-                    const mins = Math.floor(value / 60);
-                    const secs = value % 60;
-                    parts.push(secs === 0 ? `Under ${mins} min` : `Under ${mins}:${secs.toString().padStart(2, '0')}`);
-                } else {
-                    parts.push(`Under ${value}s`);
-                }
-                break;
-            case 'tetrises':
-                parts.push(`${value}+ quads`);
-                break;
-            case 'maxCascadeDepth':
-            case 'combo':
-                if (!hasChainRequirement) {
-                    parts.push(`${getOdysseyChainTarget(condition)}-wave chain`);
-                    hasChainRequirement = true;
-                }
-                break;
-            case 'bonuses':
-                parts.push(value === 1 ? 'Get bonus' : `${value} bonuses`);
-                break;
-            case 'frags':
-                parts.push(starIndex === 0 ? 'Win the match' : `Win ${value} knockouts`);
-                break;
-            case 'maxDeaths':
-                parts.push(value === 0 ? 'No top-outs' : `At most ${value} top-out${value === 1 ? '' : 's'}`);
-                break;
-            default:
-                break;
-            }
-        }
-
-        if (parts.length === 0 && starIndex === 0) {
-            parts.push('Clear the orb');
-        }
-
-        return parts.join(' + ') || '...';
+        return formatOdysseyStarCondition(condition, starIndex);
     }
 
     _updateObjectiveDisplay() {

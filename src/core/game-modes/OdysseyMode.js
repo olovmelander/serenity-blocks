@@ -60,7 +60,7 @@ import { JourneyEntryTransition } from '../../rendering/transitions/JourneyEntry
 import { JourneyReturnTransition } from '../../rendering/transitions/JourneyReturnTransition.js';
 import { TRANSITION_LAYERS } from '../../rendering/transitions/transition-layer-constants.js';
 import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
-import { formatOdysseyMapObjective } from '../../ui/odyssey/objective-copy.js';
+import { renderOdysseyLevelPanel } from '../../ui/odyssey/odyssey-level-panel.js';
 import { createResultsModal } from '../../ui/odyssey/ResultsModal.js';
 import { createFailureModal } from '../../ui/odyssey/FailureModal.js';
 import {
@@ -3340,45 +3340,17 @@ export class OdysseyMode extends BaseGameMode {
             console.warn('[Odyssey] Selected level theme prefetch failed:', error);
         });
 
-        // Check if level is unlocked
-        const isUnlocked = this.odysseyState.isLevelUnlocked(levelId);
-        const completion = this.odysseyState.getLevelCompletion(levelId);
-        const stars = completion?.stars || 0;
-
-        // Update panel content
-        document.getElementById('level-panel-number').textContent = `Orb ${levelId}`;
-        document.getElementById('level-panel-name').textContent = level.pathLabel || level.name;
-        document.getElementById('level-panel-chapter').textContent = `Chapter ${level.chapter}: ${this._getChapterName(level.chapter)}`;
-        document.getElementById('level-panel-description').textContent = level.description || 'Clear the goal to move on.';
-
-        // Stars display
-        const starsEl = document.getElementById('level-panel-stars');
-        starsEl.textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-        starsEl.dataset.earned = stars > 0 ? 'true' : 'false';
-
-        // Objectives
-        const objectivesEl = document.getElementById('level-panel-objectives');
-        const primary = level.victory?.primary;
-        objectivesEl.innerHTML = `
-            <div><strong>Goal:</strong> ${this._formatObjective(primary)}</div>
-            ${level.metadata?.tip ? `<div class="level-tip">${level.metadata.tip}</div>` : ''}
-        `;
-
-        // Play button
-        const playBtn = document.getElementById('level-panel-play-btn');
-        playBtn.disabled = !isUnlocked;
-        playBtn.textContent = isUnlocked ? 'Play' : 'Locked';
+        // The panel: kind, goal, star goals, what changes from the orb before, lock state.
+        renderOdysseyLevelPanel({
+            level,
+            previousLevel: this.levelRegistry.getPreviousLevel(levelId),
+            completion: this.odysseyState.getLevelCompletion(levelId),
+            unlocked: this.odysseyState.isLevelUnlocked(levelId),
+            chapterName: this._getChapterName(level.chapter),
+        });
 
         // Show panel
         panel.classList.remove('hidden');
-    }
-
-    /**
-     * Format objective for display
-     * @private
-     */
-    _formatObjective(primary) {
-        return formatOdysseyMapObjective(primary);
     }
 
     /**

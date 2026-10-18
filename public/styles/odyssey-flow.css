@@ -157,6 +157,27 @@
 .ody-flow__stars span { display: inline-block; }
 .ody-flow__stars .is-earned { color: #f2d7ac; text-shadow: 0 0 18px rgba(242, 215, 172, 0.55); }
 .ody-flow__tally { margin: 0; color: #c8c0d7; font-size: 0.82rem; line-height: 1.5; font-variant-numeric: tabular-nums; }
+/* Why these stars: the three goals, earned ones lit, then the next star's shortfall. */
+.ody-flow__star-notes {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 16px;
+    max-width: 54ch;
+    margin: 6px auto 0;
+    padding: 0;
+    color: #8f88a3;
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+.ody-flow__star-notes__tier { display: inline-flex; align-items: center; gap: 6px; }
+.ody-flow__star-notes__tier.is-earned { color: #e9dcc2; }
+.ody-flow__star-notes__tier.is-earned .ody-flow__star-notes__glyph {
+    color: #f2d7ac;
+    text-shadow: 0 0 10px rgba(242, 215, 172, 0.45);
+}
+.ody-flow__star-notes__next { flex-basis: 100%; margin-top: 2px; color: #c8c0d7; font-variant-numeric: tabular-nums; }
 .ody-flow__next { display: block; }
 .ody-flow__next-label {
     margin: 0 0 6px;
@@ -280,6 +301,7 @@
     animation: ody-flow-star 620ms calc(380ms + var(--i, 0) * 170ms) cubic-bezier(0.2, 0.9, 0.1, 1.15) backwards;
 }
 .ody-flow[data-layout='ceremony'] .ody-flow__tally { animation: ody-flow-rise 520ms 620ms var(--ody-ease-out) backwards; }
+.ody-flow[data-layout='ceremony'] .ody-flow__star-notes { animation: ody-flow-rise 520ms 760ms var(--ody-ease-out) backwards; }
 .ody-flow[data-layout='ceremony'] .ody-flow__next {
     margin: 4px auto 0;
     padding-top: 12px;
@@ -317,6 +339,7 @@
 .ody-flow[data-layout='transit'] .ody-flow__achievement,
 .ody-flow[data-layout='transit'] .ody-flow__stars,
 .ody-flow[data-layout='transit'] .ody-flow__tally,
+.ody-flow[data-layout='transit'] .ody-flow__star-notes,
 .ody-flow[data-layout='transit'] .ody-theme-reward { display: none; }
 /* Lifecycle states outrank every layout: reveal fades out, a held presence and a retained cover show. */
 .ody-flow[data-layout][data-revealing='true'] { opacity: 0; pointer-events: none; }
@@ -363,6 +386,7 @@
 .ody-flow[data-layout='scenic'] .ody-flow__achievement,
 .ody-flow[data-layout='scenic'] .ody-flow__stars,
 .ody-flow[data-layout='scenic'] .ody-flow__tally,
+.ody-flow[data-layout='scenic'] .ody-flow__star-notes,
 .ody-flow[data-layout='scenic'] .ody-flow__progress,
 .ody-flow[data-layout='scenic'] .ody-flow__preference,
 .ody-flow[data-layout='scenic'] .ody-flow__orb-label,
@@ -445,6 +469,7 @@
 .ody-flow[data-layout='chapter'] .ody-flow__achievement,
 .ody-flow[data-layout='chapter'] .ody-flow__stars,
 .ody-flow[data-layout='chapter'] .ody-flow__tally,
+.ody-flow[data-layout='chapter'] .ody-flow__star-notes,
 .ody-flow[data-layout='chapter'] .ody-flow__preference,
 .ody-flow[data-layout='chapter'] .ody-flow__progress,
 .ody-flow[data-layout='chapter'] .ody-flow__next-label,

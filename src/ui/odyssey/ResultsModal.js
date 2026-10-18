@@ -16,6 +16,7 @@ import {
 import { appendKeyHint, createKeystoneSheet, el } from './keystone-sheet.js';
 import { FOCUSABLE_SELECTOR } from '../spatial-navigation.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
+import { createOdysseyStarNotes } from './odyssey-star-notes.js';
 
 /**
  * Build the level-complete results sheet.
@@ -89,6 +90,9 @@ export function createResultsModal({
         starsContainer.appendChild(star);
     }
     content.appendChild(starsContainer);
+    // Why these stars: each goal marked, and the next one's shortfall in the player's numbers.
+    const starNotes = createOdysseyStarNotes(levelConfig, results, { className: 'sb-ody-star-notes' });
+    if (starNotes) content.appendChild(starNotes.list);
 
     const stats = [
         { label: 'Score', value: results.score.toLocaleString() },

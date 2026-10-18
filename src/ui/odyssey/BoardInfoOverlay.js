@@ -1,5 +1,7 @@
 /**
- * @fileoverview Odyssey board-view HUD overlay (header bar + chapter-arrival card + level panel).
+ * @fileoverview Odyssey board-view HUD overlay (header bar + chapter-arrival card + orb panel).
+ *
+ * The orb panel's ids are filled by ui/odyssey/odyssey-level-panel.js (renderOdysseyLevelPanel).
  *
  * Extracted from OdysseyMode._createBoardInfoOverlay (masterplan E1). Pure DOM: it builds and
  * returns the overlay + an (empty) <style> element. OdysseyMode keeps the wiring (mounting,
@@ -33,16 +35,25 @@ export function createBoardInfoOverlay({ autoContinue = true, onAutoContinueChan
         </div>
         <div id="odyssey-level-panel" class="odyssey-level-panel hidden">
             <div id="level-panel-number" class="level-number-badge">Orb 1</div>
+            <p id="level-panel-kind" class="level-kind" hidden></p>
             <h2 id="level-panel-name">Orb</h2>
             <p id="level-panel-chapter" class="level-chapter">Chapter 1</p>
             <p id="level-panel-description" class="level-description"></p>
-            <div id="level-panel-stars" class="level-stars">☆☆☆</div>
-            <div id="level-panel-objectives" class="level-objectives"></div>
+            <div id="level-panel-stars" class="level-stars" role="img" aria-label="0 of 3 stars earned">☆☆☆</div>
+            <div id="level-panel-objectives" class="level-objectives">
+                <p class="level-goal"><strong>Goal</strong> <span id="level-panel-goal"></span></p>
+                <p id="level-panel-star-goals-label" class="level-objectives__label">Star goals</p>
+                <ul id="level-panel-star-goals" class="level-star-goals"></ul>
+                <p id="level-panel-rules-label" class="level-objectives__label" hidden>Rules</p>
+                <ul id="level-panel-rules" class="level-rules" hidden></ul>
+                <p id="level-panel-tip" class="level-tip" hidden></p>
+            </div>
+            <p id="level-panel-lock" class="level-lock-hint" hidden></p>
             <label class="odyssey-flow-preference" for="odyssey-auto-continue">
                 <input id="odyssey-auto-continue" type="checkbox" aria-describedby="odyssey-flow-preference-hint">
                 <span class="odyssey-flow-preference__copy">
-                    <span>Continue automatically within chapters</span>
-                    <small id="odyssey-flow-preference-hint">Chapter reveals wait for you.</small>
+                    <span>Flow to the next orb automatically</span>
+                    <small id="odyssey-flow-preference-hint">Chapter arrivals always wait for you.</small>
                 </span>
             </label>
             <button id="level-panel-play-btn" class="level-play-btn">Play</button>
