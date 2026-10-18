@@ -167,6 +167,7 @@ export class StillfallMode extends SinglePlayerMode {
         if (this._turns.length > 1) this._turns.pop();
         this._outcome = 'failed';
         this._reason = 'blocked';
+        this.deps.soundManager?.sfxPlayer?.playPuzzleMiss?.();
         this._publish();
     }
 
@@ -268,6 +269,7 @@ export class StillfallMode extends SinglePlayerMode {
         }
         if (this._outcome === 'failed') {
             this._reason = failReason(run);
+            this.deps.soundManager?.sfxPlayer?.playPuzzleMiss?.();
             this._publish();
             return;
         }
@@ -299,6 +301,7 @@ export class StillfallMode extends SinglePlayerMode {
         if (!first) return false;
         this._turns = [];
         this._restoreTurn(first);
+        this.deps.soundManager?.sfxPlayer?.playMove?.();
         return true;
     }
 
@@ -345,7 +348,10 @@ export class StillfallMode extends SinglePlayerMode {
         return true;
     }
 
+    /** A hint is for one piece: once it lands, the next piece may ask again. */
     _clearHint() {
+        this._hintShown = false;
+        this._hintRestarted = false;
         const { gameState } = this;
         if (!gameState?.hintCells) return;
         gameState.hintCells = null;
