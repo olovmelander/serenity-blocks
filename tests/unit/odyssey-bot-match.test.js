@@ -155,7 +155,7 @@ describe('Odyssey beat-the-bot match', () => {
     });
 
     it('keeps the authored challenger through round resets, final results and a retry', async () => {
-        const level = getLevelById(4);
+        const level = getLevelById(5);
         const { match } = createMatch(level);
         expect(match.getSnapshot()).toMatchObject({ botName: 'Cinder', round: 1 });
 

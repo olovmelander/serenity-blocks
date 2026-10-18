@@ -11,6 +11,7 @@ import {
     formatOdysseyBonusObjective, formatOdysseyChainGoal, getOdysseyChainTarget, getOdysseyLevelGuide,
 } from './objective-copy.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
+import { ODYSSEY_DUEL_KNOCKOUTS, formatOdysseyDuelGoal, formatOdysseyRival } from '../../core/odyssey/data/duel-rules.js';
 
 const setText = (element, value) => {
     const text = String(value);
@@ -75,7 +76,7 @@ export class OdysseyHUD {
         this.container.id = 'odyssey-hud';
         this.container.className = 'odyssey-hud';
         this.container.role = 'region';
-        this.container.ariaLabel = 'Level objective and progress';
+        this.container.ariaLabel = 'Orb goal and progress';
 
         this._createHeaderSection();
         this._createObjectiveSection();
@@ -96,7 +97,7 @@ export class OdysseyHUD {
 
         this.chapterDisplay = document.createElement('div');
         this.chapterDisplay.className = 'chapter-label';
-        this.chapterDisplay.textContent = 'CHAPTER 1';
+        this.chapterDisplay.textContent = 'Chapter 1';
         section.appendChild(this.chapterDisplay);
 
         this.levelNameDisplay = document.createElement('div');
@@ -106,7 +107,7 @@ export class OdysseyHUD {
 
         this.levelBadge = document.createElement('div');
         this.levelBadge.className = 'level-badge';
-        this.levelBadge.textContent = 'Level 1';
+        this.levelBadge.textContent = 'Orb 1';
         section.appendChild(this.levelBadge);
 
         this.container.appendChild(section);
@@ -118,7 +119,7 @@ export class OdysseyHUD {
 
         const label = document.createElement('div');
         label.className = 'hud-label';
-        label.textContent = 'OBJECTIVE';
+        label.textContent = 'Goal';
         section.appendChild(label);
 
         this.objectiveDisplay = document.createElement('div');
@@ -128,7 +129,7 @@ export class OdysseyHUD {
 
         this.levelRules = document.createElement('ul');
         this.levelRules.className = 'hud-level-rules';
-        this.levelRules.ariaLabel = 'Level rules';
+        this.levelRules.ariaLabel = 'Orb rules';
         this.levelRules.hidden = true;
         section.appendChild(this.levelRules);
 
@@ -165,7 +166,7 @@ export class OdysseyHUD {
 
         this.timeLabel = document.createElement('div');
         this.timeLabel.className = 'hud-label';
-        this.timeLabel.textContent = 'ELAPSED';
+        this.timeLabel.textContent = 'Elapsed';
         section.appendChild(this.timeLabel);
 
         this.timeDisplay = document.createElement('div');
@@ -180,7 +181,7 @@ export class OdysseyHUD {
         this.guide = document.createElement('details');
         this.guide.className = 'hud-section level-guide';
         const summary = document.createElement('summary');
-        summary.textContent = 'Level guide';
+        summary.textContent = 'Orb guide';
         this.guide.appendChild(summary);
         this.guideText = document.createElement('p');
         this.guide.appendChild(this.guideText);
@@ -193,7 +194,7 @@ export class OdysseyHUD {
 
         const label = document.createElement('div');
         label.className = 'hud-label';
-        label.textContent = 'STAR GOALS';
+        label.textContent = 'Star goals';
         section.appendChild(label);
 
         this.starsDisplay = document.createElement('div');
@@ -231,7 +232,7 @@ export class OdysseyHUD {
 
         const label = document.createElement('div');
         label.className = 'hud-label';
-        label.textContent = 'BONUS OBJECTIVES';
+        label.textContent = 'Bonus goals';
         section.appendChild(label);
 
         this.bonusesDisplay = document.createElement('div');
@@ -246,7 +247,7 @@ export class OdysseyHUD {
         this.finishHint = document.createElement('button');
         this.finishHint.type = 'button';
         this.finishHint.className = 'finish-hint sb-btn sb-btn--primary';
-        this.finishHint.innerHTML = 'Finish level <kbd class="sb-kbd" data-key>Enter</kbd>'
+        this.finishHint.innerHTML = 'Finish orb <kbd class="sb-kbd" data-key>Enter</kbd>'
             + ' <kbd class="sb-kbd" data-pad>View / Back</kbd>';
         this.finishHint.addEventListener('click', () => {
             if (this.isVictoryLap) this.onFinish?.();
@@ -268,13 +269,13 @@ export class OdysseyHUD {
         this.container.appendChild(this.pauseHint);
     }
 
-    /** Configure a bot duel without owning any gameplay rules or bot simulation. */
-    setDuel({ targetFrags = 7, botName = 'Opponent', difficulty = 1 } = {}) {
-        this.duel = { targetFrags: Math.max(1, Number(targetFrags) || 7), botName, difficulty };
+    /** Configure a rival duel without owning any gameplay rules or bot simulation. */
+    setDuel({ targetFrags = ODYSSEY_DUEL_KNOCKOUTS, botName = 'Rival', difficulty = 1 } = {}) {
+        this.duel = { targetFrags: Math.max(1, Number(targetFrags) || ODYSSEY_DUEL_KNOCKOUTS), botName, difficulty };
         this.container.classList.add('is-duel');
-        this.objectiveDisplay.textContent = `Beat ${botName} · First to ${this.duel.targetFrags} frags`;
-        this.guideText.textContent = `Send garbage by clearing lines. Knock out ${botName} to earn a frag. `
-            + 'Both boards reset after a knockout; the first to the goal wins.';
+        this.objectiveDisplay.textContent = formatOdysseyDuelGoal(botName, this.duel.targetFrags);
+        this.guideText.textContent = `Clear lines to send attacks. Topping out ${botName} with an attack scores a knockout. `
+            + 'Both wells reset after a knockout; the first to the goal wins.';
         this.guide.hidden = false;
 
         if (!this.duelScoreboard) {
@@ -282,7 +283,7 @@ export class OdysseyHUD {
             this.duelScoreboard.className = 'odyssey-duel-scoreboard';
             this.duelScoreboard.innerHTML = '<div><span>You</span><strong data-player-frags>0</strong></div>'
                 + '<span class="odyssey-duel-score-divider" aria-hidden="true">:</span>'
-                + '<div><span data-bot-name>Opponent</span><strong data-bot-frags>0</strong></div>';
+                + '<div><span data-bot-name>Rival</span><strong data-bot-frags>0</strong></div>';
             this.container.querySelector('.objective-section').appendChild(this.duelScoreboard);
             this.playerFragsDisplay = this.duelScoreboard.querySelector('[data-player-frags]');
             this.botFragsDisplay = this.duelScoreboard.querySelector('[data-bot-frags]');
@@ -306,9 +307,9 @@ export class OdysseyHUD {
             this.duelPanel = document.createElement('aside');
             this.duelPanel.id = 'odyssey-duel-opponent';
             this.duelPanel.className = 'odyssey-duel-opponent';
-            this.duelPanel.ariaLabel = 'Opponent board';
+            this.duelPanel.ariaLabel = 'Rival board';
             this.duelPanel.innerHTML = '<div class="odyssey-duel-opponent__plate">'
-                + '<p class="odyssey-duel-opponent__label">OPPONENT</p>'
+                + '<p class="odyssey-duel-opponent__label">Rival</p>'
                 + '<h2 class="odyssey-duel-opponent__name"></h2>'
                 + '<p class="odyssey-duel-opponent__skill"></p></div>'
                 + '<div id="odyssey-duel-next-queue" class="odyssey-duel-opponent__queue" '
@@ -316,7 +317,7 @@ export class OdysseyHUD {
                 + '<div class="odyssey-duel-opponent__well">'
                 + '<div class="odyssey-duel-opponent__garbage odyssey-duel-garbage" aria-hidden="true"></div>'
                 + '<div class="odyssey-duel-opponent__phaser-host" role="img" '
-                + 'aria-label="Live opponent board"></div></div>'
+                + 'aria-label="Live rival board"></div></div>'
                 + '<p class="odyssey-duel-opponent__next"></p>'
                 + '<p class="odyssey-duel-incoming"></p>';
             this.botBoardHost = this.duelPanel.querySelector('.odyssey-duel-opponent__phaser-host');
@@ -326,7 +327,7 @@ export class OdysseyHUD {
         }
         this.duelPanel.querySelector('.odyssey-duel-opponent__name').textContent = String(botName);
         this.duelPanel.ariaLabel = `${botName}'s board`;
-        this.duelPanel.querySelector('.odyssey-duel-opponent__skill').textContent = `Bot skill ${difficulty}`;
+        this.duelPanel.querySelector('.odyssey-duel-opponent__skill').textContent = formatOdysseyRival(botName, difficulty);
         this.updateDuel({ playerFrags: 0, botFrags: 0, round: 1 });
         if (this.isVisible) this.show();
     }
@@ -359,7 +360,7 @@ export class OdysseyHUD {
         if (intermission) roundText += ' · Next round starting';
         if (paused) roundText = 'Paused · Both boards are held';
         setText(this.duelRoundDisplay, roundText);
-        this.duelScoreboard.ariaLabel = `You ${playerFrags}, ${this.duel.botName} ${botFrags}. `
+        this.duelScoreboard.ariaLabel = `Knockouts: you ${playerFrags}, ${this.duel.botName} ${botFrags}. `
             + `First to ${this.duel.targetFrags}.`;
         setText(this.playerGarbageDisplay, `Incoming: ${playerPendingGarbage} lines`);
         setText(this.botGarbageDisplay, `Incoming: ${botPendingGarbage} lines`);
@@ -419,9 +420,9 @@ export class OdysseyHUD {
 
         this.chapterConfig = CHAPTER_CONFIGS.find((c) => c.id === this.levelConfig.chapter);
 
-        this.chapterDisplay.textContent = `CHAPTER ${this.levelConfig.chapter}`;
+        this.chapterDisplay.textContent = `Chapter ${this.levelConfig.chapter}`;
         this.levelNameDisplay.textContent = this.levelConfig.name;
-        this.levelBadge.textContent = `Level ${levelId}`;
+        this.levelBadge.textContent = `Orb ${levelId}`;
         this.guideText.textContent = getOdysseyLevelGuide(this.levelConfig);
         this.guide.hidden = !this.guideText.textContent;
 
@@ -431,7 +432,7 @@ export class OdysseyHUD {
         this.timeLimit = victory.failure && victory.failure.type === 'time'
             ? victory.failure.value
             : null;
-        this.timeLabel.textContent = this.timeLimit ? 'TIME LEFT' : 'ELAPSED';
+        this.timeLabel.textContent = this.timeLimit ? 'Time left' : 'Elapsed';
 
         this._updateBonusesDisplay();
         this._updateStarRequirements();
@@ -475,18 +476,18 @@ export class OdysseyHUD {
         for (const [key, value] of Object.entries(condition)) {
             switch (key) {
             case 'lines':
-                parts.push(starIndex === 0 ? 'Complete level' : `${value} lines`);
+                parts.push(starIndex === 0 ? 'Clear the orb' : `${value} lines`);
                 break;
             case 'score':
                 if (starIndex === 0) {
-                    parts.push('Complete level');
+                    parts.push('Clear the orb');
                 } else {
                     parts.push(`${value.toLocaleString()}+ pts`);
                 }
                 break;
             case 'cascades':
                 if (starIndex === 0) {
-                    parts.push('Complete level');
+                    parts.push('Clear the orb');
                 } else {
                     parts.push(`${value}+ cascades`);
                 }
@@ -514,7 +515,7 @@ export class OdysseyHUD {
                 parts.push(value === 1 ? 'Get bonus' : `${value} bonuses`);
                 break;
             case 'frags':
-                parts.push(`Win ${value} frags`);
+                parts.push(starIndex === 0 ? 'Win the match' : `Win ${value} knockouts`);
                 break;
             case 'maxDeaths':
                 parts.push(value === 0 ? 'No top-outs' : `At most ${value} top-out${value === 1 ? '' : 's'}`);
@@ -525,7 +526,7 @@ export class OdysseyHUD {
         }
 
         if (parts.length === 0 && starIndex === 0) {
-            parts.push('Complete level');
+            parts.push('Clear the orb');
         }
 
         return parts.join(' + ') || '...';
@@ -560,10 +561,10 @@ export class OdysseyHUD {
             objectiveText = `Build to ${target} rows`;
             break;
         case 'frags':
-            objectiveText = `Beat the bot · First to ${target} frags`;
+            objectiveText = formatOdysseyDuelGoal(this.duel?.botName || 'the rival', target);
             break;
         default:
-            objectiveText = 'Complete the objective';
+            objectiveText = 'Clear the orb';
         }
 
         this.objectiveDisplay.textContent = objectiveText;
@@ -582,7 +583,7 @@ export class OdysseyHUD {
         if (!bonuses || bonuses.length === 0) {
             const noneText = document.createElement('div');
             noneText.className = 'bonus-empty';
-            noneText.textContent = 'No bonus objectives';
+            noneText.textContent = 'No bonus goals';
             this.bonusesDisplay.appendChild(noneText);
             return;
         }
@@ -790,7 +791,7 @@ export class OdysseyHUD {
     enterVictoryLap() {
         this.isVictoryLap = true;
         this.container.classList.add('is-victory-lap');
-        this.timeLabel.textContent = 'ELAPSED';
+        this.timeLabel.textContent = 'Elapsed';
         this._updateLevelRules();
         this.updateTime(this.elapsedTime);
 
@@ -817,7 +818,7 @@ export class OdysseyHUD {
         this.container.classList.remove('is-victory-lap');
         this._hideFinishHint();
         this._updateObjectiveDisplay();
-        this.timeLabel.textContent = this.timeLimit ? 'TIME LEFT' : 'ELAPSED';
+        this.timeLabel.textContent = this.timeLimit ? 'Time left' : 'Elapsed';
         this._updateLevelRules();
         this.updateTime(this.elapsedTime);
 
@@ -851,7 +852,7 @@ export class OdysseyHUD {
         this.completedBonuses.clear();
         this.elapsedTime = 0;
         this.isVictoryLap = false;
-        this.timeLabel.textContent = this.timeLimit ? 'TIME LEFT' : 'ELAPSED';
+        this.timeLabel.textContent = this.timeLimit ? 'Time left' : 'Elapsed';
         this.container.classList.remove('is-victory-lap');
         this.progressBar.classList.remove('is-complete');
         this.progressBar.style.width = '0%';

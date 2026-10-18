@@ -2585,7 +2585,7 @@ export class OdysseyMode extends BaseGameMode {
             button.id = 'odyssey-navigator-btn';
             button.className = 'odyssey-navigator-icon';
             button.setAttribute('role', 'button');
-            button.setAttribute('aria-label', 'Open Odyssey Navigator');
+            button.setAttribute('aria-label', 'Open the map');
             button.setAttribute('tabindex', '0');
             button.innerHTML = `
                 <svg class="odyssey-navigator-icon-svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -3346,10 +3346,10 @@ export class OdysseyMode extends BaseGameMode {
         const stars = completion?.stars || 0;
 
         // Update panel content
-        document.getElementById('level-panel-number').textContent = `LEVEL ${levelId}`;
+        document.getElementById('level-panel-number').textContent = `Orb ${levelId}`;
         document.getElementById('level-panel-name').textContent = level.pathLabel || level.name;
         document.getElementById('level-panel-chapter').textContent = `Chapter ${level.chapter}: ${this._getChapterName(level.chapter)}`;
-        document.getElementById('level-panel-description').textContent = level.description || 'Complete the objectives to progress.';
+        document.getElementById('level-panel-description').textContent = level.description || 'Clear the goal to move on.';
 
         // Stars display
         const starsEl = document.getElementById('level-panel-stars');
@@ -3831,8 +3831,8 @@ export class OdysseyMode extends BaseGameMode {
         const duel = session?.duel;
         const reasonText = {
             time: 'Time ran out!',
-            bot: `${duel?.botName || 'The bot'} reached ${duel?.targetFrags || 7} frags first.`,
-            draw: 'Both players reached 7 frags. Try the match again.',
+            bot: `${duel?.botName || 'The rival'} reached ${duel?.targetFrags || 3} knockouts first.`,
+            draw: `You and ${duel?.botName || 'the rival'} reached ${duel?.targetFrags || 3} knockouts together. Try the match again.`,
             'match-error': 'The match was interrupted. Try again.',
         }[reason] || 'You topped out!';
 

@@ -704,6 +704,7 @@
 }
 
 #odyssey-board-overlay .level-number-badge {
+    text-transform: uppercase;
     display: inline-flex;
     align-items: center;
     gap: 10px;
@@ -879,6 +880,7 @@
     font-family: var(--sb-font-display);
     font-weight: 600;
     letter-spacing: 0.2em;
+    text-transform: uppercase;
 }
 
 #odyssey-hud .chapter-label {
@@ -1156,6 +1158,7 @@
     color: var(--sb-gold);
     font: 600 10px / 1.6 var(--sb-font-display);
     letter-spacing: 0.12em;
+    text-transform: uppercase;
     margin: 0;
 }
 

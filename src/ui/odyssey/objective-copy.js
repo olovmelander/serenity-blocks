@@ -1,4 +1,6 @@
-/** Player-facing explanations of Odyssey's existing objective and finish rules. */
+import { formatOdysseyDuelGoal } from '../../core/odyssey/data/duel-rules.js';
+
+/** Player-facing explanations of Odyssey's existing goal and finish rules. */
 export function getOdysseyChainTarget(condition = {}) {
     // Both metrics receive the same wave ordinal from a single piece's cascade.
     // Keep the authored conditions intact; present their strongest requirement.
@@ -10,14 +12,14 @@ export function formatOdysseyChainGoal(target) {
 }
 
 export function formatOdysseyMapObjective(primary) {
-    if (!primary) return 'Complete the level';
+    if (!primary) return 'Clear the orb';
     switch (primary.type) {
     case 'lines': return `Clear ${primary.target} lines`;
     case 'score': return `Score ${primary.target.toLocaleString()} points`;
     case 'cascade': return `Trigger ${primary.target} cascades`;
     case 'time': return `Survive ${primary.target} seconds`;
     case 'combo': return formatOdysseyChainGoal(primary.target);
-    case 'frags': return primary.description || `Beat the bot · First to ${primary.target} frags`;
+    case 'frags': return primary.description || formatOdysseyDuelGoal('the rival', primary.target);
     default: return `Complete: ${primary.type} (${primary.target})`;
     }
 }
@@ -47,13 +49,13 @@ export function getOdysseyLevelGuide(level) {
     }
 
     if (level.victoryLapPolicy === 'none') {
-        parts.push('The level ends automatically at the goal, after the full cascade settles. '
+        parts.push('The orb ends automatically at the goal, after the full cascade settles. '
             + 'Every wave of that final cascade counts toward your stars.');
     } else if (level.victoryLapPolicy === 'showcase') {
         if (level.victory?.failure?.type === 'time') {
             parts.push('Reach the goal within the time limit.');
         }
-        parts.push('After the goal, keep playing for stars until you choose Finish level or top out.');
+        parts.push('After the goal, keep playing for stars until you choose Finish orb or top out.');
     }
     return parts.filter(Boolean).join(' ');
 }
@@ -79,7 +81,7 @@ export function getOdysseyRetryDebrief(level, metrics, reason) {
     const remaining = Math.ceil(Math.max(0, target - value));
     let remainingText = `${count(remaining, units[type])} short of the goal.`;
     if (type === 'combo') remainingText = `Aim for ${count(target, 'wave')} in one chain.`;
-    if (value >= target) remainingText = 'The final total met the target, but the level was not completed.';
+    if (value >= target) remainingText = 'The final total met the target, but the orb was not cleared.';
 
     const cues = {
         lines: 'Take safe line clears and leave space to place the next piece.',

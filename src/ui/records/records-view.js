@@ -211,14 +211,14 @@ export function odysseyTabHtml(odyssey, { canStart = false } = {}) {
     if (!summary.completedOrbs) {
         return {
             facts: '',
-            list: emptyHtml('odyssey', 'No Odyssey levels cleared yet. Each one you clear lands here.', {
+            list: emptyHtml('odyssey', 'No Odyssey orbs cleared yet. Each one you clear lands here.', {
                 canPlay: canStart,
             }),
         };
     }
     const facts = factsHtml([
         ['Stars', `${formatNumber(summary.stars)} / ${formatNumber(summary.maxStars)}`],
-        ['Levels', `${formatNumber(summary.completedOrbs)} / ${formatNumber(summary.totalOrbs)}`],
+        ['Orbs', `${formatNumber(summary.completedOrbs)} / ${formatNumber(summary.totalOrbs)}`],
         ['Chapters', `${formatNumber(summary.completedChapters)} / ${formatNumber(summary.totalChapters)}`],
         ['Three stars', formatNumber(odyssey.threeStars)],
     ]);
@@ -226,7 +226,7 @@ export function odysseyTabHtml(odyssey, { canStart = false } = {}) {
     const upNext = chapters.find((chapter) => chapter.levels.includes(odyssey.next));
     const rows = chapters.map((chapter) => {
         const complete = chapter.cleared === chapter.levels.length;
-        const levels = `${formatNumber(chapter.cleared)} of ${plural(chapter.levels.length, 'level')}`;
+        const levels = `${formatNumber(chapter.cleared)} of ${plural(chapter.levels.length, 'orb')}`;
         const stars = `${formatNumber(chapter.stars)} of ${formatNumber(chapter.levels.length * 3)} stars`;
         let status = '';
         if (complete) status = 'Complete';

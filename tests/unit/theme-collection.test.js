@@ -107,13 +107,16 @@ describe('durable Odyssey theme collection', () => {
             const bonus = { 5: ['thermal-bloom'], 26: ['painted-ages'] }[index + 1] || [];
             expect(receipt.themeIds).toEqual([registry.getLevel(index + 1).theme.primary, ...bonus]);
         });
-        expect(receipts[4].themeIds).toEqual(['bioluminescence', 'thermal-bloom']);
-        expect(receipts[9].themeIds).toEqual(['stillwater']);
+        // Every chapter ends on its rival duel, so the chapter bonus arrives with the duel orb.
+        expect(receipts[4].themeIds).toEqual(['pyrestorm', 'thermal-bloom']);
+        expect(receipts[3].themeIds).toEqual(['bioluminescence']);
+        expect(receipts[8].themeIds).toEqual(['stillwater']);
         expect(receipts[10].themeIds).toEqual(['misty-lake']);
-        expect(receipts[17].themeIds).toEqual(['halcyon-apex']);
+        expect(receipts[16].themeIds).toEqual(['halcyon-apex']);
         expect(receipts[42].themeIds).toEqual(['vesper-chrysalis']);
-        expect(receipts[54].themeIds).toEqual(['serenity-warp']);
-        expect(receipts[59].themeIds).toEqual(['neon-district']);
+        expect(receipts[53].themeIds).toEqual(['serenity-warp']);
+        expect(receipts[58].themeIds).toEqual(['neon-district']);
+        expect(receipts[59].themeIds).toEqual(['synthwave-sunset']);
         expect(createCollection().getSummary().owned).toBe(63);
     });
 
@@ -174,11 +177,11 @@ describe('durable Odyssey theme collection', () => {
         for (let levelId = 1; levelId <= 30; levelId++) complete(collection, state, levelId);
         expect(complete(collection, state, 1).themeIds).toEqual([]);
         expect(collection.isUnlocked('vesper-chrysalis')).toBe(false);
-        expect(complete(collection, state, 60).themeIds).toEqual(['neon-district']);
+        expect(complete(collection, state, 59).themeIds).toEqual(['neon-district']);
         expect(collection.isUnlocked('vesper-chrysalis')).toBe(false);
         expect(collection.isUnlocked('serenity-warp')).toBe(false);
         expect(complete(collection, state, 43).themeIds).toEqual(['vesper-chrysalis']);
-        expect(complete(collection, state, 55).themeIds).toEqual(['serenity-warp']);
+        expect(complete(collection, state, 54).themeIds).toEqual(['serenity-warp']);
     });
 
     it('uses the composed orb 21 Ice Temple theme and rejects an old theme reward request', () => {
@@ -204,7 +207,7 @@ describe('durable Odyssey theme collection', () => {
         const collection = createCollection();
         expect(collection.getOwnedThemeIds()).toEqual(['forest', 'stellar-velocity']);
         expect(collection.getSummary().newCount).toBe(0);
-        expect(collection.exportData().grants['stellar-velocity'].levelId).toBe(46);
+        expect(collection.exportData().grants['stellar-velocity'].levelId).toBe(45);
         expect(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY)).toContain('"version":1');
     });
 
@@ -314,7 +317,7 @@ describe('durable Odyssey theme collection', () => {
             owned: true, requirement: { type: 'orb', levelId: 43, chapterId: 6 },
         });
         expect(collection.getThemeStatus('serenity-warp')).toMatchObject({
-            owned: true, requirement: { type: 'orb', levelId: 55, chapterId: 7 },
+            owned: true, requirement: { type: 'orb', levelId: 54, chapterId: 7 },
         });
     });
 
@@ -373,7 +376,7 @@ describe('durable Odyssey theme collection', () => {
     it('preserves collection when Odyssey is reset and resolves retired IDs', () => {
         const collection = createCollection();
         const state = new OdysseyStateManager({ levelRegistry: registry });
-        complete(collection, state, 4);
+        complete(collection, state, 5);
         state.reset();
         const reloaded = createCollection();
         expect(reloaded.isUnlocked('pyrestorm-v2')).toBe(true);

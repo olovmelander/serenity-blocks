@@ -173,7 +173,7 @@ describe('play rail', () => {
 
         expect(rail.children.map((tile) => tile.id))
             .toEqual(['odyssey-navigator-btn', 'serenity-hub-icon', 'settings-btn-global']);
-        expect(labelText(navigator)).toContain('Levels');
+        expect(labelText(navigator)).toContain('Map');
     });
 
     it('relabels when the mode changes, and reads as the menu while it is open', async () => {

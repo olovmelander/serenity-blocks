@@ -117,7 +117,7 @@ describe('Odyssey failure modal result compatibility', () => {
             levelConfig: getLevelById(1),
             metrics: { lines: 18 },
         });
-        expect(collectMarkup(modal)).toContain('Final frags: 4–7. First to 7 wins. Retry begins at 0–0.');
+        expect(collectMarkup(modal)).toContain('Knockouts: 4–7. First to 7 wins. Retry begins at 0–0.');
         expect(findByRole(modal, 'progressbar')).toBeNull();
     });
 
@@ -154,11 +154,11 @@ describe('Odyssey failure modal result compatibility', () => {
             failureReason: 'top-out',
         });
         const progress = findByRole(modal, 'progressbar');
-        expect(collectMarkup(modal)).toContain('The final total met the target, but the level was not completed.');
+        expect(collectMarkup(modal)).toContain('The final total met the target, but the orb was not cleared.');
         expect(progress.ariaValueNow).toBe('36000');
         expect(progress.ariaValueMax).toBe('36000');
         expect(progress.ariaValueText).toContain((36033).toLocaleString());
-        expect(progress.ariaValueText).toContain('level was not completed');
+        expect(progress.ariaValueText).toContain('orb was not cleared');
         expect(progress.children[0].style.width).toBe('100%');
     });
 

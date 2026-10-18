@@ -195,11 +195,12 @@ describe('Steam Cloud collection reconciliation', () => {
         const listener = vi.fn();
         collection.subscribe(listener);
         manager._applyOdyssey({ version: 1, completedLevels: { 42: { stars: 1 } }, unlockedLevels: [42] });
-        expect(state.isLevelCompleted(46)).toBe(true);
+        // v1 orb 42 is Comet Chase's old slot: today that challenge (stellar-velocity) is orb 45.
+        expect(state.isLevelCompleted(45)).toBe(true);
         expect(state.sessionStartTime).toBe(1234);
         expect(state.currentLevelAttempts).toBe(3);
         state.save();
-        expect(JSON.parse(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY)).completedLevels['46']).toBeDefined();
+        expect(JSON.parse(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY)).completedLevels['45']).toBeDefined();
         expect(collection.isUnlocked('stellar-velocity')).toBe(true);
         expect(collection.getSummary().newCount).toBe(0);
         expect(listener.mock.calls[0][0].source).toBe('reconcile');
@@ -407,9 +408,10 @@ describe('Steam Cloud collection reconciliation', () => {
                 19: { stars: 3, themeId: 'vesper-chrysalis' },
             },
         };
+        // Current public ids: Stillwater Sanctuary is orb 9 and the authored Vesper slot is orb 17.
         const current = {
             version: ODYSSEY_SAVE_VERSION,
-            completedLevels: { 10: { stars: 2, themeId: 'stillwater' } },
+            completedLevels: { 9: { stars: 2, themeId: 'stillwater' } },
             retiredCompletions: {
                 'v3:10': {
                     stars: 3, bestScore: 100, themeId: 'misty-lake', themeIds: ['misty-lake'],
@@ -417,10 +419,10 @@ describe('Steam Cloud collection reconciliation', () => {
             },
         };
         const merged = reverse ? manager._mergeOdyssey(old, current) : manager._mergeOdyssey(current, old);
-        expect(merged.completedLevels['10']).toMatchObject({ stars: 2, themeId: 'stillwater' });
-        expect(merged.completedLevels['18']).toMatchObject({ stars: 3, themeId: 'vesper-chrysalis' });
+        expect(merged.completedLevels['9']).toMatchObject({ stars: 2, themeId: 'stillwater' });
+        expect(merged.completedLevels['17']).toMatchObject({ stars: 3, themeId: 'vesper-chrysalis' });
         expect(merged.completedLevels['43']).toBeUndefined();
-        expect(merged.completedLevels['55']).toBeUndefined();
+        expect(merged.completedLevels['54']).toBeUndefined();
         expect(merged.retiredCompletions['v3:10']).toMatchObject({
             stars: 3, bestScore: 200, themeIds: ['bioluminescence-2', 'misty-lake'],
         });

@@ -138,7 +138,7 @@ describe('Odyssey Phaser effect parity', () => {
     it('rejects old round effects and theme events after the real duel death barrier', async () => {
         const {
             engine, mode, scene, session,
-        } = createHarness(4);
+        } = createHarness(5);
         session.duel = new OdysseyBotMatch(session, { seed: 1234, isActive: () => !session.retired });
         const callbacks = createOdysseyPhysicsCallbacks(mode, session);
         const lock = observe(EVENTS.PIECE_LOCK);
@@ -161,7 +161,7 @@ describe('Odyssey Phaser effect parity', () => {
     });
 
     it('places tall lock, clear and hard-drop theme events in the actual lerped viewport', () => {
-        const { callbacks, state } = createHarness(55);
+        const { callbacks, state } = createHarness(54);
         const lock = observe(EVENTS.PIECE_LOCK);
         const clear = observe(EVENTS.LINE_CLEAR);
         const drop = observe(EVENTS.HARD_DROP);
@@ -172,16 +172,16 @@ describe('Odyssey Phaser effect parity', () => {
         callbacks.onHardDrop({ piece, startY: 52, endY: 75 });
         const expected = { x: 0.5, y: (76 - 70.25) / 20 };
         expect(lock).toHaveBeenCalledWith(expect.objectContaining({
-            source: 'odyssey', levelId: 55, viewportOrigin: expected,
+            source: 'odyssey', levelId: 54, viewportOrigin: expected,
         }));
         expect(clear).toHaveBeenCalledWith(expect.objectContaining({
             source: 'odyssey',
-            levelId: 55,
+            levelId: 54,
             cascadeCount: 3,
             viewportOrigin: { x: 0.5, y: (76.5 - 70.25) / 20 },
         }));
         expect(drop).toHaveBeenCalledWith(expect.objectContaining({
-            source: 'odyssey', levelId: 55, distance: 23, viewportOrigin: expected,
+            source: 'odyssey', levelId: 54, distance: 23, viewportOrigin: expected,
         }));
     });
 

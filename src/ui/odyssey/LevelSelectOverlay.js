@@ -18,11 +18,11 @@ export function createLevelSelectOverlay() {
     container.className = 'odyssey-level-select';
     container.innerHTML = `
         <div class="odyssey-header">
-            <p class="sb-eyebrow">Ascend · The journey</p>
+            <p class="sb-eyebrow">Ascend · The map</p>
             <h1><img class="odyssey-header-wordmark" src="./assets/branding/modes/odyssey.svg" alt="Odyssey" width="628" height="104"></h1>
             <div class="odyssey-progress">
                 <span class="odyssey-stars"><b><span id="odyssey-total-stars">0</span> / <span id="odyssey-max-stars">0</span></b> Stars</span>
-                <span class="odyssey-completion"><b><span id="odyssey-progress-pct">0</span>%</b> Journey</span>
+                <span class="odyssey-completion"><b><span id="odyssey-progress-pct">0</span>%</b> Cleared</span>
             </div>
             <div class="odyssey-progress-bar"><div class="odyssey-progress-fill" id="odyssey-progress-fill"></div></div>
         </div>

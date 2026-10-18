@@ -24,7 +24,10 @@
  */
 
 import { deriveOdysseyLevelTuning, normalizeOdysseyCompletionStars } from './difficulty-model.js';
-import { assembleOdysseyCampaign, remapAuthoredOdysseyLevelId } from './campaign-order.js';
+import { assembleOdysseyCampaign } from './campaign-order.js';
+import {
+    ODYSSEY_DUEL_KNOCKOUTS, ODYSSEY_DUEL_STAR_TOP_OUTS, formatOdysseyDuelGoal, formatOdysseyRival, getOdysseyDuelGravity,
+} from './duel-rules.js';
 
 // Phase 2 keeps the original authored list intact and composes the shipped campaign
 // from the base data plus the tuning overrides defined below.
@@ -245,7 +248,7 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Trigger 4 cascades in the crystal geode! A cascade happens when falling blocks clear more lines.',
+            description: 'Trigger 4 cascades in the crystal geode. A cascade is a clear made by the blocks that fall after a clear.',
             difficulty: 2,
             tip: 'Build tall stacks with gaps underneath. Clear the bottom line and watch the cascade chain! Keep playing after goal for more stars.',
         },
@@ -390,7 +393,7 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Clear 40 lines in the crystal cavern! Cascades are active - falling blocks can trigger more clears.',
+            description: 'Clear 40 lines in the crystal cavern. Cascades are active: falling blocks can clear again.',
             difficulty: 4,
             tip: 'This level combines line clearing with cascades. The 6 starting rows create cascade opportunities - use them! Keep playing after goal for more stars.',
         },
@@ -1300,7 +1303,7 @@ const BASE_LEVEL_CONFIGS = [
             description: 'A crystal-crowned temple rises from turquoise water. Build ascending cascades '
                 + 'toward its luminous apex.',
             difficulty: 7,
-            tip: 'The tall board allows massive cascades - build upward!',
+            tip: 'The tall board leaves room for long cascades. Build upward and leave the shelves open.',
         },
     },
 
@@ -2210,9 +2213,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'A storm rages! Navigate the turbulence at maximum speed.',
+            description: 'A storm rolls in. Keep your footing while the pieces fall fast.',
             difficulty: 8,
-            tip: 'The storm pushes you faster - embrace the chaos!',
+            tip: 'The storm pushes you faster. Keep the stack low and take the clears it offers.',
         },
     },
 
@@ -2426,7 +2429,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Twin moons rise over a crystal valley. Follow the last aurora toward the edge of space.',
             difficulty: 9,
-            tip: 'This is the gateway to space. Give everything you have!',
+            tip: 'This is the gateway to space. Bring everything you have learned.',
         },
     },
 
@@ -2496,7 +2499,7 @@ const BASE_LEVEL_CONFIGS = [
         metadata: {
             description: 'Journey to the heart of a galaxy. Build score among swirling stars.',
             difficulty: 8,
-            tip: 'The galaxy spirals with your combos - keep the rhythm!',
+            tip: 'The galaxy turns with your combos. Keep the rhythm steady.',
         },
     },
 
@@ -3540,7 +3543,7 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Harness the voltage! Trigger 25 cascades on the massive 32-row storm board.',
+            description: 'Harness the voltage. Trigger 25 cascades on the tall storm board.',
             difficulty: 10,
             tip: 'With 16 starting rows and 32 total rows, this board is built for epic cascades. Build strategically! Keep playing after goal for more stars.',
         },
@@ -3759,7 +3762,7 @@ const BASE_LEVEL_CONFIGS = [
             description: 'The final abstract challenge. A kaleidoscopic temple of folded light rings with every '
                 + 'piece you lock, and folds deeper with every cascade you build.',
             difficulty: 10,
-            tip: 'Use the full height of the board. The bigger the tower, the greater the cascade!',
+            tip: 'Use the full height of the board. The taller the structure, the longer the cascade.',
         },
     },
 
@@ -4904,7 +4907,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             difficulty: 10,
             description: 'The final abstract challenge. A kaleidoscopic temple of folded light rings with every '
                 + 'piece you lock, and folds deeper with every cascade you build.',
-            tip: 'Use the full height of the board. The bigger the tower, the greater the cascade!',
+            tip: 'Use the full height of the board. The taller the structure, the longer the cascade.',
         },
     },
     56: {
@@ -4951,8 +4954,8 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
     },
 });
 
-// One duel in each chapter, before its finale. IDs, titles, themes and path
-// positions stay authored so existing campaign progress and worlds still align.
+// One rival in each chapter. The authored slot keeps its id, title, theme and path position;
+// campaign-order.js then moves the duel to the chapter's last slot (the rival guards the exit).
 const AUTHORED_BOT_CHALLENGES = Object.freeze({
     4: Object.freeze({ botDifficulty: 1, botName: 'Cinder' }),
     9: Object.freeze({ botDifficulty: 2, botName: 'Coral' }),
@@ -4964,16 +4967,12 @@ const AUTHORED_BOT_CHALLENGES = Object.freeze({
     58: Object.freeze({ botDifficulty: 8, botName: 'Neon' }),
 });
 
-export const ODYSSEY_BOT_CHALLENGES = Object.freeze(Object.fromEntries(
-    Object.entries(AUTHORED_BOT_CHALLENGES).map(([id, challenge]) => [
-        remapAuthoredOdysseyLevelId(Number(id)), challenge,
-    ]),
-));
-
 function applyBotChallenge(level) {
     const challenge = AUTHORED_BOT_CHALLENGES[level.id];
     if (!challenge) return level;
     const { botDifficulty, botName } = challenge;
+    const knockouts = ODYSSEY_DUEL_KNOCKOUTS;
+    const gravity = getOdysseyDuelGravity(level.chapter);
 
     return mergeConfig(level, {
         mechanicFocus: 'versus',
@@ -4981,33 +4980,33 @@ function applyBotChallenge(level) {
         mechanics: {
             baseMode: 'standard',
             board: { columns: 10, rows: 20, startingRows: 0 },
-            speed: { startLevel: 1, levelProgression: false, fixedDropInterval: 1000 },
+            speed: { startLevel: 1, levelProgression: false, fixedDropInterval: gravity },
             pieces: { bagType: '7-bag', customSequence: null, previewCount: 5 },
-            versus: { botDifficulty, botName, fragsToWin: 7 },
+            versus: { botDifficulty, botName, fragsToWin: knockouts },
         },
         victory: {
             primary: {
                 type: 'frags',
-                target: 7,
-                description: `Beat ${botName} · First to 7 frags`,
+                target: knockouts,
+                description: formatOdysseyDuelGoal(botName, knockouts),
             },
-            failure: { type: 'opponent-frags', value: 7 },
+            failure: { type: 'opponent-frags', value: knockouts },
             bonuses: [],
         },
         modifiers: { active: [] },
         stars: {
-            one: { frags: 7 },
-            two: { frags: 7, maxDeaths: 3 },
-            three: { frags: 7, maxDeaths: 1 },
+            one: { frags: knockouts },
+            two: { frags: knockouts, maxDeaths: ODYSSEY_DUEL_STAR_TOP_OUTS.two },
+            three: { frags: knockouts, maxDeaths: ODYSSEY_DUEL_STAR_TOP_OUTS.three },
         },
         metadata: {
             difficulty: botDifficulty + 1,
-            subtitle: `Beat ${botName} · Bot Level ${botDifficulty}`,
-            description: `${level.name}: challenge ${botName}, the Level ${botDifficulty} bot, in a race to 7 frags. `
-                + 'Both boards start empty and use the same gentle gravity.',
-            tip: 'Send attacks with strong clears and cascades. Earn a frag when your attack tops out the bot; '
-                + 'an unassisted top-out resets the board without awarding a frag. '
-                + 'Win with at most 3 deaths for two stars, or at most 1 for three.',
+            subtitle: formatOdysseyRival(botName, botDifficulty),
+            description: `${level.name}: ${botName}, the chapter's rival, waits at the end of the path. `
+                + `A race to ${knockouts} knockouts on two empty wells, both falling at this chapter's pace.`,
+            tip: 'Clear lines to send attacks. A knockout is yours when your attack tops out the rival; '
+                + 'an unassisted top-out only resets the round. '
+                + 'Win with at most one top-out for two stars, or none for three.',
         },
     });
 }
@@ -5025,7 +5024,7 @@ function correctObjectiveDescription(level) {
         tip = 'High speed demands a clear plan. Trust the preview, keep the well open, '
             + 'and favor efficient multi-line clears.';
     } else if (level.id === 52) {
-        description = `Harness the voltage! Trigger ${level.victory.primary.target} cascades on the tall storm board.`;
+        description = `Harness the voltage. Trigger ${level.victory.primary.target} cascades on the tall storm board.`;
     }
     if (!description) return level;
     return mergeConfig(level, { metadata: { description, ...(tip ? { tip } : {}) } });
@@ -5059,16 +5058,135 @@ function mergeConfig(baseConfig, overrideConfig) {
     return merged;
 }
 
+/**
+ * Chains are one metric. The engine reports a lock's cascade-wave ordinal into both `combo`
+ * and `maxCascadeDepth`, so an orb that asked for "an 8x combo" and "a 6-wave chain" was asking
+ * for one thing twice, with the stricter number winning silently. Every chain goal is now a
+ * single `maxCascadeDepth` condition, and the deepest chain the campaign asks for is six waves,
+ * the deepest the game's own effect catalogue and the offline benchmark have ever shown. Two
+ * stars ask for at most four. Authored score, line, cascade-count and Quad goals are untouched.
+ */
+const CHAIN_WAVE_CAP = Object.freeze({ two: 4, three: 6 });
+const CHAIN_BONUS_TYPES = new Set(['combo', 'max-cascade-depth']);
+
+function chainTargetOf(condition) {
+    return Math.max(Number(condition?.combo) || 0, Number(condition?.maxCascadeDepth) || 0);
+}
+
+function harmonizeChainGoals(level) {
+    if (level.mechanics?.versus) return level;
+    const stars = {};
+    let previousChain = 0;
+    for (const tier of ['one', 'two', 'three']) {
+        const authored = level.stars?.[tier];
+        if (!authored) continue;
+        const { combo, maxCascadeDepth, ...rest } = authored;
+        const condition = { ...rest };
+        let chain = chainTargetOf(authored);
+        if (chain > 0) {
+            if (CHAIN_WAVE_CAP[tier]) chain = Math.min(chain, CHAIN_WAVE_CAP[tier]);
+            chain = Math.max(chain, previousChain);
+            condition.maxCascadeDepth = chain;
+            previousChain = chain;
+        }
+        stars[tier] = condition;
+    }
+    const bonuses = level.victory?.bonuses || [];
+    const chainBonuses = bonuses.filter((bonus) => CHAIN_BONUS_TYPES.has(bonus.type));
+    let nextBonuses = bonuses;
+    if (chainBonuses.length) {
+        const waves = Math.min(CHAIN_WAVE_CAP.three, Math.max(...chainBonuses.map((bonus) => bonus.target || 0)));
+        const first = bonuses.indexOf(chainBonuses[0]);
+        nextBonuses = bonuses.filter((bonus) => !CHAIN_BONUS_TYPES.has(bonus.type));
+        nextBonuses.splice(first, 0, {
+            type: 'max-cascade-depth', target: waves, description: `Trigger a ${waves}-wave chain`,
+        });
+    }
+    return {
+        ...level,
+        victory: { ...level.victory, bonuses: nextBonuses },
+        stars: level.stars ? stars : level.stars,
+    };
+}
+
+// The three mastery capstones asked for chains and totals no solver or benchmark run has ever
+// produced (12- and 18-wave chains, 500k on a 480-second board). Their first star is unchanged;
+// the higher tiers now sit at the edge of what skilled play has demonstrated. Keyed by authored id.
+const MASTERY_RETUNE = Object.freeze({
+    49: Object.freeze({
+        victory: {
+            bonuses: [
+                { type: 'tetris-count', target: 10, description: 'Clear 10 Quads' },
+                { type: 'max-cascade-depth', target: 5, description: 'Trigger a 5-wave chain' },
+            ],
+        },
+        stars: {
+            one: { score: 36000 },
+            two: { score: 36000, tetrises: 8 },
+            three: { score: 36000, tetrises: 10, maxCascadeDepth: 5 },
+        },
+    }),
+    55: Object.freeze({
+        victory: {
+            bonuses: [
+                { type: 'max-cascade-depth', target: 6, description: 'Trigger a 6-wave chain' },
+                { type: 'cascade', target: 25, description: 'Trigger 25 cascades' },
+                { type: 'tetris-count', target: 12, description: 'Clear 12 Quads' },
+            ],
+        },
+        stars: {
+            one: { score: 250000 },
+            two: { score: 320000, cascades: 20, maxCascadeDepth: 4 },
+            three: { score: 400000, cascades: 28, maxCascadeDepth: 6 },
+        },
+    }),
+    59: Object.freeze({
+        victory: {
+            bonuses: [
+                { type: 'cascade', target: 20, description: 'Trigger 20 cascades' },
+                { type: 'max-cascade-depth', target: 6, description: 'Trigger a 6-wave chain' },
+            ],
+        },
+        stars: {
+            one: { score: 160000 },
+            two: { score: 200000, cascades: 16, maxCascadeDepth: 4 },
+            three: { score: 240000, cascades: 20, maxCascadeDepth: 6 },
+        },
+    }),
+});
+
+function applyMasteryRetune(level) {
+    const retune = MASTERY_RETUNE[level.id];
+    if (!retune) return level;
+    return {
+        ...level,
+        victory: { ...level.victory, bonuses: structuredClone(retune.victory.bonuses) },
+        stars: structuredClone(retune.stars),
+    };
+}
+
 const AUTHORED_LEVEL_CONFIGS = BASE_LEVEL_CONFIGS.map((level) => {
     const tags = LEVEL_PHASE2_TAGS[level.id];
     const taggedLevel = mergeConfig(level, tags);
     const derivedLevel = mergeConfig(taggedLevel, deriveOdysseyLevelTuning(level.id, tags, level));
     const authoredLevel = mergeConfig(derivedLevel, LEVEL_PHASE2_OVERRIDES[level.id]);
     const challengeLevel = applyBotChallenge(authoredLevel);
-    return normalizeOdysseyCompletionStars(correctObjectiveDescription(challengeLevel));
+    const tunedLevel = applyMasteryRetune(normalizeOdysseyCompletionStars(correctObjectiveDescription(challengeLevel)));
+    return harmonizeChainGoals(tunedLevel);
 });
 
 export const LEVEL_CONFIGS = assembleOdysseyCampaign(AUTHORED_LEVEL_CONFIGS);
+
+/** The rival of each chapter, keyed by the public id of the duel orb (the chapter's last slot). */
+export const ODYSSEY_BOT_CHALLENGES = Object.freeze(Object.fromEntries(
+    LEVEL_CONFIGS.filter((level) => level.mechanics.versus).map((level) => [
+        level.id,
+        Object.freeze({
+            botDifficulty: level.mechanics.versus.botDifficulty,
+            botName: level.mechanics.versus.botName,
+        }),
+    ]),
+));
 
 // Helper functions for level access
 export function getLevelById(id) {
