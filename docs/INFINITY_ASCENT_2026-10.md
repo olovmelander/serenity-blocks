@@ -89,6 +89,42 @@ src/core/exploration-signal.js               the pull signal every theme reads (
   stick past 0.6) sends the view home. That press is latched until released, so B does not
   also hard-drop.
 
+## Odyssey's tall wells (2026-10-18)
+
+Every Odyssey well taller than the 20 rows on screen is an Infinity or hybrid orb with no rival
+(24 to 36 rows, and Indra's Net at 100), and its board scrolls behind the same camera. Before
+this, those wells scrolled only while paused: the wheel on the canvas jumped 5 rows and the
+arrow keys 3, with nothing else. They now get the whole ascent, through the same director.
+
+- **The wiring.** `src/ui/odyssey/odyssey-tower-look.js` is Odyssey's half of the director's
+  contract (InfinityMode's is in the mode). `beginLevelRun` starts it when the attempt's well
+  scrolls; `_retireLevelSession` stops it; `onDeactivate` disposes it. The look's pause goes
+  through `OdysseyMode.onPause/onResume` with the owner `'odyssey-exploration'`: the orb's clock
+  stops as under any pause, the HUD does not say "Paused", a menu or the Hub opened over a look
+  keeps its pause after the look ends, and a resume from elsewhere ends the look without
+  resuming twice. Home is where the follow camera held the well when the look began. After a
+  game key ends a look the camera settles home over about 0.25 s, because Odyssey's follow
+  only moves on its thresholds. Escape calls `OdysseyMode.endExplorationForMenu()`; P is
+  ignored while any mode is looking (`main.js` no longer checks for Infinity by name).
+- **What left.** The pause-only wheel and arrow handlers (`_setupCameraControls`,
+  `_onWheel`, `_onKeyPress`) and the tower map's own pause binding
+  (`bindOdysseyMinimapControls`): the map's press and drag are the director's now, as in
+  Infinity. `OdysseyMode` went from 4,364 to 4,241 lines.
+- **A short well holds the whole journey.** `towerScale(range)` in `ascent-model.js` is the
+  share of the sky's reach (24 rows) that the well can scroll: 8 rows for a 24-row orb is a
+  third. The night, the depths and the themes' rise are measured in that share, and the theme
+  layer sinks by the same rule, so rising to the top of any well brings the full night, with the
+  theme stopping under it as in Infinity. Infinity's tower starts at 44 rows (24 of range), so
+  its scale is always 1 and nothing there changed. The ruler and its ticks step every 5 rows in
+  a short well (10 in Infinity), and the ticks' pitch climbs by the scaled height.
+- **No floors in Odyssey.** An orb asks for cascades, lines or time, never for height, so the
+  host gives `milestones: () => []`: no floors of light and no bells. The ruler, the memory
+  marks and their captions, the way home and the altimeter stay.
+- **Tests.** `odyssey-tower-look.test.js` (7: which wells get it, the look's pause and the way
+  home, Escape, an outside resume, an outside pause, the tower map and a retired attempt, the
+  start cue and the goal); `infinity-ascent-parts` gained the scaling and the short-well ruler.
+  The old `odyssey-minimap-controls.test.js` went with the binding it tested.
+
 ## Reduced motion
 
 Settings > Reduce motion or the system preference turns off the theme-layer parallax, the

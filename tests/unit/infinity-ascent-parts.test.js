@@ -8,7 +8,7 @@ import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
 import {
-    ASCENT, crossings, milestoneHeights, themeShift, viewMetrics,
+    ASCENT, crossings, milestoneHeights, themeShift, tickRows, towerScale, viewMetrics,
 } from '../../src/ui/infinity/ascent/ascent-model.js';
 import {
     MEMORY, TowerMemory, agoText, describeMoment,
@@ -74,6 +74,32 @@ describe('where the view is', () => {
     it('puts the milestones where the HUD and the tower map do', () => {
         expect(milestoneHeights(1000)).toEqual([100, 250, 500, 750, 1000]);
         expect(milestoneHeights(undefined)).toEqual([100, 250, 500, 750, 1000]);
+    });
+
+    it('fits the whole journey into a short well and leaves Infinity\'s tower as it was', () => {
+        // Infinity starts at 44 rows with twenty on screen: the full reach, unscaled.
+        expect(towerScale(44 - 20)).toBe(1);
+        expect(towerScale(980)).toBe(1);
+        expect(towerScale(NaN)).toBe(1);
+        expect(viewMetrics({ ...base, top: 40, scale: 1 })).toEqual(viewMetrics({ ...base, top: 40 }));
+        // An Odyssey well of 24 rows (28 with the hidden four) scrolls 8: a third of the reach.
+        const s = towerScale(28 - 20);
+        expect(s).toBeCloseTo(1 / 3, 6);
+        expect(towerScale(1)).toBe(ASCENT.MIN_SCALE);
+        const well = {
+            home: 8, visibleRows: 20, boardLength: 28, summitRow: 25, scale: s,
+        };
+        // The top of the well is Infinity's 24 rows up: the full night, the same rise.
+        const top = viewMetrics({ ...well, top: 0 });
+        expect(top.sky).toBe(1);
+        expect(top.rise).toBeCloseTo(viewMetrics({ ...base, top: 60 - ASCENT.SKY_FULL_ROWS }).rise, 6);
+        expect(viewMetrics({ ...well, top: 8 }).sky).toBe(0);
+        expect(viewMetrics({ ...well, top: 4 }).sky).toBeGreaterThan(0.3);
+        // The theme sinks as far, and the ruler ticks every five rows instead of ten.
+        expect(themeShift(8, 30, 900, s)).toBeCloseTo(themeShift(24, 30, 900), 6);
+        expect(themeShift(8, 30, 900)).toBeLessThan(themeShift(8, 30, 900, s));
+        expect(tickRows(1)).toBe(ASCENT.TICK_ROWS);
+        expect(tickRows(s)).toBe(ASCENT.SHORT_TICK_ROWS);
     });
 });
 
@@ -369,5 +395,39 @@ describe('the well\'s overlay', () => {
         expect(overlay.ringFill.getAttribute('stroke-dashoffset')).not.toBeNull();
         overlay.dispose();
         expect(overlay.root).toBeNull();
+    });
+
+    it('rules a short well every five rows and draws only the floors it is given', () => {
+        vi.stubGlobal('document', { createElement: (tag) => looseNode(tag) });
+        const section = looseNode('div');
+        section.clientHeight = 800;
+        const overlay = new AscentOverlay(section);
+        overlay.height = 800;
+        const frame = {
+            presence: 1,
+            top: 0,
+            visibleRows: 20,
+            boardLength: 28,
+            home: 8,
+            summitHeight: 3,
+            maxRows: 24,
+            ring: 0,
+            marks: [],
+            caption: null,
+            captionHeight: null,
+            tickRows: 5,
+            milestones: [],
+        };
+        overlay.render(frame);
+        // Heights 8..28 are on screen.
+        const shownTicks = overlay.ticks.filter((t) => t.tick.style.display !== 'none').map((t) => t.value);
+        expect(shownTicks).toEqual([10, 15, 20, 25]);
+        expect(overlay.ticks[2].tick.classList.contains('is-major')).toBe(false);
+        expect(overlay.floors.every((f) => f.floor.style.display === 'none')).toBe(true);
+        expect(overlay.altSub.textContent).toBe('8 above your piece');
+        overlay.render({ ...frame, top: 1, milestones: [12] });
+        expect(overlay.floors[0].floor.style.display).toBe('');
+        expect(overlay.floors[0].label.textContent).toBe('12 rows · still above');
+        overlay.dispose();
     });
 });
