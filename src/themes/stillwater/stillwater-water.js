@@ -30,6 +30,7 @@ import {
     int,
     length,
     max,
+    min,
     mix,
     normalize,
     positionWorld,
@@ -219,6 +220,7 @@ export function createWater(u, opts = {}) {
             const lights = vec3(0.0).toVar();
             lights.addAssign(column(u.lanternAt.xyz, u.lanternAt.w.mul(1.1), u.lantern, 0.9));
             lights.addAssign(column(u.spiritAt.xyz, u.spiritAt.w.mul(0.6), u.spirit, 1.1));
+            lights.addAssign(column(u.orbAt.xyz, u.orbAt.w.mul(1.6), u.heart, 1.0));
             Loop({
                 start: int(0), end: int(u.counts.z), type: 'int', condition: '<', name: 'wp',
             }, ({ wp }) => {
@@ -248,6 +250,39 @@ export function createWater(u, opts = {}) {
             col.addAssign(u.moon.mul(road).mul(fleck).mul(fres).mul(u.breath)
                 .mul(0.3));
         }
+
+        // ── The path of light: while a chain holds the two near, light runs out on the water from
+        // each of them toward the other, her pale light from her side, his lantern's from his, and
+        // flows along it toward the middle ──
+        If(u.path.x.greaterThan(0.002), () => {
+            const A = u.pathEnds.xy;
+            const ab = u.pathEnds.zw.sub(A).toVar();
+            const span = max(length(ab), 1e-3).toVar();
+            const axis = ab.div(span).toVar();
+            const ap = st.sub(A).toVar();
+            const along = dot(ap, axis).div(span).toVar();
+            const across = abs(dot(ap, vec2(axis.y.negate(), axis.x)).add(slope.x.mul(1.6))).toVar();
+            const inside = step(0.0, along).mul(step(along, 1.0));
+            const fromEnd = min(along, float(1.0).sub(along));
+            const reach = u.path.x.mul(0.5);
+            const grown = smoothstep(reach, reach.sub(0.05), fromEnd).mul(inside);
+            // (Wider near the two, where it is seen; narrower toward the middle, behind the board.)
+            // (Seen across the water at a grazing angle, a band must lie deep to be seen at all.)
+            const width = float(0.75).add(u.path.y.mul(0.35)).mul(float(1.4).sub(smoothstep(0.0, 0.35, fromEnd).mul(0.6)));
+            const band = exp(across.mul(across).div(width.mul(width)).negate());
+            // Flecks flowing from both ends toward the middle.
+            const flow = along.sub(0.5).abs().mul(span).mul(1.3)
+                .add(u.time.mul(0.9));
+            const fleck = u.noise(vec2(flow.mul(0.6), across.mul(2.2).add(along.mul(3.0)))).r;
+            const sparkle = smoothstep(0.45, 0.8, fleck).mul(0.9).add(0.18);
+            const tint = mix(u.spirit, u.lantern, smoothstep(0.25, 0.75, along));
+            const meet = u.heart.mul(swBell(along.sub(0.5).div(0.18)).mul(u.path.x).mul(0.6));
+            const power = u.path.x.mul(u.path.y.mul(0.5).add(0.55)).add(u.path.z.mul(0.8));
+            col.addAssign(tint.add(meet).mul(band).mul(grown).mul(sparkle)
+                .mul(power)
+                .mul(u.breath)
+                .mul(0.9));
+        });
 
         // ── Gameplay light riding the water itself ──
         col.addAssign(eventLight.mul(u.breath).mul(0.9));

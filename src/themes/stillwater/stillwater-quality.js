@@ -15,6 +15,8 @@
  * sparks      pool of the motes every splash, stroke and burst is made of
  * mist        sheets of mist lying over the water
  * troll       which of the troll's four meshes (0 = the finest)
+ * spirit      which of the spirit's two meshes (0 = the full figure, 1 = half)
+ * motes       motes of light that rise round the spirit
  */
 import { normalizeQuality } from '../../utils/quality.js';
 
@@ -38,6 +40,8 @@ export const QUALITY = Object.freeze({
         sparks: 192,
         mist: 2,
         troll: 3,
+        spirit: 1,
+        motes: 0,
     }),
     Low: Object.freeze({
         mirror: 0,
@@ -58,6 +62,8 @@ export const QUALITY = Object.freeze({
         sparks: 320,
         mist: 3,
         troll: 3,
+        spirit: 1,
+        motes: 16,
     }),
     Medium: Object.freeze({
         mirror: 0.4,
@@ -78,6 +84,8 @@ export const QUALITY = Object.freeze({
         sparks: 640,
         mist: 4,
         troll: 2,
+        spirit: 0,
+        motes: 20,
     }),
     High: Object.freeze({
         mirror: 0.5,
@@ -98,6 +106,8 @@ export const QUALITY = Object.freeze({
         sparks: 960,
         mist: 5,
         troll: 1,
+        spirit: 0,
+        motes: 32,
     }),
     Ultra: Object.freeze({
         mirror: 0.6,
@@ -118,6 +128,8 @@ export const QUALITY = Object.freeze({
         sparks: 1280,
         mist: 6,
         troll: 0,
+        spirit: 0,
+        motes: 40,
     }),
     Extreme: Object.freeze({
         mirror: 0.75,
@@ -138,6 +150,8 @@ export const QUALITY = Object.freeze({
         sparks: 1600,
         mist: 6,
         troll: 0,
+        spirit: 0,
+        motes: 40,
     }),
 });
 

@@ -14,6 +14,7 @@ import {
     ringRadius, skyDirection, smooth, squeezeFor, strokePassTime,
 } from '../../src/themes/stillwater/stillwater-core.js';
 import { STILLWATER_TETROMINOS } from '../../src/themes/stillwater/stillwater-tetrominos.js';
+import { groundHeight, shoreDistance } from '../../src/themes/stillwater/stillwater-plan.js';
 
 /** Frames the picture is composed for: desktops, an ultrawide, a square, a tablet, upright phones. */
 const ASPECTS = [3440 / 1440, 2560 / 1080, 16 / 9, 16 / 10, 4 / 3, 1, 820 / 1180, 430 / 932, 390 / 844, 0.4];
@@ -162,7 +163,7 @@ describe('stillwater core: the rest camera', () => {
         const floor = squeezeFor(0.01);
         expect(floor).toBeGreaterThan(0);
         expect(floor).toBeLessThan(1);
-        // The figures keep their width by 1 / max(0.2, squeeze) (stillwater-figures.js): the floor may not go under that.
+        // The figures keep their width by 1 / max(0.2, squeeze) (stillwater-troll.js, stillwater-spirit.js): the floor may not go under that.
         expect(floor).toBeGreaterThanOrEqual(0.2);
         let last = 0;
         let fell = 0;
@@ -269,9 +270,51 @@ describe('stillwater core: who stands where', () => {
         expect(TROLL.home[0]).toBeGreaterThan(0);
         // He is the larger of the two.
         expect(TROLL.height).toBeGreaterThan(SPIRIT.height);
-        expect(TROLL.stride).toBeGreaterThan(0);
         // At the end of the longest chain there is still water between them.
         expect(TROLL.reach[0] - SPIRIT.reach[0]).toBeGreaterThan(1);
+        expect(TROLL.shallows[0] - SPIRIT.reach[0]).toBeGreaterThan(1);
+        // She comes out over the water.
+        expect(shoreDistance(SPIRIT.reach[0], SPIRIT.reach[2])).toBeLessThan(0);
+    });
+
+    it('walks the troll from his stone down the bank to the water\'s edge, and on into the shallows', () => {
+        for (const spot of [TROLL.shallows, TROLL.seat]) {
+            expect(Object.isFrozen(spot)).toBe(true);
+            expect(spot).toHaveLength(3);
+            expect(spot.every(Number.isFinite)).toBe(true);
+        }
+        const edge = (p) => shoreDistance(p[0], p[2]);
+        const ground = (p) => groundHeight(p[0], p[2]);
+        // Home and the water's edge are on the bank, the edge close by the water; the shallows are in it.
+        expect(edge(TROLL.home)).toBeGreaterThan(0);
+        expect(edge(TROLL.reach)).toBeGreaterThan(0);
+        expect(edge(TROLL.reach)).toBeLessThan(1);
+        expect(edge(TROLL.reach)).toBeLessThan(edge(TROLL.home));
+        expect(edge(TROLL.shallows)).toBeLessThan(0);
+        expect(ground(TROLL.shallows)).toBeLessThan(0);
+        // Shin-deep, not over his head.
+        expect(ground(TROLL.shallows)).toBeGreaterThan(-TROLL.height * 0.25);
+        // Each stands where its height says: on the ground there.
+        for (const spot of [TROLL.home, TROLL.reach, TROLL.shallows]) {
+            expect(Math.abs(spot[1] - ground(spot)), String(spot)).toBeLessThan(0.05);
+        }
+        // Down the bank, toward the board, a step at a time.
+        expect(TROLL.home[1]).toBeGreaterThan(TROLL.reach[1]);
+        expect(TROLL.reach[1]).toBeGreaterThan(TROLL.shallows[1]);
+        expect(Math.abs(TROLL.shallows[0])).toBeLessThan(Math.abs(TROLL.reach[0]));
+        expect(Math.sign(TROLL.shallows[0])).toBe(1);
+        // His seat: a stone on the bank just behind where he stands, its top above the ground and
+        // below his hips.
+        expect(edge(TROLL.seat)).toBeGreaterThan(edge(TROLL.home));
+        const seatFromHome = Math.hypot(TROLL.seat[0] - TROLL.home[0], TROLL.seat[2] - TROLL.home[2]);
+        expect(seatFromHome).toBeLessThan(TROLL.height * 0.4);
+        expect(TROLL.seat[1]).toBeGreaterThan(ground(TROLL.seat));
+        expect(TROLL.seat[1] - ground(TROLL.seat)).toBeLessThan(TROLL.height * 0.3);
+        // A heavy walk: short steps, no more than two of them a second.
+        expect(TROLL.pace).toBeGreaterThan(0.1);
+        expect(TROLL.step).toBeGreaterThan(0.1);
+        expect(TROLL.step).toBeLessThan(TROLL.height * 0.3);
+        expect(TROLL.pace).toBeLessThan(TROLL.step * 2);
     });
 
     it('lays the gold heart on the tarn\'s bed, in front of the viewer', () => {
