@@ -69,6 +69,7 @@ function mountCompletion(mode, results, session, nextLevel, autoContinue) {
             fromChapter: level?.chapter !== nextLevel.chapter ? mode.levelRegistry.getChapter(level?.chapter) : null,
             results,
             autoContinue,
+            entrance: results?.showpiece ? 'afterglow' : 'direct',
             nowPlaying: Boolean(results?.themeUnlock?.persisted)
                 && isOdysseyRewardSongAudible(mode, level?.theme?.primary),
             reducedMotion: prefersOdysseyReducedMotion(mode),
