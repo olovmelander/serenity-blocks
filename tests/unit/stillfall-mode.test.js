@@ -25,7 +25,8 @@ const { StillfallMode } = await import('../../src/core/game-modes/StillfallMode.
 const { SinglePlayerMode } = await import('../../src/core/game-modes/SinglePlayerMode.js');
 
 const playLevelUp = vi.fn();
-const sfxPlayer = new Proxy({ playLevelUp }, { get: (target, name) => target[name] || (() => {}) });
+const playPuzzleMiss = vi.fn();
+const sfxPlayer = new Proxy({ playLevelUp, playPuzzleMiss }, { get: (target, name) => target[name] || (() => {}) });
 
 function startMode(puzzleId) {
     const mode = new StillfallMode({
@@ -62,6 +63,7 @@ beforeEach(() => {
     stillfallProgress.restore([]);
     states.length = 0;
     playLevelUp.mockClear();
+    playPuzzleMiss.mockClear();
     stop = eventBus.on(EVENTS.STILLFALL_STATE, (state) => states.push(state));
 });
 afterEach(() => {
@@ -129,6 +131,7 @@ describe('StillfallMode', () => {
         expect(states.at(-1)).toMatchObject({ outcome: 'failed', reason: 'spent', canUndo: true });
         expect(stillfallProgress.solvedIds()).toEqual([]);
         expect(playLevelUp).not.toHaveBeenCalled();
+        expect(playPuzzleMiss).toHaveBeenCalledOnce();
 
         expect(mode.restart()).toBe(true);
         expect(states.at(-1)).toMatchObject({ outcome: 'open', inHand: 'I', dealt: 0 });
@@ -175,6 +178,7 @@ describe('StillfallMode', () => {
         await gameState.latestPhysicsPromise;
 
         expect(states.at(-1)).toMatchObject({ outcome: 'failed', reason: 'blocked', inHand: null });
+        expect(playPuzzleMiss).toHaveBeenCalledOnce();
         expect(gameState.isGameOver).toBe(false); // the game loop would stop drawing otherwise
         expect(gameState.currentPiece).toBeNull();
 
@@ -253,9 +257,11 @@ describe('StillfallMode', () => {
         expect(mode.gameState.hintCells).toEqual(cellsOf(first));
         expect(states.at(-1)).toMatchObject({ hintShown: true, canHint: true });
 
-        // Following the hint: the next hint is for the second piece on the board as it is.
+        // Following the hint: the next hint is for the second piece on the board as it is,
+        // and the panel no longer says one is lit until it is asked for.
         await play(mode, first);
         expect(mode.gameState.hintCells).toBeNull();
+        expect(states.at(-1)).toMatchObject({ outcome: 'open', hintShown: false, hintRestarted: false });
         expect(mode.hint()).toBe(true);
         const { run } = applyPlacement(createRun(puzzle), first);
         expect(mode.gameState.hintCells).toEqual(cellsOf(solutionPlacement(run, puzzle.solution[1])));
