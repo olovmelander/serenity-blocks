@@ -94,6 +94,43 @@ export function worldDepartureFade(progress, skyStart, actEnd) {
 }
 
 /**
+ * THE RECESSION BELOW — the third part of the departure (audit 2026-10-18).
+ *
+ * The fade above recolours the world, so by actEnd it is a flat void-coloured planet. It still
+ * WRITES DEPTH, though: chapter 6's stars and Milky Way behind its ground stayed hidden until
+ * the gate fired at actEnd + margin, then the lower third of the frame filled with stars in
+ * one frame (captured p 0.7750 vs 0.7786). Across that margin the planet now shrinks toward
+ * the point beneath the eye, so its edge sinks out of the bottom of the frame and the stars
+ * come up behind it; by the time the gate fires it is a speck straight down.
+ *
+ * Returns the shrink's progress, 0 at actEnd, 1 at the gate. Colour is already flat by then,
+ * so the shrink only ever moves the silhouette.
+ *
+ * @param {number} progress camera progress along the whole journey, 0..1
+ * @param {number} actEnd   Act II's last chapter boundary (chapterPositions[5])
+ * @returns {number} 0 = full size, 1 = fully receded
+ */
+export function worldDepartureRecede(progress, actEnd) {
+    if (!Number.isFinite(progress) || !Number.isFinite(actEnd)) return 0;
+    const t = Math.min(Math.max((progress - actEnd) / ONE_WORLD_ACT_MARGIN, 0), 1);
+    return t * t * (3 - 2 * t);
+}
+
+/** The planet's scale when the gate fires. */
+export const ONE_WORLD_RECEDE_END_SCALE = 0.02;
+
+/**
+ * Scale for a recession amount. 1/(1 + k·t) rather than a lerp: the edge's angle below the
+ * eye goes roughly as 1/scale, so this sweeps the silhouette down the frame at an even pace
+ * instead of holding it at the horizon and then dropping it all at the end.
+ * @param {number} t 0..1 from worldDepartureRecede
+ */
+export function worldRecedeScale(t) {
+    const k = (1 / ONE_WORLD_RECEDE_END_SCALE) - 1;
+    return 1 / (1 + (k * Math.min(Math.max(Number.isFinite(t) ? t : 0, 0), 1)));
+}
+
+/**
  * ATMOSPHERIC THINNING (Act II -> Space, Wave 3 / F3). Real atmosphere thins, recedes and
  * loses contrast with altitude; the sculpted cloud deck instead held full cumulus form to
  * the last drawn frame, which is the audit's F3. This ramp drives the deck's paint toward

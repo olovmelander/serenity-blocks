@@ -532,6 +532,25 @@ describe('Odyssey charms on the map and the results sheet', () => {
         vi.unstubAllGlobals();
     });
 
+    it('keeps keyboard focus on the charm the player toggled when the bag redraws', () => {
+        // Audit 2026-10-18: the rebuild destroyed the focused chip and focus fell to the page.
+        const doc = createPanelDocument();
+        const create = doc.createElement;
+        doc.createElement = (tagName) => Object.assign(create(tagName), { focus: vi.fn() });
+        const list = doc.nodes.get('level-panel-charm-list');
+        list.contains = (node) => list.children.includes(node);
+        const level = getLevelById(2);
+        const render = (carried) => renderOdysseyLevelPanel({
+            level, unlocked: true, charms: { gathered: ['keel', 'swell'], carried },
+        }, doc);
+        render([]);
+        doc.activeElement = list.children[1]; // Swell, toggled from the keyboard
+        render(['swell']);
+        expect(list.children[1].dataset.charm).toBe('swell');
+        expect(list.children[1].focus).toHaveBeenCalledOnce();
+        expect(list.children[0].focus).not.toHaveBeenCalled();
+    });
+
     it('briefs the orb as the carried charms make it, with the bag as carry toggles above the goal', () => {
         const doc = createPanelDocument();
         const level = getLevelById(2);

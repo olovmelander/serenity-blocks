@@ -351,7 +351,6 @@ function createMode() {
     mode._applyInfinityLayout = vi.fn();
     mode._restoreInputs = vi.fn();
     mode._hookInputs = vi.fn();
-    mode._startLevelTimer = vi.fn();
     mode._startGameLoop = vi.fn();
 
     return {
@@ -464,7 +463,7 @@ describe('OdysseyMode level entry bootstrap', () => {
         expect(mode._startPhaserBoardScene).toHaveBeenCalledTimes(1);
         expect(boardScene.syncFromGameState).toHaveBeenCalled();
         expect(mode._hookInputs).not.toHaveBeenCalled();
-        expect(mode._startLevelTimer).not.toHaveBeenCalled();
+        expect(mode.levelStartTime).toBeNull();
         expect(mode._startGameLoop).not.toHaveBeenCalled();
     });
 
@@ -537,13 +536,14 @@ describe('OdysseyMode level entry bootstrap', () => {
 
         expect(mode.beginLevelRun()).toBe(true);
         expect(mode._hookInputs).toHaveBeenCalledTimes(1);
-        expect(mode._startLevelTimer).toHaveBeenCalledTimes(1);
+        const clockStart = mode.levelStartTime;
+        expect(clockStart).toBeGreaterThan(0);
         expect(mode._startGameLoop).toHaveBeenCalledTimes(1);
         expect(mode.levelRunStarted).toBe(true);
         expect(mode.entryPhase).toBe('running');
         expect(mode.beginLevelRun()).toBe(false);
         expect(mode._hookInputs).toHaveBeenCalledTimes(1);
-        expect(mode._startLevelTimer).toHaveBeenCalledTimes(1);
+        expect(mode.levelStartTime).toBe(clockStart);
         expect(mode._startGameLoop).toHaveBeenCalledTimes(1);
     });
 
@@ -677,6 +677,26 @@ describe('OdysseyMode level entry bootstrap', () => {
         expect(mode.beginLevelRun).not.toHaveBeenCalled();
         finished.resolve({ success: false });
         await expect(launching).resolves.toBe(false);
+    });
+
+    it("covers a map click's theme compile with its own loading lease, uncovered by the reveal", async () => {
+        const {
+            mode, driver, finished, level,
+        } = createGuardedLaunchMode();
+        const uncover = vi.fn();
+        const release = Object.assign(vi.fn(), { uncover });
+        mode.deps.themeManager = {
+            beginLoadingSurface: vi.fn(() => release),
+            preloadAsyncRenderPipelines: vi.fn().mockResolvedValue(undefined),
+        };
+        const launching = mode.launchOdysseyLevel(level.id);
+        // The journey flow brings its own lease; a click from the map has none to bring.
+        await expect(driver.callbacks.onBlackoutReached()).resolves.toBe(true);
+        expect(mode.deps.themeManager.beginLoadingSurface).toHaveBeenCalledWith('cinematic-loading');
+        await expect(driver.callbacks.onRevealStart()).resolves.toBe(true);
+        expect(uncover).toHaveBeenCalledOnce();
+        finished.resolve({ success: true });
+        await expect(launching).resolves.toBe(true);
     });
 
     it('invalidates entry before onStop drains physics so a queued abort cannot restore the map', async () => {
@@ -982,7 +1002,7 @@ describe('OdysseyMode level entry bootstrap', () => {
 
         expect(ready).toBe(true);
         expect(mode.transitionManager.waitForThemeCriticalReady).toHaveBeenCalledTimes(1);
-        expect(mode.transitionManager.waitForThemeCriticalReady).toHaveBeenCalledWith(levelConfig, 900);
+        expect(mode.transitionManager.waitForThemeCriticalReady).toHaveBeenCalledWith(levelConfig, 900, { settleFade: true });
         expect(mode._confirmFirstGameplayComposite).toHaveBeenCalledWith(2600);
         expect(mode._scheduleThemeFullReadySettlement).toHaveBeenCalledWith(levelConfig, 3, {
             safePresentation: false,
@@ -1005,8 +1025,8 @@ describe('OdysseyMode level entry bootstrap', () => {
         const ready = await mode._waitForEntryRevealReadiness(levelConfig, 7);
 
         expect(ready).toBe(true);
-        expect(mode.transitionManager.waitForThemeCriticalReady).toHaveBeenNthCalledWith(1, levelConfig, 900);
-        expect(mode.transitionManager.waitForThemeCriticalReady).toHaveBeenNthCalledWith(2, levelConfig, 1400);
+        expect(mode.transitionManager.waitForThemeCriticalReady).toHaveBeenNthCalledWith(1, levelConfig, 900, { settleFade: true });
+        expect(mode.transitionManager.waitForThemeCriticalReady).toHaveBeenNthCalledWith(2, levelConfig, 1400, { settleFade: true });
         expect(mode._showNeutralThemeFallbackBackdrop).toHaveBeenCalledTimes(1);
         expect(mode._scheduleThemeFullReadySettlement).toHaveBeenCalledWith(levelConfig, 7, {
             safePresentation: true,

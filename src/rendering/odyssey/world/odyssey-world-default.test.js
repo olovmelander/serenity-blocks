@@ -59,6 +59,13 @@ describe('One World ships by default', () => {
         const catchIdx = BOARD.indexOf('catch', idx);
         expect(catchIdx).toBeGreaterThan(idx);
         const catchBlock = BOARD.slice(catchIdx, catchIdx + 800);
-        expect(catchBlock).toMatch(/oneWorldEnabled = false/);
+        // The fallback moved into one method shared with a failed post-reveal compile
+        // (audit 2026-10-18); the catch must still call it, and it must still undo both.
+        expect(catchBlock).toMatch(/this\._abandonOneWorld\(error\)/);
+        const methodIdx = BOARD.indexOf('_abandonOneWorld(error) {');
+        expect(methodIdx).toBeGreaterThan(-1);
+        const method = BOARD.slice(methodIdx, methodIdx + 800);
+        expect(method).toMatch(/oneWorldEnabled = false/);
+        expect(method).toMatch(/suppressedChapters = new Set\(\)/);
     });
 });

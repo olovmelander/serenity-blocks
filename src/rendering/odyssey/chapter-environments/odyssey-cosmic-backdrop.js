@@ -129,19 +129,36 @@ function ridged3(x, y, z, octaves, seed) {
  *             height: number, bakeMs: number }}
  */
 export function bakeCosmicBackdropTexture(options = {}) {
+    const o = { ...COSMIC_BACKDROP_DEFAULTS, ...options };
+    const t0 = performance.now();
+    const data = new Uint8Array(o.width * o.height * 4);
+    bakeCosmicBackdropRows(data, o, 0, o.height);
+    return {
+        texture: makeBackdropTexture(data, o.width, o.height),
+        data,
+        width: o.width,
+        height: o.height,
+        bakeMs: performance.now() - t0,
+    };
+}
+
+/**
+ * Bake rows [y0, y1) of the painted cosmos into `data` (RGBA8, width x height).
+ * @param {Uint8Array} data @param {object} opts resolved options (COSMIC_BACKDROP_DEFAULTS + overrides)
+ * @param {number} y0 @param {number} y1
+ */
+function bakeCosmicBackdropRows(data, opts, y0, y1) {
     // NOTE dx below: three's SphereGeometry seats its vertices at x = -cos(phi) sin(theta)
     // (SphereGeometry.js), so the direction a texel is SEEN in has a negative cosine.
     const {
         width, height, seed, floorBottom, floorTop, bandAxis,
-    } = { ...COSMIC_BACKDROP_DEFAULTS, ...options };
-    const t0 = performance.now();
+    } = opts;
     const iSeed = Math.floor(seed * 8191) | 0;
-    const data = new Uint8Array(width * height * 4);
 
     const bl = Math.hypot(bandAxis[0], bandAxis[1], bandAxis[2]);
     const bx = bandAxis[0] / bl; const by = bandAxis[1] / bl; const bz = bandAxis[2] / bl;
 
-    for (let iy = 0; iy < height; iy += 1) {
+    for (let iy = y0; iy < y1; iy += 1) {
         // DataTexture row 0 is v=0; SphereGeometry has uv.y=1 at +Y, so v maps
         // bottom (−Y) → top (+Y) as the polar angle runs π → 0.
         const v = (iy + 0.5) / height;
@@ -222,7 +239,10 @@ export function bakeCosmicBackdropTexture(options = {}) {
             data[o + 3] = 255;
         }
     }
+}
 
+/** @param {Uint8Array} data @param {number} width @param {number} height */
+function makeBackdropTexture(data, width, height) {
     const texture = new THREE.DataTexture(data, width, height, THREE.RGBAFormat);
     // RepeatWrapping in S so bilinear filtering blends the longitude seam's texel
     // pair (255 ↔ 0) instead of clamping — the Act II bake-tiling lesson.
@@ -231,9 +251,70 @@ export function bakeCosmicBackdropTexture(options = {}) {
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
     texture.needsUpdate = true;
+    return texture;
+}
 
+/** Finished bakes, by their options: the board is rebuilt across a session, the sky never changes. */
+const BAKED_SKIES = new Map();
+const bakeKey = (o) => JSON.stringify([o.width, o.height, o.seed, o.floorBottom, o.floorTop, o.bandAxis]);
+const nextTask = () => new Promise((resolve) => { setTimeout(resolve, 0); });
+
+/**
+ * The bake WITHOUT THE FREEZE (Odyssey audit 2026-10-18). Baked in one go it held the main
+ * thread ~450 ms (measured on the dev machine) every time chapter 6 was created — by the
+ * background loader ~2.6 s after the map appeared, by the boundary preload mid-scroll, or by a
+ * navigator flight. Now `create()` returns at once with the floor gradient and the field bakes
+ * in ~`sliceMs` slices between frames, uploading once when done; a finished bake is kept for
+ * the session, so a rebuilt board is instant. Byte-identical to the one-shot bake.
+ * @param {object} [options] COSMIC_BACKDROP_DEFAULTS overrides
+ * @param {{ sliceMs?: number }} [schedule]
+ * @returns {{ texture: THREE.DataTexture, data: Uint8Array, ready: Promise<THREE.DataTexture|null>,
+ *   cached: boolean }}
+ */
+export function bakeCosmicBackdropTextureSliced(options = {}, { sliceMs = 4 } = {}) {
+    const o = { ...COSMIC_BACKDROP_DEFAULTS, ...options };
+    const data = new Uint8Array(o.width * o.height * 4);
+    const texture = makeBackdropTexture(data, o.width, o.height);
+    const key = bakeKey(o);
+    const done = BAKED_SKIES.get(key);
+    if (done) {
+        data.set(done);
+        return {
+            texture, data, ready: Promise.resolve(texture), cached: true,
+        };
+    }
+    // Until the field lands the dome wears its own floor: the void's gradient, never black.
+    for (let iy = 0; iy < o.height; iy += 1) {
+        const h = ((iy + 0.5) / o.height) ** 1.4;
+        const c = [0, 1, 2].map((k) => Math.round((o.floorBottom[k] + ((o.floorTop[k] - o.floorBottom[k]) * h)) * 255));
+        for (let ix = 0; ix < o.width; ix += 1) {
+            const i = ((iy * o.width) + ix) * 4;
+            data[i] = c[0]; data[i + 1] = c[1]; data[i + 2] = c[2]; data[i + 3] = 255;
+        }
+    }
+    let cancelled = false;
+    texture.addEventListener('dispose', () => { cancelled = true; });
+    const ready = (async () => {
+        const work = new Uint8Array(data.length);
+        for (let y = 0; y < o.height;) {
+            if (cancelled) return null;
+            const t0 = performance.now();
+            while (y < o.height && performance.now() - t0 < sliceMs) {
+                bakeCosmicBackdropRows(work, o, y, y + 1);
+                y += 1;
+            }
+            // Yielding between slices is the point: the frame runs between them.
+            // eslint-disable-next-line no-await-in-loop
+            if (y < o.height) await nextTask();
+        }
+        BAKED_SKIES.set(key, work);
+        if (cancelled) return null;
+        data.set(work);
+        texture.needsUpdate = true;
+        return texture;
+    })();
     return {
-        texture, data, width, height, bakeMs: performance.now() - t0,
+        texture, data, ready, cached: false,
     };
 }
 
@@ -245,7 +326,7 @@ export function bakeCosmicBackdropTexture(options = {}) {
 // eslint-disable-next-line no-unused-vars -- uTime stays in the signature for callers
 export function createBakedVoidSkyTSL(uTime, uEnergy, uOpacity = uniform(1), bakeOptions = {}) {
     const energy = uEnergy ?? uniform(0.3);
-    const bake = bakeCosmicBackdropTexture(bakeOptions);
+    const bake = bakeCosmicBackdropTextureSliced(bakeOptions);
 
     const material = new THREE.MeshBasicNodeMaterial();
     // NO DRIFT (2026-10-03). The dome used to scroll at uv + time * 0.0004 (0.14 deg/s on the
@@ -273,8 +354,14 @@ export function createBakedVoidSkyTSL(uTime, uEnergy, uOpacity = uniform(1), bak
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'void-sky-baked';
     mesh.renderOrder = -100;
-    mesh.userData.bakeMs = bake.bakeMs;
+    // The field lands a few hundred ms later, in slices between frames (see the sliced bake).
+    const bakeStart = performance.now();
+    mesh.userData.bakeMs = 0;
+    mesh.userData.bakeReady = bake.ready.then((tex) => {
+        mesh.userData.bakeMs = bake.cached ? 0 : performance.now() - bakeStart;
+        return tex;
+    });
     return {
-        mesh, material, geometry, texture: bake.texture, bakeMs: bake.bakeMs,
+        mesh, material, geometry, texture: bake.texture, ready: mesh.userData.bakeReady,
     };
 }

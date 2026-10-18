@@ -66,7 +66,6 @@ function prepare({ rows = 24, duel = null, isInfinityMode = true } = {}) {
     mode._activeLevelSession = {
         gameState: mode.gameState, hybridEngine: mode.hybridEngine, retired: false, duel,
     };
-    mode._startLevelTimer = vi.fn();
     mode.odysseyHUD = { setPaused: vi.fn() };
     const settings = {
         currentTopRow: length - 20, visibleRows: 20, viewOffsetRows: 0, manualControl: false,
@@ -207,6 +206,8 @@ describe('Odyssey tall wells: looking around the tower', () => {
         expect(mode.isPaused).toBe(true);
         expect(mode.odysseyHUD.setPaused).toHaveBeenLastCalledWith(true);
         expect(frameRateController.resumeHybridLoop).not.toHaveBeenCalled();
+        // ...and the board holds still under the menu (audit 2026-10-18: it kept animating).
+        expect(mode.boardScene.setPresentationPaused).toHaveBeenLastCalledWith(true);
 
         // The menu's own resume ends the pause.
         mode.onResume();

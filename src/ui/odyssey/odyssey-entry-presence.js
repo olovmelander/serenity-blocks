@@ -2,6 +2,20 @@
 import { createJourneyFlowOverlay } from './JourneyFlowOverlay.js';
 import { showRetryVeil, hideRetryVeil, clearRetryVeil } from './retry-veil.js';
 import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physics-callbacks.js';
+import { showToast } from '../components/toast.js';
+
+/**
+ * Say why an orb did not open when the entry gave up on its own (the hold ran out, or a step
+ * threw). It used to cut back to the map with only a console line (audit 2026-10-18). A Map
+ * choice, a replaced or disposed entry is the player's own doing and needs no notice.
+ * @param {{ reason?: string }|null|undefined} abortResult
+ * @returns {boolean} whether a notice was shown
+ */
+export function noticeOdysseyEntryAbort(abortResult) {
+    const reason = abortResult?.reason || '';
+    if (reason !== 'blackout-timeout' && !reason.endsWith('-callback-error')) return false;
+    return showToast({ message: 'That orb took too long to open. Try it again.', type: 'warning' }) !== null;
+}
 
 /** Cancel before stop/deactivation's first await, including an untimed Resume wait. */
 export function cancelOdysseyEntryPresence(mode) {
@@ -85,10 +99,16 @@ export async function restartOdysseyLevelInPlace(mode, failureModal = null) {
     }
     mode._levelAttemptNumber = (Number(mode._levelAttemptNumber) || 1) + 1;
     mode.entryPhase = 'preparing';
+    // Retry from the pause sheet arrives with play resumed: stop the attempt now. Left running
+    // under the veil's fade, a top-out opened the failure sheet beneath an opaque veil nothing
+    // lifted (audit 2026-10-18). A failed attempt's retry finds it stopped already.
+    if (mode._activeLevelSession && !mode._activeLevelSession.retired) mode._retireLevelSession();
     const presence = createOdysseyEntryPresence(mode, mode.currentLevelConfig);
     const retryGeneration = mode._levelSessionGeneration;
+    let veil = null;
+    let veilHandedOff = false;
     try {
-        await showRetryVeil();
+        veil = await showRetryVeil();
         if (!presence.canProceed() || retryGeneration !== mode._levelSessionGeneration) return;
         failureModal?.remove?.();
         const preparation = mode.prepareLevelStart();
@@ -102,12 +122,22 @@ export async function restartOdysseyLevelInPlace(mode, failureModal = null) {
         }
         const session = mode._activeLevelSession;
         await hideRetryVeil();
+        veilHandedOff = true;
         if (!presence.canProceed() || !mode._isLevelSessionActive(session)) return;
         await runOdysseyEntryReadyCue(mode, presence, () => mode._isLevelSessionActive(session));
+    } catch (error) {
+        // The failure sheet is gone by now: a throw here used to leave the veil up for good.
+        console.warn('[Odyssey] In-place retry failed; returning to the map:', error);
+        clearRetryVeil(veil);
+        veilHandedOff = true;
+        if (presence.canProceed() && mode.isActive) await mode.returnToBoard();
     } finally {
         if (presence.isCurrent() && presence.mapRequested && mode.isActive) {
             clearRetryVeil();
             await mode.returnToBoard({ onCovered: () => presence.dispose() });
+        } else if (!veilHandedOff && veil) {
+            // Every other way out that did not hand the screen on lifts this retry's cover.
+            clearRetryVeil(veil);
         }
         presence.dispose();
     }

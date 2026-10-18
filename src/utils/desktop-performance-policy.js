@@ -248,6 +248,9 @@ export function evaluateDynamicResolutionAdjustment({
     lastScaleChangeAt = 0,
     stableSince = 0,
     now = Date.now(),
+    // A caller that judges headroom itself (Odyssey's, at the display's cadence) passes its own
+    // gate: Infinity = has headroom, 0 = none. Default: p95 under 0.9x the frame budget.
+    upscaleThresholdMs = null,
 } = {}) {
     const currentScale = clampRenderScale(currentRenderScale ?? baselineRenderScale ?? 1);
     const baseScale = clampRenderScale(baselineRenderScale ?? currentScale);
@@ -255,7 +258,9 @@ export function evaluateDynamicResolutionAdjustment({
     const p99FrameMs = Number(releaseGates?.frameTime?.p99) || 0;
     const targetFrameMs = targetFrameRate > 0 ? 1000 / targetFrameRate : 1000 / 60;
     const downscaleThreshold = targetFrameMs * 1.14;
-    const upscaleThreshold = targetFrameMs * 0.9;
+    const upscaleThreshold = typeof upscaleThresholdMs === 'number' && !Number.isNaN(upscaleThresholdMs)
+        ? upscaleThresholdMs
+        : targetFrameMs * 0.9;
     const elapsedSinceChange = now - (lastScaleChangeAt || 0);
 
     if (elapsedSinceChange >= 6000 && (p95FrameMs > downscaleThreshold || p99FrameMs > downscaleThreshold * 1.08)) {

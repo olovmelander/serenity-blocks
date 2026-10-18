@@ -37,6 +37,7 @@ import {
     exp,
     float,
     length,
+    materialOpacity,
     max,
     min,
     mix,
@@ -82,6 +83,10 @@ const LAVA_LAKE_Y = -10;
 // group is anchored at the path centre, so props use world position for the falloff.
 const LAKE_CENTER_X = 0;
 const LAKE_CENTER_Z = 0;
+// The air over the lava, lit by the lake: the far lake hazes into it and its rim melts into it,
+// matching the glow the vault's low walls take from the same lake (createVolcanoBackgroundTSL).
+// A TSL node; `/* @__PURE__ */` keeps it tree-shakeable like the other module-level nodes.
+const LAKE_LIT_AIR = /* @__PURE__ */ vec3(0.30, 0.095, 0.03);
 
 /**
  * View-correct Fresnel rim (§4.3): pow(1 - |dot(normalView, viewDir)|, k). Works as
@@ -520,14 +525,18 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     const rimBand = smoothstep(0.30, 0.42, radial)
         .mul(oneMinus(smoothstep(0.42, 0.53, radial)));
     const rimPulse = sin(uTime.mul(0.8).add(radial.mul(40.0))).mul(0.12).add(0.88);
-    const rimBreak = smoothstep(0.25, 0.75, sin(uvCentered.x.mul(37.0).add(uvCentered.y.mul(29.0)).add(uTime.mul(0.3)))
-        .mul(0.5)
-        .add(0.5));
+    // Broken by the lake's own flow, not by a straight sinusoid: `sin(x*37 + y*29)` cut the rim
+    // ring into regular soft stripes, which across the lake read as a row of lit rectangles on
+    // the far shore (audit 2026-10-18: "the core reads as a box").
+    const rimBreak = smoothstep(0.30, 0.70, flow2);
     const rimGlow = rimBand.mul(rimPulse).mul(rimBreak.mul(0.7).add(0.3)).mul(uDescent.mul(0.5).add(0.6));
     color = color.add(uColorHot.mul(rimGlow).mul(0.6));
-    // Beyond the rim the lake falls to near-black charred shore (the dark vault meets).
-    const beyondRim = smoothstep(0.5, 0.62, radial);
-    color = mix(color, mix(uColorCool, uColorReflect, 0.55), beyondRim.mul(0.85));
+    // Beyond the rim the lake melts into the lake-lit air the vault glows with at that height.
+    // It fell to near-black charred shore when the vault was black; against the lit wall that
+    // drew the plane's square edge as a dark ruler line across the descent (audit 2026-10-18).
+    // Full by the square's corners (radial 0.707), so no edge of the plane is ever drawn.
+    const beyondRim = smoothstep(0.46, 0.64, radial);
+    color = mix(color, LAKE_LIT_AIR, beyondRim);
 
     // §5.5 (cheap) heat-shimmer: wobble the molten read in the lower/near frame by a
     // small sin(uTime + worldY) so the lake surface visibly RIPPLES with heat. No pass.
@@ -548,9 +557,8 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
     // the near molten and the (now lake-lit) far wall. The far lake now hazes into the same warm
     // lit air the vault glows with, so floor, air and wall read as one lit chamber.
     const camDist = length(vPos.sub(cameraPosition));
-    const haze = vec3(0.30, 0.095, 0.03); // the lake-lit air (matches the vault's lake glow)
     const fogAmt = smoothstep(40.0, 260.0, camDist).mul(0.55);
-    color = mix(color, haze, fogAmt);
+    color = mix(color, LAKE_LIT_AIR, fogAmt);
 
     // Cap the displayed emission below 1.0 (soft) so ACES+bloom gild, never clip.
     // Basin vein cores may cross the 0.85 bloom threshold (sanctioned "vein centers"
@@ -880,6 +888,13 @@ export function createVolcanoBackgroundTSL(uTime, uPulseIntensity = uniform(0), 
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
+    // The manager's fade still drives `material.opacity` (materialOpacity); `uExit` closes the
+    // vault once the climb has crossed into the sea (updateEarthCoreEnvironment).
+    if (options.uExit) {
+        material.opacityNode = materialOpacity.mul(options.uExit);
+        // The manager's material.opacity still flows through this node (the ecotone guard).
+        material.userData.opacityKeepsMaterialOpacity = true;
+    }
     material.side = THREE.BackSide;
     material.depthWrite = false;
 
@@ -1340,10 +1355,21 @@ export function createMoltenPocketMaterialTSL(
     const plates = fbm3(vPatternPos.mul(isColumn ? 0.09 : 0.16), 3, n3);
     const plateMix = smoothstep(0.32, 0.76, plates);
     let albedo = mix(vec3(0.016, 0.014, 0.017), vec3(0.052, 0.040, 0.035), plateMix);
+    // FACETS, NOT A SLAB (audit 2026-10-18). From an orb's focus a column filled a third of the
+    // frame as one flat black plane — above the lake's reach every facet shaded the same. Each
+    // prism facet now takes its own value (a hash of its flat normal, offset per column) and the
+    // rust and sulphur stains that run down cooled basalt, so the bundle reads as faceted rock
+    // in the dark, not as a wall. Columns only; the blobs keep their crust.
+    const facetValue = isColumn
+        ? hash21(vNormal.xz.mul(37.0).add(modelPosition.xz.mul(0.13)))
+        : float(0.5);
     if (isColumn) {
         // Colonnade joints: the horizontal fracture rhythm of cooled basalt (Fingal's Cave).
         const joints = sin(vWorldY.mul(0.42).add(plates.mul(3.0))).mul(0.5).add(0.5);
         albedo = albedo.mul(mix(float(0.78), float(1.0), smoothstep(0.12, 0.38, joints)));
+        albedo = albedo.mul(mix(float(0.6), float(1.8), facetValue));
+        const stain = n3(vec3(vWorldPos.x.mul(0.9), vWorldPos.y.mul(0.035), vWorldPos.z.mul(0.9)));
+        albedo = albedo.add(vec3(0.055, 0.024, 0.010).mul(smoothstep(0.62, 0.86, stain)));
     }
 
     // Cracks: ridged filaments, stretched along Y on the columns so they run with the grain.
@@ -1362,10 +1388,13 @@ export function createMoltenPocketMaterialTSL(
     // The lake is the key and it is BELOW: faces that look down at it catch its light.
     const downFace = clamp(vNormal.y.negate(), 0.0, 1.0);
     const sideFace = oneMinus(abs(vNormal.y));
+    // On the columns the lake reaches a little higher up the side facets, each facet by its own
+    // angle to the light (facetValue), so the faces separate instead of merging into one black.
     const underLight = vec3(0.30, 0.085, 0.022)
-        .mul(pow(downFace, 1.2).mul(0.8).add(sideFace.mul(0.16)))
-        .mul(heatWithHeight.mul(0.75).add(0.25))
+        .mul(pow(downFace, 1.2).mul(0.8).add(sideFace.mul(isColumn ? 0.26 : 0.16)))
+        .mul(heatWithHeight.mul(0.75).add(isColumn ? 0.36 : 0.25))
         .mul(lakeFalloff.mul(0.6).add(0.4))
+        .mul(isColumn ? facetValue.mul(0.9).add(0.55) : float(1))
         .mul(uBakedBounce);
 
     // Rims: warm where the edge faces the fire, a cool hint of the crown's light above.

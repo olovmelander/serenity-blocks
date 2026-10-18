@@ -95,6 +95,10 @@ export function create({ scene, camera, params }) {
     const aerialH = Number(params?.get?.('aerialH') || 1500);
     const aerialR = Number(params?.get?.('aerialR') || 2600);
     const aerialYaw = Number(params?.get?.('aerialYaw') || 0);
+    // EVERY ANGLE — `?lookYaw=` / `?lookPitch=` (degrees) turn the rail camera off its framing:
+    // the player sees a chapter from orb close-ups and arrival orbits too, not only along the rail.
+    const lookYaw = (Number(params?.get?.('lookYaw')) || 0) * (Math.PI / 180);
+    const lookPitch = (Number(params?.get?.('lookPitch')) || 0) * (Math.PI / 180);
 
     return {
         cameraRadius: 1200,
@@ -142,6 +146,11 @@ export function create({ scene, camera, params }) {
             const horiz = Math.hypot(dx, dz) || 1;
             const pitch = Math.max(-0.30, Math.min(0.16, dy / horiz));
             cam.lookAt(cam.position.x + dx, cam.position.y + (pitch * horiz), cam.position.z + dz);
+            if (lookYaw || lookPitch) {
+                // Yaw about world up, then pitch about the camera's own right axis.
+                cam.rotation.setFromQuaternion(cam.quaternion, 'YXZ');
+                cam.rotation.set(cam.rotation.x + lookPitch, cam.rotation.y + lookYaw, 0, 'YXZ');
+            }
         },
         resize() {},
         dispose() {

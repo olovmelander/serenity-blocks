@@ -193,6 +193,26 @@ describe('Odyssey failure modal result compatibility', () => {
         expect(modal.remove).toHaveBeenCalledOnce();
     });
 
+    it('leaves Escape and Enter to Settings when Settings is open over the sheet', () => {
+        // Audit 2026-10-18: Escape meant to close Settings chose "Back to map" underneath, and
+        // Enter on a Settings control started a retry.
+        const onChoose = vi.fn();
+        createModal({ onChoose });
+        const settingsVisible = { classList: { contains: (name) => name === 'visible' } };
+        document.getElementById = vi.fn((id) => (id === 'settings-modal' ? settingsVisible : null));
+        const handler = document.addEventListener.mock.calls.find(([name]) => name === 'keydown')[1];
+        for (const key of ['Escape', 'Enter', 'r']) {
+            const event = { key, preventDefault: vi.fn(), stopPropagation: vi.fn() };
+            handler(event);
+            expect(event.stopPropagation).not.toHaveBeenCalled();
+        }
+        expect(onChoose).not.toHaveBeenCalled();
+
+        settingsVisible.classList.contains = () => false; // Settings closed: the sheet's keys again
+        handler({ key: 'Escape', preventDefault: vi.fn(), stopPropagation: vi.fn() });
+        expect(onChoose).toHaveBeenCalledExactlyOnceWith('map');
+    });
+
     it('disposes cancellation once without choosing Retry or restoring focus later', () => {
         vi.useFakeTimers();
         const onChoose = vi.fn();

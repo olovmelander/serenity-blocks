@@ -4,6 +4,9 @@ import {
 
 let operations;
 let nodes;
+let frames;
+/** The next frame: the pulses restart in it, not behind a forced layout read. */
+const nextFrame = () => frames.splice(0).forEach((callback) => callback());
 function node(id) {
     const classes = new Set(['single-player-stat-value', 'pulse']);
     let text = '';
@@ -27,6 +30,8 @@ beforeEach(() => {
     nodes = Object.fromEntries(['score', 'lines', 'level', 'next-level', 'speed', 'bpm', 'ppm']
         .map((id) => [id, node(id)]));
     vi.stubGlobal('document', { getElementById: (id) => nodes[id] });
+    frames = [];
+    vi.stubGlobal('requestAnimationFrame', (callback) => frames.push(callback));
 });
 afterEach(() => {
     vi.restoreAllMocks();
@@ -39,18 +44,20 @@ function stats(overrides = {}) {
 }
 
 describe('HUD pulse batching', () => {
-    it('restarts five changed stats with one layout read and preserves values and warning classes', async () => {
+    it('restarts five changed stats on the next frame with no layout read, keeping values and warnings', async () => {
+        // Odyssey audit 2026-10-18: the one batched offsetWidth read still forced a whole-page
+        // layout on almost every lock; the next frame's own style pass restarts the animation.
         const { updateStats } = await import('../../src/rendering/draw.js');
         updateStats(stats());
-        const reads = operations.filter((operation) => operation.startsWith('layout:'));
         const removes = operations.filter((operation) => operation.startsWith('remove:'));
-        const adds = operations.filter((operation) => operation.endsWith(':pulse') && operation.startsWith('add:'));
-        expect(reads).toHaveLength(1);
+        expect(operations.filter((operation) => operation.startsWith('layout:'))).toHaveLength(0);
         expect(removes).toHaveLength(5);
+        expect(operations.filter((operation) => operation.startsWith('text:'))).toHaveLength(7);
+        expect(operations.some((operation) => operation.startsWith('add:') && operation.endsWith(':pulse'))).toBe(false);
+        nextFrame();
+        const adds = operations.filter((operation) => operation.endsWith(':pulse') && operation.startsWith('add:'));
         expect(adds).toHaveLength(5);
-        const barrier = operations.indexOf(reads[0]);
-        expect(operations.slice(barrier + 1).every((operation) => operation.startsWith('add:'))).toBe(true);
-        expect(operations.slice(0, barrier).filter((operation) => operation.startsWith('text:'))).toHaveLength(7);
+        expect(operations.filter((operation) => operation.startsWith('layout:'))).toHaveLength(0);
         expect(nodes.score.textContent).toBe('123');
         expect(nodes.lines.textContent).toBe(5);
         expect(nodes.level.textContent).toBe(6);
@@ -68,21 +75,23 @@ describe('HUD pulse batching', () => {
         expect(operations).toEqual([]);
     });
 
-    it('keeps BPM and PPM pulse conditions while sharing their layout read', async () => {
+    it('keeps BPM and PPM pulse conditions, restarted on the next frame', async () => {
         const { updateStats } = await import('../../src/rendering/draw.js');
         updateStats(stats({ score: 100, piecesPlaced: 5, startTime: 54000 }));
         expect(nodes.bpm.textContent).toBe(50);
         expect(nodes.ppm.textContent).toBe((1000).toLocaleString());
-        expect(operations.filter((operation) => operation.startsWith('layout:'))).toHaveLength(1);
+        nextFrame();
+        expect(operations.filter((operation) => operation.startsWith('layout:'))).toHaveLength(0);
         expect(operations).toContain('add:bpm:pulse');
         expect(operations).toContain('add:ppm:pulse');
         operations = [];
         updateStats(stats({ score: 101, piecesPlaced: 6, startTime: 53000 }));
         expect(nodes.bpm.textContent).toBe(51);
         expect(nodes.ppm.textContent).toBe((866).toLocaleString());
+        nextFrame();
         expect(operations).not.toContain('add:bpm:pulse');
         expect(operations).not.toContain('add:ppm:pulse');
-        expect(operations.filter((operation) => operation.startsWith('layout:'))).toHaveLength(1);
+        expect(operations.filter((operation) => operation.startsWith('layout:'))).toHaveLength(0);
         operations = [];
         updateStats(stats({ score: 101, piecesPlaced: 6, startTime: 52000 }));
         expect(operations.filter((operation) => operation.startsWith('layout:'))).toHaveLength(0);

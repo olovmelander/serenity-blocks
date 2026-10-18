@@ -52,13 +52,13 @@ describe('Odyssey star outcome: why an attempt earned the stars it did', () => {
         expect(outcome.stars).toBe(2);
         expect(outcome.tiers.map((tier) => tier.earned)).toEqual([true, true, false]);
         expect(outcome.tiers.map((tier) => tier.label)).toEqual([
-            'Clear the orb', '20 lines + Under 2:30', '20 lines + Under 2 min + Get bonus',
+            'Clear the orb', '20 lines + Under 2:30', '20 lines + Under 2 min + Clear no single lines',
         ]);
         expect(outcome.next.tier).toBe('three');
         expect(outcome.next.missed.map((part) => [part.key, part.actual])).toEqual([
             ['time', '2:28'], ['bonuses', '0 bonuses'],
         ]);
-        expect(formatOdysseyNextStar(outcome)).toBe('Next star: Under 2 min (you: 2:28) · Get bonus (you: 0 bonuses)');
+        expect(formatOdysseyNextStar(outcome)).toBe('Next star: Under 2 min (you: 2:28) · Clear no single lines (you: 0 bonuses)');
     });
 
     it('says so when every star is earned, and never invents a shortfall from numbers it was not given', () => {
@@ -111,7 +111,13 @@ describe('Odyssey star outcome: why an attempt earned the stars it did', () => {
             expect(outcome.tiers, level.id).toHaveLength(3);
             for (const tier of outcome.tiers) {
                 expect(tier.label, `${level.id}:${tier.tier}`).not.toMatch(/^\.\.\.$|undefined|NaN/);
-                expect(tier.label).toBe(formatOdysseyStarCondition(level.stars[tier.tier], tier.index));
+                expect(tier.label).toBe(formatOdysseyStarCondition(
+                    level.stars[tier.tier],
+                    tier.index,
+                    level.victory?.bonuses,
+                ));
+                // A star that asks for a bonus names it (audit 2026-10-18).
+                expect(tier.label, `${level.id}:${tier.tier}`).not.toMatch(/Get bonus/);
                 const labels = tier.parts.map((part) => part.label);
                 expect(new Set(labels).size, `${level.id}:${tier.tier}`).toBe(labels.length);
                 expect(labels.every(Boolean)).toBe(true);
@@ -143,10 +149,10 @@ describe('Odyssey star notes list', () => {
         ]);
         expect(notes.list.children.map((item) => item.dataset.earned)).toEqual(['true', 'true', 'false', undefined]);
         expect(notes.list.children[0].ariaLabel).toBe('Clear the orb: earned');
-        expect(notes.list.children[2].ariaLabel).toBe('20 lines + Under 2 min + Get bonus: not earned');
-        expect(texts(notes.list.children[2])).toEqual(['·', '20 lines + Under 2 min + Get bonus']);
+        expect(notes.list.children[2].ariaLabel).toBe('20 lines + Under 2 min + Clear no single lines: not earned');
+        expect(texts(notes.list.children[2])).toEqual(['·', '20 lines + Under 2 min + Clear no single lines']);
         expect(notes.list.children[3].textContent)
-            .toBe('Next star: Under 2 min (you: 2:28) · Get bonus (you: 0 bonuses)');
+            .toBe('Next star: Under 2 min (you: 2:28) · Clear no single lines (you: 0 bonuses)');
         expect(notes.words).toHaveLength(4);
         expect(notes.readingWords).toEqual([notes.list.children[3].textContent]);
     });
@@ -165,8 +171,12 @@ describe('Odyssey map orb panel', () => {
     it('marks rival duels, chapter bosses and showcases, and nothing else', () => {
         expect(describeOdysseyOrbKind(getLevelById(5))).toEqual({ id: 'rival', label: 'Rival duel · Cinder' });
         expect(describeOdysseyOrbKind(getLevelById(4))).toEqual({ id: 'boss', label: 'Chapter boss' });
-        expect(describeOdysseyOrbKind(getLevelById(32))).toEqual({ id: 'boss', label: 'Chapter boss · Showcase' });
-        expect(describeOdysseyOrbKind(getLevelById(59))).toEqual({ id: 'showcase', label: 'Showcase' });
+        // One boss per chapter (audit 2026-10-18): chapter 5 tags 32 and 33, and its boss is 33.
+        expect(describeOdysseyOrbKind(getLevelById(33))).toEqual({ id: 'boss', label: 'Chapter boss' });
+        expect(describeOdysseyOrbKind(getLevelById(32))).toEqual({ id: 'showcase', label: 'Showcase' });
+        expect(describeOdysseyOrbKind(getLevelById(47))).toEqual({ id: 'boss', label: 'Chapter boss · Showcase' });
+        // Chapter 8 tags none: its hardest solo orb wears the crown.
+        expect(describeOdysseyOrbKind(getLevelById(59))).toEqual({ id: 'boss', label: 'Chapter boss · Showcase' });
         expect(describeOdysseyOrbKind(getLevelById(2))).toBeNull();
         expect(describeOdysseyOrbKind(null)).toBeNull();
     });
@@ -215,7 +225,7 @@ describe('Odyssey map orb panel', () => {
         expect(node('level-panel-stars').attributes['aria-label']).toBe('2 of 3 stars earned');
         expect(node('level-panel-goal').textContent).toBe('Clear 20 lines');
         expect(texts(node('level-panel-star-goals'))).toEqual([
-            '1 ★ Clear the orb', '2 ★ 20 lines + Under 2:30', '3 ★ 20 lines + Under 2 min + Get bonus',
+            '1 ★ Clear the orb', '2 ★ 20 lines + Under 2:30', '3 ★ 20 lines + Under 2 min + Clear no single lines',
         ]);
         expect(node('level-panel-rules-label').textContent).toBe('Rules');
         expect(texts(node('level-panel-rules'))).toEqual(getOdysseyLevelBriefing(level).rules);

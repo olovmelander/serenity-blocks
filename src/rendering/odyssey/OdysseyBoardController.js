@@ -25,7 +25,13 @@ import {
 import { ODYSSEY_BREACH_P, ODYSSEY_SEA_LEVEL } from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
 import { warmWebGpuDevice } from '../webgpu-device-warm.js';
-import { isWorldVisibleAtProgress, worldAtmosphericThin, worldDepartureFade } from './world/odyssey-world-act-gate.js';
+import {
+    isWorldVisibleAtProgress,
+    worldAtmosphericThin,
+    worldDepartureFade,
+    worldDepartureRecede,
+    worldRecedeScale,
+} from './world/odyssey-world-act-gate.js';
 import {
     STEAM_QUENCH_APPROACH_HALF_WIDTH,
     STEAM_QUENCH_EXIT_HALF_WIDTH,
@@ -66,7 +72,7 @@ import {
     buildRenderWarmOrder,
 } from './odyssey-warmup-plan.js';
 import { computeTravelFrontier, isHeldAtFrontier } from './odyssey-travel-frontier.js';
-import { resolveChapterArrivalProgress } from './odyssey-chapter-arrival.js';
+import { resolveChapterArrivalProgress, resolveOrbParkProgress } from './odyssey-chapter-arrival.js';
 import {
     normalizeOdysseyWarmupMode,
     resolveOdysseyAdaptiveFrameRate,
@@ -89,6 +95,7 @@ import {
     evaluateDynamicResolutionAdjustment,
 } from '../../utils/desktop-performance-policy.js';
 import { gpuResilience } from '../../utils/gpu-context-resilience.js';
+import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import {
     beginPostTargetCompile,
@@ -1144,20 +1151,10 @@ export class OdysseyBoardController {
                 console.log('[OdysseyBoard] One World enabled —', JSON.stringify(this.oneWorld.stats));
             } catch (error) {
                 console.error('[OdysseyBoard] One World failed to build; falling back', error);
-                this.oneWorld = null;
-                this.oneWorldEnabled = false;
                 // The world now builds AFTER the startup chapter creates (item 2.1), so lifting
                 // the suppression here no longer re-creates chapters 2-5 in the startup loop;
                 // the background loader picks them up (they are outside the startup set).
-                this.environmentManager.suppressedChapters = new Set();
-                // LOUD, after the fallback is arranged (Wave 4/6 audit prerequisite): a
-                // player-visible banner + a persisted localStorage log. Silent recovery is
-                // how we would have retired the fallback while some machine quietly needed
-                // it — and how a future world-only build would degrade to a void nobody
-                // reports. Reporting must never break the recovery, hence its own guard.
-                try {
-                    reportWorldBuildFailure(error);
-                } catch { /* diagnostic only — never let reporting hurt the fallback */ }
+                this._abandonOneWorld(error);
             }
         }
         trace.end('world');
@@ -1513,6 +1510,11 @@ export class OdysseyBoardController {
 
     _canRunBackgroundTask() {
         if (this._disposed) return false;
+        // A parked board waits (audit 2026-10-18): while an orb is entered or played the board
+        // is paused, and a chapter build here (ch6's ~450 ms, ch1's ~250 ms) landed in the entry
+        // tunnel or the first seconds of play. The frame-health average is frozen at "healthy"
+        // while paused (it only updates in animate()), so it could not hold this back itself.
+        if (!this.isActive || this.isRenderingPaused) return false;
         // Interaction-idle + camera-settled are the "user isn't busy" gate; frame-health is the
         // "board isn't already stuttering" gate — the three background paths (creation, prewarm,
         // render-warm) all funnel through here, so this one term backpressures every speculative
@@ -1532,6 +1534,8 @@ export class OdysseyBoardController {
         // render-warm) for the whole session: chapters 6/7 were compiled and ready at 15.9s but
         // not render-warmed until 44s. A sustained block must always eventually yield one pass.
         if (!this._bgGateBlockedSince) this._bgGateBlockedSince = performance.now();
+        // ...but never in the middle of a flight: a build landing on a glide's frame is a jump.
+        if (this.cameraController?.isAnimating) return false;
         if (performance.now() - this._bgGateBlockedSince > 8000) {
             this._bgGateBlockedSince = 0;
             return true;
@@ -1571,7 +1575,11 @@ export class OdysseyBoardController {
         // the warm pipeline failed to keep ahead of the player, which is the single most useful
         // diagnostic this system can emit.
         const position = this.cameraController.currentPosition;
-        if (isHeldAtFrontier(position, frontier)) {
+        if (frontier === this._releasedFrontier) {
+            // A release holds until this frontier's chapter is ready and the frontier moves on;
+            // recomputed each frame, it released for one frame every 2.5 s (audit 2026-10-18).
+            frontier = 1;
+        } else if (isHeldAtFrontier(position, frontier)) {
             if (!this._frontierHoldSince) {
                 this._frontierHoldSince = performance.now();
             } else if (performance.now() - this._frontierHoldSince > this._frontierHoldReleaseMs) {
@@ -1580,6 +1588,7 @@ export class OdysseyBoardController {
                     + `p=${position.toFixed(3)} — warm pipeline did not keep ahead of the player`,
                 );
                 this._frontierHoldSince = 0;
+                this._releasedFrontier = frontier;
                 frontier = 1;
             }
         } else {
@@ -1724,6 +1733,30 @@ export class OdysseyBoardController {
         });
     }
 
+    /**
+     * Fast start leaves the chapter-7 lens variants to their first visit, which hitched at the
+     * 6-7 seam (audit 2026-10-18). Warm them once the background sweep is done and the board
+     * idles. One task, no yields (a frame between would rebind the live variant mid-warm); the
+     * lens branch idles at no-op uniforms and the live variant renders last, so nothing shows.
+     * @private
+     */
+    _warmDeferredLensVariants() {
+        if (this._lensVariantsWarmed || !this._fastStart || this._motionWarm) return;
+        const attempt = () => {
+            if (this._disposed || this._lensVariantsWarmed) return;
+            const stack = this.postProcessingStack;
+            if (typeof stack?.warmOutputVariants !== 'function') return;
+            if (!this.isActive || this.isRenderingPaused || !this._canRunBackgroundTask()) {
+                setTimeout(attempt, 500);
+                return;
+            }
+            this._lensVariantsWarmed = true;
+            Promise.resolve(stack.warmOutputVariants(null, { lensStates: [true], skipActive: true }))
+                .catch((error) => console.warn('[OdysseyWarmup] Lens variant warm failed:', error));
+        };
+        attempt();
+    }
+
     _startBackgroundRenderWarm() {
         if (this._bgRenderWarmStarted) return;
         // LEVER 2: when chapter eviction owns residency, do NOT sweep-warm all 8 chapters —
@@ -1785,6 +1818,7 @@ export class OdysseyBoardController {
                 this._bgRenderWarmPending = 0;
                 this._bgRenderWarmComplete = true;
                 console.log('[OdysseyWarmup] background render-warm complete');
+                this._warmDeferredLensVariants();
                 return;
             }
             if (!this._canRunBackgroundTask()) {
@@ -2371,9 +2405,19 @@ export class OdysseyBoardController {
             const startedAt = performance.now();
             try {
                 // eslint-disable-next-line no-await-in-loop
-                await this._prewarmGroup(target, `${label} (post-reveal)`);
+                await this._prewarmGroup(target, `${label} (post-reveal)`, { rethrow: true });
             } catch (error) {
                 console.warn(`[OdysseyBoard] deferred compile failed for ${label}:`, error?.message || error);
+                // A world whose node graph cannot build draws broken or not at all, for two
+                // thirds of the journey, with nothing on screen saying why (audit 2026-10-18).
+                // Fall back as a failed build does, and load the chapter the camera is in now.
+                // (A WGSL validation error is asynchronous and never reaches this catch; the
+                // device-loss path handles a device that dies of one.)
+                if (label === 'one-world' && this.oneWorld?.group === target && this.isActive) {
+                    this._abandonOneWorld(error);
+                    const here = this.environmentManager?.getBlendState?.(this.cameraController?.getCurrentPosition?.() ?? 0);
+                    if (Number.isFinite(here?.activeChapter)) this._requestChapterEnvironment(here.activeChapter);
+                }
             }
             this._compileTimings[`${label}-post`] = Math.round(performance.now() - startedAt);
             if (!this.isActive) return; // torn down mid-queue
@@ -2381,7 +2425,39 @@ export class OdysseyBoardController {
         console.log('[OdysseyBoard] post-reveal compiles done', JSON.stringify(this._compileTimings));
     }
 
-    async _prewarmGroup(group, label = 'group') {
+    /**
+     * Give up on the One World and hand chapters 2-5 back to their dioramas — LOUDLY, after
+     * the fallback is arranged (Wave 4/6 audit prerequisite): a player-visible banner and a
+     * persisted localStorage log. Silent recovery is how we would have retired the fallback
+     * while some machine quietly needed it. Shared by a failed build and a failed post-reveal
+     * compile.
+     * @private
+     */
+    _abandonOneWorld(error) {
+        const world = this.oneWorld;
+        this.oneWorld = null;
+        this.oneWorldEnabled = false;
+        this._oneWorldVisible = undefined;
+        if (world?.group) {
+            this.scene?.remove(world.group);
+            try {
+                world.dispose?.();
+            } catch { /* already broken; the scene no longer holds it */ }
+        }
+        if (this.environmentManager) this.environmentManager.suppressedChapters = new Set();
+        // Reporting must never break the recovery, hence its own guard.
+        try {
+            reportWorldBuildFailure(error);
+        } catch { /* diagnostic only — never let reporting hurt the fallback */ }
+    }
+
+    /**
+     * @param {THREE.Object3D} group
+     * @param {string} [label]
+     * @param {{rethrow?: boolean}} [options] rethrow: hand a failed compile to the caller
+     *   instead of only logging it (the post-reveal One World compile falls back on it)
+     */
+    async _prewarmGroup(group, label = 'group', { rethrow = false } = {}) {
         if (!group || !this.renderer || !this.scene || !this.camera) return;
         // UNDER THE LIVE LOOP (item 2.15) the deep-reveal below must NOT run: it would make the
         // group visible for the whole compile, so live frames would DRAW it — a corridor and a
@@ -2395,6 +2471,7 @@ export class OdysseyBoardController {
                 console.log(`[OdysseyBoard] Prewarmed ${label} shaders (live loop)`);
             } catch (error) {
                 console.warn(`[OdysseyBoard] Shader prewarm failed for ${label}:`, error);
+                if (rethrow) throw error;
             }
             return;
         }
@@ -2424,6 +2501,7 @@ export class OdysseyBoardController {
             console.log(`[OdysseyBoard] Prewarmed ${label} shaders`);
         } catch (error) {
             console.warn(`[OdysseyBoard] Shader prewarm failed for ${label}:`, error);
+            if (rethrow) throw error;
         } finally {
             group.visible = previousVisibility;
             overrides.forEach(({ child, visible, frustumCulled }) => {
@@ -2492,6 +2570,11 @@ export class OdysseyBoardController {
         this.container.appendChild(this.renderer.domElement);
         console.log(`[OdysseyBoard] Renderer backend: ${this.isWebGPU ? 'WebGPU' : 'WebGL2 (fallback)'}`);
 
+        this._watchGpuLoss();
+    }
+
+    /** @private GPU-loss resilience for whichever backend the board got (see below). */
+    _watchGpuLoss() {
         // GPU-loss resilience (plan §4.2): a WebGPU device loss is TERMINAL (no restore
         // event) — without this, the board renders black forever with unhandled
         // popErrorScope rejections. Monitor the device so the loss is broadcast on the
@@ -2509,6 +2592,18 @@ export class OdysseyBoardController {
                 recover: () => {
                     this.pauseRendering();
                     throw new Error('Odyssey WebGPU device loss is terminal — routing out');
+                },
+            });
+        } else if (this.renderer?.domElement) {
+            // The WebGL2 fallback: three r186 marks the backend lost and drops every frame, with
+            // no restore of its own, so the board sat frozen or black with no way out (audit
+            // 2026-10-18). Treated as the WebGPU loss is: stop drawing and route out.
+            this._gpuMonitorUnsub = gpuResilience.monitorWebGL(this.renderer.domElement, {
+                label: 'odyssey-board',
+                onLost: () => {
+                    if (this._disposed) return;
+                    this.pauseRendering();
+                    eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU, { reason: 'gpu-loss-unrecoverable' });
                 },
             });
         }
@@ -2924,9 +3019,13 @@ export class OdysseyBoardController {
         canvas.addEventListener('touchmove', this.boundHandlers.touchmove);
         canvas.addEventListener('touchend', this.boundHandlers.touchend);
 
-        // Resize
         document.addEventListener('wheel', this.boundHandlers.wheel, ODYSSEY_WHEEL_CAPTURE_OPTIONS);
-        window.addEventListener('resize', this.boundHandlers.resize);
+        // Resize stays attached through locks (orb entries, the scenic flow): a lock is not a
+        // reason to miss a fullscreen switch. Only dispose removes it.
+        if (!this._resizeListening) {
+            window.addEventListener('resize', this.boundHandlers.resize);
+            this._resizeListening = true;
+        }
 
         this.interactionAttached = true;
     }
@@ -2946,7 +3045,6 @@ export class OdysseyBoardController {
         }
 
         document.removeEventListener('wheel', this.boundHandlers.wheel, ODYSSEY_WHEEL_CAPTURE_OPTIONS);
-        window.removeEventListener('resize', this.boundHandlers.resize);
         this.interactionAttached = false;
     }
 
@@ -3042,6 +3140,14 @@ export class OdysseyBoardController {
     onResize() {
         const width = this.container.clientWidth;
         const height = this.container.clientHeight;
+        // Parked (display:none) the container is 0x0: a NaN aspect and a 0 px canvas, so the
+        // world came back blank after a quality or display change made mid-orb. Hold the
+        // request; resumeRendering applies it once the board shows again.
+        if (!(width > 0 && height > 0)) {
+            this._resizePending = true;
+            return;
+        }
+        this._resizePending = false;
         const pixelRatio = this.pixelRatioOverride ?? computeScenePixelRatio({
             renderScale: this._drs.renderScale, // respect the live DRS scale (QW2/QW3).
             devicePixelRatio: window.devicePixelRatio || 1,
@@ -3459,11 +3565,13 @@ export class OdysseyBoardController {
             && options.isCurrent?.() !== false;
         const targetChapter = node.config?.chapter ?? 1;
         const levelProgress = node.pathPosition ?? this.cameraController.getCurrentPosition();
+        const chapterPositions = this.presentationLayout?.chapterPositions;
         const targetProgress = options.chapterArrival === true
-            ? resolveChapterArrivalProgress(targetChapter, levelProgress, this.presentationLayout?.chapterPositions)
-            : levelProgress;
+            ? resolveChapterArrivalProgress(targetChapter, levelProgress, chapterPositions)
+            : resolveOrbParkProgress(targetChapter, levelProgress, chapterPositions);
         const currentProgress = this.cameraController.getCurrentPosition();
         const currentBlendState = this.environmentManager?.getBlendState(currentProgress);
+        const reducedMotion = this.cameraController.prefersReducedMotion?.() === true;
         const currentChapter = currentBlendState?.activeChapter ?? targetChapter;
         const traveled = currentChapter !== targetChapter;
 
@@ -3476,7 +3584,9 @@ export class OdysseyBoardController {
             const hasWorldScenery = this.oneWorld
                 && this.environmentManager?.suppressedChapters?.has(targetChapter);
             if (!hasEnvironment && !hasWorldScenery) return false;
-            const duration = options.travelDuration ?? this.computeTravelDuration(currentProgress, targetProgress);
+            // Reduced motion cuts instead of gliding 0.9-3.5 s (audit 2026-10-18).
+            const duration = options.travelDuration
+                ?? (reducedMotion ? 0 : this.computeTravelDuration(currentProgress, targetProgress));
             const travelOptions = options.pathTravel === true || options.isPaused || options.isCurrent
                 ? [{ isCurrent, isPaused: options.isPaused }] : [];
             const arrived = await this.cameraController.travelToPosition(targetProgress, duration, ...travelOptions);
@@ -3491,9 +3601,11 @@ export class OdysseyBoardController {
         // Chapter arrivals retain the authored follow-camera panorama; ordinary
         // orb selection still brings its node forward for inspection.
         if (options.focus !== false) {
+            let focusDuration = traveled ? 520 : 800;
+            if (reducedMotion) focusDuration = 0;
             const focused = await this.cameraController.focusOnNode(
                 nodePosition,
-                traveled ? (options.focusDuration ?? 520) : (options.focusDuration ?? 800),
+                options.focusDuration ?? focusDuration,
             );
             if (focused === false) return false;
         }
@@ -3630,6 +3742,7 @@ export class OdysseyBoardController {
         // Pass camera progress to node manager for distance-based culling
         if (this.nodeManager) {
             this.nodeManager.setCameraProgress(cameraProgress);
+            this.nodeManager.setFocusedLevel?.(this.cameraController?.mode === 'focus' ? this.selectedLevelId : null);
         }
         this.nodeManager?.update(delta, this.cinematicJourneyActive ? (directorState?.node?.focalPulse ?? 0) : 0);
         this.layoutEditor?.update(delta);
@@ -3702,10 +3815,10 @@ export class OdysseyBoardController {
             //    cavern's lava cracks toward the dim vapour and dipped the frame (luma 21 -> 12 at
             //    p 0.0349) before the steam itself had arrived.
             const quenchT = steamQuenchSeamT(cameraProgress, this._steamBoundary);
-            if (quenchT !== this._lastQuenchCarryT) {
-                this._lastQuenchCarryT = quenchT;
-                this.oneWorld?.setQuenchCarry?.(quenchT);
-            }
+            // Every frame: the world CONSUMES each call (a frame without one is the neutral
+            // ocean), so sending only on change snapped a camera parked in the window back to
+            // full fish, rays and whales once the follow lerp settled (audit 2026-10-18).
+            this.oneWorld?.setQuenchCarry?.(quenchT);
             this._steamFogWeight = inWindow ? steamQuenchDensity(quenchT) ** 2 : 0;
             this._steamFogT = quenchT;
         }
@@ -3840,6 +3953,12 @@ export class OdysseyBoardController {
                         ONE_WORLD_DEPARTURE_TARGET,
                     );
                 }
+                // Past actEnd the faded planet shrinks away beneath the eye, so the gate
+                // above never hides a silhouette that is still covering chapter 6's stars.
+                this.oneWorld.setDepartureRecede?.(
+                    worldRecedeScale(worldDepartureRecede(cameraProgress, actEnd)),
+                    this.camera?.position,
+                );
 
                 // ── ATMOSPHERIC THINNING (Wave 3 / F3) ───────────────────────────────
                 // The deck loses contrast, saturation and apparent scale as the rail
@@ -4278,6 +4397,9 @@ export class OdysseyBoardController {
 
         this.isRenderingPaused = false;
         this.isActive = true;
+        // The container shows again before resume: take a resize it was too hidden to take, or
+        // one that came while it was hidden at its old size.
+        if (this._resizePending || this._canvasSizeDrifted()) this.onResize();
         this._applyChapterMusic(this._odysseyMusicChapter || 1, { reason: 'odyssey-board-resume' });
         this.clock.getDelta(); // Reset delta to avoid a huge first frame step.
         // And the pacing: the cadence and refresh gaps from before the pause say nothing about now.
@@ -4285,6 +4407,15 @@ export class OdysseyBoardController {
         this._lastTickAt = 0;
         this._slowestTickMs = 0;
         this.animate();
+    }
+
+    /** @private whether the canvas no longer matches its (visible) container. */
+    _canvasSizeDrifted() {
+        const width = this.container?.clientWidth;
+        const height = this.container?.clientHeight;
+        if (!(width > 0 && height > 0) || typeof this.renderer?.getSize !== 'function') return false;
+        const size = this.renderer.getSize(this._resizeProbe || (this._resizeProbe = new THREE.Vector2()));
+        return size.x !== width || size.y !== height;
     }
 
     /**
@@ -4638,6 +4769,8 @@ export class OdysseyBoardController {
         this.isRenderingPaused = false;
         clearTimeout(this._resizeTimer);
         this._resizeTimer = null;
+        window.removeEventListener('resize', this.boundHandlers.resize);
+        this._resizeListening = false;
         this._gpuSurfaceUnregister?.();
         this._gpuSurfaceUnregister = null;
         this._gpuMonitorUnsub?.();

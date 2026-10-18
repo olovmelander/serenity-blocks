@@ -102,6 +102,56 @@ describe('Odyssey v4 challenge identity migration', () => {
         expect(migrated.currentLevel).toBe(1);
     });
 
+    it('opens the next chapter for a v4 player who had already beaten its rival', () => {
+        // Audit 2026-10-18: v4 cleared orbs 1-44 (orb 44 was chapter 6's duel). The duel is
+        // chapter 6's last orb now (48) and stays cleared, but clearing the orbs in front of it
+        // only opened 48 again: orb 49 said "clear orb 48" while 48 showed as completed.
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify({
+            version: 4,
+            currentLevel: 45,
+            unlockedLevels: Array.from({ length: 45 }, (_, index) => index + 1),
+            completedLevels: Object.fromEntries(Array.from({ length: 44 }, (_, index) => [
+                index + 1, completed('cinder-drift'),
+            ])),
+        }));
+        const state = new OdysseyStateManager();
+        expect(state.isLevelCompleted(48)).toBe(true);
+        expect(state.isLevelUnlocked(49)).toBe(true);
+        // "Current" is the first open orb still to clear, not the furthest open one.
+        expect(state.isLevelCompleted(state.currentLevel)).toBe(false);
+        expect(state.currentLevel).toBeLessThan(48);
+
+        for (let id = state.currentLevel; id < 48; id += 1) state.completeLevel(id, { stars: 1 });
+        expect(state.isLevelUnlocked(49)).toBe(true);
+        expect(state.currentLevel).toBe(49);
+    });
+
+    it('keeps a save it cannot read beside the fresh one, instead of letting the next save erase it', () => {
+        // Audit 2026-10-18: the next save overwrote unreadable data with no backup and no notice.
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, '{"version":5,"completedLevels":{');
+        const state = new OdysseyStateManager();
+        expect(state.unreadableSaveKey).toMatch(new RegExp(`^${ODYSSEY_PROGRESS_STORAGE_KEY}\\.unreadable-`));
+        expect(storage.getItem(state.unreadableSaveKey)).toBe('{"version":5,"completedLevels":{');
+        state.completeLevel(1, { stars: 1 });
+        expect(storage.getItem(state.unreadableSaveKey)).toBe('{"version":5,"completedLevels":{');
+        expect(JSON.parse(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY)).completedLevels['1']).toBeTruthy();
+    });
+
+    it('closes an unlock gap a v5 save carries', () => {
+        storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify({
+            version: ODYSSEY_SAVE_VERSION,
+            currentLevel: 1,
+            unlockedLevels: [1],
+            completedLevels: Object.fromEntries(Array.from({ length: 10 }, (_, index) => [
+                index + 1, completed('cinder-drift'),
+            ])),
+        }));
+        const state = new OdysseyStateManager();
+        for (let id = 1; id <= 11; id += 1) expect(state.isLevelUnlocked(id)).toBe(true);
+        expect(state.isLevelUnlocked(12)).toBe(false);
+        expect(state.currentLevel).toBe(11);
+    });
+
     it('retains the retired completion through a later state save without counting its stars', () => {
         storage.setItem(ODYSSEY_PROGRESS_STORAGE_KEY, JSON.stringify({
             version: 3, completedLevels: { 10: completed('bioluminescence-2'), 11: completed('stillwater', 2) },

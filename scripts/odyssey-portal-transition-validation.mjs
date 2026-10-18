@@ -8,7 +8,8 @@ const { app, BrowserWindow } = electron;
 
 const DEV_SERVER_PORT = Number(process.env.ODYSSEY_VALIDATION_PORT || 4176);
 const DEV_SERVER_BASE_URL = `http://127.0.0.1:${DEV_SERVER_PORT}`;
-const URL_FLAGS = process.env.ODYSSEY_VALIDATION_URL_FLAGS || 'skipIntro=1&odysseyPortalTransitionV2=1';
+// odysseyPortalTransitionV2 was dropped (audit 2026-10-18): nothing in src reads it any more.
+const URL_FLAGS = process.env.ODYSSEY_VALIDATION_URL_FLAGS || 'skipIntro=1';
 const DEV_SERVER_URL = `${DEV_SERVER_BASE_URL}/?${URL_FLAGS}`;
 const TIMESTAMP = new Date().toISOString().replace(/[:.]/g, '-');
 const ARTIFACT_DIR = path.join(ROOT, 'artifacts', 'odyssey', 'portal-transition', TIMESTAMP);
@@ -40,6 +41,8 @@ function startDevServer() {
         ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(DEV_SERVER_PORT), '--strictPort'],
         {
             cwd: ROOT,
+            // npm is a .cmd shim on Windows, which spawn cannot run without a shell.
+            shell: process.platform === 'win32',
             stdio: ['ignore', 'pipe', 'pipe'],
             env: {
                 ...process.env,

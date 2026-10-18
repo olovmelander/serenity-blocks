@@ -119,7 +119,10 @@ describe('Earth Core chapter environment (creative plan ch1)', () => {
             if (!child.material) return;
             const materials = Array.isArray(child.material) ? child.material : [child.material];
             materials.forEach((material) => {
-                if (material?.opacityNode && !material.uniforms?.uOpacity) {
+                // A node that multiplies materialOpacity in is still reached through
+                // material.opacity, and says so.
+                if (material?.opacityNode && !material.uniforms?.uOpacity
+                    && !material.userData?.opacityKeepsMaterialOpacity) {
                     missing.push(child.name || material.type);
                 }
             });
@@ -153,6 +156,23 @@ describe('Earth Core chapter environment (creative plan ch1)', () => {
         expect(cluster.position.y).toBeLessThan(seatY);
         expect(group.userData.firstHeart.scale.x)
             .toBeLessThan(group.userData.firstHeartBaseScale);
+    });
+
+    it('closes the vault once the climb has crossed into the sea', () => {
+        stubCanvasDocument();
+
+        const group = createEarthCoreEnvironment({ particleCount: 240 });
+        const { uniforms } = group.userData;
+        const tEnd = group.userData.chapterTEnd;
+        const vault = group.getObjectByName('volcano-background');
+        expect(vault.material.opacityNode).toBeTruthy();
+
+        updateEarthCoreEnvironment(group, 0.016, 1.0, null, tEnd);
+        expect(uniforms.uVaultExit.value).toBe(1);
+        // Under the dense quench, a few thousandths past the boundary, the cavern sky is gone:
+        // it never hangs over the seabed's horizon in chapter 2.
+        updateEarthCoreEnvironment(group, 0.016, 1.0, null, tEnd + 0.006);
+        expect(uniforms.uVaultExit.value).toBe(0);
     });
 
     it('projects hero beats into the fixed spline camera corridor', () => {
