@@ -18,7 +18,7 @@
 | 2 | `halcyon-apex` | Halcyon Apex | `biomes` | heavy | [§2](#halcyon-apex) |
 | 3 | `himalayan-peak` | Himalayan Peak | `biomes` | heavy | [§3](#himalayan-peak) |
 | 4 | `ice-temple` | Ice Temple | `biomes` | heavy | [§4](#ice-temple) |
-| 5 | `moonlit-forest` | Moonlit Forest | `biomes` | heavy | [§5](#moonlit-forest) |
+| 5 | `spring` | Spring | `biomes` | heavy | [§5](#spring) |
 | 6 | `wolfhour` | Wolfhour | `biomes` | heavy | [§6](#wolfhour) |
 | 7 | `ocean` | Ocean | `biomes` | heavy | [§7](#ocean) |
 | 8 | `sunset` | Sunset | `biomes` | heavy | [§8](#sunset) |
@@ -83,15 +83,15 @@
 Not a theme. These are the patterns survey 1 found already used heavily across the fleet; avoid them or deliberately subvert them. Parts 2–4 each end with their own cross-cutting list, and the README summarises all of them.
 
 ### Compositional clichés (already used by 5+ themes in this set)
-- **Big moon, top right, blue night** — forest, moonlit-forest, wolfhour, winter, sakura-twilight, ice-temple (moon on the left), sunset (at night). Seven themes.
-- **Framing trees left and right, open vista in the middle** — forest (spruce/pine), fall (maple/oak), summer (spruce/weeping birch), sakura (weeping/spreading cherry), winter (snow-ghost spruces), aurora (spruce spits), moonlit-forest (low-poly broadleaf).
-- **Mirror water across the bottom third** — halcyon-apex (lagoon), ice-temple (black lake ice), sakura (lake), summer (lake), aurora (lake), sunset (open sea), moonlit-forest (black pool), winter (frozen lake). Planar `reflector()` on Medium and up is the default technique.
+- **Big moon, top right, blue night** — forest, wolfhour, winter, sakura-twilight, ice-temple (moon on the left), sunset (at night). Six themes.
+- **Framing trees left and right, open vista in the middle** — forest (spruce/pine), fall (maple/oak), summer (spruce/weeping birch), sakura (weeping/spreading cherry), winter (snow-ghost spruces), aurora (spruce spits).
+- **Mirror water across the bottom third** — halcyon-apex (lagoon), ice-temple (black lake ice), sakura (lake), summer (lake), aurora (lake), sunset (open sea), winter (frozen lake). Planar `reflector()` on Medium and up is the default technique.
 - **Hero mountain or peak** — himalayan-peak, wolfhour, aurora (two massifs), sakura (Fuji-like cone), winter (round fells), halcyon (far ranges), ice-temple (mountains in the sky).
 - **Low sun on the horizon with god-rays** — halcyon-apex, himalayan-peak, sunset, summer, fall, tornado; high-coast has the low sun and its glitter road at its golden hour and sunset, without rays.
-- **Aurora curtains** — aurora, winter, ice-temple, moonlit-forest (combo "lunar veil").
+- **Aurora curtains** — aurora, winter, ice-temple.
 
 ### Palettes already taken
-- Navy/ink night with silver-white moon: forest, moonlit-forest, wolfhour (pure black-and-silver), ice-temple, winter.
+- Navy/ink night with silver-white moon: forest, wolfhour (pure black-and-silver), ice-temple, winter.
 - Oxygen-green and magenta aurora on dark teal: aurora, winter, ice-temple.
 - Gold, peach and orange low sun with lavender sky: halcyon-apex, himalayan-peak, sunset, tornado, fall, summer, high-coast (golden hour).
 - Turquoise or jade water: halcyon-apex, ocean.
@@ -100,7 +100,7 @@ Not a theme. These are the patterns survey 1 found already used heavily across t
 
 ### Gameplay-FX grammar the rebuilt fleet already shares (forming a house style)
 1. **Lock: light leaves the card edge at the piece's height, in the piece colour.** Halcyon wisp, Himalayan paper wind-horses, Winter sparks, Sunset lantern-light arc, Tornado sparks, Ocean sinking light, Forest firefly puff, Fall leaf puff, Summer petals, Sakura glint and petals.
-2. **Lock: a ring runs out from under the board's foot.** Ice-temple star fracture and ring, Halcyon lagoon ripple, Himalayan and Winter powder rings, Tornado gust ring in the wheat, Ocean sand ring, Sakura, Summer and Aurora lake rings, Forest moss wave, Moonlit-forest water contact ring.
+2. **Lock: a ring runs out from under the board's foot.** Ice-temple star fracture and ring, Halcyon lagoon ripple, Himalayan and Winter powder rings, Tornado gust ring in the wheat, Ocean sand ring, Sakura, Summer and Aurora lake rings, Forest moss wave.
 3. **The world holds the piece colour for about 30 s and a clear releases it.** Halcyon great crystals, Himalayan flags, Winter sky, Ocean coral colonies (which "spawn"), Tornado ribbons, Sunset lanterns.
 4. **Clear: "blades of light" leave the card at the cleared rows' heights.** Halcyon, Himalayan, Ice-temple, Winter. **Twin jets from both card edges:** Forest, Fall, Summer, Sakura. Ocean uses sheets of bubbles.
 5. **Clear: one wave front per line travels through the world.** Halcyon (through the sanctuary), Himalayan (down the mountain), Ice-temple (down the nave), Forest (over the moss).
@@ -207,20 +207,23 @@ Registry groups: every theme here is `group: 'biomes'` except `tornado` (`'atmos
   - T-spin: a snow vortex.
 - **Tech:** Beer–Lambert absorption through each column, Voronoi crack walls, the moon shadow as a closed-form formula (`itMoonShadow`), an analytic integral for the glow in the mist.
 
-<a id="moonlit-forest"></a>
+<a id="spring"></a>
 
-### 5. moonlit-forest — "Silverheart Glade" (no overhaul doc)
+### 5. spring — "the river in its spring flood" (`docs/SPRING_VISUAL_OVERHAUL_2026-10.md`; rebuilt 2026-10-18 in moonlit-forest's slot)
 
-- **Icon:** low-poly dark conifers in silhouette, wide white-blue light shafts slanting down, a misty glowing ground band, a dark foreground.
-- **Current scene** (`docs/theme-screenshots/moonlit-forest.png`): low-poly faceted broadleaf trees frame left and right; a teal and navy layered forest; a small white moon with one shaft; a black-water pool in the centre; teal and yellow mushrooms; grass tufts and grey rocks.
-- **Code:** `src/themes/moonlit-forest/moonlit-forest-theme.js:1-7` is a production wrapper. The scene lives in `src/playground/effects/moonlit-forest-master.effect.js`, 1,605 lines, meta title `'Moonlit Forest — Silverheart Glade'`.
-- **Palette** (`effect.js:104-111`): sky `0x050812`, foreground `0x1c2b3b`, bark `0x25263a`, midForest `0x21364a`, mist `0x386675`, silver `0xc5d8dc`, fungal `0x62d9bd`, firefly `0xebcb69`.
-- **Pieces** (`:13-20`): I `#c5d8dc` silver, O `#62d9bd` fungal teal, T `#9d89c7`, S `#5f9f82` moss, Z `#7194a5` mist blue, J `#ebcb69` firefly gold, L `#82baa8`, GARBAGE `#344854`.
-- **Motifs:** three noise ridge layers and three tree-crown layers receding into teal fog; one controlled moon shaft (`effect.js:601-636`); ferns, fungi, rocks, fireflies.
-- **Gameplay FX** (`moonlit-forest-fx-controller.js:14-24` burst names): fireflies, spores, enchantedLeaves, wisps, sparkles, runes, mist, shootingStars, auroraStrength.
-  - Lock: a fungal-teal contact ring on the water.
-  - Combo: a combo ring (`0x748bb5`) and an additive **lunar veil** of aurora-like bands, `0x51466f` to `0x58aaa2` (`:638-672`).
-- **Tech:** WebGPU/TSL, but uses `mx_noise_float` / `mx_fractal_noise_float` (MaterialX) and `fog(rangeFogFactor)`.
+- **Icon:** from the eye on the knoll over its flowers (white anemones, yellow globeflowers, pink campion) to the fall pouring white between dark crags, spruce on the rim, a blue sky.
+- **Setting:** a Norrland river at the end of May at 65° N, in its spring flood (after Tännforsen). The eye stands among flowers on a low granite knoll at the outside of a bend. Up to the left the river pours over a step of dark layered schist in tongues — the main one leaping free from a recess it has worn under the lip, the left sliding down a stair of slabs, the right landing on a ledge — ribs of wet rock between them; the plunge pool boils where they land; rapids come down to the knoll in uneven ledges and the river swings round under it and away right through spruce and birch in first leaf toward fells with snow in their gullies.
+- **Palette:** fresh spring greens, white water and dark wet rock, the meadow's flowers. Six stations (`spring-hours.js`): morning, afternoon, golden evening, sunset (the sun gone behind the western rim, the fells still lit), the light night (a rose band over the fells), dawn mist; the real sun height at 65.5° N on a measured skyline; the day turns with the clock and a level-up steps a station; no rests (worst 0.095 stops/s).
+- **Pieces** (`spring-tetrominos.js`, solid): I `#F6E76E` globeflower, O `#EE8512` marsh marigold, T `#F8F4EC` wood anemone, S `#279DF1` hepatica, Z `#E8508C` red campion, J `#D9BDF5` lady's smock, L `#C756D2` violet, GARBAGE `#2E3826`. Each piece is a flower of the meadow; CVD-separated (worst ΔE > 14).
+- **Motion:** the fall's water streaking down at its true quickening speed, the pool's boil, foam drifting down the rapids in lines, the mist rolling off the foot, the meadow in the breeze, cloud shadows on the fells, birds.
+- **Gameplay FX:**
+  - Lock: a patch of the piece's own flower bursts into bloom on the knoll where it landed, opening outward (on the water: a splash, and the patch opens on the knoll's edge at that bearing).
+  - Clear: a surge down the river from the pool, the bigger the more lines — a hump with a steep front that breaks white across the river like a bore, foam drawn out behind it; the knoll flushes into bloom.
+  - Chain: the spring flood rises with each link — the river swells, runs whiter in streaks and faster, the mist thickens; it falls back when the chain breaks.
+  - Four lines: the great surge, and the last of the winter's ice goes out on it (floes down the rapids).
+  - T-spin: a whirl turns in the pool where it drains. Back-to-back: the river glitters. Perfect clear: two surges and whooper swans. Level up: cranes pass north. Game over: dusk.
+- **Tech:** WebGPU/TSL with the WebGL2 backend. A fall plan (`spring-fall-plan.js`) that the rock face, the water sheet, the pool's boil and the mist all read: each column's path traced over the sculpted face (free flight, slab slides with drag, ledge landings), the sheet read by launch time; a valley height function baked offline into three grids; a flow-mapped river with per-pixel antialiased foam thresholds; the far woods as cards of the modelled Blender trees from an impostor atlas drawn once by the forest's own materials (albedo + normals/occlusion/leaf).
+- **Avoid reusing.** A layered-rock fall in tongues seen across a plunge pool; a flowering knoll as the eye's standpoint; surges with breaking fronts as clears; the flood as the chain; ice going out for four lines.
 
 <a id="wolfhour"></a>
 

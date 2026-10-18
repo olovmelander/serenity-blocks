@@ -1,0 +1,284 @@
+{
+  "schemaVersion": 1,
+  "author": "Serenity Blocks original procedural Blender authoring",
+  "license": "MIT-project-local",
+  "glTFUpAxis": "Y",
+  "assets": [
+    {
+      "file": "birch-grove-a.glb",
+      "bytes": 107556,
+      "sha256": "ab35aa5d2c5087ea9f530184354ebf03a3d4f3e76198fff3ba95fcda0dce050c",
+      "kind": "tree",
+      "species": "birch",
+      "role": "grove",
+      "sites": 234,
+      "barkTriangles": 4058
+    },
+    {
+      "file": "birch-grove-b.glb",
+      "bytes": 116824,
+      "sha256": "018f3002169e6b2e597ee2245b8e1db18491370aa6a99dd0ec7443a80da5e702",
+      "kind": "tree",
+      "species": "birch",
+      "role": "grove",
+      "sites": 211,
+      "barkTriangles": 4460
+    },
+    {
+      "file": "birch-grove-c.glb",
+      "bytes": 134340,
+      "sha256": "96fbae38084e1e6453f15544ec056f1d963ff81bdeff2e62f550c064c067b29d",
+      "kind": "tree",
+      "species": "birch",
+      "role": "grove",
+      "sites": 283,
+      "barkTriangles": 5172
+    },
+    {
+      "file": "birch-hero.glb",
+      "bytes": 715348,
+      "sha256": "1daad5b8180a20f5fe56388dccd12934bc0c6258655a9818892f4ddecdde430e",
+      "kind": "tree",
+      "species": "birch",
+      "role": "hero",
+      "sites": 1550,
+      "barkTriangles": 29432
+    },
+    {
+      "file": "spring-foliage.glb",
+      "bytes": 51244,
+      "sha256": "108ba0b9d94b8e91af33f60b10e965e6dcbe7168a8d67c4b1561f59ad7a56ead",
+      "kind": "foliage",
+      "meshes": {
+        "birch_young_0": {
+          "leaves": 24,
+          "triangles": 468
+        },
+        "birch_young_1": {
+          "leaves": 18,
+          "triangles": 360
+        },
+        "birch_young_strand_0": {
+          "leaves": 16,
+          "triangles": 88
+        },
+        "birch_young_strand_1": {
+          "leaves": 16,
+          "triangles": 88
+        },
+        "spruce_bough_0": {
+          "shoots": 10,
+          "triangles": 200
+        },
+        "spruce_bough_1": {
+          "shoots": 10,
+          "triangles": 200
+        },
+        "spruce_frond_0": {
+          "shoots": 7,
+          "triangles": 64
+        },
+        "spruce_frond_1": {
+          "shoots": 7,
+          "triangles": 64
+        }
+      }
+    },
+    {
+      "file": "spring-rocks.glb",
+      "bytes": 705132,
+      "sha256": "c4e09fbcb74272f256f69fbd7e3a93fe319e0d13c8cec7d9c028bec5bda36445",
+      "kind": "rocks",
+      "meshes": {
+        "boulder_0": {
+          "triangles": 5120,
+          "vertices": 2562,
+          "boundsMin": [
+            -1.1203,
+            0,
+            -0.8721
+          ],
+          "boundsMax": [
+            0.9487,
+            1.1401,
+            0.7656
+          ]
+        },
+        "boulder_1": {
+          "triangles": 5120,
+          "vertices": 2562,
+          "boundsMin": [
+            -0.7741,
+            0,
+            -0.7604
+          ],
+          "boundsMax": [
+            0.8165,
+            0.9006,
+            0.6377
+          ]
+        },
+        "boulder_2": {
+          "triangles": 5120,
+          "vertices": 2562,
+          "boundsMin": [
+            -1.4692,
+            0,
+            -0.971
+          ],
+          "boundsMax": [
+            1.5476,
+            1.146,
+            1.153
+          ]
+        },
+        "boulder_3": {
+          "triangles": 1280,
+          "vertices": 642,
+          "boundsMin": [
+            -0.5678,
+            0,
+            -0.4542
+          ],
+          "boundsMax": [
+            0.6004,
+            0.6817,
+            0.5664
+          ]
+        },
+        "boulder_4": {
+          "triangles": 5120,
+          "vertices": 2562,
+          "boundsMin": [
+            -1.1979,
+            0,
+            -0.8405
+          ],
+          "boundsMax": [
+            1.1879,
+            1.5493,
+            0.9413
+          ]
+        },
+        "slab_0": {
+          "triangles": 5120,
+          "vertices": 2562,
+          "boundsMin": [
+            -3.5153,
+            0,
+            -2.5591
+          ],
+          "boundsMax": [
+            3.1818,
+            0.7535,
+            2.289
+          ]
+        },
+        "slab_1": {
+          "triangles": 5120,
+          "vertices": 2562,
+          "boundsMin": [
+            -2.2348,
+            0,
+            -1.7525
+          ],
+          "boundsMax": [
+            2.4635,
+            0.602,
+            1.7812
+          ]
+        },
+        "cliff_0": {
+          "triangles": 3128,
+          "vertices": 1645,
+          "boundsMin": [
+            -7,
+            0,
+            -1.9435
+          ],
+          "boundsMax": [
+            7,
+            9,
+            1.3861
+          ]
+        },
+        "cliff_1": {
+          "triangles": 3128,
+          "vertices": 1645,
+          "boundsMin": [
+            -5.5,
+            0,
+            -2.0915
+          ],
+          "boundsMax": [
+            5.5,
+            12,
+            1.1318
+          ]
+        }
+      }
+    },
+    {
+      "file": "spruce-grove-a.glb",
+      "bytes": 108128,
+      "sha256": "50c589ad5bbf7c90aabfea315b39b136fcdb3e39ebb59d7a1296e67f3e6b615c",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 223,
+      "barkTriangles": 4166
+    },
+    {
+      "file": "spruce-grove-b.glb",
+      "bytes": 111924,
+      "sha256": "0f9a358c3fd6786c1c1bd951135cdaa8eda3454a759f75941a2d0990a8af8c7e",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 212,
+      "barkTriangles": 4334
+    },
+    {
+      "file": "spruce-grove-c.glb",
+      "bytes": 96148,
+      "sha256": "4c7f7662f13923d85e7278be243ef57a1c34477341d1adc89f6d1d85a3a438d0",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "grove",
+      "sites": 195,
+      "barkTriangles": 3704
+    },
+    {
+      "file": "spruce-hero.glb",
+      "bytes": 565344,
+      "sha256": "d836d84478bb2203619fdc95509b78847b6c2036bee9498ffef3a2f40f2d89ab",
+      "kind": "tree",
+      "species": "spruce",
+      "role": "hero",
+      "sites": 636,
+      "barkTriangles": 25704
+    },
+    {
+      "file": "spring-valley.bin",
+      "bytes": 1430165,
+      "sha256": "8ae5b2a40bf6f5b103817b43730a1494daa3bbb6d7562d96f2d92e5277f4ce24",
+      "kind": "valley",
+      "schema": 1,
+      "grids": {
+        "near": {
+          "size": 660,
+          "res": 528
+        },
+        "mid": {
+          "size": 3000,
+          "res": 512
+        },
+        "far": {
+          "size": 44000,
+          "res": 512
+        }
+      },
+      "generator": "scripts/spring/bake-valley.mjs"
+    }
+  ]
+}

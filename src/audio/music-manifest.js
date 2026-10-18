@@ -16,7 +16,7 @@ import { THEME_MUSIC_CATALOG } from '../core/progression/theme-music-catalog.js'
 export const ODYSSEY_CHAPTER_TRACKS = Object.freeze({
     1: 'CinderDrift',
     2: 'OceanDeep',
-    3: 'MoonlitForest',
+    3: 'Spring',
     4: 'HimalayanPeak',
     5: 'Starlight',
     6: 'Galaxy',
