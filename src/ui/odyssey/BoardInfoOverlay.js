@@ -59,6 +59,7 @@ export function createBoardInfoOverlay({ autoContinue = true, onAutoContinueChan
                 </span>
             </label>
             <button id="level-panel-play-btn" class="level-play-btn">Play</button>
+            <p class="level-nav-hint" aria-hidden="true"><kbd class="sb-kbd">←</kbd><kbd class="sb-kbd">→</kbd> orbs · <kbd class="sb-kbd">↑</kbd><kbd class="sb-kbd">↓</kbd> chapters · <kbd class="sb-kbd">Enter</kbd> play</p>
         </div>
     `;
 

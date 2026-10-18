@@ -16,6 +16,7 @@ import { advanceDas, advanceSoftDrop } from '../core/das.js';
 import { clearPlayerInput, enqueueInputEdge } from '../core/player-input-state.js';
 import { createOdysseyShowcasePadControls } from './odyssey/odyssey-showcase-input.js';
 import { createOdysseyGemPadControls } from './odyssey/odyssey-gem-input.js';
+import { createOdysseyMapPadControls } from './odyssey/odyssey-map-input.js';
 import { isGameOverArmed } from './game-over-arm.js';
 
 const INSTANT_DAS_REPEAT_LIMIT = COLS;
@@ -140,6 +141,7 @@ export class GamepadController {
         this.menuOwners = [null, null, null, null]; // the menu that owned each pad last poll
         this.odysseyShowcaseControls = null;
         this.odysseyGemControls = null;
+        this.odysseyMapControls = null;
         this.connected = [false, false, false, false];
         this.deadzone = 0.25; // Analog stick deadzone
         this.pollInterval = null;
@@ -366,6 +368,7 @@ export class GamepadController {
         if (slot === 0) {
             this.odysseyShowcaseControls?.reset();
             this.odysseyGemControls?.reset();
+            this.odysseyMapControls?.reset();
         }
         this.clearFixedTickInput({ dropPhysicalLatches: true, slot });
         this.clearDasTimers(slot);
@@ -721,6 +724,8 @@ export class GamepadController {
                 continue;
             }
             this.odysseySheetElements[slot] = null;
+            // The Odyssey map: D-pad and stick step the path, A plays; Start still falls through.
+            this.odysseyMapControls?.process(freshGamepad, slot);
 
             // Check for game over modal - any button press restarts (only for player 1)
             if (slot === 0) {
@@ -766,6 +771,16 @@ export class GamepadController {
         this.odysseyShowcaseControls = controls;
         controls.dispose = () => {
             if (this.odysseyShowcaseControls === controls) this.odysseyShowcaseControls = null;
+        };
+        return controls;
+    }
+
+    /** The Odyssey map on the first controller: D-pad and stick travel, A plays. */
+    setOdysseyMapControls(callbacks) {
+        const controls = createOdysseyMapPadControls(this, callbacks);
+        this.odysseyMapControls = controls;
+        controls.dispose = () => {
+            if (this.odysseyMapControls === controls) this.odysseyMapControls = null;
         };
         return controls;
     }
@@ -2259,6 +2274,7 @@ export class GamepadController {
     clearAllDasTimers() {
         this.odysseyShowcaseControls?.reset();
         this.odysseyGemControls?.reset();
+        this.odysseyMapControls?.reset();
         this.clearFixedTickInput();
         for (let i = 0; i < this.gamepads.length; i++) {
             this.clearDasTimers(i);

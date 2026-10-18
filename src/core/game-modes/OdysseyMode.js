@@ -85,6 +85,7 @@ import { startOdysseyNewJourney, wireOdysseyNewJourney } from '../../ui/odyssey/
 import { handleOdysseyPauseAction } from '../../ui/odyssey/odyssey-pause-actions.js';
 import { renderOdysseyNavigatorList } from '../../ui/odyssey/odyssey-navigator-list.js';
 import { installOdysseyGemInput } from '../../ui/odyssey/odyssey-gem-input.js';
+import { installOdysseyMapInput } from '../../ui/odyssey/odyssey-map-input.js';
 import { createOdysseyGemRun } from '../odyssey/odyssey-gems.js';
 import {
     activateOdysseyGem, syncOdysseyGemHud, tryOdysseySecondBreath,
@@ -360,6 +361,9 @@ export class OdysseyMode extends BaseGameMode {
         });
         // A brand-new journey is welcomed by its first chapter before the map is handed over.
         this._offerFirstArrival();
+        // Arrows, the D-pad and A travel and play on the map for as long as the mode lives.
+        this._disposeMapInput?.();
+        this._disposeMapInput = installOdysseyMapInput(this);
 
         // Console debug handles — DEV/capture-tooling only. testOdysseyLevel unlocks levels
         // into the real save, so exposing it in the shipped game makes the Steam leaderboard
@@ -621,6 +625,8 @@ export class OdysseyMode extends BaseGameMode {
         this._odysseyAudioActive = false;
         this._pauseActionUnsubscribe?.();
         this._pauseActionUnsubscribe = null;
+        this._disposeMapInput?.();
+        this._disposeMapInput = null;
         this._firstArrival?.cancel();
         releaseOdysseyLevelMusic(this);
         if (this.boardController) releaseOdysseyBoardMusic(this.boardController);
@@ -2991,9 +2997,10 @@ export class OdysseyMode extends BaseGameMode {
             this._updateLevelPreview(levelId);
         };
 
-        // Hover just updates cursor, doesn't change panel
+        // Hover just updates cursor, doesn't change panel. A locked orb can be hovered and
+        // selected for its panel, but its theme is not worth warming yet.
         this.boardController.onLevelHover = (levelId) => {
-            if (!levelId || levelId === this.selectedLevelId) {
+            if (!levelId || levelId === this.selectedLevelId || !this.odysseyState.isLevelUnlocked(levelId)) {
                 return;
             }
 
