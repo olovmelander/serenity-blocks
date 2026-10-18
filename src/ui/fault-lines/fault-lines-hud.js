@@ -9,13 +9,15 @@
  * Keys: Backspace (or Ctrl+Z) takes back a piece, R restarts, ? asks for a hint, Enter
  * goes on after a solve. Gamepad: LB takes back, RB restarts, LT asks for a hint, A goes
  * on. The pad is read here (navigator.getGamepads) while a puzzle is on the board; the
- * gamepad controller keeps the piece controls.
+ * gamepad controller keeps the piece controls. Select opens the puzzle list, which then
+ * owns the pad (fault-lines-pad-list.js): up and down walk it, A plays, B closes.
  */
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { faultLinesProgress } from '../../core/fault-lines/fault-lines-progress.js';
 import { SOLVES_TO_OPEN_NEXT_TIER, TIERS, tierName } from '../../core/fault-lines/puzzle-bank.js';
 import { escapeHtml } from '../../utils/dom-safety.js';
 import { csIcon } from '../components/cosmic-icons.js';
+import { createPuzzleListPadControls } from './fault-lines-pad-list.js';
 
 const SOLVED_KEY = 'serenity.faultLines.solved';
 /** Failed attempts on a puzzle before its hint is offered. */
@@ -180,6 +182,9 @@ class FaultLinesHud {
         this.solvedAt = 0;
         this.padFrame = null;
         this.padPrev = new Map();
+        /** The list's pad owner while a puzzle is on the board, and where the pad is in the list. */
+        this.padList = null;
+        this.padFocusId = null;
         faultLinesProgress.restore(readSolvedFaultLines());
         eventBus.on(EVENTS.FAULT_LINES_STATE, (state) => this.onState(state));
         document.addEventListener('keydown', (event) => this.onKeyDown(event));
@@ -213,6 +218,7 @@ class FaultLinesHud {
         this.render();
         this.announce(previous);
         this.watchPad();
+        this.claimPadList();
     }
 
     mount() {
@@ -253,6 +259,49 @@ class FaultLinesHud {
         if (this.padFrame) cancelAnimationFrame(this.padFrame);
         this.padFrame = null;
         this.padPrev.clear();
+        this.padList?.dispose?.();
+        this.padList = null;
+        this.padFocusId = null;
+    }
+
+    /** The puzzle list on a gamepad: Select opens it, and while open it owns the first pad. */
+    claimPadList() {
+        const controller = typeof window !== 'undefined' ? window.gamepadController : null;
+        if (this.padList || !controller?.setPanelControls) return;
+        this.padList = controller.setPanelControls(createPuzzleListPadControls(controller, {
+            isActive: () => Boolean(this.state) && !this.covered(),
+            isListOpen: () => this.listOpen,
+            onOpen: () => {
+                this.listOpen = true;
+                this.padFocusId = this.state.puzzle.id;
+                this.render();
+            },
+            onMove: (step) => {
+                const ids = this.state.bank.filter((entry) => entry.open).map((entry) => entry.id);
+                const at = Math.max(0, ids.indexOf(this.padFocusId));
+                this.padFocusId = ids[Math.min(ids.length - 1, Math.max(0, at + step))] ?? this.padFocusId;
+                this.markPadFocus();
+            },
+            onChoose: () => {
+                const puzzleId = this.padFocusId;
+                this.listOpen = false;
+                this.render();
+                if (puzzleId) this.send('load', { puzzleId });
+            },
+            onClose: () => {
+                this.listOpen = false;
+                this.render();
+            },
+        }));
+    }
+
+    markPadFocus() {
+        this.content?.querySelectorAll('.fl-puzzle.is-pad-focus').forEach((el) => el.classList.remove('is-pad-focus'));
+        const button = this.padFocusId
+            ? this.content?.querySelector(`.fl-puzzle[data-puzzle="${this.padFocusId}"]`)
+            : null;
+        button?.classList.add('is-pad-focus');
+        button?.scrollIntoView?.({ block: 'nearest' });
     }
 
     /**
@@ -330,13 +379,13 @@ class FaultLinesHud {
                 </button>
                 ${hintButton}
                 <button type="button" class="sb-btn sb-btn--quiet fl-list-btn" data-fl="list" aria-expanded="${this.listOpen}">
-                    ${csIcon('line-stack', 14, 'btn-icon-svg')}<span>Puzzles</span>
+                    ${csIcon('line-stack', 14, 'btn-icon-svg')}<span>Puzzles</span>${pad('Select')}
                 </button>
             </div>
             ${this.listOpen ? `<nav class="fl-bank" aria-label="Puzzles">${bankHtml(state)}</nav>` : ''}`;
-        if (this.listOpen) {
-            this.content.querySelector('.fl-puzzle.is-current')?.scrollIntoView?.({ block: 'nearest' });
-        }
+        if (!this.listOpen) this.padFocusId = null;
+        else if (this.padFocusId) this.markPadFocus();
+        else this.content.querySelector('.fl-puzzle.is-current')?.scrollIntoView?.({ block: 'nearest' });
     }
 
     send(type, extra = {}) {
@@ -439,7 +488,8 @@ class FaultLinesHud {
             Object.entries(PAD).forEach(([action, index]) => { now[action] = Boolean(gamepad.buttons[index]?.pressed); });
             const prev = this.padPrev.get(gamepad.index) || {};
             this.padPrev.set(gamepad.index, now);
-            if (covered) continue;
+            // The open list owns the pad (fault-lines-pad-list.js): its A plays a puzzle.
+            if (covered || this.listOpen) continue;
             if (now.undo && !prev.undo) this.send('undo');
             if (now.restart && !prev.restart) this.send('restart');
             if (now.hint && !prev.hint && this.state.hintOffered) this.send('hint');

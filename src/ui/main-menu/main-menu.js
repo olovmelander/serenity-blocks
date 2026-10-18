@@ -24,7 +24,6 @@ import { haleSessionName } from '../effects/breathing/breath-openings.js';
 import { formatPracticeTime, readPracticeLog, summarizePractice } from '../effects/breathwork-practice-log.js';
 import { statisticsForMode } from '../../core/progression/score-statistics.js';
 import { MENU_ART_DIR, StageArt } from './stage-art.js';
-import { readFlag } from '../../core/flags.js';
 import { FAULT_LINES_PUZZLES, openPuzzleIds } from '../../core/fault-lines/puzzle-bank.js';
 import { installFaultLinesHud, readSolvedFaultLines } from '../fault-lines/fault-lines-hud.js';
 import { odysseyMeterHtml } from '../keystone/odyssey-meter.js';
@@ -61,7 +60,6 @@ const MODES = {
         lede: 'A well one thousand rows tall. Your stack can rise far above the screen, and the run ends only at the roof. Leave few holes and chain cascades as far as one run will carry you.',
         action: 'Play',
     },
-    // Preview: listed only with ?faultLines=1 (see MainMenu's constructor).
     'fault-lines': {
         eyebrow: 'Stack · Puzzles',
         title: 'Fault Lines',
@@ -285,8 +283,7 @@ class MainMenu {
         this.root = root;
         this.modal = root.closest('#start-modal');
         this.stage = root.querySelector('.sb-stage');
-        if (readFlag('faultLines', false)) installFaultLinesHud();
-        else root.querySelector('.game-mode-card[data-mode="fault-lines"]')?.remove();
+        installFaultLinesHud();
         this.cards = Array.from(root.querySelectorAll('.game-mode-card'));
         this.current = null;
         this.hoverTimer = null;
@@ -602,7 +599,7 @@ class MainMenu {
             facts.push(['Puzzles solved', `${formatNumber(solved)} / ${formatNumber(FAULT_LINES_PUZZLES.length)}`]);
             facts.push(['Tiers open', `${openTiers.size} / ${tiers.size}`]);
             if (solved > 0) action = 'Continue';
-            else note = 'Preview. Solve three in a tier to open the next. Every piece can be taken back.';
+            else note = 'Solve three in a tier to open the next. Every piece can be taken back.';
         } else if (mode === 'local-multiplayer') {
             facts.push(['Players', '2–4']);
             facts.push(['Bots', 'Any seat']);

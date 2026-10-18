@@ -81,7 +81,6 @@ export class GameModeManager {
             'Odyssey',
             async () => (await import('./OdysseyMode.js')).OdysseyMode,
         );
-        // Preview: the menu offers it only behind ?faultLines=1 (ui/fault-lines/).
         this.registerModeFactory(
             GAME_MODES.FAULT_LINES,
             'Fault Lines',
