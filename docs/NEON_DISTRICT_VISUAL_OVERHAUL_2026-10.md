@@ -47,6 +47,96 @@ chain any board is holding.
 
 ![Lock, clear, combo and the four-line overdrive](neon-district-captures/desktop-events.webp)
 
+## Shops and campaigns (2026-10-18)
+
+The owner asked for better shopfronts and for neon and adverts that fit the game. Two changes
+answer that.
+
+![The street in game framing, with the campaigns](neon-district-captures/campaigns-street.webp)
+
+**The shops are set into the walls.** Every block's ground floor is lined with shops, side by
+side. Each is one flat quad, and its shader builds the depth behind it:
+
+- The window and door are set back 0.3 to 0.55 m. The view ray is traced into that recess, so
+  its jambs, soffit and threshold slide past in parallax and catch the shop's light.
+- Wet glass stands at the back of the recess. At a glancing look it mirrors the far wall's neon.
+  Up close, beads and runners sit on it and bend what is behind. Far off, where a bead would be
+  smaller than a pixel, it is only wet.
+- Behind the glass is the shop, interior-mapped like the rooms upstairs and furnished by trade
+  (nine archetypes):
+  - a noodle counter under pendant lamps
+  - a laundromat's wall of turning drums
+  - a mart's fridge wall and aisles
+  - an arcade's cabinets
+  - lit cubbies under spotlights
+  - a bar's backlit bottles
+  - a gym
+  - a service counter
+  - a calm room of round lamps for Hale and the sauna
+
+The painted shopfronts keep their paintings. Their signs and walls stay flush, and their windows
+and door (`neon-district-openings.js`) are set back behind the same wet glass. The generated
+shops have more parts:
+
+- a fascia that spells the name in tubes, a lit box or channel letters, with its animated tube
+  logo
+- tiled piers
+- a framed glazing with a door and a hanging sign (OPEN, 24H, OPEN LATE, WELCOME)
+
+About a fifth of the trade shops have a roller shutter part or all the way down. Light leaks out
+under it, and a closed one is tagged and fly-posted.
+
+![Shops: both Combo Noodles branches, a closed arcade fly-posted with Cascade Cola, the noodle
+chain's fascia, logo and blade](neon-district-captures/campaigns-shops.webp)
+
+**The district runs its own campaigns** (`neon-district-campaigns.js`). There are three
+families, and every surface that advertises carries them:
+
+- **District brands**: eight local businesses named for what a player does on the board:
+  - Cascade Cola: "Let it fall"
+  - Combo Noodles: "Keep the chain going"
+  - Stack Savings: "Build on solid ground"
+  - Drop Couriers: "Hard and fast"
+  - Level Gym: "One more level"
+  - Next Taxi: "Always one more coming"
+  - Clear Optics: "See every line"
+  - Spin Cycle: "Wash dry fold"
+
+  Each has a mark, two colours and a slogan. Most have a branch on the street, so the noodle chain
+  on the billboards has a noodle bar under them. Cascade Cola is in most vending machines.
+- **Hale**: the breathing guide's campaign, the calm spot in a loud street. Its screens draw a
+  ring in the space the advert leaves for it. The ring breathes on the game's breath (4 s in,
+  6 s out, `breathFill`) and follows the guide's breath (`readBreathSignal`) while a session leads
+  one. Hale's tube logo breathes the same way.
+- **Serenity Transit**: travel posters for the game's other worlds and modes, each framed around
+  a render of the world it sells:
+  - worlds: Koi Pond, Sakura Twilight, Crystal Cave, Golden Forest, Midsommar, Ocean, Winter and
+    Stillwater
+  - modes: Infinity, Waystones and Odyssey
+
+The surfaces:
+
+| Surface | What it shows |
+| --- | --- |
+| LED screens (15 a period) | A playlist of three adverts of one shape, each on for 9 to 14 s, changing with a wipe, a block dissolve or a slide. Travel posters drift a few percent as they show. Some hang high off the corners of the towers. |
+| Roof boards | The rooftop scaffolds now face the street (they used to show the street their backs) and carry a printed campaign under three floodlights. |
+| Paste-up posters | Hoardings and closed shutters, fly-posted two to five of one poster side by side, then the next. They are paper, lit by the street rather than glowing, wet, and some are torn. |
+| Tube logos | Each campaign's mark bent in tube, animated frame by frame (drops falling, steam rising, coins stacking, a drum turning), over its name. They hang over most branded shops and on some walls. |
+| Blades | About one Latin blade in six spells a campaign's word in its colour: NOODLES, TAXI, BREATHE and so on. |
+
+![Hale's breathing screen and tube logos, Spin Cycle on a fascia, a logo and a tower screen, a
+roof board](neon-district-captures/campaigns-adverts.webp)
+
+The artwork is drawn by the atlas bake, not painted, so every campaign is one identity across
+its billboard, poster, logo and fascia. No real company, film or game is named or drawn. No mark
+is built from four squares or any other piece shape (`tetris_legal_review.md`). Two of the
+December 2025 images left the atlases because they carry third-party marks:
+
+- the Retro Replay arcade, whose sign shows another company's video-game characters
+- the Aurelia Colonies advert, signed with a famous film company's name and logo
+
+The user's other adverts stay in the screens' playlists.
+
 ## How it is built
 
 | File | Role |
@@ -58,7 +148,13 @@ chain any board is holding.
 | `neon-district-tsl.js` | Hashes, the baked noise texture, the shared uniforms, the district's light (glow map, haze, lock shells, clear waves). |
 | `neon-district-facades.js` | Every building: one instanced box each, the facade drawn in the fragment shader with interior-mapped rooms. |
 | `neon-district-street.js` | The wet street: asphalt, paint, puddles, the planar mirror, rain rings, lock rings, kerb strips. |
-| `neon-district-signs.js` | Shopfronts, tube signs, billboard screens. |
+| `neon-district-campaigns.js` | Three-free: what the district sells. The eight brands, Hale, Serenity Transit, the trade shops, the shop archetypes and their light. |
+| `neon-district-shops.js` | The shops: painted shopfronts and generated shops, each a flat quad that traces its recess, wet glass and an interior-mapped room by trade. |
+| `neon-district-openings.js` | Where each painted shopfront's windows and door are, so that part can be set back. |
+| `neon-district-text.js` | Lines of text for the shaders: one row of glyph ids per line in an R8 texture. |
+| `neon-district-logos.js` | Three-free: the tube logos as strokes in four channels (the tube and three animation frames), baked to a distance-field atlas. |
+| `neon-district-signs.js` | Tube signs, billboard screens with playlists, tube logo signs. |
+| `neon-district-prints.js` | Printed campaigns: floodlit roof boards and paste-up posters, lit by the street. |
 | `neon-district-kit.js` | The street's hardware: awnings, vending machines, fire escapes, pipes, skybridges, gantries, tanks, masts, condensers, scaffolds. |
 | `neon-district-lights.js` | Halos, street lamps and their cones, cables and lanterns, beacons, flying traffic. |
 | `neon-district-weather.js` | Rain and steam. |
@@ -178,6 +274,41 @@ frame rates, not ADR-0016 measurements, and they moved by tens of fps between ru
 phones; Ultra and Extreme in a capture (Ultra ran in game); local multiplayer and Infinity
 layouts in a capture (their routing is unit-tested only); reduced motion in a capture; sessions
 of several hours (the scroll rebase is unit-tested only).
+
+**The shops and campaigns pass (2026-10-18):**
+
+- **Unit tests.** New tests cover:
+  - the shops: they line every block, never overlap, have valid openings, and every painting is
+    dealt once a period
+  - the campaigns: every brand with a shop has a branch, every campaign is on a screen or a wall,
+    and every trade shop appears
+  - screens: three different adverts of one shape, Hale's at most once
+  - prints: never a ring advert, and every roof board sits on a scaffold
+  - logos: the atlas and its animation table (16 logos)
+  - every line of text spells with glyphs the atlas has
+
+  The Neon District files pass. The whole suite: 995 files, 18,800 tests, all green except four
+  tests that fail on `main` too (`tts-recorder-e2e`, `game-over-modal-result-compatibility`,
+  `odyssey-level-briefing`, `records-view`).
+- **Gates.** All pass: lint ratchet (575 against a baseline of 599, left as it is), typecheck,
+  production build with the boot-closure guard, dependency boundaries, architecture fitness,
+  IP-string gate, Pages artifact and release gates.
+- **Playground captures on WebGPU (RTX 3070 Laptop).** Clean consoles at every tier from Minimal
+  to Ultra, on the forced WebGL2 backend, in the four-line overdrive and in a hard drop. Close-ups
+  covered a Hale screen breathing, poster walls, roof boards, logo signs and both Combo Noodles
+  branches.
+  - The first GPU run caught what software rendering could not. The generated shops and the
+    screens had 11 and 9 separate instance attributes, and WebGPU allows 8 vertex buffers, so
+    both pipelines failed on WebGPU only. Their instance data is now one interleaved buffer
+    (`ndQuadGeometry(…, { interleave: true })`).
+- **In the real game** (Electron, dev server, single player, RTX 3070, 1584 × 813): the theme
+  starts on WebGPU with all 57 shops and logs no errors.
+  - High: 129.6 fps.
+  - Ultra: four alternating runs, with the new shops, logo signs and prints and without them,
+    read 130.6 and 130.7 against 130.5 and 130.6 fps. That is Electron's frame cap (about 131 Hz
+    here), so the new parts' cost is below what this can see. A single earlier Ultra reading of
+    106 fps did not repeat.
+  - These are observed frame rates, not perf-lane (ADR-0016) measurements.
 
 ## Reproduce
 

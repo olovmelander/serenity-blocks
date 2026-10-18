@@ -260,7 +260,8 @@ export const KIT_PIECES = Object.freeze({
             b.box(1.6, 0.08, 0.08, [-0.75, h * 0.45, z], { rot: [0, 0, 0.95], shade: 0.7 });
         });
         [0.9, h * 0.55, h - 0.1].forEach((y) => b.box(0.08, 0.08, w, [0, y, 0], { shade: 0.85 }));
-        b.box(0.05, h * 0.5, w * 0.92, [0.08, h * 0.72, 0], { shade: 0.6 });
+        // The board a 16:9 print is pasted on (neon-district-layout.js puts the print on it).
+        b.box(0.05, 3.1, w * 0.92, [0.08, 2.75, 0], { shade: 0.6 });
         // Floodlights along the top, aimed at the board.
         [-2, 0, 2].forEach((z) => b.box(0.3, 0.1, 0.4, [0.5, h + 0.12, z], { lamp: 1 }));
         return b.build();

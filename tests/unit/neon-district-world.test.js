@@ -52,7 +52,9 @@ describe('neon district world: build', () => {
                 expect(material.isShaderMaterial, material.name).not.toBe(true);
                 expect(material.fog, material.name).toBe(false); // the atmosphere is in every material
             }
-            for (const part of ['sky', 'mega', 'facades', 'street', 'shopfronts', 'signs', 'screens', 'rain', 'sparks', 'beams']) {
+            for (const part of [
+                'sky', 'mega', 'facades', 'street', 'shopfronts', 'shops', 'signs', 'marks', 'screens', 'prints', 'rain', 'sparks', 'beams',
+            ]) {
                 expect(world.parts[part], `${quality}.${part}`).toBeTruthy();
             }
             expect(Boolean(world.reflection), `${quality} mirror`).toBe(tier.reflection > 0);

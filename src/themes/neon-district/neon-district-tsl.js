@@ -198,6 +198,8 @@ export function createDistrictUniforms(textures) {
         storm: uniform(0),
         /** Rain density 0..1 and wetness of every surface. */
         rain: uniform(1),
+        /** How full the lungs are, 0..1: the breath Hale's adverts and logos follow. */
+        breath: uniform(0),
         viewport: uniform(new THREE.Vector2(1920, 1080)),
         /** Haze colours: at street level and high in the smog. */
         hazeLow: uniform(new THREE.Vector3(0.05, 0.02, 0.09)),
@@ -333,20 +335,42 @@ export function ndFxMaterial(name, { depthTest = true } = {}) {
 
 /**
  * A unit quad (xy in −0.5..0.5, uv 0..1) for `count` instances.
+ *
+ * WebGPU allows a pipeline 8 vertex buffers by default, and each separate instance attribute
+ * is one: a part with many per-instance values passes `interleave`, which packs them all into
+ * ONE instanced buffer (one vertex buffer, any number of attributes up to the 16 allowed).
  * @param {number} count
  * @param {Record<string, [Float32Array, number]>} attributes  name → [data, itemSize]
+ * @param {{ interleave?: boolean }} [opts]
  */
-export function ndQuadGeometry(count, attributes = {}) {
+export function ndQuadGeometry(count, attributes = {}, { interleave = false } = {}) {
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.setIndex([0, 1, 2, 0, 2, 3]);
     geometry.setAttribute('position', new THREE.Float32BufferAttribute([
         -0.5, -0.5, 0, 0.5, -0.5, 0, 0.5, 0.5, 0, -0.5, 0.5, 0,
     ], 3));
     geometry.setAttribute('uv', new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2));
-    Object.keys(attributes).forEach((name) => {
-        const [data, itemSize] = attributes[name];
-        geometry.setAttribute(name, new THREE.InstancedBufferAttribute(data, itemSize));
-    });
+    const names = Object.keys(attributes);
+    if (interleave && names.length) {
+        const stride = names.reduce((sum, name) => sum + attributes[name][1], 0);
+        const rows = attributes[names[0]][0].length / attributes[names[0]][1];
+        const packed = new Float32Array(rows * stride);
+        let offset = 0;
+        const buffer = new THREE.InstancedInterleavedBuffer(packed, stride, 1);
+        names.forEach((name) => {
+            const [data, itemSize] = attributes[name];
+            for (let r = 0; r < rows; r++) {
+                for (let k = 0; k < itemSize; k++) packed[r * stride + offset + k] = data[r * itemSize + k];
+            }
+            geometry.setAttribute(name, new THREE.InterleavedBufferAttribute(buffer, itemSize, offset));
+            offset += itemSize;
+        });
+    } else {
+        names.forEach((name) => {
+            const [data, itemSize] = attributes[name];
+            geometry.setAttribute(name, new THREE.InstancedBufferAttribute(data, itemSize));
+        });
+    }
     geometry.instanceCount = count;
     return geometry;
 }

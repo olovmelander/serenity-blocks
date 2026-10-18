@@ -1,15 +1,14 @@
 /**
  * Neon District — everything that advertises.
  *
- *  - Shopfronts: the district's painted shopfronts (one atlas), seated in the plinth of every
- *    block, emitting their own neon in HDR.
  *  - Tube signs: blades hung over the pavement, bent from the sign-maker's alphabet (a baked
  *    distance-field atlas: trade words in Latin capitals, the rest in the district's own script).
  *    Each has a hot white core and a coloured halo; a few buzz, a few have a dying character.
- *  - Billboard screens: LED walls facing down the street, cross-fading between two adverts with a
- *    rolling refresh bar.
+ *  - Billboard screens: LED walls facing down the street, each cycling a playlist of the district's
+ *    campaigns (neon-district-campaigns.js) with a rolling refresh bar.
+ *  - Tube logos: each campaign's mark bent in tube, animated frame by frame, over its name.
  *
- * All three answer the gameplay pulses: a lock shell tints them as it passes, a clear wave makes
+ * All of them answer the gameplay pulses: a lock shell tints them as it passes, a clear wave makes
  * each one flare as the front reaches it, a blackout pulls them down to a ghost and a glitch
  * tears them.
  */
@@ -25,12 +24,14 @@ import {
     floor,
     fract,
     fwidth,
+    length,
     max,
     min,
     mix,
     mod,
     positionGeometry,
     positionWorld,
+    select,
     sin,
     smoothstep,
     step,
@@ -41,7 +42,6 @@ import {
     vec3,
 } from 'three/tsl';
 import {
-    STREET,
     ndAtmosphere,
     ndClearLight,
     ndHash21,
@@ -50,11 +50,15 @@ import {
     ndQuadGeometry,
     ndWrapZ,
 } from './neon-district-tsl.js';
-import { BILLBOARD_CELLS, SHOPFRONT_CELLS } from './neon-district-atlas.js';
+import { BILLBOARD_CELLS } from './neon-district-atlas.js';
 import {
     GLYPH_GRID, GLYPH_RANGE, bakeGlyphAtlas,
 } from './neon-district-glyphs.js';
-import { MAX_SIGN_GLYPHS } from './neon-district-layout.js';
+import { MAX_SIGN_GLYPHS, TEXT_WIDTH } from './neon-district-layout.js';
+import { ndTextDistance } from './neon-district-text.js';
+import {
+    LOGOS, LOGO_ANIMS, LOGO_GRID, LOGO_RANGE, bakeLogoAtlas,
+} from './neon-district-logos.js';
 
 /** A 2 × 2 black stand-in until an atlas has loaded. */
 export function createPlaceholderTexture() {
@@ -79,6 +83,63 @@ export function createGlyphTexture() {
     return tex;
 }
 
+/** The tube logos (neon-district-logos.js): four distance fields, the tube and three frames. */
+export function createLogoTexture() {
+    const { data, size } = bakeLogoAtlas();
+    const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearMipmapLinearFilter;
+    tex.generateMipmaps = true;
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.name = 'neon-district-logos';
+    tex.needsUpdate = true;
+    return tex;
+}
+
+/** What a shader needs to draw the logos: the texture, its grid and range, each mark's animation. */
+export function logoBinding(tex) {
+    return {
+        texture: tex,
+        grid: LOGO_GRID,
+        range: LOGO_RANGE,
+        anim: LOGOS.map((logo) => Math.max(0, LOGO_ANIMS.indexOf(logo.anim))),
+        period: LOGOS.map((logo) => logo.period),
+    };
+}
+
+/** How a tube logo's animation frames (its G, B and A channels) are lit. */
+export const LOGO_ANIM = Object.freeze({
+    none: 0, blink: 1, alt: 2, cycle: 3, build: 4, breath: 5,
+});
+
+/**
+ * Which of a logo's three animation frames are lit now (each 0..1). `anim` is a LOGO_ANIM code,
+ * `period` seconds per cycle, `breath` the lungs' fill (0..1) the breath logos follow.
+ */
+export function ndLogoFrames(anim, period, time, seed, breath) {
+    const phase = fract(time.div(max(period, 0.1)).add(seed.mul(0.137)));
+    const k3 = floor(phase.mul(3.0));
+    const k4 = floor(phase.mul(4.0));
+    const is = (code) => step(abs(anim.sub(code)), 0.5);
+    const blink = is(LOGO_ANIM.blink).mul(step(0.5, phase));
+    const altA = step(phase, 0.5);
+    const g = blink
+        .add(is(LOGO_ANIM.alt).mul(altA))
+        .add(is(LOGO_ANIM.cycle).mul(step(k3, 0.5)))
+        .add(is(LOGO_ANIM.build).mul(step(k4, 2.5)))
+        .add(is(LOGO_ANIM.breath).mul(smoothstep(0.04, 0.3, breath)));
+    const b = is(LOGO_ANIM.alt).mul(float(1.0).sub(altA))
+        .add(is(LOGO_ANIM.cycle).mul(step(abs(k3.sub(1.0)), 0.5)))
+        .add(is(LOGO_ANIM.build).mul(step(0.5, k4).mul(step(k4, 2.5))))
+        .add(is(LOGO_ANIM.breath).mul(smoothstep(0.36, 0.62, breath)));
+    const a = is(LOGO_ANIM.cycle).mul(step(1.5, k3))
+        .add(is(LOGO_ANIM.build).mul(step(abs(k4.sub(2.0)), 0.5)))
+        .add(is(LOGO_ANIM.breath).mul(smoothstep(0.66, 0.92, breath)));
+    return vec3(g, b, a);
+}
+
 /** Pulses evaluated per vertex (signs are small): lock shells + clear fronts, and the afterglow. */
 function vertexPulses(u, world) {
     const clear = ndClearLight(u, world.z);
@@ -95,61 +156,6 @@ const finish = (name, geometry, material) => {
     mesh.matrixAutoUpdate = false;
     return { mesh, material, geometry };
 };
-
-// ── Shopfronts ──────────────────────────────────────────────────────────────────
-
-/**
- * @param {object} u
- * @param {object[]} shopfronts  plan.shopfronts
- * @param {object} atlas         TextureNode over the shopfront atlas (value swapped when loaded)
- * @param {object} fade          uniform 0..1: the shopfronts power up once the atlas has arrived
- */
-export function createShopfronts(u, shopfronts, atlas, fade) {
-    const count = shopfronts.length;
-    const aPos = new Float32Array(count * 4);
-    const aDim = new Float32Array(count * 4);
-    const aRect = new Float32Array(count * 4);
-    shopfronts.forEach((s, i) => {
-        const cell = SHOPFRONT_CELLS[s.cell];
-        aPos.set([s.side * (STREET.halfStreet - 0.05), 0.12 + s.h / 2, s.z, s.seed], i * 4);
-        aDim.set([s.w, s.h, s.side, 0], i * 4);
-        aRect.set(cell.rect, i * 4);
-    });
-    const geometry = ndQuadGeometry(count, { aPos: [aPos, 4], aDim: [aDim, 4], aRect: [aRect, 4] });
-    const pos = attribute('aPos', 'vec4');
-    const dim = attribute('aDim', 'vec4');
-    const rect = attribute('aRect', 'vec4');
-
-    const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
-    material.name = 'NeonDistrictShopfronts';
-    material.fog = false;
-    const zc = ndWrapZ(pos.z.add(u.scroll));
-    const world = vec3(
-        pos.x,
-        pos.y.add(positionGeometry.y.mul(dim.y)),
-        zc.add(positionGeometry.x.mul(dim.x).mul(dim.z)),
-    );
-    material.positionNode = world;
-    const pulses = vertexPulses(u, world);
-
-    material.colorNode = Fn(() => {
-        const st = uv();
-        const seed = floor(pos.w.add(0.5));
-        // Atlas rect is (u0, v0, u1, v1) with v down from the top of the image.
-        const auv = vec2(mix(rect.x, rect.z, st.x), float(1.0).sub(mix(rect.w, rect.y, st.y)));
-        const t = atlas.sample(auv).rgb;
-        const peak = ndMax3(t);
-        // The paintings are already lit: lift their neon into HDR, leave the brickwork dark.
-        const hot = t.mul(peak.mul(peak).mul(3.1).add(0.42));
-        // A shop in ten has a failing transformer.
-        const buzz = step(0.9, ndHash21(vec2(seed, 3.0)))
-            .mul(step(0.62, ndHash21(vec2(floor(u.time.mul(11.0)), seed))));
-        const power = u.neon.mul(0.93).add(0.07).mul(float(1.0).sub(buzz.mul(0.45))).mul(fade);
-        const flare = pulses.light.mul(peak.mul(1.4).add(0.1)).add(pulses.after.mul(0.2).mul(hot));
-        return ndAtmosphere(u, hot.mul(power).add(flare), positionWorld);
-    })();
-    return finish('NeonDistrictShopfronts', geometry, material);
-}
 
 // ── Tube signs ──────────────────────────────────────────────────────────────────
 
@@ -273,31 +279,57 @@ export function createSigns(u, signs, glyphTex) {
 
 // ── Billboard screens ───────────────────────────────────────────────────────────
 
+/** How an advert moves on a screen: still, Hale's breathing ring, or a travel poster's slow drift. */
+export const AD_MOTION = Object.freeze({ none: 0, breathe: 1, pan: 2 });
+
+const adMotion = (cell) => AD_MOTION[cell.motion] ?? AD_MOTION.none;
+
 /**
+ * LED walls facing down the street. Each cycles a playlist of three adverts of one shape, each
+ * on for its period, with a wipe, a block dissolve or a slide into the next; a Hale advert's ring
+ * breathes with the breath, a travel poster drifts as it shows.
  * @param {object} u
  * @param {object[]} screens  plan.screens
  * @param {object} atlas      TextureNode over the billboard atlas
  * @param {object} fade       uniform 0..1
  */
 export function createScreens(u, screens, atlas, fade) {
-    const count = screens.length;
+    const count = Math.max(1, screens.length);
     const aPos = new Float32Array(count * 4);
     const aDim = new Float32Array(count * 4);
     const aRectA = new Float32Array(count * 4);
     const aRectB = new Float32Array(count * 4);
+    const aRectC = new Float32Array(count * 4);
+    const aPlay = new Float32Array(count * 4);
+    const aRing = new Float32Array(count * 4);
     screens.forEach((s, i) => {
+        const cells = s.playlist.map((c) => BILLBOARD_CELLS[c]);
         aPos.set([s.x, s.y, s.z, s.seed], i * 4);
-        aDim.set([s.w, s.h, 0, 0], i * 4);
-        aRectA.set(BILLBOARD_CELLS[s.cell].rect, i * 4);
-        aRectB.set(BILLBOARD_CELLS[s.next].rect, i * 4);
+        aDim.set([s.w, s.h, s.pitch, s.period], i * 4);
+        aRectA.set(cells[0].rect, i * 4);
+        aRectB.set(cells[1].rect, i * 4);
+        aRectC.set(cells[2].rect, i * 4);
+        const ringSlot = cells.findIndex((c) => c.ring);
+        const ring = ringSlot >= 0 ? cells[ringSlot].ring : [0.5, 0.5, 0];
+        aPlay.set([adMotion(cells[0]), adMotion(cells[1]), adMotion(cells[2]), ringSlot], i * 4);
+        aRing.set([ring[0], ring[1], ring[2], s.transition], i * 4);
     });
-    const geometry = ndQuadGeometry(count, {
-        aPos: [aPos, 4], aDim: [aDim, 4], aRectA: [aRectA, 4], aRectB: [aRectB, 4],
-    });
+    const geometry = ndQuadGeometry(screens.length, {
+        aPos: [aPos, 4],
+        aDim: [aDim, 4],
+        aRectA: [aRectA, 4],
+        aRectB: [aRectB, 4],
+        aRectC: [aRectC, 4],
+        aPlay: [aPlay, 4],
+        aRing: [aRing, 4],
+    }, { interleave: true });
     const pos = attribute('aPos', 'vec4');
     const dim = attribute('aDim', 'vec4');
     const rectA = attribute('aRectA', 'vec4');
     const rectB = attribute('aRectB', 'vec4');
+    const rectC = attribute('aRectC', 'vec4');
+    const play = attribute('aPlay', 'vec4');
+    const ring = attribute('aRing', 'vec4');
 
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
     material.name = 'NeonDistrictScreens';
@@ -314,15 +346,17 @@ export function createScreens(u, screens, atlas, fade) {
     material.colorNode = Fn(() => {
         const st = uv();
         const seed = floor(pos.w.add(0.5));
-        const metres = st.mul(vec2(dim.x, dim.y));
-        // LED pitch: 5.5 cm. Derivatives up front.
-        const led = metres.div(0.055);
+        const size = vec2(dim.x, dim.y);
+        const metres = st.mul(size);
+        // LED pitch per screen. Derivatives up front.
+        const led = metres.div(dim.z);
         const fl = max(fwidth(led.x), fwidth(led.y));
 
         // Bezel.
         const inset = min(min(metres.x, dim.x.sub(metres.x)), min(metres.y, dim.y.sub(metres.y)));
         const glassMask = smoothstep(0.1, 0.14, inset);
-        const img = clamp(metres.sub(0.14).div(vec2(dim.x, dim.y).sub(0.28)), 0.0, 1.0).toVar();
+        const imgSize = size.sub(0.28);
+        const img = clamp(metres.sub(0.14).div(imgSize), 0.0, 1.0).toVar();
 
         // A glitch tears the picture into shifted bands.
         const bandId = floor(img.y.mul(14.0));
@@ -330,17 +364,50 @@ export function createScreens(u, screens, atlas, fade) {
             .mul(u.glitch).mul(0.22);
         img.x.assign(fract(img.x.add(shift)));
 
-        const sample = (r) => atlas.sample(vec2(mix(r.x, r.z, img.x), float(1.0).sub(mix(r.w, r.y, img.y)))).rgb;
-        // Two adverts, a wipe between them every cycle.
-        const cycle = fract(u.time.div(seed.mul(0.004).add(19.0)).add(seed.mul(0.137)));
-        const phase = fract(cycle.mul(2.0));
-        const second = step(0.5, cycle);
-        const wipe = smoothstep(0.93, 0.99, phase);
-        const edgeY = float(1.0).sub(wipe.mul(1.15).sub(0.075));
-        const incoming = step(edgeY, img.y);
-        const useB = mix(second, float(1.0).sub(second), incoming);
-        const picture = mix(sample(rectA), sample(rectB), useB);
-        const wipeGlow = exp(abs(img.y.sub(edgeY)).mul(-60.0)).mul(step(0.001, wipe)).mul(float(1.0).sub(step(0.999, wipe)));
+        // ── The playlist: three adverts, each on for its period, then a transition ──
+        const cyc = fract(u.time.div(dim.w.mul(3.0)).add(seed.mul(0.137))).mul(3.0);
+        const slot = floor(cyc);
+        const local = fract(cyc);
+        const nextSlot = mod(slot.add(1.0), 3.0);
+        const pick = (k, a, b, c) => select(k.lessThan(0.5), a, select(k.lessThan(1.5), b, c));
+        const rectNow = pick(slot, rectA, rectB, rectC);
+        const rectNext = pick(nextSlot, rectA, rectB, rectC);
+        const motionNow = pick(slot, play.x, play.y, play.z);
+        const motionNext = pick(nextSlot, play.x, play.y, play.z);
+        // A travel poster drifts a few percent as it shows (its words are baked in: keep it small).
+        const drift = (p, motion, phase) => {
+            const pan = step(1.5, motion);
+            const zoom = phase.mul(0.035).mul(pan).add(1.0);
+            return p.sub(0.5).div(zoom).add(0.5).add(vec2(phase.sub(0.5).mul(0.012).mul(pan), 0.0));
+        };
+        const sample = (r, p) => atlas.sample(vec2(mix(r.x, r.z, p.x), float(1.0).sub(mix(r.w, r.y, p.y)))).rgb;
+        const nowPic = sample(rectNow, drift(img, motionNow, local));
+        const nextPic = sample(rectNext, drift(img, motionNext, float(0.0)));
+        const tr = smoothstep(0.93, 0.995, local);
+        const kind = ring.w;
+        const edgeY = float(1.0).sub(tr.mul(1.15).sub(0.075));
+        const wipe = step(edgeY, img.y);
+        const block = ndHash21(floor(img.mul(imgSize).div(0.32)).add(vec2(seed, slot)));
+        const dissolve = step(block, tr);
+        const slide = step(float(1.0).sub(tr), img.x);
+        const changing = step(0.001, tr);
+        const useNext = pick(kind, wipe, dissolve, slide).mul(changing);
+        const picture = mix(nowPic, nextPic, useNext);
+        const isWipe = step(kind, 0.5);
+        const wipeGlow = exp(abs(img.y.sub(edgeY)).mul(-60.0)).mul(changing).mul(float(1.0).sub(step(0.999, tr)))
+            .mul(isWipe);
+
+        // ── Hale's ring, breathing on the advert that leaves room for it ──
+        const showsRing = step(abs(slot.sub(play.w)), 0.5).mul(float(1.0).sub(useNext)).mul(step(0.01, ring.z));
+        const pm = img.mul(imgSize);
+        const centre = vec2(ring.x.mul(imgSize.x), float(1.0).sub(ring.y).mul(imgSize.y));
+        const radius = ring.z.mul(imgSize.y);
+        const breathR = radius.mul(u.breath.mul(0.55).add(0.38));
+        const d = length(pm.sub(centre));
+        const line = exp(abs(d.sub(breathR)).div(radius.mul(0.03)).negate());
+        const disc = smoothstep(breathR, breathR.mul(0.15), d).mul(u.breath).mul(0.16);
+        const halo = exp(max(d.sub(breathR), 0.0).div(radius.mul(0.25)).negate()).mul(0.12);
+        const ringLight = vec3(0.32, 0.95, 0.84).mul(line.mul(1.4).add(disc).add(halo)).mul(showsRing);
 
         // LED dots near the camera, their true average far away.
         const dot = smoothstep(0.5, 0.28, max(abs(fract(led.x).sub(0.5)), abs(fract(led.y).sub(0.5))));
@@ -349,7 +416,7 @@ export function createScreens(u, screens, atlas, fade) {
         const roll = exp(abs(fract(img.y.sub(u.time.mul(0.11)).add(seed.mul(0.1))).sub(0.5)).mul(-18.0)).mul(0.22).add(0.9);
 
         const peak = ndMax3(picture);
-        const emit = picture.mul(peak.mul(1.5).add(0.75)).mul(dots).mul(roll)
+        const emit = picture.mul(peak.mul(1.5).add(0.75)).add(ringLight).mul(dots).mul(roll)
             .add(vec3(0.7, 0.9, 1.0).mul(wipeGlow).mul(1.4))
             .mul(u.neon.mul(0.94).add(0.06))
             .mul(fade)
@@ -361,4 +428,106 @@ export function createScreens(u, screens, atlas, fade) {
         return ndAtmosphere(u, emit, positionWorld);
     })();
     return finish('NeonDistrictScreens', geometry, material);
+}
+
+// ── Tube logos ──────────────────────────────────────────────────────────────────
+
+/**
+ * A campaign's mark bent in tube, hung off the wall facing down the street: the logo, animated
+ * frame by frame (its G, B and A channels), over its name in the sign alphabet, on a dark board
+ * framed in the campaign's second colour.
+ * @param {object} u
+ * @param {object[]} marks   plan.marks
+ * @param {object} opts      { glyphTex, textTex, textRows, logos } (logos: logoBinding())
+ */
+export function createMarks(u, marks, opts) {
+    const { glyphTex, textTex, logos } = opts;
+    const textRows = Math.max(1, opts.textRows || 1);
+    const count = Math.max(1, marks.length);
+    const aPos = new Float32Array(count * 4);
+    const aDim = new Float32Array(count * 4);
+    const aCol = new Float32Array(count * 4);
+    const aCol2 = new Float32Array(count * 4);
+    const aLogo = new Float32Array(count * 4);
+    marks.forEach((m, i) => {
+        aPos.set([m.x, m.y, m.z, m.seed], i * 4);
+        aDim.set([m.w, m.h, m.nameRow, m.nameLength], i * 4);
+        aCol.set([m.rgb[0], m.rgb[1], m.rgb[2], 0], i * 4);
+        aCol2.set([m.rgb2[0], m.rgb2[1], m.rgb2[2], 0], i * 4);
+        aLogo.set([m.logo, logos.anim[m.logo] ?? 0, logos.period[m.logo] ?? 1, 0], i * 4);
+    });
+    const geometry = ndQuadGeometry(marks.length, {
+        aPos: [aPos, 4], aDim: [aDim, 4], aCol: [aCol, 4], aCol2: [aCol2, 4], aLogo: [aLogo, 4],
+    }, { interleave: true });
+    const pos = attribute('aPos', 'vec4');
+    const dim = attribute('aDim', 'vec4');
+    const col = attribute('aCol', 'vec4');
+    const col2 = attribute('aCol2', 'vec4');
+    const logo = attribute('aLogo', 'vec4');
+
+    const material = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
+    material.name = 'NeonDistrictMarks';
+    material.fog = false;
+    const zc = ndWrapZ(pos.z.add(u.scroll));
+    const world = vec3(
+        pos.x.add(positionGeometry.x.mul(dim.x)),
+        pos.y.add(positionGeometry.y.mul(dim.y)),
+        zc,
+    );
+    material.positionNode = world;
+    const pulses = vertexPulses(u, world);
+
+    material.colorNode = Fn(() => {
+        const st = uv();
+        const seed = floor(pos.w.add(0.5));
+        const metres = st.mul(vec2(dim.x, dim.y));
+        const tint = mix(col.rgb, vec3(1.0, 0.72, 0.26), u.heat.mul(0.7));
+        const white = mix(tint, vec3(1.0), 0.6);
+        // The logo: a square over the name strip.
+        const side = dim.x.sub(0.12);
+        const lc = vec2(metres.x.sub(0.06).div(side), metres.y.sub(dim.y.sub(side).sub(0.06)).div(side));
+        const inLogo = step(0.0, lc.x).mul(step(lc.x, 1.0)).mul(step(0.0, lc.y)).mul(step(lc.y, 1.0));
+        const li = max(logo.x, 0.0);
+        const gc = vec2(mod(li, logos.grid), floor(li.div(logos.grid)));
+        const lt = texture(logos.texture, gc.add(clamp(lc, 0.01, 0.99)).div(logos.grid));
+        const frames = ndLogoFrames(logo.y, logo.z, u.time, seed, u.breath);
+        const dr = float(1.0).sub(lt.r).mul(logos.range).add(float(1.0).sub(inLogo));
+        const df = vec3(1.0).sub(lt.gba).mul(logos.range).add(float(1.0).sub(inLogo));
+        const laa = fwidth(dr).mul(0.9).add(0.0015);
+        const tube = (dd) => float(1.0).sub(smoothstep(float(0.011).sub(laa), float(0.011).add(laa), dd)).mul(3.2)
+            .add(exp(dd.mul(-60.0)).mul(0.55))
+            .add(exp(dd.mul(-16.0)).mul(0.06));
+        const tubes = tube(dr).add(tube(df.x).mul(frames.x)).add(tube(df.y).mul(frames.y)).add(tube(df.z).mul(frames.z));
+        // The name: the sign alphabet, centred in the strip under the logo.
+        const stripH = dim.y.sub(side).sub(0.18);
+        const n = max(dim.w, 1.0);
+        const th = min(stripH.mul(0.78), side.div(n.mul(0.82)));
+        const cw = th.mul(0.82);
+        const run = metres.x.sub(dim.x.mul(0.5).sub(n.mul(cw).mul(0.5))).div(cw);
+        const cellY = metres.y.sub(stripH.mul(0.5).add(0.06).sub(th.mul(0.5))).div(th);
+        const inLine = step(0.0, run).mul(step(run, n)).mul(step(-0.1, cellY)).mul(step(cellY, 1.1));
+        const dName = ndTextDistance(textTex, glyphTex, textRows, TEXT_WIDTH, dim.z, clamp(floor(run), 0.0, n.sub(1.0)), vec2(fract(run), cellY))
+            .add(float(1.0).sub(inLine));
+        const taa = fwidth(dName).mul(0.9).add(0.003);
+        const core = float(1.0).sub(smoothstep(float(0.03).sub(taa), float(0.03).add(taa), dName));
+        const halo = exp(dName.mul(-17.0)).mul(0.6);
+        // Life: the hum, and the odd failing transformer.
+        const hum = sin(u.time.mul(37.0).add(seed)).mul(0.03).add(0.97);
+        const buzz = mix(float(1.0), step(0.3, ndHash21(vec2(floor(u.time.mul(13.0)), seed))).mul(0.6).add(0.4), step(0.9, ndHash21(vec2(seed, 5.0))));
+        const tear = step(ndHash21(vec2(floor(u.time.mul(19.0)), seed.add(7.0))), float(1.0).sub(u.glitch.mul(0.75)));
+        const live = hum.mul(buzz).mul(tear).mul(u.neon);
+        // A thin tube frame round the board in the second colour.
+        const inset = min(min(metres.x, dim.x.sub(metres.x)), min(metres.y, dim.y.sub(metres.y)));
+        const fd = abs(inset.sub(0.05));
+        const frame = float(1.0).sub(smoothstep(0.01, 0.026, fd)).mul(1.5).add(exp(fd.mul(-24.0)).mul(0.2));
+        const emit = vec3(0.004, 0.005, 0.008)
+            .add(mix(tint, white, 0.5).mul(tubes).mul(live))
+            .add(white.mul(core.mul(3.0)).add(tint.mul(halo.mul(1.4))).mul(live))
+            .add(col2.rgb.mul(frame).mul(u.neon).mul(buzz))
+            .toVar();
+        emit.addAssign(pulses.light.mul(tubes.add(core).mul(0.5).add(frame.mul(0.3))).mul(1.6));
+        emit.mulAssign(pulses.after.mul(0.4).add(1.0));
+        return ndAtmosphere(u, emit, positionWorld);
+    })();
+    return finish('NeonDistrictMarks', geometry, material);
 }

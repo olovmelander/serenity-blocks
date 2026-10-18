@@ -1430,6 +1430,7 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 - **Look.** A street canyon in the rain, looking up its centre line.
   - Shopfronts, tube-neon blades, interior-mapped lit windows, lanterns and cables, skybridges, gantries, megatowers in smog.
   - The whole city mirrored in the wet road, an endless scroll.
+  - Since 2026-10-18: shops set back into the walls behind wet glass, each with a lit, interior-mapped room of its trade (noodle counter, laundromat drums, mart aisles, arcade cabinets, bar bottles, gym, service counter, calm room) and some shutters down and fly-posted. The district runs its own campaigns on every surface: eight local brands named for the board's verbs (Cascade Cola, Combo Noodles, Stack Savings, Drop Couriers, Level Gym, Next Taxi, Clear Optics, Spin Cycle), Hale's breathing adverts, and Serenity Transit travel posters for the game's other worlds, on LED screens with playlists, floodlit roof boards, paste-up poster walls, animated tube logos and blade words.
 - **Palette.**
   - Hot pink, teal, ultraviolet and gold neon on dark wet asphalt.
   - Five level palettes: signal, harbour, arcade, lantern, ultraviolet.
@@ -1448,7 +1449,7 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
   - Facades are drawn in the fragment shader with interior mapping.
   - A distance-field glyph atlas for signs.
   - `ndWrapZ` scrolling, the Director/Composition/ComboTracker pattern, one-pass post.
-- **Avoid reusing.** Cities, neon signage, rain, wet-road reflections, holographic text counters, drone-show creatures, a "power circuit" metaphor, interior-mapped windows.
+- **Avoid reusing.** Cities, neon signage, rain, wet-road reflections, holographic text counters, drone-show creatures, a "power circuit" metaphor, interior-mapped windows, interior-mapped shopfronts, in-world ad campaigns for the game's own worlds and for brands named after the board's verbs.
 
 <a id="synthwave-sunset"></a>
 
