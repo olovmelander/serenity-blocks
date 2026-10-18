@@ -812,8 +812,8 @@ const BASE_LEVEL_CONFIGS = [
 
         metadata: {
             description: 'Low in a stand of ripe barley, watch a storm deck break over Lapporten, the Lapland gate on '
-                + 'the horizon. Sunbeams pour through its gaps and through the gate, walking the fields as the wind '
-                + 'runs through the grain.',
+                + 'the horizon. Sunbeams pour through its gaps and through the gate, walking the fields where a herd of '
+                + 'horses grazes as the wind runs through the grain.',
             difficulty: 6,
             tip: 'The pace rises as you clear. Stay settled and keep clearing.',
         },
@@ -4338,9 +4338,9 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
             three: { lines: 32, time: 145, bonuses: 1 },
         },
         metadata: {
-            description: 'You stand low in ripe barley. Shelterbelts of larch, spruce and birch run out to Lapporten, '
-                + 'the Lapland gate, where a storm deck is breaking and sunbeams walk the fields. This is a reset: '
-                + 'breathe, stack cleanly, and let the wind run through the grain.',
+            description: 'You stand low in ripe barley beside a grazing herd. Shelterbelts of larch, spruce and birch '
+                + 'run out to Lapporten, the Lapland gate, where a storm deck is breaking and sunbeams walk the fields. '
+                + 'This is a reset: breathe, stack cleanly, and let the wind run through the grain.',
             difficulty: 3,
             tip: 'Use the gentler opener to rebuild rhythm before the chapter starts mixing mechanics again.',
         },
