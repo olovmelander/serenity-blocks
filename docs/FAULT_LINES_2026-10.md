@@ -1,5 +1,14 @@
 # Fault Lines: cascade puzzles (preview, October 2026)
 
+**2026-10-18:** the bank grew from fifteen puzzles in three tiers to thirty-six in six. Two more
+in Undertow and in Deep fault, then three new three-piece tiers (Rift, Bedrock, Epicentre), the
+last two certified to have exactly one winning first landing. Landings now come from
+`fault-lines-reach.js`, the bot pathfinder's search without its allocations, which the
+three-piece certifier needed to stay fast in CI. The Puzzles list shows a locked tier as one line.
+The search that found the new structures is `scripts/fault-lines-search.mjs`. The same day the
+owner removed Waystones, the road preview built beside Fault Lines (it is in git history before
+this change); a saved `gameMode: 'waystones'` heals to Single Player when settings load.
+
 **Status: preview.** The menu lists Fault Lines only with `?faultLines=1` (or
 `localStorage['serenity.faultLines'] = '1'`), registered in `src/core/flags.js`. Everything
 below works and is tested; what it needs before it ships unflagged is listed at the end.
@@ -42,7 +51,7 @@ away, or when a dealt piece has no room. The panel says which, in the goal's own
   exists does the puzzle start over, and the panel says so.
 - The Puzzles button lists the pyramid with each tier's progress. A tier opens once three
   puzzles in the tier below are solved, so the lanterns are met before the deep fault
-  assumes them.
+  assumes them. A tier not yet open is one line (its name, how many puzzles, locked).
 - The board draws a dark seam wherever two bodies touch, and a cream diamond on the
   relic. Bodies stay fused inside: seams are drawn per body, never per cell, so the
   fused, borderless look is kept. Two fragments of one body that touch again re-fuse
@@ -50,18 +59,30 @@ away, or when a dealt piece has no room. The panel says which, in the goal's own
 
 ## The puzzle bank
 
-Fifteen puzzles in three tiers of five (`src/core/fault-lines/puzzle-bank.js`):
+Thirty-six puzzles in six tiers (`src/core/fault-lines/puzzle-bank.js`):
 
 - **First light** (one piece each): First fall, Second wave, Lanterns, Lantern rain,
   Staircase. Each teaches one idea: a clear drops what it held; what falls can finish the
   row beneath it (a wave); lanterns (hanging bodies) fall at the first clear; each falls
   straight down; one clear lets the next lantern down.
-- **Undertow** (two pieces): The relic, Footing, Slip, Clean sweep, Undermine. Both pieces
-  matter: park a piece over a gap, a clear cuts a piece and the rest keeps falling, a lone
+- **Undertow** (two pieces): The relic, Footing, Lantern home, Slip, Top down, Clean sweep,
+  Undermine. Both pieces matter: park a piece over a gap, a lantern as the relic, a clear cuts a
+  piece and the rest keeps falling, what is left of a cut piece finishes the rows below, a lone
   block drops when the row under it opens, a leftover opens the floor under the relic.
-- **Deep fault** (two pieces): Stairwell, Lantern well, Ride the lantern, Lean-to, Four
-  gaps. A standing piece rides each clear down, with and without lanterns; a piece resting
-  on a lantern falls with it; four gaps from two pieces.
+- **Deep fault** (two pieces): Stairwell, Lantern well, Ride the lantern, Trapdoor, Lean-to,
+  Four gaps, Landslide. A standing piece rides each clear down, with and without lanterns; a
+  piece resting on a lantern falls with it; a lone block over a gap is a trapdoor; four gaps from
+  two pieces; a lantern and its rider fill four rows.
+- **Rift** (three pieces): Double footing, Row of your own, On the ledge, Side by side,
+  Overhead, Clear path. Two pieces are set and the third fires: a piece over each low gap, a row
+  built from your own pieces, two pieces on one ledge, lanterns counted as fillers, a lantern's
+  path kept clear to the floor. Two or three first landings win.
+- **Bedrock** (three pieces, one way in): Riders, Crown, Keep the relic, Lantern fall,
+  Nothing left, Third row. Each has exactly one winning first landing, a unique straight line,
+  an opening that clears nothing, and a greedy opening (the biggest clear on offer) that loses.
+- **Epicentre** (three pieces, one way in): Corners, Standing stone, Two hooks, Fault line,
+  Plumb line. The deepest goals: five-wave cascades, six lines from six rows, and Plumb line's
+  six waves from one lock.
 
 ### The standard every puzzle meets
 
@@ -73,9 +94,11 @@ The certifier (`tests/unit/fault-lines-puzzles.test.js`) proves, on every CI run
    nobody reasoning about the structure would have found them, and spin-kick puzzles are
    the worst possible IP posture for this mode.)
 2. **The last piece is needed**: no line of play solves before it lands.
-3. **Every piece matters**: the puzzle is unsolvable without its first piece.
+3. **Every piece matters**: the puzzle is unsolvable without its leading pieces (the first,
+   and for three pieces also the first two).
 4. **Few openings win**: at most a quarter of the first landings lead to a solution in
-   tiers 1 and 2, at most a tenth in tier 3.
+   tiers 1 and 2, at most a tenth in tiers 3 and 4, at most 6% in tiers 5 and 6, and from
+   tier 5 on exactly one first landing wins.
 5. **The stored solution is straight and solves**, so the hint is always right.
 6. **Every solution replays through the real game**: real `move`/`rotate`/`hardDrop` from
    the real spawn row and the live async physics, comparing every cell (body and colour)
@@ -111,6 +134,15 @@ touching bodies match (the board draws same-coloured neighbours as one shape).
 
 ### Adding a puzzle
 
+0. To find one, search and rank (worker threads, time-boxed; straight drops on the real
+   resolver, every goal the structure allows judged on one tree):
+   `node scripts/fault-lines-search.mjs --out=c.jsonl --pieces=3 --minutes=20 --workers=4`
+   (`--style=deep` for taller, nearly full strata and deep cascades), then
+   `node scripts/fault-lines-search.mjs --rank=c.jsonl --pieces=3 --top=20`. The rank rewards
+   few winning openings and solutions, a set-up opening, a greedy opening that loses, traps
+   and deeper goals. On a busy machine a two-piece search kept about two hundred candidates a
+   minute per worker and a three-piece one about ten; most are not worth a name, so rank, then
+   read the best few lock by lock before writing a lesson.
 1. Write the definition in `puzzle-bank.js` without a `solution`.
 2. Run `npx vitest run tests/unit/fault-lines-puzzles.test.js`. It fails with the id if the
    puzzle is unsolvable, has no straight solution, solves early, wastes a piece, or lets
@@ -118,9 +150,10 @@ touching bodies match (the board draws same-coloured neighbours as one shape).
 3. `solvePuzzle(buildPuzzle(def))` returns `straightSolutions`; copy the first as
    `solution` (`{ piece, rotation, x }` per placement) and run the test again.
 
-Tiers 2 and 3 came from an offline search over random structures (rows with gaps,
-hanging bodies, a random two-piece supply) under the standard above, kept when few
-openings win, then named and ordered by hand.
+Tiers 2 to 6 came from that offline search over random structures (rows with gaps, two-row
+bodies, hanging bodies, a random supply) under the standard above, kept when few openings
+win, then named, ordered and given their lessons by hand after reading each solution wave by
+wave.
 
 ## Architecture
 
@@ -128,8 +161,10 @@ openings win, then named and ordered by hand.
 |---|---|---|
 | Definitions, validation, body colours | `src/core/fault-lines/fault-lines-puzzle.js` | headless |
 | Deal (the real spawn row), landings, lock + cascade, goal judge, failure reasons | `src/core/fault-lines/fault-lines-sim.js` | headless |
+| Every reachable landing: the bot pathfinder's search (same transitions, kicks, cap and path choice) without its allocations | `src/core/fault-lines/fault-lines-reach.js` | headless |
 | Exhaustive solver, straightness, every-piece-matters, a line on from any position | `src/core/fault-lines/fault-lines-solver.js` | headless |
 | Bank, tiers and the unlock rule | `src/core/fault-lines/puzzle-bank.js` | headless |
+| Puzzle search and rank (offline) | `scripts/fault-lines-search.mjs` | tool |
 | Solved set, chosen puzzle, what comes next | `src/core/fault-lines/fault-lines-progress.js` | headless |
 | The mode | `src/core/game-modes/FaultLinesMode.js` | headless, extends `SinglePlayerMode` |
 | Panel, keys, gamepad, saved solves | `src/ui/fault-lines/fault-lines-hud.js`, `public/styles/fault-lines.css` | UI |
@@ -161,7 +196,10 @@ openings win, then named and ordered by hand.
 
 ## Verified
 
-- Unit: the certifier (66 cases over fifteen puzzles), the mode (deal, solve, undo across
+- Unit: the certifier (150 cases over thirty-six puzzles), the reachability differential
+  (`tests/unit/fault-lines-reach.test.js`: every bank puzzle's openings and the boards after
+  each, plus 168 random boards with caves where tucks and spins matter, landing for landing and
+  action for action against `findReachablePlacements`), the mode (deal, solve, undo across
   turns, restart, failure reasons, a blocked deal, hints on and off the stored line, first
   solve, commands, progress), rule gates, the multi-cell differential corpus, menu art and
   the flag registry.
@@ -178,10 +216,18 @@ openings win, then named and ordered by hand.
   could not: the hint key was H, which opens the Serenity Hub (now ?, and the panel defers
   to every move and Serenity binding), and the banner still said "Combo" because the word
   was set on a scene the theme later rebuilt (now carried by the GameState).
+- 2026-10-18, the new tiers in the real game (private Vite, headless Chromium on SwiftShader
+  WebGL2, Forest): Plumb line, Keep the relic and Nothing left played from their stored lines by
+  key presses and solved (six waves with the "Wave 6" banner, the relic on the floor, an empty
+  well); the Puzzles list with a new player's locked tiers as one line each and a veteran's six
+  tiers; no console errors. At about one frame per second the first key after each deal was
+  refused: a hard drop sets Single Player's 30 ms hit-stop, which drains per frame, and commands
+  are refused while it runs (two to four frames at a normal frame rate). A harness that drives
+  this mode must confirm each key on the live piece.
 
 ## Before it ships unflagged
 
-1. **Owner playtest** of the fifteen puzzles and the difficulty curve between tiers.
+1. **Owner playtest** of the thirty-six puzzles and the difficulty curve between tiers.
 2. **Name clearance** for "Fault Lines" before it is player-facing outside the flag.
    Names already in the mode's vocabulary if it fails: Seams, Fault.
 3. **Menu art.** `public/assets/menu-art/fault-lines.webp` is a capture of the mode in the

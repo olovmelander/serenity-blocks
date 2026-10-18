@@ -7,7 +7,6 @@ import {
     odysseyMercyCharms, odysseyMercyDraft, passOdysseyCharm, recordOdysseyFall, takeOdysseyCharm,
     toggleOdysseyCarriedCharm,
 } from '../../src/core/odyssey/odyssey-charms.js';
-import { CHARMS as WAYSTONES_CHARMS } from '../../src/core/waystones/charms.js';
 import { getLevelById } from '../../src/core/odyssey/data/levels.js';
 import { CHAPTER_CONFIGS } from '../../src/core/odyssey/data/chapters.js';
 
@@ -35,18 +34,6 @@ describe('Odyssey charms: the catalogue', () => {
         expect(KEEL_FACTOR).toBe(0.85);
         expect(AFTERGLOW_BONUS).toBe(1500);
         expect(ODYSSEY_CHARM_SLOTS).toBe(3);
-    });
-
-    it('speaks the Waystones language: a charm shared by name keeps its kind, and its score line', () => {
-        ODYSSEY_CHARMS.forEach((charm) => {
-            const twin = WAYSTONES_CHARMS.find((entry) => entry.id === charm.id);
-            if (!twin) return;
-            expect(twin.name).toBe(charm.name);
-            expect(twin.kind).toBe(charm.kind);
-            if (charm.kind === 'score') expect(twin.line).toBe(charm.line);
-        });
-        expect(ODYSSEY_CHARMS.filter((charm) => WAYSTONES_CHARMS.some((entry) => entry.id === charm.id)).length)
-            .toBeGreaterThanOrEqual(3);
     });
 
     it('knows which charms ease an orb: its clock, its rubble, its ask, a fall; the points charms never do', () => {

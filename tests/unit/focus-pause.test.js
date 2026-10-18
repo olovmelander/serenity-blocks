@@ -12,7 +12,7 @@ const playing = {
 
 describe('when losing focus pauses the run', () => {
     it('pauses a running Single Player, Infinity, Odyssey or local multiplayer run', () => {
-        expect(FOCUS_PAUSE_MODES).toEqual(['single', 'local-multiplayer', 'infinity', 'odyssey', 'fault-lines', 'waystones']);
+        expect(FOCUS_PAUSE_MODES).toEqual(['single', 'local-multiplayer', 'infinity', 'odyssey', 'fault-lines']);
         FOCUS_PAUSE_MODES.forEach((modeId) => expect(shouldPauseOnFocusLoss({ ...playing, modeId })).toBe(true));
     });
 

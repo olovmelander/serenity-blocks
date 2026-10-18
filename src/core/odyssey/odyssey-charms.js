@@ -3,12 +3,10 @@
 /**
  * Odyssey charms: gathered along the road, three carried at a time.
  *
- * A charm is a passive in the Waystones shape (core/waystones/charms.js: id, name, kind, one
- * line), so a player who knows one mode knows the other; the catalogue is Odyssey's own, because
- * this road has stars, deadlines, rubble and rivals rather than lanterns and banks. Where
- * Waystones draws a run's drafts by seed, Odyssey's road is authored: each chapter's arrival
- * offers the three charms that suit its orbs (ODYSSEY_CHAPTER_CHARMS), and the road's mercy,
- * after the third fall on one orb, offers the charms that would ease that very orb.
+ * A charm is a passive taken once and kept: an id, a name, a kind and one line. The catalogue
+ * fits this road's stars, deadlines, rubble and rivals, and the road is authored: each chapter's
+ * arrival offers the three charms that suit its orbs (ODYSSEY_CHAPTER_CHARMS), and the road's
+ * mercy, after the third fall on one orb, offers the charms that would ease that very orb.
  *
  * What is gathered stays in the bag for the rest of the journey. Up to three charms are
  * carried onto an orb (ODYSSEY_CHARM_SLOTS), chosen on the map, so the late chapters keep the
