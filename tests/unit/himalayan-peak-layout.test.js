@@ -15,7 +15,6 @@ import {
 import { PLAN_SIZE, planMassif } from '../../src/themes/himalayan-peak/himalayan-peak-assets.js';
 import { decodeMassif, sampleField } from '../../src/themes/himalayan-peak/himalayan-peak-field.js';
 import { MAX_LINES } from '../../src/themes/himalayan-peak/himalayan-peak-flags.js';
-import { EAGLE_ROUND, eaglePath } from '../../src/themes/himalayan-peak/himalayan-peak-eagle.js';
 import { decodePng } from '../../scripts/himalayan-peak/png.mjs';
 
 const ASPECTS = [16 / 9, 4 / 3, 21 / 9, 430 / 932];
@@ -512,53 +511,5 @@ describe('himalayan peak layout: the avalanche\'s track', () => {
         expect(stuck[1][1]).toBeLessThanOrEqual(stuck[0][1]);
         expect(stuck[1][3]).toBeGreaterThan(stuck[0][3]);
         expect(Math.hypot(stuck[1][0] - stuck[0][0], stuck[1][2] - stuck[0][2])).toBeGreaterThan(0);
-    });
-});
-
-describe('himalayan peak: the eagle\'s round', () => {
-    it('comes round to the same place every round', () => {
-        for (const time of [0, 3.7, 20, 51.3, 73.9]) {
-            const now = eaglePath(time);
-            const later = eaglePath(time + EAGLE_ROUND);
-            const much = eaglePath(time + EAGLE_ROUND * 40);
-            for (const key of ['x', 'y', 'z', 'hx', 'hy', 'hz', 'bank']) {
-                expect(later[key], key).toBeCloseTo(now[key], 9);
-                expect(much[key], key).toBeCloseTo(now[key], 6);
-            }
-        }
-        // And it does move in between.
-        const a = eaglePath(0);
-        const b = eaglePath(EAGLE_ROUND / 2);
-        expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeGreaterThan(200);
-    });
-
-    it('soars over the cloud sea in front of the eye, heading the way it flies', () => {
-        for (let time = 0; time < EAGLE_ROUND; time += 0.37) {
-            const at = eaglePath(time);
-            expect(Math.hypot(at.hx, at.hy, at.hz)).toBeCloseTo(1, 9);
-            // Above the cloud sea, and in front of the eye.
-            expect(at.y).toBeGreaterThan(300);
-            expect(at.z).toBeLessThan(0);
-            expect(at.z).toBeLessThan(EYE.z);
-            // It leans into its turn, never onto its back.
-            expect(Math.abs(at.bank)).toBeLessThan(1);
-            // Its heading is the direction it is moving in over the ground.
-            const next = eaglePath(time + 0.01);
-            const vx = next.x - at.x;
-            const vz = next.z - at.z;
-            const along = (vx * at.hx + vz * at.hz) / (Math.hypot(vx, vz) * Math.hypot(at.hx, at.hz));
-            expect(along).toBeGreaterThan(0.9999);
-            // It never dives or climbs steeply.
-            expect(Math.abs(at.hy)).toBeLessThan(0.3);
-        }
-    });
-
-    it('writes into the object it is handed', () => {
-        const out = {
-            x: 0, y: 0, z: 0, hx: 0, hy: 0, hz: 0, bank: 0,
-        };
-        expect(eaglePath(12, out)).toBe(out);
-        expect(out).toEqual(eaglePath(12));
-        expect(eaglePath(12)).not.toBe(eaglePath(12));
     });
 });

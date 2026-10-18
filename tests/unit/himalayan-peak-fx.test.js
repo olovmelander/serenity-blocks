@@ -1267,15 +1267,20 @@ describe('himalayan peak world: the frame, the session and what arrives late', (
         arrivals[0](model());
         await expect(world.eagleReady).resolves.toBe(true);
         expect(world.getState().eagle).toBe(true);
-        expect(world.root.children).toContain(world.parts.eagle.mesh);
-        expect(world.parts.eagle.mesh.visible).toBe(false);
+        // It hangs on the scene itself, not under the squeezed root: upright screens move its
+        // place with the world but never squash its shape.
+        const bird = world.parts.eagle.mesh;
+        expect(world.scene.children).toContain(bird);
+        expect(world.root.children).not.toContain(bird);
+        expect(bird.visible).toBe(false);
         expect(world.parts.sky.mesh.visible).toBe(true);
         expect(world.parts.pass.mesh.visible).toBe(false);
         world.showOnlyParts(['eagle']);
-        expect(world.parts.eagle.mesh.visible).toBe(true);
+        expect(bird.visible).toBe(true);
         expect(world.parts.sky.mesh.visible).toBe(false);
         world.dispose();
         expect(world.eagle).toBeNull();
+        expect(world.scene.children).not.toContain(bird);
 
         // No part list: it is simply there, on its round.
         const open = build();

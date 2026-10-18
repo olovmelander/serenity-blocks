@@ -29,6 +29,8 @@
  *   eagle=0                  do not fetch the eagle
  *   icon=1                   the theme-icon framing: a longer lens turned to the hero peak
  *                            (iconFov, iconYaw, iconPitch; capture a square frame)
+ *   eagleLens=<degrees>      a long lens from the pass held on the eagle (its flight and light
+ *                            are untouched; only the camera turns to follow it)
  */
 import * as THREE from 'three/webgpu';
 import { HimalayanPeakWorld } from '../../themes/himalayan-peak/himalayan-peak-world.js';
@@ -134,6 +136,8 @@ export function create({
     const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
+    const eagleLens = params.has('eagleLens') ? num(params, 'eagleLens', 4) : null;
+    const eagleAt = new THREE.Vector3();
     const size = new THREE.Vector2(1, 1);
     let post = null;
     let built = false;
@@ -171,6 +175,13 @@ export function create({
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
             // The lens's star and shafts hang on where the sun is in THIS frame.
+            world.projectSun(camera);
+        } else if (eagleLens !== null && world.eagle) {
+            world.eagle.mesh.getWorldPosition(eagleAt);
+            camera.fov = eagleLens;
+            camera.lookAt(eagleAt);
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
             world.projectSun(camera);
         }
     };
