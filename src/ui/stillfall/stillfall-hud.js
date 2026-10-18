@@ -7,9 +7,10 @@
  * in localStorage, so the mode never touches storage. Styles: public/styles/stillfall.css.
  *
  * Keys: Backspace (or Ctrl+Z) takes back a piece, R restarts, ? asks for a hint, Enter
- * goes on after a solve. Gamepad: LB takes back, RB restarts, LT asks for a hint, A goes
- * on. The pad is read here (navigator.getGamepads) while a puzzle is on the board; the
- * gamepad controller keeps the piece controls. Select opens the puzzle list, which then
+ * goes on after a solve and takes the last piece back after a miss. Gamepad: LB takes back,
+ * RB restarts, LT asks for a hint, A does what Enter does. The pad is read here
+ * (navigator.getGamepads) while a puzzle is on the board; the gamepad controller keeps the
+ * piece controls. Select opens the puzzle list, which then
  * owns the pad (stillfall-pad-list.js): up and down walk it, A plays, B closes.
  */
 import { eventBus, EVENTS } from '../../events/event-bus.js';
@@ -24,7 +25,7 @@ const SOLVED_KEY = 'serenity.stillfall.solved';
 const LEGACY_SOLVED_KEY = 'serenity.faultLines.solved';
 /** Failed attempts on a puzzle before its hint is offered. */
 const HINT_AFTER_FAILS = 2;
-/** A press right as the cascade solves must not skip the result. */
+/** A press right as the cascade settles must not skip the result. */
 const NEXT_GRACE_MS = 600;
 /** Standard-mapping gamepad buttons (w3c): LB, RB, LT, A. */
 const PAD = {
@@ -67,7 +68,7 @@ function goalText(goal) {
     return 'Bring the relic to the floor';
 }
 
-/** Pips for a counted goal, or a sentence for the others. */
+/** Pips for a counted goal, the blocks still in the well, or the relic's legend. */
 function progressHtml(state) {
     const { goal } = state.puzzle;
     if (goal.type === 'waves' || goal.type === 'lines') {
@@ -81,10 +82,13 @@ function progressHtml(state) {
                 <span class="stillfall-progress__count">${value} / ${goal.atLeast}</span>
             </div>`;
     }
-    const hint = goal.type === 'relic-floor'
-        ? '<span class="stillfall-relic" aria-hidden="true"></span> marks the relic.'
-        : `Every block must go. ${plural(state.cellsLeft, 'remains', 'remain')}.`;
-    return `<p class="stillfall-hint">${hint}</p>`;
+    if (goal.type === 'clear-all') {
+        return `<div class="stillfall-progress" role="img" aria-label="Blocks left: ${state.cellsLeft}">
+                <span class="stillfall-progress__label">Blocks left</span>
+                <span class="stillfall-progress__count">${state.cellsLeft}</span>
+            </div>`;
+    }
+    return '<p class="stillfall-hint"><span class="stillfall-relic" aria-hidden="true"></span> marks the relic.</p>';
 }
 
 /** Where the supply stands: "Piece 1 of 2", "Last piece", "No pieces left". */
@@ -95,20 +99,33 @@ function supplyText(state) {
     return `Piece ${state.dealt + 1} of ${total}`;
 }
 
-/** Why the attempt failed, in the goal's own terms. */
-function failureTitle(state) {
+/**
+ * Why the attempt failed, in the goal's own terms. The goal's row above already shows the
+ * count, so this says what was missing rather than repeating it.
+ */
+export function failureTitle(state) {
     const { goal } = state.puzzle;
     if (state.reason === 'blocked') return 'The next piece has no room.';
     if (state.reason === 'relic-lost') return 'The relic was cleared away.';
-    if (goal.type === 'waves') {
-        return state.bestWaves === 0 ? 'Nothing cleared.' : `The cascade reached ${state.bestWaves} of ${goal.atLeast} waves.`;
+    if (goal.type === 'waves' || goal.type === 'lines') {
+        if (state.lines === 0) return 'Nothing cleared.';
+        const short = goal.atLeast - (goal.type === 'waves' ? state.bestWaves : state.lines);
+        const [one, many] = goal.type === 'waves' ? ['wave', 'waves'] : ['line', 'lines'];
+        return `${plural(short, one, many)} short.`;
     }
-    if (goal.type === 'lines') return `${state.lines} of ${goal.atLeast} lines cleared.`;
-    if (goal.type === 'clear-all') return `${plural(state.cellsLeft, 'block remains', 'blocks remain')}.`;
+    if (goal.type === 'clear-all') return 'The well is not empty.';
     return 'The relic is still up.';
 }
 
-function outcomeHtml(state) {
+/** The miss's way back, named for what it does: a one-piece puzzle simply starts again. */
+function retryHtml(state) {
+    const label = state.puzzle.supply.length === 1 ? 'Try again' : 'Take back';
+    return `<button type="button" class="sb-btn sb-btn--primary stillfall-retry" data-stillfall-action="retry">
+                    <span>${label}</span>${key('Enter')}${pad('A')}
+                </button>`;
+}
+
+export function outcomeHtml(state) {
     if (state.outcome === 'solved') {
         let next;
         if (state.next) {
@@ -130,19 +147,22 @@ function outcomeHtml(state) {
     if (state.outcome === 'failed') {
         return `<div class="stillfall-outcome stillfall-outcome--failed">
                 <p class="stillfall-outcome__title">${escapeHtml(failureTitle(state))}</p>
-                <p class="stillfall-hint">Take a piece back, or start again.</p>
+                ${retryHtml(state)}
             </div>`;
     }
     if (state.hintShown) {
-        const note = state.hintRestarted
-            ? 'No way on from there, so the puzzle started over. The first piece is lit.'
-            : 'The lit outline is where this piece goes.';
+        // A one-piece puzzle always starts over for its hint; saying so would be noise.
+        let note = 'The lit outline is where this piece goes.';
+        if (state.hintRestarted && state.puzzle.supply.length > 1) {
+            note = 'That board had no way on, so the puzzle starts over. '
+                + 'The lit outline is where the first piece goes.';
+        }
         return `<div class="stillfall-outcome stillfall-outcome--hint"><p class="stillfall-hint">${note}</p></div>`;
     }
     return '';
 }
 
-function bankHtml(state) {
+export function bankHtml(state) {
     const solvedIn = (tier) => state.bank.filter((e) => e.tier === tier && e.solved).length;
     return TIERS.map(({ tier, name }, index) => {
         const entries = state.bank.filter((e) => e.tier === tier);
@@ -158,8 +178,8 @@ function bankHtml(state) {
         const next = TIERS[index + 1];
         const nextOpen = next && entries.some((e) => e.open) && state.bank.some((e) => e.tier === next.tier && e.open);
         let note = `${solvedIn(tier)} of ${entries.length} solved`;
-        if (next && !nextOpen && entries.some((e) => e.open)) {
-            note += ` · ${SOLVES_TO_OPEN_NEXT_TIER} open ${escapeHtml(next.name)}`;
+        if (next && !nextOpen) {
+            note += ` · ${SOLVES_TO_OPEN_NEXT_TIER - solvedIn(tier)} more to open ${escapeHtml(next.name)}`;
         }
         return `
         <div class="stillfall-tier">
@@ -189,7 +209,8 @@ class StillfallHud {
         this.listOpen = false;
         /** Failed attempts per puzzle this session; the hint opens after HINT_AFTER_FAILS. */
         this.fails = new Map();
-        this.solvedAt = 0;
+        /** When the latest solve or miss came; a press right at it must not skip the result. */
+        this.outcomeAt = 0;
         this.padFrame = null;
         this.padPrev = new Map();
         /** The list's pad owner while a puzzle is on the board, and where the pad is in the list. */
@@ -208,11 +229,10 @@ class StillfallHud {
         const previous = this.state;
         const samePuzzle = previous?.puzzle.id === state.puzzle.id;
         const previousOpen = new Set((previous?.bank || []).filter((e) => e.open).map((e) => e.id));
-        if (state.outcome === 'solved') {
-            writeSolved(stillfallProgress.solvedIds());
-            if (!samePuzzle || previous.outcome !== 'solved') this.solvedAt = performance.now();
-        }
-        if (state.outcome === 'failed' && (!samePuzzle || previous.outcome !== 'failed')) {
+        const newOutcome = state.outcome !== 'open' && (!samePuzzle || previous.outcome !== state.outcome);
+        if (newOutcome) this.outcomeAt = performance.now();
+        if (state.outcome === 'solved') writeSolved(stillfallProgress.solvedIds());
+        if (state.outcome === 'failed' && newOutcome) {
             this.fails.set(state.puzzle.id, (this.fails.get(state.puzzle.id) || 0) + 1);
         }
         const newlyOpen = previous ? state.bank.find((e) => e.open && !previousOpen.has(e.id)) : null;
@@ -220,10 +240,12 @@ class StillfallHud {
         let unlockedTier = null;
         if (newlyOpen) unlockedTier = tierName(newlyOpen.tier);
         else if (samePuzzle && state.outcome === 'solved' && previous.outcome === 'solved') ({ unlockedTier } = previous);
+        // The hint is for a piece still to place: not once it is lit, and not after the solve.
         this.state = {
             ...state,
             unlockedTier,
-            hintOffered: state.canHint && (this.fails.get(state.puzzle.id) || 0) >= HINT_AFTER_FAILS,
+            hintOffered: state.canHint && !state.hintShown && state.outcome !== 'solved'
+                && (this.fails.get(state.puzzle.id) || 0) >= HINT_AFTER_FAILS,
         };
         this.render();
         this.announce(previous);
@@ -362,8 +384,8 @@ class StillfallHud {
         const firstPuzzle = state.bank[0]?.id === state.puzzle.id && state.dealt === 0 && state.outcome === 'open';
         let hintButton = '';
         if (state.hintOffered) {
-            hintButton = `<button type="button" class="sb-btn sb-btn--quiet stillfall-hint-btn" data-stillfall-action="hint"${state.hintShown ? ' disabled' : ''}>
-                    ${csIcon('star', 14, 'btn-icon-svg')}<span>${state.hintShown ? 'Hint shown' : 'Hint'}</span>${key('?')}${pad('LT')}
+            hintButton = `<button type="button" class="sb-btn sb-btn--quiet stillfall-hint-btn" data-stillfall-action="hint">
+                    ${csIcon('star', 14, 'btn-icon-svg')}<span>Hint</span>${key('?')}${pad('LT')}
                 </button>`;
         }
         this.content.innerHTML = `
@@ -407,9 +429,16 @@ class StillfallHud {
         return Boolean(document.querySelector('.modal.visible')) || document.body.classList.contains('serenity-hub-open');
     }
 
+    /** Enter / A: on to the next puzzle after a solve, or the last piece back after a miss. */
     goOn() {
-        if (this.state?.outcome === 'solved' && this.state.next && performance.now() - this.solvedAt >= NEXT_GRACE_MS) {
+        const { state } = this;
+        if (!state || performance.now() - this.outcomeAt < NEXT_GRACE_MS) return false;
+        if (state.outcome === 'solved' && state.next) {
             this.send('next');
+            return true;
+        }
+        if (state.outcome === 'failed' && state.canUndo) {
+            this.send('undo');
             return true;
         }
         return false;
@@ -434,7 +463,7 @@ class StillfallHud {
             this.send('load', { puzzleId: button.dataset.puzzle });
             return;
         }
-        if (action === 'next') {
+        if (action === 'next' || action === 'retry') {
             this.goOn();
             return;
         }
