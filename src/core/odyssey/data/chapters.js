@@ -100,7 +100,7 @@ export const CHAPTER_CONFIGS = [
 
         themes: {
             primary: [
-                'grainfields', 'moonlit-forest', 'golden-forest', 'moonlit-greenhouse',
+                'grainfields', 'spring', 'golden-forest', 'moonlit-greenhouse',
                 'tornado', 'fall', 'halcyon-apex', 'summer',
             ],
             supporting: [],
@@ -115,7 +115,7 @@ export const CHAPTER_CONFIGS = [
         },
 
         music: {
-            track: 'MoonlitForest',
+            track: 'Spring',
             crossfadeDuration: 3000,
             transitionOutStinger: 'ridgeline-rise',
         },

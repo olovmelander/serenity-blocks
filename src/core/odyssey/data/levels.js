@@ -821,7 +821,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 13,
-        name: 'Moonlit Grove',
+        name: 'Spring Flood',
         chapter: 3,
         chapterLevel: 2,
         isChapterStart: false,
@@ -829,9 +829,9 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.222,
 
         theme: {
-            primary: 'moonlit-forest',
+            primary: 'spring',
             overlays: [],
-            transitionIn: 'warp',
+            transitionIn: 'crossfade',
             transitionDuration: 4000,
         },
 
@@ -882,10 +882,10 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'Moonlight filters through a quiet forest. The surface world welcomes you with a '
-                + 'gentler rhythm.',
+            description: 'A northern river runs high with the spring melt, pouring over its falls past meadows '
+                + 'white with anemones. Keep the gentle rhythm the surface world opened with.',
             difficulty: 4,
-            tip: 'Enjoy the natural pace and focus on clean stacking.',
+            tip: 'Let the rapids set your pace: steady drops, clean lines, and every clear carried away downstream.',
         },
     },
 

@@ -1,7 +1,7 @@
 import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
-import MoonlitForestTheme from '../../src/themes/moonlit-forest/moonlit-forest-theme.js';
+import SpringTheme from '../../src/themes/spring/spring-theme.js';
 
 const state = vi.hoisted(() => ({ instances: [], initialize: null }));
 vi.mock('three/webgpu', async (importOriginal) => {
@@ -48,21 +48,24 @@ afterEach(() => {
 });
 
 describe('portable theme renderer selection', () => {
-    it('retains the Moonlit Forest automatic WebGL2 candidate', async () => {
+    it('retains the Spring automatic WebGL2 candidate', async () => {
+        // A GPU is offered, but the node renderer settles on its own WebGL2 backend during init.
         state.initialize = (renderer) => { renderer.backend = { isWebGLBackend: true }; };
-        const theme = new MoonlitForestTheme();
+        const theme = new SpringTheme();
         theme.isActive = true;
         theme.cleanupComplete = false;
-        vi.spyOn(theme, 'setupRendererResilience').mockImplementation(() => {});
         vi.spyOn(theme, 'disposeRenderer').mockResolvedValue();
         vi.spyOn(theme, 'initializeRendererCandidate').mockImplementation(async (renderer) => {
             await renderer.init();
             return renderer;
         });
-        expect(await theme.initRenderer({ appendChild: vi.fn() }, theme.runtimeGeneration)).toBe(true);
+        const renderer = await theme.createRenderer(theme.lifecycleGeneration);
         expect(state.instances).toHaveLength(1);
+        expect(renderer).toBe(state.instances[0]);
+        expect(renderer.options.forceWebGL).toBe(false); // the automatic candidate, not a forced retry
         expect(theme.disposeRenderer).not.toHaveBeenCalled();
-        expect(theme.renderer.isWebGPURenderer).toBe(true);
-        expect(theme.isWebGPU).toBe(false);
+        expect(renderer.isWebGPURenderer).toBe(true);
+        // createScene records the backend the candidate settled on: WebGL2, so not WebGPU.
+        expect(renderer.backend.isWebGPUBackend === true).toBe(false);
     });
 });

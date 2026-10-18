@@ -173,11 +173,11 @@ Cinder Drift · Cosmic Noir · Crystal Cave · Echoes of the Soul ·
 Ethereal Echoes · Falling Pieces · Floating Islands · Fluid Dreams ·
 Galaxy · Geode Crystalline · Grainfields (titled "Misty Lake" until October 2026) ·
 Himalayan Peak · Ice Temple · Lunara · Meditation Temple ·
-Moonlit Forest · Moonlit Greenhouse · Murmuration (titled "Electric Dreams"
+Moonlit Greenhouse · Murmuration (titled "Electric Dreams"
 until October 2026) · Neon District · Neon Dusk ·
 Ocean Deep · Rainbark (titled "Cosmic Chimes" until October 2026) · Rainy Window ·
-Shifting Sands · Starlight · Stellar Drift · Stillwater ·
-Waves · Wolfhour · Black Hole · Aether Tides.
+Shifting Sands · Spring (titled "Moonlit Forest" until October 2026) · Starlight ·
+Stellar Drift · Stillwater · Waves · Wolfhour · Black Hole · Aether Tides.
 
 Sound effects are generated procedurally in code (`src/audio/sound-effects.js`); no
 third-party audio samples are bundled. Fonts are self-hosted under the SIL Open Font
