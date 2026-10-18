@@ -7,13 +7,16 @@
  * (the orb you finished, its stars, then the theme and song it unlocked); the next orb is a
  * teaser beneath it. When the journey moves on, the ceremony departs in place while the same
  * briefing docks over the live world, so attention never restarts on an unrelated screen.
- * Chapters end in an untimed arrival with a breathing companion.
+ * Chapters end in an untimed arrival with a breathing companion. An arrival may carry the
+ * road's draft of charms; Begin chapter and Map wait until it is taken or passed.
  *
  * Layouts (data-layout): ceremony → departing → scenic | transit, and chapter.
  * State attributes (variant, world stage, covered, revealing, held) keep their old meanings.
  */
 import { el } from './keystone-sheet.js';
+import { ODYSSEY_CHARM_KIND_LABELS } from '../../core/odyssey/odyssey-charms.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
+import { createOdysseyStarNotes } from './odyssey-star-notes.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
 import { describeOpenings } from '../effects/breathing/breath-openings.js';
 import { breathPosterUrl } from '../effects/breathing/breath-catalogue.js';
@@ -89,6 +92,12 @@ export function createJourneyFlowOverlay({
     autoContinue = true,
     reducedMotion = false,
     nowPlaying = false,
+    orientation = [],
+    charmDraft = null,
+    destinationPrefix = 'First',
+    arrivalEyebrow = null,
+    arrivalPrimary = null,
+    entrance = 'direct',
     onChoose = () => {},
     onAutoContinueChange = () => {},
 } = {}) {
@@ -100,6 +109,8 @@ export function createJourneyFlowOverlay({
     modal.id = 'odyssey-flow-overlay';
     modal.dataset.odysseyWheelLock = 'true';
     modal.dataset.variant = variant;
+    // 'afterglow': the well just played its showpiece; the scrim dims slowly over its last light.
+    modal.dataset.entrance = entrance;
     modal.dataset.reducedMotion = String(reducedMotion);
     modal.dataset.crossesChapter = String(crossesChapter);
     modal.role = 'dialog';
@@ -127,7 +138,7 @@ export function createJourneyFlowOverlay({
     const content = el('section', 'ody-flow__content');
     const chapterCopy = [];
     const eyebrow = {
-        chapter: `Chapter ${chapterId} · A new horizon`,
+        chapter: arrivalEyebrow || `Chapter ${chapterId} · A new horizon`,
         transit: 'Your journey continues',
         completion: `Orb ${level?.id || ''} · Complete`,
     }[variant];
@@ -149,6 +160,10 @@ export function createJourneyFlowOverlay({
         if (tallyText) score.appendChild(el('p', 'ody-flow__tally', tallyText));
         content.appendChild(score);
     }
+    // Why these stars: each goal marked, and the next one's shortfall in the player's numbers.
+    const starNotes = variant === 'completion'
+        ? createOdysseyStarNotes(level, results, { className: 'ody-flow__star-notes' }) : null;
+    if (starNotes) content.appendChild(starNotes.list);
     const themeReward = variant === 'completion'
         ? createThemeUnlockReward(results?.themeUnlock, { reducedMotion, variant: 'ceremony', nowPlaying }) : null;
     if (themeReward) {
@@ -190,6 +205,13 @@ export function createJourneyFlowOverlay({
         if (chapter?.narrative?.intro) {
             chapterCopy.push(el('p', 'ody-flow__narrative', chapter.narrative.intro));
         }
+        // A first arrival carries the few things a new traveller needs to know.
+        if (orientation.length) {
+            const notes = el('ul', 'ody-flow__orientation');
+            notes.ariaLabel = 'How the journey works';
+            orientation.forEach((line) => notes.appendChild(el('li', '', line)));
+            chapterCopy.push(notes);
+        }
         chapterCopy.forEach((node) => {
             node.hidden = variant !== 'chapter';
             nextBlock.appendChild(node);
@@ -209,7 +231,7 @@ export function createJourneyFlowOverlay({
         const destination = el('p', 'ody-flow__destination');
         const nextLabel = `Next · Orb ${nextLevel.id}${variant === 'chapter' ? ` · ${nextLevel.name}` : ''}`;
         destinationLabel = el('span', 'ody-flow__orb-label', variant === 'chapter'
-            ? `First · Orb ${nextLevel.id} · ${nextLevel.name}` : nextLabel);
+            ? `${destinationPrefix} · Orb ${nextLevel.id} · ${nextLevel.name}` : nextLabel);
         if (crossesChapter && variant === 'completion') {
             destinationLabel.textContent = `First · Orb ${nextLevel.id} · ${nextLevel.name}`;
         }
@@ -223,6 +245,12 @@ export function createJourneyFlowOverlay({
             nextBlock.appendChild(changes);
         }
     }
+    // The road's charms: a draft of three at a chapter's arrival. Take one or pass; Begin
+    // chapter and Map wait until the draft is settled, as a Waystones road does.
+    const charmBlock = el('div', 'ody-flow__charms');
+    charmBlock.hidden = true;
+    nextBlock.appendChild(charmBlock);
+    chapterCopy.push(charmBlock);
     content.appendChild(nextBlock);
 
     const status = el('p', 'ody-flow__status');
@@ -238,7 +266,7 @@ export function createJourneyFlowOverlay({
     const primary = el(
         'button',
         'sb-btn sb-btn--primary ody-flow__primary',
-        variant === 'chapter' ? 'Begin chapter' : 'Continue now',
+        variant === 'chapter' ? (arrivalPrimary || 'Begin chapter') : 'Continue now',
     );
     primary.type = 'button';
     primary.dataset.flowAction = 'next';
@@ -300,7 +328,14 @@ export function createJourneyFlowOverlay({
     const autoContinueMs = getCompletionHoldMs({
         hasReward: Boolean(themeReward),
         rewardWords: themeReward?.readingWords || 0,
-        briefingWords: countWords(nextEyebrow?.textContent, breathOpening?.textContent, titleNode.textContent, briefing?.goal, briefing?.changes),
+        briefingWords: countWords(
+            nextEyebrow?.textContent,
+            breathOpening?.textContent,
+            titleNode.textContent,
+            briefing?.goal,
+            briefing?.changes,
+            starNotes?.readingWords,
+        ),
     });
     modal.autoContinueMs = autoContinueMs;
     modal.style.setProperty('--ody-flow-hold', `${autoContinueMs}ms`);
@@ -323,6 +358,83 @@ export function createJourneyFlowOverlay({
         target.addEventListener(type, handler, capture);
         listeners.push(() => target.removeEventListener(type, handler, capture));
     };
+    // The draft shows as cards; one tap takes a charm, Pass declines. Until the draft is
+    // settled, Begin chapter and Map explain instead of acting.
+    let charmChoice = null;
+    let charmSettled = true;
+    let charmNodes = [];
+    const clearNode = (node) => {
+        if (typeof node.replaceChildren === 'function') node.replaceChildren();
+        else if (Array.isArray(node.children)) node.children.splice(0);
+    };
+    const settleCharm = (taken, setDown = null) => {
+        charmSettled = true;
+        charmNodes = [];
+        clearNode(charmBlock);
+        modal.dataset.charmPending = 'false';
+        let line = 'No charm this time. The road offers more ahead.';
+        if (taken && setDown) {
+            line = `${taken.name} is yours and carried from here. ${setDown.name} was set down to make room; `
+                + 'change what you carry on the map.';
+        } else if (taken) line = `${taken.name} is yours and carried from here. ${taken.line}`;
+        const settled = el('p', 'ody-flow__charm-settled', line);
+        settled.role = 'status';
+        charmBlock.appendChild(settled);
+        status.textContent = '';
+        if (!visibilityHeld) primary.focus({ preventScroll: true });
+    };
+    const renderCharmDraft = () => {
+        clearNode(charmBlock);
+        charmNodes = [];
+        const draft = charmChoice;
+        if (!draft || presentationVariant !== 'chapter') {
+            charmBlock.hidden = true;
+            modal.dataset.charmPending = 'false';
+            return;
+        }
+        charmBlock.hidden = false;
+        modal.dataset.charmPending = 'true';
+        charmBlock.appendChild(el('p', 'ody-flow__charms-label', 'The road offers a charm'));
+        const hint = el('p', 'ody-flow__charms-hint', 'Take one and keep it, or pass. You carry up to three at a time.');
+        charmBlock.appendChild(hint);
+        const list = el('div', 'ody-flow__charm-list');
+        list.role = 'group';
+        list.ariaLabel = 'Charms offered';
+        draft.charms.forEach((charm) => {
+            const card = el('button', 'ody-charm');
+            card.type = 'button';
+            card.dataset.charm = charm.id;
+            card.dataset.kind = charm.kind;
+            card.appendChild(el('i', 'ody-charm__kind', ODYSSEY_CHARM_KIND_LABELS[charm.kind] || ''));
+            card.appendChild(el('b', 'ody-charm__name', charm.name));
+            card.appendChild(el('span', 'ody-charm__line', charm.line));
+            card.addEventListener('click', () => {
+                if (disposed || retained || charmSettled) return;
+                const outcome = draft.onTake?.(charm.id);
+                if (outcome === false || outcome === null) return;
+                settleCharm(charm, outcome?.setDown || null);
+            });
+            list.appendChild(card);
+            charmNodes.push(card);
+        });
+        charmBlock.appendChild(list);
+        const pass = el('button', 'sb-btn ody-flow__quiet ody-flow__charm-pass', 'Pass');
+        pass.type = 'button';
+        pass.dataset.flowAction = 'pass-charm';
+        pass.addEventListener('click', () => {
+            if (disposed || retained || charmSettled) return;
+            draft.onPass?.();
+            settleCharm(null);
+        });
+        charmBlock.appendChild(pass);
+        charmNodes.push(pass);
+    };
+    const setCharmDraft = (draft) => {
+        charmChoice = draft?.charms?.length ? draft : null;
+        charmSettled = !charmChoice;
+        renderCharmDraft();
+    };
+    modal.setCharmDraft = setCharmDraft;
     const later = (callback, milliseconds) => {
         const timer = setTimeout(() => {
             timers.delete(timer);
@@ -417,6 +529,11 @@ export function createJourneyFlowOverlay({
     };
     const choose = (choice) => {
         if (disposed || chosen) return;
+        if (!charmSettled && presentationVariant === 'chapter' && (choice === 'next' || choice === 'map')) {
+            status.textContent = 'Take a charm or pass to go on.';
+            charmNodes[0]?.focus({ preventScroll: true });
+            return;
+        }
         if (choice === 'next' && (visibilityHeld || !isVisible())) {
             hold();
             return;
@@ -613,7 +730,7 @@ export function createJourneyFlowOverlay({
         modal.dataset.layout = 'transit';
         modal.dataset.departing = 'false';
         modal.inert = false;
-        [primary, resume, pause, details, map, checkbox].filter(Boolean).forEach((node) => {
+        [...charmNodes, primary, resume, pause, details, map, checkbox].filter(Boolean).forEach((node) => {
             node.disabled = true;
         });
         status.textContent = 'Returning to the map…';
@@ -668,7 +785,7 @@ export function createJourneyFlowOverlay({
     };
     // A chapter arrival is the same presence owner with an untimed Begin action.
     // Authored narrative appears only after the caller has settled the new vista.
-    modal.showChapter = ({ onChoose: nextChoose, completedChapter = null } = {}) => {
+    modal.showChapter = ({ onChoose: nextChoose, completedChapter = null, charmDraft: nextDraft = null } = {}) => {
         if (disposed || retained || !transitActive) return false;
         if (themeReward) themeReward.hidden = true;
         transitActive = false;
@@ -711,6 +828,7 @@ export function createJourneyFlowOverlay({
         details.hidden = true;
         if (preference) preference.hidden = true;
         chapterCopy.forEach((node) => { node.hidden = false; });
+        setCharmDraft(nextDraft);
         if (destinationLabel) destinationLabel.textContent = `First · Orb ${nextLevel.id} · ${nextLevel.name}`;
         modal.scrollTop = 0;
         content.scrollTop = 0;
@@ -768,7 +886,7 @@ export function createJourneyFlowOverlay({
             onAutoContinueChange(checkbox.checked);
         });
     }
-    const focusables = () => [primary, resume, pause, details, map, checkbox]
+    const focusables = () => [...charmNodes, primary, resume, pause, details, map, checkbox]
         .filter((node) => node && !node.hidden && !node.disabled);
     listen(document, 'keydown', (event) => {
         if (disposed || chosen) return;
@@ -827,6 +945,7 @@ export function createJourneyFlowOverlay({
         if (visibilityHeld) initialFocus = resume;
         initialFocus.focus({ preventScroll: true });
     }, 0);
+    setCharmDraft(charmDraft);
     syncLayout();
     if (variant === 'chapter') mountBreath();
     if (variant === 'completion' && autoContinue) {

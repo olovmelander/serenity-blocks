@@ -36,9 +36,9 @@ function initialObservation(levelId = 49) {
 
 describe('bounded Odyssey mastery search', () => {
     it('requires actual joint tier-three metrics but keeps independent optional bonuses separate', () => {
-        const rules = rulesFor(56);
+        const rules = rulesFor(55);
         const progress = metrics({
-            score: 500000, cascades: 35, maxCascadeDepth: 18, maxCombo: 18, tetrises: 0,
+            score: 400000, cascades: 28, maxCascadeDepth: 6, maxCombo: 6, tetrises: 0,
         });
         const quality = evaluateMasteryMetrics(rules, progress);
         expect(quality.masteryUntimedConditionsMet).toBe(true);
@@ -48,11 +48,11 @@ describe('bounded Odyssey mastery search', () => {
         expect(quality.timedStars).toBeNull();
         // Showcase completion may follow a top-out; these authored tiers do not require survival.
         expect(evaluateMasteryMetrics(rules, progress, { isGameOver: true }).masteryUntimedConditionsMet).toBe(true);
-        expect(evaluateMasteryMetrics(rules, { ...progress, maxCombo: 17 }).masteryUntimedConditionsMet).toBe(false);
-        expect(evaluateMasteryMetrics(rules, { ...progress, cascades: 34 }).masteryUntimedConditionsMet).toBe(false);
-        const missing = evaluateMasteryMetrics(rules, { ...progress, maxCombo: 17 }).residualRequirements.tierThree;
-        expect(missing.find((requirement) => requirement.key === 'combo'))
-            .toMatchObject({ actual: 17, target: 18, remaining: 1 });
+        expect(evaluateMasteryMetrics(rules, { ...progress, maxCascadeDepth: 5 }).masteryUntimedConditionsMet).toBe(false);
+        expect(evaluateMasteryMetrics(rules, { ...progress, cascades: 27 }).masteryUntimedConditionsMet).toBe(false);
+        const missing = evaluateMasteryMetrics(rules, { ...progress, maxCascadeDepth: 5 }).residualRequirements.tierThree;
+        expect(missing.find((requirement) => requirement.key === 'maxCascadeDepth'))
+            .toMatchObject({ actual: 5, target: 6, remaining: 1 });
         expect(evaluateMasteryMetrics(rulesFor(49), metrics({ score: 35000 })).scoreFinishHeadroom).toBe(1000);
     });
 
@@ -139,10 +139,10 @@ describe('bounded Odyssey mastery search', () => {
     });
 
     it('preserves acquired-primary history after the showcase deadline without qualifying time bonuses', () => {
-        const rules = structuredClone(rulesFor(56));
+        const rules = structuredClone(rulesFor(55));
         rules.victory.bonuses = [{ type: 'time', target: 480 }];
-        rules.stars.three = { score: 500000, bonuses: 1 };
-        const late = metrics({ score: 500000, time: 600 });
+        rules.stars.three = { score: 400000, bonuses: 1 };
+        const late = metrics({ score: 400000, time: 600 });
         expect(evaluateMasteryMetrics(rules, late).primaryReachedUntimed).toBe(false);
         const acquired = evaluateMasteryMetrics(rules, late, { primaryAcquired: true });
         expect(acquired.primaryReachedUntimed).toBe(true);
@@ -226,13 +226,13 @@ describe('bounded Odyssey mastery search', () => {
     });
 
     it('does not require unrelated optional bonuses before retaining a tier-three candidate', async () => {
-        const level = structuredClone(levels.getLevelById(56));
+        const level = structuredClone(levels.getLevelById(55));
         level.victory.primary.target = 50;
         level.stars.three = { score: 50 };
         const lookup = vi.spyOn(levels, 'getLevelById').mockReturnValue(level);
         try {
             const candidate = await searchMastery({
-                levelId: 56, seed: 9101, maxPieces: 5, maxNodes: 200, unknownTailDepth: 0,
+                levelId: 55, seed: 9101, maxPieces: 5, maxNodes: 200, unknownTailDepth: 0,
             });
             expect(candidate.termination).toBe('untimed-tier-three-met');
             expect(candidate.status).toBe('candidate');
@@ -255,7 +255,7 @@ describe('bounded Odyssey mastery search', () => {
         const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
         try {
             const candidate = await searchMastery({
-                levelId: 56,
+                levelId: 55,
                 seed: 9101,
                 maxPieces: 10,
                 maxNodes: 12500,

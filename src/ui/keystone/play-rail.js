@@ -85,7 +85,7 @@ function describe(id, modeId) {
         // Outside Serenity the pad reaches the Hub through Settings (Start, then Serenity Hub).
         return { text: 'Serenity Hub', keys: keycap(keyName(hubKey()), 'key') + (serenity ? keycap(pad, 'pad') : '') };
     }
-    return { text: 'Levels', keys: '' };
+    return { text: 'Map', keys: '' };
 }
 
 function labelOf(tile) {

@@ -2,7 +2,12 @@ import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import { OdysseyStateManager, migrateOdysseyProgressData } from '../../src/core/odyssey/OdysseyStateManager.js';
-import { ODYSSEY_SAVE_VERSION, migrateV3OdysseyLevelId } from '../../src/core/odyssey/odyssey-progress-schema.js';
+import {
+    ODYSSEY_SAVE_VERSION, migrateV3OdysseyLevelId, migrateV4OdysseyLevelId,
+} from '../../src/core/odyssey/odyssey-progress-schema.js';
+
+/** A v3 authored identity's public id today: through the v4 re-key and the v5 chapter-end rotation. */
+const publicId = (oldId) => migrateV4OdysseyLevelId(migrateV3OdysseyLevelId(oldId));
 import { LevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
 import { ThemeCollectionService } from '../../src/core/progression/theme-collection-service.js';
 import { THEME_REGISTRY, resolveThemeId } from '../../src/themes/theme-registry.js';
@@ -50,11 +55,12 @@ describe('Odyssey v4 challenge identity migration', () => {
         expect(migrated.version).toBe(ODYSSEY_SAVE_VERSION);
         expect(Object.keys(migrated.completedLevels)).toHaveLength(58);
         for (let oldId = 1; oldId <= 59; oldId++) {
-            const newId = migrateV3OdysseyLevelId(oldId);
+            const newId = publicId(oldId);
             if (newId) expect(migrated.completedLevels[newId].bestScore).toBe(oldId * 100);
         }
+        // The two orbs inserted in v4 (Vesper at 43, Serenity Passage now at 54) were never cleared.
         expect(migrated.completedLevels[43]).toBeUndefined();
-        expect(migrated.completedLevels[55]).toBeUndefined();
+        expect(migrated.completedLevels[54]).toBeUndefined();
         expect(migrated.retiredCompletions['v3:10'].bestScore).toBe(1000);
         expect(migrated.unlockedLevels).toEqual(Array.from({ length: 60 }, (_, index) => index + 1));
         expect(migrated.currentLevel).toBe(60);
@@ -67,13 +73,13 @@ describe('Odyssey v4 challenge identity migration', () => {
         const migrated = migrateOdysseyProgressData({
             version: 3, completedLevels: { 19: completed('vesper-chrysalis'), 59: completed('serenity-warp') },
         });
-        expect(migrated.completedLevels[18].themeId).toBe('vesper-chrysalis');
-        expect(migrated.completedLevels[60].themeId).toBe('serenity-warp');
+        expect(migrated.completedLevels[publicId(19)].themeId).toBe('vesper-chrysalis');
+        expect(migrated.completedLevels[publicId(59)].themeId).toBe('serenity-warp');
         expect(migrated.completedLevels[43]).toBeUndefined();
-        expect(migrated.completedLevels[55]).toBeUndefined();
+        expect(migrated.completedLevels[54]).toBeUndefined();
     });
 
-    it.each([[43, 43], [54, 55]])('opens inserted orb after successful preceding old orb %i', (oldId, newId) => {
+    it.each([[43, 43], [54, 54]])('opens inserted orb after successful preceding old orb %i', (oldId, newId) => {
         const prior = {
             version: 3, currentLevel: oldId, unlockedLevels: [oldId], completedLevels: {},
         };
@@ -101,12 +107,13 @@ describe('Odyssey v4 challenge identity migration', () => {
             version: 3, completedLevels: { 10: completed('bioluminescence-2'), 11: completed('stillwater', 2) },
         }));
         const state = new OdysseyStateManager();
-        expect(state.isLevelCompleted(10)).toBe(true);
+        // Stillwater Sanctuary is orb 9 today: its chapter now ends on the Coral duel.
+        expect(state.isLevelCompleted(9)).toBe(true);
         expect(state.getTotalStars()).toBe(2);
         state.completeLevel(1, { stars: 1 });
         const saved = JSON.parse(storage.getItem(ODYSSEY_PROGRESS_STORAGE_KEY));
         expect(saved.retiredCompletions['v3:10'].themeIds).toEqual(['bioluminescence-2']);
-        expect(saved.completedLevels['10'].themeId).toBe('stillwater');
+        expect(saved.completedLevels['9'].themeId).toBe('stillwater');
         expect(saved.statistics.totalStars).toBe(3);
     });
 

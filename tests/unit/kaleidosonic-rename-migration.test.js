@@ -18,8 +18,9 @@ import { LEVEL_CONFIGS } from '../../src/core/odyssey/data/levels.js';
 const STORAGE_KEY = 'serenityBlocksSettings';
 const OLD_THEME = 'singing-bowl';
 const OLD_TRACK = 'SingingBowl';
-// The orb is authored as id 55 in levels.js and plays as orb 56 of the 60-orb campaign.
-const ORB_ID = 56;
+// The orb is authored as id 55 in levels.js and plays as orb 55 of the 60-orb campaign (the
+// chapter 7 rival duel took the chapter's last slot).
+const ORB_ID = 55;
 // The frozen v2 table (odyssey-progress-schema.js) stamps the old id at index 55.
 const V2_ORB_INDEX = 55;
 
@@ -131,7 +132,11 @@ describe('Kaleidosonic took the Singing Bowl orb: what a player already has now 
         expect(orb).toBeDefined();
         expect(orb.id).toBe(ORB_ID);
         expect(orb.chapter).toBe(7);
-        expect(orb.isChapterEnd).toBe(true);
+        // The chapter now ends on its rival duel; Indra's Net is the showcase right before it.
+        expect(orb.isChapterEnd).toBe(false);
+        expect(LEVEL_CONFIGS.find((level) => level.id === orb.id + 1)).toMatchObject({
+            chapter: 7, isChapterEnd: true, mechanics: { versus: { botName: 'Prism' } },
+        });
         expect(orb.name).toBe('Indra\'s Net');
         expect(JSON.stringify(LEVEL_CONFIGS)).not.toMatch(/Recursive Infinity/);
         expect(orb.metadata.description).toBe('The final abstract challenge. A kaleidoscopic temple of folded light '

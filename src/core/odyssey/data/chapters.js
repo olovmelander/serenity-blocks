@@ -12,6 +12,8 @@ export const DEFAULT_BOARD_TRANSITION = Object.freeze({
     fxPreset: 'standard',
 });
 
+// Every chapter ends on its rival duel (campaign-order.js rotateDuelsToChapterEnd), so each
+// chapter's last beat below is the duel orb's authored role.
 // NOTE: `arcBeats` and `targetDifficultyCurve` are documentation of design INTENT,
 // not the live driver. Actual gameplay difficulty is derived in difficulty-model.js
 // from the per-level `role`/`mechanicFocus`/`emotionalBeat` tags in levels.js
@@ -25,11 +27,11 @@ export const CHAPTER_CONFIGS = [
         name: 'Earth Core & Subterranean Origins',
         subtitle: 'Find your first rhythm',
         levelRange: [1, 5],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'test', 'boss'],
-        targetDifficultyCurve: [1, 2, 2, 3, 4],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'boss', 'test'],
+        targetDifficultyCurve: [1, 2, 2, 4, 3],
 
         themes: {
-            primary: ['cinder-drift', 'crystal-cave', 'geode', 'pyrestorm', 'bioluminescence'],
+            primary: ['cinder-drift', 'crystal-cave', 'geode', 'bioluminescence', 'pyrestorm'],
             supporting: [],
         },
 
@@ -59,11 +61,11 @@ export const CHAPTER_CONFIGS = [
         name: 'Deep Ocean & Liquid Worlds',
         subtitle: 'Drift, dive, recover',
         levelRange: [6, 10],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'reinforce', 'boss'],
-        targetDifficultyCurve: [3, 4, 4, 5, 6],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'boss', 'reinforce'],
+        targetDifficultyCurve: [3, 4, 4, 6, 5],
 
         themes: {
-            primary: ['ocean', 'luminous-tides', 'koi-pond', 'waves', 'stillwater'],
+            primary: ['ocean', 'luminous-tides', 'koi-pond', 'stillwater', 'waves'],
             supporting: [],
         },
 
@@ -93,13 +95,13 @@ export const CHAPTER_CONFIGS = [
         name: 'Surface World & Living Landscapes',
         subtitle: 'Learn the seasons',
         levelRange: [11, 18],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'teach', 'test', 'test', 'release', 'boss'],
-        targetDifficultyCurve: [4, 4, 5, 5, 6, 6, 5, 7],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'teach', 'test', 'release', 'boss', 'test'],
+        targetDifficultyCurve: [4, 4, 5, 5, 6, 5, 7, 6],
 
         themes: {
             primary: [
                 'misty-lake', 'moonlit-forest', 'golden-forest', 'moonlit-greenhouse',
-                'tornado', 'summer', 'fall', 'halcyon-apex',
+                'tornado', 'fall', 'halcyon-apex', 'summer',
             ],
             supporting: [],
         },
@@ -134,13 +136,13 @@ export const CHAPTER_CONFIGS = [
         name: 'Mountains & Thin-Air Ascension',
         subtitle: 'Climb the ridgeline',
         levelRange: [19, 26],
-        arcBeats: ['arrival', 'teach', 'reinforce', 'reinforce', 'test', 'release', 'test', 'boss'],
-        targetDifficultyCurve: [6, 6, 6, 6, 7, 6, 7, 8],
+        arcBeats: ['arrival', 'teach', 'reinforce', 'reinforce', 'test', 'release', 'boss', 'test'],
+        targetDifficultyCurve: [6, 6, 6, 6, 7, 6, 8, 7],
 
         themes: {
             primary: [
                 'sakura-twilight', 'verdant-hills', 'ice-temple', 'wolfhour',
-                'himalayan-peak', 'high-coast', 'winter', 'moonrise-summit',
+                'himalayan-peak', 'high-coast', 'moonrise-summit', 'winter',
             ],
             supporting: [],
         },
@@ -174,13 +176,13 @@ export const CHAPTER_CONFIGS = [
         name: 'Sky & Atmospheric Drift',
         subtitle: 'Cross the last air',
         levelRange: [27, 34],
-        arcBeats: ['arrival', 'release', 'reinforce', 'reinforce', 'test', 'reinforce', 'boss', 'boss'],
-        targetDifficultyCurve: [7, 6, 6, 6, 8, 7, 9, 9],
+        arcBeats: ['arrival', 'release', 'reinforce', 'reinforce', 'test', 'boss', 'boss', 'reinforce'],
+        targetDifficultyCurve: [7, 6, 6, 6, 8, 9, 9, 7],
 
         themes: {
             primary: [
                 'sunset', 'starlight', 'aurora', 'nimbus-veil',
-                'rainy-window', 'sky-children', 'parhelion', 'lunara',
+                'rainy-window', 'parhelion', 'lunara', 'sky-children',
             ],
             supporting: [],
         },
@@ -219,15 +221,15 @@ export const CHAPTER_CONFIGS = [
         levelRange: [35, 48],
         arcBeats: [
             'arrival', 'teach', 'reinforce', 'test', 'test', 'test', 'reinforce',
-            'test', 'release', 'test', 'release', 'boss', 'release', 'boss',
+            'test', 'release', 'release', 'boss', 'release', 'boss', 'test',
         ],
-        targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 8, 9, 6, 10, 7, 10, 7, 10],
+        targetDifficultyCurve: [8, 8, 8, 9, 10, 9, 8, 9, 6, 7, 10, 7, 10, 10],
 
         themes: {
             primary: [
                 'galaxy', 'cosmic-noir', 'supernova', 'blood-moon', 'void-ember', 'aether-tides',
-                'astral-weave', 'shifting-sands', 'vesper-chrysalis', 'stellar-velocity', 'stellar-drift',
-                'solar-eclipse', 'rainbark', 'black-hole',
+                'astral-weave', 'shifting-sands', 'vesper-chrysalis', 'stellar-drift', 'solar-eclipse',
+                'rainbark', 'black-hole', 'stellar-velocity',
             ],
             supporting: [],
         },
@@ -264,13 +266,13 @@ export const CHAPTER_CONFIGS = [
         name: 'Black Hole & Abstract Transcendence',
         subtitle: 'Surrender to abstraction',
         levelRange: [49, 56],
-        arcBeats: ['arrival', 'reinforce', 'test', 'boss', 'test', 'release', 'teach', 'boss'],
-        targetDifficultyCurve: [8, 9, 9, 10, 10, 8, 7, 10],
+        arcBeats: ['arrival', 'reinforce', 'test', 'boss', 'release', 'teach', 'boss', 'test'],
+        targetDifficultyCurve: [8, 9, 9, 10, 8, 7, 10, 10],
 
         themes: {
             primary: [
                 'fluid-dreams', 'nebula-flow', 'chiral-gold', 'voltage-storm',
-                'chromatic-impasto', 'murmuration', 'serenity-warp', 'kaleidosonic',
+                'murmuration', 'serenity-warp', 'kaleidosonic', 'chromatic-impasto',
             ],
             supporting: [],
         },
@@ -311,7 +313,7 @@ export const CHAPTER_CONFIGS = [
         targetDifficultyCurve: [7, 8, 9, 10],
 
         themes: {
-            primary: ['chromadelic-highway', 'neon-dusk', 'synthwave-sunset', 'neon-district'],
+            primary: ['chromadelic-highway', 'neon-dusk', 'neon-district', 'synthwave-sunset'],
             supporting: [],
         },
 

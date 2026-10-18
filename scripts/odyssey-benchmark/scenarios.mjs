@@ -44,14 +44,14 @@ export const BENCHMARK_SCENARIOS = Object.freeze([
         label: 'Duel fall 850 ms',
         levelIds: duelIds,
         requiresDuel: true,
-        description: 'Both wells use 850 ms gravity; retain the seven-frag target and opponent tier.',
+        description: 'Both wells use 850 ms gravity; retain the knockout target and opponent tier.',
     },
     {
         id: 'duel-fall700',
         label: 'Duel fall 700 ms',
         levelIds: duelIds,
         requiresDuel: true,
-        description: 'Both wells use 700 ms gravity; retain the seven-frag target and opponent tier.',
+        description: 'Both wells use 700 ms gravity; retain the knockout target and opponent tier.',
     },
 ].map((scenario) => Object.freeze({
     ...scenario,

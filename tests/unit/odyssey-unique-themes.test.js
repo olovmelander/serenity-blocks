@@ -41,7 +41,7 @@ describe('Odyssey exclusive orb themes', () => {
             themeIds: ['painted-ages'],
             label: 'Complete every orb in Odyssey Chapter 4 · Mountains & Thin-Air Ascension.',
         }]);
-        expect(registry.getLevel(47).theme.primary).toBe('rainbark');
+        expect(registry.getLevel(46).theme.primary).toBe('rainbark');
         expect(catalog.has('rainbark')).toBe(true);
         for (const themeId of bonusThemes) {
             expect(catalog.get(themeId).icon).toBeTruthy();
@@ -88,8 +88,9 @@ describe('Odyssey exclusive orb themes', () => {
         expect(registry.getLevel(42).theme.primary).toBe('shifting-sands');
         expect(registry.getLevel(43).theme.primary).toBe('vesper-chrysalis');
         expect(registry.getLevel(51).theme.primary).toBe('chiral-gold');
-        expect(registry.getLevel(55).theme.primary).toBe('serenity-warp');
-        expect(registry.getLevel(56).theme.primary).toBe('kaleidosonic');
+        expect(registry.getLevel(54).theme.primary).toBe('serenity-warp');
+        expect(registry.getLevel(55).theme.primary).toBe('kaleidosonic');
+        expect(registry.getLevel(56).theme.primary).toBe('chromatic-impasto');
         expect(registry.getLevel(57).theme.primary).toBe('chromadelic-highway');
         expect(registry.getLevel(58).theme.primary).toBe('neon-dusk');
         expect(registry.getLevel(58).chapter).toBe(8);
@@ -117,7 +118,7 @@ describe('Odyssey exclusive orb themes', () => {
 
     it('uses a score release and a bounded cascade rehearsal before the established capstones', () => {
         const vesper = registry.getLevel(43);
-        const warp = registry.getLevel(55);
+        const warp = registry.getLevel(54);
         expect(vesper.role).toBe('release');
         expect(vesper.victory.primary).toEqual({ type: 'score', target: 43000 });
         expect(vesper.victory.failure.type).toBe('top-out');
@@ -128,7 +129,8 @@ describe('Odyssey exclusive orb themes', () => {
         expect(warp.mechanics.speed.fixedDropInterval).toBe(600);
         expect(warp.stars.three).toEqual({ cascades: 10, maxCascadeDepth: 4 });
         expect(warp.metadata.difficultyModel.profile).toBe('tall-board-rehearsal');
-        expect(warp.mechanics.board.rows).toBeLessThan(registry.getLevel(56).mechanics.board.rows);
+        expect(warp.mechanics.board.rows).toBeLessThan(registry.getLevel(55).mechanics.board.rows);
         expect(registry.getLevel(56).isChapterEnd).toBe(true);
+        expect(registry.getLevel(56).mechanics.versus.botName).toBe('Prism');
     });
 });

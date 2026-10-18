@@ -17,16 +17,16 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
         expect(JSON.stringify(result)).not.toMatch(/enabled|4 rows|infinity/i);
     });
 
-    it('presents the composed first duel and explains frags instead of obsolete solo objectives', () => {
-        const result = briefing(4, 3);
-        expect(result.goal).toBe('Beat Cinder · First to 7 frags');
+    it('presents the composed first duel and explains knockouts instead of obsolete solo objectives', () => {
+        const result = briefing(5, 4);
+        expect(result.goal).toBe('Defeat Cinder · First to 3 knockouts');
         expect(result.changes).toEqual([
-            'Clear lines to send attacks; attack knockouts earn frags.',
-            'Both boards reset after a knockout.',
+            'Clear lines to send attacks; topping out the rival with an attack scores a knockout.',
+            'Both wells reset after a knockout.',
         ]);
-        expect(result.rules).toEqual(['Clear lines to send attacks; attack knockouts earn frags.']);
+        expect(result.rules).toEqual(['Clear lines to send attacks; topping out the rival with an attack scores a knockout.']);
         expect(result.deadline).toBeNull();
-        expect(JSON.stringify(result)).not.toMatch(/score|seconds|speed boost/i);
+        expect(JSON.stringify(result)).not.toMatch(/points|seconds|speed boost/i);
     });
 
     it('exposes the real seeded taller board at the early chapter transition', () => {
@@ -55,7 +55,7 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
     });
 
     it('retains a finale deadline, full well setup and score streak rule after the preview', () => {
-        const result = briefing(56, 55);
+        const result = briefing(55, 54);
         expect(result.goal).toBe('Score 250,000 points');
         expect(result.changes).toEqual([
             'Reach the goal within 8:00.',
@@ -66,11 +66,11 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
     });
 
     it('prioritizes changed controls and a real deadline while retaining chain and score rules', () => {
-        const next = structuredClone(getLevelById(56));
+        const next = structuredClone(getLevelById(55));
         next.victory.primary = { type: 'combo', target: 4 };
         next.victory.failure.value = 45;
         next.modifiers.active.push('mirror');
-        const result = getOdysseyLevelBriefing(next, getLevelById(54));
+        const result = getOdysseyLevelBriefing(next, getLevelById(53));
         expect(result.goal).toBe('Trigger a chain of at least 4 waves');
         expect(result.changes).toEqual([
             'Left and right controls are reversed.',
@@ -102,7 +102,7 @@ describe('Odyssey next-orb briefing from effective campaign rules', () => {
     it('handles missing or unknown data without invented rules or exposing unknown identifiers', () => {
         for (const value of [null, undefined, {}, { victory: { primary: { type: 'unknown', target: 5 } } }]) {
             expect(getOdysseyLevelBriefing(value)).toEqual({
-                goal: 'Complete the level', changes: [], rules: [], deadline: null,
+                goal: 'Clear the orb', changes: [], rules: [], deadline: null,
             });
         }
         const malformed = {

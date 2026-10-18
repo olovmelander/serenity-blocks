@@ -33,13 +33,13 @@ describe('Odyssey difficulty balance', () => {
         expect(firstSprint.victory.primary).toEqual({ type: 'lines', target: 22 });
         expect(firstSprint.victory.failure).toEqual({ type: 'time', value: 270 });
 
-        const chapterOneBoss = getLevel(5);
+        const chapterOneBoss = getLevel(4);
         expect(chapterOneBoss.mechanics.baseMode).toBe('hybrid');
         expect(chapterOneBoss.victory.primary.type).toBe('lines');
         expect(chapterOneBoss.victory.primary.target).toBe(40);
         expect(chapterOneBoss.stars.three).toEqual({ lines: 40, cascades: 3, bonuses: 1 });
 
-        const finale = getLevel(56);
+        const finale = getLevel(55);
         expect(finale.metadata.difficultyModel.scalar).toBe(1);
         expect(finale.mechanics.baseMode).toBe('infinity');
         expect(finale.mechanics.board.rows).toBe(100);
@@ -49,9 +49,9 @@ describe('Odyssey difficulty balance', () => {
     });
 
     it('keeps chapter 6 and chapter 7 peaks hard while adding release space around them', () => {
-        const eventHorizon = getLevel(46);
-        const singularityGate = getLevel(47);
-        const singularity = getLevel(48);
+        const eventHorizon = getLevel(45);
+        const singularityGate = getLevel(46);
+        const singularity = getLevel(47);
         expect(singularityGate.role).toBe('release');
         expect(singularityGate.emotionalBeat).toBe('release');
         expect(singularityGate.victory.failure.type).toBe('top-out');

@@ -1,5 +1,9 @@
-/** Save v4 preserves orb identity across the 60-orb campaign edit. */
-export const ODYSSEY_SAVE_VERSION = 4;
+/**
+ * Save v4 preserved orb identity across the 60-orb campaign edit. Save v5 keeps it across the
+ * chapter-end rotation: every chapter now ends on its rival duel, so the challenge that sat in a
+ * v4 slot moved to a new public id. Completions follow their challenge, never their slot.
+ */
+export const ODYSSEY_SAVE_VERSION = 5;
 
 // Frozen authored challenge identities, indexed by v3 orb ID. The removed reef
 // is archived; Vesper (43) and Warp (55) are new challenges, never old completions.
@@ -12,6 +16,21 @@ const V3_TO_V4_LEVEL_IDS = Object.freeze([
     51, 52, 53, 54, 56, 57, 58, 59, 60,
 ]);
 const V4_CHAPTER_END_IDS = Object.freeze([5, 10, 18, 26, 34, 48, 56, 60]);
+// The v4 public id of each chapter's duel, before it moved to the chapter's last slot.
+const V4_DUEL_IDS = Object.freeze([4, 9, 16, 25, 32, 44, 53, 59]);
+
+// Frozen from campaign-order.js rotateDuelsToChapterEnd on the v4 campaign: the v4 public id of
+// each challenge, indexed to its v5 public id. Inside a chapter the duel moves to the last slot
+// and every orb after it steps one slot earlier; everything else keeps its number. Never derive
+// this from live level data: a later reorder must add its own table.
+export const V4_TO_V5_LEVEL_IDS = Object.freeze([
+    null, 1, 2, 3, 5, 4, 6, 7, 8, 10,
+    9, 11, 12, 13, 14, 15, 18, 16, 17, 19,
+    20, 21, 22, 23, 24, 26, 25, 27, 28, 29,
+    30, 31, 34, 32, 33, 35, 36, 37, 38, 39,
+    40, 41, 42, 43, 48, 44, 45, 46, 47, 49,
+    50, 51, 52, 56, 53, 54, 55, 57, 58, 60, 59,
+]);
 
 // Frozen from the composed v2 campaign. Never derive a legacy award from live metadata.
 const V2_LEVEL_THEME_IDS = Object.freeze([
@@ -40,6 +59,11 @@ export const isOdysseyCompletion = (value) => isRecord(value)
 export function getRetiredOdysseyCompletions(progress) {
     const completion = progress?.retiredCompletions?.['v3:10'];
     return isOdysseyCompletion(completion) ? [completion] : [];
+}
+
+export function migrateV4OdysseyLevelId(rawId) {
+    const id = Number(rawId);
+    return Number.isInteger(id) ? V4_TO_V5_LEVEL_IDS[id] ?? null : null;
 }
 
 export function migrateV3OdysseyLevelId(rawId) {
@@ -104,5 +128,47 @@ export function migrateV3OdysseyCampaign(data) {
                 .every((id) => isOdysseyCompletion(completed[id]));
         }).length;
     }
+    return data;
+}
+
+function recomputeOdysseyStatistics(data, completed) {
+    if (!isRecord(data.statistics)) return;
+    data.statistics.totalStars = Object.values(completed)
+        .reduce((sum, entry) => sum + (isOdysseyCompletion(entry) ? entry.stars : 0), 0);
+    data.statistics.chaptersCompleted = V4_CHAPTER_END_IDS.filter((end, index) => {
+        const start = index === 0 ? 1 : V4_CHAPTER_END_IDS[index - 1] + 1;
+        return Array.from({ length: end - start + 1 }, (_, offset) => start + offset)
+            .every((id) => isOdysseyCompletion(completed[id]));
+    }).length;
+}
+
+/**
+ * Re-key a v4 campaign onto the chapter-end duel order. A completion stays with the challenge
+ * it was earned on. The route is linear, so every slot before the furthest unlocked one stays
+ * open: a rotated chapter never leaves a hole, and the player's current orb is the first one
+ * they have not cleared.
+ */
+export function migrateV4OdysseyCampaign(data) {
+    const previous = isRecord(data.completedLevels) ? data.completedLevels : {};
+    const completed = {};
+    Object.entries(previous).forEach(([rawId, completion]) => {
+        const id = migrateV4OdysseyLevelId(rawId);
+        if (id) completed[id] = completion;
+    });
+    const oldUnlocked = (Array.isArray(data.unlockedLevels) ? data.unlockedLevels : []).map(Number);
+    const unlocked = new Set(oldUnlocked.map(migrateV4OdysseyLevelId).filter(Boolean));
+    // A player who had reached a chapter's duel had cleared everything before it. The duel is
+    // now that chapter's last orb, so the orbs that stepped in front of it (the old duel slot
+    // through the slot before the end) open with it instead of leaving a hole in the route.
+    V4_DUEL_IDS.forEach((duelId, index) => {
+        if (!oldUnlocked.includes(duelId)) return;
+        for (let id = duelId; id < V4_CHAPTER_END_IDS[index]; id += 1) unlocked.add(id);
+    });
+    if (unlocked.size === 0) unlocked.add(1);
+    data.unlockedLevels = [...unlocked].sort((left, right) => left - right);
+    data.completedLevels = completed;
+    data.currentLevel = Math.max(migrateV4OdysseyLevelId(data.currentLevel) || 1, ...data.unlockedLevels);
+    data.currentChapter = V4_CHAPTER_END_IDS.findIndex((end) => data.currentLevel <= end) + 1;
+    recomputeOdysseyStatistics(data, completed);
     return data;
 }

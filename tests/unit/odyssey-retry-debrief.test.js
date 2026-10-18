@@ -114,7 +114,7 @@ describe('Odyssey retry debrief', () => {
     it.each([36000, 36033])('does not award completion for a fatal score-crossing lock (%i points)', (score) => {
         const debrief = getOdysseyRetryDebrief(getLevelById(49), { score }, 'top-out');
         expect(debrief.value).toBe(score);
-        expect(debrief.remainingText).toBe('The final total met the target, but the level was not completed.');
+        expect(debrief.remainingText).toBe('The final total met the target, but the orb was not cleared.');
         expect(debrief.remainingText).not.toContain('0 points short');
         expect(debrief.tip).toBe('Keep room at the top of the board until the goal is secured.');
         expect(debrief).not.toHaveProperty('stars');
@@ -123,22 +123,22 @@ describe('Odyssey retry debrief', () => {
     });
 
     it('explains late goal totals with the deadline rule rather than a spawn diagnosis', () => {
-        const debrief = getOdysseyRetryDebrief(getLevelById(60), { score: 160100, time: 210.5 }, 'time');
-        expect(debrief.remainingText).toContain('the level was not completed');
+        const debrief = getOdysseyRetryDebrief(getLevelById(59), { score: 160100, time: 210.5 }, 'time');
+        expect(debrief.remainingText).toContain('the orb was not cleared');
         expect(debrief.tip).toContain('within the time limit');
         expect(debrief.tip).toContain('final cascade to settle');
         expect(debrief.tip).not.toMatch(/before the time limit|top of the board|next piece/);
     });
 
     it('keeps optional mastery separate from a timed primary shortfall', () => {
-        const debrief = getOdysseyRetryDebrief(getLevelById(56), {
-            score: 249000, time: 480, maxCombo: 18, cascades: 35, tetrises: 20,
+        const debrief = getOdysseyRetryDebrief(getLevelById(55), {
+            score: 249000, time: 480, maxCombo: 6, cascades: 28, tetrises: 12,
         }, 'time');
         expect(debrief.target).toBe(250000);
         expect(debrief.remainingText).toBe(`${(1000).toLocaleString()} points short of the goal.`);
         expect(debrief.tip).toContain('main goal within the time limit');
         expect(debrief.tip).toContain('extra stars can wait for a replay');
-        expect(debrief.progressLabel).not.toContain((500000).toLocaleString());
+        expect(debrief.progressLabel).not.toContain((400000).toLocaleString());
         expect(debrief).not.toHaveProperty('stars');
     });
 

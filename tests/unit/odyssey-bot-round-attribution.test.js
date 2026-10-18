@@ -45,7 +45,7 @@ describe('Odyssey round death attribution', () => {
         const cascade = deferred();
         match.players[opponent].latestPhysicsPromise = cascade.promise;
         const callbacks = opponent === 0 ? match.wrapHumanCallbacks({}) : match.botCallbacks;
-        match.multiplayer.frags[opponent] = 6;
+        match.multiplayer.frags[opponent] = match.targetFrags - 1;
         match.markTopOut(victim);
         match.update(100, 16, {});
 
@@ -56,7 +56,7 @@ describe('Odyssey round death attribution', () => {
         await match.transition;
 
         expect(match.multiplayer.deaths[victim]).toBe(1);
-        expect(match.multiplayer.frags[opponent]).toBe(6);
+        expect(match.multiplayer.frags[opponent]).toBe(match.targetFrags - 1);
         expect(match.multiplayer.isGameOver).toBe(false);
     });
 

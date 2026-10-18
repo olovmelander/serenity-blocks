@@ -23,5 +23,5 @@ export function odysseyMeterHtml(chapters, { completedIds = new Set(), next = nu
         });
     });
     const done = chapters.reduce((sum, chapter) => sum + chapter.levels.filter((id) => completedIds.has(id)).length, 0);
-    return `<div class="sb-meter" role="img" aria-label="${done} of ${total} levels cleared">${cells.join('')}</div>`;
+    return `<div class="sb-meter" role="img" aria-label="${done} of ${total} orbs cleared">${cells.join('')}</div>`;
 }

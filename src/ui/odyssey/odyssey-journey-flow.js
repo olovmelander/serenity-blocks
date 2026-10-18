@@ -69,6 +69,7 @@ function mountCompletion(mode, results, session, nextLevel, autoContinue) {
             fromChapter: level?.chapter !== nextLevel.chapter ? mode.levelRegistry.getChapter(level?.chapter) : null,
             results,
             autoContinue,
+            entrance: results?.showpiece ? 'afterglow' : 'direct',
             nowPlaying: Boolean(results?.themeUnlock?.persisted)
                 && isOdysseyRewardSongAudible(mode, level?.theme?.primary),
             reducedMotion: prefersOdysseyReducedMotion(mode),
@@ -377,7 +378,14 @@ async function continueAcrossChapter(mode, operation) {
     const completedChapter = summarizeOdysseyChapter(mode, operation.previousLevel?.chapter);
     const choice = await new Promise((resolve) => {
         operation.resolveChoice = resolve;
-        modal.showChapter({ onChoose: resolve, completedChapter });
+        // The new chapter's draft of charms rides on its arrival; the mode wires take and pass.
+        modal.showChapter({
+            onChoose: resolve,
+            completedChapter,
+            charmDraft: mode._describeCharmDraft?.(
+                mode.odysseyState?.getChapterCharmDraft?.(nextLevel.chapter),
+            ) || null,
+        });
     });
     if (!canProceed(mode, operation)) return false;
     if (choice !== 'next') {

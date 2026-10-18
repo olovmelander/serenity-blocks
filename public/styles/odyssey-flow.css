@@ -157,6 +157,27 @@
 .ody-flow__stars span { display: inline-block; }
 .ody-flow__stars .is-earned { color: #f2d7ac; text-shadow: 0 0 18px rgba(242, 215, 172, 0.55); }
 .ody-flow__tally { margin: 0; color: #c8c0d7; font-size: 0.82rem; line-height: 1.5; font-variant-numeric: tabular-nums; }
+/* Why these stars: the three goals, earned ones lit, then the next star's shortfall. */
+.ody-flow__star-notes {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px 16px;
+    max-width: 54ch;
+    margin: 6px auto 0;
+    padding: 0;
+    color: #8f88a3;
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+.ody-flow__star-notes__tier { display: inline-flex; align-items: center; gap: 6px; }
+.ody-flow__star-notes__tier.is-earned { color: #e9dcc2; }
+.ody-flow__star-notes__tier.is-earned .ody-flow__star-notes__glyph {
+    color: #f2d7ac;
+    text-shadow: 0 0 10px rgba(242, 215, 172, 0.45);
+}
+.ody-flow__star-notes__next { flex-basis: 100%; margin-top: 2px; color: #c8c0d7; font-variant-numeric: tabular-nums; }
 .ody-flow__next { display: block; }
 .ody-flow__next-label {
     margin: 0 0 6px;
@@ -269,6 +290,20 @@
         rgba(6, 5, 16, 0.84);
     animation: ody-flow-scrim-in 700ms var(--ody-ease) both;
 }
+/* Afterglow: the well just played its showpiece. The scrim dims slowly over its last light and
+   the ceremony's words arrive a beat later, so the reel hands over instead of cutting. */
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony']::before {
+    animation: ody-flow-scrim-in 1300ms var(--ody-ease) both;
+}
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__eyebrow { animation-delay: 360ms; }
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__achievement { animation-delay: 440ms; }
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__stars span {
+    animation-delay: calc(700ms + var(--i, 0) * 170ms);
+}
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__tally { animation-delay: 940ms; }
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__star-notes { animation-delay: 1080ms; }
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__next { animation-delay: 1220ms; }
+.ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__preference { animation-delay: 860ms; }
 .ody-flow[data-layout='ceremony'] .ody-flow__content { width: min(660px, 100%); }
 /* Centre the ceremony when it fits; auto margins collapse to zero instead of hiding its top. */
 .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__content { margin: auto; }
@@ -280,6 +315,7 @@
     animation: ody-flow-star 620ms calc(380ms + var(--i, 0) * 170ms) cubic-bezier(0.2, 0.9, 0.1, 1.15) backwards;
 }
 .ody-flow[data-layout='ceremony'] .ody-flow__tally { animation: ody-flow-rise 520ms 620ms var(--ody-ease-out) backwards; }
+.ody-flow[data-layout='ceremony'] .ody-flow__star-notes { animation: ody-flow-rise 520ms 760ms var(--ody-ease-out) backwards; }
 .ody-flow[data-layout='ceremony'] .ody-flow__next {
     margin: 4px auto 0;
     padding-top: 12px;
@@ -317,6 +353,7 @@
 .ody-flow[data-layout='transit'] .ody-flow__achievement,
 .ody-flow[data-layout='transit'] .ody-flow__stars,
 .ody-flow[data-layout='transit'] .ody-flow__tally,
+.ody-flow[data-layout='transit'] .ody-flow__star-notes,
 .ody-flow[data-layout='transit'] .ody-theme-reward { display: none; }
 /* Lifecycle states outrank every layout: reveal fades out, a held presence and a retained cover show. */
 .ody-flow[data-layout][data-revealing='true'] { opacity: 0; pointer-events: none; }
@@ -363,6 +400,7 @@
 .ody-flow[data-layout='scenic'] .ody-flow__achievement,
 .ody-flow[data-layout='scenic'] .ody-flow__stars,
 .ody-flow[data-layout='scenic'] .ody-flow__tally,
+.ody-flow[data-layout='scenic'] .ody-flow__star-notes,
 .ody-flow[data-layout='scenic'] .ody-flow__progress,
 .ody-flow[data-layout='scenic'] .ody-flow__preference,
 .ody-flow[data-layout='scenic'] .ody-flow__orb-label,
@@ -445,6 +483,7 @@
 .ody-flow[data-layout='chapter'] .ody-flow__achievement,
 .ody-flow[data-layout='chapter'] .ody-flow__stars,
 .ody-flow[data-layout='chapter'] .ody-flow__tally,
+.ody-flow[data-layout='chapter'] .ody-flow__star-notes,
 .ody-flow[data-layout='chapter'] .ody-flow__preference,
 .ody-flow[data-layout='chapter'] .ody-flow__progress,
 .ody-flow[data-layout='chapter'] .ody-flow__next-label,
@@ -472,6 +511,64 @@
 /* Arrival focuses the static heading for reading; only actions need the focus ring. */
 .ody-flow__subtitle { margin: 16px 0 0; color: var(--ody-flow-color); font-size: 1.08rem; line-height: 1.5; }
 .ody-flow__narrative { max-width: 55ch; margin: 16px 0 0; color: #e5deeb; font-size: 0.95rem; line-height: 1.65; text-wrap: pretty; }
+/* A first arrival's orientation: how orbs, stars, charms and the pause sheet work. */
+.ody-flow__orientation {
+    list-style: none;
+    max-width: 58ch;
+    margin: 18px 0 0;
+    padding: 14px 0 0;
+    border-top: 1px solid rgba(255, 246, 233, 0.12);
+    color: #c8c0d7;
+    font-size: 0.88rem;
+    line-height: 1.55;
+}
+.ody-flow__orientation li { position: relative; padding-left: 18px; }
+.ody-flow__orientation li + li { margin-top: 6px; }
+.ody-flow__orientation li::before {
+    content: '✦';
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: var(--ody-flow-color);
+    font-size: 0.7em;
+    line-height: 2.2;
+}
+.ody-flow[data-layout='chapter'] .ody-flow__orientation { animation: ody-flow-rise 800ms 1000ms var(--ody-ease-out) backwards; }
+/* The road's charms at a chapter's arrival: three cards, take one or pass. Begin chapter waits. */
+.ody-flow__charms {
+    max-width: 58ch;
+    margin: 22px 0 0;
+    padding: 16px 0 0;
+    border-top: 1px solid rgba(255, 246, 233, 0.12);
+}
+.ody-flow__charms-label { margin: 0; color: var(--ody-flow-color); font-size: 0.76rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.ody-flow__charms-hint { margin: 6px 0 0; color: #c8c0d7; font-size: 0.86rem; line-height: 1.5; }
+.ody-flow__charm-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; margin-top: 12px; }
+.ody-charm {
+    display: grid;
+    gap: 4px;
+    align-content: start;
+    min-height: 44px;
+    padding: 12px 14px;
+    border: 1px solid rgba(255, 246, 233, 0.16);
+    border-radius: 12px;
+    background: rgba(15, 12, 29, 0.55);
+    color: #f7f0e7;
+    font: 400 0.84rem / 1.45 var(--sb-font-text);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+}
+.ody-charm__kind { color: var(--ody-flow-color); font: 600 0.62rem / 1.3 var(--sb-font-display); font-style: normal; letter-spacing: 0.16em; text-transform: uppercase; }
+.ody-charm__name { font: 600 1rem / 1.2 var(--sb-font-display); color: #fff; }
+.ody-charm__line { color: #c8c0d7; }
+.ody-charm:hover,
+.ody-charm:focus-visible { border-color: var(--ody-flow-color); background: rgba(15, 12, 29, 0.85); transform: translateY(-1px); }
+.ody-flow__charm-pass { margin-top: 10px; min-height: 36px; font-size: 0.7rem; }
+.ody-flow__charm-settled { margin: 12px 0 0; color: #f7f0e7; font-size: 0.9rem; line-height: 1.5; }
+.ody-flow__charm-settled::before { content: '◇ '; color: var(--ody-flow-color); }
+.ody-flow[data-charm-pending='true'] .ody-flow__primary { opacity: 0.55; }
+.ody-flow[data-layout='chapter'] .ody-flow__charms { animation: ody-flow-rise 800ms 1050ms var(--ody-ease-out) backwards; }
 .ody-flow[data-layout='chapter'] .ody-flow__destination { border-left: 1px solid var(--ody-flow-color); padding-left: 16px; margin-top: 24px; }
 .ody-flow[data-layout='chapter'] .ody-flow__changes { margin-left: 0; max-width: 55ch; }
 .ody-flow[data-layout='chapter'] .ody-flow__status:empty { display: none; }
@@ -695,6 +792,7 @@
     .ody-flow__actions { gap: 8px; }
     .ody-flow__primary { min-width: 0; flex: 1 1 150px; padding-inline: 12px; font-size: 0.72rem; }
     .ody-flow__quiet { padding-inline: 12px; font-size: 0.72rem; }
+    .ody-flow__charm-list { grid-template-columns: minmax(0, 1fr); }
     .ody-flow[data-layout='scenic'] { padding: 12px 12px max(12px, env(safe-area-inset-bottom)); }
     .ody-flow[data-layout='scenic'] .ody-flow__content { padding: 12px 12px 0; }
     .ody-flow[data-layout='scenic'] .ody-flow__actions { margin-inline: -12px; padding-inline: 12px; }

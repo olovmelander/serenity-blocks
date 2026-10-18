@@ -64,7 +64,8 @@ describe('Odyssey journey flow preference', () => {
         expect(input.checked).toBe(true);
         expect(overlay.innerHTML).toContain('for="odyssey-auto-continue"');
         expect(overlay.innerHTML).toContain('aria-describedby="odyssey-flow-preference-hint"');
-        expect(overlay.innerHTML).toContain('Chapter reveals wait for you.');
+        expect(overlay.innerHTML).toContain('Flow to the next orb automatically');
+        expect(overlay.innerHTML).toContain('Chapter arrivals always wait for you.');
         expect(overlay.innerHTML.indexOf('id="odyssey-auto-continue"'))
             .toBeLessThan(overlay.innerHTML.indexOf('id="level-panel-play-btn"'));
         expect(onAutoContinueChange).not.toHaveBeenCalled();

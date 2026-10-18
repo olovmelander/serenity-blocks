@@ -85,10 +85,10 @@ describe('structural mastery setup guidance', () => {
         expect(measureQuadWell(board)).toMatchObject({ readyRows: 3, longestReadyRun: 2, wellCells: 1 });
     });
 
-    it('prioritizes eight prefix Quads at 49, then stored material, retaining the authored goal', () => {
+    it('prioritizes five prefix Quads at 49, then stored material, retaining the authored goal', () => {
         const objective = createMasteryGeometryObjective(observation(49));
         expect(objective).toMatchObject({
-            phase: 'quad-prefix', priorQuadTarget: 8, chainDepth: 8, wellColumn: 9,
+            phase: 'quad-prefix', priorQuadTarget: 5, chainDepth: 5, wellColumn: 9,
         });
         const quad = node({
             metrics: {
@@ -102,18 +102,20 @@ describe('structural mastery setup guidance', () => {
         });
         expect(masteryGeometryUtility(quad, objective)).toBeGreaterThan(masteryGeometryUtility(single, objective));
         expect(createMasteryGeometryObjective(observation(49, { tetrises: 8 })))
-            .toMatchObject({ phase: 'chain-storage', minimumStoredCells: 200, chainDepth: 8 });
+            .toMatchObject({ phase: 'chain-storage', minimumStoredCells: 110, chainDepth: 5 });
     });
 
     it('keeps showcase depth milestones distinct from authored mastery and skips independent Quad bonuses', () => {
-        const initial = createMasteryGeometryObjective(observation(56));
+        const initial = createMasteryGeometryObjective(observation(55));
         expect(initial).toMatchObject({
-            phase: 'chain-storage', buildDepth: 6, chainDepth: 18, targetCascades: 35,
+            phase: 'chain-storage', buildDepth: 6, chainDepth: 6, targetCascades: 28,
         });
         expect(initial.priorQuadTarget).toBe(0);
-        expect(createMasteryGeometryObjective(observation(56, { maxCombo: 6, maxCascadeDepth: 6 })))
-            .toMatchObject({ phase: 'chain-storage', buildDepth: 8, chainDepth: 18 });
-        expect(createMasteryGeometryObjective(observation(60, { maxCombo: 12, maxCascadeDepth: 12 })))
-            .toMatchObject({ phase: 'sequence-collection', targetCascades: 25 });
+        expect(createMasteryGeometryObjective(observation(55, { maxCombo: 4, maxCascadeDepth: 4 })))
+            .toMatchObject({ phase: 'chain-storage', buildDepth: 6, chainDepth: 6 });
+        expect(createMasteryGeometryObjective(observation(55, { maxCombo: 6, maxCascadeDepth: 6 })))
+            .toMatchObject({ phase: 'sequence-collection', targetCascades: 28 });
+        expect(createMasteryGeometryObjective(observation(59, { maxCombo: 6, maxCascadeDepth: 6 })))
+            .toMatchObject({ phase: 'sequence-collection', targetCascades: 20 });
     });
 });

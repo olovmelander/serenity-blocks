@@ -31,6 +31,7 @@ import { OdysseyStateManager } from '../odyssey/OdysseyStateManager.js';
 import { getLevelRegistry } from '../odyssey/LevelRegistry.js';
 import { GameplayHybridEngine } from '../odyssey/GameplayHybridEngine.js';
 import { OdysseyBotMatch } from '../odyssey/OdysseyBotMatch.js';
+import { ODYSSEY_VISIBLE_ROWS } from '../odyssey/odyssey-board-shape.js';
 import { startOdysseyGameplayLoop } from './odyssey-gameplay-loop.js';
 import {
     createOdysseyLevelSession,
@@ -59,7 +60,7 @@ import { JourneyEntryTransition } from '../../rendering/transitions/JourneyEntry
 import { JourneyReturnTransition } from '../../rendering/transitions/JourneyReturnTransition.js';
 import { TRANSITION_LAYERS } from '../../rendering/transitions/transition-layer-constants.js';
 import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
-import { formatOdysseyMapObjective } from '../../ui/odyssey/objective-copy.js';
+import { renderOdysseyLevelPanel } from '../../ui/odyssey/odyssey-level-panel.js';
 import { createResultsModal } from '../../ui/odyssey/ResultsModal.js';
 import { createFailureModal } from '../../ui/odyssey/FailureModal.js';
 import {
@@ -79,6 +80,18 @@ import { createGoalCompleteOverlay } from '../../ui/odyssey/GoalCompleteOverlay.
 import { installOdysseyShowcaseInput } from '../../ui/odyssey/odyssey-showcase-input.js';
 import { createBoardInfoOverlay } from '../../ui/odyssey/BoardInfoOverlay.js';
 import { createLevelSelectOverlay } from '../../ui/odyssey/LevelSelectOverlay.js';
+import { presentOdysseyArrival } from '../../ui/odyssey/odyssey-first-arrival.js';
+import {
+    describeOdysseyCharmDraft, describeOdysseyMercy, odysseyPanelCharms, renderOdysseyCharmHeader,
+} from '../../ui/odyssey/odyssey-charm-carry.js';
+import { startOdysseyNewJourney, wireOdysseyNewJourney } from '../../ui/odyssey/odyssey-new-journey.js';
+import { handleOdysseyPauseAction } from '../../ui/odyssey/odyssey-pause-actions.js';
+import { renderOdysseyNavigatorList } from '../../ui/odyssey/odyssey-navigator-list.js';
+import { installOdysseyMapInput } from '../../ui/odyssey/odyssey-map-input.js';
+import { applyOdysseyCharmsToLevel } from '../odyssey/odyssey-charms.js';
+import {
+    createOdysseyCharmRun, describeOdysseyCharmRun, tryOdysseyHearth,
+} from '../odyssey/odyssey-charm-effects.js';
 import { createOdysseyMinimap } from '../../ui/odyssey/odyssey-minimap-controls.js';
 import { mountOdysseyBoardLayout } from '../../ui/odyssey/odyssey-board-layout.js';
 import {
@@ -174,7 +187,8 @@ export class OdysseyMode extends BaseGameMode {
 
         // Minimap for tall boards (30+ rows)
         this.minimap = null;
-        this.MINIMAP_ROW_THRESHOLD = 30;
+        // Any well taller than the visible twenty rows scrolls, so it gets the minimap.
+        this.MINIMAP_ROW_THRESHOLD = ODYSSEY_VISIBLE_ROWS + 1;
 
         // Tall board camera system (ported from InfinityMode)
         this.visibleRows = 20;
@@ -337,6 +351,17 @@ export class OdysseyMode extends BaseGameMode {
         } finally {
             this.boardViewReadyPromise = null;
         }
+
+        // Retry orb and Back to map arrive from the pause sheet once it has closed and resumed play.
+        this._pauseActionUnsubscribe?.();
+        this._pauseActionUnsubscribe = eventBus.on(EVENTS.ODYSSEY_PAUSE_ACTION, (payload) => {
+            this._handlePauseAction(payload);
+        });
+        // A brand-new journey is welcomed by its first chapter before the map is handed over.
+        this._offerFirstArrival();
+        // Arrows, the D-pad and A travel and play on the map for as long as the mode lives.
+        this._disposeMapInput?.();
+        this._disposeMapInput = installOdysseyMapInput(this);
 
         // Console debug handles — DEV/capture-tooling only. testOdysseyLevel unlocks levels
         // into the real save, so exposing it in the shipped game makes the Steam leaderboard
@@ -590,6 +615,11 @@ export class OdysseyMode extends BaseGameMode {
      */
     async onDeactivate() {
         this._odysseyAudioActive = false;
+        this._pauseActionUnsubscribe?.();
+        this._pauseActionUnsubscribe = null;
+        this._disposeMapInput?.();
+        this._disposeMapInput = null;
+        this._firstArrival?.cancel();
         releaseOdysseyLevelMusic(this);
         if (this.boardController) releaseOdysseyBoardMusic(this.boardController);
         cancelOdysseyEntryPresence(this);
@@ -1874,7 +1904,10 @@ export class OdysseyMode extends BaseGameMode {
         this._removeVictoryLapInputs();
 
         if (canWriteLegacySimulationResults(session.simulationClock)) {
-            this.odysseyState.recordAttempt(session.levelId);
+            const attempt = this.odysseyState.recordAttempt(session.levelId);
+            // The road's mercy: after the third fall on this orb a draft of charms rides on the
+            // attempt for the failure sheet, or a word on the bag's charm that would help here.
+            Object.assign(session, describeOdysseyMercy(this, session, attempt?.falls));
         }
 
         // Show failure screen and honor the player's choice.
@@ -2040,6 +2073,7 @@ export class OdysseyMode extends BaseGameMode {
         this.gameState = gameState;
         this._activeLevelSession = session;
         session.isReplay = this.odysseyState.isLevelCompleted(session.levelId);
+        session.charmRun = createOdysseyCharmRun(levelConfig.charms);
         if (mechanics.versus) {
             session.duel = new OdysseyBotMatch(session, {
                 seed: seed === undefined ? generateSessionSeed() : seed,
@@ -2053,6 +2087,7 @@ export class OdysseyMode extends BaseGameMode {
                 },
                 onAttack: () => this.deps.soundManager?.sfxPlayer?.playGarbageSend?.(),
             });
+            session.duel.topOutGuard = () => this._tryOdysseyHearth(session);
             session.rngDescriptor = gameState.rngDescriptor;
         }
 
@@ -2074,14 +2109,18 @@ export class OdysseyMode extends BaseGameMode {
         }
 
         console.log('[Odyssey] Preparing level gameplay under blackout...');
-        const levelConfig = this.currentLevelConfig;
+        const authoredLevelConfig = this.currentLevelConfig;
         const previousSession = this._retireLevelSession();
         const preparationGeneration = this._levelSessionGeneration;
         await this._drainLevelSession(previousSession);
         if (
             preparationGeneration !== this._levelSessionGeneration
-            || this.currentLevelConfig !== levelConfig
+            || this.currentLevelConfig !== authoredLevelConfig
         ) return false;
+        // The orb as the carried charms make it: Keel's ask, Long Breath's deadline, Low Tide's
+        // rubble and Still Air's pace are written into the orb the engine is configured with.
+        const carried = this.odysseyState.getCarriedCharms?.() || [];
+        const levelConfig = applyOdysseyCharmsToLevel(authoredLevelConfig, carried);
 
         // Reset completion flag for new level
         this.levelCompleting = false;
@@ -2468,6 +2507,7 @@ export class OdysseyMode extends BaseGameMode {
      */
     async _handleGameOver(session = this._activeLevelSession) {
         if (!this._isLevelSessionActive(session)) return;
+        if (this._tryOdysseyHearth(session)) return;
         if (session.duel) {
             session.duel.markTopOut(0);
             return;
@@ -2574,7 +2614,7 @@ export class OdysseyMode extends BaseGameMode {
             button.id = 'odyssey-navigator-btn';
             button.className = 'odyssey-navigator-icon';
             button.setAttribute('role', 'button');
-            button.setAttribute('aria-label', 'Open Odyssey Navigator');
+            button.setAttribute('aria-label', 'Open the map');
             button.setAttribute('tabindex', '0');
             button.innerHTML = `
                 <svg class="odyssey-navigator-icon-svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -2953,9 +2993,10 @@ export class OdysseyMode extends BaseGameMode {
             this._updateLevelPreview(levelId);
         };
 
-        // Hover just updates cursor, doesn't change panel
+        // Hover just updates cursor, doesn't change panel. A locked orb can be hovered and
+        // selected for its panel, but its theme is not worth warming yet.
         this.boardController.onLevelHover = (levelId) => {
-            if (!levelId || levelId === this.selectedLevelId) {
+            if (!levelId || levelId === this.selectedLevelId || !this.odysseyState.isLevelUnlocked(levelId)) {
                 return;
             }
 
@@ -3293,6 +3334,7 @@ export class OdysseyMode extends BaseGameMode {
             const pct = this.odysseyState.getOverallProgress();
             progress.textContent = `Progress: ${pct}%`;
         }
+        renderOdysseyCharmHeader(this);
     }
 
     /**
@@ -3329,45 +3371,18 @@ export class OdysseyMode extends BaseGameMode {
             console.warn('[Odyssey] Selected level theme prefetch failed:', error);
         });
 
-        // Check if level is unlocked
-        const isUnlocked = this.odysseyState.isLevelUnlocked(levelId);
-        const completion = this.odysseyState.getLevelCompletion(levelId);
-        const stars = completion?.stars || 0;
-
-        // Update panel content
-        document.getElementById('level-panel-number').textContent = `LEVEL ${levelId}`;
-        document.getElementById('level-panel-name').textContent = level.pathLabel || level.name;
-        document.getElementById('level-panel-chapter').textContent = `Chapter ${level.chapter}: ${this._getChapterName(level.chapter)}`;
-        document.getElementById('level-panel-description').textContent = level.description || 'Complete the objectives to progress.';
-
-        // Stars display
-        const starsEl = document.getElementById('level-panel-stars');
-        starsEl.textContent = '★'.repeat(stars) + '☆'.repeat(3 - stars);
-        starsEl.dataset.earned = stars > 0 ? 'true' : 'false';
-
-        // Objectives
-        const objectivesEl = document.getElementById('level-panel-objectives');
-        const primary = level.victory?.primary;
-        objectivesEl.innerHTML = `
-            <div><strong>Goal:</strong> ${this._formatObjective(primary)}</div>
-            ${level.metadata?.tip ? `<div class="level-tip">${level.metadata.tip}</div>` : ''}
-        `;
-
-        // Play button
-        const playBtn = document.getElementById('level-panel-play-btn');
-        playBtn.disabled = !isUnlocked;
-        playBtn.textContent = isUnlocked ? 'Play' : 'Locked';
+        // The panel: kind, goal, star goals, what changes from the orb before, lock state.
+        renderOdysseyLevelPanel({
+            level,
+            previousLevel: this.levelRegistry.getPreviousLevel(levelId),
+            completion: this.odysseyState.getLevelCompletion(levelId),
+            unlocked: this.odysseyState.isLevelUnlocked(levelId),
+            chapterName: this._getChapterName(level.chapter),
+            charms: odysseyPanelCharms(this, levelId),
+        });
 
         // Show panel
         panel.classList.remove('hidden');
-    }
-
-    /**
-     * Format objective for display
-     * @private
-     */
-    _formatObjective(primary) {
-        return formatOdysseyMapObjective(primary);
     }
 
     /**
@@ -3603,95 +3618,14 @@ export class OdysseyMode extends BaseGameMode {
         document.getElementById('odyssey-back-btn').addEventListener('click', () => {
             this._exitToMenu();
         });
+        wireOdysseyNewJourney(container, () => this.startNewJourney());
 
         return container;
     }
 
-    /**
-     * Update the level select UI with current progress
-     * @private
-     */
+    /** Fill the navigator's chapter and orb list (ui/odyssey/odyssey-navigator-list.js). */
     _updateLevelSelectUI(focusChapter = null) {
-        const progress = this.odysseyState.getProgressSummary();
-
-        // Update header stats
-        document.getElementById('odyssey-total-stars').textContent = progress.totalStars;
-        document.getElementById('odyssey-max-stars').textContent = progress.maxStars;
-        document.getElementById('odyssey-progress-pct').textContent = progress.overallProgress;
-        const progressFill = document.getElementById('odyssey-progress-fill');
-        if (progressFill) progressFill.style.width = `${progress.overallProgress}%`;
-
-        // Build chapters
-        const chaptersContainer = document.getElementById('odyssey-chapters');
-        chaptersContainer.innerHTML = '';
-
-        const chapters = this.levelRegistry.getAllChapters();
-
-        for (const chapter of chapters) {
-            const chapterProgress = this.odysseyState.getChapterProgress(chapter.id);
-            const levels = this.levelRegistry.getLevelsInChapter(chapter.id);
-
-            const chapterEl = document.createElement('div');
-            chapterEl.className = 'odyssey-chapter';
-            if (focusChapter === chapter.id) {
-                chapterEl.classList.add('current');
-            }
-            if (chapterProgress.maxStars > 0 && chapterProgress.stars === chapterProgress.maxStars) {
-                chapterEl.classList.add('complete');
-            }
-            chapterEl.innerHTML = `
-                <div class="odyssey-chapter-header">
-                    <span class="odyssey-chapter-name"><small>Chapter ${chapter.id}</small>${chapter.name}</span>
-                    <span class="odyssey-chapter-stars">${chapterProgress.stars}/${chapterProgress.maxStars} ★</span>
-                </div>
-                <div class="odyssey-levels" id="odyssey-chapter-${chapter.id}-levels"></div>
-            `;
-
-            chaptersContainer.appendChild(chapterEl);
-
-            const header = chapterEl.querySelector('.odyssey-chapter-header');
-            if (header) {
-                header.style.cursor = 'pointer';
-                header.addEventListener('click', () => {
-                    this.navigateToChapter(chapter.id).catch((error) => {
-                        console.warn(`[Odyssey] Chapter navigation failed for ${chapter.id}:`, error);
-                    });
-                });
-            }
-
-            // Add level buttons
-            const levelsContainer = document.getElementById(`odyssey-chapter-${chapter.id}-levels`);
-
-            for (const level of levels) {
-                const isUnlocked = this.odysseyState.isLevelUnlocked(level.id);
-                const isCompleted = this.odysseyState.isLevelCompleted(level.id);
-                const stars = this.odysseyState.getLevelStars(level.id);
-                const isCurrent = level.id === progress.currentLevel;
-
-                const btn = document.createElement('button');
-                btn.className = 'odyssey-level-btn';
-                if (!isUnlocked) btn.classList.add('locked');
-                if (isCompleted) btn.classList.add('completed');
-                if (isCurrent && isUnlocked && !isCompleted) btn.classList.add('current');
-
-                btn.innerHTML = `
-                    <span>${level.id}</span>
-                    <span class="odyssey-level-stars">${'★'.repeat(stars)}${'☆'.repeat(3 - stars)}</span>
-                `;
-
-                btn.title = `${level.name}\n${level.metadata.description}`;
-
-                if (isUnlocked) {
-                    btn.addEventListener('click', () => {
-                        this._launchLevelFromNavigator(level.id).catch((error) => {
-                            console.warn(`[Odyssey] Navigator launch failed for ${level.id}:`, error);
-                        });
-                    });
-                }
-
-                levelsContainer.appendChild(btn);
-            }
-        }
+        renderOdysseyNavigatorList(this, focusChapter);
     }
 
     /**
@@ -3751,6 +3685,7 @@ export class OdysseyMode extends BaseGameMode {
             stars: results.stars,
             totalStars,
             mode: 'odyssey',
+            charms: results.charms || [],
             version: '1.0.0',
         };
 
@@ -3820,8 +3755,8 @@ export class OdysseyMode extends BaseGameMode {
         const duel = session?.duel;
         const reasonText = {
             time: 'Time ran out!',
-            bot: `${duel?.botName || 'The bot'} reached ${duel?.targetFrags || 7} frags first.`,
-            draw: 'Both players reached 7 frags. Try the match again.',
+            bot: `${duel?.botName || 'The rival'} reached ${duel?.targetFrags || 3} knockouts first.`,
+            draw: `You and ${duel?.botName || 'the rival'} reached ${duel?.targetFrags || 3} knockouts together. Try the match again.`,
             'match-error': 'The match was interrupted. Try again.',
         }[reason] || 'You topped out!';
 
@@ -3853,6 +3788,8 @@ export class OdysseyMode extends BaseGameMode {
                 score: session.gameState.score,
             } : null,
             failureReason: reason,
+            charmDraft: session?.charmDraft || null,
+            charmHint: session?.charmHint || null,
             includeLegacyResults: session
                 ? canWriteLegacySimulationResults(session.simulationClock)
                 : true,
@@ -3866,6 +3803,45 @@ export class OdysseyMode extends BaseGameMode {
      */
     async _exitToMenu() {
         eventBus.emit(EVENTS.EXIT_TO_MAIN_MENU);
+    }
+
+    /** Hearth: once an orb, a top-out empties the well instead of ending it (odyssey-charm-effects.js). */
+    _tryOdysseyHearth(session) {
+        return tryOdysseyHearth(this, session);
+    }
+
+    /** A draft of charms as the sheets take it: the cards, and what taking or passing does. */
+    _describeCharmDraft(draft) {
+        return describeOdysseyCharmDraft(this, draft);
+    }
+
+    /** Retry orb / Back to map chosen on the pause sheet (ui/odyssey/odyssey-pause-actions.js). */
+    _handlePauseAction(payload) {
+        return handleOdysseyPauseAction(this, payload);
+    }
+
+    /**
+     * The arrival that welcomes a fresh journey, or a reached chapter whose charm draft still
+     * waits (ui/odyssey/odyssey-first-arrival.js). Never throws.
+     */
+    _offerFirstArrival() {
+        return presentOdysseyArrival(this).catch((error) => {
+            console.warn('[Odyssey] Arrival could not be shown:', error);
+            return null;
+        });
+    }
+
+    /** A reached chapter whose charm draft still waits, offered when the map returns. Never throws. */
+    _offerPendingArrival() {
+        return presentOdysseyArrival(this, { onlyPending: true }).catch((error) => {
+            console.warn('[Odyssey] Pending arrival could not be shown:', error);
+            return null;
+        });
+    }
+
+    /** Erase the campaign save and begin again at Orb 1 (ui/odyssey/odyssey-new-journey.js). */
+    startNewJourney() {
+        return startOdysseyNewJourney(this);
     }
 
     // =============================
@@ -3998,8 +3974,10 @@ export class OdysseyMode extends BaseGameMode {
             onFinish: () => this._finishVictoryLap(),
         });
 
-        // Set level configuration
-        this.odysseyHUD.setLevel(this.currentLevelId);
+        // Set level configuration: the orb as the carried charms make it, and the charms carried.
+        const session = this._activeLevelSession;
+        this.odysseyHUD.setLevel(this.currentLevelId, session?.levelConfig);
+        this.odysseyHUD.updateCharms?.(describeOdysseyCharmRun(session?.charmRun));
         const duel = this._activeLevelSession?.duel;
         if (duel) {
             this.odysseyHUD.setDuel({
