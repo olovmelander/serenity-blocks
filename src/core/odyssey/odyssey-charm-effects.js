@@ -1,8 +1,8 @@
 /**
  * What the held charms do to a live attempt. The goal, deadline, rubble and pace charms are
  * already written into the orb the engine was configured with (odyssey-charms.js); this is
- * the rest: the score charms paid after each lock's cascade settles, exactly as Waystones
- * pays them, and Hearth, which once an orb turns a top-out into an emptied well. Hearth's
+ * the rest: the score charms paid after each lock's cascade settles, and Hearth, which once
+ * an orb turns a top-out into an emptied well. Hearth's
  * well rewrite goes through the restore boundary replays use, so the grid, caches and the
  * Infinity camera stay in step.
  */

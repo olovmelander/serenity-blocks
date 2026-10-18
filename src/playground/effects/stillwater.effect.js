@@ -18,6 +18,11 @@
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>,
  *                            color=<hex>, eventLevel=<n> for levelUp); `break` ends the held combo
  *   demo=1                   live only: play a looping gameplay script
+ *   trollLook=stone|earth|forest   colour the troll one of TROLL_LOOKS (stillwater-troll.js)
+ *   story=<script>           seekable: events at absolute times, replayed from 0 for every frame,
+ *                            so a strip of frames shows one continuous story. Comma-separated
+ *                            kind@time[:arg]: c combo n, l lock at u, d hard drop at u, x clear n
+ *                            lines, q four lines, v level up, g game over (e.g. c@6:1,x@6:1,q@14)
  *   parts=sky,water,...      draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
@@ -133,6 +138,7 @@ export function create({
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    if (params.has('trollLook')) world.troll?.setLook(params.get('trollLook'));
     // A capture that names its level wants that hour, not that hour plus however long `t` is.
     if (params.has('level')) world.setHourDrift(false);
     const partsParam = params.get('parts');
@@ -224,7 +230,46 @@ export function create({
         else if (eventName === 'break') world.onCombo(0);
     };
 
+    /** An absolute-time event script (`story=`): [{ at, kind, arg }] in time order. */
+    const storyScript = (params.get('story') || '').split(',').map((token) => {
+        const m = /^([a-z])@([\d.]+)(?::([\d.]+))?$/.exec(token.trim());
+        return m ? { kind: m[1], at: Number(m[2]), arg: m[3] === undefined ? null : Number(m[3]) } : null;
+    }).filter(Boolean).sort((a, b) => a.at - b.at);
+    const fireScripted = (e, n) => {
+        const u = e.arg ?? 0.3;
+        if (e.kind === 'c') world.onCombo(e.arg ?? 1);
+        else if (e.kind === 'l' || e.kind === 'd') {
+            world.onLock({
+                rows: [19 - (n % 6), 18 - (n % 6)], u, hardDrop: e.kind === 'd', color: PIECE_COLORS[n % PIECE_COLORS.length],
+            });
+        } else if (e.kind === 'x') {
+            const lines = e.arg ?? 1;
+            world.onClear({ rows: Array.from({ length: lines }, (_, i) => 19 - i), lines });
+        } else if (e.kind === 'q') world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        else if (e.kind === 'v') world.levelUp(world.level + 1);
+        else if (e.kind === 'g') world.onGameOver();
+    };
+    const seekStory = (time) => {
+        world.seek(0);
+        if (level > 1) world.levelUp(level, { silent: true });
+        frame(0, 0);
+        let cursor = 0;
+        storyScript.forEach((e, n) => {
+            if (e.at > time) return;
+            stepTo(cursor, e.at, 1 / 30);
+            cursor = e.at;
+            fireScripted(e, n);
+        });
+        stepTo(cursor, time, 1 / 30);
+        frame(time, 0);
+        pushPost(time);
+    };
+
     const seekTo = (time) => {
+        if (storyScript.length) {
+            seekStory(time);
+            return;
+        }
         const lead = (eventName ? eventAge : 0) + 9 + warmLocks * 0.5;
         const start = Math.max(0, time - lead);
         world.seek(start);

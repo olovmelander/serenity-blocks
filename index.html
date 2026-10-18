@@ -117,8 +117,7 @@
     <link rel="stylesheet" href="/styles/keystone-versus.css">
     <link rel="stylesheet" href="/styles/keystone-online.css">
     <link rel="stylesheet" href="/styles/keystone-solo.css">
-    <link rel="stylesheet" href="/styles/fault-lines.css">
-    <link rel="stylesheet" href="/styles/waystones.css">
+    <link rel="stylesheet" href="/styles/stillfall.css">
 </head>
 
 <body>
@@ -823,35 +822,19 @@
                         <p class="mode-card-desc">One thousand rows tall. Build upward and chain cascades.</p>
                     </div>
 
-                    <!-- Preview: shown only with ?faultLines=1 (main-menu.js removes it otherwise). -->
-                    <div class="game-mode-card" data-mode="fault-lines" id="fault-lines-card-btn" tabindex="0">
+                    <div class="game-mode-card" data-mode="stillfall" id="stillfall-card-btn" tabindex="0">
                         <div class="mode-card-icon">
-                            <svg class="cs-icon cs-icon--fault-lines" viewBox="0 0 24 24" width="24" height="24" fill="none"
+                            <svg class="cs-icon cs-icon--stillfall" viewBox="0 0 24 24" width="24" height="24" fill="none"
                                 stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
                                 aria-hidden="true">
                                 <path d="M4 20h16" />
-                                <path d="M5 16h6v-4H8V8h5v8h6" />
-                                <path d="M14 4l-1.5 3.5L15 9l-2 3" />
+                                <path d="M4 20v-4h6v4M14 20v-4h6v4" />
+                                <rect x="10" y="3" width="4" height="4" rx="1" />
+                                <path d="M12 10v.01M12 12.5v.01" />
                             </svg>
                         </div>
-                        <h2 class="mode-card-title">Fault Lines</h2>
+                        <h2 class="mode-card-title">Stillfall</h2>
                         <p class="mode-card-desc">Cascade puzzles. A few pieces, one goal, gravity waits for you.</p>
-                    </div>
-
-                    <!-- Preview: shown only with ?waystones=1 (main-menu.js removes it otherwise). -->
-                    <div class="game-mode-card" data-mode="waystones" id="waystones-card-btn" tabindex="0">
-                        <div class="mode-card-icon">
-                            <svg class="cs-icon cs-icon--waystones" viewBox="0 0 24 24" width="24" height="24" fill="none"
-                                stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
-                                aria-hidden="true">
-                                <path d="M3 20c4-1 6-4 9-8s5-7 9-8" />
-                                <rect x="4" y="14" width="4" height="5" rx="1" />
-                                <rect x="10" y="9" width="4" height="5" rx="1" />
-                                <rect x="16" y="4" width="4" height="5" rx="1" />
-                            </svg>
-                        </div>
-                        <h2 class="mode-card-title">Waystones</h2>
-                        <p class="mode-card-desc">A road of five stops across your worlds. Your stack comes with you.</p>
                     </div>
 
                     <div class="game-mode-card" data-mode="local-multiplayer" id="local-multiplayer-card-btn" tabindex="0">

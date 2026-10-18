@@ -24,11 +24,8 @@ import { haleSessionName } from '../effects/breathing/breath-openings.js';
 import { formatPracticeTime, readPracticeLog, summarizePractice } from '../effects/breathwork-practice-log.js';
 import { statisticsForMode } from '../../core/progression/score-statistics.js';
 import { MENU_ART_DIR, StageArt } from './stage-art.js';
-import { readFlag } from '../../core/flags.js';
-import { FAULT_LINES_PUZZLES, openPuzzleIds } from '../../core/fault-lines/puzzle-bank.js';
-import { installFaultLinesHud, readSolvedFaultLines } from '../fault-lines/fault-lines-hud.js';
-import { installWaystonesHud } from '../waystones/waystones-hud.js';
-import { STOP_COUNT } from '../../core/waystones/road.js';
+import { STILLFALL_PUZZLES, openPuzzleIds } from '../../core/stillfall/puzzle-bank.js';
+import { installStillfallHud, readSolvedStillfall } from '../stillfall/stillfall-hud.js';
 import { odysseyMeterHtml } from '../keystone/odyssey-meter.js';
 
 const LAST_MODE_KEY = 'serenity.menu.lastMode';
@@ -63,21 +60,13 @@ const MODES = {
         lede: 'A well one thousand rows tall. Your stack can rise far above the screen, and the run ends only at the roof. Leave few holes and chain cascades as far as one run will carry you.',
         action: 'Play',
     },
-    // Preview: listed only with ?faultLines=1 (see MainMenu's constructor).
-    'fault-lines': {
+    stillfall: {
         eyebrow: 'Stack · Puzzles',
-        title: 'Fault Lines',
-        art: { file: 'fault-lines' },
+        title: 'Stillfall',
+        wordmark: { file: 'stillfall' },
+        art: { file: 'stillfall' },
         lede: 'A structure, a few pieces and one goal. Gravity waits while you choose; then the cascade runs. Each body falls as one, and bodies never glue together.',
         action: 'Play',
-    },
-    // Preview: listed only with ?waystones=1 (see MainMenu's constructor).
-    waystones: {
-        eyebrow: 'Stack · The road',
-        title: 'Waystones',
-        art: { file: 'waystones' },
-        lede: 'Five stops across the worlds you have collected. Each world bends the rules its own way and asks one thing of you. Your stack comes with you: bank it for a toll and a bigger ask, or release it.',
-        action: 'Set out',
     },
     'local-multiplayer': {
         eyebrow: 'Stack · Local versus',
@@ -119,7 +108,7 @@ const MODES = {
     },
 };
 
-const MODE_ORDER = ['single', 'infinity', 'fault-lines', 'waystones', 'local-multiplayer', 'online-multiplayer', 'serenity', 'hale', 'odyssey'];
+const MODE_ORDER = ['single', 'infinity', 'stillfall', 'local-multiplayer', 'online-multiplayer', 'serenity', 'hale', 'odyssey'];
 
 /** Hale sessions in the order the breath path opens them (breath-collection.js). */
 const HALE_SESSION_ORDER = [...STARTER_SESSIONS, ...BREATH_LADDER.map((step) => step.session)];
@@ -295,11 +284,7 @@ class MainMenu {
         this.root = root;
         this.modal = root.closest('#start-modal');
         this.stage = root.querySelector('.sb-stage');
-        if (readFlag('faultLines', false)) installFaultLinesHud();
-        else root.querySelector('.game-mode-card[data-mode="fault-lines"]')?.remove();
-        // The HUD idles until a road is published, so any way into the mode has its panel.
-        installWaystonesHud();
-        if (!readFlag('waystones', false)) root.querySelector('.game-mode-card[data-mode="waystones"]')?.remove();
+        installStillfallHud();
         this.cards = Array.from(root.querySelectorAll('.game-mode-card'));
         this.current = null;
         this.hoverTimer = null;
@@ -314,7 +299,9 @@ class MainMenu {
     }
 
     initialMode() {
-        const remembered = readStorage(LAST_MODE_KEY);
+        const saved = readStorage(LAST_MODE_KEY);
+        // The mode was called Fault Lines until 2026-10-18.
+        const remembered = saved === 'fault-lines' ? 'stillfall' : saved;
         if (remembered && MODES[remembered] && this.cardFor(remembered)) return remembered;
         return readOdysseyProgress()?.started ? 'odyssey' : 'single';
     }
@@ -606,23 +593,16 @@ class MainMenu {
         } else if (mode === 'infinity') {
             facts.push(['Rows', formatNumber(1000)]);
             facts.push(['Goal', 'Biggest cascade']);
-        } else if (mode === 'fault-lines') {
-            const solvedIds = readSolvedFaultLines();
+        } else if (mode === 'stillfall') {
+            const solvedIds = readSolvedStillfall();
             const solved = solvedIds.length;
             const open = openPuzzleIds(solvedIds);
-            const tiers = new Set(FAULT_LINES_PUZZLES.map((puzzle) => puzzle.tier));
-            const openTiers = new Set(FAULT_LINES_PUZZLES.filter((puzzle) => open.has(puzzle.id)).map((p) => p.tier));
-            facts.push(['Puzzles solved', `${formatNumber(solved)} / ${formatNumber(FAULT_LINES_PUZZLES.length)}`]);
+            const tiers = new Set(STILLFALL_PUZZLES.map((puzzle) => puzzle.tier));
+            const openTiers = new Set(STILLFALL_PUZZLES.filter((puzzle) => open.has(puzzle.id)).map((p) => p.tier));
+            facts.push(['Puzzles solved', `${formatNumber(solved)} / ${formatNumber(STILLFALL_PUZZLES.length)}`]);
             facts.push(['Tiers open', `${openTiers.size} / ${tiers.size}`]);
             if (solved > 0) action = 'Continue';
-            else note = 'Preview. Solve three in a tier to open the next. Every piece can be taken back.';
-        } else if (mode === 'waystones') {
-            let owned = 1;
-            try { ({ owned } = getThemeCollection().getSummary()); } catch { /* a private window keeps Forest */ }
-            facts.push(['Stops', String(STOP_COUNT)]);
-            facts.push(['Worlds on the road', formatNumber(owned)]);
-            facts.push(['Lanterns', '3']);
-            note = 'Preview. A top-out costs a lantern; the third ends the road. Charms between stops; the Keeper at the end.';
+            else note = 'Solve three in a tier to open the next. Every piece can be taken back.';
         } else if (mode === 'local-multiplayer') {
             facts.push(['Players', '2–4']);
             facts.push(['Bots', 'Any seat']);

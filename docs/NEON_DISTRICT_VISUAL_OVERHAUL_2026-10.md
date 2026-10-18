@@ -112,7 +112,8 @@ families, and every surface that advertises carries them:
   a render of the world it sells:
   - worlds: Koi Pond, Sakura Twilight, Crystal Cave, Golden Forest, Midsommar, Ocean, Winter and
     Stillwater
-  - modes: Infinity, Waystones and Odyssey
+  - modes: Infinity, Stillfall and Odyssey (Stillfall took the Waystones poster's place
+    when that mode was removed, 2026-10-18)
 
 The surfaces:
 
@@ -136,6 +137,133 @@ December 2025 images left the atlases because they carry third-party marks:
 - the Aurelia Colonies advert, signed with a famous film company's name and logo
 
 The user's other adverts stay in the screens' playlists.
+
+## The street comes alive (2026-10-18, second pass)
+
+The owner asked for the adverts, posters, shopfronts, neon signs and the shop rooms to feel more
+alive. Everything below is a function of the world clock (and the breath), like the rest of the
+district, so `seek(t)` still reproduces any frame.
+
+![Fly-posted walls with the new poster designs, a bar and a noodle bar with people in them](neon-district-captures/alive.webp)
+
+**People in the shops.** Each room has up to four people. They are signed-distance silhouettes
+(head, body, arms, legs that swing, or sitting cross-legged; `ndFigure`), in dark clothes in the
+room's light, with a thin rim of it round them. Each stands on a plane at a fraction of the room's
+depth: the ray meets that plane, and the figure hides whatever is behind it.
+
+- **Staff** stand behind the counter, so the counter hides their legs: a cook, a bartender, a
+  clerk. They shuffle along it.
+- **Elsewhere at the back:** gym-goers run in place on the treadmills, arcade players sway at a
+  cabinet, and Hale's visitor sits cross-legged and breathes.
+- **Customers** cross the room near the window, pausing at each end and striding as they go.
+- A shop with its shutter down is empty.
+
+**Life in the rooms:**
+
+- steam curling up off the noodle counter into the lamplight
+- ceiling fans turning in the diner and the bar
+- a wall television changing picture
+- clothes tumbling in the running washer drums
+- a fridge door with a failing tube in the mart
+- attract modes on the arcade screens (rolling bars, a bouncing ball)
+- scrolling rows on the office's queue screens
+- Hale's round lamps brightening and dimming with the breath
+
+**Neon.**
+
+- One sign or fascia in three switches itself back on now and then (every 25 to 55 s): its
+  letters light one by one, then it flashes twice and stays on. A lit box does it all at once.
+- One blade in seven is two-tone and swaps colour every few seconds.
+- Most lit-box blades carry marquee bulbs round their edge, the lit ones chasing.
+- Some framed tube signs have a brighter run of light travelling round the frame.
+- Some window signs blink.
+
+**Adverts.**
+
+- Every advert creeps in a little as it shows; travel posters, a little more.
+- A gloss of light sweeps across each LED wall now and then.
+- Most street screens run a ticker under the advert: its slogan in amber LEDs ("COMBO NOODLES ·
+  KEEP THE CHAIN GOING", "SERENITY TRANSIT · NOW BOARDING: KOI POND", Hale's "INHALE 4 · EXHALE
+  6"), or one of the district's own lines under the user's adverts.
+- Text lines are now up to 48 characters.
+
+**Posters.** Rain runs down the paste-ups in streaks that darken and shine the paper, and a torn
+flap's edge stirs, catching the light and losing it.
+
+**More worlds, more designs.** There are now 34 Serenity Transit world posters (26 new), each
+framed around a render of its world from the docs captures. Seven layouts take turns, so no two
+neighbours share one:
+
+- vintage framed
+- full-bleed with the name set vertically
+- Swiss colour field with a line number
+- art-deco arch with a sunburst
+- duotone screen print
+- boarding pass with flap letters
+- porthole with orbiting text
+
+Each poster's colours are sampled from its own image. Every brand has a second poster in a
+different design (a bottle close-up, a comic strip, a type-only stack, a parcel label, a price
+tag, a roof sign, an eye chart, a wall of washer doors). The mode posters have three layouts of
+their own.
+
+The billboard atlas is 4096 × 3584 (half size 2048 × 1792 on the low tiers). Adverts are dealt
+by campaign family first:
+
+- on the screens and roof boards: brands 42 %, transit 38 %, the user's adverts 12 %, Hale 8 %
+- on the paste-up walls: transit 60 %, brands 40 %
+
+About 26 of the 34 world posters are up in any one period of street. A final pass makes sure
+every campaign is on at least one screen.
+
+**Cost.** The first version of the rooms traced the whole room and its people for every pixel of
+every shop quad. In-game at Ultra on WebGPU (RTX 3070, 1584 × 813, two alternating rounds) that
+read about 79 fps with the shops against 95 without. Now the room is traced only where it can be
+seen: through the glass (not the fascia, piers, reveal or a shutter), and near enough for its
+detail to show. A person who is not there is skipped. The same A/B then read 129.2 and 130.6 fps
+with the shops against 129.9 and 130.1 without, at Electron's frame cap. All shots of the pass
+(every tier, forced WebGL2, the four-line overdrive, rooms, frame strips of the people, poster
+walls, screens) have clean consoles on WebGPU.
+
+## Rain on the glass (2026-10-19)
+
+The owner asked for realistic raindrops on the screen, pointing at a DaVinci Resolve rain-on-lens
+tutorial. The district is now seen through a pane of glass in the rain
+(`neon-district-glass.js`), drawn in the post's one output pass, before the bloom is added:
+
+- **Beads.** Drops of two sizes on a jittered grid. Each is born (a raindrop lands), sits, and
+  shrinks as it evaporates, then another lands elsewhere in its cell (a cell's lifetime is 9 to
+  23 s).
+- **Runners.** Heavier drops, one per column, slide down in jerks: stuck, then a sudden slide, eight
+  steps a run, along a wavering path. Each wipes a trail through the mist that grows back behind
+  it and leaves a line of shrinking beads.
+- **Mist.** Fine condensation, heavier toward the foot and the sides of the pane, softens the
+  street behind the glass. On High and up it mixes toward a quarter-resolution Gaussian blur of
+  the scene (`GaussianBlurNode`); on Medium it only lifts the darks. The trails wipe it, and it
+  thins round the drops.
+- **Optics.** Every drop is a small lens. The scene is sampled at an offset against the drop's
+  outward normal, five drop radii at the rim, so the street is seen through it upside down and
+  shrunk. The inside gathers a little light. The rim darkens where the light turns away, a glint
+  coloured by the neon behind sits on the shoulder facing the lamps overhead, and the foot
+  catches a little caustic.
+
+Placement and switches:
+
+- It stays off the board card and HUD (the post's calm zones).
+- It has its own clock in the world's post state (`rainTime`), which holds still under reduced
+  motion.
+- Tiers: two layers of each kind on High, Ultra and Extreme; one on Medium; none on Low and
+  Minimal (`POST_LOOK[tier].glass` and `glassBlur`).
+- `?neonDistrictGlass=0` (game) and `glass=0` (playground) take it off for an A/B.
+
+Written for this theme. The best-known real-time shader of this effect is licensed for
+non-commercial use only, so none of its code is used.
+
+![Rain on the glass: the street at High, and in game beside the board](neon-district-captures/glass.webp)
+
+Verified on WebGPU (RTX 3070): clean consoles at every tier, on forced WebGL2 and in the
+four-line overdrive. In game at Ultra (1584 × 813, two alternating rounds) the street read 131.0
+and 131.2 fps with the glass against 130.9 and 131.1 without, at Electron's frame cap.
 
 ## How it is built
 

@@ -446,21 +446,6 @@ export class SharedEffects {
     }
 
     /**
-     * A word from the road (Waystones: "Stop 2 cleared / The road waits"), mid-well, in
-     * the chain finale's banner so it reads as the board's own voice.
-     * @param {string} kicker
-     * @param {string} title
-     */
-    playRoadBanner(kicker, title) {
-        if (!this.scene?.add?.text) return;
-        this._dismissRecentCallout?.();
-        const boardHeight = this.scene.rows * this.scene.blockSize;
-        this._showBanner({
-            kicker, title, y: boardHeight * 0.46, titleSize: 30, accent: TONE.LAVENDER, hold: 900, depth: 56,
-        });
-    }
-
-    /**
      * A chain's finale: "Combo ×3 / 7 lines" in the chain's tone, low on the board
      * where the chain happened; from ten waves the big "×n / Cascade".
      * @param {number} waves
@@ -1607,7 +1592,7 @@ export class SharedEffects {
      *
      * @param {number} comboCount - Combo count
      */
-    /** True when the board counts a puzzle's waves rather than combos (Fault Lines). */
+    /** True when the board counts a puzzle's waves rather than combos (Stillfall). */
     _countsWaves() {
         return this.scene?.gameState?.moveSummaryVocabulary === 'wave';
     }

@@ -20,8 +20,8 @@ const sourceOf = (file) => readFileSync(new URL(`../../src/themes/stillwater/${f
 /** The game's six tiers, lowest first. */
 const LADDER = ['minimal', 'low', 'medium', 'high', 'ultra', 'extreme'].map((name) => normalizeQuality(name));
 
-/** The numbers that get SMALLER as a tier gets richer: a finer ground mesh, a finer sculpt. */
-const FINER = ['cell', 'troll'];
+/** The numbers that get SMALLER as a tier gets richer: a finer ground mesh, finer figures (0 = the finest mesh). */
+const FINER = ['cell', 'troll', 'spirit'];
 
 describe('stillwater quality: the tiers', () => {
     it('has a tier for each of the game\'s six, lowest first, and nothing else', () => {
@@ -80,6 +80,10 @@ describe('stillwater quality: the tiers', () => {
         expect(most.cell).toBeLessThan(least.cell);
         expect(most.mirror).toBeGreaterThan(least.mirror);
         expect(most.lite).toBe(false);
+        // The figures: the fullest tier has the finest of each, and the most motes round her.
+        expect(most.troll).toBeLessThan(least.troll);
+        expect(most.spirit).toBeLessThan(least.spirit);
+        expect(most.motes).toBeGreaterThan(least.motes);
     });
 
     it('keeps the whole picture and every event at every tier', () => {
@@ -99,11 +103,12 @@ describe('stillwater quality: the tiers', () => {
             expect(tier.eyes, name).toBeLessThanOrEqual(EYE_PAIRS);
             // Whole numbers of things.
             for (const key of ['trunks', 'boughs', 'boulders', 'saplings', 'lilies', 'reeds', 'ferns', 'caps', 'eyes',
-                'fireflies', 'sparks', 'mist', 'troll']) {
+                'fireflies', 'sparks', 'mist', 'troll', 'spirit', 'motes']) {
                 expect(Number.isInteger(tier[key]), `${name}.${key}`).toBe(true);
             }
-            // The sculpt has four meshes; the mirror pass is a share of the frame; the ground mesh has a cell.
+            // He has four meshes and she two; the mirror pass is a share of the frame; the ground mesh has a cell.
             expect([0, 1, 2, 3], name).toContain(tier.troll);
+            expect([0, 1], name).toContain(tier.spirit);
             expect(tier.mirror, name).toBeLessThanOrEqual(1);
             expect(tier.cell, name).toBeGreaterThan(0.2);
             expect(tier.cell, name).toBeLessThan(3);

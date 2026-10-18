@@ -22,7 +22,6 @@ import { createBoulderGeometry, createBoulders, createGround } from '../../src/t
 import {
     createCapGeometry, createFernGeometry, createLilyGeometry, createPadGeometry, createSaplingGeometry,
 } from '../../src/themes/stillwater/stillwater-flora.js';
-import { createSpiritGeometry } from '../../src/themes/stillwater/stillwater-figures.js';
 import { createSky } from '../../src/themes/stillwater/stillwater-sky.js';
 import { createWater } from '../../src/themes/stillwater/stillwater-water.js';
 import {
@@ -138,23 +137,6 @@ function ringCentres(geometry, piece, ring, closing) {
         centres.push(centre.divideScalar(own));
     }
     return centres;
-}
-
-/** The point of a line through `centres` nearest to `point`. */
-function nearestOnLine(centres, point) {
-    let best = centres[0];
-    let least = Infinity;
-    const line = new THREE.Line3();
-    const on = new THREE.Vector3();
-    for (let r = 0; r < centres.length - 1; r++) {
-        line.set(centres[r], centres[r + 1]).closestPointToPoint(point, true, on);
-        const d = on.distanceTo(point);
-        if (d < least) {
-            least = d;
-            best = on.clone();
-        }
-    }
-    return best;
 }
 
 /** Every number of every attribute is finite, and the index stays inside the vertices. */
@@ -902,140 +884,5 @@ describe('stillwater meshes: what grows', () => {
         const byLength = petals.map((one) => [petal.getW(one.vertices[0]), tilt.getY(one.vertices[0])])
             .sort((a, b) => a[0] - b[0]);
         expect(byLength[0][1]).toBeGreaterThan(byLength.at(-1)[1]);
-    });
-});
-
-describe('stillwater meshes: the spirit', () => {
-    const geometry = createSpiritGeometry();
-    const position = geometry.getAttribute('position');
-    const normal = geometry.getAttribute('normal');
-    const body = geometry.getAttribute('aBody');
-    const pieces = piecesOf(geometry);
-    const kindsOf = (piece) => [...new Set(piece.vertices.map((i) => body.getX(i)))].sort();
-    /** The gown with the head on it is the piece built first; the hair is the one piece of kind 1. */
-    const gown = pieces[0];
-    const hair = pieces.find((piece) => kindsOf(piece).includes(1));
-    const arms = pieces.filter((piece) => piece !== gown && piece !== hair);
-
-    /** Share of a list of vertices whose normal points away from the y axis (on the axis: upward). */
-    const outwardShare = (vertices) => {
-        let outward = 0;
-        for (const i of vertices) {
-            const r = Math.hypot(position.getX(i), position.getZ(i));
-            const away = position.getX(i) * normal.getX(i) + position.getZ(i) * normal.getZ(i);
-            if (r < 1e-9 ? normal.getY(i) > 0 : away > 0) outward += 1;
-        }
-        return outward / vertices.length;
-    };
-
-    it('is one figure a unit tall: a gown with a head, a mantle of hair, two arms', () => {
-        expectSound(geometry, 'spirit');
-        expect(unitNormals(geometry)).toBe(true);
-        expect(pieces).toHaveLength(4);
-        expect(kindsOf(gown)).toEqual([0, 2]);
-        expect(kindsOf(hair)).toEqual([1]);
-        expect(arms).toHaveLength(2);
-        const box = new THREE.Box3().setFromBufferAttribute(position);
-        expect(box.min.y).toBeCloseTo(0, 6);
-        expect(box.max.y).toBeCloseTo(1, 6);
-        for (let i = 0; i < position.count; i++) {
-            // A slender figure: nothing further than a third of her height from her axis.
-            expect(Math.hypot(position.getX(i), position.getZ(i))).toBeLessThan(0.33);
-            // aBody = (what it is: 0 gown, 1 hair, 2 head and hands; how freely it moves 0..1).
-            expect([0, 1, 2]).toContain(body.getX(i));
-            expect(body.getY(i)).toBeGreaterThanOrEqual(0);
-            expect(body.getY(i)).toBeLessThanOrEqual(1);
-        }
-        // The same figure every time.
-        expect(Array.from(createSpiritGeometry().getAttribute('position').array)).toEqual(Array.from(position.array));
-    });
-
-    it('turns the gown and the head outward', () => {
-        const cloth = gown.vertices.filter((i) => body.getX(i) === 0);
-        const head = gown.vertices.filter((i) => body.getX(i) === 2);
-        expect(cloth.length).toBeGreaterThan(100);
-        expect(head.length).toBeGreaterThan(30);
-        // The head and neck are marked by height: everything above her shoulders.
-        const shoulder = Math.max(...cloth.map((i) => position.getY(i)));
-        expect(Math.min(...head.map((i) => position.getY(i)))).toBeGreaterThan(shoulder);
-        expect(shoulder).toBeGreaterThan(0.7);
-        expect(outwardShare(cloth)).toBeGreaterThanOrEqual(0.95);
-        expect(outwardShare(head)).toBeGreaterThanOrEqual(0.95);
-        // And the triangles are wound the way the normals face.
-        const triangles = trianglesOf(geometry).filter((t) => gown.triangles.includes(t.first) && t.area > 1e-12);
-        expect(triangles.filter((t) => !(t.face.dot(t.stored) > 0))).toHaveLength(0);
-        const inward = triangles.filter((t) => !(t.face.x * t.centre.x + t.face.z * t.centre.z > 0 || t.face.y > 0.5));
-        expect(inward.length / triangles.length).toBeLessThan(0.02);
-    });
-
-    it('turns her hair outward, down her back', () => {
-        expect(outwardShare(hair.vertices)).toBeGreaterThanOrEqual(0.95);
-        // She faces +z: the mantle hangs behind her, from the crown down past her waist.
-        const mean = hair.vertices.reduce((sum, i) => sum + position.getZ(i), 0) / hair.vertices.length;
-        expect(mean).toBeLessThan(0);
-        const heights = hair.vertices.map((i) => position.getY(i));
-        expect(Math.max(...heights)).toBeGreaterThan(0.9);
-        expect(Math.min(...heights)).toBeLessThan(0.5);
-        // A mantle, not a hood: it is open at the front (no part of it before her face).
-        expect(Math.max(...hair.vertices.map((i) => position.getZ(i)))).toBeLessThan(0.05);
-        const triangles = trianglesOf(geometry).filter((t) => hair.triangles.includes(t.first));
-        expect(triangles.filter((t) => t.area > 1e-12 && !(t.face.dot(t.stored) > 0))).toHaveLength(0);
-    });
-
-    it('turns each arm\'s skin away from the arm\'s own axis', () => {
-        const index = geometry.getIndex();
-        const sides = [];
-        for (const arm of arms) {
-            // The first two triangles of a tube span its first ring and the next: that gives the ring's length.
-            const used = [...new Set([0, 1, 2, 3, 4, 5].map((k) => index.getX(arm.triangles[0] + k)))]
-                .sort((a, b) => a - b);
-            const ring = used[2] - used[0];
-            expect(ring).toBeGreaterThanOrEqual(3);
-            expect(arm.vertices.length % ring).toBe(0);
-            const centres = ringCentres(geometry, arm, ring, false);
-            expect(centres.length).toBeGreaterThanOrEqual(3);
-            const triangles = trianglesOf(geometry).filter((t) => arm.triangles.includes(t.first) && t.area > 1e-14);
-            expect(triangles.length).toBeGreaterThan(20);
-            const outward = (t) => t.face.dot(t.centre.clone().sub(nearestOnLine(centres, t.centre))) > 0;
-            const inward = triangles.filter((t) => !outward(t));
-            expect(inward.map((t) => t.first)).toEqual([]);
-            const point = new THREE.Vector3();
-            const facing = new THREE.Vector3();
-            for (const i of arm.vertices) {
-                point.fromBufferAttribute(position, i);
-                facing.fromBufferAttribute(normal, i);
-                const away = point.clone().sub(nearestOnLine(centres, point));
-                expect(facing.dot(away), `arm vertex ${i}`).toBeGreaterThan(0);
-            }
-            // From the shoulder down to the hand, which is folded before her (she faces +z).
-            const shoulder = centres[0];
-            const hand = centres.at(-1);
-            expect(shoulder.y).toBeGreaterThan(hand.y);
-            expect(hand.z).toBeGreaterThan(shoulder.z);
-            expect(Math.abs(hand.x)).toBeLessThan(Math.abs(shoulder.x));
-            sides.push(Math.sign(shoulder.x));
-            // The hand is skin; the sleeve is the gown's cloth.
-            expect(body.getX(arm.vertices.at(-1))).toBe(2);
-            expect(body.getX(arm.vertices[0])).toBe(0);
-        }
-        expect(sides.sort()).toEqual([-1, 1]);
-    });
-
-    it('lets the hem and the hair move, and holds the head and the arms still', () => {
-        const free = (i) => body.getY(i);
-        const hem = gown.vertices.filter((i) => position.getY(i) < 0.05);
-        const head = gown.vertices.filter((i) => body.getX(i) === 2);
-        expect(Math.min(...hem.map(free))).toBeGreaterThan(0.7);
-        expect(Math.max(...head.map(free))).toBe(0);
-        for (const arm of arms) expect(Math.max(...arm.vertices.map(free))).toBe(0);
-        // The gown moves the more the lower it hangs.
-        const cloth = gown.vertices.filter((i) => body.getX(i) === 0)
-            .sort((a, b) => position.getY(a) - position.getY(b));
-        for (let k = 1; k < cloth.length; k++) expect(free(cloth[k])).toBeLessThanOrEqual(free(cloth[k - 1]) + 1e-6);
-        // Her hair is held at the crown and free at its ends.
-        const crown = hair.vertices.filter((i) => position.getY(i) > 0.9);
-        const ends = hair.vertices.filter((i) => position.getY(i) < 0.35);
-        expect(Math.max(...crown.map(free))).toBeLessThan(0.05);
-        expect(Math.min(...ends.map(free))).toBeGreaterThan(0.5);
     });
 });

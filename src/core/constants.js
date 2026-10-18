@@ -206,8 +206,7 @@ export const GAME_MODES = {
     SERENITY: 'serenity',
     INFINITY: 'infinity',
     ODYSSEY: 'odyssey',
-    FAULT_LINES: 'fault-lines',
-    WAYSTONES: 'waystones',
+    STILLFALL: 'stillfall',
 };
 
 /**

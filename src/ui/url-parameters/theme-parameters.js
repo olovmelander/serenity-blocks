@@ -411,6 +411,15 @@ const validationIds = ['aurora',
 
 export const THEME_URL_PARAMETERS = [
     entry(
+        'neonDistrictGlass',
+        'Neon District',
+        'Take the rain off the glass (the drops, runners and mist over the street), for A/B comparisons and captures.',
+        '0 turns it off; any other value, or none, leaves it as the quality tier sets it',
+        'On from Medium quality up',
+        '0',
+        [source('neon-district')],
+    ),
+    entry(
         'forceWebGL',
         'Supported game themes',
         'Request the WebGL2 backend instead of WebGPU.',
