@@ -15,6 +15,13 @@ import {
     BILLBOARD_ATLAS, BILLBOARD_CELLS, SHOPFRONT_ATLAS, SHOPFRONT_CELLS,
 } from '../../src/themes/neon-district/neon-district-atlas.js';
 import { KIT_KINDS } from '../../src/themes/neon-district/neon-district-kit.js';
+import {
+    BRANDS, BRAND_WORDS, CAMPAIGNS, HALE, SHOP_ARCHETYPES, TRADE_SHOPS,
+} from '../../src/themes/neon-district/neon-district-campaigns.js';
+import { LOGOS, logoIndex } from '../../src/themes/neon-district/neon-district-logos.js';
+import { PAINTED_OPENINGS } from '../../src/themes/neon-district/neon-district-openings.js';
+import { GLYPH_BLANK, glyphFor } from '../../src/themes/neon-district/neon-district-glyphs.js';
+import { encodeLine } from '../../src/themes/neon-district/neon-district-text.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/neon-district/neon-district-quality.js';
 import { POST_LOOK } from '../../src/themes/neon-district/neon-district-post.js';
 
@@ -110,11 +117,95 @@ describe('neon district city plan', () => {
             expect(Math.abs(sign.x) - sign.w / 2).toBeGreaterThan(STREET.halfRoad - 2.2);
             expect(sign.y - sign.h / 2).toBeGreaterThan(STREET.plinth);
         }
-        for (const shop of plan.shopfronts) {
-            expect(shop.h).toBeLessThanOrEqual(STREET.plinth);
-            expect(shop.cell).toBeGreaterThanOrEqual(0);
-            expect(shop.cell).toBeLessThan(SHOPFRONT_CELLS.length);
+        for (const mark of plan.marks) {
+            expect(Math.abs(mark.x) + mark.w / 2).toBeLessThanOrEqual(STREET.halfStreet);
+            expect(mark.y - mark.h / 2).toBeGreaterThan(STREET.plinth);
         }
+    });
+
+    it('lines every block with shops that never overlap, each a painting or a whole generated shop', () => {
+        expect(plan.shops.length).toBeGreaterThan(40);
+        for (const side of [-1, 1]) {
+            const shops = plan.shops.filter((s) => s.side === side).sort((a, b) => a.z - b.z);
+            for (let i = 1; i < shops.length; i++) {
+                expect(shops[i].z - shops[i].w / 2).toBeGreaterThanOrEqual(shops[i - 1].z + shops[i - 1].w / 2 - 1e-6);
+            }
+        }
+        for (const shop of plan.shops) {
+            expect(shop.h).toBeLessThanOrEqual(STREET.plinth);
+            expect(Number.isInteger(shop.seed)).toBe(true);
+            const [u0, v0, u1, v1] = shop.open;
+            expect(u0).toBeGreaterThanOrEqual(0);
+            expect(v0).toBeGreaterThanOrEqual(0);
+            expect(u1).toBeLessThanOrEqual(1);
+            expect(v1).toBeLessThanOrEqual(1);
+            expect(u1 - u0).toBeGreaterThan(0.2);
+            expect(v1 - v0).toBeGreaterThan(0.25);
+            expect(shop.recess).toBeGreaterThan(0.2);
+            if (shop.kind === 0) {
+                expect(SHOPFRONT_CELLS[shop.cell]).toBeTruthy();
+                expect(shop.w / shop.h).toBeCloseTo(SHOPFRONT_CELLS[shop.cell].aspect, 6);
+            } else {
+                expect(shop.kind).toBe(1);
+                expect(shop.archetype).toBeGreaterThanOrEqual(0);
+                expect(shop.archetype).toBeLessThan(SHOP_ARCHETYPES.length);
+                expect(plan.texts[shop.nameRow]).toBe(shop.name);
+                // The fascia sits above the opening.
+                expect(1 - shop.fascia).toBeGreaterThanOrEqual(v1);
+                expect(shop.shutter).toBeGreaterThanOrEqual(0);
+                expect(shop.shutter).toBeLessThanOrEqual(1);
+                if (shop.brand) expect(shop.shutter).toBe(0);
+                if (shop.logo >= 0) expect(LOGOS[shop.logo]).toBeTruthy();
+            }
+        }
+        // Every painting is dealt once a period.
+        const painted = plan.shops.filter((s) => s.kind === 0).map((s) => s.cell).sort((a, b) => a - b);
+        expect(painted).toEqual(SHOPFRONT_CELLS.map((_, i) => i));
+    });
+
+    it('knows where every painted shopfront\'s windows are', () => {
+        for (const cell of SHOPFRONT_CELLS) {
+            const open = PAINTED_OPENINGS[cell.src];
+            expect(open, cell.src).toBeTruthy();
+            expect(open[2]).toBeGreaterThan(open[0]);
+            expect(open[3]).toBeGreaterThan(open[1]);
+        }
+    });
+
+    it('gives every brand with a shop a branch on the street, and every brand its campaign', () => {
+        const shopsByBrand = new Set(plan.shops.filter((s) => s.brand).map((s) => s.brand));
+        for (const brand of [...BRANDS, HALE]) {
+            if (brand.shop) expect(shopsByBrand.has(brand.id), brand.id).toBe(true);
+            // Its adverts are on the screens or pasted on the walls.
+            const shown = plan.screens.some((s) => s.playlist.some((c) => BILLBOARD_CELLS[c].brand === brand.id))
+                || plan.prints.some((p) => BILLBOARD_CELLS[p.cell].brand === brand.id);
+            expect(shown, brand.id).toBe(true);
+        }
+        // Travel posters for the other worlds come round too.
+        expect(plan.screens.some((s) => s.playlist.some((c) => BILLBOARD_CELLS[c].family === 'transit'))).toBe(true);
+        for (const trade of TRADE_SHOPS) expect(plan.shops.some((s) => s.name === trade.name), trade.name).toBe(true);
+    });
+
+    it('hangs tube logos the atlas has, under names the text texture holds', () => {
+        expect(plan.marks.length).toBeGreaterThan(10);
+        for (const mark of plan.marks) {
+            expect(LOGOS[mark.logo]).toBeTruthy();
+            expect(plan.texts[mark.nameRow].length).toBe(mark.nameLength);
+        }
+        for (const c of [...BRANDS, HALE, CAMPAIGNS.transit]) expect(logoIndex(c.logo), c.id).toBeGreaterThanOrEqual(0);
+    });
+
+    it('spells every line of text with glyphs the atlas has', () => {
+        for (const line of plan.texts) {
+            expect(line.length).toBeLessThanOrEqual(32);
+            const ids = encodeLine(line, 32);
+            for (let i = 0; i < line.length; i++) {
+                if (line[i] === ' ') expect(ids[i]).toBe(GLYPH_BLANK);
+                else expect(ids[i], `${line}[${i}]`).toBeLessThan(GLYPH_COUNT);
+            }
+        }
+        expect(glyphFor('&')).toBeLessThan(GLYPH_COUNT);
+        expect(glyphFor('~')).toBe(GLYPH_BLANK);
     });
 
     it('writes every sign with glyphs the atlas has, and only trade words', () => {
@@ -130,7 +221,7 @@ describe('neon district city plan', () => {
             }
             if (sign.glyphs.every((g) => g < GLYPH_LATIN)) {
                 const text = sign.glyphs.map((g) => '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'[g]).join('');
-                expect(SIGN_WORDS).toContain(text);
+                expect([...SIGN_WORDS, ...BRAND_WORDS.map((b) => b.word)]).toContain(text);
                 words += 1;
             }
             expect(sign.palette).toBeLessThan(NEON_PALETTE.length);
@@ -138,14 +229,33 @@ describe('neon district city plan', () => {
         expect(words).toBeGreaterThan(8);
     });
 
-    it('never shows an advert twice on one screen and stays inside the atlas', () => {
+    it('gives every screen three different adverts of its own shape, Hale\'s at most once', () => {
         expect(plan.screens.length).toBeGreaterThanOrEqual(6);
         for (const screen of plan.screens) {
-            expect(screen.cell).not.toBe(screen.next);
-            expect(BILLBOARD_CELLS[screen.cell]).toBeTruthy();
-            expect(BILLBOARD_CELLS[screen.next]).toBeTruthy();
-            // A screen pairs adverts of one shape.
-            expect(BILLBOARD_CELLS[screen.cell].aspect > 1.4).toBe(BILLBOARD_CELLS[screen.next].aspect > 1.4);
+            expect(screen.playlist).toHaveLength(3);
+            expect(new Set(screen.playlist).size).toBe(3);
+            for (const cell of screen.playlist) {
+                expect(BILLBOARD_CELLS[cell]).toBeTruthy();
+                expect(BILLBOARD_CELLS[cell].shape).toBe(screen.shape);
+            }
+            expect(screen.playlist.filter((c) => BILLBOARD_CELLS[c].family === 'hale').length).toBeLessThanOrEqual(1);
+            expect(screen.w / screen.h).toBeCloseTo({ wide: 16 / 9, portrait: 2 / 3, square: 1 }[screen.shape], 6);
+            expect(screen.period).toBeGreaterThan(5);
+        }
+    });
+
+    it('prints campaigns without a screen\'s breathing ring, and hangs roof boards on scaffolds', () => {
+        expect(plan.prints.length).toBeGreaterThan(10);
+        for (const print of plan.prints) {
+            expect(BILLBOARD_CELLS[print.cell].ring).toBeNull();
+            expect(print.tear).toBeGreaterThanOrEqual(0);
+            expect(print.tear).toBeLessThan(1);
+        }
+        const frames = plan.kit.filter((k) => k.kind === 'frame');
+        const boards = plan.prints.filter((p) => p.flood);
+        expect(boards.length).toBe(frames.length);
+        for (const board of boards) {
+            expect(frames.some((f) => Math.abs(f.z - board.z) < 1e-9 && Math.sign(f.x) === board.side)).toBe(true);
         }
     });
 
@@ -245,6 +355,24 @@ describe('neon district atlases', () => {
                 expect(existsSync(path.join(repoRoot, 'public', url)), url).toBe(true);
             }
         }
+    });
+
+    it('files every advert under a campaign and a shape, Hale\'s with room for its ring', () => {
+        const families = new Set(BILLBOARD_CELLS.map((c) => c.family));
+        expect([...families].sort()).toEqual(['brand', 'hale', 'transit', 'user']);
+        for (const cell of BILLBOARD_CELLS) {
+            expect(['wide', 'portrait', 'square']).toContain(cell.shape);
+            if (cell.family === 'brand') expect(BRANDS.map((b) => b.id)).toContain(cell.brand);
+            if (cell.ring) {
+                expect(cell.family).toBe('hale');
+                expect(cell.motion).toBe('breathe');
+            }
+        }
+        for (const brand of BRANDS) {
+            expect(BILLBOARD_CELLS.some((c) => c.brand === brand.id && c.shape === 'wide'), brand.id).toBe(true);
+            expect(BILLBOARD_CELLS.some((c) => c.brand === brand.id && c.shape === 'portrait'), brand.id).toBe(true);
+        }
+        expect(BILLBOARD_CELLS.some((c) => c.family === 'hale' && c.ring)).toBe(true);
     });
 
     it('keeps every cell inside its atlas with a usable glow colour', () => {

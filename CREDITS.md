@@ -52,8 +52,13 @@ set was removed from the distribution on 2026-10-05.
 
 The rebuilt Neon District ships two atlases, `public/textures/neon-district/shopfronts.webp` and
 `billboards.webp` (and their half-size copies), baked from the shopfront and billboard images the
-project owner added in December 2025. The sources and the bake are in
-`scripts/neon-district/` (see `source-art/README.md`).
+project owner added in December 2025. Since 2026-10-18 the billboard atlas also holds the
+district's own campaigns, drawn by the bake script itself: the brand, Hale and travel adverts are
+vector shapes and type set in the game's own OFL fonts (section 4), and the travel adverts frame renders
+of this game's own themes (from the captures under `docs/`). The sources and the bake are in
+`scripts/neon-district/` (see `source-art/README.md`). Two of the December 2025 images are no
+longer baked into either atlas (one shows another company's video-game characters, one a famous
+film company's name and logo).
 
 ---
 

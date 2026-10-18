@@ -4,39 +4,42 @@ import {
 } from 'vitest';
 import { isBaked, resetBakeCache } from '../../src/themes/shared/bake-cache.js';
 import { createNoiseTexture } from '../../src/themes/neon-district/neon-district-tsl.js';
-import { createGlyphTexture } from '../../src/themes/neon-district/neon-district-signs.js';
+import { createGlyphTexture, createLogoTexture } from '../../src/themes/neon-district/neon-district-signs.js';
 import {
     NEON_DISTRICT_BAKE_JOBS, neonDistrictBakeKey, neonDistrictBakes,
 } from '../../src/themes/neon-district/neon-district-bakes.js';
 
 /**
- * Neon District's noise and glyph atlas bake in a module Worker on a first visit (0.11 s of main
- * thread, play-feel probe 2026-10-16). The jobs must name exactly the bakes the world's build asks
- * for, under the keys those bakes keep, or the build bakes them again on the page.
+ * Neon District's noise, glyph atlas and tube logos bake in a module Worker on a first visit (the
+ * first two cost 0.11 s of main thread, play-feel probe 2026-10-16). The jobs must name exactly the
+ * bakes the world's build asks for, under the keys those bakes keep, or the build bakes them again
+ * on the page.
  */
 const source = (name) => readFileSync(new URL(`../../src/themes/neon-district/${name}`, import.meta.url), 'utf8');
 
 afterEach(() => resetBakeCache());
 
-describe('Neon District bakes its noise and its glyphs ahead of the build', () => {
-    it('names the two bakes the world builds from, under the keys they keep', () => {
+describe('Neon District bakes its noise, glyphs and logos ahead of the build', () => {
+    it('names the three bakes the world builds from, under the keys they keep', () => {
         for (const job of NEON_DISTRICT_BAKE_JOBS) expect(isBaked(neonDistrictBakeKey(job)), job.kind).toBe(false);
         // What the world calls (neon-district-world.js: both at their defaults).
         const world = source('neon-district-world.js');
         expect(world).toContain('const noise = createNoiseTexture();');
         expect(world).toContain('const glyphs = createGlyphTexture();');
+        expect(world).toContain('const logoTex = createLogoTexture();');
         const noise = createNoiseTexture();
         const glyphs = createGlyphTexture();
+        const logos = createLogoTexture();
         for (const job of NEON_DISTRICT_BAKE_JOBS) expect(isBaked(neonDistrictBakeKey(job)), job.kind).toBe(true);
         // Every texture gets its own mip list over the kept bytes.
         const again = createNoiseTexture();
         expect(again.mipmaps).not.toBe(noise.mipmaps);
         expect(again.mipmaps[0].data).toBe(noise.mipmaps[0].data);
-        [noise, glyphs, again].forEach((t) => t.dispose());
+        [noise, glyphs, logos, again].forEach((tex) => tex.dispose());
     });
 
     it('bakes in modules that import no three, served by its worker under the jobs\' kinds', () => {
-        for (const name of ['neon-district-bake.js', 'neon-district-glyphs.js']) {
+        for (const name of ['neon-district-bake.js', 'neon-district-glyphs.js', 'neon-district-logos.js']) {
             expect(source(name), name).not.toMatch(/from 'three/);
         }
         const worker = source('neon-district-bake.worker.js');
