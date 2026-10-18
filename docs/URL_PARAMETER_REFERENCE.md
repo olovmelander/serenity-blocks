@@ -37,7 +37,8 @@ playground `nopost`, which the theme used to forward from the page URL, and the 
 `vesperChrysalisFalseColor` plus the controls of the rebuilt `vesper-chrysalis` playground
 effect. The foxes' rebuild (Winter's, then Sakura Twilight's, on one shared rig) added `foxCam`,
 `foxCamYaw`, `foxCamFov`, `foxAct` and `foxActAge` to the `winter` and `sakura-twilight` playground
-effects, and `foxWhich` to the latter.
+effects, and `foxWhich` to the latter; Sakura Twilight keeping one fox of its pair
+(2026-10-18) retired `foxWhich` again.
 The Tornado rebuild added the capture flags `tornadoForceWebGL`, `tornadoTime`,
 `tornadoFixedDt`, `tornadoParts` and `tornadoFalseColor` plus the `tornado` playground effect
 (it reads 25 parameters the other full-world effects already had, so it adds no name of its
