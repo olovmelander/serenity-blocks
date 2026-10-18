@@ -54,6 +54,9 @@ export class OdysseyBotMatch {
             playerIndex: 1,
             playerState: bot,
             difficulty: this.difficulty,
+            // Spread each plan over game time (2.5 placements a ms: a 341-placement tier-8 plan
+            // takes 136 ms, inside the 160 ms head start), not one 20-28 ms frame per piece.
+            planUnitsPerMs: 2.5,
             rng: seededRandom((seed ^ 0x85ebca6b) >>> 0),
             actions: {
                 moveLeft: () => this._moveBot(-1),

@@ -295,8 +295,12 @@ export class FrameRateController {
      * Start the hybrid game loop
      * @param {Function} updateFn - Game logic update function (called at target FPS)
      * @param {Function} renderFn - Render function (called at monitor refresh rate)
+     * @param {{displaySynced?: boolean}} [options] displaySynced runs the logic in the render
+     *   frame, once per display refresh, instead of on its own timer: a timer not locked to the
+     *   display gives each shown frame 0, 1 or 2 updates, which reads as judder (Odyssey audit
+     *   2026-10-18). Pause, resume and stop behave the same.
      */
-    startHybridLoop(updateFn, renderFn) {
+    startHybridLoop(updateFn, renderFn, { displaySynced = false } = {}) {
         if (this.isRunning) {
             console.warn('[FrameRate] Hybrid loop already running');
             return;
@@ -304,6 +308,7 @@ export class FrameRateController {
 
         this.updateCallback = updateFn;
         this.renderCallback = renderFn;
+        this.displaySynced = displaySynced === true;
         this.isRunning = true;
         this.logicPaused = false;
         this.lastLogicTime = performance.now();
@@ -327,6 +332,7 @@ export class FrameRateController {
     stopHybridLoop() {
         this.isRunning = false;
         this.logicPaused = false;
+        this.displaySynced = false;
 
         if (this.logicTimeoutId !== null) {
             clearTimeout(this.logicTimeoutId);
@@ -375,7 +381,7 @@ export class FrameRateController {
      * @private
      */
     _scheduleLogicUpdate() {
-        if (!this.isRunning || this.logicPaused) return;
+        if (!this.isRunning || this.logicPaused || this.displaySynced) return;
 
         const now = performance.now();
         const targetInterval = this.targetFPS > 0 ? 1000 / this.targetFPS : 1; // 1ms for unlimited
@@ -444,6 +450,19 @@ export class FrameRateController {
 
         // Record frame for FPS stats
         this.recordFrame(timestamp);
+
+        if (this.displaySynced && !this.logicPaused && this.updateCallback) {
+            // The rAF timestamp can precede the clock reading the loop started from.
+            const delta = Math.max(0, timestamp - this.lastLogicTime);
+            this.lastLogicTime = Math.max(this.lastLogicTime, timestamp);
+            this.logicUpdateCount++;
+            try {
+                this.updateCallback(timestamp, delta);
+            } catch (error) {
+                console.error('[FrameRate] Error in update callback:', error);
+            }
+            if (!this.isRunning) return;
+        }
 
         // Calculate interpolation alpha for smooth rendering between logic frames
         const targetInterval = this.targetFPS > 0 ? 1000 / this.targetFPS : 16.67;

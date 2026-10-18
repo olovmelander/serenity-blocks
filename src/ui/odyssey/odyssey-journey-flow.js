@@ -9,7 +9,7 @@ import { getThemeMusic } from '../../core/progression/theme-music-catalog.js';
 
 export {
     createOdysseyEntryPresence, cancelOdysseyEntryPresence,
-    runOdysseyEntryReadyCue, restartOdysseyLevelInPlace,
+    runOdysseyEntryReadyCue, restartOdysseyLevelInPlace, noticeOdysseyEntryAbort,
 } from './odyssey-entry-presence.js';
 export { returnToOdysseyWorld, isOdysseyScenicJourney, isOdysseyWorldInterlude } from './odyssey-world-return.js';
 

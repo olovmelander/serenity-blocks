@@ -20,6 +20,7 @@ const QUALITY_PARTICLE_COUNTS = Object.freeze({
 });
 
 const BLACKOUT_READY_THRESHOLD = 0.96;
+const ABORT_FADE_MS = 240;
 const WHEEL_LOCK_ATTRIBUTE = 'data-odyssey-wheel-lock';
 const HOLD_STAGE_THRESHOLDS_MS = Object.freeze({
     seamless: 900,
@@ -364,6 +365,19 @@ export class JourneyEntryTransition {
             return;
         }
 
+        const frame = this.frameAt(run);
+        this.updateReadiness(run, frame.blackoutOpacity, frame.now);
+        this.updateReveal(run, frame.now);
+        this.updatePlayable(run, frame.now);
+        this.render(run, frame);
+
+        if (!run.finishing) {
+            run.frameId = this.requestAnimationFrame(() => this.tick(run));
+        }
+    }
+
+    /** @private this moment of the run, as tick and the abort hold draw it */
+    frameAt(run) {
         const now = this.performance.now();
         const elapsed = now - run.startedAt;
         const sinceIgnition = Math.max(0, elapsed - run.timings.ignitionDelayMs);
@@ -372,20 +386,38 @@ export class JourneyEntryTransition {
             / Math.max(1, run.timings.blackoutFullMs - run.timings.blackoutStartMs),
         );
         const blackoutOpacity = this.computeBlackoutOpacity(run, baseBlackoutProgress, now);
+        return {
+            now, elapsed, sinceIgnition, blackoutOpacity,
+        };
+    }
 
-        this.updateReadiness(run, blackoutOpacity, now);
-        this.updateReveal(run, now);
-        this.updatePlayable(run, now);
-        this.render(run, {
-            now,
-            elapsed,
-            sinceIgnition,
-            blackoutOpacity,
-        });
+    /**
+     * An abort keeps the tunnel moving while the mode unwinds: its onAbort can wait seconds on a
+     * preparation still in flight, and a frozen tunnel then a hard cut read as a crash
+     * (audit 2026-10-18). Drawing only — no readiness, reveal or playable steps.
+     * @private
+     */
+    holdWhileAborting(run) {
+        if (!run.dom || run.reducedMotion) return;
+        run.abortHold = true;
+        const step = () => {
+            if (!run.abortHold) return;
+            this.render(run, this.frameAt(run));
+            run.frameId = this.requestAnimationFrame(step);
+        };
+        run.frameId = this.requestAnimationFrame(step);
+    }
 
-        if (!run.finishing) {
-            run.frameId = this.requestAnimationFrame(() => this.tick(run));
+    /** @private an aborted run fades out instead of vanishing in one frame */
+    fadeOutAndTeardown(run) {
+        const root = run?.dom?.root;
+        if (!root || run.reducedMotion || typeof this.window?.setTimeout !== 'function') {
+            this.teardown(run);
+            return;
         }
+        root.style.transition = `opacity ${ABORT_FADE_MS}ms ease-out`;
+        root.style.opacity = '0';
+        this.window.setTimeout(() => this.teardown(run), ABORT_FADE_MS);
     }
 
     computeBlackoutOpacity(run, baseBlackoutProgress, now) {
@@ -423,10 +455,16 @@ export class JourneyEntryTransition {
         run.readyTriggered = true;
         run.blackoutTriggeredAt = now;
 
+        // The hold left before the timeout aborts, so readiness waits can fit inside it and end
+        // in a guarded reveal rather than a cut back to the map (audit 2026-10-18).
+        const hold = {
+            remainingMs: () => Math.max(0, run.timings.maxBlackoutHoldMs
+                - (this.performance.now() - run.blackoutTriggeredAt)),
+        };
         Promise.resolve()
             .then(() => {
                 if (run.finishing || run !== this.activeRun) return false;
-                return run.callbacks.onBlackoutReached?.();
+                return run.callbacks.onBlackoutReached?.(hold);
             })
             .then((result) => {
                 if (run.finishing || run !== this.activeRun) return;
@@ -790,6 +828,7 @@ export class JourneyEntryTransition {
             this.cancelAnimationFrame(run.frameId);
             run.frameId = null;
         }
+        if (!result.success) this.holdWhileAborting(run);
 
         Promise.resolve()
             .then(async () => {
@@ -811,10 +850,16 @@ export class JourneyEntryTransition {
                 };
             })
             .finally(() => {
+                run.abortHold = false;
+                if (run.frameId !== null) {
+                    this.cancelAnimationFrame(run.frameId);
+                    run.frameId = null;
+                }
                 if (run === this.activeRun) {
                     this.activeRun = null;
                 }
-                this.teardown(run);
+                if (result.success) this.teardown(run);
+                else this.fadeOutAndTeardown(run);
                 run.resolve?.(finalResult);
             });
     }

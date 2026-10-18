@@ -83,6 +83,16 @@ describe('Odyssey campaign objectives', () => {
         expect(getLevelById(4).theme.primary).toBe('bioluminescence');
     });
 
+    it('crowns one solo orb per chapter, never the duel', () => {
+        // Audit 2026-10-18: after the rotation the role:'boss' tags crowned the orb before the
+        // rival in chapters 1-4, two orbs in 5-7 and none in 8.
+        const bosses = LEVEL_CONFIGS.filter((level) => level.chapterBoss);
+        expect(bosses.map((level) => level.id)).toEqual([4, 9, 17, 25, 33, 47, 55, 59]);
+        expect(new Set(bosses.map((level) => level.chapter)).size).toBe(CHAPTER_CONFIGS.length);
+        expect(bosses.some((level) => level.mechanics.versus)).toBe(false);
+        expect(bosses.some((level) => DUEL_IDS.includes(level.id))).toBe(false);
+    });
+
     it('makes every no-lap star primary requirement achievable before completion stops play', () => {
         for (const level of LEVEL_CONFIGS.filter((entry) => entry.victoryLapPolicy === 'none')) {
             const { primary } = level.victory;

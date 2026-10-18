@@ -123,9 +123,10 @@ it('limits the new progression scaling to orb 6 across all 60 composed configura
     for (const level of LEVEL_CONFIGS) {
         const state = createEngine(level).gameState;
         const { speed } = level.mechanics;
-        expect(state.dropInterval, `orb ${level.id} opening speed`).toBe(
-            speed.fixedDropInterval || LEVEL_SPEEDS[speed.startLevel - 1],
-        );
+        const authored = speed.fixedDropInterval || LEVEL_SPEEDS[speed.startLevel - 1];
+        // Celestial Chrysalis (43) opens slower on purpose: slow-start touches the opening only.
+        const opening = level.modifiers?.active?.includes('slow-start') ? Math.min(authored * 1.5, 2000) : authored;
+        expect(state.dropInterval, `orb ${level.id} opening speed`).toBe(opening);
         expect(state.level, `orb ${level.id} score level`).toBe(speed.startLevel);
         expect(state.disableLevelProgression, `orb ${level.id} progression`).toBe(!speed.levelProgression);
         if (state.speedMultiplier !== undefined) scaledIds.push(level.id);

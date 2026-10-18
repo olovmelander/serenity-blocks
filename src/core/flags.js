@@ -192,7 +192,7 @@ export const FLAG_REGISTRY = [
         name: 'odysseyEagerWindowOff', default: false, purpose: 'disable startup chapter-window restriction', kind: 'refactor', graduationBar: 'Odyssey masterplan loading item', reader: 'local',
     },
     {
-        name: 'odysseyWarpPreinit', default: 'defer', purpose: 'warp transition pre-init timing A/B (immediate|defer|off)', kind: 'refactor', graduationBar: 'A/B lever — pick a winner and delete', reader: 'local',
+        name: 'odysseyWarpPreinit', default: 'off', purpose: 'warp transition pre-init timing A/B (immediate|defer|off); off since nothing plays it', kind: 'refactor', graduationBar: 'A/B lever — pick a winner and delete', reader: 'local',
     },
     {
         name: 'odysseySharpen',

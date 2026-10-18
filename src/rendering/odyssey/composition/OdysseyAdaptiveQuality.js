@@ -10,7 +10,8 @@
  * on recovery, ONE tier per up-cooldown):
  *   • Tier 0 — RESOLUTION. Drives `renderScale` via the shipped
  *     `evaluateDynamicResolutionAdjustment` policy (downscale p95 > 1.14× budget, upscale
- *     p95 < 0.9×, 6s/12s cooldowns, 0.5..1.25 clamp). On a change it calls back into the
+ *     p95 < 0.9× — or holding the budget at the display's cadence, see update() — 6s/12s
+ *     cooldowns, 0.5..1.25 clamp, failed recoveries backed off). On a change it calls back into the
  *     board (`ctx.applyRenderScale`) which does setPixelRatio + pipeline.resize. This
  *     SUBSUMES the board's old inline DRS call — there is exactly one resolution controller.
  *   • Tier 1 — BLOOM. Once resolution is at its floor and pressure persists, drop the bloom
@@ -42,6 +43,13 @@ const TIER_RECOVER_COOLDOWN_MS = 12000;
 // continued pressure before shedding the next (bloom/post) tier (matches the policy's
 // 6s down cooldown so the two controllers move in lockstep, never twice in one window).
 const TIER_ESCALATE_COOLDOWN_MS = 6000;
+// Recovery probes (Odyssey audit 2026-10-18). A step down this soon after a step up means the
+// step up was a failed probe: hold every step up for a back-off that doubles per failure, so a
+// scene on the edge settles instead of trading pixels every 18 s. A quiet stretch forgives it.
+const PROBE_FAIL_WINDOW_MS = 20000;
+const PROBE_BACKOFF_BASE_MS = 30000;
+const PROBE_BACKOFF_MAX_MS = 240000;
+const PROBE_FORGIVE_MS = 120000;
 
 function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
@@ -112,6 +120,11 @@ export class OdysseyAdaptiveQuality {
         // The down-pressure run length: how many consecutive evals the policy has WANTED to
         // downscale while already pinned at the resolution floor. Drives Tier-1+ escalation.
         this._floorPressureSince = 0;
+        // Recovery-probe back-off (see PROBE_FAIL_WINDOW_MS).
+        this._lastUpAt = -Infinity;
+        this._lastDownAt = -Infinity;
+        this._probeBackoffMs = 0;
+        this._upHoldUntil = -Infinity;
 
         // Latched applied state so we only call pipeline knobs on an actual transition (the
         // pipeline methods are themselves edge-safe, but this keeps the hot path quiet).
@@ -213,16 +226,25 @@ export class OdysseyAdaptiveQuality {
         this._lastEvalAt = now;
         if (this._frameCount < Math.min(this.windowSize, MIN_SAMPLES)) return;
 
-        const { p95, p99 } = this._computePercentiles();
+        const { p95, p99, cadence } = this._computePercentiles();
         const targetFps = ctx.targetFrameRate > 0 ? ctx.targetFrameRate : this.targetFrameRate;
         const budgetMs = 1000 / targetFps;
         const downThreshold = budgetMs * 1.14; // matches the resolution policy's downscale gate
-        const upThreshold = budgetMs * 0.9; // matches the resolution policy's upscale gate
+        const upThreshold = budgetMs * 0.9; // the resolution policy's own upscale gate
         const underPressure = p95 > downThreshold || p99 > downThreshold * 1.08;
-        const hasHeadroom = p95 > 0 && p95 < upThreshold;
+        // HEADROOM AT THE DISPLAY'S CADENCE (Odyssey audit 2026-10-18). The frames are refresh
+        // gaps and never read below the panel's interval, so with a target at or near the refresh
+        // rate (120 on a 132 Hz panel, 60 on 60) p95 < 0.9 x budget cannot happen and every step
+        // down lasted the session. When even the window's quick frames sit at the up gate, the
+        // display hides any headroom: holding the budget counts, and the probe back-off settles a
+        // scene that cannot take the step. (The reported refresh rate is no guide: 165 reported,
+        // 131.6 Hz delivered on the dev laptop.)
+        const cadenceBound = cadence >= upThreshold * 0.97;
+        const cadenceHeld = cadenceBound && !underPressure && p95 <= Math.max(budgetMs, cadence) * 1.08;
+        const hasHeadroom = now >= this._upHoldUntil && p95 > 0 && (p95 < upThreshold || cadenceHeld);
 
         // ── Tier 0: resolution (delegated to the shipped policy when available) ──
-        const resChanged = this._updateResolution(now, ctx, p95, p99, targetFps);
+        const resChanged = this._updateResolution(now, ctx, p95, p99, targetFps, hasHeadroom);
 
         // If the resolution tier just moved, let it settle before touching other tiers (one
         // lever per eval keeps the system legible and prevents double-stepping under a spike).
@@ -243,6 +265,7 @@ export class OdysseyAdaptiveQuality {
                 this._lastTierChangeAt = now;
                 this._floorPressureSince = now; // require another full hold before the next step
                 this._applyPressureTier(ctx);
+                this._noteStep(now, -1);
             }
             return;
         }
@@ -258,7 +281,29 @@ export class OdysseyAdaptiveQuality {
                 this._pressureTier -= 1;
                 this._lastTierChangeAt = now;
                 this._applyPressureTier(ctx);
+                this._noteStep(now, 1);
             }
+        }
+    }
+
+    /**
+     * Record a step for the probe back-off: a step down within PROBE_FAIL_WINDOW_MS of a step
+     * up failed that probe and holds the next step up for a doubling back-off.
+     * @param {number} now @param {number} direction +1 up (quality returned), -1 down (shed).
+     * @private
+     */
+    _noteStep(now, direction) {
+        if (direction > 0) {
+            // Forgiven only by a quiet stretch beyond the hold itself, or the hold would forgive.
+            if (now - this._lastDownAt >= PROBE_FORGIVE_MS + this._probeBackoffMs) this._probeBackoffMs = 0;
+            this._lastUpAt = now;
+            return;
+        }
+        this._lastDownAt = now;
+        if (now - this._lastUpAt < PROBE_FAIL_WINDOW_MS) {
+            const doubled = Math.max(PROBE_BACKOFF_BASE_MS, this._probeBackoffMs * 2);
+            this._probeBackoffMs = Math.min(PROBE_BACKOFF_MAX_MS, doubled);
+            this._upHoldUntil = now + this._probeBackoffMs;
         }
     }
 
@@ -270,7 +315,7 @@ export class OdysseyAdaptiveQuality {
      * @returns {boolean} whether the render scale changed (and was applied).
      * @private
      */
-    _updateResolution(now, ctx, p95, p99, targetFps) {
+    _updateResolution(now, ctx, p95, p99, targetFps, hasHeadroom) {
         let next = this.renderScale;
         let changed = false;
 
@@ -283,6 +328,8 @@ export class OdysseyAdaptiveQuality {
                 lastScaleChangeAt: this._lastScaleChangeAt,
                 stableSince: this._stableSince,
                 now,
+                // Headroom is judged above, at the display's cadence and under the probe back-off.
+                upscaleThresholdMs: hasHeadroom ? Infinity : 0,
             });
             next = result?.nextRenderScale ?? this.renderScale;
             changed = result?.changed === true && next !== this.renderScale;
@@ -306,6 +353,7 @@ export class OdysseyAdaptiveQuality {
         changed = changed && next !== this.renderScale;
 
         if (changed) {
+            this._noteStep(now, next > this.renderScale ? 1 : -1);
             this.renderScale = next;
             this._lastScaleChangeAt = now;
             this._stableSince = 0;
@@ -378,6 +426,8 @@ export class OdysseyAdaptiveQuality {
         return {
             p95: percentile(sorted, count, 0.95),
             p99: percentile(sorted, count, 0.99),
+            // The display's cadence as this window saw it: the quick end, past rAF jitter.
+            cadence: percentile(sorted, count, 0.1),
         };
     }
 

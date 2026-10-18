@@ -6,7 +6,9 @@
  * so a choice only detaches input and fires its callback. Disposal also removes the modal.
  */
 
-import { appendKeyHint, createKeystoneSheet, el } from './keystone-sheet.js';
+import {
+    appendKeyHint, createKeystoneSheet, el, isSettingsOverSheet,
+} from './keystone-sheet.js';
 import { getOdysseyRetryDebrief } from './objective-copy.js';
 import { ODYSSEY_CHARM_KIND_LABELS, ODYSSEY_MERCY_FALLS } from '../../core/odyssey/odyssey-charms.js';
 
@@ -198,6 +200,7 @@ export function createFailureModal({
             modal.dispose();
             return;
         }
+        if (isSettingsOverSheet()) return;
         // A focused button owns Enter/Space (tabbing to Back to Map and pressing Enter
         // used to retry); so does a charm card or Not now.
         const focused = document.activeElement;

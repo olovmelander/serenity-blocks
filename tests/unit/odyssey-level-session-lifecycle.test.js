@@ -16,6 +16,7 @@ vi.mock('../../src/rendering/phaser/board-juice.js', () => ({
 }));
 
 import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';
+import { canNavigateOdysseyMap } from '../../src/ui/odyssey/odyssey-map-input.js';
 import { fillBag, GameState } from '../../src/core/game.js';
 import { drainOdysseyLevelSession } from '../../src/core/odyssey/odyssey-level-session.js';
 
@@ -249,7 +250,6 @@ describe('OdysseyMode level-session ownership', () => {
         const session = bindSession(mode, createSpawnableState(), createHybridEngine(), 1);
         mode.levelPrepared = true;
         mode._hookInputs = vi.fn();
-        mode._startLevelTimer = vi.fn();
         mode._startGameLoop = vi.fn(() => {
             throw new Error('loop start failed');
         });
@@ -324,5 +324,51 @@ describe('OdysseyMode level-session ownership', () => {
         expect(replacementState.isProcessingPhysics).toBe(true);
         expect(replacementState.isGameOver).toBe(false);
         expect(replacementState.isStopped).toBe(false);
+    });
+
+    it('gives the map its keys back once a won or lost attempt has stopped', async () => {
+        const { mode } = createMode();
+        bindSession(mode, createSpawnableState(), createHybridEngine(), 1);
+        stubStopCleanup(mode);
+        mode.isRunning = true;
+        // The goal or a top-out marked the attempt as completing.
+        mode.levelCompleting = true;
+
+        await mode.onStop();
+
+        expect(mode.levelCompleting).toBe(false);
+        mode.isActive = true;
+        mode.isInBoardView = true;
+        mode.isEnteringLevel = false;
+        mode._isOdysseyNavigatorOpen = () => false;
+        expect(canNavigateOdysseyMap(mode, null)).toBe(true);
+    });
+});
+
+describe('OdysseyMode board build across a deactivation', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('builds afresh on re-entry instead of waiting on the build its dispose dropped', async () => {
+        // Audit 2026-10-18: re-entry awaited the dead build, which returned early once its
+        // controller was gone, so the map came up with no board at all.
+        vi.stubGlobal('document', { getElementById: () => null });
+        const mode = Object.create(OdysseyMode.prototype);
+        mode._disposeInfoOverlay = vi.fn();
+        const first = deferred();
+        const fresh = { dispose: vi.fn() };
+        mode._runOdysseyBoardBuild = vi.fn()
+            .mockReturnValueOnce(first.promise)
+            .mockImplementationOnce(async () => { mode.boardController = fresh; });
+
+        const abandoned = mode._buildOdysseyBoard();
+        mode._disposeOdysseyBoard(); // a mode switch mid-build
+        await mode._buildOdysseyBoard(); // the player comes straight back
+        expect(mode._runOdysseyBoardBuild).toHaveBeenCalledTimes(2);
+        expect(mode.boardController).toBe(fresh);
+
+        first.resolve();
+        await abandoned;
+        expect(mode._boardBuildPromise).toBeNull();
+        expect(mode.boardController).toBe(fresh);
     });
 });

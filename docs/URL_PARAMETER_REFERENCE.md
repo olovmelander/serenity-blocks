@@ -5,7 +5,9 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **735 parameter names in 900 scoped entries**. The `fluid-dreams`
+The catalog documents **737 parameter names in 902 scoped entries**. The `odyssey-world`
+playground effect added `lookPitch` and `lookYaw` (turn the camera off the path, for checking a
+chapter from every angle). The `fluid-dreams`
 playground effect added `quads` (four-line clears played before the frame); Sakura Twilight
 keeping one fox retired `foxWhich`; Rainbow Terraces (Sky Children until 2026-10-18) added
 `cardAlpha` and took the V2 detail effect's four entries with it. The preview flags

@@ -651,14 +651,16 @@ export class MultiPlayerState {
 
         let totalLines = attack.getTotalLines();
 
-        console.log(
+        // Per-cascade traces are debug-level: production builds strip console.debug, and these
+        // logged two or three lines for every cascade of a duel (Odyssey audit 2026-10-18).
+        console.debug(
             `[MultiPlayerState] Player ${playerIndex + 1} cascade resolved → depth=${attack.depth}, combo=${attack.complexity}`,
         );
 
         // Apply attack scaling based on player count
         totalLines = this._scaleAttackForPlayerCount(totalLines);
 
-        console.log(
+        console.debug(
             `[MultiPlayerState]   Total attack rows: ${totalLines} (scaled from ${attack.getTotalLines()})`,
         );
 
@@ -755,7 +757,7 @@ export class MultiPlayerState {
                 });
             }
 
-            console.log(
+            console.debug(
                 `[MultiPlayerState] Player ${playerIndex + 1} → Player ${targetIndex + 1}: ${targetAttack.getTotalLines()} lines`,
             );
         });

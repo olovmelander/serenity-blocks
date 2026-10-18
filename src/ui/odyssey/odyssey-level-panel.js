@@ -17,7 +17,8 @@ export function describeOdysseyOrbKind(level) {
     if (level.mechanics?.versus) {
         return { id: 'rival', label: `Rival duel · ${level.mechanics.versus.botName || 'Rival'}` };
     }
-    if (level.role === 'boss') {
+    // One per chapter (campaign-order resolveChapterBossIds), as the map's crown marks it.
+    if (level.chapterBoss) {
         const showcase = level.victoryLapPolicy === 'showcase';
         return { id: 'boss', label: showcase ? 'Chapter boss · Showcase' : 'Chapter boss' };
     }
@@ -65,6 +66,9 @@ export function renderOdysseyPanelCharms(doc, level, bag) {
     const carried = bag.carried || [];
     const list = doc.getElementById('level-panel-charm-list');
     if (list) {
+        // The rebuild destroys the chip a keyboard toggle came from: give focus back to its
+        // replacement, or Tab starts over from the page (audit 2026-10-18).
+        const focusedCharm = list.contains?.(doc.activeElement) ? doc.activeElement?.dataset?.charm : null;
         clearChildren(list);
         gathered.forEach((charm) => {
             const chip = doc.createElement('button');
@@ -81,6 +85,7 @@ export function renderOdysseyPanelCharms(doc, level, bag) {
             chip.textContent = `${isCarried ? '◆' : '◇'} ${charm.name}`;
             chip.addEventListener?.('click', () => bag.onToggle?.(charm.id));
             list.appendChild(chip);
+            if (charm.id === focusedCharm) chip.focus?.({ preventScroll: true });
         });
     }
     const hint = doc.getElementById('level-panel-charm-hint');
@@ -140,7 +145,7 @@ export function renderOdysseyLevelPanel({
 
     setText(doc, 'level-panel-goal', formatOdysseyMapObjective(played.victory?.primary));
     const starGoals = ['one', 'two', 'three'].map((tier, index) => (
-        played.stars?.[tier] ? `${index + 1} ★ ${formatOdysseyStarCondition(played.stars[tier], index)}` : null
+        played.stars?.[tier] ? `${index + 1} ★ ${formatOdysseyStarCondition(played.stars[tier], index, played.victory?.bonuses)}` : null
     )).filter(Boolean);
     fillList(doc, 'level-panel-star-goals', starGoals);
     const starGoalsLabel = doc.getElementById('level-panel-star-goals-label');

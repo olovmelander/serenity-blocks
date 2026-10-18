@@ -202,13 +202,23 @@ describe('the draw budget holds — draw calls are the rebuild structural claim'
         // high vantage retired most of the visibility cull (94.2% of cells visible), which
         // keeps more (chunk, species, LOD) buckets alive near the island. 33 forest buckets
         // puts the whole-world total ≈ 71, still well inside Lane A's 90.
+        //
+        // ⚠️ GATE MIRRORED + CEILING 35 -> 40 (audit 2026-10-18). The renderer now sinks each
+        // tree out across 1450..1650 u by its own distance and draws a bucket while its NEAREST
+        // tree is inside 1650 — the centre test let ~500 trees as close as ~830 u pop together.
+        // At these stations that admits 39-40 of the 40 buckets before frustum culling (was
+        // 30): about 78 of Lane A's 90 world draws, for about +3% forest vertices.
         [0.2127, 0.2836, 0.3970].forEach((p) => {
             const rp = getOdysseyPathPointAt(p);
             let visible = 0;
             HIGH.buckets.forEach((b) => {
-                if (Math.hypot(b.centre.x - rp.x, b.centre.z - rp.z) < 1450) visible += 1;
+                const radius = b.items.reduce(
+                    (r, t) => Math.max(r, Math.hypot(t.x - b.centre.x, t.z - b.centre.z)),
+                    0,
+                );
+                if (Math.hypot(b.centre.x - rp.x, b.centre.z - rp.z) - radius < 1650) visible += 1;
             });
-            expect(visible, `station p=${p}`).toBeLessThanOrEqual(35);
+            expect(visible, `station p=${p}`).toBeLessThanOrEqual(40);
             expect(visible, `station p=${p}`).toBeGreaterThan(0);
         });
     });

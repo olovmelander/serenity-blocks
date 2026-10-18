@@ -27,6 +27,21 @@ function createVesperLevel(template, pathPosition) {
         theme: {
             primary: 'vesper-chrysalis', overlays: [], transitionIn: 'crossfade', transitionDuration: 4000,
         },
+        // Its own quiet pocket (audit 2026-10-18). It copied Silent Drift's rules exactly, and the
+        // rotation set the two side by side (43, 44): one goal, one set of star times, an empty
+        // "What changes here". The goal and star times stay, balanced on this template; the
+        // pace opens slower and the extra goals ask for clean chains instead of quads.
+        modifiers: {
+            ...template.modifiers,
+            active: [...new Set([...(template.modifiers?.active || []), 'slow-start'])],
+        },
+        victory: {
+            ...template.victory,
+            bonuses: [
+                { type: 'cascade', target: 8, description: 'Trigger 8 cascades' },
+                { type: 'no-singles', description: 'Clear no single lines' },
+            ],
+        },
         metadata: {
             ...template.metadata,
             description: 'An alien lake reflects impossible worlds and a waking crystal heart. '
@@ -113,6 +128,35 @@ export function mapV4SlotToRotatedId(levels, v4Id) {
     return level ? level.id : null;
 }
 
+/**
+ * One crown per chapter (audit 2026-10-18). The authored role:'boss' tags moved with their
+ * challenges in the rotation above, so the crown sat on the orb before the rival in chapters
+ * 1-4, on two orbs in 5-7 and on none in 8. A chapter's boss is now its last solo orb tagged
+ * 'boss', or, where none is, its hardest solo orb (the later on a tie); the rival marks the
+ * duel. Display only: `role` still paces the difficulty model.
+ * @param {Array<object>} levels
+ * @returns {Set<number>} the public ids that wear the crown
+ */
+export function resolveChapterBossIds(levels) {
+    const soloByChapter = new Map();
+    [...levels].sort((left, right) => left.id - right.id).forEach((level) => {
+        if (level.mechanics?.versus) return;
+        if (!soloByChapter.has(level.chapter)) soloByChapter.set(level.chapter, []);
+        soloByChapter.get(level.chapter).push(level);
+    });
+    const ids = new Set();
+    soloByChapter.forEach((solo) => {
+        const tagged = solo.filter((level) => level.role === 'boss');
+        const pick = tagged.length > 0
+            ? tagged[tagged.length - 1]
+            : solo.reduce((best, level) => (
+                (level.metadata?.difficulty ?? 0) >= (best.metadata?.difficulty ?? 0) ? level : best
+            ));
+        ids.add(pick.id);
+    });
+    return ids;
+}
+
 /** Compose after all old tuning so inserting a collectible never retunes an existing challenge. */
 export function assembleOdysseyCampaign(authoredLevels) {
     const authored = new Map(authoredLevels.map((level) => [level.id, level]));
@@ -127,13 +171,16 @@ export function assembleOdysseyCampaign(authoredLevels) {
     levels.push(createWarpLevel(structuredClone(authored.get(54)), positions[55]));
     const v4Levels = levels.sort((left, right) => left.id - right.id)
         .map((level) => ({ ...level, v4Id: level.id }));
-    return rotateDuelsToChapterEnd(v4Levels).map((level) => {
+    const rotated = rotateDuelsToChapterEnd(v4Levels);
+    const bossIds = resolveChapterBossIds(rotated);
+    return rotated.map((level) => {
         const chapter = CHAPTER_CONFIGS.find((entry) => entry.id === level.chapter);
         return {
             ...level,
             chapterLevel: level.id - chapter.levelRange[0] + 1,
             isChapterStart: level.id === chapter.levelRange[0],
             isChapterEnd: level.id === chapter.levelRange[1],
+            chapterBoss: bossIds.has(level.id),
         };
     });
 }

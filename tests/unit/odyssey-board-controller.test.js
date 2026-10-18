@@ -146,14 +146,30 @@ describe('OdysseyBoardController chapter framing', () => {
         });
     });
 
-    it('keeps ordinary first-orb navigation at its authored position', async () => {
-        const { controller } = createNavigationController();
-        const level = registry.resolveLevelPresentation(6);
+    it.each([6, 35, 49, 57])('parks an ordinary click on opener %i past its seam, focusing the orb', async (levelId) => {
+        // Audit 2026-10-18: parked at its own progress, L6 sat in full 1->2 steam and L49 had
+        // chapters 6 and 7 both at full coverage. The scenery parks as an arrival does; the
+        // camera still comes forward to the orb where it was authored.
+        const { controller, nodePosition } = createNavigationController();
+        const level = registry.resolveLevelPresentation(levelId);
         controller.presentationLayout = layout;
-        controller.nodeManager.nodes.get(6).pathPosition = level.pathPosition;
+        controller.nodeManager.nodes = new Map([[levelId, { config: level, pathPosition: level.pathPosition }]]);
+        controller.environmentManager.getBlendState.mockReturnValue({ activeChapter: level.chapter });
+        await controller.travelToLevel(levelId);
+        const [destination] = controller.cameraController.setCurrentPosition.mock.calls[0];
+        const arrival = resolveChapterArrivalProgress(level.chapter, level.pathPosition, layout.chapterPositions);
+        expect(destination).toBe(arrival);
+        expect(destination).toBeGreaterThan(level.pathPosition);
+        expect(resolveChapterBlendState(destination, CHAPTER_CONFIGS, layout.chapterPositions).inSeam).toBe(false);
+        expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(nodePosition, expect.any(Number));
+    });
+
+    it('keeps a mid-chapter orb at its authored position', async () => {
+        const { controller } = createNavigationController();
+        controller.presentationLayout = layout;
+        controller.environmentManager.getBlendState.mockReturnValue({ activeChapter: 2 });
         await controller.travelToLevel(6);
-        expect(controller.cameraController.setCurrentPosition).toHaveBeenCalledWith(level.pathPosition);
-        expect(controller.cameraController.focusOnNode).toHaveBeenCalled();
+        expect(controller.cameraController.setCurrentPosition).toHaveBeenCalledWith(0.2);
     });
 
     it('moves beyond the seam even when its incoming chapter is already active', async () => {

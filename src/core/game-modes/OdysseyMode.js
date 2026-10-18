@@ -66,7 +66,7 @@ import { createFailureModal } from '../../ui/odyssey/FailureModal.js';
 import {
     cancelOdysseyJourneyFlow, continueOdysseyJourney, getOdysseyFlowDestination, showOdysseyFlowResults,
     cancelOdysseyEntryPresence, createOdysseyEntryPresence, runOdysseyEntryReadyCue, restartOdysseyLevelInPlace,
-    returnToOdysseyWorld, isOdysseyScenicJourney, isOdysseyWorldInterlude,
+    returnToOdysseyWorld, isOdysseyScenicJourney, isOdysseyWorldInterlude, noticeOdysseyEntryAbort,
 } from '../../ui/odyssey/odyssey-journey-flow.js';
 import { completeOdysseyLevel } from './odyssey-completion.js';
 import {
@@ -105,6 +105,7 @@ import {
     setCinematicLoadingProgress,
     waitForCinematicLoadingOverlayPresented,
 } from '../../ui/cinematic-loading-overlay.js';
+import { createCinematicLoadingSurface } from '../../ui/cinematic-loading-surface.js';
 import { getOdysseyThemePresentationPalette } from '../odyssey/theme-presentation.js';
 import {
     isOdysseyLayoutEditorEnabled,
@@ -120,7 +121,13 @@ import { clearRetryVeil } from '../../ui/odyssey/retry-veil.js';
 import {
     clearOdysseyStartCue, getOdysseyStartCueTimings, showOdysseyStartCue,
 } from '../../ui/odyssey/odyssey-start-cue.js';
-import { playOdysseyGoalFlourish } from '../../ui/odyssey/odyssey-goal-flourish.js';
+import { clearOdysseyGoalFlourish, playOdysseyGoalFlourish } from '../../ui/odyssey/odyssey-goal-flourish.js';
+import { noticeOdysseyUnreadableSave } from '../../ui/odyssey/odyssey-save-notice.js';
+
+// Readiness waits end this long before the tunnel's hold runs out (see _waitForEntryRevealReadiness).
+const ENTRY_HOLD_MARGIN_MS = 250;
+// 6 s full-ready waits before the safe backdrop lifts regardless (_scheduleThemeFullReadySettlement).
+const THEME_FULL_READY_ATTEMPTS = 10;
 
 /**
  * OdysseyMode - Narrative-driven progression through themed levels
@@ -162,7 +169,6 @@ export class OdysseyMode extends BaseGameMode {
         // Deferred board-park timer after level entry (masterplan §2 #9) — tracked so a fast
         // return-to-map can cancel it before it parks a just-resumed board.
         this._boardParkTimer = null;
-        this.levelTimerInterval = null;
 
         // Phase 3: Odyssey Board Controller
         this.boardController = null;
@@ -196,6 +202,7 @@ export class OdysseyMode extends BaseGameMode {
         // Tall board camera system (ported from InfinityMode)
         this.visibleRows = 20;
         this.boardScene = null;
+        this._wellCameraTarget = null; // the follow glide in flight (_updateCameraPosition)
 
         // Looking around a tall well (the ascent, ui/odyssey/odyssey-tower-look.js).
         this._towerLook = null;
@@ -305,6 +312,7 @@ export class OdysseyMode extends BaseGameMode {
 
         // Load saved progress
         this.odysseyState.load();
+        noticeOdysseyUnreadableSave(this.odysseyState);
 
         // Show odyssey UI
         this._showOdysseyUI();
@@ -354,6 +362,8 @@ export class OdysseyMode extends BaseGameMode {
         } finally {
             this.boardViewReadyPromise = null;
         }
+        // Deactivated while the board built (GPU loss, an invite, a mode switch): wire nothing.
+        if (!this.isActive) return;
 
         // Retry orb and Back to map arrive from the pause sheet once it has closed and resumed play.
         this._pauseActionUnsubscribe?.();
@@ -404,8 +414,12 @@ export class OdysseyMode extends BaseGameMode {
      */
     async onStart() {
         await super.onStart();
+        // Starting the mode opens the map, not a run: beginLevelRun marks one when an orb plays.
+        // Marked here, the first map visit paused for focus loss and opened Settings over the
+        // map, unlike every later visit (audit 2026-10-18).
+        this.isRunning = false;
         await this._applyBoardAudioPolicy({ restoreTrack: true });
-        console.log('[Odyssey] onStart called - entering level');
+        console.log('[Odyssey] onStart: the map is open');
     }
 
     /**
@@ -448,6 +462,9 @@ export class OdysseyMode extends BaseGameMode {
 
     _retireLevelSession(session = this._activeLevelSession) {
         const retirementGeneration = ++this._levelSessionGeneration;
+        // A goal flourish and a camera glide still playing belong to the attempt that is leaving.
+        clearOdysseyGoalFlourish();
+        this._wellCameraTarget = null;
         if (!session) {
             stopOdysseyTowerLook(this);
             this._stopFixedTickSession();
@@ -463,8 +480,6 @@ export class OdysseyMode extends BaseGameMode {
             if (this.deps.frameRateController?.isRunning) {
                 this.deps.frameRateController.stopHybridLoop();
             }
-            if (this.levelTimerInterval) clearInterval(this.levelTimerInterval);
-            this.levelTimerInterval = null;
             this.usingHybridLoop = false;
         }
         return retireOdysseyLevelSession(session);
@@ -492,14 +507,10 @@ export class OdysseyMode extends BaseGameMode {
         // Looking around the well holds the game, but it is not a pause the player chose.
         if (!lookPause) this.odysseyHUD?.setPaused(true);
 
-        // Pause level timer + start accumulating paused wall-time so the clock excludes
-        // time spent in the pause menu (masterplan §2 #2).
+        // Start accumulating paused time so the level clock excludes time spent in the
+        // pause menu (masterplan §2 #2).
         if (this.levelStartTime && this._pauseStartedAt === null) {
-            this._pauseStartedAt = Date.now();
-        }
-        if (this.levelTimerInterval) {
-            clearInterval(this.levelTimerInterval);
-            this.levelTimerInterval = null;
+            this._pauseStartedAt = performance.now();
         }
 
         // A tall well's map dims with the pause (the look moves the view, not the pause).
@@ -534,13 +545,8 @@ export class OdysseyMode extends BaseGameMode {
         // Fold the just-ended pause interval into the paused-time accumulator before the
         // clock resumes (masterplan §2 #2).
         if (this._pauseStartedAt !== null) {
-            this.levelPausedMs += Date.now() - this._pauseStartedAt;
+            this.levelPausedMs += performance.now() - this._pauseStartedAt;
             this._pauseStartedAt = null;
-        }
-
-        // Resume level timer
-        if (this.currentLevelConfig && !this.isInBoardView) {
-            this._startLevelTimer();
         }
 
         this.minimap?.onUnpause();
@@ -569,6 +575,8 @@ export class OdysseyMode extends BaseGameMode {
         // state is the only state drained below; a replacement attempt remains untouched.
         const session = this._retireLevelSession();
         if (session?.gameState) session.gameState.isGameOver = true;
+        // The attempt is over, whether it was won, lost or left: the map takes keys again.
+        this.levelCompleting = false;
         await super.onStop();
 
         console.log('[Odyssey] Stopping...');
@@ -763,6 +771,8 @@ export class OdysseyMode extends BaseGameMode {
         const entryToken = ++this.themeRevealToken;
         let ownedEntryToken = entryToken;
         let preparationPromise = null;
+        /** The theme-compile lease a map click takes for itself (the journey flow brings its own). */
+        let ownLoadingSurface = null;
         const presence = options.beginPreparedRun ? null : createOdysseyEntryPresence(this, levelConfig, {
             isCurrent: () => entryToken === this.themeRevealToken,
             onMap: () => this.journeyEntryTransition?.abort?.('map-requested'),
@@ -801,10 +811,19 @@ export class OdysseyMode extends BaseGameMode {
                 qualityPreset,
                 reducedMotion,
                 callbacks: {
-                    onBlackoutReached: () => {
+                    onBlackoutReached: (hold) => {
                         preparationPromise = (async () => {
                             if (!isCurrentEntry()) return false;
-                            if (await options.onBlackoutReached?.() === false || !isCurrentEntry()) return false;
+                            if (options.onBlackoutReached) {
+                                if (await options.onBlackoutReached() === false || !isCurrentEntry()) return false;
+                            } else if (this.deps.themeManager?.beginLoadingSurface) {
+                                // A map click covers its own theme compile, as the journey flow
+                                // does (audit 2026-10-18): without the lease the level theme's
+                                // pipelines compiled synchronously and froze the tunnel (4.7 s).
+                                ownLoadingSurface = createCinematicLoadingSurface(this.deps.themeManager);
+                                await ownLoadingSurface.ready;
+                                if (!isCurrentEntry()) return false;
+                            }
                             this.boardController?.pauseRendering?.();
                             await this._prepareGameplayReveal();
                             if (!isCurrentEntry()) return false;
@@ -820,13 +839,14 @@ export class OdysseyMode extends BaseGameMode {
                                 return false;
                             }
 
-                            return this._waitForEntryRevealReadiness(levelConfig, entryToken);
+                            return this._waitForEntryRevealReadiness(levelConfig, entryToken, hold?.remainingMs);
                         })();
                         return preparationPromise;
                     },
                     onRevealStart: async () => {
                         if (!isCurrentEntry()) return false;
                         if (await options.onRevealStart?.() === false || !isCurrentEntry()) return false;
+                        ownLoadingSurface?.uncover();
                         this.isInBoardView = false;
                         this.entryPhase = 'revealing';
                         this._playJourneyTransitionCue('arrival');
@@ -872,6 +892,8 @@ export class OdysseyMode extends BaseGameMode {
                     onAbort: async (abortResult) => {
                         if (entryToken !== this.themeRevealToken) return;
                         console.warn('[Odyssey] Journey entry aborted:', abortResult?.reason || 'unknown', abortResult?.error || '');
+                        noticeOdysseyEntryAbort(abortResult);
+                        ownLoadingSurface?.cancel();
                         this.entryPhase = 'aborted';
                         ownedEntryToken = ++this.themeRevealToken;
                         releaseOdysseyLevelMusic(this);
@@ -911,6 +933,8 @@ export class OdysseyMode extends BaseGameMode {
         } finally {
             presence?.dispose();
             window.clearTimeout(motionTimer);
+            // A no-op once the reveal uncovered it; releases a lease no reveal ever reached.
+            ownLoadingSurface?.cancel();
             if (ownedEntryToken === this.themeRevealToken) this.isEnteringLevel = false;
         }
     }
@@ -1204,8 +1228,8 @@ export class OdysseyMode extends BaseGameMode {
         if (!cameraController?.camera) return;
 
         cameraController.setFollowMode?.();
-        cameraController.camera.fov = cameraController.cinematicConfig?.baseFov ?? 60;
-        cameraController.camera.updateProjectionMatrix?.();
+        // Snap to the follow lens itself: the director base AND the chapter framing's offset.
+        cameraController.applyBaseFov?.(0, true);
         cameraController.updateFollowPosition?.({ direct: true });
     }
 
@@ -1517,10 +1541,13 @@ export class OdysseyMode extends BaseGameMode {
         return focusOdysseyCollectionLevel(this, levelId);
     }
 
-    async _waitForEntryRevealReadiness(levelConfig, entryToken) {
-        const firstGameplayFramePromise = this._confirmFirstGameplayComposite(2600);
+    async _waitForEntryRevealReadiness(levelConfig, entryToken, remainingHoldMs = () => Infinity) {
+        // Each wait fits the tunnel's hold that is left (audit 2026-10-18): past it the entry
+        // aborts to the map, while the guarded reveal below still plays the orb.
+        const fit = (ms) => Math.max(0, Math.min(ms, remainingHoldMs() - ENTRY_HOLD_MARGIN_MS));
+        const firstGameplayFramePromise = this._confirmFirstGameplayComposite(fit(2600));
         const criticalReadyPromise = this.transitionManager?.waitForThemeCriticalReady
-            ? this.transitionManager.waitForThemeCriticalReady(levelConfig, 900)
+            ? this.transitionManager.waitForThemeCriticalReady(levelConfig, fit(900), { settleFade: true })
             : Promise.resolve(true);
 
         let [firstGameplayFrameReady, themeCriticalReady] = await Promise.all([ // eslint-disable-line prefer-const
@@ -1532,8 +1559,8 @@ export class OdysseyMode extends BaseGameMode {
             return false;
         }
 
-        if (!firstGameplayFrameReady) {
-            firstGameplayFrameReady = await this._confirmFirstGameplayComposite(2200);
+        if (!firstGameplayFrameReady && fit(2200) > 0) {
+            firstGameplayFrameReady = await this._confirmFirstGameplayComposite(fit(2200));
         }
 
         if (entryToken !== this.themeRevealToken) {
@@ -1552,9 +1579,14 @@ export class OdysseyMode extends BaseGameMode {
             return true;
         }
 
-        const extendedCriticalReady = this.transitionManager?.waitForThemeCriticalReady
-            ? await this.transitionManager.waitForThemeCriticalReady(levelConfig, 1400)
-            : true;
+        let extendedCriticalReady = !this.transitionManager?.waitForThemeCriticalReady;
+        if (!extendedCriticalReady && fit(1400) > 0) {
+            extendedCriticalReady = await this.transitionManager.waitForThemeCriticalReady(
+                levelConfig,
+                fit(1400),
+                { settleFade: true },
+            );
+        }
 
         if (entryToken !== this.themeRevealToken) {
             return false;
@@ -1572,18 +1604,24 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     _scheduleThemeFullReadySettlement(levelConfig, entryToken, { safePresentation = false } = {}) {
+        // Readiness needs animation frames, which a minimised window never draws: one 6 s miss
+        // left the safe backdrop over the theme for the whole orb (audit 2026-10-18). Ask again
+        // until the orb ends; after a minute, lift the backdrop over whatever the theme shows.
+        const settle = async (attempt) => {
+            const ready = this.transitionManager?.waitForThemeFullReady
+                ? await this.transitionManager.waitForThemeFullReady(levelConfig, 6000)
+                : true;
+            if (entryToken !== this.themeRevealToken) return null;
+            if (ready || attempt + 1 >= THEME_FULL_READY_ATTEMPTS) return ready;
+            return settle(attempt + 1);
+        };
         const settlePromise = Promise.resolve()
             .then(async () => {
-                const ready = this.transitionManager?.waitForThemeFullReady
-                    ? await this.transitionManager.waitForThemeFullReady(levelConfig, 6000)
-                    : true;
-
-                if (entryToken !== this.themeRevealToken) {
-                    return false;
-                }
-
+                const ready = await settle(0);
+                if (ready === null) return false;
                 if (!ready) {
-                    console.warn('[Odyssey] Theme full readiness did not settle before timeout');
+                    console.warn('[Odyssey] Theme full readiness never settled; lifting the safe backdrop');
+                    this._clearNeutralThemeFallbackBackdrop();
                     return false;
                 }
 
@@ -2223,10 +2261,11 @@ export class OdysseyMode extends BaseGameMode {
                 ? session.gameState.simTimeMs
                 : performance.now();
             session.duel?.setPaused(false, session.gameState.lastTime);
-            this.levelStartTime = Date.now();
+            // The level clock. Read by the per-frame victory check (_checkVictoryConditions);
+            // monotonic, so a wall-clock adjustment cannot move it.
+            this.levelStartTime = performance.now();
             this.levelPausedMs = 0;
             this._pauseStartedAt = null;
-            this._startLevelTimer(session);
             this._startGameLoop(session);
         } catch (error) {
             this._retireLevelSession(session);
@@ -2389,9 +2428,13 @@ export class OdysseyMode extends BaseGameMode {
         // Show goal complete overlay
         this._showGoalCompleteOverlay();
 
-        // Trigger theme combo effects for victory celebration
+        // Trigger theme combo effects for victory celebration: one reaction a frame or two. Both
+        // top tiers in the frame that also shows the overlay and chimes piled the theme's biggest
+        // (often first-use) work onto the goal moment while play goes on (audit 2026-10-18).
         emitCombo({ comboCount: 10 });
-        emitLineClear({ lineCount: 4, comboCount: 10 });
+        setTimeout(() => {
+            if (this._isLevelSessionActive(session)) emitLineClear({ lineCount: 4, comboCount: 10 });
+        }, 50);
 
         // Update HUD to show victory lap state
         if (this.odysseyHUD) {
@@ -2741,8 +2784,8 @@ export class OdysseyMode extends BaseGameMode {
      * OdysseyStateManager. Extracted so the warm/parked board can RE-SYNC it on every return: the
      * board is kept alive across a level entry+return (not rebuilt), and node lock/star state is
      * snapshotted only at build time — so a level unlocked DURING the session (e.g. level 4 after
-     * finishing level 3) would otherwise stay locked on the stale board and its orb un-clickable
-     * (LevelNodeManager.raycast rejects locked nodes → no hover → no select → no Play).
+     * finishing level 3) would otherwise stay locked on the stale board: its orb hovers and opens
+     * its panel, but the panel offers no Play.
      * @returns {{furthestLevel:number, levelProgress:Object}}
      */
     _buildOdysseyProgressData() {
@@ -2921,11 +2964,13 @@ export class OdysseyMode extends BaseGameMode {
             await this._boardBuildPromise;
             return;
         }
-        this._boardBuildPromise = this._runOdysseyBoardBuild();
+        const build = this._runOdysseyBoardBuild();
+        this._boardBuildPromise = build;
         try {
-            await this._boardBuildPromise;
+            await build;
         } finally {
-            this._boardBuildPromise = null;
+            // A dispose mid-build dropped this build, and a re-entry may have started its own.
+            if (this._boardBuildPromise === build) this._boardBuildPromise = null;
         }
     }
 
@@ -3037,7 +3082,9 @@ export class OdysseyMode extends BaseGameMode {
         } catch {
             // Default below.
         }
-        return 'defer';
+        // Off: nothing plays the warp transition any more, and 'defer' built a full-screen WebGL
+        // renderer and compiled it 5 s after every map reveal for nothing (audit 2026-10-18).
+        return 'off';
     }
 
     _preInitWarpTransition() {
@@ -3157,6 +3204,9 @@ export class OdysseyMode extends BaseGameMode {
      */
     _disposeOdysseyBoard() {
         this.boardViewReadyPromise = null;
+        // A re-entry must build afresh, not wait on this build: it returns early once its
+        // controller is gone and revealed no board at all, a blank map (audit 2026-10-18).
+        this._boardBuildPromise = null;
         if (this.boardController) {
             this.boardController.dispose();
             this.boardController = null;
@@ -3687,6 +3737,9 @@ export class OdysseyMode extends BaseGameMode {
             version: '1.0.0',
         };
 
+        // A charm eases the orb (Keel asks less, Long Breath adds time): its time does not race
+        // plain runs on the orb's board (audit 2026-10-18). Its stars count as designed.
+        const timeBoardEligible = !(results.charms?.length > 0);
         await Promise.all([
             steamService.uploadScore(
                 STEAM_LEADERBOARDS.ODYSSEY_TOTAL_STARS,
@@ -3697,7 +3750,7 @@ export class OdysseyMode extends BaseGameMode {
                     leaderboard: 'odyssey_total_stars',
                 },
             ),
-            steamService.uploadScore(
+            timeBoardEligible && steamService.uploadScore(
                 levelBoard,
                 levelTimeMs,
                 {
@@ -3858,29 +3911,9 @@ export class OdysseyMode extends BaseGameMode {
      */
     _elapsedLevelMs() {
         if (!this.levelStartTime) return 0;
-        const pausedInProgress = this._pauseStartedAt !== null
-            ? (Date.now() - this._pauseStartedAt) : 0;
-        return Math.max(0, Date.now() - this.levelStartTime - this.levelPausedMs - pausedInProgress);
-    }
-
-    _startLevelTimer(session = this._activeLevelSession) {
-        if (!this._isLevelSessionActive(session)) return;
-        if (session.simulationClock !== DEMO_LEGACY_SIMULATION_CLOCK) return;
-        if (this.levelTimerInterval) {
-            clearInterval(this.levelTimerInterval);
-        }
-
-        this.levelTimerInterval = setInterval(() => {
-            if (
-                this._isLevelSessionActive(session)
-                && this.levelStartTime
-                && !session.gameState.isPaused
-            ) {
-                const elapsedTime = this._elapsedLevelMs() / 1000;
-                // Phase 2: Update time via hybridEngine
-                session.hybridEngine.updateTime(elapsedTime);
-            }
-        }, 100);
+        const now = performance.now();
+        const pausedInProgress = this._pauseStartedAt !== null ? (now - this._pauseStartedAt) : 0;
+        return Math.max(0, now - this.levelStartTime - this.levelPausedMs - pausedInProgress);
     }
 
     /**
@@ -4146,36 +4179,34 @@ export class OdysseyMode extends BaseGameMode {
         // CRITICAL: Update gameState.cameraRow for spawn position
         projectInfinityPresentationCamera(this.gameState, currentCameraRow);
 
-        // Follow the current piece
+        // ONE target per frame, kept until reached (audit 2026-10-18). The piece follow and the
+        // tower follow each called the lerp, so a frame where both fired stepped toward two
+        // targets; and each was re-checked against the moving camera, so a glide stopped dead
+        // the moment its threshold flipped. A falling piece wins, as in Infinity.
+        let target = null;
         const { currentPiece } = this.gameState;
         if (currentPiece) {
             const pieceBottomRow = currentPiece.y + (currentPiece.shape?.length || 0);
-
             // When piece goes below 60% of viewport, follow it
-            const followThreshold = currentCameraRow + Math.floor(visibleRows * 0.6);
-
-            if (pieceBottomRow > followThreshold) {
-                // Calculate target camera position
+            if (pieceBottomRow > currentCameraRow + Math.floor(visibleRows * 0.6)) {
                 const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
-                const targetCameraRow = Math.min(maxCameraRow, pieceBottomRow - Math.floor(visibleRows * 0.3));
-
-                this.boardScene.updateCameraPosition(targetCameraRow);
-                // Update gameState.cameraRow for spawn position
-                projectInfinityPresentationCamera(this.gameState, targetCameraRow);
+                target = Math.min(maxCameraRow, pieceBottomRow - Math.floor(visibleRows * 0.3));
             }
         }
-
-        // Also check if we should follow upward (piece near top of viewport)
+        // Blocks building up high: follow upward
         const highestBlockRow = this._findHighestBlockRow();
-        if (highestBlockRow < currentCameraRow + Math.floor(visibleRows * 0.4)) {
-            // Blocks are building up high, follow upward
-            const targetRow = Math.max(0, highestBlockRow - Math.floor(visibleRows * 0.3));
-            if (targetRow < currentCameraRow) {
-                this.boardScene.updateCameraPosition(targetRow);
-                // Update gameState.cameraRow for spawn position
-                projectInfinityPresentationCamera(this.gameState, targetRow);
-            }
+        if (target === null && highestBlockRow < currentCameraRow + Math.floor(visibleRows * 0.4)) {
+            const upRow = Math.max(0, highestBlockRow - Math.floor(visibleRows * 0.3));
+            if (upRow < currentCameraRow) target = upRow;
         }
+        if (target !== null) this._wellCameraTarget = target;
+        if (!Number.isFinite(this._wellCameraTarget)) return;
+        this.boardScene.updateCameraPosition(this._wellCameraTarget);
+        // Update gameState.cameraRow for spawn position
+        projectInfinityPresentationCamera(this.gameState, this._wellCameraTarget);
+        // Against the scene's CLAMPED target: a target past the well's floor is never reached.
+        const reached = cameraSettings.targetTopRow ?? this._wellCameraTarget;
+        if (Math.abs((cameraSettings.currentTopRow ?? reached) - reached) < 0.02) this._wellCameraTarget = null;
     }
 
     /**

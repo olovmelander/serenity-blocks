@@ -67,8 +67,14 @@ export function canNavigateOdysseyMap(mode, doc = globalThis.document) {
 }
 
 export function describeOdysseyMapSelection(mode) {
+    // Step from where the map is headed, not where it last settled: the mode hears of a
+    // selection only when its focus ends (~0.8 s), so held or quick keys stepped again from
+    // the same orb and moved one orb in all (audit 2026-10-18).
+    const pending = mode.boardController?.selectedLevelId;
+    let selectedLevelId = Number.isFinite(mode.selectedLevelId) ? mode.selectedLevelId : null;
+    if (Number.isFinite(pending)) selectedLevelId = pending;
     return {
-        selectedLevelId: Number.isFinite(mode.selectedLevelId) ? mode.selectedLevelId : null,
+        selectedLevelId,
         currentLevel: mode.odysseyState?.currentLevel || 1,
         totalLevels: mode.levelRegistry?.getTotalLevels?.() || 1,
         chapterStarts: (mode.levelRegistry?.getAllChapters?.() || [])
@@ -88,7 +94,8 @@ export function moveOdysseyMapSelection(mode, move) {
 /** Play the selected orb when it is open. */
 export function playOdysseyMapSelection(mode) {
     if (!canNavigateOdysseyMap(mode)) return false;
-    const levelId = mode.selectedLevelId;
+    // The orb the map is headed to: Enter straight after a step plays that one.
+    const levelId = describeOdysseyMapSelection(mode).selectedLevelId;
     if (!Number.isFinite(levelId) || !mode.odysseyState?.isLevelUnlocked?.(levelId)) return false;
     Promise.resolve(mode.launchOdysseyLevel(levelId, { source: 'map-input' }))
         .catch((error) => console.warn('[Odyssey] Map launch failed:', error));
