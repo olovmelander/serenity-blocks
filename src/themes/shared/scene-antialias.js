@@ -3,7 +3,7 @@
  * (`pass(scene, camera)`): the canvas's MSAA never reaches that picture, so the pass must carry
  * its own samples.
  *
- * From High up the pass takes 4× MSAA, as Sky Children's does: trunks, needles, ridgelines and
+ * From High up the pass takes 4× MSAA, as Rainbow Terraces' does: trunks, needles, ridgelines and
  * shorelines against a bright sky or water then step smoothly instead of in single pixels. Below
  * High, and with the game's antialiasing setting off, the pass stays single-sampled and the theme
  * keeps whatever it did before (FXAA, or nothing).

@@ -29,27 +29,27 @@ describe('buildThemeThumbnailAssetEntries', () => {
     it('emits theme-id based thumbnail assets and preserves alias icon sources', () => {
         const projectRoot = createTempProjectRoot();
         const forestIcon = writeThemeIcon(projectRoot, 'forest/forest-theme-icon.png', 'forest');
-        const skyChildrenV2Icon = writeThemeIcon(
+        const exampleV2Icon = writeThemeIcon(
             projectRoot,
-            'sky-children-v2/sky-children-theme-icon.png',
-            'sky-children-v2',
+            'example-v2/example-theme-icon.png',
+            'example-v2',
         );
 
         const entries = buildThemeThumbnailAssetEntries({
             projectRoot,
             themeRegistry: [
                 { id: 'forest', icon: './forest/forest-theme-icon.png' },
-                { id: 'sky-children', icon: './sky-children-v2/sky-children-theme-icon.png' },
-                { id: 'sky-children-v2', icon: './sky-children-v2/sky-children-theme-icon.png' },
+                { id: 'example', icon: './example-v2/example-theme-icon.png' },
+                { id: 'example-v2', icon: './example-v2/example-theme-icon.png' },
             ],
         });
         const entriesByFileName = new Map(entries.map((entry) => [entry.fileName, entry]));
 
         expect(entriesByFileName.get('assets/theme-thumbnails/forest-theme-icon.png')?.sourcePath)
             .toBe(forestIcon);
-        expect(entriesByFileName.get('assets/theme-thumbnails/sky-children-theme-icon.png')?.sourcePath)
-            .toBe(skyChildrenV2Icon);
-        expect(entriesByFileName.get('assets/theme-thumbnails/sky-children-v2-theme-icon.png')?.sourcePath)
-            .toBe(skyChildrenV2Icon);
+        expect(entriesByFileName.get('assets/theme-thumbnails/example-theme-icon.png')?.sourcePath)
+            .toBe(exampleV2Icon);
+        expect(entriesByFileName.get('assets/theme-thumbnails/example-v2-theme-icon.png')?.sourcePath)
+            .toBe(exampleV2Icon);
     });
 });

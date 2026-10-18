@@ -513,7 +513,7 @@ export function createSkyBackgroundTSL(uTime = uniform(0), options = {}) {
     // mid-azure swallowed the whole near-horizontal frame and every value sat low-sat.
     // Re-graded as a REAL blue golden-hour dome (richer, more saturated bands pulled up
     // into the frame) sitting over a warm horizon, with a readable golden SUN disc + halo
-    // toward that horizon. Reference look: sky-children-v2 sun (core/corona/halo) + the
+    // toward that horizon. Reference look: a core/corona/halo sun + the
     // himalayan/sakura warm-horizon palettes. Values capped (peak channel ≲ 0.78) so the
     // ACES+exposure pass keeps the hue and never washes to white.
     // PAINTERLY-ASCENT REPALETTE (2026-08, Wave A): flip Ch3 from warm golden-hour to the shared
@@ -569,7 +569,7 @@ export function createSkyBackgroundTSL(uTime = uniform(0), options = {}) {
     sky = mix(sky, mix(uHaze, vec3(0.78, 0.8, 0.88), winterT.mul(0.8)), groundHaze.mul(0.34));
 
     // Readable golden SUN toward the warm horizon (low + LEFT, on the rake side). A tight
-    // bright core + a wider golden halo (sky-children sun discipline) so the sun READS as the
+    // bright core + a wider golden halo (the core/corona/halo sun discipline) so the sun READS as the
     // light source. Both terms are additive but capped well below white so ACES rolls them
     // off — the core peaks at ~0.9*coreColor, never a clipped white hole.
     const sunDir = vec3(SURFACE_SUN_DIR.x, SURFACE_SUN_DIR.y, SURFACE_SUN_DIR.z);
@@ -1615,7 +1615,7 @@ export function createGrassTuftsTSL(uTime = uniform(0), count = 760) {
     return { mesh, material, geometry };
 }
 
-// Wildflower meadow (sky-children-v2 meadow-flowers grammar, ported to the Odyssey chapter):
+// Wildflower meadow (a retired sky theme's meadow-flowers grammar, ported to the Odyssey chapter):
 // thousands of small CROSS-CARD flowers anchored to the terrain, colored in coherent
 // painterly drifts (yellow/pink/white/purple/blue), with a stem→petal gradient, a petal-shape
 // alpha, and a gentle wind sway. This REPLACES the old grass tufts.
@@ -2585,7 +2585,7 @@ export function createBirdsTSL(count = 7) {
 // ═══════════════════════════════════════════════════════════════════════════════
 //
 // VISUAL POLISH (user note "maybe a SUN"): a visible warm golden sun — a soft bright core,
-// a turbulent corona ring and a wide soft halo — adapted from sky-children-v2's
+// a turbulent corona ring and a wide soft halo — adapted from a retired sky theme's
 // createSunNodeMaterial (core/corona/halo radial smoothsteps + faint noise turbulence),
 // re-implemented as a single camera-facing billboard quad. Placed far down-corridor toward
 // the sky's sun direction (vec3(0.40, 0.16, -0.90)) so the disc sits where the sky's warm
@@ -2608,7 +2608,7 @@ export function createSunDiscTSL(uTime = uniform(0), options = {}) {
     const turb = snoise3(vec3(centered.x.mul(7.0), centered.y.mul(7.0), uTime.mul(0.05)))
         .mul(0.06).sub(0.03);
 
-    // Radial core / corona / halo (sky-children sun discipline). Soft edges via smoothstep.
+    // Radial core / corona / halo (the core/corona/halo sun discipline). Soft edges via smoothstep.
     const core = oneMinus(smoothstep(0.0, float(0.16).add(turb), dist));
     const corona = oneMinus(smoothstep(0.10, float(0.34).add(turb), dist));
     const halo = oneMinus(smoothstep(0.20, 0.5, dist));

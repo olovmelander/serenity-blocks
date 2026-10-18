@@ -19,7 +19,7 @@ These patterns already appear in many themes. The new theme should avoid them, o
 1. **A still mirror of water under the board.** This shows up in halcyon-apex (lagoon), vesper-chrysalis (lake), lunara (mirror flats), chiral-gold (black water), ice-temple (frozen lake), golden-forest (mirror lake), summer (mirror lake), stillwater, misty-lake, crystal-cave (still pool), koi-pond, and sunset (lantern sea). Salt-flat mirrors such as Uyuni, and any "tufa or pillars standing in a still lake" idea, would land in the same place.
 2. **Crystals and gems.** geode (jewel druzy), crystal-cave, lunara (crystal spires), halcyon-apex (the "Halcyon" diamond), vesper-chrysalis (cut-crystal chrysalis), ice-temple. Opal, Naica and quartz-led concepts are therefore high risk.
 3. **Hexagonal columns.** cinder-drift (columnar basalt magma chamber) and ice-temple (hexagonal ice columns). Rules out Giant's Causeway and Fingal's Cave.
-4. **Seas of clouds.** nimbus-veil (golden cloud sea) and sky-children (cloud sea). Tepui and Zhangjiajie concepts are only partly safe.
+4. **Seas of clouds.** nimbus-veil (golden cloud sea) and rainbow-terraces (cloud sea). Tepui and Zhangjiajie concepts are only partly safe.
 5. **Dusk and night palettes.** Almost every rebuild is set at dusk or night (lunara, vesper, ice-temple, stillwater, koi-pond moonwake, wolfhour, chiral-gold, plus the cosmic set). Only a few are bright and saturated: verdant-hills (windy day), summer, halcyon-apex (dawn) and nimbus-veil (golden). **A high-key, mineral-saturated daylight or golden-hour palette is the biggest open slot.**
 6. **One shared gameplay grammar.** Nearly every masterpiece rebuild follows the same pattern: "a locking piece sends a spark or wisp of its own colour out of the card into X, which keeps that light; a clear fires the cleared rows out of the card as blades of light and sends a wave, one front per line; a chain of clears charges or wakes the world; four lines hold its breath." This is the wording in geode, lunara, vesper-chrysalis, halcyon-apex, bioluminescence, fluid-dreams, ice-temple, chiral-gold, cinder-drift, tornado and waves. **The new theme should use a different grammar,** where the world records, deposits, fills or erupts rather than absorbing sparks. The top picks below are chosen for this.
 7. **Overlap checks in `src`.** No theme covers geothermal springs, travertine, rainbow strata, stained-glass light, tropical rivers, wisteria or tepuis. The word "geyser" appears only in shifting-sands' spice blows (`src/themes/shifting-sands/shifting-sands-fx.js:15`) and in pyrestorm's ember geysers (`src/themes/pyrestorm/pyrestorm-theme.js:286-288`). Odyssey's terrain has faint value steps for rock strata (`src/rendering/odyssey/world/odyssey-ground-palette.js:193-205`, `ODYSSEY_GROUND_STRATA`), which is a minor overlap for a strata concept.
@@ -351,7 +351,7 @@ Phone risk ratings used below:
 - **Palette:** #1C1B22 black rock, #E8B4C8 rose quartz, #F6F2EA quartz, #6FA86B bromeliad, #C84A3A pitcher red, #FFD3A0 sunrise, #8FA6C9 cloud shade.
 - **Gameplay:** A clear sends a slug of water off the cliff to atomise. Combo opens more falls. Four lines part the clouds and put a rainbow at the base of the falls.
 - **Phone risk:** Moderate.
-- **Similarity:** Moderate to high. The cloud sea is in nimbus-veil and sky-children; quartz overlaps geode and lunara.
+- **Similarity:** Moderate to high. The cloud sea is in nimbus-veil and rainbow-terraces; quartz overlaps geode and lunara.
 
 ### 24. PILLAR MIST (alt: Shan Shui). Wulingyuan and Zhangjiajie
 - **Source:** https://en.wikipedia.org/wiki/Wulingyuan
@@ -363,7 +363,7 @@ Phone risk ratings used below:
 ### 25. ROLL CLOUD DAWN. The Morning Glory cloud, Burketown
 - **Source:** https://weatherzone.com.au/news/morning-glory-cloud-crosses-gulf-of-carpentaria/1449970
 - **The facts:** A roll cloud up to 700 km long; glider pilots ride its leading edge.
-- **Similarity:** **High** with nimbus-veil and sky-children (cloud themes). Reject.
+- **Similarity:** **High** with nimbus-veil and rainbow-terraces (cloud themes). Reject.
 
 ### 26. KELVIN-HELMHOLTZ BILLOWS and mammatus at sunset
 - **Source:** https://earthsky.org/earth/kelvin-helmholtz-clouds/
@@ -399,7 +399,7 @@ Phone risk ratings used below:
 ### 30. TOPOGRAPHIC ARCHES. Roger Dean's floating islands and arches
 - **Source:** https://en.wikipedia.org/wiki/Roger_Dean_(artist)
 - **Scene:** Biomorphic stone arches and floating islands with waterfalls pouring off into the void, and alien flora.
-- **Similarity:** Moderate to high. Floating islands are in sky-children and the halcyon-apex sanctuary, and the look reads as derivative of Avatar.
+- **Similarity:** Moderate to high. Floating islands are in rainbow-terraces and the halcyon-apex sanctuary, and the look reads as derivative of Avatar.
 
 ### 31. TEN LARGEST. Hilma af Klint's pastel spirals and petals (1907)
 - **Source:** https://guggenheim-bilbao.eus/en/exhibition/the-ten-largest-1907

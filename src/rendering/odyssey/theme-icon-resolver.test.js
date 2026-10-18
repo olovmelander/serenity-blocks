@@ -22,17 +22,17 @@ describe('theme-icon-resolver', () => {
 
     it('supports alias/path variations for registry and glob module keys', () => {
         const registry = [
-            { id: 'sky-children', icon: './sky-children-v2/sky-children-theme-icon.png' },
-            { id: 'sky-children-v2', icon: './sky-children-v2/sky-children-theme-icon.png' },
+            { id: 'example', icon: './example-v2/example-theme-icon.png' },
+            { id: 'example-v2', icon: './example-v2/example-theme-icon.png' },
         ];
         const iconModules = {
-            '/src/themes/sky-children-v2/sky-children-theme-icon.png': '/assets/sky-children.hash.png',
+            '/src/themes/example-v2/example-theme-icon.png': '/assets/example.hash.png',
         };
 
         const lookup = buildThemeIconLookup(registry, iconModules);
 
-        expect(resolveThemeIconUrl('sky-children', lookup)).toBe('/assets/sky-children.hash.png');
-        expect(resolveThemeIconUrl('sky-children-v2', lookup)).toBe('/assets/sky-children.hash.png');
+        expect(resolveThemeIconUrl('example', lookup)).toBe('/assets/example.hash.png');
+        expect(resolveThemeIconUrl('example-v2', lookup)).toBe('/assets/example.hash.png');
     });
 
     it('falls back to forest icon for unknown themes', () => {
