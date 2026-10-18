@@ -20,10 +20,18 @@ const KEY_MOVES = Object.freeze({
 const PAD_REPEAT_DELAY_MS = 420;
 const PAD_REPEAT_INTERVAL_MS = 180;
 const PAD_MOVES = Object.freeze([
-    { move: 'next', button: 15, axis: 0, sign: 1 },
-    { move: 'previous', button: 14, axis: 0, sign: -1 },
-    { move: 'next-chapter', button: 12, axis: 1, sign: -1 },
-    { move: 'previous-chapter', button: 13, axis: 1, sign: 1 },
+    {
+        move: 'next', button: 15, axis: 0, sign: 1,
+    },
+    {
+        move: 'previous', button: 14, axis: 0, sign: -1,
+    },
+    {
+        move: 'next-chapter', button: 12, axis: 1, sign: -1,
+    },
+    {
+        move: 'previous-chapter', button: 13, axis: 1, sign: 1,
+    },
 ]);
 
 /**
