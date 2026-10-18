@@ -77,15 +77,18 @@ deck drifts overhead and its shadows cross land and water.
 
 ## The light
 
-Six hours on a wheel (`high-coast-hours.js`): golden hour (the reference: sun low right over the
-open sea), sunset (the disc touching the sea), the light night (63° north in summer: the sun a few
-degrees under the northern horizon, an afterglow band, the cottages' windows and the boats'
-masthead lights lit, the lighthouse flashing), dawn mist (sea fog lying on the bay), morning (sun
-from the left, deep blue sea, the granite's red at its brightest) and afternoon (sun behind the
-eye). The sun walks the northern sky from right to left through the night. The wheel turns with
-the clock alone — one hour per 100 s, resting 15 % at each end — and a level-up adds a whole hour
-on top, eased over 5 s, always forward from wherever the light was heading; a new run keeps the
-light where it is.
+A whole midsummer day at 63° north (`high-coast-hours.js`), named by six stations: golden hour
+20:45 (the reference: sun low right over the open sea), sunset 21:45 (the disc touching the sea),
+the light night 00:00 (the sun at its lowest, 3.6° under the northern horizon, an afterglow band,
+the cottages' windows and the boats' masthead lights lit, the lighthouse flashing), dawn mist
+02:48 (sea fog lying on the bay), morning 06:30 (sun from the left, deep blue sea, the granite's
+red at its brightest) and afternoon 16:36 (sun behind the eye). The sun walks the northern sky
+from right to left through the night. Since 2026-10-18 the day is built like Sunset's (see
+"A smooth day" below): one hour of the day runs through a timetable, the sun stands at its real
+height for it, and the light never rests and is never switched. The wheel turns with the clock
+alone (one station per 100 s, a day in 600 s) and a level-up adds a whole station on top, eased
+over 5 s, always forward from wherever the light was heading; a new run keeps the light where it
+is.
 
 The air is an exponential haze integrated exactly along each ray plus a sea-fog layer on the
 water; the sky is a function of direction (deep blue overhead, a clear lighter blue lower down, a
@@ -106,7 +109,7 @@ sun has moved; the cloud deck's shadows drift across land and sea.
 | T-spin | The fleet comes about: every boat turns and heels the other way. |
 | Back-to-back | The lighthouse burns steady and sweeps its beam through the haze. |
 | Perfect clear | The wind dies: the sea lies glass-calm (the glitter collapses to a pillar, the islands mirror), then the breeze line returns from the horizon. |
-| Level up | The day steps an hour forward (it also turns with the clock) and the lighthouse signals once. |
+| Level up | The day steps a station forward (it also turns with the clock) and the lighthouse signals once. |
 | Game over | Dusk falls and the sea returns; morning comes back with the next run. |
 
 Every reaction is closed-form in the theme clock or written into preallocated slots (gusts, motes,
@@ -266,3 +269,49 @@ playground's batch capture and the real game on the dev server. Captures are und
   cut to a 512 px circle (contrast 1.14, saturation 1.24) and judged at 80 px.
 - **Not done:** no physical phone, and no perf-lane GPU reading. The song is a renamed
   placeholder copy of Mountain's.
+
+## A smooth day (2026-10-18)
+
+The owner: "the light of the days just pops from dark to light … we need to make it more smooth
+and natural. How can we make it feel more like the sunset theme?"
+
+**What made it pop.** The old wheel had three switches. (1) It rested 15 % of each 100 s step at
+each end, then turned the whole step in the middle 70 s on a smoothstep, so the light stood
+still for 30 s and then moved at twice its average pace. (2) The sun's direct light was gated by
+`sunUp = smooth(−1.2°, 1.5°, height)` while the station colours kept it at full strength, and
+the height was a straight mix between stations. So the sun's light left the land, or came back to
+it, within about 15 s of clock: three stops on the land in 15 s at sunset and at sunrise. (3) The
+same gate drove the sky side too (the clouds' lit side, the sea's deep colour, the aureole, the
+twilight wedge, the lighthouse beam's air), so all of it flipped in those same 15 s. Measured
+over one day of clock (`reads()` in the unit test: the land, the sky overhead, the band toward the
+sun and a cloud's lit side, after exposure), the worst moment changed the light at 0.35 stops a
+second. Sunset's worst is 0.26.
+
+**What changed (Sunset's model, kept to High Coast's stations and composition).**
+- One hour of the day runs through a timetable: station k stands at place k, and a monotone
+  cubic carries the hour between them, with extra knots that slow the day round its setting and
+  its rising (the golden hour to sunset is one hour of the day in 100 s, the morning to the
+  afternoon ten). Between stations the colours mix by the hour with Sunset's crossing
+  (`lerp(t, smooth(t), 0.5)`), so the light is always on its way.
+- The sun's height is the real one at 63° north on midsummer (50.4° at noon, −3.6° at
+  midnight; it sets at 21:53 and rises at 02:07). Its bearing runs through the stations' own on
+  a smooth curve, so the picture's composition is unchanged at every station.
+- The direct light's strength comes from the height (`sunStrength`: gone at −1.2°, 63 % of its
+  peak 5.2° higher), fitted to what the stations were authored with (within 6 % at every station),
+  and `sunUp` is only the disc's last gate under the far shore. The station's `sun` colour is now
+  its hue.
+- A new uniform `day` (how far the sky is in daylight, from −4° to +3° of height) drives the sky
+  side instead of `sunUp`: the clouds' lit side, the sea's deep colour, the aureole, the twilight
+  wedge and the lighthouse beam's air. The clouds now keep the light a while after the land loses
+  it.
+- `TIMING.hourRest` is gone. The `hour=<place>` playground parameter means what it did (0 golden
+  hour … 5 afternoon); fractions now run the day between stations.
+
+**Numbers (clock only, level 1, one 600 s day).** Worst rate 0.35 → 0.10 stops a second (land
+0.31 → 0.09, clouds 0.35 → 0.10). The sun's light takes 34 s to set (90 % → 10 % of its sunset
+value; it took 15 s) and 36 s to rise. The sky's `day` takes 110 s to fall into the light night
+and 68 s to come back. The light never rests: the old wheel held everything still for 30 s of
+every 100; now something moves at every moment (by day the colours hardly change, but the sun
+crosses the sky and the shadows follow it). A level-up's
+worst moment is 3.0 stops a second (it was 10.3; Sunset's is 7.4). The land's shadow targets are
+repainted on 4.4 % of frames at 120 Hz, as before. `high-coast-hours.test.js` pins all of it.
