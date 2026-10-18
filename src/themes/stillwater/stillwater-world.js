@@ -60,7 +60,6 @@ import {
     WISP_RISE,
     WISP_SLOTS,
     approach,
-    approachForCombo,
     bakeNoise,
     clamp01,
     createNoiseTexture,
@@ -83,7 +82,7 @@ import {
 } from './stillwater-tsl.js';
 import { tierFor } from './stillwater-quality.js';
 import {
-    planBoulders, planCaps, planEyes, planFerns, planLilies, planReeds, planSaplings, planTrunks, shoreDistance,
+    groundHeight, planBoulders, planCaps, planEyes, planFerns, planLilies, planReeds, planSaplings, planTrunks, shoreDistance,
 } from './stillwater-plan.js';
 import { createSky } from './stillwater-sky.js';
 import { createWater } from './stillwater-water.js';
@@ -92,9 +91,11 @@ import { createBoughs, createTrunks, planBoughs } from './stillwater-trees.js';
 import {
     createCaps, createFerns, createLilies, createPads, createReeds, createSaplings,
 } from './stillwater-flora.js';
-import { createSpirit, createTroll } from './stillwater-figures.js';
+import { createSpirit } from './stillwater-spirit.js';
+import { createTroll } from './stillwater-troll.js';
+import { StillwaterStory, spiritPathPoint } from './stillwater-story.js';
 import {
-    createDrops, createEyes, createFireflies, createMist, createSparks, createWisps,
+    createDrops, createEyes, createFireflies, createHeartOrb, createMist, createSparks, createWisps,
 } from './stillwater-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
@@ -118,16 +119,18 @@ export const HERO_LAYER = 1;
 /** Seconds a level's turn of the hour takes. */
 export const HOUR_TURN = 3.2;
 
-/** Metres a second the troll walks, and the spirit's footfall (metres between rings). */
-const TROLL_PACE = 0.6;
-const FOOTFALL = 0.62;
+/** Where on her path the spirit kneels on the water when all is calm (0 = her stone). */
+const KNEEL_AT = 0.28;
+/** Seconds between the rings her hem leaves as she drifts over the water. */
+const WAKE_EVERY = 0.55;
 
 const PARTS = [
     'sky', 'water', 'ground', 'boulders', 'trunks', 'boughs', 'fringe', 'saplings', 'ferns', 'reeds', 'pads', 'lilies',
-    'caps', 'spirit', 'troll', 'mist', 'eyes', 'fireflies', 'wisps', 'drops', 'sparks',
+    'caps', 'spirit', 'troll', 'mist', 'eyes', 'fireflies', 'wisps', 'drops', 'sparks', 'orb',
 ];
 
-const TROLL_PATH = Math.hypot(TROLL.reach[0] - TROLL.home[0], TROLL.reach[2] - TROLL.home[2]);
+/** The troll's path: his seat to the shallows (for reading how far he has come). */
+const TROLL_PATH = Math.hypot(TROLL.shallows[0] - TROLL.home[0], TROLL.shallows[2] - TROLL.home[2]);
 
 export class StillwaterWorld {
     /**
@@ -184,6 +187,21 @@ export class StillwaterWorld {
         this._heartOf = [SPIRIT.home[0], SPIRIT.home[1] + SPIRIT.height * 0.7, SPIRIT.home[2]];
         this._lantern = [TROLL.home[0] - 0.9, TROLL.home[1] + 2.2, TROLL.home[2] + 1.2];
         this._wisp = [0, 0, 0, 0];
+        this._orb = [0, 0, 0, 0];
+        this._trollWant = {};
+        this._spiritWant = {};
+        this._spiritBody = {
+            at: [0, 0, 0], face: 1.4, kneel: false, hands: 'rest', look: null, gazeDown: true, wind: 0.25,
+        };
+        /** Where the two are, in STAGE coordinates (the story's; the world converts both ways). */
+        this._figuresAt = {
+            spiritHeart: [SPIRIT.home[0], SPIRIT.home[1] + 1.2, SPIRIT.home[2]],
+            lantern: [TROLL.home[0], 2.2, TROLL.home[2]],
+            troll: [TROLL.home[0], TROLL.home[2]],
+        };
+        this._lookW = [0, 0, 0];
+        this._lookS = [0, 0, 0];
+        this.story = new StillwaterStory();
         this._clear = null;
         this._palette = paletteAt(0);
         /** The night moves on by itself (captures of one hour hold it still). */
@@ -235,17 +253,13 @@ export class StillwaterWorld {
         this.capsR = 0.12;
         this.heart = 0;
         this.heartFlash = 0;
-        /** The spirit: how far out over the water she is (0..1), and how far she has walked. */
+        /** How far out the spirit is on her path (0..1), and the troll on his (0 his seat, 1 the shallows). */
         this.spiritS = 0;
-        this.spiritWalked = 0;
-        this.spiritFacing = 1.6;
-        /** The troll: how far down to the water he is (0..1), his stride, his bearing. */
         this.trollS = 0;
-        this.trollStride = 0;
-        this.trollMoving = 0;
-        this.trollFacing = -1.3;
-        this.trollLook = 0;
-        this.lookKick = 0;
+        this.lastWake = -10;
+        this.streamSlot = -1;
+        this.story?.reset(time);
+        this.resetFigures();
         this.lastLanding = null;
         this.shock = { time: -100, strength: 0 };
         this.lastClear = { time: -100, lines: 0 };
@@ -308,10 +322,15 @@ export class StillwaterWorld {
         this.addPart('pads', createPads(u, lilyPlan), banks);
         this.addPart('lilies', createLilies(u, lilyPlan.filter((p) => p.flower)), banks);
         this.addPart('caps', createCaps(u, planCaps(tier.caps)), banks);
-        this.spirit = createSpirit(u);
+        this.spirit = createSpirit(u, { lod: tier.spirit, motes: tier.motes });
         this.addPart('spirit', this.spirit, banks);
-        this.troll = createTroll(u, { lod: tier.troll });
+        this.troll = createTroll(u, {
+            lod: tier.troll,
+            // (The troll walks in true metres: the plan's ground is in the stage's own.)
+            ground: (x, z) => groundHeight(x / this.squeeze, z),
+        });
         this.addPart('troll', this.troll, banks);
+        this.resetFigures();
 
         // ── The air of the place, and what gameplay sets in flight (world space) ──
         const air = { hero: true };
@@ -323,6 +342,7 @@ export class StillwaterWorld {
         this.addPart('drops', this.drops, air);
         this.sparks = createSparks(u, tier.sparks);
         this.addPart('sparks', this.sparks, air);
+        this.addPart('orb', createHeartOrb(u), air);
 
         this.applySqueeze();
         this.applyPalette();
@@ -337,13 +357,23 @@ export class StillwaterWorld {
      */
     async prepare() {
         if (!this.troll) return false;
-        const loaded = await this.troll.load();
+        const [loaded] = await Promise.all([this.troll.load(), this.spirit ? this.spirit.load() : false]);
         if (this.disposed) return false;
-        if (loaded) {
-            this.troll.mesh.traverse((o) => o.layers.set(HERO_LAYER));
-            this.placeFigures(0);
-        }
+        this.troll.mesh.traverse((o) => o.layers.set(HERO_LAYER));
+        this.spirit?.mesh.traverse((o) => o.layers.set(HERO_LAYER));
+        this.resetFigures();
+        this.placeFigures(0);
         return loaded;
+    }
+
+    /** The two at rest: he on his seat stone, she on hers (the walk frame is the stage in true metres). */
+    resetFigures() {
+        const s = this.squeeze || 1;
+        const face = Math.atan2(SPIRIT.home[0] * s - TROLL.home[0] * s, SPIRIT.home[2] - TROLL.home[2]);
+        this.troll?.reset(TROLL.home[0] * s, TROLL.home[2], face, {
+            seated: true, seat: [TROLL.seat[0] * s, TROLL.seat[1], TROLL.seat[2]],
+        });
+        this.spirit?.reset(SPIRIT.home[0] * s, SPIRIT.home[1], SPIRIT.home[2], 1.35);
     }
 
     /**
@@ -380,7 +410,10 @@ export class StillwaterWorld {
 
     /** The frame's width decides how far the stage is drawn in and where the moon stands. */
     applySqueeze() {
+        const before = this.squeeze;
         this.squeeze = squeezeFor(this.aspect);
+        // The two walk in true metres: a new squeeze moves their ground, so they start again at rest.
+        if (before !== this.squeeze) this.resetFigures();
         this.stage.scale.x = this.squeeze;
         this.stage.updateMatrixWorld(true);
         this.spirit?.setSqueeze(this.squeeze);
@@ -454,6 +487,7 @@ export class StillwaterWorld {
         this.combo = 0;
         this.hushUntil = -1;
         this.pendingHeart.time = Infinity;
+        this.story.onEnd(this.time);
         this.gatherAll(this.time, 0.4);
         this.counts = {
             locks: 0, clears: 0, quads: 0, wisps: 0, gathered: 0,
@@ -463,6 +497,7 @@ export class StillwaterWorld {
     /** The run ended: the chain breaks, the lights go home. */
     onGameOver() {
         if (this.combo > 0) this.onCombo(0);
+        this.story.onEnd(this.time);
         this.gatherAll(this.time, 0.6);
     }
 
@@ -634,6 +669,8 @@ export class StillwaterWorld {
         if (wisp.gatherAt !== Infinity) return;
         wisp.gatherAt = time;
         this.feeds.push({ time: time + WISP_HOME, side: wisp.side, amount: 0.22 * wisp.gain });
+        // The one it goes to makes ready for it: her hands, his lantern.
+        this.story.onArrival(wisp.side, time + WISP_HOME);
         this.counts.gathered += 1;
     }
 
@@ -748,8 +785,12 @@ export class StillwaterWorld {
     lockAt(wx, wy, side, rgb, hardDrop) {
         const from = this.screenToWorld(wx, wy, 6.5, [0, 0, 0]);
         const to = this.pickLanding(side, wy, 0);
-        this.sendDrop(from, [...to], rgb, hardDrop ? 1 : 0.45, hardDrop ? 1.3 : 1);
+        const lands = this.sendDrop(from, [...to], rgb, hardDrop ? 1 : 0.45, hardDrop ? 1.3 : 1);
         this.lastLanding = [to[0], to[2]];
+        // The one on that side follows the light down (a little before it lands).
+        this.story.onLock({
+            time: lands - 0.32, side, at: [to[0] / this.squeeze, to[2]], hardDrop,
+        });
         if (hardDrop) {
             // A second falls wide of the first (a ring only), and the air stirs.
             const second = this.pickLanding(side, wy, 1);
@@ -790,7 +831,7 @@ export class StillwaterWorld {
             rgb,
         });
         this.lastClear = { time: birth, lines: n };
-        this.lookKick = Math.max(this.lookKick, 0.5 + 0.12 * n);
+        this.story.onClear({ time: this.time, lines: n, perfect });
 
         // ── Every wisp the stroke passes is gathered and goes home ──
         for (let i = 0; i < this.wisps.length; i++) {
@@ -883,6 +924,7 @@ export class StillwaterWorld {
             this.feeds.push({ time: this.time, side: n % 2 ? -1 : 1, amount: 0.12 });
         }
         this.combo = n;
+        this.story.onCombo(n, this.time);
     }
 
     /** A new level: the night turns to its next hour, and a breath of wind crosses the tarn. */
@@ -903,6 +945,7 @@ export class StillwaterWorld {
             return;
         }
         this.turn = { from, to, time: this.time };
+        this.story.onLevel(this.time);
         this.gust = Math.max(this.gust, 1);
         this.flash = Math.max(this.flash, 0.1);
         // The wind shakes the dew out of the boughs: it falls through the moonlight.
@@ -947,79 +990,125 @@ export class StillwaterWorld {
     // ── The two figures ─────────────────────────────────────────────────────────
 
     /**
-     * Move the spirit and the troll toward where the chain has them, and stand them there.
-     * (Their places are eased from frame to frame: a replay from a seek steps them the same way.)
+     * The story moves them (stillwater-story.js says what each means to do; their bodies carry it
+     * out). Their bodies are stepped from frame to frame: a replay from a seek steps them the same way.
      */
     placeFigures(dt) {
         const t = this.time;
-        const calm = this.reducedMotion ? 0.5 : 1;
-        const target = approachForCombo(this.combo);
-
-        // ── The spirit glides out over the water, and back ──
-        const before = this.spiritS;
-        this.spiritS += (target - this.spiritS) * approach(target > this.spiritS ? 0.95 : 0.6, dt);
-        const s = smooth(0, 1, this.spiritS);
-        const sx = lerp(SPIRIT.home[0], SPIRIT.reach[0], s);
-        const sz = lerp(SPIRIT.home[2], SPIRIT.reach[2], s);
-        const sy = lerp(SPIRIT.home[1], SPIRIT.reach[1], smooth(0, 0.2, this.spiritS)) + Math.sin(t * 1.3) * 0.012 * calm;
-        const pathLength = Math.hypot(SPIRIT.reach[0] - SPIRIT.home[0], SPIRIT.reach[2] - SPIRIT.home[2]);
-        const moved = Math.abs(smooth(0, 1, this.spiritS) - smooth(0, 1, before)) * pathLength;
-        // She looks to where the lantern is; her gown and hair trail behind her as she goes.
-        const toLantern = Math.atan2(this._lantern[0] / this.squeeze - sx, this._lantern[2] - sz);
-        this.spiritFacing += (toLantern - this.spiritFacing) * approach(2, dt);
-        if (this.spirit) {
-            const speed = dt > 0 ? (moved / dt) * Math.sign(this.spiritS - before || 1) : 0;
-            const along = [(SPIRIT.reach[0] - SPIRIT.home[0]) / pathLength, (SPIRIT.reach[2] - SPIRIT.home[2]) / pathLength];
-            this.spirit.uTrail.value.set(along[0] * speed, 0, along[1] * speed);
-            this.spirit.uFed.value = this.fedL;
-            this.spirit.place({
-                x: sx, y: sy, z: sz, facing: this.spiritFacing, lean: Math.min(0.12, Math.abs(speed) * 0.05),
-            });
-            this.spirit.heartWorld(this._heartOf);
+        const sq = this.squeeze;
+        const at = this._figuresAt;
+        const trollRoot = this.troll?.body?.root;
+        // (The story thinks in the stage's coordinates; the figures walk in true metres.)
+        if (trollRoot) {
+            at.troll[0] = trollRoot.x / sq;
+            at.troll[1] = trollRoot.z;
         }
-        // A ring at every footfall while she is out on the water.
-        if (moved > 0 && this.spiritS > 0.12) {
-            const walked = this.spiritWalked + moved;
-            if (Math.floor(walked / FOOTFALL) !== Math.floor(this.spiritWalked / FOOTFALL)) {
-                this.ring(sx * this.squeeze, sz, t, 0.26, this._palette.spirit, 0.36);
-            }
-            this.spiritWalked = walked;
-        }
+        at.spiritHeart[0] = this._heartOf[0] / sq;
+        at.spiritHeart[1] = this._heartOf[1];
+        at.spiritHeart[2] = this._heartOf[2];
+        at.lantern[0] = this._lantern[0] / sq;
+        at.lantern[1] = this._lantern[1];
+        at.lantern[2] = this._lantern[2];
+        this.story.update(t, dt, at);
+        const toWorld = (p, out) => {
+            if (!p) return null;
+            out[0] = p[0] * sq;
+            out[1] = p[1];
+            out[2] = p[2];
+            return out;
+        };
 
-        // ── The troll walks down to the water's edge, and back ──
-        const rate = (TROLL_PACE / TROLL_PATH) * (this.reducedMotion ? 3 : 1);
-        const step = Math.max(-rate * dt, Math.min(rate * dt, target - this.trollS));
-        this.trollS += step;
-        const walking = Math.abs(step) > 1e-6 ? 1 : 0;
-        this.trollMoving += (walking - this.trollMoving) * approach(7, dt);
-        this.trollStride += (Math.abs(step) * TROLL_PATH) / TROLL.stride;
-        const tx = lerp(TROLL.home[0], TROLL.reach[0], this.trollS);
-        const tz = lerp(TROLL.home[2], TROLL.reach[2], this.trollS);
-        const ty = lerp(TROLL.home[1], TROLL.reach[1], smooth(0, 1, this.trollS));
-        // He faces the way he walks; standing, he faces the spirit across the water.
-        const down = Math.atan2(TROLL.reach[0] - TROLL.home[0], TROLL.reach[2] - TROLL.home[2]);
-        const toSpirit = Math.atan2(sx - tx, sz - tz);
-        let bearing = toSpirit;
-        if (walking) bearing = step > 0 ? down : down + Math.PI;
-        let turn = bearing - this.trollFacing;
-        while (turn > Math.PI) turn -= Math.PI * 2;
-        while (turn < -Math.PI) turn += Math.PI * 2;
-        this.trollFacing += turn * approach(walking ? 5 : 2.2, dt);
-        this.trollLook += (this.lookKick * 0.7 - this.trollLook) * approach(4, dt);
+        // ── The troll ──
         if (this.troll) {
-            this.troll.place({
-                x: tx,
-                y: ty,
-                z: tz,
-                facing: this.trollFacing,
-                stride: this.trollStride,
-                moving: this.trollMoving,
-                time: t * calm,
-                look: this.trollLook,
-                lift: clamp01(this.power * 0.6 + this.fedR * 0.5 + this.surge * 0.4),
-            });
+            const want = this.story.trollWant(t, this._trollWant);
+            // (The story's places are the stage's: he walks in true metres.)
+            want.at[0] *= sq;
+            want.look = toWorld(want.look, this._lookW);
+            // He faces her across the water, reckoned where he really stands.
+            if (trollRoot) {
+                want.face = Math.atan2(this._heartOf[0] - (want.at[0]), this._heartOf[2] - want.at[1]);
+            }
+            want.wind = this.gust * 1.5 + this.surge * 0.5;
+            want.startle = !this.reducedMotion;
+            const events = this.troll.update(dt, want, t);
+            for (let i = 0; i < events.length; i++) {
+                const e = events[i];
+                // A step or the staff in the water leaves a ring.
+                if (e.y < 0) this.ring(e.x, e.z, t, e.type === 'staff' ? 0.16 : 0.32 * e.strength, this._palette.lantern, e.type === 'staff' ? 0.3 : 0.55);
+            }
             this.troll.lanternWorld(this._lantern);
+            if (trollRoot) {
+                const dx = trollRoot.x / sq - TROLL.home[0];
+                const dz = trollRoot.z - TROLL.home[2];
+                this.trollS = clamp01(Math.hypot(dx, dz) / TROLL_PATH);
+            }
         }
+
+        // ── The spirit ──
+        if (this.spirit) {
+            const want = this.story.spiritWant(t, this._spiritWant);
+            let s = 0;
+            if (want.kneel) s = KNEEL_AT;
+            else if (want.out > 0.02) s = 0.24 + 0.76 * want.out;
+            const point = spiritPathPoint(s, this._from);
+            const b = this._spiritBody;
+            b.at[0] = point[0] * sq;
+            b.at[1] = point[1];
+            b.at[2] = point[2];
+            // She faces out over the water toward him; at rest a little more toward the tarn's heart.
+            const root = this.spirit.rootWalk();
+            const toLantern = Math.atan2(this._lantern[0] - root.x, this._lantern[2] - root.z);
+            const toHeart = Math.atan2(HEART[0] * sq - root.x, HEART[2] - root.z);
+            b.face = want.out > 0.05 || want.look ? toLantern : toHeart + (toLantern - toHeart) * 0.4;
+            // Going back she turns toward her stone and looks back at him over her shoulder.
+            if (want.back) {
+                const dx = SPIRIT.home[0] * sq - root.x;
+                const dz = SPIRIT.home[2] - root.z;
+                if (Math.hypot(dx, dz) > 0.4) b.face = Math.atan2(dx, dz);
+            }
+            b.kneel = want.kneel;
+            b.hands = want.hands;
+            b.look = toWorld(want.look, this._lookS);
+            b.gazeDown = want.gazeDown;
+            b.wind = 0.25 + this.gust + this.surge * 0.4;
+            this.spirit.uFed.value = Math.min(1.5, this.fedL + this.story.heartTaken(t) * 1.2);
+            const events = this.spirit.update(dt, b, t);
+            for (let i = 0; i < events.length; i++) {
+                const e = events[i];
+                // Her fingertips in the water.
+                this.ring(e.x, e.z, t, 0.18, this._palette.spirit, 0.4);
+            }
+            // As she drifts over the water her hem leaves a soft wake.
+            const v = this.spirit.body?.velocity;
+            if (v && root.y < 0.2 && Math.hypot(v.x, v.z) > 0.12 && t - this.lastWake > WAKE_EVERY) {
+                this.lastWake = t;
+                this.ring(root.x, root.z, t, 0.14, this._palette.spirit, 0.45);
+            }
+            this.spirit.heartWorld(this._heartOf);
+            const home = spiritPathPoint(1);
+            this.spiritS = clamp01(Math.hypot(root.x / sq - SPIRIT.home[0], root.z - SPIRIT.home[2])
+                / Math.hypot(home[0] - SPIRIT.home[0], home[2] - SPIRIT.home[2]));
+        }
+    }
+
+    /**
+     * While a chain holds the two near, their light goes out from each toward the other over the
+     * water: motes from her breast and from his lantern, meeting behind the board.
+     */
+    streamLight(t) {
+        if (!this.sparks || this.story.path < 0.4) return;
+        const slot = Math.floor(t / 0.32);
+        if (slot === this.streamSlot) return;
+        this.streamSlot = slot;
+        const h = this._heartOf;
+        const l = this._lantern;
+        const mid = [(h[0] + l[0]) * 0.5, 0.7, (h[2] + l[2]) * 0.5];
+        const n = Math.max(1, Math.round(this.sparkShare()));
+        const common = {
+            n, time: t, home: mid, life: [2.6, 3.6], size: 0.065, scatter: 0.18,
+        };
+        this.sparks.emit({ ...common, at: [h[0], h[1] - 0.15, h[2]], rgb: this._palette.spirit });
+        this.sparks.emit({ ...common, at: [l[0], l[1], l[2]], rgb: this._palette.lantern });
     }
 
     // ── Frame ───────────────────────────────────────────────────────────────────
@@ -1047,7 +1136,6 @@ export class StillwaterWorld {
         this.eyesFlash *= Math.exp(-dt / 1.7);
         this.liliesFlash *= Math.exp(-dt / 3.2);
         this.heartFlash *= Math.exp(-dt / 2.4);
-        this.lookKick *= Math.exp(-dt / 1.3);
         if (t >= this.pendingHeart.time) {
             this.heartFlash = Math.max(this.heartFlash, this.pendingHeart.amount);
             this.eyesFlash = 1;
@@ -1090,6 +1178,7 @@ export class StillwaterWorld {
 
         this.applyPalette();
         this.placeFigures(dt);
+        this.streamLight(t);
 
         // ── Event tables: live rows packed at the front ──
         let rings = 0;
@@ -1160,11 +1249,29 @@ export class StillwaterWorld {
         u.eyes.value.set(this.eyes, this.eyesFlash);
         u.lilies.value.set(this.lilies, this.liliesFlash);
         u.caps.value.set(this.capsL, this.capsR);
-        u.heartAt.value.set(HEART[0] * this.squeeze, HEART[1], HEART[2], clamp01(this.heart * 0.75 + this.heartFlash));
+        // The heart's flight: while it is up out of the water the bed lies dark, and it lights the night.
+        const orb = this.story.heartAt(t, this._orb);
+        const away = orb ? clamp01(orb[1] + 0.6) : 0;
+        u.heartAt.value.set(
+            HEART[0] * this.squeeze,
+            HEART[1],
+            HEART[2],
+            clamp01(this.heart * 0.75 + this.heartFlash) * (1 - away * 0.85),
+        );
+        if (orb) u.orbAt.value.set(orb[0] * this.squeeze, orb[1], orb[2], orb[3]);
+        else u.orbAt.value.w = 0;
+        const taken = this.story.heartTaken(t);
         const h = this._heartOf;
-        u.spiritAt.value.set(h[0], h[1], h[2], 0.6 + this.power * 0.3 + this.fedL * 0.6 + this.stepFlash * 0.25);
+        u.spiritAt.value.set(h[0], h[1], h[2], 0.6 + this.power * 0.3 + this.fedL * 0.6 + this.stepFlash * 0.25 + taken * 1.6
+            + this.story.gaze * 0.15);
         const l = this._lantern;
-        u.lanternAt.value.set(l[0], l[1], l[2], 0.5 + this.power * 0.35 + this.fedR * 0.7 + this.stepFlash * 0.2);
+        // (When their eyes meet, both lights warm a little.)
+        u.lanternAt.value.set(l[0], l[1], l[2], 0.5 + this.power * 0.35 + this.fedR * 0.7 + this.stepFlash * 0.2
+            + this.story.gaze * 0.15);
+        // The path of light that runs between them on the water while the chain holds them near.
+        const sr = this.spirit?.rootWalk();
+        u.path.value.set(this.story.path, this.story.gaze, taken, 0);
+        if (sr) u.pathEnds.value.set(sr.x, sr.z, l[0], l[2]);
 
         // ── Post ──
         const sinceClear = t - this.lastClear.time;
@@ -1211,6 +1318,12 @@ export class StillwaterWorld {
             spirit: this.spiritS,
             troll: this.trollS,
             trollReady: Boolean(this.troll?.ready),
+            spiritReady: Boolean(this.spirit?.ready),
+            trollMode: this.troll?.body?.mode || null,
+            spiritMode: this.spirit?.body?.mode || null,
+            bond: this.story.bond,
+            path: this.story.path,
+            gaze: this.story.gaze,
             eyes: this.eyes,
             heart: this.heart,
             fed: [this.fedL, this.fedR],

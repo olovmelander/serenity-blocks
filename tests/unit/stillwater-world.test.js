@@ -8,6 +8,10 @@
  * expects and what happens instead, and turns red the day the fault is fixed (drop `.fails` then).
  * Where a test says what the world "once" did, it pins a fault that was found here and has been
  * put right.
+ *
+ * The two figures are read from their real files (see the loader below): a test that is about
+ * them builds its world with makeFiguredWorld, and the rest of the tarn's tests run without them,
+ * as the world does until its figures arrive.
  */
 import {
     afterEach, describe, expect, it, vi,
@@ -19,35 +23,57 @@ import {
 import {
     DEG, DROP_FLIGHT, EYE, HEART, HOURS, HOUR_SECONDS, HUSH_HOLD, MOON, PALETTE_KEYS, PALETTE_SCALARS, RING_LIVE,
     RING_SLOTS, SPIRIT, STROKE_LIVE, STROKE_SLOTS, SURGE_COOL, TROLL, WISP_HOLD, WISP_HOME, WISP_RISE, WISP_SLOTS,
-    approachForCombo, eyesForCombo, heartForCombo, hourAt, moonFor, mulberry32, paletteAt, pieceColor, powerForCombo,
-    skyDirection, smooth, squeezeFor, strokePassTime,
+    eyesForCombo, heartForCombo, hourAt, moonFor, mulberry32, paletteAt, pieceColor, powerForCombo,
+    skyDirection, squeezeFor, strokePassTime,
 } from '../../src/themes/stillwater/stillwater-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/stillwater/stillwater-quality.js';
 import { boardPoint, cardUnion, fallbackLayout } from '../../src/themes/stillwater/stillwater-composition.js';
 import { groundHeight, shoreDistance } from '../../src/themes/stillwater/stillwater-plan.js';
+import {
+    HEART_FLIGHT, PARTING, chainBond, spiritPathPoint, trollStation,
+} from '../../src/themes/stillwater/stillwater-story.js';
 
 // Every test builds a whole world (a noise field, the plans, some twenty node materials).
 vi.setConfig({ testTimeout: 60000 });
 
 /**
- * The troll's sculpt is fetched by three's GLTFLoader, which has nothing to fetch from here:
- * the loader is replaced by one that answers with whatever a test puts in `sculpt.load`
- * (by default it fails, as a missing file would).
+ * The two figures are fetched by three's GLTFLoader, which has no server to fetch from here: the
+ * loader is replaced by one that reads the real file the URL names from the theme's assets and
+ * parses it with three's own loader, as the game does. A test that wants the fetch to fail, or to
+ * arrive late, puts its own answer in `sculpt.load` (and can still reach the real file by
+ * `sculpt.real(url)`). Every URL asked for is kept in `sculpt.urls`.
  */
-const sculpt = vi.hoisted(() => ({ load: null, urls: [] }));
-vi.mock('three/addons/loaders/GLTFLoader.js', () => ({
-    GLTFLoader: class {
-        loadAsync(url) {
-            sculpt.urls.push(url);
-            return sculpt.load ? sculpt.load(url) : Promise.reject(new Error('no sculpt in this test'));
-        }
-    },
+const sculpt = vi.hoisted(() => ({
+    load: null, urls: [], bytes: {}, real: null,
 }));
+vi.mock('three/addons/loaders/GLTFLoader.js', async (importOriginal) => {
+    const actual = await importOriginal();
+    const { readFileSync } = await import('node:fs');
+    sculpt.real = (url) => {
+        const name = String(url).match(/(?:troll|spirit)-lod\d\.glb/)?.[0];
+        if (!name) return Promise.reject(new Error(`no figure file at ${url}`));
+        if (!sculpt.bytes[name]) {
+            const bytes = readFileSync(new URL(`../../src/themes/stillwater/assets/${name}`, import.meta.url));
+            sculpt.bytes[name] = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+        }
+        return new Promise((resolve, reject) => {
+            new actual.GLTFLoader().parse(sculpt.bytes[name], '', resolve, reject);
+        });
+    };
+    return {
+        GLTFLoader: class {
+            loadAsync(url) {
+                sculpt.urls.push(url);
+                return sculpt.load ? sculpt.load(url) : sculpt.real(url);
+            }
+        },
+    };
+});
 
 /** What stands on the banks (drawn in with them on a narrow frame), what hangs in the air, and what is not mirrored. */
 const BANKS = ['ground', 'boulders', 'trunks', 'boughs', 'fringe', 'saplings', 'ferns', 'reeds', 'pads', 'lilies',
     'caps', 'spirit', 'troll'];
-const AIR = ['mist', 'eyes', 'fireflies', 'wisps', 'drops', 'sparks'];
+const AIR = ['mist', 'eyes', 'fireflies', 'wisps', 'drops', 'sparks', 'orb'];
 const UNMIRRORED = ['sky', 'water'];
 
 /** The parts a tier may leave out, and the tier's number that says so. */
@@ -104,6 +130,22 @@ function makeWorld(quality = 'Low', {
     frame(world, camera, start, 0);
     return { scene, camera, world };
 }
+
+/** A world as makeWorld builds it, with both figures fetched and in, and the clock sought to `start` again. */
+async function makeFiguredWorld(quality = 'Low', options = {}) {
+    const made = makeWorld(quality, options);
+    const { world, camera } = made;
+    await expect(world.prepare()).resolves.toBe(true);
+    expect(world.getState()).toMatchObject({ trollReady: true, spiritReady: true });
+    const start = options.start ?? 10;
+    world.seek(start);
+    frame(world, camera, start, 0);
+    return made;
+}
+
+/** Where each figure stands now (the walk frame is the world's): the troll's root, the spirit's. */
+const trollAt = (world) => world.troll.body.root;
+const spiritAt = (world) => world.spirit.rootWalk();
 
 /** Advance the world by `seconds` in fixed steps of 1 / fps, calling `each` after every frame. */
 function run(world, camera, seconds, fps = 60, each = null) {
@@ -179,8 +221,15 @@ function sharedNumbers(world) {
             if (!node.value?.isTexture && !Array.isArray(node.value)) take(`u.${key}`, node.value);
         }
     });
-    take('spirit.uTrail', world.spirit.uTrail.value);
     take('spirit.uFed', world.spirit.uFed.value);
+    take('troll.uCloak', world.troll.uCloak.value);
+    // And the figures' own poses, when they are in.
+    for (const [who, body] of [['troll', world.troll.body], ['spirit', world.spirit.body]]) {
+        if (!body) continue;
+        Object.entries(body.local).forEach(([name, q]) => take(`${who}.${name}`, q));
+        take(`${who}.root`, body.root);
+        take(`${who}.hips`, body.hipsOffset);
+    }
     return out;
 }
 
@@ -190,81 +239,108 @@ function onScreen(point, camera) {
     return { x: v.x * 0.5 + 0.5, y: 0.5 - v.y * 0.5 };
 }
 
-/** How far along its way (0 = where it rests, 1 = where a chain draws it) a figure stands, and how far off the line. */
-function wayOf(who, position) {
-    const dx = who.reach[0] - who.home[0];
-    const dz = who.reach[2] - who.home[2];
-    const along = ((position.x - who.home[0]) * dx + (position.z - who.home[2]) * dz) / (dx * dx + dz * dz);
-    const off = Math.hypot(position.x - (who.home[0] + dx * along), position.z - (who.home[2] + dz * along));
+/**
+ * How far along the line from `from` to `to` (the stage's places) a point of the world stands
+ * (0 at `from`, 1 at `to`), and how far off that line (m), on a stage drawn in by `squeeze`.
+ */
+function wayOf(from, to, point, squeeze = 1) {
+    const ax = from[0] * squeeze;
+    const dx = to[0] * squeeze - ax;
+    const dz = to[2] - from[2];
+    const along = ((point.x - ax) * dx + (point.z - from[2]) * dz) / (dx * dx + dz * dz);
+    const off = Math.hypot(point.x - (ax + dx * along), point.z - (from[2] + dz * along));
     return { along, off, length: Math.hypot(dx, dz) };
 }
 
-/** A stand-in for the troll's sculpt: a mesh, the two bones the world turns itself, a leg, and a walk. */
-function fakeSculpt({ walk = true } = {}) {
-    const scene = new THREE.Group();
-    const geometry = new THREE.BufferGeometry();
-    const corners = new Float32Array([0, -0.5, 0, 0.3, 0.5, 0, -0.3, 0.5, 0]);
-    geometry.setAttribute('position', new THREE.BufferAttribute(corners, 3));
-    geometry.setAttribute('color', new THREE.BufferAttribute(new Float32Array(9).fill(0.5), 3));
-    const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial());
-    mesh.name = 'sculpt';
-    const bones = ['spine', 'head', 'leg'].map((name) => {
-        const bone = new THREE.Bone();
-        bone.name = name;
-        return bone;
-    });
-    bones[0].add(bones[1]);
-    scene.add(bones[0], bones[2], mesh);
-    const swing = (name, x) => new THREE.QuaternionKeyframeTrack(
-        `${name}.quaternion`,
-        [0, 0.3, 0.6, 0.9, 1.2],
-        [0, 0, 0, 1, x, 0, 0, Math.sqrt(1 - x * x), 0, 0, 0, 1, -x, 0, 0, Math.sqrt(1 - x * x), 0, 0, 0, 1],
-    );
-    const clip = new THREE.AnimationClip('walk', 1.2, [swing('spine', 0.05), swing('head', 0.08), swing('leg', 0.4)]);
-    return {
-        gltf: { scene, animations: walk ? [clip] : [] },
-        mesh,
-        geometry,
-        bones: { spine: bones[0], head: bones[1], leg: bones[2] },
-    };
+/** The troll's way (his seat to the shallows) and the spirit's (her stone to as far as she comes). */
+const TROLL_WAY = [TROLL.home, TROLL.shallows];
+const SPIRIT_WAY = [SPIRIT.home, spiritPathPoint(1)];
+
+/** Every number of both figures' poses (empty while they are not in). */
+function posesOf(world) {
+    const out = [];
+    for (const body of [world.troll.body, world.spirit.body]) {
+        if (!body) continue;
+        Object.values(body.local).forEach((q) => out.push(...q.toArray()));
+        out.push(...body.root.toArray(), ...body.hipsOffset.toArray(), body.heading);
+    }
+    return out;
 }
 
-/** A run of play that touches every reaction: locks, a hard drop, clears, a chain to 5, four lines, a level, a break. */
-function play(world, camera) {
-    const step = (seconds) => run(world, camera, seconds);
-    world.onLock({ u: 0.2, rows: [18, 19], color: '#F2D68A' });
-    step(0.5);
-    world.onLock({
+/**
+ * A run of play that touches every reaction: locks, a hard drop, clears, a chain to 5, four lines,
+ * a level, a break. Each step is something the game tells the world, or a number of seconds to let
+ * it run.
+ */
+const PLAY = [
+    (world) => world.onLock({ u: 0.2, rows: [18, 19], color: '#F2D68A' }),
+    0.5,
+    (world) => world.onLock({
         u: 0.8, rows: [17, 18], color: '#6CC7C6', hardDrop: true,
-    });
-    step(0.5);
-    world.onLock({ u: 0.35, rows: [19], color: '#C36F73' });
-    world.onClear({ rows: [19], lines: 1 });
-    world.onCombo(1);
-    step(0.6);
-    world.onLock({ u: 0.7, rows: [18, 19], color: '#5F9B72' });
-    world.onClear({ rows: [18, 19], lines: 2 });
-    world.onCombo(2);
-    step(0.6);
-    world.onLock({ u: 0.5, rows: [19], color: '#9A7FB7' });
-    world.onClear({ rows: [19], lines: 1, tspin: true });
-    world.onCombo(3);
-    step(0.6);
-    world.onLock({ u: 0.1, rows: [17, 18, 19], color: '#537E9F' });
-    world.onClear({ rows: [17, 18, 19], lines: 3 });
-    world.onCombo(4);
-    step(0.6);
-    world.onLock({
-        u: 0.95, rows: [16, 17, 18, 19], color: '#D99A5E', hardDrop: true,
-    });
-    world.onClear({ rows: [16, 17, 18, 19], lines: 4 });
-    world.onCombo(5);
-    step(0.8);
-    world.levelUp(2);
-    step(0.9);
-    world.onLock({ u: 0.4, rows: [19], color: '#F2D68A' });
-    world.onCombo(0);
-    step(0.9);
+    }),
+    0.5,
+    (world) => {
+        world.onLock({ u: 0.35, rows: [19], color: '#C36F73' });
+        world.onClear({ rows: [19], lines: 1 });
+        world.onCombo(1);
+    },
+    0.6,
+    (world) => {
+        world.onLock({ u: 0.7, rows: [18, 19], color: '#5F9B72' });
+        world.onClear({ rows: [18, 19], lines: 2 });
+        world.onCombo(2);
+    },
+    0.6,
+    (world) => {
+        world.onLock({ u: 0.5, rows: [19], color: '#9A7FB7' });
+        world.onClear({ rows: [19], lines: 1, tspin: true });
+        world.onCombo(3);
+    },
+    0.6,
+    (world) => {
+        world.onLock({ u: 0.1, rows: [17, 18, 19], color: '#537E9F' });
+        world.onClear({ rows: [17, 18, 19], lines: 3 });
+        world.onCombo(4);
+    },
+    0.6,
+    (world) => {
+        world.onLock({
+            u: 0.95, rows: [16, 17, 18, 19], color: '#D99A5E', hardDrop: true,
+        });
+        world.onClear({ rows: [16, 17, 18, 19], lines: 4 });
+        world.onCombo(5);
+    },
+    0.8,
+    (world) => world.levelUp(2),
+    0.9,
+    (world) => {
+        world.onLock({ u: 0.4, rows: [19], color: '#F2D68A' });
+        world.onCombo(0);
+    },
+    0.9,
+];
+
+function play(world, camera) {
+    for (const step of PLAY) {
+        if (typeof step === 'number') run(world, camera, step);
+        else step(world);
+    }
+}
+
+/** The same play on several worlds in lockstep, calling `each()` after every frame all of them have taken. */
+function playTogether(made, each) {
+    for (const step of PLAY) {
+        if (typeof step !== 'number') {
+            made.forEach(({ world }) => step(world));
+            continue;
+        }
+        const frames = Math.max(1, Math.round(step * 60));
+        const starts = made.map(({ world }) => world.time);
+        for (let i = 1; i <= frames; i++) {
+            made.forEach(({ world, camera }, k) => frame(world, camera, starts[k] + i / 60, 1 / 60));
+            each();
+        }
+    }
 }
 
 /** Everything a frame of the world is made of, as text: its state, and the three tables row by row. */
@@ -279,7 +355,7 @@ function picture(world, liveOnly = false) {
         wisps: rows(world.u.wispRows, z),
         post: [post.flash, post.kick, post.shafts, post.bloomBoost, post.exposure, post.prism.radius,
             post.prism.strength],
-        figures: [world.spirit.figure.position.toArray(), world.troll.figure.position.toArray()],
+        figures: [world.spirit.figure.position.toArray(), world.troll.figure.position.toArray(), posesOf(world)],
         air: [world.u.drift.value, world.u.sway.value, world.u.wind.value, world.u.breath.value],
     });
 }
@@ -353,6 +429,10 @@ describe('stillwater world: build', () => {
                 spirit: 0,
                 troll: 0,
                 trollReady: false,
+                spiritReady: false,
+                trollMode: null,
+                spiritMode: null,
+                bond: 0,
                 trunks: tier.trunks,
                 boulders: tier.boulders,
                 sparks: tier.sparks,
@@ -476,8 +556,8 @@ describe('stillwater world: build', () => {
     // three sorts by a Group's renderOrder before any mesh's own. A part made of several draws
     // (the spirit and her halo; the troll, his staff and his lantern's glow) must therefore carry
     // no order on its group, or all its draws would come after everything outside it.
-    it('draws the sky last of what is solid, and the lights after the mist, each in a place of its own', () => {
-        const { world } = makeWorld('High');
+    /** Every draw of the world, in the order three would sort it: solid ones and blended ones. */
+    function drawsOf(world) {
         const drawn = [];
         const walk = (object, groupOrder) => {
             const order = object.isGroup ? object.renderOrder : groupOrder;
@@ -492,24 +572,41 @@ describe('stillwater world: build', () => {
             object.children.forEach((child) => walk(child, order));
         };
         walk(world.root, 0);
+        return {
+            drawn,
+            solid: drawn.filter((item) => !item.transparent).sort((a, b) => a.renderOrder - b.renderOrder),
+            blended: drawn.filter((item) => item.transparent).sort((a, b) => a.renderOrder - b.renderOrder),
+        };
+    }
+    const place = (list, pattern) => list.findIndex((item) => pattern.test(item.name));
+
+    it('draws the sky last of what is solid, and the lights after the mist', async () => {
+        const { world } = await makeFiguredWorld('High');
+        const { drawn, solid, blended } = drawsOf(world);
         expect(drawn.length).toBeGreaterThan(STILLWATER_PARTS.length);
         // No group outranks the orders of what is in it.
         expect(drawn.filter((item) => item.groupOrder !== 0)).toEqual([]);
-        const solid = drawn.filter((item) => !item.transparent).sort((a, b) => a.renderOrder - b.renderOrder);
-        const blended = drawn.filter((item) => item.transparent).sort((a, b) => a.renderOrder - b.renderOrder);
         // The sky's shader runs only where the distance shows between the trunks; the water's only where no bank hides it.
         expect(solid.at(-1).name).toMatch(/Sky/);
-        const place = (list, pattern) => list.findIndex((item) => pattern.test(item.name));
-        for (const pattern of [/Ground/, /Trunks/, /Boulders/]) {
-            expect(place(solid, pattern)).toBeGreaterThanOrEqual(0);
-            expect(place(solid, pattern)).toBeLessThan(place(solid, /Water/));
+        for (const pattern of [/Ground/, /Trunks/, /Boulders/, /StillwaterTroll$/, /StillwaterSpirit$/, /Staff/]) {
+            expect(place(solid, pattern), String(pattern)).toBeGreaterThanOrEqual(0);
+            expect(place(solid, pattern), String(pattern)).toBeLessThan(place(solid, /Water/));
         }
-        // What is blended is drawn back to front by its place in the list: no two share one.
-        expect(new Set(blended.map((item) => item.renderOrder)).size).toBe(blended.length);
         expect(place(blended, /Mist/)).toBe(0);
-        for (const pattern of [/Wisps/, /Sparks/, /Drops/, /Eyes/, /Fireflies/, /Halo/, /Glow/]) {
+        for (const pattern of [/Wisps/, /Sparks/, /Drops/, /Eyes/, /Fireflies/, /Halo/, /Glow/, /Motes/, /HeartOrb/]) {
             expect(place(blended, pattern), String(pattern)).toBeGreaterThan(0);
         }
+        world.dispose();
+    });
+
+    // What is blended is drawn back to front by its place in the list, so no two blended draws share
+    // a renderOrder (found pinned: the spirit's motes and the heart's orb once shared theirs).
+    it('draws each blended light in a place of its own', async () => {
+        const { world } = await makeFiguredWorld('High');
+        const { blended } = drawsOf(world);
+        const twin = (item, i) => blended.some((other, k) => k !== i && other.renderOrder === item.renderOrder);
+        const shared = blended.filter(twin);
+        expect(shared.map((item) => `${item.name} ${item.renderOrder}`)).toEqual([]);
         world.dispose();
     });
 
@@ -615,10 +712,10 @@ describe('stillwater world: build', () => {
     });
 });
 
-describe('stillwater world: the troll\'s sculpt', () => {
-    it('needs no sculpt: the whole of play runs with the lantern standing by itself', async () => {
+describe('stillwater world: the figures', () => {
+    it('needs neither figure: the whole of play runs with the lantern standing by itself', () => {
         const { camera, world } = makeWorld('Low');
-        expect(world.getState().trollReady).toBe(false);
+        expect(world.getState()).toMatchObject({ trollReady: false, spiritReady: false });
         expect(() => play(world, camera)).not.toThrow();
         for (const [name, value] of sharedNumbers(world)) expect(Number.isFinite(value), name).toBe(true);
         // His lantern is lit and stands by his seat, over the bank.
@@ -626,107 +723,171 @@ describe('stillwater world: the troll\'s sculpt', () => {
         expect(lantern.w).toBeGreaterThan(0);
         expect(lantern.y).toBeGreaterThan(TROLL.home[1]);
         expect(Math.hypot(lantern.x - TROLL.home[0], lantern.z - TROLL.home[2])).toBeLessThan(TROLL.height);
+        // Her light stands over her stone.
+        const her = world.u.spiritAt.value;
+        expect(Math.hypot(her.x - SPIRIT.home[0], her.z - SPIRIT.home[2])).toBeLessThan(0.5);
+        expect(her.y).toBeGreaterThan(SPIRIT.home[1]);
         world.dispose();
     });
 
     it.each(['Minimal', 'High'])(
-        'takes the sculpt when it arrives: mirrored, in the troll\'s own material, walking by the ground covered (%s)',
+        'takes both figures when they arrive: the meshes the tier pays for, mirrored, in their own materials (%s)',
         async (quality) => {
             const { camera, world } = makeWorld(quality);
-            const made = fakeSculpt();
-            sculpt.load = () => Promise.resolve(made.gltf);
             await expect(world.prepare()).resolves.toBe(true);
-            // It fetched the mesh its tier pays for.
-            expect(sculpt.urls).toHaveLength(1);
-            expect(sculpt.urls[0]).toContain(`troll-lod${QUALITY[quality].troll}.glb`);
-            expect(world.getState().trollReady).toBe(true);
-            expect(world.troll.ready).toBe(true);
-            expect(world.troll.failed).toBe(false);
-            // He stands in the troll's group, shaded as part of the place, and the water mirrors him.
-            let found = null;
-            world.troll.mesh.traverse((object) => {
-                if (object === made.mesh) found = object;
-                expect(object.layers.mask, object.name || object.type).toBe(1 << HERO_LAYER);
+            const tier = QUALITY[quality];
+            // It fetched the meshes its tier pays for, one of each.
+            expect(sculpt.urls).toHaveLength(2);
+            expect(sculpt.urls.find((url) => url.includes('troll-lod'))).toContain(`troll-lod${tier.troll}.glb`);
+            expect(sculpt.urls.find((url) => url.includes('spirit-lod'))).toContain(`spirit-lod${tier.spirit}.glb`);
+            expect(world.getState()).toMatchObject({
+                trollReady: true, spiritReady: true, trollMode: 'seated', spiritMode: 'standing',
             });
-            expect(found).toBe(made.mesh);
-            expect(made.mesh.material).toBe(world.troll.material);
-            expect(made.mesh.material.isNodeMaterial).toBe(true);
-            expect(made.mesh.frustumCulled).toBe(false);
-            expect(made.geometry.getAttribute('normal')).toBeTruthy();
-            // His soles are on the ground at his seat: the sculpt stands a unit tall about its middle.
+            const skins = {};
+            for (const [who, part] of [['troll', world.troll], ['spirit', world.spirit]]) {
+                expect(part.ready, who).toBe(true);
+                expect(part.failed, who).toBe(false);
+                // Each stands in its own group, shaded as part of the place, and the water mirrors it.
+                part.mesh.traverse((object) => {
+                    if (object.isSkinnedMesh) skins[who] = object;
+                    expect(object.layers.mask, `${who}: ${object.name || object.type}`).toBe(1 << HERO_LAYER);
+                });
+                const skin = skins[who];
+                expect(skin, who).toBeTruthy();
+                expect(skin.material, who).toBe(part.material);
+                expect(skin.material.isNodeMaterial, who).toBe(true);
+                expect(skin.frustumCulled, who).toBe(false);
+                expect(skin.geometry.getAttribute('position').array, who).toBeInstanceOf(Float32Array);
+                // Its skeleton is the body's: every bone the body poses is a bone of the mesh.
+                const names = skin.skeleton.bones.map((bone) => bone.name);
+                expect(Object.keys(part.body.local).sort(), who).toEqual([...names].sort());
+            }
+            // They arrive at rest: she on her stone, he seated on his.
+            expect([spiritAt(world).x, spiritAt(world).z]).toEqual([SPIRIT.home[0], SPIRIT.home[2]]);
+            expect(Math.abs(spiritAt(world).y - SPIRIT.home[1])).toBeLessThan(0.02);
             run(world, camera, 0.5);
             world.root.updateMatrixWorld(true);
-            const box = new THREE.Box3().setFromObject(made.mesh);
-            expect(box.min.y).toBeCloseTo(TROLL.home[1], 4);
-            expect(box.max.y - box.min.y).toBeCloseTo(TROLL.height, 4);
-            // Standing, he is as he was sculpted; a chain sets him walking, and the walk is played by his stride.
-            const atRest = made.bones.leg.quaternion.clone();
+            const troll = trollAt(world);
+            expect(Math.hypot(troll.x - TROLL.home[0], troll.z - TROLL.home[2])).toBeLessThan(0.05);
+            expect(Math.abs(troll.y - groundHeight(troll.x, troll.z))).toBeLessThan(0.1);
+            // His soles are where his root stands: the sculpt's sole height comes out at the root.
+            const sole = new THREE.Vector3(0, world.troll.body.sole, 0)
+                .applyMatrix4(skins.troll.matrixWorld);
+            expect(sole.y).toBeCloseTo(troll.y, 6);
+            // The skeleton carries the body's pose.
+            for (const [who, skin] of Object.entries(skins)) {
+                for (const bone of skin.skeleton.bones) {
+                    const posed = world[who].body.local[bone.name].toArray();
+                    expect(bone.quaternion.toArray(), `${who}: ${bone.name}`).toEqual(posed);
+                }
+            }
+            // A chain gets him up and walks him down to the water's edge: his legs move as he goes.
+            const thigh = skins.troll.skeleton.bones.find((bone) => bone.name === 'thighL');
+            const atRest = thigh.quaternion.clone();
             let swung = 0;
-            world.onCombo(8);
-            run(world, camera, 1.2, 60, () => {
-                swung = Math.max(swung, made.bones.leg.quaternion.angleTo(atRest));
+            world.onCombo(3);
+            run(world, camera, 6, 60, () => {
+                swung = Math.max(swung, thigh.quaternion.angleTo(atRest));
             });
             expect(swung).toBeGreaterThan(0.1);
-            // He stops at the water, and stands again.
-            run(world, camera, 6);
-            expect(made.bones.leg.quaternion.angleTo(atRest)).toBeLessThan(0.01);
-            // His head turns to a clear, over the walk's own turn of it.
-            const head = made.bones.head.quaternion.clone();
+            run(world, camera, 8);
+            expect(world.getState().trollMode).toBe('standing');
+            expect(Math.hypot(trollAt(world).x - TROLL.reach[0], trollAt(world).z - TROLL.reach[2])).toBeLessThan(0.2);
+            expect(world.troll.body.anySwing()).toBe(false);
+            // His head turns to a clear.
+            const head = world.troll.body.local.head.clone();
             world.onClear({ lines: 2 });
-            run(world, camera, 0.4);
-            expect(made.bones.head.quaternion.angleTo(head)).toBeGreaterThan(0.05);
+            let turned = 0;
+            run(world, camera, 0.6, 60, () => {
+                turned = Math.max(turned, world.troll.body.local.head.angleTo(head));
+            });
+            expect(turned).toBeGreaterThan(0.05);
             for (const [name, value] of sharedNumbers(world)) expect(Number.isFinite(value), name).toBe(true);
-            // When the world goes, so does he.
-            const gone = vi.spyOn(made.geometry, 'dispose');
+            // When the world goes, so do they.
+            const gone = [vi.spyOn(skins.troll.geometry, 'dispose'), vi.spyOn(skins.spirit.geometry, 'dispose')];
             world.dispose();
-            expect(gone).toHaveBeenCalledOnce();
+            for (const spy of gone) expect(spy).toHaveBeenCalledOnce();
         },
     );
 
-    it('takes a sculpt with no walk in it, and stands him still', async () => {
-        const { camera, world } = makeWorld('Low');
-        const made = fakeSculpt({ walk: false });
-        sculpt.load = () => Promise.resolve(made.gltf);
-        await expect(world.prepare()).resolves.toBe(true);
-        expect(world.getState().trollReady).toBe(true);
+    it('plays the whole of play with both of them in, every number finite', async () => {
+        const { camera, world } = await makeFiguredWorld('Low');
         expect(() => play(world, camera)).not.toThrow();
+        for (const [name, value] of sharedNumbers(world)) expect(Number.isFinite(value), name).toBe(true);
+        expect(posesOf(world).length).toBeGreaterThan(100);
         world.dispose();
     });
 
-    it('survives a sculpt that cannot be had: it says so once and plays on without him', async () => {
+    it('survives figures that cannot be had: each says so once, and play goes on without them', async () => {
         const { camera, world } = makeWorld('Low');
         const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
         sculpt.load = () => Promise.reject(new Error('404'));
         await expect(world.prepare()).resolves.toBe(false);
-        expect(warned).toHaveBeenCalledOnce();
-        expect(world.getState().trollReady).toBe(false);
+        expect(warned).toHaveBeenCalledTimes(2);
+        const said = warned.mock.calls.map((call) => String(call[0])).join(' | ');
+        expect(said).toMatch(/troll/i);
+        expect(said).toMatch(/spirit/i);
+        expect(world.getState()).toMatchObject({ trollReady: false, spiritReady: false });
         expect(world.troll.failed).toBe(true);
+        expect(world.spirit.failed).toBe(true);
         expect(() => play(world, camera)).not.toThrow();
-        // The chain still brings his lantern down to the water.
-        world.onCombo(8);
+        // A chain still wakes the wood; his lantern burns on where it stands by his seat.
         const before = world.u.lanternAt.value.clone();
+        world.onCombo(8);
         run(world, camera, 5);
-        expect(world.getState().troll).toBe(1);
         const now = world.u.lanternAt.value;
-        expect(Math.hypot(now.x - before.x, now.y - before.y, now.z - before.z)).toBeGreaterThan(1);
+        expect(Math.hypot(now.x - before.x, now.y - before.y, now.z - before.z)).toBeLessThan(1e-9);
+        expect(now.w).toBeGreaterThan(0.5);
+        expect(world.u.power.value).toBeGreaterThan(0.5);
+        expect(world.getState()).toMatchObject({ troll: 0, spirit: 0, bond: chainBond(8) });
         for (const [name, value] of sharedNumbers(world)) expect(Number.isFinite(value), name).toBe(true);
         world.dispose();
     });
 
-    it('drops a sculpt that arrives after the world has gone', async () => {
+    it('takes the one that arrives without the other', async () => {
+        const { camera, world } = makeWorld('Low');
+        const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        sculpt.load = (url) => (url.includes('spirit') ? Promise.reject(new Error('404')) : sculpt.real(url));
+        await expect(world.prepare()).resolves.toBe(true);
+        expect(warned).toHaveBeenCalledOnce();
+        expect(world.getState()).toMatchObject({ trollReady: true, spiritReady: false });
+        world.onCombo(6);
+        run(world, camera, 10, 30);
+        // He walks down to the water; her light waits at her stone.
+        expect(world.getState().troll).toBeGreaterThan(0.5);
+        expect(world.getState().spirit).toBe(0);
+        expect(spiritAt(world).x).toBe(SPIRIT.home[0] * world.squeeze);
+        for (const [name, value] of sharedNumbers(world)) expect(Number.isFinite(value), name).toBe(true);
+        world.dispose();
+    });
+
+    it('drops figures that arrive after the world has gone', async () => {
         const { scene, world } = makeWorld('Minimal');
-        const made = fakeSculpt();
-        let arrive;
-        sculpt.load = () => new Promise((resolve) => {
-            arrive = resolve;
+        const asked = [];
+        sculpt.load = (url) => new Promise((resolve) => {
+            asked.push({ url, resolve });
         });
         const preparing = world.prepare();
+        expect(asked).toHaveLength(2);
         world.dispose();
-        arrive(made.gltf);
+        const arrived = [];
+        for (const { url, resolve } of asked) {
+            // eslint-disable-next-line no-await-in-loop
+            const gltf = await sculpt.real(url);
+            arrived.push(gltf);
+            resolve(gltf);
+        }
         await expect(preparing).resolves.toBe(false);
-        expect(made.mesh.parent).toBe(made.gltf.scene); // it was never taken in
+        // Neither was taken in: each file's mesh is still where the loader left it.
+        for (const gltf of arrived) {
+            let mesh = null;
+            gltf.scene.traverse((object) => {
+                if (object.isMesh && !mesh) mesh = object;
+            });
+            expect(mesh.parent).toBe(gltf.scene);
+        }
         expect(scene.children).toHaveLength(0);
-        expect(world.getState().trollReady).toBe(false);
+        expect(world.getState()).toMatchObject({ trollReady: false, spiritReady: false });
         // A world that was never built, or is already gone, has nothing to prepare.
         await expect(world.prepare()).resolves.toBe(false);
         await expect(new StillwaterWorld({ scene: new THREE.Scene() }).prepare()).resolves.toBe(false);
@@ -885,8 +1046,8 @@ describe('stillwater world: the frame', () => {
         world.dispose();
     });
 
-    it('draws the stage in on a tall frame, keeps the two figures their width, and moves the moon', () => {
-        const { camera, world } = makeWorld('Low');
+    it('draws the stage in on a tall frame, keeps the two figures their width, and moves the moon', async () => {
+        const { camera, world } = await makeFiguredWorld('Low');
         const size = (object) => {
             world.root.updateMatrixWorld(true);
             return new THREE.Vector3().setFromMatrixScale(object.matrixWorld);
@@ -911,19 +1072,25 @@ describe('stillwater world: the frame', () => {
             expect(world.stage.scale.y, label).toBe(1);
             expect(world.stage.scale.z, label).toBe(1);
             expect(world.u.squeeze.value, label).toBe(squeeze);
-            // The two are widened by what the stage is drawn in by: neither is squeezed.
-            expect(world.spirit.figure.scale.x, label).toBeCloseTo(1 / squeeze, 12);
-            expect(world.troll.figure.scale.x, label).toBeCloseTo(1 / squeeze, 12);
+            // The two walk in true metres: the ground they walk on is widened back by what the stage is drawn in by.
+            expect(world.spirit.figure.parent.scale.x, label).toBeCloseTo(1 / squeeze, 12);
+            expect(world.troll.figure.parent.scale.x, label).toBeCloseTo(1 / squeeze, 12);
             expect(size(world.spirit.figure).toArray(), label).toEqual([1, 1, 1].map((v) => expect.closeTo(v, 9)));
             expect(size(world.troll.figure).toArray(), label).toEqual([1, 1, 1].map((v) => expect.closeTo(v, 9)));
-            // They stand where the banks now are.
+            // They start again at rest where the banks now are: she on her stone, he seated on his.
             const spirit = new THREE.Vector3().setFromMatrixPosition(world.spirit.figure.matrixWorld);
             const troll = new THREE.Vector3().setFromMatrixPosition(world.troll.figure.matrixWorld);
             expect(spirit.x, label).toBeCloseTo(SPIRIT.home[0] * squeeze, 9);
+            expect(spirit.z, label).toBeCloseTo(SPIRIT.home[2], 9);
             expect(troll.x, label).toBeCloseTo(TROLL.home[0] * squeeze, 9);
+            expect(troll.z, label).toBeCloseTo(TROLL.home[2], 9);
+            expect(world.getState().trollMode, label).toBe('seated');
+            // He stands on the ground the stage has there now.
+            expect(Math.abs(troll.y - groundHeight(troll.x / squeeze, troll.z)), label).toBeLessThan(0.1);
             // Their lights are where they stand: the water, the banks and the wisps read these.
-            expect(world.u.spiritAt.value.x, label).toBeCloseTo(spirit.x, 6);
-            expect(world.u.spiritAt.value.z, label).toBeCloseTo(SPIRIT.home[2], 6);
+            expect(Math.abs(world.u.spiritAt.value.x - spirit.x), label).toBeLessThan(0.1);
+            expect(Math.abs(world.u.spiritAt.value.z - spirit.z), label).toBeLessThan(0.1);
+            expect(world.u.spiritAt.value.y - spirit.y, label).toBeGreaterThan(SPIRIT.height * 0.5);
             expect(Math.abs(world.u.lanternAt.value.x - troll.x), label).toBeLessThan(TROLL.height);
             expect(world.u.heartAt.value.x, label).toBeCloseTo(HEART[0] * squeeze, 9);
             // The moon comes in with the stage and climbs.
@@ -937,8 +1104,10 @@ describe('stillwater world: the frame', () => {
         world.setViewport(1600, 900, 1600 / 900);
         frame(world, camera, world.time, 0);
         expect(world.stage.scale.x).toBe(1);
-        expect(world.spirit.figure.scale.x).toBe(1);
-        expect(world.troll.figure.scale.x).toBe(1);
+        expect(world.spirit.figure.parent.scale.x).toBe(1);
+        expect(world.troll.figure.parent.scale.x).toBe(1);
+        expect(trollAt(world).x).toBe(TROLL.home[0]);
+        expect(spiritAt(world).x).toBe(SPIRIT.home[0]);
         expect(world.u.moonDir.value.toArray()).toEqual(wideMoon.toArray());
         world.dispose();
     });
@@ -975,9 +1144,10 @@ describe('stillwater world: the frame', () => {
         }
     });
 
-    it('stands the spirit left of the card and the troll right of it, both in the frame, on any frame', () => {
+    it('stands the spirit left of the card and the troll right of it, both in the frame, on any frame', async () => {
         for (const [width, height] of [...WIDE, ...UPRIGHT]) {
-            const { camera, world } = makeWorld('Minimal', { width, height, reduced: true });
+            // eslint-disable-next-line no-await-in-loop
+            const { camera, world } = await makeFiguredWorld('Minimal', { width, height, reduced: true });
             const card = cardUnion(world.layout);
             world.root.updateMatrixWorld(true);
             const middle = (figure, height0) => {
@@ -995,48 +1165,76 @@ describe('stillwater world: the frame', () => {
                 expect(seen.y, label).toBeGreaterThan(0.2);
                 expect(seen.y, label).toBeLessThan(0.8);
             }
-            // His lantern is in the frame too, and on a wide one clear of the card.
+            // His lantern is in the frame too, clear of the card.
             const lantern = onScreen(world.u.lanternAt.value.toArray().slice(0, 3), camera);
-            expect(lantern.x, label).toBeGreaterThan(0.5);
+            expect(lantern.x, label).toBeGreaterThan(card.x1);
             expect(lantern.x, label).toBeLessThan(1);
-            if (width > height) expect(lantern.x, label).toBeGreaterThan(card.x1);
             world.dispose();
         }
     });
 
-    // A known limit of narrow frames, left open. The troll keeps his width on a narrow frame while
-    // the strip beside the card narrows with it: his lantern, which he holds out toward the board,
-    // then hangs behind the card's edge (430 × 932: the flame at 0.777 of the width, the card's
-    // edge at 0.804; 390 × 844: 0.778, the edge at 0.836). Expected: the flame in the strip beside
-    // the card, where his light and the wisps that fly home to it can be seen.
-    it.fails('keeps the troll\'s lantern clear of the card on an upright frame', () => {
+    // On an upright frame his lantern once hung behind the card's edge at rest (430 × 932: the
+    // flame at 0.777 of the width, the card's edge at 0.804): he held it out toward the board.
+    // Seated with his staff at his side, it hangs in the strip beside the card.
+    it('keeps the troll\'s lantern clear of the card on an upright frame while he rests', async () => {
         const hidden = [];
         for (const [width, height] of UPRIGHT) {
-            const { camera, world } = makeWorld('Minimal', { width, height, reduced: true });
+            // eslint-disable-next-line no-await-in-loop
+            const { camera, world } = await makeFiguredWorld('Minimal', { width, height, reduced: true });
             const card = cardUnion(world.layout);
-            const lantern = onScreen(world.u.lanternAt.value.toArray().slice(0, 3), camera);
-            const places = `${lantern.x.toFixed(3)} < ${card.x1.toFixed(3)}`;
-            if (!(lantern.x > card.x1)) hidden.push(`${width} × ${height}: ${places}`);
+            let worst = 1;
+            run(world, camera, 8, 30, () => {
+                worst = Math.min(worst, onScreen(world.u.lanternAt.value.toArray().slice(0, 3), camera).x);
+            });
+            if (!(worst > card.x1)) hidden.push(`${width} × ${height}: ${worst.toFixed(3)} < ${card.x1.toFixed(3)}`);
             world.dispose();
         }
         expect(hidden).toEqual([]);
     });
 
-    it('keeps the two clear of the card on a wide frame however far a chain draws them', () => {
+    it('keeps the two and his lantern clear of the card on a wide frame however far a chain draws them', async () => {
         for (const [width, height] of WIDE) {
-            const { camera, world } = makeWorld('Minimal', { width, height, reduced: true });
+            // eslint-disable-next-line no-await-in-loop
+            const { camera, world } = await makeFiguredWorld('Minimal', { width, height, reduced: true });
             const card = cardUnion(world.layout);
-            world.onCombo(20);
-            run(world, camera, 12, 30);
-            world.root.updateMatrixWorld(true);
-            const spirit = new THREE.Vector3().setFromMatrixPosition(world.spirit.figure.matrixWorld);
-            const troll = new THREE.Vector3().setFromMatrixPosition(world.troll.figure.matrixWorld);
             const label = `${width} × ${height}`;
-            // (Her own half width is about a fifth of her height; his about a third of his.)
-            const herFlank = onScreen([spirit.x + SPIRIT.height * 0.2, spirit.y + 1, spirit.z], camera);
-            const hisFlank = onScreen([troll.x - TROLL.height * 0.33, troll.y + 1, troll.z], camera);
-            expect(herFlank.x, label).toBeLessThan(card.x0);
-            expect(hisFlank.x, label).toBeGreaterThan(card.x1);
+            world.onCombo(20);
+            const worst = { her: 0, him: 1, lantern: 1 };
+            run(world, camera, 14, 30, () => {
+                const spirit = spiritAt(world);
+                const troll = trollAt(world);
+                // (Her own half width is about a fifth of her height; his about a third of his.)
+                const herFlank = onScreen([spirit.x + SPIRIT.height * 0.2, spirit.y + 1, spirit.z], camera);
+                const hisFlank = onScreen([troll.x - TROLL.height * 0.33, troll.y + 1, troll.z], camera);
+                const lantern = onScreen(world.u.lanternAt.value.toArray().slice(0, 3), camera);
+                worst.her = Math.max(worst.her, herFlank.x);
+                worst.him = Math.min(worst.him, hisFlank.x);
+                worst.lantern = Math.min(worst.lantern, lantern.x);
+            });
+            // (They did come all the way.)
+            expect(world.getState().troll, label).toBeGreaterThan(0.95);
+            expect(world.getState().spirit, label).toBeGreaterThan(0.9);
+            expect(worst.her, label).toBeLessThan(card.x0);
+            expect(worst.him, label).toBeGreaterThan(card.x1);
+            expect(worst.lantern, label).toBeGreaterThan(card.x1);
+            world.dispose();
+        }
+    });
+
+    // The story reckons in the stage's coordinates and the world converts, so on an upright frame
+    // he is home by his stone, not "still on his way" (found pinned: he held his lantern up there).
+    it('lets the troll lean on his staff by his stone, on a narrow frame as on a wide one', async () => {
+        for (const [width, height] of [[1600, 900], ...UPRIGHT]) {
+            // eslint-disable-next-line no-await-in-loop
+            const { camera, world } = await makeFiguredWorld('Minimal', { width, height });
+            world.onCombo(2);
+            run(world, camera, 5, 30);
+            const label = `${width} × ${height}`;
+            expect(world.getState().trollMode, label).toBe('standing');
+            const home = [TROLL.home[0] * world.squeeze, TROLL.home[2]];
+            const fromHome = Math.hypot(trollAt(world).x - home[0], trollAt(world).z - home[1]);
+            expect(fromHome, label).toBeLessThan(0.1);
+            expect(world.troll.body.staff.mode, label).toBe('planted');
             world.dispose();
         }
     });
@@ -1473,6 +1671,16 @@ describe('stillwater world: clears', () => {
         (side) => {
             for (const [width, height] of [[1600, 900], [390, 844]]) {
                 const { camera, world } = withWisps(side, 'Low', { width, height });
+                // A night with no wisps, kept in step with this one frame for frame: what the lights burn at without them.
+                const calm = makeWorld('Low', { width, height });
+                run(calm.world, calm.camera, WISP_RISE + 1);
+                expect(calm.world.time).toBe(world.time);
+                const step = world.update.bind(world);
+                world.update = (sim, cam) => {
+                    step(sim, cam);
+                    calm.world.updateCamera(calm.camera, sim);
+                    calm.world.update(sim, calm.camera);
+                };
                 const [mine, others] = side < 0 ? [0, 1] : [1, 0];
                 const home = side < 0 ? world.u.spiritAt : world.u.lanternAt;
                 const glow = home.value.w;
@@ -1526,10 +1734,14 @@ describe('stillwater world: clears', () => {
                 // All of them are gone from over the water within the swell's pass and their flight.
                 expect(wispsOf(world)).toHaveLength(0);
                 expect(world.wisps).toHaveLength(0);
-                // The light they brought fades again.
+                // The light they brought fades again: it burns as it does in a night that had no wisps.
+                // (At rest the two still glance across now and then, and a meeting of eyes warms both.)
                 run(world, camera, 15, 20);
                 expect(world.getState().fed[mine]).toBeLessThan(0.01);
-                expect(home.value.w).toBeCloseTo(glow, 2);
+                expect(calm.world.time).toBe(world.time);
+                const calmHome = side < 0 ? calm.world.u.spiritAt : calm.world.u.lanternAt;
+                expect(home.value.w).toBeCloseTo(calmHome.value.w, 2);
+                calm.world.dispose();
                 world.dispose();
             }
         },
@@ -1750,197 +1962,300 @@ describe('stillwater world: clears', () => {
         for (const ring of first) expect(ring.edge).toBeLessThan(0);
         fresh.world.dispose();
     });
-});
 
-describe('stillwater world: a chain', () => {
-    it('draws the spirit out over the water and the troll down to its edge, step by step, never too far', () => {
-        const { camera, world } = makeWorld('Low');
-        const spirit = world.spirit.figure.position;
-        const troll = world.troll.figure.position;
-        let lastSpirit = wayOf(SPIRIT, spirit).along;
-        let lastTroll = wayOf(TROLL, troll).along;
-        expect(lastSpirit).toBeCloseTo(0, 9);
-        expect(lastTroll).toBeCloseTo(0, 9);
-        const trollSteps = [];
-        let spiritStep = 0;
-        const before = new THREE.Vector3();
-        const beforeSpirit = new THREE.Vector3();
-        let target = 0;
-        let label = '';
-        const watch = () => {
-            const s = wayOf(SPIRIT, spirit);
-            const t = wayOf(TROLL, troll);
-            // Each keeps to its own line, goes only forward, and never beyond where the chain has it.
-            expect(s.off, label).toBeLessThan(1e-6);
-            expect(t.off, label).toBeLessThan(1e-6);
-            expect(s.along, label).toBeGreaterThanOrEqual(lastSpirit - 1e-9);
-            expect(t.along, label).toBeGreaterThanOrEqual(lastTroll - 1e-9);
-            expect(s.along, label).toBeLessThanOrEqual(smooth(0, 1, target) + 1e-9);
-            expect(t.along, label).toBeLessThanOrEqual(target + 1e-9);
-            expect(world.getState().spirit, label).toBeLessThanOrEqual(target + 1e-9);
-            expect(world.getState().troll, label).toBeLessThanOrEqual(target + 1e-9);
-            lastSpirit = s.along;
-            lastTroll = t.along;
-            trollSteps.push(Math.hypot(troll.x - before.x, troll.z - before.z));
-            spiritStep = Math.max(spiritStep, Math.hypot(spirit.x - beforeSpirit.x, spirit.z - beforeSpirit.z));
-            before.copy(troll);
-            beforeSpirit.copy(spirit);
-            // Her feet never go under the water; his are never under his own track.
-            expect(spirit.y, label).toBeGreaterThan(0);
-            expect(troll.y, label).toBeGreaterThanOrEqual(Math.min(TROLL.home[1], TROLL.reach[1]) - 1e-9);
-            expect(troll.y, label).toBeLessThanOrEqual(Math.max(TROLL.home[1], TROLL.reach[1]) + 1e-9);
-        };
-        for (let combo = 1; combo <= 12; combo++) {
-            world.onCombo(combo);
-            target = approachForCombo(combo);
-            label = `combo ${combo}`;
-            before.copy(troll);
-            beforeSpirit.copy(spirit);
-            run(world, camera, 1.4, 60, watch);
-            // The troll has made the step by now; she is still coming.
-            expect(wayOf(TROLL, troll).along, label).toBeGreaterThan(Math.min(target, lastTroll) - 1e-9);
+    /** Four lines on a world with its figures in: the heart's flight, frame by frame, with where her breast is. */
+    async function heartFlight(options = {}) {
+        const { camera, world } = await makeFiguredWorld('Low', options);
+        const t0 = world.time;
+        world.onClear({ lines: 4 });
+        const seen = [];
+        run(world, camera, HEART_FLIGHT.held + 3, 60, () => {
+            const o = world.u.orbAt.value;
+            seen.push({
+                t: world.time - t0, x: o.x, y: o.y, z: o.z, w: o.w, her: world.u.spiritAt.value.clone(),
+            });
+        });
+        return { world, seen };
+    }
+
+    it('lifts the gold heart out of the tarn on four lines and carries it to her breast', async () => {
+        const { world, seen } = await heartFlight();
+        for (const s of seen) {
+            expect([s.x, s.y, s.z, s.w].every(Number.isFinite)).toBe(true);
+            if (s.t < HEART_FLIGHT.rise - 1e-6) expect(s.w).toBe(0);
         }
-        // ── His pace: a walk, the same at every step, never a jump ──
-        const moving = trollSteps.filter((step) => step > 1e-9);
-        expect(moving.length).toBeGreaterThan(60);
-        const walked = moving.reduce((sum, step) => sum + step, 0);
-        expect(walked).toBeCloseTo(wayOf(TROLL, troll).length, 6); // he went all the way, and not an inch further
-        const pace = walked / (moving.length / 60);
-        expect(Math.max(...trollSteps)).toBeLessThanOrEqual((pace / 60) * 1.5);
-        // (Slower than one whole stride a second.)
-        expect(pace).toBeLessThan(TROLL.stride);
-        expect(pace).toBeGreaterThan(0.2);
-        // She glides: never more than a twentieth of her way in a frame.
-        expect(spiritStep).toBeLessThan(wayOf(SPIRIT, spirit).length / 20);
-        expect(spiritStep).toBeGreaterThan(0);
-
-        // ── At the end of the longest chain they stand where it draws them ──
-        run(world, camera, 8, 30);
-        expect(world.getState().troll).toBe(1);
-        expect(troll.x).toBeCloseTo(TROLL.reach[0], 9);
-        expect(troll.z).toBeCloseTo(TROLL.reach[2], 9);
-        expect(troll.y).toBeCloseTo(TROLL.reach[1], 9);
-        expect(world.getState().spirit).toBeLessThanOrEqual(1);
-        expect(Math.hypot(spirit.x - SPIRIT.reach[0], spirit.z - SPIRIT.reach[2])).toBeLessThan(0.05);
-        expect(Math.abs(spirit.y - SPIRIT.reach[1])).toBeLessThan(0.03);
-        expect(world.onWater(spirit.x, spirit.z)).toBe(true);
+        const flying = seen.filter((s) => s.t > HEART_FLIGHT.rise + 0.05 && s.t < HEART_FLIGHT.taken);
+        expect(flying.length).toBeGreaterThan(60);
+        expect(flying.every((s) => s.w > 0)).toBe(true);
+        // It comes up out of the dark under the water, from the tarn's heart, and rises high over it.
+        expect(flying[0].y).toBeLessThan(0);
+        expect(Math.hypot(flying[0].x - HEART[0], flying[0].z - HEART[2])).toBeLessThan(1e-9);
+        expect(Math.max(...flying.map((s) => s.y))).toBeGreaterThan(1.5);
+        // Taken, it is in her breast; then it is gone into her own light.
+        const taken = seen.filter((s) => s.t >= HEART_FLIGHT.taken + 0.02 && s.t < HEART_FLIGHT.held);
+        for (const s of taken) expect(Math.hypot(s.x - s.her.x, s.y - s.her.y, s.z - s.her.z)).toBeLessThan(0.3);
+        expect(seen.at(-1).w).toBe(0);
         world.dispose();
     });
 
-    it('sends both home when the chain breaks, and holds them where a shorter chain has them', () => {
-        const { camera, world } = makeWorld('Low');
-        const spirit = world.spirit.figure.position;
-        const troll = world.troll.figure.position;
-        world.onCombo(8);
-        run(world, camera, 10, 30);
+    // The heart's flight is reckoned in the stage's coordinates from start to end, so on a narrow
+    // frame it lands at her breast (found pinned: it once landed 1.6 m short).
+    it('carries the gold heart to her breast on a narrow frame too', async () => {
+        const { world, seen } = await heartFlight({ width: 390, height: 844 });
+        expect(world.squeeze).toBeLessThan(1);
+        const taken = seen.filter((s) => s.t >= HEART_FLIGHT.taken + 0.02 && s.t < HEART_FLIGHT.held);
+        expect(taken.length).toBeGreaterThan(30);
+        for (const s of taken) expect(Math.hypot(s.x - s.her.x, s.y - s.her.y, s.z - s.her.z)).toBeLessThan(0.3);
+        world.dispose();
+    });
+});
+
+describe('stillwater world: a chain', () => {
+    /** How far along his way (0 his seat, 1 the shallows) each place of his lies. */
+    const trollFraction = (spot) => Math.hypot(spot[0] - TROLL.home[0], spot[2] - TROLL.home[2])
+        / Math.hypot(TROLL.shallows[0] - TROLL.home[0], TROLL.shallows[2] - TROLL.home[2]);
+    const PLACES = { home: TROLL.home, bank: TROLL.reach, shallows: TROLL.shallows };
+
+    it('draws the spirit out over the water and walks the troll down to it and into it, step by step', async () => {
+        const { camera, world } = await makeFiguredWorld('Low');
+        let station = 'home';
+        let label = 'at rest';
+        let last = world.getState();
+        let trollStep = 0;
+        let spiritStep = 0;
+        let before = { troll: trollAt(world).clone(), spirit: spiritAt(world).clone() };
+        const watch = () => {
+            const state = world.getState();
+            const troll = trollAt(world);
+            const spirit = spiritAt(world);
+            // Each keeps to its own way, and goes only forward while the chain grows.
+            expect(wayOf(...TROLL_WAY, troll).off, label).toBeLessThan(0.05);
+            expect(wayOf(...SPIRIT_WAY, spirit).off, label).toBeLessThan(1e-6);
+            expect(state.troll, label).toBeGreaterThanOrEqual(last.troll - 1e-3);
+            expect(state.spirit, label).toBeGreaterThanOrEqual(last.spirit - 1e-9);
+            // Never further than the chain has them: he no further than his station, she than her share of the path.
+            expect(state.troll, label).toBeLessThanOrEqual(trollFraction(PLACES[station]) + 0.05);
+            expect(state.spirit, label).toBeLessThanOrEqual(0.24 + 0.76 * state.bond + 1e-6);
+            // Her hem is never under the water.
+            expect(spirit.y, label).toBeGreaterThan(0);
+            trollStep = Math.max(trollStep, Math.hypot(troll.x - before.troll.x, troll.z - before.troll.z));
+            spiritStep = Math.max(spiritStep, Math.hypot(spirit.x - before.spirit.x, spirit.z - before.spirit.z));
+            before = { troll: troll.clone(), spirit: spirit.clone() };
+            last = state;
+        };
+        for (let combo = 1; combo <= 9; combo++) {
+            world.onCombo(combo);
+            station = trollStation(chainBond(combo), station);
+            label = `combo ${combo}`;
+            run(world, camera, 1.4, 60, watch);
+            expect(world.getState().bond, label).toBe(chainBond(combo));
+        }
+        label = 'the longest chain';
+        run(world, camera, 12, 60, watch);
+        // He walks: never faster than his pace. She glides: never more than a twentieth of her way in a frame.
+        expect(trollStep).toBeGreaterThan(0);
+        expect(trollStep).toBeLessThanOrEqual((TROLL.pace / 60) * 1.001);
+        expect(spiritStep).toBeGreaterThan(0);
+        expect(spiritStep).toBeLessThan(wayOf(...SPIRIT_WAY, spiritAt(world)).length / 20);
+        // At the end of the longest chain he stands in the shallows, and she as far out as she comes.
+        const troll = trollAt(world);
+        const spirit = spiritAt(world);
+        const end = spiritPathPoint(1);
+        expect(world.getState()).toMatchObject({ bond: 1, trollMode: 'standing', spiritMode: 'standing' });
+        expect(Math.hypot(troll.x - TROLL.shallows[0], troll.z - TROLL.shallows[2])).toBeLessThan(0.2);
+        expect(groundHeight(troll.x, troll.z)).toBeLessThan(0);
+        expect(Math.hypot(spirit.x - end[0], spirit.z - end[2])).toBeLessThan(0.05);
+        expect(world.onWater(spirit.x, spirit.z)).toBe(true);
+        // And the path of light runs between them on the water, from her to his lantern.
+        expect(world.getState().path).toBeGreaterThan(0.9);
+        const ends = world.u.pathEnds.value;
+        expect([ends.x, ends.y]).toEqual([spirit.x, spirit.z]);
+        expect([ends.z, ends.w]).toEqual([world.u.lanternAt.value.x, world.u.lanternAt.value.z]);
+        expect(world.u.path.value.x).toBe(world.getState().path);
+        world.dispose();
+    });
+
+    it('sends both home when the chain breaks, but only once they have held each other\'s eyes a while', async () => {
+        const { camera, world } = await makeFiguredWorld('Low');
+        world.onCombo(9);
+        run(world, camera, 16, 30);
+        expect(world.getState().troll).toBeGreaterThan(0.95);
+        const out = { troll: trollAt(world).clone(), spirit: spiritAt(world).clone() };
         const breath = world.u.breath.value;
-        // A chain that broke and began again: back to where the new one has them.
-        world.onCombo(2);
+        world.onCombo(0);
         run(world, camera, 1 / 60);
         // (The night catches its breath as the chain breaks.)
         expect(world.u.breath.value).toBeLessThan(breath);
-        let lastSpirit = wayOf(SPIRIT, spirit).along;
-        let lastTroll = wayOf(TROLL, troll).along;
-        run(world, camera, 14, 30, () => {
-            const s = wayOf(SPIRIT, spirit).along;
-            const t = wayOf(TROLL, troll).along;
-            expect(s).toBeLessThanOrEqual(lastSpirit + 1e-9);
-            expect(t).toBeLessThanOrEqual(lastTroll + 1e-9);
-            expect(t).toBeGreaterThanOrEqual(approachForCombo(2) - 1e-9);
-            lastSpirit = s;
-            lastTroll = t;
+        // While they part, neither turns for home: they look at each other.
+        let gaze = 0;
+        run(world, camera, PARTING - 0.2, 60, () => {
+            expect(Math.hypot(trollAt(world).x - out.troll.x, trollAt(world).z - out.troll.z)).toBeLessThan(0.05);
+            expect(Math.hypot(spiritAt(world).x - out.spirit.x, spiritAt(world).z - out.spirit.z)).toBeLessThan(1e-6);
+            gaze = Math.max(gaze, world.getState().gaze);
         });
-        expect(world.getState().troll).toBeCloseTo(approachForCombo(2), 9);
-        expect(world.getState().spirit).toBeCloseTo(approachForCombo(2), 2);
-        expect(world.u.breath.value).toBeCloseTo(1, 3);
-        // The chain breaks for good: both go home.
-        world.onCombo(0);
+        expect(gaze).toBeGreaterThan(0.8);
+        expect(world.getState().bond).toBe(1);
+        // Then home, each the whole way back, never out again on the way.
+        let last = world.getState();
+        run(world, camera, 7.5, 30, () => {
+            const state = world.getState();
+            expect(state.troll).toBeLessThanOrEqual(last.troll + 1e-3);
+            expect(state.spirit).toBeLessThanOrEqual(last.spirit + 1e-9);
+            last = state;
+        });
+        expect(world.getState().bond).toBe(0);
+        expect(Math.hypot(spiritAt(world).x - SPIRIT.home[0], spiritAt(world).z - SPIRIT.home[2])).toBeLessThan(0.05);
+        expect(Math.abs(spiritAt(world).y - SPIRIT.home[1])).toBeLessThan(0.03);
+        // He plods up the bank to his stone, and in time sits down on it.
         run(world, camera, 25, 30);
-        expect(world.getState().troll).toBe(0);
-        expect(troll.toArray()).toEqual([...TROLL.home]);
-        expect(Math.hypot(spirit.x - SPIRIT.home[0], spirit.z - SPIRIT.home[2])).toBeLessThan(0.02);
-        expect(Math.abs(spirit.y - SPIRIT.home[1])).toBeLessThan(0.03);
+        expect(world.getState().troll).toBeLessThan(0.05);
+        expect(world.getState().trollMode).toBe('seated');
+        world.dispose();
+    });
+
+    // A chain that broke and began again holds them in the parting, then settles them where the
+    // new chain has them (found pinned: they once never turned back).
+    it('turns them back to where a chain that broke and began again has them', async () => {
+        const { camera, world } = await makeFiguredWorld('Low');
+        world.onCombo(8);
+        run(world, camera, 16, 30);
+        world.onCombo(3);
+        run(world, camera, PARTING + 14, 30);
+        expect(world.getState().bond).toBe(chainBond(3));
+        expect(Math.hypot(trollAt(world).x - TROLL.reach[0], trollAt(world).z - TROLL.reach[2])).toBeLessThan(0.2);
         world.dispose();
     });
 
     // (He once walked out over the water's edge and stood 0.27 m above the ground at the end of a long chain.)
-    it('stands the troll on the ground at his seat, all the way down the bank, and at the end of his way', () => {
-        const { camera, world } = makeWorld('Low');
-        const troll = world.troll.figure.position;
-        expect(troll.y).toBeCloseTo(groundHeight(troll.x, troll.z), 6);
-        world.onCombo(20);
-        let walked = 0;
-        run(world, camera, 6, 60, () => {
-            walked += 1;
-            const off = troll.y - groundHeight(troll.x, troll.z);
-            expect(Math.abs(off), `${(world.getState().troll * 100).toFixed(0)} % of his way`).toBeLessThan(0.05);
-            // He walks on the bank: never out over the water.
-            expect(shoreDistance(troll.x, troll.z)).toBeGreaterThan(0);
-        });
-        expect(walked).toBeGreaterThan(30);
-        expect(world.getState().troll).toBe(1);
-        expect(Math.abs(troll.y - groundHeight(troll.x, troll.z))).toBeLessThan(0.05);
-        world.dispose();
-    });
-
-    it('rings the water at the spirit\'s every footfall as she walks out over it', () => {
-        const { camera, world } = makeWorld('Low');
-        const rings = recordRings(world);
-        const spirit = world.spirit.figure.position;
-        world.onCombo(8);
-        run(world, camera, 10);
-        // Several, a stride apart, each under her feet on the water, small and in her own light.
-        expect(rings.length).toBeGreaterThanOrEqual(3);
-        const way = wayOf(SPIRIT, spirit).length;
-        expect(rings.length).toBeLessThan(way / 0.2);
-        for (const ring of rings) {
-            expect(ring.edge).toBeLessThan(0);
-            expect(ring.time).toBe(ring.asked);
-            expect(wayOf(SPIRIT, { x: ring.x, z: ring.z }).off).toBeLessThan(1e-6);
-            expect(ring.rgb).toEqual([...paletteAt(world.hourNow()).spirit].map((c) => expect.closeTo(c, 2)));
-        }
-        for (let i = 1; i < rings.length; i++) {
-            expect(Math.hypot(rings[i].x - rings[i - 1].x, rings[i].z - rings[i - 1].z)).toBeGreaterThan(0.2);
-        }
-        // Smaller than a lock's ring.
-        const count = rings.length;
-        world.onLock({ u: 0.8 });
-        expect(rings[count].strength).toBeGreaterThan(rings[0].strength);
-        expect(rings[count].reach).toBeGreaterThan(rings[0].reach);
-        // Standing still she makes none.
-        const standing = rings.length;
-        run(world, camera, 5);
-        expect(rings.length).toBe(standing);
-        world.dispose();
-    });
-
-    // Her stride falls where it will on the way home and on a later walk out: wherever it falls,
-    // it must be on the water. (Her stone once stood back from the edge, and a footfall on her way
-    // home rang 0.11 m inland, under it.)
-    it('rings no footfall on the bank, going out or coming home, on a wide frame or a narrow one', () => {
+    it('stands the troll on the ground all the way: by his seat, down the bank, in the shallows', async () => {
         for (const [width, height] of [[1600, 900], [390, 844]]) {
-            const { camera, world } = makeWorld('Low', { width, height });
+            // eslint-disable-next-line no-await-in-loop
+            const { camera, world } = await makeFiguredWorld('Low', { width, height });
+            const { body } = world.troll;
+            const label = `${width} × ${height}`;
+            const off = [];
+            let deepest = 0;
+            let rode = 0;
+            const check = () => {
+                for (const side of ['L', 'R']) {
+                    const foot = body.feet[side];
+                    if (foot.swing) continue;
+                    const gap = foot.pos.y - groundHeight(foot.pos.x / world.squeeze, foot.pos.z);
+                    const way = `${(world.getState().troll * 100).toFixed(0)} %`;
+                    if (gap !== 0 && off.length < 5) off.push(`${side} ${gap} m off at ${way}`);
+                    deepest = Math.min(deepest, foot.pos.y);
+                }
+                // His body rides on his feet.
+                rode = Math.max(rode, Math.abs(body.root.y - (body.feet.L.pos.y + body.feet.R.pos.y) / 2));
+            };
+            check();
+            world.onCombo(20);
+            run(world, camera, 16, 60, check);
+            expect(off, label).toEqual([]);
+            expect(rode, label).toBeLessThan(0.15);
+            expect(world.getState().troll, label).toBeGreaterThan(0.95);
+            // At the end of his way he stands in the water, and never deeper than shin-deep. (On a
+            // narrow frame his true-metre stance spans more of the drawn-in bed: a little deeper.)
+            for (const side of ['L', 'R']) expect(body.feet[side].pos.y, `${label} ${side}`).toBeLessThan(0);
+            expect(deepest, label).toBeGreaterThan(-TROLL.height * 0.25);
+            world.dispose();
+        }
+    });
+
+    it('rings the water at the troll\'s steps in it, and at none of his steps on the bank, on any frame', async () => {
+        for (const [width, height] of [[1600, 900], [390, 844]]) {
+            // eslint-disable-next-line no-await-in-loop
+            const { camera, world } = await makeFiguredWorld('Low', { width, height });
+            const label = `${width} × ${height}`;
             const rings = recordRings(world);
-            for (let round = 0; round < 3; round++) {
+            const steps = [];
+            const { update } = world.troll;
+            world.troll.update = (dt, want, time) => {
+                const events = update(dt, want, time);
+                events.forEach((e) => steps.push({ ...e }));
+                return events;
+            };
+            for (let round = 0; round < 2; round++) {
                 for (let combo = 1; combo <= 8; combo++) {
                     world.onCombo(combo);
                     run(world, camera, 1.3);
                 }
-                run(world, camera, 3);
+                run(world, camera, 6);
                 world.onCombo(0);
-                run(world, camera, 12);
+                run(world, camera, 18);
             }
-            // Out and home three times: a ring for every stride both ways.
-            expect(rings.length).toBeGreaterThan(12);
-            const ashore = rings.filter((ring) => ring.edge >= 0).map((ring) => ring.edge);
-            expect(ashore, `${width} × ${height}`).toEqual([]);
+            const rang = (e) => rings.some((ring) => ring.x === e.x && ring.z === e.z && ring.time === ring.asked);
+            // (The ground at a step is the step's own height: the water lies at 0.)
+            const wet = steps.filter((e) => e.y < 0);
+            const dry = steps.filter((e) => e.y >= 0.03);
+            expect(wet.length, label).toBeGreaterThan(4);
+            expect(dry.length, label).toBeGreaterThan(4);
+            expect(wet.filter((e) => !rang(e)).length, label).toBe(0);
+            expect(dry.filter(rang).length, label).toBe(0);
+            // (His feet, and his staff's foot when it stands in the water too.)
+            const kinds = new Set(steps.filter(rang).map((e) => e.type));
+            expect(kinds.has('footfall'), label).toBe(true);
+            expect([...kinds].every((kind) => kind === 'footfall' || kind === 'staff'), label).toBe(true);
+            // Every ring of his is born on the water, or at its very edge.
+            for (const e of steps.filter(rang)) {
+                expect(shoreDistance(e.x / world.squeeze, e.z), label).toBeLessThan(0.1);
+            }
             world.dispose();
         }
+    });
+
+    it('leaves a soft wake as the spirit drifts out over the water, and touches it while she kneels', async () => {
+        const { camera, world } = await makeFiguredWorld('Low');
+        const rings = recordRings(world);
+        const wakes = [];
+        const { ring } = world;
+        world.ring = (x, z, time, strength, rgb, reach) => {
+            const her = spiritAt(world);
+            if (x === her.x && z === her.z) {
+                wakes.push({
+                    x, z, time, strength,
+                });
+            }
+            return ring(x, z, time, strength, rgb, reach);
+        };
+        // At rest she drifts out a little way and kneels at the water; there she trails her hand in it.
+        run(world, camera, 16);
+        expect(world.getState().spiritMode).toBe('kneeling');
+        const kneeling = rings.length - wakes.length;
+        expect(kneeling).toBeGreaterThanOrEqual(2);
+        for (const r of rings) {
+            expect(r.edge).toBeLessThan(0);
+            expect(r.time).toBe(r.asked);
+        }
+        // A chain draws her out: a wake behind her, ring after ring, on the water.
+        wakes.length = 0;
+        world.onCombo(8);
+        run(world, camera, 10);
+        expect(wakes.length).toBeGreaterThanOrEqual(3);
+        for (let i = 1; i < wakes.length; i++) expect(wakes[i].time - wakes[i - 1].time).toBeGreaterThan(0.3);
+        for (const w of wakes) expect(world.onWater(w.x, w.z, 0)).toBe(true);
+        // Softer than a lock's ring.
+        const count = rings.length;
+        world.onLock({ u: 0.8 });
+        expect(rings[count].strength).toBeGreaterThan(wakes[0].strength);
+        // Standing still she leaves none.
+        const standing = wakes.length;
+        run(world, camera, 6);
+        expect(wakes.length).toBe(standing);
+        world.dispose();
     });
 
     it('wakes the wood with the chain and lets it sleep again: eyes, lilies, caps, the heart, the charge', () => {
         const { camera, world } = makeWorld('Low');
         const { u } = world;
+        // A night that never has a chain, kept in step with this one frame for frame.
+        const calm = makeWorld('Low');
+        const step = world.update.bind(world);
+        world.update = (sim, cam) => {
+            step(sim, cam);
+            calm.world.updateCamera(calm.camera, sim);
+            calm.world.update(sim, calm.camera);
+        };
         const rest = {
             caps: u.caps.value.clone(),
             spirit: u.spiritAt.value.w,
@@ -2009,9 +2324,13 @@ describe('stillwater world: a chain', () => {
         expect(u.power.value).toBeLessThan(0.01);
         expect(u.caps.value.x).toBeCloseTo(rest.caps.x, 2);
         expect(u.caps.value.y).toBeCloseTo(rest.caps.y, 2);
-        expect(u.spiritAt.value.w).toBeCloseTo(rest.spirit, 2);
-        expect(u.lanternAt.value.w).toBeCloseTo(rest.lantern, 2);
         expect(u.shafts.value).toBeCloseTo(rest.shafts, 2);
+        // Their lights burn as they do in a night that never had a chain (at rest they still
+        // glance across now and then, and a meeting of eyes warms both: the same moments in both).
+        expect(calm.world.time).toBe(world.time);
+        expect(u.spiritAt.value.w).toBeCloseTo(calm.world.u.spiritAt.value.w, 2);
+        expect(u.lanternAt.value.w).toBeCloseTo(calm.world.u.lanternAt.value.w, 2);
+        calm.world.dispose();
         world.dispose();
     });
 
@@ -2241,7 +2560,7 @@ describe('stillwater world: runs, captures and motion', () => {
         world.onLock({ u: 0.3, rows: [17], hardDrop: true });
         run(world, camera, 3);
         expect(wispsOf(world)).toHaveLength(7);
-        expect(world.getState().troll).toBeGreaterThan(0);
+        expect(world.getState().bond).toBe(chainBond(4));
         const rings = ringsOf(world).length;
         expect(rings).toBeGreaterThan(0);
         const t0 = world.time;
@@ -2260,16 +2579,45 @@ describe('stillwater world: runs, captures and motion', () => {
         run(world, camera, Math.max(2, WISP_HOME + 1) - (world.time - t0));
         expect(wispsOf(world)).toHaveLength(0);
         expect(world.wisps).toHaveLength(0);
-        // The two go home; the hour of the night stays.
+        // The chain is let go; the hour of the night stays.
         run(world, camera, 25, 30);
-        expect(world.getState()).toMatchObject({ combo: 0, troll: 0, level: 3 });
-        expect(world.getState().spirit).toBeLessThan(0.01);
+        expect(world.getState()).toMatchObject({ combo: 0, bond: 0, level: 3 });
         expect(world.hourNow()).toBe(2);
         expect(() => {
             world.resetSession();
             world.resetSession();
         }).not.toThrow();
         world.dispose();
+    });
+
+    it('sends the two home for a new run, sooner than a broken chain would', async () => {
+        const runs = {};
+        for (const how of ['new run', 'broken chain']) {
+            // eslint-disable-next-line no-await-in-loop
+            const { camera, world } = await makeFiguredWorld('Low');
+            world.onCombo(6);
+            run(world, camera, 8, 30);
+            expect(world.getState().troll, how).toBeGreaterThan(0.5);
+            if (how === 'new run') world.resetSession();
+            else world.onCombo(0);
+            const t0 = world.time;
+            let turned = null;
+            const out = trollAt(world).clone();
+            run(world, camera, 30, 30, () => {
+                const moved = Math.hypot(trollAt(world).x - out.x, trollAt(world).z - out.z);
+                if (turned === null && moved > 0.05) turned = world.time - t0;
+            });
+            runs[how] = turned;
+            // Home again: he by his stone (and down on it in time), she at rest on her side of the water.
+            expect(world.getState().troll, how).toBeLessThan(0.05);
+            expect(world.getState().trollMode, how).toBe('seated');
+            expect(world.getState().spirit, how).toBeLessThan(0.35);
+            expect(['standing', 'kneel', 'kneeling'], how).toContain(world.getState().spiritMode);
+            world.dispose();
+        }
+        expect(runs['new run']).not.toBeNull();
+        expect(runs['broken chain']).toBeGreaterThan(PARTING * 0.9);
+        expect(runs['new run']).toBeLessThan(runs['broken chain']);
     });
 
     it('lets go of a held breath for a new run: the flare it was holding never comes', () => {
@@ -2347,7 +2695,8 @@ describe('stillwater world: runs, captures and motion', () => {
         expect(state.counts).toMatchObject({ locks: 8, clears: 5, quads: 1 });
         expect(state.rings).toBeGreaterThan(0);
         expect(state.level).toBe(2);
-        expect(told).not.toContain('null'); // (a NaN would be written as null)
+        // (A NaN would be written as null; with no figures in, only their modes are none.)
+        expect(told.replace(/"(trollMode|spiritMode)":null/g, '')).not.toContain('null');
         // And a third, built new, tells it the same down to the rows nothing reads.
         const third = makeWorld('Low');
         const fourth = makeWorld('Low');
@@ -2362,8 +2711,57 @@ describe('stillwater world: runs, captures and motion', () => {
         for (const { world } of [first, second, third, fourth]) world.dispose();
     });
 
-    it('drops every event in flight on a seek, and stands the two at home', () => {
-        const { camera, world } = makeWorld('Low');
+    it('moves the two the same for the same events: two worlds with their figures, frame for frame', async () => {
+        const made = [await makeFiguredWorld('Low'), await makeFiguredWorld('Low')];
+        let frames = 0;
+        let differ = 0;
+        let first = null;
+        playTogether(made, () => {
+            frames += 1;
+            const [a, b] = made.map(({ world }) => picture(world, true));
+            if (a !== b) {
+                differ += 1;
+                first ??= frames;
+            }
+        });
+        expect(frames).toBeGreaterThan(300);
+        expect({ differ, first }).toEqual({ differ: 0, first: null });
+        // It is a picture with them in it, and nothing in it is not a number.
+        const told = picture(made[0].world, true);
+        expect(told).not.toContain('null');
+        expect(posesOf(made[0].world).length).toBeGreaterThan(100);
+        expect(made[0].world.getState().troll).toBeGreaterThan(0);
+        for (const { world } of made) world.dispose();
+    });
+
+    // A seek stands both figures at rest with nothing of what they did before it (found pinned: the
+    // troll's walk springs survived a reset).
+    it('replays the figures from a seek, whatever they did before it', async () => {
+        const first = await makeFiguredWorld('Low');
+        const second = await makeFiguredWorld('Low');
+        // The second's troll is setting off for the water when it is sought.
+        second.world.onCombo(3);
+        run(second.world, second.camera, 4.3);
+        expect(second.world.troll.body.speed).toBeGreaterThan(0.1);
+        for (const { camera, world } of [first, second]) {
+            world.seek(10);
+            frame(world, camera, 10, 0);
+        }
+        expect(posesOf(second.world)).toEqual(posesOf(first.world));
+        let worst = 0;
+        playTogether([first, second], () => {
+            const a = posesOf(first.world);
+            const b = posesOf(second.world);
+            a.forEach((v, k) => {
+                worst = Math.max(worst, Math.abs(v - b[k]));
+            });
+        });
+        expect(worst).toBe(0);
+        for (const { world } of [first, second]) world.dispose();
+    });
+
+    it('drops every event in flight on a seek, and stands the two at home', async () => {
+        const { camera, world } = await makeFiguredWorld('Low');
         play(world, camera);
         world.onCombo(6);
         run(world, camera, 2);
@@ -2378,12 +2776,19 @@ describe('stillwater world: runs, captures and motion', () => {
             strokes: 0,
             wisps: 0,
             fed: [0, 0],
+            bond: 0,
+            path: 0,
+            trollMode: 'seated',
+            spiritMode: 'standing',
             counts: {
                 locks: 0, clears: 0, quads: 0, wisps: 0, gathered: 0,
             },
         });
-        expect(world.troll.figure.position.toArray()).toEqual([...TROLL.home]);
+        const troll = world.troll.figure.position;
+        expect([troll.x, troll.z]).toEqual([TROLL.home[0], TROLL.home[2]]);
+        expect(troll.y).toBeCloseTo(groundHeight(TROLL.home[0], TROLL.home[2]), 9);
         expect(world.spirit.figure.position.x).toBe(SPIRIT.home[0]);
+        expect(world.spirit.figure.position.z).toBe(SPIRIT.home[2]);
         frame(world, camera, 42, 0);
         expect(world.u.time.value).toBe(42);
         expect(ringsOf(world)).toHaveLength(0);
@@ -2395,8 +2800,8 @@ describe('stillwater world: runs, captures and motion', () => {
         world.dispose();
     });
 
-    it('stills the view under reduced motion, and still answers every event', () => {
-        const { camera, world } = makeWorld('Low', { reduced: true });
+    it('stills the view under reduced motion, and still answers every event', async () => {
+        const { camera, world } = await makeFiguredWorld('Low', { reduced: true });
         const at = (time, pointer = {}) => {
             world.updateCamera(camera, { time, delta: 0, ...pointer });
             return [...camera.position.toArray(), ...camera.quaternion.toArray(), camera.fov];
@@ -2413,7 +2818,12 @@ describe('stillwater world: runs, captures and motion', () => {
         // The events still land: the light falls (quicker), the ring, the wisp, the stroke, the chain.
         expect(rings).toHaveLength(2);
         expect(launches[0][0].flight).toBeLessThan(DROP_FLIGHT);
-        run(world, camera, 2);
+        // (Nor does the troll start at it.)
+        let started = 0;
+        run(world, camera, 2, 60, () => {
+            started = Math.max(started, world.troll.body.startle.x);
+        });
+        expect(started).toBe(0);
         expect(wispsOf(world)).toHaveLength(1);
         world.onClear({ lines: 4 });
         world.onCombo(5);
@@ -2422,7 +2832,8 @@ describe('stillwater world: runs, captures and motion', () => {
         expect(world.u.heartAt.value.w).toBeGreaterThan(0.9);
         expect(world.getPostState().prism.strength).toBeGreaterThan(0);
         run(world, camera, 6);
-        expect(world.getState().troll).toBeCloseTo(approachForCombo(5), 9);
+        expect(world.getState().bond).toBe(chainBond(5));
+        expect(world.getState().troll).toBeGreaterThan(0.3);
         expect(world.getState().spirit).toBeGreaterThan(0.5);
         expect(at(world.time)).toEqual(rest);
         // The air moves more slowly than it does for everyone else.
@@ -2528,8 +2939,8 @@ describe('stillwater world: runs, captures and motion', () => {
         world.dispose();
     });
 
-    it('reports a state that can be written down: numbers and names, and no one else\'s objects', () => {
-        const { camera, world } = makeWorld('High');
+    it('reports a state that can be written down: numbers and names, and no one else\'s objects', async () => {
+        const { camera, world } = await makeFiguredWorld('High');
         play(world, camera);
         const state = world.getState();
         const text = JSON.stringify(state);
@@ -2537,6 +2948,14 @@ describe('stillwater world: runs, captures and motion', () => {
         expect(JSON.parse(text)).toEqual(state);
         expect(state.counts).not.toBe(world.counts);
         expect(state.fed).toHaveLength(2);
+        // What the two are doing, by name, and how far the story has them, each in 0..1.
+        expect(state).toMatchObject({ trollReady: true, spiritReady: true });
+        expect(['seated', 'standing', 'sitDown', 'standUp', 'crouch', 'crouched', 'rise']).toContain(state.trollMode);
+        expect(['standing', 'kneel', 'kneeling', 'rise']).toContain(state.spiritMode);
+        for (const key of ['bond', 'path', 'gaze', 'troll', 'spirit']) {
+            expect(state[key], key).toBeGreaterThanOrEqual(0);
+            expect(state[key], key).toBeLessThanOrEqual(1);
+        }
         expect(HOURS.map((hour) => hour.name)).toContain(state.hourFrom);
         expect(HOURS.map((hour) => hour.name)).toContain(state.hourTo);
         expect(state.hourMix).toBeGreaterThanOrEqual(0);
@@ -2584,11 +3003,11 @@ describe('stillwater world: random play', () => {
         };
     }
 
-    /** Play `calls` random calls on a new world and audit every one. @returns {{ faults: string[], stats: object }} */
-    function fuzz(seed, quality, calls = 3000) {
+    /** Play `calls` random calls on a new world, its figures in, and audit every one. @returns {{ faults: string[], stats: object }} */
+    async function fuzz(seed, quality, calls = 3000) {
         const rand = mulberry32(seed);
         const pick = (list) => list[Math.floor(rand() * list.length)];
-        const { camera, world } = makeWorld(quality, { start: Math.floor(rand() * 400) });
+        const { camera, world } = await makeFiguredWorld(quality, { start: Math.floor(rand() * 400) });
         let { time } = world;
         const faults = [];
         const stats = {
@@ -2717,17 +3136,28 @@ describe('stillwater world: random play', () => {
         world.onCombo(0);
         world.setReducedMotion(false);
         note = 'being left alone';
-        for (let i = 0; i < 120; i++) {
-            time += 0.5;
-            frame(world, camera, time, 0.5);
-            audit();
+        const quiet = rings.length;
+        for (let i = 0; i < 1200; i++) {
+            time += 0.05;
+            frame(world, camera, time, 0.05);
+            if (i % 10 === 0) audit();
         }
-        const { x, y, z } = world.u.counts.value;
-        if (x + y + z !== 0) fault(`a minute later the tables still hold ${x} rings, ${y} strokes, ${z} wisps`);
+        const { y, z } = world.u.counts.value;
+        if (y + z !== 0) fault(`a minute later the tables still hold ${y} strokes, ${z} wisps`);
         const kept = `${world.wisps.length} wisps and ${world.feeds.length} feeds`;
         if (world.wisps.length || world.feeds.length) fault(`a minute later ${kept} are still kept`);
-        const places = `${world.spiritS}, ${world.trollS}`;
-        if (world.trollS !== 0 || world.spiritS > 1e-6) fault(`a minute later the two are not home: ${places}`);
+        // The two are at rest: he by his stone and down on it, she kneeling at the water on her side.
+        const state = world.getState();
+        const places = `${state.trollMode} at ${world.trollS}, ${state.spiritMode} at ${world.spiritS}`;
+        if (world.trollS > 0.05 || state.trollMode !== 'seated') fault(`a minute later he is not home: ${places}`);
+        const resting = world.spiritS <= 0.35 && state.spiritMode === 'kneeling';
+        if (!resting) fault(`a minute later she is not at rest: ${places}`);
+        // The only rings still being born are her fingertips', where she kneels.
+        const her = spiritAt(world);
+        const late = rings.slice(quiet).filter((ring) => ring.asked > time - 20);
+        const astray = late.filter((ring) => Math.hypot(ring.x - her.x, ring.z - her.z) > 1);
+        if (astray.length) fault(`a minute later ${astray.length} rings are still born away from her`);
+        if (late.length > 8) fault(`a minute later ${late.length} rings in twenty seconds`);
         if (world.u.power.value > 1e-6 || world.u.surge.value > 1e-3) fault('a minute later the wood is still charged');
         if (Math.abs(world.u.breath.value - 1) > 1e-6) fault(`a minute later the breath is ${world.u.breath.value}`);
         world.dispose();
@@ -2736,8 +3166,8 @@ describe('stillwater world: random play', () => {
 
     it.each([[11, 'Low'], [2024, 'Minimal'], [77, 'High']])(
         'keeps every number the shaders read finite and in range through three thousand random calls (seed %i, %s)',
-        (seed, quality) => {
-            const { faults, stats } = fuzz(seed, quality);
+        async (seed, quality) => {
+            const { faults, stats } = await fuzz(seed, quality);
             expect(faults).toEqual([]);
             // The run did exercise the world.
             expect(stats.locks).toBeGreaterThan(400);

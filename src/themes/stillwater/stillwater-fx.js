@@ -434,7 +434,13 @@ export function createFireflies(u, count) {
             sin(t.mul(s.mul(0.25).add(0.33)).add(s.mul(31.0))).mul(0.35),
             cos(t.mul(s.mul(0.2).add(0.17)).add(s.mul(77.0))).mul(1.0),
         );
-        const at = vec3(aFly.x.mul(u.squeeze), aFly.y, aFly.z).add(wander);
+        // About one in eight is drawn to the troll's lantern and circles it, wherever he carries it.
+        const drawn = step(fract(s.mul(7.31)), 0.125);
+        const turn = t.mul(s.mul(0.4).add(0.45)).add(s.mul(40.0));
+        const reach = s.mul(0.55).add(0.35);
+        const orbit = vec3(cos(turn).mul(reach), sin(t.mul(0.7).add(s.mul(9.0))).mul(0.3), sin(turn).mul(reach));
+        const home = vec3(aFly.x.mul(u.squeeze), aFly.y, aFly.z).add(wander);
+        const at = mix(home, u.lanternAt.xyz.add(orbit), drawn);
         const view = cameraViewMatrix.mul(vec4(at, 1.0));
         const dist = max(view.z.negate(), 1.0);
         // It shows its light in slow pulses, each to its own count; a chain wakes the sleepers.
@@ -614,4 +620,37 @@ export function createMist(u, count) {
     const part = swPart('StillwaterMist', geometry, material, 50);
     part.count = sheets.length;
     return part;
+}
+
+// ── The heart in flight ─────────────────────────────────────────────────────────
+
+/**
+ * The gold heart, risen out of the tarn after four lines and crossing to the spirit: a bead of
+ * gold with a halo and slow rays, placed by `u.orbAt` (nothing is drawn while it is not flying).
+ * @param {object} u
+ */
+export function createHeartOrb(u) {
+    const geometry = new THREE.PlaneGeometry(1, 1);
+    const material = additive('StillwaterHeartOrb');
+    material.vertexNode = Fn(() => {
+        const view = cameraViewMatrix.mul(vec4(u.orbAt.xyz, 1.0));
+        // (A heart that is not flying is a quad of no size.)
+        const size = float(2.4).mul(step(0.002, u.orbAt.w)).mul(u.orbAt.w.mul(0.4).add(0.6));
+        const q = positionGeometry.xy.mul(size);
+        return cameraProjectionMatrix.mul(vec4(view.x.add(q.x), view.y.add(q.y), view.z, 1.0));
+    })();
+    material.outputNode = Fn(() => {
+        const p = uv().sub(0.5).mul(2.0);
+        const d = length(p);
+        const fade = float(1.0).sub(smoothstep(0.75, 1.0, d));
+        const angle = p.y.atan(p.x);
+        // Slow rays, turning; a hot core; a wide soft halo.
+        const rays = abs(sin(angle.mul(6.0).add(u.time.mul(0.6)))).pow(8.0).mul(exp(d.mul(-3.2))).mul(0.35);
+        const core = exp(d.mul(d).mul(-260.0)).mul(4.0).add(exp(d.mul(d).mul(-40.0)).mul(1.1));
+        const halo = exp(d.mul(-4.5)).mul(0.45);
+        const beat = sin(u.time.mul(3.4)).mul(0.08).add(1.0);
+        return vec4(u.heart.mul(core.add(halo).add(rays)).mul(fade).mul(u.orbAt.w).mul(beat)
+            .mul(1.3), 0.0);
+    })();
+    return swPart('StillwaterHeartOrb', geometry, material, 72);
 }

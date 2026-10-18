@@ -1,5 +1,9 @@
 # Stillwater — the tarn at night
 
+> 2026-10-18: the troll and the spirit were rebuilt (new figures, posed every frame, a story
+> between them). The place, the water, the wood, the hours and the event language below still
+> stand; for the figures read `docs/STILLWATER_STORY_2026-10.md`.
+
 Implemented 2026-10-09 on `feature/stillwater-masterpiece`, with Three.js 0.186.1. A from-scratch
 rebuild: it replaces the earlier theme in full (a 2,000-line lifecycle adapter with a pooled
 renderer, the runtime / forest / water / characters / reactions / atmosphere / shafts modules,
@@ -112,7 +116,8 @@ of the theme's clock (`?stillwaterFixedDt=50`).
   (buttress roots, dead stubs; bark, moss and lichen drawn in the fragment stage); hanging spruce
   boughs cut out of ribbons; young spruces, ferns, reeds, lily pads, water lilies whose petals
   open in the vertex stage, glowing caps.
-- **`stillwater-figures.js`**: the spirit is built in code (a gown, hair, folded arms; she is lit
+- **`stillwater-figures.js`** (*replaced 2026-10-18: the figures were rebuilt and given a story, see
+  `docs/STILLWATER_STORY_2026-10.md`; what follows describes the version of 2026-10-09*): the spirit is built in code (a gown, hair, folded arms; she is lit
   from within and her hem is lost in the mist). The troll is `assets/troll-lod0..3.glb` by tier:
   the sculpt's own vertex paint tells pelt from skin, and he is shaded as part of the place
   (stone and lichen for hair, moss on what faces up, his nose and hands warm in the lantern's

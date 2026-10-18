@@ -281,6 +281,15 @@ export function createStillwaterUniforms(textures) {
         spiritAt: uniform(new THREE.Vector4(-6.7, 1.1, -10.2, 0.6)),
         /** The heart on the tarn's bed: (world x, y, z, how much of its gold shows). */
         heartAt: uniform(new THREE.Vector4(HEART[0], HEART[1], HEART[2], 0)),
+        /** The heart in flight after four lines (world x, y, z, how brightly; 0 = not flying). */
+        orbAt: uniform(new THREE.Vector4(0, -5, 0, 0)),
+        /**
+         * The path of light that runs between the two on the water: (how far it has run 0..1, their
+         * eyes meeting 0..1, the heart just taken 0..1, unused).
+         */
+        path: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** Its ends on the water (world xz): where she is, then under his lantern. */
+        pathEnds: uniform(new THREE.Vector4(-6, -10, 8, -11)),
         /** The wisps' light, gathered per side: where, and how much. */
         poolL: uniform(new THREE.Vector4(-5, 0.8, -8, 0)),
         poolR: uniform(new THREE.Vector4(5, 0.8, -8, 0)),
@@ -423,6 +432,7 @@ export const swLight = (u, albedo, N, P, opts = {}) => {
     const local = point(u.lanternAt, u.lantern, 0.16).mul(2.2)
         .add(point(u.spiritAt, u.spirit, 0.3).mul(1.1))
         .add(point(u.heartAt, u.heart, 0.02).mul(0.9))
+        .add(point(u.orbAt, u.heart, 0.08).mul(2.0))
         .add(point(u.poolL, u.poolColL, 0.12).mul(0.7))
         .add(point(u.poolR, u.poolColR, 0.12).mul(0.7));
     return albedo.mul(amb.add(moon).mul(u.breath.mul(0.5).add(0.5)).add(local.mul(u.breath).mul(opts.local ?? 1)));
