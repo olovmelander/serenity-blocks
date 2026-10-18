@@ -162,8 +162,10 @@
     background: linear-gradient(90deg, rgba(var(--sb-cream-rgb), 0.08), transparent);
 }
 
+/* The tier's count sits on its own line under the name, so it never breaks mid-phrase. */
 .stillfall-tier__note {
-    margin-left: 6px;
+    display: block;
+    margin-top: 3px;
     color: var(--sb-text-faint);
     letter-spacing: 0.08em;
     text-transform: none;
@@ -186,7 +188,8 @@
     color: var(--sb-gold);
 }
 
-.stillfall-next {
+/* The outcome's one way on: Next puzzle after a solve, Try again / Take back after a miss. */
+.stillfall-outcome .sb-btn {
     justify-content: center;
 }
 
@@ -233,8 +236,30 @@
     cursor: default;
 }
 
+/* The open list scrolls in its own box, so the puzzle's title, lesson and goal stay in
+   view above it; the panel itself scrolls only when even a short list cannot fit. */
+.stillfall-panel__content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.stillfall-panel__content > * {
+    flex-shrink: 0;
+}
+
+.stillfall-panel__content > .stillfall-bank {
+    flex: 1 1 auto;
+    min-height: 150px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-color: rgba(var(--sb-cream-rgb), 0.18) transparent;
+    scrollbar-width: thin;
+}
+
 .stillfall-bank {
     display: grid;
+    align-content: start;
     gap: 12px;
 }
 
@@ -320,6 +345,12 @@
     .stillfall-panel__content > .stillfall-bank {
         grid-column: 1 / -1;
         border-top: 1px solid var(--sb-line);
+    }
+
+    /* The strip is too short for a list box of its own: the whole strip scrolls instead. */
+    .stillfall-panel__content > .stillfall-bank {
+        min-height: 0;
+        overflow: visible;
     }
 
     .stillfall-title {

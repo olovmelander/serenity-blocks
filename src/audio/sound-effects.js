@@ -1158,6 +1158,16 @@ export class SoundEffectPlayer {
     }
 
     /**
+     * A Stillfall puzzle missed its goal: a soft falling third, a shrug rather than a buzzer,
+     * since every piece can be taken back.
+     */
+    playPuzzleMiss() {
+        if (!this._createTone || !this._canPlay()) return;
+        this._createTone(392.0, 0.2, 'sine', 0.16); // G4
+        this._schedule(() => this._createTone(329.63, 0.34, 'sine', 0.14), 120); // E4
+    }
+
+    /**
      * Plays the level up sound effect
      */
     playLevelUp() {
