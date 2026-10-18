@@ -111,7 +111,10 @@ import {
     isOdysseyDebugExposureEnabled,
     readOdysseyKeepBoardFlag,
 } from '../odyssey/odyssey-url-flags.js';
-import { shouldCaptureWheelEvent } from '../../utils/wheel-routing.js';
+import {
+    disposeOdysseyTowerLook, endOdysseyLookForMenu, notePauseOverLook, noteResumeOverLook,
+    startOdysseyTowerLook, stopOdysseyTowerLook,
+} from '../../ui/odyssey/odyssey-tower-look.js';
 import { installOdysseyLegacyInputWrapper } from '../../ui/odyssey/legacy-input-wrapper.js';
 import { clearRetryVeil } from '../../ui/odyssey/retry-veil.js';
 import {
@@ -194,9 +197,10 @@ export class OdysseyMode extends BaseGameMode {
         this.visibleRows = 20;
         this.boardScene = null;
 
-        // Event handlers for camera control during pause (bound for cleanup)
-        this.handleKeyPress = this._onKeyPress.bind(this);
-        this.handleWheel = this._onWheel.bind(this);
+        // Looking around a tall well (the ascent, ui/odyssey/odyssey-tower-look.js).
+        this._towerLook = null;
+        this.isInExplorationMode = false;
+        this.explorationStartCameraRow = 0;
 
         // Prevent multiple level completions
         this.levelCompleting = false;
@@ -223,7 +227,6 @@ export class OdysseyMode extends BaseGameMode {
         this.boardReturnFallbackVeilTimer = null;
         this.boardViewReadyPromise = null;
         this.chapterArrivalCueTimer = null;
-        this.isTallBoard = false;
         this._boardBuildPromise = null;
         this._deferredWarpPreinitTimer = null;
         this._warpPreinitScheduled = false;
@@ -446,6 +449,7 @@ export class OdysseyMode extends BaseGameMode {
     _retireLevelSession(session = this._activeLevelSession) {
         const retirementGeneration = ++this._levelSessionGeneration;
         if (!session) {
+            stopOdysseyTowerLook(this);
             this._stopFixedTickSession();
             return null;
         }
@@ -453,6 +457,7 @@ export class OdysseyMode extends BaseGameMode {
         const ownsDrivers = this._activeLevelSession === session && !session.retired;
         session.retirementGeneration = retirementGeneration;
         if (ownsDrivers) {
+            stopOdysseyTowerLook(this);
             this._stopFixedTickSession();
             this._restoreInputs();
             if (this.deps.frameRateController?.isRunning) {
@@ -473,16 +478,19 @@ export class OdysseyMode extends BaseGameMode {
         }
     }
 
-    onPause() {
+    /** @param {{owner?: string, session?: object}} [options] the look's own pause names its owner */
+    onPause(options = {}) {
         if (this.entryPhase === 'countdown') {
             console.log('[Odyssey] Ignoring pause request during level start cue');
             return;
         }
 
+        const lookPause = notePauseOverLook(this, options);
         super.onPause();
         this._fixedTickInputBinding?.clear();
         this._activeLevelSession?.duel?.setPaused(true, this.gameState?.lastTime || 0);
-        this.odysseyHUD?.setPaused(true);
+        // Looking around the well holds the game, but it is not a pause the player chose.
+        if (!lookPause) this.odysseyHUD?.setPaused(true);
 
         // Pause level timer + start accumulating paused wall-time so the clock excludes
         // time spent in the pause menu (masterplan §2 #2).
@@ -494,32 +502,22 @@ export class OdysseyMode extends BaseGameMode {
             this.levelTimerInterval = null;
         }
 
-        // For tall boards, enable camera navigation during pause
-        const boardRows = this.currentLevelConfig?.mechanics?.board?.rows || 20;
-        const isTallBoard = boardRows >= this.MINIMAP_ROW_THRESHOLD;
-        this.isTallBoard = isTallBoard;
-
-        if (isTallBoard) {
-            if (this.boardScene) {
-                this.boardScene.enableManualCameraControl();
-                this._setupCameraControls();
-                console.log('[Odyssey] Camera controls enabled for tall board - Use arrow keys or mouse wheel');
-            }
-
-            // Trigger minimap pause highlight effect
-            if (this.minimap) this.minimap.onPause();
-        }
+        // A tall well's map dims with the pause (the look moves the view, not the pause).
+        this.minimap?.onPause();
     }
 
     /**
      * Called when game is resumed
+     * @param {{owner?: string}} [options] the look's own resume names its owner
      */
-    onResume() {
+    onResume(options = {}) {
         if (this.entryPhase === 'countdown') {
             console.log('[Odyssey] Ignoring resume request during level start cue');
             return;
         }
 
+        // A resume from elsewhere wins over a look: it ends first, without resuming twice.
+        noteResumeOverLook(this, options);
         super.onResume();
         this._activeLevelSession?.duel?.setPaused(false, this.gameState?.lastTime || 0);
         this.odysseyHUD?.setPaused(false);
@@ -545,19 +543,15 @@ export class OdysseyMode extends BaseGameMode {
             this._startLevelTimer();
         }
 
-        // For tall boards, disable manual camera control
-        const boardRows = this.currentLevelConfig?.mechanics?.board?.rows || 20;
-        const isTallBoard = boardRows >= this.MINIMAP_ROW_THRESHOLD;
+        this.minimap?.onUnpause();
+    }
 
-        if (isTallBoard) {
-            if (this.boardScene) {
-                this.boardScene.disableManualCameraControl();
-                this._removeCameraControls();
-            }
-
-            // Trigger minimap unpause effect
-            if (this.minimap) this.minimap.onUnpause();
-        }
+    /**
+     * Escape over a look (main.js): the camera goes home, the orb stays paused under the menu.
+     * @returns {boolean}
+     */
+    endExplorationForMenu() {
+        return endOdysseyLookForMenu(this);
     }
 
     /**
@@ -637,6 +631,7 @@ export class OdysseyMode extends BaseGameMode {
         } else {
             this._retireLevelSession();
         }
+        disposeOdysseyTowerLook(this);
         await releaseOdysseyThemeAccess(this);
         await super.onDeactivate();
 
@@ -2241,6 +2236,8 @@ export class OdysseyMode extends BaseGameMode {
         this.levelRunStarted = true;
         this._odysseyThemeCommittedToken = this.themeRevealToken;
         this.entryPhase = 'running';
+        // A tall well: the wheel, the right stick and the tower map look around it (the ascent).
+        startOdysseyTowerLook(this, session);
         // Steam Rich Presence: "Odyssey · Chapter 1 · Ashen Dawn" for friends.
         const { chapter, name: levelName } = this.currentLevelConfig ?? {};
         if (chapter && typeof window !== 'undefined') {
@@ -2274,7 +2271,6 @@ export class OdysseyMode extends BaseGameMode {
         this._cleanupOdysseyHUD();
         this._cleanupMinimap();
         this._applyInfinityLayout(false);
-        this.isTallBoard = false;
         this._restoreInputs();
         this._stopPhaserBoardScene();
         this.boardScene = null;
@@ -4058,36 +4054,30 @@ export class OdysseyMode extends BaseGameMode {
         // Clean up existing minimap
         this._cleanupMinimap();
 
-        const session = this._activeLevelSession;
-        this.minimap = createOdysseyMinimap({
-            rows: boardRows,
-            columns: this.currentLevelConfig?.mechanics?.board?.columns || 10,
-            isActive: () => this._isLevelSessionActive(session),
-            isRunning: () => this.isRunning,
-            isPaused: () => this.isPaused,
-            pause: () => this.onPause(),
-            resume: () => this.onResume(),
-            getScene: () => this.boardScene,
-            getTotalRows: () => this.gameState?.board.length || boardRows,
-            onViewChange: () => this._updateMinimap(),
-        });
+        // Pressing and dragging the map is the ascent's (odyssey-tower-look.js).
+        this.minimap = createOdysseyMinimap();
 
         console.log(`[Odyssey] Minimap initialized for ${boardRows}-row board`);
     }
 
     /**
      * Update minimap with current game state
+     * @param {number} [topRow] the rows on screen while a look moves the view; by default the
+     *   camera's, plus the peek's presentation offset
      * @private
      */
-    _updateMinimap() {
+    _updateMinimap(topRow) {
         if (!this.minimap || !this.gameState) return;
 
         // Get camera info from Phaser scene
         const boardScene = this._getBoardScene();
         if (!boardScene?.cameraSettings) return;
 
-        const cameraTopRow = boardScene.cameraSettings.currentTopRow || 0;
-        const visibleRows = boardScene.cameraSettings.visibleRows || 20;
+        const { cameraSettings } = boardScene;
+        const cameraTopRow = Number.isFinite(topRow)
+            ? topRow
+            : (cameraSettings.currentTopRow || 0) + (cameraSettings.viewOffsetRows || 0);
+        const visibleRows = cameraSettings.visibleRows || 20;
 
         this.minimap.update(this.gameState, cameraTopRow, visibleRows);
     }
@@ -4203,120 +4193,6 @@ export class OdysseyMode extends BaseGameMode {
             }
         }
         return board.length;
-    }
-
-    /**
-     * Setup camera controls for manual navigation during pause
-     * @private
-     */
-    _setupCameraControls() {
-        document.addEventListener('keydown', this.handleKeyPress, true);
-
-        const canvas = document.querySelector('#phaser-game-container canvas');
-        if (canvas) {
-            canvas.addEventListener('wheel', this.handleWheel, { passive: false });
-        }
-
-        this.cleanupHandlers.push(() => {
-            document.removeEventListener('keydown', this.handleKeyPress, true);
-            if (canvas) {
-                canvas.removeEventListener('wheel', this.handleWheel);
-            }
-        });
-    }
-
-    /**
-     * Remove camera controls
-     * @private
-     */
-    _removeCameraControls() {
-        document.removeEventListener('keydown', this.handleKeyPress, true);
-        const canvas = document.querySelector('#phaser-game-container canvas');
-        if (canvas) {
-            canvas.removeEventListener('wheel', this.handleWheel);
-        }
-    }
-
-    /**
-     * Handle keyboard input for camera control during pause
-     * @private
-     */
-    _onKeyPress(event) {
-        if (!this.boardScene) return;
-        if (!this.gameState?.isPaused) return;
-
-        if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
-            return;
-        }
-
-        let deltaRows = 0;
-
-        switch (event.key) {
-        case 'ArrowUp':
-            deltaRows = -3;
-            event.preventDefault();
-            event.stopPropagation();
-            break;
-        case 'ArrowDown':
-            deltaRows = 3;
-            event.preventDefault();
-            event.stopPropagation();
-            break;
-        case 'ArrowLeft':
-        case 'ArrowRight':
-            event.preventDefault();
-            event.stopPropagation();
-            return;
-        case 'PageUp':
-            deltaRows = -10;
-            event.preventDefault();
-            event.stopPropagation();
-            break;
-        case 'PageDown':
-            deltaRows = 10;
-            event.preventDefault();
-            event.stopPropagation();
-            break;
-        case 'p':
-        case 'P':
-        case 'Escape':
-            return; // Let pause/settings propagate
-        default:
-            return;
-        }
-
-        if (deltaRows !== 0 && this.boardScene.cameraSettings) {
-            const currentRow = this.boardScene.cameraSettings.currentTopRow || 0;
-            const maxRow = Math.max(0, this.gameState.board.length - this.visibleRows);
-            const newRow = Math.max(0, Math.min(maxRow, currentRow + deltaRows));
-            this.boardScene.updateCameraPosition(newRow);
-            this._updateMinimap();
-        }
-    }
-
-    /**
-     * Handle mouse wheel for camera scrolling during pause
-     * @private
-     */
-    _onWheel(event) {
-        if (!this.boardScene) return;
-        if (!this.gameState?.isPaused) return;
-
-        // Don't capture wheel when an overlay (hub, settings) is above the game canvas.
-        // Uses elementFromPoint to handle Electron compositor hit-testing differences.
-        if (!shouldCaptureWheelEvent({ event })) return;
-
-        event.preventDefault();
-
-        const deltaRows = event.deltaY > 0 ? 5 : -5;
-
-        if (this.boardScene.cameraSettings) {
-            const currentRow = this.boardScene.cameraSettings.currentTopRow || 0;
-            const maxRow = Math.max(0, this.gameState.board.length - this.visibleRows);
-            const newRow = Math.max(0, Math.min(maxRow, currentRow + deltaRows));
-            this.boardScene.updateCameraPosition(newRow);
-            this._updateMinimap();
-        }
     }
 
     // =============================

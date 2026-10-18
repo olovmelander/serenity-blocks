@@ -26,14 +26,30 @@ export const ASCENT = Object.freeze({
     THEME_PARALLAX: 0.12,
     THEME_SINK_CAP: 0.3,
     THEME_LIFT_CAP: 0.06,
-    /** A soft tick every this many rows of height. */
+    /** A soft tick every this many rows of height (every SHORT_TICK_ROWS in a short well). */
     TICK_ROWS: 10,
+    SHORT_TICK_ROWS: 5,
     /** Milestones as shares of the ceiling (the HUD's and the tower map's). */
     MILESTONE_SHARES: Object.freeze([0.1, 0.25, 0.5, 0.75, 1]),
+    /** The smallest share of the journey a short well is scaled to. */
+    MIN_SCALE: 0.25,
 });
 
 /** @param {number} value @param {number} min @param {number} max */
 export const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
+
+/**
+ * How much of the journey a tower's scroll range holds. Infinity's tower (44 rows and growing,
+ * twenty on screen) always reaches the full sky: 1. A short well (Odyssey's tall boards scroll
+ * 8 to 20 rows) is scaled so its own range holds the whole journey: rising to the top of the
+ * well brings the full night, as rising 24 rows does in Infinity.
+ * @param {number} rangeRows the rows the view can move (board length minus the rows on screen)
+ * @returns {number} MIN_SCALE..1
+ */
+export function towerScale(rangeRows) {
+    if (!Number.isFinite(rangeRows) || rangeRows >= ASCENT.SKY_FULL_ROWS) return 1;
+    return clamp(rangeRows / ASCENT.SKY_FULL_ROWS, ASCENT.MIN_SCALE, 1);
+}
 
 /** @param {number} edge0 @param {number} edge1 @param {number} x */
 export function smoothstep(edge0, edge1, x) {
@@ -53,16 +69,18 @@ export function smoothstep(edge0, edge1, x) {
  */
 
 /**
- * @param {{top: number, home: number, visibleRows: number, boardLength: number, summitRow: number}} view
+ * @param {{top: number, home: number, visibleRows: number, boardLength: number, summitRow: number,
+ *   scale?: number}} view
  *   top: the camera's first row; home: the camera's first row at play; summitRow: the highest
- *   row with a block (boardLength when none)
+ *   row with a block (boardLength when none); scale: towerScale() of the board (1 by default)
  * @returns {ViewMetrics}
  */
 export function viewMetrics({
-    top, home, visibleRows, boardLength, summitRow,
+    top, home, visibleRows, boardLength, summitRow, scale = 1,
 }) {
     const rows = visibleRows > 0 ? visibleRows : 20;
     const length = Number.isFinite(boardLength) ? boardLength : 0;
+    const s = scale > 0 && scale <= 1 ? scale : 1;
     const centre = top + rows / 2;
     const height = Math.max(0, length - centre);
     const summitHeight = Number.isFinite(summitRow) && summitRow < length ? length - summitRow : 0;
@@ -71,9 +89,9 @@ export function viewMetrics({
         height,
         summitHeight,
         riseRows,
-        sky: smoothstep(ASCENT.SKY_FROM_ROWS, ASCENT.SKY_FULL_ROWS, riseRows),
-        deep: ASCENT.DEEP_MAX * smoothstep(ASCENT.DEEP_FROM_ROWS, ASCENT.DEEP_FULL_ROWS, -riseRows),
-        rise: Math.tanh(riseRows / ASCENT.RISE_ROWS),
+        sky: smoothstep(ASCENT.SKY_FROM_ROWS * s, ASCENT.SKY_FULL_ROWS * s, riseRows),
+        deep: ASCENT.DEEP_MAX * smoothstep(ASCENT.DEEP_FROM_ROWS * s, ASCENT.DEEP_FULL_ROWS * s, -riseRows),
+        rise: Math.tanh(riseRows / (ASCENT.RISE_ROWS * s)),
         aboveSummit: height - summitHeight,
     };
 }
@@ -81,15 +99,22 @@ export function viewMetrics({
 /**
  * How far the theme layer moves (CSS px, + down) while the view is `riseRows` above home: a
  * slow parallax at first that eases into a cap, so the world sinks as you rise and lifts a
- * little as you descend.
+ * little as you descend. A short well's rows count as the journey's (see towerScale).
  * @param {number} riseRows @param {number} rowPx the board's row height on screen
  * @param {number} viewportHeight
+ * @param {number} [scale] towerScale() of the board
  */
-export function themeShift(riseRows, rowPx, viewportHeight) {
+export function themeShift(riseRows, rowPx, viewportHeight, scale = 1) {
     if (!(rowPx > 0) || !(viewportHeight > 0) || !Number.isFinite(riseRows)) return 0;
-    const raw = riseRows * rowPx * ASCENT.THEME_PARALLAX;
+    const s = scale > 0 && scale <= 1 ? scale : 1;
+    const raw = (riseRows / s) * rowPx * ASCENT.THEME_PARALLAX;
     const cap = (raw > 0 ? ASCENT.THEME_SINK_CAP : ASCENT.THEME_LIFT_CAP) * viewportHeight;
     return cap * Math.tanh(raw / cap);
+}
+
+/** The ruler's and the ticks' step for a tower of this scale. @param {number} [scale] */
+export function tickRows(scale = 1) {
+    return scale < 1 ? ASCENT.SHORT_TICK_ROWS : ASCENT.TICK_ROWS;
 }
 
 /**
