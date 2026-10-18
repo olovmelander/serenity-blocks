@@ -85,6 +85,20 @@ describe('Odyssey map travel by keys and pad', () => {
         expect(moveOdysseyMapSelection(mode, 'next')).toBeNull();
     });
 
+    it('steps on from the orb the map is headed to, before its focus has settled', () => {
+        // Audit 2026-10-18: the mode hears of a selection only when its ~0.8 s focus ends, so
+        // held or quick keys stepped again from the same orb and moved one orb in all.
+        const board = { selectedLevelId: null };
+        board.selectLevel = vi.fn((id) => { board.selectedLevelId = id; });
+        const mode = createMode({ selectedLevelId: 2, boardController: board });
+        expect(moveOdysseyMapSelection(mode, 'next')).toBe(3);
+        expect(moveOdysseyMapSelection(mode, 'next')).toBe(4);
+        expect(moveOdysseyMapSelection(mode, 'previous')).toBe(3);
+        expect(mode.selectedLevelId).toBe(2); // the focus has not landed yet
+        expect(playOdysseyMapSelection(mode)).toBe(true);
+        expect(mode.launchOdysseyLevel).toHaveBeenCalledWith(3, { source: 'map-input' });
+    });
+
     it('owns arrows, Home, End and Enter on the document while leaving focused controls theirs', () => {
         const mode = createMode({ selectedLevelId: 2 });
         const dispose = installOdysseyMapInput(mode);

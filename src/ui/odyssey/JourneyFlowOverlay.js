@@ -13,7 +13,7 @@
  * Layouts (data-layout): ceremony → departing → scenic | transit, and chapter.
  * State attributes (variant, world stage, covered, revealing, held) keep their old meanings.
  */
-import { el } from './keystone-sheet.js';
+import { el, isSettingsOverSheet } from './keystone-sheet.js';
 import { ODYSSEY_CHARM_KIND_LABELS } from '../../core/odyssey/odyssey-charms.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
 import { createOdysseyStarNotes } from './odyssey-star-notes.js';
@@ -890,6 +890,7 @@ export function createJourneyFlowOverlay({
         .filter((node) => node && !node.hidden && !node.disabled);
     listen(document, 'keydown', (event) => {
         if (disposed || chosen) return;
+        if (isSettingsOverSheet()) return;
         if (modal.inert && event.key !== 'Escape') {
             if (!event.metaKey && !event.ctrlKey && !event.altKey) {
                 event.preventDefault();

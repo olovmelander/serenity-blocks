@@ -20,3 +20,18 @@ export function resolveChapterArrivalProgress(chapterId, levelProgress, chapterP
     const maximum = outgoingStart - (hasOutgoingSeam ? clearance : 0);
     return Math.min(maximum, Math.max(minimum, levelProgress));
 }
+
+/**
+ * Where an ordinary orb selection parks the scenery. A chapter's opening orb sits on its own
+ * seam (L6, L35, L49 and L57 sit exactly on b12, b56, b67 and b78), so parking at the orb put
+ * the frame in full 1->2 steam, or with both chapters at full coverage, and at L35 the faded
+ * world's edge cut through the orb's ring (audit 2026-10-18). An orb inside its chapter's
+ * incoming seam parks as a chapter arrival does; the camera still focuses the orb itself.
+ */
+export function resolveOrbParkProgress(chapterId, levelProgress, chapterPositions) {
+    const start = chapterPositions?.[chapterId - 1];
+    if (!Number.isInteger(chapterId) || chapterId < 2
+        || !Number.isFinite(start) || !Number.isFinite(levelProgress)
+        || levelProgress >= start + seamHalfWidth(chapterId - 1)) return levelProgress;
+    return resolveChapterArrivalProgress(chapterId, levelProgress, chapterPositions);
+}

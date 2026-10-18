@@ -181,8 +181,9 @@ export class OdysseyStateManager {
      * Load progress from localStorage
      */
     load() {
+        let savedData = null;
         try {
-            const savedData = localStorage.getItem(STORAGE_KEY);
+            savedData = localStorage.getItem(STORAGE_KEY);
             if (!savedData) {
                 console.log('[OdysseyState] No saved progress found, starting fresh');
                 return false;
@@ -220,7 +221,26 @@ export class OdysseyStateManager {
             return true;
         } catch (error) {
             console.error('[OdysseyState] Failed to load progress:', error);
+            this._keepUnreadableSave(savedData);
             return false;
+        }
+    }
+
+    /**
+     * A save that cannot be read starts the journey fresh, and the next save overwrote it with
+     * no trace (audit 2026-10-18). Keep the raw text beside it, and say so once (the mode shows
+     * `unreadableSaveKey` to the player).
+     * @param {string|null} savedData
+     * @private
+     */
+    _keepUnreadableSave(savedData) {
+        if (typeof savedData !== 'string' || savedData.length === 0) return;
+        const key = `${STORAGE_KEY}.unreadable-${new Date().toISOString()}`;
+        try {
+            localStorage.setItem(key, savedData);
+            this.unreadableSaveKey = key;
+        } catch (error) {
+            console.error('[OdysseyState] Could not keep the unreadable save:', error);
         }
     }
 
@@ -253,14 +273,32 @@ export class OdysseyStateManager {
                 }),
         );
 
-        const furthestUnlocked = Math.max(...this.unlockedLevels);
-        this.currentLevel = Math.min(
-            totalLevels,
-            Math.max(1, Number(this.currentLevel) || 1, furthestUnlocked),
-        );
+        // Every cleared orb is open and opens the next, whatever the save says. A v4 player who
+        // had beaten a chapter's duel kept it cleared when it moved to the chapter's end, but
+        // not the unlock its old slot gave: the next chapter stayed shut behind a rival already
+        // beaten (audit 2026-10-18). Any other gap a save carries closes the same way.
+        this.completedLevels.forEach((_, levelKey) => {
+            const levelId = Number(levelKey);
+            this.unlockedLevels.add(levelId);
+            const next = this.levelRegistry.getNextLevel(levelId);
+            if (next) this.unlockedLevels.add(next.id);
+        });
+
+        this.currentLevel = Math.min(totalLevels, this._frontierLevelId());
         this.currentChapter = this.levelRegistry.getLevel(this.currentLevel)?.chapter || 1;
         this.statistics.totalStars = this.getTotalStars();
         this.statistics.chaptersCompleted = this.getCompletedChapterCount();
+    }
+
+    /**
+     * Where the journey stands: the first open orb not yet cleared, else the furthest open one.
+     * (The furthest open orb alone pointed the navigator and End at a migrated duel while the
+     * map's glow sat on the orb the player actually had left to clear.)
+     * @returns {number}
+     */
+    _frontierLevelId() {
+        const open = [...this.unlockedLevels].sort((left, right) => left - right);
+        return open.find((levelId) => !this.isLevelCompleted(levelId)) ?? open[open.length - 1] ?? 1;
     }
 
     /**
@@ -414,10 +452,17 @@ export class OdysseyStateManager {
             this.unlockedLevels.add(nextLevel.id);
         }
 
-        // Update current position
+        // Update current position: on to the next orb still to clear, past any cleared already
+        // (a v4 duel that kept its clear at its chapter's end; load opened the orb after it).
         if (levelId >= this.currentLevel) {
-            this.currentLevel = nextLevel?.id || levelId;
-            this.currentChapter = nextLevel?.chapter
+            let ahead = nextLevel;
+            while (ahead && this.isLevelCompleted(ahead.id)) {
+                const after = this.levelRegistry.getNextLevel(ahead.id);
+                if (!after) break;
+                ahead = after;
+            }
+            this.currentLevel = ahead?.id || levelId;
+            this.currentChapter = ahead?.chapter
                 || this.levelRegistry.getLevel(levelId)?.chapter
                 || this.currentChapter;
         }

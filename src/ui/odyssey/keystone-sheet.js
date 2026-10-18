@@ -20,6 +20,17 @@ export function el(tag, className = '', text = '') {
     return node;
 }
 
+/**
+ * Settings opened over a sheet owns the keyboard: a sheet's capture-phase key handler stands
+ * down, or Escape meant for Settings chose "Back to map" underneath and Enter on a Settings
+ * control started a retry (audit 2026-10-18).
+ * @returns {boolean}
+ */
+export function isSettingsOverSheet() {
+    const settings = typeof document !== 'undefined' ? document.getElementById?.('settings-modal') : null;
+    return settings?.classList?.contains('visible') === true;
+}
+
 /** Set a data attribute when the element supports it (real DOM, not every test stub). */
 function setData(node, name, value) {
     if (node.dataset) node.dataset[name] = value;

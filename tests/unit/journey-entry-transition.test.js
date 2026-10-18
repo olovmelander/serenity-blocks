@@ -558,4 +558,75 @@ describe('JourneyEntryTransition', () => {
         });
         expect(dom.document.body.children).toEqual([]);
     });
+
+    // Audit 2026-10-18: an entry that ran out of hold froze the tunnel while the mode unwound,
+    // then cut to the map in one frame; its readiness waits could not see the time left.
+    function createTimedTransition() {
+        const harness = createRafHarness();
+        const dom = createDomHarness();
+        const timers = [];
+        dom.window.setTimeout = vi.fn((callback, ms) => timers.push({ callback, ms }));
+        const transition = new JourneyEntryTransition({
+            documentRef: dom.document,
+            windowRef: dom.window,
+            performanceRef: harness.performance,
+            requestAnimationFrameRef: harness.requestAnimationFrame,
+            cancelAnimationFrameRef: harness.cancelAnimationFrame,
+        });
+        return {
+            harness, dom, timers, transition,
+        };
+    }
+
+    const HOLD_TIMINGS = {
+        ignitionDelayMs: 10,
+        blackoutStartMs: 20,
+        blackoutFullMs: 40,
+        revealDurationMs: 30,
+        particleDecayMs: 30,
+        maxBlackoutHoldMs: 400,
+    };
+
+    it('tells the preparation how much hold is left', async () => {
+        const { harness, transition } = createTimedTransition();
+        let hold = null;
+        transition.play({
+            timings: HOLD_TIMINGS,
+            callbacks: { onBlackoutReached: (given) => { hold = given; return new Promise(() => {}); } },
+        });
+        await harness.flushUntil(() => hold !== null, { stepMs: 10 });
+        const first = hold.remainingMs();
+        expect(first).toBeLessThanOrEqual(400);
+        expect(first).toBeGreaterThan(300);
+        harness.step(100);
+        expect(hold.remainingMs()).toBeCloseTo(first - 100, 6);
+    });
+
+    it('keeps the tunnel drawing through a slow abort, then fades it out', async () => {
+        const {
+            harness, dom, timers, transition,
+        } = createTimedTransition();
+        let releaseAbort = null;
+        const playPromise = transition.play({
+            timings: HOLD_TIMINGS,
+            callbacks: {
+                onBlackoutReached: () => new Promise(() => {}), // a preparation that never ends
+                onAbort: () => new Promise((resolve) => { releaseAbort = resolve; }),
+            },
+        });
+        await harness.flushUntil(() => releaseAbort !== null, { stepMs: 20, maxSteps: 60 });
+        const render = vi.spyOn(transition, 'render');
+        for (let frame = 0; frame < 5; frame += 1) harness.step(16);
+        expect(render).toHaveBeenCalledTimes(5); // still moving while the mode unwinds
+
+        releaseAbort();
+        await expect(playPromise).resolves.toMatchObject({ aborted: true, reason: 'blackout-timeout' });
+        const root = dom.document.querySelector('.journey-entry-transition');
+        expect(root.style.opacity).toBe('0'); // fading, not cut
+        harness.step(16);
+        expect(render).toHaveBeenCalledTimes(5); // the hold stopped with the abort
+
+        timers.forEach(({ callback }) => callback());
+        expect(dom.document.querySelector('.journey-entry-transition')).toBeNull();
+    });
 });

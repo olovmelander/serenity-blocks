@@ -90,9 +90,9 @@ const CALL_SITES = {
     odysseyEagerWindowOff: optInBoolean('odysseyEagerWindowOff'),
     odysseyWarpPreinit: {
         file: ODYSSEY_MODE,
-        callSiteDefault: 'defer',
-        pattern: /get\('odysseyWarpPreinit'\);[\s\S]{0,400}?return 'defer';/,
-        idiom: "_resolveWarpPreinitMode() — absent/invalid → 'defer'",
+        callSiteDefault: 'off',
+        pattern: /get\('odysseyWarpPreinit'\);[\s\S]{0,600}?return 'off';/,
+        idiom: "_resolveWarpPreinitMode() — absent/invalid → 'off'",
     },
     odysseySharpen: optOutBoolean(
         'odysseySharpen',

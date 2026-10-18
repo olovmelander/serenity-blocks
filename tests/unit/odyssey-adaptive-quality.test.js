@@ -22,6 +22,7 @@ import {
     describe, it, expect, vi,
 } from 'vitest';
 import { OdysseyAdaptiveQuality } from '../../src/rendering/odyssey/composition/OdysseyAdaptiveQuality.js';
+import { evaluateDynamicResolutionAdjustment } from '../../src/utils/desktop-performance-policy.js';
 
 const SLOW = 30; // ms/frame → p95 30 > downThreshold ~19 → under pressure
 const FAST = 10; // ms/frame → p95 10 < upThreshold ~15 → headroom
@@ -341,5 +342,71 @@ describe('OdysseyAdaptiveQuality — resolution floor matches the consumer', () 
         fill(ctrl, SLOW, 30);
         ctrl.update(1000, ctx);
         expect(ctx.applyRenderScale).toHaveBeenCalledWith(0.5);
+    });
+});
+
+/**
+ * Audit 2026-10-18: frame times are display refresh gaps, so they never read below the panel's
+ * interval. With a target at or near the refresh rate (120 on the dev laptop's 131.6 Hz panel,
+ * 60 on a 60 Hz one) "p95 under 0.9x budget" could not happen, and every step down lasted the
+ * session: one chapter-build hitch and the map stayed soft until reload.
+ */
+describe('OdysseyAdaptiveQuality — headroom at the display cadence', () => {
+    /** One simulated second on a 131.6 Hz panel: gaps at the cadence with a little rAF jitter. */
+    function panelSecond(ctrl, hitchy) {
+        for (let i = 0; i < 132; i += 1) {
+            const jitter = (((i * 37) % 7) - 3) * 0.08; // deterministic, within ±0.24 ms
+            ctrl.recordFrame(hitchy && i % 8 === 0 ? 22 : 7.6 + jitter);
+        }
+    }
+
+    function run(ctrl, ctx, fromS, toS, hitchyAt) {
+        for (let s = fromS; s < toS; s += 1) {
+            panelSecond(ctrl, hitchyAt(ctrl.getRenderScale()));
+            ctrl.update(s * 1000, ctx);
+        }
+    }
+
+    function makePanelController() {
+        return new OdysseyAdaptiveQuality({
+            targetFrameRate: 120,
+            resolutionFloor: 0.65,
+            evaluateResolution: evaluateDynamicResolutionAdjustment,
+        });
+    }
+
+    it('climbs back once a 120 target holds on a 131.6 Hz panel', () => {
+        const ctrl = makePanelController();
+        const ctx = makeCtx();
+        run(ctrl, ctx, 1, 10, () => true); // a burst of chapter-build hitches
+        expect(ctrl.getRenderScale()).toBeLessThan(1);
+
+        run(ctrl, ctx, 10, 90, () => false); // then the panel's steady cadence
+        expect(ctrl.getRenderScale()).toBe(1);
+    });
+
+    it('backs off a recovery the scene cannot hold instead of trading pixels every 18 s', () => {
+        const ctrl = makePanelController();
+        const ctx = makeCtx();
+        // The scene holds 120 at 0.9 and below, and hitches above it.
+        run(ctrl, ctx, 1, 600, (scale) => scale > 0.9 + 1e-6);
+
+        const failedProbes = ctx.applyRenderScale.mock.calls.filter(([scale]) => scale > 0.9 + 1e-6);
+        // Without the back-off: ~20 failed probes in these ten minutes. With it they thin out
+        // (30, 60, 120, 240 s holds) but never stop, so a lighter scene is still found.
+        expect(failedProbes.length).toBeGreaterThanOrEqual(3);
+        expect(failedProbes.length).toBeLessThanOrEqual(6);
+        expect(ctrl.getRenderScale()).toBeGreaterThanOrEqual(0.85);
+    });
+
+    it('still reads steady slow frames as pressure, not as a held cadence', () => {
+        const ctrl = makePanelController();
+        const ctx = makeCtx();
+        for (let s = 1; s < 30; s += 1) {
+            for (let i = 0; i < 100; i += 1) ctrl.recordFrame(10); // a steady 100 fps against 120
+            ctrl.update(s * 1000, ctx);
+        }
+        expect(ctx.applyRenderScale.mock.calls.every(([scale]) => scale < 1)).toBe(true);
+        expect(ctrl.getRenderScale()).toBeLessThan(0.9);
     });
 });

@@ -168,9 +168,14 @@ const LOCK_PLACEMENT = Object.freeze({ up: 1.32, toward: 1.0, size: 0.5 });
 const LOCK_NEAR_FADE = Object.freeze({ start: 5, end: 14 });
 // Whole-orb near-lens fade (world units from the camera to the orb's seat).
 const NODE_NEAR_FADE = Object.freeze({ start: 4, end: 13 });
-// Rival and boss markers hang under the orb (the lock and stars live above it), so a chapter's
-// duel and its boss read on the path itself, not only in the panel.
-const MARKER_PLACEMENT = Object.freeze({ up: -1.38, toward: 1.0, size: 0.56 });
+// Rival and boss markers hang off the orb's lower side (the lock and stars live above it), so a
+// chapter's duel and its boss read on the path itself, not only in the panel. They sit square
+// to the path's on-screen direction, so a ribbon running down the frame never sits under them.
+const MARKER_PLACEMENT = Object.freeze({ out: 1.38, toward: 1.0, size: 0.56 });
+// A marker keeps its side of the path until that side climbs this far above the orb.
+const MARKER_SIDE_SWAP = 0.2;
+// A completed orb's stars still to earn: the same star, dimmed to an empty slot.
+const STAR_SLOT_UNEARNED = new THREE.Color(0.20, 0.19, 0.24);
 const STAR_PLACEMENT = Object.freeze([
     Object.freeze({ right: -0.6, up: 1.5, toward: 0.9 }),
     Object.freeze({ right: 0.0, up: 1.72, toward: 0.95 }),
@@ -180,7 +185,8 @@ const STAR_PLACEMENT = Object.freeze([
 /** The marker an orb wears on the path: a rival duel, a chapter boss, or none. */
 export function resolveOdysseyNodeMarker(levelConfig) {
     if (levelConfig?.mechanics?.versus) return 'rival';
-    if (levelConfig?.role === 'boss') return 'boss';
+    // One crown per chapter (campaign-order resolveChapterBossIds), not every role:'boss' tag.
+    if (levelConfig?.chapterBoss) return 'boss';
     return null;
 }
 
@@ -197,6 +203,7 @@ export class LevelNodeManager {
         this._groundClearance = 6;
         this._groundRange = [0, 1];
         this.selectedNode = null;
+        this.focusedLevelId = null;
         this.hoveredNode = null;
         this.time = 0;
         this.frameCount = 0;
@@ -277,6 +284,9 @@ export class LevelNodeManager {
         // Camera world matrix at the last indicator placement — lets the per-frame pass skip
         // its (cheap) re-upload when the board is fully settled (no camera movement at all).
         this._lastIndicatorCamMatrix = new THREE.Matrix4();
+        // Near-lens fade bookkeeping (_nearFadeStale).
+        this._lastUploadCamPos = new THREE.Vector3(NaN, NaN, NaN);
+        this._nearFadeLive = false;
         this._fallbackColor = new THREE.Color(0xffffff);
         this._scratchLockColor = new THREE.Color();
 
@@ -501,6 +511,7 @@ export class LevelNodeManager {
         this.nodes.forEach((node) => {
             const point = this._getPathPoint(node.pathPosition);
             this.cachedBasePositions.set(node.config.id, point.clone());
+            node.group.userData.markerTangent = null;
         });
     }
 
@@ -612,7 +623,7 @@ export class LevelNodeManager {
         // at its first render. Rendered before createNodes() placed the instances (any frame
         // during the async node build), the sphere is cached around the origin and every shell
         // is culled for the rest of the session. The orbs hug the camera path; culling bought
-        // nothing. (Raycasting computes its own sphere and is unaffected.)
+        // nothing. Raycasting reads the same cached sphere, so raycast() refreshes it first.
         this.glassInstancedMesh.frustumCulled = false;
 
         // Custom attributes
@@ -723,6 +734,11 @@ export class LevelNodeManager {
         // InstancedMesh gets frustum-culled once the camera leaves the path-start region, so every
         // later orb's star rating disappeared. Per-instance scale-0 still hides off-window stars.
         this.starInstancedMesh.frustumCulled = false;
+        // instanceColor before warm-up, like the lock's: a completed orb shows its unearned slots
+        // dimmed (STAR_SLOT_UNEARNED), so 1 star of 3 reads differently from 3 of 3 (audit
+        // 2026-10-18: a completed orb drew only the stars it had earned).
+        for (let i = 0; i < count * 3; i += 1) this.starInstancedMesh.setColorAt(i, this._fallbackColor);
+        this._starSlotState = new Int8Array(count * 3);
         this.scene.add(this.starInstancedMesh);
 
         // 4b. Rival and boss markers (Plane Mesh each) — the same treatment as the lock: in
@@ -1281,6 +1297,36 @@ export class LevelNodeManager {
     }
 
     /**
+     * The orb the camera is parked on in focus (exempt from the near-lens fade), or null.
+     * @param {number|null} levelId
+     */
+    setFocusedLevel(levelId) {
+        const id = levelId ?? null;
+        if (id === this.focusedLevelId) return;
+        this.focusedLevelId = id;
+        this._markUploadDirty();
+    }
+
+    /**
+     * The near-lens fade reads the CAMERA, not path progress, so the progress gate alone
+     * left it stale: an orb the camera flew through on the way to a focus kept its near-zero
+     * scale once the camera parked (L57, scale 0.024 of 1.5). True when the camera has moved
+     * since the last upload and some drawn orb is, or was, inside the fade band.
+     * @private
+     */
+    _nearFadeStale() {
+        const cam = this.camera.position;
+        if (cam.distanceToSquared(this._lastUploadCamPos) < 1e-6) return false;
+        if (this._nearFadeLive) return true;
+        for (const node of this.nodes.values()) {
+            if (!node.group.visible || node.config.id === this.focusedLevelId) continue;
+            const seat = this.cachedBasePositions.get(node.config.id) || node.group.position;
+            if (cam.distanceToSquared(seat) < NODE_NEAR_FADE.end * NODE_NEAR_FADE.end) return true;
+        }
+        return false;
+    }
+
+    /**
      * Set selected state for a node
      */
     setNodeSelected(levelId, selected) {
@@ -1346,6 +1392,7 @@ export class LevelNodeManager {
         node.group.position.copy(point);
         // Refresh cached base position
         this.cachedBasePositions.set(node.config.id, node.group.position.clone());
+        node.group.userData.markerTangent = null;
     }
 
     /**
@@ -1425,6 +1472,11 @@ export class LevelNodeManager {
     raycast(raycaster) {
         if (!this.glassInstancedMesh) return null;
 
+        // three caches an InstancedMesh's bounding sphere at its first raycast and tests every
+        // later ray against it. Orbs outside the shown window are parked far below the map
+        // and move in as the camera travels, so a sphere cached in chapter 1 missed every orb
+        // from chapter 5 on. Sixty instances: refreshing it per pointer move costs nothing.
+        this.glassInstancedMesh.computeBoundingSphere();
         const intersects = raycaster.intersectObject(this.glassInstancedMesh);
         if (intersects.length > 0) {
             const [{ instanceId }] = intersects;
@@ -1471,7 +1523,7 @@ export class LevelNodeManager {
         // runs this frame. When nothing changed we early-out and let the shaders animate.
         const progressMoved = !(Math.abs(this.cameraProgress - this._lastUploadProgress)
             <= UPDATE_PROGRESS_EPSILON); // NaN-safe: first frame forces a flush.
-        const needsUpload = this._uploadDirty || progressMoved;
+        const needsUpload = this._uploadDirty || progressMoved || this._nearFadeStale();
         if (!needsUpload) {
             // The heavy glass/glow/particle buffers are settled, but the camera can still
             // move without path progress changing (free-look / idle sway). Keep the cheap
@@ -1481,6 +1533,8 @@ export class LevelNodeManager {
         }
         this._uploadDirty = false;
         this._lastUploadProgress = this.cameraProgress;
+        this._lastUploadCamPos.copy(this.camera.position);
+        let nearFadeLive = false;
 
         const glassStateAttr = this.glassInstancedMesh.geometry.getAttribute('aState');
         const glowColorAttr = this.glowInstancedMesh.geometry.getAttribute('aColor');
@@ -1548,14 +1602,16 @@ export class LevelNodeManager {
             const quenchScale = THREE.MathUtils.lerp(1.0, CHAPTER_1_NODE_MIN_SCALE, chapterOneQuench);
             // Nothing comes to the lens unannounced: seated on the rail, an orb can pass within
             // a few units of the camera where the rail does (the 7->8 seam), so it shrinks away
-            // inside NODE_NEAR_FADE instead of filling the frame.
-            const nearScale = this.camera
+            // inside NODE_NEAR_FADE instead of filling the frame. Not the orb the camera is
+            // focused on: focus parks ~10 u away, inside the band, by design.
+            const nearScale = this.camera && levelId !== this.focusedLevelId
                 ? THREE.MathUtils.smoothstep(
                     this.camera.position.distanceTo(basePos || node.group.position),
                     NODE_NEAR_FADE.start,
                     NODE_NEAR_FADE.end,
                 )
                 : 1;
+            if (nearScale < 1) nearFadeLive = true;
             node.group.scale.setScalar(baseScale * hoverScale * quenchScale * nearScale);
             if (node.innerMesh) {
                 node.innerMesh.visible = chapterOneQuench < 0.92;
@@ -1639,6 +1695,7 @@ export class LevelNodeManager {
                 }
             }
         });
+        this._nearFadeLive = nearFadeLive;
 
         // QW11: this whole re-upload block is reached only when needsUpload was true
         // (camera moved / visibility / hover / select / state / layout changed). When the
@@ -1705,6 +1762,7 @@ export class LevelNodeManager {
         const camRight = this._scratchCamRight.setFromMatrixColumn(this.camera.matrixWorld, 0).normalize();
         const camUp = this._scratchCamUp.setFromMatrixColumn(this.camera.matrixWorld, 1).normalize();
         const camPos = this._scratchCamPos.setFromMatrixColumn(this.camera.matrixWorld, 3);
+        let starColorsChanged = false;
 
         this.nodes.forEach((node) => {
             // Invisible nodes are scaled to 0 by the gated update() loop; nothing to place.
@@ -1735,7 +1793,15 @@ export class LevelNodeManager {
             const isCompleted = node.group.userData.completed;
             const stars = node.group.userData.stars || 0;
             for (let s = 0; s < 3; s += 1) {
-                if (isCompleted && s < stars) {
+                if (isCompleted) {
+                    // 1 = earned, 2 = still to earn; recoloured only when a slot changes.
+                    const slotState = s < stars ? 1 : 2;
+                    const slot = idx * 3 + s;
+                    if (this._starSlotState && this._starSlotState[slot] !== slotState) {
+                        this._starSlotState[slot] = slotState;
+                        this.starInstancedMesh.setColorAt(slot, slotState === 1 ? this._fallbackColor : STAR_SLOT_UNEARNED);
+                        starColorsChanged = true;
+                    }
                     const place = STAR_PLACEMENT[s];
                     matrix.copy(this.camera.matrixWorld);
                     matrix.setPosition(this._scratchIndicatorPos.copy(pos)
@@ -1750,8 +1816,9 @@ export class LevelNodeManager {
                 }
             }
 
-            // Rival or boss marker — one billboard hung under the orb, facing the camera.
+            // Rival or boss marker — one billboard off the path's lower side, facing the camera.
             const { marker } = node.group.userData;
+            const markerSide = marker ? this._markerScreenSide(node, camRight, camUp) : null;
             [['rival', this.rivalMarkerMesh], ['boss', this.bossMarkerMesh]].forEach(([kind, mesh]) => {
                 if (!mesh) return;
                 if (marker !== kind) {
@@ -1760,7 +1827,8 @@ export class LevelNodeManager {
                 }
                 matrix.copy(this.camera.matrixWorld);
                 matrix.setPosition(this._scratchIndicatorPos.copy(pos)
-                    .addScaledVector(camUp, MARKER_PLACEMENT.up * scale)
+                    .addScaledVector(camRight, markerSide.x * MARKER_PLACEMENT.out * scale)
+                    .addScaledVector(camUp, markerSide.y * MARKER_PLACEMENT.out * scale)
                     .addScaledVector(toCam, MARKER_PLACEMENT.toward * scale));
                 const markerScale = scale * MARKER_PLACEMENT.size
                     * THREE.MathUtils.smoothstep(camPos.distanceTo(pos), LOCK_NEAR_FADE.start, LOCK_NEAR_FADE.end);
@@ -1771,13 +1839,44 @@ export class LevelNodeManager {
 
         this.lockInstancedMesh.instanceMatrix.needsUpdate = true;
         this.starInstancedMesh.instanceMatrix.needsUpdate = true;
+        if (starColorsChanged && this.starInstancedMesh.instanceColor) {
+            this.starInstancedMesh.instanceColor.needsUpdate = true;
+        }
         if (this.rivalMarkerMesh) this.rivalMarkerMesh.instanceMatrix.needsUpdate = true;
         if (this.bossMarkerMesh) this.bossMarkerMesh.instanceMatrix.needsUpdate = true;
     }
 
     /**
-     * Dispose resources
+     * The screen direction a rival/boss marker hangs in: square to the path's on-screen
+     * direction at the orb, on its lower side, kept until that side climbs clearly above the
+     * orb (so a swaying camera cannot flick it from one side of the ribbon to the other).
+     * @returns {{x: number, y: number}} camera-right / camera-up components, unit length
      */
+    _markerScreenSide(node, camRight, camUp) {
+        const data = node.group.userData;
+        if (!data.markerTangent) {
+            const ahead = this._getPathPoint(node.pathPosition + 0.004, new THREE.Vector3());
+            const behind = this._getPathPoint(node.pathPosition - 0.004, new THREE.Vector3());
+            data.markerTangent = ahead.sub(behind).normalize();
+        }
+        const side = data.markerSideState || (data.markerSideState = { sign: 1, x: 0, y: -1 });
+        const tx = data.markerTangent.dot(camRight);
+        const ty = data.markerTangent.dot(camUp);
+        const length = Math.hypot(tx, ty);
+        if (length < 1e-3) {
+            // The path runs straight at the lens: hang the marker under the orb.
+            side.x = 0;
+            side.y = -1;
+            return side;
+        }
+        const perpX = -ty / length;
+        const perpY = tx / length;
+        if (perpY * side.sign > MARKER_SIDE_SWAP) side.sign = -side.sign;
+        side.x = perpX * side.sign;
+        side.y = perpY * side.sign;
+        return side;
+    }
+
     /**
      * Hide or show everything this manager draws, without disposing it.
      *

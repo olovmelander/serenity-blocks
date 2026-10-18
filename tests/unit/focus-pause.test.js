@@ -28,6 +28,8 @@ describe('when losing focus pauses the run', () => {
         expect(shouldPauseOnFocusLoss({ ...playing, isGameOver: true })).toBe(false);
         expect(shouldPauseOnFocusLoss({ ...playing, modalOpen: true })).toBe(false);
         expect(shouldPauseOnFocusLoss({ ...playing, hubOpen: true })).toBe(false);
+        // An Odyssey failure or completion sheet is its own overlay, not a managed modal.
+        expect(shouldPauseOnFocusLoss({ ...playing, modeId: 'odyssey', outcomeOpen: true })).toBe(false);
     });
 
     it('is on unless the player turned it off', () => {
@@ -104,6 +106,12 @@ describe('focus pause wiring', () => {
         const results = harness({ visibleModals: ['gameOver'] });
         results.win.dispatchEvent(new Event('blur'));
         expect(results.app.openSettingsMenu).not.toHaveBeenCalled();
+
+        // An Odyssey orb that has ended (its failure or completion sheet is up).
+        const outcome = harness({ modeId: 'odyssey' });
+        outcome.mode.levelCompleting = true;
+        outcome.win.dispatchEvent(new Event('blur'));
+        expect(outcome.app.openSettingsMenu).not.toHaveBeenCalled();
     });
 
     it('stops listening when the app is cleaned up', () => {

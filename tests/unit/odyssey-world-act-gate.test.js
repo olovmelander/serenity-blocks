@@ -6,11 +6,14 @@ import { getActiveOdysseyChapterPositions } from '../../src/rendering/odyssey/pa
 import {
     ONE_WORLD_ACT_MARGIN,
     ONE_WORLD_DEPARTURE_LEAD,
+    ONE_WORLD_RECEDE_END_SCALE,
     ONE_WORLD_THIN_LEAD,
     ONE_WORLD_THIN_MAX,
     isWorldVisibleAtProgress,
     worldAtmosphericThin,
     worldDepartureFade,
+    worldDepartureRecede,
+    worldRecedeScale,
 } from '../../src/rendering/odyssey/world/odyssey-world-act-gate.js';
 import {
     DEFAULT_ODYSSEY_TRANSITION,
@@ -162,6 +165,45 @@ describe('the world RECEDES before the gate fires (Wave 1B)', () => {
         const altFade = (p) => worldDepartureFade(p, alt.skyStart, alt.actEnd);
         expect(altFade(alt.actEnd + ONE_WORLD_ACT_MARGIN)).toBeCloseTo(1, 6);
         expect(altFade(alt.skyStart)).toBe(0);
+    });
+});
+
+describe('the faded planet shrinks away beneath the eye before the gate (audit 2026-10-18)', () => {
+    const cp = getActiveOdysseyChapterPositions();
+    const actEnd = cp[5];
+    const gateFires = actEnd + ONE_WORLD_ACT_MARGIN;
+    const scaleAt = (p) => worldRecedeScale(worldDepartureRecede(p, actEnd));
+
+    it('leaves the world full size until its colour fade has finished', () => {
+        expect(scaleAt(cp[1])).toBe(1);
+        expect(scaleAt(cp[4])).toBe(1);
+        expect(scaleAt(actEnd)).toBe(1);
+        expect(worldDepartureFade(actEnd, cp[4], actEnd)).toBeCloseTo(1, 6);
+    });
+
+    it('is a speck by the time the gate fires, and shrinks without steps on the way', () => {
+        expect(scaleAt(gateFires)).toBeCloseTo(ONE_WORLD_RECEDE_END_SCALE, 9);
+        let prev = 1;
+        for (let i = 0; i <= 40; i += 1) {
+            const s = scaleAt(actEnd + (ONE_WORLD_ACT_MARGIN * (i / 40)));
+            expect(s).toBeLessThanOrEqual(prev);
+            // The edge's angle goes as ~1/scale: no single 1/40 of the margin moves it by
+            // more than a fifth of the whole sweep.
+            expect((1 / s) - (1 / prev)).toBeLessThan((1 / ONE_WORLD_RECEDE_END_SCALE) * 0.2);
+            prev = s;
+        }
+    });
+
+    it('degrades to full size on an unreadable layout', () => {
+        expect(worldDepartureRecede(NaN, actEnd)).toBe(0);
+        expect(worldDepartureRecede(0.8, undefined)).toBe(0);
+        expect(worldRecedeScale(NaN)).toBe(1);
+    });
+
+    it('is driven by the board every frame, beside the colour fade', () => {
+        expect(BOARD).toMatch(
+            /setDepartureRecede\?\.\(\s*worldRecedeScale\(worldDepartureRecede\(cameraProgress, actEnd\)\)/,
+        );
     });
 });
 

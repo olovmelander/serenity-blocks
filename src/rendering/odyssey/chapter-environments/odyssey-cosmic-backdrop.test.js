@@ -7,6 +7,7 @@ import {
 import {
     COSMIC_BACKDROP_DEFAULTS,
     bakeCosmicBackdropTexture,
+    bakeCosmicBackdropTextureSliced,
 } from './odyssey-cosmic-backdrop.js';
 import { createCosmicExpanseEnvironment } from './cosmic-expanse.js';
 
@@ -93,11 +94,33 @@ describe('ch6 baked cosmic backdrop (Space overhaul Wave 2)', () => {
         expect(bakeMs).toBeLessThan(2000);
     });
 
-    it('ships the BAKED dome by default and keeps the FBM dome as the escape hatch', () => {
+    it('bakes in slices between frames, byte-identical to the one-shot bake, then from the cache', async () => {
+        const options = { width: 96, height: 48, seed: 3.3 };
+        const oneShot = bakeCosmicBackdropTexture(options);
+        const sliced = bakeCosmicBackdropTextureSliced(options, { sliceMs: 0.5 });
+        expect(sliced.cached).toBe(false);
+        // Until the field lands, the dome wears the void's floor — never black, never stale.
+        expect(sliced.data[3]).toBe(255);
+        expect(Array.from(sliced.data)).not.toEqual(Array.from(oneShot.data));
+        expect(await sliced.ready).toBe(sliced.texture);
+        expect(Array.from(sliced.data)).toEqual(Array.from(oneShot.data));
+        // The next dome with the same sky is instant.
+        const again = bakeCosmicBackdropTextureSliced(options);
+        expect(again.cached).toBe(true);
+        expect(Array.from(again.data)).toEqual(Array.from(oneShot.data));
+    });
+
+    it('stops slicing when the dome is disposed before the sky lands', async () => {
+        const sliced = bakeCosmicBackdropTextureSliced({ width: 64, height: 32, seed: 8.8 }, { sliceMs: 0.01 });
+        sliced.texture.dispose();
+        expect(await sliced.ready).toBeNull();
+    });
+
+    it('ships the BAKED dome by default and keeps the FBM dome as the escape hatch', async () => {
         vi.stubGlobal('window', { location: { search: '' } });
         const baked = createCosmicExpanseEnvironment({ particleCount: 200 });
         expect(baked.userData.voidSky.name).toBe('void-sky-baked');
-        expect(baked.userData.voidSky.userData.bakeMs).toBeGreaterThan(0);
+        expect(await baked.userData.voidSky.userData.bakeReady).toBeTruthy();
         vi.unstubAllGlobals();
 
         vi.stubGlobal('window', { location: { search: '?odysseyCh6ProceduralDome=1' } });
@@ -109,7 +132,7 @@ describe('ch6 baked cosmic backdrop (Space overhaul Wave 2)', () => {
         const none = createCosmicExpanseEnvironment({ particleCount: 200 });
         // NoDome removes WHICHEVER dome — the bisect lever outranks the hatch.
         expect(none.userData.voidSky).toBeUndefined();
-    });
+    }, 30000); // the bake is sliced over timer yields, which a loaded test run stretches
 
     it('gpu-split can price the retired dome against the shipped bake', () => {
         expect(SPLIT).toMatch(/id:\s*'ch6-procedural-dome',\s*flags:\s*\{\s*odysseyCh6ProceduralDome:\s*'1'/);

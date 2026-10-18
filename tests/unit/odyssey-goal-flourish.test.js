@@ -114,6 +114,21 @@ describe('Odyssey goal flourish', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it('sends nothing more to the theme once the attempt is left mid-reel', async () => {
+        // Audit 2026-10-18: leaving within the reel still fired its showpiece at the next theme.
+        const done = vi.fn();
+        playOdysseyGoalFlourish(mode(), session()).then(done);
+        await vi.advanceTimersByTimeAsync(100);
+        const combosSoFar = combos.length;
+        clearOdysseyGoalFlourish(); // the attempt retires: Hub, exit, back to the map
+        await vi.advanceTimersByTimeAsync(GOAL_FLOURISH_MS + 1000);
+        expect(combos).toHaveLength(combosSoFar);
+        expect(perfectClears).toEqual([]);
+        expect(done).toHaveBeenCalledExactlyOnceWith(false);
+        expect(vi.getTimerCount()).toBe(0);
+        expect(border.classList.contains('odyssey-goal-flare')).toBe(false);
+    });
+
     it('keeps reduced motion short and still: one perfect clear, no reel', async () => {
         const done = vi.fn();
         playOdysseyGoalFlourish(mode(), session(), { reducedMotion: true }).then(done);

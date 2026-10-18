@@ -66,6 +66,13 @@ function projectPointToNdc(point, camera) {
 
 describe('OdysseyCameraController path travel', () => {
     let now = 0;
+    // Frames, not jumps: a move advances at most 50 ms a frame (audit 2026-10-18).
+    const run = (controller, until) => {
+        while (now < until) {
+            now = Math.min(until, now + 16);
+            controller.update(1 / 60);
+        }
+    };
 
     beforeEach(() => {
         now = 0;
@@ -83,17 +90,31 @@ describe('OdysseyCameraController path travel', () => {
 
         const travelPromise = controller.travelToPosition(0.25, 1000);
 
-        now = 250;
-        controller.update(1 / 60);
+        run(controller, 250);
         expect(controller.getCurrentPosition()).toBeGreaterThan(0.02);
         expect(controller.getCurrentPosition()).toBeLessThan(0.25);
 
-        now = 1000;
-        controller.update(1 / 60);
+        run(controller, 1000);
 
         await expect(travelPromise).resolves.toBe(true);
         expect(controller.getCurrentPosition()).toBeCloseTo(0.25, 4);
         expect(controller.getTravelState().crossedBoundaryIds).toEqual(['1-2', '2-3', '3-4']);
+    });
+
+    it('rides out a main-thread stall instead of jumping the glide', async () => {
+        // Audit 2026-10-18: a 400 ms stall early in a 1500 ms glide moved it 8.8% in one frame.
+        const controller = createController();
+        const travel = controller.travelToPosition(0.25, 1500);
+        run(controller, 300);
+        const before = controller.getTravelState().progress;
+        now += 400; // the stall
+        controller.update(1 / 60);
+        const afterStall = controller.getTravelState().progress;
+        run(controller, now + 16);
+        const steady = controller.getTravelState().progress - afterStall;
+        expect(afterStall - before).toBeLessThan(steady * 4);
+        run(controller, now + 2000);
+        await expect(travel).resolves.toBe(true);
     });
 
     it('re-arms boundary tracking for reverse travel', async () => {
@@ -103,13 +124,11 @@ describe('OdysseyCameraController path travel', () => {
 
         const reverseTravel = controller.travelToPosition(0.02, 1000);
 
-        now = 500;
-        controller.update(1 / 60);
+        run(controller, 500);
         expect(controller.getCurrentPosition()).toBeLessThan(0.27);
         expect(controller.getCurrentPosition()).toBeGreaterThan(0.02);
 
-        now = 1000;
-        controller.update(1 / 60);
+        run(controller, 1000);
 
         await expect(reverseTravel).resolves.toBe(true);
         expect(controller.getTravelState().crossedBoundaryIds).toEqual(['3-4', '2-3', '1-2']);
@@ -119,8 +138,7 @@ describe('OdysseyCameraController path travel', () => {
         const controller = createController();
         let paused = false;
         const result = controller.travelToPosition(0.25, 1000, { isPaused: () => paused });
-        now = 250;
-        controller.update(1 / 60);
+        run(controller, 250);
         const heldPosition = controller.getCurrentPosition();
         paused = true;
         now = 500;
@@ -132,12 +150,10 @@ describe('OdysseyCameraController path travel', () => {
         now = 10000;
         controller.update(1 / 60);
         expect(controller.getCurrentPosition()).toBe(heldPosition);
-        now = 10500;
-        controller.update(1 / 60);
+        run(controller, 10500);
         expect(controller.getCurrentPosition()).toBeGreaterThan(heldPosition);
         expect(controller.getCurrentPosition()).toBeLessThan(0.25);
-        now = 10750;
-        controller.update(1 / 60);
+        run(controller, 10750);
         await expect(result).resolves.toBe(true);
     });
 
@@ -152,8 +168,7 @@ describe('OdysseyCameraController path travel', () => {
         now = 6000;
         controller.update(1 / 60);
         expect(controller.getCurrentPosition()).toBe(0.02);
-        now = 7000;
-        controller.update(1 / 60);
+        run(controller, 7000);
         await expect(result).resolves.toBe(true);
     });
 
@@ -161,8 +176,7 @@ describe('OdysseyCameraController path travel', () => {
         const controller = createController();
         let current = true;
         const result = controller.travelToPosition(0.25, 1000, { isCurrent: () => current });
-        now = 250;
-        controller.update(1 / 60);
+        run(controller, 250);
         const heldPosition = controller.getCurrentPosition();
         current = false;
         now = 1500;
@@ -218,14 +232,12 @@ describe('OdysseyCameraController path travel', () => {
 
         expect(started).toBe(true);
 
-        now = 500;
-        controller.update(1 / 60);
+        run(controller, 500);
         expect(controller.camera.fov).toBeLessThan(60);
         expect(controller.camera.position.distanceTo(targetPosition)).toBeLessThan(startDistance);
         expect(controller.camera.position.distanceTo(targetPosition)).toBeGreaterThan(2.5);
 
-        now = 1000;
-        controller.update(1 / 60);
+        run(controller, 1000);
         expect(controller.camera.fov).toBeCloseTo(44, 1);
         expect(controller.camera.position.distanceTo(targetPosition)).toBeGreaterThan(2.5);
         expect(controller.isAnimating).toBe(false);

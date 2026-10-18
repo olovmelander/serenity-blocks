@@ -4280,7 +4280,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             difficulty: 5,
             description: 'Still water rewards smooth rhythm. Chain clean clears together and let the score climb naturally.',
-            tip: 'Use consecutive efficient clears to keep momentum alive. This is a flow score level, not a survival test.',
+            tip: 'Use consecutive efficient clears to keep momentum alive. This is a flow score orb, not a survival test.',
         },
     },
     10: {
@@ -4609,7 +4609,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             difficulty: 6,
             description: 'A ribbon of aurora becomes your path through the upper atmosphere. Precision matters more than aggression.',
-            tip: 'This is a flow score level. Take clean doubles and triples until a stronger scoring window opens naturally.',
+            tip: 'This is a flow score orb. Take clean doubles and triples until a stronger scoring window opens naturally.',
         },
     },
     31: {
@@ -4708,7 +4708,7 @@ const LEVEL_PHASE2_OVERRIDES = Object.freeze({
         metadata: {
             description: 'Surging nebula currents bend around deep gravity wells. Efficiency matters more than '
                 + 'perfection once the speed spikes.',
-            tip: 'Use Quads to compress the workload. The fastest path through this level is almost always the cleanest one.',
+            tip: 'Use Quads to compress the workload. The fastest path through this orb is almost always the cleanest one.',
         },
     },
     47: {

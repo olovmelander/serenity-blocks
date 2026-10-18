@@ -146,9 +146,9 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
     toggle('odysseyEagerWindowOff', 'Disables the initial chapter neighborhood limit so startup loads all chapters.'),
     parameter(
         'odysseyWarpPreinit',
-        'Chooses when the portal transition renderer is prepared.',
+        'Chooses when the portal transition renderer is prepared (nothing plays it, so off by default).',
         'immediate, defer or off (case-insensitive)',
-        'defer',
+        'off',
         'immediate',
         {
             sources: ['src/core/game-modes/OdysseyMode.js'],

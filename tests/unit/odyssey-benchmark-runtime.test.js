@@ -371,7 +371,8 @@ describe('Odyssey benchmark real gameplay runtime', () => {
     it.each([5, 10, 18, 26, 34, 48, 56, 60])('preserves real opponent knowledge and three player previews through a round reset on orb %i', async (levelId) => {
         const originalPrepare = OdysseyBotMatch.prototype.prepareBot;
         const originalUpdate = OdysseyBotMatch.prototype.update;
-        const originalOpponentPlan = PuzzleBotController.prototype.plan;
+        // The duel bot plans through the step generator, sliced over frames (planUnitsPerMs).
+        const originalOpponentPlanSteps = PuzzleBotController.prototype.planSteps;
         const originalHumanPlan = BenchmarkBot.prototype.plan;
         const opponentRounds = new Set();
         const humanRounds = new Set();
@@ -382,14 +383,14 @@ describe('Odyssey benchmark real gameplay runtime', () => {
             expect(this.bot.plan).toBe(PuzzleBotController.prototype.plan);
             return originalPrepare.apply(this, args);
         });
-        vi.spyOn(PuzzleBotController.prototype, 'plan').mockImplementation(function plan(...args) {
+        vi.spyOn(PuzzleBotController.prototype, 'planSteps').mockImplementation(function* planSteps(...args) {
             const actualState = match.players[1];
             const actualBag = actualState.nextPieces;
             expect(this.playerState).toBe(actualState);
             expect(this.playerState.nextPieces).toBe(actualBag);
             expect(actualBag.length).toBeGreaterThan(3);
             opponentRounds.add(match.round);
-            const result = originalOpponentPlan.apply(this, args);
+            const result = yield* originalOpponentPlanSteps.apply(this, args);
             expect(this.playerState).toBe(actualState);
             expect(this.playerState.nextPieces).toBe(actualBag);
             return result;

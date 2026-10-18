@@ -5,7 +5,8 @@
  *     very same node object as before the feature — full-res frames stay byte-identical);
  *   - amount > 0 binds sharpen(rtt(variant)) and flags needsUpdate (edge only);
  *   - amount changes within (0,1] are a uniform write, never a rebind;
- *   - one wrapper slot: a base-variant change while sharpened swaps it; dispose() frees it.
+ *   - two wrapper slots, least recently used out: a seam's lens flip reuses both; dispose()
+ *     frees them.
  */
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three/webgpu';
@@ -66,8 +67,17 @@ describe('OdysseyTslPipeline sharpen gate', () => {
         expect(wrapped2.isSharpenNode).toBe(true);
         expect(wrapped2.textureNode.node.colorNode).toBe(p._outputVariants.get('1|1'));
         expect(p._activeVariantKey).toBe('1|1');
+        // ...and back keeps the first wrapper: a seam flips the lens on and off, and one slot
+        // rebuilt the wrapper on every flip while DRS was below full (audit 2026-10-18)
+        p._selectVariant(false, true);
+        expect(p.postProcessing.outputNode).toBe(wrapped);
+        p._selectVariant(true, true);
+        expect(p.postProcessing.outputNode).toBe(wrapped2);
+        // a third base variant evicts the least recently used wrapper (memory stays at two)
+        p._selectVariant(true, false);
+        expect(p._sharpenSlots.map((slot) => slot.key)).toEqual(['1|1', '1|0']);
         p.dispose();
-        expect(p._sharpenSlot).toBe(null);
+        expect(p._sharpenSlots).toEqual([]);
     });
 
     it('opt-out keeps the plain variant regardless of scale', () => {
@@ -82,6 +92,31 @@ describe('OdysseyTslPipeline sharpen gate', () => {
         const p = make({ sharpenMaxAmount: 0.6 });
         p.setRenderScale(0.65);
         expect(p.getPerfState().sharpenAmount).toBeCloseTo(0.6, 5);
+    });
+});
+
+describe('OdysseyTslPipeline adaptive bloom gate (audit 2026-10-18)', () => {
+    it('fades the glow out before detaching bloom, and back in after', () => {
+        const p = make();
+        const state = { activeChapter: 3, post: { bloom: 1 } };
+        p.update(1 / 60, state);
+        const full = p.bloomNode.strength.value;
+        expect(full).toBeGreaterThan(0);
+        expect(p._activeVariantKey).toBe('0|1');
+
+        p.setBloomEnabled(false);
+        p.update(0.2, state);
+        expect(p._activeVariantKey).toBe('0|1'); // still attached, glow on its way out
+        expect(p.bloomNode.strength.value).toBeGreaterThan(0);
+        expect(p.bloomNode.strength.value).toBeLessThan(full);
+        for (let i = 0; i < 4; i += 1) p.update(0.2, state);
+        expect(p.bloomNode.strength.value).toBe(0);
+        expect(p._activeVariantKey).toBe('0|0'); // detached once dark: its passes stop
+
+        p.setBloomEnabled(true);
+        p.update(0.2, state);
+        expect(p._activeVariantKey).toBe('0|1');
+        expect(p.bloomNode.strength.value).toBeLessThan(full * 0.5);
     });
 });
 

@@ -117,7 +117,14 @@ export function getOdysseyRetryDebrief(level, metrics, reason) {
 }
 
 /** One star tier's conditions as the HUD, map panel and results all phrase them. */
-export function formatOdysseyStarCondition(condition, starIndex = 0) {
+/**
+ * A star's requirement as the panel, the star notes and the HUD show it.
+ * @param {object} condition the star's condition
+ * @param {number} [starIndex]
+ * @param {Array<object>} [bonuses] the orb's bonus objectives, so a star that asks for a bonus
+ *   names it instead of "Get bonus" (audit 2026-10-18)
+ */
+export function formatOdysseyStarCondition(condition, starIndex = 0, bonuses = []) {
     const parts = [];
     let hasChainRequirement = false;
     for (const [key, value] of Object.entries(condition || {})) {
@@ -145,7 +152,7 @@ export function formatOdysseyStarCondition(condition, starIndex = 0) {
             }
             break;
         case 'bonuses':
-            parts.push(value === 1 ? 'Get bonus' : `${value} bonuses`);
+            parts.push(formatOdysseyStarBonuses(value, bonuses));
             break;
         case 'frags':
             parts.push(starIndex === 0 ? 'Win the match' : `Win ${value} knockouts`);
@@ -159,6 +166,14 @@ export function formatOdysseyStarCondition(condition, starIndex = 0) {
     }
     if (parts.length === 0 && starIndex === 0) parts.push('Clear the orb');
     return parts.join(' + ') || '...';
+}
+
+function formatOdysseyStarBonuses(count, bonuses) {
+    const names = (Array.isArray(bonuses) ? bonuses : []).map(formatOdysseyBonusObjective).filter(Boolean);
+    if (names.length === 0 || count > names.length) return count === 1 ? 'Get bonus' : `${count} bonuses`;
+    if (names.length === 1) return names[0];
+    if (count === names.length) return names.join(' and ');
+    return `${count === 1 ? 'One' : count} of: ${names.join(', ')}`;
 }
 
 function formatOdysseyUnderTime(seconds) {
@@ -261,13 +276,17 @@ export function describeOdysseyStarOutcome(level, results = {}) {
             return [{
                 key,
                 value,
-                label: formatOdysseyStarCondition({ [key]: value }, 1),
+                label: formatOdysseyStarCondition({ [key]: value }, 1, level?.victory?.bonuses),
                 met: odysseyStarPartMet(key, value, metrics),
                 actual: formatOdysseyStarActual(key, metrics),
             }];
         });
         return {
-            tier, index, earned: index < stars, label: formatOdysseyStarCondition(condition, index), parts,
+            tier,
+            index,
+            earned: index < stars,
+            label: formatOdysseyStarCondition(condition, index, level?.victory?.bonuses),
+            parts,
         };
     }).filter(Boolean);
     const next = tiers.find((entry) => !entry.earned) || null;

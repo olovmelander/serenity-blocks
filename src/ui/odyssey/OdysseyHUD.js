@@ -330,6 +330,7 @@ export class OdysseyHUD {
     /** Configure a rival duel without owning any gameplay rules or bot simulation. */
     setDuel({ targetFrags = ODYSSEY_DUEL_KNOCKOUTS, botName = 'Rival', difficulty = 1 } = {}) {
         this.duel = { targetFrags: Math.max(1, Number(targetFrags) || ODYSSEY_DUEL_KNOCKOUTS), botName, difficulty };
+        this._duelShown = null; // a new duel writes its whole panel on the first update
         this.container.classList.add('is-duel');
         this.objectiveDisplay.textContent = formatOdysseyDuelGoal(botName, this.duel.targetFrags);
         this.guideText.textContent = `Clear lines to send attacks. Topping out ${botName} with an attack scores a knockout. `
@@ -412,6 +413,30 @@ export class OdysseyHUD {
         paused = this.isPaused, intermission = false, botGrid, botNextPieces,
     } = {}) {
         if (!this.duel) return;
+        // Called every frame: only the rival's board redraws each time. The panel's text, aria,
+        // queue, danger and the metrics below refresh when a value changes, and the grid-only
+        // parts (danger, the bag's order) every eighth frame (audit 2026-10-18).
+        const shown = this._duelShown || (this._duelShown = { frame: 0 });
+        shown.frame += 1;
+        const changed = shown.playerFrags !== playerFrags || shown.botFrags !== botFrags
+            || shown.deaths !== deaths || shown.round !== round || shown.paused !== paused
+            || shown.intermission !== intermission || shown.playerPendingGarbage !== playerPendingGarbage
+            || shown.botPendingGarbage !== botPendingGarbage || shown.nextHead !== botNextPieces?.[0];
+        if (!changed && shown.frame % 8 !== 0) {
+            this.opponentBoard?.update();
+            return;
+        }
+        Object.assign(shown, {
+            playerFrags,
+            botFrags,
+            deaths,
+            round,
+            paused,
+            intermission,
+            playerPendingGarbage,
+            botPendingGarbage,
+            nextHead: botNextPieces?.[0],
+        });
         setText(this.playerFragsDisplay, playerFrags);
         setText(this.botFragsDisplay, botFrags);
         let roundText = `Round ${round}`;
@@ -530,7 +555,7 @@ export class OdysseyHUD {
     }
 
     _formatStarCondition(condition, starIndex) {
-        return formatOdysseyStarCondition(condition, starIndex);
+        return formatOdysseyStarCondition(condition, starIndex, this.levelConfig?.victory?.bonuses);
     }
 
     _updateObjectiveDisplay() {

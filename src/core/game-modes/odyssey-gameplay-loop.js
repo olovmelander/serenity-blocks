@@ -90,11 +90,14 @@ export function startOdysseyGameplayLoop(mode, session, { renderStats = () => {}
             session.duel.update(time, delta, mode._getPhysicsCallbacks(session), playDropCallback);
             mode._checkVictoryConditions(session);
         };
+        // On the display's clock when the cap allows it, as solo orbs run (audit 2026-10-18): the
+        // timer-driven logic gave each shown frame 0, 1 or 2 updates at a 60 cap on a 120-165 Hz
+        // panel, which read as judder. Above the display's rate it stays on its timer.
         frameRateController.startHybridLoop(logicUpdate, () => {
             drawCallback();
             statsCallback();
             mode.odysseyHUD?.updateDuel(session.duel.getSnapshot());
-        });
+        }, { displaySynced: frameRateController.needsHybridMode?.() === false });
     } else if (usesFixedLoop) {
         mode.usingHybridLoop = true;
         console.log('[Odyssey] Using canonical 60 Hz simulation clock');

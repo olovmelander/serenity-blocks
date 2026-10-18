@@ -209,6 +209,27 @@ describe('ChapterEnvironmentManager late-game coverage', () => {
         manager.dispose();
     });
 
+    it('ends the chapter 5 carry before chapter 7 arrives (the fallback path)', () => {
+        // Audit 2026-10-18: carried to 0.8534 while chapter 7 appeared at 0.8487 — three lit
+        // chapters at once overran the light pool's adjacent-pair slots.
+        const scene = new THREE.Scene();
+        const chapterPositions = getActiveOdysseyChapterPositions();
+        const manager = new ChapterEnvironmentManager(scene, null, { chapterPositions });
+        [5, 6, 7].forEach((id) => {
+            const group = new THREE.Group();
+            group.userData.chapterId = id;
+            scene.add(group);
+            manager.environments.set(id, { group });
+        });
+        for (let p = chapterPositions[5] + 0.01; p < chapterPositions[6]; p += 0.0005) {
+            manager.updateVisibility(p, { mode: 'progress' });
+            const ch5 = manager.environments.get(5).group.userData.chapterOpacity;
+            const ch7 = manager.environments.get(7).group.userData.chapterOpacity;
+            expect(ch5 > 0 && ch7 > 0, `p=${p.toFixed(4)}: ch5 ${ch5}, ch7 ${ch7}`).toBe(false);
+        }
+        manager.dispose();
+    });
+
     it('uses injected chapter positions when resolving blend state', () => {
         const scene = new THREE.Scene();
         const chapterPositions = [0, 0.12, 0.24, 0.36, 0.5, 0.64, 0.78, 0.9, 1];
