@@ -244,14 +244,6 @@
     "placeholderSource": "blood-moon.mp3"
   },
   {
-    "name": "Moonlit Forest",
-    "file": "moonlit-forest.mp3",
-    "path": "./assets/music/moonlit-forest.mp3",
-    "themeId": "moonlit-forest",
-    "trackKey": "MoonlitForest",
-    "placeholder": false
-  },
-  {
     "name": "Moonlit Greenhouse",
     "file": "moonlit-greenhouse.mp3",
     "path": "./assets/music/moonlit-greenhouse.mp3",
@@ -402,6 +394,14 @@
     "path": "./assets/music/solar-eclipse-placeholder-song.mp3",
     "placeholder": true,
     "placeholderSource": "blood-moon.mp3"
+  },
+  {
+    "themeId": "spring",
+    "trackKey": "Spring",
+    "name": "Spring",
+    "file": "spring.mp3",
+    "path": "./assets/music/spring.mp3",
+    "placeholder": false
   },
   {
     "name": "Starlight",

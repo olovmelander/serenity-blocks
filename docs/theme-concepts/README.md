@@ -102,7 +102,7 @@ each unbuilt concept overrides section 1; section 5 already folds section 3 in.
 | WebGPU / WebGL2 guards | §4.14 | §5.9 | §5.11 | §5.9 | §5.9 | §5.9 |
 | Tests and verification commands | §7.1 (tests), §8 (sweep) | §5.10, §5.11 | §5.12 | §5.10, §5.11 | §5.10, §5.11 | §5.10, §5.11 |
 | Hero prototype on the CPU first | §10 (done: ribbon splats; §10.8 re-runs it) | §5.12 | §5.6 (Stage A0) | §5.12 | §5.12 | §5.12 |
-| Compare against (fleet neighbours) | forest, fall, moonlit-forest, golden-forest, stillwater, chiral-gold, ice-temple, nimbus-veil, rainbow-terraces (§13.3, §11.1) | halcyon-apex, geode, cinder-drift, pyrestorm, luminous-tides, parhelion, rainbark | shifting-sands, himalayan-peak, solar-eclipse, mountain, parhelion, rainbark | koi-pond, ocean, halcyon-apex, waves, verdant-hills, rainbark | chromadelic-highway, ice-temple, crystal-cave, neon-dusk, synthwave-sunset, aether-tides, chromatic-impasto, moonlit-greenhouse, sakura-twilight, halcyon-apex, rainbark, kaleidosonic (owns a kaleidoscope as its chain and its T-spin turn since 2026-10-13: rework the four-line projection and the T-spin twist) | crystal-cave, cinder-drift, bioluminescence, forest, fall, golden-forest, ocean, verdant-hills, rainbark |
+| Compare against (fleet neighbours) | forest, fall, moonlit-forest (Spring took its slot 2026-10-18), golden-forest, stillwater, chiral-gold, ice-temple, nimbus-veil, rainbow-terraces (§13.3, §11.1) | halcyon-apex, geode, cinder-drift, pyrestorm, luminous-tides, parhelion, rainbark | shifting-sands, himalayan-peak, solar-eclipse, mountain, parhelion, rainbark | koi-pond, ocean, halcyon-apex, waves, verdant-hills, rainbark | chromadelic-highway, ice-temple, crystal-cave, neon-dusk, synthwave-sunset, aether-tides, chromatic-impasto, moonlit-greenhouse, sakura-twilight, halcyon-apex, rainbark, kaleidosonic (owns a kaleidoscope as its chain and its T-spin turn since 2026-10-13: rework the four-line projection and the T-spin twist) | crystal-cave, cinder-drift, bioluminescence, forest, fall, golden-forest, ocean, verdant-hills, rainbark |
 | Best-fit slots the file suggests (ask the user) | — | pyrestorm or luminous-tides (subject overlap); misty-lake (Grainfields took it 2026-10-18) or moonlit-greenhouse (chapter fit) | **mountain** (best fit; High Coast took it 2026-10-13); moonrise-summit, sakura-twilight, pyrestorm | none named: run the PLAYBOOK §1a script | **moonlit-greenhouse** (best fit); misty-lake (Grainfields took it 2026-10-18), rainy-window, singing-bowl (Kaleidosonic took it 2026-10-13) | an un-rebuilt theme in an Earth chapter, for example mountain (High Coast took it 2026-10-13); its close neighbours are all rebuilt |
 
 The stage names (0a core and palette, 0b scaffold and rename, A environment, B effects, C post,
@@ -325,14 +325,14 @@ catalog too.
 
 ### Compositions already used heavily
 
-- **Big moon, top right, blue night:** forest, moonlit-forest, wolfhour, winter, sakura-twilight,
-  ice-temple (moon on the left), sunset (at night). Seven themes. Moons also in lunara,
+- **Big moon, top right, blue night:** forest, wolfhour, winter, sakura-twilight,
+  ice-temple (moon on the left), sunset (at night). Six themes. Moons also in lunara,
   moonrise-summit, moonlit-greenhouse, blood-moon, koi-pond (in the water).
 - **Framing trees left and right, open vista in the middle:** forest, fall, summer, sakura-twilight,
-  winter, aurora, moonlit-forest; also golden-forest, verdant-hills, koi-pond (maple), stillwater.
+  winter, aurora; also golden-forest, verdant-hills, koi-pond (maple), stillwater.
 - **A still mirror of water under the board** (planar `reflector()` on Medium and up is the default
   technique): halcyon-apex, vesper-chrysalis, lunara, chiral-gold, ice-temple, golden-forest, summer,
-  stillwater, crystal-cave, koi-pond, sunset, sakura-twilight, aurora, moonlit-forest,
+  stillwater, crystal-cave, koi-pond, sunset, sakura-twilight, aurora,
   winter, starlight, bioluminescence, rainy-window, waves, luminous-tides, fluid-dreams, voltage-storm,
   moonrise-summit, moonlit-greenhouse (pond), neon-district, neon-dusk, synthwave-sunset. Salt-flat mirrors (Uyuni) and "tufa or
   pillars standing in a still lake" land in the same place.
@@ -342,7 +342,7 @@ catalog too.
 - **Low sun on the horizon with god rays:** halcyon-apex, himalayan-peak, sunset, summer, fall,
   tornado, golden-forest, shifting-sands, waves; a big sun at the vanishing point beside the board in
   nimbus-veil, neon-dusk, synthwave-sunset, stellar-velocity, chromadelic-highway, parhelion.
-- **Aurora curtains:** aurora, winter, ice-temple, moonlit-forest, lunara, moonrise-summit,
+- **Aurora curtains:** aurora, winter, ice-temple, lunara, moonrise-summit,
   stillwater, vesper-chrysalis, stellar-drift.
 - **Crystals and gems:** geode, crystal-cave, lunara, halcyon-apex, vesper-chrysalis, ice-temple (so
   opal, Naica and quartz-led concepts are high risk).
@@ -367,7 +367,7 @@ catalog too.
   golden hour"; the art judge narrowed it to high sun or morning daylight, because golden hour is
   the fleet's most overused light. Rainbark now uses high-sun blue air; Iris Springs, Painted Ages'
   morning revision and Riverbloom also aim there.)
-- Navy or ink night with a silver-white moon (forest, moonlit-forest, wolfhour, ice-temple, winter,
+- Navy or ink night with a silver-white moon (forest, wolfhour, ice-temple, winter,
   starlight, moonrise-summit, moonlit-greenhouse).
 - Oxygen-green and magenta aurora on dark teal (aurora, winter, ice-temple).
 - Gold, peach and orange low sun with lavender sky (halcyon-apex, himalayan-peak, sunset, tornado,
@@ -399,7 +399,7 @@ wakes the world; four lines hold its breath."*
    sinking light, forest firefly puff, fall leaf puff, summer petals, sakura glint, galaxy seed,
    stillwater wisp, vesper moth, stellar-velocity bolt, chromatic-impasto stroke, voltage-storm arc…).
 2. **Lock: a ring runs out from under the board's foot or the piece's column** (ice-temple, halcyon,
-   himalayan, winter, tornado, ocean, sakura, summer, aurora, forest moss wave, moonlit-forest, koi,
+   himalayan, winter, tornado, ocean, sakura, summer, aurora, forest moss wave, koi,
    golden-forest, starlight, waves, bioluminescence, neon-dusk, neon-district, stillwater, vesper,
    cinder-drift, stellar-drift; shifting-sands with sand).
 3. **The world holds the piece's colour for about 30 s and a clear releases it** with a radial wave
@@ -508,7 +508,7 @@ transmission or dispersion passes, raymarched volumes, many lights.
 
 | # | Candidate (alternate names) | Real inspiration | The idea in one line | Closest existing themes (similarity) | Phone risk | Status |
 |---|---|---|---|---|---|---|
-| 13 | **Rainbow Bark** (Deglupta) | Rainbow eucalyptus groves, Maui and Mindanao | A misty rainforest of colossal trunks streaked green, blue, purple and orange; each cleared line peels a strip of bark, revealing fresh chartreuse that ages over the session | Moderate: trees (forest, golden-forest, moonlit-forest) | Moderate | **Taken:** the same subject became **Rainbark** (the wildcard, now built) |
+| 13 | **Rainbow Bark** (Deglupta) | Rainbow eucalyptus groves, Maui and Mindanao | A misty rainforest of colossal trunks streaked green, blue, purple and orange; each cleared line peels a strip of bark, revealing fresh chartreuse that ages over the session | Moderate: trees (forest, golden-forest; moonlit-forest until Spring replaced it, 2026-10-18) | Moderate | **Taken:** the same subject became **Rainbark** (the wildcard, now built) |
 | 14 | **Desert Bloom** (Desierto Florido) | Atacama flowering desert | Ochre hills carpeted in magenta malva under snowy Andes volcanoes and an ultra-clear sky; a clear sends a wave of bloom, four lines bring El Niño rain and a full bloom | Moderate: meadows (summer, verdant-hills), desert (shifting-sands) | Low–moderate | Open |
 | 15 | **Wisteria Veil** | Kawachi Fuji wisteria tunnels, Japan | A tunnel of hanging purple, pink and white racemes in dappled light | **High:** sakura-twilight (blossoms, Japanese, pink and purple) | Moderate (many instances) | Rejected |
 | 16 | **Nemophila Hills** | Hitachi Seaside Park, Japan | Hills of baby-blue flowers merging with sea and sky; red kochia in autumn | **High:** verdant-hills (rolling hills on a bright day) | — | Rejected |

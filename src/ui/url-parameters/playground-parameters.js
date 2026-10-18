@@ -429,20 +429,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
-        name: 'boardGuide',
-        category: 'Playground',
-        scope: 'playground.html — moonlit-forest-master; game themes: Moonlit Forest',
-        description: 'Draw a playfield composition guide.',
-        values: '1 enables.',
-        defaultValue: 'Off.',
-        example: 'boardGuide=1',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
-        sources: [
-            'src/playground/effects/moonlit-forest-master.effect.js',
-        ],
-    },
-    {
         name: 'breach',
         category: 'Playground',
         scope: 'playground.html — shifting-sands',
@@ -688,11 +674,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
             + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
             + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
-            + 'lunara, moonlit-forest-master, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
+            + 'lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
             + 'neon-dusk, nimbus-veil, ocean, rainbark, rainbow-terraces, sakura-twilight, serenity-warp, '
             + 'shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, summer, '
             + 'sunset, supernova, synthwave-sunset, thermal-bloom, tornado, verdant-hills, vesper-chrysalis, '
-            + 'void-ember, voltage-storm, waves, winter; game themes: Moonlit Forest',
+            + 'void-ember, voltage-storm, waves, winter',
         description: 'Set the preview combo length or held combo state.',
         values: 'Nonnegative integer; reaction previews often require at least 2. In Stillwater it is how '
             + 'far the spirit and the troll have come toward the board. In Starlight it is how far the '
@@ -706,8 +692,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'kaleidoscope as it grows.',
         defaultValue: 'Effect-dependent: held state 0; common cue previews 4–7.',
         example: 'combo=5',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/aurora.effect.js',
@@ -730,7 +715,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/koi-pond.effect.js',
             'src/playground/effects/luminous-tides.effect.js',
             'src/playground/effects/lunara.effect.js',
-            'src/playground/effects/moonlit-forest-master.effect.js',
             'src/playground/effects/moonlit-greenhouse.effect.js',
             'src/playground/effects/murmuration.effect.js',
             'src/playground/effects/nebula-flow.effect.js',
@@ -1097,12 +1081,11 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, chiral-gold, '
             + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
             + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
-            + 'lunara, moonlit-forest-master, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
+            + 'lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
             + 'neon-dusk, nimbus-veil, ocean, rainbark, rainbow-terraces, sakura-twilight, serenity-warp, '
             + 'shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, summer, '
             + 'sunset, supernova, synthwave-sunset, thermal-bloom, tornado, verdant-hills, vesper-chrysalis, '
-            + 'void-ember, voltage-storm, waves, winter, wolfhour, wolfhour-lunar-sigil; game themes: Moonlit '
-            + 'Forest',
+            + 'void-ember, voltage-storm, waves, winter, wolfhour, wolfhour-lunar-sigil',
         description: 'Replay a gameplay reaction in the selected preview.',
         values: 'Effect-specific cue, commonly lock, clear, combo, quad, tspin, perfect or levelUp (Koi '
             + 'Pond, Nebula Flow, Serenity Warp, Stellar Drift, Stellar Velocity and Void Ember: lock, '
@@ -1118,9 +1101,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'levelUp, release (the chain held by peak breaks) or over (the light sinks).',
         defaultValue: 'Idle in most previews; Lunar Sigil uses lock.',
         example: 'event=lock',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active. For deterministic replay, pair with t=<capture seconds> where '
-            + 'supported.',
+        notes: 'Use on playground.html with effect=<the matching effect ID>. For deterministic replay, '
+            + 'pair with t=<capture seconds> where supported.',
         sources: [
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/aurora.effect.js',
@@ -1143,7 +1125,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/koi-pond.effect.js',
             'src/playground/effects/luminous-tides.effect.js',
             'src/playground/effects/lunara.effect.js',
-            'src/playground/effects/moonlit-forest-master.effect.js',
             'src/playground/effects/moonlit-greenhouse.effect.js',
             'src/playground/effects/murmuration.effect.js',
             'src/playground/effects/nebula-flow.effect.js',
@@ -1296,20 +1277,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/voltage-storm.effect.js',
             'src/playground/effects/waves.effect.js',
             'src/playground/effects/winter.effect.js',
-        ],
-    },
-    {
-        name: 'eventPhase',
-        category: 'Playground',
-        scope: 'playground.html — moonlit-forest-master; game themes: Moonlit Forest',
-        description: 'Seek into a Moonlit Forest preview reaction.',
-        values: 'Seconds clamped to 0–2.',
-        defaultValue: '0.32.',
-        example: 'eventPhase=0.32',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
-        sources: [
-            'src/playground/effects/moonlit-forest-master.effect.js',
         ],
     },
     {
@@ -3895,17 +3862,16 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — astral-weave, aurora, black-hole, blood-moon, breathing, chiral-gold, '
             + 'chromadelic-highway, cosmic-noir, crystal-cave, fall, fluid-dreams, forest, galaxy, geode, '
             + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
-            + 'lunara, moonlit-forest-master, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
+            + 'lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
             + 'neon-dusk, nimbus-veil, ocean, parhelion, rainbark, rainbow-terraces, sakura-twilight, '
             + 'serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
             + 'stillwater, summer, sunset, supernova, synthwave-sunset, thermal-bloom, tornado, verdant-hills, '
-            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter, wolfhour; game themes: Moonlit Forest',
+            + 'vesper-chrysalis, void-ember, voltage-storm, waves, winter, wolfhour',
         description: 'Choose the preview rendering quality.',
         values: 'Minimal, Low, Medium, High, Ultra, Extreme where supported; individual effects can limit tiers.',
         defaultValue: 'Usually High; mobile/fluid previews use Low.',
         example: 'quality=High',
-        notes: 'Use on playground.html with effect=<the matching effect ID>. Also read by the listed '
-            + 'game themes while active.',
+        notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/astral-weave.effect.js',
             'src/playground/effects/aurora.effect.js',
@@ -3929,7 +3895,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/koi-pond.effect.js',
             'src/playground/effects/luminous-tides.effect.js',
             'src/playground/effects/lunara.effect.js',
-            'src/playground/effects/moonlit-forest-master.effect.js',
             'src/playground/effects/moonlit-greenhouse.effect.js',
             'src/playground/effects/murmuration.effect.js',
             'src/playground/effects/nebula-flow.effect.js',
@@ -5920,4 +5885,148 @@ export const PLAYGROUND_URL_PARAMETERS = [
         notes: 'Use on playground.html with effect=neon-district; bloom=0 keeps the neon glow off it.',
         sources: ['src/playground/effects/neon-district.effect.js', 'src/themes/neon-district/neon-district-post.js'],
     },
+    // Spring keeps its capture controls together: each row names its real source.
+    ...[
+        ['quality', 'Choose the Spring quality tier.', 'Minimal, Low, Medium, High, Ultra or Extreme.', 'High.', 'Low'],
+        ['board', 'Overlay a mock gameplay card and stats panel for composition checks.', '1 enables.', 'Off.', '1'],
+        ['statsHud', 'Include the stats panel beside the mock board.', '0 hides; 1 shows.', '1.', '0'],
+        [
+            'level',
+            'Start on this level’s station of the day (the light also turns with the clock, a station per 100 s).',
+            'Integer ≥ 1.',
+            '1.',
+            '3',
+        ],
+        [
+            'hour',
+            'Hold the light at a place on the day’s wheel of stations.',
+            '0 morning, 1 afternoon, 2 golden evening, 3 sunset, 4 light night, 5 dawn mist; fractions mix.',
+            'The clock’s.',
+            '2',
+        ],
+        [
+            'parts',
+            'Draw only these parts.',
+            'Comma list of land, river, rocks, trees, woods, meadow, fx, sky.',
+            'All.',
+            'land,river',
+        ],
+        ['falseColor', 'Band the pre-tone-map brightness instead of the graded picture.', '1 enables.', 'Off.', '1'],
+        [
+            'noPost',
+            'Show the raw scene through the renderer’s tone map (no bloom, shafts or grade).',
+            '1 enables.',
+            'Off.',
+            '1',
+        ],
+        ['bloom', 'Override the tier’s bloom.', '0 or 1.', 'The tier’s.', '0'],
+        [
+            'msaa',
+            'Override the scene pass’s multisample count (the fall’s threads cut out by coverage above 1).',
+            '0 or 4 (0 gives Medium and Low their FXAA).',
+            'The tier’s: 4 from High up, else 0.',
+            '0',
+        ],
+        ['px', 'Hold the pointer parallax horizontally.', '−1 to 1.', '0.', '0.5'],
+        ['py', 'Hold the pointer parallax vertically.', '−1 to 1.', '0.', '-0.3'],
+        [
+            'reduce',
+            'Reduced motion (no lens breath or parallax; the level’s turn of the light is instant).',
+            '1 enables.',
+            'Off.',
+            '1',
+        ],
+        [
+            'look',
+            'Inspection lens: from the eye, look at a world point with this field of view (icons, close-ups).',
+            'x,y,z,fov in metres and degrees.',
+            'The rest rig.',
+            '-42,18,-108,24',
+        ],
+        [
+            'eye',
+            'With look=: stand the inspection lens here instead of at the eye (close-ups among the flowers).',
+            'x,y,z in metres.',
+            'The eye on the knoll.',
+            '-30,40,-60',
+        ],
+        [
+            'icon',
+            'The icon’s lens: from the eye on the knoll, over its flowers to the fall.',
+            '1 enables.',
+            'Off.',
+            '1',
+        ],
+        ['iconEye', 'With icon=1: where the icon’s lens stands.', 'x,y,z in metres.', '0,8.2,0 (the eye).', '-4,8,-8'],
+        ['iconBearing', 'With icon=1: the icon lens’s bearing (degrees right of the view).', 'Degrees.', '-20.6.', '-24'],
+        ['iconPitch', 'With icon=1: the icon lens’s tilt (negative looks down).', 'Degrees.', '-1.4.', '-4'],
+        ['iconFov', 'With icon=1: the icon lens’s vertical field of view.', 'Degrees.', '46.', '40'],
+        [
+            'event',
+            'Replay one gameplay reaction before the frame.',
+            'lock, drop, clear, quad, tspin, perfect, levelUp, release or over.',
+            'Idle.',
+            'quad',
+        ],
+        ['eventAge', 'Capture this many seconds after the event.', 'Seconds.', '0.6.', '2.5'],
+        ['eventLevel', 'The level an event=levelUp steps to.', 'Integer ≥ 1.', 'level + 1.', '4'],
+        [
+            'u',
+            'Board column of a lock (its patch of bloom opens on that side of the card).',
+            '0 to 1.',
+            '0.22.',
+            '0.8',
+        ],
+        [
+            'row',
+            'Board row of a lock (the floor rows land nearest the eye, on the knoll’s meadow).',
+            '0 (top) to 19 (floor).',
+            '13.',
+            '16',
+        ],
+        ['lines', 'Lines in an event=clear (its surge down the rapids is the bigger).', '1 to 4.', '2.', '3'],
+        ['color', 'Piece colour of a lock or drop.', 'Hex without #.', 'The I piece’s.', 'E8508C'],
+        [
+            'shape',
+            'The piece an event=lock or drop locks (a patch of its own flower bursts into bloom).',
+            'I, O, T, S, Z, J or L.',
+            'T.',
+            'Z',
+        ],
+        ['peak', 'Chain length that breaks on event=release (the flood falls back).', 'Integer ≥ 3.', '6.', '7'],
+        [
+            'combo',
+            'Hold a chain of this length (each link raises the spring flood).',
+            'Integer ≥ 0.',
+            '0.',
+            '5',
+        ],
+        ['b2b', 'Hold a back-to-back level (the river glitters while the run lasts).', '0 to 4.', '0.', '3'],
+        ['locks', 'Play this many locks before the frame (each blooms its flower).', 'Integer ≥ 0.', '0.', '8'],
+        ['clears', 'Among those locks, play this many single-line clears.', 'Integer ≥ 0.', '0.', '4'],
+        [
+            'demo',
+            'Loop a script of locks, clears, a chain, four lines and a T-spin.',
+            '1 enables; use without a fixed t.',
+            'Off.',
+            '1',
+        ],
+        [
+            'atlas',
+            'Show the woods’ impostor atlas instead of the world (each modelled tree side on, two turns).',
+            'albedo or normal.',
+            'Off.',
+            'albedo',
+        ],
+    ].map(([name, description, values, defaultValue, value]) => ({
+        name,
+        category: 'Playground',
+        scope: 'playground.html — spring',
+        description,
+        values,
+        defaultValue,
+        example: `${name}=${value}`,
+        notes: 'Use on playground.html with effect=spring; t=10 with hour=<place> gives a deterministic capture.',
+        sources: ['src/playground/effects/spring.effect.js'],
+    })),
 ];

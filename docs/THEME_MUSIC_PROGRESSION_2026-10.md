@@ -119,7 +119,7 @@ and Painted Ages follow their Chapter 1 and Chapter 4 completion rewards.
 | 9 | Stillwater | `stillwater.mp3` | Existing |
 | 10 | Waves | `waves.mp3` | Existing |
 | 11 | Grainfields | `grainfields.mp3` | Existing |
-| 12 | Moonlit Forest | `moonlit-forest.mp3` | Existing |
+| 12 | Spring | `spring.mp3` | Existing |
 | 13 | Golden Forest | `golden-forest-placeholder-song.mp3` | Blood Moon placeholder |
 | 14 | Moonlit Greenhouse | `moonlit-greenhouse.mp3` | Existing |
 | 15 | Tornado | `tornado-placeholder-song.mp3` | Blood Moon placeholder |

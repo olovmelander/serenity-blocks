@@ -5,7 +5,7 @@ const ROOT = process.cwd();
 const { app, BrowserWindow } = electron;
 
 const THEMES = [
-    'himalayan-peak', 'ice-temple', 'moonlit-forest', 'wolfhour',
+    'himalayan-peak', 'ice-temple', 'spring', 'wolfhour',
     'nebula-flow', 'rainbow-terraces', 'black-hole'
 ];
 

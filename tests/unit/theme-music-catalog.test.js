@@ -45,7 +45,7 @@ describe('one soundtrack per collectible theme', () => {
     it.each([
         ['ocean', 'OceanDeep'], ['geode', 'GeodeCrystalline'],
         ['murmuration', 'Murmuration'], ['parhelion', 'EtherealEchoes'],
-        ['rainbark', 'Rainbark'], ['grainfields', 'Grainfields'],
+        ['rainbark', 'Rainbark'], ['grainfields', 'Grainfields'], ['spring', 'Spring'],
     ])('preserves the authored %s recording as %s', (themeId, trackKey) => {
         expect(getThemeMusic(themeId)).toMatchObject({ trackKey, placeholder: false });
     });
@@ -114,6 +114,19 @@ describe('one soundtrack per collectible theme', () => {
         const body = head.subarray(at + 10, at + 10 + head.readUInt32BE(at + 4));
         expect([...body.subarray(0, 3)]).toEqual([1, 0xff, 0xfe]);
         expect(body.subarray(3).toString('utf16le')).toBe('Grainfields');
+    });
+
+    it('keeps the key and the theme id the Spring recording had before it was retitled', () => {
+        expect(getThemeMusic('spring')).toMatchObject({
+            name: 'Spring',
+            trackKey: 'Spring',
+            file: 'spring.mp3',
+            placeholder: false,
+        });
+        expect(getThemeForMusic('MoonlitForest')).toBe('spring');
+        expect(getThemeMusic('moonlit-forest')).toBe(getThemeMusic('spring'));
+        expect(THEME_MUSIC_CATALOG.map((song) => song.trackKey)).not.toContain('MoonlitForest');
+        expect(files).not.toContain('moonlit-forest.mp3');
     });
 
     it('resolves known retired aliases, but never revives Bioluminescence II', () => {

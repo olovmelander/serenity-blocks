@@ -56,7 +56,7 @@ export function makeRng(seed) {
  * `detail >= 1` is load-bearing — `PolyhedronGeometry` keeps SMOOTH RADIAL normals there, and
  * those are what make the terminator scallop around each lobe. `detail 0` is faceted, and
  * `computeVertexNormals()` on the merged result would flatten every lobe in exactly the same way
- * (the `moonlit-forest-master.effect.js:133` precedent does that and must not be copied here).
+ * (a since-retired theme effect did exactly that; it must not be copied here).
  * `applyMatrix4` transports normals through the normal matrix, so a non-uniform squash keeps
  * correct normals for free.
  */
