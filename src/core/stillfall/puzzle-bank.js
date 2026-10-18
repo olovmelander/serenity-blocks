@@ -1,7 +1,7 @@
 // @ts-check
 
 /**
- * The Fault Lines pyramid: seventy-two puzzles in six tiers. First light teaches with one
+ * The Stillfall pyramid: seventy-two puzzles in six tiers. First light teaches with one
  * piece each; Undertow and Deep fault deal two; Rift, Bedrock and Epicentre deal three, and
  * from Bedrock on exactly one first landing leads anywhere. A tier opens once three puzzles
  * below it are solved, and at most two First light puzzles go without a lantern, so a player
@@ -15,14 +15,14 @@
  * puzzle depends on a tuck or a kick. In the two-piece tiers the last piece is needed
  * (nothing solves before it lands) and every piece matters (the puzzle is unsolvable
  * without its leading pieces). `solution` is one such line of play, for the hint; the
- * certifier (tests/unit/fault-lines-puzzles.test.js) proves all of this on every run.
+ * certifier (tests/unit/stillfall-puzzles.test.js) proves all of this on every run.
  *
  * Structures from tier 2 on came from an offline search over random structures under those
- * rules (scripts/fault-lines-search.mjs), kept when few openings win and the greedy opening
+ * rules (scripts/stillfall-search.mjs), kept when few openings win and the greedy opening
  * loses, then named and ordered by hand.
  */
 
-/** @typedef {import('./fault-lines-puzzle.js').FaultLinesDefinition & { tier: number }} BankPuzzle */
+/** @typedef {import('./stillfall-puzzle.js').StillfallDefinition & { tier: number }} BankPuzzle */
 
 /** The tiers, in order, as the player sees them. */
 export const TIERS = Object.freeze([
@@ -35,7 +35,7 @@ export const TIERS = Object.freeze([
 ]);
 
 /** @type {readonly BankPuzzle[]} */
-export const FAULT_LINES_PUZZLES = Object.freeze([
+export const STILLFALL_PUZZLES = Object.freeze([
     // ── Tier 1: one piece, one idea each ──
     {
         id: 'first-fall',
@@ -1323,7 +1323,7 @@ export const SOLVES_TO_OPEN_NEXT_TIER = 3;
  * @param {readonly BankPuzzle[]} [bank]
  * @returns {Set<string>}
  */
-export function openPuzzleIds(solvedIds, bank = FAULT_LINES_PUZZLES) {
+export function openPuzzleIds(solvedIds, bank = STILLFALL_PUZZLES) {
     const solved = new Set(solvedIds);
     const open = new Set();
     const tiers = [...new Set(bank.map((puzzle) => puzzle.tier))].sort((a, b) => a - b);
@@ -1342,7 +1342,7 @@ export function openPuzzleIds(solvedIds, bank = FAULT_LINES_PUZZLES) {
  * @returns {BankPuzzle | null}
  */
 export function bankPuzzle(id) {
-    return FAULT_LINES_PUZZLES.find((puzzle) => puzzle.id === id) || null;
+    return STILLFALL_PUZZLES.find((puzzle) => puzzle.id === id) || null;
 }
 
 /** @param {number} tier */

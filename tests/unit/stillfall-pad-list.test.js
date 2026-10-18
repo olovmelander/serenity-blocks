@@ -1,5 +1,5 @@
 /**
- * The Fault Lines puzzle list on a gamepad (fault-lines-pad-list.js) through the real
+ * The Stillfall puzzle list on a gamepad (stillfall-pad-list.js) through the real
  * GamepadController poll: Select opens the list, which then owns the pad (up and down walk
  * it, A plays, B or Select closes); nothing it takes reaches the piece, and the A that chose
  * a puzzle does not rotate the new piece when the list lets go. Start still pauses.
@@ -8,7 +8,7 @@ import {
     afterEach, beforeEach, describe, expect, it, vi,
 } from 'vitest';
 import { GamepadController } from '../../src/ui/gamepad-controller.js';
-import { createPuzzleListPadControls } from '../../src/ui/fault-lines/fault-lines-pad-list.js';
+import { createPuzzleListPadControls } from '../../src/ui/stillfall/stillfall-pad-list.js';
 
 const BUTTON = {
     A: 0, B: 1, SELECT: 8, START: 9, D_UP: 12, D_DOWN: 13,
@@ -80,7 +80,7 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
-describe('the Fault Lines puzzle list on a gamepad', () => {
+describe('the Stillfall puzzle list on a gamepad', () => {
     it('opens on Select and leaves every other button to the piece while closed', () => {
         const { actions, hud, press } = createHarness();
         press();

@@ -437,7 +437,7 @@ export class SinglePlayerMode extends BaseGameMode {
     }
 
     /**
-     * Session hooks a mode built on this one (Fault Lines) overrides.
+     * Session hooks a mode built on this one (Stillfall) overrides.
      * @param {Object} options GameState options latched for the session
      * @returns {GameState}
      * @protected

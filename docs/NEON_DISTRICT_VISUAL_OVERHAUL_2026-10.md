@@ -112,7 +112,7 @@ families, and every surface that advertises carries them:
   a render of the world it sells:
   - worlds: Koi Pond, Sakura Twilight, Crystal Cave, Golden Forest, Midsommar, Ocean, Winter and
     Stillwater
-  - modes: Infinity, Fault Lines and Odyssey (Fault Lines took the Waystones poster's place
+  - modes: Infinity, Stillfall and Odyssey (Stillfall took the Waystones poster's place
     when that mode was removed, 2026-10-18)
 
 The surfaces:

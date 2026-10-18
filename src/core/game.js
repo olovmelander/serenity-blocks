@@ -641,12 +641,12 @@ export class GameState {
         this.lockDelay = options.lockDelay ?? LOCK_DELAY_MS;
         this.lockDelayTicks = durationMsToTicks(this.lockDelay, this.simTickMs);
         this.lockResetLimit = options.lockResetLimit ?? LOCK_RESET_LIMIT;
-        // Puzzle rules (Fault Lines), off for every other mode. A finite supply deals
+        // Puzzle rules (Stillfall), off for every other mode. A finite supply deals
         // only the queued pieces, never a fresh bag; waiting gravity never pulls the
         // piece down or locks it, so only a hard drop places it.
         this.finiteSupply = options.finiteSupply === true;
         this.gravityWaits = options.gravityWaits === true;
-        // Fault Lines' board marks: a seam where two bodies touch, the relic's body, and
+        // Stillfall' board marks: a seam where two bodies touch, the relic's body, and
         // the cells a hint lights up.
         this.showBodySeams = false;
         /** @type {number | null} */

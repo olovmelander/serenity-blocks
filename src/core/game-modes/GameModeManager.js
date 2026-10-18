@@ -82,9 +82,9 @@ export class GameModeManager {
             async () => (await import('./OdysseyMode.js')).OdysseyMode,
         );
         this.registerModeFactory(
-            GAME_MODES.FAULT_LINES,
-            'Fault Lines',
-            async () => (await import('./FaultLinesMode.js')).FaultLinesMode,
+            GAME_MODES.STILLFALL,
+            'Stillfall',
+            async () => (await import('./StillfallMode.js')).StillfallMode,
         );
     }
 

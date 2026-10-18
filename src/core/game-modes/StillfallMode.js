@@ -1,17 +1,17 @@
 // @ts-check
 
 /**
- * Fault Lines: cascade puzzles on the Single Player board.
+ * Stillfall: cascade puzzles on the Single Player board.
  *
  * The session is Single Player's (board scene, controls, effects, pause) with three rule
  * changes latched on its GameState: the supply is finite, gravity waits, and the board
  * draws a seam where two bodies meet. After each lock's cascade settles the mode judges
- * the puzzle's goal with the same rules the certifier uses (fault-lines-sim.js) and
+ * the puzzle's goal with the same rules the certifier uses (stillfall-sim.js) and
  * either deals the next piece or ends the puzzle. Nothing is scored or saved to Records.
  *
- * The mode stays headless: it publishes its state on EVENTS.FAULT_LINES_STATE and takes
- * undo / restart / hint / next / load from EVENTS.FAULT_LINES_COMMAND. The HUD
- * (ui/fault-lines/fault-lines-hud.js) draws one and sends the other.
+ * The mode stays headless: it publishes its state on EVENTS.STILLFALL_STATE and takes
+ * undo / restart / hint / next / load from EVENTS.STILLFALL_COMMAND. The HUD
+ * (ui/stillfall/stillfall-hud.js) draws one and sends the other.
  */
 
 import { SinglePlayerMode } from './SinglePlayerMode.js';
@@ -22,22 +22,22 @@ import {
 import { GAME_MODES } from '../constants.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { piecePool } from '../../utils/object-pool.js';
-import { buildPuzzle } from '../fault-lines/fault-lines-puzzle.js';
+import { buildPuzzle } from '../stillfall/stillfall-puzzle.js';
 import {
     applyPlacement, boardFor, cellsOf, countCells, createRun, dealIntoView, failReason, judge, sameBoard,
     solutionPlacement,
-} from '../fault-lines/fault-lines-sim.js';
-import { solveFrom } from '../fault-lines/fault-lines-solver.js';
-import { FAULT_LINES_PUZZLES, bankPuzzle } from '../fault-lines/puzzle-bank.js';
-import { faultLinesProgress } from '../fault-lines/fault-lines-progress.js';
+} from '../stillfall/stillfall-sim.js';
+import { solveFrom } from '../stillfall/stillfall-solver.js';
+import { STILLFALL_PUZZLES, bankPuzzle } from '../stillfall/puzzle-bank.js';
+import { stillfallProgress } from '../stillfall/stillfall-progress.js';
 
-/** @typedef {import('../fault-lines/fault-lines-puzzle.js').FaultLinesPuzzle} FaultLinesPuzzle */
-/** @typedef {import('../fault-lines/fault-lines-sim.js').FaultLinesPlacement} FaultLinesPlacement */
-/** @typedef {import('../fault-lines/fault-lines-sim.js').FaultLinesRun} FaultLinesRun */
+/** @typedef {import('../stillfall/stillfall-puzzle.js').StillfallPuzzle} StillfallPuzzle */
+/** @typedef {import('../stillfall/stillfall-sim.js').StillfallPlacement} StillfallPlacement */
+/** @typedef {import('../stillfall/stillfall-sim.js').StillfallRun} StillfallRun */
 
 /**
  * The board between two pieces: everything undo needs to deal a piece again.
- * @typedef {Object} FaultLinesTurn
+ * @typedef {Object} StillfallTurn
  * @property {Array<Object>} lockedPieces
  * @property {string[]} nextPieces the piece about to be dealt first
  * @property {number} pieceIdCounter
@@ -51,12 +51,12 @@ function clonePieces(pieces) {
     return pieces.map((piece) => ({ ...piece, shape: piece.shape.map((/** @type {number[]} */ row) => row.slice()) }));
 }
 
-export class FaultLinesMode extends SinglePlayerMode {
+export class StillfallMode extends SinglePlayerMode {
     constructor(dependencies) {
         super(dependencies);
-        /** @type {FaultLinesPuzzle | null} */
+        /** @type {StillfallPuzzle | null} */
         this.puzzle = null;
-        /** @type {FaultLinesTurn[]} */
+        /** @type {StillfallTurn[]} */
         this._turns = [];
         /** @type {'open'|'solved'|'failed'} */
         this._outcome = 'open';
@@ -73,17 +73,17 @@ export class FaultLinesMode extends SinglePlayerMode {
     }
 
     getModeId() {
-        return GAME_MODES.FAULT_LINES;
+        return GAME_MODES.STILLFALL;
     }
 
     getDisplayName() {
-        return 'Fault Lines';
+        return 'Stillfall';
     }
 
     async onActivate() {
         await super.onActivate();
         this._stopCommands?.();
-        this._stopCommands = eventBus.on(EVENTS.FAULT_LINES_COMMAND, (command) => this._onCommand(command));
+        this._stopCommands = eventBus.on(EVENTS.STILLFALL_COMMAND, (command) => this._onCommand(command));
     }
 
     /** @param {Object} [options] */
@@ -100,7 +100,7 @@ export class FaultLinesMode extends SinglePlayerMode {
         this._stopCommands = null;
         await super.onDeactivate();
         this.puzzle = null;
-        eventBus.emit(EVENTS.FAULT_LINES_STATE, { active: false });
+        eventBus.emit(EVENTS.STILLFALL_STATE, { active: false });
     }
 
     // ── Single Player session hooks ──
@@ -116,7 +116,7 @@ export class FaultLinesMode extends SinglePlayerMode {
     }
 
     _dealSessionPieces() {
-        this._loadPuzzle(faultLinesProgress.current(), { deal: false });
+        this._loadPuzzle(stillfallProgress.current(), { deal: false });
     }
 
     _recordsDemos() {
@@ -177,9 +177,9 @@ export class FaultLinesMode extends SinglePlayerMode {
      * @param {{ deal?: boolean }} [options] deal: false leaves the first spawn to the caller
      */
     _loadPuzzle(puzzleId, { deal = true } = {}) {
-        const definition = bankPuzzle(puzzleId) || FAULT_LINES_PUZZLES[0];
+        const definition = bankPuzzle(puzzleId) || STILLFALL_PUZZLES[0];
         this.puzzle = buildPuzzle(definition);
-        faultLinesProgress.choose(definition.id);
+        stillfallProgress.choose(definition.id);
         if (this.gameState) {
             const { goal, bodyIds } = this.puzzle;
             this.gameState.relicPieceId = goal.type === 'relic-floor' ? bodyIds[/** @type {string} */ (goal.body)] : null;
@@ -199,7 +199,7 @@ export class FaultLinesMode extends SinglePlayerMode {
      * Puts the board back to the start of a turn and records it as the latest turn. The
      * piece in hand, if any, stays until the deal replaces it (spawnPiece returns it to
      * the pool).
-     * @param {FaultLinesTurn} turn
+     * @param {StillfallTurn} turn
      * @param {{ deal?: boolean }} [options]
      */
     _restoreTurn(turn, { deal = true } = {}) {
@@ -243,7 +243,7 @@ export class FaultLinesMode extends SinglePlayerMode {
     /** The puzzle as the board stands now, in the certifier's terms. */
     _liveRun() {
         const { gameState, puzzle } = this;
-        return /** @type {FaultLinesRun} */ ({
+        return /** @type {StillfallRun} */ ({
             puzzle,
             lockedPieces: gameState.lockedPieces,
             dealt: this._dealt,
@@ -261,7 +261,7 @@ export class FaultLinesMode extends SinglePlayerMode {
         const run = this._liveRun();
         this._outcome = judge(run);
         if (this._outcome === 'solved') {
-            this._firstSolve = faultLinesProgress.markSolved(puzzle.id);
+            this._firstSolve = stillfallProgress.markSolved(puzzle.id);
             this.deps.soundManager?.sfxPlayer?.playLevelUp?.();
             this._publish();
             return;
@@ -287,7 +287,7 @@ export class FaultLinesMode extends SinglePlayerMode {
         if (!this._canUndo()) return false;
         // Mid-turn, the current turn is the latest record: drop it and replay the one before.
         if (this._outcome === 'open') this._turns.pop();
-        const turn = /** @type {FaultLinesTurn} */ (this._turns.pop());
+        const turn = /** @type {StillfallTurn} */ (this._turns.pop());
         this._restoreTurn(turn);
         this.deps.soundManager?.sfxPlayer?.playMove?.();
         return true;
@@ -331,7 +331,7 @@ export class FaultLinesMode extends SinglePlayerMode {
     }
 
     /**
-     * @param {FaultLinesPlacement} placement
+     * @param {StillfallPlacement} placement
      * @param {boolean} restarted
      */
     _showHint(placement, restarted) {
@@ -365,10 +365,10 @@ export class FaultLinesMode extends SinglePlayerMode {
         if (type === 'undo') this.undo();
         else if (type === 'restart') this.restart();
         else if (type === 'hint') this.hint();
-        else if (type === 'load' && command.puzzleId && faultLinesProgress.openIds().has(command.puzzleId)) {
+        else if (type === 'load' && command.puzzleId && stillfallProgress.openIds().has(command.puzzleId)) {
             this._loadPuzzle(command.puzzleId);
         } else if (type === 'next' && this.puzzle) {
-            const next = faultLinesProgress.after(this.puzzle.id);
+            const next = stillfallProgress.after(this.puzzle.id);
             if (next) this._loadPuzzle(next);
         } else if (type === 'refresh') this._publish();
     }
@@ -377,8 +377,8 @@ export class FaultLinesMode extends SinglePlayerMode {
     getPuzzleState() {
         const { puzzle, gameState } = this;
         if (!puzzle || !gameState) return { active: false };
-        const solved = new Set(faultLinesProgress.solvedIds());
-        const open = faultLinesProgress.openIds();
+        const solved = new Set(stillfallProgress.solvedIds());
+        const open = stillfallProgress.openIds();
         const inHand = gameState.currentPiece?.shapeKey || null;
         return {
             active: true,
@@ -402,9 +402,9 @@ export class FaultLinesMode extends SinglePlayerMode {
             canHint: puzzle.solution.length > 0,
             hintShown: this._hintShown,
             hintRestarted: this._hintRestarted,
-            next: faultLinesProgress.after(puzzle.id),
-            allSolved: faultLinesProgress.allSolved(),
-            bank: FAULT_LINES_PUZZLES.map((entry) => ({
+            next: stillfallProgress.after(puzzle.id),
+            allSolved: stillfallProgress.allSolved(),
+            bank: STILLFALL_PUZZLES.map((entry) => ({
                 id: entry.id,
                 title: entry.title,
                 tier: entry.tier,
@@ -415,6 +415,6 @@ export class FaultLinesMode extends SinglePlayerMode {
     }
 
     _publish() {
-        eventBus.emit(EVENTS.FAULT_LINES_STATE, this.getPuzzleState());
+        eventBus.emit(EVENTS.STILLFALL_STATE, this.getPuzzleState());
     }
 }

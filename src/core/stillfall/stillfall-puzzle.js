@@ -1,7 +1,7 @@
 // @ts-check
 
 /**
- * Fault Lines puzzle definitions: an authored structure, a short visible supply of
+ * Stillfall puzzle definitions: an authored structure, a short visible supply of
  * pieces, and one declarative goal. Gravity waits for the player, so every reachable
  * landing is open to them; the cascade rule (each body falls as one rigid unit, and
  * different bodies never glue) is the solving tool.
@@ -23,7 +23,7 @@ import {
     COLS, ROWS, HIDDEN_ROWS, PIECE_KEYS, COLORS,
 } from '../constants.js';
 
-export const FAULT_LINES_BOARD_HEIGHT = ROWS + HIDDEN_ROWS;
+export const STILLFALL_BOARD_HEIGHT = ROWS + HIDDEN_ROWS;
 
 /** The tallest structure that still leaves the spawn area and room to steer. */
 export const MAX_STRUCTURE_ROWS = ROWS - 6;
@@ -39,7 +39,7 @@ export const MAX_SUPPLY = 3;
 export const GOAL_TYPES = Object.freeze(['waves', 'lines', 'clear-all', 'relic-floor']);
 
 /**
- * @typedef {Object} FaultLinesGoal
+ * @typedef {Object} StillfallGoal
  * @property {'waves'|'lines'|'clear-all'|'relic-floor'} type
  * @property {number} [atLeast]
  * @property {string} [body] relic-floor: the body letter in `rows`
@@ -53,13 +53,13 @@ export const GOAL_TYPES = Object.freeze(['waves', 'lines', 'clear-all', 'relic-f
  */
 
 /**
- * @typedef {Object} FaultLinesDefinition
+ * @typedef {Object} StillfallDefinition
  * @property {string} id
  * @property {string} title
  * @property {string} [lesson]
  * @property {string[]} rows
  * @property {string[]} supply
- * @property {FaultLinesGoal} goal
+ * @property {StillfallGoal} goal
  * @property {SolutionStep[]} [solution] one straight-drop solution, for hints; CI checks it
  */
 
@@ -76,12 +76,12 @@ export const GOAL_TYPES = Object.freeze(['waves', 'lines', 'clear-all', 'relic-f
  */
 
 /**
- * @typedef {Object} FaultLinesPuzzle
+ * @typedef {Object} StillfallPuzzle
  * @property {string} id
  * @property {string} title
  * @property {string} lesson
  * @property {string[]} supply
- * @property {FaultLinesGoal} goal
+ * @property {StillfallGoal} goal
  * @property {SolutionStep[]} solution
  * @property {LockedBody[]} lockedPieces
  * @property {Record<string, number>} bodyIds authored letter → pieceId
@@ -98,7 +98,7 @@ const ID_PATTERN = /^[a-z0-9][a-z0-9-]{0,47}$/;
  */
 export function validatePuzzleDefinition(definition) {
     const problems = [];
-    const def = /** @type {Partial<FaultLinesDefinition>} */ (definition || {});
+    const def = /** @type {Partial<StillfallDefinition>} */ (definition || {});
     if (typeof def.id !== 'string' || !ID_PATTERN.test(def.id)) problems.push('id must be a short kebab-case string');
     if (typeof def.title !== 'string' || !def.title.trim()) problems.push('title is required');
 
@@ -168,15 +168,15 @@ export function validatePuzzleDefinition(definition) {
 
 /**
  * Builds a playable puzzle from a valid definition.
- * @param {FaultLinesDefinition} definition
- * @returns {FaultLinesPuzzle}
+ * @param {StillfallDefinition} definition
+ * @returns {StillfallPuzzle}
  */
 export function buildPuzzle(definition) {
     const problems = validatePuzzleDefinition(definition);
     if (problems.length > 0) {
-        throw new Error(`[FaultLines] Invalid puzzle '${definition?.id}': ${problems.join('; ')}`);
+        throw new Error(`[Stillfall] Invalid puzzle '${definition?.id}': ${problems.join('; ')}`);
     }
-    const top = FAULT_LINES_BOARD_HEIGHT - definition.rows.length;
+    const top = STILLFALL_BOARD_HEIGHT - definition.rows.length;
     const bodies = bodyCells(definition.rows);
     const types = bodyTypes(definition.rows, [...bodies.keys()]);
     /** @type {LockedBody[]} */
@@ -215,7 +215,7 @@ export function buildPuzzle(definition) {
         lockedPieces,
         bodyIds,
         nextPieceId: pieceId + 1,
-        boardHeight: FAULT_LINES_BOARD_HEIGHT,
+        boardHeight: STILLFALL_BOARD_HEIGHT,
     };
 }
 

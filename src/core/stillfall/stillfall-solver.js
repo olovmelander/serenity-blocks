@@ -1,7 +1,7 @@
 // @ts-check
 
 /**
- * Exhaustive Fault Lines solver. It searches every distinct reachable landing for each
+ * Exhaustive Stillfall solver. It searches every distinct reachable landing for each
  * supply piece in turn, so a puzzle it calls unsolvable is unsolvable under the real
  * controls, and every solution it returns replays through them. CI runs it over the
  * whole puzzle bank, so a rules change that breaks a shipped puzzle fails the build.
@@ -14,21 +14,21 @@
 
 import {
     applyPlacement, createRun, listPlacements,
-} from './fault-lines-sim.js';
+} from './stillfall-sim.js';
 
-/** @typedef {import('./fault-lines-puzzle.js').FaultLinesPuzzle} FaultLinesPuzzle */
-/** @typedef {import('./fault-lines-sim.js').FaultLinesPlacement} FaultLinesPlacement */
-/** @typedef {import('./fault-lines-sim.js').FaultLinesRun} FaultLinesRun */
+/** @typedef {import('./stillfall-puzzle.js').StillfallPuzzle} StillfallPuzzle */
+/** @typedef {import('./stillfall-sim.js').StillfallPlacement} StillfallPlacement */
+/** @typedef {import('./stillfall-sim.js').StillfallRun} StillfallRun */
 
 /** The most solutions kept per puzzle; the counts are exact regardless. */
 export const MAX_SOLUTIONS_KEPT = 64;
 
 /**
- * @typedef {Object} FaultLinesSolveReport
+ * @typedef {Object} StillfallSolveReport
  * @property {boolean} solvable
- * @property {FaultLinesPlacement[]} solution the first straight solution, else the first solution
- * @property {FaultLinesPlacement[][]} solutions every solution found (up to MAX_SOLUTIONS_KEPT)
- * @property {FaultLinesPlacement[][]} straightSolutions the solutions made of straight placements only
+ * @property {StillfallPlacement[]} solution the first straight solution, else the first solution
+ * @property {StillfallPlacement[][]} solutions every solution found (up to MAX_SOLUTIONS_KEPT)
+ * @property {StillfallPlacement[][]} straightSolutions the solutions made of straight placements only
  * @property {number} solutionCount how many full lines of play solve it
  * @property {number} lines how many full lines of play exist
  * @property {number} minPieces the fewest pieces any solution uses (Infinity when unsolvable)
@@ -36,25 +36,25 @@ export const MAX_SOLUTIONS_KEPT = 64;
  * @property {number} winningOpenings first landings from which some continuation solves it
  */
 
-/** @param {FaultLinesPlacement} placement */
+/** @param {StillfallPlacement} placement */
 export function isStraight(placement) {
     return !placement.actions.some((action) => action.type === 'softDrop');
 }
 
 /**
- * @param {FaultLinesPuzzle} puzzle
- * @returns {FaultLinesSolveReport}
+ * @param {StillfallPuzzle} puzzle
+ * @returns {StillfallSolveReport}
  */
 export function solvePuzzle(puzzle) {
-    /** @type {FaultLinesPlacement[][]} */
+    /** @type {StillfallPlacement[][]} */
     const solutions = [];
     let solutionCount = 0;
     let lines = 0;
     let minPieces = Infinity;
 
     /**
-     * @param {FaultLinesRun} run
-     * @param {FaultLinesPlacement[]} path
+     * @param {StillfallRun} run
+     * @param {StillfallPlacement[]} path
      * @returns {number} solving lines of play below this run
      */
     const search = (run, path) => {
@@ -101,8 +101,8 @@ export function solvePuzzle(puzzle) {
 /**
  * A straight-drop line of play that solves the puzzle from this run on, or null. Used
  * for a hint when the pieces placed so far have left the stored solution.
- * @param {FaultLinesRun} run
- * @returns {FaultLinesPlacement[] | null}
+ * @param {StillfallRun} run
+ * @returns {StillfallPlacement[] | null}
  */
 export function solveFrom(run) {
     if (run.outcome === 'solved') return [];
@@ -118,7 +118,7 @@ export function solveFrom(run) {
 /**
  * Whether every piece in the supply is needed: dealing only a later part of the supply
  * (dropping the first piece, then the first two, …) never solves the puzzle.
- * @param {FaultLinesPuzzle} puzzle
+ * @param {StillfallPuzzle} puzzle
  * @returns {boolean}
  */
 export function everyPieceMatters(puzzle) {

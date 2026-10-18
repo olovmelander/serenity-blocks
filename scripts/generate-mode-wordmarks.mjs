@@ -68,7 +68,7 @@ const modes = [
     ['infinity', 'Infinity', ['INFINITY']],
     ['serenity', 'Serenity', ['SERENITY']],
     ['odyssey', 'Odyssey', ['ODYSSEY']],
-    ['fault-lines', 'Fault Lines', ['FAULT', 'LINES']],
+    ['stillfall', 'Stillfall', ['STILLFALL']],
 ];
 
 for (const [id, label, rows] of modes) {

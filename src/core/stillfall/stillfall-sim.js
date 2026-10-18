@@ -1,7 +1,7 @@
 // @ts-check
 
 /**
- * Pure Fault Lines simulation: deal the next piece, list every landing the real controls
+ * Pure Stillfall simulation: deal the next piece, list every landing the real controls
  * can reach, lock one, and resolve its cascade with the same resolver the game is
  * differential-tested against (cascade-resolver.js). Nothing here writes a GameState;
  * every step returns a new run.
@@ -11,15 +11,15 @@ import { COLS, HIDDEN_ROWS, SHAPES } from '../constants.js';
 import { createBoardGrid, invalidateGhostCache, rebuildBoardGridFromPieces } from '../board.js';
 import { canPlacePiece } from '../game.js';
 import { resolveCascade } from '../cascade-resolver.js';
-import { reachableLandings } from './fault-lines-reach.js';
-import { FAULT_LINES_BOARD_HEIGHT } from './fault-lines-puzzle.js';
+import { reachableLandings } from './stillfall-reach.js';
+import { STILLFALL_BOARD_HEIGHT } from './stillfall-puzzle.js';
 
-/** @typedef {import('./fault-lines-puzzle.js').FaultLinesPuzzle} FaultLinesPuzzle */
-/** @typedef {import('./fault-lines-puzzle.js').LockedBody} LockedBody */
+/** @typedef {import('./stillfall-puzzle.js').StillfallPuzzle} StillfallPuzzle */
+/** @typedef {import('./stillfall-puzzle.js').LockedBody} LockedBody */
 
 /**
- * @typedef {Object} FaultLinesRun
- * @property {FaultLinesPuzzle} puzzle
+ * @typedef {Object} StillfallRun
+ * @property {StillfallPuzzle} puzzle
  * @property {LockedBody[]} lockedPieces
  * @property {number} dealt how many supply pieces have been locked
  * @property {number} nextPieceId
@@ -29,7 +29,7 @@ import { FAULT_LINES_BOARD_HEIGHT } from './fault-lines-puzzle.js';
  */
 
 /**
- * @typedef {Object} FaultLinesPlacement
+ * @typedef {Object} StillfallPlacement
  * @property {string} shapeKey
  * @property {number[][]} shape
  * @property {number} rotation
@@ -40,8 +40,8 @@ import { FAULT_LINES_BOARD_HEIGHT } from './fault-lines-puzzle.js';
  */
 
 /**
- * @param {FaultLinesPuzzle} puzzle
- * @returns {FaultLinesRun}
+ * @param {StillfallPuzzle} puzzle
+ * @returns {StillfallRun}
  */
 export function createRun(puzzle) {
     return {
@@ -56,7 +56,7 @@ export function createRun(puzzle) {
 }
 
 /** The supply piece in hand, or null once the supply is spent. */
-export function currentShapeKey(/** @type {FaultLinesRun} */ run) {
+export function currentShapeKey(/** @type {StillfallRun} */ run) {
     return run.puzzle.supply[run.dealt] ?? null;
 }
 
@@ -121,16 +121,16 @@ export function boardFor(lockedPieces) {
 /**
  * Every distinct landing for the piece in hand. Landings that fill the same cells are one
  * outcome; the cheapest input path is kept. The search is the bot pathfinder's
- * (fault-lines-reach.js mirrors findReachablePlacements, and a test holds it to it).
- * @param {FaultLinesRun} run
- * @returns {FaultLinesPlacement[]}
+ * (stillfall-reach.js mirrors findReachablePlacements, and a test holds it to it).
+ * @param {StillfallRun} run
+ * @returns {StillfallPlacement[]}
  */
 export function listPlacements(run) {
     const shapeKey = currentShapeKey(run);
     if (!shapeKey || run.outcome !== 'open') return [];
     const boardGrid = boardFor(run.lockedPieces);
     const placements = reachableLandings(boardGrid, spawnPiece(shapeKey, boardGrid));
-    /** @type {Map<string, FaultLinesPlacement & {pathCost: number}>} */
+    /** @type {Map<string, StillfallPlacement & {pathCost: number}>} */
     const byFootprint = new Map();
     for (const placement of placements) {
         const footprint = footprintOf(placement);
@@ -155,14 +155,14 @@ export function listPlacements(run) {
 
 /**
  * Locks a placement and resolves its cascade.
- * @param {FaultLinesRun} run
- * @param {FaultLinesPlacement} placement
- * @returns {{ run: FaultLinesRun, resolution: ReturnType<typeof resolveCascade> }}
+ * @param {StillfallRun} run
+ * @param {StillfallPlacement} placement
+ * @returns {{ run: StillfallRun, resolution: ReturnType<typeof resolveCascade> }}
  */
 export function applyPlacement(run, placement) {
-    if (run.outcome !== 'open') throw new Error('[FaultLines] The run has ended');
+    if (run.outcome !== 'open') throw new Error('[Stillfall] The run has ended');
     const shapeKey = currentShapeKey(run);
-    if (placement.shapeKey !== shapeKey) throw new Error('[FaultLines] That is not the piece in hand');
+    if (placement.shapeKey !== shapeKey) throw new Error('[Stillfall] That is not the piece in hand');
 
     const locked = {
         x: placement.x,
@@ -176,7 +176,7 @@ export function applyPlacement(run, placement) {
     const lockFootprint = cellsOf(locked).map(([x, y]) => ({ x, y }));
     const manualColumns = [...new Set(lockFootprint.map((cell) => cell.x))].sort((a, b) => a - b);
     const resolution = resolveCascade([...run.lockedPieces, locked], {
-        boardHeight: FAULT_LINES_BOARD_HEIGHT,
+        boardHeight: STILLFALL_BOARD_HEIGHT,
         level: 1,
         lines: run.lines,
         linesUntilNextLevel: 15,
@@ -187,7 +187,7 @@ export function applyPlacement(run, placement) {
         lastPlacedPieceX: manualColumns,
     });
 
-    /** @type {FaultLinesRun} */
+    /** @type {StillfallRun} */
     const next = {
         ...run,
         lockedPieces: resolution.lockedPiecesAfter,
@@ -202,7 +202,7 @@ export function applyPlacement(run, placement) {
 
 /**
  * Whether the goal is met, still open, or out of reach (supply spent, or the relic gone).
- * @param {FaultLinesRun} run
+ * @param {StillfallRun} run
  * @returns {'open'|'solved'|'failed'}
  */
 export function judge(run) {
@@ -224,7 +224,7 @@ export function judge(run) {
 /**
  * Why a failed run failed: the relic body was cleared away, or the supply ran out short
  * of the goal. A deal the structure blocks is the mode's to report ('blocked').
- * @param {FaultLinesRun} run
+ * @param {StillfallRun} run
  * @returns {'relic-lost' | 'spent' | null}
  */
 export function failReason(run) {
@@ -248,9 +248,9 @@ export function countCells(pieces) {
  * The reachable landing a stored solution step names, or null if the controls cannot
  * reach it on this board. Steps name the piece, how many right rotations, and the column
  * (the shape matrix's origin, as listPlacements reports it); the landing row follows.
- * @param {FaultLinesRun} run
+ * @param {StillfallRun} run
  * @param {{ piece: string, rotation: number, x: number }} step
- * @returns {FaultLinesPlacement | null}
+ * @returns {StillfallPlacement | null}
  */
 export function solutionPlacement(run, step) {
     if (!step || currentShapeKey(run) !== step.piece) return null;
