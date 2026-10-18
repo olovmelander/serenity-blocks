@@ -95,7 +95,7 @@ export function getSongPath(trackName, songsData) {
 
 /**
  * Finds a song that matches a theme name
- * @param {string} themeName - Theme name (e.g., 'moonlit-forest')
+ * @param {string} themeName - Theme name (e.g., 'spring')
  * @param {Array<Object>} songsData - Array of song objects
  * @returns {string|null} Track key or null if no match
  */

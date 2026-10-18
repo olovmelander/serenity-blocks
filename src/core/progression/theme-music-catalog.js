@@ -9,7 +9,7 @@ const AUTHORED_SONGS = Object.freeze({
     forest: ['Echoes of the Soul', 'echoes-of-the-soul.mp3'],
     'himalayan-peak': ['Himalayan Peak', 'himalayan-peak.mp3'],
     'ice-temple': ['Ice Temple', 'ice-temple.mp3'],
-    'moonlit-forest': ['Moonlit Forest', 'moonlit-forest.mp3'],
+    spring: ['Spring', 'spring.mp3'],
     wolfhour: ['Wolfhour', 'wolfhour.mp3'],
     ocean: ['Ocean Deep', 'ocean-deep.mp3'],
     aurora: ['Aurora', 'aurora.mp3'],
@@ -71,7 +71,8 @@ const themesByTrack = new Map(THEME_MUSIC_CATALOG.map((song) => [song.trackKey, 
  * "High Coast" when High Coast took its orb (2026-10-13), "Singing Bowl" became
  * "Kaleidosonic" when Kaleidosonic took its orb (2026-10-13), and "Sky Children" became
  * "Rainbow Terraces" with its theme (2026-10-18). An authored recording retitled for the theme
- * that took its orb changes key too: "Misty Lake" became "Grainfields" (2026-10-18).
+ * that took its orb changes key too: "Misty Lake" became "Grainfields" and "Moonlit Forest"
+ * became "Spring" (both 2026-10-18).
  */
 const RETIRED_TRACK_KEYS = new Map([
     ['ElectricDreams', 'Murmuration'],
@@ -80,6 +81,7 @@ const RETIRED_TRACK_KEYS = new Map([
     ['SingingBowl', 'Kaleidosonic'],
     ['SkyChildren', 'RainbowTerraces'],
     ['MistyLake', 'Grainfields'],
+    ['MoonlitForest', 'Spring'],
 ]);
 
 /**
