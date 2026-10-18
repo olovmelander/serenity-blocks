@@ -274,7 +274,6 @@ export function describeOdysseyStarOutcome(level, results = {}) {
     return {
         stars,
         tiers,
-        aided: results?.aided === true,
         next: next ? { ...next, missed: next.parts.filter((part) => part.met === false) } : null,
     };
 }
@@ -282,7 +281,6 @@ export function describeOdysseyStarOutcome(level, results = {}) {
 /** One line for the ceremony and results: the next star and what it still needs. */
 export function formatOdysseyNextStar(outcome) {
     if (!outcome?.tiers?.length) return null;
-    if (outcome.aided) return 'Cleared with a gem: the first star. The others ask for an unaided clear.';
     if (!outcome.next) return 'All three stars earned.';
     const { next } = outcome;
     if (!next.missed.length) return `Next star: ${next.label}.`;

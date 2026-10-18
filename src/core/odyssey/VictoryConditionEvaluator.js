@@ -17,8 +17,6 @@ export class VictoryConditionEvaluator {
      * Reset all tracked metrics
      */
     reset() {
-        // Still Air can lengthen a deadline orb once; measured from the authored limit.
-        this.timeLimitBonus = 0;
         this.trackedMetrics = {
             lines: 0,
             score: 0,
@@ -112,17 +110,6 @@ export class VictoryConditionEvaluator {
         this.trackedMetrics.time = elapsed;
     }
 
-    /** The deadline in seconds: the authored limit plus any extension bought during the attempt. */
-    timeLimitFor(failure) {
-        return (Number(failure?.value) || 0) + (this.timeLimitBonus || 0);
-    }
-
-    /** Lengthen the deadline by whole seconds. */
-    extendTimeLimit(seconds) {
-        this.timeLimitBonus = (this.timeLimitBonus || 0) + Math.max(0, Number(seconds) || 0);
-        return this.timeLimitBonus;
-    }
-
     /**
      * Update current score
      * @param {number} score
@@ -171,7 +158,7 @@ export class VictoryConditionEvaluator {
         const { failure } = victoryConfig;
         // A goal reached exactly at the deadline wins the tie. A later physics
         // callback cannot revive an already-expired attempt.
-        if (failure?.type === 'time' && this.trackedMetrics.time > this.timeLimitFor(failure)) return false;
+        if (failure?.type === 'time' && this.trackedMetrics.time > failure.value) return false;
         if (failure?.type === 'opponent-frags'
             && this.trackedMetrics.opponentFrags >= failure.value) return false;
 
@@ -227,7 +214,7 @@ export class VictoryConditionEvaluator {
             return gameState?.isGameOver ?? false;
 
         case 'time':
-            return Boolean(gameState?.isGameOver) || this.trackedMetrics.time >= this.timeLimitFor(failure);
+            return Boolean(gameState?.isGameOver) || this.trackedMetrics.time >= failure.value;
 
         case 'opponent-frags':
             // Individual top-outs restart a duel round; the match ends at the frag target.

@@ -1,6 +1,6 @@
 /**
  * "Start a new journey" in the navigator: a two-step reset. The first press opens the
- * consequence (orbs, stars and gems erased; earned themes kept) beside the choice, and only
+ * consequence (orbs, stars and charms erased; earned themes kept) beside the choice, and only
  * the second press erases. The mode owns the actual reset; this module owns the DOM.
  */
 

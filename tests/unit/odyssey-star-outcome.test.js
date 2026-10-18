@@ -70,10 +70,6 @@ describe('Odyssey star outcome: why an attempt earned the stars it did', () => {
         expect(partial.next.parts.map((part) => part.met)).toEqual([null, null]);
         expect(formatOdysseyNextStar(partial)).toBe('Next star: 20 lines + Under 2:30.');
         expect(formatOdysseyNextStar(describeOdysseyStarOutcome({ stars: {} }, { stars: 1 }))).toBeNull();
-        // A gem's help: the first star only, and the honest reason.
-        const aided = describeOdysseyStarOutcome(getLevelById(1), { stars: 1, lines: 30, time: 90, aided: true });
-        expect(aided.aided).toBe(true);
-        expect(formatOdysseyNextStar(aided)).toBe('Cleared with a gem: the first star. The others ask for an unaided clear.');
         expect(formatOdysseyNextStar(null)).toBeNull();
     });
 

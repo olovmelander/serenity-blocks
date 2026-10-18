@@ -6,6 +6,7 @@
  */
 import { formatOdysseyMapObjective, formatOdysseyStarCondition } from './objective-copy.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
+import { applyOdysseyCharmsToLevel, describeOdysseyCharms } from '../../core/odyssey/odyssey-charms.js';
 
 /** The kind of orb, as the map marks it: a rival duel, the chapter's boss, a showcase, or none. */
 export function describeOdysseyOrbKind(level) {
@@ -47,12 +48,16 @@ function fillList(doc, id, items) {
  * @param {object|null} [options.completion] the saved completion, if any
  * @param {boolean} options.unlocked whether the orb can be played now
  * @param {string} [options.chapterName]
+ * @param {string[]} [options.charms] the charms held: the goal, stars and rules show the orb as they make it
  * @param {Document} [doc]
  */
 export function renderOdysseyLevelPanel({
-    level, previousLevel = null, completion = null, unlocked = false, chapterName = '',
+    level, previousLevel = null, completion = null, unlocked = false, chapterName = '', charms = [],
 }, doc = globalThis.document) {
     if (!level || !doc) return;
+    // The orb as the held charms make it: what the panel promises is what will be played.
+    const played = applyOdysseyCharmsToLevel(level, charms);
+    const playedBefore = previousLevel ? applyOdysseyCharmsToLevel(previousLevel, charms) : null;
     const stars = Math.max(0, Math.min(3, Number(completion?.stars) || 0));
     const kind = describeOdysseyOrbKind(level);
     const kindNode = doc.getElementById('level-panel-kind');
@@ -75,23 +80,25 @@ export function renderOdysseyLevelPanel({
         starsNode.setAttribute?.('aria-label', `${stars} of 3 stars earned`);
     }
 
-    const aidedNode = doc.getElementById('level-panel-aided');
-    if (aidedNode) {
-        const aided = completion?.aided === true;
-        aidedNode.textContent = aided ? 'Cleared with a gem\u2019s help. An unaided clear earns its stars.' : '';
-        aidedNode.hidden = !aided;
+    const charmsNode = doc.getElementById('level-panel-charms');
+    if (charmsNode) {
+        const held = describeOdysseyCharms(charms);
+        charmsNode.textContent = held.length
+            ? `Your charms: ${held.map((charm) => charm.name).join(' · ')}. The goal and rules below count them.`
+            : '';
+        charmsNode.hidden = held.length === 0;
     }
 
-    setText(doc, 'level-panel-goal', formatOdysseyMapObjective(level.victory?.primary));
+    setText(doc, 'level-panel-goal', formatOdysseyMapObjective(played.victory?.primary));
     const starGoals = ['one', 'two', 'three'].map((tier, index) => (
-        level.stars?.[tier] ? `${index + 1} ★ ${formatOdysseyStarCondition(level.stars[tier], index)}` : null
+        played.stars?.[tier] ? `${index + 1} ★ ${formatOdysseyStarCondition(played.stars[tier], index)}` : null
     )).filter(Boolean);
     fillList(doc, 'level-panel-star-goals', starGoals);
     const starGoalsLabel = doc.getElementById('level-panel-star-goals-label');
     if (starGoalsLabel) starGoalsLabel.hidden = starGoals.length === 0;
 
     // What this orb asks that the orb before it did not; a fresh selection shows its rules.
-    const briefing = getOdysseyLevelBriefing(level, previousLevel);
+    const briefing = getOdysseyLevelBriefing(played, playedBefore);
     const rules = previousLevel ? briefing.changes : briefing.rules;
     fillList(doc, 'level-panel-rules', rules);
     const rulesLabel = doc.getElementById('level-panel-rules-label');

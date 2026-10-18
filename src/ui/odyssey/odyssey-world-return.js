@@ -124,6 +124,8 @@ export async function returnToOdysseyWorld(mode, options = {}) {
                 mode.entryPhase = 'idle';
                 mode._clearBoardReturnFallbackVeil({ immediate: true });
                 if (!scenicOwner) mode._restoreInputs();
+                // A reached chapter whose charm draft still waits is offered once the map is back.
+                if (!scenicOwner && !options.preserveJourneyFlow) mode._offerPendingArrival?.();
             },
             onAbort: async (abortResult) => {
                 if (!isCurrent()) return;

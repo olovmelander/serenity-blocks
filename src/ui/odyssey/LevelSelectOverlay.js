@@ -34,7 +34,7 @@ export function createLevelSelectOverlay() {
                 aria-expanded="false" aria-controls="odyssey-new-journey-confirm">Start a new journey</button>
             <div id="odyssey-new-journey-confirm" class="odyssey-new-journey" role="group"
                 aria-label="Start a new journey" hidden>
-                <p class="odyssey-new-journey__copy">This erases your orbs, stars and gems and begins again at
+                <p class="odyssey-new-journey__copy">This erases your orbs, stars and charms and begins again at
                     Orb 1. Themes you have earned stay yours.</p>
                 <div class="odyssey-new-journey__actions">
                     <button id="odyssey-new-journey-confirm-btn"
