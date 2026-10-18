@@ -17,8 +17,8 @@ uint8, WEIGHTS_0 uint8 summing to 255), no glTF skin and no animation. The skele
 
 ## The troll
 
-`troll.glb` is the theme's own troll: the source the troll files are rebuilt from. It is not
-loaded at run time.
+`troll.glb` is the theme's own troll, the author's character: the troll files are drawn in its
+character (since 2026-10-18 they no longer derive from its mesh). It is not loaded at run time.
 
 The source image, `C:\AI\troll-source.png`, is a private, project-owned input supplied by the
 Serenity Blocks author. It is not redistributed. The resulting mesh is a project-owned
@@ -31,17 +31,21 @@ fill, Xatlas unwrap, 2,048 texture bake, vertex-colour bake, opaque material), t
 blender_troll_walk.py`, `C:\AI\troll_walk.blend`; that machine is gone). TRELLIS.2 is MIT-licensed.
 No Tencent/Hunyuan asset or model was used.
 
-`troll-lod0..3.glb` (rebuilt 2026-10-18, `scripts/blender/stillwater/troll.py`): the source's pelt
-was a soup of thin triangle shards that drew as torn paper, and its rig moved like rubber. The
-shards are thickened (solidify 0.0065) and the whole voxel-remeshed (0.0075) into one solid
-surface that keeps the sculpt's shape; the source's paint is carried over (skin where it is
-pinkish, and its own light); his parts are told by place and thinness (the paint cannot tell hair
-from body, and in the source the hair is flaps of the one connected surface): skin by the paint,
-the loincloth by its place at his front waist, pelt where the surface is a thin sheet, on the cloak
-off his back and sides and over his crown, bare hide for the rest; the result is decimated to four
-LODs, weighted to a new 21-bone skeleton (bone heat for the body; the cloak and the loincloth hung
-from the torso by height), and given baked ambient occlusion (Cycles, CPU). COLOR_0 = skin (1 skin,
-0.65 bare hide), ambient occlusion, pelt, the paint's light; neither skin nor pelt = leather.
+`troll-lod0..3.glb` (drawn 2026-10-18, `scripts/blender/stillwater/troll_shape.py` and
+`troll.py`, from numbers alone): the reconstruction's pelt was a soup of thin sheets that read as
+torn, messy paper however it was rebuilt, so the troll is now drawn clean in the source's character
+(a stocky old troll, his head carried low and forward, a long drooping nose, long ears, big hands
+and feet, a cloak of matted hair to his knees). He is one signed distance field: smooth masses
+blended into each other along the 21-bone skeleton's rest pose, eye sockets and nostrils taken out,
+heavy lids, a loincloth wrapped round his hips with a rope belt, then a mane of matted moss locks
+draped under gravity over his body (a mantle from a yoke round his neck, the crown over it, a moss
+beard, bushy brows) and a few small mushrooms in his moss. The field is meshed once (OpenVDB, voxel
+0.003 of his height), only its outer shell kept, decimated to four LODs, weighted (bone heat for the
+body; the beard and brows on his head, the crown's locks from his head down his torso, the mantle by
+height down his torso and partly on his collarbones) and given baked ambient occlusion (Cycles,
+CPU). COLOR_0 = skin (1 his ruddy face, 0.65 his hide, 0.2 an eye), ambient occlusion, moss, kind
+(the moss lock's own shade 0..0.6, 0.7 an eye, 1 a mushroom); all but the occlusion zero = leather.
+Project-owned.
 
 | Asset | Triangles | Target tier |
 | --- | ---: | --- |
