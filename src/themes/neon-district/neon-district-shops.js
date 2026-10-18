@@ -31,6 +31,7 @@ import {
     attribute,
     cameraPosition,
     clamp,
+    cos,
     dot,
     exp,
     float,
@@ -72,7 +73,7 @@ import {
 import { SHOPFRONT_CELLS } from './neon-district-atlas.js';
 import { TEXT_WIDTH } from './neon-district-layout.js';
 import { ndTextDistance } from './neon-district-text.js';
-import { ndLogoFrames } from './neon-district-signs.js';
+import { ndLogoFrames, ndSpellOut } from './neon-district-signs.js';
 
 const finish = (name, geometry, material) => {
     const mesh = new THREE.Mesh(geometry, material);
@@ -176,7 +177,7 @@ function wetGlass(u, ctx, g, seed) {
     const fres = pow(float(1.0).sub(ctx.ndv), 5.0).mul(0.92).add(0.05);
     const add = mirrored.mul(fres).add(mirrored.mul(bead.mul(0.6).add(trail)))
         .add(ctx.glow.mul(bead).mul(0.05));
-    return { offset: offset.mul(ctx.detail), add, transmit: float(1.0).sub(fres).mul(float(1.0).sub(bead.mul(0.25))) };
+    return { offset: offset.mul(ctx.detail).toVar(), add, transmit: float(1.0).sub(fres).mul(float(1.0).sub(bead.mul(0.25))) };
 }
 
 /** The per-fragment context both shop materials start from. */
@@ -288,6 +289,57 @@ export function createPaintedShops(u, shops, atlas, fade) {
 
 // ── Generated shops ─────────────────────────────────────────────────────────────
 
+/** Signed distance to a capsule from a to b, radius r (2D). */
+const ndSdCapsule = /* @__PURE__ */ Fn(([q, a, b, r]) => {
+    const pa = q.sub(a);
+    const ba = b.sub(a);
+    const h = clamp(dot(pa, ba).div(dot(ba, ba)), 0.0, 1.0);
+    return length(pa.sub(ba.mul(h))).sub(r);
+}).setLayout({
+    name: 'nd_sdCapsule',
+    type: 'float',
+    inputs: [{ name: 'q', type: 'vec2' }, { name: 'a', type: 'vec2' }, { name: 'b', type: 'vec2' }, { name: 'r', type: 'float' }],
+});
+
+/** Signed distance to a box of half-size b with corners rounded by r (2D). */
+const ndSdRoundBox = /* @__PURE__ */ Fn(([q, b, r]) => {
+    const d = abs(q).sub(b).add(r);
+    return length(max(d, 0.0)).add(min(max(d.x, d.y), 0.0)).sub(r);
+}).setLayout({
+    name: 'nd_sdRoundBox',
+    type: 'float',
+    inputs: [{ name: 'q', type: 'vec2' }, { name: 'b', type: 'vec2' }, { name: 'r', type: 'float' }],
+});
+
+/**
+ * A person's silhouette, in a frame where the person is 1.75 m tall and stands on y = 0: head,
+ * body, arms and legs that swing with `swing` (−1..1), or sitting cross-legged (`seated` 1).
+ */
+const ndFigure = /* @__PURE__ */ Fn(([q, swing, seated]) => {
+    const head = length(q.sub(vec2(0.0, 1.6))).sub(0.125);
+    const torso = ndSdRoundBox(q.sub(vec2(0.0, 1.17)), vec2(0.23, 0.31), 0.11);
+    const armL = ndSdCapsule(q, vec2(-0.23, 1.38), vec2(swing.mul(-0.08).sub(0.27), 0.9), 0.06);
+    const armR = ndSdCapsule(q, vec2(0.23, 1.38), vec2(swing.mul(0.08).add(0.27), 0.9), 0.06);
+    const legL = ndSdCapsule(q, vec2(-0.1, 0.9), vec2(swing.mul(0.18).sub(0.1), 0.04), 0.085);
+    const legR = ndSdCapsule(q, vec2(0.1, 0.9), vec2(swing.mul(-0.18).add(0.1), 0.04), 0.085);
+    const stand = min(min(head, torso), min(min(armL, armR), min(legL, legR)));
+    const sHead = length(q.sub(vec2(0.0, 0.98))).sub(0.115);
+    const sTorso = ndSdRoundBox(q.sub(vec2(0.0, 0.62)), vec2(0.18, 0.26), 0.09);
+    const sLegs = ndSdRoundBox(q.sub(vec2(0.0, 0.14)), vec2(0.36, 0.1), 0.09);
+    const seat = min(sHead, min(sTorso, sLegs));
+    return mix(stand, seat, seated);
+}).setLayout({
+    name: 'nd_figure',
+    type: 'float',
+    inputs: [{ name: 'q', type: 'vec2' }, { name: 'swing', type: 'float' }, { name: 'seated', type: 'float' }],
+});
+
+/** A per-archetype value (SHOP_ARCHETYPES order) as a select chain on `arch`. */
+const byArch = (arch, values) => values.slice(0, -1).reduceRight(
+    (rest, v, i) => select(arch.lessThan(i + 0.5), float(v), rest),
+    float(values[values.length - 1]),
+);
+
 /**
  * The room behind a generated shop's glass, by archetype (SHOP_ARCHETYPES order). `p` is where
  * the ray crossed the glazing (metres in the shop frame), `rd` the ray, `o0`/`o1` the opening.
@@ -317,7 +369,7 @@ function shopInterior(u, {
     const bz = hit.z.div(depth).toVar();
     // The mid layer: a counter, aisles, cabinets, at 42 % of the room's depth.
     const tm = depth.mul(0.42).div(rdz);
-    const midFront = step(tm, t);
+    const midFront = step(tm, t).toVar();
     const mx = p.x.add(rd.x.mul(tm)).sub(roomX0).toVar();
     const my = p.y.add(rd.y.mul(tm)).sub(floorY).toVar();
     const roomH = ceilY.sub(floorY).toVar();
@@ -330,14 +382,42 @@ function shopInterior(u, {
     const ceil = vec3(0.0).toVar();
     const flo = vec3(0.0).toVar();
     const dim = float(1.0).toVar();
+    // Light hanging in the room's air (a noodle counter's steam), added over everything behind it.
+    const haze = vec3(0.0).toVar();
     const h1 = (a, b) => ndHash21(vec2(a, b.add(seed)));
+    // A television high on the back wall (diner, bar), changing picture now and then.
+    const tvX = bx.sub(roomW.mul(0.74)).toVar();
+    const tvY = by.sub(2.1).toVar();
+    const tvIn = step(abs(tvX), 0.42).mul(step(abs(tvY), 0.24)).toVar();
+    const tvCell = floor(vec2(tvX.add(0.42).div(0.21), tvY.add(0.24).div(0.16)));
+    const tvHash = ndHash22(tvCell.add(vec2(floor(u.time.mul(1.3)), seed)));
+    const tvPic = mix(vec3(0.15, 0.3, 0.9), vec3(1.0, 0.5, 0.2), tvHash.x).mul(tvHash.y.mul(0.8).add(0.4))
+        .mul(sin(by.mul(300.0)).mul(0.1).add(0.9))
+        .toVar();
+    const tvFrame = step(abs(tvX), 0.47).mul(step(abs(tvY), 0.29)).sub(tvIn).toVar();
+    const tvSpill = exp(length(vec2(tvX, tvY)).mul(-2.2)).mul(0.12).toVar();
+    const withTv = (col) => mix(col, tvPic.mul(1.4), tvIn).mul(float(1.0).sub(tvFrame.mul(0.9))).add(tvPic.mul(tvSpill).mul(lit));
+    // A ceiling fan turning slowly over the room (diner, bar).
+    const fanC = vec2(bx.sub(roomW.mul(0.5)), hit.z.sub(depth.mul(0.45)));
+    const fanA = atan(fanC.y, fanC.x).add(u.time.mul(2.4));
+    const fanR = length(fanC);
+    const fanShade = clamp(step(fanR, 0.62).mul(smoothstep(0.72, 0.92, abs(sin(fanA.mul(2.0))))).add(step(fanR, 0.09)), 0.0, 1.0)
+        .mul(0.85)
+        .toVar();
 
     If(arch.lessThan(0.5), () => {
         // diner: menu boards over the back counter, a counter with pendant lamps over it
         const board = step(1.85, by).mul(step(by, 2.45)).mul(step(0.1, fract(bx.div(1.3)))).mul(step(fract(bx.div(1.3)), 0.9));
         const lines = step(0.45, fract(by.mul(9.0))).mul(0.35).add(0.65);
-        back.assign(vec3(0.16, 0.09, 0.05).mul(L).mul(mix(float(0.5), float(1.0), step(1.0, by)))
-            .add(L.mul(board).mul(lines).mul(1.6)));
+        back.assign(withTv(vec3(0.16, 0.09, 0.05).mul(L).mul(mix(float(0.5), float(1.0), step(1.0, by)))
+            .add(L.mul(board).mul(lines).mul(1.6).mul(float(1.0).sub(tvIn)))));
+        // Steam off the bowls on the counter, curling up into the lamplight.
+        const wisp = u.noise(vec2(mx.mul(0.7).add(seed.mul(0.1)), my.mul(0.5).sub(u.time.mul(0.22)))).r;
+        const bowls = smoothstep(0.32, 0.12, abs(fract(mx.div(1.6)).sub(0.5)));
+        // Steam is pale: the lamplight, washed toward white.
+        haze.assign(mix(L, vec3(0.9), 0.55).mul(smoothstep(0.45, 0.85, wisp).mul(bowls).mul(smoothstep(1.05, 1.35, my)).mul(smoothstep(2.4, 1.5, my)))
+            .mul(0.22)
+            .mul(midFront));
         const pend = vec2(fract(mx.div(1.4)).sub(0.5).mul(1.4), my.sub(roomH.sub(0.8)));
         const bulb = smoothstep(0.14, 0.1, length(pend));
         const cord = smoothstep(0.012, 0.004, abs(pend.x)).mul(step(0.0, pend.y));
@@ -350,7 +430,7 @@ function shopInterior(u, {
             L.mul(3.2).add(vec3(0.6, 0.35, 0.15)).mul(bulb.mul(float(1.0).sub(counter))),
             bulb.mul(float(1.0).sub(counter)),
         ).mul(float(1.0).sub(cord.mul(0.9).mul(float(1.0).sub(counter)))));
-        ceil.assign(L.mul(0.12));
+        ceil.assign(L.mul(0.12).mul(float(1.0).sub(fanShade)));
         flo.assign(L.mul(mix(float(0.05), float(0.16), step(0.5, fract(floor(hit.x.div(0.3)).add(floor(hit.z.div(0.3))).mul(0.5))))));
     }).ElseIf(arch.lessThan(1.5), () => {
         // laundry: two rows of washer doors, their drums turning
@@ -360,12 +440,21 @@ function shopInterior(u, {
         const running = step(0.35, h1(cellX, step(0.86, by)));
         const ang = atan(local.y, local.x).add(u.time.mul(h1(cellX, float(3.0)).mul(5.0).add(4.0)).mul(running));
         const swirl = sin(ang.mul(3.0).add(rr.mul(30.0))).mul(0.25).add(0.75);
+        const spin = u.time.mul(h1(cellX, float(3.0)).mul(5.0).add(4.0)).mul(running);
+        const turned = vec2(local.x.mul(cos(spin)).sub(local.y.mul(sin(spin))), local.x.mul(sin(spin)).add(local.y.mul(cos(spin))));
+        const cloth = u.noise(turned.mul(2.6).add(vec2(cellX.mul(0.37), seed.mul(0.1)))).r;
+        const clothHue = h1(cellX, float(8.0));
+        const clothCol = mix(mix(vec3(0.9, 0.25, 0.35), vec3(0.25, 0.5, 1.0), step(0.33, clothHue)), vec3(0.95, 0.85, 0.3), step(0.66, clothHue));
         const door = smoothstep(0.26, 0.245, rr).mul(step(by, 1.55));
         const rim = smoothstep(0.31, 0.295, rr).mul(float(1.0).sub(door)).mul(step(by, 1.55));
         const tiles = step(0.06, fract(bx.div(0.2))).mul(step(0.06, fract(by.div(0.2)))).mul(0.15).add(0.45);
         back.assign(L.mul(tiles).mul(0.22).mul(float(1.0).sub(rim).mul(float(1.0).sub(door)))
             .add(L.mul(rim).mul(0.9))
-            .add(mix(vec3(0.06, 0.08, 0.14), accent.mul(0.5).add(vec3(0.25, 0.4, 0.9)).mul(swirl), running).mul(door)));
+            .add(mix(vec3(0.06, 0.08, 0.14), mix(
+                accent.mul(0.5).add(vec3(0.25, 0.4, 0.9)).mul(swirl),
+                clothCol.mul(0.8),
+                smoothstep(0.48, 0.62, cloth).mul(step(rr, 0.2)),
+            ), running).mul(door)));
         const table = step(my, 0.92).mul(step(fract(mx.div(3.4)), 0.5));
         midMask.assign(table);
         mid.assign(L.mul(0.3).mul(smoothstep(0.0, 0.92, my).mul(0.5).add(0.3)).add(L.mul(smoothstep(0.86, 0.92, my)).mul(0.6)));
@@ -380,7 +469,10 @@ function shopInterior(u, {
         const hue = h1(item, shelf);
         const product = step(fract(by.div(0.32)), 0.7).mul(step(0.15, fract(bx.div(0.12))));
         const productCol = mix(mix(vec3(1.0, 0.25, 0.2), vec3(0.2, 0.7, 1.0), step(0.4, hue)), vec3(1.0, 0.85, 0.2), step(0.75, hue));
-        back.assign(mix(L.mul(1.3).add(productCol.mul(product).mul(0.9)), vec3(0.04).mul(L), frame));
+        const doorIdx = floor(bx.div(0.75));
+        const failing = step(0.9, h1(doorIdx, float(9.0)));
+        const fridge = mix(float(1.0), step(0.25, ndHash21(vec2(floor(u.time.mul(14.0)), doorIdx.add(seed)))).mul(0.7).add(0.3), failing);
+        back.assign(mix(L.mul(1.3).mul(fridge).add(productCol.mul(product).mul(0.9)), vec3(0.04).mul(L), frame));
         const aisle = step(fract(mx.div(2.4)), 0.46).mul(step(my, 1.7));
         const aShelf = floor(my.div(0.36));
         const aItem = floor(mx.div(0.1));
@@ -401,7 +493,14 @@ function shopInterior(u, {
         const screen = step(0.2, cx).mul(step(cx, 0.8)).mul(step(1.15, by)).mul(step(by, 1.6));
         const scan = sin(by.mul(220.0)).mul(0.12).add(0.88).mul(ndHash21(vec2(floor(u.time.mul(8.0)), cab)).mul(0.25).add(0.75));
         const marquee = step(0.12, cx).mul(step(cx, 0.88)).mul(step(1.74, by)).mul(step(by, 1.94));
-        back.assign(vec3(0.012).mul(body).add(scr.mul(screen).mul(scan).mul(1.8)).add(scr.yzx.mul(marquee).mul(1.4))
+        // Attract mode: bars rolling down, a ball bouncing across.
+        const sx = cx.sub(0.2).div(0.6);
+        const sy = by.sub(1.15).div(0.45);
+        const bars = step(0.5, fract(sy.mul(6.0).add(u.time.mul(1.5)).add(cab.mul(0.31)))).mul(0.35).add(0.65);
+        const ballP = vec2(abs(fract(u.time.mul(0.35).add(cab.mul(0.17))).mul(2.0).sub(1.0)), abs(sin(u.time.mul(2.2).add(cab))));
+        const ball = smoothstep(0.09, 0.05, length(vec2(sx, sy).sub(ballP).mul(vec2(1.0, 1.4))));
+        back.assign(vec3(0.012).mul(body).add(scr.mul(screen).mul(scan).mul(bars.add(ball.mul(1.5))).mul(1.8))
+            .add(scr.yzx.mul(marquee).mul(1.4))
             .add(L.mul(0.04)));
         const mCab = step(fract(mx.div(2.6)), 0.3).mul(step(my, 1.9));
         const edge = smoothstep(0.24, 0.3, fract(mx.div(2.6)));
@@ -442,13 +541,13 @@ function shopInterior(u, {
                 .mul(step(1.05, by))
                 .mul(step(by, 2.3));
             const glassCol = mix(vec3(1.0, 0.55, 0.15), vec3(0.4, 1.0, 0.5), step(0.7, h1(bot, row.add(4.0))));
-            back.assign(vec3(0.01).add(L.mul(strip).mul(2.2)).add(glassCol.mul(bottle).mul(L.x.add(0.3)).mul(0.9))
-                .add(accent.mul(smoothstep(0.03, 0.0, abs(by.sub(2.5)))).mul(1.6)));
+            back.assign(withTv(vec3(0.01).add(L.mul(strip).mul(2.2)).add(glassCol.mul(bottle).mul(L.x.add(0.3)).mul(0.9))
+                .add(accent.mul(smoothstep(0.03, 0.0, abs(by.sub(2.5)))).mul(1.6))));
             const counter = step(my, 1.1);
             midMask.assign(counter);
             mid.assign(vec3(0.03, 0.015, 0.008).mul(L.add(0.2)).add(L.mul(smoothstep(1.02, 1.1, my)).mul(0.8))
                 .add(vec3(1.0, 0.7, 0.3).mul(smoothstep(0.02, 0.0, abs(my.sub(0.25)))).mul(0.6)));
-            ceil.assign(L.mul(0.03));
+            ceil.assign(L.mul(0.05).mul(float(1.0).sub(fanShade)));
             flo.assign(L.mul(0.04));
         })
         .ElseIf(arch.lessThan(6.5), () => {
@@ -476,7 +575,8 @@ function shopInterior(u, {
             const counter = step(my, 1.05);
             const scr = step(1.1, my).mul(step(my, 1.42)).mul(step(abs(fract(mx.div(1.5)).sub(0.5)), 0.17));
             midMask.assign(max(counter, scr));
-            mid.assign(L.mul(0.18).add(L.mul(smoothstep(0.98, 1.05, my)).mul(0.5)).add(vec3(0.4, 0.7, 1.0).mul(scr).mul(1.6)));
+            const rows = step(0.5, fract(my.mul(28.0).sub(u.time.mul(0.6)))).mul(0.4).add(0.6);
+            mid.assign(L.mul(0.18).add(L.mul(smoothstep(0.98, 1.05, my)).mul(0.5)).add(vec3(0.4, 0.7, 1.0).mul(scr).mul(rows).mul(1.6)));
             ceil.assign(L.mul(mix(float(0.3), float(1.8), step(0.15, fract(hit.x.div(1.2))).mul(step(0.3, fract(hit.z.div(1.2)))))));
             flo.assign(L.mul(0.15));
         })
@@ -486,8 +586,9 @@ function shopInterior(u, {
             const lamp = vec2(fract(bx.div(2.2)).sub(0.5).mul(2.2), by.sub(1.55));
             const disc = smoothstep(0.46, 0.38, length(lamp));
             const haloL = exp(length(lamp).mul(-2.2)).mul(0.5);
+            const breathe = u.breath.mul(0.75).add(0.45);
             back.assign(vec3(0.2, 0.13, 0.08).mul(L).mul(slats).mul(0.6)
-                .add(accent.mul(disc.mul(1.6).add(haloL))));
+                .add(accent.mul(disc.mul(1.6).add(haloL)).mul(breathe)));
             ceil.assign(L.mul(0.1).add(accent.mul(smoothstep(0.6, 1.0, bz)).mul(0.25)));
             const mat = step(0.15, fract(hit.x.div(1.6))).mul(step(fract(hit.x.div(1.6)), 0.75)).mul(step(0.2, bz)).mul(step(bz, 0.8));
             flo.assign(vec3(0.16, 0.1, 0.06).mul(L).mul(0.5).add(accent.mul(mat).mul(0.12)));
@@ -497,8 +598,76 @@ function shopInterior(u, {
     const shell = back.mul(isBack).add(ceil.mul(isCeil)).add(flo.mul(isFloor))
         .add(side.mul(float(1.0).sub(isBack).sub(isY)));
     const fall = exp(t.mul(-0.2));
-    const room = mix(shell.mul(fall), mid, midMask.mul(midFront));
-    return room;
+    const room = shell.mul(fall).toVar();
+
+    // ── People: staff behind the counter, customers crossing the window ──
+    // A figure stands on a plane at a fraction of the room's depth; the ray meets it there, and it
+    // hides what is behind when it is nearer than the surface the ray hit. Backlit by the room, so
+    // a dark silhouette with a rim of the room's light.
+    const crowd = step(0.3, lit);
+    const backN = byArch(arch, [1, 0, 0, 2, 0, 1, 2, 1, 1]).mul(crowd);
+    const frontN = byArch(arch, [1, 1, 2, 1, 1, 1, 0, 1, 0]).mul(crowd);
+    const backAt = byArch(arch, [0.62, 0.6, 0.6, 0.86, 0.6, 0.62, 0.44, 0.62, 0.7]);
+    const backMode = byArch(arch, [0, 0, 0, 3, 0, 0, 1, 0, 2]);
+    const person = (at, x, height, swing, bob, seated, dress) => {
+        const tp = depth.mul(at).div(rdz);
+        const px = p.x.add(rd.x.mul(tp)).sub(roomX0).sub(x);
+        const py = p.y.add(rd.y.mul(tp)).sub(floorY).sub(bob);
+        const s = height.div(1.75);
+        const d = ndFigure(vec2(px, py).div(s), swing, seated).mul(s);
+        const mask = smoothstep(0.012, -0.004, d).mul(step(tp, t));
+        // Dark clothes in the room's light, a thin edge of light round them.
+        const rim = smoothstep(-0.016, 0.0, d);
+        const clothes = mix(vec3(0.07, 0.07, 0.09), mix(vec3(0.5, 0.18, 0.2), vec3(0.15, 0.3, 0.5), dress), 0.45);
+        return { mask, col: clothes.mul(L).mul(0.18).add(L.mul(rim).mul(0.25)) };
+    };
+    for (let k = 0; k < 2; k++) {
+        const hk = h1(float(31 + k), float(2.0));
+        const on = step(k + 0.5, backN).mul(step(hk, 0.92));
+        // Staff work a spot on the counter, then walk briskly to another and work that; gym-goers
+        // run in place; arcade players sway and bounce at their cabinet; Hale's visitor sits still
+        // and breathes.
+        const runner = step(abs(backMode.sub(1.0)), 0.5);
+        const seated = step(abs(backMode.sub(2.0)), 0.5);
+        const player = step(abs(backMode.sub(3.0)), 0.5);
+        const staff = float(1.0).sub(runner).sub(seated).sub(player);
+        const shift = fract(u.time.mul(hk.mul(0.03).add(0.05)).add(hk.mul(5.0)).add(k * 0.5));
+        const over = smoothstep(0.1, 0.3, shift).sub(smoothstep(0.6, 0.8, shift));
+        const walking = step(0.1, shift).mul(step(shift, 0.3)).add(step(0.6, shift).mul(step(shift, 0.8)));
+        const spotA = roomW.mul(hk.mul(0.3).add(0.2));
+        const spotB = spotA.add(roomW.mul(0.35).add(0.4).mul(select(hk.greaterThan(0.5), float(-1.0), float(1.0))));
+        const staffX = mix(spotA, clamp(spotB, 0.5, roomW.sub(0.5)), over).add(sin(u.time.mul(0.7).add(hk.mul(9.0))).mul(0.03));
+        const home = mix(staffX, float(k).add(0.35).mul(2.1), runner);
+        const cabinet = floor(hk.mul(roomW).div(0.8)).add(0.5).mul(0.8)
+            .add(sin(u.time.mul(1.3).add(k * 2.0)).mul(0.05));
+        const x = mix(mix(home, cabinet, player), roomW.mul(0.5), seated);
+        const run = sin(u.time.mul(9.0).add(k * 2.1)).mul(runner);
+        const step7 = sin(staffX.mul(7.5)).mul(walking).mul(staff);
+        const sway = sin(u.time.mul(1.3).add(k * 2.0)).mul(0.2).mul(player);
+        const bob = abs(run).mul(0.05).add(abs(step7).mul(0.025))
+            .add(abs(sin(u.time.mul(2.6).add(k))).mul(0.015).mul(player))
+            .add(u.breath.mul(0.015).mul(seated));
+        If(on.greaterThan(0.5), () => {
+            const fig = person(backAt, x, hk.mul(0.2).add(1.65), run.add(step7).add(sway), bob, seated, fract(hk.mul(7.3)));
+            room.assign(mix(room, fig.col, fig.mask));
+        });
+    }
+    room.assign(mix(room, mid, midMask.mul(midFront)));
+    for (let k = 0; k < 2; k++) {
+        const hk = h1(float(41 + k), float(5.0));
+        const on = step(k + 0.5, frontN).mul(step(hk, 0.88));
+        // A walk across the room and back, with a pause at each end.
+        const phase = fract(u.time.mul(hk.mul(0.035).add(0.045)).add(hk.mul(13.0)).add(k * 0.37));
+        const there = smoothstep(0.05, 0.45, phase).sub(smoothstep(0.55, 0.95, phase));
+        const moving = step(0.05, phase).mul(step(phase, 0.45)).add(step(0.55, phase).mul(step(phase, 0.95)));
+        const x = mix(float(0.35), roomW.sub(0.35), there);
+        const stride = sin(x.mul(7.0)).mul(moving);
+        If(on.greaterThan(0.5), () => {
+            const fig = person(float(0.18 + k * 0.08), x, hk.mul(0.25).add(1.6), stride, abs(stride).mul(0.025), float(0.0), fract(hk.mul(5.1)));
+            room.assign(mix(room, fig.col, fig.mask));
+        });
+    }
+    return room.add(haze);
 }
 
 /**
@@ -569,7 +738,7 @@ export function createGeneratedShops(u, shops, opts) {
         const {
             uM, vM, w, h, seed,
         } = ctx;
-        const arch = floor(shop.x.add(0.5));
+        const arch = floor(shop.x.add(0.5)).toVar();
         const style = floor(shop.y.add(0.5));
         const shutter = shop.z;
         const accent = col.rgb;
@@ -619,16 +788,24 @@ export function createGeneratedShops(u, shops, opts) {
         const frameTube = float(1.0).sub(smoothstep(0.012, 0.032, frameD));
         const white = mix(tint, vec3(1.0), 0.72);
         const tubeLive = buzz.mul(hum).mul(mains);
+        // Now and then the fascia switches itself back on: letter by letter, a lit box all at once.
+        const spell = select(
+            style.lessThan(0.5).or(style.greaterThan(1.5)),
+            ndSpellOut(u.time, seed, idx, n),
+            ndSpellOut(u.time, seed, float(0.0), float(1.0)),
+        );
         // 0: tubes on a dark board, a tube frame in the second colour.
-        const styleTubes = vec3(0.004, 0.005, 0.008).add(white.mul(core.mul(3.4)).add(tint.mul(halo.mul(1.5))).mul(tubeLive))
+        const styleTubes = vec3(0.004, 0.005, 0.008).add(white.mul(core.mul(3.4)).add(tint.mul(halo.mul(1.5))).mul(tubeLive).mul(spell))
             .add(second.mul(frameTube.mul(1.6).add(exp(frameD.mul(-22.0)).mul(0.25))).mul(mains));
         // 1: a lit box, dark letters.
         const bands = sin(vM.mul(5.2)).mul(0.14).add(0.86);
         const styleBox = tint.mul(0.55).mul(bands).mul(float(1.0).sub(fill.mul(0.92))).mul(smoothstep(0.0, 0.06, inset))
             .mul(tubeLive)
+            .mul(spell)
             .add(vec3(0.006));
         // 2: channel letters lit from inside, on dark metal.
-        const styleLetters = vec3(0.012, 0.013, 0.016).mul(ctx.glow.add(0.3)).add(tint.mul(fill.mul(1.9).add(exp(dName.mul(-9.0)).mul(0.18))).mul(tubeLive));
+        const styleLetters = vec3(0.012, 0.013, 0.016).mul(ctx.glow.add(0.3))
+            .add(tint.mul(fill.mul(1.9).add(exp(dName.mul(-9.0)).mul(0.18))).mul(tubeLive).mul(spell));
         const signFace = select(style.lessThan(0.5), styleTubes, select(style.lessThan(1.5), styleBox, styleLetters)).toVar();
         if (logos) {
             const lc = vec2(uM.sub(b0.x.add(0.12)), vM.sub(b0.y.add(boardH.mul(0.05)))).div(logoSize);
@@ -717,25 +894,37 @@ export function createGeneratedShops(u, shops, opts) {
         const sCore = float(1.0).sub(smoothstep(0.025, 0.045, dSign));
         const sHalo = exp(dSign.mul(-14.0)).mul(0.5);
         const signRed = mix(vec3(1.0, 0.16, 0.12), second, step(0.6, ndHash11(seed.add(9.0))));
+        // Some window signs blink.
+        const blinker = step(0.7, ndHash11(seed.add(17.0)));
+        const blink = mix(float(1.0), step(0.35, fract(u.time.mul(0.9).add(ndHash11(seed.add(18.0))))), blinker);
         const windowSign = mix(signRed, vec3(1.0), 0.6).mul(sCore.mul(2.8)).add(signRed.mul(sHalo)).mul(tubeLive)
-            .mul(open01);
+            .mul(open01)
+            .mul(blink);
 
         let room;
         if (rooms) {
-            room = shopInterior(u, {
-                p: g.add(glass.offset),
-                rd: ctx.rd,
-                o0,
-                o1,
-                depth: light.w,
-                arch,
-                light: light.rgb,
-                accent: tint,
-                seed,
-                lit,
+            // The room is the costliest thing a shop draws: trace it only where it can be seen —
+            // through the glass (not the fascia, piers, reveal or a shutter), and near enough for
+            // its detail to show. Everything it reads is already a variable out here.
+            const seen = inOpen.greaterThan(0.001).and(rec.glass.greaterThan(0.5)).and(inShutter.lessThan(0.999))
+                .and(ctx.detail.greaterThan(0.01));
+            const traced = vec3(0.0).toVar();
+            If(seen, () => {
+                traced.assign(shopInterior(u, {
+                    p: g.add(glass.offset),
+                    rd: ctx.rd,
+                    o0,
+                    o1,
+                    depth: light.w,
+                    arch,
+                    light: light.rgb,
+                    accent: tint,
+                    seed,
+                    lit,
+                }));
             });
             // Far away the room is smaller than a pixel: its average.
-            room = mix(inside.mul(0.45), room, ctx.detail);
+            room = mix(inside.mul(0.45), traced, ctx.detail);
         } else {
             // The low tiers' room, flat on the glass: brighter toward the ceiling, a dark counter
             // or shelf line across it, a strip light along the top and dim corners.

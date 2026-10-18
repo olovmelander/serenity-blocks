@@ -279,7 +279,9 @@ export class NeonDistrictWorld {
         this.addPart('marks', createMarks(u, plan.marks, {
             glyphTex: glyphs, textTex: lines, textRows: plan.texts.length, logos,
         }));
-        this.addPart('screens', createScreens(u, plan.screens, this.atlases.ads, this.atlases.adsFade));
+        this.addPart('screens', createScreens(u, plan.screens, this.atlases.ads, this.atlases.adsFade, {
+            glyphTex: glyphs, textTex: lines, textRows: plan.texts.length,
+        }));
         this.addPart('prints', createPrints(u, plan.prints, this.atlases.ads, this.atlases.adsFade));
 
         // ── The street's hardware ──

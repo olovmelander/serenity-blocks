@@ -155,5 +155,45 @@ export const BRAND_WORDS = Object.freeze([
     { word: 'TRANSIT', id: 'transit' },
 ]);
 
+/** What the travel posters call their destinations (by the cell id after 'transit-'). */
+export const TRANSIT_NAMES = Object.freeze({
+    'koi-pond': 'KOI POND',
+    'sakura-twilight': 'SAKURA TWILIGHT',
+    'crystal-cave': 'CRYSTAL CAVE',
+    'golden-forest': 'GOLDEN FOREST',
+    summer: 'MIDSOMMAR',
+    ocean: 'OCEAN',
+    winter: 'WINTER',
+    stillwater: 'STILLWATER',
+    'mode-infinity': 'INFINITY',
+    'mode-stillfall': 'STILLFALL',
+    'mode-odyssey': 'ODYSSEY',
+});
+
+/** Lines the district's own screens run under adverts that are not a campaign's. */
+export const DISTRICT_LINES = Object.freeze([
+    'DISTRICT NEWS · RAIN ALL NIGHT',
+    'NIGHT MARKET OPEN TILL DAWN',
+    'TRAINS EVERY 4 MIN · LINE 7',
+    'LIVE MUSIC TONIGHT · DISTRICT 9',
+    'STAY DRY · STAY BRIGHT',
+]);
+
+/**
+ * The ticker line under an advert: a brand's name and slogan, Hale's breath, the transit line's
+ * next departure, or one of the district's own lines.
+ */
+export function tickerLine(cell, pick = 0) {
+    const campaign = CAMPAIGNS[cell.brand];
+    if (cell.family === 'brand' && campaign) return `${campaign.name} · ${campaign.slogan}`;
+    if (cell.family === 'hale') return 'HALE · BREATHE IN THE CITY · INHALE 4 · EXHALE 6';
+    if (cell.family === 'transit') {
+        const key = String(cell.id || '').replace(/^transit-/, '');
+        const name = TRANSIT_NAMES[key] || key.replace(/^mode-/, '').replace(/-/g, ' ').toUpperCase();
+        return `SERENITY TRANSIT · NOW BOARDING: ${name}`;
+    }
+    return DISTRICT_LINES[Math.abs(Math.floor(pick)) % DISTRICT_LINES.length];
+}
+
 /** What hangs in a lit shop window, if anything. */
 export const WINDOW_SIGNS = Object.freeze(['OPEN', '24H', 'OPEN LATE', 'WELCOME']);

@@ -16,7 +16,7 @@ import {
     GLYPH_COUNT, GLYPH_LATIN, GLYPH_SCRIPT, glyphFor,
 } from './neon-district-glyphs.js';
 import {
-    ARCHETYPE_LIGHT, BRANDS, BRAND_WORDS, CAMPAIGNS, HALE, TRADE_SHOPS, WINDOW_SIGNS, archetypeIndex, logoIndex,
+    ARCHETYPE_LIGHT, BRANDS, BRAND_WORDS, CAMPAIGNS, HALE, TRADE_SHOPS, WINDOW_SIGNS, archetypeIndex, logoIndex, tickerLine,
 } from './neon-district-campaigns.js';
 import { PAINTED_OPENINGS } from './neon-district-openings.js';
 
@@ -39,12 +39,20 @@ export const SIGN_WORDS = Object.freeze([
     'VR', 'DISCO', 'KARAOKE', 'TATTOO', 'PARTS', 'CHIPS', 'DINER', 'BATHS',
 ]);
 
+/** How often each campaign family comes up when a screen or a wall is given an advert. */
+export const AD_FAMILY_SHARE = Object.freeze({
+    brand: 0.42, transit: 0.38, user: 0.12, hale: 0.08,
+});
+
+/** The paste-up walls lean to the travel posters: that is where a city's travel adverts go. */
+export const PASTE_UP_SHARE = Object.freeze({ transit: 0.6, brand: 0.4 });
+
 /** Glyph atlas: cells 0..35 are 0-9 A-Z, then the district's own script, then punctuation. */
 export { GLYPH_COUNT, GLYPH_LATIN };
 export const MAX_SIGN_GLYPHS = 8;
 
-/** Characters a line of text (a fascia, a window sign) can hold: the text texture's width. */
-export const TEXT_WIDTH = 32;
+/** Characters a line of text (a fascia, a window sign, a ticker) can hold: the text texture's width. */
+export const TEXT_WIDTH = 48;
 
 /** The shopfront band: a shop is this tall, from the pavement to just under the first floor. */
 export const SHOP_HEIGHT = STREET.plinth - 0.35;
@@ -160,20 +168,38 @@ export function buildLayout(seed = 0x0d15721c) {
         }
         return deck[deckOrder[deckCursor++]];
     };
-    // Adverts are dealt from one shuffled deck per shape, so every campaign comes round.
+    // Adverts are dealt by campaign family first, at fixed shares, then from that family's shuffled
+    // deck for the shape, so every campaign comes round and the many travel posters do not crowd
+    // out the brands.
     const adDecks = {};
-    const dealAd = (shape, avoid = []) => {
-        if (!adDecks[shape] || adDecks[shape].cursor >= adDecks[shape].order.length) {
-            const cells = BILLBOARD_CELLS.map((c, i) => (c.shape === shape ? i : -1)).filter((i) => i >= 0);
-            adDecks[shape] = { order: shuffled(rand, cells.length).map((k) => cells[k]), cursor: 0 };
+    const dealFrom = (shape, family, avoid) => {
+        const key = `${shape}|${family}`;
+        if (!adDecks[key] || adDecks[key].cursor >= adDecks[key].order.length) {
+            const cells = BILLBOARD_CELLS.map((c, i) => (c.shape === shape && c.family === family ? i : -1)).filter((i) => i >= 0);
+            adDecks[key] = { order: shuffled(rand, cells.length).map((k) => cells[k]), cursor: 0 };
         }
-        const deckNow = adDecks[shape];
+        const deckNow = adDecks[key];
         for (let tries = 0; tries < deckNow.order.length; tries++) {
             const cell = deckNow.order[deckNow.cursor % deckNow.order.length];
             deckNow.cursor += 1;
             if (!avoid.includes(cell)) return cell;
         }
-        return deckNow.order[0];
+        return -1;
+    };
+    const dealAd = (shape, avoid = [], shares = AD_FAMILY_SHARE) => {
+        const families = Object.keys(shares)
+            .filter((f) => BILLBOARD_CELLS.some((c, i) => c.shape === shape && c.family === f && !avoid.includes(i)));
+        let roll = rand() * families.reduce((sum, f) => sum + shares[f], 0);
+        let family = families[families.length - 1];
+        for (const f of families) {
+            roll -= shares[f];
+            if (roll <= 0) {
+                family = f;
+                break;
+            }
+        }
+        const cell = dealFrom(shape, family, avoid);
+        return cell >= 0 ? cell : BILLBOARD_CELLS.findIndex((c) => c.shape === shape);
     };
     /** Three adverts of one shape for a screen to cycle, Hale's at most once. */
     const playlist = (shape) => {
@@ -190,15 +216,21 @@ export function buildLayout(seed = 0x0d15721c) {
     const addScreen = (screen) => {
         const cells = playlist(screen.shape);
         const glow = meanGlow(cells);
+        // Most street screens run a ticker under each advert: its slogan, scrolling.
+        const tickerOn = (screen.pitch ?? 0.055) < 0.07 && chance(0.85);
+        const ticker = tickerOn ? cells.map((c) => {
+            const line = tickerLine(BILLBOARD_CELLS[c], c);
+            return { row: addText(line), length: Math.min(TEXT_WIDTH, line.length) };
+        }) : null;
         plan.screens.push({
-            pitch: 0.055, ...screen, playlist: cells, glow, period: range(9, 14), transition: int(0, 2), seed: seedInt(),
+            pitch: 0.055, ...screen, playlist: cells, glow, ticker, period: range(9, 14), transition: int(0, 2), seed: seedInt(),
         });
         addGlow(screen.side, screen.z, glow, 0.05 * screen.w * screen.h + 0.4, 9);
     };
     /** An advert for print: never one that leaves room for a screen's breathing ring. */
-    const dealPrint = (shape, avoid = []) => {
-        let cell = dealAd(shape, avoid);
-        for (let tries = 0; tries < 4 && BILLBOARD_CELLS[cell].ring; tries++) cell = dealAd(shape, [...avoid, cell]);
+    const dealPrint = (shape, avoid = [], shares = AD_FAMILY_SHARE) => {
+        let cell = dealAd(shape, avoid, shares);
+        for (let tries = 0; tries < 4 && BILLBOARD_CELLS[cell].ring; tries++) cell = dealAd(shape, [...avoid, cell], shares);
         return cell;
     };
     /** A printed poster: paper or vinyl, lit by the street (a roof board also by its floodlights). */
@@ -308,13 +340,13 @@ export function buildLayout(seed = 0x0d15721c) {
         const pw = ph * (2 / 3);
         const rows = Math.max(1, Math.floor((yHi - yLo) / (ph + 0.06)));
         const cols = Math.max(1, Math.floor(width / (pw + 0.04)));
-        let cell = dealPrint('portrait');
-        let run = int(2, 5);
+        let cell = dealPrint('portrait', [], PASTE_UP_SHARE);
+        let run = int(2, 4);
         for (let r = 0; r < rows; r++) {
             for (let c = 0; c < cols; c++) {
                 if (run <= 0) {
-                    cell = dealPrint('portrait', [cell]);
-                    run = int(2, 5);
+                    cell = dealPrint('portrait', [cell], PASTE_UP_SHARE);
+                    run = int(2, 4);
                 }
                 run -= 1;
                 addPrint({
@@ -427,9 +459,11 @@ export function buildLayout(seed = 0x0d15721c) {
                 }
                 addGlow(side, startZ, [0.9, 0.5, 0.5], 0.35 * machines, 3.5);
             }
-            // About one block in two shows one of the painted shopfronts, until the period's set
-            // is dealt.
-            let wantPainted = paintedCursor < paintedOrder.length && chance(0.62);
+            // Most blocks show one of the painted shopfronts until the period's set is dealt, and a
+            // block must take one when the paintings left would not otherwise fit in the blocks left.
+            const paintingsLeft = paintedOrder.length - paintedCursor;
+            const blocksLeft = (1 - s) * count + (count - i);
+            let wantPainted = paintingsLeft > 0 && (chance(0.7) || paintingsLeft >= blocksLeft - 1);
             const firstShop = plan.shops.length;
             while (shopEnd - shopZ > 3.6) {
                 const room = shopEnd - shopZ;
@@ -443,6 +477,13 @@ export function buildLayout(seed = 0x0d15721c) {
                 }
                 if (wantPainted) {
                     wantPainted = false;
+                    // The next painting that fits what is left of the frontage comes forward.
+                    for (let j = paintedCursor; j < paintedOrder.length; j++) {
+                        if (SHOP_HEIGHT * SHOPFRONT_CELLS[paintedOrder[j]].aspect <= room) {
+                            [paintedOrder[paintedCursor], paintedOrder[j]] = [paintedOrder[j], paintedOrder[paintedCursor]];
+                            break;
+                        }
+                    }
                     const cellIndex = paintedOrder[paintedCursor];
                     const cell = SHOPFRONT_CELLS[cellIndex];
                     const w = SHOP_HEIGHT * cell.aspect;
@@ -847,6 +888,32 @@ export function buildLayout(seed = 0x0d15721c) {
     megaSpots.forEach(([x, z, w, h]) => {
         mega(x, z, w, w * range(0.7, 1.1), h * 0.62);
         mega(x + range(-8, 8), z, w * 0.62, w * 0.6, h * 0.38, { y: h * 0.62 });
+    });
+
+    // ── Every campaign on at least one screen: a campaign the deal missed takes a slot ──
+    const shownBy = (id) => plan.screens.some((s) => s.playlist.some((c) => BILLBOARD_CELLS[c].brand === id));
+    let donor = 0;
+    [...BRANDS.map((b) => b.id), 'hale', 'transit'].forEach((id) => {
+        if (shownBy(id)) return;
+        for (let tries = 0; tries < plan.screens.length; tries++) {
+            const screen = plan.screens[(donor + tries) % plan.screens.length];
+            const cell = BILLBOARD_CELLS.findIndex((c) => c.brand === id && c.shape === screen.shape);
+            if (cell < 0 || screen.playlist.includes(cell)) continue; // eslint-disable-line no-continue
+            // The slot of a campaign that also runs elsewhere gives way.
+            const runs = (brand) => plan.screens.reduce((n, s) => n + s.playlist.filter((c) => BILLBOARD_CELLS[c].brand === brand).length, 0);
+            const slot = screen.playlist.findIndex((c) => {
+                const was = BILLBOARD_CELLS[c];
+                return was.family === 'user' || (was.family !== 'hale' && runs(was.brand) > 1);
+            });
+            if (slot < 0) continue; // eslint-disable-line no-continue
+            screen.playlist[slot] = cell;
+            if (screen.ticker) {
+                const line = tickerLine(BILLBOARD_CELLS[cell], cell);
+                screen.ticker[slot] = { row: addText(line), length: Math.min(TEXT_WIDTH, line.length) };
+            }
+            donor = (donor + tries + 1) % plan.screens.length;
+            break;
+        }
     });
 
     // ── Bake the glow map: what each stretch of each wall throws on the street ──
