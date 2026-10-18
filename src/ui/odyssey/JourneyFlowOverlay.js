@@ -246,7 +246,7 @@ export function createJourneyFlowOverlay({
         }
     }
     // The road's charms: a draft of three at a chapter's arrival. Take one or pass; Begin
-    // chapter and Map wait until the draft is settled, as a Waystones road does.
+    // chapter and Map wait until the draft is settled.
     const charmBlock = el('div', 'ody-flow__charms');
     charmBlock.hidden = true;
     nextBlock.appendChild(charmBlock);

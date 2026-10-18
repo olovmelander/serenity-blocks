@@ -345,7 +345,7 @@ describe('resolveCascade ≡ processPhysics (seeded random boards)', () => {
 describe('resolveCascade ≡ processPhysics (multi-cell bodies)', () => {
     // The seeded boards above hold only 1×1 blocks and full rows, so a body that a
     // clear splits into fragments, or a wide body held up by one end, never reached
-    // the gate. Authored structures (Fault Lines) are made of exactly those.
+    // the gate. Authored structures (Stillfall) are made of exactly those.
     const CASES = 120;
 
     /** Grows random connected bodies over `cells` (a Set of 'x,y'), largest first. */

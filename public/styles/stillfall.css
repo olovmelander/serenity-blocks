@@ -1,0 +1,375 @@
+/* =================================================================================
+ * Stillfall — the puzzle panel beside the well (src/ui/stillfall/stillfall-hud.js).
+ *
+ * It takes the ledger's place (keystone-solo.css) and its look: one panel from the well's
+ * top, the mode's hue (coral) as its left edge. The well walls take the same hue. The
+ * ledger's score and level mean nothing in a puzzle, so it steps aside.
+ * ================================================================================ */
+
+.single-player-stage[data-board='well'][data-stillfall='on'] {
+    --sp-hue: var(--sb-coral);
+    --sp-hue-rgb: var(--sb-coral-rgb);
+    --stillfall-side: clamp(236px, 18vw, 300px);
+}
+
+/* The queue is the puzzle's supply: it shows only what is still to come. An empty slot keeps
+   its place, and with the last piece in hand the row (and its "Next") steps aside. */
+.single-player-stage[data-board='well'][data-stillfall='on'] #single-player-container .player-next-piece.empty {
+    visibility: hidden;
+}
+
+.single-player-stage[data-board='well'][data-stillfall='on'] #single-player-container
+.single-player-piece-previews:not(:has(.player-next-piece:not(.empty))) {
+    visibility: hidden;
+}
+
+.single-player-stage[data-board='well'] .stillfall-panel {
+    position: absolute;
+    top: calc(var(--sp-top) + var(--sp-next-h) + var(--sp-queue-gap));
+    left: calc(50% + var(--board-width) / 2 + var(--sp-side-gap));
+    z-index: 10;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    width: var(--stillfall-side);
+    max-height: calc(var(--sp-vh) - var(--sp-top) - var(--sp-next-h) - var(--sp-queue-gap) - var(--sp-bottom));
+    overflow: hidden auto;
+    border: 1px solid var(--sb-line);
+    border-radius: 16px;
+    background: linear-gradient(180deg, rgba(25, 21, 56, 0.92) 0%, rgba(12, 10, 30, 0.94) 100%);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.05);
+    color: var(--sb-text);
+}
+
+.stillfall-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0 auto 0 0;
+    width: 3px;
+    background: var(--sb-coral);
+}
+
+.stillfall-panel__content > * {
+    padding: 14px 16px 14px 18px;
+    border-top: 1px solid var(--sb-line);
+}
+
+.stillfall-panel__content > :first-child {
+    border-top: 0;
+}
+
+.stillfall-live {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+.stillfall-eyebrow,
+.stillfall-label,
+.stillfall-progress__label,
+.stillfall-tier__name {
+    margin: 0;
+    color: var(--sb-text-faint);
+    font: 600 9px / 1.3 var(--sb-font-display);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+.stillfall-title {
+    margin: 8px 0 6px;
+    color: var(--sb-text);
+    font: 600 clamp(20px, 1.7vw, 26px) / 1.1 var(--sb-font-display);
+}
+
+.stillfall-lesson,
+.stillfall-hint,
+.stillfall-pieces {
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 400 13px / 1.45 var(--sb-font-text);
+}
+
+.stillfall-goal {
+    display: grid;
+    gap: 8px;
+}
+
+.stillfall-goal__text {
+    margin: 0;
+    color: var(--sb-text);
+    font: 600 15px / 1.3 var(--sb-font-text);
+}
+
+.stillfall-progress {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.stillfall-progress__count {
+    margin-left: auto;
+    color: var(--sb-text-muted);
+    font: 600 12px / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+}
+
+.stillfall-pips {
+    display: inline-flex;
+    gap: 5px;
+}
+
+.stillfall-pip {
+    width: 12px;
+    height: 12px;
+    border: 1px solid rgba(var(--sb-coral-rgb), 0.55);
+    border-radius: 3px;
+    transform: rotate(45deg);
+}
+
+.stillfall-pip.is-lit {
+    border-color: var(--sb-coral);
+    background: var(--sb-coral);
+    box-shadow: 0 0 10px rgba(var(--sb-coral-rgb), 0.55);
+}
+
+/* The relic's mark on the board (base-board-scene.js drawBodySeams): a cream diamond. */
+.stillfall-relic {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    margin: 0 3px 1px 2px;
+    background: var(--sb-cream);
+    transform: rotate(45deg);
+}
+
+.stillfall-outcome {
+    display: grid;
+    gap: 8px;
+}
+
+.stillfall-outcome--solved {
+    background: linear-gradient(90deg, rgba(var(--sb-gold-rgb), 0.12), transparent);
+}
+
+.stillfall-outcome--failed {
+    background: linear-gradient(90deg, rgba(var(--sb-coral-rgb), 0.12), transparent);
+}
+
+.stillfall-outcome--hint {
+    background: linear-gradient(90deg, rgba(var(--sb-cream-rgb), 0.08), transparent);
+}
+
+/* The tier's count sits on its own line under the name, so it never breaks mid-phrase. */
+.stillfall-tier__note {
+    display: block;
+    margin-top: 3px;
+    color: var(--sb-text-faint);
+    letter-spacing: 0.08em;
+    text-transform: none;
+}
+
+.stillfall-puzzle.is-locked,
+.stillfall-tier.is-locked {
+    opacity: 0.55;
+}
+
+.stillfall-outcome__title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    font: 600 17px / 1.2 var(--sb-font-display);
+}
+
+.stillfall-outcome--solved .stillfall-outcome__title {
+    color: var(--sb-gold);
+}
+
+/* The outcome's one way on: Next puzzle after a solve, Try again / Take back after a miss. */
+.stillfall-outcome .sb-btn {
+    justify-content: center;
+}
+
+.stillfall-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+}
+
+.stillfall-actions .sb-btn {
+    justify-content: center;
+    gap: 6px;
+    min-width: 0;
+    min-height: 34px;
+    padding: 0 8px;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+}
+
+.stillfall-actions .sb-btn[data-stillfall-action='list'] {
+    grid-column: 1 / -1;
+}
+
+/* The hint, once offered, takes a row of its own above the list button. */
+.stillfall-actions .stillfall-hint-btn {
+    grid-column: 1 / -1;
+    border-color: rgba(var(--sb-gold-rgb), 0.45);
+    color: var(--sb-gold);
+}
+
+.stillfall-actions .stillfall-hint-btn[disabled] {
+    opacity: 0.6;
+}
+
+.stillfall-actions .sb-kbd {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 4px;
+    font-size: 9px;
+}
+
+.stillfall-actions .sb-btn[disabled] {
+    opacity: 0.4;
+    cursor: default;
+}
+
+/* The open list scrolls in its own box, so the puzzle's title, lesson and goal stay in
+   view above it; the panel itself scrolls only when even a short list cannot fit. */
+.stillfall-panel__content {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.stillfall-panel__content > * {
+    flex-shrink: 0;
+}
+
+.stillfall-panel__content > .stillfall-bank {
+    flex: 1 1 auto;
+    min-height: 150px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-color: rgba(var(--sb-cream-rgb), 0.18) transparent;
+    scrollbar-width: thin;
+}
+
+.stillfall-bank {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+}
+
+.stillfall-tier__list {
+    display: grid;
+    gap: 2px;
+    margin: 6px 0 0;
+    padding: 0;
+    list-style: none;
+}
+
+.stillfall-puzzle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: 30px;
+    padding: 0 8px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: none;
+    color: var(--sb-text);
+    font: 500 13px / 1.2 var(--sb-font-text);
+    text-align: left;
+    cursor: pointer;
+}
+
+.stillfall-puzzle:hover:not([disabled]),
+.stillfall-puzzle:focus-visible,
+.stillfall-puzzle.is-pad-focus {
+    border-color: var(--sb-line);
+    background: rgba(var(--sb-cream-rgb), 0.05);
+}
+
+.stillfall-puzzle.is-current {
+    border-color: rgba(var(--sb-coral-rgb), 0.6);
+}
+
+.stillfall-puzzle[disabled] {
+    color: var(--sb-text-faint);
+    cursor: default;
+}
+
+.stillfall-puzzle__mark {
+    width: 12px;
+    color: var(--sb-gold);
+    text-align: center;
+}
+
+/* Portrait: the panel becomes a strip under the board, as the ledger does, on the same
+   breakpoint as keystone-solo.css; the stage reserves the strip's height so the board
+   shrinks instead of being covered. */
+@media (max-aspect-ratio: 1 / 1) {
+    .single-player-stage[data-board='well'][data-stillfall='on'] {
+        --sp-strip: clamp(148px, calc(var(--sp-vh) * 0.24), 220px);
+    }
+
+    .single-player-stage[data-board='well'] .stillfall-panel {
+        top: calc(var(--sp-top) + var(--sp-next-h) + var(--sp-queue-gap) + var(--board-height) + 12px);
+        left: 50%;
+        width: var(--board-width);
+        min-width: min(92vw, 400px);
+        max-height: var(--sp-strip);
+        transform: translateX(-50%);
+    }
+
+    .stillfall-panel__content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .stillfall-panel__content > * {
+        padding: 10px 14px;
+        border-top: 0;
+    }
+
+    .stillfall-panel__content > .stillfall-goal {
+        border-left: 1px solid var(--sb-line);
+    }
+
+    .stillfall-panel__content > .stillfall-outcome,
+    .stillfall-panel__content > .stillfall-actions,
+    .stillfall-panel__content > .stillfall-bank {
+        grid-column: 1 / -1;
+        border-top: 1px solid var(--sb-line);
+    }
+
+    /* The strip is too short for a list box of its own: the whole strip scrolls instead. */
+    .stillfall-panel__content > .stillfall-bank {
+        min-height: 0;
+        overflow: visible;
+    }
+
+    .stillfall-title {
+        margin: 4px 0;
+        font-size: 18px;
+    }
+
+    .stillfall-actions {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .stillfall-actions .sb-btn[data-stillfall-action='list'],
+    .stillfall-actions .stillfall-hint-btn {
+        grid-column: auto;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .stillfall-pip.is-lit {
+        box-shadow: none;
+    }
+}

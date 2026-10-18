@@ -200,7 +200,7 @@ export class NeonDistrictWorld {
             a: linRGB(DISTRICT_PALETTES[0].a), b: linRGB(DISTRICT_PALETTES[0].b), low: [...DISTRICT_PALETTES[0].low], high: [...DISTRICT_PALETTES[0].high],
         };
         this._post = {
-            heart: this.heart, flash: 0, kick: 0, rays: 0.3, streak: 1, bloomBoost: 0, exposure: 1,
+            heart: this.heart, flash: 0, kick: 0, rays: 0.3, streak: 1, bloomBoost: 0, exposure: 1, rainTime: 0,
         };
         this.resetState(0);
     }
@@ -279,7 +279,9 @@ export class NeonDistrictWorld {
         this.addPart('marks', createMarks(u, plan.marks, {
             glyphTex: glyphs, textTex: lines, textRows: plan.texts.length, logos,
         }));
-        this.addPart('screens', createScreens(u, plan.screens, this.atlases.ads, this.atlases.adsFade));
+        this.addPart('screens', createScreens(u, plan.screens, this.atlases.ads, this.atlases.adsFade, {
+            glyphTex: glyphs, textTex: lines, textRows: plan.texts.length,
+        }));
         this.addPart('prints', createPrints(u, plan.prints, this.atlases.ads, this.atlases.adsFade));
 
         // ── The street's hardware ──
@@ -742,6 +744,8 @@ export class NeonDistrictWorld {
             ? Math.exp(-(((sinceClear - CLEAR_TRAVEL * 0.8) / 0.3) ** 2)) * (0.45 + 0.2 * this.lastClear.lines)
             : 0;
         const post = this._post;
+        // The drops on the glass keep the world's clock, and hold still under reduced motion.
+        if (!this.reducedMotion) post.rainTime = t;
         post.flash = this.flash;
         post.kick = this.kick;
         post.rays = blackout ? 0.04 : 0.2 + this.power * 0.1 + this.overdrive * 0.12 + arrive * 0.5;

@@ -5,11 +5,14 @@
  * public/styles/keystone-settings.css, docs/MENU_UI_OVERHAUL_2026-10.md.
  */
 
-import { DEFAULT_SETTINGS } from '../core/constants.js';
+import { DEFAULT_SETTINGS, GAME_MODES } from '../core/constants.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
 import { normalizeCursorSettings } from './components/custom-cursor.js';
 import { resolveThemeId } from '../themes/theme-registry.js';
 import { resolveMusicTrackKey } from '../core/progression/theme-music-catalog.js';
+
+/** Saved game modes the game has since renamed: Fault Lines became Stillfall (2026-10-18). */
+const RENAMED_GAME_MODES = Object.freeze({ 'fault-lines': GAME_MODES.STILLFALL });
 
 const DEFAULT_CONFIG = {
     gameMode: 'single',
@@ -534,12 +537,20 @@ export class SettingsManager {
                 const sanitizedMusicTrack = resolveMusicTrackKey(
                     loaded.musicTrack ?? DEFAULT_CONFIG.musicTrack,
                 );
+                // And for a saved mode the game has since renamed or retired (Fault Lines became
+                // Stillfall and Waystones was removed, 2026-10-18): startup preloads the saved
+                // mode, and an unknown id throws there.
+                const savedGameMode = RENAMED_GAME_MODES[loaded.gameMode] ?? loaded.gameMode;
+                const sanitizedGameMode = Object.values(GAME_MODES).includes(savedGameMode)
+                    ? savedGameMode
+                    : DEFAULT_CONFIG.gameMode;
 
                 this.settings = {
                     ...DEFAULT_CONFIG,
                     ...loaded,
                     backgroundTheme: sanitizedBackgroundTheme,
                     musicTrack: sanitizedMusicTrack,
+                    gameMode: sanitizedGameMode,
                     keyBindings: sanitizedKeyBindings,
                     player2KeyBindings: sanitizedP2KeyBindings,
                     serenityKeyBindings: sanitizedSerenityKeyBindings,
@@ -573,6 +584,7 @@ export class SettingsManager {
                     typeof loaded.musicTrack === 'string'
                     && loaded.musicTrack !== sanitizedMusicTrack
                 );
+                const gameModeChanged = loaded.gameMode !== undefined && loaded.gameMode !== sanitizedGameMode;
                 if (
                     keyBindingsChanged
                     || player2BindingsChanged
@@ -581,6 +593,7 @@ export class SettingsManager {
                     || cursorSettingsChanged
                     || backgroundThemeChanged
                     || musicTrackChanged
+                    || gameModeChanged
                 ) {
                     this.save({ emitEvent: false });
                 }
@@ -1077,8 +1090,7 @@ const PAUSED_MODE_NAMES = {
     odyssey: 'Odyssey',
     'local-multiplayer': 'Local Versus',
     'online-multiplayer': 'Online Versus',
-    'fault-lines': 'Fault Lines',
-    waystones: 'Waystones',
+    stillfall: 'Stillfall',
 };
 
 /**

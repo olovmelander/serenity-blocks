@@ -75,6 +75,9 @@ body.start-modal-open #start-modal .main-menu-logo {
 #start-modal .sb-menu[data-current='single'] { --sb-mode-rgb: var(--sb-aqua-rgb); --sb-mode: var(--sb-aqua); }
 #start-modal [data-mode='infinity'],
 #start-modal .sb-menu[data-current='infinity'] { --sb-mode-rgb: var(--sb-lavender-rgb); --sb-mode: var(--sb-lavender); }
+/* Stillfall' in-game hue (stillfall.css: the well walls and the panel's edge). */
+#start-modal [data-mode='stillfall'],
+#start-modal .sb-menu[data-current='stillfall'] { --sb-mode-rgb: var(--sb-coral-rgb); --sb-mode: var(--sb-coral); }
 #start-modal [data-mode='local-multiplayer'],
 #start-modal .sb-menu[data-current='local-multiplayer'] { --sb-mode-rgb: var(--sb-rose-rgb); --sb-mode: var(--sb-rose); }
 #start-modal [data-mode='online-multiplayer'],
@@ -89,6 +92,7 @@ body.start-modal-open #start-modal .main-menu-logo {
 /* The aura follows the stage (set on the modal by main-menu.js). */
 #start-modal[data-current='single'] { --sb-stage-rgb: var(--sb-aqua-rgb); }
 #start-modal[data-current='infinity'] { --sb-stage-rgb: var(--sb-lavender-rgb); }
+#start-modal[data-current='stillfall'] { --sb-stage-rgb: var(--sb-coral-rgb); }
 #start-modal[data-current='local-multiplayer'] { --sb-stage-rgb: var(--sb-rose-rgb); }
 #start-modal[data-current='online-multiplayer'] { --sb-stage-rgb: var(--sb-sky-rgb); }
 #start-modal[data-current='serenity'],

@@ -140,6 +140,9 @@ export class GamepadController {
         this.menuOwners = [null, null, null, null]; // the menu that owned each pad last poll
         this.odysseyShowcaseControls = null;
         this.odysseyMapControls = null;
+        // A panel over the board that owns the first pad while it wants it (the Stillfall
+        // puzzle list): its process() returning true takes the whole poll from gameplay.
+        this.panelControls = null;
         this.connected = [false, false, false, false];
         this.deadzone = 0.25; // Analog stick deadzone
         this.pollInterval = null;
@@ -677,6 +680,7 @@ export class GamepadController {
             }
 
             if (this.odysseyShowcaseControls?.process(freshGamepad, slot)) continue;
+            if (this.panelControls?.process(freshGamepad, slot)) continue;
 
             // The Serenity Hub is a top-layer input owner. Start/game-over
             // modals and game-mode cards can remain visible underneath it, so
@@ -767,6 +771,15 @@ export class GamepadController {
         this.odysseyShowcaseControls = controls;
         controls.dispose = () => {
             if (this.odysseyShowcaseControls === controls) this.odysseyShowcaseControls = null;
+        };
+        return controls;
+    }
+
+    /** A board panel's pad owner (see panelControls); dispose() releases it. */
+    setPanelControls(controls) {
+        this.panelControls = controls;
+        controls.dispose = () => {
+            if (this.panelControls === controls) this.panelControls = null;
         };
         return controls;
     }

@@ -21,12 +21,12 @@ map's input, or the completion sequence.
 
 ## Charms: gathered along the road, three carried at a time
 
-- **The shape.** A charm is Waystones' charm (`core/waystones/charms.js`: id, name, kind, one
-  line): a passive taken once and kept. Odyssey's catalogue is its own, eight charms of three
+- **The shape.** A charm is a passive taken once and kept: an id, a name, a kind and one
+  line. Odyssey's catalogue is its own, eight charms of three
   kinds (`ODYSSEY_CHARMS`):
   - *Pays points.* **Kindle** (a cascade two waves deep or more scores half again), **Swell** (a
     triple or quad scores 40% more), **Afterglow** (a perfect clear pays 1,500 more). Paid after
-    each lock's cascade settles, exactly as Waystones pays them (`wrapOdysseyCharmCallbacks`);
+    each lock's cascade settles (`wrapOdysseyCharmCallbacks`);
     never in a duel, whose score is its own.
   - *Eases the ask.* **Keel** (every orb asks 15% less; a cascade or chain goal one fewer; the
     star tier that mirrors the goal follows it), **Long Breath** (a timed orb gives thirty more
@@ -37,8 +37,8 @@ map's input, or the completion sequence.
     briefing describe the orb as it will be played.
   - *Keeps you in.* **Hearth** (once an orb, a top-out empties the well and play goes on; in a
     duel the rival gets no knockout, `OdysseyBotMatch.topOutGuard`).
-- **Where Odyssey parts from Waystones.** Waystones is a seeded run; Odyssey is an authored
-  campaign of sixty orbs, so its charms are authored too:
+- **Authored, not drawn.** Odyssey is an authored campaign of sixty orbs, so its charms are
+  authored too:
   - *Chapter offers.* Each chapter's arrival offers the three charms that suit its road
     (`ODYSSEY_CHAPTER_CHARMS`: the first chapter teaches the three kinds, the first deadline
     chapter offers Long Breath, the rubble chapters Low Tide, the fast ones Still Air). Charms
@@ -61,7 +61,7 @@ map's input, or the completion sequence.
   - *Arrivals.* The chapter flow's arrival, the fresh journey's Chapter 1 welcome, or, when the
     player left the ceremony for the map first or the save predates charms, the arrival returning
     on the map as "the road offers a charm" (`presentOdysseyArrival`, `_offerPendingArrival`).
-    Begin chapter and Map wait until a draft is taken or passed (Waystones' precedent).
+    Begin chapter and Map wait until a draft is taken or passed.
 - **No price.** Charms are legitimate: an orb cleared with charms holds its stars and its
   leaderboard time; the results sheet and the Steam details record which charms were carried.
   The challenge is kept by the slots (three at a time), the pace of gathering (one per chapter,

@@ -13,6 +13,11 @@
  *   "neon filmic" tone map (hue preserving, hot cores roll to white) → grade (cold lifted shadows,
  *   a saturation lift) → vignette → sRGB → grain and triangular dither.
  *
+ * Over the scene, before the bloom is added, the rain on the glass (neon-district-glass.js, Medium
+ * and up): every drop shows the street through it upside down, its rim dark and a glint of the
+ * neon on its shoulder; the mist between the drops softens the street (a quarter-resolution
+ * Gaussian blur of the scene on High and up) and the runners' trails wipe it clear.
+ *
  * Tone mapping happens exactly once: renderer.toneMapping = NoToneMapping and the pipeline's
  * outputColorTransform is off (the output node encodes sRGB itself).
  */
@@ -23,6 +28,7 @@ import {
     If,
     abs,
     clamp,
+    dot,
     exp,
     float,
     floor,
@@ -30,7 +36,9 @@ import {
     max,
     min,
     mix,
+    normalize,
     pass,
+    pow,
     renderOutput,
     screenCoordinate,
     screenUV,
@@ -44,32 +52,35 @@ import {
     vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { ndHash21, ndLuma, ndMax3 } from './neon-district-tsl.js';
+import { ndGlass } from './neon-district-glass.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no streaks or rays). `streak` and
  * `rays` are tap counts (0 = off); `fringe` = the chromatic split (two more scene taps);
- * `msaa` = scene-pass samples.
+ * `msaa` = scene-pass samples; `glass` = layers of rain on the glass (0 = none);
+ * `glassBlur` = the mist softens the street with a blurred copy (else only lifts it).
  */
 export const POST_LOOK = Object.freeze({
     Extreme: {
-        bloom: true, bloomStrength: 0.52, bloomResolution: 0.5, streak: 8, rays: 12, fringe: true, msaa: 4,
+        bloom: true, bloomStrength: 0.52, bloomResolution: 0.5, streak: 8, rays: 12, fringe: true, msaa: 4, glass: 2, glassBlur: true,
     },
     Ultra: {
-        bloom: true, bloomStrength: 0.52, bloomResolution: 0.5, streak: 8, rays: 12, fringe: true, msaa: 4,
+        bloom: true, bloomStrength: 0.52, bloomResolution: 0.5, streak: 8, rays: 12, fringe: true, msaa: 4, glass: 2, glassBlur: true,
     },
     High: {
-        bloom: true, bloomStrength: 0.5, bloomResolution: 0.45, streak: 6, rays: 10, fringe: true, msaa: 4,
+        bloom: true, bloomStrength: 0.5, bloomResolution: 0.45, streak: 6, rays: 10, fringe: true, msaa: 4, glass: 2, glassBlur: true,
     },
     Medium: {
-        bloom: true, bloomStrength: 0.48, bloomResolution: 0.33, streak: 4, rays: 6, fringe: false, msaa: 0,
+        bloom: true, bloomStrength: 0.48, bloomResolution: 0.33, streak: 4, rays: 6, fringe: false, msaa: 0, glass: 1, glassBlur: false,
     },
     Low: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, streak: 0, rays: 0, fringe: false, msaa: 0,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, streak: 0, rays: 0, fringe: false, msaa: 0, glass: 0, glassBlur: false,
     },
     Minimal: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, streak: 0, rays: 0, fringe: false, msaa: 0,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, streak: 0, rays: 0, fringe: false, msaa: 0, glass: 0, glassBlur: false,
     },
 });
 
@@ -139,6 +150,12 @@ export class NeonDistrictPost {
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
         this.uCalm = this.calmRects.map((v) => uniform(v));
         this.uCalmStrength = uniform(0);
+        /** The rain on the glass: its own clock (held still under reduced motion) and how misted. */
+        this.uRainTime = uniform(0);
+        this.uGlassMist = uniform(1);
+        this.blurNode = look.glass > 0 && look.glassBlur
+            ? gaussianBlur(sceneColor, null, 3, { resolutionScale: 0.25 })
+            : null;
 
         // ── Bloom: max-channel soft knee over a 4-tap box ──
         this.bloomNode = null;
@@ -201,6 +218,30 @@ export class NeonDistrictPost {
                         sceneColor.sample(st.add(spread)).level(0).b,
                     ));
                 });
+            }
+
+            // ── Rain on the glass: drops as lenses, mist between them, wiped trails ──
+            if (look.glass > 0) {
+                const pane = ndGlass(st, this.uAspect, this.uRainTime, look.glass);
+                const clearOfCard = float(1.0).sub(calm);
+                const cover = pane.cover.mul(clearOfCard);
+                const mist = pane.mist.mul(clearOfCard).mul(this.uGlassMist);
+                const through = vec3(sceneColor.sample(st.add(pane.offset.mul(clearOfCard))).level(0).rgb);
+                const soft = this.blurNode ? vec3(this.blurNode.getTextureNode().sample(st).rgb) : S;
+                // The drop: the street through the lens, the rim dark where the light turns away, a
+                // glint of the neon behind it on the shoulder that faces the lights overhead.
+                const r = length(pane.q);
+                const rim = smoothstep(0.74, 1.0, r);
+                const n3 = normalize(vec3(pane.q.x, pane.q.y, pane.z.mul(0.85)));
+                const glint = pow(max(dot(n3, normalize(vec3(-0.35, -0.75, 0.55))), 0.0), 38.0);
+                const foot = smoothstep(0.55, 0.95, pane.q.y).mul(float(1.0).sub(smoothstep(0.95, 1.0, r)));
+                const lamp = soft.mul(1.4).add(vec3(0.12, 0.13, 0.16));
+                // A drop gathers light: its inside is a touch brighter than the street around it.
+                const drop = through.mul(float(1.15).sub(rim.mul(0.55))).add(lamp.mul(glint).mul(3.2))
+                    .add(soft.mul(foot).mul(0.35));
+                // The mist: the street softened and its darks lifted by the light it scatters.
+                const misted = mix(S, soft.mul(0.95).add(vec3(0.004, 0.005, 0.008)), mist.mul(0.7));
+                S.assign(mix(misted, drop, cover));
             }
 
             // What shows through the card is soft-clipped (hue-preserving).
@@ -293,8 +334,9 @@ export class NeonDistrictPost {
 
     /** Per-frame values (all optional). */
     update({
-        heart, flash, kick, bloomBoost, exposure, rays, streak, time,
+        heart, flash, kick, bloomBoost, exposure, rays, streak, time, rainTime,
     } = {}) {
+        if (rainTime !== undefined) this.uRainTime.value = rainTime;
         if (heart) this.uHeart.value.set(heart.x, heart.y);
         if (flash !== undefined) this.uFlash.value = flash;
         if (kick !== undefined) this.uKick.value = kick;
@@ -333,6 +375,8 @@ export class NeonDistrictPost {
     dispose() {
         this.scenePass?.dispose();
         if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
+        this.blurNode?.dispose();
+        this.blurNode = null;
         this.pipeline?.dispose();
         this.scenePass = null;
         this.bloomNode = null;

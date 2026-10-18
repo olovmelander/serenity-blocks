@@ -6,7 +6,7 @@ import {
     CLEAR_DEPTH, CLEAR_TRAVEL, LOCK_REACH, STREET, clearFrontDepth, linRGB, lockShellRadius, mulberry32, wrapZ,
 } from '../../src/themes/neon-district/neon-district-core.js';
 import {
-    GLOW_TEXELS, GLYPH_COUNT, GLYPH_LATIN, MAX_SIGN_GLYPHS, NEON_PALETTE, SIGN_WORDS, buildLayout,
+    GLOW_TEXELS, GLYPH_COUNT, GLYPH_LATIN, MAX_SIGN_GLYPHS, NEON_PALETTE, SIGN_WORDS, TEXT_WIDTH, buildLayout,
 } from '../../src/themes/neon-district/neon-district-layout.js';
 import {
     GLYPH_CELL, GLYPH_GRID, bakeGlyphAtlas, glyphSegments,
@@ -197,8 +197,8 @@ describe('neon district city plan', () => {
 
     it('spells every line of text with glyphs the atlas has', () => {
         for (const line of plan.texts) {
-            expect(line.length).toBeLessThanOrEqual(32);
-            const ids = encodeLine(line, 32);
+            expect(line.length).toBeLessThanOrEqual(TEXT_WIDTH);
+            const ids = encodeLine(line, TEXT_WIDTH);
             for (let i = 0; i < line.length; i++) {
                 if (line[i] === ' ') expect(ids[i]).toBe(GLYPH_BLANK);
                 else expect(ids[i], `${line}[${i}]`).toBeLessThan(GLYPH_COUNT);
@@ -241,7 +241,13 @@ describe('neon district city plan', () => {
             expect(screen.playlist.filter((c) => BILLBOARD_CELLS[c].family === 'hale').length).toBeLessThanOrEqual(1);
             expect(screen.w / screen.h).toBeCloseTo({ wide: 16 / 9, portrait: 2 / 3, square: 1 }[screen.shape], 6);
             expect(screen.period).toBeGreaterThan(5);
+            // A ticker runs one line per advert, each a line of the text texture.
+            if (screen.ticker) {
+                expect(screen.ticker).toHaveLength(3);
+                screen.ticker.forEach((line) => expect(plan.texts[line.row].length).toBe(line.length));
+            }
         }
+        expect(plan.screens.some((s) => s.ticker)).toBe(true);
     });
 
     it('prints campaigns without a screen\'s breathing ring, and hangs roof boards on scaffolds', () => {
@@ -419,5 +425,12 @@ describe('neon district tiers', () => {
         }
         expect(QUALITY.Minimal.drones).toBe(0);
         expect(POST_LOOK.High.bloom).toBe(true);
+        // The rain on the glass: none on the low tiers, more layers as the tier rises.
+        for (let i = 1; i < QUALITY_NAMES.length; i++) {
+            expect(POST_LOOK[QUALITY_NAMES[i]].glass).toBeGreaterThanOrEqual(POST_LOOK[QUALITY_NAMES[i - 1]].glass);
+        }
+        expect(POST_LOOK.Low.glass).toBe(0);
+        expect(POST_LOOK.Minimal.glass).toBe(0);
+        expect(POST_LOOK.High.glass).toBeGreaterThan(0);
     });
 });

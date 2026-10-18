@@ -68,6 +68,7 @@ const modes = [
     ['infinity', 'Infinity', ['INFINITY']],
     ['serenity', 'Serenity', ['SERENITY']],
     ['odyssey', 'Odyssey', ['ODYSSEY']],
+    ['stillfall', 'Stillfall', ['STILLFALL']],
 ];
 
 for (const [id, label, rows] of modes) {

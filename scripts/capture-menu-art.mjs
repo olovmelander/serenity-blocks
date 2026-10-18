@@ -59,6 +59,10 @@ const SCENES = [
         frame: '.single-player-stage { transform: translate(230px, -70px) scale(0.55) !important; }', cropTop: 0.117,
     },
     {
+        name: 'stillfall', theme: 'cinder-drift', mode: 'stillfall', stage: 'stillfall', options: { puzzle: 'floor-last' }, settleMs: 12000,
+        frame: '.single-player-stage { transform: translate(210px, -70px) scale(0.55) !important; }', cropTop: 0.176,
+    },
+    {
         name: 'local-versus', theme: 'sakura-twilight', mode: 'local-multiplayer', stage: 'local', settleMs: 12000,
         frame: '#multiplayer-container { transform: translate(60px, -40px) scale(0.64) !important; }', cropTop: 0.082,
     },
@@ -139,6 +143,11 @@ const STAGES = {
         await startMode('infinity');
         await modeRunning('infinity');
         return () => stage('stageInfinity', scene.options);
+    },
+    async stillfall(scene) {
+        await startMode('stillfall');
+        await modeRunning('stillfall');
+        return () => stage('stageStillfall', scene.options);
     },
     async local(scene) {
         await startMode('local-multiplayer');
