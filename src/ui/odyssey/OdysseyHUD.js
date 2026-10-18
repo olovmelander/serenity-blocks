@@ -316,7 +316,8 @@ export class OdysseyHUD {
             if (chip.dataset) chip.dataset.state = ability.state;
             chip.disabled = ability.state !== 'ready';
             chip.ariaLabel = `${ability.name}: ${ability.summary}${stateText ? ` (${stateText})` : ''}`;
-            setText(chip.querySelector?.('.gem-chip__state'), stateText);
+            const stateNode = chip.querySelector?.('.gem-chip__state');
+            if (stateNode) setText(stateNode, stateText);
         });
         if (this.gemsNote) this.gemsNote.hidden = !(view.spent > 0);
     }
