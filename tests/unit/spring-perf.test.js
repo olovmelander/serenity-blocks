@@ -224,4 +224,27 @@ describe('spring world: order and rest', () => {
         expect(draws).toBeGreaterThan(2);
         world.dispose();
     });
+
+    it('leaves the ice and the birds alone while none are out, and wakes them when they are', () => {
+        const { camera, world } = makeWorld();
+        const step = (t) => {
+            world.updateCamera(camera, { time: t, delta: 1 / 30 });
+            world.update({ time: t, delta: 1 / 30 }, camera);
+        };
+        step(0.1);
+        const floes = world.floes.mesh.instanceMatrix;
+        const birds = world.flights.meshes.map((mesh) => mesh.instanceMatrix);
+        const versions = () => [floes.version, ...birds.map((b) => b.version)];
+        const idle = versions();
+        for (let t = 0.2; t < 1; t += 0.1) step(t);
+        expect(versions()).toEqual(idle);
+        // Four lines and a perfect clear: the ice goes out and the swans come over.
+        world.onClear({ lines: 4, rowCodes: [], combo: 1 });
+        world.onClear({ lines: 4, perfect: true });
+        for (let t = 1; t < 4; t += 0.1) step(t);
+        expect(world.floes.live).toBeGreaterThan(0);
+        expect(world.flights.live.some((n) => n > 0)).toBe(true);
+        expect(floes.version).toBeGreaterThan(idle[0]);
+        world.dispose();
+    });
 });

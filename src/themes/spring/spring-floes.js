@@ -162,6 +162,11 @@ export class Floes {
         this.live = 0;
     }
 
+    anyAlive() {
+        for (let i = 0; i < this.count; i++) if (this.floes[i].alive) return true;
+        return false;
+    }
+
     /** The ice goes out: `n` floes out of the pool's boil over `spread` seconds from `time`. */
     breakUp(time, n = 24, spread = 3.5) {
         const r = this.random;
@@ -182,6 +187,8 @@ export class Floes {
 
     /** Place the floes where the river has carried them by time t, and write their matrices. */
     update(time, flood = 0) {
+        // No ice on the river and none coming: every matrix already holds no floe.
+        if (this.live === 0 && !this.anyAlive()) return;
         const c = this._c;
         let live = 0;
         for (let i = 0; i < this.count; i++) {
