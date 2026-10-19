@@ -1,5 +1,5 @@
 /**
- * @fileoverview The play rail: every mode's in-game controls — Levels (Odyssey's board
+ * @fileoverview The play rail: every mode's in-game controls — Chapters (Odyssey's board
  * view), the Serenity Hub and Settings, in that order, Settings outermost — as one small
  * tray in the top-right corner, identical in every mode: the same place, size, icons,
  * names and keys. The bottom of the screen belongs to the game: boards, chat, stats,
@@ -85,7 +85,7 @@ function describe(id, modeId) {
         // Outside Serenity the pad reaches the Hub through Settings (Start, then Serenity Hub).
         return { text: 'Serenity Hub', keys: keycap(keyName(hubKey()), 'key') + (serenity ? keycap(pad, 'pad') : '') };
     }
-    return { text: 'Map', keys: '' };
+    return { text: 'Chapters', keys: '' };
 }
 
 function labelOf(tile) {

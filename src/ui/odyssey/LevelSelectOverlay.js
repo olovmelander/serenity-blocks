@@ -29,7 +29,7 @@ export function createLevelSelectOverlay() {
         </div>
         <div class="odyssey-chapters" id="odyssey-chapters"></div>
         <div class="odyssey-actions">
-            <button id="odyssey-back-btn" class="odyssey-btn">Back to menu</button>
+            <button id="odyssey-back-btn" class="odyssey-btn">Main menu</button>
             <button id="odyssey-new-journey-btn" class="odyssey-btn odyssey-btn--quiet"
                 aria-expanded="false" aria-controls="odyssey-new-journey-confirm">Start a new journey</button>
             <div id="odyssey-new-journey-confirm" class="odyssey-new-journey" role="group"
