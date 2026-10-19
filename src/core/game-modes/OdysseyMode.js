@@ -86,7 +86,9 @@ import {
 } from '../../ui/odyssey/odyssey-charm-carry.js';
 import { startOdysseyNewJourney, wireOdysseyNewJourney } from '../../ui/odyssey/odyssey-new-journey.js';
 import { handleOdysseyPauseAction } from '../../ui/odyssey/odyssey-pause-actions.js';
-import { renderOdysseyNavigatorList } from '../../ui/odyssey/odyssey-navigator-list.js';
+import {
+    hideOdysseyNavigator, renderOdysseyNavigatorList, showOdysseyNavigator,
+} from '../../ui/odyssey/odyssey-navigator-list.js';
 import { installOdysseyMapInput } from '../../ui/odyssey/odyssey-map-input.js';
 import { applyOdysseyCharmsToLevel } from '../odyssey/odyssey-charms.js';
 import {
@@ -3672,31 +3674,14 @@ export class OdysseyMode extends BaseGameMode {
         return true;
     }
 
-    /**
-     * Show level selection UI
-     * @private
-     */
+    /** Show the navigator, filled and focused (ui/odyssey/odyssey-navigator-list.js). @private */
     _showLevelSelectUI() {
-        // Create level select UI if it doesn't exist
-        let levelSelectUI = document.getElementById('odyssey-level-select');
-        if (!levelSelectUI) {
-            levelSelectUI = this._createLevelSelectUI();
-        }
-        levelSelectUI.style.display = 'flex';
-
-        // Update with current progress
-        this._updateLevelSelectUI();
+        showOdysseyNavigator(document.getElementById('odyssey-level-select') || this._createLevelSelectUI(), this);
     }
 
-    /**
-     * Hide level selection UI
-     * @private
-     */
+    /** Hide the navigator; focus goes back to the page for the map's keys. @private */
     _hideLevelSelectUI() {
-        const levelSelectUI = document.getElementById('odyssey-level-select');
-        if (levelSelectUI) {
-            levelSelectUI.style.display = 'none';
-        }
+        hideOdysseyNavigator(document.getElementById('odyssey-level-select'));
     }
 
     /**

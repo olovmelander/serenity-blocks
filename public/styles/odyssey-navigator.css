@@ -1,0 +1,1580 @@
+/* =================================================================================
+ * ODYSSEY NAVIGATOR — the level list over the Odyssey map (#odyssey-level-select)
+ * ---------------------------------------------------------------------------------
+ * Keystone language (keystone.css tokens and primitives). Record:
+ * docs/ODYSSEY_NAVIGATOR_2026-10.md.
+ * ============================================================================== */
+
+/* ==================================================================================
+ * Odyssey navigator (#odyssey-level-select): the whole journey from the map's corner.
+ * The ascent (chapters, read from the bottom up as the climb goes) on the left; the
+ * stage on the right: the chapter, the selected orb's card with its world as the art,
+ * and the chapter's route of orbs. Each chapter lends the page its light
+ * (--nav-hue-rgb, from Earth Core's ember to the encore's neon); the selected orb's
+ * world bleeds into the sky behind the card. No backdrop blur: the map renders on
+ * underneath (only the ambient image, a static layer of its own, is blurred).
+ * Shell: src/ui/odyssey/LevelSelectOverlay.js; view: src/ui/odyssey/odyssey-navigator-list.js.
+ * ================================================================================ */
+#odyssey-level-select.odyssey-level-select {
+    --sb-accent: var(--sb-gold);
+    --sb-accent-rgb: var(--sb-gold-rgb);
+    --nav-hue-rgb: var(--sb-gold-rgb);
+    --nav-ink: #0c0a22;
+    --nav-gutter: clamp(16px, 2.4vw, 36px);
+    --orb-size: clamp(56px, min(4.6vw, 7.4vh), 88px);
+    position: fixed;
+    inset: 0;
+    z-index: 1002;
+    flex-direction: column;
+    overflow: hidden;
+    padding: 0;
+    box-sizing: border-box;
+    background: #07061a;
+    color: var(--sb-text);
+    font-family: var(--sb-font-text);
+    isolation: isolate;
+    animation: sb-fade-in 0.32s ease-out both;
+}
+
+#odyssey-level-select::before {
+    content: none;
+}
+
+/* The chapters' light, bottom of the climb to the top. */
+#odyssey-level-select[data-chapter='1'], #odyssey-level-select [data-chapter='1'] { --nav-hue-rgb: 255, 158, 98; }
+#odyssey-level-select[data-chapter='2'], #odyssey-level-select [data-chapter='2'] { --nav-hue-rgb: 98, 204, 255; }
+#odyssey-level-select[data-chapter='3'], #odyssey-level-select [data-chapter='3'] { --nav-hue-rgb: 172, 228, 134; }
+#odyssey-level-select[data-chapter='4'], #odyssey-level-select [data-chapter='4'] { --nav-hue-rgb: 196, 226, 255; }
+#odyssey-level-select[data-chapter='5'], #odyssey-level-select [data-chapter='5'] { --nav-hue-rgb: 255, 186, 214; }
+#odyssey-level-select[data-chapter='6'], #odyssey-level-select [data-chapter='6'] { --nav-hue-rgb: 160, 178, 255; }
+#odyssey-level-select[data-chapter='7'], #odyssey-level-select [data-chapter='7'] { --nav-hue-rgb: 206, 156, 255; }
+#odyssey-level-select[data-chapter='8'], #odyssey-level-select [data-chapter='8'] { --nav-hue-rgb: 255, 110, 204; }
+
+#odyssey-level-select *,
+#odyssey-level-select *::before,
+#odyssey-level-select *::after {
+    box-sizing: border-box;
+}
+
+/* ---- The sky: night, the chapter's light, stars, the orb's world bleeding through -- */
+#odyssey-level-select .odyssey-nav__sky {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    background:
+        radial-gradient(52% 62% at 30% 46%, rgba(var(--nav-hue-rgb), 0.13), transparent 72%),
+        radial-gradient(46% 52% at 100% 0%, rgba(var(--nav-hue-rgb), 0.09), transparent 70%),
+        radial-gradient(60% 50% at 0% 100%, rgba(var(--sb-lavender-rgb), 0.09), transparent 72%),
+        linear-gradient(180deg, #0d0b26 0%, #08071c 52%, #05040f 100%);
+}
+
+#odyssey-level-select .odyssey-nav__sky::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+        radial-gradient(1.2px 1.2px at 8% 14%, rgba(var(--sb-cream-rgb), 0.8), transparent 70%),
+        radial-gradient(1px 1px at 23% 61%, rgba(var(--sb-cream-rgb), 0.55), transparent 70%),
+        radial-gradient(1.4px 1.4px at 37% 28%, rgba(var(--sb-cream-rgb), 0.7), transparent 70%),
+        radial-gradient(1px 1px at 52% 83%, rgba(var(--sb-cream-rgb), 0.5), transparent 70%),
+        radial-gradient(1.2px 1.2px at 66% 9%, rgba(var(--sb-cream-rgb), 0.65), transparent 70%),
+        radial-gradient(1px 1px at 78% 47%, rgba(var(--sb-cream-rgb), 0.5), transparent 70%),
+        radial-gradient(1.6px 1.6px at 91% 72%, rgba(var(--sb-cream-rgb), 0.7), transparent 70%),
+        radial-gradient(1px 1px at 14% 92%, rgba(var(--sb-cream-rgb), 0.45), transparent 70%),
+        radial-gradient(1px 1px at 47% 4%, rgba(var(--sb-cream-rgb), 0.5), transparent 70%),
+        radial-gradient(1.2px 1.2px at 84% 24%, rgba(var(--sb-cream-rgb), 0.55), transparent 70%);
+    background-size: 560px 460px;
+    opacity: 0.55;
+}
+
+#odyssey-level-select .odyssey-nav__sky::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(3, 2, 10, 0.55) 100%);
+}
+
+#odyssey-level-select .odyssey-nav__ambient {
+    position: absolute;
+    top: 4vh;
+    left: 12vw;
+    width: min(58vw, 920px);
+    height: auto;
+    aspect-ratio: 1;
+    border-radius: 50%;
+    object-fit: cover;
+    opacity: 0.46;
+    filter: blur(80px) saturate(1.3);
+    transform: translateZ(0);
+}
+
+#odyssey-level-select .odyssey-nav__ambient[hidden] {
+    display: none;
+}
+
+#odyssey-level-select .odyssey-nav__ambient.is-entering {
+    animation: odyssey-nav-ambient-in 0.9s ease-out both;
+}
+
+/* ---- Header: the brand, the journey in numbers and cells, the way back --------- */
+#odyssey-level-select .odyssey-header {
+    flex: none;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px clamp(20px, 3vw, 44px);
+    margin: 0;
+    /* The play rail holds the corner: end before its three tiles, centred on its line. */
+    padding: calc(var(--sb-play-inset) - 2px) calc(var(--sb-play-inset) + 3 * var(--sb-play-tile) + 28px) 14px var(--nav-gutter);
+    text-align: left;
+    animation: odyssey-nav-drop 0.42s var(--sb-ease-lock) both;
+}
+
+#odyssey-level-select .odyssey-header__brand {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+#odyssey-level-select .odyssey-header h1 {
+    margin: 0;
+    line-height: 0;
+    background: none;
+    filter: none;
+    animation: none;
+}
+
+#odyssey-level-select .odyssey-header-wordmark {
+    width: auto;
+    height: clamp(26px, 3.6vh, 34px);
+}
+
+#odyssey-level-select .odyssey-header__journey {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    max-width: 760px;
+}
+
+#odyssey-level-select .odyssey-progress {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 26px;
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--sb-text-faint);
+}
+
+#odyssey-level-select .odyssey-progress > span {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+#odyssey-level-select .odyssey-progress b {
+    white-space: nowrap;
+}
+
+#odyssey-level-select .odyssey-progress b {
+    font: 700 1.125rem / 1 var(--sb-font-display);
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+    text-transform: none;
+    color: var(--sb-text);
+}
+
+#odyssey-level-select .odyssey-progress b small {
+    font-size: 0.75em;
+    font-weight: 600;
+    color: var(--sb-text-faint);
+}
+
+#odyssey-level-select .odyssey-stars b {
+    color: var(--sb-gold);
+}
+
+/* Every orb of the journey as a cell, chapter by chapter in its own light. */
+#odyssey-level-select .odyssey-journey-meter {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+}
+
+#odyssey-level-select .odyssey-journey-meter__chapter {
+    display: flex;
+    flex: 1 1 0;
+    gap: 2px;
+    padding: 3px 0;
+    cursor: pointer;
+}
+
+#odyssey-level-select .odyssey-journey-meter__chapter > i {
+    flex: 1 1 0;
+    height: 6px;
+    border-radius: 2px;
+    background: rgba(var(--sb-cream-rgb), 0.08);
+    transition: height var(--sb-dur-2) var(--sb-ease-lock), background var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#odyssey-level-select .odyssey-journey-meter__chapter > i[data-state='cleared'] {
+    background: rgba(var(--nav-hue-rgb), 0.92);
+}
+
+#odyssey-level-select .odyssey-journey-meter__chapter > i[data-state='open'] {
+    background: rgba(var(--nav-hue-rgb), 0.3);
+}
+
+#odyssey-level-select .odyssey-journey-meter__chapter > i[data-state='next'] {
+    background: var(--sb-keystone);
+    box-shadow: 0 0 10px rgba(var(--sb-coral-rgb), 0.7);
+}
+
+#odyssey-level-select .odyssey-journey-meter__chapter:hover > i,
+#odyssey-level-select .odyssey-journey-meter__chapter.is-selected > i {
+    height: 9px;
+    margin-top: -1.5px;
+}
+
+#odyssey-level-select .odyssey-journey-meter__chapter.is-selected > i[data-state='locked'] {
+    background: rgba(var(--nav-hue-rgb), 0.16);
+}
+
+#odyssey-level-select .odyssey-nav__close {
+    --sb-btn-h: 44px;
+    gap: 10px;
+    padding: 0 12px 0 18px;
+}
+
+/* ---- Body: the ascent beside the stage ---------------------------------------------- */
+#odyssey-level-select .odyssey-nav__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: clamp(232px, 19vw, 296px) minmax(0, 1fr);
+    gap: clamp(16px, 2.2vw, 36px);
+    padding: 6px var(--nav-gutter) 0;
+}
+
+/* ---- The ascent: chapter 1 at the foot, the encore at the summit -------------------- */
+#odyssey-level-select .odyssey-nav__rail {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    padding-bottom: 14px;
+    animation: odyssey-nav-rise 0.48s 0.04s var(--sb-ease-lock) both;
+}
+
+#odyssey-level-select .odyssey-nav__rail-label {
+    padding-left: 8px;
+}
+
+#odyssey-level-select .odyssey-chapters {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column-reverse;
+    justify-content: safe center;
+    gap: 4px;
+    min-height: 0;
+    margin: 0;
+    padding: 2px 6px 2px 0;
+    list-style: none;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--sb-cream-rgb), 0.2) transparent;
+}
+
+/* Rows grow with the window and with their text, never squeezed below either. */
+#odyssey-level-select .odyssey-chapters__item {
+    position: relative;
+    flex: none;
+}
+
+/* The line between this chapter's gem and the one above it; it runs on into that gem, which
+   covers the end, so a taller row above still meets it. */
+#odyssey-level-select .odyssey-chapters__item[data-link]::before {
+    content: '';
+    position: absolute;
+    left: 24px;
+    bottom: 50%;
+    width: 2px;
+    height: calc(100% + 20px);
+    border-radius: 1px;
+    background: repeating-linear-gradient(0deg, rgba(var(--sb-cream-rgb), 0.16) 0 4px, transparent 4px 9px);
+}
+
+#odyssey-level-select .odyssey-chapters__item[data-link='lit']::before {
+    background: linear-gradient(0deg, rgba(var(--nav-hue-rgb), 0.85), rgba(var(--nav-hue-rgb), 0.35));
+    box-shadow: 0 0 10px rgba(var(--nav-hue-rgb), 0.35);
+}
+
+#odyssey-level-select .odyssey-chapter {
+    position: relative;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: clamp(56px, 8.4vh, 96px);
+    margin: 0;
+    padding: 6px 12px 6px 2px;
+    border: 1px solid transparent;
+    border-radius: var(--sb-r-md);
+    background: transparent;
+    color: var(--sb-text-muted);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#odyssey-level-select .odyssey-chapter:hover {
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    color: var(--sb-text);
+}
+
+#odyssey-level-select .odyssey-chapter:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
+    outline-offset: 2px;
+}
+
+#odyssey-level-select .odyssey-chapter[aria-selected='true'] {
+    border-color: rgba(var(--nav-hue-rgb), 0.42);
+    background: linear-gradient(90deg, rgba(var(--nav-hue-rgb), 0.17), rgba(var(--nav-hue-rgb), 0.03) 80%);
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06), 0 12px 30px rgba(0, 0, 0, 0.22);
+    color: var(--sb-text);
+}
+
+#odyssey-level-select .odyssey-chapter__gem {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-left: 2px;
+    border-radius: 12px;
+    border: 1px solid rgba(var(--nav-hue-rgb), 0.55);
+    background:
+        radial-gradient(120% 120% at 28% 20%, rgba(var(--nav-hue-rgb), 0.42), rgba(var(--nav-hue-rgb), 0.1) 70%),
+        var(--nav-ink);
+    color: var(--sb-text);
+    font: 700 0.875rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 0 18px rgba(var(--nav-hue-rgb), 0.16);
+}
+
+#odyssey-level-select .odyssey-chapter__gem svg {
+    position: absolute;
+    right: -5px;
+    bottom: -5px;
+    width: 16px;
+    height: 16px;
+    padding: 2px;
+    border-radius: 5px;
+    background: var(--nav-ink);
+    fill: none;
+    stroke: var(--sb-text-faint);
+    stroke-width: 2;
+}
+
+#odyssey-level-select .odyssey-chapter[data-state='complete'] .odyssey-chapter__gem {
+    border-color: rgba(var(--nav-hue-rgb), 0.9);
+    background:
+        radial-gradient(120% 120% at 28% 20%, rgba(255, 255, 255, 0.5), rgba(var(--nav-hue-rgb), 1) 55%),
+        rgb(var(--nav-hue-rgb));
+    color: #170f20;
+}
+
+#odyssey-level-select .odyssey-chapter[data-state='current'] .odyssey-chapter__gem::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border-radius: 15px;
+    border: 1px solid rgba(var(--nav-hue-rgb), 0.6);
+    box-shadow: 0 0 20px rgba(var(--nav-hue-rgb), 0.4);
+    animation: odyssey-nav-breathe var(--sb-breath) var(--sb-ease-breathe) infinite;
+}
+
+#odyssey-level-select .odyssey-chapter[data-state='locked'] .odyssey-chapter__gem {
+    border-style: dashed;
+    border-color: rgba(var(--sb-cream-rgb), 0.18);
+    background: var(--nav-ink);
+    color: var(--sb-text-faint);
+    box-shadow: none;
+}
+
+#odyssey-level-select .odyssey-chapter[data-state='locked'] {
+    color: var(--sb-text-faint);
+}
+
+#odyssey-level-select .odyssey-chapter[data-state='locked'][aria-selected='true'] {
+    color: var(--sb-text-muted);
+}
+
+#odyssey-level-select .odyssey-chapter__body {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    min-width: 0;
+}
+
+/* Two lines: the name (and where you are), then the orbs as cells beside the stars. */
+#odyssey-level-select .odyssey-chapter__line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 3px 10px;
+    min-width: 0;
+}
+
+#odyssey-level-select .odyssey-chapter-name {
+    min-width: 0;
+    font: 600 0.8125rem / 1.25 var(--sb-font-display);
+    letter-spacing: 0.01em;
+}
+
+#odyssey-level-select .odyssey-chapter__here {
+    color: var(--sb-coral);
+    font: 700 0.5rem / 1.2 var(--sb-font-display);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+#odyssey-level-select .odyssey-chapter__line + .odyssey-chapter__line {
+    flex-wrap: nowrap;
+}
+
+#odyssey-level-select .odyssey-chapter__meter {
+    display: flex;
+    flex: 1 1 0;
+    gap: 2px;
+    min-width: 0;
+}
+
+#odyssey-level-select .odyssey-chapter__meter > i {
+    flex: 1 1 0;
+    max-width: 18px;
+    height: 4px;
+    border-radius: 1.5px;
+    background: rgba(var(--sb-cream-rgb), 0.1);
+}
+
+#odyssey-level-select .odyssey-chapter__meter > i[data-state='cleared'] {
+    background: rgba(var(--nav-hue-rgb), 0.92);
+}
+
+#odyssey-level-select .odyssey-chapter__meter > i[data-state='open'] {
+    background: rgba(var(--nav-hue-rgb), 0.32);
+}
+
+#odyssey-level-select .odyssey-chapter__meter > i[data-state='next'] {
+    background: var(--sb-keystone);
+    box-shadow: 0 0 8px rgba(var(--sb-coral-rgb), 0.65);
+}
+
+#odyssey-level-select .odyssey-chapter-stars {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 3px;
+    color: var(--sb-text);
+    font: 600 0.75rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+}
+
+#odyssey-level-select .odyssey-chapter-stars small {
+    color: var(--sb-text-faint);
+    font-size: 0.8em;
+}
+
+#odyssey-level-select .odyssey-chapter-stars svg {
+    width: 12px;
+    height: 12px;
+    margin-left: 2px;
+    fill: var(--sb-gold);
+}
+
+#odyssey-level-select .odyssey-chapter[data-state='locked'] .odyssey-chapter-stars {
+    color: var(--sb-text-faint);
+}
+
+#odyssey-level-select .odyssey-chapter[data-state='locked'] .odyssey-chapter-stars svg {
+    fill: rgba(var(--sb-cream-rgb), 0.2);
+}
+
+/* ---- The stage ---------------------------------------------------------------------- */
+#odyssey-level-select .odyssey-nav__stage {
+    display: flex;
+    flex-direction: column;
+    /* A tall window holds the stage in its middle, beside the centred ascent. */
+    justify-content: safe center;
+    gap: clamp(14px, 2.2vh, 24px);
+    min-width: 0;
+    min-height: 0;
+    padding: 2px 4px 20px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--sb-cream-rgb), 0.2) transparent;
+    animation: odyssey-nav-rise 0.5s 0.08s var(--sb-ease-lock) both;
+}
+
+#odyssey-level-select .odyssey-stage__chapter {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px 28px;
+}
+
+#odyssey-level-select .odyssey-stage__chapter-copy {
+    min-width: 0;
+}
+
+#odyssey-level-select .odyssey-stage__eyebrow {
+    --sb-accent-rgb: var(--nav-hue-rgb);
+}
+
+#odyssey-level-select .odyssey-stage__title {
+    margin: 8px 0 6px;
+    font: 700 clamp(1.35rem, 2.2vw, 2rem) / 1.12 var(--sb-font-display);
+    letter-spacing: -0.005em;
+    color: var(--sb-text);
+    text-wrap: balance;
+}
+
+#odyssey-level-select .odyssey-stage__intro {
+    max-width: 74ch;
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 500 0.875rem / 1.55 var(--sb-font-text);
+}
+
+#odyssey-level-select .odyssey-stage__intro[hidden] {
+    display: none;
+}
+
+#odyssey-level-select .odyssey-stage__chapter-side {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 18px;
+}
+
+#odyssey-level-select .odyssey-stage__tally {
+    display: flex;
+    gap: 16px;
+    color: var(--sb-text-faint);
+    font: 600 0.75rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+#odyssey-level-select .odyssey-stage__tally > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+#odyssey-level-select .odyssey-stage__tally b {
+    color: var(--sb-text);
+    font-size: 1.125rem;
+}
+
+#odyssey-level-select .odyssey-stage__tally svg {
+    width: 13px;
+    height: 13px;
+    margin-left: 3px;
+    fill: var(--sb-gold);
+}
+
+#odyssey-level-select .odyssey-stage__steps {
+    display: flex;
+    gap: 6px;
+}
+
+#odyssey-level-select .odyssey-stage__step {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border-radius: 12px;
+    border: 1px solid var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    color: var(--sb-text);
+    cursor: pointer;
+    transition: background var(--sb-dur-2) var(--sb-ease-lock), border-color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#odyssey-level-select .odyssey-stage__step:hover:not(:disabled) {
+    background: rgba(var(--sb-cream-rgb), 0.09);
+    border-color: rgba(var(--sb-cream-rgb), 0.34);
+}
+
+#odyssey-level-select .odyssey-stage__step:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
+    outline-offset: 3px;
+}
+
+#odyssey-level-select .odyssey-stage__step:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+#odyssey-level-select .odyssey-stage__step svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* ---- The card: the selected orb, its world as the art ------------------------------ */
+#odyssey-level-select .odyssey-postcard {
+    position: relative;
+    display: grid;
+    grid-template-columns: clamp(150px, min(14vw, 24vh), 280px) minmax(0, 1.3fr) minmax(210px, 1fr);
+    align-items: center;
+    gap: clamp(20px, 2.6vw, 40px);
+    padding: clamp(20px, 3vh, 30px) clamp(20px, 2.6vw, 36px);
+    border-radius: var(--sb-r-xl);
+    border: 1px solid rgba(var(--nav-hue-rgb), 0.24);
+    background:
+        radial-gradient(60% 130% at 0% 50%, rgba(var(--nav-hue-rgb), 0.16), transparent 70%),
+        linear-gradient(180deg, rgba(27, 23, 60, 0.56) 0%, rgba(12, 10, 30, 0.72) 100%);
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07), 0 30px 80px rgba(0, 0, 0, 0.36);
+}
+
+#odyssey-level-select .odyssey-postcard.is-entering .odyssey-postcard__art,
+#odyssey-level-select .odyssey-postcard.is-entering .odyssey-postcard__copy,
+#odyssey-level-select .odyssey-postcard.is-entering .odyssey-postcard__facts {
+    animation: odyssey-nav-card-in 0.38s var(--sb-ease-lock) both;
+}
+
+#odyssey-level-select .odyssey-postcard.is-entering .odyssey-postcard__copy {
+    animation-delay: 0.03s;
+}
+
+#odyssey-level-select .odyssey-postcard.is-entering .odyssey-postcard__facts {
+    animation-delay: 0.06s;
+}
+
+#odyssey-level-select .odyssey-postcard__art {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+}
+
+#odyssey-level-select .odyssey-postcard__halo {
+    position: absolute;
+    inset: -22%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(var(--nav-hue-rgb), 0.4) 0%, rgba(var(--nav-hue-rgb), 0.12) 42%, transparent 68%);
+    animation: odyssey-nav-breathe var(--sb-breath) var(--sb-ease-breathe) infinite;
+}
+
+#odyssey-level-select .odyssey-postcard__orbit {
+    position: absolute;
+    inset: -7%;
+    border-radius: 50%;
+    border: 1px solid rgba(var(--nav-hue-rgb), 0.38);
+}
+
+#odyssey-level-select .odyssey-postcard__orbit::before {
+    content: '';
+    position: absolute;
+    inset: -7%;
+    border-radius: 50%;
+    border: 1px dashed rgba(var(--sb-cream-rgb), 0.12);
+}
+
+#odyssey-level-select .odyssey-postcard__image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+    /* Painted behind the artwork while it decodes. */
+    background:
+        radial-gradient(circle at 34% 28%, rgba(var(--nav-hue-rgb), 0.38), rgba(var(--nav-hue-rgb), 0.06) 70%),
+        var(--nav-ink);
+    box-shadow: 0 0 0 1px rgba(var(--sb-cream-rgb), 0.16), 0 22px 60px rgba(0, 0, 0, 0.55);
+    transition: filter var(--sb-dur-3) var(--sb-ease-lock);
+}
+
+#odyssey-level-select .odyssey-postcard__image[hidden] {
+    display: none;
+}
+
+#odyssey-level-select .odyssey-postcard__lock {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    display: none;
+    place-items: center;
+    width: 54px;
+    height: 54px;
+    border-radius: 16px;
+    border: 1px solid rgba(var(--sb-cream-rgb), 0.24);
+    background: rgba(12, 10, 30, 0.82);
+    transform: translate(-50%, -50%);
+}
+
+#odyssey-level-select .odyssey-postcard__lock svg {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: var(--sb-text);
+    stroke-width: 1.8;
+}
+
+#odyssey-level-select .odyssey-postcard[data-state='locked'] .odyssey-postcard__lock {
+    display: grid;
+}
+
+#odyssey-level-select .odyssey-postcard[data-state='locked'] .odyssey-postcard__image {
+    filter: grayscale(0.85) brightness(0.5) contrast(0.92);
+}
+
+#odyssey-level-select .odyssey-postcard[data-state='locked'] .odyssey-postcard__halo {
+    opacity: 0.35;
+    animation: none;
+}
+
+#odyssey-level-select .odyssey-postcard[data-state='cleared'] .odyssey-postcard__orbit {
+    border-color: rgba(var(--sb-gold-rgb), 0.6);
+}
+
+/* The orb the journey waits on: its orbit is the keystone. */
+#odyssey-level-select .odyssey-postcard[data-state='next'] .odyssey-postcard__orbit {
+    border: 2px solid rgba(var(--sb-coral-rgb), 0.85);
+    box-shadow: 0 0 24px rgba(var(--sb-coral-rgb), 0.35);
+}
+
+#odyssey-level-select .odyssey-postcard__copy {
+    min-width: 0;
+    container-type: inline-size;
+}
+
+/* Too narrow for both actions on one line: Play keeps its word, the footer keeps the key. */
+@container (max-width: 430px) {
+    #odyssey-level-select .odyssey-postcard__actions .sb-btn--primary[data-label='again'] .sb-kbd {
+        display: none;
+    }
+}
+
+@container (max-width: 376px) {
+    #odyssey-level-select .odyssey-postcard__actions .sb-btn--primary .sb-kbd {
+        display: none;
+    }
+}
+
+#odyssey-level-select .odyssey-postcard__eyebrow {
+    --sb-accent-rgb: var(--nav-hue-rgb);
+}
+
+#odyssey-level-select .odyssey-postcard[data-state='next'] .odyssey-postcard__eyebrow {
+    --sb-accent-rgb: var(--sb-coral-rgb);
+}
+
+#odyssey-level-select .odyssey-postcard__title {
+    margin: 10px 0 10px;
+    font: 700 clamp(1.4rem, 2.2vw, 2rem) / 1.08 var(--sb-font-display);
+    letter-spacing: -0.01em;
+    color: var(--sb-text);
+    text-wrap: balance;
+}
+
+#odyssey-level-select .odyssey-postcard__stars {
+    margin: 0;
+}
+
+#odyssey-level-select .odyssey-postcard__star-row {
+    display: inline-flex;
+    gap: 6px;
+}
+
+#odyssey-level-select .odyssey-postcard__star-row svg,
+#odyssey-level-select .odyssey-level-stars svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    fill: rgba(var(--sb-cream-rgb), 0.06);
+    stroke: rgba(var(--sb-cream-rgb), 0.26);
+    stroke-width: 1.4;
+    stroke-linejoin: round;
+}
+
+#odyssey-level-select .odyssey-postcard__star-row i {
+    width: 22px;
+    height: 22px;
+}
+
+#odyssey-level-select :is(.odyssey-postcard__star-row, .odyssey-level-stars) i.is-earned svg {
+    fill: var(--sb-gold);
+    stroke: #ffe9b8;
+    filter: drop-shadow(0 0 6px rgba(var(--sb-gold-rgb), 0.45));
+}
+
+#odyssey-level-select .odyssey-postcard__description {
+    display: -webkit-box;
+    max-width: 58ch;
+    margin: 14px 0 0;
+    overflow: hidden;
+    color: var(--sb-text-muted);
+    font: 500 0.9375rem / 1.55 var(--sb-font-text);
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+#odyssey-level-select .odyssey-postcard__lock-note {
+    margin: 12px 0 0;
+    color: var(--sb-text);
+    font: 600 0.8125rem / 1.4 var(--sb-font-text);
+}
+
+#odyssey-level-select .odyssey-postcard__lock-note[hidden] {
+    display: none;
+}
+
+#odyssey-level-select .odyssey-postcard__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+#odyssey-level-select .odyssey-postcard__actions .sb-btn--primary {
+    min-width: 150px;
+}
+
+#odyssey-level-select .odyssey-postcard__actions .sb-btn--quiet {
+    padding: 0 14px;
+}
+
+/* A shut orb's Play says so, without the keystone or a key: nothing happens next there. */
+#odyssey-level-select .odyssey-postcard__actions .sb-btn--primary:disabled {
+    border-color: var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.05);
+    color: var(--sb-text-faint);
+    box-shadow: none;
+    opacity: 1;
+}
+
+#odyssey-level-select .odyssey-postcard__actions .sb-btn--primary:disabled .sb-kbd {
+    display: none;
+}
+
+#odyssey-level-select .odyssey-postcard__facts {
+    display: grid;
+    align-content: center;
+    align-self: stretch;
+    gap: 16px;
+    margin: 0;
+    padding-left: clamp(18px, 2.2vw, 32px);
+    border-left: 1px solid var(--sb-line);
+}
+
+#odyssey-level-select .odyssey-postcard__fact[hidden] {
+    display: none;
+}
+
+#odyssey-level-select .odyssey-postcard__fact dt {
+    margin: 0 0 7px;
+    color: var(--sb-text-faint);
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+#odyssey-level-select .odyssey-postcard__fact dd {
+    margin: 0;
+    color: var(--sb-text);
+    font: 600 0.875rem / 1.4 var(--sb-font-text);
+}
+
+#odyssey-level-select .odyssey-postcard__star-goals {
+    display: grid;
+    gap: 5px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+#odyssey-level-select .odyssey-postcard__star-goals li {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    color: var(--sb-text-muted);
+    font: 500 0.8125rem / 1.4 var(--sb-font-text);
+}
+
+#odyssey-level-select .odyssey-postcard__star-goals svg {
+    flex: none;
+    width: 11px;
+    height: 11px;
+    transform: translateY(1px);
+    fill: rgba(var(--sb-cream-rgb), 0.12);
+    stroke: rgba(var(--sb-cream-rgb), 0.34);
+    stroke-width: 1.6;
+}
+
+#odyssey-level-select .odyssey-postcard__star-goals li.is-earned {
+    color: var(--sb-text);
+}
+
+#odyssey-level-select .odyssey-postcard__star-goals li.is-earned svg {
+    fill: var(--sb-gold);
+    stroke: #ffe9b8;
+}
+
+/* ---- The route: the chapter's orbs on its path -------------------------------------- */
+#odyssey-level-select .odyssey-route {
+    --route-stop-min: 104px; /* ROUTE_STOP_MIN_PX in odyssey-navigator-list.js */
+    display: grid;
+    grid-template-columns: repeat(var(--route-columns, 5), minmax(var(--route-stop-min), 168px));
+    justify-content: center;
+    row-gap: 2px;
+    margin: 0;
+    padding: 2px 0 0;
+    list-style: none;
+}
+
+#odyssey-level-select .odyssey-route__stop {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    min-width: 0;
+}
+
+/* The path to the next stop: centre to centre, behind the orbs. */
+#odyssey-level-select .odyssey-route__stop[data-link]::after {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    top: calc(13px + var(--orb-size) / 2);
+    left: 50%;
+    width: 100%;
+    height: 2px;
+    border-radius: 1px;
+    background: repeating-linear-gradient(90deg, rgba(var(--sb-cream-rgb), 0.18) 0 5px, transparent 5px 11px);
+    pointer-events: none;
+}
+
+#odyssey-level-select .odyssey-route__stop[data-link='open']::after {
+    background: rgba(var(--nav-hue-rgb), 0.36);
+}
+
+#odyssey-level-select .odyssey-route__stop[data-link='lit']::after {
+    background: linear-gradient(90deg, rgba(var(--nav-hue-rgb), 0.9), rgba(var(--nav-hue-rgb), 0.55));
+    box-shadow: 0 0 10px rgba(var(--nav-hue-rgb), 0.35);
+}
+
+#odyssey-level-select .odyssey-route__stop[data-row-end]::after {
+    display: none;
+}
+
+#odyssey-level-select .odyssey-level-btn {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    max-width: 138px;
+    height: auto;
+    margin: 0;
+    padding: 13px 6px 8px;
+    border: 1px solid transparent;
+    border-radius: var(--sb-r-md);
+    background: transparent;
+    color: var(--sb-text-muted);
+    font: inherit;
+    cursor: pointer;
+    animation: none;
+    transition:
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#odyssey-level-select .odyssey-level-btn:hover {
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    color: var(--sb-text);
+}
+
+#odyssey-level-select .odyssey-level-btn:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
+    outline-offset: 2px;
+}
+
+#odyssey-level-select .odyssey-level-btn[aria-current='true'] {
+    border-color: rgba(var(--nav-hue-rgb), 0.46);
+    background: linear-gradient(180deg, rgba(var(--nav-hue-rgb), 0.17), rgba(var(--nav-hue-rgb), 0.03));
+    color: var(--sb-text);
+}
+
+#odyssey-level-select .odyssey-orb__art {
+    position: relative;
+    width: var(--orb-size);
+    height: var(--orb-size);
+    flex: none;
+    border-radius: 50%;
+    /* The chapter's light until the world's artwork arrives (it loads lazily). */
+    background:
+        radial-gradient(circle at 34% 28%, rgba(var(--nav-hue-rgb), 0.34), rgba(var(--nav-hue-rgb), 0.06) 68%),
+        var(--nav-ink);
+    transition: transform var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#odyssey-level-select .odyssey-level-btn:hover .odyssey-orb__art {
+    transform: translateY(-2px);
+}
+
+#odyssey-level-select .odyssey-level-btn[aria-current='true'] .odyssey-orb__art {
+    transform: scale(1.1);
+}
+
+#odyssey-level-select .odyssey-orb__image {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
+#odyssey-level-select .odyssey-orb__image[hidden] {
+    display: none;
+}
+
+#odyssey-level-select .odyssey-orb__ring {
+    position: absolute;
+    inset: -4px;
+    border-radius: 50%;
+    border: 2px solid rgba(var(--nav-hue-rgb), 0.5);
+    transition: border-color var(--sb-dur-2) var(--sb-ease-lock), box-shadow var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#odyssey-level-select .odyssey-level-btn[data-state='cleared'] .odyssey-orb__ring {
+    border-color: rgba(var(--sb-gold-rgb), 0.78);
+}
+
+#odyssey-level-select .odyssey-level-btn[data-state='next'] .odyssey-orb__ring {
+    border-color: var(--sb-keystone);
+    box-shadow: 0 0 16px rgba(var(--sb-coral-rgb), 0.55);
+    animation: odyssey-nav-beacon var(--sb-breath) var(--sb-ease-breathe) infinite;
+}
+
+#odyssey-level-select .odyssey-level-btn[data-state='locked'] .odyssey-orb__ring {
+    border: 1px dashed rgba(var(--sb-cream-rgb), 0.24);
+}
+
+#odyssey-level-select .odyssey-level-btn[data-state='locked'] .odyssey-orb__image {
+    filter: grayscale(0.9) brightness(0.42) contrast(0.9);
+}
+
+#odyssey-level-select .odyssey-level-btn[aria-current='true'] .odyssey-orb__ring {
+    border-color: rgba(var(--sb-cream-rgb), 0.92);
+    box-shadow: 0 0 0 3px rgba(var(--nav-hue-rgb), 0.28), 0 0 22px rgba(var(--nav-hue-rgb), 0.5);
+}
+
+#odyssey-level-select .odyssey-level-btn[data-state='next'][aria-current='true'] .odyssey-orb__ring {
+    border-color: var(--sb-keystone);
+    box-shadow: 0 0 0 3px rgba(var(--sb-coral-rgb), 0.24), 0 0 22px rgba(var(--sb-coral-rgb), 0.55);
+}
+
+#odyssey-level-select .odyssey-orb__lock {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+}
+
+#odyssey-level-select .odyssey-orb__lock svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: rgba(var(--sb-cream-rgb), 0.78);
+    stroke-width: 1.8;
+}
+
+#odyssey-level-select .odyssey-orb__number {
+    position: absolute;
+    left: 50%;
+    bottom: -9px;
+    min-width: 24px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 6px;
+    border: 1px solid var(--sb-line-strong);
+    background: var(--nav-ink);
+    color: var(--sb-text);
+    font: 700 0.5625rem / 16px var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    transform: translateX(-50%);
+}
+
+#odyssey-level-select .odyssey-level-btn[data-state='cleared'] .odyssey-orb__number {
+    border-color: rgba(var(--sb-gold-rgb), 0.6);
+    color: #fff1d0;
+}
+
+#odyssey-level-select .odyssey-level-btn[data-state='locked'] .odyssey-orb__number {
+    color: var(--sb-text-faint);
+}
+
+#odyssey-level-select .odyssey-orb__badge {
+    position: absolute;
+    top: -6px;
+    right: -8px;
+    display: grid;
+    place-items: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 7px;
+    border: 1px solid rgba(var(--sb-gold-rgb), 0.55);
+    background: var(--nav-ink);
+    color: var(--sb-gold);
+}
+
+#odyssey-level-select .odyssey-orb__badge svg {
+    width: 13px;
+    height: 13px;
+    fill: currentColor;
+}
+
+#odyssey-level-select .odyssey-orb__badge--rival {
+    border-color: rgba(var(--sb-rose-rgb), 0.6);
+    color: var(--sb-rose);
+    font: 800 0.5rem / 1 var(--sb-font-display);
+    letter-spacing: 0.02em;
+}
+
+#odyssey-level-select .odyssey-orb__flag {
+    position: absolute;
+    top: -8px;
+    left: 50%;
+    z-index: 2;
+    padding: 4px 7px 3px;
+    border-radius: 6px;
+    background: var(--sb-keystone);
+    color: var(--sb-keystone-ink);
+    font: 800 0.5rem / 1 var(--sb-font-display);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    transform: translateX(-50%);
+}
+
+#odyssey-level-select .odyssey-orb__name {
+    display: -webkit-box;
+    max-width: 100%;
+    min-height: 2.6em;
+    margin-top: 6px;
+    overflow: hidden;
+    font: 600 0.75rem / 1.3 var(--sb-font-text);
+    text-align: center;
+    overflow-wrap: anywhere;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+#odyssey-level-select .odyssey-level-btn[data-state='locked'] .odyssey-orb__name {
+    color: var(--sb-text-faint);
+}
+
+#odyssey-level-select .odyssey-level-btn[data-state='locked'][aria-current='true'] .odyssey-orb__name {
+    color: var(--sb-text-muted);
+}
+
+#odyssey-level-select .odyssey-level-stars {
+    display: flex;
+    gap: 2px;
+    margin: 0;
+}
+
+#odyssey-level-select .odyssey-level-stars i {
+    width: 11px;
+    height: 11px;
+}
+
+/* ---- Footer: the ways out and the keys ------------------------------------------------ */
+#odyssey-level-select .odyssey-actions {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 24px;
+    margin: 0;
+    padding: 12px var(--nav-gutter) max(14px, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--sb-line);
+    background: linear-gradient(180deg, rgba(7, 6, 26, 0.2), rgba(5, 4, 15, 0.7));
+}
+
+#odyssey-level-select .odyssey-actions__buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+}
+
+#odyssey-level-select .odyssey-actions__hints .sb-kbd + .sb-kbd {
+    margin-left: -2px;
+}
+
+#odyssey-level-select .odyssey-btn {
+    display: inline-flex;
+    align-items: center;
+    min-height: 42px;
+    padding: 0 18px;
+    border-radius: 12px;
+    border: 1px solid var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    color: var(--sb-text);
+    font: 600 0.6875rem / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    box-shadow: none;
+}
+
+#odyssey-level-select .odyssey-btn:hover {
+    background: rgba(var(--sb-cream-rgb), 0.09);
+    border-color: rgba(var(--sb-cream-rgb), 0.34);
+    transform: none;
+}
+
+#odyssey-level-select .odyssey-btn:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 3px;
+}
+
+#odyssey-level-select .odyssey-btn[hidden] {
+    display: none;
+}
+
+#odyssey-level-select .odyssey-btn--quiet {
+    border-color: transparent;
+    background: none;
+    color: var(--sb-text-muted);
+}
+
+#odyssey-level-select .odyssey-btn--danger {
+    border-color: rgba(var(--sb-coral-rgb), 0.6);
+    color: var(--sb-text);
+    background: rgba(var(--sb-coral-rgb), 0.12);
+}
+
+#odyssey-level-select .odyssey-btn--danger:hover {
+    background: rgba(var(--sb-coral-rgb), 0.22);
+    border-color: rgba(var(--sb-coral-rgb), 0.8);
+}
+
+/* Start a new journey: the consequence sits beside the choice, and only the second press erases. */
+#odyssey-level-select .odyssey-new-journey {
+    display: flex;
+    flex-basis: 100%;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 18px;
+    margin: 0;
+    padding: 14px 16px;
+    border-radius: var(--sb-r-sm);
+    border: 1px solid var(--sb-line);
+    background: rgba(12, 10, 30, 0.9);
+}
+
+#odyssey-level-select .odyssey-new-journey[hidden] {
+    display: none;
+}
+
+#odyssey-level-select .odyssey-new-journey__copy {
+    flex: 1 1 32ch;
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 500 0.875rem / 1.5 var(--sb-font-text);
+}
+
+#odyssey-level-select .odyssey-new-journey__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+/* ---- Setting out: the navigator gives way to the board's travel to the orb ---------- */
+#odyssey-level-select.is-launching {
+    animation: odyssey-nav-depart 0.46s var(--sb-ease-lock) forwards;
+    cursor: progress;
+}
+
+#odyssey-level-select.is-launching * {
+    pointer-events: none;
+}
+
+@keyframes odyssey-nav-depart {
+    to { opacity: 0; }
+}
+
+@keyframes odyssey-nav-drop {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes odyssey-nav-rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes odyssey-nav-card-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes odyssey-nav-ambient-in {
+    from { opacity: 0; }
+    to { opacity: 0.46; }
+}
+
+@keyframes odyssey-nav-breathe {
+    0%, 100% { opacity: 0.6; transform: scale(0.97); }
+    50% { opacity: 1; transform: scale(1.03); }
+}
+
+@keyframes odyssey-nav-beacon {
+    0%, 100% { box-shadow: 0 0 8px rgba(var(--sb-coral-rgb), 0.35); }
+    50% { box-shadow: 0 0 22px rgba(var(--sb-coral-rgb), 0.7); }
+}
+
+/* ---- Smaller screens ------------------------------------------------------------------ */
+/* Short laptop windows: a tighter card and route. */
+@media (max-height: 780px) and (min-width: 1101px) {
+    #odyssey-level-select.odyssey-level-select {
+        --orb-size: clamp(52px, 4vw, 62px);
+    }
+
+    #odyssey-level-select .odyssey-header {
+        padding-bottom: 8px;
+    }
+
+    #odyssey-level-select .odyssey-nav__stage {
+        gap: 12px;
+        padding-bottom: 8px;
+    }
+
+    #odyssey-level-select .odyssey-stage__title {
+        margin: 6px 0 4px;
+    }
+
+    #odyssey-level-select .odyssey-orb__name {
+        margin-top: 4px;
+    }
+
+    #odyssey-level-select .odyssey-actions {
+        padding-top: 9px;
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+    }
+
+    #odyssey-level-select .odyssey-btn {
+        min-height: 38px;
+    }
+
+    #odyssey-level-select .odyssey-stage__intro {
+        display: -webkit-box;
+        overflow: hidden;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+    }
+
+    #odyssey-level-select .odyssey-postcard {
+        grid-template-columns: clamp(132px, 11vw, 176px) minmax(0, 1.3fr) minmax(210px, 1fr);
+        padding-block: 18px;
+    }
+
+    #odyssey-level-select .odyssey-postcard__description {
+        -webkit-line-clamp: 2;
+    }
+
+    #odyssey-level-select .odyssey-postcard__actions {
+        margin-top: 16px;
+    }
+}
+
+/* Tablets and narrow windows: the ascent becomes a strip of chapters above the stage. */
+@media (max-width: 1100px) {
+    #odyssey-level-select.odyssey-level-select {
+        overflow-y: auto;
+    }
+
+    #odyssey-level-select .odyssey-header {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    #odyssey-level-select .odyssey-header__journey {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        max-width: none;
+    }
+
+    #odyssey-level-select .odyssey-nav__close {
+        justify-self: end;
+    }
+
+    #odyssey-level-select .odyssey-nav__body {
+        display: flex;
+        flex-direction: column;
+        flex: none;
+        gap: 14px;
+    }
+
+    #odyssey-level-select .odyssey-nav__rail {
+        padding-bottom: 0;
+    }
+
+    #odyssey-level-select .odyssey-nav__rail-label {
+        display: none;
+    }
+
+    #odyssey-level-select .odyssey-chapters {
+        flex-direction: row;
+        gap: 6px;
+        padding: 2px 2px 8px;
+        overflow-x: auto;
+        overflow-y: visible;
+    }
+
+    #odyssey-level-select .odyssey-chapters__item {
+        flex: 0 0 auto;
+        min-height: 0;
+        max-height: none;
+    }
+
+    #odyssey-level-select .odyssey-chapters__item[data-link]::before {
+        display: none;
+    }
+
+    #odyssey-level-select .odyssey-chapter {
+        grid-template-columns: 34px auto;
+        gap: 6px 10px;
+        width: auto;
+        padding: 7px 12px 7px 7px;
+    }
+
+    #odyssey-level-select .odyssey-chapter__gem {
+        width: 34px;
+        height: 34px;
+        margin: 0;
+        border-radius: 10px;
+        font-size: 0.75rem;
+    }
+
+    #odyssey-level-select .odyssey-chapter__body {
+        gap: 6px;
+    }
+
+    #odyssey-level-select .odyssey-chapter-name {
+        white-space: nowrap;
+    }
+
+    #odyssey-level-select .odyssey-chapter__here {
+        display: none;
+    }
+
+    #odyssey-level-select .odyssey-chapter-stars {
+        display: none;
+    }
+
+    #odyssey-level-select .odyssey-nav__stage {
+        overflow: visible;
+        padding-bottom: 8px;
+    }
+
+    #odyssey-level-select .odyssey-postcard {
+        grid-template-columns: clamp(120px, 20vw, 176px) minmax(0, 1fr);
+    }
+
+    #odyssey-level-select .odyssey-postcard__facts {
+        grid-column: 1 / -1;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        padding: 16px 0 0;
+        border-left: 0;
+        border-top: 1px solid var(--sb-line);
+    }
+}
+
+/* Phones: one column, the world above its story. */
+@media (max-width: 640px) {
+    #odyssey-level-select .odyssey-header {
+        grid-template-columns: minmax(0, 1fr);
+        padding-right: calc(var(--sb-play-inset) + 3 * var(--sb-play-tile) + 18px);
+    }
+
+    #odyssey-level-select .odyssey-nav__close {
+        grid-row: 3;
+        justify-self: start;
+    }
+
+    #odyssey-level-select .odyssey-stage__chapter {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    #odyssey-level-select .odyssey-postcard {
+        grid-template-columns: minmax(0, 1fr);
+        justify-items: center;
+        text-align: center;
+    }
+
+    #odyssey-level-select .odyssey-postcard__art {
+        width: min(46vw, 180px);
+    }
+
+    #odyssey-level-select .odyssey-postcard__actions {
+        justify-content: center;
+    }
+
+    #odyssey-level-select .odyssey-postcard__facts {
+        justify-self: stretch;
+        text-align: left;
+    }
+
+    #odyssey-level-select .odyssey-actions__hints {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #odyssey-level-select.odyssey-level-select,
+    #odyssey-level-select .odyssey-header,
+    #odyssey-level-select .odyssey-nav__rail,
+    #odyssey-level-select .odyssey-nav__stage,
+    #odyssey-level-select .odyssey-nav__ambient.is-entering,
+    #odyssey-level-select .odyssey-postcard.is-entering *,
+    #odyssey-level-select .odyssey-postcard__halo,
+    #odyssey-level-select .odyssey-chapter[data-state='current'] .odyssey-chapter__gem::after,
+    #odyssey-level-select .odyssey-level-btn[data-state='next'] .odyssey-orb__ring {
+        animation: none;
+    }
+
+    #odyssey-level-select.is-launching {
+        animation: none;
+        opacity: 0;
+    }
+
+    #odyssey-level-select .odyssey-orb__art {
+        transition: none;
+    }
+}
