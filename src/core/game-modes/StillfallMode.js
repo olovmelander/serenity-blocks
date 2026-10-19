@@ -22,10 +22,10 @@ import {
 import { GAME_MODES } from '../constants.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { piecePool } from '../../utils/object-pool.js';
-import { buildPuzzle } from '../stillfall/stillfall-puzzle.js';
+import { buildPuzzle, goalParts, markedBodies } from '../stillfall/stillfall-puzzle.js';
 import {
-    applyPlacement, boardFor, cellsOf, countCells, createRun, dealIntoView, failReason, judge, sameBoard,
-    solutionPlacement,
+    applyPlacement, bodyCellsOf, boardFor, cellsOf, countCells, createRun, dealIntoView, failReason, goalPartMet,
+    judge, sameBoard, solutionPlacement,
 } from '../stillfall/stillfall-sim.js';
 import { solveFrom } from '../stillfall/stillfall-solver.js';
 import { STILLFALL_PUZZLES, bankPuzzle } from '../stillfall/puzzle-bank.js';
@@ -183,7 +183,9 @@ export class StillfallMode extends SinglePlayerMode {
         stillfallProgress.choose(definition.id);
         if (this.gameState) {
             const { goal, bodyIds } = this.puzzle;
-            this.gameState.relicPieceId = goal.type === 'relic-floor' ? bodyIds[/** @type {string} */ (goal.body)] : null;
+            const { relics, seals } = markedBodies(goal);
+            this.gameState.relicPieceIds = relics.map((letter) => bodyIds[letter]);
+            this.gameState.sealPieceIds = seals.map((letter) => bodyIds[letter]);
         }
         this._turns = [];
         this._restoreTurn({
@@ -386,15 +388,22 @@ export class StillfallMode extends SinglePlayerMode {
         const solved = new Set(stillfallProgress.solvedIds());
         const open = stillfallProgress.openIds();
         const inHand = gameState.currentPiece?.shapeKey || null;
+        const run = this._liveRun();
         return {
             active: true,
             puzzle: {
                 id: puzzle.id,
                 title: puzzle.title,
                 lesson: puzzle.lesson,
-                goal: { ...puzzle.goal },
+                goal: JSON.parse(JSON.stringify(puzzle.goal)),
                 supply: puzzle.supply.slice(),
             },
+            // Each single goal and where it stands: held now, and a seal's blocks still in the well.
+            parts: goalParts(puzzle.goal).map((part) => ({
+                ...part,
+                met: goalPartMet(run, part),
+                ...(part.type === 'seal' ? { cellsLeft: bodyCellsOf(run, part).length } : {}),
+            })),
             dealt: this._dealt,
             inHand,
             remaining: [inHand, ...gameState.nextPieces].filter(Boolean),

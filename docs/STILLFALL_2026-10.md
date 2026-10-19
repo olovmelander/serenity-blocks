@@ -18,6 +18,15 @@ Later that day the bank doubled to seventy-two: every tier twice its size (10, 1
 10), the new puzzles from the same search (`--pieces=1` for First light) and the same
 certifier, each lesson written after replaying its solution wave by wave.
 
+**2026-10-19:** a hundred and sixteen puzzles in ten tiers, so that play keeps changing the
+deeper it goes. Each new tier brings something the ones before did not: **Aftershock** the
+*seal* (a marked body to clear away entirely, the relic's opposite), **Cross fault** two goals
+at once (two relics, two seals, a relic and a seal, or a cascade or lines together with one of
+them), **Mantle** a fourth piece, and **Core** four pieces with two goals and the deepest
+cascades, ending on an empty well four waves deep. All forty-four new puzzles have exactly one
+winning first landing. The certifier got about nine times faster, which is what lets
+four-piece puzzles be proven on every CI run (see "Architecture").
+
 **Status: in the main menu since 2026-10-18,** between Infinity and Local Versus, with no
 URL parameter (the preview flag, `faultLines` from the mode's first name, is retired; an old
 `?faultLines=1` is simply ignored). What it still needs from the owner is listed at the end.
@@ -26,7 +35,7 @@ URL parameter (the preview flag, `faultLines` from the mode's first name, is ret
 
 A puzzle mode built on the rule that sets the game apart: after a clear, each body falls
 as one rigid unit until something holds it, and two bodies never glue together. A puzzle
-is an authored structure, a supply of one to three pieces shown in the queue, and one goal.
+is an authored structure, a supply of one to four pieces shown in the queue, and a goal.
 Gravity waits while you choose, every piece can be taken back, and nothing is scored.
 
 Goals:
@@ -37,10 +46,18 @@ Goals:
 | `lines` | at least `atLeast` lines are cleared over the puzzle |
 | `clear-all` | the well ends empty |
 | `relic-floor` | some cell of the relic body rests on the floor |
+| `seal` | every cell of the seal body has been cleared away (a cut seal's fragments all count) |
+| `all` | two or three of the goals above hold after the same lock (`of`) |
 
-A puzzle fails when the supply is spent short of the goal, when the relic body is cleared
+`all` may not nest, may repeat only relics and seals (`Bring both relics to the floor`),
+gives each marked body one goal, and does not pair an empty well with a relic (it would be
+cleared) or a seal (it would be gone anyway). The panel says it as one sentence, the counts
+first: "Set off a cascade 4 waves deep and empty the well".
+
+A puzzle fails when the supply is spent short of the goal, when a relic body is cleared
 away, or when a dealt piece has no room. The panel says which, in the goal's own terms
-("The cascade reached 2 of 4 waves.", "3 blocks remain.", "The relic was cleared away.").
+("2 waves short.", "The well is not empty.", "The seal still holds 3 blocks.", "A relic is
+still up.", "The relic was cleared away."); with two goals it names each one still missing.
 
 ## How it plays
 
@@ -83,14 +100,19 @@ away, or when a dealt piece has no room. The panel says which, in the goal's own
   the others (`scripts/capture-menu-art.mjs --only=stillfall`: Floor last in Cinder Drift,
   the hint's outline on the first landing). The queue is the supply: it shows only what is
   still to come, and with the last piece in hand the row steps aside.
-- The board draws a dark seam wherever two bodies touch, and a cream diamond on the
-  relic. Bodies stay fused inside: seams are drawn per body, never per cell, so the
+- The board draws a dark seam wherever two bodies touch, a cream diamond on each cell of a
+  relic and a cream ring on each cell of a seal (a shape, not only a colour, tells them
+  apart). Bodies stay fused inside: seams are drawn per body, never per cell, so the
   fused, borderless look is kept. Two fragments of one body that touch again re-fuse
   (the cascade helper keys bodies by id); the sim and the live game agree on this.
+- The goal's progress rows: pips for a cascade or lines, the blocks left for an empty well,
+  "Blocks in the seal" (or "Seal blocks left" for two), pips for "On the floor" when there
+  are two or three relics, and a legend for the marks in play. Each row is one goal's, so
+  a two-goal puzzle shows both.
 
 ## The puzzle bank
 
-Seventy-two puzzles in six tiers (`src/core/stillfall/puzzle-bank.js`):
+A hundred and sixteen puzzles in ten tiers (`src/core/stillfall/puzzle-bank.js`):
 
 - **First light** (one piece each): First fall, Second wave, Lanterns, Clean break, Footstep,
   Lantern rain, Look below, Leftovers, Domino, Staircase. Each teaches one idea: a clear drops
@@ -126,10 +148,33 @@ Seventy-two puzzles in six tiers (`src/core/stillfall/puzzle-bank.js`):
   Two hooks, Right hand, Avalanche, Fault line, Floor last, Plumb line. The deepest goals:
   five-wave cascades, six lines from six rows (in one column, in three waves, or five at once
   and then the floor), and Plumb line's six waves from one lock.
+- **Aftershock** (three pieces, one way in, the seal): The seal, Hanging seal, Sinking seal,
+  Split seal, Corner seal, Reach down, Two at once, Deep column, Square drop, Lantern pair,
+  Three steps down, Second pass. A seal in the floor, one that hangs (build its row on both
+  sides and it drops in), one that sinks into the floor row before it breaks, one a clear
+  cuts so that the rest falls on, seals two rows tall (two rows at once, the long piece down
+  the deep column, the top row cleared twice), and lanterns that finish a seal's row.
+- **Cross fault** (three pieces, one way in, two goals at once): Two relics, Two seals, Give and
+  take, High seal, Top layer, Piggyback, Top and bottom, Sentries, Passenger, Shared floor, Two
+  cuts, Keyhole. A hanging relic that clears the floor from under the other; a relic that
+  drops out of the seal's row; a seal that loses its lower half beside a relic two rows tall
+  that keeps its own; a long piece riding a lantern; three waves and a seal; four lines and a
+  relic.
+- **Mantle** (four pieces, one way in): Rooftop, Every gap, High row, Four floors, Riding the
+  seal, Shared gap, Overhang, Two squares, Divide, Totem. A whole row built on top around a
+  lantern; a piece over every gap in three rows; a relic lowered one row per wave; a Z riding
+  the seal down; a T stacked on a T whose arms fill each row it passes.
+- **Core** (four pieces, one way in, two goals and the deepest): First strike, Both hang, Two
+  floors, Rebuild, Square one, Worn down, Three below, Middle out, Twin lanterns, Bare rock.
+  Two seals in two rows cleared at once, a relic that loses its top on the way down, two
+  lanterns dropping into two rows at once, and Bare rock: four waves deep and nothing left.
 
 ### The standard every puzzle meets
 
-The certifier (`tests/unit/stillfall-puzzles.test.js`) proves, on every CI run:
+The certifier proves, on every CI run (the standard is `tests/unit/helpers/stillfall-certify.js`;
+`stillfall-puzzles.test.js` holds it to tiers 1–6 beside the bank and rules tests, and
+`stillfall-puzzles-tiers-7-8`, `-tier-9` and `-tier-10` to the rest, so CI runs them side by
+side; a bank test fails if a tier is in no file):
 
 1. **A straight-drop solution exists**: rotate and move at the top, then drop. A solution
    that needs a soft drop and a slide (a tuck) or a rotation at the bottom (a kick) is
@@ -140,7 +185,7 @@ The certifier (`tests/unit/stillfall-puzzles.test.js`) proves, on every CI run:
 3. **Every piece matters**: the puzzle is unsolvable without its leading pieces (the first,
    and for three pieces also the first two).
 4. **Few openings win**: at most a quarter of the first landings lead to a solution in
-   tiers 1 and 2, at most a tenth in tiers 3 and 4, at most 6% in tiers 5 and 6, and from
+   tiers 1 and 2, at most a tenth in tiers 3 and 4, at most 6% from tier 5 on, and from
    tier 5 on exactly one first landing wins.
 5. **The stored solution is straight and solves**, so the hint is always right.
 6. **Every solution replays through the real game**: real `move`/`rotate`/`hardDrop` from
@@ -164,11 +209,14 @@ plus a wide body held by one end. Before Stillfall it held only single cells and
         'AAAAA.CCCC',      // (authoring convention only: all bodies follow one rule)
         'BBBBBB.DDD',
     ],
-    supply: ['I'],          // dealt in order; nothing refills it
+    supply: ['I'],          // dealt in order (one to four); nothing refills it
     goal: { type: 'waves', atLeast: 2 },
     solution: [{ piece: 'I', rotation: 1, x: 3 }],   // right rotations, then the column
 }
 ```
+
+A seal is `{ type: 'seal', body: 'C' }`; two goals at once are
+`{ type: 'all', of: [{ type: 'relic-floor', body: 'b' }, { type: 'seal', body: 'B' }] }`.
 
 `validatePuzzleDefinition` names every problem: row width, a full starting row, a body
 split in two, more than 14 rows, an unknown piece, a bad goal, a relic that starts on the
@@ -183,20 +231,31 @@ touching bodies match (the board draws same-coloured neighbours as one shape).
    (`--style=deep` for taller, nearly full strata and deep cascades), then
    `node scripts/stillfall-search.mjs --rank=c.jsonl --pieces=3 --top=20`. The rank rewards
    few winning openings and solutions, a set-up opening, a greedy opening that loses, traps
-   and deeper goals. On a busy machine a two-piece search kept about two hundred candidates a
-   minute per worker and a three-piece one about ten; most are not worth a name, so rank, then
-   read the best few lock by lock before writing a lesson.
+   and deeper goals. `--goals=seal` judges every body as a seal, `--goals=pair` two goals at
+   once (kept only when harder than each part alone), `--pieces=4` deals four,
+   `--style=tall` builds taller strata; the rank takes `--has=seal` and `--oneWay`. The last
+   piece's landings that complete no row are counted, not resolved, which made the search
+   about five times faster (the same candidates, byte for byte, as before). On a busy machine
+   a three-piece search tries about five hundred structures a minute per worker and a
+   four-piece one about a dozen; most are not worth a name, so rank, then read the best few
+   lock by lock before writing a lesson. For four pieces, check the real certifier's count
+   of winning openings: tucks and kicks can add one the straight-drop search did not see.
 1. Write the definition in `puzzle-bank.js` without a `solution`.
 2. Run `npx vitest run tests/unit/stillfall-puzzles.test.js`. It fails with the id if the
    puzzle is unsolvable, has no straight solution, solves early, wastes a piece, or lets
    too many openings win.
 3. `solvePuzzle(buildPuzzle(def))` returns `straightSolutions`; copy the first as
    `solution` (`{ piece, rotation, x }` per placement) and run the test again.
+4. Before writing the lesson, `node scripts/stillfall-replay.mjs <id>` (or `--file=` a JSON
+   array of candidates) plays the stored line through the live game and prints the board at
+   every wave, the rows about to clear marked. Lessons are at most 101 characters.
 
-Tiers 2 to 6 came from that offline search over random structures (rows with gaps, two-row
+Tiers 2 to 10 came from that offline search over random structures (rows with gaps, two-row
 bodies, hanging bodies, a random supply) under the standard above, kept when few openings
 win, then named, ordered and given their lessons by hand after reading each solution wave by
-wave.
+wave. For tiers 7 to 10 (2026-10-19) the replay ran through the live game, printing the
+board at each wave as it is detected, so a lesson says what really falls where; an
+"empty the well" alone with two winning openings became Bare rock's two goals (one way in).
 
 ## Architecture
 
@@ -206,15 +265,32 @@ wave.
 | Deal (the real spawn row), landings, lock + cascade, goal judge, failure reasons | `src/core/stillfall/stillfall-sim.js` | headless |
 | Every reachable landing: the bot pathfinder's search (same transitions, kicks, cap and path choice) without its allocations | `src/core/stillfall/stillfall-reach.js` | headless |
 | Exhaustive solver, straightness, every-piece-matters, a line on from any position | `src/core/stillfall/stillfall-solver.js` | headless |
+| Certifier standard and the tier groups each certifier file holds | `tests/unit/helpers/stillfall-certify.js` | test |
 | Bank, tiers and the unlock rule | `src/core/stillfall/puzzle-bank.js` | headless |
 | Puzzle search and rank (offline) | `scripts/stillfall-search.mjs` | tool |
+| A stored line played through the live game, wave by wave (for writing lessons) | `scripts/stillfall-replay.mjs` | tool |
 | Solved set, chosen puzzle, what comes next | `src/core/stillfall/stillfall-progress.js` | headless |
 | The mode | `src/core/game-modes/StillfallMode.js` | headless, extends `SinglePlayerMode` |
 | Panel, keys, gamepad, saved solves | `src/ui/stillfall/stillfall-hud.js`, `public/styles/stillfall.css` | UI |
 | The puzzle list on a gamepad | `src/ui/stillfall/stillfall-pad-list.js` (a panel owner in `gamepad-controller.js`) | UI |
-| Seams, relic mark, hint outline | `drawBodySeams`, `drawHintCells` in `src/rendering/phaser/base-board-scene.js` | rendering |
+| Seams, relic and seal marks, hint outline | `drawBodySeams`, `drawHintCells` in `src/rendering/phaser/base-board-scene.js` | rendering |
 | "Wave n" banner | `GameState.moveSummaryVocabulary`, read by `src/rendering/phaser/shared-effects.js` (finale kicker and the depth popup) | rendering |
 
+- **The solver judges the last piece before it searches its landings.** A lock that completes
+  no row clears nothing and moves nothing, so it cannot meet a goal the board did not already
+  meet. The solver plays only the places where the last piece could rest and complete a row
+  (`lineClearingRests`, a superset of the reachable ones found without the pathfinder), and
+  runs the pathfinder only when one of them solves, to keep the reachable ones with their real
+  input paths. A lock that completes no row skips the cascade resolver (`runAfter`: its answer
+  is the bodies before plus the new piece), each run keeps the grid its cascade built
+  (`boardOf`), and the pathfinder keeps its states in shared typed arrays. A differential
+  against the previous solver on all seventy-two puzzles then in the bank matched every
+  report field, every solution's landings and input paths, and the hint from every opening;
+  the bank then certified about nine times faster (34 s to 3.7 s on a loaded machine), and a
+  four-piece puzzle takes one to three seconds.
+- **Marked bodies** are `GameState.relicPieceIds` and `sealPieceIds` (lists; the mode fills
+  them from `markedBodies(goal)`), and the published state carries each goal part with
+  whether it holds now and, for a seal, its blocks left.
 - **Two GameState switches**, both default off (`tests/unit/puzzle-rule-gates.test.js`):
   `finiteSupply` (spawning never refills the bag) and `gravityWaits` (no fall and no
   auto-lock; soft drop never locks). Every other mode keeps its rules. The puzzle state
@@ -241,7 +317,7 @@ wave.
 
 ## Verified
 
-- Unit: the certifier (294 cases over seventy-two puzzles), the reachability differential
+- Unit (2026-10-18): the certifier (294 cases over seventy-two puzzles), the reachability differential
   (`tests/unit/stillfall-reach.test.js`: every bank puzzle's openings and the boards after
   each, plus 168 random boards with caves where tucks and spins matter, landing for landing and
   action for action against `findReachablePlacements`), the mode (deal, solve, undo across
@@ -274,12 +350,26 @@ wave.
   six lines in exactly three waves), the panel's "First light · 4 of 10" and "Epicentre · 7 of
   10", the doubled tiers in the list, no console errors.
 
+- 2026-10-19, the four new tiers. Unit: 477 certifier cases over 116 puzzles in four files
+  (34 s wall on a loaded machine; the one file before the split took 3 min 27 s), the new
+  goals' validator messages and judging (a seal broken only when every block is gone, two
+  goals after the same lock, a relic lost inside two goals), the panel's sentences and miss
+  lines. The search and the solver were each checked against their previous versions (same
+  candidates byte for byte; same reports). In the real game (private Vite, headless Chromium
+  on SwiftShader WebGL2, Forest), played from their stored lines by key presses, each key
+  confirmed on the live piece: The seal, Two relics, Two seals, Rooftop (four pieces) and
+  Bare rock (four waves, five lines, an empty well) all solved; rings on the seal, diamonds
+  on both relics, "Piece 1 of 4" with three pieces queued, both progress rows of a two-goal
+  puzzle, the ten tiers in the list; no console errors.
+
 ## Still open (owner)
 
 The owner shipped it to the main menu on 2026-10-18. Gamepad list navigation and Steam rich
 presence, which this list used to name, are done. What remains:
 
-1. **Owner playtest** of the seventy-two puzzles and the difficulty curve between tiers.
+1. **Owner playtest** of the hundred and sixteen puzzles and the difficulty curve between
+   tiers, above all whether the seal reads at a glance and whether four-piece puzzles (the
+   last two tiers) are fun to think through or only long.
 2. **Name clearance** for "Stillfall", which is now player-facing. Names already in the
    mode's vocabulary if it fails: Seams, Fault.
 3. **Steamworks upload** of `steam/rich-presence/english.vdf`: until the file with

@@ -3,25 +3,31 @@
  *
  * Search (worker threads, time-boxed; appends one JSON line per candidate):
  *   node scripts/stillfall-search.mjs --out=candidates.jsonl --pieces=3 --minutes=20 --workers=4
- *     [--style=strata|deep] [--seed=7]
+ *     [--style=strata|deep|tall] [--goals=single|seal|pair] [--seed=7]
  * Rank what a search found (one goal per structure and supply, the hardest):
  *   node scripts/stillfall-search.mjs --rank=candidates.jsonl [--pieces=3] [--goal=waves]
- *     [--top=20] [--maxRows=10] [--maxBodies=16] [--lanterns]
+ *     [--has=seal] [--oneWay] [--top=20] [--maxRows=10] [--maxBodies=16] [--lanterns]
  *
  * One piece (--pieces=1) searches for First light: a cascade or lines from two up, or an empty
  * well, with at most a quarter of the openings winning and no relic (Undertow introduces it).
  * --lanterns keeps only structures with a lantern (First light's other puzzles assume them).
  *
+ * --goals picks what is judged on each structure: `single` (the default) the deepest cascade,
+ * the most lines, an empty well and each body as the relic; `seal` each body as a seal (it
+ * must be cleared away entirely); `pair` two goals at once (two relics, two seals, a relic and
+ * a seal, or a cascade or lines together with an empty well, a relic or a seal). A pair is
+ * kept only when it is harder than each of its parts alone.
+ *
  * Each candidate is a random structure (rows with one to three gaps, split into bodies, some
  * joined into two-row bodies, lanterns above) and a random supply. Every straight-drop line of
- * play is enumerated once on the real cascade resolver, and every goal the structure allows
- * is judged on that tree: the deepest cascade, the most lines, an empty well, each body as
- * the relic. A goal is kept when the last piece is needed, every piece matters, at most a
- * tenth of the openings win (two openings for two-piece supplies), and some winning lock
- * cascades at least two waves deep. Straight drops only: the certifier's real solver (tucks
- * and kicks included) has the last word, so a candidate goes into puzzle-bank.js without a
- * solution and tests/unit/stillfall-puzzles.test.js decides (docs/STILLFALL_2026-10.md,
- * "Adding a puzzle").
+ * play is enumerated once on the real cascade resolver, and every goal is judged on that tree.
+ * The last piece's landings that complete no row are counted, not resolved: nothing falls
+ * without a clear, so no goal can be met by them. A goal is kept when the last piece is
+ * needed, every piece matters, at most a tenth of the openings win (two openings for two-piece
+ * supplies), and some winning lock cascades at least two waves deep. Straight drops only: the
+ * certifier's real solver (tucks and kicks included) has the last word, so a candidate goes
+ * into puzzle-bank.js without a solution and tests/unit/stillfall-puzzles.test.js decides
+ * (docs/STILLFALL_2026-10.md, "Adding a puzzle").
  *
  * The rank's hardness rewards few winning openings and few solutions, an opening that clears
  * nothing (a set-up), a greedy opening (the biggest immediate clear) that loses, tempting
@@ -39,8 +45,19 @@ const parseArgs = (argv) => Object.fromEntries(argv.filter((a) => a.startsWith('
 }));
 
 const goalLabel = (goal) => {
+    if (goal.type === 'all') return goal.of.map(goalLabel).join(' + ');
     if (goal.type === 'waves' || goal.type === 'lines') return `${goal.type} >= ${goal.atLeast}`;
-    return goal.type === 'relic-floor' ? `relic ${goal.body}` : goal.type;
+    if (goal.type === 'relic-floor') return `relic ${goal.body}`;
+    return goal.type === 'seal' ? `seal ${goal.body}` : goal.type;
+};
+
+/** What a goal adds to a candidate's hardness on its own. */
+const goalBonus = (goal) => {
+    if (goal.type === 'all') return 1 + goal.of.reduce((sum, part) => sum + goalBonus(part), 0);
+    if (goal.type === 'waves') return Math.max(0, goal.atLeast - 3) * 0.6;
+    if (goal.type === 'lines') return Math.max(0, goal.atLeast - 4) * 0.4;
+    if (goal.type === 'clear-all') return 1;
+    return goal.type === 'seal' ? 0.5 : 0;
 };
 
 export function hardness(c) {
@@ -49,9 +66,7 @@ export function hardness(c) {
     if (c.setup) score += 1.5;
     if (c.greedyLoses) score += 1.5;
     score += Math.min(c.traps, 6) * 0.25;
-    if (c.goal.type === 'waves') score += Math.max(0, c.goal.atLeast - 3) * 0.6;
-    if (c.goal.type === 'lines') score += Math.max(0, c.goal.atLeast - 4) * 0.4;
-    if (c.goal.type === 'clear-all') score += 1;
+    score += goalBonus(c.goal);
     if (c.solutions === 1) score += 1;
     return score;
 }
@@ -65,6 +80,9 @@ function rank(args) {
         if (Number(args.pieces || c.supply.length) !== c.supply.length) continue;
         if (c.rows.length > Number(args.maxRows || 11) || c.bodies > Number(args.maxBodies || 18)) continue;
         if (args.goal && c.goal.type !== args.goal) continue;
+        // --has=seal keeps goals that involve a seal anywhere, alone or as part of two.
+        if (args.has && !goalLabel(c.goal).includes(args.has)) continue;
+        if (args.oneWay && c.winOpenings !== 1) continue;
         if (args.lanterns && !c.rows.some((row) => /[a-z]/.test(row))) continue;
         const h = hardness(c);
         if (!seen.has(key) || seen.get(key).h < h) seen.set(key, { ...c, h });
@@ -87,7 +105,10 @@ function search(args) {
     const workers = Array.from({ length: Number(args.workers || 4) }, (_, index) => {
         const worker = new Worker(fileURLToPath(import.meta.url), {
             workerData: {
-                pieces: Number(args.pieces || 3), style: args.style || 'strata', seed: seed * 97 + index * 7919,
+                pieces: Number(args.pieces || 3),
+                style: args.style || 'strata',
+                goals: args.goals || 'single',
+                seed: seed * 97 + index * 7919,
             },
         });
         worker.on('message', (message) => {
@@ -114,11 +135,11 @@ function search(args) {
 async function work() {
     const { buildPuzzle, validatePuzzleDefinition } = await import(core('stillfall/stillfall-puzzle.js'));
     const {
-        createRun, applyPlacement, boardFor, cellsOf,
+        createRun, applyPlacement, boardFor, boardOf, cellsOf, runAfter,
     } = await import(core('stillfall/stillfall-sim.js'));
     const { SHAPES, COLS, HIDDEN_ROWS } = await import(core('constants.js'));
     const { rotateShapeMatrix } = await import(core('game.js'));
-    const { pieces, style } = workerData;
+    const { pieces, style, goals: goalKinds } = workerData;
     const deep = style === 'deep';
 
     let state = workerData.seed >>> 0 || 1;
@@ -150,10 +171,9 @@ async function work() {
             return { shape, cells };
         });
     }
-    const straightPlacements = (run) => {
+    const straightPlacements = (run, grid) => {
         const key = run.puzzle.supply[run.dealt];
         if (!key || run.outcome !== 'open') return [];
-        const grid = boardFor(run.lockedPieces);
         const fits = (cells, x, y) => cells.every(([dx, dy]) => {
             const bx = x + dx;
             const by = y + dy;
@@ -173,7 +193,7 @@ async function work() {
                     if (!seen.has(footprint)) {
                         seen.add(footprint);
                         out.push({
-                            shapeKey: key, shape: shape.map((row) => row.slice()), rotation: r, x, y, actions: [], footprint,
+                            shapeKey: key, shape: shape.map((row) => row.slice()), rotation: r, x, y, actions: [], footprint, cells,
                         });
                     }
                 }
@@ -181,13 +201,28 @@ async function work() {
         }
         return out;
     };
+    /** Whether a landing fills the last empty cells of some row. */
+    const completesRow = (grid, placement) => {
+        const rowsHit = new Set(placement.cells.map(([, dy]) => placement.y + dy));
+        for (const y of rowsHit) {
+            let full = true;
+            for (let x = 0; x < COLS && full; x += 1) {
+                if (grid[y][x] !== null) continue;
+                full = placement.cells.some(([dx, dy]) => placement.x + dx === x && placement.y + dy === y);
+            }
+            if (full) return true;
+        }
+        return false;
+    };
 
     const generate = () => {
-        const strata = deep ? randint(5, 9) : randint(2, 7);
+        const [fewest, most] = { deep: [5, 9], tall: [4, 9] }[style] || [2, 7];
+        const strata = randint(fewest, most);
         const ids = Array.from({ length: strata }, () => Array(COLS).fill(-1));
         let next = 0;
         for (let y = 0; y < strata; y += 1) {
-            const gapCount = weighted(deep ? [[1, 75], [2, 25]] : [[1, 55], [2, 35], [3, 10]]);
+            const gapCount = weighted({ deep: [[1, 75], [2, 25]], tall: [[1, 50], [2, 40], [3, 10]] }[style]
+                || [[1, 55], [2, 35], [3, 10]]);
             const gaps = new Set();
             while (gaps.size < gapCount) gaps.add(randint(0, COLS - 1));
             let run = [];
@@ -266,31 +301,56 @@ async function work() {
             !other || other.id === cell.id || other.type !== cell.type))));
     };
 
-    // The whole straight-drop tree, with what each node's lock did.
-    const enumerate = (puzzle, relicLetters) => {
+    // The whole straight-drop tree, with what each node's lock did. Bodies are bits in two
+    // masks: which are still on the board, and which have a cell on the floor. The last
+    // piece's landings that complete no row are only counted (`dead`): nothing moves.
+    const enumerate = (puzzle) => {
         const open = { ...puzzle, goal: { type: 'lines', atLeast: 999 } };
         const floor = puzzle.boardHeight - 1;
-        const relicIds = relicLetters.map((letter) => puzzle.bodyIds[letter]);
+        const bodyCount = puzzle.nextPieceId - 1;
         const nodes = [];
-        const relicState = (locked) => relicIds.map((id) => {
-            const parts = locked.filter((p) => p.pieceId === id);
-            if (parts.length === 0) return 0;
-            return parts.some((p) => cellsOf(p).some(([, y]) => y === floor)) ? 2 : 1;
-        });
+        const masks = (locked) => {
+            let present = 0;
+            let onFloor = 0;
+            for (const p of locked) {
+                if (p.pieceId > bodyCount) continue;
+                const bit = 1 << (p.pieceId - 1);
+                present |= bit;
+                if (cellsOf(p).some(([, y]) => y === floor)) onFloor |= bit;
+            }
+            return { present, onFloor };
+        };
         const visit = (run, parent, depth, lock) => {
             const index = nodes.length;
             nodes.push({
-                depth, children: [], lines: run.lines, bestWaves: run.bestWaves, empty: run.lockedPieces.length === 0,
-                relic: relicState(run.lockedPieces), ...lock,
+                depth,
+                children: [],
+                dead: 0,
+                lines: run.lines,
+                bestWaves: run.bestWaves,
+                empty: run.lockedPieces.length === 0,
+                ...masks(run.lockedPieces),
+                ...lock,
             });
             if (parent >= 0) nodes[parent].children.push(index);
             if (run.outcome !== 'open') return;
-            for (const placement of straightPlacements(run)) {
+            const grid = boardOf(run);
+            const last = run.dealt === run.puzzle.supply.length - 1;
+            for (const placement of straightPlacements(run, grid)) {
+                const clears = completesRow(grid, placement);
+                if (last && !clears) {
+                    nodes[index].dead += 1;
+                    continue;
+                }
+                const step = { piece: placement.shapeKey, rotation: placement.rotation, x: placement.x };
+                if (!clears) {
+                    // Nothing clears: no cascade to resolve (runAfter skips it).
+                    visit(runAfter(run, placement), index, depth + 1, { waves: 0, cleared: 0, placement: step });
+                    continue;
+                }
                 const { run: after, resolution } = applyPlacement(run, placement);
                 visit(after, index, depth + 1, {
-                    waves: resolution.cascadeCount,
-                    cleared: resolution.linesClearedThisTurn,
-                    placement: { piece: placement.shapeKey, rotation: placement.rotation, x: placement.x },
+                    waves: resolution.cascadeCount, cleared: resolution.linesClearedThisTurn, placement: step,
                 });
             }
         };
@@ -298,14 +358,23 @@ async function work() {
         return nodes;
     };
 
-    const judge = (nodes, goal, relicIndex) => {
-        const met = (n) => {
-            if (goal.type === 'waves') return n.bestWaves >= goal.atLeast;
-            if (goal.type === 'lines') return n.lines >= goal.atLeast;
-            if (goal.type === 'clear-all') return n.empty;
-            return n.relic[relicIndex] === 2;
-        };
-        const lost = (n) => goal.type === 'relic-floor' && n.relic[relicIndex] === 0;
+    /** A goal as two tests on a node: met, and lost for good (a relic cleared away). */
+    const compile = (goal, bodyBit) => {
+        if (goal.type === 'all') {
+            const parts = goal.of.map((part) => compile(part, bodyBit));
+            return { met: (n) => parts.every((p) => p.met(n)), lost: (n) => parts.some((p) => p.lost(n)) };
+        }
+        const never = () => false;
+        if (goal.type === 'waves') return { met: (n) => n.bestWaves >= goal.atLeast, lost: never };
+        if (goal.type === 'lines') return { met: (n) => n.lines >= goal.atLeast, lost: never };
+        if (goal.type === 'clear-all') return { met: (n) => n.empty, lost: never };
+        const bit = bodyBit[goal.body];
+        if (goal.type === 'seal') return { met: (n) => (n.present & bit) === 0, lost: never };
+        return { met: (n) => (n.onFloor & bit) !== 0, lost: (n) => (n.present & bit) === 0 };
+    };
+
+    const judge = (nodes, goal, bodyBit) => {
+        const { met, lost } = compile(goal, bodyBit);
         let solutions = 0;
         let lines = 0;
         let minDepth = Infinity;
@@ -320,10 +389,12 @@ async function work() {
                 if (paths.length < 12) paths.push(path);
                 return 1;
             }
-            if (n.children.length === 0) { lines += 1; return 0; }
+            if (n.children.length === 0 && n.dead === 0) { lines += 1; return 0; }
+            lines += n.dead;
             return n.children.reduce((sum, c) => sum + walk(c, [...path, c]), 0);
         };
         const openings = nodes[0].children;
+        lines += nodes[0].dead;
         const greedy = Math.max(0, ...openings.map((c) => nodes[c].cleared));
         let winOpenings = 0;
         let traps = 0;
@@ -339,7 +410,7 @@ async function work() {
             solutions,
             lines,
             minDepth,
-            openings: openings.length,
+            openings: openings.length + nodes[0].dead,
             winOpenings,
             traps,
             setup: paths.length > 0 && paths.every((p) => nodes[p[0]].cleared === 0),
@@ -347,6 +418,59 @@ async function work() {
             deepLock: Math.max(0, ...paths.map((p) => Math.max(...p.map((i) => nodes[i].waves)))),
             line: (paths[0] || []).map((i) => nodes[i].placement),
         };
+    };
+
+    /** The goals worth judging on one tree, by the kinds this search asked for. */
+    const goalsFor = (nodes, rows, letters, bodyBit) => {
+        const tutorial = pieces === 1;
+        const later = nodes.filter((n) => n.depth > 0);
+        const maxWaves = Math.max(...nodes.map((n) => n.bestWaves));
+        const maxLines = Math.max(...nodes.map((n) => n.lines));
+        const relics = letters.filter((letter) => !rows[rows.length - 1].includes(letter)
+            && later.some((n) => (n.onFloor & bodyBit[letter]) !== 0));
+        const seals = letters.filter((letter) => later.some((n) => (n.present & bodyBit[letter]) === 0));
+        const goals = [];
+        if (goalKinds === 'single') {
+            if (maxWaves >= (deep ? 4 : 3) || (tutorial && maxWaves >= 2)) goals.push({ type: 'waves', atLeast: maxWaves });
+            if (maxWaves >= (deep ? 5 : 4)) goals.push({ type: 'waves', atLeast: maxWaves - 1 });
+            if (maxLines >= (deep ? 5 : 4) || (tutorial && maxLines >= 2)) goals.push({ type: 'lines', atLeast: maxLines });
+            if (later.some((n) => n.empty)) goals.push({ type: 'clear-all' });
+            if (!deep && !tutorial) relics.forEach((body) => goals.push({ type: 'relic-floor', body }));
+            return goals;
+        }
+        if (goalKinds === 'seal') {
+            seals.forEach((body) => goals.push({ type: 'seal', body }));
+            return goals;
+        }
+        // Two goals at once: two marked bodies, or a count together with a marked body or an
+        // empty well (the count is the best the tree reaches while the other part holds).
+        const states = [
+            ...relics.map((body) => ({ type: 'relic-floor', body })),
+            ...seals.map((body) => ({ type: 'seal', body })),
+        ];
+        if (later.some((n) => n.empty)) states.push({ type: 'clear-all' });
+        for (let i = 0; i < states.length; i += 1) {
+            for (let j = i + 1; j < states.length; j += 1) {
+                const [a, b] = [states[i], states[j]];
+                if (a.type === 'clear-all' || b.type === 'clear-all') continue; // an empty well is a pair's count
+                if (a.body === b.body) continue;
+                const both = { type: 'all', of: [a, b] };
+                const { met } = compile(both, bodyBit);
+                if (later.some(met)) goals.push(both);
+            }
+        }
+        for (const s of states) {
+            const { met } = compile(s, bodyBit);
+            const holding = later.filter(met);
+            if (holding.length === 0) continue;
+            const waves = Math.max(...holding.map((n) => n.bestWaves));
+            if (waves >= 3) goals.push({ type: 'all', of: [{ type: 'waves', atLeast: waves }, s] });
+            const lines = Math.max(...holding.map((n) => n.lines));
+            if (s.type !== 'clear-all' && lines >= 4) goals.push({ type: 'all', of: [{ type: 'lines', atLeast: lines }, s] });
+        }
+        // A tree with many bodies offers hundreds of pairs: judge a sample.
+        while (goals.length > 60) goals.splice(Math.floor(rand() * goals.length), 1);
+        return goals;
     };
 
     let tried = 0;
@@ -364,31 +488,27 @@ async function work() {
         if (!coloursApart(puzzle)) continue;
         tried += 1;
         if (tried % 20 === 0) parentPort.postMessage({ type: 'tried', count: 20 });
-        const relicLetters = Object.keys(puzzle.bodyIds).filter((letter) => !rows[rows.length - 1].includes(letter));
-        const nodes = enumerate(puzzle, relicLetters);
-        const maxWaves = Math.max(...nodes.map((n) => n.bestWaves));
-        const maxLines = Math.max(...nodes.map((n) => n.lines));
-        const goals = [];
+        const letters = Object.keys(puzzle.bodyIds);
+        const bodyBit = Object.fromEntries(letters.map((letter) => [letter, 1 << (puzzle.bodyIds[letter] - 1)]));
+        const nodes = enumerate(puzzle);
+        // The trees without the leading pieces, built once and shared by every goal.
+        const shorter = [];
+        const shorterTree = (skip) => {
+            if (!shorter[skip]) shorter[skip] = enumerate(buildPuzzle({ ...definition, supply: supply.slice(skip) }));
+            return shorter[skip];
+        };
         const tutorial = pieces === 1;
-        if (maxWaves >= (deep ? 4 : 3) || (tutorial && maxWaves >= 2)) goals.push({ type: 'waves', atLeast: maxWaves });
-        if (maxWaves >= (deep ? 5 : 4)) goals.push({ type: 'waves', atLeast: maxWaves - 1 });
-        if (maxLines >= (deep ? 5 : 4) || (tutorial && maxLines >= 2)) goals.push({ type: 'lines', atLeast: maxLines });
-        if (nodes.some((n) => n.empty && n.depth > 0)) goals.push({ type: 'clear-all' });
-        if (!deep && !tutorial) {
-            relicLetters.forEach((body, relicIndex) => {
-                if (nodes.some((n) => n.relic[relicIndex] === 2)) goals.push({ type: 'relic-floor', body, relicIndex });
-            });
-        }
-        for (const { relicIndex, ...goal } of goals) {
-            const verdict = judge(nodes, goal, relicIndex);
+        for (const goal of goalsFor(nodes, rows, letters, bodyBit)) {
+            const verdict = judge(nodes, goal, bodyBit);
             if (!verdict.solvable || verdict.minDepth !== pieces || verdict.deepLock < 2) continue;
             const share = verdict.winOpenings / verdict.openings;
             if (tutorial ? share > 0.25 : share > 0.1 && !(pieces === 2 && verdict.winOpenings <= 2)) continue;
+            // A pair must be harder than each of its parts alone.
+            if (goal.type === 'all' && goal.of.some((part) => judge(nodes, part, bodyBit).solutions <= verdict.solutions)) continue;
             // Every piece matters: without the leading pieces the goal is out of reach.
             let matters = true;
             for (let skip = 1; skip < pieces && matters; skip += 1) {
-                const shorter = buildPuzzle({ ...definition, supply: supply.slice(skip) });
-                if (judge(enumerate(shorter, relicLetters), goal, relicIndex).solvable) matters = false;
+                if (judge(shorterTree(skip), goal, bodyBit).solvable) matters = false;
             }
             if (!matters) continue;
             const { minDepth, solvable, ...rest } = verdict;
@@ -405,5 +525,5 @@ if (!isMainThread) {
     const args = parseArgs(process.argv.slice(2));
     if (args.rank) rank(args);
     else if (args.out) search(args);
-    else console.log('usage: --out=<file.jsonl> [--pieces --minutes --workers --style --seed] | --rank=<file.jsonl>');
+    else console.log('usage: --out=<file.jsonl> [--pieces --minutes --workers --style --goals --seed] | --rank=<file.jsonl>');
 }
