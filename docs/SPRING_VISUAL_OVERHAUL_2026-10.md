@@ -166,6 +166,24 @@ tree), boulders, motes, mist, floes, birds and the pixel-ratio cap.
 - **Far canopy.** Per-vertex forest cover is smooth over the far rows' tens of metres, and the
   land's metre-scale reads are a single mean colour there: the far woods read as blobs. Far off
   the canopy is read without clearings and broken by bogs and a frayed edge at the far scale.
+- **Woods missing at some starts (fixed 2026-10-19).** The woods' cards are drawn from the
+  impostor atlas, baked once at start and kept. Its warm `compileAsync` read the depth and stencil
+  from the theme's renderer, which has none (the scene pass owns depth), where a render reads them
+  from the target (r186 `Renderer.js:953` against `:1843`): it compiled pipelines without the
+  atlas's depth, and the bake needed others. Without the app's async pipelines those compiled in
+  the bake and it was whole; under them (a start under a loading surface, a hidden prewarm, an
+  in-play switch, ADR-0020) they were left for later, every draw of the bake was skipped and the
+  empty atlas was kept, so the far woods were missing for the session while the modelled trees
+  near the eye stood (SwiftShader, real atlas: 0 of 16 draws, 0 of 13 478 texels, against 16 of
+  16 without a session). Whether a start went through a session decided it: sometimes every tree,
+  sometimes not. The warm now compiles for the target's depth (the bake's 15 pipelines async, none
+  synchronous); the atlas's targets are one-shot bakes the async pipelines and the build budget
+  leave alone (`isOneShotBake`); the bake counts each pass's draws and is drawn again on the next
+  frames until every tree is in it (`BAKE_ATTEMPTS`, 600; the cards show once it is whole); and a
+  first bake that throws is retried by the next frame instead of giving the woods up. Every tier
+  and both backends bake the same way (WebGL2 has no async pipelines). `getDiagnostics().world.woods`
+  reports the atlas (baked, failed, attempts); `tests/unit/spring-woods-bake.test.js` pins it.
+  The atlas as each bakes it under a session: `spring-captures/woods-atlas-session-ab.webp`.
 
 ## Verification
 

@@ -192,6 +192,10 @@ describe('the async session build budget', () => {
         owned._renderTarget = { texture: { isPMREMTexture: true } }; // eslint-disable-line no-underscore-dangle
         owned.renderFrame(objects(10));
         expect(owned.built).toHaveLength(10);
+        // A theme's own one-shot bake (Spring's impostor atlas) opts in the same way.
+        owned._renderTarget = { isOneShotBake: true, texture: { name: 'spring-impostor-albedo' } }; // eslint-disable-line no-underscore-dangle
+        owned.renderFrame(objects(10));
+        expect(owned.built).toHaveLength(20);
         session.end();
 
         const plain = new FakeRenderer();

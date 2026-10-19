@@ -13,7 +13,8 @@
  * MRT, sample count, call depth and two-pass side are correct by construction — no compileAsync,
  * no target bound across a yield, no MRT-null WGSL. A pipeline still in flight only skips that
  * object's draw (Pipelines.isReady, Renderer.js:3895); the surface is hidden or masked meanwhile.
- * Stays synchronous: PMREM / cube bakes (a skipped draw there would bake black — exempt below),
+ * Stays synchronous: PMREM / cube bakes and targets marked `isOneShotBake` (a skipped draw there
+ * would bake black, or bake a hole that is kept — exempt below; the build budget leaves them alone too),
  * the final composite quad drawn to the canvas (isFinalComposite: every post effect that is not
  * its own pass is inlined into it, so a heavy grade/vignette chain is one short sync compile),
  * device-level mipmap/transfer passes, compute pipelines (a theme's live renderer.compute();
@@ -107,13 +108,15 @@ export function isAsyncRenderPipelinesReady() {
 }
 
 /**
- * One-shot bake targets must keep synchronous creation: a skipped draw would cache black.
+ * One-shot bake targets must keep synchronous creation: a skipped draw would cache black. Three's
+ * own (cube targets, PMREM) are recognised; a theme's own bake that is drawn once and kept (Spring's
+ * impostor atlas of its woods) opts in with `renderTarget.isOneShotBake = true`.
  * @param {any} rt
  * @returns {boolean}
  */
 export function isOneShotRenderTarget(rt) {
     if (!rt) return false;
-    if (rt.isCubeRenderTarget === true) return true;
+    if (rt.isCubeRenderTarget === true || rt.isOneShotBake === true) return true;
     const tex = rt.texture;
     if (!tex) return false;
     if (tex.isPMREMTexture === true || tex.mapping === CUBE_UV_REFLECTION_MAPPING) return true;
