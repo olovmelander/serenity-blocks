@@ -419,7 +419,7 @@ describe('async-render-pipelines', () => {
             expect(getAsyncRenderPipelineDiagnostics().unownedSyncDuringSession).toBe(1);
         });
 
-        it('PMREM and cube bake targets stay synchronous (syncExempt)', () => {
+        it('PMREM, cube and marked one-shot bake targets stay synchronous (syncExempt)', () => {
             const theme = makeTheme('forest');
             const backend = new fake.FakeWebGPUBackend(theme.renderer);
             const session = beginAsyncRenderPipelines(theme);
@@ -429,6 +429,7 @@ describe('async-render-pipelines', () => {
                 { texture: { mapping: 306 } }, // CubeUVReflectionMapping
                 { texture: { name: 'PMREM.cubeUv' } },
                 { texture: { name: 'PMREM.pingPong' } },
+                { isOneShotBake: true, texture: { name: 'spring-impostor-albedo' } }, // a theme's own bake
             ];
             for (const rt of bakeTargets) {
                 const renderObject = renderObjectFor(rt);
@@ -480,7 +481,7 @@ describe('async-render-pipelines', () => {
             expect(isFinalComposite({ object: { isQuadMesh: true }, context: {} })).toBe(true);
         });
 
-        it('isOneShotRenderTarget recognises only PMREM / cube-UV / cube targets', () => {
+        it('isOneShotRenderTarget recognises only PMREM / cube-UV / cube targets and marked bakes', () => {
             expect(isOneShotRenderTarget(null)).toBe(false);
             expect(isOneShotRenderTarget(undefined)).toBe(false);
             expect(isOneShotRenderTarget({})).toBe(false);
@@ -492,6 +493,8 @@ describe('async-render-pipelines', () => {
             expect(isOneShotRenderTarget({ texture: { isPMREMTexture: true } })).toBe(true);
             expect(isOneShotRenderTarget({ texture: { mapping: 306 } })).toBe(true);
             expect(isOneShotRenderTarget({ texture: { name: 'PMREM.cubeUv' } })).toBe(true);
+            expect(isOneShotRenderTarget({ isOneShotBake: true, texture: { name: 'atlas' } })).toBe(true);
+            expect(isOneShotRenderTarget({ isOneShotBake: 'yes', texture: { name: 'atlas' } })).toBe(false);
         });
 
         it('repairs a validation error that other GPU work left in a resolved pipeline\'s scope', async () => {
