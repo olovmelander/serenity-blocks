@@ -347,8 +347,9 @@ export class SpringWorld {
         // the ice going out, birds.
         this.motes = new Motes(this.u, tier.motes);
         this.air = new SpringAir(this.u, tier.air);
-        // Bursts are sized to the tier's ring of motes, so a busy moment does not eat its own start.
-        this.burstScale = clamp(tier.motes / 1280, 0.4, 1.5);
+        // Bursts are sized to the tier's ring of motes (gently: a burst must still read on Minimal),
+        // so a busy moment does not eat its own start.
+        this.burstScale = clamp(Math.sqrt(tier.motes / 1280), 0.55, 1.35);
         this.mist = new Mist(this.u, this.textures, tier.mist);
         this.floes = new Floes(this.u, tier.floes);
         this.flights = new Flights(this.u);
@@ -577,34 +578,50 @@ export class SpringWorld {
 
     /**
      * A lock's pollen: specks of the piece's colour (and a little gold) shaken up out of its patch
-     * of bloom, drifting off on the breeze; a hard drop shakes out more, and knocks a ring of down
-     * off the plants.
+     * of bloom in an arc, drifting off on the breeze, and glints on the cups as they open; a hard
+     * drop shakes out more and higher, and knocks a ring of down off the plants.
      */
     pollenBurst(x, z, rgb, hard, radius) {
         if (!this.canBurst()) return;
         const r = this.random;
         const y = this.floorAt(x, z) + 0.25;
-        const count = Math.round((hard ? 46 : 28) * this.burstScale);
+        const count = Math.round((hard ? 96 : 60) * this.burstScale);
         for (let i = 0; i < count; i++) {
             const a = r() * TAU;
             const at = Math.sqrt(r()) * radius * 0.55;
-            const out = 0.2 + r() * 0.5;
-            const gold = r() < 0.25;
+            const out = 0.2 + r() * 0.6;
+            const gold = r() < 0.2;
             this.motes.spawn({
                 x: x + Math.cos(a) * at,
                 y: y + r() * 0.3,
                 z: z + Math.sin(a) * at,
                 vx: Math.cos(a) * out,
-                vy: (hard ? 1.2 : 0.8) * (0.5 + r()),
+                vy: (hard ? 2.0 : 1.4) * (0.5 + r()),
                 vz: Math.sin(a) * out,
                 born: this.time + r() * 0.5,
-                life: 4.5 + r() * 3,
-                size: 0.03 * (0.7 + r() * 0.6),
+                life: 5 + r() * 3,
+                size: 0.075 * (0.7 + r() * 0.6),
                 rgb: gold ? GOLD : rgb,
                 kind: MOTE_KIND.pollen,
                 seed: r(),
                 drift: 0.25,
-                gravity: 0,
+                gravity: -0.25,
+            });
+        }
+        const glints = Math.round(10 * this.burstScale);
+        for (let i = 0; i < glints; i++) {
+            const a = r() * TAU;
+            const at = Math.sqrt(r()) * radius * 0.8;
+            this.motes.spawn({
+                x: x + Math.cos(a) * at,
+                y: y + 0.05 + r() * 0.2,
+                z: z + Math.sin(a) * at,
+                born: this.time + r() * 0.9,
+                life: 0.35 + r() * 0.5,
+                size: 0.06,
+                rgb: [1.0, 0.97, 0.9],
+                kind: MOTE_KIND.glint,
+                seed: r(),
             });
         }
         if (!hard) return;
@@ -620,7 +637,7 @@ export class SpringWorld {
                 vz: Math.sin(a) * (1.1 + r() * 0.6),
                 born: this.time + r() * 0.15,
                 life: 6 + r() * 3,
-                size: 0.05 * (0.7 + r() * 0.6),
+                size: 0.075 * (0.7 + r() * 0.6),
                 rgb: DOWN_WHITE,
                 kind: MOTE_KIND.down,
                 seed: r(),
@@ -653,7 +670,7 @@ export class SpringWorld {
             }
             return n ? sum.map((v) => v / n) : [...this.lastRgb];
         };
-        const perPuff = Math.round((8 + 5 * lines) * this.burstScale);
+        const perPuff = Math.round((12 + 7 * lines) * this.burstScale);
         for (const side of [-1, 1]) {
             const rgb = sideColour(side < 0);
             for (let k = 0; k < 3; k++) {
@@ -672,7 +689,7 @@ export class SpringWorld {
                         vz: Math.sin(a) * 0.5 + AIR.breeze[1] * 0.4,
                         born: this.time + k * 0.22 + r() * 0.3,
                         life: 5 + r() * 3,
-                        size: (down ? 0.05 : 0.03) * (0.7 + r() * 0.6),
+                        size: (down ? 0.075 : 0.05) * (0.7 + r() * 0.6),
                         rgb: down ? DOWN_WHITE : rgb,
                         kind: down ? MOTE_KIND.down : MOTE_KIND.pollen,
                         seed: r(),
@@ -693,7 +710,7 @@ export class SpringWorld {
         const r = this.random;
         const g = AIR.gyres[side < 0 ? 0 : 1];
         const y = this.floorAt(g.x, g.z) + 0.15;
-        const count = Math.round(Math.min(170, 26 + 14 * strength) * this.burstScale);
+        const count = Math.round(Math.min(240, 44 + 22 * strength) * this.burstScale);
         const radius = Math.min(1.7, 0.55 + 0.12 * strength);
         const climb = Math.min(1.8, 0.65 + 0.1 * strength);
         const turn = Math.min(5, 2.4 + 0.25 * strength) * g.turn;
@@ -710,7 +727,7 @@ export class SpringWorld {
                 grow: 0.1 + r() * 0.12,
                 born: this.time + r() * 0.9,
                 life: 3.2 + r() * 2.6,
-                size: (down ? 0.05 : 0.03) * (0.7 + r() * 0.6),
+                size: (down ? 0.075 : 0.05) * (0.7 + r() * 0.6),
                 rgb: (down && DOWN_WHITE) || (gold && GOLD) || rgb,
                 seed: r(),
             });
@@ -733,7 +750,7 @@ export class SpringWorld {
                 vz: AIR.breeze[1] * 0.5 * r(),
                 born: this.time + r() * 1.4,
                 life: 6 + r() * 4,
-                size: 0.05 * (0.7 + r() * 0.6),
+                size: 0.075 * (0.7 + r() * 0.6),
                 rgb: r() < 0.2 ? GOLD : DOWN_WHITE,
                 kind: r() < 0.2 ? MOTE_KIND.pollen : MOTE_KIND.down,
                 seed: r(),
@@ -788,7 +805,7 @@ export class SpringWorld {
                 vz: AIR.breeze[1] * (0.5 + r() * 0.5),
                 born: this.time + r() * 2.5,
                 life: 9 + r() * 4,
-                size: 0.05 * (0.7 + r() * 0.6),
+                size: 0.075 * (0.7 + r() * 0.6),
                 rgb: DOWN_WHITE,
                 kind: MOTE_KIND.down,
                 seed: r(),
@@ -815,7 +832,7 @@ export class SpringWorld {
                 vz: (r() - 0.5) * 0.3,
                 born: this.time + r() * 2.2,
                 life: 8 + r() * 4,
-                size: (down ? 0.05 : 0.035) * (0.7 + r() * 0.6),
+                size: (down ? 0.075 : 0.05) * (0.7 + r() * 0.6),
                 rgb: down ? DOWN_WHITE : GOLD,
                 kind: down ? MOTE_KIND.down : MOTE_KIND.pollen,
                 seed: r(),

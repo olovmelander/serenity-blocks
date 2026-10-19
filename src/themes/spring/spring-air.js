@@ -174,8 +174,8 @@ export class SpringAir {
                     .mul(row.w);
                 const away = centre.xz.sub(row.xy).toVar();
                 const r = max(length(away), 0.05).toVar();
-                const near = exp(r.mul(-0.22)).mul(live).toVar();
-                centre.addAssign(vec3(away.x.div(r), 0.0, away.y.div(r)).mul(near.mul(1.8))
+                const near = exp(r.mul(-0.35)).mul(live).toVar();
+                centre.addAssign(vec3(away.x.div(r), 0.0, away.y.div(r)).mul(near.mul(2.2))
                     .add(vec3(0.0, near.mul(1.3), 0.0)));
                 puffLight.addAssign(near);
             });

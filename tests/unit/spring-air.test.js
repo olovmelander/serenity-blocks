@@ -178,15 +178,18 @@ describe('spring air: what gameplay does to it', () => {
     it('a lock shakes the piece\'s own pollen out of its patch of bloom, and puffs the air there', () => {
         const { world, step } = makeWorld();
         world.onLock({ rows: [19, 18], u: 0.2, color: '#279DF1' }); // the S, hepatica blue
-        const thrown = live(world);
-        expect(thrown.length).toBeGreaterThan(8);
-        expect(thrown.every((m) => m.kind === MOTE_KIND.pollen)).toBe(true);
+        const all = live(world);
+        const thrown = all.filter((m) => m.kind === MOTE_KIND.pollen);
+        expect(thrown.length).toBeGreaterThan(20);
+        // The rest are glints on the opening cups.
+        expect(all.filter((m) => m.kind !== MOTE_KIND.pollen).every((m) => m.kind === MOTE_KIND.glint)).toBe(true);
+        expect(all.length).toBeGreaterThan(thrown.length);
         // Most in the piece's colour (a few gold).
         const blue = thrown.filter((m) => m.rgb[2] > m.rgb[0] * 3);
         expect(blue.length / thrown.length).toBeGreaterThan(0.5);
         // At the patch the lock opened (the event row the air reads), on the left of the card.
         const patch = world.u.tables.events[0];
-        expect(thrown.every((m) => Math.hypot(m.at[0] - patch.x, m.at[2] - patch.y) < 3)).toBe(true);
+        expect(all.every((m) => Math.hypot(m.at[0] - patch.x, m.at[2] - patch.y) < 3)).toBe(true);
         expect(patch.x).toBeLessThan(0);
         expect(patch.w).toBeGreaterThan(0);
         step(0.5);

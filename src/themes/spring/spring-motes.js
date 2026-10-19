@@ -153,8 +153,11 @@ export class Motes {
                 sin(a.mul(mix(6.0, 13.0, kind.y)).add(kind.y.mul(50.0))).mul(0.4).add(0.6),
                 floats.sub(down).max(0.0),
             );
-            const power = mix(mix(mix(float(0.7), float(1.0), dew), float(2.4), glint), float(0.8), down);
-            const rgb = look.xyz.mul(lit).mul(power).mul(sparkle).mul(fadeIn)
+            const power = mix(mix(mix(float(1.3), float(1.0), dew), float(2.4), glint), float(0.8), down);
+            // A piece's pollen glows in its colour: lifted toward white, so a dark blue still reads.
+            const pigment = floats.sub(down).max(0.0);
+            const tone = mix(look.xyz, look.xyz.mul(1.3).add(0.12), pigment);
+            const rgb = tone.mul(lit).mul(power).mul(sparkle).mul(fadeIn)
                 .mul(fadeOut)
                 .mul(cover.mul(0.6).add(0.4))
                 .mul(airClarity(u, c).mul(0.7).add(0.3));
