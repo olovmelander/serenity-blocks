@@ -367,7 +367,13 @@ export function createLand(u, tex, tier, baked) {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'SpringLand';
     mesh.frustumCulled = false;
-    mesh.renderOrder = 3;
+    // The ground is the heaviest opaque material and lies under everything else: it is drawn after
+    // the stones, the trees, the meadow and the river (and before the sky), so it is shaded only
+    // where it shows. Drawn after the river it must still lose to it where the depth buffer cannot
+    // tell them apart (a kilometre off its steps are half a metre: the far river over its bed and
+    // its shallow banks), as it did when the river was drawn over it: a strict test.
+    mesh.renderOrder = 5;
+    material.depthFunc = THREE.LessDepth;
     return {
         mesh,
         meshes: [mesh],

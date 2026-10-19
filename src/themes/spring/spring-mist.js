@@ -116,6 +116,27 @@ export function mistLayout(count = 360, seed = 0x3a17) {
     return rows;
 }
 
+/**
+ * A puff's card: the unit square (±0.5) with its corners cut, an octagon whose sides touch the
+ * circle the square's sides touch. A puff fades as exp(−2.6 r²) from its middle, so past that
+ * circle it is already as faint as at the square's own edges; the corners only cost fragments,
+ * a sixth of them, and where the tongues land the puffs lie a hundred deep.
+ */
+export function puffGeometry() {
+    const r = 0.5 / Math.cos(Math.PI / 8);
+    const position = [0, 0, 0];
+    for (let k = 0; k < 8; k++) {
+        const a = Math.PI / 8 + (k * Math.PI) / 4;
+        position.push(r * Math.cos(a), r * Math.sin(a), 0);
+    }
+    const index = [];
+    for (let k = 0; k < 8; k++) index.push(0, 1 + k, 1 + ((k + 1) % 8));
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+    geometry.setIndex(index);
+    return geometry;
+}
+
 export class Mist {
     constructor(u, tex, count = 360) {
         this.u = u;
@@ -129,9 +150,7 @@ export class Mist {
             move.set(r.slice(4, 8), i * 4);
             look.set(r.slice(8, 12), i * 4);
         });
-        const quad = new THREE.PlaneGeometry(1, 1);
-        quad.deleteAttribute('normal');
-        quad.deleteAttribute('uv');
+        const quad = puffGeometry();
         const geometry = new THREE.InstancedBufferGeometry();
         geometry.index = quad.index;
         geometry.setAttribute('position', quad.getAttribute('position'));
@@ -159,6 +178,10 @@ export class Mist {
         const aLook = attribute('aLook', 'vec4');
         const vInfo = varying(vec4(0.0), 'spMistInfo'); // corner xy, life t, opacity
         const vCentre = varying(vec3(0.0), 'spMistCentre');
+        // What is the same over a whole puff (its forward scatter, the air between it and the eye,
+        // its height over the pool) is worked out once a corner, not once a pixel: the puffs
+        // overlap many deep where the tongues land.
+        const vLight = varying(vec3(0.0), 'spMistLight'); // forward scatter, clarity, height's lift
         material.vertexNode = Fn(() => {
             const period = aBase.w;
             const t = fract(u.time.div(period).add(aLook.w));
@@ -180,6 +203,16 @@ export class Mist {
             const life = smoothstep(0.0, 0.1, t).mul(float(1.0).sub(smoothstep(0.35, 1.0, t)));
             vInfo.assign(vec4(positionGeometry.xy.mul(2.0), t, aLook.z.mul(life).mul(swell.min(1.8))));
             vCentre.assign(centre);
+            // Droplets: dim from the sky, bright with the sun behind them.
+            const V = normalize(centre.sub(u.eye));
+            const fwd = clamp(dot(V, u.sunDir), 0.0, 1.0);
+            const f2 = fwd.mul(fwd);
+            const f8 = f2.mul(f2).mul(f2).mul(f2);
+            vLight.assign(vec3(
+                f8.mul(0.75).add(0.36),
+                airClarity(u, centre),
+                smoothstep(0.0, 14.0, centre.y.sub(FALL.pool)).mul(0.35),
+            ));
             return cameraProjectionMatrix.mul(lifted);
         })();
         material.colorNode = vec4(0.0, 0.0, 0.0, 1.0);
@@ -193,18 +226,11 @@ export class Mist {
             // The lower edge fades so a puff never cuts into the water.
             const foot = smoothstep(-1.0, -0.2, corner.y);
             const alpha = clamp(shape.mul(foot).mul(vInfo.w), 0.0, 1.0);
-            // Droplets: dim from the sky, bright with the sun behind them.
-            const V = normalize(vCentre.sub(u.eye));
-            const fwd = clamp(dot(V, u.sunDir), 0.0, 1.0);
-            const f2 = fwd.mul(fwd);
-            const f8 = f2.mul(f2).mul(f2).mul(f2);
             // Spray in the sun is white; with the sun behind it, it blazes. A cloud's low parts are
             // shaded by the spray over them, its top and its upper edge lit.
-            const top = smoothstep(-0.6, 0.8, corner.y).mul(0.35).add(smoothstep(0.0, 14.0, vCentre.y.sub(FALL.pool))
-                .mul(0.35)).add(0.45);
-            const lit = u.fill.mul(1.8).add(u.sun.mul(u.sunUp).mul(f8.mul(0.75).add(0.36)).mul(top));
-            const clarity = airClarity(u, vCentre);
-            const col = mix(u.haze, lit.mul(0.92), clarity);
+            const top = smoothstep(-0.6, 0.8, corner.y).mul(0.35).add(vLight.z).add(0.45);
+            const lit = u.fill.mul(1.8).add(u.sun.mul(u.sunUp).mul(vLight.x).mul(top));
+            const col = mix(u.haze, lit.mul(0.92), vLight.y);
             return vec4(col, alpha);
         })();
         return material;
