@@ -6,7 +6,8 @@
  * The viewer rests in the mouth of a reef canyon, looking out and a little upward. Overhead the
  * surface rolls and the sun's light comes down through the water in shafts that wander over
  * sand and coral; a garden of coral rises on either side, kelp climbs the shoulders behind, a
- * silver school streams through the canyon and something large is always passing in the blue.
+ * silver school streams through the canyon and, now and then, something large comes out of the
+ * blue and passes: whales, a whale shark, mantas, eagle rays, turtles, hammerheads, dolphins.
  * The board stands in the canyon's mouth: a locking piece's light sinks to the reef on its
  * side, lands in a ring and a crown of sparks, startles the fish and leaves the colonies there
  * glowing in its colour; a clear sends a current across the canyon that bends kelp and grass as
@@ -20,8 +21,9 @@
  * slowly by itself, an hour every 100 s, whatever the level.
  *
  * Content lives in OceanWorld (ocean-world.js), shared with the playground effect
- * src/playground/effects/ocean.effect.js, so what is iterated there ships. Nothing is loaded:
- * every mesh is grown in code and every texture is baked or painted on the GPU. This class owns
+ * src/playground/effects/ocean.effect.js, so what is iterated there ships. One small file is
+ * loaded, the large animals' bodies (assets/creatures.glb, built in Blender from numbers); every
+ * other mesh is grown in code and every texture is baked or painted on the GPU. This class owns
  * the lifecycle (BaseTheme), the renderer (WebGPURenderer on WebGPU, else its WebGL2 backend;
  * ?forceWebGL or ?oceanForceWebGL), the post stack, gameplay events (through OceanDirector),
  * the layout watch (events aim at the live board, and the post's calm zones follow the card and
@@ -55,6 +57,7 @@ import { getViewport } from '../../utils/viewport.js';
 import { OCEAN_TETROMINOS } from './ocean-tetrominos.js';
 import { OceanWorld, REST_RIG, fovForAspect } from './ocean-world.js';
 import { oceanBakes } from './ocean-bakes.js';
+import { loadCreatures } from './ocean-creatures.js';
 import { POST_LOOK, OceanPost, createPassThroughPipeline } from './ocean-post.js';
 import { PLAYER_SLOTS, readLayoutRects } from './ocean-composition.js';
 import { OCEAN_EVENT_HANDLERS, OceanDirector } from './ocean-director.js';
@@ -64,6 +67,8 @@ const THEME_ID = 'ocean';
 const LOG_PREFIX = '[Ocean]';
 const CANVAS_ID = 'ocean-renderer';
 const RENDERER_INIT_TIMEOUT_MS = 5500;
+/** How long the build waits for the large animals' bodies before going on without them (they follow). */
+const CREATURES_WAIT_MS = 4000;
 const MAX_DELTA_S = 0.05;
 /** Pure black: the canvas before its first frame. */
 const CLEAR_COLOR = 0x000000;
@@ -202,8 +207,11 @@ export default class OceanTheme extends BaseTheme {
         if (!container) throw new Error(`${LOG_PREFIX} Theme container not found.`);
 
         // A rebuild in place keeps the place the light had reached on the wheel (the levels'
-        // share of it; the clock's share goes on with this.time). A full restart has none.
-        const keptPlace = this.world?.getState()?.levelPlace;
+        // share of it; the clock's share goes on with this.time), and the sea's schedule of
+        // visitors, so whoever is passing goes on passing. A full restart has neither.
+        const keptState = this.world?.getState();
+        const keptPlace = keptState?.levelPlace;
+        const keptSeed = keptState?.visitSeed;
         this.disposeRuntime();
         const generation = ++this.runtimeGeneration;
         const isCurrent = () => generation === this.runtimeGeneration
@@ -218,6 +226,12 @@ export default class OceanTheme extends BaseTheme {
         // the renderer comes up, for the tier the settings name now; the build finds it in the bake
         // cache. A tier saved meanwhile is still read below: the build then bakes what it lacks.
         const baking = oceanBakes(this.pendingQuality ?? normalizeQuality(readSetting(null, 'effectQuality')));
+        // The large animals' bodies (one small file) arrive meanwhile too; a slow read does not
+        // hold the build: the world lets them in when they come.
+        const creatures = Promise.race([
+            loadCreatures(),
+            new Promise((resolve) => { setTimeout(() => resolve(null), CREATURES_WAIT_MS); }),
+        ]);
         const renderer = await this.createRenderer(ownerGeneration);
         if (!renderer) return; // cancelled: BaseTheme retires the stale start
         if (!isCurrent()) {
@@ -249,6 +263,7 @@ export default class OceanTheme extends BaseTheme {
         this.camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
 
         await baking;
+        const pack = await creatures;
         if (!isCurrent()) return;
 
         try {
@@ -257,6 +272,8 @@ export default class OceanTheme extends BaseTheme {
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
+                creatures: pack,
+                visitSeed: keptSeed,
             }).build();
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);

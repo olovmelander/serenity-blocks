@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-21T06:16:28.568Z",
-  "runId": "2026-08-21T06-12-57-693Z",
+  "generatedAt": "2026-10-19T18:38:29.656Z",
+  "runId": "2026-10-19T18-37-34-871Z",
   "theme": "ocean",
   "themeMeta": {
     "displayName": "Ocean",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-21T06-12-57-693Z",
+  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-19T18-37-34-871Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -83,7 +83,7 @@
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.8972",
+          "driverVersion": "10.0.26100.9711",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -135,6 +135,13 @@
           "sameMode": true,
           "running": true,
           "paused": true
+        }
+      },
+      {
+        "id": "boot-theme-settled",
+        "passed": true,
+        "details": {
+          "active": "forest"
         }
       },
       {
@@ -220,6 +227,11 @@
         "details": {
           "themeId": "ocean"
         }
+      },
+      {
+        "id": "theme-detail-apply-reachable",
+        "passed": true,
+        "details": null
       },
       {
         "id": "theme-card-selection-started",
@@ -334,17 +346,15 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 14,
+          "renderCalls": 17,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "changedHeartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "sharedRendererHeartbeatAvailable": false,
           "sharedRendererHeartbeatObserved": false,
@@ -716,6 +726,13 @@
         }
       },
       {
+        "id": "outgoing-eventListeners-cleared",
+        "passed": true,
+        "details": {
+          "count": 0
+        }
+      },
+      {
         "id": "outgoing-eventUnsubscribers-cleared",
         "passed": true,
         "details": {
@@ -833,7 +850,7 @@
         "id": "outgoing-canvases-disconnected",
         "passed": true,
         "details": {
-          "added": 4,
+          "added": 1,
           "connected": 0
         }
       },
@@ -1202,17 +1219,15 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 14,
+          "renderCalls": 17,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "changedHeartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "sharedRendererHeartbeatAvailable": false,
           "sharedRendererHeartbeatObserved": false,
@@ -1475,10 +1490,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.20000000001164153,
-      "firstTargetSelection": 2527.7000000000116,
-      "cleanup-anchor": 35,
-      "secondTargetSelection": 739.3999999999651
+      "initial-anchor": 0.30000000074505806,
+      "firstTargetSelection": 490.2000000011176,
+      "cleanup-anchor": 725.3000000007451,
+      "secondTargetSelection": 84.5
     },
     "mode": {
       "modeId": "single",
@@ -1511,17 +1526,15 @@
     "firstRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 14,
+      "renderCalls": 17,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "changedHeartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "sharedRendererHeartbeatAvailable": false,
       "sharedRendererHeartbeatObserved": false,
@@ -1531,17 +1544,15 @@
     "secondRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 14,
+      "renderCalls": 17,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "changedHeartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "sharedRendererHeartbeatAvailable": false,
       "sharedRendererHeartbeatObserved": false,
@@ -1567,17 +1578,17 @@
     "byteLength": 4986432,
     "samples": 20107,
     "luminance": {
-      "min": 35.78,
-      "max": 241.7208,
-      "mean": 136.29239450937507,
-      "range": 205.9408,
-      "variance": 1393.8020492331125
+      "min": 17.8784,
+      "max": 246.9748,
+      "mean": 115.4881188242898,
+      "range": 229.0964,
+      "variance": 1047.978072664053
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 144,
-    "warningCount": 6,
+    "entryCount": 161,
+    "warningCount": 3,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
@@ -1585,49 +1596,29 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-21T06:16:13.917Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:16:13.919Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:16:13.924Z",
+        "timestamp": "2026-10-19T18:38:17.411Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 587,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "line": 4806,
+        "sourceId": "http://127.0.0.1:4174/assets/three-p6BOSOUT.js"
       },
       {
-        "timestamp": "2026-08-21T06:16:21.175Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:16:21.176Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:16:21.176Z",
+        "timestamp": "2026-10-19T18:38:20.358Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 587,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "line": 4806,
+        "sourceId": "http://127.0.0.1:4174/assets/three-p6BOSOUT.js"
+      },
+      {
+        "timestamp": "2026-10-19T18:38:22.621Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 4806,
+        "sourceId": "http://127.0.0.1:4174/assets/three-p6BOSOUT.js"
       }
     ],
     "processFailures": []
   },
+  "perf": null,
   "fatalError": null
 }
