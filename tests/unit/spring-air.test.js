@@ -17,6 +17,7 @@ import { AIR, SpringAir } from '../../src/themes/spring/spring-air.js';
 import { MOTE_KIND, Motes } from '../../src/themes/spring/spring-motes.js';
 import { QUALITY } from '../../src/themes/spring/spring-quality.js';
 import { createUniforms } from '../../src/themes/spring/spring-tsl.js';
+import { cardUnion } from '../../src/themes/spring/spring-composition.js';
 import {
     AIR_MOTION, REST_RIG, SpringWorld, fovForAspect, valleyGround,
 } from '../../src/themes/spring/spring-world.js';
@@ -300,6 +301,33 @@ describe('spring air: what gameplay does to it', () => {
         expect(world.u.air.value.w).toBe(0);
         world.dispose();
     });
+
+    it.each([['landscape', 16 / 9], ['wide', 21 / 9], ['portrait', 9 / 19.5]])(
+        'stands its gyres on screen either side of the card, on the knoll, in the %s lens',
+        (lens, aspect) => {
+            const { world } = makeWorld();
+            world.setViewport(1000 * aspect, 1000, aspect);
+            const camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+            world.restCamera(camera);
+            const card = cardUnion(world.layout);
+            const xs = world.gyres.map((g) => {
+                const p = new THREE.Vector3(g.x, world.floorAt(g.x, g.z) + 1, g.z).project(camera);
+                expect(Math.abs(p.x)).toBeLessThan(1);
+                expect(Math.abs(p.y)).toBeLessThan(1);
+                return p.x * 0.5 + 0.5;
+            });
+            expect(xs[0]).toBeLessThan(xs[1]);
+            if (card) {
+                expect(xs[0]).toBeLessThan(card.x0);
+                expect(xs[1]).toBeGreaterThan(card.x1);
+            }
+            // On the knoll's top, as the shader reads them.
+            const g = world.u.airGyres.value;
+            expect([g.x, g.y, g.z, g.w]).toEqual([world.gyres[0].x, world.gyres[0].z, world.gyres[1].x, world.gyres[1].z]);
+            world.gyres.forEach((site) => expect(world.floorAt(site.x, site.z)).toBeGreaterThan(5));
+            world.dispose();
+        },
+    );
 
     it('a T-spin whirls the air on the side of its lock', () => {
         const { world } = makeWorld();

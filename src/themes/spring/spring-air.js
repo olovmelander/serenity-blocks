@@ -59,9 +59,11 @@ import { EVENT_ROWS, PATCHES, spHash21 } from './spring-tsl.js';
  *   speed         how fast the breeze carries it (m/s, slowest … fastest)
  *   down          the share of the motes that are willow down (the rest pollen)
  *   breeze        the breeze across the knoll (unit x, z): down the valley, toward the right
- *   gyres         the chain's two gyres (x, z, turn: +1 clockwise seen from above), either
- *                 side of the card on the knoll's top short of its brow (beyond it a whirl's foot
- *                 is hidden), and how far their turning reaches (m)
+ *   gyre          the chain's two gyres, left and right of the card: how far out on the knoll's
+ *                 top they stand (m, short of its brow: beyond it a whirl's foot is hidden), which
+ *                 way each turns (+1 clockwise seen from above) and how far their turning reaches
+ *                 (m). Where they stand follows the layout (SpringWorld.placeGyres writes
+ *                 `u.airGyres`); `rest` is where they stand in the landscape lens beside the card.
  */
 export const AIR = Object.freeze({
     near: 2.2,
@@ -72,11 +74,12 @@ export const AIR = Object.freeze({
     speed: Object.freeze([0.5, 1.4]),
     down: 0.3,
     breeze: Object.freeze([0.86, -0.51]),
-    gyres: Object.freeze([
-        Object.freeze({ x: -4.6, z: -8.3, turn: 1 }),
-        Object.freeze({ x: 4.6, z: -8.3, turn: -1 }),
-    ]),
-    gyreReach: 9,
+    gyre: Object.freeze({
+        distance: 9.5,
+        turn: Object.freeze([1, -1]),
+        reach: 9,
+        rest: Object.freeze([-4.6, -8.3, 4.6, -8.3]),
+    }),
 });
 
 const LOG_NEAR = Math.log(AIR.near);
@@ -144,17 +147,17 @@ export class SpringAir {
 
             // The chain's gyres: the air within their reach turns about them, the inner faster.
             const lift = float(0.0).toVar();
-            for (const g of AIR.gyres) {
+            [u.airGyres.xy, u.airGyres.zw].forEach((at, k) => {
                 // (Pinned before the move: an expression is emitted where it is read.)
-                const rel = drift.sub(vec2(g.x, g.z)).toVar();
-                const reach = exp(length(rel).mul(-1.0 / AIR.gyreReach)).toVar();
-                const a = gyre.mul(reach).mul(g.turn);
+                const rel = drift.sub(at).toVar();
+                const reach = exp(length(rel).mul(-1.0 / AIR.gyre.reach)).toVar();
+                const a = gyre.mul(reach).mul(AIR.gyre.turn[k]);
                 const ca = cos(a);
                 const sa = sin(a);
                 const turned = vec2(rel.x.mul(ca).sub(rel.y.mul(sa)), rel.x.mul(sa).add(rel.y.mul(ca)));
-                drift.assign(vec2(g.x, g.z).add(turned));
+                drift.assign(at.add(turned));
                 lift.addAssign(stir.mul(reach).mul(1.6));
-            }
+            });
 
             // Its height: over the knoll's turf near the eye, higher over the river and the valley.
             const nearH = h3.mul(h3).mul(4.0).add(EYE_GROUND + 0.2);

@@ -222,6 +222,7 @@ export class SpringWorld {
         };
         this.overrides = { hour: null };
         this.ground = null;
+        this.placeGyres();
         this.resetState(0);
     }
 
@@ -409,12 +410,33 @@ export class SpringWorld {
         this.u.aspect.value = this.aspect;
         this.viewportHeight = Math.max(1, height);
         if (!this.layoutLive) this.layout = fallbackLayout(width, height);
+        this.placeGyres();
     }
 
     setLayout(rects, aspect) {
         if (aspect > 0) this.aspect = aspect;
         this.layoutLive = Boolean(rects);
         this.layout = rects || fallbackLayout(1920, 1920 / Math.max(0.2, this.aspect));
+        this.placeGyres();
+    }
+
+    /**
+     * Where the chain's gyres (and its whirlwinds) stand: on the knoll's top in the middle of the
+     * free strip left of the card and right of it (or of the HUD beside it), at the lens at rest.
+     */
+    placeGyres() {
+        const card = cardUnion(this.layout) || {
+            x0: 0.41, x1: 0.59, y0: 0.08, y1: 0.93,
+        };
+        const { hud } = this.layout;
+        const rightEdge = hud && hud.x0 > card.x1 && hud.x0 - card.x1 < 0.1 ? hud.x1 : card.x1;
+        const rig = rigFor(this.aspect);
+        const across = Math.tan((rig.fov * DEG) / 2) * this.aspect;
+        const bearingAt = (sx) => rig.yaw + Math.atan((sx * 2 - 1) * across) / DEG;
+        const left = pointAt(bearingAt(Math.max(0.03, card.x0 * 0.45)), AIR.gyre.distance);
+        const right = pointAt(bearingAt(Math.min(0.97, rightEdge + (1 - rightEdge) * 0.55)), AIR.gyre.distance);
+        this.gyres = [left, right];
+        this.u.airGyres.value.set(left.x, left.z, right.x, right.z);
     }
 
     /** The rest pose plus a slow drift of the lens and the pointer's parallax. */
@@ -711,12 +733,13 @@ export class SpringWorld {
     whirlwind(side, strength, rgb) {
         if (!this.canBurst()) return;
         const r = this.random;
-        const g = AIR.gyres[side < 0 ? 0 : 1];
+        const g = this.gyres[side < 0 ? 0 : 1];
+        const turnWay = AIR.gyre.turn[side < 0 ? 0 : 1];
         const y = this.floorAt(g.x, g.z) + 0.15;
         const count = Math.round(Math.min(240, 44 + 22 * strength) * this.burstScale);
         const radius = Math.min(1.7, 0.55 + 0.12 * strength);
         const climb = Math.min(1.8, 0.65 + 0.1 * strength);
-        const turn = Math.min(5, 2.4 + 0.25 * strength) * g.turn;
+        const turn = Math.min(5, 2.4 + 0.25 * strength) * turnWay;
         for (let i = 0; i < count; i++) {
             const down = r() < 0.3;
             const gold = r() < 0.3;
