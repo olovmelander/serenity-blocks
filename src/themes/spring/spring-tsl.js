@@ -262,6 +262,8 @@ export function createUniforms() {
          * still (0..1).
          */
         air: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** Where the chain's two gyres stand on the knoll: (left x, z, right x, z), from the layout. */
+        airGyres: uniform(new THREE.Vector4(-4.6, -8.3, 4.6, -8.3)),
         /** A clear's breath through the air: (start, power, speed m/s, spare). */
         airWave: uniform(new THREE.Vector4(-1e6, 0, 0, 0)),
 
