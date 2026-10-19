@@ -1363,10 +1363,15 @@ export function createMoltenPocketMaterialTSL(
     const facetValue = isColumn
         ? hash21(vNormal.xz.mul(37.0).add(modelPosition.xz.mul(0.13)))
         : float(0.5);
+    // Colonnade joints: the horizontal fracture rhythm of cooled basalt (Fingal's Cave), read
+    // as THIN cracks (the trough of the wave), not broad bands.
+    const jointWave = sin(vWorldY.mul(0.42).add(plates.mul(3.0))).mul(0.5).add(0.5);
+    const jointBand = isColumn ? smoothstep(0.015, 0.075, jointWave) : float(1.0);
+    // Rock form for the lake light to find: high-contrast plates and a fine grain.
+    const plateForm = isColumn ? mix(float(0.30), float(1.50), smoothstep(0.36, 0.68, plates)) : float(1.0);
+    const grain = isColumn ? mix(float(0.72), float(1.22), n3(vWorldPos.mul(0.45))) : float(1.0);
     if (isColumn) {
-        // Colonnade joints: the horizontal fracture rhythm of cooled basalt (Fingal's Cave).
-        const joints = sin(vWorldY.mul(0.42).add(plates.mul(3.0))).mul(0.5).add(0.5);
-        albedo = albedo.mul(mix(float(0.78), float(1.0), smoothstep(0.12, 0.38, joints)));
+        albedo = albedo.mul(mix(float(0.78), float(1.0), jointBand));
         albedo = albedo.mul(mix(float(0.6), float(1.8), facetValue));
         const stain = n3(vec3(vWorldPos.x.mul(0.9), vWorldPos.y.mul(0.035), vWorldPos.z.mul(0.9)));
         albedo = albedo.add(vec3(0.055, 0.024, 0.010).mul(smoothstep(0.62, 0.86, stain)));
@@ -1380,7 +1385,9 @@ export function createMoltenPocketMaterialTSL(
     // Hot at the lake, cooling with height - never quite dead, so high rock still has a pulse.
     const heatWithHeight = oneMinus(smoothstep(0.0, isColumn ? 75.0 : 45.0, heightAboveLake));
     const veinBreath = sin(uTime.mul(1.4).add(veinField.mul(11.0))).mul(0.2).add(0.8);
-    const veinGate = isColumn ? heatWithHeight.mul(0.82).add(0.18) : float(1.0);
+    // 0.18 -> 0.34 on the columns (all-angles pass, 2026-10-18): the cracks are the only fire
+    // a column shows above the lake's reach, and at 0.18 the upper columns had none left.
+    const veinGate = isColumn ? heatWithHeight.mul(0.66).add(0.34) : float(1.0);
     const veinHeat = veinMask.mul(veinGate).mul(veinBreath);
     // `crackHeat` keeps its old role for the splash tongues: they climb the open cracks.
     const crackHeat = veinMask;
@@ -1395,6 +1402,11 @@ export function createMoltenPocketMaterialTSL(
         .mul(heatWithHeight.mul(0.75).add(isColumn ? 0.36 : 0.25))
         .mul(lakeFalloff.mul(0.6).add(0.4))
         .mul(isColumn ? facetValue.mul(0.9).add(0.55) : float(1))
+        // THE LIGHT FINDS THE ROCK'S FORM (all-angles pass, 2026-10-18). The plates, joints and
+        // stains only darkened a near-black albedo while this light carried all the colour, so
+        // every face of a column close to the eye was one flat orange — cardboard prisms in every
+        // sideways view of the cavern. The light now catches the plates and falls into the joints.
+        .mul(isColumn ? plateForm.mul(grain).mul(mix(float(0.35), float(1.0), jointBand)) : float(1))
         .mul(uBakedBounce);
 
     // Rims: warm where the edge faces the fire, a cool hint of the crown's light above.
@@ -1428,8 +1440,15 @@ export function createMoltenPocketMaterialTSL(
     const conduction = crackHeat
         .mul(oneMinus(clamp(vWorldY.sub(lakeLineY).div(6.0), 0.0, 1.0)));
     if (isColumn) {
+        // Molten light in the joints: the fractures glow where the heat reaches them, hottest at
+        // the lake and fading up the column. Thin and BROKEN (only stretches of a joint carry
+        // fire, by the vein field), or the bundle read as striped poles.
+        const jointCrack = oneMinus(smoothstep(0.015, 0.06, jointWave));
+        const jointRun = smoothstep(0.45, 0.75, veinField);
+        const jointGlow = jointCrack.mul(jointRun).mul(heatWithHeight.mul(0.85).add(0.08)).mul(veinBreath);
         color = color.add(uHot.mul(baseBleed).mul(0.20));
         emissive = emissive
+            .add(uCrack.mul(jointGlow).mul(0.30))
             .add(uHot.mul(baseBleed).mul(0.30))
             .add(vec3(1.0, 0.78, 0.45).mul(splashLine).mul(0.42))
             .add(vec3(1.0, 0.92, 0.75).mul(splashCore).mul(0.45))

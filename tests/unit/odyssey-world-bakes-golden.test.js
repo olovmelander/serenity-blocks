@@ -126,7 +126,9 @@ describe('relief + macro + detail bakes (pure halves)', () => {
         const b = bakeReliefData(96);
         expect(sha(a.data)).toBe(sha(b.data));
         expect(sha(a.data)).toBe('3effb252e0bae73a4d16d0f536424714');
-        expect(sha(a.total)).toBe('77e344efed2b8a4ea583f53643a62801');
+        // Moved 2026-10-18 with the outer isles (odyssey-world-height.js ODYSSEY_OUTER_ISLES): the
+        // relief noise is unchanged (hash above), the total height gains the isles.
+        expect(sha(a.total)).toBe('8bbdbde967213da37c4c213d2ab73f94');
         expect(a.data.length).toBe(96 * 96 * 4);
         expect(a.total.length).toBe(96 * 96);
         const sample = makeReliefSampler(a);
@@ -138,7 +140,8 @@ describe('relief + macro + detail bakes (pure halves)', () => {
     it('pins the macro texels at 64²', () => {
         const m = bakeMacroData(64);
         expect(m.data.length).toBe(64 * 64 * 4);
-        expect(sha(m.data)).toBe('2ba80c1e790a61c08a162b3e304d9b6d');
+        // Moved 2026-10-18 with the outer isles (see the relief pin above).
+        expect(sha(m.data)).toBe('2ffdeae30d92e9e860c8f2c425404efa');
     });
 
     it('bakeWorldTextureData returns every plate with transferable buffers and per-stage timings', () => {

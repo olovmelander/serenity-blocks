@@ -2000,7 +2000,8 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
                 ? THREE.MathUtils.smoothstep(cameraProgress, handoffWindow.start, handoffWindow.end)
                 : THREE.MathUtils.smoothstep(ease, OMEN_HANDOFF_START, 1);
             if (handoff > 0) {
-                resolveGargantuaLockPosition(camera, _omenLock).sub(group.position);
+                // The hero camera while looking around (see black-hole-transcendence.js).
+                resolveGargantuaLockPosition(camera.userData?.heroCamera ?? camera, _omenLock).sub(group.position);
                 blackHole.position.lerp(_omenLock, handoff);
                 blackHole.scale.setScalar(THREE.MathUtils.lerp(
                     blackHole.scale.x,
@@ -2011,7 +2012,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         }
         // Square to the eye (ch7's Gargantua pose): the shadow faces the camera and the disk
         // band reads across the frame wherever the corridor turns.
-        orientBlackHoleOmen(blackHole, camera);
+        orientBlackHoleOmen(blackHole, camera?.userData?.heroCamera ?? camera);
         // EXACTLY ONE OPAQUE SHADOW. The omen's shadow covers the hole until the handoff is
         // complete — the frame ch7 appears, with Gargantua's identical shadow (same lock, same
         // radius) taking over there (black-hole-transcendence.js). Opacity is re-asserted
@@ -2060,8 +2061,9 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             );
             if (lockWeight > 0) {
                 const riseIn = 1 - staging.earthReveal;
+                // The hero camera while looking around (see black-hole-transcendence.js).
                 _planetRay.set(L.ndcX, L.ndcY - L.rise * riseIn * riseIn, 0.5)
-                    .unproject(camera)
+                    .unproject(camera.userData?.heroCamera ?? camera)
                     .sub(camera.position)
                     .normalize();
                 _planetLock.copy(camera.position).addScaledVector(_planetRay, L.distance);

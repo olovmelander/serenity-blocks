@@ -1209,6 +1209,12 @@ export class OdysseyTslPipeline {
         const ndcY = this._scratchLensV3.y;
         const behind = this._scratchLensV3.z > 1; // behind the camera → ignore this frame
         if (behind || !Number.isFinite(ndcX) || !Number.isFinite(ndcY)) return;
+        // ...and so is a hole far off to the side (all-angles pass, 2026-10-18). The hero normally
+        // rides the camera, but looking around freely it stays where it was: 90 degrees away it
+        // projects screen-widths off the frame, its full radius still pulled every pixel toward
+        // that centre, and the warp smeared the frame's edge colour across the whole view (a
+        // solid red frame). Off the frame by more than half a screen, the lens fades out.
+        if (Math.abs(ndcX) > 1.5 || Math.abs(ndcY) > 1.5) return;
         // NDC (-1..1, y up) → viewport UV. ⚠️ viewportUV's origin is the TOP-left on WebGPU
         // (y DOWN), so y flips. The old `ndcY * 0.5 + 0.5` centred the lens on the hero's
         // MIRROR image below the frame centre — and with its core crush that drew a second,

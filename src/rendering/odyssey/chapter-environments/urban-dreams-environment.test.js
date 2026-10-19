@@ -19,7 +19,10 @@ describe('Urban Dreams chapter environment (creative plan ch8)', () => {
     it('mounts the skyline cards, horizon haze, and the Gate Bridge', () => {
         const group = createUrbanDreamsEnvironment();
 
-        expect(group.userData.skyline).toHaveLength(2);
+        // Two ranks ahead of the lane, and the same two behind it (looking back).
+        expect(group.userData.skyline).toHaveLength(4);
+        expect(group.userData.skyline[2].position.toArray()).toEqual(CH8_RETROSUN_STAGE.skylineBackNear);
+        expect(group.userData.skyline[3].position.toArray()).toEqual(CH8_RETROSUN_STAGE.skylineBackFar);
         group.userData.skyline.forEach((card) => {
             expect(card.name).toBe('skyline-silhouette');
             // The ecotone bridge must reach the cards.
