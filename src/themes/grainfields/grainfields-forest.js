@@ -87,6 +87,26 @@ function ramp(stops, t) {
     return result;
 }
 
+/**
+ * Beyond this distance (metres) a tree's bark is its stems alone: a limb is a quarter of a pixel
+ * there and stands inside the crown's sprays (its triangles cost more than anything they show).
+ */
+export const BARK_LIMBS_TO = 320;
+
+/**
+ * A specimen's bark without its limbs: a geometry over the same buffers, drawing only the core's
+ * indices (the stems; the asset lists them first). Disposing it releases what the specimen's own
+ * geometry holds too, as the world's teardown does with both.
+ */
+function barkStems(asset) {
+    const geometry = new THREE.BufferGeometry();
+    geometry.setIndex(asset.bark.index);
+    Object.entries(asset.bark.attributes).forEach(([name, buffer]) => geometry.setAttribute(name, buffer));
+    geometry.boundingSphere = asset.bark.boundingSphere;
+    geometry.setDrawRange(0, asset.barkCoreIndices);
+    return geometry;
+}
+
 /** The share of a tree's sprays drawn at a distance (metres): all near, a third far out. */
 function sprayShare(d) {
     if (d < 320) return 1;
@@ -347,20 +367,25 @@ export function createForest(u, t, assets, sites, tier, { coverage = false } = {
     }
     stats.trees = placements.length;
 
-    // ── Bark, per specimen ──
+    // ── Bark, per specimen: the whole tree near, the stems alone beyond BARK_LIMBS_TO ──
     const byAsset = new Map();
     placements.forEach((tree) => {
-        if (!byAsset.has(tree.name)) byAsset.set(tree.name, []);
-        byAsset.get(tree.name).push(tree);
+        const stemsOnly = tree.d > BARK_LIMBS_TO && assets.trees[tree.name].barkCoreIndices > 0;
+        const key = stemsOnly ? `${tree.name}|stems` : tree.name;
+        if (!byAsset.has(key)) byAsset.set(key, []);
+        byAsset.get(key).push(tree);
     });
     const dummy = new THREE.Object3D();
-    byAsset.forEach((trees, name) => {
+    byAsset.forEach((trees, key) => {
+        const [name, stemsOnly] = key.split('|');
         const asset = assets.trees[name];
         const data = new Float32Array(trees.length * 4);
         const treeAttribute = new THREE.InstancedBufferAttribute(data, 4);
         const material = own(barkMaterial(u, t, asset.species, treeAttribute));
-        const mesh = new THREE.InstancedMesh(asset.bark, material, trees.length);
-        mesh.name = `GrainfieldsBark ${name}`;
+        // The stems alone: a view of the specimen's own buffers, drawing the core's indices only.
+        const bark = stemsOnly ? own(barkStems(asset)) : asset.bark;
+        const mesh = new THREE.InstancedMesh(bark, material, trees.length);
+        mesh.name = `GrainfieldsBark ${key}`;
         trees.forEach((tree, index) => {
             dummy.position.set(tree.x, tree.y, tree.z);
             dummy.rotation.set(0, tree.yaw, 0);
@@ -374,6 +399,10 @@ export function createForest(u, t, assets, sites, tier, { coverage = false } = {
         mesh.matrixAutoUpdate = false;
         mesh.renderOrder = 3;
         meshes.push(mesh);
+        if (stemsOnly) {
+            stats.barkTriangles += (asset.barkCoreIndices / 3) * trees.length;
+            return;
+        }
         // Far trees show no limbs worth their triangles: the stems alone.
         const allFar = trees.every((tree) => tree.d > near * 0.5);
         const drawn = allFar && asset.barkCoreIndices > 0 ? asset.barkCoreIndices : asset.bark.index.count;
