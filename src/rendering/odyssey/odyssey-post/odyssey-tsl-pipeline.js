@@ -310,6 +310,11 @@ export class OdysseyTslPipeline {
         this._smLensCenter = new THREE.Vector2(0.5, 0.5); // smoothed NDC centre
         this._smLensStrength = 0; // smoothed deflection strength (0 outside ch7)
         this._lensActive = false; // whether a valid lens target was set this frame
+        // A target may carry its OWN strength and reach (ch6's omen, 2026-10-19): the largest
+        // strength published this frame, and the reach of the last target that set one.
+        this._publishedLensStrength = 0;
+        this._publishedLensReach = 1;
+        this._smLensReach = 1;
         this._scratchLensV3 = new THREE.Vector3(); // project-to-NDC scratch (world)
         this._scratchLensV2 = new THREE.Vector2(); // project-to-NDC scratch (ndc)
         // B4: ch8 ignition exposure/bloom swell state (last ~18% of ch8; smoothed).
@@ -485,6 +490,10 @@ export class OdysseyTslPipeline {
         // (0 = the black shadow, 1 = the tunnel). Published on the lens target by the hero; it
         // lifts the in-shadow bloom mask so the tunnel's light can glow.
         this.uLensPortal = uniform(0);
+        // How far out the lens reaches, as a multiple of its 3-6 shadow-radius falloff: 1 for
+        // chapter 7's Gargantua, shorter for chapter 6's omen (it bends the sky right round the
+        // hole and leaves the rail's orbs in the middle of the frame alone).
+        this.uLensReach = uniform(1);
         this._smLensRadius = params.lensRadius ?? 0.12;
 
         // Scene source kept as a member so the (lazily built) output-node variants can all
@@ -766,7 +775,8 @@ export class OdysseyTslPipeline {
             const lensN = lensDeltaA.div(lensR);
             const rs = this.uLensRadius.max(1e-3);
             const outside = smoothstep(rs.mul(0.98), rs.mul(1.12), lensR);
-            const farFade = float(1.0).sub(smoothstep(rs.mul(3.0), rs.mul(6.0), lensR));
+            const reach = this.uLensReach;
+            const farFade = float(1.0).sub(smoothstep(rs.mul(reach).mul(3.0), rs.mul(reach).mul(6.0), lensR));
             const pointMass = this.uLensStrength.mul(rs).mul(rs).div(lensR);
             const deflect = min(pointMass, lensR.sub(rs).max(0.0).mul(0.22)).mul(outside).mul(farFade);
             // Pull the sample toward the hole (radial) plus a hair of tangential swirl so the
@@ -1045,6 +1055,7 @@ export class OdysseyTslPipeline {
 
         // Targets resolved below, then a single smoothing pass applies them all.
         let lensTarget = 0; // ch7 lensing strength target
+        let reachTarget = 1; // lens reach (1 = chapter 7's)
         let crushScaleTarget = 1.0; // ch7 black-crush softening target (→ ~0.35 in ch7)
         let ignitionTarget = 0; // ch8 ignition swell target (last ~18% of ch8)
 
@@ -1084,6 +1095,11 @@ export class OdysseyTslPipeline {
             // to ~0.7 at the climax; eased by presence × late ramp. Kept modest because the
             // screen-space warp also bends the hero's own (already lensed) fold arcs.
             lensTarget = 0.7 * ch7Presence * (0.45 + 0.55 * ch7Late) * lensGate;
+            // Chapter 6's omen publishes its own strength on its target (it grows with the
+            // chapter's progress to the 6->7 lock and holds there), so the lens arrives with the
+            // hole instead of switching on at the seam; across the seam chapter 7's rises past it.
+            lensTarget = Math.max(lensTarget, this._publishedLensStrength * lensGate);
+            reachTarget = lerp(this._publishedLensReach, 1, ch7Presence);
             // Soften the ch7 black-crush so the structured violet void survives tonemap
             // (1.0 → ~0.35 with presence). Outside ch7 stays full crush.
             crushScaleTarget = lerp(1.0, 0.35, ch7Presence);
@@ -1126,6 +1142,7 @@ export class OdysseyTslPipeline {
 
         // Smooth the ch7 lensing / crush + ch8 ignition (enter/exit glide, no pops).
         this._smLensStrength = lerp(this._smLensStrength, lensTarget, k);
+        this._smLensReach = lerp(this._smLensReach, reachTarget, k);
         this._smIgnition = lerp(this._smIgnition, ignitionTarget, k);
         const smCrushScale = directorState
             ? lerp(this.uCrushScale.value, crushScaleTarget, k)
@@ -1142,6 +1159,7 @@ export class OdysseyTslPipeline {
         this.uChapterSat.value = this._smChapterSat;
         this.uShoulderKnee.value = this._smShoulderKnee;
         this.uLensStrength.value = this._smLensStrength;
+        this.uLensReach.value = this._smLensReach;
         if (this.uLensCenter.value?.copy) this.uLensCenter.value.copy(this._smLensCenter);
         this.uCrushScale.value = smCrushScale;
         this.uIgnition.value = this._smIgnition;
@@ -1163,7 +1181,8 @@ export class OdysseyTslPipeline {
             const ac = directorState.activeChapter;
             const sc = directorState.sourceChapter ?? ac;
             const tc = directorState.targetChapter ?? ac;
-            const wantLens = ac === 7 || sc === 7 || tc === 7;
+            // ...or while chapter 6's omen publishes a strength (the lens grows with the hole).
+            const wantLens = ac === 7 || sc === 7 || tc === 7 || this._publishedLensStrength > 1e-3;
             // Effective bloom contribution this frame (mirrors the strength math above plus the
             // ignition push). Use HYSTERESIS so a director weight hovering near zero across a
             // seam can't flip the bloom node on/off repeatedly (each flip = one recompile):
@@ -1189,6 +1208,8 @@ export class OdysseyTslPipeline {
 
         // Reset the per-frame lens-active flag (re-armed by setLensTarget next frame).
         this._lensActive = false;
+        this._publishedLensStrength = 0;
+        this._publishedLensReach = 1;
     }
 
     /**
@@ -1209,6 +1230,12 @@ export class OdysseyTslPipeline {
         const ndcY = this._scratchLensV3.y;
         const behind = this._scratchLensV3.z > 1; // behind the camera → ignore this frame
         if (behind || !Number.isFinite(ndcX) || !Number.isFinite(ndcY)) return;
+        // ...and so is a hole far off to the side (all-angles pass, 2026-10-18). The hero normally
+        // rides the camera, but looking around freely it stays where it was: 90 degrees away it
+        // projects screen-widths off the frame, its full radius still pulled every pixel toward
+        // that centre, and the warp smeared the frame's edge colour across the whole view (a
+        // solid red frame). Off the frame by more than half a screen, the lens fades out.
+        if (Math.abs(ndcX) > 1.5 || Math.abs(ndcY) > 1.5) return;
         // NDC (-1..1, y up) → viewport UV. ⚠️ viewportUV's origin is the TOP-left on WebGPU
         // (y DOWN), so y flips. The old `ndcY * 0.5 + 0.5` centred the lens on the hero's
         // MIRROR image below the frame centre — and with its core crush that drew a second,
@@ -1221,8 +1248,12 @@ export class OdysseyTslPipeline {
         // The SHADOW's projected radius, when the hero publishes its world radius on the target
         // (black-hole-transcendence.js sets `lensWorldPos.lensRadius`): the angular radius of
         // a sphere, as a fraction of the viewport height (the aspect-corrected lens space).
-        const { portal } = worldVec3;
+        const { portal, lensStrength, lensReach } = worldVec3;
         this.uLensPortal.value = Number.isFinite(portal) ? Math.min(1, Math.max(0, portal)) : 0;
+        if (Number.isFinite(lensStrength) && lensStrength > 0) {
+            this._publishedLensStrength = Math.max(this._publishedLensStrength, lensStrength);
+            if (Number.isFinite(lensReach) && lensReach > 0) this._publishedLensReach = lensReach;
+        }
         const worldRadius = worldVec3.lensRadius;
         if (Number.isFinite(worldRadius) && worldRadius > 0 && this.camera.isPerspectiveCamera) {
             const distance = this.camera.position.distanceTo(worldVec3);
