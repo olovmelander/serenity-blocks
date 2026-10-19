@@ -256,6 +256,16 @@ export function createUniforms() {
         glory: uniform(0),
         /** A line clear's flush of bloom over the whole meadow (0..1). */
         flush: uniform(0),
+        /**
+         * The air (spring-air.js): its own clock (s, integrated: a chain hurries it, a perfect clear
+         * stills it), how far the chain's gyres have turned (rad), how stirred it is (0..1) and how
+         * still (0..1).
+         */
+        air: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** Where the chain's two gyres stand on the knoll: (left x, z, right x, z), from the layout. */
+        airGyres: uniform(new THREE.Vector4(-4.6, -8.3, 4.6, -8.3)),
+        /** A clear's breath through the air: (start, power, speed m/s, spare). */
+        airWave: uniform(new THREE.Vector4(-1e6, 0, 0, 0)),
 
         // ── The river ──
         /** The water's own clock (s): integrated on the CPU at the flood's pace. */

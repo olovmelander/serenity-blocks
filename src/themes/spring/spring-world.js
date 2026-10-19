@@ -20,6 +20,14 @@
  *   level up      the day steps a station forward (it also turns with the clock alone); cranes pass
  *   game over     the light falls to dusk; it comes back with the next run
  *
+ * and the air over it all (spring-air.js, spring-motes.js): willow down and pollen drift on the
+ * breeze; a lock shakes the piece's own pollen out of its patch and puffs the air round it; a
+ * clear lifts pollen and down off the knoll in the cleared rows' colours and sends a breath out
+ * across the valley; each link of a chain spins up a little whirlwind beside the card, the air
+ * thickens and two gyres turn it, and a broken chain lets its down go; a T-spin whirls too; back-
+ * to-back strikes glints off the river; a level up sends willow down drifting over from upwind;
+ * a perfect clear stills the air and showers it gold.
+ *
  * Lifecycle: `await SpringWorld.prepare(quality, { signal })` reads the valley's baked ground and
  * the authored trees and granite (once a session; none depend on the tier); `new SpringWorld({
  * ..., prepared }).build()` makes the scene objects; each frame `updateCamera` → `update` →
@@ -29,10 +37,10 @@ import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
 import {
-    DEG, TAU, TIMING, approach, clamp, mulberry32, smooth,
+    DEG, PIECE_COLORS, TAU, TIMING, approach, clamp, hexToLinear, mulberry32, smooth,
 } from './spring-core.js';
 import {
-    EYE, RIG, S_POOL, levelAt, riverNearest, rigFor,
+    EYE, RIG, S_POOL, levelAt, pointAt, riverNearest, rigFor,
 } from './spring-plan.js';
 import { bakeTerrain, groundHeight, waterEdge } from './spring-terrain.js';
 import {
@@ -55,6 +63,7 @@ import { loadSpringAssets, loadSpringValley } from './spring-assets.js';
 import { createSky } from './spring-sky.js';
 import { createCumulus } from './spring-cumulus.js';
 import { MOTE_KIND, Motes } from './spring-motes.js';
+import { AIR, SpringAir } from './spring-air.js';
 import { Mist } from './spring-mist.js';
 import { Floes } from './spring-floes.js';
 import { Flights } from './spring-flights.js';
@@ -75,6 +84,7 @@ const emptyCounts = () => Object.fromEntries(COUNTERS.map((k) => [k, 0]));
 const SNAPSHOT = Object.freeze([
     'time', 'level', 'combo', 'peak', 'b2b', 'flood', 'foamBoost', 'flowClock', 'perfectAt', 'duskFrom', 'duskTarget',
     'duskAt', 'gloryShown', 'surgeCursor', 'patchCursor', 'lastLockAt', 'levelUpAt', 'clearAt', 'clearPower',
+    'airClock', 'airGyre', 'stir', 'airWaveAt', 'airWavePower', 'burstSide', 'lastLockU',
 ]);
 
 /**
@@ -88,6 +98,21 @@ export const BLOOM_PATCH = Object.freeze({
 export const ICE_OUT = Object.freeze({ floes: 24 });
 /** A line clear's flush of bloom over the whole knoll: rise, hold and fall (s). */
 export const FLUSH = Object.freeze({ rise: 0.6, hold: 2.2, fall: 3.5 });
+
+/**
+ * The air (spring-air.js): how much faster a full chain runs it down the breeze, how fast its gyres
+ * turn at a full chain (rad/s), the chain that stirs it fully (links), its pace under reduced
+ * motion, and a clear's breath (its speed m/s; its power per line, from `wave`).
+ */
+export const AIR_MOTION = Object.freeze({
+    hurry: 1.3, gyre: 0.45, fullChain: 8, reduced: 0.4, waveSpeed: 11, wave: 0.45, wavePerLine: 0.18,
+});
+/** A perfect clear's still, golden air: in, held, out (s from the clear). */
+export const STILL = Object.freeze({ rise: 2.5, hold: 10, fall: 18 });
+/** Linear RGB of each piece code (the meadow's flowers). */
+const PIECE_RGB = PIECE_COLORS.map((hex) => hexToLinear(hex));
+const GOLD = Object.freeze([1.0, 0.8, 0.42]);
+const DOWN_WHITE = Object.freeze([1.0, 0.98, 0.94]);
 
 /** The flood: how high each link of a chain lifts the river (m), and the most it rises. */
 export const FLOOD = Object.freeze({
@@ -197,6 +222,7 @@ export class SpringWorld {
         };
         this.overrides = { hour: null };
         this.ground = null;
+        this.placeGyres();
         this.resetState(0);
     }
 
@@ -223,6 +249,14 @@ export class SpringWorld {
         this.levelUpAt = -1e6;
         this.clearAt = -1e6;
         this.clearPower = 0;
+        this.airClock = time;
+        this.airGyre = 0;
+        this.stir = 0;
+        this.airWaveAt = -1e6;
+        this.airWavePower = 0;
+        this.burstSide = 1;
+        this.lastLockU = 0.5;
+        this.lastRgb = [...GOLD];
         const { events } = this.u.tables;
         for (let k = 0; k < SURGES; k++) events[EVENT_ROWS.surge + k].set(-1e6, 0, 0, 0);
         for (let k = 0; k < PATCHES; k++) {
@@ -310,14 +344,19 @@ export class SpringWorld {
             mesh: meadow.group, meshes: [meadow.group], stats: meadow.stats, dispose: () => meadow.dispose(),
         });
         yield 'meadow';
-        // The effects: the fall's mist, spray and glints in the air, the ice going out, birds.
+        // The effects: the fall's mist, the air's down and pollen, what gameplay throws into the air,
+        // the ice going out, birds.
         this.motes = new Motes(this.u, tier.motes);
+        this.air = new SpringAir(this.u, tier.air);
+        // Bursts are sized to the tier's ring of motes (gently: a burst must still read on Minimal),
+        // so a busy moment does not eat its own start.
+        this.burstScale = clamp(Math.sqrt(tier.motes / 1280), 0.55, 1.35);
         this.mist = new Mist(this.u, this.textures, tier.mist);
         this.floes = new Floes(this.u, tier.floes);
         this.flights = new Flights(this.u);
         this.addPart('fx', {
             mesh: this.motes.mesh,
-            meshes: [this.mist.mesh, this.motes.mesh, this.floes.mesh, ...this.flights.meshes],
+            meshes: [this.mist.mesh, this.air.mesh, this.motes.mesh, this.floes.mesh, ...this.flights.meshes],
             reset: () => {
                 this.motes.clear();
                 this.floes.clear();
@@ -325,6 +364,7 @@ export class SpringWorld {
             },
             dispose: () => {
                 this.motes.dispose();
+                this.air.dispose();
                 this.mist.dispose();
                 this.floes.dispose();
                 this.flights.dispose();
@@ -370,12 +410,33 @@ export class SpringWorld {
         this.u.aspect.value = this.aspect;
         this.viewportHeight = Math.max(1, height);
         if (!this.layoutLive) this.layout = fallbackLayout(width, height);
+        this.placeGyres();
     }
 
     setLayout(rects, aspect) {
         if (aspect > 0) this.aspect = aspect;
         this.layoutLive = Boolean(rects);
         this.layout = rects || fallbackLayout(1920, 1920 / Math.max(0.2, this.aspect));
+        this.placeGyres();
+    }
+
+    /**
+     * Where the chain's gyres (and its whirlwinds) stand: on the knoll's top in the middle of the
+     * free strip left of the card and right of it (or of the HUD beside it), at the lens at rest.
+     */
+    placeGyres() {
+        const card = cardUnion(this.layout) || {
+            x0: 0.41, x1: 0.59, y0: 0.08, y1: 0.93,
+        };
+        const { hud } = this.layout;
+        const rightEdge = hud && hud.x0 > card.x1 && hud.x0 - card.x1 < 0.1 ? hud.x1 : card.x1;
+        const rig = rigFor(this.aspect);
+        const across = Math.tan((rig.fov * DEG) / 2) * this.aspect;
+        const bearingAt = (sx) => rig.yaw + Math.atan((sx * 2 - 1) * across) / DEG;
+        const left = pointAt(bearingAt(Math.max(0.03, card.x0 * 0.45)), AIR.gyre.distance);
+        const right = pointAt(bearingAt(Math.min(0.97, rightEdge + (1 - rightEdge) * 0.55)), AIR.gyre.distance);
+        this.gyres = [left, right];
+        this.u.airGyres.value.set(left.x, left.z, right.x, right.z);
     }
 
     /** The rest pose plus a slow drift of the lens and the pointer's parallax. */
@@ -511,12 +572,301 @@ export class SpringWorld {
         const slot = kind >= 0 ? kind : SPRING_FLOWERS.find((f) => f.id === 'anemone').slot;
         const radius = hard ? BLOOM_PATCH.hardRadius : BLOOM_PATCH.radius;
         const power = hard ? BLOOM_PATCH.hard : BLOOM_PATCH.soft;
-        if (site && !site.water && site.distance < 40) this.bloomPatch(site.x, site.z, slot, power, radius);
-        else {
-            if (site?.water) this.spray(site, hard ? 1 : 0.5);
-            const b = Math.atan2(site ? site.x - EYE.x : (context.u ?? 0.5) - 0.5, site ? -(site.z - EYE.z) : 1);
-            const r = BLOOM_PATCH.onKnoll;
-            this.bloomPatch(EYE.x + Math.sin(b) * r, EYE.z - Math.cos(b) * r, slot, power, radius);
+        const onKnoll = site && !site.water && site.distance < 40;
+        if (!onKnoll && site?.water) this.spray(site, hard ? 1 : 0.5);
+        const b = onKnoll ? 0
+            : Math.atan2(site ? site.x - EYE.x : (context.u ?? 0.5) - 0.5, site ? -(site.z - EYE.z) : 1);
+        const x = onKnoll ? site.x : EYE.x + Math.sin(b) * BLOOM_PATCH.onKnoll;
+        const z = onKnoll ? site.z : EYE.z - Math.cos(b) * BLOOM_PATCH.onKnoll;
+        this.bloomPatch(x, z, slot, power, radius);
+        // The piece's own pollen shaken out of the patch as it opens (its flower's colour).
+        const rgb = typeof context.color === 'string' ? hexToLinear(context.color, [0, 0, 0]) : null;
+        const tone = rgb && rgb[0] + rgb[1] + rgb[2] > 0.05
+            ? rgb : this.u.tables.palette[PALETTE_ROWS.colour + slot].toArray().slice(0, 3);
+        this.lastRgb = tone;
+        this.lastLockU = clamp(Number(context.u ?? 0.5), 0, 1);
+        this.pollenBurst(x, z, tone, hard, radius);
+    }
+
+    /** True when gameplay may throw motes into the air (not under reduced motion). */
+    canBurst() {
+        return Boolean(this.motes) && !this.reducedMotion && Boolean(this.ground);
+    }
+
+    /** The surface's height at (x, z): the ground, or the river's where it runs (the knoll's with no ground). */
+    floorAt(x, z) {
+        if (!this.ground) return EYE.y - 1.6;
+        const ground = groundHeight(this.ground, x, z);
+        waterEdge(this.ground, x, z, this._edge);
+        return this._edge.edge < 0 ? Math.max(ground, this._edge.level + this.flood) : ground;
+    }
+
+    /**
+     * A lock's pollen: specks of the piece's colour (and a little gold) shaken up out of its patch
+     * of bloom in an arc, drifting off on the breeze, and glints on the cups as they open; a hard
+     * drop shakes out more and higher, and knocks a ring of down off the plants.
+     */
+    pollenBurst(x, z, rgb, hard, radius) {
+        if (!this.canBurst()) return;
+        const r = this.random;
+        const y = this.floorAt(x, z) + 0.25;
+        const count = Math.round((hard ? 96 : 60) * this.burstScale);
+        for (let i = 0; i < count; i++) {
+            const a = r() * TAU;
+            const at = Math.sqrt(r()) * radius * 0.55;
+            const out = 0.2 + r() * 0.6;
+            const gold = r() < 0.2;
+            this.motes.spawn({
+                x: x + Math.cos(a) * at,
+                y: y + r() * 0.3,
+                z: z + Math.sin(a) * at,
+                vx: Math.cos(a) * out,
+                vy: (hard ? 2.0 : 1.4) * (0.5 + r()),
+                vz: Math.sin(a) * out,
+                born: this.time + r() * 0.5,
+                life: 5 + r() * 3,
+                size: 0.075 * (0.7 + r() * 0.6),
+                rgb: gold ? GOLD : rgb,
+                kind: MOTE_KIND.pollen,
+                seed: r(),
+                drift: 0.25,
+                gravity: -0.25,
+            });
+        }
+        const glints = Math.round(10 * this.burstScale);
+        for (let i = 0; i < glints; i++) {
+            const a = r() * TAU;
+            const at = Math.sqrt(r()) * radius * 0.8;
+            this.motes.spawn({
+                x: x + Math.cos(a) * at,
+                y: y + 0.05 + r() * 0.2,
+                z: z + Math.sin(a) * at,
+                born: this.time + r() * 0.9,
+                life: 0.35 + r() * 0.5,
+                size: 0.06,
+                rgb: [1.0, 0.97, 0.9],
+                kind: MOTE_KIND.glint,
+                seed: r(),
+            });
+        }
+        if (!hard) return;
+        const ring = Math.round(14 * this.burstScale);
+        for (let i = 0; i < ring; i++) {
+            const a = (i / ring) * TAU + r() * 0.3;
+            this.motes.spawn({
+                x: x + Math.cos(a) * 0.4,
+                y: y + 0.1,
+                z: z + Math.sin(a) * 0.4,
+                vx: Math.cos(a) * (1.1 + r() * 0.6),
+                vy: 0.4 + r() * 0.5,
+                vz: Math.sin(a) * (1.1 + r() * 0.6),
+                born: this.time + r() * 0.15,
+                life: 6 + r() * 3,
+                size: 0.075 * (0.7 + r() * 0.6),
+                rgb: DOWN_WHITE,
+                kind: MOTE_KIND.down,
+                seed: r(),
+                drift: 0.4,
+                gravity: -0.06,
+            });
+        }
+    }
+
+    /**
+     * A clear: pollen and down lift off the knoll either side of the card in the colours of the
+     * rows that went (each side the colours of its half of the board), three puffs a side running
+     * out from the card, the more the more lines.
+     */
+    clearDrift(lines, rowCodes) {
+        if (!this.canBurst()) return;
+        const r = this.random;
+        const codes = Array.isArray(rowCodes) || ArrayBuffer.isView(rowCodes) ? Array.from(rowCodes) : [];
+        const sideColour = (left) => {
+            const sum = [0, 0, 0];
+            let n = 0;
+            for (let k = 0; k < codes.length; k++) {
+                const column = k % 10;
+                const code = codes[k];
+                if ((column < 5) !== left || !(code >= 0 && code < 7)) continue;
+                sum[0] += PIECE_RGB[code][0];
+                sum[1] += PIECE_RGB[code][1];
+                sum[2] += PIECE_RGB[code][2];
+                n += 1;
+            }
+            return n ? sum.map((v) => v / n) : [...this.lastRgb];
+        };
+        const perPuff = Math.round((12 + 7 * lines) * this.burstScale);
+        for (const side of [-1, 1]) {
+            const rgb = sideColour(side < 0);
+            for (let k = 0; k < 3; k++) {
+                const p = pointAt(side * (22 + k * 9), 9 + k * 1.5);
+                const y = this.floorAt(p.x, p.z) + 0.3;
+                for (let i = 0; i < perPuff; i++) {
+                    const a = r() * TAU;
+                    const at = Math.sqrt(r()) * 2.2;
+                    const down = r() < 0.3;
+                    this.motes.spawn({
+                        x: p.x + Math.cos(a) * at,
+                        y: y + r() * 0.4,
+                        z: p.z + Math.sin(a) * at,
+                        vx: Math.cos(a) * 0.5 + AIR.breeze[0] * 0.4,
+                        vy: (0.9 + 0.15 * lines) * (0.5 + r()),
+                        vz: Math.sin(a) * 0.5 + AIR.breeze[1] * 0.4,
+                        born: this.time + k * 0.22 + r() * 0.3,
+                        life: 5 + r() * 3,
+                        size: (down ? 0.075 : 0.05) * (0.7 + r() * 0.6),
+                        rgb: down ? DOWN_WHITE : rgb,
+                        kind: down ? MOTE_KIND.down : MOTE_KIND.pollen,
+                        seed: r(),
+                        drift: 0.3,
+                        gravity: down ? -0.04 : 0,
+                    });
+                }
+            }
+        }
+    }
+
+    /**
+     * A little whirlwind of pollen and down beside the card (on side -1 left, 1 right), `strength`
+     * 1 for a chain's second link and more for each after it.
+     */
+    whirlwind(side, strength, rgb) {
+        if (!this.canBurst()) return;
+        const r = this.random;
+        const g = this.gyres[side < 0 ? 0 : 1];
+        const turnWay = AIR.gyre.turn[side < 0 ? 0 : 1];
+        const y = this.floorAt(g.x, g.z) + 0.15;
+        const count = Math.round(Math.min(240, 44 + 22 * strength) * this.burstScale);
+        const radius = Math.min(1.7, 0.55 + 0.12 * strength);
+        const climb = Math.min(1.8, 0.65 + 0.1 * strength);
+        const turn = Math.min(5, 2.4 + 0.25 * strength) * turnWay;
+        for (let i = 0; i < count; i++) {
+            const down = r() < 0.3;
+            const gold = r() < 0.3;
+            // A funnel: narrow at the foot, the circle widening as the mote climbs.
+            const rise = climb * (0.55 + r() * 0.9);
+            this.motes.whirl({
+                x: g.x,
+                y: y + r() * 0.3,
+                z: g.z,
+                radius: radius * (0.15 + r() * 0.3),
+                climb: rise,
+                turn: turn * (0.8 + r() * 0.4),
+                grow: rise * (0.3 + r() * 0.15),
+                born: this.time + r() * 0.9,
+                life: 3.2 + r() * 2.6,
+                size: (down ? 0.075 : 0.05) * (0.7 + r() * 0.6),
+                rgb: (down && DOWN_WHITE) || (gold && GOLD) || rgb,
+                seed: r(),
+            });
+        }
+    }
+
+    /** A broken chain lets go of its down: tufts lift off the whole knoll and drift away. */
+    exhale(peak) {
+        if (!this.canBurst()) return;
+        const r = this.random;
+        const count = Math.round(Math.min(190, 22 * peak) * this.burstScale);
+        for (let i = 0; i < count; i++) {
+            const p = pointAt(-48 + r() * 92, 4 + r() * 11);
+            this.motes.spawn({
+                x: p.x,
+                y: this.floorAt(p.x, p.z) + 0.2 + r() * 0.6,
+                z: p.z,
+                vx: AIR.breeze[0] * 0.5 * r(),
+                vy: 0.5 + r() * 0.9,
+                vz: AIR.breeze[1] * 0.5 * r(),
+                born: this.time + r() * 1.4,
+                life: 6 + r() * 4,
+                size: 0.075 * (0.7 + r() * 0.6),
+                rgb: r() < 0.2 ? GOLD : DOWN_WHITE,
+                kind: r() < 0.2 ? MOTE_KIND.pollen : MOTE_KIND.down,
+                seed: r(),
+                drift: 0.4,
+                gravity: -0.03,
+            });
+        }
+    }
+
+    /** Back-to-back: glints struck off the river's ripples in front of the knoll, more each level. */
+    riverGlints(level) {
+        if (!this.canBurst() || !this._camera) return;
+        const r = this.random;
+        const hits = [];
+        for (let k = 0; k < 10; k++) {
+            const sx = k < 5 ? 0.04 + k * 0.065 : 0.66 + (k - 5) * 0.065;
+            const site = this.surfaceAt(sx, 0.56 + r() * 0.08);
+            if (site?.water) hits.push({ ...site });
+        }
+        if (!hits.length) return;
+        const count = Math.round(Math.min(90, 22 * level) * this.burstScale);
+        for (let i = 0; i < count; i++) {
+            const h = hits[Math.floor(r() * hits.length)];
+            const spread = 1.5 + h.distance * 0.12;
+            this.motes.spawn({
+                x: h.x + (r() - 0.5) * spread * 2,
+                y: h.y + 0.05,
+                z: h.z + (r() - 0.5) * spread * 2,
+                born: this.time + r() * 1.6,
+                life: 0.35 + r() * 0.45,
+                size: 0.045 * clamp(h.distance / 14, 0.7, 3),
+                rgb: [1.0, 0.97, 0.9],
+                kind: MOTE_KIND.glint,
+                seed: r(),
+            });
+        }
+    }
+
+    /** A level up: willow down drifting over from the birches upwind, across the knoll. */
+    downDrift() {
+        if (!this.canBurst()) return;
+        const r = this.random;
+        const count = Math.round(110 * this.burstScale);
+        for (let i = 0; i < count; i++) {
+            const p = pointAt(-52 + r() * 34, 10 + r() * 12);
+            this.motes.spawn({
+                x: p.x,
+                y: EYE.y + 0.5 + r() * 4.5,
+                z: p.z,
+                vx: AIR.breeze[0] * (0.5 + r() * 0.5),
+                vy: 0.1 + r() * 0.3,
+                vz: AIR.breeze[1] * (0.5 + r() * 0.5),
+                born: this.time + r() * 2.5,
+                life: 9 + r() * 4,
+                size: 0.075 * (0.7 + r() * 0.6),
+                rgb: DOWN_WHITE,
+                kind: MOTE_KIND.down,
+                seed: r(),
+                drift: 0.5,
+                gravity: -0.04,
+            });
+        }
+    }
+
+    /** A perfect clear: gold pollen and down showering slowly over the knoll and the river. */
+    goldShower() {
+        if (!this.canBurst()) return;
+        const r = this.random;
+        const count = Math.round(200 * this.burstScale);
+        for (let i = 0; i < count; i++) {
+            const p = pointAt(-46 + r() * 90, 6 + r() * 20);
+            const down = r() < 0.35;
+            this.motes.spawn({
+                x: p.x,
+                y: EYE.y + 2 + r() * 6,
+                z: p.z,
+                vx: (r() - 0.5) * 0.3,
+                vy: 0.15 * r(),
+                vz: (r() - 0.5) * 0.3,
+                born: this.time + r() * 2.2,
+                life: 8 + r() * 4,
+                size: (down ? 0.075 : 0.05) * (0.7 + r() * 0.6),
+                rgb: down ? DOWN_WHITE : GOLD,
+                kind: down ? MOTE_KIND.down : MOTE_KIND.pollen,
+                seed: r(),
+                drift: 0.3,
+                gravity: -0.12,
+            });
         }
     }
 
@@ -572,10 +922,14 @@ export class SpringWorld {
         const lines = clamp(Math.round(context.lines || 1), 1, 4);
         this.counts.clears++;
         this.counts.lines += lines;
-        // One surge down the rapids, the bigger the more lines; the whole knoll flushes into bloom.
+        // One surge down the rapids, the bigger the more lines; the whole knoll flushes into bloom,
+        // its pollen and down lift off it, and a breath runs out through the air.
         this.surge(0.55 + lines * 0.3, 0);
         this.clearAt = this.time;
         this.clearPower = Math.min(1, 0.45 + lines * 0.15);
+        this.airWaveAt = this.time;
+        this.airWavePower = Math.min(1.25, AIR_MOTION.wave + AIR_MOTION.wavePerLine * lines);
+        this.clearDrift(lines, context.rowCodes);
         if (lines === 4) this.onQuad();
         if (context.tspin) this.onTSpin(context);
         if (context.combo > this.combo) this.onCombo(context.combo);
@@ -588,11 +942,12 @@ export class SpringWorld {
         this._post.flashKick = 0.5;
     }
 
-    /** A T-spin: the plunge pool turns in a whirl. */
+    /** A T-spin: the plunge pool turns in a whirl, and so does the air beside the card on its side. */
     onTSpin() {
         this.counts.tspins++;
         this.u.whirl.value.set(this.time, 1);
         this.whirlSpray();
+        this.whirlwind(this.lastLockU < 0.5 ? -1 : 1, 5, PIECE_RGB[1]);
     }
 
     /** Spray flung off the whirl's rim as it spins up: it turns, seen even edge-on. */
@@ -632,20 +987,32 @@ export class SpringWorld {
         this.surge(1.4, 0);
         this.surge(1.4, 1.2);
         this.flights?.launch('swan', this.time);
+        this.goldShower();
     }
 
     onCombo(value) {
         const n = clamp(Math.round(value) || 0, 0, 1000);
         if (n === this.combo) return;
-        if (n > this.combo && n >= 2) this.counts.chainSteps++;
-        if (n === 0 && this.peak >= 3) this.counts.releases++;
+        if (n > this.combo && n >= 2) {
+            this.counts.chainSteps++;
+            // Each link spins up a whirlwind beside the card, on alternate sides, stronger each time.
+            this.burstSide = -this.burstSide;
+            this.whirlwind(this.burstSide, n - 1, this.lastRgb);
+        }
+        if (n === 0 && this.peak >= 3) {
+            this.counts.releases++;
+            this.exhale(this.peak);
+        }
         this.combo = n;
         this.peak = n === 0 ? 0 : Math.max(this.peak, n);
     }
 
     onB2B(value) {
         const n = clamp(Math.round(value) || 0, 0, 4);
-        if (n > this.b2b) this.counts.b2bSteps++;
+        if (n > this.b2b) {
+            this.counts.b2bSteps++;
+            this.riverGlints(n);
+        }
         this.b2b = n;
     }
 
@@ -658,8 +1025,9 @@ export class SpringWorld {
         if (up && !silent) {
             this.counts.levelUps++;
             this.levelUpAt = time;
-            // The day steps on, and cranes pass over on their way north.
+            // The day steps on, cranes pass over on their way north, and willow down drifts over.
             this.flights?.launch('crane', time);
+            this.downDrift();
         }
     }
 
@@ -728,6 +1096,18 @@ export class SpringWorld {
         u.time.value = time;
         u.wind.value.set(time * 6.5, time * -2.2);
         u.gust.value = 1 + 0.1 * Math.min(this.combo, 6);
+
+        // ── The air: a chain stirs it (it eases in and settles slowly), a perfect clear stills it ──
+        const stirAsk = clamp((this.combo - 1) / (AIR_MOTION.fullChain - 1), 0, 1);
+        this.stir += (stirAsk - this.stir) * approach(stirAsk > this.stir ? 1.2 : 0.3, dt);
+        const stillAge = time - this.perfectAt;
+        const still = stillAge < 0 ? 0
+            : smooth(0, STILL.rise, stillAge) * (1 - smooth(STILL.hold, STILL.fall, stillAge));
+        const pace = this.reducedMotion ? AIR_MOTION.reduced : 1;
+        this.airClock += dt * (1 + AIR_MOTION.hurry * this.stir) * (1 - 0.85 * still) * pace;
+        this.airGyre += dt * this.stir * AIR_MOTION.gyre * pace;
+        u.air.value.set(this.airClock, this.airGyre, this.stir, still);
+        u.airWave.value.set(this.airWaveAt, this.airWavePower, AIR_MOTION.waveSpeed, 0);
 
         // ── The spring flood: each link of a chain lifts the river; it falls back after ──
         const link = Math.max(0, this.combo - 1);
@@ -847,6 +1227,7 @@ export class SpringWorld {
             flush: this.u.flush.value,
             whirlAge: this.u.whirl.value.y > 0 ? this.time - this.u.whirl.value.x : null,
             floes: this.floes?.live ?? 0,
+            air: { clock: this.airClock, gyre: this.airGyre, stir: this.stir },
             // The woods' impostor atlas: kept (every tree drawn into it), and the bakes it took.
             woods: this.impostors ? {
                 baked: this.impostors.ready, failed: this.impostors.failed === true, attempts: this.impostors.attempts,

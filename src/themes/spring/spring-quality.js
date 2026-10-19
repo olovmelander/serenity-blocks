@@ -20,7 +20,9 @@
  *                 of the modelled trees (spring-impostors.js)
  *   impostorCell  the impostor atlas's texels across a tree (its height is half again)
  *   bankRocks     boulders along the banks; slabs granite slabs round the knoll's shoulder
- *   motes         spray and dew glints in the air at once
+ *   motes         what gameplay throws into the air at once: spray, dew, pollen in a piece's colour,
+ *                 seed down, whirls (a ring: the oldest is reused)
+ *   air           the air's own motes: willow down and pollen drifting on the breeze (spring-air.js)
  *   mist          puffs of the fall's mist and the ledges' spray
  *   floes         ice floes a four-line clear can send down the river at once
  *   life          birds over the valley
@@ -53,7 +55,8 @@ export const QUALITY = Object.freeze({
         impostorCell: 128,
         bankRocks: 12,
         slabs: 4,
-        motes: 256,
+        motes: 384,
+        air: 320,
         mist: 120,
         floes: 16,
         life: 6,
@@ -83,7 +86,8 @@ export const QUALITY = Object.freeze({
         impostorCell: 160,
         bankRocks: 20,
         slabs: 6,
-        motes: 512,
+        motes: 640,
+        air: 600,
         mist: 180,
         floes: 24,
         life: 10,
@@ -113,7 +117,8 @@ export const QUALITY = Object.freeze({
         impostorCell: 192,
         bankRocks: 28,
         slabs: 8,
-        motes: 768,
+        motes: 896,
+        air: 900,
         mist: 260,
         floes: 32,
         life: 16,
@@ -143,7 +148,8 @@ export const QUALITY = Object.freeze({
         impostorCell: 256,
         bankRocks: 36,
         slabs: 10,
-        motes: 1024,
+        motes: 1280,
+        air: 1300,
         mist: 360,
         floes: 40,
         life: 22,
@@ -173,7 +179,8 @@ export const QUALITY = Object.freeze({
         impostorCell: 320,
         bankRocks: 44,
         slabs: 12,
-        motes: 1536,
+        motes: 1792,
+        air: 1800,
         mist: 480,
         floes: 48,
         life: 28,
@@ -203,7 +210,8 @@ export const QUALITY = Object.freeze({
         impostorCell: 384,
         bankRocks: 52,
         slabs: 14,
-        motes: 2048,
+        motes: 2304,
+        air: 2400,
         mist: 600,
         floes: 56,
         life: 34,
