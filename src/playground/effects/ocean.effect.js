@@ -21,6 +21,17 @@
  *                            color=<hex>, eventLevel=<n> for levelUp); `break` ends the held combo
  *   pass=turtle|manta|whale|whaleFar   send for one of the large animals...
  *   passAge=<s>              ...and show it <s> seconds into its pass
+ *   visit=humpback|humpbackRise|blueWhale|whaleShark|manta|mantaLoop|eagleRays|turtle|turtleRise|
+ *         hammerheads|dolphins|sunfish   one of the sea's own visits (ocean-visits.js ACTS)...
+ *   visitK=<0..1>            ...this far through its crossing (default 0.5), or
+ *   visitAge=<s>             ...this many seconds in; visitSide=1|-1 which side it comes from;
+ *                            with visit= the sea sends nobody else unless visits=1
+ *   visitSeed=<n>            which schedule of the sea's own visits (default 1)
+ *   visits=0|1               the sea's own visits off or on
+ *   follow=humpback|blueWhale|dolphin|whaleShark|hammerhead|manta|eagleRay|turtle|sunfish
+ *                            model review: from the rest eye, turn to that kind's first live animal
+ *                            (followIndex=<n> for another) and fit the lens to it (followFit=<x>
+ *                            its length across the frame, default 1.5)
  *   demo=1                   live only: play a looping gameplay script
  *   parts=surface,seabed,... draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
@@ -126,10 +137,13 @@ export function create({
     const saved = {
         fov: camera.fov, near: camera.near, far: camera.far, toneMapping: renderer.toneMapping,
     };
+    const visitSeed = Math.max(1, Math.round(num(params, 'visitSeed', 1)));
     const world = new OceanWorld({
-        scene, quality, capture: true, renderer,
+        scene, quality, capture: true, renderer, visitSeed,
     }).build();
     world.bindCamera(camera);
+    const visitName = params.get('visit');
+    if (visitName || params.has('visits')) world.setVisits(params.get('visits') === '1');
     world.setReducedMotion(params.get('reduce') === '1');
     // A capture that names its level (or its place on the wheel) wants that hour, not that hour
     // plus however long `t` is.
@@ -152,6 +166,8 @@ export function create({
 
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
+    const followKind = params.get('follow');
+    const followIndex = Math.max(0, Math.round(num(params, 'followIndex', 0)));
     const size = new THREE.Vector2(1, 1);
     const syncViewport = () => {
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
@@ -175,6 +191,17 @@ export function create({
     const frame = (time, delta) => {
         world.updateCamera(camera, sim(time, delta));
         world.update(sim(time, delta), camera);
+        // Model review: from the rest eye, turn to the first live animal of a kind and fit the lens
+        // to it (the water between is the game's own).
+        const there = followKind && world.giants ? world.giants.where(followKind, followIndex) : null;
+        if (there) {
+            const dist = Math.hypot(there.x - camera.position.x, there.y - camera.position.y, there.z - camera.position.z);
+            camera.lookAt(there.x, there.y, there.z);
+            const span = there.metres * num(params, 'followFit', 1.5);
+            camera.fov = Math.max(2, Math.min(60, (2 * Math.atan((span * 0.5) / camera.aspect / Math.max(dist, 0.1)) * 180) / Math.PI));
+            camera.updateProjectionMatrix();
+            camera.updateMatrixWorld();
+        }
         if (iconPose) {
             camera.fov = num(params, 'iconFov', 34);
             camera.position.x += num(params, 'iconX', 0);
@@ -224,6 +251,16 @@ export function create({
         const lead = Math.max((eventName ? eventAge : 0) + 9 + warmLocks * 0.5, passName ? passAge + 1 : 0);
         const start = Math.max(0, time - lead);
         world.seek(start);
+        if (visitName) {
+            world.extraVisits.length = 0;
+            const visit = world.addVisit(visitName, 0, visitSeed, num(params, 'visitSide', 1) < 0 ? -1 : 1);
+            if (visit) {
+                const age = params.has('visitAge') ? num(params, 'visitAge', 0) : num(params, 'visitK', 0.5) * visit.seconds;
+                const span = visit.end - visit.start;
+                visit.start = time - age;
+                visit.end = visit.start + span;
+            }
+        }
         if (level > 1) world.levelUp(level, { silent: true });
         if (params.has('hour')) world.holdHour(num(params, 'hour', 0));
         frame(start, 0);
@@ -297,6 +334,13 @@ export function create({
     };
 
     let frames = 0;
+    let lastSeek = null;
+    const draw = () => {
+        world.paint(renderer);
+        if (post) post.render();
+        else renderer.render(scene, camera);
+        frames += 1;
+    };
     return {
         cameraRadius: 1,
         camera(time, cam) {
@@ -308,13 +352,18 @@ export function create({
             pushPost(time);
         },
         seek(time) {
+            lastSeek = time;
             seekTo(time);
         },
         render() {
-            world.paint(renderer);
-            if (post) post.render();
-            else renderer.render(scene, camera);
-            frames += 1;
+            draw();
+        },
+        async renderAsync() {
+            // A capture shows the large animals: wait for their bodies (but not for long), then
+            // play the frame again with them in the water.
+            await Promise.race([world.creaturesReady, new Promise((resolve) => { setTimeout(resolve, 6000); })]);
+            if (lastSeek !== null) seekTo(lastSeek);
+            for (let i = 0; i < 3; i++) draw();
         },
         resize() {
             syncViewport();

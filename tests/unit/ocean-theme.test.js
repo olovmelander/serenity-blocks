@@ -178,6 +178,8 @@ vi.mock('./ocean-post.js', () => mocks.postModule);
 vi.mock('../../src/themes/ocean/ocean-core.js', () => mocks.coreModule);
 // The first visit's bakes go to a worker; this file runs without one, so nothing is baked.
 vi.mock('../../src/themes/ocean/ocean-bakes.js', () => ({ oceanBakes: () => Promise.resolve({ viaWorker: false, baked: 0, cached: 0 }) }));
+// The large animals' bodies are a file this file does not fetch: the (mocked) world goes without.
+vi.mock('../../src/themes/ocean/ocean-creatures.js', () => ({ loadCreatures: () => Promise.resolve(null) }));
 vi.mock('./ocean-core.js', () => mocks.coreModule);
 // The viewport broadcaster keeps the first window it saw; every test here stubs a new one.
 vi.mock('../../src/utils/viewport.js', async (importOriginal) => ({
@@ -394,9 +396,12 @@ describe('Ocean theme: one node renderer on both backends', () => {
         expect(called('passThrough')).toEqual([...mocks.PASS_THROUGH_CONTRACT].sort());
         // The optional call is the only one made through `?.()`.
         expect([...source.matchAll(/\bworld\??\.(\w+)\?\.\(/g)].map((m) => m[1])).toEqual(mocks.WORLD_OPTIONAL);
-        // Nothing is loaded (the light pattern is painted in one place), and of the rig only the
+        // One file is loaded, the large animals' bodies, and only through their loader (the theme
+        // fetches nothing itself); the light pattern is painted in one place; of the rig only the
         // clip planes are read.
-        expect(source).not.toMatch(/\.prepare\(|GLTFLoader|\.glb\b|fetch\(/);
+        expect(source).not.toMatch(/\.prepare\(|GLTFLoader|fetch\(/);
+        expect(imported('creatures')).toEqual(['loadCreatures']);
+        expect(source.match(/\bloadCreatures\(/g)).toHaveLength(1);
         expect(source.match(/\.paint\(/g)).toHaveLength(1);
         const rigFields = [...source.matchAll(/\bREST_RIG\.(\w+)/g)].map((m) => m[1]);
         expect([...new Set(rigFields)].sort()).toEqual(['far', 'near']);
@@ -521,12 +526,16 @@ describe('Ocean theme: one node renderer on both backends', () => {
         // The canvas only receives the output quad: the post stack's scene pass owns depth.
         expect(theme.renderer.options).toMatchObject({ antialias: false, depth: false, alpha: false });
 
-        // One world, built from this scene, this renderer and this tier and nothing else; live.
+        // One world, built from this scene, this renderer and this tier, the large animals' bodies
+        // (none here: the loader is mocked) and the visitors' schedule (a first build has none to
+        // hand on, so the world draws its own); live.
         expect(mocks.worlds).toHaveLength(1);
         const [{ world, params }] = mocks.worlds;
         expect(theme.world).toBe(world);
         expect(world).toBeInstanceOf(mocks.worldModule.OceanWorld);
-        expect(Object.keys(params).sort()).toEqual(['capture', 'quality', 'renderer', 'scene']);
+        expect(Object.keys(params).sort()).toEqual(['capture', 'creatures', 'quality', 'renderer', 'scene', 'visitSeed']);
+        expect(params.creatures).toBeNull();
+        expect(params.visitSeed).toBeUndefined();
         expect(params.scene).toBe(theme.scene);
         expect(params.scene).toBeInstanceOf(THREE.Scene);
         expect(params.renderer).toBe(theme.renderer);
