@@ -146,6 +146,10 @@ the motes. The air march runs from Medium up; bloom from Medium up; MSAA from Hi
   hours and back to the storm break.
 - `npm run build` (boot closure OK); `npm run lint:ci` 543 errors against a baseline of 574.
 
+The 130 fps above was at High. At Extreme the build held about 80 fps (11 ms of GPU a frame,
+nearly all of it the barley); the performance pass of 2026-10-19 brought Extreme to the display's
+full rate: [GRAINFIELDS_PERF_2026-10.md](GRAINFIELDS_PERF_2026-10.md).
+
 Open: no perf-lane reading; no physical phone; the icon is my pick (the golden hour through the
 gate); the gaps nearest the sun still read a little cut-out; the horse's trunk is 1.62 m, not 2.0 m
 (a Dosanko is barely longer than it is tall; 2.0 m looked stretched).
