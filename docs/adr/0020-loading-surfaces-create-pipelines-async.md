@@ -48,9 +48,15 @@ cover, and batched `compileAsync` before its render loop starts.
    while the surface covers it. Sessions: `ThemeManager.prewarmTheme` (kept after parking until
    the theme is idle), `ThemeManager.beginLoadingSurface()` for mode entry (kept past the overlay
    until the theme is idle), and the intro renderer until its pipelines settle.
-   **Exempt, created synchronously:** PMREM / cube bakes (a skipped draw would bake black) and
-   the final full-screen quad drawn to the canvas (while pending the whole frame is black, and it
-   lands last on the async queue). Every post effect that is not its own pass is inlined into that
+   **Exempt, created synchronously:** PMREM / cube bakes (a skipped draw would bake black), a
+   theme's own one-shot bake that marks its target `isOneShotBake` (Spring's impostor atlas of its
+   woods, 2026-10-19: its skipped draws kept an empty atlas, and the far woods were missing for
+   the session; the build budget leaves these targets alone too) and the final full-screen quad
+   drawn to the canvas (while pending the whole frame is black, and it lands last on the async
+   queue). A bake warmed with `compileAsync` must give the renderer the target's `depth` and
+   `stencil` for the call: three takes them from the renderer there and from the target in a
+   render, so on a theme renderer made with `depth: false` the warm compiles other pipelines than
+   the bake draws with. Every post effect that is not its own pass is inlined into that
    quad, so a heavy grade/vignette chain is one short synchronous compile (measured 60-120 ms).
    **Mode entry keeps its loading feedback visible**, including cold `start()` calls. The shared
    mode wordmarks, aurora and loading lights animate with transform/opacity; cold builds no longer

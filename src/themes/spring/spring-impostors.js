@@ -53,6 +53,11 @@ export const IMPOSTOR = Object.freeze({
 /** The colour the atlas is cleared to where no tree stands (its mips bleed toward it). */
 const CLEAR_ALBEDO = new THREE.Color(0.18, 0.24, 0.13);
 const CLEAR_NORMAL = new THREE.Color(0.5, 0.5, 1.0);
+/**
+ * How many frames a bake some of whose trees were not drawn is drawn again before the atlas keeps
+ * what it has (ImpostorAtlas.draw).
+ */
+export const BAKE_ATTEMPTS = 600;
 
 /** How wide and tall a model stands (m): its height, its crown's widest reach from the trunk. */
 function modelExtent(asset) {
@@ -111,6 +116,9 @@ export class ImpostorAtlas {
         this.u = u;
         this.layout = impostorCells(assets);
         this.baked = false;
+        /** The draws a whole pass makes (one a mesh of the bake's trees), and the bakes tried. */
+        this.drawsPerPass = 0;
+        this.attempts = 0;
         const { columns, rows } = this.layout;
         this.size = [Math.max(1, columns) * cellPixels, Math.round(rows * cellPixels * IMPOSTOR.aspect)];
         const target = () => {
@@ -125,6 +133,10 @@ export class ImpostorAtlas {
                 depthBuffer: true,
             });
             rt.texture.anisotropy = 4;
+            // Drawn once and kept: a draw left for later (a pipeline still compiling, a build over a
+            // switch's budget) would leave a hole in the woods for the whole session, so the app's
+            // async pipelines and build budget leave these targets alone (async-render-pipelines.js).
+            rt.isOneShotBake = true;
             return rt;
         };
         this.albedoTarget = target();
@@ -155,6 +167,10 @@ export class ImpostorAtlas {
                 bake: { pass: this.pass },
             }).buildPlacements(placements);
             this.scene.add(this.forest.group);
+            // A whole pass draws every one of the bake's meshes once.
+            this.forest.group.traverse((object) => {
+                if (object.isMesh && object.visible && (object.count ?? 1) > 0) this.drawsPerPass += 1;
+            });
         }
     }
 
@@ -164,19 +180,30 @@ export class ImpostorAtlas {
 
     /**
      * Draw the atlas (once): the materials compiled first where the backend can do it off the
-     * main thread, then the albedo pass and the normals pass. The bake's trees are let go after.
+     * main thread, then the albedo pass and the normals pass (again on later frames until every
+     * tree was drawn, see draw). The bake's trees are let go after.
      */
     async bake(renderer) {
         if (this.baked || !this.forest) return this.baked;
         if (renderer.compileAsync) {
-            // compileAsync reads the target as it starts: point it at the atlas only for that.
+            // compileAsync reads the target as it starts: point it at the atlas only for that. It
+            // takes the depth and stencil from the renderer, where a render takes them from the
+            // target: on the theme's renderer (no depth of its own) it would compile pipelines
+            // without the atlas's depth, the bake would need others, and those are left for later
+            // under the app's async pipelines (r186, Renderer.js:953 against :1843). So the
+            // renderer has the target's for the call, too.
             const previous = renderer.getRenderTarget();
+            const { depth, stencil } = renderer;
             let compiling;
             renderer.setRenderTarget(this.albedoTarget);
+            renderer.depth = this.albedoTarget.depthBuffer;
+            renderer.stencil = this.albedoTarget.stencilBuffer;
             try {
                 compiling = renderer.compileAsync(this.scene, this.camera);
             } finally {
                 renderer.setRenderTarget(previous);
+                renderer.depth = depth;
+                renderer.stencil = stencil;
             }
             await compiling;
         }
@@ -185,28 +212,47 @@ export class ImpostorAtlas {
         return this.baked;
     }
 
-    /** The bake itself, synchronously (the world's first prerender if nobody baked before). */
+    /**
+     * The bake itself, synchronously (the world's first prerender if nobody baked before). Each
+     * pass counts the draws it made: a bake some of whose trees were not drawn is not kept but
+     * drawn again on the next frame's prerender (its trees stay), so no far tree is a hole in the
+     * woods. After BAKE_ATTEMPTS it keeps what it has. True once the atlas is kept.
+     */
     draw(renderer) {
-        if (this.baked || !this.forest) return;
+        if (this.baked || !this.forest) return this.baked;
         const previous = renderer.getRenderTarget();
         const clearColour = renderer.getClearColor(new THREE.Color());
         const clearAlpha = renderer.getClearAlpha();
-        renderer.setRenderTarget(this.albedoTarget);
-        renderer.setClearColor(CLEAR_ALBEDO, 0);
-        renderer.clear();
-        this.pass.value = 0;
-        renderer.render(this.scene, this.camera);
-        renderer.setRenderTarget(this.normalTarget);
-        renderer.setClearColor(CLEAR_NORMAL, 0);
-        renderer.clear();
-        this.pass.value = 1;
-        renderer.render(this.scene, this.camera);
+        const albedo = this.drawPass(renderer, this.albedoTarget, CLEAR_ALBEDO, 0);
+        const normals = this.drawPass(renderer, this.normalTarget, CLEAR_NORMAL, 1);
         renderer.setRenderTarget(previous);
         renderer.setClearColor(clearColour, clearAlpha);
+        this.attempts += 1;
+        // (A renderer that counts no draws cannot be checked: its bake is taken as whole.)
+        const whole = albedo === null || normals === null
+            || (albedo >= this.drawsPerPass && normals >= this.drawsPerPass);
+        if (!whole) {
+            if (this.attempts < BAKE_ATTEMPTS) return false;
+            console.warn(`[Spring] The woods' impostor atlas kept a bake missing some of its trees after ${
+                this.attempts} tries (${albedo} and ${normals} of ${this.drawsPerPass} draws).`);
+        }
         this.baked = true;
         this.scene.remove(this.forest.group);
         this.forest.dispose();
         this.forest = null;
+        return true;
+    }
+
+    /** One pass of the bake into `target`: the draws it made, or null where none are counted. */
+    drawPass(renderer, target, clear, pass) {
+        const counter = renderer.info?.render;
+        const before = Number.isFinite(counter?.drawCalls) ? counter.drawCalls : null;
+        renderer.setRenderTarget(target);
+        renderer.setClearColor(clear, 0);
+        renderer.clear();
+        this.pass.value = pass;
+        renderer.render(this.scene, this.camera);
+        return before === null ? null : counter.drawCalls - before;
     }
 
     dispose() {
