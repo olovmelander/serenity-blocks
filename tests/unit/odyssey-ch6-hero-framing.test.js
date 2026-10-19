@@ -32,8 +32,14 @@ import {
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
     PLANET_SEAM_LOCK,
+    resolveOmenHandoffWindow,
     SUMMIT_EARTH_REVEAL,
 } from '../../src/rendering/odyssey/chapter-environments/cosmic-expanse.js';
+import { OMEN_SHADOW_RADIUS } from '../../src/rendering/odyssey/chapter-environments/cosmic-expanse.tsl.js';
+import {
+    GARGANTUA_LOCK,
+    resolveGargantuaLockPosition,
+} from '../../src/rendering/odyssey/chapter-environments/black-hole-transcendence.tsl.js';
 
 // Chapters 5-7 run the BEYOND act camera language (followDistance 42, fovBase 66).
 const BEYOND = ODYSSEY_CAMERA_PROFILES[ODYSSEY_ACTS.BEYOND];
@@ -96,10 +102,16 @@ function project(frame, worldPoint, aspect) {
     };
 }
 
-/** Drive the env exactly as the manager would and read back the hero world positions. */
-function heroesAt(env, camPos, progress) {
-    const probe = new THREE.Object3D();
-    probe.position.copy(camPos);
+/**
+ * Drive the env exactly as the manager would and read back the hero world positions. `eye` is a
+ * position (a bare probe: no view direction, so no camera-seated poses) or a real camera.
+ */
+function heroesAt(env, eye, progress) {
+    let probe = eye;
+    if (!eye?.isCamera) {
+        probe = new THREE.Object3D();
+        probe.position.copy(eye);
+    }
     updateCosmicExpanseEnvironment(env, 0.016, 1, probe, progress);
     env.updateMatrixWorld(true);
     return {
@@ -129,6 +141,36 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         samples.push(ch6Start + (ch6End - ch6Start) * (i / 12));
     }
 
+    // A real perspective camera on the path at `progress`, or — `orbEye` — the same eye moved off
+    // the rail and turned away, the way an orb close-up moves it.
+    const liveCamera = (progress, orbEye = false) => {
+        const frame = frameAt(controller, chapterPositions, 6, progress);
+        const cam = new THREE.PerspectiveCamera(BEYOND.fovBase, 16 / 9, 0.1, 20000);
+        cam.position.copy(frame.camPos);
+        cam.up.copy(frame.cameraUp);
+        if (orbEye) {
+            cam.position.add(new THREE.Vector3(14, -6, 9));
+            cam.lookAt(frame.lookTarget.clone().add(new THREE.Vector3(-30, -12, 25)));
+        } else {
+            cam.lookAt(frame.lookTarget);
+        }
+        cam.updateProjectionMatrix();
+        cam.updateMatrixWorld(true);
+        return { frame, cam };
+    };
+    const omenAt = (progress, orbEye = false) => {
+        const { frame, cam } = liveCamera(progress, orbEye);
+        updateCosmicExpanseEnvironment(env, 0.016, 1, cam, progress);
+        env.updateMatrixWorld(true);
+        const { blackHole } = env.userData;
+        const world = blackHole.getWorldPosition(new THREE.Vector3());
+        const r = project(frame, world, 16 / 9);
+        const deg = THREE.MathUtils.radToDeg(Math.atan2(OMEN_SHADOW_RADIUS * blackHole.scale.x, r.dist));
+        return {
+            ...r, world, cam, scale: blackHole.scale.x, deg,
+        };
+    };
+
     it('keeps all three heroes inside the frame for the whole chapter', () => {
         samples.forEach((progress) => {
             const frame = frameAt(controller, chapterPositions, 6, progress);
@@ -146,23 +188,26 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         });
     });
 
-    it('holds the authored thirds at entry, then DIVES the black hole onto the exit axis', () => {
-        // Entry composition: black hole upper-LEFT (the destination omen / north
-        // star), gas giant lower-CENTRE-right, galaxy upper-RIGHT.
+    it('sets the black hole at the end of the rail from the first frame, and flies into it', () => {
+        // Entry composition (2026-10-19): the omen hangs on the rail's own line ahead
+        // (OMEN_SPINE_ANCHOR), so from the first frame it sits where the path leads, near the
+        // frame's centre; the gas giant lower-right of the rail, the galaxy a far jewel upper-LEFT
+        // (the level card owns the right edge).
         {
-            const frame = frameAt(controller, chapterPositions, 6, ch6Start);
-            const heroes = heroesAt(env, frame.camPos, ch6Start);
+            // A real camera: the giant is still on the seam's screen seat here.
+            const { frame, cam } = liveCamera(ch6Start);
+            const heroes = heroesAt(env, cam, ch6Start);
             const bh = project(frame, heroes.blackHole, 16 / 9);
             const planet = project(frame, heroes.heroPlanet, 16 / 9);
             const galaxy = project(frame, heroes.galaxy, 16 / 9);
-            expect(bh.x).toBeLessThan(-0.1);
-            expect(bh.y).toBeGreaterThan(0.05);
-            expect(planet.x).toBeGreaterThan(0);
+            expect(Math.abs(bh.x), `entry ndcX ${bh.x.toFixed(2)}`).toBeLessThan(0.25);
+            expect(Math.abs(bh.y), `entry ndcY ${bh.y.toFixed(2)}`).toBeLessThan(0.25);
+            expect(planet.x).toBeGreaterThan(0.15);
             expect(planet.y).toBeLessThan(0);
-            expect(galaxy.x).toBeGreaterThan(0.25);
-            expect(galaxy.y).toBeGreaterThan(0.05);
+            expect(galaxy.x).toBeLessThan(-0.25);
+            expect(galaxy.y).toBeGreaterThan(0.25);
             expect(Math.abs(bh.x - planet.x)).toBeGreaterThan(0.3);
-            expect(Math.abs(planet.x - galaxy.x)).toBeGreaterThan(0.3);
+            expect(Math.abs(planet.x - galaxy.x)).toBeGreaterThan(0.6);
         }
         // Exit (owner direction 2026-08-15): the rail flies STRAIGHT INTO the black
         // hole — it IS the transition into chapter 7. The hole sits on the flight
@@ -176,10 +221,12 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
             expect(Math.abs(bh.x), `dive ndcX ${bh.x.toFixed(2)}`).toBeLessThan(0.2);
             expect(Math.abs(bh.y), `dive ndcY ${bh.y.toFixed(2)}`).toBeLessThan(0.25);
             expect(bh.offAxis, `dive off-axis ${bh.offAxis.toFixed(1)} deg`).toBeLessThan(10);
+            // The giant hangs LOW, below the dive line (2026-10-19), so its clearance is 2-D.
             expect(
-                Math.abs(planet.x - bh.x),
-                `planet ${planet.x.toFixed(2)} vs bh ${bh.x.toFixed(2)}`,
-            ).toBeGreaterThan(0.2);
+                Math.hypot(planet.x - bh.x, planet.y - bh.y),
+                `planet ${planet.x.toFixed(2)},${planet.y.toFixed(2)} vs bh ${bh.x.toFixed(2)},${bh.y.toFixed(2)}`,
+            ).toBeGreaterThan(0.3);
+            expect(planet.y).toBeLessThan(bh.y - 0.2);
             expect(
                 Math.abs(galaxy.x - bh.x),
                 `galaxy ${galaxy.x.toFixed(2)} vs bh ${bh.x.toFixed(2)}`,
@@ -257,5 +304,93 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         }
         // The authored entry scale is unchanged (masterpiece pass x1.35).
         expect(APPROACH.planetA.s).toBeCloseTo((34 / 28) * 1.35, 6);
+    });
+
+    it('hangs the black hole at ONE place on the spine, then locks it onto chapter 7 just before the seam', () => {
+        // Owner 2026-10-19: "i want the black hole for example to be locked on the spine path
+        // instead pf drifting towards it and then lock just before we go into the black hole and
+        // chapter 7". It used to march across a quarter of the frame on the camera's height and
+        // grow 3.9 -> 8.2 deg in the last 1 % of the path as it glided onto the lock.
+        const handoff = resolveOmenHandoffWindow(chapterPositions);
+        const first = omenAt(ch6Start);
+        let prevDeg = 0;
+        for (let p = ch6Start; p < handoff.start; p += 0.003) {
+            const r = omenAt(p);
+            const where = `@p=${p.toFixed(4)}`;
+            // It never moves — neither with travel nor when the eye leaves the rail.
+            expect(r.world.distanceTo(first.world), `moved ${where}`).toBeLessThan(1e-6);
+            expect(omenAt(p, true).world.distanceTo(first.world), `orb eye moved it ${where}`).toBeLessThan(1e-6);
+            // It only grows, with progress, and stays ahead and in frame.
+            expect(r.deg, `shrank ${where}`).toBeGreaterThanOrEqual(prevDeg - 1e-9);
+            expect(r.behind).toBe(false);
+            expect(Math.abs(r.x)).toBeLessThan(0.3);
+            expect(Math.abs(r.y)).toBeLessThan(0.35);
+            prevDeg = r.deg;
+        }
+        // On the path camera it is already where ch7's lock holds the hole, so the lock that
+        // follows is a settle, not a move.
+        const atStart = omenAt(handoff.start);
+        const lockAtStart = project(
+            frameAt(controller, chapterPositions, 6, handoff.start),
+            resolveGargantuaLockPosition(atStart.cam, new THREE.Vector3()),
+            16 / 9,
+        );
+        expect(Math.hypot(atStart.x - lockAtStart.x, atStart.y - lockAtStart.y)).toBeLessThan(0.03);
+        // At the hand-over it IS the lock, at ch7's size.
+        const atEnd = omenAt(handoff.end);
+        const lockAtEnd = resolveGargantuaLockPosition(atEnd.cam, new THREE.Vector3());
+        expect(atEnd.world.distanceTo(lockAtEnd)).toBeLessThan(1e-3);
+        expect(atEnd.scale).toBeCloseTo(GARGANTUA_LOCK.shadowRadius / OMEN_SHADOW_RADIUS, 6);
+        // And it came from small and far: the north star grows ~2.7x across the chapter.
+        expect(atEnd.deg / first.deg).toBeGreaterThan(2.4);
+        expect(first.deg).toBeGreaterThan(2);
+    });
+
+    it('leaves the gas giant where the rail sees it when an orb close-up takes the eye', () => {
+        // The seam's screen seat is taken on the RAIL camera the board publishes
+        // (camera.userData.railCamera): an eye off the rail no longer drags the giant into its
+        // own view (it used to be glued into every close-up, and half-glued across the hand-over).
+        const cpAll = getActiveOdysseyChapterPositions();
+        const spaceSpan = cpAll[6] - cpAll[5];
+        const to = cpAll[5] + spaceSpan * PLANET_SEAM_LOCK.handoverTo;
+        for (let p = cpAll[5] - 0.01; p <= to + 0.004; p += 0.004) {
+            const rail = liveCamera(p).cam;
+            updateCosmicExpanseEnvironment(env, 0.016, 1, rail, p);
+            env.updateMatrixWorld(true);
+            const onRail = env.userData.heroPlanet.getWorldPosition(new THREE.Vector3());
+            const orb = liveCamera(p, true).cam;
+            orb.userData.railCamera = rail;
+            updateCosmicExpanseEnvironment(env, 0.016, 1, orb, p);
+            env.updateMatrixWorld(true);
+            const offRail = env.userData.heroPlanet.getWorldPosition(new THREE.Vector3());
+            expect(offRail.distanceTo(onRail), `@p=${p.toFixed(4)}`).toBeLessThan(1e-6);
+        }
+    });
+
+    it('gives the gas giant and the galaxy one place each once the seam lets the giant go', () => {
+        const from = ch6Start + (ch6End - ch6Start) * PLANET_SEAM_LOCK.handoverTo;
+        const placesAt = (progress, orbEye) => {
+            const { cam } = liveCamera(progress, orbEye);
+            updateCosmicExpanseEnvironment(env, 0.016, 1, cam, progress);
+            env.updateMatrixWorld(true);
+            const { heroPlanet, galaxy } = env.userData;
+            return {
+                planet: heroPlanet.getWorldPosition(new THREE.Vector3()),
+                planetScale: heroPlanet.scale.x,
+                galaxy: galaxy.getWorldPosition(new THREE.Vector3()),
+                galaxyTurn: galaxy.quaternion.clone(),
+            };
+        };
+        const ref = placesAt(from, false);
+        for (let p = from; p <= ch6End; p += 0.004) {
+            [false, true].forEach((orbEye) => {
+                const r = placesAt(p, orbEye);
+                const where = `@p=${p.toFixed(4)}${orbEye ? ' (orb eye)' : ''}`;
+                expect(r.planet.distanceTo(ref.planet), `giant moved ${where}`).toBeLessThan(1e-6);
+                expect(r.planetScale).toBeCloseTo(ref.planetScale, 9);
+                expect(r.galaxy.distanceTo(ref.galaxy), `galaxy moved ${where}`).toBeLessThan(1e-6);
+                expect(r.galaxyTurn.angleTo(ref.galaxyTurn), `galaxy turned ${where}`).toBeLessThan(1e-6);
+            });
+        }
     });
 });

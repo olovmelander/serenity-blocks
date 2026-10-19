@@ -49,12 +49,11 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
         expect(group.userData.heroPlanet.userData.planet.material.opacity).toBeGreaterThan(0.95);
     });
 
-    it('keeps the black hole ahead down the corridor and looming', () => {
+    it('keeps the black hole at one place ahead down the corridor, growing with progress', () => {
         const group = createCosmicExpanseEnvironment({ particleCount: 200 });
         const { blackHole } = group.userData;
         const { forward, origin } = group.userData.corridorFrame;
         const ahead = (v) => v.clone().sub(origin).dot(forward);
-        const range = (v) => v.distanceTo(origin);
 
         updateCosmicExpanseEnvironment(group, 0.016, 1.0, null, 0);
         const entry = blackHole.position.clone();
@@ -62,16 +61,13 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
 
         updateCosmicExpanseEnvironment(group, 0.016, 2.0, null, 1);
 
-        // The omen stays AHEAD of the camera down the corridor for the whole chapter and
-        // closes in. Deliberately not asserted along world +Y (as this test once did):
-        // chapter 6 climbs while its aim flattens 33 deg -> 15 deg, so a hero whose world
-        // Y rose with the camera would drift out of the top of frame. Screen placement is
-        // what matters and it is solved in APPROACH — the hole holds the upper-left third
-        // at ndc y +0.19 -> +0.42, guarded by the corridor test below.
+        // The omen stays AHEAD of the camera down the corridor for the whole chapter. Since
+        // 2026-10-19 it no longer marches (owner: "locked on the spine path instead of drifting
+        // towards it"): it hangs at ONE place on the rail's line (OMEN_SPINE_ANCHOR) and only
+        // grows — with progress, to ch7's size at the lock. Screen placement is guarded with the
+        // real camera in tests/unit/odyssey-ch6-hero-framing.test.js.
         expect(ahead(entry)).toBeGreaterThan(400);
-        expect(ahead(blackHole.position)).toBeGreaterThan(400);
-        expect(range(blackHole.position)).toBeLessThan(range(entry));
-        expect(blackHole.position.x).toBeGreaterThan(entry.x + 80);
+        expect(blackHole.position.distanceTo(entry)).toBeLessThan(1e-6);
         expect(blackHole.scale.x).toBeGreaterThan(entryScale * 2);
         expect(blackHole.scale.x).toBeGreaterThan(2.5);
     });
