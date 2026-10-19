@@ -112,8 +112,15 @@ import {
 // at the call site for why fading toward the CURRENT sky brightened the world instead.
 const ONE_WORLD_DEPARTURE_TARGET = new THREE.Color(0x05060f);
 // Chapters whose orb close-ups look along the rail (see _focusFramingFor), and how far off it.
-const ODYSSEY_FOCUS_ALONG_RAIL = new Set([6, 8]);
-const FOCUS_RAIL_YAW = THREE.MathUtils.degToRad(30);
+// `level`: how much of the rail's climb the close-up flattens out. Chapter 6 turns RIGHT of the
+// rail, further, and climbs with it (2026-10-19): its black hole hangs on the rail's own line
+// ahead, so a close-up turned left put it under the level card, and a levelled one cut it off at
+// the top of the frame; this way the rail runs from the orb up into the hole, with the giant low
+// on the left, clear of the orb's ring.
+const ODYSSEY_FOCUS_ALONG_RAIL = new Map([
+    [6, { yaw: THREE.MathUtils.degToRad(-40), level: 0 }],
+    [8, { yaw: THREE.MathUtils.degToRad(30), level: 0.6 }],
+]);
 
 // Dynamic-resolution (DRS) tuning. The odyssey board pins a static pixel ratio at
 // init/resize; here we wire the existing frame-time policy so render scale sheds under
@@ -2500,7 +2507,7 @@ export class OdysseyBoardController {
      * orbs from +z, so each close-up's backdrop was whatever lay to the orb's -z. In open space
      * (chapter 6) that was bare starfield for all fourteen orbs — the same picture fourteen
      * times — while the chapter's set pieces (the planet, the nebulae, the omen) are staged
-     * AHEAD along the rail. Those chapters look along the rail instead, turned 30 degrees off it
+     * AHEAD along the rail. Those chapters look along the rail instead, turned 30-40 degrees off it
      * so the camera does not sit inside the ribbon — chapter 8 too, where it looks down the
      * canyon at the Retrosun. `{ viewDir: null }` keeps the shared +z framing.
      * @returns {{viewDir: THREE.Vector3|null, up?: THREE.Vector3}} focusOnNode's options
@@ -2516,11 +2523,12 @@ export class OdysseyBoardController {
         const ahead = getOdysseyPathPointAt(Math.min(1, p + 0.004));
         const behind = getOdysseyPathPointAt(Math.max(0, p - 0.004));
         const along = new THREE.Vector3().subVectors(ahead, behind);
-        // Keep the close-up near level in that frame, whatever the rail's climb.
-        along.addScaledVector(up, -0.6 * along.dot(up));
+        const { yaw, level } = ODYSSEY_FOCUS_ALONG_RAIL.get(chapterId);
+        // Keep the close-up near level in that frame, whatever the rail's climb (by `level`).
+        along.addScaledVector(up, -level * along.dot(up));
         if (along.lengthSq() < 1e-8) return { viewDir: null };
         along.normalize();
-        return { viewDir: along.applyAxisAngle(up, FOCUS_RAIL_YAW).normalize(), up };
+        return { viewDir: along.applyAxisAngle(up, yaw).normalize(), up };
     }
 
     /**
@@ -2556,6 +2564,40 @@ export class OdysseyBoardController {
         hero.quaternion.copy(this._heroAnchor);
         hero.updateMatrixWorld(true);
         cam.userData.heroCamera = hero;
+    }
+
+    /**
+     * THE RAIL CAMERA (2026-10-19): where the follow camera stands at the rail's progress,
+     * whatever the eye is doing — an orb close-up, its swing in and out, free look. Chapter 6
+     * seats its gas giant on it across the 5->6 seam (a screen seat, so the climb's pitch-up does
+     * not slide it), so a close-up no longer drags the planet into its own view: it stays where
+     * the rail's view has it. Published on `camera.userData.railCamera` every journey frame.
+     * @private
+     */
+    _syncRailCamera(progress) {
+        const cam = this.camera;
+        if (!cam?.userData) return;
+        const controller = this.cameraController;
+        if (!controller?.computeFollowFrame || !Number.isFinite(progress)) {
+            cam.userData.railCamera = null;
+            return;
+        }
+        if (!this._railCamera) this._railCamera = cam.clone(false);
+        const rail = this._railCamera;
+        if (rail.fov !== cam.fov || rail.aspect !== cam.aspect || rail.near !== cam.near || rail.far !== cam.far) {
+            rail.fov = cam.fov;
+            rail.aspect = cam.aspect;
+            rail.near = cam.near;
+            rail.far = cam.far;
+            rail.updateProjectionMatrix();
+        }
+        // computeFollowFrame returns the controller's scratch vectors: used at once, never kept.
+        const frame = controller.computeFollowFrame(progress);
+        rail.position.copy(frame.camPos);
+        rail.up.copy(frame.normal);
+        rail.lookAt(frame.lookTarget);
+        rail.updateMatrixWorld(true);
+        cam.userData.railCamera = rail;
     }
 
     /**
@@ -4152,6 +4194,7 @@ export class OdysseyBoardController {
             }
 
             this._syncHeroCamera();
+            this._syncRailCamera(cameraProgress);
             // Time-driven uniform tick (animated material uniforms) — always 60Hz.
             this.environmentManager.update(
                 delta,
@@ -4208,6 +4251,14 @@ export class OdysseyBoardController {
         // target chapter is 7), matching the window where the BH env is on-screen and its
         // lensWorldPos is being maintained. The pipeline still smooths/decays the centre on
         // exit via its internal lerp + the per-frame _lensActive reset.
+        // Chapter 6's omen bends the sky as it nears (2026-10-19): set first, so at the 6->7 seam
+        // chapter 7's hero — the same spot there — has the last word on the lens centre.
+        const omenRelevant = this.lastActiveChapter === 6
+            || (blendState?.inSeam === true && (blendState.sourceChapter === 6 || blendState.targetChapter === 6));
+        const omenLens = omenRelevant && this.environmentManager?.environments?.get(6)?.group?.userData?.lensWorldPos;
+        if (omenLens?.lensStrength > 0 && this.postProcessingStack?.setLensTarget && this.cinematicJourneyActive) {
+            this.postProcessingStack.setLensTarget(omenLens);
+        }
         const bhRelevant = this.lastActiveChapter === 7
             || (blendState?.inSeam === true
                 && (blendState.sourceChapter === 7 || blendState.targetChapter === 7));
