@@ -5012,7 +5012,6 @@ async function bootstrap() {
 
         if (startupPipeline.snapshot().introStatus !== 'skipped') {
             startupPipeline.markIntroRunning({ mode: 'interactive' });
-            startupPipeline.armIntroSkipInput(() => introAnimation.titleRevealed);
             const waitForPipelineStep = startupPipeline.waitForStep;
 
             // AAA boot order: finish app init, load + warm the first gameplay theme while

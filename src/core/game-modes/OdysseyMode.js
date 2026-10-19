@@ -2789,6 +2789,27 @@ export class OdysseyMode extends BaseGameMode {
     _hideOdysseyUI() {
         this.closeOdysseyNavigator({ restoreBoardPreview: false });
         this.setOdysseyNavigatorButtonVisible(false);
+        this._releaseGameplaySurfaces();
+    }
+
+    /**
+     * Hand the shared gameplay surfaces back as the stylesheet shows them. _showOdysseyUI, the
+     * level entry and the return to the map hide them inline, and only a level's reveal shows
+     * them again, so leaving from the map left the board hidden and the theme layer at opacity 0
+     * for the next mode: Infinity played on a black screen that no theme switch could lift.
+     * @private
+     */
+    _releaseGameplaySurfaces() {
+        [
+            document.getElementById('single-player-container'),
+            document.getElementById('phaser-game-container'),
+            document.querySelector('.single-player-stats-bar'),
+            document.querySelector('.background-container'),
+        ].forEach((surface) => {
+            ['visibility', 'opacity', 'transform', 'transition'].forEach((property) => {
+                surface?.style.removeProperty(property);
+            });
+        });
     }
 
     /**
