@@ -571,9 +571,12 @@ export class SpringWorld {
         return Boolean(this.motes) && !this.reducedMotion && Boolean(this.ground);
     }
 
-    /** The ground's height at (x, z), or the knoll's when there is no ground yet. */
+    /** The surface's height at (x, z): the ground, or the river's where it runs (the knoll's with no ground). */
     floorAt(x, z) {
-        return this.ground ? groundHeight(this.ground, x, z) : EYE.y - 1.6;
+        if (!this.ground) return EYE.y - 1.6;
+        const ground = groundHeight(this.ground, x, z);
+        waterEdge(this.ground, x, z, this._edge);
+        return this._edge.edge < 0 ? Math.max(ground, this._edge.level + this.flood) : ground;
     }
 
     /**
@@ -717,14 +720,16 @@ export class SpringWorld {
         for (let i = 0; i < count; i++) {
             const down = r() < 0.3;
             const gold = r() < 0.3;
+            // A funnel: narrow at the foot, the circle widening as the mote climbs.
+            const rise = climb * (0.55 + r() * 0.9);
             this.motes.whirl({
                 x: g.x,
-                y: y + r() * 0.5,
+                y: y + r() * 0.3,
                 z: g.z,
-                radius: radius * (0.35 + r() * 0.9),
-                climb: climb * (0.55 + r() * 0.9),
+                radius: radius * (0.15 + r() * 0.3),
+                climb: rise,
                 turn: turn * (0.8 + r() * 0.4),
-                grow: 0.1 + r() * 0.12,
+                grow: rise * (0.3 + r() * 0.15),
                 born: this.time + r() * 0.9,
                 life: 3.2 + r() * 2.6,
                 size: (down ? 0.075 : 0.05) * (0.7 + r() * 0.6),

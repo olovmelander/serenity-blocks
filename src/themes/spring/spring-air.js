@@ -60,7 +60,8 @@ import { EVENT_ROWS, PATCHES, spHash21 } from './spring-tsl.js';
  *   down          the share of the motes that are willow down (the rest pollen)
  *   breeze        the breeze across the knoll (unit x, z): down the valley, toward the right
  *   gyres         the chain's two gyres (x, z, turn: +1 clockwise seen from above), either
- *                 side of the card over the knoll's edge, and how far their turning reaches (m)
+ *                 side of the card on the knoll's top short of its brow (beyond it a whirl's foot
+ *                 is hidden), and how far their turning reaches (m)
  */
 export const AIR = Object.freeze({
     near: 2.2,
@@ -72,8 +73,8 @@ export const AIR = Object.freeze({
     down: 0.3,
     breeze: Object.freeze([0.86, -0.51]),
     gyres: Object.freeze([
-        Object.freeze({ x: -6.1, z: -12.0, turn: 1 }),
-        Object.freeze({ x: 6.6, z: -13.4, turn: -1 }),
+        Object.freeze({ x: -4.6, z: -8.3, turn: 1 }),
+        Object.freeze({ x: 4.6, z: -8.3, turn: -1 }),
     ]),
     gyreReach: 9,
 });
