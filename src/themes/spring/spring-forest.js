@@ -65,6 +65,199 @@ const SPRUCES = ['spruce-grove-a', 'spruce-grove-b', 'spruce-grove-c'];
 const WEDGE = Object.freeze({ from: -66, to: 60 });
 const REACH = Object.freeze({ near: 14, far: 330, lod: 90 });
 
+/**
+ * The leaves' level of detail. A leaf of the weeping birch's sprays (six centimetres) is a fan
+ * of 18 triangles round its outline, and those sprays were most of the forest's triangles.
+ * From the knoll the nearest modelled tree stands seventy metres off and the nearest weeping
+ * birch eighty, where a leaf is a pixel or two across even in a 1600-pixel frame and its outline
+ * cannot show. Past `from` metres a tree's leaves are drawn from every `stride`-th point of their
+ * outline: the stalk, the tip and the two corners at the stalk, two triangles grown about the
+ * stalk to the leaf's own area, so the crown keeps every leaf, its placing, colouring and light.
+ * A spray's twig (a three-sided tube, millimetres thick) keeps its first, middle and last rings.
+ * Fans of fewer than `minTriangles` (the grove birches' strand leaves, four), open strips (the
+ * spruces' shoots, whose taper shows) and anything else are kept as they are; the impostor
+ * atlas's bake draws every spray whole. Captured against the full leaves, the frame and five-fold
+ * close-ups of the crowns differ only in single pixels at the leaves' edges.
+ */
+export const LEAF_LOD = Object.freeze({ from: 40, stride: 9, minTriangles: 8 });
+
+/** Twice the area of a triangle given by three vertex indices into a flat xyz array. */
+function doubleArea(p, a, b, c) {
+    const ux = p[b * 3] - p[a * 3];
+    const uy = p[b * 3 + 1] - p[a * 3 + 1];
+    const uz = p[b * 3 + 2] - p[a * 3 + 2];
+    const vx = p[c * 3] - p[a * 3];
+    const vy = p[c * 3 + 1] - p[a * 3 + 1];
+    const vz = p[c * 3 + 2] - p[a * 3 + 2];
+    return Math.hypot(uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx);
+}
+
+/**
+ * A fan (an island whose triangles all share one vertex, its hub, and run round it in one open
+ * chain) redrawn from every `stride`-th point of its outline, the first and last always kept, the
+ * kept points pushed out from the hub so it keeps its area. Writes into `out` and `moved`; false
+ * (nothing written) when the island is not such a fan.
+ */
+function thinFan(tris, index, position, moved, out, stride) {
+    const a = index[tris[0]];
+    const b = index[tris[0] + 1];
+    const c = index[tris[0] + 2];
+    const has = (t, v) => index[t] === v || index[t + 1] === v || index[t + 2] === v;
+    const hub = [a, b, c].find((v) => tris.every((t) => has(t, v)));
+    if (hub === undefined) return false;
+    // Each triangle as (hub, from, to) in its own winding; the outline is the chain from → to.
+    const next = new Map();
+    const into = new Set();
+    for (const t of tris) {
+        let k = 2;
+        if (index[t] === hub) k = 0;
+        else if (index[t + 1] === hub) k = 1;
+        const from = index[t + ((k + 1) % 3)];
+        if (next.has(from)) return false;
+        next.set(from, index[t + ((k + 2) % 3)]);
+        into.add(index[t + ((k + 2) % 3)]);
+    }
+    const starts = [...next.keys()].filter((v) => !into.has(v));
+    if (starts.length !== 1) return false;
+    const outline = [starts[0]];
+    while (next.has(outline[outline.length - 1]) && outline.length <= tris.length) {
+        outline.push(next.get(outline[outline.length - 1]));
+    }
+    if (outline.length !== tris.length + 1) return false;
+    const last = outline.length - 1;
+    const kept = [];
+    for (let i = 0; i < last; i += stride) kept.push(outline[i]);
+    // The last point is always kept; a short last step folds into it.
+    if (last - (kept.length - 1) * stride < stride / 2 && kept.length > 2) kept.pop();
+    kept.push(outline[last]);
+    let full = 0;
+    for (let i = 0; i < last; i += 1) full += doubleArea(position, hub, outline[i], outline[i + 1]);
+    let thin = 0;
+    for (let i = 0; i + 1 < kept.length; i += 1) thin += doubleArea(position, hub, kept[i], kept[i + 1]);
+    const grow = thin > 1e-12 ? Math.sqrt(full / thin) : 1;
+    for (const v of kept) {
+        for (let k = 0; k < 3; k += 1) {
+            moved[v * 3 + k] = position[hub * 3 + k] + (position[v * 3 + k] - position[hub * 3 + k]) * grow;
+        }
+    }
+    for (let i = 0; i + 1 < kept.length; i += 1) out.push(hub, kept[i], kept[i + 1]);
+    return true;
+}
+
+/**
+ * A closed tube of `side`-vertex rings stored one after another (ring k is the island's vertices
+ * side·k … side·k + side − 1, every ring joined to the next by 2·side triangles) redrawn from its
+ * first, middle and last rings: each kept ring is joined straight to the next kept one by the
+ * triangles that joined it to its neighbour. False (nothing written) for anything else.
+ */
+function thinTube(tris, index, out, side = 3) {
+    let first = Infinity;
+    let top = -Infinity;
+    for (const t of tris) {
+        for (let k = 0; k < 3; k += 1) {
+            first = Math.min(first, index[t + k]);
+            top = Math.max(top, index[t + k]);
+        }
+    }
+    const count = top - first + 1;
+    const rings = count / side;
+    if (!Number.isInteger(rings) || rings < 4 || tris.length !== 2 * side * (rings - 1)) return false;
+    const segments = new Map();
+    for (const t of tris) {
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (let k = 0; k < 3; k += 1) {
+            const ring = Math.floor((index[t + k] - first) / side);
+            lo = Math.min(lo, ring);
+            hi = Math.max(hi, ring);
+        }
+        if (hi !== lo + 1) return false;
+        if (!segments.has(lo)) segments.set(lo, []);
+        segments.get(lo).push(t);
+    }
+    for (let ring = 0; ring + 1 < rings; ring += 1) {
+        if ((segments.get(ring)?.length ?? 0) !== 2 * side) return false;
+    }
+    const kept = [0, Math.round((rings - 1) / 2), rings - 1];
+    for (let i = 0; i + 1 < kept.length; i += 1) {
+        const shift = (kept[i + 1] - kept[i] - 1) * side;
+        for (const t of segments.get(kept[i])) {
+            for (let k = 0; k < 3; k += 1) {
+                const v = index[t + k];
+                out.push(Math.floor((v - first) / side) === kept[i] ? v : v + shift);
+            }
+        }
+    }
+    return true;
+}
+
+/**
+ * Thin a spray (three-free): its leaf fans (thinFan) and its twig tubes (thinTube) as LEAF_LOD
+ * says; every other island is kept as it is. Returns a new index array and a copy of the
+ * positions (only kept fan outline points move; every other attribute can be shared).
+ */
+export function thinSpray(index, position, { stride = LEAF_LOD.stride, minTriangles = LEAF_LOD.minTriangles } = {}) {
+    const vertexCount = position.length / 3;
+    const parent = new Int32Array(vertexCount);
+    for (let i = 0; i < vertexCount; i += 1) parent[i] = i;
+    const find = (x) => {
+        let r = x;
+        while (parent[r] !== r) {
+            parent[r] = parent[parent[r]];
+            r = parent[r];
+        }
+        return r;
+    };
+    const join = (a, b) => {
+        const ra = find(a);
+        const rb = find(b);
+        if (ra !== rb) parent[ra] = rb;
+    };
+    for (let t = 0; t < index.length; t += 3) {
+        join(index[t], index[t + 1]);
+        join(index[t + 1], index[t + 2]);
+    }
+    const islands = new Map();
+    for (let t = 0; t < index.length; t += 3) {
+        const root = find(index[t]);
+        if (!islands.has(root)) islands.set(root, []);
+        islands.get(root).push(t);
+    }
+    const out = [];
+    const moved = new Float32Array(position);
+    islands.forEach((tris) => {
+        if (tris.length >= minTriangles && thinFan(tris, index, position, moved, out, stride)) return;
+        if (thinTube(tris, index, out)) return;
+        for (const t of tris) out.push(index[t], index[t + 1], index[t + 2]);
+    });
+    return { index: out, position: moved };
+}
+
+/**
+ * The far-leaf version of a spray (LEAF_LOD), made once per spray mesh and kept with it: the
+ * same vertices (normals, colours and uvs shared), the leaves' outlines and the twig thinned. The
+ * spray itself when thinning would not save anything.
+ */
+export function leafLod(geometry) {
+    if (!geometry?.index) return geometry;
+    if (geometry.userData.leafLod) return geometry.userData.leafLod;
+    const { index, position } = thinSpray(geometry.index.array, geometry.attributes.position.array);
+    let lod = geometry;
+    if (index.length < geometry.index.count) {
+        lod = new THREE.BufferGeometry();
+        Object.entries(geometry.attributes).forEach(([key, value]) => {
+            if (key !== 'position') lod.setAttribute(key, value);
+        });
+        lod.setAttribute('position', new THREE.BufferAttribute(position, 3));
+        const IndexArray = geometry.index.array.constructor;
+        lod.setIndex(new THREE.BufferAttribute(new IndexArray(index), 1));
+        lod.computeBoundingSphere();
+        lod.name = `${geometry.name || 'spray'} (far leaves)`;
+    }
+    geometry.userData.leafLod = lod;
+    return lod;
+}
+
 function keepHash(index, salt) {
     const x = Math.sin(index * 127.1 + salt * 311.7) * 43758.5453;
     return x - Math.floor(x);
@@ -364,6 +557,8 @@ export class SpringForest {
             const keep = this.bake ? 1
                 : Math.min(1, keepNear * (tree.far ? 0.6 : 1) * (asset.role === 'hero' ? 0.75 : 1));
             const grow = (1 / keep) ** 0.36;
+            // (A bake's trees draw every leaf whole.)
+            const thin = !this.bake && Math.hypot(tree.x - EYE.x, tree.z - EYE.z) > LEAF_LOD.from;
             yaw.setFromAxisAngle(UP, tree.yaw);
             for (let i = 0; i < sites.count; i += 1) {
                 if (keepHash(i, treeIndex + 1) > keep) continue;
@@ -375,10 +570,11 @@ export class SpringForest {
                 const b = bearingOf(position.x, position.z);
                 if (!this.bake && (b < WEDGE.from - 8 || b > WEDGE.to + 8)) continue;
                 const size = sites.scale[i] * tree.scale * grow;
-                const key = `${asset.foliage}_${sites.variant[i] % variants}`;
+                const mesh = `${asset.foliage}_${sites.variant[i] % variants}`;
+                const key = thin ? `${mesh} far` : mesh;
                 if (!buckets.has(key)) {
                     buckets.set(key, {
-                        kind: asset.foliage, matrices: [], crown: [], bent: [], tree: [],
+                        kind: asset.foliage, mesh, thin, matrices: [], crown: [], bent: [], tree: [],
                     });
                 }
                 const bucket = buckets.get(key);
@@ -392,8 +588,9 @@ export class SpringForest {
             }
         });
         buckets.forEach((bucket, key) => {
-            const geometry = this.assets.foliage.meshes[key];
-            if (!geometry) throw new Error(`[Spring] Foliage mesh "${key}" is missing from the asset pack.`);
+            const spray = this.assets.foliage.meshes[bucket.mesh];
+            if (!spray) throw new Error(`[Spring] Foliage mesh "${bucket.mesh}" is missing from the asset pack.`);
+            const geometry = bucket.thin ? leafLod(spray) : spray;
             const count = bucket.matrices.length / 16;
             const buffers = {
                 crown: new THREE.InstancedBufferAttribute(new Float32Array(bucket.crown), 4),

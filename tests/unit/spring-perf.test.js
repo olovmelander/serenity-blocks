@@ -1,0 +1,147 @@
+/**
+ * Spring — the frame's economies: the far leaves' level of detail (spring-forest.js), the mist's
+ * cut-cornered puffs (spring-mist.js), the draw order and the instances' order, and the effects
+ * that rest when nothing is happening. Each keeps the picture: these tests pin what is drawn,
+ * not only that less is drawn.
+ */
+import {
+    describe, expect, it,
+} from 'vitest';
+import * as THREE from 'three/webgpu';
+import { LEAF_LOD, leafLod, thinSpray } from '../../src/themes/spring/spring-forest.js';
+
+/**
+ * A leaf as the sprays draw it: a fan of `n` triangles from its stalk (vertex `base`) round an
+ * ovate outline of n + 1 points, a little curved out of its plane. Returns its vertices and
+ * triangles, appended to the arrays given.
+ */
+function addLeaf(position, index, n = 18, at = [0, 0, 0]) {
+    const base = position.length / 3;
+    position.push(at[0], at[1], at[2]);
+    for (let i = 0; i <= n; i += 1) {
+        const a = Math.PI * (i / n); // round from one side of the stalk, over the tip, to the other
+        const width = 0.4 * Math.sin(a) * (1.15 - 0.3 * Math.cos(a));
+        const along = 1 - Math.cos(a);
+        position.push(at[0] + width * Math.cos(a * 2) * 0.9, at[1] + along, at[2] + 0.05 * along * along);
+    }
+    for (let i = 0; i < n; i += 1) index.push(base, base + 1 + i, base + 2 + i);
+}
+
+/** A twig as the sprays draw it: a three-sided tube of `rings` rings, each joined to the next. */
+function addTwig(position, index, rings, at = [0, 0, 0]) {
+    const first = position.length / 3;
+    for (let ring = 0; ring < rings; ring += 1) {
+        for (let k = 0; k < 3; k += 1) {
+            const a = (k / 3) * Math.PI * 2;
+            const bend = 0.01 * ring * ring;
+            position.push(at[0] + 0.02 * Math.cos(a) + bend, at[1] + ring * 0.05, at[2] + 0.02 * Math.sin(a));
+        }
+    }
+    for (let ring = 0; ring + 1 < rings; ring += 1) {
+        for (let k = 0; k < 3; k += 1) {
+            const a = first + ring * 3 + k;
+            const b = first + ring * 3 + ((k + 1) % 3);
+            index.push(a, b, a + 3, b, b + 3, a + 3);
+        }
+    }
+    return first;
+}
+
+function area(position, index) {
+    let sum = 0;
+    for (let t = 0; t < index.length; t += 3) {
+        const corner = (v) => new THREE.Vector3().fromArray(position, v * 3);
+        const [a, b, c] = [corner(index[t]), corner(index[t + 1]), corner(index[t + 2])];
+        sum += new THREE.Vector3().crossVectors(b.sub(a), c.sub(a)).length() / 2;
+    }
+    return sum;
+}
+
+describe('spring forest: the far leaves', () => {
+    it('draws a leaf from every third point of its outline, the tip kept, at its own area', () => {
+        const position = [];
+        const index = [];
+        addLeaf(position, index);
+        const source = new Float32Array(position);
+        const thin = thinSpray(index, source, { stride: 3 });
+        expect(thin.index).toHaveLength(6 * 3);
+        // Every triangle still turns about the stalk, in the same winding, and the tip (outline
+        // point 9) and both corners at the stalk are kept.
+        for (let t = 0; t < thin.index.length; t += 3) expect(thin.index[t]).toBe(0);
+        expect(new Set(thin.index)).toEqual(new Set([0, 1, 4, 7, 10, 13, 16, 19]));
+        expect(area(thin.position, thin.index)).toBeCloseTo(area(position, index), 6);
+        // Only the kept outline points move.
+        const moved = [];
+        for (let v = 0; v < position.length / 3; v += 1) {
+            if (source[v * 3 + 1] !== thin.position[v * 3 + 1]) moved.push(v);
+        }
+        expect(moved.every((v) => thin.index.includes(v))).toBe(true);
+    });
+
+    it('draws a far leaf as its stalk, its tip and the corners at the stalk, at its own area', () => {
+        const position = [];
+        const index = [];
+        addLeaf(position, index);
+        const thin = thinSpray(index, new Float32Array(position));
+        expect(LEAF_LOD.stride).toBe(9);
+        expect(thin.index).toEqual([0, 1, 10, 0, 10, 19]);
+        expect(area(thin.position, thin.index)).toBeCloseTo(area(position, index), 6);
+    });
+
+    it('keeps twigs, small fans and anything else whole', () => {
+        const position = [];
+        const index = [];
+        addLeaf(position, index, 18, [0, 0, 0]);
+        addLeaf(position, index, 4, [3, 0, 0]); // a strand leaf: four triangles
+        addTwig(position, index, 3, [6, 0, 0]); // a stub of a twig: two segments
+        // An open strip (a spruce shoot): rows of three, four triangles a row.
+        const shoot = position.length / 3;
+        for (let row = 0; row < 5; row += 1) {
+            position.push(9 - 0.05, row * 0.1, 0, 9, row * 0.1, 0.02, 9 + 0.05, row * 0.1, 0);
+        }
+        for (let row = 0; row < 4; row += 1) {
+            const o = shoot + row * 3;
+            index.push(o, o + 1, o + 3, o + 1, o + 4, o + 3, o + 1, o + 2, o + 4, o + 2, o + 5, o + 4);
+        }
+        const thin = thinSpray(index, new Float32Array(position));
+        expect(thin.index.length / 3).toBe(2 + 4 + 12 + 16);
+        expect(thin.index.slice(-(4 + 12 + 16) * 3)).toEqual(index.slice(-(4 + 12 + 16) * 3));
+    });
+
+    it('draws a twig from its first, middle and last rings', () => {
+        const position = [];
+        const index = [];
+        const first = addTwig(position, index, 7);
+        const thin = thinSpray(index, new Float32Array(position));
+        // Two segments of six triangles, joining rings 0 → 3 → 6, in the same winding.
+        expect(thin.index).toHaveLength(2 * 6 * 3);
+        const rings = new Set(thin.index.map((v) => Math.floor((v - first) / 3)));
+        expect([...rings].sort()).toEqual([0, 3, 6]);
+        expect(thin.index.slice(0, 3)).toEqual([first, first + 1, first + 9]);
+        expect(Array.from(thin.position)).toEqual(Array.from(new Float32Array(position)));
+    });
+
+    it('builds the far spray once, sharing every attribute but the moved positions', () => {
+        const position = [];
+        const index = [];
+        for (let k = 0; k < 3; k += 1) addLeaf(position, index, 18, [k, 0, 0]);
+        const spray = new THREE.BufferGeometry();
+        spray.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+        spray.setAttribute('normal', new THREE.Float32BufferAttribute(position.map(() => 0.5), 3));
+        spray.setIndex(index);
+        const far = leafLod(spray);
+        expect(leafLod(spray)).toBe(far);
+        expect(far.index.count).toBe(3 * 2 * 3);
+        expect(far.attributes.normal).toBe(spray.attributes.normal);
+        expect(far.attributes.position).not.toBe(spray.attributes.position);
+        // A spray thinning would not change is drawn as it is.
+        const strand = new THREE.BufferGeometry();
+        const p2 = [];
+        const i2 = [];
+        addLeaf(p2, i2, 4);
+        strand.setAttribute('position', new THREE.Float32BufferAttribute(p2, 3));
+        strand.setIndex(i2);
+        expect(leafLod(strand)).toBe(strand);
+        expect(LEAF_LOD.from).toBeLessThan(60); // every modelled tree stands farther off than this
+    });
+});
