@@ -411,14 +411,13 @@ export const VORTEX = Object.freeze({
 
 // ── The large animals ───────────────────────────────────────────────────────────
 
-/** Seconds a pass through the canyon takes. */
+/**
+ * Seconds a pass the board calls takes through the canyon. (The sea's own visitors keep their
+ * own times and routes: ocean-visits.js.)
+ */
 export const PASS_SECONDS = Object.freeze({
     turtle: 30, manta: 26, whale: 34, whaleFar: 46,
 });
-
-/** Seconds between the passes the sea makes by itself, and when the first one starts. */
-export const AMBIENT_EVERY = 58;
-export const AMBIENT_FIRST = 9;
 
 /**
  * A pass: a slow arc across the canyon from one side of the frame to the other.
@@ -446,45 +445,21 @@ export function passAt(k, lane, squeeze = 1, out = {}) {
     return out;
 }
 
-/** The lanes the animals keep. */
+/** The lanes the animals the board calls keep. */
 export const LANES = Object.freeze({
     turtle: Object.freeze({
         side: -1, z: -4, y: 4.6, bow: 5, reach: 30, lift: 1.4,
     }),
     manta: Object.freeze({
-        side: 1, z: -13, y: 7.6, bow: 6, reach: 38, lift: 1.8,
+        side: 1, z: -13, y: 10.2, bow: 6, reach: 38, lift: 1.2,
     }),
     whale: Object.freeze({
         side: -1, z: -15, y: 9.6, bow: 8.5, reach: 44, lift: 1.2,
     }),
     whaleFar: Object.freeze({
-        side: 1, z: -52, y: 6.5, bow: 6, reach: 90, lift: 1.2,
+        side: 1, z: -30, y: 11.4, bow: 4, reach: 80, lift: 0.5,
     }),
 });
-
-/**
- * The pass the sea is making by itself at a clock: which animal, how far through, which way.
- * Passes follow one another round (turtle, manta, far whale), a new one every AMBIENT_EVERY
- * seconds; between passes `k` is −1.
- */
-export function ambientPass(clock, out = {}) {
-    const since = clock - AMBIENT_FIRST;
-    out.kind = 'none';
-    out.k = -1;
-    out.index = -1;
-    out.side = 1;
-    if (!(since >= 0)) return out;
-    const index = Math.floor(since / AMBIENT_EVERY);
-    const kinds = ['turtle', 'manta', 'whaleFar'];
-    const kind = kinds[index % kinds.length];
-    const k = (since - index * AMBIENT_EVERY) / PASS_SECONDS[kind];
-    out.index = index;
-    out.kind = kind;
-    out.k = k <= 1 ? k : -1;
-    // Every other round they come from the other side.
-    out.side = Math.floor(index / kinds.length) % 2 ? -1 : 1;
-    return out;
-}
 
 // ── Colour ──────────────────────────────────────────────────────────────────────
 
@@ -513,6 +488,71 @@ export function pieceColor(value, fallback = 0x39d9e8) {
     if (!rgb) rgb = linRGB(fallback);
     const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
     return rgb.map((c) => (c / peak) * 0.92 + 0.08);
+}
+
+// ── The floor the large animals keep over ───────────────────────────────────────
+
+/** Where the floor grid lies (metres, world frame) and how fine it is. */
+export const FLOOR_GRID = Object.freeze({
+    x0: -105, x1: 105, z0: -140, z1: 20, step: 2.5,
+});
+
+/**
+ * The sand's height on a grid over everything the large animals swim across, a little raised and
+ * eased (each point the higher of its own height and its neighbours' mean, so a pinnacle's top is
+ * kept while the creases between cells are softened). seabedHeight costs microseconds a call; the
+ * routes ask hundreds of times a frame, so they read this instead (floorAt). Baked once per page
+ * (in the bake worker on a first visit).
+ * @returns {{ nx: number, nz: number, h: Float32Array }}
+ */
+export function bakeFloor() {
+    return bakeOnce('ocean:floor', () => {
+        const {
+            x0, x1, z0, z1, step,
+        } = FLOOR_GRID;
+        const nx = Math.round((x1 - x0) / step) + 1;
+        const nz = Math.round((z1 - z0) / step) + 1;
+        const raw = new Float32Array(nx * nz);
+        for (let j = 0; j < nz; j++) {
+            for (let i = 0; i < nx; i++) raw[j * nx + i] = seabedHeight(x0 + i * step, z0 + j * step);
+        }
+        const h = new Float32Array(nx * nz);
+        for (let j = 0; j < nz; j++) {
+            for (let i = 0; i < nx; i++) {
+                let sum = 0;
+                let n = 0;
+                for (let dj = -1; dj <= 1; dj++) {
+                    for (let di = -1; di <= 1; di++) {
+                        const a = i + di;
+                        const b = j + dj;
+                        if (a >= 0 && a < nx && b >= 0 && b < nz) {
+                            sum += raw[b * nx + a];
+                            n += 1;
+                        }
+                    }
+                }
+                h[j * nx + i] = Math.max(raw[j * nx + i], sum / n) + 0.6;
+            }
+        }
+        return { nx, nz, h };
+    });
+}
+
+/** The floor at (x, z): bilinear on the baked grid (out past its edge: its edge). */
+export function floorAt(x, z) {
+    const { nx, nz, h } = bakeFloor();
+    const { x0, z0, step } = FLOOR_GRID;
+    const fx = Math.max(0, Math.min(nx - 1.0001, (x - x0) / step));
+    const fz = Math.max(0, Math.min(nz - 1.0001, (z - z0) / step));
+    const i = Math.floor(fx);
+    const j = Math.floor(fz);
+    const u = fx - i;
+    const v = fz - j;
+    const a = h[j * nx + i];
+    const b = h[j * nx + i + 1];
+    const c = h[(j + 1) * nx + i];
+    const d = h[(j + 1) * nx + i + 1];
+    return (a + (b - a) * u) * (1 - v) + (c + (d - c) * u) * v;
 }
 
 // ── The seabed's sheet ────────────────────────────────────────────────────────────

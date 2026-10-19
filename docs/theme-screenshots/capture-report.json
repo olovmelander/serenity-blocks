@@ -1,8 +1,8 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-10-13T14:15:53.602Z",
-  "startedAt": "2026-10-13T14:14:57.964Z",
-  "runId": "2026-10-13T14-14-57-963Z",
+  "generatedAt": "2026-10-19T18:38:30.332Z",
+  "startedAt": "2026-10-19T18:37:34.872Z",
+  "runId": "2026-10-19T18-37-34-871Z",
   "baseUrl": "http://127.0.0.1:4174/",
   "registryThemeCount": 63,
   "selectedThemeCount": 1,
@@ -23,16 +23,16 @@
     "perfTargetFps": null
   },
   "selectedThemes": [
-    "pyrestorm"
+    "ocean"
   ],
   "results": [
     {
-      "theme": "pyrestorm",
-      "displayName": "Pyrestorm",
+      "theme": "ocean",
+      "displayName": "Ocean",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\pyrestorm.png",
-      "report": "docs\\theme-screenshots\\results\\pyrestorm.json",
+      "screenshot": "docs\\theme-screenshots\\ocean.png",
+      "report": "docs\\theme-screenshots\\results\\ocean.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "perfCell": null,

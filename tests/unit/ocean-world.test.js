@@ -3,11 +3,13 @@
  * theme makes: what each gameplay event leaves in the uniform tables the shaders read, and the
  * invariants that keep a long session sound (replay, capacity, the clock's drift).
  */
+import { readFileSync } from 'node:fs';
 import {
-    afterEach, describe, expect, it, vi,
+    afterEach, beforeAll, describe, expect, it, vi,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { OCEAN_PARTS, OceanWorld } from '../../src/themes/ocean/ocean-world.js';
+import { parseCreatures, useCreatures } from '../../src/themes/ocean/ocean-creatures.js';
 import {
     CALLS, HUSH_HOLD, NEVER, PASS_SECONDS, RING_LIVE, RING_SLOTS, SCARE_SLOTS, STAIN_FADE, STAIN_SLOTS, SURGE_LIVE,
     VORTEX_HOLD,
@@ -17,6 +19,11 @@ import { OCEAN_TETROMINOS } from '../../src/themes/ocean/ocean-tetrominos.js';
 
 // Every test builds a whole world (a noise field, the plans, some twenty node materials).
 vi.setConfig({ testTimeout: 60000 });
+
+// The large animals' bodies, read from disk as the theme would fetch them.
+beforeAll(() => {
+    useCreatures(parseCreatures(readFileSync(new URL('../../src/themes/ocean/assets/creatures.glb', import.meta.url))));
+});
 
 const worlds = [];
 afterEach(() => {
@@ -194,7 +201,7 @@ describe('Ocean world: a chain calls the large animals', () => {
         expect(world.getState().calls.whale).toBe(true);
         // In the water and casting shadows through the shafts while it passes.
         run(world, camera, PASS_SECONDS.whale * 0.45);
-        expect(world.giants.live().whales).toBeGreaterThanOrEqual(1);
+        expect(world.giants.live().humpback).toBeGreaterThanOrEqual(1);
         expect(world.u.counts2.value.y).toBeGreaterThan(0);
         // It sings as it comes over the board.
         expect(world.getState().songs + world.songs.length).toBeGreaterThan(0);
@@ -206,7 +213,55 @@ describe('Ocean world: a chain calls the large animals', () => {
         world.onCombo(0);
         run(world, camera, PASS_SECONDS.turtle * 0.5);
         expect(world.getState().calls.turtle).toBe(true);
-        expect(world.giants.live().turtles).toBeGreaterThanOrEqual(1);
+        expect(world.giants.live().turtle).toBeGreaterThanOrEqual(1);
+    });
+});
+
+describe('Ocean world: the sea\'s own visitors', () => {
+    /** Kinds in the water at a time, seeking straight there (a capture's way). */
+    const inWater = (world, camera, time) => {
+        world.seek(time);
+        world.updateCamera(camera, { time, delta: 0 });
+        world.update({ time, delta: 0 }, camera);
+        const live = world.giants.live();
+        return Object.keys(live).filter((k) => live[k] > 0);
+    };
+
+    it('sends its visitors on its own schedule, and the same ones again after a seek', () => {
+        const { world, camera } = build();
+        const seen = new Set();
+        const at = [];
+        for (let t = 0; t < 900; t += 7) {
+            const kinds = inWater(world, camera, t);
+            kinds.forEach((k) => seen.add(k));
+            at.push(kinds.join(','));
+            // What the state says is in the water is what is drawn.
+            if (world.getState().visits.length) expect(kinds.length).toBeGreaterThan(0);
+        }
+        expect(seen.size).toBeGreaterThanOrEqual(4);
+        // Some of the time the blue is empty.
+        expect(at.filter((a) => a === '').length).toBeGreaterThan(5);
+        // A seek back lands on the same visitors (they are a function of the clock).
+        expect(inWater(world, camera, 7 * 40).join(',')).toBe(at[40]);
+    });
+
+    it('keeps one schedule per seed: a capture\'s is seed 1, a rebuild hands its own on', () => {
+        const scene = new THREE.Scene();
+        const a = new OceanWorld({ scene, capture: true });
+        const b = new OceanWorld({ scene, capture: false, visitSeed: 77 });
+        const c = new OceanWorld({ scene, capture: false, visitSeed: 77 });
+        expect(a.visitSeed).toBe(1);
+        expect(b.visits.until(600).map((v) => v.act)).toEqual(c.visits.until(600).map((v) => v.act));
+        expect(b.getState().visitSeed).toBe(77);
+    });
+
+    it('lets a capture name one act, alone in the water', () => {
+        const { world, camera } = build();
+        world.setVisits(false);
+        const visit = world.addVisit('eagleRays', 0, 4, -1);
+        visit.start = 20 - visit.seconds * 0.5;
+        expect(inWater(world, camera, 20)).toEqual(['eagleRay']);
+        expect(world.giants.live().eagleRay).toBe(visit.members.length);
     });
 });
 

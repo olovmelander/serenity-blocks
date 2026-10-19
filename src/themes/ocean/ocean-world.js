@@ -8,8 +8,10 @@
  * The viewer rests in the mouth of a reef canyon, looking out and a little upward. Overhead the
  * surface rolls; the sun stands somewhere above the frame and its light comes down through the
  * water in shafts that wander over sand and coral. A garden of coral rises on either side, kelp
- * climbs the shoulders behind, a silver school streams through the canyon and, far out in the
- * blue, something large is always passing. The board stands in the canyon's mouth:
+ * climbs the shoulders behind, a silver school streams through the canyon and, now and then,
+ * something large comes out of the blue and passes (ocean-visits.js: a humpback and her calf, a
+ * blue whale, a whale shark, mantas, eagle rays, a turtle, hammerheads, dolphins, a sunfish, at
+ * irregular times). The board stands in the canyon's mouth:
  *
  *   lock     the piece's light sinks from the card to the reef on its side: where it lands a
  *            ring of its colour runs out over sand and coral, bubbles go up, the fish nearby
@@ -37,7 +39,6 @@
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
-    AMBIENT_EVERY,
     CALLS,
     DEG,
     EYE,
@@ -70,7 +71,6 @@ import {
     TAU,
     VORTEX,
     VORTEX_HOLD,
-    ambientPass,
     approach,
     bakeNoise,
     clamp01,
@@ -83,7 +83,6 @@ import {
     lerp,
     mulberry32,
     nearestTurn,
-    passAt,
     pieceColor,
     powerForCombo,
     refractToAir,
@@ -103,6 +102,10 @@ import { COLONY_KINDS, createColonies } from './ocean-reef.js';
 import { createGrass, createKelp } from './ocean-flora.js';
 import { createJellies, createReefFish, createSchool } from './ocean-fauna.js';
 import { createGiants } from './ocean-giants.js';
+import { creaturesLoaded, loadCreatures } from './ocean-creatures.js';
+import {
+    CAST, KINDS, laneVisit, makeVisit, planVisits, poseOnRoute,
+} from './ocean-visits.js';
 import { createMotes, createPool } from './ocean-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
@@ -127,9 +130,12 @@ const RIBBON = Object.freeze({
     wide: 17, swing: 0.3, back: -5.5, deep: 2.4, hold: 3.4,
 });
 
+/** The large animals' parts: one per kind (giant:humpback, giant:manta, ...). */
+const GIANT_PARTS = KINDS.map((kind) => `giant:${kind}`);
+
 const PARTS = [
     'backdrop', 'surface', 'seabed', 'branching', 'tables', 'brains', 'sponges', 'fans', 'anemones', 'kelp', 'grass',
-    'school', 'reefFish', 'whales', 'mantas', 'turtles', 'jellies', 'motes', 'pool',
+    'school', 'reefFish', ...GIANT_PARTS, 'jellies', 'motes', 'pool',
 ];
 
 const copyShape = (shape) => ({
@@ -143,15 +149,33 @@ export class OceanWorld {
      * @param {string} [params.quality='High']
      * @param {THREE.WebGPURenderer} [params.renderer]
      * @param {boolean} [params.capture=false]  deterministic captures: no wall-clock anywhere
+     * @param {object} [params.creatures]  the large animals' bodies (ocean-creatures.js); without
+     *        it the world uses the pack once the page has it, or loads it and lets them in after
+     * @param {number} [params.visitSeed]  which of the sea's schedules of visits this world
+     *        keeps (captures: 1; otherwise a new one, unless a rebuild hands its last one on)
      */
     constructor({
-        scene, quality = 'High', renderer = null, capture = false,
+        scene, quality = 'High', renderer = null, capture = false, creatures = null, visitSeed = null,
     } = {}) {
         this.scene = scene;
         this.quality = quality;
         this.tier = tierFor(quality);
         this.renderer = renderer;
         this.capture = capture;
+        this.creaturesPack = creatures;
+        /** Resolves once the large animals are in the water (or the pack could not be had). */
+        this.creaturesReady = Promise.resolve(null);
+        this._onlyParts = null;
+        // (A capture keeps one schedule; a session draws its own, unless a rebuild hands one on.)
+        let seed = capture ? 1 : Math.floor(Math.random() * 1e9) + 1;
+        if (Number.isFinite(visitSeed)) seed = visitSeed;
+        this.visitSeed = seed;
+        this.visits = planVisits(seed);
+        /** Visits a capture asks for by name, besides the sea's own (playground). */
+        this.extraVisits = [];
+        this.visitsOn = true;
+        this._live = [];
+        this._giantCounts = Object.fromEntries(KINDS.map((k) => [k, 0]));
         /** World space: the water, the surface, the animals and everything gameplay throws about. */
         this.root = new THREE.Group();
         this.root.name = 'Ocean';
@@ -185,7 +209,6 @@ export class OceanWorld {
         this._air = [0, 1, 0];
         this._hour = hourAt(0);
         this._pose = {};
-        this._ambient = {};
         this._post = {
             flash: 0,
             kick: 0,
@@ -287,8 +310,14 @@ export class OceanWorld {
         // ── What lives in the water (world space: each places itself with the squeeze) ──
         this.addPart('school', createSchool(u, tier.school, { glints: tier.glints }));
         this.addPart('reefFish', createReefFish(u, planReefFish(reef, tier.reefFish)));
-        this.giants = createGiants(u);
-        Object.entries(this.giants.parts).forEach(([name, part]) => this.addPart(name, part));
+        const pack = this.creaturesPack || creaturesLoaded();
+        if (pack) this.attachCreatures(pack);
+        else {
+            this.creaturesReady = loadCreatures().then((loaded) => {
+                if (loaded && !this.disposed && !this.giants) this.attachCreatures(loaded);
+                return loaded;
+            });
+        }
         if (tier.jellies > 0) this.addPart('jellies', createJellies(u, tier.jellies));
         this.addPart('motes', createMotes(u, tier.motes));
         this.pool = createPool(u, tier.pool);
@@ -308,8 +337,18 @@ export class OceanWorld {
         this.disposables.push(part);
     }
 
+    /** Let the large animals in: one part per kind, all sharing one material. */
+    attachCreatures(pack) {
+        if (!this.u || this.giants || !pack) return;
+        this.giants = createGiants(this.u, pack);
+        Object.entries(this.giants.parts).forEach(([kind, part]) => this.addPart(`giant:${kind}`, part));
+        if (this._onlyParts) this.showOnlyParts(this._onlyParts);
+        this.placeGiants();
+    }
+
     /** Draw only the named parts (captures, bisecting a look). */
     showOnlyParts(names) {
+        this._onlyParts = [...names];
         const keep = new Set(names);
         Object.keys(this.parts).forEach((name) => {
             this.parts[name].mesh.visible = keep.has(name);
@@ -824,14 +863,27 @@ export class OceanWorld {
 
     /** Send for one of the large animals at `time` (nothing happens while it is still passing). */
     call(kind, time, far = false) {
+        const member = (extra = {}) => ({
+            lag: 0, off: [0, 0, 0], weave: 0, weaveRate: 0, weavePhase: 0, scale: 1, phase: 0, variant: 0.3, roll: 0, ...extra,
+        });
         if (kind === 'turtle') {
             const c = this.calls.turtle;
             if (c && time < c.start + PASS_SECONDS.turtle) return false;
-            this.calls.turtle = { start: time, side: this.counts.passes % 2 ? 1 : -1 };
+            const side = this.counts.passes % 2 ? 1 : -1;
+            this.calls.turtle = {
+                start: time, side, visit: laneVisit('turtle', LANES.turtle, time, PASS_SECONDS.turtle, side, [member({ variant: 0.2 })]),
+            };
         } else if (kind === 'manta') {
             const slot = this.calls.mantas.findIndex((c) => !c || time >= c.start + PASS_SECONDS.manta);
             if (slot < 0) return false;
-            this.calls.mantas[slot] = { start: time, side: this.counts.passes % 2 ? -1 : 1 };
+            const side = this.counts.passes % 2 ? -1 : 1;
+            // Each further manta a little higher or lower, further out, smaller; out of step.
+            const one = member({
+                off: [side * slot * 2.4, (slot - 1) * 1.3, 0], scale: 1 - slot * 0.08, phase: slot * 0.9, variant: 0.2 + slot * 0.2,
+            });
+            this.calls.mantas[slot] = {
+                start: time, side, visit: laneVisit('manta', LANES.manta, time, PASS_SECONDS.manta, side, [one]),
+            };
         } else {
             const c = this.calls.whale;
             const lane = c?.far ? 'whaleFar' : 'whale';
@@ -839,12 +891,36 @@ export class OceanWorld {
                 // Already on its way far out: a louder call does not turn it round.
                 return false;
             }
+            const side = this.counts.passes % 2 ? 1 : -1;
+            const here = far ? 'whaleFar' : 'whale';
+            const members = [member({ variant: 0.55 })];
+            // Over the board she brings her calf, under her flank, a little behind and nearer.
+            if (!far) {
+                members.push(member({
+                    lag: 0.035, off: [-side * 2.6, -1.9, 0], scale: 0.46, phase: 1.7, variant: 0.7,
+                }));
+            }
             this.calls.whale = {
-                start: time, side: this.counts.passes % 2 ? 1 : -1, far, sung: false,
+                start: time, side, far, sung: false, visit: laneVisit('humpback', LANES[here], time, PASS_SECONDS[here], side, members),
             };
         }
         this.counts.passes += 1;
         return true;
+    }
+
+    /**
+     * A capture's own visitor: the named act (ocean-visits.js ACTS) starting at `time`, made the
+     * way the sea's schedule makes them from `seed`, from `side` (±1). Returns it, or null.
+     */
+    addVisit(name, time, seed = 1, side = 1) {
+        const visit = makeVisit(name, time, seed, side);
+        if (visit) this.extraVisits.push(visit);
+        return visit;
+    }
+
+    /** Whether the sea sends its own visitors (captures of one act switch them off). */
+    setVisits(on) {
+        this.visitsOn = on !== false;
     }
 
     /**
@@ -936,78 +1012,73 @@ export class OceanWorld {
             u.shadeRows[shades * 2 + 1].set(bx, by, bz, strength);
             shades += 1;
         };
-        const ambient = ambientPass(t, this._ambient);
-        const along = (lane, k, side) => passAt(k, { ...lane, side }, this.squeeze, pose);
+        const counts = this._giantCounts;
+        KINDS.forEach((kind) => {
+            counts[kind] = 0;
+        });
+        // Stand one member of a visit where it is now; false when it is not in the water (or
+        // every slot of its kind is taken: the board's calls come first, then the sea's own).
+        const place = (visit, member) => {
+            const tau = t - visit.start;
+            if (tau < 0 || tau > visit.seconds * (1 + member.lag) + 0.5) return false;
+            poseOnRoute(visit, member, tau, this.squeeze, pose);
+            if (!(pose.k >= 0 && pose.k <= 1)) return false;
+            const { kind } = visit;
+            const i = counts[kind];
+            if (i >= CAST[kind].slots) return false;
+            counts[kind] = i + 1;
+            giants.set(kind, i, pose);
+            return true;
+        };
 
-        // ── The whale: the one the board called, its calf, and the one the sea sends by itself ──
+        // ── The board's calls: the whale (and her calf), up to three mantas, the turtle ──
         const w = this.calls.whale;
-        const lane = w?.far ? 'whaleFar' : 'whale';
-        const wk = w ? (t - w.start) / PASS_SECONDS[lane] : -1;
-        if (w && wk >= 0 && wk <= 1) {
-            along(LANES[lane], wk, w.side);
-            giants.setWhale(0, pose, t, 1);
-            const fx = Math.sin(pose.yaw);
-            const fz = -Math.cos(pose.yaw);
-            shade(pose.x - fx * 5.5, pose.y, pose.z - fz * 5.5, pose.x + fx * 5, pose.y, pose.z + fz * 5, 1.7, w.far ? 0.4 : 0.85);
-            // It sings as it comes over the board.
+        if (w && place(w.visit, w.visit.members[0])) {
+            const { fx, fy, fz } = pose;
+            shade(
+                pose.x - fx * 5.5,
+                pose.y - fy * 5.5,
+                pose.z - fz * 5.5,
+                pose.x + fx * 5,
+                pose.y + fy * 5,
+                pose.z + fz * 5,
+                1.7,
+                w.far ? 0.4 : 0.85,
+            );
+            // She sings as she comes over the board.
+            const wk = (t - w.start) / w.visit.seconds;
             if (!w.far && !w.sung && wk > 0.4) {
                 w.sung = true;
                 if (this.songs.length >= SONG_SLOTS) this.songs.shift();
                 this.songs.push({
-                    x: pose.x, y: pose.y, z: pose.z, time: w.start + 0.4 * PASS_SECONDS.whale,
+                    x: pose.x, y: pose.y, z: pose.z, time: w.start + 0.4 * w.visit.seconds,
                 });
             }
-            // The calf keeps under its flank, a little behind.
-            if (!w.far) {
-                along(LANES.whale, Math.max(0, wk - 0.035), w.side);
-                pose.y -= 1.9;
-                pose.z += 2.6;
-                giants.setWhale(1, pose, t + 1.7, 0.46);
-            } else giants.setWhale(1, null);
-        } else {
-            giants.setWhale(0, null);
-            giants.setWhale(1, null);
+            for (let m = 1; m < w.visit.members.length; m++) place(w.visit, w.visit.members[m]);
         }
-        if (ambient.kind === 'whaleFar' && ambient.k >= 0) {
-            along(LANES.whaleFar, ambient.k, ambient.side);
-            giants.setWhale(2, pose, t + 9, 1);
-        } else giants.setWhale(2, null);
-
-        // ── Mantas: up to three the board called, one of the sea's own ──
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < this.calls.mantas.length; i++) {
             const c = this.calls.mantas[i];
-            const k = c ? (t - c.start) / PASS_SECONDS.manta : -1;
-            if (c && k >= 0 && k <= 1) {
-                along(LANES.manta, k, c.side);
-                pose.y += (i - 1) * 1.3;
-                pose.z -= i * 2.4;
-                giants.setManta(i, pose, t + i * 0.9, 1 - i * 0.08);
-                const rx = Math.cos(pose.yaw);
-                const rz = Math.sin(pose.yaw);
-                shade(pose.x - rx * 1.2, pose.y, pose.z - rz * 1.2, pose.x + rx * 1.2, pose.y, pose.z + rz * 1.2, 1.3, 0.55);
-            } else giants.setManta(i, null);
+            if (c && place(c.visit, c.visit.members[0])) {
+                // (Its shadow lies across its wings: along its right, heading × up.)
+                const rx = pose.fy * pose.uz - pose.fz * pose.uy;
+                const rz = pose.fx * pose.uy - pose.fy * pose.ux;
+                shade(pose.x - rx * 1.6, pose.y, pose.z - rz * 1.6, pose.x + rx * 1.6, pose.y, pose.z + rz * 1.6, 1.3, 0.55);
+            }
         }
-        if (ambient.kind === 'manta' && ambient.k >= 0) {
-            along(LANES.manta, ambient.k, ambient.side);
-            pose.z -= 9;
-            giants.setManta(3, pose, t + 4, 0.9);
-        } else giants.setManta(3, null);
+        if (this.calls.turtle) place(this.calls.turtle.visit, this.calls.turtle.visit.members[0]);
 
-        // ── Turtles ──
-        const c = this.calls.turtle;
-        const tk = c ? (t - c.start) / PASS_SECONDS.turtle : -1;
-        if (c && tk >= 0 && tk <= 1) {
-            along(LANES.turtle, tk, c.side);
-            giants.setTurtle(0, pose, t, 1);
-        } else giants.setTurtle(0, null);
-        if (ambient.kind === 'turtle' && ambient.k >= 0) {
-            along(LANES.turtle, ambient.k, ambient.side);
-            pose.z -= 5;
-            pose.y += 1.2;
-            giants.setTurtle(1, pose, t + 3, 0.9);
-        } else giants.setTurtle(1, null);
+        // ── The sea's own visitors ──
+        const live = this._live;
+        if (this.visitsOn) this.visits.at(t, live);
+        else live.length = 0;
+        for (let v = 0; v < this.extraVisits.length; v++) live.push(this.extraVisits[v]);
+        for (let v = 0; v < live.length; v++) {
+            const visit = live[v];
+            for (let m = 0; m < visit.members.length; m++) place(visit, visit.members[m]);
+        }
 
-        giants.commit();
+        KINDS.forEach((kind) => giants.clear(kind, counts[kind]));
+        giants.commit(counts);
         u.counts2.value.y = shades;
     }
 
@@ -1076,6 +1147,8 @@ export class OceanWorld {
         u.schoolC.value.set(sc.spin, sc.tight, sc.excite, 0);
 
         this.applyHour();
+        // The sea's visitors are planned and their routes sampled a minute ahead, a little a frame.
+        if (this.visitsOn) this.visits.prepare(t + 60, this.squeeze);
         this.placeGiants();
 
         // ── Event tables: live rows packed at the front ──
@@ -1192,7 +1265,8 @@ export class OceanWorld {
 
     getState() {
         const h = this._hour;
-        const ambient = ambientPass(this.time, {});
+        const visiting = this.visitsOn ? this.visits.at(this.time, []) : [];
+        const upcoming = this.visits.until(this.time + 200).find((v) => v.start > this.time);
         return {
             quality: this.quality,
             time: this.time,
@@ -1227,8 +1301,13 @@ export class OceanWorld {
                     < this.calls.whale.start + PASS_SECONDS[this.calls.whale.far ? 'whaleFar' : 'whale']),
                 whaleFar: Boolean(this.calls.whale?.far),
             },
-            ambient: ambient.k >= 0 ? ambient.kind : 'none',
-            ambientEvery: AMBIENT_EVERY,
+            /** The sea's own visitors in the water now (act names), and the next to come. */
+            visits: visiting.map((v) => v.act),
+            nextVisit: upcoming ? { act: upcoming.act, start: upcoming.start } : null,
+            /** What a rebuild in place hands on, so the same visitors keep coming. */
+            visitSeed: this.visitSeed,
+            /** How many of each large animal are in the water (null until their bodies arrive). */
+            giants: this.giants ? this.giants.live() : null,
             beam: this.u ? this.u.beam.value.w : 0,
             pool: this.pool ? this.pool.count : 0,
             parts: Object.keys(this.parts),
@@ -1246,6 +1325,7 @@ export class OceanWorld {
             part.geometry?.dispose?.();
             part.material?.dispose?.();
         });
+        this.giants?.dispose();
         this.light?.dispose();
         this.textures.forEach((t) => t.dispose());
         this.disposables = [];

@@ -5,7 +5,10 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **744 parameter names in 940 scoped entries**. The `odyssey-world`
+The catalog documents **753 parameter names in 949 scoped entries**. The `ocean` playground
+effect added `visit`, `visitK`, `visitAge`, `visitSide`, `visitSeed`, `visits` (one of the
+visits the sea makes by itself) and `follow`, `followFit`, `followIndex` (a camera turned to one of
+its large animals), 2026-10-19. The `odyssey-world`
 playground effect added `lookPitch` and `lookYaw` (turn the camera off the path, for checking a
 chapter from every angle). The `fluid-dreams`
 playground effect added `quads` (four-line clears played before the frame); Sakura Twilight

@@ -22,7 +22,10 @@ brain corals with their maze, tube sponges, sea fans in lace and anemones that n
 Kelp climbs the shoulders behind them, golden where the light comes through it; seagrass grows in
 meadows along the sand channel. A silver school streams through the canyon's mid-water, its
 flanks flashing as it turns; small bright reef fish keep to the coral heads; moon jellies hang in
-the blue. And something large is always passing out there: a turtle, a manta, a whale far off.
+the blue. And now and then something large comes out of the blue and passes high over the reef:
+a humpback with her calf, a blue whale, a whale shark, mantas, a squadron of eagle rays, a
+turtle, a school of hammerheads, a pod of dolphins, an ocean sunfish (see
+[The large animals](#the-large-animals-2026-10-19)).
 
 ![At rest](ocean-overhaul/01-idle.webp)
 
@@ -84,12 +87,14 @@ and stands on the next hour one hour of the clock later).
 | `ocean-reef.js` | The six colony kinds, each one mesh grown in code and drawn instanced. |
 | `ocean-flora.js` | Kelp (one curve per stand, blades on floats streaming downstream) and seagrass. |
 | `ocean-fauna.js` | The silver school (a pure function of its uniforms and the startles), reef fish, moon jellies. |
-| `ocean-giants.js` | Humpback whales, manta rays, green turtles: grown in code, swum in the vertex stage. |
+| `ocean-creatures.js` | Reads the large animals' bodies (`assets/creatures.glb`, built in Blender from numbers) into geometries, once per page. |
+| `ocean-visits.js` | Three-free: the cast, the sea's own schedule of visits (seeded, a pure function of the clock), their routes round the pinnacles and the poses along them. |
+| `ocean-giants.js` | The large animals' one material: swum (five body plans) in the vertex stage, painted per kind, lit by the sea. |
 | `ocean-fx.js` | The event pool (drift, home, bubble, bead, puff) and the marine snow. |
 | `ocean-world.js` | The choreography; shared by the theme and the playground effect. |
 | `ocean-post.js` | Shaft march (reduced-resolution `rtt`), pressure rings, fringe, calm zones over the card and HUD, bloom, sea filmic tone map, grade, grain. |
 | `ocean-director.js`, `ocean-composition.js` | The fleet's gameplay director and layout reader (as in Stillwater). |
-| `ocean-theme.js` | The lifecycle adapter (as in Stillwater, without an asset wait). |
+| `ocean-theme.js` | The lifecycle adapter (as in Stillwater; it waits up to 4 s for the creature pack, fetched while the renderer comes up). |
 
 Everything is a function of the world clock and event timestamps (nothing is created at event
 time), so `seek(t)` plus a fixed-step replay reproduces any frame. Rates that change with the
@@ -161,8 +166,73 @@ Medium up.
 ![The icon at picker size, beside its neighbours](ocean-overhaul/icon-at-picker-size.png)
 - The six hours' palettes, the hour's length (100 s) and the size of the event effects are my
   choices.
-- Blender was not used: every mesh is grown in code, so nothing could be authored there that the
-  code does not already make, and the live Blender session belongs to whoever has it open.
+- Blender was not used in the overhaul itself: every mesh was grown in code. (Since 2026-10-19 the
+  large animals are built in headless Blender from numbers; see
+  [The large animals](#the-large-animals-2026-10-19). The live Blender session was left alone.)
+
+## The large animals (2026-10-19)
+
+Olov: improve the big sea creatures in the back; let them show up and swim there from time to
+time, at varied times, with better models, better animations and more kinds and variants.
+
+**What was wrong.** The three animals were grown in code (rings and flat fin sheets: a grey
+lozenge of a whale), swum by a sine each, and came on a fixed rota (turtle, manta, far whale every
+58 s). Worse, almost nothing the sea sent by itself could be seen: from the reef the kelp on both
+shoulders, the reef rock and the card with its HUD leave only two windows to the open water, and
+the far lanes (the far whale at 52 m) ran behind them. A capture showed a whale "in the water"
+that was hidden behind the left shoulder's kelp the whole way.
+
+**The cast.** Nine animals built in Blender from numbers (`scripts/blender/ocean_creatures_assets.py`;
+one signed distance field per animal, smooth masses and airfoil-thick fins, meshed with Blender's
+bundled openvdb, decimated, every vertex told its part, its place along the body, how far out
+along its fin and where that fin turns from; one 630 KB GLB, `assets/creatures.glb`): a humpback
+(with long knobbed white flippers, and often her calf), a blue whale, bottlenose dolphins, a whale
+shark (broad flat head, ridges, spots and bars), scalloped hammerheads, an oceanic manta (white
+shoulders, gill slits; one in six the black morph), spotted eagle rays (white rings and spots,
+whip tails), a green turtle (some are hawksbills by their shell) and an ocean sunfish.
+
+![The nine, in Blender's review renders (side, top, under, three-quarter; parts false-coloured)](ocean-overhaul/34-models.webp)
+
+**How they swim.** One material for all nine (one pipeline, one instanced draw per kind), five body
+plans in the vertex stage: whales beat up and down in a wave that grows toward the flukes, the
+flukes pitching a quarter-beat behind and the long flippers sculling; sharks and the whale shark
+sweep side to side with the head swaying against the tail; rays fly, a wave running out along each
+wing and back across its chord while the body heaves against the beat; the turtle rows, its front
+flippers sweeping down and back, up and forward and feathering as they turn; the sunfish sculls its
+tall fins together. Every stroke swells and falls into glides on a slow cycle of its own (a rate
+that never changes, so no phase jumps), every body bends into the turn it is swimming, and a pose
+is a heading and an up carried along the route without twisting, so a manta can loop the loop.
+
+![Strokes a quarter-beat apart: humpback, manta, turtle, a manta's somersault](ocean-overhaul/33-strokes.webp)
+
+![Seen from the reef through a long lens (the playground's follow=)](ocean-overhaul/32-close.webp)
+
+**When and where.** The sea's own visits follow a seeded, irregular schedule that is a pure function
+of the clock (`ocean-visits.js` `planVisits`; a session draws its own seed, a rebuild in place hands
+it on, a capture uses seed 1): twelve acts weighted so the rare ones stay rare (a blue whale, a
+sunfish), gaps from a few seconds to over a minute, two in the water at once now and then, never
+the same kind twice running, the first within 5-12 s. The lanes were chosen with a visibility
+model (a ray test from the eye against the High tier's kelp stands, the reef and the card and HUD;
+the test `ocean-visits.test.js` "in sight" keeps it): most acts come up a window's line of sight
+out of the blue toward the reef, growing from a shape in the fog, then turn out through the kelp,
+or swim away down one; the rest cross. Each act is in plain sight 10 to 33 s of its pass.
+Routes are settled once when planned (lifted clear of the reef, one wide swerve round each
+pinnacle in their way) and sampled into a table (planned a minute ahead, one a frame), so a frame
+reads a pose in a few microseconds. The board's own calls (turtle 2, mantas 3, far whale 5, whale
+over the board 7) are kept; the mantas' and the far whale's lanes were raised and brought in,
+where they can be seen.
+
+![Each act at a moment the model picked, in the game's frame](ocean-overhaul/30-visitors.webp)
+
+![More acts, the board's whale over the board, hammerheads at night, and three moments of the sea's own schedule](ocean-overhaul/31-visitors-more.webp)
+
+**Checked.** Unit tests (the schedule's spread, overlaps and rarity; every pose in the water, square
+and never flipping; every act in sight; the pack's meshes, winding, parts and budget); WebGPU
+captures of every act with no console errors; `validate-all-themes --theme ocean` PASS; the
+production build with the boot-closure guard. **Not done:** a perf-lane reading and the real game
+with a real board (the playground's board mock stands in); the visibility model knows the High
+tier's kelp, so on Low and Minimal (fewer stands) the animals are seen more, not less. Playground:
+`visit=<act>&visitK=|visitAge=&visitSide=&visitSeed=`, `visits=0|1`, `follow=<kind>&followFit=`.
 
 ## Reproduce
 
@@ -170,6 +240,7 @@ Playground: `npm run dev:playground`, then
 `/playground.html?effect=ocean&t=20&quality=High&board=1` plus
 `event=lock|drop|clear|quad|tspin|perfect|levelUp|break`, `eventAge=<s>`, `lines=`, `row=`, `u=`,
 `color=<hex>`, `combo=<n>`, `locks=<n>`, `pass=turtle|manta|whale|whaleFar&passAge=<s>`,
+`visit=<act>&visitK=<0..1>|visitAge=<s>&visitSide=±1&visitSeed=<n>`, `visits=0|1`,
 `hour=<place>` (0 high sun … 5 first light), `level=<n>`, `shafts=0`, `noPost=1`,
 `parts=surface,seabed,...`, `icon=1` (+ `iconFov`, `iconYaw`, `iconPitch`, …). Theme flags:
 `oceanTime`, `oceanFixedDt`, `oceanParts`, `oceanFalseColor`, `oceanForceWebGL`.
