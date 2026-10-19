@@ -189,18 +189,18 @@ export class SpringAir {
             const band = exp(offFront.mul(offFront).negate()).mul(waveLive);
             centre.addAssign(vec3(0.0, band.mul(1.4), 0.0));
 
-            // On screen: at least about a pixel and a third wide, its light spread thinner when it is
+            // On screen: at least about a pixel and a half wide, its light spread thinner when it is
             // drawn wider than it is (so a far speck does not shimmer away, nor glare).
             const view = cameraViewMatrix.mul(vec4(centre, 1.0));
             const depth = max(view.z.negate(), 0.01);
-            const size = mix(mix(0.0035, 0.008, h4), mix(0.01, 0.02, h4), isDown);
-            const drawn = max(size, depth.mul(u.pixelAngle).mul(1.3));
+            const size = mix(mix(0.005, 0.011, h4), mix(0.014, 0.028, h4), isDown);
+            const drawn = max(size, depth.mul(u.pixelAngle).mul(1.5));
             const cover = size.div(drawn).pow(2.0);
             const lifted = view.add(vec4(positionGeometry.xy.mul(drawn.mul(2.0)), 0.0, 0.0));
 
             // Seen: the chain thickens the air (more of the motes show), the ends of a run and the
             // nearest and farthest air fade.
-            const shown = float(1.0).sub(smoothstep(mix(0.58, 1.0, stir).sub(0.08), mix(0.58, 1.0, stir), h6));
+            const shown = float(1.0).sub(smoothstep(mix(0.7, 1.0, stir).sub(0.08), mix(0.7, 1.0, stir), h6));
             const toEye = length(centre.sub(u.eye));
             const fade = shown
                 .mul(float(1.0).sub(smoothstep(0.36, 0.5, runK.abs())))
@@ -212,8 +212,9 @@ export class SpringAir {
             const V = normalize(centre.sub(u.eye));
             const ahead = clamp(dot(V, u.sunDir), 0.0, 1.0);
             const a2 = ahead.mul(ahead);
-            const pollenPhase = a2.mul(a2).mul(2.2).add(a2.mul(0.5)).add(0.25);
-            const downPhase = a2.mul(a2).mul(3.6).add(a2.mul(0.4)).add(0.3);
+            // (Down is white: the sun lights a tuft from any side; pollen is a dark speck but for a glint.)
+            const pollenPhase = a2.mul(a2).mul(2.2).add(a2.mul(0.5)).add(0.42);
+            const downPhase = a2.mul(a2).mul(3.6).add(a2.mul(0.6)).add(0.62);
             const phase = mix(pollenPhase, downPhase, isDown);
             const lit = u.sun.mul(u.sunUp).mul(phase).add(u.fill.mul(0.45));
             const tone = mix(vec3(1.0, 0.8, 0.42), vec3(1.0, 0.98, 0.93), isDown);
@@ -229,7 +230,7 @@ export class SpringAir {
             const glow = gold.mul(lit).mul(flicker.add(sparkle)).mul(gain).mul(fade)
                 .mul(cover.mul(0.7).add(0.3))
                 .mul(airClarity(u, centre).mul(0.75).add(0.25))
-                .mul(0.3);
+                .mul(0.5);
             vGlow.assign(vec4(glow, isDown));
             return fade.greaterThan(0.002).select(cameraProjectionMatrix.mul(lifted), vec4(0.0, 0.0, -2.0, 1.0));
         })();

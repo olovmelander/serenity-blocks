@@ -111,14 +111,14 @@ limit of 0.15).
 
 | Event | What happens |
 |---|---|
-| Lock | A patch of the piece's own flower bursts into bloom on the knoll where it landed, opening outward from the spot (on the water it splashes, and the patch opens on the knoll's edge at the same bearing). |
-| Clear | One surge down the river from the pool, the bigger the more lines: a hump of water with a steep front that breaks white across the river like a bore, the water behind it streaked with the foam it threw; the whole knoll flushes into bloom. |
-| Chain | The spring flood rises with each link: the river swells and runs whiter in streaks, faster, and the fall's mist thickens; when the chain breaks it falls back. |
+| Lock | A patch of the piece's own flower bursts into bloom on the knoll where it landed, opening outward from the spot (on the water it splashes, and the patch opens on the knoll's edge at the same bearing). The piece's own pollen is shaken up out of the patch and drifts off on the breeze, and the air round it puffs out, up and lights; a hard drop shakes out more and knocks a ring of down off the plants. |
+| Clear | One surge down the river from the pool, the bigger the more lines: a hump of water with a steep front that breaks white across the river like a bore, the water behind it streaked with the foam it threw; the whole knoll flushes into bloom. Pollen and down lift off both sides of the card in the cleared rows' colours (each side its half of the board), and a breath runs out through the air from the eye. |
+| Chain | The spring flood rises with each link: the river swells and runs whiter in streaks, faster, and the fall's mist thickens; when the chain breaks it falls back. Each link spins up a whirlwind of pollen and down beside the card, on alternate sides and stronger each time; the air thickens, hurries down the breeze and turns in two gyres; a broken chain lets its down go over the knoll. |
 | Four lines | The great surge, and the last of the winter's ice goes out on it: floes come down from the pool and run the rapids. |
-| T-spin | The pool turns in a whirl where it drains, arms of foam winding into a dark eye, spray flung off its rim. |
-| Back-to-back | The river glitters while the run lasts. |
-| Perfect clear | Two surges, and whooper swans come over the valley. |
-| Level up | The day steps a station forward (it also turns with the clock alone); cranes pass over on their way north. |
+| T-spin | The pool turns in a whirl where it drains, arms of foam winding into a dark eye, spray flung off its rim; a whirlwind turns beside the card on the lock's side. |
+| Back-to-back | The river glitters while the run lasts; each step strikes a scatter of glints off the ripples in front of the knoll, and the air's motes sparkle. |
+| Perfect clear | Two surges, and whooper swans come over the valley; the air stills and turns gold, and gold pollen and down shower slowly over the knoll and the river. |
+| Level up | The day steps a station forward (it also turns with the clock alone); cranes pass over on their way north, and willow down drifts over the knoll from upwind. |
 | Game over | The light falls to dusk; it comes back with the next run. |
 
 | Lock | Three lines | Chain of 6 |
@@ -137,7 +137,8 @@ bloom, surges, floes, birds, motes), so `seek(t)` plus a fixed-step replay repro
 Every tier keeps every part and every beat. Tiers scale the grass and flowers, the land fan, the
 river ribbon, the fall's sheet (70–270 columns) and rock face (120–420 columns), the modelled
 trees and their sprays, the woods' cards (1,500 … 18,000) and their atlas's texels (128–384 a
-tree), boulders, motes, mist, floes, birds and the pixel-ratio cap.
+tree), boulders, the air's motes (320 … 2,400) and the ring gameplay throws into it (384 …
+2,304), mist, floes, birds and the pixel-ratio cap.
 
 ## Decisions and traps
 
