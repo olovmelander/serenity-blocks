@@ -1,13 +1,15 @@
 /**
- * Spring — the motes: pollen, dew and spray in the air over the field.
+ * Spring — the motes: what gameplay throws into the air over the field.
  *
  * One instanced billboard mesh whose instances are written once when spawned and then move in
  * closed form on the GPU (no per-frame CPU work beyond the spawns):
  *
- *   pollen  golden specks shaken out of a clump as its cups open; they drift up and away on the
- *           breeze, glinting where the sun is behind them
+ *   pollen  specks shaken out of a clump as its cups open, in the piece's own colour: they drift
+ *           up and away on the breeze, glinting where the sun is behind them
  *   dew     a hard drop's spray of dew off the leaves: bright drops that arc and fall
- *   glint   a brief sparkle on a cup a bloom front opens (the light catching a wet petal)
+ *   glint   a brief sparkle on a cup a bloom front opens, or on the river's ripples
+ *   down    willow seed down: soft white tufts that float, ride the breeze and blaze against the sun
+ *   whirl   pollen and down caught in a little whirlwind: they circle a centre as they climb
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -26,18 +28,28 @@ import {
     positionGeometry,
     sin,
     smoothstep,
+    varying,
     vec3,
     vec4,
 } from 'three/tsl';
+import { TAU } from './spring-core.js';
 import { airClarity } from './spring-light.js';
+import { AIR } from './spring-air.js';
 
-export const MOTE_KIND = Object.freeze({ pollen: 0, dew: 1, glint: 2 });
+export const MOTE_KIND = Object.freeze({
+    pollen: 0, dew: 1, glint: 2, down: 3, whirl: 4,
+});
+
+/** How fast the breeze carries what floats off downwind (m/s², the drift grows with age²). */
+const BREEZE_PULL = 0.09;
 
 /**
  * One instanced quad per mote. Attributes (written once at spawn):
  *   aStart  (x, y, z, born)       aMove  (vx, vy, vz, life)
  *   aLook   (r, g, b, size m)     aKind  (kind, seed, drift, gravity)
- * Motion: p = start + v·age + ½·(0, gravity, 0)·age² + a slow curl (pollen rides the breeze).
+ * Motion: p = start + v·age + ½·(0, gravity, 0)·age² + a slow curl (pollen rides the breeze),
+ * and what floats (pollen, down, a whirl) drifts off down the breeze. A whirl's aMove is (radius,
+ * climb m/s, turn rad/s) and its drift how fast the radius grows (m/s): it circles `start`.
  */
 export class Motes {
     constructor(u, count = 1024) {
@@ -88,50 +100,77 @@ export class Motes {
         const look = attribute('aLook', 'vec4');
         const kind = attribute('aKind', 'vec4');
         const isKind = (k) => float(1.0).sub(smoothstep(0.2, 0.45, kind.x.sub(k).abs()));
-        const ageOf = () => u.time.sub(start.w);
-        const centre = () => {
-            const age = max(ageOf(), 0.0);
-            const fall = vec3(0.0, kind.w.mul(age).mul(age).mul(0.5), 0.0);
-            const curl = vec3(
-                sin(age.mul(1.3).add(kind.y.mul(40.0))),
-                cos(age.mul(0.9).add(kind.y.mul(23.0))).mul(0.4),
-                cos(age.mul(1.1).add(kind.y.mul(31.0))),
-            ).mul(kind.z).mul(age.min(3.0));
-            return start.xyz.add(move.xyz.mul(age)).add(fall).add(curl);
-        };
+        // The mote's light (rgb) and whether it is down (w), worked out once a corner.
+        const vGlow = varying(vec4(0.0), 'spMoteGlow');
         material.vertexNode = Fn(() => {
-            const age = ageOf();
+            const age = u.time.sub(start.w);
             const life = move.w;
             const alive = age.greaterThanEqual(0.0).and(age.lessThan(life));
-            const c = centre();
+            const a = max(age, 0.0);
+            const dew = isKind(MOTE_KIND.dew);
+            const glint = isKind(MOTE_KIND.glint);
+            const down = isKind(MOTE_KIND.down);
+            const whirl = isKind(MOTE_KIND.whirl);
+            const floats = float(1.0).sub(dew).sub(glint);
+            // Thrown: a line, an arc under gravity, a slow curl.
+            const fall = vec3(0.0, kind.w.mul(a).mul(a).mul(0.5), 0.0);
+            const curl = vec3(
+                sin(a.mul(1.3).add(kind.y.mul(40.0))),
+                cos(a.mul(0.9).add(kind.y.mul(23.0))).mul(0.4),
+                cos(a.mul(1.1).add(kind.y.mul(31.0))),
+            ).mul(kind.z).mul(a.min(3.0));
+            const thrown = start.xyz.add(move.xyz.mul(a)).add(fall).add(curl);
+            // Whirled: round the centre, climbing, the circle widening.
+            const turn = kind.y.mul(TAU).add(move.z.mul(a));
+            const radius = move.x.add(kind.z.mul(a));
+            const whirled = start.xyz.add(vec3(cos(turn).mul(radius), move.y.mul(a), sin(turn).mul(radius))).add(fall);
+            const breeze = vec3(AIR.breeze[0], 0.0, AIR.breeze[1]).mul(a.mul(a).mul(BREEZE_PULL).mul(floats));
+            const c = mix(thrown, whirled, whirl).add(breeze).toVar();
             const view = cameraViewMatrix.mul(vec4(c, 1.0));
-            // At least about a pixel and a half wide, so a far speck does not shimmer away.
+            // At least about a pixel and a half wide, so a far speck does not shimmer away; its light
+            // is spread thinner when it is drawn wider than it is.
             const depth = max(view.z.negate(), 0.01);
-            const size = max(look.w, depth.mul(u.pixelAngle).mul(1.6));
-            const lifted = view.add(vec4(positionGeometry.xy.mul(size), 0.0, 0.0));
+            const drawn = max(look.w, depth.mul(u.pixelAngle).mul(1.6));
+            const cover = look.w.div(drawn).pow(2.0);
+            const lifted = view.add(vec4(positionGeometry.xy.mul(drawn), 0.0, 0.0));
+
+            const t = clamp(a.div(life), 0.0, 1.0);
+            const fadeIn = smoothstep(0.0, mix(mix(float(0.12), float(0.04), dew), float(0.2), down), t);
+            const fadeOut = float(1.0).sub(smoothstep(mix(float(0.55), float(0.3), glint), 1.0, t));
+            // Specks glint where the sun is behind them (forward scatter); down blazes. Pollen keeps
+            // its colour in the shade too, so a piece's dust reads against the turf.
+            const V = normalize(c.sub(u.eye));
+            const ahead = clamp(dot(V, u.sunDir), 0.0, 1.0);
+            const a2 = ahead.mul(ahead);
+            const thrownPhase = a2.mul(a2).mul(0.9).add(0.16);
+            const dustPhase = a2.mul(a2).mul(2.2).add(a2.mul(0.5)).add(0.25);
+            const downPhase = a2.mul(a2).mul(3.6).add(a2.mul(0.4)).add(0.3);
+            const phase = mix(mix(thrownPhase, dustPhase, floats), downPhase, down);
+            const shade = floats.sub(down).max(0.0).mul(0.18);
+            const lit = u.sun.mul(u.sunUp).mul(phase).add(u.fill.mul(0.6)).add(shade);
+            const sparkle = mix(
+                float(1.0),
+                sin(a.mul(mix(6.0, 13.0, kind.y)).add(kind.y.mul(50.0))).mul(0.4).add(0.6),
+                floats.sub(down).max(0.0),
+            );
+            const power = mix(mix(mix(float(1.3), float(1.0), dew), float(2.4), glint), float(0.8), down);
+            // A piece's pollen glows in its colour: lifted toward white, so a dark blue still reads.
+            const pigment = floats.sub(down).max(0.0);
+            const tone = mix(look.xyz, look.xyz.mul(1.3).add(0.12), pigment);
+            const rgb = tone.mul(lit).mul(power).mul(sparkle).mul(fadeIn)
+                .mul(fadeOut)
+                .mul(cover.mul(0.6).add(0.4))
+                .mul(airClarity(u, c).mul(0.7).add(0.3));
+            vGlow.assign(vec4(rgb, down));
             return alive.select(cameraProjectionMatrix.mul(lifted), vec4(0.0, 0.0, -2.0, 1.0));
         })();
         material.colorNode = vec4(0.0, 0.0, 0.0, 1.0);
         material.outputNode = Fn(() => {
-            const age = ageOf();
-            const life = move.w;
-            const t = clamp(age.div(life), 0.0, 1.0);
             const corner = positionGeometry.xy.mul(2.0);
             const r2 = corner.dot(corner);
             const speck = exp(r2.mul(-9.0)).mul(0.9).add(exp(r2.mul(-2.6)).sub(0.08).max(0.0).mul(0.2));
-            const fadeIn = smoothstep(0.0, mix(float(0.12), float(0.04), isKind(MOTE_KIND.dew)), t);
-            const fadeOut = float(1.0).sub(smoothstep(mix(float(0.55), float(0.3), isKind(MOTE_KIND.glint)), 1.0, t));
-            // Specks glint where the sun is behind them (forward scatter).
-            const c = centre();
-            const view = normalize(c.sub(u.eye));
-            const forward = clamp(dot(view, u.sunDir), 0.0, 1.0);
-            const f2 = forward.mul(forward);
-            const sunlit = u.sun.mul(u.sunUp).mul(float(0.16).add(f2.mul(f2).mul(0.9))).add(u.fill.mul(0.6));
-            const power = mix(mix(float(0.7), float(1.0), isKind(MOTE_KIND.dew)), float(2.4), isKind(MOTE_KIND.glint));
-            const rgb = look.xyz.mul(sunlit).mul(power).mul(speck).mul(fadeIn)
-                .mul(fadeOut)
-                .mul(airClarity(u, c).mul(0.7).add(0.3));
-            return vec4(rgb, 0.0);
+            const tuft = exp(r2.mul(-2.0)).mul(0.75).add(exp(r2.mul(-8.0)).mul(0.5));
+            return vec4(vGlow.xyz.mul(mix(speck, tuft, vGlow.w)), 0.0);
         })();
         return material;
     }
@@ -149,6 +188,33 @@ export class Motes {
         this.kind.set([kind, seed, drift, gravity], i * 4);
         this.dirty = true;
         return i;
+    }
+
+    /**
+     * Spawn one mote of a whirl: circling (x, z) at `radius` m, from height y, climbing `climb` m/s,
+     * turning `turn` rad/s (positive clockwise seen from above) from the angle `seed` · τ, its
+     * circle widening `grow` m/s.
+     */
+    whirl({
+        x, y, z, radius = 1, climb = 1, turn = 3, grow = 0, born, life = 4, rgb = [1, 1, 1], size = 0.014,
+        seed = 0.5, gravity = 0,
+    }) {
+        return this.spawn({
+            x,
+            y,
+            z,
+            vx: radius,
+            vy: climb,
+            vz: turn,
+            born,
+            life,
+            rgb,
+            size,
+            kind: MOTE_KIND.whirl,
+            seed,
+            drift: grow,
+            gravity,
+        });
     }
 
     /** Kill every mote (a seek, a new session). */

@@ -111,14 +111,14 @@ limit of 0.15).
 
 | Event | What happens |
 |---|---|
-| Lock | A patch of the piece's own flower bursts into bloom on the knoll where it landed, opening outward from the spot (on the water it splashes, and the patch opens on the knoll's edge at the same bearing). |
-| Clear | One surge down the river from the pool, the bigger the more lines: a hump of water with a steep front that breaks white across the river like a bore, the water behind it streaked with the foam it threw; the whole knoll flushes into bloom. |
-| Chain | The spring flood rises with each link: the river swells and runs whiter in streaks, faster, and the fall's mist thickens; when the chain breaks it falls back. |
+| Lock | A patch of the piece's own flower bursts into bloom on the knoll where it landed, opening outward from the spot (on the water it splashes, and the patch opens on the knoll's edge at the same bearing). The piece's own pollen is shaken up out of the patch and drifts off on the breeze, and the air round it puffs out, up and lights; a hard drop shakes out more and knocks a ring of down off the plants. |
+| Clear | One surge down the river from the pool, the bigger the more lines: a hump of water with a steep front that breaks white across the river like a bore, the water behind it streaked with the foam it threw; the whole knoll flushes into bloom. Pollen and down lift off both sides of the card in the cleared rows' colours (each side its half of the board), and a breath runs out through the air from the eye. |
+| Chain | The spring flood rises with each link: the river swells and runs whiter in streaks, faster, and the fall's mist thickens; when the chain breaks it falls back. Each link spins up a whirlwind of pollen and down beside the card, on alternate sides and stronger each time; the air thickens, hurries down the breeze and turns in two gyres; a broken chain lets its down go over the knoll. |
 | Four lines | The great surge, and the last of the winter's ice goes out on it: floes come down from the pool and run the rapids. |
-| T-spin | The pool turns in a whirl where it drains, arms of foam winding into a dark eye, spray flung off its rim. |
-| Back-to-back | The river glitters while the run lasts. |
-| Perfect clear | Two surges, and whooper swans come over the valley. |
-| Level up | The day steps a station forward (it also turns with the clock alone); cranes pass over on their way north. |
+| T-spin | The pool turns in a whirl where it drains, arms of foam winding into a dark eye, spray flung off its rim; a whirlwind turns beside the card on the lock's side. |
+| Back-to-back | The river glitters while the run lasts; each step strikes a scatter of glints off the ripples in front of the knoll, and the air's motes sparkle. |
+| Perfect clear | Two surges, and whooper swans come over the valley; the air stills and turns gold, and gold pollen and down shower slowly over the knoll and the river. |
+| Level up | The day steps a station forward (it also turns with the clock alone); cranes pass over on their way north, and willow down drifts over the knoll from upwind. |
 | Game over | The light falls to dusk; it comes back with the next run. |
 
 | Lock | Three lines | Chain of 6 |
@@ -137,7 +137,8 @@ bloom, surges, floes, birds, motes), so `seek(t)` plus a fixed-step replay repro
 Every tier keeps every part and every beat. Tiers scale the grass and flowers, the land fan, the
 river ribbon, the fall's sheet (70–270 columns) and rock face (120–420 columns), the modelled
 trees and their sprays, the woods' cards (1,500 … 18,000) and their atlas's texels (128–384 a
-tree), boulders, motes, mist, floes, birds and the pixel-ratio cap.
+tree), boulders, the air's motes (320 … 2,400) and the ring gameplay throws into it (384 …
+2,304), mist, floes, birds and the pixel-ratio cap.
 
 ## Decisions and traps
 
@@ -306,3 +307,72 @@ falls short, what is left by size is the meadow's 2.7 M triangles (the foregroun
 bark's 1.15 M (the weeping birch's drooping limbs: halving their rings would show), the boulders'
 0.74 M (5,120 triangles each, many over 80 m off: a clustered far version is the next candidate)
 and the mist's blending under 4× MSAA.
+
+## The air (2026-10-19)
+
+The valley's air was empty between events. It now carries willow down and birch pollen on the
+breeze, and gameplay throws more into it, after Grainfields' motes (closed-form air everywhere,
+a ring of event motes where something happens).
+
+- **The air** (`spring-air.js`): one mesh of camera-facing quads with no instance data at all.
+  Where a mote is follows from its index and the air's clock in the vertex shader: a home at a
+  bearing and a distance from the eye (log-spaced from 2.2 to 85 m, so the near air is as full as
+  the far), a run down the breeze (0.86, −0.51, the meadow's) from it, a wobble across it and a
+  bob. Three in ten are down (14–28 mm, white, lit by the sun from any side and blazing against
+  it), the rest pollen (5–11 mm, gold, flickering as it turns). Lit as fine matter in the air:
+  forward scatter, the sky's fill, the valley's haze (`airClarity`). Its light is worked out once
+  a corner, and a mote drawn wider than it is (the floor is about a pixel and a half) spreads its
+  light thinner, so far specks neither shimmer nor glare. 320 (Minimal) … 2,400 (Extreme).
+- **What the game does to the air**, through uniforms the world writes: a lock's patch row (the
+  air within about three metres of it puffs out, up and lights); a clear's breath
+  (`u.airWave`: a band running out from the eye at 11 m/s that lifts and lights what it
+  passes); a chain's stir (`u.air.z`, eased in over a second and out over several: more of the
+  motes show, they wobble wider, and the air's own clock (`u.air.x`, integrated, so it never
+  jumps) runs up to 2.3 times as fast); two gyres either side of the card (`u.airGyres`, with
+  the angle they have turned in `u.air.y`) that turn the air within about nine metres of them,
+  the inner faster, and lift it; back-to-back's glory makes every mote sparkle; a perfect clear
+  stills the air (`u.air.w`: its clock slows to 0.15 of its pace) and turns it gold.
+- **What gameplay throws into the air** (`spring-motes.js`, the world's bursts): pollen in the
+  piece's colour lifted toward white, so the blue S still reads; down; glints; and a whirl kind
+  that circles a centre as it climbs, its circle widening with height (a funnel). What floats
+  drifts off down the breeze, faster the older it is. The table under "What gameplay does" says
+  which event throws what. Bursts are sized by the square root of the tier's ring (384 …
+  2,304), skipped under reduced motion (the air then drifts at 0.4 of its pace), and every
+  clock the air reads is session state, so a seek or a rebuild in place gives the same air.
+
+**Traps.**
+- `patch` is a reserved word in WGSL. A TSL `Loop` named `patch` built cleanly through both node
+  builders and was refused by Tint in the first capture (the air's pipeline was invalid, the
+  frame's command buffer with it). `tests/unit/spring-air.test.js` now fails on a reserved
+  word declared as a name.
+- A whirlwind's foot was hidden: the first sites (13–15 m out) lie on the knoll's far slope,
+  under the sightline over its brow, so a whirl showed only once it had climbed past it. The
+  gyres stand on the knoll's top now, 9.5 m out, in the middle of the free strip left of the
+  card and right of the card or the HUD beside it, worked out from the lens at rest (portrait
+  included) whenever the viewport or the layout changes.
+- A lock's pollen first read as more flowers: small specks of the flower's own colour among the
+  flowers. It now arcs up clear of the meadow, glows lifted toward white, and the opening cups
+  glint.
+- The first air was too faint to read (272 pixels over six levels in an 800 × 450 frame): the
+  motes are larger now, down is lit from any side, and more of the air shows at rest.
+
+**Checks.** A CPU replay of every burst's motion against the terrain (on screen, not under the
+brow; `burst-vis` in the session's scratchpad, not shipped) placed each one: a lock's pollen
+rises through the frame on its side; the clear's lanes cover both sides; the whirls rise left of
+the card (x 0.05–0.19) and right of the HUD (0.71–1.0); a level up's down crosses the upper left,
+the perfect shower the sky. SwiftShader captures (WebGPU, Low 800 × 450 and Medium 1280 × 720),
+no validation errors or console warnings in any.
+
+| Golden evening: the air against the sun | A hard drop of the S: its blue pollen |
+|---|---|
+| ![air in the evening](spring-captures/air-evening.webp) | ![hard drop](spring-captures/air-drop.webp) |
+| **A chain of three, with the board: the third link's whirlwind right of the HUD** | **That whirlwind, at two seconds** |
+| ![chain](spring-captures/air-chain.webp) | ![whirlwind](spring-captures/air-whirl.webp) |
+| **Three lines: the breath and the lanes** | |
+| ![clear](spring-captures/air-clear.webp) | |
+
+**Cost.** Two draws: the air (2,400 quads at Extreme, 9,600 vertices, each a handful of hashes,
+an eight-step loop over the patch rows and the haze; no texture reads) and the ring (2,304 quads,
+most of them idle and clipped in the vertex stage). The fragments are a Gaussian each over a few
+pixels (a near tuft about twenty). Not measured on the RTX 3070; against the 8.1 M-triangle
+frame of the performance pass it is noise.
