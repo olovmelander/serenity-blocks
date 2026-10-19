@@ -219,6 +219,8 @@ export function createUniforms() {
         deckLo: uniform(new THREE.Vector2(0.39, 0.33)),
         /** Four lines: the tear over the gate: (deck x, deck z, radius, strength). */
         tear: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** The deck's march: samples along a ray (a uniform, so no compiler unrolls the loop). */
+        cloudSteps: uniform(18, 'int'),
         /** 1 when the post marches the shafts (the land then leaves the sunlit air to it). */
         airMarch: uniform(1),
 
@@ -285,7 +287,7 @@ function coreCover(u, xz) {
  * is close to the share of the sky that is cloud; inside the storm's core the cover rises toward
  * 0.95. Inline (texture reads).
  */
-export function deckField(u, noise, xz, liftIn = 0) {
+export function deckField(u, noise, xz, liftIn = 0, edge = 1) {
     const lift = float(liftIn);
     const q = deckPoint(u, noise, xz);
     const broad = texture(noise, q.div(34000.0)).r;
@@ -301,7 +303,8 @@ export function deckField(u, noise, xz, liftIn = 0) {
     // on the CPU (deckThreshold), so `cover` is the share of the deck that is cloud.
     // A gap raises the threshold where it is torn: its edge follows the billows (ragged, not round).
     const lo = mix(u.deckLo.x, u.deckLo.y, coreCover(u, xz)).add(lift);
-    return smoothstep(lo.sub(0.022), lo.add(0.055), base);
+    // (`edge` widens the cloud's margin: the marched volume wants a soft one.)
+    return smoothstep(lo.sub(0.022 * edge), lo.add(0.055 * edge), base);
 }
 
 /**
@@ -327,7 +330,7 @@ export function deckThreshold(cover) {
  * ends tens of kilometres out, so the horizon is bright under it), a chain's break and a
  * perfect clear. 0 open sky … 1 thick cloud.
  */
-export function deckCover(u, noise, xz, { locks = true } = {}) {
+export function deckCover(u, noise, xz, { locks = true, edge = 1 } = {}) {
     // Every gap as a hole's depth (0..1): the sun's own (held on the sun's line from the eye), the
     // shafts before the fells, the four-line tear, the locks' (deck-fixed: they drift with the cloud they
     // were torn in).
@@ -349,7 +352,7 @@ export function deckCover(u, noise, xz, { locks = true } = {}) {
         });
     }
     // The hole tears the field open along its own billows, and its heart is clear.
-    const dens = deckField(u, noise, xz, hole.mul(0.3)).toVar();
+    const dens = deckField(u, noise, xz, hole.mul(0.3), edge).toVar();
     dens.mulAssign(float(1.0).sub(smoothstep(0.72, 1.0, hole).mul(0.97)));
     // The storm's far edge, and its thinning with a chain or a perfect clear.
     const far = length(xz.sub(u.eye.xz));

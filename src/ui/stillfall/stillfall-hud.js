@@ -61,34 +61,81 @@ const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 const key = (label) => `<kbd class="sb-kbd" data-key aria-hidden="true">${escapeHtml(label)}</kbd>`;
 const pad = (label) => `<kbd class="sb-kbd" data-pad aria-hidden="true">${label}</kbd>`;
 
-function goalText(goal) {
-    if (goal.type === 'waves') return `Set off a cascade ${plural(goal.atLeast, 'wave', 'waves')} deep`;
-    if (goal.type === 'lines') return `Clear ${plural(goal.atLeast, 'line', 'lines')}`;
-    if (goal.type === 'clear-all') return 'Empty the well';
+const NUMBER_WORDS = ['no', 'one', 'two', 'three'];
+/** "the relic", "both relics", "all three relics" */
+const theMarked = (count, one, many) => {
+    if (count === 1) return `the ${one}`;
+    return count === 2 ? `both ${many}` : `all ${NUMBER_WORDS[count] || count} ${many}`;
+};
+const capitalised = (text) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** One goal in the panel's words. */
+function partText(part) {
+    if (part.type === 'waves') return `Set off a cascade ${plural(part.atLeast, 'wave', 'waves')} deep`;
+    if (part.type === 'lines') return `Clear ${plural(part.atLeast, 'line', 'lines')}`;
+    if (part.type === 'clear-all') return 'Empty the well';
+    if (part.type === 'seal') return 'Break the seal';
     return 'Bring the relic to the floor';
 }
 
-/** Pips for a counted goal, the blocks still in the well, or the relic's legend. */
-function progressHtml(state) {
-    const { goal } = state.puzzle;
-    if (goal.type === 'waves' || goal.type === 'lines') {
-        const value = goal.type === 'waves' ? state.bestWaves : state.lines;
-        const pips = Array.from({ length: goal.atLeast }, (_, i) => (
-            `<span class="stillfall-pip${i < value ? ' is-lit' : ''}"></span>`)).join('');
-        const label = goal.type === 'waves' ? 'Deepest cascade' : 'Lines cleared';
-        return `<div class="stillfall-progress" role="img" aria-label="${label}: ${value} of ${goal.atLeast}">
+/** The goal as one sentence: two or three goals are joined, the counts first. */
+export function goalText(goal) {
+    if (goal.type !== 'all') return partText(goal);
+    const relics = goal.of.filter((part) => part.type === 'relic-floor').length;
+    const seals = goal.of.filter((part) => part.type === 'seal').length;
+    const phrases = goal.of.filter((part) => part.type !== 'relic-floor' && part.type !== 'seal').map(partText);
+    if (relics) phrases.push(`bring ${theMarked(relics, 'relic', 'relics')} to the floor`);
+    if (seals) phrases.push(`break ${theMarked(seals, 'seal', 'seals')}`);
+    const words = phrases.map((phrase) => phrase.charAt(0).toLowerCase() + phrase.slice(1));
+    const sentence = words.length > 2 ? `${words.slice(0, -1).join(', ')} and ${words.at(-1)}` : words.join(' and ');
+    return capitalised(sentence);
+}
+
+const goalPartsOf = (goal) => (goal.type === 'all' ? goal.of : [goal]);
+/** The single goals and where each stands; a state without them reads the goal itself. */
+const partsOf = (state) => state.parts || goalPartsOf(state.puzzle.goal);
+
+function countRow(label, value, total) {
+    const pips = Array.from({ length: total }, (_, i) => (
+        `<span class="stillfall-pip${i < value ? ' is-lit' : ''}"></span>`)).join('');
+    return `<div class="stillfall-progress" role="img" aria-label="${label}: ${value} of ${total}">
                 <span class="stillfall-progress__label">${label}</span>
                 <span class="stillfall-pips" aria-hidden="true">${pips}</span>
-                <span class="stillfall-progress__count">${value} / ${goal.atLeast}</span>
+                <span class="stillfall-progress__count">${value} / ${total}</span>
             </div>`;
-    }
-    if (goal.type === 'clear-all') {
-        return `<div class="stillfall-progress" role="img" aria-label="Blocks left: ${state.cellsLeft}">
-                <span class="stillfall-progress__label">Blocks left</span>
-                <span class="stillfall-progress__count">${state.cellsLeft}</span>
+}
+
+function blocksRow(label, count) {
+    return `<div class="stillfall-progress" role="img" aria-label="${label}: ${count}">
+                <span class="stillfall-progress__label">${label}</span>
+                <span class="stillfall-progress__count">${count}</span>
             </div>`;
+}
+
+/**
+ * Pips for a counted goal, the blocks still in the well or in the seals, and the legend
+ * for the marks on the board (the relic's diamond, the seal's ring).
+ */
+function progressHtml(state) {
+    const parts = partsOf(state);
+    const rows = [];
+    for (const part of parts) {
+        if (part.type === 'waves') rows.push(countRow('Deepest cascade', state.bestWaves, part.atLeast));
+        else if (part.type === 'lines') rows.push(countRow('Lines cleared', state.lines, part.atLeast));
+        else if (part.type === 'clear-all') rows.push(blocksRow('Blocks left', state.cellsLeft));
     }
-    return '<p class="stillfall-hint"><span class="stillfall-relic" aria-hidden="true"></span> marks the relic.</p>';
+    const relics = parts.filter((part) => part.type === 'relic-floor');
+    const seals = parts.filter((part) => part.type === 'seal');
+    if (relics.length > 1) rows.push(countRow('On the floor', relics.filter((part) => part.met).length, relics.length));
+    if (seals.length > 0 && seals.every((part) => part.cellsLeft !== undefined)) {
+        const label = seals.length > 1 ? 'Seal blocks left' : 'Blocks in the seal';
+        rows.push(blocksRow(label, seals.reduce((sum, part) => sum + part.cellsLeft, 0)));
+    }
+    const legend = [];
+    if (relics.length) legend.push(`<span class="stillfall-relic" aria-hidden="true"></span> marks ${relics.length > 1 ? 'the relics' : 'the relic'}`);
+    if (seals.length) legend.push(`<span class="stillfall-seal" aria-hidden="true"></span> ${legend.length ? '' : 'marks '}${seals.length > 1 ? 'the seals' : 'the seal'}`);
+    if (legend.length) rows.push(`<p class="stillfall-hint">${legend.join(', ')}.</p>`);
+    return rows.join('');
 }
 
 /** Where the supply stands: "Piece 1 of 2", "Last piece", "No pieces left". */
@@ -105,16 +152,37 @@ function supplyText(state) {
  */
 export function failureTitle(state) {
     const { goal } = state.puzzle;
+    const parts = partsOf(state);
+    const relics = parts.filter((part) => part.type === 'relic-floor');
+    const seals = parts.filter((part) => part.type === 'seal');
     if (state.reason === 'blocked') return 'The next piece has no room.';
-    if (state.reason === 'relic-lost') return 'The relic was cleared away.';
-    if (goal.type === 'waves' || goal.type === 'lines') {
-        if (state.lines === 0) return 'Nothing cleared.';
-        const short = goal.atLeast - (goal.type === 'waves' ? state.bestWaves : state.lines);
-        const [one, many] = goal.type === 'waves' ? ['wave', 'waves'] : ['line', 'lines'];
-        return `${plural(short, one, many)} short.`;
+    if (state.reason === 'relic-lost') return relics.length > 1 ? 'A relic was cleared away.' : 'The relic was cleared away.';
+    // Nothing cleared says it all for a count, or for two goals at once.
+    const counted = goal.type === 'waves' || goal.type === 'lines' || goal.type === 'all';
+    if (counted && state.lines === 0) return 'Nothing cleared.';
+    const messages = [];
+    for (const part of parts) {
+        if (part.met) continue;
+        if (part.type === 'waves' || part.type === 'lines') {
+            const short = part.atLeast - (part.type === 'waves' ? state.bestWaves : state.lines);
+            const [one, many] = part.type === 'waves' ? ['wave', 'waves'] : ['line', 'lines'];
+            if (short > 0) messages.push(`${plural(short, one, many)} short.`);
+        } else if (part.type === 'clear-all') {
+            messages.push('The well is not empty.');
+        }
     }
-    if (goal.type === 'clear-all') return 'The well is not empty.';
-    return 'The relic is still up.';
+    // A part with no `met` (a state published without progress) counts as not met.
+    const up = relics.filter((part) => !part.met);
+    if (up.length === 1) messages.push(relics.length > 1 ? 'A relic is still up.' : 'The relic is still up.');
+    else if (up.length > 1) messages.push(`${capitalised(theMarked(up.length, 'relic', 'relics'))} are still up.`);
+    const holding = seals.filter((part) => !part.met);
+    if (holding.length > 0) {
+        const blocks = holding.reduce((sum, part) => sum + (part.cellsLeft ?? 0), 0);
+        let who = 'The seals still hold';
+        if (holding.length === 1) who = seals.length > 1 ? 'A seal still holds' : 'The seal still holds';
+        messages.push(blocks > 0 ? `${who} ${plural(blocks, 'block', 'blocks')}.` : `${who}.`);
+    }
+    return messages.join(' ') || 'Not yet.';
 }
 
 /** The miss's way back, named for what it does: a one-piece puzzle simply starts again. */

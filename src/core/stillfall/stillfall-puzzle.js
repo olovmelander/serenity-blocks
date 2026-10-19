@@ -28,22 +28,50 @@ export const STILLFALL_BOARD_HEIGHT = ROWS + HIDDEN_ROWS;
 /** The tallest structure that still leaves the spawn area and room to steer. */
 export const MAX_STRUCTURE_ROWS = ROWS - 6;
 
-export const MAX_SUPPLY = 3;
+export const MAX_SUPPLY = 4;
 
 /**
  * - waves: one lock sets off a cascade of at least `atLeast` waves
  * - lines: at least `atLeast` lines cleared over the whole puzzle
  * - clear-all: the well ends empty
  * - relic-floor: some cell of body `body` comes to rest on the floor
+ * - seal: every cell of body `body` is cleared away
+ * - all: two or three of the goals above hold after the same lock (`of`)
  */
-export const GOAL_TYPES = Object.freeze(['waves', 'lines', 'clear-all', 'relic-floor']);
+export const GOAL_TYPES = Object.freeze(['waves', 'lines', 'clear-all', 'relic-floor', 'seal', 'all']);
+
+/** The most goals one puzzle asks for at once. */
+export const MAX_GOAL_PARTS = 3;
 
 /**
  * @typedef {Object} StillfallGoal
- * @property {'waves'|'lines'|'clear-all'|'relic-floor'} type
+ * @property {'waves'|'lines'|'clear-all'|'relic-floor'|'seal'|'all'} type
  * @property {number} [atLeast]
- * @property {string} [body] relic-floor: the body letter in `rows`
+ * @property {string} [body] relic-floor and seal: the body letter in `rows`
+ * @property {StillfallGoal[]} [of] all: the goals that must hold together
  */
+
+/**
+ * The single goals a goal is made of: its parts for `all`, else itself.
+ * @param {StillfallGoal} goal
+ * @returns {StillfallGoal[]}
+ */
+export function goalParts(goal) {
+    return goal.type === 'all' ? /** @type {StillfallGoal[]} */ (goal.of) : [goal];
+}
+
+/**
+ * The body letters a goal marks on the board, by kind.
+ * @param {StillfallGoal} goal
+ * @returns {{ relics: string[], seals: string[] }}
+ */
+export function markedBodies(goal) {
+    const parts = goalParts(goal);
+    const bodiesOf = (/** @type {string} */ type) => parts
+        .filter((part) => part.type === type)
+        .map((part) => /** @type {string} */ (part.body));
+    return { relics: bodiesOf('relic-floor'), seals: bodiesOf('seal') };
+}
 
 /**
  * @typedef {Object} SolutionStep
@@ -151,19 +179,54 @@ export function validatePuzzleDefinition(definition) {
     const { goal } = def;
     if (!goal || !GOAL_TYPES.includes(goal.type)) {
         problems.push(`goal.type must be one of ${GOAL_TYPES.join(', ')}`);
-    } else if (goal.type === 'waves' || goal.type === 'lines') {
-        if (!Number.isInteger(goal.atLeast) || /** @type {number} */ (goal.atLeast) < 1) {
-            problems.push('goal.atLeast must be a positive whole number');
+    } else if (goal.type === 'all') {
+        const parts = Array.isArray(goal.of) ? goal.of : [];
+        if (parts.length < 2 || parts.length > MAX_GOAL_PARTS) {
+            problems.push(`goal.of must hold 2–${MAX_GOAL_PARTS} goals`);
+        } else {
+            parts.forEach((part, index) => {
+                if (!part || part.type === 'all' || !GOAL_TYPES.includes(part.type)) {
+                    problems.push(`goal.of[${index}] must be a single goal`);
+                } else {
+                    problems.push(...singleGoalProblems(part, rows).map((problem) => `goal.of[${index}]: ${problem}`));
+                }
+            });
+            const types = parts.map((part) => part?.type);
+            if (types.includes('clear-all') && types.some((type) => type === 'relic-floor' || type === 'seal')) {
+                problems.push('an empty well cannot go with a relic (it would be cleared) or a seal (it would be gone anyway)');
+            }
+            const bodies = parts.map((part) => part?.body).filter(Boolean);
+            if (new Set(bodies).size !== bodies.length) problems.push('each marked body may serve one goal');
+            if (new Set(types).size !== types.length && !types.every((type) => type === 'relic-floor' || type === 'seal')) {
+                problems.push('only relics and seals may repeat');
+            }
         }
-    } else if (goal.type === 'relic-floor') {
-        const letter = goal.body;
-        if (typeof letter !== 'string' || letter.length !== 1 || !rows?.some((row) => row.includes(letter))) {
-            problems.push('goal.body must name a body in rows');
-        } else if (rows && rows[rows.length - 1].includes(letter)) {
-            problems.push('the relic must not start on the floor');
-        }
+    } else {
+        problems.push(...singleGoalProblems(goal, rows));
     }
     return problems;
+}
+
+/**
+ * @param {StillfallGoal} goal a goal other than `all`
+ * @param {string[] | null} rows
+ * @returns {string[]}
+ */
+function singleGoalProblems(goal, rows) {
+    if (goal.type === 'waves' || goal.type === 'lines') {
+        if (!Number.isInteger(goal.atLeast) || /** @type {number} */ (goal.atLeast) < 1) {
+            return ['goal.atLeast must be a positive whole number'];
+        }
+    } else if (goal.type === 'relic-floor' || goal.type === 'seal') {
+        const letter = goal.body;
+        if (typeof letter !== 'string' || letter.length !== 1 || !rows?.some((row) => row.includes(letter))) {
+            return ['goal.body must name a body in rows'];
+        }
+        if (goal.type === 'relic-floor' && rows && rows[rows.length - 1].includes(letter)) {
+            return ['the relic must not start on the floor'];
+        }
+    }
+    return [];
 }
 
 /**

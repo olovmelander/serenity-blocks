@@ -1286,23 +1286,13 @@ describe('OdysseyMode level entry bootstrap', () => {
     });
 
     it('navigator launches focus the board before starting the shared launcher', async () => {
+        // The navigator's own press handling is odyssey-navigator-model.test.js; this is the
+        // mode's half: travel to the orb, close the open navigator, then the shared launcher.
         const { mode } = createMode();
         const levelConfig = createLevelConfig(20, { id: 6, chapterLevel: 1 });
         const order = [];
 
         mode.isInBoardView = true;
-        mode.odysseyState.getProgressSummary = vi.fn(() => ({
-            totalStars: 12,
-            maxStars: 168,
-            overallProgress: 18,
-            currentLevel: 6,
-        }));
-        mode.odysseyState.getChapterProgress = vi.fn(() => ({ stars: 3, maxStars: 24 }));
-        mode.odysseyState.isLevelUnlocked = vi.fn(() => true);
-        mode.odysseyState.isLevelCompleted = vi.fn(() => false);
-        mode.odysseyState.getLevelStars = vi.fn(() => 0);
-        mode.levelRegistry.getAllChapters = vi.fn(() => [{ id: 1, name: 'Chapter One' }]);
-        mode.levelRegistry.getLevelsInChapter = vi.fn(() => [levelConfig]);
         mode.boardController = {
             travelToLevel: vi.fn().mockImplementation(async () => {
                 order.push('travel');
@@ -1313,16 +1303,16 @@ describe('OdysseyMode level entry bootstrap', () => {
             order.push('launch');
             return true;
         });
+        const navigator = document.createElement('div');
+        navigator.id = 'odyssey-level-select';
+        navigator.style.display = 'flex';
+        document.body.appendChild(navigator);
+        expect(mode._isOdysseyNavigatorOpen()).toBe(true);
 
-        mode._ensureOdysseyNavigatorButton();
-        mode.openOdysseyNavigator();
-
-        const selectorBtn = document.querySelector('.odyssey-level-btn');
-        selectorBtn.click();
-        await Promise.resolve();
-        await Promise.resolve();
+        await mode._launchLevelFromNavigator(levelConfig.id);
 
         expect(order).toEqual(['travel', 'launch']);
+        expect(mode.boardController.travelToLevel).toHaveBeenCalledWith(levelConfig.id);
         expect(mode.launchOdysseyLevel).toHaveBeenCalledWith(levelConfig.id, { source: 'selector' });
         expect(mode._isOdysseyNavigatorOpen()).toBe(false);
     });

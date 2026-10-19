@@ -8,6 +8,10 @@
  * gold below; the cloud thins and glows silver round the gaps on the sun's side, and the walls
  * of a gap that face the sun are lit. Through the gaps: clean blue sky, high thin cirrus, the sun.
  *
+ * Where the tier can afford it the deck is a volume instead (grainfields-clouds.js): marched once
+ * a frame at reduced resolution, and drawn here over the sky; the flat deck below is the leanest
+ * tier's.
+ *
  * Drawn LAST among the opaque parts with the depth test on and no depth write, so it is shaded
  * only where the sky shows.
  */
@@ -25,6 +29,7 @@ import {
     mix,
     normalize,
     positionWorld,
+    screenUV,
     smoothstep,
     texture,
     vec2,
@@ -33,6 +38,7 @@ import {
 } from 'three/tsl';
 import { DECK } from './grainfields-core.js';
 import { skyColour, sunGlow } from './grainfields-light.js';
+import { createCloudMarch } from './grainfields-clouds.js';
 import {
     deckCover, deckPoint, gfCells, gfHash21, gfHash22,
 } from './grainfields-tsl.js';
@@ -41,6 +47,8 @@ export const SKY_RADIUS = 80000;
 
 export function createSky(u, t, tier) {
     const geometry = new THREE.SphereGeometry(SKY_RADIUS, 48, 24);
+    const march = tier.cloudSteps > 0
+        ? createCloudMarch(u, t, { steps: tier.cloudSteps, scale: tier.cloudScale }) : null;
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'GrainfieldsSky';
     material.side = THREE.BackSide;
@@ -76,7 +84,12 @@ export function createSky(u, t, tier) {
             });
         }
 
-        // ── The storm deck overhead ──
+        // ── The storm deck overhead: the marched volume over the sky behind it ──
+        if (march) {
+            const clouds = march.sample(screenUV);
+            return vec4(sky.mul(clouds.a).add(clouds.rgb), 1.0);
+        }
+        // ...or, on the leanest tier, the deck drawn flat.
         If(dir.y.greaterThan(0.0025), () => {
             const tDeck = float(DECK.base).sub(u.eye.y).div(dir.y).toVar();
             const p = u.eye.xz.add(dir.xz.mul(tDeck)).toVar();
@@ -158,10 +171,16 @@ export function createSky(u, t, tier) {
     return {
         mesh,
         meshes: [mesh],
+        march,
         update() {},
+        /** March the deck for this frame's camera (before the scene is drawn). */
+        render(renderer, camera) {
+            march?.render(renderer, camera);
+        },
         dispose() {
             geometry.dispose();
             material.dispose();
+            march?.dispose();
         },
     };
 }

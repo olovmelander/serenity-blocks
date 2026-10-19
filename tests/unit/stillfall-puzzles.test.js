@@ -1,95 +1,22 @@
 /**
- * The Stillfall certifier. Every shipped puzzle must be valid and solvable by straight
- * drops (rotate and move at the top, then drop: no tuck, no kick), its stored solution
- * must be one such line, two-piece puzzles must need every piece, and every solution must
- * play out the same through the real game: the real controls from the deal row, a real
- * hard drop, and the live async cascade physics, cell for cell after every lock. A rules
- * change (kicks, spawn, gravity, cascade order) that breaks a shipped puzzle fails here.
+ * The Stillfall certifier, first file: the bank as a whole (ids, lessons, the tier unlock
+ * rule, every tier certified somewhere), the puzzle rules, and the standard held to tiers
+ * 1–6 (tests/unit/helpers/stillfall-certify.js). The later tiers have files of their own so
+ * CI certifies them side by side. A rules change (kicks, spawn, gravity, cascade order) that
+ * breaks a shipped puzzle fails here or there.
  */
 import { describe, expect, it } from 'vitest';
 import {
-    GameState, hardDrop, move, rotate, softDrop, spawnPiece,
-} from '../../src/core/game.js';
-import { rebuildBoardGridFromPieces, markBoardDirty } from '../../src/core/board.js';
-import {
-    buildPuzzle, validatePuzzleDefinition, MAX_SUPPLY,
+    buildPuzzle, markedBodies, validatePuzzleDefinition, MAX_SUPPLY,
 } from '../../src/core/stillfall/stillfall-puzzle.js';
 import {
-    applyPlacement, boardFor, createRun, dealIntoView, judge, listPlacements, solutionPlacement,
+    applyPlacement, boardFor, createRun, failReason, judge, listPlacements,
 } from '../../src/core/stillfall/stillfall-sim.js';
-import { everyPieceMatters, isStraight, solvePuzzle } from '../../src/core/stillfall/stillfall-solver.js';
+import { isStraight } from '../../src/core/stillfall/stillfall-solver.js';
 import {
     STILLFALL_PUZZLES, SOLVES_TO_OPEN_NEXT_TIER, TIERS, openPuzzleIds,
 } from '../../src/core/stillfall/puzzle-bank.js';
-
-/** The share of first landings that may lead to a solution, per tier. */
-const MAX_WINNING_OPENINGS = {
-    1: 0.25, 2: 0.25, 3: 0.1, 4: 0.1, 5: 0.06, 6: 0.06,
-};
-/** From this tier on, exactly one first landing leads to a solution. */
-const ONE_WAY_IN_FROM_TIER = 5;
-
-/** Every cell as `type:id`, so two boards match only if the same bodies hold the same cells. */
-function cellMap(grid) {
-    return grid.map((row) => row.map((cell) => (cell ? `${cell.type}:${cell.id}` : '.')).join(' '));
-}
-
-/** Loads a puzzle into a real GameState, as the mode does, with its supply dealt in order. */
-function liveGame(puzzle) {
-    const gameState = new GameState({ hitStopEnabled: false, finiteSupply: true, gravityWaits: true });
-    gameState.isSeeking = true; // physics skips its animation delays
-    gameState.lockedPieces = puzzle.lockedPieces.map((piece) => ({
-        ...piece, shape: piece.shape.map((row) => row.slice()),
-    }));
-    gameState._pieceIdCounter = puzzle.nextPieceId - 1;
-    gameState.nextPieces = puzzle.supply.slice();
-    rebuildBoardGridFromPieces(gameState.lockedPieces, gameState.boardGrid);
-    markBoardDirty(gameState);
-    const waves = [];
-    const physicsCallbacks = {
-        onLineClear: (count, holes, masks, rows, wave) => waves.push(wave),
-        spawnPiece: () => {},
-    };
-    spawnPiece(gameState);
-    dealIntoView(gameState);
-    return { gameState, physicsCallbacks, waves };
-}
-
-async function playLive(live, placement) {
-    const { gameState, physicsCallbacks } = live;
-    expect(gameState.currentPiece?.shapeKey).toBe(placement.shapeKey);
-    for (const action of placement.actions) {
-        if (action.type === 'move') expect(move(gameState, action.dir)).toBe(true);
-        else if (action.type === 'rotate') expect(rotate(gameState, action.dir)).toBe(true);
-        else if (action.type === 'softDrop') expect(softDrop(gameState, null, physicsCallbacks)).toBe(true);
-    }
-    hardDrop(gameState, null, physicsCallbacks);
-    await gameState.latestPhysicsPromise;
-    if (gameState.nextPieces.length > 0) {
-        spawnPiece(gameState);
-        dealIntoView(gameState);
-    }
-}
-
-/** Replays one line of play through the live game, checking the board after each lock. */
-async function certifyLine(puzzle, line, label) {
-    const live = liveGame(puzzle);
-    let run = createRun(puzzle);
-    expect(cellMap(live.gameState.boardGrid)).toEqual(cellMap(boardFor(run.lockedPieces)));
-    for (const placement of line) {
-        const step = applyPlacement(run, placement);
-        const wavesBefore = live.waves.length;
-        // eslint-disable-next-line no-await-in-loop
-        await playLive(live, placement);
-        expect(live.waves.length - wavesBefore, `${label}: waves`).toBe(step.resolution.cascadeCount);
-        expect(cellMap(live.gameState.boardGrid), `${label}: board`)
-            .toEqual(cellMap(boardFor(step.run.lockedPieces)));
-        ({ run } = step);
-    }
-    expect(run.outcome, label).toBe('solved');
-    // Every goal needs at least one clear, so the live game must have cascaded.
-    expect(live.waves.length, label).toBeGreaterThan(0);
-}
+import { CERTIFIED_TIER_GROUPS, certifyTiers } from './helpers/stillfall-certify.js';
 
 describe('Stillfall puzzle bank', () => {
     it('holds valid puzzles with unique ids, lessons and stored solutions', () => {
@@ -121,41 +48,13 @@ describe('Stillfall puzzle bank', () => {
         expect(withoutLanterns.length).toBeLessThan(SOLVES_TO_OPEN_NEXT_TIER);
     });
 
-    describe.each(STILLFALL_PUZZLES.map((definition) => [definition.id, definition]))('%s', (id, definition) => {
-        const puzzle = buildPuzzle(definition);
-        const report = solvePuzzle(puzzle);
-
-        it('is solvable by straight drops, and not by most openings', () => {
-            expect(report.solvable).toBe(true);
-            expect(report.straightSolutions.length, 'a solution with no tuck or kick').toBeGreaterThan(0);
-            expect(report.winningOpenings / report.openingMoves)
-                .toBeLessThanOrEqual(MAX_WINNING_OPENINGS[definition.tier]);
-            if (definition.tier >= ONE_WAY_IN_FROM_TIER) expect(report.winningOpenings, 'one way in').toBe(1);
-        });
-
-        it('needs every piece, and is not solved before the last one lands', () => {
-            expect(report.minPieces).toBe(definition.supply.length);
-            if (definition.supply.length > 1) expect(everyPieceMatters(puzzle)).toBe(true);
-        });
-
-        it('stores a straight solution the controls reach, for the hint', () => {
-            let run = createRun(puzzle);
-            for (const step of puzzle.solution) {
-                const placement = solutionPlacement(run, step);
-                expect(placement, `${id}: step ${JSON.stringify(step)}`).not.toBeNull();
-                expect(isStraight(placement), `${id}: step ${JSON.stringify(step)} is straight`).toBe(true);
-                ({ run } = applyPlacement(run, placement));
-            }
-            expect(run.outcome).toBe('solved');
-        });
-
-        it('plays every solution out identically through the real controls and live physics', async () => {
-            for (const [index, line] of report.solutions.entries()) {
-                // eslint-disable-next-line no-await-in-loop
-                await certifyLine(puzzle, line, `${id} #${index}`);
-            }
-        });
+    it('certifies every tier in exactly one certifier file', () => {
+        const groups = CERTIFIED_TIER_GROUPS.flat();
+        expect(new Set(groups).size).toBe(groups.length);
+        expect(groups.sort((a, b) => a - b)).toEqual(TIERS.map((entry) => entry.tier));
     });
+
+    certifyTiers(CERTIFIED_TIER_GROUPS[0]);
 });
 
 describe('Stillfall rules', () => {
@@ -165,7 +64,7 @@ describe('Stillfall rules', () => {
 
     it('rejects malformed definitions with every problem named', () => {
         expect(validatePuzzleDefinition({
-            id: 'Bad Id', title: '', rows: ['AAAA', 'BBBBBBBBBB'], supply: ['Q', 'I', 'I', 'I'], goal: { type: 'win' },
+            id: 'Bad Id', title: '', rows: ['AAAA', 'BBBBBBBBBB'], supply: ['Q', 'I', 'I', 'I', 'I'], goal: { type: 'win' },
         })).toEqual(expect.arrayContaining([
             'id must be a short kebab-case string',
             'title is required',
@@ -186,6 +85,59 @@ describe('Stillfall rules', () => {
             goal: { type: 'clear-all' },
             solution: [{ piece: 'I', rotation: 0, x: 4 }, { piece: 'O', rotation: 4, x: 0 }],
         })).toHaveLength(2);
+    });
+
+    it('checks seals and goals held together', () => {
+        const all = (...of) => ({ ...definition, goal: { type: 'all', of } });
+        expect(validatePuzzleDefinition({ ...definition, goal: { type: 'seal', body: 'Z' } }))
+            .toEqual(['goal.body must name a body in rows']);
+        // A seal may lie in the floor; a relic may not.
+        expect(validatePuzzleDefinition({ ...definition, goal: { type: 'seal', body: 'A' } })).toEqual([]);
+        expect(validatePuzzleDefinition(all({ type: 'clear-all' }))).toEqual(['goal.of must hold 2–3 goals']);
+        expect(validatePuzzleDefinition(all({ type: 'all', of: [] }, { type: 'lines', atLeast: 1 })))
+            .toEqual(['goal.of[0] must be a single goal']);
+        expect(validatePuzzleDefinition(all({ type: 'lines' }, { type: 'seal', body: 'A' })))
+            .toEqual(['goal.of[0]: goal.atLeast must be a positive whole number']);
+        expect(validatePuzzleDefinition(all({ type: 'clear-all' }, { type: 'seal', body: 'A' })))
+            .toEqual([expect.stringContaining('an empty well cannot go with')]);
+        expect(validatePuzzleDefinition(all({ type: 'relic-floor', body: 'R' }, { type: 'seal', body: 'R' })))
+            .toEqual(['each marked body may serve one goal']);
+        expect(validatePuzzleDefinition(all({ type: 'lines', atLeast: 1 }, { type: 'lines', atLeast: 2 })))
+            .toEqual(['only relics and seals may repeat']);
+        expect(validatePuzzleDefinition(all({ type: 'relic-floor', body: 'R' }, { type: 'seal', body: 'A' }))).toEqual([]);
+        expect(markedBodies(all({ type: 'relic-floor', body: 'R' }, { type: 'seal', body: 'A' }).goal))
+            .toEqual({ relics: ['R'], seals: ['A'] });
+    });
+
+    it('breaks a seal only when every block of it is gone, and wants both goals after one lock', () => {
+        // Clearing the floor takes the seal's long arm; the block above it falls and stays.
+        const tall = createRun(buildPuzzle({
+            ...definition, rows: ['S.........', 'SSSSSSSSS.'], supply: ['I'], goal: { type: 'seal', body: 'S' },
+        }));
+        const upright = listPlacements(tall).find((p) => p.footprint === '9,20;9,21;9,22;9,23');
+        const after = applyPlacement(tall, upright).run;
+        expect(after.lines).toBe(1);
+        expect(after.outcome).toBe('failed');
+        expect(failReason(after)).toBe('spent');
+        const flat = createRun(buildPuzzle({
+            ...definition, rows: ['SSSSSSSSS.'], supply: ['I'], goal: { type: 'seal', body: 'S' },
+        }));
+        expect(applyPlacement(flat, listPlacements(flat).find((p) => p.footprint.includes('9,23'))).run.outcome).toBe('solved');
+
+        const both = buildPuzzle({
+            ...definition,
+            rows: ['....R.....', 'SS....AAA.'],
+            goal: { type: 'all', of: [{ type: 'relic-floor', body: 'R' }, { type: 'seal', body: 'S' }] },
+        });
+        const run = createRun(both);
+        const without = (id) => run.lockedPieces.filter((p) => p.pieceId !== id);
+        expect(judge(run)).toBe('open');
+        expect(judge({ ...run, lockedPieces: without(both.bodyIds.S) })).toBe('open'); // the relic is still up
+        const down = without(both.bodyIds.S).map((p) => (p.pieceId === both.bodyIds.R ? { ...p, y: p.y + 1 } : p));
+        expect(judge({ ...run, lockedPieces: down })).toBe('solved');
+        const lost = { ...run, lockedPieces: without(both.bodyIds.R) };
+        expect(judge(lost)).toBe('failed');
+        expect(failReason(lost)).toBe('relic-lost');
     });
 
     it('never gives touching bodies the same colour', () => {

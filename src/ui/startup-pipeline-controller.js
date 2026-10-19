@@ -12,43 +12,20 @@ import {
 
 export { STARTUP_IDENT_MIN_VISIBLE_MS };
 
-function installIntroSkipInput(onSkip) {
-    if (typeof window === 'undefined' || typeof onSkip !== 'function') {
-        return () => {};
-    }
-
-    const handleInput = (event) => {
-        if (event.type === 'keydown' && event.repeat) return;
-        onSkip(event.type);
-    };
-    const pointerOptions = { capture: true, passive: true };
-
-    window.addEventListener('pointerdown', handleInput, pointerOptions);
-    window.addEventListener('touchstart', handleInput, pointerOptions);
-    window.addEventListener('keydown', handleInput, { capture: true });
-
-    return () => {
-        window.removeEventListener('pointerdown', handleInput, pointerOptions);
-        window.removeEventListener('touchstart', handleInput, pointerOptions);
-        window.removeEventListener('keydown', handleInput, { capture: true });
-    };
-}
-
 /**
  * Browser-facing startup coordinator. The underlying state machine remains pure;
- * this layer owns trace/KPI side effects, skip input, and cinematic resource cleanup.
+ * this layer owns trace/KPI side effects and cinematic resource cleanup.
+ *
+ * Player input never skips the opening: a click or key before the title lands is ignored, and
+ * the intro's own "Press any key" prompt takes over once it shows. Only the URL flag, reduced
+ * motion, the minimal startup profile and the watchdog skip it.
  */
 export function createStartupPipelineController(options = {}) {
     // The loading screen's progress line follows the milestones this pipeline traces.
     installStartupProgress();
     const introAnimation = options.introAnimation || null;
     const visualResources = new Set();
-    let removeIntroSkipInput = null;
 
-    const disarmIntroSkipInput = () => {
-        removeIntroSkipInput?.();
-        removeIntroSkipInput = null;
-    };
     const disposeVisuals = () => {
         visualResources.forEach((resource) => resource.dispose?.());
         visualResources.clear();
@@ -81,7 +58,6 @@ export function createStartupPipelineController(options = {}) {
                     status: snapshot.introStatus,
                     reason: snapshot.introSkipReason,
                 });
-                disarmIntroSkipInput();
             }
             if (event === STARTUP_PIPELINE_EVENTS.MENU_VISIBLE) {
                 performanceMonitor.recordEvent('startup_time_to_menu_visible', {
@@ -131,14 +107,6 @@ export function createStartupPipelineController(options = {}) {
                 throw error;
             }
         },
-        armIntroSkipInput(isNativeInteractionReady) {
-            disarmIntroSkipInput();
-            removeIntroSkipInput = installIntroSkipInput((inputType) => {
-                if (stateMachine.snapshot().introStatus !== 'running') return;
-                if (isNativeInteractionReady?.()) return;
-                stateMachine.skipIntro('user-input', { inputType });
-            });
-        },
         trackVisual(resource) {
             if (resource) visualResources.add(resource);
             return resource;
@@ -148,7 +116,6 @@ export function createStartupPipelineController(options = {}) {
         },
         disposeVisuals,
         dispose() {
-            disarmIntroSkipInput();
             disposeVisuals();
             stateMachine.dispose();
         },

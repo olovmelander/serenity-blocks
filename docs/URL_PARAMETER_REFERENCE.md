@@ -5,10 +5,12 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **753 parameter names in 949 scoped entries**. The `ocean` playground
+The catalog documents **755 parameter names in 952 scoped entries**. The `ocean` playground
 effect added `visit`, `visitK`, `visitAge`, `visitSide`, `visitSeed`, `visits` (one of the
-visits the sea makes by itself) and `follow`, `followFit`, `followIndex` (a camera turned to one of
-its large animals), 2026-10-19. The `odyssey-world`
+visits the sea makes by itself) and `followFit`, `followIndex` with its own entry for `follow` (a
+camera turned to one of its large animals), 2026-10-19. The `grainfields`
+playground effect added `cloudSteps` (the storm deck's march, 0 drawing it flat), `herdLineup` (the
+herd's gaits side by side on the spot) and `herdRun` (moves the band makes at set times). The `odyssey-world`
 playground effect added `lookPitch` and `lookYaw` (turn the camera off the path, for checking a
 chapter from every angle). The `fluid-dreams`
 playground effect added `quads` (four-line clears played before the frame); Sakura Twilight
@@ -208,7 +210,7 @@ first stack lock.
 
 Grainfields (2026-10-18), a new theme in Misty Lake's place, adds the capture flags
 `grainfieldsForceWebGL`, `grainfieldsTime`, `grainfieldsFixedDt`, `grainfieldsParts` and
-`grainfieldsFalseColor`, plus the `grainfields` playground effect, which reads 26 parameters:
+`grainfieldsFalseColor`, plus the `grainfields` playground effect, which reads 29 parameters:
 `air` (switch the light in the air off) and `airGain` (scale it) are names of its own, and `hour`
 holds the light on the wheel of the day. The eight `mistyLake*` readers of the theme it replaces
 (`ForceWebGL`, `NoPost`, `NoReflection`, `Reflection`, `EnableReflection`, `NoMRT`,
