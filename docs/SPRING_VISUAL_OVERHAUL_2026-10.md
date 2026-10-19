@@ -207,3 +207,84 @@ mode. Captures are under `.cache/spring/` in the build worktree; the doc's frame
 - **Not done:** no physical phone, no perf reading in Performance mode, and the clock-only drift
   strip was not re-taken after the remake (the unit tests pin the day's drift and step). The song
   is the Moonlit Forest recording, retitled; a new Spring song was not asked for.
+
+## Performance pass (2026-10-19)
+
+The owner asked for 130+ fps on the RTX 3070 laptop at **Extreme**, with the look kept. Every
+change below draws the same picture; none lowers a tier's content.
+
+**How it was measured.** The session ran in a cloud container with no GPU. The playground's
+`effect=spring&quality=Extreme&t=10&hour=0.3` was drawn on SwiftShader, Chromium's software
+WebGPU (headed under Xvfb, `--use-webgpu-adapter=swiftshader --disable-gpu-watchdog`), at
+1280 × 720 with the tier's 4× MSAA. Each part was drawn alone at full and at quarter resolution:
+fragment cost scales with the pixels and vertex cost does not, so the two times split them. The
+untouched commit ran from its own worktree as the A (both runs with HMR off). Two A runs gave
+bit-identical frames, so every difference below is the change's own. A software renderer gives
+the parts' relative costs and exact pictures, **not the laptop's frame rate**: that still has to
+be read on the laptop (below).
+
+**Where Extreme's frame went.** Triangles drawn a frame, counted from real builds:
+
+| | Before | After |
+|---|---:|---:|
+| Modelled trees, Extreme (foliage + bark) | 9.01 M (7.87 + 1.15) | 3.23 M (2.09 + 1.15) |
+| Modelled trees, High | 4.25 M | 1.55 M |
+| Whole scene, Extreme | ≈ 13.8 M | ≈ 8.1 M |
+| Meadow · land · rocks · step face · river (unchanged) | 2.72 · 0.83 · 0.74 · 0.20 · 0.23 M | same |
+
+The forest alone was two thirds of the frame's triangles, and most of it was the weeping birch
+(`birch-hero`, 1,550 sprays of 24 leaves, every leaf a fan of 18 triangles), of which Extreme
+plants 21. On the software renderer the forest drawn alone went from 6.2 s to 3.3 s a frame, its
+resolution-independent share from 5.3 s to 2.6 s; the whole frame from 24.4 s to 22.5 s (the
+meadow and the land, which keep their geometry, carry most of what is left there; whole-frame
+times on SwiftShader vary by about a tenth between runs).
+
+**What changed.**
+- **The far leaves** (`spring-forest.js` `LEAF_LOD`, `thinSpray`, `leafLod`). The nearest modelled
+  tree stands 72 m from the eye and the nearest weeping birch 83 m; a leaf is six centimetres,
+  1-1.4 px in a 1600-pixel frame. Past 40 m (every modelled tree) a leaf is drawn from its stalk,
+  its tip and the two corners at its stalk: two triangles, grown about the stalk to the leaf's
+  own area, so the crown keeps every leaf, its placing, colour and light. A spray's twig (a
+  three-sided tube) keeps its first, middle and last rings. The grove birches' four-triangle
+  strand leaves, the spruces' shoots and all bark are untouched, and the impostor atlas still
+  bakes every spray whole. Same trees, same sprays, same 16 draws.
+- **The ground is drawn after the river** (`spring-land.js`): the land, the heaviest opaque
+  material, was drawn before the river and shaded under the whole water surface. It now comes
+  after the stones, the trees, the meadow and the river. Far off the depth buffer cannot separate
+  the river from its bed and shallow banks (its steps are half a metre at 1 km, 2.4 m at 2 km);
+  the river used to win those ties by being drawn second, so the land now uses a strict depth test
+  and still loses them.
+- **Nearest first** (`spring-impostors.js`, `spring-meadow.js`): the woods' 18,000 cards and the
+  meadow's plants are stored nearest the eye first, so the near ones fill the depth before the
+  thousands behind them are shaded. The eye stands still, so the order holds for every frame.
+- **The mist** (`spring-mist.js`): 600 puffs lie up to 170 deep where the tongues land (six
+  screens of blended fragments at Extreme, by projecting the layout). A puff's card is now an
+  octagon whose sides touch the circle its square's sides touched (a sixth fewer fragments; past
+  that circle a puff was already as faint as at the square's own edges), and what is the same
+  over a puff (its forward scatter, the air's clarity to it, its height's lift) is worked out per
+  corner instead of per pixel.
+- **Effects at rest** (`spring-floes.js`, `spring-flights.js`): with no ice on the river and no
+  birds out, the floes and the flights no longer rewrite and upload every matrix each frame.
+
+| The frame, before and after (SwiftShader) | The weeping birches' crowns at about five-fold, before and after |
+|---|---|
+| ![frame A/B](spring-captures/perf-frame-ab.webp) | ![crowns A/B](spring-captures/perf-crowns-ab.webp) |
+
+**The pictures.** The frame differs from the A by 0.08 of a level (of 255) on average; 0.14 % of
+its pixels by more than 8 levels, all of them single pixels at leaves' edges in the crowns and
+along the mist's puffs. Close-ups at four to five times (the weeping birches over the fall, the
+left bank's birches, the fall, the meadow, the far woods) differ in 0.02-0.8 % of pixels, the
+same way. The meadow, the river and the far river's banks show no change. No WebGPU validation
+errors or console warnings in any run.
+
+**Gates.** The Spring unit tests (eight files, 198 tests, with the new `spring-perf.test.js`:
+the far leaves and twigs, the mist's card, the draw order and depth test, the meadow's order, the
+effects at rest), typecheck and the Spring files' lint (0 errors, 0 warnings).
+
+**Not done, for the laptop.** No frame rate was read on the RTX 3070. To read one, in Performance
+mode on AC: `node scripts/validate-all-themes.mjs --theme spring --perf --perf-quality Extreme
+--perf-target-fps 144`, or in the game at Extreme with the frame-rate cap off. If Extreme still
+falls short, what is left by size is the meadow's 2.7 M triangles (the foreground: kept), the
+bark's 1.15 M (the weeping birch's drooping limbs: halving their rings would show), the boulders'
+0.74 M (5,120 triangles each, many over 80 m off: a clustered far version is the next candidate)
+and the mist's blending under 4× MSAA.
