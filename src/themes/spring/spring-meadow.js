@@ -138,8 +138,14 @@ export class SpringMeadow {
         const count = plants.length / 7;
         const roots = new Float32Array(count * 4);
         const turns = new Float32Array(count * 4);
+        // Nearest first: the blades and heads under the lens fill the depth before the ones they
+        // hide are shaded (the picture is the same in any order).
+        const order = Array.from({ length: count }, (_, i) => i);
+        const away = (i) => Math.hypot(plants[i * 7] - EYE.x, plants[i * 7 + 2] - EYE.z);
+        const depth = Float64Array.from(order, away);
+        order.sort((a, b) => depth[a] - depth[b] || a - b);
         for (let i = 0; i < count; i += 1) {
-            const o = i * 7;
+            const o = order[i] * 7;
             roots.set([plants[o], plants[o + 1], plants[o + 2], plants[o + 5]], i * 4);
             turns.set([Math.cos(plants[o + 3]), Math.sin(plants[o + 3]), plants[o + 4], plants[o + 6]], i * 4);
         }

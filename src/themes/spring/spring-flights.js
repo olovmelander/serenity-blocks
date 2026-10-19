@@ -166,6 +166,8 @@ export class Flights {
             for (let i = 0; i < mesh.count; i++) mesh.setMatrixAt(i, this._m);
             mesh.instanceMatrix.needsUpdate = true;
         }
+        this.live = this.meshes.map(() => 0);
+        this.drawn = false;
     }
 
     /** A flight sets out: `kind` 'swan' or 'crane', at time t. */
@@ -183,6 +185,8 @@ export class Flights {
     }
 
     update(time) {
+        // No flight out and none drawn last frame: every matrix already holds no bird.
+        if (!this.drawn && !this.slots.some((slot) => slot.kind)) return;
         const live = this.meshes.map(() => 0);
         this._m.makeScale(0, 0, 0);
         for (const mesh of this.meshes) for (let i = 0; i < mesh.count; i++) mesh.setMatrixAt(i, this._m);
@@ -221,6 +225,7 @@ export class Flights {
         });
         for (const mesh of this.meshes) mesh.instanceMatrix.needsUpdate = true;
         this.live = live;
+        this.drawn = live.some((n) => n > 0);
     }
 
     dispose() {
