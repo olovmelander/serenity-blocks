@@ -63,6 +63,28 @@ const I_TURN_KICKS = turnKicks(I_KICKS);
 const JLSTZ_TURN_KICKS = turnKicks(JLSTZ_KICKS);
 
 /**
+ * Visited states, as the call that last saw them: a state key is under 2^16 for any
+ * position on a board under 64 rows, and a new call needs no clearing.
+ */
+const STAMPS = new Uint32Array(1 << 16);
+let generation = 0;
+/**
+ * One search's states. The search stops expanding once it holds MAX_STATES, and one
+ * expansion adds at most six, so the room never runs out.
+ */
+const STATE_ROOM = MAX_STATES + 8;
+const STATES = {
+    xs: new Int16Array(STATE_ROOM),
+    ys: new Int16Array(STATE_ROOM),
+    rotations: new Uint8Array(STATE_ROOM),
+    parents: new Int32Array(STATE_ROOM),
+    actions: new Int8Array(STATE_ROOM),
+    costs: new Int32Array(STATE_ROOM),
+    trimmedEnd: new Int32Array(STATE_ROOM),
+    trimmedCost: new Int32Array(STATE_ROOM),
+};
+
+/**
  * @typedef {Object} ReachedLanding
  * @property {number[][]} shape
  * @property {number} rotation
@@ -113,34 +135,42 @@ export function reachableLandings(boardGrid, piece) {
     const key = (/** @type {number} */ x, /** @type {number} */ y, /** @type {number} */ rotation) => (
         ((y + 64) * 128 + (x + 64)) * 4 + rotation);
 
-    // State arrays: position, the link back, and the path as the pathfinder would trim it.
-    const xs = [piece.x];
-    const ys = [piece.y];
-    const rotations = [startRotation];
-    const parents = [-1];
-    const actions = [-1];
-    const costs = [0];
-    const trimmedEnd = [0];
-    const trimmedCost = [0];
-    const visited = new Set([key(piece.x, piece.y, startRotation)]);
+    // State arrays (shared buffers; the search is synchronous and never re-entered):
+    // position, the link back, and the path as the pathfinder would trim it.
+    generation = generation === 0xffffffff ? (STAMPS.fill(0), 1) : generation + 1;
+    const stamp = generation;
+    const {
+        xs, ys, rotations, parents, actions, costs, trimmedEnd, trimmedCost,
+    } = STATES;
+    xs[0] = piece.x;
+    ys[0] = piece.y;
+    rotations[0] = startRotation;
+    parents[0] = -1;
+    actions[0] = -1;
+    costs[0] = 0;
+    trimmedEnd[0] = 0;
+    trimmedCost[0] = 0;
+    let count = 1;
+    STAMPS[key(piece.x, piece.y, startRotation)] = stamp;
     /** @type {Map<number, { state: number, cost: number, x: number, y: number, rotation: number }>} */
     const best = new Map();
 
     /** @param {number} from @param {number} action @param {number} x @param {number} y @param {number} rotation */
     const push = (from, action, x, y, rotation) => {
         const nextKey = key(x, y, rotation);
-        if (visited.has(nextKey)) return;
-        visited.add(nextKey);
-        const index = xs.length;
+        if (STAMPS[nextKey] === stamp) return;
+        STAMPS[nextKey] = stamp;
+        const index = count;
         const cost = costs[from] + ACTION_COST[action];
-        xs.push(x);
-        ys.push(y);
-        rotations.push(rotation);
-        parents.push(from);
-        actions.push(action);
-        costs.push(cost);
-        trimmedEnd.push(action === SOFT_DROP ? trimmedEnd[from] : index);
-        trimmedCost.push(action === SOFT_DROP ? trimmedCost[from] : cost);
+        xs[index] = x;
+        ys[index] = y;
+        rotations[index] = rotation;
+        parents[index] = from;
+        actions[index] = action;
+        costs[index] = cost;
+        trimmedEnd[index] = action === SOFT_DROP ? trimmedEnd[from] : index;
+        trimmedCost[index] = action === SOFT_DROP ? trimmedCost[from] : cost;
+        count += 1;
     };
     /** @param {number} from @param {number} action @param {number} step @param {number} x @param {number} y @param {number} rotation */
     const turn = (from, action, step, x, y, rotation) => {
@@ -154,7 +184,7 @@ export function reachableLandings(boardGrid, piece) {
         }
     };
 
-    for (let cursor = 0; cursor < xs.length && visited.size < MAX_STATES; cursor += 1) {
+    for (let cursor = 0; cursor < count && count < MAX_STATES; cursor += 1) {
         const x = xs[cursor];
         const y = ys[cursor];
         const rotation = rotations[cursor];

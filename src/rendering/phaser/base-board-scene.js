@@ -1093,9 +1093,9 @@ export function createBaseBoardScene(
         }
 
         /**
-         * Stillfall: a dark seam wherever two different bodies touch, and a glyph on
-         * the relic. Bodies stay fused inside; only the line between two of them shows,
-         * because there one can fall and the other stay.
+         * Stillfall: a dark seam wherever two different bodies touch, a diamond on each
+         * cell of a relic and a ring on each cell of a seal. Bodies stay fused inside; only
+         * the line between two of them shows, because there one can fall and the other stay.
          */
         drawBodySeams() {
             const grid = this.gameState?.boardGrid;
@@ -1118,19 +1118,26 @@ export function createBaseBoardScene(
                     if (below && below.id !== cell.id) layer.lineBetween(at(x), at(y + 1), at(x + 1), at(y + 1));
                 }
             }
-            const relicId = this.gameState.relicPieceId;
-            if (relicId === undefined || relicId === null) return;
+            const relics = this.gameState.relicPieceIds || [];
+            const seals = this.gameState.sealPieceIds || [];
+            if (relics.length === 0 && seals.length === 0) return;
             const r = bs * 0.2;
+            layer.fillStyle(0xfff6e9, 0.92);
+            layer.lineStyle(Math.max(2, bs * 0.09), 0xfff6e9, 0.92);
             for (let y = minRow; y < endRow; y++) {
                 const row = grid[y];
                 if (!row) continue;
                 for (let x = 0; x < this.cols; x++) {
-                    if (row[x]?.id !== relicId) continue;
+                    const id = row[x]?.id;
+                    if (id === undefined) continue;
                     const cx = (x + 0.5) * bs;
                     const cy = (y + 0.5) * bs;
-                    layer.fillStyle(0xfff6e9, 0.92);
-                    layer.fillTriangle(cx, cy - r, cx + r, cy, cx, cy + r);
-                    layer.fillTriangle(cx, cy - r, cx - r, cy, cx, cy + r);
+                    if (relics.includes(id)) {
+                        layer.fillTriangle(cx, cy - r, cx + r, cy, cx, cy + r);
+                        layer.fillTriangle(cx, cy - r, cx - r, cy, cx, cy + r);
+                    } else if (seals.includes(id)) {
+                        layer.strokeCircle(cx, cy, r);
+                    }
                 }
             }
         }

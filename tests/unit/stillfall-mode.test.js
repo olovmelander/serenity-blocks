@@ -200,7 +200,7 @@ describe('StillfallMode', () => {
             id: 'relic-lost', title: 'Relic lost', rows: ['AAAAAAAAR.', 'BBBBBBBBB.'], supply: ['I'], goal: { type: 'relic-floor', body: 'R' },
         });
         relic.puzzle = custom;
-        relic.gameState.relicPieceId = custom.bodyIds.R;
+        relic.gameState.relicPieceIds = [custom.bodyIds.R];
         relic._turns = [];
         relic._restoreTurn({
             lockedPieces: custom.lockedPieces,

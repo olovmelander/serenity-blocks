@@ -10,10 +10,18 @@
  * row, then drop. A player reasoning about the structure finds those. A placement that
  * needs a soft drop and a slide or a rotation at the bottom (a tuck, a kick) is legal in
  * the game but no puzzle may depend on one: the bank requires a straight solution.
+ *
+ * The last piece is judged before its landings are searched. A lock that clears nothing
+ * moves nothing, so it cannot meet a goal the board did not already meet (and a met goal
+ * ends the run before the last piece). The solver plays only the places where the last
+ * piece could rest and complete a row, and only when one of those solves does it search
+ * what the controls reach, to keep the solving landings among them with their real input
+ * paths. That skips most of the tree and is what lets four-piece puzzles be certified on
+ * every CI run; the answer is the one the full search gives.
  */
 
 import {
-    applyPlacement, createRun, listPlacements,
+    applyPlacement, boardOf, createRun, lineClearingRests, listPlacements, runAfter,
 } from './stillfall-sim.js';
 
 /** @typedef {import('./stillfall-puzzle.js').StillfallPuzzle} StillfallPuzzle */
@@ -30,7 +38,6 @@ export const MAX_SOLUTIONS_KEPT = 64;
  * @property {StillfallPlacement[][]} solutions every solution found (up to MAX_SOLUTIONS_KEPT)
  * @property {StillfallPlacement[][]} straightSolutions the solutions made of straight placements only
  * @property {number} solutionCount how many full lines of play solve it
- * @property {number} lines how many full lines of play exist
  * @property {number} minPieces the fewest pieces any solution uses (Infinity when unsolvable)
  * @property {number} openingMoves distinct landings for the first piece
  * @property {number} winningOpenings first landings from which some continuation solves it
@@ -42,6 +49,21 @@ export function isStraight(placement) {
 }
 
 /**
+ * The landings of the piece in hand that could still lead to a solve, in listPlacements'
+ * order: all of them, or for the last piece only the reachable ones that solve.
+ * @param {StillfallRun} run an open run
+ * @returns {StillfallPlacement[]}
+ */
+function promisingPlacements(run) {
+    if (run.dealt < run.puzzle.supply.length - 1) return listPlacements(run);
+    const solving = new Set(lineClearingRests(run, boardOf(run))
+        .filter((rest) => applyPlacement(run, rest).run.outcome === 'solved')
+        .map((rest) => rest.footprint));
+    if (solving.size === 0) return [];
+    return listPlacements(run).filter((placement) => solving.has(placement.footprint));
+}
+
+/**
  * @param {StillfallPuzzle} puzzle
  * @returns {StillfallSolveReport}
  */
@@ -49,7 +71,6 @@ export function solvePuzzle(puzzle) {
     /** @type {StillfallPlacement[][]} */
     const solutions = [];
     let solutionCount = 0;
-    let lines = 0;
     let minPieces = Infinity;
 
     /**
@@ -59,30 +80,26 @@ export function solvePuzzle(puzzle) {
      */
     const search = (run, path) => {
         if (run.outcome !== 'open') {
-            lines += 1;
             if (run.outcome !== 'solved') return 0;
             solutionCount += 1;
             minPieces = Math.min(minPieces, path.length);
             if (solutions.length < MAX_SOLUTIONS_KEPT) solutions.push(path);
             return 1;
         }
-        const placements = listPlacements(run);
-        if (placements.length === 0) {
-            lines += 1;
-            return 0;
-        }
         let solving = 0;
-        for (const placement of placements) {
-            solving += search(applyPlacement(run, placement).run, [...path, placement]);
+        for (const placement of promisingPlacements(run)) {
+            solving += search(runAfter(run, placement), [...path, placement]);
         }
         return solving;
     };
 
     const start = createRun(puzzle);
     const openings = listPlacements(start);
+    const promising = new Set(promisingPlacements(start).map((placement) => placement.footprint));
     let winningOpenings = 0;
     for (const placement of openings) {
-        if (search(applyPlacement(start, placement).run, [placement]) > 0) winningOpenings += 1;
+        if (!promising.has(placement.footprint)) continue;
+        if (search(runAfter(start, placement), [placement]) > 0) winningOpenings += 1;
     }
     const straightSolutions = solutions.filter((path) => path.every(isStraight));
     return {
@@ -91,7 +108,6 @@ export function solvePuzzle(puzzle) {
         solutions,
         straightSolutions,
         solutionCount,
-        lines,
         minPieces,
         openingMoves: openings.length,
         winningOpenings,
@@ -107,9 +123,9 @@ export function solvePuzzle(puzzle) {
 export function solveFrom(run) {
     if (run.outcome === 'solved') return [];
     if (run.outcome !== 'open') return null;
-    for (const placement of listPlacements(run)) {
+    for (const placement of promisingPlacements(run)) {
         if (!isStraight(placement)) continue;
-        const rest = solveFrom(applyPlacement(run, placement).run);
+        const rest = solveFrom(runAfter(run, placement));
         if (rest) return [placement, ...rest];
     }
     return null;
