@@ -692,7 +692,9 @@ describe('OdysseyMode level entry bootstrap', () => {
         const launching = mode.launchOdysseyLevel(level.id);
         // The journey flow brings its own lease; a click from the map has none to bring.
         await expect(driver.callbacks.onBlackoutReached()).resolves.toBe(true);
-        expect(mode.deps.themeManager.beginLoadingSurface).toHaveBeenCalledWith('cinematic-loading');
+        // ...with a node-build budget: the tunnel animates over the theme's first frame (2026-10-19).
+        expect(mode.deps.themeManager.beginLoadingSurface)
+            .toHaveBeenCalledWith('cinematic-loading', { buildBudgetMs: 5 });
         await expect(driver.callbacks.onRevealStart()).resolves.toBe(true);
         expect(uncover).toHaveBeenCalledOnce();
         finished.resolve({ success: true });

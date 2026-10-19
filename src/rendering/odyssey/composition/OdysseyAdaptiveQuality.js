@@ -51,6 +51,23 @@ const PROBE_BACKOFF_BASE_MS = 30000;
 const PROBE_BACKOFF_MAX_MS = 240000;
 const PROBE_FORGIVE_MS = 120000;
 
+// GPU HEADROOM VETO (2026-10-19). Every lever on this ladder lowers GPU work, so it may only pull
+// when the GPU is what is slow. Measured on the dev laptop at Extreme (RTX 3070, 1600x852, 4x
+// MSAA): the map's GPU time was 0.3-1.9 ms against a 7.6 ms budget across all eight chapters,
+// yet a few compile or bake frames per window read as pressure and walked the scale 1.0 -> 0.65
+// in one session. Each step was itself a stall: under 0.95 the output gains a sharpen pass, the
+// scene pass renders one level deeper, and every scene pipeline is created again (47 sync in one
+// frame at p 0.12, an 835 ms freeze). With GPU samples in hand, a GPU under this share of the
+// budget vetoes every step down; without them the sustained-pressure rule below still applies.
+const GPU_HEADROOM_SHARE = 0.6;
+const GPU_SAMPLE_RING = 16;
+const GPU_MIN_SAMPLES = 6;
+const GPU_SAMPLE_MAX_AGE_MS = 3000;
+// SUSTAINED PRESSURE (opt-in, 2026-10-19). A step down needs this share of the window over the
+// down gate, not just its slowest few frames: hitches (compiles, bakes, a theme build) are a
+// handful of frames, a GPU that cannot keep up misses frame after frame. 0.75 = a quarter.
+const SUSTAINED_PERCENTILE = 0.75;
+
 function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
 }
@@ -84,9 +101,19 @@ export class OdysseyAdaptiveQuality {
      * @param {boolean} [opts.enabled=true] master gate; a disabled controller is inert.
      * @param {function} [opts.evaluateResolution] resolution policy
      *        (defaults to the shipped evaluateDynamicResolutionAdjustment).
+     * @param {boolean} [opts.requireSustainedPressure=false] step down only when a quarter of
+     *        the window misses the down gate (see SUSTAINED_PERCENTILE), not on a few slow frames.
      */
     constructor(opts = {}) {
         this.enabled = opts.enabled !== false;
+        this.requireSustainedPressure = opts.requireSustainedPressure === true;
+        // GPU frame-time samples (recordGpuFrame): one per resolved timestamp query.
+        this._gpuTimes = new Float32Array(GPU_SAMPLE_RING);
+        this._gpuScratch = new Float32Array(GPU_SAMPLE_RING);
+        this._gpuCount = 0;
+        this._gpuHead = 0;
+        this._gpuLastAt = -Infinity;
+        this._lastGpuVeto = false;
         this.targetFrameRate = opts.targetFrameRate > 0 ? opts.targetFrameRate : DEFAULT_TARGET_FPS;
         this.windowSize = opts.windowSize > 0 ? Math.floor(opts.windowSize) : DEFAULT_WINDOW;
         this.evalIntervalMs = opts.evalIntervalMs > 0 ? opts.evalIntervalMs : DEFAULT_EVAL_INTERVAL_MS;
@@ -191,6 +218,36 @@ export class OdysseyAdaptiveQuality {
     }
 
     /**
+     * Push one GPU frame time (ms, from a resolved timestamp query — never one per frame of a
+     * lingering value, ADR-0016). Allocation-free. Samples older than GPU_SAMPLE_MAX_AGE_MS are
+     * ignored by the veto, so a stream that stops (WebGL2, a lost feature) falls back by itself.
+     * @param {number} gpuMs @param {number} [nowMs]
+     */
+    recordGpuFrame(gpuMs, nowMs = (typeof performance !== 'undefined' ? performance.now() : 0)) {
+        if (!this.enabled || !Number.isFinite(gpuMs) || gpuMs <= 0) return;
+        this._gpuTimes[this._gpuHead] = gpuMs;
+        this._gpuHead = (this._gpuHead + 1) % GPU_SAMPLE_RING;
+        if (this._gpuCount < GPU_SAMPLE_RING) this._gpuCount += 1;
+        this._gpuLastAt = Number.isFinite(nowMs) ? nowMs : 0;
+    }
+
+    /**
+     * Whether fresh GPU samples say the GPU has clear headroom under `budgetMs` (its p90 under
+     * GPU_HEADROOM_SHARE of the budget). False without enough fresh samples: no veto then.
+     * @param {number} now @param {number} budgetMs
+     * @returns {boolean}
+     * @private
+     */
+    _gpuHasHeadroom(now, budgetMs) {
+        if (this._gpuCount < GPU_MIN_SAMPLES || now - this._gpuLastAt > GPU_SAMPLE_MAX_AGE_MS) return false;
+        const count = this._gpuCount;
+        for (let i = 0; i < count; i += 1) this._gpuScratch[i] = this._gpuTimes[i];
+        const sorted = this._gpuScratch.subarray(0, count);
+        sorted.sort();
+        return percentile(sorted, count, 0.9) < budgetMs * GPU_HEADROOM_SHARE;
+    }
+
+    /**
      * Discard the current frame-time window + re-base the evaluation/stability clocks so the NEXT
      * window is measured from a clean slate. The board calls this once the startup background
      * chapter-load + render-warm settle: those frames are main-thread-blocked by synchronous JS
@@ -226,12 +283,18 @@ export class OdysseyAdaptiveQuality {
         this._lastEvalAt = now;
         if (this._frameCount < Math.min(this.windowSize, MIN_SAMPLES)) return;
 
-        const { p95, p99, cadence } = this._computePercentiles();
+        const {
+            p95, p99, cadence, sustained,
+        } = this._computePercentiles();
         const targetFps = ctx.targetFrameRate > 0 ? ctx.targetFrameRate : this.targetFrameRate;
         const budgetMs = 1000 / targetFps;
         const downThreshold = budgetMs * 1.14; // matches the resolution policy's downscale gate
         const upThreshold = budgetMs * 0.9; // the resolution policy's own upscale gate
-        const underPressure = p95 > downThreshold || p99 > downThreshold * 1.08;
+        const tailPressure = p95 > downThreshold || p99 > downThreshold * 1.08;
+        const gpuVeto = this._gpuHasHeadroom(now, budgetMs);
+        this._lastGpuVeto = gpuVeto;
+        const underPressure = tailPressure && !gpuVeto
+            && (!this.requireSustainedPressure || sustained > downThreshold);
         // HEADROOM AT THE DISPLAY'S CADENCE (Odyssey audit 2026-10-18). The frames are refresh
         // gaps and never read below the panel's interval, so with a target at or near the refresh
         // rate (120 on a 132 Hz panel, 60 on 60) p95 < 0.9 x budget cannot happen and every step
@@ -241,10 +304,17 @@ export class OdysseyAdaptiveQuality {
         // 131.6 Hz delivered on the dev laptop.)
         const cadenceBound = cadence >= upThreshold * 0.97;
         const cadenceHeld = cadenceBound && !underPressure && p95 <= Math.max(budgetMs, cadence) * 1.08;
-        const hasHeadroom = now >= this._upHoldUntil && p95 > 0 && (p95 < upThreshold || cadenceHeld);
+        // A GPU with clear headroom whose frames are mostly on time may climb back too: the tail
+        // it shows is hitches the climb does not make worse.
+        const gpuRoom = gpuVeto && sustained <= Math.max(budgetMs, cadence) * 1.08;
+        const hasHeadroom = now >= this._upHoldUntil && p95 > 0 && (p95 < upThreshold || cadenceHeld || gpuRoom);
 
         // ── Tier 0: resolution (delegated to the shipped policy when available) ──
-        const resChanged = this._updateResolution(now, ctx, p95, p99, targetFps, hasHeadroom);
+        // The policy reads the tail on its own, so a vetoed or unsustained tail must not reach it
+        // as pressure: it gets the down gate itself (no step down) unless this eval is pressure.
+        const policyP95 = underPressure || !tailPressure ? p95 : Math.min(p95, downThreshold);
+        const policyP99 = underPressure || !tailPressure ? p99 : Math.min(p99, downThreshold);
+        const resChanged = this._updateResolution(now, ctx, policyP95, policyP99, targetFps, hasHeadroom);
 
         // If the resolution tier just moved, let it settle before touching other tiers (one
         // lever per eval keeps the system legible and prevents double-stepping under a spike).
@@ -428,6 +498,7 @@ export class OdysseyAdaptiveQuality {
             p99: percentile(sorted, count, 0.99),
             // The display's cadence as this window saw it: the quick end, past rAF jitter.
             cadence: percentile(sorted, count, 0.1),
+            sustained: percentile(sorted, count, SUSTAINED_PERCENTILE),
         };
     }
 
@@ -445,6 +516,8 @@ export class OdysseyAdaptiveQuality {
             bloomScale: this._appliedBloomScale,
             bloomEnabled: this._appliedBloomEnabled,
             postQuality: this._appliedPostQuality,
+            gpuVeto: this._lastGpuVeto,
+            gpuSamples: this._gpuCount,
         };
     }
 }

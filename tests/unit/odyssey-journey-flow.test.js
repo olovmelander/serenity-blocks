@@ -36,6 +36,7 @@ vi.mock('../../src/ui/odyssey/JourneyFlowOverlay.js', () => ({
     }),
 }));
 vi.mock('../../src/ui/cinematic-loading-surface.js', () => ({
+    COVERED_ENTRY_BUILD_BUDGET_MS: 5,
     createCinematicLoadingSurface: vi.fn(() => {
         const surface = { ready: Promise.resolve(), cancel: vi.fn(), uncover: vi.fn() };
         fixture.surfaces.push(surface);
