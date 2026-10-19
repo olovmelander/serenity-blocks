@@ -65,12 +65,11 @@ authored at that size and drawn larger than life (`SIZE`: 1.3 across, 1.5 up) at
   or the deck; under thick cloud the air gets sun only through the gaps, so the shafts stand
   alone. The eye's own shaft is left out near the eye (it would be one glare toward the sun).
 - **The herd** (`grainfields-herd.js`, the horse from `scripts/blender/grainfields/horse.py`): a
-  few Hokkaido native horses (Dosanko: stocky, short-legged, thick-maned) graze in the barley right
-  of the card, their backs, necks and heads over the ears. One authored mesh whose vertex colour
-  names each vertex's part (body, neck and head, the four legs, the tail) with masks for the dark
-  mane and tail and the pale muzzle; the vertex stage poses it about the authored pivots (the neck
-  dips to graze, the legs swing in diagonal pairs, the tail swishes), a small CPU simulation moves
-  each horse. A first procedural attempt (ellipsoid blobs) read as toy sheep and was dropped.
+  band of Hokkaido native horses (Dosanko: stocky, short-legged, thick-maned), two of them foals,
+  that roams the near field (see "The herd and the sky, second pass" below). One authored mesh
+  whose vertex colour names each vertex's part (body, neck and head, the four legs, the tail) with
+  masks for the dark mane and tail and the pale muzzle, and skin weights for its joints. A first
+  procedural attempt (ellipsoid blobs) read as toy sheep and was dropped.
 - **The ruin, the geese, the motes**: a broken keep on the knoll; skeins of geese crossing (the
   goose valley); chaff and pollen glinting over the field.
 
@@ -87,10 +86,10 @@ amber in the afterglow.
 | Event | What happens |
 |---|---|
 | Lock | A small gap tears in the deck; a sunbeam stands in the barley beside the card on the piece's side (its column across the free field, its row as distance) and walks slowly with the wind (0.5 m/s: riding the deck's ten metres a second swept it behind the card in two seconds); pigment motes of the piece's colour lift through it |
-| Hard drop | A wider beam and a ring of wind pressing out through the stalks |
+| Hard drop | A wider beam and a ring of wind pressing out through the stalks; the horses lift their heads |
 | Clear | A lane of wind runs out from the eye's feet across the field, laying the stalks along it, chaff of the rows' colours glinting (two lanes for four lines) |
-| Chain (combo ≥ 2) | The storm breaks: the deck opens into clouds with clear sky between, the wind rises; at three the horses run |
-| T-spin | The wind wheels in the stand (a whirl) and lifts a spinning column of chaff; the herd wheels round |
+| Chain (combo ≥ 2) | The storm breaks: the deck opens into clouds with clear sky between, the wind rises; at three the horses gallop out of the picture (over the crest, round behind the eye, or down the path) and come back in |
+| T-spin | The wind wheels in the stand (a whirl) and lifts a spinning column of chaff; the herd wheels round its ground at a canter |
 | Four lines | The sky tears open over Lapporten; a front of light runs out of the gate over the fields |
 | Perfect clear | The whole sky clears and the wind stills, then the deck returns |
 | Back-to-back | Wider, brighter beams, a stronger wind |
@@ -151,5 +150,61 @@ nearly all of it the barley); the performance pass of 2026-10-19 brought Extreme
 full rate: [GRAINFIELDS_PERF_2026-10.md](GRAINFIELDS_PERF_2026-10.md).
 
 Open: no perf-lane reading; no physical phone; the icon is my pick (the golden hour through the
-gate); the gaps nearest the sun still read a little cut-out; the horse's trunk is 1.62 m, not 2.0 m
-(a Dosanko is barely longer than it is tall; 2.0 m looked stretched).
+gate); the horse's trunk is 1.62 m, not 2.0 m (a Dosanko is barely longer than it is tall; 2.0 m
+looked stretched).
+
+## The herd and the sky, second pass (2026-10-19)
+
+Olov asked for horses that move around more ("gallop out of picture and come in again, move in a
+natural and varied way") and a more beautiful sky.
+
+**The horse's skin.** `horse.py` writes skin weights (`_RIG`, four bytes a vertex): how far a vertex
+follows its part's root joint (a band of skin round each leg, the neck's base and the dock follows
+partly, so nothing tears), below the knee or hock, below the fetlock, the head beyond the atlas, up
+the neck, down the tail, the ears; and the pivots of the new joints (knee, hock, fetlocks, poll,
+ear). The tail hangs a hand's breadth behind the hocks (fused to them it was dragged along by the
+hind leg as a pale wedge). Weights compare a vertex's distance to its part against what it could
+tear from (the trunk, the tail), not against the other legs, with a margin of several vertices.
+
+**The gaits** (`grainfields-gait.js`, unit-tested): walk, trot, canter and gallop by their
+footfalls (a right or a left lead), blended over a stride as the speed changes. A planted hoof stays
+still while the body passes over it; in the air the knee folds back, the hock forward, the fetlock
+curls; where planted legs lean the body sinks a little (pitch and bob follow from the legs), and in
+the canter's and gallop's moment in the air it rises. The vertex stage (`grainfields-herd.js`) turns
+each leg at three joints, bends the neck along its length, nods the head, flicks the ears, lifts and
+swishes the tail (more toward its end), and pitches, banks and bobs the body. A pipeline reads at
+most eight vertex buffers: the seven per-horse vec4s are one interleaved buffer.
+
+**The band's life** (`grainfields-herd-sim.js`, unit-tested): a lead mare follows a route, the others
+her trail (a few lengths back, a little to the side; foals at their mothers'), each steering like an
+animal (accelerates, brakes, turns no tighter than its grip allows, keeps its space, goes round the
+shelterbelts). Grazing, each horse has its own business (head down in the barley, a step to the
+next mouthful, head up to look, a hind leg rested, the tail at the flies). Then a walk or trot to new
+grass, a canter loop, or a gallop out of the picture and back: round in front of the eye and behind
+it, away over the crest and back over it, down the path toward the eye, or a great loop. Grazing
+grounds are picked in the open beside the board (`setView`), 14–52 m out, often on the path's verge:
+from an eye 1.45 m over a metre of barley a horse farther out shows as a speck. Seeks replay the
+band's life; `herdLineup` and `herdRun` stage gaits and runs for captures.
+
+**The barley it parts** (`grainfields-trample.js`): the horses are pressed into a 160 × 120 field
+over the near field each frame (lean away from the body, on ahead of a runner, laid over in the
+wake, relaxing over seconds); the barley's vertex stage reads it at each clump's root.
+
+**The sky** (`grainfields-clouds.js`): the deck is a volume from 3300 m up to a top the hour's cover
+sets (a heavy storm 1.7 km deep, a broken sky separate heaps), heaped over `deckCover` into rounded
+heads with lumps, so gaps part it into cumulus with soft cauliflower edges. Marched once a frame at
+half resolution (22 steps at Extreme down to 10 at Low; Minimal keeps the flat deck) into its own
+target that the dome draws over the sky: lit by the hour's `cloudLit` through the cloud between a
+sample and the sun (two samples along its ray; one strung the gaps' edges into streaks), two lobes
+of scattering, a little multiple scattering, the sky's light through the cloud above (a seam is
+paler than a heart; dimmed under a heavy overcast) and the fields' gold on the bases; at dusk the
+afterglow lights the bases from under the horizon. The step count is a uniform: a constant count was
+unrolled by the shader compilers, and a page took a minute to load.
+
+Measured (Extreme, 1600 × 852, uncapped, RTX 3070 laptop on mains; A/B against the flat deck in one
+run): the march costs 0.39–0.70 ms a frame (most just after a chain has broken the storm); the scene
+pass is 0.1–0.5 ms cheaper without the flat deck's per-pixel sky; the frame went from 4.9–6.1 to
+5.4–6.4 ms of GPU, inside the 7.6 ms of the display's 131 Hz. Verified in captures: the gait lineup
+(stand, walk, trot, canter, gallop, the grazing, resting and swatting horses behind), each gallop
+route in the real view, the five hours toward the sun and overhead, a broken storm, and the WebGL2
+fallback; all Grainfields tests, the static gates and the build green.
