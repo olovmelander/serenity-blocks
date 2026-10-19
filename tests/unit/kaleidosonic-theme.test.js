@@ -580,12 +580,12 @@ describe('Kaleidosonic theme: one node renderer on both backends', () => {
         }
     });
 
-    it('lists its capture flags in the URL parameter reference, and only those', () => {
+    it('lists its capture and A/B flags in the URL parameter reference, and only those', () => {
         const mine = THEME_URL_PARAMETERS.filter((entry) => entry.scope === 'Kaleidosonic');
         expect(mine.map((entry) => entry.name).sort()).toEqual(
             [
                 'kaleidosonicFalseColor', 'kaleidosonicFixedDt', 'kaleidosonicForceWebGL', 'kaleidosonicParts',
-                'kaleidosonicTime',
+                'kaleidosonicScout', 'kaleidosonicTime',
             ],
         );
         const source = readFileSync(path.join(themeDir, 'kaleidosonic-theme.js'), 'utf8');
@@ -596,7 +596,7 @@ describe('Kaleidosonic theme: one node renderer on both backends', () => {
         }
         const parts = mine.find((entry) => entry.name === 'kaleidosonicParts');
         expect(parts.sources).toContain('src/themes/kaleidosonic/kaleidosonic-world.js');
-        // Nothing under this prefix is listed but the five.
+        // Nothing under this prefix is listed but the six.
         const prefixed = THEME_URL_PARAMETERS.filter((entry) => /^kaleidosonic/.test(entry.name));
         expect(prefixed.map((entry) => entry.name).sort()).toEqual(mine.map((entry) => entry.name).sort());
         // The generic renderer switch is read by its literal name too; the generic fallbacks are not.

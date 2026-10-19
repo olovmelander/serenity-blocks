@@ -420,6 +420,16 @@ export const THEME_URL_PARAMETERS = [
         [source('neon-district')],
     ),
     entry(
+        'kaleidosonicScout',
+        'Kaleidosonic',
+        'March every pixel from the eye instead of from the scout pass\'s start, for A/B performance comparisons.',
+        '0 turns the scout pass off; any other value, or none, leaves it on',
+        'On',
+        '0',
+        [source('kaleidosonic')],
+        'The picture is the same either way (to sub-pixel placement of the veins); only the cost differs.',
+    ),
+    entry(
         'forceWebGL',
         'Supported game themes',
         'Request the WebGL2 backend instead of WebGPU.',
