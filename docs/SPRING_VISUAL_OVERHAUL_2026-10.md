@@ -366,8 +366,10 @@ no validation errors or console warnings in any.
 | Golden evening: the air against the sun | A hard drop of the S: its blue pollen |
 |---|---|
 | ![air in the evening](spring-captures/air-evening.webp) | ![hard drop](spring-captures/air-drop.webp) |
-| **A chain of six, with the board** | **Three lines: the breath and the lanes** |
-| ![chain](spring-captures/air-chain.webp) | ![clear](spring-captures/air-clear.webp) |
+| **A chain of three, with the board: the third link's whirlwind right of the HUD** | **That whirlwind, at two seconds** |
+| ![chain](spring-captures/air-chain.webp) | ![whirlwind](spring-captures/air-whirl.webp) |
+| **Three lines: the breath and the lanes** | |
+| ![clear](spring-captures/air-clear.webp) | |
 
 **Cost.** Two draws: the air (2,400 quads at Extreme, 9,600 vertices, each a handful of hashes,
 an eight-step loop over the patch rows and the haze; no texture reads) and the ring (2,304 quads,
