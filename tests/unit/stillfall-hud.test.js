@@ -4,7 +4,9 @@
  * it is built from.
  */
 import { describe, expect, it } from 'vitest';
-import { bankHtml, failureTitle, outcomeHtml } from '../../src/ui/stillfall/stillfall-hud.js';
+import {
+    bankHtml, failureTitle, goalText, outcomeHtml,
+} from '../../src/ui/stillfall/stillfall-hud.js';
 import {
     openPuzzleIds, SOLVES_TO_OPEN_NEXT_TIER, STILLFALL_PUZZLES, TIERS,
 } from '../../src/core/stillfall/puzzle-bank.js';
@@ -43,6 +45,43 @@ describe('Stillfall panel', () => {
         expect(failureTitle(blocked)).toBe('The next piece has no room.');
         const lost = failed({ type: 'relic-floor', body: 'r' }, { reason: 'relic-lost' });
         expect(failureTitle(lost)).toBe('The relic was cleared away.');
+    });
+
+    it('names a seal and two goals at once in one sentence', () => {
+        const relic = { type: 'relic-floor', body: 'R' };
+        const seal = { type: 'seal', body: 'S' };
+        expect(goalText(seal)).toBe('Break the seal');
+        expect(goalText({ type: 'all', of: [relic, seal] })).toBe('Bring the relic to the floor and break the seal');
+        expect(goalText({ type: 'all', of: [relic, { type: 'relic-floor', body: 'Q' }] })).toBe('Bring both relics to the floor');
+        expect(goalText({ type: 'all', of: [seal, { type: 'seal', body: 'T' }] })).toBe('Break both seals');
+        expect(goalText({ type: 'all', of: [seal, { type: 'waves', atLeast: 3 }] }))
+            .toBe('Set off a cascade 3 waves deep and break the seal');
+        expect(goalText({ type: 'all', of: [{ type: 'lines', atLeast: 4 }, relic, seal] }))
+            .toBe('Clear 4 lines, bring the relic to the floor and break the seal');
+    });
+
+    it('says what each goal still lacks after a miss', () => {
+        const seal = { type: 'seal', body: 'S' };
+        const parts = (...list) => ({ parts: list });
+        expect(failureTitle(failed(seal, { lines: 1, ...parts({ ...seal, met: false, cellsLeft: 3 }) })))
+            .toBe('The seal still holds 3 blocks.');
+        const both = { type: 'all', of: [{ type: 'waves', atLeast: 3 }, { type: 'relic-floor', body: 'R' }] };
+        expect(failureTitle(failed(both))).toBe('Nothing cleared.');
+        expect(failureTitle(failed(both, {
+            lines: 2, bestWaves: 1, ...parts({ ...both.of[0], met: false }, { ...both.of[1], met: false }),
+        }))).toBe('2 waves short. The relic is still up.');
+        const relics = { type: 'all', of: [{ type: 'relic-floor', body: 'R' }, { type: 'relic-floor', body: 'Q' }] };
+        expect(failureTitle(failed(relics, {
+            lines: 1, ...parts({ ...relics.of[0], met: true }, { ...relics.of[1], met: false }),
+        }))).toBe('A relic is still up.');
+        expect(failureTitle(failed(relics, { reason: 'relic-lost' }))).toBe('A relic was cleared away.');
+        const seals = { type: 'all', of: [seal, { type: 'seal', body: 'T' }] };
+        expect(failureTitle(failed(seals, {
+            lines: 1,
+            ...parts({ ...seal, met: false, cellsLeft: 2 }, {
+                type: 'seal', body: 'T', met: false, cellsLeft: 1,
+            }),
+        }))).toBe('The seals still hold 3 blocks.');
     });
 
     it('offers one way back from a miss: try again with one piece, take back with more', () => {
