@@ -5917,6 +5917,29 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'Off.',
             '1',
         ],
+        [
+            'cloudSteps',
+            'The storm deck marched as a volume: samples along a ray (0 draws the deck flat, as the leanest tier does).',
+            'Integer ≥ 0.',
+            'The tier’s (22 at Extreme down to 10 at Low, 0 at Minimal).',
+            '0',
+        ],
+        [
+            'herdLineup',
+            'Stand the herd’s gaits side by side on the spot, this many metres out (a stand, a walk, a trot, a canter, '
+                + 'a gallop; behind them grazing, resting and swatting): a close look at the legs with look=.',
+            'Metres.',
+            'Off: the band roams.',
+            '16',
+        ],
+        [
+            'herdRun',
+            'Moves the band makes at set times (replayed by a seek): a gallop out of the picture and back (round, crest '
+                + 'or path), a loop, a walk, trot or canter to new grass, or a wheel.',
+            'Comma-separated move@seconds; moves round, crest, path, loop, walk, trot, canter, wheel.',
+            'None: the band lives its own life.',
+            'round@20',
+        ],
     ].map(([name, description, values, defaultValue, value]) => ({
         name,
         category: 'Playground',

@@ -78,6 +78,7 @@ def _point(y, z, x=0.0):
 class Shape:
     part = 0
     hair = False
+    ear = False
 
     def leaves(self):
         return [self]
@@ -408,6 +409,8 @@ def design():
         ears.append(Tube([base, base + 0.08 * direction, base + 0.15 * direction], [0.038, 0.032, 0.011],
                          squash_axis=across, squash=0.62, k=0.01))
     ears = Union(ears)
+    for leaf in ears.leaves():
+        leaf.ear = True
 
     # The mane rides the crest from the poll to the front of the withers, heavy enough to fall
     # to both sides of it.
@@ -423,15 +426,16 @@ def design():
                         _mane_locks)
 
     # The tail: the dock arches off the croup and lies down the buttocks; the hair falls
-    # from it, full and a little flattened, and parts into locks at its end.
+    # from it, full and a little flattened, and parts into locks at its end. It hangs clear of
+    # the hocks (a hand's breadth behind them), so it lifts and swishes on its own.
     dock = Tube([_point(1.24, -0.72), _point(1.17, -0.83), _point(1.07, -0.875)], [0.065, 0.058, 0.05])
-    locks = [RoundCone(_point(0.48, -0.885), _point(0.27, -0.875), 0.06, 0.012, (Z_AXIS, 0.6))]
+    locks = [RoundCone(_point(0.48, -0.965), _point(0.27, -0.975), 0.06, 0.012, (Z_AXIS, 0.6))]
     for side in (1.0, -1.0):
-        locks.append(RoundCone(_point(0.50, -0.885, 0.04 * side), _point(0.32, -0.87, 0.085 * side), 0.05, 0.01,
+        locks.append(RoundCone(_point(0.50, -0.965, 0.04 * side), _point(0.32, -0.97, 0.085 * side), 0.05, 0.01,
                                (Z_AXIS, 0.6)))
     hair = Displace(Union([
-        Tube([_point(1.20, -0.82), _point(1.08, -0.89), _point(0.90, -0.91), _point(0.70, -0.905),
-              _point(0.52, -0.89), _point(0.42, -0.88)], [0.08, 0.105, 0.12, 0.125, 0.11, 0.09],
+        Tube([_point(1.20, -0.82), _point(1.08, -0.89), _point(0.90, -0.935), _point(0.70, -0.955),
+              _point(0.52, -0.965), _point(0.42, -0.965)], [0.08, 0.105, 0.12, 0.125, 0.11, 0.09],
              squash_axis=Z_AXIS, squash=0.62, k=0.02),
         *[(lock, 0.03) for lock in locks],
     ]), 0.009, _tail_strands)
@@ -467,6 +471,23 @@ def design():
             hindLeft=[0.15, 1.0, -0.50], hindRight=[-0.15, 1.0, -0.50],
             # The root of the dock, inside the top of the croup.
             tail=[0.0, 1.24, -0.72],
+            # The joints down a leg (the left one's; a right one's mirrors x): the knee (carpus),
+            # the hock, the fetlocks.
+            knee=[0.14, 0.415, FRONT_Z], hock=[0.15, 0.49, HIND_Z + 0.002],
+            frontFetlock=[0.14, 0.118, FRONT_Z - 0.003], hindFetlock=[0.15, 0.118, HIND_Z + 0.002],
+            # The head nods about the atlas, under the poll; the ears turn about their bases.
+            poll=[0.0, 1.745, 0.97], ear=[0.067, 1.822, 1.064],
+        ),
+        rig=dict(
+            # A leg's weight fades out up into the body over these heights (skin over the shoulder
+            # and the stifle, no tear where the leg meets the trunk).
+            frontBand=(0.80, 0.98), hindBand=(0.86, 1.04),
+            # The neck's weight across the plane it leaves the body by, and its axis (y, z) from
+            # its base to the atlas; the head's across the plane from behind the poll to the throat.
+            neckAxis=((1.195, 0.545), (1.745, 0.97)),
+            headPlane=((1.86, 0.98), (1.48, 0.93)),
+            # The tail from its root down to its end (heights).
+            tailSpan=(1.24, 0.27),
         ),
     )
     return root, landmarks
@@ -805,19 +826,113 @@ def paint(shape, landmarks, positions, normals, triangles):
     muzzle = _smoothstep(0.17, 0.06, np.linalg.norm(positions - landmarks["muzzle"], axis=1))
     belly = _smoothstep(0.86, 0.7, y) * _smoothstep(-0.1, -0.6, normals[:, 1]) * (parts == PARTS["body"])
     light = np.maximum(muzzle, belly) * (1.0 - dark)
+    parts, weights = rig(landmarks, positions, distances, leaves, parts)
     colors = np.stack([parts / float(PART_SCALE), dark, light, np.ones(len(parts))], axis=1)
-    return colors, parts
+    return colors, parts, weights
+
+
+def _plane_distance(positions, top, low):
+    """Signed distance (metres) from the (y, z) line through `top` and `low`; positive ahead (+z)."""
+    (top_y, top_z), (low_y, low_z) = top, low
+    normal = np.array([low_z - top_z, top_y - low_y])
+    normal /= np.linalg.norm(normal)
+    return (positions[:, 1] - top_y) * normal[0] + (positions[:, 2] - top_z) * normal[1]
+
+
+def rig(landmarks, positions, distances, leaves, parts):
+    """The skin's weights (_RIG, four normalised unsigned bytes) and the parts they belong to.
+
+    R = how far the vertex follows its part's root joint (0 with the trunk, 1 with the part);
+    soft across a band where the part meets the trunk, so the skin stretches there instead of
+    tearing (a band vertex takes the part's id with a weight under 1).
+    G = a leg: below the knee or the hock; the neck: the head, beyond the atlas; the tail: how
+    far down it the vertex lies (0 at the root, 1 at the end).
+    B = a leg: below the fetlock; the neck: how far up it (0 at its base, 1 at the atlas).
+    A = the neck: the ears.
+    """
+    R = landmarks["rig"]
+    pivots = landmarks["pivots"]
+    y = positions[:, 1]
+    count = len(positions)
+    leaf_parts = np.array([leaf.part for leaf in leaves])
+    ear_leaf = np.array([leaf.ear for leaf in leaves])
+
+    def nearest(part):
+        return distances[:, leaf_parts == part].min(axis=1)
+
+    legs_ids = [PARTS[name] for name in ("frontLeft", "frontRight", "hindLeft", "hindRight")]
+
+    def others(part):
+        # Nearer this part than what it could tear from: the trunk, and the tail hanging by the hocks
+        # (a leg is never joined to another leg, so their nearness does not count).
+        exclude = legs_ids if part in legs_ids else [part]
+        return distances[:, ~np.isin(leaf_parts, exclude)].min(axis=1)
+
+    weights = np.zeros((count, 7))
+    # The legs: nearer the leg than the trunk, faded out up into the body.
+    for name in ("frontLeft", "frontRight", "hindLeft", "hindRight"):
+        part = PARTS[name]
+        low, high = R["frontBand"] if name.startswith("front") else R["hindBand"]
+        side = 1.0 if name.endswith("Left") else -1.0
+        own = (positions[:, 0] * side) > -0.02
+        # (Soft over a wide margin: the mesh's vertices stand three or four centimetres apart, and the
+        # skin must stretch over several of them, not one edge.)
+        soft = np.maximum(_smoothstep(-0.02, 0.2, others(part) - nearest(part)), _smoothstep(0.62, 0.5, y) * (parts == part))
+        weights[:, part] = soft * _smoothstep(high, low, y) * own
+    # The neck: across the plane it leaves the body by (the mane with it).
+    (base_y, base_z), (top_y, top_z) = R["neckAxis"]
+    neck_plane = _plane_distance(positions, *landmarks["neckBase"])
+    trunk_or_neck = np.isin(parts, (PARTS["body"], PARTS["neck"]))
+    weights[:, PARTS["neck"]] = _smoothstep(-0.13, 0.15, neck_plane) * trunk_or_neck
+    # The tail: nearer the tail than the trunk, from a little below its root.
+    tail_top, tail_end = R["tailSpan"]
+    along_tail = np.clip((tail_top - y) / (tail_top - tail_end), 0.0, 1.0)
+    # (Only up by the dock does the skin blend into the croup: lower down the hair is the tail's.)
+    tail_soft = np.maximum(_smoothstep(-0.02, 0.15, others(PARTS["tail"]) - nearest(PARTS["tail"])),
+                           _smoothstep(0.2, 0.4, along_tail) * (parts == PARTS["tail"]))
+    weights[:, PARTS["tail"]] = tail_soft * _smoothstep(0.0, 0.3, along_tail) * (parts != PARTS["neck"])
+    best = np.argmax(weights, axis=1)
+    root = weights[np.arange(count), best]
+    rigged = np.where(root > 0.002, best, PARTS["body"])
+    root = np.where(rigged == PARTS["body"], 0.0, root)
+
+    second = np.zeros(count)
+    third = np.zeros(count)
+    fourth = np.zeros(count)
+    legs = {PARTS["frontLeft"]: ("knee", "frontFetlock"), PARTS["frontRight"]: ("knee", "frontFetlock"),
+            PARTS["hindLeft"]: ("hock", "hindFetlock"), PARTS["hindRight"]: ("hock", "hindFetlock")}
+    for part, (joint, fetlock) in legs.items():
+        mine = rigged == part
+        joint_y, fetlock_y = pivots[joint][1], pivots[fetlock][1]
+        second[mine] = _smoothstep(joint_y + 0.04, joint_y - 0.03, y[mine])
+        third[mine] = _smoothstep(fetlock_y + 0.04, fetlock_y - 0.03, y[mine])
+    neck = rigged == PARTS["neck"]
+    head_plane = _plane_distance(positions, *R["headPlane"])
+    second[neck] = _smoothstep(-0.04, 0.06, head_plane[neck])
+    axis = np.array([top_y - base_y, top_z - base_z])
+    progress = ((positions[:, 1] - base_y) * axis[0] + (positions[:, 2] - base_z) * axis[1]) / (axis @ axis)
+    # The head rides the top of the neck whole (no shear as the neck bends): all the way up.
+    third[neck] = np.maximum(np.clip(progress[neck], 0.0, 1.0), second[neck])
+    ear_distance = distances[:, ear_leaf].min(axis=1)
+    head_distance = distances[:, (leaf_parts == PARTS["neck"]) & ~ear_leaf].min(axis=1)
+    fourth[neck] = _smoothstep(-0.004, 0.02, head_distance[neck] - ear_distance[neck])
+    tail = rigged == PARTS["tail"]
+    second[tail] = along_tail[tail]
+    return rigged, np.stack([root, second, third, fourth], axis=1)
 
 
 # -- the build ----------------------------------------------------------------------------
 class Horse:
-    def __init__(self, positions, normals, colors, triangles, parts, pivots, stats):
+    def __init__(self, positions, normals, colors, triangles, parts, pivots, stats, weights):
         self.positions, self.normals, self.colors = positions, normals, colors
         self.triangles, self.parts, self.pivots, self.stats = triangles, parts, pivots, stats
+        self.weights = weights
 
     def measures(self):
-        body = self.positions[self.parts == PARTS["body"]]
-        coat = self.positions[(self.parts == PARTS["body"]) & (self.colors[:, 1] < 0.5)]
+        # The trunk: the body and the skin of the band round it that mostly stays with it.
+        trunk = (self.parts == PARTS["body"]) | ((self.weights[:, 0] < 0.5) & (self.parts != PARTS["tail"]))
+        body = self.positions[trunk]
+        coat = self.positions[trunk & (self.colors[:, 1] < 0.5)]
         withers = coat[(coat[:, 2] > 0.1) & (coat[:, 2] < 0.5)]
         return dict(withersHeight=float(withers[:, 1].max()), bodyLength=float(body[:, 2].max() - body[:, 2].min()),
                     length=float(np.ptp(self.positions[:, 2])), height=float(self.positions[:, 1].max()))
@@ -857,13 +972,13 @@ def build(studio, voxel=VOXEL, target=TARGET_TRIANGLES):
     flat = mesh_normals(positions, triangles)
     disagree = (normals * flat).sum(axis=1) < 0.4
     normals[disagree] = flat[disagree]
-    colors, parts = paint(shape, landmarks, positions, normals, triangles)
+    colors, parts, weights = paint(shape, landmarks, positions, normals, triangles)
     pivots = {name: [round(float(v), 4) for v in value] for name, value in landmarks["pivots"].items()}
     stats = dict(grid=[len(xs), len(ys), len(zs)], dense_vertices=len(dense), dense_triangles=len(dense_triangles),
                  half_triangles=decimated, vertices=len(positions), triangles=len(triangles), folds=folds,
                  mesh_normals=int(disagree.sum()), field_s=sampled - started, nets_s=netted - sampled,
                  total_s=time.time() - started)
-    horse = Horse(positions, normals, colors, triangles, parts, pivots, stats)
+    horse = Horse(positions, normals, colors, triangles, parts, pivots, stats, weights)
     low, high = positions.min(axis=0), positions.max(axis=0)
     print("%s horse grid %s half dense %d tris -> %d -> mirrored %d tris %d verts (%d folds, %d mesh normals); "
           "x %.3f..%.3f y %.3f..%.3f z %.3f..%.3f; %s  field %.1fs nets %.1fs total %.1fs" % (
@@ -882,11 +997,14 @@ def write(path, horse, generator, schema_version):
         "POSITION": (horse.positions, False),
         "NORMAL": (glb.quantize_unit(horse.normals, np.int8), True),
         "COLOR_0": (glb.quantize_unit(horse.colors, np.uint8), True),
+        "_RIG": (glb.quantize_unit(horse.weights, np.uint8), True),
     }, indices=horse.triangles)
     low, high = horse.positions.min(axis=0), horse.positions.max(axis=0)
     writer.set_extras(dict(
         schemaVersion=schema_version, **horse.record(),
         color={"r": "part id / partScale", "g": "dark mask", "b": "light mask", "a": "1"},
+        rig={"r": "follows the part's root joint", "g": "leg: below the knee or hock; neck: the head; tail: how far down",
+             "b": "leg: below the fetlock; neck: how far up", "a": "neck: the ears"},
         boundsMin=[float(v) for v in low], boundsMax=[float(v) for v in high],
     ))
     return writer.write(path)
@@ -1014,6 +1132,17 @@ def previews(horse, directory):
         studio.render(directory / "horse-head.png", eye=(1.5, 1.95, 2.6), target=(0.0, 1.6, 1.1), lens=50.0,
                       size=(900, 900), samples=24)
         remove([masked])
+        # The skin's weights: red the root joints' (fading into the trunk), green below the knees and
+        # hocks, the head and down the tail, blue below the fetlocks and up the neck, white the ears.
+        w = horse.weights
+        rigged = horse_object("horse_rig", np.clip(np.stack([w[:, 0] * 0.9 + w[:, 3], w[:, 1] * 0.9 + w[:, 3],
+                                                             w[:, 2] * 0.9 + w[:, 3]], axis=1), 0.0, 1.0) * 0.8
+                              + 0.04)
+        studio.render(directory / "horse-rig.png", eye=(4.4, 1.6, 4.4), target=(0.0, 0.9, 0.0), lens=46.0,
+                      size=(1200, 1000), samples=24)
+        studio.render(directory / "horse-rig-rear.png", eye=(-4.2, 1.4, -4.6), target=(0.0, 0.9, -0.1),
+                      lens=46.0, size=(1200, 1000), samples=24)
+        remove([rigged])
 
         # The herd as the camera sees it: sixty metres off, the barley 0.95 m tall in front.
         remove([ground])

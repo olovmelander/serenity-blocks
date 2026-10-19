@@ -86,7 +86,9 @@ import {
 } from '../../ui/odyssey/odyssey-charm-carry.js';
 import { startOdysseyNewJourney, wireOdysseyNewJourney } from '../../ui/odyssey/odyssey-new-journey.js';
 import { handleOdysseyPauseAction } from '../../ui/odyssey/odyssey-pause-actions.js';
-import { renderOdysseyNavigatorList } from '../../ui/odyssey/odyssey-navigator-list.js';
+import {
+    hideOdysseyNavigator, renderOdysseyNavigatorList, showOdysseyNavigator,
+} from '../../ui/odyssey/odyssey-navigator-list.js';
 import { installOdysseyMapInput } from '../../ui/odyssey/odyssey-map-input.js';
 import { applyOdysseyCharmsToLevel } from '../odyssey/odyssey-charms.js';
 import {
@@ -366,7 +368,7 @@ export class OdysseyMode extends BaseGameMode {
         // Deactivated while the board built (GPU loss, an invite, a mode switch): wire nothing.
         if (!this.isActive) return;
 
-        // Retry orb and Back to map arrive from the pause sheet once it has closed and resumed play.
+        // Retry orb, Back to map and Chapters arrive from the pause sheet once it has closed.
         this._pauseActionUnsubscribe?.();
         this._pauseActionUnsubscribe = eventBus.on(EVENTS.ODYSSEY_PAUSE_ACTION, (payload) => {
             this._handlePauseAction(payload);
@@ -2671,7 +2673,7 @@ export class OdysseyMode extends BaseGameMode {
             button.id = 'odyssey-navigator-btn';
             button.className = 'odyssey-navigator-icon';
             button.setAttribute('role', 'button');
-            button.setAttribute('aria-label', 'Open the map');
+            button.setAttribute('aria-label', 'Chapters');
             button.setAttribute('tabindex', '0');
             button.innerHTML = `
                 <svg class="odyssey-navigator-icon-svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -2722,6 +2724,15 @@ export class OdysseyMode extends BaseGameMode {
         if (!show) {
             button.classList.remove('active');
         }
+    }
+
+    /**
+     * Settled on the map with nothing over it: no launch under way, no chapter's arrival or
+     * interlude. Settings offers the chapter list only then (settings.js, odyssey-pause-actions.js).
+     */
+    isOnOdysseyMap() {
+        return Boolean(this.isActive && this.isInBoardView && !this.isEnteringLevel
+            && !this._chapterFlowActive && !isOdysseyWorldInterlude(this));
     }
 
     openOdysseyNavigator() {
@@ -3663,31 +3674,14 @@ export class OdysseyMode extends BaseGameMode {
         return true;
     }
 
-    /**
-     * Show level selection UI
-     * @private
-     */
+    /** Show the navigator, filled and focused (ui/odyssey/odyssey-navigator-list.js). @private */
     _showLevelSelectUI() {
-        // Create level select UI if it doesn't exist
-        let levelSelectUI = document.getElementById('odyssey-level-select');
-        if (!levelSelectUI) {
-            levelSelectUI = this._createLevelSelectUI();
-        }
-        levelSelectUI.style.display = 'flex';
-
-        // Update with current progress
-        this._updateLevelSelectUI();
+        showOdysseyNavigator(document.getElementById('odyssey-level-select') || this._createLevelSelectUI(), this);
     }
 
-    /**
-     * Hide level selection UI
-     * @private
-     */
+    /** Hide the navigator; focus goes back to the page for the map's keys. @private */
     _hideLevelSelectUI() {
-        const levelSelectUI = document.getElementById('odyssey-level-select');
-        if (levelSelectUI) {
-            levelSelectUI.style.display = 'none';
-        }
+        hideOdysseyNavigator(document.getElementById('odyssey-level-select'));
     }
 
     /**
@@ -3903,7 +3897,7 @@ export class OdysseyMode extends BaseGameMode {
         return describeOdysseyCharmDraft(this, draft);
     }
 
-    /** Retry orb / Back to map chosen on the pause sheet (ui/odyssey/odyssey-pause-actions.js). */
+    /** Retry orb / Back to map / Chapters chosen on the pause sheet (ui/odyssey/odyssey-pause-actions.js). */
     _handlePauseAction(payload) {
         return handleOdysseyPauseAction(this, payload);
     }

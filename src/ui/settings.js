@@ -1095,34 +1095,50 @@ const PAUSED_MODE_NAMES = {
 
 /**
  * Settings doubles as the pause sheet: from the main menu it is just Settings; while a
- * game is in progress it gains the Paused strip with Resume and Main menu.
+ * game is in progress it gains the Paused strip with Resume and Main menu. Odyssey between
+ * orbs (its map, a chapter's arrival, an orb's results) is in a mode but not in a game: the
+ * journey strip keeps the ways out there without claiming anything is paused. Without it
+ * the map's Settings had no Main menu or Hub at all.
  * @param {HTMLElement} settingsModal
- * @returns {'pause'|'menu'}
+ * @returns {'pause'|'journey'|'menu'}
  */
 export function applySettingsContext(settingsModal) {
     if (!settingsModal) return 'menu';
     const onMainMenu = Boolean(document.body?.classList?.contains('start-modal-open'));
     const app = typeof window !== 'undefined' ? window.serenityBlocks : null;
     const mode = onMainMenu ? null : app?.gameModeManager?.getCurrentMode?.();
-    const context = mode?.isRunning ? 'pause' : 'menu';
+    const modeId = mode?.getModeId?.();
+    let context = 'menu';
+    if (mode?.isRunning) context = 'pause';
+    else if (modeId === 'odyssey' && mode.isActive) context = 'journey';
     settingsModal.setAttribute?.('data-context', context);
-    if (context !== 'pause') return context;
+    if (context === 'menu') return context;
 
-    const modeId = mode.getModeId?.();
     const online = modeId === 'online-multiplayer';
     const name = PAUSED_MODE_NAMES[modeId];
     const set = (selector, text) => {
         const element = settingsModal.querySelector?.(selector);
         if (element) element.textContent = text;
     };
+    // Odyssey: an orb in progress can be retried or left for the map from here; the settled
+    // map opens its chapter list from here.
+    const orb = context === 'pause' && modeId === 'odyssey' && !mode.isInBoardView ? mode.currentLevelConfig : null;
+    const onMap = context === 'journey' && mode.isOnOdysseyMap?.() === true;
+    const offered = { retry: Boolean(orb), map: Boolean(orb), chapters: onMap };
+    settingsModal.querySelectorAll?.('.settings-pause__odyssey').forEach((button) => {
+        button.hidden = !offered[button.dataset?.odysseyAction];
+    });
+    if (context === 'journey') {
+        set('.settings-pause__title', 'Odyssey');
+        set('#settings-pause-note', onMap
+            ? 'Your journey is saved. The map waits where you left it.'
+            : 'Your journey is saved.');
+        set('#settings-resume-btn > span', onMap ? 'Back to the map' : 'Back to Odyssey');
+        return context;
+    }
     set('.settings-pause__title', online ? 'Match in progress' : 'Paused');
     let note = name ? `${name} waits where you left it.` : 'Your game waits where you left it.';
     if (online) note = 'Online matches keep going while Settings is open.';
-    // Odyssey: an orb in progress can be retried or left for the map from here.
-    const orb = modeId === 'odyssey' && !mode.isInBoardView ? mode.currentLevelConfig : null;
-    settingsModal.querySelectorAll?.('.settings-pause__odyssey').forEach((button) => {
-        button.hidden = !orb;
-    });
     if (orb) note = `Orb ${orb.id} · ${orb.name} waits where you left it.`;
     set('#settings-pause-note', note);
     set('#settings-resume-btn > span', online ? 'Back to the match' : 'Resume');
@@ -1184,8 +1200,8 @@ function setupSettingsSheet(listen) {
         });
     }
 
-    // Odyssey: Retry orb and Back to map close the sheet as Resume does, then hand the choice
-    // to the mode, which owns the veil, the restart and the return to the map.
+    // Odyssey: Retry orb, Back to map and Chapters close the sheet as Resume does, then hand
+    // the choice to the mode, which owns the veil, the restart, the return and the list.
     settingsModal.querySelectorAll?.('.settings-pause__odyssey').forEach((button) => {
         listen(button, 'click', () => {
             document.getElementById('close-settings')?.click();

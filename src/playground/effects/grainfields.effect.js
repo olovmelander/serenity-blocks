@@ -32,6 +32,11 @@
  *   locks=<n>                before the event, play n locks
  *   eventLevel=<n>           the level an event=levelUp steps to (default level + 1)
  *   demo=1                   live: a looping gameplay script
+ *   cloudSteps=<n>           the deck's march: samples along a ray (0 draws the deck flat)
+ *   herdLineup=<m>           the gaits side by side on the spot, m metres out (a stand, a walk, a
+ *                            trot, a canter, a gallop; behind them grazing, resting, swatting)
+ *   herdRun=<move>@<s>,...   moves the band makes at set times: round, crest, path or loop (a
+ *                            gallop out of the picture and back), walk, trot, canter, wheel
  */
 import * as THREE from 'three/webgpu';
 import { GrainfieldsWorld } from '../../themes/grainfields/grainfields-world.js';
@@ -263,11 +268,25 @@ export function create({
     GrainfieldsWorld.prepare(quality).then((prepared) => {
         if (disposed) return;
         world = new GrainfieldsWorld({
-            scene, quality, capture: true, prepared, samples: noPost ? 0 : samples,
+            scene,
+            quality,
+            capture: true,
+            prepared,
+            samples: noPost ? 0 : samples,
+            cloudSteps: params.has('cloudSteps') ? num(params, 'cloudSteps', 18) : null,
         }).build();
         world.bindCamera(camera);
         world.setReducedMotion(params.get('reduce') === '1');
         if (hourHold !== null) world.setCaptureOverrides({ hour: hourHold });
+        // The gaits side by side on the spot, `herdLineup` metres out (a close look at the legs).
+        if (params.has('herdLineup')) world.parts.herd?.sim.lineup(true, num(params, 'herdLineup', 16));
+        // Moves the band makes at set times: `herdRun=round@20,path@60` (gallop-round at 20 s...).
+        if (params.has('herdRun')) {
+            world.parts.herd?.sim.setScript(params.get('herdRun').split(',').map((entry) => {
+                const [kind, at] = entry.split('@');
+                return { kind: ['walk', 'trot', 'canter', 'wheel'].includes(kind) ? kind : `gallop-${kind}`, at: Number(at) };
+            }));
+        }
         const partsParam = params.get('parts');
         if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
         if (!noPost) {
@@ -307,6 +326,7 @@ export function create({
                 renderer.render(scene, camera);
                 return;
             }
+            world.prerender(renderer, camera);
             if (post) post.render();
             else renderer.render(scene, camera);
             settledFrames += 1;

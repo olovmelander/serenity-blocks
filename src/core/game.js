@@ -646,11 +646,13 @@ export class GameState {
         // piece down or locks it, so only a hard drop places it.
         this.finiteSupply = options.finiteSupply === true;
         this.gravityWaits = options.gravityWaits === true;
-        // Stillfall' board marks: a seam where two bodies touch, the relic's body, and
-        // the cells a hint lights up.
+        // Stillfall's board marks: a seam where two bodies touch, the relics (to bring to the
+        // floor) and seals (to clear away), and the cells a hint lights up.
         this.showBodySeams = false;
-        /** @type {number | null} */
-        this.relicPieceId = null;
+        /** @type {number[]} */
+        this.relicPieceIds = [];
+        /** @type {number[]} */
+        this.sealPieceIds = [];
         /** @type {Array<[number, number]> | null} */
         this.hintCells = null;
         // What the board's cascade banner counts: combos, or a puzzle's waves. The scene
