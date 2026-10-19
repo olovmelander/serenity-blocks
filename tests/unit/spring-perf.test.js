@@ -4,11 +4,27 @@
  * that rest when nothing is happening. Each keeps the picture: these tests pin what is drawn,
  * not only that less is drawn.
  */
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import zlib from 'node:zlib';
 import {
-    describe, expect, it,
+    beforeAll, describe, expect, it,
 } from 'vitest';
 import * as THREE from 'three/webgpu';
+import {
+    REST_RIG, SpringWorld, fovForAspect, useValleyGround,
+} from '../../src/themes/spring/spring-world.js';
+import { EYE } from '../../src/themes/spring/spring-plan.js';
+import { decodeValley } from '../../src/themes/spring/spring-terrain.js';
 import { LEAF_LOD, leafLod, thinSpray } from '../../src/themes/spring/spring-forest.js';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+
+beforeAll(() => {
+    const file = path.resolve(here, '../../src/themes/spring/assets/spring-valley.bin');
+    useValleyGround(decodeValley(new Uint8Array(zlib.inflateSync(fs.readFileSync(file)))));
+});
 
 /**
  * A leaf as the sprays draw it: a fan of `n` triangles from its stalk (vertex `base`) round an
@@ -143,5 +159,49 @@ describe('spring forest: the far leaves', () => {
         strand.setIndex(i2);
         expect(leafLod(strand)).toBe(strand);
         expect(LEAF_LOD.from).toBeLessThan(60); // every modelled tree stands farther off than this
+    });
+});
+
+describe('spring world: order and rest', () => {
+    const makeWorld = (quality = 'Low') => {
+        const scene = new THREE.Scene();
+        const aspect = 16 / 9;
+        const camera = new THREE.PerspectiveCamera(fovForAspect(aspect), aspect, REST_RIG.near, REST_RIG.far);
+        const world = new SpringWorld({ scene, quality, capture: true }).build();
+        world.bindCamera(camera);
+        world.setViewport(1600, 900, aspect);
+        return { camera, world };
+    };
+
+    it('draws the ground after the river, the meadow and the stones that hide it', () => {
+        const { world } = makeWorld();
+        const land = world.parts.land.mesh;
+        expect(land.renderOrder).toBeGreaterThan(world.parts.river.mesh.renderOrder);
+        // Drawn after the river, the ground still loses to it where their depths tie (far off).
+        expect(land.material.depthFunc).toBe(THREE.LessDepth);
+        expect(world.parts.river.mesh.material.depthFunc).toBe(THREE.LessEqualDepth);
+        world.parts.meadow.mesh.traverse((object) => {
+            if (object.isMesh) expect(object.renderOrder).toBeLessThan(land.renderOrder);
+        });
+        expect(world.parts.sky.mesh.renderOrder).toBeGreaterThan(land.renderOrder);
+        world.dispose();
+    });
+
+    it('stands the meadow\'s plants nearest first', () => {
+        const { world } = makeWorld();
+        let draws = 0;
+        world.parts.meadow.mesh.traverse((object) => {
+            if (!object.isInstancedMesh) return;
+            draws += 1;
+            const roots = object.geometry.attributes.aRoot.array;
+            let last = -1;
+            for (let i = 0; i < roots.length; i += 4) {
+                const d = Math.hypot(roots[i] - EYE.x, roots[i + 2] - EYE.z);
+                expect(d).toBeGreaterThanOrEqual(last);
+                last = d;
+            }
+        });
+        expect(draws).toBeGreaterThan(2);
+        world.dispose();
     });
 });

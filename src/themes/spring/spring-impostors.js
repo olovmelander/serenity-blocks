@@ -235,7 +235,11 @@ export function createImpostorWoods(u, atlas, sites, { samples = 0 } = {}) {
     const base = new Float32Array(count * 4); // x, y, z, seed
     const size = new Float32Array(count * 4); // width, height, foot (m below the base), lean
     const cell = new Float32Array(count * 4); // column, row, tone, kind
-    sites.forEach((site, i) => {
+    // Nearest first: the eye stands still on the knoll, so the near cards fill the depth before
+    // the thousands behind them are shaded (the picture is the same in any order).
+    const nearestFirst = sites.map((site, i) => [site.d ?? 0, i]).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    nearestFirst.forEach(([, at], i) => {
+        const site = sites[at];
         // A birch's card from the birches, a spruce's from the spruces (either, when one is missing).
         let pool = site.kind === 0 ? birches : spruces;
         if (!pool.length) pool = birches.length ? birches : spruces;
