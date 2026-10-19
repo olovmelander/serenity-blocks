@@ -183,6 +183,7 @@ tree), boulders, motes, mist, floes, birds and the pixel-ratio cap.
   first bake that throws is retried by the next frame instead of giving the woods up. Every tier
   and both backends bake the same way (WebGL2 has no async pipelines). `getDiagnostics().world.woods`
   reports the atlas (baked, failed, attempts); `tests/unit/spring-woods-bake.test.js` pins it.
+  The atlas as each bakes it under a session: `spring-captures/woods-atlas-session-ab.webp`.
 
 ## Verification
 
