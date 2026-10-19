@@ -791,20 +791,22 @@ export class SpringWorld {
 
     /**
      * Draw the woods' impostor atlas, once, before the first frame: its materials compiled off
-     * the main thread where the backend can, then its two passes.
+     * the main thread where the backend can, then its two passes (drawn again on the next frames'
+     * prerender until every tree is in it).
      */
     async bakeImpostors(renderer) {
         if (!renderer || !this.impostors || this.impostors.ready || this.impostors.failed) return;
         try {
             await this.impostors.bake(renderer);
         } catch (error) {
-            // The woods go without their cards; nothing else depends on them.
-            this.impostors.failed = true;
-            console.warn('[Spring] The woods\' impostors could not be drawn.', error);
+            // Not given up on here (a compile that failed while the app was busy): the next frames'
+            // prerender draws the atlas again, and only a draw that throws there leaves the woods
+            // without their cards.
+            console.warn('[Spring] The woods\' impostors were not drawn yet; drawing them on the next frame.', error);
         }
     }
 
-    /** Before the frame: the impostor atlas, if nobody has baked it yet. */
+    /** Before the frame: the impostor atlas, until it holds every tree. */
     prerender(renderer) {
         const atlas = this.impostors;
         if (!renderer || !atlas || atlas.ready || atlas.failed) return;
@@ -845,6 +847,10 @@ export class SpringWorld {
             flush: this.u.flush.value,
             whirlAge: this.u.whirl.value.y > 0 ? this.time - this.u.whirl.value.x : null,
             floes: this.floes?.live ?? 0,
+            // The woods' impostor atlas: kept (every tree drawn into it), and the bakes it took.
+            woods: this.impostors ? {
+                baked: this.impostors.ready, failed: this.impostors.failed === true, attempts: this.impostors.attempts,
+            } : null,
             birds: (this.flights?.live || []).reduce((a, b) => a + b, 0),
             dusk: this.dusk,
             reducedMotion: this.reducedMotion,
