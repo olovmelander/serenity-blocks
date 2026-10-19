@@ -35,9 +35,10 @@ import { createMotes } from './grainfields-motes.js';
 import { createFort } from './grainfields-fort.js';
 import { createGeese } from './grainfields-geese.js';
 import { createHerd } from './grainfields-herd.js';
+import { createTrample } from './grainfields-trample.js';
 
 import { GrainfieldsReactions } from './grainfields-reactions.js';
-import { fallbackLayout } from './grainfields-composition.js';
+import { cardUnion, fallbackLayout } from './grainfields-composition.js';
 
 export const GRAINFIELDS_PARTS = Object.freeze(['grain', 'land', 'lapporten', 'fort', 'trees', 'herd', 'geese', 'sky', 'beams', 'motes']);
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
@@ -151,11 +152,13 @@ export class GrainfieldsWorld {
     }
 
     constructor({
-        scene, quality = 'High', capture = false, prepared = null, samples = 0,
+        scene, quality = 'High', capture = false, prepared = null, samples = 0, cloudSteps = null,
     } = {}) {
         this.scene = scene;
         this.quality = quality;
         this.tier = tierFor(quality);
+        // (Measurements: the deck's march overridden, 0 drawing it flat.)
+        if (Number.isFinite(cloudSteps) && cloudSteps >= 0) this.tier = { ...this.tier, cloudSteps: Math.round(cloudSteps) };
         this.capture = capture === true;
         this.samples = samples;
         this.prepared = prepared;
@@ -211,7 +214,9 @@ export class GrainfieldsWorld {
     * buildSteps() {
         const prepared = this.prepared || prepareDataSync(this.quality);
         this.prepared = prepared;
-        this.textures = { noise: createNoiseTexture() };
+        // Where the herd has parted the barley (pressed in each frame, read by the stalks).
+        this.trample = createTrample();
+        this.textures = { noise: createNoiseTexture(), trample: this.trample.texture };
         this.writePath();
         const { u, textures: t, tier } = this;
         this.addPart('grain', createGrain(u, t, prepared.grain, { coverage: this.samples > 0 }));
@@ -229,7 +234,11 @@ export class GrainfieldsWorld {
 
         // The herd needs its authored horse; without it the field is the barley's alone.
         const herd = createHerd(u, t, tier.herd, prepared.assets?.horse);
-        if (herd) this.addPart('herd', herd);
+        if (herd) {
+            this.addPart('herd', herd);
+            herd.setView(this.herdView());
+            herd.setCalm(this.reducedMotion);
+        }
         this.addPart('geese', createGeese(u, t, tier.birds));
         this.addPart('sky', createSky(u, t, tier));
         this.addPart('beams', createBeams(u, t, this.reactions));
@@ -277,7 +286,10 @@ export class GrainfieldsWorld {
 
     bindCamera(camera) { this._camera = camera; }
 
-    setReducedMotion(value) { this.reducedMotion = value === true; }
+    setReducedMotion(value) {
+        this.reducedMotion = value === true;
+        this.parts.herd?.setCalm(this.reducedMotion);
+    }
 
     setCaptureOverrides(overrides) { Object.assign(this.overrides, overrides); }
 
@@ -289,12 +301,30 @@ export class GrainfieldsWorld {
         this.u.aspect.value = this.aspect;
         this.viewportHeight = Math.max(1, height);
         if (!this.layoutLive) this.layout = fallbackLayout(width, height);
+        this.parts.herd?.setView(this.herdView());
     }
 
     setLayout(rects, aspect) {
         if (aspect > 0) this.aspect = aspect;
         this.layoutLive = Boolean(rects);
         this.layout = rects || fallbackLayout(1920, 1920 / Math.max(0.2, this.aspect));
+        this.parts.herd?.setView(this.herdView());
+    }
+
+    /**
+     * The view the herd lives in (bearings, degrees right of the view axis): the frame's edges at
+     * rest, and the stretches the board and the stats bar cover (the band grazes in the open).
+     */
+    herdView() {
+        const rig = rigFor(this.aspect);
+        const tanH = Math.tan(rig.fov * DEG * 0.5) * this.aspect;
+        const bearingAt = (x) => rig.yaw + Math.atan((x * 2 - 1) * tanH) / DEG;
+        const blocked = [];
+        const card = cardUnion(this.layout);
+        if (card) blocked.push([bearingAt(card.x0), bearingAt(card.x1)]);
+        const hud = this.layout?.hud;
+        if (hud) blocked.push([bearingAt(hud.x0), bearingAt(hud.x1)]);
+        return { left: bearingAt(0), right: bearingAt(1), blocked };
     }
 
     // ── Camera ────────────────────────────────────────────────────────────────────
@@ -365,6 +395,7 @@ export class GrainfieldsWorld {
         if (c?.hardDrop) this.counts.hardDrops += 1;
         const aim = (x, y, d) => this.aim(x, y, d);
         const gap = this.reactions.lock(c, this.time, { layout: this.layout, aim, deck: this.deckState() });
+        if (c?.hardDrop && !this.reducedMotion) this.parts.herd?.startle(this.time);
         if (gap && !this.reducedMotion) {
             // Pigment dust of the piece's colour lifts through the beam.
             this.parts.motes?.burst({
@@ -504,7 +535,8 @@ export class GrainfieldsWorld {
         this.wheel.reset();
         this.reactions.reset();
         this.parts.motes?.reset();
-        this.parts.herd?.reset();
+        this.parts.herd?.reset(t);
+        this.trample?.clear();
         this.u.skein.value = -1e6;
         this.time = t;
     }
@@ -602,6 +634,7 @@ export class GrainfieldsWorld {
         }
         this.updatePost(dt);
         for (const part of this.partList) part.update?.(time, dt, this);
+        if (this.parts.herd && this.parts.grain) this.trample.press(this.parts.herd.horses, dt);
     }
 
     /**
@@ -635,7 +668,10 @@ export class GrainfieldsWorld {
     }
 
     /** GPU work that must precede the frame (none: the deck's shadow is read in the shaders). */
-    prerender() {}
+    /** The world's own passes before the frame: the deck marched as a volume. */
+    prerender(renderer, camera = this._camera) {
+        this.parts.sky?.render?.(renderer, camera);
+    }
 
     getPostState() { return this._post; }
 
@@ -690,6 +726,7 @@ export class GrainfieldsWorld {
         this.root.removeFromParent();
         for (const part of this.partList) part.dispose();
         this.textures?.noise?.dispose();
+        this.trample?.dispose();
         disposeGrainfieldsAssets(this.prepared?.assets);
         this.root.clear();
         this.partList.length = 0;
