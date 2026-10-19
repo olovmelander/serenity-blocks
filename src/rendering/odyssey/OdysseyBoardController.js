@@ -98,6 +98,9 @@ import { gpuResilience } from '../../utils/gpu-context-resilience.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import {
+    beginAsyncRenderPipelines, isAsyncRenderPipelinesReady, preloadAsyncRenderPipelines,
+} from '../async-render-pipelines.js';
+import {
     beginPostTargetCompile,
     beginWarmTargetRender,
     createWarmRenderTarget,
@@ -126,8 +129,17 @@ const ODYSSEY_MAX_PIXEL_RATIO = 1.5;
 // 0.65 — before a single pixel comes back. SHARPEN_SCALE_FLOOR in odyssey-tsl-pipeline.js is the
 // same number for the same reason; keep them in step.
 export const ODYSSEY_RENDER_SCALE_FLOOR = 0.65;
-const DRS_FRAME_WINDOW = 60; // rolling frames used for the p95/p99 estimate.
+// Rolling frames for the p75/p95/p99 estimate: ~1.4 s at the dev laptop's 131.6 Hz. Sixty was
+// under half a second there, so three compile frames were 5% of a window (2026-10-19).
+const DRS_FRAME_WINDOW = 180;
 const DRS_EVAL_INTERVAL_MS = 1000; // evaluate at ~1Hz (policy cooldowns gate actual changes).
+// GPU samples for the adaptive controller's headroom veto: one timestamp resolve this often
+// (each yields the last frame's GPU time; the 2048-query pool holds ~50 frames of this graph).
+const ADAPTIVE_GPU_RESOLVE_MS = 250;
+// New node builds per frame on the live map (the frame itself is ~2.5 ms of a 7.6 ms budget).
+const ODYSSEY_LIVE_BUILD_BUDGET_MS = 4;
+// Concurrent compileAsync launches once the map is live (see _compileWidth).
+const ODYSSEY_LIVE_COMPILE_WIDTH = 2;
 const DRS_TARGET_FRAME_RATE = 60;
 
 /**
@@ -388,6 +400,11 @@ export class OdysseyBoardController {
         // sense with the cinematic post stack, so the loop also gates on cinematicJourneyActive.
         this.adaptiveQualityEnabled = options.adaptiveQuality !== false
             && !readBooleanUrlFlag('odysseyDisableAdaptiveQuality');
+        // GPU timestamps for the controller's headroom veto (WebGPU only; settled in
+        // initRenderer). ?odysseyAdaptiveGpuTiming=0 returns the controller to frame time alone.
+        this._adaptiveGpuTiming = this.adaptiveQualityEnabled
+            && getUrlSearchParams()?.get('odysseyAdaptiveGpuTiming') !== '0';
+        this._adaptiveGpuResolveAt = 0;
         this.debugOverlayActive = false;
         // Diagnostic: un-gate _probeWarmFailure independently of the debug HUD (?odysseyWarmProbe=1).
         // The HUD masks the render-warm setPipeline failure (Heisenbug), so the probe needs its own
@@ -651,6 +668,9 @@ export class OdysseyBoardController {
             // proposing steps _applyRenderScale silently discards (36 s of dead recovery).
             resolutionFloor: ODYSSEY_RENDER_SCALE_FLOOR,
             evaluateResolution: evaluateDynamicResolutionAdjustment,
+            // A step down costs a stall of its own here (the sharpen nesting recreates every
+            // scene pipeline), so it waits for pressure that lasts (2026-10-19).
+            requireSustainedPressure: true,
         });
         // Reused ctx for the per-frame adaptive update (NO per-frame allocation). applyRenderScale
         // is bound once; pipeline is refreshed lazily in the loop (it is built after this).
@@ -1696,12 +1716,50 @@ export class OdysseyBoardController {
     }
 
     /**
+     * THE LIVE MAP CREATES ITS PIPELINES ASYNC (2026-10-19). The warm machinery compiles each
+     * chapter before it is seen, but only while the player lets it: a player who scrolls on
+     * from the reveal reaches chapters 5-8 before their warm, and every first draw then created
+     * its pipeline synchronously on the GPU process — 47 in one crossing, frames of 365-683 ms
+     * (Extreme, dev laptop, scroll started 1.5 s after the reveal). Under this session (the one
+     * the themes' loading surfaces use, src/rendering/async-render-pipelines.js) such a draw
+     * compiles async and that object skips its draw until ready instead of stopping the frame.
+     * Started at the reveal, not before: the pre-reveal warm stays synchronous so the first frame
+     * is whole. The canvas composite and PMREM bakes stay synchronous by the module's exemptions.
+     * The node builds those first draws need still ran in the frame (40-90 ms at the 5->6, ch6
+     * and 7->8 crossings), so the session also carries a build budget: at most
+     * ODYSSEY_LIVE_BUILD_BUDGET_MS of new builds per frame into the scene pass, the rest a frame
+     * or two later. Draws into the canvas are never deferred, and the offscreen render-warm runs
+     * outside the budget (it exists to build). Rollback: ?odysseyAsyncPipelines=0.
+     * @private
+     */
+    _beginLiveAsyncPipelines() {
+        if (this._liveAsyncPipelines || this._disposed || !this.isWebGPU || !this.renderer) return;
+        if (getUrlSearchParams()?.get('odysseyAsyncPipelines') === '0') return;
+        // No `name`: a session's owns() falls back to a `#<name>-theme` DOM lookup for renderers it
+        // does not hold, and with a budget that check runs on every draw of every renderer — the
+        // level theme's included, all through play. A nameless owner answers by identity alone.
+        const owner = { renderer: this.renderer };
+        const begin = () => {
+            if (this._disposed || this._liveAsyncPipelines) return;
+            this._liveAsyncPipelines = beginAsyncRenderPipelines(owner, {
+                label: 'odyssey-board-live',
+                buildBudgetMs: ODYSSEY_LIVE_BUILD_BUDGET_MS,
+                exemptCanvasDraws: true,
+            });
+        };
+        if (isAsyncRenderPipelinesReady()) begin();
+        else preloadAsyncRenderPipelines().then(begin).catch(() => {});
+    }
+
+    /**
      * After reveal, render-warm every chapter not warmed pre-reveal — OFFSCREEN, one at a
      * time during idle, nearest the player first — so the first live scroll-in never compiles
      * on a visible frame (the first-visit hitch). Disable with ?odysseyBgWarm=0.
      * @private
      */
     startDeferredBackgroundLoading({ delayMs = 0 } = {}) {
+        // The reveal: from here on the live map compiles what it meets for the first time async.
+        this._beginLiveAsyncPipelines();
         if (this._disposed || !this.backgroundChapterLoadingEnabled || !this.environmentManager) return;
         if (this._backgroundChapterLoadingStarted) return;
 
@@ -1999,7 +2057,10 @@ export class OdysseyBoardController {
         });
         try {
             group.visible = true;
-            this.renderer.render(this.scene, this.camera);
+            // This render exists to build: the live session's build budget must not defer it.
+            const render = () => this.renderer.render(this.scene, this.camera);
+            if (this._liveAsyncPipelines?.withoutBudget) this._liveAsyncPipelines.withoutBudget(render);
+            else render();
             succeeded = true;
         } catch (error) {
             console.warn(`[OdysseyBoard] Background render-warm failed for chapter ${chapterId}:`, error?.message || error);
@@ -2147,9 +2208,15 @@ export class OdysseyBoardController {
      * nearly to itself (item 2.15), so the right width is worth re-measuring per machine.
      * @private
      */
-    _compileWidth() {
+    _compileWidth(live = false) {
         const raw = Number.parseInt(readUrlValue('odysseyCompileWidth'), 10);
-        return Number.isFinite(raw) && raw > 0 ? Math.min(raw, 32) : undefined;
+        if (Number.isFinite(raw) && raw > 0) return Math.min(raw, 32);
+        // LIVE compiles run two at a time (2026-10-19). Under the live loop the node builds yield
+        // with scheduler.yield, whose continuations go ahead of the frame, and six at once kept
+        // the GPU process compiling back to back: 29-32 frames over 20 ms in the 10 s after the
+        // reveal at Extreme, 11-15 at width 2, with the board's appearance unchanged (width 1
+        // added 0.4 s to it through the pre-reveal fan-out, which keeps the module default).
+        return live ? ODYSSEY_LIVE_COMPILE_WIDTH : undefined;
     }
 
     _compileGroupThroughPost(group, options = {}) {
@@ -2165,7 +2232,7 @@ export class OdysseyBoardController {
             this.camera,
             group,
             this._renderLoopActive(),
-            { concurrency: this._compileWidth(), ...options },
+            { concurrency: this._compileWidth(options.live === true), ...options },
         );
     }
 
@@ -2550,7 +2617,10 @@ export class OdysseyBoardController {
             // populated (resolved after each render). ONLY when the ?odysseyAAA debug overlay is
             // active — otherwise the query pool fills and overflows (the renderer tracks queries
             // that nothing resolves once the per-frame resolve is gated to the overlay too).
-            trackTimestamp: isOdysseyAAADebugEnabled() || readBooleanUrlFlag('odysseyGpuProfile'),
+            // Also for the adaptive controller's GPU headroom veto (WebGPU only, resolved every
+            // ADAPTIVE_GPU_RESOLVE_MS by _tickAdaptiveGpuTiming so the pool never fills).
+            trackTimestamp: isOdysseyAAADebugEnabled() || readBooleanUrlFlag('odysseyGpuProfile')
+                || (this._adaptiveGpuTiming && !forceWebGL),
         });
         await this.renderer.init();
         // WAVE -1c — name the passes the timestamp pool measures. AFTER init(): the renderer
@@ -2561,6 +2631,14 @@ export class OdysseyBoardController {
         if (this.gpuProfileEnabled) this._installPassLabelInspector();
         this.isWebGPU = this.renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = this.renderer.backend?.isWebGLBackend === true;
+        // The veto rides WebGPU timestamps only (the WebGL2 pool is 256 queries and its timer
+        // queries are another driver path); a device without timestamp-query drops it by itself.
+        if (this._adaptiveGpuTiming && (!this.isWebGPU || this.renderer.backend?.trackTimestamp !== true)) {
+            this._adaptiveGpuTiming = false;
+            if (this.isWebGL && !isOdysseyAAADebugEnabled() && !readBooleanUrlFlag('odysseyGpuProfile')) {
+                this.renderer.backend.trackTimestamp = false;
+            }
+        }
         // Tonemapping happens in the TSL post graph (manual ACES) → renderer stays linear.
         this.renderer.toneMapping = THREE.NoToneMapping;
         this.renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -3266,6 +3344,27 @@ export class OdysseyBoardController {
     }
 
     /**
+     * Feed the adaptive controller's GPU headroom veto: one timestamp resolve every
+     * ADAPTIVE_GPU_RESOLVE_MS (each reports the last frame's GPU time), sooner if a burst of
+     * renders (a warm sweep) has filled half the query pool. Compute passes keep a pool of their
+     * own, which is emptied the same way when it has anything in it.
+     * @private
+     */
+    _tickAdaptiveGpuTiming() {
+        const now = performance.now();
+        const pools = this.renderer?.backend?.timestampQueryPool;
+        const renderPool = pools?.[THREE.TimestampQuery?.RENDER ?? 'render'];
+        const filling = (renderPool?.currentQueryIndex ?? 0) > (renderPool?.maxQueries ?? 2048) / 2;
+        if (!filling && now - this._adaptiveGpuResolveAt < ADAPTIVE_GPU_RESOLVE_MS) return;
+        this._adaptiveGpuResolveAt = now;
+        this._resolveRenderTimestamps();
+        const computePool = pools?.[THREE.TimestampQuery?.COMPUTE ?? 'compute'];
+        if ((computePool?.currentQueryIndex ?? 0) > 0) {
+            this.renderer.resolveTimestampsAsync(THREE.TimestampQuery?.COMPUTE ?? 'compute').catch(() => {});
+        }
+    }
+
+    /**
      * Batch0 — resolve GPU timestamp queries so renderer.info.render.timestamp is populated
      * for the debug overlay, AND record one profile sample per resolved query.
      *
@@ -3292,6 +3391,8 @@ export class OdysseyBoardController {
         renderer.resolveTimestampsAsync(renderType)
             .then(() => {
                 const ts = renderer.info?.render?.timestamp;
+                // The adaptive controller's GPU headroom veto: one sample per resolve.
+                if (Number.isFinite(ts) && ts > 0) this.adaptiveQuality?.recordGpuFrame?.(ts, performance.now());
                 // The first resolves land as null/0 while the query pool warms; not frames.
                 if (this.gpuProfileRing && epoch === this._gpuTimestampEpoch
                     && Number.isFinite(ts) && ts > 0) {
@@ -4068,6 +4169,8 @@ export class OdysseyBoardController {
         // nothing reads (per-frame GC the board never needed in normal play). Zero visual effect.
         if (this.debugOverlayActive || this.gpuProfileEnabled) {
             this._resolveRenderTimestamps();
+        } else if (this._adaptiveGpuTiming) {
+            this._tickAdaptiveGpuTiming();
         }
         if (this.gpuProfileRing) this._sampleGpuProfile();
 
@@ -4302,15 +4405,21 @@ export class OdysseyBoardController {
                 // synchronously on the first live post frame (the director's bloom weight is 0
                 // at the warm sample's p=0, so the sample bound the no-bloom variant). Warm the
                 // lean pair (bloom on/off, lens off) minus the live one — one render + the
-                // restore, ~150 ms behind the overlay (the compiles are synchronous quads);
-                // the ch7 lens variants still warm on first visit (the fast-start trade).
+                // restore, ~150 ms behind the overlay (the compiles are synchronous quads).
+                // The ch7 lens pair warms here too (2026-10-19). Deferred to the live map it was
+                // two synchronous output-quad compiles in one idle frame a few seconds after the
+                // reveal (87-93 ms measured at Extreme): a sync create stalls the GPU process, so
+                // it freezes the overlay as well, but a still loading cover hides it where a
+                // drifting map does not. Each variant now keeps its pipeline (see the pipeline's
+                // per-binding RenderPipelines), so this is the only time they compile.
                 const variantStart = performance.now();
                 await this.postProcessingStack?.warmOutputVariants?.(
                     this._yieldToMain.bind(this),
-                    { lensStates: [false], skipActive: true },
+                    { lensStates: [false, true], skipActive: true },
                 );
+                this._lensVariantsWarmed = true;
                 warmupStats.variantsMs = performance.now() - variantStart;
-                console.log(`[OdysseyWarmup] fast-start: focus chapter + lean post variants warmed in ${Math.round(warmupStats.variantsMs)}ms; far chapters + lens variants warm on first visit`);
+                console.log(`[OdysseyWarmup] fast-start: focus chapter + lean and lens post variants warmed in ${Math.round(warmupStats.variantsMs)}ms; far chapters warm on first visit`);
             } else {
                 const variantStart = performance.now();
                 await this.postProcessingStack?.warmOutputVariants?.(this._yieldToMain.bind(this));
@@ -4764,6 +4873,8 @@ export class OdysseyBoardController {
     dispose() {
         releaseOdysseyBoardMusic(this);
         this._disposed = true;
+        this._liveAsyncPipelines?.end();
+        this._liveAsyncPipelines = null;
         this.cancelTravel();
         this.isActive = false;
         this.isRenderingPaused = false;

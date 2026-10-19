@@ -105,7 +105,7 @@ import {
     setCinematicLoadingProgress,
     waitForCinematicLoadingOverlayPresented,
 } from '../../ui/cinematic-loading-overlay.js';
-import { createCinematicLoadingSurface } from '../../ui/cinematic-loading-surface.js';
+import { COVERED_ENTRY_BUILD_BUDGET_MS, createCinematicLoadingSurface } from '../../ui/cinematic-loading-surface.js';
 import { getOdysseyThemePresentationPalette } from '../odyssey/theme-presentation.js';
 import {
     isOdysseyLayoutEditorEnabled,
@@ -123,6 +123,7 @@ import {
 } from '../../ui/odyssey/odyssey-start-cue.js';
 import { clearOdysseyGoalFlourish, playOdysseyGoalFlourish } from '../../ui/odyssey/odyssey-goal-flourish.js';
 import { noticeOdysseyUnreadableSave } from '../../ui/odyssey/odyssey-save-notice.js';
+import { openParallelShaderWindow } from '../../rendering/phaser/phaser-parallel-shaders.js';
 
 // Readiness waits end this long before the tunnel's hold runs out (see _waitForEntryRevealReadiness).
 const ENTRY_HOLD_MARGIN_MS = 250;
@@ -773,6 +774,8 @@ export class OdysseyMode extends BaseGameMode {
         let preparationPromise = null;
         /** The theme-compile lease a map click takes for itself (the journey flow brings its own). */
         let ownLoadingSurface = null;
+        /** Board shaders link in parallel while the tunnel covers the board (see the helper). */
+        let closeParallelShaders = () => {};
         const presence = options.beginPreparedRun ? null : createOdysseyEntryPresence(this, levelConfig, {
             isCurrent: () => entryToken === this.themeRevealToken,
             onMap: () => this.journeyEntryTransition?.abort?.('map-requested'),
@@ -812,6 +815,8 @@ export class OdysseyMode extends BaseGameMode {
                 reducedMotion,
                 callbacks: {
                     onBlackoutReached: (hold) => {
+                        closeParallelShaders();
+                        closeParallelShaders = openParallelShaderWindow(this.deps.phaserGame);
                         preparationPromise = (async () => {
                             if (!isCurrentEntry()) return false;
                             if (options.onBlackoutReached) {
@@ -820,7 +825,9 @@ export class OdysseyMode extends BaseGameMode {
                                 // A map click covers its own theme compile, as the journey flow
                                 // does (audit 2026-10-18): without the lease the level theme's
                                 // pipelines compiled synchronously and froze the tunnel (4.7 s).
-                                ownLoadingSurface = createCinematicLoadingSurface(this.deps.themeManager);
+                                ownLoadingSurface = createCinematicLoadingSurface(this.deps.themeManager, {
+                                    buildBudgetMs: COVERED_ENTRY_BUILD_BUDGET_MS,
+                                });
                                 await ownLoadingSurface.ready;
                                 if (!isCurrentEntry()) return false;
                             }
@@ -844,6 +851,7 @@ export class OdysseyMode extends BaseGameMode {
                         return preparationPromise;
                     },
                     onRevealStart: async () => {
+                        closeParallelShaders();
                         if (!isCurrentEntry()) return false;
                         if (await options.onRevealStart?.() === false || !isCurrentEntry()) return false;
                         ownLoadingSurface?.uncover();
@@ -931,6 +939,7 @@ export class OdysseyMode extends BaseGameMode {
             this.entryPhase = 'aborted';
             return false;
         } finally {
+            closeParallelShaders();
             presence?.dispose();
             window.clearTimeout(motionTimer);
             // A no-op once the reveal uncovered it; releases a lease no reveal ever reached.
@@ -1565,6 +1574,13 @@ export class OdysseyMode extends BaseGameMode {
 
         if (entryToken !== this.themeRevealToken) {
             return false;
+        }
+
+        // The covered theme builds under a node-build budget (COVERED_ENTRY_BUILD_BUDGET_MS) and
+        // compiles async: lift onto a frame whose builds and pipelines are done, within the hold.
+        if (firstGameplayFrameReady && fit(1600) > 0) {
+            await this.deps.themeManager?.whenLoadingSurfacePipelinesSettled?.(fit(1600));
+            if (entryToken !== this.themeRevealToken) return false;
         }
 
         if (!firstGameplayFrameReady) {

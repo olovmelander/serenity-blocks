@@ -8,7 +8,9 @@
  *   - two wrapper slots, least recently used out: a seam's lens flip reuses both; dispose()
  *     frees them.
  */
-import { describe, it, expect } from 'vitest';
+import {
+    describe, it, expect, afterEach,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import { OdysseyTslPipeline } from '../../src/rendering/odyssey/odyssey-post/odyssey-tsl-pipeline.js';
 
@@ -121,9 +123,14 @@ describe('OdysseyTslPipeline adaptive bloom gate (audit 2026-10-18)', () => {
 });
 
 describe('OdysseyTslPipeline.warmOutputVariants (plan item 2.12)', () => {
+    // Every binding has its own RenderPipeline now (2026-10-19), so the stub sits on the prototype.
+    let restore = null;
+    afterEach(() => { restore?.(); restore = null; });
     const renders = (p) => {
         const keys = [];
-        p.postProcessing.render = () => { keys.push(p._activeVariantKey); };
+        const original = THREE.RenderPipeline.prototype.render;
+        THREE.RenderPipeline.prototype.render = function render() { keys.push(p._activeVariantKey); };
+        restore = () => { THREE.RenderPipeline.prototype.render = original; };
         return keys;
     };
 
@@ -159,5 +166,37 @@ describe('OdysseyTslPipeline.warmOutputVariants (plan item 2.12)', () => {
         const keys = renders(p);
         await p.warmOutputVariants(null, { lensStates: [false] });
         expect(keys.slice(0, 1)).toEqual(['0|0']);
+    });
+});
+
+describe('OdysseyTslPipeline keeps one RenderPipeline per bound output (2026-10-19)', () => {
+    it('a swap back to a variant reuses its pipeline: no material rebuild, no new pipeline', () => {
+        const p = make();
+        const bloomOn = p.postProcessing;
+        expect(p._activeVariantKey).toBe('0|1');
+        p._selectVariant(false, false);
+        const bloomOff = p.postProcessing;
+        expect(bloomOff).not.toBe(bloomOn);
+        bloomOff.needsUpdate = false;
+        bloomOn.needsUpdate = false;
+        p._selectVariant(false, true);
+        expect(p.postProcessing).toBe(bloomOn);
+        expect(bloomOn.needsUpdate).toBe(false);
+        p._selectVariant(false, false);
+        expect(p.postProcessing).toBe(bloomOff);
+        expect(bloomOff.needsUpdate).toBe(false);
+        expect(p._renderPipelines.size).toBe(2);
+    });
+
+    it('an evicted sharpen wrapper takes its pipeline with it, and dispose frees them all', () => {
+        const p = make();
+        p.setRenderScale(0.8);
+        p._selectVariant(true, true);
+        p._selectVariant(true, false); // third wrapper: the least recently used one goes
+        const sharpened = [...p._renderPipelines.keys()].filter((k) => k.endsWith('|s'));
+        expect(sharpened.sort()).toEqual(['1|0|s', '1|1|s']);
+        p.dispose();
+        expect(p._renderPipelines.size).toBe(0);
+        expect(p.postProcessing).toBe(null);
     });
 });

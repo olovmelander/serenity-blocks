@@ -334,7 +334,15 @@ export class OdysseyTslPipeline {
         this._bloomGate = this._bloomAllowed ? 1 : 0;
         this._baseGrain = params.grain ?? 0.012; // grain anchor the scale multiplies; halved 2026-07-05 (was 0.022 → softened/veiled the frame)
 
-        this.postProcessing = new THREE.RenderPipeline(renderer);
+        // ONE RenderPipeline PER BOUND OUTPUT (2026-10-19). All variants used to share this one
+        // pipeline and swap its outputNode: three then rebuilt its quad material, released the
+        // old variant's pipeline, and re-flagged the bloom node's own materials, so every bloom
+        // on/off or lens edge created 2-3 pipelines synchronously on a live frame (measured:
+        // 19-62 ms frames through the journey, after the variants had been warmed). Now each
+        // binding keeps its own quad, material and pipeline, built once; a swap is a pointer.
+        // `postProcessing` is the bound one (see _selectVariant).
+        this._renderPipelines = new Map();
+        this.postProcessing = null;
         // MEADOW-ALIASING FIX (2026-08): QW1 dropped renderer-level MSAA (antialias:false)
         // and let the post grain soften edges — but the Ch3 wildflower carpet is thousands
         // of 1-3px vertex-coloured petals, and with zero scene-pass samples they alias into
@@ -398,6 +406,19 @@ export class OdysseyTslPipeline {
             // (BloomNode.js:413), so changing this scale changes the glow's screen-space RADIUS,
             // not just its cost. It is a look knob as much as a perf knob.
             // (Internally BloomNode still halves again per mip, as before.)
+            // SET UP ONCE (2026-10-19). Every output variant that includes bloom builds its graph
+            // through this one node, and three's BloomNode.setup() re-flags its high-pass and
+            // composite materials (needsUpdate) and pushes a fresh set of blur materials on each
+            // call: the first build of a second bloom variant (the ch7 lens warm after the reveal)
+            // rebuilt and re-created all five bloom pipelines on a live frame (93 ms measured),
+            // and the blur array grew per build. The passes are the same for every variant, so
+            // later graphs only read the node's output texture.
+            const baseBloomSetup = this.bloomNode.setup.bind(this.bloomNode);
+            let bloomOutput = null;
+            this.bloomNode.setup = (builder) => {
+                if (!bloomOutput) bloomOutput = baseBloomSetup(builder);
+                return bloomOutput;
+            };
             const baseBloomSetSize = this.bloomNode.setSize.bind(this.bloomNode);
             this.bloomNode.setSize = (width, height) => {
                 const s = this.bloomScale;
@@ -593,12 +614,19 @@ export class OdysseyTslPipeline {
             this._outputVariants.set(key, node);
         }
         if (wantSharpen) node = this._sharpenVariant(key, node);
-        this.postProcessing.outputNode = node;
-        // The wrapper carries the display transform itself (see _sharpenVariant), so the
-        // canvas quad must copy its texture untouched; the plain variant keeps the
-        // RenderPipeline's own renderOutput() exactly as before.
-        this.postProcessing.outputColorTransform = !wantSharpen;
-        this.postProcessing.needsUpdate = true; // recompiles the post material (edge only)
+        const bindKey = `${key}|${wantSharpen ? 's' : 'p'}`;
+        let bound = this._renderPipelines.get(bindKey);
+        if (!bound || bound.outputNode !== node) {
+            // First use of this binding (or its sharpen wrapper was rebuilt): one compile, kept.
+            bound?.dispose?.();
+            bound = new THREE.RenderPipeline(this.renderer, node);
+            // The wrapper carries the display transform itself (see _sharpenVariant), so the
+            // canvas quad must copy its texture untouched; the plain variant keeps the
+            // RenderPipeline's own renderOutput() exactly as before.
+            bound.outputColorTransform = !wantSharpen;
+            this._renderPipelines.set(bindKey, bound);
+        }
+        this.postProcessing = bound;
         this._activeVariantKey = key;
         this._activeSharpen = wantSharpen;
     }
@@ -622,7 +650,11 @@ export class OdysseyTslPipeline {
             return slot.node;
         }
         while (slots.length >= SHARPEN_WRAPPER_SLOTS) {
-            OdysseyTslPipeline._disposeSharpenWrapper(slots.shift().node);
+            const evicted = slots.shift();
+            const evictedKey = `${evicted.key}|s`;
+            this._renderPipelines.get(evictedKey)?.dispose?.();
+            this._renderPipelines.delete(evictedKey);
+            OdysseyTslPipeline._disposeSharpenWrapper(evicted.node);
         }
         // Apply the display transform INSIDE the wrapper (what RenderPipeline would have
         // appended: no tone mapping — the graph's ACES already ran — then the working→output
@@ -1306,7 +1338,9 @@ export class OdysseyTslPipeline {
         // Empty unless DRS ever dropped.
         this._sharpenSlots.forEach((slot) => OdysseyTslPipeline._disposeSharpenWrapper(slot.node));
         this._sharpenSlots = [];
-        this.postProcessing.dispose?.();
+        this._renderPipelines.forEach((pipeline) => pipeline.dispose?.());
+        this._renderPipelines.clear();
+        this.postProcessing = null;
     }
 }
 

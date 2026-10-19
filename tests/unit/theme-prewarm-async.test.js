@@ -515,6 +515,45 @@ describe('ThemeManager.prewarmTheme — async render-pipeline branch', () => {
     });
 });
 
+describe('ThemeManager.prewarmTheme — standDown (2026-10-19)', () => {
+    // Odyssey keeps the themes suspended while its map renders, so no theme ever becomes active
+    // and the warm used to build and compile the menu theme behind the live map (1.9 s).
+    it('never starts a warm while standDown() is true', async () => {
+        const Backend = makeBackendClass();
+        await preloadWith(Backend);
+        const driver = installFrameDriver();
+        const theme = makeWarmTheme(Backend, driver);
+        const manager = makeManager(theme);
+        const load = vi.spyOn(manager, 'loadTheme');
+        await expect(manager.prewarmTheme('forest', { standDown: () => true })).resolves.toBe(false);
+        expect(load).not.toHaveBeenCalled();
+        expect(theme.start).not.toHaveBeenCalled();
+        expect(manager.isTransitioning).toBe(false);
+    });
+
+    it('stands down mid-warm and throws the half-built theme away', async () => {
+        vi.useFakeTimers();
+        const driver = installFrameDriver();
+        const Backend = makeBackendClass({ compileMs: 40 });
+        await preloadWith(Backend);
+        const theme = makeWarmTheme(Backend, driver);
+        const manager = makeManager(theme);
+        let odyssey = false;
+        const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+        const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const prewarm = manager.prewarmTheme('forest', {
+            maxWarmMs: 5_000,
+            standDown: () => odyssey,
+            onPhase: (phase) => { if (phase === 'started') odyssey = true; },
+        });
+        await expect(runUntilSettled(prewarm)).resolves.toBe(false);
+        expect(manager.pendingThemeInstance).not.toBe(theme);
+        expect(log.mock.calls.some(([m]) => String(m).includes('stood down'))).toBe(true);
+        expect(warn.mock.calls.some(([m]) => String(m).includes('prewarmTheme failed'))).toBe(false);
+        vi.useRealTimers();
+    });
+});
+
 describe('ThemeManager.prewarmTheme — legacy fallbacks', () => {
     const legacyExpectations = async ({ theme, manager, driver }) => {
         const { phases, onPhase, get } = phaseRecorder(driver);
@@ -673,6 +712,27 @@ describe('ThemeManager loading-surface API', () => {
         // Surface gone: arming is a no-op again.
         expect(manager._armLoadingSurfaceSession(forest, 'forest')).toBeNull();
         expect(getAsyncRenderPipelineDiagnostics().sessions).toBe(0);
+    });
+
+    it('hands an armed session the tightest build budget a covering surface asked for (opt-in)', async () => {
+        // 2026-10-19: Odyssey's entry tunnel animates over the theme's first frame, so its lease
+        // asks for a node-build budget; the menu's mode-entry overlay asks for none.
+        const Backend = makeBackendClass();
+        mockedThreeWebGPU.WebGPUBackend = Backend;
+        const manager = makeManager();
+        expect(manager._loadingSurfaceBuildBudgetMs()).toBe(0);
+        const plain = manager.beginLoadingSurface('overlay');
+        expect(manager._loadingSurfaceBuildBudgetMs()).toBe(0);
+        const tunnel = manager.beginLoadingSurface('cinematic-loading', { buildBudgetMs: 5 });
+        const tighter = manager.beginLoadingSurface('other', { buildBudgetMs: 3 });
+        expect(manager._loadingSurfaceBuildBudgetMs()).toBe(3);
+        tighter.uncover(); // lifted: themes started now are on screen and build unbudgeted by it
+        expect(manager._loadingSurfaceBuildBudgetMs()).toBe(5);
+        tighter();
+        tunnel();
+        expect(manager._loadingSurfaceBuildBudgetMs()).toBe(0);
+        plain();
+        await manager.preloadAsyncRenderPipelines();
     });
 
     it('is a no-op when themeWarmAsync is rolled back', async () => {

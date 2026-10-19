@@ -212,3 +212,48 @@ describe('the async session build budget', () => {
         expect(FakeRenderer.prototype._renderObjectDirect).toBe(original); // eslint-disable-line no-underscore-dangle
     });
 });
+
+/**
+ * 2026-10-19, Odyssey's live map: a VISIBLE renderer may carry a budget only if its canvas draw
+ * (the final composite) is never deferred, and a render that exists to build (an offscreen warm)
+ * must be able to opt out.
+ */
+describe('the build budget on a live surface', () => {
+    it('exemptCanvasDraws never defers a draw into the canvas, and still budgets render targets', async () => {
+        const renderer = new FakeRenderer();
+        const session = beginAsyncRenderPipelines({ name: 'odyssey-board', renderer }, {
+            buildBudgetMs: 4, exemptCanvasDraws: true,
+        });
+        renderer._renderTarget = null; // eslint-disable-line no-underscore-dangle
+        renderer.renderFrame(objects(4));
+        expect(renderer.built).toEqual([0, 1, 2, 3]); // the canvas: everything, budget or not
+        expect(session.deferredBuilds).toBe(0);
+
+        await nextTask();
+        renderer._renderTarget = { texture: {} }; // eslint-disable-line no-underscore-dangle
+        const scenePass = objects(8).map((o) => ({ ...o, id: o.id + 10, material: { id: o.id + 10 } }));
+        renderer.renderFrame(scenePass);
+        expect(renderer.built).toEqual([0, 1, 2, 3, 10, 11]); // 0 + 3 < 4, then 6 >= 4
+        expect(session.deferredBuilds).toBe(6);
+    });
+
+    it('withoutBudget builds everything inside it and restores the budget after', async () => {
+        const renderer = new FakeRenderer();
+        renderer._renderTarget = { texture: {} }; // eslint-disable-line no-underscore-dangle
+        const session = beginAsyncRenderPipelines({ name: 'odyssey-board', renderer }, {
+            buildBudgetMs: 4, exemptCanvasDraws: true,
+        });
+        const value = session.withoutBudget(() => { renderer.renderFrame(objects(6)); return 'warmed'; });
+        expect(value).toBe('warmed');
+        expect(renderer.built).toEqual([0, 1, 2, 3, 4, 5]);
+        expect(session.deferredBuilds).toBe(0);
+        expect(session.budgetSuspended).toBe(0);
+
+        await nextTask();
+        const more = objects(4).map((o) => ({ ...o, id: o.id + 20, material: { id: o.id + 20 } }));
+        renderer.renderFrame(more);
+        expect(session.deferredBuilds).toBeGreaterThan(0);
+        expect(() => session.withoutBudget(() => { throw new Error('boom'); })).toThrow('boom');
+        expect(session.budgetSuspended).toBe(0);
+    });
+});
