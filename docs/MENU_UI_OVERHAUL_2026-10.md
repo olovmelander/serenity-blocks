@@ -372,7 +372,7 @@ in the corner. It now opens with a picture of the mode, taken from the game itse
 | Serenity Hub (Themes, Music, Breathing, Hale sessions), Hale flow, breathing guide chrome, Serenity controls overlay | `keystone-hub.css`, `breathwork-sessions.css`, `breathing-library.css`, `breathing-guide.css` | Shipped |
 | Multiplayer (local setup, lobby browser, create match, waiting room, results, toasts, invite, in-game HUD type) | `keystone-multiplayer.css` | Shipped |
 | Loading, countdown, Odyssey overlays and HUD, replay playback bar, single-player and Infinity HUD type | `keystone-overlays.css` | Shipped |
-| In-game controls (the play rail: Levels, Serenity Hub, Settings) | `keystone-overlays.css`, `src/ui/keystone/play-rail.js` | Shipped |
+| In-game controls (the play rail: Chapters, Serenity Hub, Settings) | `keystone-overlays.css`, `src/ui/keystone/play-rail.js` | Shipped |
 | Local versus (match bar, name plates, boards, stats lines, knock-out and controls cards) | `keystone-versus.css`, `src/ui/local-versus-hud.js`, `src/ui/local-versus-layout.js` | Shipped |
 | Single player and Infinity (the well, the queue, the ledger, Infinity's HUD and tower map) | `keystone-solo.css`, `src/ui/infinity/InfinityHUD.js`, `src/ui/infinity/InfinityMinimap.js` | Shipped |
 
@@ -575,9 +575,9 @@ belongs to the game: boards, chat, stats, touch controls and toasts.
 
 | Control | Shown | Name and keys |
 |---|---|---|
-| Levels | Odyssey's board view | "Levels" |
+| Chapters | Odyssey's board view | "Chapters" (opens the chapter and orb list, which also holds Main menu) |
 | Serenity Hub | every mode | "Serenity Hub"; H in every mode (the Hub key, rebindable), Y on a pad in Serenity |
-| Settings | every mode, outermost | "Settings"; Esc / ☰ (no Esc in Serenity, where Escape goes back to the menu). While a game runs it opens the pause sheet |
+| Settings | every mode, outermost | "Settings"; Esc / ☰ (no Esc in Serenity, where Escape goes back to the menu). While a game runs it opens the pause sheet; in Odyssey between orbs (the map, an arrival, an orb's results) it opens the journey strip: Back to the map, Chapters (on the map), Serenity Hub and Main menu |
 
 - **The tray:** a small night tile in the corner holding the main-menu dock's line icons. It rests at 72 % opacity and wakes under
   the pointer or focus; names and keys appear beneath it on hover or focus. No idle motion
@@ -597,7 +597,7 @@ belongs to the game: boards, chat, stats, touch controls and toasts.
   pointer) and the level list it opens (z-index 1003). The metrics are tokens on `:root`
   (`--sb-play-tile`, `--sb-play-inset`, `--sb-play-tray`) so every reservation follows
   the tray.
-- **Differences kept on purpose:** Levels shows on the Odyssey map alone (it does nothing
+- **Differences kept on purpose:** Chapters shows on the Odyssey map alone (it does nothing
   elsewhere); touch screens get 44 px tiles and no keyboard keys; phones a 6 px corner,
   with the single-player board starting beneath the tray; Serenity fades the tray while
   the cursor rests.
