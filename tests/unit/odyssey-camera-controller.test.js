@@ -276,8 +276,11 @@ describe('OdysseyCameraController path travel', () => {
 
         controller.rotateFreeCamera(0, 0.55);
         const positionBeforeYaw = controller.camera.position.clone();
-        const upBeforeYaw = controller.freeCameraUp.clone();
         const worldUp = new THREE.Vector3(0, 1, 0);
+        const forward = () => new THREE.Vector3(0, 0, -1).applyQuaternion(controller.camera.quaternion);
+        const right = () => new THREE.Vector3(1, 0, 0).applyQuaternion(controller.camera.quaternion);
+        const pitchBeforeYaw = Math.asin(forward().y);
+        const rollBeforeYaw = right().y;
 
         for (let index = 0; index < 200; index += 1) {
             controller.rotateFreeCamera(controller.config.freeCamera.keyboardRotateSpeed * 0.05, 0);
@@ -285,9 +288,38 @@ describe('OdysseyCameraController path travel', () => {
         controller.update(1 / 60);
 
         expect(controller.camera.position.distanceTo(positionBeforeYaw)).toBeLessThan(1e-6);
-        expect(controller.freeCameraUp.angleTo(upBeforeYaw)).toBeLessThan(1e-6);
+        // Yaw turns about WORLD up: the pitch holds and the horizon does not roll (it used to
+        // turn about the camera's own tilted up, which rolled the horizon from any pitched view).
+        expect(Math.abs(Math.asin(forward().y) - pitchBeforeYaw)).toBeLessThan(1e-6);
+        expect(Math.abs(right().y - rollBeforeYaw)).toBeLessThan(1e-6);
         expect(controller.camera.up.angleTo(worldUp)).toBeLessThan(1e-6);
         expect(controller.camera.quaternion.angleTo(controller.freeCameraQuaternion)).toBeLessThan(1e-6);
+    });
+
+    it("turns free-look yaw about the city's own up in chapter 8", () => {
+        const { controller, layout } = createRealPathController();
+        const p = (layout.chapterPositions[7] + (layout.chapterPositions[8] ?? 1)) / 2;
+        controller.setCurrentPosition(p);
+        controller.updateChapterFraming(1 / 60); // the first call snaps to ch8's framing
+        controller.updateFollowPosition({ position: p, direct: true });
+        // The city stands on the near-vertical rail's own basis, far from world up.
+        const sceneUp = controller.getSceneUp(8);
+        expect(sceneUp.angleTo(new THREE.Vector3(0, 1, 0))).toBeGreaterThan(0.3);
+        controller.camera.up.copy(sceneUp);
+        controller.camera.lookAt(controller.lookAtTarget);
+        controller.camera.updateMatrixWorld(true);
+        controller.setFreeMode(true);
+        expect(controller.freeCameraYawAxis.angleTo(sceneUp)).toBeLessThan(1e-6);
+
+        const forward = () => new THREE.Vector3(0, 0, -1).applyQuaternion(controller.camera.quaternion);
+        const right = () => new THREE.Vector3(1, 0, 0).applyQuaternion(controller.camera.quaternion);
+        const pitchBefore = forward().dot(sceneUp);
+        for (let index = 0; index < 120; index += 1) controller.rotateFreeCamera(0.05, 0);
+
+        // Level in the CITY's frame: the pitch against its up holds and its horizon never rolls
+        // (to float drift: 120 turns about an off-axis vector, ~0.01 degrees).
+        expect(Math.abs(forward().dot(sceneUp) - pitchBefore)).toBeLessThan(1e-3);
+        expect(Math.abs(right().dot(sceneUp))).toBeLessThan(1e-3);
     });
 
     it('keeps the starting level in frame when the board first opens', () => {

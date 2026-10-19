@@ -355,6 +355,69 @@ const NORTH_HILLS = Object.freeze([
     }),
 ]);
 
+/**
+ * THE OUTER ISLES (all-angles pass, 2026-10-18). From the coast (chapters 3-4) and from the
+ * climb (chapter 5) half of every turn of the head faced open sea: water to a white horizon with
+ * nothing standing on it. These are the archipelago the island belongs to — a volcano, a long
+ * isle, a few small ones — far enough out that the haze turns them blue-grey, near enough to
+ * hold a silhouette (2-4 km, 4-8 degrees above the horizon from the shore).
+ *
+ * Each is COMPACT like the hills: exactly zero outside its footprint, so the open sea, the
+ * offshore depth probe at (2600, 1800) and the bake-plate boundary are untouched. All of them
+ * finish 500+ u inside the ±4500 plate (its edge clamp must keep extruding ocean), south of the
+ * coast or beyond the main landmass's lateral taper, and 1.4+ km from every stretch of rail.
+ *   rx/rz  footprint radii (the shelf starts there); angle rotates the footprint (radians)
+ *   top    summit height ABOVE SEA LEVEL; shore  where the body breaks the surface, as a fraction
+ *   of the footprint; exponent  the body's profile (higher = steeper, more peaked)
+ */
+export const ODYSSEY_OUTER_ISLES = Object.freeze([
+    Object.freeze({
+        id: 'volcano', x: 700, z: 2850, rx: 880, rz: 820, angle: 0.3, top: 440, shore: 0.52, exponent: 1.55,
+    }),
+    Object.freeze({
+        id: 'long-isle', x: -2750, z: 3150, rx: 980, rz: 420, angle: -0.35, top: 190, shore: 0.6, exponent: 1.2,
+    }),
+    Object.freeze({
+        id: 'near-isle', x: -1450, z: 1950, rx: 520, rz: 440, angle: 0.8, top: 150, shore: 0.55, exponent: 1.35,
+    }),
+    Object.freeze({
+        id: 'islet-a', x: 1750, z: 2150, rx: 230, rz: 200, angle: 0, top: 70, shore: 0.5, exponent: 1.4,
+    }),
+    Object.freeze({
+        id: 'islet-b', x: 1500, z: 2480, rx: 170, rz: 150, angle: 0.5, top: 45, shore: 0.45, exponent: 1.3,
+    }),
+    Object.freeze({
+        id: 'east-isle', x: 3350, z: -350, rx: 640, rz: 560, angle: 1.1, top: 230, shore: 0.55, exponent: 1.45,
+    }),
+    Object.freeze({
+        id: 'west-isle', x: -3780, z: 700, rx: 520, rz: 480, angle: 0.2, top: 175, shore: 0.55, exponent: 1.4,
+    }),
+]);
+
+/** Footprint coordinate of a point for one isle: 0 at the centre, 1 at the shelf's foot. */
+function isleRadius(isle, x, z) {
+    const dx = x - isle.x;
+    const dz = z - isle.z;
+    const c = Math.cos(isle.angle);
+    const s = Math.sin(isle.angle);
+    const u = ((dx * c) + (dz * s)) / isle.rx;
+    const v = ((dz * c) - (dx * s)) / isle.rz;
+    return Math.sqrt((u * u) + (v * v));
+}
+
+/**
+ * One isle's rise above the open-sea floor at a point: a shelf from the abyss to just under the
+ * surface across the outer footprint, then the body breaking the surface at `shore` and peaking
+ * at `top` above sea level. Exactly 0 at n >= 1.
+ */
+function isleRise(isle, n, floorY) {
+    if (n >= 1) return 0;
+    const shelfTop = ODYSSEY_SEA_LEVEL - 6;
+    const shelf = smoothstep01(1, isle.shore + 0.08, n) * Math.max(0, shelfTop - floorY);
+    const body = n < isle.shore ? ((1 - (n / isle.shore)) ** isle.exponent) * (isle.top + 6) : 0;
+    return shelf + body;
+}
+
 function smoothstep01(edge0, edge1, x) {
     const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
     return t * t * (3 - (2 * t));
@@ -499,7 +562,18 @@ export function odysseyWorldMacro(x, z) {
         hills += (1 - smoothstep01(0.25, 1.0, hn)) * hh.h;
     }
 
-    const ground = land + basin + lakeBowl + hills;
+    // The outer isles: compact, and only where the land term is still the open-sea floor.
+    let isles = 0;
+    for (let i = 0; i < ODYSSEY_OUTER_ISLES.length; i += 1) {
+        const isle = ODYSSEY_OUTER_ISLES[i];
+        const reach = Math.max(isle.rx, isle.rz);
+        const ix = x - isle.x;
+        const iz = z - isle.z;
+        if ((ix * ix) + (iz * iz) >= reach * reach) continue;
+        isles = Math.max(isles, isleRise(isle, isleRadius(isle, x, z), land));
+    }
+
+    const ground = land + basin + lakeBowl + hills + isles;
 
     // THE PEAKS RISE FROM THE GROUND, they do not replace it.
     //
@@ -545,6 +619,17 @@ export function odysseyWorldDetailWeight(x, z) {
         const halo = m.radius * 1.25;
         if (wd2 >= halo * halo) continue;
         strongest = Math.max(strongest, 1 - (Math.sqrt(wd2) / halo));
+    }
+    // The isles carry relief on their bodies (ridges and a ragged coast instead of a smooth
+    // cone), capped lower than the massifs': they are seen from kilometres away.
+    for (let i = 0; i < ODYSSEY_OUTER_ISLES.length; i += 1) {
+        const isle = ODYSSEY_OUTER_ISLES[i];
+        const reach = Math.max(isle.rx, isle.rz);
+        const ix = x - isle.x;
+        const iz = z - isle.z;
+        if ((ix * ix) + (iz * iz) >= reach * reach) continue;
+        const n = isleRadius(isle, x, z);
+        strongest = Math.max(strongest, 0.45 * (1 - smoothstep01(isle.shore * 0.5, isle.shore + 0.15, n)));
     }
     // The base weight is deliberately low. Relief is what gives the massif its character, but
     // away from the peaks it is also the only thing that can push terrain up through the rail,

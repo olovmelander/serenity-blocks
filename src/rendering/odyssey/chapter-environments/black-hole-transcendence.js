@@ -53,8 +53,8 @@ import {
 import { CH7_SUN_CARRY, resolveSunCarry } from './urban-dreams-sun-carry.js';
 import { createSynthwaveSunTSL } from './urban-dreams.tsl.js';
 import { resolveRetrosunReveal, resolveRetrosunStage, resolveUrbanEnergy } from './urban-dreams.js';
+import { createBakedVoidSkyTSL } from './odyssey-cosmic-backdrop.js';
 import {
-    createVoidDomeTSL,
     createAccretionDiskTSL,
     createGargantuaPhotonRingTSL,
     createLensedFoldMaterialTSL,
@@ -321,9 +321,18 @@ export function createBlackHoleTranscendenceEnvironment(options = {}) {
     group.userData.yStart = chapterRange?.start.y ?? BLACK_HOLE_TRANSCENDENCE_CONFIG.yStart;
     group.userData.yEnd = chapterRange?.end.y ?? BLACK_HOLE_TRANSCENDENCE_CONFIG.yEnd;
 
-    // 0. Deep-space dome, centred on the chapter so the camera is always INSIDE it (the old
-    // 520 u dome hung 740 u ahead — the camera sat outside it and saw a purple disc).
-    const { mesh: voidDome } = createVoidDomeTSL(uniforms.uTime, uniforms.uEnergy);
+    // 0. Deep space: THE SAME SKY AS CHAPTER 6 (all-angles pass, 2026-10-18). The chapter's own
+    // dome was a near-black noise field, so every view turned away from the hole was an empty
+    // void, and the Milky Way the traveller had just crossed under vanished at the 6->7 seam.
+    // Chapter 6's baked sky (its bake is cached, so this costs a copy, not a bake) carries the
+    // band on in the same world direction — seated on the eye each frame, so it hangs at
+    // infinity — and the post lens bends it round the hole. One texture fetch per pixel, where
+    // the old dome ran five octaves of noise across the whole frame.
+    const voidOpacity = uniform(1);
+    const { mesh: voidDome } = createBakedVoidSkyTSL(uniforms.uTime, uniforms.uEnergy, voidOpacity);
+    voidDome.name = 'ch7-void-dome';
+    voidDome.frustumCulled = false;
+    voidDome.material.uniforms = { uOpacity: voidOpacity }; // ecotone crossfade bridge
     group.add(voidDome);
     group.userData.voidDome = voidDome;
 
@@ -461,6 +470,23 @@ export function poseGargantua(group, camera, time = 0, glide = 0, fall = null) {
  * resolveOmenHandoffWindow), and this chapter is only drawn past it — so exactly one opaque
  * shadow covers the hole at every progress, and the two coincide where they swap.
  */
+const _blendCamera = new THREE.PerspectiveCamera();
+/**
+ * The camera the hero locks to: the held free-look camera, slerped onto the live gaze by `toLive`.
+ * @param {THREE.Camera} camera the render camera (its userData.heroCamera set while free-looking)
+ * @param {number} toLive 0 = the held direction, 1 = the live gaze
+ */
+export function resolveFallLockCamera(camera, toLive) {
+    const held = camera?.userData?.heroCamera;
+    if (!held) return camera;
+    if (!(toLive > 0)) return held;
+    if (toLive >= 1) return camera;
+    _blendCamera.position.copy(camera.position);
+    _blendCamera.quaternion.copy(held.quaternion).slerp(camera.quaternion, toLive);
+    _blendCamera.updateMatrixWorld(true);
+    return _blendCamera;
+}
+
 function resolveShadowTakeover(chapterPositions) {
     const ch7Start = chapterPositions?.[6];
     if (!Number.isFinite(ch7Start)) return null;
@@ -488,14 +514,26 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
 
     const { voidDome } = group.userData;
     if (voidDome) {
-        voidDome.rotation.y += delta * 0.006;
+        if (camera?.position) {
+            voidDome.position.set(
+                camera.position.x - group.position.x,
+                camera.position.y - group.position.y,
+                camera.position.z - group.position.z,
+            );
+        }
         // Inside the singularity the window covers every pixel: the deep-space dome behind it is
         // only depth-rejected fill, so it stops drawing.
         voidDome.visible = fall.inside < 0.999;
     }
 
     // ── CAMERA-LOCK THE HERO ─────────────────────────────────────────────────────
-    if (!poseGargantua(group, camera, time, carry?.glide ?? 0, fall) && group.userData.distantHole) {
+    // The HERO camera while the eye looks around freely (OdysseyBoardController
+    // _syncHeroCamera): the lock holds the direction it had when the look began instead of
+    // following the gaze — while the hole is an object in the sky. As its window opens the
+    // hold eases onto the gaze: inside, the tunnel is wherever the eye looks (and the dome and
+    // far stars stop drawing on exactly that promise). Identical to the render camera otherwise.
+    const lockCamera = resolveFallLockCamera(camera, fall.portal);
+    if (!poseGargantua(group, lockCamera, time, carry?.glide ?? 0, fall) && group.userData.distantHole) {
         // No-camera fallback (smoke tests): a slow precession in place.
         group.userData.distantHole.rotation.z -= delta * 0.025;
     }
@@ -597,7 +635,9 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
             camera.position.y - group.position.y,
             camera.position.z - group.position.z,
         );
-        corridorDust.quaternion.copy(camera.quaternion);
+        // On the HERO camera's basis: the streaks stream along the direction of travel, so
+        // looking around freely shows them running past instead of radiating from every view.
+        corridorDust.quaternion.copy(lockCamera.quaternion);
     }
     const dustWarp = corridorDust?.userData?.flowUniforms?.uWarp;
     if (dustWarp) {

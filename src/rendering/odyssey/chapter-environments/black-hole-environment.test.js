@@ -4,6 +4,7 @@ import {
     createBlackHoleTranscendenceEnvironment,
     updateBlackHoleTranscendenceEnvironment,
     poseGargantua,
+    resolveFallLockCamera,
     CH7_FOLD_ARC_SETTINGS,
     CH7_GARGANTUA,
 } from './black-hole-transcendence.js';
@@ -135,6 +136,39 @@ describe('Black Hole chapter environment (creative plan ch7)', () => {
 });
 
 // ── SEAMLESS PASS (2026-10) ───────────────────────────────────────────────────────────
+describe('Gargantua while the eye looks around', () => {
+    it('holds the hole in the sky, then eases it onto the gaze as the window opens', () => {
+        const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 9000);
+        camera.position.set(10, 700, -40);
+        camera.lookAt(10, 700, -1040);
+        camera.updateMatrixWorld(true);
+        expect(resolveFallLockCamera(camera, 0.5)).toBe(camera); // not looking around
+
+        const held = camera.clone();
+        camera.userData.heroCamera = held;
+        camera.rotateY(Math.PI / 2); // the eye turns 90 degrees away
+        camera.updateMatrixWorld(true);
+        expect(resolveFallLockCamera(camera, 0)).toBe(held);
+        expect(resolveFallLockCamera(camera, 1)).toBe(camera);
+        const halfway = resolveFallLockCamera(camera, 0.5);
+        expect(halfway.position.distanceTo(camera.position)).toBeLessThan(1e-9);
+        expect(halfway.quaternion.angleTo(held.quaternion)).toBeCloseTo(Math.PI / 4, 6);
+        expect(halfway.quaternion.angleTo(camera.quaternion)).toBeCloseTo(Math.PI / 4, 6);
+    });
+
+    it('wears the chapter 6 sky, seated on the eye', () => {
+        const group = createBlackHoleTranscendenceEnvironment({ particleCount: 200 });
+        const { voidDome } = group.userData;
+        expect(voidDome.name).toBe('ch7-void-dome');
+        expect(voidDome.material.uniforms?.uOpacity).toBeTruthy(); // the ecotone bridge reaches it
+        const camera = new THREE.PerspectiveCamera(60, 16 / 9, 0.1, 9000);
+        camera.position.set(group.position.x + 120, group.position.y - 35, group.position.z + 60);
+        camera.updateMatrixWorld(true);
+        updateBlackHoleTranscendenceEnvironment(group, 1 / 60, 1, camera);
+        expect(voidDome.position.toArray()).toEqual([120, -35, 60]);
+    });
+});
+
 describe('Gargantua at the seams', () => {
     const positions = getActiveOdysseyChapterPositions();
     const ch7 = positions[6];

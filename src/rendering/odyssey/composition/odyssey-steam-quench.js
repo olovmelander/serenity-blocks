@@ -28,6 +28,7 @@ import {
     clamp,
     dot,
     float,
+    log,
     max,
     min,
     mix,
@@ -131,7 +132,8 @@ export function steamQuenchDensity(seamT) {
 }
 
 /** Ember-lit steam on the Chapter 1 side; the fire is still behind you. */
-const STEAM_WARM = new THREE.Color(0xffa45e); // gold (was 0xffb079, a peach that greyed under exposure)
+// Fire-gold (all-angles pass, 2026-10-18): 0xffa45e over the ember shadow mixed to salmon.
+const STEAM_WARM = new THREE.Color(0xffb348);
 /** Cold vapour on the Act II side — the orange->cyan the profile asks for. */
 const STEAM_COOL = new THREE.Color(0xcfe6ff);
 /**
@@ -210,8 +212,19 @@ const STEAM_SHADOW_COOL = new THREE.Color(0.20, 0.25, 0.29);
 // the cavern's brightness the steam read as beige-grey mud. Amber shadows and less whitening while
 // the fire is still below make it a golden vapour lit by the lava and the First Heart; the
 // pearly white flash still peaks at the crossover, then the cool half takes over unchanged.
-const STEAM_SHADOW_WARM = new THREE.Color(0.34, 0.17, 0.08);
+// Deepened to ember (all-angles pass, 2026-10-18): the old 0.34/0.17/0.08 shadow, dimmed by the
+// luminance cap, was the brown half of the mud.
+const STEAM_SHADOW_WARM = new THREE.Color(0.28, 0.11, 0.03);
 const STEAM_WARM_WHITENING = 0.6; // how much less the flash whitens the vapour while warm
+// The warmth at which the hue starts and finishes leaving gold for the cool side (shader and
+// steamQuenchMeanColour share them, so scene fog keeps the steam's colour). Narrow and late:
+// a wide crossing spent the whole dense stretch in salmon, mauve and grey (capture p 0.058-0.063).
+const STEAM_WARM_HUE_LO = 0.46;
+const STEAM_WARM_HUE_HI = 0.64;
+const warmHueOf = (w) => {
+    const x = Math.max(0, Math.min(1, (w - STEAM_WARM_HUE_LO) / (STEAM_WARM_HUE_HI - STEAM_WARM_HUE_LO)));
+    return x * x * (3 - (2 * x));
+};
 
 /**
  * The vapour's AVERAGE colour at a seamT — the same warm -> lit -> cool -> submerged ramp the
@@ -244,10 +257,11 @@ export function steamQuenchMeanColour(seamT, out) {
     const flash = 1 - Math.abs(w - 0.5) * 2;
     const submergeEase = Math.max(0, (t - 0.5) * 2) ** 1.5;
     const cool = _fogWarm.copy(STEAM_COOL).lerp(STEAM_COOL_SUBMERGED, submergeEase);
-    _fogLit.copy(cool).lerp(STEAM_WARM, w)
+    const warmHue = warmHueOf(w);
+    _fogLit.copy(cool).lerp(STEAM_WARM, warmHue)
         .lerp(STEAM_FOG_FLASH, flash * 0.42 * (1 - (w * STEAM_WARM_WHITENING)))
         .multiplyScalar(0.78);
-    _fogShadow.copy(STEAM_SHADOW_COOL).lerp(STEAM_SHADOW_WARM, w);
+    _fogShadow.copy(STEAM_SHADOW_COOL).lerp(STEAM_SHADOW_WARM, warmHue);
     out.copy(_fogShadow).lerp(_fogLit, 0.5);
     // Exit: the murk in the water's colour (as the shader's exit term).
     const exit = Math.max(0, Math.min(1, (t - 0.5) / 0.12));
@@ -302,18 +316,21 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // 0.028 scale put barely three noise cells across the entire sphere and every capture read
     // as flat blur no matter what the contrast did. 0.095 gives ~10 cells across the view,
     // which is the scale at which fbm starts looking like vapour instead of a gradient.
-    const p = positionLocal.mul(0.095);
-    // RISING VAPOUR (2026-10-01). The field used to be isotropic and drifted sideways, which
-    // read as a flat noise sheet — the "beige ceiling". Steam over a lava shaft streams UP: the
-    // slow body is stretched vertically (x0.38 on y -> columns) and its domain scrolls down so
-    // the features climb; the fast boil keeps its scale and climbs faster still.
-    const slow = fbm3(p.mul(vec3(1.0, 0.38, 1.0)).add(vec3(0.0, uTime.mul(-0.11), 0.0)), 4);
+    // BROAD FORMS, NOT MOTTLE (all-angles pass, 2026-10-18). At 0.095 with the fast boil weighted
+    // 0.42 and a hard 0.22..0.78 threshold, the field broke into ten-odd blotches per view and
+    // the dense steam read as a stained plaster ceiling in every direction (capture p 0.061).
+    // The body is now a third larger and domain-warped, so it rolls in big soft masses; the
+    // boil only roughens their edges.
+    // 0.034: the follow camera looks up the shaft at only the sphere's top cap, so the scale has
+    // to be read in SCREEN terms — at 0.062 the cap still showed a dozen blotches.
+    const p = positionLocal.mul(0.034);
+    const warp = fbm3(p.mul(0.55).add(vec3(uTime.mul(0.015), uTime.mul(-0.05), 0.0)), 2);
+    const warped = p.add(vec3(warp, warp.mul(0.5), warp.mul(-0.8)).mul(1.7));
+    // RISING VAPOUR (2026-10-01): stretched vertically into columns whose features climb.
+    const slow = fbm3(warped.mul(vec3(1.0, 0.42, 1.0)).add(vec3(0.0, uTime.mul(-0.09), 0.0)), 4);
     const fast = fbm3(p.mul(3.4).add(vec3(uTime.mul(0.10), uTime.mul(-0.32), uTime.mul(0.075))), 3);
-    // Contrast the sum rather than averaging it: averaging two fbm fields regresses toward
-    // 0.5 everywhere, which is what made the first capture read as uniform blur instead of
-    // vapour. The smoothstep pushes the field back out to real lights and darks.
-    const billowRaw = clamp(slow.mul(0.72).add(fast.mul(0.42)), 0.0, 1.0);
-    const billow = smoothstep(0.22, 0.78, billowRaw);
+    const billowRaw = clamp(slow.mul(0.9).add(fast.mul(0.12)), 0.0, 1.0);
+    const billow = smoothstep(0.26, 0.80, billowRaw);
 
     // Radial feather. The shell is a sphere, so `positionLocal.length()` is ~radius everywhere;
     // the feather that matters is against the BILLOW, not against geometry — a hard-edged
@@ -348,7 +365,12 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // water. `flash` peaks at the crossover and lifts both chroma and value.
     const w = clamp(uWarmth, 0.0, 1.0);
     const flash = float(1.0).sub(w.sub(0.5).abs().mul(2.0)); // 0 at the ends, 1 at the crossover
-    const tint = mix(uCool, uWarm, w);
+    // THE WARM HALF STAYS FIRE-COLOURED until the crossover (all-angles pass, 2026-10-18). A
+    // linear warm->cool lerp put the dense stretch (warmth ~0.7) at a pale peach, which the
+    // luminance cap then dims to beige-brown: mud. The hue holds amber-gold until the last
+    // stretch before the boundary, then crosses through the white flash to the cool side.
+    const warmHue = smoothstep(STEAM_WARM_HUE_LO, STEAM_WARM_HUE_HI, w);
+    const tint = mix(uCool, uWarm, warmHue);
     // LIGHT HAS A DIRECTION IN HERE (2026-10-01). The camera looks straight up the shaft for
     // most of the act, so the frame is the volume's TOP: a uniform tint made it a flat sheet.
     // Two directional terms from the view ray (camera-relative, so they hold wherever on the
@@ -365,7 +387,11 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // pass ran to 1.40 and clipped the billow to flat white where the volume fills the frame).
     // Gaps are shadowed VAPOUR, not smoke (a hard dark/bright split read as camouflage):
     // a cool or warm grey ~half the lit value, blended across the whole billow range.
-    const shadowVapour = mix(vec3(0.20, 0.25, 0.29), vec3(STEAM_SHADOW_WARM.r, STEAM_SHADOW_WARM.g, STEAM_SHADOW_WARM.b), w);
+    const shadowVapour = mix(
+        vec3(0.20, 0.25, 0.29),
+        vec3(STEAM_SHADOW_WARM.r, STEAM_SHADOW_WARM.g, STEAM_SHADOW_WARM.b),
+        warmHue,
+    );
     // Lit vapour sits below white so the rays and the aperture are the brightest thing.
     const litVapour = mix(tint, vec3(1.0, 0.97, 0.94), flash.mul(0.42).mul(oneMinus(w.mul(STEAM_WARM_WHITENING))))
         .mul(0.78);
@@ -382,8 +408,20 @@ export function createSteamQuench({ radius = STEAM_QUENCH_RADIUS } = {}) {
     // small core, then smoothly restore the authored shafts outside it (about 19 degrees).
     const shaftContrast = smoothstep(0.04, 0.32, radialDistance);
     const rays = smoothstep(0.48, 0.86, rayNoise).mul(smoothstep(0.35, 0.92, viewUp)).mul(shaftContrast);
-    const colour = mix(shadowVapour, litVapour, smoothstep(0.0, 1.0, billow))
-        .add(vec3(0.95, 0.93, 0.86).mul(rays).mul(float(0.10).add(d.mul(0.22))))
+    // WISPS STREAM PAST (all-angles pass, 2026-10-18). The eye climbs the shaft, so vapour slides
+    // out of the opening ahead toward the edges of the view: noise on the azimuth circle (no
+    // seam) against the log of the view's distance from the shaft axis, scrolled outward with
+    // time. Static fbm on a sphere you fly through read as a painted dome; this reads as motion.
+    const flowR = log(radialDistance.add(0.03));
+    const wisps = fbm3(vec3(azimuth.x.mul(5.0), azimuth.y.mul(5.0), flowR.mul(1.8).sub(uTime.mul(0.42))), 2);
+    const streak = smoothstep(0.42, 0.82, wisps).mul(shaftContrast).mul(smoothstep(0.1, 0.8, viewUp));
+    // Dense vapour SCATTERS: the thicker it gets the more light reaches its gaps, so the shadow
+    // lifts toward the lit colour with density instead of staying a grey hole between billows
+    // (at the crossover the old split was grey-on-white mottle).
+    const shadowLifted = mix(shadowVapour, litVapour, d.mul(0.5));
+    const colour = mix(shadowLifted, litVapour, smoothstep(0.0, 1.0, billow))
+        .mul(float(0.80).add(streak.mul(0.45)))
+        .add(vec3(0.95, 0.93, 0.86).mul(rays).mul(float(0.05).add(d.mul(0.10))))
         .add(uWarm.mul(under).mul(w).mul(float(0.5).add(billow.mul(0.5))).mul(0.26))
         // THE LIGHT ABOVE CARRIES ACROSS THE SEAM (2026-10-02). The First Heart — the white-hot
         // vent the climb aims at — sits dead centre above the eye, so while the cavern is behind
