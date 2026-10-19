@@ -134,7 +134,7 @@ import {
     setActiveDesktopPerformancePolicy,
 } from './utils/desktop-performance-policy.js';
 import { createBootStageCoordinator } from './utils/boot-stage-coordinator.js';
-import { warmThreeEarly, deferThemeWarmWhileOdysseyLoads } from './utils/startup-warm.js';
+import { warmThreeEarly, deferThemeWarmWhileOdysseyLoads, isOdysseyTheCurrentMode } from './utils/startup-warm.js';
 import { warmWebGpuDevice, warmWebGpuDeviceMs } from './rendering/webgpu-device-warm.js';
 
 import { CustomCursor } from './ui/components/custom-cursor.js';
@@ -2694,6 +2694,7 @@ class SerenityBlocks {
                 : Date.now();
             const warmed = await tm.prewarmTheme(themeName, {
                 isThemeBusy: (theme) => getStartupThemeBusyState(theme).busy,
+                standDown: () => isOdysseyTheCurrentMode(this.gameModeManager), // see startup-warm.js
                 onPhase: (phase, payload) => {
                     markStartup(`theme-warm:${phase}`, payload);
                     onIdentHoldWarmPhase(phase, payload);

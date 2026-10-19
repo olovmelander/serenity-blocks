@@ -222,7 +222,8 @@ function installBuildBudget(proto) {
     // (object, material, scene, camera, lightsNode, group, clippingContext, passId)
     const wrapped = function serenityBudgetedRenderObjectDirect(...args) {
         const s = budgetSessions.size === 0 ? null : budgetSessionFor(this);
-        if (s === null || isOneShotRenderTarget(this._renderTarget)) return original.apply(this, args);
+        if (s === null || isOneShotRenderTarget(this._renderTarget) || s.budgetSuspended > 0
+            || (s.exemptCanvasDraws && !this._renderTarget)) return original.apply(this, args);
         // A render object this renderer already built costs a cache lookup: never budgeted.
         const [object, material, , , lightsNode, , , passId] = args;
         const chainMap = this._objects?.getChainMap?.(passId);
@@ -270,15 +271,20 @@ function uninstallIfIdle() {
  * Start a session for `theme` (anything with `name` and `renderer`). Synchronous: returns null
  * unless preloadAsyncRenderPipelines() has resolved, so callers keep their await structure.
  * @param {any} theme
- * @param {{label?: string, backendProto?: any, buildBudgetMs?: number, rendererProto?: any}} [options]
+ * @param {{label?: string, backendProto?: any, buildBudgetMs?: number, rendererProto?: any,
+ *   exemptCanvasDraws?: boolean}} [options]
  *   buildBudgetMs: per-frame budget for first-time render-object builds (see BUILD BUDGET above);
  *   0 (the default) builds everything as it is met
+ *   exemptCanvasDraws: never defer a draw into the canvas itself (the final composite of a VISIBLE
+ *   renderer: a deferred one is a frame with nothing on it). Budgeting stays on everything drawn
+ *   into a render target — a post chain's scene pass. For a live surface (Odyssey's map).
  */
 export function beginAsyncRenderPipelines(theme, {
     label = theme?.name ?? 'theme',
     backendProto = protoResolved,
     buildBudgetMs = 0,
     rendererProto = rendererProtoResolved,
+    exemptCanvasDraws = false,
 } = {}) {
     if (!theme || !backendProto || !install(backendProto)) return null;
     const stats = {
@@ -305,6 +311,18 @@ export function beginAsyncRenderPipelines(theme, {
         lastCreateFrame: -1,
         lastDeferFrame: -1,
         buildBudgetMs: 0,
+        exemptCanvasDraws: exemptCanvasDraws === true,
+        /** While above 0, this session's renderer builds everything it meets (see withoutBudget). */
+        budgetSuspended: 0,
+        /**
+         * Run `fn` with the build budget off: a render whose purpose is to build (an offscreen warm)
+         * must not leave its objects for later.
+         * @template T @param {() => T} fn @returns {T}
+         */
+        withoutBudget(fn) {
+            session.budgetSuspended += 1;
+            try { return fn(); } finally { session.budgetSuspended -= 1; }
+        },
         /** Render-object builds the budget deferred to a later frame, and ms spent building. */
         deferredBuilds: 0,
         buildMs: 0,
