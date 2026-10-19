@@ -308,6 +308,20 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         'Disables automatic quality adjustments so a performance comparison stays fixed.',
     ),
     parameter(
+        'odysseyAsyncPipelines',
+        'After the map appears, creates pipelines it meets for the first time in the background, so a chapter reached before its warm-up skips a draw instead of freezing the frame.',
+        OFF,
+        'On with WebGPU',
+        '0',
+    ),
+    parameter(
+        'odysseyAdaptiveGpuTiming',
+        'Lets automatic quality read GPU time, so it lowers quality only when the GPU is what is slow.',
+        OFF,
+        'On with WebGPU',
+        '0',
+    ),
+    parameter(
         'odysseyPixelRatio',
         'Overrides the map rendering pixel ratio.',
         'Positive number, clamped to 0.5–2',

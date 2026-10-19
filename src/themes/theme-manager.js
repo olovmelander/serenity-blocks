@@ -1741,10 +1741,16 @@ export class ThemeManager {
      * The release also carries `uncover()`: once the surface is off screen its sessions keep
      * running (late pipelines stay async), but themes started after that are no longer armed —
      * a later mode that owns its own reveal must not inherit a surface that no longer covers it.
+     * `buildBudgetMs` (opt-in) also spreads the covered theme's first-time node builds over
+     * frames, as the in-play switch does (SWITCH_BUILD_BUDGET_MS): a surface that animates while
+     * the theme builds behind it (Odyssey's entry tunnel) otherwise stops for the theme's whole
+     * first frame — 95 ms for Cinder Drift, 0.3-2.4 s for the heavy forest family. Only a surface
+     * that waits for the session to settle before it lifts may ask (deferred builds draw later).
      * @param {string} [reason]
+     * @param {{ buildBudgetMs?: number }} [options]
      * @returns {(() => void) & { uncover: () => void }} idempotent release
      */
-    beginLoadingSurface(reason = 'loading') {
+    beginLoadingSurface(reason = 'loading', { buildBudgetMs = 0 } = {}) {
         if (!this.isAsyncWarmEnabled()) return Object.assign(() => {}, { uncover: () => {} });
         // Boots that skipped the intro may not have resolved the prototype yet; the surface
         // usually covers the screen for a while before the theme starts.
@@ -1752,12 +1758,17 @@ export class ThemeManager {
         this._loadingSurfaceDepth = (this._loadingSurfaceDepth ?? 0) + 1;
         this._loadingSurfaceCovering = (this._loadingSurfaceCovering ?? 0) + 1;
         this._loadingSessions ??= new Map();
+        this._loadingSurfaceBudgets ??= new Set();
+        const lease = { buildBudgetMs: Number.isFinite(buildBudgetMs) && buildBudgetMs > 0 ? buildBudgetMs : 0 };
+        if (lease.buildBudgetMs > 0) this._loadingSurfaceBudgets.add(lease);
         let released = false;
         let covering = true;
         const uncover = () => {
             if (!covering) return;
             covering = false;
             this._loadingSurfaceCovering -= 1;
+            // Themes started after the surface lifts are on screen: they build unbudgeted.
+            this._loadingSurfaceBudgets.delete(lease);
         };
         const release = () => {
             if (released) return;
@@ -1782,9 +1793,21 @@ export class ThemeManager {
         return Object.assign(release, { uncover });
     }
 
+    /** The tightest node-build budget a covering surface asked for (0 = build everything as met). */
+    _loadingSurfaceBuildBudgetMs() {
+        let buildBudgetMs = 0;
+        for (const lease of this._loadingSurfaceBudgets ?? []) {
+            buildBudgetMs = buildBudgetMs > 0 ? Math.min(buildBudgetMs, lease.buildBudgetMs) : lease.buildBudgetMs;
+        }
+        return buildBudgetMs;
+    }
+
     _armLoadingSurfaceSession(theme, themeName) {
         if (!(this._loadingSurfaceCovering > 0) || !theme || this._loadingSessions?.has(theme)) return null;
-        const session = beginAsyncRenderPipelines(theme, { label: `loading:${themeName}` }); // sync; null if not preloaded
+        const session = beginAsyncRenderPipelines(theme, {
+            label: `loading:${themeName}`,
+            buildBudgetMs: this._loadingSurfaceBuildBudgetMs(),
+        }); // sync; null if not preloaded
         if (session) {
             session.themeName = themeName;
             this._loadingSessions.set(theme, session);
@@ -1836,9 +1859,15 @@ export class ThemeManager {
      * themes). A theme still loading content keeps its session after parking until it is idle
      * (_retainPrewarmSession), so that content does not compile synchronously either.
      *
+     * `standDown` is asked at every checkpoint: true abandons the warm. A mode that keeps themes
+     * suspended while it renders its own scene (Odyssey's map) never makes a theme active, so the
+     * activeTheme check alone let a menu-theme warm build and compile behind the live map
+     * (a 1.9 s freeze 4 s after the reveal, measured 2026-10-19).
+     *
      * @param {string} themeName
      * @param {{ maxWarmMs?: number, postWarmFrames?: number, asyncTailMs?: number,
      *   isThemeBusy?: ((theme: object) => boolean)|null,
+     *   standDown?: (() => boolean)|null,
      *   onPhase?: ((phase: string, payload: object) => void)|null }} [options]
      * @returns {Promise<boolean>} true if the theme ended up warm + parked
      */
@@ -1847,6 +1876,7 @@ export class ThemeManager {
         postWarmFrames = 30,
         asyncTailMs = 3000,
         isThemeBusy = null,
+        standDown = null,
         onPhase = null,
     } = {}) {
         const themeName = resolveThemeId(requestedTheme);
@@ -1893,7 +1923,16 @@ export class ThemeManager {
                 && this.queuedSwitchRequest.themeName !== themeName) {
                 throw new Error(`Theme "${themeName}" prewarm was superseded during ${phase}`);
             }
+            let stand = false;
+            try { stand = standDown?.() === true; } catch (e) { stand = false; }
+            if (stand) {
+                const error = new Error(`Theme "${themeName}" prewarm stood down during ${phase}`);
+                error.standDown = true;
+                throw error;
+            }
         };
+        // Nothing loaded yet: a warm that would stand down at its first checkpoint never starts.
+        try { if (standDown?.() === true) return false; } catch (e) { /* treat as not standing down */ }
         let theme = null;
         // A warm session the parked theme may keep while its deferred loading finishes.
         let retainedWarm = null;
@@ -2127,7 +2166,8 @@ export class ThemeManager {
                 }
                 return false;
             }
-            console.warn(`[ThemeManager] prewarmTheme failed for "${themeName}":`, error);
+            if (error?.standDown) console.log(`[ThemeManager] ${error.message}`);
+            else console.warn(`[ThemeManager] prewarmTheme failed for "${themeName}":`, error);
             if (theme && this.activeTheme !== theme) {
                 this.disposeThemeInstance(theme, themeName, {
                     removeFromCache: true,

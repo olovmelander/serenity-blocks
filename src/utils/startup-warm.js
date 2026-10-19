@@ -29,6 +29,20 @@ export function warmThreeEarly() {
 }
 
 /**
+ * Whether Odyssey is the current mode. Its map keeps the themes suspended while it renders, so a
+ * theme warm can never see an active theme and stand down by itself: the caller must ask this.
+ * @param {{ getCurrentModeId?: Function } | null | undefined} gameModeManager
+ * @returns {boolean}
+ */
+export function isOdysseyTheCurrentMode(gameModeManager) {
+    try {
+        return gameModeManager?.getCurrentModeId?.() === 'odyssey';
+    } catch {
+        return false;
+    }
+}
+
+/**
  * Wait (bounded) while the active Odyssey board is still background-building, so the
  * first-entry theme warm-up does not compile a second WebGPU scene on top of it.
  *

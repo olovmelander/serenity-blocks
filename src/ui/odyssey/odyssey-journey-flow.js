@@ -2,7 +2,7 @@
 import { createJourneyFlowOverlay } from './JourneyFlowOverlay.js';
 import { showOdysseyCampaignFinale } from './odyssey-campaign-finale.js';
 import { mountOdysseyOutcome } from './odyssey-outcome-owner.js';
-import { createCinematicLoadingSurface } from '../cinematic-loading-surface.js';
+import { COVERED_ENTRY_BUILD_BUDGET_MS, createCinematicLoadingSurface } from '../cinematic-loading-surface.js';
 import { canWriteLegacySimulationResults } from '../../core/game-modes/single-player-result-compatibility.js';
 import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physics-callbacks.js';
 import { getThemeMusic } from '../../core/progression/theme-music-catalog.js';
@@ -309,7 +309,9 @@ async function launchJourneyDestination(mode, operation, source) {
         isCurrent: () => canProceed(mode, operation),
         onBlackoutReached: async () => {
             if (!canProceed(mode, operation)) return false;
-            operation.loadingSurface = createCinematicLoadingSurface(mode.deps.themeManager);
+            operation.loadingSurface = createCinematicLoadingSurface(mode.deps.themeManager, {
+                buildBudgetMs: COVERED_ENTRY_BUILD_BUDGET_MS,
+            });
             await operation.loadingSurface.ready;
             return canProceed(mode, operation);
         },

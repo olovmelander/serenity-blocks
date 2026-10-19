@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **739 parameter names in 935 scoped entries**. The `odyssey-world`
+The catalog documents **744 parameter names in 940 scoped entries**. The `odyssey-world`
 playground effect added `lookPitch` and `lookYaw` (turn the camera off the path, for checking a
 chapter from every angle). The `fluid-dreams`
 playground effect added `quads` (four-line clears played before the frame); Sakura Twilight
@@ -187,6 +187,11 @@ capture; the only part name is `temple`.
 Kaleidosonic's performance pass (2026-10-19) adds `kaleidosonicScout=0` to the theme and
 `scout=0` to its playground effect: every pixel marches from the eye instead of from the scout
 pass's start (the A/B for that pass; any other value, or none, keeps it on).
+
+The Odyssey smoothness pass (2026-10-19) adds two rollback switches: `odysseyAdaptiveGpuTiming=0`
+(automatic quality judges frame time alone, without the GPU-time veto) and
+`odysseyAsyncPipelines=0` (the map creates the pipelines it meets after the reveal synchronously,
+as before). Both default on with WebGPU and do nothing on WebGL2.
 
 The opening and menu world (2026-10-15), First Light, replaces the intro's classic renderer and
 its compute simulations. It adds the `intro-world` playground effect with twelve rows of its

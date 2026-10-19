@@ -410,3 +410,100 @@ describe('OdysseyAdaptiveQuality — headroom at the display cadence', () => {
         expect(ctrl.getRenderScale()).toBeLessThan(0.9);
     });
 });
+
+/**
+ * 2026-10-19: on the dev laptop at Extreme the map's GPU time is 0.3-1.9 ms against a 7.6 ms
+ * budget, yet compile and bake frames walked the scale 1.0 -> 0.65 in one session, and every step
+ * recreated the scene's pipelines (an 835 ms freeze at p 0.12). Every lever here lowers GPU work,
+ * so it may only pull when the GPU is what is slow, and only on pressure that lasts.
+ */
+describe('OdysseyAdaptiveQuality — GPU headroom veto and sustained pressure', () => {
+    /** One simulated second at 131.6 Hz; `hitchy` = one frame in eight at 22 ms. */
+    function panelSecond(ctrl, { hitchy = false, slowMs = null } = {}) {
+        for (let i = 0; i < 132; i += 1) {
+            if (slowMs) ctrl.recordFrame(slowMs);
+            else ctrl.recordFrame(hitchy && i % 8 === 0 ? 22 : 7.6);
+        }
+    }
+    function gpuSecond(ctrl, gpuMs, atMs) {
+        for (let i = 0; i < 4; i += 1) ctrl.recordGpuFrame(gpuMs, atMs + i * 250);
+    }
+    function makeController(extra = {}) {
+        return new OdysseyAdaptiveQuality({
+            targetFrameRate: 120,
+            windowSize: 180,
+            resolutionFloor: 0.65,
+            evaluateResolution: evaluateDynamicResolutionAdjustment,
+            ...extra,
+        });
+    }
+
+    it('fresh GPU samples with headroom veto every step down on hitch frames', () => {
+        const ctrl = makeController();
+        const ctx = makeCtx();
+        for (let s = 1; s < 60; s += 1) {
+            gpuSecond(ctrl, 1.5, s * 1000 - 900);
+            panelSecond(ctrl, { hitchy: true });
+            ctrl.update(s * 1000, ctx);
+        }
+        expect(ctx.applyRenderScale).not.toHaveBeenCalled();
+        expect(ctrl.getRenderScale()).toBe(1);
+        expect(ctrl.getState().gpuVeto).toBe(true);
+    });
+
+    it('a GPU near the budget does not veto: steady slow frames still step down', () => {
+        const ctrl = makeController();
+        const ctx = makeCtx();
+        for (let s = 1; s < 30; s += 1) {
+            gpuSecond(ctrl, 7.5, s * 1000 - 900);
+            panelSecond(ctrl, { slowMs: 10 });
+            ctrl.update(s * 1000, ctx);
+        }
+        expect(ctrl.getRenderScale()).toBeLessThan(0.9);
+    });
+
+    it('stale GPU samples stop vetoing (a stream that ended falls back to frame time)', () => {
+        const ctrl = makeController();
+        const ctx = makeCtx();
+        gpuSecond(ctrl, 1.5, 0);
+        gpuSecond(ctrl, 1.5, 1000);
+        for (let s = 10; s < 40; s += 1) {
+            panelSecond(ctrl, { slowMs: 10 });
+            ctrl.update(s * 1000, ctx);
+        }
+        expect(ctrl.getRenderScale()).toBeLessThan(0.9);
+    });
+
+    it('sustained rule: a few slow frames per window never step down', () => {
+        const ctrl = makeController({ requireSustainedPressure: true });
+        const ctx = makeCtx();
+        for (let s = 1; s < 60; s += 1) {
+            panelSecond(ctrl, { hitchy: true });
+            ctrl.update(s * 1000, ctx);
+        }
+        expect(ctx.applyRenderScale).not.toHaveBeenCalled();
+        expect(ctrl.getRenderScale()).toBe(1);
+    });
+
+    it('sustained rule still steps down when frame after frame misses', () => {
+        const ctrl = makeController({ requireSustainedPressure: true });
+        const ctx = makeCtx();
+        for (let s = 1; s < 30; s += 1) {
+            panelSecond(ctrl, { slowMs: 10 });
+            ctrl.update(s * 1000, ctx);
+        }
+        expect(ctrl.getRenderScale()).toBeLessThan(0.9);
+    });
+
+    it('a GPU with headroom lets a hitchy but on-time scene climb back', () => {
+        const ctrl = makeController({ renderScale: 0.8, requireSustainedPressure: true });
+        const ctx = makeCtx();
+        for (let s = 1; s < 120; s += 1) {
+            gpuSecond(ctrl, 1.5, s * 1000 - 900);
+            panelSecond(ctrl, { hitchy: true });
+            ctrl.update(s * 1000, ctx);
+        }
+        expect(ctrl.getRenderScale()).toBe(1);
+        expect(ctx.applyRenderScale.mock.calls.every(([scale]) => scale > 0.8)).toBe(true);
+    });
+});
