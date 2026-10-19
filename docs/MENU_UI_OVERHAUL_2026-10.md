@@ -532,9 +532,10 @@ shouted from the HUD.
   controller hints. The unranked notice ("Experimental Session · Unranked") is kept, and
   the Steam leaderboard panel uses the same Keystone treatment as on game over.
 - **Goal complete** is a quiet banner at the top with an `Enter Finish` hint; play continues underneath.
-- **Navigator** (`#odyssey-level-select`): chapters as panels, levels as tiles, the next
-  level wears a coral frame, Odyssey's gold identity, and the real star total
-  (`★ earned / max` from the progress summary).
+- **Navigator** (`#odyssey-level-select`): rebuilt 2026-10-19 as the journey at a glance —
+  the ascent of chapters beside a stage with the selected orb's world as a card and its
+  chapter's route, each chapter in its own light, select-then-play, keys, controller and
+  Escape back to the map. Record: [ODYSSEY_NAVIGATOR_2026-10.md](ODYSSEY_NAVIGATOR_2026-10.md).
 - **Board view** (`#odyssey-board-overlay`): header bar, chapter arrival card and level
   panel restyled; the level panel's tip is a `.level-tip` line, not inline styles.
 - **Odyssey HUD**: Unbounded numbers, Manrope text, a gold chapter label, a spectrum

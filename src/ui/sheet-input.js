@@ -56,6 +56,15 @@ export const SHEETS = Object.freeze([
         focus: ['.sb-ody-actions button:first-child'],
     },
     {
+        // The Odyssey navigator (the level list over the map): Escape and B go back to the map.
+        name: 'odysseyNavigator',
+        id: 'odyssey-level-select',
+        mounted: true,
+        odyssey: true,
+        backSelector: '[data-navigator-action="close"]',
+        focus: ['.odyssey-level-btn[aria-current="true"]', '[data-navigator-action="close"]'],
+    },
+    {
         name: 'demoBrowser',
         id: 'demo-browser-modal',
         back: 'close-demo-browser',

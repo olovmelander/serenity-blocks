@@ -1396,6 +1396,12 @@ export class GamepadController {
             }
         }
 
+        // The Odyssey navigator: LB and RB climb down and up the chapters.
+        const navigator = document.getElementById('odyssey-level-select');
+        if (navigator && navigator.style.display === 'flex') {
+            navigator.querySelector(`[data-navigator-step="${direction < 0 ? -1 : 1}"]:not(:disabled)`)?.click();
+        }
+
         // Records: one tab per mode.
         const recordsModal = document.getElementById('high-scores-modal');
         if (recordsModal && recordsModal.classList.contains('visible')) {
