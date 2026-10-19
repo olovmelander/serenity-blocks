@@ -161,7 +161,7 @@ describe('OdysseyBoardController chapter framing', () => {
         expect(destination).toBe(arrival);
         expect(destination).toBeGreaterThan(level.pathPosition);
         expect(resolveChapterBlendState(destination, CHAPTER_CONFIGS, layout.chapterPositions).inSeam).toBe(false);
-        expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(nodePosition, expect.any(Number));
+        expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(nodePosition, expect.any(Number), expect.any(Object));
     });
 
     it('keeps a mid-chapter orb at its authored position', async () => {
@@ -223,7 +223,7 @@ describe('OdysseyBoardController chapter framing', () => {
     it('continues to focus the orb on ordinary map selection', async () => {
         const { controller, nodePosition } = createNavigationController();
         await expect(controller.travelToLevel(6)).resolves.toBe(true);
-        expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(nodePosition, 520);
+        expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(nodePosition, 520, { viewDir: null });
     });
 
     it('does not publish a panoramic arrival superseded during travel', async () => {
@@ -257,7 +257,7 @@ describe('OdysseyBoardController chapter framing', () => {
         controller.environmentManager.getBlendState.mockReturnValue({ activeChapter: 2 });
         await expect(controller.travelToLevel(6)).resolves.toBe(true);
         expect(controller.cameraController.travelToPosition).not.toHaveBeenCalled();
-        expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(nodePosition, 800);
+        expect(controller.cameraController.focusOnNode).toHaveBeenCalledWith(nodePosition, 800, { viewDir: null });
     });
 
     it('passes a zero-duration authored seek for reduced-motion source framing', async () => {

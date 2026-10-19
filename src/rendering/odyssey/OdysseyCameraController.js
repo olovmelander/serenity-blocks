@@ -744,6 +744,10 @@ export class OdysseyCameraController {
         this.freeCameraTempQuat = new THREE.Quaternion();
         this.freeCameraDirection = new THREE.Vector3(0, 0, -1);
         this.freeCameraUp = new THREE.Vector3(0, 1, 0);
+        // The SCENE's up for free-look turns: world up, or the set piece's up where the follow
+        // frame shares a stage basis (ch8's city climbs a near-vertical rail; turning about world
+        // up there spun the view about its own forward axis). Captured on entering free mode.
+        this.freeCameraYawAxis = new THREE.Vector3(0, 1, 0);
         this.freeCameraRight = new THREE.Vector3(1, 0, 0);
         this.freeCameraAnchor = new THREE.Vector3();
         this.followCameraUp = new THREE.Vector3(0, 1, 0);
@@ -1295,7 +1299,14 @@ export class OdysseyCameraController {
      * @param {THREE.Vector3} nodePosition
      * @param {number} duration - Animation duration in ms
      */
-    focusOnNode(nodePosition, duration = 800) {
+    /**
+     * @param {THREE.Vector3} nodePosition
+     * @param {number} [duration]
+     * @param {{viewDir?: THREE.Vector3, up?: THREE.Vector3}} [options] viewDir: the direction to
+     *   look at the orb ALONG (unit). Default: from +z, the fixed framing every chapter used to
+     *   share. up: the scene's up for the eye's small lift (default world up).
+     */
+    focusOnNode(nodePosition, duration = 800, { viewDir = null, up = null } = {}) {
         this._cancelActiveAnimation(false);
         this.portalApproach = null;
         this.mode = 'focus';
@@ -1305,7 +1316,13 @@ export class OdysseyCameraController {
         this.animationDuration = duration;
 
         this.animationStartPos.copy(this.camera.position);
-        this.animationEndPos.copy(nodePosition).add(new THREE.Vector3(0, 2, this.config.focusDistance));
+        if (viewDir?.isVector3 && viewDir.lengthSq() > 1e-8) {
+            this.animationEndPos.copy(nodePosition)
+                .addScaledVector(viewDir, -this.config.focusDistance)
+                .addScaledVector(up?.isVector3 ? up : FREE_CAMERA_WORLD_UP, 2);
+        } else {
+            this.animationEndPos.copy(nodePosition).add(new THREE.Vector3(0, 2, this.config.focusDistance));
+        }
 
         this.animationStartLookAt.copy(this.lookAtTarget);
         this.animationEndLookAt.copy(nodePosition);
@@ -2329,6 +2346,7 @@ export class OdysseyCameraController {
         this.portalApproach = null;
         this.mode = 'free';
         this.camera.rotation.z = 0;
+        this._resolveFreeYawAxis();
         this.syncFreeCameraFromScene();
         this.camera.quaternion.copy(this.freeCameraQuaternion);
         this.camera.updateMatrixWorld(true);
@@ -2337,6 +2355,26 @@ export class OdysseyCameraController {
 
     isFreeMode() {
         return this.mode === 'free';
+    }
+
+    /**
+     * The scene's up in a chapter: world up, or the set piece's own up where the chapter is
+     * staged on a fixed basis (ch8's city stands on a near-vertical rail).
+     * @param {number} chapterId
+     * @param {THREE.Vector3} [out]
+     * @returns {THREE.Vector3}
+     */
+    getSceneUp(chapterId, out = new THREE.Vector3()) {
+        const stage = STAGE_FRAME_CHAPTERS.includes(chapterId) ? this._getStageFrame() : null;
+        return out.copy(stage?.up ?? FREE_CAMERA_WORLD_UP).normalize();
+    }
+
+    _resolveFreeYawAxis() {
+        const weight = THREE.MathUtils.clamp(this._activeFraming?.stage ?? 0, 0, 1);
+        const stage = weight > 0 ? this._getStageFrame() : null;
+        this.freeCameraYawAxis.copy(FREE_CAMERA_WORLD_UP);
+        if (stage?.up) this.freeCameraYawAxis.lerp(stage.up, weight).normalize();
+        return this.freeCameraYawAxis;
     }
 
     applyFreeLookDelta(deltaX = 0, deltaY = 0) {
@@ -2356,13 +2394,16 @@ export class OdysseyCameraController {
         }
 
         if (yawDelta !== 0) {
-            this.freeCameraTempQuat.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yawDelta);
-            this.freeCameraQuaternion.multiply(this.freeCameraTempQuat).normalize();
+            // About the SCENE's up (pre-multiplied): post-multiplying turned about the camera's
+            // own tilted up axis, so every yaw from a pitched view rolled the horizon.
+            this.freeCameraTempQuat.setFromAxisAngle(this.freeCameraYawAxis, yawDelta);
+            this.freeCameraQuaternion.premultiply(this.freeCameraTempQuat).normalize();
         }
 
         if (pitchDelta !== 0) {
             this.updateFreeCameraBasis();
-            const currentPitch = Math.asin(THREE.MathUtils.clamp(this.freeCameraDirection.y, -1, 1));
+            const sinPitch = this.freeCameraDirection.dot(this.freeCameraYawAxis);
+            const currentPitch = Math.asin(THREE.MathUtils.clamp(sinPitch, -1, 1));
             const nextPitch = THREE.MathUtils.clamp(
                 currentPitch + pitchDelta,
                 -this.config.freeCamera.pitchLimit,
@@ -2402,7 +2443,7 @@ export class OdysseyCameraController {
 
         this.updateFreeCameraBasis();
         this.camera.position.addScaledVector(this.freeCameraRight, movement.x);
-        this.camera.position.addScaledVector(FREE_CAMERA_WORLD_UP, movement.y);
+        this.camera.position.addScaledVector(this.freeCameraYawAxis, movement.y);
         this.camera.position.addScaledVector(this.freeCameraDirection, movement.z);
         this.updateFreeLookTarget();
         this.syncFreeProgressFromCamera();
