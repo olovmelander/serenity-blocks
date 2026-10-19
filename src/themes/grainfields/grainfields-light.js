@@ -125,6 +125,32 @@ export function aerial(u, P, colour) {
     return mix(hazeLight, throughMist, tHaze);
 }
 
+/**
+ * The same air as two terms, for a colour composited later: aerial(u, P, c) = c · transmit +
+ * inscatter. A part that knows them per vertex (the barley: its plants are a few metres tall at
+ * most, so the air across one is constant) composites per pixel with one multiply-add.
+ */
+export function aerialParts(u, P) {
+    const V = P.sub(u.eye);
+    const d = max(length(V), 1e-3);
+    const rd = V.div(d);
+    const hazeA = u.hazeDensity.mul(1.0 / 15000);
+    const tauHaze = layerDepth(hazeA, float(HAZE_HEIGHT), u.eye.y, rd.y, d);
+    const mistA = u.mistDensity.mul(1.0 / 900);
+    const tauMist = layerDepth(mistA, float(MIST_HEIGHT), u.eye.y.sub(MIST_FLOOR), rd.y, d);
+    const sunward = sunGlow(dot(rd, u.sunDir));
+    const sunAir = mix(float(1.0), float(0.3), u.airMarch);
+    const hazeLight = u.haze.add(u.glow.mul(sunward).mul(0.55).mul(sunAir));
+    const mistLight = u.mist.add(u.glow.mul(sunward).mul(0.35).mul(sunAir));
+    const tHaze = exp(tauHaze.negate()).toVar();
+    const tMist = exp(tauMist.negate()).toVar();
+    // mix(haze, mix(mist, c, tMist), tHaze) = c·tMist·tHaze + mist·(1 − tMist)·tHaze + haze·(1 − tHaze)
+    return {
+        transmit: tMist.mul(tHaze),
+        inscatter: mistLight.mul(tMist.oneMinus()).mul(tHaze).add(hazeLight.mul(tHaze.oneMinus())),
+    };
+}
+
 /** Transmittance only (for things that must fade with the air: motes, chaff). */
 export function airClarity(u, P) {
     const V = P.sub(u.eye);
