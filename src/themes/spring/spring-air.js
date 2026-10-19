@@ -164,10 +164,11 @@ export class SpringAir {
 
             // A lock's puff: the air round its patch of bloom is pushed out and up, and lit.
             const puffLight = float(0.0).toVar();
+            // (Not named `patch`: that is a reserved word in WGSL.)
             Loop({
-                start: int(0), end: int(PATCHES), type: 'int', condition: '<', name: 'patch',
-            }, ({ patch }) => {
-                const row = u.events.element(patch.mul(2).add(EVENT_ROWS.patch));
+                start: int(0), end: int(PATCHES), type: 'int', condition: '<', name: 'bloomRow',
+            }, ({ bloomRow }) => {
+                const row = u.events.element(bloomRow.mul(2).add(EVENT_ROWS.patch));
                 const age = u.time.sub(row.z);
                 const live = smoothstep(0.0, 0.35, age).mul(float(1.0).sub(smoothstep(1.5, 7.0, age)))
                     .mul(row.w);

@@ -72,6 +72,9 @@ function equalEdges(shader) {
         .filter((m) => Number(m[1]) === Number(m[2])).map((m) => m[0]);
 }
 
+/** Words WGSL reserves that read like ordinary names, declared as a variable or a loop index. */
+const RESERVED = /\b(?:var|let|const)\s+(?:patch|filter|sample|target|input|output|module|ref|self|layout|resource|namespace)\b/;
+
 afterEach(() => {
     vi.restoreAllMocks();
 });
@@ -90,6 +93,8 @@ describe('spring air: the shaders', () => {
             expect(heard).toEqual([]);
             for (const source of [vertex, fragment]) {
                 expect(source).not.toMatch(/\bNaN\b|\bInfinity\b|object Object/);
+                // A name WGSL reserves (a TSL loop's `name` becomes a variable): Tint refuses the module.
+                expect(source).not.toMatch(RESERVED);
                 expect(equalEdges(source)).toEqual([]);
             }
             // The light is worked out a corner, not a pixel: the fragment stage is small.
