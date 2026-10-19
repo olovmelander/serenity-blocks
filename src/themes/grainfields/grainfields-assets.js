@@ -38,7 +38,10 @@ export const GRAINFIELDS_HORSE_PARTS = Object.freeze({
     body: 0, neck: 1, frontLeft: 2, frontRight: 3, hindLeft: 4, hindRight: 5, tail: 6,
 });
 /** What the neck (with the head), each leg and the tail turn about. */
-const HORSE_PIVOTS = Object.freeze(['neck', 'frontLeft', 'frontRight', 'hindLeft', 'hindRight', 'tail']);
+const HORSE_PIVOTS = Object.freeze([
+    'neck', 'frontLeft', 'frontRight', 'hindLeft', 'hindRight', 'tail',
+    'knee', 'hock', 'frontFetlock', 'hindFetlock', 'poll', 'ear',
+]);
 
 /** Read a (possibly normalised integer) attribute as floats. */
 function floats(attribute, width = attribute.itemSize) {
@@ -68,7 +71,7 @@ function meshGeometry(object) {
     const source = object.geometry;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(worldPositions(object), 3));
-    ['normal', 'uv', 'color'].forEach((name) => {
+    ['normal', 'uv', 'color', '_rig'].forEach((name) => {
         if (source.attributes[name]) geometry.setAttribute(name, source.attributes[name]);
     });
     if (source.index) geometry.setIndex(source.index);
@@ -155,9 +158,11 @@ export function parseGrainfieldsMeshes(gltf, label) {
 
 /**
  * The herd's horse: one geometry in metres (+z forward toward the head, y up, the hooves on
- * y = 0, centred on x = 0; its left side is +x) with position, normal and colour, and the
- * pivots in the same frame: the base of the neck, each shoulder and hip joint and the root
- * of the dock, each as [x, y, z].
+ * y = 0, centred on x = 0; its left side is +x) with position, normal, colour and the skin's
+ * weights (`_rig`: how far each vertex follows its part's root joint, the joint below it, the
+ * one below that, the ears), and the pivots in the same frame: the base of the neck, each
+ * shoulder and hip joint, the root of the dock, the knee, the hock and the fetlocks (the left
+ * leg's), the atlas under the poll and the left ear's base, each as [x, y, z].
  */
 export function parseGrainfieldsHorse(gltf) {
     const root = gltf.scene;
