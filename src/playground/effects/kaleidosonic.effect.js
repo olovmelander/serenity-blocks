@@ -20,6 +20,7 @@
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
+ *   scout=0                  march every pixel from the eye (no scout pass): the A/B for the scout
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
  *   event=lock|drop|clear|quad|tspin|perfect|levelUp|release|over   fire a gameplay event...
@@ -308,7 +309,7 @@ export function create({
     KaleidosonicWorld.prepare(quality).then((prepared) => {
         if (disposed) return;
         world = new KaleidosonicWorld({
-            scene, quality, capture: true, prepared,
+            scene, quality, capture: true, prepared, scout: params.get('scout') !== '0',
         }).build();
         world.bindCamera(camera);
         world.setReducedMotion(params.get('reduce') === '1');

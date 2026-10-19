@@ -90,6 +90,9 @@ vi.mock('three/webgpu', async (importOriginal) => {
                 );
                 this.render = vi.fn();
                 this.compute = vi.fn();
+                this.renderTarget = null;
+                this.getRenderTarget = () => this.renderTarget;
+                this.setRenderTarget = vi.fn((target) => { this.renderTarget = target ?? null; });
                 this.init = vi.fn(async () => mocks.initialize?.(this));
                 mocks.instances.push(this);
             }
@@ -1452,8 +1455,9 @@ describe('Kaleidosonic theme: one node renderer on both backends', () => {
             quality: 'Low', search: '?kaleidosonicTime=42&kaleidosonicParts=temple, halo&kaleidosonicFalseColor=1',
         });
         expect(theme.flags).toEqual({
-            time: 42, fixedDt: null, parts: ['temple', 'halo'], falseColor: true, forceWebGL: false,
+            time: 42, fixedDt: null, parts: ['temple', 'halo'], falseColor: true, forceWebGL: false, scout: true,
         });
+        expect(theme.world.options.scout).toBe(true);
         expect(theme.world.capture).toBe(true);
         expect(theme.world.parts).toEqual(['temple', 'halo']);
         expect(theme.post.params.falseColor).toBe(true);
@@ -1470,6 +1474,15 @@ describe('Kaleidosonic theme: one node renderer on both backends', () => {
         theme.stepFrame(1032);
         expect(theme.world.counts.locks).toBe(1);
         expect(theme.layoutClock).toBeGreaterThan(0);
+    });
+
+    it('marches every pixel from the eye when the scout is switched off (the A/B), and only then', async () => {
+        const { theme } = await startTheme({ quality: 'Low', search: '?kaleidosonicScout=0' });
+        expect(theme.flags.scout).toBe(false);
+        expect(theme.world.options.scout).toBe(false);
+        theme.disposeRuntime();
+        const on = await startTheme({ quality: 'Low', search: '?kaleidosonicScout=1' });
+        expect(on.theme.world.options.scout).toBe(true);
     });
 
     it('steps a fixed frame when asked, whatever the wall clock does', async () => {
@@ -1493,7 +1506,7 @@ describe('Kaleidosonic theme: one node renderer on both backends', () => {
             search: '?kaleidosonicTime=-3&kaleidosonicFixedDt=abc&kaleidosonicParts=&kaleidosonicFalseColor=0',
         });
         expect(theme.flags).toEqual({
-            forceWebGL: false, time: null, fixedDt: null, parts: null, falseColor: false,
+            forceWebGL: false, time: null, fixedDt: null, parts: null, falseColor: false, scout: true,
         });
         expect(theme.world.capture).toBe(false);
         expect(theme.world.parts).toBeNull(); // showOnlyParts was never called: everything is drawn
@@ -2068,7 +2081,13 @@ describe.skipIf(!existsSync(worldFile) || !existsSync(postFile))('Kaleidosonic t
                 world.onSessionStart();
             }
             world.update(sim, camera);
-            world.prerender(renderer); // the double has no render targets: nothing is painted, nothing throws
+            // The scout pass: drawn into its own target, then the frame's target is put back.
+            const draws = renderer.render.mock.calls.length;
+            world.prerender(renderer);
+            const { scout } = world.parts.temple;
+            expect(renderer.setRenderTarget).toHaveBeenCalledWith(scout.target);
+            expect(renderer.render.mock.calls.slice(draws).map(([object]) => object)).toEqual([scout.quad]);
+            expect(renderer.getRenderTarget()).toBeNull();
             post.setCalmRects([{
                 x0: 0.4, y0: 0.1, x1: 0.6, y1: 0.9,
             }], 0.5);
