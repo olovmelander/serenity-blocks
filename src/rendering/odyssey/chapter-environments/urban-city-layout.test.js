@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import { describe, expect, it } from 'vitest';
-import { createCityBlocksTSL } from './urban-dreams.tsl.js';
+import { CH8_CITY_LAYOUT, createCityBlocksTSL } from './urban-dreams.tsl.js';
 
 function city(bankCount) {
     const part = createCityBlocksTSL(undefined, undefined, { bankCount });
@@ -83,6 +83,19 @@ describe('Urban city window stability', () => {
                 expect(box.min.y).toBeCloseTo(-60, 4);
                 expect(Math.min(Math.abs(box.min.x), Math.abs(box.max.x))).toBeGreaterThanOrEqual(24);
             });
+        } finally { dispose(); }
+    });
+
+    it('continues the city behind the lane, past the first authored rank', () => {
+        const { towers, boxes, dispose } = city(6);
+        try {
+            expect(towers.count).toBe((CH8_CITY_LAYOUT.ranks + CH8_CITY_LAYOUT.backRanks) * 2 * 6);
+            // Dealt after the authored ranks (so those keep their seeds), every one behind nearZ.
+            const behind = boxes.slice(CH8_CITY_LAYOUT.ranks * 2 * 6);
+            expect(behind).toHaveLength(CH8_CITY_LAYOUT.backRanks * 2 * 6);
+            behind.forEach((box) => expect((box.min.z + box.max.z) / 2).toBeGreaterThan(CH8_CITY_LAYOUT.nearZ));
+            const farthest = Math.max(...boxes.map((box) => box.max.z));
+            expect(farthest).toBeGreaterThan(CH8_CITY_LAYOUT.nearZ + 200);
         } finally { dispose(); }
     });
 

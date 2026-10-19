@@ -102,6 +102,9 @@ export const CH8_RETROSUN_STAGE = Object.freeze({
     sun: [0, 110, -700],
     skylineNear: [0, -42, -650],
     skylineFar: [40, -54, -675],
+    // Behind the lane, just past the last back rank (nearZ 130 + 9 ranks ~ z 370).
+    skylineBackNear: [0, -42, 420],
+    skylineBackFar: [-40, -54, 445],
     // Behind the sun (was -688, IN FRONT of it: once the disc shrank to a readable size the
     // haze band covered it entirely).
     horizonHaze: [0, -12, -730],
@@ -562,7 +565,23 @@ export function createUrbanDreamsEnvironment(options = {}) {
     skylineNear.mesh.position.set(...CH8_RETROSUN_STAGE.skylineNear);
     skylineNear.mesh.renderOrder = -86;
     corridor.add(skylineNear.mesh);
-    group.userData.skyline = [skylineNear.mesh, skylineFar.mesh];
+    // ...and the same two ranks BEHIND the lane, past the back ranks (CH8_CITY_LAYOUT.backRanks),
+    // turned to face back up it: looking back, the canyon ends on rooftops against the horizon
+    // glow instead of on the bare glow itself.
+    const skylineBack = [
+        [skylineNear, CH8_RETROSUN_STAGE.skylineBackNear, 0],
+        [skylineFar, CH8_RETROSUN_STAGE.skylineBackFar, 31],
+    ].map(([front, at, seedOffset]) => {
+        const lift = front === skylineNear ? 0.012 : 0;
+        const card = createSkylineSilhouetteTSL(uniforms.uTime, { seedOffset: seedOffset + 7, lift });
+        card.mesh.position.set(...at);
+        card.mesh.rotation.y = Math.PI;
+        card.mesh.scale.copy(front.mesh.scale);
+        card.mesh.renderOrder = front.mesh.renderOrder;
+        corridor.add(card.mesh);
+        return card.mesh;
+    });
+    group.userData.skyline = [skylineNear.mesh, skylineFar.mesh, ...skylineBack];
     const horizonHaze = createHorizonHazeTSL(uniforms.uTime);
     horizonHaze.mesh.position.set(...CH8_RETROSUN_STAGE.horizonHaze);
     horizonHaze.mesh.renderOrder = -98; // after the dome, BEFORE the sun (-95)
