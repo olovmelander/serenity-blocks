@@ -1,8 +1,8 @@
 /**
- * Web Worker entry for Ocean's seabed sheet (ocean-theme.js). Pure math only: the core imports no
- * three.
+ * Web Worker entry for Ocean's first-visit bakes (ocean-theme.js): the seabed's sheet and the
+ * floor the large animals keep over. Pure math only: the core imports no three.
  */
 import { serveBakes } from '../shared/bake-worker-host.js';
-import { bakeSeabed } from './ocean-core.js';
+import { bakeFloor, bakeSeabed } from './ocean-core.js';
 
-serveBakes({ seabed: bakeSeabed });
+serveBakes({ seabed: bakeSeabed, floor: bakeFloor });

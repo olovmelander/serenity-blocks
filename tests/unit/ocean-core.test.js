@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-    AMBIENT_EVERY, AMBIENT_FIRST, CALLS, EYE, LANES, NEVER, PASS_SECONDS, STAIN_FADE, STAIN_KINDLE, SURFACE, SURGE_SPEED,
-    WINDOW_INDEX, ambientPass, approach, channelAxis, fovForAspect, footprintFloor, mantasForCombo, passAt, pieceColor,
+    CALLS, EYE, LANES, NEVER, STAIN_FADE, STAIN_KINDLE, SURFACE, SURGE_SPEED,
+    WINDOW_INDEX, approach, channelAxis, fovForAspect, footprintFloor, mantasForCombo, passAt, pieceColor,
     powerForCombo, refractToAir, ringRadius, scareEnvelope, schoolLoop, seabedHeight, seabedNormal, squeezeFor,
     stainLight, surgeFront, surgePassTime,
 } from '../../src/themes/ocean/ocean-core.js';
@@ -155,20 +155,6 @@ describe('Ocean core: the large animals\' passes', () => {
                 expect(fwd[0] * moved[0] + fwd[1] * moved[1]).toBeGreaterThan(0);
             }
         });
-    });
-
-    it('sends one of the sea\'s own passes at a time, in turn, from the first one on', () => {
-        expect(ambientPass(AMBIENT_FIRST - 1).kind).toBe('none');
-        const kinds = new Set();
-        for (let t = AMBIENT_FIRST; t < AMBIENT_FIRST + AMBIENT_EVERY * 6; t += 1) {
-            const p = ambientPass(t);
-            if (p.k >= 0) {
-                expect(p.k).toBeLessThanOrEqual(1);
-                kinds.add(p.kind);
-                expect(PASS_SECONDS[p.kind]).toBeLessThanOrEqual(AMBIENT_EVERY);
-            }
-        }
-        expect([...kinds].sort()).toEqual(['manta', 'turtle', 'whaleFar']);
     });
 
     it('keeps the school\'s loop in the water, over the sand', () => {

@@ -5,7 +5,10 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **747 parameter names in 943 scoped entries**. The `grainfields`
+The catalog documents **755 parameter names in 952 scoped entries**. The `ocean` playground
+effect added `visit`, `visitK`, `visitAge`, `visitSide`, `visitSeed`, `visits` (one of the
+visits the sea makes by itself) and `followFit`, `followIndex` with its own entry for `follow` (a
+camera turned to one of its large animals), 2026-10-19. The `grainfields`
 playground effect added `cloudSteps` (the storm deck's march, 0 drawing it flat), `herdLineup` (the
 herd's gaits side by side on the spot) and `herdRun` (moves the band makes at set times). The `odyssey-world`
 playground effect added `lookPitch` and `lookYaw` (turn the camera off the path, for checking a
