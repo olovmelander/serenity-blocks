@@ -185,6 +185,28 @@ export const TEMPLE = Object.freeze({
     detailDeep: 9,
 });
 
+/** A fold weight this close to 0 or 1 is taken as whole (the surface moves far less than a pixel). */
+export const FOLD_SNAP = 0.004;
+
+/**
+ * A fractional fold count as the shader runs it: [whole folds, the next fold's weight]. Near-whole
+ * counts snap, so the field never runs a fold it would weigh by (almost) nothing: the trance's
+ * exponential release otherwise leaves a weight of 1e-5 that costs a whole fold per evaluation.
+ */
+export function foldSplit(folds, out = [0, 0]) {
+    let whole = Math.floor(folds);
+    let weight = folds - whole;
+    if (weight < FOLD_SNAP) {
+        weight = 0;
+    } else if (weight > 1 - FOLD_SNAP) {
+        whole += 1;
+        weight = 0;
+    }
+    out[0] = whole;
+    out[1] = weight;
+    return out;
+}
+
 /**
  * The refolds a clear walks through, in order: each clear springs `s` to the next value (a chain
  * walks further). Chosen so neighbours differ enough to read as a new hall, never enough to close
