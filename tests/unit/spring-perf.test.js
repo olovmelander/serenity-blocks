@@ -18,6 +18,7 @@ import {
 import { EYE } from '../../src/themes/spring/spring-plan.js';
 import { decodeValley } from '../../src/themes/spring/spring-terrain.js';
 import { LEAF_LOD, leafLod, thinSpray } from '../../src/themes/spring/spring-forest.js';
+import { puffGeometry } from '../../src/themes/spring/spring-mist.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 
@@ -159,6 +160,25 @@ describe('spring forest: the far leaves', () => {
         strand.setIndex(i2);
         expect(leafLod(strand)).toBe(strand);
         expect(LEAF_LOD.from).toBeLessThan(60); // every modelled tree stands farther off than this
+    });
+});
+
+describe('spring mist: the puffs', () => {
+    it('cuts the card\'s corners outside the circle its sides touch, and no more', () => {
+        const geometry = puffGeometry();
+        const p = geometry.attributes.position;
+        for (let i = 1; i < p.count; i += 1) {
+            // Every corner lies on the unit square's edge (±0.5), outside the circle it touches.
+            expect(Math.max(Math.abs(p.getX(i)), Math.abs(p.getY(i)))).toBeCloseTo(0.5, 6);
+        }
+        // Every side of the octagon touches the circle of radius 0.5: its middle lies on it.
+        const index = geometry.index.array;
+        for (let t = 0; t < index.length; t += 3) {
+            const mx = (p.getX(index[t + 1]) + p.getX(index[t + 2])) / 2;
+            const my = (p.getY(index[t + 1]) + p.getY(index[t + 2])) / 2;
+            expect(Math.hypot(mx, my)).toBeCloseTo(0.5, 6);
+        }
+        expect(area(Array.from(p.array), Array.from(index))).toBeCloseTo(8 * Math.tan(Math.PI / 8) * 0.25, 6);
     });
 });
 
