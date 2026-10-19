@@ -673,6 +673,11 @@ export const CH8_CITY_LAYOUT = Object.freeze({
     ranks: 30,
     nearZ: 130,
     farZ: -640, // the skyline cards (z -650/-675) carry the city beyond this
+    // THE CITY BEHIND (all-angles pass, 2026-10-18): ranks continuing past nearZ at the same
+    // spacing, dealt AFTER the authored ranks so every authored tower keeps its seed. Looking
+    // back down the lane, the canyon used to end a block behind the eye in a bare wall of
+    // horizon glow; the back-skyline cards carry the city beyond these.
+    backRanks: 9,
     streetGap: 3,
     laneHalfWidth: 24,
     // lateral: centre offset from the lane; jitter; zStag; height range [min,max] above the
@@ -741,7 +746,7 @@ export function createCityBlocksTSL(uTime, uEnergy, {
     // Low tier drops the OUTERMOST banks (the skyline cards carry the horizon behind them);
     // the layout is still dealt for every bank so the kept towers are identical on all tiers.
     const banksKept = Math.max(1, Math.min(L.banks.length, bankCount ?? L.banks.length));
-    const TOWER_COUNT = L.ranks * 2 * banksKept;
+    const TOWER_COUNT = (L.ranks + L.backRanks) * 2 * banksKept;
     const sharedBox = new THREE.BoxGeometry(1, 1, 1);
     const facadeMaterial = createFacadeMaterial(uTimeNode, uEnergyNode, { uCityLight, uIgniteRadius, uDim });
     const towers = new THREE.InstancedMesh(sharedBox, facadeMaterial, TOWER_COUNT);
@@ -757,9 +762,13 @@ export function createCityBlocksTSL(uTime, uEnergy, {
     const { lerp } = THREE.MathUtils;
 
     let instance = 0;
-    for (let rank = 0; rank < L.ranks; rank += 1) {
-        const t = rank / (L.ranks - 1);
-        const z = L.nearZ + (L.farZ - L.nearZ) * t;
+    for (let rank = 0; rank < L.ranks + L.backRanks; rank += 1) {
+        // Back ranks step on from nearZ at the authored spacing, with the near heights.
+        const back = rank >= L.ranks;
+        const t = back ? 0 : rank / (L.ranks - 1);
+        const z = back
+            ? L.nearZ + rankSpacing * (rank - L.ranks + 1)
+            : L.nearZ + (L.farZ - L.nearZ) * t;
         for (let s = 0; s < 2; s += 1) {
             const side = s === 0 ? -1 : 1;
             for (let b = 0; b < L.banks.length; b += 1) {

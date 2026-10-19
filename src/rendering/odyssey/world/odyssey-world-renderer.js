@@ -1204,6 +1204,8 @@ export function createOdysseyWorld({
      * trades some haze for colour and must not trade all of it.
      */
     const AERIAL_RATE_LAND = 0.62;
+    // The air's scale height above the sea, world units (see THINNER AIR ABOVE in applyAerial).
+    const AERIAL_SCALE_HEIGHT = 650;
     // `hazeFloor` (optional node, 0..1): a MINIMUM underwater haze weight, so a surface can be
     // dissolved into the water around it uniform-driven (the fish's 1->2 presence) — no alpha,
     // no blend state, the opaque path unchanged. JS-gated: only the caller that passes it builds it.
@@ -1221,10 +1223,26 @@ export function createOdysseyWorld({
         const to = wp.sub(cameraPosition);
         const d = length(to);
         const dirY = to.div(max(d, float(0.001))).y;
+        // THINNER AIR ABOVE (all-angles pass, 2026-10-18). The haze was a function of range
+        // alone, so from 1-2 km up the ray down to the island hazed as much as a ray skimming the
+        // sea, and every view off the climb went milky. Density now falls with height above the
+        // sea (an exponential atmosphere, AERIAL_SCALE_HEIGHT) and the ray takes its MEAN: at the
+        // shore (eye 15-70 u up) nothing moves; from the climb the island keeps its colour while
+        // the horizon band stays. Past ~4.5 km the full density returns, so the far sea still
+        // converges on the plate the sky dome converges on (no seam at the far plane).
+        const hEye = max(cameraPosition.y.sub(ODYSSEY_SEA_LEVEL), 0).div(AERIAL_SCALE_HEIGHT);
+        const hPoint = max(wp.y.sub(ODYSSEY_SEA_LEVEL), 0).div(AERIAL_SCALE_HEIGHT);
+        const eEye = exp(hEye.negate());
+        const ePoint = exp(hPoint.negate());
+        const meanAir = max(
+            abs(ePoint.sub(eEye)).div(max(abs(hEye.sub(hPoint)), float(0.01))),
+            min(ePoint, eEye),
+        );
+        const airDepth = d.mul(uAerialK).mul(mix(meanAir, float(1), smoothstep(float(4500), float(8500), d)));
         const airBase = mix(
             lit,
             skyColourFor(dirY),
-            clamp(float(1).sub(exp(d.mul(uAerialK.negate()))).mul(float(rate)), 0, ceil),
+            clamp(float(1).sub(exp(airDepth.negate())).mul(float(rate)), 0, ceil),
         );
         // VALLEY MIST (item 7) — height haze for LAND seen from the climb. Aerial perspective
         // here is a function of range only, so from 600 u up the forest at the massif's feet
@@ -1825,18 +1843,25 @@ export function createOdysseyWorld({
                     crestUv.x.mul(0.866).add(crestUv.y.mul(0.5)),
                 ).mul(1.35);
                 const crestB = texture(groundTex, crestUvB).level(0).b;
-                const patch = noise2(bedXZ.div(float(38))).mul(0.65)
-                    .add(noise2(bedXZ.div(float(13)).add(vec2(17.3, 4.1))).mul(0.35)).toVar();
+                // + a broad 110 u swell of light and dark ground (all-angles pass, 2026-10-18):
+                // the orb close-ups look DOWN at a few hundred metres of bed, and with only the
+                // 13-38 u patches it still read as one even carpet.
+                const broad = noise2(bedXZ.div(float(110)).add(vec2(2.3, 8.9)));
+                const patch = noise2(bedXZ.div(float(38))).mul(0.5)
+                    .add(noise2(bedXZ.div(float(13)).add(vec2(17.3, 4.1))).mul(0.25))
+                    .add(broad.mul(0.25))
+                    .toVar();
                 const bedCrest = mix(crestA, crestB, smoothstep(float(0.42), float(0.58), patch))
                     .div(float(atlasAvg[2]));
-                const bedRipple = mix(float(1), bedCrest, bedRippleMelt.mul(0.24));
-                const meadow = smoothstep(float(0.60), float(0.74), patch);
-                const fan = smoothstep(float(0.36), float(0.24), patch);
+                const meadow = smoothstep(float(0.58), float(0.72), patch);
+                const fan = smoothstep(float(0.40), float(0.26), patch);
+                // Ripples belong to the sand: half strength on the plain bed, near none in the grass.
+                const bedRipple = mix(float(1), bedCrest, bedRippleMelt.mul(mix(float(0.15), float(0.03), meadow)));
                 const bedColor = mix(
-                    mix(vec3(0.20, 0.31, 0.28), vec3(0.10, 0.23, 0.15), meadow.mul(0.85)),
-                    vec3(0.27, 0.33, 0.29),
-                    fan.mul(0.45),
-                );
+                    mix(vec3(0.20, 0.31, 0.28), vec3(0.09, 0.21, 0.13), meadow.mul(0.9)),
+                    vec3(0.36, 0.42, 0.36),
+                    fan.mul(0.6),
+                ).mul(mix(float(0.82), float(1.14), broad));
                 a.assign(mix(a, bedColor.mul(bedRipple), seabed.mul(0.75)));
             });
             return a;
@@ -2076,6 +2101,21 @@ export function createOdysseyWorld({
     const uFadeZenith = uniform(0);
     const uFadeHorizon = uniform(0);
     const uLimbGlow = uniform(0);
+    // The airglow line's own envelope: the limb's, gated on the HORIZON having gone dark. Airglow
+    // is only ever seen against night; under the limb's envelope alone it drew a mint stripe
+    // across a still-blue sky at the top of the climb (all-angles pass, p 0.715).
+    const uAirglowGlow = uniform(0);
+    // WHERE THE SEA ENDS, seen from the eye (all-angles pass, 2026-10-18). The limb used to sit
+    // at elevation +0.01, the horizon of an endless sea. The sea is not endless: the camera's
+    // far plane cuts it along a straight line, and from ~900 u up at the top of the climb that
+    // line sits ~0.10 below level — so a 6-degree wedge of dome showed between the sea's edge
+    // and the limb, and the limb read as a glowing tube floating over the water. The limb now
+    // sits ON the drawn edge. The far cut is planar, so the edge's distance grows off-axis
+    // (far / cos of the azimuth from the view's forward); the clipmap's reach caps it.
+    const uEyeH = uniform(0);
+    const uViewFar = uniform(1e7); // no camera handed in: the clipmap's reach is the edge
+    const uViewFwdXZ = uniform(new THREE.Vector2(0, -1));
+    const uSeaReach = uniform(1e5);
     // The chapter-6 aurora's live glow (0..1), handed in by the board: as its curtains rise OUT OF
     // the airglow line, the line yields to them (owner 2026-10-02: "it feels like we have two
     // different auroras" — a straight green line under the curtains read as a second one).
@@ -2231,11 +2271,26 @@ export function createOdysseyWorld({
         If(uSubmerged.greaterThan(0.001), () => { base.assign(mix(skyAir, skyWater, uSubmerged)); });
         const out = toOutputFaded(base, skyFade).toVar('skyOutCol');
         If(uLimbGlow.greaterThan(0.0001), () => {
-            const limbBand = exp(skyDir.y.sub(0.01).div(0.045).pow(2).negate());
+            // THE LIMB HAS A SUNLIT SIDE (all-angles pass, 2026-10-18). One band of equal
+            // brightness all the way round read as a glowing tube from every heading at the top
+            // of the climb. The arc now burns toward the sun's azimuth and falls to a faint
+            // night-side rim behind, and thins as it goes — the curve of a real limb.
+            const skyFlat = normalize(skyDir.xz.add(vec2(1e-4, 0)));
+            const limbAz = dot(skyFlat, normalize(vec2(uSunDir.x, uSunDir.z)))
+                .mul(0.5).add(0.5);
+            const limbWidth = mix(float(0.026), float(0.05), limbAz);
+            // The drawn edge's elevation along this azimuth (see uEyeH above). Above it the limb
+            // fades into the dark at limbWidth; below it the sea covers the dome, and the short
+            // lower tail only closes the seam where the planar cut is approximated.
+            const edgeDist = min(uViewFar.div(max(dot(skyFlat, uViewFwdXZ), 0.3)), uSeaReach);
+            const edgeY = uEyeH.negate().div(sqrt(uEyeH.mul(uEyeH).add(edgeDist.mul(edgeDist))));
+            const limbRise = skyDir.y.sub(edgeY.add(0.004));
+            const limbBand = exp(limbRise.div(select(limbRise.greaterThan(0), limbWidth, float(0.008))).pow(2).negate())
+                .mul(mix(float(0.22), float(1.25), limbAz.mul(limbAz)));
             const airglowBand = exp(skyDir.y.sub(0.075).div(0.012).pow(2).negate());
             const airglowYield = float(1).sub(uAuroraGlow.mul(0.8));
-            out.assign(out.add(vec3(...DEPART_LIMB).mul(limbBand).add(vec3(...DEPART_AIRGLOW).mul(airglowBand.mul(0.45).mul(airglowYield)))
-                .mul(uLimbGlow)
+            out.assign(out.add(vec3(...DEPART_LIMB).mul(limbBand).mul(uLimbGlow)
+                .add(vec3(...DEPART_AIRGLOW).mul(airglowBand.mul(0.45).mul(airglowYield)).mul(uAirglowGlow))
                 .mul(uOutputScale)
                 .mul(float(1).sub(uSubmerged))));
         });
@@ -4675,6 +4730,7 @@ export function createOdysseyWorld({
     const fogState = { color: new THREE.Color(), density: 0.0004 };
     // FogExp2 is 1-exp(-(d*z)^2); applyAerial is 1-exp(-K*z). Equal at z = FOG_MATCH_DISTANCE.
     const FOG_MATCH_DISTANCE = 1200;
+    const scratchViewDir = new THREE.Vector3();
 
     // LIVE STATE, for instruments only — never read by the renderer itself.
     // `uSubmerged` and the active colour-script keyframe are computed every frame and were
@@ -4771,6 +4827,8 @@ export function createOdysseyWorld({
             // that has already gone dark overhead — at the symmetric 4f(1-f) it peaked while the
             // sky was still daylight blue and drew a glowing ring across it (capture, ch5 0.8).
             uLimbGlow.value = (f ** 3) * (1 - f) * 9.48;
+            const dark = Math.min(Math.max((uFadeHorizon.value - 0.62) / (0.85 - 0.62), 0), 1);
+            uAirglowGlow.value = uLimbGlow.value * dark * dark * (3 - (2 * dark));
             const gone = Math.min(Math.max((f - 0.55) / (0.92 - 0.55), 0), 1);
             uFieldGone.value = gone * gone * (3 - (2 * gone));
             if (colour) uWorldFadeColour.value.copy(colour);
@@ -4854,9 +4912,18 @@ export function createOdysseyWorld({
          *   only the camera moves (plan §3.1 point 4).
          * @param {number} progress 0..1 across Act II, for the colour script
          */
-        update(time, railPoint, progress, eyeY = null) {
+        update(time, railPoint, progress, eyeY = null, viewCamera = null) {
             uTime.value = time;
             uLodCenter.value.set(railPoint.x, railPoint.z);
+            // The limb's anchor: the sea's drawn edge from this eye (see uEyeH).
+            uEyeH.value = Number.isFinite(eyeY) ? Math.max(eyeY - ODYSSEY_SEA_LEVEL, 0) : 0;
+            uSeaReach.value = waterGeo.reach * group.scale.x;
+            if (viewCamera?.getWorldDirection) {
+                viewCamera.getWorldDirection(scratchViewDir);
+                const flat = Math.hypot(scratchViewDir.x, scratchViewDir.z);
+                if (flat > 1e-3) uViewFwdXZ.value.set(scratchViewDir.x / flat, scratchViewDir.z / flat);
+                if (Number.isFinite(viewCamera.far)) uViewFar.value = viewCamera.far;
+            }
             state.lodCenter.x = railPoint.x;
             state.lodCenter.z = railPoint.z;
             state.eyeY = eyeY;

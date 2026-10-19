@@ -58,7 +58,7 @@ import {
 } from 'three/tsl';
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import { getChapterTransitionForChapter } from './shared/chapter-profile.js';
-import { getActiveOdysseyChapterPositions, getChapterPathRange } from '../path-utils.js';
+import { getActiveOdysseyChapterPositions, getChapterPathRange, getOdysseyPathCurve } from '../path-utils.js';
 import {
     createVoidSkyTSL,
     createBlackHoleTSL,
@@ -133,6 +133,11 @@ export const COSMIC_EXPANSE_CONFIG = {
 // Worst-case |ndcX| across all aspect ratios is 0.75 (galaxy at 4:3); nothing clips.
 // Exported for scripts/odyssey-ch6-approach-resolve.mjs, which must read the LIVE values —
 // a re-solve against transcribed (stale) coordinates is how the first run fit the wrong pose.
+//
+// ⚠️ RETIRED AS THE HEROES' SCHEDULE (2026-10-19). Nothing marches any more: each hero hangs at
+// one place in the world (OMEN_SPINE_ANCHOR / PLANET_WORLD_SEAT / GALAXY_WORLD_SEAT, below). The
+// `*A` poses here are only the fallback when the path layout is unknown, and the history above is
+// kept because it records why every number moved.
 export const APPROACH = {
     // Black hole: the destination omen, in TWO phases (owner direction 2026-08-15:
     // "the path goes straight into the black hole — it IS the transition"). Phase 1
@@ -311,11 +316,15 @@ export const SUMMIT_EARTH_REVEAL = Object.freeze({
     starsBeforeDark: 0.5,
 });
 
-const _approachVec = new THREE.Vector3();
 const _omenLock = new THREE.Vector3();
 const _planetRay = new THREE.Vector3();
 const _keyLocal = new THREE.Vector3();
 const _planetLock = new THREE.Vector3();
+const _galaxyFacing = new THREE.Vector3();
+const _spineTangent = new THREE.Vector3();
+const _spineRight = new THREE.Vector3();
+const _spineUp = new THREE.Vector3();
+const SPINE_WORLD_UP = new THREE.Vector3(0, 1, 0);
 
 /**
  * THE GAS GIANT HOLDS ITS PLACE THROUGH THE 5->6 HAND-OFF (owner report 2026-10-02: "seen very
@@ -324,33 +333,91 @@ const _planetLock = new THREE.Vector3();
  * p 0.685-0.72, as the camera pitches up 28 deg with the climb), parking it ON the rail for
  * 0.72-0.755 while it shrank 3.4 -> 1.64, then sliding right again. Across the hand-off the giant
  * is now seated from the CAMERA — at a fixed screen position right of the rail, a fixed distance
- * and a fixed angular size — rising a touch as it fades in, and handed to the authored march over
- * [handoverFrom, handoverTo] (fractions of the Space span past the boundary), where the march
- * already sits within ~0.05 ndc of the seat. Only with a real perspective camera (the live
- * journey); headless callers keep the authored poses.
+ * and a fixed angular size — rising a touch as it fades in, and handed over [handoverFrom,
+ * handoverTo] (fractions of the Space span past the boundary) to its place in the world
+ * (PLANET_WORLD_SEAT), which sits on the seat's own spot there. Only with a real perspective
+ * camera (the live journey); headless callers go straight to the world place.
  */
 export const PLANET_SEAM_LOCK = Object.freeze({
+    // (0.25, -0.09) until 2026-10-19: LOW now (the plan's rule 9, "hang the giant low +
+    // diagonal"), since the black hole hangs at the end of the rail — the giant keeps clear of
+    // the hole's disk band in flight, and of the orb in the close-ups that look up the rail.
     ndcX: 0.25,
-    ndcY: -0.09,
+    ndcY: -0.4,
     // Starts this much lower and rises into the seat as it fades in.
     rise: 0.07,
     distance: 1050,
-    // Scale per world unit of distance: the authored march's own s/d at the hand-over (~0.00195),
-    // so the angular size is continuous through the blend.
-    sizeRatio: 0.00195,
+    // Scale per world unit of distance, so the giant's world radius is the same through the seat,
+    // the hand-over and the world place. x1.35 the old march's s/d (0.00195) since 2026-10-19:
+    // hung low, the giant has the room, and at 3.1 deg it read as a small striped ball beside
+    // the hole (the march used to grow it to 5.9 deg by the seam).
+    sizeRatio: 0.00195 * 1.35,
     handoverFrom: 0.178, // p ~0.775
     handoverTo: 0.435, // p ~0.805
 });
-// Fallback only (no global progress, e.g. a bare chapter-local probe): the chapter ease at
-// which the omen starts gliding onto ch7's lock pose.
-const OMEN_HANDOFF_START = 0.86;
-// THE 6->7 HANDOFF, BY PROGRESS (seamless pass). It used to run on the camera's HEIGHT through
-// the chapter (ease 0.86 -> 1), which the eye only reaches after the boundary: at the 6->7
-// crossfade's first frame (p 0.8487) the omen was ~27 % of the way to Gargantua's pose, so the
-// two black holes sat apart while both were drawn. It now glides across this fraction of the
-// Space span and COMPLETES exactly where ch7 first appears (the boundary minus ch6's seam
-// half-width), so from the crossfade's first frame the two coincide.
-export const OMEN_HANDOFF_SPAN = 0.2;
+
+// ── ONE PLACE IN THE WORLD FOR EVERY HERO (2026-10-19) ───────────────────────────────
+// Owner: "the planets and things and assets moves so much, i want the black hole for example
+// to be locked on the spine path instead of drifting towards it and then lock just before we go
+// into the black hole and chapter 7." Each hero used to MARCH between authored poses on the
+// camera's HEIGHT through the chapter — which also swung with every orb close-up, so the heroes
+// lurched whenever the eye left the rail — and the black hole ran a second glide onto ch7's
+// lock over the last fifth of the chapter. Measured on the real camera it crossed a quarter of
+// the frame and grew 3.9 -> 8.2 deg in the last 1 % of the path. Now each hero hangs at ONE
+// point in the world, written in the SPINE'S OWN FRAME at a progress (along its tangent, up,
+// right — so the placement follows the rail if the path is ever re-authored), and only the
+// camera moves.
+
+/**
+ * THE HOLE ON THE SPINE. On the rail's own line, 871 u down its direction from the 6->7
+ * hand-over (42 u up, 51 u right): exactly where ch7's camera lock puts Gargantua for the path
+ * camera there (solved by replaying the real controller over the real spline). The rail flies at
+ * it from the first frame of the chapter, so it sits at the end of the path wherever the path
+ * turns; it grows only with progress; and in the last few units before the hand-over it settles
+ * onto the live lock — a correction of well under a degree from the path — so chapter 7 picks it
+ * up where it already is.
+ */
+export const OMEN_SPINE_ANCHOR = Object.freeze({
+    along: 871,
+    up: 42,
+    right: 51,
+    // How much smaller than ch7's the shadow's world radius starts, on top of the real closing
+    // distance: 1 / (1 + approachGain) at the boundary -> ch7's at the hand-over (3.0 -> 8.3 deg
+    // on screen), eased at both ends so it neither pops in growing nor stops dead at the lock.
+    approachGain: 1.15,
+});
+
+/**
+ * The gas giant's place once the seam's screen seat lets go: the seat's own spot (ndc (0.25,
+ * -0.4) at 1050 u) for the path camera at `at` (a fraction of the Space span past the
+ * boundary, inside the hand-over window), in the spine's frame there.
+ */
+export const PLANET_WORLD_SEAT = Object.freeze({
+    at: 0.306,
+    along: 890.3,
+    up: -331.6,
+    right: 348.8,
+});
+
+/**
+ * The galaxy: a small far jewel in the upper left of the path camera's frame, opposite the giant,
+ * 1700 u out (the seat ndc (-0.4, 0.4) at `at`; inside a 4:3 frame all chapter), turned once
+ * to face the chapter's mid-point and inclined — no march, and no turning to the eye every frame.
+ */
+export const GALAXY_WORLD_SEAT = Object.freeze({
+    at: 0.48,
+    along: 1521.6,
+    up: 125.5,
+    right: -667,
+    // 100 read as a 16 px speck at 1600x850; the hole still owns the frame at 2.2 deg.
+    scale: 130,
+});
+
+// THE 6->7 LOCK, BY PROGRESS (seamless pass). It completes exactly where ch7 first appears (the
+// boundary minus ch6's seam half-width), so from the crossfade's first frame the two black holes
+// coincide. Across this fraction of the Space span (~10 u of path, clear of level 46's orb) the
+// omen settles from its place on the spine onto the live lock.
+export const OMEN_HANDOFF_SPAN = 0.035;
 
 /**
  * Global-progress schedule of the omen -> Gargantua handoff.
@@ -363,6 +430,85 @@ export function resolveOmenHandoffWindow(chapterPositions) {
     const seamWidth = getChapterTransitionForChapter(6)?.seamWidth ?? 0.0222;
     const end = ch7Start - seamWidth;
     return { start: end - (ch7Start - ch6Start) * OMEN_HANDOFF_SPAN, end };
+}
+
+/**
+ * A point written in the spine's own frame at `progress`: `along` its tangent, `up` (world up
+ * made square to the tangent) and `right`.
+ * @returns {THREE.Vector3} `out`
+ */
+export function resolveSpineFramePoint(progress, seat, out) {
+    const curve = getOdysseyPathCurve();
+    const at = THREE.MathUtils.clamp(progress, 0, 1);
+    curve.getPointAt(at, out);
+    curve.getTangentAt(at, _spineTangent).normalize();
+    _spineRight.crossVectors(_spineTangent, SPINE_WORLD_UP);
+    if (_spineRight.lengthSq() < 1e-8) _spineRight.set(1, 0, 0);
+    _spineRight.normalize();
+    _spineUp.crossVectors(_spineRight, _spineTangent).normalize();
+    return out.addScaledVector(_spineTangent, seat.along)
+        .addScaledVector(_spineUp, seat.up)
+        .addScaledVector(_spineRight, seat.right);
+}
+
+// The heroes' places only change with the layout (the curve object is rebuilt when it does).
+const _heroPlaces = {
+    curve: null,
+    key: '',
+    revision: 0,
+    omen: new THREE.Vector3(),
+    planet: new THREE.Vector3(),
+    galaxy: new THREE.Vector3(),
+    // Where the galaxy turns to face, once: the spine at the chapter's middle.
+    galaxyFaces: new THREE.Vector3(),
+};
+
+/**
+ * World positions of the heroes for the active layout (cached per curve + chapter layout).
+ * @returns {{omen: THREE.Vector3, planet: THREE.Vector3, galaxy: THREE.Vector3,
+ *   galaxyFaces: THREE.Vector3, revision: number}|null} null when the layout is unknown
+ */
+export function resolveCh6HeroPlaces(chapterPositions) {
+    const handoff = resolveOmenHandoffWindow(chapterPositions);
+    if (!handoff) return null;
+    const ch6Start = chapterPositions[5];
+    const span = chapterPositions[6] - ch6Start;
+    const curve = getOdysseyPathCurve();
+    const key = `${handoff.end}|${ch6Start}|${span}`;
+    if (_heroPlaces.curve !== curve || _heroPlaces.key !== key) {
+        resolveSpineFramePoint(handoff.end, OMEN_SPINE_ANCHOR, _heroPlaces.omen);
+        resolveSpineFramePoint(ch6Start + span * PLANET_WORLD_SEAT.at, PLANET_WORLD_SEAT, _heroPlaces.planet);
+        resolveSpineFramePoint(ch6Start + span * GALAXY_WORLD_SEAT.at, GALAXY_WORLD_SEAT, _heroPlaces.galaxy);
+        curve.getPointAt(THREE.MathUtils.clamp(ch6Start + span * 0.5, 0, 1), _heroPlaces.galaxyFaces);
+        _heroPlaces.curve = curve;
+        _heroPlaces.key = key;
+        _heroPlaces.revision += 1;
+    }
+    return _heroPlaces;
+}
+
+/**
+ * The omen's group scale at `toLock` (0 = the boundary, 1 = the hand-over): ch7's shadow radius
+ * at the lock, 1 / (1 + approachGain) of it at the boundary, smoothstepped between.
+ */
+/**
+ * THE OMEN BENDS THE SKY (2026-10-19). The black hole used to be painted on an unbent sky until
+ * the 6->7 seam switched chapter 7's lens on. It now publishes a lens target from its place on the
+ * rail (lensWorldPos, read by the board): the stars and the Milky Way are pulled round it more as
+ * it nears — strength from `from` to `to` across the chapter's progress to the lock, where it
+ * holds while chapter 7's lens rises past it across the seam — over a shorter `reach` than
+ * chapter 7's, so the orbs in the middle of the frame are left alone.
+ */
+export const OMEN_LENS = Object.freeze({
+    from: 0.15,
+    // Just under chapter 7's at its first frame (~0.49 with the music at rest), which then takes over.
+    to: 0.45,
+    reach: 0.6,
+});
+
+export function resolveOmenSpineScale(toLock) {
+    const lockScale = GARGANTUA_LOCK.shadowRadius / OMEN_SHADOW_RADIUS;
+    return lockScale / (1 + OMEN_SPINE_ANCHOR.approachGain * (1 - smoothstep01(toLock)));
 }
 
 // B3 (Overdraw) — hard caps on the nebula billboard tiers. The wispy nebula is a
@@ -648,6 +794,9 @@ export function createCosmicExpanseEnvironment(options = {}) {
         uVoidSkyOpacity: uniform(0),
     };
     group.userData.uniforms = uniforms;
+    // The omen's lens target (see OMEN_LENS): world centre + lensRadius / lensStrength / lensReach.
+    group.userData.lensWorldPos = new THREE.Vector3();
+    group.userData.lensWorldPos.lensStrength = 0;
 
     // Ambient fields (nebula / dust / streaks / asteroids) hang off this so their
     // authored -Z depth axis actually runs down the chapter corridor. Heroes are NOT
@@ -1883,10 +2032,11 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             : 0.24 + audioEnergy * 0.64 + (directorState.beatPulse || 0) * 0.08;
     }
 
-    // ── B3b APPROACH OMEN ────────────────────────────────────────────────────────
-    // Chapter-local progress (0 entry → 1 at the 6→7 seam). Prefer the camera's ascent
-    // through the chapter y-range (mirrors black-hole-transcendence), fall back to the
-    // global cameraProgress, then hold at 0 (smoke tests / no camera).
+    // ── B3b APPROACH ─────────────────────────────────────────────────────────────
+    // Chapter-local progress (0 entry → 1 at the 6→7 seam) from the camera's ascent through the
+    // chapter y-range, falling back to the global cameraProgress, then 0 (smoke tests / no
+    // camera). It still stages the entry reveals (stars, nebula, clutter) — the HEROES no longer
+    // ride it (see resolveCh6HeroPlaces): it swung with every orb close-up.
     let approach = 0;
     const { yStart, yEnd } = group.userData;
     if (camera?.position && Number.isFinite(yStart) && Number.isFinite(yEnd) && yEnd !== yStart) {
@@ -1894,7 +2044,6 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     } else if (Number.isFinite(cameraProgress)) {
         approach = THREE.MathUtils.clamp(cameraProgress, 0, 1);
     }
-    const ease = THREE.MathUtils.smoothstep(approach, 0, 1);
     if (uniforms?.uApproach) {
         uniforms.uApproach.value = approach;
     }
@@ -1964,54 +2113,50 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     const earthReveal = Math.max(entryState.heroReveal, staging.earthReveal);
 
     const { blackHole, debris } = group.userData;
+    // THE HEROES' PLACES (2026-10-19): one point in the world each, for the active layout.
+    const heroPlaces = resolveCh6HeroPlaces(chapterPositions);
+    const handoffWindow = resolveOmenHandoffWindow(chapterPositions);
+    // Progress from the boundary to the 6->7 lock — by PROGRESS with a camera (global), the
+    // headless caller's chapter-local value otherwise. Never the camera's height.
+    const toLock = (camera && Number.isFinite(cameraProgress) && handoffWindow)
+        ? THREE.MathUtils.clamp(
+            (cameraProgress - chapterPositions[5]) / Math.max(1e-6, handoffWindow.end - chapterPositions[5]),
+            0,
+            1,
+        )
+        : beatT;
+    // THE OMEN ARRIVES BY PROGRESS too, over the chapter's first fifth (it rode `approach`, the
+    // camera's height, so an orb close-up could dim it), from the floor it is born at.
+    const destinationReveal = COSMIC_ENTRY_CONTINUITY_SETTINGS.destinationFloor
+        + (1 - COSMIC_ENTRY_CONTINUITY_SETTINGS.destinationFloor) * rampBetween(beatT, 0.02, 0.22);
     if (blackHole) {
-        // Ever-present DESTINATION OMEN, two phases: loom in the upper-left third
-        // (the north star), then DIVE onto the exit flight axis — the rail flies
-        // straight into the horizon and the 6→7 threshold takes over.
-        const { bhDiveStart } = APPROACH;
-        if (ease < bhDiveStart) {
-            const t = ease / bhDiveStart;
-            blackHole.scale.setScalar(THREE.MathUtils.lerp(APPROACH.bhScaleA, APPROACH.bhScaleB, t));
-            blackHole.position.set(
-                THREE.MathUtils.lerp(APPROACH.bhXa, APPROACH.bhXb, t),
-                THREE.MathUtils.lerp(APPROACH.bhYa, APPROACH.bhYb, t),
-                THREE.MathUtils.lerp(APPROACH.bhZa, APPROACH.bhZb, t),
-            );
+        // THE HOLE ON THE SPINE: its place never moves; it grows only with progress (see
+        // OMEN_SPINE_ANCHOR). Without a resolved layout it keeps the old entry pose.
+        blackHole.scale.setScalar(resolveOmenSpineScale(toLock));
+        if (heroPlaces) {
+            blackHole.position.copy(heroPlaces.omen).sub(group.position);
         } else {
-            const t = THREE.MathUtils.smoothstep((ease - bhDiveStart) / (1 - bhDiveStart), 0, 1);
-            blackHole.scale.setScalar(THREE.MathUtils.lerp(APPROACH.bhScaleB, APPROACH.bhScaleC, t));
-            blackHole.position.set(
-                THREE.MathUtils.lerp(APPROACH.bhXb, APPROACH.bhXc, t),
-                THREE.MathUtils.lerp(APPROACH.bhYb, APPROACH.bhYc, t),
-                THREE.MathUtils.lerp(APPROACH.bhZb, APPROACH.bhZc, t),
-            );
+            blackHole.position.set(APPROACH.bhXa, APPROACH.bhYa, APPROACH.bhZa);
         }
-        // THE 6->7 HANDOFF (masterpiece pass): over the last stretch of the dive the omen
-        // glides onto ch7's camera lock — the same spot, the same size (shadow 132 u) — so as
-        // the chapters cross-fade the two black holes coincide and read as one. Needs a REAL
-        // camera (a view direction); a bare position probe keeps the authored dive pose.
-        let handoff = 0;
+        // THE LOCK, just before chapter 7: across the hand-over window's few units the omen
+        // settles from its place onto ch7's live camera lock (on the path camera the two are a
+        // fraction of a degree apart — they were solved to coincide). Needs a REAL camera (a view
+        // direction); its size is already ch7's there.
         let omenShadowLive = true;
-        if (camera?.isCamera) {
-            const handoffWindow = Number.isFinite(cameraProgress) ? resolveOmenHandoffWindow(chapterPositions) : null;
+        const lockCamera = camera?.userData?.heroCamera ?? camera;
+        if (camera?.isCamera && handoffWindow && Number.isFinite(cameraProgress)) {
             // Strictly past the window end is where ch7 (and its shadow) is on screen.
-            if (handoffWindow) omenShadowLive = cameraProgress <= handoffWindow.end;
-            handoff = handoffWindow
-                ? THREE.MathUtils.smoothstep(cameraProgress, handoffWindow.start, handoffWindow.end)
-                : THREE.MathUtils.smoothstep(ease, OMEN_HANDOFF_START, 1);
-            if (handoff > 0) {
-                resolveGargantuaLockPosition(camera, _omenLock).sub(group.position);
-                blackHole.position.lerp(_omenLock, handoff);
-                blackHole.scale.setScalar(THREE.MathUtils.lerp(
-                    blackHole.scale.x,
-                    GARGANTUA_LOCK.shadowRadius / OMEN_SHADOW_RADIUS,
-                    handoff,
-                ));
+            omenShadowLive = cameraProgress <= handoffWindow.end;
+            const lock = THREE.MathUtils.smoothstep(cameraProgress, handoffWindow.start, handoffWindow.end);
+            if (lock > 0) {
+                // The hero camera while looking around (see black-hole-transcendence.js).
+                resolveGargantuaLockPosition(lockCamera, _omenLock).sub(group.position);
+                blackHole.position.lerp(_omenLock, lock);
             }
         }
         // Square to the eye (ch7's Gargantua pose): the shadow faces the camera and the disk
         // band reads across the frame wherever the corridor turns.
-        orientBlackHoleOmen(blackHole, camera);
+        orientBlackHoleOmen(blackHole, lockCamera);
         // EXACTLY ONE OPAQUE SHADOW. The omen's shadow covers the hole until the handoff is
         // complete — the frame ch7 appears, with Gargantua's identical shadow (same lock, same
         // radius) taking over there (black-hole-transcendence.js). Opacity is re-asserted
@@ -2021,7 +2166,22 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         if (shadow) {
             shadow.visible = omenShadowLive;
             if (shadow.material) shadow.material.opacity = 1;
+            // THE SHADOW OPENS WITH THE OMEN'S ARRIVAL. An opaque occluder cannot fade, so it used
+            // to appear whole the frame the chapter let it draw — a black disc on the aurora ahead
+            // of its own light. It grows out of a point as the light around it fades in.
+            shadow.scale.setScalar(Math.max(1e-3, destinationReveal * spaceReveal));
         }
+    }
+    const lens = group.userData.lensWorldPos;
+    if (lens) {
+        // The group is translated, never rotated: world = local + group position.
+        if (blackHole) lens.copy(blackHole.position).add(group.position);
+        lens.lensRadius = blackHole ? OMEN_SHADOW_RADIUS * blackHole.scale.x : 0;
+        lens.lensStrength = blackHole
+            ? THREE.MathUtils.lerp(OMEN_LENS.from, OMEN_LENS.to, smoothstep01(toLock)) * destinationReveal * spaceReveal
+            : 0;
+        lens.lensReach = OMEN_LENS.reach;
+        lens.portal = 0;
     }
     if (debris && blackHole) {
         // Keep the infall seated on the hole as it looms — and IN its disk plane.
@@ -2035,21 +2195,16 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
 
     const { heroPlanet } = group.userData;
     if (heroPlanet) {
-        // March the gas giant toward mid-distance left-third + grow it (radius 28→40).
-        heroPlanet.position.set(
-            THREE.MathUtils.lerp(APPROACH.planetA.x, APPROACH.planetB.x, ease),
-            THREE.MathUtils.lerp(APPROACH.planetA.y, APPROACH.planetB.y, ease),
-            THREE.MathUtils.lerp(APPROACH.planetA.z, APPROACH.planetB.z, ease),
-        );
-        // THE SUMMIT KEYFRAME (Wave 1C). Pre-boundary the giant sits at planetSummit —
-        // the only pose that stays framed across the whole ignite window once the flyby
-        // banks the camera — then travels to planetA across [summitEnd, ch6Start] so it
-        // arrives exactly on the authored entry composition at the boundary. Driven by
-        // GLOBAL progress like the reveal itself; `ease` is still 0 here, so the march
-        // above contributes planetA and this lerp owns the approach.
-        let planetScale = THREE.MathUtils.lerp(APPROACH.planetA.s, APPROACH.planetB.s, ease);
-        // (The summit keyframe travel that used to live here is RETIRED — see PLANET_SEAM_LOCK.)
+        // Its place in the world (PLANET_WORLD_SEAT) — the seam's screen seat below hands over
+        // to it. Without a resolved layout it keeps the old entry pose.
+        if (heroPlaces) {
+            heroPlanet.position.copy(heroPlaces.planet).sub(group.position);
+        } else {
+            heroPlanet.position.set(APPROACH.planetA.x, APPROACH.planetA.y, APPROACH.planetA.z);
+        }
+        // ONE world radius throughout, the seat's: the giant grows only as the camera closes on it.
         const L = PLANET_SEAM_LOCK;
+        const planetScale = L.distance * L.sizeRatio;
         const ch6 = chapterPositions?.[5];
         if (camera?.isPerspectiveCamera && Number.isFinite(cameraProgress) && Number.isFinite(ch6)
             && Number.isFinite(chapterPositions?.[4]) && cameraProgress >= chapterPositions[4]) {
@@ -2060,22 +2215,27 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             );
             if (lockWeight > 0) {
                 const riseIn = 1 - staging.earthReveal;
+                // Seated on the RAIL camera (OdysseyBoardController._syncRailCamera) — the path's
+                // view at this progress — so an orb close-up, or looking around, leaves the giant
+                // where the rail's view has it instead of dragging it into its own frame.
+                const seatCamera = camera.userData?.railCamera ?? camera;
                 _planetRay.set(L.ndcX, L.ndcY - L.rise * riseIn * riseIn, 0.5)
-                    .unproject(camera)
-                    .sub(camera.position)
+                    .unproject(seatCamera)
+                    .sub(seatCamera.position)
                     .normalize();
-                _planetLock.copy(camera.position).addScaledVector(_planetRay, L.distance);
+                _planetLock.copy(seatCamera.position).addScaledVector(_planetRay, L.distance);
                 if (heroPlanet.parent) {
                     heroPlanet.parent.updateWorldMatrix(true, false);
                     heroPlanet.parent.worldToLocal(_planetLock);
                 }
                 heroPlanet.position.lerp(_planetLock, lockWeight);
-                planetScale = THREE.MathUtils.lerp(planetScale, L.distance * L.sizeRatio, lockWeight);
             }
         }
         heroPlanet.scale.setScalar(planetScale);
-        heroPlanet.rotation.y += delta * 0.025;
-        heroPlanet.rotation.z = Math.sin(time * 0.08) * 0.025;
+        // A giant turns SLOWLY. This spins the whole group, so at 0.025 rad/s (plus a roll
+        // wobble) the tilted rings swung ~45 deg across a 30 s crossing; Stellar Drift's giant
+        // turns at ~0.0055 rad/s. The belts' own flow (in the surface shader) carries the life.
+        heroPlanet.rotation.y += delta * 0.003;
         // THE AURORA DARKNESS GATE (owner report 2026-08-16). The crown's own night
         // mask only knows the PLANET's terminator; during the ascent the planet's
         // night side faces a bright daylight sky and the curtains blazed at full
@@ -2086,55 +2246,37 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         if (auroraGate) auroraGate.value = spaceReveal;
     }
 
-    const { nebulaVolume, nebulaFar } = group.userData;
-    if (nebulaVolume) {
-        nebulaVolume.rotation.y += delta * 0.006 * (nebulaVolume.userData.driftScale ?? 1);
-    }
-    if (nebulaFar) {
-        // Far tier drifts MUCH slower for parallax depth.
-        nebulaFar.rotation.y += delta * 0.006 * (nebulaFar.userData.driftScale ?? 0.25);
-    }
-
-    // DENSE mote field — the per-particle drift runs in-shader off uTime; a gentle group
-    // yaw on top (near faster than far) adds bulk parallax as the camera dollies. No
-    // per-frame allocation — just two scalar rotation ticks.
-    const { dustNear, dustFar } = group.userData;
-    if (dustNear) {
-        dustNear.rotation.y += delta * 0.010 * (dustNear.userData.driftScale ?? 1);
-    }
-    if (dustFar) {
-        dustFar.rotation.y += delta * 0.010 * (dustFar.userData.driftScale ?? 0.38);
-    }
-
+    // NO WHOLE-FIELD TURNS (2026-10-19). The nebula sprite tiers and both dust tiers used to yaw
+    // about the corridor's origin every frame (0.006 / 0.010 rad/s), which at 500-1300 u slid the
+    // whole far field sideways at 5-13 u/s, in the same direction, all chapter. They now hold
+    // still; the motes' own small drift (in their shader) and the camera's travel are the motion.
     const { galaxy } = group.userData;
     if (galaxy) {
-        // March the galaxy inward toward frame so it stays a crisp focal point.
-        _approachVec.set(
-            THREE.MathUtils.lerp(APPROACH.galaxyA.x, APPROACH.galaxyB.x, ease),
-            THREE.MathUtils.lerp(APPROACH.galaxyA.y, APPROACH.galaxyB.y, ease),
-            THREE.MathUtils.lerp(APPROACH.galaxyA.z, APPROACH.galaxyB.z, ease),
-        );
-        galaxy.position.copy(_approachVec);
-        galaxy.scale.setScalar(THREE.MathUtils.lerp(APPROACH.galaxyA.s, APPROACH.galaxyB.s, ease));
-        // FACE THE EYE, THEN INCLINE (masterpiece pass): the quad was a fixed +Z plane that
-        // only rolled, seen nearly edge-on from the real camera. Turned to the eye every frame
-        // (the group is translated, never rotated, so lookAt's parent frame is world-aligned)
-        // and tilted by a fixed ~60°, the spiral reads as a real inclined disc from anywhere.
-        // The arm phase itself turns in the shader (bounded, ~0.01 rad/s).
-        if (camera?.position) {
-            galaxy.lookAt(camera.position);
-            galaxy.rotateX(GALAXY_INCLINATION);
-            galaxy.rotateZ(0.6);
+        // ONE place (GALAXY_WORLD_SEAT), turned ONCE to face the chapter's mid-point and inclined
+        // ~60 deg. It used to march between two poses on the camera's height and turn to the eye
+        // every frame, so it slid and swivelled; from the rail's 300 u the view of it changes by
+        // a few degrees, which a far inclined disc does not need corrected.
+        if (heroPlaces) {
+            galaxy.position.copy(heroPlaces.galaxy).sub(group.position);
+            if (galaxy.userData.facedRevision !== heroPlaces.revision) {
+                _galaxyFacing.copy(heroPlaces.galaxyFaces);
+                galaxy.lookAt(_galaxyFacing);
+                galaxy.rotateX(GALAXY_INCLINATION);
+                galaxy.rotateZ(0.6);
+                galaxy.userData.facedRevision = heroPlaces.revision;
+            }
+        } else {
+            galaxy.position.set(APPROACH.galaxyA.x, APPROACH.galaxyA.y, APPROACH.galaxyA.z);
         }
+        galaxy.scale.setScalar(GALAXY_WORLD_SEAT.scale);
     }
 
     const { diskLight } = group.userData;
     if (diskLight) {
-        const lightReveal = Math.max(entryState.destinationReveal, entryState.nebulaReveal * 0.75)
+        const lightReveal = Math.max(destinationReveal, entryState.nebulaReveal * 0.75)
             * spaceReveal;
-        diskLight.intensity = (
-            1.0 + Math.sin(time * 0.7) * 0.25 + (uniforms?.uEnergy?.value ?? 0) * 0.4
-        ) * lightReveal;
+        // No breath of its own (it pulsed on a 9 s sine): it follows the music's energy only.
+        diskLight.intensity = (1.0 + (uniforms?.uEnergy?.value ?? 0) * 0.4) * lightReveal;
     }
 
     // Asteroid garland: slow per-rock tumble (shared dummy — zero allocation). Twelve
@@ -2269,7 +2411,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         ));
         entryTargets.destination.forEach((object) => setOpacityScale(
             object,
-            entryState.destinationReveal * spaceReveal,
+            destinationReveal * spaceReveal,
             chapterOpacity,
         ));
         // The earth is the ONE element allowed through before the boundary.
