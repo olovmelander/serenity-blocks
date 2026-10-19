@@ -366,7 +366,7 @@ export class OdysseyMode extends BaseGameMode {
         // Deactivated while the board built (GPU loss, an invite, a mode switch): wire nothing.
         if (!this.isActive) return;
 
-        // Retry orb and Back to map arrive from the pause sheet once it has closed and resumed play.
+        // Retry orb, Back to map and Chapters arrive from the pause sheet once it has closed.
         this._pauseActionUnsubscribe?.();
         this._pauseActionUnsubscribe = eventBus.on(EVENTS.ODYSSEY_PAUSE_ACTION, (payload) => {
             this._handlePauseAction(payload);
@@ -2671,7 +2671,7 @@ export class OdysseyMode extends BaseGameMode {
             button.id = 'odyssey-navigator-btn';
             button.className = 'odyssey-navigator-icon';
             button.setAttribute('role', 'button');
-            button.setAttribute('aria-label', 'Open the map');
+            button.setAttribute('aria-label', 'Chapters');
             button.setAttribute('tabindex', '0');
             button.innerHTML = `
                 <svg class="odyssey-navigator-icon-svg" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -2722,6 +2722,15 @@ export class OdysseyMode extends BaseGameMode {
         if (!show) {
             button.classList.remove('active');
         }
+    }
+
+    /**
+     * Settled on the map with nothing over it: no launch under way, no chapter's arrival or
+     * interlude. Settings offers the chapter list only then (settings.js, odyssey-pause-actions.js).
+     */
+    isOnOdysseyMap() {
+        return Boolean(this.isActive && this.isInBoardView && !this.isEnteringLevel
+            && !this._chapterFlowActive && !isOdysseyWorldInterlude(this));
     }
 
     openOdysseyNavigator() {
@@ -3903,7 +3912,7 @@ export class OdysseyMode extends BaseGameMode {
         return describeOdysseyCharmDraft(this, draft);
     }
 
-    /** Retry orb / Back to map chosen on the pause sheet (ui/odyssey/odyssey-pause-actions.js). */
+    /** Retry orb / Back to map / Chapters chosen on the pause sheet (ui/odyssey/odyssey-pause-actions.js). */
     _handlePauseAction(payload) {
         return handleOdysseyPauseAction(this, payload);
     }
