@@ -70,6 +70,7 @@ import {
     cropColour, gustAt, plotOf, pulsesAt, trailsAt,
 } from './grainfields-land.js';
 import { EYE, PLACES } from './grainfields-core.js';
+import { trampleAt } from './grainfields-trample.js';
 
 const STEM = 0;
 const EAR = 1;
@@ -212,12 +213,15 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         const gust = gustAt(u, t.noise, iA.xz, true);
         const trail = trailsAt(u, iA.xz);
         const pulse = pulsesAt(u, iA.xz);
+        // Where the herd has gone through: parted, and laid over in its wake.
+        const tramp = t.trample ? trampleAt(t, iA.xz) : { push: vec2(0.0), lay: float(0.0) };
         const flutter = sin(u.time.mul(3.1).add(h3.mul(40.0)).add(iA.x.mul(0.6))).mul(0.06);
         const bendWind = clamp(float(0.1).add(gust.mul(0.42)).add(flutter), 0.0, 1.3);
         const stray = h3.sub(0.5).mul(0.8);
         const windD = normalize(vec2(u.windDir.x.add(stray), u.windDir.y.sub(stray.mul(0.6))));
         // A pulse pushes the stalks its own way (out from a hard drop, round a T-spin's whirl).
-        const pushed = windD.mul(bendWind).add(pulse.push.mul(1.7)).add(trail.push.mul(1.3)).toVar();
+        const pushed = windD.mul(bendWind).add(pulse.push.mul(1.7)).add(trail.push.mul(1.3)).add(tramp.push.mul(1.5))
+            .toVar();
         const bend = clamp(length(pushed), 0.0, 1.35).toVar();
         const D = pushed.div(max(length(pushed), 1e-4)).toVar();
         // The stem: up and over with the wind (a quadratic bend).
@@ -271,7 +275,7 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         tone.assign(mix(tone, crop.mul(vec3(0.74, 1.0, 0.62)), smoothstep(0.62, 0.82, patch.g).mul(0.6)));
         tone.mulAssign(mix(float(0.72), float(1.12), h4));
         // Laid over by a gust, the stand shows its paler sides.
-        const laid = clamp(gust.add(trail.lay).add(pulse.lay), 0.0, 1.2);
+        const laid = clamp(gust.add(trail.lay).add(pulse.lay).add(tramp.lay.mul(0.6)), 0.0, 1.2);
         vTone.assign(vec4(tone, laid.mul(0.5).add(1.0)));
         const shade = mix(float(0.16), float(1.0), inStand);
         // A clear's trail glints with its rows' colours; a gust's sheen: the laid stand's backs

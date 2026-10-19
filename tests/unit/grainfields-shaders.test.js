@@ -253,6 +253,9 @@ describe.each(TIERS)('grainfields shaders at %s', (quality) => {
                 targets.push([object.name || material.name || object.type, object, material]);
             });
         });
+        // The deck's march draws into its own target, outside the scene.
+        const march = world.parts.sky?.march;
+        if (march) targets.push(['GrainfieldsCloudMarch', new THREE.QuadMesh(march.material), march.material]);
         for (const [name, object, material] of targets) {
             BACKENDS.forEach(([label, Builder]) => {
                 const [out, heard] = listening(() => build(Builder, object, material));
