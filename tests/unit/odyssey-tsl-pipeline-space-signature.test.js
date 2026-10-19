@@ -6,7 +6,8 @@
  *     BloomNode's uniforms — never the bound graph;
  *   - the ch7 lens centre maps NDC to viewportUV with y DOWN (WebGPU's origin is top-left;
  *     the old y-up mapping lensed the hero's mirror image and drew a phantom black hole);
- *   - the lens radius is the PROJECTED shadow radius when the hero publishes one.
+ *   - the lens radius is the PROJECTED shadow radius when the hero publishes one;
+ *   - chapter 6's omen lenses only while it publishes a strength (2026-10-19), over its reach.
  */
 import { describe, it, expect } from 'vitest';
 import * as THREE from 'three/webgpu';
@@ -76,5 +77,35 @@ describe('OdysseyTslPipeline space signature', () => {
         const d = hero.length();
         const expected = Math.tan(Math.asin(132 / d)) / (2 * Math.tan(THREE.MathUtils.degToRad(30)));
         expect(p.uLensRadius.value).toBeCloseTo(expected, 3);
+    });
+
+    it("lenses chapter 6 only while its omen publishes a strength, over the omen's own reach", () => {
+        const p = make();
+        p.setSize(1600, 900);
+        const { camera } = p;
+        camera.position.set(0, 0, 0);
+        camera.lookAt(0, 0, -1);
+        camera.updateMatrixWorld(true);
+        settle(p, 6);
+        const lean = p.postProcessing.outputNode;
+        expect(p._activeVariantKey.startsWith('0|')).toBe(true);
+        const omen = new THREE.Vector3(0, 40, -1100);
+        omen.lensRadius = 60;
+        omen.lensStrength = 0.3;
+        omen.lensReach = 0.6;
+        const state = {
+            activeChapter: 6, sourceChapter: 6, targetChapter: 6, seamProgress: 0, post: { bloom: 1 },
+        };
+        for (let i = 0; i < 240; i += 1) {
+            p.setLensTarget(omen);
+            p.update(1 / 60, state);
+        }
+        expect(p._activeVariantKey.startsWith('1|')).toBe(true);
+        expect(p.uLensStrength.value).toBeCloseTo(0.3, 2);
+        expect(p.uLensReach.value).toBeCloseTo(0.6, 2);
+        // Without a published strength (the omen not yet arrived) chapter 6 is the lean graph.
+        settle(p, 6);
+        expect(p.postProcessing.outputNode).toBe(lean);
+        expect(p.uLensReach.value).toBeCloseTo(1, 2);
     });
 });
