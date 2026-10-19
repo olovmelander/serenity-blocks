@@ -17,12 +17,13 @@ import {
 } from '../../src/themes/kaleidosonic/kaleidosonic-world.js';
 import {
     DIVE_LENGTH, EYE, FOLD_AT, MOODS, MOOD_COLOURS, NOTES, PIECE_CODE, PIECE_COLORS, PIECE_ORDER, REFOLDS, TAU, TEMPLE,
-    TIMING, hexToLinear, marchTemple, moodMix, templeDistance,
+    TIMING, foldSplit, hexToLinear, marchTemple, moodMix, templeDistance,
 } from '../../src/themes/kaleidosonic/kaleidosonic-core.js';
 import {
     HARMONICS, HARMONIC_ROWS, STRIKES, STRIKE_ROWS,
 } from '../../src/themes/kaleidosonic/kaleidosonic-tsl.js';
 import { tierFor } from '../../src/themes/kaleidosonic/kaleidosonic-quality.js';
+import { SCOUT_TILE } from '../../src/themes/kaleidosonic/kaleidosonic-temple.js';
 import { cardUnion, fallbackLayout, outsideKeepOut } from '../../src/themes/kaleidosonic/kaleidosonic-composition.js';
 import { applyCameraBreath } from '../../src/themes/shared/camera-breath.js';
 
@@ -236,6 +237,54 @@ describe('KaleidosonicWorld build', () => {
             world.showOnlyParts(KALEIDOSONIC_PARTS);
             expect(world.parts.temple.mesh.visible).toBe(true);
         });
+    });
+
+    it('lays the scout\'s blocks over the buffer, and draws it before the frame only while the temple shows', () => {
+        withWorld(({ world }) => {
+            const { scout } = world.parts.temple;
+            for (const [width, height] of [[1920, 1080], [637, 359], [390, 844]]) {
+                world.setViewport(width, height, width / height);
+                const blocks = [Math.ceil(width / SCOUT_TILE), Math.ceil(height / SCOUT_TILE)];
+                expect(world.u.scout.value.toArray()).toEqual([width, height, ...blocks]);
+                expect([scout.target.width, scout.target.height]).toEqual(blocks);
+            }
+            const renderer = {
+                target: null,
+                render: vi.fn(),
+                getRenderTarget() { return this.target; },
+                setRenderTarget(target) { this.target = target; },
+            };
+            const order = [];
+            renderer.render.mockImplementation((object) => order.push([object, renderer.target]));
+            world.prerender(renderer);
+            expect(order).toEqual([[scout.quad, scout.target]]);
+            expect(renderer.target).toBeNull();
+            world.showOnlyParts([]);
+            world.prerender(renderer);
+            expect(order).toHaveLength(1);
+        });
+        // The A/B: a world without the scout marches from the eye and draws no pass of its own.
+        const scene = new THREE.Scene();
+        const world = new KaleidosonicWorld({ scene, scout: false }).build();
+        expect(world.parts.temple.scout).toBeNull();
+        const render = vi.fn();
+        world.prerender({ render, getRenderTarget: () => null, setRenderTarget: vi.fn() });
+        expect(render).not.toHaveBeenCalled();
+        world.dispose();
+    });
+
+    it('writes the folds as the shader runs them: whole folds and the next one\'s weight', () => {
+        withWorld((w) => {
+            const { world } = w;
+            begin(w);
+            world.onCombo(9);
+            for (let k = 1; k <= 40; k++) {
+                stepTo(w, START + k / 8);
+                const [s, folds, whole, weight] = world.u.shape.value.toArray();
+                expect(s).toBe(world.sSpring.x);
+                expect([whole, weight]).toEqual(foldSplit(folds));
+            }
+        }, 'Extreme');
     });
 
     it('hands the post one object every frame, with finite values and the mood\'s own flash', () => {

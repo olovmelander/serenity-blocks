@@ -184,6 +184,10 @@ entries of its own for `b2b`, `peak` and `piece`. Singing Bowl read nothing from
 reader was retired. Use `effect=kaleidosonic&t=10&mood=<place>` for a deterministic playground
 capture; the only part name is `temple`.
 
+Kaleidosonic's performance pass (2026-10-19) adds `kaleidosonicScout=0` to the theme and
+`scout=0` to its playground effect: every pixel marches from the eye instead of from the scout
+pass's start (the A/B for that pass; any other value, or none, keeps it on).
+
 The opening and menu world (2026-10-15), First Light, replaces the intro's classic renderer and
 its compute simulations. It adds the `intro-world` playground effect with twelve rows of its
 own: `phase` (`boot`, `open`, `title` or `menu`), `opening` (seconds into the opening),

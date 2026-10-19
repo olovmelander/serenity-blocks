@@ -12,10 +12,10 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-    DEG, DIVE_LENGTH, EYE, FOLD_AT, MOODS, MOOD_COLOURS, MOOD_COUNT, MoodWheel, NOTES, PIECE_CODE, PIECE_COLORS,
-    PIECE_ORDER, REFOLDS, RIG, SHAPES, SHAPE_KEYS, TAU, TEMPLE, TIMING, approach, cellsFromMatrix, chroma, clamp,
-    clamp01, clampInt, foldLens, hexToLinear, hueOf, lerp, marchTemple, moodMix, moodPlace, mulberry32, pieceCode,
-    rigFor, smooth, smoother, springStep, templeDistance, tranceFor,
+    DEG, DIVE_LENGTH, EYE, FOLD_AT, FOLD_SNAP, MOODS, MOOD_COLOURS, MOOD_COUNT, MoodWheel, NOTES, PIECE_CODE,
+    PIECE_COLORS, PIECE_ORDER, REFOLDS, RIG, SHAPES, SHAPE_KEYS, TAU, TEMPLE, TIMING, approach, cellsFromMatrix, chroma,
+    clamp, clamp01, clampInt, foldLens, foldSplit, hexToLinear, hueOf, lerp, marchTemple, moodMix, moodPlace,
+    mulberry32, pieceCode, rigFor, smooth, smoother, springStep, templeDistance, tranceFor,
 } from '../../src/themes/kaleidosonic/kaleidosonic-core.js';
 import { KALEIDOSONIC_TETROMINOS } from '../../src/themes/kaleidosonic/kaleidosonic-tetrominos.js';
 
@@ -237,6 +237,27 @@ describe('Kaleidosonic temple: the field and its march', () => {
             // Each step is a new hall: neighbours (round the loop) are never the same shape.
             expect(REFOLDS[(i + 1) % REFOLDS.length], `refold ${i} → ${i + 1}`).not.toBe(s);
         });
+    });
+
+    it('splits a fold count into whole folds and the next one\'s weight, snapping near-whole counts', () => {
+        expect(foldSplit(7)).toEqual([7, 0]);
+        expect(foldSplit(7.25)).toEqual([7, 0.25]);
+        expect(foldSplit(8.5)).toEqual([8, 0.5]);
+        // The trance's exponential release leaves a hair of a fold: it costs no extra fold.
+        expect(foldSplit(7 + 1e-5)).toEqual([7, 0]);
+        expect(foldSplit(7 + FOLD_SNAP / 2)).toEqual([7, 0]);
+        // Within a hair of the next whole count it IS the next count (never a weight of 0.999).
+        expect(foldSplit(8 - FOLD_SNAP / 2)).toEqual([8, 0]);
+        // Every count the world can ask for: whole + weight never strays from it by more than the snap.
+        for (let folds = TEMPLE.detailRest; folds <= TEMPLE.detailDeep; folds += 0.0371) {
+            const [whole, weight] = foldSplit(folds);
+            expect(Number.isInteger(whole)).toBe(true);
+            expect(weight).toBeGreaterThanOrEqual(0);
+            expect(weight).toBeLessThan(1);
+            expect(Math.abs(whole + weight - folds)).toBeLessThanOrEqual(FOLD_SNAP);
+        }
+        const out = [0, 0];
+        expect(foldSplit(7.5, out)).toBe(out);
     });
 
     it('repeats the temple exactly every period, on every axis', () => {
