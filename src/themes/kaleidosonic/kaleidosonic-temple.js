@@ -26,14 +26,21 @@
  *   air       fog toward the mood's haze
  *
  * Every pixel is opaque (alpha 1); the post tone-maps once.
+ *
+ * The scout: before the frame, a small pass marches one ray per SCOUT_TILE × SCOUT_TILE block of
+ * pixels, only for as long as a cone wide enough to hold every ray of the block stays clear of
+ * stone (cone marching). Up to where it stops every ray of the block is in open air, so each
+ * pixel's march starts there with the scout's step count (the stone's occlusion reads the march's
+ * steps): the same picture, about a third of the steps.
  */
 import * as THREE from 'three/webgpu';
 import {
     Break, Fn, If, Loop, abs, atan, clamp, cos, dot, exp, float, floor, fwidth, int, length, max, min, mix,
-    normalize, positionGeometry, sign, sin, smoothstep, sqrt, varying, vec2, vec3, vec4,
+    normalize, positionGeometry, select, sign, sin, smoothstep, sqrt, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    HARMONIC_ROWS, MOOD_COLOURS, STRIKE_ROWS, TAU, TEMPLE, createTempleField, ksHash31, ksLensFold, moodColour,
+    HARMONIC_ROWS, MOOD_COLOURS, STRIKE_ROWS, TAU, TEMPLE, createTempleField, createTempleTrap, ksHash31, ksLensFold,
+    moodColour,
 } from './kaleidosonic-tsl.js';
 
 /** The six axes of the icosahedron (unit): the petals' plane waves. */
@@ -53,14 +60,115 @@ const FAR = 10;
 const P = TEMPLE.period;
 /** Cells of the lattice a ray's jewel walk visits. */
 const JEWEL_CELLS = 10;
+/**
+ * A cell's jewel hangs at its centre, within half the cell's diagonal of any point of it: once the
+ * walk enters a cell this far beyond the stone, that jewel and every later one are hidden.
+ */
+const JEWEL_HIDDEN = (P * Math.sqrt(3)) / 2 + 0.01;
+/** Pixels a side of the block one scout ray stands for. */
+export const SCOUT_TILE = 4;
+/**
+ * The scout's cone, in pixel footprints: the block's farthest pixel centre from its own, the
+ * march's hit threshold (1.1) and one footprint of margin. (The kaleidoscope's folds never move
+ * two rays further apart, so the block's rays stay inside it after the lens.)
+ */
+const SCOUT_CONE = ((SCOUT_TILE - 1) / 2) * Math.SQRT2 + 1.1 + 1.0;
+
+/** A view ray through a point of the frame (NDC), folded through the kaleidoscope: { lensed, rd }. */
+function viewRay(u, ndc) {
+    const vh = u.projInv.mul(vec4(ndc, 1.0, 1.0));
+    const lensed = ksLensFold(normalize(vh.xyz.div(vh.w)), u.lens, u.lensS).toVar();
+    const rd = normalize(u.camWorld.mul(vec4(lensed.xyz, 0.0)).xyz).toVar();
+    return { lensed, rd };
+}
+
+/** The frame's pixel coordinates (top-left origin, buffer pixels) of a full-screen quad's NDC. */
+const framePixel = (ndc, size) => vec2(ndc.x.mul(0.5).add(0.5), float(0.5).sub(ndc.y.mul(0.5))).mul(size);
+
+/**
+ * The scout pass (see the header): a target of one texel per block holding where the block's
+ * march may start, as a 1/64 grid value and its remainder (each exact in a half float, so the
+ * start is not rounded: a start pulled back by rounding would take a step more and darken the
+ * occlusion), and the steps the scout took to get there. A distance beyond FAR: the whole block
+ * runs out into the fog. A target that holds zeros (not drawn yet) starts every march at the eye.
+ */
+function createScout(u, field, steps) {
+    const target = new THREE.RenderTarget(1, 1, {
+        type: THREE.HalfFloatType,
+        depthBuffer: false,
+        minFilter: THREE.NearestFilter,
+        magFilter: THREE.NearestFilter,
+        generateMipmaps: false,
+    });
+    target.texture.name = 'Kaleidosonic — scout';
+    const material = new THREE.MeshBasicNodeMaterial({ depthTest: false, depthWrite: false });
+    material.name = 'Kaleidosonic — scout';
+    material.fog = false;
+    const vNdc = varying(positionGeometry.xy);
+    material.vertexNode = vec4(positionGeometry.xy, 0.0, 1.0);
+    material.fragmentNode = Fn(() => {
+        // the block this texel stands for, and the ray through its centre
+        const block = floor(framePixel(vNdc, u.scout.zw));
+        const centre = block.add(0.5).mul(SCOUT_TILE).div(u.scout.xy);
+        const { rd } = viewRay(u, vec2(centre.x.mul(2.0).sub(1.0), float(1.0).sub(centre.y.mul(2.0))));
+        const roT = u.camWorld.mul(vec4(0.0, 0.0, 0.0, 1.0)).xyz.add(u.dive).toVar();
+        const t = float(0.02).toVar();
+        const used = float(0).toVar();
+        const tSafe = float(0.02).toVar();
+        const nSafe = float(0).toVar();
+        Loop(steps, () => {
+            const h = field(roT.add(rd.mul(t)), u.shape).toVar();
+            If(h.lessThan(t.mul(u.pixelAngle).mul(SCOUT_CONE).add(1e-5)), () => {
+                Break();
+            });
+            // the whole block is in open air here
+            tSafe.assign(t);
+            nSafe.assign(used);
+            t.addAssign(h.mul(0.9));
+            used.addAssign(1);
+            If(t.greaterThan(FAR), () => {
+                tSafe.assign(t);
+                nSafe.assign(used);
+                Break();
+            });
+        });
+        const hi = floor(tSafe.mul(64.0)).div(64.0);
+        return vec4(hi, tSafe.sub(hi), nSafe, 1.0);
+    })();
+    const quad = new THREE.QuadMesh(material);
+    quad.name = 'KaleidosonicScout';
+    return {
+        target,
+        material,
+        quad,
+        setSize(width, height) {
+            target.setSize(Math.max(1, Math.ceil(width / SCOUT_TILE)), Math.max(1, Math.ceil(height / SCOUT_TILE)));
+        },
+        render(renderer) {
+            const previous = renderer.getRenderTarget();
+            renderer.setRenderTarget(target);
+            quad.render(renderer);
+            renderer.setRenderTarget(previous);
+        },
+        // (QuadMesh's geometry is three's own, shared by every QuadMesh: never disposed here)
+        dispose() {
+            target.dispose();
+            material.dispose();
+        },
+    };
+}
 
 /**
  * @param {object} u uniforms from createUniforms()
  * @param {object} tier the quality tier (steps, folds, shadowSteps)
+ * @param {object} [options]
+ * @param {boolean} [options.scout=true] march from the scout pass's start (render() it before each frame)
  */
-export function createTemple(u, tier) {
+export function createTemple(u, tier, { scout: useScout = true } = {}) {
     const field = createTempleField(tier.folds);
+    const trapField = createTempleTrap(tier.folds);
     const steps = Math.max(16, Math.round(tier.steps));
+    const scout = useScout ? createScout(u, field, steps) : null;
     const shadowSteps = Math.max(0, Math.round(tier.shadowSteps || 0));
     const jewelCells = Math.max(3, Math.round(tier.jewelCells ?? JEWEL_CELLS));
     const veinTier = Math.max(0.2, Math.min(1, tier.veins ?? 1));
@@ -72,8 +180,7 @@ export function createTemple(u, tier) {
     const vNdc = varying(positionGeometry.xy);
     material.vertexNode = vec4(positionGeometry.xy, 0.0, 1.0);
 
-    const prm = () => vec4(u.shape.x, u.shape.y, 0.0, 0.0);
-    const at = (p) => field(p.add(u.dive), prm());
+    const at = (p) => field(p.add(u.dive), u.shape);
 
     material.fragmentNode = Fn(() => {
         const mk = u.moodMix;
@@ -103,28 +210,37 @@ export function createTemple(u, tier) {
         const { breath } = u;
 
         // ── the ray, folded through the kaleidoscope ──
-        const vh = u.projInv.mul(vec4(vNdc, 1.0, 1.0));
-        const lensed = ksLensFold(normalize(vh.xyz.div(vh.w)), u.lens, u.lensS).toVar();
-        const rd = normalize(u.camWorld.mul(vec4(lensed.xyz, 0.0)).xyz).toVar();
+        const { lensed, rd } = viewRay(u, vNdc);
         // the kaleidoscope's alternate sectors light their jewels in the mood's other colour
         const other = lensed.w;
         const neonNow = mix(neonA1, neonA2, mk);
         const jewelCol = mix(heartCol, neonNow.mul(1.6), other.mul(0.85)).toVar();
         const ro = u.camWorld.mul(vec4(0.0, 0.0, 0.0, 1.0)).xyz.toVar();
 
-        // ── the march ──
+        // ── the march (in the temple's own coordinates: the dive's offset added once), from where
+        // the scout found the block still in open air ──
+        const roT = ro.add(u.dive).toVar();
         const t = float(0.02).toVar();
         const hit = float(0).toVar();
-        const res = vec4(0).toVar();
         const used = float(0).toVar();
-        Loop(steps, () => {
-            const h = at(ro.add(rd.mul(t))).toVar();
-            If(h.x.lessThan(t.mul(u.pixelAngle).mul(1.1).add(1e-5)), () => {
+        let first = int(0);
+        if (scout) {
+            const block = floor(framePixel(vNdc, u.scout.xy).div(SCOUT_TILE));
+            const start = texture(scout.target.texture, block.add(0.5).div(u.scout.zw)).level(0).toVar();
+            t.assign(max(start.x.add(start.y), 0.02));
+            used.assign(start.z);
+            // a block that runs out into the fog marches no further
+            first = int(select(t.greaterThan(FAR), float(steps), used));
+        }
+        Loop({
+            start: first, end: int(steps), type: 'int', condition: '<', name: 'mk',
+        }, () => {
+            const h = field(roT.add(rd.mul(t)), u.shape).toVar();
+            If(h.lessThan(t.mul(u.pixelAngle).mul(1.1).add(1e-5)), () => {
                 hit.assign(1);
-                res.assign(h);
                 Break();
             });
-            t.addAssign(h.x.mul(0.9));
+            t.addAssign(h.mul(0.9));
             used.addAssign(1);
             If(t.greaterThan(FAR), () => {
                 Break();
@@ -145,27 +261,29 @@ export function createTemple(u, tier) {
             const e = max(t.mul(u.pixelAngle).mul(0.6), 2e-5);
             const k = vec2(1, -1);
             const n = normalize(
-                k.xyy.mul(at(p.add(k.xyy.mul(e))).x)
-                    .add(k.yyx.mul(at(p.add(k.yyx.mul(e))).x))
-                    .add(k.yxy.mul(at(p.add(k.yxy.mul(e))).x))
-                    .add(k.xxx.mul(at(p.add(k.xxx.mul(e))).x)),
+                k.xyy.mul(at(p.add(k.xyy.mul(e))))
+                    .add(k.yyx.mul(at(p.add(k.yyx.mul(e)))))
+                    .add(k.yxy.mul(at(p.add(k.yxy.mul(e)))))
+                    .add(k.xxx.mul(at(p.add(k.xxx.mul(e))))),
             ).toVar();
             const occ = float(1).sub(used.div(steps)).toVar();
-            const tap = at(p.add(n.mul(0.04))).x;
+            const tap = at(p.add(n.mul(0.04)));
             const ao = clamp(tap.div(0.04), 0.0, 1.0).mul(occ).mul(occ).toVar();
+            // the orbit trap at the hit: (|x|, |z|, r²)
+            const trap = trapField(p.add(u.dive), u.shape).toVar();
 
             // pearl: two poles by the trap's bands (wide ramps, never stripes)
-            const band = res.w.mul(0.7).add(res.y.mul(1.3));
+            const band = trap.z.mul(0.7).add(trap.x.mul(1.3));
             const pole = smoothstep(0.2, 0.8, abs(band.sub(floor(band)).mul(2.0).sub(1.0)));
             const albedo = mix(stoneA, stoneB, pole).toVar();
             // the stone's neon: one of the mood's three colours per region of the orbit trap, the
             // next mood's colours arriving region by region (never a straight mix of complements)
-            const bandN = res.w.mul(0.83).add(res.z.mul(1.71)).add(res.y.mul(0.37)).fract();
+            const bandN = trap.z.mul(0.83).add(trap.y.mul(1.71)).add(trap.x.mul(0.37)).fract();
             const m1 = smoothstep(0.28, 0.38, bandN);
             const m2 = smoothstep(0.61, 0.71, bandN);
             const neon1 = mix(mix(neonA1, neonB1, m1), neonC1, m2);
             const neon2 = mix(mix(neonA2, neonB2, m1), neonC2, m2);
-            const when = res.w.mul(0.37).add(res.y.mul(0.61)).fract().mul(0.7);
+            const when = trap.z.mul(0.37).add(trap.x.mul(0.61)).fract().mul(0.7);
             const neon = mix(neon1, neon2, smoothstep(when, when.add(0.3), mk)).toVar();
 
             // the core's light
@@ -179,7 +297,8 @@ export function createTemple(u, tier) {
                 const sh = float(1).toVar();
                 const st = float(0.03).toVar();
                 Loop(shadowSteps, () => {
-                    const hs = at(p.add(L.mul(st))).x;
+                    // pinned: read twice below, an unpinned value is emitted at each read
+                    const hs = at(p.add(L.mul(st))).toVar();
                     sh.assign(min(sh, hs.mul(9.0).div(st)));
                     st.addAssign(max(hs, 0.02));
                     If(st.greaterThan(dH).or(sh.lessThan(0.02)), () => {
@@ -328,7 +447,12 @@ export function createTemple(u, tier) {
         const firstEdge = cell.add(max(stepDir, vec3(0.0))).sub(g0).mul(stepDir).toVar();
         const tMax = firstEdge.mul(tDelta).toVar();
         const jewels = vec3(0).toVar();
+        // where the walk entered the current cell
+        const tEnter = float(0).toVar();
         Loop(jewelCells, () => {
+            If(tEnter.greaterThan(tEnd.add(JEWEL_HIDDEN)), () => {
+                Break();
+            });
             const image = jewelBase.add(cell.mul(P));
             const oc = image.sub(ro);
             const tc = dot(oc, rd);
@@ -347,12 +471,15 @@ export function createTemple(u, tier) {
             jewels.addAssign(tint.mul(glow.mul(seen).mul(tw).mul(exp(tc.mul(fogK).mul(-0.85)))));
             // the next cell: across whichever wall the ray reaches first
             If(tMax.x.lessThan(tMax.y).and(tMax.x.lessThan(tMax.z)), () => {
+                tEnter.assign(tMax.x);
                 cell.x.addAssign(stepDir.x);
                 tMax.x.addAssign(tDelta.x);
             }).ElseIf(tMax.y.lessThan(tMax.z), () => {
+                tEnter.assign(tMax.y);
                 cell.y.addAssign(stepDir.y);
                 tMax.y.addAssign(tDelta.y);
             }).Else(() => {
+                tEnter.assign(tMax.z);
                 cell.z.addAssign(stepDir.z);
                 tMax.z.addAssign(tDelta.z);
             });
@@ -498,9 +625,22 @@ export function createTemple(u, tier) {
         mesh,
         material,
         geometry,
+        scout,
+        /** The drawing buffer's size (pixels): the scout's blocks are laid over it. */
+        setViewport(width, height) {
+            const w = Math.max(1, Math.round(width));
+            const h = Math.max(1, Math.round(height));
+            scout?.setSize(w, h);
+            u.scout.value.set(w, h, Math.ceil(w / SCOUT_TILE), Math.ceil(h / SCOUT_TILE));
+        },
+        /** Before each frame: the scout pass (only while the temple is drawn). */
+        prerender(renderer) {
+            if (scout && mesh.visible) scout.render(renderer);
+        },
         dispose() {
             geometry.dispose();
             material.dispose();
+            scout?.dispose();
         },
     };
 }

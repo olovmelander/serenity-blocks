@@ -879,6 +879,19 @@ export const PLAYGROUND_URL_PARAMETERS = [
         ],
     },
     {
+        name: 'scout',
+        category: 'Playground',
+        scope: 'playground.html — kaleidosonic',
+        description: 'March every pixel from the eye instead of from the scout pass\'s start: the A/B for the '
+            + 'scout pass (read GPU time with profile=1&trackTimestamp=1).',
+        values: '0 turns the scout pass off; any other value, or none, leaves it on.',
+        defaultValue: 'On',
+        example: 'scout=0',
+        sources: [
+            'src/playground/effects/kaleidosonic.effect.js',
+        ],
+    },
+    {
         name: 'descent',
         category: 'Playground',
         scope: 'playground.html — earth-core-lake',

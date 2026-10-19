@@ -7,10 +7,12 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, If, Loop, Break, abs, atan, cos, dot, float, floor, fract, int, max, min, mix, normalize, sign, sin, uniform,
+    Fn, If, Loop, abs, atan, cos, dot, float, floor, fract, int, max, min, mix, normalize, sign, sin, uniform,
     uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
-import { MOODS, MOOD_COLOURS, TEMPLE } from './kaleidosonic-core.js';
+import {
+    MOODS, MOOD_COLOURS, TEMPLE, foldSplit,
+} from './kaleidosonic-core.js';
 
 export * from './kaleidosonic-core.js';
 
@@ -39,44 +41,70 @@ export const ksHash31 = /* @__PURE__ */ Fn(([pIn]) => {
 export const ksLuma = (c) => dot(c, vec3(0.2126, 0.7152, 0.0722));
 export const ksMax3 = (c) => max(c.x, max(c.y, c.z));
 
+/** The lattice fold into [-1, 1): fract(p / 2 + 1 / 2) · 2 − 1, written with three ops fewer. */
+const latticeFold = (p) => p.sub(floor(p.mul(0.5).add(0.5)).mul(2.0));
+
 /**
- * The temple's field: the Apollonian fold-and-invert, run to a fractional number of folds
- * (`prm.y`, blended between the whole counts either side so the temple grows finer without a
- * pop), with an inversion strength `prm.x`. Returns (distance, trap.x, trap.y, trap.r²): the
- * orbit's nearest approach to the cell's planes and centre, which colours the pearl.
- * `maxFolds` is a build-time cap (the tier's).
+ * The temple's field: the Apollonian fold-and-invert, run to a fractional number of folds (whole
+ * folds `prm.z`, then the next one blended in by `prm.w`, so the temple grows finer without a
+ * pop), with an inversion strength `prm.x`. prm is the shape uniform: (s, folds, whole, weight),
+ * the last two from foldSplit(). Returns the distance only: the march calls it every step, so it
+ * carries no orbit trap (createTempleTrap reads that once, at the hit) and runs no fold it would
+ * weigh by 0. `maxFolds` is the tier's cap; the world never asks for fewer folds than
+ * TEMPLE.detailRest, which run as a fixed loop the compiler can unroll.
  */
 export function createTempleField(maxFolds) {
     const cap = Math.max(2, Math.round(maxFolds));
+    const base = Math.min(cap, Math.floor(TEMPLE.detailRest));
     return Fn(([pIn, prm]) => {
         const p = pIn.toVar();
         const scale = float(1).toVar();
-        const trap = vec4(1000).toVar();
-        const lo = floor(min(prm.y, float(cap - 1))).toVar();
-        const dLo = float(1).toVar();
-        const dHi = float(1).toVar();
-        Loop(cap, ({ i }) => {
-            p.assign(fract(p.mul(0.5).add(0.5)).mul(2).sub(1));
-            const r2 = max(dot(p, p), 1e-6).toVar();
-            trap.assign(min(trap, vec4(abs(p), r2)));
-            const k = prm.x.div(r2);
+        const fold = () => {
+            p.assign(latticeFold(p));
+            const k = prm.x.div(max(dot(p, p), 1e-6)).toVar();
             p.mulAssign(k);
             scale.mulAssign(k);
-            const n = float(i).add(1.0);
-            const d = abs(p.y).mul(0.25).div(scale);
-            If(n.equal(lo), () => {
-                dLo.assign(d);
-            });
-            If(n.greaterThan(lo), () => {
-                dHi.assign(d);
-                Break();
-            });
+        };
+        Loop(base, fold);
+        // the trance's further folds (the same count for every pixel: no divergence)
+        Loop({
+            start: int(base), end: int(prm.z), type: 'int', condition: '<', name: 'fd',
+        }, fold);
+        const d = abs(p.y).mul(0.25).div(scale).toVar();
+        If(prm.w.greaterThan(0.0), () => {
+            fold();
+            d.assign(mix(d, abs(p.y).mul(0.25).div(scale), prm.w));
         });
-        const f = min(prm.y, float(cap)).sub(lo).clamp(0.0, 1.0);
-        return vec4(mix(dLo, dHi, f), trap.x, trap.z, trap.w);
+        return d;
     }).setLayout({
         name: `ks_temple${cap}`,
-        type: 'vec4',
+        type: 'float',
+        inputs: [{ name: 'pIn', type: 'vec3' }, { name: 'prm', type: 'vec4' }],
+    });
+}
+
+/**
+ * The orbit trap at a point of the field (same prm): the orbit's nearest approach to the cell's
+ * planes and centre, (|x|, |z|, r²), which colours the pearl. It runs every fold the distance may
+ * have (the blended one too, at any weight), as the field always has.
+ */
+export function createTempleTrap(maxFolds) {
+    const cap = Math.max(2, Math.round(maxFolds));
+    return Fn(([pIn, prm]) => {
+        const p = pIn.toVar();
+        const trap = vec4(1000).toVar();
+        Loop({
+            start: int(0), end: min(int(prm.z).add(1), int(cap)), type: 'int', condition: '<', name: 'tf',
+        }, () => {
+            p.assign(latticeFold(p));
+            const r2 = max(dot(p, p), 1e-6).toVar();
+            trap.assign(min(trap, vec4(abs(p), r2)));
+            p.mulAssign(prm.x.div(r2));
+        });
+        return trap.xzw;
+    }).setLayout({
+        name: `ks_templeTrap${cap}`,
+        type: 'vec3',
         inputs: [{ name: 'pIn', type: 'vec3' }, { name: 'prm', type: 'vec4' }],
     });
 }
@@ -161,8 +189,10 @@ export function createUniforms() {
         projInv: uniform(new THREE.Matrix4()),
         /** Radians one buffer pixel subtends at the lens's centre (sets the march's hit tolerance). */
         pixelAngle: uniform(0.0012),
-        /** (inversion strength s, folds (fractional), -, -). */
-        shape: uniform(new THREE.Vector4(TEMPLE.s, TEMPLE.detailRest, 0, 0)),
+        /** The drawing buffer (pixels) and the scout's target over it (texels): (w, h, sw, sh). */
+        scout: uniform(new THREE.Vector4(1, 1, 1, 1)),
+        /** (inversion strength s, folds (fractional), whole folds, the next fold's weight): foldSplit. */
+        shape: uniform(new THREE.Vector4(TEMPLE.s, TEMPLE.detailRest, ...foldSplit(TEMPLE.detailRest))),
         /** The dive's offset of the temple's coordinates (the stone flows past the eye). */
         dive: uniform(new THREE.Vector3(0, 0, 0)),
         /** The kaleidoscope: (core bearing, -, -, -) and the stages' strengths. */

@@ -5,14 +5,18 @@
  * too: today the one full-screen temple march) and the post stack's output (its look per tier, and
  * the falseColor debug view) are built through three's own node builders against a stub renderer:
  * the WGSL one of the WebGPU backend and the GLSL one of the WebGL2 fallback, at the tier the theme
- * defaults to and at the leanest. A graph one builder cannot turn into a shader throws or warns
- * here instead of leaving the temple undrawn on someone's machine.
+ * defaults to, at the leanest and at the richest (the only one here with the soft shadow). The
+ * temple's scout pass (drawn before the frame, not in the scene) is built with them. A graph one
+ * builder cannot turn into a shader throws or warns here instead of leaving the temple undrawn on
+ * someone's machine.
  *
- * Also gated: each stage's size (a march unrolled in JS instead of looped shows up as a module of
- * hundreds of KB), MaterialX noise (`mx_*`), a smoothstep whose two edges are the same constant (a
- * hard WGSL error), a NaN/Infinity literal, a WGSL var read where it may not have been assigned,
- * and a laid-out `ks_*` helper that closes over a uniform or a texture (cached module-wide, it
- * would emit invalid WGSL in the second material that uses it).
+ * Also gated: how often each march calls the field (a value read twice can be emitted twice: the
+ * soft shadow once ran the whole fractal twice a step), each stage's size (a march unrolled in JS
+ * instead of looped shows up as a module of hundreds of KB), MaterialX noise (`mx_*`), a
+ * smoothstep whose two edges are the same constant (a hard WGSL error), a NaN/Infinity literal, a
+ * WGSL var read where it may not have been assigned, and a laid-out `ks_*` helper that closes over
+ * a uniform or a texture (cached module-wide, it would emit invalid WGSL in the second material
+ * that uses it).
  *
  * What it cannot see: the WGSL and GLSL are not compiled (Tint, ANGLE), BloomNode's own passes are
  * built lazily by the renderer, and there is no compute. The harness is
@@ -30,7 +34,7 @@ import { tierFor } from '../../src/themes/kaleidosonic/kaleidosonic-quality.js';
 
 vi.setConfig({ testTimeout: 60_000 });
 
-const TIERS = ['High', 'Minimal'];
+const TIERS = ['High', 'Minimal', 'Extreme'];
 const BACKENDS = [['WGSL', THREE.WGSLNodeBuilder], ['GLSL', THREE.GLSLNodeBuilder]];
 /** Per stage. The march, its veins, strikes and harmonics are loops, so the temple stays small. */
 const STAGE_BUDGET = 64 * 1024;
@@ -239,6 +243,8 @@ describe.each(TIERS)('kaleidosonic shaders at %s', (quality) => {
                 targets.push([object.name || material.name || object.type, object, material]);
             });
         });
+        const { scout } = world.parts.temple;
+        targets.push([scout.quad.name, scout.quad, scout.material]);
         for (const [name, object, material] of targets) {
             BACKENDS.forEach(([label, Builder]) => {
                 const [out, heard] = listening(() => build(Builder, object, material));
@@ -281,6 +287,19 @@ describe.each(TIERS)('kaleidosonic shaders at %s', (quality) => {
         const wgsl = temple.find((b) => b.label === 'WGSL').out.fragment;
         const fields = helpers(wgsl).filter((h) => /^ks_temple\d+$/.test(h.name)).map((h) => h.name);
         expect(fields).toEqual([`ks_temple${Math.max(2, Math.round(folds))}`]);
+    });
+
+    it('calls the field once a site: the march, four normal taps, the occlusion tap and the shadow step', () => {
+        const { folds, shadowSteps } = tierFor(quality);
+        const field = new RegExp(`\\bks_temple${Math.max(2, Math.round(folds))}\\s*\\(`, 'g');
+        // the definition's own `fn ks_templeN (` is not a call
+        const calls = (wgsl, pattern) => (wgsl.match(pattern) || []).length - 1;
+        const wgslOf = (object) => built.find((b) => b.object === object && b.label === 'WGSL').out.fragment;
+        const { mesh, scout } = world.parts.temple;
+        expect(calls(wgslOf(mesh), field)).toBe(1 + 4 + 1 + (shadowSteps > 0 ? 1 : 0));
+        // the orbit trap colours the stone: read once, at the hit
+        expect(calls(wgslOf(mesh), /\bks_templeTrap\d+\s*\(/g)).toBe(1);
+        expect(calls(wgslOf(scout.quad), field)).toBe(1);
     });
 
     it('reads no WGSL var where it may not have been assigned', () => {

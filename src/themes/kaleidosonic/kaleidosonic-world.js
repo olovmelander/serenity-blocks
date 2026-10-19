@@ -29,7 +29,7 @@ import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
     DEG, DIVE_LENGTH, EYE, FOLD_AT, HARMONICS, foldLens, MOODS, MOOD_COLOURS, MoodWheel, NOTES, PIECE_COLORS, REFOLDS,
     RIG, STRIKES, STRIKE_ROWS, HARMONIC_ROWS, TAU, TEMPLE, TIMING, approach, clamp, clamp01, createUniforms,
-    hexToLinear, lerp, marchTemple, moodMix, mulberry32, pieceCode, rigFor, smooth, smoother, springStep,
+    foldSplit, hexToLinear, lerp, marchTemple, moodMix, mulberry32, pieceCode, rigFor, smooth, smoother, springStep,
     templeDistance, tranceFor,
 } from './kaleidosonic-tsl.js';
 import { createTemple } from './kaleidosonic-temple.js';
@@ -74,11 +74,13 @@ export class KaleidosonicWorld {
     }
 
     constructor({
-        scene, quality = 'High', capture = false, seed = 0x5b0e1, prepared = null,
+        scene, quality = 'High', capture = false, seed = 0x5b0e1, prepared = null, scout = true,
     } = {}) {
         this.scene = scene;
         this.quality = quality;
         this.tier = tierFor(quality);
+        /** Whether the temple marches from the scout pass's start (false: from the eye; an A/B). */
+        this.scout = scout !== false;
         this.capture = capture;
         this.seed = seed;
         this.prepared = prepared;
@@ -89,6 +91,7 @@ export class KaleidosonicWorld {
         this.u = createUniforms();
         this.wheel = new MoodWheel();
         this.aspect = 16 / 9;
+        this.viewportWidth = 1920;
         this.viewportHeight = 1080;
         this.layout = fallbackLayout(1920, 1080);
         this.layoutLive = false;
@@ -111,6 +114,7 @@ export class KaleidosonicWorld {
         };
         this.moodState = null;
         this._rgb = [0, 0, 0];
+        this._folds = [0, 0];
         this._hit = {
             x: 0, y: 0, z: 0, t: 0,
         };
@@ -188,7 +192,8 @@ export class KaleidosonicWorld {
     build() {
         if (this.root.parent) return this;
         this.prepared = null;
-        this.addPart('temple', createTemple(this.u, this.tier));
+        this.addPart('temple', createTemple(this.u, this.tier, { scout: this.scout }));
+        this.parts.temple.setViewport(this.viewportWidth, this.viewportHeight);
         this.scene.add(this.root);
         this.placeHeart();
         return this;
@@ -243,7 +248,9 @@ export class KaleidosonicWorld {
      */
     setViewport(width, height, aspect, cssWidth = width, cssHeight = height) {
         if (aspect > 0) this.aspect = aspect;
+        this.viewportWidth = Math.max(1, width);
         this.viewportHeight = Math.max(1, height);
+        this.parts.temple?.setViewport(this.viewportWidth, this.viewportHeight);
         this.cssSize = { w: Math.max(1, cssWidth), h: Math.max(1, cssHeight) };
         if (!this.layoutLive) this.layout = fallbackLayout(this.cssSize.w, this.cssSize.h);
         this.placeHeart();
@@ -773,8 +780,9 @@ export class KaleidosonicWorld {
             const fov = (camera.fov || RIG.fov) * DEG;
             u.pixelAngle.value = (2 * Math.tan(fov / 2)) / Math.max(120, this.viewportHeight);
         }
-        const detail = lerp(TEMPLE.detailRest, TEMPLE.detailDeep, this.trance);
-        u.shape.value.set(this.sSpring.x, Math.min(detail, this.tier.folds), 0, 0);
+        const folds = Math.min(lerp(TEMPLE.detailRest, TEMPLE.detailDeep, this.trance), this.tier.folds);
+        const [whole, weight] = foldSplit(folds, this._folds);
+        u.shape.value.set(this.sSpring.x, folds, whole, weight);
         const dv = this.diveOffset();
         u.dive.value.set(dv[0], dv[1], dv[2]);
         u.lensS.value.set(this.folds[0], this.folds[1], this.folds[2], 0);
@@ -880,7 +888,11 @@ export class KaleidosonicWorld {
         }
     }
 
-    prerender() {}
+    /** The world's own passes, before each frame (the temple's scout). */
+    prerender(renderer) {
+        if (this.disposed || !renderer) return;
+        for (const part of this.partList) part.prerender?.(renderer);
+    }
 
     getPostState() {
         return this._post;

@@ -93,7 +93,8 @@ own player's card.
   kaleidoscope (`ksLensFold`, three continuous stages about the core's live bearing), then marched
   through the Apollonian field (`createTempleField`: fold into the cell, invert, repeat; a
   fractional fold count blended between whole counts so the trance grows the temple finer without
-  a pop). Shading, veins, strikes, harmonics, jewels (an Amanatides–Woo walk through the cells the
+  a pop), each ray starting where a small scout pass found its block of pixels still in open air
+  (see *Performance pass*). Shading, veins, strikes, harmonics, jewels (an Amanatides–Woo walk through the cells the
   ray crosses), the gem (an analytic ray–sphere hit with facets snapped to the icosahedron's axes)
   and the fog all happen in that one pass.
 - **The world** (`kaleidosonic-world.js`) owns the uniform bag, the eye's rig, the core's place
@@ -183,6 +184,65 @@ every event.
 - **Static gates**: palette, typecheck, ts-ratchet, lint ratchet (610 < 807), architecture fitness,
   theme lifecycle, dependency boundaries, perf budgets, release gates, the production build with
   the boot-closure guard, the IP-string gate and the Pages artifact check all pass.
+
+## Performance pass (2026-10-19)
+
+Kaleidosonic was the fleet's heaviest GPU theme (63–79 % GPU busy at the 120 fps cap where the
+others sat near 35 %), and Extreme felt heavier than its neighbours on a laptop RTX 3070. Every
+change below keeps the picture: the same frames, to sub-pixel placement of the hairline veins.
+
+| Change | What it removes | Frame |
+|---|---|---|
+| The soft shadow read its field value twice per step without `.toVar()`, and the generated WGSL called the whole fractal **twice** per step | 18 of 36 shadow field calls a pixel (Ultra, Extreme) | identical |
+| The march's field returns the distance only; the orbit trap is read once, at the hit (`createTempleTrap`) | the trap's mins in every march step | identical |
+| The lattice fold `fract(p/2 + 1/2)·2 − 1` as `p − 2·floor(p/2 + 1/2)`; the per-fold branches replaced by a fixed loop of the rest folds plus the trance's whole folds | about a third of each fold's ops | identical |
+| `foldSplit`: whole folds and the next fold's weight, written by the world; a weight within 0.004 of 0 or 1 snaps | the extra fold the field ran at rest (weighted by 0), and after every chain (the trance's exponential release left a weight of 1e-5) | identical |
+| The jewel walk stops once a cell is entered more than half a cell's diagonal beyond the stone | a pixel that meets stone walks 4.4 of Extreme's 12 cells | identical |
+| **The scout** (cone marching): a pass at 1/16 of the pixels marches one ray per 4 × 4 block while a cone holding the whole block is clear of stone; each pixel's march starts there, with the scout's step count | about 70 % of the march's steps (51 → 18 a pixel, scout included) | sub-pixel |
+
+**The scout's details.** The cone's radius is the block's farthest pixel centre (2.1 px), the hit
+threshold (1.1) and a pixel of margin, in pixel footprints at the ray's distance; the
+kaleidoscope's folds never move two rays further apart, so the block stays inside it after the
+lens. It stores the last distance at which the block was clear, as a 1/64 grid value and its
+remainder (each exact in a half float), and the steps taken to get there. The start must not be
+rounded: a start pulled back by 0.2 % made 40 % of the pixels take one step more, which
+darkened the stone's step-count occlusion by 0.7 % on average; stored exactly, the occlusion
+moves by 0.003 with no bias. A block whose cone reaches the fog marches no further. A target that
+holds zeros (its pipeline still compiling) starts every march at the eye: slower, never wrong.
+
+**Measured.** No GPU was reachable from the session that made it, so the timings are SwiftShader
+(the CPU WebGPU rasteriser) at 640 × 360, which overweights the shading's transcendentals
+relative to the field's arithmetic: real GPUs should gain more. Before → after, frame p50:
+
+| Scenario | Extreme | High |
+|---|---|---|
+| rest | 583 → 310 ms | 427 → 265 ms |
+| deep chain (kaleidoscope open) | 628 → 353 ms | 475 → 277 ms |
+| lock strike | 564 → 344 ms | 480 → 291 ms |
+| clear (harmonic) | 561 → 321 ms | — |
+| perfect clear | 568 → 336 ms | — |
+| four-line dive | 617 → 324 ms | — |
+| board and HUD, chain of 3 | 585 → 288 ms | — |
+
+Field calls per pixel at Extreme, from a CPU replica of the march (1080p, rest): about 89 before
+(51 march, 4 normal, 1 occlusion, 33 shadow), about 41 after (16 march, 2 scout, 4 normal, 1
+occlusion, 1 trap, 17 shadow), each with about a third fewer ops.
+
+**Visual checks.** Pixel diffs of seven scenarios (mean |Δ| 1.5–4 of 255, unbiased: mean
+brightness within 0.1 of 255); camera-drift sequences with the scout on and off at rest and with
+the kaleidoscope open (frame-to-frame change identical, 0.946 against 0.947; no energy at the
+blocks' edges); WebGL2; Minimal, Low, High and Extreme; 637 × 359 and 390 × 844. The shader gate
+now counts the field calls of every march site, at Extreme too.
+
+**Kept as they were.** Shadows by one fold fewer (mean change nil, but up to 0.06 of the core's
+light at a few pixels near the core), a step relaxation above 0.9 or a shorter Extreme budget (the
+occlusion reads the step count, so both change the stone's shading), and a lower Extreme pixel
+ratio (a softer fractal).
+
+**Verify on a real GPU.** `npm run build && npm run preview`, then
+`/playground.html?effect=kaleidosonic&quality=Extreme&profile=1&trackTimestamp=1` against the
+same with `&scout=0`, reading `window.__PLAYGROUND__.profile.snapshot().gpuMs` after
+`profile.reset()`. In the game, `?kaleidosonicScout=0` is the same A/B.
 
 ## Captures
 

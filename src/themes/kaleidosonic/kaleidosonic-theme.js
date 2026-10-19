@@ -56,7 +56,7 @@ const PIXEL_RATIO_CAP = Object.freeze({
 
 function readFlags() {
     const empty = {
-        forceWebGL: false, time: null, fixedDt: null, parts: null, falseColor: false,
+        forceWebGL: false, time: null, fixedDt: null, parts: null, falseColor: false, scout: true,
     };
     if (typeof window === 'undefined') return empty;
     const params = new URLSearchParams(window.location?.search || '');
@@ -77,6 +77,8 @@ function readFlags() {
             ? params.get('kaleidosonicParts').split(',').map((p) => p.trim())
             : null,
         falseColor: bool('kaleidosonicFalseColor'),
+        // kaleidosonicScout=0: every pixel marches from the eye (the A/B for the scout pass)
+        scout: params.get('kaleidosonicScout') !== '0',
     };
 }
 
@@ -236,6 +238,7 @@ export default class KaleidosonicTheme extends BaseTheme {
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 prepared,
+                scout: this.flags.scout,
             });
             this.world.build();
             this.world.bindCamera(this.camera);
