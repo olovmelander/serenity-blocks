@@ -3,5 +3,8 @@
     "allow": [
       "Bash(npm install:*)"
     ]
+  },
+  "worktree": {
+    "symlinkDirectories": ["node_modules"]
   }
 }
