@@ -252,15 +252,6 @@
     "placeholder": false
   },
   {
-    "themeId": "moonrise-summit",
-    "trackKey": "MoonriseSummit",
-    "name": "Moonrise Summit",
-    "file": "moonrise-summit-placeholder-song.mp3",
-    "path": "./assets/music/moonrise-summit-placeholder-song.mp3",
-    "placeholder": true,
-    "placeholderSource": "blood-moon.mp3"
-  },
-  {
     "name": "Murmuration",
     "file": "murmuration.mp3",
     "path": "./assets/music/murmuration.mp3",
@@ -435,6 +426,15 @@
     "file": "sunbraid.mp3",
     "path": "./assets/music/sunbraid.mp3",
     "placeholder": false
+  },
+  {
+    "themeId": "sunfall",
+    "trackKey": "Sunfall",
+    "name": "Sunfall",
+    "file": "sunfall-placeholder-song.mp3",
+    "path": "./assets/music/sunfall-placeholder-song.mp3",
+    "placeholder": true,
+    "placeholderSource": "blood-moon.mp3"
   },
   {
     "themeId": "sunset",

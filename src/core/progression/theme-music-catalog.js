@@ -72,7 +72,8 @@ const themesByTrack = new Map(THEME_MUSIC_CATALOG.map((song) => [song.trackKey, 
  * "Kaleidosonic" when Kaleidosonic took its orb (2026-10-13), and "Sky Children" became
  * "Rainbow Terraces" with its theme (2026-10-18). An authored recording retitled for the theme
  * that took its orb changes key too: "Misty Lake" became "Grainfields" and "Moonlit Forest"
- * became "Spring" (both 2026-10-18), and "Rainy Window" became "Sunbraid" (2026-10-20).
+ * became "Spring" (both 2026-10-18), "Rainy Window" became "Sunbraid" (2026-10-20), and
+ * "Moonrise Summit" became "Sunfall" (2026-10-20).
  */
 const RETIRED_TRACK_KEYS = new Map([
     ['ElectricDreams', 'Murmuration'],
@@ -83,6 +84,7 @@ const RETIRED_TRACK_KEYS = new Map([
     ['MistyLake', 'Grainfields'],
     ['MoonlitForest', 'Spring'],
     ['RainyWindow', 'Sunbraid'],
+    ['MoonriseSummit', 'Sunfall'],
 ]);
 
 /**
