@@ -1,6 +1,7 @@
 import { DEMO_LEGACY_SIMULATION_CLOCK } from '../demo/DemoRecorder.js';
 import { canWriteLegacySimulationResults } from './single-player-result-compatibility.js';
 import { getOdysseyCampaignSummary } from '../odyssey/odyssey-campaign-summary.js';
+import { odysseyCharmsUsed } from '../odyssey/odyssey-charm-use.js';
 
 /** Save one retired attempt before choosing the next step of the journey. */
 export async function completeOdysseyLevel(mode, results) {
@@ -41,7 +42,8 @@ export async function completeOdysseyLevel(mode, results) {
     // Calculate stars
     const stars = mode._calculateStars(finalResults, hybridEngine);
     finalResults.stars = stars;
-    finalResults.charms = session.charmRun?.charms?.slice() || [];
+    // The charms this attempt used: a fact on the results sheet, and the time board's exclusion.
+    finalResults.charms = odysseyCharmsUsed(session);
 
     // Evaluate bonuses
     const bonuses = mode._evaluateBonuses(finalResults, hybridEngine);
@@ -54,6 +56,10 @@ export async function completeOdysseyLevel(mode, results) {
         const completion = mode.odysseyState.completeLevel(levelId, finalResults, {
             themeId: session.levelConfig?.theme?.primary,
         });
+        // What the clear left in the bag, for the ceremony; the journey's first charm says how to use it.
+        finalResults.charmsFound = completion?.charmsFound?.slice() || [];
+        finalResults.charmsFirstFound = finalResults.charmsFound.length > 0
+            && mode.odysseyState.getCharmStats?.().found === finalResults.charmsFound.length;
         // Ownership is durable before any outcome view can celebrate it. The
         // exact attempt's authored theme stays authoritative through prefetch.
         const collection = mode.deps?.themeCollection;
