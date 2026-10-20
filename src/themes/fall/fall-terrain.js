@@ -8,8 +8,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    cameraPosition, color, dot, float, mix, normalize, positionWorld, pow, reflect, saturate, smoothstep, texture,
-    vec2, vec3,
+    Fn, abs, cameraPosition, color, cos, dot, float, floor, fract, fwidth, hash, length, mix, normalize,
+    positionWorld, pow, reflect, saturate, sin, smoothstep, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 
 export const FALL_GROUND_BOUNDS = Object.freeze({
@@ -71,6 +71,43 @@ export function fallTerrainHeight(x, z) {
 }
 
 const MAP_SIZE = 256;
+
+/** Leaves per metre in the near carpet (a cell holds one leaf about thirteen centimetres long). */
+const LEAF_CELLS = 5.6;
+
+/**
+ * One layer of fallen leaves, one leaf a cell: a teardrop turned and sized by the cell's hash,
+ * with a midrib and a darker curled rim. `p` is in cells and positive; returns (cover, hue,
+ * tilt, shade): shade darkens the rim and the rib. Pure: it reads no texture or uniform, so it is laid out once as a WGSL function.
+ */
+export const fallLeafLayer = Fn(([p, seed]) => {
+    const cell = floor(p);
+    const id = cell.x.mul(1597).add(cell.y.mul(7919)).add(seed);
+    const turn = hash(id).mul(Math.PI * 2);
+    const jitter = vec2(hash(id.add(1)), hash(id.add(2))).sub(0.5).mul(0.22);
+    const size = hash(id.add(3)).mul(0.12).add(0.31);
+    const f = fract(p).sub(0.5).sub(jitter);
+    const c = cos(turn);
+    const s = sin(turn);
+    const local = vec2(f.x.mul(c).sub(f.y.mul(s)), f.x.mul(s).add(f.y.mul(c))).div(vec2(size.mul(0.64), size));
+    // Narrower toward the tip, rounder at the stem.
+    const r = length(vec2(local.x.mul(local.y.mul(0.42).add(1)), local.y));
+    const cover = float(1).sub(smoothstep(0.84, 1.0, r));
+    const rib = float(1).sub(smoothstep(0.025, 0.08, abs(local.x))).mul(float(1).sub(r));
+    const rim = smoothstep(0.5, 1.0, r);
+    return vec4(cover, hash(id.add(4)), hash(id.add(5)).sub(0.5), rim.add(rib.mul(0.6)));
+}).setLayout({
+    name: 'fallLeafLayer',
+    type: 'vec4',
+    inputs: [{ name: 'p', type: 'vec2' }, { name: 'seed', type: 'float' }],
+});
+
+/** A fallen leaf's colour as a tint of the carpet under it: crimson, gold, russet, brown or pale. */
+function leafTint(hue) {
+    const warm = mix(vec3(1.32, 0.52, 0.55), vec3(1.18, 1.36, 0.62), smoothstep(0.18, 0.42, hue));
+    const dry = mix(vec3(1.22, 0.92, 0.7), vec3(0.72, 0.7, 0.76), smoothstep(0.62, 0.8, hue));
+    return mix(warm, dry, smoothstep(0.46, 0.58, hue)).mul(mix(1, 1.32, smoothstep(0.9, 0.98, hue)));
+}
 
 /** R = trodden path, G = damp moss, B = broad tonal drift, A = sunlit clearing. */
 function createGroundMap(rng) {
@@ -171,33 +208,57 @@ export class FallTerrain {
         const { light } = this;
         const material = new THREE.MeshBasicNodeMaterial({ fog: false });
         material.name = 'FallLeafCarpetMaterial';
-        const world = positionWorld;
-        const map = texture(this.groundMap, this.mapCoordinate(world));
-        const coarse = light.noise(world.xz.mul(0.035));
-        const fine = light.noise(world.xz.mul(0.31));
-        const fleck = light.noise(world.xz.mul(1.9).add(fine.rg.mul(0.6)));
-        // A carpet of fallen leaves: russet ground, drifts of gold and crimson.
-        const russet = mix(color(0x3a1c0f), color(0x6a3414), coarse.g.mul(0.6).add(fine.b.mul(0.4)));
-        const gold = mix(color(0x9a5a12), color(0xc98a1e), fleck.r);
-        const crimson = color(0x7a1c10);
-        const drift = smoothstep(0.46, 0.72, fleck.g.mul(0.55).add(coarse.b.mul(0.3)).add(map.b.mul(0.25)));
-        const blush = smoothstep(0.62, 0.84, fleck.b.mul(0.6).add(fine.r.mul(0.4)));
-        const leaves = mix(mix(russet, gold, drift), crimson, blush.mul(0.55));
-        const earth = mix(color(0x2a1a10), color(0x4a3120), fine.a);
-        const moss = mix(color(0x1c2a0c), color(0x3a4a14), fine.g);
-        const albedo = mix(mix(leaves, moss, map.g.mul(0.55)), earth, map.r.mul(0.78));
+        material.colorNode = Fn(() => {
+            const world = positionWorld;
+            const map = texture(this.groundMap, this.mapCoordinate(world));
+            const coarse = light.noise(world.xz.mul(0.035));
+            const fine = light.noise(world.xz.mul(0.31));
+            const fleck = light.noise(world.xz.mul(1.9).add(fine.rg.mul(0.6)));
+            // A carpet of fallen leaves: russet ground, drifts of gold and crimson.
+            const russet = mix(color(0x3a1c0f), color(0x6a3414), coarse.g.mul(0.6).add(fine.b.mul(0.4)));
+            const gold = mix(color(0x9a5a12), color(0xc98a1e), fleck.r);
+            const crimson = color(0x7a1c10);
+            const drift = smoothstep(0.46, 0.72, fleck.g.mul(0.55).add(coarse.b.mul(0.3)).add(map.b.mul(0.25)));
+            const blush = smoothstep(0.62, 0.84, fleck.b.mul(0.6).add(fine.r.mul(0.4)));
+            const leaves = mix(mix(russet, gold, drift), crimson, blush.mul(0.55)).toVar();
 
-        const normal = normalize(vec3(fine.r.sub(0.5).mul(0.55), 1, fine.g.sub(0.5).mul(0.55)));
-        const view = normalize(cameraPosition.sub(world));
-        const sun = light.sunlight();
-        const facing = saturate(dot(normal, light.uSunDir)).mul(2.6).add(0.05);
-        const glint = pow(saturate(dot(reflect(view.negate(), normal), light.uSunDir)), 22)
-            .mul(fleck.a.mul(0.6).add(0.25)).mul(float(1).sub(map.r.mul(0.6)));
-        const lit = albedo.mul(light.uSunColor).mul(facing).mul(sun)
-            .add(light.uSunColor.mul(glint).mul(sun).mul(0.16))
-            .add(albedo.mul(light.ambient(normal)).mul(1.05))
-            .add(albedo.mul(light.uSunColor).mul(map.a).mul(light.uWarmth).mul(0.12));
-        material.colorNode = light.haze(lit, { world });
+            // Near the eye the carpet resolves into single leaves: two layers laid across each
+            // other, the litter beneath them darker. Where a leaf is smaller than a few pixels
+            // the layers fade into the broad colour they average to, so nothing shimmers.
+            const pA = world.xz.mul(LEAF_CELLS).add(4096);
+            const turned = vec2(world.x.mul(0.77).sub(world.z.mul(0.64)), world.x.mul(0.64).add(world.z.mul(0.77)));
+            const pB = turned.mul(LEAF_CELLS * 1.13).add(vec2(4096.37, 4096.61));
+            const footprint = fwidth(pA.x).add(fwidth(pA.y));
+            const near = float(1).sub(smoothstep(0.22, 0.6, footprint)).toVar();
+            const under = fallLeafLayer(pA, 11).toVar();
+            const over = fallLeafLayer(pB, 29).toVar();
+            const deep = leaves.mul(0.42);
+            const lower = mix(deep, leaves.mul(leafTint(under.y)).mul(float(1).sub(under.w.mul(0.32))), under.x);
+            const upper = leaves.mul(leafTint(over.y)).mul(float(1).sub(over.w.mul(0.32)));
+            const mosaic = mix(lower, upper, over.x);
+            const tilt = mix(under.z.mul(under.x), over.z, over.x).mul(near);
+            const leafy = mix(leaves, mosaic, near);
+
+            const earth = mix(color(0x2a1a10), color(0x4a3120), fine.a);
+            const moss = mix(color(0x1c2a0c), color(0x3a4a14), fine.g);
+            const albedo = mix(mix(leafy, moss, map.g.mul(0.55)), earth, map.r.mul(0.78));
+
+            // Each leaf lies at its own small tilt: some face the low sun and flare, others turn
+            // into their own shade.
+            const slopeX = fine.r.sub(0.5).mul(0.55).add(tilt.mul(0.9));
+            const slopeZ = fine.g.sub(0.5).mul(0.55).sub(tilt.mul(0.6));
+            const normal = normalize(vec3(slopeX, 1, slopeZ));
+            const view = normalize(cameraPosition.sub(world));
+            const sun = light.sunlight();
+            const facing = saturate(dot(normal, light.uSunDir)).mul(2.6).add(0.05);
+            const glint = pow(saturate(dot(reflect(view.negate(), normal), light.uSunDir)), 22)
+                .mul(fleck.a.mul(0.6).add(0.25)).mul(float(1).sub(map.r.mul(0.6)));
+            const lit = albedo.mul(light.uSunColor).mul(facing).mul(sun)
+                .add(light.uSunColor.mul(glint).mul(sun).mul(0.16))
+                .add(albedo.mul(light.ambient(normal)).mul(1.05))
+                .add(albedo.mul(light.uSunColor).mul(map.a).mul(light.uWarmth).mul(0.12));
+            return vec4(light.haze(lit, { world }), 1);
+        })();
         return material;
     }
 
