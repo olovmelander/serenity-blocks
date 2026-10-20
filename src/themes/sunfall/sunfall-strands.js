@@ -156,10 +156,12 @@ export function createLeafMaterial(u) {
  * Build the strands and their leaves. Returns `{ group, update(snap), dispose() }`.
  * `strands` comes from the plan (`planDoline().curtains`), `leafSlots` from the quality tier.
  */
-export function buildStrands(world, { strands, leafSlots = 256 }) {
+export function buildStrands(world, {
+    strands, leafSlots = 256, leaves = true, width = [0.05, 0.22], name = 'sunfall-strands',
+}) {
     const { u } = world;
     const group = new THREE.Group();
-    group.name = 'sunfall-strands';
+    group.name = name;
     const rng = mulberry32(world.seed ^ 0x5157);
     const disposables = [];
 
@@ -171,7 +173,7 @@ export function buildStrands(world, { strands, leafSlots = 256 }) {
     const sb = new Float32Array(count * 4);
     strands.forEach((s, i) => {
         sa.set([s.x, s.topY, s.z, s.length], i * 4);
-        sb.set([0.05 + rng() * rng() * 0.22, s.swayPhase, s.side, rng()], i * 4);
+        sb.set([width[0] + rng() * rng() * (width[1] - width[0]), s.swayPhase, s.side, rng()], i * 4);
     });
     strandGeo.setAttribute('aStrandA', new THREE.InstancedBufferAttribute(sa, 4));
     strandGeo.setAttribute('aStrandB', new THREE.InstancedBufferAttribute(sb, 4));
@@ -182,6 +184,17 @@ export function buildStrands(world, { strands, leafSlots = 256 }) {
     strandMesh.renderOrder = 1;
     group.add(strandMesh);
     disposables.push(strandGeo, strandMat);
+
+    if (!leaves) {
+        return {
+            group,
+            update() {},
+            strandMesh,
+            dispose() {
+                disposables.forEach((d) => d.dispose());
+            },
+        };
+    }
 
     // ── Leaves ──
     const slots = Math.max(16, leafSlots);
@@ -288,7 +301,8 @@ export function buildStrands(world, { strands, leafSlots = 256 }) {
             if (!list.length) continue;
             const pick = list[(sideTurn[side] += 1) % Math.min(2, list.length)];
             const code = ['I', 'O', 'T', 'S', 'Z', 'J', 'L'].indexOf(ev.code);
-            ev.cells.forEach((cell, j) => {
+            for (let j = 0; j < ev.cells.length; j += 1) {
+                const cell = ev.cells[j];
                 const t = heightForRow(pick, cell.row);
                 writeLeaf(cursor, pick, t, {
                     code: Math.max(0, code),
@@ -298,7 +312,7 @@ export function buildStrands(world, { strands, leafSlots = 256 }) {
                     row: cell.row,
                 });
                 cursor = (cursor + 1) % slots;
-            });
+            }
             dirty = true;
         }
         for (const ev of snap.clearEvents || []) {
@@ -323,4 +337,3 @@ export function buildStrands(world, { strands, leafSlots = 256 }) {
         },
     };
 }
-

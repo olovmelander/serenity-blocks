@@ -73,14 +73,14 @@ export const CALM_RECTS_MAX = 5;
 
 /** The air (starting values, tuned against playground captures). */
 export const SUNFALL_AIR = Object.freeze({
-    haze: 0.0010,           // per metre, everywhere under the vault
-    valley: 0.0036,         // per metre at the canopy's top and below it, falling off upward
-    valleyHeight: 24,       // metres
-    column: 0.0021,         // the column's scattering density
-    columnGain: 1.15,       // art gain on the column's single scattering
+    haze: 0.0010, // per metre, everywhere under the vault
+    valley: 0.0036, // per metre at the canopy's top and below it, falling off upward
+    valleyHeight: 24, // metres
+    column: 0.0021, // the column's scattering density
+    columnGain: 1.15, // art gain on the column's single scattering
     phaseG: 0.62,
     deckThickness: 0.035,
-    farBeam: 0.0012,
+    farBeam: 0.0019,
 });
 
 const sfMax3 = Fn(([v]) => max(v.x, max(v.y, v.z)));
@@ -160,7 +160,15 @@ export function createSunfallAir(u, depthNode, camera, { steps = 8 } = {}) {
         const n = sfNoise3(u, p.add(drift).mul(0.028));
         const fine = sfNoise3(u, p.add(drift.mul(1.7)).mul(0.09));
         const patch = mix(0.45, 1.45, n.x).mul(mix(0.75, 1.2, fine.y));
-        return float(1.0).add(deck).add(valley).mul(patch).mul(u.mistScale);
+        // The column leaves the opening without a lid: its density fades in over the 30 m
+        // below the oculus plane (seen from beneath, a cut there reads as a disc). Through the
+        // gaps in the crowns it dies into the understory instead of lighting it white.
+        const emerge = smoothstep(float(OC[1]), float(OC[1] - 30.0), p.y);
+        const understory = smoothstep(float(CANOPY_LEVEL - 22.0), float(CANOPY_LEVEL + 6.0), p.y);
+        return float(1.0).add(deck).add(valley).mul(patch)
+            .mul(emerge)
+            .mul(understory)
+            .mul(u.mistScale);
     };
 
     const node = Fn(() => {
@@ -192,8 +200,11 @@ export function createSunfallAir(u, depthNode, camera, { steps = 8 } = {}) {
         const flatPart = max(tCave.sub(tCross), 0.0);
         // Above the canopy's top the mist is lit by the cave; under the crowns it is dark.
         const tauLit = float(SUNFALL_AIR.haze).mul(tCave).add(float(SUNFALL_AIR.valley).mul(max(expPart, 0.0)))
-            .mul(u.mistScale).mul(on.haze).toVar();
-        const tauDark = float(SUNFALL_AIR.valley).mul(flatPart).mul(u.mistScale).mul(on.haze).toVar();
+            .mul(u.mistScale)
+            .mul(on.haze)
+            .toVar();
+        const tauDark = float(SUNFALL_AIR.valley).mul(flatPart).mul(u.mistScale).mul(on.haze)
+            .toVar();
         const tau = tauLit.add(tauDark).toVar();
         const Tr = exp(tau.negate()).toVar();
         const TrLit = exp(tauLit.negate()).toVar();
@@ -205,11 +216,31 @@ export function createSunfallAir(u, depthNode, camera, { steps = 8 } = {}) {
         const n = cross(D, S);
         const nl = max(length(n), 1e-4);
         const axisDist = abs(dot(A.sub(O), n)).div(nl);
-        const glow = exp(axisDist.mul(axisDist).div(-2.0 * 78.0 * 78.0)).mul(u.sunGain);
-        const farGlow = exp(axisDist.mul(axisDist).div(-2.0 * 260.0 * 260.0)).mul(u.sunGain);
-        const hazeLight = u.mistTint.mul(0.06).mul(float(1.0).add(u.echoBoost.mul(0.2)))
-            .add(mix(u.beamScatter, u.poolSun, 0.3).mul(glow.mul(0.5).add(farGlow.mul(0.07))));
-        const hazeIn = hazeLight.mul(float(1.0).sub(TrLit).add(TrLit.sub(Tr).mul(0.12))).toVar();
+        // The glow: haze lit round the column with a Gaussian profile about its axis, integrated
+        // along the ray in closed form (sqrt(2π)·σ / sin θ through the axis), only in front of
+        // what the ray hits and above the canopy's top.
+        const SG = 38.0;
+        const sinT = max(nl, 0.2);
+        const w0 = O.sub(A);
+        const b = dot(D, S);
+        const tClose = b.mul(dot(S, w0)).sub(dot(D, w0)).div(max(float(1.0).sub(b.mul(b)), 1e-3));
+        // Cut at the crowns' tops round the foot (the breakdown cone lifts them above the
+        // valley's level): the glow never lights the dark under the canopy.
+        const yCut = u.foot.y.add(18.0);
+        const tCut = select(D.y.lessThan(-1e-4), max(O.y.sub(yCut), 0.0).div(D.y.negate()), float(1e6));
+        const tEnd = min(min(tMax, tCross), tCut);
+        const span = float(SG).div(sinT);
+        const visible = smoothstep(-1.6, 1.6, tEnd.sub(tClose).div(span)).mul(smoothstep(-1.6, 1.6, tClose.div(span)));
+        const profile = exp(axisDist.mul(axisDist).div(-2.0 * SG * SG));
+        const glowOd = span.mul(2.5066 * SUNFALL_AIR.haze * 2.4).mul(profile).mul(visible).mul(u.mistScale);
+        const glowIn = mix(u.beamScatter, u.poolSun, 0.12).mul(float(1.0).sub(exp(glowOd.negate())))
+            .mul(u.sunGain).mul(1.25)
+            .mul(on.haze);
+        // The cave's own light in the haze, warmer within a few hundred metres of the column.
+        const farGlow = exp(axisDist.mul(axisDist).div(-2.0 * 240.0 * 240.0)).mul(u.sunGain);
+        const hazeLight = u.mistTint.mul(0.045).mul(float(1.0).add(u.echoBoost.mul(0.2)))
+            .add(mix(u.beamScatter, u.mistTint, 0.5).mul(farGlow.mul(0.05)));
+        const hazeIn = hazeLight.mul(float(1.0).sub(TrLit).add(TrLit.sub(Tr).mul(0.12))).add(glowIn).toVar();
 
         // ── The cloud deck: a short march through its slab, densest at its middle ──
         const deckAlpha = float(0.0).toVar();
@@ -241,22 +272,30 @@ export function createSunfallAir(u, depthNode, camera, { steps = 8 } = {}) {
                 const ds = tOut.sub(tIn).div(4.0).toVar();
                 const trans = float(1.0).toVar();
                 const drift = vec2(u.time.mul(0.0011), u.time.mul(0.0007));
-                Loop({ start: 0, end: 4, type: 'int', condition: '<', name: 'dk' }, ({ dk }) => {
+                Loop({
+                    start: 0, end: 4, type: 'int', condition: '<', name: 'dk',
+                }, ({ dk }) => {
                     const p = O.add(D.mul(tIn.add(float(dk).add(0.5).mul(ds))));
                     const mid = (DECK.bottom + DECK.top) * 0.5;
                     const half = (DECK.top - DECK.bottom) * 0.5;
                     const yy = p.y.sub(mid).div(half);
-                    const profile = clamp(float(1.0).sub(yy.mul(yy)), 0.0, 1.0);
+                    const slab = clamp(float(1.0).sub(yy.mul(yy)), 0.0, 1.0);
                     const c1 = texture(u.fbmTex, p.xz.div(620.0).add(drift)).level(1).x;
                     const c2 = texture(u.fbmTex, p.xz.div(210.0).sub(drift.mul(1.6))).level(1).y;
-                    const billow = c1.mul(0.6).add(c2.mul(0.4)).add(profile.sub(0.6).mul(0.22));
-                    const dens = smoothstep(float(0.5).sub(cover.mul(0.34)), 1.05, billow).mul(profile).mul(region).mul(open);
+                    const c3 = texture(u.fbmTex, p.xz.div(74.0).add(drift.mul(2.3))).level(0).x;
+                    const billow = c1.mul(0.5).add(c2.mul(0.32)).add(c3.mul(0.18)).add(slab.sub(0.6).mul(0.22));
+                    // Banks with gaps between them, so the vault shows through.
+                    const dens = smoothstep(float(0.6).sub(cover.mul(0.3)), 0.9, billow)
+                        .mul(slab).mul(region).mul(open);
                     const a = float(1.0).sub(exp(dens.mul(SUNFALL_AIR.deckThickness).mul(ds).negate()));
                     // Lit from below by the canopy's bounce, pearl from the cave's light, gold at the rim.
                     const height = clamp(yy.mul(0.5).add(0.5), 0.0, 1.0);
-                    const under = mix(u.poolSun, vec3(0.9, 0.85, 0.7), 0.5).mul(bounce.mul(0.3)).add(u.mistTint.mul(0.18)).add(vec3(0.075, 0.08, 0.082))
-                        .mul(mix(1.0, 0.7, height)).mul(mix(0.75, 1.15, c2));
-                    const gold = vec3(1.0, 0.8, 0.5).mul(gilt.mul(smoothstep(0.3, 0.8, billow)).mul(SUNFALL_LIGHT.sun * 0.13)).mul(u.sunGain);
+                    const under = mix(u.poolSun, vec3(0.9, 0.85, 0.7), 0.5).mul(bounce.mul(0.3))
+                        .add(u.mistTint.mul(0.18)).add(vec3(0.075, 0.08, 0.082))
+                        .mul(mix(1.0, 0.7, height))
+                        .mul(mix(0.75, 1.15, c2));
+                    const gold = vec3(1.0, 0.8, 0.5)
+                        .mul(gilt.mul(smoothstep(0.3, 0.8, billow)).mul(SUNFALL_LIGHT.sun * 0.13)).mul(u.sunGain);
                     deckLight.addAssign(under.add(gold).mul(a).mul(trans));
                     trans.mulAssign(float(1.0).sub(a));
                 });
@@ -279,8 +318,12 @@ export function createSunfallAir(u, depthNode, camera, { steps = 8 } = {}) {
             if (steps > 0) {
                 const tauC = float(0.0).toVar();
                 const dt = L.div(steps).toVar();
-                const jitter = fract(float(52.9829189).mul(fract(dot(floor(screenCoordinate.xy), vec2(0.06711056, 0.00583715)))));
-                Loop({ start: 0, end: steps, type: 'int', condition: '<', name: 'bm' }, ({ bm }) => {
+                // Interleaved gradient noise: a static jitter of each pixel's first step.
+                const ign = fract(dot(floor(screenCoordinate.xy), vec2(0.06711056, 0.00583715)));
+                const jitter = fract(float(52.9829189).mul(ign));
+                Loop({
+                    start: 0, end: steps, type: 'int', condition: '<', name: 'bm',
+                }, ({ bm }) => {
                     const t = t0.add(float(bm).add(jitter).mul(dt)).toVar();
                     const p = O.add(D.mul(t)).toVar();
                     // The crowns stop the sun: under the canopy's top the column is dark.
@@ -296,18 +339,23 @@ export function createSunfallAir(u, depthNode, camera, { steps = 8 } = {}) {
                 const tap = (t) => {
                     const p = O.add(D.mul(t));
                     const below = smoothstep(-1.0, 3.0, sfCanopyHeight(u, p.xz).sub(p.y));
-                    return sfSunMask(u, p).mul(columnDensity(p)).mul(exp(sigmaAvg.mul(t).negate())).mul(float(1.0).sub(below.mul(0.92)));
+                    return sfSunMask(u, p).mul(columnDensity(p)).mul(exp(sigmaAvg.mul(t).negate()))
+                        .mul(float(1.0).sub(below.mul(0.92)));
                 };
                 const tm = t0.add(t1).mul(0.5);
-                sum.assign(tap(t0).add(tap(tm).mul(4.0)).add(tap(t1)).div(6.0).mul(L));
+                sum.assign(tap(t0).add(tap(tm).mul(4.0)).add(tap(t1)).div(6.0)
+                    .mul(L));
             }
             beam.assign(u.beamScatter.mul(sum).mul(SUNFALL_AIR.column * SUNFALL_AIR.columnGain)
-                .mul(phase).mul(SUNFALL_LIGHT.sun * 4.0 * Math.PI).mul(u.sunGain));
+                .mul(phase).mul(SUNFALL_LIGHT.sun * 4.0 * Math.PI)
+                .mul(u.sunGain));
         });
 
         // ── The far doline's thin beam (closed form) ──
         const far = chord(O, D, FD, FDR, 0.82, tMax);
-        const farLen = far.t1.sub(far.t0).mul(far.live);
+        // Its chord, softened toward the shaft's edges (a bare chord draws a hard-edged rod).
+        const farChord = far.t1.sub(far.t0).mul(far.live);
+        const farLen = farChord.mul(farChord).div(farChord.add(40.0));
         const farMid = O.add(D.mul(far.t0.add(far.t1).mul(0.5)));
         const farLight = u.beamCore.mul(farLen.mul(SUNFALL_AIR.farBeam))
             .mul(exp(sigmaAvg.mul(far.t0).negate()))
@@ -359,13 +407,14 @@ export class SunfallPost {
         this.air = u ? createSunfallAir(u, sceneDepth, camera, { steps: params.steps ?? look.beamSamples }) : null;
         const airNode = this.air ? this.air.node() : null;
         const composite = Fn(() => {
-            const scene = vec3(sceneColor.sample(screenUV).rgb);
-            if (!airNode) return vec4(scene, 1.0);
+            const lit = vec3(sceneColor.sample(screenUV).rgb);
+            if (!airNode) return vec4(lit, 1.0);
             // Pinned once: two swizzles of an inline call would emit the whole integral twice.
             const air = airNode.toVar();
-            return vec4(scene.mul(air.w).add(air.xyz), 1.0);
+            return vec4(lit.mul(air.w).add(air.xyz), 1.0);
         });
-        this.hdr = convertToTexture(composite());
+        this.compositeNode = composite();
+        this.hdr = convertToTexture(this.compositeNode);
 
         this.bloomNode = null;
         if (look.bloom && params.bloom !== false) {
@@ -380,7 +429,8 @@ export class SunfallPost {
                     const c = max(vec3(input.sample(st.add(vec2(o.x.mul(dx), o.y.mul(dy)))).rgb), vec3(0.0));
                     return c.mul(min(float(1.0), float(4.0).div(max(sfMax3(c), 1e-4))));
                 };
-                const c = tapB(1, 1).add(tapB(-1, 1)).add(tapB(1, -1)).add(tapB(-1, -1)).mul(0.25);
+                const c = tapB(1, 1).add(tapB(-1, 1)).add(tapB(1, -1)).add(tapB(-1, -1))
+                    .mul(0.25);
                 const br = sfMax3(c);
                 const soft = clamp(br.sub(threshold).add(smoothWidth), 0.0, smoothWidth.mul(2.0));
                 const w = max(soft.mul(soft).div(smoothWidth.mul(4.0).add(1e-4)), br.sub(threshold)).div(max(br, 1e-4));
@@ -412,8 +462,11 @@ export class SunfallPost {
             }
             glare.mulAssign(float(1.0).sub(calm.mul(0.85)));
             const H = H0.add(glare).toVar();
-            const flash = this.uFlashColour.mul(this.uFlash.mul(0.2)).mul(float(1.0).sub(calm.mul(0.8)));
-            const X = H.mul(this.uExposure).add(flash);
+            // The event flash is mostly a lift of exposure (the light brightens, the dark stays
+            // dark), with only a little added veil: a held zenith never greys the whole frame.
+            const flashOn = this.uFlash.mul(float(1.0).sub(calm.mul(0.8)));
+            const flash = this.uFlashColour.mul(flashOn.mul(0.05));
+            const X = H.mul(this.uExposure.mul(flashOn.mul(0.9).add(1.0))).add(flash);
             const T = sfFilmic(X).toVar();
 
             // Grade: a little vibrance, teal shade, warm white light; contrast on 0..1 only.
@@ -425,7 +478,7 @@ export class SunfallPost {
             const lightTint = mix(vec3(1.0), vec3(1.03, 1.0, 0.95), smoothstep(0.45, 0.95, lum));
             T.assign(T.mul(shadeTint).mul(lightTint));
             const C = clamp(T, 0.0, 1.0);
-            T.assign(mix(C, C.mul(C).mul(float(3.0).sub(C.mul(2.0))), 0.22));
+            T.assign(mix(C, C.mul(C).mul(float(3.0).sub(C.mul(2.0))), 0.34));
 
             const cv = screenUV.sub(0.5).mul(vec2(this.uAspect.div(1.778), 1.0));
             const vig = smoothstep(0.55, 1.25, length(cv.mul(1.38)));
@@ -442,9 +495,15 @@ export class SunfallPost {
             let out = vec4(clamp(Dsp, 0.0, 1.0), 1.0);
             if (falseColor) {
                 const mx = sfMax3(H.mul(this.uExposure));
-                const fc = select(mx.lessThan(0.1), vec3(0.05, 0.1, 0.6), select(mx.lessThan(0.6), vec3(0.1, 0.55, 0.15),
-                    select(mx.lessThan(1.0), vec3(0.85, 0.8, 0.1), select(mx.lessThan(2.5), vec3(1.0, 0.45, 0.05),
-                        vec3(0.95, 0.05, 0.05)))));
+                const fc = select(mx.lessThan(0.1), vec3(0.05, 0.1, 0.6), select(
+                    mx.lessThan(0.6),
+                    vec3(0.1, 0.55, 0.15),
+                    select(mx.lessThan(1.0), vec3(0.85, 0.8, 0.1), select(
+                        mx.lessThan(2.5),
+                        vec3(1.0, 0.45, 0.05),
+                        vec3(0.95, 0.05, 0.05),
+                    )),
+                ));
                 out = vec4(fc, 1.0);
             }
             return out;
@@ -462,7 +521,9 @@ export class SunfallPost {
     setAirPartsFromList(parts) {
         const list = Array.isArray(parts) ? parts : String(parts).split(',').map((p) => p.trim());
         this.setAirParts({
-            haze: list.includes('mist') || list.includes('beam'), beam: list.includes('beam'), deck: list.includes('mist'),
+            haze: list.includes('mist') || list.includes('beam'),
+            beam: list.includes('beam'),
+            deck: list.includes('mist'),
         });
     }
 

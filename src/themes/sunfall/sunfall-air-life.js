@@ -55,7 +55,11 @@ export function createDustMaterial(u) {
         const s = fract(M.z.add(u.time.mul(0.0035)));
         const y = float(OCULUS_CENTER[1] - 2).sub(s.mul(span));
         const t = float(OCULUS_CENTER[1]).sub(y).div(max(S.y, 0.15));
-        const drift = vec3(sin(u.time.mul(0.21).add(M.z.mul(40.0))), 0.0, cos(u.time.mul(0.17).add(M.z.mul(31.0)))).mul(2.0);
+        const drift = vec3(
+            sin(u.time.mul(0.21).add(M.z.mul(40.0))),
+            0.0,
+            cos(u.time.mul(0.17).add(M.z.mul(31.0))),
+        ).mul(2.0);
         const centre = vec3(
             float(OCULUS_CENTER[0]).add(M.x.mul(OCULUS_RX)),
             float(OCULUS_CENTER[1]),
@@ -74,7 +78,8 @@ export function createDustMaterial(u) {
         const disc = clamp(float(1.0).sub(r), 0.0, 1.0);
         const twinkle = sin(u.time.mul(1.7).add(M.z.mul(91.0))).mul(0.35).add(0.65);
         const light = u.beamCore.mul(disc.mul(disc)).mul(twinkle).mul(SUNFALL_LIGHT.sun * 0.012)
-            .mul(u.sunGain).mul(float(1.0).add(u.comboLift));
+            .mul(u.sunGain)
+            .mul(float(1.0).add(u.comboLift));
         return vec4(light, 0.0);
     })();
     const material = additive(new THREE.MeshBasicNodeMaterial());
@@ -95,7 +100,9 @@ export function createSwiftMaterial(u) {
             W.y.add(sin(theta.mul(2.0)).mul(14.0)),
             float(-420.0).add(sin(theta).mul(r.mul(0.8))),
         );
-        const heading = normalize(vec3(sin(theta).negate(), cos(theta.mul(2.0)).mul(0.25), cos(theta).mul(0.8)).mul(select(W.z.greaterThan(0.0), float(1.0), float(-1.0))));
+        const way = select(W.z.greaterThan(0.0), float(1.0), float(-1.0));
+        const along = vec3(sin(theta).negate(), cos(theta.mul(2.0)).mul(0.25), cos(theta).mul(0.8));
+        const heading = normalize(along.mul(way));
         const side = normalize(cross(heading, vec3(0.0, 1.0, 0.0)));
         const flap = sin(u.time.mul(14.0).add(W.w.mul(7.0))).mul(abs(positionGeometry.x)).mul(0.5);
         const span = 0.55;
@@ -171,7 +178,7 @@ export function buildAirLife(world) {
     disposables.push(dustGeo, dustMat);
 
     // Swiftlets.
-    const swifts = world.plan.swifts;
+    const { swifts } = world.plan;
     if (swifts.length) {
         const geo = new THREE.BufferGeometry();
         geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array([

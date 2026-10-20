@@ -31,11 +31,13 @@ import {
 } from './sunfall-core.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { resolveSunfallQuality } from './sunfall-quality.js';
-import { bakeAllSunfallTextures } from './sunfall-bake.js';
+import { bakeAllSunfallTextures, bakeUnderstoryGrid } from './sunfall-bake.js';
 import { disposeSunfallAssets, loadSunfallAssets } from './sunfall-assets.js';
 import { cameraRigFor } from './sunfall-composition.js';
 import {
     createCrownMaterial,
+    createTrunkMaterial,
+    createUnderstoryMaterial,
     createShellMaterial,
     createSkyMaterial,
     createSunfallUniforms,
@@ -123,9 +125,9 @@ export class SunfallWorld {
     }
 
     setParts(partsFilter = null) {
-        const list = !partsFilter ? SUNFALL_PARTS : (Array.isArray(partsFilter)
-            ? partsFilter
-            : String(partsFilter).split(',').map((s) => s.trim()).filter(Boolean));
+        let list = SUNFALL_PARTS;
+        if (Array.isArray(partsFilter)) list = partsFilter;
+        else if (partsFilter) list = String(partsFilter).split(',').map((s) => s.trim()).filter(Boolean);
         this.visibleParts = new Set(list);
         for (const [name, g] of this.partGroups.entries()) g.visible = this.visibleParts.has(name);
     }
@@ -179,54 +181,135 @@ export class SunfallWorld {
         });
     }
 
+    /**
+     * The canopy on the doline floor (the authored plan), and the surface forest leaning over
+     * the oculus rim outside (seen from beneath against the sky, so its trees have trunks).
+     */
     _buildJungle() {
         const group = this.partGroups.get('jungle');
         const { plan, crowns, manifest } = this.assets;
         const [vs0, vs1] = manifest?.crownVerticalScale || [0.92, 0.26];
         const share = Math.max(0.15, Math.min(1, this.preset.crownShare ?? 1));
         const rng = mulberry32(this.seed ^ 0xc0c0);
-        const material = this._track(createCrownMaterial(this.u));
-        const byVariant = crowns.map(() => []);
+        const sites = [];
         for (let i = 0; i < plan.count; i += 1) {
-            const packed = plan.crown[i * 4 + 2];
-            const variant = Math.min(crowns.length - 1, Math.max(0, Math.floor(packed)));
             const radius = plan.crown[i * 4];
-            const keep = radius > 7 || rng() < share;
-            if (keep) byVariant[variant].push(i);
+            if (!(radius > 7 || rng() < share)) continue;
+            const packed = plan.crown[i * 4 + 2];
+            sites.push({
+                x: plan.position[i * 3],
+                top: plan.position[i * 3 + 1],
+                z: plan.position[i * 3 + 2],
+                radius,
+                variant: Math.floor(packed),
+                tone: packed - Math.floor(packed),
+                kind: plan.crown[i * 4 + 3],
+                trunk: 0,
+            });
         }
+        const rim = SUNFALL_LAYOUT.oculus;
+        const rimCount = 56;
+        for (let i = 0; i < rimCount; i += 1) {
+            const a = (i / rimCount) * Math.PI * 2 + (rng() - 0.5) * 0.12;
+            const k = 1.12 + rng() * rng() * 0.9;
+            const x = rim.center[0] + Math.cos(a) * rim.radii[0] * k;
+            const z = rim.center[1] + Math.sin(a) * rim.radii[1] * k;
+            const ground = rim.surface + (k - 1) * rim.radii[0] * 0.035 - 2;
+            const height = 24 + rng() * 18;
+            sites.push({
+                x,
+                top: ground + height,
+                z,
+                radius: 6 + rng() * 6,
+                variant: Math.floor(rng() * crowns.length),
+                tone: rng(),
+                kind: 1,
+                trunk: height,
+            });
+        }
+        const material = this._track(createCrownMaterial(this.u));
         const m = new THREE.Matrix4();
         const q = new THREE.Quaternion();
-        const s = new THREE.Vector3();
+        const sc = new THREE.Vector3();
         const p = new THREE.Vector3();
-        const up = new THREE.Vector3(0, 1, 0);
+        const euler = new THREE.Euler();
+        // New Growth: which crowns stand near a spot, so a shoot can flush the nearest few.
+        this.crownIndex = new Map();
+        this.growAttrs = [];
         crowns.forEach((geometry, variant) => {
-            const ids = byVariant[variant];
-            if (!ids.length) return;
-            const mesh = new THREE.InstancedMesh(geometry, material, ids.length);
-            const data = new Float32Array(ids.length * 4);
-            ids.forEach((i, k) => {
-                const radius = plan.crown[i * 4];
-                const packed = plan.crown[i * 4 + 2];
-                const tone = packed - Math.floor(packed);
-                const kind = plan.crown[i * 4 + 3];
-                const vs = radius * (vs0 + vs1 * tone);
-                p.set(plan.position[i * 3], plan.position[i * 3 + 1], plan.position[i * 3 + 2]);
-                q.setFromAxisAngle(up, rng() * Math.PI * 2);
-                s.set(radius, vs, radius);
-                m.compose(p, q, s);
+            const mine = sites.filter((site) => Math.min(crowns.length - 1, Math.max(0, site.variant)) === variant);
+            if (!mine.length) return;
+            const mesh = new THREE.InstancedMesh(geometry, material, mine.length);
+            const data = new Float32Array(mine.length * 4);
+            const grow = new Float32Array(mine.length * 4);
+            const growAttr = new THREE.InstancedBufferAttribute(grow, 4).setUsage(THREE.DynamicDrawUsage);
+            this.growAttrs.push(growAttr);
+            const meshIndex = this.growAttrs.length - 1;
+            mine.forEach((site, k) => {
+                const vs = site.radius * (vs0 + vs1 * site.tone);
+                p.set(site.x, site.top, site.z);
+                // Crowns are never round: an elliptical footprint and a small lean each.
+                q.setFromEuler(euler.set((rng() - 0.5) * 0.14, rng() * Math.PI * 2, (rng() - 0.5) * 0.14, 'YXZ'));
+                const stretch = 0.82 + rng() * 0.36;
+                sc.set(site.radius * stretch, vs * (0.9 + rng() * 0.2), site.radius / Math.sqrt(stretch));
+                m.compose(p, q, sc);
                 mesh.setMatrixAt(k, m);
-                data[k * 4] = tone;
-                data[k * 4 + 1] = radius;
+                data[k * 4] = site.tone;
+                data[k * 4 + 1] = site.radius;
                 data[k * 4 + 2] = rng();
-                // Class: 1 for an emergent, +2 for a crown in natural flush (about 3 %).
-                data[k * 4 + 3] = (kind > 0.5 ? 1 : 0) + (rng() < 0.03 ? 2 : 0);
+                // Class: 1 for an emergent, +2 for a smaller crown in natural flush (about 3 %).
+                data[k * 4 + 3] = (site.kind > 0.5 ? 1 : 0) + (site.radius < 8 && rng() < 0.035 ? 2 : 0);
+                grow.set([-1, -100, 18, 0], k * 4);
+                const cell = `${Math.floor(p.x / 16)},${Math.floor(p.z / 16)}`;
+                if (!this.crownIndex.has(cell)) this.crownIndex.set(cell, []);
+                this.crownIndex.get(cell).push([meshIndex, k, p.x, p.z]);
             });
             geometry.setAttribute('aCrown', new THREE.InstancedBufferAttribute(data, 4));
+            geometry.setAttribute('aGrow', growAttr);
             mesh.instanceMatrix.needsUpdate = true;
             mesh.computeBoundingSphere();
             mesh.renderOrder = 10;
             group.add(mesh);
         });
+        this._buildUnderstory(group);
+        // Trunks for the trees seen against the sky.
+        const trunks = sites.filter((site) => site.trunk > 0);
+        if (trunks.length) {
+            const geo = this._track(new THREE.CylinderGeometry(0.7, 1.0, 1, 7, 1, true));
+            geo.translate(0, -0.5, 0);
+            const mat = this._track(createTrunkMaterial(this.u));
+            const mesh = new THREE.InstancedMesh(geo, mat, trunks.length);
+            trunks.forEach((site, k) => {
+                const vs = site.radius * (vs0 + vs1 * site.tone);
+                p.set(site.x, site.top - vs * 0.5, site.z);
+                q.setFromAxisAngle(new THREE.Vector3(rng() - 0.5, 0, rng() - 0.5).normalize(), (rng() - 0.5) * 0.25);
+                const r = 0.45 + site.radius * 0.05;
+                sc.set(r, site.trunk - vs * 0.5, r);
+                m.compose(p, q, sc);
+                mesh.setMatrixAt(k, m);
+            });
+            mesh.instanceMatrix.needsUpdate = true;
+            mesh.computeBoundingSphere();
+            mesh.renderOrder = 11;
+            group.add(mesh);
+        }
+    }
+
+    /** The understory layer under the crowns: deep foliage in every gap of the canopy. */
+    _buildUnderstory(group) {
+        const floorGrid = this.assets.manifest?.floorGrid;
+        if (!floorGrid || !this.textures.canopyHeights) return;
+        const grid = bakeUnderstoryGrid(floorGrid, this.textures.canopyHeights);
+        const geometry = this._track(new THREE.BufferGeometry());
+        geometry.setAttribute('position', new THREE.BufferAttribute(grid.position, 3));
+        geometry.setAttribute('aMask', new THREE.BufferAttribute(grid.mask, 1));
+        geometry.setIndex(new THREE.BufferAttribute(grid.index, 1));
+        geometry.computeVertexNormals();
+        geometry.computeBoundingSphere();
+        const mesh = new THREE.Mesh(geometry, this._track(createUnderstoryMaterial(this.u)));
+        mesh.name = 'sunfall-understory';
+        mesh.renderOrder = 9;
+        group.add(mesh);
     }
 
     applySnapshot(snap) {
@@ -301,6 +384,42 @@ export class SunfallWorld {
             u.bowSun.value.set(bowSun[0], bowSun[1], bowSun[2]);
         }
         this.life?.update(snap);
+        this._growShoots(snap);
+    }
+
+    /** Flush the crowns nearest each new shoot in its piece's colour (New Growth). */
+    _growShoots(snap) {
+        if (!this.growAttrs?.length) return;
+        if (snap.sessionSerial !== this.growSession) {
+            this.growSession = snap.sessionSerial;
+            this.grownShoots = new Set();
+            this.growAttrs.forEach((attr) => {
+                for (let i = 0; i < attr.count; i += 1) attr.array[i * 4] = -1;
+                attr.needsUpdate = true;
+            });
+        }
+        for (const shoot of snap.newGrowthShoots || []) {
+            const key = `${shoot.slot}:${shoot.birthTime}`;
+            if (this.grownShoots.has(key)) continue;
+            this.grownShoots.add(key);
+            const [x, , z] = shoot.worldPos;
+            const near = [];
+            const cx = Math.floor(x / 16);
+            const cz = Math.floor(z / 16);
+            for (let dx = -1; dx <= 1; dx += 1) {
+                for (let dz = -1; dz <= 1; dz += 1) {
+                    for (const entry of this.crownIndex.get(`${cx + dx},${cz + dz}`) || []) {
+                        near.push([Math.hypot(entry[2] - x, entry[3] - z), entry]);
+                    }
+                }
+            }
+            near.sort((a, b) => a[0] - b[0]);
+            near.slice(0, 4).forEach(([, [meshIndex, k]], j) => {
+                const attr = this.growAttrs[meshIndex];
+                attr.array.set([shoot.codeIndex, shoot.birthTime + j * 0.12, shoot.tau, 1], k * 4);
+                attr.needsUpdate = true;
+            });
+        }
     }
 
     _driveCamera(snap) {

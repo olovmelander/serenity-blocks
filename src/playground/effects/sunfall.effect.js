@@ -20,7 +20,8 @@ export const meta = {
     id: 'sunfall',
     title: 'Sunfall (full world)',
     description:
-        'Hang Sơn Đoòng doline: a column of daylight through a collapse skylight onto a jungle canopy, 110 m below the eye.',
+        'Hang Sơn Đoòng doline: a column of daylight through a collapse skylight onto a jungle canopy, '
+        + '110 m below the eye.',
 };
 
 const DEMO_LOOP = 38;
@@ -151,9 +152,11 @@ export function create({
     const applyCameraLens = () => {
         if (!world) return;
         if (isIcon) {
-            camera.position.set(-6, 0, 0);
-            camera.fov = 40;
-            camera.lookAt(-150, 20, -360);
+            // The icon: the oculus with its lianas over the gilded hole in the deck, the column and
+            // the glowing pool, from a little way out over the void.
+            camera.position.set(-60, -20, -150);
+            camera.fov = 62;
+            camera.lookAt(-170, 14, -395);
             camera.updateProjectionMatrix();
         } else if (hasLook || hasEye) {
             if (hasEye) camera.position.set(eyeVals[0], eyeVals[1], eyeVals[2]);
@@ -235,6 +238,7 @@ export function create({
         world.applySnapshot(snap);
         applyCameraLens();
         post?.update({
+            exposure: isIcon ? 0.78 : 1.0,
             time: snap.time,
             bloomBoost: snap.cataractPulse * 0.45 + snap.zenithPulse * 0.55 + snap.turningPulse * 0.3,
             flash: snap.zenithPulse * 0.4 + snap.cataractPulse * 0.25,
@@ -245,6 +249,8 @@ export function create({
     const seekTo = (targetTime) => {
         lastSeek = targetTime;
         director.resetSession();
+        // A replay is not a session start: no Morning pulse unless that is the event asked for.
+        director.morningPulse = 0;
         director.level = level;
         director.stationTarget = stationIndexForLevel(level);
         director.stationCurrent = director.stationTarget;

@@ -5,8 +5,8 @@
  "light": {
   "stops": 12.0,
   "ceilings": {
-   "sky": 1.631142020225525,
-   "sun": 0.6407212018966675
+   "sky": 1.621722936630249,
+   "sun": 0.6574526429176331
   }
  },
  "layout": {
@@ -158,9 +158,9 @@
  },
  "files": {
   "sunfall-shell.glb": {
-   "bytes": 2084680,
-   "vertices": 134651,
-   "triangles": 128303
+   "bytes": 2114492,
+   "vertices": 126268,
+   "triangles": 130698
   },
   "sunfall-ledge.glb": {
    "bytes": 720712,
