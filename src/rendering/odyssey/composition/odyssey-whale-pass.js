@@ -28,6 +28,7 @@ import {
 } from 'three/tsl';
 import { loadOdysseyGltfCached } from '../chapter-environments/shared/odyssey-gltf-loader.js';
 import { getChapter2CreatureAssetById } from '../chapter-environments/shared/chapter-02-creature-assets.js';
+import { odysseyDeepWaterDim } from '../odyssey-colour-script.js';
 
 /** Whale length in world units (the GLB is auto-scaled to this by its largest bound). */
 const MOTHER_LENGTH = 58;
@@ -193,7 +194,10 @@ export function createWhalePass({
 
             // Water colour at the camera's depth: shallow near the surface, abyss far below.
             const t = THREE.MathUtils.clamp((depth - 20) / 220, 0, 1);
-            uWater.value.copy(scratchColour.copy(shallowColour).lerp(deepColour, t));
+            // ...dimmed by the same depth rule as the world's water (the deep is dark), so the
+            // pair dissolves into the water actually around it.
+            uWater.value.copy(scratchColour.copy(shallowColour).lerp(deepColour, t))
+                .multiplyScalar(odysseyDeepWaterDim(depth / 140));
 
             const omega = (Math.PI * 2) / ORBIT_PERIOD_S;
             actors.forEach((actor) => {

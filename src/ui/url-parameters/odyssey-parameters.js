@@ -508,6 +508,14 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         '1',
         { scope: 'Odyssey ocean, One World enabled' },
     ),
+    parameter(
+        'odysseyNoVisitors',
+        'Removes the whale shark and manta that visit the deep half of the ocean ascent.',
+        '1 enables removal; other values retain the visitors',
+        'Off',
+        '1',
+        { scope: 'Odyssey ocean, One World enabled' },
+    ),
     toggle('odysseyNoBirds', 'Removes the summit birds for scene comparisons.', {
         scope: 'Odyssey summit, One World enabled',
     }),

@@ -42,7 +42,7 @@ import {
     vec3,
 } from 'three/tsl';
 import { fbm3, noise2 } from '../chapter-environments/shared/odyssey-tsl-noise.js';
-import { sampleColourScript } from '../odyssey-colour-script.js';
+import { odysseyDeepWaterDim, sampleColourScript } from '../odyssey-colour-script.js';
 import { ONE_WORLD_ACT_MARGIN } from '../world/odyssey-world-act-gate.js';
 
 /** World radius of the steam volume. Wide enough to envelop the corridor at the boundary. */
@@ -145,7 +145,10 @@ const STEAM_COOL = new THREE.Color(0xcfe6ff);
  * turbidity IN the water rather than as weather behind it. The white-out at the crossing is
  * untouched — the ease below only takes hold well past the boundary.
  */
-const STEAM_COOL_SUBMERGED = new THREE.Color(...sampleColourScript(0.06).skyHorizon);
+// ...at the depth the vent opens into: the deep is dark now (odysseyDeepWaterDim, Act I overhaul
+// 2026-10-20), and the eye leaves the veil ~170 u down, where the dim is at its floor.
+const STEAM_COOL_SUBMERGED = new THREE.Color(...sampleColourScript(0.06).skyHorizon)
+    .multiplyScalar(odysseyDeepWaterDim(1));
 
 /**
  * THE PEAK IS THE OCEAN'S BRIGHTNESS, NOT A WHITE-OUT (seamless pass, 2026-10-02).
@@ -158,8 +161,13 @@ const STEAM_COOL_SUBMERGED = new THREE.Color(...sampleColourScript(0.06).skyHori
  * warmth and the cool vapour keep their hue) at a level that renders about as bright as the
  * open water just past the boundary (luma ~115 against the ocean's ~111-119; a first cut at 0.2
  * still peaked at 147). Linear, pre-tonemap; tuned against seam captures.
+ *
+ * 0.12 -> 0.074 (Act I overhaul, 2026-10-20): the deep water the vent opens into is dark now
+ * (odysseyDeepWaterDim), luma ~60-65 where it was ~105, so the flash lands just above THAT. The
+ * climb from the cavern's ~20 to it is a third shorter, which is what frees the 1->2 seam gate
+ * (it measured 44.8 of 45 before this pass).
  */
-export const STEAM_QUENCH_LUMA_CAP = 0.12;
+export const STEAM_QUENCH_LUMA_CAP = 0.074;
 /**
  * ...AND THE BRIGHTNESS CLIMBS EVENLY ACROSS THE CROSSING, not with the density. The volume must
  * be OPAQUE where the world's act gate opens (ADR-0017, 0.0222 before the boundary), which leaves
@@ -173,7 +181,11 @@ export const STEAM_QUENCH_LUMA_CAP = 0.12;
  * MEASURED (seam captures r1/r2): frame luma tracks the cap almost linearly (~880 luma per unit
  * cap at full density), which is why the ramp is linear in the cap, not display-gamma shaped.
  */
-export const STEAM_QUENCH_DARK_FRACTION = 0.21;
+// 0.21 -> 0.30 (Act I overhaul, 2026-10-20): the cavern the steam closes over is no longer luma
+// ~15 but ~35 (the shaft's lit strata), and the climb to the ocean is shorter (the deep is dark),
+// so the vapour may enter a little more luminous — gold rather than brown smoke — with the seam
+// gate still at ~33 of 45.
+export const STEAM_QUENCH_DARK_FRACTION = 0.30;
 export const STEAM_QUENCH_RAMP_START = 0.08;
 export const STEAM_QUENCH_RAMP_END = 0.65;
 
