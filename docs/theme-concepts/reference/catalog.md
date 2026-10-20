@@ -1218,22 +1218,32 @@ Tech split in this slice:
 
 <a id="cosmic-noir"></a>
 
-### 44. cosmic-noir — legacy, perf audit only (`docs/COSMIC_NOIR_PERF_AUDIT_2026-06-30.md`)
+### 44. cosmic-noir ("Cosmic Noir")
 
-- **Icon**: monochrome: black ringed planet with blazing white ring, grey-white smoky nebula above,
-  black sky.
-- **In game** (`docs/theme-screenshots/cosmic-noir.png`): huge grey-white wispy nebula fills right
-  half, dark textured planet lower-left with white ring streak.
-- **Setting / time**: deep space, grayscale film-noir.
-- **Palette**: pure greyscale. Pieces: I `#f8f8ff` O `#cfd2d6` T `#b0b5c0` S `#9aa0aa` Z `#7f8691`
-  J `#5b616c` L `#3c4049` GARBAGE `#16181d`.
-- **Motion**: twinkling 30k starfield, drifting nebula quads, gas swirl, accretion ring.
-- **Gameplay FX** (theme.js L4394-4470): lock = planet pulse + star flash + cosmic wave torus + lock
-  shake; combo = reactive envelope (pulse/bloom/spark/atmosphere); clear = waves, compute void
-  sparks, gas-swirl burst, anamorphic lens flare at combo >= 6.
-- **Tech**: `cosmic-noir-theme.js` 4,895 lines; ShaderMaterial + node materials, EffectComposer/
-  UnrealBloom fallback, WebGPU compute sparks, MRT guarded on Windows.
-- **Do not reuse**: ringed planets, grayscale smoke nebula, monochrome noir look.
+- **Files.** Doc `docs/COSMIC_NOIR_VISUAL_OVERHAUL_2026-10.md` (rebuilt 2026-10-20; the legacy theme is in `docs/COSMIC_NOIR_PERF_AUDIT_2026-06-30.md`). Captures in `reports/cosmic-noir-overhaul/`.
+- **Icon.** A slatted cylindrical lantern lit from within, a star point at its heart, shafts of light fanning above and below it, grey smoke in black.
+- **Look.** "Smoke in the searchlight." A black-and-white film of deep space.
+  - A pulsar turns in the derelict shutter cage of a lantern left of the card (above it on an upright phone).
+  - Its two beams sweep like a lighthouse's through drifting, layered smoke; the slats cut each beam into a fan of shafts (light through blinds).
+  - Most of the frame is black: the smoke shows only where a beam, the core's glow or an event lights it.
+  - Lens: star-filter spikes and a halo round the core, a glare when a beam looks at us.
+- **Palette.**
+  - Luminance only, graded as a print: a soft black point, a filmic curve, grain at 24 fps, dust.
+  - Five toning stocks on a line walked there and back: cyanotype, silver (home), selenium, sepia, platinum. A stock every 100 s by the clock, one per level-up.
+  - Pieces (`cosmic-noir-tetrominos.js`, unchanged): greys from I `#f8f8ff` to L `#3c4049`, GARBAGE `#16181d`.
+- **Motion.** The beams turn every 14 s (faster with a chain, integrated); the cage turns slowly the other way; the smoke drifts on a slow wind and curls; a slow camera dolly.
+- **Gameplay FX** (doc §4).
+
+  | Event | Response |
+  | --- | --- |
+  | Lock | Smoke puffs out of the card's nearer edge, lit from within by a dying ember. |
+  | Combo | The lighthouse spins up and the blinds open. |
+  | Clear | The pulsar flares; a light echo per line rings out through the smoke. |
+  | Four lines | The flashbulb: the print turns to its own negative for a moment; four echoes; the slats spin. |
+  | T-spin | The cage spins. |
+  | Level up | A reel change: two cue marks top right, and the print turns to the next stock. |
+- **Tech.** A reduced-resolution smoke march with the beams' cores and the echo shells integrated in closed form, a full-resolution backdrop (stars, lantern and its inside in closed form, lens), a baked four-channel 3D noise (worker bake), a luminance-only film post with calm zones; one node renderer on both backends, no compute, no MRT.
+- **Avoid reusing.** Searchlights or lighthouse beams through smoke, slatted or venetian-blind light, film-stock toning and negative flashes, reel-change cue marks, a monochrome noir grade.
 
 <a id="chiral-gold"></a>
 
