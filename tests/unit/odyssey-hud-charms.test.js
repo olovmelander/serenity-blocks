@@ -52,8 +52,11 @@ function hudFixture() {
     hud.charmView = null;
     hud.clockFlashTimer = null;
     hud.onUseCharm = vi.fn(() => ({ ok: true }));
+    hud.reducedMotion = true;
     vi.stubGlobal('document', { createElement: (tag) => node(tag), querySelector: () => stage });
     hud._createCharmsSection();
+    // The icon stage is its own module (odyssey-charm-icon-stage.test.js); here it only receives states.
+    hud.charmIconStage = { setStates: vi.fn(), init: vi.fn(async () => false), dispose: vi.fn() };
     return hud;
 }
 
@@ -88,16 +91,21 @@ describe('Odyssey HUD: the charm tray', () => {
         expect(tide.dataset.state).toBe('ready');
         expect(tide.disabled).toBe(false);
         expect(tide.parts['.charm-chip__count'].textContent).toBe('×2');
-        expect(tide.parts['.charm-chip__state'].textContent).toBe('');
+        // Ready: the chip's second line is the rule in a few words.
+        expect(tide.parts['.charm-chip__state'].textContent).toBe('Clears bottom 4 rows');
         expect(tide.title).toBe('Tide · clears the bottom 4 rows. Once an attempt.');
-        expect(tide.ariaLabel).toBe('Tide · clears the bottom 4 rows. Once an attempt. ×2');
+        expect(tide.ariaLabel).toBe('Tide · clears the bottom 4 rows. Once an attempt. ×2 (Clears bottom 4 rows)');
+        expect(tide.innerHTML).toContain('charm-chip__icon');
         // Long Breath on an orb without a clock: shown, disabled, and it says why.
         const breath = hud.charmChips.get('long-breath');
         expect(breath.hidden).toBe(false);
         expect(breath.disabled).toBe(true);
         expect(breath.dataset.reason).toBe('no-clock');
-        expect(breath.parts['.charm-chip__state'].textContent).toBe('no clock here');
-        expect(breath.ariaLabel).toContain('(no clock here)');
+        expect(breath.parts['.charm-chip__state'].textContent).toBe('No clock here');
+        expect(breath.ariaLabel).toContain('(No clock here)');
+        // The icon stage is told every shown chip's state and started.
+        expect(hud.charmIconStage.setStates).toHaveBeenLastCalledWith({ tide: 'ready', 'long-breath': 'ready' });
+        expect(hud.charmIconStage.init).toHaveBeenCalled();
         expect(hud.charmChips.get('hearth').hidden).toBe(true);
         expect(stage.toggleAttribute).toHaveBeenLastCalledWith('data-still-air', false);
 
@@ -108,20 +116,23 @@ describe('Odyssey HUD: the charm tray', () => {
         hud.updateCharms(describeOdysseyCharmRun(attempt, { tide: 1 }, 7500, { paused: true }));
         expect(tide.dataset.state).toBe('used');
         expect(tide.disabled).toBe(true);
-        expect(tide.parts['.charm-chip__state'].textContent).toBe('used');
+        expect(tide.parts['.charm-chip__state'].textContent).toBe('Used this attempt');
         expect(tide.parts['.charm-chip__count'].textContent).toBe('');
         const air = hud.charmChips.get('still-air');
         expect(air.dataset.state).toBe('active');
-        expect(air.parts['.charm-chip__state'].textContent).toBe('13 s');
-        expect(air.ariaLabel).toContain('(13 s)');
+        expect(air.parts['.charm-chip__state'].textContent).toBe('13 s left');
+        expect(air.ariaLabel).toContain('(13 s left)');
         expect(hud.charmChips.get('hearth').dataset.state).toBe('armed');
-        expect(hud.charmChips.get('hearth').parts['.charm-chip__state'].textContent).toBe('armed');
+        expect(hud.charmChips.get('hearth').parts['.charm-chip__state'].textContent).toBe('Armed · the next top-out');
+        expect(hud.charmIconStage.setStates).toHaveBeenLastCalledWith({
+            tide: 'used', 'still-air': 'active', hearth: 'armed',
+        });
         expect(breath.hidden).toBe(true);
         expect(stage.toggleAttribute).toHaveBeenLastCalledWith('data-still-air', true);
         // Only a change of state is spoken, never the countdown.
         expect(hud.charmsLive.textContent).toBe('Tide used');
         hud.updateCharms(describeOdysseyCharmRun(attempt, { tide: 1 }, 8500));
-        expect(air.parts['.charm-chip__state'].textContent).toBe('12 s');
+        expect(air.parts['.charm-chip__state'].textContent).toBe('12 s left');
         expect(hud.charmsLive.textContent).toBe('Tide used');
         attempt.charms.stillAir = null;
         attempt.charms.hearthArmed = false;
@@ -144,14 +155,14 @@ describe('Odyssey HUD: the charm tray', () => {
         const tide = hud.charmChips.get('tide');
         hud.flashCharmReason('tide', 'cascade');
         expect(tide.dataset.flash).toBe('true');
-        expect(tide.parts['.charm-chip__state'].textContent).toBe('mid-cascade');
-        expect(hud.charmsLive.textContent).toBe('Tide: mid-cascade');
+        expect(tide.parts['.charm-chip__state'].textContent).toBe('Mid-cascade');
+        expect(hud.charmsLive.textContent).toBe('Tide: Mid-cascade');
         // A refresh during the flash leaves the reason showing.
         hud.updateCharms(describeOdysseyCharmRun(attempt, { tide: 1 }, 100));
-        expect(tide.parts['.charm-chip__state'].textContent).toBe('mid-cascade');
+        expect(tide.parts['.charm-chip__state'].textContent).toBe('Mid-cascade');
         vi.advanceTimersByTime(1400);
         expect(tide.dataset.flash).toBeUndefined();
-        expect(tide.parts['.charm-chip__state'].textContent).toBe('');
+        expect(tide.parts['.charm-chip__state'].textContent).toBe('Clears bottom 4 rows');
         expect(hud.charmFlashTimers.size).toBe(0);
         // Unknown reasons and charms are ignored.
         hud.flashCharmReason('tide', 'nope');
@@ -161,7 +172,7 @@ describe('Odyssey HUD: the charm tray', () => {
         hud.onUseCharm.mockReturnValue({ ok: false, reason: 'used' });
         tide.listeners.click();
         expect(hud.onUseCharm).toHaveBeenCalledWith('tide');
-        expect(tide.parts['.charm-chip__state'].textContent).toBe('used');
+        expect(tide.parts['.charm-chip__state'].textContent).toBe('Used');
         expect(tide.dataset.flash).toBe('true');
     });
 
@@ -192,9 +203,12 @@ describe('Odyssey HUD: the charm tray', () => {
         hud.extendTimeLimit(5);
         hud.flashCharmReason('tide', 'used');
         expect(hud.charmFlashTimers.size).toBe(1);
+        const iconStage = hud.charmIconStage;
         hud.destroy();
         expect(hud.charmFlashTimers.size).toBe(0);
         expect(hud.clockFlashTimer).toBeNull();
+        expect(iconStage.dispose).toHaveBeenCalledOnce();
+        expect(hud.charmIconStage).toBeNull();
         expect(stage.toggleAttribute).toHaveBeenLastCalledWith('data-still-air', false);
     });
 });

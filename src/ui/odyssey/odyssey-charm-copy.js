@@ -8,6 +8,7 @@
 import {
     ODYSSEY_CHARM_GLYPH, ODYSSEY_PITY_FALLS, describeOdysseyCharms, odysseyCharmById, odysseyCharmHelps,
 } from '../../core/odyssey/odyssey-charm-bag.js';
+import { ensureOdysseyCharmSprites, odysseyCharmIconMarkup, odysseyCharmSprite } from './odyssey-charm-icon-stage.js';
 
 /** The first arrival's word on charms. */
 export const ODYSSEY_CHARM_ARRIVAL_NOTE = 'Clearing an orb leaves you a charm. Press 1–4 during an orb to use one; '
@@ -35,12 +36,26 @@ export function describeOdysseyCharmHeader(entries) {
     };
 }
 
-/** Write the header line into the map's overlay. */
+/**
+ * Write the header line into the map's overlay: each charm held as its still with its count once
+ * the stills exist (they are made once per session, after which the header is written again), the
+ * count in words until then.
+ */
 export function renderOdysseyCharmHeader(entries, node = globalThis.document?.getElementById?.('odyssey-header-charms')) {
     if (!node) return;
     const { text, title } = describeOdysseyCharmHeader(entries);
-    node.textContent = text;
+    const held = (entries || []).filter((entry) => entry.count > 0);
     node.title = title;
+    if (held.length && held.every((entry) => odysseyCharmSprite(entry.id))) {
+        node.innerHTML = held.map((entry) => `${odysseyCharmIconMarkup(entry.id)}×${entry.count}`).join('');
+        return;
+    }
+    node.textContent = text;
+    if (held.length) {
+        ensureOdysseyCharmSprites().then(() => {
+            if (node.isConnected !== false) renderOdysseyCharmHeader(entries, node);
+        }).catch(() => {});
+    }
 }
 
 /**
@@ -52,9 +67,12 @@ export function renderOdysseyCharmHeader(entries, node = globalThis.document?.ge
 export function describeOdysseyCharmsFound(results) {
     const found = describeOdysseyCharms(results?.charmsFound);
     if (!found.length) return null;
-    const line = `${ODYSSEY_CHARM_GLYPH} Found: ${found.map((charm) => charm.name).join(' · ')}`;
+    const text = `Found: ${found.map((charm) => charm.name).join(' · ')}`;
+    const line = `${ODYSSEY_CHARM_GLYPH} ${text}`;
     const hint = results?.charmsFirstFound ? `Press ${found[0].key} during an orb to use it.` : null;
-    return { line, hint, words: hint ? [line, hint] : [line] };
+    return {
+        line, text, hint, ids: found.map((charm) => charm.id), words: hint ? [line, hint] : [line],
+    };
 }
 
 /** The failure sheet's note after the third fall in a row on one orb. Null for an unknown charm. */

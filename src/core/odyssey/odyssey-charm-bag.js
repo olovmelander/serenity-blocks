@@ -37,6 +37,7 @@ export const ODYSSEY_CHARM_GLYPH = '◆';
  * @property {string} name
  * @property {string} key the keyboard digit that uses it during an orb
  * @property {string} line what pressing it does, in one sentence that follows the name
+ * @property {string} short the same rule in a few words, for the chip's second line
  * @property {string} press the same rule as an instruction, for the sheets
  */
 
@@ -47,6 +48,7 @@ export const ODYSSEY_CHARMS = Object.freeze([
         name: 'Tide',
         key: '1',
         line: `clears the bottom ${ODYSSEY_TIDE_ROWS} rows. Once an attempt.`,
+        short: `Clears bottom ${ODYSSEY_TIDE_ROWS} rows`,
         press: `Press 1 to clear the bottom ${ODYSSEY_TIDE_ROWS} rows.`,
     }),
     Object.freeze({
@@ -54,6 +56,7 @@ export const ODYSSEY_CHARMS = Object.freeze([
         name: 'Still Air',
         key: '2',
         line: `slows the fall for ${ODYSSEY_STILL_AIR_MS / 1000} seconds.`,
+        short: `Slows the fall for ${ODYSSEY_STILL_AIR_MS / 1000} s`,
         press: `Press 2 to slow the fall for ${ODYSSEY_STILL_AIR_MS / 1000} seconds.`,
     }),
     Object.freeze({
@@ -61,6 +64,7 @@ export const ODYSSEY_CHARMS = Object.freeze([
         name: 'Long Breath',
         key: '3',
         line: `adds ${ODYSSEY_LONG_BREATH_SECONDS} seconds to the clock.`,
+        short: `+${ODYSSEY_LONG_BREATH_SECONDS} s on the clock`,
         press: `Press 3 for ${ODYSSEY_LONG_BREATH_SECONDS} more seconds.`,
     }),
     Object.freeze({
@@ -68,6 +72,7 @@ export const ODYSSEY_CHARMS = Object.freeze([
         name: 'Hearth',
         key: '4',
         line: 'arm it, and your next top-out clears the well instead of ending the orb.',
+        short: 'Arm it for one top-out',
         press: 'Press 4 to arm it: your next top-out clears the well.',
     }),
 ]);

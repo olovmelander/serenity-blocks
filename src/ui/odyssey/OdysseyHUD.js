@@ -16,6 +16,7 @@ import {
 } from '../../core/odyssey/data/duel-rules.js';
 import { ODYSSEY_CHARMS } from '../../core/odyssey/odyssey-charm-bag.js';
 import { ODYSSEY_CHARM_REFUSALS } from '../../core/odyssey/odyssey-charm-use.js';
+import { OdysseyCharmIconStage } from './odyssey-charm-icon-stage.js';
 
 /** How long a refused press shows its reason on the chip, and the clock its bought seconds. */
 const CHARM_FLASH_MS = 1400;
@@ -31,17 +32,19 @@ const setChipPart = (chip, selector, value) => {
     if (part) setText(part, value);
 };
 
-/** A chip's state in a word or two: a countdown, armed, used, or why it cannot be used here. */
+const sentence = (text) => (text ? text.charAt(0).toUpperCase() + text.slice(1) : '');
+
+/** A chip's second line: its rule while ready, a countdown, armed, used, or why it cannot be used here. */
 function charmStateText(entry) {
     switch (entry.state) {
     case 'active':
-        return entry.remainingMs > 0 ? `${Math.ceil(entry.remainingMs / 1000)} s` : '';
+        return entry.remainingMs > 0 ? `${Math.ceil(entry.remainingMs / 1000)} s left` : '';
     case 'armed':
-        return 'armed';
+        return 'Armed · the next top-out';
     case 'used':
-        return 'used';
+        return 'Used this attempt';
     case 'ready':
-        return entry.reason ? ODYSSEY_CHARM_REFUSALS[entry.reason] || '' : '';
+        return entry.reason ? sentence(ODYSSEY_CHARM_REFUSALS[entry.reason] || '') : entry.short || '';
     default:
         return '';
     }
@@ -88,6 +91,9 @@ export class OdysseyHUD {
         this.charmView = null;
         this.charmFlashTimers = new Map();
         this.clockFlashTimer = null;
+        this.charmIconStage = null;
+        this.reducedMotion = options.reducedMotion === true
+            || Boolean(globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
         this.duel = null;
         this.duelPanel = null;
         this.opponentBoard = null;
@@ -299,10 +305,17 @@ export class OdysseyHUD {
         section.className = 'hud-section charms-section';
         section.hidden = true;
 
+        const head = document.createElement('div');
+        head.className = 'charms-head';
         const label = document.createElement('div');
         label.className = 'hud-label';
         label.textContent = 'Charms';
-        section.appendChild(label);
+        head.appendChild(label);
+        const hint = document.createElement('span');
+        hint.className = 'charms-hint';
+        hint.textContent = 'Press 1–4 to use';
+        head.appendChild(hint);
+        section.appendChild(head);
 
         this.charmsList = document.createElement('div');
         this.charmsList.className = 'charms-list';
@@ -314,9 +327,15 @@ export class OdysseyHUD {
             chip.className = 'charm-chip';
             chip.hidden = true;
             if (chip.dataset) chip.dataset.charm = charm.id;
-            chip.innerHTML = `<kbd class="sb-kbd" data-key>${charm.key}</kbd><kbd class="sb-kbd" data-pad hidden></kbd>`
-                + `<span class="charm-chip__name">${charm.name}</span><span class="charm-chip__count"></span>`
-                + '<span class="charm-chip__state"></span>';
+            // The icon slot is drawn into by the icon stage; its glyph shows until then.
+            chip.innerHTML = `<span class="charm-chip__icon" data-charm="${charm.id}">`
+                + '<span class="charm-chip__glyph" aria-hidden="true">◆</span></span>'
+                + '<span class="charm-chip__body">'
+                + `<span class="charm-chip__title"><span class="charm-chip__name">${charm.name}</span>`
+                + '<span class="charm-chip__count"></span></span>'
+                + '<span class="charm-chip__state"></span></span>'
+                + `<span class="charm-chip__keys"><kbd class="sb-kbd" data-key>${charm.key}</kbd>`
+                + '<kbd class="sb-kbd" data-pad hidden></kbd></span>';
             chip.addEventListener('click', () => {
                 const result = this.onUseCharm?.(charm.id);
                 if (result && !result.ok && result.reason) this.flashCharmReason(charm.id, result.reason);
@@ -325,6 +344,7 @@ export class OdysseyHUD {
             this.charmChips.set(charm.id, chip);
         }
         section.appendChild(this.charmsList);
+        this.charmIconStage = new OdysseyCharmIconStage({ list: this.charmsList, reducedMotion: this.reducedMotion });
 
         // State changes are spoken once (used, armed, ended); the countdown is not.
         this.charmsLive = document.createElement('p');
@@ -349,6 +369,11 @@ export class OdysseyHUD {
         this._toggleStillAir(Boolean(view?.stillAir));
         if (hidden) return;
         const shown = new Map((view.charms || []).map((chip) => [chip.id, chip]));
+        // The icons draw once the tray is seen; the chips keep their glyphs until then, or without a GPU.
+        if (this.charmIconStage) {
+            this.charmIconStage.setStates(Object.fromEntries([...shown.values()].map((chip) => [chip.id, chip.state])));
+            this.charmIconStage.init().catch(() => {});
+        }
         const spoken = [];
         this.charmChips.forEach((chip, charmId) => {
             const entry = shown.get(charmId);
@@ -382,7 +407,7 @@ export class OdysseyHUD {
     /** A refused press: the reason on the chip for a moment, then the chip as it was. */
     flashCharmReason(charmId, reason) {
         const chip = this.charmChips?.get(charmId);
-        const text = ODYSSEY_CHARM_REFUSALS[reason];
+        const text = sentence(ODYSSEY_CHARM_REFUSALS[reason]);
         if (!chip || !text) return;
         const timers = this.charmFlashTimers;
         if (timers?.has(charmId)) clearTimeout(timers.get(charmId));
@@ -1077,6 +1102,8 @@ export class OdysseyHUD {
         this.charmFlashTimers?.clear();
         if (this.clockFlashTimer) clearTimeout(this.clockFlashTimer);
         this.clockFlashTimer = null;
+        this.charmIconStage?.dispose();
+        this.charmIconStage = null;
         this._toggleStillAir(false);
         this.opponentBoard?.dispose();
         this.opponentBoard = null;
