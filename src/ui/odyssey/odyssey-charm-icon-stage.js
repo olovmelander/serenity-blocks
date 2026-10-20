@@ -192,10 +192,16 @@ export class OdysseyCharmIconStage {
         this.needsFrame = true;
     }
 
-    /** The visible chips' icon slots, as rectangles inside the canvas. */
+    /**
+     * The visible chips' icon slots, as rectangles inside the canvas. Client rectangles come
+     * scaled when the HUD column is drawn smaller (odyssey-hud-fit.js); the list's own size
+     * brings them back to the canvas's pixels.
+     */
     _slots() {
         const listRect = this.list.getBoundingClientRect?.();
         if (!listRect) return [];
+        const scaleX = listRect.width ? (this.list.clientWidth || listRect.width) / listRect.width : 1;
+        const scaleY = listRect.height ? (this.list.clientHeight || listRect.height) / listRect.height : 1;
         const slots = [];
         this.list.querySelectorAll?.('.charm-chip').forEach((chip) => {
             if (chip.hidden) return;
@@ -205,7 +211,11 @@ export class OdysseyCharmIconStage {
             const rect = slot.getBoundingClientRect();
             if (!rect.width || !rect.height) return;
             slots.push({
-                id, x: rect.left - listRect.left, y: rect.top - listRect.top, width: rect.width, height: rect.height,
+                id,
+                x: (rect.left - listRect.left) * scaleX,
+                y: (rect.top - listRect.top) * scaleY,
+                width: rect.width * scaleX,
+                height: rect.height * scaleY,
             });
         });
         return slots;

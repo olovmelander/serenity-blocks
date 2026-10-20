@@ -45,6 +45,16 @@ Hearth's well rewrite through `restoreBoardState`, the duel's `topOutGuard`, the
 `charms-section` slot, the `sb-ody-note` pattern on the sheets, the time-board exclusion, and the
 first arrival mark (`onboarding.arrivalSeen`) riding on the next save rather than forcing one.
 
+The in-orb presentation, settled later the same day: the tray is a **hotbar** (one tile per
+charm, its three.js r186 icon drawn by `ui/odyssey/odyssey-charm-icon-stage.js` from the scenes
+in `rendering/odyssey/odyssey-charm-icons.js`, the key on its shoulder, the count on the other,
+one caption line under the row for the charm that matters: a refused press, the tile under the
+pointer, Still Air's countdown, Hearth armed), and the HUD column **never scrolls**: it is laid
+out to fit beside a full-height well on a 900 px screen, and `ui/odyssey/odyssey-hud-fit.js`
+draws it smaller (never below two thirds) when a shorter window or the unfolded guide would
+make it taller than the well. The ≤860 px dock flows its sections into columns for the same
+reason; only a strip too short even for that scrolls, without a scrollbar.
+
 ## Decisions not to re-litigate
 
 - Duels end chapters by **reordering whole orbs** (not swapping gameplay into other orbs), so

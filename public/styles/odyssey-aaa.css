@@ -138,7 +138,7 @@
     width: clamp(210px, 17vw, 260px);
     max-height: calc(100vh - 120px);
     display: none;
-    overflow: hidden auto;
+    overflow: hidden;
     box-sizing: border-box;
     z-index: 10;
     padding: clamp(12px, 1.5vw, 18px);
@@ -152,8 +152,6 @@
         0 0 0 1px rgba(255, 255, 255, 0.04),
         0 0 60px rgba(var(--cs-accent-rgb), 0.12),
         inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    scrollbar-width: thin;
-    scrollbar-color: rgba(var(--cs-accent-rgb), 0.52) rgba(0, 0, 0, 0.15);
 }
 
 #odyssey-hud.is-visible {

@@ -121,13 +121,28 @@ describe('Odyssey well presentation constraints', () => {
         expect(declarations(scoped, '--sp-board-h-room').join(' ')).toContain('var(--sp-vh)');
     });
 
-    it('moves the short-landscape ledger beside the board without a mobile time overlay', () => {
+    it('moves the short-landscape ledger beside the board, back in one column, with no mobile time overlay', () => {
         const landscape = css.nodes.find((node) => node.type === 'atrule'
             && node.params.includes('max-height: 600px') && node.params.includes('min-aspect-ratio: 1/1'));
         const values = {};
         landscape.walkDecls((decl) => { values[`${decl.parent.selector}:${decl.prop}`] = decl.value; });
         expect(values[`${scoped}:--sp-bottom`]).toBe('16px');
-        expect(values[`${scoped} #odyssey-hud .objective-section:padding-right`]).toBe('0');
-        expect(values[`${scoped} #odyssey-hud .time-section:position`]).toBe('static');
+        expect(values[`${scoped} #odyssey-hud:column-width`]).toBe('auto');
+        expect(values[`${scoped} #odyssey-hud:transform`]).toContain('scale(var(--ody-hud-fit, 1))');
+        // The dock flows its sections into columns; the clock sits among them, never over the goal.
+        const dock = css.nodes.find((node) => node.type === 'atrule' && node.params === '(max-width: 860px)');
+        const dockValues = {};
+        dock.walkDecls((decl) => { dockValues[`${decl.parent.selector}:${decl.prop}`] = decl.value; });
+        expect(dockValues['#odyssey-hud.is-visible:not(.is-victory-lap):column-width']).toBe('180px');
+        expect(dockValues['#odyssey-hud .time-section:position']).toBeUndefined();
+        expect(dockValues['#odyssey-hud .objective-section:padding-right']).toBeUndefined();
+    });
+
+    it('never scrolls the HUD column: it is scaled from its top-right corner to the well, or scrolls unseen', () => {
+        expect(declarations('#odyssey-hud.odyssey-hud', 'overflow')).toContain('hidden');
+        expect(declarations(`${scoped} #odyssey-hud`, 'max-height'))
+            .toContain('calc(var(--board-height) / var(--ody-hud-fit, 1))');
+        expect(declarations(`${scoped} #odyssey-hud`, 'transform-origin')).toContain('100% 0');
+        expect(declarations("#odyssey-hud[data-fit='scroll']", 'scrollbar-width')).toEqual(['none']);
     });
 });
