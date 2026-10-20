@@ -8,6 +8,8 @@ import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { ThemeCameraRig } from '../shared/camera-rig.js';
+import { AuroraAir } from './aurora-air.js';
+import { AuroraAtmosphere } from './aurora-atmosphere.js';
 import { AuroraCurtains } from './aurora-curtains.js';
 import { AuroraDirector } from './aurora-director.js';
 import { ExcitationMap } from './aurora-field.js';
@@ -73,10 +75,14 @@ export class AuroraWorld {
         this.curtains = new AuroraCurtains({
             preset: this.preset, noiseTexture: this.noiseTexture, excitation: this.excitation,
         });
+        this.atmosphere = new AuroraAtmosphere({
+            uniforms: this.uniforms, noiseTexture: this.noiseTexture, curtains: this.curtains,
+        });
         this.sky = new AuroraSky({
             parent: this.group,
             preset: this.preset,
             curtains: this.curtains,
+            atmosphere: this.atmosphere,
             noiseTexture: this.noiseTexture,
             uniforms: this.uniforms,
             random: createRandom(seed ^ 0x51f15e),
@@ -85,11 +91,20 @@ export class AuroraWorld {
             parent: this.group,
             preset: this.preset,
             curtains: this.curtains,
+            atmosphere: this.atmosphere,
             noiseTexture: this.noiseTexture,
             uniforms: this.uniforms,
             random: createRandom(seed ^ 0x7a11e5),
             seed: seed % 9973,
             eyeHeight: EYE_HEIGHT,
+        });
+        this.air = new AuroraAir({
+            parent: this.group,
+            preset: this.preset,
+            uniforms: this.uniforms,
+            atmosphere: this.atmosphere,
+            random: createRandom(seed ^ 0xd157),
+            eye: [0, EYE_HEIGHT, 0],
         });
 
         this.rest = new THREE.Vector3(0, EYE_HEIGHT, 0);
@@ -258,12 +273,14 @@ export class AuroraWorld {
             curtains: this.curtains.getDiagnostics(),
             sky: this.sky.getDiagnostics(),
             landscape: this.landscape.getDiagnostics(),
+            air: this.air.getDiagnostics(),
         };
     }
 
     dispose() {
         if (this.disposed) return;
         this.disposed = true;
+        this.air.dispose();
         this.landscape.dispose();
         this.sky.dispose();
         this.curtains.dispose();

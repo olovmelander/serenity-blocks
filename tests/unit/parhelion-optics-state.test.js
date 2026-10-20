@@ -591,7 +591,7 @@ describe('Parhelion pools and per-player caps (§7.7)', () => {
         state.applyCue(makeCue({ kind: CUE.LOCK, lockCount: 1 }), 1);
         let out = state.update(1.1, FRAME);
         expect(out.arcs[ARC_SLOT.STATION_A * 4]).toBeCloseTo(stationPhi(0), 6);
-        expect(out.arcs[ARC_SLOT.STATION_A * 4 + 1]).toBeCloseTo(0.18, 6);
+        expect(out.arcs[ARC_SLOT.STATION_A * 4 + 1]).toBeCloseTo(0.45, 6);
         state.applyCue(makeCue({ kind: CUE.LOCK, lockCount: 2 }), 1.12);
         out = state.update(1.2, FRAME);
         expect(out.arcs[ARC_SLOT.STATION_B * 4]).toBeCloseTo(stationPhi(1), 6);

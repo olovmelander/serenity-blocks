@@ -56,7 +56,7 @@ import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { ndHash21, ndLuma, ndMax3 } from './neon-district-tsl.js';
 import { ndGlass } from './neon-district-glass.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no streaks or rays). `streak` and

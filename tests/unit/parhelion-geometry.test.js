@@ -4,9 +4,11 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import * as THREE from 'three/webgpu';
 import {
     CROWN_CAP_Y,
     DEFAULT_STONE_PROFILE,
+    FAR_STONES,
     MEASURED_VIEWPORTS,
     STONE,
     projectWorld,
@@ -14,6 +16,7 @@ import {
 } from '../../src/playground/effects/parhelion-composition.js';
 import {
     STONE_SEED,
+    buildFarStoneMesh,
     buildStoneGeometry,
     buildStoneRings,
     measureStoneProfile,
@@ -23,18 +26,20 @@ describe('parhelion stone geometry', () => {
     const { geometry, profile } = buildStoneGeometry(STONE_SEED);
     const pos = geometry.attributes.position;
 
-    it('is a low-poly, non-indexed faceted mesh with per-facet hashes and barycentrics', () => {
-        expect(geometry.index).toBeNull();
-        const tris = pos.count / 3;
-        expect(tris).toBeGreaterThanOrEqual(200);
-        expect(tris).toBeLessThanOrEqual(300);
-        expect(geometry.attributes.aFacet.count).toBe(pos.count);
-        expect(geometry.attributes.aBary.count).toBe(pos.count);
+    it('is an indexed, smooth-normalled lathe of a few thousand triangles with ledge attributes', () => {
+        expect(geometry.index).not.toBeNull();
+        const tris = geometry.index.count / 3;
+        expect(tris).toBeGreaterThanOrEqual(3000);
+        expect(tris).toBeLessThanOrEqual(5000);
         expect(geometry.attributes.normal.count).toBe(pos.count);
-        const facet = geometry.attributes.aFacet;
-        for (let t = 0; t < tris; t++) {
-            expect(facet.getX(t * 3)).toBe(facet.getX(t * 3 + 2));
-        }
+        expect(geometry.attributes.aLedge.itemSize).toBe(4);
+        expect(geometry.attributes.aLedgeW.itemSize).toBe(4);
+        const w = geometry.attributes.aLedgeW.array;
+        expect(Math.min(...w)).toBeGreaterThanOrEqual(0);
+        expect(Math.max(...w)).toBeLessThanOrEqual(1);
+        // Some ledges exist somewhere, and some stretches have none (they come and go).
+        expect(Math.max(...w)).toBeGreaterThan(0.9);
+        expect(Math.min(...w)).toBeLessThan(0.1);
     });
 
     it('keeps DEFAULT_STONE_PROFILE equal to the measured default mesh (the solver trusts it)', () => {
@@ -64,26 +69,39 @@ describe('parhelion stone geometry', () => {
         expect(peakX).toBeLessThan(0);
     });
 
-    it('orients every facet outward', () => {
-        for (let t = 0; t < pos.count / 3; t++) {
-            const i = t * 3;
-            const ax = pos.getX(i);
-            const ay = pos.getY(i);
-            const az = pos.getZ(i);
-            const ux = pos.getX(i + 1) - ax;
-            const uy = pos.getY(i + 1) - ay;
-            const uz = pos.getZ(i + 1) - az;
-            const vx = pos.getX(i + 2) - ax;
-            const vy = pos.getY(i + 2) - ay;
-            const vz = pos.getZ(i + 2) - az;
+    it('orients every triangle outward (smooth normals must not point into the stone)', () => {
+        const index = geometry.index.array;
+        for (let t = 0; t < index.length / 3; t++) {
+            const [a, b, c] = [index[t * 3], index[t * 3 + 1], index[t * 3 + 2]];
+            const ax = pos.getX(a);
+            const ay = pos.getY(a);
+            const az = pos.getZ(a);
+            const ux = pos.getX(b) - ax;
+            const uy = pos.getY(b) - ay;
+            const uz = pos.getZ(b) - az;
+            const vx = pos.getX(c) - ax;
+            const vy = pos.getY(c) - ay;
+            const vz = pos.getZ(c) - az;
             const n = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
-            const c = [
-                (ax + pos.getX(i + 1) + pos.getX(i + 2)) / 3,
-                (ay + pos.getY(i + 1) + pos.getY(i + 2)) / 3 - 0.45,
-                (az + pos.getZ(i + 1) + pos.getZ(i + 2)) / 3,
+            const cen = [
+                (ax + pos.getX(b) + pos.getX(c)) / 3,
+                (ay + pos.getY(b) + pos.getY(c)) / 3 - 0.45,
+                (az + pos.getZ(b) + pos.getZ(c)) / 3,
             ];
-            expect(n[0] * c[0] + n[1] * c[1] + n[2] * c[2], `facet ${t}`).toBeGreaterThan(0);
+            expect(n[0] * cen[0] + n[1] * cen[1] + n[2] * cen[2], `triangle ${t}`).toBeGreaterThan(0);
         }
+        // The vertex normals agree: on the front of the stone they face the camera (+z).
+        const nz = geometry.attributes.normal;
+        let front = 0;
+        let toward = 0;
+        for (let i = 0; i < pos.count; i++) {
+            if (pos.getZ(i) > 0.8 && pos.getY(i) < 0.8) {
+                front += 1;
+                if (nz.getZ(i) > 0) toward += 1;
+            }
+        }
+        expect(front).toBeGreaterThan(50);
+        expect(toward).toBe(front);
     });
 
     it('keeps the real mesh under the crown cap at every measured viewport once solved', () => {
@@ -103,5 +121,33 @@ describe('parhelion stone geometry', () => {
             // The solver caps the peak at the slab centre; front crown vertices may sit a hair higher.
             expect(top, `${vp.width}x${vp.height}`).toBeGreaterThan(CROWN_CAP_Y - 0.004);
         }
+    });
+});
+
+describe('parhelion far stones mesh', () => {
+    it('is ONE instanced draw of the composition row: split slabs, no ledge attributes', () => {
+        const material = new THREE.MeshBasicNodeMaterial();
+        const mesh = buildFarStoneMesh(material, FAR_STONES);
+        expect(mesh.isInstancedMesh).toBe(true);
+        expect(mesh.count).toBe(FAR_STONES.length);
+        expect(mesh.geometry.index).toBeNull();
+        expect(mesh.geometry.attributes.aLedge).toBeUndefined();
+        expect(mesh.geometry.attributes.aLedgeW).toBeUndefined();
+        const m = new THREE.Matrix4();
+        const p = new THREE.Vector3();
+        FAR_STONES.forEach(([x, z], i) => {
+            mesh.getMatrixAt(i, m);
+            p.setFromMatrixPosition(m);
+            expect(p.x).toBeCloseTo(x, 6);
+            expect(p.z).toBeCloseTo(z, 6);
+            expect(p.y).toBeLessThan(0);
+        });
+        // The crown is cut flat (a slanted plane), so no vertex rises above ≈ 1.05 unit height.
+        const pos = mesh.geometry.attributes.position;
+        let top = 0;
+        for (let i = 0; i < pos.count; i++) top = Math.max(top, pos.getY(i));
+        expect(top).toBeLessThan(1.06);
+        mesh.geometry.dispose();
+        material.dispose();
     });
 });
