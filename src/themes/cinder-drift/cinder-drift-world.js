@@ -72,7 +72,9 @@ import { tierFor } from './cinder-drift-quality.js';
 import { createLake } from './cinder-drift-lake.js';
 import { createColumns, createShell } from './cinder-drift-rock.js';
 import { createFalls, createFissure } from './cinder-drift-falls.js';
-import { createEmbers, createShaft, createSmoke } from './cinder-drift-air.js';
+import {
+    createEmbers, createPlume, createShaft, createSmoke,
+} from './cinder-drift-air.js';
 import {
     createBombs, createFlashes, createRowJets, createSpatter,
 } from './cinder-drift-fx.js';
@@ -116,7 +118,8 @@ const DRIP_BEAT = 0.2;
 const SPATTER_REFERENCE = 4096;
 
 const PARTS = [
-    'columns', 'lake', 'shell', 'fissure', 'falls', 'smoke', 'shaft', 'embers', 'spatter', 'bombs', 'flashes', 'jets',
+    'columns', 'lake', 'shell', 'fissure', 'falls', 'smoke', 'plume', 'shaft', 'embers', 'spatter', 'bombs', 'flashes',
+    'jets',
 ];
 
 export class CinderDriftWorld {
@@ -280,6 +283,10 @@ export class CinderDriftWorld {
         if (tier.smoke > 0) {
             this.addPart('smoke', createSmoke(u, tier.smoke));
             yield 'smoke';
+        }
+        if (tier.plume > 0) {
+            this.addPart('plume', createPlume(u, tier.plume, plan));
+            yield 'plume';
         }
         if (tier.shaft) {
             this.addPart('shaft', createShaft(u));
@@ -714,7 +721,8 @@ export class CinderDriftWorld {
             const f = this.plan.fountains[k];
             const at = birth + clearPassTime(Math.hypot(f.x - hx, f.z - hz)) + rand() * 0.12;
             const life = quad ? CURTAIN_LIFE * (0.7 + rand() * 0.5) : FOUNTAIN_LIFE * (0.75 + 0.14 * n + rand() * 0.3);
-            const height = quad ? 13 + rand() * 11 : 4.5 + 2.2 * n + rand() * 2.5;
+            // (A curtain is never a row of equals: a few stand far taller than their neighbours.)
+            const height = quad ? 9 + rand() ** 1.6 * 19 : 4.5 + 2.2 * n + rand() * 2.5;
             this.falls.fountain({
                 x: f.x, z: f.z, time: at, life, height: height * 0.72, width: quad ? 2.0 + rand() * 1.0 : 0.9 + 0.16 * n,
             });
