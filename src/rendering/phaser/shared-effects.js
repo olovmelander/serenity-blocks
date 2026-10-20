@@ -33,7 +33,7 @@ import {
     createMomentFxOwner, playKnockoutFx, playRoundWinFx, playVictoryFx, restoreKnockoutFx,
 } from './fx/fx-moments.js';
 import { wellGarbageColor } from './well-board-style.js';
-import { prefersReducedFlashing } from '../../core/photosensitivity.js';
+import { prefersReducedFlashing } from '../../utils/photosensitivity.js';
 
 // Constants
 const RIPPLE_PARTICLE_LIFESPAN = 650;

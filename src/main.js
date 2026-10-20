@@ -91,7 +91,10 @@ import {
     createStartupPipelineController,
 } from './ui/startup-pipeline-controller.js';
 import { markStartup } from './ui/startup-debug.js';
-import { applyReduceFlashingClass } from './core/photosensitivity.js';
+import {
+    afterStartupShellReveal, applyReduceFlashingClass, markStartupShellShown, tracePhotosensitivityWarning,
+    waitForStartupShellSeen,
+} from './ui/startup-shell-clock.js';
 import { identHoldIsStatic, onIdentHoldWarmPhase, probeWebGPUAdapter } from './ui/startup-ident-hold.js';
 import { DemoManager } from './core/demo/DemoManager.js';
 import { DemoBrowser } from './ui/demo-browser.js';
@@ -458,24 +461,7 @@ async function reportDesktopStartupPhase(phase, payload = {}) {
 
 let startupShellDismissed = false;
 let startupShellReadyReported = false;
-let startupShellShownAt = 0;
 let startupShellDismissPromise = null;
-
-/**
- * The photosensitivity warning index.html painted as the first screen (ADR-0021,
- * src/ui/photosensitivity-warning.js), kept on the window because it runs before this bundle.
- * The boot never waits for it; only what the player must SEE (the ident's clock) does.
- */
-function photosensitivityWarning() {
-    return typeof window !== 'undefined' ? (window.__serenityPhotosensitivityWarning || null) : null;
-}
-
-/** Resolves once the warning has lifted (at once when there is none). */
-function waitForPhotosensitivityWarning() {
-    const warning = photosensitivityWarning();
-    if (!warning?.isActive?.()) return Promise.resolve();
-    return Promise.resolve(warning.dismissed).then(() => undefined, () => undefined);
-}
 
 /**
  * If a studio-logo image `src` is set on #startup-logo-image, reveal it and hide the
@@ -498,43 +484,14 @@ function initStartupLogo() {
     }
 }
 
-/**
- * Ensure the studio-logo splash is shown for at least `ms` so it reads as an
- * intentional ident (not a flash) even when boot/warm is fast.
- * @param {number} ms
- * @returns {Promise<void>}
- */
-function waitForStartupLogoMinVisible(ms = STARTUP_IDENT_MIN_VISIBLE_MS) {
-    // Under the photosensitivity warning the ident has not been seen yet: its clock starts when
-    // the warning lifts (revealStartupShell moves startupShellShownAt there).
-    return waitForPhotosensitivityWarning().then(() => {
-        if (!startupShellShownAt) return undefined;
-        const now = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
-        const remaining = ms - (now - startupShellShownAt);
-        if (remaining <= 0) return undefined;
-        return new Promise((resolve) => { setTimeout(resolve, remaining); });
-    });
-}
-
 async function revealStartupShell() {
     if (startupShellReadyReported) {
         return;
     }
 
     document.body.classList.add('startup-shell-active');
-    startupShellShownAt = typeof performance !== 'undefined' && performance.now
-        ? performance.now()
-        : Date.now();
-    // Under the photosensitivity warning the loading screen is covered (its loops paused): it is
-    // first seen when the warning lifts, so the ident's minimum and its reveal count from then.
-    const warning = photosensitivityWarning();
-    if (warning?.isActive?.()) {
-        Promise.resolve(warning.dismissed).then((result) => {
-            const liftedAt = Number(result?.dismissedAtMs);
-            const nowMs = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
-            startupShellShownAt = Math.max(startupShellShownAt, Number.isFinite(liftedAt) ? liftedAt : nowMs);
-        }).catch(() => {});
-    }
+    // Seen from now, or from when the photosensitivity warning lifts (ui/startup-shell-clock.js).
+    markStartupShellShown();
     initStartupLogo();
     await onNextPaint();
     startupShellReadyReported = true;
@@ -2655,38 +2612,17 @@ class SerenityBlocks {
      */
     async _finishStartupRevealBeforeWarm() {
         try {
-            const REVEAL_MS = 1650;
-            const lit = () => {
+            // Under the photosensitivity warning the loading screen is covered: the hold is parked
+            // for when the warning lifts and the warm begins now (ui/startup-shell-clock.js).
+            await afterStartupShellReveal(1650, () => {
                 const shell = document.getElementById('startup-shell');
                 if (!shell) return;
                 // No async pipelines (rollback / no WebGPU): the warm compiles synchronously,
                 // which stalls the compositor itself, so moving loops would stop and jump. Keep
                 // the old static hold there (a sync-renderer theme pauses it: startup-ident-hold).
-                if (identHoldIsStatic(this.themeManager)) {
-                    shell.classList.add('sb-lit--static');
-                }
+                if (identHoldIsStatic(this.themeManager)) shell.classList.add('sb-lit--static');
                 shell.classList.add('sb-lit');
-            };
-            // Under the photosensitivity warning the loading screen is covered and its loops are
-            // paused: its reveal plays once the warning lifts, so the hold is parked for then and
-            // the warm begins now. A compile behind a still, opaque screen freezes nothing seen.
-            const warning = photosensitivityWarning();
-            if (warning?.isActive?.()) {
-                Promise.resolve(warning.dismissed)
-                    .then(() => { setTimeout(lit, REVEAL_MS); })
-                    .catch(() => {});
-                return;
-            }
-            if (startupShellShownAt) {
-                const nowMs = typeof performance !== 'undefined' && performance.now
-                    ? performance.now()
-                    : Date.now();
-                const remaining = REVEAL_MS - (nowMs - startupShellShownAt);
-                if (remaining > 0) {
-                    await new Promise((resolve) => { setTimeout(resolve, remaining); });
-                }
-            }
-            lit();
+            });
         } catch (error) {
             // non-fatal
         }
@@ -4062,11 +3998,8 @@ class SerenityBlocks {
         // Update global settings reference
         window.settings = settings;
 
-        // Reduce flashing effects (photosensitivity): the worlds and the board read the setting
-        // live; the stylesheet's hook on <html> is kept in step here.
-        if (changes.reduceFlashing !== undefined) {
-            applyReduceFlashingClass(settings.reduceFlashing === true);
-        }
+        // Reduce flashing effects: the worlds read it live; the stylesheet's hook follows here.
+        if (changes.reduceFlashing !== undefined) applyReduceFlashingClass(settings.reduceFlashing === true);
 
         // Handle theme mode changes
         if (changes.backgroundMode || changes.backgroundTheme) {
@@ -4958,23 +4891,7 @@ async function bootstrap() {
         }
 
         // The photosensitivity warning (the first screen, ADR-0021) is traced like any milestone.
-        // Nothing here waits for it; the loading screen's clock does (revealStartupShell).
-        const launchWarning = photosensitivityWarning();
-        if (launchWarning) {
-            markStartup('photosensitivity-warning:observed', {
-                state: launchWarning.snapshot?.()?.state ?? 'unknown',
-                shownAtMs: Math.round(launchWarning.shownAtMs || 0),
-            });
-            Promise.resolve(launchWarning.dismissed).then((result) => {
-                const detail = {
-                    reason: result?.reason || 'unknown',
-                    via: result?.via || null,
-                    visibleMs: Math.round(result?.visibleMs || 0),
-                };
-                markStartup('photosensitivity-warning:dismissed', detail);
-                performanceMonitor.recordEvent('photosensitivity_warning_dismissed', detail);
-            }).catch(() => {});
-        }
+        tracePhotosensitivityWarning();
 
         await resolveDesktopRuntimeConfig();
         if (typeof window !== 'undefined') {
@@ -5092,7 +5009,7 @@ async function bootstrap() {
             // Hold the studio ident on screen for at least 4s (reveal ~1.5s + a held
             // beat) before the reveal transition, so it lands as a deliberate, tone-
             // setting ident even when the warm above was fast/skipped.
-            await waitForPipelineStep(waitForStartupLogoMinVisible(STARTUP_IDENT_MIN_VISIBLE_MS));
+            await waitForPipelineStep(waitForStartupShellSeen(STARTUP_IDENT_MIN_VISIBLE_MS));
 
             desktopBootCoordinator?.mark('intro-started', {
                 mode: 'interactive',
