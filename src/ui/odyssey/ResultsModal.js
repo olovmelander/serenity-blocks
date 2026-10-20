@@ -17,7 +17,7 @@ import { appendKeyHint, createKeystoneSheet, el } from './keystone-sheet.js';
 import { FOCUSABLE_SELECTOR } from '../spatial-navigation.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
 import { createOdysseyStarNotes } from './odyssey-star-notes.js';
-import { describeOdysseyCharms } from '../../core/odyssey/odyssey-charms.js';
+import { describeOdysseyCharms } from '../../core/odyssey/odyssey-charm-bag.js';
 
 /**
  * Build the level-complete results sheet.
@@ -103,8 +103,9 @@ export function createResultsModal({
     if (results.duel) {
         stats.unshift({ label: 'Knockouts', value: `${results.duel.playerFrags}–${results.duel.botFrags}` });
     }
+    // A fact, not a warning: the charms this clear used. Its stars count in full.
     const charms = describeOdysseyCharms(results.charms);
-    if (charms.length) stats.push({ label: 'Charms', value: charms.map((charm) => charm.name).join(' · ') });
+    if (charms.length) stats.push({ label: 'Charms used', value: charms.map((charm) => charm.name).join(' · ') });
     const statsContainer = el('dl', 'sb-ody-facts');
     stats.forEach((stat) => {
         const fact = el('div', 'sb-ody-fact');

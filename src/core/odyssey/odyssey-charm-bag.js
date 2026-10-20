@@ -268,8 +268,15 @@ export function odysseyCharmDropCount(stars) {
     return whole(stars) >= 3 ? 2 : 1;
 }
 
-/** A uniform draw in [0, 1) from the session seed source, so the core adds no clock or dice of its own. */
-const defaultRandom = () => generateSessionSeed() / 4294967296;
+/**
+ * A uniform draw in [0, 1) from the session seed source, so the core adds no clock or dice of
+ * its own. A host without Web Crypto (or a test that stubs it away) takes the seed's fallback.
+ */
+const defaultRandom = () => {
+    const provider = globalThis.crypto;
+    const cryptoProvider = typeof provider?.getRandomValues === 'function' ? provider : null;
+    return generateSessionSeed({ cryptoProvider }) / 4294967296;
+};
 
 /**
  * The charm a clear leaves: uniformly among the charms that do something on the next uncleared

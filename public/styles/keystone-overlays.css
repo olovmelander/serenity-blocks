@@ -110,61 +110,8 @@
     font: 500 1rem / 1.55 var(--sb-font-text);
 }
 
-/* The road's mercy on the failure sheet: a draft of charms, take one or pass. */
-.sb-ody-charms {
-    gap: 8px;
-}
-
-.sb-ody-charm-list {
-    display: grid;
-    gap: 6px;
-    margin-top: 4px;
-}
-
-.sb-ody-charm {
-    display: grid;
-    gap: 3px;
-    width: 100%;
-    padding: 9px 12px;
-    border-radius: 10px;
-    border: 1px solid var(--sb-line);
-    background: rgba(var(--sb-cream-rgb), 0.03);
-    color: var(--sb-text);
-    font: 400 0.8125rem / 1.4 var(--sb-font-text);
-    text-align: left;
-    cursor: pointer;
-}
-
-.sb-ody-charm__kind {
-    color: var(--sb-lavender);
-    font: 600 0.625rem / 1.3 var(--sb-font-display);
-    font-style: normal;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-}
-
-.sb-ody-charm b {
-    font: 600 0.9375rem / 1.2 var(--sb-font-display);
-}
-
-.sb-ody-charm span {
-    color: var(--sb-text-muted);
-}
-
-.sb-ody-charm:hover,
-.sb-ody-charm:focus-visible {
-    border-color: rgba(var(--sb-lavender-rgb), 0.7);
-    background: rgba(var(--sb-lavender-rgb), 0.1);
-}
-
-.sb-ody-charm-pass {
-    align-self: flex-start;
-    min-height: 32px;
-    font-size: 0.6875rem;
-}
-
-.sb-ody-charm-settled {
-    margin: 0;
+/* The road's mercy on the failure sheet: the one charm the third fall left, and its key. */
+.sb-ody-charm-pity {
     color: var(--sb-lavender);
     font-weight: 600;
 }
@@ -583,52 +530,11 @@
     text-shadow: 0 0 14px rgba(var(--sb-gold-rgb), 0.45);
 }
 
-/* The charm bag: every charm gathered as a carry toggle; the goal below counts the carried. */
-#odyssey-board-overlay .level-charms {
-    margin: -4px 0 14px;
-}
-
-#odyssey-board-overlay .level-charm-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 6px;
-}
-
-#odyssey-board-overlay .level-charm {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    min-height: 30px;
-    padding: 4px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--sb-line);
-    background: rgba(var(--sb-cream-rgb), 0.03);
-    color: var(--sb-text-muted);
-    font: 600 0.75rem / 1.3 var(--sb-font-text);
-    cursor: pointer;
-}
-
-#odyssey-board-overlay .level-charm:hover,
-#odyssey-board-overlay .level-charm:focus-visible {
-    border-color: rgba(var(--sb-lavender-rgb), 0.7);
-    color: var(--sb-text);
-}
-
-#odyssey-board-overlay .level-charm[aria-pressed='true'] {
-    border-color: rgba(var(--sb-lavender-rgb), 0.55);
-    background: rgba(var(--sb-lavender-rgb), 0.14);
-    color: var(--sb-lavender);
-}
-
+/* The orb panel's charm line: the charms held that help here. Read-only. */
 #odyssey-board-overlay .level-charm-hint {
-    margin: 8px 0 0;
-    color: var(--sb-text-muted);
+    margin: -4px 0 14px;
+    color: var(--sb-lavender);
     font: 500 0.75rem / 1.5 var(--sb-font-text);
-}
-
-#odyssey-board-overlay .level-charm-hint[data-notice='true'] {
-    color: var(--sb-gold);
 }
 
 #odyssey-board-overlay .level-nav-hint {
@@ -1005,38 +911,121 @@
     line-height: 1.6;
 }
 
-/* Charms: the ones held this journey, each named, its line on hover; a spent Hearth is marked. */
+/* Charms: a chip per charm held, with its key, its count and its state; one press uses it. */
 #odyssey-hud .charms-list {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 6px;
-    margin: 8px 0 0;
-    padding: 0;
-    list-style: none;
+    margin-top: 8px;
 }
 
 #odyssey-hud .charm-chip {
-    display: inline-flex;
-    align-items: baseline;
-    gap: 6px;
-    padding: 5px 10px;
-    border-radius: 999px;
-    border: 1px solid rgba(var(--sb-lavender-rgb), 0.35);
-    background: rgba(var(--sb-lavender-rgb), 0.1);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 10px;
+    border: 1px solid var(--sb-line);
+    background: rgba(var(--sb-cream-rgb), 0.04);
     color: var(--sb-text);
-    font: 600 12px / 1.3 var(--sb-font-text);
+    font: 600 12px / 1.4 var(--sb-font-text);
+    text-align: left;
+    cursor: pointer;
 }
 
-#odyssey-hud .charm-chip[data-spent='true'] {
-    border-style: dashed;
+#odyssey-hud .charm-chip:hover:not(:disabled) {
+    border-color: rgba(var(--sb-lavender-rgb), 0.6);
+    background: rgba(var(--sb-lavender-rgb), 0.12);
+}
+
+#odyssey-hud .charm-chip:focus-visible {
+    outline: 2px solid var(--sb-keystone);
+    outline-offset: 2px;
+}
+
+#odyssey-hud .charm-chip:disabled {
+    cursor: default;
     color: var(--sb-text-faint);
 }
 
-#odyssey-hud .charm-chip__state {
+#odyssey-hud .charm-chip[data-state='active'],
+#odyssey-hud .charm-chip[data-state='armed'] {
+    color: var(--sb-lavender);
+    border-color: rgba(var(--sb-lavender-rgb), 0.55);
+}
+
+/* Armed: a soft ring breathes on the chip until the top-out it waits for. */
+#odyssey-hud .charm-chip[data-state='armed'] {
+    animation: charm-armed 1.6s var(--sb-ease-breathe) infinite alternate;
+}
+
+@keyframes charm-armed {
+    from { box-shadow: 0 0 0 1px rgba(var(--sb-lavender-rgb), 0.3), 0 0 8px rgba(var(--sb-lavender-rgb), 0.2); }
+    to { box-shadow: 0 0 0 1px rgba(var(--sb-lavender-rgb), 0.55), 0 0 18px rgba(var(--sb-lavender-rgb), 0.4); }
+}
+
+#odyssey-hud .charm-chip[data-state='used'] {
+    border-style: dashed;
+}
+
+#odyssey-hud .charm-chip[data-flash='true'] .charm-chip__state {
+    color: var(--sb-gold);
+}
+
+#odyssey-hud .charm-chip__name {
+    flex: 1;
+}
+
+#odyssey-hud .charm-chip__count {
     color: var(--sb-text-muted);
-    font-size: 10px;
+    font-variant-numeric: tabular-nums;
+}
+
+#odyssey-hud .charm-chip__state {
+    font-size: 11px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+}
+
+#odyssey-hud .charm-chip .sb-kbd[hidden] {
+    display: none;
+}
+
+/* Spoken once per state change; never seen. */
+#odyssey-hud .charms-live {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+/* Long Breath: the clock flashes as it gains its seconds. */
+#odyssey-hud .time-value.is-extended {
+    animation: charm-clock 1.2s ease-out;
+}
+
+@keyframes charm-clock {
+    from { color: var(--sb-lavender); text-shadow: 0 0 14px rgba(var(--sb-lavender-rgb), 0.6); }
+    to { text-shadow: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #odyssey-hud .charm-chip[data-state='armed'] {
+        animation: none;
+        box-shadow: 0 0 0 1px rgba(var(--sb-lavender-rgb), 0.45), 0 0 12px rgba(var(--sb-lavender-rgb), 0.3);
+    }
+
+    #odyssey-hud .time-value.is-extended {
+        animation: none;
+        color: var(--sb-lavender);
+    }
 }
 
 #odyssey-hud.is-paused {
@@ -1391,6 +1380,17 @@
 
     #odyssey-hud .objective-section {
         padding-right: 90px;
+    }
+
+    /* The dock lays the charm chips in a row. */
+    #odyssey-hud .charms-list {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+
+    #odyssey-hud .charm-chip {
+        width: auto;
+        flex: 1 1 140px;
     }
 
     #odyssey-hud .time-section {

@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import {
     ODYSSEY_CHARMS, ODYSSEY_CHARM_CAP, ODYSSEY_CHARM_IDS, ODYSSEY_LONG_BREATH_SECONDS, ODYSSEY_PITY_FALLS,
     ODYSSEY_PITY_HOLD, ODYSSEY_STILL_AIR_MS, ODYSSEY_TIDE_ROWS,
@@ -195,10 +197,18 @@ describe('Odyssey charms: what a clear leaves', () => {
         // Nothing under the cap: the clear leaves nothing, honestly.
         ODYSSEY_CHARM_IDS.forEach((id) => { state.bag[id] = ODYSSEY_CHARM_CAP; });
         expect(dropOdysseyCharms(state, getLevelById(1), 3, () => 0)).toEqual([]);
-        // Without a draw of its own the pick still lands on a charm that helps.
+        // Without a draw of its own the pick still lands on a charm that helps, with or without Web Crypto.
         const fresh = createOdysseyCharmState();
         expect(['tide', 'still-air', 'hearth']).toContain(pickOdysseyCharmDrop(fresh, getLevelById(1)));
         expect(dropOdysseyCharms(fresh, getLevelById(1), 1)).toHaveLength(1);
+        try {
+            vi.stubGlobal('crypto', {});
+            expect(['tide', 'still-air', 'hearth']).toContain(pickOdysseyCharmDrop(fresh, getLevelById(1)));
+            vi.stubGlobal('crypto', undefined);
+            expect(['tide', 'still-air', 'hearth']).toContain(pickOdysseyCharmDrop(fresh, getLevelById(1)));
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 });
 
