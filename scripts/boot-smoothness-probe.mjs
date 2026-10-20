@@ -267,7 +267,9 @@ async function run() {
     step('probe registered');
 
     const extra = args['url-params'] ? `&${args['url-params'].replace(/^[?&]/, '')}` : '';
-    const url = `http://localhost:${PORT}/?startupDebug=1${extra}`;
+    // The photosensitivity warning (ADR-0021) covers the ident for its first seconds; the probe
+    // measures the ident itself, so it skips the warning.
+    const url = `http://localhost:${PORT}/?startupDebug=1&photosensitivityWarning=0${extra}`;
     const startedAt = Date.now();
     // Do not await did-finish-load: a long boot can hold the load event; the capture window is
     // wall-clock from navigation either way.

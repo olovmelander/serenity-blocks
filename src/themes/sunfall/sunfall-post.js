@@ -59,6 +59,7 @@ import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { sceneSamples } from '../shared/scene-antialias.js';
 import { resolveSunfallQuality } from './sunfall-quality.js';
+import { flashScale } from '../../core/photosensitivity.js';
 import {
     CANOPY_LEVEL, DECK, FAR_DOLINE_CENTER, OCULUS_CENTER, OCULUS_RX, OCULUS_RZ, SUNFALL_LAYOUT,
 } from './sunfall-core.js';
@@ -478,7 +479,7 @@ export class SunfallPost {
     } = {}) {
         if (exposure !== undefined) this.uExposure.value = exposure;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (flashColour) this.uFlashColour.value.set(flashColour[0], flashColour[1], flashColour[2]);
         if (saturation !== undefined) this.uSaturation.value = saturation;
         if (time !== undefined) this.uTime.value = time;

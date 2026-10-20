@@ -44,6 +44,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { pyHash21, pyLuma, pyMax3 } from './pyrestorm-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /** Per-tier look. `bloom: false` builds no BloomNode (and so no shimmer, which reads it). */
 export const POST_LOOK = Object.freeze({
@@ -248,7 +249,7 @@ export class PyrestormPost {
     } = {}) {
         if (exposure !== undefined) this.uExposure.value = exposure;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (flashColour) this.uFlashColour.value.set(flashColour[0], flashColour[1], flashColour[2]);
         if (heat !== undefined) this.uHeat.value = heat;
         if (saturation !== undefined) this.uSaturation.value = saturation;

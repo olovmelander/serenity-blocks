@@ -50,6 +50,7 @@ import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import {
     swBell, swHash21, swLuma, swMax3,
 } from './stillwater-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no shafts). `shafts` is a tap count
@@ -353,7 +354,7 @@ export class StillwaterPost {
     } = {}) {
         if (moon) this.uMoon.value.set(moon.x, moon.y);
         if (heart) this.uHeart.value.set(heart.x, heart.y);
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;

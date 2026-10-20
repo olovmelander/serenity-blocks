@@ -58,6 +58,23 @@ npm run preview
 - The game uses Phaser for board rendering and keeps theme backgrounds in Three.js for visual flexibility.
 - Legacy canvas paths remain only as guarded fallback paths.
 
+## Accessibility
+
+**Photosensitivity.** Serenity Blocks contains flashing lights and visual effects (lightning,
+bursts, strobes and bright transitions in its worlds) that may trigger discomfort or seizures in
+people with photosensitive epilepsy, including people with no history of it. A photosensitivity
+warning opens every launch, before anything else. **Settings › Visual › Reduce flashing effects**
+turns frame-wide flashes into a soft glow, fires lightning once and holds strobes steady while the
+worlds keep moving; **Reduce motion** calms shakes and large motion separately (it also follows your
+system's reduced-motion preference). If you experience dizziness, altered vision, eye or muscle
+twitches, loss of awareness, disorientation or any involuntary movement, stop playing at once and
+consult a doctor.
+
+That paragraph is the wording for the store page; keep it and
+[`docs/adr/0021-photosensitivity-warning-and-reduce-flashing.md`](docs/adr/0021-photosensitivity-warning-and-reduce-flashing.md)
+in step. Harnesses skip the warning with `?photosensitivityWarning=0` (or `skipIntro=1`); the
+player always sees it.
+
 ## Legal
 
 Serenity Blocks is an independent game and is **not affiliated with, endorsed by, or

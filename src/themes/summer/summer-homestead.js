@@ -22,6 +22,7 @@ import { summerPetalPalette } from './summer-petals.js';
 import {
     SUMMER_PLACES, summerGroundHeight, summerShoreDistance,
 } from './summer-terrain.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /** What a prop's faces are made of: the code stored in the green channel times eight. */
 export const SUMMER_MATERIALS = Object.freeze({
@@ -503,7 +504,7 @@ export class SummerHomestead {
             ? THREE.MathUtils.clamp(bouquet[index], 0, 1) : 0);
         this.bouquetVectors[0].set(level(0), level(1), level(2), level(3));
         this.bouquetVectors[1].set(level(4), level(5), level(6), 0);
-        this.uFlash.value = Number.isFinite(frame.bouquetFlash) ? THREE.MathUtils.clamp(frame.bouquetFlash, 0, 1) : 0;
+        this.uFlash.value = flashScale() * (Number.isFinite(frame.bouquetFlash) ? THREE.MathUtils.clamp(frame.bouquetFlash, 0, 1) : 0);
         const { boat } = this;
         if (!boat || !Number.isFinite(time)) return null;
         boat.position.y = Math.sin(time * 0.9) * 0.018;

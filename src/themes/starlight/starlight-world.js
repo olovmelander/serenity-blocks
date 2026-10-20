@@ -70,6 +70,7 @@ import { TRAIN_LIFE, createFx } from './starlight-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './starlight-composition.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 export const REST_RIG = Object.freeze({
     near: 1,
@@ -1010,7 +1011,7 @@ export class StarlightWorld {
             const landed = Math.max(0, age - ball.duration);
             const rise = Math.sin(Math.min(1, flown * 1.4) * Math.PI * 0.5);
             const power = age < 0 ? 0 : rise * Math.exp(-landed / 0.5) * ball.power;
-            u.flash.value.set(head[0], head[1], head[2], power);
+            u.flash.value.set(head[0], head[1], head[2], power * flashScale());
             this.lensFlash = Math.max(this.lensFlash, Math.min(1, power * 0.22));
             const at = this.screenOf(ball.to);
             if (landed > 0 && landed < 2.2 && at.front) {

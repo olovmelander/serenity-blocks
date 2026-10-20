@@ -1,0 +1,75 @@
+/* =================================================================================
+ * PHOTOSENSITIVITY (ADR-0021)
+ * ---------------------------------------------------------------------------------
+ * Two hooks:
+ *
+ *   body.photosensitivity-warning-active   while the launch warning covers the page (its own
+ *       style is inline in index.html so it paints with the first frame). Nothing may move
+ *       behind the warning: the loading screen's loops are paused here, from their first frame,
+ *       so the opening plays whole once the warning lifts; the custom cursor stays away.
+ *
+ *   html.sb-reduce-flashing   Settings > Visual > Reduce flashing effects. The DOM flashes become
+ *       a still highlight or a slow glow. Frame-wide flashes in the worlds and on the board are
+ *       held back in code (src/core/photosensitivity.js); this file covers the CSS ones.
+ * ============================================================================== */
+
+/* ---- The launch warning is up ------------------------------------------------------------- */
+body.photosensitivity-warning-active .startup-shell *,
+body.photosensitivity-warning-active .startup-shell *::before,
+body.photosensitivity-warning-active .startup-shell *::after {
+    animation-play-state: paused !important;
+}
+body.photosensitivity-warning-active .custom-cursor-container {
+    display: none !important;
+}
+body.photosensitivity-warning-active,
+body.photosensitivity-warning-active * {
+    cursor: default;
+}
+body.photosensitivity-warning-active #photosensitivity-warning .photosensitivity-warning__continue {
+    cursor: pointer;
+}
+
+/* ---- Reduce flashing effects --------------------------------------------------------------- */
+/* The line-clear bars (rendering/draw.js): a still, soft band instead of a 220 ms bloom. */
+html.sb-reduce-flashing .line-flash-bar.active,
+html.sb-reduce-flashing .line-flash-bar.active::before,
+html.sb-reduce-flashing .line-flash-bar.active::after {
+    animation: none !important;
+}
+html.sb-reduce-flashing .line-flash-bar.active {
+    opacity: 0.35;
+    transform: none;
+    transition: opacity 600ms ease-out;
+}
+html.sb-reduce-flashing .line-flash-bar::before {
+    filter: none;
+    box-shadow: none;
+}
+html.sb-reduce-flashing .line-flash-bar::after {
+    display: none;
+}
+/* The legacy brightness flash on a cleared line. */
+html.sb-reduce-flashing .line-flash {
+    animation: none !important;
+}
+/* Garbage and hit meters (multiplayer): the colour stays, the flash does not. */
+html.sb-reduce-flashing .main-board-panel .garbage-indicator.flash,
+html.sb-reduce-flashing .main-board-panel .garbage-indicator.warning,
+html.sb-reduce-flashing #multiplayer-container .player-card .garbage-indicator.is-hit {
+    animation: none !important;
+}
+html.sb-reduce-flashing #multiplayer-container .player-card .garbage-indicator.is-hit {
+    box-shadow: inset 0 0 0 999px rgba(var(--sb-danger-rgb), 0.2);
+}
+/* The oasis lantern's brightening. */
+html.sb-reduce-flashing .oasis-lantern.lantern-flash {
+    filter: none !important;
+}
+/* Odyssey HUD: the clock's gain and a refused charm keep their colour, not their flash. */
+html.sb-reduce-flashing #odyssey-hud .time-value.is-extended {
+    animation: none !important;
+}
+html.sb-reduce-flashing #odyssey-hud .charm-chip[data-flash='true'] .charm-chip__icon {
+    box-shadow: 0 0 0 1px rgba(var(--sb-gold-rgb), 0.5);
+}
