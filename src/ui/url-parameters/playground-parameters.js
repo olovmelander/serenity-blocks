@@ -1892,8 +1892,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'icon',
         category: 'Playground',
-        scope: 'playground.html — aurora, black-hole, chiral-gold, cosmic-noir, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, '
+        scope: 'playground.html — aurora, black-hole, blood-moon, chiral-gold, cosmic-noir, fluid-dreams, forest, '
+            + 'galaxy, geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, '
             + 'luminous-tides, lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, ocean, '
             + 'rainbark, rainbow-terraces, sakura-twilight, serenity-warp, shifting-sands, solar-eclipse, '
             + 'starlight, stellar-drift, stellar-velocity, stillwater, summer, sunset, supernova, '
@@ -1901,7 +1901,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'winter',
         description: 'Use the authored camera pose for a theme icon capture.',
         values: '1 enables. In Moonlit Greenhouse it is a tighter lens on the moon through the glass over '
-            + 'the canal (capture a square frame). In Kaleidosonic it aims from the eye at the core and '
+            + 'the canal (capture a square frame). In Blood Moon it centres the moon over its reflection '
+            + '(capture a square frame). In Kaleidosonic it aims from the eye at the core and '
             + 'its pillar, with a tighter lens.',
         defaultValue: 'Off.',
         example: 'icon=1',
@@ -1909,6 +1910,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/aurora.effect.js',
             'src/playground/effects/black-hole.effect.js',
+            'src/playground/effects/blood-moon.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
             'src/playground/effects/cosmic-noir.effect.js',
             'src/playground/effects/fluid-dreams.effect.js',
