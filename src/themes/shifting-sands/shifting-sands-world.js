@@ -21,7 +21,7 @@ import { createSky } from './shifting-sands-sky.js';
 import { createFormations } from './shifting-sands-rocks.js';
 import { WORM_SLOTS, WormDirector, createWorm } from './shifting-sands-worm.js';
 import {
-    BLOW_SLOTS, FX_TIERS, createSpiceBlows, createSpiceMotes, createSpindrift, createWormSand,
+    BLOW_SLOTS, FX_TIERS, createDustGeysers, createGoldMotes, createSpindrift, createWormSand,
 } from './shifting-sands-fx.js';
 import { drainSteps } from '../shared/build-steps.js';
 
@@ -40,10 +40,10 @@ export const WORLD_TIERS = Object.freeze({
 /** Degrees each sun sinks by full dusk. */
 const DUSK_SINK = Object.freeze({ a: 2.2, b: 4.0 });
 
-/** Where the thumper stands: on the sand just beyond the foot of the board. */
-const THUMPER = Object.freeze({ x: 0, z: -150 });
+/** Where the drum stands: on the sand just beyond the foot of the board. */
+const DRUM = Object.freeze({ x: 0, z: -150 });
 
-/** Spice-blow sites, alternating between the side zones. */
+/** Geyser sites, alternating between the side zones. */
 const BLOW_SITES = Object.freeze([
     { az: -27, dist: 1050 },
     { az: 22, dist: 1250 },
@@ -87,7 +87,7 @@ export class ShiftingSandsWorld {
         this._tmpV = new THREE.Vector3();
         this._sunScreen = { x: 0.25, y: 0.3, visible: 1 };
         this._groundScratch = {
-            h: 0, u: 0, amp: 0, base: 0, spice: 0,
+            h: 0, u: 0, amp: 0, base: 0, rust: 0,
         };
     }
 
@@ -125,7 +125,7 @@ export class ShiftingSandsWorld {
             uSunFlare: uniform(0),
             uWind: uniform(0.5),
             uGust: uniform(0),
-            uSpiceGlow: uniform(0),
+            uGoldGlow: uniform(0),
             uPxScale: uniform(1080 / (2 * Math.tan(25 * DEG))),
             uWindDir: uniform(new THREE.Vector2(wind.x, wind.z)),
             noiseTex: this.noiseTex,
@@ -169,7 +169,7 @@ export class ShiftingSandsWorld {
         });
         this.group.add(this.sky.mesh);
 
-        // ── Shai-Hulud ──
+        // ── The worm ──
         this.worm = createWorm(s, this.tier.worm || {});
         this.group.add(this.worm.mesh);
         // Captures replay the reference sequence of sites; in play every session draws its own.
@@ -182,20 +182,20 @@ export class ShiftingSandsWorld {
         this.rumble = 0;
         yield 'sky and worm';
 
-        // ── Sand, spice and dust ──
+        // ── Sand, glitter and dust ──
         const fx = FX_TIERS[this.quality] || FX_TIERS.High;
         this.fxTier = fx;
         this.wormSand = createWormSand(s, this.worm, fx.wormSand);
-        this.motes = createSpiceMotes(s, fx.motes);
+        this.motes = createGoldMotes(s, fx.motes);
         this.spindrift = createSpindrift(s, this.field, fx.spindrift);
-        this.blows = createSpiceBlows(s, fx.blowPerSlot);
+        this.blows = createDustGeysers(s, fx.blowPerSlot);
         this.wormSand.mesh.visible = fx.wormSand > 0;
         this.spindrift.mesh.visible = this.spindrift.count > 0;
         this.group.add(this.wormSand.mesh, this.motes.mesh, this.spindrift.mesh, this.blows.mesh);
         this.blowSlot = 0;
         this.pulseSlot = 0;
         this.gust = 0;
-        this.spiceGlow = 0;
+        this.goldGlow = 0;
         this.lastLockAt = -Infinity;
 
         // ── Rest camera: stand on the sand with the authored clearance ──
@@ -298,17 +298,17 @@ export class ShiftingSandsWorld {
 
     // ── Events (pure state writes; nothing is created at event time) ─────────────
 
-    /** A thumper beat: a ring of lifted sand runs out across the erg from below the board. */
+    /** A drum beat: a ring of lifted sand runs out across the erg from below the board. */
     onPieceLock() {
         if (this.time - this.lastLockAt < 0.12) return;
         this.lastLockAt = this.time;
-        this.pushGroundPulse(THUMPER.x, THUMPER.z, 1);
+        this.pushGroundPulse(DRUM.x, DRUM.z, 1);
     }
 
     onCombo(combo) {
         const c = Number.isFinite(combo) ? combo : 0;
         if (c < 2) return;
-        this.spiceGlow = Math.max(this.spiceGlow, Math.min(1.4, 0.25 + c * 0.12));
+        this.goldGlow = Math.max(this.goldGlow, Math.min(1.4, 0.25 + c * 0.12));
         this.gust = Math.max(this.gust, Math.min(1, 0.2 + c * 0.08));
     }
 
@@ -319,17 +319,17 @@ export class ShiftingSandsWorld {
         this.shared.uSunFlare.value = Math.max(this.shared.uSunFlare.value, 0.15 + n * 0.08);
         if (n >= 4) {
             // A Tetris calls the worm: one great blow where it will break the surface. If the
-            // last one it called is still above the sand, the spice answers instead.
+            // last one it called is still above the sand, the geysers answer instead.
             if (this.director.summon(this.time)) {
                 const em = this.director.summonedEmergence();
-                this.spawnSpiceBlowAt(em.x, em.z, this.director.summoned.t0 - 0.7, 1.5);
+                this.spawnGeyserAt(em.x, em.z, this.director.summoned.t0 - 0.7, 1.5);
             } else {
-                for (let i = 0; i < BLOW_SLOTS; i++) this.spawnSpiceBlow(this.time + i * 0.22, 1.3);
+                for (let i = 0; i < BLOW_SLOTS; i++) this.spawnGeyser(this.time + i * 0.22, 1.3);
             }
-            this.spiceGlow = Math.max(this.spiceGlow, 1.2);
+            this.goldGlow = Math.max(this.goldGlow, 1.2);
         } else {
             for (let i = 0; i < Math.min(n, BLOW_SLOTS); i++) {
-                this.spawnSpiceBlow(this.time + i * 0.22, 0.8 + n * 0.12);
+                this.spawnGeyser(this.time + i * 0.22, 0.8 + n * 0.12);
             }
         }
     }
@@ -340,15 +340,15 @@ export class ShiftingSandsWorld {
         this.terrain.uniforms.uPulses.array[slot].set(x, z, this.time, strength);
     }
 
-    /** Place a spice blow in a side zone (alternating), seated on the sand. */
-    spawnSpiceBlow(t0, strength) {
+    /** Place a dust geyser in a side zone (alternating), seated on the sand. */
+    spawnGeyser(t0, strength) {
         this.blowCount = (this.blowCount || 0) + 1;
         const site = BLOW_SITES[this.blowCount % BLOW_SITES.length];
         const az = site.az * DEG;
-        this.spawnSpiceBlowAt(Math.sin(az) * site.dist, -Math.cos(az) * site.dist, t0, strength);
+        this.spawnGeyserAt(Math.sin(az) * site.dist, -Math.cos(az) * site.dist, t0, strength);
     }
 
-    spawnSpiceBlowAt(x, z, t0, strength) {
+    spawnGeyserAt(x, z, t0, strength) {
         const slot = this.blowSlot;
         this.blowSlot = (this.blowSlot + 1) % BLOW_SLOTS;
         const y = this.field.sample(x, z, this._groundScratch).h;
@@ -399,9 +399,9 @@ export class ShiftingSandsWorld {
         this.rumble += (ws.rumble - this.rumble) * approach(ws.rumble > this.rumble ? 6 : 1.5, dt);
         this.flash += (0 - this.flash) * approach(2.5, dt);
         this.gust += (0 - this.gust) * approach(0.7, dt);
-        this.spiceGlow += (0 - this.spiceGlow) * approach(0.5, dt);
+        this.goldGlow += (0 - this.goldGlow) * approach(0.5, dt);
         s.uGust.value = this.gust;
-        s.uSpiceGlow.value = this.spiceGlow;
+        s.uGoldGlow.value = this.goldGlow;
         s.uWind.value = 0.55 + Math.sin(this.time * 0.11) * 0.15 + Math.sin(this.time * 0.37 + 1.2) * 0.08;
         s.uSunFlare.value += (0 - s.uSunFlare.value) * approach(1.5, dt);
 
