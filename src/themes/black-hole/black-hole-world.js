@@ -13,7 +13,7 @@ import {
 } from './black-hole-lens.js';
 import { BlackHoleMatter } from './black-hole-matter.js';
 import {
-    bakeDiskTexture, bakeSkyRows, bakeSkyTexture, createRandom,
+    LATTICE_SIZE, bakeDiskTexture, bakeLattice, bakeSkyRows, bakeSkyTexture, createRandom,
 } from './black-hole-noise.js';
 import { resolveBlackHoleQuality } from './black-hole-quality.js';
 
@@ -68,6 +68,11 @@ export function bakeBlackHoleTextures(preset, seed = BLACK_HOLE_SEED) {
             ),
             width: skyWidth,
             height: skyHeight,
+        },
+        lattice: {
+            data: cached(`lattice:${seed}`, () => bakeLattice(seed % 7919)),
+            width: LATTICE_SIZE,
+            height: LATTICE_SIZE,
         },
     };
 }
@@ -137,6 +142,9 @@ export class BlackHoleWorld {
         const textures = bakes ?? bakeBlackHoleTextures(this.preset, seed);
         this.diskTexture = dataTexture(textures.disk, 'Black Hole — accretion gas', { mipmaps: true, repeatT: true });
         this.skyTexture = dataTexture(textures.sky, 'Black Hole — galaxy', { srgb: true });
+        // Bakes handed in by an older caller may predate the lattice; it is cheap to make here.
+        const lattice = textures.lattice ?? bakeBlackHoleTextures(this.preset, seed).lattice;
+        this.latticeTexture = dataTexture(lattice, 'Black Hole — sky lattice', { repeatT: true });
 
         this.uniforms = createLensUniforms();
         // The Milky Way crosses the disk plane steeply, so the two never read as one band.
@@ -147,6 +155,7 @@ export class BlackHoleWorld {
             uniforms: this.uniforms,
             diskTexture: this.diskTexture,
             skyTexture: this.skyTexture,
+            latticeTexture: this.latticeTexture,
             steps: this.preset.marchSteps,
             stepScale: this.preset.stepScale,
             starLayers: this.preset.starLayers,
@@ -498,6 +507,7 @@ export class BlackHoleWorld {
         this.lensMaterial.dispose();
         this.diskTexture.dispose();
         this.skyTexture.dispose();
+        this.latticeTexture.dispose();
         this.group.removeFromParent();
         this.group.clear();
     }
