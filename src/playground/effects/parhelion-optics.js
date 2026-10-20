@@ -29,6 +29,7 @@ import {
     mix,
     round,
     select,
+    sign,
     sin,
     smoothstep,
     step,
@@ -237,18 +238,19 @@ export const phDogs = /* @__PURE__ */ Fn(([az, el, flareL, flareR, tail, tint, k
     const nx = dx.add(0.002);
     const flankX = min(nx, 0.0);
     const nucleus = exp(flankX.mul(flankX).div(4.225e-5).negate()).mul(exp(max(nx, 0.0).div(0.013).negate()));
-    const ramp = phHaloTint(dx.add(0.011).div(0.026));
+    // A slightly wider colour band than the ring's: red-orange sunward, gold, then white-gold.
+    const ramp = phHaloTint(dx.add(0.013).div(0.032));
     // Warm Hounds (tint): the inner edge deepens toward #FFB070.
     const core = ramp.mul(nucleus).mul(mix(vec3(1.0), vec3(1.0, 0.78, 0.55), tint));
     // The HDR blaze is compact (only it and the ring's body cross the 0.95 bloom threshold) …
-    const blaze = core.mul(exp(dy2.div(0.00065).negate()).mul(3.6));
+    const blaze = core.mul(exp(dy2.div(0.00045).negate()).mul(1.7));
     // … while the soft glow and the ice-blue tail stay below it, streaming outward.
     const out = max(dx, 0.0);
     const gate = smoothstep(-0.008, 0.012, dx);
     const glowShape = exp(out.div(0.035).negate()).mul(exp(dy2.div(0.0012).negate()));
-    const glow = linearColor(0xFFF1CF).mul(glowShape.mul(gate).mul(0.28));
+    const glow = linearColor(0xFFF1CF).mul(glowShape.mul(gate).mul(0.16));
     const tailLen = exp(out.div(tail.mul(0.10).add(0.06)).negate());
-    const tailV = linearColor(0xB8D0FF).mul(tailLen.mul(exp(dy2.div(0.0002).negate())).mul(gate).mul(tail).mul(0.22));
+    const tailV = linearColor(0xB8D0FF).mul(tailLen.mul(exp(dy2.div(0.0002).negate())).mul(gate).mul(tail).mul(0.3));
     const flare = select(az.lessThan(0.0), flareL, flareR).add(1.0);
     return blaze.add(glow).add(tailV).mul(k.mul(flare));
 }).setLayout({
@@ -260,13 +262,13 @@ export const phDogs = /* @__PURE__ */ Fn(([az, el, flareL, flareR, tail, tint, k
 /** Parhelic line: the sun's almucantar, from just inside the dogs outward; `pcAz/pcAmp` a travelling pulse. */
 export const phParhelic = /* @__PURE__ */ Fn(([az, el, pcAz, pcAmp, k]) => {
     const de = el.sub(ES);
-    const band = exp(de.mul(de).div(3.721e-5).negate());
+    const band = exp(de.mul(de).div(1.4e-5).negate());
     const aaz = abs(az);
     // Starts AT the dogs (never inside the lens) and streams outward.
     const start = smoothstep(round5(DOG_AZS - 0.012), round5(DOG_AZS + 0.03), aaz);
     const dp = aaz.sub(pcAz);
     const pulse = pcAmp.mul(exp(dp.mul(dp).div(0.0009).negate()));
-    return band.mul(start).mul(pulse.add(0.25)).mul(k);
+    return band.mul(start).mul(pulse.add(0.34)).mul(k);
 }).setLayout({
     name: 'ph_parhelic', type: 'float', inputs: [f('az'), f('el'), f('pcAz'), f('pcAmp'), f('k')],
 });
@@ -321,25 +323,195 @@ export const phArcGlow = /* @__PURE__ */ Fn(([phiM, phiO, xG, slot]) => {
 // Ground features drawn in the dome
 // ---------------------------------------------------------------------------------------
 
+/** 1D value noise from a sine hash (a real WGSL fn: the mountains call it several times). */
+export const phNoise1 = /* @__PURE__ */ Fn(([x]) => {
+    const i = floor(x);
+    const fr = fract(x);
+    const h0 = fract(sin(i.mul(127.1)).mul(43758.5453));
+    const h1 = fract(sin(i.add(1.0).mul(127.1)).mul(43758.5453));
+    return mix(h0, h1, fr.mul(fr).mul(float(3.0).sub(fr.mul(2.0))));
+}).setLayout({ name: 'ph_noise1', type: 'float', inputs: [f('x')] });
+
 /**
- * Distant ice ridges: vec4(rgb, coverage). Ridge height (rad above the horizon) for a ridge
- * noise sample `n`, higher on the left (asymmetry) — mirrored on the CPU by ridgeHeightCpu().
- * Backlit ice-blue faces, gold-tipped toward the sun (stronger out in the lanes). The caller
- * hazes the colour toward ph_haze.
+ * Ridged octave with its exact slope: vec2(v, dv), v = (1 − |2n − 1|)² (sharp crests where the
+ * noise crosses its middle, squared for steep peaks) and dv = dv/dx from the noise's own
+ * smoothstep derivative, so a peak knows which of its sides faces which way. The noise is
+ * written out here (no nested laid-out call).
  */
-export const phRidge = /* @__PURE__ */ Fn(([az, el, sunward, laneW, n]) => {
-    const peaks = float(1.0).sub(abs(n.mul(2.0).sub(1.0)));
-    const left = smoothstep(-0.15, -0.55, az).mul(0.010);
-    const rh = float(0.009).add(peaks.mul(0.020)).add(sin(az.mul(31.0)).mul(0.003)).add(left);
-    const depth = rh.sub(el);
-    const cover = float(1.0).sub(smoothstep(-0.0007, 0.0007, depth.negate())).mul(step(-0.03, el));
-    // max(depth, 0): the spec's exp(−(rh − el)/.003) overflows to +Inf above the ridge (NaN sky).
-    const glow = sunward.mul(exp(max(depth, 0.0).div(0.003).negate())).mul(laneW.mul(0.5).add(0.5));
-    // Faces darken slightly with depth below the crest (backlit ice).
-    const face = mix(linearColor(0x8FA6CF), linearColor(0x5F77AD), smoothstep(0.0, 0.016, depth));
-    return vec4(mix(face, linearColor(0xFFD39A), glow), cover);
+export const phRidgedD = /* @__PURE__ */ Fn(([x]) => {
+    const i = floor(x);
+    const fr = fract(x);
+    const h0 = fract(sin(i.mul(127.1)).mul(43758.5453));
+    const h1 = fract(sin(i.add(1.0).mul(127.1)).mul(43758.5453));
+    const n = mix(h0, h1, fr.mul(fr).mul(float(3.0).sub(fr.mul(2.0))));
+    const dn = h1.sub(h0).mul(fr.mul(float(1.0).sub(fr)).mul(6.0));
+    const t = n.mul(2.0).sub(1.0);
+    const w = float(1.0).sub(abs(t));
+    // d|t|/dx = sign(t)·2·dn; d(w²)/dx = 2w·dw/dx.
+    return vec2(w.mul(w), w.mul(-4.0).mul(sign(t)).mul(dn));
+}).setLayout({ name: 'ph_ridgedD', type: 'vec2', inputs: [f('x')] });
+
+/** Mountain range constants (rad above the horizon), shared with the CPU mirror. */
+export const MOUNTAINS = Object.freeze({
+    FAR: Object.freeze({
+        scale: 9.0, offset: 3.7, base: 0.011, amp: 0.085,
+    }),
+    NEAR: Object.freeze({
+        scale: 14.0, offset: 11.2, base: 0.003, amp: 0.026,
+    }),
+    LEFT: 0.012,
+});
+
+/**
+ * Two backlit mountain ranges on the horizon: vec4(rgb, coverage). The far range stands tall
+ * (≈ 1–5°) and hazy, the nearer one is lower and darker; both are higher on the left
+ * (asymmetry) — mirrored on the CPU by mountainHeightCpu(). Every peak has a side turned
+ * toward the hidden sun's bearing (lit at a graze, pale and warm) and a shaded side (cobalt),
+ * from the ranges' exact slopes; crests catch a thin gold rim that burns brightest toward the
+ * sun (and out in the lanes, away from the card); the shaded faces carry faint couloirs, and
+ * the foot of both ranges sinks into the horizon haze. `haze` is ph_haze for this direction,
+ * `aa` one pixel's angle.
+ */
+export const phRidge = /* @__PURE__ */ Fn(([az, el, sunward, laneW, haze, aa, phase]) => {
+    const left = smoothstep(-0.1, -0.6, az).mul(MOUNTAINS.LEFT);
+    const kF = MOUNTAINS.FAR.scale;
+    const kN = MOUNTAINS.NEAR.scale;
+    const xF = az.mul(kF).add(MOUNTAINS.FAR.offset);
+    // Broad massifs (a smooth envelope) carrying ridged peaks, with low saddles between them.
+    const envF = smoothstep(0.15, 0.85, phNoise1(xF.mul(0.35).add(2.0)));
+    const f1 = phRidgedD(xF);
+    const f2 = phRidgedD(xF.mul(2.6).add(1.3));
+    const hF = envF.mul(f1.x.mul(0.62).add(f2.x.mul(0.24)).add(0.1)).add(phNoise1(xF.mul(6.1).add(7.7)).mul(0.05));
+    const sF = envF.mul(f1.y.mul(0.62).add(f2.y.mul(0.624))).mul(kF * MOUNTAINS.FAR.amp);
+    const rhF = hF.mul(MOUNTAINS.FAR.amp).add(MOUNTAINS.FAR.base).add(left);
+    const xN = az.mul(kN).add(MOUNTAINS.NEAR.offset);
+    const envN = smoothstep(0.1, 0.9, phNoise1(xN.mul(0.3).add(5.0)));
+    const n1 = phRidgedD(xN);
+    const n2 = phRidgedD(xN.mul(2.7).add(4.1));
+    const hN = envN.mul(n1.x.mul(0.7).add(0.1)).add(n2.x.mul(0.2));
+    const sN = envN.mul(n1.y.mul(0.7)).add(n2.y.mul(0.54)).mul(kN * MOUNTAINS.NEAR.amp);
+    const rhN = hN.mul(MOUNTAINS.NEAR.amp).add(MOUNTAINS.NEAR.base).add(left.mul(0.4));
+    const dF = rhF.sub(el);
+    const dN = rhN.sub(el);
+    const above = step(-0.03, el);
+    const coverF = smoothstep(aa.negate(), aa, dF).mul(above);
+    const coverN = smoothstep(aa.negate(), aa, dN).mul(above);
+    // Which side of each peak faces the sun's bearing (az 0): the slope falling toward it.
+    const towardSun = az.sign().negate();
+    // Wide, soft transitions: the split between a peak's lit and shaded sides must not read as
+    // a vertical fold line down the face.
+    const litF = smoothstep(-0.9, 0.9, sF.mul(towardSun).negate());
+    const litN = smoothstep(-0.9, 0.9, sN.mul(towardSun).negate());
+    // Gold rims: max(depth, 0) keeps exp() bounded above the crest (no Inf/NaN in the sky).
+    const glow = sunward.mul(sunward).mul(1.3).add(0.05).mul(laneW.mul(0.5).add(0.5));
+    const rimF = exp(max(dF, 0.0).div(0.0011).negate()).mul(glow).mul(litF.mul(0.7).add(0.3));
+    const rimN = exp(max(dN, 0.0).div(0.0008).negate()).mul(glow).mul(litN.mul(0.7).add(0.3));
+    // Couloirs: faint vertical ribs down the shaded snow faces.
+    const rib = phNoise1(az.mul(170.0).add(5.0)).mul(0.16).add(0.92);
+    const shadeF = mix(linearColor(0x566DA4), linearColor(0x46598F), smoothstep(0.0, 0.03, dF)).mul(rib);
+    const shadeN = mix(linearColor(0x3A4C83), linearColor(0x2C3B6C), smoothstep(0.0, 0.012, dN)).mul(rib);
+    const warmLit = mix(linearColor(0x8FA2CF), linearColor(0xD9C2AA), sunward.mul(sunward));
+    const faceF = mix(shadeF, warmLit, litF.mul(0.32).mul(smoothstep(0.016, 0.0, dF)));
+    const faceN = mix(shadeN, warmLit.mul(0.85), litN.mul(0.28).mul(smoothstep(0.007, 0.0, dN)));
+    const gold = linearColor(0xFFDDA8);
+    // Aerial perspective toward a COOL haze (the warm sunward haze would grey the blue faces).
+    const coolHaze = mix(haze, linearColor(0xB4C8EA), 0.6);
+    const colF = mix(mix(faceF, coolHaze, 0.28), gold, min(rimF, 1.0));
+    const colN = mix(mix(faceN, coolHaze, 0.1), gold, min(rimN, 1.0));
+    // The foot of both ranges sinks into the horizon haze (and below it the far snow is haze).
+    const mist = smoothstep(0.007, -0.0005, el);
+    const rgb = mix(mix(colF, colN, coverN), haze, mist);
+    const cover = max(coverF, coverN);
+    // Snow banners: spindrift torn off the far range's sharpest peaks, a glowing veil just above
+    // the crest that drifts along the ridge (brightest toward the sun). Returned PREMULTIPLIED:
+    // the caller composites sky · (1 − a) + rgb, so the banner adds light over the open sky.
+    const aboveF = max(el.sub(rhF), 0.0);
+    const peak = f1.x.mul(f1.x).mul(f1.x).mul(envF);
+    const tear = phNoise1(az.mul(90.0).sub(phase.mul(9.0))).mul(0.75).add(0.25);
+    const banner = exp(aboveF.div(0.0035).negate()).mul(float(1.0).sub(coverF)).mul(peak).mul(tear)
+        .mul(sunward.mul(0.8).add(0.2))
+        .mul(0.6);
+    const bannerCol = mix(linearColor(0xDCE6F6), linearColor(0xFFE8C8), sunward);
+    return vec4(rgb.mul(cover).add(bannerCol.mul(banner)), cover);
 }).setLayout({
-    name: 'ph_ridge', type: 'vec4', inputs: [f('az'), f('el'), f('sunward'), f('laneW'), f('n')],
+    name: 'ph_ridge',
+    type: 'vec4',
+    inputs: [f('az'), f('el'), f('sunward'), f('laneW'), v3('haze'), f('aa'), f('phase')],
+});
+
+/** The ice fog's colour (inline TSL, shared by ph_fog and ph_fogFar so the two never drift). */
+function fogTint(sunward, warmth) {
+    const gold = mix(linearColor(0xFFE4BC), linearColor(0xFFCF98), warmth);
+    return mix(linearColor(0xC8D8F2), gold, sunward.mul(sunward)).mul(sunward.mul(0.32).add(0.98));
+}
+
+/** Bank opacity below the horizon, where ph_fog's body is solid (the far snow, the far stones). */
+export const FOG_FLOOR = 0.8;
+
+/**
+ * Ice fog on the horizon: a luminous low bank lying over the far plain. vec4(rgb, amount) for
+ * a direction at azimuth `az` and elevation `el` (rad). The bank's top rolls along the horizon
+ * (≈ 0.25°–1.2°, two octaves of an inline sine-hash noise drifting with `phase`), a thin veil
+ * trails above it, and below the horizon it is the far plain's own air. It glows gold toward
+ * the hidden sun (forward scattering, `sunward`), cool white elsewhere; `warmth` is the Lower
+ * Sun level. The dome lays it over the sky and the mountains' feet, and the snow and the far
+ * stones fade into the same colour, so the horizon has no seam.
+ */
+export const phFog = /* @__PURE__ */ Fn(([az, el, sunward, warmth, phase]) => {
+    const x = az.mul(7.0).add(phase.mul(0.6)).add(1.3);
+    const i = floor(x);
+    const fr = fract(x);
+    const s = fr.mul(fr).mul(float(3.0).sub(fr.mul(2.0)));
+    const n1 = mix(fract(sin(i.mul(127.1)).mul(43758.5453)), fract(sin(i.add(1.0).mul(127.1)).mul(43758.5453)), s);
+    const x2 = x.mul(2.7).add(5.1);
+    const i2 = floor(x2);
+    const fr2 = fract(x2);
+    const s2 = fr2.mul(fr2).mul(float(3.0).sub(fr2.mul(2.0)));
+    const n2 = mix(fract(sin(i2.mul(127.1)).mul(43758.5453)), fract(sin(i2.add(1.0).mul(127.1)).mul(43758.5453)), s2);
+    // Rolling banks: tall swells with low gaps between them, a finer lumpy edge on top.
+    const top = smoothstep(0.2, 0.9, n1).mul(0.017).add(n2.mul(0.006)).add(0.003);
+    // Thinning gradually upward through the bank (mist, not a painted band).
+    const body = float(1.0).sub(smoothstep(top.mul(-0.2), top, el));
+    // A thin veil above the bank; max(…, 0) keeps the exp bounded below the horizon.
+    const wisp = exp(max(el.sub(top), 0.0).div(0.008).negate()).mul(0.22);
+    const amount = max(body.mul(body).mul(FOG_FLOOR), wisp);
+    const gold = mix(linearColor(0xFFE4BC), linearColor(0xFFCF98), warmth);
+    // The bank's top catches the low sun: a gold-lit rim along its rolling edge.
+    const rim = exp(abs(el.sub(top.mul(0.8))).div(0.0025).negate()).mul(sunward.mul(0.55).add(0.12));
+    return vec4(fogTint(sunward, warmth).add(gold.mul(rim)), amount);
+}).setLayout({
+    name: 'ph_fog', type: 'vec4', inputs: [f('az'), f('el'), f('sunward'), f('warmth'), f('phase')],
+});
+
+/**
+ * The horizon air for things ON the plain (the far snow, the far stones): the shared haze under
+ * the ice fog at its solid below-horizon opacity — what ph_fog gives the dome just under the
+ * horizon, without its rolling-bank noise.
+ */
+export const phFogFar = /* @__PURE__ */ Fn(([haze, sunward, warmth]) => mix(haze, fogTint(sunward, warmth), FOG_FLOOR))
+    .setLayout({
+        name: 'ph_fogFar', type: 'vec3', inputs: [v3('haze'), f('sunward'), f('warmth')],
+    });
+
+/**
+ * The long shadow of one far stone on the snow: the sun stands straight down −z at 9.5°, so a
+ * stone `s` = (x, z, halfWidth, height) casts a strip toward the camera (+z), height · cot E
+ * long (≈ 6 heights), narrowing toward its tip as the stone does toward its top. Soft by its
+ * penumbra (growing with distance from the foot) and never thinner than a pixel (`px`, metres).
+ */
+export const phFarShadow = /* @__PURE__ */ Fn(([pxz, s, px]) => {
+    const d = pxz.sub(s.xy);
+    const len = s.w.mul(5.97);
+    const t = d.y;
+    const hw = s.z.mul(float(1.0).sub(clamp(t.div(len), 0.0, 1.0).mul(0.55))).mul(1.05);
+    const soft = max(t.mul(0.012).add(0.25), px);
+    const across = float(1.0).sub(smoothstep(hw.sub(soft), hw.add(soft), abs(d.x)));
+    // Darkest at the foot, fading toward the tip (penumbra and skylight fill grow with length).
+    const fade = float(1.0).sub(clamp(t.div(len), 0.0, 1.0).mul(0.65));
+    const span = smoothstep(-0.5, 0.5, t).mul(float(1.0).sub(smoothstep(len.mul(0.8), len, t))).mul(fade);
+    return across.mul(span);
+}).setLayout({
+    name: 'ph_farShadow', type: 'float', inputs: [v2('pxz'), v4('s'), f('px')],
 });
 
 /**
@@ -418,18 +590,39 @@ function smoothstepCpu(e0, e1, x) {
     return t * t * (3 - 2 * t);
 }
 
-/** Ridge noise sample coordinate (shared by the dome and the CPU mirror). */
-export const RIDGE_NOISE = Object.freeze({ AZ_SCALE: 5.0, ROW: 3.7 });
+function fract1(x) {
+    return x - Math.floor(x);
+}
+
+/** CPU port of the dome's inline 1D sine-hash value noise (float32 precision aside). */
+function noise1Cpu(x) {
+    const i = Math.floor(x);
+    const fr = x - i;
+    const h0 = fract1(Math.sin(i * 127.1) * 43758.5453);
+    const h1 = fract1(Math.sin((i + 1) * 127.1) * 43758.5453);
+    return h0 + (h1 - h0) * fr * fr * (3 - 2 * fr);
+}
+
+function ridgedCpu(x) {
+    const v = 1 - Math.abs(noise1Cpu(x) * 2 - 1);
+    return v * v;
+}
 
 /**
- * CPU mirror of ph_ridgeHeight(az, n) with the dome's ridge sample: noise2(vec2(az·5, 3.7)),
- * or the Minimal tier's sine stand-in when `useNoise` is false.
+ * CPU mirror of ph_ridge's two crest heights (rad above the horizon) at azimuth `az`:
+ * `{ far, near, top }`, `top` the taller of the two. The shader's sine hash runs in float32,
+ * so a hashed octave can differ slightly; the shape (heights, left asymmetry) is what is shared.
  */
-export function ridgeHeightCpu(az, useNoise = true) {
-    const n = useNoise
-        ? noise2Cpu(az * RIDGE_NOISE.AZ_SCALE, RIDGE_NOISE.ROW)
-        : Math.sin(az * RIDGE_NOISE.AZ_SCALE * 1.7 + 1.1) * 0.5 + 0.5;
-    const peaks = 1 - Math.abs(n * 2 - 1);
-    const left = smoothstepCpu(-0.15, -0.55, az) * 0.010;
-    return 0.009 + peaks * 0.020 + Math.sin(az * 31) * 0.003 + left;
+export function mountainHeightCpu(az) {
+    const left = smoothstepCpu(-0.1, -0.6, az) * MOUNTAINS.LEFT;
+    const xF = az * MOUNTAINS.FAR.scale + MOUNTAINS.FAR.offset;
+    const envF = smoothstepCpu(0.15, 0.85, noise1Cpu(xF * 0.35 + 2.0));
+    const hF = envF * (ridgedCpu(xF) * 0.62 + ridgedCpu(xF * 2.6 + 1.3) * 0.24 + 0.1)
+        + noise1Cpu(xF * 6.1 + 7.7) * 0.05;
+    const far = hF * MOUNTAINS.FAR.amp + MOUNTAINS.FAR.base + left;
+    const xN = az * MOUNTAINS.NEAR.scale + MOUNTAINS.NEAR.offset;
+    const envN = smoothstepCpu(0.1, 0.9, noise1Cpu(xN * 0.3 + 5.0));
+    const hN = envN * (ridgedCpu(xN) * 0.7 + 0.1) + ridgedCpu(xN * 2.7 + 4.1) * 0.2;
+    const near = hN * MOUNTAINS.NEAR.amp + MOUNTAINS.NEAR.base + left * 0.4;
+    return { far, near, top: Math.max(far, near) };
 }
