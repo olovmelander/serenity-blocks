@@ -65,6 +65,15 @@ export const FLAG_REGISTRY = [
         kind: 'permanent-ops',
         reader: 'local',
     },
+    {
+        name: 'photosensitivityWarning',
+        default: true,
+        purpose: 'the photosensitivity warning that opens every launch; 0 skips it (harnesses, captures, a developer\'s '
+            + 'installed game). skipIntro=1 skips it too. Read by src/ui/photosensitivity-warning.js before the bundle '
+            + 'loads (ADR-0021)',
+        kind: 'permanent-ops',
+        reader: 'local',
+    },
     // ── Netcode (read via readFlag in ffa-p2p-game-state.js / OnlineMultiplayerMode.js) ──
     {
         name: 'simTickNetcode', default: false, purpose: '60Hz fixed sim-tick netcode (host accumulator + jitter-buffer rate)', kind: 'refactor', graduationBar: 'plan §5.3 subsumes it — fold into the unified fixed tick, then delete', reader: 'flags',

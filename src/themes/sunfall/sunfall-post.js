@@ -44,6 +44,7 @@ import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { sceneSamples } from '../shared/scene-antialias.js';
 import { resolveSunfallQuality } from './sunfall-quality.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 export const BLOOM_THRESHOLD = 1.15;
 export const BLOOM_KNEE = 0.45;
@@ -230,7 +231,7 @@ export class SunfallPost {
     } = {}) {
         if (exposure !== undefined) this.uExposure.value = exposure;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (flashColour) this.uFlashColour.value.set(flashColour[0], flashColour[1], flashColour[2]);
         if (saturation !== undefined) this.uSaturation.value = saturation;
         if (time !== undefined) this.uTime.value = time;

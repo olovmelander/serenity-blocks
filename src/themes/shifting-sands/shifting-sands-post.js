@@ -53,6 +53,7 @@ import { sceneSamples } from '../shared/scene-antialias.js';
 import {
     ssHash21, ssLuma, ssMax3, ssTexNoise,
 } from './shifting-sands-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode; `rays` = shaft taps (0 = none); `msaa` = the
@@ -334,7 +335,7 @@ export class ShiftingSandsPost {
         if (sunUV) this.uSunUV.value.set(sunUV.x, sunUV.y);
         if (sunVis !== undefined) this.uSunVis.value = sunVis;
         if (horizonY !== undefined) this.uHorizonY.value = horizonY;
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;
     }

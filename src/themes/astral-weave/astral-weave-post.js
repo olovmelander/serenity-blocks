@@ -44,6 +44,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { awHash21, awLuma, awMax3 } from './astral-weave-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /** Per-tier look. `bloom: false` builds no BloomNode. */
 export const POST_LOOK = Object.freeze({
@@ -235,7 +236,7 @@ export class AstralWeavePost {
         heart, flash, kick, bloomBoost, exposure,
     } = {}) {
         if (heart) this.uHeart.value.set(heart.x, heart.y);
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;
