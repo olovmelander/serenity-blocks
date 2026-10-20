@@ -1,7 +1,7 @@
 /**
  * Shifting Sands — composition (CPU only, three-free math + a few THREE helpers).
  *
- * "Arrakis at the twin-sun dusk." The gameplay card covers the centre column, so the picture is
+ * "Twin-sun dusk over the dune sea." The gameplay card covers the centre column, so the picture is
  * built for the two side zones and the strips above/below the card:
  *
  *   LEFT  — contre-jour: the twin suns hang low over the far erg, the dune ridges between the
@@ -9,7 +9,7 @@
  *           silhouette against the suns with backlit sand pouring off it.
  *   RIGHT — side light: the Sentinel, a monumental sandstone butte, catches the low sun on its
  *           left flank; the two pale moons ride above it.
- *   BELOW — the near dune slope, wind ripples and grain glitter; the thumper rings cross it.
+ *   BELOW — the near dune slope, wind ripples and grain glitter; the drum rings cross it.
  *
  * Every direction here is authored for the REST camera (Hor+ lens, 50° vertical, horizontal FOV
  * capped at 100°): directions measured in azimuth (+ right of forward) and elevation do not move
@@ -55,7 +55,7 @@ export const SUNS = Object.freeze({
     b: Object.freeze({ az: -23.5, el: 11.2, radiusDeg: 0.72 }),
 });
 
-/** The two moons of Arrakis, pale and veiled, above the Sentinel. */
+/** The two moons, pale and veiled, above the Sentinel. */
 export const MOONS = Object.freeze({
     a: Object.freeze({ az: 31.0, el: 14.5, radiusDeg: 1.9 }),
     b: Object.freeze({ az: 38.5, el: 11.0, radiusDeg: 0.85 }),

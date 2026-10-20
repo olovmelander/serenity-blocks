@@ -325,13 +325,13 @@
  },
  {
   "id": "shifting-sands",
-  "name": "Shifting Sands (Arrakis at the twin-sun dusk)",
-  "setting": "A dune sea at twin-sun dusk: barchanoid ridges with 34 degree slip faces; an ember-gold sun and a white-gold sun low on the left; 'the Sentinel', a sandstone butte with spires, on the right under two pale crescent moons; the Shield Wall escarpment on the horizon; a sandworm breaching. Icon: a dark worm arch silhouetted against the sun. Registry :192-197, group biomes. Doc docs/SHIFTING_SANDS_VISUAL_OVERHAUL_2026-10.md",
+  "name": "Shifting Sands (twin-sun dusk over the dune sea)",
+  "setting": "A dune sea at twin-sun dusk: barchanoid ridges with 34 degree slip faces; an ember-gold sun and a white-gold sun low on the left; 'the Sentinel', a sandstone butte with spires, on the right under two pale crescent moons; the Rampart escarpment on the horizon; a sandworm breaching. Icon: a dark worm arch silhouetted against the sun. Registry :192-197, group biomes. Doc docs/SHIFTING_SANDS_VISUAL_OVERHAUL_2026-10.md",
   "timeOfDay": "dusk; it deepens with each level",
   "dominantPalette": "Sky from apricot at the horizon through dusty rose and violet to a deep-blue zenith; peach and ochre sand with violet shadows; coloured double shadows. Pieces (shifting-sands-tetrominos.js:15-22): I #ffd06a, O #c9a0ff, T #7fffb8, S #ff9070, Z #8090ff, J #ffb855, L #7ec8ff",
-  "keyMotifs": "Dunes, a sandworm breach, spice blows (geysers), spindrift, sand glitter, mesas, twin suns, moons, heat haze, crepuscular shafts",
-  "motion": "A worm breach cycle every 52 s, sheets of blowing sand, spice motes, heat shimmer",
-  "gameplayFx": "Lock: a 'thumper beat', a golden ring of lifted sand running across the erg. Combo of 2 or more: the spice glows and the wind rises. Clear: n spice blows in the side zones, a gust, a sun flare. Four lines: the worm is summoned (its sign races in, the ground trembles, a great spice blow, the worm rears). Level: the dusk deepens and the suns sink",
+  "keyMotifs": "Dunes, a sandworm breach, dust geysers (geysers), spindrift, sand glitter, mesas, twin suns, moons, heat haze, crepuscular shafts",
+  "motion": "A worm breach cycle every 52 s, sheets of blowing sand, gold motes, heat shimmer",
+  "gameplayFx": "Lock: a 'drum beat', a golden ring of lifted sand running across the erg. Combo of 2 or more: the gold glows and the wind rises. Clear: n dust geysers in the side zones, a gust, a sun flare. Four lines: the worm is summoned (its sign races in, the ground trembles, a great dust geyser, the worm rears). Level: the dusk deepens and the suns sink",
   "tech": "A CPU bake on a polar grid storing horizon tangents for twin-sun shadows; exact per-pixel ridge slopes; a vertex-animated worm tube; occluded crepuscular shafts in post; a 'desert filmic' tone map. WebGPU",
   "motifsToAvoidReusing": "Dunes and sand, an apricot dusk desert, twin suns, mesas, a giant creature breaching, dust geysers, a golden ring across the ground on lock"
  },
