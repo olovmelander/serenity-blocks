@@ -1,7 +1,7 @@
 /**
  * Wolfhour — the landscape's bakes (CPU only, three-free).
  *
- * The four ranges (sculpted, their normals smoothed, moonlight and snow baked into their colours)
+ * The four ranges (sculpted, their normals smoothed, their light, snow and valley air baked)
  * and the granite grain are pure functions of the quality's scale and the seed: 0.15-0.2 s of main
  * thread on a first visit (play-feel probe 2026-10-16), kept in the shared bake cache (read-only).
  * A first visit bakes them in a module Worker (wolfhour-landscape-bake.worker.js, started by
@@ -17,6 +17,19 @@ export const MOON_LIGHT = (() => {
     const s = 1 / (Math.sqrt(x * x + y * y + z * z) || 1);
     return Object.freeze({ x: x * s, y: y * s, z: z * s });
 })();
+/**
+ * Moonlit palette (linear, before the grade), applied per pixel by wolfhour-landscape.js. Lit snow
+ * is a cool white; snow in shadow keeps only the night sky's blue. Granite is a dark slate,
+ * lifted toward blue in its shade.
+ */
+export const WOLFHOUR_PALETTE = Object.freeze({
+    snowLit: Object.freeze([0.27, 0.33, 0.47]),
+    snowShade: Object.freeze([0.024, 0.04, 0.094]),
+    rockLit: Object.freeze([0.06, 0.064, 0.078]),
+    rockShade: Object.freeze([0.0075, 0.01, 0.018]),
+});
+/** Moonlight's contrast: a face's lit share is smoothstep(LIT_RAMP[0], LIT_RAMP[1], N·L). */
+export const LIT_RAMP = Object.freeze([0.28, 0.98]);
 export const GRANITE_SIZE = 512;
 /** The seed the theme's landscape is built with. */
 export const LANDSCAPE_SEED = 73013;
@@ -41,10 +54,10 @@ export const RANGES = Object.freeze([
         relief: 48,
         seed: 317,
         snowLine: -130,
-        air: [0.018, 0.019, 0.022],
-        haze: 0.32,
-        rock: [0.022, 0.023, 0.027],
-        snow: [0.22, 0.225, 0.24],
+        light: 0.5,
+        haze: 0.42,
+        mist: 0.5,
+        mistDepth: [40, 300],
         crest: [
             [-2400, 110], [-1850, 160], [-1460, 50], [-1120, 95],
             [-970, 150], [-820, 190], [-720, 254], [-615, 213], [-510, 90],
@@ -63,10 +76,10 @@ export const RANGES = Object.freeze([
         relief: 112,
         seed: 791,
         snowLine: -300,
-        air: [0.006, 0.0065, 0.008],
-        haze: 0.06,
-        rock: [0.045, 0.046, 0.050],
-        snow: [0.39, 0.40, 0.425],
+        light: 1,
+        haze: 0.05,
+        mist: 0.62,
+        mistDepth: [180, 640],
         hero: true,
         crest: [
             [-2400, 125], [-2050, 185], [-1640, 90], [-1330, 130],
@@ -92,10 +105,10 @@ export const RANGES = Object.freeze([
         relief: 92,
         seed: 1201,
         snowLine: -225,
-        air: [0.0045, 0.005, 0.0065],
-        haze: 0.10,
-        rock: [0.019, 0.020, 0.023],
-        snow: [0.13, 0.137, 0.15],
+        light: 0.42,
+        haze: 0.02,
+        mist: 0.55,
+        mistDepth: [30, 230],
         crest: [
             [-2400, -200], [-1820, -121], [-1430, -227], [-1110, -148],
             [-919, -247], [-788, -206], [-705, -234], [-596, -261],
@@ -116,10 +129,10 @@ export const RANGES = Object.freeze([
         relief: 58,
         seed: 1951,
         snowLine: -270,
-        air: [0.0028, 0.003, 0.0035],
-        haze: 0.06,
-        rock: [0.016, 0.0165, 0.018],
-        snow: [0.042, 0.044, 0.047],
+        light: 0.16,
+        haze: 0,
+        mist: 0.18,
+        mistDepth: [30, 160],
         crest: [
             [-2400, -365], [-1680, -344], [-1130, -369], [-944, -382],
             [-790, -404], [-671, -380], [-563, -355], [-385, -316],
@@ -292,7 +305,8 @@ export function vertexNormals(positions, indices) {
 }
 
 /**
- * One range's mesh as arrays: positions, normals (smoothed), baked colours, the moon response,
+ * One range's mesh as arrays: positions, normals (smoothed), light (how much moonlight reaches the
+ * snow and the rock: x, y), surface (snow potential, valley air: x, y), the moon response,
  * the triangle indices, and the crest's column count (row 0 is the crest).
  */
 export function computeRange(rangeIndex, qualityScale, seed) {
@@ -302,9 +316,11 @@ export function computeRange(rangeIndex, qualityScale, seed) {
     const width = nx + 1;
     const count = width * (ny + 1);
     const positions = new Float32Array(count * 3);
-    const colours = new Float32Array(count * 3);
+    const light = new Float32Array(count * 2);
+    const surface = new Float32Array(count * 2);
     const eventLight = new Float32Array(count);
     const drainage = new Float32Array(count);
+    const crestAt = new Float32Array(count);
     const indices = new Uint32Array(nx * ny * 6);
     const terrainSeed = seed + config.seed;
     const crestCeiling = Math.max(...config.crest.map((point) => point[1]));
@@ -343,6 +359,7 @@ export function computeRange(rangeIndex, qualityScale, seed) {
                 + (ridge - 0.42) * config.relief * reliefMask
                 + (branch - 0.32) * config.relief * 0.10 * reliefMask;
             drainage[index] = ridge;
+            crestAt[index] = crest;
         }
     }
 
@@ -400,44 +417,55 @@ export function computeRange(rangeIndex, qualityScale, seed) {
     for (let index = 0; index < count; index++) {
         const x = positions[index * 3];
         const y = positions[index * 3 + 1];
+        const normalX = normals[index * 3];
         const normalY = normals[index * 3 + 1];
-        const facing = Math.max(0, normals[index * 3] * MOON_LIGHT.x
-            + normalY * MOON_LIGHT.y + normals[index * 3 + 2] * MOON_LIGHT.z);
+        const normalZ = normals[index * 3 + 2];
+        const facing = Math.max(0, normalX * MOON_LIGHT.x + normalY * MOON_LIGHT.y + normalZ * MOON_LIGHT.z);
         const strata = ridges(x * 0.071 + y * 0.038, y * 0.083, terrainSeed + 337);
         const altitude = smoothstep(
-            config.snowLine - 85,
-            config.snowLine + 140,
-            y + (strata - 0.4) * 145,
+            config.snowLine - 110,
+            config.snowLine + 150,
+            y + (strata - 0.4) * 130,
         );
-        const shelf = smoothstep(-0.08, 0.53, normalY);
-        const crevice = smoothstep(0.12, 0.50, drainage[index]);
-        const snowPatch = smoothstep(0.16, 0.60, strata + crevice * 0.14);
-        const gully = ridges(x * 0.014 + y * 0.006, y * 0.022 - x * 0.003, terrainSeed + 1019);
-        const shelteredSnow = smoothstep(0.27, 0.58, gully) * smoothstep(-0.2, 0.5, normalY);
-        // Cover composition: the left wall catches silver light. The right wall's
-        // inward face falls dark, while snow lights its exposed outer shoulder.
-        const sideSnow = config.hero
-            ? 0.16 + (1 - smoothstep(-70, 100, x)) * 0.84 + smoothstep(560, 780, x) * 0.75
-            : 1;
-        const sideLight = config.hero && x > 0 ? 0.20 + smoothstep(510, 790, x) * 0.80 : 1;
-        const snow = clamp01(altitude * (shelf * (0.42 + snowPatch * 0.39) + shelteredSnow * 0.20) * sideSnow);
-        const rockLight = (0.15 + facing ** 1.25 * 1.19) * (0.60 + crevice * 0.40) * sideLight;
-        const snowLight = (0.42 + facing * 0.58) * sideLight;
-        const surfaceDetail = 0.70 + smoothstep(0.20, 0.62, strata) * 0.44;
-        // Low valley airlight separates ranges but leaves the nearest spurs nearly black.
-        const valleyHaze = config.haze + smoothstep(-230, -620, y) * 0.035;
-        for (let channel = 0; channel < 3; channel++) {
-            const rock = config.rock[channel] * rockLight * surfaceDetail;
-            const frost = config.snow[channel] * snowLight;
-            const surface = rock + (frost - rock) * snow;
-            colours[index * 3 + channel] = surface + (config.air[channel] - surface) * valleyHaze;
-        }
-        eventLight[index] = altitude * (0.18 + snow * 0.82) * (0.15 + facing * 0.85)
-            * (1 - config.haze * 0.5);
+        // High on the walls snow is the ground and the rock shows as thin ribs running down
+        // the fall line (the crests of a ridged field stretched vertically). Lower down rock is
+        // the ground and the snow lies in couloirs (a second such field). Faces that turn up
+        // toward the sky hold a little more.
+        const below = Math.max(0, crestAt[index] - y);
+        const hold = smoothstep(0.18, 0.62, normalY);
+        const high = 1 - smoothstep(110, 520, below);
+        const warp = (noise(x * 0.004, y * 0.003, terrainSeed + 1601) - 0.5) * 2.2;
+        const fall = ridges(x * 0.017 + warp, y * 0.0036 + x * 0.0012, terrainSeed + 1777);
+        const chute = ridges(x * 0.021 - warp * 0.6, y * 0.0042 - x * 0.0015, terrainSeed + 1907);
+        const ribRock = smoothstep(0.52, 0.72, fall);
+        const couloir = smoothstep(0.5, 0.7, chute);
+        const potential = altitude * (0.3 + high * 0.48 + (hold - 0.5) * 0.24
+            - ribRock * 0.42 * (0.6 + high * 0.4) + couloir * 0.38 * (1 - high));
+        // The fragment shader cuts the snow line at 0.5 with fine noise; keep the baked
+        // potential spread around it so edges stay crisp but follow the sculpted relief.
+        surface[index * 2] = clamp01(potential * 1.08 + 0.02);
+
+        // How much moonlight reaches this part of the range (the shader splits it between the
+        // lit and shaded colours per pixel, from the normal). Cover composition: the left massif
+        // faces the moon; the right massif's inner wall falls into the shadow of the left one
+        // and only its outer shoulder catches the light. Crevices darken the granite.
+        const crevice = 0.62 + smoothstep(0.12, 0.5, drainage[index]) * 0.38;
+        const shade = config.hero && x > 0 ? 0.24 + smoothstep(520, 820, x) * 0.76 : 1;
+        light[index * 2] = config.light * shade;
+        light[index * 2 + 1] = config.light * shade * crevice;
+
+        // Air: a distance haze floor for the far ranges, then valley mist pooling below every
+        // crest, so each nearer ridge stands dark against the luminous base of the one behind.
+        const pooled = smoothstep(config.mistDepth[0], config.mistDepth[1], below);
+        const valley = smoothstep(-140, -470, y);
+        surface[index * 2 + 1] = Math.min(0.94, config.haze
+            + (1 - config.haze) * clamp01(pooled * config.mist + valley * 0.22 * config.mist));
+        eventLight[index] = altitude * (0.25 + clamp01(potential * 2 - 0.5) * 0.75) * (0.15 + facing * 0.85)
+            * (1 - surface[index * 2 + 1] * 0.7);
     }
 
     return {
-        positions, normals, colours, eventLight, indices, crestColumns: width,
+        positions, normals, light, surface, eventLight, indices, crestColumns: width,
     };
 }
 

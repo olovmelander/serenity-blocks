@@ -506,6 +506,24 @@ describe('Wolfhour ambient integration', () => {
         expect(theme.time).toBeCloseTo(0.1, 10);
     });
 
+    it('makes the pack howl on a four-line clear and the lead wolf glance on a smaller one', () => {
+        const theme = createTheme('High');
+        theme.createAmbientScene();
+        expect(theme.wolfPack.group.parent).toBe(theme.alpineLandscape.group.children[2]);
+        const howl = vi.spyOn(theme.wolfPack, 'howl');
+        const glance = vi.spyOn(theme.wolfPack, 'glance');
+        theme.time = 12;
+        theme.onLineClear({ lineCount: 2 });
+        expect(glance).toHaveBeenCalledWith(12);
+        expect(howl).not.toHaveBeenCalled();
+        theme.time = 20;
+        theme.onLineClear({ detail: { lineCount: 4 } });
+        expect(howl).toHaveBeenCalledWith(20);
+        theme.time = 21.5;
+        theme.updateValley();
+        expect(theme.wolfPack.howlLevel(theme.time)).toBe(1);
+    });
+
     it('disposes moon aliases once through their owner and allows a clean subsequent build', () => {
         const theme = createTheme('Low');
         theme.createAmbientScene();
@@ -520,14 +538,16 @@ describe('Wolfhour ambient integration', () => {
         theme.resetRuntimeScene();
         expect([...counts.values()]).toEqual(resources.map(() => 1));
         expect(scene.children).toEqual([]);
-        for (const property of ['moon', 'moonHalo', 'moonNodeData', 'moonHaloNodeData', 'celestialSky', 'alpineLandscape']) {
+        for (const property of ['moon', 'moonHalo', 'moonNodeData', 'moonHaloNodeData', 'celestialSky', 'alpineLandscape',
+            'valleyMist', 'wolfPack', 'valleyHut', 'wolfhourProps']) {
             expect(theme[property]).toBeNull();
         }
         theme.scene = new THREE.Scene();
         theme.renderer = { isWebGPURenderer: true, getPixelRatio: () => 1 };
         theme.createAmbientScene();
         expect(theme.moon).not.toBe(oldMoon);
-        expect(theme.scene.children).toHaveLength(2);
+        // The sky, the landscape (carrying the pack and the hut) and the valley mist.
+        expect(theme.scene.children).toHaveLength(3);
     });
 });
 
