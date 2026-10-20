@@ -231,14 +231,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'aim',
         category: 'Playground',
-        scope: 'playground.html — crystal-cave',
-        description: 'Set a custom Crystal Cave camera target.',
+        scope: 'playground.html — crystal-cave, synthwave-sunset',
+        description: 'Set a custom Crystal Cave or Synthwave Sunset camera target.',
         values: 'Three comma-separated finite numbers; also supply eye.',
-        defaultValue: 'Authored camera.',
+        defaultValue: 'Authored camera (Synthwave Sunset: the game camera rig).',
         example: 'aim=0,2,-10',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/crystal-cave.effect.js',
+            'src/playground/effects/synthwave-sunset.effect.js',
         ],
     },
     {
@@ -707,7 +708,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, '
             + 'neon-dusk, nimbus-veil, ocean, rainbark, rainbow-terraces, sakura-twilight, serenity-warp, '
             + 'shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, stillwater, summer, '
-            + 'sunset, supernova, synthwave-sunset, thermal-bloom, tornado, verdant-hills, vesper-chrysalis, '
+            + 'sunset, supernova, thermal-bloom, tornado, verdant-hills, vesper-chrysalis, '
             + 'void-ember, voltage-storm, waves, winter',
         description: 'Set the preview combo length or held combo state.',
         values: 'Nonnegative integer; reaction previews often require at least 2. In Stillwater it is how '
@@ -765,7 +766,6 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/summer.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
-            'src/playground/effects/synthwave-sunset.effect.js',
             'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
@@ -1042,14 +1042,16 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'dusk',
         category: 'Playground',
-        scope: 'playground.html — shifting-sands',
-        description: 'Pin Shifting Sands dusk strength.',
-        values: 'Number, normally 0–1.',
-        defaultValue: 'Authored dusk state.',
+        scope: 'playground.html — shifting-sands, synthwave-sunset',
+        description: 'Pin Shifting Sands dusk strength. In Synthwave Sunset, hold the evening: the sun sinks '
+            + 'into the sea and the pier lights come on as it rises.',
+        values: 'Number, normally 0–1 (Synthwave Sunset: 0 = the sun on the sea, 1 = afterglow).',
+        defaultValue: "Authored dusk state (Synthwave Sunset: the menu's rest value, 0.14).",
         example: 'dusk=0.5',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/shifting-sands.effect.js',
+            'src/playground/effects/synthwave-sunset.effect.js',
         ],
     },
     {
@@ -1141,7 +1143,9 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'b2b, perfect, levelUp, newRun, gameOver or break. Rainbark: lock, drop, clear, quad, '
             + 'tspin, perfect, levelUp, release (the chain held by peak breaks), b2b (the sunshower '
             + 'starts) or gameOver (Mistfall). Kaleidosonic: lock, drop, clear, quad, tspin, perfect, '
-            + 'levelUp, release (the chain held by peak breaks) or over (the light sinks).',
+            + 'levelUp, release (the chain held by peak breaks) or over (the light sinks). Synthwave '
+            + 'Sunset: lock, clear, quad, chain (the coaster lifted chain=<n> notches), ride (a chain '
+            + 'of chain=<n> breaks and the coaster goes once round its circuit) or levelUp.',
         defaultValue: 'Idle in most previews; Lunar Sigil uses lock.',
         example: 'event=lock',
         notes: 'Use on playground.html with effect=<the matching effect ID>. For deterministic replay, '
@@ -1209,7 +1213,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, luminous-tides, '
             + 'lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, neon-dusk, nimbus-veil, ocean, '
             + 'rainbark, rainbow-terraces, sakura-twilight, serenity-warp, shifting-sands, solar-eclipse, '
-            + 'starlight, stellar-drift, stellar-velocity, stillwater, summer, sunset, supernova, synthwave-sunset, '
+            + 'starlight, stellar-drift, stellar-velocity, stillwater, summer, sunset, supernova, '
+            + 'synthwave-sunset, '
             + 'thermal-bloom, tornado, verdant-hills, vesper-chrysalis, void-ember, voltage-storm, waves, winter, '
             + 'wolfhour',
         description: 'Set how many seconds the captured frame follows the preview event.',
@@ -1340,14 +1345,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'eye',
         category: 'Playground',
-        scope: 'playground.html — crystal-cave',
-        description: 'Set a custom Crystal Cave camera position.',
+        scope: 'playground.html — crystal-cave, synthwave-sunset',
+        description: 'Set a custom Crystal Cave or Synthwave Sunset camera position.',
         values: 'Three comma-separated finite numbers; also supply aim.',
-        defaultValue: 'Authored camera.',
+        defaultValue: 'Authored camera (Synthwave Sunset: the game camera rig).',
         example: 'eye=0,3,26',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/crystal-cave.effect.js',
+            'src/playground/effects/synthwave-sunset.effect.js',
         ],
     },
     {
@@ -1641,16 +1647,19 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'fov',
         category: 'Playground',
-        scope: 'playground.html — ch3-surface-world, crystal-cave, summer, verdant-hills',
+        scope: 'playground.html — ch3-surface-world, crystal-cave, summer, synthwave-sunset, verdant-hills',
         description: 'Set a custom camera vertical field of view.',
-        values: 'Degrees; Crystal Cave requires eye and aim; Summer and Verdant Hills need a value above 1.',
-        defaultValue: 'Surface World 55; Crystal Cave custom camera 40; Summer and Verdant Hills: authored framing.',
+        values: 'Degrees; Crystal Cave and Synthwave Sunset require eye and aim; Summer and Verdant Hills need a '
+            + 'value above 1.',
+        defaultValue: 'Surface World 55; Crystal Cave and Synthwave Sunset custom camera 40; Summer and Verdant '
+            + 'Hills: authored framing.',
         example: 'fov=40',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/ch3-surface-world.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/summer.effect.js',
+            'src/playground/effects/synthwave-sunset.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
         ],
     },
@@ -1896,14 +1905,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'galaxy, geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, '
             + 'luminous-tides, lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, ocean, '
             + 'rainbark, rainbow-terraces, sakura-twilight, serenity-warp, shifting-sands, solar-eclipse, '
-            + 'starlight, stellar-drift, stellar-velocity, stillwater, summer, sunset, supernova, '
+            + 'starlight, stellar-drift, stellar-velocity, stillwater, summer, sunset, supernova, synthwave-sunset, '
             + 'thermal-bloom, tornado, verdant-hills, vesper-chrysalis, void-ember, voltage-storm, waves, '
             + 'winter',
         description: 'Use the authored camera pose for a theme icon capture.',
         values: '1 enables. In Moonlit Greenhouse it is a tighter lens on the moon through the glass over '
             + 'the canal (capture a square frame). In Blood Moon it centres the moon over its reflection '
             + '(capture a square frame). In Kaleidosonic it aims from the eye at the core and '
-            + 'its pillar, with a tighter lens.',
+            + 'its pillar, with a tighter lens. In Synthwave Sunset it is a narrow lens on the ferris wheel '
+            + 'in front of the setting sun, its reflection below.',
         defaultValue: 'Off.',
         example: 'icon=1',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
@@ -1943,6 +1953,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/summer.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/synthwave-sunset.effect.js',
             'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
@@ -1985,7 +1996,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — aurora, black-hole, cosmic-noir, fluid-dreams, galaxy, geode, halcyon-apex, '
             + 'himalayan-peak, kaleidosonic, luminous-tides, lunara, moonlit-greenhouse, murmuration, '
             + 'nebula-flow, ocean, rainbark, rainbow-terraces, serenity-warp, shifting-sands, solar-eclipse, '
-            + 'starlight, stellar-drift, stellar-velocity, stillwater, sunset, supernova, thermal-bloom, '
+            + 'starlight, stellar-drift, stellar-velocity, stillwater, sunset, supernova, synthwave-sunset, '
+            + 'thermal-bloom, '
             + 'tornado, vesper-chrysalis, void-ember, voltage-storm, winter',
         description: 'Override the icon camera field of view.',
         values: 'Degrees (Nebula Flow: half the square frame\'s height, in nursery units); requires icon=1.',
@@ -1994,7 +2006,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'Supernova 20; Void Ember 40; Vesper Chrysalis 30; Tornado 30; Stillwater 30; Stellar '
             + 'Drift 26; Starlight 46; Stellar Velocity 46; Sunset 30; Solar Eclipse 13; Serenity Warp '
             + '34; Rainbow Terraces 30; Moonlit Greenhouse 36; Nebula Flow 0.9 nursery units; Rainbark 30; '
-            + 'Luminous Tides 32; Kaleidosonic 34.',
+            + 'Luminous Tides 32; Kaleidosonic 34; Synthwave Sunset 36.',
         example: 'iconFov=35',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -2024,6 +2036,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/synthwave-sunset.effect.js',
             'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
@@ -2078,21 +2091,24 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, kaleidosonic, '
             + 'luminous-tides, lunara, moonlit-greenhouse, nebula-flow, ocean, rainbark, rainbow-terraces, '
             + 'serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, stellar-velocity, '
-            + 'stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, void-ember, voltage-storm, '
+            + 'stillwater, sunset, supernova, synthwave-sunset, thermal-bloom, tornado, vesper-chrysalis, '
+            + 'void-ember, voltage-storm, '
             + 'winter',
         description: 'Tilt the icon camera.',
         values: 'Kaleidosonic, Shifting Sands and Rainbark: degrees; Lunara, Halcyon Apex, Fluid Dreams, '
             + 'Himalayan Peak, Geode, Galaxy, Voltage Storm, Supernova, Void Ember, Vesper Chrysalis, '
             + 'Tornado, Stillwater, Stellar Drift, Starlight, Stellar Velocity, Sunset, Serenity Warp, '
             + 'Rainbow Terraces, Moonlit Greenhouse and Luminous Tides: radians; Nebula Flow: nursery '
-            + 'units, moving the frame in y. Requires icon=1.',
+            + 'units, moving the frame in y. Synthwave Sunset: the elevation of the aim, in degrees. '
+            + 'Requires icon=1.',
         defaultValue: 'Shifting Sands 1.5 degrees; Lunara 0.1 radians; Halcyon Apex 0.36 radians; Fluid Dreams '
             + '0.14 radians; Himalayan Peak 0.12 radians; Geode 0 radians; Galaxy 0 radians; Winter '
             + '0.27 radians; Voltage Storm 0 radians; Supernova 0 radians; Void Ember 0 radians; Vesper '
             + 'Chrysalis 0.05 radians; Tornado 0 radians; Stillwater 0 radians; Stellar Drift 0 '
             + 'radians; Starlight 0 radians; Stellar Velocity 0 radians; Sunset -0.05 radians; Serenity '
             + 'Warp 0 radians; Rainbow Terraces -0.05 radians; Moonlit Greenhouse 0.12 radians; Nebula Flow '
-            + '0; Rainbark 8 degrees; Luminous Tides -0.12 radians; Kaleidosonic 0 degrees.',
+            + '0; Rainbark 8 degrees; Luminous Tides -0.12 radians; Kaleidosonic 0 degrees; Synthwave '
+            + 'Sunset 4.5 degrees of elevation.',
         example: 'iconPitch=0.1',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -2118,6 +2134,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/synthwave-sunset.effect.js',
             'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
@@ -2220,21 +2237,24 @@ export const PLAYGROUND_URL_PARAMETERS = [
         scope: 'playground.html — aurora, fluid-dreams, galaxy, geode, halcyon-apex, himalayan-peak, '
             + 'kaleidosonic, luminous-tides, lunara, moonlit-greenhouse, nebula-flow, ocean, rainbark, '
             + 'rainbow-terraces, serenity-warp, shifting-sands, solar-eclipse, starlight, stellar-drift, '
-            + 'stellar-velocity, stillwater, sunset, supernova, thermal-bloom, tornado, vesper-chrysalis, '
+            + 'stellar-velocity, stillwater, sunset, supernova, synthwave-sunset, thermal-bloom, tornado, '
+            + 'vesper-chrysalis, '
             + 'void-ember, voltage-storm, winter',
         description: 'Turn the icon camera.',
         values: 'Aurora/Shifting Sands/Rainbark/Kaleidosonic: degrees; Lunara, Halcyon Apex, Fluid '
             + 'Dreams, Himalayan Peak, Geode, Galaxy, Voltage Storm, Supernova, Void Ember, Vesper '
             + 'Chrysalis, Tornado, Stillwater, Stellar Drift, Starlight, Stellar Velocity, Sunset, '
             + 'Serenity Warp, Rainbow Terraces, Moonlit Greenhouse and Luminous Tides: radians; Nebula '
-            + 'Flow: nursery units, moving the frame in x. Requires icon=1.',
+            + 'Flow: nursery units, moving the frame in x. Synthwave Sunset: the azimuth of the aim, in '
+            + 'degrees. Requires icon=1.',
         defaultValue: 'Aurora 7 degrees; Shifting Sands 27 degrees; Lunara 0.2 radians; Halcyon Apex 0.11 '
             + 'radians; Fluid Dreams 0.1 radians; Himalayan Peak 0.42 radians; Geode 0 radians; Galaxy '
             + '0 radians; Winter 0.13 radians; Voltage Storm 0 radians; Supernova 0 radians; Void Ember '
             + '0 radians; Vesper Chrysalis 0 radians; Tornado 0 radians; Stillwater 0 radians; Stellar '
             + 'Drift 0 radians; Starlight 0 radians; Stellar Velocity 0 radians; Sunset 0.36 radians; '
             + 'Serenity Warp 0 radians; Rainbow Terraces 0.5 radians; Moonlit Greenhouse 0.32 radians; '
-            + 'Nebula Flow 0; Rainbark 24 degrees; Luminous Tides 0.42 radians; Kaleidosonic 0 degrees.',
+            + 'Nebula Flow 0; Rainbark 24 degrees; Luminous Tides 0.42 radians; Kaleidosonic 0 degrees; '
+            + 'Synthwave Sunset 2.4 degrees of azimuth.',
         example: 'iconYaw=0.2',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
@@ -2261,6 +2281,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/stillwater.effect.js',
             'src/playground/effects/sunset.effect.js',
             'src/playground/effects/supernova.effect.js',
+            'src/playground/effects/synthwave-sunset.effect.js',
             'src/playground/effects/thermal-bloom.effect.js',
             'src/playground/effects/tornado.effect.js',
             'src/playground/effects/vesper-chrysalis.effect.js',
@@ -5468,15 +5489,17 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'chain',
         category: 'Playground',
-        scope: 'playground.html — thermal-bloom',
+        scope: 'playground.html — thermal-bloom, synthwave-sunset',
         description: "Build a chain link by link, a second apart, ending just before the moment shown (the ladder's "
-            + 'vents open one a link).',
-        values: 'Integer, at least 2.',
-        defaultValue: 'No chain.',
+            + 'vents open one a link). In Synthwave Sunset, the links the coaster has climbed the lift hill.',
+        values: 'Integer, at least 2 (Synthwave Sunset: 1 or more).',
+        defaultValue: 'No chain (Synthwave Sunset: 4 with event=chain, 5 with event=ride).',
         example: 'chain=6',
-        notes: 'Use on playground.html with effect=thermal-bloom. With event=release, the chain breaks at the event.',
+        notes: 'Use on playground.html with effect=thermal-bloom or synthwave-sunset. With event=release '
+            + '(Thermal Bloom) or event=ride (Synthwave Sunset), the chain breaks at the event.',
         sources: [
             'src/playground/effects/thermal-bloom.effect.js',
+            'src/playground/effects/synthwave-sunset.effect.js',
         ],
     },
     {

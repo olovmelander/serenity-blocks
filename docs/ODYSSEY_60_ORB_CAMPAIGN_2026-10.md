@@ -193,7 +193,7 @@ city, ending in Neon District's rain canyon.
 | 57 | Chromadelic Highway (`chromadelic-highway`) | A prism-glass neon highway carries the player from abstraction into the encore. |
 | 58 | Neon Dusk (`neon-dusk`) | Neon ridges, a glass grid, a setting sun, and VHS texture establish the outrun mood. |
 | 59 | Neon District (`neon-district`) | A rain-soaked street canyon, shopfronts, and reflected towers provide the city finale. |
-| 60 | Synthwave Sunset (`synthwave-sunset`) | A neon grid, palms, wireframe mountains, and city skyline approach the urban destination. |
+| 60 | Synthwave Sunset (`synthwave-sunset`) | The journey ends at the sea: the sun sets behind a lit ferris wheel at the end of a pleasure pier, and the pier's lights come on as the last duel plays out. |
 
 ## Orb identity changes
 
