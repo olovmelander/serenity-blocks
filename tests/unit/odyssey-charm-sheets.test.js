@@ -45,11 +45,13 @@ describe('Odyssey charm copy: the words the sheets and the map use', () => {
         expect(describeOdysseyCharmsFound({ charmsFound: [] })).toBeNull();
         expect(describeOdysseyCharmsFound({ charmsFound: ['bogus'] })).toBeNull();
         expect(describeOdysseyCharmsFound({ charmsFound: ['tide'] })).toEqual({
-            line: '◆ Found: Tide', hint: null, words: ['◆ Found: Tide'],
+            line: '◆ Found: Tide', text: 'Found: Tide', hint: null, ids: ['tide'], words: ['◆ Found: Tide'],
         });
         expect(describeOdysseyCharmsFound({ charmsFound: ['hearth', 'tide'], charmsFirstFound: true })).toEqual({
             line: '◆ Found: Hearth · Tide',
+            text: 'Found: Hearth · Tide',
             hint: 'Press 4 during an orb to use it.',
+            ids: ['hearth', 'tide'],
             words: ['◆ Found: Hearth · Tide', 'Press 4 during an orb to use it.'],
         });
     });
@@ -155,13 +157,17 @@ describe('Odyssey charms on the ceremony', () => {
         const first = completion({
             ...base, stars: 3, charmsFound: ['tide', 'hearth'], charmsFirstFound: true,
         });
-        const line = byClass(first, 'ody-flow__found')[0];
-        expect(line.children.map((node) => node.textContent))
-            .toEqual(['◆ Found: Tide · Hearth', 'Press 1 during an orb to use it.']);
-        expect(line.children.map((node) => node.className)).toEqual(['ody-flow__found-line', 'ody-flow__found-hint']);
+        const found = byClass(first, 'ody-flow__found')[0];
+        expect(found.children.map((node) => node.className)).toEqual(['ody-flow__found-line', 'ody-flow__found-hint']);
+        const [line, hint] = found.children;
+        // One icon per charm found (its glyph until the stills exist), then the words without a glyph of their own.
+        expect(line.children.map((node) => node.dataset.charm)).toEqual(['tide', 'hearth', undefined]);
+        expect(line.children.map((node) => node.textContent)).toEqual(['◆', '◆', 'Found: Tide · Hearth']);
+        expect(hint.textContent).toBe('Press 1 during an orb to use it.');
         expect(first.autoContinueMs).toBeGreaterThan(plain.autoContinueMs);
         const later = completion({ ...base, charmsFound: ['still-air'] });
-        expect(byClass(later, 'ody-flow__found')[0].children.map((node) => node.textContent)).toEqual(['◆ Found: Still Air']);
+        expect(byClass(later, 'ody-flow__found')[0].children[0].children.map((node) => node.textContent))
+            .toEqual(['◆', 'Found: Still Air']);
         expect(later.autoContinueMs).toBeLessThan(first.autoContinueMs);
         // A chapter arrival carries no charm block and no pending choice.
         const arrival = createJourneyFlowOverlay({
@@ -209,9 +215,11 @@ describe('Odyssey charms on the failure sheet, the results sheet, the map and it
             attemptNumber: 3, reasonText: 'You topped out!', onChoose: vi.fn(), charmPity: 'long-breath',
         });
         const note = all(modal).find((node) => node.className === 'sb-ody-note sb-ody-charm-pity');
-        expect(note.textContent)
-            .toBe('◆ After three falls here, the road leaves you Long Breath. Press 3 for 30 more seconds.');
         expect(note.role).toBe('status');
+        // The charm's icon (its glyph until the stills exist), then the words without a glyph of their own.
+        expect(note.children[0].dataset.charm).toBe('long-breath');
+        expect(note.children[1].textContent)
+            .toBe('After three falls here, the road leaves you Long Breath. Press 3 for 30 more seconds.');
         const panel = all(modal).find((node) => node.children.includes(note));
         const lede = panel.children.find((node) => node.className === 'sb-ody-lede');
         expect(panel.children.indexOf(note)).toBe(panel.children.indexOf(lede) + 1);

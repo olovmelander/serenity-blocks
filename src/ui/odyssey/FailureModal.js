@@ -11,6 +11,7 @@ import {
 } from './keystone-sheet.js';
 import { getOdysseyRetryDebrief } from './objective-copy.js';
 import { describeOdysseyCharmPity } from './odyssey-charm-copy.js';
+import { createOdysseyCharmIconNode } from './odyssey-charm-icon-stage.js';
 
 /**
  * Build the level-failed sheet.
@@ -65,8 +66,12 @@ export function createFailureModal({
     // helps here. Nothing to choose; the sheet says which, and the key that uses it.
     const pity = describeOdysseyCharmPity(charmPity);
     if (pity) {
-        const note = el('p', 'sb-ody-note sb-ody-charm-pity', pity);
+        const note = el('p', 'sb-ody-note sb-ody-charm-pity');
         note.role = 'status';
+        const icon = createOdysseyCharmIconNode(charmPity);
+        // With the charm's own icon beside it, the line needs no glyph of its own.
+        if (icon) note.appendChild(icon);
+        note.appendChild(el('span', '', icon ? pity.replace(/^◆\s*/, '') : pity));
         content.appendChild(note);
     }
 

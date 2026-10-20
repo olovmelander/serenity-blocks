@@ -15,6 +15,7 @@
  */
 import { el, isSettingsOverSheet } from './keystone-sheet.js';
 import { describeOdysseyCharmsFound } from './odyssey-charm-copy.js';
+import { createOdysseyCharmIconNode } from './odyssey-charm-icon-stage.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
 import { createOdysseyStarNotes } from './odyssey-star-notes.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
@@ -173,7 +174,12 @@ export function createJourneyFlowOverlay({
     const found = variant === 'completion' ? describeOdysseyCharmsFound(results) : null;
     const foundNode = found ? el('p', 'ody-flow__found') : null;
     if (foundNode) {
-        foundNode.appendChild(el('span', 'ody-flow__found-line', found.line));
+        // Each charm found as its own icon, then the words; the glyph only when there is no icon.
+        const icons = found.ids.map((id) => createOdysseyCharmIconNode(id)).filter(Boolean);
+        const line = el('span', 'ody-flow__found-line');
+        icons.forEach((icon) => line.appendChild(icon));
+        line.appendChild(el('span', '', icons.length ? found.text : found.line));
+        foundNode.appendChild(line);
         if (found.hint) foundNode.appendChild(el('span', 'ody-flow__found-hint', found.hint));
         content.appendChild(foundNode);
     }

@@ -111,9 +111,48 @@
 }
 
 /* The road's mercy on the failure sheet: the one charm the third fall left, and its key. */
-.sb-ody-charm-pity {
+.sb-ody-note.sb-ody-charm-pity {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
     color: var(--sb-lavender);
     font-weight: 600;
+}
+
+/* A charm's still (the HUD icon exported once) on the sheets and the map; a glyph until it exists. */
+.charm-sprite {
+    display: inline-block;
+    width: 24px;
+    height: 24px;
+    vertical-align: -7px;
+    flex: 0 0 auto;
+}
+
+.charm-sprite--glyph {
+    display: inline-grid;
+    place-items: center;
+    color: var(--sb-lavender);
+    font-size: 14px;
+}
+
+.charm-sprite--glyph[data-charm='tide'] { color: var(--sb-aqua); }
+.charm-sprite--glyph[data-charm='long-breath'] { color: var(--sb-gold); }
+.charm-sprite--glyph[data-charm='hearth'] { color: var(--sb-coral); }
+
+.sb-ody-charm-pity .charm-sprite {
+    width: 32px;
+    height: 32px;
+}
+
+#odyssey-board-overlay #odyssey-header-charms .charm-sprite {
+    width: 20px;
+    height: 20px;
+    vertical-align: -5px;
+    margin-right: 1px;
+}
+
+#odyssey-board-overlay #odyssey-header-charms .charm-sprite + .charm-sprite {
+    margin-left: 6px;
 }
 
 .sb-ody-note {
@@ -800,6 +839,13 @@
     border-bottom-color: var(--sb-line);
 }
 
+/* With charms in the column, the sections sit a little closer so all four chips stay in view
+   on a 900 px screen beside a full-height well. */
+#odyssey-hud:has(.charms-section:not([hidden])) .hud-section {
+    margin-bottom: clamp(6px, 0.7vw, 8px);
+    padding-bottom: clamp(5px, 0.55vw, 7px);
+}
+
 #odyssey-hud .header-section {
     text-align: left;
 }
@@ -911,32 +957,65 @@
     line-height: 1.6;
 }
 
-/* Charms: a chip per charm held, with its key, its count and its state; one press uses it. */
+/* Charms: a chip per charm held, each in its own tone: its icon (drawn by the icon stage over the
+   list, a glyph until then), its name and count, its rule or its state, and the key that uses it. */
+#odyssey-hud .charms-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+#odyssey-hud .charms-hint {
+    color: var(--sb-text-faint);
+    font: 500 10px / 1.6 var(--sb-font-text);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
 #odyssey-hud .charms-list {
+    position: relative;
     display: flex;
     flex-direction: column;
-    gap: 6px;
-    margin-top: 8px;
+    gap: 5px;
+    margin-top: 7px;
+}
+
+#odyssey-hud .charms-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 1;
 }
 
 #odyssey-hud .charm-chip {
-    display: flex;
+    --charm-rgb: var(--sb-lavender-rgb);
+    position: relative;
+    display: grid;
+    grid-template-columns: 36px minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px;
     width: 100%;
-    padding: 7px 10px;
-    border-radius: 10px;
-    border: 1px solid var(--sb-line);
-    background: rgba(var(--sb-cream-rgb), 0.04);
+    padding: 4px 7px 4px 4px;
+    border-radius: 12px;
+    border: 1px solid rgba(var(--charm-rgb), 0.24);
+    background: linear-gradient(90deg, rgba(var(--charm-rgb), 0.13), rgba(var(--sb-cream-rgb), 0.03) 60%);
     color: var(--sb-text);
-    font: 600 12px / 1.4 var(--sb-font-text);
     text-align: left;
     cursor: pointer;
+    transition: border-color 200ms ease, box-shadow 200ms ease, opacity 200ms ease;
 }
 
+#odyssey-hud .charm-chip[data-charm='tide'] { --charm-rgb: var(--sb-aqua-rgb); }
+#odyssey-hud .charm-chip[data-charm='still-air'] { --charm-rgb: var(--sb-lavender-rgb); }
+#odyssey-hud .charm-chip[data-charm='long-breath'] { --charm-rgb: var(--sb-gold-rgb); }
+#odyssey-hud .charm-chip[data-charm='hearth'] { --charm-rgb: var(--sb-coral-rgb); }
+
 #odyssey-hud .charm-chip:hover:not(:disabled) {
-    border-color: rgba(var(--sb-lavender-rgb), 0.6);
-    background: rgba(var(--sb-lavender-rgb), 0.12);
+    border-color: rgba(var(--charm-rgb), 0.6);
+    box-shadow: 0 0 0 1px rgba(var(--charm-rgb), 0.12), 0 8px 20px -10px rgba(var(--charm-rgb), 0.6);
 }
 
 #odyssey-hud .charm-chip:focus-visible {
@@ -946,13 +1025,79 @@
 
 #odyssey-hud .charm-chip:disabled {
     cursor: default;
-    color: var(--sb-text-faint);
+}
+
+#odyssey-hud .charm-chip__icon {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: radial-gradient(circle at 50% 62%, rgba(var(--charm-rgb), 0.3), rgba(var(--charm-rgb), 0.04) 72%);
+}
+
+#odyssey-hud .charm-chip__glyph {
+    color: rgb(var(--charm-rgb));
+    font-size: 15px;
+    line-height: 1;
+}
+
+#odyssey-hud .charms-list[data-charm-icons='live'] .charm-chip__glyph {
+    visibility: hidden;
+}
+
+#odyssey-hud .charm-chip__body {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+}
+
+#odyssey-hud .charm-chip__title {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    font: 600 12.5px / 1.3 var(--sb-font-text);
+}
+
+#odyssey-hud .charm-chip__count {
+    color: rgb(var(--charm-rgb));
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+#odyssey-hud .charm-chip__count:empty {
+    display: none;
+}
+
+#odyssey-hud .charm-chip__state {
+    color: var(--sb-text-muted);
+    font: 500 10.5px / 1.35 var(--sb-font-text);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#odyssey-hud .charm-chip__keys {
+    display: flex;
+    gap: 4px;
+}
+
+#odyssey-hud .charm-chip .sb-kbd[hidden] {
+    display: none;
 }
 
 #odyssey-hud .charm-chip[data-state='active'],
 #odyssey-hud .charm-chip[data-state='armed'] {
-    color: var(--sb-lavender);
-    border-color: rgba(var(--sb-lavender-rgb), 0.55);
+    border-color: rgba(var(--charm-rgb), 0.7);
+    box-shadow: 0 0 22px -6px rgba(var(--charm-rgb), 0.6);
+}
+
+#odyssey-hud .charm-chip[data-state='active'] .charm-chip__state,
+#odyssey-hud .charm-chip[data-state='armed'] .charm-chip__state {
+    color: rgb(var(--charm-rgb));
+    font-weight: 600;
 }
 
 /* Armed: a soft ring breathes on the chip until the top-out it waits for. */
@@ -961,36 +1106,27 @@
 }
 
 @keyframes charm-armed {
-    from { box-shadow: 0 0 0 1px rgba(var(--sb-lavender-rgb), 0.3), 0 0 8px rgba(var(--sb-lavender-rgb), 0.2); }
-    to { box-shadow: 0 0 0 1px rgba(var(--sb-lavender-rgb), 0.55), 0 0 18px rgba(var(--sb-lavender-rgb), 0.4); }
+    from { box-shadow: 0 0 0 1px rgba(var(--charm-rgb), 0.3), 0 0 10px rgba(var(--charm-rgb), 0.2); }
+    to { box-shadow: 0 0 0 1px rgba(var(--charm-rgb), 0.6), 0 0 22px rgba(var(--charm-rgb), 0.45); }
 }
 
 #odyssey-hud .charm-chip[data-state='used'] {
+    opacity: 0.55;
     border-style: dashed;
+    background: rgba(var(--sb-cream-rgb), 0.02);
+}
+
+#odyssey-hud .charm-chip[data-state='used'] .charm-chip__icon {
+    filter: saturate(0.2);
+}
+
+#odyssey-hud .charm-chip[data-reason]:not([data-reason='']) {
+    opacity: 0.72;
 }
 
 #odyssey-hud .charm-chip[data-flash='true'] .charm-chip__state {
     color: var(--sb-gold);
-}
-
-#odyssey-hud .charm-chip__name {
-    flex: 1;
-}
-
-#odyssey-hud .charm-chip__count {
-    color: var(--sb-text-muted);
-    font-variant-numeric: tabular-nums;
-}
-
-#odyssey-hud .charm-chip__state {
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    font-variant-numeric: tabular-nums;
-}
-
-#odyssey-hud .charm-chip .sb-kbd[hidden] {
-    display: none;
+    font-weight: 600;
 }
 
 /* Spoken once per state change; never seen. */
