@@ -325,13 +325,13 @@
  },
  {
   "id": "shifting-sands",
-  "name": "Shifting Sands (Arrakis at the twin-sun dusk)",
-  "setting": "A dune sea at twin-sun dusk: barchanoid ridges with 34 degree slip faces; an ember-gold sun and a white-gold sun low on the left; 'the Sentinel', a sandstone butte with spires, on the right under two pale crescent moons; the Shield Wall escarpment on the horizon; a sandworm breaching. Icon: a dark worm arch silhouetted against the sun. Registry :192-197, group biomes. Doc docs/SHIFTING_SANDS_VISUAL_OVERHAUL_2026-10.md",
+  "name": "Shifting Sands (twin-sun dusk over the dune sea)",
+  "setting": "A dune sea at twin-sun dusk: barchanoid ridges with 34 degree slip faces; an ember-gold sun and a white-gold sun low on the left; 'the Sentinel', a sandstone butte with spires, on the right under two pale crescent moons; the Rampart escarpment on the horizon; a sandworm breaching. Icon: a dark worm arch silhouetted against the sun. Registry :192-197, group biomes. Doc docs/SHIFTING_SANDS_VISUAL_OVERHAUL_2026-10.md",
   "timeOfDay": "dusk; it deepens with each level",
   "dominantPalette": "Sky from apricot at the horizon through dusty rose and violet to a deep-blue zenith; peach and ochre sand with violet shadows; coloured double shadows. Pieces (shifting-sands-tetrominos.js:15-22): I #ffd06a, O #c9a0ff, T #7fffb8, S #ff9070, Z #8090ff, J #ffb855, L #7ec8ff",
-  "keyMotifs": "Dunes, a sandworm breach, spice blows (geysers), spindrift, sand glitter, mesas, twin suns, moons, heat haze, crepuscular shafts",
-  "motion": "A worm breach cycle every 52 s, sheets of blowing sand, spice motes, heat shimmer",
-  "gameplayFx": "Lock: a 'thumper beat', a golden ring of lifted sand running across the erg. Combo of 2 or more: the spice glows and the wind rises. Clear: n spice blows in the side zones, a gust, a sun flare. Four lines: the worm is summoned (its sign races in, the ground trembles, a great spice blow, the worm rears). Level: the dusk deepens and the suns sink",
+  "keyMotifs": "Dunes, a sandworm breach, dust geysers (geysers), spindrift, sand glitter, mesas, twin suns, moons, heat haze, crepuscular shafts",
+  "motion": "A worm breach cycle every 52 s, sheets of blowing sand, gold motes, heat shimmer",
+  "gameplayFx": "Lock: a 'drum beat', a golden ring of lifted sand running across the erg. Combo of 2 or more: the gold glows and the wind rises. Clear: n dust geysers in the side zones, a gust, a sun flare. Four lines: the worm is summoned (its sign races in, the ground trembles, a great dust geyser, the worm rears). Level: the dusk deepens and the suns sink",
   "tech": "A CPU bake on a polar grid storing horizon tangents for twin-sun shadows; exact per-pixel ridge slopes; a vertex-animated worm tube; occluded crepuscular shafts in post; a 'desert filmic' tone map. WebGPU",
   "motifsToAvoidReusing": "Dunes and sand, an apricot dusk desert, twin suns, mesas, a giant creature breaching, dust geysers, a golden ring across the ground on lock"
  },
@@ -638,14 +638,14 @@
  {
   "id": "chromadelic-highway",
   "name": "Chromadelic Highway",
-  "setting": "A stained-glass ROYGBIV highway into a vanishing point behind the card, under neon ring arches, with a rainbow-banded gas giant on the left and a ringed ice giant on the right in a violet nebula (docs/CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md, captures in reports/chromadelic-highway-overhaul/).",
+  "setting": "A stained-glass ROYGBIV highway into a vanishing point behind the card, under neon ring arches of any colour and many forms, with a rainbow-banded gas giant on the left and a ringed ice giant on the right in a nebula whose air takes the rings' colours (docs/CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md, spectrum pass docs/CHROMADELIC_HIGHWAY_SPECTRUM_2026-10.md, captures in reports/chromadelic-highway-spectrum/).",
   "timeOfDay": "space (none)",
-  "dominantPalette": "Sky #080516 to #160A2C; magenta/violet nebula; rings cycle cyan, violet, azure, magenta. Pieces I #ff1493 O #ff8c00 T #ffea00 S #00ff80 Z #00f5ff J #4d90fe L #bf40ff, garbage #2a2a45.",
-  "keyMotifs": "Rainbow lanes; neon ring tunnel; cartoon planets (analytic impostors); speed streaks; rail light curtains; binary star; meteors and comet.",
-  "motion": "One travel clock. Rings emerge at the card edge and sweep outward; streaks; moon orbit and transit.",
-  "gameplayFx": "Light waves run down the lanes toward the player. Lock gives a cyan band. Combo climbs a band from magenta to azure, with meteors and a comet. Clear sends orange bands, a star twinkle and planet storm flashes. Four lines: bands, a white-hot ring cascade, streak warp and FOV surge. Level up rotates the ring palette +30°.",
-  "tech": "Analytic planet quads, screen-space calm zone, Khronos-Neutral 'neon-neutral' tone map, max-channel bloom, layout-aware solver, adaptive scaler.",
-  "motifsToAvoidReusing": "Rainbow roads, ring tunnels, speed streaks, cartoon planets, vanishing-point travel."
+  "dominantPalette": "Sky #080516 to #160A2C; violet nebula turned per movement (rose for ember, teal-blue for tide). Rings take any hue: six movements of 90 s each (prism rainbow run, orchid, ember, triad, chord complementary pairs, tide), the air hue blended on the wheel from the rings on screen. Pieces I #ff1493 O #ff8c00 T #ffea00 S #00ff80 Z #00f5ff J #4d90fe L #bf40ff, garbage #2a2a45.",
+  "keyMotifs": "Rainbow lanes; neon ring tunnel with eleven ring forms (tube, double line, spinning dashes, beads, hexagon and octagon gates, prism arcs); coloured haze around each ring; horizon mist in the air colour; ring-lit dust; cartoon planets (analytic impostors); speed streaks; rail light curtains; binary star; meteors and comet.",
+  "motion": "One travel clock. Rings take their colour and form just before they clear the card edge, flare as they come out, and keep both for their flight, so a new scheme rolls in ring by ring; the spectrum drifts with the road (a movement every ~90 s at level 1) and steps one movement per level-up; moon orbit and transit.",
+  "gameplayFx": "Light waves run down the lanes toward the player, in the newest ring's colour. Lock gives a band in that colour. Combo climbs a band round the wheel from it and races the rings' light packets, with meteors and a comet. Clear: bands plus chase lights filling every arch from its feet to its crown, one front per line, a star twinkle and planet storm flashes. Four lines: bands, a prism cascade turning every arch into the spectrum, a streak warp, FOV surge, and the next three rings out are prism arcs. Level up: the spectrum steps to the next movement and a cascade in its first colour repaints every ring it passes, board to lens.",
+  "tech": "Ring style slots (J mod 16) written by the CPU when a ring locks; polygon gates in the vertex stage; branchless patterns; a second instanced draw for ring air; hue-vector air colour; analytic planet quads, screen-space calm zone, Khronos-Neutral 'neon-neutral' tone map, max-channel bloom, layout-aware solver, adaptive scaler.",
+  "motifsToAvoidReusing": "Rainbow roads, ring tunnels and gate forms, prism arcs, speed streaks, cartoon planets, vanishing-point travel, chase lights climbing arches."
  },
  {
   "id": "stillwater",

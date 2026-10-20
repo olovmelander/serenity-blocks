@@ -16,6 +16,9 @@ import {
     worldSpeedFactor,
 } from '../../src/themes/chromadelic-highway/chromadelic-highway-tsl.js';
 import { ChromadelicWorld, WORLD_TIERS } from '../../src/themes/chromadelic-highway/chromadelic-highway-world.js';
+import {
+    MOVEMENTS, SPECTRUM_HOME, STEP_TRAVEL, movementAt, skyTurnAt,
+} from '../../src/themes/chromadelic-highway/chromadelic-highway-spectrum.js';
 
 const ASPECTS = [4 / 3, 16 / 10, 16 / 9, 1600 / 769, 2560 / 1080];
 
@@ -193,15 +196,6 @@ describe('chromadelic highway event state', () => {
         expect(world.spawnComet).toHaveBeenCalledTimes(2);
     });
 
-    it('snaps the ring palette when a new game starts at a lower level', () => {
-        const world = makeWorld();
-        world.setLevel(9);
-        world.palette.ring = world.palette.ringTarget; // eased in
-        world.setLevel(2); // the first LEVEL_UP of the next game
-        expect(world.palette.ringTarget).toBeCloseTo(1 / 12, 9);
-        expect(world.palette.ring).toBeCloseTo(1 / 12, 9);
-    });
-
     it('forgets lock and comet timestamps when seeking backwards', () => {
         const world = makeWorld();
         world.seek(100);
@@ -212,6 +206,167 @@ describe('chromadelic highway event state', () => {
         expect(world.lastLockAt).toBe(10);
         for (let c = 2; c <= 6; c++) world.onCombo(c);
         expect(world.spawnComet).toHaveBeenCalledTimes(2);
+    });
+});
+
+describe('chromadelic highway spectrum in the world', () => {
+    /** An unbuilt world with stand-ins for the parts update() touches (no GPU, no textures). */
+    const liveWorld = (quality = 'High') => {
+        const world = new ChromadelicWorld({ scene: null, quality, random: () => 0.5 });
+        world.spawnComet = vi.fn();
+        world.spawnMeteor = vi.fn();
+        world.sky = {
+            uniforms: { uTime: { value: 0 }, uNebBreath: { value: 0 } },
+            setHueShift: vi.fn(),
+            setAir: vi.fn(),
+            setDirections: vi.fn(),
+        };
+        world.stars = {
+            uniforms: { uTime: { value: 0 }, uBinaryFlare: { value: 0 }, uBinaryDir: { value: { copy() {} } } },
+            triggerWave: vi.fn(),
+        };
+        world.meteors = { update: () => 0, clear: vi.fn() };
+        world.updateBodies = () => {};
+        return world;
+    };
+    const sim = (time, delta, extra = {}) => ({
+        time, delta, pace: 1, pulse: 0, ring: 0, particle: 0, ambient: 0, ...extra,
+    });
+    /** Live play at a fixed step from `from` to `to` (pace 1, no events unless `each` fires them). */
+    const play = (world, from, to, dt = 1 / 60, each = null) => {
+        const steps = Math.round((to - from) / dt);
+        for (let i = 1; i <= steps; i++) {
+            const t = from + i * dt;
+            each?.(world, t);
+            world.update(sim(t, dt), null);
+        }
+    };
+    const onScreen = (world) => world.getSpectrumDiagnostics().rings
+        .map((r) => `${r.serial}:${r.form}:${r.hue}`);
+    const chroma = (c) => {
+        const mx = Math.max(c.r, c.g, c.b);
+        return (mx - Math.min(c.r, c.g, c.b)) / mx;
+    };
+
+    it('drifts the colours with the road at level 1, with no gameplay: one movement in ~90 s', () => {
+        const world = liveWorld();
+        world.seek(0);
+        expect(world.level).toBe(1);
+        const home = world.ringPlace();
+        expect(home).toBeCloseTo(SPECTRUM_HOME, 9);
+        expect(movementAt(home).movement.name).toBe('prism');
+        const sky0 = skyTurnAt(world.skyPlace());
+        play(world, 0, 60);
+        expect(world.level).toBe(1);
+        // Within the first minute the sky has started to turn and the rings coming out are new ones.
+        expect(world.ringPlace() - home).toBeCloseTo((60 * 180) / STEP_TRAVEL, 3);
+        expect(Math.abs(skyTurnAt(world.skyPlace()) - sky0)).toBeGreaterThan(0.005);
+        // One step on, the rings coming out wear the next movement.
+        play(world, 60, 90);
+        expect(movementAt(world.ringPlace()).movement.name).toBe('orchid');
+        const lead = world.leadStyle();
+        expect(MOVEMENTS[lead.movement].name).toBe('orchid');
+    });
+
+    it('steps one movement per level-up on top of the drift; a new game never turns it back', () => {
+        const world = liveWorld();
+        world.seek(10);
+        const p0 = world.ringPlace();
+        world.setLevel(2);
+        expect(world.ringPlace() - p0).toBeCloseTo(1, 9);
+        world.setLevel(9); // a jump counts at most three steps
+        expect(world.ringPlace() - p0).toBeCloseTo(4, 9);
+        world.setLevel(2); // the first LEVEL_UP of the next game: one more step, never back
+        expect(world.ringPlace() - p0).toBeCloseTo(5, 9);
+        expect(world.level).toBe(2);
+    });
+
+    it('keeps the style a ring came out with while the road drifts on', () => {
+        const world = liveWorld();
+        world.seek(55); // the prism → orchid boundary (place 1.0) falls inside the next seconds
+        const shownBefore = onScreen(world);
+        expect(shownBefore.length).toBeGreaterThanOrEqual(3);
+        play(world, 55, 60);
+        expect(movementAt(world.ringPlace()).movement.name).toBe('orchid');
+        const now = new Map(onScreen(world).map((s) => [s.split(':')[0], s]));
+        let kept = 0;
+        shownBefore.forEach((s) => {
+            const serial = s.split(':')[0];
+            if (!now.has(serial)) return;
+            expect(now.get(serial)).toBe(s);
+            kept += 1;
+        });
+        expect(kept).toBeGreaterThan(0);
+    });
+
+    it('repaints the tunnel on a level-up: the cascade re-dresses every ring it passes', () => {
+        const world = liveWorld();
+        world.seek(30);
+        const rings = () => world.getSpectrumDiagnostics().rings;
+        expect(rings().every((r) => r.movement === 'prism')).toBe(true);
+        world.onLevelUp(2);
+        const next = MOVEMENTS[movementAt(world.ringPlace()).index].name;
+        expect(next).toBe('orchid');
+        // A front at 2000 u/s from where the rings come out: halfway, the near rings are not yet
+        // repainted; by 0.7 s it has passed every ring on screen.
+        play(world, 30, 30.2);
+        const half = rings();
+        expect(half.some((r) => r.movement === 'prism')).toBe(true);
+        expect(half.some((r) => r.movement === next)).toBe(true);
+        play(world, 30.2, 30.7);
+        expect(rings().every((r) => r.movement === next)).toBe(true);
+        expect(world.level).toBe(2); // the hero's growth landed at +0.5 s
+        // And what comes out of the board afterwards wears it too.
+        play(world, 30.7, 33);
+        expect(rings().every((r) => r.movement === next)).toBe(true);
+    });
+
+    it('reproduces live play when seeking (pace 1, no events)', () => {
+        const live = liveWorld();
+        live.seek(0);
+        play(live, 0, 50);
+        const seeked = liveWorld();
+        seeked.seek(50);
+        expect(onScreen(live)).toEqual(onScreen(seeked));
+        expect(live.ringPlace()).toBeCloseTo(seeked.ringPlace(), 6);
+    });
+
+    it('keeps the air a colour whatever the rings on screen (never a grey average)', () => {
+        const world = liveWorld();
+        for (let t = 0; t < MOVEMENTS.length * 90; t += 7) {
+            world.seek(t);
+            expect(chroma(world.air), `t=${t}`).toBeGreaterThan(0.6);
+        }
+    });
+
+    it('runs the packets on an integrated phase: a combo chain never jumps them, early or late', () => {
+        for (const start of [5, 600]) {
+            const world = liveWorld();
+            world.seek(start);
+            let prev = world.ringPhase;
+            let maxStep = 0;
+            play(world, start, start + 6, 1 / 60, (w, t) => {
+                const k = Math.round((t - start) * 60);
+                if (k % 20 === 0) w.onCombo(2 + Math.floor(k / 20)); // a rapid chain, a step every 1/3 s
+                let step = w.ringPhase - prev;
+                if (step < 0) step += Math.PI * 40;
+                maxStep = Math.max(maxStep, step);
+                prev = w.ringPhase;
+            });
+            // Never more than the fastest rate (0.7 + 1.4 rad/s) times one frame.
+            expect(maxStep, `session ${start} s old`).toBeLessThanOrEqual((2.1 / 60) * 1.0001);
+        }
+    });
+
+    it('carries the spectrum across a rebuild in place (GPU device loss)', () => {
+        const a = liveWorld();
+        a.seek(200);
+        a.setLevel(3);
+        const state = a.getSpectrumState();
+        const b = liveWorld();
+        b.restoreSpectrumState(state);
+        expect(b.level).toBe(3);
+        expect(b.ringPlace()).toBeCloseTo(state.place, 9);
     });
 });
 
