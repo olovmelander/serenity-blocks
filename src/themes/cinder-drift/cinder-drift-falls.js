@@ -109,28 +109,44 @@ export function createFalls(u, plan) {
     material.vertexNode = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
 
     const vRun = varying(vec4(run, kind, T.w, isStream.mul(streamOn).add(isFall).add(isFountain.mul(stand))), 'cdFallRun');
+    // Each segment of a tapering ribbon is a trapezoid, and uv.x interpolated over its two
+    // triangles kinks along the diagonal (a sawtooth on the edge, once per segment). The offset
+    // across and the width are both linear over a triangle: their ratio is exact.
+    const vAcross = varying(vec2(positionGeometry.x.mul(widthNow), widthNow), 'cdFallAcross');
     material.colorNode = Fn(() => {
         const st = uv();
-        const across = st.x.sub(0.5).mul(HALO); // ±0.5 = the edges of the lava
+        const across = vAcross.x.div(max(vAcross.y, 1e-6)).mul(HALO); // ±0.5 = the edges of the lava
         const along = st.y;
         const gain = vRun.x;
         const k = vRun.y;
         const seed = vRun.z;
         // Time since the lava left its source, so the texture stretches as the lava speeds up.
-        const tFall = mix(sqrt(along), float(1.0).sub(sqrt(float(1.0).sub(along))), k);
+        // (A fountain's clock is capped short of its crown, where it would run to infinity and
+        // squeeze the texture into a sawtooth.)
+        const tFall = mix(sqrt(along), float(1.0).sub(sqrt(float(1.0).sub(along.mul(0.8)))), k);
         const rate = mix(float(0.62), float(1.3), k);
         // Skins of cooler lava drawn out into long streaks by its own speed.
         const flow = u.time.mul(rate);
         const n1 = u.noise(vec2(across.mul(0.62).add(seed), tFall.mul(0.36).sub(flow.mul(0.42)))).r;
-        const n2 = u.noise(vec2(across.mul(1.7).add(n1.mul(0.3)).add(seed.mul(3.0)), tFall.mul(0.9).sub(flow.mul(1.05)))).level(2.0).g;
+        // (Up a fountain the edge noise runs slower: it is short, and a fast edge saws.)
+        const n2 = u.noise(vec2(across.mul(1.7).add(n1.mul(0.3)).add(seed.mul(3.0)), tFall.mul(mix(float(0.9), float(0.3), k)).sub(flow.mul(1.05)))).level(2.0).g;
         // A stream grows from its lip; a fountain's crown dissolves into the drops it throws.
         const reach = float(1.0).sub(smoothstep(vRun.w.mul(1.15).sub(0.2), vRun.w.mul(1.15), along));
         const core = float(1.0).sub(abs(across).mul(2.0));
         const thin = mix(along.mul(0.08), along.mul(along).mul(0.9), k);
-        const ragged = mix(float(0.5), float(1.5), k);
-        const body = smoothstep(0.0, 0.26, core.add(n2.sub(0.5).mul(ragged)).sub(thin)).mul(reach);
-        const temp = mix(float(0.74), float(0.98), k).add(max(core, 0.0).mul(0.46)).add(n1.sub(0.5).mul(0.95)).add(n2.sub(0.5).mul(0.42))
-            .sub(mix(along.mul(0.16), along.mul(0.5), k))
+        // A fountain is a smooth white column at its root that tears into clots toward its crown.
+        const ragged = mix(float(0.5), along.mul(0.45).add(0.3), k);
+        const clotN = u.noise(vec2(across.mul(1.6).add(seed.mul(5.0)), tFall.mul(0.8).sub(flow.mul(0.9)))).level(1.0).r;
+        const clots = mix(float(1.0), smoothstep(0.3, 0.52, clotN), k.mul(smoothstep(0.4, 0.9, along)));
+        const body = smoothstep(0.0, 0.26, core.add(n2.sub(0.5).mul(ragged)).sub(thin)).mul(reach).mul(clots);
+        // Rafts of crust that skinned over on the way to the lip ride down in it, dark against the
+        // white body, torn longer as the lava speeds up (a fall and its streams; not a fountain).
+        const raftN = u.noise(vec2(across.mul(2.4).add(seed.mul(7.0)).add(n1.mul(0.4)), tFall.mul(1.5).sub(flow.mul(1.5)))).b;
+        const raft = smoothstep(0.56, 0.74, raftN).mul(float(1.0).sub(k)).mul(smoothstep(0.04, 0.25, along))
+            .mul(float(1.0).sub(max(core, 0.0).mul(0.5)));
+        const temp = mix(float(0.74), float(1.08), k).add(max(core, 0.0).mul(0.46)).add(n1.sub(0.5).mul(0.95)).add(n2.sub(0.5).mul(0.42))
+            .sub(mix(along.mul(0.16), along.mul(along).mul(0.75), k))
+            .sub(raft.mul(0.62))
             .mul(gain.mul(0.25).add(0.75));
         const lava = cdHeatColor(u, temp).mul(u.breath.mul(0.7).add(0.3));
         // Its own light in the air round it.

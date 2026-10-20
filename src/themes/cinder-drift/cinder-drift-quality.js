@@ -4,6 +4,7 @@
  * detail     column spacing scale: the plan is cut coarser on a lower tier (fewer, wider columns)
  * embers     cinders rising off the lake
  * smoke      banks of smoke under the roof
+ * plume      puffs of the steam and smoke the great fall raises where it strikes the lake
  * spatter    lava-drop pool (crowns, sparks, fountains)
  * bombs      lava bombs a four-line clear throws (of BOMB_SLOTS)
  * fountain   drops one fountain of a curtain throws over its life
@@ -16,6 +17,7 @@ export const QUALITY = Object.freeze({
         detail: 1.7,
         embers: 0,
         smoke: 0,
+        plume: 0,
         spatter: 384,
         bombs: 5,
         fountain: 28,
@@ -27,6 +29,7 @@ export const QUALITY = Object.freeze({
         detail: 1.4,
         embers: 420,
         smoke: 10,
+        plume: 8,
         spatter: 1024,
         bombs: 7,
         fountain: 70,
@@ -38,6 +41,7 @@ export const QUALITY = Object.freeze({
         detail: 1.18,
         embers: 900,
         smoke: 18,
+        plume: 12,
         spatter: 2304,
         bombs: 10,
         fountain: 160,
@@ -49,6 +53,7 @@ export const QUALITY = Object.freeze({
         detail: 1.0,
         embers: 1600,
         smoke: 26,
+        plume: 16,
         spatter: 4096,
         bombs: 14,
         fountain: 300,
@@ -60,6 +65,7 @@ export const QUALITY = Object.freeze({
         detail: 0.9,
         embers: 2400,
         smoke: 32,
+        plume: 18,
         spatter: 6144,
         bombs: 14,
         fountain: 460,
@@ -71,6 +77,7 @@ export const QUALITY = Object.freeze({
         detail: 0.8,
         embers: 3400,
         smoke: 40,
+        plume: 22,
         spatter: 8192,
         bombs: 14,
         fountain: 620,

@@ -1164,7 +1164,7 @@ describe('cinder drift tiers', () => {
             const name = QUALITY_NAMES[i];
             const a = QUALITY[QUALITY_NAMES[i - 1]];
             const b = QUALITY[name];
-            for (const key of ['embers', 'smoke', 'spatter', 'bombs', 'fountain']) {
+            for (const key of ['embers', 'smoke', 'plume', 'spatter', 'bombs', 'fountain']) {
                 expect(b[key], `${name}.${key}`).toBeGreaterThanOrEqual(a[key]);
             }
             // A finer plan the higher the tier (a smaller spacing scale).
@@ -1199,7 +1199,7 @@ describe('cinder drift tiers', () => {
             expect(tier.bombs, name).toBeLessThanOrEqual(BOMB_SLOTS);
             expect(tier.fountain, name).toBeGreaterThan(0);
             expect(tier.fountain, name).toBeLessThanOrEqual(tier.spatter);
-            for (const key of ['embers', 'smoke']) {
+            for (const key of ['embers', 'smoke', 'plume']) {
                 expect(Number.isInteger(tier[key]) && tier[key] >= 0, `${name}.${key}`).toBe(true);
             }
             // A post look never asks for shafts without the bloom they are dragged out of.
@@ -1207,7 +1207,9 @@ describe('cinder drift tiers', () => {
             if (look.shafts > 0) expect(look.bloom, name).toBe(true);
         }
         // Only the cheapest tier goes without its air.
-        expect(QUALITY.Minimal).toMatchObject({ embers: 0, smoke: 0, shaft: false });
+        expect(QUALITY.Minimal).toMatchObject({
+            embers: 0, smoke: 0, plume: 0, shaft: false,
+        });
         for (const name of QUALITY_NAMES.slice(1)) {
             expect(QUALITY[name].embers, name).toBeGreaterThan(0);
             expect(QUALITY[name].smoke, name).toBeGreaterThan(0);
