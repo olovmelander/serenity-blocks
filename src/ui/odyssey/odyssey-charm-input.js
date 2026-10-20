@@ -37,15 +37,18 @@ export function odysseyReservedCharmKeys(mode) {
 export function createOdysseyCharmPadControls(controller, { isActive, onUse, onHintChange }) {
     let bindingConfig;
     let buttonCount;
+    let hinted = null;
     let bindings = [];
     const armed = new Map();
     const reset = () => armed.clear();
     const updateBinding = (gamepad) => {
         const config = controller.getGameplayBindingConfig(0);
         const count = gamepad?.buttons?.length ?? 17;
-        if (config === bindingConfig && count === buttonCount) return;
+        const connected = Boolean(gamepad);
+        if (config === bindingConfig && count === buttonCount && connected === hinted) return;
         bindingConfig = config;
         buttonCount = count;
+        hinted = connected;
         const reserved = new Set(Object.values(config).map((action) => action.index));
         const free = CHARM_BUTTONS.filter(([index]) => index < count && !reserved.has(index));
         bindings = ODYSSEY_CHARMS
@@ -53,7 +56,9 @@ export function createOdysseyCharmPadControls(controller, { isActive, onUse, onH
                 ? { charmId: charm.id, index: free[position][0], label: free[position][1] } : null))
             .filter(Boolean);
         reset();
-        onHintChange?.(Object.fromEntries(bindings.map((binding) => [binding.charmId, binding.label])));
+        // The tiles wear the button labels only while a controller is there to press them.
+        onHintChange?.(connected
+            ? Object.fromEntries(bindings.map((binding) => [binding.charmId, binding.label])) : {});
     };
     updateBinding(controller.gamepads?.[0]);
     return {

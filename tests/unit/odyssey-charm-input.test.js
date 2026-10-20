@@ -63,12 +63,16 @@ describe('Odyssey charm input', () => {
         const onUse = vi.fn(() => true);
         const onHintChange = vi.fn();
         const controls = createOdysseyCharmPadControls(controller, { isActive: () => true, onUse, onHintChange });
+        // No controller yet: the tiles show no button labels.
+        expect(onHintChange).toHaveBeenLastCalledWith({});
+        // Release first (arm), then press. The first poll of a controller labels the tiles.
+        controls.process(gamepad([]), 0);
         expect(onHintChange).toHaveBeenLastCalledWith({
             tide: 'RB', 'still-air': 'LT', 'long-breath': 'RT', hearth: 'L3',
         });
-        // Release first (arm), then press.
-        controls.process(gamepad([]), 0);
+        expect(onHintChange).toHaveBeenCalledTimes(2);
         controls.process(gamepad([5]), 0);
+        expect(onHintChange).toHaveBeenCalledTimes(2);
         expect(onUse).toHaveBeenCalledExactlyOnceWith('tide');
         controls.process(gamepad([5]), 0); // held: no repeat
         expect(onUse).toHaveBeenCalledOnce();
@@ -84,7 +88,8 @@ describe('Odyssey charm input', () => {
             rotateLeft: { index: 4 }, flip: { index: 5 }, hardDrop: { index: 6 }, softDrop: { index: 7 }, rotateRight: { index: 10 },
         });
         const hints = vi.fn();
-        createOdysseyCharmPadControls(crowded, { isActive: () => true, onUse, onHintChange: hints });
+        createOdysseyCharmPadControls(crowded, { isActive: () => true, onUse, onHintChange: hints })
+            .process(gamepad([]), 0);
         expect(hints).toHaveBeenLastCalledWith({ tide: 'X', 'still-air': 'Y' });
     });
 

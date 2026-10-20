@@ -795,7 +795,7 @@
 #odyssey-hud .progress-track {
     position: relative;
     height: 6px;
-    margin: 10px 0 6px;
+    margin: 7px 0 1px;
     border-radius: 3px;
     background: rgba(var(--sb-cream-rgb), 0.08);
     box-shadow: none;
@@ -839,21 +839,46 @@
     border-bottom-color: var(--sb-line);
 }
 
-/* With charms in the column, the sections sit a little closer so all four chips stay in view
-   on a 900 px screen beside a full-height well. */
-#odyssey-hud:has(.charms-section:not([hidden])) .hud-section {
-    margin-bottom: clamp(6px, 0.7vw, 8px);
-    padding-bottom: clamp(5px, 0.55vw, 7px);
+/* The column is read whole beside the well, never scrolled: close-set sections, and on a
+   window too short for them the whole column drawn smaller (src/ui/odyssey/odyssey-hud-fit.js
+   sets --ody-hud-fit; the stage rules below apply it). */
+#odyssey-hud.odyssey-hud {
+    overflow: hidden;
+    padding: 13px 16px 11px;
+}
+
+#odyssey-hud .hud-section {
+    margin-bottom: 7px;
+    padding-bottom: 6px;
+}
+
+/* A window too short even for the smallest legible column scrolls by wheel or touch, without
+   a scrollbar. */
+#odyssey-hud[data-fit='scroll'] {
+    overflow-y: auto;
+    scrollbar-width: none;
+}
+
+#odyssey-hud[data-fit='scroll']::-webkit-scrollbar {
+    display: none;
 }
 
 #odyssey-hud .header-section {
     text-align: left;
 }
 
+/* The chapter and the orb's number share one line over the orb's name. */
+#odyssey-hud .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
 #odyssey-hud .hud-label,
 #odyssey-hud .chapter-label {
     font-size: 10px;
-    line-height: 1.6;
+    line-height: 1.5;
     color: var(--sb-text-muted);
     letter-spacing: 0.12em;
 }
@@ -863,13 +888,16 @@
 }
 
 #odyssey-hud .level-name {
-    font-size: 16px;
-    line-height: 1.45;
+    margin-top: 3px;
+    font-size: 15px;
+    line-height: 1.3;
     text-align: left;
     text-shadow: none;
 }
 
 #odyssey-hud .level-badge {
+    margin-top: 0;
+    padding: 2px 8px;
     border-color: var(--sb-line-strong);
     background: var(--sb-surface-raised);
     color: var(--sb-text-muted);
@@ -878,18 +906,28 @@
 }
 
 #odyssey-hud .objective-text {
-    font-size: 14px;
-    line-height: 1.45;
+    margin: 3px 0 2px;
+    font-size: 13.5px;
+    line-height: 1.4;
+}
+
+#odyssey-hud .hud-level-rules {
+    margin: 4px 0 0;
+    font-size: 11px;
+    line-height: 1.4;
 }
 
 #odyssey-hud .progress-value {
-    font-size: 25px;
+    margin-top: 2px;
+    font-size: 22px;
+    line-height: 1.2;
     text-align: left;
     text-shadow: none;
 }
 
 #odyssey-hud .time-value {
-    font-size: 20px;
+    font-size: 18px;
+    line-height: 1.2;
     text-shadow: none;
 }
 
@@ -904,15 +942,29 @@
 #odyssey-hud .star-row,
 #odyssey-hud .bonus-item {
     color: var(--sb-text-muted);
-    font-size: 12px;
-    line-height: 1.55;
+    font-size: 11.5px;
+    line-height: 1.4;
     opacity: 1;
     align-items: flex-start;
 }
 
+#odyssey-hud .stars-list,
+#odyssey-hud .bonuses-list {
+    gap: 3px;
+    margin-top: 4px;
+}
+
 #odyssey-hud .star-icon {
     flex: none;
-    margin-top: 2px;
+    margin-top: 1px;
+}
+
+#odyssey-hud .bonus-checkbox {
+    width: 13px;
+    height: 13px;
+    margin-top: 1px;
+    border-width: 1.5px;
+    border-radius: 4px;
 }
 
 #odyssey-hud .star-row.earned {
@@ -921,8 +973,8 @@
 
 #odyssey-hud .level-guide {
     color: var(--sb-text-muted);
-    font-size: 12px;
-    line-height: 1.6;
+    font-size: 11.5px;
+    line-height: 1.5;
 }
 
 #odyssey-hud .level-guide summary {
@@ -932,7 +984,7 @@
 }
 
 #odyssey-hud .level-guide p {
-    margin: 8px 0 0;
+    margin: 5px 0 0;
 }
 
 #odyssey-hud .level-guide summary:focus-visible {
@@ -942,8 +994,8 @@
 
 #odyssey-hud .finish-hint {
     width: 100%;
-    min-height: 42px;
-    margin-bottom: 8px;
+    min-height: 36px;
+    margin-bottom: 6px;
     animation: none;
     border-top: 0;
     color: var(--sb-keystone-ink);
@@ -951,34 +1003,23 @@
 }
 
 #odyssey-hud .odyssey-pause-hint {
-    margin: 8px 0 0;
+    margin: 3px 0 0;
     color: var(--sb-text-muted);
-    font-size: 12px;
-    line-height: 1.6;
+    font-size: 11px;
+    line-height: 1.5;
 }
 
-/* Charms: a chip per charm held, each in its own tone: its icon (drawn by the icon stage over the
-   list, a glyph until then), its name and count, its rule or its state, and the key that uses it. */
-#odyssey-hud .charms-head {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-#odyssey-hud .charms-hint {
-    color: var(--sb-text-faint);
-    font: 500 10px / 1.6 var(--sb-font-text);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-}
-
+/* Charms: a hotbar. One tile per charm held, in its own tone: its icon (drawn by the icon stage
+   over the row, a glyph until then), the key that uses it on one shoulder, its count on the
+   other, its name under it. One caption line under the row says what the charm that matters
+   right now is doing. */
 #odyssey-hud .charms-list {
     position: relative;
     display: flex;
-    flex-direction: column;
-    gap: 5px;
-    margin-top: 7px;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 6px;
+    padding: 5px 0 0;
 }
 
 #odyssey-hud .charms-canvas {
@@ -992,20 +1033,22 @@
 
 #odyssey-hud .charm-chip {
     --charm-rgb: var(--sb-lavender-rgb);
+    --charm-left: 0;
     position: relative;
-    display: grid;
-    grid-template-columns: 36px minmax(0, 1fr) auto;
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
     align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 4px 7px 4px 4px;
-    border-radius: 12px;
-    border: 1px solid rgba(var(--charm-rgb), 0.24);
-    background: linear-gradient(90deg, rgba(var(--charm-rgb), 0.13), rgba(var(--sb-cream-rgb), 0.03) 60%);
+    gap: 3px;
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
     color: var(--sb-text);
-    text-align: left;
     cursor: pointer;
-    transition: border-color 200ms ease, box-shadow 200ms ease, opacity 200ms ease;
+    -webkit-tap-highlight-color: transparent;
+    transition: opacity 200ms ease;
 }
 
 #odyssey-hud .charm-chip[data-charm='tide'] { --charm-rgb: var(--sb-aqua-rgb); }
@@ -1013,33 +1056,40 @@
 #odyssey-hud .charm-chip[data-charm='long-breath'] { --charm-rgb: var(--sb-gold-rgb); }
 #odyssey-hud .charm-chip[data-charm='hearth'] { --charm-rgb: var(--sb-coral-rgb); }
 
-#odyssey-hud .charm-chip:hover:not(:disabled) {
-    border-color: rgba(var(--charm-rgb), 0.6);
-    box-shadow: 0 0 0 1px rgba(var(--charm-rgb), 0.12), 0 8px 20px -10px rgba(var(--charm-rgb), 0.6);
+#odyssey-hud .charm-chip:focus-visible {
+    outline: none;
 }
 
-#odyssey-hud .charm-chip:focus-visible {
+#odyssey-hud .charm-chip:focus-visible .charm-chip__icon {
     outline: 2px solid var(--sb-keystone);
     outline-offset: 2px;
 }
 
-#odyssey-hud .charm-chip:disabled {
-    cursor: default;
-}
-
+/* The tile: the icon's stage, lit from below in the charm's tone. */
 #odyssey-hud .charm-chip__icon {
     position: relative;
     display: grid;
     place-items: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 10px;
-    background: radial-gradient(circle at 50% 62%, rgba(var(--charm-rgb), 0.3), rgba(var(--charm-rgb), 0.04) 72%);
+    width: 100%;
+    aspect-ratio: 1;
+    box-sizing: border-box;
+    border-radius: 13px;
+    border: 1px solid rgba(var(--charm-rgb), 0.32);
+    background:
+        radial-gradient(circle at 50% 66%, rgba(var(--charm-rgb), 0.34), rgba(var(--charm-rgb), 0.05) 70%),
+        linear-gradient(180deg, rgba(var(--sb-cream-rgb), 0.05), rgba(var(--sb-cream-rgb), 0.01));
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
+    transition: border-color 200ms ease, box-shadow 200ms ease, filter 200ms ease;
+}
+
+#odyssey-hud .charm-chip:hover .charm-chip__icon {
+    border-color: rgba(var(--charm-rgb), 0.65);
+    box-shadow: 0 0 0 1px rgba(var(--charm-rgb), 0.14), 0 8px 20px -10px rgba(var(--charm-rgb), 0.7);
 }
 
 #odyssey-hud .charm-chip__glyph {
     color: rgb(var(--charm-rgb));
-    font-size: 15px;
+    font-size: 18px;
     line-height: 1;
 }
 
@@ -1047,22 +1097,52 @@
     visibility: hidden;
 }
 
-#odyssey-hud .charm-chip__body {
-    display: grid;
-    gap: 1px;
-    min-width: 0;
+/* The key on the tile's shoulder, the count on the other, a controller label at its foot. */
+#odyssey-hud .charm-chip__key,
+#odyssey-hud .charm-chip__pad,
+#odyssey-hud .charm-chip__count {
+    position: absolute;
+    z-index: 2;
+    display: inline-grid;
+    place-items: center;
+    box-sizing: border-box;
+    height: 15px;
+    min-width: 15px;
+    padding: 0 4px;
+    border-radius: 6px;
+    font: 700 9px / 1 var(--sb-font-display);
+    letter-spacing: 0;
+    white-space: nowrap;
 }
 
-#odyssey-hud .charm-chip__title {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    font: 600 12.5px / 1.3 var(--sb-font-text);
+#odyssey-hud .charm-chip__key {
+    top: -5px;
+    left: -5px;
+    border: 1px solid var(--sb-line-strong);
+    background: var(--sb-surface-solid);
+    color: var(--sb-text);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+#odyssey-hud .charm-chip__pad {
+    right: -5px;
+    bottom: -5px;
+    border: 1px solid var(--sb-line-strong);
+    background: var(--sb-surface-solid);
+    color: var(--sb-text-muted);
+    font-size: 8px;
+}
+
+#odyssey-hud .charm-chip__pad[hidden] {
+    display: none;
 }
 
 #odyssey-hud .charm-chip__count {
-    color: rgb(var(--charm-rgb));
-    font-size: 11px;
+    top: -5px;
+    right: -5px;
+    border-radius: 8px;
+    background: rgb(var(--charm-rgb));
+    color: #140f26;
     font-variant-numeric: tabular-nums;
 }
 
@@ -1070,61 +1150,126 @@
     display: none;
 }
 
-#odyssey-hud .charm-chip__state {
+#odyssey-hud .charm-chip__name {
     color: var(--sb-text-muted);
-    font: 500 10.5px / 1.35 var(--sb-font-text);
-    font-variant-numeric: tabular-nums;
+    font: 600 clamp(8.5px, 0.6vw, 9.5px) / 1.2 var(--sb-font-text);
+    letter-spacing: 0;
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
-#odyssey-hud .charm-chip__keys {
-    display: flex;
-    gap: 4px;
+/* Lit while it runs or waits; Still Air's bar drains along the tile's foot. */
+#odyssey-hud .charm-chip[data-state='active'] .charm-chip__icon,
+#odyssey-hud .charm-chip[data-state='armed'] .charm-chip__icon {
+    border-color: rgba(var(--charm-rgb), 0.8);
+    box-shadow: 0 0 0 1px rgba(var(--charm-rgb), 0.3), 0 0 18px rgba(var(--charm-rgb), 0.35);
 }
 
-#odyssey-hud .charm-chip .sb-kbd[hidden] {
-    display: none;
-}
-
-#odyssey-hud .charm-chip[data-state='active'],
-#odyssey-hud .charm-chip[data-state='armed'] {
-    border-color: rgba(var(--charm-rgb), 0.7);
-    box-shadow: 0 0 22px -6px rgba(var(--charm-rgb), 0.6);
-}
-
-#odyssey-hud .charm-chip[data-state='active'] .charm-chip__state,
-#odyssey-hud .charm-chip[data-state='armed'] .charm-chip__state {
+#odyssey-hud .charm-chip[data-state='active'] .charm-chip__name,
+#odyssey-hud .charm-chip[data-state='armed'] .charm-chip__name {
     color: rgb(var(--charm-rgb));
-    font-weight: 600;
 }
 
-/* Armed: a soft ring breathes on the chip until the top-out it waits for. */
-#odyssey-hud .charm-chip[data-state='armed'] {
+#odyssey-hud .charm-chip[data-state='active'] .charm-chip__icon::after {
+    content: '';
+    position: absolute;
+    right: 7px;
+    bottom: 3px;
+    left: 7px;
+    height: 2px;
+    border-radius: 1px;
+    background:
+        linear-gradient(90deg, rgb(var(--charm-rgb)) calc(var(--charm-left) * 100%), rgba(var(--charm-rgb), 0.18) 0);
+}
+
+/* Armed: the tile breathes until the top-out it waits for. */
+#odyssey-hud .charm-chip[data-state='armed'] .charm-chip__icon {
     animation: charm-armed 1.6s var(--sb-ease-breathe) infinite alternate;
 }
 
 @keyframes charm-armed {
     from { box-shadow: 0 0 0 1px rgba(var(--charm-rgb), 0.3), 0 0 10px rgba(var(--charm-rgb), 0.2); }
-    to { box-shadow: 0 0 0 1px rgba(var(--charm-rgb), 0.6), 0 0 22px rgba(var(--charm-rgb), 0.45); }
+    to { box-shadow: 0 0 0 1px rgba(var(--charm-rgb), 0.65), 0 0 22px rgba(var(--charm-rgb), 0.5); }
 }
 
-#odyssey-hud .charm-chip[data-state='used'] {
-    opacity: 0.55;
+/* Spent, nothing to do here, or paused: the tile goes dim and its key is crossed out. */
+#odyssey-hud .charm-chip[data-state='used'] .charm-chip__icon {
     border-style: dashed;
     background: rgba(var(--sb-cream-rgb), 0.02);
-}
-
-#odyssey-hud .charm-chip[data-state='used'] .charm-chip__icon {
     filter: saturate(0.2);
 }
 
-#odyssey-hud .charm-chip[data-reason]:not([data-reason='']) {
-    opacity: 0.72;
+#odyssey-hud .charm-chip[data-state='used'],
+#odyssey-hud .charm-chip[data-reason]:not([data-reason='']),
+#odyssey-hud .charm-chip[data-paused='true'] {
+    opacity: 0.5;
 }
 
-#odyssey-hud .charm-chip[data-flash='true'] .charm-chip__state {
+#odyssey-hud .charm-chip[data-state='used'] .charm-chip__key,
+#odyssey-hud .charm-chip[data-reason]:not([data-reason='']) .charm-chip__key,
+#odyssey-hud .charm-chip[data-paused='true'] .charm-chip__key {
+    color: var(--sb-text-faint);
+    text-decoration: line-through;
+    text-decoration-thickness: 1.5px;
+}
+
+/* A refused press: the tile flashes gold, the caption says why. */
+#odyssey-hud .charm-chip[data-flash='true'] {
+    opacity: 1;
+}
+
+#odyssey-hud .charm-chip[data-flash='true'] .charm-chip__icon {
+    border-color: var(--sb-gold);
+    box-shadow: 0 0 0 1px rgba(var(--sb-gold-rgb), 0.5), 0 0 16px rgba(var(--sb-gold-rgb), 0.4);
+}
+
+/* The caption: the charm's name in its tone, then what it says. */
+#odyssey-hud .charms-caption {
+    display: flex;
+    gap: 5px;
+    min-height: 15px;
+    margin: 5px 0 0;
+    overflow: hidden;
+    color: var(--sb-text-muted);
+    font: 500 10.5px / 1.4 var(--sb-font-text);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+#odyssey-hud .charms-caption__name {
+    --charm-rgb: var(--sb-lavender-rgb);
+    flex: none;
+    color: rgb(var(--charm-rgb));
+    font-weight: 700;
+}
+
+#odyssey-hud .charms-caption__name:empty {
+    display: none;
+}
+
+#odyssey-hud .charms-caption__name:not(:empty)::after {
+    content: ' ·';
+    color: var(--sb-text-faint);
+    font-weight: 500;
+}
+
+#odyssey-hud .charms-caption__text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#odyssey-hud .charms-caption[data-charm='tide'] .charms-caption__name { --charm-rgb: var(--sb-aqua-rgb); }
+#odyssey-hud .charms-caption[data-charm='still-air'] .charms-caption__name { --charm-rgb: var(--sb-lavender-rgb); }
+#odyssey-hud .charms-caption[data-charm='long-breath'] .charms-caption__name { --charm-rgb: var(--sb-gold-rgb); }
+#odyssey-hud .charms-caption[data-charm='hearth'] .charms-caption__name { --charm-rgb: var(--sb-coral-rgb); }
+
+#odyssey-hud .charms-caption[data-tone='active'] .charms-caption__text,
+#odyssey-hud .charms-caption[data-tone='armed'] .charms-caption__text {
+    color: var(--sb-text);
+    font-weight: 600;
+}
+
+#odyssey-hud .charms-caption[data-tone='flash'] .charms-caption__text {
     color: var(--sb-gold);
     font-weight: 600;
 }
@@ -1153,9 +1298,9 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-    #odyssey-hud .charm-chip[data-state='armed'] {
+    #odyssey-hud .charm-chip[data-state='armed'] .charm-chip__icon {
         animation: none;
-        box-shadow: 0 0 0 1px rgba(var(--sb-lavender-rgb), 0.45), 0 0 12px rgba(var(--sb-lavender-rgb), 0.3);
+        box-shadow: 0 0 0 1px rgba(var(--charm-rgb), 0.5), 0 0 14px rgba(var(--charm-rgb), 0.35);
     }
 
     #odyssey-hud .time-value.is-extended {
@@ -1322,8 +1467,9 @@
     top: calc(var(--sp-top) + var(--sp-next-h) + var(--sp-queue-gap));
     bottom: auto;
     width: var(--ody-hud-w);
-    max-height: var(--board-height);
-    transform: translateX(-100%);
+    max-height: calc(var(--board-height) / var(--ody-hud-fit, 1));
+    transform: translateX(-100%) scale(var(--ody-hud-fit, 1));
+    transform-origin: 100% 0;
     border-radius: 16px;
 }
 
@@ -1514,28 +1660,31 @@
         display: none;
     }
 
-    #odyssey-hud .objective-section {
-        padding-right: 90px;
+    /* The dock flows its sections into columns across the strip, so the strip holds them all. */
+    #odyssey-hud.is-visible:not(.is-victory-lap) {
+        column-width: 180px;
+        column-gap: 18px;
     }
 
-    /* The dock lays the charm chips in a row. */
+    #odyssey-hud .hud-section,
+    #odyssey-hud .odyssey-pause-hint,
+    #odyssey-hud .finish-hint {
+        break-inside: avoid;
+    }
+
+    /* A strip too short for its columns at a legible size scrolls as one column instead. */
+    #odyssey-hud.is-visible[data-fit='scroll'] {
+        column-width: auto;
+    }
+
+    /* The dock keeps the hotbar's tiles at one size, four to a column, from the left. */
     #odyssey-hud .charms-list {
-        flex-direction: row;
-        flex-wrap: wrap;
+        justify-content: flex-start;
+        gap: 6px;
     }
 
     #odyssey-hud .charm-chip {
-        width: auto;
-        flex: 1 1 140px;
-    }
-
-    #odyssey-hud .time-section {
-        position: absolute;
-        right: 14px;
-        top: 14px;
-        flex-direction: column;
-        gap: 4px;
-        border-bottom: 0;
+        flex: 0 0 40px;
     }
 
     #odyssey-hud .odyssey-duel-scoreboard {
@@ -1646,13 +1795,14 @@
 
     .single-player-stage[data-board='well'][data-odyssey-board] #odyssey-hud {
         position: fixed;
-        left: 12px;
-        right: 12px;
+        left: 50%;
+        right: auto;
         top: auto;
         bottom: 12px;
-        width: auto;
-        max-height: var(--ody-dock-h);
-        transform: none;
+        width: calc((100vw - 24px) / var(--ody-hud-fit, 1));
+        max-height: calc(var(--ody-dock-h) / var(--ody-hud-fit, 1));
+        transform: translateX(-50%) scale(var(--ody-hud-fit, 1));
+        transform-origin: 50% 100%;
     }
 
     .single-player-stage[data-board='well'][data-odyssey-board] #odyssey-duel-opponent {
@@ -1743,18 +1893,10 @@
         top: calc(var(--sp-top) + var(--sp-next-h) + var(--sp-queue-gap));
         bottom: auto;
         width: var(--ody-hud-w);
-        max-height: var(--board-height);
-        transform: translateX(-100%);
-    }
-
-    .single-player-stage[data-board='well'][data-odyssey-board] #odyssey-hud .objective-section {
-        padding-right: 0;
-    }
-
-    .single-player-stage[data-board='well'][data-odyssey-board] #odyssey-hud .time-section {
-        position: static;
-        flex-direction: row;
-        margin-bottom: 10px;
+        max-height: calc(var(--board-height) / var(--ody-hud-fit, 1));
+        transform: translateX(-100%) scale(var(--ody-hud-fit, 1));
+        transform-origin: 100% 0;
+        column-width: auto;
     }
 
     .single-player-stage[data-board='well'][data-odyssey-board] #odyssey-hud .odyssey-duel-scoreboard span {
