@@ -16,7 +16,6 @@
  */
 import { el } from './keystone-sheet.js';
 import { formatOdysseyMapObjective, formatOdysseyStarCondition } from './objective-copy.js';
-import { applyOdysseyCharmsToLevel } from '../../core/odyssey/odyssey-charms.js';
 import { getThemeMusic } from '../../core/progression/theme-music-catalog.js';
 import { getThemeMeta } from '../../themes/theme-registry.js';
 import { resolveHubThemeThumbnailUrl } from '../serenity-hub/theme-thumbnail-manifest.js';
@@ -349,9 +348,8 @@ function renderPostcard(view, orb) {
     const lock = setText('odyssey-postcard-lock', orb.unlocked ? '' : lockNote(view.model, orb));
     if (lock) lock.hidden = orb.unlocked;
 
-    // The orb as the carried charms make it, as the map's panel promises it.
-    const carried = view.mode?.odysseyState?.getCarriedCharms?.() || [];
-    const played = applyOdysseyCharmsToLevel(orb.level, carried) || orb.level;
+    // The authored orb: charms act during play and change nothing before it starts.
+    const played = orb.level;
     setText('odyssey-postcard-goal', formatOdysseyMapObjective(played.victory?.primary));
     const goals = byId('odyssey-postcard-star-goals');
     if (goals) {

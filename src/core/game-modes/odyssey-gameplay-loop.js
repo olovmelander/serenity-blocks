@@ -2,6 +2,7 @@ import { gameLoop, updateGame } from '../game.js';
 import { checkInfinityGameOver } from '../infinity-grid.js';
 import { DEMO_FIXED_SIMULATION_CLOCK } from '../demo/DemoRecorder.js';
 import { startOdysseyModeFixedTickLoop } from './odyssey-fixed-tick.js';
+import { tickOdysseyCharms } from '../odyssey/odyssey-charm-use.js';
 
 /** Keep one attempt's simulation and render closures together. */
 export function startOdysseyGameplayLoop(mode, session, { renderStats = () => {} } = {}) {
@@ -63,6 +64,8 @@ export function startOdysseyGameplayLoop(mode, session, { renderStats = () => {}
 
         if (usesFixedLoop) return;
 
+        // Still Air keeps its pace and ends on the attempt's clock, whatever the HUD's throttle does.
+        tickOdysseyCharms(mode, session);
         // Legacy simulation decisions retain their established render cadence.
         mode._checkVictoryConditions();
         if (!mode._isLevelSessionActive(session)) return;
