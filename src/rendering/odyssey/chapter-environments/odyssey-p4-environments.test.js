@@ -72,7 +72,7 @@ describe('Odyssey P4 chapter environment anchors', () => {
         const group = createUrbanDreamsEnvironment();
 
         expect(group.userData.spire?.name).toBe('neon-megastructure-spire');
-        expect(group.userData.signs?.name).toBe('hologram-sign-stack');
+        expect(group.userData.signs?.name).toBe('neon-sign-stack');
         expect(group.userData.reflectionPlane?.name).toBe('wet-neon-reflection-plane');
         expect(group.userData.traffic?.name).toBe('sky-traffic-light-trails');
         expect(Number.isFinite(group.userData.yStart)).toBe(true);

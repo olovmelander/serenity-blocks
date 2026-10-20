@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 import { OdysseyCorridorField } from './odyssey-corridor-field.js';
-import { computeStageBasis } from './odyssey-stage-frame.js';
-import {
-    getActiveOdysseyChapterPositions,
-    getChapterPathRange,
-    getOdysseyPathCurve,
-} from '../path-utils.js';
+import { getActiveOdysseyChapterPositions } from '../path-utils.js';
 import { seamHalfWidth } from '../transitions/odyssey-seam-schedule.js';
 
 describe('OdysseyCorridorField — the finale (2026-10)', () => {
@@ -26,17 +21,12 @@ describe('OdysseyCorridorField — the finale (2026-10)', () => {
         expect(w7).toBeLessThan(0.7);
     });
 
-    it('places the urban sheets AHEAD of the travel in the stage frame, facing the camera', () => {
-        const stage = computeStageBasis(getOdysseyPathCurve(), positions[7], positions[8] ?? 1);
-        const { center } = getChapterPathRange(8);
-        const sheets = urban.layers.filter((layer) => !layer.follow);
-        expect(sheets.length).toBeGreaterThan(0);
-        sheets.forEach((layer) => {
-            const ahead = layer.basePos.clone().sub(center).dot(stage.forward);
-            expect(ahead).toBeGreaterThan(400);
-            const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(layer.object.quaternion);
-            expect(normal.dot(stage.forward)).toBeLessThan(-0.99);
-        });
+    it('leaves the urban sky to the chapter (no sheets), keeping only its motes', () => {
+        // 2026-10-20 neon city: the chapter's own smog ceiling and street mist replaced the two
+        // magenta sheets that stood AHEAD of the travel in the stage frame.
+        const sheets = urban.layers.filter((layer) => layer.object?.geometry?.type === 'PlaneGeometry');
+        expect(sheets).toHaveLength(0);
+        expect(urban.layers.length).toBeGreaterThan(0);
         field.dispose();
     });
 });
