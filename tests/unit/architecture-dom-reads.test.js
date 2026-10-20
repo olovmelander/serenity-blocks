@@ -4,7 +4,7 @@ import { countDomGlobalReads } from '../../scripts/architecture-dom-reads.mjs';
 describe('architecture DOM-global access scan', () => {
     it('ignores filenames, strings, regular expressions, template text and comments', () => {
         const source = [
-            "const song = 'rainy-window.mp3';",
+            "const song = 'sunbraid.mp3';",
             'const label = "document.title navigator.userAgent";',
             'const literal = `window.innerWidth`;',
             'const pattern = /window.innerWidth/;',

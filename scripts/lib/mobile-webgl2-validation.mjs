@@ -6,7 +6,7 @@ import { THEME_REGISTRY } from '../../src/themes/theme-registry.js';
 export const MOBILE_WEBGL2_SMOKE_IDS = Object.freeze([
     'wolfhour', 'shifting-sands', 'ocean', 'winter', 'starlight',
     'chiral-gold', 'waves', 'solar-eclipse', 'stellar-drift', 'stellar-velocity',
-    'void-ember', 'rainy-window', 'nebula-flow', 'serenity-warp',
+    'void-ember', 'sunbraid', 'nebula-flow', 'serenity-warp',
     'pyrestorm', 'fall', 'painted-ages', 'thermal-bloom', 'rainbark', 'high-coast', 'luminous-tides', 'kaleidosonic',
     'grainfields', 'spring',
 ]);
@@ -20,6 +20,7 @@ export const MOBILE_WEBGL2_NODE_IDS = Object.freeze([
     'wolfhour', 'shifting-sands', 'spring', 'rainbow-terraces', 'void-ember', 'voltage-storm',
     'tornado', 'solar-eclipse', 'serenity-warp', 'moonlit-greenhouse', 'nebula-flow', 'painted-ages',
     'thermal-bloom', 'rainbark', 'high-coast', 'luminous-tides', 'pyrestorm', 'kaleidosonic', 'grainfields',
+    'sunbraid',
 ]);
 
 const QUALITY_NAMES = ['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme'];
