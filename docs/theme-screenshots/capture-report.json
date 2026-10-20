@@ -1,9 +1,9 @@
 {
   "schemaVersion": 3,
-  "generatedAt": "2026-10-19T18:38:30.332Z",
-  "startedAt": "2026-10-19T18:37:34.872Z",
-  "runId": "2026-10-19T18-37-34-871Z",
-  "baseUrl": "http://127.0.0.1:4174/",
+  "generatedAt": "2026-10-20T16:51:19.061Z",
+  "startedAt": "2026-10-20T16:50:37.081Z",
+  "runId": "2026-10-20T16-50-37-080Z",
+  "baseUrl": "http://127.0.0.1:4181/",
   "registryThemeCount": 63,
   "selectedThemeCount": 1,
   "completedThemeCount": 1,
@@ -23,16 +23,16 @@
     "perfTargetFps": null
   },
   "selectedThemes": [
-    "ocean"
+    "blood-moon"
   ],
   "results": [
     {
-      "theme": "ocean",
-      "displayName": "Ocean",
+      "theme": "blood-moon",
+      "displayName": "Blood Moon",
       "performanceClass": "heavy",
       "passed": true,
-      "screenshot": "docs\\theme-screenshots\\ocean.png",
-      "report": "docs\\theme-screenshots\\results\\ocean.json",
+      "screenshot": "docs\\theme-screenshots\\blood-moon.png",
+      "report": "docs\\theme-screenshots\\results\\blood-moon.json",
       "lifecycleFailureCount": 0,
       "consoleErrorCount": 0,
       "perfCell": null,

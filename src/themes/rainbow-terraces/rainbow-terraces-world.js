@@ -63,7 +63,7 @@ import { FlashGovernor } from './rainbow-terraces-flash.js';
 import { boardFor } from './rainbow-terraces-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
-import { prefersReducedFlashing } from '../../core/photosensitivity.js';
+import { prefersReducedFlashing } from '../../utils/photosensitivity.js';
 
 export { REST_RIG, fovForAspect };
 

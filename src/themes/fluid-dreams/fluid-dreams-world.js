@@ -26,7 +26,7 @@ import {
     BOARD_GRID, boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './fluid-dreams-composition.js';
 import { tierFor } from './fluid-dreams-quality.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /** The rest camera: standing a little above the sea, looking out and slightly up. */
 export const REST_RIG = Object.freeze({

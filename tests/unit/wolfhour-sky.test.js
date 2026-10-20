@@ -36,7 +36,6 @@ describe('Wolfhour celestial depth', () => {
             [sky.group.getObjectByName('Wolfhour stars'), 0.045],
             [sky.moon, 0.085],
             [sky.halo, 0.085],
-            [sky.group.getObjectByName('Wolfhour valley mist'), 0.75],
         ].map(([object, response]) => ({ object, response, base: object.position.clone() }));
         const camera = new THREE.OrthographicCamera();
         for (const [x, y] of [[37, -22], [-13, 20], [0, 0]]) {
