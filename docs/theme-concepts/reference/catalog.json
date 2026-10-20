@@ -638,14 +638,14 @@
  {
   "id": "chromadelic-highway",
   "name": "Chromadelic Highway",
-  "setting": "A stained-glass ROYGBIV highway into a vanishing point behind the card, under neon ring arches, with a rainbow-banded gas giant on the left and a ringed ice giant on the right in a violet nebula (docs/CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md, captures in reports/chromadelic-highway-overhaul/).",
+  "setting": "A stained-glass ROYGBIV highway into a vanishing point behind the card, under neon ring arches of any colour and many forms, with a rainbow-banded gas giant on the left and a ringed ice giant on the right in a nebula whose air takes the rings' colours (docs/CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md, spectrum pass docs/CHROMADELIC_HIGHWAY_SPECTRUM_2026-10.md, captures in reports/chromadelic-highway-spectrum/).",
   "timeOfDay": "space (none)",
-  "dominantPalette": "Sky #080516 to #160A2C; magenta/violet nebula; rings cycle cyan, violet, azure, magenta. Pieces I #ff1493 O #ff8c00 T #ffea00 S #00ff80 Z #00f5ff J #4d90fe L #bf40ff, garbage #2a2a45.",
-  "keyMotifs": "Rainbow lanes; neon ring tunnel; cartoon planets (analytic impostors); speed streaks; rail light curtains; binary star; meteors and comet.",
-  "motion": "One travel clock. Rings emerge at the card edge and sweep outward; streaks; moon orbit and transit.",
-  "gameplayFx": "Light waves run down the lanes toward the player. Lock gives a cyan band. Combo climbs a band from magenta to azure, with meteors and a comet. Clear sends orange bands, a star twinkle and planet storm flashes. Four lines: bands, a white-hot ring cascade, streak warp and FOV surge. Level up rotates the ring palette +30°.",
-  "tech": "Analytic planet quads, screen-space calm zone, Khronos-Neutral 'neon-neutral' tone map, max-channel bloom, layout-aware solver, adaptive scaler.",
-  "motifsToAvoidReusing": "Rainbow roads, ring tunnels, speed streaks, cartoon planets, vanishing-point travel."
+  "dominantPalette": "Sky #080516 to #160A2C; violet nebula turned per movement (rose for ember, teal-blue for tide). Rings take any hue: six movements of 90 s each (prism rainbow run, orchid, ember, triad, chord complementary pairs, tide), the air hue blended on the wheel from the rings on screen. Pieces I #ff1493 O #ff8c00 T #ffea00 S #00ff80 Z #00f5ff J #4d90fe L #bf40ff, garbage #2a2a45.",
+  "keyMotifs": "Rainbow lanes; neon ring tunnel with eleven ring forms (tube, double line, spinning dashes, beads, hexagon and octagon gates, prism arcs); coloured haze around each ring; horizon mist in the air colour; ring-lit dust; cartoon planets (analytic impostors); speed streaks; rail light curtains; binary star; meteors and comet.",
+  "motion": "One travel clock. Rings take their colour and form just before they clear the card edge, flare as they come out, and keep both for their flight, so a new scheme rolls in ring by ring; the spectrum drifts with the road (a movement every ~90 s at level 1) and steps one movement per level-up; moon orbit and transit.",
+  "gameplayFx": "Light waves run down the lanes toward the player, in the newest ring's colour. Lock gives a band in that colour. Combo climbs a band round the wheel from it and races the rings' light packets, with meteors and a comet. Clear: bands plus chase lights filling every arch from its feet to its crown, one front per line, a star twinkle and planet storm flashes. Four lines: bands, a prism cascade turning every arch into the spectrum, a streak warp, FOV surge, and the next three rings out are prism arcs. Level up: the spectrum steps to the next movement and a cascade in its first colour repaints every ring it passes, board to lens.",
+  "tech": "Ring style slots (J mod 16) written by the CPU when a ring locks; polygon gates in the vertex stage; branchless patterns; a second instanced draw for ring air; hue-vector air colour; analytic planet quads, screen-space calm zone, Khronos-Neutral 'neon-neutral' tone map, max-channel bloom, layout-aware solver, adaptive scaler.",
+  "motifsToAvoidReusing": "Rainbow roads, ring tunnels and gate forms, prism arcs, speed streaks, cartoon planets, vanishing-point travel, chase lights climbing arches."
  },
  {
   "id": "stillwater",
