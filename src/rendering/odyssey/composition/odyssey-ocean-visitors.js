@@ -162,14 +162,19 @@ export function parseOceanVisitors(source) {
 
 /**
  * The cast. `size` is world units (a ray across its wings, a fish nose to tail); `window` the
- * camera heights (world y) the animal shows in; `above` how far over the eye it keeps; `loop` its
- * path round the axis (radius, wobble, period s, phase); `stroke` seconds per beat at full size.
+ * eye heights (world y) it keeps you company between — it swims in from the blue as the eye
+ * reaches the bottom and dives away as the eye nears the top (VISITOR_PASSAGE); `above` how far
+ * over the eye it keeps; `loop` its path round the axis (radius, wobble, period s, phase);
+ * `stroke` seconds per beat at full size.
  */
 export const OCEAN_VISITOR_CAST = Object.freeze([
     Object.freeze({
         name: 'whaleShark',
         size: 46,
-        window: [116, 196],
+        // Top at 236, not 196: the player parks at L6/L7 with the eye at ~170 and the window's top
+        // was 18 u on, so the shark turned and dived three seconds after arriving. It now keeps
+        // company up past L9 (eye ~207) and leaves on the way to L10.
+        window: [116, 236],
         above: 62,
         loop: Object.freeze({
             radius: 30, wobble: 9, period: 64, phase: 0.6, lift: 7,
@@ -193,6 +198,86 @@ export const OCEAN_VISITOR_CAST = Object.freeze([
 
 /** How fast a visitor may climb after the eye (u/s) — it swims up, it is not carried. */
 const CLIMB_RATE = 16;
+
+/**
+ * THE WAY IN AND THE WAY OUT (2026-10-20, in-game feedback: the animals "just pop up" coming
+ * from chapter 1, and dissolved in plain view when their stretch ended).
+ *
+ * A visitor used to be switched on by progress: its window opened on the eye's height, and the
+ * glide from orb 5 to orb 6 crossed the whole fade in a second with the animal already in frame
+ * 65 u away. Now it ARRIVES: once the water and its window allow it, it spirals in from
+ * `reach` beyond its loop, through the blue, over `approachS` seconds on the clock — met in the
+ * haze, not switched on. And it LEAVES by diving: when its window closes (or the water ends) it
+ * swims outward and down over `departS` seconds, under the eye, which looks up, so it is out of
+ * frame before its last stretch fades (odyssey-act1-fade-out-of-view.test.js).
+ */
+export const VISITOR_PASSAGE = Object.freeze({
+    approachS: 9,
+    departS: 7,
+    reach: 170,
+    dive: 150,
+    /** It starts leaving this far (eye height) before its window's top. */
+    departMargin: 18,
+    /** A short alpha ramp on the first frames, so a compile landing mid-ocean never pops. */
+    rampS: 0.6,
+});
+
+const smooth = (x) => {
+    const t = Math.min(1, Math.max(0, x));
+    return t * t * (3 - (2 * t));
+};
+
+/**
+ * One step of a visitor's passage: away -> in (approaching, then on its loop) -> out (diving
+ * away) -> gone (until the eye is back under its window; at once when the water ends). Pure,
+ * three-free: mutates `state`
+ * ({phase, approach, depart}) and returns what to add to the loop position (`radial` outward from
+ * the axis, `up`) and the alpha.
+ * @param {{ phase?: string, approach?: number, depart?: number }} state
+ * @param {{ camY: number, on: boolean, dt: number, window: readonly number[] }} input
+ */
+export function stepVisitorPassage(state, {
+    camY, on, dt, window,
+}) {
+    const P = VISITOR_PASSAGE;
+    const [lo, hi] = window;
+    const step = Math.min(Math.max(Number.isFinite(dt) ? dt : 0, 0), 0.1);
+    if (!state.phase) Object.assign(state, { phase: 'away', approach: 0, depart: 0 });
+    if (state.phase === 'away' && on && camY >= lo && camY < hi - P.departMargin) {
+        state.phase = 'in';
+        state.approach = 0;
+    }
+    // The water ending (the breach, the chapter's edge) is not a cue to dive: nothing to see.
+    if (!on && (state.phase === 'in' || state.phase === 'out')) state.phase = 'gone';
+    if (state.phase === 'in') {
+        state.approach = Math.min(1, state.approach + (step / P.approachS));
+        if (camY >= hi - P.departMargin) {
+            state.phase = 'out';
+            state.depart = 0;
+        }
+    }
+    if (state.phase === 'out') {
+        state.depart = Math.min(1, state.depart + (step / P.departS));
+        if (state.depart >= 1) state.phase = 'gone';
+    }
+    if (state.phase === 'gone' && camY < lo) state.phase = 'away';
+    if (state.phase === 'in') {
+        const k = 1 - smooth(state.approach);
+        return {
+            radial: P.reach * k, up: 0, alpha: Math.min(1, (state.approach * P.approachS) / P.rampS), shown: true,
+        };
+    }
+    if (state.phase === 'out') {
+        const k = smooth(state.depart);
+        const alpha = 1 - smooth((state.depart - 0.75) / 0.25);
+        return {
+            radial: P.reach * k, up: -P.dive * k, alpha, shown: alpha > 0.01,
+        };
+    }
+    return {
+        radial: 0, up: 0, alpha: 0, shown: false,
+    };
+}
 
 /**
  * Per kind, from the theme's tables (ocean-giants.js SWIM / SKINS): stroke shape and colours.
@@ -406,6 +491,7 @@ export function createOceanVisitors({
                     beatPhase: cast.loop.phase,
                     y: null,
                     fade: 0,
+                    passage: {},
                     p0: new THREE.Vector3(),
                     p1: new THREE.Vector3(),
                     p2: new THREE.Vector3(),
@@ -439,17 +525,14 @@ export function createOceanVisitors({
             uSurface.value = 0.35 + (0.65 * (1 - THREE.MathUtils.clamp(depth / 200, 0, 1)));
             actors.forEach((actor) => {
                 const { cast, mesh } = actor;
-                const [lo, hi] = cast.window;
-                // Fade in over the window's first 18 u of climb, out over its last 18 u.
-                const inWindow = THREE.MathUtils.smoothstep(camY, lo, lo + 18)
-                    * (1 - THREE.MathUtils.smoothstep(camY, hi - 18, hi));
-                const target = on ? inWindow * life : 0;
-                // Fades in over ~1.6 s from its first possible frame (a compile can land mid-ocean).
-                actor.fade = target > actor.fade
-                    ? Math.min(target, actor.fade + (dt / 1.6))
-                    : Math.max(target, actor.fade - (dt / 1.2));
+                // Its passage: in from the blue, round its loop, out by a dive (stepVisitorPassage).
+                const passage = stepVisitorPassage(actor.passage, {
+                    camY, on, dt, window: cast.window,
+                });
+                actor.fade = passage.alpha * life;
                 mesh.userData.fade = actor.fade;
-                mesh.visible = actor.fade > 0.01;
+                mesh.userData.passage = actor.passage.phase;
+                mesh.visible = passage.shown && actor.fade > 0.01;
                 if (!mesh.visible) { actor.y = null; return; }
                 any = true;
                 // A damped follow of the eye's height with a capped climb: it swims up after you.
@@ -485,7 +568,16 @@ export function createOceanVisitors({
                 vS.crossVectors(vU, vF).normalize();
                 basis.makeBasis(vS, vU, vF);
                 mesh.quaternion.setFromRotationMatrix(basis);
-                mesh.position.set(actor.p1.x, actor.y + actor.p1.y, actor.p1.z);
+                // The passage's offset: outward from the axis (the way it came, the way it goes)
+                // and, leaving, down under the eye.
+                const rx = actor.p1.x - axis.x;
+                const rz = actor.p1.z - axis.z;
+                const rl = Math.hypot(rx, rz) || 1;
+                mesh.position.set(
+                    actor.p1.x + ((rx / rl) * passage.radial),
+                    actor.y + actor.p1.y + passage.up,
+                    actor.p1.z + ((rz / rl) * passage.radial),
+                );
                 mesh.userData.swimTurn = THREE.MathUtils.clamp(turn * 4, -0.6, 0.6);
             });
             group.visible = any;

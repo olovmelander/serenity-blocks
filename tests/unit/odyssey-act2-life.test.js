@@ -132,7 +132,9 @@ describe('the lowland flights', () => {
         ODYSSEY_FLIGHTS.forEach((flock) => {
             const [a, b, c, d] = flock.window;
             expect(a, flock.id).toBeGreaterThan(CP[2] - 0.015);
-            expect(d, flock.id).toBeLessThan(CP[4]);
+            // The geese cross the massif's face, in view up the wall: they stay into chapter 5's
+            // climb (odyssey-act2-fade-out-of-view.test.js says where they may leave).
+            expect(d, flock.id).toBeLessThan(flock.kind === FLIGHT_KIND.GOOSE ? (CP[4] + CP[5]) / 2 : CP[4]);
             expect(b).toBeGreaterThan(a);
             expect(d).toBeGreaterThan(c);
         });
@@ -140,7 +142,7 @@ describe('the lowland flights', () => {
         expect(flights.mesh.visible).toBe(false);
         flights.update(9, 0.19);
         expect(flights.mesh.visible).toBe(true);
-        flights.update(9, 0.40);
+        flights.update(9, 0.45);
         expect(flights.mesh.visible).toBe(false);
         flights.dispose();
     });
