@@ -300,6 +300,7 @@ export class ThemesTab {
             Aurora: 'aurora',
             Galaxy: 'galaxy',
             Sunbraid: 'sun',
+            Sunfall: 'sprout',
             'Koi Pond': 'fish',
             Rainbark: 'bamboo',
             Kaleidosonic: 'spiral',

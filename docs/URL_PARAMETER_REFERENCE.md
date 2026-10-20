@@ -238,6 +238,15 @@ and `turns` (the spin-turns of an `event=tspin`) are new names, and `event` also
 game over, then a new run: the suns rising). Rainy Window read no URL parameters. Use
 `effect=sunbraid&t=10&braid=<degrees>` for a deterministic playground capture.
 
+Sunfall (2026-10-20), a new theme in Moonrise Summit's place, adds the capture flags
+`sunfallForceWebGL`, `sunfallTime`, `sunfallFixedDt`, `sunfallParts`, `sunfallFalseColor` and
+`sunfallNoPost`; the part names are `sky`, `cave`, `jungle`, `beam`, `mist`, `water`, `roots`,
+`birds` and `gours`. Its `sunfall` playground effect reads 28 parameters, catalogued as its own
+rows; `beamGain` (scale the sunfall pillar's volumetric intensity) is a new name, and `hour` and
+`weather` hold the five solar stations and four subterranean microclimates. Moonrise Summit's
+`moonriseForceWebGL` reader and its share of `forceWebGL` are retired with it. Use
+`effect=sunfall&t=40&hour=<0..4>&weather=<0..3>` for a deterministic playground capture.
+
 Spring (2026-10-18), a new theme in Moonlit Forest's place, adds the capture flags
 `springForceWebGL`, `springTime`, `springFixedDt`, `springParts` and `springFalseColor`; the part
 names are `land`, `river`, `rocks`, `trees`, `woods`, `meadow`, `fx` and `sky`. Its `spring`
