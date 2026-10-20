@@ -78,7 +78,9 @@ multiplayer boards each answer above their own place.
 | `aurora-field.js` | Arc geometry shared by CPU and GPU; the excitation map pulses are painted into |
 | `aurora-curtains.js` | The march material and its direction-mapped buffer |
 | `aurora-sky.js` | Sky dome, Milky Way, star catalogue sprites, meteor pool |
-| `aurora-landscape.js` | Baked range, snow banks, spruces, mirror lake and its rings |
+| `aurora-atmosphere.js` | The air every surface is seen through: patchy ground mist and haze, lit by the curtains above |
+| `aurora-landscape.js` | Baked range, snow banks with frost glints, near spruces, far forest, mirror lake with shore ice and its rings |
+| `aurora-air.js` | Diamond dust: ice crystals glinting in the display's colour |
 | `aurora-post.js` | Bloom and grade; direct rendering on the two cheapest tiers |
 | `aurora-quality.js`, `aurora-palette.js`, `aurora-noise.js`, `aurora-board-rects.js` | Tier budgets, colour, deterministic bakes, board spans |
 | `src/playground/effects/aurora.effect.js` | The same world in isolation, with deterministic event replay |
@@ -95,6 +97,70 @@ Every tier keeps the whole picture and all three event languages.
 | Medium | 3 + corona | 12 | 0.42×, half-float | 48 Hz | 3400 | planar 0.26 | bloom 0.32 | 1.00 |
 | Low | 2 + corona | 10 | 0.36×, RGBA8 | 30 Hz | 2000 | analytic | direct | 0.90 |
 | Minimal | 2 + corona | 8 | 0.30×, RGBA8 | 24 Hz | 1200 | analytic | direct | 0.75 |
+
+The ground and air added on 2026-10-20 (next section) scale with the same tiers:
+
+| Tier | Near spruces | Far forest | Diamond dust | Frost glint density |
+| --- | ---: | ---: | ---: | ---: |
+| Extreme | 46 | 760 | 1500 | 260 |
+| Ultra | 38 | 640 | 1100 | 200 |
+| High | 30 | 520 | 800 | 150 |
+| Medium | 22 | 380 | 480 | 100 |
+| Low | 14 | 250 | 220 | 60 |
+| Minimal | 8 | 150 | 100 | 32 |
+
+## Atmosphere and ground pass (2026-10-20)
+
+The sky was finished; the ground under it read as paper cut-outs. This pass rebuilt the
+landscape and the air without touching the curtains or the event language.
+[Before](aurora-overhaul/atmosphere-before.jpg) and [after](aurora-overhaul/atmosphere-idle.jpg),
+the same frame (`?effect=aurora&quality=High&t=20`, 1600 × 900, WebGPU).
+
+- **Air** (`aurora-atmosphere.js`). Two exponential height layers, a cold ground mist (scale
+  height 24) and a thin haze (700), integrated in closed form along the segment from the eye
+  to whatever is shaded. Lake, banks, trees, range and sky dome all call the same function,
+  so the far range sinks into its valleys' mist with no seam against the sky. The mist is
+  patchy where the segment ends low (a drifting noise read) and is lit by the curtain
+  radiance a little above it, so a pulse that turns a curtain magenta turns the mist under
+  it too. The planar mirror's eye below the water sees the same air (heights are absolute).
+- **Light from the display.** `litSurface` takes the curtain radiance standing over each
+  surface: snow facing the sky takes its colour, and snow edges against the curtains (ridge
+  cornices, the boughs' rims) are backlit by it.
+- **Spruces.** Each tree is now 22 whorls of drooping branches. A branch is a tapering tent
+  (a snow-bearing roof over a dark underside) with sub-branch tips hanging from its edges,
+  around a dark core cone. Normals are written per vertex, and `orientTriangles` winds every
+  triangle to agree with them: a double-sided node material flips the normal of a back face,
+  and the first build lit every roof as an underside (the snow mask read zero everywhere).
+- **Far forest.** 150–760 small spruces stand in groves on the range's low forested slopes,
+  and every other grove grows at the waterline, so a broken dark treeline separates the lake
+  from the snowfields and mirrors in the water. A far tree is about 330 triangles.
+- **Range.** Per-pixel snow and rock from three world-space noise reads: rock ribs bared
+  on steep faces, snow streaks down the fall line (read in face space, so they run downhill),
+  warped strata, and wind drifts on the open snow.
+- **Shore ice and frost.** A baked mask freezes the shallows along both banks in tongues:
+  frosted, cracked, a dim mirror that ripples do not move, with a faint lip at open water
+  ([close-up](aurora-overhaul/atmosphere-shore-ice.jpg)). The banks carry frost glints on a
+  grid laid out in the resting eye's angles, so a glint is a few pixels at any range and
+  stays put while the camera breathes.
+- **Diamond dust** (`aurora-air.js`). Crystals drift on a slow wind through a box anchored
+  to the resting eye and wrap at its walls; each flares briefly in the colour of the curtain
+  above it. All placement happens in the vertex stage; nothing is allocated after the build.
+- **Milky Way.** Its plane now rises from behind the left spruces across the empty upper
+  left of the frame (it ran mostly outside the frame before), and its finer reads are
+  isotropic: stretched 2.4 : 1 along the band they combed into streaks.
+- **Lake rings** are lit on their crests only, so a clear sends thin rings of light across
+  the water instead of a lit disc ([streak of 6](aurora-overhaul/atmosphere-streak.jpg)).
+
+Checks for this pass: `tests/unit/aurora-shaders.test.js` builds every material and the
+curtain march through the WGSL and GLSL node builders at High and Low (no throw, no
+warning, no NaN literal, no stringified node, no equal-edge smoothstep, each stage under
+96 KB); `tests/unit/aurora-landscape.test.js` covers the closed-form air against numerical
+integration, tree winding and snow placement, grove clustering, the ice mask and the new
+budgets. Captured on WebGPU at High (idle, four-line clear, streak of 6, shore close-up),
+WebGL2 at Low and [Minimal](aurora-overhaul/atmosphere-minimal-webgl2.jpg), and portrait
+390 × 844 at Medium, with no console errors. Not measured: frame time. The far forest and
+the near spruces are drawn twice on the planar-mirror tiers (scene and reflection), which is
+where most of the added triangles go. The theme icon still shows the earlier ground.
 
 The analytic mirror reflects the sky gradient, the curtain buffer along the reflected ray
 and the skyline from a baked ridge profile, with the same ripples as the planar mirror.
