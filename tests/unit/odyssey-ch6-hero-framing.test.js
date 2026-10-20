@@ -28,14 +28,16 @@ import {
     ODYSSEY_CAMERA_PROFILES,
 } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-profile.js';
 import {
-    APPROACH,
     createCosmicExpanseEnvironment,
     updateCosmicExpanseEnvironment,
-    PLANET_SEAM_LOCK,
+    GALAXY_SKY_SEAT,
     resolveOmenHandoffWindow,
     SUMMIT_EARTH_REVEAL,
 } from '../../src/rendering/odyssey/chapter-environments/cosmic-expanse.js';
-import { OMEN_SHADOW_RADIUS } from '../../src/rendering/odyssey/chapter-environments/cosmic-expanse.tsl.js';
+import {
+    HERO_PLANET_RADIUS,
+    OMEN_SHADOW_RADIUS,
+} from '../../src/rendering/odyssey/chapter-environments/cosmic-expanse.tsl.js';
 import {
     GARGANTUA_LOCK,
     resolveGargantuaLockPosition,
@@ -244,66 +246,89 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         const last = frameAt(controller, chapterPositions, 6, ch6End);
         const exit = heroesAt(env, last.camPos, ch6End);
         Object.entries(exit).forEach(([name, world]) => {
+            if (name === 'galaxy') {
+                // The galaxy is at infinity (GALAXY_SKY_SEAT): a fixed distance from the eye.
+                expect(project(last, world, 16 / 9).dist).toBeCloseTo(entryDist[name], 6);
+                return;
+            }
             expect(project(last, world, 16 / 9).dist).toBeLessThan(entryDist[name]);
         });
     });
 
-    it('raises the gas giant after dark and holds it in one place through the hand-off', () => {
-        // Owner reports 2026-10-02: the giant was "seen very early and then drifts as we get into
-        // space" — it faded up into the daylight sky and slid diagonally across the whole frame as
-        // the camera pitched up with the climb, then parked on the rail and shrank. Now it rises
-        // after dark and is seated from the camera (PLANET_SEAM_LOCK) until the authored march,
-        // which already sits there, takes over. Replayed with a REAL perspective camera: the seat
-        // is only applied to one (headless callers keep the authored poses).
+    it('raises the gas giant after dark at ONE place in the world and never moves it again', () => {
+        // Owner 2026-10-20: "how can we not have the planets like moving as we move along the
+        // odyssey path? I want them to be placed in space on 1 place." The giant used to be held
+        // at a fixed SCREEN spot on the rail camera from its rise to p 0.775 (PLANET_SEAM_LOCK),
+        // so it slid ~32 deg against the stars as the camera turned — moving with you. It now
+        // hangs at one world point (PLANET_WORLD_SEAT) from the first frame it shows: same place,
+        // same pole, same size, whatever the camera does; it may only move on screen by the
+        // parallax of the camera's own travel.
         const cpAll = getActiveOdysseyChapterPositions();
         const skySpan = cpAll[5] - cpAll[4];
-        const spaceSpan = cpAll[6] - cpAll[5];
         const riseStart = cpAll[5] - skySpan * SUMMIT_EARTH_REVEAL.startBeforeBoundary;
         const riseEnd = cpAll[5] - skySpan * SUMMIT_EARTH_REVEAL.endBeforeBoundary;
-        const lockEnd = cpAll[5] + spaceSpan * PLANET_SEAM_LOCK.handoverFrom;
-        const marchFrom = cpAll[5] + spaceSpan * PLANET_SEAM_LOCK.handoverTo;
         const cam = new THREE.PerspectiveCamera(BEYOND.fovBase, 16 / 9, 0.1, 20000);
-        const measure = (progress) => {
+        const measure = (progress, orbEye = false) => {
             const chapterId = progress < cpAll[5] ? 5 : 6;
             const frame = frameAt(controller, chapterPositions, chapterId, progress);
             cam.position.copy(frame.camPos);
             cam.up.copy(frame.cameraUp);
-            cam.lookAt(frame.lookTarget);
+            if (orbEye) {
+                cam.position.add(new THREE.Vector3(14, -6, 9));
+                cam.lookAt(frame.lookTarget.clone().add(new THREE.Vector3(-30, -12, 25)));
+            } else {
+                cam.lookAt(frame.lookTarget);
+            }
             cam.updateProjectionMatrix();
             cam.updateMatrixWorld(true);
             updateCosmicExpanseEnvironment(env, 0.016, 1, cam, progress);
             env.updateMatrixWorld(true);
-            const world = env.userData.heroPlanet.getWorldPosition(new THREE.Vector3());
+            const giant = env.userData.heroPlanet;
+            const world = giant.getWorldPosition(new THREE.Vector3());
             return {
                 ...project(frame, world, 16 / 9),
-                opacity: env.userData.heroPlanet.userData.planet.material.opacity,
-                scale: env.userData.heroPlanet.scale.x,
+                world,
+                camPos: frame.camPos.clone(),
+                quaternion: giant.getWorldQuaternion(new THREE.Quaternion()),
+                opacity: giant.userData.planet.material.opacity,
+                scale: giant.scale.x,
             };
         };
 
         // Not in the daylight: hidden until after dark.
         expect(measure(riseStart - 0.01).opacity).toBeLessThan(0.01);
-        // Risen and seated by the window's end; from there to the hand-over it does not move on
-        // screen however the camera pitches and turns, and it stays clear of the rail (x > 0.15).
-        const seat = measure(riseEnd);
-        expect(seat.opacity).toBeGreaterThan(0.95);
-        expect(seat.behind).toBe(false);
-        expect(seat.x).toBeGreaterThan(0.15);
-        for (let p = riseEnd; p <= lockEnd; p += 0.004) {
+        const first = measure(riseStart);
+        const risen = measure(riseEnd);
+        expect(risen.opacity).toBeGreaterThan(0.95);
+        expect(risen.behind).toBe(false);
+        // Lower right, clear of the rail.
+        expect(risen.x).toBeGreaterThan(0.15);
+        expect(risen.y).toBeLessThan(0);
+        // A large planet: its world radius reads at >= 7 deg from the rail at the boundary.
+        const radius = HERO_PLANET_RADIUS * risen.scale;
+        expect(THREE.MathUtils.radToDeg(Math.asin(radius / risen.dist))).toBeGreaterThan(7);
+        let prev = first;
+        for (let p = riseStart; p <= ch6End; p += 0.003) {
+            const where = `@p=${p.toFixed(4)}`;
             const r = measure(p);
-            expect(Math.hypot(r.x - seat.x, r.y - seat.y), `drift @p=${p.toFixed(4)}`).toBeLessThan(0.01);
-            expect(r.scale).toBeCloseTo(seat.scale, 3);
-        }
-        // The hand-over to the authored march is smooth: no jump on screen or in size.
-        let prev = measure(lockEnd);
-        for (let p = lockEnd + 0.002; p <= marchFrom + 0.01; p += 0.002) {
-            const r = measure(p);
-            expect(Math.hypot(r.x - prev.x, r.y - prev.y), `jump @p=${p.toFixed(4)}`).toBeLessThan(0.04);
-            expect(Math.abs(r.scale - prev.scale) / prev.scale, `size jump @p=${p.toFixed(4)}`).toBeLessThan(0.04);
+            const orb = measure(p, true);
+            // ONE place, ONE pole, ONE size — on the rail and with the eye off it.
+            expect(r.world.distanceTo(first.world), `moved ${where}`).toBeLessThan(1e-6);
+            expect(orb.world.distanceTo(first.world), `orb eye moved it ${where}`).toBeLessThan(1e-6);
+            expect(r.quaternion.angleTo(first.quaternion), `turned ${where}`).toBeLessThan(1e-6);
+            expect(r.scale).toBeCloseTo(first.scale, 9);
+            // Against the sky it moves only by the parallax of the camera's own travel.
+            const step = r.world.clone().sub(r.camPos).normalize()
+                .angleTo(prev.world.clone().sub(prev.camPos).normalize());
+            const parallax = r.camPos.distanceTo(prev.camPos) / Math.min(r.dist, prev.dist);
+            expect(step, `slid against the sky ${where}`).toBeLessThanOrEqual(parallax * 1.02 + 1e-9);
+            if (p >= riseEnd) {
+                expect(r.behind, `behind ${where}`).toBe(false);
+                expect(Math.abs(r.x), `ndcX ${where}`).toBeLessThan(0.88);
+                expect(Math.abs(r.y), `ndcY ${where}`).toBeLessThan(0.88);
+            }
             prev = r;
         }
-        // The authored entry scale is unchanged (masterpiece pass x1.35).
-        expect(APPROACH.planetA.s).toBeCloseTo((34 / 28) * 1.35, 6);
     });
 
     it('hangs the black hole at ONE place on the spine, then locks it onto chapter 7 just before the seam', () => {
@@ -341,56 +366,39 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         const lockAtEnd = resolveGargantuaLockPosition(atEnd.cam, new THREE.Vector3());
         expect(atEnd.world.distanceTo(lockAtEnd)).toBeLessThan(1e-3);
         expect(atEnd.scale).toBeCloseTo(GARGANTUA_LOCK.shadowRadius / OMEN_SHADOW_RADIUS, 6);
-        // And it came from small and far: the north star grows ~2.7x across the chapter.
-        expect(atEnd.deg / first.deg).toBeGreaterThan(2.4);
-        expect(first.deg).toBeGreaterThan(2);
+        // One size in the world (overhaul 2026-10-20): it grows on screen by approach alone —
+        // a great black hole from the first frame (~6 deg), ~1.3x by the lock, no scripted swell.
+        expect(atEnd.deg / first.deg).toBeGreaterThan(1.1);
+        expect(atEnd.deg / first.deg).toBeLessThan(1.6);
+        expect(first.deg).toBeGreaterThan(5);
     });
 
-    it('leaves the gas giant where the rail sees it when an orb close-up takes the eye', () => {
-        // The seam's screen seat is taken on the RAIL camera the board publishes
-        // (camera.userData.railCamera): an eye off the rail no longer drags the giant into its
-        // own view (it used to be glued into every close-up, and half-glued across the hand-over).
-        const cpAll = getActiveOdysseyChapterPositions();
-        const spaceSpan = cpAll[6] - cpAll[5];
-        const to = cpAll[5] + spaceSpan * PLANET_SEAM_LOCK.handoverTo;
-        for (let p = cpAll[5] - 0.01; p <= to + 0.004; p += 0.004) {
-            const rail = liveCamera(p).cam;
-            updateCosmicExpanseEnvironment(env, 0.016, 1, rail, p);
+    it('keeps the galaxy at infinity: one direction, one distance, one turn, whatever the eye does', () => {
+        // The galaxy is part of the sky (GALAXY_SKY_SEAT): a fixed direction from the eye at a
+        // fixed distance, turned once. It never slides against the stars nor swells.
+        const look = (p, orbEye) => {
+            const { cam } = liveCamera(p, orbEye);
+            updateCosmicExpanseEnvironment(env, 0.016, 1, cam, p);
             env.updateMatrixWorld(true);
-            const onRail = env.userData.heroPlanet.getWorldPosition(new THREE.Vector3());
-            const orb = liveCamera(p, true).cam;
-            orb.userData.railCamera = rail;
-            updateCosmicExpanseEnvironment(env, 0.016, 1, orb, p);
-            env.updateMatrixWorld(true);
-            const offRail = env.userData.heroPlanet.getWorldPosition(new THREE.Vector3());
-            expect(offRail.distanceTo(onRail), `@p=${p.toFixed(4)}`).toBeLessThan(1e-6);
-        }
-    });
-
-    it('gives the gas giant and the galaxy one place each once the seam lets the giant go', () => {
-        const from = ch6Start + (ch6End - ch6Start) * PLANET_SEAM_LOCK.handoverTo;
-        const placesAt = (progress, orbEye) => {
-            const { cam } = liveCamera(progress, orbEye);
-            updateCosmicExpanseEnvironment(env, 0.016, 1, cam, progress);
-            env.updateMatrixWorld(true);
-            const { heroPlanet, galaxy } = env.userData;
+            const { galaxy } = env.userData;
+            const toGalaxy = galaxy.getWorldPosition(new THREE.Vector3()).sub(cam.position);
             return {
-                planet: heroPlanet.getWorldPosition(new THREE.Vector3()),
-                planetScale: heroPlanet.scale.x,
-                galaxy: galaxy.getWorldPosition(new THREE.Vector3()),
-                galaxyTurn: galaxy.quaternion.clone(),
+                dist: toGalaxy.length(),
+                dir: toGalaxy.normalize(),
+                turn: galaxy.getWorldQuaternion(new THREE.Quaternion()),
             };
         };
-        const ref = placesAt(from, false);
-        for (let p = from; p <= ch6End; p += 0.004) {
-            [false, true].forEach((orbEye) => {
-                const r = placesAt(p, orbEye);
-                const where = `@p=${p.toFixed(4)}${orbEye ? ' (orb eye)' : ''}`;
-                expect(r.planet.distanceTo(ref.planet), `giant moved ${where}`).toBeLessThan(1e-6);
-                expect(r.planetScale).toBeCloseTo(ref.planetScale, 9);
-                expect(r.galaxy.distanceTo(ref.galaxy), `galaxy moved ${where}`).toBeLessThan(1e-6);
-                expect(r.galaxyTurn.angleTo(ref.galaxyTurn), `galaxy turned ${where}`).toBeLessThan(1e-6);
-            });
+        const ref = look(ch6Start, false);
+        const checks = [];
+        for (let p = ch6Start; p <= ch6End; p += 0.004) {
+            checks.push([p, false], [p, true]);
         }
+        checks.forEach(([p, orbEye]) => {
+            const r = look(p, orbEye);
+            const where = `@p=${p.toFixed(4)}${orbEye ? ' (orb eye)' : ''}`;
+            expect(r.dist, `distance ${where}`).toBeCloseTo(GALAXY_SKY_SEAT.distance, 3);
+            expect(r.dir.angleTo(ref.dir), `galaxy slid ${where}`).toBeLessThan(1e-6);
+            expect(r.turn.angleTo(ref.turn), `galaxy turned ${where}`).toBeLessThan(1e-6);
+        });
     });
 });

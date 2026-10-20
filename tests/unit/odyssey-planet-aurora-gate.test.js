@@ -85,8 +85,9 @@ describe('planet aurora darkness gate', () => {
         expect(gate.value).toBe(1);
     });
 
-    it('the crown material carries the gate (a stray rebuild cannot drop it)', () => {
-        const env = buildEnv();
+    it('the crown material carries the gate when the retired crown is opted in', () => {
+        vi.stubGlobal('window', { location: { search: '?odysseyCh6GiantAurora=1' } });
+        const env = createCosmicExpanseEnvironment({ particleCount: 200 });
         let crown = null;
         env.userData.heroPlanet.traverse((o) => {
             if (o.name === 'hero-planet-aurora-crown') crown = o;
