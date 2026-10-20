@@ -6,9 +6,11 @@
  * odyssey-tsl-noise.js (never mx_*). The graph shape depends on the quality tier, so a tier
  * change rebuilds the materials (§9).
  *
- * Step status: the dome (§5.3, the hero) is final-shaped. The stone and snow materials follow
- * §5.1/§5.2 closely but are still PLACEHOLDERS for composition judging — the stone solver
- * geometry, sastrugi drift, glitter and the prism flash land in the next step.
+ * Visual pass 2026-10-20: the Vigil Stone is a weathered, backlit standing stone (bedding
+ * ledges with snow lines, rime, a gold rim nearest the hidden sun); the snow carries analytic
+ * drifts lit against the 9.5° sun (blue camera-facing slopes, gold crests), the far stones'
+ * long shadows and the lower halo glinting in it; the dome draws two backlit mountain ranges
+ * on the horizon; the far stones (createFarStoneMaterial) give the scene its scale.
  */
 
 import * as THREE from 'three/webgpu';
@@ -23,6 +25,7 @@ import {
     attribute,
     cameraPosition,
     clamp,
+    cos,
     cross,
     dFdx,
     dFdy,
@@ -30,19 +33,23 @@ import {
     exp,
     float,
     floor,
+    fract,
     fwidth,
     inverseSqrt,
     length,
     max,
+    min,
     mix,
     normalWorld,
     normalize,
     positionLocal,
     positionWorld,
     pow,
+    reflect,
     saturate,
     screenUV,
     select,
+    sign,
     sin,
     smoothstep,
     step,
@@ -53,15 +60,17 @@ import {
 } from 'three/tsl';
 import { hash21, noise2 } from '../../rendering/odyssey/chapter-environments/shared/odyssey-tsl-noise.js';
 import {
-    CAM_REST, DEFAULT_LAYOUT, DOG_AZ, R22, S, STONE, TAN_V, U,
+    CAM_REST, DEFAULT_LAYOUT, DOG_AZ, FAR_STONES, R22, S, STONE, TAN_V, U,
 } from './parhelion-composition.js';
 import {
-    RIDGE_NOISE,
     linearColor,
     phArcGlow,
     phCalmBox,
     phCrown,
     phDogs,
+    phFarShadow,
+    phFog,
+    phFogFar,
     phHalo,
     phHaze,
     phLaneW,
@@ -256,6 +265,8 @@ export function createSharedUniforms() {
             STONE.DEFAULT_SX * 0.9,
             STONE.DEFAULT_SY * STONE.UNIT_SHOULDER,
         )),
+        // Far stones (x, z, halfWidth, height): static, read by the snow's shadow loop.
+        uFarStones: uniformArray(FAR_STONES.map(([x, z, hw, h]) => new THREE.Vector4(x, z, hw, h)), 'vec4'),
         // Hound pillars.
         pillarSlots,
         pillarPlaceSlots,
@@ -320,7 +331,10 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
         const veilA = noise2(vec2(az.mul(3.0).add(u.uVeilPhase), el.mul(9.0)));
         let veil = veilA;
         if (tier.skyEvals >= 3) {
-            const veilB = noise2(vec2(az.mul(7.1).sub(u.uVeilPhase.mul(1.5)), el.mul(21.0)));
+            // Fibrous cirrostratus: the second read is stretched across a slanting fibre direction.
+            const fibreU = az.add(el.mul(0.6)).mul(2.4).sub(u.uVeilPhase.mul(1.5));
+            const fibreUv = vec2(fibreU, el.sub(az.mul(0.3)).mul(30.0));
+            const veilB = noise2(fibreUv);
             veil = veilA.mul(0.65).add(veilB.mul(0.35));
         }
         if (tier.skyEvals >= 4) {
@@ -329,24 +343,25 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
         }
         const v = veil.toVar();
 
-        // ── Sky: bright outside the ring, a hard step into the dusky lens inside it.
-        const veilLift = smoothstep(0.45, 0.85, v).mul(float(1.0).sub(up.mul(0.6)));
-        const veilSheen = linearColor(0xE8EEF8).mul(veilLift.mul(0.06));
+        // ── Sky: bright outside the ring, a hard step into the dusky lens inside it. The thin
+        //    cirrostratus sheet (the halo's own cloud) shows as faint fibres, lit by forward
+        //    scattering toward the hidden sun, continuous across the ring.
+        const fib = smoothstep(0.42, 0.88, v).mul(float(1.0).sub(up.mul(0.45)));
+        const veilGlow = fib.mul(exp(a.div(0.5).negate()).mul(0.28).add(0.055));
+        const veilSheen = mix(linearColor(0xE6EDF8), linearColor(0xFFF0D8), sunward).mul(veilGlow).toVar();
         const outSky = phSkyOut(d, sunward, up, u.uWarmth).add(veilSheen);
         const inner = smoothstep(LENS_IN, LENS_OUT, a);
-        const lens = phLens(a, u.uWarmth, u.uBreath);
+        const lens = phLens(a, u.uWarmth, u.uBreath).add(veilSheen.mul(0.6));
         const haze = phHaze(d, sunward, u.uWarmth).toVar();
         const skyCore = select(d.y.lessThan(0.0), haze, mix(lens, outSky, inner));
 
-        // ── Distant ice ridges, higher on the left (1 noise eval; sine ridges at Minimal).
-        const ridgeN = tier.skyEvals >= 2
-            ? noise2(vec2(az.mul(RIDGE_NOISE.AZ_SCALE), RIDGE_NOISE.ROW))
-            : sin(az.mul(RIDGE_NOISE.AZ_SCALE * 1.7).add(1.1)).mul(0.5).add(0.5);
+        // ── Two backlit mountain ranges on the horizon, higher on the left (hash noise, no reads).
         const laneW = phLaneW(screenUV, u.uCalmUnion);
-        const rid = phRidge(az, el, sunward, laneW, ridgeN);
-        const baseHaze = smoothstep(0.004, -0.006, el).mul(0.5).add(0.12);
-        const ridCol = mix(rid.rgb, haze, baseHaze);
-        const sky = mix(skyCore, ridCol, rid.a);
+        const rid = phRidge(az, el, sunward, laneW, haze, u.uPixAng, u.uVeilPhase);
+        // ── Ice fog lying on the far plain: veils the mountains' feet, glows toward the sun.
+        const fog = phFog(az, el, sunward, u.uWarmth, u.uVeilPhase);
+        // ph_ridge is premultiplied (its snow banners add light over the open sky).
+        const sky = mix(skyCore.mul(float(1.0).sub(rid.a)).add(rid.rgb), fog.rgb, fog.a);
 
         // ── The halo display.
         const parhelic = linearColor(0xF5F1EA).mul(phParhelic(az, el, u.uPc.x, u.uPc.y, u.uK0.z));
@@ -385,15 +400,17 @@ export function createDomeMaterial(u, tierIn, { calmDebug = false } = {}) {
 }
 
 // ---------------------------------------------------------------------------------------
-// Vigil Stone (§5.1): a faceted dark-basalt glacial erratic
+// Vigil Stone (§5.1): a weathered standing stone in contre-jour
 // ---------------------------------------------------------------------------------------
 
 /**
- * Needs the parhelion-geometry.js stone (`aFacet` per triangle, `aBary` per vertex, smooth
- * normals). Facets are flat (screen-derivative normal) with hash-varied tones in the dark
- * basalt range #121827–#2A3656; rime on the crown and the windward (left) flank, a few frost
- * cracks along facet edges, a drift burying the base, and a thin gold rim — all of it OUTSIDE
- * the card only: behind the card the face is flattened to the calm stone value.
+ * The Vigil Stone in contre-jour: the sun stands right behind it, so the face the camera sees
+ * is in its own shadow, lit by the cobalt sky above and a faint warm bounce off the sunlit snow
+ * below. Rock is a cool dark granite with a bedding grain; snow lies on every up-facing shelf
+ * and on the crown (gold where the low sun grazes it from behind, sky-blue where it does not),
+ * rime feathers the windward (left) flank, and the silhouette burns gold nearest the hidden sun.
+ * All of the detail is OUTSIDE the card: behind it the face settles to the calm stone value
+ * over a wide feather, so no dark rectangle shows round the card's edges.
  */
 export function createStoneMaterial(u, tierIn) {
     const tier = resolveParhelionTier(tierIn);
@@ -404,56 +421,134 @@ export function createStoneMaterial(u, tierIn) {
 
     material.colorNode = Fn(() => {
         const p = positionWorld.toVar();
-        const nf = normalize(cross(dFdx(p), dFdy(p))).toVar();
-        const view = normalize(cameraPosition.sub(p));
-        const calmU = phCalmBox(screenUV, u.uCalmUnion, 0.02, u.uAspect).toVar();
+        const n0 = normalize(normalWorld).toVar();
+        const view = normalize(cameraPosition.sub(p)).toVar();
+        const calmU = phCalmBox(screenUV, u.uCalmUnion, 0.05, u.uAspect).toVar();
         const open = float(1.0).sub(calmU).toVar();
         const hN = p.y.div(u.uStoneHW.w).toVar();
-        const facet = attribute('aFacet', 'float');
 
-        // Contre-jour skylight: the sun is behind the stone, so the face is lit by the cobalt sky
-        // (up-facing facets) and faintly by the snow; windward-left facets catch a little more.
-        const sky = saturate(nf.y.mul(0.5).add(0.42).sub(nf.x.mul(0.10)));
-        const tone = facet.sub(0.5).mul(0.42);
-        const fill = saturate(sky.mul(0.75).add(tone).add(0.08));
-        // Behind the card: the board backdrop value (#151B2C, L ≈ .011 — under the idle board-rect
-        // mean ≤ .013 once the attenuated bloom is added), facets flattened to ±3 %.
-        const deep = linearColor(0x121827);
-        const baseOpen = mix(deep, linearColor(0x2A3656), fill);
-        const calmFace = linearColor(0x151B2C).mul(fill.sub(0.5).mul(0.06).add(1.0));
-        const base = mix(baseOpen, calmFace, calmU);
+        // Bedding grain: one value-noise read, stretched along the (leaning) bedding.
+        const g = (minimal ? float(0.5) : noise2(vec2(p.x.mul(0.07).add(p.z.mul(0.04)), p.y.mul(0.19)))).toVar();
 
-        let col = base;
+        // A gentle bump from the grain (surface-gradient form): a few decimetres of relief, so
+        // the light breaks up across a face without turning it to putty.
+        const dpx = dFdx(p);
+        const dpy = dFdy(p);
+        const hgt = g.mul(0.55);
+        const r1 = cross(dpy, n0);
+        const r2 = cross(n0, dpx);
+        const det = dot(dpx, r1);
+        const grad = r1.mul(dFdx(hgt)).add(r2.mul(dFdy(hgt))).mul(sign(det));
+        const n = normalize(n0.mul(abs(det)).sub(grad.mul(open))).toVar();
+
+        // Contre-jour fill: faces turned toward either side see the bright horizon sky and the
+        // sunlit snow there; faces toward the camera see the darker sky behind it and the snow in
+        // the stone's own shadow; up-facing ones catch the cobalt zenith. The foot, over the
+        // stone's own shadow, is darkest.
+        const side = abs(n.x);
+        const foot = smoothstep(0.0, 0.55, hN);
+        const light = saturate(side.mul(side).mul(0.72).add(max(n.y, 0.0).mul(0.4)).add(0.06)
+            .add(g.sub(0.5).mul(0.3))
+            .mul(foot.mul(0.45).add(0.55))).toVar();
+        let rock = mix(linearColor(0x070A12), linearColor(0x37446F), light);
+        let glaze = float(0.0);
         if (tier.rime) {
-            // Rime: crown cap + windward (left) flank streaks; never behind the card.
-            // Rime cap on the crown, streaks down the windward (left) flank, frost on up-facing
-            // ledges — never behind the card.
-            const crownCap = smoothstep(0.7, 0.95, hN);
-            const flank = smoothstep(0.35, 0.7, nf.x.negate()).mul(smoothstep(0.1, 0.4, hN)).mul(0.8);
-            const ledges = smoothstep(0.6, 0.9, nf.y).mul(0.35);
-            const streaks = smoothstep(0.55, 0.8, noise2(vec2(p.x.mul(0.11), p.y.mul(0.03))));
-            const rime = streaks.mul(0.75).add(smoothstep(0.6, 0.92, nf.y).mul(0.35))
-                .mul(crownCap.add(flank).add(ledges))
-                .mul(open);
-            col = mix(base, linearColor(0x7C90BE), saturate(rime).mul(0.65));
+            // Weathering: dark rain streaks running down from the ledges, pale lichen crust in
+            // the grain's high patches (two more value-noise reads, High tiers only).
+            const streak = noise2(vec2(p.x.mul(0.45).add(p.z.mul(0.3)), p.y.mul(0.035))).toVar();
+            // Rotated off the axes, so the value-noise lattice never shows as squares.
+            const fineUv = vec2(p.x.mul(0.62).add(p.y.mul(0.41)).sub(p.z.mul(0.5)), p.y.mul(0.62).sub(p.x.mul(0.41)));
+            const fineN = noise2(fineUv);
+            const lichen = smoothstep(0.66, 0.9, fineN).mul(smoothstep(0.45, 0.7, g));
+            rock = rock.mul(float(1.0).sub(smoothstep(0.55, 0.85, streak).mul(0.45)))
+                .mul(fineN.sub(0.5).mul(0.22).add(1.0));
+            rock = mix(rock, linearColor(0x56607A).mul(light.add(0.35)), lichen.mul(0.18));
+            // Verglas: the brightest streaks are clear meltwater ice, a glossy film over the rock,
+            // broken by the grain into irregular runs (never a row of even stripes), highest up.
+            glaze = smoothstep(0.7, 0.9, streak).mul(smoothstep(0.38, 0.7, g)).mul(smoothstep(0.2, 0.6, hN));
+        }
+        const warmSide = linearColor(0x4A3A2A).mul(smoothstep(0.6, 0.97, side).mul(0.6));
+        const bounce = linearColor(0x22201C).mul(smoothstep(0.05, -0.7, n.y).mul(0.6));
+        let col = rock.add(warmSide).add(bounce);
+
+        // Bedding ledges (aLedge: unit height above each ledge line; aLedgeW: where each ledge
+        // exists): a shadow under the lip and a line of snow on the shelf above it.
+        const ledge = attribute('aLedge', 'vec4');
+        const ledgeW = attribute('aLedgeW', 'vec4');
+        const onShelf = smoothstep(0.0, 0.003, ledge).mul(float(1.0).sub(smoothstep(0.008, 0.02, ledge)))
+            .mul(ledgeW);
+        const underLip = smoothstep(-0.03, -0.004, ledge).mul(float(1.0).sub(smoothstep(-0.004, 0.0, ledge)))
+            .mul(ledgeW);
+        const shelfSnow = max(max(onShelf.x, onShelf.y), max(onShelf.z, onShelf.w)).mul(smoothstep(0.25, 0.45, g));
+        const lip = max(max(underLip.x, underLip.y), max(underLip.z, underLip.w));
+        col = col.mul(float(1.0).sub(lip.mul(0.6).mul(open)));
+
+        // Snow on the shelves and patchily over the crown; gold where the sun grazes it.
+        const sunLit = saturate(dot(n, vec3(...S_VEC)));
+        const cap = smoothstep(0.85, 0.97, hN).mul(smoothstep(0.12, 0.45, n0.y.add(g.sub(0.5).mul(0.6))));
+        const snowM = saturate(shelfSnow.add(cap)).mul(open).toVar();
+        const snowShade = mix(linearColor(0x4A5C92), linearColor(0x91A4D6), smoothstep(-0.2, 0.8, n.y));
+        const snowCol = mix(snowShade, linearColor(0xFFDDA0).mul(1.2), smoothstep(0.0, 0.2, sunLit));
+        col = mix(col, snowCol, snowM);
+
+        if (tier.rime) {
+            // Rime feathers on the windward (left) flank.
+            const flank = smoothstep(0.35, 0.8, n.x.negate()).mul(smoothstep(0.08, 0.35, hN));
+            const rime = flank.mul(smoothstep(0.45, 0.7, g).mul(0.6).add(0.1)).mul(open).mul(float(1.0).sub(snowM));
+            col = mix(col, linearColor(0x6A7EB0), saturate(rime).mul(0.45));
         }
 
-        // A few frost cracks: one edge of ~1 facet in 5, drawn as a thin rime line (AA by fwidth).
-        const bary = attribute('aBary', 'vec3');
-        const edge = float(1.0).sub(smoothstep(0.0, fwidth(bary.x).mul(1.3), bary.x));
-        const crack = edge.mul(step(0.8, facet)).mul(smoothstep(0.2, 0.5, hN)).mul(open);
-        col = mix(col, linearColor(0x5E72A0), crack.mul(0.8));
+        if (tier.rime) {
+            // The ice glaze mirrors the sky: faces turned sideways catch the bright horizon,
+            // faces toward the camera the darker cobalt behind it (Schlick fresnel, 5th power).
+            const refl = reflect(view.negate(), n);
+            const nv = float(1.0).sub(saturate(dot(n, view)));
+            const fres = nv.mul(nv).mul(nv).mul(nv).mul(nv)
+                .mul(0.8)
+                .add(0.035);
+            const skyRefl = mix(linearColor(0x2C4580), linearColor(0xCAD8EE), smoothstep(0.55, 0.0, abs(refl.y)));
+            col = col.add(skyRefl.mul(glaze.mul(fres)).mul(open).mul(float(1.0).sub(snowM)));
+        }
 
-        // Faint skylit sheen on facets turned edge-on to the view (the gold silhouette line itself
-        // is the rim shell, createStoneRimMaterial — a fresnel rim on 11 facets lights whole facets).
-        const edgeOn = pow(float(1.0).sub(saturate(dot(normalWorld, view))), 4.0);
-        col = col.add(linearColor(0x2A3656).mul(edgeOn.mul(0.35).mul(open)));
+        // Contre-jour rim on the true silhouette (geometry normal): it burns gold to white-gold
+        // nearest the hidden sun (blooming there), and snow at the edge glows more.
+        const toSunA = acos(clamp(dot(view.negate(), vec3(...S_VEC)), -1.0, 1.0));
+        const prox = exp(toSunA.div(0.19).negate()).mul(4.0).add(0.15).toVar();
+        const edge = float(1.0).sub(saturate(dot(n0, view)));
+        const rimF = edge.mul(edge).toVar();
+        const rim = rimF.mul(rimF).mul(prox).mul(snowM.mul(1.5).add(1.0)).mul(u.uRim)
+            .mul(open);
+        // Lower Sun (uWarmth climbs with the level): the rim deepens toward amber.
+        const rimWarm = mix(linearColor(0xFFB55E), linearColor(0xFF9440), u.uWarmth.mul(0.8));
+        const rimCol = mix(rimWarm, linearColor(0xFFF0D0), smoothstep(0.8, 2.4, prox));
+        col = col.add(rimCol.mul(rim.mul(0.85)));
 
-        // A wind-packed snow bank buries the base, higher on the windward left; stone value behind the card.
+        if (!minimal) {
+            // Hoarfrost: pin-point crystals twinkling on the snowy ledges and crown, about one
+            // pixel each (sized from the screen footprint), gold where they face the hidden sun.
+            const q = p.mul(1.6);
+            const cq = floor(q);
+            const hq = hash21(vec2(cq.x.add(cq.z.mul(7.13)), cq.y));
+            const pxW = max(length(fwidth(p)), 1e-4);
+            const spotG = float(1.0).sub(smoothstep(pxW.mul(0.6), pxW.mul(1.7), length(fract(q).sub(0.5)).div(1.6)));
+            const twG = pow(sin(u.uDustClock.mul(hq.mul(5.0).add(2.0)).add(hq.mul(40.0))).mul(0.5).add(0.5), 8.0);
+            const frost = step(0.93, hq).mul(spotG).mul(twG).mul(snowM)
+                .mul(prox.mul(0.5).add(0.5));
+            const frostCol = mix(linearColor(0xEAF2FF), linearColor(0xFFE2A8), smoothstep(0.5, 2.0, prox));
+            col = col.add(frostCol.mul(frost.mul(1.4)));
+        }
+
+        // Behind the card: the board backdrop value (#151B2C, L ≈ .011 — under the idle board-rect
+        // mean ≤ .013 once the attenuated bloom is added), its light flattened to ±3 %.
+        const calmFace = linearColor(0x151B2C).mul(light.sub(0.5).mul(0.06).add(1.0));
+        col = mix(col, calmFace, calmU);
+
+        // A wind-packed snow bank buries the base, higher on the windward left; in the stone's
+        // own shadow it is sky-blue snow, its crest catching a little light.
         const bank = sin(p.x.mul(0.11).add(1.3)).mul(0.9).add(sin(p.x.mul(0.29).add(0.4)).mul(0.45));
         const driftH = bank.add(4.2).sub(p.x.mul(0.035));
         const buried = smoothstep(driftH.add(2.2), driftH.sub(1.0), p.y);
-        const driftLit = mix(linearColor(0x2A365C), linearColor(0x3A4A78), smoothstep(-3.0, 1.5, p.y.sub(driftH)));
+        const driftLit = mix(linearColor(0x4A5C94), linearColor(0x7F93C6), smoothstep(-3.0, 1.5, p.y.sub(driftH)));
         const driftCol = mix(driftLit, linearColor(0x171D2F), calmU);
         let out = mix(col, driftCol, buried);
         if (minimal) out = phTone(out).mul(float(1.0).sub(u.uUnionDim.mul(calmU)));
@@ -483,15 +578,52 @@ export function createStoneRimMaterial(u) {
         const toSun = dot(normalize(positionWorld.sub(cameraPosition)), vec3(...S_VEC));
         // Real contre-jour rims die off fast away from the sun: bright beside the hidden sun at
         // the stone's flanks (A ≈ .22), a whisper along the crown (A ≈ .35).
-        const sunProx = exp(acos(clamp(toSun, -1.0, 1.0)).div(0.10).negate());
+        const sunProx = exp(acos(clamp(toSun, -1.0, 1.0)).div(0.12).negate());
         const calmU = phCalmBox(screenUV, u.uCalmUnion, 0.02, u.uAspect);
         // Fades into the snow bank at the base.
         const lift = smoothstep(4.0, 14.0, positionWorld.y);
         const outside = float(1.0).sub(calmU).mul(lift);
-        const gain = sunProx.mul(3.4).add(0.02).mul(u.uRim).mul(outside);
+        const gain = sunProx.mul(6.0).add(0.01).mul(u.uRim).mul(outside);
         return linearColor(0xFFCF7A).mul(gain.mul(0.9));
     })();
     material.opacityNode = float(1.0);
+    return material;
+}
+
+// ---------------------------------------------------------------------------------------
+// Far stones: the small standing stones out on the plain (scale for the Vigil Stone)
+// ---------------------------------------------------------------------------------------
+
+/**
+ * The far stones in contre-jour, like the Vigil Stone but small and far: dark rock lit by the
+ * sky from above and the sides, a snow cap, a gold rim that burns toward the hidden sun, and
+ * aerial perspective into the horizon haze. No calm logic: they stand in the side lanes.
+ */
+export function createFarStoneMaterial(u, tierIn) {
+    const tier = resolveParhelionTier(tierIn);
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.name = 'parhelion-far-stones';
+    material.fog = false;
+    material.colorNode = Fn(() => {
+        const p = positionWorld.toVar();
+        const n = normalize(normalWorld).toVar();
+        const toP = p.sub(cameraPosition);
+        const dist = length(toP).toVar();
+        const dir = toP.div(dist).toVar();
+        const side = abs(n.x);
+        const light = saturate(side.mul(side).mul(0.9).add(max(n.y, 0.0).mul(0.45)).add(0.08));
+        let col = mix(linearColor(0x0B0F1A), linearColor(0x3A4874), light);
+        col = mix(col, linearColor(0x7F93C8), smoothstep(0.5, 0.8, n.y).mul(0.85));
+        const cA = dot(dir, vec3(...S_VEC)).toVar();
+        const prox = exp(acos(clamp(cA, -1.0, 1.0)).div(0.25).negate()).mul(2.5).add(0.2);
+        const edge = float(1.0).sub(saturate(dot(n, dir.negate())));
+        col = col.add(linearColor(0xFFC978).mul(edge.mul(edge).mul(edge).mul(prox).mul(0.9)));
+        // Aerial perspective into the horizon air (ph_fog over ph_haze, as the snow and the dome).
+        const sw = pow(max(cA, 0.0), 4.0);
+        const air = phFogFar(phHaze(dir, sw, u.uWarmth), sw, u.uWarmth);
+        col = mix(col, air, smoothstep(200.0, 2600.0, dist).mul(0.75));
+        return tier.post ? col : phTone(col);
+    })();
     return material;
 }
 
@@ -552,37 +684,76 @@ export function createSnowMaterial(u, tierIn) {
         const toSun = max(dot(dir, vec3(...S_VEC)), 0.0).toVar();
         const fwd = pow(toSun, 12.0);
         const sunward = pow(toSun, 3.0);
-        // Sunlit snow: warm-white toward the sun, cool-white away (never a lavender blend).
-        const flat = mix(linearColor(0xE4E9F3), linearColor(0xFBF1E2), sunward.mul(0.7).add(0.3));
-        // Golden contre-jour: forward scatter warms the snow toward the hidden sun's azimuth.
-        const golden = mix(flat, linearColor(0xF6D7A6), pow(toSun, 7.0).mul(0.75));
-        const lit = golden.mul(macro.mul(0.12).add(0.94)).mul(stoss.mul(0.1).add(1.0));
-        const gold = linearColor(0xFFD39A).mul(crest.mul(fwd.mul(1.6).add(0.9)));
-        const shadowed = mix(lit, linearColor(0x34488A), lee.mul(0.86));
-        const surf = phSoftCap(shadowed.add(gold), 0.85);
+
+        // Drifts: three oblique swells whose crests run ACROSS the view, so their slopes face the
+        // camera (turned from the 9.5° sun: sky-blue shade) or the sun (lit, gold-white). The
+        // slopes are analytic; each swell fades by its own screen frequency (k · footprint), so
+        // the far field never shimmers and the plain flattens toward the horizon.
+        const warp = macro.mul(2.0);
+        // Drift height varies across the plain (wind-scoured flats between heavier drifts) and
+        // along each crest, so the swells break into segments instead of long stripes.
+        const crestRun = sin(dot(p.xz, vec2(0.96, -0.28)).mul(0.035).add(macro.mul(4.0))).mul(0.5).add(0.5);
+        const drifty = field.mul(0.8).add(0.35).mul(mix(0.35, 1.25, crestRun));
+        const w1 = dot(p.xz, vec2(0.26, 0.966)).mul(0.11).add(warp.mul(2.5));
+        const w2 = dot(p.xz, vec2(-0.42, 0.907)).mul(0.19).add(warp.mul(1.5)).add(1.7);
+        const w3 = dot(p.xz, vec2(0.09, 0.996)).mul(0.045).add(warp).add(0.6);
+        const s1 = cos(w1).mul(float(1.0).sub(smoothstep(0.3, 1.0, fp.mul(0.11)))).mul(1.3 * 0.11).mul(drifty);
+        const s2 = cos(w2).mul(float(1.0).sub(smoothstep(0.3, 1.0, fp.mul(0.19)))).mul(0.55 * 0.19).mul(drifty);
+        const s3 = cos(w3).mul(float(1.0).sub(smoothstep(0.3, 1.0, fp.mul(0.045)))).mul(2.6 * 0.045);
+        const dHdx = s1.mul(0.26).sub(s2.mul(0.42)).add(s3.mul(0.09));
+        const dHdz = s1.mul(0.966).add(s2.mul(0.907)).add(s3.mul(0.996));
+        const nS = normalize(vec3(dHdx.negate(), 1.0, dHdz.negate()));
+        // Sun on the slope relative to flat snow (1 on the flat, 0 on a camera-facing slope
+        // steeper than the sun), cut by the sastrugi lee shadows.
+        const sunK = clamp(dot(nS, vec3(...S_VEC)).div(0.16505), 0.0, 1.7).mul(float(1.0).sub(lee.mul(0.9))).toVar();
 
         // Analytic stone shadow toward the camera (0 noise).
         const t = p.z.add(124.0).div(0.986286);
         const yq = t.mul(0.165047);
-        const soft = t.mul(0.004).add(0.8);
+        const soft = t.mul(0.006).add(0.8);
         const hw = mix(u.uStoneHW.x, u.uStoneHW.z, clamp(yq.div(u.uStoneHW.w), 0.0, 1.0));
         const acrossShadow = float(1.0).sub(smoothstep(hw.sub(soft), hw.add(soft), abs(p.x)));
         const underTop = float(1.0).sub(smoothstep(u.uStoneHW.w.sub(soft), u.uStoneHW.w.add(soft), yq));
         const inShadow = acrossShadow.mul(underTop).mul(step(-124.0, p.z)).toVar();
-        const calmU = phCalmBox(screenUV, u.uCalmUnion, 0.02, u.uAspect);
-        const shadowOpen = mix(linearColor(0x2A365C), linearColor(0x3A4A78), macro);
-        const shadowCol = mix(shadowOpen, linearColor(0x171D2F), calmU);
-        let col = mix(surf, shadowCol, inShadow);
+        // The far stones' long shadows (one loop over the static row).
+        const farShadow = float(0.0).toVar();
+        Loop(FAR_STONES.length, ({ i }) => {
+            farShadow.assign(max(farShadow, phFarShadow(p.xz, u.uFarStones.element(i), pixH)));
+        });
+        const sunHere = sunK.mul(float(1.0).sub(inShadow)).mul(float(1.0).sub(farShadow.mul(0.92))).toVar();
 
-        // 3 — spindrift: soft wisps streaming left → right, strongest in the near field.
+        // Lit snow: white, warming toward the sun's azimuth; forward-scatter glare near it.
+        const flat = mix(linearColor(0xEDF1F8), linearColor(0xFFF2DE), sunward.mul(0.8));
+        // Lower Sun: as the levels climb, the low light warms and spreads wider from the sun.
+        const goldK = pow(toSun, mix(7.0, 3.5, u.uWarmth)).mul(u.uWarmth.mul(0.5).add(0.55));
+        const golden = mix(flat, mix(linearColor(0xFFE0AE), linearColor(0xFFC890), u.uWarmth), goldK);
+        const lit = golden.mul(macro.mul(0.1).add(0.95)).mul(stoss.mul(0.08).add(1.0));
+        // Shade: sky-lit blue snow (the stone's shadow is the same snow, not a painted band).
+        // Shade is sky-lit: it leans toward violet as the light lowers (Lower Sun).
+        const shade = mix(linearColor(0x5C77B6), linearColor(0x7C93CC), macro.mul(0.6).add(stoss.mul(0.4)))
+            .mul(mix(vec3(1.0), vec3(1.07, 0.94, 1.03), u.uWarmth));
+        const snowCol = mix(shade, lit, min(sunHere, 1.0)).add(lit.mul(max(sunHere.sub(1.0), 0.0).mul(0.12)));
+        const gold = linearColor(0xFFD39A).mul(crest.mul(fwd.mul(1.6).add(0.9)).mul(min(sunHere, 1.0)));
+        const surf = phSoftCap(snowCol.add(gold), 0.85);
+        const calmU = phCalmBox(screenUV, u.uCalmUnion, 0.02, u.uAspect);
+        let col = mix(surf, linearColor(0x171D2F), calmU.mul(inShadow));
+
+        // 3 — blowing snow: long thin streamers running with the wind, lifted off the surface, so
+        //     they catch the low sun even over the shaded drift troughs (gold-white toward the sun,
+        //     faint white away from it); only the Vigil Stone's own shadow puts them out.
         if (tier.snowEvals >= 2) {
-            const wisp = noise2(vec2(along.mul(0.03).sub(u.uDriftPhase), across.mul(0.12)));
-            const drift = smoothstep(0.55, 0.95, wisp).mul(smoothstep(520.0, 110.0, dist)).mul(0.12);
-            col = col.add(linearColor(0xDDE8F8).mul(drift.mul(float(1.0).sub(inShadow.mul(0.7)))));
+            const wisp = noise2(vec2(along.mul(0.02).sub(u.uDriftPhase), across.mul(0.22).add(macro.mul(1.5))));
+            const streamer = smoothstep(0.5, 0.92, wisp).mul(smoothstep(950.0, 140.0, dist));
+            const backlit = pow(toSun, 8.0).mul(0.7).add(0.15);
+            const blowCol = mix(linearColor(0xE2EAF8), linearColor(0xFFE6C2), pow(toSun, 6.0));
+            col = col.add(blowCol.mul(streamer.mul(backlit).mul(float(1.0).sub(inShadow.mul(0.85)))));
         }
 
-        // Aerial perspective into the shared horizon haze; a darker foreground strip.
-        col = mix(col, phHaze(dir, pow(toSun, 4.0), u.uWarmth), smoothstep(300.0, 1900.0, dist));
+        // Aerial perspective into the horizon air — the ice fog over the shared haze, exactly the
+        // dome's colour just under the horizon, so the seam never shows; a darker foreground strip.
+        const sw = pow(toSun, 4.0);
+        const air = phFogFar(phHaze(dir, sw, u.uWarmth), sw, u.uWarmth);
+        col = mix(col, air, smoothstep(450.0, 2600.0, dist).mul(0.9).add(smoothstep(2600.0, 5000.0, dist).mul(0.1)));
         col = col.mul(mix(0.86, 1.0, smoothstep(110.0, 460.0, dist)));
 
         if (!minimal) {
@@ -595,10 +766,33 @@ export function createSnowMaterial(u, tierIn) {
             const twPhase = u.uDustClock.mul(g.mul(5.0).add(2.0)).add(g.mul(40.0));
             const tw = pow(sin(twPhase).mul(0.5).add(0.5), 6.0).mul(0.75).add(0.25);
             const near = float(1.0).sub(smoothstep(0.8, 3.0, fp));
-            const visible = float(1.0).sub(inShadow).mul(float(1.0).sub(calmU)).mul(float(1.0).sub(lee));
+            const visible = smoothstep(0.3, 0.8, sunHere).mul(float(1.0).sub(calmU));
             const glit = step(0.986, g).mul(spot).mul(tw.mul(near)).mul(visible);
+            const aRing = acos(clamp(dot(dir, vec3(...S_VEC)), -1.0, 1.0)).sub(R22S).toVar();
+            // The lower halo in the diamond dust over the snow: crystals glint along the 22° ring
+            // below the horizon, red inside → white → ice-blue outside, closing the circle round
+            // the stone. Its glints live on a grid in the RESTING eye's projected coordinates
+            // (x / −z, eye height / −z), ≈ 3 buffer pixels a cell at any range yet fixed to the
+            // ground, so they neither shimmer far out nor swim as the camera breathes.
+            const gz = max(p.z.negate(), 1.0);
+            const gq = vec2(p.x.div(gz), float(25.0).div(gz)).div(u.uPixAng.mul(3.0));
+            const gc = floor(gq);
+            const gh = hash21(gc.add(91.7));
+            const gOff = vec2(hash21(gc.add(13.1)), hash21(gc.add(47.3))).mul(0.6).add(0.2);
+            const gSpot = float(1.0).sub(smoothstep(0.25, 0.9, length(fract(gq).sub(gOff).mul(3.0))));
+            const ringBand = exp(aRing.mul(aRing).div(0.00008).negate());
+            const gTw = pow(sin(u.uDustClock.mul(gh.mul(4.0).add(1.5)).add(gh.mul(30.0))).mul(0.5).add(0.5), 4.0);
+            const ringGlit = step(float(1.0).sub(ringBand.mul(0.55)), gh).mul(gSpot).mul(gTw.mul(0.8).add(0.2))
+                .mul(ringBand)
+                .mul(float(1.0).sub(calmU))
+                .mul(smoothstep(0.1, 0.6, sunHere).mul(0.7).add(0.3));
+            const ringCol = mix(
+                mix(linearColor(0xFF7A55), linearColor(0xFFF4DC), smoothstep(-0.008, 0.0, aRing)),
+                linearColor(0xA8CCF4),
+                smoothstep(0.004, 0.012, aRing),
+            );
+            col = col.add(ringCol.mul(ringGlit.mul(2.6)));
             // Below-horizon ring flash (reactions; 0 at rest): the prism arc through the glitter.
-            const aRing = acos(clamp(dot(dir, vec3(...S_VEC)), -1.0, 1.0)).sub(R22S);
             const prism = u.uPrism.mul(exp(aRing.mul(aRing).div(0.0004).negate()));
             // Two-stop prism (red inside → ice-blue outside): the full ramp is not worth its bytes here.
             const prismT = clamp(aRing.add(0.01).div(0.03), 0.0, 1.0);

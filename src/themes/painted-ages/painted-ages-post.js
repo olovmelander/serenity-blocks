@@ -43,7 +43,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { paHash21, paLuma, paMax3 } from './painted-ages-tsl.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /** Per-tier look. `bloom: false` builds no BloomNode; `shafts` the sun's shafts. */
 export const POST_LOOK = Object.freeze({

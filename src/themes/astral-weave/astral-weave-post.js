@@ -44,7 +44,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { awHash21, awLuma, awMax3 } from './astral-weave-tsl.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /** Per-tier look. `bloom: false` builds no BloomNode. */
 export const POST_LOOK = Object.freeze({

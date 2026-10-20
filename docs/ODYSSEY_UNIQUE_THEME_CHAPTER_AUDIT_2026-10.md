@@ -131,7 +131,7 @@ more directly than Chiral Gold's abstract ritual hall.
 | 36 | Galaxy (`galaxy`) | Spiral structures, stars, dust, and nebulae establish galactic scale. |
 | 37 | Cosmic Noir (`cosmic-noir`) | A dark planet, silver rim light, grayscale stars, and nebulae remain explicitly cosmic. |
 | 38 | Supernova (`supernova`) | A stellar core and expanding energy/shockwaves give the chapter a stellar-event scene. |
-| 39 | Blood Moon (`blood-moon`) | A crimson eclipsed lunar body, corona, and star fields focus on a celestial object. |
+| 39 | Blood Moon (`blood-moon`) | A total lunar eclipse over a salt-flat mirror: the celestial event is the subject, a planetary surface like Shifting Sands its stage. |
 | 40 | Void Ember (`void-ember`) | Stellar plasma, flowing energy, and particles belong to space despite the ember/fire vocabulary. |
 | 41 | Aether Tides (`aether-tides`) | Deep-space nebulae, gravity wells, stardust, and supernova reactions are directly cosmic. |
 | 42 | Astral Weave (`astral-weave`) | A monumental luminous loom hangs in a river of nebula, adding celestial geometry. |

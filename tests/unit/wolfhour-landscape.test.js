@@ -42,7 +42,7 @@ describe('Wolfhour alpine landscape', () => {
             const position = geometry.getAttribute('position');
             const indices = geometry.index.array;
             expect(indices.length % 3).toBe(0);
-            for (const attributeName of ['position', 'normal', 'color', 'aMoonResponse']) {
+            for (const attributeName of ['position', 'normal', 'aLight', 'aSurface', 'aMoonResponse']) {
                 const attribute = geometry.getAttribute(attributeName);
                 expect(attribute.count).toBe(position.count);
                 expect(attribute.array.every(Number.isFinite)).toBe(true);
@@ -73,7 +73,8 @@ describe('Wolfhour alpine landscape', () => {
         const repeat = create();
         const other = create({ seed: 91261 });
         expect(digest(repeat, 'position')).toBe(digest(first, 'position'));
-        expect(digest(repeat, 'color')).toBe(digest(first, 'color'));
+        expect(digest(repeat, 'aLight')).toBe(digest(first, 'aLight'));
+        expect(digest(repeat, 'aSurface')).toBe(digest(first, 'aSurface'));
         expect(digest(other, 'position')).not.toBe(digest(first, 'position'));
     });
 

@@ -332,6 +332,185 @@
     margin-left: -8px;
 }
 
+/* ---- Charm guide (#odyssey-charm-guide): every charm, held or not, from the map header's
+   charm chip. Built by src/ui/odyssey/odyssey-charm-guide.js. Two cards a row, so the whole
+   guide fits a 900-pixel window without scrolling. ------------------------------------------ */
+.sb-ody-modal--charms {
+    --sb-ody-rgb: var(--sb-lavender-rgb);
+}
+
+.sb-ody-modal--charms .sb-ody-sheet {
+    width: min(720px, 100%);
+}
+
+.sb-ody-modal--charms .sb-ody-sheet__panel {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--sb-lavender-rgb), 0.35) transparent;
+}
+
+.sb-ody-modal--charms .sb-ody-title {
+    margin-top: 12px;
+}
+
+.sb-ody-modal--charms .sb-ody-lede {
+    margin-bottom: 18px;
+}
+
+.sb-ody-charm-guide {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0 0 16px;
+    padding: 0;
+    list-style: none;
+}
+
+.sb-ody-charm-guide__charm {
+    --charm-rgb: var(--sb-lavender-rgb);
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: start;
+    gap: 12px;
+    padding: 14px 14px 12px;
+    border-radius: var(--sb-r-sm);
+    border: 1px solid var(--sb-line);
+    background: rgba(var(--sb-cream-rgb), 0.025);
+}
+
+.sb-ody-charm-guide__charm[data-charm='tide'] { --charm-rgb: var(--sb-aqua-rgb); }
+.sb-ody-charm-guide__charm[data-charm='long-breath'] { --charm-rgb: var(--sb-gold-rgb); }
+.sb-ody-charm-guide__charm[data-charm='hearth'] { --charm-rgb: var(--sb-coral-rgb); }
+
+.sb-ody-charm-guide__charm[data-held='true'] {
+    border-color: rgba(var(--charm-rgb), 0.3);
+    background: rgba(var(--charm-rgb), 0.06);
+}
+
+.sb-ody-charm-guide__charm .charm-sprite {
+    width: 44px;
+    height: 44px;
+    vertical-align: middle;
+}
+
+.sb-ody-charm-guide__charm .charm-sprite__glyph {
+    font-size: 22px;
+}
+
+/* Not in the bag: the icon is drawn grey (its 'empty' look); the glyph fallback fades to match. */
+.sb-ody-charm-guide__charm[data-held='false'] .charm-sprite__glyph {
+    color: var(--sb-text-faint);
+}
+
+.sb-ody-charm-guide__body {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    height: 100%;
+}
+
+.sb-ody-charm-guide__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 4px;
+}
+
+.sb-ody-charm-guide__name {
+    color: var(--sb-text);
+    font: 700 0.9375rem / 1.2 var(--sb-font-display);
+    letter-spacing: 0.01em;
+}
+
+.sb-ody-charm-guide__charm[data-held='false'] .sb-ody-charm-guide__name {
+    color: var(--sb-text-muted);
+}
+
+.sb-ody-charm-guide__head .sb-kbd {
+    min-width: 20px;
+    height: 20px;
+    font-size: 0.625rem;
+}
+
+.sb-ody-charm-guide__rule,
+.sb-ody-charm-guide__when {
+    margin: 0;
+    font: 500 0.8125rem / 1.45 var(--sb-font-text);
+}
+
+.sb-ody-charm-guide__rule {
+    color: var(--sb-text-muted);
+}
+
+.sb-ody-charm-guide__when {
+    margin-top: 2px;
+    color: var(--sb-text-faint);
+    font-size: 0.75rem;
+}
+
+/* The count sits at the foot of the card, level with its neighbour's. */
+.sb-ody-charm-guide__count {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: auto 0 0;
+    padding-top: 10px;
+    color: var(--sb-text-faint);
+    font: 600 0.625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+.sb-ody-charm-guide__charm[data-held='true'] .sb-ody-charm-guide__count {
+    color: rgb(var(--charm-rgb));
+}
+
+.sb-ody-charm-guide__pips {
+    display: flex;
+    gap: 6px;
+    padding-left: 1px;
+}
+
+.sb-ody-charm-guide__pips i {
+    width: 7px;
+    height: 7px;
+    border: 1px solid rgba(var(--charm-rgb), 0.45);
+    border-radius: 1px;
+    transform: rotate(45deg);
+}
+
+.sb-ody-charm-guide__pips i.is-held {
+    border-color: rgb(var(--charm-rgb));
+    background: rgb(var(--charm-rgb));
+    box-shadow: 0 0 8px rgba(var(--charm-rgb), 0.55);
+}
+
+.sb-ody-charm-guide__rules {
+    margin-top: 0;
+}
+
+.sb-ody-charm-guide__rules ul {
+    display: grid;
+    gap: 4px;
+    margin: 2px 0 0;
+    padding-left: 18px;
+}
+
+@media (max-width: 600px) {
+    .sb-ody-charm-guide {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .sb-ody-charm-guide__charm {
+        grid-template-columns: 36px minmax(0, 1fr);
+    }
+
+    .sb-ody-charm-guide__charm .charm-sprite {
+        width: 36px;
+        height: 36px;
+    }
+}
+
 .sb-ody-modal .steam-leaderboard-panel {
     margin: 0 0 24px;
 }
@@ -457,7 +636,7 @@
     gap: 8px;
 }
 
-#odyssey-board-overlay .odyssey-progress-info > span {
+#odyssey-board-overlay .odyssey-progress-info > :is(span, button) {
     padding: 7px 10px;
     border-radius: 8px;
     border: 1px solid var(--sb-line-strong);
@@ -473,9 +652,42 @@
     border-color: rgba(var(--sb-gold-rgb), 0.3);
 }
 
+/* The charm chip is a button: it opens the charm guide (odyssey-charm-guide.js). */
 #odyssey-board-overlay #odyssey-header-charms {
+    margin: 0;
     color: var(--sb-lavender);
     border-color: rgba(var(--sb-lavender-rgb), 0.3);
+    cursor: pointer;
+    transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+#odyssey-board-overlay #odyssey-header-charms:hover {
+    color: var(--sb-text);
+    border-color: rgba(var(--sb-lavender-rgb), 0.62);
+    background: rgba(var(--sb-lavender-rgb), 0.14);
+}
+
+#odyssey-board-overlay #odyssey-header-charms:focus-visible {
+    outline: 2px solid rgba(var(--sb-lavender-rgb), 0.85);
+    outline-offset: 2px;
+}
+
+/* With a controller, Y opens the guide: its round keycap rides on the chip. */
+body.sb-input-gamepad #odyssey-board-overlay #odyssey-header-charms::after {
+    content: 'Y';
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    margin: -3px 0 -3px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.07);
+    color: var(--sb-text-muted);
+    font: 700 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0;
+    vertical-align: middle;
 }
 
 #odyssey-board-overlay .odyssey-chapter-arrival-card {

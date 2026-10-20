@@ -28,7 +28,7 @@ import {
 } from '../../src/themes/synthwave-sunset/synthwave-sunset-geo.js';
 import { HOTEL_WORDS, buildHotels, glyphCode } from '../../src/themes/synthwave-sunset/synthwave-sunset-hotels.js';
 import { POST_LOOK } from '../../src/themes/synthwave-sunset/synthwave-sunset-post.js';
-import { REDUCED_FLASH_SCALE } from '../../src/core/photosensitivity.js';
+import { REDUCED_FLASH_SCALE } from '../../src/utils/photosensitivity.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');

@@ -1144,8 +1144,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'tspin, perfect, levelUp, release (the chain held by peak breaks), b2b (the sunshower '
             + 'starts) or gameOver (Mistfall). Kaleidosonic: lock, drop, clear, quad, tspin, perfect, '
             + 'levelUp, release (the chain held by peak breaks) or over (the light sinks). Synthwave '
-            + 'Sunset: lock, clear, tetris, chain (the coaster lifted chain=<n> notches), ride (a chain '
-            + 'of chain=<n> breaks and the coaster runs the course) or levelUp.',
+            + 'Sunset: lock, clear, quad, chain (the coaster lifted chain=<n> notches), ride (a chain '
+            + 'of chain=<n> breaks and the coaster goes once round its circuit) or levelUp.',
         defaultValue: 'Idle in most previews; Lunar Sigil uses lock.',
         example: 'event=lock',
         notes: 'Use on playground.html with effect=<the matching effect ID>. For deterministic replay, '
@@ -1901,8 +1901,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'icon',
         category: 'Playground',
-        scope: 'playground.html — aurora, black-hole, chiral-gold, cosmic-noir, fluid-dreams, forest, galaxy, '
-            + 'geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, '
+        scope: 'playground.html — aurora, black-hole, blood-moon, chiral-gold, cosmic-noir, fluid-dreams, forest, '
+            + 'galaxy, geode, golden-forest, halcyon-apex, himalayan-peak, ice-temple, kaleidosonic, koi-pond, '
             + 'luminous-tides, lunara, moonlit-greenhouse, murmuration, nebula-flow, neon-district, ocean, '
             + 'rainbark, rainbow-terraces, sakura-twilight, serenity-warp, shifting-sands, solar-eclipse, '
             + 'starlight, stellar-drift, stellar-velocity, stillwater, summer, sunset, supernova, synthwave-sunset, '
@@ -1910,7 +1910,8 @@ export const PLAYGROUND_URL_PARAMETERS = [
             + 'winter',
         description: 'Use the authored camera pose for a theme icon capture.',
         values: '1 enables. In Moonlit Greenhouse it is a tighter lens on the moon through the glass over '
-            + 'the canal (capture a square frame). In Kaleidosonic it aims from the eye at the core and '
+            + 'the canal (capture a square frame). In Blood Moon it centres the moon over its reflection '
+            + '(capture a square frame). In Kaleidosonic it aims from the eye at the core and '
             + 'its pillar, with a tighter lens. In Synthwave Sunset it is a narrow lens on the ferris wheel '
             + 'in front of the setting sun, its reflection below.',
         defaultValue: 'Off.',
@@ -1919,6 +1920,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/aurora.effect.js',
             'src/playground/effects/black-hole.effect.js',
+            'src/playground/effects/blood-moon.effect.js',
             'src/playground/effects/chiral-gold.effect.js',
             'src/playground/effects/cosmic-noir.effect.js',
             'src/playground/effects/fluid-dreams.effect.js',

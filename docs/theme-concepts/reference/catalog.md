@@ -1706,7 +1706,7 @@ mountains, box city, neon grid) is Neon Dusk's.
 
 - **Files.** Icon at `src/themes/parhelion/parhelion-theme-icon.png`. The scene is the playground effect `src/playground/effects/parhelion.effect.js` plus `parhelion-{composition,geometry,materials,optics,particles,post}.js`. The wrapper is `src/themes/parhelion/parhelion-theme.js` (754 lines). There is no overhaul doc.
 - **Icon.** A dark faceted standing stone (the "Vigil Stone") hides the sun. A white 22° halo ring with a red inner edge, sundog flares, an upper tangent arc and a parhelic line sit in a cobalt sky over a pale golden snowfield.
-- **Look** (`parhelion.effect.js:1-10`). A 22° ice-halo display: a dusky lens, red inner edge, sundogs, parhelic line, upper tangent arc, sun-pillar stub. It frames the Vigil Stone over a golden contre-jour snowfield under cobalt sky, with diamond dust, a glint pool and "hound pillars".
+- **Look** (`parhelion.effect.js:1-12`, visual pass 2026-10-20). A 22° ice-halo display: a dusky lens, red inner edge, sundogs, parhelic line, upper tangent arc, a glittering sun pillar. It frames the Vigil Stone (a weathered backlit standing stone with snow on its ledges and a gold rim) over a contre-jour snowfield of backlit drifts (blue slopes, gold crests) under cobalt sky, with two blue mountain ranges trailing snow banners on the horizon, a rolling bank of ice fog glowing gold toward the sun along the far plain, faint cirrostratus fibres, blowing snow streaming over the drifts, a row of far standing stones casting long shadows toward the viewer, ice glaze and twinkling hoarfrost on the stone, diamond dust glinting in the low air and along the halo (which closes below the horizon as glints on the snow), a glint pool and "hound pillars". Levels ("Lower Sun") turn the plain and the stone's rim visibly golden. On portrait screens the lens widens so the sundogs flank the board.
 - **Palette.**
   - Clear colour `0x142C66` (cobalt).
   - Material hexes: `0x3A4A78`, `0x2A365C`, `0x171D2F`, creams `0xFFF6E6` and `0xFBF1E2`, golds `0xFFD98A` and `0xFFCF7A`, ember `0xFF6A4A`, ice blues `0x9CC7F0` and `0xDDE8F8`.
@@ -1726,7 +1726,7 @@ mountains, box city, neon grid) is Neon Dusk's.
   | Every 12 locks, "Full Circle" | A brightness wave runs once around the ring. |
   | Level up, "Lower Sun" | The light warms. |
 - **Tech.** All `MeshBasicNodeMaterial`. `setLayout`'d TSL helper Fns (a shader-size test gate), value noise only (no `mx_*`). Diamond dust as one instanced Sprite. One clock in `ParhelionOpticsState`.
-- **Avoid reusing.** Ice halos, sundogs or parhelia, optical arcs, snowfields, monoliths or standing stones, diamond dust, cobalt-and-gold daylight.
+- **Avoid reusing.** Ice halos, sundogs or parhelia, optical arcs, snowfields, monoliths or standing stones (and stone rows), diamond dust, cobalt-and-gold daylight.
 
 ### Cross-cutting: what is already taken (across this set; survey 4)
 
