@@ -47,6 +47,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { snHash21, snLuma, snMax3 } from './supernova-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no rays and no streak). `rays` and
@@ -353,7 +354,7 @@ export class SupernovaPost {
         heart, flash, kick, bloomBoost, exposure, rays, streak, ripple, fall, time,
     } = {}) {
         if (heart) this.uHeart.value.set(heart.x, heart.y);
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;

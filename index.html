@@ -81,6 +81,97 @@
             }
         })();
     </script>
+    <!-- The photosensitivity warning's style (ADR-0021), inline so the warning paints with the
+         first frame and owes nothing to the stylesheets below. Plain white on black and still:
+         its only motion is the fade it leaves by, and none under reduced motion. The markup is
+         the first element of <body>; src/ui/photosensitivity-warning.js runs its clock. -->
+    <style id="photosensitivity-warning-style">
+        #photosensitivity-warning {
+            position: fixed;
+            inset: 0;
+            z-index: 2147483600;
+            display: grid;
+            place-items: center;
+            box-sizing: border-box;
+            padding: 24px 16px;
+            overflow: auto;
+            background: #000;
+            color: #fff;
+            font-family: 'Manrope', 'Segoe UI', system-ui, -apple-system, sans-serif;
+            font-size: 17px;
+            line-height: 1.6;
+            text-align: center;
+            -webkit-font-smoothing: antialiased;
+            opacity: 1;
+        }
+        #photosensitivity-warning:focus { outline: none; }
+        #photosensitivity-warning .photosensitivity-warning__panel {
+            width: min(640px, 100%);
+            margin: auto;
+        }
+        #photosensitivity-warning .photosensitivity-warning__title {
+            margin: 0 0 24px;
+            font-size: 22px;
+            font-weight: 700;
+            line-height: 1.3;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+        }
+        #photosensitivity-warning p { margin: 0 0 16px; }
+        #photosensitivity-warning .photosensitivity-warning__setting {
+            margin-top: 24px;
+            color: #d9d9d9;
+        }
+        #photosensitivity-warning .photosensitivity-warning__setting strong {
+            color: #fff;
+            font-weight: 700;
+        }
+        /* The way on appears once the warning has been on screen long enough to be read. */
+        #photosensitivity-warning .photosensitivity-warning__actions {
+            margin-top: 32px;
+            visibility: hidden;
+            opacity: 0;
+        }
+        #photosensitivity-warning.is-ready .photosensitivity-warning__actions {
+            visibility: visible;
+            opacity: 1;
+        }
+        #photosensitivity-warning .photosensitivity-warning__continue {
+            appearance: none;
+            margin: 0 0 14px;
+            padding: 12px 36px;
+            border: 2px solid #fff;
+            border-radius: 10px;
+            background: transparent;
+            color: #fff;
+            font: inherit;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            cursor: pointer;
+        }
+        #photosensitivity-warning .photosensitivity-warning__continue:focus-visible {
+            outline: 3px solid #fff;
+            outline-offset: 4px;
+        }
+        #photosensitivity-warning .photosensitivity-warning__hint {
+            margin: 0;
+            color: #bfbfbf;
+            font-size: 15px;
+        }
+        #photosensitivity-warning.is-leaving {
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 320ms ease-out;
+        }
+        @media (max-width: 480px) {
+            #photosensitivity-warning { font-size: 15px; }
+            #photosensitivity-warning .photosensitivity-warning__title { font-size: 18px; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            #photosensitivity-warning.is-leaving { transition: none; }
+        }
+    </style>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="preload" as="image" href="./assets/branding/serenity-blocks-logo.svg">
     <!-- Fonts are self-hosted (public/fonts/) so startup never blocks on a font CDN;
@@ -119,9 +210,41 @@
     <link rel="stylesheet" href="/styles/keystone-online.css">
     <link rel="stylesheet" href="/styles/keystone-solo.css">
     <link rel="stylesheet" href="/styles/stillfall.css">
+    <!-- Photosensitivity (ADR-0021): what holds still under the launch warning, and what
+         Settings > Visual > Reduce flashing effects stills in the DOM. -->
+    <link rel="stylesheet" href="/styles/photosensitivity.css">
 </head>
 
-<body>
+<body class="photosensitivity-warning-active">
+    <!-- The photosensitivity warning: the first screen of every launch, before the loading screen
+         and the opening (ADR-0021). Plain white on black and still; nothing animates on it or
+         behind it (the body class above pauses the loading screen's loops from their first frame,
+         public/styles/photosensitivity.css). The game keeps loading underneath.
+         src/ui/photosensitivity-warning.js runs its clock and owns its input: it leaves on a key,
+         a pad button, a click or a tap after 2.5 s, or by itself after 10 s.
+         ?photosensitivityWarning=0 (or skipIntro=1) skips it for harnesses. The wording is the
+         industry's; keep it, and keep this element first. -->
+    <section id="photosensitivity-warning" class="photosensitivity-warning" role="dialog" aria-modal="true" aria-labelledby="photosensitivity-warning-title" aria-describedby="photosensitivity-warning-body" tabindex="-1" data-state="shown">
+        <div class="photosensitivity-warning__panel">
+            <h1 class="photosensitivity-warning__title" id="photosensitivity-warning-title">Photosensitivity warning</h1>
+            <div class="photosensitivity-warning__body" id="photosensitivity-warning-body">
+                <p>A very small percentage of people may experience epileptic seizures or blackouts when exposed to certain light patterns or flashing lights. This game contains flashing lights and visual effects that may trigger discomfort or seizures for people with photosensitive epilepsy.</p>
+                <p>Immediately stop playing and consult a doctor if you experience dizziness, altered vision, eye or muscle twitches, loss of awareness, disorientation, or any involuntary movement.</p>
+            </div>
+            <p class="photosensitivity-warning__setting">You can turn flashing effects down at any time in <strong>Settings &rsaquo; Visual &rsaquo; Reduce flashing effects</strong>.</p>
+            <div class="photosensitivity-warning__actions">
+                <button type="button" class="photosensitivity-warning__continue" id="photosensitivity-warning-continue">Continue</button>
+                <p class="photosensitivity-warning__hint" id="photosensitivity-warning-hint">Press any key or button, or tap, to continue</p>
+            </div>
+        </div>
+    </section>
+    <script type="module">
+        // The warning's clock and input (its markup is above). Dependency-free, so it runs the
+        // moment the page has parsed, long before the game bundle (ADR-0021).
+        import { installPhotosensitivityWarning } from './src/ui/photosensitivity-warning.js';
+
+        installPhotosensitivityWarning();
+    </script>
     <svg width="0" height="0" style="position:absolute">
         <defs>
             <!-- LAVA LAMP: Balanced gooey filter - merges smoothly but allows separation -->
@@ -1489,6 +1612,16 @@
                                 </div>
                                 <label class="cs-toggle">
                                     <input type="checkbox" class="cs-toggle-input sb-toggle" id="reduced-motion" role="switch" aria-describedby="reduced-motion-help">
+                                    <span class="cs-toggle-state" aria-hidden="true"></span>
+                                </label>
+                            </div>
+                            <div class="setting setting--toggle">
+                                <div class="setting-text">
+                                    <label for="reduce-flashing">Reduce flashing effects</label>
+                                    <p class="setting-help" id="reduce-flashing-help">For photosensitivity. Lightning fires once, strobes hold steady, and frame-wide flashes on the board and in the worlds become a soft glow. The worlds keep moving.</p>
+                                </div>
+                                <label class="cs-toggle">
+                                    <input type="checkbox" class="cs-toggle-input sb-toggle" id="reduce-flashing" role="switch" aria-describedby="reduce-flashing-help">
                                     <span class="cs-toggle-state" aria-hidden="true"></span>
                                 </label>
                             </div>

@@ -63,6 +63,7 @@ import { FlashGovernor } from './rainbow-terraces-flash.js';
 import { boardFor } from './rainbow-terraces-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
+import { prefersReducedFlashing } from '../../core/photosensitivity.js';
 
 export { REST_RIG, fovForAspect };
 
@@ -637,7 +638,8 @@ export class RainbowTerracesWorld {
 
     setReducedMotion(on) {
         this.reduced = Boolean(on);
-        this.flashes.setReducedMotion(this.reduced);
+        // The governor's reduced mode (a flash becomes a glow) also serves Reduce flashing.
+        this.flashes.setReducedMotion(this.reduced || prefersReducedFlashing());
     }
 
     /** Solve the frame and write everything that follows from it. */

@@ -56,6 +56,7 @@ import { gaussianBlur } from 'three/addons/tsl/display/GaussianBlurNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { ndHash21, ndLuma, ndMax3 } from './neon-district-tsl.js';
 import { ndGlass } from './neon-district-glass.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no streaks or rays). `streak` and
@@ -345,7 +346,7 @@ export class NeonDistrictPost {
     } = {}) {
         if (rainTime !== undefined) this.uRainTime.value = rainTime;
         if (heart) this.uHeart.value.set(heart.x, heart.y);
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;

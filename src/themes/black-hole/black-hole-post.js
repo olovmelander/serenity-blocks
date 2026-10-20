@@ -14,6 +14,7 @@ import {
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /** Refraction rings in flight at once. */
 export const RIPPLE_SLOTS = 4;
@@ -124,7 +125,7 @@ export class BlackHolePost {
     update(frame = {}) {
         if (this.disposed) return;
         const energy = bounded(frame.energy);
-        const flash = bounded(frame.flash);
+        const flash = bounded(frame.flash) * flashScale();
         this.uExposure.value = EXPOSURE + flash * 0.07;
         this.uWarmth.value = energy;
         if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + energy * 0.07 + flash * 0.05;

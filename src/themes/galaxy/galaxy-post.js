@@ -47,6 +47,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { gxHash21, gxLuma, gxMax3 } from './galaxy-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no rays). `rays` is a tap count
@@ -299,7 +300,7 @@ export class GalaxyPost {
         heart, flash, kick, bloomBoost, exposure, rays, ripple, time,
     } = {}) {
         if (heart) this.uHeart.value.set(heart.x, heart.y);
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;
