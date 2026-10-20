@@ -7,6 +7,8 @@
  *  - Smoke: slow banks of it under the roof, lit from below by the lake and cold where the
  *    night's shaft passes through. They hide a little of what stands behind them, which is
  *    what gives the chamber its depth.
+ *  - The plume: where the great fall strikes the lake it boils, and steam and smoke roll up out
+ *    of the splash, lit hot from below and going to smoke as they climb.
  *  - The shaft: the night coming in through the hole in the roof, drawn as light in the smoke.
  */
 
@@ -37,7 +39,7 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    SKYLIGHT, TAU, cdFxMaterial, cdGlowGain, cdPart, cdQuadGeometry, mulberry32,
+    DRIFT_DIR, SKYLIGHT, TAU, cdFxMaterial, cdGlowGain, cdPart, cdQuadGeometry, mulberry32,
 } from './cinder-drift-tsl.js';
 
 const viewProjection = (world) => cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
@@ -161,7 +163,8 @@ export function createSmoke(u, count) {
         // Lit from below by the lake, more on its underside; cold where the night's shaft crosses it.
         const p = vWorld;
         const belly = float(1.0).sub(st.y).mul(0.7).add(0.3);
-        const warm = u.haze.mul(1.5).add(u.mid.mul(0.02)).mul(exp(p.y.div(-30.0))).mul(belly)
+        // (Its crown, far from the lava, is only smoke: dark, and it hides what is behind it.)
+        const warm = u.haze.mul(1.5).add(u.mid.mul(0.02)).mul(exp(p.y.div(-18.0))).mul(belly.mul(belly))
             .mul(cdGlowGain(u));
         const axis = normalize(u.skyFoot.sub(u.skyTop));
         const fromTop = p.sub(u.skyTop);
@@ -172,6 +175,76 @@ export function createSmoke(u, count) {
         return vec4(col.mul(density), density.mul(0.82));
     })();
     const part = cdPart('CinderSmoke', geometry, material, 20);
+    part.count = count;
+    return part;
+}
+
+// ── The plume ───────────────────────────────────────────────────────────────────
+
+/**
+ * Puffs that roll up out of the great fall's splash, each on its own loop: fast off the lake,
+ * slowing, swelling and leaning the way the crust drifts. Closed form in the clock.
+ * @param {object} u
+ * @param {number} count
+ * @param {object} plan
+ */
+export function createPlume(u, count, plan) {
+    const rand = mulberry32(0x91e3);
+    const aP = new Float32Array(count * 4);
+    const aQ = new Float32Array(count * 4);
+    const { foot, width } = plan.fall;
+    for (let i = 0; i < count; i++) {
+        // (phase, across the splash, along it, a random number)
+        aP.set([(i + rand() * 0.6) / count, (rand() - 0.5) * width * 1.6, (rand() - 0.5) * 3.5, rand()], i * 4);
+        // (seconds per loop, how high it climbs, how big it grows, its spin)
+        aQ.set([6.5 + rand() * 4.0, 7 + rand() * 9, 0.7 + rand() * 0.45, rand() * TAU], i * 4);
+    }
+    const geometry = cdQuadGeometry(count, { aPlumeP: [aP, 4], aPlumeQ: [aQ, 4] });
+    const P = attribute('aPlumeP', 'vec4');
+    const Q = attribute('aPlumeQ', 'vec4');
+
+    const material = cdFxMaterial('CinderPlume');
+    const a = fract(u.time.div(Q.x).add(P.x));
+    const out = float(1.0).sub(a);
+    const height = Q.y.mul(float(1.0).sub(out.mul(out))).add(0.6);
+    const lean = vec2(DRIFT_DIR[0], DRIFT_DIR[1]).mul(a.mul(a).mul(9.0));
+    const centre = vec3(float(foot[0] + 2.5).add(P.y).add(lean.x), height, float(foot[2] + 3.0).add(P.z).add(lean.y));
+    const radius = Q.z.mul(a.mul(6.5).add(1.8));
+    const toCam = normalize(cameraPosition.sub(centre));
+    const right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
+    const up = cross(toCam, right);
+    // (Turned on its own spin, so no two puffs show the same face.)
+    const cs = vec2(sin(Q.w.add(a.mul(0.8)).add(1.5708)), sin(Q.w.add(a.mul(0.8))));
+    const qx = positionGeometry.x.mul(cs.x).sub(positionGeometry.y.mul(cs.y));
+    const qy = positionGeometry.x.mul(cs.y).add(positionGeometry.y.mul(cs.x));
+    const world = centre.add(right.mul(qx.mul(radius.mul(2.0)))).add(up.mul(qy.mul(radius.mul(2.0))));
+    material.vertexNode = viewProjection(world);
+    const vWorld = varying(world, 'cdPlumeP');
+    const vAge = varying(vec2(a, P.w), 'cdPlumeA');
+    material.colorNode = Fn(() => {
+        const st = uv();
+        const q = st.sub(0.5).mul(2.0);
+        const r = length(q);
+        const age = vAge.x;
+        const seed = vAge.y;
+        const churn = u.noise(st.mul(0.6).add(vec2(seed.mul(5.0), age.mul(0.35).add(seed.mul(9.0))))).r;
+        const wisp = u.noise(st.mul(1.6).add(vec2(seed.mul(13.0).add(churn.mul(0.3)), age.mul(-0.5)))).g;
+        const shape = float(1.0).sub(smoothstep(0.3, 1.0, r.add(churn.sub(0.5).mul(0.55))));
+        const life = smoothstep(0.0, 0.1, age).mul(float(1.0).sub(smoothstep(0.45, 1.0, age)));
+        const density = smoothstep(0.2, 0.7, shape.mul(wisp.mul(0.5).add(0.75))).mul(life).toVar();
+        // Lit hot from below by the splash and the fall; smoke and soot as it climbs.
+        const y = max(vWorld.y, 0.0);
+        const belly = float(1.0).sub(st.y).mul(0.6).add(0.4);
+        const fire = u.mid.mul(1.5).add(u.hot.mul(0.7)).mul(exp(y.div(-5.5))).mul(belly)
+            .mul(u.fallGain)
+            .mul(cdGlowGain(u));
+        const ember = u.mid.mul(0.06).add(u.deep.mul(0.08)).mul(exp(y.div(-16.0))).mul(cdGlowGain(u));
+        const soot = u.rock.mul(0.15);
+        const col = fire.add(ember).add(soot);
+        // (Thin: it veils the foot of the fall, it does not put it out.)
+        return vec4(col.mul(density), density.mul(0.28));
+    })();
+    const part = cdPart('CinderPlume', geometry, material, 21);
     part.count = count;
     return part;
 }
@@ -199,8 +272,12 @@ export function createShaft(u) {
         const dust = u.noise(vec2(st.x.mul(2.3).add(u.time.mul(0.01)), st.y.mul(0.9).sub(u.time.mul(0.02)))).b;
         const ends = smoothstep(0.0, 0.14, st.y).mul(float(1.0).sub(smoothstep(0.82, 1.0, st.y)));
         const k = body.mul(body).mul(ends).mul(streak.mul(0.9).add(0.35)).mul(dust.mul(0.6).add(0.7));
+        // Motes of ash turning slowly in the cold light.
+        const mote = u.noise(vec2(st.x.mul(4.2).add(u.time.mul(0.011)), st.y.mul(2.4).sub(u.time.mul(0.026)))).a;
+        const motes = smoothstep(0.84, 0.96, mote).mul(body).mul(ends);
+        const light = u.cool.mul(k.mul(0.62).add(motes.mul(1.6))).mul(u.breath.mul(0.5).add(0.5));
         // (It hides a little of the fire-lit smoke behind it, so it reads cold, not mauve.)
-        return vec4(u.cool.mul(k).mul(0.3).mul(u.breath.mul(0.5).add(0.5)), k.mul(0.34));
+        return vec4(light, k.mul(0.26));
     })();
     return cdPart('CinderShaft', geometry, material, 22);
 }

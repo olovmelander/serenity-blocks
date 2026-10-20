@@ -77,7 +77,7 @@ export const POST_LOOK = Object.freeze({
 
 export const BLOOM_THRESHOLD = 1.0;
 export const BLOOM_KNEE = 0.5;
-export const BLOOM_RADIUS = 0.62;
+export const BLOOM_RADIUS = 0.5;
 export const EXPOSURE = 1.0;
 
 /** Calm rects (board cards + HUD) the output pass evaluates. */
