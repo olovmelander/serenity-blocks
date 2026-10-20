@@ -1,7 +1,8 @@
 /**
  * Sunbraid — one shared world (the theme and the playground mount the same one).
  *
- * The pale land, its stones, the sky and the three suns; and everything gameplay does to them.
+ * The white valley, its towers and gliders, the sky and the three suns; and everything gameplay
+ * does to them.
  *
  * Lifecycle: `await SunbraidWorld.prepare(quality, { signal })` lays the land out;
  * `new SunbraidWorld({ ..., prepared }).build()` makes the scene objects; each frame

@@ -202,7 +202,7 @@ export const CHAPTER_CONFIGS = [
         },
 
         narrative: {
-            intro: 'The mountain drops away beneath you. Clouds, rain, aurora, and sun halos become the new terrain.',
+            intro: 'The mountain drops away beneath you. Clouds, aurora, sun halos, and coloured suns become the new terrain.',
             outro: 'The last breath of atmosphere fades. What remains ahead is pure distance and the cold logic of space...',
         },
         boardTransition: { ...DEFAULT_BOARD_TRANSITION },

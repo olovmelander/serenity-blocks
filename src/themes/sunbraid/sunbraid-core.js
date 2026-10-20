@@ -1,12 +1,12 @@
 /**
  * Sunbraid — core constants and CPU maths (three-free).
  *
- * A pale world under three coloured suns. The suns wheel low round the sky, a third of a turn
- * apart, so every slope takes the colour of the sun it faces and every shadow is a colour: where
- * the coral sun is hidden the light is jade and cobalt (cyan), where the jade one is hidden it is
- * coral and cobalt (magenta), where the cobalt one is hidden it is coral and jade (gold). Whichever
- * sun stands in front of the eye sets the era: its glow on the horizon, its long shadows running
- * toward the lens, the complementary sky overhead.
+ * A pale world under three coloured suns. The suns are a close triple star low in the sky in front
+ * of the eye, left of the board, wheeling round one another (the braid), so every shadow is a
+ * colour: where the coral sun is hidden the light is jade and cobalt (cyan), where the jade one is
+ * hidden it is coral and cobalt (magenta), where the cobalt one is hidden it is coral and jade
+ * (gold), and every tower throws a fan of those bands toward the lens. The sun riding lowest in the
+ * cluster names the era (eraAt).
  *
  * The braid is the suns' common turn. Its phase is integrated, never the clock times a rate, so a
  * chain can wind it faster and a level can step it on without the light ever jumping back.
