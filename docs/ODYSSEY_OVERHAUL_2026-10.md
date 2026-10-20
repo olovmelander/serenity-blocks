@@ -99,6 +99,50 @@ hole outgrows the frame (11° → 22°) and the photon ring dims at the frame's 
 - **The horizon**: the window starts showing the interior earlier (`portalFrom` 0.55 → 0.46), so
   the crossing is no longer a dead black frame.
 
-## 4. Open / next
+- **The 5→6 boundary**: the void dome now owns the background within the first 3 % of chapter 6
+  (it was ~20 % opaque when the world's night sky stopped covering the background, so the clear
+  colour — a blend of ch5's light-cyan fog and ch6's black — flashed a navy sky for ~0.012 p;
+  main showed the same flash).
 
-(filled in as the lanes land)
+## 4. The lanes (each has its own record)
+
+- **Chapter 8 — the neon city** (`ODYSSEY_OVERHAUL_CH8_2026-10.md`): one city plan places the
+  towers and bakes a glow map of what the signs throw; walls, street, rain, mist and sky read it
+  (Neon District's light-the-air idea, rewritten in the rotated corridor's space). Tube blades,
+  wall signs, shopfront strips, roof boxes and a few giant screens spell on as the spire's
+  ignition reaches them; a wet boulevard with lane paint, kerb LEDs, traffic, sign reflections
+  and an analytic reflection of the Retrosun; rain lit by what is behind it, following the eye;
+  a smog sky lit from below with sheet lightning; lantern strings, skybridges, a needle mast. The
+  torus gates, tube trails, holo cards and corridor sheets are retired. Draw calls per station
+  73–91 → 42–49; frame time unchanged within noise.
+- **Act I — Earth Core and the deep** (`ODYSSEY_OVERHAUL_ACT1_2026-10.md`): one continuous rock
+  shaft round the climb (ledges that catch the lake's light, heat cracks, a glowing vent) instead
+  of the slab colonnade; four lava falls pouring toward the rising camera; lava bubbles on the
+  lake (High); ember gusts on beats and glides. The deep ocean darkens with depth; marine snow is
+  lit inside the shafts and mostly sinks; shafts breathe on their own timing; the caustic net
+  became soft light; a whale shark and a manta (Ocean theme's models, copied) pass above the
+  camera in the deep half. Ch1 climb GPU p50 1.6 → 1.25 ms, drawables 51 → 42.
+- **Act II — the One World** (`ODYSSEY_OVERHAUL_ACT2_2026-10.md`): every ch3/ch4 orb holds its own
+  angle on the island (the glide between orbs is the pan) instead of eight near-identical views of
+  the cone; a rainbow on a shower veil at the true antisolar point; gulls, swallows and a goose
+  skein in one draw; the Himalayan Peak eagle thermalling over the face; pollen, thistle down and
+  diamond dust; a summit snow plume into the banner cloud; soft cloud shadows over all dry land
+  (they replaced the hard-edged blobs that read as a smudge on the massif); a thinner rail near
+  the eye; a whiter high sun. 130.5 fps through ch3–5 at Extreme.
+
+## 5. Open / next
+
+- **5→6 rising steps.** After the boundary fix the gate still counts gentle rises (+3–4 luma per
+  0.01 p) as the hole materialises and the nebula and comet arrive; main fails the same rule
+  (two rises). A build-up, not a pop; left as it is.
+- **Chapter 1's steam** (local 0.8–1.0) is still mostly vapour; the 1→2 gate now has ~15 luma of
+  headroom for a brighter, golder steam with structure.
+- **Chapters 3–5** are richer but still cartoon-painted: tree crowns, sticker clouds, a smooth
+  summit cone in close shots; not built from the research list: the waterfall, the glory, the
+  storm cell, light shafts in air. L27/L28 still look ~45° up the face (a camera-rig change).
+- **Chapter 6's near nebula mass** still reads as a cotton ball.
+- **Chapter 8**: the nearest towers' lit windows show faintly over the tunnel just before the
+  mouth opens; rain-on-glass (Neon District's lens drops) proposed for the post — an owner call
+  (it would sit over the orbs and the rail).
+- **The warp**: an FOV kick on glides (the camera's FOV path is shared with the fall, pulses and
+  portals — not touched); the Low tier pays the same tunnel as High.

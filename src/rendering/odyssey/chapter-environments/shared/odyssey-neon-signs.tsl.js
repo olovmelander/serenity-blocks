@@ -72,6 +72,36 @@ import { NEON_SPIRE_XZ, neonAir, neonIgnition } from './odyssey-neon-light.tsl.j
 /** Characters a sign can spell (two vec4s of glyph ids). */
 export const NEON_SIGN_MAX_GLYPHS = 8;
 
+let glyphMips = null;
+
+/**
+ * The atlas's mip chain, box-filtered on the CPU once per session. GPU mip generation for an R8
+ * texture needs its own mipmap pipeline, and the first one in a session is created SYNCHRONOUSLY
+ * when the texture first uploads — the one sync pipeline the overhaul's feel probe found after the
+ * Odyssey reveal (`mipmap-r8unorm-2d-array`). Handing three the levels costs no pipeline at all.
+ */
+function neonGlyphMips(data, size) {
+    if (glyphMips?.data === data) return glyphMips.levels;
+    const levels = [{ data, width: size, height: size }];
+    let src = data;
+    let w = size;
+    while (w > 1) {
+        const half = w >> 1;
+        const next = new Uint8Array(half * half);
+        for (let y = 0; y < half; y += 1) {
+            for (let x = 0; x < half; x += 1) {
+                const i = (y * 2) * w + (x * 2);
+                next[y * half + x] = (src[i] + src[i + 1] + src[i + w] + src[i + w + 1] + 2) >> 2;
+            }
+        }
+        levels.push({ data: next, width: half, height: half });
+        src = next;
+        w = half;
+    }
+    glyphMips = { data, levels };
+    return levels;
+}
+
 /** The alphabet as a texture (mipmapped; sampled at a level chosen from the text's footprint). */
 export function createNeonGlyphTexture() {
     const { data, size } = bakeNeonGlyphAtlas();
@@ -80,7 +110,9 @@ export function createNeonGlyphTexture() {
     tex.wrapT = THREE.ClampToEdgeWrapping;
     tex.magFilter = THREE.LinearFilter;
     tex.minFilter = THREE.LinearMipmapLinearFilter;
-    tex.generateMipmaps = true;
+    tex.mipmaps = neonGlyphMips(data, size);
+    tex.generateMipmaps = false;
+    tex.unpackAlignment = 1;
     tex.colorSpace = THREE.NoColorSpace;
     tex.name = 'odyssey-neon-glyphs';
     tex.needsUpdate = true;
