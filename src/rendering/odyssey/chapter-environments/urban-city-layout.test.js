@@ -31,7 +31,12 @@ describe('Urban city window stability', () => {
         const renderer = {
             contextNode: context(),
             lighting: { enabled: false },
-            backend: { device: null, capabilities: { getUniformBufferLimit: () => 65536 } },
+            backend: {
+                device: null,
+                capabilities: { getUniformBufferLimit: () => 65536 },
+                // The 2026-10-20 neon facade samples the glow map and the noise lattice.
+                utils: { getTextureSampleData: () => ({ samples: 1, primarySamples: 1, isMSAA: false }) },
+            },
             getRenderTarget: () => null,
             getMRT: () => null,
             shadowMap: { enabled: false, type: 0 },

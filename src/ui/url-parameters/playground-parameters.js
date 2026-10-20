@@ -1,6 +1,33 @@
 /** URL controls read by the playground and its explicitly shared game adapters. */
 export const PLAYGROUND_URL_PARAMETERS = [
     {
+        name: 'air',
+        category: 'Playground',
+        scope: 'playground.html — ch8-neon',
+        description: 'Override the chapter-8 neon air uniforms (haze, street mist, glow) without a rebuild.',
+        values: 'Comma-separated key:value pairs: hazeDistance, mistDensity, mistGlow, glowGain (numbers), '
+            + 'mistLow, smogHigh (r/g/b).',
+        defaultValue: 'The shipped NEON_AIR values.',
+        example: 'air=mistDensity:0.006,mistGlow:0.3',
+        notes: 'Use on playground.html with effect=ch8-neon.',
+        sources: [
+            'src/playground/effects/ch8-neon.effect.js',
+        ],
+    },
+    {
+        name: 'field',
+        category: 'Playground',
+        scope: 'playground.html — ch8-neon',
+        description: 'Leave the chapter-8 corridor field (its sheets and motes) out of the neon bench.',
+        values: '0 disables; any other value keeps it.',
+        defaultValue: 'On.',
+        example: 'field=0',
+        notes: 'Use on playground.html with effect=ch8-neon.',
+        sources: [
+            'src/playground/effects/ch8-neon.effect.js',
+        ],
+    },
+    {
         name: 'fox',
         category: 'Playground',
         scope: 'playground.html — winter',
@@ -561,14 +588,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'cityT',
         category: 'Playground',
-        scope: 'playground.html — ch8-city-facades',
-        description: 'Set Urban Dreams facade-preview progression.',
+        scope: 'playground.html — ch8-city-facades, ch8-neon',
+        description: 'Set Urban Dreams (chapter 8) local progression: 0 is the 7->8 boundary, 1 the journey end.',
         values: 'Number clamped to 0–1.',
-        defaultValue: '0.5.',
+        defaultValue: '0.5 (ch8-city-facades); 0.45 (ch8-neon).',
         example: 'cityT=0.5',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/ch8-city-facades.effect.js',
+            'src/playground/effects/ch8-neon.effect.js',
         ],
     },
     {
@@ -1757,13 +1785,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'hide',
         category: 'Playground',
-        scope: 'playground.html — summer, verdant-hills',
-        description: 'Hide every Summer or Verdant Hills scene object whose name contains one of the given words.',
+        scope: 'playground.html — summer, verdant-hills, ch8-neon',
+        description: 'Hide every Summer, Verdant Hills or chapter-8 object whose name contains a given word.',
         values: 'Comma-separated words, case-sensitive.',
         defaultValue: 'Nothing hidden.',
         example: 'hide=Grass,Flower',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
+            'src/playground/effects/ch8-neon.effect.js',
             'src/playground/effects/summer.effect.js',
             'src/playground/effects/verdant-hills.effect.js',
         ],
@@ -3121,7 +3150,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         name: 'p',
         category: 'Playground',
         scope: 'playground.html — act2-cloud-deck, ch3-ch4-seam, ch4-mountain-peaks, ch5-sky-drift, '
-            + 'ch6-cosmic-expanse, ch7-fall, odyssey-path-beacons, seam-12-dive',
+            + 'ch6-cosmic-expanse, ch7-fall, ch8-neon, odyssey-path-beacons, seam-12-dive',
         description: 'Pin normalized Odyssey camera progress in a chapter/world preview.',
         values: 'Number clamped to 0–1; Act II Cloud Deck caps at 0.999.',
         defaultValue: 'Chapter-specific position; Act II Cloud Deck 0.42.',
@@ -3134,6 +3163,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
             'src/playground/effects/ch5-sky-drift.effect.js',
             'src/playground/effects/ch6-cosmic-expanse.effect.js',
             'src/playground/effects/ch7-fall.effect.js',
+            'src/playground/effects/ch8-neon.effect.js',
             'src/playground/effects/odyssey-path-beacons.effect.js',
             'src/playground/effects/seam-12-dive.effect.js',
         ],
@@ -3824,14 +3854,15 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'post',
         category: 'Playground',
-        scope: 'playground.html — act2-cloud-deck',
-        description: 'Enable the real Odyssey grade in Cloud Deck.',
+        scope: 'playground.html — act2-cloud-deck, ch8-neon',
+        description: 'Enable the real Odyssey post pipeline (bloom, ACES, grade) in Cloud Deck or ch8-neon.',
         values: '0 disables; other values enable.',
         defaultValue: 'On.',
         example: 'post=0',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/act2-cloud-deck.effect.js',
+            'src/playground/effects/ch8-neon.effect.js',
         ],
     },
     {
@@ -4807,7 +4838,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'tier',
         category: 'Playground',
-        scope: 'playground.html — ch7-fall, ch8-city-facades',
+        scope: 'playground.html — ch7-fall, ch8-city-facades, ch8-neon',
         description: 'Set chapter-preview rendering quality.',
         values: 'Minimal, Low, Medium, High, Ultra or Extreme where supported.',
         defaultValue: 'High.',
@@ -4816,6 +4847,7 @@ export const PLAYGROUND_URL_PARAMETERS = [
         sources: [
             'src/playground/effects/ch7-fall.effect.js',
             'src/playground/effects/ch8-city-facades.effect.js',
+            'src/playground/effects/ch8-neon.effect.js',
         ],
     },
     {

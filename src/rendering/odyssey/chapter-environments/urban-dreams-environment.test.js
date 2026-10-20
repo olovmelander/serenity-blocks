@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     CH8_RETROSUN_STAGE,
     createUrbanDreamsEnvironment,
+    resolveUrbanStorm,
     updateUrbanDreamsEnvironment,
 } from './urban-dreams.js';
 import {
@@ -14,6 +15,8 @@ import { getActiveOdysseyChapterPositions } from '../path-utils.js';
 import { OdysseyDirector } from '../composition/OdysseyDirector.js';
 import { urbanIgnition } from '../composition/odyssey-stage-frame.js';
 import { resolveSunCarry } from './urban-dreams-sun-carry.js';
+import { dealCityTowers } from './shared/odyssey-neon-city-plan.js';
+import { seatNeonSkybridges } from './shared/odyssey-neon-skybridges.tsl.js';
 
 describe('Urban Dreams chapter environment (creative plan ch8)', () => {
     it('mounts the skyline cards, horizon haze, and the Gate Bridge', () => {
@@ -32,8 +35,28 @@ describe('Urban Dreams chapter environment (creative plan ch8)', () => {
         expect(group.userData.horizonHaze.position.toArray()).toEqual(CH8_RETROSUN_STAGE.horizonHaze);
         expect(group.userData.horizonHaze.geometry.parameters.height).toBe(340);
         expect(group.userData.gateBridge?.name).toBe('gate-bridge');
-        // Deck + two pylons + holo billboard.
-        expect(group.userData.gateBridge.children.length).toBe(4);
+        // 2026-10-20: the deck-on-pylons + magenta billboard became glazed skybridges (one
+        // instanced draw), each seated between two inner towers with its ends in their walls.
+        const bridges = group.userData.gateBridge.getObjectByName('neon-skybridges');
+        expect(bridges?.isInstancedMesh).toBe(true);
+        expect(bridges.count).toBeGreaterThanOrEqual(2);
+    });
+
+    it('seats every skybridge between two inner towers, below the rail', () => {
+        const towers = dealCityTowers(6);
+        const seats = seatNeonSkybridges(towers);
+        expect(seats.length).toBe(3);
+        seats.forEach((seat) => {
+            // Below the rail (corridor y -12..0) with room for the deck, never in a gap.
+            expect(seat.y + 3).toBeLessThan(-14);
+            const ends = [-1, 1].map((side) => towers.find((t) => t.bank === 0 && t.side === side
+                && Math.abs(t.z - seat.z) <= t.depth / 2 - 4));
+            ends.forEach((tower) => expect(tower).toBeTruthy());
+            const left = seat.x - seat.span / 2;
+            const right = seat.x + seat.span / 2;
+            expect(Math.abs(left)).toBeCloseTo(Math.abs(ends[0].x) - ends[0].width / 2 + 1, 5);
+            expect(right).toBeCloseTo(Math.abs(ends[1].x) - ends[1].width / 2 + 1, 5);
+        });
     });
 
     it('keeps the Retrosun alive mid-chapter and heats it at the finale', () => {
@@ -152,5 +175,22 @@ describe('Urban Dreams chapter environment (creative plan ch8)', () => {
         sunOpacity.value = 1;
         updateUrbanDreamsEnvironment(group, 0.016, 1.0, null, 0.99);
         expect(sunOpacity.value).toBe(1);
+    });
+
+    it('flashes sheet lightning in the smog now and then, in closed form', () => {
+        let lit = 0;
+        let peak = 0;
+        for (let t = 0; t < 260; t += 0.05) {
+            const v = resolveUrbanStorm(t);
+            expect(v).toBeGreaterThanOrEqual(0);
+            expect(v).toBeLessThanOrEqual(1);
+            if (v > 0.05) lit += 1;
+            peak = Math.max(peak, v);
+            expect(resolveUrbanStorm(t)).toBe(v);
+        }
+        // About one short flash every 26 s: lit well under 5 % of the time, but it does flash.
+        expect(peak).toBeGreaterThan(0.5);
+        expect(lit / (260 / 0.05)).toBeLessThan(0.05);
+        expect(resolveUrbanStorm(Number.NaN)).toBe(0);
     });
 });
