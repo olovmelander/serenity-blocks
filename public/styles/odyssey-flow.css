@@ -548,7 +548,7 @@
 }
 .ody-flow__found-line { display: inline-flex; align-items: center; gap: 6px; color: #c8b2ed; font-weight: 600; }
 .ody-flow__found-line .charm-sprite { width: 30px; height: 30px; vertical-align: middle; }
-.ody-flow__found-line .charm-sprite--glyph { color: #c8b2ed; }
+.ody-flow__found-line .charm-sprite__glyph { color: #c8b2ed; font-size: 18px; }
 .ody-flow__found-hint { color: #c8c0d7; }
 .ody-flow[data-layout='ceremony'] .ody-flow__found { animation: ody-flow-rise 520ms 900ms var(--ody-ease-out) backwards; }
 .ody-flow[data-layout='chapter'] .ody-flow__destination { border-left: 1px solid var(--ody-flow-color); padding-left: 16px; margin-top: 24px; }

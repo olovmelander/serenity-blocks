@@ -18,6 +18,7 @@ import { FOCUSABLE_SELECTOR } from '../spatial-navigation.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
 import { createOdysseyStarNotes } from './odyssey-star-notes.js';
 import { describeOdysseyCharms } from '../../core/odyssey/odyssey-charm-bag.js';
+import { createOdysseyCharmIconNode } from './odyssey-charm-icon-stage.js';
 
 /**
  * Build the level-complete results sheet.
@@ -105,12 +106,21 @@ export function createResultsModal({
     }
     // A fact, not a warning: the charms this clear used. Its stars count in full.
     const charms = describeOdysseyCharms(results.charms);
-    if (charms.length) stats.push({ label: 'Charms used', value: charms.map((charm) => charm.name).join(' · ') });
+    if (charms.length) {
+        stats.push({
+            label: 'Charms used',
+            value: charms.map((charm) => charm.name).join(' · '),
+            // Each charm's live icon ahead of its name.
+            icons: charms.map((charm) => createOdysseyCharmIconNode(charm.id)).filter(Boolean),
+        });
+    }
     const statsContainer = el('dl', 'sb-ody-facts');
     stats.forEach((stat) => {
         const fact = el('div', 'sb-ody-fact');
         fact.appendChild(el('dt', '', stat.label));
-        fact.appendChild(el('dd', '', String(stat.value)));
+        const value = el('dd', stat.icons?.length ? 'sb-ody-fact__charms' : '', String(stat.value));
+        if (stat.icons?.length && typeof value.prepend === 'function') value.prepend(...stat.icons);
+        fact.appendChild(value);
         statsContainer.appendChild(fact);
     });
     content.appendChild(statsContainer);
