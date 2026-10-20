@@ -20,6 +20,7 @@
  *   demo=1                   live only: play a looping gameplay script
  *   parts=nebula,stars,...   draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
+ *   view=dust|gas|shade|rim|shafts|fronts   draw one channel of the picture, unlit (with noPost=1)
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
@@ -146,7 +147,12 @@ export function create({
     const quality = params.get('quality') || 'High';
     const saved = { toneMapping: renderer.toneMapping };
     const world = new AetherTidesWorld({
-        scene, quality, capture: true, renderer, live: params.get('noFluid') === '1' ? false : undefined,
+        scene,
+        quality,
+        capture: true,
+        renderer,
+        live: params.get('noFluid') === '1' ? false : undefined,
+        view: params.get('view'),
     }).build();
     world.setReducedMotion(params.get('reduce') === '1');
     const partsParam = params.get('parts');
@@ -165,7 +171,7 @@ export function create({
 
     const held = [];
     params.forEach((value, key) => {
-        const match = /^([PUF]).(w+)$/.exec(key);
+        const match = /^([PUF])\.(\w+)$/.exec(key);
         const v = Number.parseFloat(value);
         if (!match || !Number.isFinite(v)) return;
         const group = { P: world.picture, U: world.tide, F: world.fieldUniforms }[match[1]];
