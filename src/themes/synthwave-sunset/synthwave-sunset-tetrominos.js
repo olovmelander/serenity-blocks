@@ -1,72 +1,46 @@
 /**
- * Synthwave Sunset Theme - Tetromino Visual Configuration
+ * Synthwave Sunset piece palette.
  *
- * Vibrant retro 80s neon color palette inspired by synthwave aesthetics,
- * vintage VHS tapes, and electric sunset horizons.
- *
- * Color Palette:
- * - Hot pink and magenta neon
- * - Electric orange-red sunset
- * - Violet purple glow
- * - Coral and neon accents
- * - Retro grid aesthetic
+ * The seaside's own lights: the warm gold of the pier's bulbs, the tangerine of the setting sun,
+ * the flamingo pink and mint of the wheel's neon and cabins, a deep coral, the sky blue of the
+ * deco hotels' windows and the lilac of the dusk. Three of seven shapes sit in their conventional
+ * hue bands (S, Z, J; the gate fails at 7/7, warns at 6/7). Identity comes from hue and value
+ * separation, checked under protanopia, deuteranopia and tritanopia simulation: the closest pair
+ * is gold against tangerine under deuteranopia, ΔE 14.8 with 13 points of lightness between them.
+ * The cells read as glossy enamel tiles, with no glow, pulse, shimmer or trails, so active, ghost,
+ * hold, next and multiplayer previews stay crisp.
  */
 
 export const SYNTHWAVE_SUNSET_TETROMINOS = {
-    version: 1,
+    version: 2,
 
-    // Retro synthwave neon palette
     colors: {
-        I: '#ff0066', // Hot Pink (signature synthwave)
-        O: '#ff4500', // Orange-Red (sunset)
-        T: '#b000ff', // Violet Purple (neon purple)
-        S: '#ff006e', // Deep Pink (magenta)
-        Z: '#ff5e78', // Coral (warm sunset)
-        J: '#00d4ff', // Electric Blue (retro neon)
-        L: '#ffff00', // Neon Yellow (bright accent)
-        GARBAGE: '#0a0515', // Dark purple-black (synthwave background)
+        I: '#FFD36E', // Bulb Gold: the pier's railing strings
+        O: '#FF9440', // Tangerine: the sun on the sea
+        T: '#F24FAE', // Flamingo: the wheel's neon ring
+        S: '#6CF5C9', // Mint: the coaster's lights and the cabins
+        Z: '#D92B4A', // Deep Coral: the dome stripes at dusk
+        J: '#4FB4FF', // Sky Blue: the hotels' cool windows
+        L: '#8A55F5', // Dusk Lilac: the sky over the bay
+        GARBAGE: '#2A2238', // Wet sand at nightfall
+        CLEAN_GARBAGE: '#E8D6CA', // Pastel stucco
     },
 
-    // Intense neon glow render mode (synthwave aesthetic)
-    renderMode: 'glow',
+    renderMode: 'solid',
 
     effects: {
-        // Vibrant neon glow
-        glowRadius: 16,
-        glowIntensity: 0.95,
-        glowColor: 'auto', // Use piece color for glow
-
-        // Bold outline for retro definition
-        outline: true,
-        outlineWidth: 2.5,
-        outlineColor: 'lighten',
-
-        // Fast, energetic pulsing like neon signs
-        pulse: true,
-        pulseSpeed: 0.06, // Faster pulse for retro energy
-        pulseAmplitude: 0.35, // Strong pulsing
-
-        // VHS shimmer effect
-        shimmer: true,
-        shimmerSpeed: 0.1,
-        shimmerIntensity: 0.25,
-
-        // Optional: Retro scanline effect (if supported)
-        scanlines: true,
-        scanlineIntensity: 0.1,
-    },
-
-    // Renderer-specific tweaks
-    rendererOverrides: {
-        canvas: {
-            glowRadius: 14, // Strong glow in Canvas
-            glowIntensity: 0.9, // Intense neon glow
-            outlineWidth: 2.5, // Bold retro outline
-        },
+        premium: true,
         phaser: {
-            glowRadius: 18, // Maximum neon glow with WebGL
-            glowIntensity: 1.0, // Full intensity in WebGL
-            outlineWidth: 3, // Thick bold outline
+            gradient: true,
+            highlight: 0.16,
+            shadow: 0.2,
+            rim: true,
+            rimAlpha: 0.4,
+            rimWidthFactor: 0.05,
+            gloss: true,
+            glossAlpha: 0.14,
         },
     },
+
+    rendererOverrides: {},
 };

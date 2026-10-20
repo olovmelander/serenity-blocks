@@ -169,7 +169,7 @@ Neon Dusk remains here as explicitly requested.
 |---|---|---|
 | 56 | Chromadelic Highway (`chromadelic-highway`) | A prism-glass neon highway carries the player from abstraction into the retrofuture encore. |
 | 57 | Neon Dusk (`neon-dusk`) | Neon mountain ridges, a glass grid, a setting sun, and VHS texture establish the outrun mood. |
-| 58 | Synthwave Sunset (`synthwave-sunset`) | A neon grid, palms, wireframe mountains, and city skyline bring the urban destination closer. |
+| 58 | Synthwave Sunset (`synthwave-sunset`) | A retro seaside at dusk: the sun sets behind a lit ferris wheel at the end of a pleasure pier, past the city, at the sea (rebuilt 2026-10-20 to set it apart from Neon Dusk). |
 | 59 | Neon District (`neon-district`) | A rain-soaked street canyon, neon shopfronts, and reflected towers provide the city finale. |
 
 ## What changed from the composed previous campaign
