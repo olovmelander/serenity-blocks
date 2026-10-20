@@ -83,14 +83,19 @@ export const ODYSSEY_FLIGHTS = Object.freeze([
         kind: FLIGHT_KIND.GOOSE,
         count: 9,
         // A straight crossing in front of the massif's face, west -> east, climbing gently.
-        from: Object.freeze([-760, 455, -470]),
-        to: Object.freeze([640, 505, -620]),
+        // 200 u farther north and 80 u higher than it first flew (2026-10-20): the old line
+        // crossed the wall's rail (6 u at p 0.371), so the skein had to dissolve mid-sky before
+        // the climb. Here it keeps 169 u off the rail and 45 u over the ground, stays in frame
+        // from L15 up the wall to L27, and leaves the frame on the glide after L28 — where it
+        // fades (odyssey-act2-fade-out-of-view.test.js).
+        from: Object.freeze([-760, 535, -670]),
+        to: Object.freeze([640, 585, -820]),
         period: 52, // seconds per crossing (the crossing itself is the first `travel` of it)
         travel: 0.78,
         phase: 0.36, // where in its period the skein is at clock 0 (mid-frame at the capture clock)
         spacing: 9,
         span: 6.0,
-        window: Object.freeze([0.150, 0.160, 0.325, 0.340]),
+        window: Object.freeze([0.150, 0.160, 0.412, 0.426]),
     }),
 ]);
 
