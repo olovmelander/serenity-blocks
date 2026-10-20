@@ -231,13 +231,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'aim',
         category: 'Playground',
-        scope: 'playground.html — crystal-cave, synthwave-sunset',
-        description: 'Set a custom Crystal Cave or Synthwave Sunset camera target.',
+        scope: 'playground.html — cinder-drift, crystal-cave, synthwave-sunset',
+        description: 'Set a custom Cinder Drift, Crystal Cave or Synthwave Sunset camera target.',
         values: 'Three comma-separated finite numbers; also supply eye.',
-        defaultValue: 'Authored camera (Synthwave Sunset: the game camera rig).',
+        defaultValue: 'Authored camera (Cinder Drift and Synthwave Sunset: the game camera rig).',
         example: 'aim=0,2,-10',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
+            'src/playground/effects/cinder-drift.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
         ],
@@ -1345,13 +1346,14 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'eye',
         category: 'Playground',
-        scope: 'playground.html — crystal-cave, synthwave-sunset',
-        description: 'Set a custom Crystal Cave or Synthwave Sunset camera position.',
+        scope: 'playground.html — cinder-drift, crystal-cave, synthwave-sunset',
+        description: 'Set a custom Cinder Drift, Crystal Cave or Synthwave Sunset camera position.',
         values: 'Three comma-separated finite numbers; also supply aim.',
-        defaultValue: 'Authored camera (Synthwave Sunset: the game camera rig).',
+        defaultValue: 'Authored camera (Cinder Drift and Synthwave Sunset: the game camera rig).',
         example: 'eye=0,3,26',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
+            'src/playground/effects/cinder-drift.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
         ],
@@ -1647,16 +1649,17 @@ export const PLAYGROUND_URL_PARAMETERS = [
     {
         name: 'fov',
         category: 'Playground',
-        scope: 'playground.html — ch3-surface-world, crystal-cave, summer, synthwave-sunset, verdant-hills',
+        scope: 'playground.html — ch3-surface-world, cinder-drift, crystal-cave, summer, synthwave-sunset, verdant-hills',
         description: 'Set a custom camera vertical field of view.',
-        values: 'Degrees; Crystal Cave and Synthwave Sunset require eye and aim; Summer and Verdant Hills need a '
+        values: 'Degrees; Cinder Drift, Crystal Cave and Synthwave Sunset require eye and aim; Summer and Verdant Hills need a '
             + 'value above 1.',
-        defaultValue: 'Surface World 55; Crystal Cave and Synthwave Sunset custom camera 40; Summer and Verdant '
+        defaultValue: 'Surface World 55; Cinder Drift, Crystal Cave and Synthwave Sunset custom camera 40; Summer and Verdant '
             + 'Hills: authored framing.',
         example: 'fov=40',
         notes: 'Use on playground.html with effect=<the matching effect ID>.',
         sources: [
             'src/playground/effects/ch3-surface-world.effect.js',
+            'src/playground/effects/cinder-drift.effect.js',
             'src/playground/effects/crystal-cave.effect.js',
             'src/playground/effects/summer.effect.js',
             'src/playground/effects/synthwave-sunset.effect.js',
