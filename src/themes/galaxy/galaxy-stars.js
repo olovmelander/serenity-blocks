@@ -96,7 +96,13 @@ export function createStars(u, plan, count) {
         const twinkle = sin(u.time.mul(look.w.mul(2.6).add(0.7)).add(orbit.w.mul(40.0))).mul(0.2).add(0.8);
         // Dust below magnitude 0.6, the few that carry the picture above it.
         const bright = smoothstep(0.6, 1.0, mag);
+        // The bulge's and the halo's light is unresolved (the spheroid in the disc draws it): only
+        // their few bright suns stand out of it. The old disc keeps a little more; the arms all.
+        const isOld = step(1.5, pop);
+        const resolved = mix(float(1.0), mix(float(0.6), float(0.25), isOld), step(0.5, pop))
+            .add(bright.mul(0.75)).min(1.0);
         const light = tint.mul(mag.mul(1.2).add(0.16).add(bright.mul(bright).mul(3.0))).mul(crossing).mul(twinkle)
+            .mul(resolved)
             .toVar();
 
         // The board's light.
