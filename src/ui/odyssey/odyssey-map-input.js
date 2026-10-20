@@ -1,8 +1,11 @@
 /**
  * Keyboard and controller travel on the Odyssey map. Arrows and the D-pad step along the path
  * (orb by orb, or chapter by chapter), Enter and A play the selected orb, Home returns to the
- * first orb and End to the one that waits to be played. Nothing here owns the map while a
- * sheet, the navigator, a journey flow or the first arrival does.
+ * first orb and End to the one that waits to be played. A click on the header's charm chip, or Y,
+ * opens the charm guide the mode hands in (odyssey-charm-guide.js; it is not imported here, since
+ * the gamepad controller imports this module at boot and the guide's icons bring three with
+ * them). Nothing here owns the map while a sheet, the navigator, a journey flow or the first
+ * arrival does.
  */
 import { getOpenSheet } from '../sheet-input.js';
 import { isOdysseyWorldInterlude } from './odyssey-world-return.js';
@@ -17,6 +20,10 @@ const KEY_MOVES = Object.freeze({
     Home: 'first',
     End: 'current',
 });
+/** The header chip that opens the charm guide (BoardInfoOverlay.js). */
+const CHARM_CHIP_SELECTOR = '#odyssey-header-charms';
+/** Y: free on the map (A plays, Start opens Settings). */
+const PAD_CHARMS_BUTTON = 3;
 const PAD_REPEAT_DELAY_MS = 420;
 const PAD_REPEAT_INTERVAL_MS = 180;
 const PAD_MOVES = Object.freeze([
@@ -102,15 +109,21 @@ export function playOdysseyMapSelection(mode) {
     return true;
 }
 
-/** The first controller's D-pad and left stick step the map; A plays. Held directions repeat. */
+/**
+ * The first controller's D-pad and left stick step the map; A plays; Y opens the charm guide.
+ * Held directions repeat; A and Y act on a fresh press only.
+ */
 export function createOdysseyMapPadControls(controller, {
-    isActive, onMove, onPlay, now = () => (globalThis.performance?.now?.() ?? Date.now()),
+    isActive, onMove, onPlay, onCharms = null,
+    now = () => (globalThis.performance?.now?.() ?? Date.now()),
 }) {
     const held = new Map();
     let playArmed = false;
+    let charmsArmed = false;
     const reset = () => {
         held.clear();
         playArmed = false;
+        charmsArmed = false;
     };
     const pressed = (gamepad, entry) => Boolean(gamepad.buttons[entry.button]?.pressed)
         || (entry.sign < 0 ? controller.isAxisNegative(gamepad, entry.axis) : controller.isAxisPositive(gamepad, entry.axis));
@@ -144,14 +157,25 @@ export function createOdysseyMapPadControls(controller, {
                 playArmed = false;
                 onPlay();
             }
+            const charms = Boolean(gamepad.buttons[PAD_CHARMS_BUTTON]?.pressed);
+            if (!charms) charmsArmed = true;
+            else if (charmsArmed) {
+                charmsArmed = false;
+                onCharms?.();
+            }
             // Start still opens Settings through the ordinary poll.
             return false;
         },
     };
 }
 
-/** Own the map's keys and pad for as long as the mode is active; dispose on deactivation. */
-export function installOdysseyMapInput(mode) {
+/**
+ * Own the map's keys and pad for as long as the mode is active; dispose on deactivation.
+ * @param {object} mode
+ * @param {{ charmGuide?: { open(): boolean, close(): boolean } }} [options] the charm guide the
+ *   header chip and Y open; closed when the map input is disposed
+ */
+export function installOdysseyMapInput(mode, { charmGuide = null } = {}) {
     let disposed = false;
     const doc = typeof document !== 'undefined' ? document : null;
     const onKeyDown = (event) => {
@@ -168,16 +192,25 @@ export function installOdysseyMapInput(mode) {
         if (event.repeat || event.target?.closest?.('button, a, label, input, summary')) return;
         if (playOdysseyMapSelection(mode)) event.preventDefault();
     };
+    // The chip is rebuilt with the header, so its clicks are heard on the document.
+    const onClick = (event) => {
+        if (disposed || !charmGuide || !event.target?.closest?.(CHARM_CHIP_SELECTOR)) return;
+        if (charmGuide.open()) event.preventDefault();
+    };
     const pad = mode.deps?.gamepadController?.setOdysseyMapControls?.({
         isActive: () => !disposed && canNavigateOdysseyMap(mode),
         onMove: (move) => moveOdysseyMapSelection(mode, move),
         onPlay: () => playOdysseyMapSelection(mode),
+        onCharms: () => charmGuide?.open(),
     });
     doc?.addEventListener?.('keydown', onKeyDown, true);
+    doc?.addEventListener?.('click', onClick);
     return () => {
         if (disposed) return;
         disposed = true;
         doc?.removeEventListener?.('keydown', onKeyDown, true);
+        doc?.removeEventListener?.('click', onClick);
         pad?.dispose?.();
+        charmGuide?.close();
     };
 }
