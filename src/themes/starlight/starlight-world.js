@@ -70,7 +70,7 @@ import { TRAIN_LIFE, createFx } from './starlight-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './starlight-composition.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 export const REST_RIG = Object.freeze({
     near: 1,

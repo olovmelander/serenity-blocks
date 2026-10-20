@@ -55,7 +55,7 @@ import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import {
     SURFACE, ocBeam, ocBell, ocHash21, ocLightPoint, ocLightRead, ocLuma, ocMax3, ocPow4, ocShade,
 } from './ocean-tsl.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode. `shafts` is the march's step count (0 = no
