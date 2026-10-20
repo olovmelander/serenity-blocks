@@ -45,6 +45,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { nfHash21, nfLuma, nfMax3 } from './nebula-flow-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no shafts). `rays` is a tap count
@@ -291,7 +292,7 @@ export class NebulaFlowPost {
         sun, flash, flashTint, kick, bloomBoost, exposure, rays, time,
     } = {}) {
         if (sun) this.uSun.value.set(sun.x, sun.y);
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (flashTint) this.uFlashTint.value.set(flashTint[0], flashTint[1], flashTint[2]);
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;

@@ -81,6 +81,7 @@ import {
 } from './voltage-storm-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { CLOUD_SEED } from './voltage-storm-bake.js';
+import { prefersReducedFlashing } from '../../core/photosensitivity.js';
 
 /** The rest camera: a moderately wide lens a few metres over the water. */
 export const REST_RIG = Object.freeze({
@@ -702,8 +703,10 @@ export class VoltageStormWorld {
         const startX = eyeX + Math.sin(bearing) * reach;
         const startZ = eyeZ - Math.cos(bearing) * reach;
         const lead = this.reducedMotion ? 0.03 : leader;
-        // Reduced motion: one stroke, no flicker.
-        const flashes = this.reducedMotion ? 1 : strokes;
+        // Reduced motion or Reduce flashing: one stroke, no flicker (the bolts' own beat too).
+        const stillFlash = this.reducedMotion || prefersReducedFlashing();
+        if (this.bolts) this.bolts.calm = stillFlash;
+        const flashes = stillFlash ? 1 : strokes;
         const { bolt } = this._palette;
         this.bolts.fire({
             kind: 'strike',

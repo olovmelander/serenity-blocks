@@ -33,6 +33,7 @@ import {
     createMomentFxOwner, playKnockoutFx, playRoundWinFx, playVictoryFx, restoreKnockoutFx,
 } from './fx/fx-moments.js';
 import { wellGarbageColor } from './well-board-style.js';
+import { prefersReducedFlashing } from '../../core/photosensitivity.js';
 
 // Constants
 const RIPPLE_PARTICLE_LIFESPAN = 650;
@@ -571,6 +572,19 @@ export class SharedEffects {
     }
 
     /**
+     * Settings > Reduce flashing effects (photosensitivity, ADR-0021): a screen flash becomes a
+     * slow, soft glow. Its own switch, apart from reduced motion.
+     * @returns {boolean}
+     */
+    _reducedFlashing() {
+        try {
+            return prefersReducedFlashing(this.scene?.gameState?.settings ?? undefined);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    /**
      * Read a player-facing effect toggle.
      *
      * The gates live here rather than in each mode's physics callbacks for two
@@ -730,19 +744,26 @@ export class SharedEffects {
      * @param {number} [depth=50]
      */
     _screenFlash(color = 0xffffff, peakAlpha = 0.5, holdMs = 40, fadeMs = 240, depth = 50, originY = null) {
+        // Reduce flashing (photosensitivity): the same light as a slow, soft glow, never a flash.
+        // A tenth of the board's brightness at most, no hold, and a fall of at least 700 ms: a
+        // single onset under the 10 % luminance step WCAG 2.3.1 counts as a flash.
+        const stilled = this._reducedFlashing();
+        const alpha = stilled ? Math.min(peakAlpha * 0.25, 0.1) : peakAlpha;
+        const hold = stilled ? 0 : holdMs;
+        const fade = stilled ? Math.max(fadeMs, 700) : fadeMs;
         const width = this.scene.cols * this.scene.blockSize;
         const height = this.scene.rows * this.scene.blockSize;
         if (this._lit()) {
             // A soft bloom from where it happened, not a flat sheet over the board.
             const bloom = addLight(this.scene, FX.GLOW, width / 2, Number.isFinite(originY) ? originY : height / 2, {
-                tint: color, width: width * 2, height: height * 1.25, alpha: peakAlpha * 0.7, depth,
+                tint: color, width: width * 2, height: height * 1.25, alpha: alpha * 0.7, depth,
             });
             if (bloom) {
                 this.scene.tweens.add({
                     targets: bloom,
                     alpha: 0,
-                    delay: holdMs,
-                    duration: fadeMs,
+                    delay: hold,
+                    duration: fade,
                     ease: 'Expo.easeOut',
                     onComplete: destroyOnComplete(bloom),
                 });
@@ -752,7 +773,7 @@ export class SharedEffects {
         if (!this.scene?.add?.rectangle) return;
         const PhaserRef = window.Phaser;
 
-        const flash = this.scene.add.rectangle(width / 2, height / 2, width, height, color, peakAlpha);
+        const flash = this.scene.add.rectangle(width / 2, height / 2, width, height, color, alpha);
         flash.setScrollFactor(0);
         flash.setDepth(depth);
         if (flash.setBlendMode && PhaserRef?.BlendModes?.ADD) {
@@ -763,8 +784,8 @@ export class SharedEffects {
         this.scene.tweens.add({
             targets: flash,
             alpha: 0,
-            delay: holdMs,
-            duration: fadeMs,
+            delay: hold,
+            duration: fade,
             ease: 'Expo.easeOut', // impact decay: sharp drop, long tail
             onComplete: () => flash.destroy(),
         });

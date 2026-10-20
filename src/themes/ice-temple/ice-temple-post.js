@@ -49,6 +49,7 @@ import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import {
     itHash21, itLuma, itMax3, itVoronoi,
 } from './ice-temple-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no streak or rays). `streak` and
@@ -335,7 +336,7 @@ export class IceTemplePost {
         heart, flash, kick, bloomBoost, exposure, rays, streak, time, frost, frostTint,
     } = {}) {
         if (heart) this.uHeart.value.set(heart.x, heart.y);
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;

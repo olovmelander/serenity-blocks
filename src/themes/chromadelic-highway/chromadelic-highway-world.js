@@ -39,6 +39,7 @@ import {
     MOVEMENTS, RING_PHASE_WRAP, SPECTRUM_HOME, STEP_TRAVEL, hueOf, neonColor, ringStyle, skyTurnAt, spectrumSummary,
 } from './chromadelic-highway-spectrum.js';
 import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
+import { prefersReducedFlashing } from '../../core/photosensitivity.js';
 
 const tier = (o) => o;
 
@@ -1334,9 +1335,10 @@ export class ChromadelicWorld {
         );
         hero.setRadius(A.heroR);
         hero.uniforms.uTime.value = t;
-        // The storm's lightning flickers hard (2-10 Hz); under reduced motion it is a steady glow.
+        // The storm's lightning flickers hard (2-10 Hz); under reduced motion or Reduce flashing it is a
+        // steady glow.
         const strobe = Math.sin(t * 37.0) * Math.sin(t * 23.0) > 0.35 ? 1 : 0.15;
-        const calm = this.motion ?? 1;
+        const calm = prefersReducedFlashing() ? 0 : (this.motion ?? 1);
         hero.uniforms.uFlash.value = this.fx.storm * (strobe * calm + 0.35 * (1 - calm));
         // The binary is a distant star: its light arrives as a direction (L2), the same for
         // every body.

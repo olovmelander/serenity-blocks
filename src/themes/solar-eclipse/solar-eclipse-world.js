@@ -76,6 +76,7 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './solar-eclipse-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 export const REST_RIG = Object.freeze({
     near: 1,
@@ -900,7 +901,7 @@ export class SolarEclipseWorld {
         // A chain stills the water to glass.
         u.glass.value = clamp01(this.exposure * 1.2);
         u.surge.value = this.surge;
-        u.flash.value = this.flash;
+        u.flash.value = this.flash * flashScale();
 
         this.applyPalette();
         this.writeTables();

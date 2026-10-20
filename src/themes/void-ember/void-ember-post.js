@@ -49,6 +49,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { veHash21, veLuma, veMax3 } from './void-ember-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no rays and no streak). `rays` and
@@ -339,7 +340,7 @@ export class VoidEmberPost {
     } = {}) {
         if (heart) this.uHeart.value.set(heart.x, heart.y);
         if (heartRadius !== undefined) this.uHeartRadius.value = heartRadius;
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) {

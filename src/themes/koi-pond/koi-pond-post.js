@@ -23,6 +23,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /** Per-tier look. `bloom: false` builds no BloomNode; `fxaa` smooths the single-sample pass. */
 export const POST_LOOK = Object.freeze({
@@ -230,7 +231,7 @@ export class KoiPondPost {
     } = {}) {
         if (gradeMul) this.uGradeMul.value.fromArray(gradeMul);
         if (gradeLift) this.uGradeLift.value.fromArray(gradeLift);
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;
         if (warm !== undefined) this.uWarm.value = warm;
