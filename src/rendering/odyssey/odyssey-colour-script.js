@@ -255,7 +255,10 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         medium: 'air',
         skyZenith: 0x1f5fbe,
         skyHorizon: 0xb6cfe8,
-        sun: 0xffeecb,
+        // Whiter than the shore's afternoon (2026-10-20): under a 0xffeecb sun the massif's grey
+        // stone and its snow both went beige from the climb (the 'sand cone'). The light at
+        // altitude is clearer, not warmer — the rejected direction was the other one.
+        sun: 0xfff3e0,
         groundLit: 0x5d8552,
         groundShadow: 0x33506b,
         exposure: 0.98,
@@ -268,7 +271,7 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
         medium: 'air',
         skyZenith: 0x1650b4,
         skyHorizon: 0xb2cde8,
-        sun: 0xfff4e2,
+        sun: 0xfff8f0,
         groundLit: 0x9fb6c6,
         groundShadow: 0x3c5c80,
         exposure: 0.94,

@@ -141,18 +141,15 @@ const CHAPTER_FRAMING_OVERRIDES = Object.freeze({
         lookRight: -4.0,
         lookUp: 1.0,
     }),
-    // 3 — Surface (living): the Great Tree HERO landmark sits off the LEFT of the path
-    // (~x=40 from the path, biased -X in the env). Small lookAt bias toward it at the
-    // hero beat so the eye returns to the landmark (mirrors BH singularity / Urban
-    // spire). Kept gentle — the act stays open and forward; the tree is the anchor, not
-    // a hard re-aim. The live hero-beat strengthening rides resolveChapter3Framing().
+    // 3 — Surface (living): the baseline look down the coast toward the massif. (Until the
+    // 2026-10-20 overhaul this leaned LEFT toward the diorama chapter's Great Tree; that tree
+    // only exists on the ?odysseyOneWorld=0 path, so in the shipped world the bias aimed at
+    // nothing. The per-orb shots in CHAPTER_3_SHOTS now carry the composition.)
     3: Object.freeze({
         lookForward: 2.0,
-        lookRight: -1.6,
         lookUp: 1.2,
     }),
-    // 4 — Mountains (living): favour the three-peak "V" with the path leading up
-    // to the node. Slightly lower eye + look up the path toward the summit.
+    // 4 — Mountains (living): look up the path toward the summit, eye slightly low.
     4: Object.freeze({
         lookForward: 3.0,
         lookUp: 3.4,
@@ -340,39 +337,114 @@ function resolveChapter2Framing(t) {
     return out;
 }
 
-// ── Chapter 3 Surface — hero-tree beat strengthening ──────────────────────────────
-// Chapter 3's static override (CHAPTER_FRAMING_OVERRIDES[3]) is a gentle baseline bias
-// toward the Great Tree landmark (off the left of the path). At the HERO BEAT (mid-
-// chapter, ~0.35..0.65) strengthen that lookAt bias so the eye clearly returns to the
-// tree, then relax it so the act-out craning toward the rising ridgeline (3->4) reads.
-// Returns a full framing record so the lerp is total (never leaks another chapter's bias).
-const CHAPTER_3_BASE = CHAPTER_FRAMING_OVERRIDES[3];
-function resolveChapter3Framing(t) {
-    // Hero-beat envelope: rises into the mid-chapter tree pass, eases back out.
-    const beat = THREE.MathUtils.smoothstep(t, 0.18, 0.42)
-        * (1 - THREE.MathUtils.smoothstep(t, 0.62, 0.86));
-    const out = { ...DEFAULT_CHAPTER_FRAMING, ...CHAPTER_3_BASE };
-    // Deepen the toward-the-tree yaw/pitch at the beat (additive on the baseline bias).
-    out.lookRight = (CHAPTER_3_BASE.lookRight ?? 0) - 2.2 * beat;
-    out.lookUp = (CHAPTER_3_BASE.lookUp ?? 0) + 0.8 * beat;
+/**
+ * Add a shot list's ANGULAR moves to a framing record, each weighted by its in/out window
+ * (chapter-local progress ramps). Shared by chapters 3, 4 and 5.
+ * @param {object} out framing record (mutated)
+ * @param {number} t chapter-local progress 0..1
+ * @param {ReadonlyArray<{in:number[], out:number[], pitchDeg?:number, yawDeg?:number, fovOffset?:number}>} shots
+ * @returns {object} `out`
+ */
+function addChapterShots(out, t, shots) {
+    for (let i = 0; i < shots.length; i += 1) {
+        const shot = shots[i];
+        const weight = THREE.MathUtils.smoothstep(t, shot.in[0], shot.in[1])
+            * (1 - THREE.MathUtils.smoothstep(t, shot.out[0], shot.out[1]));
+        if (weight <= 0) continue;
+        out.pitchDeg += (shot.pitchDeg ?? 0) * weight;
+        out.yawDeg += (shot.yawDeg ?? 0) * weight;
+        out.fovOffset += (shot.fovOffset ?? 0) * weight;
+    }
     return out;
 }
 
-// ── Chapter 4 Mountains — SADDLE-APPROACH intimacy ─────────────────────────────────
-// Creative plan ch4 item 2 ("not close enough to peaks... HUD camera distance ~30
-// throughout, so the notch barely grows"): through local progress 0.6→0.9 the camera
-// closes on the V-notch — eye pushed forward and threaded toward the LEFT wall so the
-// saddle crossing grazes the foreground cornice — while the aim lifts so the summit
-// visibly GROWS in frame. Returns a full framing record so the lerp is total.
+/**
+ * A KEYFRAMED SHOT PATH: angular moves held at each parked orb (chapter-local t) and eased
+ * between neighbours with a smootherstep over the WHOLE glide, so the pan between two orbs is one
+ * continuous move with zero slope at both orbs (the parked frame is exactly the authored one).
+ * Before the first key / after the last the edge key holds.
+ * @param {object} out framing record (mutated: yawDeg / pitchDeg / fovOffset are ADDED)
+ * @param {number} t chapter-local progress 0..1
+ * @param {ReadonlyArray<{t:number, yawDeg:number, pitchDeg:number, fovOffset:number}>} keys sorted by t
+ * @returns {object} out
+ */
+function addKeyframedShots(out, t, keys) {
+    let a = keys[0];
+    let b = keys[0];
+    let w = 0;
+    if (t >= keys[keys.length - 1].t) {
+        a = keys[keys.length - 1];
+        b = a;
+    } else if (t > keys[0].t) {
+        for (let i = 0; i < keys.length - 1; i += 1) {
+            if (t >= keys[i].t && t < keys[i + 1].t) {
+                a = keys[i];
+                b = keys[i + 1];
+                const x = (t - a.t) / (b.t - a.t);
+                w = x * x * x * (x * (x * 6 - 15) + 10);
+                break;
+            }
+        }
+    }
+    out.yawDeg += THREE.MathUtils.lerp(a.yawDeg, b.yawDeg, w);
+    out.pitchDeg += THREE.MathUtils.lerp(a.pitchDeg, b.pitchDeg, w);
+    out.fovOffset += THREE.MathUtils.lerp(a.fovOffset, b.fovOffset, w);
+    return out;
+}
+
+const shotKey = (t, yawDeg, pitchDeg = 0, fovOffset = 0) => Object.freeze({
+    t, yawDeg, pitchDeg, fovOffset,
+});
+
+// ── Chapter 3 Surface — one picture per parked orb ────────────────────────────────
+// The player sees this chapter mostly PARKED at an orb (a glide between two is ~0.9 s), and the
+// orbs are only ~33 u apart on a ~1 km view of the massif: with one framing all eight parked views
+// were the same picture. Each orb now holds its own angle (scouted by a capture panorama of every
+// orb, 2026-10-20) and the glide between two orbs is the pan. Yaw stays inside +-38 deg so the
+// orb underfoot and the way ahead stay on screen; keys inside the 2->3 / 3->4 seam windows (L12,
+// L18) stay small so the seam camera keeps its continuity budget (odyssey-seam-camera-continuity).
+// Orbs (chapter-local t): L11 0 (the 2->3 seam), L12 0.120, L13 0.248, L14 0.369, L15 0.501,
+// L16 0.622, L17 0.749, L18 0.870.
+export const CHAPTER_3_SHOTS = Object.freeze([
+    shotKey(0.000, 0),
+    shotKey(0.120, 14, -1), // L12: the massif left of centre, the east meadows opening right
+    shotKey(0.248, -30, -2, 2), // L13: the coast curving away left, the sea and the far isle
+    shotKey(0.369, -38, -3, 5), // L14: the long beach and the open sea, on a wider lens
+    shotKey(0.501, 10, 0, 0), // L15: back to the massif, the shower gathering on its right
+    shotKey(0.622, 34, 3, 2), // L16: the bow standing over the east meadows
+    shotKey(0.749, -5, 0, -3), // L17: the forest and the shore left, the massif on a longer lens
+    shotKey(0.870, 2, 0, 0), // L18: the massif ahead, into chapter 4 (3->4 seam window)
+    shotKey(1.000, 0),
+]);
+const CHAPTER_3_BASE = CHAPTER_FRAMING_OVERRIDES[3];
+function resolveChapter3Framing(t) {
+    const out = { ...DEFAULT_CHAPTER_FRAMING, ...CHAPTER_3_BASE };
+    return addKeyframedShots(out, THREE.MathUtils.clamp(t, 0, 1), CHAPTER_3_SHOTS);
+}
+
+// ── Chapter 4 Mountains — one picture per parked orb, and the wall ─────────────────
+// Same language as chapter 3. (The old "saddle approach" pushed the eye toward a V-notch and
+// cornice that only the diorama chapter built; in the shipped world it pushed the eye under the
+// steepening rail, so the last orbs looked ~50 deg up into empty sky past a fat rail.)
+// Orbs: L19 0 (the 3->4 seam), L20 0.126, L21 0.251, L22 0.371, L23 0.500, L24 0.620,
+// L25 0.742, L26 0.871 — L24 onward sit inside the 4->5 seam window (half-width 0.0443 p).
+export const CHAPTER_4_SHOTS = Object.freeze([
+    shotKey(0.000, 0),
+    shotKey(0.126, 8), // L20: the flower meadows and the sea opening right (3->4 seam window)
+    shotKey(0.251, 17, 0, 0), // L21: the meadow below the massif's sunlit flank, the bow beyond
+    shotKey(0.371, -20, 0, 2), // L22: the west peak over the forest
+    shotKey(0.500, -36, -2, 8), // L23: wide, the coast and the isles beyond the west woods
+    shotKey(0.620, -12, 0, 3), // L24: the massif ahead-right (the 4->5 window opens)
+    shotKey(0.742, 0, -4, 3), // L25: the face begins to rise
+    // L26, THE WALL: the rail stands up the massif's face; without this the view followed it
+    // ~45-60 deg up into empty sky. Held through the boundary, where chapter 5's entry shot
+    // (CHAPTER_5_SHOTS.face) matches it across the seam.
+    shotKey(0.871, 0, -16, 6),
+]);
 const CHAPTER_4_BASE = CHAPTER_FRAMING_OVERRIDES[4];
 function resolveChapter4Framing(t) {
-    const approach = THREE.MathUtils.smoothstep(t, 0.6, 0.9);
     const out = { ...DEFAULT_CHAPTER_FRAMING, ...CHAPTER_4_BASE };
-    out.camForward = (CHAPTER_4_BASE.camForward ?? 0) + 4.6 * approach; // close on the notch
-    out.camRight = (CHAPTER_4_BASE.camRight ?? 0) - 1.8 * approach; // thread near the left wall
-    out.camUp = (CHAPTER_4_BASE.camUp ?? 0) + 0.6 * approach; // graze over the cornice
-    out.lookUp = (CHAPTER_4_BASE.lookUp ?? 0) + 1.2 * approach; // the summit grows in frame
-    return out;
+    return addKeyframedShots(out, THREE.MathUtils.clamp(t, 0, 1), CHAPTER_4_SHOTS);
 }
 
 // ── Chapter 5 Sky Drift — summit-liftoff composition ─────────────────────────────
@@ -439,6 +511,12 @@ const CHAPTER_5_EXIT_FRAMING = Object.freeze({
  *   - `summit`   at L32-L33: pan back past the rail onto the summit, on a longer lens; it looms.
  */
 export const CHAPTER_5_SHOTS = Object.freeze({
+    // THE FACE AT LIFT-OFF (2026-10-20): L27 sits on the 4->5 boundary where the rail stands
+    // near-vertical; the entry framing aimed ~60 deg up past the summit into empty sky. Held from
+    // the boundary (chapter 4's wall shot matches it across the seam) and released by L28.
+    face: Object.freeze({
+        in: Object.freeze([-2, -1]), out: Object.freeze([0.03, 0.10]), pitchDeg: -16, yawDeg: 0, fovOffset: 6,
+    }),
     lift: Object.freeze({
         in: Object.freeze([0.17, 0.25]), out: Object.freeze([0.80, 0.90]), pitchDeg: 23, yawDeg: 0, fovOffset: 0,
     }),
@@ -465,15 +543,7 @@ function resolveChapter5Framing(t) {
         );
         out[key] = THREE.MathUtils.lerp(entryToBase, CHAPTER_5_EXIT_FRAMING[key], toExit);
     }
-    for (let i = 0; i < CHAPTER_5_SHOT_LIST.length; i += 1) {
-        const shot = CHAPTER_5_SHOT_LIST[i];
-        const weight = THREE.MathUtils.smoothstep(clamped, shot.in[0], shot.in[1])
-            * (1 - THREE.MathUtils.smoothstep(clamped, shot.out[0], shot.out[1]));
-        out.pitchDeg += shot.pitchDeg * weight;
-        out.yawDeg += shot.yawDeg * weight;
-        out.fovOffset += shot.fovOffset * weight;
-    }
-    return out;
+    return addChapterShots(out, clamped, CHAPTER_5_SHOT_LIST);
 }
 
 // ── Chapter 8 Urban — FINALE CRANE arc ────────────────────────────────────────────
