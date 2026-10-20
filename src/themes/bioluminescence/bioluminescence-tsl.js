@@ -276,7 +276,7 @@ export const blFogColor = (u, dir) => {
     const far = far2.mul(far2).mul(0.85).add(far2.mul(0.25));
     const low = exp(abs(dir.y).mul(-5.5));
     const lift = u.power.mul(0.25).add(u.surge.mul(0.3)).add(1.0);
-    return u.fogFar.mul(far.add(0.16)).add(u.fogLow.mul(low).mul(0.6)).mul(lift)
+    return u.fogFar.mul(far.add(0.07)).add(u.fogLow.mul(low).mul(0.45)).mul(lift)
         .mul(u.breath.mul(0.75).add(0.25));
 };
 
@@ -324,7 +324,7 @@ export const blScatter = (u, dir, dist, origin = cameraPosition) => Fn(() => {
         const b = dot(toLamp, dir).toVar();
         const h = sqrt(max(dot(toLamp, toLamp).sub(b.mul(b)), 0.0).add(a.w.mul(a.w))).toVar();
         // (A halo is local: the damp air swallows what a lamp throws far.)
-        const through = atan(dist.sub(b).div(h)).add(atan(b.div(h))).div(h).mul(exp(h.mul(-0.075)));
+        const through = atan(dist.sub(b).div(h)).add(atan(b.div(h))).div(h).mul(exp(h.mul(-0.12)));
         sum.addAssign(c.rgb.mul(through));
     });
     return sum.mul(0.0012);

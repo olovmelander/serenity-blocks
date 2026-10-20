@@ -288,6 +288,46 @@ of the frame around (0.5, 0.47), given a colour lift (contrast 1.1, saturation 1
 `public/assets/themes/bioluminescence-theme-icon.png`. It was checked at the picker's 80 px
 beside its neighbours.
 
+## Depths pass (2026-10-20)
+
+A second visual pass on `feature/bioluminescence-depths`. Evidence:
+[reports/bioluminescence-depths/](../reports/bioluminescence-depths/).
+
+| Before | After (High, WebGPU) |
+| --- | --- |
+| ![before](../reports/bioluminescence-depths/before-rest.jpg) | ![after](../reports/bioluminescence-depths/after-rest.jpg) |
+
+The picture sat in a flat teal haze: the cave's mist added a floor of the fog colour in every
+direction, the halos reached far, and the output pass lifted the shadows by a constant, so nothing
+was dark. The caps glowed as solid discs with lines drawn on them.
+
+- **Darker air.** The fog colour's floor is less than half what it was (`blFogColor`), each lamp's
+  halo falls off faster with its distance from the ray (`blScatter`, `exp(-0.12 h)`), and the
+  grade's shadow lift is under half (`bioluminescence-post.js`).
+- **Caps.** Between the gills the cap is in shadow (the lines carry the light), the inward
+  falloff is steeper, the heart where the gills crowd onto the stem burns pale, and the thin margin
+  glows in broken arcs.
+- **Stems.** A glowing annulus under each parasol's cap; threads of light that climb the stem in
+  slow beads; a moving net of the pool's caustics on the foot of each stem, lit by the plankton and
+  the nearest lamps. The caustics on the low rock take the lamps' colour too.
+- **Light falling from the great caps** (Medium and up, `capLight` in `POST_LOOK`). Each hero
+  cap's lamp row now carries the width of the light it lets fall (`w`, the elder and the crystals 0).
+  The output pass rebuilds each pixel's world ray from the scene depth (`getViewPosition` with the
+  scene camera's own `projectionMatrixInverse` and `matrixWorld`, not the pass camera's) and adds,
+  per cap, a soft column under it: Gaussian across the ray's closest approach to the axis, widening
+  and fading toward the water, striated by the gills and sinking in slow pulses, counted only in
+  the air in front of what the pixel shows. It takes the cap's live colour, so a cap holding a
+  piece's colour lights the air beneath it in that colour. One loop over the lamp rows the world
+  already writes (`CAP_LIGHT_GAIN`).
+- **Mist on the water.** Wisps that drift over the pool (two noise reads), lit by the lamps a
+  metre above the surface, deeper edge-on and thinner under the lens, faded into the far air.
+
+Verified: the 195 Bioluminescence tests; lint clean on the theme; playground captures with clean
+consoles on WebGPU (High, Minimal, an upright 430 × 850 frame, a lock, a two-line clear, a chain of
+six, the Great Bloom, the ember palette) and on the WebGL2 backend (High with the falling light,
+Low). The whole theme renders at about 0.6 ms a frame on High at 1600 × 900 (120 frames awaited on
+the GPU queue, WebGPU, NVIDIA Blackwell).
+
 ## Captured previews
 
 ![Portrait: caps holding their colours, and a three-line clear](bioluminescence-overhaul/portrait.webp)
