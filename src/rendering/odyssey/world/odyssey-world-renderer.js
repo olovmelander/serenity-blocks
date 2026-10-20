@@ -759,6 +759,22 @@ const FOREST_TRUNK = [0.105, 0.055, 0.032];
 const FOREST_V2_SCALE = 4.6;
 
 /**
+ * A forest chunk's culling-sphere radius. It was `0.75 x edge + half height + 40` about the
+ * trees' MEAN position, which only holds while a cell is evenly filled: in a lopsided one a tree
+ * can stand ~1.4 x edge from the mean, and a sphere that misses it culls the whole chunk while
+ * that tree is still in frame — a tree vanishing at the edge of the picture before the camera
+ * has passed it. Measured on the shipped forest (2026-10-20): no trunk outside, but the
+ * tightest left 6.5 u — less than a crown. Now never smaller than the real spread plus the
+ * same 40 u crown allowance.
+ * @param {number} edge the bucket's cell edge (world units)
+ * @param {number} spread farthest trunk from the mean, horizontally
+ * @param {number} halfHeight half the bucket's vertical extent
+ */
+export function forestCullRadius(edge, spread, halfHeight) {
+    return Math.max((edge * 0.75) + halfHeight, Math.hypot(spread, halfHeight)) + 40;
+}
+
+/**
  * @param {boolean} [blobNormals] bake canopy normals radiating from the crown's blob centre
  *   instead of the per-face outward normals. Wave 0b's half of the probe that lives in the
  *   BAKE: it is vertex data only, costs nothing at runtime, and is the single change the
@@ -4616,13 +4632,13 @@ export function createOdysseyWorld({
         geo.setAttribute('aPhase', aPhase);
         geo.setAttribute('aTint', aTint);
         mesh.instanceMatrix.needsUpdate = true;
-        mesh.boundingSphere = new THREE.Sphere(
-            new THREE.Vector3(cx / n, (minY + maxY) / 2, cz / n),
-            (CHUNK * 0.75) + ((maxY - minY) / 2) + 40,
-        );
-        mesh.frustumCulled = true;
         mesh.userData.centre = new THREE.Vector2(cx / n, cz / n);
         mesh.userData.radius = list.reduce((r, t) => Math.max(r, Math.hypot(t.x - (cx / n), t.z - (cz / n))), 0);
+        mesh.boundingSphere = new THREE.Sphere(
+            new THREE.Vector3(cx / n, (minY + maxY) / 2, cz / n),
+            forestCullRadius(CHUNK, mesh.userData.radius, (maxY - minY) / 2),
+        );
+        mesh.frustumCulled = true;
         mesh.name = 'odyssey-world-forest-chunk';
         group.add(mesh);
         treeMeshes.push(mesh);
@@ -4908,16 +4924,16 @@ export function createOdysseyWorld({
             mesh.instanceMatrix.needsUpdate = true;
             // The bucket's own edge, not a constant: mid and far buckets are 2x and 4x wider
             // than the hero grid, and a sphere sized for 420 u would cull half of one away.
-            mesh.boundingSphere = new THREE.Sphere(
-                new THREE.Vector3(cx / n, (minY + maxY) / 2, cz / n),
-                (bucket.edge * 0.75) + ((maxY - minY) / 2) + 40,
-            );
-            mesh.frustumCulled = true;
             mesh.userData.centre = new THREE.Vector2(cx / n, cz / n);
             mesh.userData.radius = bucket.items.reduce(
                 (r, t) => Math.max(r, Math.hypot(t.x - (cx / n), t.z - (cz / n))),
                 0,
             );
+            mesh.boundingSphere = new THREE.Sphere(
+                new THREE.Vector3(cx / n, (minY + maxY) / 2, cz / n),
+                forestCullRadius(bucket.edge, mesh.userData.radius, (maxY - minY) / 2),
+            );
+            mesh.frustumCulled = true;
             // Keeps `?worldOnly=forest` working, which is the compile-bisect lever.
             mesh.name = `odyssey-world-forest-v2-${bucket.lod}`;
             group.add(mesh);

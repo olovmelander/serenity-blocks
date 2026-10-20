@@ -37,8 +37,13 @@ export const SUMMIT_BIRDS = Object.freeze({
     size: 3.0,
     /** Roll into the turn, radians. */
     bank: 0.32,
-    /** [fade in from, fully in by, fade out from, gone by] in JOURNEY progress. */
-    window: Object.freeze([0.36, 0.40, 0.665, 0.695]),
+    /**
+     * [fade in from, fully in by, fade out from, gone by] in JOURNEY progress. The fade out
+     * waits until the climb has carried the whole kettle out of frame (p 0.673 on the real
+     * camera; it began at 0.665 with a quarter of it still in view) — see
+     * odyssey-act2-fade-out-of-view.test.js.
+     */
+    window: Object.freeze([0.36, 0.40, 0.674, 0.704]),
 });
 
 const TAU = Math.PI * 2;
