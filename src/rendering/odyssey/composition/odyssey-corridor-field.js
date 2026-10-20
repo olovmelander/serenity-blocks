@@ -489,21 +489,15 @@ export class OdysseyCorridorField {
         }
 
         if (feel === 'urban') {
-            // Urban finale (2026-10): the chapter now draws its own skyline cards, horizon
-            // haze and dark towers, so the old far-silhouette sheets (placed BEHIND the travel,
-            // never seen) are retired. Two pocketed sheets AHEAD in the stage frame instead:
-            // low rain clouds over the city lit magenta from below (the upper sky's missing
-            // mid-value band), and a light-pollution glow behind the Retrosun's horizon.
+            // Urban finale: the chapter draws its own skyline cards, horizon haze and towers.
+            // NEON CITY (2026-10-20): its sky dome is now a ceiling of smog lit from below by the
+            // city and its air a lit street mist (chapter-environments/shared/odyssey-neon-light),
+            // so the two pocketed magenta sheets that faked the low rain clouds and the horizon's
+            // light pollution are retired — an A/B on the chapter bench (?effect=ch8-neon&field=0)
+            // showed no difference left for them to make, at two large planes of overdraw.
             /* eslint-disable max-len */
             return {
-                sheets: [
-                    sheet(0xa03aa8, shadow, 0.6, 1.5, 0.018, true, 0.5, 1500, 0.32, 230, 0.02, {
-                        pocket: 0.4, coverage: 0.65, contrast: 1.2, ahead: 520,
-                    }),
-                    sheet(0xb0287f, shadow, 0.5, 1.0, 0.008, true, 0.24, 1700, 0.24, 40, 0.01, {
-                        pocket: 0.6, coverage: 0.55, contrast: 1.3, ahead: 760,
-                    }),
-                ],
+                sheets: [],
                 // City-light bokeh motes, sparser (the chapter's rain now fills the air).
                 particulate: mote(140, 0x66f0ff, 1.5, 0.6, 1.8, 0.55, 100, 130, 0.5, 2.0, true, {
                     count: 90, color: 0xff66c4, twinkle: 0.5, softness: 1.6, baseOpacity: 0.4,
