@@ -76,7 +76,7 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './solar-eclipse-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 export const REST_RIG = Object.freeze({
     near: 1,
