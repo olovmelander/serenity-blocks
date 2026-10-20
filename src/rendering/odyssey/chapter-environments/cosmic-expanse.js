@@ -1986,6 +1986,24 @@ export const COMET_PATH = Object.freeze({
     periodSec: 70,
 });
 
+/**
+ * The comet's window as seen by the crossing under way: the value `windowNow` had when this chord
+ * began (latched in `state`), so a crossing that has started runs to its end whatever the window
+ * does meanwhile, and the window only decides each crossing as it starts.
+ * @param {{chord?: number, passWindow?: number}} state mutated: the latch
+ * @param {number} time board clock (s)
+ * @param {number} windowNow 0..1 the comet's progress window now
+ * @returns {number} the window this crossing runs at
+ */
+export function resolveCometPassWindow(state, time, windowNow) {
+    const chord = Math.floor(time / COMET_PATH.periodSec);
+    if (state.chord !== chord) {
+        state.chord = chord;
+        state.passWindow = windowNow;
+    }
+    return state.passWindow;
+}
+
 function createComet() {
     const uReveal = uniform(0);
     // Comet-local directions, set by update(): the tails stream AWAY from the black hole's light
@@ -2491,9 +2509,16 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         // the gas arrives, and gone before the pull.
         const reefWindow = THREE.MathUtils.smoothstep(beatT, 0.24, 0.34)
             * (1 - THREE.MathUtils.smoothstep(beatT, 0.56, 0.68));
+        // A CROSSING THAT HAS BEGUN RUNS TO ITS END (2026-10-20, in-game feedback: things
+        // "disappear before we have moved past them"). The window closes over p 0.820-0.834 —
+        // the L43 -> L45 glides — and the comet used to dissolve mid-sky there with 60-75 % of
+        // its chord in frame. The window now only decides each crossing as it starts (latched
+        // per chord); the crossing under way leaves the way every crossing does, as a glint at
+        // the chord's end (`endFade`).
+        const passWindow = resolveCometPassWindow(comet.userData, time, reefWindow);
         // No `clutterReveal` factor any more: that ramp rides the camera's height and only opens
         // at beat ~0.34-0.65, which pushed the comet out of the Drift and into the pull.
-        const cometReveal = spaceReveal * chapterOpacity * reefWindow * endFade;
+        const cometReveal = spaceReveal * chapterOpacity * passWindow * endFade;
         comet.userData.uReveal.value = cometReveal;
         comet.visible = cometReveal > 0.02;
     }

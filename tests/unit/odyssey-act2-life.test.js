@@ -187,10 +187,11 @@ describe("the massif's eagle", () => {
         gltf = await new GLTFLoader().parseAsync(bytes, '');
     });
 
-    it('is shown only across the end of chapter 4 and the start of the climb', () => {
+    it('is shown only from the end of chapter 4 up the first half of the climb', () => {
+        // Where it leaves is the camera's business: odyssey-act2-fade-out-of-view.test.js.
         const [a, , , d] = ODYSSEY_EAGLE.window;
         expect(a).toBeGreaterThan(CP[3]);
-        expect(d).toBeLessThan(CP[4] + 0.06);
+        expect(d).toBeLessThan((CP[4] + CP[5]) / 2);
         expect(eagleRevealAt(CP[3])).toBe(0);
         expect(eagleRevealAt((CP[3] + CP[4]) / 2 + 0.03)).toBeGreaterThan(0.99);
         expect(eagleRevealAt(0.5)).toBe(0);

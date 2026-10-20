@@ -29,6 +29,15 @@ const DEG = Math.PI / 180;
  *   round     seconds one round takes; `turns` circles of the thermal fit in it
  *   span      wingspan as drawn (world units): five times life, as a long lens shows it
  *   window    [fade in from, fully in by, fade out from, gone by] in JOURNEY progress
+ *
+ * The window ends where the camera has CLIMBED PAST the bird, not at a round number. It used to
+ * fade over p 0.386-0.404 with the whole thermal still in frame, so the player parked at L28
+ * (p 0.3996) watched it dissolve to 15 % in the middle of the picture. Measured on the real
+ * camera (odyssey-act2-fade-out-of-view.test.js): the thermal stays in frame up the wall and
+ * through the glide from L28, slides off the lower right as the rail passes it (closest ~60 u at
+ * p ~0.44), and is wholly out of frame from p 0.446. It now fades just after that, and is gone
+ * before L29 (p 0.4503) parks, so no parked orb draws a bird it cannot see. The fade in
+ * (0.300-0.318) happens off frame up and to the right of the L23-L24 views.
  */
 export const ODYSSEY_EAGLE = Object.freeze({
     thermal: Object.freeze({
@@ -44,7 +53,7 @@ export const ODYSSEY_EAGLE = Object.freeze({
     round: 84,
     turns: 3,
     span: 11,
-    window: Object.freeze([0.300, 0.318, 0.386, 0.404]),
+    window: Object.freeze([0.300, 0.318, 0.4470, 0.4500]),
 });
 /** Wingbeats a second in a bout. */
 export const EAGLE_BEAT = 1.6;
