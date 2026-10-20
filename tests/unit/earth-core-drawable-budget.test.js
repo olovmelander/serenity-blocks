@@ -25,6 +25,9 @@ function stubCanvasDocument() {
 // fails here, loudly, instead of drifting back toward the 131-draw chapter this plan measured.
 // Lowered 58 -> 56 -> 55 as Wave 3b's fill pass deleted the horizon dupes, then folded the canopy shell into the background shader.
 // on Lane B at 57 ms.
+// Lowered 55 -> 44 by the Act I overhaul (2026-10-20): the shaft wall and its falls (2 draws) replaced
+// the colonnade, the crossed-plane hero fall + splash, six stacked framing bundles and the chapel's
+// floating shell — 51 -> 42.
 describe('earth-core drawable budget (Wave 3b ratchet)', () => {
     it('counts drawables by family', () => {
         stubCanvasDocument();
@@ -46,7 +49,7 @@ describe('earth-core drawable budget (Wave 3b ratchet)', () => {
         );
         Object.entries(fam).sort((a, b) => b[1] - a[1])
             .forEach(([k, v]) => console.log(`  ${String(v).padStart(3)}  ${k}`));
-        expect(meshes + sprites + instanced, 'drawable ceiling — consolidate before adding').toBeLessThanOrEqual(55);
+        expect(meshes + sprites + instanced, 'drawable ceiling — consolidate before adding').toBeLessThanOrEqual(44);
         expect(meshes + sprites + instanced).toBeGreaterThan(0);
         // MATERIAL ceiling (2026-08-23). Chapter 1s pre-reveal compile barrier is ~1,850 ms over
         // these materials, and removing one is worth roughly **30 ms of fixed cost plus a term that

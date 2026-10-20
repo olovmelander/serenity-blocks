@@ -43,6 +43,7 @@ import {
     mix,
     modelPosition,
     modelScale,
+    modelWorldMatrixInverse,
     normalize,
     normalLocal,
     normalView,
@@ -66,6 +67,7 @@ import {
     varying,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { ImprovedNoise } from 'three/addons/math/ImprovedNoise.js';
@@ -162,6 +164,37 @@ function _getBakedNoise01Sampler() {
     if (!_bakedNoiseTex) _bakedNoiseTex = buildTileableNoise3D(96, 20, BAKED_NOISE_PERIOD, 1337);
     return (p) => texture3D(_bakedNoiseTex, fract(vec3(p).mul(0.05))).r;
 }
+
+/**
+ * The chapter's [0, 1] 3D noise source for the other Earth Core modules (the shaft walls): the
+ * baked texture under the default-on bake lever, analytic value noise otherwise. One texture for
+ * the whole chapter, so a new surface adds fetches, not a texture.
+ * @returns {(p: *) => *} p (vec3 node) -> float node in [0, 1]
+ */
+export function earthCoreNoise01() {
+    return EARTH_CORE_BAKE_NOISE ? _getBakedNoise01Sampler() : noise3;
+}
+
+/**
+ * THROUGH THE STEAM (Act I overhaul, 2026-10-20). The quench's shell draws after the cavern
+ * (renderOrder 12), so every additive light of the chapter vanished behind it: the last third
+ * of the climb was a featureless veil. The embers and the falls now draw AFTER the shell and
+ * dim with distance by the same fog the steam lays over the rock (`uVeil`, the quench's
+ * density squared — the board's own fog weight — over the chapter's base fog), so the ones
+ * near the lens still show: sparks whitening into droplets as they rise through the vapour,
+ * the falls glowing in it until the quench puts them out.
+ * @param {*} uVeil the veil uniform (0 clear .. 1 dense)
+ * @param {*} centreLocal vec3 node, the light's position in the group's local frame
+ * @returns {*} float node, the share of the light that reaches the eye
+ */
+export function earthCoreVeilTransmission(uVeil, centreLocal) {
+    const cameraLocal = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1.0)).xyz;
+    const k = uVeil.mul(0.0385).add(0.0035);
+    const d = length(cameraLocal.sub(centreLocal)).mul(k);
+    return exp(d.mul(d).negate());
+}
+/** The quench's steam draws at renderOrder 12; the cavern's lights that must show through it, after. */
+export const EARTH_CORE_THROUGH_STEAM_ORDER = 13;
 
 // ── Shared molten-rock field (adapts pyrestorm's lava-river MOUNTAIN shader) ──────
 //
@@ -503,6 +536,35 @@ export function createLavaFloorTSL(uTime, uPulseIntensity = uniform(0), uDescent
         let seamColor = mix(uColorHot, uLegacyHot, seamCore.mul(vBasin.mul(0.55).add(0.25)));
         seamColor = mix(mix(seamColor, uQuenchSilver, seamMid), uQuenchTeal, seamEnd);
         color = color.add(seamColor.mul(seam).mul(near).mul(0.6).mul(heatAlive.mul(0.6).add(0.4)));
+
+        // THE LAKE BREATHES (Act I overhaul, 2026-10-20). The opening frame looks across a lake
+        // whose plates drift but never move of their own accord. Blisters now rise in it: in about
+        // half of a grid of 7.5 u cells a dome of crust swells on its own clock, its thinning skin
+        // letting the melt glow through, then BURSTS — a flash at its heart and a ring of fresh
+        // melt spreading out and cooling to crust. One cell per pixel (the site is kept off the
+        // cell's edge), three hashes; High only, with the plates, and only in the near field.
+        const bubbleCell = 7.5;
+        const bp = vec2(vPos.x, vPos.z).div(bubbleCell);
+        const bc = floor(bp);
+        const bh = hash21(bc);
+        const bh2 = hash21(bc.add(vec2(7.1, 3.3)));
+        const alive = step(0.55, hash21(bc.add(vec2(13.7, 1.9))));
+        const bd = length(fract(bp).sub(vec2(bh, bh2).mul(0.4).add(0.3))).mul(bubbleCell);
+        const cyc = fract(uTime.div(bh.mul(5.0).add(4.0)).add(bh2.mul(7.0)));
+        const radius = bh2.mul(1.2).add(1.4);
+        const swelling = step(cyc, 0.62);
+        const swell = smoothstep(0.0, 0.62, cyc).mul(swelling);
+        const domeR = radius.mul(swell.mul(0.6).add(0.4));
+        const dome = oneMinus(smoothstep(domeR.mul(0.45), domeR, bd)).mul(swell);
+        const after = clamp(cyc.sub(0.62).div(0.38), 0.0, 1.0).mul(oneMinus(swelling));
+        const burst = oneMinus(smoothstep(0.0, 0.09, after)).mul(oneMinus(swelling))
+            .mul(oneMinus(smoothstep(0.0, radius, bd)));
+        const ringR = radius.mul(after.mul(1.7).add(0.5));
+        const ring = oneMinus(smoothstep(0.0, radius.mul(0.25).add(0.12), abs(bd.sub(ringR))))
+            .mul(oneMinus(after)).mul(oneMinus(swelling));
+        const lakeLife = alive.mul(near).mul(heatAlive);
+        color = color.add(uColorHot.mul(dome.mul(dome).mul(0.75).add(ring.mul(0.55))).mul(lakeLife))
+            .add(uLegacyHot.mul(burst).mul(0.7).mul(lakeLife));
     }
 
     // Fresnel grazing-angle reflection: at the shallow look-across angle the lake
@@ -1237,13 +1299,28 @@ export function createMoltenHazeMaterialTSL(uTime, uPulseIntensity = uniform(0),
     // smoke lit by fire.
     const smoke = mix(vec3(0.020, 0.018, 0.022), vec3(0.065, 0.042, 0.031), smokeWarmth);
 
-    material.colorNode = smoke.mul(flick).mul(uPulseIntensity.mul(0.15).add(1.0));
+    // IN THE STEAM THE SMOKE BECOMES VAPOUR (Act I overhaul, 2026-10-20). The quench's shell is
+    // 110 u out, so its billows were all far and the last third of the climb a flat veil. While
+    // the veil is up (`uVeil`, set by the chapter) these puffs take the vapour's own colour, a
+    // little lighter than its mean, thicken, and draw after the shell (the chapter swaps their
+    // sort order): near billows streaming past the lens, dimming with distance into the veil.
+    const uVeil = options.uVeil ?? uniform(0);
+    const uVeilColour = options.uVeilColour ?? uniform(new THREE.Color(0, 0, 0));
+    const wisp = smoothstep(0.03, 0.5, uVeil);
+    const veilTrans = options.uVeil ? earthCoreVeilTransmission(uVeil, center) : float(1.0);
+    material.colorNode = mix(
+        smoke.mul(flick).mul(uPulseIntensity.mul(0.15).add(1.0)),
+        uVeilColour.mul(feather.mul(0.7).add(1.2)),
+        wisp,
+    );
     // Lifted 0.12→0.16: enough warm mid-depth fog to backfill the dead-red gaps the
     // screenshots showed without breaking the ~70% dark value hierarchy or blowing out.
     // Denser far (depthT) so distant assets fade into the medium; a near-fade keeps a
     // puff from hard-cutting through a near geode (§5.7 cheap soft-particle proxy).
     const nearFade = smoothstep(6.0, 22.0, camDist);
-    material.opacityNode = feather.mul(depthT.mul(0.06).add(0.10)).mul(nearFade).mul(uOpacity);
+    material.opacityNode = feather
+        .mul(mix(depthT.mul(0.06).add(0.10), veilTrans.mul(0.46), wisp))
+        .mul(nearFade).mul(uOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.NormalBlending;
@@ -1629,26 +1706,78 @@ export function basaltRandom(seed) {
  * which is why the framing pillars looked like plastic stakes in every capture.
  * Separate prisms cannot tear (no shared vertices to jitter apart), so no welding is needed.
  */
+/**
+ * One ERODED basalt spire (Act I overhaul, 2026-10-20), its foot at y = 0: a tapered column with a
+ * ring every ~6 u, its girth eaten by weather (lumps, horizontal notches every ~9 u) and its top
+ * broken into a jagged point. Non-indexed: per-facet normals, so the column material's per-facet
+ * value (facetValue) reads as faceted rock. Shared by the column bundles and the chapel's shell.
+ * @param {{ r: number, h: number, sides: number, rand: () => number, seed: number, taper?: number }} spec
+ * @returns {THREE.BufferGeometry}
+ */
+export function createErodedSpireGeometry({
+    r, h, sides, rand, seed, taper = 0.38,
+}) {
+    const o = (seed * 7.31) + 3.7;
+    const rings = Math.max(8, Math.round(h / 6));
+    const g = new THREE.CylinderGeometry(r * taper, r, h, sides, rings, false);
+    g.rotateY(rand() * Math.PI * 2);
+    const pos = g.attributes.position;
+    const leanX = (rand() - 0.5) * 0.10;
+    const leanZ = (rand() - 0.5) * 0.10;
+    const crown = 0.08 + (rand() * 0.10);
+    for (let i = 0; i < pos.count; i += 1) {
+        const px = pos.getX(i);
+        const py = pos.getY(i);
+        const pz = pos.getZ(i);
+        const t = (py / h) + 0.5; // 0 at the foot, 1 at the top
+        const rr = Math.hypot(px, pz);
+        let k = 1;
+        if (rr > 1e-4) {
+            const ax = px / rr;
+            const az = pz / rr;
+            const lumps = _boulderNoise.noise((ax * 1.6) + o, (t * h) / 14, (az * 1.6) + (seed * 0.37));
+            const notch = 0.5 + (0.5 * Math.cos((((t * h) / 9.0) * Math.PI * 2) + (lumps * 2.0)));
+            k = 1 + (0.20 * lumps) - (0.09 * (notch ** 6));
+        }
+        // The top is broken: the last ring rises and falls round the crown, the cap's centre a
+        // ragged point a little above it.
+        let top = 0;
+        if (t > 0.999) {
+            top = (rr < 1e-4 ? crown : _boulderNoise.noise(px * 0.9, pz * 0.9, o) * crown * 1.6) * h;
+        }
+        pos.setXYZ(i, (px * k) + (leanX * t * t * h), py + top + (h * 0.5), (pz * k) + (leanZ * t * t * h));
+    }
+    const out = g.toNonIndexed();
+    g.dispose();
+    return out;
+}
+
 export function createBasaltBundleGeometry(radius, height, seed = 0) {
     const rand = basaltRandom(seed + 11);
     const parts = [];
-    const addPrism = (r, h, x, z, sides) => {
-        const prism = new THREE.CylinderGeometry(r * 0.93, r, h, sides, 1);
-        prism.rotateY(rand() * Math.PI * 2);
-        prism.translate(x, -height * 0.5 + h * 0.5, z);
-        parts.push(prism.toNonIndexed());
-        prism.dispose();
+    // ERODED SPIRES, NOT PRISMS (Act I overhaul, 2026-10-20). The bundle's prisms had one height
+    // segment, so looking up the shaft every facet was one flat plane tens of units long — the
+    // "dark rectangular slabs" of every climbing capture — and their flat caps read as boxes.
+    // Each column is now a tapered spire with a dozen rings, its girth eaten by weather (lumps,
+    // horizontal notches every ~9 u) and its top broken into a jagged point; still non-indexed,
+    // so its many small facets keep the per-facet value the column material reads (facetValue).
+    const addSpire = (r, h, x, z, sides) => {
+        const g = createErodedSpireGeometry({
+            r, h, sides, rand, seed,
+        });
+        g.translate(x, -height * 0.5, z);
+        parts.push(g);
     };
-    addPrism(radius * 0.5, height, 0, 0, 6);
-    const ring = 5 + Math.floor(rand() * 2);
+    addSpire(radius * 0.52, height, 0, 0, 7);
+    const ring = 3 + Math.floor(rand() * 2);
     const phase = rand() * Math.PI * 2;
     for (let i = 0; i < ring; i += 1) {
-        const angle = phase + (i / ring) * Math.PI * 2 + (rand() - 0.5) * 0.35;
-        const dist = radius * (0.52 + rand() * 0.1);
-        const r = radius * (0.28 + rand() * 0.12);
-        // Stepped tops: a staircase of cut faces is the colonnade signature.
-        const h = height * (0.48 + rand() * 0.44);
-        addPrism(r, h, Math.cos(angle) * dist, Math.sin(angle) * dist, 5 + Math.floor(rand() * 3));
+        const angle = phase + (i / ring) * Math.PI * 2 + (rand() - 0.5) * 0.45;
+        const dist = radius * (0.55 + rand() * 0.15);
+        const r = radius * (0.30 + rand() * 0.12);
+        // Stepped heights: the bundle still steps down round its tallest spire.
+        const h = height * (0.42 + rand() * 0.42);
+        addSpire(r, h, Math.cos(angle) * dist, Math.sin(angle) * dist, 6 + Math.floor(rand() * 3));
     }
     const merged = mergeGeometries(parts, false);
     parts.forEach((part) => part.dispose());

@@ -45,6 +45,7 @@ import {
 } from './composition/odyssey-steam-quench.js';
 import { cloudBankHalfWidth, createCloudBank } from './composition/odyssey-cloud-bank.js';
 import { createWhalePass } from './composition/odyssey-whale-pass.js';
+import { createOceanVisitors } from './composition/odyssey-ocean-visitors.js';
 import { createSummitBirds } from './composition/odyssey-summit-birds.js';
 import { createOdysseyFlights } from './composition/odyssey-flights.js';
 import { createOdysseyEagle } from './composition/odyssey-eagle.js';
@@ -495,6 +496,7 @@ export class OdysseyBoardController {
         this.steamQuench = null;
         this._steamBoundary = NaN;
         this.whalePass = null;
+        this.oceanVisitors = null;
         this.cloudBank = null;
         this._cloudBankBoundary = NaN;
         this.summitBirds = null;
@@ -2370,6 +2372,52 @@ export class OdysseyBoardController {
         eagle.update(this.time, delta, cameraProgress);
     }
 
+    /**
+     * The ocean visitors' lifecycle — the whale pass's, step for step (see _tickWhalePass): fetch
+     * as chapter 2 approaches (no GPU), live-compile only while idle (4 s starvation escape), then
+     * draw. Any failure leaves them hidden for the session.
+     */
+    _tickOceanVisitors(delta, cameraProgress) {
+        const ov = this.oceanVisitors;
+        if (!ov || this._visitorsFailed) return;
+        const [c1, c2] = this._visitorsRange || [0, 0];
+        const nearOcean = cameraProgress > c1 - 0.04 && cameraProgress < c2 + 0.01;
+        if (!ov.isLoaded && !this._visitorsLoading && this.isActive && nearOcean) {
+            this._visitorsLoading = true;
+            ov.load()
+                .then((ok) => {
+                    if (!ok) return;
+                    this._visitorsLoadedAt = performance.now();
+                    console.log('[OdysseyBoard] ocean visitors loaded');
+                })
+                .catch((error) => {
+                    this._visitorsFailed = true;
+                    console.warn('[OdysseyBoard] ocean visitors load failed (non-fatal):', error);
+                })
+                .finally(() => { this._visitorsLoading = false; });
+        }
+        const waitedMs = performance.now() - (this._visitorsLoadedAt ?? performance.now());
+        if (ov.isLoaded && !ov.isReady && !this._visitorsCompiling && this.liveCompileEnabled
+            && this._renderLoopActive() && (this._canRunBackgroundTask() || waitedMs > 4000)) {
+            this._visitorsCompiling = true;
+            this._compileGroupThroughPost(ov.group, { live: true })
+                .then((compiled) => {
+                    if (compiled) {
+                        ov.markReady();
+                        console.log('[OdysseyBoard] ocean visitors ready (live-loop compiled)');
+                    } else this._visitorsFailed = true;
+                })
+                .catch((error) => {
+                    this._visitorsFailed = true;
+                    console.warn('[OdysseyBoard] ocean visitors compile failed (non-fatal):', error);
+                })
+                .finally(() => { this._visitorsCompiling = false; });
+        }
+        const inChapter = cameraProgress > c1 && cameraProgress < c2 + 0.01;
+        const worldState = this.oneWorld?.state;
+        ov.update(this.time, delta, this.camera, worldState?.submerged ?? 0, inChapter, worldState?.lifePresence ?? 1);
+    }
+
     async _prewarmChapterEnvironment(chapterId) {
         if (!this.environmentManager || !this.renderer || !this.scene || !this.camera) return;
 
@@ -3041,6 +3089,30 @@ export class OdysseyBoardController {
                 } catch (error) {
                     console.warn('[OdysseyBoard] whale pass unavailable (non-fatal):', error);
                     this.whalePass = null;
+                }
+                // THE OCEAN'S VISITORS — a whale shark and a manta in the deep half of the ascent
+                // (composition/odyssey-ocean-visitors.js). The whale pass's lifecycle exactly:
+                // hidden and GPU-free until fetched, live-compiled while idle, then shown
+                // (_tickOceanVisitors). BISECT LEVER: ?odysseyNoVisitors=1.
+                try {
+                    const c1 = this.presentationLayout?.chapterPositions?.[1];
+                    const c2 = this.presentationLayout?.chapterPositions?.[2];
+                    const noVisitors = typeof window !== 'undefined'
+                        && new URLSearchParams(window.location?.search || '').get('odysseyNoVisitors') === '1';
+                    if (this.oneWorldEnabled && !noVisitors && Number.isFinite(c1) && Number.isFinite(c2)) {
+                        const deep = getOdysseyPathPointAt(c1 + ((c2 - c1) * 0.3));
+                        this.oceanVisitors = createOceanVisitors({
+                            axis: { x: deep.x, z: deep.z },
+                            seaLevel: ODYSSEY_SEA_LEVEL,
+                            shallowColour: new THREE.Color(...sampleColourScript(0.12).skyHorizon),
+                            deepColour: new THREE.Color(...sampleColourScript(0.0).skyHorizon),
+                        });
+                        this.scene.add(this.oceanVisitors.group);
+                        this._visitorsRange = [c1, c2];
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] ocean visitors unavailable (non-fatal):', error);
+                    this.oceanVisitors = null;
                 }
                 // THE CLOUD BANK — the ch5 -> ch6 occlusion moment (summit into cosmos), the
                 // quench's sibling at the other act edge. Its colour ramp runs THROUGH the
@@ -4156,6 +4228,7 @@ export class OdysseyBoardController {
             this._steamFogWeight = inWindow ? steamQuenchDensity(quenchT) ** 2 : 0;
             this._steamFogT = quenchT;
         }
+        if (this.oceanVisitors) this._tickOceanVisitors(delta, cameraProgress);
         if (this.cloudBank && Number.isFinite(this._cloudBankBoundary)) {
             // ⚠️ The bank's fast exit is the single largest step left in the 5->6 transition
             // (-81.5 luma at p=0.668; `?odysseyNoCloudBank=1` turns that into -4.4). The
@@ -5184,6 +5257,10 @@ export class OdysseyBoardController {
         if (this.whalePass) {
             this.whalePass.dispose();
             this.whalePass = null;
+        }
+        if (this.oceanVisitors) {
+            this.oceanVisitors.dispose();
+            this.oceanVisitors = null;
         }
         if (this.summitBirds) {
             this.summitBirds.dispose();
