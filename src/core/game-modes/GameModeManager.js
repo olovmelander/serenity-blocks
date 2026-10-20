@@ -478,7 +478,9 @@ export class GameModeManager {
 
         // Return unsubscribe function
         return () => {
+            // A destroyed manager has cleared its handlers: a late unsubscribe is a no-op.
             const handlers = this.eventHandlers.get(event);
+            if (!handlers) return;
             const index = handlers.indexOf(handler);
             if (index > -1) {
                 handlers.splice(index, 1);

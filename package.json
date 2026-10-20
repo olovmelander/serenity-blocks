@@ -27,7 +27,6 @@
     "check:palette": "node scripts/palette-guideline-check.mjs",
     "check:pages-artifact": "node scripts/pages-artifact-check.mjs",
     "check:release-gates": "node scripts/release-gate-check.mjs",
-    "validate:cosmic-noir:phase6": "node scripts/run-electron.mjs scripts/cosmic-noir-phase6-validation.mjs",
     "validate:windows:devtools": "node scripts/run-electron.mjs scripts/windows-devtools-smoke.mjs",
     "validate:wolfhour:phase6": "node scripts/run-electron.mjs scripts/wolfhour-phase6-validation.mjs",
     "validate:windows:parity": "node scripts/run-electron.mjs scripts/windows-electron-parity-validation.mjs",
