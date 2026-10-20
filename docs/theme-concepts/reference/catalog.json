@@ -626,14 +626,14 @@
  {
   "id": "synthwave-sunset",
   "name": "Synthwave Sunset",
-  "setting": "An outrun sunset: a slit sun behind neon-wireframe mountains, a city skyline, palm silhouettes and an endless neon grid (synthwave-sunset-theme.js:1-3, captures in reports/synthwave-sunset-overhaul/).",
-  "timeOfDay": "sunset",
-  "dominantPalette": "Hot pink, orange-red and violet with cyan and yellow accents; yellow-orange-magenta slit sun; violet starry sky. Pieces I #ff0066 O #ff4500 T #b000ff S #ff006e Z #ff5e78 J #00d4ff L #ffff00, garbage #0a0515.",
-  "keyMotifs": "Slit sun; black palm silhouettes; wireframe ridge; city with amber windows and neon roof strips; dense pink grid floor; stratus streaks; shooting stars.",
-  "motion": "The grid scrolls toward the sun; palms sway in the wind; the camera yaws to the sun.",
-  "gameplayFx": "Lock lights neon cells in the piece's shape on the grid. Clear sends a sonar ring in from the horizon, a horizon flash, a city pulse and embers. Combo adds a solar burst and shooting stars (synthwave-sunset-world.js:437-501).",
-  "tech": "Node materials. Sky-dome function, pristine-grid floor, merged palms with shader-cut leaflets. Post: bloom, anamorphic streak, split-tone, grain.",
-  "motifsToAvoidReusing": "80s outrun, slit suns, palms, wireframe mountains, neon grids, anamorphic streaks."
+  "setting": "A retro seaside at dusk (rebuilt 2026-10-20, docs/SYNTHWAVE_SUNSET_VISUAL_OVERHAUL_2026-10.md): the sun sinks into the sea behind a lit ferris wheel at the end of a pleasure pier with onion-dome pavilions and a wooden coaster; palms, a promenade and a beachfront of Miami Art Deco hotels round the bay; the eye on wet sand at the waterline.",
+  "timeOfDay": "sunset into dusk (the evening deepens as a game is played)",
+  "dominantPalette": "Tangerine and gold horizon, coral and dusty rose, teal-indigo zenith; warm bulb gold, flamingo and mint neon; pastel stucco. Pieces I #FFD36E O #FF9440 T #F24FAE S #6CF5C9 Z #D92B4A J #4FB4FF L #8A55F5.",
+  "keyMotifs": "Ferris wheel in front of the setting sun; timber pier on piles with domed pavilions, lamp posts and bulb garlands; wooden coaster on a closed circuit; neon pylon sign; palms and Art Deco hotels round the bay (streamline corners, ziggurat crowns, resort towers, neon hotel signs in 3 × 5 letters); reflections in the swell and streaked on wet sand; swash with a foam edge.",
+  "motion": "The wheel turns; the swell and the surf roll in, the swash runs up and drains; palms sway; the evening deepens with play.",
+  "gameplayFx": "Lock runs a chase of the piece colour round the wheel. Clear fires one firework shell per line from a barge (four lines: a finale and a gold willow). The true combo lifts the coaster a notch per link and a broken chain of three or more sends it once round the circuit into the station. Level up steps the evening on and turns the wheel's neon.",
+  "tech": "Node materials. Shared sky function for dome and sea mirror; filtered sine-train sea with an anisotropic sun lobe; layer-limited reflector over the mirrored sky; instanced bulbs; analytic fireworks. Post: bloom, hue-preserving max-channel shoulder, split grade by scaling.",
+  "motifsToAvoidReusing": "Ferris wheels, pleasure piers and boardwalks, wooden coasters, onion domes, bulb garlands, fireworks over water, seaside promenades with Art Deco hotels and neon hotel signs."
  },
  {
   "id": "chromadelic-highway",

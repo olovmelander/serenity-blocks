@@ -377,7 +377,8 @@ catalog too.
 - Snow white and ice blue (ice-temple, winter, himalayan-peak, aurora, mountain, parhelion).
 - Violet, magenta and blue space gas (galaxy, aether-tides, serenity-warp); violet, magenta and cyan
   neon on dark (fluid-dreams, lunara, murmuration, crystal-cave, nebula-flow); magenta, cyan and plum
-  neon (neon-dusk, synthwave-sunset, neon-district, chromadelic-highway).
+  neon (neon-dusk, neon-district, chromadelic-highway); tangerine and coral dusk over teal-indigo with
+  bulb gold, flamingo and mint lights (synthwave-sunset, a seaside pier since 2026-10-20).
 - Teal and cyan glow on black (bioluminescence, luminous-tides); gold and orange on black (chiral-gold,
   black-hole, void-ember, supernova); heat spectrum (cinder-drift, pyrestorm); crimson monochrome
   (blood-moon); greyscale (cosmic-noir, wolfhour).

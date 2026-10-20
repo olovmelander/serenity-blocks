@@ -3,20 +3,16 @@
  *
  * One scene pass (no MRT), one bloom chain (Medium and up) and ONE full-screen output pass:
  *   scene (+ radial chromatic aberration on the showcase tiers) → bloom (4-tap, max-channel
- *   soft-knee prefilter so thin scrolling grid lines do not flicker) → anamorphic streak through
- *   the sun → hue-preserving neutral tone map → split-tone grade (violet shadows, warm
- *   highlights), vibrance, violet black floor → vignette → sRGB encode → grain on the darks →
- *   triangular dither.
- *
- * The old stack rendered an MRT emissive target, sampled it for a disabled reflection, and ran
- * MaterialX Perlin per pixel for grain that was switched off (a zero uniform does not remove
- * shader cost). All of that is gone.
+ *   soft-knee prefilter so thin bulbs and railings do not flicker) → a hue-preserving filmic
+ *   shoulder on the brightest channel (the sun and the neon keep their colour; only the hottest
+ *   cores whiten) → split-tone grade by scaling only (teal shadows, warm highlights: no additive
+ *   lift, so blacks never take a coloured veil) → vibrance → vignette → sRGB encode → grain on
+ *   the darks → triangular dither.
  */
 
 import * as THREE from 'three/webgpu';
 import {
     Fn,
-    abs,
     clamp,
     dot,
     exp,
@@ -26,11 +22,11 @@ import {
     max,
     min,
     mix,
-    neutralToneMapping,
     pass,
     renderOutput,
     screenCoordinate,
     screenUV,
+    select,
     smoothstep,
     uniform,
     uv,
@@ -113,7 +109,6 @@ export class SynthwaveSunsetPost {
         this.uSrcTexel = uniform(new THREE.Vector2(1 / 1920, 1 / 1080));
         this.uSun = uniform(new THREE.Vector2(0.25, 0.55));
         this.uSunVis = uniform(0);
-        this.uStreak = uniform(1);
         this.uBloomBoost = uniform(0);
         this.uExposure = uniform(1.0);
         this.grainEnabled = params.grain !== false && look.grain === true;
@@ -164,29 +159,29 @@ export class SynthwaveSunsetPost {
             }
             const H = S.add(B).toVar();
 
-            // ── Anamorphic streak through the sun (80s lens), sized in 1080p pixels ──
-            const dyPx = abs(st.y.sub(this.uSun.y)).mul(1080.0);
-            const dx = abs(st.x.sub(this.uSun.x)).mul(this.uAspect);
-            const core = exp(dyPx.mul(-0.7)).mul(0.28).add(exp(dyPx.mul(-0.12)).mul(0.07));
-            const streak = core.mul(exp(dx.mul(-5.0))).mul(this.uSunVis).mul(this.uStreak);
-            H.addAssign(vec3(1.0, 0.36, 0.62).mul(streak));
-
-            // ── Tone map (hue-preserving) + grade ──
-            const T = neutralToneMapping(H.mul(this.uExposure), float(1.0)).toVar();
+            // ── Tone curve: identity to 0.62, then a soft shoulder to 1 on the max channel; the
+            // other channels keep their ratio to it, so hue survives. Only cores above ~4 bleach.
+            const E = H.mul(this.uExposure).toVar();
+            const m = max(swMax3(E), 1e-5).toVar();
+            const knee = float(0.62);
+            const shoulder = knee.add(float(1.0).sub(knee).mul(float(1.0).sub(exp(m.sub(knee).div(float(1.0).sub(knee)).negate()))));
+            const mapped = select(m.lessThan(knee), m, shoulder);
+            const T = E.mul(mapped.div(m)).toVar();
+            // vec3(select) collapses to a scalar in r186: spell the vector out.
+            T.assign(mix(T, vec3(mapped, mapped, mapped), smoothstep(4.0, 14.0, m).mul(0.55)));
             const L = dot(T, LUMA).toVar();
-            const shadow = float(1.0).sub(smoothstep(0.0, 0.32, L));
-            const high = smoothstep(0.38, 0.95, L);
-            T.mulAssign(mix(vec3(1.0), vec3(0.9, 0.86, 1.16), shadow.mul(0.55)));
-            T.mulAssign(mix(vec3(1.0), vec3(1.06, 0.98, 0.9), high.mul(0.45)));
+            // Split tone by scaling only: teal-blue shadows, warm highlights.
+            const shadow = float(1.0).sub(smoothstep(0.0, 0.3, L));
+            const high = smoothstep(0.35, 0.95, L);
+            T.mulAssign(mix(vec3(1.0), vec3(0.9, 0.97, 1.1), shadow.mul(0.5)));
+            T.mulAssign(mix(vec3(1.0), vec3(1.05, 0.99, 0.92), high.mul(0.4)));
             // Vibrance: lift the less-saturated colours most.
             const mx = swMax3(T);
             const sat = mx.sub(min(T.x, min(T.y, T.z))).div(max(mx, 1e-4));
-            T.assign(mix(vec3(L), T, float(1.0).add(float(0.18).mul(float(1.0).sub(sat)))));
-            // Violet floor: pure black never reaches the screen.
-            T.addAssign(vec3(0.0022, 0.0008, 0.0055).mul(float(1.0).sub(smoothstep(0.0, 0.05, L))));
+            T.assign(mix(vec3(L), T, float(1.0).add(float(0.14).mul(float(1.0).sub(sat)))));
             // Vignette: mostly the corners, gentler on bright pixels.
             const rad = length(centered.mul(vec2(this.uAspect.div(1.778), 1.0)).mul(2.0));
-            T.mulAssign(float(1.0).sub(smoothstep(0.55, 1.35, rad).mul(float(0.38).sub(L.mul(0.15)))));
+            T.mulAssign(float(1.0).sub(smoothstep(0.55, 1.35, rad).mul(float(0.34).sub(L.mul(0.15)))));
 
             // ── Encode, then finish in display space ──
             const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
