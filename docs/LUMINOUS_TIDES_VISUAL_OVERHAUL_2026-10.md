@@ -172,3 +172,55 @@ sight line, and a full rim turned them the sky's colour). Before and after:
   forced upward broke 8 of 10 296, and the light flips by face); the strip's `aSpan`. All 157
   tests of the theme's eight files and the bake cache pass; lint 0 errors (16 warnings, all on
   lines this pass did not touch; main had 17).
+
+## The night's light: stars, the town's lamps, the surf in its mirror (2026-10-20)
+
+Three things in the picture read as computer graphics rather than as a night beach. Before and
+after: `docs/luminous-tides-overhaul/night-light.jpg` (the harbour and starfield nights at full
+size, then 1:1 crops of the lamps over the surf and of the stars).
+
+- **The stars were snow.** Each star was a Gaussian spot a fixed angle wide, about five buffer
+  pixels across at 1080 lines, so every star was a disc and the bright and the faint looked the
+  same size. A star is now a point about a buffer pixel across whatever the lens
+  (`TUNE.starSpot` in buffer pixels, floored at 0.32 mrad), so brightness alone says which stars
+  are bright; a third, faint layer of stars gives the dark its depth, and the layers' gains
+  (`TUNE.starGain`, the bright few, the many, the faint dust) make a few stars glow and many
+  barely show, thickest along the Milky Way.
+- **The town's lamps were mirrored as stacks of crescents.** The water mirrored each lamp point
+  for point through the ripples it resolves, so a lamp's image traced the contours of a smooth
+  slope field (curved dashes, the same shape repeated down the water), and the same lamps were
+  drawn a second time as soft streaks. The mirror now draws the night without the lamps
+  (`skyColour`'s `lamps: false`) and the water lays each lamp's road itself: from a level sea's
+  mirror ray, swayed a little by the resolved ripples (`TUNE.lampWander`), as long as the share of
+  facets tilted to mirror it says (`glintLobe` with the water's slope variance plus
+  `TUNE.lampRough`), broken into glints: short horizontal dashes in cells of bearing and
+  depression a few pixels wide at any range, each coming and going (`TUNE.glintRate`), most dim
+  and a few bright. Torn water and foam mirror nothing, so a road breaks off over a breaking wave.
+- **A breaking wave sat on dark water like a stripe.** It stands up out of the water, but the
+  mirror held only the night. The surf is analytic, so the water in front of a wave now mirrors it
+  exactly: `surfAt` hands back the next crest seaward (`ahead`: how far, how high, where it
+  breaks, how brightly this stretch of it breaks), the water's own rippled mirror ray climbs at
+  its grazing angle and meets that crest while it is still lower than the crest's lit top, and
+  finds that crest's lip and bore light there (`TUNE.mirrorFire`), with a long soft fall-off as
+  the ray climbs past the top and as the crest lies further away. Mirrored through the resolved
+  ripples, a long crest draws in wavering streaks (it is wide enough for that, where a point lamp
+  was not).
+
+Tried and dropped: two post-stack versions that read the bloom texture above or below each pixel
+(a haze of the sea's light rising off the surf, then a soft mirror of it): the bloom holds too
+little of the wave to show (a lift of about 1.5 of 255 under it), and a vertical read cannot tell a
+crest standing over the water from sparks lying on it, so it drew pillars of light over the swash.
+
+Verification (playground, this machine's AMD RDNA 2 integrated GPU, WebGPU, High, board mock on):
+the six nights at `t=24`; 1:1 crops of the stars, the lamps and the water in front of the wave
+against the same frames before; Minimal with a four-line clear; the WebGL2 backend
+(`forceWebGL=1`) at High. Consoles clean (only the playground's integrated-GPU note). Tests: the
+theme's eight files, 153 tests, including the shader gate, which now also checks that the shore's
+fragment calls the lamp field once (`lays each far lamp on the water once…`).
+
+Not done: a perf-lane reading (the stars add one hash layer to the sky and the water's mirror;
+the water's lamp work is one lamp-field call where it was two; the surf's mirror is arithmetic on
+values the surf already had); the real game; a phone. A soft step remains at the lower edge of the
+wave's reflection where the light runs out; its cause was not found (it is neither the foam mask
+nor the next swell line). The set wave's facets at Minimal (the tier's
+coarse mesh) are as they were.
