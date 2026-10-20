@@ -20,6 +20,7 @@
  */
 import { IMPULSE_TYPE } from '../sim/fluid-particles.js';
 import { PALETTE_LEVEL_STEP, PALETTE_SPAN, samplePalette } from './swarm-palette.js';
+import { flashScale } from '../../../core/photosensitivity.js';
 
 /**
  * Every formation a gameplay moment may roll. 'free' is the release state and 'heart' is
@@ -455,7 +456,7 @@ export class SwarmShow {
             const u = sky.uniforms;
             u.uHeat.value = this.heat;
             u.uPulse.value = fx.comboPulse;
-            if (u.uFlash) u.uFlash.value = this.skyFlash;
+            if (u.uFlash) u.uFlash.value = this.skyFlash * flashScale();
             if (u.uTintA && u.uTintB) {
                 const drift = time * 0.006;
                 const a = samplePalette(this.palettePhase + drift - PALETTE_SPAN * 0.2, this._tint);

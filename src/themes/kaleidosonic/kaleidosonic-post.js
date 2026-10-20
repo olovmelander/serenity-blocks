@@ -43,6 +43,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { ksHash21, ksLuma, ksMax3 } from './kaleidosonic-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /** Per-tier look. `bloom: false` builds no BloomNode; `fringe` the resonance's colour split. */
 export const POST_LOOK = Object.freeze({
@@ -262,7 +263,7 @@ export class KaleidosonicPost {
         if (exposure !== undefined) this.uExposure.value = exposure;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (fringe !== undefined) this.uFringe.value = fringe;
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (flashColour) this.uFlashColour.value.set(flashColour[0], flashColour[1], flashColour[2]);
         if (saturation !== undefined) this.uSaturation.value = saturation;
         if (time !== undefined) this.uTime.value = time;

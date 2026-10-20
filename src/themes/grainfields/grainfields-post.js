@@ -61,6 +61,7 @@ import {
     deckCover, deckPointAbove, gfHash21, gfLuma, gfMax3,
 } from './grainfields-tsl.js';
 import { HAZE_HEIGHT, MIST_HEIGHT, MIST_FLOOR } from './grainfields-light.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode; `air` the march's steps (0: none) and
@@ -370,7 +371,7 @@ export class GrainfieldsPost {
         if (exposure !== undefined) this.uExposure.value = exposure;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (air !== undefined) this.uAir.value = air;
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (flashColour) this.uFlashColour.value.set(flashColour[0], flashColour[1], flashColour[2]);
         if (saturation !== undefined) this.uSaturation.value = saturation;
         if (time !== undefined) this.uTime.value = time;

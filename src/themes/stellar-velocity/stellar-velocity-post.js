@@ -47,6 +47,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { svHash21, svLuma, svMax3 } from './stellar-velocity-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no shafts). `rays` and `rush` are
@@ -313,7 +314,7 @@ export class StellarVelocityPost {
         heart, flash, flashTint, kick, bloomBoost, exposure, rays, blur, time,
     } = {}) {
         if (heart) this.uHeart.value.set(heart.x, heart.y);
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (flashTint) this.uFlashTint.value.set(flashTint[0], flashTint[1], flashTint[2]);
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;

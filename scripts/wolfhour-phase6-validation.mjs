@@ -95,7 +95,8 @@ function delay(ms) {
 }
 
 function makeScenarioUrl(params = {}) {
-    const search = new URLSearchParams(params);
+    // A harness boot: the photosensitivity warning (ADR-0021) is skipped.
+    const search = new URLSearchParams({ photosensitivityWarning: '0', ...params });
     return `${DEV_SERVER_URL}/?${search.toString()}`;
 }
 

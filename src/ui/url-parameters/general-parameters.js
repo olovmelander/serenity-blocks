@@ -91,11 +91,24 @@ export const GENERAL_URL_PARAMETERS = [
         'skipIntro',
         'Startup',
         'Game startup',
-        'Skip the opening cinematic and go to the menu.',
+        'Skip the opening cinematic and go to the menu. Also skips the photosensitivity warning.',
         'Exactly 1 = skip',
-        'Off; reduced-motion preference also skips the intro',
+        'Off; reduced-motion preference also skips the intro (not the warning)',
         'skipIntro=1',
         'src/main.js',
+    ),
+    parameter(
+        'photosensitivityWarning',
+        'Startup',
+        'Game startup',
+        'Skip the photosensitivity warning that opens every launch (harnesses and captures).',
+        '0 = skip; 1 = show',
+        'On: shown every launch, for 10 s or until a key, pad button, click or tap after 2.5 s',
+        'photosensitivityWarning=0',
+        'src/ui/photosensitivity-warning.js',
+        'URL values override the saved serenity.photosensitivityWarning localStorage value (0 = skip), the toggle a '
+        + 'developer has in an installed game. skipIntro=1 skips it as well. The game keeps loading underneath; the '
+        + 'loading screen starts its own clock when the warning lifts.',
     ),
     parameter(
         'noThemeWarm',

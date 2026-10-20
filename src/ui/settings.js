@@ -31,6 +31,9 @@ const DEFAULT_CONFIG = {
     autoThemeChange: false,
     randomThemeInterval: 60,
     reducedMotion: false, // calmer board, HUD and world motion; the system preference also turns it on
+    // Photosensitivity (ADR-0021): frame-wide flashes become a soft glow, lightning fires once,
+    // strobes hold steady; the worlds keep moving. Read live through src/core/photosensitivity.js.
+    reduceFlashing: false,
     pieceLockRipple: true,
     pieceLockRippleColor: '#64c8ff',
     comboPopupEffect: true,
@@ -1518,6 +1521,18 @@ export function initializeSettingsUI(settingsManager, callbacks) {
         reducedMotionToggle.checked = !!settings.reducedMotion;
         listen(reducedMotionToggle, 'change', (e) => {
             settingsManager.update({ reducedMotion: e.target.checked });
+            settingsManager.save();
+        });
+    }
+
+    // Reduce flashing effects (photosensitivity, ADR-0021): its own switch, apart from motion.
+    // The worlds, the board and the HUD read it live (src/core/photosensitivity.js); main.js
+    // keeps the stylesheet's html.sb-reduce-flashing hook in step.
+    const reduceFlashingToggle = document.getElementById('reduce-flashing');
+    if (reduceFlashingToggle) {
+        reduceFlashingToggle.checked = !!settings.reduceFlashing;
+        listen(reduceFlashingToggle, 'change', (e) => {
+            settingsManager.update({ reduceFlashing: e.target.checked });
             settingsManager.save();
         });
     }

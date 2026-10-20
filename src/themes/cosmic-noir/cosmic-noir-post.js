@@ -48,6 +48,7 @@ import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import {
     FILM_STOCKS, STOCK_HOME, cnHash21, cnLuma, cnMax3,
 } from './cosmic-noir-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (the halation goes with it).
@@ -287,7 +288,7 @@ export class CosmicNoirPost {
     update({
         flash, negative, cue, bloomBoost, exposure, time, stock, cuePos,
     } = {}) {
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (negative !== undefined) this.uNegative.value = negative;
         if (cue !== undefined) this.uCue.value = cue;
         if (cuePos) this.uCuePos.value.set(cuePos.x, cuePos.y);

@@ -17,6 +17,7 @@ import { CRYSTAL_CAVE_STAGE_DEPTH, CrystalCaveStage } from './crystal-cave-stage
 import { CRYSTAL_CAVE_WAVE_SPEED } from './crystal-cave-reactions.js';
 import { resolveCrystalCaveQuality } from './crystal-cave-quality.js';
 import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 const FAMILIES = 5;
 const GROW_SECONDS = 1.15;
@@ -502,7 +503,7 @@ export class CrystalCaveWorld {
             u.energy.value = frame.energy;
             u.resonance.value = frame.resonance;
             // Reduced motion keeps the board's light as a softer pulse.
-            u.flash.value = frame.flash * (0.5 + 0.5 * motion);
+            u.flash.value = frame.flash * (0.5 + 0.5 * motion) * flashScale();
             u.flashColor.value.setRGB(frame.flashColor[0], frame.flashColor[1], frame.flashColor[2], THREE.SRGBColorSpace);
             for (let family = 0; family < FAMILIES; family += 1) u.familyLevel.array[family] = frame.familyLevel[family];
             this.rock.controls.waveRadius.value = frame.wave.radius;

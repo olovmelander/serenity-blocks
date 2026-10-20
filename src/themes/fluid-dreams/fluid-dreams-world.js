@@ -26,6 +26,7 @@ import {
     BOARD_GRID, boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './fluid-dreams-composition.js';
 import { tierFor } from './fluid-dreams-quality.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /** The rest camera: standing a little above the sea, looking out and slightly up. */
 export const REST_RIG = Object.freeze({
@@ -665,7 +666,7 @@ export class FluidDreamsWorld {
         u.surge.value = choreo.surge;
         u.prism.value.set(prism.radius, prism.strength, prism.width, 0);
         u.film.value.set(1, choreo.filmShift, 0, 0);
-        u.skyFlash.value = choreo.skyFlash;
+        u.skyFlash.value = choreo.skyFlash * flashScale();
 
         if (camera) {
             this.parts.liquid.mesh.position.copy(camera.position);

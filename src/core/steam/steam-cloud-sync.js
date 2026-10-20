@@ -34,6 +34,7 @@ const CLOUD_SETTINGS_KEYS = [
     'autoThemeChange',
     'randomThemeInterval',
     'reducedMotion',
+    'reduceFlashing',
     'pieceLockRipple',
     'pieceLockRippleColor',
     'comboPopupEffect',
