@@ -216,16 +216,16 @@
   "motifsToAvoidReusing": "Fluid-dye clouds and filaments, violet/cyan/magenta gas, a maelstrom or vortex with a lens ring, an echo of the piece's footprint, sparks that become stars, chains of novae"
  },
  {
-  "id": "rainy-window",
-  "name": "Rainy Window (legacy storm)",
-  "setting": "The icon shows slate-grey city tower silhouettes in a downpour above a flooded street. The actual scene (docs/theme-screenshots/rainy-window.png) has no buildings: a dark slate sea (three Water.js) under a grey-lavender overcast sky with clouds, haze, fog banks, rain and lightning. Registry :122-127, group urban. rainy-window-theme.js (1199 lines)",
-  "timeOfDay": "night / storm",
-  "dominantPalette": "Desaturated slate, grey-violet and steel blue; sky gradient 0x000005 to 0x0a0a20, water 0x000205, rain 0x8899bb, fog 0x8899aa, lightning 0x8888ff/0xaaaaff. Pieces (rainy-window-tetrominos.js:11-18): I #f6c46a, O #c9b4ff, T #7bf0d0, S #ff8fb5, Z #586abf, J #ffe9b7, L #8ccff9",
-  "keyMotifs": "Rain streaks (50,000 points, :383), lightning bolts, fog sprites, a stormy reflective sea, overcast clouds",
-  "motion": "Rain falls; fog banks come and go on a schedule; lightning every 3-10 s; the camera breathes and makes random dips",
-  "gameplayFx": "LINE_CLEAR fires a lightning flash and sky glow scaled by line count; COMBO raises storm intensity and wind. No lock reaction, and nothing is aimed at the board",
-  "tech": "Classic THREE.WebGLRenderer, GLSL ShaderMaterials, stock Water.js (a second scene render every frame), point lights",
-  "motifsToAvoidReusing": "A grey storm palette, rain streaks, lightning as the clear effect, flooded city silhouettes, an overcast sea"
+  "id": "sunbraid",
+  "name": "Sunbraid — the three suns (replaced the legacy classic-WebGL Rainy Window, 2026-10-20; rainy-window is an alias)",
+  "setting": "An alien valley seen from 70 m up: towers, buttes and mittens of pale bedded sandstone on white gypsum crusted into polygons, a low valley mist, a far rim of terraced escarpments, translucent-winged gliders. A close triple star of coloured suns (coral, jade, cobalt) wheels low in front of the eye, left of the board. Icon: three coloured suns beside a pale tower whose fan of coloured shadows runs to the viewer. Group fantasy. Doc docs/SUNBRAID_VISUAL_OVERHAUL_2026-10.md",
+  "timeOfDay": "A held low-sun afternoon of three suns; the braid turns once every 330 s with the clock and a sixth of a turn per level; game over sets the suns (afterglow), a new run raises them",
+  "dominantPalette": "White gypsum, pale cream/ochre/rose/lilac stone, saturated cyan, magenta, gold, coral, jade and cobalt shadow bands, a cobalt-violet zenith over a rose-mauve horizon. Pieces (sunbraid-tetrominos.js): I #FF8463 coral, O #2B4FC4 cobalt, T #F5BB45 gold, S #C8378A magenta, Z #62E0D6 cyan, J #22804A jade, L #B9A2F7 lilac (palette gate 0/7)",
+  "keyMotifs": "Three coloured suns in a close cluster; every shadow a colour; fans of coloured shadow bands toward the lens; coloured shadow wedges in mist; backlit towers with coloured rims; selenite glitter; gliders with three-coloured shadows; ribbons braided between the suns",
+  "motion": "The braid turns with the clock (fans swing and recolour); the cluster nods; the cloud deck drifts with faint coloured shadows; gliders fly figure-of-eight loops; crystals glint",
+  "gameplayFx": "Lock: the braid ticks a notch (hard drop further). Clear 1-3: the suns draw together for a breath. Four lines: one white sun (black-and-white world), then the suns part wide and colour floods back. Chain: faster, wider braid and ribbons between the suns. T-spin: a third-turn twist (suns change places). B2B: brighter ribbons. Perfect: noon. Level: the braid winds on. Game over: sunset with afterglow",
+  "tech": "WebGPURenderer on both backends; self-shaded MeshBasicNodeMaterials; analytic shadows (towers as flat-topped cylinders per tier, gliders as discs, penumbra from angular clearance); CPU-swept polygonal towers; closed-form mist light with exact shadow-wedge spans; baked noise shared with the CPU land plan; mist pass at reduced resolution, bloom above the bright floor, calm zones",
+  "motifsToAvoidReusing": "Coloured suns, coloured shadows and shadow fans, a multi-sun cluster in front of the eye, tri-colour light on pale forms, gameplay told by moving light sources, white gypsum with selenite glitter, pale sandstone towers and buttes, translucent gliders"
  },
  {
   "id": "koi-pond",
@@ -325,13 +325,13 @@
  },
  {
   "id": "shifting-sands",
-  "name": "Shifting Sands (Arrakis at the twin-sun dusk)",
-  "setting": "A dune sea at twin-sun dusk: barchanoid ridges with 34 degree slip faces; an ember-gold sun and a white-gold sun low on the left; 'the Sentinel', a sandstone butte with spires, on the right under two pale crescent moons; the Shield Wall escarpment on the horizon; a sandworm breaching. Icon: a dark worm arch silhouetted against the sun. Registry :192-197, group biomes. Doc docs/SHIFTING_SANDS_VISUAL_OVERHAUL_2026-10.md",
+  "name": "Shifting Sands (twin-sun dusk over the dune sea)",
+  "setting": "A dune sea at twin-sun dusk: barchanoid ridges with 34 degree slip faces; an ember-gold sun and a white-gold sun low on the left; 'the Sentinel', a sandstone butte with spires, on the right under two pale crescent moons; the Rampart escarpment on the horizon; a sandworm breaching. Icon: a dark worm arch silhouetted against the sun. Registry :192-197, group biomes. Doc docs/SHIFTING_SANDS_VISUAL_OVERHAUL_2026-10.md",
   "timeOfDay": "dusk; it deepens with each level",
   "dominantPalette": "Sky from apricot at the horizon through dusty rose and violet to a deep-blue zenith; peach and ochre sand with violet shadows; coloured double shadows. Pieces (shifting-sands-tetrominos.js:15-22): I #ffd06a, O #c9a0ff, T #7fffb8, S #ff9070, Z #8090ff, J #ffb855, L #7ec8ff",
-  "keyMotifs": "Dunes, a sandworm breach, spice blows (geysers), spindrift, sand glitter, mesas, twin suns, moons, heat haze, crepuscular shafts",
-  "motion": "A worm breach cycle every 52 s, sheets of blowing sand, spice motes, heat shimmer",
-  "gameplayFx": "Lock: a 'thumper beat', a golden ring of lifted sand running across the erg. Combo of 2 or more: the spice glows and the wind rises. Clear: n spice blows in the side zones, a gust, a sun flare. Four lines: the worm is summoned (its sign races in, the ground trembles, a great spice blow, the worm rears). Level: the dusk deepens and the suns sink",
+  "keyMotifs": "Dunes, a sandworm breach, dust geysers (geysers), spindrift, sand glitter, mesas, twin suns, moons, heat haze, crepuscular shafts",
+  "motion": "A worm breach cycle every 52 s, sheets of blowing sand, gold motes, heat shimmer",
+  "gameplayFx": "Lock: a 'drum beat', a golden ring of lifted sand running across the erg. Combo of 2 or more: the gold glows and the wind rises. Clear: n dust geysers in the side zones, a gust, a sun flare. Four lines: the worm is summoned (its sign races in, the ground trembles, a great dust geyser, the worm rears). Level: the dusk deepens and the suns sink",
   "tech": "A CPU bake on a polar grid storing horizon tangents for twin-sun shadows; exact per-pixel ridge slopes; a vertex-animated worm tube; occluded crepuscular shafts in post; a 'desert filmic' tone map. WebGPU",
   "motifsToAvoidReusing": "Dunes and sand, an apricot dusk desert, twin suns, mesas, a giant creature breaching, dust geysers, a golden ring across the ground on lock"
  },
@@ -529,15 +529,15 @@
  },
  {
   "id": "cosmic-noir",
-  "name": "Cosmic Noir (legacy, perf audit only)",
-  "setting": "Deep space in greyscale film-noir. The icon is a black ringed planet with a blazing white ring under a grey-white smoky nebula. In the game (docs/theme-screenshots/cosmic-noir.png) a huge grey-white wispy nebula fills the right half and a dark textured planet with a white ring streak sits lower left. Only doc: docs/COSMIC_NOIR_PERF_AUDIT_2026-06-30.md. Registry L311, group cosmic.",
-  "timeOfDay": "none (deep space)",
-  "dominantPalette": "Pure greyscale. Pieces: I #f8f8ff, O #cfd2d6, T #b0b5c0, S #9aa0aa, Z #7f8691, J #5b616c, L #3c4049, GARBAGE #16181d.",
-  "keyMotifs": "A ringed black planet, smoky grey nebula, a silver rim glow, an accretion ring, anamorphic flares.",
-  "motion": "A twinkling 30k starfield, drifting nebula quads, gas swirl, a rotating accretion ring.",
-  "gameplayFx": "Handlers at cosmic-noir-theme.js L4394-4470. Lock: planet pulse, star flash, a cosmic-wave torus and a lock shake. Combo: a reactive envelope (pulse, bloom, spark, atmosphere). Clear: waves, compute void sparks, a gas-swirl burst and an anamorphic lens flare at combo >= 6.",
-  "tech": "cosmic-noir-theme.js is 4,895 lines. ShaderMaterial plus node materials, an EffectComposer/UnrealBloom fallback, WebGPU compute sparks, MRT guarded on Windows.",
-  "motifsToAvoidReusing": "Ringed planets; grayscale smoke nebula; a monochrome noir look; anamorphic flares."
+  "name": "Cosmic Noir",
+  "setting": "Smoke in the searchlight: a black-and-white film of deep space. A pulsar turns in the derelict slatted cage of a lantern left of the card (above it on an upright phone); its two beams sweep like a lighthouse's through drifting, layered smoke and are cut by the slats into fans of shafts. Rebuilt 2026-10-20 (docs/COSMIC_NOIR_VISUAL_OVERHAUL_2026-10.md, captures in reports/cosmic-noir-overhaul/); the legacy ringed-planet theme is in docs/COSMIC_NOIR_PERF_AUDIT_2026-06-30.md.",
+  "timeOfDay": "none (deep space); the print's toning stock drifts with the clock (a stock every 100 s) and steps with the level",
+  "dominantPalette": "Luminance only, graded as a print: deep blacks, a soft black point, a filmic curve, grain and dust. Five toning stocks on a line walked there and back: cyanotype, silver (home), selenium, sepia, platinum. Pieces unchanged: I #f8f8ff, O #cfd2d6, T #b0b5c0, S #9aa0aa, Z #7f8691, J #5b616c, L #3c4049, GARBAGE #16181d.",
+  "keyMotifs": "A slatted lantern with a pulsar inside, lighthouse beams cut into fans of shafts by the slats, drifting layered smoke lit only where the light crosses it, star-filter spikes and a lens glare, film grain.",
+  "motion": "The beams turn every 14 s (faster with a chain, integrated); the cage turns slowly the other way; the smoke drifts on a slow wind and curls; a slow camera dolly.",
+  "gameplayFx": "Lock: smoke puffs out of the card's nearer edge, lit from within by a dying ember. Combo: the lighthouse spins up and the blinds open. Clear: the pulsar flares and a light echo per line rings out through the smoke. Four lines: the flashbulb (the print turns to its own negative for a moment), four echoes, the slats spin. T-spin: the cage spins. Level up: a reel change (two cue marks top right) and the next stock.",
+  "tech": "A reduced-resolution smoke march with the beams' cores and the echo shells integrated in closed form, a full-resolution backdrop (stars, the lantern and its inside in closed form, lens), a baked four-channel 3D noise (worker bake), a luminance-only film post with calm zones. One node renderer on both backends; no compute, no MRT.",
+  "motifsToAvoidReusing": "Searchlight or lighthouse beams through smoke; slatted or venetian-blind light; film-stock toning, negative flashes and reel-change cue marks; a monochrome noir grade."
  },
  {
   "id": "chiral-gold",
@@ -638,14 +638,14 @@
  {
   "id": "chromadelic-highway",
   "name": "Chromadelic Highway",
-  "setting": "A stained-glass ROYGBIV highway into a vanishing point behind the card, under neon ring arches, with a rainbow-banded gas giant on the left and a ringed ice giant on the right in a violet nebula (docs/CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md, captures in reports/chromadelic-highway-overhaul/).",
+  "setting": "A stained-glass ROYGBIV highway into a vanishing point behind the card, under neon ring arches of any colour and many forms, with a rainbow-banded gas giant on the left and a ringed ice giant on the right in a nebula whose air takes the rings' colours (docs/CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md, spectrum pass docs/CHROMADELIC_HIGHWAY_SPECTRUM_2026-10.md, captures in reports/chromadelic-highway-spectrum/).",
   "timeOfDay": "space (none)",
-  "dominantPalette": "Sky #080516 to #160A2C; magenta/violet nebula; rings cycle cyan, violet, azure, magenta. Pieces I #ff1493 O #ff8c00 T #ffea00 S #00ff80 Z #00f5ff J #4d90fe L #bf40ff, garbage #2a2a45.",
-  "keyMotifs": "Rainbow lanes; neon ring tunnel; cartoon planets (analytic impostors); speed streaks; rail light curtains; binary star; meteors and comet.",
-  "motion": "One travel clock. Rings emerge at the card edge and sweep outward; streaks; moon orbit and transit.",
-  "gameplayFx": "Light waves run down the lanes toward the player. Lock gives a cyan band. Combo climbs a band from magenta to azure, with meteors and a comet. Clear sends orange bands, a star twinkle and planet storm flashes. Four lines: bands, a white-hot ring cascade, streak warp and FOV surge. Level up rotates the ring palette +30°.",
-  "tech": "Analytic planet quads, screen-space calm zone, Khronos-Neutral 'neon-neutral' tone map, max-channel bloom, layout-aware solver, adaptive scaler.",
-  "motifsToAvoidReusing": "Rainbow roads, ring tunnels, speed streaks, cartoon planets, vanishing-point travel."
+  "dominantPalette": "Sky #080516 to #160A2C; violet nebula turned per movement (rose for ember, teal-blue for tide). Rings take any hue: six movements of 90 s each (prism rainbow run, orchid, ember, triad, chord complementary pairs, tide), the air hue blended on the wheel from the rings on screen. Pieces I #ff1493 O #ff8c00 T #ffea00 S #00ff80 Z #00f5ff J #4d90fe L #bf40ff, garbage #2a2a45.",
+  "keyMotifs": "Rainbow lanes; neon ring tunnel with eleven ring forms (tube, double line, spinning dashes, beads, hexagon and octagon gates, prism arcs); coloured haze around each ring; horizon mist in the air colour; ring-lit dust; cartoon planets (analytic impostors); speed streaks; rail light curtains; binary star; meteors and comet.",
+  "motion": "One travel clock. Rings take their colour and form just before they clear the card edge, flare as they come out, and keep both for their flight, so a new scheme rolls in ring by ring; the spectrum drifts with the road (a movement every ~90 s at level 1) and steps one movement per level-up; moon orbit and transit.",
+  "gameplayFx": "Light waves run down the lanes toward the player, in the newest ring's colour. Lock gives a band in that colour. Combo climbs a band round the wheel from it and races the rings' light packets, with meteors and a comet. Clear: bands plus chase lights filling every arch from its feet to its crown, one front per line, a star twinkle and planet storm flashes. Four lines: bands, a prism cascade turning every arch into the spectrum, a streak warp, FOV surge, and the next three rings out are prism arcs. Level up: the spectrum steps to the next movement and a cascade in its first colour repaints every ring it passes, board to lens.",
+  "tech": "Ring style slots (J mod 16) written by the CPU when a ring locks; polygon gates in the vertex stage; branchless patterns; a second instanced draw for ring air; hue-vector air colour; analytic planet quads, screen-space calm zone, Khronos-Neutral 'neon-neutral' tone map, max-channel bloom, layout-aware solver, adaptive scaler.",
+  "motifsToAvoidReusing": "Rainbow roads, ring tunnels and gate forms, prism arcs, speed streaks, cartoon planets, vanishing-point travel, chase lights climbing arches."
  },
  {
   "id": "stillwater",
