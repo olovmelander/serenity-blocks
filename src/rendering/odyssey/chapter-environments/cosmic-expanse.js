@@ -31,23 +31,25 @@
 
 import * as THREE from 'three/webgpu';
 import {
+    abs,
     attribute,
     cameraPosition,
     clamp,
     cos,
-    dot,
+    cross,
+    exp,
     float,
     fract,
     length,
-    mix,
     materialOpacity,
+    mix,
     mod,
-    normalWorld,
+    modelWorldMatrixInverse,
     normalize,
     oneMinus,
+    positionGeometry,
     positionWorld,
     pow,
-    screenCoordinate,
     sin,
     smoothstep,
     uniform,
@@ -55,6 +57,7 @@ import {
     varying,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import { getChapterTransitionForChapter } from './shared/chapter-profile.js';
@@ -67,12 +70,14 @@ import {
     createHeroPlanetTSL,
     createDistantGalaxyTSL,
     GALAXY_INCLINATION,
+    HERO_PLANET_RADIUS,
     createNebulaPillarTSL,
     createAsteroidRockTSL,
 } from './cosmic-expanse.tsl.js';
 import { createBakedVoidSkyTSL, GALACTIC_BAND_AXIS } from './odyssey-cosmic-backdrop.js';
 import { GARGANTUA_LOCK, resolveGargantuaLockPosition } from './black-hole-transcendence.tsl.js';
 import { createNebulaFieldTSL } from './odyssey-nebula-field.js';
+import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
 import { createAuroraBridgeBand, resolveAuroraBridgeEnvelope } from './cosmic-expanse-aurora.js';
 import { fbm3, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
@@ -317,10 +322,10 @@ export const SUMMIT_EARTH_REVEAL = Object.freeze({
 });
 
 const _omenLock = new THREE.Vector3();
-const _planetRay = new THREE.Vector3();
 const _keyLocal = new THREE.Vector3();
-const _planetLock = new THREE.Vector3();
 const _galaxyFacing = new THREE.Vector3();
+const _cometLight = new THREE.Vector3();
+const _cometPath = new THREE.Vector3();
 const _spineTangent = new THREE.Vector3();
 const _spineRight = new THREE.Vector3();
 const _spineUp = new THREE.Vector3();
@@ -382,9 +387,11 @@ export const OMEN_SPINE_ANCHOR = Object.freeze({
     up: 42,
     right: 51,
     // How much smaller than ch7's the shadow's world radius starts, on top of the real closing
-    // distance: 1 / (1 + approachGain) at the boundary -> ch7's at the hand-over (3.0 -> 8.3 deg
-    // on screen), eased at both ends so it neither pops in growing nor stops dead at the lock.
-    approachGain: 1.15,
+    // distance: 1 / (1 + approachGain) at the boundary -> ch7's at the hand-over. 1.15 until the
+    // 2026-10-20 overhaul (2.9 -> 8.2 deg, 2.15x of it a scripted swell that read as the hole
+    // flying at you); 0 now: one size in the world, ch7's own, and it grows by approach alone
+    // (6.1 -> 8.2 deg) — a great black hole from the chapter's first frame.
+    approachGain: 0,
 });
 
 /**
@@ -393,10 +400,41 @@ export const OMEN_SPINE_ANCHOR = Object.freeze({
  * boundary, inside the hand-over window), in the spine's frame there.
  */
 export const PLANET_WORLD_SEAT = Object.freeze({
-    at: 0.306,
-    along: 890.3,
-    up: -331.6,
-    right: 348.8,
+    // ONE PLACE FOR ITS WHOLE VISIBLE SPAN (overhaul 2026-10-20). Olov: "how can we not have the
+    // planets like moving as we move along the odyssey path? I want them to be placed in space on 1
+    // place." The giant used to be held at a fixed SCREEN spot (on the rail camera) from its rise
+    // to p 0.775 and only then handed to a world point — in that window it slid 31.6 deg against
+    // the stars, the "moves with us" read. It now hangs here from the first frame it shows: solved
+    // on the real camera (BEYOND pinned, seam framing blended) so it holds the lower right of the
+    // frame from p 0.722 to the 6->7 seam at 4:3, 16:9 and 21:9, clear of the rail and of the
+    // hole's disk band, ~900 u out at p 0.80 and closing to ~770 (it grows by approach alone).
+    at: 0.4,
+    along: 655.3,
+    up: -277.5,
+    right: 490.7,
+    // World radius (8.5 deg from the p 0.80 view): a large planet whose rings span a third of
+    // the frame's width, not a striped ball.
+    radius: 133,
+    // The pole: the camera's up at the seat tipped TOWARD the rail by `poleTilt` (so the rings
+    // open into an ellipse and their north face, lit from the hole, faces the eye), then rolled
+    // about the line of sight.
+    poleTilt: THREE.MathUtils.degToRad(18),
+    poleRoll: THREE.MathUtils.degToRad(-14),
+});
+
+/**
+ * THE GALAXY AT INFINITY (overhaul 2026-10-20): a fixed direction of the sky, as the stars are,
+ * written in the spine's frame at the chapter's middle (along, up, right — unit vector), kept at
+ * `distance` from the eye so it never grows or slides against the stars. Solved on the real
+ * camera: upper left of the frame through the whole chapter at 4:3-21:9, clear of the hole's
+ * disk band. `angularRadius` sizes the disc: 7 deg reads as a grand spiral, not a speck.
+ */
+export const GALAXY_SKY_SEAT = Object.freeze({
+    along: 0.897,
+    up: 0.1661,
+    right: -0.4096,
+    distance: 1600,
+    angularRadius: THREE.MathUtils.degToRad(7),
 });
 
 /**
@@ -461,7 +499,14 @@ const _heroPlaces = {
     galaxy: new THREE.Vector3(),
     // Where the galaxy turns to face, once: the spine at the chapter's middle.
     galaxyFaces: new THREE.Vector3(),
+    // The giant's pole and the direction toward its light (the black hole), world space.
+    planetPole: new THREE.Vector3(0, 1, 0),
+    planetLight: new THREE.Vector3(0, 1, 0),
+    // The galaxy's fixed direction in the sky (unit, world space).
+    galaxyDir: new THREE.Vector3(0, 0, -1),
 };
+const _seatOrigin = new THREE.Vector3();
+const _toRail = new THREE.Vector3();
 
 /**
  * World positions of the heroes for the active layout (cached per curve + chapter layout).
@@ -480,6 +525,26 @@ export function resolveCh6HeroPlaces(chapterPositions) {
         resolveSpineFramePoint(ch6Start + span * PLANET_WORLD_SEAT.at, PLANET_WORLD_SEAT, _heroPlaces.planet);
         resolveSpineFramePoint(ch6Start + span * GALAXY_WORLD_SEAT.at, GALAXY_WORLD_SEAT, _heroPlaces.galaxy);
         curve.getPointAt(THREE.MathUtils.clamp(ch6Start + span * 0.5, 0, 1), _heroPlaces.galaxyFaces);
+        // The giant's pole: the spine's up at its seat made square to the line back to the rail,
+        // tipped toward the rail, rolled about that line.
+        const seatP = THREE.MathUtils.clamp(ch6Start + span * PLANET_WORLD_SEAT.at, 0, 1);
+        resolveSpineFramePoint(seatP, { along: 0, up: 0, right: 0 }, _seatOrigin);
+        _toRail.copy(_seatOrigin).sub(_heroPlaces.planet).normalize();
+        _heroPlaces.planetPole.copy(_spineUp).addScaledVector(_toRail, -_spineUp.dot(_toRail)).normalize()
+            .multiplyScalar(Math.cos(PLANET_WORLD_SEAT.poleTilt))
+            .addScaledVector(_toRail, Math.sin(PLANET_WORLD_SEAT.poleTilt))
+            .normalize()
+            .applyAxisAngle(_toRail, PLANET_WORLD_SEAT.poleRoll);
+        // Its light is the black hole's disk: one fixed direction, giant -> omen.
+        _heroPlaces.planetLight.copy(_heroPlaces.omen).sub(_heroPlaces.planet).normalize();
+        // The galaxy's sky direction, from the spine frame at the chapter's middle.
+        const midP = THREE.MathUtils.clamp(ch6Start + span * 0.5, 0, 1);
+        resolveSpineFramePoint(midP, { along: 0, up: 0, right: 0 }, _seatOrigin);
+        _heroPlaces.galaxyDir.set(0, 0, 0)
+            .addScaledVector(_spineTangent, GALAXY_SKY_SEAT.along)
+            .addScaledVector(_spineUp, GALAXY_SKY_SEAT.up)
+            .addScaledVector(_spineRight, GALAXY_SKY_SEAT.right)
+            .normalize();
         _heroPlaces.curve = curve;
         _heroPlaces.key = key;
         _heroPlaces.revision += 1;
@@ -735,7 +800,8 @@ export function resolveCosmicCorridorFrame(chapterRange) {
 //   ?odysseyCh6NoNebula=1  — both additive FBM nebula tiers + the pillar
 //   ?odysseyCh6NoDust=1    — dust tiers + suction debris + streak motes
 //   ?odysseyCh6NoStars=1   — both instanced starfield tiers
-//   ?odysseyCh6NoAurora=1  — the hero's auroral crown, BOTH halves (Wave 5)
+//   ?odysseyCh6NoAurora=1  — the hero's auroral crown, BOTH halves (Wave 5); the crown is
+//                            opt-in since the 2026-10-20 ringed giant (?odysseyCh6GiantAurora=1)
 //   (`?odysseyCh6LegacyKeyFrame=1` is RETIRED, 2026-10: the nebula masses are emissive gas
 //    now and have no key light whose frame could slip.)
 // Polarity: every flag REMOVES its tier, so `baseline` is the shipped chapter and each
@@ -1153,11 +1219,13 @@ function createBlackHole(uniforms) {
 }
 
 function createHeroPlanet(uniforms, bisect = {}) {
-    // TSL builder: banded gas-giant surface + plain atmosphere/ring decor. Returns
-    // { group, planet }. group.userData.planet is set so update() can spin it. Initial
-    // pose matches APPROACH.planetA (update() lerps it onward) so the first frame agrees.
+    // TSL builder: the ringed giant (odyssey-ringed-giant*.js). Returns { group, planet };
+    // update() places it at its one world point. NO AURORAL CROWN since the 2026-10-20 overhaul:
+    // on the ringed giant, lit amber by the hole and seen with its pole tipped toward the eye,
+    // the green curtains stood off the north limb as flames (capture) and fought the chapter's
+    // amber/violet. `?odysseyCh6GiantAurora=1` still builds it for comparison.
     const { group, planet } = createHeroPlanetTSL(uniforms.uTime, {
-        aurora: bisect.aurora !== false,
+        aurora: bisect.aurora !== false && readCh6UrlFlag('odysseyCh6GiantAurora'),
     });
     group.position.set(APPROACH.planetA.x, APPROACH.planetA.y, APPROACH.planetA.z);
     group.scale.setScalar(APPROACH.planetA.s);
@@ -1918,75 +1986,99 @@ export const COMET_PATH = Object.freeze({
     periodSec: 70,
 });
 
-function cometDither(uReveal) {
-    const hash = fract(
-        sin(dot(screenCoordinate.xy.floor(), vec2(12.9898, 78.233))).mul(43758.5453),
-    );
-    return uReveal.sub(hash).add(0.5);
-}
-
 function createComet() {
     const uReveal = uniform(0);
+    // Comet-local directions, set by update(): the tails stream AWAY from the black hole's light
+    // (`uTailDir`), and the dust tail bends back along the comet's path (`uBendDir`).
+    const uTailDir = uniform(new THREE.Vector3(0, 0, 1));
+    const uBendDir = uniform(new THREE.Vector3(1, 0, 0));
     const group = new THREE.Group();
     group.name = 'comet-chase';
+    // The eye in the comet's own frame (the group is translated inside the rotated corridor).
+    const camLocal = modelWorldMatrixInverse.mul(vec4(cameraPosition, 1.0)).xyz;
 
-    const keyDir = normalize(uniform(new THREE.Vector3(-0.48, 0.36, -0.62)));
-    const N = normalize(normalWorld);
-    const V = normalize(cameraPosition.sub(positionWorld));
-
-    // Head: 2-band ice paint on the chapter's causal key + a drawn fresnel edge —
-    // the asteroid template's language in the witnesses' tiny+sharp register.
-    const headMat = new THREE.MeshBasicNodeMaterial({ side: THREE.FrontSide });
-    headMat.transparent = false;
-    headMat.depthWrite = true;
-    headMat.alphaTest = 0.5;
-    const wrap = float(0.72);
-    const d = dot(N, keyDir).add(wrap).div(wrap.add(1));
-    const band = smoothstep(0.42, 0.54, d);
-    const base = mix(vec3(0.23, 0.30, 0.49), vec3(0.81, 0.91, 0.95), band);
-    const edge = vec3(0.95, 0.98, 1.0).mul(clamp(oneMinus(dot(N, V)), 0, 1).pow(2.5).mul(0.5));
-    headMat.colorNode = base.add(edge);
-    headMat.opacityNode = cometDither(uReveal).mul(materialOpacity);
-    const head = new THREE.Mesh(new THREE.IcosahedronGeometry(6, 2), headMat);
+    // THE COMA (overhaul 2026-10-20). The head was an opaque ice ball faded through a screen-space
+    // dither: in captures a speckled pink-white blob. A comet's head is its coma — a soft glow of
+    // gas round a nucleus too small to see — so it is now light: a camera-facing quad, a wide soft
+    // halo and a hard bright core, fading through `uReveal` like the tails.
+    const comaMat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
+    comaMat.transparent = true;
+    comaMat.depthWrite = false;
+    comaMat.blending = THREE.AdditiveBlending;
+    comaMat.forceSinglePass = true;
+    const toCam = normalize(camLocal);
+    const right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
+    const up = cross(toCam, right);
+    const COMA = 34;
+    comaMat.positionNode = right.mul(positionGeometry.x.mul(COMA)).add(up.mul(positionGeometry.y.mul(COMA)));
+    const cr = length(uv().sub(0.5)).mul(2.0);
+    const coma = exp(cr.mul(cr).mul(-7.0)).mul(0.55).add(exp(cr.mul(cr).mul(-120.0)).mul(2.2));
+    comaMat.colorNode = mix(vec3(0.62, 0.86, 1.0), vec3(1.0, 0.98, 0.94), exp(cr.mul(cr).mul(-60.0)));
+    comaMat.opacityNode = clamp(coma, 0.0, 1.0).mul(uReveal).mul(materialOpacity);
+    comaMat.userData.emitsBloom = true;
+    const head = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), comaMat);
     head.name = 'comet-head';
+    head.frustumCulled = false;
     group.add(head);
 
-    // Tail: an open cone pointing opposite the travel. ⚠️ ORIENTATION MEASURED, not
-    // assumed: on ConeGeometry `uv().y` is 0 at the BASE (local −Y, the end hugging
-    // the head) and 1 at the TIP (local +Y, the trailing end) — probed directly, and
-    // the first draft had both gradients inverted, painting a tail that dissolved at
-    // the nucleus and went solid-bright at its far end.
-    //
-    // LIGHT, NOT A DITHERED SOLID (seamless pass). The tail was an opaque cone whose
-    // fade-out along its length ran through the screen-space hash dither, so in every
-    // capture it read as a white salt-and-pepper blade — noise, not a comet. It is now
-    // what a comet tail is: an additive glow, icy-white where it leaves the coma and
-    // cooling to ion blue as it thins, soft at its silhouette (the view-facing term
-    // fades the cone's edges, so it reads as a luminous streamer, not a hard cone).
-    const tailMat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
-    tailMat.transparent = true;
-    tailMat.depthWrite = false;
-    tailMat.blending = THREE.AdditiveBlending;
-    // Additive + no depth write: the DoubleSide back/front split buys nothing.
-    tailMat.forceSinglePass = true;
-    const along = uv().y;
-    const facing = clamp(dot(N, V).abs(), 0, 1);
-    tailMat.colorNode = mix(vec3(0.80, 0.92, 1.0), vec3(0.30, 0.50, 0.95), smoothstep(0.0, 0.7, along));
-    // 0.5 -> 0.85 (2026-10-03): the comet is the Drift's one event now, alone in a quiet sky.
-    tailMat.opacityNode = uReveal.mul(pow(oneMinus(along), 1.4)).mul(pow(facing, 1.2)).mul(0.85)
-        .mul(materialOpacity);
-    tailMat.userData.emitsBloom = true;
-    const tail = new THREE.Mesh(new THREE.ConeGeometry(5, 95, 12, 1, true), tailMat);
-    tail.name = 'comet-tail';
-    // Cone axis is +Y with the tip at +Y/2; orient so the tip trails the head along
-    // the (fixed) chord direction and the open base hugs the head.
-    const dir = COMET_PATH.b.clone().sub(COMET_PATH.a).normalize();
-    tail.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir);
-    tail.position.copy(dir.clone().multiplyScalar(-52));
-    group.add(tail);
+    // THE TAILS: camera-facing ribbons built in the vertex stage along a curve in the comet's frame,
+    // turned about their own axis to face the eye (DoubleSide: a world-space ribbon's winding can
+    // face away). The ION tail runs dead straight away from the light, blue and streaked; the DUST
+    // tail is broader, paler gold and curves back along the path, as a real comet's two tails do.
+    const ribbon = ({
+        name, length: L, width0, width1, bend, tint, streak, gain,
+    }) => {
+        const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });
+        mat.transparent = true;
+        mat.depthWrite = false;
+        mat.blending = THREE.AdditiveBlending;
+        mat.forceSinglePass = true;
+        const along = positionGeometry.y.add(0.5);
+        const dir = normalize(uTailDir);
+        const centre = dir.mul(along.mul(L)).add(uBendDir.mul(along.mul(along).mul(bend)));
+        const tangent = normalize(dir.mul(L).add(uBendDir.mul(along.mul(2.0 * bend))));
+        const side = normalize(cross(tangent, normalize(camLocal.sub(centre))));
+        const w = mix(float(width0), float(width1), along);
+        mat.positionNode = centre.add(side.mul(positionGeometry.x.mul(w)));
+        const t = uv().y;
+        const across = clamp(abs(uv().x.sub(0.5)).mul(2.0), 0.0, 1.0);
+        const profile = exp(across.mul(across).mul(-3.2));
+        const fade = pow(clamp(oneMinus(t), 0.0, 1.0), 1.25).mul(smoothstep(0.0, 0.05, t));
+        const strands = latticeNoise3(vec3(uv().x.mul(streak), t.mul(2.5), 3.7)).mul(0.6).add(0.55);
+        mat.colorNode = tint;
+        mat.opacityNode = clamp(profile.mul(fade).mul(strands).mul(gain), 0.0, 1.0)
+            .mul(uReveal).mul(materialOpacity);
+        mat.userData.emitsBloom = true;
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1, 1, 32), mat);
+        mesh.name = name;
+        mesh.frustumCulled = false;
+        return mesh;
+    };
+    group.add(ribbon({
+        name: 'comet-tail',
+        length: 230,
+        width0: 5,
+        width1: 16,
+        bend: 0,
+        tint: vec3(0.42, 0.66, 1.0),
+        streak: 9.0,
+        gain: 0.9,
+    }));
+    group.add(ribbon({
+        name: 'comet-dust-tail',
+        length: 160,
+        width0: 8,
+        width1: 46,
+        bend: 55,
+        tint: vec3(1.0, 0.86, 0.64),
+        streak: 3.0,
+        gain: 0.55,
+    }));
 
     group.userData.uReveal = uReveal;
-    group.userData.materials = [headMat, tailMat];
+    group.userData.uTailDir = uTailDir;
+    group.userData.uBendDir = uBendDir;
+    group.userData.materials = group.children.map((m) => m.material);
     return group;
 }
 
@@ -2129,6 +2221,12 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     // camera's height, so an orb close-up could dim it), from the floor it is born at.
     const destinationReveal = COSMIC_ENTRY_CONTINUITY_SETTINGS.destinationFloor
         + (1 - COSMIC_ENTRY_CONTINUITY_SETTINGS.destinationFloor) * rampBetween(beatT, 0.02, 0.22);
+    // ITS LIGHT ARRIVES SLOWLY (overhaul 2026-10-20). At its one world size the omen subtends ~6
+    // deg from the first frame of space; its disk, photon ring and lensed halo now fade in over the
+    // chapter's first ~60 % instead of popping in whole (the 5->6 gate's +14 luma rise), while
+    // the aurora fades out — the hole materialises as the sky darkens.
+    const omenReveal = spaceReveal * smoothstep01(THREE.MathUtils.clamp(beatT / 0.5, 0, 1));
+    if (blackHole?.userData?.uReveal) blackHole.userData.uReveal.value = omenReveal;
     if (blackHole) {
         // THE HOLE ON THE SPINE: its place never moves; it grows only with progress (see
         // OMEN_SPINE_ANCHOR). Without a resolved layout it keeps the old entry pose.
@@ -2169,7 +2267,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
             // THE SHADOW OPENS WITH THE OMEN'S ARRIVAL. An opaque occluder cannot fade, so it used
             // to appear whole the frame the chapter let it draw — a black disc on the aurora ahead
             // of its own light. It grows out of a point as the light around it fades in.
-            shadow.scale.setScalar(Math.max(1e-3, destinationReveal * spaceReveal));
+            shadow.scale.setScalar(Math.max(1e-3, Math.sqrt(omenReveal)));
         }
     }
     const lens = group.userData.lensWorldPos;
@@ -2197,45 +2295,21 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     if (heroPlanet) {
         // Its place in the world (PLANET_WORLD_SEAT) — the seam's screen seat below hands over
         // to it. Without a resolved layout it keeps the old entry pose.
+        // ONE PLACE, ONE POSE, ONE SIZE (overhaul 2026-10-20): the world point it has from its first
+        // visible frame (PLANET_WORLD_SEAT), its pole fixed in the world, its world radius fixed —
+        // it grows only as the camera closes on it, and its spin lives in the cloud shader (the
+        // group never turns, so the rings never swing). Nothing here reads the camera.
+        heroPlanet.scale.setScalar(PLANET_WORLD_SEAT.radius / HERO_PLANET_RADIUS);
         if (heroPlaces) {
             heroPlanet.position.copy(heroPlaces.planet).sub(group.position);
+            if (heroPlanet.userData.posedRevision !== heroPlaces.revision) {
+                heroPlanet.quaternion.setFromUnitVectors(SPINE_WORLD_UP, heroPlaces.planetPole);
+                heroPlanet.userData.uLight?.value.copy(heroPlaces.planetLight);
+                heroPlanet.userData.posedRevision = heroPlaces.revision;
+            }
         } else {
             heroPlanet.position.set(APPROACH.planetA.x, APPROACH.planetA.y, APPROACH.planetA.z);
         }
-        // ONE world radius throughout, the seat's: the giant grows only as the camera closes on it.
-        const L = PLANET_SEAM_LOCK;
-        const planetScale = L.distance * L.sizeRatio;
-        const ch6 = chapterPositions?.[5];
-        if (camera?.isPerspectiveCamera && Number.isFinite(cameraProgress) && Number.isFinite(ch6)
-            && Number.isFinite(chapterPositions?.[4]) && cameraProgress >= chapterPositions[4]) {
-            const lockWeight = 1 - rampBetween(
-                cameraProgress,
-                ch6 + spaceSpan * L.handoverFrom,
-                ch6 + spaceSpan * L.handoverTo,
-            );
-            if (lockWeight > 0) {
-                const riseIn = 1 - staging.earthReveal;
-                // Seated on the RAIL camera (OdysseyBoardController._syncRailCamera) — the path's
-                // view at this progress — so an orb close-up, or looking around, leaves the giant
-                // where the rail's view has it instead of dragging it into its own frame.
-                const seatCamera = camera.userData?.railCamera ?? camera;
-                _planetRay.set(L.ndcX, L.ndcY - L.rise * riseIn * riseIn, 0.5)
-                    .unproject(seatCamera)
-                    .sub(seatCamera.position)
-                    .normalize();
-                _planetLock.copy(seatCamera.position).addScaledVector(_planetRay, L.distance);
-                if (heroPlanet.parent) {
-                    heroPlanet.parent.updateWorldMatrix(true, false);
-                    heroPlanet.parent.worldToLocal(_planetLock);
-                }
-                heroPlanet.position.lerp(_planetLock, lockWeight);
-            }
-        }
-        heroPlanet.scale.setScalar(planetScale);
-        // A giant turns SLOWLY. This spins the whole group, so at 0.025 rad/s (plus a roll
-        // wobble) the tilted rings swung ~45 deg across a 30 s crossing; Stellar Drift's giant
-        // turns at ~0.0055 rad/s. The belts' own flow (in the surface shader) carries the life.
-        heroPlanet.rotation.y += delta * 0.003;
         // THE AURORA DARKNESS GATE (owner report 2026-08-16). The crown's own night
         // mask only knows the PLANET's terminator; during the ascent the planet's
         // night side faces a bright daylight sky and the curtains blazed at full
@@ -2256,19 +2330,27 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
         // ~60 deg. It used to march between two poses on the camera's height and turn to the eye
         // every frame, so it slid and swivelled; from the rail's 300 u the view of it changes by
         // a few degrees, which a far inclined disc does not need corrected.
-        if (heroPlaces) {
-            galaxy.position.copy(heroPlaces.galaxy).sub(group.position);
+        // AT INFINITY (overhaul 2026-10-20): a fixed direction of the sky kept a fixed distance from
+        // the eye, so it never slides against the stars nor swells as the camera travels; turned
+        // once (square to that direction, then inclined), so its ellipse never changes either.
+        if (heroPlaces && camera?.position) {
+            galaxy.position.copy(camera.position)
+                .addScaledVector(heroPlaces.galaxyDir, GALAXY_SKY_SEAT.distance)
+                .sub(group.position);
             if (galaxy.userData.facedRevision !== heroPlaces.revision) {
-                _galaxyFacing.copy(heroPlaces.galaxyFaces);
-                galaxy.lookAt(_galaxyFacing);
+                _galaxyFacing.copy(galaxy.position).sub(heroPlaces.galaxyDir);
+                galaxy.lookAt(_galaxyFacing.add(group.position));
                 galaxy.rotateX(GALAXY_INCLINATION);
                 galaxy.rotateZ(0.6);
                 galaxy.userData.facedRevision = heroPlaces.revision;
             }
+        } else if (heroPlaces) {
+            galaxy.position.copy(heroPlaces.galaxy).sub(group.position);
         } else {
             galaxy.position.set(APPROACH.galaxyA.x, APPROACH.galaxyA.y, APPROACH.galaxyA.z);
         }
-        galaxy.scale.setScalar(GALAXY_WORLD_SEAT.scale);
+        // The quad's disc reaches 0.47 of its side: size it to the seat's angular radius.
+        galaxy.scale.setScalar((GALAXY_SKY_SEAT.distance * Math.tan(GALAXY_SKY_SEAT.angularRadius)) / 0.47);
     }
 
     const { diskLight } = group.userData;
@@ -2325,12 +2407,35 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     // director's clear colour. It now rides the space gate alone, which completes at
     // gateEnd (0.7730, held below the switch-off by odyssey-seam-56-schedule.test.js). The
     // dome is a dark backdrop (one band below the gas), so arriving faster is no luma rise.
-    const voidSkyOpacity = spaceReveal * chapterOpacity;
+    //
+    // ...AND IT ARRIVES AT ONCE (overhaul 2026-10-20). On the slow space gate (0.7543 -> 0.7730)
+    // and under the chapter's crossfade weight, the dome was ~20 % opaque at p 0.758, the frame the
+    // world's night sky stops covering the background: the clear colour behind it — a blend of
+    // ch5's light-cyan fog and ch6's black — showed as a NAVY sky for ~0.012 of p (+6.6 luma in
+    // 0.002 p; main shows the same flash). The dome is dark, so it now owns the background within
+    // the first 3 % of the chapter, at full weight while the chapter is arriving.
+    const domeArrival = Number.isFinite(cameraProgress) && Number.isFinite(chapterPositions?.[5])
+        ? rampBetween(cameraProgress, chapterPositions[5], chapterPositions[5] + spaceSpan * 0.03)
+        : spaceReveal;
+    const arriving = Number.isFinite(cameraProgress) && Number.isFinite(chapterPositions?.[5])
+        && cameraProgress < chapterPositions[5] + spaceSpan * 0.5;
+    const voidSkyOpacity = Math.max(spaceReveal * chapterOpacity, arriving ? domeArrival : 0);
     if (uniforms?.uVoidSkyOpacity) {
         uniforms.uVoidSkyOpacity.value = voidSkyOpacity;
     }
     if (group.userData.voidSky) {
         group.userData.voidSky.visible = voidSkyOpacity > 0.002;
+    }
+    // THE SKY AT INFINITY (overhaul 2026-10-20). The dome and both star shells used to hang at the
+    // chapter's centre, so the camera's ~300 u of travel slid them a few degrees, and chapter 7 —
+    // which seats the same baked sky on the eye — disagreed with them by 1.4-3.6 deg across the 6->7
+    // crossfade (a doubled Milky Way). Seated on the eye, the sky is a fixed set of directions:
+    // the reference everything else is judged against, and identical on both sides of the seam.
+    if (camera?.position) {
+        const skyLayers = [group.userData.voidSky, group.userData.starsFar, group.userData.starsNear];
+        for (let i = 0; i < skyLayers.length; i += 1) {
+            if (skyLayers[i]) skyLayers[i].position.copy(camera.position).sub(group.position);
+        }
     }
 
     // The sculpted nebula field stages itself OUTSIDE the entryContinuity buckets:
@@ -2369,6 +2474,16 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     if (comet?.userData?.uReveal) {
         const s = (time % COMET_PATH.periodSec) / COMET_PATH.periodSec;
         comet.position.lerpVectors(COMET_PATH.a, COMET_PATH.b, s);
+        // Its tails stream away from the hole's light, the dust tail bent back along its path.
+        if (blackHole && comet.parent && comet.userData.uTailDir) {
+            blackHole.getWorldPosition(_cometLight);
+            comet.parent.worldToLocal(_cometLight);
+            comet.userData.uTailDir.value.copy(comet.position).sub(_cometLight).normalize();
+            _cometPath.copy(COMET_PATH.a).sub(COMET_PATH.b).normalize();
+            comet.userData.uBendDir.value.copy(_cometPath)
+                .addScaledVector(comet.userData.uTailDir.value, -_cometPath.dot(comet.userData.uTailDir.value))
+                .normalize();
+        }
         const endFade = THREE.MathUtils.smoothstep(s, 0, 0.1)
             * (1 - THREE.MathUtils.smoothstep(s, 0.9, 1));
         // (2026-10-03) On the chapter's BEAT, not the camera's height (`approach` is pinned at

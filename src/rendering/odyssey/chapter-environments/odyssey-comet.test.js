@@ -40,59 +40,39 @@ function buildEnv() {
 }
 
 describe('ch6 comet (Space overhaul Wave 5)', () => {
-    it('ConeGeometry uv.y is 0 at the BASE and 1 at the TIP (the tail shader depends on this)', () => {
-        const geometry = new THREE.ConeGeometry(5, 95, 12, 1, true);
-        const pos = geometry.attributes.position;
-        const { uv } = geometry.attributes;
-        let tipUv = null;
-        let baseUv = null;
-        let maxY = -Infinity;
-        let minY = Infinity;
-        for (let i = 0; i < pos.count; i += 1) {
-            const y = pos.getY(i);
-            if (y > maxY) { maxY = y; tipUv = uv.getY(i); }
-            if (y < minY) { minY = y; baseUv = uv.getY(i); }
-        }
-        expect(tipUv).toBe(1);
-        expect(baseUv).toBe(0);
-    });
-
-    it('mounts a dithered-opaque head and a luminous additive tail, both fog-exempt', () => {
+    it('mounts a glowing coma and two luminous tails, all light, all fog-exempt', () => {
+        // Overhaul 2026-10-20: the head was an opaque ice ball faded through a screen-space dither
+        // (a speckled blob in captures); it is now the coma — light, like the tails — and a dust
+        // tail joined the ion tail.
         const group = buildEnv();
         const { comet } = group.userData;
         expect(comet?.name).toBe('comet-chase');
         const names = comet.children.map((child) => child.name).sort();
-        expect(names).toEqual(['comet-head', 'comet-tail']);
-        const head = comet.children.find((child) => child.name === 'comet-head');
-        const tail = comet.children.find((child) => child.name === 'comet-tail');
-        // The nucleus is solid: opaque queue + dithered dissolve.
-        expect(head.material.transparent).toBe(false);
-        expect(head.material.depthWrite).toBe(true);
-        expect(head.material.alphaTest).toBeGreaterThan(0);
-        // Seamless pass: the tail is LIGHT — additive, no depth write (its dithered-opaque
-        // fade read as white salt-and-pepper noise in every capture).
-        expect(tail.material.transparent).toBe(true);
-        expect(tail.material.depthWrite).toBe(false);
-        expect(tail.material.blending).toBe(THREE.AdditiveBlending);
+        expect(names).toEqual(['comet-dust-tail', 'comet-head', 'comet-tail']);
         comet.children.forEach((child) => {
+            expect(child.material.transparent).toBe(true);
+            expect(child.material.depthWrite).toBe(false);
+            expect(child.material.blending).toBe(THREE.AdditiveBlending);
+            expect(child.material.forceSinglePass).toBe(true);
             expect(child.material.opacityNode).toBeTruthy();
             // Space is a vacuum — every ch6 mesh joins the fog opt-out.
             expect(child.material.fog).toBe(false);
         });
     });
 
-    it('trails the tail BEHIND the head along the travel chord', () => {
+    it('streams its tails AWAY from the black hole, the dust tail bent back along its path', () => {
         const group = buildEnv();
-        const { comet } = group.userData;
-        const tail = comet.children.find((child) => child.name === 'comet-tail');
-        // The chord runs a -> b; the tail body must sit on the -travel side of the head.
-        const dir = COMET_PATH.b.clone().sub(COMET_PATH.a).normalize();
-        expect(tail.position.dot(dir)).toBeLessThan(0);
-        // ...and its local +Y (the cone tip) must point further backwards still.
-        const tipWorldOffset = new THREE.Vector3(0, 47.5, 0)
-            .applyQuaternion(tail.quaternion)
-            .add(tail.position);
-        expect(tipWorldOffset.dot(dir)).toBeLessThan(tail.position.dot(dir));
+        const { comet, blackHole } = group.userData;
+        updateCosmicExpanseEnvironment(group, 0.016, 30, null, 0.5);
+        group.updateMatrixWorld(true);
+        const hole = blackHole.getWorldPosition(new THREE.Vector3());
+        comet.parent.worldToLocal(hole);
+        const away = comet.position.clone().sub(hole).normalize();
+        expect(comet.userData.uTailDir.value.dot(away)).toBeGreaterThan(0.999);
+        // The bend is square to the tail and points back along the chord (a -> b travel).
+        const back = COMET_PATH.a.clone().sub(COMET_PATH.b).normalize();
+        expect(Math.abs(comet.userData.uBendDir.value.dot(comet.userData.uTailDir.value))).toBeLessThan(1e-6);
+        expect(comet.userData.uBendDir.value.dot(back)).toBeGreaterThan(0);
     });
 
     it('stages on its own uReveal — never through the entryContinuity buckets', () => {

@@ -118,11 +118,12 @@ export const CH7_GARGANTUA = Object.freeze({
 export const CH7_FOLD_ARC_SETTINGS = Object.freeze({
     opacity: 0.85,
     sweepRatio: 0.96,
-    // Coverage for the radial light profile (1.0-1.45 shadow radii): centred at 1.22 S with
-    // a 0.23 S tube. The sliver inside the silhouette is depth-hidden by the shadow sphere,
-    // which is exactly where the photon ring sits.
-    radius: 161,
-    tube: 31,
+    // Coverage for the radial light profile (1.0-2.2 shadow radii since the 2026-10-20 overhaul:
+    // the far disk's image bowed over the shadow, see createLensedFoldMaterialTSL): centred at
+    // 1.6 S with a 0.64 S tube. The sliver inside the silhouette is depth-hidden by the shadow
+    // sphere, which is exactly where the photon ring sits.
+    radius: 211,
+    tube: 85,
     radialSegments: 12,
     tubularSegments: 96,
 });
@@ -493,6 +494,74 @@ function resolveShadowTakeover(chapterPositions) {
     return ch7Start - (getChapterTransitionForChapter(6)?.seamWidth ?? 0.0222);
 }
 
+/**
+ * THE WARP DRIVE (overhaul 2026-10-20). Olov: "how do we really make it feel like we are in a warp
+ * going into the black hole?" Inside the hole the tunnel used to stream at a fixed clock rate, so a
+ * glide between orbs looked exactly like sitting still. The drive measures how fast the eye travels
+ * along the path (progress per second, against one orb spacing per glide), eases that into a
+ * throttle — a quick rise as a glide starts, a slower release as it lands — and integrates the
+ * tunnel's PHASE from it on the CPU (a closed form may never multiply the clock by a changing
+ * rate: four minutes in, a rate change would jump the phase by radians per frame). Parked at an
+ * orb the warp cruises; every glide punches it.
+ */
+export const CH7_WARP_DRIVE = Object.freeze({
+    /** Progress per second that reads as a full glide (one ch7 orb spacing, ~0.0113 p, per ~0.93 s). */
+    refSpeed: 0.012,
+    /** Throttle while parked, as a share of the full drive. */
+    cruise: 0.35,
+    /** Ease time constants (s): the punch arrives fast, the coast is slower. */
+    rise: 0.12,
+    release: 0.7,
+    /** Phase rate (tunnel radii-ish per second) = base + gain * throttle^2. */
+    base: 0.6,
+    gain: 3.4,
+    /** The phase wraps here; every rate in the window shader is a multiple of 1/64, so 2048 wraps whole. */
+    wrap: 2048,
+    /** A progress jump larger than this in one frame is a teleport (map jump), not travel. */
+    teleport: 0.02,
+});
+
+/**
+ * Advance the warp drive one frame (pure: all state lives in `state`).
+ * @param {{ lastProgress?: number, glide?: number, throttle?: number, phase?: number }} state
+ * @param {number} delta seconds
+ * @param {number|null} progress the eye's path progress
+ * @param {number} warp the fall's warp envelope (0 outside the tunnel)
+ * @param {{ reducedMotion?: boolean, override?: number|null }} [opts]
+ */
+export function advanceWarpDrive(state, delta, progress, warp, opts = {}) {
+    const D = CH7_WARP_DRIVE;
+    const dt = Math.min(0.1, Math.max(0, Number.isFinite(delta) ? delta : 0));
+    let speed = 0;
+    if (Number.isFinite(state.lastProgress) && Number.isFinite(progress) && dt > 0) {
+        const step = Math.abs(progress - state.lastProgress);
+        speed = step > D.teleport ? 0 : step / dt;
+    }
+    state.lastProgress = Number.isFinite(progress) ? progress : state.lastProgress;
+    const target = Math.min(1.6, speed / D.refSpeed);
+    const glide = Number.isFinite(state.glide) ? state.glide : 0;
+    const tau = target > glide ? D.rise : D.release;
+    state.glide = glide + (target - glide) * (1 - Math.exp(-dt / tau));
+    let throttle = (Number.isFinite(warp) ? warp : 0) * (D.cruise + (1 - D.cruise) * state.glide);
+    if (Number.isFinite(opts.override)) throttle = (Number.isFinite(warp) ? warp : 0) * opts.override;
+    if (opts.reducedMotion) throttle = Math.min(throttle, (Number.isFinite(warp) ? warp : 0) * D.cruise * 0.6);
+    state.throttle = throttle;
+    const phase = Number.isFinite(state.phase) ? state.phase : 0;
+    state.phase = (phase + dt * (D.base + D.gain * throttle * throttle)) % D.wrap;
+    return state;
+}
+
+function readCh7ThrottleOverride() {
+    if (typeof window === 'undefined' || !window.location?.search) return null;
+    const value = Number.parseFloat(new URLSearchParams(window.location.search).get('odysseyCh7Throttle'));
+    return Number.isFinite(value) ? Math.max(0, Math.min(1.6, value)) : null;
+}
+
+function prefersReducedMotionCh7() {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
+    return window.matchMedia('(prefers-reduced-motion: reduce)').matches === true;
+}
+
 export function updateBlackHoleTranscendenceEnvironment(group, delta, time, camera, ...updateArgs) {
     const [cameraProgress = null, directorState = null] = updateArgs;
     const chapterPositions = getActiveOdysseyChapterPositions();
@@ -561,11 +630,27 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
         group.userData.lensWorldPos.portal = fall.portal;
     }
     const windowUniforms = hero?.singularity;
+    // The warp drive: travel speed -> throttle -> the tunnel's phase (see advanceWarpDrive).
+    const drive = group.userData.warpDrive ?? (group.userData.warpDrive = {});
+    if (group.userData.throttleOverride === undefined) {
+        group.userData.throttleOverride = readCh7ThrottleOverride();
+    }
+    advanceWarpDrive(drive, delta, cameraProgress, fall.warp, {
+        reducedMotion: prefersReducedMotionCh7(),
+        override: group.userData.throttleOverride,
+    });
     if (windowUniforms) {
         windowUniforms.uPortal.value = fall.portal;
         windowUniforms.uWarp.value = fall.warp;
         // The mouth grows to 80 deg: past the corners of a 70 deg-FOV frame.
         windowUniforms.uOpen.value = open * CH7_EXIT_MOUTH_MAX;
+        if (windowUniforms.uPhase) windowUniforms.uPhase.value = drive.phase;
+        if (windowUniforms.uThrottle) windowUniforms.uThrottle.value = drive.throttle;
+    }
+    // The post's radial rush (zoom blur) rides the same throttle, only inside the window and gone
+    // before the mouth opens onto the city.
+    if (group.userData.lensWorldPos) {
+        group.userData.lensWorldPos.rush = Math.min(1, drive.throttle) * fall.portal * (1 - open);
     }
     // The disk-plane crossing: the band's plane sweeps through edge-on (a razor line) and reopens.
     // Its outer edge is held in front of the eye (<= 0.85 of the hero's distance): left at its
@@ -589,7 +674,15 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     if (hero?.uSwell) hero.uSwell.value = fill;
     if (hero?.photonRing) hero.photonRing.scale.setScalar(1 + fill * 0.08);
     if (hero?.uDiskFade) hero.uDiskFade.value = band;
-    scaleBridge(hero?.foldArcs?.[0]?.material?.uniforms?.uOpacity, band);
+    // THE FAR DISK'S IMAGE IS A VIEW FROM OUTSIDE (overhaul 2026-10-20). The lensed halo spans 1-2.2
+    // shadow radii: once the hole outgrows ~9 deg it would flood the frame with amber (the 6->7
+    // gate read 100 luma at p 0.893), so it fades out by ~19 deg, and the photon ring — a razor at
+    // a distance, a fat band at the frame's edge — dims as it passes the corners.
+    const holeDeg = THREE.MathUtils.radToDeg(fall.alpha ?? 0);
+    const imageFade = 1 - THREE.MathUtils.smoothstep(holeDeg, 9, 19);
+    const ringFade = THREE.MathUtils.lerp(1 - 0.65 * THREE.MathUtils.smoothstep(holeDeg, 12, 28), 1, fill);
+    scaleBridge(hero?.foldArcs?.[0]?.material?.uniforms?.uOpacity, band * imageFade);
+    scaleBridge(hero?.photonRing?.material?.uniforms?.uOpacity, ringFade);
     const {
         infallEmbers, corridorDust: dust, shards: shardMesh, lensingStarfield: stars,
     } = group.userData;
@@ -599,7 +692,7 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
     scaleBridge(stars?.material?.uniforms?.uOpacity, motifs);
     // Hidden outright once collapsed / gone, so nothing keeps drawing at zero.
     if (hero?.diskPivot) hero.diskPivot.visible = band > 0.002;
-    hero?.foldArcs?.forEach((fold) => { fold.visible = band > 0.002; });
+    hero?.foldArcs?.forEach((fold) => { fold.visible = band * imageFade > 0.002; });
     if (dust) dust.visible = motifs > 0.002;
     if (shardMesh) shardMesh.visible = motifs > 0.002;
     // The far stars sit behind the window once inside: depth-rejected fill, so they stop drawing.
@@ -651,9 +744,17 @@ export function updateBlackHoleTranscendenceEnvironment(group, delta, time, came
         shardDrift.uCameraY.value = camera?.position?.y ?? group.position.y;
     }
 
+    // THE STARS AT INFINITY (overhaul 2026-10-20), as the dome above and chapter 6's sky: seated
+    // on the eye and never turned. The whole field used to yaw 0.002 rad/s about the chapter's
+    // centre — the same kind of whole-sky slide chapter 6 dropped — so the stars drifted against
+    // the hole that holds the frame's centre.
     const { lensingStarfield } = group.userData;
-    if (lensingStarfield) {
-        lensingStarfield.rotation.y += delta * 0.002;
+    if (lensingStarfield && camera?.position) {
+        lensingStarfield.position.set(
+            camera.position.x - group.position.x,
+            camera.position.y - group.position.y,
+            camera.position.z - group.position.z,
+        );
     }
 }
 

@@ -171,6 +171,14 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     // The tunnel's MOUTH at the 7->8 exit: angular radius (rad) of the opening round the vanishing
     // point, through which the city and its sun are seen (alpha-tested away; 0 = no opening).
     const uOpen = options.uOpen ?? uniform(0);
+    // THE WARP THROTTLE (overhaul 2026-10-20). The tunnel used to stream at uTime x constant: a
+    // glide between orbs looked exactly like sitting still, so nothing in it answered the
+    // traveller. `uPhase` is the distance travelled down the tunnel, integrated on the CPU from
+    // the measured travel speed (never clock x changing rate — the closed-form phase trap), and
+    // `uThrottle` (0 cruise .. ~1.6 a glide's punch) shapes what speed looks like: longer
+    // streaks, a starbow, the near layers rushing past.
+    const uPhase = options.uPhase ?? uniform(0);
+    const uThrottle = options.uThrottle ?? uniform(0);
     const palette = getJourneyPaletteTexture();
 
     const ray = normalize(positionLocal.sub(vec3(0.0, 0.0, uEyeZ)));
@@ -179,36 +187,40 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     // Depth down the tunnel (cot theta), capped where the lanes would alias at the vanishing point.
     const depth = cosT.div(sinT).min(80.0);
     const warp = clamp(uWarp, 0.0, 1.0);
+    const throttle = clamp(uThrottle, 0.0, 1.6);
+    const speedLook = clamp(throttle, 0.0, 1.0);
     const logDepth = log(depth.add(0.25));
-    // A shallow helical wall, rather than tightly wound spokes near the vanishing point.
-    // Every travelling feature uses +time: increasing tunnel depth projects nearer the axis,
-    // so a fixed feature of depth + time moves OUT toward the traveller as time advances.
+    // A shallow helical wall, rather than tightly wound spokes near the vanishing point. The
+    // twist rides the clock at a constant rate (a closed form may only multiply time by a
+    // constant); the travel rides uPhase.
     const twist = logDepth.mul(warp.mul(0.22).add(0.08)).add(uTime.mul(0.035));
     const ang = atan(ray.y, ray.x).add(twist);
+    // The angle from the axis, for the starbow and the AA of the near layers.
+    const theta = atan(sinT, cosT);
 
-    // Two sparse banks of long, feathered streaks at different depths. Pixel-footprint widths
-    // keep the fine angular detail stable on phone-sized targets and close to the axis.
+    // Two sparse banks of long, feathered streaks on LOG depth (the far field: it crawls at the
+    // centre and runs at the edge at one rate). Lane rates are quantised to 1/64 so the phase can
+    // wrap without a visible jump.
     const LANES = 72;
     const lanePos = ang.div(TAU).add(0.5).mul(LANES);
     const lane = mod(floor(lanePos), LANES);
     const laneF = fract(lanePos);
     const r1 = hash21(vec2(lane, 7.13));
     const r2 = hash21(vec2(lane, 1.91));
-    // Rates never multiply elapsed time by a changing progress value. The faster bank and
-    // brighter, longer features emerge with warp instead, so a late-session plunge cannot
-    // amplify minutes of elapsed time into a sudden phase jump.
-    const speed = mix(0.55, 1.25, r1);
-    const seg = fract(logDepth.mul(mix(0.65, 1.2, r2)).add(uTime.mul(speed)).add(r1.mul(17.0)));
-    const head = smoothstep(0.0, 0.30, seg).mul(oneMinus(smoothstep(0.30, 0.36, seg)));
+    const speed = floor(mix(0.55, 1.25, r1).mul(64.0)).div(64.0);
+    const seg = fract(logDepth.mul(mix(0.65, 1.2, r2)).add(uPhase.mul(speed)).add(r1.mul(17.0)));
+    // At speed the heads stretch: a streak's length is how far it travelled in the shutter.
+    const headLen = mix(float(0.30), float(0.62), speedLook);
+    const head = smoothstep(0.0, headLen, seg).mul(oneMinus(smoothstep(headLen, headLen.add(0.06), seg)));
     const laneAA = clamp(fwidth(lanePos), 0.018, 0.24);
     const core = oneMinus(smoothstep(0.025, laneAA.add(0.06), abs(laneF.sub(0.5))));
-    const lit = smoothstep(0.62, 0.88, r2.add(warp.mul(0.20)));
+    const lit = smoothstep(0.62, 0.88, r2.add(warp.mul(0.20)).add(speedLook.mul(0.08)));
     const streaks = head.mul(core).mul(lit);
 
     const finePos = ang.add(0.23).sub(logDepth.mul(0.10)).div(TAU).mul(116);
     const fineLane = mod(floor(finePos), 116);
     const fineSeed = hash21(vec2(fineLane, 23.71));
-    const finePhase = fract(logDepth.mul(1.8).add(uTime.mul(1.6)).add(fineSeed.mul(13.0)));
+    const finePhase = fract(logDepth.mul(1.8).add(uPhase.mul(1.625)).add(fineSeed.mul(13.0)));
     const fineHead = smoothstep(0.0, 0.40, finePhase)
         .mul(oneMinus(smoothstep(0.40, 0.45, finePhase)));
     const fineCore = oneMinus(smoothstep(
@@ -218,34 +230,71 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     ));
     const fineStreaks = fineHead.mul(fineCore).mul(smoothstep(0.75, 0.94, fineSeed)).mul(warp);
 
+    // THE NEAR LAYER — debris on an inner tube (radius 0.35): a ray at theta meets it at depth
+    // 0.35 cot theta, so in LINEAR depth it runs ~3x faster across the screen than the wall at the
+    // same angle. That difference is parallax: the near field rushes past while the far field
+    // crawls, which is what makes a tunnel read as flight rather than as a zoom.
+    const NEAR_LANES = 40;
+    const nearPos = ang.mul(1.0).sub(0.6).div(TAU).add(0.5)
+        .mul(NEAR_LANES);
+    const nearLane = mod(floor(nearPos), NEAR_LANES);
+    const n1 = hash21(vec2(nearLane, 3.37));
+    const n2 = hash21(vec2(nearLane, 9.11));
+    const nearDepth = depth.mul(0.35);
+    const nearRate = floor(mix(0.9, 1.6, n1).mul(64.0)).div(64.0);
+    const nearSeg = fract(nearDepth.mul(mix(0.16, 0.26, n2)).add(uPhase.mul(nearRate)).add(n1.mul(11.0)));
+    const nearHead = smoothstep(0.0, headLen.mul(0.8), nearSeg)
+        .mul(oneMinus(smoothstep(headLen.mul(0.8), headLen.mul(0.8).add(0.05), nearSeg)));
+    const nearAA = clamp(fwidth(nearPos), 0.02, 0.3);
+    const nearCore = oneMinus(smoothstep(0.03, nearAA.add(0.07), abs(fract(nearPos).sub(0.5))));
+    // Only near the frame's edge (theta > ~16 deg): the near tube is never seen at the centre.
+    const nearMask = smoothstep(0.28, 0.5, theta).mul(smoothstep(0.55, 0.85, n2));
+    const nearStreaks = nearHead.mul(nearCore).mul(nearMask).mul(warp);
+
     // LOG DEPTH: cot(theta) crowds everything interesting into the centre of the frame; its log
     // spreads features evenly across screen radius, so bands and filaments read edge to centre.
     // WALL FILAMENTS: accretion matter spiralling past, two baked-lattice octaves, stretched along
     // the tunnel (low frequency in depth, high in angle) and streaming toward the eye.
-    const wallDepth = logDepth.mul(1.1).add(uTime.mul(0.75));
+    const wallDepth = logDepth.mul(1.1).add(uPhase.mul(0.75));
     const wall = vec3(cos(ang).mul(3.4), sin(ang).mul(3.4), wallDepth);
     const filamentField = latticeNoise3(wall).mul(0.65).add(latticeNoise3(wall.mul(2.3)).mul(0.35));
     const filaments = smoothstep(0.5, 0.8, filamentField);
 
     // The journey's colours, in rings down the tunnel that zoom outward past the eye.
-    const band = fract(logDepth.mul(0.32).add(uTime.mul(0.08)));
+    const band = fract(logDepth.mul(0.32).add(uPhase.mul(0.0625)));
     const tint = sampleTexture(palette, vec2(band, 0.5)).rgb;
-    // Travelling rings make depth legible between the longitudinal streaks. They share the
-    // wall's outward direction and stay restrained enough to avoid a flashing strobe.
-    const ringPhase = logDepth.mul(2.2).add(uTime.mul(1.0));
-    const ringAA = clamp(fwidth(ringPhase), 0.012, 0.12);
-    const rings = oneMinus(smoothstep(0.035, ringAA.add(0.12), abs(fract(ringPhase).sub(0.5))))
-        .mul(filaments.mul(0.65).add(0.35));
-    const ridges = pow(clamp(cos(ang.mul(12.0).sub(logDepth.mul(1.4))).mul(0.5).add(0.5), 0.0, 1.0), 8.0)
+    // RIBS on LINEAR depth (the tunnel's structure passing the eye): each rib is one turn of the
+    // wall at a fixed depth, BROKEN into arcs by its own noise so the frame never reads as the
+    // concentric target the full rings drew; near ribs (the frame's edge) sweep out fast, far ones
+    // crowd the centre slowly. Dim: structure, not strobe.
+    const ribPhase = depth.mul(0.3).add(uPhase.mul(0.875));
+    const ribIndex = floor(ribPhase);
+    const ribAA = clamp(fwidth(ribPhase), 0.01, 0.2);
+    const rib = oneMinus(smoothstep(0.008, ribAA.add(0.025), abs(fract(ribPhase).sub(0.5))));
+    const ribNoise = latticeNoise3(vec3(cos(ang).mul(2.6), sin(ang).mul(2.6), ribIndex.mul(1.37)));
+    const ribBreak = smoothstep(0.42, 0.62, ribNoise);
+    const ribs = rib.mul(ribBreak).mul(smoothstep(0.22, 0.45, theta)).mul(warp);
+    // A few soft spokes of the helical wall (7, not 12: an odd count that cannot read as wedges).
+    const ridges = pow(clamp(cos(ang.mul(7.0).sub(logDepth.mul(1.4))).mul(0.5).add(0.5), 0.0, 1.0), 8.0)
         .mul(filaments);
     const axisFade = smoothstep(0.008, 0.055, sinT);
     // Far down the tunnel is dimmer — except the exit light dead ahead (the light at the end,
     // which becomes the city's sun at the 7->8 seam).
     const far = exp(depth.mul(-0.035));
     const exitLight = exp(sinT.mul(sinT).mul(-260.0));
+    // THE STARBOW: at speed the streak heads shift with their angle from the heading — violet
+    // ahead, white, then amber and red toward the frame's edge (Stellar Velocity's relative
+    // ramp: the bands cross the picture at any speed, and at cruise the tunnel keeps its own
+    // journey colours).
+    const bowT = clamp(theta.div(0.62), 0.0, 1.0);
+    const starbow = mix(
+        mix(vec3(0.62, 0.52, 1.0), vec3(1.0, 0.97, 0.92), smoothstep(0.0, 0.38, bowT)),
+        mix(vec3(1.0, 0.64, 0.32), vec3(1.0, 0.34, 0.24), smoothstep(0.72, 1.0, bowT)),
+        smoothstep(0.38, 0.72, bowT),
+    );
+    const bowMix = speedLook.mul(0.75).mul(warp);
     // The mouth: everything inside the opening is cut away (the scene behind shows through) and a
     // blazing rim rides its edge. Gated so no opening exists until the exit begins.
-    const theta = atan(sinT, cosT);
     const opening = smoothstep(0.0, 0.002, uOpen);
     const inMouth = oneMinus(smoothstep(uOpen.mul(0.96), uOpen.add(0.002), theta)).mul(opening);
     const rimOffset = theta.sub(uOpen).div(0.03);
@@ -254,13 +303,18 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     // (a +20 luma spike in the 7->8 seam gate).
     const rimFade = oneMinus(smoothstep(0.25, 1.1, uOpen));
     const rim = exp(rimOffset.mul(rimOffset).negate()).mul(opening).mul(rimFade);
-    const color = tint.mul(filaments.mul(0.15).add(ridges.mul(0.16)).add(0.009))
+    // At speed the walls darken a touch so the added streak light does not lift the frame's luma.
+    const wallGain = oneMinus(speedLook.mul(0.3));
+    const streakColor = mix(mix(tint, vec3(1.0, 0.94, 0.84), head.mul(0.45)), starbow, bowMix);
+    const color = tint.mul(filaments.mul(0.15).add(ridges.mul(0.07)).add(0.009)).mul(wallGain)
         .mul(far.mul(0.8).add(0.2)).mul(axisFade)
-        .add(mix(tint, vec3(1.0, 0.94, 0.84), head.mul(0.45)).mul(streaks)
+        .add(streakColor.mul(streaks)
             .mul(warp.mul(1.8).add(0.35)).mul(axisFade))
-        .add(mix(tint, vec3(0.74, 0.91, 1.0), 0.72).mul(fineStreaks).mul(1.15).mul(axisFade))
-        .add(tint.mul(rings).mul(warp.mul(0.19).add(0.035)).mul(axisFade))
-        .add(vec3(1.0, 0.86, 0.62).mul(exitLight).mul(warp.mul(1.2).add(0.12)).mul(oneMinus(opening)))
+        .add(mix(mix(tint, vec3(0.74, 0.91, 1.0), 0.72), starbow, bowMix).mul(fineStreaks).mul(1.15).mul(axisFade))
+        .add(mix(vec3(0.9, 0.95, 1.0), starbow, bowMix).mul(nearStreaks).mul(speedLook.mul(1.1).add(0.55)))
+        .add(mix(tint, vec3(0.8, 0.9, 1.0), 0.25).mul(ribs).mul(0.14))
+        .add(vec3(1.0, 0.86, 0.62).mul(exitLight).mul(warp.mul(1.2).add(0.12).add(speedLook.mul(0.35)))
+            .mul(oneMinus(opening)))
         .add(vec3(1.0, 0.82, 0.55).mul(rim).mul(1.8));
 
     // As the mouth widens the tunnel walls dim with it, so the frame's brightness eases down into
@@ -276,7 +330,7 @@ export function createSingularityWindowTSL(uTime = uniform(0), options = {}) {
     return {
         material,
         uniforms: {
-            uPortal, uWarp, uEyeZ, uOpen,
+            uPortal, uWarp, uEyeZ, uOpen, uPhase, uThrottle,
         },
     };
 }
@@ -452,6 +506,9 @@ export function createGargantuaPhotonRingTSL(uTime = uniform(0), options = {}) {
     const inner = options.innerRadius ?? shadowRadius;
     const outer = options.outerRadius ?? shadowRadius * 1.075;
     const uOpacity = uniform(1);
+    // Within-chapter fade (default 1): chapter 6's omen arrives on it (its material.opacity is
+    // a dead write under an opacityNode, so the omen used to pop in whole at the boundary).
+    const uFade = options.uFade ?? uniform(1);
 
     const { side, angle } = rimFrame(shadowRadius);
     // Radial position across the ring, from its local geometry: RingGeometry's UV is PLANAR
@@ -474,7 +531,7 @@ export function createGargantuaPhotonRingTSL(uTime = uniform(0), options = {}) {
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color.mul(profile.mul(beam).mul(flicker).mul(gain));
-    material.opacityNode = profile.mul(uOpacity);
+    material.opacityNode = profile.mul(uOpacity).mul(uFade);
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;
@@ -503,24 +560,41 @@ export function createLensedFoldMaterialTSL(uTime = uniform(0), options = {}) {
     const shadowRadius = options.shadowRadius ?? 132;
     const opacity = options.opacity ?? 0.85;
     const uOpacity = uniform(1);
+    const uFade = options.uFade ?? uniform(1);
 
     const {
         rr, side, above, angle,
     } = rimFrame(shadowRadius);
-    const rise = smoothstep(1.0, 1.05, rr);
-    const fall = pow(oneMinus(smoothstep(1.04, 1.42, rr)), 1.6);
+    // THE IMAGE OF THE FAR DISK (overhaul 2026-10-20). The profile used to run 1.0-1.42 shadow
+    // radii, white-hot and even all round: a thick white donut hugging the shadow. Gargantua's
+    // read is the far side of the disk bowed OVER the shadow as a broad band — the whole disk,
+    // inner edge to outer, compressed into ~1.2 shadow radii above it — and a thin one under it,
+    // both carrying the disk's own temperature ladder and concentric lanes, so the lensed image
+    // and the disk in front read as one body of light. `t` runs across that image: 0 at the
+    // shadow's edge (the disk's hot inner edge), 1 at its outer edge.
+    const span = mix(float(0.42), float(1.18), smoothstep(-0.35, 0.35, above));
+    const t = clamp(rr.sub(1.02).div(span), 0.0, 1.0);
+    const rise = smoothstep(1.0, 1.035, rr);
+    const fall = oneMinus(smoothstep(0.62, 1.0, t));
     const profile = rise.mul(fall);
     const beam = pow(clamp(side.mul(0.5).add(1.0), 0.4, 1.5), 2.0);
-    const underside = mix(float(0.3), float(1.0), smoothstep(-0.25, 0.25, above));
-    const turb = fbm3(vec3(angle.mul(2.5), rr.mul(4.0), uTime.mul(0.05)), 2, latticeNoise3);
-    const striae = sin(rr.mul(70.0).add(turb.mul(8.0))).mul(0.5).add(0.5);
-    const texture = mix(float(0.6), float(1.0), striae.mul(striae)).mul(turb.mul(0.6).add(0.7));
-    const hot = oneMinus(smoothstep(1.03, 1.25, rr));
-    const color = mix(vec3(1.0, 0.56, 0.22), vec3(1.0, 0.94, 0.84), hot);
+    const underside = mix(float(0.55), float(1.0), smoothstep(-0.25, 0.25, above));
+    // Turbulence read on the circle (no seam at the atan branch), streaming along the arc.
+    const flow = angle.sub(uTime.mul(0.12));
+    const turbAt = vec3(cos(flow).mul(2.2), sin(flow).mul(2.2), t.mul(3.0).add(uTime.mul(0.04)));
+    const turb = fbm3(turbAt, 2, latticeNoise3);
+    const striae = sin(t.mul(46.0).add(turb.mul(7.0))).mul(0.5).add(0.5);
+    const texture = mix(float(0.55), float(1.0), striae.mul(striae)).mul(turb.mul(0.6).add(0.7));
+    // The disk's ladder: white-hot at the inner edge -> gold -> deep amber.
+    const temp = pow(oneMinus(t), 1.7);
+    let color = mix(vec3(0.66, 0.24, 0.09), vec3(1.0, 0.65, 0.28), smoothstep(0.0, 0.55, temp));
+    color = mix(color, vec3(1.0, 0.93, 0.84), smoothstep(0.66, 0.98, temp));
+    const glow = temp.mul(1.2).add(0.1);
 
     const material = new THREE.MeshBasicNodeMaterial();
-    material.colorNode = color.mul(profile.mul(beam).mul(underside).mul(texture).mul(1.3));
-    material.opacityNode = profile.mul(opacity).mul(uOpacity);
+    material.colorNode = color.mul(profile.mul(beam).mul(underside).mul(texture).mul(glow)
+        .mul(0.85));
+    material.opacityNode = profile.mul(opacity).mul(uOpacity).mul(uFade);
     material.uniforms = { uOpacity }; // ecotone crossfade bridge
     material.transparent = true;
     material.depthWrite = false;

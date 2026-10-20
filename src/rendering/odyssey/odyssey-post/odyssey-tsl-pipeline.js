@@ -54,7 +54,9 @@ import {
     dot,
     emissive,
     float,
+    Fn,
     fract,
+    If,
     length,
     max,
     min,
@@ -490,6 +492,11 @@ export class OdysseyTslPipeline {
         // (0 = the black shadow, 1 = the tunnel). Published on the lens target by the hero; it
         // lifts the in-shadow bloom mask so the tunnel's light can glow.
         this.uLensPortal = uniform(0);
+        // THE RUSH (overhaul 2026-10-20): the warp drive's throttle inside the hole, published on the
+        // lens target (`rush`). A radial zoom blur out from the hole's centre — gated by an `If` in
+        // the graph, so at 0 it costs nothing — sells the speed a still tunnel cannot.
+        this.uLensRush = uniform(0);
+        this._publishedRush = 0;
         // How far out the lens reaches, as a multiple of its 3-6 shadow-radius falloff: 1 for
         // chapter 7's Gargantua, shorter for chapter 6's omen (it bends the sky right round the
         // hole and leaves the rail's orbs in the middle of the frame alone).
@@ -796,7 +803,26 @@ export class OdysseyTslPipeline {
             const sampleR = sceneColor.sample(warpedUv.add(chromaOffset)).r;
             const sampleG = sceneColor.sample(warpedUv).g;
             const sampleB = sceneColor.sample(warpedUv.sub(chromaOffset)).b;
-            sceneHDR = vec3(sampleR, sampleG, sampleB);
+            const lensed = vec3(sampleR, sampleG, sampleB);
+            // THE RUSH: inside the warp, a radial zoom blur out from the hole's centre — the reach
+            // grows with distance from it, so the vanishing point stays sharp and the frame's edge
+            // streaks. Uniform-gated (`If`), so it costs nothing until the drive throttles up.
+            const uRush = this.uLensRush;
+            const centre = this.uLensCenter;
+            sceneHDR = Fn(() => {
+                const out = vec3(lensed).toVar();
+                If(uRush.greaterThan(0.004), () => {
+                    const outward = warpedUv.sub(centre).toVar();
+                    const rushReach = uRush.mul(0.085).toVar();
+                    const sum = vec3(lensed).toVar();
+                    for (let i = 1; i <= 7; i += 1) {
+                        const toward = float(1.0).sub(rushReach.mul(i / 7));
+                        sum.addAssign(sceneColor.sample(centre.add(outward.mul(toward))).rgb);
+                    }
+                    out.assign(mix(lensed, sum.div(8.0), clamp(uRush.mul(1.1), 0.0, 0.85)));
+                });
+                return out;
+            })();
             // Bloom is an optical halo, but it must not paint over the event horizon: keep the
             // shadow black even when the photon ring and disk run hot (black-hole-post.js idea).
             const outsideShadow = smoothstep(rs.mul(0.8), rs.mul(1.03), lensR);
@@ -1206,6 +1232,12 @@ export class OdysseyTslPipeline {
             this._selectVariant(wantLens, wantBloom);
         }
 
+        // The rush follows the hero's published throttle while the lens is live; it eases off
+        // (never snaps) when the hole stops publishing.
+        const rushTarget = this._lensActive ? this._publishedRush : 0;
+        this.uLensRush.value = lerp(this.uLensRush.value, rushTarget, 1 - 0.5 ** ((dt || 1 / 60) * 30));
+        if (this.uLensRush.value < 1e-3) this.uLensRush.value = 0;
+        this._publishedRush = 0;
         // Reset the per-frame lens-active flag (re-armed by setLensTarget next frame).
         this._lensActive = false;
         this._publishedLensStrength = 0;
@@ -1248,8 +1280,11 @@ export class OdysseyTslPipeline {
         // The SHADOW's projected radius, when the hero publishes its world radius on the target
         // (black-hole-transcendence.js sets `lensWorldPos.lensRadius`): the angular radius of
         // a sphere, as a fraction of the viewport height (the aspect-corrected lens space).
-        const { portal, lensStrength, lensReach } = worldVec3;
+        const {
+            portal, lensStrength, lensReach, rush,
+        } = worldVec3;
         this.uLensPortal.value = Number.isFinite(portal) ? Math.min(1, Math.max(0, portal)) : 0;
+        this._publishedRush = Number.isFinite(rush) ? Math.min(1, Math.max(0, rush)) : 0;
         if (Number.isFinite(lensStrength) && lensStrength > 0) {
             this._publishedLensStrength = Math.max(this._publishedLensStrength, lensStrength);
             if (Number.isFinite(lensReach) && lensReach > 0) this._publishedLensReach = lensReach;
