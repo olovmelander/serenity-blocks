@@ -62,7 +62,7 @@ board is holding.
 | `cinder-drift-lake.js` | The lake: plates, seams, open lava and its skin, the crust's shading. |
 | `cinder-drift-rock.js` | The columns (one instanced prism) and the shell behind them. |
 | `cinder-drift-falls.js` | Running lava as one instanced ribbon — the great fall, the fissure streams, the fountains, the lock jets — and the fissure's wall of fire. |
-| `cinder-drift-air.js` | Embers, smoke, the night's shaft. |
+| `cinder-drift-air.js` | Embers, smoke, the great fall's plume, the night's shaft. |
 | `cinder-drift-fx.js` | Spatter (drops and sparks), bombs, flashes, row jets. |
 | `cinder-drift-world.js` | Owns the uniforms, the parts, the camera rig and the choreography. Shared with the playground effect, so what is iterated there ships. |
 | `cinder-drift-director.js` | Renderer-free: stages bus events per player and resolves one lock and one clear per frame. |
@@ -125,14 +125,14 @@ Techniques worth knowing before changing it:
 
 ## Tiers
 
-| Tier | Columns | Embers | Smoke banks | Drop pool | Drops per fountain | Bombs | Lake detail | Bloom, shafts | Heat haze | Scene MSAA |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- | --- |
-| Minimal | 1,668 | none | none | 384 | 28 | 5 | plates | off | off | off |
-| Low | 2,424 | 420 | 10 | 1,024 | 70 | 7 | plates, the fall's glint | off | on | off |
-| Medium | 3,331 | 900 | 18 | 2,304 | 160 | 10 | full | on | on | off |
-| High | 4,577 | 1,600 | 26 | 4,096 | 300 | 14 | full | on | on | 4× |
-| Ultra | 5,626 | 2,400 | 32 | 6,144 | 460 | 14 | full | on | on | 4× |
-| Extreme | 7,047 | 3,400 | 40 | 8,192 | 620 | 14 | full | on | on | 4× |
+| Tier | Columns | Embers | Smoke banks | Fall plume | Drop pool | Drops per fountain | Bombs | Lake detail | Bloom, shafts | Heat haze | Scene MSAA |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- | --- | --- |
+| Minimal | 1,668 | none | none | none | 384 | 28 | 5 | plates | off | off | off |
+| Low | 2,424 | 420 | 10 | 8 | 1,024 | 70 | 7 | plates, the fall's glint | off | on | off |
+| Medium | 3,331 | 900 | 18 | 12 | 2,304 | 160 | 10 | full | on | on | off |
+| High | 4,577 | 1,600 | 26 | 16 | 4,096 | 300 | 14 | full | on | on | 4× |
+| Ultra | 5,626 | 2,400 | 32 | 18 | 6,144 | 460 | 14 | full | on | on | 4× |
+| Extreme | 7,047 | 3,400 | 40 | 22 | 8,192 | 620 | 14 | full | on | on | 4× |
 
 A lower tier does not drop columns out of the same plan (that would open holes in the cliffs):
 the plan is cut coarser, with wider columns. "Full" lake detail adds the hairline cracks inside
@@ -212,6 +212,69 @@ drift, the flicker of the fall, how long a pool takes to skin over) are set by c
 `docs/theme-screenshots/cinder-drift.png` still shows the previous artwork (a fleet capture
 writes it).
 
+## Atmosphere pass (2026-10-20)
+
+A second pass on the look, on branch `feature/cinder-drift-overhaul`. The chamber read as one
+flat orange-brown veil: every surface faded into a haze that was nearly as bright under the roof
+as over the lava, the lake lit the rock almost as much forty metres up as at its foot, and the
+fall's light reached across the whole chamber. The basalt read as soft blocks, the crust as flat
+paint, and the fountains of a four-line clear as a row of equal sawtoothed cones.
+
+| Before | After |
+| --- | --- |
+| ![before, at rest](cinder-drift-captures/atmosphere-before-rest.jpg) | ![after, at rest](cinder-drift-captures/atmosphere-after-rest.jpg) |
+| ![before, four lines](cinder-drift-captures/atmosphere-before-quad.jpg) | ![after, four lines](cinder-drift-captures/atmosphere-after-quad.jpg) |
+
+What changed:
+
+- **Light where it comes from.** The lake's light on the rock falls off steeply with height and
+  shifts from orange at the waterline to deep red higher up; the fall's light is close to an
+  inverse square, so it lights its own corner. The haze is dark smoke overhead and glows only low
+  over the lava; bloom spreads less.
+- **A fume over the lava** (`cdFume` in `-tsl.js`, applied by `cdAtmosphere` to every surface).
+  Its density falls off with height (`FUME_SCALE` 2.4 m) and is integrated along each view ray in
+  closed form, so a look across the lake passes through metres of glowing fume and a look at the
+  roof through almost none. It drifts in banks with the crust. The far lake and the feet of the
+  far columns sink into it, which gives the chamber its depth.
+- **Basalt, not blocks.** Flat faces with sharp arrises (the face roll is a third of what it
+  was), a narrow dark seam between columns with a chipped bright edge beside it, and close up a
+  fine grain and the pits gas bubbles leave. A face that looks down mirrors the lava's glow
+  (glassy basalt).
+- **The crust has relief.** Each raft is domed over its heart with its rim rolled down into the
+  seam (a gradient of the plate texture's edge distance, two more fetches on Medium and up), with
+  ropy wrinkles; ash on a raft's crown, black glass at its rim (only the glass mirrors the fall).
+  A wide seam runs white down its middle.
+- **The great fall** carries rafts of darker crust down its white body, and where it strikes the
+  lake a **plume** of steam and smoke rolls up out of the splash, lit hot from below (a new part,
+  `plume`: 8 to 22 puffs by tier, none on Minimal, one draw).
+- **The shaft of night** is brighter, hides less of the fire-lit smoke behind it, and has motes
+  of ash turning in it.
+- **Fountains.** A four-line clear's curtain stands at very different heights (a few far taller
+  than their neighbours), and a fountain is a smooth white column that tears into clots toward its
+  crown. The sawtooth on every tapering lava ribbon is gone: each segment of a ribbon is a
+  trapezoid, and `uv.x` interpolated over its two triangles kinked along the diagonal once per
+  segment; the shader now divides the interpolated offset across by the interpolated width, which
+  is exact (the same fix applies to the fall and the streams).
+
+![the cliff close up](cinder-drift-captures/atmosphere-cliff-closeup.jpg)
+![the great fall and its plume](cinder-drift-captures/atmosphere-fall-closeup.jpg)
+
+Verified with single-effect playground captures (1584 × 787, WebGPU, private dev server): rest
+with and without the board, a hard drop, a two-line clear, a held chain of six, a four-line clear
+1.6 s in, the cliff and the fall close up with the new inspection lens (`eye=`, `aim=`, `fov=`),
+High on the WebGL2 backend through a four-line clear, Low on WebGL2, Minimal, and an upright
+430 × 932 frame. No console errors or warnings. Unit tests: the five Cinder Drift files and the
+URL catalogue (162 tests) pass; the tier tests now cover the plume.
+
+Cost (playground, High, 1980 × 985, GPU timestamps, NVIDIA Blackwell): GPU p50 0.58 ms, p95
+0.63 ms, against 0.46 / 0.49 ms for the same build without this pass; CPU p50 0.9 ms; no dropped
+frames. The fume's two noise fetches in every surface and the crust's relief are most of it.
+
+| | |
+| --- | --- |
+| ![in game](cinder-drift-captures/atmosphere-ingame.jpg) | ![WebGL2, four lines](cinder-drift-captures/atmosphere-webgl2-quad.jpg) |
+| ![Minimal](cinder-drift-captures/atmosphere-minimal.jpg) | |
+
 ## Reproduce
 
 Run `npm run dev:playground`, then:
@@ -219,7 +282,8 @@ Run `npm run dev:playground`, then:
 `/playground.html?effect=cinder-drift&t=20&quality=High&board=1`
 
 Add `event=lock|drop|clear|quad|tspin|perfect|levelUp` with `eventAge=<s>`, and `combo=<n>`,
-`level=<n>`, `lines=<n>`, `u=<0..1>`, `row=<r>`, `color=<hex>`. `locks=<n>` plays n locks first,
+`level=<n>`, `lines=<n>`, `u=<0..1>`, `row=<r>`, `color=<hex>`; `eye=x,y,z&aim=x,y,z&fov=<deg>`
+looks from anywhere (the cliff close up: `eye=6,3.5,-6&aim=22,5,-22&fov=55`). `locks=<n>` plays n locks first,
 so their pools are drifting in the lake when the event fires. `demo=1` (without `t`) plays a
 looping script. `parts=` draws only the named parts; `falseColor=1` bands the pre-tone-map
 peak; `noPost=1` shows the raw scene; `forceWebGL=1` uses the WebGL2 backend; `reduce=1` is
