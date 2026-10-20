@@ -15,7 +15,7 @@ const AUTHORED_SONGS = Object.freeze({
     aurora: ['Aurora', 'aurora.mp3'],
     galaxy: ['Galaxy', 'galaxy.mp3'],
     'aether-tides': ['Aether Tides', 'aether-tides.mp3'],
-    'rainy-window': ['Rainy Window', 'rainy-window.mp3'],
+    sunbraid: ['Sunbraid', 'sunbraid.mp3'],
     rainbark: ['Rainbark', 'rainbark.mp3'],
     starlight: ['Starlight', 'starlight.mp3'],
     geode: ['Geode Crystalline', 'geode-crystalline.mp3'],
@@ -72,7 +72,7 @@ const themesByTrack = new Map(THEME_MUSIC_CATALOG.map((song) => [song.trackKey, 
  * "Kaleidosonic" when Kaleidosonic took its orb (2026-10-13), and "Sky Children" became
  * "Rainbow Terraces" with its theme (2026-10-18). An authored recording retitled for the theme
  * that took its orb changes key too: "Misty Lake" became "Grainfields" and "Moonlit Forest"
- * became "Spring" (both 2026-10-18).
+ * became "Spring" (both 2026-10-18), and "Rainy Window" became "Sunbraid" (2026-10-20).
  */
 const RETIRED_TRACK_KEYS = new Map([
     ['ElectricDreams', 'Murmuration'],
@@ -82,6 +82,7 @@ const RETIRED_TRACK_KEYS = new Map([
     ['SkyChildren', 'RainbowTerraces'],
     ['MistyLake', 'Grainfields'],
     ['MoonlitForest', 'Spring'],
+    ['RainyWindow', 'Sunbraid'],
 ]);
 
 /**

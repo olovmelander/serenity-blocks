@@ -216,16 +216,16 @@
   "motifsToAvoidReusing": "Fluid-dye clouds and filaments, violet/cyan/magenta gas, a maelstrom or vortex with a lens ring, an echo of the piece's footprint, sparks that become stars, chains of novae"
  },
  {
-  "id": "rainy-window",
-  "name": "Rainy Window (legacy storm)",
-  "setting": "The icon shows slate-grey city tower silhouettes in a downpour above a flooded street. The actual scene (docs/theme-screenshots/rainy-window.png) has no buildings: a dark slate sea (three Water.js) under a grey-lavender overcast sky with clouds, haze, fog banks, rain and lightning. Registry :122-127, group urban. rainy-window-theme.js (1199 lines)",
-  "timeOfDay": "night / storm",
-  "dominantPalette": "Desaturated slate, grey-violet and steel blue; sky gradient 0x000005 to 0x0a0a20, water 0x000205, rain 0x8899bb, fog 0x8899aa, lightning 0x8888ff/0xaaaaff. Pieces (rainy-window-tetrominos.js:11-18): I #f6c46a, O #c9b4ff, T #7bf0d0, S #ff8fb5, Z #586abf, J #ffe9b7, L #8ccff9",
-  "keyMotifs": "Rain streaks (50,000 points, :383), lightning bolts, fog sprites, a stormy reflective sea, overcast clouds",
-  "motion": "Rain falls; fog banks come and go on a schedule; lightning every 3-10 s; the camera breathes and makes random dips",
-  "gameplayFx": "LINE_CLEAR fires a lightning flash and sky glow scaled by line count; COMBO raises storm intensity and wind. No lock reaction, and nothing is aimed at the board",
-  "tech": "Classic THREE.WebGLRenderer, GLSL ShaderMaterials, stock Water.js (a second scene render every frame), point lights",
-  "motifsToAvoidReusing": "A grey storm palette, rain streaks, lightning as the clear effect, flooded city silhouettes, an overcast sea"
+  "id": "sunbraid",
+  "name": "Sunbraid — the three suns (replaced the legacy classic-WebGL Rainy Window, 2026-10-20; rainy-window is an alias)",
+  "setting": "An alien valley seen from 70 m up: towers, buttes and mittens of pale bedded sandstone on white gypsum crusted into polygons, a low valley mist, a far rim of terraced escarpments, translucent-winged gliders. A close triple star of coloured suns (coral, jade, cobalt) wheels low in front of the eye, left of the board. Icon: three coloured suns beside a pale tower whose fan of coloured shadows runs to the viewer. Group fantasy. Doc docs/SUNBRAID_VISUAL_OVERHAUL_2026-10.md",
+  "timeOfDay": "A held low-sun afternoon of three suns; the braid turns once every 330 s with the clock and a sixth of a turn per level; game over sets the suns (afterglow), a new run raises them",
+  "dominantPalette": "White gypsum, pale cream/ochre/rose/lilac stone, saturated cyan, magenta, gold, coral, jade and cobalt shadow bands, a cobalt-violet zenith over a rose-mauve horizon. Pieces (sunbraid-tetrominos.js): I #FF8463 coral, O #2B4FC4 cobalt, T #F5BB45 gold, S #C8378A magenta, Z #62E0D6 cyan, J #22804A jade, L #B9A2F7 lilac (palette gate 0/7)",
+  "keyMotifs": "Three coloured suns in a close cluster; every shadow a colour; fans of coloured shadow bands toward the lens; coloured shadow wedges in mist; backlit towers with coloured rims; selenite glitter; gliders with three-coloured shadows; ribbons braided between the suns",
+  "motion": "The braid turns with the clock (fans swing and recolour); the cluster nods; the cloud deck drifts with faint coloured shadows; gliders fly figure-of-eight loops; crystals glint",
+  "gameplayFx": "Lock: the braid ticks a notch (hard drop further). Clear 1-3: the suns draw together for a breath. Four lines: one white sun (black-and-white world), then the suns part wide and colour floods back. Chain: faster, wider braid and ribbons between the suns. T-spin: a third-turn twist (suns change places). B2B: brighter ribbons. Perfect: noon. Level: the braid winds on. Game over: sunset with afterglow",
+  "tech": "WebGPURenderer on both backends; self-shaded MeshBasicNodeMaterials; analytic shadows (towers as flat-topped cylinders per tier, gliders as discs, penumbra from angular clearance); CPU-swept polygonal towers; closed-form mist light with exact shadow-wedge spans; baked noise shared with the CPU land plan; mist pass at reduced resolution, bloom above the bright floor, calm zones",
+  "motifsToAvoidReusing": "Coloured suns, coloured shadows and shadow fans, a multi-sun cluster in front of the eye, tri-colour light on pale forms, gameplay told by moving light sources, white gypsum with selenite glitter, pale sandstone towers and buttes, translucent gliders"
  },
  {
   "id": "koi-pond",

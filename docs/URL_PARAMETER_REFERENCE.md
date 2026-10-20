@@ -5,7 +5,7 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **755 parameter names in 952 scoped entries**. The `ocean` playground
+The catalog documents **761 parameter names in 979 scoped entries**. The `ocean` playground
 effect added `visit`, `visitK`, `visitAge`, `visitSide`, `visitSeed`, `visits` (one of the
 visits the sea makes by itself) and `followFit`, `followIndex` with its own entry for `follow` (a
 camera turned to one of its large animals), 2026-10-19. The `grainfields`
@@ -217,6 +217,14 @@ holds the light on the wheel of the day. The eight `mistyLake*` readers of the t
 `NoCompute` and `Debug`) are retired with it. Use `effect=grainfields&t=10&hour=<place>` for a
 deterministic playground capture; the part names are `grain`, `land`, `lapporten`, `trees`, `sky`,
 `beams` and `motes`.
+
+Sunbraid (2026-10-20), a new theme in Rainy Window's place, adds the capture flags
+`sunbraidForceWebGL`, `sunbraidTime`, `sunbraidFixedDt`, `sunbraidParts` and `sunbraidFalseColor`;
+the part names are `sky`, `land`, `spires` and `gliders`. Its `sunbraid` playground effect reads 22
+parameters, catalogued as its own rows; `braid` (hold the three suns' braid at a phase, in degrees)
+and `turns` (the spin-turns of an `event=tspin`) are new names, and `event` also takes `morning` (a
+game over, then a new run: the suns rising). Rainy Window read no URL parameters. Use
+`effect=sunbraid&t=10&braid=<degrees>` for a deterministic playground capture.
 
 Spring (2026-10-18), a new theme in Moonlit Forest's place, adds the capture flags
 `springForceWebGL`, `springTime`, `springFixedDt`, `springParts` and `springFalseColor`; the part
