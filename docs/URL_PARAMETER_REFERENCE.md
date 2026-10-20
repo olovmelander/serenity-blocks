@@ -5,8 +5,10 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **756 parameter names in 953 scoped entries**. The Odyssey board added
-`odysseyNoVisitors` (the whale shark and manta of the deep ocean, Act I overhaul), 2026-10-20. The `ocean` playground
+The catalog documents **763 parameter names in 961 scoped entries**. The Odyssey board added
+`odysseyNoVisitors` (the whale shark and manta of the deep ocean, Act I overhaul), 2026-10-20;
+the space chapters added `odysseyCh6GiantAurora` (the retired crown on the ringed giant) and
+`odysseyCh7Throttle` (the warp drive held at a fixed throttle for captures), the same day. The `ocean` playground
 effect added `visit`, `visitK`, `visitAge`, `visitSide`, `visitSeed`, `visits` (one of the
 visits the sea makes by itself) and `followFit`, `followIndex` with its own entry for `follow` (a
 camera turned to one of its large animals), 2026-10-19. The `grainfields`

@@ -2225,7 +2225,7 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     // deg from the first frame of space; its disk, photon ring and lensed halo now fade in over the
     // chapter's first ~60 % instead of popping in whole (the 5->6 gate's +14 luma rise), while
     // the aurora fades out — the hole materialises as the sky darkens.
-    const omenReveal = spaceReveal * smoothstep01(THREE.MathUtils.clamp((beatT - 0.04) / 0.58, 0, 1));
+    const omenReveal = spaceReveal * smoothstep01(THREE.MathUtils.clamp(beatT / 0.5, 0, 1));
     if (blackHole?.userData?.uReveal) blackHole.userData.uReveal.value = omenReveal;
     if (blackHole) {
         // THE HOLE ON THE SPINE: its place never moves; it grows only with progress (see
@@ -2407,7 +2407,19 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     // director's clear colour. It now rides the space gate alone, which completes at
     // gateEnd (0.7730, held below the switch-off by odyssey-seam-56-schedule.test.js). The
     // dome is a dark backdrop (one band below the gas), so arriving faster is no luma rise.
-    const voidSkyOpacity = spaceReveal * chapterOpacity;
+    //
+    // ...AND IT ARRIVES AT ONCE (overhaul 2026-10-20). On the slow space gate (0.7543 -> 0.7730)
+    // and under the chapter's crossfade weight, the dome was ~20 % opaque at p 0.758, the frame the
+    // world's night sky stops covering the background: the clear colour behind it — a blend of
+    // ch5's light-cyan fog and ch6's black — showed as a NAVY sky for ~0.012 of p (+6.6 luma in
+    // 0.002 p; main shows the same flash). The dome is dark, so it now owns the background within
+    // the first 3 % of the chapter, at full weight while the chapter is arriving.
+    const domeArrival = Number.isFinite(cameraProgress) && Number.isFinite(chapterPositions?.[5])
+        ? rampBetween(cameraProgress, chapterPositions[5], chapterPositions[5] + spaceSpan * 0.03)
+        : spaceReveal;
+    const arriving = Number.isFinite(cameraProgress) && Number.isFinite(chapterPositions?.[5])
+        && cameraProgress < chapterPositions[5] + spaceSpan * 0.5;
+    const voidSkyOpacity = Math.max(spaceReveal * chapterOpacity, arriving ? domeArrival : 0);
     if (uniforms?.uVoidSkyOpacity) {
         uniforms.uVoidSkyOpacity.value = voidSkyOpacity;
     }
