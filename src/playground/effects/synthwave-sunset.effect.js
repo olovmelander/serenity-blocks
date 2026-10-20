@@ -12,9 +12,19 @@
  *                            layout rules from public/styles/main.css; the composition solver
  *                            reads its rect exactly as in game). board=0 → the centred menu shot
  *   hud=0                    board without the HUD mock
- *   event=lock|clear|combo|tetris|levelUp  fire a gameplay event...
- *   eventAge=<s>             ...and show it <s> seconds later (combo=<n>, lines=<n>)
- *   parts=sky,floor,...      draw only these parts (sky floor mountains city palms fx)
+ *   event=lock|clear|tetris|chain|ride|levelUp  fire a gameplay event...
+ *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, chain=<n> links)
+ *                            chain: the coaster lifted n notches; ride: a chain of n that broke
+ *   parts=sky,sea,...        draw only these parts (SYNTHWAVE_PARTS: sky sea wheel pier coaster
+ *                            promenade palms fireworks)
+ *   dusk=<0..1>              hold the evening: 0 = the sun on the sea, 1 = afterglow (default:
+ *                            the menu's rest value)
+ *   icon=1                   the theme-icon framing: a narrow lens on the wheel in front of the
+ *                            setting sun, its reflection below (iconFov=36; iconYaw=2.4 and
+ *                            iconPitch=4.5 aim it, azimuth and elevation in degrees)
+ *   eye=x,y,z&aim=x,y,z      an inspection lens from eye toward aim, world metres (fov=<deg>,
+ *                            default 40), in place of the game camera: e.g. the coaster's
+ *                            circuit from above the sea, eye=95,38,-45&aim=37,12,-88&fov=42
  *   noPost=1                 raw scene (no bloom/grade)
  *   pointerX / pointerY      hold a pointer-parallax offset (-1..1)
  */
@@ -26,7 +36,7 @@ import { SynthwaveSunsetPost, POST_LOOK } from '../../themes/synthwave-sunset/sy
 export const meta = {
     id: 'synthwave-sunset',
     title: 'Synthwave Sunset (full world)',
-    description: 'The shipping world + post: slit sun, neon grid, wireframe mountains, city, palms.',
+    description: 'The shipping world + post: a retro seaside at dusk, the sun setting into the sea.',
 };
 
 function num(params, key, fallback = 0) {
@@ -80,7 +90,12 @@ export function create({
     camera.up.set(0, 1, 0);
     camera.updateProjectionMatrix();
 
+    const savedClear = { color: renderer.getClearColor(new THREE.Color()).clone(), alpha: renderer.getClearAlpha() };
+    // The sea's reflection pass composites by alpha: clear to nothing (the sky covers the frame).
+    renderer.setClearColor(0x000000, 0);
     const world = new SynthwaveWorld({ scene, quality, random: rng || Math.random }).build();
+    world.bindCamera(camera);
+    if (params.has('dusk')) world.setDusk(num(params, 'dusk', 0), { hold: true });
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
@@ -95,13 +110,20 @@ export function create({
     const eventAge = num(params, 'eventAge', 0.4);
     const fireEvent = () => {
         if (eventName === 'lock') {
-            world.onPieceLock({ type: 'T', x: 3, rotation: 0 });
-            world.onPieceLock({ type: 'L', x: 7, rotation: 1 });
-            world.onPieceLock({ type: 'I', x: 0, rotation: 0 });
-        } else if (eventName === 'combo') world.onCombo(num(params, 'combo', 4));
-        else if (eventName === 'clear') world.onLineClear(num(params, 'lines', 2));
-        else if (eventName === 'tetris') world.onLineClear(4);
-        else if (eventName === 'levelUp') world.onLevelUp();
+            world.onPieceLock({ type: 'T', x: 1, rotation: 0 });
+        } else if (eventName === 'clear') {
+            world.onPieceLock({ type: 'S', x: 4, rotation: 0 });
+            world.onLineClear(num(params, 'lines', 2));
+        } else if (eventName === 'tetris') {
+            world.onPieceLock({ type: 'I', x: 6, rotation: 1 });
+            world.onLineClear(4);
+        } else if (eventName === 'chain') {
+            world.onChain(num(params, 'chain', 4));
+        } else if (eventName === 'ride') {
+            world.onChain(num(params, 'chain', 5));
+            world.coaster.t = world.track.marks.liftTop;
+            world.onChain(0);
+        } else if (eventName === 'levelUp') world.onLevelUp();
     };
 
     const size = new THREE.Vector2();
@@ -117,6 +139,34 @@ export function create({
     };
     syncViewport();
 
+    const iconPose = params.get('icon') === '1';
+    const iconTarget = new THREE.Vector3();
+    const triple = (key) => (params.get(key) || '').split(',').map(Number);
+    const lens = [...triple('eye'), ...triple('aim')];
+    const inspect = params.has('eye') && params.has('aim') && lens.length === 6 && lens.every(Number.isFinite)
+        ? { eye: lens.slice(0, 3), aim: lens.slice(3), fov: num(params, 'fov', 40) } : null;
+    /** The icon framing (or an inspection lens): applied after the world's camera rig. */
+    const aimIcon = (cam) => {
+        if (inspect) {
+            cam.fov = inspect.fov;
+            cam.updateProjectionMatrix();
+            cam.position.set(...inspect.eye);
+            cam.up.set(0, 1, 0);
+            cam.lookAt(...inspect.aim);
+            cam.updateMatrixWorld();
+            return;
+        }
+        if (!iconPose) return;
+        const az = THREE.MathUtils.degToRad(num(params, 'iconYaw', 2.4));
+        const el = THREE.MathUtils.degToRad(num(params, 'iconPitch', 4.5));
+        cam.fov = num(params, 'iconFov', 36);
+        cam.updateProjectionMatrix();
+        cam.up.set(0, 1, 0);
+        iconTarget.set(Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)).add(cam.position);
+        cam.lookAt(iconTarget);
+        cam.updateMatrixWorld();
+    };
+
     const sim = (time, delta) => ({
         time, delta, pointerX, pointerY,
     });
@@ -127,6 +177,7 @@ export function create({
     };
     const step = (time, dt) => {
         world.updateCamera(camera, sim(time, dt));
+        aimIcon(camera);
         world.update(sim(time, dt));
         pushPost(time);
     };
@@ -148,6 +199,7 @@ export function create({
         cameraRadius: 1,
         camera(time, cam) {
             world.updateCamera(cam, sim(time, 0));
+            aimIcon(cam);
         },
         update(time, dt) {
             step(time, dt);
@@ -163,6 +215,7 @@ export function create({
             syncViewport();
         },
         dispose() {
+            renderer.setClearColor(savedClear.color, savedClear.alpha);
             overlay?.remove();
             post?.dispose();
             world.dispose();

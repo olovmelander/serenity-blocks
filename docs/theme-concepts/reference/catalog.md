@@ -1512,21 +1512,28 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 
 ### 52. synthwave-sunset ("Synthwave Sunset")
 
-- **Files.** Header at `synthwave-sunset-theme.js:1-3`: "an outrun sunset: the slit sun setting behind neon-wireframe mountains, a city skyline, palm silhouettes and an endless neon grid". Captures in `reports/synthwave-sunset-overhaul/`.
-- **Icon.** A crimson grid floor, blocky red city silhouettes on both sides, a hazy sun glow, a maroon starry sky.
-- **Shipped look.** A slit yellow-orange-magenta sun, black palm silhouettes, a city with amber windows and neon roof strips, a dense hot-pink grid to the horizon, a violet sky with stars.
+Rebuilt 2026-10-20 as a retro seaside (record: `docs/SYNTHWAVE_SUNSET_VISUAL_OVERHAUL_2026-10.md`,
+captures in `docs/synthwave-sunset-captures/`). The outrun picture it replaced (slit sun, wireframe
+mountains, box city, neon grid) is Neon Dusk's.
+
+- **Files.** World `synthwave-sunset-world.js`; parts `-sky.js`, `-sea.js`, `-wheel.js`, `-pier.js`, `-coaster.js`, `-promenade.js`, `-palms.js`, `-fireworks.js`, `-bulbs.js`; layout `-layout.js`.
+- **Icon.** A lit ferris wheel in front of an orange setting sun at the end of a pier, the coaster's hill on the right, the reflection in the sea.
+- **Shipped look.** The eye stands on wet sand at the waterline at dusk. The sun sinks into the sea behind a ferris wheel (bulb-lit rims, a neon inner ring, pastel cabins) at the end of a long timber pier on bents of piles; onion-dome pavilions with lit arched windows, a wooden coaster (one closed circuit: lift hill, drop, camelback, a low return line), lamp posts and garlands of bulbs line the pier; a neon pylon sign at its land end; palms, a promenade and a beachfront of pastel Miami Art Deco hotels round the bay on the right (streamline corners with eyebrow ledges, resort towers with balconies, ziggurat crowns and spires, vertical and rooftop neon signs in 3 × 5 letters, lit lobbies, shops between and a second row behind). The wheel, the pier and the town are mirrored in the swell and smeared into streaks on the wet sand; the swash runs up the beach with a foam edge. The evening deepens as a game is played: the sun sets, the pier lights come on from the land end out.
 - **Palette.**
-  - Hot pink, orange-red and violet, with cyan and yellow accents.
-  - Pieces (`synthwave-sunset-tetrominos.js:20-27`): I `#ff0066`, O `#ff4500`, T `#b000ff`, S `#ff006e`, Z `#ff5e78`, J `#00d4ff`, L `#ffff00`, GARBAGE `#0a0515`.
-- **Gameplay FX** (`synthwave-sunset-world.js:437-501`).
+  - Sky: tangerine and gold horizon, coral and dusty rose, mauve, teal-indigo zenith; an orange sun with its green low.
+  - Lights: warm bulb gold, flamingo pink and mint neon, lemon; pastel stucco (pink, mint, lemon, lilac).
+  - Pieces (`synthwave-sunset-tetrominos.js`): I `#FFD36E`, O `#FF9440`, T `#F24FAE`, S `#6CF5C9`, Z `#D92B4A`, J `#4FB4FF`, L `#8A55F5` (gate 3/7).
+- **Gameplay FX** (`synthwave-sunset-world.js`).
 
   | Event | Response |
   | --- | --- |
-  | Lock | Neon cells in the piece's shape light on the grid. |
-  | Clear | A sonar ring races in from the horizon, horizon flash, city pulse, embers. |
-  | Combo | Solar burst, shooting stars. |
-- **Tech.** Node materials, a sky-dome function, a "pristine grid" floor, one merged palm mesh with cut leaflets, a merged skyline. Post: bloom, anamorphic streak, split-tone, grain.
-- **Avoid reusing.** Outrun or 80s retro, slit suns, palm silhouettes, wireframe mountains, neon grids, anamorphic streaks.
+  | Lock | Two bands of the piece's colour run round the wheel's rims from its column's side and meet at the top. |
+  | Clear | One firework shell per line from a barge off the pier, bursting in the free sky left of the board; the first in the lock's colour. |
+  | Four lines | A finale volley and a gold willow. |
+  | Chain (true combo) | The coaster climbs a notch of the lift hill per link (its beam fills lemon); a chain of three or more that breaks sends it once round the circuit into the station with a trail of light. |
+  | Level up | The evening steps on (the sun sinks, the pier lights spread), the wheel's neon ring changes colour, two shells. |
+- **Tech.** Node materials. One sky function of direction shared by the dome and the sea's mirror ray; a sea of filtered sine trains with a stylised anisotropic sun lobe; a layer-limited `reflector()` laid over the mirrored sky; instanced bulbs sized in metres with a pixel floor; analytic fireworks. Post: bloom, a hue-preserving shoulder on the max channel, a split grade by scaling.
+- **Avoid reusing.** Ferris wheels, pleasure piers and boardwalks, wooden coasters, onion-dome pavilions, bulb garlands, fireworks over water, a seaside promenade with Art Deco hotels and neon hotel signs.
 
 <a id="chromadelic-highway"></a>
 
@@ -1726,7 +1733,8 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 **Settings already used.**
 - Clouds seen from above (nimbus-veil, rainbow-terraces).
 - Lava or volcano (cinder-drift, pyrestorm).
-- Neon dusk or outrun (neon-dusk, synthwave-sunset).
+- Neon dusk or outrun (neon-dusk).
+- Seaside pleasure pier at dusk: ferris wheel, coaster, fireworks (synthwave-sunset).
 - Rainy cyber-city (neon-district).
 - Rainbow space highway (chromadelic).
 - Night forest tarn (stillwater).
