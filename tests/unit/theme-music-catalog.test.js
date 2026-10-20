@@ -46,6 +46,7 @@ describe('one soundtrack per collectible theme', () => {
         ['ocean', 'OceanDeep'], ['geode', 'GeodeCrystalline'],
         ['murmuration', 'Murmuration'], ['parhelion', 'EtherealEchoes'],
         ['rainbark', 'Rainbark'], ['grainfields', 'Grainfields'], ['spring', 'Spring'],
+        ['sunbraid', 'Sunbraid'],
     ])('preserves the authored %s recording as %s', (themeId, trackKey) => {
         expect(getThemeMusic(themeId)).toMatchObject({ trackKey, placeholder: false });
     });
@@ -127,6 +128,27 @@ describe('one soundtrack per collectible theme', () => {
         expect(getThemeMusic('moonlit-forest')).toBe(getThemeMusic('spring'));
         expect(THEME_MUSIC_CATALOG.map((song) => song.trackKey)).not.toContain('MoonlitForest');
         expect(files).not.toContain('moonlit-forest.mp3');
+    });
+
+    it('keeps the key and the theme id the Sunbraid recording had while it was titled Rainy Window', () => {
+        expect(getThemeMusic('sunbraid')).toMatchObject({
+            name: 'Sunbraid',
+            trackKey: 'Sunbraid',
+            file: 'sunbraid.mp3',
+            placeholder: false,
+        });
+        expect(getThemeForMusic('RainyWindow')).toBe('sunbraid');
+        expect(getThemeMusic('rainy-window')).toBe(getThemeMusic('sunbraid'));
+        expect(THEME_MUSIC_CATALOG.map((song) => song.trackKey)).not.toContain('RainyWindow');
+        expect(files).not.toContain('rainy-window.mp3');
+        // The recording's own title tag was retitled with it: ID3v2.3, TIT2 in UTF-16 with a BOM.
+        const head = readFileSync(`${musicFolder}/sunbraid.mp3`).subarray(0, 4096);
+        expect(head.subarray(0, 4).toString('latin1')).toBe('ID3\u0003');
+        const at = head.indexOf('TIT2', 10, 'latin1');
+        expect(at).toBeGreaterThan(9);
+        const body = head.subarray(at + 10, at + 10 + head.readUInt32BE(at + 4));
+        expect([...body.subarray(0, 3)]).toEqual([1, 0xff, 0xfe]);
+        expect(body.subarray(3).toString('utf16le')).toBe('Sunbraid');
     });
 
     it('resolves known retired aliases, but never revives Bioluminescence II', () => {

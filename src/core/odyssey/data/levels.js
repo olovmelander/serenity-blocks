@@ -2154,7 +2154,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 32,
-        name: 'Storm Surge',
+        name: 'The Turning Suns',
         chapter: 5,
         chapterLevel: 2,
         isChapterStart: false,
@@ -2162,8 +2162,8 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.574,
 
         theme: {
-            primary: 'rainy-window',
-            overlays: ['rainy-window'],
+            primary: 'sunbraid',
+            overlays: ['sunbraid'],
             transitionIn: 'crossfade',
             transitionDuration: 2500,
         },
@@ -2215,9 +2215,10 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'A storm rolls in. Keep your footing while the pieces fall fast.',
+            description: 'Three coloured suns wheel around a pale world, and every shadow takes a colour. '
+                + 'The pieces fall fast: keep pace with the light.',
             difficulty: 8,
-            tip: 'The storm pushes you faster. Keep the stack low and take the clears it offers.',
+            tip: 'Chains wind the suns round faster. Keep the stack low and take every clear the light offers.',
         },
     },
 

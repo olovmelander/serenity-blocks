@@ -130,7 +130,7 @@ and summit light. Sakura's position is based on its scene, not just an orb title
 
 ### Chapter 5 — Sky & Atmospheric Drift, orbs 27–34
 
-Clouds, rain, light, aurora, and atmospheric optics dominate. Starlight is treated as an open
+Clouds, light, aurora, coloured suns, and atmospheric optics dominate. Starlight is treated as an open
 night-sky view; Lunara deliberately crosses toward the next chapter's cosmic language.
 
 | Orb | Theme | Scenery fit |
@@ -139,7 +139,7 @@ night-sky view; Lunara deliberately crosses toward the next chapter's cosmic lan
 | 28 | Starlight (`starlight`) | Stars, meteors, and celestial light provide an open night-sky view. |
 | 29 | Aurora (`aurora`) | Auroral curtains dominate above a reflective lake and snowy peaks. |
 | 30 | Nimbus Veil (`nimbus-veil`) | Cloud tops, cumulus, mist, and rays place the player above a cloud sea. |
-| 31 | Rainy Window (`rainy-window`) | Rain, storm clouds, and lightning focus on atmospheric weather. |
+| 31 | Sunbraid (`sunbraid`) | Three coloured suns (coral, jade, cobalt) wheel low around a pale world, so every slope takes the colour of the sun it faces and every shadow is a colour: the sky itself as the subject. |
 | 32 | Parhelion (`parhelion`) | A hidden sun, 22-degree halo, and sundogs make atmospheric optics the subject. |
 | 33 | Lunara (`lunara`) | Twin moons and aurora above a crystal valley form the sky-to-cosmos threshold. |
 | 34 | Rainbow Terraces (`rainbow-terraces`) | Cloud seas, floating islands, and luminous skies fit the airborne setting. |
