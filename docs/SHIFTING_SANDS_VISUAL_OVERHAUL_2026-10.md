@@ -1,6 +1,6 @@
 # Shifting Sands — visual overhaul (2026-10)
 
-Status: **Reference** (shipped design + evidence). Replaces the 2025 "Arrakis" theme (dune
+Status: **Reference** (shipped design + evidence). Replaces the 2025 theme (dune
 heightmap + compute smoke + MRT bloom) entirely; there is no earlier design doc to supersede.
 
 Evidence (before/after captures, event beats, perf cells):
@@ -18,18 +18,25 @@ The old theme read as a lumpy orange noise field under a flat red sky:
   whole frame toward red-orange.
 - **The worm** was a terrain displacement and a cloud of billboards; nothing in the frame was
   ever a worm.
-- **Runtime.** Three compute dispatches per frame (worm path, spice, smoke), `THREE.Points`
-  spice that WebGPU draws at 1 px, ~380 large smoke billboards (heavy overdraw on a 1.1 ms GPU
+- **Runtime.** Three compute dispatches per frame (worm path, glitter, smoke), `THREE.Points`
+  glitter that WebGPU draws at 1 px, ~380 large smoke billboards (heavy overdraw on a 1.1 ms GPU
   frame), a fullscreen "blue glow" quad, and a new `PointsMaterial` minted on every line clear
   (a pipeline compile on gameplay). The loop used `setAnimationLoop`, bypassing the target-FPS
   cap, so it rendered every vsync (120+ Hz) at 1.1 ms each.
 
-The rewrite is built around one picture: **Arrakis at the twin-sun dusk.** The suns hang low over
+The rewrite is built around one picture: **a twin-sun dusk over the dune sea.** The suns hang low over
 the far erg on the left; the dune ridges between the camera and the suns burn along their crests;
-Shai-Hulud breaches there, a black arch against the light. On the right the Sentinel, a
+the worm breaches there, a black arch against the light. On the right the Sentinel, a
 monumental sandstone butte, takes the low sun on its flank under two pale moons. The board is the
-**thumper**: every lock sends a ring of lifted sand across the erg, clears blow spice, and a
+**drum**: every lock sends a ring of lifted sand across the erg, clears throw up geysers of dust, and a
 Tetris calls the worm.
+
+**Naming (2026-10-20).** The theme evokes a twin-sun desert with a giant worm; it names nothing
+from anyone else's fiction. No world, creature, substance or device names from a third-party
+franchise anywhere: not in code, identifiers, comments, tests or these docs, not only in player
+copy. The repo is public, and a design note that names another franchise's world reads as intent
+even when no player sees it. `npm run check:ip-strings` scans the whole tracked tree for such
+names and fails the build on any of them.
 
 ## 2. Architecture
 
@@ -40,9 +47,9 @@ Tetris calls the worm.
 | `shifting-sands-composition.js` | The rest rig (Hor+ 50° lens, horizontal FOV capped at 100°), the authored directions (suns, moons, Sentinel, wind, breach sites), the DOM rect reader. |
 | `shifting-sands-terrain.js` | `DuneField` (CPU dune function), the polar-grid bake, the sand material. |
 | `shifting-sands-sky.js` | The opaque sky dome: gradient, Mie glow, crepuscular rays, cirrus, twin suns, moons, stars. |
-| `shifting-sands-rocks.js` | The Sentinel, its spires, the left outcrops and the Shield Wall escarpment — one merged mesh, one material. |
+| `shifting-sands-rocks.js` | The Sentinel, its spires, the left outcrops and the Rampart escarpment — one merged mesh, one material. |
 | `shifting-sands-worm.js` | The worm tube (vertex-animated on the breach path, one instance per worm slot) and the `WormDirector`: where a worm may breach, when, and every mark it leaves, closed-form from the sign to the last settling dust. |
-| `shifting-sands-fx.js` | Worm sand (cascade, spray, burst, churn, surge, slump), spice motes, spindrift, spice blows — four instanced systems. |
+| `shifting-sands-fx.js` | Worm sand (cascade, spray, burst, churn, surge, slump), gold motes, spindrift, dust geysers — four instanced systems. |
 | `shifting-sands-post.js` | One `RenderPipeline`: scene pass → soft-knee bloom (Medium+) → one output pass. |
 | `shifting-sands-tsl.js` | Shared TSL helpers (all `setLayout`-wrapped), the value-noise texture, the one atmosphere. |
 
@@ -57,7 +64,7 @@ In game: `?shiftingSandsTime=<s>` freezes a deterministic frame, `?shiftingSands
 `?shiftingSandsParts=…`, `?shiftingSandsFalseColor=1`, `?forceWebGL=1`.
 
 **Everything that moves is closed-form** in the world clock plus event timestamps (worm path,
-grains, motes, spindrift, spice blows, thumper rings): frame-rate independent, seekable, and
+grains, motes, spindrift, dust geysers, drum rings): frame-rate independent, seekable, and
 nothing is created at event time — every event is a uniform write into a pooled slot (unit-tested:
 the scene graph is identical before and after a burst of events).
 
@@ -74,7 +81,7 @@ the scene graph is identical before and after a burst of events).
 - **Right zone (side light):** the Sentinel at az +30.5°, 2350 units out (430 tall, a talus
   pedestal under a fluted cliff and a pale caprock), clear of the stats HUD; two spires; the
   moons above it at az +31°/+38.5°.
-- **Below the card:** the near dune slope, ripples, glitter; the thumper rings cross it.
+- **Below the card:** the near dune slope, ripples, glitter; the drum rings cross it.
 - Unit-tested at 4:3, 16:10, 16:9, 1600×769 and 21:9: suns left of the card and above the
   horizon, moons and Sentinel right of it, and — over forty idle cycles per aspect — both feet of
   every breach on screen and beside the card and the HUD.
@@ -90,7 +97,7 @@ the scene graph is identical before and after a burst of events).
   geometric in distance: uniform vertex density on screen). Per vertex: height, the ridge phase
   `u` and its gradient, the ridge amplitude, the gradient of everything else, the tangent of the
   horizon toward the suns (one geometric march on a sub-grid, bilinearly filled; formations join
-  it as solids, so the Sentinel throws a long shadow), and a spice-stain mask.
+  it as solids, so the Sentinel throws a long shadow), and a rust-stain mask.
 - **Sand, per pixel.** The ridge slope is re-evaluated *exactly* from the interpolated phase, so
   every crest is razor sharp at any distance (anti-aliased by the phase footprint). Both suns'
   cast shadows come from the horizon tangent; the suns sit ~6° apart in elevation, so slopes whose
@@ -99,7 +106,7 @@ the scene graph is identical before and after a burst of events).
   free. Lifted Lambert (Journey), violet sky fill, warm bounce, horizon fill on sun-facing slopes,
   backlit forward-scatter sheen and specular, the contre-jour crest glow, wind ripples (bending,
   breathing wavelength, faded by footprint, off the slip faces), grain glitter (sub-pixel dots on
-  random facets), rust spice stains, sheets of blowing sand streaming downwind, the thumper rings,
+  random facets), rust rust stains, sheets of blowing sand streaming downwind, the drum rings,
   and the shared aerial perspective (distance + analytic height fog, coloured by the sky).
 - **Sky.** Hot apricot horizon toward the suns → dusty rose away → violet → deep blue zenith; Mie
   glow of both suns; faint crepuscular rays; cirrus on an altitude plane lit gold-pink from below;
@@ -109,12 +116,12 @@ the scene graph is identical before and after a burst of events).
 - **Formations.** Deformed lathes with closed-form radius (talus flare, cliff taper, irregular
   strata ledges, rain flutes, clefts, a caprock lip, a slight twist to the crown). Strata bands by
   height (shale base, red cliff, pale beds, pale caprock), desert varnish streaks, sand on ledges,
-  the twin-sun light, sky fill, a backlit rim and aerial perspective. The Shield Wall escarpment
+  the twin-sun light, sky fill, a backlit rim and aerial perspective. The Rampart escarpment
   on the far horizon is the last depth layer; the suns set toward it.
-- **Shai-Hulud.** One tube mesh animated entirely in the vertex shader on a half-ellipse breach
+- **The worm.** One tube mesh animated entirely in the vertex shader on a half-ellipse breach
   path; the body follows the head's own path. Annular plates, a fuller neck, a long taper to a
   pointed tail, and a maw that peels open from a closed dome into a flared bell as the worm rears
-  and closes as it dives. Back faces are the inside: ember flesh ringed with pale crystal teeth.
+  and closes as it dives. Back faces are the inside: ember flesh ringed with pale teeth.
   Dusty grey-ochre hide, sand on its back, a backlit rim on the true silhouette only. Whatever is
   below the sand is hidden by the opaque dunes. The mesh is instanced once per worm slot (two: the
   idle worm and the summoned one), each instance reading its slot's path.
@@ -136,13 +143,13 @@ the scene graph is identical before and after a burst of events).
   fills. The grid carries the height, but the slope is evaluated per pixel (like the ridges), so
   the rim catches the low sun even where the grid is coarse; churned sand loses its ripples and
   glitter and shows rays of thrown sand until the scar fades. Each breach also sends one ground
-  wave out from the eruption and one from the strike (the thumper ring, in two reserved slots).
+  wave out from the eruption and one from the strike (the drum ring, in two reserved slots).
 - **Worm director.** Idle cycles every 52 s: the worm sign (a travelling mound with a collapsing
   wake) races in for 13 s, the worm breaches, and after the tail has gone under the sand **settles
   for 9 s** — the wells collapse and fill, the dust drifts off, and the sign travels on from the
   dive. Every envelope is continuous and reaches zero inside the settle; the body is only shown or hidden
   while all of it is under the sand. The **summoned breach** (a Tetris) is a larger, closer worm
-  1.6 s later, heralded by a great spice blow where it will come up. It has its own slot, so it
+  1.6 s later, heralded by a great dust geyser where it will come up. It has its own slot, so it
   never cuts the idle worm short — the two rise in different parts of the erg — and a summons
   that lands before an idle sign has begun keeps that cycle quiet. A second Tetris is refused only
   while the last summoned worm is still above the sand; if its dust is still settling, that fades
@@ -159,18 +166,18 @@ the scene graph is identical before and after a burst of events).
   they age and thin to nothing at the sand they stand on (the local slope of each foot is a
   uniform), so the dunes never cut them along a line. Dust carries a diffuse share of the sunlight
   as well as forward scatter, so it reads away from the suns too.
-- **Spice and dust.** Spice motes drifting with the wind, flashing in forward scatter toward the
+- **Glitter and dust.** Gold motes drifting with the wind, flashing in forward scatter toward the
   suns (pixel-floored; a blue fringe at deep dusk and high combos); spindrift veils seated on real
-  crest points found on the CPU field; spice-blow geysers.
+  crest points found on the CPU field; dust geysers.
 
 ## 5. Event language
 
 | Event | Response |
 |---|---|
-| Piece lock | **Thumper beat:** a golden ring of lifted sand (and a low swell in the geometry) runs out across the erg from just beyond the foot of the board (≤ one per 120 ms; 4 pooled slots). Respects `pieceLockRipple`. |
-| Combo c ≥ 2 | The spice glows (motes brighten, the blue fringe surfaces) and the wind rises. |
-| Line clear (1–3) | n spice blows in the side zones (alternating sites), a gust (spindrift and blowing-sand sheets surge), a sun flare, a warm flash. |
-| Tetris | The worm is summoned: the sign races in, the ground trembles (a fine tremor, never a shake), a great spice blow erupts where it will break the surface, and Shai-Hulud rears out of the dust — somewhere new each time, beside the idle worm if one is up. If the last summoned worm is still above the sand, three strong spice blows answer instead. |
+| Piece lock | **Drum beat:** a golden ring of lifted sand (and a low swell in the geometry) runs out across the erg from just beyond the foot of the board (≤ one per 120 ms; 4 pooled slots). Respects `pieceLockRipple`. |
+| Combo c ≥ 2 | The gold glows (motes brighten, the blue fringe surfaces) and the wind rises. |
+| Line clear (1–3) | n dust geysers in the side zones (alternating sites), a gust (spindrift and blowing-sand sheets surge), a sun flare, a warm flash. |
+| Tetris | The worm is summoned: the sign races in, the ground trembles (a fine tremor, never a shake), a great dust geyser erupts where it will break the surface, and the worm rears out of the dust — somewhere new each time, beside the idle worm if one is up. If the last summoned worm is still above the sand, three strong dust geysers answer instead. |
 | Level up | The dusk deepens (persistent, eased): every atmosphere colour slides toward its dusk value and both suns sink, lengthening every shadow; stars and moons strengthen. Game over / new game returns to golden hour. |
 
 All reactions are gated on `isActive && !isPaused && backgroundComboEffects`; reduced motion stills
@@ -181,7 +188,7 @@ the camera rig (no breathing, no tremor, no pointer parallax) but keeps the even
 One scene pass (HalfFloat; MSAA only on Ultra/Extreme), bloom at Medium+ with a **max-channel
 soft-knee prefilter** over 4 taps and a **hue-preserving clamp** (a per-channel clamp turned the
 ember sun yellow and the glare olive over dark silhouettes), threshold 2.1 so only the sun discs,
-coronae, glints and spice glow bloom, 4 mips (tight glare). One output pass:
+coronae, glints and gold glow bloom, 4 mips (tight glare). One output pass:
 
 heat haze (a shimmer band on the far erg, strongest toward the suns; one noise fetch) → calm zones
 (what shows through the translucent board card and HUD is soft-clipped, its bloom attenuated; eased
@@ -208,7 +215,7 @@ highlights), gentle saturation and mid contrast → vignette → sRGB → grain 
 | Scene MSAA | 0 | 0 | 0 | 0 | 4 | 4 |
 | Pixel-ratio cap | 0.75 | 0.9 | 1.0 | 1.25 | 1.5 | 1.75 |
 
-Dormant pools (worm sand between breaches, spice blows with no live slot) draw a single
+Dormant pools (worm sand between breaches, dust geysers with no live slot) draw a single
 degenerate instance, so their pipelines compile with the first frame and cost nothing at rest. The
 worm-sand counts are instances, not fill: about a quarter of a pool is billows, and a slot whose
 worm is under the sand collapses to zero area. At rest the dune shader pays for one distance test
@@ -262,8 +269,8 @@ before a clean pair landed). Re-run on a quiet machine before a release claim:
 
 ## 9. Validation
 
-- Playground (WebGPU and `forceWebGL=1`) at 1600×900: rest, deep dusk, lock ring, 2/3-line spice
-  blows, idle breach across the suns, the summoned Tetris breach (with and without the board mock),
+- Playground (WebGPU and `forceWebGL=1`) at 1600×900: rest, deep dusk, lock ring, 2/3-line dust
+  geysers, idle breach across the suns, the summoned Tetris breach (with and without the board mock),
   Low tier, no-post and false-colour views. Zero console errors or WebGPU validation messages.
 - In game: `scripts/capture-theme-screenshots.mjs --theme=shifting-sands` PASS (0 lifecycle
   failures, 0 console errors); `docs/theme-screenshots/shifting-sands.png` refreshed.
@@ -274,7 +281,7 @@ before a clean pair landed). Re-run on a quiet machine before a release claim:
   stepped at 120 Hz through whole breaches; the body appears and vanishes only under the sand),
   sites spread over the erg and clear of boards, HUD, rock and hidden ground, summons rules (never
   cuts the idle worm, quiet cycle, re-summons fade), nothing created at event time, the sand
-  outliving the worm, dusk, thumper rate limit.
+  outliving the worm, dusk, drum rate limit.
 - **Worm pass (2026-10-05):** playground on WebGPU and `forceWebGL=1`, High and Low — eruption,
   arch, strike, tail under, collapse and settle from the game lens, from a tight lens and looking
   down into both wells; a Tetris during an idle breach (both worms up); zero console messages.

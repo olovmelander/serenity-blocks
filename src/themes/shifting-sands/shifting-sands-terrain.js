@@ -11,13 +11,13 @@
  *
  * Per-vertex bake (once, at build): height, the main ridge phase u and its gradient, the ridge
  * amplitude, the gradient of everything else, the tangent of the horizon toward the suns (one
- * soft-shadow march on a sub-grid, bilinearly filled) and a spice-stain mask.
+ * soft-shadow march on a sub-grid, bilinearly filled) and a rust-stain mask.
  *
  * Per pixel: the main ridge's slope is re-evaluated EXACTLY from the interpolated phase, so every
  * crest is razor sharp at any distance (and anti-aliased by the phase footprint); both suns' cast
  * shadows come from the horizon tangent (the suns sit ~6° apart in elevation: slopes between the
  * two horizons are lit by the companion alone — coloured double shadows); wind ripples, grain
- * glitter, the backlit forward-scatter sheen, spice stains, and the shared aerial perspective.
+ * glitter, the backlit forward-scatter sheen, rust stains, and the shared aerial perspective.
  *
  * The worm writes itself into the sand through three small uniform sets: its sign (a travelling
  * mound with a collapsing wake), a ground wave per breach, and the wells — the sand around each
@@ -117,7 +117,7 @@ export class DuneField {
         /** Optional (x, z) → height of solid features (rock), for the shadow march. */
         this.extraHeight = null;
         this.scratch = {
-            h: 0, u: 0, amp: 0, base: 0, spice: 0,
+            h: 0, u: 0, amp: 0, base: 0, rust: 0,
         };
     }
 
@@ -144,7 +144,7 @@ export class DuneField {
     /**
      * Full sample at world (x, z). Fills and returns `out`:
      *   h: height, u: main ridge phase, amp: main ridge amplitude, base: h − main ridge,
-     *   spice: spice-stain mask in [0, 1].
+     *   rust: rust-stain mask in [0, 1].
      */
     sample(x0, z0, out = this.scratch, cheap = false) {
         const x = x0 + this.ox;
@@ -187,7 +187,7 @@ export class DuneField {
         out.u = u;
         out.amp = amp;
         out.base = megaFar + sec;
-        out.spice = cheap ? 0 : smooth01(0.6, 0.8, this.noise(x / 330 + 21.5, z / 330 - 13.2));
+        out.rust = cheap ? 0 : smooth01(0.6, 0.8, this.noise(x / 330 + 21.5, z / 330 - 13.2));
         return out;
     }
 
@@ -269,7 +269,7 @@ export function bakeTerrainGeometry(field, { tier, shadowDir }) {
             baseH[k] = s.base;
             dune[k * 4] = s.u;
             dune[k * 4 + 3] = s.amp;
-            shade[k * 4 + 3] = s.spice;
+            shade[k * 4 + 3] = s.rust;
         }
     }
 
@@ -380,7 +380,7 @@ export function bakeTerrainGeometry(field, { tier, shadowDir }) {
 
 // ── Sand material ───────────────────────────────────────────────────────────────
 
-/** Thumper rings (piece locks) and other ground pulses: (x, z, t0, strength). */
+/** Drum rings (piece locks) and other ground pulses: (x, z, t0, strength). */
 export const GROUND_PULSE_SLOTS = 4;
 /** Worms that can mark the sand at once: each owns a sign, a ground wave and two wells. */
 export const WORM_GROUND_SLOTS = 2;
@@ -402,7 +402,7 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
     const EW = DUNE.expWindward;
     const EL = DUNE.expLee;
 
-    // The thumper's slots first, then one ground wave per worm.
+    // The drum's slots first, then one ground wave per worm.
     const PULSES = GROUND_PULSE_SLOTS + WORM_GROUND_SLOTS;
     const vec4s = (n, x, y, z, w) => Array.from({ length: n }, () => new THREE.Vector4(x, y, z, w));
     const uPulses = uniformArray(vec4s(PULSES, 0, 0, -100, 0), 'vec4');
@@ -441,7 +441,7 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
     const aDune = attribute('aDune', 'vec4');
     const aShade = attribute('aShade', 'vec4');
 
-    // ── Vertex: ground pulses (thumper rings), the worm signs and the wells ──
+    // ── Vertex: ground pulses (drum rings), the worm signs and the wells ──
     const disp = Fn(() => {
         const p = positionLocal;
         const h = float(0.0).toVar();
@@ -464,7 +464,7 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
             gx.addAssign(dAlong.mul(dir.x));
             gz.addAssign(dAlong.mul(dir.y));
         }
-        // Thumper waves: a low swell of sand running out from each beat (and each worm strike).
+        // Drum waves: a low swell of sand running out from each beat (and each worm strike).
         for (let i = 0; i < PULSES; i++) {
             const P = uPulses.element(i);
             const age = uTime.sub(P.z);
@@ -563,8 +563,8 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         const sand = vec3(0.8, 0.42, 0.19).mul(mix(0.88, 1.1, nz.w)).toVar();
         sand.assign(mix(sand.mul(vec3(0.84, 0.74, 0.7)), sand, smoothstep(0.0, 0.35, prof)));
         sand.assign(mix(sand, sand.mul(1.08).add(vec3(0.03, 0.02, 0.01)), prof.mul(prof).mul(0.8)));
-        const spice = aShade.w.mul(smoothstep(0.35, 0.75, nz.y));
-        sand.assign(mix(sand, vec3(0.62, 0.21, 0.07), spice.mul(0.75)));
+        const rust = aShade.w.mul(smoothstep(0.35, 0.75, nz.y));
+        sand.assign(mix(sand, vec3(0.62, 0.21, 0.07), rust.mul(0.75)));
         // Sand turned up from below is duller and cooler than the wind-polished surface.
         sand.mulAssign(mix(vec3(1.0, 1.0, 1.0), vec3(0.92, 0.94, 1.0).mul(scarTone), scar));
 
@@ -607,12 +607,12 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
             const g = pow(clamp(dot(facet, H), 0.0, 1.0), 420.0);
             const pick = smoothstep(0.55, 0.6, ssHash21(cell.add(17.3)));
             const near = float(1.0).sub(smoothstep(40.0, 320.0, dist)).mul(float(1.0).sub(scar));
-            const tint = mix(vec3(1.0, 0.86, 0.62), vec3(1.0, 0.55, 0.2), spice);
+            const tint = mix(vec3(1.0, 0.86, 0.62), vec3(1.0, 0.55, 0.2), rust);
             col.addAssign(tint.mul(uSunLightA).mul(g.mul(dotM).mul(pick).mul(near).mul(visA)
                 .mul(9.0)));
         }
 
-        // ── Thumper rings: each lock sends a ring of lifted sand across the erg ──
+        // ── Drum rings: each lock sends a ring of lifted sand across the erg ──
         const ringSum = float(0.0).toVar();
         for (let i = 0; i < PULSES; i++) {
             const P = uPulses.element(i);
@@ -626,7 +626,7 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         }
         // Lifted grains catch the low sun: a golden crest, brightest where the suns can reach.
         const ringLight = uSunLightA.mul(max(visA, 0.45)).mul(0.22).add(vec3(0.12, 0.07, 0.03));
-        col.addAssign(mix(vec3(1.0, 0.78, 0.48), vec3(1.0, 0.55, 0.22), spice).mul(ringLight).mul(ringSum));
+        col.addAssign(mix(vec3(1.0, 0.78, 0.48), vec3(1.0, 0.55, 0.22), rust).mul(ringLight).mul(ringSum));
 
         // ── Blowing sand: sheets of saltating grains streaming downwind over the surface ──
         const along = dot(wp.xz, uWindDir);
