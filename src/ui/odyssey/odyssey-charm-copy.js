@@ -8,7 +8,7 @@
 import {
     ODYSSEY_CHARM_GLYPH, ODYSSEY_PITY_FALLS, describeOdysseyCharms, odysseyCharmById, odysseyCharmHelps,
 } from '../../core/odyssey/odyssey-charm-bag.js';
-import { ensureOdysseyCharmSprites, odysseyCharmIconMarkup, odysseyCharmSprite } from './odyssey-charm-icon-stage.js';
+import { createOdysseyCharmIconNode } from './odyssey-charm-icon-stage.js';
 
 /** The first arrival's word on charms. */
 export const ODYSSEY_CHARM_ARRIVAL_NOTE = 'Clearing an orb leaves you a charm. Press 1–4 during an orb to use one; '
@@ -37,25 +37,31 @@ export function describeOdysseyCharmHeader(entries) {
 }
 
 /**
- * Write the header line into the map's overlay: each charm held as its still with its count once
- * the stills exist (they are made once per session, after which the header is written again), the
- * count in words until then.
+ * Write the header line into the map's overlay: each charm held as its live icon with its count;
+ * the count in words where no icon node can be made (no document).
  */
 export function renderOdysseyCharmHeader(entries, node = globalThis.document?.getElementById?.('odyssey-header-charms')) {
     if (!node) return;
     const { text, title } = describeOdysseyCharmHeader(entries);
     const held = (entries || []).filter((entry) => entry.count > 0);
     node.title = title;
-    if (held.length && held.every((entry) => odysseyCharmSprite(entry.id))) {
-        node.innerHTML = held.map((entry) => `${odysseyCharmIconMarkup(entry.id)}×${entry.count}`).join('');
-        return;
+    const doc = globalThis.document;
+    if (held.length && typeof node.replaceChildren === 'function' && doc?.createElement) {
+        const parts = [];
+        held.forEach((entry) => {
+            const icon = createOdysseyCharmIconNode(entry.id);
+            if (!icon) return;
+            const count = doc.createElement('span');
+            count.className = 'charm-count';
+            count.textContent = `×${entry.count}`;
+            parts.push(icon, count);
+        });
+        if (parts.length) {
+            node.replaceChildren(...parts);
+            return;
+        }
     }
     node.textContent = text;
-    if (held.length) {
-        ensureOdysseyCharmSprites().then(() => {
-            if (node.isConnected !== false) renderOdysseyCharmHeader(entries, node);
-        }).catch(() => {});
-    }
 }
 
 /**

@@ -16,7 +16,7 @@ import {
 } from '../../core/odyssey/data/duel-rules.js';
 import { ODYSSEY_CHARMS, ODYSSEY_STILL_AIR_MS } from '../../core/odyssey/odyssey-charm-bag.js';
 import { ODYSSEY_CHARM_REFUSALS } from '../../core/odyssey/odyssey-charm-use.js';
-import { OdysseyCharmIconStage } from './odyssey-charm-icon-stage.js';
+import { OdysseyCharmIconTray } from './odyssey-charm-icon-stage.js';
 import { OdysseyHudFit } from './odyssey-hud-fit.js';
 
 /** How long a refused press shows its reason under the tray, and the clock its bought seconds. */
@@ -97,7 +97,7 @@ export class OdysseyHUD {
         this.charmFocus = null;
         this.charmsCaption = null;
         this.clockFlashTimer = null;
-        this.charmIconStage = null;
+        this.charmIconTray = null;
         this.fit = null;
         this.reducedMotion = options.reducedMotion === true
             || Boolean(globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches);
@@ -351,7 +351,7 @@ export class OdysseyHUD {
             this.charmChips.set(charm.id, chip);
         }
         section.appendChild(this.charmsList);
-        this.charmIconStage = new OdysseyCharmIconStage({ list: this.charmsList, reducedMotion: this.reducedMotion });
+        this.charmIconTray = new OdysseyCharmIconTray({ list: this.charmsList, reducedMotion: this.reducedMotion });
 
         this.charmsCaption = document.createElement('p');
         this.charmsCaption.className = 'charms-caption';
@@ -387,9 +387,9 @@ export class OdysseyHUD {
         }
         const shown = new Map((view.charms || []).map((chip) => [chip.id, chip]));
         // The icons draw once the tray is seen; the chips keep their glyphs until then, or without a GPU.
-        if (this.charmIconStage) {
-            this.charmIconStage.setStates(Object.fromEntries([...shown.values()].map((chip) => [chip.id, chip.state])));
-            this.charmIconStage.init().catch(() => {});
+        if (this.charmIconTray) {
+            this.charmIconTray.setStates(Object.fromEntries([...shown.values()].map((chip) => [chip.id, chip.state])));
+            this.charmIconTray.init().catch(() => {});
         }
         const spoken = [];
         let rowChanged = wasHidden;
@@ -1177,8 +1177,8 @@ export class OdysseyHUD {
         this.charmFlashTimers?.clear();
         if (this.clockFlashTimer) clearTimeout(this.clockFlashTimer);
         this.clockFlashTimer = null;
-        this.charmIconStage?.dispose();
-        this.charmIconStage = null;
+        this.charmIconTray?.dispose();
+        this.charmIconTray = null;
         this.charmFlash = null;
         this.fit?.dispose();
         this.fit = null;
