@@ -65,6 +65,15 @@ export const SHEETS = Object.freeze([
         focus: ['.odyssey-level-btn[aria-current="true"]', '[data-navigator-action="close"]'],
     },
     {
+        // The charm guide the map header's charm chip opens: Escape and B go back to the map.
+        name: 'odysseyCharms',
+        id: 'odyssey-charm-guide',
+        mounted: true,
+        odyssey: true,
+        backSelector: '[data-charm-guide-action="close"]',
+        focus: ['[data-charm-guide-action="close"]'],
+    },
+    {
         name: 'demoBrowser',
         id: 'demo-browser-modal',
         back: 'close-demo-browser',
