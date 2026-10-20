@@ -64,6 +64,7 @@ import {
     blFxMaterial,
     blHash22,
     blLampImage,
+    blLamps,
     blLockLight,
     blPart,
     blQuadGeometry,
@@ -241,6 +242,19 @@ export function createWater(u, plan, opts = {}) {
         col.addAssign(light.mul(1.1));
         col.addAssign(clear.rgb.mul(0.34));
         col.addAssign(mix(u.plankton, vec3(0.8, 1.0, 0.95), 0.5).mul(shock).mul(0.75));
+
+        // ── Mist lying on the water: wisps that drift, lit by the caps above them ──
+        const m1 = u.noise(st.mul(0.043).add(vec2(u.time.mul(0.011), u.time.mul(0.006)))).b;
+        const m2 = u.noise(st.mul(0.12).sub(vec2(u.time.mul(0.008), u.time.mul(-0.012)))).a;
+        const wisp = smoothstep(0.52, 0.9, m1.mul(0.72).add(m2.mul(0.42))).toVar();
+        // Seen edge-on the layer is deep; under the lens it is thin, and the far air takes it over.
+        const layerDepth = smoothstep(2.0, 9.0, dist).mul(float(1.0).sub(smoothstep(45.0, 90.0, dist)))
+            .mul(oneMinus.mul(0.6).add(0.4));
+        const above = blLamps(u, p.add(vec3(0.0, 1.1, 0.0)), vec3(0.0, 1.0, 0.0));
+        col.addAssign(above.mul(0.018).add(u.fogLow.mul(1.1)).add(u.plankton.mul(awake.min(1.0).mul(0.03)))
+            .mul(wisp)
+            .mul(layerDepth)
+            .mul(u.breath.mul(0.7).add(0.3)));
         return blAtmosphere(u, col, p);
     })();
 
