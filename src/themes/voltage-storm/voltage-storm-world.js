@@ -81,7 +81,7 @@ import {
 } from './voltage-storm-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { CLOUD_SEED } from './voltage-storm-bake.js';
-import { prefersReducedFlashing } from '../../core/photosensitivity.js';
+import { prefersReducedFlashing } from '../../utils/photosensitivity.js';
 
 /** The rest camera: a moderately wide lens a few metres over the water. */
 export const REST_RIG = Object.freeze({

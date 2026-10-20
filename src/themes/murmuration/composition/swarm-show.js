@@ -20,7 +20,7 @@
  */
 import { IMPULSE_TYPE } from '../sim/fluid-particles.js';
 import { PALETTE_LEVEL_STEP, PALETTE_SPAN, samplePalette } from './swarm-palette.js';
-import { flashScale } from '../../../core/photosensitivity.js';
+import { flashScale } from '../../../utils/photosensitivity.js';
 
 /**
  * Every formation a gameplay moment may roll. 'free' is the release state and 'heart' is
