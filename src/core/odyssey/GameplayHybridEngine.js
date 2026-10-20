@@ -255,6 +255,11 @@ export class GameplayHybridEngine {
         return modifiedCallbacks;
     }
 
+    /** Lengthen a deadline orb's limit during the attempt (Long Breath). @returns {number} the bonus so far */
+    extendTimeLimit(seconds) {
+        return this.victoryEvaluator.extendTimeLimit(seconds);
+    }
+
     /**
      * Update time metric
      * @param {number} elapsedSeconds
