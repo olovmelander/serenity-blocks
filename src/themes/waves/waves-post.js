@@ -23,6 +23,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode; `shafts` is the number of steps of the
@@ -304,7 +305,7 @@ export class WavesPost {
         flash, bloomBoost, exposure, warm, time, sunX, sunY, shafts, shaftTint,
     } = {}) {
         if (shaftTint) this.uShaftTint.value.set(shaftTint[0], shaftTint[1], shaftTint[2]);
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;
         if (warm !== undefined) this.uWarm.value = warm;

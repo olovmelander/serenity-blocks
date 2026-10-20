@@ -45,6 +45,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { seHash21, seLuma, seMax3 } from './solar-eclipse-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode. `fringe` = the chromatic split (two more
@@ -295,7 +296,7 @@ export class SolarEclipsePost {
     } = {}) {
         if (moon) this.uMoon.value.set(moon.x, moon.y, moon.radius, moon.matte);
         if (echo) this.uEcho.value.set(echo.x, echo.y, echo.radius, echo.matte);
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;

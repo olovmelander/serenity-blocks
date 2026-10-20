@@ -447,6 +447,8 @@ async function main() {
     const win = createWindow();
     const appUrl = pathToFileURL(DIST_INDEX);
     appUrl.searchParams.set('menuVisualValidation', '1');
+    // The validation drives the opening itself; the photosensitivity warning (ADR-0021) is skipped.
+    appUrl.searchParams.set('photosensitivityWarning', '0');
     await win.loadURL(appUrl.href);
 
     if (SHOW_WINDOW) {

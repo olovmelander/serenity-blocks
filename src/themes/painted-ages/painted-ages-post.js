@@ -43,6 +43,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { paHash21, paLuma, paMax3 } from './painted-ages-tsl.js';
+import { flashScale } from '../../core/photosensitivity.js';
 
 /** Per-tier look. `bloom: false` builds no BloomNode; `shafts` the sun's shafts. */
 export const POST_LOOK = Object.freeze({
@@ -276,7 +277,7 @@ export class PaintedAgesPost {
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (sun) this.uSun.value.set(sun.x, sun.y, sun.onScreen, sun.strength);
         if (shaftColour) this.uShaftColour.value.set(shaftColour[0], shaftColour[1], shaftColour[2]);
-        if (flash !== undefined) this.uFlash.value = flash;
+        if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (flashColour) this.uFlashColour.value.set(flashColour[0], flashColour[1], flashColour[2]);
         if (saturation !== undefined) this.uSaturation.value = saturation;
         if (time !== undefined) this.uTime.value = time;
