@@ -12,7 +12,7 @@
 import * as THREE from 'three/webgpu';
 import {
     ODYSSEY_CHARM_ICON_HALF_EXTENT, ODYSSEY_CHARM_ICON_IDS, createOdysseyCharmIcon, createOdysseyCharmIconCamera,
-    createOdysseyCharmIconLights,
+    createOdysseyCharmIconLights, createOdysseyCharmStudio,
 } from '../../rendering/odyssey/odyssey-charm-icons.js';
 
 const INIT_TIMEOUT_MS = 6000;
@@ -153,8 +153,10 @@ export class OdysseyCharmIconStage {
         if (this.list.dataset) this.list.dataset.charmIcons = 'live';
 
         this.scene = new THREE.Scene();
+        // The one studio every icon reflects; it goes with the renderer.
+        this.studio = createOdysseyCharmStudio();
         ODYSSEY_CHARM_ICON_IDS.forEach((id, index) => {
-            const icon = createOdysseyCharmIcon(id);
+            const icon = createOdysseyCharmIcon(id, { studio: this.studio });
             icon.group.position.x = index * SLOT_SPACING;
             icon.setState(this.pendingStates.get(id) || 'ready');
             this.scene.add(icon.group);
@@ -372,6 +374,8 @@ export class OdysseyCharmIconStage {
         this.icons.clear();
         this.lights?.dispose();
         this.lights = null;
+        this.studio?.dispose();
+        this.studio = null;
         const { renderer } = this;
         this.renderer = null;
         if (this.list?.dataset) delete this.list.dataset.charmIcons;
