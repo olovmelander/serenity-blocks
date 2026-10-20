@@ -74,7 +74,9 @@ export const ODYSSEY_FLIGHTS = Object.freeze([
         height: Object.freeze([-7, 9]),
         lapSeconds: Object.freeze([5.5, 8.5]),
         span: 1.25,
-        window: Object.freeze([0.196, 0.206, 0.314, 0.328]),
+        // Out only once neither party is in frame (p ~0.323 on the real camera; the shrink began
+        // at 0.314 with a third of them still in view) — odyssey-act2-fade-out-of-view.test.js.
+        window: Object.freeze([0.196, 0.206, 0.324, 0.334]),
     }),
     Object.freeze({
         id: 'geese',

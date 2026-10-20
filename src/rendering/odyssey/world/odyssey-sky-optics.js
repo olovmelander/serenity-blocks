@@ -131,8 +131,18 @@ export function applyAntisolarSky({
 /**
  * Strength of the shower veil and of the bow over Act II progress (pure; exported for its test).
  * Keyed to PROGRESS, not time, so every parked orb in the window sees the same sky: the shower
- * gathers over the shore orbs (L14-), the bow stands from L15 to L20 (the turn into chapter 4),
- * and both are gone before the climb.
+ * gathers over the shore orbs (L14-), the bow stands from L15, and both leave only once the
+ * camera has turned away from them.
+ *
+ * WHERE THEY LEAVE IS MEASURED, NOT CHOSEN (odyssey-act2-fade-out-of-view.test.js). A bow is
+ * never "passed": it stays opposite the sun however far the eye travels, so the only clean exit
+ * is a stretch of the rail where it is out of view. The bow used to fade over L21 -> L22 (actT
+ * 0.290-0.322), and L21 — framed for "the meadow below the massif's sunlit flank, the bow
+ * beyond" — parked on a bow at 78 % that then faded with two thirds of it on screen. On the
+ * real camera and height field, after L21 the view swings west to the far peak and the ground
+ * hides the antisolar sky: neither bow nor shower reaches a pixel from p 0.280 to 0.317 (just
+ * after L21 to just past L24). Both now hold full until L22 parks and fade inside that blind
+ * stretch: bow p 0.284-0.305, shower p 0.287-0.309 (actT x 0.6894 + 0.0649).
  * @param {number} actT 0..1 across Act II
  * @returns {{bow:number, veil:number}}
  */
@@ -144,7 +154,7 @@ export function antisolarSchedule(actT) {
     };
     const window = (a, b, c, d) => ramp(a, b, t) * (1 - ramp(c, d, t));
     return {
-        veil: window(0.150, 0.185, 0.300, 0.335),
-        bow: window(0.168, 0.196, 0.290, 0.322),
+        veil: window(0.150, 0.185, 0.322, 0.354),
+        bow: window(0.168, 0.196, 0.318, 0.348),
     };
 }
