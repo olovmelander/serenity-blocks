@@ -43,6 +43,7 @@ import {
     STAR_SLOTS,
     atMax3,
 } from './aether-tides-tsl.js';
+import { drewWith } from './aether-tides-fluid.js';
 
 const { RendererUtils } = THREE;
 
@@ -203,19 +204,22 @@ export class TideLight {
     render(renderer, passes = 1) {
         if (!this.glow || !this.fluid.live) return;
         this.rendererState = RendererUtils.resetRendererState(renderer, this.rendererState);
+        // Never cleared, and a pass three skipped (its pipeline still building) is not swapped in:
+        // see TideFluid.draw.
+        renderer.autoClear = false;
         if (this.steps > 0) {
             // The first frame has no memory: start fully lit and let the shadows run out.
             const count = this.primed ? passes : Math.max(passes, 24);
             for (let i = 0; i < count; i += 1) {
                 this.quad.material = this.shadeMaterial;
                 renderer.setRenderTarget(this.shadeWrite);
-                this.quad.render(renderer);
+                if (!drewWith(renderer, () => this.quad.render(renderer))) break;
                 const read = this.shadeRead;
                 this.shadeRead = this.shadeWrite;
                 this.shadeWrite = read;
                 this.tShade.value = this.shadeRead.texture;
+                this.primed = true;
             }
-            this.primed = true;
         }
         this.quad.material = this.glowMaterial;
         renderer.setRenderTarget(this.glow);

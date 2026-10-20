@@ -166,7 +166,8 @@ export class BlackHoleMatter {
         const material = additive('Black Hole — dust');
         const id = float(instanceIndex).mul(8);
         const rnd = (k) => hash(id.add(k));
-        const outer = mix(float(3.6), float(13.5), pow(rnd(0), 0.75));
+        // Born inside the disk's frayed rim: dust far out in the dark read as stray sparks.
+        const outer = mix(float(3.4), float(11.2), pow(rnd(0), 0.75));
         // Whole numbers of lifetimes per clock wrap, so the wrap is seamless.
         const lifetimes = floor(mix(float(36), float(84), rnd(1)));
         const lifeRate = lifetimes.div(TURN_WRAP);
@@ -192,12 +193,15 @@ export class BlackHoleMatter {
         const glow = varying(
             blackbody(warmth.mul(0.95).add(0.18))
                 .mul(warmth.mul(1.3).add(0.1))
-                .mul(rnd(5).mul(rnd(5)).mul(1.1).add(0.1))
+                // Fine glints in the gas, not dashes over it: most motes are faint, a few catch.
+                .mul(rnd(5).mul(rnd(5)).mul(rnd(5)).mul(1.15)
+                    .add(0.06))
                 .mul(fade)
                 .mul(head.visible)
                 .mul(u.surge.mul(1.2).add(1)),
         );
-        material.vertexNode = streakClip(u, project(head.position), project(tail.position), rnd(6).mul(1.2).add(1.3));
+        // Never under a pixel across, or a slow orbit makes the dust shimmer.
+        material.vertexNode = streakClip(u, project(head.position), project(tail.position), rnd(6).mul(0.8).add(1.1));
         material.outputNode = vec4(glow.mul(streakShape()), 0);
         this.dust = this.add(new THREE.InstancedMesh(this.geometry, material, count), 'Black Hole — dust', 20);
     }
