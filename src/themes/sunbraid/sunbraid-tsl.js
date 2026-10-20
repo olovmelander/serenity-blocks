@@ -1,7 +1,7 @@
 /**
  * Sunbraid — shared TSL: the uniforms every part reads, the baked noise, and the light of the
- * three suns (one set of functions the land, the stones, the meadow and the sky all call, so a
- * shadow on the ground, the colour of a slope and the glow on the horizon always agree).
+ * three suns (one set of functions the land, the towers, the gliders, the sky and the mist all
+ * call, so a shadow on the floor, its wedge in the mist and the glow on the horizon always agree).
  *
  * The world writes the uniforms; the materials read them. Readers that sample a texture or read
  * a uniform are inline builders (a laid-out Fn may not capture either); pure arithmetic helpers
@@ -217,7 +217,7 @@ export function cloudPass(u, noise, P, S) {
 }
 
 /**
- * Each sun's visibility at a world point, past every stone (and the high cloud): vec3 (coral, jade,
+ * Each sun's visibility at a world point, past every tower and glider (and the high cloud): vec3 (coral, jade,
  * cobalt). One loop over the casters, the three suns per caster.
  */
 export function sunVisibility(u, P, noise = null) {

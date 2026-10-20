@@ -1,10 +1,9 @@
 /**
  * Sunbraid — composition (CPU only, three-free).
  *
- * The frame around the card: the pale meadow at its foot, where the board's three shadows fall;
- * on either side the stones standing out of the basin with their coloured shadows running across
- * it; above, the suns riding low beside the card, the one in front of the eye glowing on the
- * horizon behind it.
+ * The frame around the card: the white valley floor at its foot, where the towers' fans of
+ * coloured shadow run toward the eye; on either side towers and buttes standing out of the valley;
+ * above and to the left, the triple star riding low beside the card.
  *
  * The live gameplay layout as screen fractions (y down): the board cards, the boards inside them
  * and the solo HUD, read from the DOM (or the stylesheet's own formulas before a card shows).

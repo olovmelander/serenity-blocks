@@ -1,6 +1,7 @@
 /**
- * Sunbraid — the land: one fan of ground round the eye (rows crowd near the lens), pale stone
- * ground under a short pale moss, lit by the three suns and shadowed by every stone.
+ * Sunbraid — the land: one fan of ground round the eye (rows crowd near the lens), white gypsum
+ * with warm patches, polygon crusts, drifts of pale scrub and selenite glitter, lit by the three
+ * suns and shadowed by every tower and glider.
  */
 import * as THREE from 'three/webgpu';
 import {

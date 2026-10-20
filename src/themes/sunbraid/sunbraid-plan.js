@@ -2,10 +2,11 @@
  * Sunbraid — the land's plan (three-free): the valley floor's height everywhere, and where the
  * towers stand.
  *
- * The eye hovers high over a broad valley of pale sand and stone that runs away to a far rim. Out
- * of the valley floor rise the towers and buttes, pale bedded sandstone, the nearest taller than
- * the eye. Seen from above, every tower's three shadows (one per sun, a third of a turn apart) lie
- * across the pale floor as long coloured stripes, so the valley is a sundial the suns write on.
+ * The eye hovers 70 m over a broad valley of white gypsum that runs away to a far rim. Out of the
+ * valley floor rise the towers and buttes, pale bedded sandstone, the nearest taller than the eye.
+ * The suns stand low in front of the eye, so every tower's three shadows (one per sun, a few
+ * degrees apart) run toward the lens across the white floor as a fan of coloured bands: the valley
+ * is a sundial the suns write on.
  *
  * Composition (16:9, the card over the middle sixth): a big group frames each side near the eye,
  * a butte and a mitten stand in the middle distance, and far towers stand along the valley on

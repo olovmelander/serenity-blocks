@@ -9,7 +9,7 @@
  *   quality=High|Ultra|...   content tier (default High)
  *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules)
  *   statsHud=0               with board=1: board only, no HUD mock
- *   braid=<degrees>          hold the braid at this phase (0: the coral sun straight ahead)
+ *   braid=<degrees>          hold the braid at this phase (−90: the coral sun lowest; 0: on the right)
  *   parts=land,sky           draw only these parts
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
@@ -51,7 +51,7 @@ const DEMO_SCRIPT = [
 export const meta = {
     id: 'sunbraid',
     title: 'Sunbraid (full world)',
-    description: 'A pale world under three coloured suns: every slope takes a colour, every shadow is one.',
+    description: 'A pale valley under a triple star of coloured suns: every tower throws a fan of coloured shadows.',
 };
 
 function num(params, key, fallback = 0) {
