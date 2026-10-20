@@ -9,8 +9,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, acesFilmicToneMapping, clamp, dot, float, length, max, mix, pass, pow, renderOutput, saturate, screenUV,
-    smoothstep, uniform, vec2, vec3, vec4,
+    Fn, acesFilmicToneMapping, clamp, dot, float, length, max, mix, pass, perspectiveDepthToViewZ, pow, renderOutput,
+    saturate, screenUV, smoothstep, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
@@ -37,6 +37,8 @@ export class FallPost {
         this.uExposure = uniform(1.0);
         this.uShafts = uniform(1);
         this.uSunScreen = uniform(new THREE.Vector2(0.27, 0.45));
+        this.uNear = uniform(camera?.near ?? 0.3);
+        this.uFar = uniform(camera?.far ?? 600);
         this.sunPoint = new THREE.Vector3();
         if (this.disabled) return;
         this.pipeline = new THREE.RenderPipeline(renderer);
@@ -57,7 +59,13 @@ export class FallPost {
             const centred = screenUV.sub(this.uSunScreen).mul(vec2(this.uAspect, 1));
             const toward = float(1).sub(saturate(length(centred).mul(0.62)));
             const shaftColour = mix(vec3(0.3, 0.22, 0.15), vec3(1.5, 0.84, 0.33), pow(toward, 1.4));
-            lit = lit.add(shaftColour.mul(this.shaftsBlur.r).mul(this.uShafts));
+            // Toward the sky dome the march integrates hundreds of metres of lit air and veils the
+            // whole sky a milky lavender. The dome already holds its own air, so beyond the last
+            // ridge (about 250 m) the shafts keep only the glow round the sun.
+            const distance = perspectiveDepthToViewZ(sceneDepth, this.uNear, this.uFar).negate();
+            const skyward = smoothstep(280, 390, distance);
+            const keep = mix(float(1), toward.pow2().pow2().mul(0.45).add(0.06), skyward);
+            lit = lit.add(shaftColour.mul(this.shaftsBlur.r).mul(this.uShafts).mul(keep));
         }
         this.bloomNode = bloom(sceneColor, 0.22, 0.6, 1.05);
         // Soft knee on the brightest channel, so a saturated sun keeps its hue in the bloom.
@@ -73,8 +81,12 @@ export class FallPost {
         const graded = Fn(() => {
             const toned = acesFilmicToneMapping(lit.add(this.bloomNode.rgb).max(0), this.uExposure).toVar();
             const luma = dot(toned, vec3(0.2126, 0.7152, 0.0722));
+            // Split tone by scaling only: cool shade under the warm sun, a touch of gold in the
+            // highlights (an added constant would lift every black into a veil).
             const shade = float(1).sub(smoothstep(0.02, 0.4, luma));
-            toned.mulAssign(mix(vec3(1), vec3(0.94, 1.0, 1.1), shade.mul(0.45)));
+            const highlight = smoothstep(0.5, 0.95, luma);
+            toned.mulAssign(mix(vec3(1), vec3(0.9, 0.98, 1.14), shade.mul(0.55)));
+            toned.mulAssign(mix(vec3(1), vec3(1.03, 1.0, 0.94), highlight.mul(0.5)));
             toned.assign(mix(vec3(dot(toned, vec3(0.2126, 0.7152, 0.0722))), toned, 1.08));
             const radius = length(screenUV.sub(0.5).mul(vec2(this.uAspect.div(1.778), 1)).mul(2));
             toned.mulAssign(float(1).sub(smoothstep(0.7, 1.7, radius).mul(0.2)));
@@ -114,6 +126,10 @@ export class FallPost {
         this.uExposure.value = 1.0 + warmth * 0.05;
         this.uShafts.value = 1 + shafts * 1.4;
         if (this.bloomNode) this.bloomNode.strength.value = 0.22 + warmth * 0.1;
+        if (this.camera?.isCamera) {
+            this.uNear.value = this.camera.near;
+            this.uFar.value = this.camera.far;
+        }
         if (this.light && this.camera?.isCamera) {
             // Screen position of the sun (uv, y down) for the shaft tint.
             const point = this.sunPoint.copy(this.camera.position)
