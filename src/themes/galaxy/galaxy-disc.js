@@ -55,7 +55,8 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    GALAXY, MAX_RINGS, NOISE_SIZE, TAU, gxArmAngle, gxBell, gxFxMaterial, gxHash21, gxLuma, gxPart, gxRippleLight,
+    GALAXY, MAX_RINGS, NOISE_SIZE, TAU, gxArmAngle, gxBell, gxFxMaterial, gxHash21, gxHash33, gxLuma, gxPart,
+    gxRippleLight,
     gxWaveLight,
 } from './galaxy-tsl.js';
 
@@ -73,7 +74,7 @@ const YOUNG_GAIN = 0.15;
 const KNOT_GAIN = 0.42;
 const BAR_GAIN = 0.06;
 /** Extinction per light-unit at the heart of a lane; blue goes first. */
-const DUST_GAIN = 0.6;
+const DUST_GAIN = 1.0;
 const DUST_RGB = [0.72, 1.0, 1.34];
 /** The bulge and the cluster at its heart: face-on central brightness. */
 const BULGE_PEAK = 1.5;
@@ -123,12 +124,42 @@ export function createDisc(u, { march = 10, detail = 2 } = {}) {
         const swell = smoothstep(0.18, 0.86, coarse.b.mul(0.55).add(fine.r.mul(0.45)));
         const glow = smoothstep(0.5, 0.94, fine.b.mul(0.62).add(coarse.g.mul(0.38)));
         const thread = float(1.0).sub(abs(fine.a.mul(2.0).sub(1.0)));
+        // Star-forming knots: one at most in each cell of a lattice in the galaxy's own frame, so
+        // they turn with the pattern. A hot compact heart in a soft halo of glowing gas; the arm's
+        // trailing edge (sampleAt) decides which ones show, so they string along it like beads.
+        // A knot smaller than a pixel settles to its own average, so none of them shimmers.
+        const knotLattice = (scale, salt, share) => {
+            const g = pm.xz.div(scale);
+            const id = floor(g);
+            const h = gxHash33(vec3(id, salt)).toVar();
+            const d = length(g.sub(id.add(h.xy.mul(0.5).add(0.25)))).mul(scale);
+            const rad = h.z.mul(0.5).add(0.3).mul(scale * 0.11).toVar();
+            const q = d.div(rad);
+            const heart = exp(q.mul(q).negate());
+            const haloQ = q.div(2.6);
+            // The halo dies out inside its own cell: it may not be cut by the cell's edge.
+            const f = abs(g.sub(id).sub(0.5));
+            const inCell = float(1.0).sub(smoothstep(0.3, 0.48, max(f.x, f.y)));
+            const halo = exp(haloQ.mul(haloQ).negate()).mul(0.34).mul(inCell);
+            const present = step(1.0 - share, h.x).mul(h.y.mul(h.y).mul(0.8).add(0.2));
+            const sharp = smoothstep(0.5, 1.6, rad.div(max(footprint, 1e-4)));
+            const mean = float(Math.PI * 0.0045 * (1 + 0.34 * 2.6 * 2.6) * 0.44 * share);
+            return {
+                heart: mix(mean.mul(0.2), heart.mul(present), sharp),
+                all: mix(mean, heart.add(halo).mul(present), sharp),
+            };
+        };
+        const big = knotLattice(4.6, 3.0, 0.42);
+        const small = knotLattice(2.3, 11.0, 0.32);
+        // Knots gather in complexes: the arm's clumps hold most of them.
+        const gather = coarse.g.mul(0.9).add(fine.b.mul(0.5)).add(0.1);
         return {
             warp: coarse.r.sub(0.5).mul(1.7).add(fine.g.sub(0.5).mul(0.22)).toVar(),
             /** Clouds of young light: 0..1, soft. */
             clump: swell.mul(swell).toVar(),
-            /** Glowing knots: soft blobs with a bright heart. */
-            knots: glow.mul(glow).toVar(),
+            /** Glowing gas: a faint diffuse glow, and the knots' halos and hearts. */
+            knots: glow.mul(glow).mul(0.3).add(big.all.add(small.all.mul(0.7)).mul(gather)).toVar(),
+            hearts: big.heart.add(small.heart.mul(0.7)).mul(gather).toVar(),
             /** Threads of dust: thin lines where the fine grain crosses its own middle. */
             threads: thread.mul(thread).mul(thread).toVar(),
             /** Where the dust gathers, on the scale of an arm. */
@@ -168,16 +199,20 @@ export function createDisc(u, { march = 10, detail = 2 } = {}) {
             .mul(a2.mul(a2).mul(armOn).mul(grain.clump.mul(1.6).add(0.2)).mul(exp(r.div(-RD * 2.4)))
                 .mul(vGas)
                 .mul(YOUNG_GAIN));
-        const knots = u.nursery.mul(grain.knots.mul(knot.mul(knot).mul(knot)).mul(a).mul(armOn)
+        const edge = knot.mul(knot).mul(knot).mul(a).mul(armOn)
             .mul(exp(r.div(-RD * 2.8)))
             .mul(vGas)
-            .mul(KNOT_GAIN));
+            .toVar();
+        // A knot's halo glows in the nursery's colour; its heart burns nearly white.
+        const knots = u.nursery.mul(grain.knots.mul(edge).mul(KNOT_GAIN))
+            .add(mix(u.nursery, vec3(1.0, 0.92, 0.96), 0.6).mul(grain.hearts.mul(edge).mul(KNOT_GAIN * 1.6)));
         const bar = u.core.mul(exp(p.z.mul(p.z).div(-9.0)).mul(exp(r.mul(r).div(-150.0))).mul(vOld).mul(BAR_GAIN));
         const emission = old.add(young).add(knots).add(bar).mul(rim);
 
         const window = smoothstep(4.0, 13.0, r).mul(float(1.0).sub(smoothstep(R * 0.7, R, r)));
         // Lanes on the inner edge of each arm, threaded; and spurs of the same thread across the arm.
-        const sigma = lane.mul(lane).mul(grain.threads.mul(grain.patches.add(0.35)).mul(1.9).add(0.3))
+        const lane2 = lane.mul(lane);
+        const sigma = lane2.mul(lane2).mul(1.35).mul(grain.threads.mul(grain.patches.add(0.35)).mul(1.9).add(0.3))
             .add(grain.threads.mul(grain.patches).mul(a).mul(0.55))
             .mul(window)
             .mul(vDust)
@@ -221,8 +256,11 @@ export function createDisc(u, { march = 10, detail = 2 } = {}) {
         if (steps === 1) {
             const s = sampleAt(pm, false, grain);
             const tau = s.sigma.mul((H_DUST * SQRT_PI)).div(slope).toVar();
-            // Light born inside the dust layer leaves through half of it, on average.
-            const through = exp(tau.mul(-0.5).mul(dustRgb));
+            // Light born evenly through the dust escapes as (1 − e^−τ)/τ: under thick dust it
+            // fades as 1/τ, not exponentially, so a lane is a shadow and not a black crack.
+            // (τ is floored before both uses: with no dust the escape is 1, not 0/ε.)
+            const tauRgb = max(tau.mul(dustRgb), vec3(1e-3)).toVar();
+            const through = float(1.0).sub(exp(tauRgb.negate())).div(tauRgb);
             acc.assign(s.emission.mul(float(H_GAS * SQRT_PI).div(slope)).mul(through));
             T.assign(exp(tau.negate().mul(dustRgb)));
         } else {

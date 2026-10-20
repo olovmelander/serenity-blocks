@@ -27,6 +27,7 @@ import {
     mix,
     normalize,
     pow,
+    select,
     smoothstep,
     step,
     texture,
@@ -357,20 +358,49 @@ export const cdCurtain = (u, p, N) => {
  * and toward the great fall, smoke-dark under the roof. Every surface fades into it.
  */
 export const cdHaze = (u, dir, y) => {
-    const low = exp(max(y, 0.0).mul(-1 / 15));
+    // (Low and lit over the lava; overhead the air is smoke, and smoke is dark.)
+    const low = exp(max(y, 0.0).mul(-1 / 11));
     const toFall = max(dot(dir, normalize(u.fallPos.sub(cameraPosition))), 0.0);
     const t2 = toFall.mul(toFall);
     const lobe = t2.mul(t2).mul(t2);
-    const fall = u.mid.mul(lobe.mul(0.035).add(lobe.mul(lobe).mul(lobe).mul(0.16))).mul(u.fallGain);
-    return u.haze.mul(low.mul(0.88).add(0.12)).add(fall).mul(cdGlowGain(u));
+    const fall = u.mid.mul(lobe.mul(0.025).add(lobe.mul(lobe).mul(lobe).mul(0.09))).mul(u.fallGain);
+    return u.haze.mul(low.mul(0.92).add(0.05)).add(u.rock.mul(0.25)).add(fall).mul(cdGlowGain(u));
 };
 
 /** Fraction of light lost between the camera and a point `dist` away at height `y`. */
 export const cdFogAmount = (dist, y) => {
     // Smoke gathers under the roof.
     const thick = smoothstep(16.0, 44.0, y).mul(0.8).add(1.0);
-    const k = dist.mul(1 / 210);
-    return float(1.0).sub(exp(pow(k, 1.6).mul(thick).negate()));
+    // (Clear close by, so the rock keeps its shape; thick across the chamber.)
+    const k = dist.mul(1 / 250);
+    return float(1.0).sub(exp(pow(k, 1.9).mul(thick).negate()));
+};
+
+/** How tall the luminous fume over the lava stands: its density falls as e^(−y / FUME_SCALE). */
+export const FUME_SCALE = 2.4;
+/** Extinction of the fume at the lake's surface, per metre. */
+export const FUME_DENSITY = 0.0058;
+
+/**
+ * The fume that hangs over the lava, along the ray from the camera to world point `p` (`dist`
+ * away): { t, glow } — how much of what lies behind it still shows, and the light the fume adds
+ * (it glows with the lava under it). Its density is integrated along the ray in closed form, so a
+ * look across the lake passes through metres of it and a look up at the roof through almost none.
+ * It drifts in banks with the crust.
+ */
+export const cdFume = (u, p, dist) => {
+    const y0 = max(cameraPosition.y, 0.0);
+    const y1 = max(p.y, 0.0);
+    const x = y1.sub(y0).div(FUME_SCALE);
+    // ∫ e^(−y/s) along the ray = dist · e^(−y0/s) · (1 − e^(−x)) / x  (→ 1 − x/2 as x → 0).
+    const small = abs(x).lessThan(0.01);
+    const f = select(small, float(1.0).sub(x.mul(0.5)), float(1.0).sub(exp(x.negate())).div(select(small, float(1.0), x)));
+    const path = dist.mul(exp(y0.div(-FUME_SCALE))).mul(f);
+    const where = u.plateSpace(mix(cameraPosition.xz, p.xz, 0.55));
+    const bank = u.noise(where.mul(1 / 61)).r.mul(0.7).add(u.noise(where.mul(1 / 17)).g.mul(0.3));
+    const t = exp(path.mul(smoothstep(0.25, 0.75, bank).mul(1.3).add(0.35)).mul(-FUME_DENSITY));
+    const glow = u.mid.mul(0.15).add(u.deep.mul(0.22)).mul(cdGlowGain(u)).mul(float(1.0).sub(t));
+    return { t, glow };
 };
 
 /** Apply the atmosphere to a shaded colour at world point `p`. */
@@ -378,7 +408,9 @@ export const cdAtmosphere = (u, col, p) => {
     const rel = p.sub(cameraPosition);
     const dist = length(rel);
     const dir = rel.div(max(dist, 1e-3));
-    return mix(col, cdHaze(u, dir, p.y), cdFogAmount(dist, p.y));
+    const hazed = mix(col, cdHaze(u, dir, p.y), cdFogAmount(dist, p.y));
+    const fume = cdFume(u, p, dist);
+    return hazed.mul(fume.t).add(fume.glow);
 };
 
 // ── Materials and geometry ──────────────────────────────────────────────────────

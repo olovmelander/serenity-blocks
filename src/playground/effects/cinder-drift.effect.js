@@ -24,6 +24,9 @@
  *   msaa=<n>                 override the scene pass's samples
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
+ *   eye=x,y,z&aim=x,y,z      an inspection lens from eye toward aim, world metres (fov=<deg>,
+ *                            default 40), in place of the camera rig: e.g. the right-hand cliff
+ *                            close up, eye=14,4,-12&aim=24,6,-30&fov=50
  *   icon=1                   the theme-icon framing: a longer lens turned to the great fall
  *                            (compose for a small circle: capture a square frame)
  */
@@ -138,6 +141,20 @@ export function create({
 
     const pointer = { x: num(params, 'px'), y: num(params, 'py') };
     const iconPose = params.get('icon') === '1';
+    const triple = (key) => (params.get(key) || '').split(',').map(Number);
+    const lens = [...triple('eye'), ...triple('aim')];
+    const inspect = params.has('eye') && params.has('aim') && lens.length === 6 && lens.every(Number.isFinite)
+        ? { eye: lens.slice(0, 3), aim: lens.slice(3), fov: num(params, 'fov', 40) } : null;
+    /** The inspection lens, over whatever the rig set. */
+    const inspectLens = (cam) => {
+        if (!inspect) return;
+        cam.fov = inspect.fov;
+        cam.position.set(...inspect.eye);
+        cam.up.set(0, 1, 0);
+        cam.lookAt(...inspect.aim);
+        cam.updateProjectionMatrix();
+        cam.updateMatrixWorld();
+    };
     const size = new THREE.Vector2(1, 1);
     const syncViewport = () => {
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
@@ -170,6 +187,7 @@ export function create({
             camera.updateProjectionMatrix();
             camera.updateMatrixWorld();
         }
+        inspectLens(camera);
     };
     const stepTo = (from, to, dt) => {
         const steps = Math.max(1, Math.round((to - from) / dt));
@@ -264,6 +282,7 @@ export function create({
         cameraRadius: 1,
         camera(time, cam) {
             world.updateCamera(cam, sim(time, 0));
+            inspectLens(cam);
         },
         update(time, dt) {
             if (demo) runDemo(time);
