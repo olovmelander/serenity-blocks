@@ -79,8 +79,7 @@ export class OdysseyBotMatch {
         state.disableGarbage = false;
         state.disableLevelProgression = true;
         state.level = speed.startLevel || 1;
-        // A pace charm slows the human well only; the rival keeps the chapter's pace.
-        state.dropInterval = (speed.fixedDropInterval || 1000) * (index === 0 ? (Number(speed.paceFactor) || 1) : 1);
+        state.dropInterval = speed.fixedDropInterval || 1000;
         state.suppressExternalInput = index === 1;
         state.isPaused = this.paused;
         bindLegacySessionRng(state, seed);

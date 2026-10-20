@@ -163,14 +163,6 @@ export class GameplayHybridEngine {
                 * (initialLevelInterval / fixedDropInterval);
         }
 
-        // A held pace charm (Still Air) lengthens the fall through every level-up: the drop
-        // interval now, and the multiplier the level-up recompute divides by.
-        const paceFactor = Number(mechanics.speed.paceFactor) || 1;
-        if (paceFactor > 0 && paceFactor !== 1) {
-            this.gameState.dropInterval *= paceFactor;
-            this.gameState.speedMultiplier = (this.gameState.speedMultiplier || 1) / paceFactor;
-        }
-
         this.seedStartingRows();
 
         console.log('[HybridEngine] GameState created:', {
@@ -253,6 +245,11 @@ export class GameplayHybridEngine {
         modifiedCallbacks = this.modifierStack.applyToCallbacks(modifiedCallbacks, this.gameState);
 
         return modifiedCallbacks;
+    }
+
+    /** Lengthen a deadline orb's limit during the attempt (Long Breath). @returns {number} the bonus so far */
+    extendTimeLimit(seconds) {
+        return this.victoryEvaluator.extendTimeLimit(seconds);
     }
 
     /**

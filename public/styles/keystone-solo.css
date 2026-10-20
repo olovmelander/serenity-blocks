@@ -240,6 +240,28 @@
     transition: opacity var(--sb-dur-3) ease;
 }
 
+/* Still Air (an Odyssey charm): a calm lavender on the walls while the fall is slowed. Danger, below, wins. */
+.single-player-stage[data-board='well'][data-still-air] {
+    --sp-wall: var(--sb-lavender);
+    --sp-wall-glow: rgba(var(--sb-lavender-rgb), 0.45);
+}
+
+.single-player-stage[data-board='well'][data-still-air] #single-player-border {
+    animation: sp-still-air 2.4s var(--sb-ease-breathe) infinite alternate;
+}
+
+@keyframes sp-still-air {
+    from { box-shadow: 0 10px 28px -8px var(--sp-wall-glow), inset 0 -1px 0 rgba(var(--sb-cream-rgb), 0.12); }
+    to { box-shadow: 0 10px 36px -4px var(--sp-wall-glow), inset 0 -1px 0 rgba(var(--sb-cream-rgb), 0.12); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .single-player-stage[data-board='well'][data-still-air] #single-player-border {
+        animation: none;
+        box-shadow: 0 10px 32px -6px var(--sp-wall-glow), inset 0 -1px 0 rgba(var(--sb-cream-rgb), 0.12);
+    }
+}
+
 .single-player-stage[data-board='well'][data-danger] {
     --sp-wall: var(--sb-danger);
     --sp-wall-glow: rgba(var(--sb-danger-rgb), 0.55);

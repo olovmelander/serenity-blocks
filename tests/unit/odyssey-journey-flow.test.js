@@ -1116,37 +1116,7 @@ describe('Odyssey journey flow', () => {
             completedChapter: {
                 id: 1, total: 2, completed: 2, stars: 4, maxStars: 6,
             },
-            charmDraft: null,
         });
-        modal.options.onChoose('map');
-        expect(await pending).toBe(true);
-    });
-
-    it('hands the chapter arrival the road’s draft of charms when the save still offers one', async () => {
-        const { mode, session } = createMode();
-        const destination = { id: 6, chapter: 2, name: 'Ocean arrival' };
-        mode.levelRegistry.getNextLevel.mockReturnValue(destination);
-        mode.levelRegistry.resolveLevelPresentation.mockReturnValue(destination);
-        const draft = {
-            key: 'chapter:2',
-            charms: [{
-                id: 'keel', name: 'Keel', kind: 'goal', line: 'Asks less.',
-            }],
-        };
-        mode.odysseyState.getChapterCharmDraft = vi.fn((chapterId) => (chapterId === 2 ? draft : null));
-        mode._describeCharmDraft = vi.fn((offer) => (
-            offer ? { charms: offer.charms, onTake: vi.fn(), onPass: vi.fn() } : null
-        ));
-        const completion = showOdysseyFlowResults(mode, results, session);
-        const modal = fixture.overlays[0];
-        modal.options.onChoose('next');
-        expect(await completion).toBe('next');
-        const pending = continueOdysseyJourney(mode, destination);
-        await flush();
-        expect(mode.odysseyState.getChapterCharmDraft).toHaveBeenCalledWith(2);
-        expect(mode._describeCharmDraft).toHaveBeenCalledWith(draft);
-        expect(modal.showChapter.mock.calls[0][0].charmDraft)
-            .toEqual({ charms: draft.charms, onTake: expect.any(Function), onPass: expect.any(Function) });
         modal.options.onChoose('map');
         expect(await pending).toBe(true);
     });

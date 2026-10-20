@@ -380,14 +380,7 @@ async function continueAcrossChapter(mode, operation) {
     const completedChapter = summarizeOdysseyChapter(mode, operation.previousLevel?.chapter);
     const choice = await new Promise((resolve) => {
         operation.resolveChoice = resolve;
-        // The new chapter's draft of charms rides on its arrival; the mode wires take and pass.
-        modal.showChapter({
-            onChoose: resolve,
-            completedChapter,
-            charmDraft: mode._describeCharmDraft?.(
-                mode.odysseyState?.getChapterCharmDraft?.(nextLevel.chapter),
-            ) || null,
-        });
+        modal.showChapter({ onChoose: resolve, completedChapter });
     });
     if (!canProceed(mode, operation)) return false;
     if (choice !== 'next') {
