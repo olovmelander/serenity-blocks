@@ -40,7 +40,7 @@ export function createFieldUniforms() {
         /** Slow slide of the noise the shape is cut from. */
         drift: uniform(new THREE.Vector2(0, 0)),
         gain: uniform(1.25),
-        dust: uniform(0.9),
+        dust: uniform(1.6),
         /** The card: centre and half-size in tide units; the gas thins out behind it. */
         card: uniform(new THREE.Vector4(0, 0, 0.42, 0.88)),
         cardVoid: uniform(0.55),
@@ -84,7 +84,10 @@ export function createField(F, tNoise) {
         const ridge = float(1.0).sub(abs(mid.x.sub(0.5)).mul(2.0));
         const lanes = smoothstep(0.6, 0.94, ridge).mul(bank.mul(0.95).add(body.mul(0.3)));
         const knots = smoothstep(0.6, 0.84, big.w).mul(bank.mul(0.9).add(body.mul(0.2)));
-        const dust = max(lanes, knots);
+        // Squared, so the dust gathers into lanes and knots with clear sky between them, instead
+        // of a thin smoke over everything (the fluid smears whatever it is given).
+        const thick = max(lanes, knots);
+        const dust = thick.mul(thick).mul(1.7);
 
         // Behind the card the gas thins, so the board keeps its own darkness.
         const c = abs(q.sub(F.card.xy)).sub(F.card.zw);
