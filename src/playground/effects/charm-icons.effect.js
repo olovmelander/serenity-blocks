@@ -4,7 +4,7 @@
 // ?icon=hearth to frame one icon alone. Static framing (pass orbit=0).
 import * as THREE from 'three/webgpu';
 import {
-    ODYSSEY_CHARM_ICON_IDS, createOdysseyCharmIcon, createOdysseyCharmIconLights,
+    ODYSSEY_CHARM_ICON_IDS, createOdysseyCharmIcon, createOdysseyCharmIconLights, createOdysseyCharmStudio,
 } from '../../rendering/odyssey/odyssey-charm-icons.js';
 
 export const meta = {
@@ -18,8 +18,9 @@ export function create({ scene, params }) {
     const ids = only && ODYSSEY_CHARM_ICON_IDS.includes(only) ? [only] : [...ODYSSEY_CHARM_ICON_IDS];
     const states = (params?.get?.('states') || 'ready,active,armed,used').split(',');
     const spacing = 2.9;
+    const studio = createOdysseyCharmStudio();
     const icons = ids.map((id, index) => {
-        const icon = createOdysseyCharmIcon(id);
+        const icon = createOdysseyCharmIcon(id, { studio });
         icon.group.position.x = (index - (ids.length - 1) / 2) * spacing;
         icon.setState(states[index % states.length] || 'ready');
         scene.add(icon.group);
@@ -51,6 +52,7 @@ export function create({ scene, params }) {
             });
             lights.forEach((light) => scene.remove(light));
             disposeLights();
+            studio.dispose();
             scene.remove(backdrop);
             backdropGeometry.dispose();
             backdropMaterial.dispose();

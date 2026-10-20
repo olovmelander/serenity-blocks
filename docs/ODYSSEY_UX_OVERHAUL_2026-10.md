@@ -47,7 +47,9 @@ first arrival mark (`onboarding.arrivalSeen`) riding on the next save rather tha
 
 The in-orb presentation, settled later the same day: the tray is a **hotbar** (one tile per
 charm, its three.js r186 icon drawn by `ui/odyssey/odyssey-charm-icon-stage.js` from the scenes
-in `rendering/odyssey/odyssey-charm-icons.js`, the key on its shoulder, the count on the other,
+in `rendering/odyssey/odyssey-charm-icons.js`: chrome, brushed metal, bronze, glass and obsidian
+reflecting one small studio baked in that module and sampled by hand on basic materials, so the
+tray costs no standard-material compiles mid-play; the key on its shoulder, the count on the other,
 one caption line under the row for the charm that matters: a refused press, the tile under the
 pointer, Still Air's countdown, Hearth armed), and the HUD column **never scrolls**: it is laid
 out to fit beside a full-height well on a 900 px screen, and `ui/odyssey/odyssey-hud-fit.js`
