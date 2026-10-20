@@ -14,11 +14,46 @@ import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
 import {
     ODYSSEY_DUEL_KNOCKOUTS, formatOdysseyDuelGoal, formatOdysseyRival,
 } from '../../core/odyssey/data/duel-rules.js';
+import { ODYSSEY_CHARMS } from '../../core/odyssey/odyssey-charm-bag.js';
+import { ODYSSEY_CHARM_REFUSALS } from '../../core/odyssey/odyssey-charm-use.js';
+
+/** How long a refused press shows its reason on the chip, and the clock its bought seconds. */
+const CHARM_FLASH_MS = 1400;
+const CLOCK_FLASH_MS = 1200;
 
 const setText = (element, value) => {
     const text = String(value);
     if (element.textContent !== text) element.textContent = text;
 };
+
+const setChipPart = (chip, selector, value) => {
+    const part = chip.querySelector?.(selector);
+    if (part) setText(part, value);
+};
+
+/** A chip's state in a word or two: a countdown, armed, used, or why it cannot be used here. */
+function charmStateText(entry) {
+    switch (entry.state) {
+    case 'active':
+        return entry.remainingMs > 0 ? `${Math.ceil(entry.remainingMs / 1000)} s` : '';
+    case 'armed':
+        return 'armed';
+    case 'used':
+        return 'used';
+    case 'ready':
+        return entry.reason ? ODYSSEY_CHARM_REFUSALS[entry.reason] || '' : '';
+    default:
+        return '';
+    }
+}
+
+/** What the live region says when a chip's state changes. */
+function describeCharmChange(entry, was) {
+    if (was === 'active') return `${entry.name} has ended`;
+    if (was === 'armed' && entry.state === 'used') return `${entry.name} took the top-out`;
+    if (entry.state === 'active') return `${entry.name} active`;
+    return `${entry.name} ${entry.state}`;
+}
 
 /**
  * OdysseyHUD - Displays odyssey-specific statistics and objectives.
@@ -44,8 +79,15 @@ export class OdysseyHUD {
         this.bonusesDisplay = null;
         this.finishHint = null;
         this.onFinish = options.onFinish;
+        this.onUseCharm = options.onUseCharm;
         this.charmsSection = null;
         this.charmsList = null;
+        this.charmChips = new Map();
+        this.charmsLive = null;
+        this.charmStates = new Map();
+        this.charmView = null;
+        this.charmFlashTimers = new Map();
+        this.clockFlashTimer = null;
         this.duel = null;
         this.duelPanel = null;
         this.opponentBoard = null;
@@ -248,6 +290,10 @@ export class OdysseyHUD {
         this.container.appendChild(section);
     }
 
+    /**
+     * The charm tray: a chip per charm, with its key, its count and its state. Hidden until a
+     * charm is held or used this attempt. A click uses the charm; a refused press shows why.
+     */
     _createCharmsSection() {
         const section = document.createElement('div');
         section.className = 'hud-section charms-section';
@@ -258,47 +304,129 @@ export class OdysseyHUD {
         label.textContent = 'Charms';
         section.appendChild(label);
 
-        this.charmsList = document.createElement('ul');
+        this.charmsList = document.createElement('div');
         this.charmsList.className = 'charms-list';
+        this.charmsList.role = 'group';
         this.charmsList.ariaLabel = 'Charms held';
+        for (const charm of ODYSSEY_CHARMS) {
+            const chip = document.createElement('button');
+            chip.type = 'button';
+            chip.className = 'charm-chip';
+            chip.hidden = true;
+            if (chip.dataset) chip.dataset.charm = charm.id;
+            chip.innerHTML = `<kbd class="sb-kbd" data-key>${charm.key}</kbd><kbd class="sb-kbd" data-pad hidden></kbd>`
+                + `<span class="charm-chip__name">${charm.name}</span><span class="charm-chip__count"></span>`
+                + '<span class="charm-chip__state"></span>';
+            chip.addEventListener('click', () => {
+                const result = this.onUseCharm?.(charm.id);
+                if (result && !result.ok && result.reason) this.flashCharmReason(charm.id, result.reason);
+            });
+            this.charmsList.appendChild(chip);
+            this.charmChips.set(charm.id, chip);
+        }
         section.appendChild(this.charmsList);
+
+        // State changes are spoken once (used, armed, ended); the countdown is not.
+        this.charmsLive = document.createElement('p');
+        this.charmsLive.className = 'charms-live';
+        this.charmsLive.role = 'status';
+        this.charmsLive.ariaLive = 'polite';
+        section.appendChild(this.charmsLive);
 
         this.charmsSection = section;
         this.container.appendChild(section);
     }
 
-    /** The charms held this journey, each with its line; a spent Hearth is marked. Null or none hides the list. */
+    /**
+     * The tray as the bag and this attempt stand (core/odyssey/odyssey-charm-use.js
+     * describeOdysseyCharmRun). Null or a hidden view hides the tray.
+     */
     updateCharms(view) {
-        if (!this.charmsSection || !this.charmsList) return;
-        const charms = view?.charms || [];
-        if (!charms.length) {
-            this.charmsSection.hidden = true;
-            return;
-        }
-        this.charmsSection.hidden = false;
-        if (typeof this.charmsList.replaceChildren === 'function') this.charmsList.replaceChildren();
-        charms.forEach((charm) => {
-            const item = document.createElement('li');
-            item.className = 'charm-chip';
-            if (item.dataset) {
-                item.dataset.charm = charm.id;
-                item.dataset.kind = charm.kind;
-                item.dataset.spent = String(charm.spent === true);
-            }
-            item.title = charm.line;
-            item.ariaLabel = `${charm.name}: ${charm.line}${charm.spent ? ' (spent this orb)' : ''}`;
-            const name = document.createElement('span');
-            name.className = 'charm-chip__name';
-            name.textContent = charm.name;
-            item.appendChild(name);
-            if (charm.spent) {
-                const state = document.createElement('span');
-                state.className = 'charm-chip__state';
-                state.textContent = 'spent';
-                item.appendChild(state);
-            }
-            this.charmsList.appendChild(item);
+        if (!this.charmsSection) return;
+        this.charmView = view || null;
+        const hidden = !view || view.hidden === true;
+        this.charmsSection.hidden = hidden;
+        this._toggleStillAir(Boolean(view?.stillAir));
+        if (hidden) return;
+        const shown = new Map((view.charms || []).map((chip) => [chip.id, chip]));
+        const spoken = [];
+        this.charmChips.forEach((chip, charmId) => {
+            const entry = shown.get(charmId);
+            chip.hidden = !entry;
+            if (!entry) return;
+            const was = this.charmStates.get(charmId);
+            if (was && was !== entry.state) spoken.push(describeCharmChange(entry, was));
+            this.charmStates.set(charmId, entry.state);
+            // A refusal is showing on this chip; it restores itself when the flash ends.
+            if (this.charmFlashTimers?.has(charmId)) return;
+            this._renderCharmChip(chip, entry, view.paused);
         });
+        if (spoken.length && this.charmsLive) setText(this.charmsLive, spoken.join('. '));
+    }
+
+    _renderCharmChip(chip, entry, paused) {
+        const stateText = charmStateText(entry);
+        if (chip.dataset) {
+            chip.dataset.state = entry.state;
+            chip.dataset.reason = entry.reason || '';
+            delete chip.dataset.flash;
+        }
+        chip.disabled = Boolean(paused) || entry.state !== 'ready' || Boolean(entry.reason);
+        chip.title = entry.title;
+        const count = entry.count > 0 ? ` ×${entry.count}` : '';
+        chip.ariaLabel = `${entry.title}${count}${stateText ? ` (${stateText})` : ''}`;
+        setChipPart(chip, '.charm-chip__count', entry.count > 1 ? `×${entry.count}` : '');
+        setChipPart(chip, '.charm-chip__state', stateText);
+    }
+
+    /** A refused press: the reason on the chip for a moment, then the chip as it was. */
+    flashCharmReason(charmId, reason) {
+        const chip = this.charmChips?.get(charmId);
+        const text = ODYSSEY_CHARM_REFUSALS[reason];
+        if (!chip || !text) return;
+        const timers = this.charmFlashTimers;
+        if (timers?.has(charmId)) clearTimeout(timers.get(charmId));
+        if (chip.dataset) chip.dataset.flash = 'true';
+        setChipPart(chip, '.charm-chip__state', text);
+        const name = ODYSSEY_CHARMS.find((charm) => charm.id === charmId)?.name || charmId;
+        if (this.charmsLive) setText(this.charmsLive, `${name}: ${text}`);
+        const timer = setTimeout(() => {
+            timers?.delete(charmId);
+            const entry = this.charmView?.charms?.find((candidate) => candidate.id === charmId);
+            if (entry) this._renderCharmChip(chip, entry, this.charmView.paused);
+            else if (chip.dataset) delete chip.dataset.flash;
+        }, CHARM_FLASH_MS);
+        timers?.set(charmId, timer);
+    }
+
+    /** Controller labels per charm, from the attempt's pad controls; missing labels hide. */
+    setCharmPadHints(labels = {}) {
+        this.charmChips?.forEach((chip, charmId) => {
+            const hint = chip.querySelector?.('[data-pad]');
+            if (!hint) return;
+            const label = labels?.[charmId] || '';
+            hint.textContent = label;
+            hint.hidden = !label;
+        });
+    }
+
+    /** Long Breath: the clock gains the seconds it bought, and flashes once to say so. */
+    extendTimeLimit(seconds) {
+        if (!this.timeLimit) return;
+        this.timeLimit += Math.max(0, Number(seconds) || 0);
+        this.updateTime(this.elapsedTime);
+        this.timeDisplay?.classList?.add('is-extended');
+        if (this.clockFlashTimer) clearTimeout(this.clockFlashTimer);
+        this.clockFlashTimer = setTimeout(() => {
+            this.clockFlashTimer = null;
+            this.timeDisplay?.classList?.remove('is-extended');
+        }, CLOCK_FLASH_MS);
+    }
+
+    /** Still Air: a calm tint on the well's walls while it runs (keystone-solo.css). */
+    _toggleStillAir(active) {
+        const stage = typeof document !== 'undefined' ? document.querySelector?.('.single-player-stage') : null;
+        stage?.toggleAttribute?.('data-still-air', Boolean(active));
     }
 
     _createFinishHint() {
@@ -945,6 +1073,11 @@ export class OdysseyHUD {
      * Destroy HUD and clean up.
      */
     destroy() {
+        this.charmFlashTimers?.forEach((timer) => clearTimeout(timer));
+        this.charmFlashTimers?.clear();
+        if (this.clockFlashTimer) clearTimeout(this.clockFlashTimer);
+        this.clockFlashTimer = null;
+        this._toggleStillAir(false);
         this.opponentBoard?.dispose();
         this.opponentBoard = null;
         if (this.animationFrame) {
