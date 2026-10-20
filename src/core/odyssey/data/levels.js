@@ -1805,7 +1805,7 @@ const BASE_LEVEL_CONFIGS = [
 
     {
         id: 27,
-        name: 'Peak Transcendence',
+        name: 'Garden Under Stone',
         chapter: 4,
         chapterLevel: 6,
         isChapterStart: false,
@@ -1813,7 +1813,7 @@ const BASE_LEVEL_CONFIGS = [
         pathPosition: 0.481,
 
         theme: {
-            primary: 'moonrise-summit',
+            primary: 'sunfall',
             overlays: ['winter'],
             transitionIn: 'crossfade',
             transitionDuration: 3500,
@@ -1867,9 +1867,9 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'The moon rises over the summit. Create cascading avalanches.',
+            description: 'Sunlight pours into a collapsed cavern onto a hidden jungle. Trigger cascading showers.',
             difficulty: 8,
-            tip: 'Build massive towers for spectacular cascade chains.',
+            tip: 'Build tall columns for deep cascade chains under the oculus beam.',
         },
     },
 
@@ -1884,7 +1884,7 @@ const BASE_LEVEL_CONFIGS = [
 
         theme: {
             primary: 'sunset',
-            overlays: ['ice-temple', 'moonrise-summit'],
+            overlays: ['ice-temple', 'sunfall'],
             transitionIn: 'warp',
             transitionDuration: 4500,
         },

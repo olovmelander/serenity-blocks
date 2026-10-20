@@ -142,7 +142,7 @@ export const CHAPTER_CONFIGS = [
         themes: {
             primary: [
                 'sakura-twilight', 'verdant-hills', 'ice-temple', 'wolfhour',
-                'himalayan-peak', 'high-coast', 'moonrise-summit', 'winter',
+                'himalayan-peak', 'high-coast', 'sunfall', 'winter',
             ],
             supporting: [],
         },

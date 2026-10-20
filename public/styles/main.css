@@ -6078,59 +6078,10 @@ body.electron-app #settings-modal.is-scrolling .settings-scroll-container {
     height: 100%;
 }
 
-/* --- Moonrise Summit Theme (WebGPU) --- */
-#moonrise-summit-theme {
-    background: #05081a;
+/* --- Sunfall Theme (WebGPU) --- */
+#sunfall-theme {
+    background: #5d8087;
     overflow: hidden;
-}
-
-#moonrise-summit-theme canvas {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    pointer-events: none;
-}
-
-/* Legacy child divs are hidden by the theme JS on activation;
-   this fallback ensures they stay out of the way even before JS runs. */
-#moonrise-summit-theme > #moonrise-sky,
-#moonrise-summit-theme > #moonrise-stars,
-#moonrise-summit-theme > #moonrise-shooting-stars,
-#moonrise-summit-theme > .moonrise-moon,
-#moonrise-summit-theme > #moonrise-moon-aura,
-#moonrise-summit-theme > #moonrise-clouds,
-#moonrise-summit-theme > #moonrise-mountains,
-#moonrise-summit-theme > #moonrise-peak-glow {
-    display: none;
-}
-
-/* UI harmonization while Moonrise Summit is active.
-   Pulls panels toward a cinematic glass-morph feel with cool silver-blue accent. */
-#moonrise-summit-theme.active ~ * .player-card,
-body:has(#moonrise-summit-theme.active) .player-card {
-    backdrop-filter: blur(6px) saturate(115%);
-    -webkit-backdrop-filter: blur(6px) saturate(115%);
-    border-color: rgba(168, 196, 255, 0.32);
-    box-shadow:
-        0 0 24px rgba(168, 196, 255, 0.18),
-        inset 0 1px 0 rgba(168, 196, 255, 0.18);
-}
-
-body:has(#moonrise-summit-theme.active) .player-card .stats-bar,
-body:has(#moonrise-summit-theme.active) .player-stats-bar {
-    text-shadow: 0 0 6px rgba(168, 196, 255, 0.35);
-}
-
-@keyframes moonrise-summit-button-shimmer {
-    0%, 100% { box-shadow: 0 0 14px rgba(168, 196, 255, 0.28); }
-    50%      { box-shadow: 0 0 22px rgba(168, 196, 255, 0.48); }
-}
-
-body:has(#moonrise-summit-theme.active) button.primary:focus-visible,
-body:has(#moonrise-summit-theme.active) .menu-button:focus-visible {
-    animation: moonrise-summit-button-shimmer 3.5s ease-in-out infinite;
 }
 
 /* --- Black Hole Theme --- */
