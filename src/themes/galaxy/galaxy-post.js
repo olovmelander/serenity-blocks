@@ -257,7 +257,7 @@ export class GalaxyPost {
             const L = gxLuma(T);
             // Cool, slightly lifted shadows (the void is never a flat black); the lights keep their hues.
             const lo = float(1.0).sub(smoothstep(0.0, 0.28, L));
-            T.assign(mix(T, T.mul(vec3(0.94, 0.95, 1.12)).add(vec3(0.0012, 0.0007, 0.0034)), lo.mul(0.5)));
+            T.assign(mix(T, T.mul(vec3(0.94, 0.95, 1.12)).add(vec3(0.0005, 0.0003, 0.0014)), lo.mul(0.5)));
             T.assign(mix(vec3(gxLuma(T)), T, 1.12));
             // Vignette, measured from the frame, a touch heavier in the corners.
             const cv = screenUV.sub(0.5).mul(vec2(this.uAspect.div(1.778), 1.0));
