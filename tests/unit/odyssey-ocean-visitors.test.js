@@ -88,7 +88,7 @@ describe('ocean visitors — lifecycle and swimming', () => {
         expect(visitors.group.visible).toBe(false);
     });
 
-    it('never swims belly-up and keeps above the eye', async () => {
+    it('never swims belly-up, and keeps above the eye while it keeps you company', async () => {
         const visitors = await loadedVisitors();
         visitors.markReady();
         const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.5, 3000);
@@ -103,7 +103,8 @@ describe('ocean visitors — lifecycle and swimming', () => {
                 if (!mesh.visible) return;
                 up.set(0, 1, 0).applyQuaternion(mesh.quaternion);
                 expect(up.y, `${mesh.name} at eye ${y}`).toBeGreaterThan(0.6);
-                expect(mesh.position.y).toBeGreaterThan(y);
+                // Leaving, it dives under the eye on purpose (stepVisitorPassage).
+                if (mesh.userData.passage === 'in') expect(mesh.position.y).toBeGreaterThan(y);
                 seen.push(mesh.name);
             });
         }

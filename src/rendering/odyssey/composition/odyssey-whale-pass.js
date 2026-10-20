@@ -45,8 +45,25 @@ const SWIM_DEPTH = 42;
 /** Camera-depth window in which the pair draws: below this the haze has them; above, the surface. */
 const VISIBLE_DEPTH_MAX = 190;
 const VISIBLE_DEPTH_MIN = 14;
-/** Seconds the pair takes to fade in once its compile lands with the camera already in range. */
-const ARRIVAL_FADE_S = 1.6;
+/**
+ * THE WAY IN (2026-10-20, in-game feedback: the whales "just pop up" coming from chapter 1).
+ * The pair used to fade in on the eye's depth, and the glide from orb 5 to orb 6 crossed that
+ * fade in a second with both whales in frame ~110 u away. Now, once the water allows them, they
+ * swim in from `reach` beyond their orbit over `approachS` seconds on the clock, met in the
+ * haze; `rampS` is a short alpha ramp on the first frames so a compile landing mid-ocean never
+ * pops either. Pure and exported for its test.
+ */
+export const WHALE_PASS_ARRIVAL = Object.freeze({ approachS: 10, reach: 160, rampS: 0.6 });
+
+/** The arrival's offset outward from the orbit, and its alpha, at `approach` (0..1 of approachS). */
+export function whalePassArrival(approach) {
+    const t = Math.min(1, Math.max(0, approach));
+    const eased = t * t * (3 - (2 * t));
+    return {
+        radial: WHALE_PASS_ARRIVAL.reach * (1 - eased),
+        alpha: Math.min(1, (t * WHALE_PASS_ARRIVAL.approachS) / WHALE_PASS_ARRIVAL.rampS),
+    };
+}
 
 /**
  * Model-space bounds from the BIND-POSE geometry bounds. `Box3.setFromObject` on a skinned mesh
@@ -183,12 +200,13 @@ export function createWhalePass({
             const inDepth = depth > VISIBLE_DEPTH_MIN && depth < VISIBLE_DEPTH_MAX;
             const life = Number.isFinite(presence) ? Math.min(Math.max(presence, 0), 1) : 1;
             const show = ready && inChapter && submerged > 0.5 && inDepth && life > 0.001;
-            // Fade in from the deep edge and out toward the surface, so the pair is met, not
-            // switched on.
+            // In from the deep edge by swimming (WHALE_PASS_ARRIVAL), out toward the surface by a
+            // fade the eye never sees: the pair is below and behind the frame by then.
             const fadeDeep = THREE.MathUtils.smoothstep(VISIBLE_DEPTH_MAX - depth, 0, 40);
             const fadeSurface = THREE.MathUtils.smoothstep(depth - VISIBLE_DEPTH_MIN, 0, 18);
-            arrival = show ? Math.min(1, arrival + (Math.max(0, delta || 0) / ARRIVAL_FADE_S)) : 0;
-            uFade.value = show ? Math.min(fadeDeep, fadeSurface) * life * arrival : 0;
+            arrival = show ? Math.min(1, arrival + (Math.max(0, delta || 0) / WHALE_PASS_ARRIVAL.approachS)) : 0;
+            const coming = whalePassArrival(arrival);
+            uFade.value = show ? Math.min(fadeDeep, fadeSurface) * life * coming.alpha : 0;
             group.visible = show && uFade.value > 0.01;
             if (!group.visible) return;
 
@@ -204,8 +222,10 @@ export function createWhalePass({
                 if (actor.mixer) actor.mixer.update(Math.max(0, delta) * 0.8);
                 // Calf slightly ahead on an inner lane; both bob and bank gently into the turn.
                 const a = (time * omega) + (actor.phase * 0.9);
-                const x = axis.x + Math.cos(a) * actor.radius;
-                const z = axis.z + Math.sin(a) * actor.radius;
+                // Still on its way in: farther out along the same bearing, spiralling to its orbit.
+                const radius = actor.radius + coming.radial;
+                const x = axis.x + Math.cos(a) * radius;
+                const z = axis.z + Math.sin(a) * radius;
                 const y = seaLevel - actor.depth + (Math.sin((time * 0.27) + (actor.phase * 5)) * 3.5);
                 actor.holder.position.set(x, y, z);
                 // Heading along the orbit tangent (counter-clockwise). The GLB leads with -Z
