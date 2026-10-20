@@ -119,25 +119,44 @@
     font-weight: 600;
 }
 
-/* A charm's still (the HUD icon exported once) on the sheets and the map; a glyph until it exists. */
+/* A charm's icon on the sheets and the map: a box the shared icon stage draws into (live, the
+   same icon as the HUD tray's), its glyph showing until the first frame and without a GPU. */
 .charm-sprite {
-    display: inline-block;
+    position: relative;
+    display: inline-grid;
+    place-items: center;
     width: 24px;
     height: 24px;
     vertical-align: -7px;
     flex: 0 0 auto;
 }
 
-.charm-sprite--glyph {
-    display: inline-grid;
-    place-items: center;
-    color: var(--sb-lavender);
-    font-size: 14px;
+.charm-sprite__canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
 }
 
-.charm-sprite--glyph[data-charm='tide'] { color: var(--sb-aqua); }
-.charm-sprite--glyph[data-charm='long-breath'] { color: var(--sb-gold); }
-.charm-sprite--glyph[data-charm='hearth'] { color: var(--sb-coral); }
+/* The glyph is drawn by CSS, so a charm's name reads clean in the text around it. */
+.charm-sprite__glyph {
+    color: var(--sb-lavender);
+    font-size: 14px;
+    line-height: 1;
+}
+
+.charm-sprite__glyph::before {
+    content: '◆';
+}
+
+.charm-sprite[data-charm-icon='live'] .charm-sprite__glyph {
+    visibility: hidden;
+}
+
+.charm-sprite[data-charm='tide'] .charm-sprite__glyph { color: var(--sb-aqua); }
+.charm-sprite[data-charm='long-breath'] .charm-sprite__glyph { color: var(--sb-gold); }
+.charm-sprite[data-charm='hearth'] .charm-sprite__glyph { color: var(--sb-coral); }
 
 .sb-ody-charm-pity .charm-sprite {
     width: 32px;
@@ -294,6 +313,23 @@
     font: 600 1.5rem / 1 var(--sb-font-display);
     font-variant-numeric: tabular-nums;
     color: var(--sb-text);
+}
+
+/* "Charms used": each charm's live icon, at the numbers' height, ahead of its name. */
+.sb-ody-fact dd.sb-ody-fact__charms {
+    display: flex;
+    align-items: center;
+    gap: 2px 8px;
+}
+
+.sb-ody-fact dd.sb-ody-fact__charms .charm-sprite {
+    width: 36px;
+    height: 36px;
+    vertical-align: middle;
+}
+
+.sb-ody-fact dd.sb-ody-fact__charms .charm-sprite + .charm-sprite {
+    margin-left: -8px;
 }
 
 .sb-ody-modal .steam-leaderboard-panel {
@@ -571,9 +607,24 @@
 
 /* The orb panel's charm line: the charms held that help here. Read-only. */
 #odyssey-board-overlay .level-charm-hint {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 4px;
     margin: -4px 0 14px;
     color: var(--sb-lavender);
     font: 500 0.75rem / 1.5 var(--sb-font-text);
+}
+
+/* The helping charms' icons lead the line; the words wrap after them. */
+#odyssey-board-overlay .level-charm-hint .charm-sprite {
+    width: 26px;
+    height: 26px;
+    vertical-align: middle;
+}
+
+#odyssey-board-overlay .level-charm-hint .charm-sprite + .charm-sprite {
+    margin-left: -2px;
 }
 
 #odyssey-board-overlay .level-nav-hint {
@@ -1010,7 +1061,7 @@
 }
 
 /* Charms: a hotbar. One tile per charm held, in its own tone: its icon (drawn by the icon stage
-   over the row, a glyph until then), the key that uses it on one shoulder, its count on the
+   into a canvas on the tile, a glyph until then), the key that uses it on one shoulder, its count on the
    other, its name under it. One caption line under the row says what the charm that matters
    right now is doing. */
 #odyssey-hud .charms-list {
@@ -1022,7 +1073,7 @@
     padding: 5px 0 0;
 }
 
-#odyssey-hud .charms-canvas {
+#odyssey-hud .charm-chip__canvas {
     position: absolute;
     inset: 0;
     width: 100%;
@@ -1093,7 +1144,7 @@
     line-height: 1;
 }
 
-#odyssey-hud .charms-list[data-charm-icons='live'] .charm-chip__glyph {
+#odyssey-hud .charm-chip__icon[data-charm-icon='live'] .charm-chip__glyph {
     visibility: hidden;
 }
 

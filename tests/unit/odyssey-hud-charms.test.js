@@ -73,7 +73,7 @@ function hudFixture() {
     hud._createCharmsSection();
     // The icon stage and the column's fit are their own modules (odyssey-charm-icon-stage.test.js,
     // odyssey-hud-fit.test.js); here they only receive states and refit requests.
-    hud.charmIconStage = { setStates: vi.fn(), init: vi.fn(async () => false), dispose: vi.fn() };
+    hud.charmIconTray = { setStates: vi.fn(), init: vi.fn(async () => false), dispose: vi.fn() };
     hud.fit = { schedule: vi.fn(), dispose: vi.fn() };
     return hud;
 }
@@ -134,8 +134,8 @@ describe('Odyssey HUD: the charm hotbar', () => {
             charm: '', tone: '', name: '', text: 'Press 1–4 to use',
         });
         // The icon stage is told every shown chip's state and started.
-        expect(hud.charmIconStage.setStates).toHaveBeenLastCalledWith({ tide: 'ready', 'long-breath': 'ready' });
-        expect(hud.charmIconStage.init).toHaveBeenCalled();
+        expect(hud.charmIconTray.setStates).toHaveBeenLastCalledWith({ tide: 'ready', 'long-breath': 'ready' });
+        expect(hud.charmIconTray.init).toHaveBeenCalled();
         expect(hud.charmChips.get('hearth').hidden).toBe(true);
         expect(stage.toggleAttribute).toHaveBeenLastCalledWith('data-still-air', false);
 
@@ -181,7 +181,7 @@ describe('Odyssey HUD: the charm hotbar', () => {
         expect(caption(hud)).toEqual({
             charm: 'still-air', tone: 'active', name: 'Still Air', text: '13 s left',
         });
-        expect(hud.charmIconStage.setStates).toHaveBeenLastCalledWith({
+        expect(hud.charmIconTray.setStates).toHaveBeenLastCalledWith({
             tide: 'used', 'still-air': 'active', hearth: 'armed',
         });
         expect(breath.hidden).toBe(true);
@@ -295,14 +295,14 @@ describe('Odyssey HUD: the charm hotbar', () => {
         hud.extendTimeLimit(5);
         hud.flashCharmReason('tide', 'used');
         expect(hud.charmFlashTimers.size).toBe(1);
-        const iconStage = hud.charmIconStage;
+        const iconStage = hud.charmIconTray;
         const { fit } = hud;
         hud.destroy();
         expect(hud.charmFlashTimers.size).toBe(0);
         expect(hud.charmFlash).toBeNull();
         expect(hud.clockFlashTimer).toBeNull();
         expect(iconStage.dispose).toHaveBeenCalledOnce();
-        expect(hud.charmIconStage).toBeNull();
+        expect(hud.charmIconTray).toBeNull();
         expect(fit.dispose).toHaveBeenCalledOnce();
         expect(hud.fit).toBeNull();
         expect(stage.toggleAttribute).toHaveBeenLastCalledWith('data-still-air', false);

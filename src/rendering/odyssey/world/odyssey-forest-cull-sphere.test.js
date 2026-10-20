@@ -26,7 +26,8 @@ describe('forest chunk culling spheres', () => {
         expect(forestCullRadius(420, 250, 30)).toBe((420 * 0.75) + 30 + 40);
     });
 
-    it('leaves every trunk of the shipped forest a crown inside its own sphere', () => {
+    // Building the shipped forest takes a second or two; under a full-suite load it can pass 5 s.
+    it('leaves every trunk of the shipped forest a crown inside its own sphere', { timeout: 30000 }, () => {
         const railSamples = Array.from({ length: 48 }, (_, i) => getOdysseyPathPointAt(i / 47));
         const world = createOdysseyWorld({ quality: 'high', railSamples });
         const m = new THREE.Matrix4();

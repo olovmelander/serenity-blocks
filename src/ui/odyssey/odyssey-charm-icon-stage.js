@@ -1,14 +1,22 @@
 /**
- * The charm icons in the HUD tray, and as still sprites everywhere else.
+ * The charm icons, live, wherever a charm is named: the HUD tray, the ceremony's "Found" line,
+ * the failure sheet's mercy, the results sheet's "Charms used", the orb panel's hint and the map
+ * header's bag.
  *
- * One small three r186 renderer (WebGPU, or its WebGL2 backend where WebGPU is missing) draws
- * every visible chip's icon into a transparent canvas laid over the chip list, each icon through
- * a viewport and scissor over its chip's icon slot, on a clock the stage owns (30 frames a
- * second, nothing while the page is hidden, one frame per state change under reduced motion).
- * The same scene exports each icon once as a PNG data URL (rendered into a target and read back),
- * which the ceremony, the failure sheet, the results sheet and the map use as `<img>` sprites
- * (odysseyCharmSprite). Without a renderer the chips keep their glyph; nothing waits on this.
+ * One small three r186 renderer (WebGPU, or its WebGL2 backend where WebGPU is missing) serves
+ * the whole session. Each place an icon shows is a SLOT: a small 2D canvas sized to its box.
+ * Every frame the stage draws each visible slot's icon into a tile of its own, detached canvas
+ * (one viewport and scissor per tile) and copies the tile into the slot's canvas with
+ * drawImage, so an icon sits in the document's own flow and stacking wherever a sheet puts it,
+ * and one GPU device draws them all. The clock is the stage's (30 frames a second, nothing while
+ * the page is hidden; under reduced motion one frame per slot and per state change).
+ *
+ * Until a slot's first frame lands, and for good without a renderer or after a lost device, the
+ * slot keeps its glyph: nothing waits on this. (It replaced a HUD-only live canvas plus PNG
+ * stills exported once for the sheets, which showed the glyph for the first charm of every
+ * journey, since the export only ran once the bag held something.)
  */
+/* eslint-disable max-classes-per-file -- the stage and the HUD tray's view of it belong together. */
 import * as THREE from 'three/webgpu';
 import {
     ODYSSEY_CHARM_ICON_HALF_EXTENT, ODYSSEY_CHARM_ICON_IDS, createOdysseyCharmIcon, createOdysseyCharmIconCamera,
@@ -17,14 +25,26 @@ import {
 
 const INIT_TIMEOUT_MS = 6000;
 const FRAME_MS = 1000 / 30;
+/** Under reduced motion the stage only looks for slots that still need their one frame. */
+const STILL_POLL_MS = 250;
 const SLOT_SPACING = 6;
-const SPRITE_SIZE = 96;
+const MAX_PIXEL_RATIO = 2;
+/** A slot never attached to the document is forgotten after this long. */
+const ORPHAN_MS = 10000;
 
 function wantsWebGL() {
     const params = new URLSearchParams(globalThis.location?.search || '');
     const forced = params.has('forceWebGL')
         && ['', '1', 'true', 'yes', 'on'].includes((params.get('forceWebGL') || '').toLowerCase());
     return forced || !globalThis.navigator?.gpu;
+}
+
+function systemReducedMotion() {
+    try {
+        return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches === true;
+    } catch {
+        return false;
+    }
 }
 
 /** @param {boolean} forceWebGL */
@@ -53,77 +73,61 @@ export async function createOdysseyCharmIconRenderer({ init = initRenderer, forc
         return await init(forceWebGL);
     } catch (error) {
         if (forceWebGL) {
-            console.warn('[OdysseyCharmIcons] no renderer; the chips keep their glyphs:', error?.message || error);
+            console.warn('[OdysseyCharmIcons] no renderer; the slots keep their glyphs:', error?.message || error);
             return null;
         }
         console.warn('[OdysseyCharmIcons] WebGPU unavailable, using the WebGL2 backend:', error?.message || error);
         try {
             return await init(true);
         } catch (fallbackError) {
-            console.warn('[OdysseyCharmIcons] no renderer; the chips keep their glyphs:', fallbackError?.message || fallbackError);
+            console.warn('[OdysseyCharmIcons] no renderer; the slots keep their glyphs:', fallbackError?.message || fallbackError);
             return null;
         }
     }
 }
 
-/** The sprites, once exported this session, by charm id (PNG data URLs). */
-const sprites = new Map();
-let spritePromise = null;
-
-/** A still of one charm's icon, or null before the first export (the caller keeps its glyph). */
-export function odysseyCharmSprite(charmId) {
-    return sprites.get(charmId) || null;
+/** The element a slot's live flag is written on: the canvas's box (its glyph hides on it). */
+function slotHost(slot) {
+    return slot.canvas.parentElement || slot.canvas.parentNode || null;
 }
 
-/** Pixels from a render target (v = 0 is the TOP row on both backends, so rows are flipped) to a PNG data URL. */
-function pixelsToDataUrl(pixels, size) {
-    const doc = globalThis.document;
-    if (!doc?.createElement) return null;
-    const canvas = doc.createElement('canvas');
-    canvas.width = size;
-    canvas.height = size;
-    const context = canvas.getContext?.('2d');
-    if (!context) return null;
-    const image = context.createImageData(size, size);
-    const row = size * 4;
-    for (let y = 0; y < size; y += 1) {
-        image.data.set(pixels.subarray(y * row, (y + 1) * row), (size - 1 - y) * row);
-    }
-    context.putImageData(image, 0, 0);
-    return canvas.toDataURL('image/png');
+function markLive(slot, live) {
+    const host = slotHost(slot);
+    if (!host?.dataset) return;
+    if (live) host.dataset.charmIcon = 'live';
+    else delete host.dataset.charmIcon;
 }
 
 export class OdysseyCharmIconStage {
     /**
-     * @param {object} options
-     * @param {HTMLElement} options.list the chip list the canvas lays over
-     * @param {string} [options.slotSelector] how a chip's icon slot is found
-     * @param {boolean} [options.reducedMotion] one frame per state change instead of a loop
+     * @param {object} [options]
+     * @param {boolean} [options.reducedMotion] one frame per slot and per state change instead of a loop
      * @param {() => Promise<object|null>} [options.createRenderer]
+     * @param {number} [options.pixelRatio] the device pixel ratio to draw at (capped at 2)
      */
     constructor({
-        list, slotSelector = '.charm-chip__icon', reducedMotion = false, createRenderer = createOdysseyCharmIconRenderer,
-    }) {
-        this.list = list;
-        this.slotSelector = slotSelector;
+        reducedMotion = systemReducedMotion(), createRenderer = createOdysseyCharmIconRenderer, pixelRatio = null,
+    } = {}) {
         this.reducedMotion = reducedMotion;
         this.createRenderer = createRenderer;
+        this.pixelRatio = pixelRatio;
         this.renderer = null;
         this.backend = null;
-        this.canvas = null;
         this.scene = null;
         this.camera = null;
+        this.studio = null;
         this.icons = new Map();
         this.lights = null;
+        this.slots = new Set();
         this.disposed = false;
         this.ready = false;
+        this.failed = false;
         this.initPromise = null;
         this.frameHandle = null;
         this.lastFrameAt = 0;
         this.clock = 0;
         this.lastNow = null;
         this.size = { width: 0, height: 0 };
-        this.pendingStates = new Map();
         this.needsFrame = true;
     }
 
@@ -134,23 +138,22 @@ export class OdysseyCharmIconStage {
     }
 
     async _init() {
-        if (!this.list || typeof document === 'undefined') return false;
+        if (typeof document === 'undefined') return false;
         const renderer = await this.createRenderer();
         if (this.disposed) {
             if (renderer) Promise.resolve(renderer.dispose()).catch(() => {});
             return false;
         }
-        if (!renderer) return false;
+        if (!renderer) {
+            this.failed = true;
+            return false;
+        }
         this.renderer = renderer;
         this.backend = renderer.backend?.isWebGPUBackend ? 'webgpu' : 'webgl2';
         renderer.setClearColor(0x000000, 0);
         renderer.autoClear = false;
-        const canvas = renderer.domElement;
-        canvas.className = 'charms-canvas';
-        canvas.setAttribute?.('aria-hidden', 'true');
-        this.canvas = canvas;
-        this.list.appendChild(canvas);
-        if (this.list.dataset) this.list.dataset.charmIcons = 'live';
+        // Device pixels are the stage's own business: every tile is drawn at its slot's size.
+        renderer.setPixelRatio(1);
 
         this.scene = new THREE.Scene();
         // The one studio every icon reflects; it goes with the renderer.
@@ -158,7 +161,6 @@ export class OdysseyCharmIconStage {
         ODYSSEY_CHARM_ICON_IDS.forEach((id, index) => {
             const icon = createOdysseyCharmIcon(id, { studio: this.studio });
             icon.group.position.x = index * SLOT_SPACING;
-            icon.setState(this.pendingStates.get(id) || 'ready');
             this.scene.add(icon.group);
             this.icons.set(id, icon);
         });
@@ -166,83 +168,132 @@ export class OdysseyCharmIconStage {
         this.lights.lights.forEach((light) => this.scene.add(light));
         this.camera = createOdysseyCharmIconCamera(1);
         this.ready = true;
-        this.resize();
+        this.needsFrame = true;
         this.start();
         return true;
     }
 
-    /** Each charm's chip state, from the tray's view. @param {Record<string, string>} states */
-    setStates(states) {
-        Object.entries(states || {}).forEach(([id, state]) => {
-            this.pendingStates.set(id, state);
-            this.icons.get(id)?.setState(state);
-        });
+    /** @param {boolean} reduced */
+    setReducedMotion(reduced) {
+        if (this.reducedMotion === Boolean(reduced)) return;
+        this.reducedMotion = Boolean(reduced);
         this.needsFrame = true;
-        if (this.ready && this.reducedMotion) this.requestFrame();
-    }
-
-    /** Fit the canvas to the list. */
-    resize() {
-        if (!this.renderer || !this.list) return;
-        const width = this.list.clientWidth || 0;
-        const height = this.list.clientHeight || 0;
-        if (!width || !height) return;
-        if (width === this.size.width && height === this.size.height) return;
-        this.size = { width, height };
-        this.renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 2));
-        this.renderer.setSize(width, height, false);
-        this.needsFrame = true;
+        this.stop();
+        this.start();
     }
 
     /**
-     * The visible chips' icon slots, as rectangles inside the canvas. Client rectangles come
-     * scaled when the HUD column is drawn smaller (odyssey-hud-fit.js); the list's own size
-     * brings them back to the canvas's pixels.
+     * Draw one charm's icon into `canvas` from now on. The canvas is sized to its box each frame
+     * and its box gets `data-charm-icon="live"` once the first frame lands.
+     * @param {HTMLCanvasElement} canvas
+     * @param {string} charmId
+     * @param {{ state?: string }} [options]
+     * @returns {{ setState(state: string): void, release(): void } | null}
      */
-    _slots() {
-        const listRect = this.list.getBoundingClientRect?.();
-        if (!listRect) return [];
-        const scaleX = listRect.width ? (this.list.clientWidth || listRect.width) / listRect.width : 1;
-        const scaleY = listRect.height ? (this.list.clientHeight || listRect.height) / listRect.height : 1;
-        const slots = [];
-        this.list.querySelectorAll?.('.charm-chip').forEach((chip) => {
-            if (chip.hidden) return;
-            const id = chip.dataset?.charm;
-            const slot = chip.querySelector?.(this.slotSelector);
-            if (!id || !slot || !this.icons.has(id)) return;
-            const rect = slot.getBoundingClientRect();
-            if (!rect.width || !rect.height) return;
-            slots.push({
-                id,
-                x: (rect.left - listRect.left) * scaleX,
-                y: (rect.top - listRect.top) * scaleY,
-                width: rect.width * scaleX,
-                height: rect.height * scaleY,
-            });
-        });
-        return slots;
+    mount(canvas, charmId, { state = 'ready' } = {}) {
+        if (!canvas || !ODYSSEY_CHARM_ICON_IDS.includes(charmId) || this.disposed) return null;
+        const context = canvas.getContext?.('2d');
+        if (!context) return null;
+        const slot = {
+            canvas, context, id: charmId, state, drawn: false, seen: false, mountedAt: this._now(),
+        };
+        this.slots.add(slot);
+        this.needsFrame = true;
+        if (!this.ready && !this.failed) this.init().catch(() => {});
+        this.start();
+        return {
+            setState: (next) => {
+                if (slot.state === next) return;
+                slot.state = next;
+                slot.drawn = false;
+                this.needsFrame = true;
+                this.start();
+            },
+            release: () => this._release(slot),
+        };
     }
 
-    /** One frame: every visible icon into its slot. */
-    frame(now = globalThis.performance?.now?.() || 0) {
+    _release(slot) {
+        if (!this.slots.delete(slot)) return;
+        markLive(slot, false);
+        if (!this.slots.size) this.stop();
+    }
+
+    _now() {
+        return globalThis.performance?.now?.() || 0;
+    }
+
+    /**
+     * The slots to draw this frame: attached, laid out and showing, each at its box's device
+     * pixel size, side by side in the stage's canvas. Slots whose canvas has left the document
+     * are released here; one never attached is forgotten after ORPHAN_MS.
+     */
+    _tiles(now) {
+        const ratio = Math.min(this.pixelRatio || globalThis.devicePixelRatio || 1, MAX_PIXEL_RATIO);
+        const tiles = [];
+        let x = 0;
+        [...this.slots].forEach((slot) => {
+            const { canvas } = slot;
+            const connected = canvas.isConnected !== false;
+            if (connected) slot.seen = true;
+            else if (slot.seen || now - slot.mountedAt > ORPHAN_MS) {
+                this._release(slot);
+                return;
+            } else return;
+            const rect = canvas.getBoundingClientRect?.();
+            if (!rect || !rect.width || !rect.height) return;
+            const width = Math.max(1, Math.round(rect.width * ratio));
+            const height = Math.max(1, Math.round(rect.height * ratio));
+            tiles.push({
+                slot, x, width, height,
+            });
+            x += width;
+        });
+        return tiles;
+    }
+
+    /** One frame: every showing slot's icon, through its tile, into its canvas. */
+    frame(now = this._now()) {
         if (!this.ready || !this.renderer || this.disposed) return;
         if (this.lastNow !== null) this.clock += Math.min(0.1, Math.max(0, (now - this.lastNow) / 1000));
         this.lastNow = now;
-        this.resize();
-        const { width, height } = this.size;
-        if (!width || !height) return;
-        const slots = this._slots();
-        this.icons.forEach((icon) => icon.update(this.clock));
+        const tiles = this._tiles(now);
+        if (this.reducedMotion) {
+            const due = tiles.filter(({ slot }) => !slot.drawn);
+            if (!due.length) {
+                this.needsFrame = false;
+                return;
+            }
+            tiles.length = 0;
+            let x = 0;
+            due.forEach((tile) => {
+                tiles.push({ ...tile, x });
+                x += tile.width;
+            });
+        }
+        if (!tiles.length) {
+            this.needsFrame = false;
+            return;
+        }
+        const width = tiles.reduce((sum, tile) => sum + tile.width, 0);
+        const height = tiles.reduce((max, tile) => Math.max(max, tile.height), 0);
         const { renderer, camera } = this;
         try {
+            if (width !== this.size.width || height !== this.size.height) {
+                this.size = { width, height };
+                renderer.setSize(width, height, false);
+            }
             renderer.setScissorTest(false);
             renderer.setViewport(0, 0, width, height);
             renderer.clear();
             renderer.setScissorTest(true);
-            slots.forEach((slot) => {
+            tiles.forEach((tile) => {
+                const { slot } = tile;
                 const icon = this.icons.get(slot.id);
+                icon.setState(slot.state);
+                icon.update(this.clock);
                 const { x } = icon.group.position;
-                const aspect = slot.width / slot.height;
+                const aspect = tile.width / tile.height;
                 const h = ODYSSEY_CHARM_ICON_HALF_EXTENT;
                 camera.left = -h * aspect;
                 camera.right = h * aspect;
@@ -250,46 +301,48 @@ export class OdysseyCharmIconStage {
                 camera.position.set(x, 1.35, 7);
                 camera.lookAt(x, -0.12, 0);
                 // r186's viewport origin is the TOP-left corner on both backends (the WebGL backend
-                // flips it to GL's bottom-left itself), so a slot's CSS rectangle maps straight across.
-                renderer.setViewport(slot.x, slot.y, slot.width, slot.height);
-                renderer.setScissor(slot.x, slot.y, slot.width, slot.height);
+                // flips it to GL's bottom-left itself), so a tile's rectangle is also its source
+                // rectangle for the copy below.
+                renderer.setViewport(tile.x, 0, tile.width, tile.height);
+                renderer.setScissor(tile.x, 0, tile.width, tile.height);
                 renderer.render(this.scene, camera);
             });
             renderer.setScissorTest(false);
+            tiles.forEach((tile) => {
+                const { slot } = tile;
+                if (slot.canvas.width !== tile.width) slot.canvas.width = tile.width;
+                if (slot.canvas.height !== tile.height) slot.canvas.height = tile.height;
+                slot.context.clearRect(0, 0, tile.width, tile.height);
+                slot.context.drawImage(renderer.domElement, tile.x, 0, tile.width, tile.height, 0, 0, tile.width, tile.height);
+                if (!slot.drawn) markLive(slot, true);
+                slot.drawn = true;
+            });
         } catch (error) {
-            console.warn('[OdysseyCharmIcons] frame failed; the chips keep their glyphs:', error?.message || error);
+            console.warn('[OdysseyCharmIcons] frame failed; the slots keep their glyphs:', error?.message || error);
             this._lose();
+            return;
         }
         this.needsFrame = false;
     }
 
-    /** Draw one frame on the next animation frame (reduced motion, or a state change while stopped). */
-    requestFrame() {
-        if (this.frameHandle !== null || typeof requestAnimationFrame === 'undefined') return;
-        this.frameHandle = requestAnimationFrame((now) => {
-            this.frameHandle = null;
-            this.frame(now);
-        });
-    }
-
-    /** The loop: 30 frames a second while the page is visible; under reduced motion, one frame. */
+    /**
+     * The loop: 30 frames a second while slots exist and the page is visible. Under reduced
+     * motion it only looks, a few times a second, for slots that still need their one frame.
+     */
     start() {
-        if (this.disposed || !this.ready) return;
-        if (this.reducedMotion) {
-            this.requestFrame();
-            return;
-        }
+        if (this.disposed || !this.ready || !this.slots.size) return;
         if (this.frameHandle !== null || typeof requestAnimationFrame === 'undefined') return;
         const tick = (now) => {
             this.frameHandle = null;
-            if (this.disposed || !this.ready) return;
-            if (!globalThis.document?.hidden && now - this.lastFrameAt >= FRAME_MS) {
+            if (this.disposed || !this.ready || !this.slots.size) return;
+            const interval = this.reducedMotion ? STILL_POLL_MS : FRAME_MS;
+            if (!globalThis.document?.hidden && now - this.lastFrameAt >= interval) {
                 this.lastFrameAt = now;
                 this.frame(now);
             } else if (globalThis.document?.hidden) {
                 this.lastNow = null;
             }
-            this.frameHandle = requestAnimationFrame(tick);
+            if (!this.disposed && this.ready && this.slots.size) this.frameHandle = requestAnimationFrame(tick);
         };
         this.frameHandle = requestAnimationFrame(tick);
     }
@@ -300,69 +353,24 @@ export class OdysseyCharmIconStage {
         this.lastNow = null;
     }
 
-    /**
-     * Export every icon once as a PNG data URL for the sheets and the map (odysseyCharmSprite).
-     * Rendered into a target and read back, so it works on both backends.
-     */
-    exportSprites(size = SPRITE_SIZE) {
-        if (spritePromise) return spritePromise;
-        spritePromise = this._exportSprites(size).catch((error) => {
-            console.warn('[OdysseyCharmIcons] sprites could not be exported:', error?.message || error);
-            spritePromise = null;
-            return sprites;
-        });
-        return spritePromise;
-    }
-
-    async _exportSprites(size) {
-        if (!this.ready || !this.renderer) return sprites;
-        const { renderer, scene } = this;
-        const target = new THREE.RenderTarget(size, size, { depthBuffer: true });
-        const camera = createOdysseyCharmIconCamera(1);
-        const previousStates = new Map();
-        try {
-            for (const [id, icon] of this.icons) {
-                previousStates.set(id, icon.getState());
-                icon.setState('ready');
-                icon.update(1.5);
-                const { x } = icon.group.position;
-                camera.position.set(x, 1.35, 7);
-                camera.lookAt(x, -0.12, 0);
-                renderer.setRenderTarget(target);
-                renderer.setScissorTest(false);
-                renderer.setViewport(0, 0, size, size);
-                renderer.clear();
-                renderer.render(scene, camera);
-                renderer.setRenderTarget(null);
-                // eslint-disable-next-line no-await-in-loop -- one read-back per icon, four in all.
-                const pixels = await renderer.readRenderTargetPixelsAsync(target, 0, 0, size, size);
-                const url = pixelsToDataUrl(pixels, size);
-                if (url) sprites.set(id, url);
-            }
-        } finally {
-            renderer.setRenderTarget(null);
-            previousStates.forEach((state, id) => this.icons.get(id)?.setState(state));
-            target.dispose();
-            this.needsFrame = true;
-        }
-        globalThis.document?.dispatchEvent?.(new CustomEvent('odyssey-charm-sprites'));
-        return sprites;
-    }
-
     /** A lost device: keep the glyphs from now on. */
     _lose() {
         const { renderer } = this;
         this.ready = false;
+        this.failed = true;
         this.stop();
         this.renderer = null;
-        if (this.list?.dataset) delete this.list.dataset.charmIcons;
-        this.canvas?.remove?.();
-        this.canvas = null;
+        this.slots.forEach((slot) => {
+            markLive(slot, false);
+            slot.drawn = false;
+        });
         if (renderer) Promise.resolve(renderer.dispose()).catch(() => {});
     }
 
     getDiagnostics() {
-        return { backend: this.backend, ready: this.ready, icons: [...this.icons.keys()] };
+        return {
+            backend: this.backend, ready: this.ready, icons: [...this.icons.keys()], slots: this.slots.size,
+        };
     }
 
     dispose() {
@@ -370,6 +378,8 @@ export class OdysseyCharmIconStage {
         this.disposed = true;
         this.stop();
         this.ready = false;
+        this.slots.forEach((slot) => markLive(slot, false));
+        this.slots.clear();
         this.icons.forEach((icon) => icon.dispose());
         this.icons.clear();
         this.lights?.dispose();
@@ -378,9 +388,6 @@ export class OdysseyCharmIconStage {
         this.studio = null;
         const { renderer } = this;
         this.renderer = null;
-        if (this.list?.dataset) delete this.list.dataset.charmIcons;
-        this.canvas?.remove?.();
-        this.canvas = null;
         if (renderer) {
             // r186: the device must not be released before disposal settles.
             Promise.resolve(renderer.dispose()).catch((error) => {
@@ -392,50 +399,115 @@ export class OdysseyCharmIconStage {
     }
 }
 
+/** The session's one stage, built on first use. */
+let sharedStage = null;
+
+export function getOdysseyCharmIconStage() {
+    if (!sharedStage || sharedStage.disposed) sharedStage = new OdysseyCharmIconStage();
+    return sharedStage;
+}
+
+/** Tests and teardown: let the shared stage go. */
+export function disposeOdysseyCharmIconStage() {
+    sharedStage?.dispose();
+    sharedStage = null;
+}
+
 /**
- * Sprites for the sheets and the map without a tray: a short-lived stage renders the four icons
- * once and is disposed. Idempotent; resolves to the sprite map (possibly empty).
+ * The HUD tray's view of the stage: a canvas in each chip's icon slot, the chips' states passed
+ * through, released with the HUD.
  */
-export async function ensureOdysseyCharmSprites() {
-    if (sprites.size === ODYSSEY_CHARM_ICON_IDS.length) return sprites;
-    if (spritePromise) return spritePromise;
-    if (typeof document === 'undefined') return sprites;
-    const list = document.createElement('div');
-    list.style.cssText = 'position:fixed;left:-9999px;top:0;width:96px;height:96px;overflow:hidden;';
-    document.body.appendChild(list);
-    const stage = new OdysseyCharmIconStage({ list, reducedMotion: true });
-    try {
-        if (await stage.init()) await stage.exportSprites();
-    } finally {
-        stage.dispose();
-        list.remove();
+export class OdysseyCharmIconTray {
+    /**
+     * @param {object} options
+     * @param {HTMLElement} options.list the chip list
+     * @param {string} [options.slotSelector] how a chip's icon slot is found
+     * @param {boolean} [options.reducedMotion] one frame per state change instead of a loop
+     * @param {OdysseyCharmIconStage} [options.stage]
+     */
+    constructor({
+        list, slotSelector = '.charm-chip__icon', reducedMotion = false, stage = null,
+    }) {
+        this.list = list;
+        this.slotSelector = slotSelector;
+        this.reducedMotion = reducedMotion;
+        this.stage = stage;
+        this.handles = new Map();
+        this.pendingStates = new Map();
+        this.mounted = false;
+        this.disposed = false;
     }
-    return sprites;
+
+    /** Put a canvas in each chip once; resolves true when icons can be drawn. */
+    async init() {
+        if (this.disposed || !this.list || typeof document === 'undefined') return false;
+        const stage = this.stage || (this.stage = getOdysseyCharmIconStage());
+        if (!this.mounted) {
+            this.mounted = true;
+            stage.setReducedMotion(this.reducedMotion);
+            this.list.querySelectorAll?.('.charm-chip').forEach((chip) => {
+                const id = chip.dataset?.charm;
+                const slot = chip.querySelector?.(this.slotSelector);
+                if (!id || !slot || this.handles.has(id)) return;
+                const canvas = document.createElement('canvas');
+                canvas.className = 'charm-chip__canvas';
+                canvas.setAttribute?.('aria-hidden', 'true');
+                slot.appendChild(canvas);
+                const handle = stage.mount(canvas, id, { state: this.pendingStates.get(id) || 'ready' });
+                if (handle) this.handles.set(id, handle);
+                else canvas.remove?.();
+            });
+        }
+        const ready = await stage.init();
+        return ready && !this.disposed;
+    }
+
+    /** Each charm's chip state, from the tray's view. @param {Record<string, string>} states */
+    setStates(states) {
+        Object.entries(states || {}).forEach(([id, state]) => {
+            this.pendingStates.set(id, state);
+            this.handles.get(id)?.setState(state);
+        });
+    }
+
+    getDiagnostics() {
+        return this.stage?.getDiagnostics() || {
+            backend: null, ready: false, icons: [], slots: 0,
+        };
+    }
+
+    dispose() {
+        if (this.disposed) return;
+        this.disposed = true;
+        this.handles.forEach((handle) => handle.release());
+        this.handles.clear();
+    }
 }
 
-/** The sprite markup a sheet or the map uses for a charm: the still, or the glyph until there is one. */
-export function odysseyCharmIconMarkup(charmId, { className = 'charm-sprite' } = {}) {
-    const url = odysseyCharmSprite(charmId);
-    if (url) return `<img class="${className}" src="${url}" alt="" width="24" height="24" data-charm="${charmId}">`;
-    return `<span class="${className} ${className}--glyph" data-charm="${charmId}" aria-hidden="true">◆</span>`;
-}
-
-/** The same as an element, for sheets built from nodes. @returns {HTMLElement | null} */
-export function createOdysseyCharmIconNode(charmId, { className = 'charm-sprite' } = {}) {
+/**
+ * A charm's icon for a sheet or the map: a box holding the canvas the shared stage draws into
+ * and the glyph it shows until the first frame (and for good without a renderer).
+ * @param {string} charmId
+ * @param {{ className?: string, state?: string, stage?: OdysseyCharmIconStage }} [options]
+ * @returns {HTMLElement | null}
+ */
+export function createOdysseyCharmIconNode(charmId, {
+    className = 'charm-sprite', state = 'ready', stage = null,
+} = {}) {
     const doc = globalThis.document;
     if (!doc?.createElement) return null;
-    const url = odysseyCharmSprite(charmId);
-    const node = doc.createElement(url ? 'img' : 'span');
-    node.className = url ? className : `${className} ${className}--glyph`;
+    const node = doc.createElement('span');
+    node.className = className;
     if (node.dataset) node.dataset.charm = charmId;
-    if (url) {
-        node.src = url;
-        node.alt = '';
-        node.width = 24;
-        node.height = 24;
-    } else {
-        node.textContent = '◆';
-        node.setAttribute?.('aria-hidden', 'true');
-    }
+    node.setAttribute?.('aria-hidden', 'true');
+    // The glyph itself is CSS (`::before`), so the charm's name reads clean in the text around it.
+    const glyph = doc.createElement('span');
+    glyph.className = `${className}__glyph`;
+    const canvas = doc.createElement('canvas');
+    canvas.className = `${className}__canvas`;
+    node.appendChild(canvas);
+    node.appendChild(glyph);
+    const handle = (stage || getOdysseyCharmIconStage()).mount(canvas, charmId, { state });
+    if (handle) node.charmIcon = handle;
     return node;
 }
