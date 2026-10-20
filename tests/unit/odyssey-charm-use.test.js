@@ -285,7 +285,8 @@ describe('Using a charm during an orb', () => {
         expect(bag.tide).toBe(1);
         expect(session.charms.used).toEqual(['tide']);
         expect(odysseyCharmsUsed(session)).toEqual(['tide']);
-        expect(effects.playLineClearImpact).toHaveBeenCalledWith(ODYSSEY_TIDE_ROWS, 1);
+        // Three, not four: the four-line impact calls out a "Quad", and nothing Tide clears counts.
+        expect(effects.playLineClearImpact).toHaveBeenCalledWith(3, 1);
         expect(effects.triggerLineClearFlash).toHaveBeenCalledWith([23, 22, 21, 20]);
         expect(effects.spawnLineClearParticles).toHaveBeenCalledWith([23, 22, 21, 20]);
         expect(sfx.playLineClear).toHaveBeenCalledOnce();

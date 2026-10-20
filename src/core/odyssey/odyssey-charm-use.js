@@ -288,7 +288,8 @@ export function activateOdysseyCharm(mode, charmId) {
         const rows = odysseyTideRows(gameState);
         applied = applyOdysseyTide(gameState);
         if (applied) {
-            effects?.playLineClearImpact?.(ODYSSEY_TIDE_ROWS, 1);
+            // The impact's weight without the "Quad" callout four lines would earn: nothing Tide clears counts.
+            effects?.playLineClearImpact?.(Math.min(ODYSSEY_TIDE_ROWS, 3), 1);
             effects?.triggerLineClearFlash?.(rows);
             effects?.spawnLineClearParticles?.(rows);
             sfx?.playLineClear?.();
