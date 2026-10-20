@@ -67,6 +67,28 @@ reactions in the new palette).
   [answer-closeup.png](answer-closeup.png). Tests pin it: paws on flat, sloped and rough ground
   at rest and through a stride, leg bones keeping their lengths, a planted paw not moving while
   the scout walks, and the young wolf's walk staying under 30 degrees.
+- **Animation** (`wolfhour-wolf-behaviour.js`, rig additions): every wolf lives through slots
+  of its own length (10-15 s), each drawing an action from its repertoire with a deterministic
+  hash, so behaviour is still a pure function of time. The rig gained a lying build (forelegs
+  out, head able to rest on them), a head turned toward the viewer (two eyes catch the moon), a
+  trot, a carried, wagging tail, crouch, leap, tuck and stretch, and `blendRigs` carries a wolf
+  between standing, sitting and lying.
+  - Lead: looks round at you, yawns, shakes the snow off (the coat fluffs and shivers, snow
+    flies), sits a while, stretches into a bow.
+  - Sitter and the far wolf: lie down and rest their heads, look up, yawn; the sitter stands up
+    now and then and shakes.
+  - Young wolf: paces, plays (a bow, a wagging tail, little hops) and hunts: it stalks a mouse
+    under the snow, leaps in an arc, dives nose-first and throws up a plume of snow, shakes it
+    off and walks back.
+  - Scout: walks in, looks over the valley, turns to look at you, trots away.
+  - Gameplay: a line clear turns the pack's heads to you; a combo of 2+ puts the young wolf in a
+    play bow with a wagging tail; a four-line clear makes all howl (lying wolves sit up for it; a
+    young wolf in mid-pounce finishes its hunt instead).
+  - Reduce motion: no walking, hunting, play, shaking or stretching; looks, yawns, sitting,
+    lying and the howl remain.
+  - [wolf-moments.png](wolf-moments.png) (the pounce in four frames, the shake, the play bow, a
+    look at you, lying, a yawn, the howl) and [wolf-moments-2.png](wolf-moments-2.png) (the scout
+    looking at you and trotting away, the far wolf lying down).
 - **The warm accent** (`wolfhour-hut.js`): a herder's hut low on the left-hand spur, a snowy roof
   line, a firelit window, firelight spreading into the mist in front of it, a thread of smoke. Its
   flicker is slow and a few percent deep (a test keeps it under 14 %).
@@ -85,7 +107,7 @@ reactions in the new palette).
 
 ## Verification
 
-- Wolfhour unit tests: 129 pass (`wolfhour-valley.test.js`, `wolfhour-wolves.test.js`, and a
+- Wolfhour unit tests: 136 pass (`wolfhour-valley.test.js`, `wolfhour-wolves.test.js`, and a
   theme test that a four-line clear howls and a smaller one glances).
 - Full suite: all Wolfhour files pass. Two unrelated tests fail on this machine's Swedish number
   formatting (`250 000` for `250,000`); nine timing-budget tests that failed while `vite build` ran

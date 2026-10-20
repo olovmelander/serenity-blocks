@@ -3,11 +3,14 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    CAPSULE_COUNT, CAPSULE_STRIDE, WOLF_BOUNDS, pawCycle, poseWolf,
+    CAPSULE_COUNT, CAPSULE_STRIDE, WOLF_BOUNDS, blendRigs, pawCycle, poseWolf,
 } from '../../src/themes/wolfhour/wolfhour-wolf-rig.js';
 import {
-    ANSWERER, HOWL, PACE, PACK, SCOUT, WALK_STRIDE, createWolfhourPack, eventEnvelope, paceAt, scoutAt,
+    ANSWERER, HOWL, PACK, SCOUT, WALK_STRIDE, createWolfhourPack, eventEnvelope, scoutAt,
 } from '../../src/themes/wolfhour/wolfhour-wolves.js';
+import {
+    REPERTOIRES, YOUNG_MOVES, actionFor, behaviourAt,
+} from '../../src/themes/wolfhour/wolfhour-wolf-behaviour.js';
 import { WOLFHOUR_PROPS, standWolfhourProps } from '../../src/themes/wolfhour/wolfhour-props.js';
 import { FOREST_BELTS, createWolfhourForest, plantBelt } from '../../src/themes/wolfhour/wolfhour-forest.js';
 import { createWolfhourLandscape } from '../../src/themes/wolfhour/wolfhour-landscape.js';
@@ -157,33 +160,137 @@ describe('Wolfhour wolves', () => {
         expect(pack.scout.wolf.mesh.visible).toBe(true);
     });
 
-    it('paces the young wolf a little way along the ridge and back, never into the lead', () => {
-        const xs = Array.from({ length: 60 }, (_, i) => paceAt(i * 0.5).dx);
-        expect(Math.min(...xs)).toBe(0);
-        expect(Math.max(...xs)).toBeCloseTo(PACE.reach, 6);
-        expect(paceAt(1).facing).toBe(PACE.toward);
-        expect(paceAt(PACE.period + 1).dx).toBeCloseTo(paceAt(1).dx, 10);
-        // The lead's tail reaches 20 units behind it and the young wolf's nose 23 ahead of it
-        // (rig units at its 0.8 scale): their bodies never meet.
-        const young = PACK.find((w) => w.name === 'young');
-        const nearest = young.x + Math.min(0, ...xs);
-        expect(nearest - 29 * young.scale).toBeGreaterThan(20);
-    });
-
-    it('paces only over gentle ground on the real ridge', () => {
+    it('keeps the young wolf on gentle ground near its place, moving without a jump', () => {
         const landscape = own(createWolfhourLandscape({ quality: 'High', seed: 73013 }));
         const pack = own(createWolfhourPack());
         standWolfhourProps(landscape, { pack });
         const young = PACK.find((w) => w.name === 'young');
         const at = WOLFHOUR_PROPS.pack;
         const ground = (x) => landscape.crestPoint(at.range, at.x + x * at.scale).y;
-        // Over every place its body stands while pacing, the ridge under it rises or falls by
-        // less than 30 degrees (the steep far side is not part of its walk).
-        for (let dx = 0; dx <= PACE.reach; dx += 2) {
-            const x = young.x + PACE.toward * dx;
-            const rise = Math.abs(ground(x + 6) - ground(x - 6)) / (12 * WOLFHOUR_PROPS.pack.scale);
+        let previous = null;
+        let furthest = 0;
+        for (let t = 0; t < 900; t += 0.05) {
+            const act = behaviourAt('young', t);
+            // Its place, its walks and its pounces stay between its home and the leap's landing.
+            expect(act.dx).toBeGreaterThanOrEqual(0);
+            expect(act.dx).toBeLessThanOrEqual(YOUNG_MOVES.leap + 1e-6);
+            furthest = Math.max(furthest, act.dx);
+            if (previous) {
+                // No teleport: it never moves faster than a leap carries it.
+                // (a 0.9 s leap peaks at 1.5 times its mean speed)
+                expect(Math.abs(act.dx - previous.dx)).toBeLessThan(((YOUNG_MOVES.leap * 1.6) / 0.9) * 0.05 + 0.2);
+                // A leap takes off at about 77 units a second: 3.9 a step of 0.05 s.
+                expect(Math.abs(act.lift - previous.lift)).toBeLessThan(5);
+            }
+            previous = act;
+        }
+        expect(furthest).toBeCloseTo(YOUNG_MOVES.leap, 3);
+        // Wherever it goes the ridge under it is gentler than 30 degrees...
+        for (let dx = 0; dx <= YOUNG_MOVES.leap; dx += 2) {
+            const x = young.x + dx;
+            const rise = Math.abs(ground(x + 6) - ground(x - 6)) / (12 * at.scale);
             expect((Math.atan(rise) * 180) / Math.PI).toBeLessThan(30);
         }
+        // ...and its nose (23 units ahead at its size, facing the lead) stays clear of the lead's tail.
+        expect(young.x - 29 * young.scale).toBeGreaterThan(20);
+    });
+
+    it('draws a calm first slot, then a varied, repeatable repertoire', () => {
+        for (const role of Object.keys(REPERTOIRES)) {
+            expect(actionFor(role, 0)).toBe('idle');
+            const seen = new Set(Array.from({ length: 200 }, (_, k) => actionFor(role, k + 1)));
+            for (const [name] of REPERTOIRES[role].actions) expect(seen.has(name)).toBe(true);
+            expect(behaviourAt(role, 123.4)).toEqual(behaviourAt(role, 123.4));
+        }
+    });
+
+    it('pounces in an arc, nose first, throwing snow where it lands, and shakes it off', () => {
+        const { slot } = REPERTOIRES.young;
+        const k = Array.from({ length: 200 }, (_, i) => i + 1).find((i) => actionFor('young', i) === 'pounce');
+        const peak = behaviourAt('young', k * slot + 2.65);
+        expect(peak.lift).toBeGreaterThan(YOUNG_MOVES.leapHeight * 0.9);
+        expect(peak.tuck).toBeGreaterThan(0.5);
+        expect(peak.busy).toBe(true);
+        const dive = behaviourAt('young', k * slot + 3.05);
+        expect(dive.pitch).toBeLessThan(-0.5);
+        const landed = behaviourAt('young', k * slot + 3.4);
+        expect(landed.bursts.some((b) => b.kind === 'plume')).toBe(true);
+        expect(landed.bursts.some((b) => b.kind === 'ring')).toBe(true);
+        expect(behaviourAt('young', (k + 1) * slot - 0.05).dx).toBe(0);
+    });
+
+    it('lies down, rests its head and sits up again, blending its posture', () => {
+        const { slot } = REPERTOIRES.sitter;
+        const k = Array.from({ length: 200 }, (_, i) => i + 2)
+            .find((i) => actionFor('sitter', i) === 'lie' && actionFor('sitter', i - 1) !== 'lie');
+        const start = behaviourAt('sitter', k * slot + 0.4);
+        expect(start.posture).toBe('lying');
+        expect(start.blend).toBeGreaterThan(0);
+        expect(start.blend).toBeLessThan(1);
+        expect(behaviourAt('sitter', k * slot + slot / 2).head).toBeLessThan(-20);
+        const posed = poseWolf({ build: 'lying', head: -38 });
+        const sat = poseWolf({ build: 'sitting' });
+        const between = blendRigs(posed, sat, 0.5);
+        expect(Array.from(between.capsules).every(Number.isFinite)).toBe(true);
+        // Every capsule of a lying wolf stays near the ground: its back is lower than a sitter's.
+        expect(posed.capsules[3]).toBeLessThan(sat.capsules[3]);
+    });
+
+    it('turns to look at you for a line clear, and the young wolf bows for a combo', () => {
+        const pack = own(createWolfhourPack());
+        pack.update(6);
+        const lead = pack.wolves.find((w) => w.spec.name === 'lead');
+        expect(lead.uniforms.uEye2.value.z).toBe(0);
+        pack.glance(6);
+        pack.update(7);
+        // Both eyes catch the moon when it faces you.
+        expect(lead.uniforms.uEye2.value.z).toBeGreaterThan(0.1);
+        const young = pack.wolves.find((w) => w.spec.name === 'young');
+        pack.update(6.2);
+        const before = young.rows.map((r) => r.toArray());
+        pack.excite(6.2);
+        pack.update(7.4);
+        expect(young.rows.map((r) => r.toArray())).not.toEqual(before);
+    });
+
+    it('runs the young wolf on real time until the first howl', () => {
+        const pack = own(createWolfhourPack());
+        pack.settle(() => 0);
+        for (const t of [3.2, 31.7, 77.5]) {
+            pack.update(t);
+            const young = pack.wolves.find((w) => w.spec.name === 'young');
+            const expected = PACK.find((w) => w.name === 'young').x + behaviourAt('young', t).dx;
+            expect(young.mesh.position.x).toBeCloseTo(expected, 6);
+        }
+    });
+
+    it('keeps still under Reduce motion: no walking, hunting, play or shaking', () => {
+        const pack = own(createWolfhourPack());
+        pack.settle(() => 0);
+        const young = pack.wolves.find((w) => w.spec.name === 'young');
+        for (let t = 0; t < 300; t += 0.7) {
+            pack.update(t, 0);
+            for (const entry of [...pack.wolves, pack.answerer.wolf]) {
+                expect(['pace', 'pounce', 'play', 'shake', 'stretch', 'rise']).not.toContain(entry.act?.action);
+                expect(entry.uniforms.uShake.value.z).toBe(0);
+            }
+            expect(young.mesh.position.x).toBeCloseTo(PACK.find((w) => w.name === 'young').x, 6);
+        }
+    });
+
+    it('stays on the hunt rather than howl when a howl begins in mid-pounce', () => {
+        const { slot } = REPERTOIRES.young;
+        const k = Array.from({ length: 200 }, (_, i) => i + 1).find((i) => actionFor('young', i) === 'pounce');
+        const pack = own(createWolfhourPack());
+        const t0 = k * slot + 2.5;
+        expect(pack.howl(t0)).toBe(true);
+        const young = pack.wolves.find((w) => w.spec.name === 'young');
+        pack.update(t0 + 0.2);
+        const x1 = young.mesh.position.x;
+        pack.update(t0 + 0.5);
+        // It keeps flying forward; the others howl.
+        expect(young.mesh.position.x).toBeGreaterThan(x1);
+        expect(pack.howlLevel(t0 + HOWL.rise + 0.2)).toBe(1);
     });
 
     it('releases every material, the shared quad and the vapour', () => {
