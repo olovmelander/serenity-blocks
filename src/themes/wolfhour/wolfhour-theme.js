@@ -63,6 +63,13 @@ import * as WolfhourPostFactories from './wolfhour-post.js';
 import { createLunarHaloFallbackMaterial } from './wolfhour-fallback-materials.js';
 import { createWolfhourSky } from './wolfhour-sky.js';
 import { createWolfhourLandscape } from './wolfhour-landscape.js';
+import { createWolfhourMist } from './wolfhour-mist.js';
+import { createWolfhourPack } from './wolfhour-wolves.js';
+import { createWolfhourHut } from './wolfhour-hut.js';
+import { createWolfhourSpindrift } from './wolfhour-spindrift.js';
+import { createWolfhourForest } from './wolfhour-forest.js';
+import { standWolfhourProps } from './wolfhour-props.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
 import { LANDSCAPE_SEED } from './wolfhour-landscape-bake.js';
 import { wolfhourLandscapeBakes } from './wolfhour-landscape-bakes.js';
 import { createWolfhourMeteor, setWolfhourRibbon } from './wolfhour-meteor.js';
@@ -476,6 +483,13 @@ export default class WolfhourTheme extends BaseTheme {
         this.mountains = [];
         this.celestialSky = null;
         this.alpineLandscape = null;
+        this.valleyMist = null;
+        this.wolfPack = null;
+        this.valleyHut = null;
+        this.spindrift = null;
+        this.spruce = null;
+        this.wolfhourProps = null;
+        this.cameraMotion = 1;
         this.mountainBaseFill = null;
         this.starfield = null;
         this.nebulaPlanes = [];
@@ -1646,6 +1660,7 @@ export default class WolfhourTheme extends BaseTheme {
         if (this.celestialSky) {
             this.celestialSky.resize(aspect);
             this.alpineLandscape.resize(aspect);
+            this.wolfhourProps?.settle();
         } else {
             const heroX = THREE.MathUtils.clamp(this.camera.right * 0.43, 300, 410);
             if (this.moon) this.moon.position.x = heroX;
@@ -1694,7 +1709,31 @@ export default class WolfhourTheme extends BaseTheme {
             quality: this.activeQualityLevel,
             seed: LANDSCAPE_SEED,
         });
+        this.valleyMist = createWolfhourMist({
+            scene: this.scene,
+            quality: this.activeQualityLevel,
+            noiseMap: this.celestialSky.noiseMap,
+        });
+        this.wolfPack = createWolfhourPack({
+            quality: this.activeQualityLevel,
+            noiseMap: this.celestialSky.noiseMap,
+        });
+        this.valleyHut = createWolfhourHut({
+            quality: this.activeQualityLevel,
+            noiseMap: this.celestialSky.noiseMap,
+        });
+        this.spindrift = createWolfhourSpindrift({
+            quality: this.activeQualityLevel,
+            noiseMap: this.celestialSky.noiseMap,
+        });
         this.alpineLandscape.resize(window.innerWidth / window.innerHeight);
+        this.spruce = createWolfhourForest({ quality: this.activeQualityLevel });
+        this.wolfhourProps = standWolfhourProps(this.alpineLandscape, {
+            pack: this.wolfPack,
+            hut: this.valleyHut,
+            spindrift: this.spindrift,
+            forest: this.spruce,
+        });
         // The existing bounded lunar reaction director owns the pulse state;
         // the sky controller owns geometry, materials and texture disposal.
         this.moon = this.celestialSky.moon;
@@ -2454,12 +2493,13 @@ export default class WolfhourTheme extends BaseTheme {
                     this.camera,
                     {
                         useMRT: this.flags.useMRT === true,
+                        samples: sceneSamples(this.activeQualityLevel, this.getAntialiasEnabled()),
                         profile: profile.profile,
                         bloomStrength: this.qualityPreset.bloomStrength,
                         bloomRadius: profile.bloomRadius,
                         bloomThreshold: profile.bloomThreshold,
                         bloomDownsample: profile.bloomDownsample,
-                        silverTintStrength: profile.silverTintStrength,
+                        coolTintStrength: profile.coolTintStrength,
                         tintDesaturation: profile.tintDesaturation,
                         vignetteOffset: profile.vignetteOffset,
                         vignetteDarkness: profile.vignetteDarkness,
@@ -2475,7 +2515,7 @@ export default class WolfhourTheme extends BaseTheme {
                     bloomRadius: profile.bloomRadius,
                     bloomThreshold: profile.bloomThreshold,
                     bloomDownsample: profile.bloomDownsample,
-                    silverTintStrength: profile.silverTintStrength,
+                    coolTintStrength: profile.coolTintStrength,
                     tintDesaturation: profile.tintDesaturation,
                     vignetteOffset: profile.vignetteOffset,
                     vignetteDarkness: profile.vignetteDarkness,
@@ -2859,6 +2899,19 @@ export default class WolfhourTheme extends BaseTheme {
         return slotIndex;
     }
 
+    /**
+     * The valley's life each frame: the mist drifts and answers gameplay and the howl, the pack
+     * breathes (still under reduced motion, but for its events), the hut's fire flickers.
+     */
+    updateValley() {
+        const motion = Number.isFinite(this.cameraMotion) ? this.cameraMotion : 1;
+        this.wolfPack?.update(this.time, motion);
+        this.valleyHut?.update(this.time);
+        this.spindrift?.update(this.time);
+        const howl = this.wolfPack?.howlLevel(this.time) ?? 0;
+        this.valleyMist?.update(this.time, (this.effectState.mountainPulse || 0) * 0.4 + howl * 0.5);
+    }
+
     updateLunarReaction() {
         if (this.moonHaloNodeData?.uniforms) {
             this.moonHaloNodeData.uniforms.uTime.value = this.time;
@@ -3082,6 +3135,11 @@ export default class WolfhourTheme extends BaseTheme {
             this.reactiveOriginsByPlayer.set(playerKey, { ...origin });
         }
         const payload = { origin };
+
+        // The pack answers: a four-line clear makes it howl at the moon; a smaller clear makes
+        // the lead wolf lift its head.
+        if (lineCount >= 4) this.wolfPack?.howl(this.time);
+        else this.wolfPack?.glance(this.time);
 
         this.enqueueReactiveBurst('beam', Math.min(lineCount, 2), payload);
 
@@ -4815,6 +4873,7 @@ export default class WolfhourTheme extends BaseTheme {
             this.updateEffects(deltaTime);
             this.celestialSky?.update(this.time, this.effectState);
             this.alpineLandscape?.update(this.time, this.effectState);
+            this.updateValley();
             this.processReactiveQueue();
             this.updateMeteors(deltaTime); // Shooting star system
             this.updateMeteorCrashes(); // Meteor crash system
@@ -4854,6 +4913,7 @@ export default class WolfhourTheme extends BaseTheme {
         // Reduced motion (Settings or the system) eases the camera to rest: no pan, breath or shake.
         this.motionState ??= {};
         const motion = easedMotion(this.motionState, deltaTime);
+        this.cameraMotion = motion;
         if (this.celestialSky) {
             const damping = 1 - Math.exp(-Math.max(0, deltaTime) * 2.8);
             this.smoothedPointerX = THREE.MathUtils.lerp(this.smoothedPointerX, this.pointerX, damping);
@@ -4869,6 +4929,7 @@ export default class WolfhourTheme extends BaseTheme {
             );
             this.celestialSky.applyParallax(this.camera);
             this.alpineLandscape?.applyParallax(this.camera);
+            this.valleyMist?.applyParallax(this.camera);
             return;
         }
         // More pronounced camera movements for immersive, breathing feel
@@ -5251,6 +5312,17 @@ export default class WolfhourTheme extends BaseTheme {
             this.moonNodeData = null;
             this.moonHaloNodeData = null;
         }
+        this.wolfPack?.dispose();
+        this.wolfPack = null;
+        this.valleyHut?.dispose();
+        this.valleyHut = null;
+        this.spindrift?.dispose();
+        this.spindrift = null;
+        this.spruce?.dispose();
+        this.spruce = null;
+        this.wolfhourProps = null;
+        this.valleyMist?.dispose();
+        this.valleyMist = null;
         this.alpineLandscape?.dispose();
         this.alpineLandscape = null;
 

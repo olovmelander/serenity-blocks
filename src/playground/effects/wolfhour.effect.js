@@ -1,15 +1,31 @@
 import * as THREE from 'three/webgpu';
 import { createWolfhourSky, wolfhourRandom } from '../../themes/wolfhour/wolfhour-sky.js';
 import { createWolfhourLandscape } from '../../themes/wolfhour/wolfhour-landscape.js';
+import { createWolfhourMist } from '../../themes/wolfhour/wolfhour-mist.js';
+import { createWolfhourPack } from '../../themes/wolfhour/wolfhour-wolves.js';
+import { createWolfhourHut } from '../../themes/wolfhour/wolfhour-hut.js';
+import { createWolfhourSpindrift } from '../../themes/wolfhour/wolfhour-spindrift.js';
+import { createWolfhourForest } from '../../themes/wolfhour/wolfhour-forest.js';
+import { standWolfhourProps } from '../../themes/wolfhour/wolfhour-props.js';
 import { WolfhourGrade } from '../../themes/wolfhour/wolfhour-grade.js';
 import { getWolfhourPostProfile } from '../../themes/wolfhour/wolfhour-post.js';
 import { createWolfhourMeteor, setWolfhourRibbon } from '../../themes/wolfhour/wolfhour-meteor.js';
 import { updateWolfhourCamera } from '../../themes/wolfhour/wolfhour-composition.js';
+import { sceneSamples } from '../../themes/shared/scene-antialias.js';
 
+/*
+ * URL params: quality, noPost=1, msaa=<n>, board=1, pointerX/pointerY (pin the parallax),
+ * event=lock|combo|crash|clear|howl with eventAge=<s> (clear: the lead wolf glances; howl: the
+ * pack howls, as on a four-line clear), meteor=1, impactIndex, seed,
+ * zoom=<k>&zoomX=<x>&zoomY=<y>  an inspection lens: k times closer, centred on world (x, y)
+ *         (to check how the wolves stand on their ridges),
+ * icon=1  the theme-icon lens: the pack howls on the left massif's summit ridge against the moon
+ *         (iconX = the ridge's local x, iconHalf = half the square frame in world units).
+ */
 export const meta = {
     id: 'wolfhour',
-    title: 'Wolfhour — Silver Wilderness',
-    description: 'Silver granite walls, a deep black valley, fine stars and a quiet moon.',
+    title: 'Wolfhour — Moonlit Wilderness',
+    description: 'Moonlit snow and granite, valley mist, a lit hut, and a pack that howls on a four-line clear.',
 };
 
 export function create({ scene, renderer, params }) {
@@ -23,13 +39,42 @@ export function create({ scene, renderer, params }) {
     scene.background = new THREE.Color(0x000000);
     const sky = createWolfhourSky({ scene, quality, aspect });
     const landscape = createWolfhourLandscape({ scene, quality, seed: 73013 });
+    const mist = createWolfhourMist({ scene, quality, noiseMap: sky.noiseMap });
+    const pack = createWolfhourPack({ quality, noiseMap: sky.noiseMap });
+    const hut = createWolfhourHut({ quality, noiseMap: sky.noiseMap });
+    const spindrift = createWolfhourSpindrift({ quality, noiseMap: sky.noiseMap });
+    const iconLens = params.get('icon') === '1';
+    const iconX = Number(params.get('iconX') || -800);
+    const iconHalf = Number(params.get('iconHalf') || 150);
+    const MASSIF_RESPONSE = 0.48;
+    const forest = createWolfhourForest({ quality });
+    const props = standWolfhourProps(landscape, {
+        pack: iconLens ? null : pack, hut, spindrift, forest,
+    });
+    let settleIcon = () => {};
+    if (iconLens) {
+        // Playground-only: the pack on the left massif's summit ridge, the moon right behind it;
+        // the summit's spindrift would cross them, so it is left out of this lens.
+        for (const plume of spindrift.plumes) plume.visible = false;
+        const scale = 1.55;
+        pack.group.scale.set(scale, scale, 1);
+        landscape.addProp(1, pack.group, { x: iconX, depth: 12 });
+        settleIcon = () => {
+            const stretch = landscape.group.scale.x || 1;
+            const base = landscape.crestPoint(1, iconX).y;
+            pack.settle((dx) => (landscape.crestPoint(1, iconX + (dx * scale) / stretch).y - base) / scale);
+        };
+    }
     const profile = getWolfhourPostProfile(quality);
     const bloomStrength = ({
         Minimal: 0, Low: 0, Medium: 0.3, High: 0.5, Ultra: 0.6, Extreme: 0.8,
     })[quality] ?? 0.5;
     const post = profile.enabled && params.get('noPost') !== '1'
         ? new WolfhourGrade(renderer, scene, camera, {
-            ...profile, useMRT: false, bloomStrength,
+            ...profile,
+            useMRT: false,
+            bloomStrength,
+            samples: params.has('msaa') ? Number(params.get('msaa')) : sceneSamples(quality),
         }) : null;
     renderer.toneMapping = post ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
     let board;
@@ -69,6 +114,7 @@ export function create({ scene, renderer, params }) {
     window.addEventListener('pointermove', pointerMove);
     window.addEventListener('blur', resetPointer);
     let lastTime = null;
+    let howled = false;
     const update = (time) => {
         const delta = lastTime === null ? 0 : Math.max(0, Math.min(1 / 30, time - lastTime));
         lastTime = time;
@@ -76,14 +122,53 @@ export function create({ scene, renderer, params }) {
         smoothX += (pointerX - smoothX) * damping;
         smoothY += (pointerY - smoothY) * damping;
         updateWolfhourCamera(camera, time, window.innerWidth / window.innerHeight, smoothX, smoothY);
+        const zoom = Number(params.get('zoom') || 0);
+        if (zoom > 1 && !iconLens) {
+            // Shift the view window, not the camera: the layers' parallax stays as in the game.
+            const a = window.innerWidth / window.innerHeight;
+            const half = 500 / zoom;
+            const dx = Number(params.get('zoomX') || 0) - camera.position.x;
+            const dy = Number(params.get('zoomY') || 0) - camera.position.y;
+            camera.left = dx - half * a; camera.right = dx + half * a;
+            camera.top = dy + half; camera.bottom = dy - half;
+            camera.updateProjectionMatrix();
+        }
+        if (iconLens) {
+            // The massif moves (1 - response) of the camera, so the camera that centres the pack
+            // solves cam = crest + (1 - response) * cam.
+            const crest = landscape.crestPoint(1, iconX);
+            const stretch = landscape.group.scale.x || 1;
+            const camX = (crest.x * stretch) / MASSIF_RESPONSE;
+            const camY = (crest.y + iconHalf * 0.3) / MASSIF_RESPONSE;
+            camera.position.set(camX, camY, 1000);
+            const a = window.innerWidth / window.innerHeight;
+            camera.left = -iconHalf * a; camera.right = iconHalf * a;
+            camera.top = iconHalf; camera.bottom = -iconHalf;
+            camera.updateProjectionMatrix();
+            const leadX = camX;
+            const ground = camY - iconHalf * 0.3;
+            // The moon rests behind the lead wolf's raised head (the sky layer moves 0.915 of the camera).
+            sky.resize(a, {
+                moonX: leadX - 14 - camX * 0.915,
+                moonY: ground + 58 - camY * 0.915,
+                moonScale: Number(params.get('iconMoon') || 0.42),
+            });
+        }
         sky.applyParallax?.(camera);
         landscape.applyParallax?.(camera);
-        const energy = event ? Math.exp(-eventAge * 2.2) : 0;
+        mist.applyParallax(camera);
+        const energy = event && event !== 'howl' && event !== 'clear' ? Math.exp(-eventAge * 2.2) : 0;
+        if (event === 'howl' && !howled) howled = pack.howl(time - eventAge);
+        if (event === 'clear' && !howled) { pack.glance(time - eventAge); howled = true; }
+        pack.update(time);
+        hut.update(time);
+        spindrift.update(time);
         state.mountainPulse = energy;
         state.mountainShockwave = event === 'lock' ? energy : 0;
         state.nebulaDefinition = energy;
         sky.update(time, state);
         landscape.update(time, state);
+        mist.update(time, energy * 0.6 + pack.howlLevel(time) * 0.5);
         if (event) {
             sky.moonHaloNodeData.pulseValues[0].set(time - eventAge, 1 / 1.9, 0.8, event === 'combo' ? 0.75 : 0.12);
             sky.moonNodeData.uniforms.uPulse.value = energy * 0.5;
@@ -117,7 +202,7 @@ export function create({ scene, renderer, params }) {
         const a = w / h;
         camera.left = -500 * a; camera.right = 500 * a;
         camera.updateProjectionMatrix();
-        sky.resize(a); landscape.resize?.(a);
+        sky.resize(a); landscape.resize?.(a); props.settle(); settleIcon();
         post?.setSize(w, h);
     };
     resize(window.innerWidth, window.innerHeight);
@@ -137,7 +222,8 @@ export function create({ scene, renderer, params }) {
         dispose() {
             window.removeEventListener('pointermove', pointerMove);
             window.removeEventListener('blur', resetPointer);
-            board?.remove(); post?.dispose(); sky.dispose(); landscape.dispose();
+            board?.remove(); post?.dispose(); pack.dispose(); hut.dispose(); spindrift.dispose(); forest.dispose();
+            mist.dispose(); sky.dispose(); landscape.dispose();
             meteor?.removeFromParent();
             meteor?.traverse((o) => { o.geometry?.dispose(); o.material?.dispose(); });
             renderer.toneMapping = previousToneMapping;
