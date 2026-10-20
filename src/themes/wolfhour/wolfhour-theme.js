@@ -3175,6 +3175,8 @@ export default class WolfhourTheme extends BaseTheme {
         const previousCombo = comboCount < storedCombo ? 0 : storedCombo;
         if (comboCount === previousCombo) return;
         this.comboProgressByPlayer.set(playerKey, comboCount);
+        // A run of clears gets the young wolf excited: a play bow and a wagging tail.
+        if (comboCount >= 2) this.wolfPack?.excite(this.time);
 
         const origin = this.reactiveOriginsByPlayer.get(playerKey) || this.lastReactiveOrigin;
         const payload = { origin, reactive: true };

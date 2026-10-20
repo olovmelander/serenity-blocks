@@ -160,6 +160,7 @@ export function create({ scene, renderer, params }) {
         const energy = event && event !== 'howl' && event !== 'clear' ? Math.exp(-eventAge * 2.2) : 0;
         if (event === 'howl' && !howled) howled = pack.howl(time - eventAge);
         if (event === 'clear' && !howled) { pack.glance(time - eventAge); howled = true; }
+        if (event === 'combo' && !howled) { pack.excite(time - eventAge); howled = true; }
         pack.update(time);
         hut.update(time);
         spindrift.update(time);
