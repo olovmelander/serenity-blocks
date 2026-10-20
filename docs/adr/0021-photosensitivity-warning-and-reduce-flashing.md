@@ -49,9 +49,11 @@ player play safely and a note on the store page.
   the title); function keys and Ctrl/Alt/Meta shortcuts pass through.
 - **The boot never waits for it.** The game keeps loading underneath (a synchronous shader
   compile behind a still, opaque screen freezes nothing that is seen), and only what the player
-  must *see* follows it: main.js moves the loading screen's clock (`startupShellShownAt`, the
-  ident's 4 s minimum and its 1.65 s reveal) to the moment the warning lifts, and parks the hold
-  (`.sb-lit`) for then. The watchdogs and the warp are untouched.
+  must *see* follows it: `src/ui/startup-shell-clock.js` (main.js's side of the warning) moves the
+  loading screen's clock (the ident's 4 s minimum and its 1.65 s reveal) to the moment the warning
+  lifts and parks the hold (`.sb-lit`) for then; main.js only marks the shell shown and asks how
+  long it has been seen, so its line ceiling (the architecture fitness ratchet) holds. The
+  watchdogs and the warp are untouched.
 - **It is shown every launch.** The only skips are a harness's: `?photosensitivityWarning=0`,
   the saved `serenity.photosensitivityWarning=0` (the shared flag idiom, the developer's toggle
   in an installed game) and `?skipIntro=1`. No "don't show again" is offered.
@@ -61,7 +63,7 @@ player play safely and a note on the store page.
 - `reduceFlashing` (off by default) sits beside `reducedMotion` in `SettingsManager`, in the
   Steam cloud's settings keys, and in Settings › Visual › Effects. The help text says what it
   does and that the worlds keep moving.
-- `src/core/photosensitivity.js` is the one reader: `prefersReducedFlashing(settings?)` and
+- `src/utils/photosensitivity.js` is the one reader: `prefersReducedFlashing(settings?)` and
   `flashScale(settings?)` (1, or `REDUCED_FLASH_SCALE` = 0.08 under the setting: under the 10 %
   relative-luminance step that WCAG 2.3.1 counts as a flash). It reads `window.settings`, which
   main.js keeps current, so a world may call it every frame. `applyReduceFlashingClass` mirrors
@@ -111,3 +113,8 @@ exists. Keep the two in step.
   the world/sky sites do; the default, persistence and cloud key.
 - `tests/unit/flag-registry.test.js`: the `photosensitivityWarning` flag (permanent-ops, local
   reader); Settings › URL parameters documents it.
+- `tests/unit/startup-shell-clock.test.js`: the loading screen's clock under and without the
+  warning (the minimum and the reveal count from the lift; the warm is not held), and the trace.
+- `scripts/architecture-fitness-check.mjs`: main.js stays under its line ceiling (the boot-side
+  logic lives in `src/ui/startup-shell-clock.js`) and `src/core` gains no DOM-global reads (the
+  reader lives in `src/utils/photosensitivity.js`).

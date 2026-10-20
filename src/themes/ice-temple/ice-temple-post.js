@@ -49,7 +49,7 @@ import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import {
     itHash21, itLuma, itMax3, itVoronoi,
 } from './ice-temple-tsl.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no streak or rays). `streak` and

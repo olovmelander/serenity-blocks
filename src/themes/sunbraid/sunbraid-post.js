@@ -47,7 +47,7 @@ import { sceneSamples } from '../shared/scene-antialias.js';
 import {
     mistLight, sbHash21, sbLuma, sbMax3,
 } from './sunbraid-tsl.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode; `air` the march's steps (0: none) and

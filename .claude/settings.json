@@ -3,5 +3,21 @@
     "allow": [
       "Bash(npm install:*)"
     ]
+  },
+  "worktree": {
+    "symlinkDirectories": ["node_modules"]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node .claude/hooks/link-node-modules.cjs",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
   }
 }

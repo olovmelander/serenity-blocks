@@ -53,7 +53,7 @@ import { sceneSamples } from '../shared/scene-antialias.js';
 import {
     ssHash21, ssLuma, ssMax3, ssTexNoise,
 } from './shifting-sands-tsl.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode; `rays` = shaft taps (0 = none); `msaa` = the

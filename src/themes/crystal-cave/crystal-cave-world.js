@@ -17,7 +17,7 @@ import { CRYSTAL_CAVE_STAGE_DEPTH, CrystalCaveStage } from './crystal-cave-stage
 import { CRYSTAL_CAVE_WAVE_SPEED } from './crystal-cave-reactions.js';
 import { resolveCrystalCaveQuality } from './crystal-cave-quality.js';
 import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 const FAMILIES = 5;
 const GROW_SECONDS = 1.15;
