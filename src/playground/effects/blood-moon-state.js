@@ -1,23 +1,28 @@
 /** Shared, renderer-independent composition and bounded event envelopes. */
 
+/**
+ * starLayers: lattice star layers (1–2). milky: the Milky Way's two cloud reads. cellReach: the
+ * salt cells' second Voronoi pass (1 = 3×3, cheaper and a little less exact; 2 = 5×5).
+ * ripples: rings on the water at once. sparks: particles per combo shower.
+ */
 export const BLOOD_MOON_TIERS = Object.freeze({
     Minimal: Object.freeze({
-        stars: 450, motes: 35, sparks: 180, surfaceSize: 512,
+        starLayers: 1, milky: false, cellReach: 1, ripples: 4, sparks: 180, surfaceSize: 512,
     }),
     Low: Object.freeze({
-        stars: 900, motes: 70, sparks: 300, surfaceSize: 512,
+        starLayers: 1, milky: true, cellReach: 1, ripples: 4, sparks: 300, surfaceSize: 512,
     }),
     Medium: Object.freeze({
-        stars: 1500, motes: 130, sparks: 600, surfaceSize: 1024,
+        starLayers: 2, milky: true, cellReach: 2, ripples: 6, sparks: 600, surfaceSize: 1024,
     }),
     High: Object.freeze({
-        stars: 2200, motes: 240, sparks: 1000, surfaceSize: 1024,
+        starLayers: 2, milky: true, cellReach: 2, ripples: 8, sparks: 1000, surfaceSize: 1024,
     }),
     Ultra: Object.freeze({
-        stars: 3000, motes: 360, sparks: 1400, surfaceSize: 2048,
+        starLayers: 2, milky: true, cellReach: 2, ripples: 8, sparks: 1400, surfaceSize: 2048,
     }),
     Extreme: Object.freeze({
-        stars: 4000, motes: 500, sparks: 1800, surfaceSize: 2048,
+        starLayers: 2, milky: true, cellReach: 2, ripples: 8, sparks: 1800, surfaceSize: 2048,
     }),
 });
 
@@ -25,10 +30,16 @@ const EMPTY = Object.freeze({});
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const finite = (value, fallback) => (Number.isFinite(value) ? value : fallback);
 
+/** Clearance between the moon's limb and a board, as a fraction of viewport height. */
+const BOARD_CLEARANCE = 0.03;
+/** Sky kept between the horizon and the moon's lower limb. */
+const HORIZON_GAP = 0.05;
+
 /**
- * x/y are normalized from the bottom left; radius is a fraction of viewport height.
- * Rectangles arrive in CSS pixels from the top left. This runs on resize, not per frame.
- * A fully occupied viewport yields a zero-radius moon instead of covering the board.
+ * x/y are normalized from the bottom left; radius is a fraction of viewport height; horizon is
+ * where the salt flat meets the sky, also from the bottom. Rectangles arrive in CSS pixels from
+ * the top left. This runs on resize, not per frame. The moon always stands clear above the
+ * horizon; a fully occupied viewport yields a zero-radius moon instead of covering the board.
  */
 export function resolveBloodMoonLayout(width, height, rects = []) {
     const w = Math.max(1, finite(width, 1));
@@ -36,13 +47,15 @@ export function resolveBloodMoonLayout(width, height, rects = []) {
     const aspect = w / h;
     const portrait = aspect < 0.9;
     const edge = Math.min(0.02, aspect * 0.04);
-    const desiredRadius = Math.min(portrait ? 0.14 : 0.23, (Math.min(aspect, 1) - edge * 2) * 0.5);
+    const horizon = portrait ? 0.45 : 0.34;
+    const lowest = horizon + HORIZON_GAP;
+    const desiredRadius = Math.min(portrait ? 0.11 : 0.15, (Math.min(aspect, 1) - edge * 2) * 0.5);
     const desiredX = clamp(
-        (portrait ? 0.72 : 0.235) * aspect,
+        (portrait ? 0.72 : 0.22) * aspect,
         desiredRadius + edge,
         aspect - desiredRadius - edge,
     );
-    const desiredY = portrait ? 0.82 : 0.62;
+    const desiredY = portrait ? 0.83 : 0.7;
     const obstacles = [];
     if (Array.isArray(rects)) {
         for (const rect of rects) {
@@ -66,12 +79,12 @@ export function resolveBloodMoonLayout(width, height, rects = []) {
     let bestScore = -Infinity;
     const consider = (rawX, rawY) => {
         const x = clamp(rawX, edge, aspect - edge);
-        const y = clamp(rawY, edge, 1 - edge);
-        let radius = Math.min(desiredRadius, x - edge, aspect - x - edge, y - edge, 1 - y - edge);
+        const y = clamp(rawY, lowest, 1 - edge);
+        let radius = Math.min(desiredRadius, x - edge, aspect - x - edge, y - lowest, 1 - y - edge);
         for (const rect of obstacles) {
             const dx = Math.max(rect.left - x, 0, x - rect.right);
             const dy = Math.max(rect.bottom - y, 0, y - rect.top);
-            radius = Math.min(radius, Math.max(0, Math.hypot(dx, dy) - 0.014));
+            radius = Math.min(radius, Math.max(0, Math.hypot(dx, dy) - BOARD_CLEARANCE));
         }
         // Keep a readable disk, then prefer the intended upper-side composition.
         const score = radius * 8 - Math.hypot((x - desiredX) / Math.max(aspect, 1), y - desiredY) * 0.3;
@@ -86,7 +99,7 @@ export function resolveBloodMoonLayout(width, height, rects = []) {
     consider(desiredX, desiredY);
     if (bestRadius < desiredRadius - 1e-8) {
         // Obstacle-aligned candidates preserve the intended moon size in narrow side lanes.
-        const clearance = desiredRadius + 0.014;
+        const clearance = desiredRadius + BOARD_CLEARANCE;
         for (const rect of obstacles) {
             consider(rect.left - clearance, desiredY);
             consider(rect.right + clearance, desiredY);
@@ -98,11 +111,13 @@ export function resolveBloodMoonLayout(width, height, rects = []) {
         // Bounded search also handles several boards and gaps smaller than the hero disk.
         for (let yi = 0; yi <= 20; yi++) {
             for (let xi = 0; xi <= 24; xi++) {
-                consider(edge + (aspect - edge * 2) * (xi / 24), edge + (1 - edge * 2) * (yi / 20));
+                consider(edge + (aspect - edge * 2) * (xi / 24), lowest + (1 - edge - lowest) * (yi / 20));
             }
         }
     }
-    return { x: bestX / aspect, y: bestY, radius: Math.max(0, bestRadius) };
+    return {
+        x: bestX / aspect, y: bestY, radius: Math.max(0, bestRadius), horizon,
+    };
 }
 
 /**
