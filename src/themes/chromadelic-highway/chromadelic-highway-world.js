@@ -14,22 +14,30 @@
  *
  * Motion runs on ONE travel clock (see chromadelic-highway-tsl.js). Everything visible is a
  * closed-form function of (time, travel) plus the event schedule — seekable for captures.
+ *
+ * The spectrum (chromadelic-highway-spectrum.js, docs/CHROMADELIC_HIGHWAY_SPECTRUM_2026-10.md):
+ * rings take ANY colour and one of eleven forms, by movement. The colours drift with the road by
+ * themselves (a movement every ~90 s at cruise, whatever the level) AND step one movement on every
+ * level-up. A ring locks its style just before it clears the card edge and keeps it for its flight.
  */
 
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
-import { createSkyDome, createStarfield } from './chromadelic-highway-sky.js';
+import { createSkyDome, createStarfield, rotateHue } from './chromadelic-highway-sky.js';
 import { createPlanetImpostor, PLANET_PALETTE } from './chromadelic-highway-planets.js';
 import {
     LANE_COLORS_HEX, createRails, createRoad,
 } from './chromadelic-highway-road.js';
 import {
-    createMeteors, createMotes, createSpeedStreaks, createTunnelRings,
+    createMeteors, createMotes, createRingAir, createSpeedStreaks, createTunnelRings, latticeRingCount,
 } from './chromadelic-highway-fx.js';
 import { ChromadelicComposition, REST_RIG, restVerticalFov } from './chromadelic-highway-composition.js';
 import {
     RING_SPACING, TRAVEL_SPEED, TRAVEL_WRAP, TUNNEL_SPAN, TUNNEL_Z_NEAR, spectrumRGB, worldSpeedFactor,
 } from './chromadelic-highway-tsl.js';
+import {
+    MOVEMENTS, RING_PHASE_WRAP, SPECTRUM_HOME, STEP_TRAVEL, hueOf, neonColor, ringStyle, skyTurnAt, spectrumSummary,
+} from './chromadelic-highway-spectrum.js';
 import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
 
 const tier = (o) => o;
@@ -52,6 +60,7 @@ export const WORLD_TIERS = {
         railCurtain: false,
         rings: 3,
         ringSegments: 64,
+        ringAir: false,
         streaks: 0,
         motes: 0,
         meteors: 1,
@@ -75,6 +84,7 @@ export const WORLD_TIERS = {
         railCurtain: true,
         rings: 4,
         ringSegments: 64,
+        ringAir: false,
         streaks: 48,
         motes: 0,
         meteors: 2,
@@ -98,6 +108,7 @@ export const WORLD_TIERS = {
         railCurtain: true,
         rings: 6,
         ringSegments: 80,
+        ringAir: true,
         streaks: 120,
         motes: 0,
         meteors: 4,
@@ -121,6 +132,7 @@ export const WORLD_TIERS = {
         railCurtain: true,
         rings: 8,
         ringSegments: 96,
+        ringAir: true,
         streaks: 240,
         motes: 120,
         meteors: 8,
@@ -144,6 +156,7 @@ export const WORLD_TIERS = {
         railCurtain: true,
         rings: 10,
         ringSegments: 112,
+        ringAir: true,
         streaks: 360,
         motes: 200,
         meteors: 10,
@@ -167,6 +180,7 @@ export const WORLD_TIERS = {
         railCurtain: true,
         rings: 12,
         ringSegments: 112,
+        ringAir: true,
         streaks: 480,
         motes: 300,
         meteors: 12,
@@ -190,11 +204,17 @@ export const CAMERA_RIG = {
  */
 export const KEY_LIGHT = new THREE.Vector3(0, 60, -4000);
 
-/** Ring phrase: cyan, violet, azure, then the magenta downbeat (chdSpectrum hues). */
-const RING_PHRASE = [0.5, 0.25, 5 / 12, 1 / 6];
-/** Four phrases per palette cycle, each walked by a few degrees. */
-const PHRASE_WALK = [0, 1 / 18, 0, -1 / 18];
-const RING_PALETTE_SIZE = 16;
+/** Ring style slots: J mod 16 (16 > every tier's ring count, so a live ring's slot is never reused). */
+const RING_SLOTS = 16;
+/** Camera z at rest: ring depth ≈ CAMERA_Z − z on the CPU (the lock margin covers the curve). */
+const CAMERA_Z = 280;
+/** Packet phase rate (rad/s) at rest; a combo chain adds up to +1.4 (integrated, never clock × rate). */
+const RING_PHASE_RATE = 0.7;
+/** The air's brightness (ring-air band gain). */
+const AIR_GAIN = 0.12;
+/** The sky's own hue (turns; the nebula's violet before its turn) and its pull on the air. */
+const AIR_SKY_HUE = 0.77;
+const AIR_SKY_PRIOR = 0.35;
 
 const _rgb = { r: 0, g: 0, b: 0 };
 
@@ -204,11 +224,7 @@ export function spectrumColor(t, out = new THREE.Color()) {
     return out.setRGB(c.r, c.g, c.b);
 }
 
-/** Soft luminance normalisation: lum → target with exponent 0.7 (blue/violet stay bright). */
-function normaliseLuma(color, target) {
-    const l = color.r * 0.2126 + color.g * 0.7152 + color.b * 0.0722;
-    return color.multiplyScalar((target / Math.max(l, 0.12)) ** 0.7);
-}
+const HAZE_BASE = new THREE.Color(0.03, 0.01, 0.06);
 
 /**
  * Event waves. Every wave launches just behind where the road slides under the card
@@ -245,6 +261,7 @@ const _worldUp = new THREE.Vector3(0, 1, 0);
 const MOON_TILT = THREE.MathUtils.degToRad(14);
 const _proj = new THREE.Vector3();
 const _color = new THREE.Color();
+const _rgb2 = { r: 0, g: 0, b: 0 };
 const _camAhead = { x: 0, y: 0 };
 const _camNear = { x: 0, y: 0 };
 /** Exponential decay of one event envelope. */
@@ -296,11 +313,25 @@ export class ChromadelicWorld {
         this.cometAt = -1e4;
         this.chainCometDone = false;
         this.fx = {
-            dip: 0, surge: 0, streakWarp: 0, flare: 0, storm: 0, railTick: 0, nebula: 0,
+            dip: 0, surge: 0, streakWarp: 0, flare: 0, storm: 0, railTick: 0, nebula: 0, combo: 0,
         };
-        this.palette = {
-            ring: 0, ringTarget: 0, neb: 0, nebTarget: 0,
+        /**
+         * The spectrum (chromadelic-highway-spectrum.js): place = level + distance / STEP_TRAVEL.
+         * `levelTarget` steps +1 on every level-up (rings lock with it at once); `levelPlace` is the
+         * same, eased, for the sky. `distance` is the unwrapped road travelled (double precision).
+         */
+        this.spectrum = {
+            levelTarget: SPECTRUM_HOME, levelPlace: SPECTRUM_HOME, distance: 0, pinned: null, form: null,
         };
+        this.ringPhase = 0;
+        this.ringSlots = new Array(RING_SLOTS).fill(null); // the serial locked in each slot
+        this.ringStyles = Array.from({ length: RING_SLOTS }, () => ({}));
+        this.ringRepaint = new Array(RING_SLOTS).fill(0); // the level-up repaint each slot has seen
+        this.repaint = null;
+        this.prismEcho = 0;
+        this.leadSerial = null; // the ring that came out from behind the board most recently
+        this.air = new THREE.Color(0, 0, 0);
+        this.airSeeded = false;
         this.cam = {
             lookX: { x: 0, v: 0 }, bank: { x: 0, v: 0 }, paceFov: 0,
         };
@@ -332,10 +363,18 @@ export class ChromadelicWorld {
             uApron: uniform(new THREE.Vector4(960, 204, 920, 0)),
             uHeroPx: uniform(new THREE.Vector3(-1e4, -1e4, 1)),
             uDEmerge: uniform(1120),
-            // Ring cascade: (birth, D0, speed, amp) and (rgb, hue mix).
+            // Ring cascade: (birth, D0, speed, amp), (rgb, tint amount) and the prism burst.
             uCascade: uniform(new THREE.Vector4(-1e4, 1120, 2400, 0)),
             uCascadeCol: uniform(new THREE.Vector4(1, 1, 1, 0)),
-            uRingPalette: uniformArray(Array.from({ length: RING_PALETTE_SIZE }, () => new THREE.Color()), 'color'),
+            uCascadePrism: uniform(0),
+            // Chase lights climbing the arches: (birth, duration, fronts, amp).
+            uChase: uniform(new THREE.Vector4(-1e4, 0.6, 0, 0)),
+            uRingPhase: uniform(0),
+            uAirGain: uniform(AIR_GAIN),
+            // Ring style slots (J mod 16): core colour, halo colour + prism code, form.
+            uRingPalette: uniformArray(Array.from({ length: RING_SLOTS }, () => new THREE.Color()), 'color'),
+            uRingGlow: uniformArray(Array.from({ length: RING_SLOTS }, () => new THREE.Vector4()), 'vec4'),
+            uRingForm: uniformArray(Array.from({ length: RING_SLOTS }, () => new THREE.Vector4()), 'vec4'),
             waves: {
                 count: slots,
                 uA: uniformArray(Array.from({ length: slots }, () => new THREE.Vector4(0, 1, 0, 0)), 'vec4'),
@@ -344,7 +383,8 @@ export class ChromadelicWorld {
         };
         this.waveSlots = Array.from({ length: slots }, () => null);
         this.waveCursor = 0;
-        this.writeRingPalette();
+        this.ringCount = latticeRingCount(this.tier.rings);
+        this.updateRingStyles();
     }
 
     loadTexture(path, { wrapT = THREE.ClampToEdgeWrapping } = {}) {
@@ -384,6 +424,11 @@ export class ChromadelicWorld {
             segments: t.roadSegments, shared, features: { curtain: t.railCurtain },
         }));
         this.rings = this.add(createTunnelRings({ count: t.rings, segments: t.ringSegments, shared }));
+        if (t.ringAir) {
+            this.ringAir = this.add(createRingAir({
+                count: t.rings, segments: Math.round(t.ringSegments * 0.6), shared,
+            }));
+        }
         shared.uGateFar.value = TUNNEL_Z_NEAR - this.rings.count * RING_SPACING;
         if (t.streaks > 0) {
             const lane = (i) => new THREE.Color(LANE_COLORS_HEX[i]);
@@ -599,22 +644,249 @@ export class ChromadelicWorld {
         this.writeLayoutUniforms();
     }
 
-    /** Level progression: the hero grows a little and the palette steps around the wheel. */
-    setLevel(level) {
+    /**
+     * Level progression: the hero grows a little and the spectrum turns to the next movement.
+     * Every level gained is one step on top of the road's own drift; a LOWER level is a new game
+     * (the theme only hears LEVEL_UP), which keeps the light where it is and counts its first
+     * level-up as one step — a new run never turns the colours back.
+     */
+    setLevel(level, { step = true } = {}) {
         const next = Math.max(1, Math.floor(level || 1));
         if (next === this.level) return;
-        // A lower level is a new game (the theme only hears LEVEL_UP): snap the palette rather
-        // than sweeping it back through the levels of the previous game.
-        const newGame = next < this.level;
+        const gained = this.levelsGained(next);
         this.level = next;
-        this.palette.ringTarget = (next - 1) / 12;
-        this.palette.nebTarget = (20 / 360) * Math.sin((2 * Math.PI * (next - 1)) / 6);
-        if (newGame) {
-            this.palette.ring = this.palette.ringTarget;
-            this.writeRingPalette();
-        }
+        if (step && gained > 0) this.stepSpectrum(gained);
         this.composition.solve({ aspect: this.aspect, level: this.level, layout: this.composition.layout });
         this.applyComposition(false);
+    }
+
+    /** Spectrum steps for a move to `next`: at most three; a lower level is a new game's first. */
+    levelsGained(next) {
+        if (next === this.level) return 0;
+        return next > this.level ? Math.min(next - this.level, 3) : Math.min(next - 1, 1);
+    }
+
+    // ── The spectrum: ring colours and forms, the sky's turn, the air ─────────
+
+    /** The place a ring locks at when the road has run `distance` (levels step it at once). */
+    ringPlace(distance = this.spectrum.distance) {
+        const sp = this.spectrum;
+        return (sp.pinned ?? sp.levelTarget) + distance / STEP_TRAVEL;
+    }
+
+    /** The sky's place (the level step eased). */
+    skyPlace() {
+        const sp = this.spectrum;
+        return (sp.pinned ?? sp.levelPlace) + sp.distance / STEP_TRAVEL;
+    }
+
+    /**
+     * Step the spectrum `steps` movements on. Rings still hidden behind the board drop the style
+     * they had locked, so the next one out already wears the new movement.
+     */
+    stepSpectrum(steps) {
+        this.spectrum.levelTarget += steps;
+        this.unlockHiddenRings();
+    }
+
+    /** Captures: back to a level and spectrum place (default: a new session's), no easing. */
+    resetProgress(level = 1, place = SPECTRUM_HOME) {
+        this.level = Math.max(1, Math.floor(level));
+        this.spectrum.levelTarget = place;
+        this.spectrum.levelPlace = place;
+        this.composition.solve({ aspect: this.aspect, level: this.level, layout: this.composition.layout });
+        this.applyComposition(true);
+    }
+
+    /** Debug/captures: pin the spectrum's level place (the road's drift still adds). */
+    pinSpectrum(place, { form = null } = {}) {
+        this.spectrum.pinned = Number.isFinite(place) ? place : null;
+        this.spectrum.form = form;
+        this.ringSlots.fill(null);
+        this.updateRingStyles();
+    }
+
+    /** Depth from the lens at which a ring takes its style: one spacing before it is drawn. */
+    ringLockDepth() {
+        return this.shared.uDEmerge.value + 250 + RING_SPACING;
+    }
+
+    /** The road distance at which ring `serial` locks (closed form: seek reproduces live play). */
+    ringLockDistance(serial) {
+        // depth ≈ CAMERA_Z − z = CAMERA_Z − TUNNEL_Z_NEAR − distance + serial · spacing
+        return serial * RING_SPACING + (CAMERA_Z - TUNNEL_Z_NEAR) - this.ringLockDepth();
+    }
+
+    unlockHiddenRings() {
+        const shownDepth = this.shared.uDEmerge.value + 250;
+        const d = this.spectrum.distance;
+        for (let s = 0; s < RING_SLOTS; s++) {
+            const serial = this.ringSlots[s];
+            if (serial === null) continue;
+            const depth = CAMERA_Z - (TUNNEL_Z_NEAR + d - serial * RING_SPACING);
+            if (depth > shownDepth) this.ringSlots[s] = null;
+        }
+        this.updateRingStyles();
+    }
+
+    /**
+     * Lock the style of every ring that is about to come out from behind the board (or already
+     * out) and has not got one yet: J in (d/350, d/350 + n] are the live rings; one whose depth
+     * is within the lock depth takes the place at its lock distance and keeps it for its flight.
+     * The one exception is a level-up's repaint: its cascade front re-dresses every ring it
+     * passes in the new movement, at the peak of its flash.
+     */
+    updateRingStyles() {
+        const n = this.ringCount;
+        const d = this.spectrum.distance;
+        const lockDepth = this.ringLockDepth();
+        const shownDepth = this.shared.uDEmerge.value + 250;
+        const first = Math.floor(d / RING_SPACING) + 1;
+        const rp = this.repaint;
+        let frontDepth = -Infinity;
+        if (rp) {
+            frontDepth = rp.D0 - rp.speed * Math.max(0, this.time - rp.birth);
+            if (frontDepth < 100) this.repaint = null;
+        }
+        let lead = null;
+        for (let serial = first; serial < first + n; serial++) {
+            const depth = CAMERA_Z - (TUNNEL_Z_NEAR + d - serial * RING_SPACING);
+            if (depth > lockDepth) continue;
+            if (depth <= shownDepth && (lead === null || serial > lead)) lead = serial;
+            const slot = ((serial % RING_SLOTS) + RING_SLOTS) % RING_SLOTS;
+            const repaint = rp && this.ringRepaint[slot] !== rp.id && depth >= frontDepth;
+            if (this.ringSlots[slot] === serial && !repaint) continue;
+            this.lockRing(serial, slot, d);
+            this.ringRepaint[slot] = rp ? rp.id : 0;
+        }
+        this.leadSerial = lead;
+    }
+
+    /** Write ring `serial`'s style into its slot (the place at its closed-form lock distance). */
+    lockRing(serial, slot, d) {
+        const { uRingPalette, uRingGlow, uRingForm } = this.shared;
+        const place = this.ringPlace(Math.min(d, Math.max(0, this.ringLockDistance(serial))));
+        const echo = this.prismEcho > 0;
+        if (echo) this.prismEcho -= 1;
+        const override = this.spectrum.form || echo
+            ? { form: this.spectrum.form, prism: echo }
+            : null;
+        const st = ringStyle(serial, place, this.ringStyles[slot], override);
+        uRingPalette.array[slot].setRGB(st.core.r, st.core.g, st.core.b);
+        uRingGlow.array[slot].set(st.glow.r, st.glow.g, st.glow.b, st.prism ? 1 + st.prismHue : 0);
+        uRingForm.array[slot].set(st.shape, st.pattern, st.count, st.spin);
+        this.ringSlots[slot] = serial;
+    }
+
+    /** The style of the ring that came out most recently (event light borrows its colour). */
+    leadStyle() {
+        if (this.leadSerial === null) return null;
+        const slot = this.leadSerial % RING_SLOTS;
+        return this.ringSlots[slot] === this.leadSerial ? this.ringStyles[slot] : null;
+    }
+
+    /**
+     * The tunnel's air: the hue the rings on screen agree on, blended ON THE WHEEL with the
+     * sky's own hue (violet, turned
+     * with the nebula), so it is always a colour: one family of rings (a warm run) gives the air
+     * its hue; rings spread round the wheel (a prism run, a triad) cancel out and leave the
+     * sky's. The hue vector is eased, so a new ring breathes its colour in. Feeds the sky's
+     * tunnel light and horizon mist, and the road's distant haze.
+     */
+    updateAir(delta) {
+        const d = this.spectrum.distance;
+        const shownDepth = this.shared.uDEmerge.value + 250;
+        let x = 0;
+        let y = 0;
+        let wSum = 0;
+        for (let s = 0; s < RING_SLOTS; s++) {
+            const serial = this.ringSlots[s];
+            if (serial === null) continue;
+            const depth = CAMERA_Z - (TUNNEL_Z_NEAR + d - serial * RING_SPACING);
+            if (depth > shownDepth || depth < 150) continue;
+            // Every ring on screen votes alike (the light filling the tunnel is all of theirs), so
+            // the air follows the movement's colour family, not each ring flying past.
+            const emerge = THREE.MathUtils.smoothstep(shownDepth - depth, 0, 250);
+            let w = emerge * THREE.MathUtils.smoothstep(depth, 150, 400);
+            const st = this.ringStyles[s];
+            const hue = st.prism ? st.prismHue + 0.42 : hueOf(st.glow);
+            if (st.prism) w *= 0.4; // a whole spectrum votes for no hue in particular
+            x += Math.cos(hue * Math.PI * 2) * w;
+            y += Math.sin(hue * Math.PI * 2) * w;
+            wSum += w;
+        }
+        const tx = wSum > 1e-4 ? x / wSum : 0;
+        const ty = wSum > 1e-4 ? y / wSum : 0;
+        const vec = this.airVec || (this.airVec = { x: 0, y: 0 });
+        if (!this.airSeeded || delta <= 0) {
+            vec.x = tx;
+            vec.y = ty;
+            this.airSeeded = true;
+        } else {
+            const k = 1 - Math.exp(-delta / 2.5);
+            vec.x += (tx - vec.x) * k;
+            vec.y += (ty - vec.y) * k;
+        }
+        const skyHue = (AIR_SKY_HUE + skyTurnAt(this.skyPlace())) * Math.PI * 2;
+        const hue = Math.atan2(vec.y + AIR_SKY_PRIOR * Math.sin(skyHue), vec.x + AIR_SKY_PRIOR * Math.cos(skyHue))
+            / (Math.PI * 2);
+        neonColor(hue, 0.42, _rgb2);
+        this.air.setRGB(_rgb2.r, _rgb2.g, _rgb2.b);
+        this.sky?.setAir(this.air);
+        // Distant haze: the base violet turned with the nebula, lifted toward the air.
+        const haze = this.shared.uHaze.value;
+        rotateHue(HAZE_BASE, skyTurnAt(this.skyPlace()), haze);
+        haze.r += this.air.r * 0.035;
+        haze.g += this.air.g * 0.035;
+        haze.b += this.air.b * 0.035;
+    }
+
+    /** Spectrum diagnostics (movement, place, the rings on screen). */
+    getSpectrumDiagnostics() {
+        const d = this.spectrum.distance;
+        const shownDepth = this.shared.uDEmerge.value + 250;
+        const rings = [];
+        for (let s = 0; s < RING_SLOTS; s++) {
+            const serial = this.ringSlots[s];
+            if (serial === null) continue;
+            const depth = CAMERA_Z - (TUNNEL_Z_NEAR + d - serial * RING_SPACING);
+            if (depth > shownDepth || depth < 150) continue;
+            const st = this.ringStyles[s];
+            rings.push({
+                serial,
+                depth: Math.round(depth),
+                movement: MOVEMENTS[st.movement]?.name,
+                hue: Math.round(st.hue * 360),
+                form: st.form,
+                prism: st.prism,
+            });
+        }
+        rings.sort((a, b) => a.depth - b.depth);
+        return {
+            level: this.level,
+            ring: spectrumSummary(this.ringPlace()),
+            sky: spectrumSummary(this.skyPlace()),
+            distance: Math.round(d),
+            rings,
+            air: `#${this.air.getHexString()}`,
+        };
+    }
+
+    /** What a rebuild in place (GPU device loss) hands the new world, so the light keeps its place. */
+    getSpectrumState() {
+        return { level: this.level, place: this.ringPlace() };
+    }
+
+    /** Continue from a previous world's spectrum state (the new world's road starts at 0). */
+    restoreSpectrumState(state) {
+        if (!state || !Number.isFinite(state.place)) return;
+        this.level = Math.max(1, Math.floor(state.level || 1));
+        this.spectrum.levelTarget = state.place - this.spectrum.distance / STEP_TRAVEL;
+        this.spectrum.levelPlace = this.spectrum.levelTarget;
+        this.ringSlots.fill(null);
+        this.updateRingStyles();
+        this.composition.solve({ aspect: this.aspect, level: this.level, layout: this.composition.layout });
+        this.applyComposition(true);
     }
 
     /** Debug/perf: draw only the named parts (see the playground's `parts=`). */
@@ -628,6 +900,7 @@ export class ChromadelicWorld {
             road: [this.road],
             rails: [this.rails],
             rings: [this.rings],
+            air: [this.ringAir],
             streaks: [this.streaks],
             motes: [this.motes],
             meteors: [this.meteors],
@@ -644,17 +917,6 @@ export class ChromadelicWorld {
         this.motes?.setDensityScale(scale);
     }
 
-    /** 16-entry ring palette: the 4-beat phrase × 4 walked phrases, shifted by level. */
-    writeRingPalette() {
-        const pal = this.shared.uRingPalette.array;
-        for (let i = 0; i < RING_PALETTE_SIZE; i++) {
-            const beat = i % 4;
-            const phrase = Math.floor(i / 4);
-            spectrumColor(RING_PHRASE[beat] + PHRASE_WALK[phrase] + this.palette.ring, pal[i]);
-            normaliseLuma(pal[i], beat === 3 ? 0.62 : 0.55);
-        }
-    }
-
     /** Sample the shared road curve (CPU twin of chdRoadCurve). */
     sampleRoadCurve(z, out = { x: 0, y: 0 }) {
         const t = Math.max(0, (200 - z) / 2700);
@@ -666,12 +928,24 @@ export class ChromadelicWorld {
         return out;
     }
 
-    /** Seek every closed-form system to time t (pace 1, no events). Used by captures. */
+    /**
+     * Seek every closed-form system to time t (pace 1, no events). Used by captures. The spectrum
+     * keeps its level steps (the eased place snaps to them); its road drift is t · speed.
+     */
     seek(t) {
         this.time = t;
         this.speed = TRAVEL_SPEED * worldSpeedFactor(1);
         this.travel = (t * this.speed) % TRAVEL_WRAP;
         this.moteTravel = (t * this.speed) % (TUNNEL_SPAN * 30);
+        this.spectrum.distance = t * this.speed;
+        this.spectrum.levelPlace = this.spectrum.levelTarget;
+        this.ringPhase = (t * RING_PHASE_RATE) % RING_PHASE_WRAP;
+        this.prismEcho = 0;
+        this.ringSlots.fill(null);
+        this.ringRepaint.fill(0);
+        this.repaint = null;
+        this.shared.uChase.value.set(-1e4, 0.6, 0, 0);
+        this.shared.uCascadePrism.value = 0;
         this.planets.forEach((p) => p.setSpinForTime(t));
         this.meteors?.clear();
         this.meteorTimer = 7;
@@ -684,15 +958,15 @@ export class ChromadelicWorld {
         this.cascade.birth = -1e4;
         this.cascade.amp = 0;
         Object.keys(this.fx).forEach((k) => { this.fx[k] = 0; });
-        this.palette.ring = this.palette.ringTarget;
-        this.palette.neb = this.palette.nebTarget;
-        this.writeRingPalette();
         this.cam.lookX.x = 0;
         this.cam.lookX.v = 0;
         this.cam.bank.x = 0;
         this.cam.bank.v = 0;
         this.cam.paceFov = 0;
         this.applyComposition(true);
+        this.updateRingStyles();
+        this.airSeeded = false;
+        this.updateAir(0);
         this.stars?.triggerWave(-100, this.composition.result.sky.vpDir, 0);
     }
 
@@ -715,9 +989,12 @@ export class ChromadelicWorld {
         this.waveSlots[i] = { ...p, z0: this.composition.result.zEntry - 40, birth };
     }
 
-    /** A front sweeping the rings from where they emerge down to the lens. */
+    /**
+     * A front sweeping the rings from where they emerge down to the lens: white-hot, tinted
+     * toward `color` by `hueMix`, or (prism) turning every arch into the spectrum as it passes.
+     */
     launchCascade({
-        amp = 1.0, speed = 2400, color = null, hueMix = 0,
+        amp = 1.0, speed = 2400, color = null, hueMix = 0, prism = false,
     } = {}) {
         this.cascade.birth = this.time;
         this.cascade.amp = amp;
@@ -726,22 +1003,41 @@ export class ChromadelicWorld {
         const col = this.shared.uCascadeCol.value;
         if (color) col.set(color.r, color.g, color.b, hueMix);
         else col.set(1, 1, 1, 0);
+        this.shared.uCascadePrism.value = prism ? 1 : 0;
+    }
+
+    /** Chase lights climbing every arch from its feet to its crown (`fronts` 1–3). */
+    launchChase({ fronts = 1, duration = 0.6, amp = 1.0 } = {}) {
+        this.shared.uChase.value.set(this.time, duration, Math.max(1, Math.min(3, fronts)), amp);
+    }
+
+    /** The colour of the newest ring on screen (event light takes the tunnel's colours). */
+    leadColor(out, { shift = 0, target = 0.5 } = {}) {
+        const st = this.leadStyle();
+        let hue = 0.83; // before any ring is out: the theme's magenta
+        if (st) hue = st.prism ? st.prismHue + 0.42 : st.hue;
+        const c = neonColor(hue + shift, target, _rgb2);
+        return out.setRGB(c.r, c.g, c.b);
     }
 
     onPieceLock() {
         if (this.time - this.lastLockAt < 0.35) return;
         this.lastLockAt = this.time;
-        this.launchWave('lock');
+        this.launchWave('lock', { rgb: this.leadColor(new THREE.Color()) });
         this.fx.railTick = 1;
     }
 
-    /** Combo bands climb magenta → violet → blue → azure, one step per combo. */
+    /**
+     * Combo bands climb the wheel from the newest ring's hue, one step per combo; the rings'
+     * packets race (an integrated phase, eased back after the chain).
+     */
     onCombo(combo) {
         const c = Math.max(1, combo);
-        const hue = 1 / 6 + (1 / 4) * (Math.min(c - 1, 6) / 6);
+        const rgb = this.leadColor(new THREE.Color(), { shift: 0.07 * Math.min(c - 1, 8) });
         const amp = Math.min(0.3 + 0.06 * c, 0.7);
-        this.launchWave('combo', { amp, hue });
-        if (c >= 5) this.launchWave('combo', { amp, hue }, 0.09);
+        this.launchWave('combo', { amp, rgb });
+        if (c >= 5) this.launchWave('combo', { amp, rgb }, 0.09);
+        this.fx.combo = Math.max(this.fx.combo, Math.min(1, (c - 1) / 5));
         if (c >= 3 && c % 3 === 0) {
             const count = 2 + (this.random() > 0.5 ? 1 : 0);
             for (let i = 0; i < count; i++) this.schedule(0.12 * i, () => this.spawnMeteor());
@@ -758,31 +1054,53 @@ export class ChromadelicWorld {
     onLineClear(lines) {
         const n = Math.max(1, Math.min(4, lines));
         if (n >= 4) {
-            // Three staggered beats: bands out of the card, the ring cascade, the streak warp.
+            // Three staggered beats: bands out of the card, the prism cascade (every arch turns
+            // into the spectrum as the front passes, the light climbing it), the streak warp.
+            // The next rings out of the board are prism arcs too: the Tetris echoes down the road.
             for (let i = 0; i < 4; i++) this.launchWave('tetris', { white: 0.1 + i * 0.13 }, i * 0.05);
-            this.schedule(0.15, () => this.launchCascade({ amp: 1.0, speed: 2400 }));
+            this.schedule(0.15, () => this.launchCascade({ amp: 1.0, speed: 2400, prism: true }));
             this.schedule(0.3, () => { this.fx.streakWarp = 1; });
+            this.prismEcho = 3;
+            this.unlockHiddenRings();
             this.fx.surge = 1;
             this.fx.dip = Math.max(this.fx.dip, 0.12);
             this.stars?.triggerWave(this.time, this.composition.result.sky.vpDir, 0.7);
             return;
         }
-        for (let i = 0; i < n; i++) this.launchWave('clear', { amp: 0.4 + 0.1 * n }, i * 0.08);
+        // Bands in the newest ring's colour (its complement for a triple), and chase lights
+        // climbing every arch, one front per line.
+        const rgb = this.leadColor(new THREE.Color(), { shift: n === 3 ? 0.5 : 0.04 * n, target: 0.55 });
+        for (let i = 0; i < n; i++) this.launchWave('clear', { amp: 0.4 + 0.1 * n, rgb }, i * 0.08);
+        this.launchChase({ fronts: n, duration: 0.55 + 0.05 * n, amp: 0.8 + 0.1 * n });
         this.stars?.triggerWave(this.time, this.composition.result.sky.vpDir, 0.3 + 0.1 * n);
         this.fx.storm = Math.max(this.fx.storm, Math.min(0.35 + 0.15 * n, 0.8));
     }
 
+    /**
+     * Level up: the spectrum turns to the next movement at once, and a cascade in that movement's
+     * first colour sweeps the tunnel from the board to the lens, re-dressing every ring it passes
+     * (the change happens inside its flash); the rings still behind the board come out in it too.
+     * The hero grows half a second later.
+     */
     onLevelUp(level) {
         this.launchWave('levelUp');
+        const next = Number.isFinite(level) ? level : this.level + 1;
+        const gained = this.levelsGained(next);
+        if (gained > 0) this.stepSpectrum(gained);
+        const preview = ringStyle(Math.floor(this.spectrum.distance / RING_SPACING) + this.ringCount, this.ringPlace(), {});
+        const speed = 2000;
         this.launchCascade({
-            amp: 0.8, speed: 2000, color: spectrumColor(0.25, _color), hueMix: 0.7,
+            amp: 0.8, speed, color: _color.setRGB(preview.glow.r, preview.glow.g, preview.glow.b), hueMix: 0.75,
         });
+        this.repaintSeq = (this.repaintSeq || 0) + 1;
+        this.repaint = {
+            id: this.repaintSeq, birth: this.time, D0: this.composition.result.dEmerge, speed,
+        };
         this.fx.flare = 1;
         this.fx.nebula = 1;
         this.fx.dip = Math.max(this.fx.dip, 0.08);
         this.stars?.triggerWave(this.time, this.composition.result.sky.vpDir, 0.5);
-        const next = Number.isFinite(level) ? level : this.level + 1;
-        this.schedule(0.5, () => this.setLevel(next));
+        this.schedule(0.5, () => this.setLevel(next, { step: false }));
     }
 
     // ── Meteors: rare, outward from behind the board, never across the planets ──
@@ -892,8 +1210,15 @@ export class ChromadelicWorld {
                 uA.array[i].set(0, 1, 0, 0);
                 continue;
             }
-            spectrumRGB(Math.max(0, w.hue), col);
-            uA.array[i].set(w.zFront, 1 / Math.max(1, w.width), w.energy * govern, w.hue < 0 ? 1 : 0);
+            // An explicit colour (a ring's) or a chdSpectrum hue; hue < 0 = the lanes' own colours.
+            if (w.rgb) {
+                col.r = w.rgb.r;
+                col.g = w.rgb.g;
+                col.b = w.rgb.b;
+            } else {
+                spectrumRGB(Math.max(0, w.hue), col);
+            }
+            uA.array[i].set(w.zFront, 1 / Math.max(1, w.width), w.energy * govern, w.hue < 0 && !w.rgb ? 1 : 0);
             uB.array[i].set(col.r, col.g, col.b, w.white);
         }
         this.shared.uCascade.value.w = cAge >= 0 && cAge < 3 ? this.cascade.amp * Math.exp(-cAge / 0.8) : 0;
@@ -914,6 +1239,7 @@ export class ChromadelicWorld {
         // Reduced motion: the road runs at a quarter of its speed (integrated, so no jump).
         const travelRate = 0.25 + 0.75 * (this.motion ?? 1);
         this.travel = (this.travel + delta * this.speed * travelRate) % TRAVEL_WRAP;
+        this.spectrum.distance += delta * this.speed * travelRate;
         // Motes ride their own clock: the ambient envelope scales their SPEED, never a phase.
         this.moteTravel = (this.moteTravel + delta * this.speed * travelRate * (1 + 0.5 * (sim.ambient ?? 0)))
             % (TUNNEL_SPAN * 30);
@@ -939,18 +1265,19 @@ export class ChromadelicWorld {
         _decay(fx, 'storm', 0.45, delta);
         _decay(fx, 'railTick', 0.08, delta);
         _decay(fx, 'nebula', 0.5, delta);
+        _decay(fx, 'combo', 2.5, delta);
         if (fx.streakWarp > 0) fx.streakWarp = Math.max(0, fx.streakWarp - delta / 0.8);
 
-        // Level palette eases over ~3 s, the short way round the colour wheel.
-        const ease = 1 - Math.exp(-delta / 1.0);
-        let dRing = this.palette.ringTarget - this.palette.ring;
-        dRing -= Math.round(dRing);
-        if (Math.abs(dRing) > 1e-4) {
-            this.palette.ring += dRing * ease;
-            this.palette.ring -= Math.floor(this.palette.ring);
-            this.writeRingPalette();
-        }
-        this.palette.neb += (this.palette.nebTarget - this.palette.neb) * ease;
+        // The spectrum: lock the rings about to come out, ease the sky's level step (~3 s), and
+        // run the packets' phase at a rate the combo raises (integrated: never clock × rate).
+        this.updateRingStyles();
+        const sp = this.spectrum;
+        sp.levelPlace += (sp.levelTarget - sp.levelPlace) * (1 - Math.exp(-delta / 1.0));
+        if (Math.abs(sp.levelTarget - sp.levelPlace) < 1e-4) sp.levelPlace = sp.levelTarget;
+        this.ringPhase = (this.ringPhase + delta * (RING_PHASE_RATE + 1.4 * fx.combo * (this.motion ?? 1)))
+            % RING_PHASE_WRAP;
+        this.shared.uRingPhase.value = this.ringPhase;
+        this.updateAir(delta);
 
         const govern = this.updateWaves(sim);
         const { shared } = this;
@@ -970,7 +1297,7 @@ export class ChromadelicWorld {
         // Sky + stars.
         this.sky.uniforms.uTime.value = this.time;
         this.sky.uniforms.uNebBreath.value = 0.1 * (sim.ambient ?? 0) + 0.2 * fx.nebula;
-        this.sky.setHueShift(this.palette.neb);
+        this.sky.setHueShift(skyTurnAt(this.skyPlace()));
         this.stars.uniforms.uTime.value = this.time;
         this.stars.uniforms.uBinaryFlare.value = fx.flare;
 
