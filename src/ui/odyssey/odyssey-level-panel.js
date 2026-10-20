@@ -7,7 +7,9 @@
  */
 import { formatOdysseyMapObjective, formatOdysseyStarCondition } from './objective-copy.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
+import { odysseyCharmHelps } from '../../core/odyssey/odyssey-charm-bag.js';
 import { describeOdysseyPanelCharms } from './odyssey-charm-copy.js';
+import { createOdysseyCharmIconNode } from './odyssey-charm-icon-stage.js';
 
 /** The kind of orb, as the map marks it: a rival duel, the chapter's boss, a showcase, or none. */
 export function describeOdysseyOrbKind(level) {
@@ -60,6 +62,13 @@ export function renderOdysseyPanelCharms(doc, level, charms) {
     const line = describeOdysseyPanelCharms(charms, level);
     hint.textContent = line || '';
     hint.hidden = !line;
+    if (!line || typeof hint.prepend !== 'function') return;
+    // The helping charms' live icons ahead of the words.
+    const icons = (charms || [])
+        .filter((entry) => entry.count > 0 && odysseyCharmHelps(level, entry.id))
+        .map((entry) => createOdysseyCharmIconNode(entry.id))
+        .filter(Boolean);
+    if (icons.length) hint.prepend(...icons);
 }
 
 /**
