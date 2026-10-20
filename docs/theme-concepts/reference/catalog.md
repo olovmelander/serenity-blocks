@@ -121,6 +121,9 @@ Not a theme. These are the patterns survey 1 found already used heavily across t
 - Fully procedural except forest, fall, summer and sakura, which use Blender-grown GLB packs.
 - Exception: wolfhour (classic `EffectComposer`, GLSL `ShaderMaterial`, compute).
 
+### Names from other people's fiction (gate)
+A theme may evoke a setting; it may not name one. No world, creature, substance or device names from a third-party franchise anywhere in the tree: code, identifiers, comments, tests, docs, this catalogue. `npm run check:ip-strings` (`scripts/ip-string-gate.mjs`, class B) scans every tracked text file and fails on them. Precedent: Shifting Sands, 2026-10-20, where the planet, the worm, the substance and the device all carried another franchise's names in comments and docs while the player-facing copy was clean. The public repo made those comments the exposure.
+
 ### Piece palette gate
 `npm run check:palette` (`scripts/palette-guideline-check.mjs`) screens the first hue of each shape against the Guideline bands: I cyan 160–210°, O yellow 32–75°, T purple 245–315°, S green 90–170°, Z red 320–20°, J blue 200–250°, L orange 20–50°. **It FAILS at 7/7 and WARNS at 6/7.** Summer and Ocean deliberately score 0/7.
 
@@ -722,22 +725,22 @@ Status split:
 
 <a id="shifting-sands"></a>
 
-### 27. Shifting Sands (`shifting-sands`) — "Arrakis at the twin-sun dusk"
+### 27. Shifting Sands (`shifting-sands`) — "twin-sun dusk over the dune sea"
 
 - Registry `:192-197`, group `biomes`. 12 modules. Doc `docs/SHIFTING_SANDS_VISUAL_OVERHAUL_2026-10.md`.
 - **Icon / capture**: apricot-orange dusk desert, a dark sandworm arch silhouetted against a low sun, second sun
-  above, dune slip faces, sandstone mesas/butte right, two pale crescent moons, cirrus streaks, spice motes.
+  above, dune slip faces, sandstone mesas/butte right, two pale crescent moons, cirrus streaks, gold motes.
 - **Setting / time**: twin-sun dusk on a dune sea (barchanoid ridges, 34° slip faces); suns low left (ember gold Ø3.5°,
-  white gold Ø1.4°); "the Sentinel" butte with spires right; Shield Wall escarpment on the horizon.
+  white gold Ø1.4°); "the Sentinel" butte with spires right; Rampart escarpment on the horizon.
 - **Palette**: apricot horizon → dusty rose → violet → deep blue zenith; sand ochre/peach with violet shadows;
   coloured double shadows. Pieces (`shifting-sands-tetrominos.js:15-22`): I `#ffd06a`, O `#c9a0ff`, T `#7fffb8`, S
   `#ff9070`, Z `#8090ff`, J `#ffb855`, L `#7ec8ff`.
-- **Key motifs**: dunes, sandworm (Shai-Hulud) breach, spice blows (geysers), spindrift, sand glitter, mesas, twin suns,
+- **Key motifs**: dunes, sandworm breach, dust geysers (geysers), spindrift, sand glitter, mesas, twin suns,
   moons, heat haze, crepuscular shafts.
-- **Motion**: worm breach cycle every 52 s, blowing sand sheets, spice motes, heat shimmer.
-- **Gameplay FX**: lock = "thumper beat" golden ring of lifted sand across the erg; combo ≥2 = spice glows, wind rises;
-  clear = n spice blows in side zones + gust + sun flare; four lines = worm summoned (sign races in, tremor, great spice
-  blow, worm rears); level = dusk deepens, suns sink.
+- **Motion**: worm breach cycle every 52 s, blowing sand sheets, gold motes, heat shimmer.
+- **Gameplay FX**: lock = "drum beat" golden ring of lifted sand across the erg; combo ≥2 = gold glows, wind rises;
+  clear = n dust geysers in side zones + gust + sun flare; four lines = worm summoned (sign races in, tremor, great dust
+  geyser, worm rears); level = dusk deepens, suns sink.
 - **Tech**: polar-grid CPU bake with horizon tangents for twin-sun shadows, per-pixel exact ridge slopes, vertex-animated
   worm tube, occluded crepuscular shafts in post, "desert filmic" tone map.
 - **Avoid reusing**: dunes/sand, orange-apricot dusk desert, twin suns, mesas, a giant creature breaching, geysers of
@@ -850,7 +853,7 @@ The new theme should break these, not repeat them:
 7. **Level = palette wheel + clock drift 90–100 s per step.** Koi (6 nights), Geode (6 minerals), Bioluminescence
    (5), Serenity Warp (6), Starlight (6 hours), Waves (6 hours), Galaxy/Aether (5 palettes on level), Kaleidosonic
    (6 moods).
-8. **Fireflies / floating motes / bokeh.** Golden Forest, Koi, Bioluminescence (spores), Shifting Sands (spice
+8. **Fireflies / floating motes / bokeh.** Golden Forest, Koi, Bioluminescence (spores), Shifting Sands (gold
    motes).
 9. **Night or darkness as the base.** Galaxy, Aether, Serenity Warp, Starlight, Koi, Rainy Window, Bioluminescence,
    Luminous Tides, Kaleidosonic, Geode (interior). Only Verdant Hills (midday), Golden Forest and Waves (golden hour),

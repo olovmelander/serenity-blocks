@@ -72,7 +72,7 @@ describe('shifting sands world', () => {
         expect(scene.children.length).toBe(0);
     });
 
-    it('answers a Tetris with the worm and a spice blow at its emergence', () => {
+    it('answers a Tetris with the worm and a dust geyser at its emergence', () => {
         const { world, camera } = makeWorld();
         world.seek(10);
         world.update({ time: 10, delta: 0 }, camera);
@@ -148,7 +148,7 @@ describe('shifting sands world', () => {
         world.dispose();
     });
 
-    it('rate-limits thumper rings and cycles their slots', () => {
+    it('rate-limits drum rings and cycles their slots', () => {
         const { world } = makeWorld();
         world.seek(5);
         world.onPieceLock();

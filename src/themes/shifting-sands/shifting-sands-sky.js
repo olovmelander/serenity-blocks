@@ -7,7 +7,7 @@
  *  - high cirrus streaks on an altitude plane, lit gold-pink from below near the suns and dusky
  *    mauve away from them, drifting with the wind;
  *  - the twin suns: an ember-gold primary with limb darkening and a white-gold companion;
- *  - the two moons of Arrakis: shaded spheres lit by the primary sun (thick crescents, the dark
+ *  - the two moons: shaded spheres lit by the primary sun (thick crescents, the dark
  *    limb faintly lit by dust-glow), veiled by the haze;
  *  - stars that surface as the dusk deepens (one hash per pixel cell, no extra draw).
  *

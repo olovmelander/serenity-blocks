@@ -613,7 +613,7 @@ src/playground/effects/iris-springs.effect.js
      four-line payoff is one geyser with a rainbow and a steam phase, with no hush and no darkening.
 
 **Also checked:**
-- shifting-sands: "spice blows" are dust geysers on orange dunes at dusk.
+- shifting-sands: dust geysers on orange dunes at dusk.
 - parhelion: ice-crystal halos and sundogs around the sun on a snowfield. Ours are droplet bows on the
   antisolar side, and the sun is never in frame. (Parhelion's avoid list also names "cobalt-and-gold
   daylight" and "optical arcs"; one more reason for §3.4.)
