@@ -22,7 +22,9 @@ import {
     ONE_WORLD_OUTPUT_SATURATION,
     ONE_WORLD_SKY_RADIUS,
 } from './world/odyssey-world-grade.js';
-import { ODYSSEY_BREACH_P, ODYSSEY_SEA_LEVEL } from './world/odyssey-world-height.js';
+import {
+    ODYSSEY_BREACH_P, ODYSSEY_MASSIFS, ODYSSEY_SEA_LEVEL, odysseyWorldHeight,
+} from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
 import { warmWebGpuDevice } from '../webgpu-device-warm.js';
 import {
@@ -43,7 +45,12 @@ import {
 } from './composition/odyssey-steam-quench.js';
 import { cloudBankHalfWidth, createCloudBank } from './composition/odyssey-cloud-bank.js';
 import { createWhalePass } from './composition/odyssey-whale-pass.js';
+import { createOceanVisitors } from './composition/odyssey-ocean-visitors.js';
 import { createSummitBirds } from './composition/odyssey-summit-birds.js';
+import { createOdysseyFlights } from './composition/odyssey-flights.js';
+import { createOdysseyEagle } from './composition/odyssey-eagle.js';
+import { createOdysseyAirMotes } from './composition/odyssey-air-motes.js';
+import { createSummitSpindrift, findHeroSummit } from './composition/odyssey-summit-spindrift.js';
 import { sampleColourScript } from './odyssey-colour-script.js';
 import { ChapterEnvironmentManager } from './ChapterEnvironmentManager.js';
 import { ODYSSEY_PATH_DATA } from './path-data.js';
@@ -489,9 +496,16 @@ export class OdysseyBoardController {
         this.steamQuench = null;
         this._steamBoundary = NaN;
         this.whalePass = null;
+        this.oceanVisitors = null;
         this.cloudBank = null;
         this._cloudBankBoundary = NaN;
         this.summitBirds = null;
+        // Act II life (2026-10-20): the lowland flights (one opaque draw, uniforms only) and the
+        // massif's eagle (the whale pass's fetch -> live-compile -> ready lifecycle).
+        this.flights = null;
+        this.eagle = null;
+        this.airMotes = null;
+        this.spindrift = null;
         // WAVE -1 (docs/ODYSSEY_ONE_WORLD_PLAN_2026-08.md §5): GPU-time profiling on its own
         // flag. It used to ride on ?odysseyAAA=1, which meant a measurement run also had to
         // enable the debug overlay — and then measured a frame with the overlay in it.
@@ -2313,6 +2327,97 @@ export class OdysseyBoardController {
         wp.update(this.time, delta, this.camera, worldState?.submerged ?? 0, inChapter, worldState?.lifePresence ?? 1);
     }
 
+    /**
+     * The massif's eagle, one step per frame — the whale pass's lifecycle (see _tickWhalePass):
+     * fetch as its window approaches (no GPU), compile through the live-loop path only while the
+     * board is idle (with the same 4 s starvation escape), then draw. Any failure leaves it hidden
+     * for the session; the act is exactly as it was without it.
+     */
+    _tickEagle(delta, cameraProgress) {
+        const { eagle } = this;
+        if (!eagle || this._eagleFailed) return;
+        // Fetch ~0.03 p ahead of its window (the end of chapter 3), compile before it shows.
+        const near = eagle.revealAt(cameraProgress + 0.03) > 0 || eagle.revealAt(cameraProgress) > 0;
+        if (!eagle.isLoaded && !this._eagleLoading && this.isActive && near) {
+            this._eagleLoading = true;
+            eagle.load()
+                .then((ok) => {
+                    if (!ok) return;
+                    this._eagleLoadedAt = performance.now();
+                    console.log('[OdysseyBoard] eagle loaded');
+                })
+                .catch((error) => {
+                    this._eagleFailed = true;
+                    console.warn('[OdysseyBoard] eagle load failed (non-fatal):', error);
+                })
+                .finally(() => { this._eagleLoading = false; });
+        }
+        const waitedMs = performance.now() - (this._eagleLoadedAt ?? performance.now());
+        if (eagle.isLoaded && !eagle.isReady && !this._eagleCompiling && this.liveCompileEnabled
+            && this._renderLoopActive() && (this._canRunBackgroundTask() || waitedMs > 4000)) {
+            this._eagleCompiling = true;
+            this._compileGroupThroughPost(eagle.group, { live: true })
+                .then((compiled) => {
+                    if (compiled) {
+                        eagle.markReady();
+                        console.log('[OdysseyBoard] eagle ready (live-loop compiled)');
+                    } else this._eagleFailed = true;
+                })
+                .catch((error) => {
+                    this._eagleFailed = true;
+                    console.warn('[OdysseyBoard] eagle compile failed (non-fatal):', error);
+                })
+                .finally(() => { this._eagleCompiling = false; });
+        }
+        eagle.update(this.time, delta, cameraProgress);
+    }
+
+    /**
+     * The ocean visitors' lifecycle — the whale pass's, step for step (see _tickWhalePass): fetch
+     * as chapter 2 approaches (no GPU), live-compile only while idle (4 s starvation escape), then
+     * draw. Any failure leaves them hidden for the session.
+     */
+    _tickOceanVisitors(delta, cameraProgress) {
+        const ov = this.oceanVisitors;
+        if (!ov || this._visitorsFailed) return;
+        const [c1, c2] = this._visitorsRange || [0, 0];
+        const nearOcean = cameraProgress > c1 - 0.04 && cameraProgress < c2 + 0.01;
+        if (!ov.isLoaded && !this._visitorsLoading && this.isActive && nearOcean) {
+            this._visitorsLoading = true;
+            ov.load()
+                .then((ok) => {
+                    if (!ok) return;
+                    this._visitorsLoadedAt = performance.now();
+                    console.log('[OdysseyBoard] ocean visitors loaded');
+                })
+                .catch((error) => {
+                    this._visitorsFailed = true;
+                    console.warn('[OdysseyBoard] ocean visitors load failed (non-fatal):', error);
+                })
+                .finally(() => { this._visitorsLoading = false; });
+        }
+        const waitedMs = performance.now() - (this._visitorsLoadedAt ?? performance.now());
+        if (ov.isLoaded && !ov.isReady && !this._visitorsCompiling && this.liveCompileEnabled
+            && this._renderLoopActive() && (this._canRunBackgroundTask() || waitedMs > 4000)) {
+            this._visitorsCompiling = true;
+            this._compileGroupThroughPost(ov.group, { live: true })
+                .then((compiled) => {
+                    if (compiled) {
+                        ov.markReady();
+                        console.log('[OdysseyBoard] ocean visitors ready (live-loop compiled)');
+                    } else this._visitorsFailed = true;
+                })
+                .catch((error) => {
+                    this._visitorsFailed = true;
+                    console.warn('[OdysseyBoard] ocean visitors compile failed (non-fatal):', error);
+                })
+                .finally(() => { this._visitorsCompiling = false; });
+        }
+        const inChapter = cameraProgress > c1 && cameraProgress < c2 + 0.01;
+        const worldState = this.oneWorld?.state;
+        ov.update(this.time, delta, this.camera, worldState?.submerged ?? 0, inChapter, worldState?.lifePresence ?? 1);
+    }
+
     async _prewarmChapterEnvironment(chapterId) {
         if (!this.environmentManager || !this.renderer || !this.scene || !this.camera) return;
 
@@ -2985,6 +3090,30 @@ export class OdysseyBoardController {
                     console.warn('[OdysseyBoard] whale pass unavailable (non-fatal):', error);
                     this.whalePass = null;
                 }
+                // THE OCEAN'S VISITORS — a whale shark and a manta in the deep half of the ascent
+                // (composition/odyssey-ocean-visitors.js). The whale pass's lifecycle exactly:
+                // hidden and GPU-free until fetched, live-compiled while idle, then shown
+                // (_tickOceanVisitors). BISECT LEVER: ?odysseyNoVisitors=1.
+                try {
+                    const c1 = this.presentationLayout?.chapterPositions?.[1];
+                    const c2 = this.presentationLayout?.chapterPositions?.[2];
+                    const noVisitors = typeof window !== 'undefined'
+                        && new URLSearchParams(window.location?.search || '').get('odysseyNoVisitors') === '1';
+                    if (this.oneWorldEnabled && !noVisitors && Number.isFinite(c1) && Number.isFinite(c2)) {
+                        const deep = getOdysseyPathPointAt(c1 + ((c2 - c1) * 0.3));
+                        this.oceanVisitors = createOceanVisitors({
+                            axis: { x: deep.x, z: deep.z },
+                            seaLevel: ODYSSEY_SEA_LEVEL,
+                            shallowColour: new THREE.Color(...sampleColourScript(0.12).skyHorizon),
+                            deepColour: new THREE.Color(...sampleColourScript(0.0).skyHorizon),
+                        });
+                        this.scene.add(this.oceanVisitors.group);
+                        this._visitorsRange = [c1, c2];
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] ocean visitors unavailable (non-fatal):', error);
+                    this.oceanVisitors = null;
+                }
                 // THE CLOUD BANK — the ch5 -> ch6 occlusion moment (summit into cosmos), the
                 // quench's sibling at the other act edge. Its colour ramp runs THROUGH the
                 // authored SEAM_56_AURORA_BRIDGE tone, so it is continuous with the shipped
@@ -3028,6 +3157,73 @@ export class OdysseyBoardController {
                 } catch (error) {
                     console.warn('[OdysseyBoard] summit birds unavailable (non-fatal):', error);
                     this.summitBirds = null;
+                }
+                // THE LOWLAND FLIGHTS — gulls over the surf, swallows over the meadows and a skein
+                // of geese across the massif (chapters 3-4, composition/odyssey-flights.js). Same
+                // pattern as the summit birds: one opaque instanced draw created here, so the
+                // board-presentation compile below builds it before the reveal; uniforms after.
+                // BISECT LEVER: ?odysseyNoFlights=1.
+                try {
+                    if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoFlights')) {
+                        this.flights = createOdysseyFlights({
+                            hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
+                            sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
+                        });
+                        this.scene.add(this.flights.mesh);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] flights unavailable (non-fatal):', error);
+                    this.flights = null;
+                }
+                // THE MASSIF'S EAGLE (chapters 4-5, composition/odyssey-eagle.js). Created HIDDEN
+                // and GPU-free like the whale pass: fetched as chapter 4 approaches, live-compiled
+                // while idle, only then drawn (see _tickEagle). BISECT LEVER: ?odysseyNoEagle=1.
+                try {
+                    if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoEagle')) {
+                        this.eagle = createOdysseyEagle({
+                            hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
+                            sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
+                        });
+                        this.scene.add(this.eagle.group);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] eagle unavailable (non-fatal):', error);
+                    this.eagle = null;
+                }
+                // THE AIR (composition/odyssey-air-motes.js): pollen over the shore, down on the
+                // meadows, diamond dust on the climb — one additive draw of world-anchored motes in
+                // a box round the eye, built here (presentation compile), uniforms after. Fewer on
+                // the lower tiers. BISECT LEVER: ?odysseyNoAirMotes=1.
+                try {
+                    if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoAirMotes')) {
+                        const lean = this.qualityName === 'Minimal' || this.qualityName === 'Low';
+                        this.airMotes = createOdysseyAirMotes({
+                            sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
+                            count: lean ? 420 : 900,
+                        });
+                        this.scene.add(this.airMotes.mesh);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] air motes unavailable (non-fatal):', error);
+                    this.airMotes = null;
+                }
+                // THE SUMMIT'S SPINDRIFT (composition/odyssey-summit-spindrift.js): snow torn off the
+                // hero summit streaming west into the banner cloud. Same contract as the motes.
+                // BISECT LEVER: ?odysseyNoSpindrift=1.
+                try {
+                    if (this.oneWorldEnabled && !readBooleanUrlFlag('odysseyNoSpindrift')) {
+                        const hero = ODYSSEY_MASSIFS.find((m) => m.id === 'hero');
+                        const heightAt = this.oneWorld?.heightAt || odysseyWorldHeight;
+                        this.spindrift = createSummitSpindrift({
+                            summit: hero ? findHeroSummit(heightAt, hero) : undefined,
+                            sunColour: this.oneWorld?.cloudPalette?.sunColour || null,
+                            hazeColour: this.oneWorld?.cloudPalette?.skyHorizon || null,
+                        });
+                        this.scene.add(this.spindrift.mesh);
+                    }
+                } catch (error) {
+                    console.warn('[OdysseyBoard] spindrift unavailable (non-fatal):', error);
+                    this.spindrift = null;
                 }
                 this.environmentManager?.setAtmosphereOwned(true);
                 this.thresholdDirector = new ChapterThresholdDirector(this.scene, this.pathRenderer?.pathCurve, {
@@ -4032,6 +4228,7 @@ export class OdysseyBoardController {
             this._steamFogWeight = inWindow ? steamQuenchDensity(quenchT) ** 2 : 0;
             this._steamFogT = quenchT;
         }
+        if (this.oceanVisitors) this._tickOceanVisitors(delta, cameraProgress);
         if (this.cloudBank && Number.isFinite(this._cloudBankBoundary)) {
             // ⚠️ The bank's fast exit is the single largest step left in the 5->6 transition
             // (-81.5 luma at p=0.668; `?odysseyNoCloudBank=1` turns that into -4.4). The
@@ -4061,6 +4258,11 @@ export class OdysseyBoardController {
 
         // The summit birds: time-driven (they wheel), revealed by progress; hidden elsewhere.
         if (this.summitBirds) this.summitBirds.update(this.time, cameraProgress);
+        // The lowland flights (same contract) and the massif's eagle (fetch/compile lifecycle).
+        if (this.flights) this.flights.update(this.time, cameraProgress);
+        if (this.eagle) this._tickEagle(delta, cameraProgress);
+        if (this.airMotes) this.airMotes.update(this.time, cameraProgress);
+        if (this.spindrift) this.spindrift.update(this.time, cameraProgress);
 
         // WAVE 5: release the deferred breach stinger ON the constant — the frame the eye
         // breaks the surface, not the frame the ecotone begins (see _handleChapterSeam).
@@ -5056,9 +5258,29 @@ export class OdysseyBoardController {
             this.whalePass.dispose();
             this.whalePass = null;
         }
+        if (this.oceanVisitors) {
+            this.oceanVisitors.dispose();
+            this.oceanVisitors = null;
+        }
         if (this.summitBirds) {
             this.summitBirds.dispose();
             this.summitBirds = null;
+        }
+        if (this.flights) {
+            this.flights.dispose();
+            this.flights = null;
+        }
+        if (this.eagle) {
+            this.eagle.dispose();
+            this.eagle = null;
+        }
+        if (this.airMotes) {
+            this.airMotes.dispose();
+            this.airMotes = null;
+        }
+        if (this.spindrift) {
+            this.spindrift.dispose();
+            this.spindrift = null;
         }
         this.corridorField = null;
         this.thresholdDirector?.dispose?.();

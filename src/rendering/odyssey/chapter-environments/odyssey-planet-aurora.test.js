@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import {
+    afterEach, describe, expect, it, vi,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
     AURORA_OVAL,
@@ -161,8 +163,27 @@ describe('ch6 auroral crown material (Space overhaul Wave 5)', () => {
 });
 
 describe('ch6 auroral crown in the chapter (Space overhaul Wave 5)', () => {
-    it('hangs off the hero group as ONE extra draw, inside the staging bucket', () => {
+    // Since the 2026-10-20 ringed giant the crown is OPT-IN (?odysseyCh6GiantAurora=1): on the
+    // ringed giant, lit amber by the hole with its pole tipped to the eye, its green curtains
+    // stood off the limb as flames. The mechanics below are kept honest for the opt-in build.
+    const withCrown = () => {
+        vi.stubGlobal('window', { location: { search: '?odysseyCh6GiantAurora=1' } });
+        return createCosmicExpanseEnvironment({ particleCount: 200 });
+    };
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('is not on the ringed giant by default', () => {
+        vi.stubGlobal('window', { location: { search: '' } });
         const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        let crowns = 0;
+        group.userData.heroPlanet.traverse((child) => {
+            if (child.name === 'hero-planet-aurora-crown') crowns += 1;
+        });
+        expect(crowns).toBe(0);
+    });
+
+    it('hangs off the hero group as ONE extra draw, inside the staging bucket', () => {
+        const group = withCrown();
         const { heroPlanet } = group.userData;
         const crowns = [];
         heroPlanet.traverse((child) => {
@@ -173,7 +194,7 @@ describe('ch6 auroral crown in the chapter (Space overhaul Wave 5)', () => {
     });
 
     it('fades with the earth ignite instead of popping in over the Ch5 summit', () => {
-        const group = createCosmicExpanseEnvironment({ particleCount: 200 });
+        const group = withCrown();
         group.userData.chapterOpacity = 1;
         const crown = () => {
             let found = null;

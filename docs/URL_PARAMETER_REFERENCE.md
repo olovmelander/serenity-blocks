@@ -5,7 +5,10 @@ in development and built games. Search by parameter name, purpose, theme or tool
 by category. Expand an entry for accepted values, the default, examples and source files.
 The reference only displays documentation; it never applies flags, navigates, or saves settings.
 
-The catalog documents **747 parameter names in 965 scoped entries**. The Cosmic Noir rebuild
+The catalog documents **755 parameter names in 974 scoped entries**. The Odyssey overhaul (2026-10-20)
+added `odysseyNoVisitors` (the whale shark and manta of the deep ocean), `odysseyCh6GiantAurora`
+(the retired crown on the ringed giant) and `odysseyCh7Throttle` (the warp drive held at a fixed
+throttle for captures), with the Act II and chapter 8 lanes' own levers. The Cosmic Noir rebuild
 (2026-10-20) retired the old theme's readers (`cosmicNoirNoPost`, `cosmicNoirNoMRT`,
 `cosmicNoirNoCompute`, `cosmicNoirBaseline`, `cosmicNoirSeed`, `cosmicNoirPerf` and `perf`,
 `cosmicNoirNoAdaptiveScale`, `cosmicNoirMrtAudit`, `cosmicNoirPreserveDrawingBuffer`,

@@ -28,7 +28,6 @@ import * as THREE from 'three/webgpu';
 import {
     abs,
     atan,
-    attribute,
     clamp,
     cos,
     dot,
@@ -36,9 +35,9 @@ import {
     float,
     log,
     length,
+    materialOpacity,
     max,
     mix,
-    modelWorldMatrix,
     modelWorldMatrixInverse,
     normalize,
     normalView,
@@ -46,8 +45,6 @@ import {
     oneMinus,
     positionLocal,
     positionViewDirection,
-    positionWorld,
-    cameraPosition,
     pow,
     select,
     sin,
@@ -67,6 +64,7 @@ import {
 } from './black-hole-transcendence.tsl.js';
 import { ODYSSEY_WORLD_SUN } from './shared/chapter-profile.js';
 import { auroraSurfaceTerm, createPlanetAuroraCrown } from './odyssey-planet-aurora.js';
+import { createRingedGiantTSL } from './odyssey-ringed-giant.tsl.js';
 
 // ── Nebula void dome — FBM galactic backdrop (-100 backstop; must NOT bloom) ──────
 
@@ -323,14 +321,21 @@ export function createBlackHoleTSL(uTime, uEnergy) {
     // two shadows is drawn at any progress — see updateCosmicExpanseEnvironment).
     horizon.userData.odysseyFadeExempt = true;
     face.add(horizon);
+    // THE OMEN'S ARRIVAL (overhaul 2026-10-20): one reveal for its light — photon ring, lensed
+    // image, disk. These materials fade through their own uniforms (an opacityNode makes
+    // `material.opacity` a dead write), so the chapter's opacity staging never reached them and the
+    // omen popped in whole the frame space opened: +14 luma at the 5->6 boundary once it hangs at
+    // its full size. The chapter drives this uniform instead.
+    const uReveal = uniform(1);
     const photon = createGargantuaPhotonRingTSL(time, {
-        shadowRadius: S, innerRadius: S, outerRadius: S * 1.075,
+        shadowRadius: S, innerRadius: S, outerRadius: S * 1.075, uFade: uReveal,
     });
     photon.mesh.name = 'omen-photon-ring';
     face.add(photon.mesh);
-    const foldMaterial = createLensedFoldMaterialTSL(time, { shadowRadius: S, opacity: 0.85 });
+    const foldMaterial = createLensedFoldMaterialTSL(time, { shadowRadius: S, opacity: 0.85, uFade: uReveal });
     const sweep = Math.PI * 0.96;
-    const foldGeometry = new THREE.TorusGeometry(S * 1.22, S * 0.235, 10, 72, sweep);
+    // Coverage for the far disk's lensed image, 1.0-2.2 S (chapter 7's CH7_FOLD_ARC_SETTINGS).
+    const foldGeometry = new THREE.TorusGeometry(S * 1.6, S * 0.64, 12, 96, sweep);
     const topFold = new THREE.Mesh(foldGeometry, foldMaterial);
     topFold.rotation.z = Math.PI / 2 - sweep / 2;
     topFold.name = 'omen-fold-top';
@@ -346,10 +351,13 @@ export function createBlackHoleTSL(uTime, uEnergy) {
     diskPivot.rotation.order = 'ZYX';
     diskPivot.rotation.set(-(Math.PI / 2 - 0.10), 0, -0.10);
     face.add(diskPivot);
-    const disk = createGargantuaDiskTSL(time, energy, { innerRadius: S * 1.34, outerRadius: S * 4.8 });
+    const disk = createGargantuaDiskTSL(time, energy, {
+        innerRadius: S * 1.34, outerRadius: S * 4.8, uFade: uReveal,
+    });
     disk.mesh.name = 'accretion-disk';
     diskPivot.add(disk.mesh);
 
+    group.userData.uReveal = uReveal;
     group.userData.face = face;
     group.userData.diskPivot = diskPivot;
     group.userData.shadow = horizon;
@@ -621,41 +629,60 @@ export const GALAXY_INCLINATION = 1.05;
 
 export function createDistantGalaxyTSL(uTime) {
     const time = uTime ?? uniform(0);
-    const uCore = uniform(new THREE.Color(0xffe8c0)); // warm bulge
-    const uArm = uniform(new THREE.Color(0x9cc0ff)); // blue-white arm starlight
-    const uKnot = uniform(new THREE.Color(0xff7ab0)); // star-forming knots (HII)
+    // GRAND-DESIGN SPIRAL (overhaul 2026-10-20). The galaxy now hangs at infinity at 7 deg
+    // (GALAXY_SKY_SEAT) — large enough that its paint is read, not glimpsed — so it carries the
+    // Galaxy theme's anatomy, re-derived for one quad: a barred warm bulge over an exponential
+    // disk (the space between arms is never empty), two logarithmic arms of young blue light
+    // streaked ALONG their own spiral, dark dust lanes on the arms' inner edges that dim
+    // everything behind them, pink star-forming knots strung on the arms, and a sparkle of
+    // resolved stars. Every term is bounded; the core stays under the bloom's taste.
+    const uCore = uniform(new THREE.Color(0xffe2b0));
+    const uDisk = uniform(new THREE.Color(0xbfcbe6));
+    const uArm = uniform(new THREE.Color(0x8fb4ff));
+    const uKnot = uniform(new THREE.Color(0xff6fa8));
 
     const p = uv().sub(0.5);
-    const r = length(p).max(1e-4);
-    const ang = atan(p.y, p.x);
+    // Disc radius 0..1 at the quad's feathered edge (0.47).
+    const r = length(p).div(0.47).max(1e-4);
+    const ang = atan(p.y, p.x).add(time.mul(0.0025));
+    const lr = log(r.max(0.006));
+    // Log spiral, pitch ~15 deg: constant along an arm.
+    const k = 1 / Math.tan(0.27);
+    const spiral = ang.sub(lr.mul(k));
+    const armWave = cos(spiral.mul(2.0)).mul(0.5).add(0.5);
+    const arms = pow(armWave, 2.6).mul(smoothstep(0.08, 0.28, r));
+    // Streaks along the arms: noise read on the spiral's own coordinate (long along an arm,
+    // short across it), so it tears into strands instead of round blobs.
+    const along = vec3(cos(spiral).mul(3.1), sin(spiral).mul(3.1), lr.mul(5.5));
+    const strand = latticeNoise3(along).mul(0.6).add(latticeNoise3(along.mul(2.3).add(1.7)).mul(0.4));
+    const fine = latticeNoise3(vec3(p.mul(46.0), 2.7));
+    // Dust lanes on each arm's inner edge.
+    const lane = pow(cos(spiral.mul(2.0).add(0.75)).mul(0.5).add(0.5), 9.0)
+        .mul(smoothstep(0.06, 0.22, r)).mul(oneMinus(smoothstep(0.75, 1.0, r)))
+        .mul(strand.mul(0.8).add(0.4));
+    const extinction = exp(lane.mul(-2.4));
+    // A barred bulge: squeezed along the bar's axis.
+    const bar = vec3(p.x.mul(0.62).add(p.y.mul(0.78)), p.x.mul(-0.78).add(p.y.mul(0.62)), 0.0);
+    const rb = length(vec3(bar.x.mul(0.62), bar.y.mul(1.35), 0.0)).div(0.47);
+    const bulge = exp(rb.mul(rb).div(0.012).negate()).mul(1.15).add(exp(r.div(0.16).negate()).mul(0.35));
+    const disk = exp(r.div(0.36).negate()).mul(0.32).mul(strand.mul(0.5).add(0.75));
+    const young = arms.mul(strand.mul(0.9).add(0.35)).mul(exp(r.div(0.62).negate())).mul(1.1);
+    const knots = smoothstep(0.7, 0.86, fine.mul(0.55).add(strand.mul(0.6))).mul(arms)
+        .mul(smoothstep(0.12, 0.3, r));
+    const sparkle = smoothstep(0.86, 0.97, fine).mul(oneMinus(smoothstep(0.55, 0.95, r))).mul(0.6);
 
-    const disc = oneMinus(smoothstep(0.18, 0.47, r));
-    const bulge = exp(r.mul(r).div(0.0035).negate());
-    const glow = exp(r.div(0.10).negate());
-
-    // Two logarithmic arms (pitch ~17°): phase constant along r = a·e^(bθ).
-    const pitch = Math.tan(0.30);
-    const phase = ang.mul(2.0).sub(log(r.div(0.02)).div(pitch)).add(time.mul(0.01));
-    const armWave = cos(phase);
-    const arms = pow(max(0.0, armWave), 2.5).mul(smoothstep(0.03, 0.10, r)).mul(disc);
-    // Dust lanes: a thin dark band on each arm's inner (leading) edge.
-    const lane = pow(max(0.0, cos(phase.add(0.9))), 10.0).mul(smoothstep(0.04, 0.12, r)).mul(disc);
-    // Clumpy starlight + sparse pink knots along the arms.
-    const clump = fbm3(vec3(p.mul(18.0), 3.1), 2, latticeNoise3);
-    const knots = smoothstep(0.62, 0.78, clump).mul(arms);
-
-    let color = uCore.mul(bulge.mul(1.5));
-    color = color.add(uCore.mul(glow.mul(0.25)));
-    color = color.add(uArm.mul(arms.mul(clump.mul(0.8).add(0.5)).mul(0.75)));
-    color = color.add(uKnot.mul(knots.mul(0.9)));
-    color = color.mul(oneMinus(lane.mul(0.75)));
-
-    const alpha = clamp(bulge.add(glow.mul(0.3)).add(arms.mul(0.8)).mul(disc.mul(0.6).add(0.4)), 0.0, 1.0)
-        .mul(oneMinus(smoothstep(0.42, 0.49, r)));
+    let color = uDisk.mul(disk).add(uArm.mul(young)).add(uKnot.mul(knots.mul(0.9)));
+    color = color.mul(extinction);
+    color = color.add(uCore.mul(bulge).mul(mix(float(1.0), extinction, 0.35)));
+    color = color.add(vec3(0.9, 0.95, 1.0).mul(sparkle));
+    const edge = oneMinus(smoothstep(0.82, 1.0, r));
+    const glowAlpha = clamp(bulge.add(disk.mul(1.6)).add(young.mul(0.9)).add(knots).add(sparkle), 0.0, 1.0);
 
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = color;
-    material.opacityNode = alpha;
+    // ...and it fades with the chapter's staging (setOpacityScale writes materialOpacity; without
+    // it here the galaxy popped in whole the frame space opened).
+    material.opacityNode = glowAlpha.mul(edge).mul(materialOpacity);
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
@@ -740,31 +767,29 @@ export function createNebulaPillarTSL(uTime, uApproach) {
 export function createHeroPlanetTSL(uTime, { aurora = true } = {}) {
     const group = new THREE.Group();
     group.name = 'hero-planet-nebula-anchor';
-    // Pull the gas giant in from the far-left edge so the forward-looking camera
-    // actually frames it: a gentler x/y offset places it inside the frame, upper-
-    // right of and slightly nearer than the black hole rather than half-clipped.
     group.position.set(-62, 46, -640);
 
-    // ONE darkness gate for BOTH aurora halves (surface oval + standing crown): the
-    // chapter ticks this to its spaceReveal each frame, so no aurora can glow while
-    // the sky is still daylight (owner report 2026-08-16). Starts at 0 — the safe
-    // initial state — and the playground's standalone builders default to 1.
+    // ONE darkness gate for BOTH aurora halves (the standing crown below): the chapter ticks this
+    // to its spaceReveal each frame, so no aurora can glow while the sky is still daylight (owner
+    // report 2026-08-16). Starts at 0; the playground's standalone builders default to 1.
     const uAuroraReveal = uniform(0);
-    // ONE sun uniform for the disc, the atmosphere and the rings (the canonical world sun).
-    const uSun = uniform(new THREE.Vector3(...ODYSSEY_WORLD_SUN).normalize());
-    const planet = createHeroPlanetSurfaceTSL(uTime, { aurora, uAuroraReveal, uSun });
-    group.add(planet.mesh);
+    // THE OVERHAUL GIANT (2026-10-20). The banded ball with three additive ring strips is now the
+    // Stellar Drift giant re-derived for Odyssey (odyssey-ringed-giant*.js): a band table torn by
+    // the jets' wind, a ring slab with an optical depth whose shadow falls on the cloud tops, lit
+    // by ONE world light the chapter points at the black hole (uLight) — the giant hangs at one
+    // place in the world and the disk's light gives it a terminator, not a flat full face.
+    const uLight = uniform(new THREE.Vector3(...ODYSSEY_WORLD_SUN).normalize());
+    const uLightColor = uniform(new THREE.Vector3(1.0, 0.86, 0.66));
+    const giant = createRingedGiantTSL(uTime, {
+        radius: HERO_PLANET_RADIUS, uLight, uLightColor,
+    });
+    const planet = giant.surface;
+    group.add(planet.mesh, giant.rings.mesh, giant.air.mesh);
     group.userData.uAuroraReveal = uAuroraReveal;
+    group.userData.uLight = uLight;
+    group.userData.uLightColor = uLightColor;
 
-    const decor = [];
-
-    // WAVE 5 — THE AURORAL CROWN. The standing half of the aurora: four ribbon curtains
-    // (two rings on each pole) merged into ONE geometry sharing ONE material, so the
-    // whole crown is a single draw. It is what breaks the silhouette — the surface term
-    // folded into createHeroPlanetSurfaceTSL cannot leave the disc. Radius must match the
-    // hero sphere below (28) or the curtains will not stand on their own painted oval.
-    // Levered so gpu-split can price BOTH halves in one differential: the lever also
-    // drops the surface term above, because half a price is not a price.
+    const decor = [giant.rings, giant.air];
     if (aurora) {
         const crown = createPlanetAuroraCrown(
             HERO_PLANET_RADIUS,
@@ -774,101 +799,8 @@ export function createHeroPlanetTSL(uTime, { aurora = true } = {}) {
             uAuroraReveal,
         );
         group.add(crown);
-        decor.push(crown);
+        decor.push({ geometry: crown.geometry, material: crown.material });
     }
-
-    // ATMOSPHERE (masterpiece pass). The shell used to be a BackSide fresnel whose back faces
-    // all read N·V < 0 — a CONSTANT 0.34 ring, brightest at its own outer edge, hard-edged,
-    // equally bright on the night side. It is now computed from the view ray's closest
-    // approach to the planet centre: glow peaks AT the limb and falls to zero at the shell
-    // edge, weighted by where that limb point sits against the sun — a bright day limb, a
-    // sunset-tinted terminator, a dark night limb — plus a forward-scatter brightening when the
-    // planet is backlit.
-    const shellRadius = HERO_PLANET_RADIUS * 1.125;
-    const centreW = modelWorldMatrix.mul(vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-    const worldScale = length(modelWorldMatrix.mul(vec4(1.0, 0.0, 0.0, 0.0)).xyz);
-    const rayDir = normalize(positionWorld.sub(cameraPosition));
-    const along = dot(centreW.sub(cameraPosition), rayDir);
-    const closest = cameraPosition.add(rayDir.mul(along)).sub(centreW);
-    const impact = length(closest).div(worldScale.mul(HERO_PLANET_RADIUS));
-    const altitude = clamp(impact.sub(1.0).div(shellRadius / HERO_PLANET_RADIUS - 1.0), 0.0, 1.0);
-    const thickness = pow(oneMinus(altitude), 2.4).mul(oneMinus(smoothstep(0.75, 1.0, altitude)));
-    const sunN = normalize(uSun);
-    const limbSun = dot(normalize(closest), sunN);
-    const day = smoothstep(-0.18, 0.38, limbSun);
-    const sunsetBand = smoothstep(-0.3, -0.02, limbSun).mul(oneMinus(smoothstep(0.02, 0.35, limbSun)));
-    const backlight = pow(clamp(dot(rayDir, sunN), 0.0, 1.0), 6.0);
-    const skyBlue = vec3(0.36, 0.58, 1.0);
-    const sunset = vec3(1.0, 0.52, 0.26);
-    const haloColor = mix(skyBlue, sunset, sunsetBand.mul(0.8));
-    const haloStrength = thickness.mul(day.mul(0.85).add(sunsetBand.mul(0.5)).add(backlight.mul(0.9)));
-    const haloMat = new THREE.MeshBasicNodeMaterial();
-    haloMat.colorNode = haloColor.mul(haloStrength);
-    haloMat.opacityNode = clamp(haloStrength, 0.0, 1.0);
-    haloMat.transparent = true;
-    haloMat.depthWrite = false;
-    haloMat.blending = THREE.AdditiveBlending;
-    haloMat.side = THREE.BackSide;
-    haloMat.userData.emitsBloom = true;
-    const atmosphere = new THREE.Mesh(new THREE.SphereGeometry(shellRadius, 64, 40), haloMat);
-    atmosphere.name = 'hero-planet-atmosphere';
-    group.add(atmosphere);
-    decor.push(atmosphere);
-
-    // Multi-band ring system — three concentric belts with Cassini-style gaps, a procedural
-    // fine-band ripple and a subtle warm/cool tint. ONE shared material (per-mesh aRingColor =
-    // rgb + opacity), now LIT: the planet's analytic shadow falls across the belts, they
-    // brighten in forward scatter when seen against the sun (ice), and their sunlit fraction
-    // follows the plane's angle to the sun.
-    const ringInner = HERO_PLANET_RINGS.inner;
-    const ringOuter = HERO_PLANET_RINGS.outer;
-    const ringColor = [
-        new THREE.Color(0xcdd8ff),
-        new THREE.Color(0xe8d3b0),
-        new THREE.Color(0x9fb6ff),
-    ];
-    const ringOpacity = [0.34, 0.26, 0.18];
-    const rv = uv().y;
-    const ripple = sin(rv.mul(48.0)).mul(0.5).add(0.5).mul(0.5)
-        .add(0.5);
-    const feather = smoothstep(0.0, 0.12, rv).mul(oneMinus(smoothstep(0.85, 1.0, rv)));
-    const aRingColor = attribute('aRingColor', 'vec4');
-    const ringCentre = modelWorldMatrix.mul(vec4(0.0, 0.0, 0.0, 1.0)).xyz;
-    const ringPlanetR = length(modelWorldMatrix.mul(vec4(1.0, 0.0, 0.0, 0.0)).xyz).mul(HERO_PLANET_RADIUS);
-    const oc = positionWorld.sub(ringCentre);
-    const towardSun = dot(oc, sunN);
-    const discr = towardSun.mul(towardSun).sub(dot(oc, oc).sub(ringPlanetR.mul(ringPlanetR)));
-    const planetShadow = smoothstep(0.0, ringPlanetR.mul(ringPlanetR).mul(0.06), discr)
-        .mul(smoothstep(0.0, ringPlanetR.mul(0.1), towardSun.negate()));
-    const ringNormalW = normalize(modelWorldMatrix.mul(vec4(0.0, 0.0, 1.0, 0.0)).xyz);
-    const ringLit = abs(dot(ringNormalW, sunN)).mul(0.65).add(0.35);
-    const ringForward = pow(clamp(dot(normalize(positionWorld.sub(cameraPosition)), sunN), 0.0, 1.0), 6.0);
-    const ringLight = ringLit.mul(oneMinus(planetShadow.mul(0.85))).add(ringForward.mul(1.1));
-    const ringMat = new THREE.MeshBasicNodeMaterial();
-    ringMat.colorNode = aRingColor.xyz.mul(ripple).mul(ringLight);
-    ringMat.opacityNode = feather.mul(ripple).mul(aRingColor.w);
-    ringMat.transparent = true;
-    ringMat.depthWrite = false;
-    ringMat.blending = THREE.AdditiveBlending;
-    ringMat.side = THREE.DoubleSide;
-    // Additive, no depth write: the DoubleSide back/front split pass buys nothing.
-    ringMat.forceSinglePass = true;
-    ringInner.forEach((inner, bandIndex) => {
-        const outer = ringOuter[bandIndex];
-        const color = ringColor[bandIndex];
-        const opacity = ringOpacity[bandIndex];
-        const geometry = new THREE.RingGeometry(inner, outer, 128, 2);
-        const n = geometry.attributes.position.count;
-        const arr = new Float32Array(n * 4);
-        for (let i = 0; i < n; i += 1) {
-            arr[i * 4] = color.r; arr[i * 4 + 1] = color.g; arr[i * 4 + 2] = color.b; arr[i * 4 + 3] = opacity;
-        }
-        geometry.setAttribute('aRingColor', new THREE.BufferAttribute(arr, 4));
-        const ring = new THREE.Mesh(geometry, ringMat);
-        ring.rotation.set(...HERO_PLANET_RINGS.euler);
-        group.add(ring);
-        decor.push(ring);
-    });
 
     return {
         group,

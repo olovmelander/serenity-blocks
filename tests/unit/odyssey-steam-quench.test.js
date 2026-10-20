@@ -6,6 +6,7 @@ import path from 'node:path';
 import * as THREE from 'three/webgpu';
 import {
     STEAM_QUENCH_APPROACH_HALF_WIDTH,
+    STEAM_QUENCH_DARK_FRACTION,
     STEAM_QUENCH_EXIT_HALF_WIDTH,
     STEAM_QUENCH_FOG_DENSITY,
     STEAM_QUENCH_HALF_WIDTH,
@@ -115,13 +116,14 @@ describe('steam quench brightness + fog occlusion (seamless pass 2026-10-02)', (
         }
         // No steeper than 1.25x an even ramp of the same rise over the same span.
         const span = 0.65 - 0.08;
-        const even = (STEAM_QUENCH_LUMA_CAP * (1 - 0.21)) / span;
+        const even = (STEAM_QUENCH_LUMA_CAP * (1 - STEAM_QUENCH_DARK_FRACTION)) / span;
         expect(steepest).toBeLessThan(even * 1.3);
         expect(steamQuenchLumaCap(0.9)).toBeCloseTo(STEAM_QUENCH_LUMA_CAP, 9);
         // Where the vapour is already dense (the act gate), it is still well short of its peak.
         const gateT = steamQuenchSeamT(0.0649 - ONE_WORLD_ACT_MARGIN, 0.0649);
         expect(steamQuenchDensity(gateT)).toBeGreaterThan(0.85);
-        expect(steamQuenchLumaCap(gateT)).toBeLessThan(STEAM_QUENCH_LUMA_CAP * 0.35);
+        // 0.35 -> 0.42 with the dark fraction's 0.21 -> 0.30 (Act I overhaul): still well short.
+        expect(steamQuenchLumaCap(gateT)).toBeLessThan(STEAM_QUENCH_LUMA_CAP * 0.42);
     });
 
     it('occludes near rock through scene fog, at no extra draw (the shell still opts out)', () => {

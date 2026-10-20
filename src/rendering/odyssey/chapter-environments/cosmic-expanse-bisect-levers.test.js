@@ -103,12 +103,18 @@ describe('ch6 bisect levers (Space overhaul Wave 0)', () => {
         expect(group.userData.entryContinuity.clutter).toHaveLength(1);
     });
 
-    it('?odysseyCh6NoAurora=1 withholds BOTH halves of the hero crown', () => {
-        // Half a lever is not a lever: the curtain mesh is a draw, but the disc term is
-        // extra fragment ALU inside the hero's own material, and a differential that
-        // priced only one of them would under-report the feature.
-        const lit = buildWithSearch('');
-        const dark = buildWithSearch('?odysseyCh6NoAurora=1');
+    it('?odysseyCh6NoAurora=1 withholds the opt-in hero crown', () => {
+        // The ringed giant (2026-10-20 overhaul) carries no crown by default; the retired crown
+        // is opt-in for comparison (?odysseyCh6GiantAurora=1), and NoAurora still withholds it.
+        expect((() => {
+            let n = 0;
+            buildWithSearch('').userData.heroPlanet.traverse((c) => {
+                if (c.name === 'hero-planet-aurora-crown') n += 1;
+            });
+            return n;
+        })()).toBe(0);
+        const lit = buildWithSearch('?odysseyCh6GiantAurora=1');
+        const dark = buildWithSearch('?odysseyCh6GiantAurora=1&odysseyCh6NoAurora=1');
         const crowns = (group) => {
             let n = 0;
             group.userData.heroPlanet.traverse((c) => {

@@ -44,8 +44,11 @@ export const CH7_FALL = Object.freeze({
     nearSurface: 150,
     /** Local progress by which the hole has drifted onto the view axis. */
     centred: 0.3,
-    /** The window onto the interior opens over this u range (u = local/horizon). */
-    portalFrom: 0.55,
+    /** The window onto the interior opens over this u range (u = local/horizon). 0.55 until the
+     * 2026-10-20 overhaul: the shadow had swallowed most of the frame (local 0.3, ~50 deg) while
+     * the window was still ~80 % black — a dead frame at the crossing. It now glimmers from where
+     * the shadow is ~22 deg (still shut at local 0.2), so the interior is already moving by then. */
+    portalFrom: 0.46,
     portalTo: 1.0,
     /** The disk-plane crossing: the band's tilt sweeps through edge-on. */
     diskTiltRest: 0.10,
