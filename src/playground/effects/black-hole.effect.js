@@ -34,8 +34,8 @@ const STREAK_SPACING = 0.9;
  *   board=1                 draw a stand-in board and launch fed pieces from it
  *   reduce=1                reduced-motion behaviour
  *   icon=1                  the theme-icon framing (iconFov, iconRoll, iconAz, iconEl override it)
- *   disk= ring= heat=       scale what the director set; sky= stars= doppler= bloom= exposure= set
- *                           the term outright — for bisecting a look one term at a time
+ *   disk= ring= heat=       scale what the director set; sky= stars= doppler= corona= nebula= bloom=
+ *                           exposure= set the term outright — for bisecting a look one term at a time
  */
 export function create({
     scene, camera, renderer, params,
@@ -122,13 +122,14 @@ export function create({
     const overrides = [
         ['disk', world.uniforms.diskGain], ['ring', world.uniforms.ringGain], ['sky', world.uniforms.skyGain],
         ['stars', world.uniforms.starGain], ['doppler', world.uniforms.doppler], ['heat', world.uniforms.diskHeat],
+        ['corona', world.uniforms.coronaGain], ['nebula', world.uniforms.nebulaGain],
     ].filter(([key]) => overridden(key));
     const frame = (time, dt) => {
         world.update(time, dt);
         post.update({ energy: world.director.energy, flash: world.director.flash, ripples: world.ripples });
         // The director drives disk, ring and heat each frame; an override scales what it set.
         for (const [key, target] of overrides) {
-            const outright = ['sky', 'stars', 'doppler'].includes(key);
+            const outright = ['sky', 'stars', 'doppler', 'corona', 'nebula'].includes(key);
             target.value = outright ? gain(key, target.value) : target.value * gain(key, 1);
         }
         if (params.has('bloom') && post.bloomNode) post.bloomNode.strength.value = number('bloom', 0);

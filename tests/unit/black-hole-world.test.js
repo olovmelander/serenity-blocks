@@ -9,7 +9,8 @@ import { DISK_COS_TILT, DISK_SIN_TILT } from '../../src/themes/black-hole/black-
 import { HOLE, HOTSPOT_SLOTS, WAVE_SLOTS } from '../../src/themes/black-hole/black-hole-lens.js';
 import { TURN_WRAP } from '../../src/themes/black-hole/black-hole-matter.js';
 import {
-    bakeDiskTexture, bakeSkyRows, bakeSkyTexture, createRandom, valueNoise2, valueNoise3,
+    LATTICE_SIZE, LATTICE_SLICE, bakeDiskTexture, bakeLattice, bakeSkyRows, bakeSkyTexture, createRandom,
+    sampleLattice, valueNoise2, valueNoise3,
 } from '../../src/themes/black-hole/black-hole-noise.js';
 import {
     QUALITY_PRESETS, normalizeBlackHoleQuality, resolveBlackHoleQuality,
@@ -153,6 +154,42 @@ describe('Black Hole bakes', () => {
         expect(across).toBeGreaterThan(along * 2);
     });
 
+    it('bakes a lattice whose second channel of each pair is the first one slice on', () => {
+        const lattice = bakeLattice(17);
+        expect(lattice).toHaveLength(LATTICE_SIZE * LATTICE_SIZE * 4);
+        expect(Array.from(lattice)).toEqual(Array.from(bakeLattice(17)));
+        expect(Array.from(lattice)).not.toEqual(Array.from(bakeLattice(18)));
+        // G is R and A is B read at xy + SLICE (wrapped): one fetch then holds two z-slices.
+        const at = (x, y, channel) => lattice[((y % LATTICE_SIZE) * LATTICE_SIZE + (x % LATTICE_SIZE)) * 4 + channel];
+        for (const [x, y] of [[0, 0], [5, 200], [250, 250], [255, 3]]) {
+            expect(at(x, y, 1)).toBe(at(x + LATTICE_SLICE[0], y + LATTICE_SLICE[1], 0));
+            expect(at(x, y, 3)).toBe(at(x + LATTICE_SLICE[0], y + LATTICE_SLICE[1], 2));
+        }
+        // The CPU twin: lattice points read back exactly, and the field between them is smooth
+        // and spread the way the sky's thresholds were set for (three octaves: mean 0.48, sd 0.11).
+        const [field] = sampleLattice(lattice, 3, 4, 2);
+        expect(field).toBeCloseTo(at(3 + 2 * LATTICE_SLICE[0], 4 + 2 * LATTICE_SLICE[1], 0) / 255, 6);
+        const random = createRandom(3);
+        const values = [];
+        for (let i = 0; i < 4000; i += 1) {
+            const z = random() * 2 - 1;
+            const turn = random() * Math.PI * 2;
+            const r = Math.sqrt(1 - z * z);
+            const d = [r * Math.cos(turn), r * Math.sin(turn), z];
+            const read = (f, o) => sampleLattice(lattice, d[0] * f + o[0], d[1] * f + o[1], d[2] * f + o[2])[0];
+            values.push(read(2.3, [3.1, -1.7, 5.3]) * 0.55 + read(5.1, [-4.2, 2.9, 0.7]) * 0.3
+                + read(11.3, [1.3, 7.7, -2.1]) * 0.15);
+        }
+        const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+        const spread = Math.sqrt(values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length);
+        expect(mean).toBeGreaterThan(0.42);
+        expect(mean).toBeLessThan(0.54);
+        expect(spread).toBeGreaterThan(0.08);
+        expect(spread).toBeLessThan(0.15);
+        expect(Math.min(...values)).toBeGreaterThanOrEqual(0);
+        expect(Math.max(...values)).toBeLessThanOrEqual(1);
+    });
+
     it('bakes a galaxy with a bright band, a dark pole and stars where the band is', () => {
         const [width, height] = [96, 48];
         const sky = bakeSkyTexture(width, height, 11);
@@ -265,12 +302,15 @@ describe('Black Hole world', () => {
         const watch = (target, label) => target.addEventListener('dispose', () => disposed.push(label));
         watch(world.diskTexture, 'gas');
         watch(world.skyTexture, 'sky');
+        watch(world.latticeTexture, 'lattice');
         watch(world.lensMaterial, 'lens');
         watch(world.lens.geometry, 'shell');
         world.matter.materials.forEach((material, index) => watch(material, `matter${index}`));
         world.dispose();
         world.dispose();
-        expect(disposed.sort()).toEqual(['gas', 'lens', 'matter0', 'matter1', 'matter2', 'matter3', 'shell', 'sky']);
+        expect(disposed.sort()).toEqual([
+            'gas', 'lattice', 'lens', 'matter0', 'matter1', 'matter2', 'matter3', 'shell', 'sky',
+        ]);
         expect(scene.children).toHaveLength(0);
         expect(() => world.update(1, STEP)).not.toThrow();
     });
@@ -286,7 +326,26 @@ describe('Black Hole world', () => {
         expect(world.diskTexture.image.data).toBe(bakes.disk.data);
         expect(world.skyTexture.colorSpace).toBe(THREE.SRGBColorSpace);
         expect(world.diskTexture.generateMipmaps).toBe(true);
+        // The sky's 3D noise: raw white noise, repeating both ways, read at level 0 only.
+        expect(world.latticeTexture.image.data).toBe(bakes.lattice.data);
+        expect(world.latticeTexture.colorSpace).toBe(THREE.NoColorSpace);
+        expect(world.latticeTexture.wrapS).toBe(THREE.RepeatWrapping);
+        expect(world.latticeTexture.wrapT).toBe(THREE.RepeatWrapping);
+        expect(world.latticeTexture.generateMipmaps).toBe(false);
         expect(() => new BlackHoleWorld({ scene: null })).toThrow(TypeError);
+    });
+
+    it('makes its own lattice when the bakes it is handed predate it', () => {
+        const { disk, sky } = bakeBlackHoleTextures({ skySize: [24, 12] }, BLACK_HOLE_SEED);
+        const world = new BlackHoleWorld({
+            scene: new THREE.Scene(),
+            camera: new THREE.PerspectiveCamera(60, 1.6, 1, 20000),
+            quality: 'Minimal',
+            bakes: { disk, sky },
+        });
+        worlds.push(world);
+        expect(world.latticeTexture.image.width).toBe(LATTICE_SIZE);
+        expect(world.latticeTexture.image.data).toHaveLength(LATTICE_SIZE * LATTICE_SIZE * 4);
     });
 });
 
