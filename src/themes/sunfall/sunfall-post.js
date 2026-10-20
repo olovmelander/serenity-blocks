@@ -44,7 +44,7 @@ import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { sceneSamples } from '../shared/scene-antialias.js';
 import { resolveSunfallQuality } from './sunfall-quality.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 export const BLOOM_THRESHOLD = 1.15;
 export const BLOOM_KNEE = 0.45;

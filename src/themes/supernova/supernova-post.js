@@ -47,7 +47,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { snHash21, snLuma, snMax3 } from './supernova-tsl.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no rays and no streak). `rays` and

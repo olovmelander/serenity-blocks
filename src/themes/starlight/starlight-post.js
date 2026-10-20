@@ -45,7 +45,7 @@ import {
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { slHash21, slLuma, slMax3 } from './starlight-tsl.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode. `fringe` = the chromatic split (two more

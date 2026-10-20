@@ -155,3 +155,26 @@ ring air, the heavier ring shader, the sky's mist): well under 1 ms against the 
 120 fps frame. Delivered frame rate is unchanged (210–230 fps uncapped in both arms; the frame is
 CPU-bound at ~3.2 ms p50 in both). Not run: the packaged Electron perf lane and the integrated GPU.
 The level-up repaint landed after this measurement; it is CPU-side slot writes only (no GPU work).
+
+## 7. The icon (2026-10-20)
+
+The theme has a new icon (`src/themes/chromadelic-highway/chromadelic-highway-theme-icon.png`,
+with the same bytes at `public/assets/themes/`). The old one was an illustration from before the
+2026-09 overhaul (concentric yellow rings, a striped road, scattered planets); the new one is a
+frame of the shipping world through the playground's icon lens, which the effect now has
+(`icon=1`: the lens looks straight down the road at the arches' vanishing point, closed to
+`iconFov`, with `iconYaw` and `iconPitch` in radians; `window.__chromadelic.iconLens =
+{ fov, yaw, pitch }` turns it live for a contact sheet):
+
+`/playground.html?effect=chromadelic-highway&t=20&quality=Ultra&icon=1&iconFov=40&iconPitch=-0.07`
+
+captured in a 1000 × 852 window at 1.5× (1500 × 1278), cropped to a 1176 px square round
+(750, 665), given a colour lift (contrast 1.12, saturation 1.3, brightness 1.22) and baked as a
+512 px circle on a transparent ground. Pitching the lens down a little keeps the three arches
+whole inside the circle and gives the rainbow road the lower half; `t=20` stands on the prism
+movement, so every lane colour is in the frame. Turning the lens left to centre the road
+(`iconYaw` 0.09–0.18) brings the striped planet in at the top-left but pushes the arches out of
+the circle; wider lenses (50–54°) keep both but make the arches too small to read at the picker's
+88 px. The reading at that size is the test: arches, then the road.
+
+![Before, the new icon, and its neighbours at 220 px and at picker size](chromadelic-highway-captures/icon-sheet.jpg)
