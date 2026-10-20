@@ -39,7 +39,7 @@ import { REST_RIG, readLayoutRects, restVerticalFov } from '../../themes/shiftin
 export const meta = {
     id: 'shifting-sands',
     title: 'Shifting Sands (full world)',
-    description: 'Arrakis at the twin-sun dusk: the erg, the Sentinel, the worm, spice and sand.',
+    description: 'Twin-sun dusk over the dune sea: the erg, the Sentinel, the worm, gold dust and sand.',
 };
 
 function num(params, key, fallback = 0) {

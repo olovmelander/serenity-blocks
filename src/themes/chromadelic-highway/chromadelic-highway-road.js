@@ -97,7 +97,7 @@ export function laneCore(hex) {
 export function createRoad({ segments = 100, shared, features = {} } = {}) {
     const {
         uTime, uTravel, uPulse, uHaze, uRingPalette, uGateFar, waves,
-        uViewportPx, uCardRectPx, uCardRadiusPx, uApron,
+        uViewportPx, uCardRectPx, uCardRadiusPx, uApron, uDEmerge,
     } = shared;
     const f = {
         dashes: true, sheen: true, glitter: true, ...features,
@@ -106,6 +106,7 @@ export function createRoad({ segments = 100, shared, features = {} } = {}) {
     const uLaneCore = uniformArray(LANE_COLORS_HEX.map((h) => laneCore(h)), 'color');
     const uBrightness = uniform(1.0);
     const uGlassLift = uniform(0); // capped reactive lift of the floor (≤ 0.1)
+    const uPoolGain = uniform(0.16); // the rings' light pools on the glass
 
     const geometry = new THREE.PlaneGeometry(ROAD_HALF_WIDTH * 2, ROAD_LENGTH, 1, segments);
     geometry.rotateX(-Math.PI / 2);
@@ -191,16 +192,22 @@ export function createRoad({ segments = 100, shared, features = {} } = {}) {
         const ringCol = uRingPalette.element(int(clamp(slot, 0.0, 15.0)));
         const zGate = z.sub(dG);
         const dGate = float(280.0).sub(zGate); // gate distance from the camera
+        // Shown only under a ring that has come out from behind the card: the slot of a ring still
+        // hidden there may hold an older ring's style until the world locks the new one.
         const gateLife = smoothstep(uGateFar, uGateFar.add(450.0), zGate)
-            .mul(smoothstep(150.0, 330.0, dGate));
+            .mul(smoothstep(150.0, 330.0, dGate))
+            .mul(smoothstep(uDEmerge.add(250.0), uDEmerge, dGate));
 
         // Wet-glass fresnel (dark at the bottom edge, glowing toward the horizon).
         const V = normalize(cameraPosition.sub(positionWorld));
         const F = float(0.04).add(float(0.96).mul(pow(float(1.0).sub(clamp(V.y, 0.0, 1.0)), 5.0)));
 
         const gate = chdLineAA(dG, float(0.9), fwS).mul(0.6);
-        const pool = exp(max(dG, 0.0).div(65.0).negate()).mul(step(0.0, dG)).mul(F.mul(0.7).add(0.3))
-            .mul(0.1);
+        // The ring's light on the glass: a pool spilling toward the camera (and a little past the
+        // gate), brightest on the wet sheen, so every ring colours the road it flies over.
+        const pool = exp(abs(dG).div(mix(float(38.0), float(110.0), step(0.0, dG))).negate())
+            .mul(F.mul(0.7).add(0.3))
+            .mul(uPoolGain);
 
         // Travelling event light (capped): lifts LINES, barely lifts the floor.
         const w = chdWaves(z, waves, core);
@@ -256,7 +263,7 @@ export function createRoad({ segments = 100, shared, features = {} } = {}) {
         mesh,
         material,
         uniforms: {
-            uLaneTint, uLaneCore, uBrightness, uGlassLift,
+            uLaneTint, uLaneCore, uBrightness, uGlassLift, uPoolGain,
         },
         dispose() {
             geometry.dispose();

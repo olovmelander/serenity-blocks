@@ -6,7 +6,7 @@
  *    low sun rakes its left flank; its front face sits in violet shade.
  *  - Two companion spires beside it and a few small outcrops in the left zone (dark silhouettes
  *    against the sun-side haze).
- *  - The Shield Wall: a long crenellated escarpment on the far horizon that the suns set toward,
+ *  - The Rampart: a long crenellated escarpment on the far horizon that the suns set toward,
  *    almost dissolved in haze — the last depth layer before the sky.
  *
  * Every formation is a deformed lathe (rings × segments) with analytic, closed-form radius, so
