@@ -98,10 +98,10 @@ export function createSky(u, { layers = 3, nebula = true, deepField = true } = {
             const filaments = thread.mul(thread).mul(thread).mul(smoothstep(0.3, 0.7, c1.b));
             const lanes = smoothstep(0.42, 0.72, c2.r.mul(0.6).add(c1.a.mul(0.4)));
             const tint = mix(u.nebulaA, u.nebulaB, smoothstep(0.3, 0.72, c1.g));
-            const lit = body.mul(body).mul(0.2).add(filaments.mul(body).mul(0.2));
+            const lit = body.mul(body).mul(0.11).add(filaments.mul(body).mul(0.22));
             col.addAssign(tint.mul(lit).mul(band).mul(float(1.0).sub(lanes.mul(0.85))).mul(u.breath.mul(0.6).add(0.4)));
             // And a breath of it everywhere, so the void between is never flat.
-            col.addAssign(mix(u.nebulaB, u.nebulaA, c2.b).mul(c1.a.mul(c1.a)).mul(0.01));
+            col.addAssign(mix(u.nebulaB, u.nebulaA, c2.b).mul(c1.a.mul(c1.a)).mul(0.004));
         }
 
         // ── Stars: one per cell of a lattice the sphere of directions cuts through ──
