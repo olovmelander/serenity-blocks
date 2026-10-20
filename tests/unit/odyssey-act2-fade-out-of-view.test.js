@@ -194,6 +194,28 @@ describe('Act II set pieces fade only out of view (real camera, live spline, hei
         }
     });
 
+    it('fades the geese only once the climb has carried their crossing out of view', () => {
+        const flock = ODYSSEY_FLIGHTS.findIndex((f) => f.id === 'geese');
+        const { window, period } = ODYSSEY_FLIGHTS[flock];
+        // Every place a goose is while its crossing shows (the clock picks one).
+        const places = [];
+        resolveFlightLanes().filter((lane) => lane.flock === flock).forEach((lane) => {
+            for (let t = 0; t < period; t += 1) {
+                const q = flightPositionAt(lane, t);
+                if (q.shown) places.push(new THREE.Vector3(q.x, q.y, q.z));
+            }
+        });
+        const [a, b] = fadeOutSpan((p) => windowWeight(window, p), window[1], rig.cp[5]);
+        for (let p = a - LAG; p <= b; p += STEP) {
+            const camera = poseAt(rig, p);
+            const seen = places.filter((pt) => pointSeen(camera, pt)).length;
+            expect(seen, `geese seen at p=${p.toFixed(4)}`).toBe(0);
+        }
+        // ...and they are there to be seen up the wall: the parked view at L27 holds the skein.
+        const l27 = poseAt(rig, parkOf(rig, 27));
+        expect(places.filter((pt) => pointSeen(l27, pt)).length).toBeGreaterThan(places.length * 0.3);
+    });
+
     it('fades the summit kettle only once the climb has carried it out of view', () => {
         // Every place a bird can be: all round the thermal, at both lane radii and both heights.
         const [cx, cy, cz] = SUMMIT_BIRDS.centre;
