@@ -169,8 +169,11 @@ frame of the shipping world through the playground's icon lens, which the effect
 `/playground.html?effect=chromadelic-highway&t=20&quality=Ultra&icon=1&iconFov=40&iconPitch=-0.07`
 
 captured in a 1000 × 852 window at 1.5× (1500 × 1278), cropped to a 1176 px square round
-(750, 665), given a colour lift (contrast 1.12, saturation 1.3, brightness 1.22) and baked as a
-512 px circle on a transparent ground. Pitching the lens down a little keeps the three arches
+(750, 665), given a colour lift (contrast 1.3, no saturation or brightness change) and baked as a
+512 px circle on a transparent ground. The first bake of this icon (the same evening) was
+rendered on a dev server whose dependency cache loaded three twice, which drops TSL assignments:
+its tunnel was black where the game draws the sky's magenta ring air. It was re-rendered on a
+clean server and re-baked with the gentler lift above. Pitching the lens down a little keeps the three arches
 whole inside the circle and gives the rainbow road the lower half; `t=20` stands on the prism
 movement, so every lane colour is in the frame. Turning the lens left to centre the road
 (`iconYaw` 0.09–0.18) brings the striped planet in at the top-left but pushes the arches out of
