@@ -1,11 +1,14 @@
 /**
- * Synthwave Sunset Theme — an outrun sunset: the slit sun setting behind neon-wireframe
- * mountains, a city skyline, palm silhouettes and an endless neon grid.
+ * Synthwave Sunset Theme — a retro seaside at dusk: the sun sinking into the sea behind a lit
+ * ferris wheel at the end of a pleasure pier, a wooden coaster, onion-dome pavilions, palms and
+ * deco hotels round the bay, the lights mirrored in the surf and the wet sand.
  *
  * The theme is a thin lifecycle shell. The world (synthwave-sunset-world.js) builds and drives
  * every part and solves the composition — the camera yaws so the sun sits in the free zone beside
  * the gameplay board; with no board on screen it faces the sun. The post stack
- * (synthwave-sunset-post.js) does bloom, the lens streak and the grade.
+ * (synthwave-sunset-post.js) does bloom and the grade. Gameplay events are staged as they arrive
+ * and flushed once at the top of the next frame, so a lock and its clear (one synchronous tick)
+ * are seen together and the true combo (ComboTracker) breaks on the lock that cleared nothing.
  *
  * Renderer: ONE node-material path on both WebGPURenderer backends (ADR-0019) — WebGPU where
  * available, its WebGL2 backend otherwise (or with ?forceWebGL=1). No compute, no MRT: every
@@ -19,6 +22,7 @@ import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { resolveTargetFps } from '../theme-frame-pacer.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { ComboTracker } from '../../core/combo-tracker.js';
 import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
 import { RIG } from './synthwave-sunset-tsl.js';
 import {
@@ -72,6 +76,10 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.layoutWatch = null;
         this.appliedBoard = undefined;
         this.eventUnsubscribers = [];
+        this.combo = new ComboTracker();
+        this.staged = {
+            lock: null, lines: 0, cascade: 0, levelUps: 0,
+        };
 
         this.dynamicResolution = {
             enabled: true,
@@ -135,6 +143,10 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.random = Number.isFinite(this.flags.seed) ? this.seededRandom(this.flags.seed) : Math.random;
         this.currentQuality = this.getGraphicsQuality();
         this.time = 0;
+        this.combo = new ComboTracker();
+        this.staged = {
+            lock: null, lines: 0, cascade: 0, levelUps: 0,
+        };
         this.lastFrameTime = null;
         this.baselineFrames = [];
         const drs = this.dynamicResolution;
@@ -151,6 +163,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             quality: this.currentQuality,
             random: () => this.random(),
         }).build();
+        this.world.bindCamera(this.camera);
         this.appliedBoard = readBoardRect();
         const aspect = window.innerWidth / Math.max(1, window.innerHeight);
         this.world.setLayout(aspect, this.appliedBoard, { immediate: true });
@@ -216,7 +229,9 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.renderer = renderer;
         this.isWebGPU = renderer.backend?.isWebGPUBackend === true;
         this.isWebGL = !this.isWebGPU;
-        renderer.setClearColor(0x05030b, 1);
+        // The sea's reflection pass composites over the mirrored sky by alpha, so the clear must
+        // be transparent; the sky dome covers every pixel of the frame itself.
+        renderer.setClearColor(0x000000, 0);
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         renderer.toneMapping = THREE.NoToneMapping;
         renderer.setPixelRatio(this.getDynamicPixelRatio());
@@ -344,17 +359,26 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.clearEventUnsubscribers();
         const reactive = () => this.isActive && window.settings?.backgroundComboEffects === true;
 
+        // Only the local board drives the world (a rival's or a second player's board does not).
+        const local = (data) => data?.player === undefined || data.player === 1;
+        const stage = this.staged;
         const lockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
-            if (reactive()) this.world?.onPieceLock(data?.piece);
+            if (!reactive() || !local(data)) return;
+            this.combo.notePieceLocked();
+            stage.lock = data?.piece ?? {};
         });
         const clearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (reactive()) this.world?.onLineClear(data?.lineCount ?? 1);
+            if (!reactive() || !local(data)) return;
+            this.combo.noteLineClear();
+            stage.lines += Math.max(1, Math.min(4, data?.lineCount ?? 1));
         });
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            if (reactive()) this.world?.onCombo(data?.comboCount ?? 0);
+            if (!reactive() || !local(data)) return;
+            stage.cascade = Math.max(stage.cascade, data?.comboCount ?? 0);
         });
-        const levelUnsub = eventBus.on(EVENTS.LEVEL_UP, () => {
-            if (reactive()) this.world?.onLevelUp();
+        const levelUnsub = eventBus.on(EVENTS.LEVEL_UP, (data) => {
+            if (!reactive() || !local(data)) return;
+            stage.levelUps += 1;
         });
 
         const onPointerMove = (e) => {
@@ -426,13 +450,14 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         sim.pointerX = this.smoothedPointerX;
         sim.pointerY = this.smoothedPointerY;
         this.world.updateCamera(this.camera, sim);
+        this.flushEvents();
         this.world.update(sim);
 
         if (this.postProcessing) {
             const pp = this._postParams;
             pp.time = this.time;
             pp.sunVis = this.world.getSunScreen(this.camera, this.sunUv);
-            pp.bloomBoost = Math.min(1, this.world.sunPulse);
+            pp.bloomBoost = Math.min(1, this.world.bloomBoost);
             this.postProcessing.update(pp);
             this.postProcessing.render();
         } else if (this.passThrough) {
@@ -441,6 +466,28 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
 
         if (this.flags.baseline) this.trackBaseline(wallDelta);
         this.updateDynamicResolution(wallDelta);
+    }
+
+    /**
+     * Hand the frame's staged events to the world: the level, the lock, its lines (one LINE_CLEAR
+     * per wave, so cascades add shells), then the true combo — 0 when this lock cleared nothing
+     * after a chain.
+     */
+    flushEvents() {
+        const stage = this.staged;
+        if (!this.world) return;
+        if (stage.levelUps > 0) this.world.onLevelUp();
+        if (stage.lock) this.world.onPieceLock(stage.lock);
+        if (stage.lines > 0) this.world.onLineClear(stage.lines);
+        if (stage.cascade > 0) this.world.onCombo(stage.cascade);
+        // ComboTracker resets on the NEXT lock; a lock with no clear in its own tick breaks the
+        // chain now (lock and clear are emitted together), so the coaster lets go on time.
+        if (stage.lock && stage.lines === 0) this.world.onChain(0);
+        else if (stage.lines > 0) this.world.onChain(this.combo.combo);
+        stage.lock = null;
+        stage.lines = 0;
+        stage.cascade = 0;
+        stage.levelUps = 0;
     }
 
     // ─────────────────────────────────────────────────────────────────────────

@@ -13,16 +13,31 @@ import * as THREE from 'three/webgpu';
 
 import SynthwaveSunsetTheme from '../../src/themes/synthwave-sunset/synthwave-sunset-theme.js';
 import {
+    DUSK,
+    PIECE_COLORS,
     SynthwaveWorld,
     WORLD_QUALITY,
     boardRectsDiffer,
 } from '../../src/themes/synthwave-sunset/synthwave-sunset-world.js';
-import { GRID_SPACING, SCROLL_SPEED, SCROLL_WRAP } from '../../src/themes/synthwave-sunset/synthwave-sunset-tsl.js';
+import { RIG, SHORE, SUN } from '../../src/themes/synthwave-sunset/synthwave-sunset-tsl.js';
+import { WHEEL, pierFrame, wheelWorldPosition } from '../../src/themes/synthwave-sunset/synthwave-sunset-layout.js';
+import { COASTER } from '../../src/themes/synthwave-sunset/synthwave-sunset-coaster.js';
+import { shoreLineZ } from '../../src/themes/synthwave-sunset/synthwave-sunset-sea.js';
+import {
+    outwardness, box, lathe, makeOut, prism, roundedRectOutline, tube,
+} from '../../src/themes/synthwave-sunset/synthwave-sunset-geo.js';
+import { HOTEL_WORDS, buildHotels, glyphCode } from '../../src/themes/synthwave-sunset/synthwave-sunset-hotels.js';
 import { POST_LOOK } from '../../src/themes/synthwave-sunset/synthwave-sunset-post.js';
+import { REDUCED_FLASH_SCALE } from '../../src/core/photosensitivity.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const THEME_DIR = path.join(ROOT, 'src/themes/synthwave-sunset');
+
+/** The 1080p solo card: 324 px wide, centred. */
+const BOARD = {
+    x0: (960 - 162) / 1920, y0: 0.21, x1: (960 + 162) / 1920, y1: 0.79,
+};
 
 function installBrowserStubs() {
     const listeners = new Map();
@@ -57,9 +72,40 @@ function fakeWorld() {
         onPieceLock: vi.fn(),
         onLineClear: vi.fn(),
         onCombo: vi.fn(),
+        onChain: vi.fn(),
         onLevelUp: vi.fn(),
         dispose: vi.fn(),
     };
+}
+
+function seeded(seed = 1) {
+    let s = seed;
+    return () => {
+        s = (s * 16807) % 2147483647;
+        return (s - 1) / 2147483646;
+    };
+}
+
+/** A built world with its camera at rest, laid out for the solo board. */
+function builtWorld(quality = 'High') {
+    const world = new SynthwaveWorld({ scene: new THREE.Scene(), quality, random: seeded() }).build();
+    world.setLayout(16 / 9, BOARD, { immediate: true });
+    const camera = new THREE.PerspectiveCamera(world.lens.vfov, world.lens.aspect, RIG.near, RIG.far);
+    world.updateCamera(camera, { time: 0, delta: 0 });
+    world.update({ time: 0, delta: 0 });
+    return { world, camera };
+}
+
+/** Run the world forward `seconds` at 60 Hz from time `t0`. */
+function run(world, camera, t0, seconds) {
+    const steps = Math.round(seconds * 60);
+    let t = t0;
+    for (let i = 0; i < steps; i += 1) {
+        t += 1 / 60;
+        world.updateCamera(camera, { time: t, delta: 1 / 60 });
+        world.update({ time: t, delta: 1 / 60 });
+    }
+    return t;
 }
 
 describe('synthwave-sunset theme wiring', () => {
@@ -71,33 +117,57 @@ describe('synthwave-sunset theme wiring', () => {
         vi.unstubAllGlobals();
     });
 
-    it('routes gameplay events to the world only while backgroundComboEffects is on, and stop() unsubscribes', () => {
+    it('stages the local board\'s events while backgroundComboEffects is on and hands them over once a frame, with the true combo', () => {
         const theme = new SynthwaveSunsetTheme();
         theme.isActive = true;
         const world = fakeWorld();
         theme.world = world;
         theme.setupEventListeners();
 
+        // A lock and its clear arrive in one tick; nothing reaches the world before the flush.
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: { type: 'T', x: 3, rotation: 0 } });
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2 });
         eventBus.emit(EVENTS.COMBO, { comboCount: 3 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
+        expect(world.onPieceLock).not.toHaveBeenCalled();
+        theme.flushEvents();
         expect(world.onPieceLock).toHaveBeenCalledWith({ type: 'T', x: 3, rotation: 0 });
         expect(world.onLineClear).toHaveBeenCalledWith(2);
         expect(world.onCombo).toHaveBeenCalledWith(3);
         expect(world.onLevelUp).toHaveBeenCalledTimes(1);
+        expect(world.onChain).toHaveBeenLastCalledWith(1);
+
+        // A second clearing lock extends the chain; a lock that clears nothing breaks it.
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: { type: 'I', x: 0, rotation: 0 } });
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1 });
+        theme.flushEvents();
+        expect(world.onChain).toHaveBeenLastCalledWith(2);
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: { type: 'O', x: 4, rotation: 0 } });
+        theme.flushEvents();
+        expect(world.onChain).toHaveBeenLastCalledWith(0);
+        // A frame without events hands over nothing.
+        const calls = world.onChain.mock.calls.length;
+        theme.flushEvents();
+        expect(world.onChain.mock.calls.length).toBe(calls);
+
+        // A second board (a rival, a second player) does not drive the world.
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 4, player: 2 });
+        theme.flushEvents();
+        expect(world.onLineClear).toHaveBeenCalledTimes(2);
+
         expect(win.listenerCount('pointermove')).toBe(1);
         expect(win.listenerCount('resize')).toBe(1);
 
         win.settings.backgroundComboEffects = false;
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1 });
-        expect(world.onLineClear).toHaveBeenCalledTimes(1);
+        theme.flushEvents();
+        expect(world.onLineClear).toHaveBeenCalledTimes(2);
 
         win.settings.backgroundComboEffects = true;
         theme.stop();
         expect(world.dispose).toHaveBeenCalledTimes(1);
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1 });
-        expect(world.onLineClear).toHaveBeenCalledTimes(1);
+        expect(world.onLineClear).toHaveBeenCalledTimes(2);
         expect(win.listenerCount('pointermove')).toBe(0);
         expect(win.listenerCount('resize')).toBe(0);
     });
@@ -117,7 +187,11 @@ describe('synthwave-sunset theme wiring', () => {
             // MaterialX noise is a DXC compile pathology here: no calls, no imports.
             expect(src, name).not.toMatch(/\bmx_(?:noise|fractal)\w*\s*\(|import\s*\{[^}]*\bmx_/);
         }
-        const retiredFiles = ['synthwave-shaders.js', 'synthwave-sunset-compute.js', 'synthwave-sunset-materials.js'];
+        // The outrun world is gone: no grid floor, no wireframe mountains, no box city.
+        const retiredFiles = [
+            'synthwave-shaders.js', 'synthwave-sunset-compute.js', 'synthwave-sunset-materials.js',
+            'synthwave-sunset-floor.js', 'synthwave-sunset-skyline.js', 'synthwave-sunset-fx.js',
+        ];
         for (const retired of retiredFiles) {
             expect(existsSync(path.join(THEME_DIR, retired)), retired).toBe(false);
         }
@@ -129,20 +203,20 @@ describe('synthwave-sunset theme wiring', () => {
         theme.resize = vi.fn();
         const drs = theme.dynamicResolution;
         drs.enabled = true;
-        const run = (seconds, frameMs) => {
+        const step = (seconds, frameMs) => {
             for (let t = 0; t < seconds * 1000; t += frameMs) theme.updateDynamicResolution(frameMs / 1000);
         };
 
         // A 30 FPS Target Frame Rate paces renders to ~33 ms: that is not overload.
         win.serenityBlocks = { settingsManager: { get: () => ({ targetFrameRate: 30 }) } };
-        run(5, 33.4);
+        step(5, 33.4);
         expect(drs.scale).toBe(1);
 
         // Uncapped 60 Hz vsync: a real overload lowers the scale, the steady loop restores it.
         delete win.serenityBlocks;
-        run(2, 45);
+        step(2, 45);
         expect(drs.scale).toBeLessThan(1);
-        run(6, 16.7);
+        step(6, 16.7);
         expect(drs.scale).toBe(1);
 
         // Tab switches / long stalls are ignored entirely.
@@ -160,25 +234,17 @@ describe('synthwave-sunset theme wiring', () => {
 });
 
 describe('synthwave-sunset world', () => {
-    const random = (() => {
-        let s = 1;
-        return () => {
-            s = (s * 16807) % 2147483647;
-            return (s - 1) / 2147483646;
-        };
-    })();
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
 
     it('faces the sun with no board and puts it in the free zone left of a solo board', () => {
-        const world = new SynthwaveWorld({ scene: new THREE.Scene(), random });
+        const world = new SynthwaveWorld({ scene: new THREE.Scene(), random: seeded() });
         world.setLayout(16 / 9, null, { immediate: true });
         expect(world.sunScreenX(world.yaw)).toBeCloseTo(0.5, 3);
 
-        // The 1080p solo card: 324 px wide, centred.
-        const board = {
-            x0: (960 - 162) / 1920, y0: 0.21, x1: (960 + 162) / 1920, y1: 0.79,
-        };
-        world.setLayout(16 / 9, board);
-        expect(world.sunScreenX(world.targetYaw)).toBeCloseTo(board.x0 / 2, 3);
+        world.setLayout(16 / 9, BOARD);
+        expect(world.sunScreenX(world.targetYaw)).toBeCloseTo(BOARD.x0 / 2, 3);
         // Layout changes pan (eased), they never jump.
         expect(world.yaw).toBeCloseTo(0, 5);
         const camera = new THREE.PerspectiveCamera();
@@ -187,87 +253,275 @@ describe('synthwave-sunset world', () => {
         expect(world.yaw).toBeLessThan(world.targetYaw);
     });
 
-    it('builds the whole scene in a handful of draws and disposes it', () => {
+    it('sets the sun into the sea behind the wheel\'s lower half, the pier running in from the right', () => {
+        const world = new SynthwaveWorld({ scene: new THREE.Scene(), random: seeded() });
+        const eye = new THREE.Vector3(RIG.x, RIG.height, RIG.z);
+        const hub = wheelWorldPosition().sub(eye);
+        const wheelRadius = Math.atan(WHEEL.radius / hub.length());
+        const offHub = world.sunDir.angleTo(hub.clone().normalize());
+        // The sun shows through the spokes: its disc reaches well inside the rim, below the hub.
+        expect(offHub - SUN.radius).toBeLessThan(wheelRadius - 0.04);
+        expect(offHub).toBeLessThan(wheelRadius + SUN.radius * 0.4);
+        expect(world.sunDir.y).toBeLessThan(hub.clone().normalize().y);
+        // At rest it stands on the sea, partly set.
+        expect(world.sunDir.y).toBeGreaterThan(0);
+        expect(world.sunDir.y).toBeLessThan(Math.sin(SUN.radius));
+        // The pier: its far end under the wheel, its land end on the beach right of the eye.
+        const frame = pierFrame();
+        expect(frame.near.x).toBeGreaterThan(40);
+        expect(frame.near.z).toBeGreaterThan(shoreLineZ(frame.near.x));
+        expect(frame.far.z).toBeLessThan(shoreLineZ(frame.far.x) - 100);
+    });
+
+    it('builds the whole scene in a dozen draws and disposes it', () => {
         const scene = new THREE.Scene();
-        const world = new SynthwaveWorld({ scene, quality: 'High', random }).build();
-        let drawables = 0;
+        const world = new SynthwaveWorld({ scene, quality: 'High', random: seeded() }).build();
+        const drawables = [];
         scene.traverse((obj) => {
-            if (obj.isMesh || obj.isSprite) drawables += 1;
+            if (obj.isMesh || obj.isSprite) drawables.push(obj.name);
         });
-        // sky, floor, mountains, city, palms, cells, sparks, motes
-        expect(drawables).toBe(8);
+        expect(drawables.sort()).toEqual([
+            'SynthwaveCoasterBulbs', 'SynthwaveCoasterStructure', 'SynthwaveCoasterTrain', 'SynthwaveFireworks',
+            'SynthwaveHotels', 'SynthwavePalms', 'SynthwavePierBulbs', 'SynthwavePierStructure', 'SynthwavePromenadeLamps',
+            'SynthwavePromenadeStructure', 'SynthwaveSea', 'SynthwaveSkyDome', 'SynthwaveWheelBulbs',
+            'SynthwaveWheelStructure',
+        ]);
         world.dispose();
         expect(scene.children).toHaveLength(0);
     });
 
-    it('snaps locked-piece cells onto the scrolling grid', () => {
-        const world = new SynthwaveWorld({ scene: new THREE.Scene(), random }).build();
-        world.setLayout(16 / 9, null, { immediate: true });
-        world.update({ time: 37.3, delta: 0 });
-        world.onPieceLock({ type: 'O', x: 4, rotation: 0 });
-        const cell = world.fx.cells.iCell.array;
-        const scroll = (37.3 * SCROLL_SPEED) % SCROLL_WRAP;
-        let lit = 0;
-        for (let i = 0; i < cell.length; i += 4) {
-            if (cell[i + 3] <= 0) continue;
-            lit += 1;
-            const fx = (cell[i] / GRID_SPACING) % 1;
-            const fz = ((((cell[i + 1] - scroll) / GRID_SPACING) % 1) + 1) % 1;
-            expect(Math.abs(Math.abs(fx) - 0.5)).toBeLessThan(1e-6);
-            expect(Math.abs(fz - 0.5)).toBeLessThan(1e-4);
-            expect(cell[i + 2]).toBeCloseTo(37.3, 4); // stored as float32
+    it('builds its solids with their normals pointing out', () => {
+        const a = makeOut();
+        box(a, new THREE.Vector3(3, 1, -2), new THREE.Vector3(2, 0.5, 1), [0, 0, 0, 0]);
+        expect(outwardness(a)).toBeGreaterThan(0);
+        const b = makeOut();
+        tube(b, [new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 4, 0), new THREE.Vector3(1, 8, 0)], 0.5, 6, false, [0, 0, 0, 0]);
+        // A tube's normals point away from its axis: every vertex sits radius out along its own.
+        for (let i = 0; i < b.position.length / 3; i += 1) {
+            const n = new THREE.Vector3().fromArray(b.normal, i * 3);
+            expect(n.length()).toBeCloseTo(1, 5);
         }
-        expect(lit).toBe(4);
+        const c = makeOut();
+        lathe(c, new THREE.Vector3(0, 0, 0), [[2, 0], [2.4, 1], [1.2, 2.5], [0.1, 3.2]], 16, () => [0, 0, 0, 0]);
+        expect(outwardness(c)).toBeGreaterThan(0);
+        // And the triangles wind counter-clockwise seen from outside, matching those normals.
+        const p = (i) => new THREE.Vector3().fromArray(a.position, i * 3);
+        const [i0, i1, i2] = a.index;
+        const faceN = p(i1).sub(p(i0)).cross(p(i2).sub(p(i0))).normalize();
+        expect(faceN.dot(new THREE.Vector3().fromArray(a.normal, i0 * 3))).toBeGreaterThan(0.99);
+    });
+
+    it('builds the hotels from prisms that face out, round ends without repeated points, and signs that spell their words', () => {
+        // A prism on a plan with a quarter-round corner, in a turned basis: every triangle faces
+        // the way its vertices' normals point.
+        const out = makeOut();
+        const along = new THREE.Vector3(0.6, 0, -0.8);
+        const up = new THREE.Vector3(0, 1, 0);
+        const B = { x: along, y: up, z: new THREE.Vector3().crossVectors(along, up) };
+        prism(out, new THREE.Vector3(5, 0, -3), B, roundedRectOutline(20, 12, [5.4, 0.6, 0, 0.6], 8), 0, 18, () => [0, 0, 0, 0]);
+        expect(outwardness(out)).toBeGreaterThan(0);
+        const at = (i) => new THREE.Vector3().fromArray(out.position, i * 3);
+        const nAt = (i) => new THREE.Vector3().fromArray(out.normal, i * 3);
+        for (let t = 0; t < out.index.length; t += 3) {
+            const [i0, i1, i2] = out.index.slice(t, t + 3);
+            const face = at(i1).sub(at(i0)).cross(at(i2).sub(at(i0)));
+            expect(face.dot(nAt(i0).add(nAt(i1)).add(nAt(i2)))).toBeGreaterThan(0);
+        }
+        const stadium = roundedRectOutline(24, 14, [7, 7, 7, 7], 10);
+        stadium.forEach((q, i) => {
+            const r = stadium[(i + 1) % stadium.length];
+            expect(Math.hypot(q[0] - r[0], q[1] - r[1])).toBeGreaterThan(1e-3);
+        });
+
+        // The shader's decode (base-8 rows from the bottom, bit 4 = the left column) gives the
+        // letter back, for every letter on every sign.
+        const decode = (code, gx, gy) => Math.floor((Math.floor((code + 0.5) / 8 ** gy) % 8) / 2 ** (2 - gx)) % 2;
+        const draw = (letter) => [4, 3, 2, 1, 0].map((gy) => [0, 1, 2].map((gx) => decode(glyphCode(letter), gx, gy)).join(''));
+        expect(draw('H')).toEqual(['101', '101', '111', '101', '101']);
+        expect(draw('S')).toEqual(['011', '100', '010', '001', '110']);
+        HOTEL_WORDS.join('').split('').forEach((letter) => expect(() => glyphCode(letter)).not.toThrow());
+
+        // The town: finite geometry, a beacon on every hotel, and all of it behind the seawall.
+        const town = makeOut();
+        const beacons = buildHotels(town, seeded(3));
+        expect(beacons.length).toBeGreaterThanOrEqual(12);
+        expect(town.position.every(Number.isFinite)).toBe(true);
+        const shore = [];
+        for (let x = 0; x <= 1000; x += 2) shore.push([x, shoreLineZ(x)]);
+        let nearest = Infinity;
+        for (let i = 0; i < town.position.length / 3; i += 5) {
+            const x = town.position[i * 3];
+            const z = town.position[i * 3 + 2];
+            for (const [sx, sz] of shore) nearest = Math.min(nearest, Math.hypot(x - sx, z - sz));
+        }
+        expect(nearest).toBeGreaterThan(SHORE.promenade + 4);
+    });
+
+    it('runs a lock\'s chase round the wheel in the piece\'s colour from its column\'s side', () => {
+        const { world } = builtWorld();
+        world.update({ time: 8, delta: 0 });
+        world.onPieceLock({ type: 'S', x: 0, rotation: 0 });
+        const left = world.u.chase0.value.y;
+        expect(world.u.chase0.value.x).toBeCloseTo(8, 6);
+        expect(world.u.chaseCol0.value.getHex()).toBe(PIECE_COLORS.S.getHex());
+        world.onPieceLock({
+            type: 'J', x: 8, rotation: 0, color: '#4FB4FF',
+        });
+        const right = world.u.chase1.value.y;
+        // Both start near the bottom of the wheel (−π/2), the left column left of it.
+        expect(left).toBeLessThan(-Math.PI / 2);
+        expect(right).toBeGreaterThan(-Math.PI / 2);
+        expect(Math.abs(left + Math.PI / 2)).toBeLessThan(0.8);
+        expect(world.u.chaseCol1.value.getHex()).toBe(new THREE.Color('#4FB4FF').getHex());
         world.dispose();
     });
 
-    it('sprays the combo burst from the sun across the whole screen', () => {
-        const world = new SynthwaveWorld({ scene: new THREE.Scene(), random }).build();
-        const board = {
-            x0: (960 - 162) / 1920, y0: 0.21, x1: (960 + 162) / 1920, y1: 0.79,
-        };
-        world.setLayout(16 / 9, board, { immediate: true });
-        world.update({ time: 12, delta: 0 });
-        const camera = new THREE.PerspectiveCamera(world.lens.vfov, world.lens.aspect, 0.5, 8000);
-        world.updateCamera(camera, { time: 0, delta: 0 });
-        camera.updateProjectionMatrix();
-        const sun = new THREE.Vector2();
-        world.getSunScreen(camera, sun);
+    it('fires one shell per line from the barge and bursts them in the free sky left of the board', () => {
+        const { world, camera } = builtWorld();
+        world.onPieceLock({ type: 'T', x: 4, rotation: 0 });
+        world.onLineClear(3);
+        expect(world.fireworks.pending).toHaveLength(3);
+        // The first shell takes the locking piece's colour.
+        expect(world.fireworks.pending[0].color.getHex()).toBe(PIECE_COLORS.T.getHex());
+        const bursts = world.fireworks.pending.map((b) => b.pos.clone());
+        run(world, camera, 0, 3);
+        expect(world.fireworks.pending).toHaveLength(0);
+        for (const pos of bursts) {
+            const ndc = pos.project(camera);
+            const x = ndc.x * 0.5 + 0.5;
+            const y = 0.5 - ndc.y * 0.5;
+            // Left of the board, in the upper half of the frame, above the horizon.
+            expect(x).toBeLessThan(BOARD.x0);
+            expect(x).toBeGreaterThan(-0.05);
+            expect(y).toBeGreaterThan(0.02);
+            expect(y).toBeLessThan(0.5);
+        }
+        // Four lines: the finale volley and a gold willow.
+        world.onLineClear(4);
+        expect(world.fireworks.pending).toHaveLength(WORLD_QUALITY.High.finale + 1);
+        expect(world.fireworks.pending.at(-1).kind).toBe('willow');
+        world.dispose();
+    });
 
-        world.onCombo(4);
-        const { iSpawn, iVel, iMotion } = world.fx.sparks;
-        const start = new THREE.Vector3();
-        const end = new THREE.Vector3();
-        const ends = [];
-        for (let i = 0; i < iSpawn.count; i += 1) {
-            if (iSpawn.array[i * 4 + 3] < 0) continue; // parked slot
-            const drag = iMotion.array[i * 4];
-            start.fromArray(iSpawn.array, i * 4).project(camera);
-            // Every spark starts on the sun's disc (screen UV, y down)...
-            expect(Math.abs(start.x * 0.5 + 0.5 - sun.x)).toBeLessThan(0.12);
-            expect(Math.abs(0.5 - start.y * 0.5 - sun.y)).toBeLessThan(0.2);
-            // ...and its drag-limited flight ends somewhere on (or just past) the screen.
-            end.fromArray(iSpawn.array, i * 4).addScaledVector(
-                new THREE.Vector3().fromArray(iVel.array, i * 4),
-                1 / drag,
-            ).project(camera);
-            ends.push([end.x, end.y]);
+    it('lifts the coaster a notch per link and rides the circuit when a chain of three breaks', () => {
+        const { world, camera } = builtWorld();
+        let t = 0;
+        for (let link = 1; link <= 4; link += 1) {
+            world.onChain(link);
+            t = run(world, camera, t, 2.5);
         }
-        expect(ends.length).toBeGreaterThan(100);
-        const xs = ends.map((e) => e[0]);
-        const ys = ends.map((e) => e[1]);
-        // The spray reaches both screen edges and the top and bottom, not just the sun's zone.
-        expect(Math.min(...xs)).toBeLessThan(-0.85);
-        expect(Math.max(...xs)).toBeGreaterThan(0.85);
-        expect(Math.min(...ys)).toBeLessThan(-0.6);
-        expect(Math.max(...ys)).toBeGreaterThan(0.85);
-        // ...and covers the screen: sparks land in (nearly) every cell of a 4 × 3 grid.
-        const cells = new Set();
-        for (const [x, y] of ends) {
-            if (Math.abs(x) > 1 || Math.abs(y) > 1) continue;
-            cells.add(`${Math.min(3, Math.floor((x + 1) * 2))},${Math.min(2, Math.floor((y + 1) * 1.5))}`);
+        expect(world.coaster.mode).toBe('lift');
+        const { marks } = world.track;
+        const notch4 = marks.liftFoot + (marks.liftTop - marks.liftFoot) * 0.5;
+        expect(world.coaster.t).toBeCloseTo(notch4, 2);
+        expect(world.u.coasterMeter.value).toBeCloseTo(world.coaster.t, 6);
+
+        world.onChain(0);
+        expect(world.coaster.mode).toBe('ride');
+        // The tyre drive takes it over the crest, then the drop.
+        t = run(world, camera, t, 4.5);
+        expect(world.coaster.t).toBeGreaterThan(marks.liftTop);
+        expect(world.u.coasterRide.value).toBeGreaterThan(0.3);
+        t = run(world, camera, t, 25);
+        expect(world.coaster.mode).toBe('idle');
+        expect(world.coaster.t).toBeCloseTo(marks.station, 4);
+
+        // A chain of two that breaks only rolls the train back to the station.
+        world.onChain(1);
+        world.onChain(2);
+        t = run(world, camera, t, 2);
+        world.onChain(0);
+        expect(world.coaster.mode).toBe('idle');
+        world.dispose();
+    });
+
+    it('builds the coaster as one closed circuit and a ride goes once round it into the station', () => {
+        const { world, camera } = builtWorld();
+        const { curve, marks } = world.track;
+        const frame = pierFrame();
+        expect(curve.closed).toBe(true);
+        expect(curve.getPointAt(0).distanceTo(curve.getPointAt(1))).toBeLessThan(1e-3);
+        // Both lines and both turns: the outbound and return lines, the far and near ends.
+        const sc = (t) => {
+            const rel = curve.getPointAt(t).sub(frame.far);
+            return { s: rel.dot(frame.along), c: rel.dot(frame.across) };
+        };
+        const samples = Array.from({ length: 400 }, (_, i) => sc(i / 400));
+        const cs = samples.map((q) => q.c);
+        const ss = samples.map((q) => q.s);
+        expect(Math.max(...cs)).toBeCloseTo(COASTER.across, 0);
+        expect(Math.min(...cs)).toBeCloseTo(COASTER.returnAcross, 0);
+        expect(Math.max(...ss)).toBeGreaterThan(COASTER.farTurn.s + 2);
+        expect(Math.min(...ss)).toBeLessThan(COASTER.nearTurn.s - 2);
+        // Gaps between neighbouring samples stay near the even step (arc length is approximate):
+        // no break anywhere round the loop.
+        const len = curve.getLength();
+        for (let i = 0; i < 400; i += 1) {
+            const a = curve.getPointAt(i / 400);
+            const b = curve.getPointAt(((i + 1) % 400) / 400);
+            expect(a.distanceTo(b)).toBeLessThan((len / 400) * 1.5);
         }
-        expect(cells.size).toBeGreaterThanOrEqual(11);
+        expect(marks.station).toBeLessThan(marks.liftFoot);
+        expect(marks.liftFoot).toBeLessThan(marks.liftTop);
+        expect(marks.liftTop).toBeLessThan(marks.returnStart);
+
+        // A ride: forward all the way, through the return line, and back into the station.
+        world.onChain(3);
+        let t = run(world, camera, 0, 4);
+        world.onChain(0);
+        let lap = 0;
+        let last = world.coaster.t;
+        let minC = Infinity;
+        for (let i = 0; i < 60 * 40 && world.coaster.mode === 'ride'; i += 1) {
+            t = run(world, camera, t, 1 / 60);
+            if (world.coaster.t < last - 0.5) lap += 1;
+            else expect(world.coaster.t).toBeGreaterThanOrEqual(last - 1e-9);
+            last = world.coaster.t;
+            minC = Math.min(minC, sc(world.coaster.t).c);
+        }
+        expect(world.coaster.mode).toBe('idle');
+        expect(lap).toBe(1);
+        expect(minC).toBeCloseTo(COASTER.returnAcross, 0);
+        expect(world.coaster.t).toBeCloseTo(marks.station, 4);
+        world.dispose();
+    });
+
+    it('deepens the evening while a game is played, steps it on a level, and holds it in the menus', () => {
+        const { world, camera } = builtWorld();
+        let t = run(world, camera, 0, 60);
+        expect(world.dusk).toBeCloseTo(DUSK.rest, 5);
+        world.onPieceLock({ type: 'O', x: 4, rotation: 0 });
+        t = run(world, camera, t, 20);
+        expect(world.dusk).toBeGreaterThan(DUSK.rest + 0.02);
+        const before = world.duskTarget;
+        world.onLevelUp();
+        expect(world.duskTarget).toBeCloseTo(before + DUSK.levelStep, 6);
+        // The sun sinks and the pier's lights spread with it.
+        const sunY = world.sunDir.y;
+        const power = world.u.pierPower.value;
+        run(world, camera, t, 10);
+        expect(world.sunDir.y).toBeLessThan(sunY);
+        expect(world.u.pierPower.value).toBeGreaterThan(power);
+        // A capture's seek puts the evening back where it was set.
+        world.seek(5);
+        expect(world.dusk).toBeCloseTo(DUSK.rest, 6);
+        world.dispose();
+    });
+
+    it('holds the fireworks\' sky glow under Reduce flashing and fades the stars in', () => {
+        vi.stubGlobal('window', { settings: { reduceFlashing: true } });
+        const { world, camera } = builtWorld();
+        world.onLineClear(1);
+        const { at } = world.fireworks.pending[0];
+        run(world, camera, 0, at + 0.12);
+        expect(world.u.fireworkCalm.value).toBe(1);
+        expect(world.u.burst0.value.w + world.u.burst1.value.w).toBeLessThanOrEqual(REDUCED_FLASH_SCALE * 1.2);
+        vi.stubGlobal('window', { settings: { reduceFlashing: false } });
+        world.onLineClear(1);
+        const at2 = world.fireworks.pending[0].at;
+        run(world, camera, at + 0.12, at2 - at + 0.05);
+        expect(world.u.fireworkCalm.value).toBe(0);
+        expect(Math.max(world.u.burst0.value.w, world.u.burst1.value.w)).toBeGreaterThan(0.5);
         world.dispose();
     });
 

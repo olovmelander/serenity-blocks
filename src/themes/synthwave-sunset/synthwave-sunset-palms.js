@@ -1,14 +1,14 @@
 /**
- * Synthwave Sunset — palm silhouettes.
+ * Synthwave Sunset — the palms: three tall framing palms on the beach at the right edge of the
+ * game view, and a row along the promenade receding round the bay.
  *
- * Near-black silhouettes against the sunset (the old palms were glowing pink tubes): curved,
- * tapered trunks and a crown of folded fronds whose leaflets are cut in the fragment shader
- * (anti-aliased, so the edges do not crawl as the wind moves them). Toward the sun the fronds
- * turn faintly translucent-warm; the lower trunk picks up a hint of the magenta grid below.
+ * Silhouettes against the sunset: curved, tapered trunks and a crown of folded fronds whose
+ * leaflets are cut in the fragment shader (anti-aliased, so the edges do not crawl as the wind
+ * moves them). Toward the sun the fronds turn faintly translucent-warm; edges catch a warm rim;
+ * the near palms pick up the pier's pink and mint light on their lower trunks.
  *
- * All palms are ONE merged mesh (the old theme drew each frond as its own mesh: 54 draws).
- * Wind is a vertex-stage offset: a slow trunk sway growing with height plus a frond flutter
- * growing toward the tips.
+ * All palms are ONE merged mesh. Wind is a vertex-stage offset: a slow trunk sway growing with
+ * height plus a frond flutter growing toward the tips.
  */
 
 import * as THREE from 'three/webgpu';
@@ -22,7 +22,9 @@ import {
     float,
     fract,
     fwidth,
+    length,
     max,
+    mix,
     normalize,
     normalWorld,
     positionLocal,
@@ -34,45 +36,53 @@ import {
     uv,
     vec3,
 } from 'three/tsl';
-import { RIG, rgb } from './synthwave-sunset-tsl.js';
+import { SHORE, rgb } from './synthwave-sunset-tsl.js';
+import { inlandOf } from './synthwave-sunset-sea.js';
 
 const DEG = Math.PI / 180;
 
 /**
- * Palm placements in world polar coordinates (azimuth φ° with the sun at 0°, distance d from the
- * rest camera). `lean` is a world azimuth (deg) the trunk bows toward. The first entries matter
- * most: lower tiers take a prefix. Tuned for the game view (camera yawed ~30° right, sun in the
- * left zone) and still readable in the centred menu view.
+ * The framing palms (world x, z): on the beach just off the right edge of the game view, their
+ * crowns high over the pier's land end. `lean` is a world azimuth (deg, 0 = −z) the trunk bows
+ * toward. Lower tiers keep a prefix of the promenade row.
  */
-const PLACEMENTS = [
-    // Near-left framing palm: in the menu view its trunk stands just left of the sun.
+const FRAMING = [
     {
-        phi: -8.5, d: 24, height: 14.5, lean: -125, leanAmount: 0.2, fronds: 13, scale: 1.0,
+        x: 24, z: 12.5, height: 15.5, lean: -95, leanAmount: 0.22, fronds: 14, scale: 1.08,
     },
-    // Near-right framing palm (right of the HUD in the game view).
     {
-        phi: 73, d: 20, height: 13.8, lean: 60, leanAmount: 0.22, fronds: 13, scale: 1.0,
+        x: 19.5, z: 15.8, height: 13.6, lean: -80, leanAmount: 0.26, fronds: 13, scale: 1.0,
     },
-    // Mid palm silhouetted against the lower right of the sun.
     {
-        phi: 4.5, d: 78, height: 13.5, lean: 20, leanAmount: 0.12, fronds: 12, scale: 1.0,
-    },
-    // Mid palm near the board's left edge (game view).
-    {
-        phi: 13, d: 56, height: 11.5, lean: -30, leanAmount: 0.15, fronds: 12, scale: 0.95,
-    },
-    // Mid palm in front of downtown.
-    {
-        phi: 57, d: 46, height: 12.5, lean: 110, leanAmount: 0.14, fronds: 12, scale: 0.95,
+        x: 29.5, z: 9.4, height: 12.2, lean: -120, leanAmount: 0.18, fronds: 13, scale: 0.95,
     },
 ];
+
+/** The promenade row: one palm every `spacing` metres of x, on the beach side of the boulevard. */
+function promenadePalms(count, rand) {
+    const out = [];
+    for (let i = 0; i < count; i += 1) {
+        const x = 118 + i * 17 + rand() * 4;
+        const q = inlandOf(x, SHORE.promenade + 3.5);
+        out.push({
+            x: q.x,
+            z: q.z,
+            height: 11 + rand() * 4,
+            lean: -60 - rand() * 80,
+            leanAmount: 0.08 + rand() * 0.1,
+            fronds: 11,
+            scale: 0.95 + rand() * 0.15,
+        });
+    }
+    return out;
+}
 
 const v3 = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
 
 function buildPalm(out, spec, rand, palmIndex) {
     const phase = palmIndex * 1.7 + rand() * 6.28;
-    const bx = Math.sin(spec.phi * DEG) * spec.d;
-    const bz = RIG.z - Math.cos(spec.phi * DEG) * spec.d;
+    const bx = spec.x;
+    const bz = spec.z;
     const lx = Math.sin(spec.lean * DEG);
     const lz = -Math.cos(spec.lean * DEG);
     const H = spec.height;
@@ -171,16 +181,15 @@ function buildPalm(out, spec, rand, palmIndex) {
  * @param {object} u  shared world uniforms
  * @param {object} opts
  * @param {() => number} opts.rand
- * @param {number} opts.count  how many placements to use (prefix of PLACEMENTS)
- * @returns {THREE.Mesh|null}
+ * @param {number} opts.count  palms in the promenade row (the three framing palms always stand)
+ * @returns {THREE.Mesh}
  */
 export function createPalms(u, { rand, count }) {
-    const n = Math.max(0, Math.min(PLACEMENTS.length, count | 0));
-    if (n === 0) return null;
+    const placements = FRAMING.concat(promenadePalms(Math.max(0, count | 0), rand));
     const out = {
         position: [], normal: [], uv: [], palm: [], index: [],
     };
-    for (let i = 0; i < n; i += 1) buildPalm(out, PLACEMENTS[i], rand, i);
+    placements.forEach((spec, i) => buildPalm(out, spec, rand, i));
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(out.position, 3));
@@ -239,11 +248,14 @@ export function createPalms(u, { rand, count }) {
         const heightFrac = palm.w;
         const isFrond = step(0.5, palm.z);
         const toward = pow(max(dot(V, u.sunDir), 0.0), 60.0);
-        const translucent = rgb(0xff5a48).mul(toward.mul(float(0.05).add(isFrond.mul(0.12))));
-        const bounce = rgb(0xff2a94).mul(float(1.0).sub(heightFrac).mul(0.045).mul(float(1.0).sub(isFrond)));
+        const translucent = rgb(0xff6a48).mul(toward.mul(float(0.05).add(isFrond.mul(0.14))));
+        // The pier's lights on the lower trunks of the near palms.
+        const near = float(1.0).sub(smoothstep(30.0, 60.0, length(positionWorld.sub(cameraPosition))));
+        const low = clamp(float(1.0).sub(heightFrac), 0.0, 1.0);
+        const bounce = rgb(0xff5fa8).mul(low.mul(low).mul(0.035).mul(float(1.0).sub(isFrond)).mul(near));
         const facing = abs(dot(normalize(normalWorld), V));
-        const rim = rgb(0xff4f9a).mul(pow(float(1.0).sub(facing), 3.0).mul(0.1));
-        return rgb(0x06030b).add(translucent).add(bounce).add(rim);
+        const rim = rgb(0xff8a6a).mul(pow(float(1.0).sub(facing), 3.0).mul(0.12).mul(mix(float(1.0), float(0.4), u.dusk)));
+        return rgb(0x0e0814).add(translucent).add(bounce).add(rim);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
