@@ -1,0 +1,410 @@
+/**
+ * Sunbraid — post stack (TSL RenderPipeline, both WebGPURenderer backends).
+ *
+ * One scene pass (no MRT; 4× MSAA from High up, shared/scene-antialias.js), one bloom chain
+ * (Medium and up), and ONE full-screen output pass:
+ *
+ *   calm zones (what shows through the translucent board card and HUD is soft-clipped and its
+ *   bloom held back) → bloom → exposure → filmic (a hue-preserving shoulder on the max channel; only
+ *   the hottest values, the suns' discs, roll toward white) → grade → vignette → sRGB → grain and
+ *   dither → FXAA (Low, Medium: the single-sampled tiers).
+ *
+ * Tone mapping happens exactly once: renderer.toneMapping = NoToneMapping and the pipeline's
+ * outputColorTransform is off (the output node encodes sRGB itself).
+ */
+import * as THREE from 'three/webgpu';
+import {
+    Fn,
+    abs,
+    clamp,
+    exp,
+    float,
+    floor,
+    length,
+    max,
+    min,
+    mix,
+    pass,
+    perspectiveDepthToViewZ,
+    normalize,
+    renderOutput,
+    rtt,
+    screenCoordinate,
+    screenUV,
+    select,
+    smoothstep,
+    step,
+    uniform,
+    uv,
+    vec2,
+    vec3,
+    vec4,
+} from 'three/tsl';
+import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
+import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
+import {
+    mistLight, sbHash21, sbLuma, sbMax3,
+} from './sunbraid-tsl.js';
+
+/**
+ * Per-tier look. `bloom: false` builds no BloomNode; `air` the march's steps (0: none) and
+ * `airScale` its resolution; `msaa` the scene pass's samples with the game's antialiasing on
+ * (the shared table); `fxaa` smooths a single-sampled pass (the MSAA tiers need none).
+ */
+const LOOKS = {
+    Extreme: {
+        bloom: true, bloomStrength: 0.3, bloomResolution: 0.5, air: 1, airScale: 0.5, fxaa: false,
+    },
+    Ultra: {
+        bloom: true, bloomStrength: 0.3, bloomResolution: 0.5, air: 1, airScale: 0.5, fxaa: false,
+    },
+    High: {
+        bloom: true, bloomStrength: 0.28, bloomResolution: 0.45, air: 1, airScale: 0.4, fxaa: false,
+    },
+    Medium: {
+        bloom: true, bloomStrength: 0.26, bloomResolution: 0.33, air: 1, airScale: 0.3, fxaa: true,
+    },
+    Low: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, air: 0, airScale: 0.25, fxaa: true,
+    },
+    Minimal: {
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, air: 0, airScale: 0.25, fxaa: false,
+    },
+};
+export const POST_LOOK = Object.freeze(Object.fromEntries(Object.entries(LOOKS)
+    .map(([tier, look]) => [tier, { ...look, msaa: sceneSamples(tier) }])));
+
+export const BLOOM_THRESHOLD = 1.75;
+export const BLOOM_KNEE = 0.5;
+export const BLOOM_RADIUS = 0.55;
+/** Calm rects (board cards + HUD) the output pass evaluates. */
+export const CALM_RECTS_MAX = 5;
+/** How far the march looks along a line of sight (metres): past the vale and the foothills. */
+export const AIR_RANGE = 16000;
+
+/** Rounded-box signed distance in pixels. rect = (x0, y0, x1, y1) in pixels (top-left origin). */
+const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
+    const c = rect.xy.add(rect.zw).mul(0.5);
+    const h = rect.zw.sub(rect.xy).mul(0.5);
+    const q = abs(p.sub(c)).sub(h).add(radius);
+    return length(max(q, vec2(0.0))).add(min(max(q.x, q.y), 0.0)).sub(radius);
+}).setLayout({
+    name: 'sb_roundBoxSdf',
+    type: 'float',
+    inputs: [{ name: 'p', type: 'vec2' }, { name: 'rect', type: 'vec4' }, { name: 'radius', type: 'float' }],
+});
+
+/**
+ * Filmic: identity below the knee, a hue-preserving exponential shoulder above it, and a path to
+ * white only for the hottest values (the sun's disc, a flash), so sunlit gold stays gold.
+ */
+const sbFilmic = /* @__PURE__ */ Fn(([cIn]) => {
+    const c = max(cIn, vec3(0.0));
+    const peak = max(max(c.x, max(c.y, c.z)), 1e-5);
+    const k = float(0.6);
+    const shoulder = k.add(float(1.0).sub(k).mul(float(1.0).sub(exp(peak.sub(k).div(float(1.0).sub(k)).negate()))));
+    const mapped = select(peak.greaterThan(k), shoulder, peak);
+    const toned = c.mul(mapped.div(peak));
+    const w = smoothstep(2.4, 9.0, peak).mul(0.9);
+    return mix(toned, vec3(mapped, mapped, mapped), w);
+}).setLayout({ name: 'sb_filmic', type: 'vec3', inputs: [{ name: 'cIn', type: 'vec3' }] });
+
+export class SunbraidPost {
+    /**
+     * @param {THREE.WebGPURenderer} renderer
+     * @param {THREE.Scene} scene
+     * @param {THREE.Camera} camera
+     * @param {object} params
+     * @param {object} params.look        POST_LOOK entry
+     * @param {object} [params.u]         the world's uniforms (the march reads the deck through them)
+     * @param {object} [params.t]         the world's textures ({ noise })
+     * @param {number} [params.samples=0] the scene pass's MSAA samples
+     * @param {boolean} [params.antialias=true] the game's antialiasing setting (off: no FXAA either)
+     * @param {boolean} [params.falseColor=false]
+     */
+    constructor(renderer, scene, camera, params = {}) {
+        const look = params.look || POST_LOOK.High;
+        this.renderer = renderer;
+        this.camera = camera;
+        this.look = look;
+        this.samples = params.samples ?? 0;
+        this.pipeline = new THREE.RenderPipeline(renderer);
+        this.scenePass = pass(scene, camera, { samples: this.samples });
+        const sceneColor = this.scenePass.getTextureNode('output');
+        const { u, t } = params;
+        const marches = Boolean(look.air > 0 && u && t);
+        this.marches = marches;
+        const sceneDepth = marches ? this.scenePass.getTextureNode('depth') : null;
+
+        this.uAspect = uniform(16 / 9);
+        this.uSrcTexel = uniform(new THREE.Vector2(1 / 1920, 1 / 1080));
+        this.uViewport = uniform(new THREE.Vector2(1920, 1080));
+        this.uTime = uniform(0);
+        this.uExposure = uniform(1);
+        this.uBloomBoost = uniform(0);
+        /** The air's light: its gain (a chain lifts it). */
+        this.uAir = uniform(1);
+        /** A flash of light over the whole frame (four lines, perfect clear), 0..1. */
+        this.uFlash = uniform(0);
+        this.uFlashColour = uniform(new THREE.Vector3(1, 0.92, 0.75));
+        this.uSaturation = uniform(1.1);
+        // The scene camera's basis for the march (the pass's own camera is the quad's).
+        this.uEye = uniform(new THREE.Vector3());
+        this.uForward = uniform(new THREE.Vector3(0, 0, -1));
+        this.uRight = uniform(new THREE.Vector3(1, 0, 0));
+        this.uUp = uniform(new THREE.Vector3(0, 1, 0));
+        this.uNear = uniform(0.5);
+        this.uFar = uniform(90000);
+        this.uAirTexel = uniform(new THREE.Vector2(1 / 960, 1 / 540));
+        this.drawing = new THREE.Vector2();
+
+        this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
+        this.uCalm = this.calmRects.map((v) => uniform(v));
+        this.uCalmStrength = uniform(0);
+
+        // ── The light in the air ──
+        let air = null;
+        this.airNode = null;
+        if (marches) {
+            this.airNode = rtt(this.buildAir(u, sceneDepth), null, null, { resolutionScale: look.airScale });
+            this.airNode.renderTarget.texture.name = 'Sunbraid — light in the air';
+            // A 3 × 3 tent a texel apart over bilinear taps: it takes the march's jitter out.
+            const tap = (x, y) => this.airNode.sample(screenUV.add(this.uAirTexel.mul(vec2(x, y))));
+            air = tap(0, 0).mul(4.0)
+                .add(tap(-1, 0).add(tap(1, 0)).add(tap(0, -1)).add(tap(0, 1))
+                    .mul(2.0))
+                .add(tap(-1, -1).add(tap(1, -1)).add(tap(-1, 1)).add(tap(1, 1)))
+                .mul(1 / 16);
+        }
+
+        // ── Bloom: max-channel soft knee over a 4-tap box ──
+        this.bloomNode = null;
+        if (look.bloom) {
+            this.bloomNode = bloom(sceneColor, look.bloomStrength, BLOOM_RADIUS, BLOOM_THRESHOLD);
+            this.bloomNode.threshold.value = BLOOM_THRESHOLD;
+            this.bloomNode.smoothWidth.value = BLOOM_KNEE;
+            this.bloomNode.setResolutionScale(look.bloomResolution);
+            const { uSrcTexel } = this;
+            // BloomNode's documented hook, read once at setup. Inline (no setLayout): `input`
+            // must stay the raw scene TextureNode for .sample().
+            this.bloomNode.highPassFn = Fn(({ input, threshold, smoothWidth }) => {
+                const st = uv();
+                const o = uSrcTexel.mul(1.25);
+                // Hue-preserving clamp on the max channel: a per-channel clamp turns gold white.
+                const tapB = (dx, dy) => {
+                    const c = max(vec3(input.sample(st.add(vec2(o.x.mul(dx), o.y.mul(dy)))).rgb), vec3(0.0));
+                    return c.mul(min(float(1.0), float(3.0).div(max(sbMax3(c), 1e-4))));
+                };
+                const c = tapB(1, 1).add(tapB(-1, 1)).add(tapB(1, -1)).add(tapB(-1, -1))
+                    .mul(0.25);
+                const br = sbMax3(c);
+                const soft = clamp(br.sub(threshold).add(smoothWidth), 0.0, smoothWidth.mul(2.0));
+                const w = max(soft.mul(soft).div(smoothWidth.mul(4.0).add(1e-4)), br.sub(threshold)).div(max(br, 1e-4));
+                return vec4(c.mul(w), 1.0);
+            });
+        }
+
+        const falseColor = params.falseColor === true;
+
+        const outputFn = Fn(() => {
+            const px = screenUV.mul(this.uViewport);
+
+            // ── Calm zones (board cards + HUD) ──
+            const hScale = this.uViewport.y.div(1080.0);
+            const calm = float(0.0).toVar();
+            for (let i = 0; i < CALM_RECTS_MAX; i += 1) {
+                const r = this.uCalm[i];
+                const sdf = roundBoxSdf(px, r.mul(vec4(this.uViewport, this.uViewport)), hScale.mul(16.0));
+                const inside = float(1.0).sub(smoothstep(-20.0, 6.0, sdf)).mul(step(0.001, r.z.sub(r.x)));
+                calm.assign(max(calm, inside));
+            }
+            calm.mulAssign(this.uCalmStrength);
+
+            const S = vec3(sceneColor.sample(screenUV).rgb).toVar();
+            if (air) S.addAssign(vec3(air.rgb).mul(this.uAir));
+
+            // What shows through the card is soft-clipped (hue-preserving).
+            const m = max(sbMax3(S), 1e-5);
+            const clipped = S.mul(min(m, min(float(0.18).add(m.mul(0.08)), 0.5)).div(m));
+            S.assign(mix(S, clipped, calm.mul(0.88)));
+
+            // ── Bloom ──
+            const glare = vec3(0.0).toVar();
+            if (this.bloomNode) {
+                const B = vec3(this.bloomNode.getTextureNode().sample(screenUV).rgb);
+                glare.assign(B.mul(float(1.0).add(this.uBloomBoost.mul(0.8))));
+            }
+            glare.mulAssign(float(1.0).sub(calm.mul(0.85)));
+            const H = S.add(glare);
+
+            // ── Exposure, flash, tone map, grade ──
+            const flash = this.uFlashColour.mul(this.uFlash.mul(0.3)).mul(float(1.0).sub(calm.mul(0.8)));
+            const X = H.mul(this.uExposure).add(flash);
+            const T = sbFilmic(X).toVar();
+            const L = sbLuma(T);
+            // Shadows lean a little cool (scaled, never lifted: an added constant veils the blacks).
+            const lo = float(1.0).sub(smoothstep(0.0, 0.3, L));
+            T.assign(mix(T, T.mul(vec3(0.93, 0.97, 1.08)), lo.mul(0.6)));
+            // Vibrance: colourful things a little more so, the grey sky left alone.
+            const sat = max(sbMax3(T).sub(min(T.x, min(T.y, T.z))), 0.0).div(max(sbMax3(T), 1e-4));
+            const vib = mix(this.uSaturation, float(1.0), sat);
+            T.assign(max(mix(vec3(sbLuma(T)), T, vib), vec3(0.0)));
+            // A gentle contrast curve (clamped first: a polynomial folds values above 1 back down).
+            const C = clamp(T, 0.0, 1.0);
+            T.assign(mix(C, C.mul(C).mul(float(3.0).sub(C.mul(2.0))), 0.38));
+            // Vignette, measured from the frame.
+            const cv = screenUV.sub(0.5).mul(vec2(this.uAspect.div(1.778), 1.0));
+            const vig = smoothstep(0.45, 1.15, length(cv.mul(1.45)));
+            T.mulAssign(float(1.0).sub(vig.mul(0.34)));
+
+            // ── Encode, then finish in display space ──
+            const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
+            const pxi = floor(screenCoordinate);
+            const frame = floor(this.uTime.mul(24.0));
+            const grain = sbHash21(pxi.add(vec2(frame.mul(1.7), frame.mul(-2.3)))).sub(0.5);
+            D.addAssign(grain.mul(0.011).mul(float(1.0).sub(calm.mul(0.7))));
+            const dth = sbHash21(pxi).add(sbHash21(pxi.add(vec2(17.17, 17.17)))).sub(1.0);
+            D.addAssign(dth.div(255.0));
+
+            let out = vec4(clamp(D, 0.0, 1.0), 1.0);
+            if (falseColor) {
+                const mx = sbMax3(H.mul(this.uExposure));
+                const fc = select(
+                    mx.lessThan(0.1),
+                    vec3(0.05, 0.1, 0.6),
+                    select(mx.lessThan(0.6), vec3(0.1, 0.55, 0.15), select(
+                        mx.lessThan(1.0),
+                        vec3(0.85, 0.8, 0.1),
+                        select(mx.lessThan(2.5), vec3(1.0, 0.45, 0.05), vec3(0.95, 0.05, 0.05)),
+                    )),
+                );
+                out = vec4(fc, 1.0);
+            }
+            return out;
+        });
+
+        this.pipeline.outputColorTransform = false;
+        // FXAA only over a single-sampled pass, and never over the false-colour view.
+        const smoothPass = look.fxaa && this.samples === 0 && params.antialias !== false && !falseColor;
+        this.fxaaNode = smoothPass ? fxaa(outputFn()) : null;
+        this.pipeline.outputNode = this.fxaaNode || outputFn();
+        this.pipeline.needsUpdate = true;
+    }
+
+    /**
+     * The mist's light along each pixel's line of sight, to the land it meets (or the range), with
+     * every tower's shadow wedges taken out of it per sun (sunbraid-tsl mistLight, closed form).
+     */
+    buildAir(u, sceneDepth) {
+        return Fn(() => {
+            const st = uv();
+            const depth = sceneDepth.sample(st).r;
+            const viewZ = perspectiveDepthToViewZ(depth, this.uNear, this.uFar);
+            const ray = this.uForward.add(this.uRight.mul(st.x.mul(2).sub(1)))
+                .add(this.uUp.mul(float(1).sub(st.y.mul(2)))).toVar();
+            const dir = normalize(ray).toVar();
+            const toLand = select(depth.lessThan(0.99999), length(ray).mul(viewZ.negate()), float(1e6));
+            const reach = min(toLand, float(AIR_RANGE)).toVar();
+            return vec4(mistLight(u, this.uEye, dir, reach), 1.0);
+        })();
+    }
+
+    /** Per-frame values (all optional). */
+    update({
+        exposure, bloomBoost, air, flash, flashColour, saturation, time,
+    } = {}) {
+        if (exposure !== undefined) this.uExposure.value = exposure;
+        if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
+        if (air !== undefined) this.uAir.value = air;
+        if (flash !== undefined) this.uFlash.value = flash;
+        if (flashColour) this.uFlashColour.value.set(flashColour[0], flashColour[1], flashColour[2]);
+        if (saturation !== undefined) this.uSaturation.value = saturation;
+        if (time !== undefined) this.uTime.value = time;
+        if (this.bloomNode && exposure !== undefined) {
+            // The knee follows the iris: bloom selects what is bright AFTER exposure.
+            this.bloomNode.threshold.value = BLOOM_THRESHOLD / Math.max(0.2, exposure);
+        }
+    }
+
+    /** Hand this frame's camera to the march. */
+    aim() {
+        const { camera, renderer } = this;
+        if (!camera?.isPerspectiveCamera) return;
+        camera.updateMatrixWorld();
+        const tanV = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5));
+        this.uEye.value.setFromMatrixPosition(camera.matrixWorld);
+        this.uRight.value.setFromMatrixColumn(camera.matrixWorld, 0).normalize().multiplyScalar(tanV * camera.aspect);
+        this.uUp.value.setFromMatrixColumn(camera.matrixWorld, 1).normalize().multiplyScalar(tanV);
+        this.uForward.value.setFromMatrixColumn(camera.matrixWorld, 2).normalize().negate();
+        this.uNear.value = camera.near;
+        this.uFar.value = camera.far;
+        if (this.airNode) {
+            const drawing = renderer.getDrawingBufferSize(this.drawing);
+            const scale = this.look.airScale;
+            this.uAirTexel.value.set(
+                1 / Math.max(1, Math.floor(drawing.x * scale)),
+                1 / Math.max(1, Math.floor(drawing.y * scale)),
+            );
+        }
+    }
+
+    /**
+     * Calm rects in screen fractions (x0, y0, x1, y1; y down), at most CALM_RECTS_MAX, and the
+     * eased strength (0 = off).
+     */
+    setCalmRects(rects, strength) {
+        for (let i = 0; i < CALM_RECTS_MAX; i += 1) {
+            const r = rects?.[i];
+            if (r) this.calmRects[i].set(r.x0, r.y0, r.x1, r.y1);
+            else this.calmRects[i].set(0, 0, 0, 0);
+        }
+        this.uCalmStrength.value = strength;
+    }
+
+    setSize(width, height, bufferWidth = width, bufferHeight = height) {
+        if (width > 0 && height > 0) this.uAspect.value = width / height;
+        if (bufferWidth > 0 && bufferHeight > 0) {
+            this.uSrcTexel.value.set(1 / bufferWidth, 1 / bufferHeight);
+            this.uViewport.value.set(bufferWidth, bufferHeight);
+        }
+    }
+
+    render() {
+        this.aim();
+        this.pipeline.render();
+    }
+
+    dispose() {
+        this.scenePass?.dispose();
+        this.airNode?.dispose?.();
+        this.airNode?.renderTarget?.dispose?.();
+        if (this.bloomNode) disposeBloomNodeDeep(this.bloomNode);
+        // FXAA reads the graded picture through a render target of its own.
+        this.fxaaNode?.textureNode?.dispose?.();
+        this.pipeline?.dispose();
+        this.scenePass = null;
+        this.airNode = null;
+        this.bloomNode = null;
+        this.fxaaNode = null;
+        this.pipeline = null;
+    }
+}
+
+/** A render pipeline that only encodes the scene (the fallback path if the post fails to build). */
+export function createPassThroughPipeline(renderer, scene, camera) {
+    const pipeline = new THREE.RenderPipeline(renderer);
+    const scenePass = pass(scene, camera, { samples: 0 });
+    pipeline.outputNode = scenePass;
+    return {
+        render: () => pipeline.render(),
+        update() {},
+        setCalmRects() {},
+        setSize() {},
+        dispose() {
+            scenePass.dispose();
+            pipeline.dispose();
+        },
+    };
+}

@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document outlines the implementation plan for upgrading the Shifting Sands (Arrakis/Dune-inspired) theme from WebGL to WebGPU using Three.js's built-in hybrid fallback. The renderer will always be `WebGPURenderer` from `three/webgpu`: it attempts WebGPU first and automatically falls back to a WebGL 2.0 backend when WebGPU is unavailable, without any manual renderer swap or user-facing errors. All theme shaders will be migrated to TSL (Three Shading Language) node materials so the same material graph runs on both backends; compute-driven features will run only on the WebGPU backend, with CPU fallbacks on WebGL.
+This document outlines the implementation plan for upgrading the Shifting Sands (alien desert) theme from WebGL to WebGPU using Three.js's built-in hybrid fallback. The renderer will always be `WebGPURenderer` from `three/webgpu`: it attempts WebGPU first and automatically falls back to a WebGL 2.0 backend when WebGPU is unavailable, without any manual renderer swap or user-facing errors. All theme shaders will be migrated to TSL (Three Shading Language) node materials so the same material graph runs on both backends; compute-driven features will run only on the WebGPU backend, with CPU fallbacks on WebGL.
 
 ---
 
@@ -26,7 +26,7 @@ This document outlines the implementation plan for upgrading the Shifting Sands 
 | Procedural Dunes | Perlin noise + ShaderMaterial | High |
 | Sandworm Trail | Animated vertex displacement | High |
 | Twin Moons | Sprite layers with glow | Medium |
-| Spice Particles | Points + sine-based swirl | Medium |
+| Glitter Particles | Points + sine-based swirl | Medium |
 | Sand Smoke | Points + FBM noise | High |
 | Stars | Points + twinkle shader | Low |
 | Heat Shimmer | Post-process distortion | Medium |
@@ -35,8 +35,8 @@ This document outlines the implementation plan for upgrading the Shifting Sands 
 ### Current GLSL Shaders (6 shader pairs)
 1. **Sky Shader** - Gradient with moon glow
 2. **Stars Shader** - Twinkle animation
-3. **Dune Shader** - Wind ripples, worm trail, rim lighting, spice sparkle
-4. **Spice Particle Shader** - Swirling motion with glow
+3. **Dune Shader** - Wind ripples, worm trail, rim lighting, glitter sparkle
+4. **Glitter Particle Shader** - Swirling motion with glow
 5. **Sand Smoke Shader** - Volumetric FBM with worm trail following
 6. **Heat Shimmer Shader** - Screen-space distortion
 
@@ -63,7 +63,7 @@ This document outlines the implementation plan for upgrading the Shifting Sands 
 2. **Volumetric God Rays** - Compute-based light shafts from moons
 3. **Enhanced Sandworm Wake** - Particle compute for dust plume
 4. **Subsurface Scattering Dunes** - Accurate light through sand ridges
-5. **Real-time Spice Bloom** - MRT-based emissive glow
+5. **Real-time Glitter Bloom** - MRT-based emissive glow
 6. **Improved Heat Shimmer** - Ray-marched atmospheric distortion
 
 ---
@@ -262,11 +262,11 @@ import {
 } from 'three/tsl';
 
 /**
- * TSL-based Arrakis dune material with:
+ * TSL-based desert dune material with:
  * - Procedural wind ripples
  * - Worm trail displacement
  * - Journey-style rim lighting
- * - Spice sparkle
+ * - Glitter sparkle
  */
 export function createDuneMaterial(params) {
     const {
@@ -354,7 +354,7 @@ export function createDuneMaterial(params) {
 
         const disturbedNormal = normalize(normal.add(vec3(n1.add(windRipple.mul(0.5)), 0, n2).mul(0.2)));
 
-        // 2. Diffuse lighting (Arrakis harsh sunlight)
+        // 2. Diffuse lighting (harsh desert sunlight)
         const NdotL = dot(disturbedNormal, uMoonDirection);
         const lightIntensity = smoothstep(0.2, 0.8, NdotL.mul(0.5).add(0.5));
 
@@ -368,7 +368,7 @@ export function createDuneMaterial(params) {
         const rimIntensity = rim.mul(NdotL.mul(0.4).add(0.6));
         finalColor.addAssign(uColorC.mul(rimIntensity).mul(0.6));
 
-        // 4. Spice sparkle
+        // 4. Glitter sparkle
         // ... sparkle calculation ...
 
         // 5. Fog
@@ -395,7 +395,7 @@ export function createDuneMaterial(params) {
 - [ ] Port wind ripple normal perturbation
 - [ ] Port diffuse lighting with harsh contrast
 - [ ] Port rim lighting calculation
-- [ ] Port spice sparkle effect
+- [ ] Port glitter sparkle effect
 - [ ] Port worm trail vertex displacement
 - [ ] Port fog calculation
 - [ ] Add emissive output for MRT bloom
@@ -403,9 +403,9 @@ export function createDuneMaterial(params) {
 
 ---
 
-### Phase 4: Spice Particle Compute Shader (Priority: HIGH)
+### Phase 4: Glitter Particle Compute Shader (Priority: HIGH)
 
-**Objective**: Move spice particle simulation to GPU compute for better performance
+**Objective**: Move glitter particle simulation to GPU compute for better performance
 
 **Implementation**:
 
@@ -413,10 +413,10 @@ export function createDuneMaterial(params) {
 // In shifting-sands-compute.js
 
 /**
- * GPU-driven spice particle simulation
+ * GPU-driven glitter particle simulation
  * Replaces CPU-bound particle updates with compute shader
  */
-export class SpiceParticleCompute {
+export class GlitterParticleCompute {
     constructor(particleCount) {
         this.count = particleCount;
 
@@ -432,7 +432,7 @@ export class SpiceParticleCompute {
 
         this.uTime = uniform(0);
         this.uWindStrength = uniform(0.5);
-        this.uSpiceIntensity = uniform(1.0);
+        this.uGlitterIntensity = uniform(1.0);
 
         this.initializeParticles();
     }
@@ -465,7 +465,7 @@ export class SpiceParticleCompute {
         const positions = storage(this.positionBuffer, 'vec4', this.count);
         const velocities = storage(this.velocityBuffer, 'vec4', this.count);
 
-        const computeSpice = Fn(() => {
+        const computeGlitter = Fn(() => {
             const index = instanceIndex;
             const pos = positions.element(index).toVar();
             const vel = velocities.element(index).toVar();
@@ -509,14 +509,14 @@ export class SpiceParticleCompute {
             positions.element(index).assign(pos);
         });
 
-        this.computeNode = computeSpice().compute(this.count);
+        this.computeNode = computeGlitter().compute(this.count);
         return this.computeNode;
     }
 
-    update(time, windStrength, spiceIntensity) {
+    update(time, windStrength, glitterIntensity) {
         this.uTime.value = time;
         this.uWindStrength.value = windStrength;
-        this.uSpiceIntensity.value = spiceIntensity;
+        this.uGlitterIntensity.value = glitterIntensity;
     }
 
     getPositionAttribute() {
@@ -526,7 +526,7 @@ export class SpiceParticleCompute {
 ```
 
 **Tasks**:
-- [ ] Create `SpiceParticleCompute` class
+- [ ] Create `GlitterParticleCompute` class
 - [ ] Implement position/velocity storage buffers
 - [ ] Port swirling motion to compute shader
 - [ ] Add respawn logic for out-of-bounds particles
@@ -683,11 +683,11 @@ export class ShiftingSandsPost {
         const distortedUV = uv.add(vec2(xOffset, yOffset));
         const distortedColor = sceneColor.sample(distortedUV);
 
-        // Spice bloom on emissive (orange glow)
-        const spiceBloom = bloom(emissivePass, 0.4, 0.3, 0.2);
+        // Glitter bloom on emissive (orange glow)
+        const glitterBloom = bloom(emissivePass, 0.4, 0.3, 0.2);
 
         // Final composition
-        this.postProcessing.outputNode = distortedColor.add(spiceBloom);
+        this.postProcessing.outputNode = distortedColor.add(glitterBloom);
         this.postProcessing.needsUpdate = true;
     }
 
@@ -714,7 +714,7 @@ export class ShiftingSandsPost {
 **Tasks**:
 - [ ] Create `ShiftingSandsPost` class
 - [ ] Port heat shimmer distortion to TSL
-- [ ] Add MRT-based spice bloom (emissive only)
+- [ ] Add MRT-based glitter bloom (emissive only)
 - [ ] Add optional color grading node
 - [ ] Ensure post chain works on WebGL backend via `WebGPURenderer` fallback
 
@@ -746,7 +746,7 @@ export function createSkyMaterial(params) {
         const worldPos = positionWorld;
         const height = normalize(worldPos).y;
 
-        // Multi-stop gradient for Arrakis sky
+        // Multi-stop gradient for the desert sky
         const color = vec3(0, 0, 0).toVar();
 
         If(height.greaterThan(0.3), () => {
@@ -850,10 +850,10 @@ animate() {
                 this.renderer.compute(this.wormTrailCompute.computeNode);
             }
 
-        // Update spice particle compute
-        if (this.spiceCompute) {
-            this.spiceCompute.update(time, this.uniforms.windStrength.value, this.uniforms.spiceIntensity.value);
-            this.renderer.compute(this.spiceCompute.computeNode);
+        // Update glitter particle compute
+        if (this.glitterCompute) {
+            this.glitterCompute.update(time, this.uniforms.windStrength.value, this.uniforms.glitterIntensity.value);
+            this.renderer.compute(this.glitterCompute.computeNode);
         }
 
         // Update sand smoke compute
@@ -897,7 +897,7 @@ stop() {
 
     // Dispose compute resources
     if (this.wormTrailCompute) this.wormTrailCompute.dispose?.();
-    if (this.spiceCompute) this.spiceCompute.dispose?.();
+    if (this.glitterCompute) this.glitterCompute.dispose?.();
     if (this.sandSmokeCompute) this.sandSmokeCompute.dispose?.();
 
     // ... existing cleanup
@@ -998,7 +998,7 @@ createSandFlowSimulation() {
 **Visual Regression Tests**:
 - [ ] Dune color gradient matches original
 - [ ] Worm trail displacement identical
-- [ ] Spice particle swirl behavior
+- [ ] Glitter particle swirl behavior
 - [ ] Sand smoke density and flow
 - [ ] Twin moon glow intensity
 - [ ] Heat shimmer distortion strength
@@ -1061,7 +1061,7 @@ src/themes/shifting-sands/
 2. **Phase 8** - Animation loop (required for testing)
 3. **Phase 2** - Worm trail compute (shared dependency)
 4. **Phase 3** - Dune shader (main visual element)
-5. **Phase 4** - Spice particles (high visual impact)
+5. **Phase 4** - Glitter particles (high visual impact)
 6. **Phase 6** - Post-processing (bloom + heat shimmer)
 7. **Phase 5** - Sand smoke (builds on Phase 2)
 8. **Phase 7** - Sky/stars (low priority)

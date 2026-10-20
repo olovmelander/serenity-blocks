@@ -299,7 +299,7 @@ export class ThemesTab {
             Tornado: 'spiral',
             Aurora: 'aurora',
             Galaxy: 'galaxy',
-            'Rainy Window': 'rain',
+            Sunbraid: 'sun',
             'Koi Pond': 'fish',
             Rainbark: 'bamboo',
             Kaleidosonic: 'spiral',

@@ -1,5 +1,5 @@
 /**
- * Shifting Sands — Shai-Hulud.
+ * Shifting Sands — the worm.
  *
  * The worm is ONE tube mesh animated entirely in the vertex shader: every vertex knows its body
  * coordinate σ (0 = the maw, 1 = the tail) and its angle θ around the body; the body follows the
@@ -16,7 +16,7 @@
  * and local slope. The dune shader builds a well there (a bulge that bursts into a rim, then a
  * crater that fills) and the FX layer throws sand from exactly that point.
  *
- * Geometry: a short inner tube (the throat, normals inward, ringed with crystal teeth), a flared
+ * Geometry: a short inner tube (the throat, normals inward, ringed with teeth), a flared
  * lip, then the segmented outer body tapering to a pointed tail. Skin: annular plates with dark
  * creases, a sand-dusted back, dusty ochre-grey hide, the twin-sun light, violet sky fill and a
  * strong backlit rim.
@@ -708,7 +708,7 @@ export class WormDirector {
     }
 
     /**
-     * A Tetris: the worm comes for the thumper. Refused only while the last summoned worm is
+     * A Tetris: the worm comes for the drum. Refused only while the last summoned worm is
      * still above the sand; if its dust is still settling, that fades out under the new sign.
      */
     summon(t) {
@@ -729,7 +729,7 @@ export class WormDirector {
         return true;
     }
 
-    /** Where the summoned worm will break the surface (for the spice blow that heralds it). */
+    /** Where the summoned worm will break the surface (for the dust geyser that heralds it). */
     summonedEmergence() {
         const br = this.summoned;
         return br ? br.up : { x: 0, y: 0, z: 0 };
@@ -900,7 +900,7 @@ export function createWorm(shared, { rings = 160, segs = 32, capRings = 10 } = {
         const back = smoothstep(0.35, 0.85, N.y);
         hide.assign(mix(hide, vec3(0.7, 0.41, 0.2), back.mul(0.5).mul(n1.y.mul(0.5).add(0.5))));
 
-        // ── Inside: ember flesh ringed with pale crystal teeth, darkening down the throat ──
+        // ── Inside: ember flesh ringed with pale teeth, darkening down the throat ──
         const teethRings = smoothstep(0.55, 0.8, fract(vSig.mul(300.0).add(vAlpha.mul(5.0))));
         const teethCols = smoothstep(0.7, 0.95, abs(fract(vTh.mul(72.0 / 6.2831)).sub(0.5)).mul(2.0));
         const nearMouth = float(1.0).sub(smoothstep(0.0, 0.05, vSig)).mul(float(1.0).sub(vCap))

@@ -522,7 +522,7 @@ wet valley, and a rose-rimmed lenticular in cobalt sky. *(§3 removes the rainbo
   blowing when the land is wet, and sunlit faces dry first.
 
 **The three closest themes and the exact differences (as proposed):**
-1. **shifting-sands** (warm desert, sandstone mesas, golden ring on lock, spice blows): no dunes,
+1. **shifting-sands** (warm desert, sandstone mesas, golden ring on lock, dust geysers): no dunes,
    no sand sea; hard banded rock badlands with hogbacks, flatirons, rhyolite and obsidian; dry
    cobalt sky, not apricot-to-rose dusk; sun off-frame behind us, not twin suns in frame;
    multi-hue mineral palette, not apricot and ochre; a deposition-and-weather grammar, no rings

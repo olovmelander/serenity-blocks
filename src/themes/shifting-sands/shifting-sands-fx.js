@@ -1,5 +1,5 @@
 /**
- * Shifting Sands — sand, spice and dust. Four instanced systems, one draw each, all closed-form
+ * Shifting Sands — sand, glitter and dust. Four instanced systems, one draw each, all closed-form
  * in the world clock (no compute, no per-frame uploads, nothing created at event time):
  *
  *  - Worm sand: curtains of sand pouring off the breaching body (each grain is born on the body
@@ -8,11 +8,11 @@
  *    races out from both; the dust boiling round the body; and the column the hole breathes out
  *    as it falls in behind the tail. Every grain reads its age off the worm's path clock, so the
  *    sand outlives the body and thins away on its own — nothing is switched off.
- *  - Spice motes: melange glittering in the air, drifting with the wind; the motes toward the suns
+ *  - Gold motes: gold dust glittering in the air, drifting with the wind; the motes toward the suns
  *    flash in forward scatter. Pixel-floored so they never vanish into sub-pixel speckle.
  *  - Spindrift: veils of sand torn off the crests by the wind, seated on real crest points found
  *    on the CPU dune field, streaming downwind and glowing gold where they are backlit.
- *  - Spice blows: geysers of spice and dust (line clears), slot-pooled.
+ *  - Dust geysers: columns of gold dust and sand (line clears), slot-pooled.
  *
  * Blending: premultiplied "over" (One, OneMinusSrcAlpha) for every system, so a grain can be
  * alpha dust and additive glow at once — rgb·a + emission, a.
@@ -435,19 +435,19 @@ export function createWormSand(shared, worm, perWorm) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Spice motes
+// Gold motes
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MOTE_BOX = Object.freeze({
     cx: 0, cz: -560, sx: 1500, sz: 1100, y0: 2, y1: 70,
 });
 
-export function createSpiceMotes(shared, count) {
+export function createGoldMotes(shared, count) {
     const n = Math.max(1, count | 0);
     const geometry = quadGeometry(n, 9001);
-    const material = fxMaterial('shifting-sands-spice-motes');
+    const material = fxMaterial('shifting-sands-gold-motes');
     const {
-        uTime, uSunA, uSpiceGlow, uWindDir, uPxScale, uDusk,
+        uTime, uSunA, uGoldGlow, uWindDir, uPxScale, uDusk,
     } = shared;
     const seed = attribute('aSeed', 'vec4');
 
@@ -484,15 +484,15 @@ export function createSpiceMotes(shared, count) {
         const glint = pow(clamp(dot(vdir, uSunA), 0.0, 1.0), 10.0).mul(5.0);
         const tw = sin(uTime.mul(vSeed.w.mul(5.0).add(2.0)).add(vSeed.x.mul(TAU))).mul(0.5).add(0.5);
         const core = exp(r.mul(r).mul(-6.0));
-        const blue = smoothstep(0.82, 1.0, vSeed.y).mul(uDusk.mul(0.6).add(uSpiceGlow.mul(0.25)));
+        const blue = smoothstep(0.82, 1.0, vSeed.y).mul(uDusk.mul(0.6).add(uGoldGlow.mul(0.25)));
         const hue = mix(vec3(1.0, 0.52, 0.16), vec3(0.35, 0.62, 1.0), clamp(blue, 0.0, 1.0));
-        const intensity = float(0.16).add(glint).mul(tw.mul(0.7).add(0.3)).mul(float(1.0).add(uSpiceGlow.mul(1.6)))
+        const intensity = float(0.16).add(glint).mul(tw.mul(0.7).add(0.3)).mul(float(1.0).add(uGoldGlow.mul(1.6)))
             .mul(vEdge);
         return vec4(hue.mul(core).mul(intensity), 0.0);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = 'shifting-sands-spice-motes';
+    mesh.name = 'shifting-sands-gold-motes';
     mesh.frustumCulled = false;
     mesh.renderOrder = 31;
     return {
@@ -615,13 +615,13 @@ export function createSpindrift(shared, field, count) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Spice blows (line clears)
+// Dust geysers (line clears)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function createSpiceBlows(shared, perSlot) {
+export function createDustGeysers(shared, perSlot) {
     const n = Math.max(1, (perSlot | 0) * BLOW_SLOTS);
     const geometry = quadGeometry(n, 3131);
-    const material = fxMaterial('shifting-sands-spice-blows');
+    const material = fxMaterial('shifting-sands-dust-geysers');
     const {
         uTime, uWindDir, atmosphere, noiseTex,
     } = shared;
@@ -638,7 +638,7 @@ export function createSpiceBlows(shared, perSlot) {
     const strength = S1.x;
     const life = seed.y.mul(2.6).add(3.2);
     const live = step(0.0, age).mul(step(age, life)).mul(step(0.01, strength));
-    // Geyser: a fast column with a crown of falling spice, drag-damped.
+    // Geyser: a fast column with a crown of falling dust, drag-damped.
     const ang = seed.x.mul(TAU);
     const spread = pow(seed.z, 1.6);
     const lateral = spread.mul(60.0).add(5.0);
@@ -667,7 +667,7 @@ export function createSpiceBlows(shared, perSlot) {
         const fade = smoothstep(0.0, 0.08, vAge).mul(float(1.0).sub(smoothstep(vLife.mul(0.4), vLife, vAge)));
         const a = clamp(shape.mul(fade).mul(0.3), 0.0, 1.0);
         const dust = atmosphere.applyAerial(dustRadiance(shared, vec3(0.7, 0.4, 0.2), vC, 1.0), vC, 0.7);
-        // Hot melange glow in the first moments, cooling to ember.
+        // Hot gold-dust glow in the first moments, cooling to ember.
         const heat = exp(vAge.mul(-2.6)).mul(1.1);
         const glow = mix(vec3(1.0, 0.42, 0.1), vec3(1.0, 0.7, 0.35), exp(vAge.mul(-4.0)))
             .mul(heat).mul(shape.mul(fade));
@@ -675,7 +675,7 @@ export function createSpiceBlows(shared, perSlot) {
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = 'shifting-sands-spice-blows';
+    mesh.name = 'shifting-sands-dust-geysers';
     mesh.frustumCulled = false;
     mesh.renderOrder = 32;
     return {

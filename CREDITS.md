@@ -175,9 +175,10 @@ Galaxy · Geode Crystalline · Grainfields (titled "Misty Lake" until October 20
 Himalayan Peak · Ice Temple · Lunara · Meditation Temple ·
 Moonlit Greenhouse · Murmuration (titled "Electric Dreams"
 until October 2026) · Neon District · Neon Dusk ·
-Ocean Deep · Rainbark (titled "Cosmic Chimes" until October 2026) · Rainy Window ·
+Ocean Deep · Rainbark (titled "Cosmic Chimes" until October 2026) ·
 Shifting Sands · Spring (titled "Moonlit Forest" until October 2026) · Starlight ·
-Stellar Drift · Stillwater · Waves · Wolfhour · Black Hole · Aether Tides.
+Stellar Drift · Stillwater · Sunbraid (titled "Rainy Window" until October 2026) ·
+Waves · Wolfhour · Black Hole · Aether Tides.
 
 Sound effects are generated procedurally in code (`src/audio/sound-effects.js`); no
 third-party audio samples are bundled. Fonts are self-hosted under the SIL Open Font
