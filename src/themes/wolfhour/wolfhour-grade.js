@@ -1,6 +1,7 @@
 /**
- * Wolfhour's black-and-silver night grade. One scene read, one existing bloom chain,
- * and a static display-space dither keep the alpine silhouettes clean and calm.
+ * Wolfhour's moonlit night grade: cold blue shadows, cool white highlights, and the colour the
+ * scene was authored with kept (the one warm light in the valley stays warm). One scene read,
+ * one bloom chain and a static display-space dither keep the alpine silhouettes clean and calm.
  * Shared by the isolated playground and the shipping theme.
  */
 import * as THREE from 'three/webgpu';
@@ -45,7 +46,9 @@ export class WolfhourGrade {
         this.size = { width: 0, height: 0 };
 
         this.postProcessing = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera);
+        // The scene pass carries its own samples (the canvas MSAA never reaches it): the wolves,
+        // the hut and every ridgeline step smoothly from High up (shared/scene-antialias.js).
+        this.scenePass = pass(scene, camera, { samples: Math.max(0, Math.floor(params.samples ?? 0)) });
         if (this.useMRT) {
             this.scenePass.setMRT(withEmissiveMaterialBlending(mrt({ output, emissive })));
         }
@@ -61,13 +64,13 @@ export class WolfhourGrade {
         // default. Preserve that actual pixel budget with r186's public API.
         this.bloomNode.setResolutionScale(0.5 * this.bloomDownsample);
 
-        this.uSilverTintStrength = uniform(params.silverTintStrength ?? 0.18);
-        this.uTintDesaturation = uniform(params.tintDesaturation ?? 0.56);
+        this.uCoolTintStrength = uniform(params.coolTintStrength ?? 0.6);
+        this.uTintDesaturation = uniform(params.tintDesaturation ?? 0.08);
         this.uVignetteOffset = uniform(params.vignetteOffset ?? 1.18);
         this.uVignetteDarkness = uniform(params.vignetteDarkness ?? 0.58);
         this.uExposure = uniform(params.exposure ?? 1.0);
         this.uContrast = uniform(params.contrast ?? 1.04);
-        this.uSaturation = uniform(params.saturation ?? 0.98);
+        this.uSaturation = uniform(params.saturation ?? 1.0);
         this.uDitherStrength = uniform(params.ditherStrength ?? (1 / 255));
 
         this.postProcessing.outputNode = Fn(() => {
@@ -76,12 +79,13 @@ export class WolfhourGrade {
             const hdr = max(base.rgb.add(this.bloomNode.rgb), vec3(0)).toVar();
             const luminance = dot(hdr, LUMA).toVar();
 
-            // Preserve subtle cool shadows while bright moonlight becomes silver.
-            // A slight warm highlight counterbalances the cool atmosphere.
-            const silverMask = smoothstep(0.025, 0.48, luminance).toVar();
-            const silver = mix(hdr, vec3(luminance), this.uTintDesaturation.mul(silverMask));
-            const splitTint = mix(vec3(0.965, 0.98, 1.015), vec3(1.02, 1.015, 1.0), silverMask);
-            hdr.assign(mix(hdr, silver.mul(splitTint), this.uSilverTintStrength));
+            // Night split-tone by scaling only (an added constant would veil the blacks): the
+            // shadows lean into blue, moonlit snow stays a cool white. Mid-tones lose a little
+            // saturation, as the eye does at night; strong colour (the hut's window) keeps it.
+            const lightMask = smoothstep(0.02, 0.5, luminance).toVar();
+            const nightTint = mix(vec3(0.88, 0.96, 1.14), vec3(0.985, 1.0, 1.03), lightMask);
+            const muted = mix(hdr, vec3(luminance), this.uTintDesaturation.mul(float(1).sub(lightMask.mul(0.6))));
+            hdr.assign(mix(hdr, muted.mul(nightTint), this.uCoolTintStrength));
             hdr.mulAssign(this.uExposure);
 
             // Contrast acts on luminance around a night-scene midpoint and
@@ -146,7 +150,7 @@ export class WolfhourGrade {
             this.bloomDownsample = sanitizeDownsample(params.bloomDownsample, this.bloomDownsample);
             this.bloomNode.setResolutionScale(0.5 * this.bloomDownsample);
         }
-        if (params.silverTintStrength !== undefined) this.uSilverTintStrength.value = params.silverTintStrength;
+        if (params.coolTintStrength !== undefined) this.uCoolTintStrength.value = params.coolTintStrength;
         if (params.tintDesaturation !== undefined) this.uTintDesaturation.value = params.tintDesaturation;
         if (params.vignetteOffset !== undefined) this.uVignetteOffset.value = params.vignetteOffset;
         if (params.vignetteDarkness !== undefined) this.uVignetteDarkness.value = params.vignetteDarkness;

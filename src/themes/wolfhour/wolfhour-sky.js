@@ -1,7 +1,7 @@
 import * as THREE from 'three/webgpu';
 import {
     attribute, float, fwidth, mix, normalWorld, positionGeometry, sin, smoothstep,
-    texture, uniform, uniformArray, uv, vec2, vec3, length, exp, max, dot, pow,
+    texture, uniform, uniformArray, uv, vec2, vec3, length, exp, max, dot,
     atan, clamp,
 } from 'three/tsl';
 import { resolveWolfhourComposition } from './wolfhour-composition.js';
@@ -16,7 +16,7 @@ export function wolfhourRandom(seed = 73013) {
 
 // A small tile carries the expensive noise work. Two filtered taps replace
 // repeated fragment FBM across the entire sky and the valley mist.
-function makeNoiseTexture() {
+export function makeWolfhourNoiseTexture() {
     const size = 128;
     const random = wolfhourRandom(1979);
     const lattice = new Float32Array(size * size);
@@ -84,7 +84,7 @@ function createCorona(maxPulses, noiseMap) {
         rings = rings.add(softArc.mul(envelope).mul(brokenArc).div(age.mul(2.2).add(1)));
         tint = tint.add(envelope.mul(pulse.w));
     }
-    const haloColor = mix(vec3(0.64, 0.67, 0.72), vec3(0.89, 0.89, 0.91), clamp(tint, 0, 1));
+    const haloColor = mix(vec3(0.46, 0.57, 0.80), vec3(0.78, 0.85, 0.98), clamp(tint, 0, 1));
     const alpha = clamp(corona.add(rings.mul(0.14)), 0, 0.18)
         .mul(float(1).sub(smoothstep(0.83, 1, radius)));
     const material = new THREE.MeshBasicNodeMaterial({
@@ -107,12 +107,13 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     const uMoonSky = uniform(new THREE.Vector2(-500, 225));
     const uMoonStars = uniform(new THREE.Vector2(-500, 225));
     const uMoonRadius = uniform(55);
-    const noiseMap = makeNoiseTexture();
+    const noiseMap = makeWolfhourNoiseTexture();
     // Procedural detail belongs to the sky plane. Translating it for parallax
     // must not make the cloud/noise pattern slide over the surface.
     const p = positionGeometry.xy;
     const horizon = smoothstep(-380, 580, p.y);
-    const skyBase = mix(vec3(0.0024, 0.0027, 0.0034), vec3(0.00025, 0.0003, 0.0005), horizon);
+    // Night blue: a deep indigo zenith over a slate-blue horizon glow.
+    const skyBase = mix(vec3(0.0062, 0.0095, 0.021), vec3(0.0006, 0.0009, 0.0026), horizon);
     const n = texture(noiseMap, p.mul(vec2(0.00065, 0.0011)).add(vec2(uTime.mul(0.00045), 0))).r;
     const fine = texture(noiseMap, p.mul(vec2(0.002, 0.0035))).r;
     const bandDistance = p.y.sub(p.x.mul(0.39)).sub(320).add(n.sub(0.5).mul(170));
@@ -120,12 +121,15 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     const dust = smoothstep(0.28, 0.74, n).mul(fine.mul(0.5).add(0.5));
     const rMoon = length(p.sub(uMoonSky));
     const moonScatter = exp(rMoon.div(uMoonRadius.mul(1.9)).pow2().negate());
+    // A wide, faint aureole: the moon lights the whole upper-left of the sky a little.
+    const moonGlow = exp(rMoon.div(uMoonRadius.mul(7.5)).negate());
     const cirrus = smoothstep(0.53, 0.78, n.add(fine.mul(0.13)))
         .mul(exp(p.y.sub(45).div(230).pow2().negate()));
     const skyColor = skyBase
-        .add(vec3(0.0032, 0.0033, 0.0038).mul(band).mul(dust))
-        .add(vec3(0.003, 0.0031, 0.0035).mul(moonScatter))
-        .add(vec3(0.008, 0.0083, 0.009).mul(cirrus).mul(float(0.1).add(uPulse.mul(0.04))));
+        .add(vec3(0.0028, 0.0034, 0.0052).mul(band).mul(dust))
+        .add(vec3(0.0052, 0.0068, 0.0115).mul(moonScatter))
+        .add(vec3(0.0045, 0.0062, 0.0105).mul(moonGlow))
+        .add(vec3(0.008, 0.0092, 0.0125).mul(cirrus).mul(float(0.1).add(uPulse.mul(0.04))));
     const skyMaterial = new THREE.MeshBasicNodeMaterial({ depthWrite: false });
     skyMaterial.colorNode = skyColor;
     skyMaterial.emissiveNode = vec3(0);
@@ -163,7 +167,7 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     const rayY = float(1).sub(smoothstep(0.025, 0.15, starP.y.abs()))
         .mul(float(1).sub(smoothstep(0.1, 1, starP.x.abs())));
     const starShape = starCore.add(rayX.add(rayY).mul(a.w).mul(0.085));
-    const starTint = mix(vec3(0.82, 0.85, 0.9), vec3(1, 0.965, 0.9), smoothstep(0.85, 1, a.x.div(6.283)));
+    const starTint = mix(vec3(0.74, 0.82, 1.0), vec3(1, 0.94, 0.86), smoothstep(0.85, 1, a.x.div(6.283)));
     starsMaterial.colorNode = starTint.mul(a.z);
     starsMaterial.opacityNode = clamp(starShape.mul(twinkle).mul(moonSuppression)
         .mul(float(0.94).add(uPulse.mul(0.06))), 0, 1);
@@ -220,7 +224,7 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     // Lambert sphere while retaining a directional terminator and dark maria.
     const lunarLight = clamp(lightCos.div(lightCos.add(viewCos).add(0.06)).mul(1.8), 0, 1)
         .mul(smoothstep(-0.035, 0.085, incidence));
-    const lunarColor = moonSample.mul(mix(vec3(0.043, 0.048, 0.057), vec3(0.95, 0.955, 0.97), lunarLight))
+    const lunarColor = moonSample.mul(mix(vec3(0.034, 0.044, 0.068), vec3(0.93, 0.955, 1.0), lunarLight))
         .mul(moonIllumination.add(moonPulse.mul(0.085)));
     const moonMaterial = new THREE.MeshBasicNodeMaterial();
     moonMaterial.colorNode = lunarColor;
@@ -239,19 +243,37 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
     halo.position.set(-500, 225, -2740);
     group.add(halo);
 
-    // Low banks sit among the middle ridges and behind every foreground spur.
-    const fogMaterial = new THREE.MeshBasicNodeMaterial({ transparent: true, depthWrite: false });
-    const fp = uv();
-    const fogNoise = texture(noiseMap, fp.mul(vec2(3.5, 0.6)).add(vec2(uTime.mul(0.002), 0))).r;
-    const fogShape = pow(max(sin(fp.y.mul(Math.PI)), 0), 2)
-        .mul(smoothstep(0, 0.14, fp.x)).mul(smoothstep(0, 0.14, float(1).sub(fp.x)));
-    fogMaterial.colorNode = vec3(0.024, 0.027, 0.032);
-    fogMaterial.opacityNode = fogShape.mul(smoothstep(0.2, 0.8, fogNoise)).mul(float(0.26).add(uPulse.mul(0.08)));
-    fogMaterial.emissiveNode = vec3(0);
-    const fog = new THREE.Mesh(new THREE.PlaneGeometry(4200, 260), fogMaterial);
-    fog.name = 'Wolfhour valley mist';
-    fog.position.set(0, -280, -870);
-    group.add(fog);
+    // Moonlit clouds: a thin, broken layer drifting east between the moon and the mountains.
+    // Lit by the moon by how close they pass to it; their thin edges near it take a silver
+    // lining, and now and then one veils the moon itself. Slow: never a flash.
+    const uMoonClouds = uniform(new THREE.Vector2(-500, 225));
+    let clouds = null;
+    if (quality !== 'Minimal') {
+        const cp = positionGeometry.xy;
+        const drift = vec2(cp.x.add(uTime.mul(5.5)), cp.y);
+        const broad = texture(noiseMap, drift.mul(vec2(0.00034, 0.0011)).add(vec2(0.21, 0.63))).r;
+        const detail = texture(noiseMap, drift.mul(vec2(0.0011, 0.0034))
+            .add(vec2(uTime.mul(0.0007).add(0.57), 0.12))).r;
+        // Cloud gathers in a band across the upper sky (world y 140..520) and thins toward the
+        // ridges and the top of the frame.
+        const deck = smoothstep(-200, -60, cp.y).mul(float(1).sub(smoothstep(160, 320, cp.y)));
+        const cover = smoothstep(0.47, 0.72, broad.mul(0.68).add(detail.mul(0.32)).add(deck.sub(1).mul(0.24)));
+        const toMoon = cp.sub(uMoonClouds);
+        const near = exp(length(toMoon).div(uMoonRadius).mul(-0.5));
+        const thin = float(1).sub(smoothstep(0.45, 0.95, cover));
+        const lit = mix(vec3(0.026, 0.034, 0.058), vec3(0.13, 0.155, 0.21), near.mul(0.7).add(0.1));
+        const silver = vec3(0.55, 0.6, 0.72).mul(near.mul(near)).mul(thin).mul(cover)
+            .mul(1.6);
+        const cloudMaterial = new THREE.MeshBasicNodeMaterial({
+            name: 'Wolfhour moonlit clouds', transparent: true, depthWrite: false,
+        });
+        cloudMaterial.colorNode = lit.add(silver);
+        cloudMaterial.opacityNode = cover.mul(0.8);
+        clouds = new THREE.Mesh(new THREE.PlaneGeometry(6200, 1300), cloudMaterial);
+        clouds.name = 'Wolfhour moonlit clouds';
+        clouds.position.set(0, 300, -2300);
+        group.add(clouds);
+    }
 
     let moonBaseX = 0;
     let moonBaseY = 0;
@@ -266,8 +288,11 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
         moon.position.y = moonBaseY + cameraY * 0.915;
         halo.position.x = moon.position.x;
         halo.position.y = moon.position.y;
-        fog.position.x = cameraX * 0.25;
-        fog.position.y = -280 + cameraY * 0.25;
+        if (clouds) {
+            clouds.position.x = cameraX * 0.93;
+            clouds.position.y = 300 + cameraY * 0.93;
+            uMoonClouds.value.set(moon.position.x - clouds.position.x, moon.position.y - clouds.position.y);
+        }
         // The glow and star attenuation use the moon in each layer's own space.
         uMoonSky.value.set(moon.position.x - sky.position.x, moon.position.y - sky.position.y);
         uMoonStars.value.set(moon.position.x - stars.position.x, moon.position.y - stars.position.y);
@@ -277,8 +302,9 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
         cameraY = Number.isFinite(camera?.position?.y) ? camera.position.y : 0;
         placeLayers();
     };
-    const resize = (nextAspect) => {
-        const { moonX, moonY, moonScale } = resolveWolfhourComposition(nextAspect);
+    // `composition` overrides where the moon rests (the playground's icon lens uses it).
+    const resize = (nextAspect, composition = null) => {
+        const { moonX, moonY, moonScale } = composition ?? resolveWolfhourComposition(nextAspect);
         moonBaseX = moonX;
         moonBaseY = moonY;
         moon.scale.setScalar(moonScale); halo.scale.setScalar(moonScale);
@@ -292,6 +318,7 @@ export function createWolfhourSky({ scene, quality = 'High', aspect = 16 / 9 }) 
         moon,
         halo,
         moonTexture,
+        noiseMap,
         moonNodeData: { material: moonMaterial, uniforms: { uPulse: moonPulse } },
         moonHaloNodeData: haloData,
         update(time, state = {}) {
