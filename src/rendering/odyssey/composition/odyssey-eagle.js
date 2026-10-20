@@ -1,7 +1,8 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
  * THE MASSIF'S EAGLE — a golden eagle thermalling off the hero massif's south flank (chapter 4,
- * into the first orbs of chapter 5), the climb's living scale cue before the summit kettle.
+ * up the wall until the rail has climbed past it on the way to L29), the climb's living scale
+ * cue before the summit kettle.
  *
  * The model is the Himalayan Peak theme's Blender-built eagle (copied to
  * `assets/chapter-04/eagle.glb`: themes cannot be imported into Odyssey), every joint posed in

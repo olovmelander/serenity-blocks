@@ -135,6 +135,12 @@ const UPDATE_PROXIMITY_THRESHOLD = 0.15; // Only fully update nodes within this 
 const CHAPTER_1_NODE_QUENCH_START = 0.58;
 const CHAPTER_1_NODE_QUENCH_END = 0.74;
 const CHAPTER_1_NODE_MIN_SCALE = 0.0;
+// The quench runs while the EYE goes from level with an orb to this far beyond it, along the
+// rail (world units — the old 0.006 p). It once keyed on the rail point, which the eye trails by
+// ~24 u, so it shrank orbs still ahead of the eye and on screen (L4/L5, 2026-10-20).
+const CHAPTER_1_QUENCH_PASS = 15;
+// A camera move can change a chapter-1 orb's quench while it is within this of the eye.
+const CHAPTER_1_QUENCH_STALE_RADIUS = 40;
 // QW11: below this per-frame camera-progress delta the instanced/particle GPU buffers
 // are treated as unchanged, so update() skips the ~7040-particle + instance re-upload
 // (the time-driven sparkle/iridescence still animates in-shader via uTime). Small enough
@@ -163,11 +169,45 @@ const HIDDEN_INSTANCE_MATRIX = new THREE.Matrix4().compose(
 // while still leaving depth-test on so a far level's indicator can't bleed over a nearer orb.
 // Applied each frame in _updateIndicatorBillboards().
 const LOCK_PLACEMENT = Object.freeze({ up: 1.32, toward: 1.0, size: 0.5 });
-// The padlock glyph fades out as its orb nears the lens (a node passing the camera at the 4->5
-// seam put a padlock the size of a quarter of the frame on screen).
+// The padlock / duel / boss glyphs scale with their orb, so the orb's near-lens cap bounds them
+// too (a node passing the camera at the 4->5 seam once put a padlock the size of a quarter of the
+// frame on screen). Only the FOCUSED orb, which the cap leaves alone, still eases its glyphs down
+// in its close-up — as it always has. Passing orbs keep theirs until they leave the frame.
 const LOCK_NEAR_FADE = Object.freeze({ start: 5, end: 14 });
-// Whole-orb near-lens fade (world units from the camera to the orb's seat).
-const NODE_NEAR_FADE = Object.freeze({ start: 4, end: 13 });
+/**
+ * THE NEAR-LENS CAP: an orb is never drawn larger on screen than `maxDeg` of apparent radius
+ * (its glow shell, from the eye) — about what the focus close-up shows. Only the excess is taken
+ * off, so an orb is never shrunk merely for being near.
+ *
+ * It replaced a fade to nothing inside 13 u of the eye (2026-10-20, in-game feedback: "orbs
+ * shrink away before we have passed them"). The eye trails its rail point, so leaving an orb
+ * flies the camera straight at it: on most of the journey the orb slides out of the bottom of
+ * the frame ~9-11 u from the eye, and the fade had it shrinking from 13 u, a third of the way
+ * up the picture. On the steep climbs (chapter 5, the black hole, the city) the eye passes
+ * through the orb, and the fade emptied the middle of the frame (L28: scale 0 at 4 u, dead
+ * centre). Capped, the leaving orb exits at full size and the one in the way holds the
+ * close-up's size until the eye is past it. Measured on the real camera:
+ * odyssey-orbs-until-passed.test.js. `staleRadius` is where a camera move can still change a
+ * scale (it must cover the largest orb's cap distance, ~9.6 u in chapters 5-6).
+ */
+export const NODE_NEAR_CAP = Object.freeze({ maxDeg: 16, staleRadius: 13 });
+const NODE_NEAR_CAP_TAN = Math.tan(THREE.MathUtils.degToRad(NODE_NEAR_CAP.maxDeg));
+
+/**
+ * Scale (0..1) that holds an orb's apparent radius within NODE_NEAR_CAP.
+ * @param {number} eyeDistance world units from the eye to the orb's seat
+ * @param {number} worldRadius the orb's glow radius at scale 1 (world units)
+ */
+export function nodeNearCapScale(eyeDistance, worldRadius) {
+    if (!(worldRadius > 0) || !Number.isFinite(eyeDistance)) return 1;
+    return Math.min(1, (Math.max(0, eyeDistance) * NODE_NEAR_CAP_TAN) / worldRadius);
+}
+
+/** An orb's glow radius at full size in `chapter` (world units) — what NODE_NEAR_CAP measures. */
+export function getOdysseyNodeGlowRadius(chapter) {
+    return GLASS_GLOW_RADIUS * (CHAPTER_NODE_BASE_SCALE[chapter] ?? 1.0);
+}
+
 // Rival and boss markers hang off the orb's lower side (the lock and stars live above it), so a
 // chapter's duel and its boss read on the path itself, not only in the panel. They sit square
 // to the path's on-screen direction, so a ribbon running down the frame never sits under them.
@@ -397,13 +437,46 @@ export class LevelNodeManager {
         // to CHAPTER_1_NODE_MIN_SCALE (0) as you dollied toward them, and the isVisible gate then
         // culled them entirely (the user's "orbs after level 3 shrink to super small on approach").
         // Gate the quench behind a per-node "passed" factor so an orb only starts to quench once
-        // the camera has actually gone beyond its own pathPosition; approaching orbs stay full size.
-        const passed = THREE.MathUtils.smoothstep(
-            this.cameraProgress,
-            node.pathPosition,
-            node.pathPosition + 0.006,
-        );
-        return rawQuench * passed;
+        // the camera has actually gone beyond it; approaching orbs stay full size. "The camera"
+        // is the EYE, not cameraProgress: the eye trails its rail point by ~24 u, and keyed on
+        // the rail point L4/L5 shrank to ~0.4 while still ahead of the eye and on screen.
+        if (rawQuench <= 0) return 0;
+        return rawQuench * this._eyePassedNode(node);
+    }
+
+    /**
+     * How far (0..1) the eye has gone past an orb along the rail: 0 until it is level with the
+     * orb, 1 once it is CHAPTER_1_QUENCH_PASS beyond. The orb the camera is focused on is never
+     * passed (the close-up sits beside it). No camera: falls back to the rail point.
+     * @private
+     */
+    _eyePassedNode(node) {
+        if (node.config.id === this.focusedLevelId) return 0;
+        if (!this.camera) {
+            return THREE.MathUtils.smoothstep(this.cameraProgress, node.pathPosition, node.pathPosition + 0.006);
+        }
+        const seat = this.cachedBasePositions.get(node.config.id) || node.group.position;
+        if (!this._scratchPass) this._scratchPass = [new THREE.Vector3(), new THREE.Vector3()];
+        const ahead = this._getPathPoint(node.pathPosition + 0.002, this._scratchPass[0]);
+        const behind = this._getPathPoint(node.pathPosition - 0.002, this._scratchPass[1]);
+        const tangent = ahead.sub(behind);
+        const len = tangent.length();
+        if (!(len > 1e-6)) return 0;
+        const along = ((this.camera.position.x - seat.x) * tangent.x
+            + (this.camera.position.y - seat.y) * tangent.y
+            + (this.camera.position.z - seat.z) * tangent.z) / len;
+        return THREE.MathUtils.smoothstep(along, 0, CHAPTER_1_QUENCH_PASS);
+    }
+
+    /**
+     * Extra near-lens easing for an orb's padlock / duel / boss glyph: only on the focused orb
+     * (every other orb is already held to NODE_NEAR_CAP, which bounds its glyphs with it).
+     * @private
+     */
+    _glyphNearScale(node, camPos) {
+        if (node.config.id !== this.focusedLevelId) return 1;
+        const distance = camPos.distanceTo(node.group.position);
+        return THREE.MathUtils.smoothstep(distance, LOCK_NEAR_FADE.start, LOCK_NEAR_FADE.end);
     }
 
     _createSharedLockTextures() {
@@ -1321,7 +1394,9 @@ export class LevelNodeManager {
         for (const node of this.nodes.values()) {
             if (!node.group.visible || node.config.id === this.focusedLevelId) continue;
             const seat = this.cachedBasePositions.get(node.config.id) || node.group.position;
-            if (cam.distanceToSquared(seat) < NODE_NEAR_FADE.end * NODE_NEAR_FADE.end) return true;
+            // Chapter 1's quench also reads the eye (it starts when the eye passes the orb).
+            const r = (node.config.chapter ?? 1) === 1 ? CHAPTER_1_QUENCH_STALE_RADIUS : NODE_NEAR_CAP.staleRadius;
+            if (cam.distanceToSquared(seat) < r * r) return true;
         }
         return false;
     }
@@ -1573,6 +1648,10 @@ export class LevelNodeManager {
                 this.glowInstancedMesh.setMatrixAt(idx, matrix);
                 this.lockInstancedMesh.setMatrixAt(idx, matrix);
                 for (let s = 0; s < 3; s++) this.starInstancedMesh.setMatrixAt(idx * 3 + s, matrix);
+                // The duel/boss markers too: the billboard pass skips hidden orbs, so a culled
+                // orb's marker otherwise stayed on screen at its last place.
+                this.rivalMarkerMesh?.setMatrixAt(idx, matrix);
+                this.bossMarkerMesh?.setMatrixAt(idx, matrix);
                 // LEVER 1: hide the inner core too (wobble positionNode → same portable matrix).
                 if (this.innerCoreMesh) this.innerCoreMesh.setMatrixAt(idx, HIDDEN_INSTANCE_MATRIX);
 
@@ -1600,15 +1679,13 @@ export class LevelNodeManager {
             const baseScale = node.group.userData.baseScale ?? 1.0;
             const hoverScale = this.hoveredNode === levelId ? 1.16 : 1.0;
             const quenchScale = THREE.MathUtils.lerp(1.0, CHAPTER_1_NODE_MIN_SCALE, chapterOneQuench);
-            // Nothing comes to the lens unannounced: seated on the rail, an orb can pass within
-            // a few units of the camera where the rail does (the 7->8 seam), so it shrinks away
-            // inside NODE_NEAR_FADE instead of filling the frame. Not the orb the camera is
-            // focused on: focus parks ~10 u away, inside the band, by design.
+            // Nothing fills the lens: the eye flies at (or through) each orb it leaves, so an
+            // orb's apparent size is capped (NODE_NEAR_CAP) rather than faded away. Not the orb
+            // the camera is focused on: the close-up is the size the cap is set to.
             const nearScale = this.camera && levelId !== this.focusedLevelId
-                ? THREE.MathUtils.smoothstep(
+                ? nodeNearCapScale(
                     this.camera.position.distanceTo(basePos || node.group.position),
-                    NODE_NEAR_FADE.start,
-                    NODE_NEAR_FADE.end,
+                    GLASS_GLOW_RADIUS * baseScale,
                 )
                 : 1;
             if (nearScale < 1) nearFadeLive = true;
@@ -1780,9 +1857,7 @@ export class LevelNodeManager {
                 matrix.setPosition(this._scratchIndicatorPos.copy(pos)
                     .addScaledVector(camUp, LOCK_PLACEMENT.up * scale)
                     .addScaledVector(toCam, LOCK_PLACEMENT.toward * scale));
-                const camDistance = camPos.distanceTo(pos);
-                const s = scale * LOCK_PLACEMENT.size
-                    * THREE.MathUtils.smoothstep(camDistance, LOCK_NEAR_FADE.start, LOCK_NEAR_FADE.end);
+                const s = scale * LOCK_PLACEMENT.size * this._glyphNearScale(node, camPos);
                 matrix.scale(scaleVec.set(s, s, s));
                 this.lockInstancedMesh.setMatrixAt(idx, matrix);
             } else {
@@ -1830,8 +1905,7 @@ export class LevelNodeManager {
                     .addScaledVector(camRight, markerSide.x * MARKER_PLACEMENT.out * scale)
                     .addScaledVector(camUp, markerSide.y * MARKER_PLACEMENT.out * scale)
                     .addScaledVector(toCam, MARKER_PLACEMENT.toward * scale));
-                const markerScale = scale * MARKER_PLACEMENT.size
-                    * THREE.MathUtils.smoothstep(camPos.distanceTo(pos), LOCK_NEAR_FADE.start, LOCK_NEAR_FADE.end);
+                const markerScale = scale * MARKER_PLACEMENT.size * this._glyphNearScale(node, camPos);
                 matrix.scale(scaleVec.set(markerScale, markerScale, markerScale));
                 mesh.setMatrixAt(idx, matrix);
             });
