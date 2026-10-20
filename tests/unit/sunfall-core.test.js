@@ -8,8 +8,12 @@ import {
     SUNFALL_SEED,
     SUNFALL_STATIONS,
     SUNFALL_WEATHERS,
+    CANOPY_LEVEL,
+    OCULUS_CENTER,
     boardCellToDolineWorld,
     cellsFromMatrix,
+    footFor,
+    oculusCoord,
     dlBowCpu,
     greeningTau,
     leafTintAtAge,
@@ -47,14 +51,19 @@ describe('sunfall-core', () => {
         for (const st of SUNFALL_STATIONS) {
             const len = Math.hypot(st.sunDir[0], st.sunDir[1], st.sunDir[2]);
             expect(len).toBeCloseTo(1.0, 5);
-            expect(st.sunDir[1]).toBeGreaterThan(0.9);
+            // High sun (62-74 degrees): the sun stands beyond the oculus and to the left.
+            expect(st.sunDir[1]).toBeGreaterThan(0.85);
+            expect(st.sunDir[2]).toBeLessThan(0);
         }
         expect(SUNFALL_WEATHERS).toHaveLength(4);
     });
 
     it('interpolates stations smoothly across level progression and fractional station coordinates', () => {
-        expect(stationIndexForLevel(1)).toBe(0);
-        expect(stationIndexForLevel(6)).toBe(0);
+        // Level 1 rests on High Sunfall, the canonical frame; the light walks one station a level.
+        expect(stationIndexForLevel(1)).toBe(1);
+        expect(SUNFALL_STATIONS[stationIndexForLevel(1)].id).toBe('high-sunfall');
+        expect(stationIndexForLevel(5)).toBe(0);
+        expect(stationIndexForLevel(6)).toBe(1);
 
         const s0 = sampleStation(0);
         const sMid = sampleStation(1.5);
@@ -77,11 +86,16 @@ describe('sunfall-core', () => {
 
     it('evaluates sunlitAt inside and outside the oculus projection footprint', () => {
         const sunDir = SUNFALL_STATIONS[1].sunDir;
-        const inPool = sunlitAt(14, -22, -96, sunDir, 0.9);
-        const farWall = sunlitAt(-80, 10, -40, sunDir, 0.9);
-
-        expect(inPool).toBeGreaterThan(0.75);
-        expect(farWall).toBeCloseTo(0, 5);
+        const foot = footFor(sunDir);
+        expect(foot[1]).toBe(CANOPY_LEVEL);
+        expect(sunlitAt(...foot, sunDir, 0.9)).toBeGreaterThan(0.75);
+        // The oculus projects onto itself; the near shade under the eye's ledge is dark.
+        const [qx, qz] = oculusCoord(OCULUS_CENTER[0], OCULUS_CENTER[1], OCULUS_CENTER[2], sunDir);
+        expect(Math.hypot(qx, qz)).toBeCloseTo(0, 6);
+        expect(sunlitAt(-80, 10, -40, sunDir, 0.9)).toBeCloseTo(0, 5);
+        expect(sunlitAt(0, -100, -250, sunDir, 0.9)).toBeCloseTo(0, 5);
+        // Above the oculus plane is the open air outside.
+        expect(sunlitAt(0, OCULUS_CENTER[1] + 10, 0, sunDir, 0.9)).toBe(1);
     });
 
     it('solves solveBowSun so dlBowCpu peaks near the 41.3-degree primary rainbow angle', () => {
@@ -127,7 +141,9 @@ describe('sunfall-core', () => {
 
         const worldPt = boardCellToDolineWorld(5, 10);
         expect(worldPt).toHaveLength(3);
-        expect(worldPt[2]).toBeLessThan(-50);
+        expect(worldPt[2]).toBeLessThan(-250);
+        // Columns run left to right across the pool, as on screen.
+        expect(boardCellToDolineWorld(0, 10)[0]).toBeLessThan(boardCellToDolineWorld(9, 10)[0]);
     });
 
     it('plans deterministic doline geometry and reproducible mulberry32 sequences', () => {
@@ -143,5 +159,12 @@ describe('sunfall-core', () => {
         expect(plan1.swifts.length).toBe(preset.swiftCount);
         expect(plan1.gours.length).toBe(preset.gourPools);
         expect(plan1.gours[0]).toEqual(plan2.gours[0]);
+        // Strands hang either side of the card, from the vault near the eye.
+        expect(plan1.curtains.filter((c) => c.side < 0).length).toBeGreaterThan(0);
+        expect(plan1.curtains.filter((c) => c.side > 0).length).toBeGreaterThan(0);
+        for (const c of plan1.curtains) {
+            expect(Math.sign(c.x)).toBe(c.side);
+            expect(Math.abs(c.x) / -c.z).toBeGreaterThan(0.24);
+        }
     });
 });
