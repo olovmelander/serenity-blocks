@@ -31,7 +31,7 @@
 | 15 | `aurora` | Aurora | `sky` | heavy | [§15](#aurora) |
 | 16 | `galaxy` | Galaxy | `cosmic` | heavy | [§16](#galaxy) |
 | 17 | `aether-tides` | Aether Tides | `cosmic` | heavy | [§17](#aether-tides) |
-| 18 | `rainy-window` | Rainy Window | `urban` | heavy | [§18](#rainy-window) |
+| 18 | `sunbraid` | Sunbraid | `fantasy` | heavy | [§18](#sunbraid) |
 | 19 | `koi-pond` | Koi Pond | `biomes` | heavy | [§19](#koi-pond) |
 | 20 | `verdant-hills` | Verdant Hills | `biomes` | heavy | [§20](#verdant-hills) |
 | 21 | `rainbark` | Rainbark | `biomes` | heavy | [§61](#rainbark) |
@@ -445,7 +445,7 @@ Status split:
   at event time), a director + composition module that read the live card/board/HUD rects, 6 tiers
   (Minimal…Extreme), and one post stack (max-channel knee bloom, hue-preserving filmic, calm zones over card/HUD).
 - **4 legacy classic-WebGL themes** (rainy-window, singing-bowl, misty-lake, luminous-tides; Kaleidosonic has
-  since replaced singing-bowl, §22, and Grainfields misty-lake, §28): one big
+  since replaced singing-bowl, §22, Grainfields misty-lake, §28, and Sunbraid rainy-window, §18): one big
   `THREE.WebGLRenderer` class with GLSL `ShaderMaterial`s and `EffectComposer`/`UnrealBloomPass`; events are
   random-position pulses, not aimed at the board. Their icons do not match their scenes well (noted per theme).
 
@@ -506,25 +506,52 @@ Status split:
 - **Avoid reusing**: fluid-dye clouds/filaments, nebula gas in violet/cyan/magenta, maelstrom/vortex with lens ring,
   piece-footprint echo, sparks that become stars, nova chain.
 
-<a id="rainy-window"></a>
+<a id="sunbraid"></a>
 
-### 18. Rainy Window (`rainy-window`) — legacy storm
+### 18. Sunbraid (`sunbraid`) — "the three suns"
 
-- Registry `:122-127`, group `urban`. `rainy-window-theme.js` (1199 lines) + tetrominos. No overhaul doc.
-- **Icon**: monochrome slate-grey city silhouettes (tower blocks left and right) in a downpour, diagonal rain streaks,
-  fog, flooded street reflections.
-- **Actual scene** (`docs/theme-screenshots/rainy-window.png`): no buildings in code. A dark slate sea (three
-  `Water.js`, normal map `./textures/water-normal.jpg`, `waterColor 0x000205`) under a grey-lavender overcast sky
-  (`0x000005`→`0x0a0a20` gradient), cloud layer, horizon haze, 50,000 rain points (`:383`, colour `0x8899bb`), 200 fog
-  sprites (`0x8899aa`), lightning bolts + two blue point lights (`0x8888ff`, `0xaaaaff`), FogExp2 `0x0a0a15`.
-- **Time**: night / storm. **Palette**: desaturated slate, grey-violet, steel blue; lightning blue-white.
-  Pieces (`rainy-window-tetrominos.js:11-18`): I `#f6c46a` streetlight, O `#c9b4ff` lavender neon, T `#7bf0d0` mint,
-  S `#ff8fb5` umbrella pink, Z `#586abf` midnight indigo, J `#ffe9b7` window light, L `#8ccff9` rain haze.
-- **Motion**: rain fall, fog banks drifting on a schedule, camera breathing + random "dips", lightning every 3–10 s.
-- **Gameplay FX**: `LINE_CLEAR` → lightning flash (intensity from line count) + sky glow; `COMBO` → storm intensity and
-  wind. No lock reaction. Not aimed at the board.
-- **Tech**: classic `WebGLRenderer`, GLSL ShaderMaterials, stock `Water` (a second scene render each frame).
-- **Avoid reusing**: grey storm palette, rain streaks, lightning-as-clear, flooded city silhouettes, overcast sea.
+- **Rebuilt 2026-10-20** in Rainy Window's place (the legacy classic-WebGL storm sea; its rain, lightning and grey
+  palette are gone with it). The old id is an alias in `RETIRED_THEME_IDS`, its track key resolves to `Sunbraid` (the
+  same recording, retitled), and Odyssey orb 31 (authored id 32, chapter 5) is "The Turning Suns". Group `fantasy`,
+  heavy. Record: `docs/SUNBRAID_VISUAL_OVERHAUL_2026-10.md`. Playground: `?effect=sunbraid`.
+- **Icon**: three coloured suns (coral, jade, cobalt) low beside a pale sandstone tower whose fan of coloured shadows
+  runs to the viewer across white gypsum.
+- **Setting**: an alien valley seen from 70 m up: towers, buttes and "mittens" of pale bedded sandstone (polygonal
+  sections, so every cliff is a plane; setbacks, cap rocks, scree aprons, pale turf on the flat tops) on a floor of
+  white gypsum crusted into polygons with selenite glitter; a low valley mist; a far rim of terraced escarpments;
+  gliders (broad translucent-winged creatures) riding the air. No real place on Earth.
+- **Light**: a close triple star low in front of the eye, left of the board: three suns of different colours wheeling
+  round one another (the braid). Where all three reach the floor it is white; where one is hidden the floor shows the
+  other two (cyan where the coral sun is hidden, magenta where the jade one is, gold where the cobalt one is); where
+  two are hidden, the third's own colour; where all three, dark. Every tower stands backlit with coloured rims and
+  throws a fan of graphic coloured bands toward the lens; the bands stand in the mist as coloured wedges.
+- **Palette**: white gypsum and pale cream, ochre, rose and lilac stone; saturated cyan, magenta, gold, coral, jade and
+  cobalt in the shadow bands; a cobalt-violet zenith over a rose-mauve horizon, coloured coronas and sun discs (a white
+  core with a limb of each sun's colour). Pieces (`sunbraid-tetrominos.js`): I `#FF8463` coral, O `#2B4FC4` cobalt,
+  T `#F5BB45` gold, S `#C8378A` magenta, Z `#62E0D6` cyan, J `#22804A` jade, L `#B9A2F7` lilac (palette gate 0/7;
+  every pair at least ΔE 13 under protanopia, deuteranopia and tritanopia).
+- **Motion**: the braid turns once every 330 s with the clock (so the fans swing and recolour and the valley's balance
+  moves at any level); the cluster nods slowly; the cloud deck drifts and casts faint coloured shadows; gliders fly
+  figure-of-eight loops, each throwing its own three-coloured shadow across the floor; selenite crystals glint in the
+  sun they catch and go out in a band where that sun is hidden.
+- **Gameplay FX**: everything is said by the suns (`sunbraid-braid.js`). Lock: the braid ticks a notch (a hard drop
+  further), every fan swings. Clear (1–3): the suns are drawn together for a breath (the fans narrow) and let go.
+  Four lines: the suns meet as one white sun (the world goes black and white: every shadow one black shadow), hold,
+  and part wide as the colour floods back. Chain: the braid turns faster and opens wider; luminous ribbons braid
+  between the suns. T-spin: the braid twists a third of a turn per spin-turn (the suns change places, every fan's
+  colours turn). Back-to-back: the ribbons brighten. Perfect clear: noon (the suns climb, the shadows shrink to the
+  towers' feet). Level up: the braid winds on a sixth of a turn. Game over: the suns set; their colours linger on the
+  horizon as afterglow.
+- **Tech**: WebGPURenderer on both backends, self-shaded `MeshBasicNodeMaterial`s. Shadows are analytic, not shadow
+  maps: towers as stacks of flat-topped vertical cylinders (one per tier, from the same profile that draws them),
+  gliders as discs, a soft penumbra from the ray's angular clearance. The towers are swept surfaces built on the CPU
+  (`sunbraid-spire-shape.js`). The mist's light is closed form: each tower's shadow under each sun is a wedge
+  bounded by planes, so the ray's span through it is exact and the exponential mist integrates analytically (no
+  march). One baked noise texture shared with the CPU land plan. Post: one scene pass, max-channel bloom above the
+  bright floor, the mist pass at reduced resolution, calm zones, hue-preserving filmic.
+- **Avoid reusing**: coloured suns, coloured shadows and shadow fans, a multi-sun cluster in front of the eye,
+  tri-colour light on pale forms, gameplay told by moving light sources (a sundial wound by play), white gypsum with
+  selenite glitter, pale sandstone towers and buttes, translucent gliders.
 
 <a id="koi-pond"></a>
 
@@ -848,26 +875,27 @@ The new theme should break these, not repeat them:
    (warp winds up), Kaleidosonic (the kaleidoscope's crown of jewels turns round the card).
 5. **Rings/ripples on water under the piece column.** Koi, Golden Forest, Starlight, Waves, Bioluminescence, Luminous
    Tides; Shifting Sands does it with sand, Kaleidosonic on stone beside the card.
-6. **Reflective water / mirror surface.** Starlight, Golden Forest, Bioluminescence, Koi, Rainy Window, Waves,
-   Luminous Tides (7 of 15).
+6. **Reflective water / mirror surface.** Starlight, Golden Forest, Bioluminescence, Koi, Waves, Luminous Tides
+   (6 of 15).
 7. **Level = palette wheel + clock drift 90–100 s per step.** Koi (6 nights), Geode (6 minerals), Bioluminescence
    (5), Serenity Warp (6), Starlight (6 hours), Waves (6 hours), Galaxy/Aether (5 palettes on level), Kaleidosonic
    (6 moods).
 8. **Fireflies / floating motes / bokeh.** Golden Forest, Koi, Bioluminescence (spores), Shifting Sands (gold
    motes).
-9. **Night or darkness as the base.** Galaxy, Aether, Serenity Warp, Starlight, Koi, Rainy Window, Bioluminescence,
-   Luminous Tides, Kaleidosonic, Geode (interior). Only Verdant Hills (midday), Golden Forest and Waves (golden hour),
-   Shifting Sands (dusk) and Grainfields (a storm breaking into sunbeams) are lit by a sun.
+9. **Night or darkness as the base.** Galaxy, Aether, Serenity Warp, Starlight, Koi, Bioluminescence, Luminous Tides,
+   Kaleidosonic, Geode (interior). Only Verdant Hills (midday), Golden Forest and Waves (golden hour), Shifting Sands
+   (dusk), Grainfields (a storm breaking into sunbeams) and Sunbraid (three coloured suns circling low) are lit by a sun.
 10. **Palette families already owned**: violet/magenta/blue space gas (Galaxy, Aether, Serenity Warp); teal/cyan
     glow on black (Bioluminescence, Luminous Tides); amber-gold monochrome (Golden Forest); apricot/rose dusk
     (Shifting Sands, Waves golden hour); jade water (Koi, Waves); violet+orange jewels (Geode); saturated grass green +
-    sky blue (Verdant Hills); navy moonlight (Starlight); grey storm (Rainy Window); ripe-barley gold under storm
-    slate (Grainfields); black-light neon on near-black pearl (Kaleidosonic).
+    sky blue (Verdant Hills); navy moonlight (Starlight); ripe-barley gold under storm slate (Grainfields); coral,
+    jade and cobalt sunlight on pale ground with cyan, magenta and gold shadows (Sunbraid); black-light neon on
+    near-black pearl (Kaleidosonic).
 11. **Composition tropes**: radial tunnel to a glowing centre (Geode, Serenity Warp, Waves eye); low sun on a horizon
     behind silhouettes (Golden Forest, Shifting Sands, Waves); tree framing at screen edges (Golden Forest, Verdant,
     Koi maple); shafts through a breaking storm deck walking the land (Grainfields).
 12. **Piece-colour tables** mostly reuse the same soft pastel set (`#ffd…` amber I, lavender O, mint T, pink S,
-    indigo Z, cream J, pale cyan L): Rainy Window, Golden Forest, Shifting Sands, Starlight, Koi Pond. A new theme should pick a distinct, saturated set tied to its world, and must keep
+    indigo Z, cream J, pale cyan L): Golden Forest, Shifting Sands, Starlight, Koi Pond. A new theme should pick a distinct, saturated set tied to its world, and must keep
     `npm run check:palette` (`scripts/palette-guideline-check.mjs`) from flagging it: bands I cyan 160–210°, O yellow
     32–75°, T purple 245–315°, S green 90–170°, Z red 320–20°, J blue 200–250°, L orange 20–50°; FAIL at 7/7, WARN at
     6/7. Verdant Hills, Galaxy, Aether Tides score 0/7.

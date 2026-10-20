@@ -4,7 +4,7 @@
  *
  * Enhanced Version:
  * - High-Quality Fluffy Grass (Sakura-style billboards) on Terrain
- * - "Rainy Window" style Ocean Surface at horizon
+ * - Ocean Surface at horizon (styled after a since-retired theme's mirror sea)
  * - Distant Sakura Landscape/Islands
  * - Volumetric Golden Sun Rays
  * - Flowing "God Ray" Atmosphere

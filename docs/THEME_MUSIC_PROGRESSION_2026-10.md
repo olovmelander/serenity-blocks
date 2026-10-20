@@ -138,7 +138,7 @@ and Painted Ages follow their Chapter 1 and Chapter 4 completion rewards.
 | 28 | Starlight | `starlight.mp3` | Existing |
 | 29 | Aurora | `aurora.mp3` | Existing |
 | 30 | Nimbus Veil | `nimbus-veil-placeholder-song.mp3` | Blood Moon placeholder |
-| 31 | Rainy Window | `rainy-window.mp3` | Existing |
+| 31 | Sunbraid | `sunbraid.mp3` | Existing |
 | 32 | Parhelion | `ethereal-echoes.mp3` | Existing |
 | 33 | Lunara | `lunara.mp3` | Existing |
 | 34 | Rainbow Terraces | `rainbow-terraces-placeholder-song.mp3` | Blood Moon placeholder |

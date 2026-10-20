@@ -103,7 +103,7 @@ each unbuilt concept overrides section 1; section 5 already folds section 3 in.
 | Tests and verification commands | §7.1 (tests), §8 (sweep) | §5.10, §5.11 | §5.12 | §5.10, §5.11 | §5.10, §5.11 | §5.10, §5.11 |
 | Hero prototype on the CPU first | §10 (done: ribbon splats; §10.8 re-runs it) | §5.12 | §5.6 (Stage A0) | §5.12 | §5.12 | §5.12 |
 | Compare against (fleet neighbours) | forest, fall, moonlit-forest (Spring took its slot 2026-10-18), golden-forest, stillwater, chiral-gold, ice-temple, nimbus-veil, rainbow-terraces (§13.3, §11.1) | halcyon-apex, geode, cinder-drift, pyrestorm, luminous-tides, parhelion, rainbark | shifting-sands, himalayan-peak, solar-eclipse, mountain, parhelion, rainbark | koi-pond, ocean, halcyon-apex, waves, verdant-hills, rainbark | chromadelic-highway, ice-temple, crystal-cave, neon-dusk, synthwave-sunset, aether-tides, chromatic-impasto, moonlit-greenhouse, sakura-twilight, halcyon-apex, rainbark, kaleidosonic (owns a kaleidoscope as its chain and its T-spin turn since 2026-10-13: rework the four-line projection and the T-spin twist) | crystal-cave, cinder-drift, bioluminescence, forest, fall, golden-forest, ocean, verdant-hills, rainbark |
-| Best-fit slots the file suggests (ask the user) | — | pyrestorm or luminous-tides (subject overlap); misty-lake (Grainfields took it 2026-10-18) or moonlit-greenhouse (chapter fit) | **mountain** (best fit; High Coast took it 2026-10-13); moonrise-summit, sakura-twilight, pyrestorm | none named: run the PLAYBOOK §1a script | **moonlit-greenhouse** (best fit); misty-lake (Grainfields took it 2026-10-18), rainy-window, singing-bowl (Kaleidosonic took it 2026-10-13) | an un-rebuilt theme in an Earth chapter, for example mountain (High Coast took it 2026-10-13); its close neighbours are all rebuilt |
+| Best-fit slots the file suggests (ask the user) | — | pyrestorm or luminous-tides (subject overlap); misty-lake (Grainfields took it 2026-10-18) or moonlit-greenhouse (chapter fit) | **mountain** (best fit; High Coast took it 2026-10-13); moonrise-summit, sakura-twilight, pyrestorm | none named: run the PLAYBOOK §1a script | **moonlit-greenhouse** (best fit); misty-lake (Grainfields took it 2026-10-18), rainy-window (Sunbraid took it 2026-10-20), singing-bowl (Kaleidosonic took it 2026-10-13) | an un-rebuilt theme in an Earth chapter, for example mountain (High Coast took it 2026-10-13); its close neighbours are all rebuilt |
 
 The stage names (0a core and palette, 0b scaffold and rename, A environment, B effects, C post,
 tiers, phone, icon and docs, then the final adversarial review) are PLAYBOOK §3's.
@@ -333,7 +333,7 @@ catalog too.
 - **A still mirror of water under the board** (planar `reflector()` on Medium and up is the default
   technique): halcyon-apex, vesper-chrysalis, lunara, chiral-gold, ice-temple, golden-forest, summer,
   stillwater, crystal-cave, koi-pond, sunset, sakura-twilight, aurora,
-  winter, starlight, bioluminescence, rainy-window, waves, luminous-tides, fluid-dreams, voltage-storm,
+  winter, starlight, bioluminescence, waves, luminous-tides, fluid-dreams, voltage-storm,
   moonrise-summit, moonlit-greenhouse (pond), neon-district, neon-dusk, synthwave-sunset. Salt-flat mirrors (Uyuni) and "tufa or
   pillars standing in a still lake" land in the same place.
 - **Hero mountain or peak:** himalayan-peak, wolfhour, mountain, aurora, sakura-twilight, winter,
@@ -382,8 +382,9 @@ catalog too.
   black-hole, void-ember, supernova); heat spectrum (cinder-drift, pyrestorm); crimson monochrome
   (blood-moon); greyscale (cosmic-noir, wolfhour).
 - Peach and lavender pastel clouds (nimbus-veil); cyan day to gold meadow (rainbow-terraces); saturated
-  grass green and sky blue (verdant-hills); grey storm (rainy-window); black-light neon on
-  near-black pearl (kaleidosonic); cobalt and gold snow (parhelion).
+  grass green and sky blue (verdant-hills); black-light neon on near-black pearl (kaleidosonic);
+  cobalt and gold snow (parhelion); coral, jade and cobalt sunlight on pale ground with cyan, magenta
+  and gold shadows (sunbraid).
 - **Piece palettes:** many reuse the same soft pastel set (amber I, lavender O, mint T, pink S, indigo
   Z, cream J, pale cyan L). Pick a distinct, saturated set tied to the world.
 
