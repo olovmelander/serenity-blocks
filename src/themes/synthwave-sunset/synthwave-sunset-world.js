@@ -1,32 +1,51 @@
 /**
  * Synthwave Sunset — the world: builds every part, solves the composition, drives the camera
- * and turns gameplay events into light.
+ * and turns gameplay into light.
  *
- * Composition. The sun sits at azimuth 0 (straight down −z) and the grid scrolls toward it, so
- * the grid's vanishing point is the sun. The gameplay board covers the middle of the screen, so
- * the camera YAWS until the sun lands in the centre of the free zone left of the board (the HUD
- * sits right of it). With no board on screen (menus) the camera faces the sun: the classic
- * centred outrun shot. Layout changes ease in as a slow pan. The lens is Hor+ (fixed vertical
- * FOV, horizontal capped), and the pitch puts the horizon at RIG.horizonFrac.
+ * A retro seaside at dusk. The sun sets into the sea at azimuth 0 (straight down −z) behind a
+ * ferris wheel at the end of a pleasure pier; the eye stands on the wet sand at the waterline.
+ * The gameplay board covers the middle of the screen, so the camera YAWS until the sun lands in
+ * the centre of the free zone left of the board (the HUD sits right of it). With no board on
+ * screen (menus) the camera faces the sun. Layout changes ease in as a slow pan. The lens is Hor+
+ * (fixed vertical FOV, horizontal capped), and the pitch puts the horizon at RIG.horizonFrac.
  *
- * Draws: sky, floor, mountains, city, palms, cells, sparks, motes — 8 in total at High.
+ * The evening runs on one number, `dusk` (0..1). It rests at DUSK.rest in the menus; while a game
+ * is played it deepens with the clock and steps on each level, so the sun sinks into the sea and
+ * the pier's lights come on from the land end out to the wheel.
+ *
+ * Gameplay:
+ *   lock         two bands of the piece's colour run round the wheel's rims from the side of its
+ *                column and meet at the top
+ *   line clear   one firework shell per line from the barge off the pier; four lines, a finale
+ *   chain        the coaster climbs the lift hill a notch per link (its lift's bulbs fill like a
+ *                meter); when the chain breaks after three or more it goes once round the
+ *                circuit into the station
+ *   level up     the evening steps on, the wheel's neon ring changes colour, two shells
  */
 
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
-import {
-    GRID_SPACING,
-    RIG,
-    SCROLL_SPEED,
-    SCROLL_WRAP,
-    SUN,
-} from './synthwave-sunset-tsl.js';
+import { RIG, SUN } from './synthwave-sunset-tsl.js';
 import { createSky } from './synthwave-sunset-sky.js';
-import { createFloor } from './synthwave-sunset-floor.js';
-import { createCity, createMountains } from './synthwave-sunset-skyline.js';
+import { createSea } from './synthwave-sunset-sea.js';
+import { WHEEL, createWheel } from './synthwave-sunset-wheel.js';
+import { createPier } from './synthwave-sunset-pier.js';
+import { createCoaster } from './synthwave-sunset-coaster.js';
+import { createPromenade } from './synthwave-sunset-promenade.js';
 import { createPalms } from './synthwave-sunset-palms.js';
-import { SynthwaveFx } from './synthwave-sunset-fx.js';
+import { FIREWORK_COLORS, Fireworks } from './synthwave-sunset-fireworks.js';
+import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
 import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
+import { flashScale, prefersReducedFlashing } from '../../utils/photosensitivity.js';
+
+/**
+ * The layer the sea's reflection pass renders: everything that stands in the scene and should be
+ * mirrored (the wheel, the pier, the coaster, the town, the fireworks). The main camera sees it.
+ */
+export const MIRROR_LAYER = 3;
+
+/** The parts, in build order (the playground's `parts=` names). */
+export const SYNTHWAVE_PARTS = Object.freeze(['sky', 'sea', 'wheel', 'pier', 'coaster', 'promenade', 'palms', 'fireworks']);
 
 /** Per-tier content. Every tier keeps the full composition; tiers trade detail, not layout. */
 export const WORLD_QUALITY = Object.freeze({
@@ -34,102 +53,94 @@ export const WORLD_QUALITY = Object.freeze({
         cloudOctaves: 0,
         stars: true,
         shooting: false,
-        reflection: false,
-        cityDensity: 0.55,
-        windowGlow: 0.85,
-        palms: 2,
-        cells: 30,
-        sparks: 160,
-        motes: 0,
+        seaTrains: 4,
+        seaClouds: 0,
+        swash: false,
+        mirrorScale: 0,
+        palms: 6,
+        fireworks: 900,
+        stars0: 70,
+        finale: 3,
     },
     Low: {
         cloudOctaves: 2,
         stars: true,
         shooting: true,
-        reflection: true,
-        cityDensity: 0.7,
-        windowGlow: 0.9,
-        palms: 2,
-        cells: 40,
-        sparks: 240,
-        motes: 0,
+        seaTrains: 5,
+        seaClouds: 0,
+        swash: true,
+        mirrorScale: 0.25,
+        palms: 10,
+        fireworks: 1400,
+        stars0: 90,
+        finale: 4,
     },
     Medium: {
         cloudOctaves: 2,
         stars: true,
         shooting: true,
-        reflection: true,
-        cityDensity: 0.85,
-        windowGlow: 1,
-        palms: 3,
-        cells: 60,
-        sparks: 400,
-        motes: 80,
+        seaTrains: 6,
+        seaClouds: 2,
+        swash: true,
+        mirrorScale: 0.35,
+        palms: 14,
+        fireworks: 2000,
+        stars0: 120,
+        finale: 5,
     },
     High: {
         cloudOctaves: 3,
         stars: true,
         shooting: true,
-        reflection: true,
-        cityDensity: 1,
-        windowGlow: 1,
-        palms: 5,
-        cells: 80,
-        sparks: 640,
-        motes: 150,
+        seaTrains: 8,
+        seaClouds: 2,
+        swash: true,
+        mirrorScale: 0.5,
+        palms: 20,
+        fireworks: 2600,
+        stars0: 150,
+        finale: 6,
     },
     Ultra: {
         cloudOctaves: 3,
         stars: true,
         shooting: true,
-        reflection: true,
-        cityDensity: 1.15,
-        windowGlow: 1,
-        palms: 5,
-        cells: 100,
-        sparks: 900,
-        motes: 200,
+        seaTrains: 8,
+        seaClouds: 3,
+        swash: true,
+        mirrorScale: 0.5,
+        palms: 24,
+        fireworks: 3200,
+        stars0: 170,
+        finale: 7,
     },
     Extreme: {
         cloudOctaves: 3,
         stars: true,
         shooting: true,
-        reflection: true,
-        cityDensity: 1.3,
-        windowGlow: 1,
-        palms: 5,
-        cells: 150,
-        sparks: 1200,
-        motes: 260,
+        seaTrains: 8,
+        seaClouds: 3,
+        swash: true,
+        mirrorScale: 0.6,
+        palms: 28,
+        fireworks: 4000,
+        stars0: 200,
+        finale: 8,
     },
 });
 
-/** The theme's tetromino palette (synthwave-sunset-tetrominos.js), for the grid cells. */
-const PIECE_COLORS = {
-    I: new THREE.Color(0xff0066),
-    O: new THREE.Color(0xff4500),
-    T: new THREE.Color(0xb000ff),
-    S: new THREE.Color(0xff006e),
-    Z: new THREE.Color(0xff5e78),
-    J: new THREE.Color(0x00d4ff),
-    L: new THREE.Color(0xffff00),
-};
+/** The evening: its rest value, how long a game takes to reach full dusk, a level's step. */
+export const DUSK = Object.freeze({
+    rest: 0.14,
+    fullAfter: 480,
+    levelStep: 0.08,
+    /** Play counts as ongoing for this long after the last gameplay event (s). */
+    activeFor: 25,
+});
 
-const PIECE_SHAPES = {
-    I: [[0, 0], [1, 0], [2, 0], [3, 0]],
-    J: [[0, 0], [0, 1], [1, 1], [2, 1]],
-    L: [[2, 0], [0, 1], [1, 1], [2, 1]],
-    O: [[0, 0], [1, 0], [0, 1], [1, 1]],
-    S: [[1, 0], [2, 0], [0, 1], [1, 1]],
-    T: [[1, 0], [0, 1], [1, 1], [2, 1]],
-    Z: [[0, 0], [1, 0], [1, 1], [2, 1]],
-};
-
-/** Camera-space depth the solar burst flies at: past the near palms, well before the skyline. */
-const BURST_DEPTH = 55;
-
-const EMBER_COLORS = [0xff2a7a, 0xff6a3d, 0xffa04a, 0xb04dff].map((h) => new THREE.Color(h));
-const CORONA_COLORS = [0xffd24a, 0xff9a2e, 0xff5a3a, 0xff3a8a, 0xff2bd1, 0xffe9b0].map((h) => new THREE.Color(h));
+/** The theme's piece palette (synthwave-sunset-tetrominos.js), for a lock's chase colour. */
+export const PIECE_COLORS = Object.freeze(Object.fromEntries(['I', 'O', 'T', 'S', 'Z', 'J', 'L']
+    .map((k) => [k, new THREE.Color(SYNTHWAVE_SUNSET_TETROMINOS.colors[k])])));
 
 /** Gameplay boards carry data-player; the lobby's avatar cards reuse .player-card without it. */
 export const BOARD_SELECTOR = '.player-card[data-player]';
@@ -175,26 +186,53 @@ export function boardRectsDiffer(a, b) {
 /** Frame-rate independent approach factor for a rate (1/s). */
 const approach = (rate, dt) => 1 - Math.exp(-rate * dt);
 
+/** Lock chases running round the wheel at once. */
+const CHASE_SLOTS = 3;
+
 export function createWorldUniforms() {
-    return {
+    const u = {
         time: uniform(0),
-        scroll: uniform(0),
         sunDir: uniform(new THREE.Vector3(0, 0, -1)),
         sunRight: uniform(new THREE.Vector3(1, 0, 0)),
         sunUp: uniform(new THREE.Vector3(0, 1, 0)),
+        /** The sun's bearing on the horizontal plane (x, z), unit length. */
+        sunAz: uniform(new THREE.Vector2(0, -1)),
         sunRadius: uniform(Math.sin(SUN.radius)),
-        sunPulse: uniform(0),
-        horizonFlash: uniform(0),
-        comboShift: uniform(0),
-        cityPulse: uniform(0),
-        cellTwinkle: uniform(0),
-        ring0: uniform(new THREE.Vector4(0, 1, 0, 0)),
-        ring1: uniform(new THREE.Vector4(0, 1, 0, 0)),
+        sunTan: uniform(Math.tan(SUN.radius)),
+        /** The evening: 0 = the sun on the sea, 1 = afterglow, the sun gone. */
+        dusk: uniform(0),
+        /** The ferris wheel: its angle (rad), how bright its lights burn, the neon ring's hue. */
+        wheelAngle: uniform(0),
+        wheelGlow: uniform(1),
+        wheelNeonMix: uniform(0),
+        /** The pier: how far its lights have come on (0..1, from the land end), how bright. */
+        pierPower: uniform(1),
+        pierGlow: uniform(1),
+        /** The town round the bay: its windows, neon and house lights (0..1). */
+        townLights: uniform(0.6),
+        /** The coaster: its lift meter (track parameter lit up to) and how hard it is riding. */
+        coasterMeter: uniform(0),
+        coasterRide: uniform(0),
+        coasterTrain: uniform(0),
+        /** The lift's foot on the track (set by the coaster from its circuit). */
+        coasterFoot: uniform(0.12),
+        /** Fireworks: overall level, Reduce flashing (1 = calm), the two sky glows. */
+        fireworkLevel: uniform(1),
+        fireworkCalm: uniform(0),
+        burst0: uniform(new THREE.Vector4(0, 1, 0, 0)),
+        burst1: uniform(new THREE.Vector4(0, 1, 0, 0)),
+        burstCol0: uniform(new THREE.Color(1, 1, 1)),
+        burstCol1: uniform(new THREE.Color(1, 1, 1)),
         shoot0A: uniform(new THREE.Vector4(0, 0, 0, 0)),
         shoot0B: uniform(new THREE.Vector4(0, 0, 0, 0)),
         shoot1A: uniform(new THREE.Vector4(0, 0, 0, 0)),
         shoot1B: uniform(new THREE.Vector4(0, 0, 0, 0)),
     };
+    for (let i = 0; i < CHASE_SLOTS; i += 1) {
+        u[`chase${i}`] = uniform(new THREE.Vector4(-1e6, 0, 0, 0));
+        u[`chaseCol${i}`] = uniform(new THREE.Color(1, 1, 1));
+    }
+    return u;
 }
 
 export class SynthwaveWorld {
@@ -223,23 +261,26 @@ export class SynthwaveWorld {
         this.yawSettled = false;
         this.board = null;
 
-        // Sun frame (fixed in world)
-        const elev = Math.asin(Math.sin(SUN.radius)) * SUN.lift;
-        this.sunDir = new THREE.Vector3(0, Math.sin(elev), -Math.cos(elev));
-        this.sunUp = new THREE.Vector3(0, Math.cos(elev), Math.sin(elev));
+        // Sun frame (its bearing is fixed; it sinks with the evening)
+        this.sunDir = new THREE.Vector3(0, 0, -1);
+        this.sunUp = new THREE.Vector3(0, 1, 0);
         this.sunRight = new THREE.Vector3(1, 0, 0);
-        this.u.sunDir.value.copy(this.sunDir);
-        this.u.sunUp.value.copy(this.sunUp);
-        this.u.sunRight.value.copy(this.sunRight);
+        this.dusk = DUSK.rest;
+        this.duskTarget = DUSK.rest;
+        this.duskBase = DUSK.rest;
+        this.duskHeld = false;
+        this.lastPlayed = -1e6;
+        this.setDusk(DUSK.rest);
 
         // Reactive state
-        this.sunPulse = 0;
-        this.horizonFlash = 0;
-        this.comboShift = 0;
-        this.cityPulse = 0;
-        this.cellTwinkle = 0;
-        this.rings = [{ t0: -1e6, energy: 0 }, { t0: -1e6, energy: 0 }];
-        this.ringCursor = 0;
+        this.chases = Array.from({ length: CHASE_SLOTS }, () => ({ t0: -1e6 }));
+        this.chaseCursor = 0;
+        this.lastLockColor = new THREE.Color(FIREWORK_COLORS[0]);
+        this.neonTarget = 0;
+        this.coaster = {
+            mode: 'idle', t: 0, notch: 0, lapped: false,
+        };
+        this.bloomBoost = 0;
         this.shoots = [{ t0: -1e6, life: 1 }, { t0: -1e6, life: 1 }];
         this.shootCursor = 0;
         this.nextAmbientShoot = 12 + this.rand() * 18;
@@ -249,29 +290,77 @@ export class SynthwaveWorld {
         this._right = new THREE.Vector3();
         this._tmp = new THREE.Vector3();
         this._target = new THREE.Vector3();
-        this._burstA = new THREE.Vector3();
-        this._burstB = new THREE.Vector3();
-        this._basisFwd = new THREE.Vector3();
-        this._basisRight = new THREE.Vector3();
-        this._basisUp = new THREE.Vector3();
     }
 
     build() {
         const { q, u, rand } = this;
         this.parts.sky = createSky(u, { cloudOctaves: q.cloudOctaves, stars: q.stars, shootingStars: q.shooting });
-        this.parts.floor = createFloor(u, { reflection: q.reflection });
-        this.parts.mountains = createMountains(u, { rand });
-        this.parts.city = createCity(u, { rand, density: q.cityDensity, windowGlow: q.windowGlow });
-        this.parts.palms = createPalms(u, { rand, count: q.palms });
-        this.fx = new SynthwaveFx(u, {
-            cells: q.cells, sparks: q.sparks, motes: q.motes, rand,
+        this.parts.sea = createSea(u, {
+            trains: q.seaTrains, clouds: q.seaClouds, swash: q.swash, mirrorScale: q.mirrorScale,
         });
+        this.reflection = this.parts.sea.userData.reflection ?? null;
+        if (this.reflection) this.root.add(this.reflection.target);
+        this.parts.wheel = createWheel(u, { mirrorLayer: MIRROR_LAYER });
+        this.parts.pier = createPier(u, { mirrorLayer: MIRROR_LAYER });
+        this.parts.coaster = createCoaster(u, { mirrorLayer: MIRROR_LAYER });
+        this.parts.promenade = createPromenade(u, { rand, mirrorLayer: MIRROR_LAYER });
+        this.parts.palms = createPalms(u, { rand, count: q.palms });
+        this.fireworks = new Fireworks(u, { capacity: q.fireworks, rand, mirrorLayer: MIRROR_LAYER });
+        this.parts.fireworks = this.fireworks.mesh;
+        this.track = this.parts.coaster.userData;
+        this.coaster.t = this.track.marks.station;
         for (const part of Object.values(this.parts)) {
             if (part) this.root.add(part);
         }
-        this.root.add(this.fx.group);
         this.scene.add(this.root);
         return this;
+    }
+
+    /** The camera that renders the world: it sees the mirror layer, the reflection only that. */
+    bindCamera(camera) {
+        if (!camera) return;
+        this._camera = camera;
+        camera.layers.enable(MIRROR_LAYER);
+        const virtual = this.reflection?.reflector?.getVirtualCamera?.(camera);
+        if (virtual) virtual.layers.set(MIRROR_LAYER);
+    }
+
+    // ── The evening ──────────────────────────────────────────────────────────
+
+    /**
+     * Set the evening (0..1) at once. The sun sinks from its rest height on the sea to below the
+     * horizon (SUN.lift → SUN.setLift, in disc radii); the sky's colours follow `u.dusk`.
+     */
+    setDusk(value, { hold = false } = {}) {
+        const dusk = THREE.MathUtils.clamp(Number(value) || 0, 0, 1);
+        this.dusk = dusk;
+        this.duskTarget = dusk;
+        this.duskBase = dusk;
+        if (hold) this.duskHeld = true;
+        this.applyDusk();
+    }
+
+    applyDusk() {
+        const { dusk } = this;
+        this.u.dusk.value = dusk;
+        const lift = SUN.lift + (SUN.setLift - SUN.lift) * dusk ** 1.15;
+        const elev = SUN.radius * lift;
+        this.sunDir.set(0, Math.sin(elev), -Math.cos(elev));
+        this.sunUp.set(0, Math.cos(elev), Math.sin(elev));
+        this.u.sunDir.value.copy(this.sunDir);
+        this.u.sunUp.value.copy(this.sunUp);
+        this.u.sunRight.value.copy(this.sunRight);
+        this.u.sunAz.value.set(this.sunDir.x, this.sunDir.z).normalize();
+        // The pier lights come on from the land end as the evening deepens; the town too.
+        this.u.pierPower.value = THREE.MathUtils.clamp(0.42 + dusk * 0.85, 0, 1);
+        this.u.wheelGlow.value = 0.85 + dusk * 0.5;
+        this.u.pierGlow.value = 0.85 + dusk * 0.5;
+        this.u.townLights.value = 0.5 + dusk * 0.5;
+    }
+
+    /** Mark the game as being played (any gameplay event). */
+    notePlay() {
+        this.lastPlayed = this.time;
     }
 
     // ── Composition ─────────────────────────────────────────────────────────
@@ -347,14 +436,14 @@ export class SynthwaveWorld {
         const cp = Math.cos(this.pitch);
         this._fwd.set(Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp);
         this._right.set(Math.cos(this.yaw), 0, Math.sin(this.yaw));
-        const driftX = (Math.sin(t * 0.031) * 1.0 + Math.sin(t * 0.017 + 1.3) * 0.45) * motion;
-        const driftY = Math.sin(t * 0.023 + 0.7) * 0.26 * motion;
-        const px = (sim.pointerX ?? 0) * 1.5 * motion;
-        const py = -(sim.pointerY ?? 0) * 0.55 * motion;
+        const driftX = (Math.sin(t * 0.031) * 0.7 + Math.sin(t * 0.017 + 1.3) * 0.35) * motion;
+        const driftY = Math.sin(t * 0.023 + 0.7) * 0.18 * motion;
+        const px = (sim.pointerX ?? 0) * 1.2 * motion;
+        const py = -(sim.pointerY ?? 0) * 0.4 * motion;
         camera.position.copy(this._camRest)
             .addScaledVector(this._right, driftX + px);
         camera.position.y += driftY + py;
-        // A distant look target: the far scene (sun, mountains) stays put, near palms parallax.
+        // A distant look target: the far scene (sun, wheel) stays put, the near palms parallax.
         this._target.copy(this._camRest).addScaledVector(this._fwd, 1500);
         camera.lookAt(this._target);
         // The shared breath (shared/camera-breath.js) on top of the drift above, turning the
@@ -382,46 +471,34 @@ export class SynthwaveWorld {
         this.time = t;
         const { u } = this;
         u.time.value = t;
-        // Reduced motion: the grid runs at 30 % (a lag, so a seek still lands right), pulses and
-        // the horizon flash stay soft, and the cells stop twinkling (about 5 Hz).
         const motion = this.motion ?? 1;
-        this.scrollLag = (this.scrollLag ?? 0) + dt * SCROLL_SPEED * 0.7 * (1 - motion);
-        u.scroll.value = ((((t * SCROLL_SPEED) - this.scrollLag) % SCROLL_WRAP) + SCROLL_WRAP) % SCROLL_WRAP;
 
-        const k = (rate) => Math.exp(-rate * dt);
-        this.sunPulse *= k(1.1);
-        this.horizonFlash *= k(1.6);
-        this.comboShift *= k(0.9);
-        this.cityPulse *= k(1.3);
-        this.cellTwinkle *= k(2.2);
-        if (motion < 1) {
-            this.sunPulse = Math.min(this.sunPulse, 0.5 + 0.7 * motion);
-            this.horizonFlash = Math.min(this.horizonFlash, 0.4 + 0.8 * motion);
+        // The wheel turns on the clock (a seek lands right); reduced motion slows it to a crawl.
+        this.wheelLag = (this.wheelLag ?? 0) + dt * (1 - motion) * 0.85;
+        u.wheelAngle.value = ((t - this.wheelLag) * (Math.PI * 2)) / WHEEL.period;
+        u.wheelNeonMix.value += (this.neonTarget - u.wheelNeonMix.value) * approach(0.8, dt);
+
+        // The evening deepens while a game is being played, and eases toward its target.
+        if (!this.duskHeld) {
+            if (t - this.lastPlayed < DUSK.activeFor) this.duskTarget = Math.min(1, this.duskTarget + dt / DUSK.fullAfter);
+            this.dusk += (this.duskTarget - this.dusk) * approach(0.6, dt);
+            this.applyDusk();
         }
-        u.sunPulse.value = Math.min(1.2, this.sunPulse);
-        u.horizonFlash.value = Math.min(1.2, this.horizonFlash);
-        u.comboShift.value = Math.min(1, this.comboShift);
-        u.cityPulse.value = Math.min(1.5, this.cityPulse);
-        u.cellTwinkle.value = Math.min(1.5, this.cellTwinkle) * motion;
 
-        // Sonar rings: in from 170 units to past the camera in ~2.3 s, strongest mid-field.
-        this.rings.forEach((ring, i) => {
-            const age = t - ring.t0;
-            const uni = i === 0 ? u.ring0 : u.ring1;
-            if (age < 0 || age > 2.4 || ring.energy <= 0) {
-                uni.value.z = 0;
-                return;
-            }
-            const radius = Math.max(0, 170 - age * 78);
-            const width = 1.6 + radius * 0.03;
-            const env = Math.min(1, age / 0.15) * (1 - THREE.MathUtils.smoothstep(age, 1.7, 2.4));
-            uni.value.set(radius, 1 / width, ring.energy * env, 0);
-        });
+        this.updateCoaster(dt, motion);
 
-        // Shooting stars.
+        // Fireworks: bursts arriving, the sky glows round them (held back under Reduce flashing).
+        this.fireworks.update(t);
+        const calm = prefersReducedFlashing();
+        u.fireworkCalm.value = calm ? 1 : 0;
+        u.fireworkLevel.value = calm ? 0.6 : 1;
+        this.fireworks.writeGlows(t, flashScale());
+        this.bloomBoost = Math.max(u.burst0.value.w, u.burst1.value.w) * 0.6;
+
+        // Shooting stars, now and then.
         if (this.q.shooting && t >= this.nextAmbientShoot && !prefersReducedMotion()) {
-            this.spawnShootingStar(0.8);
-            this.nextAmbientShoot = t + 18 + this.rand() * 26;
+            this.spawnShootingStar(0.7);
+            this.nextAmbientShoot = t + 22 + this.rand() * 30;
         }
         this.shoots.forEach((s, i) => {
             const age = t - s.t0;
@@ -435,93 +512,177 @@ export class SynthwaveWorld {
         });
     }
 
-    /** Seek (deterministic captures): no events in flight, cells and sparks cleared. */
+    /**
+     * The coaster: on the lift it climbs to the notch its chain has earned; released, a tyre
+     * drive takes it over the crest and it rides the circuit on its own speed (energy from the
+     * crest's height), brakes on the return and rolls into the station, having gone once round.
+     */
+    updateCoaster(dt, motion) {
+        const c = this.coaster;
+        const { curve, marks } = this.track;
+        if (!curve || !marks) return;
+        const length = curve.getLength();
+        const pace = 0.5 + 0.5 * motion;
+        const notchT = marks.liftFoot + (marks.liftTop - marks.liftFoot) * (Math.min(c.notch, 8) / 8);
+        if (c.mode === 'lift' || c.mode === 'idle') {
+            const target = c.mode === 'lift' ? notchT : marks.station;
+            const step = (3.2 * pace * dt) / length;
+            c.t += THREE.MathUtils.clamp(target - c.t, -step, step);
+            this.u.coasterRide.value *= Math.exp(-dt * 1.5);
+        } else if (c.mode === 'ride') {
+            let v;
+            if (!c.lapped && c.t < marks.liftTop) {
+                v = 5 * pace; // the tyre drive up to the crest
+            } else {
+                const crest = curve.getPointAt(marks.liftTop).y;
+                const h = curve.getPointAt(c.t).y;
+                v = Math.sqrt(Math.max(0, 2 * 9.81 * (crest - h)) + 9) * pace;
+                // The brakes on the return, then a slow roll round the last turn into the station.
+                if (c.lapped || c.t >= marks.returnStart) v = Math.min(v, 8 * pace);
+                if (c.lapped) v = Math.min(v, 3.5 * pace);
+            }
+            c.t += (v * dt) / length;
+            if (c.t >= 1) {
+                c.t -= 1;
+                c.lapped = true;
+            }
+            this.u.coasterRide.value = Math.min(1, v / 18);
+            if (c.lapped && c.t >= marks.station) {
+                c.t = marks.station;
+                c.mode = 'idle';
+                c.lapped = false;
+            }
+        }
+        this.u.coasterMeter.value = c.mode === 'lift' ? c.t : 0;
+        this.u.coasterTrain.value = c.t;
+        this.track.placeTrain(c.t);
+    }
+
+    /**
+     * Seek (deterministic captures): no events in flight, the train at the station, the evening
+     * back where it was set (a capture replays its events on every frame).
+     */
     seek(time) {
         this.time = time;
-        this.sunPulse = 0;
-        this.horizonFlash = 0;
-        this.comboShift = 0;
-        this.cityPulse = 0;
-        this.cellTwinkle = 0;
-        this.rings.forEach((r) => { r.t0 = -1e6; r.energy = 0; });
+        this.u.time.value = time;
+        this.lastPlayed = -1e6;
+        this.dusk = this.duskBase;
+        this.duskTarget = this.duskBase;
+        this.applyDusk();
+        this.chases.forEach((ch, i) => {
+            ch.t0 = -1e6;
+            this.u[`chase${i}`].value.x = -1e6;
+        });
+        this.coaster.mode = 'idle';
+        this.coaster.t = this.track?.marks?.station ?? 0;
+        this.coaster.notch = 0;
+        this.coaster.lapped = false;
+        this.u.coasterMeter.value = 0;
+        this.u.coasterRide.value = 0;
         this.shoots.forEach((s) => { s.t0 = -1e6; });
         this.nextAmbientShoot = time + 12 + this.rand() * 18;
-        this.fx?.clear();
+        this.fireworks?.clear();
+        this.track?.placeTrain?.(this.coaster.t);
     }
 
     // ── Events ───────────────────────────────────────────────────────────────
 
+    /**
+     * A piece locked: two bands of its colour run round the wheel's rims from its column's side
+     * (left columns start left of the bottom, right columns right of it) and meet at the top.
+     */
     onPieceLock(piece) {
-        const t = this.time;
-        const type = piece?.type;
-        const color = PIECE_COLORS[type] || PIECE_COLORS.J;
-        const shape = PIECE_SHAPES[type] || PIECE_SHAPES.T;
-        const column = Number.isFinite(piece?.x) ? piece.x : this.rand() * 9;
-        const rotation = Number.isFinite(piece?.rotation)
-            ? ((piece.rotation % 4) + 4) % 4
-            : Math.floor(this.rand() * 4);
-
-        // Place the cells ahead of the camera, spread across the view by the piece's column.
-        const rel = THREE.MathUtils.clamp((column - 4.5) / 4.5, -1, 1) * 0.62;
-        const az = this.yaw + rel;
-        const dist = 26 + this.rand() * 14;
-        const wx = RIG.x + Math.sin(az) * dist;
-        const wz = RIG.z - Math.cos(az) * dist;
-        const S = GRID_SPACING;
-        const scroll = (t * SCROLL_SPEED) % SCROLL_WRAP;
-        const cx = (Math.floor(wx / S) + 0.5) * S;
-        const cz = scroll + (Math.floor((wz - scroll) / S) + 0.5) * S;
-        for (const [bx0, by0] of shape) {
-            let bx = bx0;
-            let by = by0;
-            for (let r = 0; r < rotation; r += 1) {
-                const tmp = bx;
-                bx = -by;
-                by = tmp;
+        this.notePlay();
+        const color = (() => {
+            if (typeof piece?.color === 'string' || typeof piece?.color === 'number') {
+                try {
+                    return new THREE.Color(piece.color);
+                } catch {
+                    return null;
+                }
             }
-            this.fx.spawnCell(cx + bx * S, cz - by * S, t, color, 1.0);
-        }
-        this.cellTwinkle = Math.max(this.cellTwinkle, 0.25);
-        this.cityPulse = Math.min(1.5, this.cityPulse + 0.05);
+            return null;
+        })() ?? PIECE_COLORS[piece?.type] ?? PIECE_COLORS.T;
+        this.lastLockColor.copy(color);
+        const column = Number.isFinite(piece?.x) ? THREE.MathUtils.clamp(piece.x + 1, 0, 9) : this.rand() * 9;
+        const start = -Math.PI / 2 + ((column - 4.5) / 4.5) * 0.7;
+        const slot = this.chaseCursor;
+        this.chaseCursor = (slot + 1) % CHASE_SLOTS;
+        this.chases[slot].t0 = this.time;
+        this.u[`chase${slot}`].value.set(this.time, start, 0, 0);
+        this.u[`chaseCol${slot}`].value.copy(color);
     }
 
+    /** Lines cleared: one shell per line, the first in the locking piece's colour; four, a finale. */
     onLineClear(lines = 1) {
+        this.notePlay();
         const n = Math.max(1, Math.min(4, lines | 0));
-        this.triggerRing(0.55 + 0.2 * n);
-        this.horizonFlash = Math.min(1.2, this.horizonFlash + 0.35 + 0.15 * n);
-        this.sunPulse = Math.min(1.2, this.sunPulse + 0.12 * n);
-        this.cityPulse = Math.min(1.5, this.cityPulse + 0.3 * n);
-        this.emitEmbers(22 * n);
-        if (n >= 4) {
-            this.sunPulse = 1.2;
-            this.spawnShootingStar(1.2);
-            this.emitSolarBurst(this.burstCount(0.5, 260));
+        const t = this.time;
+        const fw = this.fireworks;
+        const r = this.rand;
+        const reduced = (this.motion ?? 1) < 0.5;
+        const stars = Math.round(this.q.stars0 * (reduced ? 0.6 : 1));
+        const pick = () => new THREE.Color(FIREWORK_COLORS[Math.floor(r() * FIREWORK_COLORS.length)]);
+        if (n < 4) {
+            const kinds = ['peony', 'ring', 'chrys'];
+            for (let k = 0; k < n; k += 1) {
+                fw.launch(t, {
+                    color: k === 0 ? this.lastLockColor : pick(), kind: kinds[k % 3], scale: 0.85 + n * 0.08, delay: k * 0.32, stars,
+                });
+            }
+            this.duskTarget = Math.min(1, this.duskTarget + 0.004 * n);
+            return;
         }
+        // The finale: a volley over a second and a half, a gold willow to close.
+        const shells = reduced ? Math.min(3, this.q.finale) : this.q.finale;
+        const kinds = ['chrys', 'peony', 'ring', 'peony', 'chrys', 'ring', 'peony', 'chrys'];
+        for (let k = 0; k < shells; k += 1) {
+            fw.launch(t, {
+                color: k === 0 ? this.lastLockColor : pick(), kind: kinds[k], scale: 1.05 + r() * 0.2, delay: k * 0.24, stars,
+            });
+        }
+        fw.launch(t, {
+            kind: 'willow', scale: 1.3, delay: shells * 0.24 + 0.2, stars: Math.round(stars * 1.3),
+        });
+        this.duskTarget = Math.min(1, this.duskTarget + 0.02);
     }
 
-    onCombo(count = 1) {
-        const c = Math.max(0, count | 0);
-        this.sunPulse = Math.min(1.2, this.sunPulse + 0.3);
-        this.cityPulse = Math.min(1.5, this.cityPulse + 0.4);
-        this.comboShift = Math.min(1, Math.max(this.comboShift, c * 0.15));
-        this.cellTwinkle = Math.min(1.5, 0.5 + c * 0.2);
-        if (c >= 2) this.emitSolarBurst(this.burstCount(0.12 + c * 0.06, 70 + 32 * c));
-        if (c >= 3 && this.rand() < Math.min(0.75, 0.3 + c * 0.1)) this.spawnShootingStar(1.0);
+    /**
+     * The true combo (consecutive clearing locks; 0 when the chain broke). Each link lifts the
+     * train a notch; a chain of three or more that breaks sends it once round the circuit.
+     */
+    onChain(count) {
+        this.notePlay();
+        const c = this.coaster;
+        const n = Math.max(0, count | 0);
+        if (n > 0) {
+            if (c.mode === 'ride') return;
+            c.mode = 'lift';
+            c.notch = n;
+            return;
+        }
+        if (c.mode !== 'lift') return;
+        c.mode = c.notch >= 3 ? 'ride' : 'idle';
+        c.notch = 0;
     }
 
+    /** Cascade depth (bus COMBO): the gravity waves already fire their own shells. */
+    onCombo() {
+        this.notePlay();
+    }
+
+    /** A level: the evening steps on, the neon ring turns, two shells go up. */
     onLevelUp() {
-        this.horizonFlash = 1.2;
-        this.sunPulse = Math.min(1.2, this.sunPulse + 0.5);
-        this.triggerRing(1.0);
-        this.spawnShootingStar(1.2);
-        this.emitSolarBurst(this.burstCount(0.4, 200));
-    }
-
-    triggerRing(energy) {
-        const ring = this.rings[this.ringCursor];
-        this.ringCursor = (this.ringCursor + 1) % this.rings.length;
-        ring.t0 = this.time;
-        ring.energy = energy;
+        this.notePlay();
+        this.duskTarget = Math.min(1, this.duskTarget + DUSK.levelStep);
+        this.neonTarget = this.neonTarget > 0.5 ? 0 : 1;
+        const t = this.time;
+        this.fireworks.launch(t, {
+            kind: 'ring', color: new THREE.Color(FIREWORK_COLORS[1]), scale: 1.1, stars: this.q.stars0,
+        });
+        this.fireworks.launch(t, {
+            kind: 'peony', color: new THREE.Color(FIREWORK_COLORS[0]), scale: 1.1, delay: 0.3, stars: this.q.stars0,
+        });
     }
 
     /** A streak across the upper sky, in (azimuth, elevation) space around the current view. */
@@ -532,137 +693,36 @@ export class SynthwaveWorld {
         this.shootCursor = (this.shootCursor + 1) % this.shoots.length;
         const r = this.rand;
         const az0 = this.yaw + (r() * 2 - 1) * 0.55;
-        const e0 = 0.24 + r() * 0.16;
+        const e0 = 0.3 + r() * 0.16;
         const dirSign = r() < 0.5 ? -1 : 1;
-        const speed = 0.55 + r() * 0.35; // rad/s
-        const vAz = dirSign * speed * 0.9;
-        const vE = -speed * (0.25 + r() * 0.25);
+        const speed = 0.5 + r() * 0.3;
         s.t0 = this.time;
         s.life = 0.9 + r() * 0.5;
-        s.len = 0.09 + r() * 0.06;
+        s.len = 0.08 + r() * 0.05;
         s.intensity = intensity;
-        (slot === 0 ? this.u.shoot0A : this.u.shoot1A).value.set(az0, e0, vAz, vE);
+        (slot === 0 ? this.u.shoot0A : this.u.shoot1A).value.set(az0, e0, dirSign * speed * 0.9, -speed * (0.25 + r() * 0.25));
     }
 
-    /** Embers rising off the valley horizon under the sun (line clears). */
-    emitEmbers(count) {
-        const t = this.time;
-        const r = this.rand;
-        for (let i = 0; i < count; i += 1) {
-            const phi = (r() * 2 - 1) * 0.26;
-            const d = 260 + r() * 160;
-            const x = Math.sin(phi) * d;
-            const z = RIG.z - Math.cos(phi) * d;
-            const scale = d / 60;
-            this.fx.spawnSpark(
-                t + r() * 0.25,
-                x,
-                1 + r() * 6,
-                z,
-                (r() - 0.5) * 2 * scale,
-                (4 + r() * 5) * scale,
-                (r() - 0.5) * scale,
-                1.3 + r() * 0.9,
-                EMBER_COLORS[Math.floor(r() * EMBER_COLORS.length)],
-                5 + r() * 6,
-            );
-        }
-    }
-
-    /** Sparks for a burst of `share` of the pool, at most `cap` (so every tier keeps headroom). */
-    burstCount(share, cap) {
-        return Math.max(24, Math.min(cap, Math.floor(this.fx.sparkCapacity * share)));
-    }
-
-    /**
-     * A solar burst that sprays over the WHOLE screen (combos, Tetris, level up). Every spark
-     * leaves the sun's disc and flies to its own target point on screen: 70 % anywhere in the view
-     * (a little past the edges), 30 % clustered around the sun, so it reads as a burst rather than
-     * a uniform spray. Sparks fly at a depth in front of the skyline and behind the near palms, so
-     * they project out of the sun yet pass behind the palm silhouettes. Velocities are solved from
-     * the drag model (final travel = v / drag) so each spark arrives in ~1.5 s, arcing under a
-     * gentle gravity; the shader streaks them along their on-screen motion.
-     */
-    emitSolarBurst(requested) {
-        // A third as many sparks under reduced motion.
-        const count = Math.round(requested * (0.35 + 0.65 * (this.motion ?? 1)));
-        const t = this.time;
-        const r = this.rand;
-        const D = BURST_DEPTH;
-        const drag = 1.6;
-        const tanV = Math.tan(THREE.MathUtils.degToRad(this.lens.vfov) / 2);
-        const tanH = tanV * this.lens.aspect;
-        const { fwd, right, up } = this.viewBasis();
-        const sd = Math.max(1e-3, this.sunDir.dot(fwd));
-        const sx = this.sunDir.dot(right) / sd / tanH;
-        const sy = this.sunDir.dot(up) / sd / tanV;
-        const sunRy = Math.tan(SUN.radius) / sd / tanV;
-        const sunRx = sunRy * (tanV / tanH);
-        const p0 = this._burstA;
-        const p1 = this._burstB;
-        const at = (nx, ny, out) => out.copy(this._camRest)
-            .addScaledVector(fwd, D)
-            .addScaledVector(right, nx * tanH * D)
-            .addScaledVector(up, ny * tanV * D);
-        for (let i = 0; i < count; i += 1) {
-            const a = r() * Math.PI * 2;
-            const rr = Math.sqrt(r()) * 0.85;
-            at(sx + Math.cos(a) * rr * sunRx, sy + Math.sin(a) * rr * sunRy, p0);
-            let tx;
-            let ty;
-            if (r() < 0.7) {
-                tx = -1.15 + r() * 2.3;
-                ty = -0.85 + r() * 1.95;
-            } else {
-                const b = r() * Math.PI * 2;
-                const d = 0.15 + r() * 0.45;
-                tx = sx + Math.cos(b) * d;
-                ty = sy + Math.sin(b) * d * 1.4;
-            }
-            at(tx, ty, p1);
-            const reach = (0.85 + r() * 0.4) * drag;
-            this.fx.spawnSpark(
-                t + r() * 0.12,
-                p0.x,
-                p0.y,
-                p0.z,
-                (p1.x - p0.x) * reach,
-                (p1.y - p0.y) * reach,
-                (p1.z - p0.z) * reach,
-                2.0 + r() * 1.3,
-                CORONA_COLORS[Math.floor(r() * CORONA_COLORS.length)],
-                3.5 + r() * 4,
-                { drag, gravity: 2.5 + r() * 3.5, streak: 1 },
-            );
-        }
-    }
-
-    /** The current view's basis at the rest pose (eased yaw + pitch; no drift or parallax). */
-    viewBasis() {
-        const cp = Math.cos(this.pitch);
-        this._basisFwd.set(Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp);
-        this._basisRight.set(Math.cos(this.yaw), 0, Math.sin(this.yaw));
-        this._basisUp.crossVectors(this._basisRight, this._basisFwd).normalize();
-        return { fwd: this._basisFwd, right: this._basisRight, up: this._basisUp };
-    }
-
-    /** Hide everything but the named parts (sky floor mountains city palms fx) — iteration aid. */
+    /** Hide everything but the named parts (see SYNTHWAVE_PARTS) — iteration aid. */
     showOnlyParts(names) {
         const keep = new Set(names);
         for (const [name, part] of Object.entries(this.parts)) {
             if (part) part.visible = keep.has(name);
         }
-        this.fx.group.visible = keep.has('fx');
     }
 
     dispose() {
         this.root.removeFromParent();
+        this.reflection?.dispose?.();
+        this._camera?.layers?.disable?.(MIRROR_LAYER);
+        this.reflection = null;
         for (const part of Object.values(this.parts)) {
-            if (!part) continue;
-            part.geometry?.dispose();
-            part.material?.dispose();
+            part?.traverse((object) => {
+                object.geometry?.dispose();
+                object.material?.dispose();
+            });
         }
-        this.fx?.dispose();
+        this.fireworks = null;
         this.parts = {};
     }
 }
