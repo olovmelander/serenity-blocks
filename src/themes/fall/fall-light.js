@@ -8,7 +8,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
+    Fn, cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
     texture, uniform, vec2, vec3,
 } from 'three/tsl';
 
@@ -56,6 +56,27 @@ function createNoiseTexture(rng, size = 128) {
     return noise;
 }
 
+/**
+ * A soft shadow filter with no per-pixel noise. three's PCF turns its sample disc by
+ * interleaved gradient noise from pixel to pixel, which a temporal filter would smooth; this
+ * theme has none, and under a sun this low nearly every surface sits at the edge of its own
+ * shadow, so the noise showed as a fine crosshatch over the whole grove. A fixed grid of
+ * hardware-filtered compares (each a smooth 2x2) gives the same width of penumbra, clean.
+ */
+export function fallShadowFilter(mapSize, radius, taps = 9) {
+    const step = vec2(radius / mapSize[0], radius / mapSize[1]);
+    const grid = taps >= 9
+        ? [-0.5, 0, 0.5].flatMap((y) => [-0.5, 0, 0.5].map((x) => [x, y]))
+        : [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]];
+    return Fn(({ depthTexture, shadowCoord }) => {
+        let sum = float(0);
+        grid.forEach(([x, y]) => {
+            sum = sum.add(texture(depthTexture, shadowCoord.xy.add(step.mul(vec2(x, y)))).compare(shadowCoord.z));
+        });
+        return sum.mul(1 / grid.length);
+    });
+}
+
 export class FallLight {
     constructor({ tier, rng = Math.random }) {
         this.tier = tier;
@@ -64,9 +85,10 @@ export class FallLight {
         this.uSunColor = uniform(new THREE.Color(3.6, 2.15, 1.02));
         this.uSkyLight = uniform(new THREE.Color(0.2, 0.3, 0.5));
         this.uBounce = uniform(new THREE.Color(0.34, 0.2, 0.1));
-        this.uZenith = uniform(new THREE.Color(0.045, 0.12, 0.34));
-        this.uSkyCool = uniform(new THREE.Color(0.3, 0.42, 0.62));
-        this.uSkyWarm = uniform(new THREE.Color(1.7, 1.0, 0.46));
+        this.uZenith = uniform(new THREE.Color(0.02, 0.092, 0.21));
+        this.uSkyCool = uniform(new THREE.Color(0.13, 0.27, 0.41));
+        this.uSkyWarm = uniform(new THREE.Color(1.75, 0.98, 0.42));
+        this.uSkyRose = uniform(new THREE.Color(0.44, 0.28, 0.31));
         // Shaded air is cool; sunlit air is added by the volumetric shafts where the tier
         // has them, and by this analytic glow where it does not.
         this.uHazeCool = uniform(new THREE.Color(0.15, 0.22, 0.33));
@@ -92,6 +114,8 @@ export class FallLight {
         sunShadow.bias = -0.0009;
         sunShadow.normalBias = 0;
         sunShadow.radius = 2.2;
+        // Nine smooth taps where the tier grades in post, four below.
+        sunShadow.filterNode = fallShadowFilter(tier.shadowMap, sunShadow.radius, tier.post ? 9 : 4);
         // The grove never moves under a fixed sun, so its shadows are drawn once.
         sunShadow.autoUpdate = false;
         sunShadow.needsUpdate = true;
@@ -141,8 +165,10 @@ export class FallLight {
         const flat = normalize(vec2(direction.x, direction.z).add(vec2(0.0001, 0)));
         const sunFlat = normalize(vec2(this.uSunDir.x, this.uSunDir.z));
         const toward = dot(flat, sunFlat).mul(0.5).add(0.5);
-        const band = mix(this.uSkyCool, this.uSkyWarm, pow(toward, 3).mul(this.uWarmth.mul(0.25).add(0.9)));
-        const glow = this.uSunColor.mul(pow(sunward, 5).mul(0.07).add(pow(sunward, 48).mul(0.3)));
+        // Low down, the air away from the sun keeps a rose haze; toward it, gold.
+        const low = mix(this.uSkyCool, this.uSkyRose, pow(overhead.oneMinus(), 9).mul(0.55));
+        const band = mix(low, this.uSkyWarm, pow(toward, 3).mul(this.uWarmth.mul(0.25).add(0.9)));
+        const glow = this.uSunColor.mul(pow(sunward, 5).mul(0.1).add(pow(sunward, 48).mul(0.3)));
         return mix(this.uZenith, band, horizon).add(glow);
     }
 
