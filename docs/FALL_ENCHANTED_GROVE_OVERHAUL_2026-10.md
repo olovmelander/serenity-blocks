@@ -170,5 +170,35 @@ integrated or phone GPUs — the lower tiers are untested on real low-end hardwa
   frame and the upper strip is mostly sky.
 - The shadow map is static, so swaying crowns do not move their shadows.
 - Leaf, bark and ground detail are procedural in the shader; there are no texture maps.
+- Gossamer threads are fixed in place (they sway, but nothing breaks them), and they glint only on the
+  side of the board toward the sun at most angles.
 - Low and Minimal have no shafts, only a warmer haze toward the sun.
 - The far sprites face one camera; they are not meant to be seen from elsewhere.
+
+## Second pass (2026-10-20): sky, floor, shadows and gossamer
+
+A look-and-feel pass on top of the grove, in the same modules. Each change was iterated in the
+playground (`?effect=fall&orbit=0&seed=271&hud=0&t=8`, landscape and 540 × 960 portrait) and
+checked in a real Single Player game at High.
+
+| What | Before | After |
+| --- | --- | --- |
+| **Sky** (`fall-post.js`, `fall-atmosphere.js`, `fall-light.js`) | On every tier with shafts the sky was a flat milky lavender: the shaft march integrated hundreds of metres of lit air toward the dome and laid it over the whole sky. The sky itself was a blue gradient with thin streaks. | The shafts fade out where the view reaches the dome (beyond the last ridge, about 280–390 m) and keep only a glow round the sun. The dome is a late-afternoon sky: clean blue overhead (green-leaning, since ACES turns a pure blue violet), gold low toward the sun, a rose haze opposite, under a domain-warped deck of fair-weather cloud whose undersides take the low sun (gold on its side, rose away), with lavender-grey bodies and a silver lining on thin edges near the sun. The deck thins out below about ten degrees. |
+| **Forest floor** (`fall-terrain.js`) | Soft orange and gold blotches. | Near the eye the carpet resolves into single fallen leaves: two hashed layers of teardrop leaves (one a cell, about 13 cm, each with its own turn, size, colour tint, midrib, darker curled rim and small tilt toward or away from the low sun), the litter beneath darker. The layers fade into the broad colour they average to where a leaf is under a few pixels, so the distance does not shimmer. `fallLeafLayer` is a laid-out pure TSL function, shared with the stones. |
+| **Stones** (`fall-understory.js`) | Faceted green lumps: `IcosahedronGeometry` is not indexed, so its normals were per face. | Welded (`mergeVertices`) before displacement, so they shade round; granite with lichen flecks, moss on the tops, a few fallen leaves where the top is flat, darker where they meet the ground. |
+| **Grass** (`fall-understory.js`) | Nine stiff two-segment blades a tuft, one straw colour. | Fourteen thinner arching blades a tuft; each tuft dried at its own pace (straw, rust or still a little olive), dark roots, and tips the low sun shines through. |
+| **Shadows** (`fall-light.js`) | A fine diagonal crosshatch over leaves, bark and ground on every tier: three's PCF turns its five samples by per-pixel noise meant for a temporal filter, and under a sun 11.5° high nearly every surface is at the edge of its own shadow. | `fallShadowFilter`: a fixed grid of hardware-filtered compares (nine taps where the tier grades in post, four below), the same penumbra width with no grain. |
+| **Grade** (`fall-post.js`) | Shade cooled slightly. | Split tone by scaling only: cooler shade, a touch of gold in the highlights. |
+| **Gossamer** (`fall-atmosphere.js`, new) | — | Silk threads strung between the grass and the low boughs on both sides of the board, sagging and breathing with the wind, invisible until one catches the sun: a fibre highlight where the sun's half-vector stands square to the thread, a glow when it hangs between the eye and the sun, a slow shimmer along it, brighter in combos. Each thread is a ribbon turned to the eye and widened with distance (about a pixel across), so the scene stays all meshes. |
+| **Sun motes** (`fall-atmosphere.js`) | Even sparkle. | Dust between the eye and the sun scatters it forward and shines; side-lit dust stays faint. |
+
+The `gossamer` column in `fall-quality.js` gives 110 / 96 / 80 / 52 / 26 / 0 threads from Extreme
+to Minimal. Changing the grass geometry changed how many random draws it takes, so the seeded
+places of the litter, plants and stones after it differ from the first pass; the hand-placed
+trees do not move.
+
+Checked: playground captures on native WebGPU (High, Low, Minimal, a triple clear, a ×12 combo,
+portrait) and on the forced WebGL2 backend, each with a clean console; a real Single Player game
+at High on this machine's integrated Radeon 610M (clean console); `validate-all-themes.mjs --theme
+fall` PASS (0 lifecycle failures, 0 console errors); the six `tests/unit/fall-*.test.js` suites
+(284 tests); ESLint at the same 10 pre-existing warnings in `src/themes/fall` and the effect.
