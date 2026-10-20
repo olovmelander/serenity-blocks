@@ -112,4 +112,38 @@ found in a triple star system (HD 188753, announced 2005).
 
 ## Verification
 
-(To be completed.)
+Checked on 2026-10-20 on the RTX 3070 laptop (WebGPU, adapter "nvidia ampere"), branch
+`feature/sunbraid` merged with main d48739f2.
+
+- **Playground** (`?effect=sunbraid`): rest, every gameplay event (`event=lock|drop|clear|quad|tspin|
+  perfect|levelUp|over|morning` with `eventAge`), the clock, levels, portrait and 21:9, every quality
+  tier, on WebGPU and on the WebGL2 backend (`forceWebGL`): clean consoles, no validation errors,
+  no NaN frames (the conjunction is the frame to capture).
+- **The real game** (Electron, in-game harness, events through the game's bus): the theme starts,
+  draws and answers locks, clears, four lines and game over; a live quality change rebuilds the
+  world and keeps the clock and the braid.
+- **Theme validator** (`scripts/validate-all-themes.mjs --theme sunbraid`, a fresh Electron switching in
+  from Forest and back, software rendering): pass, 0 lifecycle failures, 0 console errors, first
+  selection 0.76 s.
+- **Frame rate** in the real game, Electron at the display's cap (~131.6 Hz):
+
+  | Quality | Window | Rest | Right after four lines | Settled after |
+  |---|---|---|---|---|
+  | High | 1584×813 | 129 fps | | |
+  | Extreme | 1584×813 | 130.4 fps | 130.0 fps | 129.2 fps |
+  | Ultra | 1600×852 | 129.7 fps | 129.6 fps | 130.0 fps |
+
+  The desktop is 1600×900, so a full 1920×1080 window could not be measured here.
+- **The light drifts with the clock alone**: at level 1 with no clears, a fixed-step run in the
+  real game turned the braid about one radian in fifty seconds (one turn in 330 s), with no holds.
+- **Phone validator** (390×844, Playwright): Low and Minimal pass, the suns above the card and the
+  fans below it.
+- **Pieces**: palette gate 0/7; every pair at least ΔE 13 under protanopia, deuteranopia and
+  tritanopia.
+- **Tests**: the Sunbraid suites (shaders, world, braid, core, director, theme, composition, rename
+  migration) pass; the full suite passes except five files that fail the same way on main on this
+  machine (four expect English thousands separators under the Swedish locale; the recorder test
+  cannot create a symlink in a worktree).
+- **Gates**: lint ratchet (baseline lowered 574 to 539, the retired code took its errors with it),
+  type check, dependency boundaries, palette gate, production build with the boot-closure guard,
+  IP-string gate over the tree and the built bundle, pages artifact, release gates.
