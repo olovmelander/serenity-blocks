@@ -11,7 +11,7 @@
  *
  * ── Why amplitudes are SCREEN FRACTIONS, not world units ────────────────────────
  * Theme rigs are nowhere near the same scale: aurora sits 15 units from its subject,
- * blood-moon and cosmic-noir sit ~1200. A shake of "0.05 units" is a firm knock on
+ * blood-moon sits ~1200. A shake of "0.05 units" is a firm knock on
  * one and literally invisible on the other. What the viewer actually perceives is the
  * ANGLE the view swings through, as a fraction of the vertical FOV — so that is the
  * unit here. `amount` is a fraction of viewport HEIGHT: 0.0046 means "move the image
