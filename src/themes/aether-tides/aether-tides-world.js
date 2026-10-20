@@ -56,6 +56,7 @@ import {
     smooth,
     starSeat,
     tideStarPosition,
+    wideness,
 } from './aether-tides-tsl.js';
 import { TideEvents } from './aether-tides-events.js';
 import { TideFluid, createTideUniforms, supportsFloatTargets } from './aether-tides-fluid.js';
@@ -106,15 +107,17 @@ export class AetherTidesWorld {
      * @param {boolean} [options.live]            false forces the no-solver fallback (the default
      *                                            asks the renderer whether it can draw to
      *                                            half-float targets)
+     * @param {string|null} [options.view]        a debug view of the picture (NEBULA_VIEWS)
      */
     constructor({
-        scene, renderer, quality = 'High', capture = false, live,
+        scene, renderer, quality = 'High', capture = false, live, view = null,
     }) {
         this.scene = scene;
         this.renderer = renderer;
         this.quality = quality;
         this.tier = tierFor(quality);
         this.capture = capture;
+        this.view = view;
         this.live = live ?? supportsFloatTargets(renderer);
         this.aspect = 16 / 9;
         this.reducedMotion = false;
@@ -209,7 +212,7 @@ export class AetherTidesWorld {
             tide: this.tide, picture: this.picture, fluid: this.fluid, steps: tier.lightSteps,
         });
         this.nebula = createNebula({
-            tide: this.tide, picture: this.picture, fluid: this.fluid, light: this.light, tier, field,
+            tide: this.tide, picture: this.picture, fluid: this.fluid, light: this.light, tier, field, view: this.view,
         });
         this.stars = createStars({
             tide: this.tide, picture: this.picture, fluid: this.fluid, tier,
@@ -221,8 +224,8 @@ export class AetherTidesWorld {
         this.parts.stars = this.stars.mesh;
         this.parts.beams = this.fx.beamMesh;
         this.parts.stardust = this.fx.dustMesh;
-        this.parts.cells = this.fx.cellMesh;
-        this.scene.add(this.nebula.mesh, this.stars.mesh, this.fx.beamMesh, this.fx.dustMesh, this.fx.cellMesh);
+        this.parts.echoes = this.fx.echoMesh;
+        this.scene.add(this.nebula.mesh, this.stars.mesh, this.fx.beamMesh, this.fx.dustMesh, this.fx.echoMesh);
         this.paletteFrom = 0;
         this.paletteTo = 0;
         this.applyPalette(1);
@@ -464,7 +467,11 @@ export class AetherTidesWorld {
         if (!this.fluid) return;
         const delta = Math.max(0, sim?.delta || 0);
         const started = performance.now();
+        const { layouts } = this.fluid;
         const steps = this.fluid.advance(this.renderer, delta, this._prepare, this.capture ? 4096 : SIM_MAX_STEPS);
+        // The resting nebula landed (at a reset, or late: see TideFluid.draw): the light settles
+        // again with it.
+        if (this.fluid.layouts !== layouts) this.light.forget();
         const { now, aspect } = this;
         const P = this.picture;
         P.time.value = now;
@@ -492,7 +499,10 @@ export class AetherTidesWorld {
 
         const w = maelstromPosition(now, aspect, this._p);
         const open = this.wellOpen;
-        P.well.value.set(w.x, w.y, 0.05 + 0.075 * open, open);
+        // A little smaller on a tall screen, where its disc would otherwise span the frame.
+        P.well.value.set(w.x, w.y, (0.05 + 0.075 * open) * (0.72 + 0.28 * wideness(aspect)), open);
+        // A blast front bends the light behind it less under reduced motion.
+        P.ripple.value = this.reducedMotion ? 0.35 : 1;
 
         // The hush: everything sinks, then lets go as the starfire fires.
         const hushAge = now - this.hushAt;
@@ -697,29 +707,36 @@ export class AetherTidesWorld {
 
         // ── the echo: the piece's footprint, poured into the fluid ──
         const pour = (hard ? 2.6 : 1.9) / LOCK_POUR;
+        const footprint = [];
         for (let i = 0; i < cells.length; i += 1) {
+            const x = cells[i][0] + echo.dx;
+            const y = cells[i][1] + echo.dy;
+            footprint.push([x, y]);
             events.addSplat({
-                ax: cells[i][0] + echo.dx,
-                ay: cells[i][1] + echo.dy,
+                ax: x,
+                ay: y,
                 t0: at,
                 duration: LOCK_POUR,
-                radius: cw * 0.44,
+                // Half a cell: neighbouring footprints meet edge to edge, so the gas is one piece
+                // with no seam between its cells.
+                radius: cw * 0.5,
                 kind: SPLAT_CELL,
                 r: color[0] * pour,
                 g: color[1] * pour,
                 b: color[2] * pour,
                 heat: hard ? 5 : 3,
             }, this.eventClock);
-            // …and its outline, crisp, while the gas gathers.
-            this.fx.table.cell({
-                x: cells[i][0] + echo.dx,
-                y: cells[i][1] + echo.dy,
-                at,
-                half: cw * 0.46,
-                color,
-                gain: hard ? 2.6 : 2,
-            });
         }
+        // …and the piece's shape, solid and crisp, while the gas gathers.
+        this.fx.table.echo({
+            cells: footprint,
+            at,
+            half: cw * 0.46,
+            pitchX: cw,
+            pitchY: ch,
+            color,
+            gain: hard ? 2.6 : 2,
+        });
         // The echo stands for a breath, then one even push carries it off whole (a push per cell
         // would shear it apart at once). A slight lean, different for every lock.
         const shove = ((hard ? 0.7 : 0.42) * calm) / ECHO_PUSH;
@@ -866,7 +883,7 @@ export class AetherTidesWorld {
             heartX = (c.screen.x - 0.5) * 2 * aspect;
             heartY = (c.screen.y - 0.5) * 2;
         }
-        const { shock } = this.palette;
+        const { shock, gasB, gasC } = this.palette;
         const fire = grand ? STARFIRE : shock;
         const span = Math.hypot(aspect, 1);
 
@@ -876,6 +893,12 @@ export class AetherTidesWorld {
                 const y = board.y0 + (rows[i] + 0.5) * ch;
                 const fan = (i - (rows.length - 1) * 0.5) * 0.09;
                 const lag = i * 0.035;
+                // Each row's plasma in one of the nebula's own colours, burnt toward the front's;
+                // a four-line clear fires them all in starfire.
+                const own = (this.lockCount + i) % 2 === 0 ? gasB : gasC;
+                const plume = grand ? STARFIRE : [
+                    lerp(own[0], shock[0], 0.2), lerp(own[1], shock[1], 0.2), lerp(own[2], shock[2], 0.2),
+                ];
                 for (let side = -1; side <= 1; side += 2) {
                     const from = side < 0 ? card.x0 : card.x1;
                     const to = side * (aspect + 0.25);
@@ -887,7 +910,7 @@ export class AetherTidesWorld {
                         at: at + lag,
                         duration: 0.42 + 0.05 * i,
                         radius: ch * 0.62,
-                        color: fire,
+                        color: plume,
                         deposit: grand ? 0.75 : 0.55,
                         push: (grand ? 1.5 : 1.1) * calm,
                         heat: grand ? 4.5 : 3,
@@ -1171,7 +1194,7 @@ export class AetherTidesWorld {
             this.stars.dispose();
         }
         if (this.fx) {
-            this.scene.remove(this.fx.beamMesh, this.fx.dustMesh, this.fx.cellMesh);
+            this.scene.remove(this.fx.beamMesh, this.fx.dustMesh, this.fx.echoMesh);
             this.fx.dispose();
         }
         this.light?.dispose();
