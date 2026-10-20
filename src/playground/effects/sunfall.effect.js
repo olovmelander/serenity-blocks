@@ -1,10 +1,11 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
 /**
- * Sunfall — full Hang Sơn Đoòng doline world + post stack mounted in the playground.
+ * Sunfall — the whole doline world and its post stack, mounted in the playground.
  *
- * Mounts the exact `SunfallWorld`, `SunfallDirector`, and `SunfallPost` shipped by
- * the theme so visual verification, deterministic phase-locked screenshots (`?t=`),
- * gameplay event replays (`?event=`), and icon framing (`?icon=1`) match the game.
+ * Mounts the exact `SunfallWorld`, `SunfallDirector` and `SunfallPost` the theme ships, so
+ * phase-locked captures (`?t=`), replayed gameplay (`?event=`) and the icon frame (`?icon=1`)
+ * match the game. The world's authored assets load asynchronously: `diagnostics().assets`
+ * reads `ready` once the world is drawn (wait for it, as well as `__PLAYGROUND_READY__`).
  */
 
 import * as THREE from 'three/webgpu';
@@ -12,13 +13,14 @@ import { SunfallWorld } from '../../themes/sunfall/sunfall-world.js';
 import { SunfallDirector } from '../../themes/sunfall/sunfall-director.js';
 import { SunfallPost, resolveSunfallPostLook } from '../../themes/sunfall/sunfall-post.js';
 import { resolveSunfallQuality } from '../../themes/sunfall/sunfall-quality.js';
-import { PIECE_CODES } from '../../themes/sunfall/sunfall-core.js';
+import { PIECE_CODES, stationIndexForLevel } from '../../themes/sunfall/sunfall-core.js';
+import { readBoardViewport } from '../../themes/sunfall/sunfall-composition.js';
 
 export const meta = {
     id: 'sunfall',
     title: 'Sunfall (full world)',
     description:
-        'Hang Sơn Đoòng doline: a 200 m column of daylight through a cave cloud deck onto a subterranean jungle cone.',
+        'Hang Sơn Đoòng doline: a column of daylight through a collapse skylight onto a jungle canopy, 110 m below the eye.',
 };
 
 const DEMO_LOOP = 38;
@@ -115,14 +117,8 @@ export function create({
     const samples = params.has('msaa') ? Math.max(0, Math.round(num(params, 'msaa'))) : look.msaa;
     const noPost = params.get('noPost') === '1' || !preset.enablePost;
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
-
     const partsParam = params.get('parts');
-    const world = new SunfallWorld({
-        scene,
-        camera,
-        quality,
-        parts: partsParam ? partsParam.split(',').map((p) => p.trim()).filter(Boolean) : null,
-    });
+    const parts = partsParam ? partsParam.split(',').map((p) => p.trim()).filter(Boolean) : null;
 
     const level = Math.max(1, Math.round(num(params, 'level', 1)));
     const reduce = params.get('reduce') === '1';
@@ -131,7 +127,6 @@ export function create({
         reducedMotion: reduce,
         maxNewGrowth: preset.newGrowthSlots || 36,
     });
-
     const applyOverrides = () => {
         if (params.has('station')) director.setStation(params.get('station'));
         if (params.has('weather')) director.setWeather(params.get('weather'));
@@ -140,59 +135,49 @@ export function create({
     applyOverrides();
 
     const pointer = { x: num(params, 'px', 0), y: num(params, 'py', 0) };
-    world.setPointer(pointer.x, pointer.y);
-
-    // Optional inspection / icon camera override
     const lookVals = (params.get('look') || '').split(',').map(Number);
     const eyeVals = (params.get('eye') || '').split(',').map(Number);
     const hasLook = lookVals.length >= 3 && lookVals.slice(0, 3).every(Number.isFinite);
     const hasEye = eyeVals.length >= 3 && eyeVals.slice(0, 3).every(Number.isFinite);
     const isIcon = params.get('icon') === '1';
 
-    if (hasLook || hasEye || isIcon) {
-        world.customCameraOverride = true;
-    }
+    let world = null;
+    let post = null;
+    let assets = 'loading';
+    let disposed = false;
+    let lastSeek = null;
+    let settledFrames = 0;
 
     const applyCameraLens = () => {
+        if (!world) return;
         if (isIcon) {
-            camera.position.set(10, 5.5, 16);
-            camera.fov = 52;
-            camera.lookAt(19, 16, -98);
+            camera.position.set(-6, 0, 0);
+            camera.fov = 40;
+            camera.lookAt(-150, 20, -360);
             camera.updateProjectionMatrix();
         } else if (hasLook || hasEye) {
-            if (hasEye) {
-                camera.position.set(eyeVals[0], eyeVals[1], eyeVals[2]);
-            } else {
-                camera.position.copy(world.baseCamPos);
-            }
+            if (hasEye) camera.position.set(eyeVals[0], eyeVals[1], eyeVals[2]);
             if (hasLook) {
                 if (Number.isFinite(lookVals[3])) camera.fov = lookVals[3];
                 camera.lookAt(lookVals[0], lookVals[1], lookVals[2]);
-            } else {
-                camera.lookAt(world.baseLookAt);
             }
             camera.updateProjectionMatrix();
         }
+        camera.updateMatrixWorld(true);
+        world.u.eye.copy(camera.position);
     };
-
-    const post = !noPost
-        ? new SunfallPost(renderer, scene, camera, {
-            look,
-            samples,
-            falseColor: params.get('falseColor') === '1',
-        })
-        : null;
 
     const size = new THREE.Vector2(1, 1);
     const syncViewport = () => {
         const w = window.innerWidth || 1280;
         const h = Math.max(1, window.innerHeight || 720);
-        world.setAspect(w, h);
+        world?.setAspect(w, h);
         applyCameraLens();
         renderer.getDrawingBufferSize(size);
+        world?.setViewportHeight(size.y);
+        if (overlay) world?.setBoardViewport(readBoardViewport(document));
         post?.setSize(w, h, size.x, size.y);
     };
-    syncViewport();
 
     const eventName = params.get('event');
     const eventAge = num(params, 'eventAge', 0.7);
@@ -203,14 +188,12 @@ export function create({
     const demo = params.get('demo') === '1';
     let demoCursor = 0;
     let demoLoop = -1;
-    let lastSeek = null;
 
     const fireEvent = () => {
         const u = num(params, 'u', 0.52);
         const row = num(params, 'row', 13);
         const code = (params.get('shape') || 'I').toUpperCase();
         const lines = Math.max(1, Math.min(4, Math.round(num(params, 'lines', 2))));
-
         if (eventName === 'lock') {
             director.onPieceLock({ code, u, row });
         } else if (eventName === 'drop') {
@@ -247,6 +230,8 @@ export function create({
 
     const stepDirector = (dt) => {
         const snap = director.step(dt);
+        if (!world) return;
+        world.setPointer(pointer.x, pointer.y);
         world.applySnapshot(snap);
         applyCameraLens();
         post?.update({
@@ -261,37 +246,24 @@ export function create({
         lastSeek = targetTime;
         director.resetSession();
         director.level = level;
-        director.stationTarget = (level - 1) % 5;
+        director.stationTarget = stationIndexForLevel(level);
         director.stationCurrent = director.stationTarget;
         applyOverrides();
-
         const lead = (eventName ? eventAge : 0) + (warmLocks + warmClears) * 0.45 + (holdCombo ? 1.2 : 0);
-        const startTime = Math.max(0, targetTime - lead);
-        director.time = startTime;
-
+        director.time = Math.max(0, targetTime - lead);
         if (holdB2B > 0) director.setB2B(holdB2B);
-
         const advance = (seconds, stepDt = 1 / 30) => {
             const steps = Math.max(1, Math.ceil(seconds / stepDt));
             const dt = seconds / steps;
-            for (let i = 0; i < steps; i += 1) {
-                stepDirector(dt);
-            }
+            for (let i = 0; i < steps; i += 1) stepDirector(dt);
         };
-
         for (let i = 0; i < warmLocks; i += 1) {
-            director.onPieceLock({
-                code: PIECE_CODES[i % 7],
-                u: ((i * 0.29) % 0.8) + 0.1,
-                row: 8 + ((i * 3) % 11),
-            });
+            director.onPieceLock({ code: PIECE_CODES[i % 7], u: ((i * 0.29) % 0.8) + 0.1, row: 8 + ((i * 3) % 11) });
             advance(0.45);
         }
         for (let i = 0; i < warmClears; i += 1) {
             director.onLineClear({
-                lines: 1 + (i % 2),
-                rows: [10 + (i % 8)],
-                codes: [PIECE_CODES[i % 7], PIECE_CODES[(i + 2) % 7]],
+                lines: 1 + (i % 2), rows: [10 + (i % 8)], codes: [PIECE_CODES[i % 7], PIECE_CODES[(i + 2) % 7]],
             });
             advance(0.45);
         }
@@ -333,8 +305,24 @@ export function create({
         }
     };
 
-    seekTo(num(params, 't', 0));
-    let settledFrames = 0;
+    SunfallWorld.prepare().then((prepared) => {
+        if (disposed) return;
+        world = new SunfallWorld({
+            scene, camera, quality, parts, assets: prepared,
+        });
+        if (hasLook || hasEye || isIcon) world.customCameraOverride = true;
+        if (!noPost) {
+            post = new SunfallPost(renderer, scene, camera, {
+                look, samples, u: world.u, parts, falseColor: params.get('falseColor') === '1',
+            });
+        }
+        syncViewport();
+        seekTo(lastSeek ?? num(params, 't', 0));
+        assets = 'ready';
+    }).catch((error) => {
+        assets = 'failed';
+        console.error('[sunfall effect] prepare failed:', error);
+    });
 
     return {
         cameraRadius: 1,
@@ -352,29 +340,33 @@ export function create({
         render() {
             if (post) post.render();
             else renderer.render(scene, camera);
-            settledFrames += 1;
+            if (world) settledFrames += 1;
         },
         resize() {
             syncViewport();
-            if (lastSeek !== null) seekTo(lastSeek);
+            if (lastSeek !== null && world) seekTo(lastSeek);
         },
         getDiagnostics() {
+            const snap = director.getSnapshot();
             return {
                 backend: renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL2',
                 quality: preset.tier,
+                assets,
                 settledFrames,
                 calls: renderer.info?.render?.calls ?? null,
                 triangles: renderer.info?.render?.triangles ?? null,
-                station: director.getSnapshot().station.id,
-                weather: director.getSnapshot().weather.id,
-                fringeDegrees: director.getSnapshot().fringeDegrees,
+                station: snap.station.id,
+                weather: snap.weather.id,
+                fringeDegrees: snap.fringeDegrees,
                 rainbowStrength: director.rainbowStrength,
+                ...(world ? world.getState() : {}),
             };
         },
         dispose() {
+            disposed = true;
             overlay?.remove();
             post?.dispose();
-            world.dispose();
+            world?.dispose();
             renderer.toneMapping = saved.toneMapping;
             camera.fov = saved.fov;
             camera.near = saved.near;
