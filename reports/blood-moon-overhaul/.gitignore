@@ -82,3 +82,5 @@
 !/wolf-lock-build.log
 !/wolf-lock-tests-rerun.log
 !/wolf-lock-typecheck.log
+!/eclipse-salt-flat/*.png
+!/eclipse-salt-flat/*.json

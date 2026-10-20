@@ -17,7 +17,8 @@ throttle for captures), with the Act II and chapter 8 lanes' own levers. The Cos
 `fixedDt`, `noPost`, `noMRT`, `noCompute` and `baseline`), the removed `cosmic-noir-performance`
 effect's `scale` and the old effect's `noChroma`, and added the capture flags
 `cosmicNoirForceWebGL`, `cosmicNoirTime`, `cosmicNoirFixedDt`, `cosmicNoirParts` and
-`cosmicNoirFalseColor` plus the rewritten `cosmic-noir` playground effect, which adds `grain`. The `ocean` playground
+`cosmicNoirFalseColor` plus the rewritten `cosmic-noir` playground effect, which adds `grain`. The Blood Moon
+rebuild (2026-10-20) gives the `blood-moon` effect `icon` (the moon centred over its reflection). The `ocean` playground
 effect added `visit`, `visitK`, `visitAge`, `visitSide`, `visitSeed`, `visits` (one of the
 visits the sea makes by itself) and `followFit`, `followIndex` with its own entry for `follow` (a
 camera turned to one of its large animals), 2026-10-19. The `grainfields`
