@@ -118,7 +118,9 @@ function rockColor(u, {
             const c1 = u.noise(q.mul(0.27).add(vec2(u.time.mul(0.021), u.time.mul(0.013)))).r;
             const c2 = u.noise(q.mul(0.31).sub(vec2(u.time.mul(0.017), u.time.mul(-0.011)))).g;
             const net = blBell(c1.add(c2).sub(1.0).mul(7.0));
-            col.addAssign(u.plankton.mul(net).mul(near).mul(u.power.mul(0.7).add(clear.w.mul(0.6)).add(0.2)).mul(0.22)
+            col.addAssign(u.plankton.mul(0.6).add(lamps.mul(0.5)).mul(net).mul(near)
+                .mul(u.power.mul(0.7).add(clear.w.mul(0.6)).add(0.35))
+                .mul(0.3)
                 .mul(u.breath));
 
             // ── Specks of glowing moss ──
