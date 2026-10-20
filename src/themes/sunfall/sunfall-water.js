@@ -138,9 +138,12 @@ export function createFallMaterial(u, textures) {
         const amount = select(R.w.lessThan(0.5), cat, clamp(thread, 0.0, 1.0));
         // Flow streaks stretched along the fall, fraying at the edges.
         const across = st.x.sub(0.5).mul(2.0);
-        const flow = texture(textures.fbm, vec2(st.x.mul(mix(0.9, 1.7, isCataract)).add(R.w.mul(0.37)),
-            P.y.div(140.0).add(u.time.mul(0.45)))).level(2).x;
-        const streak = texture(textures.fbm, vec2(st.x.mul(mix(1.9, 5.3, isCataract)).add(0.13), P.y.div(55.0).add(u.time.mul(1.1)))).level(1).y;
+        const flow = texture(textures.fbm, vec2(
+            st.x.mul(mix(0.9, 1.7, isCataract)).add(R.w.mul(0.37)),
+            P.y.div(140.0).add(u.time.mul(0.45)),
+        )).level(2).x;
+        const streakUv = vec2(st.x.mul(mix(1.9, 5.3, isCataract)).add(0.13), P.y.div(55.0).add(u.time.mul(1.1)));
+        const streak = texture(textures.fbm, streakUv).level(1).y;
         const body = smoothstep(1.0, mix(0.35, 0.55, flow), abs(across));
         const water = body.mul(mix(0.45, 1.1, streak)).mul(amount).toVar();
         const lit = sfSunMask(u, P);
@@ -259,4 +262,3 @@ export function buildWater(world) {
         },
     };
 }
-

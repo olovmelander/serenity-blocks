@@ -613,7 +613,9 @@ export function planDoline(seed = SUNFALL_SEED, preset = {}) {
     return {
         oculus: { center: OCULUS_CENTER, rx: OCULUS_RX, rz: OCULUS_RZ },
         pool: { center: footFor(SUNFALL_STATIONS[1].sunDir), radius: 48 },
-        farDoline: { center: FAR_DOLINE_CENTER, rx: SUNFALL_LAYOUT.farDoline.radii[0], rz: SUNFALL_LAYOUT.farDoline.radii[1] },
+        farDoline: {
+            center: FAR_DOLINE_CENTER, rx: SUNFALL_LAYOUT.farDoline.radii[0], rz: SUNFALL_LAYOUT.farDoline.radii[1],
+        },
         gours,
         curtains,
         drips,

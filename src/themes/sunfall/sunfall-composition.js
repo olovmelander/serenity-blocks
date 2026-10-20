@@ -23,16 +23,16 @@ export const BOARD_VIEWPORT = Object.freeze({
 
 const RIGS = Object.freeze([
     Object.freeze({
-        name: 'portrait', maxAspect: 0.75, fov: 72, pitch: 2, yaw: -13, position: Object.freeze([0, 0, 0]),
+        name: 'portrait', maxAspect: 0.75, fov: 74, pitch: 9, yaw: 22, position: Object.freeze([0, 0, 0]),
     }),
     Object.freeze({
-        name: 'square', maxAspect: 1.45, fov: 56, pitch: -3, yaw: -5, position: Object.freeze([0, 0, 0]),
+        name: 'square', maxAspect: 1.45, fov: 56, pitch: -1, yaw: 4, position: Object.freeze([0, 0, 0]),
     }),
     Object.freeze({
-        name: 'landscape', maxAspect: 2.05, fov: 52, pitch: -4, yaw: 0, position: Object.freeze([0, 0, 0]),
+        name: 'landscape', maxAspect: 2.05, fov: 52, pitch: -2, yaw: 0, position: Object.freeze([0, 0, 0]),
     }),
     Object.freeze({
-        name: 'ultrawide', maxAspect: Infinity, fov: 48, pitch: -4, yaw: 2, position: Object.freeze([0, 0, 0]),
+        name: 'ultrawide', maxAspect: Infinity, fov: 48, pitch: -2, yaw: 0, position: Object.freeze([0, 0, 0]),
     }),
 ]);
 

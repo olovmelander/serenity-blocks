@@ -65,8 +65,8 @@ CANOPY = {
 
 # Shell field domain (three.js axes) and voxel size for the far shell.
 DOMAIN = {
-    "min": (-440.0, -180.0, -980.0),
-    "max": (560.0, 270.0, 30.0),
+    "min": (-440.0, -180.0, -1060.0),
+    "max": (660.0, 270.0, 30.0),
 }
 
 # The rest camera on 16:9.
