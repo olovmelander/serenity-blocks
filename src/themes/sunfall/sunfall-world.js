@@ -30,6 +30,7 @@ import {
     planDoline,
     solveBowSun,
 } from './sunfall-core.js';
+import { applyCameraBreath } from '../shared/camera-breath.js';
 import { SUNFALL_COMPOSITION } from './sunfall-composition.js';
 import { resolveSunfallQuality } from './sunfall-quality.js';
 import { bakeAllSunfallTextures } from './sunfall-bake.js';
@@ -744,6 +745,13 @@ export class SunfallWorld {
                 this.baseLookAt.y + breathY * 0.35,
                 this.baseLookAt.z,
             );
+            // The shared breath every theme carries (shared/camera-breath.js), on top of the
+            // slow wander and pointer lean above: it leans toward the doline floor and turns
+            // back to it, so the near rim slides past the far wall. Off under reduced motion.
+            applyCameraBreath(this.camera, t, {
+                distance: this.baseCamPos.distanceTo(this.baseLookAt),
+                scale: motionScale,
+            });
         }
     }
 
