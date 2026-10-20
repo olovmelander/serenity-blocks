@@ -614,11 +614,24 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
         ['odysseyCh6NoDust', 'Removes the space chapter’s dust, suction debris and streak motes.'],
         ['odysseyCh6NoStars', 'Removes both starfield tiers from the space chapter.'],
         ['odysseyCh6NoAurora', 'Removes the space hero’s auroral crown.'],
+        ['odysseyCh6GiantAurora', 'Builds the retired auroral crown on the ringed giant, for comparison.'],
         ['odysseyCh6ProceduralDome', 'Restores the old procedural space dome instead of the baked dome.'],
         ['odysseyCh6NebulaSprites', 'Restores the old nebula sprites instead of the sculpted nebula field.'],
     ].map(([name, description]) => toggle(name, description, {
         scope: 'Odyssey chapter 6: Space', sources: [COSMOS],
     })),
+    parameter(
+        'odysseyCh7Throttle',
+        'Holds the black-hole warp drive at a fixed throttle instead of following the travel speed.',
+        'A number from 0 (cruise off) to 1.6 (a glide’s full punch)',
+        'Follows travel',
+        '1',
+        {
+            scope: 'Odyssey chapter 7: Black Hole',
+            sources: ['src/rendering/odyssey/chapter-environments/black-hole-transcendence.js'],
+            notes: 'For captures and comparisons: a still frame cannot show travel speed.',
+        },
+    ),
     toggle('odysseyCh6CorridorSheets', 'Restores the retired additive haze sheets along the space corridor.', {
         scope: 'Odyssey chapter 6: Space',
         sources: ['src/rendering/odyssey/composition/odyssey-corridor-field.js'],

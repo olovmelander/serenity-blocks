@@ -49,7 +49,7 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
         expect(group.userData.heroPlanet.userData.planet.material.opacity).toBeGreaterThan(0.95);
     });
 
-    it('keeps the black hole at one place ahead down the corridor, growing with progress', () => {
+    it('keeps the black hole at one place ahead down the corridor, at one size', () => {
         const group = createCosmicExpanseEnvironment({ particleCount: 200 });
         const { blackHole } = group.userData;
         const { forward, origin } = group.userData.corridorFrame;
@@ -63,12 +63,14 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
 
         // The omen stays AHEAD of the camera down the corridor for the whole chapter. Since
         // 2026-10-19 it no longer marches (owner: "locked on the spine path instead of drifting
-        // towards it"): it hangs at ONE place on the rail's line (OMEN_SPINE_ANCHOR) and only
-        // grows — with progress, to ch7's size at the lock. Screen placement is guarded with the
-        // real camera in tests/unit/odyssey-ch6-hero-framing.test.js.
+        // towards it"): it hangs at ONE place on the rail's line (OMEN_SPINE_ANCHOR). Since the
+        // 2026-10-20 overhaul ("I want them to be placed in space on 1 place") it also keeps ONE
+        // size — chapter 7's at the lock — and grows on screen only as the camera closes on it.
+        // Screen placement is guarded with the real camera in
+        // tests/unit/odyssey-ch6-hero-framing.test.js.
         expect(ahead(entry)).toBeGreaterThan(400);
         expect(blackHole.position.distanceTo(entry)).toBeLessThan(1e-6);
-        expect(blackHole.scale.x).toBeGreaterThan(entryScale * 2);
+        expect(blackHole.scale.x).toBeCloseTo(entryScale, 9);
         expect(blackHole.scale.x).toBeGreaterThan(2.5);
     });
 
@@ -288,10 +290,17 @@ describe('additive DoubleSide materials do not double-bill (Act II->Space §8.6)
         // Seamless pass (2026-10): the tail used to be an opaque alphaTest cone whose fade ran
         // through a screen-space dither — a white salt-and-pepper blade in every capture. It is
         // an additive glow now, so it joins the DoubleSide + Additive rule above.
-        const tail = source.slice(source.indexOf('const tailMat = new THREE.'));
-        expect(tail.slice(0, 400)).toContain('THREE.DoubleSide');
-        expect(tail.slice(0, 400)).toContain('AdditiveBlending');
-        expect(tail.slice(0, 400)).toContain('forceSinglePass = true');
+        // Overhaul 2026-10-20: the coma and both tails are built by one ribbon/quad pattern; the
+        // runtime check of every comet part lives in odyssey-comet.test.js.
+        ['const comaMat = new THREE.', 'const mat = new THREE.MeshBasicNodeMaterial({ side: THREE.DoubleSide });']
+            .forEach((anchor) => {
+                const at = source.indexOf(anchor);
+                expect(at, anchor).toBeGreaterThan(-1);
+                const part = source.slice(at, at + 400);
+                expect(part).toContain('THREE.DoubleSide');
+                expect(part).toContain('AdditiveBlending');
+                expect(part).toContain('forceSinglePass = true');
+            });
     });
 });
 
