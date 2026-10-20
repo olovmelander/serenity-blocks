@@ -524,6 +524,17 @@ describe('Wolfhour ambient integration', () => {
         expect(theme.wolfPack.howlLevel(theme.time)).toBe(1);
     });
 
+    it('excites the young wolf for a combo', () => {
+        const theme = createTheme('High');
+        theme.createAmbientScene();
+        const excite = vi.spyOn(theme.wolfPack, 'excite');
+        theme.time = 8;
+        theme.onCombo({ comboCount: 1 });
+        expect(excite).not.toHaveBeenCalled();
+        theme.onCombo({ comboCount: 2 });
+        expect(excite).toHaveBeenCalledWith(8);
+    });
+
     it('disposes moon aliases once through their owner and allows a clean subsequent build', () => {
         const theme = createTheme('Low');
         theme.createAmbientScene();
