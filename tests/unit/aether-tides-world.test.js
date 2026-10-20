@@ -15,8 +15,8 @@ import { QUALITY, QUALITY_NAMES, tierFor } from '../../src/themes/aether-tides/a
 import { POST_LOOK } from '../../src/themes/aether-tides/aether-tides-post.js';
 import { gridFor } from '../../src/themes/aether-tides/aether-tides-fluid.js';
 import {
-    BEAM_ROWS, BEAM_SLOTS, BURST_ROWS, BURST_SLOTS, CELL_ROWS, CELL_SLOTS, FX_ROWS, FxTable, ROW_BEAM, ROW_BURST,
-    ROW_CELL,
+    BEAM_ROWS, BEAM_SLOTS, BURST_ROWS, BURST_SLOTS, ECHO_CELLS, ECHO_ROWS, ECHO_SLOTS, FX_ROWS, FxTable,
+    JOIN_DOWN, JOIN_LEFT, JOIN_RIGHT, JOIN_UP, ROW_BEAM, ROW_BURST, ROW_ECHO,
 } from '../../src/themes/aether-tides/aether-tides-fx.js';
 
 /**
@@ -25,9 +25,15 @@ import {
  * pass drawn (which material into which target). Nothing is rasterised; what is tested is the
  * choreography — the numbers the events write into the tables the shaders read.
  */
-function fakeRenderer() {
+/**
+ * `skip(materialName)` → true makes a draw count for nothing, as three does while a pipeline is
+ * still building (the call happens, the pass's clear may land, nothing is drawn).
+ */
+function fakeRenderer({ skip = null } = {}) {
     const clear = new THREE.Color(0x02030a);
     return {
+        skip,
+        info: { render: { drawCalls: 0 } },
         toneMapping: THREE.NoToneMapping,
         toneMappingExposure: 1,
         outputColorSpace: THREE.SRGBColorSpace,
@@ -60,6 +66,7 @@ function fakeRenderer() {
         clearHex: () => clear.getHex(),
         render(object) {
             this.passes.push({ material: object.material.name, target: this.target?.texture?.name ?? null });
+            if (!this.skip?.(object.material.name)) this.info.render.drawCalls += 1;
         },
     };
 }
@@ -135,16 +142,23 @@ function beamsSince(world, since) {
     }
     return out;
 }
-/** The outlines of an echo's cells drawn at or after `since`. */
+/** The cells of the echoes drawn at or after `since` (each echo is one shape of these cells). */
 function outlinesSince(world, since) {
     const { data } = world.fx.table;
     const out = [];
-    for (let i = 0; i < CELL_SLOTS; i += 1) {
-        const o = (ROW_CELL + i * CELL_ROWS) * 4;
+    for (let i = 0; i < ECHO_SLOTS; i += 1) {
+        const o = (ROW_ECHO + i * ECHO_ROWS) * 4;
         if (data[o + 2] >= since - 1e-3) {
-            out.push({
-                x: data[o], y: data[o + 1], at: data[o + 2], half: data[o + 3],
-            });
+            for (let c = 0; c < data[o + 10]; c += 1) {
+                const r = o + (4 + c) * 4;
+                out.push({
+                    x: data[o] + data[r],
+                    y: data[o + 1] + data[r + 1],
+                    at: data[o + 2],
+                    half: data[o + 3],
+                    joins: data[r + 2],
+                });
+            }
         }
     }
     return out;
@@ -209,13 +223,18 @@ describe('aether tides world: build', () => {
                 expect(material.depthWrite, material.name).toBe(false);
                 // Light that adds, double-sided (tide space mirrors the winding), goes in one draw:
                 // three otherwise draws a transparent double-sided material twice, with two pipelines.
+                // The echoes are solid: premultiplied "over", their bodies covering what lies behind
+                // (where their alpha is 0, the glow round them, they add light like the rest).
                 if (material.transparent && material.side === THREE.DoubleSide) {
-                    expect(material.blending, material.name).toBe(THREE.AdditiveBlending);
+                    const solid = material.name === 'Aether Tides — echoes';
+                    const blending = solid ? THREE.NormalBlending : THREE.AdditiveBlending;
+                    expect(material.blending, material.name).toBe(blending);
+                    expect(material.premultipliedAlpha, material.name).toBe(true);
                     expect(material.forceSinglePass, material.name).toBe(true);
                 }
             }
             // The whole picture and every event, on every tier.
-            for (const part of ['nebula', 'stars', 'beams', 'stardust']) {
+            for (const part of ['nebula', 'stars', 'beams', 'stardust', 'echoes']) {
                 expect(world.parts[part], `${quality}.${part}`).toBeTruthy();
                 expect(world.parts[part].frustumCulled, `${quality}.${part}`).toBe(false);
                 expect(scene.children, `${quality}.${part}`).toContain(world.parts[part]);
@@ -298,6 +317,51 @@ describe('aether tides world: build', () => {
         expect(new Set(velocity).size).toBe(2);
         expect(world.getState().fluid.steps).toBe(1);
         expect(world.now).toBeCloseTo(4 + SIM_DT, 12);
+
+        // Once the fluid has stepped, nothing lays it out again: what it carries stays.
+        renderer.passes.length = 0;
+        world.update({ time: 4, delta: SIM_DT });
+        expect(renderer.passes.some((pass) => /at rest|clear/.test(pass.material))).toBe(false);
+        world.dispose();
+    });
+
+    it('loses nothing to a pass three has not built yet, and lays the nebula out once it can', () => {
+        // The game builds the theme while three builds pipelines in the background: every draw of
+        // that first moment is skipped, though each pass's call (and its clear) still happens.
+        const scene = new THREE.Scene();
+        let building = true;
+        const renderer = fakeRenderer({ skip: () => building });
+        const world = new AetherTidesWorld({
+            scene, renderer, quality: 'Low', capture: false,
+        }).build();
+        const reads = () => [world.fluid.vel.read, world.fluid.pres.read, world.fluid.dye.read, world.fluid.weave.read];
+        const before = reads();
+        world.seek(2);
+        world.update({ time: 2, delta: SIM_DT });
+        // Nothing was drawn, so nothing was swapped in, and the targets are never cleared.
+        expect(reads()).toEqual(before);
+        expect(world.fluid.restPending).toBe(true);
+        expect(renderer.autoClear).toBe(false); // handed back as found (the fake starts without)
+
+        // The pipelines are ready: the very next frame lays the resting nebula out, then steps,
+        // and the light settles again from scratch.
+        building = false;
+        const { layouts } = world.fluid;
+        renderer.passes.length = 0;
+        world.update({ time: 2, delta: SIM_DT });
+        const names = renderer.passes.map((pass) => pass.material);
+        expect(names.indexOf('Aether Tides — dye at rest')).toBeGreaterThanOrEqual(0);
+        const firstStep = names.findIndex((name) => /velocity/.test(name));
+        expect(names.indexOf('Aether Tides — dye at rest')).toBeLessThan(firstStep);
+        expect(world.fluid.restPending).toBe(false);
+        expect(world.fluid.layouts).toBe(layouts + 1);
+        expect(names.filter((name) => /shade/.test(name)).length).toBeGreaterThan(1);
+        expect(reads()).not.toEqual(before);
+
+        // From then on nothing lays it out again: what the fluid carries stays.
+        renderer.passes.length = 0;
+        world.update({ time: 2, delta: SIM_DT });
+        expect(renderer.passes.some((pass) => /at rest/.test(pass.material))).toBe(false);
         world.dispose();
     });
 
@@ -1784,33 +1848,67 @@ describe('aether tides stardust table', () => {
         })).toBe(0);
     });
 
-    it('hands the echo\'s outlines out round-robin, and parks them on a reset', () => {
+    it('draws each echo as one fused shape, hands echoes out round-robin and parks them on a reset', () => {
         const table = new FxTable();
-        const cellRows = (slot) => Array.from(table.data.subarray(
-            (ROW_CELL + slot * CELL_ROWS) * 4,
-            (ROW_CELL + (slot + 1) * CELL_ROWS) * 4,
+        const rows = (slot) => Array.from(table.data.subarray(
+            (ROW_ECHO + slot * ECHO_ROWS) * 4,
+            (ROW_ECHO + (slot + 1) * ECHO_ROWS) * 4,
         ));
-        expect(ROW_CELL).toBe(ROW_BEAM + BEAM_SLOTS * BEAM_ROWS);
-        expect(FX_ROWS).toBe(ROW_CELL + CELL_SLOTS * CELL_ROWS);
-        // Room for the cells of several pieces at once: an outline outlives the next lock.
-        expect(CELL_SLOTS).toBeGreaterThanOrEqual(12);
-        for (let slot = 0; slot < CELL_SLOTS; slot += 1) expect(cellRows(slot)[2]).toBeLessThan(-1e5);
-        for (let i = 0; i < CELL_SLOTS + 1; i += 1) {
-            expect(table.cell({
-                x: i * 0.25, y: -0.5, at: 3 + i, half: 0.03125, color: [0.25, 1, 0.5], gain: 2,
-            })).toBe(i % CELL_SLOTS);
-        }
-        // (x, y, t0, half) (r, g, b, gain); the newest has replaced the oldest.
-        expect(cellRows(0)).toEqual([CELL_SLOTS * 0.25, -0.5, 3 + CELL_SLOTS, 0.03125, 0.25, 1, 0.5, 2]);
-        expect(cellRows(1)).toEqual([0.25, -0.5, 4, 0.03125, 0.25, 1, 0.5, 2]);
-        // An outline that names no gain is drawn at full strength.
-        const plain = table.cell({
-            x: 0, y: 0, at: 1, half: 0.5, color: [1, 1, 1],
+        expect(ROW_ECHO).toBe(ROW_BEAM + BEAM_SLOTS * BEAM_ROWS);
+        expect(FX_ROWS).toBe(ROW_ECHO + ECHO_SLOTS * ECHO_ROWS);
+        // Room for several pieces at once (an echo outlives the next lock), and for any tetromino.
+        expect(ECHO_SLOTS).toBeGreaterThanOrEqual(4);
+        expect(ECHO_CELLS).toBeGreaterThanOrEqual(4);
+        for (let slot = 0; slot < ECHO_SLOTS; slot += 1) expect(rows(slot)[2]).toBeLessThan(-1e5);
+
+        // A T: three in a row and one above the middle (tide space, y down), on a pitch of 0.1.
+        const p = 0.1;
+        const T = [[0, -p], [-p, 0], [0, 0], [p, 0]];
+        const slot = table.echo({
+            cells: T, at: 3, half: 0.046, pitchX: p, pitchY: p, color: [0.25, 1, 0.5], gain: 2,
         });
-        expect(cellRows(plain)[7]).toBe(1);
+        expect(slot).toBe(0);
+        const r = rows(slot);
+        // (middle of the bounds, t0, half) (colour, gain) (bounds' half-size, count) (pitch)
+        expect(r[0]).toBeCloseTo(0, 6);
+        expect(r[1]).toBeCloseTo(-p / 2, 6);
+        expect(r.slice(2, 8)).toEqual([3, Math.fround(0.046), 0.25, 1, 0.5, 2]);
+        expect(r[8]).toBeCloseTo(p + 0.046, 6);
+        expect(r[9]).toBeCloseTo(p / 2 + 0.046, 6);
+        expect(r[10]).toBe(4);
+        expect(r[12]).toBeCloseTo(p, 6);
+        expect(r[13]).toBeCloseTo(p, 6);
+        // Every side that meets another cell is joined, so the shape has no inside edges.
+        const joins = [0, 1, 2, 3].map((c) => r[(4 + c) * 4 + 2]);
+        expect(joins[0]).toBe(JOIN_DOWN); // the stem: only the middle under it
+        expect(joins[1]).toBe(JOIN_RIGHT); // the left arm
+        expect(joins[2]).toBe(JOIN_LEFT | JOIN_RIGHT | JOIN_UP); // the middle
+        expect(joins[3]).toBe(JOIN_LEFT); // the right arm
+        // Cells are kept relative to the middle; the slots past the piece's own stay empty.
+        expect(r[(4 + 0) * 4]).toBeCloseTo(0, 6);
+        expect(r[(4 + 0) * 4 + 1]).toBeCloseTo(-p / 2, 6);
+        for (let c = 4; c < ECHO_CELLS; c += 1) expect(r.slice((4 + c) * 4, (5 + c) * 4)).toEqual([0, 0, 0, 0]);
+
+        // Cells that only touch at a corner, or sit apart, are not joined.
+        table.echo({
+            cells: [[0, 0], [p, p], [3 * p, 0]], at: 4, half: 0.046, pitchX: p, color: [1, 1, 1],
+        });
+        expect([0, 1, 2].map((c) => rows(1)[(4 + c) * 4 + 2])).toEqual([0, 0, 0]);
+        // An echo that names no gain is drawn at full strength; a piece with no cells draws nothing.
+        expect(rows(1)[7]).toBe(1);
+        expect(table.echo({
+            cells: [], at: 5, half: 0.046, pitchX: p, color: [1, 1, 1],
+        })).toBe(-1);
+        // Round-robin: the newest replaces the oldest.
+        for (let i = 2; i < ECHO_SLOTS + 1; i += 1) {
+            expect(table.echo({
+                cells: [[i, 0]], at: 3 + i, half: 0.046, pitchX: p, color: [1, 1, 1],
+            })).toBe(i % ECHO_SLOTS);
+        }
+        expect(rows(0)[2]).toBe(3 + ECHO_SLOTS);
         table.reset();
-        expect(table.cellCursor).toBe(0);
-        for (let slot = 0; slot < CELL_SLOTS; slot += 1) expect(cellRows(slot)[2]).toBeLessThan(-1e5);
+        expect(table.echoCursor).toBe(0);
+        for (let i = 0; i < ECHO_SLOTS; i += 1) expect(rows(i)[2]).toBeLessThan(-1e5);
         expect(allFinite(table.data)).toBe(true);
     });
 });
@@ -1831,7 +1929,7 @@ describe('aether tides tiers', () => {
         for (let i = 1; i < QUALITY_NAMES.length; i++) {
             const a = QUALITY[QUALITY_NAMES[i - 1]];
             const b = QUALITY[QUALITY_NAMES[i]];
-            for (const key of ['cells', 'dyeHeight', 'sweeps', 'lightSteps', 'starLayers', 'sparkles']) {
+            for (const key of ['cells', 'dyeHeight', 'sweeps', 'lightSteps', 'nearSteps', 'starLayers', 'sparkles']) {
                 expect(b[key], `${QUALITY_NAMES[i]}.${key}`).toBeGreaterThanOrEqual(a[key]);
             }
             expect(Number(b.spikes), `${QUALITY_NAMES[i]}.spikes`).toBeGreaterThanOrEqual(Number(a.spikes));
