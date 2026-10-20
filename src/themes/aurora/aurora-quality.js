@@ -10,6 +10,9 @@ import { normalizeQuality } from '../../utils/quality.js';
  *   curtainHz      aurora buffer refresh cap; the scene itself runs at the target rate
  *   hdrCurtains    half-float aurora buffer (otherwise RGBA8, tone-compressed + dithered)
  *   mirrorScale    planar lake reflection resolution; 0 = analytic sky-and-aurora mirror
+ *   forestCount    small spruces along the far shore and up the range's low slopes
+ *   dustCount      diamond-dust crystals glinting in the air near the eye
+ *   sparkCount     frost-glint density on the near snow banks (0 = none)
  */
 export const QUALITY_PRESETS = Object.freeze({
     Extreme: Object.freeze({
@@ -22,6 +25,7 @@ export const QUALITY_PRESETS = Object.freeze({
         terrainColumns: 320,
         terrainRows: 120,
         treeCount: 46,
+        forestCount: 760,
         dustCount: 1500,
         meteorSlots: 8,
         rippleSlots: 8,
@@ -41,6 +45,7 @@ export const QUALITY_PRESETS = Object.freeze({
         terrainColumns: 280,
         terrainRows: 104,
         treeCount: 38,
+        forestCount: 640,
         dustCount: 1100,
         meteorSlots: 6,
         rippleSlots: 8,
@@ -60,6 +65,7 @@ export const QUALITY_PRESETS = Object.freeze({
         terrainColumns: 240,
         terrainRows: 88,
         treeCount: 30,
+        forestCount: 520,
         dustCount: 800,
         meteorSlots: 6,
         rippleSlots: 6,
@@ -79,6 +85,7 @@ export const QUALITY_PRESETS = Object.freeze({
         terrainColumns: 192,
         terrainRows: 72,
         treeCount: 22,
+        forestCount: 380,
         dustCount: 480,
         meteorSlots: 4,
         rippleSlots: 6,
@@ -98,6 +105,7 @@ export const QUALITY_PRESETS = Object.freeze({
         terrainColumns: 144,
         terrainRows: 56,
         treeCount: 14,
+        forestCount: 250,
         dustCount: 220,
         meteorSlots: 3,
         rippleSlots: 4,
@@ -117,6 +125,7 @@ export const QUALITY_PRESETS = Object.freeze({
         terrainColumns: 112,
         terrainRows: 44,
         treeCount: 8,
+        forestCount: 150,
         dustCount: 100,
         meteorSlots: 2,
         rippleSlots: 3,

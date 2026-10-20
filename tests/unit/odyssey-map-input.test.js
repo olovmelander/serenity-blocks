@@ -162,4 +162,56 @@ describe('Odyssey map travel by keys and pad', () => {
         expect(onPlay).toHaveBeenCalledOnce();
         expect(controls.process(pad([0]), 1)).toBe(false);
     });
+
+    it('opens the charm guide on a fresh Y, never on one held from before', () => {
+        const controller = { isAxisNegative: () => false, isAxisPositive: () => false };
+        const onCharms = vi.fn();
+        const controls = createOdysseyMapPadControls(controller, {
+            isActive: () => true, onMove: vi.fn(), onPlay: vi.fn(), onCharms, now: () => 0,
+        });
+        const pad = (pressed = []) => ({
+            buttons: Array.from({ length: 17 }, (_, i) => ({ pressed: pressed.includes(i) })), axes: [0, 0],
+        });
+        controls.process(pad([3]), 0);
+        expect(onCharms).not.toHaveBeenCalled();
+        controls.process(pad([]), 0);
+        controls.process(pad([3]), 0);
+        controls.process(pad([3]), 0);
+        expect(onCharms).toHaveBeenCalledOnce();
+        controls.process(pad([]), 0);
+        controls.process(pad([3]), 0);
+        expect(onCharms).toHaveBeenCalledTimes(2);
+    });
+
+    it('opens the charm guide from the header chip, and closes it with the map input', () => {
+        const charmGuide = { open: vi.fn(() => true), close: vi.fn(() => true) };
+        let padCallbacks = null;
+        const gamepadController = {
+            setOdysseyMapControls: (callbacks) => {
+                padCallbacks = callbacks;
+                return { dispose: vi.fn() };
+            },
+        };
+        const dispose = installOdysseyMapInput(createMode({ deps: { gamepadController } }), { charmGuide });
+        const onClick = document.addEventListener.mock.calls.find(([type]) => type === 'click')[1];
+        const click = (onChip) => {
+            const event = {
+                preventDefault: vi.fn(),
+                target: { closest: (selector) => (onChip && selector.includes('header-charms') ? {} : null) },
+            };
+            onClick(event);
+            return event;
+        };
+        expect(click(false).preventDefault).not.toHaveBeenCalled();
+        expect(charmGuide.open).not.toHaveBeenCalled();
+        expect(click(true).preventDefault).toHaveBeenCalled();
+        expect(charmGuide.open).toHaveBeenCalledOnce();
+        padCallbacks.onCharms();
+        expect(charmGuide.open).toHaveBeenCalledTimes(2);
+        dispose();
+        expect(charmGuide.close).toHaveBeenCalledOnce();
+        expect(document.removeEventListener).toHaveBeenCalledWith('click', onClick);
+        click(true);
+        expect(charmGuide.open).toHaveBeenCalledTimes(2);
+    });
 });

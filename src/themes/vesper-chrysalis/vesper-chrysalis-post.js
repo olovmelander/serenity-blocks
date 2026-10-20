@@ -48,7 +48,7 @@ import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import {
     vcBell, vcHash21, vcLuma, vcMax3,
 } from './vesper-chrysalis-tsl.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no shafts). `shafts` is a tap count

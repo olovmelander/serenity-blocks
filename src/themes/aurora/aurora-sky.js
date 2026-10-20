@@ -29,8 +29,8 @@ const direction = (azimuth, elevation) => new THREE.Vector3(
 );
 
 /** The Milky Way crosses the frame on the diagonal the main arc leaves open. */
-const GALAXY_A = direction(-64 * DEG, 9 * DEG);
-const GALAXY_B = direction(34 * DEG, 66 * DEG);
+const GALAXY_A = direction(-50 * DEG, 3 * DEG);
+const GALAXY_B = direction(14 * DEG, 64 * DEG);
 export const GALAXY_NORMAL = new THREE.Vector3().crossVectors(GALAXY_A, GALAXY_B).normalize();
 const GALAXY_U = GALAXY_A.clone();
 const GALAXY_V = new THREE.Vector3().crossVectors(GALAXY_NORMAL, GALAXY_U).normalize();
@@ -98,11 +98,12 @@ export class AuroraSky {
      * @param {Function} options.random seeded generator for the catalogue
      */
     constructor({
-        parent, preset, curtains, noiseTexture, uniforms, random,
+        parent, preset, curtains, atmosphere = null, noiseTexture, uniforms, random,
     }) {
         this.parent = parent;
         this.preset = preset;
         this.uniforms = uniforms;
+        this.atmosphere = atmosphere;
         this.disposed = false;
         this.group = new THREE.Group();
         this.group.name = 'Aurora — sky';
@@ -139,15 +140,21 @@ export class AuroraSky {
             );
             const galaxyUV = vec2(along.mul(0.62), plane.mul(1.5).add(0.5));
             const broad = texture(noiseTexture, galaxyUV);
-            const detail = texture(noiseTexture, galaxyUV.mul(3.7).add(0.31));
+            // The finer reads are isotropic: stretched along the band they comb into streaks.
+            const iso = vec2(along, plane).mul(1.5);
+            const detail = texture(noiseTexture, iso.mul(1.45).add(0.31));
+            // Star clouds: a finer read that breaks the band into knots of unresolved stars.
+            const knots = texture(noiseTexture, iso.mul(3.4).add(vec2(0.67, 0.19)));
             const band = exp(plane.mul(plane).mul(-34));
-            const clouds = smoothstep(0.22, 0.92, broad.b.mul(0.62).add(detail.r.mul(0.38)));
+            const clouds = smoothstep(0.22, 0.92, broad.b.mul(0.55).add(detail.r.mul(0.3)).add(knots.g.mul(0.15)));
             const lane = smoothstep(0.42, 0.78, broad.a.mul(0.6).add(detail.g.mul(0.4)))
                 .mul(exp(plane.mul(plane).mul(-190)));
-            const galaxy = vec3(0.5, 0.6, 0.86).mul(band.mul(clouds))
-                .add(vec3(0.95, 0.74, 0.52).mul(band.mul(band).mul(clouds).mul(0.5)))
-                .mul(lane.mul(0.8).oneMinus())
-                .mul(smoothstep(0.02, 0.3, rd.y).mul(0.075));
+            const glow = band.mul(clouds).mul(knots.r.mul(0.45).add(0.78));
+            const galaxy = vec3(0.5, 0.6, 0.86).mul(glow)
+                .add(vec3(0.95, 0.74, 0.52).mul(band.mul(band).mul(clouds).mul(0.55)))
+                .add(vec3(0.42, 0.5, 0.72).mul(exp(plane.mul(plane).mul(-8)).mul(0.1)))
+                .mul(lane.mul(0.85).oneMinus())
+                .mul(smoothstep(0.02, 0.3, rd.y).mul(0.12));
             sky.addAssign(galaxy);
 
             // A bright display lifts the whole sky a little, as it does to the eye.
@@ -155,6 +162,10 @@ export class AuroraSky {
             sky.addAssign(curtains.sample(rd));
             // Below the horizon only the lake and the shore are ever drawn.
             sky.mulAssign(smoothstep(-0.06, 0.0, rd.y).mul(0.75).add(0.25));
+            // The same air every surface sees: low arcs sink into the mist over the water.
+            if (this.atmosphere) {
+                return this.atmosphere.apply(sky, cameraPosition.add(rd.mul(DOME_RADIUS)), { patchy: false });
+            }
             return sky;
         })();
         const geometry = new THREE.SphereGeometry(DOME_RADIUS, 48, 24);

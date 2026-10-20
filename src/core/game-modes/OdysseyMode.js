@@ -88,7 +88,7 @@ import { handleOdysseyPauseAction } from '../../ui/odyssey/odyssey-pause-actions
 import {
     hideOdysseyNavigator, renderOdysseyNavigatorList, showOdysseyNavigator,
 } from '../../ui/odyssey/odyssey-navigator-list.js';
-import { installOdysseyMapInput } from '../../ui/odyssey/odyssey-map-input.js';
+import { installOdysseyMapInputWithCharmGuide } from '../../ui/odyssey/odyssey-charm-guide.js';
 import {
     activateOdysseyCharm, createOdysseyCharmRun, syncOdysseyCharmHud, tryOdysseyHearth,
 } from '../odyssey/odyssey-charm-use.js';
@@ -373,9 +373,9 @@ export class OdysseyMode extends BaseGameMode {
         });
         // A brand-new journey is welcomed by its first chapter before the map is handed over.
         this._offerFirstArrival();
-        // Arrows, the D-pad and A travel and play on the map for as long as the mode lives.
+        // Arrows, the D-pad and A travel and play on the map; the charm chip and Y open the charm guide.
         this._disposeMapInput?.();
-        this._disposeMapInput = installOdysseyMapInput(this);
+        this._disposeMapInput = installOdysseyMapInputWithCharmGuide(this);
 
         // Console debug handles — DEV/capture-tooling only. testOdysseyLevel unlocks levels
         // into the real save, so exposing it in the shipped game makes the Steam leaderboard

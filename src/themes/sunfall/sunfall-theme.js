@@ -14,6 +14,7 @@ import { SUNFALL_TETROMINOS } from './sunfall-tetrominos.js';
 import { SunfallDirector } from './sunfall-director.js';
 import { SunfallWorld } from './sunfall-world.js';
 import { SunfallPost, createPassThroughPipeline, resolveSunfallPostLook } from './sunfall-post.js';
+import { readBoardViewport } from './sunfall-composition.js';
 
 const THEME_ID = 'sunfall';
 const RENDERER_INIT_TIMEOUT_MS = 5500;
@@ -68,9 +69,11 @@ export default class SunfallTheme extends BaseTheme {
         container.appendChild(renderer.domElement);
         this.setupGpuResilience();
 
+        const assets = await SunfallWorld.prepareSafely({ isCurrent });
+        if (!isCurrent()) { SunfallWorld.disposeAssets(assets); return; }
         try {
             this.sceneSamples = sceneSamples(this.quality, this.getAntialiasEnabled());
-            this.world = new SunfallWorld({ quality: this.quality, parts: this.flags.parts });
+            this.world = new SunfallWorld({ quality: this.quality, parts: this.flags.parts, assets });
             this.scene = this.world.scene;
             this.camera = this.world.camera;
             this.director ??= new SunfallDirector({
@@ -142,7 +145,7 @@ export default class SunfallTheme extends BaseTheme {
             const samples = this.sceneSamples ?? 0;
             const antialias = this.getAntialiasEnabled();
             this.post = new SunfallPost(this.renderer, this.scene, this.camera, {
-                look, samples, antialias, falseColor: this.flags.falseColor,
+                look, samples, antialias, falseColor: this.flags.falseColor, u: this.world.u, parts: this.flags.parts,
             });
         } catch {
             this.renderer.toneMapping = THREE.AgXToneMapping;
@@ -228,6 +231,8 @@ export default class SunfallTheme extends BaseTheme {
         this.renderer.setSize(w, h, false);
         this.renderer.getDrawingBufferSize(this.bufferSize);
         this.post?.setSize(w, h, this.bufferSize.x, this.bufferSize.y);
+        this.world?.setViewportHeight(this.bufferSize.y);
+        this.world?.setBoardViewport(readBoardViewport());
     }
 
     animate() {

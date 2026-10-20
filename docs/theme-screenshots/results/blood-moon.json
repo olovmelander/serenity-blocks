@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-21T06:39:55.547Z",
-  "runId": "2026-08-21T06-12-57-693Z",
+  "generatedAt": "2026-10-20T16:51:18.230Z",
+  "runId": "2026-10-20T16-50-37-080Z",
   "theme": "blood-moon",
   "themeMeta": {
     "displayName": "Blood Moon",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-21T06-12-57-693Z",
+  "targetUrl": "http://127.0.0.1:4181/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-20T16-50-37-080Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -61,29 +61,29 @@
       "gpuDevice": [
         {
           "active": false,
-          "deviceId": 5688,
-          "deviceString": "AMD Radeon(TM) Graphics",
-          "driverVersion": "31.0.12044.3",
+          "deviceId": 5056,
+          "deviceString": "AMD Radeon(TM) 610M",
+          "driverVersion": "32.0.13062.9003",
           "gpuPreference": 2,
-          "revision": 197,
-          "subSysId": 978261930,
+          "revision": 212,
+          "subSysId": -2141841494,
           "vendorId": 4098
         },
         {
           "active": false,
-          "deviceId": 9437,
-          "deviceString": "NVIDIA GeForce RTX 3070 Laptop GPU",
-          "driverVersion": "32.0.15.7247",
+          "deviceId": 11353,
+          "deviceString": "NVIDIA GeForce RTX 5080 Laptop GPU",
+          "driverVersion": "32.0.15.7324",
           "gpuPreference": 3,
           "revision": 161,
-          "subSysId": 978261930,
+          "subSysId": -2141841494,
           "vendorId": 4318
         },
         {
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.8972",
+          "driverVersion": "10.0.26100.9711",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -135,6 +135,13 @@
           "sameMode": true,
           "running": true,
           "paused": true
+        }
+      },
+      {
+        "id": "boot-theme-settled",
+        "passed": true,
+        "details": {
+          "active": "forest"
         }
       },
       {
@@ -220,6 +227,11 @@
         "details": {
           "themeId": "blood-moon"
         }
+      },
+      {
+        "id": "theme-detail-apply-reachable",
+        "passed": true,
+        "details": null
       },
       {
         "id": "theme-card-selection-started",
@@ -334,7 +346,7 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 16,
+          "renderCalls": 2,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
@@ -714,6 +726,13 @@
         }
       },
       {
+        "id": "outgoing-eventListeners-cleared",
+        "passed": true,
+        "details": {
+          "count": 0
+        }
+      },
+      {
         "id": "outgoing-eventUnsubscribers-cleared",
         "passed": true,
         "details": {
@@ -831,7 +850,7 @@
         "id": "outgoing-canvases-disconnected",
         "passed": true,
         "details": {
-          "added": 4,
+          "added": 1,
           "connected": 0
         }
       },
@@ -1200,7 +1219,7 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 16,
+          "renderCalls": 2,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
@@ -1471,10 +1490,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.19999999995343387,
-      "firstTargetSelection": 1787.6999999999534,
-      "cleanup-anchor": 34.60000000009313,
-      "secondTargetSelection": 610.7000000001863
+      "initial-anchor": 0.10000000149011612,
+      "firstTargetSelection": 663,
+      "cleanup-anchor": 437.20000000298023,
+      "secondTargetSelection": 177.80000000074506
     },
     "mode": {
       "modeId": "single",
@@ -1507,7 +1526,7 @@
     "firstRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 16,
+      "renderCalls": 2,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
@@ -1525,7 +1544,7 @@
     "secondRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 16,
+      "renderCalls": 2,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
@@ -1554,22 +1573,22 @@
   "screenshot": {
     "path": "docs\\theme-screenshots\\blood-moon.png",
     "passed": true,
-    "width": 1584,
-    "height": 787,
-    "byteLength": 4986432,
-    "samples": 20107,
+    "width": 2538,
+    "height": 1506,
+    "byteLength": 15288912,
+    "samples": 20012,
     "luminance": {
       "min": 0.5696,
-      "max": 254.99999999999997,
-      "mean": 13.421850569452694,
-      "range": 254.43039999999996,
-      "variance": 469.87677352279184
+      "max": 246.9748,
+      "mean": 15.569086508095141,
+      "range": 246.40519999999998,
+      "variance": 281.3684645891023
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 154,
-    "warningCount": 2,
+    "entryCount": 145,
+    "warningCount": 3,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
@@ -1577,21 +1596,29 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-21T06:39:42.153Z",
+        "timestamp": "2026-10-20T16:51:05.924Z",
         "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 4806,
+        "sourceId": "http://127.0.0.1:4181/assets/three-DUdgmfGg.js"
       },
       {
-        "timestamp": "2026-08-21T06:39:48.392Z",
+        "timestamp": "2026-10-20T16:51:08.878Z",
         "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 4806,
+        "sourceId": "http://127.0.0.1:4181/assets/three-DUdgmfGg.js"
+      },
+      {
+        "timestamp": "2026-10-20T16:51:11.155Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 4806,
+        "sourceId": "http://127.0.0.1:4181/assets/three-DUdgmfGg.js"
       }
     ],
     "processFailures": []
   },
+  "perf": null,
   "fatalError": null
 }

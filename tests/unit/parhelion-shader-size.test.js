@@ -8,7 +8,11 @@
  *   2. every shared helper is a setLayout'd Fn, emitted ONCE as a real WGSL `fn` (a layout-less
  *      Fn re-inlines its body at every call site);
  *   3. the reaction-arc loop is a single TSL Loop (one WGSL `for`), not a JS-unrolled chain;
- *   4. the fragment stays under 15 KB with ≤ 3 value-noise evaluations at High.
+ *   4. the fragment stays under 22 KB with ≤ 2 value-noise evaluations at High (2026-10-20 visual
+ *      pass: the two backlit mountain ranges with snow banners, ph_ridge with its sine-hash
+ *      ph_noise1 / ph_ridgedD, ≈ 3.7 KB, replaced the ridge's value-noise read; the ice-fog bank
+ *      ph_fog ≈ 1.5 KB. Measured in the playground: no start-up difference with a warm shader
+ *      cache; ≈ +0.3 s on a cold, cache-less start, all materials together).
  *
  * The build goes through three's own WGSLNodeBuilder against a stub renderer — the harness from
  * tests/unit/odyssey-tsl-noise-emission.test.js.
@@ -19,6 +23,7 @@ import * as THREE from 'three/webgpu';
 import { context } from 'three/tsl';
 import {
     createDomeMaterial,
+    createFarStoneMaterial,
     createSharedUniforms,
     createSnowMaterial,
     createStoneMaterial,
@@ -77,13 +82,13 @@ const fnNames = (wgsl) => [...wgsl.matchAll(/^fn\s+(\w+)\s*\(/gm)].map((m) => m[
 // Call sites of `name(` minus its single definition.
 const callCount = (wgsl, name) => (wgsl.match(new RegExp(`\\b${name}\\s*\\(`, 'g')) || []).length - 1;
 const bytes = (text) => Buffer.byteLength(text, 'utf8');
-/** §5.3: the dome fragment stays under 15 KB (KiB) with every helper a real fn. */
-const DOME_WGSL_BUDGET = 15 * 1024;
+/** §5.3: the dome fragment stays under 22 KB (KiB) with every helper a real fn. */
+const DOME_WGSL_BUDGET = 22 * 1024;
 
 const DOME_HELPERS = [
     'ph_prof', 'ph_spectral', 'ph_softCap', 'ph_calmBox', 'ph_laneW', 'ph_haze', 'ph_skyOut', 'ph_lens',
     'ph_halo', 'ph_haloTint', 'ph_dogs', 'ph_parhelic', 'ph_uta', 'ph_crown', 'ph_sunPillar', 'ph_lowitz',
-    'ph_arcGlow', 'ph_ridge', 'od_noise2', 'od_hash21',
+    'ph_arcGlow', 'ph_ridge', 'ph_noise1', 'ph_ridgedD', 'ph_fog', 'od_noise2', 'od_hash21',
 ];
 
 describe('parhelion dome WGSL size gate', () => {
@@ -103,12 +108,12 @@ describe('parhelion dome WGSL size gate', () => {
         expect(fns.some((name) => name.startsWith('mx_'))).toBe(false);
     });
 
-    it('stays under 15 KB', () => {
+    it('stays under 22 KB', () => {
         expect(bytes(wgsl)).toBeLessThan(DOME_WGSL_BUDGET);
     });
 
-    it('spends at most 3 value-noise evaluations at High', () => {
-        expect(callCount(wgsl, 'od_noise2')).toBeLessThanOrEqual(3);
+    it('spends at most 2 value-noise evaluations at High (the veil; the mountains hash)', () => {
+        expect(callCount(wgsl, 'od_noise2')).toBeLessThanOrEqual(2);
     });
 
     it('emits the reaction-arc Loop body once (one WGSL for, one ph_arcGlow call)', () => {
@@ -133,28 +138,43 @@ describe('parhelion tiers shape the dome graph', () => {
         expect(callCount(wgsl, 'od_noise2')).toBe(1);
     });
 
-    it('Ultra adds the fourth noise eval and stays under 15 KB', () => {
+    it('Ultra adds the third veil noise eval and stays under 22 KB', () => {
         const wgsl = buildFragment(createDomeMaterial(createSharedUniforms(), 'Ultra'));
-        expect(callCount(wgsl, 'od_noise2')).toBe(4);
+        expect(callCount(wgsl, 'od_noise2')).toBe(3);
         expect(bytes(wgsl)).toBeLessThan(DOME_WGSL_BUDGET);
     });
 });
 
 describe('parhelion stone / snow fragments', () => {
-    it('snow fragment stays under 10 KB, no mx_, exactly 3 noise evals (macro, sastrugi, drift)', () => {
+    it('snow fragment stays under 15.5 KB, no mx_, exactly 3 noise evals (macro, sastrugi, drift)', () => {
+        // 2026-10-20: drifts (analytic swells), the far stones' shadow loop and the lower-halo
+        // glints (hashes on a projected grid) grew it from ≈ 10 KB; still three noise reads.
         const wgsl = buildFragment(createSnowMaterial(createSharedUniforms(), 'High'));
         expect(wgsl).not.toMatch(/mx_/);
-        expect(bytes(wgsl)).toBeLessThan(10_000);
+        expect(bytes(wgsl)).toBeLessThan(15_500);
+        // The far plain fades into the noise-free horizon air (ph_fogFar), never the dome's banks.
+        expect(fnNames(wgsl)).toContain('ph_fogFar');
+        expect(fnNames(wgsl)).not.toContain('ph_fog');
+        // The far stones' shadows are ONE loop calling one laid-out helper.
+        expect(fnNames(wgsl)).toContain('ph_farShadow');
+        expect(callCount(wgsl, 'ph_farShadow')).toBe(1);
+        expect((wgsl.match(/\bfor\s*\(/g) || []).length).toBe(1);
         expect(callCount(wgsl, 'od_noise2')).toBe(3);
         expect(fnNames(wgsl)).toContain('ph_softCap');
     });
 
-    it('stone fragment: no mx_, one rime noise eval, under 8 KB', () => {
+    it('stone fragment: no mx_, three noise evals at High (grain, streaks, lichen), under 10.5 KB', () => {
         const { geometry } = buildStoneGeometry();
         const wgsl = buildFragment(createStoneMaterial(createSharedUniforms(), 'High'), geometry);
         expect(wgsl).not.toMatch(/mx_/);
-        expect(callCount(wgsl, 'od_noise2')).toBe(1);
-        expect(bytes(wgsl)).toBeLessThan(8_000);
+        expect(callCount(wgsl, 'od_noise2')).toBe(3);
+        expect(bytes(wgsl)).toBeLessThan(10_500);
+    });
+
+    it('far stones fragment: small, no noise, no mx_', () => {
+        const wgsl = buildFragment(createFarStoneMaterial(createSharedUniforms(), 'High'));
+        expect(wgsl).not.toMatch(/mx_|od_noise2/);
+        expect(bytes(wgsl)).toBeLessThan(5_000);
     });
 
     it('Minimal snow and stone drop to one noise eval and tone in-material', () => {
@@ -177,20 +197,28 @@ describe('parhelion optics helpers', () => {
         }
     });
 
-    it('the CPU ridge mirror matches the shader formula shape (left ridge higher)', () => {
-        const left = optics.ridgeHeightCpu(-0.5);
-        const right = optics.ridgeHeightCpu(0.5);
-        expect(left).toBeGreaterThan(0.005);
-        expect(left).toBeLessThan(0.05);
-        expect(right).toBeGreaterThan(0.004);
-        // Asymmetry term: +0.010 rad on the left by az −0.55.
+    it('the CPU mountain mirror matches the shader formula shape (left range higher, near lower)', () => {
         let leftMean = 0;
         let rightMean = 0;
-        for (let i = 0; i < 64; i++) {
-            leftMean += optics.ridgeHeightCpu(-0.55 - i * 0.002) / 64;
-            rightMean += optics.ridgeHeightCpu(0.55 + i * 0.002) / 64;
+        let farMean = 0;
+        let nearMean = 0;
+        for (let i = 0; i < 128; i++) {
+            const left = optics.mountainHeightCpu(-0.4 - i * 0.004);
+            const right = optics.mountainHeightCpu(0.4 + i * 0.004);
+            for (const m of [left, right]) {
+                // Mountains on the horizon: ≈ 0.2°–6°, never into the sundogs (9.5°).
+                expect(m.top).toBeGreaterThan(0.003);
+                expect(m.top).toBeLessThan(0.12);
+                expect(m.top).toBe(Math.max(m.far, m.near));
+            }
+            leftMean += left.top / 128;
+            rightMean += right.top / 128;
+            farMean += (left.far + right.far) / 256;
+            nearMean += (left.near + right.near) / 256;
         }
+        // Asymmetry: the left range stands higher; the nearer range is lower than the far one.
         expect(leftMean).toBeGreaterThan(rightMean);
+        expect(nearMean).toBeLessThan(farMean);
     });
 });
 

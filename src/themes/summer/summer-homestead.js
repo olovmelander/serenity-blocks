@@ -22,7 +22,7 @@ import { summerPetalPalette } from './summer-petals.js';
 import {
     SUMMER_PLACES, summerGroundHeight, summerShoreDistance,
 } from './summer-terrain.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /** What a prop's faces are made of: the code stored in the green channel times eight. */
 export const SUMMER_MATERIALS = Object.freeze({

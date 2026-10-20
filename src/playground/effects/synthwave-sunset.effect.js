@@ -12,7 +12,7 @@
  *                            layout rules from public/styles/main.css; the composition solver
  *                            reads its rect exactly as in game). board=0 → the centred menu shot
  *   hud=0                    board without the HUD mock
- *   event=lock|clear|tetris|chain|ride|levelUp  fire a gameplay event...
+ *   event=lock|clear|quad|chain|ride|levelUp  fire a gameplay event (quad: four lines)...
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, chain=<n> links)
  *                            chain: the coaster lifted n notches; ride: a chain of n that broke
  *   parts=sky,sea,...        draw only these parts (SYNTHWAVE_PARTS: sky sea wheel pier coaster
@@ -114,7 +114,7 @@ export function create({
         } else if (eventName === 'clear') {
             world.onPieceLock({ type: 'S', x: 4, rotation: 0 });
             world.onLineClear(num(params, 'lines', 2));
-        } else if (eventName === 'tetris') {
+        } else if (eventName === 'quad' || eventName === 'tetris') {
             world.onPieceLock({ type: 'I', x: 6, rotation: 1 });
             world.onLineClear(4);
         } else if (eventName === 'chain') {

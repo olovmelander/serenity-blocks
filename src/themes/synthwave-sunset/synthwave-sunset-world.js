@@ -36,7 +36,7 @@ import { createPalms } from './synthwave-sunset-palms.js';
 import { FIREWORK_COLORS, Fireworks } from './synthwave-sunset-fireworks.js';
 import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
 import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
-import { flashScale, prefersReducedFlashing } from '../../core/photosensitivity.js';
+import { flashScale, prefersReducedFlashing } from '../../utils/photosensitivity.js';
 
 /**
  * The layer the sea's reflection pass renders: everything that stands in the scene and should be

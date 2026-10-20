@@ -120,6 +120,14 @@ export class SunfallDirector {
         this.newGrowthShoots = [];
         this.nextShootCursor = 0;
 
+        // Recent locks and clears, each with a serial, for the world's leaves and rows.
+        this.sessionSerial = 0;
+        this.lockSerial = 0;
+        this.lockEvents = [];
+        this.clearSerial = 0;
+        this.clearEvents = [];
+        this.lastHardDrop = null;
+
         // Seed 6 initial young shoots so the garden has living botanical colour at t=0
         for (let i = 0; i < 6; i += 1) {
             const code = PIECE_CODES[i % PIECE_CODES.length];
@@ -221,6 +229,19 @@ export class SunfallDirector {
         this.flushU = normU;
         this.flushRow = lead.row;
 
+        // A hard drop already reported this piece (its lock follows within a frame or two).
+        const drop = this.lastHardDrop;
+        const duplicate = drop && drop.code === pieceCode && this.time - drop.time < 0.3 && !drop.claimed;
+        if (duplicate) {
+            drop.claimed = true;
+            const last = this.lockEvents[this.lockEvents.length - 1];
+            if (last && last.serial === drop.serial && Array.isArray(shape)) last.cells = cells;
+        } else {
+            this._recordLock({
+                code: pieceCode, cells, u: normU, hard: false,
+            });
+        }
+
         // Spawn a young shoot at the lock site so the garden records the piece
         this._spawnShoot({
             code: pieceCode,
@@ -248,9 +269,33 @@ export class SunfallDirector {
         this.snapU = normU;
         this.snapColor = [...PIECE_SWATCH_RGB[pieceCode]];
 
+        const cells = cellsFromMatrix(null, pieceCode, Math.round(normU * 9), row);
+        const event = this._recordLock({
+            code: pieceCode, cells, u: normU, hard: true,
+        });
+        this.lastHardDrop = {
+            code: pieceCode, time: this.time, serial: event.serial, claimed: false,
+        };
         this.onPieceLock({
             code: pieceCode, col: normU * 9, row, u: normU,
         });
+    }
+
+    _recordLock({
+        code, cells, u, hard,
+    }) {
+        this.lockSerial += 1;
+        const event = {
+            serial: this.lockSerial,
+            code,
+            cells: cells.map((c) => ({ col: c.col, row: c.row })),
+            u,
+            hard,
+            time: this.time,
+        };
+        this.lockEvents.push(event);
+        if (this.lockEvents.length > 16) this.lockEvents.shift();
+        return event;
     }
 
     /**
@@ -272,6 +317,14 @@ export class SunfallDirector {
         this.ripenPulse = 1.0;
         this.ripenRow = clamp(avgRow, 0, 19);
         this.ripenCodesPacked = packCodes(codes);
+        this.clearSerial += 1;
+        this.clearEvents.push({
+            serial: this.clearSerial,
+            rows: Array.isArray(rows) && rows.length ? rows.slice(0, 4) : [Math.round(avgRow)],
+            lines: count,
+            time: this.time,
+        });
+        if (this.clearEvents.length > 8) this.clearEvents.shift();
 
         // Spawn `count` new-growth shoots that undergo delayed greening over ~19 s
         for (let i = 0; i < count; i += 1) {
@@ -293,6 +346,7 @@ export class SunfallDirector {
             // 4-Line Cataract + Analytic Double Rainbow
             this.cataractPulse = 1.0;
             this.cataractAge = 0;
+            this.bowLive = true;
             this.showerPulse = 1.0;
             const leadCode = codes[0] && PIECE_SWATCH_RGB[codes[0]] ? codes[0] : 'S';
             this.flushColor = [...PIECE_SWATCH_RGB[leadCode]];
@@ -385,8 +439,10 @@ export class SunfallDirector {
      */
     onPerfectClear() {
         this.zenithPulse = 1.0;
+        // The water pours, but the bow belongs to four lines alone.
         this.cataractPulse = Math.max(this.cataractPulse, 0.85);
         this.cataractAge = 0;
+        this.bowLive = false;
         for (let i = 0; i < 7; i += 1) {
             this._spawnShoot({
                 code: PIECE_CODES[i],
@@ -427,6 +483,13 @@ export class SunfallDirector {
      * Cloud deck parts open, resets session T-spin rotation, and pours fresh morning light in.
      */
     resetSession() {
+        // A session starts the cave's weather clock and its random stream afresh, so a replay
+        // of the same events (a seek) draws the same frame.
+        this.rng = mulberry32(this.seed);
+        this.weatherIndex = 0;
+        this.nextWeatherIndex = 1;
+        this.weatherMix = 0;
+        this.weatherTimer = 64;
         this.gameOverActive = false;
         this.overCloudClose = 0;
         this.morningPulse = 1.0;
@@ -438,6 +501,12 @@ export class SunfallDirector {
         this.comboColumns = 1;
         this.b2bCount = 0;
         this.b2bLevel = 0;
+        this.sessionSerial += 1;
+        this.lockSerial = 0;
+        this.clearSerial = 0;
+        this.lockEvents = [];
+        this.clearEvents = [];
+        this.lastHardDrop = null;
     }
 
     _spawnShoot({
@@ -529,7 +598,9 @@ export class SunfallDirector {
             this.cataractPulse = decay(this.cataractPulse, SUNFALL_TIMINGS.cataractSeconds);
             const delay = SUNFALL_TIMINGS.cataractRainbowDelay;
             const fade = SUNFALL_TIMINGS.cataractRainbowFade;
-            if (this.cataractAge < delay) {
+            if (!this.bowLive) {
+                this.rainbowStrength = 0;
+            } else if (this.cataractAge < delay) {
                 this.rainbowStrength = smooth(0, delay, this.cataractAge) * 0.35;
             } else {
                 const after = this.cataractAge - delay;
@@ -639,6 +710,11 @@ export class SunfallDirector {
             overCloudClose: this.overCloudClose,
             morningPulse: this.morningPulse,
             newGrowthShoots: this.newGrowthShoots,
+            sessionSerial: this.sessionSerial,
+            lockSerial: this.lockSerial,
+            lockEvents: this.lockEvents,
+            clearSerial: this.clearSerial,
+            clearEvents: this.clearEvents,
         };
     }
 }
