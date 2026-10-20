@@ -191,7 +191,9 @@ describe('cinder drift world: build', () => {
                 expect(material.fog, material.name).toBe(false); // the atmosphere is in every material
             }
             // The whole picture and every event on every tier; only the air is paid for by tier.
-            const paid = { embers: tier.embers > 0, smoke: tier.smoke > 0, shaft: tier.shaft };
+            const paid = {
+                embers: tier.embers > 0, smoke: tier.smoke > 0, plume: tier.plume > 0, shaft: tier.shaft,
+            };
             for (const part of CINDER_DRIFT_PARTS) {
                 expect(Boolean(world.parts[part]), `${quality}.${part}`).toBe(paid[part] ?? true);
             }
