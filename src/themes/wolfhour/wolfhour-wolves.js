@@ -2,16 +2,22 @@
  * Wolfhour's wolves. Each wolf is one small quad whose shader unions the tapered capsules of its
  * rig (wolfhour-wolf-rig.js) smoothly into a single organic silhouette, roughens the outline into
  * fur with the sky's noise tile, and lights a hairline of moonlight along the edges that face the
- * moon (the union's own gradient gives the normal). A faint glint marks the eye.
+ * moon (the union's own gradient gives the normal). Faint glints mark the eyes.
  *
- * The pack (a lead, a sitter and a young wolf that paces the ridge) stands on the right-hand spur
- * looking left toward the moon. Across the valley a lone wolf sits on the left-hand spur and
- * answers when the pack howls. Now and then a scout walks in along the foreground ridge, stops to
- * look over the valley, and walks out again. A line clear makes the lead lift its head; a
- * four-line clear makes the pack howl at the moon, one after another, breath smoking in the cold.
+ * The pack (a lead, a sitter and a young wolf) stands on the right-hand spur looking left toward
+ * the moon; across the valley a lone wolf sits on the left-hand spur; now and then a scout walks
+ * in along the foreground ridge, looks over the valley (and at you), and trots away. Each lives
+ * through its own repertoire (wolfhour-wolf-behaviour.js): the lead looks round, yawns, shakes
+ * the snow off, stretches, sits a while; the sitter lies down and rests its head; the young one
+ * paces, plays and hunts mice under the snow with a nose-first pounce.
  *
- * Every pose is a pure function of time (and of when the howls and glances began), so a seek or a
- * capture lands on the same frame. Rig units: a wolf faces +x with its paws on y = 0.
+ * Gameplay: a line clear makes the pack turn to look at you; a combo excites the young wolf (a
+ * play bow, a wagging tail); a four-line clear makes the pack howl at the moon, one after another,
+ * breath smoking (lying wolves sit up for it; a wolf in mid-pounce stays on the hunt), and the wolf
+ * across the valley answers.
+ *
+ * Every pose is a pure function of time (and of when the howls, glances and excitements began),
+ * so a seek or a capture lands on the same frame. Rig units: a wolf faces +x with paws on y = 0.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -19,8 +25,9 @@ import {
     smoothstep, texture, uniform, uniformArray, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    CAPSULE_COUNT, CAPSULE_STRIDE, MAX_GROUND_SLOPE, WOLF_BOUNDS, poseWolf,
+    CAPSULE_COUNT, CAPSULE_STRIDE, MAX_GROUND_SLOPE, WOLF_BOUNDS, blendRigs, poseWolf,
 } from './wolfhour-wolf-rig.js';
+import { YOUNG_MOVES, behaviourAt, busyAt } from './wolfhour-wolf-behaviour.js';
 import { makeWolfhourNoiseTexture } from './wolfhour-sky.js';
 
 /** Coat, moon rim and eye glint (linear, before the grade). */
@@ -30,16 +37,16 @@ const GLINT = vec3(0.42, 0.48, 0.58);
 /** The moon's direction on screen (upper left), for the rim. */
 const MOON_SCREEN = Object.freeze({ x: -0.62, y: 0.78 });
 
-/* ── Who stands where, and how they behave ─────────────────────────────────────────── */
+/* ── Who stands where ──────────────────────────────────────────────────────────────── */
 
 /**
- * The pack, in pack units from the lead's paws: its build, place, scale, resting head lift, howl
- * (head lift and how late it joins) and an idle phase so no two wolves breathe together.
+ * The pack, in pack units from the lead's paws: its role (its repertoire), place, scale, resting
+ * head lift, howl (head lift and how late it joins) and an idle phase so no two breathe together.
  */
 export const PACK = Object.freeze([
     Object.freeze({
         name: 'lead',
-        build: 'standing',
+        role: 'lead',
         x: 0,
         sink: 0.2,
         scale: 1,
@@ -51,7 +58,7 @@ export const PACK = Object.freeze([
     }),
     Object.freeze({
         name: 'sitter',
-        build: 'sitting',
+        role: 'sitter',
         x: -40,
         sink: 0.2,
         scale: 0.94,
@@ -63,7 +70,7 @@ export const PACK = Object.freeze([
     }),
     Object.freeze({
         name: 'young',
-        build: 'standing',
+        role: 'young',
         x: 46,
         sink: 0.2,
         scale: 0.8,
@@ -78,7 +85,7 @@ export const PACK = Object.freeze([
 /** The wolf across the valley: sits facing the pack and answers a moment after the lead. */
 export const ANSWERER = Object.freeze({
     name: 'answer',
-    build: 'sitting',
+    role: 'answer',
     x: 0,
     sink: 0.2,
     scale: 1,
@@ -92,7 +99,6 @@ export const ANSWERER = Object.freeze({
 /** The scout's visits to the foreground ridge (scout units from its anchor; seconds). */
 export const SCOUT = Object.freeze({
     name: 'scout',
-    build: 'standing',
     sink: 0.2,
     scale: 1,
     head: 0,
@@ -102,8 +108,9 @@ export const SCOUT = Object.freeze({
     /** From off screen to the right, to the lookout where it stops to look over the valley. */
     from: 190,
     to: -40,
-    /** Units per second along the ridge. */
+    /** Walking in and trotting out (units per second along the ridge). */
     speed: 16,
+    trotSpeed: 30,
     /** The first arrival, the period between visits, and the pause at the lookout. */
     first: 18,
     period: 96,
@@ -111,29 +118,26 @@ export const SCOUT = Object.freeze({
 });
 
 /**
- * The young wolf's pacing (pack units, seconds): it steps a little way down the ridge away from the
- * lead (`toward` +1: right), looks along it, and climbs back to its place. The reach keeps it off
- * the ridge's steep far side (past about 80 pack units the crest falls at 35-40 degrees) and clear
- * of the lead, whose tail reaches 20 units behind it.
- */
-export const PACE = Object.freeze({
-    reach: 18, toward: 1, speed: 7, period: 27, look: 5,
-});
-/**
- * A walking wolf's stride (rig units): the distance its body travels per gait cycle. The gait is
- * read from the distance actually travelled, so a planted paw stays where it was put down.
+ * Strides (rig units): the distance the body travels per gait cycle, walking and trotting. The
+ * gait is read from the distance actually travelled, so a planted paw stays where it was put down.
  */
 export const WALK_STRIDE = 15;
+export const TROT_STRIDE = 22;
 
 /** The howl's timing (seconds): the head rises, holds the note, and comes down. */
 export const HOWL = Object.freeze({ rise: 0.6, hold: 2.6, fall: 1.0 });
-/** A line clear's glance: the lead wolf lifts its head and looks again. */
-const GLANCE = Object.freeze({
-    rise: 0.35, hold: 1.0, fall: 0.7, angle: 22,
-});
+/** A line clear's glance: the pack turns to look at you. */
+const GLANCE = Object.freeze({ rise: 0.4, hold: 1.6, fall: 0.8 });
+/** A combo's excitement: the young wolf bows, wags and bounces. */
+const EXCITE = Object.freeze({ rise: 0.35, hold: 2.6, fall: 0.7 });
 const HOWL_SPAN = HOWL.rise + HOWL.hold + HOWL.fall;
-/** How long the young wolf's pacing stands still for a howl. */
+/** How long a moving wolf's behaviour stands still for a howl it joins. */
 const HOWL_STILL = HOWL_SPAN + 1.2;
+/** Snow puffs: how long one lives (seconds). */
+const PUFF_LIFE = 1.6;
+
+/** Under Reduce motion these actions do not play: the wolves still turn, yawn, sit and lie. */
+const LIVELY = Object.freeze(['pace', 'pounce', 'play', 'shake', 'stretch', 'rise']);
 
 const smooth = (t) => {
     const c = Math.min(1, Math.max(0, t));
@@ -149,71 +153,48 @@ export function eventEnvelope(age, { rise, hold, fall }) {
 }
 
 /**
- * Where the scout is at `time`: x (scout units), facing, how far it has walked on this leg of its
- * visit, whether it walks, and how long it has paused at the lookout; null between visits. A pure
- * function of time.
+ * Where the scout is at `time`: x (scout units), facing, how far it has moved on this leg of its
+ * visit, whether it moves and how (it walks in and trots out), and how long it has paused at the
+ * lookout; null between visits. A pure function of time.
  */
 export function scoutAt(time) {
     const t = time - SCOUT.first;
     if (!Number.isFinite(t) || t < 0) return null;
     const local = t % SCOUT.period;
-    const walk = (SCOUT.from - SCOUT.to) / SCOUT.speed;
+    const span = SCOUT.from - SCOUT.to;
+    const walk = span / SCOUT.speed;
+    const trot = span / SCOUT.trotSpeed;
     if (local < walk) {
         const d = local * SCOUT.speed;
         return {
-            x: SCOUT.from - d, facing: -1, travel: d, moving: true, pause: 0,
+            x: SCOUT.from - d, facing: -1, travel: d, moving: true, gaitKind: 'walk', pause: 0,
         };
     }
     if (local < walk + SCOUT.pause) {
         return {
-            x: SCOUT.to, facing: -1, travel: 0, moving: false, pause: local - walk,
+            x: SCOUT.to, facing: -1, travel: 0, moving: false, gaitKind: 'walk', pause: local - walk,
         };
     }
-    if (local < walk * 2 + SCOUT.pause) {
-        const d = (local - walk - SCOUT.pause) * SCOUT.speed;
+    if (local < walk + SCOUT.pause + trot) {
+        const d = (local - walk - SCOUT.pause) * SCOUT.trotSpeed;
         return {
-            x: SCOUT.to + d, facing: 1, travel: d, moving: true, pause: 0,
+            x: SCOUT.to + d, facing: 1, travel: d, moving: true, gaitKind: 'trot', pause: 0,
         };
     }
     return null;
 }
 
-/** The young wolf on its pacing clock: offset and distance walked on this leg (pack units), facing, moving. */
-export function paceAt(clock) {
-    const local = ((clock % PACE.period) + PACE.period) % PACE.period;
-    const walk = PACE.reach / PACE.speed;
-    const out = PACE.toward;
-    if (local < walk) {
-        const d = local * PACE.speed;
-        return {
-            dx: out * d, facing: out, travel: d, moving: true,
-        };
-    }
-    if (local < walk + PACE.look) {
-        return {
-            dx: out * PACE.reach, facing: out, travel: 0, moving: false,
-        };
-    }
-    if (local < walk * 2 + PACE.look) {
-        const d = (local - walk - PACE.look) * PACE.speed;
-        return {
-            dx: out * (PACE.reach - d), facing: -out, travel: d, moving: true,
-        };
-    }
-    // Back at its place, it turns to face the moon again.
-    return {
-        dx: 0, facing: -1, travel: 0, moving: false,
-    };
-}
-
 /* ── The silhouette shader ─────────────────────────────────────────────────────────── */
 
 function createWolfMaterial(noise, seed) {
-    const rows = Array.from({ length: CAPSULE_COUNT * 2 }, () => new THREE.Vector4(1e4, 1e4, 1e4, 1e4));
+    const rows = Array.from({ length: CAPSULE_COUNT * 2 }, () => new THREE.Vector4(0, 0, 0, 0));
     const capsules = uniformArray(rows, 'vec4');
     const uMoon = uniform(new THREE.Vector2(MOON_SCREEN.x, MOON_SCREEN.y));
     const uEye = uniform(new THREE.Vector3(0, 0, 0));
+    const uEye2 = uniform(new THREE.Vector3(0, 0, 0));
     const uFade = uniform(1);
+    // A shake: the fur's noise shivers (xy) and the coat fluffs out by z units.
+    const uShake = uniform(new THREE.Vector3(0, 0, 0));
     const material = new THREE.MeshBasicNodeMaterial({
         name: 'Wolfhour wolf',
         transparent: true,
@@ -240,9 +221,10 @@ function createWolfMaterial(noise, seed) {
             g.assign(mix(q.div(len), g, m));
         });
         // Fur: the outline frays by about half a unit, in tufts a unit or two across.
-        const fur = texture(noise, p.mul(0.045).add(vec2(seed, seed * 1.7))).r.mul(0.7)
-            .add(texture(noise, p.mul(0.11).add(vec2(seed * 2.3, 0.4))).r.mul(0.3));
-        const edge = d.add(fur.sub(0.5).mul(1.3)).toVar();
+        const shiver = uShake.xy;
+        const fur = texture(noise, p.mul(0.045).add(vec2(seed, seed * 1.7)).add(shiver)).r.mul(0.7)
+            .add(texture(noise, p.mul(0.11).add(vec2(seed * 2.3, 0.4)).add(shiver.mul(2.3))).r.mul(0.3));
+        const edge = d.sub(uShake.z).add(fur.sub(0.5).mul(uShake.z.mul(2.4).add(1.3))).toVar();
         const fw = max(fwidth(edge), 1e-3).toVar();
         const cover = float(1).sub(smoothstep(fw.negate(), fw, edge));
         // Moon rim: the outer band of the coat on the moon's side, about a pixel and a half wide.
@@ -250,19 +232,25 @@ function createWolfMaterial(noise, seed) {
         const band = float(1).sub(smoothstep(0, fw.mul(1.7).max(0.6), edge.negate()));
         const rim = band.mul(smoothstep(0.38, 0.92, facing));
         const sheen = smoothstep(-5, 0, edge).mul(facing.max(0)).mul(0.25);
-        const eyeOffset = p.sub(uEye.xy);
-        const glint = exp(dot(eyeOffset, eyeOffset).mul(-2.6)).mul(uEye.z);
+        const eyeA = p.sub(uEye.xy);
+        const eyeB = p.sub(uEye2.xy);
+        const glint = exp(dot(eyeA, eyeA).mul(-2.6)).mul(uEye.z)
+            .add(exp(dot(eyeB, eyeB).mul(-2.6)).mul(uEye2.z));
         const colour = COAT.mul(sheen.add(1)).add(RIM.mul(rim)).add(GLINT.mul(glint));
         return vec4(colour, cover.mul(uFade));
     })();
     material.colorNode = shape.rgb;
     material.opacityNode = shape.a;
     return {
-        material, rows, uniforms: { uMoon, uEye, uFade },
+        material,
+        rows,
+        uniforms: {
+            uMoon, uEye, uEye2, uFade, uShake,
+        },
     };
 }
 
-/** Breath vapour: soft round puffs, moonlit, fading as they rise and spread. */
+/** Vapour and snow: soft round puffs, moonlit, fading as they rise and spread. */
 function createVapour(capacity) {
     const geometry = new THREE.PlaneGeometry(1, 1);
     const alpha = new Float32Array(capacity);
@@ -315,9 +303,13 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
             rows,
             uniforms,
             capsules: new Float32Array(CAPSULE_COUNT * CAPSULE_STRIDE),
+            spare: new Float32Array(CAPSULE_COUNT * CAPSULE_STRIDE),
+            blended: new Float32Array(CAPSULE_COUNT * CAPSULE_STRIDE),
             facing: spec.facing ?? -1,
             muzzle: [0, 0],
+            paws: [],
             visible: true,
+            act: null,
         };
     };
 
@@ -325,7 +317,7 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
     group.name = 'Wolfhour pack';
     const wolves = PACK.map((spec, i) => makeWolf(spec, i));
     for (const wolf of wolves) group.add(wolf.mesh);
-    const vapour = createVapour(lowTier ? 12 : 36);
+    const vapour = createVapour(lowTier ? 20 : 64);
     group.add(vapour.mesh);
 
     const answererGroup = new THREE.Group();
@@ -335,38 +327,44 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
 
     const scoutGroup = new THREE.Group();
     scoutGroup.name = 'Wolfhour scout';
-    const scout = makeWolf(SCOUT, 4);
+    const scout = makeWolf({ ...SCOUT, facing: -1 }, 4);
+    scout.spec = { ...scout.spec, role: 'scout' };
     scoutGroup.add(scout.mesh);
 
     const state = {
-        howlStart: -Infinity, glanceStart: -Infinity, paused: 0, spread: 1, members: wolves.length,
+        howlStart: -Infinity,
+        glanceStart: -Infinity,
+        exciteStart: -Infinity,
+        // The young wolf's own clock stands still through a howl it joins.
+        youngPaused: 0,
+        youngJoins: true,
+        spread: 1,
+        members: wolves.length,
     };
     const grounds = { pack: () => 0, answerer: () => 0, scout: () => 0 };
     const matrix = new THREE.Matrix4();
-    const muzzle = new THREE.Vector3();
+    const point = new THREE.Vector3();
 
-    const howlOf = (spec, t) => eventEnvelope(t - state.howlStart - spec.delay, HOWL);
-
-    /** Head lift (degrees): breathing, a sniff at the wind now and then, glances and howls. */
-    const headOf = (spec, t, m, howl, extra) => {
-        const breath = Math.sin(t * 1.3 + spec.idlePhase) * 1.6 * m;
-        const sniffPhase = (t + spec.idlePhase * 7) % 23;
-        const sniff = sniffPhase > 17 ? Math.sin(((sniffPhase - 17) / 6) * Math.PI) * 26 * m : 0;
-        const idle = spec.head + breath - sniff + extra;
-        return idle + (spec.howl - idle) * howl;
-    };
+    // The young wolf's own clock: real time less the howls it stood still for (none before the
+    // first howl).
+    const youngClock = (t) => t - state.youngPaused
+        - (state.youngJoins && Number.isFinite(state.howlStart)
+            ? Math.max(0, Math.min(t - state.howlStart, HOWL_STILL)) : 0);
+    const joins = (spec) => spec.role !== 'young' || state.youngJoins;
+    const howlOf = (spec, t) => (joins(spec) ? eventEnvelope(t - state.howlStart - spec.delay, HOWL) : 0);
 
     /**
      * Pose one wolf into its uniforms at `x`, facing ±1, on the ridge `groundAt` describes (the
-     * ridge's height under any x of the wolf's group). The wolf's frame sits on the ridge under its
-     * middle; the rig reads the ridge under each paw, hip and shoulder from there.
+     * ridge's height under any x of the wolf's group), from its behaviour `act` and the howl.
      */
     const pose = (entry, t, m, {
-        x, groundAt, facing, gait = 0, stride = 0, howl = 0, extra = 0, fade = 1, visible = true,
+        x, groundAt, facing, act, howl = 0, glance = 0, fade = 1, visible = true,
+        gaitKind = 'walk', stride = WALK_STRIDE, travel = 0, moving = false,
     }) => {
         const { spec, mesh } = entry;
         mesh.visible = visible;
         entry.visible = visible;
+        entry.act = act;
         if (!visible) return;
         const s = spec.scale;
         const base = groundAt(x);
@@ -377,25 +375,53 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
             const cap = Math.min(reach, Math.abs(rx) * MAX_GROUND_SLOPE);
             return Number.isFinite(h) ? Math.max(-cap, Math.min(cap, h)) : 0;
         };
-        // An ear flicks back now and then.
+        const keep = 1 - howl;
+        const idle = !act || act.action === 'idle' || act.action === undefined;
+        // Breathing, an ear flicked back now and then, a sniff at the wind when nothing else is on.
+        const breath = Math.sin(t * 1.3 + spec.idlePhase) * m;
         const flick = Math.max(0, Math.sin(t * 0.9 + spec.idlePhase * 3)) ** 40 * 14 * m;
-        const rig = poseWolf({
-            build: spec.build,
-            gait,
-            stride,
-            head: headOf(spec, t, m, howl, extra),
-            // The note wavers: the jaw works a little while it holds.
-            jaw: howl * (13 + Math.sin(t * 6.3 + spec.idlePhase) * 2.5),
-            tail: stride > 0
-                ? Math.sin(gait * Math.PI * 2) * 6
-                : Math.sin(t * 0.7 + spec.idlePhase) * 5 * m - howl * 8,
-            breath: Math.sin(t * 1.3 + spec.idlePhase) * m,
-            ears: howl * 14 + flick,
+        const sniffPhase = (t + spec.idlePhase * 7) % 23;
+        const sniff = idle && sniffPhase > 17 ? Math.sin(((sniffPhase - 17) / 6) * Math.PI) * 26 * m : 0;
+        const a = act || {};
+        const restHead = spec.head + breath * 1.6 - sniff + (a.head ?? 0) + glance * 6;
+        const wag = Math.max(a.wag ?? 0, 0);
+        const params = {
+            gait: moving ? (travel / (stride * s)) : 0,
+            stride: moving ? stride : 0,
+            gaitKind,
+            head: restHead + (spec.howl - restHead) * howl,
+            // Turning to look at you: its own looks, and every glance for a line clear.
+            turn: Math.max(a.turn ?? 0, glance * (spec.role === 'lead' ? 0.9 : 0.7)) * keep,
+            // The howl's note wavers: the jaw works a little while it holds.
+            jaw: (a.jaw ?? 0) * keep + howl * (13 + Math.sin(t * 6.3 + spec.idlePhase) * 2.5),
+            tail: moving
+                ? Math.sin((travel / (stride * s)) * Math.PI * 2) * 6
+                : Math.sin(t * 0.7 + spec.idlePhase) * 5 * m * (1 - wag)
+                    + Math.sin(t * 11 + spec.idlePhase) * 22 * wag - howl * 8,
+            tailUp: (a.tailUp ?? 0) * keep,
+            breath,
+            ears: (a.ears ?? 0) * keep + howl * 14 + flick - glance * 6,
+            crouch: (a.crouch ?? 0) * keep,
+            lift: (a.lift ?? 0) * keep,
+            pitch: (a.pitch ?? 0) * keep,
+            tuck: (a.tuck ?? 0) * keep,
+            reach: (a.reach ?? 0) * keep,
             ground: ridge,
-        }, entry.capsules);
+        };
+        // Posture: blend from the last slot's into this one's; a lying wolf sits up to howl.
+        const from = a.from ?? 'standing';
+        const to = a.posture ?? from;
+        const posed = (build, out) => poseWolf({ ...params, build }, out);
+        let rig = from === to
+            ? posed(to, entry.capsules)
+            : blendRigs(posed(from, entry.capsules), posed(to, entry.spare), a.blend ?? 1, entry.blended);
+        if (howl > 0 && (from === 'lying' || to === 'lying')) {
+            const upright = posed(to === 'lying' ? 'sitting' : to, entry.spare);
+            rig = blendRigs(rig, upright, howl, entry.blended);
+        }
+        const c = rig.capsules;
         for (let i = 0; i < CAPSULE_COUNT; i++) {
             const o = i * CAPSULE_STRIDE;
-            const c = rig.capsules;
             entry.rows[i * 2].set(c[o], c[o + 1], c[o + 2], c[o + 3]);
             entry.rows[i * 2 + 1].set(c[o + 4], c[o + 5], c[o + 6], 0);
         }
@@ -403,41 +429,89 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
         mesh.position.set(x, base - spec.sink * s, 0.01 * s);
         // The moon is upper left on screen; a mirrored wolf sees it from its other side.
         entry.uniforms.uMoon.value.set(MOON_SCREEN.x * facing, MOON_SCREEN.y);
-        entry.uniforms.uEye.value.set(rig.eye[0], rig.eye[1], 0.3 * (1 - howl * 0.7));
+        const open = 0.3 * (1 - (a.eyesClosed ?? 0) * keep) * (1 - howl * 0.7);
+        entry.uniforms.uEye.value.set(rig.eye[0], rig.eye[1], open);
+        entry.uniforms.uEye2.value.set(rig.eye2[0], rig.eye2[1], open * Math.min(1, rig.eye2[2] * 1.4));
         entry.uniforms.uFade.value = fade;
+        const shake = (a.shake ?? 0) * keep;
+        entry.uniforms.uShake.value.set(
+            Math.sin(t * 41) * 0.06 * shake,
+            Math.cos(t * 37) * 0.06 * shake,
+            0.9 * shake,
+        );
         [entry.muzzle[0], entry.muzzle[1]] = rig.muzzle;
         entry.paws = rig.paws;
         entry.ridge = ridge;
         entry.facing = facing;
     };
 
+    /** Rig point (x, y) of a wolf into the pack group's frame. */
+    const toGroup = (entry, x, y) => {
+        entry.mesh.updateWorldMatrix(true, false);
+        point.set(x, y, 0.3).applyMatrix4(entry.mesh.matrixWorld);
+        return group.worldToLocal(point);
+    };
+
     const placeVapour = (t) => {
         let count = 0;
+        const emit = (x, y, z, size, alpha) => {
+            if (count >= vapour.alpha.length) return;
+            matrix.makeScale(size, size, 1);
+            matrix.setPosition(x, y, z);
+            vapour.mesh.setMatrixAt(count, matrix);
+            vapour.alpha[count] = alpha;
+            count += 1;
+        };
         for (const entry of wolves) {
             if (!entry.visible) continue;
-            const age = t - state.howlStart - entry.spec.delay;
-            if (age < HOWL.rise * 0.6 || age > HOWL_SPAN + 2.2) continue;
-            entry.mesh.updateWorldMatrix(true, false);
-            muzzle.set(entry.muzzle[0], entry.muzzle[1], 0.3).applyMatrix4(entry.mesh.matrixWorld);
-            group.worldToLocal(muzzle);
             const size0 = entry.spec.scale;
-            // A puff leaves the muzzle every 0.4 s while the note is held and drifts up and ahead.
-            for (let k = 0; k < 10 && count < vapour.alpha.length; k++) {
-                const born = HOWL.rise * 0.6 + k * 0.4;
-                if (born > HOWL.rise + HOWL.hold) break;
-                const life = age - born;
-                if (life >= 0 && life <= 2.2) {
-                    const f = life / 2.2;
-                    const size = (2.6 + f * 10) * size0;
-                    matrix.makeScale(size, size, 1);
-                    matrix.setPosition(
-                        muzzle.x + (2 + f * 9) * entry.facing * size0,
-                        muzzle.y + (1 + f * 13) * size0,
-                        muzzle.z + 0.2,
+            // Breath: a puff leaves the muzzle every 0.4 s while the note is held.
+            const age = joins(entry.spec) ? t - state.howlStart - entry.spec.delay : -1;
+            if (age >= HOWL.rise * 0.6 && age <= HOWL_SPAN + 2.2) {
+                const m = toGroup(entry, entry.muzzle[0], entry.muzzle[1]);
+                const mx = m.x;
+                const my = m.y;
+                const mz = m.z;
+                for (let k = 0; k < 10; k++) {
+                    const born = HOWL.rise * 0.6 + k * 0.4;
+                    if (born > HOWL.rise + HOWL.hold) break;
+                    const life = age - born;
+                    if (life >= 0 && life <= 2.2) {
+                        const f = life / 2.2;
+                        emit(
+                            mx + (2 + f * 9) * entry.facing * size0,
+                            my + (1 + f * 13) * size0,
+                            mz + 0.2,
+                            (2.6 + f * 10) * size0,
+                            0.6 * Math.sin(Math.min(1, f * 4) * Math.PI * 0.5) * (1 - f) ** 1.5,
+                        );
+                    }
+                }
+            }
+            // Snow: thrown off the coat in a ring when it shakes, flung up in a plume where a
+            // pounce lands.
+            for (const burst of entry.act?.bursts ?? []) {
+                const life = (entry.act.u ?? 0) - burst.at;
+                if (life < 0 || life > PUFF_LIFE) continue;
+                const f = life / PUFF_LIFE;
+                const o = toGroup(entry, burst.x, burst.y);
+                const ox = o.x;
+                const oy = o.y;
+                const oz = o.z;
+                for (let j = 0; j < burst.count; j++) {
+                    const spin = j * 2.399 + burst.at * 3.1;
+                    const angle = burst.kind === 'ring'
+                        ? spin
+                        : Math.PI * 0.5 + Math.sin(spin) * 0.9 - entry.facing * 0.35;
+                    const speed = (burst.kind === 'ring' ? 10 : 15) * (0.55 + ((j * 0.618) % 1) * 0.6);
+                    const travelled = speed * (1 - (1 - f) ** 2) * size0;
+                    emit(
+                        ox + Math.cos(angle) * travelled,
+                        oy + Math.sin(angle) * travelled - f * f * 6 * size0,
+                        oz + 0.25,
+                        (2.2 + f * 5.5) * size0,
+                        0.85 * (1 - f) ** 1.3 * Math.min(1, life * 10),
                     );
-                    vapour.mesh.setMatrixAt(count, matrix);
-                    vapour.alpha[count] = 0.6 * Math.sin(Math.min(1, f * 4) * Math.PI * 0.5) * (1 - f) ** 1.5;
-                    count += 1;
                 }
             }
         }
@@ -473,19 +547,27 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
             state.spread = Number.isFinite(spread) ? Math.min(1, Math.max(0.3, spread)) : 1;
             state.members = members;
         },
-        /** A four-line clear: the pack howls. Ignored while a howl is still sounding. */
+        /**
+         * A four-line clear: the pack howls. Ignored while a howl is still sounding. The young
+         * wolf joins unless it is in mid-pounce, in which case it stays on the hunt.
+         */
         howl(time) {
             if (!Number.isFinite(time)) return false;
             if (time - state.howlStart < (HOWL_SPAN + 1.05) * 0.8) return false;
-            // The young wolf's pacing clock stood still through the last howl.
-            const last = Math.min(time - state.howlStart, HOWL_STILL);
-            if (Number.isFinite(last)) state.paused += Math.max(0, last);
+            if (state.youngJoins && Number.isFinite(state.howlStart)) {
+                state.youngPaused += Math.max(0, Math.min(time - state.howlStart, HOWL_STILL));
+            }
             state.howlStart = time;
+            state.youngJoins = !busyAt('young', time - state.youngPaused);
             return true;
         },
-        /** A smaller clear: the lead wolf lifts its head. */
+        /** A smaller clear: the pack turns to look at you. */
         glance(time) {
             if (Number.isFinite(time)) state.glanceStart = time;
+        },
+        /** A combo: the young wolf gets excited (unless it is busy hunting). */
+        excite(time) {
+            if (Number.isFinite(time)) state.exciteStart = time;
         },
         /** How strongly the pack is howling now (0..1): drives the mist and the moon's answer. */
         howlLevel(time) {
@@ -493,59 +575,75 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
             for (const entry of wolves) level = Math.max(level, howlOf(entry.spec, time));
             return level;
         },
-        /** Where the scout is now (null between its visits or under reduced motion). */
+        /** Where the scout is now (null between its visits). */
         scoutAt,
-        /** Pose every wolf at `time`. `motion` (0..1) scales idle movement; below 0.5 nobody walks. */
+        /**
+         * Pose every wolf at `time`. `motion` (0..1) scales idle movement; below 0.5 the wolves stay
+         * where they are (no pacing, no pouncing, no scout) and only turn, yawn, sit and howl.
+         */
         update(time, motion = 1) {
             const t = Number.isFinite(time) ? time : 0;
             const m = Number.isFinite(motion) ? Math.min(1, Math.max(0, motion)) : 1;
             const walking = m >= 0.5;
+            const glance = eventEnvelope(t - state.glanceStart, GLANCE);
+            const excite = eventEnvelope(t - state.exciteStart, EXCITE);
             wolves.forEach((entry, i) => {
                 const { spec } = entry;
                 const howl = howlOf(spec, t);
-                const glance = spec.name === 'lead' ? eventEnvelope(t - state.glanceStart, GLANCE) * GLANCE.angle : 0;
-                let x = spec.x * state.spread;
-                let { facing } = spec;
-                let gait = 0;
-                let stride = 0;
-                if (spec.name === 'young' && walking) {
-                    const clock = t - state.paused - Math.max(0, Math.min(t - state.howlStart, HOWL_STILL));
-                    const pace = paceAt(clock);
-                    x += pace.dx * state.spread;
-                    if (howl < 0.05) {
-                        ({ facing } = pace);
-                        // Its own steps: the distance walked in its rig units, one cycle a stride.
-                        gait = (pace.travel * state.spread) / (WALK_STRIDE * spec.scale);
-                        stride = pace.moving ? WALK_STRIDE : 0;
-                    }
+                const moves = spec.role === 'young';
+                let act = behaviourAt(spec.role, moves ? youngClock(t) : t);
+                if (!walking && LIVELY.includes(act.action)) {
+                    act = { ...behaviourAt(spec.role, -1), from: act.from, posture: act.from };
                 }
+                // Excitement (a combo) puts the young wolf into a bow with a wagging tail.
+                if (moves && walking && excite > 0 && !act.busy && act.dx === 0) {
+                    act = { ...act, reach: act.reach + 6 * excite, pitch: act.pitch - 0.28 * excite };
+                    act.tailUp = Math.max(act.tailUp, excite);
+                    act.wag = Math.max(act.wag, excite);
+                    act.lift += Math.abs(Math.sin(t * 7)) * 2.5 * excite;
+                    act.facing = act.facing ?? -1;
+                }
+                const x = (spec.x + (moves ? act.dx : 0)) * state.spread;
+                const facing = howl > 0.05 && !act.busy ? spec.facing : (act.facing ?? spec.facing);
                 pose(entry, t, m, {
                     x,
                     groundAt: grounds.pack,
                     facing,
-                    gait,
-                    stride,
+                    act,
                     howl,
-                    extra: glance * (1 - howl),
+                    glance,
+                    moving: act.moving && howl < 0.05,
+                    travel: act.travel * state.spread,
                     visible: i < state.members,
                 });
             });
+            const far = behaviourAt(ANSWERER.role, t);
             pose(answerer, t, m, {
-                x: 0, groundAt: grounds.answerer, facing: ANSWERER.facing, howl: howlOf(ANSWERER, t),
+                x: 0,
+                groundAt: grounds.answerer,
+                facing: ANSWERER.facing,
+                act: !walking && LIVELY.includes(far.action) ? behaviourAt(ANSWERER.role, -1) : far,
+                howl: howlOf(ANSWERER, t),
+                glance: glance * 0.6,
             });
             const walk = walking ? scoutAt(t) : null;
             if (walk) {
-                // It fades in and out at the frame's edge rather than popping, looks round at its
-                // lookout, and howls with the pack if it is standing there.
-                const looking = walk.moving ? 0 : Math.sin(Math.min(1, walk.pause / SCOUT.pause) * Math.PI) * 10;
+                // It fades in and out at the frame's edge rather than popping. At its lookout it
+                // looks round, turns to look at you, and howls with the pack if it stands there.
+                const p = walk.pause / SCOUT.pause;
+                const look = walk.moving ? 0 : Math.min(smooth((p - 0.3) / 0.12), 1 - smooth((p - 0.66) / 0.12));
+                const scan = walk.moving ? 0 : Math.sin(Math.min(1, p) * Math.PI) * 10;
                 pose(scout, t, m, {
                     x: walk.x,
                     groundAt: grounds.scout,
                     facing: walk.facing,
-                    gait: walk.travel / (WALK_STRIDE * SCOUT.scale),
-                    stride: walk.moving ? WALK_STRIDE : 0,
-                    howl: walk.moving ? 0 : howlOf(SCOUT, t),
-                    extra: looking,
+                    act: { head: scan * (1 - look), turn: 0.85 * look },
+                    howl: walk.moving ? 0 : eventEnvelope(t - state.howlStart - SCOUT.delay, HOWL),
+                    glance,
+                    moving: walk.moving,
+                    travel: walk.travel,
+                    gaitKind: walk.gaitKind,
+                    stride: walk.gaitKind === 'trot' ? TROT_STRIDE : WALK_STRIDE,
                     fade: smooth((SCOUT.from - walk.x) / 30),
                 });
             } else {
@@ -571,3 +669,6 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
         },
     };
 }
+
+/** The young wolf's moves, for placement checks (pack units). */
+export { YOUNG_MOVES };

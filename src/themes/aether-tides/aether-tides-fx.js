@@ -11,23 +11,31 @@
  *   beams      a cleared row leaves the card as a blade of light, one from each side: a bright
  *              head runs to the edge of the screen and the blade fades behind it.
  *
- *   cells      the instant a piece locks, each cell of its echo is drawn as a lit outline: the
- *              piece's shape, crisp, for a third of a second, while the gas poured under it is
- *              still gathering. Then the outline is gone and the gas is what remains.
+ *   echoes     the instant a piece locks, its echo is drawn as ONE solid shape: the whole piece,
+ *              fused (no line between its cells), a lit body inside one rounded outline, crisp
+ *              for a third of a second while the gas poured under it is still gathering. Then
+ *              the shape is gone and the gas is what remains. One quad per piece; the fragment
+ *              takes the union of its cells, each cell's box stretched to its neighbours'
+ *              centres so the inside has no seams.
  *
  *   burst  r0 (x, y, t0, aim)        aim 0 = every way, 1 = along its direction
  *          r1 (r, g, b, speed)
  *          r2 (dirX, dirY, life, size)
  *   beam   r0 (x0, y, x1, t0)        from x0 (the card's edge) to x1 (past the screen's)
  *          r1 (r, g, b, thickness)
- *   cell   r0 (x, y, t0, half)       a cell's centre and half-size
+ *   echo   r0 (x, y, t0, half)       the middle of the piece's bounds, and a cell's half-size
  *          r1 (r, g, b, gain)
+ *          r2 (hx, hy, count, 0)     the bounds' half-size, and how many cells
+ *          r3 (pitchX, pitchY, 0, 0) from one cell's centre to the next
+ *          r4…  (dx, dy, joins, 0)   each cell's centre from the middle; `joins` is a bit per
+ *                                    side that meets another cell (1 left, 2 right, 4 up, 8 down)
  *
  * A dormant slot draws zero-size quads.
  */
 
 import * as THREE from 'three/webgpu';
 import {
+    Fn,
     abs,
     clamp,
     cos,
@@ -37,9 +45,11 @@ import {
     instanceIndex,
     int,
     max,
+    min,
     mix,
     mod,
     positionGeometry,
+    select,
     sin,
     smoothstep,
     step,
@@ -54,20 +64,28 @@ import { TAU, atHash22 } from './aether-tides-tsl.js';
 
 export const BURST_SLOTS = 12;
 export const BEAM_SLOTS = 8;
-export const CELL_SLOTS = 24;
+/** Echoes in flight at once (one per locking piece), and the most cells one echo holds. */
+export const ECHO_SLOTS = 8;
+export const ECHO_CELLS = 6;
 export const BURST_ROWS = 3;
 export const BEAM_ROWS = 2;
-export const CELL_ROWS = 2;
+export const ECHO_ROWS = 4 + ECHO_CELLS;
 export const ROW_BURST = 0;
 export const ROW_BEAM = ROW_BURST + BURST_SLOTS * BURST_ROWS;
-export const ROW_CELL = ROW_BEAM + BEAM_SLOTS * BEAM_ROWS;
-export const FX_ROWS = ROW_CELL + CELL_SLOTS * CELL_ROWS;
+export const ROW_ECHO = ROW_BEAM + BEAM_SLOTS * BEAM_ROWS;
+export const FX_ROWS = ROW_ECHO + ECHO_SLOTS * ECHO_ROWS;
 
 /** Seconds a beam's head takes to cross, and the blade takes to fade. */
 export const BEAM_RUN = 0.26;
 export const BEAM_LIFE = 0.9;
-/** Seconds a cell's outline shows. */
-export const CELL_LIFE = 0.5;
+/** Seconds an echo's shape shows. */
+export const ECHO_LIFE = 0.5;
+
+/** Echo joins: a bit per side of a cell that meets another cell of the same piece. */
+export const JOIN_LEFT = 1;
+export const JOIN_RIGHT = 2;
+export const JOIN_UP = 4;
+export const JOIN_DOWN = 8;
 
 const NEVER = -1e6;
 
@@ -77,7 +95,7 @@ export class FxTable {
         this.data = new Float32Array(FX_ROWS * 4);
         this.burstCursor = 0;
         this.beamCursor = 0;
-        this.cellCursor = 0;
+        this.echoCursor = 0;
         this.reset();
     }
 
@@ -85,10 +103,10 @@ export class FxTable {
         this.data.fill(0);
         for (let i = 0; i < BURST_SLOTS; i += 1) this.data[(ROW_BURST + i * BURST_ROWS) * 4 + 2] = NEVER;
         for (let i = 0; i < BEAM_SLOTS; i += 1) this.data[(ROW_BEAM + i * BEAM_ROWS) * 4 + 3] = NEVER;
-        for (let i = 0; i < CELL_SLOTS; i += 1) this.data[(ROW_CELL + i * CELL_ROWS) * 4 + 2] = NEVER;
+        for (let i = 0; i < ECHO_SLOTS; i += 1) this.data[(ROW_ECHO + i * ECHO_ROWS) * 4 + 2] = NEVER;
         this.burstCursor = 0;
         this.beamCursor = 0;
-        this.cellCursor = 0;
+        this.echoCursor = 0;
     }
 
     /** @returns {number} the slot written */
@@ -134,22 +152,71 @@ export class FxTable {
         return slot;
     }
 
-    /** @returns {number} the slot written */
-    cell({
-        x, y, at, half, color, gain = 1,
+    /**
+     * A piece's echo, drawn as one fused shape.
+     * @param {object} echo
+     * @param {number[][]} echo.cells   the cells' centres, tide space (at most ECHO_CELLS are kept)
+     * @param {number} echo.at          when it lands
+     * @param {number} echo.half        a cell's half-size as drawn
+     * @param {number} echo.pitchX      from one cell's centre to the next, across
+     * @param {number} [echo.pitchY]    …and down (the same by default)
+     * @param {number[]} echo.color
+     * @param {number} [echo.gain=1]
+     * @returns {number} the slot written (-1 for a piece with no cells)
+     */
+    echo({
+        cells, at, half, pitchX, pitchY = pitchX, color, gain = 1,
     }) {
-        const slot = this.cellCursor;
-        this.cellCursor = (slot + 1) % CELL_SLOTS;
-        const o = (ROW_CELL + slot * CELL_ROWS) * 4;
+        const count = Math.min(ECHO_CELLS, Array.isArray(cells) ? cells.length : 0);
+        if (count === 0) return -1;
+        const slot = this.echoCursor;
+        this.echoCursor = (slot + 1) % ECHO_SLOTS;
+        const o = (ROW_ECHO + slot * ECHO_ROWS) * 4;
         const d = this.data;
-        d[o] = x;
-        d[o + 1] = y;
+        let x0 = Infinity;
+        let y0 = Infinity;
+        let x1 = -Infinity;
+        let y1 = -Infinity;
+        for (let i = 0; i < count; i += 1) {
+            x0 = Math.min(x0, cells[i][0]);
+            x1 = Math.max(x1, cells[i][0]);
+            y0 = Math.min(y0, cells[i][1]);
+            y1 = Math.max(y1, cells[i][1]);
+        }
+        const cx = (x0 + x1) * 0.5;
+        const cy = (y0 + y1) * 0.5;
+        d.fill(0, o, o + ECHO_ROWS * 4);
+        d[o] = cx;
+        d[o + 1] = cy;
         d[o + 2] = at;
         d[o + 3] = half;
         d[o + 4] = color[0];
         d[o + 5] = color[1];
         d[o + 6] = color[2];
         d[o + 7] = gain;
+        d[o + 8] = (x1 - x0) * 0.5 + half;
+        d[o + 9] = (y1 - y0) * 0.5 + half;
+        d[o + 10] = count;
+        d[o + 12] = pitchX;
+        d[o + 13] = pitchY;
+        // Two cells meet when one sits a pitch from the other along one axis and level on the other.
+        const near = (a, b, pitch) => Math.abs(a - b) < pitch * 0.3;
+        for (let i = 0; i < count; i += 1) {
+            const [x, y] = cells[i];
+            let joins = 0;
+            for (let j = 0; j < count; j += 1) {
+                if (j === i) continue;
+                const [nx, ny] = cells[j];
+                if (near(ny, y, pitchY) && near(nx, x - pitchX, pitchX)) joins |= JOIN_LEFT;
+                if (near(ny, y, pitchY) && near(nx, x + pitchX, pitchX)) joins |= JOIN_RIGHT;
+                if (near(nx, x, pitchX) && near(ny, y - pitchY, pitchY)) joins |= JOIN_UP;
+                if (near(nx, x, pitchX) && near(ny, y + pitchY, pitchY)) joins |= JOIN_DOWN;
+            }
+            const r = o + (4 + i) * 4;
+            d[r] = x - cx;
+            d[r + 1] = y - cy;
+            d[r + 2] = joins;
+        }
         return slot;
     }
 }
@@ -279,49 +346,86 @@ export function createFx({
     beamMesh.frustumCulled = false;
     beamMesh.renderOrder = 11;
 
-    // ── the echo's cells ──
-    const cell = additive('Aether Tides — echo cells');
+    // ── echoes: each locking piece's footprint, drawn as one solid shape ──
+    const echo = additive('Aether Tides — echoes');
     {
         const slot = int(instanceIndex);
-        const base = slot.mul(CELL_ROWS).add(ROW_CELL);
+        const base = slot.mul(ECHO_ROWS).add(ROW_ECHO);
         const r0 = fx.element(base);
         const r1 = fx.element(base.add(1));
+        const r2 = fx.element(base.add(2));
         const age = now.sub(r0.z);
-        const live = step(0.0, age).mul(step(age, CELL_LIFE));
-        // It lands a little large and settles; the quad is wider than the cell to hold its glow.
-        const settle = float(1.0).add(exp(age.max(0.0).mul(-26.0)).mul(0.35));
-        const half = r0.w.mul(1.6).mul(settle).mul(live);
-        cell.vertexNode = toClip(r0.xy.add(corner.mul(half)));
-        const vAt = varying(corner.mul(1.6));
+        const live = step(0.0, age).mul(step(age, ECHO_LIFE));
+        // It lands a little large and settles; the quad reaches past the shape to hold its glow.
+        const settle = float(1.0).add(exp(age.max(0.0).mul(-26.0)).mul(0.18));
+        const reach = r2.xy.add(r0.w.mul(0.9)).mul(live);
+        echo.vertexNode = toClip(r0.xy.add(corner.mul(reach).mul(settle)));
+        // Where the fragment lies from the shape's middle, in tide units (before the settle).
+        const vAt = varying(corner.mul(reach));
+        const vSlot = varying(float(slot));
         const vAge = varying(age);
         const vColour = varying(r1.xyz.mul(r1.w).mul(live).mul(float(1.0).sub(P.hush.mul(0.6))));
-        // A rounded square of half-size 1: distance to its edge (negative inside).
-        const round = float(0.2);
-        const p = abs(vAt).sub(float(1.0).sub(round));
-        const outside = max(p, vec2(0.0)).length();
-        const inside = max(p.x, p.y).min(0.0);
-        const edgeDist = outside.add(inside).sub(round);
-        const line = exp(abs(edgeDist).mul(-16.0));
-        const fill = float(1.0).sub(smoothstep(-0.05, 0.02, edgeDist)).mul(0.22);
-        const glowOut = exp(max(edgeDist, 0.0).mul(-5.5)).mul(0.14);
-        // White as it lands, then the piece's colour; gone in a third of a second.
-        const fade = float(1.0).sub(smoothstep(0.14, CELL_LIFE, vAge));
-        const flash = exp(vAge.max(0.0).mul(-14.0));
-        const peak = max(vColour.x, max(vColour.y, vColour.z));
-        const colour = mix(vColour, vec3(peak), flash.mul(0.8));
-        const shape = line.mul(1.9).add(fill).add(glowOut);
-        cell.outputNode = vec4(colour.mul(shape).mul(fade).mul(flash.mul(1.2).add(1.0)), 0.0);
+        echo.outputNode = Fn(() => {
+            // A slot read in the fragment comes in as a varying: round it back to a whole slot.
+            const at = int(floor(vSlot.add(0.5))).mul(ECHO_ROWS).add(ROW_ECHO).toVar();
+            const half = fx.element(at).w.toVar();
+            const count = fx.element(at.add(2)).z.toVar();
+            // A side that meets another cell stretches to that cell's centre, so the union of
+            // the stretched boxes has no inside edges: one outline, round the whole piece.
+            const toNext = fx.element(at.add(3)).xy.sub(half).toVar();
+            const round = half.mul(0.36);
+            const fillet = half.mul(0.2);
+            const d = float(1e3).toVar();
+            for (let i = 0; i < ECHO_CELLS; i += 1) {
+                const cell = fx.element(at.add(4 + i));
+                const joins = cell.z;
+                const joined = (bitValue) => mod(floor(joins.div(bitValue)), 2.0);
+                const lo = cell.xy.sub(vec2(
+                    half.add(joined(JOIN_LEFT).mul(toNext.x)),
+                    half.add(joined(JOIN_UP).mul(toNext.y)),
+                ));
+                const hi = cell.xy.add(vec2(
+                    half.add(joined(JOIN_RIGHT).mul(toNext.x)),
+                    half.add(joined(JOIN_DOWN).mul(toNext.y)),
+                ));
+                const q = abs(vAt.sub(lo.add(hi).mul(0.5))).sub(hi.sub(lo).mul(0.5)).add(round);
+                const box = max(q, vec2(0.0)).length().add(min(max(q.x, q.y), 0.0)).sub(round);
+                // A cell the piece does not have lies far away.
+                const own = select(float(i).lessThan(count), box, float(1e3));
+                // A smooth union: a soft fillet in the piece's inner corners.
+                const h = clamp(float(0.5).add(own.sub(d).mul(0.5).div(fillet)), 0.0, 1.0);
+                d.assign(mix(own, d, h).sub(fillet.mul(h).mul(float(1.0).sub(h))));
+            }
+            // In cell half-sizes from the outline (negative inside).
+            const e = d.div(half).toVar();
+            const line = exp(abs(e).mul(-14.0));
+            // A solid body that covers what lies behind it, lit a little more toward its edges.
+            const inside = float(1.0).sub(smoothstep(-0.06, 0.03, e)).toVar();
+            const body = inside.mul(mix(0.62, 0.9, smoothstep(-0.9, 0.0, e)));
+            const glowOut = exp(max(e, 0.0).mul(-5.0)).mul(0.16);
+            // White as it lands, then the piece's colour; gone in a third of a second.
+            const fade = float(1.0).sub(smoothstep(0.14, ECHO_LIFE, vAge)).toVar();
+            const flash = exp(vAge.max(0.0).mul(-14.0));
+            const peak = max(vColour.x, max(vColour.y, vColour.z));
+            const colour = mix(vColour, vec3(peak), flash.mul(0.8));
+            const shape = line.mul(1.3).add(body).add(glowOut);
+            // Premultiplied: the light is added, and the body takes most of what is behind it away.
+            return vec4(colour.mul(shape).mul(fade).mul(flash.mul(1.2).add(1.0)), inside.mul(0.78).mul(fade));
+        })();
+        // Premultiplied "over" (One, OneMinusSrcAlpha): where the alpha is 0 (the glow, and the
+        // outline outside the body) it adds light like every other sprite here.
+        echo.blending = THREE.NormalBlending;
     }
-    const cellMesh = new THREE.InstancedMesh(geometry, cell, CELL_SLOTS);
-    cellMesh.name = 'Aether Tides — echo cells';
-    cellMesh.frustumCulled = false;
-    cellMesh.renderOrder = 13;
+    const echoMesh = new THREE.InstancedMesh(geometry, echo, ECHO_SLOTS);
+    echoMesh.name = 'Aether Tides — echoes';
+    echoMesh.frustumCulled = false;
+    echoMesh.renderOrder = 13;
 
     return {
         table,
         dustMesh,
         beamMesh,
-        cellMesh,
+        echoMesh,
         /** Copy the table into the uniform rows (once a frame). */
         sync() {
             const { data } = table;
@@ -331,7 +435,7 @@ export function createFx({
             geometry.dispose();
             dust.dispose();
             beam.dispose();
-            cell.dispose();
+            echo.dispose();
         },
     };
 }

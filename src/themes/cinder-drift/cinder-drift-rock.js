@@ -153,7 +153,8 @@ export function createColumns(u, plan) {
         // A worn column is not a box: each face rolls away toward its edges.
         const flat = normalize(vNormal);
         const roll = vFace.x.sub(0.5).mul(2.0);
-        const N = normalize(flat.add(vec3(flat.z.negate(), 0.0, flat.x).mul(roll.mul(roll.abs()).mul(0.6)).mul(float(1.0).sub(cap)))).toVar();
+        // (Only a little: basalt breaks into flat faces with sharp arrises.)
+        const N = normalize(flat.add(vec3(flat.z.negate(), 0.0, flat.x).mul(roll.mul(roll.abs()).mul(0.07)).mul(float(1.0).sub(cap)))).toVar();
         const rel = cameraPosition.sub(p);
         const V = normalize(rel).toVar();
         const seed = floor(vSeed.x.add(0.5));
@@ -168,15 +169,26 @@ export function createColumns(u, plan) {
         const along = p.y.div(pieceLength).add(cdHash11(seed).mul(7.0));
         const piece = cdHash11(floor(along).add(seed.mul(1.7)));
         const jf = fract(along);
-        const joint = float(1.0).sub(smoothstep(0.0, 0.035, min(jf, float(1.0).sub(jf)).mul(pieceLength)))
+        const joint = float(1.0).sub(smoothstep(0.0, 0.022, min(jf, float(1.0).sub(jf)).mul(pieceLength)))
             .mul(float(1.0).sub(cap));
         const weather = u.noise(vec2(p.x.add(p.z).mul(0.19), p.y.mul(0.11).add(p.x.sub(p.z).mul(0.07)))).r;
-        // The dark between two columns, and the dished heart of a cap.
-        const crevice = float(1.0).sub(smoothstep(0.0, 0.17, across.div(radius)));
+        // The dark between two columns (a narrow seam, not a rounded face), the chipped bright edge
+        // beside it, and the dished heart of a cap.
+        const edgeK = across.div(radius);
+        const crevice = float(1.0).sub(smoothstep(0.0, 0.05, edgeK));
+        const chip = smoothstep(0.03, 0.07, edgeK).mul(float(1.0).sub(smoothstep(0.07, 0.13, edgeK))).mul(float(1.0).sub(cap));
         const streaks = u.noise(vec2(p.x.add(p.z).mul(0.9), p.y.mul(0.045))).b;
-        const albedo = u.rock.mul(piece.mul(0.8).add(0.6)).mul(weather.mul(1.0).add(0.45)).mul(streaks.mul(0.6).add(0.7))
-            .mul(float(1.0).sub(joint.mul(0.7)))
-            .mul(float(1.0).sub(crevice.mul(mix(float(0.6), float(0.25), cap))))
+        // Close up, basalt is rough: a fine grain, and the pits gas bubbles left in it.
+        const faceU = p.x.mul(N.z).sub(p.z.mul(N.x));
+        const nearby = float(1.0).sub(smoothstep(22.0, 55.0, length(rel)));
+        const grainFine = u.noise(vec2(faceU.mul(2.9), p.y.mul(2.9)).add(seed.mul(0.013))).r.sub(0.5).mul(nearby);
+        const pits = smoothstep(0.74, 0.86, u.noise(vec2(faceU.mul(7.0), p.y.mul(7.0)).add(seed.mul(0.029))).g).mul(nearby);
+        const albedo = u.rock.mul(piece.mul(0.36).add(0.82)).mul(weather.mul(0.7).add(0.62)).mul(streaks.mul(0.5).add(0.76))
+            .mul(grainFine.mul(0.55).add(1.0))
+            .mul(float(1.0).sub(pits.mul(0.4)))
+            .mul(float(1.0).sub(joint.mul(0.82)))
+            .mul(float(1.0).sub(crevice.mul(mix(float(0.75), float(0.25), cap))))
+            .mul(chip.mul(0.6).add(1.0))
             .mul(mix(float(1.0), vFace.x.mul(0.5).add(0.6), cap));
         // The worn edge of every face catches light the flat of it does not.
         const arris = float(1.0).sub(smoothstep(0.0, 0.05, across)).toVar();
@@ -202,7 +214,8 @@ export function createColumns(u, plan) {
         const facing = dot(N.xz, openDir).mul(0.5).add(0.5);
         // (A pipe's end faces the lake squarely, but it is small: it does not out-shine its sides.)
         const under = float(0.5).sub(N.y.mul(0.5)).mul(mix(float(1.0), float(0.62), cap));
-        const falloff = exp(h.div(-9.0)).mul(0.84).add(float(0.16).div(h.div(30.0).add(1.0)));
+        // Steep: the lava lights the feet of the cliffs and leaves the roof to the dark.
+        const falloff = exp(h.div(-7.0)).mul(0.94).add(float(0.06).div(h.div(22.0).add(1.0)));
         const seen = mix(smoothstep(vLit.x.sub(0.5), vLit.x.add(1.6), p.y), float(1.0), hang);
         // The lava out in front of this face: what the lake remembers there, and the fall.
         const out = p.xz.add(openDir.mul(5.0));
@@ -211,10 +224,21 @@ export function createColumns(u, plan) {
             .add(exp(toFall.div(-30.0)).mul(0.9).mul(u.fallGain))
             .add(afterglow.mul(0.6))
             .mul(cdGlowGain(u));
-        const lakeCol = u.mid.mul(0.95).add(u.hot.mul(0.05));
-        const lake = lakeCol.mul(lakeHeat).mul(under).mul(facing.mul(0.72).add(0.28)).mul(falloff)
+        // Hot and orange just over the lava, deep red as it climbs.
+        const lakeCol = mix(u.mid.mul(0.86).add(u.hot.mul(0.14)), u.deep.mul(1.2).add(u.mid.mul(0.18)), smoothstep(1.5, 16.0, h));
+        const lake = lakeCol.mul(lakeHeat).mul(under).mul(facing.mul(0.8).add(0.2)).mul(falloff)
             .mul(seen)
-            .mul(1.5);
+            .mul(arris.mul(0.9).add(1.0))
+            .mul(2.4);
+        // Basalt is glassy: a face that looks down at the lava mirrors its glow.
+        const Rl = reflect(V.negate(), N);
+        const toLava = smoothstep(-0.05, -0.55, Rl.y);
+        const glance = float(1.0).sub(clamp(dot(N, V), 0.0, 1.0));
+        const g2 = glance.mul(glance);
+        const sheen = lakeCol.mul(lakeHeat).mul(toLava).mul(g2.mul(g2).mul(0.55).add(0.05)).mul(falloff.mul(0.85).add(0.15))
+            .mul(seen)
+            .mul(arris.mul(1.5).add(1.0))
+            .mul(float(1.0).sub(cap.mul(0.7)));
 
         // ── The great fall ──
         const toKey = u.fallPos.sub(p);
@@ -222,8 +246,9 @@ export function createColumns(u, plan) {
         const L = toKey.div(keyDist2.sqrt()).toVar();
         const lambert = max(dot(N, L).add(0.12), 0.0).div(1.12);
         const keyShadow = mix(smoothstep(vLit.y.sub(0.5), vLit.y.add(2.2), p.y), float(1.0), hang);
-        const keyCol = u.mid.mul(0.72).add(u.hot.mul(0.28)).mul(u.fallGain).mul(u.breath);
-        const keyReach = float(9000.0).div(keyDist2.add(900.0));
+        const keyCol = u.mid.mul(0.78).add(u.hot.mul(0.22)).mul(u.fallGain).mul(u.breath);
+        // Close to an inverse square: the fall lights its own corner, not the whole chamber.
+        const keyReach = float(2000.0).div(keyDist2.add(250.0));
         const R = reflect(V.negate(), N);
         const rl = clamp(dot(R, L), 0.0, 1.0);
         const rl4 = rl.mul(rl).mul(rl).mul(rl);
@@ -274,7 +299,7 @@ export function createColumns(u, plan) {
             .mul(nearEnough.mul(0.85).add(0.15));
         const emission = cdHeatColor(u, fire.mul(1.05).add(0.22)).mul(clamp(fire, 0.0, 1.0)).mul(u.breath);
 
-        return cdAtmosphere(u, albedo.mul(light).add(emission), p);
+        return cdAtmosphere(u, albedo.mul(light).add(emission).add(sheen.mul(0.045)), p);
     })();
 
     const part = cdPart('CinderColumns', geometry, material, 0);
@@ -336,12 +361,15 @@ export function createShell(u, plan) {
         const under = float(0.5).sub(N.y.mul(0.5));
         const weather = u.noise(p.xz.mul(0.043)).r;
         const albedo = u.rock.mul(weather.mul(0.8).add(0.5));
-        const lake = u.mid.mul(0.86).add(u.hot.mul(0.14)).mul(under).mul(float(0.9).div(h.div(30.0).add(1.0)))
+        // The same steep reach as on the columns: the dark mass behind them stays dark overhead.
+        const lakeFall = exp(h.div(-8.0)).mul(0.9).add(float(0.07).div(h.div(22.0).add(1.0)));
+        const lake = mix(u.mid.mul(0.86).add(u.hot.mul(0.14)), u.deep.mul(1.2).add(u.mid.mul(0.18)), smoothstep(1.5, 16.0, h))
+            .mul(under.mul(0.8).add(0.2)).mul(lakeFall)
             .mul(cdGlowGain(u));
         const toKey = u.fallPos.sub(p);
         const keyDist2 = dot(toKey, toKey);
-        const key = u.mid.mul(0.72).add(u.hot.mul(0.28)).mul(u.fallGain).mul(u.breath)
-            .mul(float(9000.0).div(keyDist2.add(900.0)))
+        const key = u.mid.mul(0.78).add(u.hot.mul(0.22)).mul(u.fallGain).mul(u.breath)
+            .mul(float(2000.0).div(keyDist2.add(250.0)))
             .mul(max(dot(N, toKey.div(keyDist2.sqrt())), 0.0));
         // The hole in the roof: the night itself, and its light on the lip.
         const hole = length(p.xz.sub(u.skyTop.xz));
