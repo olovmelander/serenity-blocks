@@ -280,11 +280,11 @@ const RAW_THEME_REGISTRY = [
         icon: './solar-eclipse/solar-eclipse-theme-icon.png',
     },
     {
-        id: 'moonrise-summit',
-        displayName: 'Moonrise Summit',
-        module: './moonrise-summit/moonrise-summit-theme.js',
+        id: 'sunfall',
+        displayName: 'Sunfall',
+        module: './sunfall/sunfall-theme.js',
         group: 'biomes',
-        icon: './moonrise-summit/moonrise-summit-theme-icon.png',
+        icon: './sunfall/sunfall-theme-icon.png',
     },
     {
         id: 'black-hole',
@@ -503,6 +503,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'thermal-bloom',
     'rainbark',
     'high-coast',
+    'sunfall',
 ]);
 
 export const THEME_REGISTRY = RAW_THEME_REGISTRY.map((entry) => ({
@@ -557,6 +558,10 @@ const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
  * `rainy-window` was replaced by Sunbraid (2026-10-20) at the same Odyssey orb:
  * a saved selection, an earned collection entry and an Odyssey completion that
  * name the old id now mean Sunbraid.
+ *
+ * `moonrise-summit` was replaced by Sunfall (2026-10-20) at the same Odyssey orb:
+ * a saved selection, an earned collection entry and an Odyssey completion that
+ * name the old id now mean Sunfall.
  */
 const RETIRED_THEME_IDS = new Map([
     ['sky-children-v2', 'rainbow-terraces'],
@@ -569,6 +574,7 @@ const RETIRED_THEME_IDS = new Map([
     ['misty-lake', 'grainfields'],
     ['moonlit-forest', 'spring'],
     ['rainy-window', 'sunbraid'],
+    ['moonrise-summit', 'sunfall'],
 ]);
 
 /**

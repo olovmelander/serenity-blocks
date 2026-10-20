@@ -189,6 +189,8 @@ const captureThemes = [
 
     ['sunbraid', 'sunbraid', 'Sunbraid', 'sky, land, spires, gliders'],
 
+    ['sunfall', 'sunfall', 'Sunfall', 'sky, cave, jungle, beam, mist, water, roots, birds, gours'],
+
     ['sunset', 'sunset', 'Sunset', 'sky, sea, lanterns, glows, birds'],
 
     ['supernova', 'supernova', 'Supernova', 'sky, nebula, beams, star, ring, loops, embers, streams, sparks'],

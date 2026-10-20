@@ -166,7 +166,7 @@ describe('durable Odyssey theme collection', () => {
         expect(collection.isUnlocked('painted-ages')).toBe(false);
         storage.setItem.mockImplementation(originalWrite);
         const recovered = createCollection();
-        expect(recovered.isUnlocked('moonrise-summit')).toBe(true);
+        expect(recovered.isUnlocked('sunfall')).toBe(true);
         expect(recovered.isUnlocked('painted-ages')).toBe(true);
         expect(recovered.getThemeStatus('painted-ages').isNew).toBe(false);
     });

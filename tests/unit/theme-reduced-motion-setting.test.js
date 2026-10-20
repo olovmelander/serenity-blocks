@@ -4,7 +4,7 @@ import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
 
-import MoonriseSummitTheme from '../../src/themes/moonrise-summit/moonrise-summit-theme.js';
+import SunfallTheme from '../../src/themes/sunfall/sunfall-theme.js';
 import SpringTheme from '../../src/themes/spring/spring-theme.js';
 
 /**
@@ -12,9 +12,9 @@ import SpringTheme from '../../src/themes/spring/spring-theme.js';
  * preference (theme and rendering audit 2026-10, recommendation A2).
  *
  * Six of them are built from one template and share the same few lines, so those lines are
- * pinned here and forest's own suite runs the behaviour. moonrise-summit reads it its own way
- * and is run directly. The eighth was retired when Spring took its place (2026-10-18); Spring's
- * adapter reads both inputs in its reaction settings, and is run directly too.
+ * pinned here and forest's own suite runs the behaviour. The seventh was retired when Sunfall
+ * took its place (2026-10-20), and the eighth was retired when Spring took its place
+ * (2026-10-18); both adapters read both inputs in their reaction settings and are run directly.
  */
 
 const ROOT = path.resolve(__dirname, '../..');
@@ -52,44 +52,18 @@ describe('reduced motion: the in-game setting as well as the system preference',
         expect(read).toBeLessThan(guard);
     });
 
-    describe('moonrise-summit', () => {
-        function detect(options) {
-            const query = stubWindow(options);
-            const theme = Object.create(MoonriseSummitTheme.prototype);
-            const listeners = new Map();
-            theme.registerEventListener = vi.fn((target, type, handler) => listeners.set(type, handler));
-            theme.parallaxEnabled = true;
-            theme.cameraBreatheEnabled = true;
-            theme._detectReducedMotion();
-            return { theme, query, listeners };
-        }
+    describe('sunfall', () => {
+        const reduced = (options) => {
+            stubWindow(options);
+            const theme = Object.create(SunfallTheme.prototype);
+            theme.applyReactionSettings(null);
+            return theme.reducedMotion;
+        };
 
-        it('stills the camera when the system preference is on at start, not only on a change', () => {
-            const { theme } = detect({ system: true });
-            expect(theme._reducedMotion).toBe(true);
-            expect(theme.cameraBreatheEnabled).toBe(false);
-            expect(theme.parallaxEnabled).toBe(false);
-        });
-
-        it('follows the in-game toggle', () => {
-            const { theme, listeners } = detect();
-            expect(theme.cameraBreatheEnabled).toBe(true);
-            listeners.get('settingsChanged')({ detail: { reducedMotion: true } });
-            expect(theme.cameraBreatheEnabled).toBe(false);
-            expect(theme.parallaxEnabled).toBe(false);
-            // Other settings leave it alone.
-            listeners.get('settingsChanged')({ detail: { effectQuality: 'High' } });
-            expect(theme.cameraBreatheEnabled).toBe(false);
-            listeners.get('settingsChanged')({ detail: { reducedMotion: false } });
-            expect(theme.cameraBreatheEnabled).toBe(true);
-        });
-
-        it('follows the system preference when it changes', () => {
-            const { theme, query } = detect();
-            query.matches = true;
-            query.addEventListener.mock.calls[0][1]({ matches: true });
-            expect(theme._reducedMotion).toBe(true);
-            expect(theme.cameraBreatheEnabled).toBe(false);
+        it('reduces motion for either input', () => {
+            expect(reduced()).toBe(false);
+            expect(reduced({ setting: true })).toBe(true);
+            expect(reduced({ system: true })).toBe(true);
         });
     });
 
