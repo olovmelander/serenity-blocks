@@ -141,7 +141,10 @@ export function createLake(u, { fine = true, glint = true } = {}) {
         const skinned = fine
             ? smoothstep(0.07, 0.3, net).mul(smoothstep(0.35, 0.62, skin.add(heat.mul(-0.12)).add(0.22))).mul(float(1.0).sub(farAway))
             : float(0.0);
-        const temp = float(0.46).add(heat.min(1.25).mul(0.3)).add(inSeam.mul(0.2)).add(skin.sub(0.5).mul(0.7))
+        // A wide seam runs white down its middle; a hairline stays red.
+        const core = inSeam.mul(inSeam).mul(smoothstep(0.03, 0.12, width));
+        const temp = float(0.46).add(heat.min(1.25).mul(0.3)).add(inSeam.mul(0.2)).add(core.mul(0.38))
+            .add(skin.sub(0.5).mul(0.7))
             .sub(skinned.mul(0.42))
             .add(ringHeat.mul(0.4))
             .add(front.mul(0.3));
@@ -150,10 +153,22 @@ export function createLake(u, { fine = true, glint = true } = {}) {
         // ── The crust ──
         const tilt = vec2(plate.g.sub(0.5), plate.a.sub(0.5));
         const grain = u.noise(qp.mul(1 / 2.9)).rg.sub(0.5);
+        // Each plate is a raft: domed over its heart, its rim rolled down into the seam.
+        const slope = vec2(0.0).toVar();
+        if (fine) {
+            const eps = 0.22;
+            const bulge = (r) => smoothstep(0.0, 0.42, r);
+            const h0 = bulge(plate.r);
+            const hx = bulge(texture(u.plateTex, qp.add(vec2(eps, 0.0)).div(PLATE_TILE)).r);
+            const hz = bulge(texture(u.plateTex, qp.add(vec2(0.0, eps)).div(PLATE_TILE)).r);
+            slope.assign(vec2(hx.sub(h0), hz.sub(h0)).mul(0.3 / eps).mul(float(1.0).sub(farAway)));
+        }
+        // Ropy wrinkles where the skin was pushed as it cooled.
+        const rope = u.noise(qp.mul(vec2(1 / 1.3, 1 / 0.55))).g.sub(0.5);
         const n = normalize(vec3(
-            tilt.x.mul(0.2).add(grain.x.mul(0.1)),
+            tilt.x.mul(0.16).add(grain.x.mul(0.08)).sub(slope.x),
             1.0,
-            tilt.y.mul(0.2).add(grain.y.mul(0.1)),
+            tilt.y.mul(0.16).add(grain.y.mul(0.08)).sub(slope.y).add(rope.mul(0.12)),
         )).toVar();
         // Heat soaks into a plate from its seams.
         const soak = exp(max(edge.sub(width), 0.0).mul(hot.mul(70.0).add(19.0)).negate());
@@ -166,10 +181,12 @@ export function createLake(u, { fine = true, glint = true } = {}) {
             glow.addAssign(cdHeatColor(u, float(0.26).add(heat.mul(0.42))).mul(hair).mul(0.5));
         }
         // Basalt: glassy where it skinned over fast, dusted with ash toward the plate's heart.
-        const albedo = u.rock.mul(plate.g.mul(0.9).add(0.45)).mul(grain.x.mul(0.3).add(1.0));
+        // Ash settles on a raft's crown; its rim, quenched fast, stays black glass.
+        const ash = smoothstep(0.25, 0.7, plate.r).mul(plate.g.mul(0.5).add(0.5));
+        const albedo = u.rock.mul(plate.g.mul(0.5).add(0.6)).mul(grain.x.mul(0.3).add(1.0)).mul(ash.mul(0.7).add(0.55));
         const toKey = u.fallPos.sub(p);
         const keyDist2 = dot(toKey, toKey);
-        const key = u.mid.mul(0.75).add(u.hot.mul(0.25)).mul(u.fallGain).mul(float(2400.0).div(keyDist2.add(900.0)));
+        const key = u.mid.mul(0.78).add(u.hot.mul(0.22)).mul(u.fallGain).mul(float(1500.0).div(keyDist2.add(500.0)));
         const lit = key.mul(max(dot(n, toKey.div(keyDist2.sqrt())), 0.0))
             .add(cdHaze(u, vec3(V.x.negate(), 0.2, V.z.negate()), 2.0).mul(0.8))
             .add(u.cool.mul(0.05))
@@ -187,7 +204,9 @@ export function createLake(u, { fine = true, glint = true } = {}) {
         const fresnel = m.mul(m).mul(m).mul(m).mul(m)
             .mul(0.96)
             .add(0.04);
-        const sheen = u.haze.mul(cdGlowGain(u)).mul(fresnel).mul(0.32).toVar();
+        const glassy = float(1.0).sub(ash).mul(0.75).add(0.25);
+        const sheen = u.haze.mul(cdGlowGain(u)).mul(fresnel).mul(glassy).mul(0.3)
+            .toVar();
         if (glint) {
             const toFoot = u.fallFoot.xz.sub(xz);
             const footDist = length(toFoot);
@@ -200,10 +219,10 @@ export function createLake(u, { fine = true, glint = true } = {}) {
             const rise = R.y.div(flat);
             const tall = u.fallPos.y.mul(3.2).div(max(footDist, 1.0));
             const within = smoothstep(0.0, 0.02, rise).mul(float(1.0).sub(smoothstep(tall.mul(0.7), tall.mul(1.25), rise)));
-            // (Only the plates that skinned over glassy mirror it.)
-            const glassy = smoothstep(0.5, 0.85, plate.a);
-            sheen.addAssign(u.mid.mul(0.7).add(u.hot.mul(0.3)).mul(streak.mul(within).mul(fresnel).mul(glassy).mul(u.fallGain)
-                .mul(1.1)));
+            // (Glass mirrors it, ash does not; each raft's own tilt breaks the streak up.)
+            const mirror = smoothstep(0.45, 0.85, plate.a).mul(glassy);
+            sheen.addAssign(u.mid.mul(0.7).add(u.hot.mul(0.3)).mul(streak.mul(within).mul(fresnel).mul(mirror).mul(u.fallGain)
+                .mul(0.9)));
         }
         crust.addAssign(sheen.mul(float(1.0).sub(farAway.mul(0.6))));
 
