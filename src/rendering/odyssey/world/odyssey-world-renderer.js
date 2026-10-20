@@ -46,6 +46,7 @@ import {
     sampleColourScript,
     ODYSSEY_COLOUR_SCRIPT,
     ODYSSEY_WATER_RAMP,
+    odysseyDeepWaterDim,
 } from '../odyssey-colour-script.js';
 // Read-only: the 1->2 carry fades ocean life by the SAME density curve the quench veils with,
 // so a re-shaped quench cannot leave fish visible through a thinner veil.
@@ -1055,6 +1056,10 @@ export function createOdysseyWorld({
     // MID plate — capture-measured at p=0.185, a fixed deep-plate convergence rendered the
     // near-surface ascent as abyss-dark water.
     const uEyeDepth = uniform(1);
+    // THE DEEP IS DARK (Act I overhaul, 2026-10-20): the in-scattered light's multiplier by the
+    // eye's depth (`odysseyDeepWaterDim`), so the column is deep and dim at the vent and the
+    // shafts, motes and Snell window are the lights in it. 1 near the surface (the breach).
+    const uDeepDim = uniform(1);
     // 1 while the eye is AT the surface (ramping out over 6 u), 0 elsewhere — the meniscus window.
     const uBreachNear = uniform(0);
     // THE CLOUD REGIME GATE (cloud plan Wave 2, exit-gate response). 1 when the eye is high
@@ -1077,6 +1082,11 @@ export function createOdysseyWorld({
     const uMoteTint = uniform(new THREE.Color(...QUENCH_CYAN));
     const uMoteLift = uniform(0);
     const uLife = uniform(1);
+    // THE BUBBLES SHOW THROUGH THE STEAM (Act I overhaul, 2026-10-20): the quench's density
+    // squared (the board's steam-fog weight) while the carry runs. The motes then draw after the
+    // steam's shell and dim with distance by its fog, so the column of rising bubbles the carry
+    // makes is seen in the veil instead of behind it. 0 with no carry.
+    const uMoteVeil = uniform(0);
     // THE 2->3 SPRAY: envelope (0 = off) and age in seconds since the eye broke the surface.
     const uSpray = uniform(0);
     const uSprayAge = uniform(0);
@@ -1308,7 +1318,13 @@ export function createOdysseyWorld({
                 vec3(...UW_LUMINOUS).mul(float(1).sub(uEyeDepth.mul(0.72))),
                 0.60,
             );
-            const waterTarget = mix(bandedDir, glowTarget, surfaceGlow);
+            // THE WELL OF LIGHT (Act I overhaul, 2026-10-20): in the deep the light that reaches the
+            // eye comes DOWN from the surface, so the dimmed column keeps a luminous well at the
+            // zenith the climb stares up — the frame is a gradient toward the light, not a flat navy.
+            const zen2 = clamp(dirY, 0, 1).mul(clamp(dirY, 0, 1));
+            const zen8 = zen2.mul(zen2).mul(zen2.mul(zen2));
+            const waterTarget = mix(bandedDir, glowTarget, surfaceGlow).mul(uDeepDim)
+                .add(vec3(...UW_LUMINOUS).mul(zen8.mul(float(1).sub(uDeepDim)).mul(0.42)));
             // Component-wise mix against the same target: the hue WALKS with distance (red gone
             // first, blue last) instead of every channel arriving together. This is what puts
             // value structure back into the frame the steam veil used to supply.
@@ -2752,10 +2768,17 @@ export function createOdysseyWorld({
                 const ceilSum = rippleTexA.b.add(rippleTexB.b).sub(1);
                 const ceilAA = abs(dFdx(ceilDiff)).add(abs(dFdy(ceilDiff)));
                 const ceilAAs = abs(dFdx(ceilSum)).add(abs(dFdy(ceilSum)));
-                const ceilWidth = rippleTexA.b.mul(0.020).add(0.005);
+                // LIGHT, NOT A NET (Act I overhaul, 2026-10-20). Seen from ~35 u down the thin even
+                // lines read as a fishing net drawn on the ceiling. Wider and softer lines that carry
+                // little light of their own, the light gathered where two cross (the focus knots),
+                // and broken into patches by the coarse field's other channel: a shimmer of light
+                // focusing in the ripples, brightest at its knots, not a drawn web.
+                const ceilWidth = rippleTexA.b.mul(0.040).add(0.014);
                 const lineA = float(1).sub(smoothstep(float(0.0), ceilAA.add(ceilWidth), abs(ceilDiff)));
                 const lineB = float(1).sub(smoothstep(float(0.0), ceilAAs.add(ceilWidth), abs(ceilSum)));
-                ceilLines.assign(max(lineA, lineB).add(lineA.mul(lineB).mul(0.8))
+                const ceilPatch = smoothstep(float(0.30), float(0.72), rippleTexA.a.mul(0.7).add(rippleTexB.b.mul(0.5)));
+                ceilLines.assign(max(lineA, lineB).mul(0.32).add(lineA.mul(lineB).mul(1.5))
+                    .mul(ceilPatch)
                     .mul(smoothstep(float(0.30), float(0.55), rippleTexB.b.add(rippleTexA.b.mul(0.3))))
                     .mul(float(1).sub(smoothstep(float(22), float(62), length(positionWorld.sub(cameraPosition)))))
                     // Mostly inside the window: at grazing angles the world-space net stretches
@@ -3647,6 +3670,10 @@ export function createOdysseyWorld({
     const rayCount = Math.min(quality === 'low' ? 6 : 9, rayPoints.length);
     let rayMesh = null;
     let rayMat = null;
+    // The shafts' axes (base centre, radius at the surface, phase) and their shared direction, for
+    // the motes' "lit where a shaft crosses" term (Act I overhaul, 2026-10-20).
+    const shaftAxes = [];
+    const shaftDir = new THREE.Vector3(0, 1, 0);
     if (rayCount > 2) {
         rayMat = new THREE.MeshBasicNodeMaterial();
         const rUv = uv();
@@ -3709,8 +3736,17 @@ export function createOdysseyWorld({
         // shafts read as solid pipes.
         // x uLife: the shafts arrive with the ocean as the quench veil thins (1->2 carry), never
         // as additive light inside Earth Core's cavern.
+        // EACH SHAFT BREATHES ON ITS OWN (Act I overhaul, 2026-10-20): the surface's ripples move,
+        // so the light each one lets down waxes and wanes — a per-shaft phase (a static instance
+        // attribute) instead of nine identical, constant pipes.
+        const rayPhase = attribute('aRayPhase', 'float');
+        const rayBreath = sin(uTime.mul(0.11).add(rayPhase.mul(6.2831853))).mul(0.5).add(0.5)
+            .mul(sin(uTime.mul(0.29).add(rayPhase.mul(17.0))).mul(0.25).add(0.75))
+            .mul(0.7)
+            .add(0.3);
         rayMat.opacityNode = vFade.mul(eFade).mul(rayNear).mul(rayAbove)
             .mul(rayShimmerSafe)
+            .mul(rayBreath)
             .mul(uSubmerged)
             .mul(uLife)
             // 0.52 -> 0.62: the streaked shimmer's mean sits ~a quarter under the simplex's.
@@ -3752,6 +3788,9 @@ export function createOdysseyWorld({
         // surface and tapers the shaft dark toward the floor, which is what refracted
         // surface light does.
         rayGeo.rotateX(Math.PI);
+        const rayPhases = new Float32Array(rayCount);
+        for (let i = 0; i < rayCount; i += 1) rayPhases[i] = hash01((i * 7) + 5);
+        rayGeo.setAttribute('aRayPhase', new THREE.InstancedBufferAttribute(rayPhases, 1));
         rayMesh = new THREE.InstancedMesh(rayGeo, rayMat, rayCount);
         const rm4 = new THREE.Matrix4();
         const rPos = new THREE.Vector3();
@@ -3766,7 +3805,12 @@ export function createOdysseyWorld({
             const sc = 0.75 + (hash01(i * 3 + 3) * 0.7);
             rScl.set(sc, 1, sc);
             rayMesh.setMatrixAt(i, rm4.compose(rPos, tilt, rScl));
+            // The motes below read these: marine snow is lit where a shaft crosses it.
+            shaftAxes.push({
+                x: rPos.x, y: rPos.y, z: rPos.z, radius: 7 * sc, phase: rayPhases[i],
+            });
         }
+        shaftDir.set(0, 1, 0).applyQuaternion(tilt);
         rayMesh.instanceMatrix.needsUpdate = true;
         rayMesh.frustumCulled = false;
         rayMesh.renderOrder = 3;
@@ -3826,9 +3870,18 @@ export function createOdysseyWorld({
         const mSway = sin(uTime.mul(0.30).add(mS.mul(41))).mul(2.2);
         // A rising bubble zig-zags; the wobble only exists while the column is carried.
         const mWobble = sin(mPhaseT.mul(2.3).add(mS.mul(57))).mul(uQuench.mul(0.9));
+        // MARINE SNOW (Act I overhaul, 2026-10-20). Two motes in three SINK, slowly, against the
+        // ascent — the flakes of a deep sea — while the third rise as before. Each runs its own
+        // phase (no switch between the two, so nothing jumps when the 1->2 carry ends); the
+        // sinkers stay hidden while the column is carried, when every speck is a rising bubble.
+        const mSink = tslStep(0.34, fract(mS.mul(5.71)));
+        const mFall = fract(uTime.mul(-0.0055).mul(mS.mul(0.5).add(0.6)).add(mS.mul(1.7)));
+        const mLift = mix(mRise, mFall, mSink);
+        // Both ends of the travel fade, so a wrap never pops a speck from one end to the other.
+        const mEnds = smoothstep(float(0.0), float(0.06), mLift).mul(float(1).sub(smoothstep(float(0.94), float(1.0), mLift)));
         const moteDrift = vec3(
             mO.x.add(mSway).add(mWobble),
-            mO.y.add(mRise.mul(70)),
+            mO.y.add(mLift.mul(70)),
             mO.z.add(mSway.mul(0.7)).add(mWobble.mul(0.6)),
         );
         // ── THE 2->3 SPRAY (bubbles become spray) ─────────────────────────────────────────
@@ -3874,6 +3927,35 @@ export function createOdysseyWorld({
             moteDist.mul(mix(float(0.02), float(0.05), sprayOn)).add(0.04),
         );
         moteMat.positionNode = billboardWorld(moteCenter, moteSizeClamped);
+        // LIT WHERE A SHAFT CROSSES IT (Act I overhaul, 2026-10-20 — Ocean's "lit where a shaft
+        // crosses it"). Each mote measures itself against the nine shafts' axes (known at build,
+        // above) in the vertex stage: inside a cone, scaled by how near the surface it is (the
+        // shaft's own fade) and by that shaft's breath, it catches the light; between the shafts
+        // it sits back. So the shafts read as VOLUMES of lit water, not pale tubes.
+        const shaftLight = (() => {
+            let lit = float(0);
+            const d = vec3(shaftDir.x, shaftDir.y, shaftDir.z);
+            shaftAxes.forEach((sa) => {
+                const qs = moteCenter.sub(vec3(sa.x, sa.y, sa.z));
+                const t = dot(qs, d);
+                const along = clamp(t.add(120).div(240), 0, 1);
+                const rad = max(along.mul(sa.radius * 1.15), float(0.6));
+                const inside = float(1).sub(smoothstep(rad.mul(0.3), rad, length(qs.sub(d.mul(t)))));
+                const breath = sin(uTime.mul(0.11).add(sa.phase * 6.2831853)).mul(0.5).add(0.5)
+                    .mul(sin(uTime.mul(0.29).add(sa.phase * 17.0)).mul(0.25).add(0.75))
+                    .mul(0.7)
+                    .add(0.3);
+                lit = lit.add(inside.mul(along.mul(along).mul(along.add(0.4))).mul(breath));
+            });
+            return min(lit, float(1.5));
+        })();
+        const vShaftLit = varying(shaftLight, 'vMoteShaftLit');
+        // THE WAKE: in the deep half, plankton near the lens wakes as the camera passes — a cool
+        // spark on the specks within ~15 u, gone toward the surface where the light is daylight.
+        const vWake = varying(
+            float(1).sub(smoothstep(float(5), float(16), moteDist)).mul(smoothstep(float(0.45), float(0.9), uEyeDepth)),
+            'vMoteWake',
+        );
         const mUv = uv();
         const mR = length(mUv.sub(vec2(0.5)));
         const mRadial = float(1).sub(smoothstep(float(0.0), float(0.5), mR));
@@ -3889,7 +3971,10 @@ export function createOdysseyWorld({
         const mDepth = clamp(float(ODYSSEY_SEA_LEVEL).sub(positionWorld.y).div(120), 0, 1);
         const moteBase = mix(
             mix(vec3(0.55, 0.85, 0.90), vec3(0.35, 0.75, 0.80), mDepth)
-                .mul(mDepth.mul(0.9).add(0.35)),
+                .mul(mDepth.mul(0.9).add(0.35))
+                // In a shaft it catches the light; between the shafts it sits back.
+                .mul(float(0.5).add(vShaftLit.mul(2.3)))
+                .add(vec3(0.20, 0.95, 0.88).mul(vWake).mul(0.7)),
             vec3(0.42, 1.0, 0.84),
             mGlow,
         );
@@ -3907,11 +3992,19 @@ export function createOdysseyWorld({
         // Carried bubbles burn brighter, so the column reads through what is left of the veil.
         const moteAlpha = mProfile.mul(uSubmerged)
             .mul(mix(mTwinkle.mul(mTwinkle).mul(0.55).add(0.12), mPulse.mul(0.75), mGlow))
-            .mul(uQuench.mul(0.9).add(1));
+            .mul(uQuench.mul(0.9).add(1))
+            .mul(mEnds)
+            // Sinkers sit out the carry (the bubbles rise alone), then join the snow.
+            .mul(float(1).sub(mSink.mul(uQuench)))
+            .mul(vWake.mul(0.8).add(1));
         // Each droplet has its own life inside the burst (0.9-1.8 s) and fades over its last half.
         const sLifeT = clamp(uSprayAge.div(fract(mS.mul(11.1)).mul(0.9).add(0.9)), 0, 1);
         const sprayAlpha = mDot.mul(uSpray).mul(float(1).sub(smoothstep(float(0.55), float(1.0), sLifeT))).mul(0.85);
-        moteMat.opacityNode = mix(moteAlpha, sprayAlpha, sprayOn);
+        // Through the steam: the share of the mote's light the vapour lets reach the eye (the
+        // board's steam fog, 0.042 at full weight).
+        const moteVeilD = moteDist.mul(uMoteVeil.mul(0.042));
+        const vMoteVeil = varying(exp(moteVeilD.mul(moteVeilD).negate()), 'vMoteVeil');
+        moteMat.opacityNode = mix(moteAlpha.mul(vMoteVeil), sprayAlpha, sprayOn);
         moteMat.transparent = true;
         moteMat.depthWrite = false;
         moteMat.blending = THREE.AdditiveBlending;
@@ -4982,6 +5075,10 @@ export function createOdysseyWorld({
                 (ODYSSEY_SEA_LEVEL + 2.0 - submergedRefY) / 14,
             ));
             uEyeDepth.value = Math.max(0, Math.min(1, (ODYSSEY_SEA_LEVEL - submergedRefY) / 140));
+            uDeepDim.value = odysseyDeepWaterDim(uEyeDepth.value);
+            // Scene fog (the rail, the orbs) dims with the water it stands in, or the far rail
+            // would fade to a brighter blue than the deep around it.
+            fogState.color.multiplyScalar(1 - ((1 - uDeepDim.value) * uSubmerged.value));
             // 6 u, not 3: the eye crosses ~11 u per 0.01 p near the surface, so a 3 u window lit the
             // meniscus on almost no frame of the crossing — the breach's hero line went unseen.
             uBreachNear.value = Math.max(0, 1 - (Math.abs(ODYSSEY_SEA_LEVEL - submergedRefY) / 6));
@@ -5004,6 +5101,8 @@ export function createOdysseyWorld({
             uBubble.value = carry.bubble;
             uMoteTint.value.setRGB(...carry.tint);
             uLife.value = carry.life;
+            const moteVeil = steamQuenchDensity(carryT);
+            uMoteVeil.value = moteVeil * moteVeil;
             state.lifePresence = carry.life;
             // Bank the extra rise phase; wrapped so the float never grows without bound (any
             // multiple of every mote's period works — 1/(0.014 x 0.6..1.1) are not commensurate,
@@ -5079,7 +5178,11 @@ export function createOdysseyWorld({
             // they ARE the carry — and also draw above water while the breach spray is live.
             const lifeOn = uLife.value > 0.001;
             if (rayMesh) rayMesh.visible = uSubmerged.value > 0.001 && lifeOn;
-            if (moteMesh) moteMesh.visible = uSubmerged.value > 0.001 || spray > 0;
+            if (moteMesh) {
+                moteMesh.visible = uSubmerged.value > 0.001 || spray > 0;
+                // A sort key only (no pipeline change): after the steam's shell (12) while veiled.
+                moteMesh.renderOrder = uMoteVeil.value > 0.01 ? 13 : 4;
+            }
             if (fishMesh) fishMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             if (spireMesh) spireMesh.visible = uSubmerged.value > 0.001 && lifeOn;
             if (kelpMesh) kelpMesh.visible = uSubmerged.value > 0.001 && lifeOn;

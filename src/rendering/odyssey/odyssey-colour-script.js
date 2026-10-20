@@ -304,6 +304,30 @@ export const ODYSSEY_COLOUR_SCRIPT = Object.freeze([
     },
 ]);
 
+/**
+ * THE DEEP IS DARK (Act I overhaul, 2026-10-20) — the ocean's value structure.
+ *
+ * Captured before this: every chapter 2 frame from the vent to ~60 u under the surface sat at luma
+ * ~100-110, one mid-blue from edge to edge, so the light shafts, the motes and the Snell window
+ * (the only lights down there) had nothing darker to stand against. Looking UP from 150 u down,
+ * the light reaching the eye has crossed 150 u of water: the column should be deep and dim, and
+ * brighten as the climb nears the surface. This is the multiplier on the water's IN-SCATTERED
+ * light (the haze every underwater surface converges to), by the eye's depth (the world's
+ * `uEyeDepth`: 0 at the surface, 1 from 140 u down). It leaves the top ~30 u untouched (the 2->3
+ * breach frames and their seam gate) and is a pure function so the world, the steam quench's exit
+ * colour and the whale pass all darken by the same rule.
+ */
+export const DEEP_WATER_DIM = 0.45;
+/**
+ * @param {number} eyeDepth 0..1 (0 at the surface, 1 from 140 u down)
+ * @returns {number} 1 near the surface, DEEP_WATER_DIM in the deep
+ */
+export function odysseyDeepWaterDim(eyeDepth) {
+    const e = Math.max(0, Math.min(1, Number.isFinite(eyeDepth) ? eyeDepth : 0));
+    const t = Math.max(0, Math.min(1, (e - 0.2) / 0.8));
+    return 1 - ((1 - DEEP_WATER_DIM) * t * t * (3 - (2 * t)));
+}
+
 const COLOUR_SLOTS = ['skyZenith', 'skyHorizon', 'sun', 'groundLit', 'groundShadow'];
 const SCALAR_SLOTS = ['exposure', 'fogDensity', 'wind'];
 
