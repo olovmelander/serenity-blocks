@@ -19,6 +19,12 @@
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   msaa=0|4                 override the scene-pass MSAA sample count
  *   noPost=1                 raw scene (no bloom/grade)
+ *   place=<p>                pin the spectrum's level place (movement = floor; the road's drift,
+ *                            t · 180 / 16200, still adds): 0 prism, 1 orchid, 2 ember, 3 triad,
+ *                            4 chord, 5 tide
+ *   ringForm=<name>          force every ring's form (tube double dashes beads hex hexDouble oct
+ *                            octDashes octBeads prism hexPrism)
+ *   airGain=<x>              the ring-air band gain (default 0.05)
  */
 import * as THREE from 'three/webgpu';
 import { ChromadelicWorld } from '../../themes/chromadelic-highway/chromadelic-highway-world.js';
@@ -83,6 +89,14 @@ export function create({
 
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
+    const placeParam = params.get('place');
+    const formParam = params.get('ringForm');
+    if (placeParam !== null || formParam) {
+        world.pinSpectrum(placeParam !== null ? num(params, 'place', 0) : null, { form: formParam || null });
+    }
+    if (params.get('airGain') !== null) world.shared.uAirGain.value = num(params, 'airGain', 0.05);
+    // Agent probes: the live world (uniforms, events) without a reload.
+    window.__chromadelic = { world };
 
     camera.near = 1;
     camera.far = 12000;
@@ -106,14 +120,20 @@ export function create({
         particle: num(params, 'particle'),
         ambient: num(params, 'ambient'),
     };
-    const eventName = params.get('event');
-    const eventAge = num(params, 'eventAge', 0.25);
+    const urlEvent = {
+        name: params.get('event'),
+        age: num(params, 'eventAge', 0.25),
+        combo: num(params, 'combo', 4),
+        lines: num(params, 'lines', 2),
+        level: num(params, 'level', 2),
+    };
+    let ev = urlEvent;
     const fireEvent = () => {
-        if (eventName === 'lock') world.onPieceLock();
-        else if (eventName === 'combo') world.onCombo(num(params, 'combo', 4));
-        else if (eventName === 'clear') world.onLineClear(num(params, 'lines', 2));
-        else if (eventName === 'tetris') world.onLineClear(4);
-        else if (eventName === 'levelUp') world.onLevelUp(num(params, 'level', 2));
+        if (ev.name === 'lock') world.onPieceLock();
+        else if (ev.name === 'combo') world.onCombo(ev.combo);
+        else if (ev.name === 'clear') world.onLineClear(ev.lines);
+        else if (ev.name === 'tetris') world.onLineClear(4);
+        else if (ev.name === 'levelUp') world.onLevelUp(ev.level);
     };
 
     const size = new THREE.Vector2();
@@ -136,6 +156,10 @@ export function create({
     const pushPost = (time) => post?.update({ time, dip: world.fx.dip, bloomBoost: 0 });
     // Seek: rebuild the event state at (t - age) so every capture of `t` is identical.
     const seekTo = (time) => {
+        const eventName = ev.name;
+        const eventAge = ev.age;
+        // A replayed level-up must not carry its step into the next seek.
+        world.resetProgress();
         world.seek(Math.max(0, time - (eventName ? eventAge : 0)));
         if (eventName) {
             fireEvent();
@@ -152,6 +176,15 @@ export function create({
         world.updateCamera(camera, sim(time, 0));
         world.update(sim(time, 0), camera);
         pushPost(time);
+    };
+    // Agent probes: replay any event at any age for a contact sheet, rendered in the same task
+    // (`spec` = { name, age, combo, lines, level }; null = the URL's event). Returns the canvas.
+    window.__chromadelic.seekEvent = (time, spec = null) => {
+        ev = spec ? { ...urlEvent, ...spec } : urlEvent;
+        seekTo(time);
+        if (post) post.render();
+        else renderer.render(scene, camera);
+        return renderer.domElement;
     };
 
     return {
@@ -174,7 +207,11 @@ export function create({
         resize() {
             syncViewport();
         },
+        getDiagnostics() {
+            return { time: world.time, spectrum: world.getSpectrumDiagnostics() };
+        },
         dispose() {
+            if (window.__chromadelic?.world === world) delete window.__chromadelic;
             overlay?.remove();
             post?.dispose();
             world.dispose();
