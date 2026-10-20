@@ -2,6 +2,8 @@
  * @fileoverview Odyssey board-view HUD overlay (header bar + chapter-arrival card + orb panel).
  *
  * The orb panel's ids are filled by ui/odyssey/odyssey-level-panel.js (renderOdysseyLevelPanel).
+ * The header's charm chip is a button: it opens the charm guide (odyssey-charm-guide.js, wired by
+ * odyssey-map-input.js).
  *
  * Extracted from OdysseyMode._createBoardInfoOverlay (masterplan E1). Pure DOM: it builds and
  * returns the overlay + an (empty) <style> element. OdysseyMode keeps the wiring (mounting,
@@ -26,7 +28,7 @@ export function createBoardInfoOverlay({ autoContinue = true, onAutoContinueChan
             <div class="odyssey-progress-info">
                 <span id="odyssey-header-stars">★ 0</span>
                 <span id="odyssey-header-progress">Progress: 0%</span>
-                <span id="odyssey-header-charms" title="Clearing an orb leaves you a charm. Press 1–4 during an orb to use one.">◇ No charms yet</span>
+                <button type="button" id="odyssey-header-charms" aria-haspopup="dialog" title="Clearing an orb leaves you a charm. Press 1–4 during an orb to use one.">◇ No charms yet</button>
             </div>
         </div>
         <div id="odyssey-chapter-arrival-card" class="odyssey-chapter-arrival-card" aria-live="polite">

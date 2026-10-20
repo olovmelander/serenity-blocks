@@ -38,13 +38,16 @@ export function describeOdysseyCharmHeader(entries) {
 
 /**
  * Write the header line into the map's overlay: each charm held as its live icon with its count;
- * the count in words where no icon node can be made (no document).
+ * the count in words where no icon node can be made (no document). The chip is a button that
+ * opens the charm guide, so its name says the bag in words (the icons are hidden from readers).
  */
 export function renderOdysseyCharmHeader(entries, node = globalThis.document?.getElementById?.('odyssey-header-charms')) {
     if (!node) return;
     const { text, title } = describeOdysseyCharmHeader(entries);
     const held = (entries || []).filter((entry) => entry.count > 0);
     node.title = title;
+    const named = held.map((entry) => `${entry.count} ${entry.name}`).join(', ');
+    node.setAttribute?.('aria-label', `Charms: ${named || 'none yet'}`);
     const doc = globalThis.document;
     if (held.length && typeof node.replaceChildren === 'function' && doc?.createElement) {
         const parts = [];
