@@ -8,6 +8,7 @@ import {
     DOG_AZ,
     E,
     FALLBACK_RECT,
+    FAR_STONES,
     ICE_N_EFF,
     MEASURED_VIEWPORTS,
     MOTE_PLANE_DEPTH,
@@ -17,6 +18,7 @@ import {
     S,
     STATION_COUNT,
     STONE,
+    TAN_H_MIN,
     TAN_V,
     U,
     VFOV_DEG,
@@ -34,6 +36,8 @@ import {
     solveStone,
     stationPhi,
     tanH,
+    tanV,
+    vfovDeg,
     writePillarPlaces,
 } from '../../src/playground/effects/parhelion-composition.js';
 
@@ -109,10 +113,10 @@ function makeCamera(aspect, pose = REST_POSE) {
     const sy = Math.sin(pose.yaw);
     const ce = Math.cos(el);
     const se = Math.sin(el);
-    const tanV = Math.tan((VFOV_DEG * DEG) / 2);
+    const tv = Math.tan((VFOV_DEG * DEG) / 2);
     return {
-        tanV,
-        tanH: tanV * aspect,
+        tanV: tv,
+        tanH: tv * aspect,
         pos: vec(0 + pose.x, 25 + pose.y, 0),
         fwd: vec(-ce * sy, se, -ce * cy),
         right: vec(cy, 0, -sy),
@@ -779,5 +783,84 @@ describe('Parhelion right sundog vs the HUD (§15.2, risk 4)', () => {
         // breathing (1366×768, ~4 px; 7.6 px at rest) and 0.0050 at 1584×787. Only the faint
         // e^-4 tail grazes the glass edge there, and the HUD is a weak calm rect over glass.
         expect(Math.min(...Object.values(clearance))).toBeGreaterThan(0.0025);
+    });
+});
+
+describe('Parhelion portrait lens', () => {
+    it('keeps the landscape lens exactly at every measured viewport', () => {
+        for (const vp of MEASURED_VIEWPORTS) {
+            expect(tanV(vp.aspect), `${vp.width}x${vp.height}`).toBe(TAN_V);
+            expect(vfovDeg(vp.aspect)).toBeCloseTo(VFOV_DEG, 9);
+            expect(tanH(vp.aspect)).toBeCloseTo(TAN_V * vp.aspect, 12);
+        }
+    });
+
+    it('widens the vertical field on tall screens so the view never narrows below ≈ 50°', () => {
+        for (const aspect of [1.05, 1, 0.75, 0.5625, 0.462]) {
+            expect(tanH(aspect), `aspect ${aspect}`).toBeGreaterThanOrEqual(TAN_H_MIN - 1e-12);
+            expect(tanV(aspect)).toBeGreaterThanOrEqual(TAN_V);
+        }
+        // Continuous where the floor takes over (no jump in the lens on a rotation).
+        const knee = TAN_H_MIN / TAN_V;
+        expect(tanV(knee * (1 + 1e-9))).toBeCloseTo(tanV(knee * (1 - 1e-9)), 9);
+    });
+
+    it('puts both hounds on screen beside a phone board (390×844), at the sun height', () => {
+        const aspect = 390 / 844;
+        const scr = { x: 0, y: 0, depth: 0 };
+        for (const side of [-1, 1]) {
+            const dir = {
+                x: Math.cos(E) * Math.sin(side * DOG_AZ),
+                y: Math.sin(E),
+                z: -Math.cos(E) * Math.cos(side * DOG_AZ),
+            };
+            dirToScreen(dir, aspect, scr);
+            // The board fills x 0.106–0.894 on that phone; the hound sits in the side margin.
+            if (side < 0) expect(scr.x).toBeLessThan(0.1);
+            else expect(scr.x).toBeGreaterThan(0.9);
+            expect(scr.x).toBeGreaterThan(0.0);
+            expect(scr.x).toBeLessThan(1.0);
+            expect(Math.abs(scr.y - 0.5)).toBeLessThan(0.02);
+        }
+    });
+
+    it('keeps rows, ring heights and the inverse projection consistent on a portrait lens', () => {
+        const aspect = 0.5625;
+        const board = {
+            x0: 0.1, y0: 0.3, x1: 0.9, y1: 0.7,
+        };
+        for (const rowV of [0, 0.25, 0.5, 0.75, 1]) {
+            const phi = rowToPhi(rowV, board, aspect);
+            expect(phiToScreenY(phi, aspect)).toBeCloseTo(board.y0 + rowV * (board.y1 - board.y0), 9);
+        }
+        const dir = { x: 0, y: 0, z: 0 };
+        const scr = { x: 0, y: 0, depth: 0 };
+        screenToDir(0.2, 0.35, aspect, dir);
+        dirToScreen(dir, aspect, scr);
+        expect(scr.x).toBeCloseTo(0.2, 9);
+        expect(scr.y).toBeCloseTo(0.35, 9);
+    });
+});
+
+describe('Parhelion far stones', () => {
+    it('stand beyond the hound pillars, outside the card columns at every measured viewport', () => {
+        const scr = { x: 0, y: 0, depth: 0 };
+        for (const [x, z, halfWidth, height] of FAR_STONES) {
+            expect(Math.hypot(x, z)).toBeGreaterThan(PILLAR.DIST + 50);
+            expect(height).toBeGreaterThan(10);
+            expect(height).toBeLessThan(STONE.DEFAULT_SY * 0.3);
+            for (const vp of MEASURED_VIEWPORTS) {
+                for (const dx of [-halfWidth, halfWidth]) {
+                    for (const y of [0, height]) {
+                        projectWorld({ x: x + dx, y, z }, vp.aspect, scr);
+                        const outside = scr.x < vp.card.x0 - 0.01 || scr.x > vp.card.x1 + 0.01;
+                        expect(outside, `${vp.width}x${vp.height} stone at ${x},${z}`).toBe(true);
+                        // On screen, below the horizon band's top (they stand on the snow).
+                        expect(scr.y).toBeGreaterThan(0.5);
+                        expect(scr.y).toBeLessThan(1);
+                    }
+                }
+            }
+        }
     });
 });

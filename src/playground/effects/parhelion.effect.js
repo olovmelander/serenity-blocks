@@ -2,9 +2,13 @@
  * Parhelion — the hidden sun and its hounds (playground effect = production scene runtime).
  *
  * A 22° ice-halo display (hard dusky lens, red inner edge, sundogs, parhelic line, upper
- * tangent arc, sun-pillar stub) framing the Vigil Stone that hides the sun, over a golden
- * contre-jour snowfield under cobalt sky, with diamond dust, a reaction glint pool and hound
- * pillars. The theme wrapper (src/themes/parhelion/parhelion-theme.js) drives this runtime.
+ * tangent arc, a glittering sun pillar) framing the Vigil Stone that hides the sun, over a
+ * contre-jour snowfield of backlit drifts under cobalt sky: two mountain ranges on the horizon,
+ * a row of far standing stones with long shadows for scale, diamond dust glinting in the low
+ * air and along the halo (which closes below the horizon as glints on the snow), a reaction
+ * glint pool and hound pillars. On a tall screen the lens widens (composition tanV) so the
+ * hounds stand beside the board. The theme wrapper (src/themes/parhelion/parhelion-theme.js)
+ * drives this runtime.
  *
  * ONE clock source: the runtime owns a ParhelionOpticsState and writes its reused `out` into
  * the shared uniforms every frame (deduped at ε 1e-4): gains, arcs, bursts, pillars, dust
@@ -42,23 +46,25 @@ import {
     CAMERA_NEAR,
     CAMERA_RIG,
     FALLBACK_RECT,
+    FAR_STONES,
     MEASURED_VIEWPORTS,
     STONE,
-    TAN_V,
-    VFOV_DEG,
     cardFromBoard,
     pixelAngle,
     solveStone,
+    tanV,
+    vfovDeg,
 } from './parhelion-composition.js';
 import {
     createDomeMaterial,
+    createFarStoneMaterial,
     createSharedUniforms,
     createSnowMaterial,
     createStoneMaterial,
     createStoneRimMaterial,
     resolveParhelionTier,
 } from './parhelion-materials.js';
-import { buildStoneGeometry } from './parhelion-geometry.js';
+import { buildFarStoneMesh, buildStoneGeometry } from './parhelion-geometry.js';
 import {
     PARHELION_DUST_COUNTS,
     buildDustSprite,
@@ -92,7 +98,7 @@ const STONE_RIM_SCALE = Object.freeze([1.012, 1.006, 1.012]);
 
 /** Dome (§5.3): unit sphere scaled to 6000 m, drawn after stone + snow for early-z. */
 const DOME_RADIUS = 6000;
-const SNOW_SIZE = 4000;
+const SNOW_SIZE = 16000;
 
 /** §6 calm-rect parameters (strength, dimScene, desat, feather). */
 const CALM = Object.freeze({
@@ -184,8 +190,37 @@ function nearestLayout(aspect) {
  * The playground's stand-in for composition/parhelion-board-rects.js: the measured solo layout
  * nearest this aspect, in the reader's exact shape (boards = 5 slots, index = player).
  */
+/**
+ * A portrait stand-in for the playground (the measured layouts are all landscape): the solo
+ * well layout from public/styles/keystone-solo.css under max-aspect-ratio 1/1 — next queue,
+ * board (10 × 20, height-limited, ≤ 100vw − 32 px) and the stats strip below it — in screen
+ * fractions, in the measured viewports' shape.
+ */
+function portraitStandIn(width, height) {
+    const top = 74;
+    const nextH = Math.min(62, Math.max(30, height * 0.062));
+    const strip = Math.min(66, Math.max(52, height * 0.07));
+    const room = height - top - nextH - 10 - strip - 12 - 22;
+    const boardW = Math.min(640, Math.max(140, Math.min(room / 2, width - 32)));
+    const bx0 = (width - boardW) / 2;
+    const by0 = top + nextH + 10;
+    const by1 = by0 + boardW * 2;
+    const r = (x0, y0, x1, y1) => ({
+        x0: x0 / width, y0: y0 / height, x1: x1 / width, y1: y1 / height,
+    });
+    return {
+        width,
+        height,
+        aspect: width / height,
+        card: r(bx0 - 10, top - 8, bx0 + boardW + 10, by1 + 10),
+        board: r(bx0, by0, bx0 + boardW, by1),
+        next: r(bx0, top, bx0 + boardW, top + nextH),
+        hud: r(bx0, by1 + 12, bx0 + boardW, by1 + 12 + strip),
+    };
+}
+
 function playgroundLayout(width, height) {
-    const vp = nearestLayout(width / Math.max(1, height));
+    const vp = width < height ? portraitStandIn(width, height) : nearestLayout(width / Math.max(1, height));
     const board = {
         ...vp.board, rect: vp.board, player: 0, stoneBacked: true,
     };
@@ -443,6 +478,11 @@ export function create(ctx) {
     rimShell.renderOrder = 11;
     rimShell.visible = !calmDebug;
 
+    // The far stones: one instanced draw, opaque, before the snow (early-z).
+    const farStoneMaterial = createFarStoneMaterial(u, tier);
+    const farStones = buildFarStoneMesh(farStoneMaterial, FAR_STONES);
+    farStones.renderOrder = 0;
+
     const snowGeometry = new THREE.PlaneGeometry(SNOW_SIZE, SNOW_SIZE, 1, 1);
     snowGeometry.rotateX(-Math.PI / 2);
     const snowMaterial = createSnowMaterial(u, tier);
@@ -473,8 +513,10 @@ export function create(ctx) {
     const glintMaterial = createGlintMaterial(u, bursts, caps.perSlot);
     const glints = buildGlintSprite(glintMaterial, caps.burstSlots * caps.perSlot);
 
-    scene.add(stone, snow, dome, rimShell, pillars, dust, glints);
+    scene.add(stone, farStones, snow, dome, rimShell, pillars, dust, glints);
     disposables.push(
+        farStones.geometry,
+        farStoneMaterial,
         stoneGeometry,
         stoneMaterial,
         rimMaterial,
@@ -622,7 +664,6 @@ export function create(ctx) {
 
     // Playground-only hub-icon framing: a wider lens so ring, hounds and stone fit a circle crop.
     const iconMode = params?.get?.('parhelionIcon') === '1';
-    const cameraFov = iconMode ? ICON_VFOV_DEG : VFOV_DEG;
     const overlay = params?.get?.('board') === '1'
         ? createBoardOverlay(nearestLayout(view.aspect))
         : null;
@@ -637,8 +678,10 @@ export function create(ctx) {
         view.aspect = w / h;
         setScalar(u.uAspect, view.aspect);
         setScalar(u.uDpr, ratio);
-        setScalar(u.uPixAng, pixelAngle(h * ratio));
-        setVec2(u.uTanHV, TAN_V * view.aspect, TAN_V);
+        setScalar(u.uPixAng, pixelAngle(h * ratio, view.aspect));
+        // The lens widens on tall screens (composition tanV): the dust's screen frame follows it.
+        const tv = tanV(view.aspect);
+        setVec2(u.uTanHV, tv * view.aspect, tv);
         // The playground has no DOM reader: stand in with the measured layout for this aspect.
         // Icon mode frames the display with no board at all (Serenity layout: no calm rects).
         if (!externalLayout) {
@@ -835,7 +878,8 @@ export function create(ctx) {
             optics.resetSession();
         },
         camera(time, cam) {
-            if (cam.fov !== cameraFov || cam.near !== CAMERA_NEAR || cam.far !== CAMERA_FAR) {
+            const cameraFov = iconMode ? ICON_VFOV_DEG : vfovDeg(view.aspect);
+            if (Math.abs(cam.fov - cameraFov) > 1e-6 || cam.near !== CAMERA_NEAR || cam.far !== CAMERA_FAR) {
                 cam.fov = cameraFov;
                 cam.near = CAMERA_NEAR;
                 cam.far = CAMERA_FAR;
@@ -901,7 +945,7 @@ export function create(ctx) {
             };
         },
         dispose() {
-            scene.remove(stone, snow, dome, rimShell, pillars, dust, glints);
+            scene.remove(stone, farStones, snow, dome, rimShell, pillars, dust, glints);
             post?.dispose();
             disposables.forEach((item) => item.dispose());
             overlay?.dispose();

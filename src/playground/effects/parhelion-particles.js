@@ -73,7 +73,7 @@ export const PARHELION_DUST_COUNTS = Object.freeze({
     Minimal: Object.freeze({ count: 800, near: 0 }),
     Low: Object.freeze({ count: 1600, near: 0 }),
     Medium: Object.freeze({ count: 2600, near: 0 }),
-    High: Object.freeze({ count: 4000, near: 0 }),
+    High: Object.freeze({ count: 4000, near: 40 }),
     Ultra: Object.freeze({ count: 6000, near: 60 }),
     Extreme: Object.freeze({ count: 8000, near: 120 }),
 });
@@ -196,16 +196,20 @@ export function createDustMaterial(u, { minimal = false } = {}) {
     const dogFlare = max(u.uDogFlare.x, u.uDogFlare.y).add(1.0);
     const spokeD = wrapPi(atan(sphi, cphi).sub(u.uSpoke.x));
     const alpha = a.mul(cphi);
+    const beta = a.mul(sphi);
+    const pillarBand = exp(alpha.mul(alpha).div(0.0006).negate()).mul(smoothstep(0.12, 0.3, beta));
     // Forward-scatter weighted: far from the sun a flash is faint (no daytime starfield).
-    const gain = float(0.08).add(exp(a.div(0.25).negate()).mul(0.9))
+    const gain = float(0.03).add(exp(a.div(0.27).negate()).mul(1.8))
         .add(ringBand.mul(u.uRingFlash.mul(4.0).add(1.0)).mul(2.2))
         .add(exp(dogD.div(0.0004).negate()).mul(u.uK0.y).mul(dogFlare).mul(2.5))
         .add(arcs.mul(ringWide))
         .add(u.uSpoke.y.mul(exp(spokeD.mul(spokeD).div(0.04).negate())))
-        .add(u.uCrossArm.mul(exp(alpha.mul(alpha).div(0.000144).negate())));
+        .add(u.uCrossArm.mul(exp(alpha.mul(alpha).div(0.000144).negate())))
+        // The sun pillar is plate crystals catching the sun: they glint up its column.
+        .add(pillarBand.mul(u.uK1.y).mul(2.6));
 
     // Each plate catches the sun now and then; a top-down shower wave for Clear Sky.
-    const glint = pow(sin(clock.mul(kind.y.mul(1.6).add(0.6)).add(seed.w.mul(40.0))).mul(0.5).add(0.5), 28.0);
+    const glint = pow(sin(clock.mul(kind.y.mul(1.6).add(0.6)).add(seed.w.mul(40.0))).mul(0.5).add(0.5), 16.0);
     const wavePos = float(1.0).sub(sv).sub(fract(clock.mul(0.42)));
     const wave = exp(wavePos.mul(wavePos).div(0.004).negate());
     const flash = max(glint, max(u.uRingFlash.mul(ringWide), u.uShower.mul(wave)));
@@ -215,18 +219,28 @@ export function createDustMaterial(u, { minimal = false } = {}) {
     const edge = pow(sin(su.mul(Math.PI)).mul(sin(sv.mul(Math.PI))), 0.3);
     const nearMul = mix(1.0, 0.25, kind.w);
     // Forward scattering: away from the sun a crystal is invisible until it flashes (no starfield).
-    const ambient = exp(a.div(0.3).negate()).mul(0.045).add(0.004);
-    const bright = flash.mul(gain).add(ambient).mul(u.uDustGain).mul(edge)
+    const ambient = exp(a.div(0.32).negate()).mul(0.03).add(0.002);
+    // Diamond dust hangs in the low air: crystals thin out above ≈ 20° of elevation, so the
+    // high cobalt sky never reads as a daytime starfield.
+    // The halo ring and the sun pillar are exempt: their crystals glint wherever they stand.
+    const lowAir = max(smoothstep(0.4, 0.14, el), max(ringWide.mul(0.8), pillarBand));
+    const bright = flash.mul(gain).mul(2.2).add(ambient).mul(lowAir)
+        .mul(u.uDustGain)
+        .mul(edge)
         .mul(float(1.0).sub(calm.mul(0.92)))
         .mul(nearMul)
         .mul(minimal ? 0.6 : 1.0);
-    const px = clamp(kind.x.mul(1.6).add(1.2).mul(flash.mul(1.5).add(1.0)), 1.0, 5.0).mul(mix(1.0, 2.8, kind.w));
+    // A glinting plate flares to a small four-point star (the cross arms need the size).
+    const px = clamp(kind.x.mul(1.8).add(1.3).mul(flash.mul(3.2).add(1.0)), 1.0, 11.0).mul(mix(1.0, 2.8, kind.w));
     material.sizeNode = px.mul(reveal).mul(step(0.004, bright));
 
     // Warm near the sun, prismatic on the ring (more so while the prism flash runs).
-    const warm = mix(vec3(1.0), linearColor(0xFFE7B8), pow(max(cA, 0.0), 6.0));
+    // Warm near the sun, warmer still as the Lower Sun level climbs (uWarmth).
+    const warm = mix(vec3(1.0), mix(linearColor(0xFFE7B8), linearColor(0xFFCB8E), u.uWarmth), pow(max(cA, 0.0), 6.0));
     const prism = phSpectral(clamp(xG.add(0.01).div(0.03), 0.0, 1.0));
-    const tint = mix(warm, prism, ringWide.mul(u.uPrism.mul(0.5).add(0.5)));
+    // Single crystals refract: a flash carries a little of its own spectral hue.
+    const own = mix(warm, phSpectral(kind.z), flash.mul(0.3));
+    const tint = mix(own, prism, ringWide.mul(u.uPrism.mul(0.5).add(0.5)));
     material.colorNode = vertexStage(tint.mul(bright)).mul(starProfile());
     material.opacityNode = float(1.0);
     return material;

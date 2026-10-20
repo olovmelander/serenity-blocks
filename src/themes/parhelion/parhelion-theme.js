@@ -38,7 +38,7 @@ import {
     CAMERA_FAR,
     CAMERA_NEAR,
     E,
-    VFOV_DEG,
+    vfovDeg,
 } from '../../playground/effects/parhelion-composition.js';
 import { create as createParhelionScene } from '../../playground/effects/parhelion.effect.js';
 import { ParhelionBoardRects } from './composition/parhelion-board-rects.js';
@@ -229,7 +229,7 @@ export default class ParhelionTheme extends BaseTheme {
         const width = Math.max(1, viewport.width || 1);
         const height = Math.max(1, viewport.height || 1);
         this.scene = new THREE.Scene();
-        this.camera = new THREE.PerspectiveCamera(VFOV_DEG, width / height, CAMERA_NEAR, CAMERA_FAR);
+        this.camera = new THREE.PerspectiveCamera(vfovDeg(width / height), width / height, CAMERA_NEAR, CAMERA_FAR);
         this.camera.position.set(CAM_REST.x, CAM_REST.y, CAM_REST.z);
         this.camera.rotation.order = 'YXZ';
         this.camera.rotation.set(E, 0, 0);

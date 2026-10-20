@@ -39,7 +39,6 @@ import {
     R22,
     S,
     STATION_COUNT,
-    TAN_V,
     U,
     cardFromBoard,
     dirToScreen,
@@ -51,6 +50,7 @@ import {
     screenToWorld55,
     stationPhi,
     tanH,
+    tanV,
     writePillarPlaces,
 } from '../../../playground/effects/parhelion-composition.js';
 import { CUE, PARHELION_PLAYER_SLOTS, PARHELION_REDUCED_MOTION_INTENSITY } from './parhelion-reaction-director.js';
@@ -186,6 +186,8 @@ export const PARHELION_AMBIENT = Object.freeze({
 const RM_MOTES = 0.35;
 const RM_LIFE = 0.6;
 const RM_STATION_AMP = 0.12;
+/** A lock's ring station ("Halo Count"), full motion. */
+const LOCK_STATION_AMP = 0.45;
 
 // Channel indices: one envelope pool each.
 const CH_HALO = 0;
@@ -368,11 +370,11 @@ export function hushIntegral(x) {
 
 /**
  * Pillar uv.y (0 ground, 1 top at PILLAR.HEIGHT) of the point on a pillar at world depth
- * `worldZ` that projects to screen height `sy` (y-down) through the rest camera. Screen y
+ * `worldZ` that projects to screen height `sy` (y-down) through the rest camera at `aspect`. Screen y
  * does not depend on world x (R = +x), so one formula serves every lane.
  */
-export function screenYToPillarV(sy, worldZ) {
-    const k = (1 - 2 * sy) * TAN_V;
+export function screenYToPillarV(sy, worldZ, aspect = 16 / 9) {
+    const k = (1 - 2 * sy) * tanV(aspect);
     const dz = worldZ - CAM_REST.z;
     const dh = (dz * (k * S.z - U.z)) / (U.y - k * S.y);
     return (CAM_REST.y + dh) / PILLAR.HEIGHT;
@@ -960,13 +962,15 @@ export class ParhelionOpticsState {
             return;
         }
         const phi = stationPhi(this._stationIndex(c.lockCount));
-        const amp = rm ? RM_STATION_AMP * clamp01(s / PARHELION_REDUCED_MOTION_INTENSITY) : 0.18 * s;
+        // A clear white-gold glint stepping round the ring like a clock hand: the most frequent
+        // beat, so it stays well under any clear, but it must read at a glance.
+        const amp = rm ? RM_STATION_AMP * clamp01(s / PARHELION_REDUCED_MOTION_INTENSITY) : LOCK_STATION_AMP * s;
         this._station(t, phi, amp, geo.player);
         if (rm) return;
         dirToScreen(ringDir(phi, this.dir), this.aspect, this.screen);
-        const b = this._prepBurst(geo.player, t, 3, 0.55, 0.5, BURST_MODE.RADIAL);
+        const b = this._prepBurst(geo.player, t, 5, 0.65, 0.5, BURST_MODE.RADIAL);
         b.strength = s;
-        b.sizePx = 3.5;
+        b.sizePx = 4.5;
         this._emitBurst(this.screen.x, this.screen.y);
     }
 
@@ -1186,8 +1190,8 @@ export class ParhelionOpticsState {
         const height = rect.y1 - rect.y0;
         geo.rowY = rect.y0 + geo.rowV * height;
         geo.lockY = rect.y0 + geo.lockV * height;
-        geo.phiRow = rowToPhi(geo.rowV, rect);
-        geo.phiLock = rowToPhi(geo.lockV, rect);
+        geo.phiRow = rowToPhi(geo.rowV, rect, this.aspect);
+        geo.phiLock = rowToPhi(geo.lockV, rect, this.aspect);
         if (this.multiBoard) {
             geo.laneL = clamp(rect.x0 - MP_LANE_GAP, 0.03, 0.97);
             geo.laneR = clamp(rect.x1 + MP_LANE_GAP, 0.03, 0.97);
@@ -1209,7 +1213,7 @@ export class ParhelionOpticsState {
         this.stationToggle ^= 1;
         this._arc(slot, player, t, amp, STATION_WIDTH, ARC_MODE.WHITE);
         this._arcMotion(slot, phi, phi, 0, EASE_LINEAR);
-        this._arcEnvelope(slot, 0.06, 0.12, 0.22);
+        this._arcEnvelope(slot, 0.06, 0.18, 0.32);
     }
 
     /** A mirrored bead pair climbing from the row's ring angle to the top (static under RM). */
@@ -1412,7 +1416,7 @@ export class ParhelionOpticsState {
     /** Where the pillar's light knot starts: the row's screen height on that lane (RM: no climb). */
     _beadStartV(lane, rowY, rm) {
         if (rm) return PILLAR_BEAD_END;
-        return clamp01(screenYToPillarV(rowY, this.out.pillarPlace[lane * 4 + 1]));
+        return clamp01(screenYToPillarV(rowY, this.out.pillarPlace[lane * 4 + 1], this.aspect));
     }
 
     /** Writes a pillar lane; a stronger pillar still standing at `birth` is kept. */
