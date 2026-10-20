@@ -20,12 +20,36 @@ function expectClearDisk(layout, width, height, rects = []) {
 
 describe('Blood Moon composition', () => {
     it('places the wide hero at the upper left and the portrait hero at the upper right', () => {
-        expect(resolveBloodMoonLayout(1920, 1080)).toEqual({ x: 0.235, y: 0.62, radius: 0.23 });
+        expect(resolveBloodMoonLayout(1920, 1080)).toEqual({
+            x: 0.22, y: 0.7, radius: 0.15, horizon: 0.34,
+        });
         const portrait = resolveBloodMoonLayout(600, 900);
         expect(portrait.x).toBeCloseTo(0.72);
-        expect(portrait.y).toBeCloseTo(0.82);
-        expect(portrait.radius).toBeCloseTo(0.14);
+        expect(portrait.y).toBeCloseTo(0.83);
+        expect(portrait.radius).toBeCloseTo(0.11);
+        expect(portrait.horizon).toBeCloseTo(0.45);
         expectClearDisk(portrait, 600, 900);
+    });
+
+    it('always keeps the moon clear above the horizon of the salt flat', () => {
+        const cases = [
+            [1920, 1080, []],
+            [600, 900, []],
+            [320, 1440, []],
+            [3440, 1440, []],
+            [1920, 1080, [{
+                left: 150, top: 250, right: 720, bottom: 1050,
+            }, {
+                left: 1000, top: 250, right: 1570, bottom: 1050,
+            }]],
+            [600, 900, [{
+                left: 160, top: 170, right: 520, bottom: 840,
+            }]],
+        ];
+        for (const [width, height, rects] of cases) {
+            const layout = resolveBloodMoonLayout(width, height, rects);
+            expect(layout.y - layout.radius, `${width}x${height}`).toBeGreaterThanOrEqual(layout.horizon + 0.05 - 1e-9);
+        }
     });
 
     const viewportSizes = [[320, 1440], [720, 800], [1024, 768], [3440, 1440]];
@@ -38,8 +62,8 @@ describe('Blood Moon composition', () => {
             left: 750, top: 140, right: 1170, bottom: 1000,
         }];
         const layout = resolveBloodMoonLayout(1920, 1080, rects);
-        expect(layout.x).toBeCloseTo(0.235);
-        expect(layout.radius).toBeCloseTo(0.23);
+        expect(layout.x).toBeCloseTo(0.22);
+        expect(layout.radius).toBeCloseTo(0.15);
         expectClearDisk(layout, 1920, 1080, rects);
     });
 
@@ -88,7 +112,7 @@ describe('Blood Moon composition', () => {
         expect(BLOOD_MOON_TIERS.Minimal.surfaceSize).toBe(512);
         expect(BLOOD_MOON_TIERS.Extreme.surfaceSize).toBe(2048);
         for (let i = 1; i < tiers.length; i++) {
-            for (const key of ['stars', 'motes', 'sparks', 'surfaceSize']) {
+            for (const key of ['starLayers', 'cellReach', 'ripples', 'sparks', 'surfaceSize']) {
                 expect(tiers[i][key]).toBeGreaterThanOrEqual(tiers[i - 1][key]);
             }
         }

@@ -2713,7 +2713,7 @@ const BASE_LEVEL_CONFIGS = [
         },
 
         metadata: {
-            description: 'A blood-red moon hangs over the void. Keep your chains composed beneath its crimson light.',
+            description: 'A blood-red moon hangs over a mirror of salt. Keep your chains composed beneath its crimson light.',
             difficulty: 9,
             tip: 'Look beneath the top layer for the next cascade opportunity.',
         },
