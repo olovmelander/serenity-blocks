@@ -231,6 +231,46 @@ captured in an 813 × 813 window (the largest square this laptop's screen allows
 brightness 1.08) and baked as a 512 px circle on a transparent ground. The same file is kept at
 `public/assets/themes/galaxy-theme-icon.png`.
 
+## Depths pass (2026-10-20)
+
+A second visual pass on `feature/galaxy-depths`. Evidence:
+[reports/galaxy-depths/](../reports/galaxy-depths/).
+
+| Before | After (High, WebGPU) |
+| --- | --- |
+| ![before](../reports/galaxy-depths/before-rest.jpg) | ![after](../reports/galaxy-depths/after-rest.jpg) |
+| ![before, near arm](../reports/galaxy-depths/before-arm-closeup.jpg) | ![after, near arm](../reports/galaxy-depths/after-arm-closeup.jpg) |
+
+- **Star-forming knots.** The nurseries' glow was thresholded noise and read as flat pink
+  flakes with hard edges. Two hashed lattices in the galaxy's own frame (cells 4.6 and 2.3 units;
+  42 % and 32 % of cells hold a knot) now give each knot a hot heart and a soft halo, read once per
+  pixel where the ray meets the midplane (`grainAt`). The arm's trailing-edge profile in
+  `sampleAt` decides which show, so they string along each arm and turn with the pattern; the
+  arm's own clumps gather them into complexes. A halo fades to nothing inside its own cell (a halo
+  cut by a cell edge drew straight lines), the heart burns near white while the halo keeps the
+  nursery's colour, and a knot smaller than a pixel settles to its lattice's mean. The noise glow
+  stays as a faint diffuse term (30 %).
+- **Dust lanes.** The lane profile is narrower (the fourth power of the arm's lane cosine, not
+  the second) and the dust stronger (`DUST_GAIN` 0.6 → 1.0): fine brown lanes curl round the bulge
+  and along the arms' inner edges.
+- **A smooth bulge.** Faint bulge and halo suns keep a quarter of their light and faint old-disc
+  suns 60 % (their light is unresolved, and the bulge's spheroid already draws it); bright ones
+  and every arm sun are unchanged. The bulge reads as a glow with a few bright stars, not grain.
+- **Darker space.** The sky's everywhere-breath of nebula colour is 0.004 (was 0.01), the cloud
+  band's body is about half (its filaments a little stronger), and the grade's shadow lift is
+  under half.
+- **The thin disc (Low, Minimal).** Light born inside the dust escapes as (1 − e^−τ)/τ, the slab
+  solution, instead of e^(−τ/2): under thick dust it falls as 1/τ, so a lane is a translucent
+  shadow. The old law drew the lanes as a black, cracked network on the low tiers (visible in the
+  tier capture above, before this pass). τ is floored before both uses, so dust-free gas escapes
+  whole.
+
+Verified: the 152 Galaxy tests; lint clean on the theme; playground captures with clean consoles
+on WebGPU (High at rest, ten locks held, the four-line eruption, the emerald palette, an upright
+430 × 850 frame, Minimal) and on the WebGL2 backend (Low). Cost unchanged: 120 frames awaited on
+the GPU queue at 1600 × 900, High, WebGPU (NVIDIA Blackwell), 1.4–1.7 ms a frame against main's
+1.4–1.7 ms in the same session.
+
 ## Captured previews
 
 ![Portrait: at rest and a four-line clear](galaxy-captures/portrait.jpg)
