@@ -12,6 +12,7 @@ import {
     CHAPTER_5_SHOTS,
     OdysseyCameraController,
     resolveChapterFramingForProgress,
+    resolveJourneyFraming,
 } from '../../src/rendering/odyssey/OdysseyCameraController.js';
 import { getLevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
 import { getOdysseyPathCurve } from '../../src/rendering/odyssey/path-utils.js';
@@ -44,10 +45,12 @@ function createRig() {
 }
 
 /** The settled chapter-5 view at a global progress: a camera posed like the in-game one. */
-function viewAt(rig, progress) {
+function viewAt(rig, progress, journey = false) {
     const cp = rig.layout.chapterPositions;
     const t = THREE.MathUtils.clamp((progress - cp[4]) / (cp[5] - cp[4]), 0, 1);
-    const framing = resolveChapterFramingForProgress(5, t);
+    // `journey`: the seam-blended framing the game uses inside a seam window (L27 sits on the
+    // 4->5 boundary, where chapter 4's exit and chapter 5's entry framings are blended).
+    const framing = journey ? resolveJourneyFraming(progress, cp) : resolveChapterFramingForProgress(5, t);
     rig.controller._activeFraming = framing;
     const frame = rig.controller.computeFollowFrame(progress);
     const cam = new THREE.PerspectiveCamera(BEYOND.fovBase + framing.fovOffset, 16 / 9, 0.1, 40000);
@@ -131,16 +134,33 @@ describe('Odyssey chapter 5 climb framing (real camera + real spline)', () => {
         expect(Math.abs(viewAt(rig, station(33)).pitchDeg)).toBeLessThan(8);
     });
 
-    it('leaves the lift-off and the 5->6 hand-off poses exactly as they were', () => {
-        const firstIn = Math.min(...Object.values(CHAPTER_5_SHOTS).map((shot) => shot.in[0]));
-        const lastOut = Math.max(...Object.values(CHAPTER_5_SHOTS).map((shot) => shot.out[1]));
+    it('leaves the 5->6 hand-off pose exactly as it was, and the climb shots after the face shot', () => {
+        // The face shot (2026-10-20, below) owns the lift-off; every other shot keeps its window.
+        const climb = Object.entries(CHAPTER_5_SHOTS).filter(([name]) => name !== 'face').map(([, s]) => s);
+        const firstIn = Math.min(...climb.map((shot) => shot.in[0]));
+        const lastOut = Math.max(...climb.map((shot) => shot.out[1]));
         expect(firstIn).toBeGreaterThanOrEqual(0.15);
         expect(lastOut).toBeLessThanOrEqual(0.9);
-        [0, 0.05, 0.1, firstIn, lastOut, 0.95, 1].forEach((t) => {
+        expect(CHAPTER_5_SHOTS.face.out[1]).toBeLessThanOrEqual(0.12);
+        [0.12, firstIn, lastOut, 0.95, 1].forEach((t) => {
             const framing = resolveChapterFramingForProgress(5, t);
             expect(framing.pitchDeg, `pitch @t=${t}`).toBeCloseTo(0, 9);
             expect(framing.yawDeg, `yaw @t=${t}`).toBeCloseTo(0, 9);
             expect(framing.fovOffset, `fov @t=${t}`).toBeCloseTo(0, 9);
         });
+    });
+
+    it('looks at the face, not the empty sky, at lift-off (L27 on the 4->5 boundary)', () => {
+        // Before 2026-10-20 the entry framing pitched ~60 deg up the near-vertical rail: the summit
+        // sat in the bottom third under a frame of empty sky.
+        const view = viewAt(rig, station(27), true);
+        expect(view.pitchDeg).toBeLessThan(50);
+        expect(view.pitchDeg).toBeGreaterThan(25);
+        const summit = view.project(heroSummit());
+        expect(summit.behind).toBe(false);
+        expect(summit.y, `summit ndcY ${summit.y.toFixed(2)}`).toBeGreaterThan(-0.15);
+        // ...and the orb underfoot stays on screen.
+        const node = view.project(rig.curve.getPointAt(station(27)));
+        expect(node.y, `node ndcY ${node.y.toFixed(2)}`).toBeLessThan(0.85);
     });
 });
