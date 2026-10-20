@@ -251,6 +251,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.scene = null;
         this.camera = null;
         this.world = null;
+        this.spectrumCarry = null; // the spectrum a device-loss rebuild continues from
         this.postProcessing = null;
         this.animationFrameId = null;
         this.loopGeneration = 0;
@@ -832,6 +833,9 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             // Dispose while the context is still lost (GL deletes are no-ops then; after a
             // restore they would hit a context that does not own the objects).
             const lostCanvas = this.renderer?.domElement;
+            // The rebuilt world continues the spectrum from here (level and place), so a lost
+            // device never turns the colours back to the first movement.
+            this.spectrumCarry = this.world?.getSpectrumState() ?? this.spectrumCarry ?? null;
             this.disposeRuntimeResources({ removeCanvas: true });
             if (lostWebGL) {
                 await waitForContextRestored(lostCanvas, 1500);
@@ -1572,6 +1576,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 drawCalls: this.lastFrameDrawCalls ?? null,
                 budget: this.getBudgetSnapshot(),
                 composition: this.world?.composition.getDiagnostics() ?? null,
+                spectrum: this.world?.getSpectrumDiagnostics() ?? null,
             }),
             composition: () => this.world?.composition.getDiagnostics() ?? null,
         };
@@ -1627,6 +1632,10 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.world.setLayout(window.innerWidth / Math.max(1, window.innerHeight), null, {
             width: window.innerWidth, height: window.innerHeight,
         });
+        if (this.spectrumCarry) {
+            this.world.restoreSpectrumState(this.spectrumCarry);
+            this.spectrumCarry = null;
+        }
 
         this.setupPostProcessing();
         this.resize(window.innerWidth, window.innerHeight);
@@ -2178,7 +2187,18 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.removeBaselineHelpers();
         this.disposeRuntimeResources({ removeCanvas: true });
         this.deviceLossRecoveryInProgress = false;
+        this.spectrumCarry = null;
         super.stop();
+    }
+
+    /** Runtime diagnostics: backend, tier, clock and the spectrum (movement, rings on screen). */
+    getDiagnostics() {
+        return {
+            quality: this.activeQualityLevel,
+            backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
+            time: this.time,
+            world: this.world ? { spectrum: this.world.getSpectrumDiagnostics() } : null,
+        };
     }
 
     cleanup() {

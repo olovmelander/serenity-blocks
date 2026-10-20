@@ -121,6 +121,9 @@ Not a theme. These are the patterns survey 1 found already used heavily across t
 - Fully procedural except forest, fall, summer and sakura, which use Blender-grown GLB packs.
 - Exception: wolfhour (classic `EffectComposer`, GLSL `ShaderMaterial`, compute).
 
+### Names from other people's fiction (gate)
+A theme may evoke a setting; it may not name one. No world, creature, substance or device names from a third-party franchise anywhere in the tree: code, identifiers, comments, tests, docs, this catalogue. `npm run check:ip-strings` (`scripts/ip-string-gate.mjs`, class B) scans every tracked text file and fails on them. Precedent: Shifting Sands, 2026-10-20, where the planet, the worm, the substance and the device all carried another franchise's names in comments and docs while the player-facing copy was clean. The public repo made those comments the exposure.
+
 ### Piece palette gate
 `npm run check:palette` (`scripts/palette-guideline-check.mjs`) screens the first hue of each shape against the Guideline bands: I cyan 160–210°, O yellow 32–75°, T purple 245–315°, S green 90–170°, Z red 320–20°, J blue 200–250°, L orange 20–50°. **It FAILS at 7/7 and WARNS at 6/7.** Summer and Ocean deliberately score 0/7.
 
@@ -749,22 +752,22 @@ Status split:
 
 <a id="shifting-sands"></a>
 
-### 27. Shifting Sands (`shifting-sands`) — "Arrakis at the twin-sun dusk"
+### 27. Shifting Sands (`shifting-sands`) — "twin-sun dusk over the dune sea"
 
 - Registry `:192-197`, group `biomes`. 12 modules. Doc `docs/SHIFTING_SANDS_VISUAL_OVERHAUL_2026-10.md`.
 - **Icon / capture**: apricot-orange dusk desert, a dark sandworm arch silhouetted against a low sun, second sun
-  above, dune slip faces, sandstone mesas/butte right, two pale crescent moons, cirrus streaks, spice motes.
+  above, dune slip faces, sandstone mesas/butte right, two pale crescent moons, cirrus streaks, gold motes.
 - **Setting / time**: twin-sun dusk on a dune sea (barchanoid ridges, 34° slip faces); suns low left (ember gold Ø3.5°,
-  white gold Ø1.4°); "the Sentinel" butte with spires right; Shield Wall escarpment on the horizon.
+  white gold Ø1.4°); "the Sentinel" butte with spires right; Rampart escarpment on the horizon.
 - **Palette**: apricot horizon → dusty rose → violet → deep blue zenith; sand ochre/peach with violet shadows;
   coloured double shadows. Pieces (`shifting-sands-tetrominos.js:15-22`): I `#ffd06a`, O `#c9a0ff`, T `#7fffb8`, S
   `#ff9070`, Z `#8090ff`, J `#ffb855`, L `#7ec8ff`.
-- **Key motifs**: dunes, sandworm (Shai-Hulud) breach, spice blows (geysers), spindrift, sand glitter, mesas, twin suns,
+- **Key motifs**: dunes, sandworm breach, dust geysers (geysers), spindrift, sand glitter, mesas, twin suns,
   moons, heat haze, crepuscular shafts.
-- **Motion**: worm breach cycle every 52 s, blowing sand sheets, spice motes, heat shimmer.
-- **Gameplay FX**: lock = "thumper beat" golden ring of lifted sand across the erg; combo ≥2 = spice glows, wind rises;
-  clear = n spice blows in side zones + gust + sun flare; four lines = worm summoned (sign races in, tremor, great spice
-  blow, worm rears); level = dusk deepens, suns sink.
+- **Motion**: worm breach cycle every 52 s, blowing sand sheets, gold motes, heat shimmer.
+- **Gameplay FX**: lock = "drum beat" golden ring of lifted sand across the erg; combo ≥2 = gold glows, wind rises;
+  clear = n dust geysers in side zones + gust + sun flare; four lines = worm summoned (sign races in, tremor, great dust
+  geyser, worm rears); level = dusk deepens, suns sink.
 - **Tech**: polar-grid CPU bake with horizon tangents for twin-sun shadows, per-pixel exact ridge slopes, vertex-animated
   worm tube, occluded crepuscular shafts in post, "desert filmic" tone map.
 - **Avoid reusing**: dunes/sand, orange-apricot dusk desert, twin suns, mesas, a giant creature breaching, geysers of
@@ -877,7 +880,7 @@ The new theme should break these, not repeat them:
 7. **Level = palette wheel + clock drift 90–100 s per step.** Koi (6 nights), Geode (6 minerals), Bioluminescence
    (5), Serenity Warp (6), Starlight (6 hours), Waves (6 hours), Galaxy/Aether (5 palettes on level), Kaleidosonic
    (6 moods).
-8. **Fireflies / floating motes / bokeh.** Golden Forest, Koi, Bioluminescence (spores), Shifting Sands (spice
+8. **Fireflies / floating motes / bokeh.** Golden Forest, Koi, Bioluminescence (spores), Shifting Sands (gold
    motes).
 9. **Night or darkness as the base.** Galaxy, Aether, Serenity Warp, Starlight, Koi, Bioluminescence, Luminous Tides,
    Kaleidosonic, Geode (interior). Only Verdant Hills (midday), Golden Forest and Waves (golden hour), Shifting Sands
@@ -1519,28 +1522,29 @@ Registry entries are in `src/themes/theme-registry.js:325-428`. The groups are: 
 
 ### 53. chromadelic-highway ("Chromadelic Highway")
 
-- **Files.** Docs `docs/CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md` and `CHROMADELIC_HIGHWAY_ART_DIRECTION.md`. Captures in `reports/chromadelic-highway-overhaul/`.
+- **Files.** Docs `docs/CHROMADELIC_HIGHWAY_VISUAL_OVERHAUL_2026-09.md`, the spectrum pass `docs/CHROMADELIC_HIGHWAY_SPECTRUM_2026-10.md` and `CHROMADELIC_HIGHWAY_ART_DIRECTION.md`. Captures in `reports/chromadelic-highway-overhaul/` and `reports/chromadelic-highway-spectrum/`.
 - **Icon.** Concentric neon rings (yellow, green, orange, cyan) form a tunnel over a candy-striped pink, green and cyan road, with cartoon planets in a black starfield.
 - **Look.** "The board is the sun." A stained-glass ROYGBIV highway runs into the vanishing point behind the card.
-  - A huge magenta neon ring arch.
+  - Neon ring arches of any colour, in eleven forms: tube, double line, spinning dashes, beads, hexagon and octagon gates, prism arcs (the whole spectrum foot to foot).
   - A rainbow-banded hero gas giant on the left; a ringed teal ice giant on the right.
-  - A violet nebula sky, speed streaks, rail light curtains (pink and violet).
+  - The air takes the rings' colours: a coloured haze around each ring, a luminous horizon mist, ring-lit dust.
+  - A nebula sky turned per movement, speed streaks, rail light curtains (pink and violet).
 - **Palette.**
-  - Sky `#080516` to `#160A2C`.
-  - Rings on a 16-step palette (cyan, violet, azure, magenta).
+  - Sky `#080516` to `#160A2C`; the nebula turns per movement (rose for ember, teal-blue for tide).
+  - Rings take any hue, in six 90 s movements: prism (a rainbow every seven rings), orchid, ember, triad, chord (complementary pairs), tide.
   - Pieces (`chromadelic-highway-tetrominos.js:19-26`): I `#ff1493`, O `#ff8c00`, T `#ffea00`, S `#00ff80`, Z `#00f5ff`, J `#4d90fe`, L `#bf40ff`, GARBAGE `#2a2a45`.
-- **Motion.** One travel clock; rings emerge at the card edge and sweep outward; streaks; a moon orbit; meteors.
-- **Gameplay FX** (doc §5). Light waves run down the lanes toward the player.
+- **Motion.** One travel clock; rings take their style just before they clear the card edge, flare as they come out, keep it for their flight, and sweep outward; the spectrum drifts with the road (a movement every ~90 s at level 1) and steps one movement per level-up; streaks; a moon orbit; meteors.
+- **Gameplay FX** (spectrum doc §4). Light waves run down the lanes toward the player.
 
   | Event | Response |
   | --- | --- |
-  | Lock | A cyan band. |
-  | Combo | A band climbing magenta to azure; meteors and a comet. |
-  | Clear | Orange bands, star twinkle, storm flashes on the planet. |
-  | Four lines | Bands, a white-hot ring cascade, a streak warp, an FOV surge. |
-  | Level up | The ring palette rotates +30°. |
-- **Tech.** Analytic planet impostors (one quad each), screen-space calm zone, Khronos Neutral "neon-neutral" tone map, max-channel bloom, a layout-aware composition solver, an adaptive scaler.
-- **Avoid reusing.** Rainbow roads, neon ring tunnels, speed streaks, cartoon planets, a travel-into-a-vanishing-point layout.
+  | Lock | A band in the newest ring's colour. |
+  | Combo | A band climbing the wheel from that colour; the rings' light packets race; meteors and a comet. |
+  | Clear | Bands, chase lights filling every arch from its feet to its crown (one front per line), star twinkle, storm flashes on the planet. |
+  | Four lines | Bands, a prism cascade turning every arch into the spectrum, a streak warp, an FOV surge; the next three rings out are prism arcs. |
+  | Level up | The spectrum steps to the next movement; a cascade in its first colour repaints every ring it passes, board to lens. |
+- **Tech.** Ring style slots (J mod 16) locked by the CPU; polygon gates in the vertex stage; a ring-air draw; a hue-vector air colour; analytic planet impostors (one quad each), screen-space calm zone, Khronos Neutral "neon-neutral" tone map, max-channel bloom, a layout-aware composition solver, an adaptive scaler.
+- **Avoid reusing.** Rainbow roads, neon ring tunnels and gate forms, prism arcs, chase lights climbing arches, speed streaks, cartoon planets, a travel-into-a-vanishing-point layout.
 
 <a id="stillwater"></a>
 
