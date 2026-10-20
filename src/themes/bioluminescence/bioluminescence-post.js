@@ -19,23 +19,31 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     If,
+    Loop,
     abs,
+    atan,
     clamp,
+    dot,
     exp,
     float,
     floor,
+    getViewPosition,
+    int,
     length,
     max,
     min,
     mix,
     pass,
     renderOutput,
+    sin,
+    sqrt,
     screenCoordinate,
     screenUV,
     select,
     smoothstep,
     step,
     uniform,
+    uniformArray,
     uv,
     vec2,
     vec3,
@@ -45,6 +53,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { blHash21, blLuma, blMax3 } from './bioluminescence-tsl.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+import { EMITTER_MAX } from './bioluminescence-core.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no shafts). `shafts` is a tap count
@@ -52,22 +61,22 @@ import { flashScale } from '../../utils/photosensitivity.js';
  */
 export const POST_LOOK = Object.freeze({
     Extreme: {
-        bloom: true, bloomStrength: 0.8, bloomResolution: 0.5, shafts: 14, fringe: true, msaa: 4,
+        bloom: true, bloomStrength: 0.8, bloomResolution: 0.5, shafts: 14, fringe: true, msaa: 4, capLight: true,
     },
     Ultra: {
-        bloom: true, bloomStrength: 0.8, bloomResolution: 0.5, shafts: 12, fringe: true, msaa: 4,
+        bloom: true, bloomStrength: 0.8, bloomResolution: 0.5, shafts: 12, fringe: true, msaa: 4, capLight: true,
     },
     High: {
-        bloom: true, bloomStrength: 0.78, bloomResolution: 0.45, shafts: 10, fringe: true, msaa: 4,
+        bloom: true, bloomStrength: 0.78, bloomResolution: 0.45, shafts: 10, fringe: true, msaa: 4, capLight: true,
     },
     Medium: {
-        bloom: true, bloomStrength: 0.72, bloomResolution: 0.33, shafts: 6, fringe: false, msaa: 0,
+        bloom: true, bloomStrength: 0.72, bloomResolution: 0.33, shafts: 6, fringe: false, msaa: 0, capLight: true,
     },
     Low: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: 0, fringe: false, msaa: 0,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: 0, fringe: false, msaa: 0, capLight: false,
     },
     Minimal: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: 0, fringe: false, msaa: 0,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: 0, fringe: false, msaa: 0, capLight: false,
     },
 });
 
@@ -75,6 +84,9 @@ export const BLOOM_THRESHOLD = 0.9;
 export const BLOOM_KNEE = 0.5;
 export const BLOOM_RADIUS = 0.72;
 export const EXPOSURE = 1.0;
+
+/** Light falling from the great caps: the strength per unit of a lamp's colour × gain × metre. */
+export const CAP_LIGHT_GAIN = 0.0011;
 
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
@@ -168,6 +180,62 @@ export class BioluminescencePost {
         const falseColor = params.falseColor === true;
         const shaftTaps = this.bloomNode ? look.shafts : 0;
 
+        // ── Light falling from the great caps ──
+        // Each cap's lamp row carries the width of the light it lets fall (0: none, as for the
+        // elder and the crystals). Along the view ray that light is a soft column under the cap,
+        // widening and fading toward the water and streaked by falling spores; the scene's depth
+        // cuts it wherever something stands in front.
+        this.camera = camera;
+        this.capRows = Array.from({ length: EMITTER_MAX * 2 }, () => new THREE.Vector4(0, -1000, 0, 1));
+        this.uCapRows = uniformArray(this.capRows, 'vec4');
+        this.uCapCount = uniform(0, 'int');
+        this.uEye = uniform(new THREE.Vector3());
+        this.uProjInv = uniform(camera.projectionMatrixInverse);
+        this.uCamWorld = uniform(camera.matrixWorld);
+        const sceneDepth = look.capLight ? this.scenePass.getTextureNode('depth') : null;
+        const capLight = (st) => {
+            const depth = sceneDepth.sample(st).r;
+            const view = getViewPosition(st, depth, this.uProjInv);
+            const ray = this.uCamWorld.mul(vec4(view, 1.0)).xyz.sub(this.uEye);
+            const dist = length(ray).toVar();
+            const dir = ray.div(max(dist, 1e-4)).toVar();
+            const sum = vec3(0.0).toVar();
+            Loop({
+                start: int(0), end: this.uCapCount, type: 'int', condition: '<', name: 'cap',
+            }, ({ cap }) => {
+                const a = this.uCapRows.element(cap.mul(2));
+                const c = this.uCapRows.element(cap.mul(2).add(1));
+                If(c.w.greaterThan(0.0), () => {
+                    const top = a.y.toVar();
+                    const off = this.uEye.xz.sub(vec2(a.x, a.z)).toVar();
+                    const dxz = dir.xz.toVar();
+                    const dd = max(dot(dxz, dxz), 1e-4).toVar();
+                    // Where the ray passes closest to the column's axis.
+                    const tRaw = dot(off, dxz).negate().div(dd).toVar();
+                    const tc = max(tRaw, 0.0).toVar();
+                    const yc = this.uEye.y.add(dir.y.mul(tc)).toVar();
+                    const below = max(top.sub(yc), 0.0).toVar();
+                    const w = c.w.mul(below.div(max(top, 1.0)).mul(0.45).add(1.0)).toVar();
+                    const at = off.add(dxz.mul(tc)).toVar();
+                    const across = exp(dot(at, at).div(w.mul(w)).negate());
+                    const inY = smoothstep(0.0, 1.0, top.sub(yc)).mul(smoothstep(-0.1, 1.2, yc))
+                        .mul(exp(below.div(max(top, 1.0)).mul(-0.9)));
+                    const path = min(w.mul(1.77).div(sqrt(dd)), w.mul(6.0));
+                    // Only the air in front of what the pixel shows: a stem inside the light is not lit by it.
+                    const span = w.div(sqrt(dd)).mul(1.2);
+                    const front = clamp(dist.sub(tRaw.sub(span)).div(span.mul(2.0)), 0.0, 1.0);
+                    // The gills' lines fall as striations, and the light sinks in slow pulses of spores.
+                    const around = atan(at.y, at.x);
+                    const lines = sin(around.mul(14.0).add(float(cap).mul(1.7))).mul(0.5).add(0.5);
+                    const striae = lines.mul(lines).mul(lines);
+                    const sink = sin(yc.mul(0.9).add(this.uTime.mul(1.1)).add(around.mul(1.3))).mul(0.5).add(0.5);
+                    const grain = striae.mul(0.6).add(sink.mul(0.4)).mul(0.75).add(0.25);
+                    sum.addAssign(c.rgb.mul(across.mul(inY).mul(path).mul(front).mul(grain)));
+                });
+            });
+            return sum.mul(CAP_LIGHT_GAIN);
+        };
+
         const outputFn = Fn(() => {
             const st = screenUV;
             const px = st.mul(this.uViewport);
@@ -227,6 +295,7 @@ export class BioluminescencePost {
                 }
                 glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
             }
+            if (sceneDepth) glare.addAssign(capLight(st).mul(float(1.0).sub(calm.mul(0.86))));
             const H = S.add(glare);
 
             // ── Tone map + grade ──
@@ -235,7 +304,7 @@ export class BioluminescencePost {
             const L = blLuma(T);
             // Deep teal, slightly lifted shadows (damp air in the lens); the lights keep their hues.
             const lo = float(1.0).sub(smoothstep(0.0, 0.3, L));
-            T.assign(mix(T, T.mul(vec3(0.86, 1.02, 1.1)).add(vec3(0.0004, 0.0026, 0.0034)), lo.mul(0.6)));
+            T.assign(mix(T, T.mul(vec3(0.84, 1.0, 1.08)).add(vec3(0.0002, 0.0011, 0.0015)), lo.mul(0.6)));
             T.assign(mix(vec3(blLuma(T)), T, 1.12));
             // Vignette, measured from the frame, a touch heavier in the corners.
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
@@ -275,9 +344,14 @@ export class BioluminescencePost {
 
     /** Per-frame values (all optional). */
     update({
-        heart, flash, kick, bloomBoost, exposure, shafts, time,
+        heart, flash, kick, bloomBoost, exposure, shafts, time, lamps,
     } = {}) {
         if (heart) this.uHeart.value.set(heart.x, heart.y);
+        if (lamps) {
+            const n = Math.min(lamps.length, this.capRows.length);
+            for (let i = 0; i < n; i++) this.capRows[i].copy(lamps[i]);
+            this.uCapCount.value = n >> 1;
+        }
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
@@ -308,6 +382,7 @@ export class BioluminescencePost {
     }
 
     render() {
+        this.uEye.value.setFromMatrixPosition(this.camera.matrixWorld);
         this.pipeline.render();
     }
 
