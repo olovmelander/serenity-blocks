@@ -20,7 +20,8 @@ import { flashScale } from '../../utils/photosensitivity.js';
 export const RIPPLE_SLOTS = 4;
 
 const EXPOSURE = 1.0;
-const BLOOM_STRENGTH = 0.24;
+/** Raised from 0.24 with the corona: the gas now has a body worth letting glow. */
+const BLOOM_STRENGTH = 0.3;
 const BLOOM_RADIUS = 0.62;
 const BLOOM_THRESHOLD = 1.0;
 /** Bloom input ceiling on the brightest channel: keeps a white-hot knot from flooding the frame. */

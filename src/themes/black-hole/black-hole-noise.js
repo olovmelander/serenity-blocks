@@ -158,6 +158,66 @@ export function bakeDiskTexture(width = 512, height = 128, seed = 7919) {
     return data;
 }
 
+/** Side of the white-noise lattice the sky's 3D noise is read from. */
+export const LATTICE_SIZE = 256;
+/** The offset between two z-slices of the lattice (the classic 37, 17). */
+export const LATTICE_SLICE = Object.freeze([37, 17]);
+
+/**
+ * White noise for 3D value noise in one fetch, RGBA8: G holds R shifted by one z-slice and A
+ * holds B shifted the same way, so `mix(rb, ga, fz)` read at `xy + SLICE · floor(z)` is the
+ * trilinear blend of two independent fields. The sky reads it along the bent ray's direction:
+ * a 3D field has no poles and no seam, and does not fan out round the Einstein ring the way a
+ * panorama's rows do. Sampled at level 0 with bilinear filtering and repeat wrapping.
+ */
+export function bakeLattice(seed = 9917, size = LATTICE_SIZE) {
+    const random = createRandom(seed);
+    const r = new Uint8Array(size * size);
+    const b = new Uint8Array(size * size);
+    for (let i = 0; i < r.length; i += 1) {
+        r[i] = Math.floor(random() * 256);
+        b[i] = Math.floor(random() * 256);
+    }
+    const data = new Uint8Array(size * size * 4);
+    for (let y = 0; y < size; y += 1) {
+        for (let x = 0; x < size; x += 1) {
+            const i = y * size + x;
+            const j = ((y + LATTICE_SLICE[1]) % size) * size + ((x + LATTICE_SLICE[0]) % size);
+            data[i * 4] = r[i];
+            data[i * 4 + 1] = r[j];
+            data[i * 4 + 2] = b[i];
+            data[i * 4 + 3] = b[j];
+        }
+    }
+    return data;
+}
+
+/** The CPU twin of the lens's `noise3` (both fields), for tests and for tuning thresholds. */
+export function sampleLattice(data, x, y, z, size = LATTICE_SIZE) {
+    const ease = (v) => v * v * (3 - 2 * v);
+    const ix = Math.floor(x);
+    const iy = Math.floor(y);
+    const iz = Math.floor(z);
+    const fx = ease(x - ix);
+    const fy = ease(y - iy);
+    const fz = ease(z - iz);
+    const wrapped = (v) => ((v % size) + size) % size;
+    const read = (cx, cy, cz, channel) => data[(wrapped(cy + LATTICE_SLICE[1] * cz) * size
+        + wrapped(cx + LATTICE_SLICE[0] * cz)) * 4 + channel] / 255;
+    const field = (channel) => {
+        const slice = (cz) => {
+            const a = read(ix, iy, cz, channel);
+            const b = read(ix + 1, iy, cz, channel);
+            const c = read(ix, iy + 1, cz, channel);
+            const d = read(ix + 1, iy + 1, cz, channel);
+            return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
+        };
+        const near = slice(iz);
+        return near + (slice(iz + 1) - near) * fz;
+    };
+    return [field(0), field(2)];
+}
+
 /** Galactic frame, as unit vectors in the sky texture's own axes. */
 const GALACTIC_POLE = [0.0, 1.0, 0.0];
 const GALACTIC_CENTRE = [1.0, 0.0, 0.0];
