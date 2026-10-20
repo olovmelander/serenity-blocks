@@ -8,6 +8,13 @@ holds and is sharpened here.
 Evidence (before/after captures, false-colour view, event beats):
 [reports/chromadelic-highway-overhaul/](../reports/chromadelic-highway-overhaul/).
 
+> **2026-10 spectrum pass:** the rings' palette (§4 "Rings"), the level palette step and the
+> event table (§5) are superseded by
+> [CHROMADELIC_HIGHWAY_SPECTRUM_2026-10.md](CHROMADELIC_HIGHWAY_SPECTRUM_2026-10.md): rings of
+> any colour and eleven forms, six movements that drift with the road and step on level-up, the
+> ring air and horizon mist, chase lights and the prism cascade. Composition, planets, road,
+> post and tiers below still hold.
+
 ## 1. What changed and why
 
 The old theme (5.4k lines, a GLSL `WebGLRenderer` twin, compute particles, a 16-tap post quad)

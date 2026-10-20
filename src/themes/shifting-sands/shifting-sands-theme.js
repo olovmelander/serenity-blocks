@@ -1,13 +1,13 @@
 /**
  * ═══════════════════════════════════════════════════════════════════════════════
- *  SHIFTING SANDS — Arrakis at the twin-sun dusk
+ *  SHIFTING SANDS — twin-sun dusk over the dune sea
  * ═══════════════════════════════════════════════════════════════════════════════
  *
  * The twin suns sink over the far erg on the left; the dune ridges between the camera and the
- * suns burn along their crests, and Shai-Hulud breaches there, a black arch against the light.
+ * suns burn along their crests, and the worm breaches there, a black arch against the light.
  * On the right the Sentinel, a monumental sandstone butte, takes the low sun on its flank under
- * two pale moons. The board is the thumper: every lock sends a ring of lifted sand across the
- * erg, clears blow spice, and a Tetris calls the worm.
+ * two pale moons. The board is the drum: every lock sends a ring of lifted sand across the
+ * erg, clears throw up geysers of dust, and a Tetris calls the worm.
  *
  * Content lives in ShiftingSandsWorld (shifting-sands-world.js), shared with the playground
  * effect src/playground/effects/shifting-sands.effect.js, so what is iterated there ships. This

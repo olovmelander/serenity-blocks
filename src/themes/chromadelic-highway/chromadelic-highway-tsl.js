@@ -13,6 +13,7 @@
 import {
     Fn,
     abs,
+    clamp,
     cos,
     dot,
     exp,
@@ -23,6 +24,7 @@ import {
     max,
     min,
     mix,
+    pow,
     sin,
     smoothstep,
     step,
@@ -134,6 +136,31 @@ export const chdSpectrum = /* @__PURE__ */ Fn(([tIn]) => {
 /** Rec.709 luminance. */
 export const chdLuma = /* @__PURE__ */ Fn(([c]) => dot(c, vec3(0.2126, 0.7152, 0.0722)))
     .setLayout({ name: 'chd_luma', type: 'float', inputs: [{ name: 'c', type: 'vec3' }] });
+
+/**
+ * Smooth fully saturated hue (Quilez's smooth HSV, s = v = 1); hue in turns, 0 red, 1/6 yellow,
+ * 1/3 green, 1/2 cyan, 2/3 blue, 5/6 magenta. GPU twin of neonHue (chromadelic-highway-spectrum.js).
+ */
+export const chdNeonHue = /* @__PURE__ */ Fn(([hIn]) => {
+    const ramp = fract(vec3(float(hIn)).add(vec3(0.0, 2.0 / 3.0, 1.0 / 3.0))).mul(6.0).sub(3.0);
+    const k = clamp(abs(ramp).sub(1.0), 0.0, 1.0);
+    return k.mul(k).mul(vec3(3.0).sub(k.mul(2.0)));
+}).setLayout({ name: 'chd_neonHue', type: 'vec3', inputs: [{ name: 'hIn', type: 'float' }] });
+
+/**
+ * A neon emitter colour: the hue with a 10 % white floor, luminance-normalised toward `target`
+ * with exponent 0.6. GPU twin of neonColor (chromadelic-highway-spectrum.js).
+ */
+export const chdNeonColor = /* @__PURE__ */ Fn(([h, lumTarget]) => {
+    const c = mix(chdNeonHue(h), vec3(1.0), 0.1);
+    const l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+    return c.mul(pow(float(lumTarget).div(max(l, 0.1)), 0.6));
+}).setLayout({
+    name: 'chd_neonColor',
+    type: 'vec3',
+    // ('target' is a reserved word in WGSL)
+    inputs: [{ name: 'h', type: 'float' }, { name: 'lumTarget', type: 'float' }],
+});
 
 // ── Light waves (event language) ────────────────────────────────────────────────
 

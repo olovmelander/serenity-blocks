@@ -76,7 +76,7 @@ A mountain peak at the moment of moonrise, capturing the transition from day to 
 A peaceful Elysium-inspired 3D rolling hills landscape with fluffy procedural grass swaying in the wind, stylized trees with fluffy foliage, atmospheric gradient fog, and floating particles. Grass responds dynamically to gameplay events with wind gusts.
 
 ### Shifting Sands *(NEW)*
-An Arrakis-inspired harsh desert planet with twin moons, procedural dunes, volumetric sand smoke, spice particles, and heat shimmer effects. Inspired by DUNE, featuring the "blue-within-blue" glow effect on game events.
+A harsh alien desert planet with twin moons, procedural dunes, volumetric sand smoke, glitter particles, and heat shimmer effects, with a blue glow effect on game events.
 
 ---
 

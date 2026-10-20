@@ -103,11 +103,13 @@ export function createSkyDome({
     const uBandNormal = uniform(new THREE.Vector3(0.458, 0.889, 0).normalize());
     const P = SKY_PALETTE;
     const useTaps = nebulaMap ? Math.max(0, Math.min(2, taps)) : 0;
-    // Nebula ramp stops are uniforms so a level-up can swing the palette around the wheel.
-    const baseStops = [...P.warm, ...P.cool, P.warmFringe];
+    // Nebula ramp stops are uniforms so the spectrum's movements can turn the palette.
+    const baseStops = [...P.warm, ...P.cool, P.warmFringe, P.bandGlow];
     const stops = baseStops.map((c) => uniform(new THREE.Color().copy(c)));
-    const [uW0, uW1, uW2, uC0, uC1, uC2, uFringe] = stops;
+    const [uW0, uW1, uW2, uC0, uC1, uC2, uFringe, uBandGlow] = stops;
     let appliedShift = 0;
+    // The tunnel's air: the eased halo colour of the rings on screen (set by the world each frame).
+    const uAir = uniform(new THREE.Color(0, 0, 0));
 
     const material = new THREE.MeshBasicNodeMaterial({
         side: THREE.BackSide,
@@ -132,7 +134,18 @@ export function createSkyDome({
         // Rose-violet horizon band.
         const he = e.sub(0.01).div(0.06);
         const ha = tx.div(1.1);
-        base.addAssign(vec3(0.035, 0.008, 0.045).mul(exp(he.mul(he).negate())).mul(exp(ha.mul(ha).negate())));
+        const horizon = exp(he.mul(he).negate()).mul(exp(ha.mul(ha).negate()));
+        base.addAssign(vec3(0.035, 0.008, 0.045).mul(horizon));
+        // Tunnel light: the rings' colours scattered in the air around the vanishing point, and a
+        // luminous mist lying on the horizon beside the card (the air is lit by what flies
+        // through it). The card's calm zone keeps the mist off the board.
+        const p = screenUV.mul(shared.uViewportPx);
+        const sdf = chdRoundBoxSdf(p, shared.uCardRectPx, shared.uCardRadiusPx);
+        const calm = smoothstep(0.0, shared.uViewportPx.y.mul(0.1), sdf);
+        const tunnel = pow(c, 8.0).mul(0.07).add(pow(c, 3.0).mul(0.012)).mul(smoothstep(0.55, 0.0, e));
+        const me = e.sub(0.015).div(0.085);
+        const mistBand = exp(me.mul(me).negate()).mul(calm);
+        base.addAssign(uAir.mul(tunnel.add(horizon.mul(0.03)).add(mistBand.mul(0.03))));
         if (useTaps === 0) return base;
 
         // Density from the texture (the max channel is the fair measure across its rainbow hues).
@@ -156,10 +169,9 @@ export function createSkyDome({
         const cool = exp(dot(d, uCoolDir).sub(1.0).div(0.035)).mul(0.8);
         const bn = dot(d, uBandNormal);
         const band = exp(bn.mul(bn).mul(-40.0));
-        const p = screenUV.mul(shared.uViewportPx);
-        const sdf = chdRoundBoxSdf(p, shared.uCardRectPx, shared.uCardRadiusPx);
-        const calm = smoothstep(0.0, shared.uViewportPx.y.mul(0.1), sdf);
         const below = smoothstep(-0.2, -0.02, e);
+        // The mist takes the nebula's texture: wisps, not a flat band.
+        base.addAssign(uAir.mul(mistBand.mul(dens).mul(0.05)));
 
         // Each mass = a smooth emission glow + texture detail on top.
         const nW = warm.mul(dens.mul(0.65).add(0.35)).mul(float(1.0).sub(dust.mul(band).mul(0.6)));
@@ -167,7 +179,7 @@ export function createSkyDome({
         const nB = band.mul(dens.mul(0.85).add(0.15)).mul(float(1.0).sub(dust.mul(0.8)));
         const neb = ramp3(nW, uW0, uW1, uW2).mul(0.26).mul(nW).mul(sqrt(nW))
             .add(ramp3(nC, uC0, uC1, uC2).mul(0.14).mul(nC).mul(sqrt(nC)))
-            .add(v3(P.bandGlow).mul(0.06).mul(nB))
+            .add(uBandGlow.mul(0.06).mul(nB))
             .add(uFringe.mul(0.02).mul(warm.mul(float(1.0).sub(warm)).mul(4.0)).mul(dens));
         return base.add(neb.mul(calm).mul(below).mul(float(1.0).add(uNebBreath)));
     })();
@@ -183,13 +195,17 @@ export function createSkyDome({
         mesh,
         material,
         uniforms: {
-            uTime, uNebBreath, uVpDir, uWarmDir, uCoolDir, uBandNormal,
+            uTime, uNebBreath, uVpDir, uWarmDir, uCoolDir, uBandNormal, uAir,
         },
-        /** Swing the nebula palette around the wheel (level-ups); a no-op when unchanged. */
+        /** Turn the nebula palette (the spectrum's movements); a no-op when unchanged. */
         setHueShift(turns) {
             if (Math.abs(turns - appliedShift) < 1e-4) return;
             appliedShift = turns;
             baseStops.forEach((col, i) => rotateHue(col, turns, stops[i].value));
+        },
+        /** The tunnel's air colour (scene-linear, luma ~0.4). */
+        setAir(color) {
+            uAir.value.copy(color);
         },
         /** Aim the masks from the composition solver's sky output. */
         setDirections(sky) {

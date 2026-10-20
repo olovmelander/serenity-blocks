@@ -353,14 +353,6 @@
     "placeholderSource": "blood-moon.mp3"
   },
   {
-    "name": "Rainy Window",
-    "file": "rainy-window.mp3",
-    "path": "./assets/music/rainy-window.mp3",
-    "themeId": "rainy-window",
-    "trackKey": "RainyWindow",
-    "placeholder": false
-  },
-  {
     "themeId": "sakura-twilight",
     "trackKey": "SakuraTwilight",
     "name": "Sakura Twilight",
@@ -434,6 +426,14 @@
     "path": "./assets/music/stillwater.mp3",
     "themeId": "stillwater",
     "trackKey": "Stillwater",
+    "placeholder": false
+  },
+  {
+    "themeId": "sunbraid",
+    "trackKey": "Sunbraid",
+    "name": "Sunbraid",
+    "file": "sunbraid.mp3",
+    "path": "./assets/music/sunbraid.mp3",
     "placeholder": false
   },
   {

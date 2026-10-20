@@ -119,11 +119,11 @@ const RAW_THEME_REGISTRY = [
         icon: './aether-tides/aether-tides-theme-icon.png',
     },
     {
-        id: 'rainy-window',
-        displayName: 'Rainy Window',
-        module: './rainy-window/rainy-window-theme.js',
-        group: 'urban',
-        icon: './rainy-window/rainy-window-theme-icon.png',
+        id: 'sunbraid',
+        displayName: 'Sunbraid',
+        module: './sunbraid/sunbraid-theme.js',
+        group: 'fantasy',
+        icon: './sunbraid/sunbraid-theme-icon.png',
     },
     {
         id: 'koi-pond',
@@ -458,7 +458,7 @@ const HEAVY_GPU_THEME_IDS = new Set([
     'aurora',
     'galaxy',
     'aether-tides',
-    'rainy-window',
+    'sunbraid',
     'verdant-hills',
     'serenity-warp',
     'kaleidosonic',
@@ -553,6 +553,10 @@ const themeMap = new Map(THEME_REGISTRY.map((entry) => [entry.id, entry]));
  * `moonlit-forest` was replaced by Spring (2026-10-18) at the same Odyssey orb:
  * a saved selection, an earned collection entry and an Odyssey completion that
  * name the old id now mean Spring.
+ *
+ * `rainy-window` was replaced by Sunbraid (2026-10-20) at the same Odyssey orb:
+ * a saved selection, an earned collection entry and an Odyssey completion that
+ * name the old id now mean Sunbraid.
  */
 const RETIRED_THEME_IDS = new Map([
     ['sky-children-v2', 'rainbow-terraces'],
@@ -564,6 +568,7 @@ const RETIRED_THEME_IDS = new Map([
     ['singing-bowl', 'kaleidosonic'],
     ['misty-lake', 'grainfields'],
     ['moonlit-forest', 'spring'],
+    ['rainy-window', 'sunbraid'],
 ]);
 
 /**

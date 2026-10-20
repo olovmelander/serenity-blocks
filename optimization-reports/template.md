@@ -5,7 +5,7 @@
 > Use lowercase letters, hyphens (`-`) between words, and end with `.md`.
 >
 > ✅ Examples:
-> - `rainy-window-optimization.md`
+> - `sunbraid-optimization.md`
 > - `particle-buffer-optimization.md`
 > - `wolfhour-canvas-caching.md`
 >
