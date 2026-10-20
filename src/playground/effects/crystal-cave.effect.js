@@ -80,7 +80,11 @@ export function create({
             scene, camera, assets, quality,
         });
         post = new CrystalCavePost({
-            renderer, scene, camera, quality,
+            renderer,
+            scene,
+            camera,
+            quality,
+            atmosphere: world.getAtmosphere(),
         });
         post.setSize(window.innerWidth, window.innerHeight);
         window.__CRYSTAL_CAVE_ART__ = { world, post, reactions };
