@@ -184,7 +184,8 @@ export class AetherTidesPost {
             const S = vec3(sceneColor.sample(st).rgb).toVar();
             if (look.fringe) {
                 const r2 = fromCentre.dot(fromCentre);
-                const fringe = r2.mul(0.004).add(this.uKick.mul(0.006)).mul(float(1.0).sub(calm));
+                // A blast widens it a little: much more would split every thin front into a rainbow.
+                const fringe = r2.mul(0.004).add(this.uKick.mul(0.0022)).mul(float(1.0).sub(calm));
                 If(fringe.greaterThan(2e-4), () => {
                     const spread = fromCentre.mul(fringe);
                     S.assign(vec3(
