@@ -511,6 +511,18 @@ export const ODYSSEY_URL_PARAMETERS = Object.freeze([
     toggle('odysseyNoBirds', 'Removes the summit birds for scene comparisons.', {
         scope: 'Odyssey summit, One World enabled',
     }),
+    toggle('odysseyNoFlights', 'Removes the gulls, swallows and geese of chapters 3 and 4 for scene comparisons.', {
+        scope: 'Odyssey shore and meadows, One World enabled',
+    }),
+    toggle('odysseyNoEagle', 'Removes the eagle thermalling off the massif in chapters 4 and 5.', {
+        scope: 'Odyssey mountains, One World enabled',
+    }),
+    toggle('odysseyNoAirMotes', 'Removes the pollen, down and diamond dust in the air of chapters 3 to 5.', {
+        scope: 'Odyssey Act II air, One World enabled',
+    }),
+    toggle('odysseyNoSpindrift', 'Removes the snow plume streaming off the summit in chapters 3 to 5.', {
+        scope: 'Odyssey summit plume, One World enabled',
+    }),
     toggle('odysseyNoCloudBank', 'Removes the cloud-bank transition from the summit into space.', {
         scope: 'Odyssey, chapter 5–6 transition',
     }),

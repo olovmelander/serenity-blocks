@@ -103,6 +103,12 @@ export const ODYSSEY_PATH_CROSS_SECTION = Object.freeze({
     glowNearFadeStart: 2.5,
     glowNearFadeEnd: 9.0,
     endTaper: 4.0,
+    // NEAR-EYE THINNING (2026-10-20, Act II). A recipe's `nearThin` (0..1) narrows the body
+    // inside `nearThinFar` world units of the lens, down to (1 - nearThin) of its width where the
+    // collapse above takes over. The follow camera rides 30-42 u behind its rail point, so the
+    // stretch of rail just ahead of the eye sat at the 2.8 %-of-screen ceiling: a 40 px white pipe
+    // across the ch4/ch5 frames. Far rail (the way ahead) is untouched.
+    nearThinFar: 110.0,
     emission: 1.0,
     minSeamWindow: 0.012,
     // widthScale compression: chapter widthScale s -> 1 + (s-1)*widthScaleBlend.
@@ -188,6 +194,7 @@ export const ODYSSEY_RIBBON_RECIPES = Object.freeze([
         haze: 0xffe6a8,
         hazeAmt: 0.05,
         accent: 0xfff0c0,
+        nearThin: 0.55,
     }),
     // 4 — Mountains: frosted stone with glinting ice veins.
     Object.freeze({
@@ -209,6 +216,7 @@ export const ODYSSEY_RIBBON_RECIPES = Object.freeze([
         haze: 0xe8f4ff,
         hazeAmt: 0.05,
         accent: 0xffffff,
+        nearThin: 0.72,
     }),
     // 5 — Sky & Drift: a white contrail, warm on the sun side, cool on the sky side.
     Object.freeze({
@@ -231,6 +239,7 @@ export const ODYSSEY_RIBBON_RECIPES = Object.freeze([
         hazeAmt: 0.09,
         accent: 0xffffff,
         fill: 0xb4d2ff,
+        nearThin: 0.78,
     }),
     // 6 — Space: a luminous stream of stardust flowing toward the black hole. (2026-10-03: it
     // was a near-dark navy tube — base 0x0d1128, core 0.15; the path has to read as a current of
@@ -331,6 +340,8 @@ export function buildRibbonRecipeRows() {
         rows.featB.push(new THREE.Vector4(r.packet, r.pulse, r.scale, r.speed));
         const haze = colorVec(r.haze); haze.w = r.hazeAmt;
         const fill = colorVec(r.fill ?? atmo.ambientLight ?? 0x404040);
+        // fill.w was a spare lane: the near-eye thinning (see ODYSSEY_PATH_CROSS_SECTION).
+        fill.w = Number.isFinite(r.nearThin) ? r.nearThin : 0;
         const accent = colorVec(r.accent); accent.w = width;
         rows.haze.push(haze);
         rows.fill.push(fill);
@@ -533,7 +544,7 @@ export function createPathCentreLineGeometry(curve, tubularSegments = 256, radia
  * MUST be called inside a positionNode (positionLocal = the centre-line point there).
  */
 function ribbonRadius({
-    baseRadius, width, arc, minPixels, maxScreen, nearStart, nearEnd, taper,
+    baseRadius, width, arc, minPixels, maxScreen, nearStart, nearEnd, taper, thin = null,
 }) {
     const centreWorld = modelWorldMatrix.mul(vec4(positionLocal, 1.0)).xyz;
     const dCam = length(centreWorld.sub(cameraPosition));
@@ -542,7 +553,15 @@ function ribbonRadius({
     const screenSpan = dCam.mul(2.0).div(p11);
     const pixelRadius = screenSpan.mul(minPixels).mul(0.5).div(max(screenSize.y, 1.0));
     const maxRadius = screenSpan.mul(maxScreen);
-    const r = min(max(baseRadius.mul(width), pixelRadius), max(maxRadius, pixelRadius));
+    // Near-eye thinning (Act II recipes; 0 elsewhere): narrower close to the lens only, both
+    // the world width and the screen ceiling, so the pixel floor still keeps it readable.
+    // The screen CEILING thins harder than the world width: the follow camera can pass 6-12 u from
+    // the rail behind its orb (the ch4 wall), where even a 0.1 u tube is a 12 px pipe; there the
+    // ceiling falls to ~10 % (a 3-4 px thread) while the far rail keeps its full ceiling.
+    const nearRamp = smoothstep(nearEnd, float(ODYSSEY_PATH_CROSS_SECTION.nearThinFar), dCam);
+    const nearK = thin ? float(1.0).sub(thin.mul(float(1.0).sub(nearRamp))) : float(1.0);
+    const ceilK = thin ? clamp(float(1.0).sub(thin.mul(float(1.0).sub(nearRamp)).mul(1.15)), 0.1, 1.0) : float(1.0);
+    const r = min(max(baseRadius.mul(width).mul(nearK), pixelRadius), max(maxRadius.mul(ceilK), pixelRadius));
     // Squared so the last few units before the lens collapse to nothing rather than
     // streaking across the frame as a thinning wedge (7->8 capture at p 0.9649).
     const near = smoothstep(nearStart, nearEnd, dCam);
@@ -629,11 +648,13 @@ export function createPathOuterTSL(uTime = uniform(0), opts = {}) {
     const vChapter = varying(chapterCoordinate(chapter, vUv.x));
 
     const positionNode = Fn(() => {
-        const width = recipeAt(chapter, chapterCoordinate(chapter, vUv.x)).accent.w
+        const Rv = recipeAt(chapter, chapterCoordinate(chapter, vUv.x));
+        const width = Rv.accent.w
             .mul(thresholdCollars(chapter, vUv.x.mul(uArc), COLLAR_BULGE_HALF_WIDTH).mul(1.5).add(1.0));
         const r = ribbonRadius({
             baseRadius: uRadius,
             width,
+            thin: Rv.fill.w,
             arc: uArc,
             minPixels: uMinPixels,
             maxScreen: float(ODYSSEY_PATH_CROSS_SECTION.maxScreenRadius),
@@ -827,10 +848,12 @@ export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
     const vChapter = varying(chapterCoordinate(chapter, vUv.x));
 
     const positionNode = Fn(() => {
-        const width = recipeAt(chapter, chapterCoordinate(chapter, vUv.x)).accent.w;
+        const Rv = recipeAt(chapter, chapterCoordinate(chapter, vUv.x));
+        const width = Rv.accent.w;
         const r = ribbonRadius({
             baseRadius: uRadius,
             width,
+            thin: Rv.fill.w,
             arc: uArc,
             minPixels: float(0.0),
             maxScreen: float(ODYSSEY_PATH_CROSS_SECTION.maxScreenRadius * ODYSSEY_PATH_CROSS_SECTION.glowScale),
@@ -869,7 +892,14 @@ export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
                 .add(uBeat.mul(0.04).mul(lit)),
             0.0,
             0.5,
-        ).mul(nearFade).mul(farFade).mul(soft);
+        ).mul(nearFade).mul(farFade).mul(soft)
+            // The near-eye thinning recipes' haze thins with the body (capture: the white halo of
+            // the rail passing ~8 u from the eye at ch4 L26 doubled its apparent width).
+            .mul(float(1.0).sub(R.fill.w.mul(float(1.0).sub(smoothstep(
+                ODYSSEY_PATH_CROSS_SECTION.glowNearFadeEnd,
+                ODYSSEY_PATH_CROSS_SECTION.nearThinFar,
+                dView,
+            )))));
         const color = mix(
             mix(R.haze.rgb, R.emis.rgb, max(fuse, collar.mul(0.6))),
             uTransitionColor,
