@@ -1,5 +1,4 @@
 import { spawnPiece } from '../game.js';
-import { wrapOdysseyCharmCallbacks } from '../odyssey/odyssey-charm-effects.js';
 import { COLS, ROWS } from '../constants.js';
 import {
     emitB2B,
@@ -209,8 +208,7 @@ export function createOdysseyPhysicsCallbacks(mode, session) {
             );
         },
     };
-    // Held score charms are paid after each lock's cascade settles, before the next piece.
-    const trackedCallbacks = hybridEngine.buildPhysicsCallbacks(wrapOdysseyCharmCallbacks(session, baseCallbacks));
+    const trackedCallbacks = hybridEngine.buildPhysicsCallbacks(baseCallbacks);
     return fenceOdysseyPhysicsCallbacks(
         session.duel ? session.duel.wrapHumanCallbacks(trackedCallbacks) : trackedCallbacks,
         () => mode._isLevelSessionActive(session),
