@@ -529,15 +529,15 @@
  },
  {
   "id": "cosmic-noir",
-  "name": "Cosmic Noir (legacy, perf audit only)",
-  "setting": "Deep space in greyscale film-noir. The icon is a black ringed planet with a blazing white ring under a grey-white smoky nebula. In the game (docs/theme-screenshots/cosmic-noir.png) a huge grey-white wispy nebula fills the right half and a dark textured planet with a white ring streak sits lower left. Only doc: docs/COSMIC_NOIR_PERF_AUDIT_2026-06-30.md. Registry L311, group cosmic.",
-  "timeOfDay": "none (deep space)",
-  "dominantPalette": "Pure greyscale. Pieces: I #f8f8ff, O #cfd2d6, T #b0b5c0, S #9aa0aa, Z #7f8691, J #5b616c, L #3c4049, GARBAGE #16181d.",
-  "keyMotifs": "A ringed black planet, smoky grey nebula, a silver rim glow, an accretion ring, anamorphic flares.",
-  "motion": "A twinkling 30k starfield, drifting nebula quads, gas swirl, a rotating accretion ring.",
-  "gameplayFx": "Handlers at cosmic-noir-theme.js L4394-4470. Lock: planet pulse, star flash, a cosmic-wave torus and a lock shake. Combo: a reactive envelope (pulse, bloom, spark, atmosphere). Clear: waves, compute void sparks, a gas-swirl burst and an anamorphic lens flare at combo >= 6.",
-  "tech": "cosmic-noir-theme.js is 4,895 lines. ShaderMaterial plus node materials, an EffectComposer/UnrealBloom fallback, WebGPU compute sparks, MRT guarded on Windows.",
-  "motifsToAvoidReusing": "Ringed planets; grayscale smoke nebula; a monochrome noir look; anamorphic flares."
+  "name": "Cosmic Noir",
+  "setting": "Smoke in the searchlight: a black-and-white film of deep space. A pulsar turns in the derelict slatted cage of a lantern left of the card (above it on an upright phone); its two beams sweep like a lighthouse's through drifting, layered smoke and are cut by the slats into fans of shafts. Rebuilt 2026-10-20 (docs/COSMIC_NOIR_VISUAL_OVERHAUL_2026-10.md, captures in reports/cosmic-noir-overhaul/); the legacy ringed-planet theme is in docs/COSMIC_NOIR_PERF_AUDIT_2026-06-30.md.",
+  "timeOfDay": "none (deep space); the print's toning stock drifts with the clock (a stock every 100 s) and steps with the level",
+  "dominantPalette": "Luminance only, graded as a print: deep blacks, a soft black point, a filmic curve, grain and dust. Five toning stocks on a line walked there and back: cyanotype, silver (home), selenium, sepia, platinum. Pieces unchanged: I #f8f8ff, O #cfd2d6, T #b0b5c0, S #9aa0aa, Z #7f8691, J #5b616c, L #3c4049, GARBAGE #16181d.",
+  "keyMotifs": "A slatted lantern with a pulsar inside, lighthouse beams cut into fans of shafts by the slats, drifting layered smoke lit only where the light crosses it, star-filter spikes and a lens glare, film grain.",
+  "motion": "The beams turn every 14 s (faster with a chain, integrated); the cage turns slowly the other way; the smoke drifts on a slow wind and curls; a slow camera dolly.",
+  "gameplayFx": "Lock: smoke puffs out of the card's nearer edge, lit from within by a dying ember. Combo: the lighthouse spins up and the blinds open. Clear: the pulsar flares and a light echo per line rings out through the smoke. Four lines: the flashbulb (the print turns to its own negative for a moment), four echoes, the slats spin. T-spin: the cage spins. Level up: a reel change (two cue marks top right) and the next stock.",
+  "tech": "A reduced-resolution smoke march with the beams' cores and the echo shells integrated in closed form, a full-resolution backdrop (stars, the lantern and its inside in closed form, lens), a baked four-channel 3D noise (worker bake), a luminance-only film post with calm zones. One node renderer on both backends; no compute, no MRT.",
+  "motifsToAvoidReusing": "Searchlight or lighthouse beams through smoke; slatted or venetian-blind light; film-stock toning, negative flashes and reel-change cue marks; a monochrome noir grade."
  },
  {
   "id": "chiral-gold",

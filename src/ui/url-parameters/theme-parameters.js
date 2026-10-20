@@ -81,6 +81,8 @@ const captureThemes = [
         'Cinder Drift',
         'columns, lake, shell, fissure, falls, smoke, shaft, embers, spatter, bombs, flashes, jets'],
 
+    ['cosmic-noir', 'cosmicNoir', 'Cosmic Noir', 'sky, smoke'],
+
     ['fluid-dreams',
         'fluidDreams',
         'Fluid Dreams',
@@ -342,7 +344,6 @@ const oldCaptureEntries = oldCaptureThemes.flatMap(([id, prefix, label]) => [
 ]);
 
 const legacyPerformanceEntries = [
-    ['cosmic-noir', 'cosmicNoir', 'Cosmic Noir', ON_SHORT],
     ['wolfhour', 'wolfhour', 'Wolfhour', ON_SHORT],
 ].flatMap(([id, prefix, label, values]) => [
     ...[
@@ -495,14 +496,13 @@ export const THEME_URL_PARAMETERS = [
     )),
     entry(
         'seed',
-        'Chromadelic Highway, Cosmic Noir, Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
+        'Chromadelic Highway, Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
 
         'Fallback scene-generation seed when a theme-specific seed is absent.',
         'Finite number',
         'Varies: Chromadelic 0; others random',
         '42',
         ['chromadelic-highway',
-            'cosmic-noir',
             'neon-dusk',
             'nimbus-veil',
             'synthwave-sunset',
@@ -514,13 +514,12 @@ export const THEME_URL_PARAMETERS = [
     ),
     entry(
         'fixedDt',
-        'Chromadelic Highway, Cosmic Noir, Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
+        'Chromadelic Highway, Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
         'Fallback fixed animation time step when the theme-specific override is absent.',
         'Finite milliseconds greater than 0',
         'Measured frame time',
         '16.6667',
         ['chromadelic-highway',
-            'cosmic-noir',
             'neon-dusk',
             'nimbus-veil',
             'synthwave-sunset',
@@ -529,25 +528,25 @@ export const THEME_URL_PARAMETERS = [
     ),
     toggle(
         'noPost',
-        'Cosmic Noir, Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
+        'Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
         'Disable theme post-processing.',
-        ['cosmic-noir', 'neon-dusk', 'nimbus-veil', 'synthwave-sunset', 'wolfhour'].map(source),
-        'Use 1; Cosmic Noir/Wolfhour also accept empty/true/yes, and Neon Dusk/Nimbus/Synthwave '
+        ['neon-dusk', 'nimbus-veil', 'synthwave-sunset', 'wolfhour'].map(source),
+        'Use 1; Wolfhour also accepts empty/true/yes, and Neon Dusk/Nimbus/Synthwave '
             + 'accept any value except 0/false',
 
     ),
     ...['noMRT', 'noCompute'].map((name) => toggle(
         name,
-        'Cosmic Noir, Wolfhour',
+        'Wolfhour',
         name === 'noMRT' ? 'Disable multiple-render-target effects.' : 'Disable GPU compute effects.',
-        ['cosmic-noir', 'wolfhour'].map(source),
+        [source('wolfhour')],
         ON_SHORT,
     )),
     toggle(
         'baseline',
-        'Cosmic Noir, Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
+        'Neon Dusk, Nimbus Veil, Synthwave Sunset, Wolfhour',
         'Enable the theme baseline or performance capture helpers.',
-        ['cosmic-noir', 'neon-dusk', 'nimbus-veil', 'synthwave-sunset', 'wolfhour'].map(source),
+        ['neon-dusk', 'nimbus-veil', 'synthwave-sunset', 'wolfhour'].map(source),
         'Use 1; other accepted boolean spellings vary by theme',
     ),
     ...aliases(
@@ -587,67 +586,6 @@ export const THEME_URL_PARAMETERS = [
         '3',
         [source('wolfhour')],
         'wolfhourPlaybackLoops takes priority.',
-    ),
-    ...[
-        ['cosmicNoirNoAdaptiveScale', 'Disable automatic pixel-ratio scaling.'],
-        ['cosmicNoirMrtAudit', 'Log multiple-render-target material diagnostics.'],
-        ['cosmicNoirPreserveDrawingBuffer', 'Preserve the WebGL drawing buffer for capture tooling.'],
-    ].map(([name, description]) => toggle(name, 'Cosmic Noir', description, [source('cosmic-noir')], ON_SHORT)),
-    ...aliases(
-        ['cosmicNoirPerf',
-            'perf'],
-        'Cosmic Noir',
-        'Enable performance instrumentation.',
-        [source('cosmic-noir')],
-        ON_SHORT,
-    ),
-
-    entry(
-        'cosmicNoirMsaa',
-        'Cosmic Noir / WebGPU',
-        'Override whether WebGPU multisample antialiasing is enabled.',
-        '1/true/yes/empty enables; 0/false/no disables (case-insensitive)',
-        'Quality/platform policy',
-        '0',
-        [source('cosmic-noir')],
-    ),
-    ...['cosmicNoirFixedDeltaMs', 'fixedDeltaMs'].map((name) => numeric(
-        name,
-        'Cosmic Noir',
-        'Override the theme animation time step.',
-        'Finite milliseconds greater than 0',
-        'Measured frame time',
-        '16.6667',
-        [source('cosmic-noir')],
-        'Priority: cosmicNoirFixedDeltaMs, cosmicNoirFixedDt, fixedDeltaMs, fixedDt.',
-    )),
-    ...['cosmicNoirFixedPixelRatio', 'fixedPixelRatio'].map((name) => numeric(
-        name,
-        'Cosmic Noir',
-        'Override rendering pixel ratio and stop adaptive scaling.',
-        'Finite number greater than 0',
-        'Quality/device policy',
-        '1',
-        [source('cosmic-noir')],
-        'cosmicNoirFixedPixelRatio takes priority.',
-    )),
-    numeric(
-        'cosmicNoirAtmoShells',
-        'Cosmic Noir',
-        'Override the number of atmosphere shells around the planet.',
-        'Finite number greater than 0, rounded; at least 1 shell',
-        'Quality preset',
-        '1',
-        [source('cosmic-noir')],
-    ),
-    numeric(
-        'cosmicNoirRenderScale',
-        'Cosmic Noir',
-        'Override the scene-buffer scale for sharpness/performance comparisons.',
-        'Finite positive number, clamped to 0.5–2',
-        'Quality preset',
-        '0.75',
-        [source('cosmic-noir')],
     ),
     ...[
         ['chromadelicNoPost', 'Disable post-processing.'],

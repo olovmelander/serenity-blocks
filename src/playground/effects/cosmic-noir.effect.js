@@ -1,232 +1,343 @@
 /* eslint-disable import/no-unresolved, import/no-extraneous-dependencies */
-/** One isolated Cosmic Noir scene, built and animated by the production theme. */
+/**
+ * Cosmic Noir — the full world + post stack, mounted in isolation.
+ *
+ * Mounts the SAME CosmicNoirWorld and CosmicNoirPost the theme ships, with the theme's camera rig,
+ * so composition and the print's grade are judged exactly as they will look in game.
+ *
+ * URL params:
+ *   quality=High|Ultra|...   content tier (default High)
+ *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules); events
+ *                            aim at its rects and the post's calm zones read them
+ *   statsHud=0               with board=1: board only, no HUD mock
+ *   combo=<n>                hold a combo of n (the lighthouse spun up, the blinds open)
+ *   level=<n>                rest n − 1 stocks along the line (the level's own reel)
+ *   event=lock|drop|clear|quad|tspin|perfect|levelUp   fire a gameplay event...
+ *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, row=<r>, u=<0..1>)
+ *   demo=1                   live only: play a looping gameplay script
+ *   parts=sky,smoke          draw only these parts (sky alone: the smoke switched off)
+ *   falseColor=1             post debug view: band the pre-tone-map max channel
+ *   noPost=1                 raw scene (no halation/grade)
+ *   bloom=0|1                override the tier's halation
+ *   grain=0                  no grain or dust (judge the grade itself)
+ *   px=-1..1&py=-1..1        hold a pointer-parallax offset
+ *   reduce=1                 reduced motion
+ *   icon=1                   the theme-icon framing: the lens looks straight at the lantern
+ *                            (iconFov=34; compose for a small circle: capture a square frame)
+ *
+ * Probes: window.__cosmicNoir = { world, post, seekEvent(t, { name, age, lines, combo, level }) }
+ * replays any event at any age and renders it in the same task (contact sheets).
+ */
 import * as THREE from 'three/webgpu';
-import CosmicNoirTheme from '../../themes/cosmic-noir/cosmic-noir-theme.js';
-import { ThemeCameraRig } from '../../themes/shared/camera-rig.js';
+import { CosmicNoirWorld } from '../../themes/cosmic-noir/cosmic-noir-world.js';
+import { CosmicNoirPost, POST_LOOK } from '../../themes/cosmic-noir/cosmic-noir-post.js';
+import { readLayoutRects } from '../../themes/cosmic-noir/cosmic-noir-composition.js';
+import { PULSAR } from '../../themes/cosmic-noir/cosmic-noir-core.js';
 
 export const meta = {
     id: 'cosmic-noir',
-    title: 'Cosmic Noir — silver singularity',
-    description: 'Production nebula, accretion disk and pooled reactions in isolation.',
+    title: 'Cosmic Noir (full world)',
+    description: 'Smoke in the searchlight: a pulsar in a shutter cage sweeps its beams through drifting smoke, printed in black and white.',
 };
+
+function num(params, key, fallback = 0) {
+    const v = Number.parseFloat(params.get(key));
+    return Number.isFinite(v) ? v : fallback;
+}
+
+const BOARD_PX = 'min(clamp(220px, 22vw, 300px), (100vh - 250px) / 2)';
+
+/** A stand-in for the real solo layout (public/styles/main.css) with the real class names. */
+function mountBoardOverlay(withHud) {
+    const root = document.createElement('div');
+    root.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:5';
+    const card = document.createElement('div');
+    card.className = 'player-card';
+    card.dataset.player = 'solo';
+    card.style.cssText = [
+        'position:absolute', 'left:50%', 'top:50%',
+        `width:calc(${BOARD_PX} * 1.19)`,
+        `height:calc(2 * ${BOARD_PX} + 158px)`,
+        'transform:translate(-50%, -50%)', 'background:rgba(21,26,35,0.866)',
+        'border:1px solid rgba(139,92,246,0.45)', 'border-radius:20px',
+    ].join(';');
+    const board = document.createElement('div');
+    board.id = 'single-player-game-canvas';
+    board.style.cssText = [
+        'position:absolute', 'left:50%', 'bottom:24px', `width:calc(${BOARD_PX})`, `height:calc(2 * ${BOARD_PX})`,
+        'transform:translateX(-50%)', 'border:1px solid rgba(255,255,255,0.08)',
+    ].join(';');
+    card.append(board);
+    root.append(card);
+    if (withHud) {
+        const hud = document.createElement('div');
+        hud.className = 'single-player-stats-bar';
+        hud.style.cssText = [
+            'position:absolute', 'top:25%', 'height:50%',
+            'left:calc(50% + min(max(300px, min(35vw, 400px)), (100vh - 200px) / 2) / 2 + 60px)',
+            'width:140px',
+            'background:rgba(14,11,26,0.8)', 'border:1px solid rgba(150,110,255,0.25)', 'border-radius:10px',
+        ].join(';');
+        root.append(hud);
+    }
+    document.body.appendChild(root);
+    return root;
+}
+
+/** A looping script of locks and clears for the live demo (seconds into the loop). */
+const DEMO_LOOP = 40;
+const DEMO_SCRIPT = [
+    [1.0, 'lock', { rows: [19], u: 0.2 }], [2.1, 'lock', { rows: [19, 18], u: 0.75 }],
+    [3.2, 'lock', { rows: [14, 13], u: 0.4, hardDrop: true }], [4.3, 'lock', { rows: [9], u: 0.85 }],
+    [5.4, 'lock', { rows: [19], u: 0.55 }],
+    [5.4, 'clear', { rows: [19], lines: 1, combo: 1 }], [6.6, 'lock', { rows: [12, 11], u: 0.3 }],
+    [6.6, 'clear', { rows: [19], lines: 1, combo: 2 }], [7.8, 'lock', { rows: [6, 5, 4], u: 0.8, hardDrop: true }],
+    [7.8, 'clear', { rows: [19, 18], lines: 2, combo: 3 }], [9.0, 'lock', { rows: [16], u: 0.1 }],
+    [9.0, 'clear', { rows: [19], lines: 1, combo: 4 }], [10.2, 'lock', { rows: [10, 9], u: 0.6 }],
+    [10.2, 'clear', { rows: [19, 18, 17], lines: 3, combo: 5 }], [11.6, 'lock', { rows: [19], u: 0.5 }],
+    [12.6, 'lock', { rows: [3, 2], u: 0.15 }], [13.6, 'lock', { rows: [18, 17], u: 0.85 }],
+    [14.6, 'lock', { rows: [8, 7], u: 0.35 }], [15.6, 'lock', { rows: [16, 15], u: 0.6, hardDrop: true }],
+    [16.6, 'lock', { rows: [11, 10], u: 0.9 }], [17.6, 'lock', { rows: [5, 4], u: 0.05 }],
+    [18.6, 'lock', { rows: [19, 18, 17, 16], u: 0.95, hardDrop: true }],
+    [18.6, 'clear', { rows: [19, 18, 17, 16], lines: 4, combo: 1 }],
+    [28.0, 'lock', { rows: [19], u: 0.45 }], [29.0, 'lock', { rows: [13, 12], u: 0.7 }],
+    [30.0, 'lock', { rows: [18], u: 0.25, hardDrop: true }],
+    [30.0, 'clear', {
+        rows: [19, 18], lines: 2, tspin: true, combo: 1,
+    }],
+    [32.0, 'lock', { rows: [7], u: 0.5 }],
+];
 
 export function create({
     scene, camera, renderer, params,
 }) {
-    const saved = {
-        background: scene.background,
-        fog: scene.fog,
-        tone: renderer.toneMapping,
-        exposure: renderer.toneMappingExposure,
-        fov: camera.fov,
-        far: camera.far,
-    };
     const quality = params.get('quality') || 'High';
-    const disableChroma = params.get('noChroma') === '1';
-    const theme = new CosmicNoirTheme();
-    theme.scene = scene;
-    theme.camera = camera;
-    theme.renderer = renderer;
-    // Match production: one node scene on either backend, native-only compute/MRT.
-    theme.usesNodeMaterials = renderer.isWebGPURenderer === true;
-    theme.isWebGPU = renderer.backend?.isWebGPUBackend === true;
-    theme.isWebGL = !theme.isWebGPU;
-    theme.getCurrentQualityLevel = () => quality;
-    Object.assign(theme.flags, {
-        seed: Number(params.get('seed') || 12345),
-        fixedDeltaMs: 1000 / 60,
-        noAdaptiveScale: true,
-        noCompute: true,
-        useCompute: false,
-        useMRT: false,
-        renderScale: 0.92,
-    });
-    theme.applyQualityPreset(quality);
-    theme.flags.usePost = theme.qualityPreset.enablePostProcessing !== false;
-    theme.initializeDeterministicState();
-    theme.initializeAdaptiveBudgetState();
-    scene.background = new THREE.Color(0x000002);
-    scene.fog = new THREE.FogExp2(0x010101, 0.00026);
-    camera.fov = 60;
-    camera.far = 30000;
-    camera.updateProjectionMatrix();
-    camera.position.set(0, 0, 1200);
-    theme.cameraRig = new ThemeCameraRig(camera, {
-        breathe: true,
-        pointer: false,
-        idlePhase: theme.planetPhaseX * 0.73 + theme.planetPhaseY,
-    });
-    const key = new THREE.PointLight(0x9ea3be, 2.2, 3500);
-    key.position.set(350, 200, 600);
-    const fill = new THREE.PointLight(0x3a3d52, 0.6, 3000);
-    fill.position.set(-250, -100, 300);
-    scene.add(key, fill, new THREE.AmbientLight(0x101218, 0.35));
-    theme.ensureSharedNoiseTexture();
-    theme.createStarfield();
-    theme.createNebulaClouds();
-    theme.createAmbientDust();
-    theme.createPlanet();
-    theme.createAtmosphere();
-    theme.createVoidSparks();
-    theme.createGasSwirlParticles();
-    theme.setupPostProcessing();
-    theme.configureRendererColorPipeline();
-    const ownedRoots = scene.children.slice();
+    const saved = {
+        fov: camera.fov, near: camera.near, far: camera.far, toneMapping: renderer.toneMapping,
+    };
+    const world = new CosmicNoirWorld({
+        scene, quality, capture: true, renderer,
+    }).build();
+    world.bindCamera(camera);
+    world.setReducedMotion(params.get('reduce') === '1');
+    const partsParam = params.get('parts');
+    if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 
-    // Track the real material textures, including TSL texture nodes, without
-    // replacing the global loading manager or issuing duplicate asset requests.
-    const textures = new Set([theme.sharedNoiseTexture]);
-    scene.traverse((object) => {
-        const { material } = object;
-        if (!material) return;
-        for (const value of Object.values(material)) {
-            if (value?.isTexture) textures.add(value);
-            if (value?.isNode) {
-                value.traverse((node) => {
-                    if (node.isTextureNode && node.value?.isTexture) textures.add(node.value);
-                });
-            }
-        }
-    });
-    let disposed = false;
-    let ready = false;
-    let preparing;
-    let warmLockWave = null;
-    const prepare = () => {
-        if (!preparing) {
-            preparing = (async () => {
-                const deadline = performance.now() + 20000;
-                while ([...textures].some((map) => !map.image?.width)) {
-                    if (disposed) return;
-                    if (performance.now() > deadline) throw new Error('Cosmic Noir textures did not load.');
-                    // eslint-disable-next-line no-await-in-loop
-                    await new Promise((resolve) => { setTimeout(resolve, 30); });
-                }
-                if (disposed) return;
-                warmLockWave = theme.acquireCosmicWave({ radius: 288, tube: 1.3 });
-                try { await renderer.compileAsync(scene, camera); } finally {
-                    theme.releaseCosmicWave(warmLockWave);
-                }
-                ready = true;
-            })();
-        }
-        return preparing;
-    };
-    let overlay;
-    if (params.get('board') === '1') {
-        overlay = document.createElement('div');
-        overlay.style.cssText = 'position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);'
-            + 'width:min(25vw,280px);height:70vh;border:1px solid #adbac340;border-radius:16px;'
-            + 'background:#07090fe0;pointer-events:none;z-index:3;box-shadow:0 16px 60px #0008';
-        document.body.appendChild(overlay);
+    const look = { ...(POST_LOOK[quality] || POST_LOOK.High) };
+    if (params.has('bloom')) {
+        look.bloom = params.get('bloom') === '1';
+        if (look.bloom && !(look.bloomStrength > 0)) look.bloomStrength = POST_LOOK.Medium.bloomStrength;
     }
-    const update = (time, dt = 0) => {
-        theme.time = time;
-        theme.fixedElapsed = time;
-        theme.updateScene(Math.min(0.05, Math.max(0, dt)));
-        if (disableChroma) theme.postProcessing?.update({ chromaticEnabled: false });
+    const noPost = params.get('noPost') === '1';
+    const post = noPost ? null : new CosmicNoirPost(renderer, scene, camera, {
+        look,
+        falseColor: params.get('falseColor') === '1',
+        grain: params.get('grain') !== '0',
+    });
+    if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
+    const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
+
+    const pointer = { x: num(params, 'px'), y: num(params, 'py') };
+    const iconPose = params.get('icon') === '1';
+    const size = new THREE.Vector2(1, 1);
+    const syncViewport = () => {
+        const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+        camera.aspect = aspect;
+        camera.updateProjectionMatrix();
+        renderer.getDrawingBufferSize(size);
+        world.setViewport(size.x, size.y, aspect);
+        post?.setSize(window.innerWidth, window.innerHeight, size.x, size.y);
+        const rects = overlay ? readLayoutRects() : null;
+        world.setLayout(rects, aspect);
+        post?.setCalmRects(rects ? [...rects.cards, rects.hud].filter(Boolean) : [], rects ? 1 : 0);
     };
-    let sought = null;
-    const seek = (time) => {
-        if (sought === time) return;
-        sought = time;
-        theme.clearDeferredTimeouts();
-        theme.initializeDeterministicState();
-        theme.planet.rotation.y = 0;
-        for (const wave of [...theme.cosmicWaves]) theme.releaseCosmicWave(wave);
-        theme.cosmicWaves.length = 0;
-        for (const data of [theme.gasSwirlData, theme.unifiedSparkData]) {
-            if (!data) continue;
-            data.activeWindows.length = 0;
-            data.highWaterMark = 0;
-            data.nextIndex = 0;
-            data.activeEstimate = 0;
-            data.births?.fill(-1000);
-        }
-        for (const object of [theme.gasSwirl, ...theme.voidSparks]) {
-            const birth = object?.geometry?.getAttribute('aBirth');
-            if (birth) { birth.clearUpdateRanges(); birth.needsUpdate = true; }
-        }
-        theme.planetPulseIntensity = 0;
-        theme.starEventBoost = 0;
-        theme.gasExplosionTimer = -10;
-        theme.gasExplosionIntensity = 0;
-        theme.comboFlashIntensity = 0;
-        theme.comboLensFlareIntensity = 0;
-        Object.keys(theme.reactiveEnvelope).forEach((keyName) => { theme.reactiveEnvelope[keyName] = 0; });
-        theme.cameraRig.reset();
-        const event = params.get('event');
-        const age = event ? Math.max(0, Number(params.get('eventAge') || 0.5)) : 0;
-        theme.cameraRig._idlePhase = theme.cameraRig._idlePhaseSeed + time - age;
-        theme.planet.rotation.y = (time - age) * 0.05;
-        update(time - age, 0);
-        if (event === 'lock') theme.handlePieceLock();
-        else if (event) theme.onLineClear(4, Number(params.get('combo') || 3));
-        for (let elapsed = 0; elapsed < age; elapsed += 1 / 60) {
-            const delta = Math.min(1 / 60, age - elapsed);
-            update(time - age + elapsed + delta, delta);
-        }
-        update(time, 0);
+    syncViewport();
+
+    const sim = (time, delta, draw = true) => ({
+        time, delta, pointerX: pointer.x, pointerY: pointer.y, draw,
+    });
+    const pushPost = (time) => {
+        post?.update({ ...world.getPostState(), time });
     };
+    const aimIcon = () => {
+        if (!iconPose) return;
+        // The icon lens looks straight at the lantern.
+        camera.fov = num(params, 'iconFov', 34);
+        camera.updateProjectionMatrix();
+        camera.up.set(0, 1, 0);
+        camera.lookAt(0, 0, -PULSAR.depth);
+        camera.updateMatrixWorld();
+        world.u.pixelAngle.value = (2 * Math.tan((camera.fov * Math.PI) / 360)) / Math.max(1, size.y);
+    };
+    const frame = (time, delta, draw = true) => {
+        world.updateCamera(camera, sim(time, delta));
+        aimIcon();
+        world.update(sim(time, delta, draw), camera);
+    };
+    const stepTo = (from, to, dt) => {
+        const steps = Math.max(1, Math.round((to - from) / dt));
+        const h = (to - from) / steps;
+        // Only the last frame of a replay is looked at: the others need not paint the smoke.
+        for (let i = 1; i <= steps; i++) frame(from + i * h, h, false);
+    };
+
+    const urlEvent = {
+        name: params.get('event'),
+        age: num(params, 'eventAge', 0.4),
+        lines: Math.max(1, Math.min(4, Math.round(num(params, 'lines', 2)))),
+        row: Math.round(num(params, 'row', 9)),
+        u: num(params, 'u', 0.3),
+        combo: Math.max(0, Math.round(num(params, 'combo', 0))),
+        level: Math.max(1, Math.round(num(params, 'level', 1))),
+    };
+    let ev = urlEvent;
+    const fireEvent = () => {
+        const bottom = (n) => Array.from({ length: n }, (_, i) => 19 - i);
+        const { name, row, u } = ev;
+        if (name === 'lock') world.onLock({ rows: [row, row - 1], u });
+        else if (name === 'drop') world.onLock({ rows: [row, row - 1], u, hardDrop: true });
+        else if (name === 'clear') world.onClear({ rows: bottom(ev.lines), lines: ev.lines });
+        else if (name === 'quad') world.onClear({ rows: bottom(4), lines: 4 });
+        else if (name === 'tspin') world.onClear({ rows: bottom(2), lines: 2, tspin: true });
+        else if (name === 'perfect') world.onClear({ rows: bottom(4), lines: 4, perfect: true });
+        else if (name === 'levelUp') world.levelUp(ev.level + 1);
+    };
+
+    const seekTo = (time) => {
+        const lead = ev.name ? ev.age : 0;
+        const start = Math.max(0, time - lead);
+        // The level's own reel (steps from home), no reel change.
+        world.takeCarry({ level: ev.level, levelSteps: ev.level - 1 });
+        world.seek(start);
+        if (ev.combo > 0) world.onCombo(ev.combo);
+        frame(start, 0, false);
+        if (ev.name) {
+            fireEvent();
+            stepTo(start, time, 1 / 120);
+        }
+        frame(time, 0);
+        pushPost(time);
+    };
+    /** Probes: replay any event at any age and render it now. Returns the canvas. */
+    const seekEvent = (time, spec = null) => {
+        ev = spec ? { ...urlEvent, ...spec } : urlEvent;
+        seekTo(time);
+        if (post) post.render();
+        else renderer.render(scene, camera);
+        return renderer.domElement;
+    };
+    /**
+     * Probes: a contact sheet in the page. `tiles` = [{ t, ev?, label? } | t]; each tile is set,
+     * left two frames to settle (the loop uploads its uniform arrays), re-rendered and copied in
+     * the same task. The sheet is a fixed canvas over the page, for one screenshot.
+     */
+    const sheet = async (tilesIn, cols = 3) => {
+        const tiles = tilesIn.map((x) => (typeof x === 'number' ? { t: x } : x));
+        const src = renderer.domElement;
+        const cw = Math.floor(1590 / cols);
+        const ch = Math.round((cw * src.height) / src.width);
+        let el = document.getElementById('__sheet');
+        if (!el) {
+            el = document.createElement('canvas');
+            el.id = '__sheet';
+            document.body.appendChild(el);
+        }
+        el.width = cw * cols;
+        el.height = ch * Math.ceil(tiles.length / cols);
+        el.style.cssText = `position:fixed;left:0;top:0;z-index:99999;background:#000;width:${el.width}px;height:${el.height}px`;
+        const ctx = el.getContext('2d');
+        const P = window.__PLAYGROUND__;
+        for (let i = 0; i < tiles.length; i++) {
+            const tile = tiles[i];
+            const spec = tile.ev || { name: null };
+            P?.setTime?.(tile.t);
+            seekEvent(tile.t, spec);
+            // The tiles are sequential: each settles two frames before it is copied.
+            // eslint-disable-next-line no-await-in-loop
+            await new Promise((r) => { requestAnimationFrame(() => requestAnimationFrame(() => r())); });
+            ctx.drawImage(seekEvent(tile.t, spec), (i % cols) * cw, Math.floor(i / cols) * ch, cw, ch);
+            const d = world.getState();
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillRect((i % cols) * cw, Math.floor(i / cols) * ch, cw, 18);
+            ctx.fillStyle = '#fff';
+            ctx.font = '12px monospace';
+            ctx.fillText(
+                `${tile.label || `t=${tile.t}`} | ${d.stock} spin ${d.spinPhase.toFixed(2)} glare ${d.glare.toFixed(2)}`,
+                (i % cols) * cw + 4,
+                Math.floor(i / cols) * ch + 13,
+            );
+        }
+        seekEvent(tiles[tiles.length - 1].t, { name: null });
+        return [el.width, el.height];
+    };
+    window.__cosmicNoir = {
+        world, post, seekEvent, sheet, clearSheet: () => document.getElementById('__sheet')?.remove(),
+    };
+
+    const demo = params.get('demo') === '1';
+    let demoCursor = 0;
+    let demoLoop = -1;
+    const runDemo = (time) => {
+        const loop = Math.floor(time / DEMO_LOOP);
+        if (loop !== demoLoop) {
+            demoLoop = loop;
+            demoCursor = 0;
+            world.resetSession();
+        }
+        const local = time - loop * DEMO_LOOP;
+        while (demoCursor < DEMO_SCRIPT.length && DEMO_SCRIPT[demoCursor][0] <= local) {
+            const [, verb, detail] = DEMO_SCRIPT[demoCursor];
+            if (verb === 'lock') world.onLock(detail);
+            else {
+                world.onClear(detail);
+                world.onCombo(detail.combo);
+            }
+            demoCursor += 1;
+        }
+        if (local > 11.6 && local < 18.6 && world.combo > 0) world.onCombo(0);
+        if (local > 22 && local < 30 && world.combo > 0) world.onCombo(0);
+        if (local > 32 && world.combo > 0) world.onCombo(0);
+    };
+
     return {
-        camera() {},
-        update,
-        seek,
-        prepare,
-        render() { theme.renderFrame(); },
-        async renderAsync() { await prepare(); if (!disposed) theme.renderFrame(); },
-        resize(width, height) {
-            camera.aspect = width / height;
-            camera.updateProjectionMatrix();
-            theme.postProcessing?.setSize(width, height);
-            sought = null;
+        cameraRadius: 1,
+        camera(time, cam) {
+            world.updateCamera(cam, sim(time, 0));
+        },
+        update(time, dt) {
+            if (demo) {
+                world.updateCamera(camera, sim(time, dt));
+                runDemo(time);
+            }
+            frame(time, dt);
+            pushPost(time);
+        },
+        seek(time) {
+            seekTo(time);
+        },
+        render() {
+            if (post) post.render();
+            else renderer.render(scene, camera);
+        },
+        resize() {
+            syncViewport();
         },
         getDiagnostics() {
             return {
-                loaded: ready,
-                quality,
-                time: theme.time,
-                hero: theme.planetGroup.position.toArray(),
-                camera: camera.position.toArray(),
-                waves: theme.cosmicWaves.length,
-                gasParticles: theme.gasSwirlData?.activeEstimate ?? 0,
-                sparks: theme.unifiedSparkData?.activeEstimate ?? 0,
-                flashScale: theme.comboFlash.scale.toArray(),
-                chromaticStrength: theme.postProcessing?.uChromaticStrength.value ?? null,
-                bloomScale: theme.postProcessing?.bloomNode.getResolutionScale() ?? null,
+                backend: renderer.backend?.isWebGPUBackend ? 'WebGPU' : 'WebGL2',
+                calls: renderer.info?.render?.calls ?? null,
+                triangles: renderer.info?.render?.triangles ?? null,
+                ...world.getState(),
             };
         },
         dispose() {
-            disposed = true;
+            if (window.__cosmicNoir?.world === world) delete window.__cosmicNoir;
             overlay?.remove();
-            theme.clearDeferredTimeouts();
-            // The playground reuses its scene immediately on effect switches.
-            // Detach now; delayed compile cleanup must only touch our own roots.
-            for (const object of ownedRoots) scene.remove(object);
-            if (warmLockWave) scene.remove(warmLockWave);
-            const release = () => {
-                // Active waves belong to planetGroup and are disposed with its roots.
-                theme.disposeCosmicWavePool();
-                theme.disposePostProcessingStack();
-                const geometries = new Set();
-                const materials = new Set();
-                for (const root of ownedRoots) {
-                    root.traverse((object) => {
-                        if (object.geometry) geometries.add(object.geometry);
-                        if (object.material) materials.add(object.material);
-                    });
-                }
-                geometries.forEach((geometry) => geometry.dispose());
-                materials.forEach((material) => material.dispose());
-                textures.forEach((map) => map.dispose());
-            };
-            if (preparing) preparing.then(release, release);
-            else release();
-            scene.background = saved.background;
-            scene.fog = saved.fog;
-            renderer.toneMapping = saved.tone;
-            renderer.toneMappingExposure = saved.exposure;
+            post?.dispose();
+            world.dispose();
+            renderer.toneMapping = saved.toneMapping;
             camera.fov = saved.fov;
+            camera.near = saved.near;
             camera.far = saved.far;
             camera.updateProjectionMatrix();
         },
