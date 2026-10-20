@@ -1,5 +1,5 @@
 /**
- * Settings > Visual > Reduce flashing effects (ADR-0021, src/core/photosensitivity.js):
+ * Settings > Visual > Reduce flashing effects (ADR-0021, src/utils/photosensitivity.js):
  *
  *   - its own switch, read live from the settings, apart from Reduce motion;
  *   - the board's screen flash becomes a slow, soft glow (shared-effects.js);
@@ -18,7 +18,7 @@ import {
     applyReduceFlashingClass,
     flashScale,
     prefersReducedFlashing,
-} from '../../src/core/photosensitivity.js';
+} from '../../src/utils/photosensitivity.js';
 import { SharedEffects } from '../../src/rendering/phaser/shared-effects.js';
 import { SettingsManager } from '../../src/ui/settings.js';
 
@@ -165,7 +165,7 @@ describe('every world that writes a frame-wide flash scales it', () => {
         const source = read(file);
         if (!/this\.uFlash\.value = /.test(source) && !/const flash = bounded\(frame\.flash\)/.test(source)) return;
         expect(source).toMatch(/flashScale\(\)/);
-        expect(source).toContain("core/photosensitivity.js'");
+        expect(source).toContain("utils/photosensitivity.js'");
     });
 
     it.each([

@@ -10,7 +10,7 @@
  *
  *   html.sb-reduce-flashing   Settings > Visual > Reduce flashing effects. The DOM flashes become
  *       a still highlight or a slow glow. Frame-wide flashes in the worlds and on the board are
- *       held back in code (src/core/photosensitivity.js); this file covers the CSS ones.
+ *       held back in code (src/utils/photosensitivity.js); this file covers the CSS ones.
  * ============================================================================== */
 
 /* ---- The launch warning is up ------------------------------------------------------------- */
