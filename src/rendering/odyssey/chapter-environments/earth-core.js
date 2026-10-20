@@ -21,6 +21,7 @@ import {
     cos,
     cross,
     dot,
+    float,
     length,
     max,
     normalize,
@@ -51,15 +52,20 @@ import {
     createRockClusterMaterialTSL,
     createObsidianColumnTSL,
     shapeMoltenBoulder,
-    basaltRandom,
     createMoltenHazeMaterialTSL,
     createMoltenPocketTSL,
     createMoltenPocketMaterialTSL,
     magmaSurgeTSL,
     createContactShadowDecalTSL,
     createFirstHeartTSL,
+    earthCoreVeilTransmission,
+    EARTH_CORE_THROUGH_STEAM_ORDER,
 } from './earth-core.tsl.js';
 import { billboardWorld, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
+import { createShaftFalls, createShaftWall, planEarthCoreShaft } from './earth-core-shaft.js';
+import { steamQuenchDensity, steamQuenchFogColour, steamQuenchSeamT } from '../composition/odyssey-steam-quench.js';
+
+// The cavern's lights draw after the quench's steam (see earthCoreVeilTransmission).
 import { acquireChapterLight } from './shared/chapter-light-pool.js';
 import { resolveQualityTier } from './shared/odyssey-quality-tier.js';
 
@@ -488,7 +494,8 @@ function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_
             bases[i3] = col.x + Math.cos(theta) * radius;
             bases[i3 + 1] = LAVA_LAKE_Y;
             bases[i3 + 2] = col.z + Math.sin(theta) * radius;
-            splashFlags[i] = 0;
+            // One riser in five is a spent cinder falling back (0.5: see `cinder` below).
+            splashFlags[i] = (i % 5 === 0) ? 0.5 : 0;
             sizes[i] = 3.0 + Math.random() * 5.0;
         } else {
             // THE UPDRAFT (2026-10-01): half the risers ride the shaft itself, around the rail,
@@ -500,7 +507,7 @@ function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_
             bases[i3] = shaftAxis.x + Math.cos(theta) * radius;
             bases[i3 + 1] = LAVA_LAKE_Y;
             bases[i3 + 2] = shaftAxis.z + Math.sin(theta) * radius;
-            splashFlags[i] = 0;
+            splashFlags[i] = (i % 5 === 1) ? 0.5 : 0;
             sizes[i] = 2.4 + Math.random() * 4.0;
         }
         randoms[i] = Math.random();
@@ -523,7 +530,13 @@ function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_
     // sparks fast — 4-9 u/s — with a sinuous spiral that widens as they climb.
     const riseSpan = Math.max(60, yTop - LAVA_LAKE_Y);
     const riseSpeed = aRandom.mul(5.0).add(4.0);
-    const yOffset = mod(time.mul(riseSpeed).add(aRandom.mul(riseSpan * 7.3)), riseSpan);
+    // The rise runs on the banked updraft clock (gusts), not the wall clock.
+    const risePhase = uniforms.uRisePhase ?? time;
+    // CINDERS (Act I overhaul): a fifth of the risers are spent cinders FALLING back through the
+    // updraft — dimmer, slower, the counter-motion that makes the rise read (aSplash 0.5 marks them).
+    const cinder = smoothstep(0.25, 0.3, attribute('aSplash', 'float')).mul(oneMinus(smoothstep(0.7, 0.75, attribute('aSplash', 'float'))));
+    const climb = mix(risePhase.mul(riseSpeed), risePhase.mul(riseSpeed).mul(-0.45), cinder);
+    const yOffset = mod(climb.add(aRandom.mul(riseSpan * 7.3)), riseSpan);
     const angle = time.mul(0.4).add(aRandom.mul(TAU));
     const normalizedY = yOffset.div(riseSpan);
     const radius = aRandom.mul(3.0).add(1.5).add(normalizedY.mul(5.0));
@@ -538,7 +551,7 @@ function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_
     // molten material's waterline and tongues, which is what makes heave → tongues →
     // sparks read as ONE event. g = 16 u/s²: heavier than true gravity, because molten
     // rock should fall like slag, not confetti.
-    const splash = attribute('aSplash', 'float');
+    const splash = smoothstep(0.75, 0.8, attribute('aSplash', 'float'));
     const flightT = aRandom.mul(1.2).add(1.8);
     const lifeFrac = fract(time.div(flightT).add(aRandom.mul(7.0)));
     const age = lifeFrac.mul(flightT);
@@ -582,6 +595,7 @@ function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_
     material.positionNode = emberCenter
         .add(across.mul(corner.x.mul(worldSize)))
         .add(along.mul(corner.y.mul(worldSize).mul(stretch)));
+    const emberVeil = uniforms.uVeil ? earthCoreVeilTransmission(uniforms.uVeil, emberCenter) : float(1);
     // §5.3 temperature ramp by LIFE (white-hot → orange → red → ash, pyrestorm look):
     // fresh sparks at the lava are hottest, cooling as they rise. `life` = 1 new → 0 old.
     const life = oneMinus(lifeNorm);
@@ -618,6 +632,8 @@ function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_
     material.colorNode = mix(hotColor.mul(glow), steamColor, uniforms.uSeam.mul(0.85));
     material.opacityNode = glow.mul(alpha)
         .mul(oneMinus(uniforms.uSeam.mul(0.35)))
+        .mul(mix(float(1), float(0.55), cinder))
+        .mul(emberVeil)
         .mul(uniforms.uOpacity);
     material.transparent = true;
     material.depthWrite = false;
@@ -630,6 +646,7 @@ function createRisingEmbers(uniforms, count, staging = null, { yTop = LAVA_LAKE_
     const embers = new THREE.Mesh(geometry, material);
     embers.name = 'rising-embers';
     embers.frustumCulled = false;
+    embers.renderOrder = EARTH_CORE_THROUGH_STEAM_ORDER;
     return embers;
 }
 
@@ -706,6 +723,7 @@ function createNearCameraEmbers(uniforms, count, yLow, yHigh) {
     material.colorNode = mix(hotColor.mul(glow), steamSpark, uniforms.uSeam.mul(0.85));
     material.opacityNode = glow.mul(life.mul(0.7).add(0.3))
         .mul(oneMinus(uniforms.uSeam.mul(0.3)))
+        .mul(uniforms.uVeil ? earthCoreVeilTransmission(uniforms.uVeil, center) : float(1))
         .mul(uniforms.uOpacity);
     material.transparent = true;
     material.depthWrite = false;
@@ -718,6 +736,7 @@ function createNearCameraEmbers(uniforms, count, yLow, yHigh) {
     const sparks = new THREE.Mesh(geometry, material);
     sparks.name = 'near-camera-embers';
     sparks.frustumCulled = false;
+    sparks.renderOrder = EARTH_CORE_THROUGH_STEAM_ORDER;
     return sparks;
 }
 
@@ -763,7 +782,7 @@ function createMoltenHaze(uniforms, count, yLow, yHigh) {
     const { material } = createMoltenHazeMaterialTSL(
         uniforms.uTime,
         uniforms.uPulseIntensity,
-        { uOpacity: uniforms.uOpacity },
+        { uOpacity: uniforms.uOpacity, uVeil: uniforms.uVeil, uVeilColour: uniforms.uVeilColour },
     );
     const haze = new THREE.Mesh(geometry, material);
     haze.name = 'molten-haze';
@@ -897,6 +916,15 @@ export function createEarthCoreEnvironment(options = {}) {
         // dome hung over the seabed's horizon — a cavern sky under the sea, met by the bed along
         // a hard line. This closes it just past the 1->2 boundary, while the quench is still dense.
         uVaultExit: uniform(1),
+        // The quench's density squared at the camera (the board's own steam-fog weight) — what
+        // the lights drawn after the steam shell dim by (earthCoreVeilTransmission).
+        uVeil: uniform(0),
+        // The steam's mean colour at the camera (steamQuenchFogColour): the haze puffs become
+        // the near billows of the vapour in it.
+        uVeilColour: uniform(new THREE.Color(0, 0, 0)),
+        // The updraft's rise clock, banked on the CPU (never time x a changing rate): it runs
+        // faster in gusts (the music's beats, the camera's glides) — see updateEarthCoreEnvironment.
+        uRisePhase: uniform(0),
         // PERF (QW9): baked-bounce strength for the lit rock material. The 4 crater
         // accents + per-cluster magma-bounce PointLights were cut; this drives a baked
         // warm emissive floor on the molten-pocket/column material so the rock still
@@ -930,18 +958,12 @@ export function createEarthCoreEnvironment(options = {}) {
     // geometry stays per-size; only the material is shared — draw order is unchanged.)
     const sharedDecalMaterial = createContactShadowDecalTSL(1, uniforms.uOpacity).material;
 
-    // PERF (share-material): build ONE lava-fall material + geometry reused by the two
-    // crossed hero planes AND every cluster tether-stream. All createLavaFallTSL call
-    // sites use byte-identical args (uTime/uPulseIntensity/uDescent/uOpacity) and the
-    // identical PlaneGeometry(96,220), and the material carries NO positionNode and is
-    // never mutated per mesh (only per-mesh transform / group .visible vary), so reuse is
-    // pixel-identical and collapses up to ~4 lava-fall pipelines to one.
-    const sharedLavaFall = createLavaFallTSL(
-        uniforms.uTime,
-        uniforms.uPulseIntensity,
-        uniforms.uDescent,
-        { uOpacity: uniforms.uOpacity },
-    );
+    // THE OLD HERO FALL IS GONE (Act I overhaul, 2026-10-20): two crossed additive planes at lake
+    // level, shown from local 0.45. The shaft's own falls replace it (earth-core-shaft.js). The
+    // cluster tether-streams that shared its material were never built (every geode seat is under
+    // the satellite size), so nothing else needs the plane material: `sharedLavaFall` stays null
+    // and createRockCluster keeps its own fallback for a seat that ever grows satellites.
+    const sharedLavaFall = null;
 
     // PERF (share-material): ONE dim corona-glow sprite material for every geode cluster.
     // Each cluster built its own makeGlowSpriteMaterial(0xff5a14, 0.055) SpriteNodeMaterial
@@ -966,7 +988,7 @@ export function createEarthCoreEnvironment(options = {}) {
     group.userData.stagingFrames = Array.from({ length: 19 }, (_, i) => ({
         frame: i + 1,
         global: Number((i * 0.005).toFixed(3)),
-        local: Number((i * 0.005 / Math.max((chapterTEnd ?? 0.125) - (chapterTStart ?? 0), 1e-4)).toFixed(3)),
+        local: Number(((i * 0.005) / Math.max((chapterTEnd ?? 0.125) - (chapterTStart ?? 0), 1e-4)).toFixed(3)),
     }));
 
     // BISECT LEVERS (dev URL flags, default OFF => everything draws). Wave 3b measured the
@@ -1133,44 +1155,36 @@ export function createEarthCoreEnvironment(options = {}) {
     elements.moltenPockets.push(...moltenPockets);
     elements.seamBoulders.push(...moltenPockets);
 
-    // 11. LAVA-FALL hero — staged as the chapter landmark, not another orange strip.
-    // Two crossed planes form one volumetric fall so it reads from the moving camera,
-    // seated into a horizontal splash decal on the lifted lake.
-    const fallScale = 0.28;
-    const fallHeight = 220 * fallScale;
+    // 11. THE SHAFT (Act I overhaul, 2026-10-20) — earth-core-shaft.js. One rock wall round the
+    // climb (lake chamber -> shaft -> the vent throat at the seabed), with strata whose ledge
+    // undersides catch the lake's light, and four lava falls pouring from spouts in it toward
+    // the rising camera. Replaces the basalt colonnade (flat-faced one-segment prisms that read
+    // as dark slabs from below) and the crossed-plane hero fall at lake level.
+    // The axis runs between the rail and the camera, which trails the vertical rail on the
+    // vista side's opposite (measured: camera xz ~ rail - 5.5 x vista), so the climb rises up
+    // the middle of the shaft and the throat's vanishing point holds the First Heart.
+    const railMid = staging.sample(0.5);
+    const shaftVista = { x: -EARTH_CORE_STAGE_FORWARD.x, z: -EARTH_CORE_STAGE_FORWARD.z };
+    const shaftRight = { x: -shaftVista.z, z: shaftVista.x };
+    const shaftPlan = planEarthCoreShaft({
+        axis: { x: railMid.x - (shaftVista.x * 2.75), z: railMid.z - (shaftVista.z * 2.75) },
+        lakeY: LAVA_LAKE_Y,
+        vista: shaftVista,
+        right: shaftRight,
+    });
+    const shaftWall = createShaftWall(uniforms, shaftPlan);
+    group.add(shaftWall);
+    group.userData.shaftWall = shaftWall;
+    group.userData.shaftPlan = shaftPlan;
+    const shaftFalls = createShaftFalls(uniforms, shaftPlan);
     const lavaFallGroup = new THREE.Group();
     lavaFallGroup.name = 'lava-fall-hero';
-
-    // The hero plane IS the pre-built sharedLavaFall mesh; the crossed plane reuses its
-    // material + geometry (share-material: only transform/rotation differ, no positionNode,
-    // never mutated per mesh — the group toggles .visible, the material animates via shared
-    // uniforms). Two lava-fall pipelines collapse to one.
-    const lavaFall = sharedLavaFall;
-    lavaFall.mesh.scale.set(fallScale, fallScale, 1);
-    lavaFall.mesh.position.set(0, fallHeight * 0.5, 0);
-    lavaFall.mesh.renderOrder = -4;
-    lavaFallGroup.add(lavaFall.mesh);
-
-    const lavaFallCrossMesh = new THREE.Mesh(sharedLavaFall.geometry, sharedLavaFall.material);
-    lavaFallCrossMesh.name = 'lava-fall';
-    lavaFallCrossMesh.scale.set(fallScale * 0.52, fallScale, 1);
-    lavaFallCrossMesh.position.set(0, fallHeight * 0.5, 0);
-    lavaFallCrossMesh.rotation.y = Math.PI / 2;
-    lavaFallCrossMesh.renderOrder = -4;
-    lavaFallGroup.add(lavaFallCrossMesh);
-
-    lavaFallGroup.position.copy(fallBase);
-    lavaFallGroup.rotation.y = Math.atan2(fallFrame.forward.x, fallFrame.forward.z);
-    lavaFallGroup.visible = false;
+    lavaFallGroup.add(shaftFalls);
     group.add(lavaFallGroup);
     group.userData.lavaFall = lavaFallGroup;
-
-    const fallSplash = createLavaSplashDecal(72, 34, 0.44);
-    fallSplash.position.set(fallBase.x, LAVA_LAKE_Y + 0.55, fallBase.z);
-    fallSplash.rotation.z = -0.18;
-    fallSplash.visible = false;
-    group.add(fallSplash);
-    group.userData.lavaFallSplash = fallSplash;
+    group.userData.shaftFalls = shaftFalls;
+    // `fallFrame` (the old seat's frame) only steers the lake's flow direction above.
+    group.userData.lavaFallSeat = { frame: fallFrame, base: fallBase };
 
     // 12. God-ray shafts — 3–4 large low-opacity vertical cones above the lake, biased
     //     toward the lava-fall splash so the ember-storm reads as rising through light.
@@ -1221,7 +1235,9 @@ export function createEarthCoreEnvironment(options = {}) {
         cool: new THREE.Color(0x9fc4d8), // STEAM_COOL pulled toward steel so it stays a HINT
         scratch: new THREE.Color(),
     };
-    group.userData.lavaFallRevealables = [lavaFallGroup, fallSplash, godRays[0]];
+    // The shaft's falls are always there; only the shaft-of-light cone beside the old fall seat
+    // still waits for the climb's middle.
+    group.userData.lavaFallRevealables = [godRays[0]];
 
     // 12b. THE FIRST HEART — the chapter's hero / destination landmark (plan item 1):
     // the white-hot vent at the top of the shaft where the Earth's fire first touches the
@@ -1270,13 +1286,8 @@ export function createEarthCoreEnvironment(options = {}) {
     ).material;
     group.userData.uLakeWorldY = uLakeWorldY;
 
-    // 12c. Basalt colonnade WALLS (plan asset 3): 6–8 clustered hex-column groups per
-    // side, 55–90 units off-path, size-graded 60→160, continuous along the corridor —
-    // the cavern walls that fix the 08–13 emptiness. ONE merged geometry / draw call
-    // (Fingal's Cave colonnade grammar; respects the <100 draw-call budget).
-    const colonnade = createColonnadeWalls(uniforms, staging, sharedColumnMaterial);
-    group.add(colonnade);
-    group.userData.colonnade = colonnade;
+    // 12c. (REPLACED 2026-10-20) The basalt colonnade walls: the shaft wall (step 11) is the
+    // cavern's wall now.
 
     // 12d. Selenite geode CHAPEL (plan asset 4) — the mid-chapter beat filling the
     // 08–11 dead zone: translucent crystal beams off the right of the rail, backlit by
@@ -1307,7 +1318,12 @@ export function createEarthCoreEnvironment(options = {}) {
     // intent from the original comment is preserved — a pillar brackets each frame edge across
     // the descent, heights still vary, two giants still tower into the ceiling haze.
     const columnSpecs = [];
-    const columnStations = [0.14, 0.42, 0.70, 0.86];
+    // ONE STATION NOW (Act I overhaul, 2026-10-20). The shaft is vertical, so the four stations'
+    // pairs all stood at the same two spots: eight bundles in two clusters that, from the climb,
+    // were the giant dark claws at both edges of every frame (and hid the shaft's falls). The
+    // shaft wall frames the climb now; one pair (and the far filler) stays to frame the opening
+    // across the lake, short enough to leave the climb's frame by local ~0.25.
+    const columnStations = [0.14];
     // With the frame constant (above), `lateral` is screen-right and `forward` is screen-up,
     // so a constant half-width gives parallel aisle walls and an exact left/right mirror at
     // every station. The old spec fanned the aisle open (22/25.5/29/32.5 left vs 24/28/32/36
@@ -1326,8 +1342,10 @@ export function createEarthCoreEnvironment(options = {}) {
                 x: p.x, z: p.z, r, h, giant,
             });
         };
-        push(-1, 6.8 + bi * 0.7, bi === 1 ? 142 : 96 + bi * 8, bi === 1);
-        push(1, 7.2 + bi * 0.65, bi === 0 ? 132 : 98 + bi * 6, bi === 0);
+        // Capped at 92 (2026-10-20): the shaft narrows into its throat above ~h 90, and the
+        // giants' old 132-142 u ran their flat caps through the throat's wall.
+        push(-1, 6.8 + bi * 0.7, 62, false);
+        push(1, 7.2 + bi * 0.65, 56, false);
     });
     // One far filler only: depth cue without re-cluttering the middle of the screen. Set
     // OUTSIDE the aisle so it reads as depth rather than breaking the colonnade's rhythm.
@@ -1336,7 +1354,7 @@ export function createEarthCoreEnvironment(options = {}) {
         forward: AISLE_FORWARD + 16,
     });
     columnSpecs.push({
-        x: fillerColumn.x, z: fillerColumn.z, r: 7.5, h: 112, giant: false,
+        x: fillerColumn.x, z: fillerColumn.z, r: 7.5, h: 70, giant: false,
     });
 
     // Columns + ceiling slabs reuse the hoisted sharedColumnMaterial (built above so the colonnade
@@ -1600,34 +1618,6 @@ function createLavaFloor(uniforms, basins = [], { addGlows = true, crustPlates =
 }
 
 /**
- * Horizontal additive splash at the lava-fall impact point. This is deliberately a
- * single grounded decal, not another floating orb, so the hero reads as meeting the
- * lake surface.
- */
-function createLavaSplashDecal(width = 80, depth = 36, opacity = 0.36) {
-    const splashTexture = createLavaGlowTexture();
-    const material = new THREE.MeshBasicMaterial({
-        map: splashTexture,
-        color: 0xff6a18,
-        transparent: true,
-        opacity,
-        depthWrite: false,
-        blending: THREE.AdditiveBlending,
-        side: THREE.DoubleSide,
-        forceSinglePass: true,
-    });
-    material.userData.emitsBloom = true;
-
-    const geometry = new THREE.PlaneGeometry(width, depth, 1, 1);
-    geometry.rotateX(-Math.PI / 2);
-    const mesh = new THREE.Mesh(geometry, material);
-    mesh.name = 'lava-fall-splash';
-    mesh.renderOrder = -3;
-    mesh.frustumCulled = false;
-    return mesh;
-}
-
-/**
  * Create volcanic crater rim with jagged rock formations
  */
 /**
@@ -1778,56 +1768,6 @@ function pushSeatClearOfPath(seat, radius, groupCenter) {
 }
 
 /**
- * Plan asset 3 — basalt colonnade WALLS: clustered 5–7-sided hex prisms (Fingal's Cave
- * jointing) at seven stations per side along the corridor, size-graded 60→160, bases
- * seated at the lake. Every prism merges into ONE geometry so the entire colonnade
- * costs a single draw call under the column material (charred silhouette, lake-lit
- * fresnel rim + emissive veining).
- */
-function createColonnadeWalls(uniforms, staging, sharedMaterial) {
-    const stations = [0.06, 0.18, 0.32, 0.46, 0.62, 0.74, 0.85];
-    const prismGeometries = [];
-    // Seeded, so the colonnade is the same in every run and every A/B capture.
-    const random = basaltRandom(1743);
-    stations.forEach((ft, si) => {
-        [-1, 1].forEach((side) => {
-            const edge = 55 + ((si * 7 + (side > 0 ? 11 : 0)) % 36); // 55–90 off-path
-            const visibleEdge = Math.min(edge, 46);
-            const base = staging.lakeAt(ft, {
-                lateral: side * visibleEdge,
-                forward: (side > 0 ? 8 : -2) + si * 1.5,
-            });
-            const clusterHeight = 60 + (si / (stations.length - 1)) * 100; // 60→160
-            const prismCount = 3 + (si % 2);
-            for (let pi = 0; pi < prismCount; pi += 1) {
-                const h = clusterHeight * (0.55 + random() * 0.5);
-                const r = 4.5 + random() * 3.5;
-                const sides = 5 + Math.floor(random() * 3); // 5–7-sided jointing
-                const prism = new THREE.CylinderGeometry(r * 0.85, r, h, sides, 1);
-                prism.rotateY(random() * Math.PI * 2);
-                prism.translate(
-                    base.x + (random() - 0.5) * r * 4.0,
-                    LAVA_LAKE_Y + h * 0.5, // base seated at the lake surface
-                    base.z + (random() - 0.5) * r * 4.0,
-                );
-                // Non-indexed so the merged normals are per FACE: crisp jointing facets
-                // instead of the smooth-shaded soft prisms the indexed cylinders gave.
-                prismGeometries.push(prism.toNonIndexed());
-                prism.dispose();
-            }
-        });
-    });
-    const merged = mergeGeometries(prismGeometries, false);
-    prismGeometries.forEach((g) => g.dispose());
-    merged.computeVertexNormals();
-    // Reuse the hoisted shared isColumn=true material (no per-site compile).
-    const mesh = new THREE.Mesh(merged, sharedMaterial);
-    mesh.name = 'basalt-colonnade-walls';
-    mesh.frustumCulled = false;
-    return mesh;
-}
-
-/**
  * Plan asset 4 — the selenite geode CHAPEL: translucent crystal beams off the right of
  * the rail at the mid-chapter dead zone, backlit by a molten pocket beneath, framed by
  * a dark basalt shell, with one warm corona so it reads from across the cavern.
@@ -1862,25 +1802,11 @@ function createSeleniteChamber(group, uniforms, staging, sharedColumnMaterial, s
     pocket.mesh.position.y = -3.2;
     chamber.add(pocket.mesh);
 
-    // Dark basalt SHELL framing the chapel (a broken arc of hex prisms, one draw).
-    const shellGeometries = [];
-    for (let i = 0; i < 5; i += 1) {
-        const h = 18 + i * 4.5;
-        const shellPrism = new THREE.CylinderGeometry(3.8, 4.8, h, 6, 1);
-        const angle = -1.05 + i * 0.52;
-        shellPrism.translate(
-            Math.cos(angle) * 11,
-            h * 0.5 - 3,
-            Math.sin(angle) * 8 - 3,
-        );
-        shellGeometries.push(shellPrism);
-    }
-    const shellGeometry = mergeGeometries(shellGeometries, false);
-    shellGeometries.forEach((g) => g.dispose());
-    // Reuse the hoisted shared isColumn=true material (the shell is byte-identical to the columns).
-    const shell = new THREE.Mesh(shellGeometry, sharedColumnMaterial);
-    shell.name = 'selenite-chamber-shell';
-    chamber.add(shell);
+    // (REMOVED 2026-10-20, Act I overhaul) The dark basalt shell — five prisms hung round the
+    // chapel half-way up the shaft. With the shaft's own wall round the climb it was a cluster of
+    // rock floating 20 u clear of any wall (a floating framing prop), and in the steam it was the
+    // dark slab at the frame's right edge. The chapel is its molten heart and corona now: one more
+    // of the chapter's floating molten blobs (the motif of the node pockets).
 
     // One warm corona so the chapel reads from across the cavern.
     const chapelCoronaTexture = createGlowTexture();
@@ -2206,6 +2132,34 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
         }
     }
 
+    // THE VEIL (Act I overhaul): the quench's density squared at the camera — the board's own
+    // steam-fog weight — which the lights drawn through the steam dim by.
+    if (uniforms?.uVeil && cameraProgress != null) {
+        const boundary = group.userData.chapterTEnd ?? 0.125;
+        const veilT = steamQuenchSeamT(cameraProgress, boundary);
+        const veil = steamQuenchDensity(veilT);
+        uniforms.uVeil.value = veil * veil;
+        if (uniforms.uVeilColour) steamQuenchFogColour(veilT, uniforms.uVeilColour.value);
+        // The haze draws after the steam's shell while it is the steam's near billows (a sort
+        // key only: no pipeline changes).
+        if (group.userData.haze) group.userData.haze.renderOrder = veil > 0.05 ? EARTH_CORE_THROUGH_STEAM_ORDER : -10;
+    }
+    // THE UPDRAFT'S GUSTS: the embers' rise clock runs faster on the music's beats and while the
+    // camera glides between orbs, banked here so a change of rate never teleports a spark.
+    if (uniforms?.uRisePhase) {
+        const dt = Math.min(Math.max(Number.isFinite(delta) ? delta : 0, 0), 0.1);
+        const lastP = group.userData.gustLastProgress;
+        const glide = (cameraProgress != null && lastP != null && dt > 0)
+            ? Math.min(1, Math.abs(cameraProgress - lastP) / dt / 0.01)
+            : 0;
+        group.userData.gustLastProgress = cameraProgress;
+        const beat = directorState ? THREE.MathUtils.clamp(directorState.beatPulse || 0, 0, 1) : 0;
+        const want = 1 + (0.9 * beat) + (1.2 * glide);
+        const gust = group.userData.gust ?? 1;
+        group.userData.gust = gust + ((want - gust) * Math.min(1, dt * 3));
+        uniforms.uRisePhase.value += dt * group.userData.gust;
+    }
+
     if (uniforms?.uPulseIntensity) {
         const audioPulse = directorState
             ? THREE.MathUtils.clamp((directorState.bass || 0) * 0.7 + (directorState.energy || 0) * 0.3, 0, 1)
@@ -2244,18 +2198,13 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
         const seam = uniforms?.uSeam ? uniforms.uSeam.value : 0;
         const reveal = THREE.MathUtils.smoothstep(localProgress, 0.45, 0.61);
         const visible = reveal > 0.04 && seam < 0.98;
-        lavaFallRevealables.forEach((object, i) => {
-            if (!object) return;
-            object.visible = visible;
-            if (i === 0) {
-                object.scale.setScalar(THREE.MathUtils.lerp(0.72, 1, reveal));
-            }
+        lavaFallRevealables.forEach((object) => {
+            if (object) object.visible = visible;
         });
     }
 
     const seam = uniforms?.uSeam ? uniforms.uSeam.value : 0;
     const occluderVisible = seam < 0.94;
-    if (group.userData.colonnade) group.userData.colonnade.visible = occluderVisible;
     group.userData.columns?.forEach((column) => {
         column.visible = occluderVisible;
     });
@@ -2296,7 +2245,6 @@ export function updateEarthCoreEnvironment(group, delta, time, camera = null, ca
     // magma sphere survives past the frame-18 equivalent.
     const { elements } = group.userData;
     if (elements?.rockClusters) {
-        const seam = uniforms?.uSeam ? uniforms.uSeam.value : 0;
         const sinkables = [
             ...(elements.rockClusters ?? []),
             ...(elements.moltenPockets ?? []),

@@ -88,14 +88,16 @@ function expectVisible(group, target, progress, label) {
 }
 
 describe('Earth Core chapter environment (creative plan ch1)', () => {
-    it('mounts the First Heart, colonnade walls, selenite chapel, and molten basins', () => {
+    it('mounts the First Heart, the shaft wall, selenite chapel, and molten basins', () => {
         stubCanvasDocument();
 
         const group = createEarthCoreEnvironment({ particleCount: 240 });
         const chapterStartY = getOdysseyPathCurve().getPointAt(getActiveOdysseyChapterPositions()[0]).y;
 
         expect(group.userData.firstHeart?.name).toBe('first-heart');
-        expect(group.userData.colonnade?.name).toBe('basalt-colonnade-walls');
+        // The shaft wall replaced the colonnade prisms (Act I overhaul, 2026-10-20).
+        expect(group.userData.shaftWall?.name).toBe('earth-core-shaft-wall');
+        expect(group.userData.colonnade).toBeUndefined();
         expect(group.userData.seleniteChamber?.name).toBe('selenite-geode-chamber');
         expect(group.userData.visibilityTargets?.firstHeart?.name).toBe('first-heart');
         expect(group.userData.visibilityTargets?.lavaFall?.name).toBe('lava-fall-hero');
@@ -214,8 +216,23 @@ describe('Earth Core chapter environment (creative plan ch1)', () => {
             expectVisible(group, seleniteChapel, captureProgress(frame), `Selenite chapel frame ${frame}`);
         });
 
-        [12, 14, 16].forEach((frame) => {
-            expectVisible(group, lavaFall, captureProgress(frame), `Lava-fall frame ${frame}`);
+        // THE FALLS POUR DOWN THE SHAFT NOW (Act I overhaul, 2026-10-20). The old hero was one
+        // crossed-plane fall at lake level, revealed from local 0.45, pinned at frames 12-16. The
+        // shaft's falls leave spouts high on the wall and stand in the climb from its start: at
+        // least three lips must be in front of the camera, inside the frame, at frames 4-8 (the throat falls stay in it longer).
+        const { falls } = group.userData.shaftPlan;
+        [4, 6, 8].forEach((frame) => {
+            const progress = captureProgress(frame);
+            updateEarthCoreEnvironment(group, 0.016, progress * 20, null, progress);
+            const inFrame = falls.filter((f) => {
+                const lip = new THREE.Object3D();
+                lip.position.set(f.lip.x, f.lip.y - 6, f.lip.z);
+                group.add(lip);
+                const ndc = projectTarget(group, lip, progress);
+                group.remove(lip);
+                return Math.abs(ndc.x) <= 1 && Math.abs(ndc.y) <= 1 && ndc.z > -1 && ndc.z < 1;
+            });
+            expect(inFrame.length, `falls in frame at frame ${frame}`).toBeGreaterThanOrEqual(3);
         });
     });
 
