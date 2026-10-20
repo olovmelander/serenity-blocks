@@ -3,6 +3,9 @@ node_modules/
 yarn.lock
 pnpm-lock.yaml
 
+# Per-session worktrees made by the Claude desktop app and `claude -w`
+.claude/worktrees/
+
 # Build outputs
 dist/
 build/

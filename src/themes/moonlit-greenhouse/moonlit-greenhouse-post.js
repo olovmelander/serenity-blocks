@@ -34,7 +34,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { mgCanopy, mgMoonlightBay } from './moonlit-greenhouse-tsl.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode; `march` is the number of steps each pixel

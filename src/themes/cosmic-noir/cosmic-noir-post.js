@@ -48,7 +48,7 @@ import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import {
     FILM_STOCKS, STOCK_HOME, cnHash21, cnLuma, cnMax3,
 } from './cosmic-noir-tsl.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (the halation goes with it).

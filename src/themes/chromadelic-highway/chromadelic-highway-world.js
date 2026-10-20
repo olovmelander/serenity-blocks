@@ -39,7 +39,7 @@ import {
     MOVEMENTS, RING_PHASE_WRAP, SPECTRUM_HOME, STEP_TRAVEL, hueOf, neonColor, ringStyle, skyTurnAt, spectrumSummary,
 } from './chromadelic-highway-spectrum.js';
 import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
-import { prefersReducedFlashing } from '../../core/photosensitivity.js';
+import { prefersReducedFlashing } from '../../utils/photosensitivity.js';
 
 const tier = (o) => o;
 

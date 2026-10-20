@@ -61,7 +61,7 @@ import {
     deckCover, deckPointAbove, gfHash21, gfLuma, gfMax3,
 } from './grainfields-tsl.js';
 import { HAZE_HEIGHT, MIST_HEIGHT, MIST_FLOOR } from './grainfields-light.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode; `air` the march's steps (0: none) and

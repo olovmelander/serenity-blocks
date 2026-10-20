@@ -36,6 +36,27 @@ const COS_E = Math.cos(E);
  */
 export const VFOV_DEG = 46;
 export const TAN_V = Math.tan((VFOV_DEG * DEG) / 2);
+
+/**
+ * Portrait lens: the horizontal half-field never narrows below this tan (a ≈ 50° wide view).
+ * On a landscape screen (aspect ≳ 1.1) it never binds and the lens is VFOV_DEG; on a tall
+ * screen the vertical field widens instead, so the hounds (±22.4°) stand in the side margins
+ * beside a board that fills most of the width, rather than a wall of stone filling the frame.
+ */
+export const TAN_H_MIN = Math.tan(25 * DEG);
+
+/** The landscape aspect the helpers assume when none is given (the 16:9 measured layout). */
+const DEFAULT_ASPECT = 16 / 9;
+
+/** tan of the vertical half-field at `aspect` (width / height): TAN_V, widened on tall screens. */
+export function tanV(aspect) {
+    return Math.max(TAN_V, TAN_H_MIN / Math.max(aspect, 1e-3));
+}
+
+/** The camera's vertical field of view (deg) at `aspect`: VFOV_DEG on landscape screens. */
+export function vfovDeg(aspect) {
+    return (2 * Math.atan(tanV(aspect))) / DEG;
+}
 export const CAMERA_NEAR = 1;
 export const CAMERA_FAR = 12000;
 
@@ -74,6 +95,28 @@ export const OUTER_LANE_MAX_AZ = 30 * DEG;
 export const OUTER_LANE_FILL = 0.86;
 
 /**
+ * The far stones: a loose row of small standing stones out on the plain, in both side lanes,
+ * receding toward the horizon — 13–22 m slabs that give the Vigil Stone (≈ 90 m) its scale. Each entry is
+ * `[x, z, halfWidth, height, lean, turn]` in metres / radians: ground position of the foot,
+ * core half-width, height above the snow, lean (about the view axis) and turn (about the
+ * vertical, so each shows a different face). All stand beyond the hound pillars (180 m) and
+ * outside the card's columns at every measured viewport (pinned by the composition test).
+ * Their long shadows (height · cot E) fall toward the camera in the snow shader.
+ */
+export const FAR_STONES = Object.freeze([
+    Object.freeze([-165, -310, 3.0, 18.0, 0.07, 0.4]),
+    Object.freeze([-255, -490, 2.6, 14.0, -0.05, 2.1]),
+    Object.freeze([-365, -740, 3.6, 22.0, 0.04, 4.0]),
+    Object.freeze([-510, -1120, 2.8, 15.0, 0.12, 5.3]),
+    Object.freeze([195, -360, 2.8, 16.0, -0.06, 1.2]),
+    Object.freeze([295, -580, 3.8, 21.0, 0.03, 3.1]),
+    Object.freeze([440, -960, 2.5, 13.0, -0.1, 0.7]),
+    Object.freeze([-120, -250, 2.3, 10.5, 0.2, 2.6]),
+    Object.freeze([-680, -1560, 3.2, 16.0, 0.02, 1.0]),
+    Object.freeze([600, -1400, 2.9, 14.0, -0.04, 4.4]),
+]);
+
+/**
  * Hound pillars (§5.6): ground distance, quad width and height (m). Lanes 0/1 are the
  * left/right dogs, 2/3 the left/right outer lanes, 4/5 echo spares beside the dogs, pushed
  * SPARE_OFFSET metres outward (away from the card).
@@ -106,8 +149,8 @@ export const STONE = Object.freeze({
      * Unit height (highest vertex, jitter included) and x of the crown peak: the slanted crown
      * stands highest on the windward (left) shoulder.
      */
-    UNIT_CROWN: 1.071,
-    UNIT_CROWN_X: -0.345,
+    UNIT_CROWN: 1.063,
+    UNIT_CROWN_X: -0.357,
     /**
      * Default world dims: sx is the core half-width (m); sy scales unit height to metres, so the
      * default shoulder is 80 m and the crown peak ≈ 92 m — under the crown cap at 16:9.
@@ -156,8 +199,8 @@ export const CAMERA_FOCUS = Object.freeze({
  * shoulder, narrowed on the right by the asymmetric crown.
  */
 export const DEFAULT_STONE_PROFILE = new Float32Array([
-    1.114, 1.125, 1.093, 1.082, 1.069, 1.034,
-    1.001, 0.995, 0.990, 0.991, 0.878, 0.802,
+    1.153, 1.139, 1.143, 1.131, 1.111, 1.088,
+    1.060, 1.044, 1.037, 1.031, 0.968, 0.837,
 ]);
 
 /**
@@ -284,12 +327,15 @@ function clamp(value, min, max) {
 
 /** tan of the horizontal half-FOV at `aspect` (width / height). */
 export function tanH(aspect) {
-    return TAN_V * aspect;
+    return tanV(aspect) * aspect;
 }
 
-/** Angle subtended by one pixel at screen centre (rad/px) for a drawing buffer `heightPx` tall. */
-export function pixelAngle(heightPx) {
-    return (2 * TAN_V) / Math.max(1, heightPx);
+/**
+ * Angle subtended by one pixel at screen centre (rad/px) for a drawing buffer `heightPx` tall
+ * at `aspect` (landscape when omitted).
+ */
+export function pixelAngle(heightPx, aspect = DEFAULT_ASPECT) {
+    return (2 * tanV(aspect)) / Math.max(1, heightPx);
 }
 
 /**
@@ -310,8 +356,9 @@ export function dirToScreen(dir, aspect, out = { x: 0, y: 0, depth: 0 }) {
         out.y = 0.5;
         return out;
     }
-    out.x = 0.5 + (0.5 * cx) / (cz * TAN_V * aspect);
-    out.y = 0.5 - (0.5 * cy) / (cz * TAN_V);
+    const tv = tanV(aspect);
+    out.x = 0.5 + (0.5 * cx) / (cz * tv * aspect);
+    out.y = 0.5 - (0.5 * cy) / (cz * tv);
     return out;
 }
 
@@ -331,8 +378,9 @@ export function projectWorld(point, aspect, out = { x: 0, y: 0, depth: 0 }) {
         out.y = 0.5;
         return out;
     }
-    out.x = 0.5 + (0.5 * dx) / (cz * TAN_V * aspect);
-    out.y = 0.5 - (0.5 * cy) / (cz * TAN_V);
+    const tv = tanV(aspect);
+    out.x = 0.5 + (0.5 * dx) / (cz * tv * aspect);
+    out.y = 0.5 - (0.5 * cy) / (cz * tv);
     return out;
 }
 
@@ -344,8 +392,9 @@ export function projectWorld(point, aspect, out = { x: 0, y: 0, depth: 0 }) {
  * @param {{x:number,y:number,z:number}} out reused result
  */
 export function screenToDir(sx, sy, aspect, out) {
-    const tx = (sx * 2 - 1) * TAN_V * aspect;
-    const ty = (1 - sy * 2) * TAN_V;
+    const tv = tanV(aspect);
+    const tx = (sx * 2 - 1) * tv * aspect;
+    const ty = (1 - sy * 2) * tv;
     const x = S.x + tx * R.x + ty * U.x;
     const y = S.y + tx * R.y + ty * U.y;
     const z = S.z + tx * R.z + ty * U.z;
@@ -362,8 +411,9 @@ export function screenToDir(sx, sy, aspect, out) {
  * Closed form, no Raycaster.
  */
 export function screenToWorld(sx, sy, aspect, depth, out) {
-    const tx = (sx * 2 - 1) * TAN_V * aspect;
-    const ty = (1 - sy * 2) * TAN_V;
+    const tv = tanV(aspect);
+    const tx = (sx * 2 - 1) * tv * aspect;
+    const ty = (1 - sy * 2) * tv;
     out.x = CAM_REST.x + depth * (S.x + tx * R.x + ty * U.x);
     out.y = CAM_REST.y + depth * (S.y + tx * R.y + ty * U.y);
     out.z = CAM_REST.z + depth * (S.z + tx * R.z + ty * U.z);
@@ -410,14 +460,14 @@ export function ringPoint(phi, depth, out) {
  * height (left side: π − φ0). `rowV` is 0 at the board's top row, 1 at its bottom; the
  * rect is the BOARD CANVAS rect (addendum item 1). Rows above/below the ring clamp to ±π/2.
  */
-export function rowToPhi(rowV, boardRect) {
+export function rowToPhi(rowV, boardRect, aspect = DEFAULT_ASPECT) {
     const y = boardRect.y0 + rowV * (boardRect.y1 - boardRect.y0);
-    return Math.asin(clamp(((0.5 - y) * 2 * TAN_V) / TAN_R22, -1, 1));
+    return Math.asin(clamp(((0.5 - y) * 2 * tanV(aspect)) / TAN_R22, -1, 1));
 }
 
 /** Screen height (fraction, y-down) of the ring point at angle φ; the inverse of rowToPhi(). */
-export function phiToScreenY(phi) {
-    return 0.5 - (TAN_R22 * Math.sin(phi)) / (2 * TAN_V);
+export function phiToScreenY(phi, aspect = DEFAULT_ASPECT) {
+    return 0.5 - (TAN_R22 * Math.sin(phi)) / (2 * tanV(aspect));
 }
 
 /**
@@ -505,8 +555,9 @@ function profileAt(profile, bandUnit) {
 }
 
 function marginedRay(sx, sy, aspect, ox, oy, margin, out) {
-    const tx = (sx * 2 - 1) * TAN_V * aspect;
-    const ty = (1 - sy * 2) * TAN_V;
+    const tv = tanV(aspect);
+    const tx = (sx * 2 - 1) * tv * aspect;
+    const ty = (1 - sy * 2) * tv;
     const x = S.x + tx * R.x + ty * U.x;
     const y = S.y + tx * R.y + ty * U.y;
     const z = S.z + tx * R.z + ty * U.z;
@@ -567,7 +618,7 @@ function createSolveResult() {
  * Screen y (rest camera) of a stone point given in unit space (x, y) on the slab-centre plane,
  * after the solver's scale and the object lean about the base.
  */
-function stonePointScreenY(sx, sy, unitX, unitY) {
+function stonePointScreenY(sx, sy, unitX, unitY, aspect) {
     const x = unitX * sx;
     const y = unitY * sy;
     const wy = -x * SIN_LEAN + y * COS_LEAN;
@@ -575,26 +626,26 @@ function stonePointScreenY(sx, sy, unitX, unitY) {
     const dz = STONE.Z - CAM_REST.z;
     const cy = dy * U.y + dz * U.z;
     const cz = dy * S.y + dz * S.z;
-    return 0.5 - (0.5 * cy) / (cz * TAN_V);
+    return 0.5 - (0.5 * cy) / (cz * tanV(aspect));
 }
 
 /** The largest sy whose crown peak projects at screen y >= capY through the rest camera. */
-function crownCapSy(sx, capY) {
-    const k = (0.5 - capY) * 2 * TAN_V;
+function crownCapSy(sx, capY, aspect) {
+    const k = (0.5 - capY) * 2 * tanV(aspect);
     const dz = STONE.Z - CAM_REST.z;
     const worldY = CAM_REST.y + (dz * (k * S.z - U.z)) / (U.y - k * S.y);
     // Leaned peak height: wy = -x*sinL + y*cosL with x = UNIT_CROWN_X*sx.
     return (worldY + STONE.UNIT_CROWN_X * sx * SIN_LEAN) / (STONE.UNIT_CROWN * COS_LEAN);
 }
 
-function writeSolveResult(out, sx, sy, profile) {
+function writeSolveResult(out, sx, sy, profile, aspect) {
     out.sx = sx;
     out.sy = sy;
     out.coreHalfWidth = sx;
     out.shoulderH = sy * STONE.UNIT_SHOULDER;
     out.crownH = sy * STONE.UNIT_CROWN;
-    out.crownY = stonePointScreenY(sx, sy, STONE.UNIT_CROWN_X, STONE.UNIT_CROWN);
-    out.shoulderY = stonePointScreenY(sx, sy, 0, STONE.UNIT_SHOULDER);
+    out.crownY = stonePointScreenY(sx, sy, STONE.UNIT_CROWN_X, STONE.UNIT_CROWN, aspect);
+    out.shoulderY = stonePointScreenY(sx, sy, 0, STONE.UNIT_SHOULDER, aspect);
     const hw = out.stoneHW;
     const mid = STONE.BANDS >> 1;
     hw[0] = sx * profile[0];
@@ -648,7 +699,7 @@ export function solveStone({
     out.capped = false;
     out.backed = false;
     if (!card || !(card.x1 > card.x0) || !(card.y1 > card.y0) || !(aspect > 0)) {
-        return writeSolveResult(out, STONE.DEFAULT_SX, STONE.DEFAULT_SY, profile);
+        return writeSolveResult(out, STONE.DEFAULT_SX, STONE.DEFAULT_SY, profile, aspect > 0 ? aspect : DEFAULT_ASPECT);
     }
     const margin = marginDeg * DEG;
     const bandTop = STONE.UNIT_SHOULDER;
@@ -677,7 +728,7 @@ export function solveStone({
             }
             reqTop = Math.max(reqTop, entry);
         }
-        syCap = crownCapSy(sx, capY + CROWN_CAP_MARGIN);
+        syCap = crownCapSy(sx, capY + CROWN_CAP_MARGIN, aspect);
         sy = clamp(Math.min(reqTop / bandTop, syCap), minSy, maxSy);
 
         // Horizontal: every side / top-corner sample; above a capped shoulder the card sits over
@@ -726,9 +777,9 @@ export function solveStone({
         && (out.capped || out.requiredSy <= maxSy)
         && Math.abs(centre - 0.5) <= STONE.CENTRE_TOLERANCE;
     if (!out.backed) {
-        writeSolveResult(out, STONE.DEFAULT_SX, STONE.DEFAULT_SY, profile);
+        writeSolveResult(out, STONE.DEFAULT_SX, STONE.DEFAULT_SY, profile, aspect);
         out.capped = false;
         return out;
     }
-    return writeSolveResult(out, sx, sy, profile);
+    return writeSolveResult(out, sx, sy, profile, aspect);
 }

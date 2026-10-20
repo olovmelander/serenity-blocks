@@ -59,7 +59,7 @@ import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { sceneSamples } from '../shared/scene-antialias.js';
 import { resolveSunfallQuality } from './sunfall-quality.js';
-import { flashScale } from '../../core/photosensitivity.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import {
     CANOPY_LEVEL, DECK, FAR_DOLINE_CENTER, OCULUS_CENTER, OCULUS_RX, OCULUS_RZ, SUNFALL_LAYOUT,
 } from './sunfall-core.js';

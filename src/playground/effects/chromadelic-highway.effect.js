@@ -25,9 +25,14 @@
  *   ringForm=<name>          force every ring's form (tube double dashes beads hex hexDouble oct
  *                            octDashes octBeads prism hexPrism)
  *   airGain=<x>              the ring-air band gain (default 0.05)
+ *   icon=1                   the theme-icon framing: the lens looks straight down the road at the
+ *                            arches' vanishing point, closed to iconFov (default 40; iconYaw and
+ *                            iconPitch in radians turn it). Compose for a small circle: capture a
+ *                            square frame. window.__chromadelic.iconLens = { fov, yaw, pitch }
+ *                            overrides them live for a contact sheet.
  */
 import * as THREE from 'three/webgpu';
-import { ChromadelicWorld } from '../../themes/chromadelic-highway/chromadelic-highway-world.js';
+import { CAMERA_RIG, ChromadelicWorld } from '../../themes/chromadelic-highway/chromadelic-highway-world.js';
 import { ChromadelicHighwayPost, POST_LOOK } from '../../themes/chromadelic-highway/chromadelic-highway-post.js';
 import { readLayoutRects, restVerticalFov } from '../../themes/chromadelic-highway/chromadelic-highway-composition.js';
 
@@ -154,6 +159,22 @@ export function create({
         time, delta, pace: 1, ...held,
     });
     const pushPost = (time) => post?.update({ time, dip: world.fx.dip, bloomBoost: 0 });
+    // The icon lens (icon=1), applied after the rig has placed the camera: straight down the road
+    // at the rest focus (the arches' vanishing point), closed to iconFov, the breath and the bank
+    // undone. The world sizes its pixel-scale uniforms from the lens, so they follow it.
+    const iconLens = params.get('icon') === '1';
+    const aimIcon = () => {
+        if (!iconLens) return;
+        const live = window.__chromadelic?.iconLens || {};
+        camera.fov = Number.isFinite(live.fov) ? live.fov : num(params, 'iconFov', 40);
+        camera.updateProjectionMatrix();
+        camera.up.set(0, 1, 0);
+        camera.lookAt(CAMERA_RIG.lookAt);
+        camera.rotateY(Number.isFinite(live.yaw) ? live.yaw : num(params, 'iconYaw', 0));
+        camera.rotateX(Number.isFinite(live.pitch) ? live.pitch : num(params, 'iconPitch', 0));
+        camera.updateMatrixWorld();
+        world.setViewport(size.y, camera, size.x, window.innerHeight);
+    };
     // Seek: rebuild the event state at (t - age) so every capture of `t` is identical.
     const seekTo = (time) => {
         const eventName = ev.name;
@@ -170,10 +191,12 @@ export function create({
             for (let i = 1; i <= steps; i++) {
                 const st = t0 + i * dt;
                 world.updateCamera(camera, sim(st, dt));
+                aimIcon();
                 world.update(sim(st, dt), camera);
             }
         }
         world.updateCamera(camera, sim(time, 0));
+        aimIcon();
         world.update(sim(time, 0), camera);
         pushPost(time);
     };
@@ -194,6 +217,7 @@ export function create({
         },
         update(time, dt) {
             world.updateCamera(camera, sim(time, dt));
+            aimIcon();
             world.update(sim(time, dt), camera);
             pushPost(time);
         },
