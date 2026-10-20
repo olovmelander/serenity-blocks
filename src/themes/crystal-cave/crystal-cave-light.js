@@ -25,16 +25,16 @@ export const FAMILY_COUNT = GEM_FAMILIES.length;
 /** Directional lobes of the far field: [direction, colour, sharpness]. */
 const ENV_LOBES = Object.freeze([
     {
-        dir: [0.0, 0.14, -1.0], color: [1.0, 0.8, 0.52], gain: 1.5, sharp: 46,
+        dir: [0.0, 0.14, -1.0], color: [1.0, 0.8, 0.52], gain: 2.6, sharp: 46,
     }, // sanctuary
     {
-        dir: [-0.42, 0.78, -0.46], color: [0.62, 0.8, 1.0], gain: 1.8, sharp: 70,
+        dir: [-0.42, 0.78, -0.46], color: [0.62, 0.8, 1.0], gain: 4.5, sharp: 70,
     }, // skylight
     {
-        dir: [-0.92, 0.12, -0.3], color: [0.1, 0.8, 0.72], gain: 0.34, sharp: 3,
+        dir: [-0.92, 0.12, -0.3], color: [0.1, 0.8, 0.72], gain: 0.6, sharp: 3,
     }, // left wall
     {
-        dir: [0.92, 0.12, -0.3], color: [0.55, 0.26, 1.0], gain: 0.34, sharp: 3,
+        dir: [0.92, 0.12, -0.3], color: [0.55, 0.26, 1.0], gain: 0.6, sharp: 3,
     }, // right wall
 ]);
 
@@ -165,9 +165,9 @@ export function createCaveLight() {
 
     /** Exponential distance haze with a brighter, cooler band above the pool. */
     const haze = (colour, distance, height) => {
-        const band = smoothstep(9, -7, height).mul(0.55).add(0.75);
+        const band = smoothstep(9, -7, height).mul(0.3).add(0.75);
         const amount = float(1).sub(exp(distance.mul(uniforms.hazeDensity).mul(band).negate()));
-        const tint = mix(uniforms.hazeColor, uniforms.hazeColor.mul(vec3(1.5, 2.1, 2.3)), smoothstep(6, -7, height));
+        const tint = mix(uniforms.hazeColor, uniforms.hazeColor.mul(vec3(1.2, 1.5, 1.6)), smoothstep(6, -7, height));
         return mix(colour, tint.mul(uniforms.energy.mul(0.35).add(1)), amount);
     };
 
