@@ -76,6 +76,25 @@ const { RendererUtils } = THREE;
 /** Seconds between resets of one set of woven coordinates (the other is at full weight then). */
 export const WEAVE_PERIOD = 11;
 
+/**
+ * Steps after a reset during which a resting nebula that could not be drawn yet is still laid out
+ * (later, the gas the board has poured in would be lost; the slow heal brings the rest back).
+ */
+export const REST_RETRY_STEPS = 240;
+
+/**
+ * Run `render` and say whether the renderer drew anything (three skips a draw whose pipeline is
+ * still building; its counters only reset between animation frames). A renderer without the
+ * counters is taken at its word.
+ */
+export function drewWith(renderer, render) {
+    const stats = renderer?.info?.render;
+    const before = stats?.drawCalls;
+    render();
+    if (typeof before !== 'number' || typeof stats.drawCalls !== 'number') return true;
+    return stats.drawCalls !== before;
+}
+
 /** Uniforms the solver, the light and the picture share. */
 export function createTideUniforms() {
     const rows = Array.from({ length: EVENT_ROWS }, () => new THREE.Vector4());
@@ -91,6 +110,8 @@ export function createTideUniforms() {
         /** One velocity cell in uv, and its side in tide units. */
         texel: uniform(new THREE.Vector2(1 / 256, 1 / 144)),
         cell: uniform(0.0158),
+        /** One dye texel in uv (the picture reads the dust's slope across a couple of them). */
+        dyeTexel: uniform(new THREE.Vector2(1 / 1024, 1 / 576)),
         dt: uniform(SIM_DT),
         /** The fluid's clock at the step being taken. */
         time: uniform(0),
@@ -110,7 +131,6 @@ export function createTideUniforms() {
         crowd: uniform(0.09),
         dustFade: uniform(0.025),
         heal: uniform(0.045),
-        resetDye: uniform(0),
         // ── the weave ──
         weaveReset: uniform(new THREE.Vector2(0, 0)),
         weaveMix: uniform(0.5),
@@ -219,6 +239,10 @@ export class TideFluid {
         this.debt = 0;
         this.clock = 0;
         this.weaveEpoch = [-1, -1];
+        /** The resting nebula is still to be laid out (its draw was skipped: see draw()). */
+        this.restPending = false;
+        /** Times the resting nebula has landed (the light forgets what it carried when it moves). */
+        this.layouts = 0;
         this.rendererState = {};
         this.disposed = false;
 
@@ -489,7 +513,7 @@ export class TideFluid {
                 const core = exp(dot(dq, dq).div(r0.w.mul(r0.w)).negate());
                 d.mulAssign(float(1.0).sub(clamp(r1.y.mul(core).mul(U.dt), 0.0, 1.0)));
             }
-            return mix(max(d, vec4(0.0)), rest, U.resetDye);
+            return max(d, vec4(0.0));
         })());
 
         // ── weave ──
@@ -501,6 +525,12 @@ export class TideFluid {
             const b = carried.zw.sub(move).mul(float(1.0).sub(U.weaveReset.y));
             return vec4(a, b);
         })());
+
+        // The resting nebula alone, written straight into the dye. A pass of its own, not the dye
+        // pass with a reset switch: a switch flipped on and off between two draws in the same
+        // instant can reach the GPU too late, and then the dye keeps what the clear left (no gas,
+        // and dust everywhere: a veil over the whole sky until it heals, half a minute later).
+        this.restMaterial = passMaterial('Aether Tides — dye at rest', Fn(() => field(tideOf(uv())))());
 
         this.clearMaterial = passMaterial('Aether Tides — clear', vec4(0.0, 0.0, 0.0, 0.0));
 
@@ -523,6 +553,7 @@ export class TideFluid {
         U.half.value.set(a * DOMAIN_MARGIN, DOMAIN_MARGIN);
         U.texel.value.set(1 / grid.width, 1 / grid.height);
         U.cell.value = (2 * DOMAIN_MARGIN) / grid.height;
+        U.dyeTexel.value.set(1 / dyeWidth, 1 / dyeHeight);
         const same = s.width === grid.width && s.height === grid.height
             && s.dyeWidth === dyeWidth && s.dyeHeight === dyeHeight;
         if (same || !this.live) {
@@ -551,15 +582,31 @@ export class TideFluid {
 
     // ── run ─────────────────────────────────────────────────────────────────────
 
+    /**
+     * One pass into the pair's spare target, which then becomes the one read.
+     *
+     * In the game three builds a new pipeline in the background, and a draw made before it is
+     * ready is skipped. The pass's clear would still land, and swapping then would hand every
+     * later pass a wiped target (seen on WebGPU, 2026-10-20: the resting nebula laid out at the
+     * build, wiped again by the first step's dye pass, the sky behind a uniform veil of dust and
+     * no gas for half a minute). So the targets are never cleared (every pass covers the whole
+     * target) and a pass that drew nothing is not swapped in: it changed nothing.
+     * @returns {boolean} whether the pass was drawn
+     */
     draw(renderer, material, pair) {
         this.quad.material = material;
         renderer.setRenderTarget(pair.write);
-        this.quad.render(renderer);
+        const drew = drewWith(renderer, () => this.quad.render(renderer));
+        if (!drew) return false;
         pair.swap();
         this.bind();
+        return true;
     }
 
-    /** Still gas, laid out as the resting nebula, at clock `time`. */
+    /**
+     * Still gas, laid out as the resting nebula, at clock `time`. If the resting nebula could not
+     * be drawn yet (its pipeline still building), the next advances try again (see advance()).
+     */
     reset(renderer, time = 0) {
         if (this.disposed) return;
         if (!this.live) {
@@ -571,17 +618,14 @@ export class TideFluid {
         }
         if (!this.vel) return;
         const U = this.u;
-        this.rendererState = RendererUtils.resetRendererState(renderer, this.rendererState);
+        this.beginPasses(renderer);
         const pairs = [this.vel, this.pres, this.weave];
         for (let i = 0; i < pairs.length; i += 1) {
             this.draw(renderer, this.clearMaterial, pairs[i]);
             this.draw(renderer, this.clearMaterial, pairs[i]);
         }
-        this.draw(renderer, this.clearMaterial, this.dye);
         U.time.value = time;
-        U.resetDye.value = 1;
-        this.draw(renderer, this.dyeMaterial, this.dye);
-        U.resetDye.value = 0;
+        this.layRest(renderer);
         RendererUtils.restoreRendererState(renderer, this.rendererState);
         this.steps = 0;
         this.debt = 0;
@@ -590,6 +634,21 @@ export class TideFluid {
         this.weaveEpoch[1] = Math.floor(time / WEAVE_PERIOD + 0.5);
         this.needsReset = false;
         this.setAhead(0);
+    }
+
+    /** The renderer as the passes want it (its own state is saved; restore it after). */
+    beginPasses(renderer) {
+        this.rendererState = RendererUtils.resetRendererState(renderer, this.rendererState);
+        // Never cleared: every pass covers its whole target, and a skipped one must lose nothing.
+        renderer.autoClear = false;
+    }
+
+    /** The resting nebula into the dye. Counts in `layouts` when it lands. */
+    layRest(renderer) {
+        const drew = this.draw(renderer, this.restMaterial, this.dye);
+        this.restPending = !drew;
+        if (drew) this.layouts += 1;
+        return drew;
     }
 
     setAhead(seconds) {
@@ -633,10 +692,16 @@ export class TideFluid {
         if (!this.live) return this.tick(delta, prepare, maxSteps);
         if (!this.vel) return 0;
         if (this.needsReset) this.reset(renderer, this.clock);
+        else if (this.restPending && this.steps < REST_RETRY_STEPS) {
+            // The resting nebula could not be drawn at the reset: lay it out now that it can.
+            this.beginPasses(renderer);
+            this.layRest(renderer);
+            RendererUtils.restoreRendererState(renderer, this.rendererState);
+        }
         this.debt += Math.max(0, delta);
         let taken = 0;
         if (this.debt >= SIM_DT) {
-            this.rendererState = RendererUtils.resetRendererState(renderer, this.rendererState);
+            this.beginPasses(renderer);
             while (this.debt >= SIM_DT && taken < maxSteps) {
                 this.step(renderer, prepare);
                 this.debt -= SIM_DT;
@@ -702,6 +767,7 @@ export class TideFluid {
         this.projectMaterial.dispose();
         this.dyeMaterial.dispose();
         this.weaveMaterial.dispose();
+        this.restMaterial.dispose();
         this.clearMaterial.dispose();
         this.blank.dispose();
     }

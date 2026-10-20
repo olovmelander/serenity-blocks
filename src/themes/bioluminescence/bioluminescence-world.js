@@ -256,6 +256,8 @@ export class BioluminescenceWorld {
             scatter: Math.min(tier.scatter, plan.emitters.length),
         });
         this.u = u;
+        // The post reads the lamps too: the light the great caps let fall.
+        this._post.lamps = u.lampRows;
         yield 'textures';
 
         this.addPart('backdrop', createBackdrop(u));
@@ -932,7 +934,9 @@ export class BioluminescenceWorld {
                 rgb[0] * gain + (extra ? extra[0] * flare : 0),
                 rgb[1] * gain + (extra ? extra[1] * flare : 0),
                 rgb[2] * gain + (extra ? extra[2] * flare : 0),
-                0,
+                // The width of the light a great cap lets fall (the post draws it; the elder's
+                // own light streams in the post's spore shafts, the crystals let none fall).
+                rooted && k > 0 ? e.radius * 0.9 : 0,
             );
         }
     }
@@ -1075,6 +1079,7 @@ export class BioluminescenceWorld {
         this.runners = null;
         this.jets = null;
         this.u = null;
+        this._post.lamps = null;
         this._camera = null;
     }
 }

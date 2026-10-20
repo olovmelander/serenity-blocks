@@ -63,6 +63,44 @@ own colour.
   streak from where it was a moment ago, displaced by the thin-lens image of a point mass,
   so matter passing behind the hole rises around the shadow instead of crossing it.
 
+## Second pass, 2026-10-20: the gas gets a body
+
+The rebuild drew the disk as a sheet of zero thickness against a near-black sky. Four
+changes, all in the shared world, so the playground and the theme moved together
+([captures](black-hole-overhaul/second-pass/)):
+
+- **A corona** (`CORONA` in `black-hole-lens.js`). Thin hot gas puffed up round the disk, a
+  Gaussian sheet whose scale height flares with radius (0.16 + 0.085 r). The march already
+  walks each ray in straight chords, and a Gaussian integrates in closed form along a line,
+  so every step adds the corona's exact column over that chord (an erf difference, with the
+  midpoint value where the chord runs nearly level). Sampled per step instead, a stride of
+  half a radius would draw the sheet as contour bands. Its light is beamed like the disk's,
+  more gently, with the orbital speed held under 0.9 c even where a step passes over the
+  axis, so the term cannot produce a NaN. It is coloured once per pixel from its
+  light-weighted temperature, floored at flame orange (ember red over the blue sky read
+  magenta) and capped short of blue. A ray the hole swallows keeps 4 % of what it crossed,
+  and the corona is gone inside three radii: without both, the densest, most beamed gas just
+  over the inner disk filled the lower half of the shadow with a gold haze and the edge-on
+  shadow with a teal sheen. Bent with everything else, it wraps the shadow in a lensed halo
+  and gives the edge-on blade a glow. It runs on every tier.
+- **A deep sky.** The sky's grain used to be read from the gas tile through the panorama's
+  coordinates; its long lanes, wrapped round the Einstein ring by the lens, drew concentric
+  ribs. Grain and clouds now come from 3D value noise read along the bent ray
+  (`bakeLattice`, the Void Ember lattice: one 256² fetch gives two fields), which has no
+  poles and no seam. On it sit hydrogen-rose and oxygen-teal emission nebulae (thresholds set
+  from the noise's measured spread: three octaves, mean 0.48, sd 0.11), dark dust threads
+  that dim the glow and the stars, a faint indigo depth that swells with the clouds, and the
+  baked band lifted 1.55×. Inside about 9.5 radii of impact parameter the fine grain and the
+  nebulae's contrast ease off: the lens smears every feature into an arc there, and past a
+  point that reads as record grooves, not sky. The galaxy still smears into its ring.
+- **The disk calmer.** The broad lanes carry the weave (0.74, from 0.62), the fine streaks
+  less (0.26) and the ramp is wider, so the gas reads as glowing plasma with filaments rather
+  than brushed hair.
+- **Dust as glints.** Motes are born inside the frayed rim (out to 11.2 radii, not 13.5),
+  most are faint (a cubed random weight), and they are 1.1–1.9 px wide instead of
+  1.3–2.5 px. The orange dashes that dotted the dark beyond the disk are gone; jets, ejecta
+  and fed matter are unchanged. Bloom strength is 0.30 (from 0.24).
+
 ## Event language
 
 The player feeds the hole. `black-hole-director.js` turns bus events into state; it is
@@ -97,7 +135,7 @@ hole from their own place.
 | `black-hole-lens.js` | The ray-traced hole: geodesic march, disk, photon ring, lensed galaxy and stars |
 | `black-hole-matter.js` | Dust, fed pieces, ejecta and jets as closed-form instanced streaks |
 | `black-hole-post.js` | Refraction ripples, bloom and grade; direct rendering on the cheapest tier |
-| `black-hole-noise.js`, `black-hole-quality.js`, `black-hole-resolution.js`, `black-hole-board-rects.js`, `black-hole-disk-basis.js` | Deterministic bakes, tier budgets, the dynamic-resolution controller, board rectangles, the disk's plane |
+| `black-hole-noise.js`, `black-hole-quality.js`, `black-hole-resolution.js`, `black-hole-board-rects.js`, `black-hole-disk-basis.js` | Deterministic bakes (gas, galaxy, and the sky's 3D-noise lattice with its CPU twin), tier budgets, the dynamic-resolution controller, board rectangles, the disk's plane |
 | `src/playground/effects/black-hole.effect.js` | The same world in isolation, with deterministic event replay |
 
 Removed with the old theme: `black-hole-materials.js`, `black-hole-compute.js`,
@@ -162,7 +200,9 @@ Run `npm run dev:playground` and open:
 as real consecutive clearing locks. `az`, `el`, `dist` and `frame` hold the camera; without
 them it follows the theme's own path. Other parameters: `event=tspin|perfect|level`,
 `lines`, `column`, `row`, `reduce=1`, `tone=aces|agx|neutral`, and per-term gains for
-bisecting a look (`disk`, `ring`, `heat`, `sky`, `stars`, `doppler`, `bloom`, `exposure`).
+bisecting a look (`disk`, `ring`, `heat`, `sky`, `stars`, `doppler`, `corona`, `nebula`,
+`bloom`, `exposure`). The second pass's close view is
+`…&t=12&az=0.9&el=0.42&dist=660&frame=0`.
 
 ### Theme icon
 
@@ -245,6 +285,24 @@ file's setup hook timed out. All three are Odyssey world-bake tests with wall-cl
 does not touch; on a machine shared with other sessions' jobs they ran over their limits.
 Run on their own, all 43 tests in those three files pass.
 
+**Second pass (2026-10-20).** Captured through Electron on this machine (`nvidia blackwell`)
+from a private dev server: [tilted](black-hole-overhaul/second-pass/tilted.jpg),
+[edge-on](black-hole-overhaul/second-pass/edge-on.jpg), the free orbit at 40 s
+([orbit-40](black-hole-overhaul/second-pass/orbit-40.jpg)),
+[close](black-hole-overhaul/second-pass/close.jpg), a [streak of
+eight](black-hole-overhaul/second-pass/streak-eight.jpg) (High, WebGPU),
+[Low, WebGL2](black-hole-overhaul/second-pass/low-webgl2.jpg) and a 390 × 844
+[portrait at Low, WebGL2](black-hole-overhaul/second-pass/portrait-low-webgl2.jpg). Also
+captured, not saved: four lines, a landed arc (still seen twice), Minimal (no post chain)
+and a portrait at High. None logged a warning or error. `node scripts/validate-all-themes.mjs
+--theme black-hole` against that server: PASS (0 lifecycle failures, 0 console errors, 0
+process failures); it refreshed `docs/theme-screenshots/black-hole.png`, which until then
+showed the previous artwork. A new gate, `tests/unit/black-hole-shaders.test.js`, builds the
+lens and the four matter layers through the WGSL and GLSL node builders at High and Minimal
+and fails on a warning, a NaN, Infinity or stringified-node literal, or a WGSL var read before
+it is assigned, and checks the corona is emitted (and absent when asked to be). The five Black
+Hole suites: 102 tests passed.
+
 ## Not done, not measured
 
 - **No performance measurement.** No frame time, GPU time or battery figure is claimed
@@ -264,3 +322,8 @@ Run on their own, all 43 tests in those three files pass.
   than smearing round the ring.
 - Online multiplayer and Odyssey levels that use this theme were not played through. With
   boards across most of the width there is no free gap, and the hole wanders behind them.
+- **Second pass:** the corona adds a few exp/sqrt per march step on every tier; its cost was
+  not measured (other sessions' jobs shared the machine, and hidden Electron windows report
+  no GPU timestamps). Dynamic resolution still steers on whatever it costs. The record-groove
+  pattern next to the shadow is eased, not removed: it is the lensed sky, and it is strongest
+  where the Milky Way lies behind the hole. Neither pass was played through a full game.

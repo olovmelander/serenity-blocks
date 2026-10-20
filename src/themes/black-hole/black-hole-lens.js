@@ -13,11 +13,12 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Break, Fn, If, Loop, abs, acos, atan, cameraPosition, clamp, cos, cross, dot, exp, float, floor,
-    hash, length, log2, max, mix, normalize, positionWorld, pow, sin, smoothstep, sqrt, texture,
-    uniform, uniformArray, vec2, vec3, vec4,
+    Break, Fn, If, Loop, abs, acos, atan, cameraPosition, clamp, cos, cross, dot, exp, float, floor, fract,
+    hash, length, log2, max, min, mix, normalize, positionWorld, pow, select, sign, sin, smoothstep, sqrt,
+    texture, uniform, uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
 import { DISK_COS_TILT, DISK_SIN_TILT } from './black-hole-disk-basis.js';
+import { LATTICE_SIZE, LATTICE_SLICE } from './black-hole-noise.js';
 
 const TAU = Math.PI * 2;
 
@@ -45,6 +46,34 @@ export const WAVE_SLOTS = 2;
 /** The disk's pattern speed, as a fraction of the inner edge's orbital rate. */
 const RIGID_RATE = 0.42;
 const TEX_ROWS = 128;
+
+/**
+ * The corona: thin, hot gas puffed up round the disk, a Gaussian sheet whose scale height
+ * flares with radius. It is what gives the disk a body — a glow that stands above and below
+ * the sheet, softens its filaments and, bent with everything else, wraps the shadow in a
+ * lensed halo. Lengths in Schwarzschild radii.
+ */
+const CORONA = Object.freeze({
+    /** Scale height at the hole and its growth per unit radius. */
+    BASE: 0.16,
+    FLARE: 0.085,
+    /** Radial fall-off of its brightness, per unit radius beyond the inner edge. */
+    FALL: 0.42,
+    /** Extinction per unit column: enough to veil, never enough to hide the far arch. */
+    ABSORB: 0.08,
+    GAIN: 0.055,
+});
+/** The baked galaxy is authored dim; this is the lift that makes the band read across a frame. */
+const SKY_LIFT = 1.55;
+/** √π / 2 — the column of a unit Gaussian is √π, half of it is the erf's normalisation. */
+const HALF_ROOT_PI = 0.8862269;
+
+/** erf, after Winitzki: odd, smooth and within about 2e-4 of the real thing everywhere. */
+const erf = (x) => {
+    const x2 = x.mul(x);
+    const inner = x2.mul(x2.mul(0.147).add(4 / Math.PI)).div(x2.mul(0.147).add(1));
+    return sqrt(float(1).sub(exp(inner.negate()))).mul(sign(x));
+};
 
 /** Half of a straight-line pass's bend accumulated from closest approach out to `s`. */
 const bendTo = (b, s) => {
@@ -102,6 +131,9 @@ export function createLensUniforms() {
         ringGain: uniform(1),
         skyGain: uniform(1),
         starGain: uniform(1),
+        /** The thick glowing gas round the disk, and the emission nebulae of the far sky. */
+        coronaGain: uniform(1),
+        nebulaGain: uniform(1),
         /** x: radius, y: strength, z: width — pressure waves a line clear sends out through the disk. */
         wave: uniformArray(Array.from({ length: WAVE_SLOTS }, () => new THREE.Vector4(0, 0, 1, 0)), 'vec4'),
         /** xyz: tint of fed matter, w: unused. One per hot-spot slot. */
@@ -122,6 +154,7 @@ export function createLensUniforms() {
  * @param {object} options.uniforms from createLensUniforms()
  * @param {THREE.Texture} options.diskTexture accretion gas (bakeDiskTexture)
  * @param {THREE.Texture} options.skyTexture galaxy panorama (bakeSkyTexture)
+ * @param {THREE.Texture} options.latticeTexture white-noise lattice for 3D sky noise (bakeLattice)
  * @param {number} options.steps march budget per ray
  * @param {number} options.stepScale step length as a fraction of the distance to the hole
  * @param {number} options.starLayers 1 or 2 layers of resolved stars
@@ -129,8 +162,8 @@ export function createLensUniforms() {
  * @param {boolean} options.shadowAlpha write the bare shadow into alpha for a post chain to read
  */
 export function createLensMaterial({
-    uniforms: u, diskTexture, skyTexture, steps = 64, stepScale = 0.14, starLayers = 2, detail = true,
-    shadowAlpha = true,
+    uniforms: u, diskTexture, skyTexture, latticeTexture, steps = 64, stepScale = 0.14, starLayers = 2,
+    detail = true, shadowAlpha = true, corona = true,
 }) {
     const material = new THREE.MeshBasicNodeMaterial({
         side: THREE.BackSide,
@@ -168,25 +201,63 @@ export function createLensMaterial({
         return tint.mul(core.mul(magnitude).mul(present));
     };
 
-    const sky = (direction) => {
+    /** 3D value noise, two independent fields in [0, 1], in one fetch; one unit of `at` is one lattice cell. */
+    const noise3 = (at) => {
+        const cell = floor(at);
+        const f0 = fract(at);
+        const f = f0.mul(f0).mul(float(3).sub(f0.mul(2)));
+        const st = cell.xy.add(vec2(LATTICE_SLICE[0], LATTICE_SLICE[1]).mul(cell.z)).add(f.xy).add(0.5)
+            .div(LATTICE_SIZE);
+        const t = texture(latticeTexture, st).level(0);
+        return mix(t.xz, t.yw, f.z);
+    };
+
+    /** @param calm 0 where the lens stretches the sky hardest, 1 where it barely bends it */
+    const sky = (direction, calm = float(1)) => {
         const d = u.diskToSky.mul(direction).toVar();
         const longitude = atan(d.z, d.x);
         const polar = acos(clamp(d.y, -1, 1));
         const panorama = vec2(longitude.div(TAU).add(0.5), polar.div(Math.PI)).toVar();
         const galaxy = texture(skyTexture, panorama).level(0).toVar();
-        // The panorama is coarse and the lens magnifies it; mottle the glow with the gas
-        // tile so star clouds and dust keep their grain right up to the Einstein ring.
-        const grain = texture(diskTexture, panorama.mul(vec2(7, 5))).level(0.5);
-        const fine = texture(diskTexture, panorama.mul(vec2(23, 17))).level(0);
-        // The panorama's rows converge at its poles, and the grain would fan out with them.
+        // Grain and clouds are read in 3D along the ray's own direction: no poles, no seam, and
+        // nothing that fans out into rings where the lens wraps the sky round the shadow (the
+        // gas tile used to be read here, and its long lanes drew concentric ribs).
+        const broad = noise3(d.mul(2.3).add(vec3(3.1, -1.7, 5.3))).toVar();
+        const middle = noise3(d.mul(5.1).add(vec3(-4.2, 2.9, 0.7))).toVar();
+        const fine = noise3(d.mul(11.3).add(vec3(1.3, 7.7, -2.1))).toVar();
+        const grain = noise3(d.mul(27).add(vec3(-6.1, 0.4, 3.3))).toVar();
+        // Three octaves: mean 0.48, sd 0.11 (sampleLattice over the whole sphere).
+        const cloudA = broad.x.mul(0.55).add(middle.x.mul(0.3)).add(fine.x.mul(0.15)).toVar();
+        const cloudB = broad.y.mul(0.55).add(middle.y.mul(0.3)).add(fine.y.mul(0.15)).toVar();
+        // Dust: dark threads where a mid-scale field crosses its middle, cubed so they stay thin,
+        // and only where there is cloud for them to cut.
+        const thread = float(1).sub(abs(fine.y.mul(0.65).add(grain.y.mul(0.35)).mul(2).sub(1)));
+        const dust = pow(thread, 3).mul(smoothstep(0.4, 0.62, cloudA)).toVar();
+        // The panorama is coarse and the lens magnifies it: mottle its glow so the star clouds
+        // keep their grain right up to the Einstein ring.
+        const speck = fine.x.mul(0.6).add(grain.x.mul(0.4));
         const mottle = mix(
-            float(0.7),
-            grain.b.mul(grain.b).mul(1.9).add(0.22).mul(fine.b.mul(0.9).add(0.5)),
-            smoothstep(0.97, 0.72, abs(d.y)),
+            float(0.85),
+            speck.mul(speck).mul(2.6).add(0.3).mul(dust.mul(-0.55).add(1)),
+            calm.mul(0.75).add(0.25),
         );
+        // Emission nebulae — hydrogen rose and oxygen teal, a bright heart on a wide ramp —
+        // gathering toward the band but strewn over the whole sky, so no side of the frame is
+        // an empty black.
+        const rose = pow(smoothstep(0.5, 0.72, cloudA), 2);
+        const teal = pow(smoothstep(0.53, 0.74, cloudB), 2);
+        const gather = mix(float(0.4), float(1), smoothstep(0.3, 0.9, galaxy.a));
+        const nebula = vec3(1.0, 0.16, 0.3).mul(rose).add(vec3(0.1, 0.5, 0.62).mul(teal))
+            .mul(gather)
+            .mul(dust.mul(-0.8).add(1))
+            .mul(calm.mul(0.6).add(0.4))
+            .mul(0.035);
+        // Deep space is not one flat black: a faint indigo that swells and fades with the clouds.
+        const depth = vec3(0.0025, 0.003, 0.008).mul(cloudA.mul(1.2).add(0.4));
         const stars = starLayer(d, 57, galaxy.a, 0).toVar();
         if (starLayers > 1) stars.addAssign(starLayer(d.zxy, 23, galaxy.a.mul(0.8).add(0.2), 6).mul(1.6));
-        return galaxy.rgb.mul(mottle).mul(u.skyGain).add(stars.mul(u.starGain));
+        const glow = galaxy.rgb.mul(mottle).mul(SKY_LIFT).add(depth).add(nebula.mul(u.nebulaGain));
+        return glow.mul(u.skyGain).add(stars.mul(dust.mul(-0.6).add(1)).mul(u.starGain));
     };
 
     /** Emission and opacity of the disk where a ray crosses its plane. */
@@ -214,16 +285,17 @@ export function createLensMaterial({
         }
 
         const lanes = gas.r;
-        const streaks = mix(gas.g, fine.g, 0.5);
+        const streaks = mix(gas.g, fine.g, 0.35);
         const gaps = smoothstep(0.2, 0.62, gas.a.mul(0.7).add(fine.a.mul(0.3)));
         const clumps = pow(gas.b, 4).mul(0.55).add(pow(fine.b, 5).mul(0.3));
-        // Filaments: the product of the octaves, pushed through a knee so thin bright
-        // threads stand on dark gaps instead of everything sitting at mid grey.
-        const weave = lanes.mul(0.62).add(streaks.mul(0.38));
-        const density = pow(smoothstep(0.24, 0.8, weave), 1.6)
-            .mul(gaps.mul(0.85).add(0.15))
+        // Filaments: the octaves pushed through a knee so bright threads stand on darker gaps.
+        // The broad lanes carry most of it and the ramp is wide: with the fine streaks in charge
+        // and a narrow knee the gas read as brushed hair rather than glowing plasma.
+        const weave = lanes.mul(0.74).add(streaks.mul(0.26));
+        const density = pow(smoothstep(0.2, 0.84, weave), 1.35)
+            .mul(gaps.mul(0.72).add(0.28))
             .add(clumps)
-            .add(0.03)
+            .add(0.04)
             .toVar();
 
         const innerEdge = smoothstep(HOLE.DISK_INNER * 0.975, HOLE.DISK_INNER * 1.12, radius);
@@ -307,6 +379,9 @@ export function createLensMaterial({
         // What is left of the light after the gas on our side of the hole alone.
         const front = float(1).toVar();
         const asymptote = direction.toVar();
+        // The corona's light along the ray, and that light weighted by its temperature.
+        const haze = float(0).toVar();
+        const hazeHeat = float(0).toVar();
 
         If(impact.lessThan(HOLE.BOUND).and(along.lessThan(0)), () => {
             // Jump straight to the bounding sphere, taking the bend of the skipped stretch.
@@ -336,6 +411,44 @@ export function createLensMaterial({
                 const dt = r.mul(stepScale).toVar();
                 velocity.addAssign(position.mul(h2.mul(-1.5).div(r2.mul(r2).mul(r))).mul(dt));
                 const next = position.add(velocity.mul(dt)).toVar();
+                if (corona) {
+                    // The corona's column along this step, exact in height: the step is a straight
+                    // chord, and a Gaussian sheet integrates in closed form along a line. Sampled
+                    // instead, a step of half a radius would draw the sheet as contour bands.
+                    const mid = position.add(next).mul(0.5).toVar();
+                    const ring = length(mid.xz).toVar();
+                    const height = ring.mul(CORONA.FLARE).add(CORONA.BASE).toVar();
+                    const low = position.y.div(height);
+                    const high = next.y.div(height);
+                    const rise = high.sub(low).toVar();
+                    const steep = abs(rise).greaterThan(0.02);
+                    const level = mid.y.div(height);
+                    const sheet = select(
+                        steep,
+                        erf(high).sub(erf(low)).div(select(steep, rise, float(1))).mul(HALF_ROOT_PI),
+                        exp(level.mul(level).negate()),
+                    );
+                    const reach = smoothstep(HOLE.PLUNGE * 0.9, HOLE.DISK_INNER * 1.15, ring)
+                        .mul(exp(ring.sub(HOLE.DISK_INNER).mul(-CORONA.FALL)))
+                        // Near the horizon the gas only falls, and thins as it goes.
+                        .mul(smoothstep(1.6, HOLE.DISK_INNER * 1.05, length(mid)))
+                        // Gone well inside the sphere the march starts from, so it leaves no seam.
+                        .mul(smoothstep(HOLE.BOUND - 0.4, HOLE.DISK_OUTER * 0.72, length(mid)));
+                    const column = sheet.mul(length(next.sub(position))).mul(reach).toVar();
+                    // Gas on its orbit is beamed like the disk's, a little more gently. The speed
+                    // is held under 0.9 c even where the step passes over the hole's axis.
+                    const speed = sqrt(float(0.5).div(max(ring.sub(1), 0.62)));
+                    const tangent = vec3(mid.z.negate(), 0, mid.x).div(max(ring, 0.05));
+                    const shift = sqrt(speed.mul(speed).oneMinus())
+                        .div(speed.mul(dot(tangent, normalize(velocity).negate())).oneMinus())
+                        .mul(sqrt(max(float(1).sub(float(1).div(max(length(mid), 1.05))), 0.02)));
+                    const beaming = min(mix(float(1), shift.div(0.84), u.doppler), 2.4).toVar();
+                    const light = column.mul(beaming).mul(through).toVar();
+                    haze.addAssign(light);
+                    hazeHeat.addAssign(light.mul(pow(float(HOLE.DISK_INNER).div(max(ring, 1.2)), 0.9))
+                        .mul(pow(beaming, 0.6)));
+                    through.mulAssign(exp(column.mul(-CORONA.ABSORB)));
+                }
                 If(position.y.mul(next.y).lessThan(0), () => {
                     const hit = mix(position, next, position.y.div(position.y.sub(next.y))).toVar();
                     const radius = length(hit.xz).toVar();
@@ -378,6 +491,9 @@ export function createLensMaterial({
             )));
             // A ray still circling when the budget ran out is on the photon ring, not the sky.
             through.mulAssign(escaped);
+            // A ray the hole swallows keeps little of the corona it crossed on the way in: the gas
+            // glows round the shadow and sharpens its edge instead of filling it with a haze.
+            haze.mulAssign(mix(float(0.04), float(1), escaped));
         }).Else(() => {
             asymptote.assign(bendToward(
                 direction,
@@ -385,6 +501,16 @@ export function createLensMaterial({
                 float(1).div(impact).sub(bendTo(impact, along)),
             ));
         });
+
+        if (corona) {
+            // One colour for the whole column, from its light-weighted temperature: cooler than
+            // the sheet, so the body of the disk glows ember to gold round a white-hot heart.
+            // The floor keeps the outer haze flame-orange: ember red over the blue sky reads magenta.
+            // Capped short of the blue end: a blue-white veil is the one thing the haze must not be.
+            const warmth = min(hazeHeat.div(max(haze, 1e-4)).mul(0.72).add(0.16), 1.1).mul(u.diskHeat);
+            colour.addAssign(blackbody(warmth).mul(haze).mul(u.diskGain).mul(u.coronaGain)
+                .mul(CORONA.GAIN * 2.7));
+        }
 
         // The shadow's edge is exact: a ray from outside is captured iff b < 3√3/2.
         const pixel = u.pixelAngle.mul(cameraDistance);
@@ -404,7 +530,10 @@ export function createLensMaterial({
             .mul(2.4));
 
         If(visible.greaterThan(0.002), () => {
-            colour.addAssign(sky(asymptote).mul(visible));
+            // Inside the Einstein ring (about 6.7 radii out from here) the lens smears every
+            // feature of the sky into an arc; past a point that is grooves, not sky, so the fine
+            // grain and the nebulae's contrast ease off toward the shadow.
+            colour.addAssign(sky(asymptote, smoothstep(3.4, 9.5, impact)).mul(visible));
         });
         // Alpha tells the post chain where the bare shadow is, so glare stays out of it.
         if (!shadowAlpha) return vec4(colour, 1);

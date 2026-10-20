@@ -370,10 +370,18 @@ function createDraw(u, name, spec, items, renderOrder) {
         const lines = mix(max(g1, g2.mul(0.75)), float(0.4), blur).toVar();
         // The light is at the heart: the gills burn where they meet the stem and dim to the rim,
         // in faint bands, as a cap grows.
-        const inward = mix(float(0.2), float(1.0), clamp(v, 0.0, 1.0).mul(sqrt(clamp(v, 0.0, 1.0))));
+        const vc = clamp(v, 0.0, 1.0);
+        const inward = mix(float(0.1), float(1.0), vc.mul(vc).mul(sqrt(vc)));
         const bands = sin(v.mul(26.0).add(rnd.mul(20.0))).mul(0.12).add(0.88);
+        // Between the gills the cap is in shadow: the light is the lines, not a plate behind them.
+        // The heart, where the gills crowd onto the stem, burns pale; the thin margin glows.
+        const heartRing = exp(float(1.0).sub(vc).div(0.1).negate()).mul(0.55);
+        const margin = float(1.0).sub(smoothstep(0.0, 0.045, vc)).mul(0.3)
+            .mul(sin(th.mul(TAU * 7).add(rnd.mul(20.0))).mul(0.35).add(0.65));
         const gillCol = mix(hue, vec3(1.0), lines.mul(v).mul(v).mul(0.6))
-            .mul(lines.mul(0.86).add(0.14)).mul(inward).mul(bands)
+            .mul(lines.mul(0.94).add(0.05)).mul(inward).mul(bands)
+            .add(pale.mul(heartRing.mul(lines.mul(0.6).add(0.4))))
+            .add(pale.mul(margin))
             .mul(G)
             .mul(spec.gillGain)
             // A bloom burns in the gills themselves: the lines stay lines.
@@ -416,7 +424,23 @@ function createDraw(u, name, spec, items, renderOrder) {
         const foot = exp(v.mul(-9.0));
         const climb = vPulse.w.div(STEM_CLIMB);
         const front = blBell(v.sub(climb).div(0.24)).mul(step(0.0, vPulse.w)).mul(step(climb, 1.35));
+        // A ring (the annulus) under the cap glows, and threads of light climb the stem in slow beads.
+        const annulus = spec.lantern ? float(0.0) : blBell(v.sub(0.84).div(0.022)).mul(0.5);
+        const vein = blBell(u.noise(vec2(th.mul(2.0).add(rnd.mul(3.0)), v.mul(0.05).add(rnd))).g.sub(0.5).mul(20.0));
+        const bead = smoothstep(0.7, 1.0, sin(v.mul(vLook.z).mul(0.9).sub(u.time.mul(1.1)).add(th.mul(TAU).add(rnd.mul(40.0)))));
+        const veinLight = vein.mul(bead.mul(0.8).add(0.12)).mul(smoothstep(0.02, 0.2, v)).mul(0.55);
+        // The pool throws its light up the stems: a moving net of caustics just above the water.
+        const wetFoot = exp(max(p.y, 0.0).mul(-0.45)).mul(smoothstep(-0.15, 0.25, p.y));
+        const cq = vec2(th.mul(5.0).add(rnd.mul(7.0)), p.y.mul(0.22));
+        const cn1 = u.noise(cq.mul(vec2(1.0, 1.3)).add(vec2(u.time.mul(0.019), u.time.mul(-0.031)))).r;
+        const cn2 = u.noise(cq.mul(vec2(1.3, 1.0)).sub(vec2(u.time.mul(0.023), u.time.mul(0.017)))).g;
+        const causticNet = blBell(cn1.add(cn2).sub(1.0).mul(8.0)).mul(wetFoot);
         const stemCol = mix(pale, hue, 0.45).mul(under.mul(0.6).add(foot.mul(0.14)).add(0.012)).mul(fibre).mul(G)
+            .add(pale.mul(annulus).mul(G))
+            .add(hue.mul(veinLight).mul(G))
+            .add(u.plankton.mul(0.5).add(lit.mul(0.6)).mul(causticNet).mul(u.power.mul(0.6).add(0.45))
+                .mul(u.breath)
+                .mul(0.35))
             .add(lit.mul(vec3(0.05, 0.055, 0.05)).mul(fibre))
             .add(vPulse.rgb.mul(front).mul(fibre).mul(1.5))
             .add(flash.mul(under).mul(fibre).mul(0.4))
