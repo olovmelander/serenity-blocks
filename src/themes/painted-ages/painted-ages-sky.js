@@ -35,6 +35,9 @@ import { paHash21, paHash22 } from './painted-ages-tsl.js';
 import { rainbow, showerVeil } from './painted-ages-events.js';
 
 export const SKY_RADIUS = 52000;
+/** The cirrus deck's height (metres) and the direction its strands stream (away, a little right). */
+const CIRRUS_BASE = 8200;
+const CIRRUS_AXIS = Object.freeze([0.42 / Math.hypot(0.42, 0.91), -0.91 / Math.hypot(0.42, 0.91)]);
 
 /** A cumulus field's density at a deck point (metres), as the land's cloud shadow reads it. */
 function deckDensity(u, noise, p) {
@@ -102,21 +105,42 @@ export function createSky(u, t, tier) {
                 });
                 // Far cloud melts into the horizon's air.
                 // Low in the sky a flat deck draws dashes: the banks hold the horizon instead.
-                const fade = exp(tDeck.div(38000.0).negate()).mul(smoothstep(0.035, 0.17, dir.y));
+                // (it comes down toward the horizon only as a storm closes the sky).
+                const low = mix(float(0.13), float(0.035), smoothstep(0.38, 0.7, u.cloudCover));
+                const fade = exp(tDeck.div(38000.0).negate()).mul(smoothstep(low, low.add(0.14), dir.y));
                 sky.assign(mix(sky, col, dens.mul(fade).mul(0.96)));
             });
         }
 
         // ── High cirrus ──
+        // Everything the frame shows of the sky is ten or fifteen degrees up, so the cirrus deck
+        // is seen at a graze thirty to fifty kilometres off and squashed six to one: its strands
+        // are drawn kilometres long and hundreds of metres across, streaming away from the eye a
+        // little off its axis so they converge toward the horizon. Patches of them, not a veil.
         if (tier.clouds > 1) {
             If(dir.y.greaterThan(0.02), () => {
-                const tHigh = float(8200.0).sub(u.eye.y).div(dir.y);
-                const p = u.eye.xz.add(dir.xz.mul(tHigh)).add(u.wind.mul(1.8));
-                const streak = texture(t.noise, vec2(p.x.div(26000.0), p.y.div(5200.0)).add(vec2(0.5, 0.2))).g;
-                const wisp = texture(t.noise, vec2(p.x.div(7000.0), p.y.div(1300.0))).b;
-                const c = smoothstep(0.55, 0.85, streak).mul(smoothstep(0.35, 0.75, wisp)).mul(0.5);
-                const col = mix(u.cloudShade.mul(1.3), u.cloudLit, 0.75).add(u.glow.mul(sunGlow(mu)).mul(0.6));
-                const fade = exp(tHigh.div(60000.0).negate());
+                const tHigh = float(CIRRUS_BASE).sub(u.eye.y).div(dir.y);
+                const p = u.eye.xz.add(dir.xz.mul(tHigh)).add(u.wind.mul(1.8)).toVar();
+                // Along and across the strands.
+                const along = dot(p, vec2(CIRRUS_AXIS[0], CIRRUS_AXIS[1]));
+                const across = dot(p, vec2(-CIRRUS_AXIS[1], CIRRUS_AXIS[0]));
+                // Where there are strands at all: broad patches.
+                const patchAt = vec2(along.div(70000.0), across.div(26000.0)).add(vec2(0.31, 0.77));
+                const where = smoothstep(0.5, 0.72, texture(t.noise, patchAt).r);
+                // The strands drift a little across their run (a straight comb reads as ruled lines).
+                const bendAt = vec2(along.div(90000.0), across.div(60000.0)).add(vec2(0.6, 0.1));
+                const cw = across.add(texture(t.noise, bendAt).g.sub(0.5).mul(1600.0));
+                // Two sets of fibres (lattice periods 32 and 64 across the tile), the finer riding
+                // on the coarser.
+                const fib1 = texture(t.noise, vec2(along.div(32.0 * 18000.0), cw.div(32.0 * 950.0))).b;
+                const fib2 = texture(t.noise, vec2(along.div(64.0 * 9000.0), cw.div(64.0 * 260.0)).add(0.43)).a;
+                const coarse = smoothstep(0.52, 0.8, fib1);
+                const strands = coarse.mul(0.7).add(smoothstep(0.6, 0.9, fib2).mul(coarse.mul(0.7).add(0.1)).mul(0.35));
+                const c = where.mul(strands).mul(0.32);
+                // Lit through: brightest toward the sun, the hour's cloud light elsewhere.
+                const body = mix(u.cloudShade.mul(1.4).add(u.fill.mul(0.4)), u.cloudLit, 0.7);
+                const col = body.add(u.glow.mul(sunGlow(mu)).mul(0.8));
+                const fade = exp(tHigh.div(80000.0).negate()).mul(smoothstep(0.03, 0.1, dir.y));
                 sky.assign(mix(sky, col, c.mul(fade)));
             });
         }
