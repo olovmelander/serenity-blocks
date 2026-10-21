@@ -60,7 +60,7 @@ import {
 } from './stillwater-tsl.js';
 import { buildFigure } from './stillwater-rig.js';
 import {
-    STAFF, TrollBody, parentsFromSpec, restFromSpec,
+    STAFF, TrollBody, parentsFromSpec, restFromSpec, tailsFromSpec,
 } from './stillwater-troll-body.js';
 import { Spring3 } from './stillwater-motion.js';
 
@@ -489,6 +489,7 @@ export function createTroll(u, opts = {}) {
                 height: TROLL.height,
                 ground,
                 parents: parentsFromSpec(built.extras),
+                tails: tailsFromSpec(built.extras),
             });
             part.body.reset(pending.x, pending.z, pending.heading, pending.opts);
             part.ready = true;

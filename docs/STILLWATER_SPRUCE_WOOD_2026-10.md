@@ -103,6 +103,33 @@ night's soft light: smooth clay. It is now (`stillwater-troll.js`):
 
 ![The troll before and after: at rest, and holding his lantern out to her](stillwater-wood/troll-skin.jpg)
 
+### His grip on the staff
+
+Asked for next: the arm holding the staff with the lantern still looked strange. It did, in two
+ways. His hand never closed on the staff: the solver put his wrist on it and left the hand straight,
+so the staff ran through the heel of his open hand. And his arm was either straight or folded shut:
+measured through a night, leaning on the staff his elbow was bent 3–5° (the hand turned 90° at the
+wrist to meet the upright staff), carrying it 130–155° (the skin pinched at the elbow), and holding
+it out his wrist bent back as far as 147°.
+
+Now (`stillwater-troll-body.js` `solveStaffHand`, `FIST`, `FIST_HOLD`):
+
+- **His fist closes round it.** The staff runs across his palm, inside his curled fingers, his thumb
+  toward its top, where the sculpt's palm and fingers are (`FIST`, from `troll_shape.py`
+  `_limb_hand`); the hand's frame comes from the file's own bone tails (`tailsFromSpec`). The hand
+  points on from his elbow through the staff, square to it, so the forearm comes to it in line, and
+  the forearm takes half of the hand's turn about it, so the wrist does not wring.
+- **He takes it where his elbow is comfortably bent.** His hand slides along the staff from the
+  planned grip (the staff itself, and the lantern on it, stay where they are): leaning on it, to an
+  elbow bent 60–100° (how a walking stick is held); carrying it, to any comfortable bend, sliding
+  only a little so the staff's butt stays out of him. The grips for holding it out, crouching with
+  it, lifting it high and carrying it home now stand out where his arm reaches them bent, not folded
+  (his hands are big: the fist is a quarter of a metre down the hand from the wrist).
+- Measured through a night (settled holds): the elbow 30–111°, the wrist at most 94°, the hand on the
+  staff exactly, a carried staff's butt at least 0.52 m from his chest. Two tests pin it.
+
+![Seated, standing at the water, holding it out, crouched to the water, lifting it high, carrying it home](stillwater-wood/troll-grip.jpg)
+
 ## Tiers
 
 | | Minimal | Low | Medium | High | Ultra | Extreme |
@@ -116,7 +143,7 @@ night's soft light: smooth clay. It is now (`stillwater-troll.js`):
 
 ## Verification
 
-- **Unit tests:** the Stillwater suite is 490 tests in 16 files, all passing. New: the crowns (one per
+- **Unit tests:** the Stillwater suite is 491 tests in 16 files, all passing. New: the crowns (one per
   tree but the giants, the same every time and no tree's crown moved by another; each on its own
   trunk with its tip over the trunk's top and its card in front of it; the trees at the water
   keeping their low branches; every crown above any window it would reach into; the cards square to
@@ -125,8 +152,10 @@ night's soft light: smooth clay. It is now (`stillwater-troll.js`):
   tier), the wood's boughs (16–44 m off, across the line of sight), and in the world the parts,
   their layers (the veil not mirrored), the draw order (the veil first of what is blended) and the
   moon's sight lines cast through the crowns as they are really drawn (`crownCard` is the vertex
-  stage's CPU twin). For the troll: his staff hand held out past his left shoulder, not across his
-  belly (troll body, 19 tests).
+  stage's CPU twin). For the troll (troll body, 20 tests): his staff hand held out past his left
+  shoulder, not across his belly; his fist round the staff (across the palm, square to the hand,
+  thumb up) wherever his arm reaches; the elbow bent, never straight or folded shut, the wrist easy,
+  a carried staff's butt clear of his chest.
 - **ESLint:** no errors and no new warnings in the theme, the playground effect and its tests.
 - **Playground (RTX 5080, Electron, WebGPU):** rest, a chain, four lines, midnight, elf dance, troll
   gold, Ultra / High / Medium / Low / Minimal, the WebGL2 backend at High, 430 × 932 with the board,
@@ -153,8 +182,10 @@ night's soft light: smooth clay. It is now (`stillwater-troll.js`):
 - The beard lichen on the crowns is drawn only where it is wider than a pixel or two, so on most
   crowns across the water it does not show; it shows on the dead branches and the nearer crowns.
 - The icon was not re-captured; the hours' palettes, the spirit and the post are unchanged.
-- The troll's skin was judged in stills, close up and at 2560 × 1440; where his elbow bends hard
-  (holding the lantern out) a small seam of the skinning pinch remains.
+- The troll's skin and grip were judged in stills, close up and at 2560 × 1440, not in motion. In the
+  moment the staff swings from one hold to the next (lifting it high; sitting down from carrying it)
+  it passes close to his shoulder and his elbow folds for a fraction of a second; the settled holds
+  are as above. His hand has no finger bones: the fingers keep the sculpt's half-curl.
 
 ## Reproduce
 
