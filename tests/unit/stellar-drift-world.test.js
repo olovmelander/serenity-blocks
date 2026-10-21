@@ -13,7 +13,7 @@ import {
     REST_RIG, STELLAR_DRIFT_PARTS, StellarDriftWorld, fovForAspect,
 } from '../../src/themes/stellar-drift/stellar-drift-world.js';
 import {
-    AURORA_REST, BOLT_SLOTS, CHIME_SLOTS, EVENT_ROWS, JET_SLOTS, METEOR_SLOTS, MOTE_FLIGHT,
+    BOLT_SLOTS, CHIME_SLOTS, EVENT_ROWS, JET_SLOTS, METEOR_SLOTS, MOTE_FLIGHT,
     PALETTES, PALETTE_COUNT, PALETTE_STEP,
     RINGS, RIPPLE_LIFE, RIPPLE_SLOTS, STRIKE_SLOTS, giantAnchors, palettePlace, pieceColor, rowLatitude,
     sunDirection,
@@ -76,6 +76,7 @@ const rowsOf = (world, block, count) => {
     return out;
 };
 const live = (world) => world.getState().live;
+const played = (world) => world.getState().flourishes.played;
 const lock = (world, over = {}) => world.onLock({
     player: 0, rows: [14, 13], u: 0.4, hardDrop: false, color: COLORS.I, screen: null, ...over,
 });
@@ -90,8 +91,8 @@ describe('stellar drift world: built, posed, taken down', () => {
         expect(scene.children).toContain(world.root);
         expect(world.getState().parts).toEqual(STELLAR_DRIFT_PARTS);
         expect(world.tier).toBe(QUALITY[quality]);
-        const geometryDisposed = vi.spyOn(world.resonances.geometry, 'dispose');
-        const materialDisposed = vi.spyOn(world.resonances.material, 'dispose');
+        const geometryDisposed = vi.spyOn(world.heads.geometry, 'dispose');
+        const materialDisposed = vi.spyOn(world.heads.material, 'dispose');
         world.dispose();
         expect(geometryDisposed).toHaveBeenCalledOnce();
         expect(materialDisposed).toHaveBeenCalledOnce();
@@ -250,16 +251,16 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         world.dispose();
     });
 
-    it('answers with lightning and a flare of the aurora', () => {
+    it('answers with lightning and a flare of the rings', () => {
         const { world, camera } = makeWorld();
-        const before = world.getState().aurora;
+        const before = world.getState().glow;
         const { bolts } = world.getState().counts;
         frame(world, camera, 1 / 60, () => clear(world, { rows: [19, 18], lines: 2 }));
-        expect(world.getState().aurora).toBeGreaterThan(before);
+        expect(world.getState().glow).toBeGreaterThan(before);
         expect(world.getState().counts.bolts).toBeGreaterThan(bolts);
         // The flare dies back by itself.
         run(world, camera, 12, 240);
-        expect(world.getState().aurora).toBeLessThan(before + 0.05);
+        expect(world.getState().glow).toBeLessThan(before + 0.05);
         world.dispose();
     });
 
@@ -273,7 +274,7 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         world.dispose();
     });
 
-    it('gives a zero-line T-spin a helix without inventing a clear, row jet or combo milestone', () => {
+    it('gives a zero-line T-spin a cyclone without inventing a clear, row jet or combo milestone', () => {
         const { world, camera } = makeWorld();
         frame(world, camera, 1 / 60, () => clear(world, {
             rows: [], lines: 0, tspin: true, combo: 8,
@@ -282,32 +283,36 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         expect(world.getState().counts).toMatchObject({
             clears: 0, tspins: 1, quads: 0, milestones: 0, meteors: 0,
         });
-        expect(world.getState().resonances.kinds).toEqual({ sweep: 0, helix: 1, crown: 0 });
+        expect(played(world)).toEqual({
+            cyclone: 1, surge: 0, crown: 0, strand: 0, shock: 0,
+        });
+        expect(world.getState().flourishes.active).toEqual(['cyclone']);
         world.dispose();
     });
 
     it('celebrates true combo milestones once per player, independently of cascade depth', () => {
         const { world } = makeWorld();
         world.onCombo(8);
-        expect(world.getState().resonances.emitted).toBe(0);
+        expect(world.counts.milestones).toBe(0);
         clear(world, { combo: 3 });
-        expect(world.getState().resonances.kinds.sweep).toBe(1);
+        expect(played(world).surge).toBe(1);
         clear(world, { combo: 3, cascade: 99 });
-        expect(world.getState().resonances.emitted).toBe(1);
+        expect(world.counts.milestones).toBe(1);
         clear(world, { player: 1, combo: 3 });
-        expect(world.getState().resonances.kinds.sweep).toBe(2);
+        expect(played(world).surge).toBe(2);
         clear(world, { combo: 5 });
         clear(world, { combo: 8 });
-        expect(world.getState().resonances.kinds).toEqual({ sweep: 2, helix: 1, crown: 1 });
+        // The fifth step surges again; the eighth crowns the chain and throws a corona.
+        expect(played(world)).toMatchObject({ surge: 3, crown: 1, shock: 1 });
         clear(world, { combo: 20 });
-        expect(world.getState().resonances.emitted).toBe(4);
+        expect(world.counts.milestones).toBe(4);
         // A fresh chain earns the milestones again while another player's combo is held.
         clear(world, { combo: 1 });
         clear(world, { combo: 3 });
-        expect(world.getState().resonances.kinds.sweep).toBe(3);
+        expect(played(world).surge).toBe(4);
         world.onCombo(0);
         clear(world, { combo: 3 });
-        expect(world.getState().resonances.kinds.sweep).toBe(4);
+        expect(played(world).surge).toBe(5);
         world.dispose();
     });
 
@@ -319,45 +324,46 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         expect(fronts.length).toBeLessThanOrEqual(CHIME_SLOTS);
         expect(fronts[0].birth).toBe(world.time);
         for (let i = 1; i < fronts.length; i++) expect(fronts[i].birth).toBeGreaterThan(fronts[i - 1].birth);
-        expect(world.getState().resonances.emitted).toBe(0);
+        expect(Object.values(played(world)).every((count) => count === 0)).toBe(true);
         expect(world.counts.meteors).toBeLessThanOrEqual(2);
         expect(world.combo).toBe(0);
         world.dispose();
     });
 
-    it('distinguishes a back-to-back echo, a perfect-clear crown and a four-line storm', () => {
+    it('distinguishes a back-to-back strand, a perfect-clear crown and a four-line storm', () => {
         const { world } = makeWorld();
-        const emit = vi.spyOn(world.resonances, 'emit');
         clear(world, {
             lines: 2, rows: [19, 18], b2b: true, tspin: true,
         });
-        expect(emit.mock.calls.map(([event]) => event.kind)).toEqual(['helix', 'sweep']);
-        expect(emit.mock.calls[1][0].time).toBeGreaterThan(emit.mock.calls[0][0].time);
+        expect(played(world)).toMatchObject({ cyclone: 1, strand: 1 });
+        // The strand catches fire a beat after the clear itself.
+        expect(world.flourish.strand.birth).toBeGreaterThan(world.flourish.cyclone.birth);
         clear(world, { lines: 1, perfect: true });
-        expect(emit.mock.lastCall[0].kind).toBe('crown');
+        expect(played(world)).toMatchObject({ crown: 1, shock: 1, strand: 2 });
         expect(world.counts).toMatchObject({ perfects: 1, quads: 0, b2b: 1 });
         const meteorsBefore = world.counts.meteors;
         clear(world, { lines: 4, rows: [19, 18, 17, 16] });
         expect(world.counts.quads).toBe(1);
         expect(world.counts.meteors - meteorsBefore).toBeGreaterThanOrEqual(5);
-        expect(world.getState().resonances.kinds).toEqual({ sweep: 1, helix: 1, crown: 1 });
+        expect(played(world)).toEqual({
+            cyclone: 1, surge: 0, crown: 1, strand: 2, shock: 2,
+        });
         world.dispose();
     });
 
     it('takes a clear colour from its player even when another player locked most recently', () => {
         const { world } = makeWorld();
         lock(world, { player: 1, color: COLORS.O });
-        const emit = vi.spyOn(world.resonances, 'emit');
         clear(world, { player: 0, combo: 3, color: COLORS.T });
-        expect(emit.mock.lastCall[0].rgb).toEqual(pieceColor(COLORS.T));
+        expect(world.flourish.surge.rgb).toEqual(pieceColor(COLORS.T));
         expect(world.jets.items.find((item) => item.live).rgb).toEqual(pieceColor(COLORS.T));
         world.dispose();
     });
 
     it('keeps reduced-motion rewards legible without meteors, flashes or camera kicks', () => {
         const { world, camera } = makeWorld();
-        const emit = vi.spyOn(world.resonances, 'emit');
         frame(world, camera, 1 / 60, () => clear(world, { combo: 3 }));
+        const fullPower = world.flourish.surge.power;
         expect(world.flash).toBeGreaterThan(0);
         world.setReducedMotion(true);
         expect(world.getPostState()).toMatchObject({ flash: 0, kick: 0 });
@@ -372,9 +378,9 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         });
         expect(launch).not.toHaveBeenCalled();
         expect(world.getPostState()).toMatchObject({ flash: 0, kick: 0 });
-        expect(world.getState().resonances.emitted).toBeGreaterThan(0);
-        expect(emit.mock.lastCall[0].motion).toBeLessThan(0.5);
-        expect(emit.mock.lastCall[0].power).toBeLessThan(1);
+        expect(Object.values(played(world)).some((count) => count > 0)).toBe(true);
+        expect(world.flourish.surge.power).toBeLessThan(fullPower);
+        expect(world.flourish.shock.power).toBeLessThan(1);
         run(world, camera, 3);
         expect(world.getPostState()).toMatchObject({ flash: 0, kick: 0 });
         expect(world.counts.meteors).toBe(0);
@@ -390,17 +396,17 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
             clear(world, { combo: 8, lines: 4 });
         });
         expect(world.queue.length).toBeGreaterThan(0);
-        expect(world.getState().resonances.emitted).toBeGreaterThan(0);
+        expect(Object.values(played(world)).some((count) => count > 0)).toBe(true);
         world.setReducedMotion(true);
         expect(meteorsReset).toHaveBeenCalledOnce();
         expect(sparksReset).toHaveBeenCalledOnce();
         expect(world.queue).toHaveLength(0);
-        expect(world.getState().resonances.emitted).toBe(0);
+        expect(world.getState().flourishes.active).toEqual([]);
         expect(world.getPostState()).toMatchObject({ flash: 0, kick: 0 });
         // Reapplying the setting does not interrupt the gentler rewards emitted afterwards.
         clear(world, { tspin: true, lines: 0, rows: [] });
         world.setReducedMotion(true);
-        expect(world.getState().resonances.kinds.helix).toBe(1);
+        expect(played(world).cyclone).toBe(1);
         world.dispose();
     });
 
@@ -421,23 +427,23 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         world.dispose();
     });
 
-    it('raises the aurora with the chain and lets it down when the chain breaks', () => {
+    it('raises the rings\' hum with the chain and lets it down when the chain breaks', () => {
         const { world, camera } = makeWorld();
         const levels = [];
         [0, 2, 5, 10].forEach((combo) => {
             world.onCombo(combo);
             run(world, camera, 6, 120);
-            levels.push(world.u.aurora.value.x);
+            levels.push(world.u.ringGlow.value.x);
         });
         for (let i = 1; i < levels.length; i++) expect(levels[i]).toBeGreaterThan(levels[i - 1]);
-        expect(levels[0]).toBeCloseTo(AURORA_REST, 2);
-        // A long chain lights the second oval, and the rings hum.
-        expect(world.u.aurora.value.w).toBeGreaterThan(0.5);
+        expect(levels[0]).toBeCloseTo(0, 2);
+        // A long chain crowns the rings, and they hum.
+        expect(world.u.ringGlow.value.w).toBeGreaterThan(0.5);
         expect(world.u.ringGlow.value.x).toBeGreaterThan(0.5);
         world.onCombo(0);
         run(world, camera, 8, 160);
-        expect(world.u.aurora.value.x).toBeCloseTo(AURORA_REST, 2);
-        expect(world.u.aurora.value.w).toBeLessThan(0.05);
+        expect(world.u.ringGlow.value.x).toBeCloseTo(0, 1);
+        expect(world.u.ringGlow.value.w).toBeLessThan(0.05);
         world.dispose();
     });
 
@@ -500,7 +506,8 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         const { spin, flow, place } = world;
         world.resetSession();
         expect(world.combo).toBe(0);
-        expect(world.getState().resonances).toEqual({ active: 0, emitted: 0, kinds: { sweep: 0, helix: 0, crown: 0 } });
+        expect(world.getState().flourishes.active).toEqual([]);
+        expect(Object.values(played(world)).every((count) => count === 0)).toBe(true);
         expect(world.getState().queued).toBe(0);
         expect(world.spin).toBe(spin);
         expect(world.flow).toBe(flow);
@@ -512,7 +519,7 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         expect(Math.abs(world.place - place)).toBeLessThan(0.01);
         // Session reset also restores eligibility for the same milestone.
         clear(world, { combo: 5 });
-        expect(world.getState().resonances.kinds.helix).toBe(1);
+        expect(played(world).surge).toBe(1);
         world.dispose();
     });
 });
@@ -525,7 +532,7 @@ describe('stellar drift world: the hour', () => {
             frame(world, camera, 0);
             const palette = PALETTES[(level - 1) % PALETTE_COUNT];
             expect(world.getState().palette).toBe(palette.name);
-            ['gasA', 'gasB', 'haze', 'storm', 'auroraLow'].forEach((key) => {
+            ['gasA', 'gasB', 'haze', 'storm', 'bolt'].forEach((key) => {
                 const v = world.u[key].value;
                 expect(v.x).toBeCloseTo(palette[key][0], 5);
                 expect(v.y).toBeCloseTo(palette[key][1], 5);
