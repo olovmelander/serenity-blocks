@@ -48,7 +48,7 @@ import {
     FIGURES_KEPT, FIGURE_LINES, FIGURE_STARS,
 } from './starlight-core.js';
 import {
-    SKY_RADIUS, mirrorDir, mirrorShare, ridges, sized, skyDir, skyTangent, starColour,
+    SKY_RADIUS, mirrorDir, mirrorShare, ridges, sized, skyDir, skyTangent, starColour, woodsTop,
 } from './starlight-tsl.js';
 
 /** Catalogue stars bright enough to carry a glint (the catalogue is sorted brightest first). */
@@ -75,10 +75,10 @@ const throughAir = (y) => {
     return { kept, tint: mix(vec3(1.0, 0.78, 0.56), vec3(1.0, 1.0, 1.0), kept) };
 };
 
-/** 1 above the far hills, 0 behind them. */
+/** 1 above the far hills and the woods on the near crest, 0 behind them. */
 const aboveHills = (noise, d) => {
     const crest = ridges(noise, d);
-    return smoothstep(0.0, 0.004, d.y.sub(max(crest.x, crest.y)));
+    return smoothstep(0.0, 0.004, d.y.sub(max(crest.x.add(woodsTop(noise, d)), crest.y)));
 };
 
 // ── The field ────────────────────────────────────────────────────────────────────
@@ -116,8 +116,10 @@ function fieldMaterial({
     const side = positionGeometry.y;
     const cap = positionGeometry.z;
 
-    // Scene-linear light of a star of this magnitude (2 → 1.0; five magnitudes fainter → 0.063).
-    const light = exp(polar.w.sub(2.0).mul(-0.5526));
+    // Scene-linear light of a star of this magnitude (2 → 1.0; five magnitudes fainter → 0.063),
+    // and the faintest fall away faster still: they are the sky's fine dust, and the bright ones
+    // stand out of it instead of every star being one more speck of salt.
+    const light = exp(polar.w.sub(2.0).mul(-0.5526).sub(max(polar.w.sub(4.6), 0.0).mul(0.42)));
     // Its point's radius in pixels, and the quad that holds the point and its soft skirt.
     const pixels = light.sqrt().mul(0.52).add(0.9);
     const half = sized(u, pixels.mul(2.4), 1.5);

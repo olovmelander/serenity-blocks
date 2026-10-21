@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-11T11:42:25.519Z",
-  "runId": "2026-10-11T11-42-02-682Z",
+  "generatedAt": "2026-10-21T17:31:50.557Z",
+  "runId": "2026-10-21T17-30-52-887Z",
   "theme": "starlight",
   "themeMeta": {
     "displayName": "Starlight",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:6917/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-11T11-42-02-682Z",
+  "targetUrl": "http://127.0.0.1:5187/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-21T17-30-52-887Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -61,29 +61,29 @@
       "gpuDevice": [
         {
           "active": false,
-          "deviceId": 5688,
-          "deviceString": "AMD Radeon(TM) Graphics",
-          "driverVersion": "31.0.12044.3",
+          "deviceId": 5056,
+          "deviceString": "AMD Radeon(TM) 610M",
+          "driverVersion": "32.0.13062.9003",
           "gpuPreference": 2,
-          "revision": 197,
-          "subSysId": 978261930,
+          "revision": 212,
+          "subSysId": -2141841494,
           "vendorId": 4098
         },
         {
           "active": false,
-          "deviceId": 9437,
-          "deviceString": "NVIDIA GeForce RTX 3070 Laptop GPU",
-          "driverVersion": "32.0.15.7247",
+          "deviceId": 11353,
+          "deviceString": "NVIDIA GeForce RTX 5080 Laptop GPU",
+          "driverVersion": "32.0.15.7324",
           "gpuPreference": 3,
           "revision": 161,
-          "subSysId": 978261930,
+          "subSysId": -2141841494,
           "vendorId": 4318
         },
         {
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.9278",
+          "driverVersion": "10.0.26100.9711",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -1490,10 +1490,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 1.1000000014901161,
-      "firstTargetSelection": 417.19999999925494,
-      "cleanup-anchor": 571.1999999992549,
-      "secondTargetSelection": 129.09999999962747
+      "initial-anchor": 0.5,
+      "firstTargetSelection": 1864.5999999996275,
+      "cleanup-anchor": 1846.7000000001863,
+      "secondTargetSelection": 15775.300000000745
     },
     "mode": {
       "modeId": "single",
@@ -1571,24 +1571,24 @@
     }
   },
   "screenshot": {
-    "path": ".cache\\starlight\\validate\\starlight.png",
+    "path": "docs\\theme-screenshots\\starlight.png",
     "passed": true,
-    "width": 1584,
-    "height": 787,
-    "byteLength": 4986432,
-    "samples": 20107,
+    "width": 2538,
+    "height": 1506,
+    "byteLength": 15288912,
+    "samples": 20012,
     "luminance": {
-      "min": 11.164399999999999,
+      "min": 12.164399999999999,
       "max": 246.9748,
-      "mean": 57.836943949869124,
-      "range": 235.8104,
-      "variance": 1069.229885725253
+      "mean": 55.328045532681436,
+      "range": 234.8104,
+      "variance": 711.2027162331929
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 151,
-    "warningCount": 3,
+    "entryCount": 161,
+    "warningCount": 4,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
@@ -1596,25 +1596,32 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-10-11T11:42:13.275Z",
+        "timestamp": "2026-10-21T17:31:19.263Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 45905,
-        "sourceId": "http://127.0.0.1:6917/.cache/starlight/vite-6917/deps/chunk-RL5ME26M.js?v=043c88f2"
+        "sourceId": "http://127.0.0.1:5187/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/9549f948-49d5-48e4-8e69-b81b3c366148/scratchpad/vite-cache-5187/deps/chunk-VNXNK5DP.js?v=458a1e53"
       },
       {
-        "timestamp": "2026-10-11T11:42:16.220Z",
+        "timestamp": "2026-10-21T17:31:23.044Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 45905,
-        "sourceId": "http://127.0.0.1:6917/.cache/starlight/vite-6917/deps/chunk-RL5ME26M.js?v=043c88f2"
+        "sourceId": "http://127.0.0.1:5187/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/9549f948-49d5-48e4-8e69-b81b3c366148/scratchpad/vite-cache-5187/deps/chunk-VNXNK5DP.js?v=458a1e53"
       },
       {
-        "timestamp": "2026-10-11T11:42:18.487Z",
+        "timestamp": "2026-10-21T17:31:27.308Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
         "line": 45905,
-        "sourceId": "http://127.0.0.1:6917/.cache/starlight/vite-6917/deps/chunk-RL5ME26M.js?v=043c88f2"
+        "sourceId": "http://127.0.0.1:5187/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/9549f948-49d5-48e4-8e69-b81b3c366148/scratchpad/vite-cache-5187/deps/chunk-VNXNK5DP.js?v=458a1e53"
+      },
+      {
+        "timestamp": "2026-10-21T17:31:43.075Z",
+        "level": 2,
+        "message": "[ThemeManager] Swapping to \"starlight\" with 1 pipeline(s) in flight and builds still deferred: true",
+        "line": 1486,
+        "sourceId": "http://127.0.0.1:5187/src/themes/theme-manager.js?t=1792603418681"
       }
     ],
     "processFailures": []
