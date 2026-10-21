@@ -103,7 +103,7 @@ export class MatchConfigModal {
               <p class="sb-eyebrow">Online versus</p>
               <h2 class="sb-mp-sheet__title" id="match-config-title">Create a match</h2>
             </div>
-            <button type="button" class="sb-mp-close" id="close-match-config" aria-label="Close and return to the match list">${mpIcon('close', 20)}</button>
+            <button type="button" class="sb-btn sb-btn--quiet sb-mp-close" id="close-match-config" aria-label="Close and return to the match list"><span>Close</span><kbd class="sb-kbd" data-key aria-hidden="true">Esc</kbd><kbd class="sb-kbd" data-pad aria-hidden="true">B</kbd></button>
           </header>
 
           <form id="match-config-form" class="match-config-form sb-mp-sheet__form" novalidate>

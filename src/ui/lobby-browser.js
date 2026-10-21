@@ -57,7 +57,7 @@ export class LobbyBrowser {
               <h2 class="sb-mp-sheet__title" id="lobby-browser-title">Online versus</h2>
               <p class="sb-mp-sheet__lede" id="lobby-browser-lede">Join an open match, drop into one under way, or create your own.</p>
             </div>
-            <button type="button" class="sb-mp-close" id="close-lobby-browser" aria-label="Close and return to the menu">${mpIcon('close', 20)}</button>
+            <button type="button" class="sb-btn sb-btn--quiet sb-mp-close" id="close-lobby-browser" aria-label="Close and return to the menu"><span>Close</span><kbd class="sb-kbd" data-key aria-hidden="true">Esc</kbd><kbd class="sb-kbd" data-pad aria-hidden="true">B</kbd></button>
           </header>
 
           <!-- The matches first; joining a friend by ID is the way in when the list can't
