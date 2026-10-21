@@ -7,11 +7,13 @@
  * links. Shared by the production theme and the playground, so both draw the same cave.
  */
 import * as THREE from 'three/webgpu';
+import { uniform } from 'three/tsl';
 import { createCaveLight } from './crystal-cave-light.js';
 import { createGemField } from './crystal-cave-gems.js';
 import { createCaveRock } from './crystal-cave-rock.js';
 import { createCavePool } from './crystal-cave-water.js';
 import { createCaveAir } from './crystal-cave-air.js';
+import { createCaveAirLight, planAtmosphereLamps } from './crystal-cave-atmosphere.js';
 import { SPARK_KIND, createCaveEffects } from './crystal-cave-effects.js';
 import { CRYSTAL_CAVE_STAGE_DEPTH, CrystalCaveStage } from './crystal-cave-stage.js';
 import { CRYSTAL_CAVE_WAVE_SPEED } from './crystal-cave-reactions.js';
@@ -87,9 +89,20 @@ export class CrystalCaveWorld {
             bounces: preset.bounces,
             dispersion: preset.dispersion,
             inclusions: preset.inclusions,
+            seeThrough: preset.refraction,
         });
         this.gems.setCrystals(this.crystals.map((crystal) => ({ ...crystal, growth: crystal.group === 0 ? 1 : 0 })));
         this.group.add(this.gems.mesh);
+
+        // The light in the air: the post gathers it along the view, the pool along its mirror.
+        this.shaftLevel = uniform(1);
+        this.airLight = createCaveAirLight({
+            light: this.light,
+            lamps: this.getAtmosphereLamps(),
+            poolLevel: this.poolLevel,
+            skylight: assets.meta.skylight,
+            shaft: this.shaftLevel,
+        });
 
         this.pool = createCavePool({
             light: this.light,
@@ -98,6 +111,7 @@ export class CrystalCaveWorld {
             reflectionScale: preset.reflectionScale,
             refraction: preset.refraction,
             rings: preset.rings,
+            air: this.airLight,
         });
         this.group.add(this.pool.mesh);
 
@@ -107,6 +121,7 @@ export class CrystalCaveWorld {
             assets: { ...assets, tips: this.tips },
             wave: this.rock.controls,
             quality: preset,
+            shaft: this.shaftLevel,
         });
         this.group.add(this.air.group);
 
@@ -219,6 +234,22 @@ export class CrystalCaveWorld {
                 this.heartTip.copy(this.tipOf[index]);
             }
         });
+    }
+
+    /** The lamps of the light in the air: the big crystals' clusters (crystal-cave-atmosphere.js). */
+    getAtmosphereLamps() {
+        return planAtmosphereLamps(this.crystals, alongCrystal);
+    }
+
+    /**
+     * What the post's light in the air needs from the world. When the post draws the
+     * skylight's shaft it claims it, and the air's mesh beam is hidden.
+     */
+    getAtmosphere() {
+        return {
+            air: this.airLight,
+            claimShaft: () => this.air.hideBeam(),
+        };
     }
 
     prepareCamera(aspect) {

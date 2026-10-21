@@ -208,6 +208,7 @@ export function createCrown(u) {
     // A unit spike: six faces from a hexagon (radius 1 on the ice) to a point at y = 1.
     const position = [];
     const normal = [];
+    const across = [];
     for (let i = 0; i < 6; i++) {
         const a0 = (i / 6) * TAU;
         const a1 = ((i + 1) / 6) * TAU;
@@ -217,6 +218,8 @@ export function createCrown(u) {
         const n = [Math.cos(am), 0.22, Math.sin(am)];
         const nl = Math.hypot(n[0], n[1], n[2]);
         position.push(...A, 0, 1, 0, ...B);
+        // Across the face: 0 and 1 at its two arrises.
+        across.push(0, 0.5, 1);
         for (let k = 0; k < 3; k++) normal.push(n[0] / nl, n[1] / nl, n[2] / nl);
     }
     const rand = mulberry32(0xc207);
@@ -240,6 +243,7 @@ export function createCrown(u) {
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
     geometry.setAttribute('normal', new THREE.Float32BufferAttribute(normal, 3));
+    geometry.setAttribute('aAcross', new THREE.Float32BufferAttribute(across, 1));
     geometry.setAttribute('aSpike', new THREE.InstancedBufferAttribute(aSpike, 4));
     geometry.setAttribute('aShape', new THREE.InstancedBufferAttribute(aShape, 4));
     geometry.instanceCount = count;
@@ -283,6 +287,8 @@ export function createCrown(u) {
     );
     const vTint = varying(tintNode, 'itCrownTint');
     const vAlong = varying(positionGeometry.y, 'itCrownAlong');
+    const vAcross = varying(attribute('aAcross', 'float'), 'itCrownAcross');
+    const vSeed = varying(shape.w.add(spike.x.mul(0.37)), 'itCrownSeed');
     const vGlow = varying(exp(age.mul(-2.6)).mul(live), 'itCrownGlow');
     material.colorNode = Fn(() => {
         const N = normalize(vNormal);
@@ -296,18 +302,27 @@ export function createCrown(u) {
         // Six faces, each its own tone: the heart's side, the moon's side, the dark side.
         const key = itSaturate(dot(N, heartDir)).mul(0.8).add(itSaturate(dot(N, itMoonDir())).mul(0.7));
         const through = pow(itSaturate(dot(Vd, heartDir)), 3.0);
-        const body = vec3(0.03, 0.15, 0.28).mul(key.add(0.2)).mul(u.ambient)
-            .add(heart.mul(vec3(0.38, 0.74, 1.0)).mul(through.mul(1.3).add(0.12)));
+        // Dark clear ice: what shows is the light inside it, on its edges and in its cracks.
+        const body = vec3(0.02, 0.09, 0.18).mul(key.add(0.2)).mul(u.ambient)
+            .add(heart.mul(vec3(0.38, 0.74, 1.0)).mul(through.mul(1.3).add(0.08)));
         // Lit from within in the piece's colour: it burns at the root, where it broke through,
-        // and the thin tip keeps a little of it for as long as the spike stands.
+        // and climbs the spike in streaks along the fractures it was torn open by.
         const root = float(1.0).sub(vAlong);
-        const inner = vTint.mul(vGlow).mul(root.mul(root).mul(3.4).add(0.3))
-            .add(vTint.mul(0.1).mul(root.add(0.4)));
+        const streak = u.noise(vec2(vAcross.mul(0.7).add(vSeed.mul(9.0)), vAlong.mul(0.35).sub(vGlow.mul(0.25)))).r;
+        const crack = smoothstep(0.55, 0.8, streak).mul(vAlong.mul(0.8).add(0.4));
+        const inner = vTint.mul(vGlow).mul(root.mul(root).mul(3.0).add(crack.mul(2.4)).add(0.2))
+            .add(vTint.mul(0.08).mul(root.add(0.4)));
+        // The arrises carry the light out to the eye.
+        const arris = float(1.0).sub(smoothstep(0.0, 0.12, min(vAcross, float(1.0).sub(vAcross))));
+        const edgeLight = vTint.mul(vGlow.mul(1.6).add(0.15)).add(heart.mul(0.5)).add(u.skyHorizon.mul(2.0))
+            .mul(arris)
+            .mul(0.9);
         const edge = pow(float(1.0).sub(ndv), 3.0);
         const R = Vd.sub(N.mul(dot(Vd, N).mul(2.0)));
         const mirror = itSky(u, R, 0.3).add(itLobes(u, vWorld, R));
         const col = body.add(inner).mul(float(1.0).sub(fres))
             .add(mirror.mul(fres))
+            .add(edgeLight)
             .add(vTint.mul(vGlow).add(u.skyHorizon.mul(2.0)).mul(edge));
         return itAtmosphere(u, col, vWorld);
     })();
@@ -406,9 +421,9 @@ const ARM_LENGTH = 0.94;
 const COS60 = 0.5;
 const SIN60 = Math.sqrt(3) / 2;
 /** Half-widths of the arm at its root, of a branch and of a barb (the flake's radius is 1). */
-const ARM_WIDTH = 0.0038;
-const BRANCH_WIDTH = 0.0023;
-const BARB_WIDTH = 0.0014;
+const ARM_WIDTH = 0.017;
+const BRANCH_WIDTH = 0.0105;
+const BARB_WIDTH = 0.0055;
 
 /** Distance from `p` to the segment a → a + dir · len (dir is unit). */
 const segment = /* @__PURE__ */ Fn(([p, a, dir, len]) => {
@@ -532,6 +547,17 @@ export function createSnowflake(u) {
         // a faint glass plate, and a glint on every node ──
         const texel = float(1.5).div(max(vPx, 1.0));
         const core = float(1.0).sub(smoothstep(texel.negate(), texel, d));
+        // Inside an arm: how deep in (0 at its edge, 1 down its spine), a spine of white light, a
+        // bright edge where the face turns, a darker glass between.
+        const depth = clamp(d.negate().div(min(armWidth, float(BRANCH_WIDTH)).mul(0.9)), 0.0, 1.0);
+        const spine = smoothstep(0.78, 1.0, depth);
+        const rimBand = core.mul(float(1.0).sub(smoothstep(0.0, 0.3, depth)));
+        // The plate between: clear ice, faintly lit, with the prism's colours where it thins.
+        const pane = core.mul(smoothstep(0.2, 0.5, depth)).mul(float(1.0).sub(spine));
+        // Frost grows on the plate along each arm, thinning toward its tip.
+        const wedge = exp(abs(p.y).mul(-22.0)).mul(float(1.0).sub(smoothstep(grown.mul(0.7), grown, p.x)))
+            .mul(smoothstep(0.0, 0.08, p.x)).mul(float(1.0).sub(core))
+            .mul(0.06);
         const sheen = exp(max(d, 0.0).mul(-170.0)).mul(0.5).add(exp(max(d, 0.0).mul(-34.0)).mul(0.1));
         const fringe = smoothstep(0.0, texel.mul(1.5), d).mul(exp(max(d, 0.0).mul(-240.0)));
         const prism = itSpectrum(r.mul(1.9).add(folded.mul(1.3)).sub(age.mul(0.2)));
@@ -542,8 +568,12 @@ export function createSnowflake(u) {
         const tip = exp(abs(r.sub(grown)).mul(-26.0)).mul(float(1.0).sub(grow)).mul(1.6);
         const appear = smoothstep(0.0, 0.12, age);
         const fade = float(1.0).sub(gone).mul(appear);
-        const col = mix(uniforms.tint, vec3(1.0), 0.55).mul(core.mul(0.7))
-            .add(uniforms.tint.mul(sheen.mul(0.3).add(glass)))
+        // A solid arm of ice: its body lit, its edges brighter, a soft ridge down its spine.
+        const col = mix(uniforms.tint, vec3(1.0), 0.45).mul(core.mul(0.42))
+            .add(prism.mul(pane).mul(0.06))
+            .add(vec3(1.0).mul(spine.mul(0.3)))
+            .add(mix(uniforms.tint, vec3(1.0), 0.65).mul(rimBand.mul(0.45)))
+            .add(uniforms.tint.mul(sheen.mul(0.3).add(glass).add(wedge)))
             .add(prism.mul(fringe).mul(0.22))
             .add(vec3(1.0).mul(glint.mul(core.mul(0.7).add(0.3))))
             .add(uniforms.tint.mul(tip).mul(core.add(sheen)))

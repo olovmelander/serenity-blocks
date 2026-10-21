@@ -193,6 +193,59 @@ Extreme tier in a capture; local multiplayer and Infinity layouts in a capture (
 is unit-tested only); reduced motion in a capture (unit-tested only); sessions of several
 hours.
 
+## Clarity pass (2026-10-20)
+
+A second pass on the look, on branch `feature/ice-temple-overhaul`. The columns read as frosted
+plastic: a uniform milky fill hid the prism's facets. The moon was an oval near the corner of the
+wide lens, snowflakes passing the lens were drawn as solid grey balls, the aurora was a flat band
+with a hard top, the Great Snowflake's arms were hairlines, and the crown's spikes were flat mint
+cones.
+
+| Before | After |
+| --- | --- |
+| ![before, at rest](ice-temple-overhaul/clarity-before-rest.jpg) | ![after, at rest](ice-temple-overhaul/clarity-after-rest.jpg) |
+| ![before, four lines](ice-temple-overhaul/clarity-before-quad.jpg) | ![after, four lines](ice-temple-overhaul/clarity-after-quad.jpg) |
+
+What changed:
+
+- **Clear ice, lit edges.** The milky scatter fill is a little over a third of what it was, so
+  most of what a column shows is what lies behind it, darkened and turned blue, and the light its
+  fractures catch (brighter, against the darker body). Light now runs out along every arris: where
+  the face normal turns away from the piece's radial one the edge burns thin, chipped unevenly down
+  its length. A clear wave and the resonance run through the fractures and the edges instead of
+  filling a near column white.
+- **The moon** is drawn in screen space (the angle between view ray and moon measured on the
+  image plane), so it stays round anywhere in a wide lens, with soft maria and limb darkening.
+- **Snow at the lens** is a bokeh disc: flat with a brighter rim, and its brightness falls as the
+  cube of its blur, so the light a flake carries is conserved and a half-blurred flake is no orb.
+- **The aurora** has dark lanes between its rays, rays that reach far above the border, colour
+  that climbs with height (the border's colour, the body's, then the fringe's), and a thin hem
+  along its lower edge that burns toward white in the knots, with light running along it.
+- **The Great Snowflake**'s arms are solid ice: about three times thicker, a lit body with
+  brighter edges and a soft ridge down the spine, a hint of the prism where it thins, and frost
+  on the plate along each arm.
+- **The crown** is dark clear ice lit from within in the piece's colour, the light climbing each
+  spike in streaks along its fractures and running out along its arrises.
+
+![a column close up](ice-temple-overhaul/clarity-column.jpg)
+![an arm of the Great Snowflake](ice-temple-overhaul/clarity-flake.jpg)
+
+Verified with single-effect playground captures (1584 × 787, WebGPU, private dev server): rest
+with and without the board, a hard drop, a two-line clear, a held chain of six, a four-line clear
+1.6 s in; High on the WebGL2 backend through a hard drop, Low on WebGL2 through a four-line clear,
+Minimal, and a 430 × 932 frame at Medium. No console errors or warnings. The four Ice Temple test
+files (93 tests) pass.
+
+Cost (playground, High, 1980 × 985, GPU timestamps, NVIDIA Blackwell): GPU p50 0.55 ms both
+before and after this pass. Both runs dropped about a quarter of their frames the same way while
+other sessions loaded the machine.
+
+| | |
+| --- | --- |
+| ![a hard drop](ice-temple-overhaul/clarity-drop.jpg) | ![a chain of six](ice-temple-overhaul/clarity-combo.jpg) |
+
+![WebGL2 High, WebGL2 Low through four lines, Minimal](ice-temple-overhaul/clarity-tiers.jpg)
+
 ## Reproduce
 
 Run `npm run dev:playground`, then:
