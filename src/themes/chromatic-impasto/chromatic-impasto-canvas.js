@@ -44,6 +44,7 @@ import {
     uniform,
     uv,
     vec2,
+    vec3,
     vec4,
 } from 'three/tsl';
 
@@ -146,11 +147,30 @@ function stampNodes() {
         .mul(pool.add(lip).add(1.0))
         .add(chatter);
 
-    // Pigment: the second colour rides on some clumps, in bands that break and rejoin; within
-    // a colour the paint is nearly even.
+    // Pigment: the second colour rides on some clumps, in bands that break and rejoin.
     const carried = clump.mul(0.7).add(h3.mul(0.3)).add(nc.sub(0.5).mul(0.5));
     const mR = smoothstep(float(0.9).sub(mixB), float(1.1).sub(mixB), carried).mul(hasB);
-    const colR = mix(colA.rgb, colB.rgb, mR).mul(clump.mul(0.12).add(h2.mul(0.06)).add(0.91));
+    const tube = mix(colA.rgb, colB.rgb, mR).toVar();
+    // Broken colour: paint loaded from the palette is never mixed through. Groups of bristles
+    // carry it lighter (white worked into it) or deeper, in streaks that run along the stroke and
+    // break off, and each stroke was mixed more or less carelessly. A knife drags its colour in
+    // broader bands. The paint pushed to the rails stands thicker and reads deeper.
+    const careless = ciHash21(vec2(seed, 91.0)).mul(0.7).add(0.3);
+    const group = floor(bc.div(mix(5.0, 2.2, bristle)));
+    const streak = ciTrack(s.div(bw.mul(mix(70.0, 26.0, bristle))).add(clump.mul(5.0)), group.add(seed.mul(7.0)))
+        .mul(0.75)
+        .add(h2.mul(0.25))
+        .toVar();
+    const lighter = smoothstep(0.6, 0.92, streak).mul(careless).toVar();
+    const deeper = float(1.0).sub(smoothstep(0.08, 0.36, streak)).mul(careless).mul(0.38);
+    // White goes into the colours, not into the darks: a dark worked lighter is the same dark,
+    // lifted (whitened, a navy or a deep green would turn to chalk).
+    const tone = tube.x.mul(0.2126).add(tube.y.mul(0.7152)).add(tube.z.mul(0.0722));
+    const whiten = lighter.mul(0.42).mul(smoothstep(0.04, 0.3, tone));
+    const tint = mix(tube, tube.mul(0.45).add(vec3(0.5, 0.48, 0.43)), whiten)
+        .mul(lighter.mul(0.55).mul(float(1.0).sub(smoothstep(0.04, 0.3, tone))).add(1.0));
+    const colR = tint.mul(float(1.0).sub(deeper)).mul(float(1.0).sub(rail.mul(0.12).mul(bristle)))
+        .mul(clump.mul(0.1).add(h2.mul(0.05)).add(0.93));
 
     // ── A blob: q = local point in radii ──
     const q = uv4.xy;
