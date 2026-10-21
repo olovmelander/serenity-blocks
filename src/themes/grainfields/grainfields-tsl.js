@@ -223,6 +223,8 @@ export function createUniforms() {
         cloudSteps: uniform(18, 'int'),
         /** 1 when the post marches the shafts (the land then leaves the sunlit air to it). */
         airMarch: uniform(1),
+        /** Rain hanging under the storm's core (0 none … 1 the storm break's heaviest). */
+        rain: uniform(0),
 
         // ── Gameplay ──
         /** The storm breaking with a chain (0..1): cover thins, the light lifts, the wind rises. */
@@ -274,7 +276,7 @@ export function deckPoint(u, noise, xz) {
  * bearing (the fells and the middle distance stand in its shade while the sun looks through
  * its own gap); `stormCore` = (centre x, centre z, radius, strength), set by the world.
  */
-function coreCover(u, xz) {
+export function coreCover(u, xz) {
     const d = xz.sub(u.stormCore.xy);
     const r = max(u.stormCore.z, 1.0);
     return exp(dot(d, d).div(r.mul(r)).negate()).mul(u.stormCore.w);

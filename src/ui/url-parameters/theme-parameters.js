@@ -95,7 +95,7 @@ const captureThemes = [
 
     ['geode', 'geode', 'Geode', 'shell, druzy, crystals, glints, beams, air, shards, wisps, rowBeams'],
 
-    ['grainfields', 'grainfields', 'Grainfields', 'grain, land, lapporten, fort, trees, herd, geese, sky, beams, motes'],
+    ['grainfields', 'grainfields', 'Grainfields', 'grain, land, lapporten, fort, trees, herd, geese, sky, beams, motes, lens'],
 
     ['halcyon-apex',
         'halcyonApex',
