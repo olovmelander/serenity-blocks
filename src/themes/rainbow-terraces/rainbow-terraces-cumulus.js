@@ -20,7 +20,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, atan, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, dot, exp, float, length, max, mix,
+    Fn, atan, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, dot, exp, float, fract, length, max, mix,
     normalize, positionGeometry, pow, sin, smoothstep, sqrt, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { DEG, mulberry32 } from './rainbow-terraces-core.js';
@@ -339,12 +339,15 @@ export function createCumulus({ tier, U, tex }) {
         // The tower's lower body is the storm itself: dark slate in its own rain and shade, the
         // billows still showing; only the crown stands in the sun.
         // (By the point's own height, so the dark climbs the tower smoothly across the puffs.)
-        const rise = vWorld.y.sub(cloud.x).div(cloud.y);
+        // (Measured mostly by the billow's own height, a little by the point's, so the dark climbs
+        // the tower billow by billow along a cauliflower edge, never across it in a level band.)
+        const jitter = fract(tone.y.mul(0.618)).sub(0.5).mul(0.14);
+        const rise = mix(vWorld.y.sub(cloud.x).div(cloud.y), tone.x.add(jitter), 0.65);
         // (And across its form: the flank toward the storm's heart turns slate over its last
         // billows, so the lit crown grades into the dark wall, never a white cut-out against it.)
         const shower = smoothstep(0.15, 0.55, U.showerAmt);
         const storm = max(
-            float(1.0).sub(smoothstep(0.26, 0.6, rise)),
+            float(1.0).sub(smoothstep(0.2, 0.5, rise)),
             smoothstep(0.25, 0.8, tone.z).mul(float(1.0).sub(smoothstep(0.7, 0.95, rise))).mul(0.8),
         ).mul(tower).mul(shower);
         // Each billow of the storm's body shows by its lighter brow over a darker underside.
@@ -377,7 +380,11 @@ export function createCumulus({ tier, U, tex }) {
         const veil = smoothstep(2.5, 3.5, cloud.z);
         const edge = length(local).add(n.sub(0.5).mul(mix(mix(float(0.45), float(0.7), storm), float(1.05), veil)));
         const soft = mix(mix(float(0.74), float(0.45), storm), float(0.12), veil);
-        const flat = smoothstep(cloud.x.sub(cloud.y.mul(0.012)), cloud.x.add(cloud.y.mul(0.03)), vWorld.y);
+        // The tower's base is the storm's: level, but sagging and torn along its run (the puff's
+        // own noise and a broad one across the cloud), and its foot thins out into the rain.
+        const sagN = texture(tex.noise, vec2(vWorld.x.mul(1 / 3200), vWorld.z.mul(1 / 3200)).add(0.29)).r;
+        const baseLine = cloud.x.sub(cloud.y.mul(sagN.sub(0.5).mul(0.07).add(n.sub(0.5).mul(0.04))));
+        const flat = smoothstep(baseLine.sub(cloud.y.mul(0.02)), baseLine.add(cloud.y.mul(0.06)), vWorld.y);
         const body = float(1.0).sub(smoothstep(soft, 0.92, edge));
         const drift = texture(tex.noise, vWorld.xz.mul(1 / 1400).add(vec2(0.37, U.mistClock.mul(0.00002)))).r;
         const gaps = smoothstep(0.36, 0.7, drift.add(n.sub(0.5).mul(0.3)));
