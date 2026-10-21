@@ -22,6 +22,7 @@ import {
     cameraProjectionMatrix,
     cameraViewMatrix,
     clamp,
+    cos,
     dot,
     exp,
     float,
@@ -189,8 +190,40 @@ export function createChrysalis(u) {
         const gold = vec3(1.0, 0.78, 0.36).mul(dotShape).mul(litDot).mul(twinkle)
             .mul(5.5);
 
-        const light = inner.add(molten).add(gold).mul(u.breath);
-        return vec4(body.add(env.mul(fres)).add(through).add(light), 1.0);
+        // ── The wings folded inside, seen through the crystal ──
+        // Behind the front facets, a little deeper than the surface (they slide against it as the
+        // view drifts): two long folded wings with their veins and their eyes, the thing the
+        // chain will hatch. Dim at rest; they wake with the chain.
+        const p = positionWorld.sub(V.mul(CHRYSALIS.radius * 0.55));
+        const fx = p.x.sub(CHRYSALIS.x).div(CHRYSALIS.radius).toVar();
+        const fy = p.y.sub(CHRYSALIS.foot).div(CHRYSALIS.length).toVar();
+        const side = fx.abs().toVar();
+        // Each wing: a long teardrop from the shoulder down, wider below, its edge scalloped.
+        const span = smoothstep(0.78, 0.66, fy).mul(smoothstep(0.08, 0.24, fy));
+        const width = fy.sub(0.78).negate().mul(0.9).min(0.62)
+            .max(0.0)
+            .add(0.06);
+        const scallop = sin(fy.mul(46.0)).mul(0.035);
+        const inWing = float(1.0).sub(smoothstep(width.sub(0.04), width.add(0.04), side.add(scallop))).mul(span)
+            .mul(smoothstep(0.0, 0.06, side))
+            .toVar();
+        // Veins radiate from the root under the shoulder; the eye sits low on each.
+        const veinAngle = atan(side, float(0.78).sub(fy)).toVar();
+        const veins = vcBell(fract(veinAngle.mul(6.5)).sub(0.5).div(0.08)).mul(0.9);
+        const eyeD = length(vec2(side.sub(0.4), fy.sub(0.27)).mul(vec2(1.0, 1.4)));
+        const eye = vcBell(eyeD.sub(0.06).div(0.02)).mul(0.6).add(vcBell(eyeD.div(0.025)).mul(0.3));
+        const folded = mix(u.wingMid.mul(0.35), u.wingEdge, veins.mul(0.7).add(eye.mul(0.35)))
+            .mul(inWing)
+            .mul(depth.mul(0.85).add(0.15))
+            .mul(u.wake.mul(1.6).add(u.power.mul(1.8)).add(0.08))
+            .mul(pulse);
+
+        // ── A thin film on the facets: the mirrored sky shifts hue as the facet turns ──
+        const film = cos(vec3(0.0, 2.1, 4.2).add(ndv.mul(7.0)).add(grain.b.mul(3.0))).mul(0.5).add(0.5);
+        const sheen = env.mul(fres).mul(mix(vec3(1.0), film.mul(1.5), 0.45));
+
+        const light = inner.add(molten).add(gold).add(folded).mul(u.breath);
+        return vec4(body.add(sheen).add(through).add(light), 1.0);
     })();
 
     const shell = new THREE.Mesh(geometry, material);
