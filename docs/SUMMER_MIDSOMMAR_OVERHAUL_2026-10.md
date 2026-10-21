@@ -148,6 +148,33 @@ rings and gusts from fixed pools.
 | --- | --- | --- |
 | ![bouquet](summer-midsommar/bouquet.webp) | ![combo](summer-midsommar/combo.webp) | ![in game](summer-midsommar/in-game.webp) |
 
+### The visual pass (2026-10-20)
+
+A look at the evening with fresh eyes, keeping everything it already was.
+
+- **The meadow against the light.** Grass and flowers lit the face the eye sees by the
+  sun's angle to either side of a blade (`abs(dot(normal, sun))`), so with the low sun
+  behind the meadow every blade and petal was lit from the front and the meadow read flat
+  and pale. Now only the face turned to the sun is sunlit; a blade or petal seen against
+  the light is shaded and the light comes through it instead, brightest where the sun
+  stands straight behind it. The meadow gains depth and the backlit tips glow.
+- **Petals with round tips.** A near petal was a two-triangle kite whose widest point was
+  half-way, so up close the daisies and buttercups read as paper triangles. A petal is
+  now a strap that widens from a narrow claw and closes in a blunt tip (four triangles):
+  about 30 % more triangles on the near flowers, none on the far ones.
+- **Crowns with a shaded side.** 40 % of the sun wrapped round a crown to its shaded side,
+  which flattened the birch and the spruce; it is 25 %, so the inner strands sit in shade
+  and the sunward fringe glows.
+- **Sparks on the sun's path.** The lake's glitter was one smooth highlight. Separate
+  sparks now wink on the ripples down the path: a hashed lattice on the water, its cells
+  growing with distance so a spark stays a few pixels at any depth, each cell a facet with
+  its own random tilt that lights only when it puts the sun in the eye.
+
+Checked in the playground at High and Low on native WebGPU, 1920×1080, 1280×720 and
+390×844: evening, white night, lock, four lines, combo; clean consoles. GPU per frame at
+1080p, interleaved against the evening before the pass: about 2.6 ms against 2.5 ms (within
+run-to-run noise). `tests/unit/summer-*.test.js`: 675 tests.
+
 ## How it is built
 
 ### Trees and buildings authored in Blender

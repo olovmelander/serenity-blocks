@@ -125,13 +125,17 @@ export function createBed(light, tier) {
         // ── The bank ──
         // Cushions of moss over dark earth, gravel showing through here and there; the garden
         // falls away into the dark behind the first few paces of bank.
-        const clump = light.noise.sample(point.xz.mul(1.25));
+        // (Read at a blurred level: the cushions are soft mounds, not speckle.)
+        const clump = light.noise.sample(point.xz.mul(0.62)).level(1.0);
         const tuft = light.noise.sample(point.xz.mul(4.1));
-        const mossy = smoothstep(0.34, 0.6, broad.r.mul(0.35).add(clump.g.mul(0.45)).add(fine.g.mul(0.2)));
-        const gravel = smoothstep(0.62, 0.8, clump.r.mul(0.6).add(broad.b.mul(0.4))).mul(mossy.oneMinus());
-        const earth = vec3(0.034, 0.027, 0.02).mul(fine.b.mul(0.6).add(0.7));
-        const moss = mix(vec3(0.014, 0.04, 0.012), vec3(0.045, 0.1, 0.022), tuft.r.mul(0.6).add(clump.b.mul(0.4)))
-            .mul(tuft.a.mul(0.5).add(0.75));
+        const mound = broad.r.mul(0.35).add(clump.g.mul(0.5)).add(fine.g.mul(0.15)).toVar();
+        const mossy = smoothstep(0.3, 0.5, mound);
+        const gravel = smoothstep(0.66, 0.82, clump.r.mul(0.6).add(broad.b.mul(0.4))).mul(mossy.oneMinus());
+        const earth = vec3(0.03, 0.024, 0.018).mul(fine.b.mul(0.4).add(0.8));
+        // Each cushion is darker at its edge and brighter on its crown, its nap catching the light.
+        const crown = smoothstep(0.42, 0.7, mound);
+        const moss = mix(vec3(0.014, 0.038, 0.012), vec3(0.05, 0.105, 0.024), tuft.r.mul(0.35).add(crown.mul(0.65)))
+            .mul(tuft.a.mul(0.25).add(0.85));
         const wet = smoothstep(0.16, 0.0, point.y);
         const shoreStone = stone.rgb.mul(0.5);
         const dry = mix(mix(earth, moss, mossy), stone.rgb.mul(0.3), gravel.mul(0.8));

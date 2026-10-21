@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-03T12:00:30.984Z",
-  "runId": "2026-10-03T12-00-05-582Z",
+  "generatedAt": "2026-10-21T07:49:00.633Z",
+  "runId": "2026-10-21T07-48-39-781Z",
   "theme": "neon-dusk",
   "themeMeta": {
     "displayName": "Neon Dusk",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4294/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-10-03T12-00-05-582Z",
+  "targetUrl": "http://127.0.0.1:5263/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-21T07-48-39-781Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -61,29 +61,29 @@
       "gpuDevice": [
         {
           "active": false,
-          "deviceId": 5688,
-          "deviceString": "AMD Radeon(TM) Graphics",
-          "driverVersion": "31.0.12044.3",
+          "deviceId": 5056,
+          "deviceString": "AMD Radeon(TM) 610M",
+          "driverVersion": "32.0.13062.9003",
           "gpuPreference": 2,
-          "revision": 197,
-          "subSysId": 978261930,
+          "revision": 212,
+          "subSysId": -2141841494,
           "vendorId": 4098
         },
         {
           "active": false,
-          "deviceId": 9437,
-          "deviceString": "NVIDIA GeForce RTX 3070 Laptop GPU",
-          "driverVersion": "32.0.15.7247",
+          "deviceId": 11353,
+          "deviceString": "NVIDIA GeForce RTX 5080 Laptop GPU",
+          "driverVersion": "32.0.15.7324",
           "gpuPreference": 3,
           "revision": 161,
-          "subSysId": 978261930,
+          "subSysId": -2141841494,
           "vendorId": 4318
         },
         {
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.9278",
+          "driverVersion": "10.0.26100.9711",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -135,6 +135,13 @@
           "sameMode": true,
           "running": true,
           "paused": true
+        }
+      },
+      {
+        "id": "boot-theme-settled",
+        "passed": true,
+        "details": {
+          "active": "forest"
         }
       },
       {
@@ -220,6 +227,11 @@
         "details": {
           "themeId": "neon-dusk"
         }
+      },
+      {
+        "id": "theme-detail-apply-reachable",
+        "passed": true,
+        "details": null
       },
       {
         "id": "theme-card-selection-started",
@@ -831,7 +843,7 @@
         "id": "outgoing-canvases-disconnected",
         "passed": true,
         "details": {
-          "added": 4,
+          "added": 1,
           "connected": 0
         }
       },
@@ -1471,10 +1483,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.5,
-      "firstTargetSelection": 3620.1999999999534,
-      "cleanup-anchor": 77.30000000004657,
-      "secondTargetSelection": 214.39999999990687
+      "initial-anchor": 0.20000000018626451,
+      "firstTargetSelection": 376.5,
+      "cleanup-anchor": 359.70000000018626,
+      "secondTargetSelection": 98.29999999981374
     },
     "mode": {
       "modeId": "single",
@@ -1554,28 +1566,36 @@
   "screenshot": {
     "path": "docs\\theme-screenshots\\neon-dusk.png",
     "passed": true,
-    "width": 1584,
-    "height": 787,
-    "byteLength": 4986432,
-    "samples": 20107,
+    "width": 2538,
+    "height": 1506,
+    "byteLength": 15288912,
+    "samples": 20012,
     "luminance": {
-      "min": 6.3578,
-      "max": 241.7208,
-      "mean": 48.80391339334569,
-      "range": 235.363,
-      "variance": 2487.1757727157824
+      "min": 3.162,
+      "max": 246.9748,
+      "mean": 35.25720067959238,
+      "range": 243.81279999999998,
+      "variance": 1530.5091224600765
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 138,
-    "warningCount": 0,
+    "entryCount": 148,
+    "warningCount": 1,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
     "patternFailures": [],
     "errorSamples": [],
-    "warningSamples": [],
+    "warningSamples": [
+      {
+        "timestamp": "2026-10-21T07:48:51.306Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5263/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/f2a23ee2-16cf-4d96-af51-842052da097d/scratchpad/vite-cache-5263/deps/chunk-VNXNK5DP.js?v=90ba5b69"
+      }
+    ],
     "processFailures": []
   },
   "perf": null,

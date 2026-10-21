@@ -33,6 +33,7 @@ import {
     float,
     floor,
     fract,
+    fwidth,
     length,
     max,
     min,
@@ -42,6 +43,7 @@ import {
     positionWorld,
     sin,
     smoothstep,
+    step,
     texture,
     vec2,
     vec3,
@@ -214,17 +216,31 @@ export function outcropDetail(t, xz) {
  * joints every ~14 m, each block its own tone, ink streaks hanging below the ledges.
  */
 export function cliffFace(t, faceU, faceV) {
-    const wob = texture(t.noise, vec2(faceU.div(70.0), faceV.div(50.0))).r.sub(0.5);
-    const lv = faceV.div(9.0).add(wob.mul(0.8)).toVar();
+    const wobRead = texture(t.noise, vec2(faceU.div(70.0), faceV.div(50.0))).toVar();
+    const wob = wobRead.r.sub(0.5);
+    // Sheeting ledges about 9 m apart, their spacing wandering up the face and along it (at an
+    // even spacing, with joints at an even spacing too, the face read as a brick wall).
+    const lv = faceV.div(9.0).add(wob.mul(0.8))
+        .add(faceV.div(23.0).add(faceU.div(170.0)).sin().mul(0.35)).toVar();
+    // Vertical joints about 14 m apart that run through three ledges at a time, and only in some
+    // columns: the blocks between them are of many sizes.
     const ju = faceU.div(14.0).add(texture(t.noise, vec2(faceV.div(40.0), faceU.div(90.0))).g.sub(0.5).mul(0.6)).toVar();
+    const run = floor(lv.div(3.0));
     const fv = fract(lv);
     const fu = fract(ju);
-    const lip = smoothstep(0.86, 0.97, fv).mul(float(1.0).sub(smoothstep(0.97, 1.0, fv)));
-    const undercut = float(1.0).sub(smoothstep(0.0, 0.14, fv));
-    const joint = float(1.0).sub(smoothstep(0.0, 0.045, min(fu, float(1.0).sub(fu))));
-    const block = hcHash21(vec2(floor(lv), floor(ju)));
-    const shade = float(1.0).add(lip.mul(0.38)).sub(undercut.mul(0.42)).sub(joint.mul(0.5))
-        .mul(block.mul(0.22).add(0.89));
+    // Lines thinner than a few pixels fade to their mean: no grid shimmers on a far island.
+    const ledgeRoom = float(1.0).sub(smoothstep(0.06, 0.25, fwidth(lv)));
+    const jointRoom = float(1.0).sub(smoothstep(0.04, 0.18, fwidth(ju)));
+    const lip = smoothstep(0.86, 0.97, fv).mul(float(1.0).sub(smoothstep(0.97, 1.0, fv))).mul(ledgeRoom);
+    const undercut = float(1.0).sub(smoothstep(0.0, 0.14, fv)).mul(ledgeRoom);
+    const present = step(0.42, hcHash21(vec2(floor(ju.add(0.5)), run.add(17.0))));
+    const joint = float(1.0).sub(smoothstep(0.0, 0.045, min(fu, float(1.0).sub(fu)))).mul(present).mul(jointRoom);
+    const block = hcHash21(vec2(floor(lv), floor(ju.mul(0.5))));
+    // Broad stains across the face: grey where water runs often, pinker where the rock is fresh.
+    const stain = wobRead.g;
+    const shade = float(1.0).add(lip.mul(0.32)).sub(undercut.mul(0.36)).sub(joint.mul(0.5))
+        .mul(block.mul(0.2).add(0.9))
+        .mul(smoothstep(0.25, 0.75, stain).mul(0.3).add(0.82));
     // Ink: streaks of dark crust running down from each ledge, thinning toward the next.
     const streak = smoothstep(0.58, 0.82, texture(t.noise, vec2(faceU.div(3.2), faceV.div(60.0))).g)
         .mul(fv.mul(0.6).add(0.4));
@@ -268,6 +284,15 @@ export function landAlbedo(u, t, P, n, slope, forest, footprint, { detail = true
             const M1 = texture(t.noise, xz.div(12.0).add(vec2(0.11, 0.53)));
             const M2 = texture(t.noise, xz.div(4.0).add(vec2(0.67, 0.23)));
             albedo.assign(mix(albedo, mix(vec3(0.25, 0.235, 0.215), vec3(0.3, 0.24, 0.2), M1.g), room.mul(0.65)));
+            // Granite's grain: pale feldspar, dark biotite and grey quartz a couple of centimetres
+            // across (the b lattice's period is 32 cells, so a read at xz / 0.8 has 2.5 cm grains),
+            // shown wherever a grain is wider than about a pixel and averaged away below that, so
+            // the summit reads as crystalline rock several metres out, not as smooth clay.
+            const grainRoom = float(1.0).sub(smoothstep(0.012, 0.045, footprint)).mul(room);
+            const grain = texture(t.noise, xz.div(0.8).add(vec2(0.17, 0.83))).b.toVar();
+            const biotite = smoothstep(0.7, 0.8, grain).mul(0.55);
+            const feldspar = float(1.0).sub(smoothstep(0.22, 0.32, grain)).mul(0.22);
+            albedo.mulAssign(mix(float(1.0), float(1.0).sub(biotite).add(feldspar), grainRoom));
             const crust = smoothstep(0.6, 0.64, texture(t.noise, xz.div(8.0).add(vec2(0.77, 0.12))).b.add(M2.a.mul(0.12)));
             albedo.assign(mix(albedo, vec3(0.4, 0.42, 0.37), crust.mul(room).mul(0.45)));
             const sooty = smoothstep(0.62, 0.68, texture(t.noise, xz.div(3.0).add(vec2(0.31, 0.66))).r);
@@ -294,10 +319,16 @@ export function landAlbedo(u, t, P, n, slope, forest, footprint, { detail = true
             const veg = mix(c3(ROCK.crowberry), c3(ROCK.heather), smoothstep(0.3, 0.7, M1.r)).toVar();
             veg.assign(mix(veg, c3(ROCK.blueberry), smoothstep(0.62, 0.75, M1.b).mul(0.4)));
             veg.mulAssign(tuft.mul(0.7).add(0.65));
+            // Twigs and leaves: a finer tuft read, so a cushion is dwarf shrubs, not a painted patch,
+            // and it grows a little darker where it meets the rock (its edge stands up from the slab).
+            veg.mulAssign(mix(float(1.0), grain.mul(0.8).add(0.6), grainRoom.mul(0.9).add(0.1)));
             // Reindeer lichen: a pale fringe where the cushion meets the bare rock.
             const rim = hollow.mul(float(1.0).sub(hollow)).mul(4.0);
             veg.assign(mix(veg, c3(ROCK.reindeer).mul(0.8), rim.mul(smoothstep(0.45, 0.6, M2.b)).mul(0.6)));
             nearVeg.assign(hollow.mul(room).mul(float(1.0).sub(steep)).mul(smoothstep(4.0, 8.0, above)));
+            // The rock right at a cushion's edge lies in its shade.
+            const edgeShade = smoothstep(0.02, 0.35, hollow).mul(float(1.0).sub(smoothstep(0.35, 0.7, hollow))).mul(room);
+            albedo.mulAssign(float(1.0).sub(edgeShade.mul(0.35).mul(float(1.0).sub(nearVeg))));
             albedo.assign(mix(albedo, veg, nearVeg));
         });
     } else {
@@ -313,11 +344,22 @@ export function landAlbedo(u, t, P, n, slope, forest, footprint, { detail = true
     albedo.assign(mix(albedo, heath, heathMask.mul(smoothstep(0.42, 0.62, N1.a.add(n.y.mul(0.2)))).mul(0.6)));
     // Forest: the floor under the near trees, the canopy's own colour far away.
     const far = smoothstep(800.0, 2600.0, length(P.sub(u.eye)));
-    const canopyTone = mix(c3(ROCK.canopy), c3(ROCK.canopyLit), smoothstep(0.4, 0.7, texture(t.noise, xz.div(9.0)).a));
+    const canopyTone = mix(c3(ROCK.canopy), c3(ROCK.canopyLit), smoothstep(0.4, 0.7, texture(t.noise, xz.div(9.0)).a)).toVar();
+    // The raised canopy far away is a forest's top, not a lawn: crowns a few metres across (the
+    // N1 read's g lattice) with dark gaps between them, fading to their mean where a
+    // crown is under a couple of pixels (no shimmer as it shrinks).
+    const crowns = smoothstep(0.38, 0.66, N1.g);
+    const crownRoom = float(1.0).sub(smoothstep(2.5, 7.0, footprint));
+    canopyTone.mulAssign(mix(float(0.62), mix(float(0.38), float(1.15), crowns), crownRoom));
     albedo.assign(mix(albedo, mix(c3(ROCK.forestFloor), canopyTone, far), smoothstep(0.15, 0.55, forest)));
     // The hamlet's yard: a summer meadow, green with buttercups and clover.
     const yard = float(1.0).sub(smoothstep(40.0, 78.0, length(xz.sub(vec2(178.0, -512.0))))).mul(smoothstep(1.8, 3.2, above)).mul(gentle);
-    const meadow = mix(vec3(0.07, 0.11, 0.03), vec3(0.13, 0.17, 0.04), N2.g).add(vec3(0.12, 0.1, 0.0).mul(smoothstep(0.78, 0.86, N2.b)));
+    // An unmown northern meadow, not a lawn: olive grass, paler where it has gone to seed, darker
+    // in the damp, flowers in drifts (an even bright green read as a golf course in the sun).
+    const meadow = mix(vec3(0.05, 0.075, 0.022), vec3(0.1, 0.12, 0.035), N2.g).toVar();
+    meadow.assign(mix(meadow, vec3(0.15, 0.135, 0.06), smoothstep(0.55, 0.75, N1.a).mul(0.6)));
+    meadow.mulAssign(smoothstep(0.2, 0.8, N1.b).mul(0.35).add(0.75));
+    meadow.addAssign(vec3(0.1, 0.085, 0.0).mul(smoothstep(0.8, 0.88, N2.b)));
     albedo.assign(mix(albedo, meadow, yard.mul(0.9)));
     // Shingle fields: rounded grey cobbles in beach ridges.
     const shingle = shingleMaskNode(xz, above);
@@ -385,10 +427,13 @@ export function createLandMaterial(u, t, tier) {
             const room = float(1.0).sub(smoothstep(0.06, 0.45, footprint));
             If(room.greaterThan(0.01), () => {
                 const e = 0.3;
-                const h0 = texture(t.noise, xz.div(2.6)).r;
-                const hx = texture(t.noise, xz.add(vec2(e, 0.0)).div(2.6)).r;
-                const hz = texture(t.noise, xz.add(vec2(0.0, e)).div(2.6)).r;
-                detailG.addAssign(vec2(hx.sub(h0), hz.sub(h0)).mul(room).mul(0.6));
+                const h0 = texture(t.noise, xz.div(2.6)).toVar();
+                const hx = texture(t.noise, xz.add(vec2(e, 0.0)).div(2.6)).toVar();
+                const hz = texture(t.noise, xz.add(vec2(0.0, e)).div(2.6)).toVar();
+                detailG.addAssign(vec2(hx.r.sub(h0.r), hz.r.sub(h0.r)).mul(room).mul(0.6));
+                // Weathered roughness a few tens of centimetres across (the same reads' g lattice:
+                // 0.16 m features): the polished humps stop reading as clay.
+                detailG.addAssign(vec2(hx.g.sub(h0.g), hz.g.sub(h0.g)).mul(room).mul(0.5));
                 if (tier.detail > 1) {
                     const g0 = texture(t.noise, xz.div(3.2)).a;
                     const gx = texture(t.noise, xz.add(vec2(0.02, 0.0)).div(3.2)).a;
@@ -434,9 +479,16 @@ export function createLandMaterial(u, t, tier) {
         const ndl = clamp(dot(n, L).add(0.05).div(1.05), 0.0, 1.0);
         const shadow = shadowAt(t.shadow, xz);
         const clouds = cloudShadow(u, t.noise, P);
+        // The floor under the near forest stands in its canopy's shade: between the real trees the
+        // sun reaches it in flecks only and the sky through gaps (lit as an open field, it read as
+        // a lawn under scattered trees). Far away the raised canopy is the forest's top, in sun.
+        const understory = smoothstep(0.15, 0.55, forest)
+            .mul(float(1.0).sub(smoothstep(CANOPY.from - 600.0, CANOPY.to, dist))).toVar();
+        const underSun = mix(float(1.0), float(1.0).sub(smoothstep(0.35, 0.9, forest)).mul(0.4).add(0.14), understory);
         const sunLight = u.sun.mul(ndl).mul(shadow).mul(clouds).mul(u.sunUp)
-            .mul(faceShade);
-        const sky = land.w.mul(0.75).add(0.25);
+            .mul(faceShade)
+            .mul(underSun);
+        const sky = land.w.mul(0.75).add(0.25).mul(mix(float(1.0), float(0.45), understory));
         const skyLight = u.fill.mul(n.y.mul(0.45).add(0.55)).mul(sky).mul(faceShade.mul(0.5).add(0.5));
         const bounce = u.bounce.mul(float(1.0).sub(n.y).mul(0.6).add(0.15)).mul(sky);
         const lit = albedo.mul(sunLight.add(skyLight).add(bounce)).toVar();
