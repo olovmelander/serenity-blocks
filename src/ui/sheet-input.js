@@ -65,13 +65,14 @@ export const SHEETS = Object.freeze([
         focus: ['.odyssey-level-btn[aria-current="true"]', '[data-navigator-action="close"]'],
     },
     {
-        // The charm guide the map header's charm chip opens: Escape and B go back to the map.
+        // The charm guide the map header's charm chip opens: Escape and B go back to the map;
+        // it opens on the charm it shows, so the arrows and the D-pad walk the rail at once.
         name: 'odysseyCharms',
         id: 'odyssey-charm-guide',
         mounted: true,
         odyssey: true,
         backSelector: '[data-charm-guide-action="close"]',
-        focus: ['[data-charm-guide-action="close"]'],
+        focus: ['[role="tab"][aria-selected="true"]', '[data-charm-guide-action="close"]'],
     },
     {
         name: 'demoBrowser',
