@@ -374,7 +374,7 @@ export class MoonlitGreenhousePost {
                 });
                 const local = moonCol.mul(lit)
                     .add(night.mist.mul(TUNE.airMist))
-                    .add(night.lantern.mul(warm).mul(U.lanternGain).mul(0.12))
+                    .add(night.lantern.mul(warm).mul(U.lanternGain).mul(0.12 * TUNE.lampAir))
                     .add(glow.mul(0.06));
                 const absorb = density.mul(stepLen);
                 light.addAssign(local.mul(absorb).mul(through));
