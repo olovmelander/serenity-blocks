@@ -30,6 +30,7 @@ import {
     exp,
     float,
     fract,
+    int,
     length,
     max,
     mix,
@@ -60,6 +61,8 @@ const LIGHT_WAY = Object.freeze([Math.sin(STORM.glowAzimuth) * 0.997, -0.07, -Ma
 const EDGE_BAND = 900;
 /** The share of the slab the march walks (above it the cloud is solid and dark). */
 const MARCH_TOP = 0.62;
+/** Ground (metres) one march step may cover before a low ray gets more steps. */
+const MARCH_GROUND = 40;
 
 /**
  * @param {object} u  shared storm uniforms
@@ -69,6 +72,8 @@ const MARCH_TOP = 0.62;
  * @param {boolean} options.flashSteps light every step with the strokes (else once per pixel)
  */
 export function createSky(u, { march = 14, detail = true, flashSteps = true } = {}) {
+    // The low tiers (no billows, one light per pixel) are for weak GPUs: a smaller extra budget.
+    const stepBudget = detail ? 2 : 1.4;
     const yLo = STORM.cloudBase - STORM.cloudSag;
     const yHi = STORM.cloudBase + STORM.cloudDepth;
     const span = yHi - yLo;
@@ -110,10 +115,14 @@ export function createSky(u, { march = 14, detail = true, flashSteps = true } = 
         const lobe = exp(toGlow.mul(toGlow).mul(-1.5)).toVar();
 
         // ── The clear strip ──
-        const low = exp(up.mul(-15.0));
+        const low = exp(up.mul(-18.0));
+        // The light concentrates just over the far shore, whiter at its heart: the end of the
+        // storm, where the evening still is.
         const core = exp(up.mul(-70.0)).mul(lobe).mul(lobe);
+        const glowHeart = exp(up.mul(-160.0)).mul(lobe);
         const sky = u.gap.mul(exp(up.mul(-4.5)).mul(0.7).add(0.3))
-            .add(u.horizon.mul(low.mul(lobe.mul(1.3).add(0.26)).add(core.mul(1.0))))
+            .add(u.horizon.mul(low.mul(lobe.mul(1.3).add(0.22)).add(core.mul(1.5))))
+            .add(mix(u.horizon, vec3(1.0, 1.0, 1.0), 0.3).mul(glowHeart.mul(0.9)))
             .toVar();
         // Far bars of cloud lying in the strip, lit from under.
         const bars = u.noise(vec2(az.mul(0.55).add(0.2), up.mul(7.5).add(0.13)));
@@ -132,7 +141,8 @@ export function createSky(u, { march = 14, detail = true, flashSteps = true } = 
             .add(u.noise(vec2(az.mul(1.6), 0.19)).g.mul(0.004))
             .add(0.001);
         const hills = float(1.0).sub(smoothstep(ridge.sub(0.0009), ridge.add(0.0009), el));
-        sky.assign(mix(sky, mix(u.haze.mul(0.5), sky, 0.26), hills));
+        // The shore stands dark against the light behind it.
+        sky.assign(mix(sky, mix(u.haze.mul(0.32), sky, 0.14), hills));
 
         // ── The cell ──
         const col = vec3(0.0).toVar();
@@ -145,7 +155,12 @@ export function createSky(u, { march = 14, detail = true, flashSteps = true } = 
             const t1 = float(yLo + span * MARCH_TOP).sub(u.camPos.y).div(el).toVar();
             entry.assign(t0);
             If(t0.mul(flat).lessThan(STORM.edge + 900), () => {
-                const ds = t1.sub(t0).div(march).toVar();
+                // A low ray crosses a long run of the slab: it gets more steps (about one per
+                // MARCH_GROUND metres of ground, up to twice the tier's count, 1.4× on the low
+                // tiers), so the lobes it passes are not smeared into streaks along it.
+                const run = t1.sub(t0).mul(flat);
+                const steps = clamp(run.div(MARCH_GROUND).ceil(), float(march), float(march * stepBudget)).toVar();
+                const ds = t1.sub(t0).div(steps).toVar();
                 // Interleaved gradient noise: a different start per pixel hides the steps.
                 const jitter = fract(fract(dot(screenCoordinate.xy, vec2(0.06711056, 0.00583715))).mul(52.9829189));
                 const lightWay = vec3(LIGHT_WAY[0], LIGHT_WAY[1], LIGHT_WAY[2]);
@@ -159,8 +174,10 @@ export function createSky(u, { march = 14, detail = true, flashSteps = true } = 
                 const sheetAge = u.time.sub(u.sheet.z);
                 const sheetFront = max(sheetAge, 0.0).mul(SHEET_SPEED);
                 const sheetGain = u.sheet.w.mul(step(0.0, sheetAge)).mul(exp(max(sheetAge, 0.0).mul(-0.85)));
-                Loop(march, ({ i }) => {
-                    const t = t0.add(ds.mul(float(i).add(jitter)));
+                Loop({
+                    start: int(0), end: int(steps), type: 'int', condition: '<', name: 'ms',
+                }, ({ ms }) => {
+                    const t = t0.add(ds.mul(float(ms).add(jitter)));
                     const p = u.camPos.add(ray.mul(t)).toVar();
                     const w = plan(p).toVar();
                     const slow = u.noiseLod(w.div(STORM.coverTile), 0).r.toVar();
@@ -197,15 +214,20 @@ export function createSky(u, { march = 14, detail = true, flashSteps = true } = 
                             // Thinner toward the light than here: this side of the lobe faces it.
                             facing = clamp(coarse.sub(near1).mul(1.2).add(0.5), 0.0, 1.0);
                         }
-                        const body = u.cloud.mul(lowness.mul(0.9).add(0.45));
-                        const key = u.rim.mul(lightIn.mul(0.78).add(0.13)).mul(lit.mul(0.7).add(0.3))
-                            .mul(lowness.mul(0.55).add(0.45))
-                            .mul(lobe.mul(1.1).add(0.42))
-                            .mul(facing.mul(0.8).add(0.6));
+                        // Recesses go deep; a lobe's lit side against its shadowed one is several
+                        // times brighter (each factor's floor was high, and together they flattened
+                        // the cloud into one grey).
+                        const body = u.cloud.mul(lowness.mul(1.0).add(0.25));
+                        // Near the cell's edge the lobes catch the strip's own colour.
+                        const keyCol = mix(u.rim, u.horizon.mul(0.55), lightIn.mul(lightIn).mul(0.8)).mul(1.2);
+                        const key = keyCol.mul(lightIn.mul(0.9).add(0.08)).mul(lit.mul(0.85).add(0.15))
+                            .mul(lowness.mul(0.7).add(0.3))
+                            .mul(lobe.mul(1.2).add(0.35))
+                            .mul(facing.mul(facing).mul(1.3).add(0.22));
                         // A little of it comes THROUGH a lobe's thin edge, looking toward the strip.
                         const thin = float(1.0).sub(smoothstep(0.06, 0.62, d));
-                        const silver = u.rim.mul(lit).mul(thin).mul(toward).mul(lightIn)
-                            .mul(0.8);
+                        const silver = keyCol.mul(lit).mul(thin).mul(toward).mul(lightIn)
+                            .mul(1.1);
                         const own = body.add(key).add(silver).mul(u.breath.mul(0.6).add(0.4));
                         // A stroke burns deep in the slab: what hangs in front of it is its shadow.
                         const deep = smoothstep(0.06, 0.4, h);
