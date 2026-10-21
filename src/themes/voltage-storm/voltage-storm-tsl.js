@@ -199,6 +199,8 @@ export function createStormUniforms(textures) {
         horizonV: uniform(0.7),
         /** Gain on every light the storm makes itself: a four-line clear holds its breath. */
         breath: uniform(1),
+        /** 1: the towers' obstruction beacons pulse; 0: they burn steady (reduced motion or flashing). */
+        blink: uniform(1),
         /** 0..1: the chain's charge. */
         power: uniform(0),
         /** 0..1.3: the overdrive after a superbolt. */
