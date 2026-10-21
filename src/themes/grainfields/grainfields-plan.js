@@ -334,15 +334,27 @@ export function treeSites(seed = 0x7ee5, density = 1) {
 export const GRAIN_BEARINGS = Object.freeze([-56, 56]);
 
 /**
+ * The close stand: the stalks inside the clearing round the eye that only the portrait lens looks
+ * down on (it sees the ground from 1.6 m out, the stand began at 2.5 m, and the bottom third of a
+ * phone was bare floor). `near`/`far` metres from the eye, the portrait frame's bearings with the
+ * lens's drift and the parallax, and the share of the near stand's count it carries at its own
+ * crop density.
+ */
+export const CLOSE_STAND = Object.freeze({
+    near: 1.25, far: 2.55, bearings: Object.freeze([-44, 20]), share: 0.0153,
+});
+
+/**
  * The barley's clumps round the eye: `count` sites between `near` and `far` metres, kept only where
  * barley grows. Inside `knee` metres they stand at a crop's own density (uniform over the ground);
  * beyond it, at constant density ON SCREEN (distance log-uniform: area density falls as 1/r²,
  * continuous at the knee). Instance data: (x, ground y, z, scale) + (seed, yaw, plot id,
  * fade) where fade runs from 1 to 0 over the last eighth of the reach (the land's carpet takes
- * over). Deterministic for a seed.
+ * over; `fade: false` keeps them whole to the edge). `bearings` the span they cover; `bank: false`
+ * plants the clearing round the eye too (the close stand). Deterministic for a seed.
  */
 export function grainSites({
-    count, near, far, knee = near, seed = 0x6a7e,
+    count, near, far, knee = near, seed = 0x6a7e, bearings = GRAIN_BEARINGS, bank = true, fade = true,
 }) {
     const random = mulberry32(seed);
     const out = new Float32Array(count * 8);
@@ -354,7 +366,7 @@ export function grainSites({
         const m = v * (inner + outer);
         return m < inner ? Math.sqrt(near * near + 2 * k * k * m) : k * Math.exp(m - inner);
     };
-    const [b0, b1] = GRAIN_BEARINGS;
+    const [b0, b1] = bearings;
     let n = 0;
     let tries = 0;
     while (n < count && tries < count * 6) {
@@ -364,7 +376,7 @@ export function grainSites({
         const a = (bearing * Math.PI) / 180;
         const x = EYE.x + Math.sin(a) * r;
         const z = EYE.z - Math.cos(a) * r;
-        const cover = grainCover(x, z);
+        const cover = grainCover(x, z, { bank });
         if (random() > cover) continue;
         const o = n * 8;
         out[o] = x;
@@ -374,7 +386,7 @@ export function grainSites({
         out[o + 4] = random();
         out[o + 5] = random() * Math.PI * 2;
         out[o + 6] = plotAt(x, z).id;
-        out[o + 7] = 1 - smooth(far * 0.86, far, r);
+        out[o + 7] = fade ? 1 - smooth(far * 0.86, far, r) : 1;
         n += 1;
     }
     return { data: out.subarray(0, n * 8), count: n };
@@ -384,15 +396,15 @@ export function grainSites({
 
 /**
  * Whether barley grows at a point (0..1): not on the path, not in a shelterbelt, not on the
- * lens's reach round the eye, not on the fort's knoll.
+ * lens's reach round the eye (unless `bank` is false), not on the fort's knoll.
  */
-export function grainCover(x, z) {
+export function grainCover(x, z, { bank: clearing = true } = {}) {
     const { distance, along } = pathDistance(x, z);
     const onPath = 1 - smooth(PATH.track * 0.9, PATH.track + flowerWidth(along) * 0.95, distance);
     const belt = beltAt(x, z).cover;
     const F = PLACES.fort;
     const fort = 1 - smooth(F.radius * 0.9, F.radius * 1.3, Math.hypot(x - F.x, z - F.z));
     // No stalk brushes the lens.
-    const bank = 1 - smooth(1.2, 2.2, Math.hypot(x - EYE.x, z - EYE.z));
+    const bank = clearing ? 1 - smooth(1.2, 2.2, Math.hypot(x - EYE.x, z - EYE.z)) : 0;
     return clamp01(1 - Math.max(onPath, belt, fort, bank));
 }

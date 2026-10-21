@@ -53,7 +53,7 @@ import {
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
 import {
-    DEG, EYE, FOX_SCALE, SPIRIT_RUN, WIND, smooth, wAir, wFxMaterial, wMoonShadow, wPow4, wSolidMaterial,
+    DEG, EYE, FOX_SCALE, LOOK, SPIRIT_RUN, WIND, smooth, wAir, wFxMaterial, wMoonShadow, wPow4, wSolidMaterial, wSq,
 } from './winter-tsl.js';
 import {
     FOX_BONES, FOX_MARKS, createFoxPosture, createFoxSpec, foxSpec, solveFox,
@@ -392,8 +392,11 @@ export function createSpiritFox(u, gltf, { shells = 5 } = {}) {
             .add(0.06);
         // Its head burns brightest; behind, it is already going out.
         const fore = smoothstep(-0.55, 0.45, along).mul(0.75).add(0.25);
-        // The veils are fainter the further they stand off, and only their edges show.
-        const fade = mix(float(1.0), edge.mul(edge).mul(0.55), smoothstep(0.0, 0.25, out)).mul(float(1.0).sub(out.mul(0.75)));
+        // The veils are fainter the further they stand off. Each glows where it faces the eye and
+        // is gone at its own silhouette, so the stack sums to a soft aura round the body: a veil
+        // that showed only its edge drew one outline a veil, and the fox read as a contour map.
+        const veilGlow = wSq(float(1.0).sub(edge)).mul(LOOK.spiritVeil);
+        const fade = mix(float(1.0), veilGlow, smoothstep(0.0, 0.25, out)).mul(float(1.0).sub(out.mul(0.75)));
         return vec4(colour.mul(body).mul(fore).mul(fade).mul(u.spirit.z)
             .mul(u.breath)
             .mul(1.5), 0.0);

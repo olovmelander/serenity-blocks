@@ -101,7 +101,9 @@ export function createAnvil(u, t, tier) {
         const e = 260.0;
         const hx = underside(t, xz.add(vec2(e, 0.0)), tier.anvilDetail);
         const hz = underside(t, xz.add(vec2(0.0, e)), tier.anvilDetail);
-        const N = normalize(vec3(hx.sub(h0).div(e), float(-1.0), hz.sub(h0).div(e))).toVar();
+        // The relief's slopes, exaggerated: at this range a true slope barely turns the normal, and
+        // the lumps would light as one flat sheet.
+        const N = normalize(vec3(hx.sub(h0).div(e).mul(1.9), float(-1.0), hz.sub(h0).div(e).mul(1.9))).toVar();
         const P = vec3(P0.x, P0.y.add(h0), P0.z).toVar();
 
         // ── Light ──
@@ -109,8 +111,12 @@ export function createAnvil(u, t, tier) {
         const fire = fireLightAt(u, P, N).mul(1.6);
         // The eruption's own light under the anvil: strongest over the column, fading downwind.
         const fromHead = length(P.xz.sub(vec2(head.x, head.y)));
+        // Each lump lit by its slope toward the column's burning foot: faces turned to it glow,
+        // the folds between them go dark.
+        const toFoot = normalize(vec3(CRATER.x, CRATER.y + 1600.0, CRATER.z).sub(P));
+        const relief = clamp(N.dot(toFoot).mul(1.1).add(0.55), 0.32, 1.25);
         const glowUnder = u.fireColour.mul(exp(fromHead.div(-9000.0)).mul(2.2).add(exp(fromHead.div(-26000.0)).mul(0.42)))
-            .mul(u.fountain.mul(u.activity)).mul(clamp(N.y.negate().mul(0.8).add(0.2), 0.0, 1.0));
+            .mul(u.fountain.add(u.burst.mul(0.6)).mul(u.activity)).mul(relief);
         const lava = u.fireColour.mul(wideGlowAt(t, P.xz).mul(0.13).add(0.012)).mul(u.activity);
         const bolts = lightningAt(u, P, N, 1);
         // A perfect clear: sheet lightning sweeps the anvil from the head downwind.
