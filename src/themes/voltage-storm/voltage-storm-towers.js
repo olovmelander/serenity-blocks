@@ -375,14 +375,33 @@ export function createTowers(u, towers, { mirror = false } = {}) {
 
 // ── Glows ───────────────────────────────────────────────────────────────────────
 
+/** The red obstruction beacons: their heights on the tower (under the electrode, at the guys' waist). */
+export const BEACON = Object.freeze({
+    heights: [TOWER.mast + 0.012, TOWER.mast * 0.62],
+    /** Seconds between pulses (about 38 a minute, all towers together, as real obstruction lights). */
+    period: 1.6,
+    /** The pulse's on-time share of the period, and the steady level between pulses. */
+    on: 0.34,
+    floor: 0.16,
+    rgb: [1.0, 0.07, 0.035],
+});
+/** Glows per tower: halo, tip, two beacons, and the two beacons' images in the water. */
+export const GLOWS_PER_TOWER = 6;
+
 /**
- * Two soft lights per tower, always facing the lens: the halo round the electrode (what the tower
- * holds, the corona a chain raises, the white of a strike) and the point of fire on the finial.
+ * Up to six soft lights per tower, always facing the lens: the halo round the electrode (what the tower
+ * holds, the corona a chain raises, the white of a strike), the point of fire on the finial, and
+ * two red obstruction beacons on the mast with their images lying on the water as streaks. The
+ * beacons are what keeps the field alive between strokes: a red pulse running through the rain,
+ * all towers together, its reflection breaking up in the ripples.
  */
-export function createTowerGlows(u, count) {
-    const n = Math.max(1, Math.min(TOWER_MAX, count)) * 2;
+export function createTowerGlows(u, count, { images = true } = {}) {
+    const towers = Math.max(1, Math.min(TOWER_MAX, count));
+    // Without the towers' images in the water (the lowest tier) the beacons have none either.
+    const each = images ? GLOWS_PER_TOWER : GLOWS_PER_TOWER - 2;
+    const n = towers * each;
     const aGlow = new Float32Array(n * 2);
-    for (let i = 0; i < n; i++) aGlow.set([Math.floor(i / 2), i % 2], i * 2);
+    for (let i = 0; i < n; i++) aGlow.set([Math.floor(i / each), i % each], i * 2);
     const geometry = vsQuadGeometry(n, { aGlow: [aGlow, 2] });
     const glow = attribute('aGlow', 'vec2');
     const material = vsFxMaterial('VoltageStormGlows', { depthTest: false });
@@ -390,39 +409,65 @@ export function createTowerGlows(u, count) {
 
     material.vertexNode = Fn(() => {
         const index = int(glow.x.add(0.5));
+        const kind = glow.y;
         const place = u.towers.element(index.mul(3));
         const held = u.towers.element(index.mul(3).add(1));
         const state = u.towers.element(index.mul(3).add(2));
-        const isTip = step(0.5, glow.y);
+        const isTip = step(0.5, kind).mul(float(1.0).sub(step(1.5, kind)));
+        const isBeacon = step(1.5, kind);
+        const isImage = step(3.5, kind);
+        const beaconHigh = float(1.0).sub(step(0.5, kind.sub(2.0).mod(2.0)));
         const height = place.z;
-        const y = height.mul(mix(float(TOWER.toroid), float(TOWER.tip), isTip));
+        const beaconY = mix(float(BEACON.heights[1]), float(BEACON.heights[0]), beaconHigh);
+        const along = mix(mix(float(TOWER.toroid), float(TOWER.tip), isTip), beaconY, isBeacon);
+        // An image lies as far under the water as its light stands over it.
+        const y = height.mul(along).mul(float(1.0).sub(isImage.mul(2.0)));
         const world = vec3(place.x, y, place.y);
         const clip = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0)).toVar();
         const tint = max(held.xyz, vec3(1e-4));
         const hue = tint.div(max(tint.x, max(tint.y, tint.z)));
         const white = vec3(1.0, 0.97, 1.0);
-        // The halo: what it holds and its corona; the tip: fire on the point.
+        // The halo: what it holds and its corona; the tip: fire on the point (a faint St Elmo's
+        // fire flickers there even at rest).
         const halo = hue.mul(held.w.mul(0.2)).add(u.corona.mul(state.w.mul(0.34))).add(white.mul(state.x.mul(0.5)));
-        const tip = u.corona.mul(state.w.mul(1.1)).add(white.mul(state.x.mul(2.2)));
-        const light = mix(halo, tip, isTip).mul(place.w).mul(u.breath);
+        const elmo = sin(u.time.mul(23.0).add(glow.x.mul(3.7))).mul(sin(u.time.mul(7.3).add(glow.x))).mul(0.5).add(0.5);
+        const tip = u.corona.mul(state.w.mul(1.1).add(elmo.mul(0.05).add(0.03))).add(white.mul(state.x.mul(2.2)));
+        // The beacon: a smooth pulse, all towers in step (the lower light a beat behind the upper).
+        const phase = u.time.div(BEACON.period).sub(beaconHigh.mul(-0.5).add(0.5).mul(0.08)).fract();
+        const pulse = smoothstep(0.0, 0.06, phase).mul(float(1.0).sub(smoothstep(BEACON.on - 0.12, BEACON.on, phase)));
+        const beat = mix(float(0.72), pulse.mul(1.0 - BEACON.floor).add(BEACON.floor), u.blink);
+        const red = vec3(BEACON.rgb[0], BEACON.rgb[1], BEACON.rgb[2]);
+        // A strike blanks the beacon a moment (the light is lost in the white).
+        const beacon = red.mul(beat.mul(4.2)).mul(float(1.0).sub(clamp(state.x.mul(3.0), 0.0, 1.0)))
+            .mul(mix(float(1.0), float(0.42), isImage));
+        const light = mix(mix(halo, tip, isTip), beacon, isBeacon).mul(place.w).mul(u.breath);
         const radius = height.mul(mix(
-            float(0.17).add(state.x.mul(0.09)),
-            float(0.045).add(state.w.mul(0.06)).add(state.x.mul(0.09)),
-            isTip,
+            mix(
+                float(0.17).add(state.x.mul(0.09)),
+                float(0.045).add(state.w.mul(0.06)).add(state.x.mul(0.09)),
+                isTip,
+            ),
+            float(0.038),
+            isBeacon,
         ));
         const dist = length(cameraPosition.sub(world));
         const veil = exp(dist.div(-HAZE_REACH * 1.6));
-        vLight.assign(vec4(light.mul(veil), 1.0));
-        const px = max(radius.div(max(clip.w, 1.0).mul(u.pixelAngle)), 1.5);
+        vLight.assign(vec4(light.mul(veil), isImage));
+        const px = max(radius.div(max(clip.w, 1.0).mul(u.pixelAngle)), mix(float(1.5), float(2.2), isBeacon));
+        // An image on the water is drawn out downward into a streak by the ripples.
+        const stretch = vec2(mix(float(1.0), float(0.7), isImage), mix(float(1.0), float(5.5), isImage));
         const half = u.viewport.mul(0.5);
-        return vec4(clip.xy.add(positionGeometry.xy.mul(px.mul(2.0)).div(half).mul(clip.w)), clip.z, clip.w);
+        const offset = positionGeometry.xy.mul(stretch).mul(px.mul(2.0)).div(half).mul(clip.w);
+        return vec4(clip.xy.add(offset), clip.z, clip.w);
     })();
     material.colorNode = Fn(() => {
         const q = uv().sub(0.5).mul(2.0);
         const d2 = dot(q, q);
         const soft = exp(d2.mul(-4.5)).add(exp(d2.mul(-22.0)).mul(0.8))
             .mul(float(1.0).sub(smoothstep(0.7, 1.0, d2.sqrt())));
-        return vec4(vLight.xyz.mul(soft), 0.0);
+        // An image on the water breaks into bars where the ripples catch it.
+        const bars = mix(float(1.0), sin(q.y.mul(9.0).add(u.time.mul(3.1))).mul(0.5).add(0.5), vLight.w.mul(0.7));
+        return vec4(vLight.xyz.mul(soft).mul(bars), 0.0);
     })();
     const part = vsPart('VoltageStormGlows', geometry, material, 30);
     part.count = n;

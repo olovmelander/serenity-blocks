@@ -277,7 +277,7 @@ export class VoltageStormWorld {
             this.addPart('towerMirror', this.towerMirror);
             this.addPart('boltMirror', createBoltMesh(u, { detail: Math.min(1, tier.boltDetail), mirror: true }));
         }
-        this.addPart('glows', createTowerGlows(u, this.towers.length));
+        this.addPart('glows', createTowerGlows(u, this.towers.length, { images: tier.mirror }));
         this.addPart('bolts', createBoltMesh(u, { detail: tier.boltDetail }));
         this.sparks = createSparks(u, tier.sparks);
         this.addPart('sparks', this.sparks);
@@ -1167,6 +1167,8 @@ export class VoltageStormWorld {
 
         // ── Uniforms ──
         u.time.value = t;
+        // The towers' red beacons pulse; under reduced motion or Reduce flashing they burn steady.
+        u.blink.value = this.reducedMotion || prefersReducedFlashing() ? 0 : 1;
         u.power.value = this.power;
         u.surge.value = this.surge;
         u.breath.value = this.breath;
