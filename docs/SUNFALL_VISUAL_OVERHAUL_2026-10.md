@@ -143,10 +143,12 @@ One world-space integral per pixel to the depth the scene pass wrote, then bloom
   (the crowns stop the light); two-lobe Henyey-Greenstein phase; static interleaved-gradient jitter.
   The column emerges from the opening without a lid (its density fades in below the oculus plane)
   and dies into the understory through the canopy's gaps (it lit them as white holes).
-- **The cloud deck**: a four-step march through a 38 m slab with a parabolic profile, three scales
-  of billow in banks with gaps between them (an even sheet hid the whole vault), the hole the
-  sunfall burns through it, gold falling off smoothly from the hole's edge, pearl light below.
-- **The far doline's beam** in closed form.
+- **The cloud deck**: a march through a 38 m slab with a parabolic profile (six steps where the
+  column is marched, four where it is not), two scales of billow in banks with gaps between them
+  (an even sheet hid the whole vault), each bank hanging at its own height, gathered toward the
+  oculus; the hole the sunfall burns through it, gold falling off smoothly from the hole's edge,
+  the column's own light on the cloud round it, pearl light below. See *The atmosphere pass*.
+- **The far doline's beam** in closed form, a Gaussian column about its axis.
 - Output: calm zones behind the card and HUD, a knee bloom, exposure, a hue-preserving filmic
   shoulder, a grade (teal shade, warm light), vignette, grain, dither, false colour. The event
   flash (zenith, cataract) is mostly a lift of exposure with a little added veil, so a held zenith
@@ -201,6 +203,72 @@ One world-space integral per pixel to the depth the scene pass wrote, then bloom
   fail on this machine's locale on `main` as well, and the TTS recorder test, which cannot symlink
   through a worktree's linked `node_modules`.
 
+## The atmosphere pass (2026-10-21, branch `feature/sunfall-atmosphere`)
+
+A pass on the light in the air, judged from playground captures of the rest frame (before and
+after at `t=40&level=1`, and the events, tiers and aspects below). What was wrong, and what each
+change does:
+
+- **The column was covered in a screen-door grain** (a fine static crosshatch over its whole
+  body). Each march step read the sun mask at one point, and a view ray through the column is a
+  straight line in that mask: steps 15–25 m long skipped over the vine streaks, and each pixel's
+  jittered steps hit or missed them differently. The mask is now read with explicit gradients
+  (`sfMaskAt`'s `dq`): the major axis is the stretch of the mask one step covers, the minor the
+  penumbra's width across it, with the oculus texture's `anisotropy = 16`, so the hardware
+  averages along the step and keeps the streaks sharp across it. The 13 m deck layer inside the
+  column, sampled by those steps, drew a hard-edged grainy band: it is integrated apart in closed
+  form (`deckBand`, Winitzki's erf) and takes the deck's own billows (`wisps`), so the crossing is
+  cloud lit in the light, not a flat glowing oval plate. The noise octave finer than the steps is
+  gone (unresolvable; sampled, it was grain).
+- **The column was one even frosted tube** once the grain was gone. The vine fringe (G of the
+  oculus map) now carries seven **boughs** of the rim forest leaning over the opening: leafy
+  tongues 0.24–0.54 radii long, tapered and bent, dappled with leaf gaps. They comb the column into
+  separate shafts with dark lanes between them, dapple the pool, and turn with the Turning (they
+  are in the channel the T-spin rotates).
+- **The deck was a grey band of horizontal brush strokes** across the whole frame, hiding the
+  vault. Its 18 m billow scale was read at four steps up to 65 m apart. Only the two coarse scales
+  are read per step now; a step count that followed each ray's run drew contour lines where it
+  changed between pixels, so the count is fixed per tier. The finest scale is read once, blurred,
+  as light on the cloud's face. A slow field hangs each bank at its own height (±11 m), so the
+  bases no longer share one ruled line; the banks gather toward the oculus and thin away from it
+  (`drawn`), so the vault shows over most of the chamber. The column lights the cloud round it as
+  a line light. The burned hole is a soft oval frayed by the deck's own billows: cut with the sun
+  mask, the rim's crumbs and the vines' spikes, read once per pixel across a grazing slab, drew
+  stacked ripples.
+- **The pool had no mist** ("a low skin of mist over the canopy, incandescent in the pool").
+  `FOOT_MIST`: an anisotropic Gaussian 78 m across and 10 m deep over the crowns at the foot,
+  integrated along the ray in closed form to the depth; white-gold where the sun mask lights it,
+  the crowns' faint green outside. Rays that miss it skip the mask read.
+- **The frame was murky grey.** The chamber's air takes a more saturated teal (`tealAir`, the
+  station's mist tint pushed away from grey), brighter low in the chamber and down the passage
+  than toward the vault (`lowAir`), so the passage recedes into luminous blue-green and the
+  vault keeps its own light. The valley mist over the crowns keeps a deep blue-green of its own:
+  lit like the chamber's air it laid a flat grey veil over the whole forest. The column's in-scatter
+  is a touch warmer than its light (`BEAM_WARM`, white-gold), and the pool's light on the vault
+  is a little wider and stronger (lobe 2.5, gain 34; it was lobe 3, 26).
+- **The far doline's beam was a white rod** (a chord through a hard cylinder). It is a Gaussian
+  column about its axis, a broad body and a brighter heart, integrated across the ray
+  (√π·σ / sin θ), cut to the span between the doline's roof and the passage floor.
+- **The dust in the light was invisible** (0.16 HDR on 1.3 px quads against a column of 1–2).
+  The motes now glint: each on its own phase and rate, up to about 4 HDR on quads of at least
+  2.6 px, so they bloom as sparse sparkles; never in step, about one in five bright at any moment.
+
+**Verification.** Playground (private server; console clean on every view): rest `t=40&level=1`
+and `&board=1`, `level=2/3/5`, `combo=7`, `event=quad`, `event=perfect`, `event=tspin`,
+`event=over`, `weather=mist`/`cloud`, 390×844, 2520×1080, `quality=Low`, `quality=Minimal`,
+`forceWebGL=1`, `falseColor=1`, and `parts=` with and without the deck and the beam. In the game:
+`scripts/capture-theme-screenshots.mjs --theme sunfall` → PASS (0 lifecycle failures, 0 console
+errors); `docs/theme-screenshots/sunfall.png` is that frame. `tests/unit/sunfall-*.test.js` pass
+(the shader gate builds the new air for WGSL and GLSL at High and Minimal).
+
+**GPU time** (playground `profile=1&trackTimestamp=1`, 1898×998, RTX 5080 Laptop, WebGPU, old and
+new interleaved from two private servers): High about 2.5 → 2.75–2.8 ms p50, Low unchanged within
+noise (about 1.2 ms), Ultra about 2.65 → 2.8 ms. Other sessions were on the GPU (single runs
+swung to 7–9 ms on both arms), so these are the steadier runs, not a precise A/B. On the
+integrated Radeon 610M (`force_low_power_gpu`, 1600×900, per-frame timestamps) both builds took
+100–200 ms a frame at Low and the A/B could not be resolved: Sunfall is far over budget on that
+GPU before and after this pass (see Open).
+
 ## Deviations from the concept
 
 - **The column is integrated in the post**, not drawn as a hull mesh (the concept's last-resort
@@ -216,10 +284,14 @@ One world-space integral per pixel to the depth the scene pass wrote, then bloom
 
 ## Open
 
-- Integrated-GPU and phone measurements; a crown LOD for the far canopy if they need it.
+- **The integrated GPU**: on this laptop's Radeon 610M Sunfall takes 100–200 ms a frame at Low
+  (1600×900), before and after the atmosphere pass. Find where it goes (the ~5 900 crowns at 720
+  triangles each, the shell's per-pixel rock, the air) before tuning; a crown LOD for the far
+  canopy is the likely first step. Phones are not measured.
 - The far doline's own floor stands behind a bend of the passage from the rest camera; only its
   beam and the light on the walls round it are seen.
-- The pool's green-gold light on the vault reads mostly through the gaps in the cloud deck, which
-  covers the vault from the eye.
+- The vault away from the pool (the right half of the frame) stays dark grey-green; the deck's
+  banks now leave it open, but only the pool's light reaches it.
+- Crowns between the eye and the lit pool mist read as dark balls against it.
 - The ledge's mesh shows its facets up close (only its outer lip is in the frame's corners).
 - The frame and colour budgets of §3.2 and §3.15 are not yet measured.
