@@ -12,6 +12,7 @@
  * reefFish   fish that keep to the coral heads
  * jellies    moon jellies
  * motes      what drifts in the water
+ * near       specks right in front of the eye (sharp in a shaft, soft discs out of focus)
  * pool       pool of the bubbles, beads and comets every event is made of
  * glints     whether the school's flanks flash as it turns
  */
@@ -31,6 +32,7 @@ export const QUALITY = Object.freeze({
         reefFish: 50,
         jellies: 0,
         motes: 260,
+        near: 120,
         pool: 256,
         glints: false,
     }),
@@ -47,6 +49,7 @@ export const QUALITY = Object.freeze({
         reefFish: 90,
         jellies: 4,
         motes: 500,
+        near: 200,
         pool: 384,
         glints: true,
     }),
@@ -63,6 +66,7 @@ export const QUALITY = Object.freeze({
         reefFish: 150,
         jellies: 7,
         motes: 900,
+        near: 380,
         pool: 640,
         glints: true,
     }),
@@ -79,6 +83,7 @@ export const QUALITY = Object.freeze({
         reefFish: 230,
         jellies: 10,
         motes: 1500,
+        near: 640,
         pool: 960,
         glints: true,
     }),
@@ -95,6 +100,7 @@ export const QUALITY = Object.freeze({
         reefFish: 300,
         jellies: 12,
         motes: 2100,
+        near: 820,
         pool: 1280,
         glints: true,
     }),
@@ -111,6 +117,7 @@ export const QUALITY = Object.freeze({
         reefFish: 380,
         jellies: 14,
         motes: 2800,
+        near: 1000,
         pool: 1600,
         glints: true,
     }),

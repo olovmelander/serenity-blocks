@@ -32,7 +32,9 @@ import {
     length,
     max,
     mix,
+    normalize,
     positionGeometry,
+    pow,
     sin,
     smoothstep,
     step,
@@ -326,6 +328,96 @@ export function createMotes(u, count) {
     })();
     mesh.material = material;
     const part = ocPart('OceanMotes', geometry, material, 68, { mesh });
+    part.count = n;
+    return part;
+}
+
+/** The water just in front of the eye (rest eye at z = 10, looking along −z and a little up). */
+const NEAR_MIN = [-5, 0.3, 3.0];
+const NEAR_SIZE = [10, 7, 6.7];
+/** Where the eye is focused (metres) and how wide its lens is open (radians of blur per dioptre). */
+const NEAR_FOCUS = 9;
+const NEAR_APERTURE = 0.012;
+/** A speck's light in a shaft (times the shaft and the forward scatter), and in the plain water. */
+const NEAR_SHAFT = 14;
+const NEAR_BASE = 0.3;
+
+/**
+ * The specks right in front of the eye: sharp where a shaft crosses them a few metres out, and
+ * nearer than that out of focus, soft discs with a brighter rim, as a lens sees them. A disc keeps
+ * only a share of a point's light, so the discs are faint and the points bright.
+ * @param {object} u
+ * @param {number} count
+ */
+export function createNearMotes(u, count) {
+    const n = Math.max(1, count);
+    const geometry = new THREE.PlaneGeometry(1, 1);
+    const data = new Float32Array(n * 4); // where in the box (0..1)³, seed
+    const rand = mulberry32(7717);
+    for (let i = 0; i < n; i++) {
+        data.set([rand(), rand(), rand(), rand()], i * 4);
+    }
+    geometry.setAttribute('aMote', new THREE.InstancedBufferAttribute(data, 4));
+    const mesh = new THREE.InstancedMesh(geometry, null, n);
+    mesh.frustumCulled = false;
+
+    const material = additive('OceanNearMotes');
+    const aMote = attribute('aMote', 'vec4');
+    const vLight = varying(vec3(0.0), 'vNearLight');
+    /** 0 for a point in focus, 1 for a wide disc: how much of a lens's ring it shows. */
+    const vBlur = varying(float(0.0), 'vNearBlur');
+    material.vertexNode = Fn(() => {
+        const seed = aMote.w;
+        const t = u.drift;
+        // Carried by the current, sinking slowly, each wandering a hand's breadth.
+        const flow = vec3(u.current.mul(t).mul(0.12), t.mul(-0.022), t.mul(0.006));
+        const wander = vec3(
+            sin(t.mul(0.21).add(seed.mul(40.0))),
+            sin(t.mul(0.17).add(seed.mul(17.0))),
+            cos(t.mul(0.19).add(seed.mul(29.0))),
+        ).mul(0.12);
+        const size = vec3(...NEAR_SIZE);
+        const cell = fract(aMote.xyz.add(flow.add(wander).div(size)));
+        const p = vec3(...NEAR_MIN).add(cell.mul(size)).toVar();
+        const edge = smoothstep(0.0, 0.08, cell).mul(float(1.0).sub(smoothstep(0.92, 1.0, cell)));
+        const keep = edge.x.mul(edge.y).mul(edge.z);
+        const view = cameraViewMatrix.mul(vec4(p, 1.0)).toVar();
+        const dist = max(view.z.negate(), 0.25).toVar();
+        // The speck's own size (a few millimetres), the lens's blur at its distance, and never
+        // under a pixel and a half.
+        const pixel = float(1.1).div(max(u.viewport.y, 1.0));
+        const own = float(0.002).add(seed.mul(0.004)).div(dist);
+        const blur = float(NEAR_APERTURE).mul(abs(float(1.0).div(dist).sub(1 / NEAR_FOCUS)));
+        const drawn = max(max(own, blur), pixel.mul(1.5)).toVar();
+        // A disc keeps a share of a point's light (a lens's blur leaves a soft disc you can see,
+        // it does not spread it to nothing); the larger, the fainter.
+        const thin = pow(clamp(pixel.mul(2.0).div(drawn), 0.1, 1.0), 0.7);
+        vBlur.assign(smoothstep(pixel.mul(3.0), pixel.mul(9.0), blur));
+        // Lit where a shaft crosses it, and brightest seen against the light (it scatters forward).
+        const mask = ocLightRead(u, ocLightPoint(u, p)).g;
+        const under = max(float(SURFACE).sub(p.y), 0.0);
+        const lit = mask.mul(mask).mul(exp(under.mul(-0.08)));
+        const toward = clamp(normalize(p.sub(cameraPosition)).dot(u.sunDir), 0.0, 1.0);
+        const t2 = toward.mul(toward);
+        const phase = t2.mul(t2).mul(1.8).add(0.3);
+        const day = u.spark.mul(lit.mul(phase).mul(NEAR_SHAFT).add(NEAR_BASE));
+        // At night some of them are plankton, a faint green-blue light of their own.
+        const twinkle = sin(u.time.mul(seed.mul(2.0).add(1.1)).add(seed.mul(70.0))).mul(0.5).add(0.5);
+        const glow = u.glow.mul(u.night).mul(step(0.6, seed)).mul(twinkle.mul(0.6).add(0.4)).mul(5.0);
+        vLight.assign(day.add(glow).mul(keep).mul(thin).mul(ocThrough(u, dist)));
+        const q = positionGeometry.xy.mul(drawn.mul(dist).mul(2.0));
+        return cameraProjectionMatrix.mul(vec4(view.x.add(q.x), view.y.add(q.y), view.z, 1.0));
+    })();
+    material.outputNode = Fn(() => {
+        const d = length(uv().sub(0.5).mul(2.0)).toVar();
+        // A point is a soft spot; a disc is flat with a lit rim and a clean edge.
+        const spot = exp(d.mul(d).mul(-5.0)).mul(float(1.0).sub(smoothstep(0.8, 1.0, d)));
+        const rim = smoothstep(0.55, 0.95, d).mul(0.5).add(0.62);
+        const disc = float(1.0).sub(smoothstep(0.84, 1.0, d)).mul(rim).mul(0.62);
+        return vec4(vLight.mul(mix(spot, disc, vBlur)).mul(u.breath), 0.0);
+    })();
+    mesh.material = material;
+    const part = ocPart('OceanNearMotes', geometry, material, 69, { mesh });
     part.count = n;
     return part;
 }

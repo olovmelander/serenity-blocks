@@ -175,23 +175,28 @@ function createGiantMaterial(u) {
         const R1 = attribute('aRow1', 'vec4');
         const R2 = attribute('aRow2', 'vec4');
         const R3 = attribute('aRow3', 'vec4');
-        const kindF = round(aShape.w.mul(255.0));
+        // Every value the body plans below share is a var made here, before the first branch: a
+        // shared node left to the builder is assigned where it is first used, inside ONE plan's
+        // branch, and every other plan reads it as zero (until 2026-10-21 the turtle's flippers,
+        // the sunfish's fins and the rays' tails never moved for that; ocean-shaders.test.js
+        // gates it).
+        const kindF = round(aShape.w.mul(255.0)).toVar();
         const kind = int(kindF);
         const code = round(aShape.y.mul(255.0));
-        const part = floor(code.div(3.0).add(0.01));
+        const part = floor(code.div(3.0).add(0.01)).toVar();
         const s = aShape.x;
         const w = aShape.z;
         const pivot = aPivot.xyz;
         const phase = R1.w;
         const beat = R3.x;
         const turn = R3.y;
-        const A = swimA.element(kind);
-        const B = swimB.element(kind);
-        const sgn = select(pivot.x.greaterThanEqual(0.0), float(1.0), float(-1.0));
+        const A = swimA.element(kind).toVar();
+        const B = swimB.element(kind).toVar();
+        const sgn = select(pivot.x.greaterThanEqual(0.0), float(1.0), float(-1.0)).toVar();
         const isPart = (n) => float(1.0).sub(smoothstep(0.0, 0.5, abs(part.sub(n))));
         const local = positionGeometry.toVar();
         const nrm = attribute('normal', 'vec3').toVar();
-        const root = smoothstep(0.0, 0.3, w);
+        const root = smoothstep(0.0, 0.3, w).toVar();
 
         If(kindF.lessThan(2.5), () => {
             // ── Whales: up and down ──
