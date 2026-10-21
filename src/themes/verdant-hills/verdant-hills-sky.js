@@ -21,8 +21,13 @@ import {
 
 /** Clouds further than this are in the haze of the horizon anyway. */
 const MARCH_RANGE = 52000;
-/** Extinction of the sun's ray through full cloud, per metre. */
-const SIGMA_SUN = 0.0062;
+/**
+ * Extinction of the sun's ray through full cloud, per metre. A kilometre-deep cumulus must shade
+ * its own far side: at 0.0062 half the sunlight crossed a whole cloud, so every cloud seen against
+ * the sun was as white as one seen with it. Now the faces turned from the sun are grey and its
+ * light shows at their edges (a silver lining), as fair-weather cumulus look toward the sun.
+ */
+const SIGMA_SUN = 0.018;
 const DOME_RADIUS = 21000;
 
 export class VerdantHillsSky {
@@ -72,8 +77,9 @@ export class VerdantHillsSky {
         // Light that has scattered many times still finds its way through.
         const through = exp(sunDepth.negate()).mul(0.88).add(exp(sunDepth.mul(-0.14)).mul(0.12));
         const sun = light.uSunColor.mul(through).mul(phase).mul(0.27);
-        // Skylight reaches a cloud's flanks and top; its flat base sees only the dim ground.
-        const ambient = mix(vec3(0.085, 0.11, 0.17), vec3(0.24, 0.3, 0.42), saturate(h.mul(2.6)))
+        // Skylight reaches a cloud's flanks and top; its flat base sees only the dim ground, so the
+        // base is a clear grey and the cloud brightens all the way up its tower.
+        const ambient = mix(vec3(0.06, 0.08, 0.125), vec3(0.27, 0.33, 0.45), smoothstep(0.0, 0.75, h))
             .mul(this.uShade).mul(light.uWarmth.mul(0.1).add(1));
         return sun.add(ambient);
     }
