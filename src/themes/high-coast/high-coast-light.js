@@ -32,6 +32,8 @@ import {
 
 /** Scale heights (metres) of the haze and the sea fog, and the fog's floor (the sea at rest). */
 export const HAZE_HEIGHT = 1100;
+/** How fast the haze takes each colour (red, green, blue), relative to green. */
+export const HAZE_SPECTRUM = vec3(0.7, 1.0, 1.45);
 export const MIST_HEIGHT = 24;
 export const MIST_FLOOR = 0;
 /** The cloud deck's height (metres): where a sun ray meets it is where its shadow comes from. */
@@ -119,7 +121,10 @@ export function aerial(u, P, colour) {
     // In-scatter: the haze colour, warmed toward the sun; the mist paler and lit through.
     const hazeLight = u.haze.add(u.glow.mul(sunward).mul(0.55));
     const mistLight = u.mist.add(u.glow.mul(sunward).mul(0.35));
-    const tHaze = exp(tauHaze.negate());
+    // The haze takes each colour at its own rate, blue first (a clear Nordic air scatters like a
+    // thin Rayleigh sky): far land loses its own blue to the air's and is seen through warmer
+    // light, so distance reads as blue depth, not as a grey film.
+    const tHaze = exp(tauHaze.negate().mul(HAZE_SPECTRUM));
     const tMist = exp(tauMist.negate());
     const throughMist = mix(mistLight, colour, tMist);
     return mix(hazeLight, throughMist, tHaze);
