@@ -68,9 +68,8 @@
     animation: sb-fade-in 0.3s ease-out both;
 }
 
-.sb-ody-modal--failed {
-    --sb-ody-rgb: var(--sb-lavender-rgb);
-}
+/* The results and failure sheets' own layout, figures, stars and leaderboard column:
+   odyssey-outcome.css (loaded after this file). */
 
 .sb-ody-sheet {
     position: relative;
@@ -108,15 +107,6 @@
     margin: 0 0 22px;
     color: var(--sb-text-muted);
     font: 500 1rem / 1.55 var(--sb-font-text);
-}
-
-/* The road's mercy on the failure sheet: the one charm the third fall left, and its key. */
-.sb-ody-note.sb-ody-charm-pity {
-    flex-direction: row;
-    align-items: center;
-    gap: 12px;
-    color: var(--sb-lavender);
-    font-weight: 600;
 }
 
 /* A charm's icon on the sheets and the map: a box the shared icon stage draws into (live, the
@@ -158,22 +148,6 @@
 .charm-sprite[data-charm='long-breath'] .charm-sprite__glyph { color: var(--sb-gold); }
 .charm-sprite[data-charm='hearth'] .charm-sprite__glyph { color: var(--sb-coral); }
 
-.sb-ody-charm-pity .charm-sprite {
-    width: 32px;
-    height: 32px;
-}
-
-#odyssey-board-overlay #odyssey-header-charms .charm-sprite {
-    width: 20px;
-    height: 20px;
-    vertical-align: -5px;
-    margin-right: 1px;
-}
-
-#odyssey-board-overlay #odyssey-header-charms .charm-sprite + .charm-sprite {
-    margin-left: 6px;
-}
-
 .sb-ody-note {
     display: flex;
     flex-direction: column;
@@ -193,150 +167,7 @@
     letter-spacing: 0.08em;
 }
 
-.sb-ody-debrief {
-    gap: 8px;
-}
-
-.sb-ody-debrief p {
-    margin: 0;
-}
-
-.sb-ody-debrief__value {
-    color: var(--sb-text);
-    font-size: 1.125rem;
-    font-weight: 700;
-    font-variant-numeric: tabular-nums;
-}
-
-.sb-ody-debrief__track {
-    height: 5px;
-    overflow: hidden;
-    border-radius: 3px;
-    background: rgba(var(--sb-cream-rgb), 0.1);
-}
-
-.sb-ody-debrief__fill {
-    height: 100%;
-    background: var(--sb-lavender);
-}
-
-/* Stars: earned ones land in gold, one beat after another. */
-.sb-ody-stars {
-    display: flex;
-    gap: 10px;
-    margin: 18px 0 24px;
-}
-
-.sb-ody-star {
-    display: block;
-    width: 46px;
-    height: 46px;
-    animation: sb-ody-star-land 0.42s var(--sb-ease-lock) both;
-}
-
-.sb-ody-star svg {
-    width: 100%;
-    height: 100%;
-    fill: rgba(var(--sb-cream-rgb), 0.05);
-    stroke: rgba(var(--sb-cream-rgb), 0.24);
-    stroke-width: 1.4;
-    stroke-linejoin: round;
-}
-
-.sb-ody-star.is-earned svg {
-    fill: var(--sb-gold);
-    stroke: #ffe9b8;
-    filter: drop-shadow(0 0 12px rgba(var(--sb-gold-rgb), 0.55));
-}
-
-@keyframes sb-ody-star-land {
-    0% { opacity: 0; transform: translateY(-16px) scale(0.8); }
-    70% { opacity: 1; transform: translateY(1px) scale(1.04); }
-    100% { opacity: 1; transform: none; }
-}
-
-/* Why these stars: each goal marked earned or not, then the next one's shortfall. */
-.sb-ody-star-notes {
-    list-style: none;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 22px;
-    margin: -8px 0 22px;
-    padding: 0;
-    color: var(--sb-text-faint);
-    font: 500 0.8125rem / 1.5 var(--sb-font-text);
-}
-
-.sb-ody-star-notes__tier {
-    display: inline-flex;
-    align-items: center;
-    gap: 7px;
-}
-
-.sb-ody-star-notes__tier.is-earned {
-    color: var(--sb-text);
-}
-
-.sb-ody-star-notes__tier.is-earned .sb-ody-star-notes__glyph {
-    color: var(--sb-gold);
-}
-
-.sb-ody-star-notes__next {
-    flex-basis: 100%;
-    color: var(--sb-text-muted);
-    font-variant-numeric: tabular-nums;
-}
-
-.sb-ody-facts {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 14px 34px;
-    margin: 0 0 26px;
-}
-
-.sb-ody-fact {
-    display: flex;
-    flex-direction: column-reverse;
-    gap: 8px;
-    margin: 0;
-}
-
-.sb-ody-fact dt {
-    font: 600 0.5625rem / 1 var(--sb-font-display);
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: var(--sb-text-faint);
-}
-
-.sb-ody-fact dd {
-    margin: 0;
-    font: 600 1.5rem / 1 var(--sb-font-display);
-    font-variant-numeric: tabular-nums;
-    color: var(--sb-text);
-}
-
-/* "Charms used": each charm's live icon, at the numbers' height, ahead of its name. */
-.sb-ody-fact dd.sb-ody-fact__charms {
-    display: flex;
-    align-items: center;
-    gap: 2px 8px;
-}
-
-.sb-ody-fact dd.sb-ody-fact__charms .charm-sprite {
-    width: 36px;
-    height: 36px;
-    vertical-align: middle;
-}
-
-.sb-ody-fact dd.sb-ody-fact__charms .charm-sprite + .charm-sprite {
-    margin-left: -8px;
-}
-
 /* The charm guide (#odyssey-charm-guide) has its own stylesheet: odyssey-charms.css. */
-
-.sb-ody-modal .steam-leaderboard-panel {
-    margin: 0 0 24px;
-}
 
 .sb-ody-actions {
     display: flex;
@@ -354,49 +185,109 @@
     }
 }
 
-/* ---- Goal complete: a quiet banner at the top while play continues ---------------- */
+/* ---- Goal complete: a quiet banner in the top band while play continues -------------
+   One line in the play rail's band above the well's mouth, exactly as tall as the rail's
+   tray (the queue starts 10px under that band), centred over the well and clear of the
+   rail's corner and its mirror: it never covers the next-piece queue or the well, however
+   long the lap. Text sizes are capped so very large text cannot push it down into the queue
+   (the HUD's goal section carries the same news at the reader's size). */
 #goal-complete-overlay.sb-goal-banner {
     position: fixed;
-    top: max(16px, 4vh);
+    top: max(var(--sb-play-inset), env(safe-area-inset-top));
     left: 50%;
     z-index: 1000;
     display: flex;
     align-items: center;
-    gap: 18px;
-    padding: 12px 16px 12px 18px;
+    gap: 12px;
+    box-sizing: border-box;
+    height: var(--sb-play-tray);
+    max-width: calc(100vw - 2 * (var(--sb-play-inset) + 3 * var(--sb-play-tile) + 24px));
+    padding: 0 8px 0 9px;
     border-radius: var(--sb-r-md);
     border: 1px solid rgba(var(--sb-mint-rgb), 0.32);
     background: linear-gradient(180deg, rgba(27, 23, 60, 0.94), rgba(12, 10, 30, 0.95));
-    box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
+    box-shadow:
+        0 12px 34px rgba(0, 0, 0, 0.4),
+        0 0 26px rgba(var(--sb-mint-rgb), 0.08),
+        inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
     color: var(--sb-text);
+    white-space: nowrap;
     transform: translateX(-50%);
     animation: sb-goal-in 0.5s var(--sb-ease-lock) both;
     pointer-events: none;
 }
 
+#goal-complete-overlay .sb-goal-banner__mark {
+    display: grid;
+    flex: none;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: 1px solid rgba(var(--sb-mint-rgb), 0.5);
+    background: rgba(var(--sb-mint-rgb), 0.14);
+    color: var(--sb-mint);
+    box-shadow: 0 0 14px rgba(var(--sb-mint-rgb), 0.22);
+}
+
+#goal-complete-overlay .sb-goal-banner__mark svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+#goal-complete-overlay .sb-goal-banner__text {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+}
+
 #goal-complete-overlay .goal-complete-title {
+    flex: none;
     margin: 0;
-    font: 700 1rem / 1.2 var(--sb-font-display);
+    font: 700 min(0.9375rem, 15px) / 1.2 var(--sb-font-display);
     letter-spacing: 0.02em;
     color: var(--sb-text);
 }
 
 #goal-complete-overlay .goal-complete-subtitle {
-    margin: 3px 0 0;
-    font: 500 0.8125rem / 1.4 var(--sb-font-text);
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    font: 500 min(0.8125rem, 13px) / 1.3 var(--sb-font-text);
     color: var(--sb-text-muted);
+    text-overflow: ellipsis;
 }
 
 #goal-complete-overlay .goal-complete-hint {
     display: flex;
+    flex: none;
     align-items: center;
     gap: 7px;
-    margin: 0 0 0 6px;
-    padding-left: 16px;
+    height: 26px;
+    margin: 0 0 0 2px;
+    padding-left: 12px;
     border-left: 1px solid var(--sb-line);
-    font: 600 0.75rem / 1 var(--sb-font-text);
-    color: var(--sb-text-faint);
-    white-space: nowrap;
+    font: 600 min(0.75rem, 12px) / 1 var(--sb-font-text);
+    color: var(--sb-text-muted);
+}
+
+#goal-complete-overlay .sb-kbd {
+    font-size: min(0.6875rem, 11px);
+}
+
+#goal-complete-overlay .sb-kbd[data-pad] {
+    font-size: min(0.625rem, 10px);
+}
+
+/* No spare controller button to finish on: the click and Enter remain (odyssey-showcase-input.js). */
+#goal-complete-overlay .sb-kbd[hidden] {
+    display: none;
 }
 
 @keyframes sb-goal-in {
@@ -404,10 +295,21 @@
     to { opacity: 1; transform: translate(-50%, 0); }
 }
 
+@keyframes sb-goal-drop {
+    from { opacity: 0; transform: translateY(-14px); }
+    to { opacity: 1; transform: none; }
+}
+
+/* A phone's band is narrow: the tick goes, "Goal complete" and Finish stay. */
+@media (max-width: 480px) {
+    #goal-complete-overlay .sb-goal-banner__mark {
+        display: none;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .sb-ody-modal,
     .sb-ody-sheet,
-    .sb-ody-star,
     #goal-complete-overlay.sb-goal-banner {
         animation: none;
     }
@@ -417,405 +319,13 @@
    loaded after this one. --------------------------------------------------------------- */
 
 /* ==================================================================================
- * Odyssey board view (#odyssey-board-overlay): header bar, chapter arrival card and
- * the level panel beside the world map. Shell: src/ui/odyssey/BoardInfoOverlay.js.
+ * Odyssey board view (#odyssey-board-overlay): the header, the chapter arrival card and
+ * the orb panel over the world map have their own stylesheet, odyssey-map.css (loaded
+ * after this one). Shell: src/ui/odyssey/BoardInfoOverlay.js.
  * ================================================================================ */
-#odyssey-board-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 1001;
-    color: var(--sb-text);
-    font-family: var(--sb-font-text);
-    pointer-events: none;
-}
-
-#odyssey-board-overlay .odyssey-header-bar {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 18px clamp(16px, 3vw, 40px) 34px;
-    background: linear-gradient(180deg, rgba(7, 6, 22, 0.72) 0%, rgba(7, 6, 22, 0) 100%);
-    pointer-events: auto;
-}
-
-#odyssey-board-overlay .odyssey-header-bar h1 {
-    margin: 0;
-    line-height: 0;
-    text-shadow: none;
-}
-
-#odyssey-board-overlay .odyssey-header-wordmark {
-    width: auto;
-    height: 24px;
-}
-
-#odyssey-board-overlay .odyssey-progress-info {
-    display: flex;
-    gap: 8px;
-}
-
-#odyssey-board-overlay .odyssey-progress-info > :is(span, button) {
-    padding: 7px 10px;
-    border-radius: 8px;
-    border: 1px solid var(--sb-line-strong);
-    background: rgba(var(--sb-night-rgb), 0.55);
-    color: var(--sb-text-muted);
-    font: 600 0.6875rem / 1 var(--sb-font-display);
-    font-variant-numeric: tabular-nums;
-    letter-spacing: 0.08em;
-}
-
-#odyssey-board-overlay #odyssey-header-stars {
-    color: var(--sb-gold);
-    border-color: rgba(var(--sb-gold-rgb), 0.3);
-}
-
-/* The charm chip is a button: it opens the charm guide (odyssey-charm-guide.js). */
-#odyssey-board-overlay #odyssey-header-charms {
-    margin: 0;
-    color: var(--sb-lavender);
-    border-color: rgba(var(--sb-lavender-rgb), 0.3);
-    cursor: pointer;
-    transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease;
-}
-
-#odyssey-board-overlay #odyssey-header-charms:hover {
-    color: var(--sb-text);
-    border-color: rgba(var(--sb-lavender-rgb), 0.62);
-    background: rgba(var(--sb-lavender-rgb), 0.14);
-}
-
-#odyssey-board-overlay #odyssey-header-charms:focus-visible {
-    outline: 2px solid rgba(var(--sb-lavender-rgb), 0.85);
-    outline-offset: 2px;
-}
-
-/* With a controller, Y opens the guide: its round keycap rides on the chip. */
-body.sb-input-gamepad #odyssey-board-overlay #odyssey-header-charms::after {
-    content: 'Y';
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 16px;
-    height: 16px;
-    margin: -3px 0 -3px 8px;
-    border-radius: 8px;
-    border: 1px solid var(--sb-line-strong);
-    background: rgba(var(--sb-cream-rgb), 0.07);
-    color: var(--sb-text-muted);
-    font: 700 0.5625rem / 1 var(--sb-font-display);
-    letter-spacing: 0;
-    vertical-align: middle;
-}
-
-#odyssey-board-overlay .odyssey-chapter-arrival-card {
-    position: absolute;
-    left: 50%;
-    top: 18%;
-    min-width: min(460px, calc(100vw - 48px));
-    max-width: min(620px, calc(100vw - 48px));
-    text-align: center;
-    color: var(--sb-text);
-    text-shadow: 0 2px 24px rgba(7, 6, 22, 0.8);
-    opacity: 0;
-    transform: translate(-50%, -10px);
-    transition: opacity 260ms ease, transform 360ms var(--sb-ease-lock);
-    pointer-events: none;
-}
-
-#odyssey-board-overlay .odyssey-chapter-arrival-card.visible {
-    opacity: 1;
-    transform: translate(-50%, 0);
-}
-
-#odyssey-board-overlay .odyssey-arrival-kicker {
-    margin: 0 0 12px;
-    font: 600 0.625rem / 1 var(--sb-font-display);
-    letter-spacing: 0.32em;
-    text-transform: uppercase;
-    color: rgba(var(--sb-gold-rgb), 0.92);
-}
-
-#odyssey-board-overlay .odyssey-arrival-title {
-    font: 700 clamp(1.6rem, 4vw, 2.7rem) / 1.05 var(--sb-font-display);
-    letter-spacing: -0.005em;
-}
-
-#odyssey-board-overlay .odyssey-arrival-subtitle {
-    margin-top: 10px;
-    font: 500 clamp(0.9rem, 2vw, 1.05rem) / 1.5 var(--sb-font-text);
-    color: var(--sb-text-muted);
-}
-
-#odyssey-board-overlay .odyssey-level-panel {
-    position: absolute;
-    top: 50%;
-    right: clamp(16px, 3vw, 40px);
-    width: min(340px, calc(100vw - 32px));
-    padding: 26px 24px 24px;
-    border-radius: var(--sb-r-xl);
-    border: 0;
-    background: none;
-    box-shadow: none;
-    transform: translateY(-50%);
-    pointer-events: auto;
-    isolation: isolate;
-}
-
-/* The panel's fill is its own layer. */
-#odyssey-board-overlay .odyssey-level-panel::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    border: 1px solid var(--sb-line);
-    background:
-        radial-gradient(90% 60% at 100% 0%, rgba(var(--sb-gold-rgb), 0.12), transparent 62%),
-        linear-gradient(180deg, rgba(27, 23, 60, 0.95), rgba(12, 10, 30, 0.96));
-}
-
-#odyssey-board-overlay .odyssey-level-panel.hidden {
-    display: none;
-}
-
-#odyssey-board-overlay .level-number-badge {
-    text-transform: uppercase;
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    margin: 0 0 12px;
-    padding: 0;
-    border: 0;
-    background: none;
-    box-shadow: none;
-    color: rgba(var(--sb-gold-rgb), 0.92);
-    font: 600 0.625rem / 1 var(--sb-font-display);
-    letter-spacing: 0.24em;
-    text-shadow: none;
-}
-
-#odyssey-board-overlay .level-number-badge::before {
-    content: '';
-    width: 7px;
-    height: 7px;
-    border-radius: 2px;
-    background: currentColor;
-}
-
-#odyssey-board-overlay .odyssey-level-panel h2 {
-    margin: 0 0 6px;
-    color: var(--sb-text);
-    font: 700 1.375rem / 1.15 var(--sb-font-display);
-    text-shadow: none;
-}
-
-#odyssey-board-overlay .level-chapter {
-    margin: 0 0 14px;
-    color: var(--sb-text-faint);
-    font: 600 0.8125rem / 1.4 var(--sb-font-text);
-}
-
-#odyssey-board-overlay .level-description {
-    margin: 0 0 14px;
-    color: var(--sb-text-muted);
-    font: 500 0.9375rem / 1.55 var(--sb-font-text);
-}
-
-#odyssey-board-overlay .level-stars {
-    margin: 4px 0 14px;
-    color: rgba(var(--sb-cream-rgb), 0.25);
-    font-size: 1.5rem;
-    letter-spacing: 0.3em;
-    text-align: left;
-}
-
-#odyssey-board-overlay .level-stars[data-earned='true'] {
-    color: var(--sb-gold);
-    text-shadow: 0 0 14px rgba(var(--sb-gold-rgb), 0.45);
-}
-
-/* The orb panel's charm line: the charms held that help here. Read-only. */
-#odyssey-board-overlay .level-charm-hint {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 2px 4px;
-    margin: -4px 0 14px;
-    color: var(--sb-lavender);
-    font: 500 0.75rem / 1.5 var(--sb-font-text);
-}
-
-/* The helping charms' icons lead the line; the words wrap after them. */
-#odyssey-board-overlay .level-charm-hint .charm-sprite {
-    width: 26px;
-    height: 26px;
-    vertical-align: middle;
-}
-
-#odyssey-board-overlay .level-charm-hint .charm-sprite + .charm-sprite {
-    margin-left: -2px;
-}
-
-#odyssey-board-overlay .level-nav-hint {
-    margin: 10px 0 0;
-    color: var(--sb-text-faint);
-    font: 500 0.6875rem / 1.7 var(--sb-font-text);
-}
-
-#odyssey-board-overlay .level-nav-hint .sb-kbd {
-    margin-right: 2px;
-}
-
-#odyssey-board-overlay .level-objectives {
-    margin: 0 0 18px;
-    padding: 12px 14px;
-    border-radius: var(--sb-r-sm);
-    border: 1px solid var(--sb-line);
-    background: rgba(var(--sb-cream-rgb), 0.03);
-}
-
-#odyssey-board-overlay .level-objectives > * {
-    margin: 0;
-    padding: 0;
-    color: var(--sb-text-muted);
-    font: 500 0.875rem / 1.5 var(--sb-font-text);
-}
-
-#odyssey-board-overlay .level-objectives > * + * {
-    margin-top: 6px;
-}
-
-#odyssey-board-overlay .level-objectives strong {
-    color: var(--sb-text);
-    font-weight: 700;
-}
-
-#odyssey-board-overlay .level-objectives__label {
-    color: var(--sb-text-faint);
-    font: 600 0.625rem / 1.4 var(--sb-font-display);
-    letter-spacing: 0.18em;
-    text-transform: uppercase;
-}
-
-#odyssey-board-overlay .level-objectives > .level-objectives__label {
-    margin-top: 12px;
-}
-
-#odyssey-board-overlay .level-objectives ul {
-    list-style: none;
-}
-
-#odyssey-board-overlay .level-objectives li + li {
-    margin-top: 3px;
-}
-
-#odyssey-board-overlay .level-star-goals li {
-    font-variant-numeric: tabular-nums;
-}
-
-#odyssey-board-overlay .level-objectives .level-tip {
-    margin-top: 10px;
-    color: rgba(var(--sb-mint-rgb), 0.9);
-}
-
-#odyssey-board-overlay .level-kind {
-    margin: -6px 0 10px;
-    color: rgba(var(--sb-mint-rgb), 0.9);
-    font: 600 0.6875rem / 1.4 var(--sb-font-display);
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-}
-
-#odyssey-board-overlay .level-kind[data-kind='rival'] {
-    color: rgba(var(--sb-gold-rgb), 0.92);
-}
-
-#odyssey-board-overlay .level-kind[data-kind='boss'] {
-    color: var(--sb-lavender);
-}
-
-#odyssey-board-overlay .level-lock-hint {
-    margin: -6px 0 14px;
-    color: var(--sb-text-faint);
-    font: 500 0.8125rem / 1.5 var(--sb-font-text);
-}
-
-#odyssey-board-overlay .level-play-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    min-height: 50px;
-    padding: 0 20px;
-    border: 0;
-    border-radius: 13px;
-    background: var(--sb-keystone);
-    color: var(--sb-keystone-ink);
-    font: 600 0.8125rem / 1 var(--sb-font-display);
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    box-shadow: 0 12px 32px rgba(var(--sb-coral-rgb), 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.45);
-    cursor: pointer;
-    transition: background var(--sb-dur-2) var(--sb-ease-lock), transform var(--sb-dur-1) var(--sb-ease-lock);
-}
-
-#odyssey-board-overlay .level-play-btn:hover {
-    background: #ffbb9c;
-    transform: none;
-}
-
-#odyssey-board-overlay .level-play-btn:active {
-    transform: translateY(1px);
-}
-
-#odyssey-board-overlay .level-play-btn:focus-visible {
-    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
-    outline-offset: 3px;
-}
-
-#odyssey-board-overlay .level-play-btn:disabled {
-    background: rgba(var(--sb-cream-rgb), 0.08);
-    color: var(--sb-text-faint);
-    box-shadow: none;
-    cursor: not-allowed;
-}
-
-/* Launching: the button holds a calm lit state instead of the old shimmer. */
-#odyssey-board-overlay .level-play-btn.clicked {
-    background: #ffd2bd;
-    color: var(--sb-keystone-ink);
-    border: 0;
-    text-shadow: none;
-    animation: sb-launch-breath 1.6s var(--sb-ease-breathe) infinite;
-    pointer-events: none;
-}
-
-@keyframes sb-launch-breath {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(var(--sb-coral-rgb), 0.45); }
-    50% { box-shadow: 0 0 0 10px rgba(var(--sb-coral-rgb), 0); }
-}
-
-@media (max-width: 640px) {
-    #odyssey-board-overlay .odyssey-level-panel {
-        top: auto;
-        bottom: max(16px, env(safe-area-inset-bottom));
-        transform: none;
-    }
-
-    #odyssey-board-overlay .odyssey-header-wordmark {
-        height: 18px;
-    }
-}
 
 @media (prefers-reduced-motion: reduce) {
-    #odyssey-level-select.odyssey-level-select,
-    #odyssey-board-overlay .level-play-btn.clicked {
+    #odyssey-level-select.odyssey-level-select {
         animation: none;
     }
 }
@@ -1086,6 +596,15 @@ body.sb-input-gamepad #odyssey-board-overlay #odyssey-header-charms::after {
     border-top: 0;
     color: var(--sb-keystone-ink);
     font-size: 12px;
+    /* The pad's cap can be a long name ("View / Back"): it takes a second line when the panel
+       is narrow instead of shrinking under the label (.sb-kbd's min-width lets it shrink). */
+    flex-wrap: wrap;
+    row-gap: 4px;
+    padding-block: 6px;
+}
+
+#odyssey-hud .finish-hint .sb-kbd {
+    flex: none;
 }
 
 #odyssey-hud .odyssey-pause-hint {
@@ -1816,23 +1335,23 @@ body.sb-input-gamepad #odyssey-board-overlay #odyssey-header-charms::after {
         margin: 0 0 8px;
     }
 
-    body:has(#odyssey-hud.is-visible.is-victory-lap) #goal-complete-overlay.sb-goal-banner {
-        top: 12px;
-        left: 12px;
-        right: 112px;
-        width: auto;
+    /* The goal banner keeps the top band, docked to the left beside the rail's two tiles; the
+       dock below repeats "keep playing", so the banner drops it and keeps Finish. */
+    #goal-complete-overlay.sb-goal-banner {
+        left: max(var(--sb-play-inset), env(safe-area-inset-left));
+        max-width: calc(100vw - 2 * var(--sb-play-inset) - 2 * var(--sb-play-tile) - 24px);
+        gap: 10px;
         transform: none;
-        padding: 8px;
-        gap: 8px;
         animation: none;
     }
 
-    body:has(#odyssey-hud.is-visible.is-victory-lap) #goal-complete-overlay .goal-complete-title {
-        font-size: 14px;
+    @media (prefers-reduced-motion: no-preference) {
+        #goal-complete-overlay.sb-goal-banner {
+            animation: sb-goal-drop 0.5s var(--sb-ease-lock) both;
+        }
     }
 
-    body:has(#odyssey-hud.is-visible.is-victory-lap) #goal-complete-overlay .goal-complete-subtitle,
-    body:has(#odyssey-hud.is-visible.is-victory-lap) #goal-complete-overlay .goal-complete-hint {
+    #goal-complete-overlay .goal-complete-subtitle {
         display: none;
     }
 
@@ -2541,7 +2060,10 @@ body.serenity-mode.cursor-hidden #sb-play-rail:not(:focus-within, .is-peek) {
     opacity: 0;
     translate: 0 -4px;
     pointer-events: none;
-    transition: opacity var(--sb-dur-2) var(--sb-ease-lock), translate var(--sb-dur-2) var(--sb-ease-lock);
+    /* A name leaves at once and only arrives with a fade: two never cross-fade over each
+       other (pointer moving tile to tile), and a peek cut short (a long frame swallowing
+       the fold) never drops its names here, overlapping, on their way out. */
+    transition: none;
 }
 
 #sb-play-rail .sb-play-rail__label .sb-kbd {
@@ -2557,6 +2079,14 @@ body.serenity-mode.cursor-hidden #sb-play-rail:not(:focus-within, .is-peek) {
 body:not(.sb-input-pointer) #sb-play-rail > :focus > .sb-play-rail__label {
     opacity: 1;
     translate: 0 0;
+    transition: opacity var(--sb-dur-2) var(--sb-ease-lock), translate var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+/* One name at a time: the tile under the pointer speaks, even while another holds focus. */
+body #sb-play-rail:not(.is-peek, .is-folding):has(> :hover) > :not(:hover) > .sb-play-rail__label {
+    opacity: 0;
+    translate: 0 -4px;
+    transition: none;
 }
 
 /* A mode's first runs: the names unroll inside the tray, then fold back into it. */
@@ -2680,7 +2210,7 @@ body:has(#sb-play-rail > #odyssey-navigator-btn.visible) #sb-play-rail {
     #sb-play-rail,
     #sb-play-rail > *,
     #sb-play-rail .sb-play-rail__label {
-        transition: none;
+        transition: none !important;
     }
 
     #sb-play-rail .hub-icon-pulse.breathing-active {
