@@ -136,7 +136,20 @@ export function createStar(u, { detail = 3, spikes = true } = {}) {
                 ),
             );
             // The chromosphere: a hairline of the rim's colour hugging the limb, and its soft skirt.
-            const chromo = u.rim.mul(exp(x.mul(-46.0)).mul(3.2).add(exp(x.mul(-9.0)).mul(0.22)));
+            // The chromosphere: a fringe of spicules standing on the limb, taller and shorter round
+            // it (a band of even height read as an outline drawn round the disc), and its skirt.
+            // The fringe is read only just off the limb, where it shows.
+            const chromo = u.rim.mul(exp(x.mul(-9.0)).mul(0.2)).toVar();
+            if (detail >= 2) {
+                If(x.lessThan(0.14), () => {
+                    const fringe = u.noise(qc.mul(1.8).add(vec3(0.0, u.boil.mul(0.02), 0.31))).toVar();
+                    const tall = fringe.r.mul(1.4).add(0.3);
+                    const spicule = snRidge(fringe.g).mul(0.6).add(0.4);
+                    chromo.addAssign(u.rim.mul(exp(x.mul(-60.0).div(tall)).mul(2.6).mul(spicule)));
+                });
+            } else {
+                chromo.addAssign(u.rim.mul(exp(x.mul(-50.0)).mul(2.2)));
+            }
             out.assign(corona.add(chromo).mul(reach).mul(u.starGain));
         });
 
@@ -155,16 +168,19 @@ export function createStar(u, { detail = 3, spikes = true } = {}) {
             const grain = u.noise(q.mul(0.6).add(warp.mul(0.24)).add(slide)).toVar();
             const lanes = snRidge(grain.r).toVar();
             const lane = lanes.mul(lanes).mul(lanes).mul(lanes);
-            const T = float(0.66)
-                .add(cells.r.sub(0.5).mul(0.75))
-                .add(grain.g.sub(0.5).mul(0.85))
-                .sub(lane.mul(0.46))
+            // Hot plasma with darker lanes between its cells: the giant cells swing the
+            // temperature a little, the granules more, the lanes cut in (a wider swing drew the
+            // surface as blotches of dark red and yellow).
+            const T = float(0.8)
+                .add(cells.r.sub(0.5).mul(0.42))
+                .add(grain.g.sub(0.5).mul(0.6))
+                .sub(lane.mul(0.36))
                 .toVar();
             if (detail >= 3) {
                 const fine = u.noise(q.mul(1.05).add(warp.yzx.mul(0.14))
                     .add(vec3(u.boil.mul(-0.011), u.boil.mul(0.007), 0.0))).toVar();
                 const fineLane = snRidge(fine.g);
-                T.addAssign(fine.b.sub(0.5).mul(0.42).sub(fineLane.mul(fineLane).mul(fineLane).mul(0.2)));
+                T.addAssign(fine.b.sub(0.5).mul(0.36).sub(fineLane.mul(fineLane).mul(fineLane).mul(0.22)));
             }
             // Up close (the icon, a 4K screen) there is room for the finest granules. Their read
             // would shimmer at the size the star usually has, so it fades out as a texel of the
@@ -180,14 +196,18 @@ export function createStar(u, { detail = 3, spikes = true } = {}) {
             const spot = smoothstep(0.69, 0.82, cells.g).mul(float(1.0).sub(clamp(u.heat, 0.0, 1.0)));
             T.subAssign(spot.mul(0.6));
             // The limb is cooler, and a chain heats everything.
-            T.addAssign(u.heat.mul(0.55).sub(float(1.0).sub(mu).mul(float(1.0).sub(mu)).mul(0.42)));
+            const limb = float(1.0).sub(mu);
+            T.addAssign(u.heat.mul(0.55).sub(limb.mul(limb).mul(0.5)).sub(limb.mul(0.12)));
             const temp = max(T, 0.0).toVar();
-            const surface = ramp(temp).mul(float(0.34).add(temp.mul(temp).mul(2.6))).toVar();
+            // Brightness rises with temperature, less steeply than the colour: the lanes stay a darker
+            // orange instead of going brown.
+            const surface = ramp(temp).mul(float(0.62).add(temp.mul(temp).mul(1.9))).toVar();
             // White cracks along the lanes when the star is close to going.
             const crack = snRidge(grain.b);
             const crack8 = crack.mul(crack).mul(crack).mul(crack);
             surface.addAssign(vec3(1.0, 0.95, 0.85).mul(crack8.mul(crack8)).mul(u.fissure).mul(5.0));
-            surface.mulAssign(mix(float(1.0), mu.pow(0.6), 0.8));
+            // Limb darkening: the disc falls off toward its edge as a real photosphere does.
+            surface.mulAssign(mix(float(1.0), mu.pow(0.75), 0.88));
 
             // ── What the board has written on it ──
             If(u.impactsLive.greaterThan(0.5), () => {
@@ -214,7 +234,7 @@ export function createStar(u, { detail = 3, spikes = true } = {}) {
             // The electric edge: a hairline on the limb itself (the rest of it is outside the disc).
             const edge = float(1.0).sub(mu);
             const edge3 = edge.mul(edge).mul(edge);
-            const rim = u.rim.mul(edge3.mul(edge3)).mul(2.4);
+            const rim = u.rim.mul(edge3.mul(edge3).mul(edge3)).mul(2.0);
             out.assign(mix(out, surface.add(rim).mul(u.starGain), cover));
         });
 
