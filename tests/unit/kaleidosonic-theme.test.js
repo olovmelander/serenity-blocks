@@ -2081,12 +2081,16 @@ describe.skipIf(!existsSync(worldFile) || !existsSync(postFile))('Kaleidosonic t
                 world.onSessionStart();
             }
             world.update(sim, camera);
-            // The scout pass: drawn into its own target, then the frame's target is put back.
+            // The world's own passes: the light map when the temple's shape moved since it was
+            // marched, then the scout, each into its own target; the frame's target is put back.
             const draws = renderer.render.mock.calls.length;
             world.prerender(renderer);
-            const { scout } = world.parts.temple;
+            const { scout, lightMap } = world.parts.temple;
             expect(renderer.setRenderTarget).toHaveBeenCalledWith(scout.target);
-            expect(renderer.render.mock.calls.slice(draws).map(([object]) => object)).toEqual([scout.quad]);
+            const drawn = renderer.render.mock.calls.slice(draws).map(([object]) => object);
+            expect(drawn.at(-1)).toBe(scout.quad);
+            expect(drawn.slice(0, -1)).toEqual(drawn.length > 1 ? [lightMap.quad] : []);
+            if (frame === 1) expect(drawn).toEqual([lightMap.quad, scout.quad]);
             expect(renderer.getRenderTarget()).toBeNull();
             post.setCalmRects([{
                 x0: 0.4, y0: 0.1, x1: 0.6, y1: 0.9,
