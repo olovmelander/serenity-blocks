@@ -36,13 +36,36 @@ const HIT_EPS = 0.004;
 const SEA_REACH = 1.6;
 /** Shading attributes (tint, lens) blend across a union over about this many metres. */
 const SHADE_WIDTH = 1.0;
-/** Air between the camera and what it sees (per metre). */
-const HAZE = 0.0034;
-/** The swell: two trains of long waves (wave vector, amplitude, rate). */
+/**
+ * Air between the camera and what it sees (per metre). Thinner than the 0.0034 it was: the air
+ * is now the sky's own colour at the sea line, brighter than the hand-mixed one it replaced.
+ */
+const HAZE = 0.0027;
+/**
+ * The swell: three trains of long waves (wave vector, amplitude, rate), each with its phase
+ * bent by a slow sine across the sea (warp: wave vector, amplitude in radians, phase), so the
+ * crests curve and wander instead of lying in straight rows: two straight-crested trains seen
+ * in perspective drew the open sea as regular horizontal stripes. The wavelengths and headings
+ * are incommensurate, so the three never lock into a lattice either.
+ */
 const SWELL = Object.freeze([
-    { k: [0.31, 0.17], amp: 0.1, rate: 0.55 },
-    { k: [-0.21, 0.43], amp: 0.065, rate: -0.47 },
+    {
+        k: [0.31, 0.17], amp: 0.1, rate: 0.55, warp: [0.043, -0.031, 2.1, 0.7],
+    },
+    {
+        k: [-0.21, 0.43], amp: 0.065, rate: -0.47, warp: [-0.027, 0.052, 1.8, 2.3],
+    },
+    {
+        k: [0.14, -0.36], amp: 0.04, rate: 0.63, warp: [0.036, 0.039, 2.4, 4.1],
+    },
 ]);
+/** The second wind-ripple layer is read turned by this angle, so the two tiles never repeat in step. */
+const RIPPLE_TURN = (37 * Math.PI) / 180;
+/**
+ * Light running in the sea itself: threads of the palette's glow under the surface, seen
+ * through the ripples (the "liquid light" the sea is meant to be). Gain, and the tile scale.
+ */
+const VEINS = Object.freeze({ GAIN: 0.26, SCALE: 0.13 });
 /**
  * Drops far out on the sea, as (bearing °, elevation °, angular radius °): spread across the
  * view, clear of the dream sun.
@@ -55,8 +78,17 @@ export const FAR_DROPS = Object.freeze([
 const FAR_BAND = Math.max(
     ...FAR_DROPS.map(([, elevation, size]) => Math.sin(((elevation + size * 1.2) * Math.PI) / 180)),
 );
-/** The key light: behind the viewer, up and to the left. */
-const KEY_DIR = vec3(-0.42, 0.52, 0.74).normalize();
+/**
+ * The key light: behind the viewer, up and to the left. Normalised here, not with `.normalize()`:
+ * a node built outside any Fn became a WGSL var assigned only in the branch that first built it
+ * (a drop's lens), and every later sky read on a sea-only pixel took it as zero
+ * (tests/unit/fluid-dreams-shaders.test.js, "unassigned").
+ */
+const KEY_DIR = (() => {
+    const [x, y, z] = [-0.42, 0.52, 0.74];
+    const size = Math.hypot(x, y, z);
+    return vec3(x / size, y / size, z / size);
+})();
 /** Crests inside a ring train's envelope. */
 const RING_CRESTS = 3.3;
 
@@ -169,12 +201,19 @@ export function createLiquidMaterial({
 
     // ── The sea ─────────────────────────────────────────────────────────────────
 
-    const swellPhase = (xz, w) => xz.x.mul(w.k[0]).add(xz.y.mul(w.k[1])).add(u.time.mul(w.rate));
+    /** The bend in a train's phase at a point (a slow sine across the sea). */
+    const warpArg = (xz, w) => xz.x.mul(w.warp[0]).add(xz.y.mul(w.warp[1])).add(w.warp[3]);
+    const swellPhase = (xz, w) => xz.x.mul(w.k[0]).add(xz.y.mul(w.k[1])).add(u.time.mul(w.rate))
+        .add(sin(warpArg(xz, w)).mul(w.warp[2]));
+    /** d(phase)/d(xz): the train's own wave vector plus the warp's, by the chain rule. */
+    const swellGrad = (xz, w) => vec2(w.k[0], w.k[1])
+        .add(vec2(w.warp[0], w.warp[1]).mul(cos(warpArg(xz, w)).mul(w.warp[2])));
 
     /** The sea's height at a point: the swell, the packets a clear sends out, a funnel. */
     const seaHeight = (xz) => {
         const h = sin(swellPhase(xz, SWELL[0])).mul(SWELL[0].amp)
             .add(sin(swellPhase(xz, SWELL[1])).mul(SWELL[1].amp))
+            .add(sin(swellPhase(xz, SWELL[2])).mul(SWELL[2].amp))
             .mul(u.swell)
             .toVar();
         Loop({
@@ -199,8 +238,9 @@ export function createLiquidMaterial({
     const seaDetail = (xz, foot) => {
         const slope = vec2(0).toVar();
         const light = vec3(0).toVar();
-        slope.assign(vec2(SWELL[0].k[0], SWELL[0].k[1]).mul(cos(swellPhase(xz, SWELL[0])).mul(SWELL[0].amp))
-            .add(vec2(SWELL[1].k[0], SWELL[1].k[1]).mul(cos(swellPhase(xz, SWELL[1])).mul(SWELL[1].amp)))
+        slope.assign(swellGrad(xz, SWELL[0]).mul(cos(swellPhase(xz, SWELL[0])).mul(SWELL[0].amp))
+            .add(swellGrad(xz, SWELL[1]).mul(cos(swellPhase(xz, SWELL[1])).mul(SWELL[1].amp)))
+            .add(swellGrad(xz, SWELL[2]).mul(cos(swellPhase(xz, SWELL[2])).mul(SWELL[2].amp)))
             .mul(u.swell));
         Loop({
             start: int(0), end: int(u.counts.z), type: 'int', condition: '<', name: 'wd',
@@ -249,7 +289,14 @@ export function createLiquidMaterial({
         const lodA = log2(max(foot.mul(NOISE_SIZE * 0.085), 1.0));
         const lodB = log2(max(foot.mul(NOISE_SIZE * 0.31), 1.0));
         const nA = noiseAt(xz.mul(0.085).add(vec2(u.time.mul(0.011), u.time.mul(0.007))), lodA).yz.sub(0.5);
-        const nB = noiseAt(xz.mul(0.31).add(vec2(u.time.mul(-0.019), u.time.mul(0.023))), lodB).yz.sub(0.5);
+        // The finer layer is read in turned coordinates and its slope turned back: the tile
+        // repeats every 3.2 m, and read square to the first one the two repeated in step and
+        // ruled the middle distance with bands.
+        const cT = Math.cos(RIPPLE_TURN);
+        const sT = Math.sin(RIPPLE_TURN);
+        const turned = vec2(xz.x.mul(cT).sub(xz.y.mul(sT)), xz.x.mul(sT).add(xz.y.mul(cT)));
+        const nBt = noiseAt(turned.mul(0.31).add(vec2(u.time.mul(-0.019), u.time.mul(0.023))), lodB).yz.sub(0.5);
+        const nB = vec2(nBt.x.mul(cT).add(nBt.y.mul(sT)), nBt.y.mul(cT).sub(nBt.x.mul(sT)));
         slope.addAssign(nA.mul(0.26).add(nB.mul(0.13)).mul(u.swell.mul(0.7).add(0.3)));
         return { slope, light };
     };
@@ -346,7 +393,8 @@ export function createLiquidMaterial({
                 c.addAssign(mix(spec, vec3(1.0), 0.28).mul(bandP).mul(u.prism.y));
             });
         }
-        c.mulAssign(u.skyFlash.mul(0.45).add(1.0));
+        // a four-line clear's flash lifts the whole sky; at 0.45 it bleached the half the crown stood in
+        c.mulAssign(u.skyFlash.mul(0.3).add(1.0));
         // below the sea line: what a ray that leaves the picture downward meets
         const under = smoothstep(0.0, -0.22, dir.y);
         return mix(c, c.mul(vec3(0.4, 0.36, 0.55)).add(u.deep), under);
@@ -624,15 +672,26 @@ export function createLiquidMaterial({
             const seaFilm = vec3(1).toVar();
             If(blob.lessThan(0.995), () => {
                 const xz = p.xz.toVar();
-                const stain = vec3(0).toVar();
+                // Where stains overlap the strongest gives the hue (weights cubed) and the level is
+                // capped on its own: summed, seven piece colours averaged to a milky white.
+                const stainHue = vec3(0).toVar();
+                const stainCube = float(1e-6).toVar();
+                const stainSum = float(0).toVar();
                 Loop({
                     start: int(0), end: int(u.counts.y), type: 'int', condition: '<', name: 'dy',
                 }, ({ dy }) => {
                     const D = u.dye.element(dy.mul(2));
                     const C = u.dye.element(dy.mul(2).add(1));
                     const v = xz.sub(D.xy);
-                    stain.addAssign(C.xyz.mul(exp(dot(v, v).div(D.z.mul(D.z)).negate()).mul(D.w)));
+                    const w = exp(dot(v, v).div(D.z.mul(D.z)).negate()).mul(D.w).toVar();
+                    const w3 = w.mul(w).mul(w);
+                    stainHue.addAssign(C.xyz.mul(w3));
+                    stainCube.addAssign(w3);
+                    stainSum.addAssign(w);
                 });
+                // One stain at full strength reads about as it did (0.6 of its colour, 0.645 before);
+                // a sea full of them reaches 1.05, not white.
+                const stain = stainHue.div(stainCube).mul(stainSum.div(stainSum.add(0.75)).mul(1.05)).toVar();
                 // the colours lie in the water as marbled ink, not as discs
                 const foot = travel.mul(u.pixelAngle).div(max(abs(d.y), 0.04));
                 const marble = noiseAt(
@@ -646,11 +705,23 @@ export function createLiquidMaterial({
                 seaFilm.assign(mix(vec3(1.0), seaIr.mul(1.5).add(0.25), u.film.x.mul(0.34)));
                 const hv = xz.sub(u.hero.xz);
                 const pool = exp(dot(hv, hv).div(u.hero.w.mul(u.hero.w).mul(7.0)).negate());
-                // many stains together deepen; they do not sum to white
-                stain.divAssign(fdMax3(stain).mul(0.55).add(1.0));
                 // what glows under the surface is seen through its ripples
                 const shimmer = clamp(float(1.35).sub(length(n.xz).mul(4.5)), 0.4, 1.35);
+                // Liquid light: thin threads where a slow field, warped by the marble, crosses its
+                // middle. They fade out with the pixel's footprint: blurred far out, the field
+                // sits at its middle everywhere, and the same ridge would light the whole sea.
+                const vLod = log2(max(foot.mul(NOISE_SIZE * VEINS.SCALE), 1.0)).toVar();
+                const vDrift = vec2(u.time.mul(-0.017), u.time.mul(0.012));
+                const vField = noiseAt(xz.mul(VEINS.SCALE).add(vDrift).add(vec2(marble, marble).mul(0.45)), vLod).w;
+                const ridge = float(1.0).sub(abs(vField.mul(2.0).sub(1.0))).toVar();
+                const ridge2 = ridge.mul(ridge);
+                const thread = ridge2.mul(ridge2).mul(ridge2).mul(ridge);
+                const room = float(1.0).sub(smoothstep(1.8, 3.6, vLod));
+                const veinHue = mix(u.glow, u.inkC, smoothstep(0.3, 0.75, marble));
+                const veinLight = veinHue.mul(thread.mul(room).mul(shimmer))
+                    .mul(u.charge.mul(1.1).add(u.surge.mul(0.6)).add(1.0).mul(VEINS.GAIN));
                 seaLocal.assign(u.deep.mul(ndv.mul(0.9).add(0.35))
+                    .add(veinLight)
                     .add(stain.mul(veins).mul(shimmer))
                     .add(u.glow.mul(pool).mul(u.charge.mul(0.8).add(u.surge.mul(0.4)).add(0.14))
                         .mul(veins.mul(0.5).add(0.5))
@@ -745,11 +816,11 @@ export function createLiquidMaterial({
             col.assign(skyColour(d, true));
         }).Else(() => {
             col.addAssign(thr.mul(skyColour(d, false)));
-            // the air between the camera and what it sees takes the sea line's light
-            const flat = normalize(vec3(view.x, 0.03, view.z));
-            const cs = clamp(dot(flat, u.sunDir), 0.0, 1.0).toVar();
-            const cs4 = cs.mul(cs).mul(cs).mul(cs);
-            const air = u.horizon.mul(0.62).add(u.mid.mul(0.4)).add(u.sun.mul(cs4.mul(cs4).mul(0.3)));
+            // The air between the camera and what it sees takes the sea line's light: the
+            // sky's own colour right at the sea line on that bearing, so the far sea dissolves
+            // into a luminous mist that IS the sky where they meet. A darker, hand-mixed air
+            // used to leave a step there and the horizon read as a ruled line.
+            const air = skyColour(normalize(vec3(view.x, 0.0, view.z)), false);
             col.assign(mix(col, air, haze));
         });
         return vec4(col, 1.0);
