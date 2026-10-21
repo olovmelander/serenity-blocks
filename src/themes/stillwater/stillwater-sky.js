@@ -17,6 +17,7 @@ import { swBackdrop, swPart } from './stillwater-tsl.js';
  * @param {object} u  shared uniforms
  * @param {object} [opts]
  * @param {boolean} [opts.lite=false]  the cut-down sky of the lowest tier
+ * @param {number} [opts.wood=3]  sets of spruces in each rank of the far wood
  */
 export function createSky(u, opts = {}) {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -28,7 +29,7 @@ export function createSky(u, opts = {}) {
     material.toneMapped = false;
     material.fragmentNode = Fn(() => {
         const dir = normalize(positionWorld.sub(cameraPosition));
-        return vec4(swBackdrop(u, dir, { lite: opts.lite === true }), 1.0);
+        return vec4(swBackdrop(u, dir, { lite: opts.lite === true, wood: opts.wood }), 1.0);
     })();
     const geometry = new THREE.SphereGeometry(900, 40, 20);
     return swPart('StillwaterSky', geometry, material, 40);

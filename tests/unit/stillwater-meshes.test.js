@@ -16,7 +16,8 @@ import {
 import * as THREE from 'three/webgpu';
 
 import {
-    createBoughs, createTrunkGeometry, createTrunks, planBoughs, trunkCentre, trunkRadius,
+    createBoughs, createCrownGeometry, createCrowns, createTrunkGeometry, createTrunks, crownCard, planBoughs,
+    planCrowns, trunkCentre, trunkRadius,
 } from '../../src/themes/stillwater/stillwater-trees.js';
 import { createBoulderGeometry, createBoulders, createGround } from '../../src/themes/stillwater/stillwater-land.js';
 import {
@@ -25,7 +26,7 @@ import {
 import { createSky } from '../../src/themes/stillwater/stillwater-sky.js';
 import { createWater } from '../../src/themes/stillwater/stillwater-water.js';
 import {
-    STAGE, azimuthOf, groundHeight, planBoulders, planTrunks, rangeOf, shoreDistance,
+    STAGE, azimuthOf, crownFloor, groundHeight, planBoulders, planTrunks, rangeOf, shoreDistance,
 } from '../../src/themes/stillwater/stillwater-plan.js';
 import {
     EYE, MOON, SPIRIT, createStillwaterUniforms, moonFor, skyDirection, squeezeFor,
@@ -491,6 +492,178 @@ describe('stillwater meshes: the boughs', () => {
             const rest = createBoughs(uniforms(), boughs.filter((bough) => !bough.fringe));
             for (const [width, height] of [[1000, 1000], [820, 1180], [430, 932], [390, 844]]) {
                 expect(moonCrossings(rest, width / height), `${quality} at ${width} × ${height}`).toBe(0);
+            }
+        }
+    });
+
+    // Once hung from the near trunks too, pointing every way: seen steeply from below, a bough
+    // there read as a shelf or a hoop on its trunk.
+    it('hangs the wood\'s boughs from trunks some way off, across the line of sight', () => {
+        for (const quality of QUALITY_NAMES) {
+            const tier = QUALITY[quality];
+            const trunks = planTrunks(tier.trunks);
+            const rest = planBoughs(trunks, tier.boughs).filter((bough) => !bough.fringe);
+            expect(rest.length, quality).toBeGreaterThan(0);
+            for (const bough of rest) {
+                const { trunk } = ownerOf(bough, trunks);
+                const range = rangeOf(trunk.x, trunk.z);
+                const label = `${quality}: the bough at (${bough.x.toFixed(1)}, ${bough.z.toFixed(1)})`;
+                expect(range, label).toBeGreaterThanOrEqual(16);
+                expect(range, label).toBeLessThan(44);
+                const sight = [(trunk.x - EYE.x) / range, (trunk.z - EYE.z) / range];
+                const along = Math.cos(bough.yaw) * sight[0] + Math.sin(bough.yaw) * sight[1];
+                expect(Math.abs(along), label).toBeLessThan(Math.sin(20 * (Math.PI / 180)));
+            }
+        }
+    });
+});
+
+describe('stillwater meshes: the crowns', () => {
+    const DEG = Math.PI / 180;
+    const EYE_AT = [EYE.x, EYE.y, EYE.z];
+    /** Each tree that has a crown, with its crown (the plan keeps the trunks' order). */
+    const crowned = (quality) => {
+        const trunks = planTrunks(QUALITY[quality].trunks);
+        const crowns = planCrowns(trunks);
+        const own = trunks.filter((t) => !(t.hero && rangeOf(t.x, t.z) < 9));
+        return own.map((trunk, i) => ({ trunk, crown: crowns[i] }));
+    };
+    /** Does a sight line from the rest eye cross any crown's card (stage drawn in by `squeeze`)? */
+    const crosses = (crowns, azimuth, elevation, squeeze = 1) => {
+        const ray = new THREE.Ray(new THREE.Vector3(...EYE_AT), new THREE.Vector3(...skyDirection(azimuth, elevation)));
+        const hit = new THREE.Vector3();
+        return crowns.some((k) => {
+            const card = crownCard(k, EYE_AT, squeeze).map((p) => new THREE.Vector3(...p));
+            return Boolean(ray.intersectTriangle(card[0], card[1], card[2], false, hit)
+                || ray.intersectTriangle(card[2], card[1], card[3], false, hit));
+        });
+    };
+
+    it('gives every tree but the two giants a crown, the same every time', () => {
+        for (const quality of QUALITY_NAMES) {
+            const trunks = planTrunks(QUALITY[quality].trunks);
+            const crowns = planCrowns(trunks);
+            expect(crowns, quality).toHaveLength(trunks.length - 2);
+            expect(planCrowns(trunks), quality).toEqual(crowns);
+            for (const k of crowns) expect(Object.values(k).flat().every(Number.isFinite), quality).toBe(true);
+        }
+        expect(planCrowns([])).toEqual([]);
+        // One tree's crown never moves another's: a shorter list of trunks crowns its trees alike.
+        const trunks = planTrunks(QUALITY.High.trunks);
+        expect(planCrowns(trunks.slice(0, 20))).toEqual(planCrowns(trunks).slice(0, 18));
+    });
+
+    it('stands each crown on its own trunk: its foot on the trunk, its tip over the trunk\'s top', () => {
+        for (const quality of QUALITY_NAMES) {
+            for (const { trunk: t, crown: k } of crowned(quality)) {
+                const label = `${quality}: the crown at (${t.x.toFixed(1)}, ${t.z.toFixed(1)})`;
+                const line = trunkCentre(t, k.y - t.y);
+                expect(Math.hypot(k.x - line[0], k.z - line[2]), label).toBeLessThan(1e-9);
+                // Its lowest whorl well above the moss; its tip, the leader, over the trunk's top.
+                expect(k.y - groundHeight(t.x, t.z), label).toBeGreaterThan(1.5);
+                expect(k.y + k.length, label).toBeGreaterThan(t.y + t.height);
+                expect(k.length, label).toBeGreaterThanOrEqual(3 - 1e-9);
+                expect(k.width, label).toBeGreaterThanOrEqual(1);
+                expect(k.width, label).toBeLessThanOrEqual(3.6);
+                // Whorls a little under a metre apart, at least four of them.
+                expect(k.spacing, label).toBeGreaterThan(0.45);
+                expect(k.spacing, label).toBeLessThan(1.3);
+                expect(Math.round(k.length / k.spacing), label).toBeGreaterThanOrEqual(4);
+                // The card stands in front of the trunk, so the needles hide it.
+                expect(k.push, label).toBeGreaterThan(trunkRadius(t, k.y - t.y, 0));
+            }
+        }
+    });
+
+    it('lets the trees at the water keep their low branches', () => {
+        /** How far up its trunk a crown starts, on average. */
+        const share = (list) => list
+            .reduce((sum, { trunk: t, crown: k }) => sum + (k.y - t.y) / t.height, 0) / list.length;
+        const open = crowned('High').filter(({ trunk: t, crown: k }) => crownFloor(t.x, t.z, k.width * 1.2) === null);
+        const shore = open.filter(({ trunk: t }) => shoreDistance(t.x, t.z) < 4);
+        const inland = open.filter(({ trunk: t }) => shoreDistance(t.x, t.z) > 10);
+        expect(shore.length).toBeGreaterThan(3);
+        expect(inland.length).toBeGreaterThan(3);
+        expect(share(shore)).toBeLessThan(share(inland) - 0.1);
+    });
+
+    it('starts a crown above any window it would reach into', () => {
+        expect(crownFloor(0, -60, 2)).toBeNull();
+        // The spirit's side (the moon above her at any range), and the troll's.
+        expect(crownFloor(-12, -18, 2)).toBeGreaterThanOrEqual(15 * DEG);
+        expect(crownFloor(-40, -100, 2)).toBeGreaterThanOrEqual(15 * DEG);
+        expect(crownFloor(9.5, -14, 2)).toBeGreaterThanOrEqual(9 * DEG);
+        for (const quality of QUALITY_NAMES) {
+            for (const { trunk: t, crown: k } of crowned(quality)) {
+                const floor = crownFloor(t.x, t.z, k.width * 1.2);
+                if (floor === null || k.length <= 3 + 1e-9) continue;
+                const foot = Math.atan2(k.y - EYE.y, rangeOf(t.x, t.z));
+                const label = `${quality}: the crown at (${t.x.toFixed(1)}, ${t.z.toFixed(1)})`;
+                expect(foot, label).toBeGreaterThanOrEqual(floor - 1e-9);
+            }
+        }
+    });
+
+    it('builds four corners per crown at its foot, spread into a card that faces the eye', () => {
+        const crowns = crowned('High').map((p) => p.crown);
+        const geometry = createCrownGeometry(crowns);
+        expectSound(geometry, 'crowns');
+        const position = geometry.getAttribute('position');
+        expect(position.count).toBe(crowns.length * 4);
+        for (let i = 0; i < position.count; i++) {
+            const k = crowns[Math.floor(i / 4)];
+            // (Stored as 32-bit floats.)
+            expect(position.getX(i)).toBeCloseTo(k.x, 4);
+            expect(position.getY(i)).toBeCloseTo(k.y, 4);
+            expect(position.getZ(i)).toBeCloseTo(k.z, 4);
+        }
+        for (const k of crowns) {
+            const card = crownCard(k, EYE_AT);
+            const across = new THREE.Vector3(...card[1]).sub(new THREE.Vector3(...card[0]));
+            const sight = new THREE.Vector3(k.x - EYE.x, 0, k.z - EYE.z).normalize();
+            // Square to the line of sight, as wide as the crown, upright, and stood in front of its trunk.
+            expect(Math.abs(across.dot(sight))).toBeLessThan(1e-9);
+            expect(across.length()).toBeCloseTo(k.width * 2 * 1.2, 9);
+            expect(card[2][1] - card[0][1]).toBeCloseTo(k.length + 0.3 + 0.9, 9);
+            const middle = new THREE.Vector3(...card[0]).add(new THREE.Vector3(...card[1])).multiplyScalar(0.5);
+            expect(Math.hypot(middle.x - EYE.x, middle.z - EYE.z)).toBeLessThan(Math.hypot(k.x - EYE.x, k.z - EYE.z));
+        }
+        // The cut-out's edge is laid down by coverage over a multisampled pass, all or nothing otherwise.
+        const fine = createCrowns(uniforms(), crowns, { samples: 4 });
+        expect(fine.material.alphaToCoverage).toBe(true);
+        expect(fine.material.side).toBe(THREE.DoubleSide);
+        expect(fine.count).toBe(crowns.length);
+        expect(fine.plan).toBe(crowns);
+        expect(createCrowns(uniforms(), crowns).material.alphaToCoverage).toBe(false);
+    });
+
+    it('crowns the wood across the top of a wide frame, and hangs none across the moon on any frame', () => {
+        const crowns = crowned('High').map((p) => p.crown);
+        // The cards are where the picture has them: most sight lines across the top of the frame,
+        // away from the moon, meet a crown.
+        let met = 0;
+        let cast = 0;
+        for (let az = -32; az <= 32; az += 2) {
+            if (az > -30 && az < -12) continue;
+            cast += 1;
+            if (crosses(crowns, az * DEG, 14 * DEG)) met += 1;
+        }
+        expect(met / cast).toBeGreaterThan(0.5);
+        for (const quality of QUALITY_NAMES) {
+            const own = crowned(quality).map((p) => p.crown);
+            const frames = [[3440, 1440], [1600, 900], [1280, 1024], [1000, 1000], [820, 1180], [430, 932], [390, 844]];
+            for (const [width, height] of frames) {
+                const aspect = width / height;
+                const squeeze = squeezeFor(aspect);
+                const moon = moonFor(aspect);
+                const lines = [[moon.azimuth, moon.elevation]];
+                for (let n = 0; n < 8; n++) {
+                    const turn = (n * Math.PI) / 4;
+                    const rim = [Math.cos(turn) * MOON.radius, Math.sin(turn) * MOON.radius];
+                    lines.push([moon.azimuth + rim[0], moon.elevation + rim[1]]);
+                }
+                const crossed = lines.filter(([a, e]) => crosses(own, a, e, squeeze)).length;
+                expect(crossed, `${quality} at ${width} × ${height}`).toBe(0);
             }
         }
     });
