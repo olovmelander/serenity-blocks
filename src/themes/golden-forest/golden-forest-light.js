@@ -12,6 +12,7 @@ import {
     cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
     texture, uniform, vec2, vec3,
 } from 'three/tsl';
+import { gridShadowFilter } from '../shared/grid-shadow-filter.js';
 
 const SUN_AZIMUTH = THREE.MathUtils.degToRad(-21);
 const SUN_ELEVATION = THREE.MathUtils.degToRad(11.5);
@@ -63,16 +64,18 @@ export class GoldenForestLight {
         this.uTime = uniform(0);
         this.uSunDir = uniform(GOLDEN_FOREST_SUN_DIRECTION.clone());
         this.uSunColor = uniform(new THREE.Color(4.2, 2.1, 0.62));
-        this.uSkyLight = uniform(new THREE.Color(0.42, 0.19, 0.13));
+        this.uSkyLight = uniform(new THREE.Color(0.36, 0.18, 0.17));
         this.uBounce = uniform(new THREE.Color(0.3, 0.12, 0.045));
-        // The sky: burnt red overhead, ember orange in the middle, molten gold where the sun stands.
-        this.uZenith = uniform(new THREE.Color(0.2, 0.048, 0.022));
-        this.uSkyMid = uniform(new THREE.Color(0.62, 0.155, 0.05));
-        this.uSkyAway = uniform(new THREE.Color(0.66, 0.23, 0.09));
+        // The sky: dusk blue overhead, a rose and mauve middle, ember orange low down and molten
+        // gold where the sun stands. The cool top gives the gold something to stand against, and
+        // the lake mirrors it in the near water.
+        this.uZenith = uniform(new THREE.Color(0.045, 0.05, 0.13));
+        this.uSkyMid = uniform(new THREE.Color(0.36, 0.14, 0.16));
+        this.uSkyAway = uniform(new THREE.Color(0.6, 0.21, 0.11));
         this.uSkyToward = uniform(new THREE.Color(1.5, 0.66, 0.14));
-        // Shaded air is a dusty amber; sunlit air is added by the volumetric shafts where the
-        // tier has them, and by this analytic glow where it does not.
-        this.uHazeCool = uniform(new THREE.Color(0.44, 0.16, 0.065));
+        // Shaded air is a dusty rose-amber that cools toward mauve; sunlit air is added by the
+        // volumetric shafts where the tier has them, and by this analytic glow where it does not.
+        this.uHazeCool = uniform(new THREE.Color(0.4, 0.165, 0.11));
         this.uHazeWarm = uniform(new THREE.Color(1.15, 0.52, 0.12));
         this.uHazeSun = uniform(tier.godrays > 0 ? 0.5 : 1);
         this.uHaze = uniform(0.0025);
@@ -96,6 +99,9 @@ export class GoldenForestLight {
         sunShadow.bias = -0.0011 * (2048 / tier.shadowMap[0]) ** 1.5;
         sunShadow.normalBias = 0;
         sunShadow.radius = 2.4;
+        // three's PCF turns its samples by per-pixel noise (a crosshatch over the boughs without a
+        // temporal filter); a fixed grid is as soft and clean. Nine taps with post, four below.
+        sunShadow.filterNode = gridShadowFilter(tier.shadowMap, sunShadow.radius, tier.post ? 9 : 4);
         // The shores never move under a fixed sun, so their shadows are drawn once.
         sunShadow.autoUpdate = false;
         sunShadow.needsUpdate = true;
