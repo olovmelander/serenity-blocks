@@ -36,7 +36,6 @@ import {
     float,
     floor,
     fract,
-    int,
     length,
     max,
     min,
@@ -57,6 +56,8 @@ import {
 import {
     CANYON,
     CANYON_CODE_PEAK,
+    FRONT_SLOTS,
+    HOOP_LIGHTS,
     TAU,
     svHash23,
     svPart,
@@ -70,8 +71,8 @@ import {
 } from './stellar-velocity-tsl.js';
 
 /** Canyon units of full cloud that put out 63% of the light behind them (gas, and dust). */
-const EXTINCTION_GAS = 2.3;
-const EXTINCTION_DUST = 0.42;
+const EXTINCTION_GAS = 0.95;
+const EXTINCTION_DUST = 0.26;
 /** How far toward the sun the two shading taps reach (canyon units). */
 const LIGHT_NEAR = 0.9;
 const LIGHT_FAR = 3.2;
@@ -143,8 +144,11 @@ export function createCanyon(u, {
         const jitter = fract(fract(dot(screenCoordinate.xy, vec2(0.06711056, 0.00583715))).mul(52.9829189)).toVar();
         // What the sun makes of the canyon's whole length: far cloud is taken by it, dim
         // away from the sun and bright round it.
-        const haze = u.deep.mul(0.05).add(u.glow.mul(0.05))
-            .add(mix(u.accent, u.sunCol, 0.3).mul(toward.mul(0.32)))
+        // The glow at full strength: the hue the gas answers a front in.
+        const glowTone = u.glow.div(max(max(u.glow.x, u.glow.y), max(u.glow.z, 1e-3))).mul(1.15).toVar();
+        const haze = u.deep.mul(0.035).add(u.glow.mul(0.05))
+            .add(u.glow.mul(toward.mul(0.75)))
+            .add(mix(u.accent, u.sunCol, 0.5).mul(toward.mul(toward).mul(toward).mul(0.28)))
             .toVar();
 
         // Cloud only stands between the open channel and the canyon's outer edge, so a ray is
@@ -180,16 +184,23 @@ export function createCanyon(u, {
                 base.assign(mix(u.cloud(n), u.cloudFar(n), blur));
             });
             const field = fieldOf(base, slow.a, radius).toVar();
+            let threads = null;
             if (detail) {
                 // Streamers: fine filaments that run along the course. They are read from the
                 // mipped grain in the canyon's own cylinder (round the course, out from it, and
                 // slowly along it), at a level as coarse as the step is long: nothing aliases.
                 const round = atan(n.y, n.x).div(TAU);
+                const lod = clamp(ds.mul(2.2).log2().add(1.0), 0.0, 5.0).toVar();
                 const grain = u.fbmLod(
                     vec2(round.mul(3.0).add(n.z.mul(0.5)), radius.mul(0.16).add(n.z.mul(1.0))),
-                    clamp(ds.mul(2.2).log2().add(1.0), 0.0, 5.0),
-                );
+                    lod,
+                ).toVar();
                 field.addAssign(grain.r.sub(0.5).mul(0.3).add(grain.g.sub(0.5).mul(0.14)));
+                // Where the third field crosses its middle, a thread of glowing gas drawn out
+                // along the course: the walls stream past. The ridge of a blurred read is lit
+                // everywhere, so the threads fade out where the step is too long to hold them.
+                const ridge = float(1.0).sub(grain.b.mul(2.0).sub(1.0).abs());
+                threads = pow(ridge, 7.0).mul(float(1.0).sub(smoothstep(1.2, 3.2, lod))).toVar();
             }
             If(field.greaterThan(detail ? -0.09 : 0.001), () => {
                 const d = clamp(field.mul(EDGE_COARSE), 0.0, 1.0).toVar();
@@ -217,47 +228,72 @@ export function createCanyon(u, {
                         } else shade = shade.mul(2.3);
                         lit = exp(shade.negate()).toVar();
                     }
+                    // The canyon ahead stands between the sun and the gas deep in its walls: only
+                    // what faces the open channel, and what stands where the walls open, is lit.
+                    const buried = smoothstep(clear * 0.9, wall + 0.6, radius).mul(smoothstep(0.25, 0.65, slow.a));
+                    lit = lit.mul(float(1.0).sub(buried.mul(0.72))).toVar();
                     // The billows are dust: dark heads on the walls.
                     const dusty = smoothstep(0.5, 0.86, base.b).mul(smoothstep(0.25, 0.9, d)).toVar();
                     const clean = float(1.0).sub(dusty.mul(0.9)).toVar();
-                    // Gas the light reaches glows in one family of the palette; gas in shade is
-                    // dim and in the other, and the slow field says how dim.
-                    const sunlit = u.glow.mul(lit.mul(cosSun.mul(0.75).add(0.4)));
-                    const shaded = u.deep.mul(float(1.0).sub(lit).mul(0.24).add(0.03)).mul(base.a.mul(1.3).add(0.35));
-                    // The sun's own light, scattered forward by gas it reaches, in the third
-                    // colour: the canyon is warm round the sun and cool away from it.
-                    const silver = mix(u.sunCol, u.accent, 0.78).mul(lit.mul(lit)).mul(toward).mul(u.sunGain)
-                        .mul(0.85);
+                    // The gas is lit from behind: what the sun reaches burns in the glow, the more
+                    // the nearer the ray looks into the sun (the walls seen side-on are dark);
+                    // what it does not is the nebula's own shade, lit only by the gas round it.
+                    const phase = cosSun.mul(cosSun).mul(0.45).add(toward.mul(1.1)).add(0.1);
+                    const sunlit = u.glow.mul(lit.mul(phase)).mul(1.35);
+                    const hot = smoothstep(0.3, 0.85, base.a).toVar();
+                    const shaded = u.deep.mul(float(1.0).sub(lit).mul(0.12).add(0.035)).mul(hot.mul(1.2).add(0.35));
+                    // Ionised gas glows by itself: where the slow field runs hot in the glow, where
+                    // it runs cool in the shade's colour, so the walls are zoned like a nebula. (Not
+                    // in the third colour: laid over the glow, a complement greys it.)
+                    const own = mix(u.deep.mul(1.3), u.glow, hot).mul(hot.mul(0.1).add(0.035));
+                    // The sun's own light, scattered forward by the gas it reaches most, in the
+                    // third colour: the canyon is warm round the sun and cool away from it.
+                    const silver = mix(u.accent, u.sunCol, 0.3).mul(lit.mul(lit).mul(lit)).mul(toward)
+                        .mul(u.sunGain.mul(0.4).add(0.6))
+                        .mul(1.6);
                     // Where the light grazes a dark head, its rim burns in that colour too.
-                    const rim = u.accent.mul(lit.mul(dusty).mul(toward.mul(1.7).add(0.16)));
-                    const light = sunlit.add(shaded).add(silver).mul(clean).add(rim)
-                        .toVar();
+                    const rim = u.accent.mul(lit.mul(dusty).mul(toward.mul(1.2).add(0.07)));
+                    // The threads glow in the glow, whiter where the sun reaches them.
+                    const strands = threads
+                        ? mix(u.glow, u.sunCol.mul(0.7), lit.mul(0.35)).mul(threads)
+                            .mul(lit.mul(0.6).add(0.15))
+                            .mul(0.55)
+                        : vec3(0.0);
+                    const glowing = sunlit.add(shaded).add(own).add(silver).add(strands);
+                    const light = glowing.mul(clean).add(rim).toVar();
                     if (lights) {
                         const cast = vec3(0.0).toVar();
-                        // Every hoop is a ring of light standing in the canyon.
-                        Loop({
-                            start: int(0), end: u.hoopLightCount, type: 'int', condition: '<', name: 'h',
-                        }, (loop) => {
-                            const a = u.hoopLights.element(loop.h.mul(2));
-                            const c = u.hoopLights.element(loop.h.mul(2).add(1));
-                            const dz = depth.sub(a.x);
-                            const dr = radius.sub(a.y);
-                            const fall = float(1.0).div(float(1.0).add(dz.mul(dz).add(dr.mul(dr)).mul(1.5)));
-                            cast.addAssign(c.rgb.mul(a.z.mul(fall).mul(fall)));
-                        });
-                        // Every front is a sheet of light coming down the canyon.
-                        Loop({
-                            start: int(0), end: u.frontCount, type: 'int', condition: '<', name: 'f',
-                        }, (loop) => {
-                            const a = u.fronts.element(loop.f.mul(2));
-                            const c = u.fronts.element(loop.f.mul(2).add(1));
-                            const x = depth.sub(a.x).div(a.y);
-                            cast.addAssign(c.rgb.mul(a.z.mul(exp(x.mul(x).negate()))));
-                        });
-                        // The gas answers a light in the light's colour, a little in its own.
+                        const swept = vec3(0.0).toVar();
+                        // Every hoop is a ring of light standing in the canyon, and every front a
+                        // sheet of light coming down it. Their slots are unrolled, each behind a
+                        // branch on the live count (the same for every pixel, so idle slots cost
+                        // nothing): a loop nested in the march was miscompiled on ANGLE's D3D11
+                        // path, which washed the WebGL2 canyon in the hoops' colours.
+                        for (let k = 0; k < HOOP_LIGHTS; k++) {
+                            If(u.hoopLightCount.greaterThan(k), () => {
+                                const a = u.hoopLights.element(k * 2);
+                                const c = u.hoopLights.element(k * 2 + 1);
+                                const dz = depth.sub(a.x);
+                                const dr = radius.sub(a.y);
+                                const fall = float(1.0).div(float(1.0).add(dz.mul(dz).add(dr.mul(dr)).mul(1.5)));
+                                cast.addAssign(c.rgb.mul(a.z.mul(fall).mul(fall)));
+                            });
+                        }
+                        for (let k = 0; k < FRONT_SLOTS; k++) {
+                            If(u.frontCount.greaterThan(k), () => {
+                                const a = u.fronts.element(k * 2);
+                                const c = u.fronts.element(k * 2 + 1);
+                                const x = depth.sub(a.x).div(a.y);
+                                swept.addAssign(c.rgb.mul(a.z.mul(exp(x.mul(x).negate()))));
+                            });
+                        }
+                        // The gas answers a hoop in the hoop's colour, a little in its own; a
+                        // front excites it, so it answers mostly in its own glow (a white front
+                        // answered in white is a grey veil over the canyon).
                         light.addAssign(cast.mul(mix(vec3(1.0), u.glow.add(u.deep).mul(1.4), 0.3)).mul(clean).mul(0.6));
+                        light.addAssign(swept.mul(mix(vec3(1.0), glowTone, 0.62)).mul(clean).mul(0.6));
                     }
-                    light.assign(mix(light, haze, smoothstep(7.0, reach * 0.85, t).mul(0.82)));
+                    light.assign(mix(light, haze, smoothstep(7.0, reach * 0.85, t).mul(0.66)));
                     light.mulAssign(u.breath.mul(0.75).add(0.25));
                     const extinction = mix(float(EXTINCTION_GAS), float(EXTINCTION_DUST), dusty);
                     const a = float(1.0).sub(exp(d.mul(ds).div(extinction).negate()));
@@ -359,7 +395,19 @@ export function createCanyon(u, {
         const disc = exp(off.mul(off).mul(-12000.0)).mul(70.0);
         const halo = float(1.0).div(float(1.0).add(off.mul(off).mul(1400.0))).mul(0.9);
         const air = float(1.0).div(float(1.0).add(off.mul(off).mul(30.0))).mul(0.03);
-        const sun = u.sunCol.mul(disc.add(halo)).add(mix(u.sunCol, u.glow.mul(2.0), 0.5).mul(air)).mul(u.sunGain);
+        // Its corona: fine rays round the disc, turning slowly, reaching out a few degrees (and
+        // read only there: past them it has faded to nothing).
+        const corona = float(0.0).toVar();
+        If(off.lessThan(0.22), () => {
+            const about = atan(seenRay.y, seenRay.x).div(TAU);
+            const fan = u.fbmLod(vec2(about.mul(11.0).add(u.time.mul(0.003)), off.mul(1.5).sub(u.time.mul(0.01))), 0);
+            const rays = pow(fan.r, 3.0).mul(1.8).add(pow(fan.g, 6.0).mul(2.4)).add(0.4);
+            const fade = float(1.0).sub(smoothstep(0.12, 0.22, off));
+            corona.assign(rays.mul(float(1.0).div(float(1.0).add(off.mul(off).mul(1800.0)))).mul(fade).mul(0.24));
+        });
+        const sun = u.sunCol.mul(disc.add(halo)).add(mix(u.sunCol, u.glow.mul(2.0), 0.35).mul(corona))
+            .add(mix(u.sunCol, u.glow.mul(2.0), 0.5).mul(air))
+            .mul(u.sunGain);
 
         const canyon = canyonSoft(st).toVar();
         const behind = sky.add(stars.add(hush).mul(u.breath)).add(sun.mul(u.breath.mul(0.8).add(0.2)));

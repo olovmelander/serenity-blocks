@@ -256,6 +256,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
                     look,
                     samples: this.getAntialiasEnabled() ? look.msaa : 0,
                     grain: !this.flags.baseline && this.flags.fixedDtMs === null,
+                    uniforms: this.world?.u,
                 });
                 return;
             } catch (error) {
