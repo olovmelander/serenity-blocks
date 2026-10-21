@@ -23,6 +23,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     Loop,
     abs,
     clamp,
@@ -58,7 +59,7 @@ import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { sceneSamples } from '../shared/scene-antialias.js';
 import { DECK } from './grainfields-core.js';
 import {
-    deckCover, deckPointAbove, gfHash21, gfLuma, gfMax3,
+    coreCover, deckCover, deckPointAbove, gfHash21, gfLuma, gfMax3,
 } from './grainfields-tsl.js';
 import { HAZE_HEIGHT, MIST_HEIGHT, MIST_FLOOR } from './grainfields-light.js';
 import { flashScale } from '../../utils/photosensitivity.js';
@@ -99,6 +100,18 @@ export const CALM_RECTS_MAX = 5;
 /** How far the march looks along a line of sight (metres): past the vale and the foothills. */
 export const AIR_RANGE = 24000;
 
+/**
+ * The storm's rain, in the march: curtains `size`/16 metres across (the share of the core they
+ * fill from `part`), fibrous at `fibre` of that size, raked by `rake` metres a metre fallen,
+ * `density` its extinction per metre in
+ * a curtain's heart, thinning to half by `fade` metres over the ground; none within `near` metres
+ * of the eye (it falls kilometres away); `shine` how much brighter than haze it scatters the sun
+ * where a gap lets it in.
+ */
+export const RAIN = Object.freeze({
+    size: 30000, part: Object.freeze([0.55, 0.74]), fibre: 0.14, rake: 0.22, density: 0.00062, fade: 1500, near: 2500, shine: 0.45,
+});
+
 /** Rounded-box signed distance in pixels. rect = (x0, y0, x1, y1) in pixels (top-left origin). */
 const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
     const c = rect.xy.add(rect.zw).mul(0.5);
@@ -112,14 +125,21 @@ const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
 });
 
 /**
- * Filmic: identity below the knee, a hue-preserving exponential shoulder above it, and a path to
- * white only for the hottest values (the sun's disc, a flash), so sunlit gold stays gold.
+ * Filmic: identity below the knee, a hue-preserving shoulder above it, and a path to white only
+ * for the hottest values (the sun's disc, a flash), so sunlit gold stays gold.
+ *
+ * The shoulder is rational (z / (1 + z)), not exponential: both leave the knee at slope 1, but the
+ * exponential had all but reached white by 1.6, so a sunlit field (1–2.5 at the storm break and in
+ * the golden hour) went to one flat gold and every gust, patch of ripeness and depth in the stand
+ * with it. The rational one spreads 1–4 over the top of the range.
  */
+export const FILMIC_KNEE = 0.6;
 const gfFilmic = /* @__PURE__ */ Fn(([cIn]) => {
     const c = max(cIn, vec3(0.0));
     const peak = max(max(c.x, max(c.y, c.z)), 1e-5);
-    const k = float(0.6);
-    const shoulder = k.add(float(1.0).sub(k).mul(float(1.0).sub(exp(peak.sub(k).div(float(1.0).sub(k)).negate()))));
+    const k = float(FILMIC_KNEE);
+    const z = peak.sub(k).div(float(1.0).sub(k)).max(0.0);
+    const shoulder = k.add(float(1.0).sub(k).mul(z.div(z.add(1.0))));
     const mapped = select(peak.greaterThan(k), shoulder, peak);
     const toned = c.mul(mapped.div(peak));
     const w = smoothstep(2.4, 9.0, peak).mul(0.9);
@@ -238,7 +258,15 @@ export class GrainfieldsPost {
             calm.mulAssign(this.uCalmStrength);
 
             const S = vec3(sceneColor.sample(screenUV).rgb).toVar();
-            if (air) S.addAssign(vec3(air.rgb).mul(this.uAir));
+            if (air) {
+                // The rain's veil: the storm's own grey (the diffuse light under the deck) over what
+                // lies behind a curtain; lighter than the fells' dark faces, darker than the bright
+                // band low on the horizon.
+                const veil = clamp(air.a, 0.0, 1.0);
+                const rainGrey = u.haze.mul(0.85).add(u.fill.mul(0.5)).add(u.horizon.mul(0.1));
+                S.assign(mix(rainGrey, S, veil));
+                S.addAssign(vec3(air.rgb).mul(this.uAir));
+            }
 
             // What shows through the card is soft-clipped (hue-preserving).
             const m = max(gfMax3(S), 1e-5);
@@ -329,9 +357,26 @@ export class GrainfieldsPost {
             const jitter = interleavedGradientNoise(screenCoordinate.xy).toVar();
             const sum = float(0.0).toVar();
             const tau = float(0.0).toVar();
+            const tauRain = float(0.0).toVar();
             const prevT = float(0.0).toVar();
             const hazeA = u.hazeDensity.mul(1.0 / 15000);
             const mistA = u.mistDensity.mul(1.0 / 900);
+            const R = RAIN;
+            // Rain under the storm's core: curtains hanging from the deck's base, raked a little by
+            // the wind below it, drifting with the deck, thinning toward the ground they fall on.
+            const rainAt = (X, along) => {
+                const below = max(float(DECK.base).sub(X.y), 0.0);
+                const at = X.xz.add(u.windDir.mul(below.mul(R.rake))).add(u.drift.mul(0.8));
+                // A curtain is fibrous: finer shafts of heavier rain in it, so it reads as falling.
+                const fibres = texture(t.noise, at.div(R.size * R.fibre).add(vec2(0.43, 0.17))).b;
+                const curtain = smoothstep(R.part[0], R.part[1], texture(t.noise, at.div(R.size)).g)
+                    .mul(fibres.mul(1.1).add(0.45));
+                const falls = smoothstep(0.0, 400.0, below).mul(float(1.0).sub(smoothstep(0.0, R.fade, X.y).mul(0.45)));
+                const core = coreCover(u, X.xz);
+                return core.mul(core).mul(curtain).mul(falls).mul(u.rain)
+                    .mul(R.density)
+                    .mul(smoothstep(R.near * 0.5, R.near, along));
+            };
             Loop(steps, ({ i }) => {
                 const f = float(i).add(jitter).div(steps);
                 // Pinned as vars BEFORE prevT moves: an expression node is emitted where it is used,
@@ -339,11 +384,12 @@ export class GrainfieldsPost {
                 const tt = reach.mul(f.mul(f).mul(0.4).add(f.mul(0.6))).toVar();
                 const ds = tt.sub(prevT).toVar();
                 prevT.assign(tt);
-                const X = this.uEye.add(dir.mul(tt));
+                const X = this.uEye.add(dir.mul(tt)).toVar();
                 const haze = hazeA.mul(exp(X.y.div(-HAZE_HEIGHT)));
                 // The vale's mist: low, in banks that drift.
                 const bank = texture(t.noise, X.xz.add(u.drift.mul(0.05)).div(2600.0)).g;
                 const mist = mistA.mul(exp(max(X.y.sub(MIST_FLOOR), 0.0).div(-MIST_HEIGHT))).mul(bank.mul(1.6).add(0.2));
+                const rainSigma = rainAt(X, tt);
                 const sigma = haze.add(mist);
                 // Under thick cloud the air gets no direct sun at all (the sky's diffuse light in the
                 // haze is the land's aerial term): only the gaps light it, so the shafts stand alone.
@@ -351,8 +397,20 @@ export class GrainfieldsPost {
                 // The eye's own shaft (it stands in the sun's gap) is left out near it, so the air
                 // toward the sun is not one glare and the shafts before the fells stand alone.
                 const sunVis = open.mul(open).mul(smoothstep(500.0, 3200.0, tt));
-                sum.addAssign(sunVis.mul(sigma).mul(exp(tau.negate())).mul(ds));
-                tau.addAssign(sigma.mul(ds));
+                // Rain the sun reaches through a gap shines (the drops scatter much of it forward).
+                sum.addAssign(sunVis.mul(sigma.add(rainSigma.mul(R.shine))).mul(exp(tau.negate())).mul(ds));
+                tau.addAssign(sigma.add(rainSigma).mul(ds));
+            });
+            // The rain's veil, on its own finer steps: the curtains are a kilometre or two across and
+            // the march's steps nearly as long, which dithered them into a mesh. Texture reads only.
+            If(u.rain.greaterThan(0.001), () => {
+                const from = float(R.near * 0.5);
+                const span = max(reach.sub(from), 0.0).toVar();
+                const rainSteps = steps * 2;
+                Loop(rainSteps, ({ i }) => {
+                    const tt = from.add(span.mul(float(i).add(jitter).div(rainSteps))).toVar();
+                    tauRain.addAssign(rainAt(this.uEye.add(dir.mul(tt)), tt).mul(span.div(rainSteps)));
+                });
             });
             const mu = clamp(dot(dir, u.sunDir), 0.0, 1.0);
             const mu2 = mu.mul(mu);
@@ -360,7 +418,8 @@ export class GrainfieldsPost {
             const phase = mu4.mul(mu4).mul(1.4).add(mu4.mul(0.6)).add(mu2.mul(0.2))
                 .add(0.05);
             const lit = u.sun.mul(u.sunUp).mul(sum).mul(phase).mul(0.95);
-            return vec4(lit, 1.0);
+            // The rain's veil over what lies behind it (its own grey is laid in by the output).
+            return vec4(lit, exp(tauRain.negate()));
         })();
     }
 
