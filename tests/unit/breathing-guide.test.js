@@ -557,7 +557,7 @@ describe('breathing guide under a session', () => {
         expect(text(guide.title)).toBe('Round 1 • Activate');
         expect(text(guide.note)).toBe('Mouth breathing.');
         expect(guide.root.dataset.session).toBe('ELIXIR');
-        expect(guide.root.style['--breath-accent']).toBe('255, 150, 120');
+        expect(guide.root.style['--breath-accent']).toBe('243, 210, 141');
         guide.setExternalControl(false);
         expect(guide.pattern).toEqual([3, 0, 2, 0]);
         expect(guide.onControl).toBeNull();

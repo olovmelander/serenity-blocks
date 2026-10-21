@@ -5,6 +5,10 @@ built and how it was checked — not a backlog.** Replaces the WebGL/GLSL scene 
 copies of one third-party cherry tree on a rolling lawn) with a node scene on three
 0.186.1 that the game and the playground share.
 
+The atmosphere pass of 2026-10-21 (night grass and fallen blossom, finer petals, the hazy moon,
+snow in the gullies, foxfire as will-o'-wisps) is recorded in
+[SAKURA_TWILIGHT_ATMOSPHERE_2026-10.md](SAKURA_TWILIGHT_ATMOSPHERE_2026-10.md).
+
 | Before | After (High, native WebGPU) |
 | --- | --- |
 | ![before](sakura-twilight-overhaul/before.jpg) | ![after](sakura-twilight-overhaul/idle.jpg) |

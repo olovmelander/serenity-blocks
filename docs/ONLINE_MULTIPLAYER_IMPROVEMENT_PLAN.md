@@ -477,7 +477,8 @@ The following settings should be added to `match-config-modal.js` to match Quadr
     help: 'Reduce garbage damage with many players (prevents instant death in 5+ player games)'
 }
 
-// Starting Level (Quadra: 1-9)
+// Starting Level (Quadra: 1-9). Shipped 2026-10-21 with Level Progression below, on both
+// setup sheets: src/core/multiplayer/match-level-rule.js (default: a fixed level 1).
 {
     id: 'startingLevel',
     label: 'Starting Level',

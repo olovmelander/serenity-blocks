@@ -39,6 +39,9 @@ const ICON_PATHS = {
     home: '<path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9.3V20h13V9.3"/><path d="M9.8 20v-5.5h4.4V20"/>',
     rematch: '<path d="M4.5 12a7.5 7.5 0 0 1 12.8-5.3L19.5 9"/><path d="M19.5 4.5V9H15"/><path d="M19.5 12a7.5 7.5 0 0 1-12.8 5.3L4.5 15"/><path d="M4.5 19.5V15H9"/>',
     clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.2"/><path d="M12 7.9h.01"/>',
+    alert: '<path d="M12 4.3 20.6 19.4H3.4L12 4.3Z"/><path d="M12 10.2v4.2"/><path d="M12 16.9h.01"/>',
+    error: '<circle cx="12" cy="12" r="8.5"/><path d="M9.2 9.2l5.6 5.6M14.8 9.2l-5.6 5.6"/>',
 };
 
 /**
