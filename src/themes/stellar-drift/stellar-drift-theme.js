@@ -9,17 +9,19 @@
  * card, one of ice that vents into the dark, one of rust, in front of a nebula; and the camera
  * drifts in the thin haze of ice beyond the rings, among slow shards that catch the sun (on an
  * upright phone the giant rises into the sky above the card). The board plays on all of it. A
- * locking piece leaves the card as a mote of its own colour and falls into the rings: a flash, a
- * splash of lit ice, a ring of light that runs out from where it landed and is wound into a
- * spiral by the rings' own turning, and a stain of that colour that lingers in the ice for a
- * quarter of a minute (a hard drop lands harder). A clear makes the rings chime: light runs out
- * through the whole system, one front per line, every cleared row is written round the giant as
- * a streak of light on its own latitude, lightning answers under the night side's cloud and the
- * aurora flares. The aurora is the chain: every step of a combo raises its curtains, a second
- * oval lights inside the first, lightning walks the night side, the rings hum in the chain's
- * colour and meteors begin to fall. Four lines bring a meteor storm that burns into the cloud
- * tops while the icy moon vents a great fan of ice and the rings ring four times over. A T-spin
- * winds a two-armed spiral of light through the rings. The whole picture turns slowly through
+ * locking piece leaves the card as a comet of its own colour and falls into the rings: a
+ * white-hot impact, the ringlet it lands on lit along its orbit, a splash of ice chips, a density
+ * wave wound into a spiral by the rings' own turning, and a stain of that colour that lingers in
+ * the ice for a quarter of a minute (a hard drop lands harder). A clear makes the rings chime:
+ * light runs out through the whole system, one front per line, every cleared row is written
+ * round the giant as a hairline of light with a white-hot head, and lightning branches under the
+ * night side's cloud. The rings are the chain: every step of a combo raises their hum in the
+ * chain's colour, lightning walks the night side and meteors begin to fall; its milestones send
+ * arcs of light racing round the rings, and a long chain throws a corona of light off the giant.
+ * Four lines bring a storm of bolides that strike the cloud tops (fireball, shock, embers and a
+ * scar the wind shears) while a corona leaves the giant, the icy moon vents and the rings ring
+ * four times over. A T-spin spins a cyclone into the cloud bands and winds a two-armed spiral of
+ * light through the rings; a back-to-back clear sets the outer strand ablaze. The whole picture turns slowly through
  * six palettes on a wheel on its own clock, one every ninety seconds (the giant's bands take the
  * new colours one by one, like weather, and the sun moves with the hour), and a new level moves
  * it one further.
@@ -171,7 +173,7 @@ export default class StellarDriftTheme extends BaseTheme {
         this.bufferSize = new THREE.Vector2();
         this.rebuildQueued = false;
         this.rebuildPending = false;
-        /** The true combo per director player slot: the aurora answers the longest chain. */
+        /** The true combo per director player slot: the rings answer the longest chain. */
         this.combos = new Map();
         /** The level the run is on: a scene rebuilt mid-run (quality change, GPU recovery) takes it up again. */
         this.level = 1;
@@ -397,7 +399,7 @@ export default class StellarDriftTheme extends BaseTheme {
         }
     }
 
-    /** The aurora answers the longest chain any board is holding. */
+    /** The rings answer the longest chain any board is holding. */
     reportCombo(combo, player = 0) {
         if (combo > 0) this.combos.set(player, combo);
         else this.combos.delete(player);
