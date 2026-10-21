@@ -22,6 +22,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     atan,
     attribute,
@@ -163,6 +164,32 @@ function ledgeWater(s, nm) {
     }
     return { white, waves, glass };
 }
+
+/**
+ * The boil where the tongues land: the pool heaps up in domes (their size m, how high m), which
+ * well up and sink again as they roll out downstream (how fast m/s); where it reaches (m along the
+ * river from the lip: in, full, fading, gone).
+ */
+export const BOIL = Object.freeze({
+    size: 22, height: 1.1, drift: 2.4, reach: Object.freeze([2, 7.8, 12, 30]),
+});
+
+/**
+ * The boil's heaps at (s, nm) (TSL; metres over the pool's level before its zone and white are
+ * applied, about −0.45 … 0.55): domes drifting downstream, each welling up and sinking on its own
+ * beat. `vertex` reads the noise's top level (a vertex stage has no derivatives).
+ */
+function boilAt(u, tex, s, nm, vertex = false) {
+    const at = vec2(s.sub(u.flowClock.mul(BOIL.drift)).div(BOIL.size), nm.div(BOIL.size).add(0.31));
+    const read = texture(tex.noise, at);
+    const n = vertex ? read.level(0) : read;
+    const beat = sin(u.flowClock.mul(1.3).add(n.a.mul(6.283))).mul(0.4).add(0.6);
+    return n.r.mul(0.75).add(n.b.mul(0.25)).sub(0.45).mul(beat);
+}
+
+/** The boil's zone at s: in from behind the curtain, full where the tongues land, fading downstream. */
+const boilZone = (s) => smoothstep(S_LIP + BOIL.reach[0], S_LIP + BOIL.reach[1], s)
+    .mul(float(1.0).sub(smoothstep(S_LIP + BOIL.reach[2], S_LIP + BOIL.reach[3], s)));
 
 /** How far (m) the foam a source throws drifts down the river before it has thinned to a third. */
 export const TRAIL = 11;
@@ -407,7 +434,8 @@ const SHALLOW = [0.024, 0.02, 0.009];
 const FOAM = [0.8, 0.83, 0.84];
 const GLASS = [0.05, 0.042, 0.016];
 const BANKS = [0.018, 0.034, 0.02];
-const MILKY = [0.15, 0.19, 0.18];
+/** Water full of air under the foam: it glows a pale aqua, lit through itself. */
+const AERATED = [0.07, 0.19, 0.18];
 const TURF = [0.05, 0.08, 0.03];
 const FELLS = [0.035, 0.05, 0.04];
 const STEP_ROCK = [0.035, 0.037, 0.04];
@@ -449,6 +477,10 @@ export function createRiverMaterial(u, tex) {
         // A surge rises out of the pool over its first metres: cut off where the surges start, a
         // young one's long back stood across the pool as a white step.
         const rising = smoothstep(S_POOL, S_POOL + 9, s);
+        // It runs down the water, not up the banks: lifted at the edges, the water under them
+        // stood out through the bank in a straight white bar.
+        const across = aRiver.y.div(aRiver.z.max(1.0));
+        const inRiver = float(1.0).sub(smoothstep(0.62, 0.95, abs(across)));
         for (let k = 0; k < SURGES; k++) {
             const row = u.events.element(EVENT_ROWS.surge + k);
             const age = u.time.sub(row.x);
@@ -457,7 +489,6 @@ export function createRiverMaterial(u, tex) {
             // the river lies nearly edge-on, and only a steep face stands up out of it). The front
             // is not a straight line across: it leads in mid-stream, where the water runs fastest,
             // and wanders, each surge its own way.
-            const across = aRiver.y.div(aRiver.z.max(1.0));
             const wander = sin(aRiver.y.mul(0.31).add(k * 1.7)).mul(1.3)
                 .add(sin(aRiver.y.mul(0.83).add(k * 2.9)).mul(0.6))
                 .add(float(1.0).sub(across.mul(across)).mul(1.6));
@@ -466,11 +497,19 @@ export function createRiverMaterial(u, tex) {
             const fade = exp(age.mul(-0.05));
             const span = select(x.greaterThan(0.0), float(SURGE.front), float(SURGE.length));
             const hump = exp(x.div(span).pow2().negate()).mul(row.y).mul(fade);
-            surge.addAssign(select(live, hump, float(0.0)));
-            // The face and its crest, breaking white.
-            const face = exp(x.sub(SURGE.front * 0.4).div(SURGE.front * 0.9).pow2().negate()).mul(row.y).mul(fade);
+            surge.addAssign(select(live, hump.mul(inRiver), float(0.0)));
+            // The face and its crest, breaking white: in stretches, where the water piles over the
+            // stones under it, with smooth water between (seen from the knoll the pool lies nearly
+            // edge-on, and an unbroken white face read as a painted line).
+            const breaks = sin(aRiver.y.mul(0.9).add(k * 2.3).add(age.mul(0.6)))
+                .mul(sin(aRiver.y.mul(0.29).add(k * 1.1)))
+                .mul(0.5)
+                .add(0.5);
+            const face = exp(x.sub(SURGE.front * 0.4).div(SURGE.front * 0.9).pow2().negate()).mul(row.y).mul(fade)
+                .mul(inRiver)
+                .mul(smoothstep(0.18, 0.62, breaks));
             bore.assign(max(bore, select(live, face, float(0.0))));
-            const behind = smoothstep(1.0, -12.0, x).mul(exp(age.mul(-0.4))).mul(row.y);
+            const behind = smoothstep(1.0, -12.0, x).mul(exp(age.mul(-0.4))).mul(row.y).mul(inRiver);
             wake.assign(max(wake, select(live, behind, float(0.0))));
         }
         vRiver.assign(aRiver);
@@ -483,7 +522,10 @@ export function createRiverMaterial(u, tex) {
         const wd = positionLocal.xz.sub(vec2(WHIRL_CENTRE.x, WHIRL_CENTRE.z));
         const dip = exp(dot(wd, wd).div(-(WHIRL.radius * WHIRL.radius) * 0.35)).mul(whirlNow(u)).mul(WHIRL.dip);
         // The flood lifts the whole river.
-        return positionLocal.add(vec3(0.0, u.flood.add(wave).add(surge.mul(SURGE.height).mul(rising)).sub(dip), 0.0));
+        // The boil heaps up where the tongues land.
+        const heaped = boilAt(u, tex, s, aRiver.y, true).mul(BOIL.height).mul(boilZone(s)).mul(aFlow.y);
+        return positionLocal.add(vec3(0.0, u.flood.add(wave).add(surge.mul(SURGE.height).mul(rising)).sub(dip)
+            .add(heaped), 0.0));
     })();
 
     material.colorNode = Fn(() => {
@@ -601,10 +643,18 @@ export function createRiverMaterial(u, tex) {
         const foam = clamp(mix(settled, spiral, clamp(wk.mul(1.6), 0.0, 1.0)).mul(float(1.0).sub(eye)), 0.0, 1.0)
             .mul(float(1.0).sub(glass.mul(0.85))).toVar();
 
-        // ── The surface's normal ──
+        // ── The surface's normal (the boil's domes tilt it where the tongues land) ──
         const rough = white.mul(0.9).add(0.15).mul(float(1.0).sub(glass.mul(0.75)));
-        const dAlong = rip.x.sub(0.5).mul(rough).sub(slopeAlong).add(vWave.x);
-        const dAcross = rip.y.sub(0.5).mul(rough);
+        const domes = vec2(0.0).toVar();
+        const inBoil = boilZone(s).mul(vFlow.y).toVar();
+        If(inBoil.greaterThan(0.01), () => {
+            const h0 = boilAt(u, tex, s, nm);
+            const k = inBoil.mul(BOIL.height / 0.6);
+            domes.assign(vec2(boilAt(u, tex, s.add(0.6), nm).sub(h0), boilAt(u, tex, s, nm.add(0.6)).sub(h0)).mul(k));
+        });
+        const dAlong = rip.x.sub(0.5).mul(rough).sub(slopeAlong).add(vWave.x)
+            .add(domes.x);
+        const dAcross = rip.y.sub(0.5).mul(rough).add(domes.y);
         const N = normalize(up.add(t.mul(dAlong.negate())).add(r.mul(dAcross.negate()))).toVar();
 
         // ── The water between the foam ──
@@ -681,9 +731,9 @@ export function createRiverMaterial(u, tex) {
         const body = mix(vec3(...SHALLOW), vec3(...DEEP), depth).mul(u.fill.mul(2.2).add(sunLight.mul(0.06))).toVar();
         // Over a chute the water is thin and clear: the peat's amber shows, lit through.
         body.assign(mix(body, vec3(...GLASS).mul(u.fill.mul(2.0).add(sunLight.mul(0.14))), glass.mul(0.8)));
-        // Torn water is full of air: milky between the foam, not dark (except in a whirl's
-        // spiral, which draws the dark water in to its eye).
-        const milky = vec3(...MILKY).mul(u.fill.mul(1.7).add(sunLight.mul(0.1)));
+        // Torn water is full of air: a pale aqua between the foam, lit through itself, not dark
+        // (except in a whirl's spiral, which draws the dark water in to its eye).
+        const milky = vec3(...AERATED).mul(u.fill.mul(1.7).add(sunLight.mul(0.16)));
         const spun = clamp(wk.mul(1.6), 0.0, 1.0);
         body.assign(mix(body, milky, white.mul(0.75).mul(float(1.0).sub(spun))));
         body.mulAssign(float(1.0).sub(eye.mul(0.6)));
@@ -705,14 +755,21 @@ export function createRiverMaterial(u, tex) {
         const lit = clamp(dot(Nf, L).add(0.6).div(1.6), 0.0, 1.0);
         // Its hollows are the fine churn's and the flow's streaks', never the metre-wide rafts' (a
         // white mass shaded by those reads as floating ice).
-        const hollow = mix(float(0.6), float(1.0), smoothstep(0.25, 0.75, churn.mul(0.65).add(streak.mul(0.35))));
+        const hollow = mix(float(0.6), float(1.0), smoothstep(0.25, 0.75, churn.mul(0.65).add(streak.mul(0.35))))
+            .toVar();
+        // In the boil the foam is a froth of bubbles, finer than the churn (faded out where a
+        // pixel spans many of them).
+        const froth = texture(tex.noise, P.xz.div(3.0).add(vec2(u.flowClock.mul(0.05), 0.0))).b;
+        const aaFroth = smoothstep(0.03, 0.12, fwidth(P.xz.x.div(3.0)).mul(32.0));
+        hollow.mulAssign(mix(float(1.0), froth.mul(0.4).add(0.78), inBoil.mul(float(1.0).sub(aaFroth))));
         const behind = clamp(dot(V, L), 0.0, 1.0);
         const foamLight = sunLight.mul(lit.mul(0.42).add(0.1)).add(u.fill.mul(1.2)).add(u.bounce.mul(0.3));
         const foamCol = vec3(...FOAM).mul(foamLight).mul(hollow).add(sunLight.mul(behind.mul(behind).mul(0.1)));
         // Behind the curtain, under the recess the main tongue has worn, the boil lies in the
         // curtain's shadow: lit white, the ribbon's straight back edge read as a hard line once
         // the flood had lifted it over the spray.
-        const recess = mix(float(0.4), float(1.0), smoothstep(S_LIP + 1.0, S_LIP + 6.5, s));
+        // (Darkest at the ribbon's own back edge, under the overhang, where nothing lights it.)
+        const recess = mix(float(0.2), float(1.0), smoothstep(S_LIP + 1.5, S_LIP + 8.5, s));
         const col = mix(water, foamCol, foam.mul(recess.mul(0.5).add(0.5))).mul(recess);
         return vec4(aerial(u, P, col), 1.0);
     })();
