@@ -519,6 +519,104 @@ export function bakeLattice(seed = 0x1a77, size = LATTICE_SIZE) {
     return data;
 }
 
+// ── The crust ─────────────────────────────────────────────────────────────────────
+
+/** The crust tile: texels a side, plates a side (coarse network), plates a side (fine network). */
+export const CRUST = Object.freeze({ size: 256, cells: 16, fine: 40 });
+
+/**
+ * Jittered points of a periodic Voronoi network, `n` × `n` cells over the unit tile, and for a
+ * point of the tile: the exact distance to the nearest border (in cells), the nearest cell's own
+ * value, and the distance to that cell's point (in cells).
+ */
+function voronoiNetwork(n, seed) {
+    const random = mulberry32(seed);
+    const px = new Float32Array(n * n);
+    const pz = new Float32Array(n * n);
+    const val = new Float32Array(n * n);
+    for (let i = 0; i < n * n; i++) {
+        px[i] = 0.12 + random() * 0.76;
+        pz[i] = 0.12 + random() * 0.76;
+        val[i] = random();
+    }
+    // The points stay inside the middle of their cells, so the 3 × 3 cells round a point hold
+    // its nearest point and every neighbour whose border can be the nearest.
+    const near = new Float64Array(18);
+    return (x, z, out) => {
+        // x, z in cells.
+        const cx = Math.floor(x);
+        const cz = Math.floor(z);
+        let best = 1e9;
+        let bx = 0;
+        let bz = 0;
+        let bv = 0;
+        let m = 0;
+        for (let dz = -1; dz <= 1; dz++) {
+            for (let dx = -1; dx <= 1; dx++) {
+                const gx = cx + dx;
+                const gz = cz + dz;
+                const k = (((gz % n) + n) % n) * n + (((gx % n) + n) % n);
+                const qx = gx + px[k];
+                const qz = gz + pz[k];
+                near[m++] = qx;
+                near[m++] = qz;
+                const d = (qx - x) * (qx - x) + (qz - z) * (qz - z);
+                if (d < best) {
+                    best = d;
+                    bx = qx;
+                    bz = qz;
+                    bv = val[k];
+                }
+            }
+        }
+        // The border with each neighbour lies halfway, square to the line between the points.
+        let border = 1e9;
+        for (let i = 0; i < m; i += 2) {
+            const qx = near[i];
+            const qz = near[i + 1];
+            const ex = qx - bx;
+            const ez = qz - bz;
+            const el = Math.hypot(ex, ez);
+            if (el < 1e-6) continue;
+            const d = ((x - (bx + qx) / 2) * ex + (z - (bz + qz) / 2) * ez) / -el;
+            if (d < border) border = d;
+        }
+        out.border = border;
+        out.value = bv;
+        out.centre = Math.sqrt(best);
+        return out;
+    };
+}
+
+/**
+ * The lava's crust: a tileable network of plates the shader drags downstream (RGBA8, mipmapped):
+ * R the distance to the nearest crack (cells × 2, so a plate's middle reads about 1), G each
+ * plate's own value (its crust's age), B the distance to the plate's centre (cells × 1.4), A the
+ * nearest crack of a finer network (cells × 2.5): the hairline cracks across a plate.
+ */
+export function bakeCrust(seed = 0xc2a5) {
+    const { size, cells, fine } = CRUST;
+    const coarse = voronoiNetwork(cells, seed);
+    const small = voronoiNetwork(fine, seed + 101);
+    const out = new Uint8Array(size * size * 4);
+    const a = { border: 0, value: 0, centre: 0 };
+    const b = { border: 0, value: 0, centre: 0 };
+    for (let j = 0; j < size; j++) {
+        for (let i = 0; i < size; i++) {
+            const u = (i + 0.5) / size;
+            const v = (j + 0.5) / size;
+            coarse(u * cells, v * cells, a);
+            small(u * fine, v * fine, b);
+            const o = (j * size + i) * 4;
+            out[o] = Math.round(clamp01(a.border * 2) * 255);
+            out[o + 1] = Math.round(a.value * 255);
+            out[o + 2] = Math.round(clamp01(a.centre * 1.4) * 255);
+            out[o + 3] = Math.round(clamp01(b.border * 2.5) * 255);
+        }
+    }
+    return out;
+}
+
 // ── The billow atlas ──────────────────────────────────────────────────────────────
 
 export const BILLOW = Object.freeze({ tile: 128, grid: 4 });

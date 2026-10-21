@@ -20,6 +20,7 @@ import {
     exp,
     float,
     floor,
+    length,
     max,
     mix,
     normalize,
@@ -40,8 +41,25 @@ import {
     BILLOW, aerial, lightningAt, noise3, pyBlackbody, wideGlowAt,
 } from './pyrestorm-tsl.js';
 
-/** Puff kinds (the shader's light recipe). */
-export const PUFF = Object.freeze({ ring: 2, surge: 3 });
+/** Puff kinds: a T-spin's vortex ring, the blast's surge, a lock's burst of ash out of the crater. */
+export const PUFF = Object.freeze({ ring: 2, surge: 3, burst: 4 });
+
+/**
+ * A puff's life by kind: its drag time (s), the shares of its life it fades in over and fades out
+ * from, its opacity, and the share of its life its glow cools over. A burst's puff is quick: it
+ * pops hot out of the crater, cools fast and thins into the column.
+ */
+const PUFF_LIFE = Object.freeze({
+    [PUFF.ring]: Object.freeze({
+        drag: 7, fadeIn: 0.08, fadeOut: 0.55, opacity: 0.9, cools: 0.75,
+    }),
+    [PUFF.surge]: Object.freeze({
+        drag: 5, fadeIn: 0.08, fadeOut: 0.55, opacity: 0.85, cools: 0.7,
+    }),
+    [PUFF.burst]: Object.freeze({
+        drag: 2.6, fadeIn: 0.03, fadeOut: 0.35, opacity: 0.85, cools: 0.4,
+    }),
+});
 
 /** Write a puff's body normal (normalised; straight up when it has no length) and its weight. */
 function setBody(st, o, x, y, z, weight) {
@@ -162,7 +180,11 @@ export class Smoke {
             // glow through (the fire is behind and below them), so no heap has a dark rim.
             const reach = exp(above.div(-800.0));
             const deep = mix(vec3(1.0, 0.45, 0.3), vec3(1.0, 1.0, 1.0), reach);
-            const burn = u.fountain.mul(u.activity).mul(reach.mul(0.95).add(0.05));
+            // The crater's fire lights the puffs round the crater, fading with distance from it.
+            const dCrater = length(P.xz.sub(vec2(CRATER.x, CRATER.z))).div(2400.0);
+            const nearCrater = float(1.0).div(dCrater.mul(dCrater).add(1.0));
+            const burn = u.fountain.add(u.burst.mul(1.3)).mul(u.activity).mul(reach.mul(0.95).add(0.05))
+                .mul(nearCrater);
             const fire = u.fireColour.mul(deep).mul(burn).mul(facing.mul(0.45).add(under.mul(0.35)).add(0.3)).mul(4.0);
             const glowThrough = u.fireColour.mul(deep).mul(burn).mul(float(1.0).sub(thick.mul(0.3))).mul(1.3);
             const lavaBelow = u.fireColour.mul(vec3(1.0, 0.7, 0.55)).mul(wideGlowAt(t, P.xz).mul(0.12).add(0.025))
@@ -249,8 +271,9 @@ export class Smoke {
                 continue;
             }
             const kind = ev[e + 10];
+            const L = PUFF_LIFE[kind] || PUFF_LIFE[PUFF.ring];
             // Drag: the puff slows as it spreads (distance = v·τ·(1 − e^(−age/τ))).
-            const tau = kind === PUFF.surge ? 5 : 7;
+            const tau = L.drag;
             const k = tau * (1 - Math.exp(-age / tau));
             st[o] = ev[e] + ev[e + 4] * k;
             st[o + 1] = ev[e + 1] + ev[e + 5] * k;
@@ -259,8 +282,8 @@ export class Smoke {
             const f = age / life;
             st[o + 4] = Math.floor(ev[e + 11]);
             st[o + 5] = ev[e + 11] * 7.1 + age * 0.05;
-            st[o + 6] = smooth(0, 0.08, f) * (1 - smooth(0.55, 1, f)) * (kind === PUFF.ring ? 0.9 : 0.85);
-            st[o + 7] = (ev[e + 11] % 1) * 2 * (1 - smooth(0, kind === PUFF.surge ? 0.7 : 0.75, f));
+            st[o + 6] = smooth(0, L.fadeIn, f) * (1 - smooth(L.fadeOut, 1, f)) * L.opacity;
+            st[o + 7] = (ev[e + 11] % 1) * 2 * (1 - smooth(0, L.cools, f));
             st[o + 8] = kind;
             st[o + 9] = kind === PUFF.ring ? 1.35 : 1.15;
             setBody(st, o, ev[e + 4], Math.hypot(ev[e + 4], ev[e + 6]) * 0.3, ev[e + 6], 0.45);
