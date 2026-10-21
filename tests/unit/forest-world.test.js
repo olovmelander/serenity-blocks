@@ -271,14 +271,14 @@ describe('Forest quality tiers', () => {
                 'motes', 'mist']) {
                 expect(Number.isInteger(tier[key]) && tier[key] > 0, `${name}.${key}`).toBe(true);
             }
-            for (const key of ['flowers', 'trail', 'lightMap', 'godrays']) {
+            for (const key of ['flowers', 'trail', 'lightMap', 'godrays', 'rays']) {
                 expect(Number.isInteger(tier[key]) && tier[key] >= 0, `${name}.${key}`).toBe(true);
             }
             expect(tier.foliage).toBeGreaterThan(0);
             expect(tier.foliage).toBeLessThanOrEqual(1);
             for (const key of ['limbs', 'stars', 'post']) expect(typeof tier[key], `${name}.${key}`).toBe('boolean');
             // The beams and the bloom live in the RenderPipeline: no pipeline, neither of them.
-            if (!tier.post) expect([tier.godrays, tier.godraysScale, tier.bloomScale]).toEqual([0, 0, 0]);
+            if (!tier.post) expect([tier.godrays, tier.godraysScale, tier.bloomScale, tier.rays]).toEqual([0, 0, 0, 0]);
             if (tier.godrays > 0) {
                 expect(tier.godraysScale).toBeGreaterThan(0);
                 expect(tier.godraysScale).toBeLessThanOrEqual(1);
@@ -1889,7 +1889,11 @@ describe('Forest world ownership', () => {
         // The lens is built over it like over any other forest.
         const { post, renderer } = createPost(quality, { light: world.light, scene, camera: world.camera });
         expect(post.getDiagnostics()).toEqual({
-            quality, disabled: !tier.post, useMRT: false, godrays: tier.post && tier.godrays > 0,
+            quality,
+            disabled: !tier.post,
+            useMRT: false,
+            godrays: tier.post && tier.godrays > 0,
+            rays: tier.post && tier.godrays > 0 && tier.rays > 0,
         });
         post.update(reactions.getFrame());
         if (post.pipeline) vi.spyOn(post.pipeline, 'render').mockImplementation(() => {});
@@ -1951,7 +1955,7 @@ describe('Forest post tier ownership', () => {
         expect(post.disabled).toBe(true);
         expect(post.pipeline ?? null).toBeNull();
         expect(post.getDiagnostics()).toEqual({
-            quality, disabled: true, useMRT: false, godrays: false,
+            quality, disabled: true, useMRT: false, godrays: false, rays: false,
         });
         // Building it rendered nothing.
         expect(renderer.render).not.toHaveBeenCalled();
@@ -1996,7 +2000,7 @@ describe('Forest post tier ownership', () => {
         expect(post.godraysNode.raymarchSteps.value).toBe(FOREST_TIERS.High.godrays);
         expect(post.godraysNode.resolutionScale).toBe(FOREST_TIERS.High.godraysScale);
         expect(post.getDiagnostics()).toEqual({
-            quality: 'High', disabled: false, useMRT: false, godrays: true,
+            quality: 'High', disabled: false, useMRT: false, godrays: true, rays: true,
         });
         // The beams read the moon's shadow map: one priming render of the scene builds it.
         expect(renderer.render).toHaveBeenCalledExactlyOnceWith(scene, camera);
@@ -2191,7 +2195,11 @@ describe('Forest post tier ownership', () => {
         const { post, renderer } = createPost('Medium', { light: world.light, scene, camera });
         expect(post.light).toBe(world.light);
         expect(post.getDiagnostics()).toEqual({
-            quality: 'Medium', disabled: false, useMRT: false, godrays: FOREST_TIERS.Medium.godrays > 0,
+            quality: 'Medium',
+            disabled: false,
+            useMRT: false,
+            godrays: FOREST_TIERS.Medium.godrays > 0,
+            rays: FOREST_TIERS.Medium.godrays > 0 && FOREST_TIERS.Medium.rays > 0,
         });
         expect(renderer.render.mock.calls.length).toBe(FOREST_TIERS.Medium.godrays > 0 ? 1 : 0);
         const reactions = eventfulReactions('Medium');

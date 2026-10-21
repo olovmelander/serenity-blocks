@@ -421,25 +421,46 @@ export function createArchitecture(u, plan, opts = {}) {
 
         // ── Compose the ice ──
         const tint = vec3(0.34, 0.72, 1.0);
-        const milky = float(1.0).sub(exp(thick.mul(-0.4))).mul(wisp.b.mul(0.7).add(0.4));
-        const scatter = heart.mul(through.mul(2.4).add(wrap.mul(0.16)))
-            .add(moon.mul(itSaturate(dot(Ns, moonDir).mul(0.7).add(0.3))).mul(0.2))
-            .add(sky.mul(0.8))
-            .add(well)
+        // (Clear ice scatters little: most of what it shows is what is behind it, darkened and
+        // turned blue, and the light caught on its fractures and edges. A uniform milky fill is
+        // what makes ice read as frosted plastic.)
+        const milky = float(1.0).sub(exp(thick.mul(-0.4))).mul(wisp.b.mul(0.7).add(0.4)).mul(0.62);
+        const scatter = heart.mul(through.mul(2.6).add(wrap.mul(0.12)))
+            .add(moon.mul(itSaturate(dot(Ns, moonDir).mul(0.7).add(0.3))).mul(0.12))
+            .add(sky.mul(0.28))
+            .add(well.mul(0.8))
             .mul(tint)
             .mul(milky);
         // Thin ice at the silhouette lets the most through.
         const rim = pow(float(1.0).sub(ndvS), 3.0);
         const edge = heart.mul(through.mul(1.6).add(0.1))
             .add(moon.mul(itSaturate(dot(Ns, moonDir).mul(0.5).add(0.5))).mul(0.42))
-            .add(sky.mul(1.6))
-            .add(well.mul(1.4))
+            .add(sky.mul(0.7))
+            .add(well.mul(1.1))
             .mul(tint)
             .mul(rim);
-        const body = behind.mul(absorb).add(scatter).add(edge);
-        const lit = body.add(scatter.mul(1.6).add(well.mul(tint).mul(1.5)).add(sky.mul(0.8)).mul(inner))
+        // The arrises: light trapped in the ice runs to a prism's edges and leaves there (where
+        // the face normal turns away from the piece's radial one), so every edge burns thin.
+        const turn = itSaturate(dot(N, Ns));
+        const arris = float(1.0).sub(smoothstep(0.93, 0.975, turn)).mul(smoothstep(0.55, 0.8, turn))
+            .mul(float(1.0).sub(step(0.5, N.y.abs())));
+        const arrisLight = heart.mul(through.mul(1.4).add(0.35))
+            .add(moon.mul(itSaturate(dot(N, moonDir).mul(0.6).add(0.4))).mul(0.5))
+            .add(sky.mul(0.9))
+            .add(well.mul(1.2))
+            .mul(vec3(0.62, 0.86, 1.0))
+            .mul(arris)
+            // (Chipped: an edge is never lit evenly down its length.)
+            .mul(u.noise(vec2(st.x.mul(0.9).add(info.y.mul(13.0)), st.y.mul(0.07))).g.mul(1.1).add(0.45));
+        const body = behind.mul(absorb).add(scatter).add(edge).add(arrisLight);
+        // (The fractures catch the light the fill no longer spreads: brighter, against a darker body.)
+        const lit = body.add(scatter.mul(2.2).add(well.mul(tint).mul(1.9)).add(sky.mul(1.1)).add(heart.mul(wrap.mul(0.2)).mul(tint))
+            .mul(inner))
             // The pulses light the ice from within: the fracture sheets most of all.
-            .add(pulse.mul(inner.mul(2.4).add(rim.mul(0.9)).add(milky.mul(0.25)).add(0.08))
+            // (Through the fractures and the edges, not as a fill: a front must not white out a
+            // near column, it must run through it.)
+            .add(pulse.mul(inner.mul(1.9).add(rim.mul(0.7)).add(arris.mul(1.2)).add(milky.mul(0.12))
+                .add(0.03))
                 .mul(vec3(0.75, 0.92, 1.0)))
             .toVar();
 
