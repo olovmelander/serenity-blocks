@@ -249,6 +249,7 @@ export class SerenityWarpWorld {
             rays: 0.2,
             blur: 0,
             bloomBoost: 0,
+            bloomEase: 0,
             exposure: 1,
             jump: 0,
             warp: 0,
@@ -1267,7 +1268,8 @@ export class SerenityWarpWorld {
         u.jump.value = phase;
         u.jumpClock.value = this.jumpClock;
         u.gateRadius.value = this.gateRadiusAt(t);
-        u.gateGain.value = 1 + this.warp * 0.8 + this.surge * 1.2 + this.flash * 1.5 + this.rimFlash * 0.4;
+        // The surge after a jump lasts seconds: a gate held twice as bright that long greyed the sky.
+        u.gateGain.value = 1 + this.warp * 0.8 + this.surge * 0.6 + this.flash * 1.5 + this.rimFlash * 0.4;
         u.rimFlash.value = Math.min(1, this.rimFlash);
         u.rimTint.value.set(this.rimTint[0], this.rimTint[1], this.rimTint[2]);
         const p = this._palette;
@@ -1317,9 +1319,11 @@ export class SerenityWarpWorld {
         post.flash = this.flash;
         post.flashTint = this.flashTint;
         post.kick = this.kick;
-        post.rays = hush ? 0.04 : Math.min(0.9, 0.22 + share * 0.35 + this.surge * 0.35 + this.flash * 0.3 + this.rimFlash * 0.1);
-        post.blur = calm ? 0 : Math.min(1, share * 0.4 + phase * 0.9 + this.kick * 0.1 + hush * 0.35);
-        post.bloomBoost = this.surge * 0.2 + this.flash * 0.3;
+        post.rays = hush ? 0.04 : Math.min(0.9, 0.22 + share * 0.14 + this.surge * 0.2 + this.flash * 0.3 + this.rimFlash * 0.1);
+        // In a jump the tunnel's own streaks carry the speed: the zoom blur only softens them.
+        post.blur = calm ? 0 : Math.min(1, share * 0.4 + phase * 0.45 + this.kick * 0.1 + hush * 0.35);
+        post.bloomBoost = this.surge * 0.1 + this.flash * 0.3;
+        post.bloomEase = Math.min(0.6, share * 0.38 + this.surge * 0.4);
         post.jump = phase;
         post.warp = this.warp;
         post.exposure = 1 / (1 + this.warp * 0.15 + this.surge * 0.4 + this.flash * 0.25 + phase * 0.3);

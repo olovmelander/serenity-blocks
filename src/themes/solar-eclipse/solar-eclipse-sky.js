@@ -31,6 +31,7 @@ import {
     cameraPosition,
     clamp,
     cos,
+    dot,
     exp,
     float,
     floor,
@@ -41,6 +42,7 @@ import {
     mix,
     normalize,
     positionWorld,
+    pow,
     sin,
     smoothstep,
     step,
@@ -50,10 +52,10 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    BRIGHT_POINTS, CLOUDS, DEG, RANGES, RIDGE_SPAN,
+    BRIGHT_POINTS, CLOUDS, CLOUDS_TOP, DEG, RANGES, RIDGE_SPAN, UMBRA, cloudRowSpan,
 } from './solar-eclipse-core.js';
 import {
-    crestU, noiseAt, seHash21, sized, sunPlane,
+    crestU, noiseAt, seGauss, seHash21, seLuma, sized, sunPlane,
 } from './solar-eclipse-tsl.js';
 import { drawSun } from './solar-eclipse-sun.js';
 import { bandsAt, glintAt, waterAt } from './solar-eclipse-mirror.js';
@@ -101,7 +103,10 @@ export function createSky({
             d.assign(w.look);
             wet.assign(1.0);
             mirror.assign(w.mirror);
-            salt.assign(w.salt);
+            // Where the water gives the sun back the crust lies sunk under the film: its ridges
+            // never draw veins across the black sun's reflection.
+            const sunk = smoothstep(0.986, 0.9975, dot(w.look, u.sunDir));
+            salt.assign(w.salt.mul(float(1.0).sub(sunk.mul(0.9))));
             banded.assign(bandsAt(env, w.g));
             If(u.glint.w.greaterThan(0.001), () => {
                 glint.assign(glintAt(env, view, w.n, w.g, w.foot));
@@ -113,9 +118,18 @@ export function createSky({
         const up = max(alt, 0.0);
 
         // ── The air at totality ──
-        const sky = mix(u.mid, u.zenith, smoothstep(0.1, 0.55, up)).toVar();
-        sky.addAssign(u.horizon.mul(exp(up.div(-0.1))));
-        sky.addAssign(u.glow.mul(exp(up.div(u.glowHeight).negate())));
+        // The lens does not stand in the middle of the moon's shadow: toward its nearest edge the
+        // band of light burns brighter and climbs higher, and under the sun the air is darkest.
+        const side = cos(az.sub(u.umbraAz)).toVar();
+        const bright = side.mul(UMBRA.lean).add(1.0).toVar();
+        const tall = side.mul(0.3).add(1.0).toVar();
+        const sky = mix(u.mid, u.zenith, smoothstep(0.03, 0.34, up)).toVar();
+        sky.addAssign(u.horizon.mul(exp(up.div(tall.mul(-0.085)))).mul(bright));
+        sky.addAssign(u.glow.mul(exp(up.div(u.glowHeight.mul(tall)).negate())).mul(bright));
+        // Where the warm band gives way to the dark, its light pales toward blue.
+        const pale = mix(vec3(seLuma(u.glow)), u.glow, 0.4).mul(vec3(0.75, 0.95, 1.25));
+        const belt = up.sub(u.glowHeight.mul(tall).mul(2.0)).div(u.glowHeight.mul(tall).mul(1.8));
+        sky.addAssign(pale.mul(seGauss(belt)).mul(bright.mul(0.2)));
         // The moment the diamond burns, daylight floods back into the air.
         sky.addAssign(mix(u.horizon.mul(1.6), vec3(0.09, 0.13, 0.22), smoothstep(0.0, 0.3, up)).mul(u.daylight));
 
@@ -156,55 +170,86 @@ export function createSky({
         const front = vec3(0.0).toVar();
         const cover = float(0.0).toVar();
         const face = vec3(0.0).toVar();
+        const spikes = vec3(0.0).toVar();
         If(plane.z.greaterThan(0.2), () => {
             drawSun({ u, noise, tier }, plane.xy, {
-                behind, cover, face, front,
+                behind, cover, face, front, spikes,
             });
         });
         sky.addAssign(behind);
         sky.assign(mix(sky, face, cover));
 
-        // ── The cloud deck low over the far shore ──
-        // Beyond the edge of the moon's shadow its clouds are still in sunlight and burn; nearer
-        // they are dark against the band of light behind them.
+        // ── The clouds: rows of heaped cloud low over the far shore, farthest first ──
+        // Each row is the face it turns to the lens, read in (bearing, height above its base), so
+        // its heaps keep their shape however low they stand. Beyond the moon's shadow a row is in
+        // sunlight and burns from the top down; nearer it is a dark body whose base the band of
+        // light all round lights from below.
         if (tier.clouds) {
-            If(alt.greaterThan(0.0012).and(alt.lessThan(CLOUDS.top)), () => {
-                const rise = max(d.y, 0.0015);
-                const q = vec2(d.x, d.z).div(rise).mul(CLOUDS.height).toVar();
-                const far = length(q);
-                const drift = vec2(u.time.mul(0.0042), u.time.mul(0.0011));
-                // Footprint of a pixel on the deck (km), for the level the noise is read at.
-                const footKm = far.mul(u.texel).div(rise);
-                const lodBig = clamp(log2(max(footKm.mul(0.04 * 256), 1.0)), 0.0, 6.0);
-                const lodFine = clamp(log2(max(footKm.mul(0.12 * 256), 1.0)), 0.0, 6.0);
-                const mass = noiseAt(noise, q.mul(vec2(0.026, 0.04)).add(drift).add(vec2(0.31, 0.17)), lodBig).r;
-                const tuftAt = q.mul(vec2(0.08, 0.12)).add(drift.mul(1.6)).add(vec2(0.62, 0.05));
-                const tuft = noiseAt(noise, tuftAt, lodFine).g;
-                const shape = mass.mul(0.72).add(tuft.mul(0.38));
-                // Broad gaps open the deck: whole reaches of the band stand clear.
-                const gaps = noiseAt(noise, q.mul(0.0075).add(drift.mul(0.4)).add(vec2(0.11, 0.83)), lodBig).b;
-                const fadeOut = float(1.0).sub(smoothstep(CLOUDS.top * 0.5, CLOUDS.top, alt));
-                const band = smoothstep(0.0012, 0.006, alt).mul(fadeOut);
-                // The deck never crosses the black sun: its disc stays the darkest thing in the sky.
-                const clear = smoothstep(1.08, 1.7, length(plane.xy));
-                const deck = smoothstep(CLOUDS.cover, CLOUDS.cover + 0.2, shape)
-                    .mul(smoothstep(0.28, 0.6, gaps))
-                    .mul(band)
-                    .mul(clear)
-                    .mul(CLOUDS.opacity)
-                    .toVar();
-                If(deck.greaterThan(0.002), () => {
-                    // Their thin edges glow more than their thick hearts.
-                    const thick = smoothstep(CLOUDS.cover + 0.05, CLOUDS.cover + 0.32, shape);
-                    const sunlit = smoothstep(CLOUDS.shadowEdge * 0.82, CLOUDS.shadowEdge * 1.3, far);
-                    const shade = u.ridge.mul(1.6).add(u.mid.mul(0.9)).add(u.horizon.mul(0.35));
-                    const burn = u.alpen.mul(u.alpenPower).mul(float(0.6).sub(thick.mul(0.3)))
-                        .add(u.glow.mul(0.14));
-                    const colour = mix(shade, burn, sunlit).toVar();
-                    // The farthest sink into the glow of the horizon.
-                    colour.assign(mix(colour, sky, smoothstep(140.0, 420.0, far).mul(0.75)));
-                    colour.addAssign(u.haze.mul(u.daylight.mul(0.8)));
-                    sky.assign(mix(sky, colour, deck));
+            If(alt.greaterThan(cloudRowSpan(CLOUDS.rows[0]).base - 0.004).and(alt.lessThan(CLOUDS_TOP)), () => {
+                // Shared by every row, so pinned here: a node first built inside one row's branch
+                // would be assigned there alone, and the other rows would read zero.
+                // The shadow ends nearest toward the bright side.
+                const edgeKm = float(1.0).sub(side.mul(UMBRA.lean)).mul(CLOUDS.shadowEdge).toVar();
+                // No cloud ever crosses the black sun: its disc stays the darkest thing in the sky.
+                const clear = smoothstep(1.04, 1.35, length(plane.xy)).toVar();
+                const airBehind = sky.toVar();
+                const shade = u.ridge.mul(1.8).add(u.mid.mul(0.8)).add(u.horizon.mul(0.16)).toVar();
+                CLOUDS.rows.forEach((row, k) => {
+                    const span = cloudRowSpan(row);
+                    If(alt.greaterThan(span.base - 0.003).and(alt.lessThan(span.top)), () => {
+                        // Noise units per radian: one heap is a cell of R's coarsest octave.
+                        const unit = row.lump * 4;
+                        const per = row.distance / unit;
+                        const lod = clamp(log2(max(u.texel.mul(per * 256), 1.0)), 0.0, 6.0);
+                        const x = az.mul(per).add(u.time.mul(row.wind / unit)).add(0.11 + k * 0.37);
+                        // Height above the row's base (km); the base wavers a little heap to heap.
+                        const waver = noiseAt(noise, vec2(x.mul(0.21), 0.13 + k * 0.29), lod).g.sub(0.5);
+                        const h = alt.mul(row.distance).sub(CLOUDS.base).sub(waver.mul(row.depth * 0.3)).toVar();
+                        // Read a little squashed: heaps a little wider than they are tall.
+                        const y = h.div(unit).mul(row.squash).add(k * 0.53);
+                        const mass = noiseAt(noise, vec2(x, y), lod).r;
+                        // A little higher in the heap: where it thins upward is a top, where it
+                        // thickens an underside.
+                        const above = noiseAt(noise, vec2(x, y.add(0.045)), lod).r;
+                        const tuftAt = vec2(x.mul(2.1).add(0.4), y.mul(2.1).sub(u.time.mul(0.0015)));
+                        const tuft = noiseAt(noise, tuftAt, clamp(lod.add(1.0), 0.0, 6.0)).b;
+                        const n = mass.mul(0.76).add(tuft.mul(0.26)).toVar();
+                        // Broad gaps along the row: whole reaches of the band stand clear.
+                        const gap = noiseAt(noise, vec2(x.mul(0.09).add(k * 0.71), 0.62), lod).b;
+                        const rise = clamp(h.div(row.depth), 0.0, 1.6).toVar();
+                        // A flat base and a heaped top: the threshold climbs with the height.
+                        const thr = pow(rise, 1.6).mul(0.26)
+                            .add(float(1.0).sub(smoothstep(0.25, 0.52, gap)).mul(0.3))
+                            .add(0.42 - (row.cover - 0.5) * 0.35)
+                            .toVar();
+                        const pxKm = u.texel.mul(row.distance);
+                        const inside = smoothstep(thr, thr.add(0.11), n);
+                        const ragged = h.add(tuft.sub(0.5).mul(row.depth * 0.1));
+                        const based = smoothstep(pxKm.mul(-1.2), pxKm.mul(1.2), ragged);
+                        const cloud = inside.mul(based).mul(clear).mul(CLOUDS.opacity).toVar();
+                        If(cloud.greaterThan(0.002), () => {
+                            const thick = smoothstep(thr, thr.add(0.24), n);
+                            const turn = clamp(mass.sub(above).mul(22.0), -1.0, 1.0);
+                            const top = smoothstep(0.0, 0.7, turn);
+                            const bottom = smoothstep(0.0, 0.7, turn.negate()).mul(0.7).add(0.3);
+                            const lit = smoothstep(edgeKm.mul(0.85), edgeKm.mul(1.18), float(row.distance));
+                            // In sunlight: lit from above, the tops brightest; the creases take
+                            // the cool light of the sky, not a darker orange.
+                            const sunward = top.mul(0.6).add(clamp(rise, 0.0, 1.0).mul(0.4)).toVar();
+                            const crease = u.horizon.mul(0.7).add(u.mid.mul(1.4)).add(u.glow.mul(0.05));
+                            const burn = mix(crease, u.alpen.mul(u.alpenPower).mul(0.85), sunward)
+                                .mul(float(1.0).sub(thick.mul(0.2)));
+                            // In the shadow: a dark body, its undersides lit from below by the band
+                            // of light all round.
+                            const under = u.glow.mul(0.2).mul(bottom).mul(exp(max(h, 0.0).div(-row.depth * 0.35)));
+                            const colour = mix(shade.mul(top.mul(0.3).add(0.85)).add(under), burn, lit).toVar();
+                            // Thin cloud lets the light behind it through.
+                            colour.assign(mix(colour, airBehind, thick.oneMinus().mul(0.35)));
+                            colour.assign(mix(colour, airBehind, row.aerial));
+                            colour.addAssign(u.haze.mul(u.daylight.mul(0.8)));
+                            sky.assign(mix(sky, colour, cloud));
+                        });
+                    });
                 });
             });
         }
@@ -264,8 +309,10 @@ export function createSky({
             }
         });
 
-        // Glare sits on the lens, in front of everything.
+        // Glare sits on the lens, in front of everything; the starburst is the lens's own, so
+        // the mirror never shows it.
         sky.addAssign(front);
+        sky.addAssign(spikes.mul(float(1.0).sub(wet)));
 
         // ── The water's own light ──
         If(wet.greaterThan(0.5), () => {
@@ -280,6 +327,10 @@ export function createSky({
             sky.assign(sky.mul(mirror).add(film));
             sky.assign(mix(sky, ambient.mul(0.95), salt));
             sky.addAssign(vec3(1.0, 0.93, 0.8).mul(glint).mul(float(1.0).sub(salt)));
+            // A breath of mist lies on the far water, lit by the band of light all round.
+            const lying = exp(view.y.div(0.011)).mul(0.55).add(exp(view.y.div(0.003)).mul(0.45));
+            const mist = mix(u.haze, u.glow, 0.3).mul(bright).mul(0.32);
+            sky.assign(mix(sky, sky.add(mist), lying));
         });
         return vec4(sky, 1.0);
     })();

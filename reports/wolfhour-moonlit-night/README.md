@@ -89,6 +89,9 @@ reactions in the new palette).
   - [wolf-moments.png](wolf-moments.png) (the pounce in four frames, the shake, the play bow, a
     look at you, lying, a yawn, the howl) and [wolf-moments-2.png](wolf-moments-2.png) (the scout
     looking at you and trotting away, the far wolf lying down).
+- **Second pass** ([../wolfhour-wolves-alive/](../wolfhour-wolves-alive/README.md)): the rig in three
+  dimensions (wolves turn round instead of flipping), continuous posture, more actions, the
+  scout's lookout, blinking and breath, and the pops fixed.
 - **The warm accent** (`wolfhour-hut.js`): a herder's hut low on the left-hand spur, a snowy roof
   line, a firelit window, firelight spreading into the mist in front of it, a thread of smoke. Its
   flicker is slow and a few percent deep (a test keeps it under 14 %).
