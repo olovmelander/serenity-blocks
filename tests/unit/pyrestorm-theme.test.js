@@ -23,6 +23,7 @@ import { PYRESTORM_TETROMINOS } from '../../src/themes/pyrestorm/pyrestorm-tetro
 import { themePieceColor } from '../../src/themes/pyrestorm/pyrestorm-director.js';
 import { REST_RIG, fovForAspect } from '../../src/themes/pyrestorm/pyrestorm-world.js';
 import { POST_LOOK } from '../../src/themes/pyrestorm/pyrestorm-post.js';
+import { sceneSamples } from '../../src/themes/shared/scene-antialias.js';
 import { THEME_REGISTRY, getThemeMeta, resolveThemeId } from '../../src/themes/theme-registry.js';
 import { THEME_URL_PARAMETERS } from '../../src/ui/url-parameters/theme-parameters.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
@@ -658,7 +659,9 @@ describe('Pyrestorm theme: one node renderer on both backends', () => {
         expect(theme.post).toBe(mocks.posts[0]);
         expect(theme.post).toMatchObject({ renderer: theme.renderer, scene: theme.scene, camera: theme.camera });
         // (This post takes no noise texture: its grain is hashed.)
-        expect(theme.post.params).toEqual({ look: POST_LOOK.High, falseColor: false });
+        expect(theme.post.params).toEqual({
+            look: POST_LOOK.High, falseColor: false, samples: sceneSamples('High', theme.getAntialiasEnabled()),
+        });
         // The world paints into no target of its own: it is never handed the renderer.
         expect(theme.world.options).not.toHaveProperty('renderer');
         expect(theme.passThrough).toBeNull();

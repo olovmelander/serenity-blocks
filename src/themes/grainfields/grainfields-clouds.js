@@ -61,18 +61,43 @@ const SIGMA_SUN = 0.0034;
 export const cloudDepth = (u) => mix(float(CLOUD_DEPTH.broken), float(CLOUD_DEPTH.storm), smoothstep(0.4, 0.95, u.cover));
 
 /**
- * The cloud's thickness at a point of the deck plane (0 clear .. 1 the layer's full depth): the
- * deck's cover (with a soft margin) heaped into heads. Returns { thick, lump }.
+ * Billows on a heap's edge: how deep the finer lumps (CLOUD_BILLOW.size metres across) bite into
+ * a thin margin, and how far in from the edge they reach (as thickness).
  */
-export function cloudThickness(u, noise, xz) {
-    const c = deckCover(u, noise, xz, { edge: 2.6 });
+export const CLOUD_BILLOW = Object.freeze({ size: 6400, bite: 0.42, reach: 0.8 });
+/** The deck cover's margin as the volume reads it (deckCover's `edge`): soft, but not a blur. */
+export const CLOUD_EDGE = 1.6;
+/**
+ * How crisp a heap's edge is drawn by the march's stride (metres between its samples): fully
+ * below `near`, soft beyond `far`; `margin` the density's ramp (as thickness) crisp and soft.
+ */
+export const CLOUD_CRISP = Object.freeze({ near: 220, far: 700, margin: Object.freeze([0.16, 0.3]) });
+
+/**
+ * The cloud's thickness at a point of the deck plane (0 clear .. 1 the layer's full depth): the
+ * deck's cover (with a soft margin) heaped into heads. Returns { thick, lump }. `billows` (a
+ * node, 0..1): how far the heads' edges are broken into rounded lumps (the view's samples, less
+ * where the march's steps are too long to see them; the sun's rays through the cloud do not need
+ * them).
+ */
+export function cloudThickness(u, noise, xz, { billows = null } = {}) {
+    const c = deckCover(u, noise, xz, { edge: CLOUD_EDGE });
     const q = deckPoint(u, noise, xz);
     const heads = float(1.0).sub(smoothstep(0.06, 0.95, gfCells(q.div(1500.0)).x));
     const lump = texture(noise, q.div(3300.0).add(vec2(0.37, 0.61))).b;
     const shape = heads.mul(0.6).add(lump.mul(0.4));
     // Where the deck is solid it is one deep mass, deeper under the heads and thinner along the
     // seams between them; where it breaks it parts into separate heads.
-    const thick = c.mul(shape.mul(0.75).add(0.42)).sub(float(1.0).sub(c).mul(float(1.0).sub(shape)).mul(0.3));
+    const thick = c.mul(shape.mul(0.75).add(0.42)).sub(float(1.0).sub(c).mul(float(1.0).sub(shape)).mul(0.3)).toVar();
+    if (billows) {
+        // A cumulus' margin is lumps on lumps, not a soft blur: the finer billows bite the thin
+        // edge away in rounded bays and leave the heart whole.
+        const B = CLOUD_BILLOW;
+        const billow = texture(noise, q.div(B.size).add(vec2(0.71, 0.13))).b;
+        const margin = float(1.0).sub(smoothstep(0.05, B.reach, thick));
+        thick.subAssign(float(1.0).sub(billow).mul(B.bite).mul(margin)
+            .mul(billows));
+    }
     return { thick: clamp(thick, 0.0, 1.0), lump };
 }
 
@@ -121,6 +146,10 @@ export function createCloudMarch(u, t, { steps = 18, scale = 0.5 } = {}) {
             const near = float(DECK.base).sub(u.eye.y).div(dir.y).toVar();
             const span = min(depth.div(dir.y), float(CLOUD_RANGE)).toVar();
             const stride = span.div(float(u.cloudSteps)).toVar();
+            // Crisp edges and billows only where the steps are short enough to draw them: steps a
+            // kilometre long through a sharp edge band into stripes (the far deck stays soft).
+            const crisp = float(1.0).sub(smoothstep(CLOUD_CRISP.near, CLOUD_CRISP.far, stride)).toVar();
+            const margin = mix(float(CLOUD_CRISP.margin[1]), float(CLOUD_CRISP.margin[0]), crisp).toVar();
             const reach = near.add(stride.mul(interleavedGradientNoise(screenCoordinate.xy))).toVar();
             // The light that reaches the layer: the sun by day; at dusk the afterglow from under the
             // horizon (it lights the bases); never quite level.
@@ -139,9 +168,10 @@ export function createCloudMarch(u, t, { steps = 18, scale = 0.5 } = {}) {
                 });
                 const P = u.eye.add(dir.mul(reach)).toVar();
                 const h = P.y.sub(DECK.base).div(depth).toVar();
-                const cloud = cloudThickness(u, t.noise, P.xz);
-                // Inside under the heap's top (its crown lumpy), above a soft flat base.
-                const dens = smoothstep(0.0, 0.3, cloud.thick.sub(h.mul(cloud.lump.mul(0.3).add(0.85))))
+                const cloud = cloudThickness(u, t.noise, P.xz, { billows: crisp });
+                // Inside under the heap's top (its crown lumpy), above a soft flat base; the margin a
+                // few tens of metres deep where the steps can see it, so a heap has an edge.
+                const dens = smoothstep(0.0, margin, cloud.thick.sub(h.mul(cloud.lump.mul(0.3).add(0.85))))
                     .mul(smoothstep(-0.04, 0.08, h)).toVar();
                 If(dens.greaterThan(0.004), () => {
                     // Toward the light: the layer half-way along its ray through what is left of the

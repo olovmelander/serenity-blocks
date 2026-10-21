@@ -21,7 +21,7 @@ import {
 } from './grainfields-hours.js';
 import { tierFor } from './grainfields-quality.js';
 import {
-    PATH, PATH_POINTS, flowerWidth, grainSites, groundHeight, pathDistance, treeSites,
+    CLOSE_STAND, PATH, PATH_POINTS, flowerWidth, grainSites, groundHeight, pathDistance, treeSites,
 } from './grainfields-plan.js';
 import { createNoiseTexture, createUniforms, deckThreshold } from './grainfields-tsl.js';
 import { createLand, fanSteps } from './grainfields-land.js';
@@ -32,6 +32,7 @@ import { disposeGrainfieldsAssets, loadGrainfieldsAssets } from './grainfields-a
 import { createGrain } from './grainfields-grain.js';
 import { createBeams } from './grainfields-beams.js';
 import { createMotes } from './grainfields-motes.js';
+import { createLensEars } from './grainfields-lens.js';
 import { createFort } from './grainfields-fort.js';
 import { createGeese } from './grainfields-geese.js';
 import { createHerd } from './grainfields-herd.js';
@@ -40,7 +41,7 @@ import { createTrample } from './grainfields-trample.js';
 import { GrainfieldsReactions } from './grainfields-reactions.js';
 import { cardUnion, fallbackLayout } from './grainfields-composition.js';
 
-export const GRAINFIELDS_PARTS = Object.freeze(['grain', 'land', 'lapporten', 'fort', 'trees', 'herd', 'geese', 'sky', 'beams', 'motes']);
+export const GRAINFIELDS_PARTS = Object.freeze(['grain', 'land', 'lapporten', 'fort', 'trees', 'herd', 'geese', 'sky', 'beams', 'motes', 'lens']);
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
 export const fovForAspect = (aspect) => rigFor(aspect).fov;
 export const PIECE_LINEAR = PIECE_COLORS.map((c) => hexToLinear(c));
@@ -80,6 +81,25 @@ const RAY_LANDINGS = Object.freeze([
 /** The gusts in the grain travel along the wind at this speed (metres per second). */
 const GUST_SPEED = 7.5;
 
+/**
+ * How far the sun's own gap swings off the eye's line under a heavy deck (shares of its radius):
+ * `rest` its mean, `sway` and `flicker` two slow swells over it (their rates per second of
+ * clock), `turn` how fast the side it swings to goes round. Its clear heart is about a third of
+ * the radius and its torn edge reaches about the radius. Both swells start at their least, so a
+ * run opens with the field in the sun and the storm's shade sweeps in over the first half-minute.
+ */
+export const SUN_GAP_SWING = Object.freeze({
+    rest: 0.5, sway: 0.32, swayRate: 0.043, flicker: 0.14, flickerRate: 0.11, turn: 0.017,
+});
+
+/** The sun's gap's swing off the eye's line (a share of its radius) for the clock and the deck. */
+export function sunGapSwing(time, cover, breaking = 0) {
+    const S = SUN_GAP_SWING;
+    const storm = smooth(0.6, 0.85, cover) * (1 - clamp(breaking, 0, 1));
+    const swell = S.rest - S.sway * Math.cos(time * S.swayRate) - S.flicker * Math.cos(time * S.flickerRate);
+    return storm * Math.max(0, swell);
+}
+
 /** Everything heavy a world needs before its scene objects: the land's mesh data. */
 function* prepareSteps(quality) {
     const tier = tierFor(quality);
@@ -94,8 +114,19 @@ function* prepareSteps(quality) {
     const far = grainSites({
         count: grain.far, near: grain.nearReach * 0.92, far: grain.farReach, seed: 0x6a7f,
     });
+    // The clearing round the eye, planted for the portrait lens (drawn only under it).
+    const close = grainSites({
+        count: Math.round(grain.near * CLOSE_STAND.share),
+        near: CLOSE_STAND.near,
+        far: CLOSE_STAND.far,
+        knee: CLOSE_STAND.far,
+        bearings: CLOSE_STAND.bearings,
+        bank: false,
+        fade: false,
+        seed: 0x6a7d,
+    });
     return {
-        quality, fan, trees, grain: { near, far },
+        quality, fan, trees, grain: { near, far, close },
     };
 }
 
@@ -243,6 +274,8 @@ export class GrainfieldsWorld {
         this.addPart('sky', createSky(u, t, tier));
         this.addPart('beams', createBeams(u, t, this.reactions));
         this.addPart('motes', createMotes(u, t, tier.motes));
+        // The ears by the lens: nearer than it can focus, soft in the bottom corners.
+        this.addPart('lens', createLensEars(u, t, { count: tier.lens }));
         this.scene.add(this.root);
         return this;
     }
@@ -302,6 +335,8 @@ export class GrainfieldsWorld {
         this.viewportHeight = Math.max(1, height);
         if (!this.layoutLive) this.layout = fallbackLayout(width, height);
         this.parts.herd?.setView(this.herdView());
+        // Only the portrait lens looks down into the clearing round the eye.
+        this.parts.grain?.setClose?.(rigFor(this.aspect) === RIG.portrait);
     }
 
     setLayout(rects, aspect) {
@@ -579,6 +614,9 @@ export class GrainfieldsWorld {
         // stand apart), not a thinner veil over everything.
         u.cover.value = clamp(L.cover + this.dusk * 0.25 - 0.5 * this.reactions.breaking(time), 0.05, 0.97);
         u.deckLo.value.set(deckThreshold(u.cover.value), deckThreshold(0.975));
+        // Rain hangs under the storm's core while the deck is heavy; a chain breaking the storm
+        // stops it, the storm closing at game over brings it back.
+        u.rain.value = smooth(0.78, 0.92, u.cover.value);
         // The events: gaps, trails, pulses, the storm's break, the tear, the flare, a clear sky.
         const fx = this.reactions.writeUniforms(u, time);
         this.fx = fx;
@@ -596,10 +634,17 @@ export class GrainfieldsWorld {
         // the deck's shade, so the shafts of the other gaps stand out against it.
         const wanderX = 70 * Math.sin(time * 0.023 + 0.4) + 30 * Math.sin(time * 0.061);
         const wanderZ = 60 * Math.sin(time * 0.017 + 1.9) + 25 * Math.sin(time * 0.047 + 0.8);
+        const gapRadius = 600 + 90 * Math.sin(time * 0.021);
+        // At the storm break the gap swings off the eye's line and back (SUN_GAP_SWING): the fields
+        // round the eye stand now in its clear heart, now in its torn edge (sun and shade in patches
+        // running with the deck), now and then in the deck's shade, where the locks' pools of sun
+        // stand out. A lighter deck, or a chain breaking the storm, holds it on the eye.
+        const swing = sunGapSwing(time, L.cover, this.breakShown) * gapRadius;
+        const turn = time * SUN_GAP_SWING.turn + 0.9;
         u.sunGap.value.set(
-            EYE.x + L.dir[0] * lift + wanderX,
-            EYE.z + L.dir[2] * lift + wanderZ,
-            600 + 90 * Math.sin(time * 0.021),
+            EYE.x + L.dir[0] * lift + wanderX + Math.cos(turn) * swing,
+            EYE.z + L.dir[2] * lift + wanderZ + Math.sin(turn) * swing,
+            gapRadius,
             1,
         );
         // The storm's core lies out along the sun's bearing while the deck is heavy (the storm break):
@@ -663,7 +708,9 @@ export class GrainfieldsWorld {
         // A clear sky lights all the air at once: hold the veil back so the gate stays crisp.
         post.air = (1 + 0.1 * fx.breaking + 0.2 * fx.tear) * (1 - 0.6 * fx.clearSky);
         post.bloomBoost = 0.25 * fx.breaking + 0.7 * fx.flare;
-        post.flash = 0.45 * fx.flare;
+        // The flash is added after the exposure: scaled with it, it stays the same share of the
+        // picture in a darker-exposed hour (never stronger than its old 0.45).
+        post.flash = 0.45 * fx.flare * Math.min(1, L.exposure / 0.92);
         post.flashColour = L.glow;
     }
 
