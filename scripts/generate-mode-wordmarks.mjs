@@ -15,6 +15,7 @@ const glyphs = {
     E: [76, 'M76 0H10Q0 0 0 10V90Q0 100 10 100H76V78H22V61H65V39H22V22H76Z'],
     F: [76, 'M0 100V10Q0 0 10 0H76V22H22V42H65V64H22V100Z'],
     G: [82, 'M82 0V22H33Q22 22 22 34V66Q22 78 33 78H60V61H43V40H82V100H30Q0 100 0 70V30Q0 0 30 0Z'],
+    H: [82, 'M0 0H22V39H60V0H82V100H60V61H22V100H0Z'],
     I: [22, 'M0 0H22V100H0Z'],
     L: [70, 'M0 0H22V78H70V100H10Q0 100 0 90Z'],
     M: [102, 'M0 100V0H25L51 43L77 0H102V100H80V39L51 83L22 39V100Z'],
@@ -69,13 +70,18 @@ const modes = [
     ['serenity', 'Serenity', ['SERENITY']],
     ['odyssey', 'Odyssey', ['ODYSSEY']],
     ['stillfall', 'Stillfall', ['STILLFALL']],
+    ['hale-sessions', 'Hale Sessions', ['HALE', 'SESSIONS']],
 ];
+
+// A short row is scaled up to the longest one, but no further than LOCAL over VERSUS (the
+// widest step any mode needed): HALE over SESSIONS would otherwise stand nearly twice as tall.
+const MAX_ROW_SCALE = 1.26;
 
 for (const [id, label, rows] of modes) {
     const width = Math.max(...rows.map(widthOf));
     let y = 4;
     const groups = rows.map((row, index) => {
-        const scale = width / widthOf(row);
+        const scale = Math.min(width / widthOf(row), MAX_ROW_SCALE);
         const fill = rows.length > 1 && index === 0 ? '#fff6e9' : 'url(#spectrum)';
         const group = `    <g transform="translate(0 ${y}) scale(${scale})" fill="${fill}">\n${rowPaths(row)}\n    </g>`;
         y += 100 * scale + 24;

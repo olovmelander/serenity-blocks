@@ -58,12 +58,15 @@ polar coordinates about the pole, so the sky's turning and a star's trail are on
   direction; a pixel below it meets the water, is bent by the water's slope there and reads the
   night in the mirrored direction, so the lake is the same function as the sky and costs the
   same. The Milky Way is a handful of reads of the noise texture in the galaxy's own
-  coordinates (the disc and its bulge, soft star clouds, dust lanes that redden what they
-  cover, emission knots), plus the **star powder**: two grids of cells with at most one
-  Gaussian point each, more of them where the band is bright. The points are analytic, so
-  they neither blur nor crawl as the sky turns. The air of the hour, the banded airglow, the
-  two crests of hills, the lamps on the far shore and their paths on the water, the rings'
-  light and a fireball's light are closed-form.
+  coordinates (the disc and its bulge, crowded star clouds, dust that reddens what it covers,
+  emission knots), plus the **star powder**: two grids of cells with at most one Gaussian
+  point each, more of them where the band is crowded. The points are analytic, so they neither
+  blur nor crawl as the sky turns. The dust is an optical depth (second pass, below). The air
+  of the hour, the banded airglow, the zodiacal light, the town's glow, the two crests of
+  hills and the woods on the near one, the mist on the water, the lamps on the far shore and
+  their paths on the water, the rings' light and a fireball's light are closed-form. The
+  dust, the horizon (hills, woods, mist) and the star powder are read only inside branches on
+  where they can be (galactic latitude, altitude, the band's density).
 - **`starlight-stars.js`** — the field: every star is an instanced strip laid along its own
   circle round the pole, from where it stands back to where it stood `exposure` radians ago,
   shaded as a capsule with a bright head. With the shutter closed the same instances are drawn
@@ -107,8 +110,9 @@ model.
 
 Every tier keeps the whole picture and every event (`starlight-quality.js`). Lower tiers draw
 fewer stars (4,000 at Minimal, 30,000 at High, 56,000 at Extreme) with fewer quads along a
-trail, mirror fewer of them, and drop the star powder, the airglow's bands, the water's fine
-ripples and bloom.
+trail, mirror fewer of them, and drop the star powder, the dust's frayed edges and threads
+(Medium and up), the airglow's bands and the mist's curls, the water's fine ripples and bloom.
+The mist, the woods, the zodiacal light and the town's glow are on every tier.
 
 ## Reproduce
 
@@ -187,7 +191,106 @@ Not done: no perf-lane (ADR-0016) reading; nothing on a real phone; the theme wa
 person for a full session, and not in local multiplayer, Infinity, the meditation mode or
 Odyssey (their layouts were not captured).
 
+## Second pass (2026-10-21): the air between
+
+Done on `feature/starlight-atmosphere`. The first pass's picture held, but its Milky Way read
+as a grey haze with dust like cut-out cotton, its star powder as salt over everything, and the
+lake as a copy of the sky. Nothing about the events changed.
+
+- **The dust is an optical depth.** It was a narrow smoothstep of fBm (a cut-out, faceted by
+  the magnified texel grid); now the band's light is multiplied by `exp(−τ · (1, 1.2, 1.45))`,
+  so a lane darkens and reddens by how much dust lies in front of it and its edges are drawn
+  by the extinction itself. τ is broad dark clouds (a wide ramp, squared), the Great Rift (a
+  lane that wanders off the plane's line, wider at the core, its edges frayed by a fine read),
+  and threads drawn out 6:1 along the band: the ridge `(1 − |2n − 1|)³` of a smooth field
+  read at mip 2, switched on and off along its length by a second field, so they run on as
+  soft strands instead of closing into marbled loops or cracking like plaster.
+- **The texel grid is gone from every sharpened read.** `noiseSmooth()` (starlight-tsl.js)
+  reads the noise at a whole mip with the texel's weights eased (quintic): one fetch, and a
+  thresholded read draws curves, not the facets of the bilinear grid. The CPU has the same
+  reader and the same mip chain (`noiseLevels`, `sampleNoiseSmooth`, `dustTau` in
+  starlight-core.js); the catalogue thins its stars by the broad dust only (no thread or frayed
+  edge thins a star a viewer could count).
+- **The band's light.** A star cloud is where the broad field is high: brighter (the light
+  rises with its square) and a warm white between the disc's blue and the bulge's gold. The
+  emission knots are smaller, fewer and wisped by a finer read, each a cloud with a bright
+  heart.
+- **Grain, not salt.** The star powder's brightness is `h⁹`: nearly every point is faint grain,
+  a few are resolved stars; its coarse grid is 40 % as dense and has no floor. The
+  catalogue's faintest stars (fainter than 4.6) fall off faster still, so the bright ones stand
+  out of the fine dust.
+- **The mist on the water.** A low bank lies on the lake and in the far shore's hollows, in
+  front of the hills: thicker in places along the shore (a broad read that drifts), with its
+  own slow curls (Medium and up), lit by the hour's horizon glow and, round each lamp, by the
+  lamp. It veils the far hills' feet (their depth now reads), and the lake mirrors it with
+  everything else.
+- **Woods on the near crest.** A serrated edge of spruce in stretches: one tree a cell of
+  azimuth, each a narrow cone with its tiers of branches, anti-aliased over a pixel, read only
+  below the tallest tip. The stars set behind it (`woodsTop`), and the lake mirrors it.
+- **The zodiacal light, and a town.** The zodiacal hour has the phenomenon itself: a cone of
+  warm light leaning up off the right-hand horizon along the ecliptic, wide at its foot,
+  narrowing as it climbs (a new palette scalar, `zodiac`: faint in every dark hour, the hero
+  of its own). The right-hand lamps have a town behind them: a faint warm dome over the hills.
+- **The lake looks down into itself.** It gives back nearly all of the sky at a glance and
+  less as the eye looks down (`mirrorShare` 0.95 → 0.44), so the frame's foot shows the lake's
+  own dark and the reflection is no longer a copy.
+
+### Cost
+
+The dome is one full-screen pass, so everything new is read only where it can matter: the
+dust inside `|b| < 2.6 × reach` (most of the sky is outside it), the hills, woods and mist
+below an altitude of 0.16, the woods below the tallest tip, the star powder where the band
+is dense enough to hold a star, the nebulae near the plane. The branches are coherent over
+wide regions of sky.
+
+Measured as interleaved batches of frames (each one advancing three's node frame, so the scene
+pass really renders, then waiting on the GPU queue), old build (origin/main from a scratch
+worktree) against new, other sessions using the machine:
+
+- RTX 5080 Laptop, 2538 × 1440, High and Low: no difference the runs can resolve (about 2 ms
+  a frame either way, much of it CPU).
+- Radeon 610M (the integrated GPU, `force_low_power_gpu`), 1600 × 900: before the branches,
+  Low cost 44 % more and High 21 % more. With them, and the dust's threads moved to Medium and
+  up, Low measured within about 5 % of the old build and High level within noise. The iGPU
+  was shared with other sessions' work during the last runs (both builds' frames went from
+  15 to 37 ms between runs), so read these as ratios of interleaved runs, not as absolute
+  costs.
+- The catalogue costs about 25 ms more to generate at High (the dust reader's mip chain and
+  eased reads), within the run-to-run spread at Extreme.
+
+### Verified
+
+- Playground, WebGPU, High: rest, the six hours, a figure half drawn, a chain of seven, four
+  lines; Low and Minimal; the WebGL2 backend at High and at Low and Minimal. Console clean in
+  every shot.
+- The real game on a private dev server (WebGPU, High): Starlight starts, real hard drops send
+  their motes and rings, a four-line clear sends its shooting stars and the fireball, a chain
+  opens the shutter. Console clean (the one device "destroyed" line is the outgoing theme
+  releasing its renderer).
+- `scripts/validate-all-themes.mjs --theme starlight`: PASS, 0 lifecycle failures, 0 console
+  errors; its screenshot and result replace the old ones.
+- Unit tests: the four Starlight suites (144 tests, four new: the dust's optical depth, the CPU
+  mip chain, the eased reader, the zodiacal hour) and a new shader gate,
+  `tests/unit/starlight-shaders.test.js`: every material in the built night through the WGSL
+  and GLSL node builders at High, Low and Minimal, failing on a warning, an undeclared binding,
+  a var read where no assignment has certainly run (the branches' trap), equal smoothstep
+  edges, a NaN literal or a stringified node.
+
+Not done: nothing on a real phone; no perf-lane reading; no full session played by a person.
+
+![Before and after: deep night at rest, and first light](starlight-captures/atmosphere-before-after.jpg)
+
+![The band's dust and grain at full resolution; the far shore's mist, woods and lamps at deep night and at first light](starlight-captures/atmosphere-detail.jpg)
+
+![The six hours: deep night, airglow, first light, afterglow, zodiacal light, blue hour](starlight-captures/atmosphere-hours.jpg)
+
+![High, Low, Minimal, and High on the WebGL2 backend](starlight-captures/atmosphere-tiers.jpg)
+
+![In the real game: the start, hard drops, a four-line clear's shooting stars, a chain with the fireball](starlight-captures/atmosphere-ingame.jpg)
+
 ## Captured previews
+
+The first pass's frames (2026-10-11), before the second pass's air:
 
 ![In game: seven hard drops kindle the hunter; a clear; a chain; four lines](starlight-captures/desktop-ingame.jpg)
 

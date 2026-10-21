@@ -31,14 +31,17 @@ import {
     bakeNoise,
     bandLight,
     dustAt,
+    dustTau,
     figureOrder,
     generateCatalog,
     hexToLinear,
     horizontal,
     mulberry32,
+    noiseLevels,
     paletteAt,
     poleFrame,
     sampleNoise,
+    sampleNoiseSmooth,
     shutterFor,
     skyToGalactic,
     skyToWorld,
@@ -141,6 +144,30 @@ describe('Starlight core: the Milky Way', () => {
         expect(onPlane / 125).toBeGreaterThan(0.08);
         expect(onPlane / 125).toBeLessThan(0.85);
     });
+
+    it('is an optical depth: never negative, dark down the rift across the core, and its fine work only adds', () => {
+        for (let l = -3.1; l <= 3.1; l += 0.1) {
+            for (let b = -0.5; b <= 0.5; b += 0.02) {
+                const tau = dustTau(noise, l, b);
+                expect(Number.isFinite(tau)).toBe(true);
+                expect(tau).toBeGreaterThanOrEqual(0);
+            }
+        }
+        // The Great Rift splits the bulge: somewhere on its line through the core the dust takes
+        // most of the light.
+        let darkest = 0;
+        for (let b = -0.04; b <= 0.08; b += 0.002) darkest = Math.max(darkest, dustAt(noise, 0, b));
+        expect(darkest).toBeGreaterThan(0.85);
+        // Without the frayed edges and the threads (the catalogue's copy, the low tiers) the dust
+        // is still there, and the same along most of the plane.
+        let near = 0;
+        let count = 0;
+        for (let l = -3.1; l <= 3.1; l += 0.05) {
+            count += 1;
+            if (Math.abs(dustAt(noise, l, 0.03, false) - dustAt(noise, l, 0.03)) < 0.35) near += 1;
+        }
+        expect(near / count).toBeGreaterThan(0.6);
+    });
 });
 
 describe('Starlight core: the baked noise', () => {
@@ -164,6 +191,37 @@ describe('Starlight core: the baked noise', () => {
             expect(here).toBeLessThanOrEqual(1);
             expect(sampleNoise(noise, u + 1, v - 2, c)).toBeCloseTo(here, 9);
         });
+    });
+
+    it('builds its mip chain on the CPU as the mean of each 2 × 2 block, down to one texel', () => {
+        const levels = noiseLevels(noise);
+        expect(levels).toHaveLength(Math.log2(NOISE_SIZE) + 1);
+        expect(levels[0]).toBe(noise);
+        expect(noiseLevels(noise)).toBe(levels);
+        const n = NOISE_SIZE;
+        const at = (x, y, c) => noise[(y * n + x) * 4 + c];
+        [[0, 0, 0], [17, 40, 2], [127, 127, 3]].forEach(([x, y, c]) => {
+            const mean = (at(2 * x, 2 * y, c) + at(2 * x + 1, 2 * y, c) + at(2 * x, 2 * y + 1, c) + at(2 * x + 1, 2 * y + 1, c)) / 4;
+            expect(Math.abs(levels[1][(y * (n / 2) + x) * 4 + c] - mean)).toBeLessThanOrEqual(0.5);
+        });
+        expect(levels[levels.length - 1]).toHaveLength(4);
+    });
+
+    it('reads the eased sampler as the texel at a texel centre, and smoothly between', () => {
+        [[0, 3, 5, 1], [1, 10, 20, 2], [2, 7, 30, 3]].forEach(([level, x, y, c]) => {
+            const size = NOISE_SIZE >> level;
+            const texel = noiseLevels(noise)[level][(y * size + x) * 4 + c] / 255;
+            expect(sampleNoiseSmooth(noise, (x + 0.5) / size, (y + 0.5) / size, c, level)).toBeCloseTo(texel, 6);
+        });
+        // No step anywhere along a line across many texels: a small move is a small change.
+        let worst = 0;
+        let last = sampleNoiseSmooth(noise, 0, 0.37, 1, 1);
+        for (let i = 1; i <= 2000; i += 1) {
+            const here = sampleNoiseSmooth(noise, i / 2000, 0.37, 1, 1);
+            worst = Math.max(worst, Math.abs(here - last));
+            last = here;
+        }
+        expect(worst).toBeLessThan(0.06);
     });
 });
 
@@ -245,6 +303,11 @@ describe('Starlight core: the hours', () => {
             });
             PALETTE_SCALARS.forEach((key) => expect(p[key], `${p.name}.${key}`).toBeGreaterThan(0));
         });
+    });
+
+    it('gives the zodiacal light to its own hour above all the others', () => {
+        const zodiacal = PALETTES.find((p) => p.name === 'zodiacal');
+        PALETTES.filter((p) => p !== zodiacal).forEach((p) => expect(p.zodiac).toBeLessThan(zodiacal.zodiac / 2));
     });
 
     it('stands on the hour itself at a whole wheel position, and wraps', () => {
