@@ -79,18 +79,42 @@ export const SEA_TIME = 0.82;
  *   bearing    degrees off the line toward the eye (+z); positive leans toward +x
  * Their speeds follow from their lengths (deep water: c = √(g·L / 2π)), so long waves overtake
  * short ones as they do at sea. The steepness of every train is about the same (height · k ≈
- * 0.024): the sea is calm, and no train breaks.
+ * 0.033): the sea is calm, and no train breaks, but its long crests are seen.
  */
 export const SWELL = Object.freeze([
-    Object.freeze({ length: 62, height: 0.22, bearing: 8 }),
-    Object.freeze({ length: 41, height: 0.16, bearing: -14 }),
-    Object.freeze({ length: 27, height: 0.1, bearing: 21 }),
-    Object.freeze({ length: 17, height: 0.065, bearing: -6 }),
-    Object.freeze({ length: 11, height: 0.042, bearing: -31 }),
-    Object.freeze({ length: 7.3, height: 0.028, bearing: 33 }),
-    Object.freeze({ length: 4.6, height: 0.018, bearing: 12 }),
-    Object.freeze({ length: 2.9, height: 0.011, bearing: -22 }),
+    Object.freeze({ length: 62, height: 0.31, bearing: 8 }),
+    Object.freeze({ length: 41, height: 0.224, bearing: -14 }),
+    Object.freeze({ length: 27, height: 0.14, bearing: 21 }),
+    Object.freeze({ length: 17, height: 0.091, bearing: -6 }),
+    Object.freeze({ length: 11, height: 0.059, bearing: -31 }),
+    Object.freeze({ length: 7.3, height: 0.039, bearing: 33 }),
+    Object.freeze({ length: 4.6, height: 0.025, bearing: 12 }),
+    Object.freeze({ length: 2.9, height: 0.015, bearing: -22 }),
 ]);
+
+/**
+ * The wind's chop on the swell: short waves drawn in the water's light only (never in its shape),
+ * their headings spread round the wind's (which runs with the swell, toward the eye), lengths
+ * stepping down incommensurately (none shared with the swell), every one about equally steep. Their crests run across the view in
+ * long, broken lines, so the sea mirrors the sky in bands (the back of a crest the bright
+ * horizon, its front the sky higher up) instead of in blots. Each phase is bent by a slow warp
+ * of its own mix of two smooth fields (warpX, warpY, radians), so the trains never lock into a
+ * lattice of fish scales.
+ *   [dirX, dirZ, k (rad/m), omega (rad/s of the sea's clock), steepness (a·k), phase, warpX, warpY]
+ */
+export const CHOP_ROWS = Object.freeze([
+    [0, 9.1], [37, 7.0], [-29, 5.9], [61, 4.4], [-48, 3.7], [14, 3.1],
+    [-72, 2.4], [25, 1.95], [-15, 1.55], [52, 1.25], [-38, 1.0], [8, 0.8],
+    [-58, 0.66], [33, 0.55], [-21, 0.46], [69, 0.38],
+].map(([bearing, length], i) => {
+    const k = TAU / length;
+    const a = bearing * DEG;
+    const steep = 0.085 - 0.002 * i;
+    return Object.freeze([
+        Math.sin(a), Math.cos(a), k, Math.sqrt(GRAVITY * k), steep, i * 2.39,
+        Math.sin(i * 1.93 + 0.4) * 2.6, Math.cos(i * 2.71 + 1.1) * 2.6,
+    ]);
+}));
 
 /** How far a crest is drawn forward over its trough (Gerstner): 0 a sine, 1 a cusp. */
 export const SWELL_CHOP = 0.72;
