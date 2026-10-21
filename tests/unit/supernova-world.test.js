@@ -3,7 +3,7 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    LOOP_BEAT, REST_RIG, SUPERNOVA_PARTS, SURGE_COOL, SupernovaWorld, fovForAspect,
+    LOOP_BEAT, REST_RIG, SHELL_ORDER, SUPERNOVA_PARTS, SURGE_COOL, SupernovaWorld, fovForAspect, hueBlend, shellColour,
 } from '../../src/themes/supernova/supernova-world.js';
 import {
     BLAST_SHELLS, COLLAPSE_HOLD, CRITICAL_COMBO, DEG, FRONT_GAP, IMPACT_SLOTS, LOOP_SLOTS, NOVA_REARM, PALETTE_DRIFT,
@@ -2896,5 +2896,48 @@ describe('supernova effects: closed forms', () => {
         const leaned = loopPoint(mid, tangent, span, height, 0.5, 0.5);
         expect(Math.abs(leaned[1])).toBeGreaterThan(0.1);
         expect(loopPoint(mid, tangent, span, height, 0.5, 0)).toEqual(footA.map((v) => expect.closeTo(v, 12)));
+    });
+});
+
+describe('supernova world: the colours of the nebula', () => {
+    /** A linear colour's hue, 0..1. */
+    const hueOf = (c) => {
+        const max = Math.max(...c);
+        const d = max - Math.min(...c);
+        if (d < 1e-6) return 0;
+        let h;
+        if (max === c[0]) h = ((c[1] - c[2]) / d + 6) % 6;
+        else if (max === c[1]) h = (c[2] - c[0]) / d + 2;
+        else h = (c[0] - c[1]) / d + 4;
+        return h / 6;
+    };
+    const green = (c) => hueOf(c) > 0.21 && hueOf(c) < 0.44;
+    const close = (a, b) => a.every((v, i) => Math.abs(v - b[i]) < 1e-6);
+
+    it('layers the shells inside out through the gas colours: the second at the star, the first at the edge', () => {
+        for (const p of SUPERNOVA_PALETTES) {
+            expect(close(shellColour(p, 0, [0, 0, 0]), p[SHELL_ORDER[0]]), p.name).toBe(true);
+            expect(close(shellColour(p, SHELL_ORDER.length - 1, [0, 0, 0]), p[SHELL_ORDER[SHELL_ORDER.length - 1]]), p.name)
+                .toBe(true);
+            // Each colour is held round its own place before it turns into the next.
+            expect(close(shellColour(p, 1, [0, 0, 0]), p[SHELL_ORDER[1]]), p.name).toBe(true);
+        }
+    });
+
+    it('never turns a shell green on its way between two colours that are not', () => {
+        for (const p of SUPERNOVA_PALETTES) {
+            const greenEnds = SHELL_ORDER.some((key) => green(p[key]));
+            for (let place = 0; place <= 2; place += 0.02) {
+                const c = shellColour(p, place, [0, 0, 0]);
+                if (!greenEnds) expect(green(c), `${p.name} at ${place.toFixed(2)}`).toBe(false);
+                // Through hue, never through grey: the blend keeps its saturation.
+                const sat = (Math.max(...c) - Math.min(...c)) / Math.max(...c);
+                expect(sat, `${p.name} at ${place.toFixed(2)}`).toBeGreaterThan(0.4);
+            }
+        }
+        // Teal into gold the short way round would pass through green: the blend goes round the other way.
+        const teal = [0.05, 0.7, 0.95];
+        const gold = [1.0, 0.6, 0.12];
+        expect(green(hueBlend(teal, gold, 0.5, [0, 0, 0]))).toBe(false);
     });
 });
