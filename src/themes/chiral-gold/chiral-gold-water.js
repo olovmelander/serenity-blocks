@@ -20,6 +20,7 @@ import {
     abs,
     cameraPosition,
     clamp,
+    dot,
     exp,
     float,
     length,
@@ -46,7 +47,7 @@ import {
     cgBell,
     cgPart,
 } from './chiral-gold-tsl.js';
-import { hallSky } from './chiral-gold-atmosphere.js';
+import { beamFrame, beamRadius, hallSky } from './chiral-gold-atmosphere.js';
 
 /** Metres a second the clear's front runs out from the board, and the gap between its crests. */
 export const SURGE_SPEED = 13;
@@ -57,8 +58,10 @@ export const SURGE_GAP = 1.1;
  * @param {object} [opts]
  * @param {number} [opts.reflectionScale=0]  reflector resolution scale (0 = analytic glow)
  * @param {number} [opts.reflectionTaps=3]   taps down the smear (1 or 3)
+ * @param {boolean} [opts.beams=false]       the tier draws the beams: light their landing
  */
 export function createWater(u, opts = {}) {
+    const beams = opts.beams === true;
     const reflectionScale = opts.reflectionScale ?? 0;
     const taps = opts.reflectionTaps ?? 3;
     const reflection = reflectionScale > 0
@@ -86,20 +89,47 @@ export function createWater(u, opts = {}) {
         const nA = u.noise(st.mul(0.041).add(vec2(t.mul(0.0052), t.mul(0.0037)))).toVar();
         const nB = u.noise(st.mul(0.163).sub(vec2(t.mul(0.0093), t.mul(-0.0061)))).toVar();
         const swell = u.audio.x.mul(0.5).add(0.55);
-        const slope = nA.rg.sub(0.5).mul(0.13).add(nB.gb.sub(0.5).mul(0.03)).mul(swell)
+        // (Calmer than it was: a stronger swell broke the towers' reflections into heat haze.)
+        const slope = nA.rg.sub(0.5).mul(0.085).add(nB.gb.sub(0.5).mul(0.022)).mul(swell)
             .toVar();
 
-        // The towers stir it: slow rings leaving each foot.
+        // The towers stir it: slow rings leaving each foot, each crest catching the core's light,
+        // and a thread of light where the gold goes into the water. A beam lands round each foot:
+        // the water is not a perfect mirror, and lights a little where it falls.
         const light = vec3(0.0).toVar();
         for (let side = -1; side <= 1; side += 2) {
             const o = st.sub(vec2(u.helixX.mul(side), 0.0));
             const d = length(o);
             const flare = side < 0 ? u.flare.x : u.flare.y;
-            const stir = sin(d.mul(5.2).sub(t.mul(1.9))).mul(exp(d.mul(-0.5))).mul(0.045);
+            const phase = d.mul(5.2).sub(t.mul(1.9));
+            const reachOut = exp(d.mul(-0.55));
+            const stir = sin(phase).mul(reachOut).mul(0.026);
             slope.addAssign(o.div(max(d, 1e-3)).mul(stir));
+            const hot = u.heat.mul(0.6).add(0.4).add(flare.mul(0.6));
             // The core's light lying on the water round the foot.
             const pool = exp(d.mul(d).mul(-0.3)).mul(u.heat.mul(0.4).add(0.045).add(flare.mul(0.25)));
             light.addAssign(u.glow.mul(pool).mul(0.5));
+            // Crests of the stirred rings, fine lines of the core's light going out.
+            const crest = pow(sin(phase).mul(0.5).add(0.5), 14.0).mul(reachOut)
+                .mul(smoothstep(0.6, 1.4, d.div(u.helixScale)));
+            light.addAssign(u.glow.mul(crest).mul(hot).mul(0.05));
+            // Where the braid goes into the water (the ribbons wind at about one radius).
+            const rim = d.div(u.helixScale).sub(HELIX.radius * 0.95);
+            light.addAssign(u.glow.mul(exp(rim.mul(rim).mul(-60.0))).mul(hot).mul(0.06));
+            // The beam's landing: the oval where it meets the surface.
+            if (beams) {
+                const f = beamFrame(u, side);
+                const tWater = f.foot.y.negate().div(max(f.axis.y, 1e-3));
+                const centre = f.foot.add(f.axis.mul(tWater));
+                const fromCentre = vec3(p.x, 0.0, p.z).sub(centre);
+                const off = length(fromCentre.sub(f.axis.mul(dot(fromCentre, f.axis))));
+                const R = beamRadius(u, tWater.div(f.len));
+                const inBeam = float(1.0).sub(smoothstep(R.mul(0.15), R.mul(1.05), off));
+                const beamPower = u.heat.mul(0.45).add(0.5).add(flare.mul(0.45));
+                light.addAssign(mix(u.glow, vec3(1.0, 0.9, 0.76), 0.55).mul(inBeam).mul(beamPower)
+                    .mul(nA.b.mul(0.6).add(0.6))
+                    .mul(0.035));
+            }
         }
 
         // Rings dropped by the board.
@@ -155,7 +185,9 @@ export function createWater(u, opts = {}) {
             // Far water is seen edge-on: its slope shifts the mirror less on screen.
             const reach = float(1.0).div(dist.mul(0.07).add(1.0));
             const ruv = screenUV.flipX().add(vec2(slope.x, slope.y.mul(1.7)).mul(reach).mul(0.16)).toVar();
-            const lod = rough.mul(11.0).add(0.45);
+            // A floor of blur: the thin wires alias into dotted lines in the half-size mirror, and
+            // water never returns a perfectly sharp image.
+            const lod = rough.mul(11.0).add(1.25);
             if (taps >= 3) {
                 // Moving water drags a light down the line of sight.
                 const run = rough.mul(0.09).add(0.002);

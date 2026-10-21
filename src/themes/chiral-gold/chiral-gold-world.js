@@ -207,7 +207,7 @@ export class ChiralGoldWorld {
 
         add('sky', createBackdrop(u));
         const water = add('water', createWater(u, {
-            reflectionScale: tier.reflection, reflectionTaps: tier.reflectionTaps,
+            reflectionScale: tier.reflection, reflectionTaps: tier.reflectionTaps, beams: !!tier.shafts,
         }));
         if (water.reflectorTarget) this.root.add(water.reflectorTarget);
         this.reflection = water.reflection;
