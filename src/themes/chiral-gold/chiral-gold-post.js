@@ -75,7 +75,8 @@ export const POST_LOOK = Object.freeze({
 
 export const BLOOM_THRESHOLD = 1.6;
 export const BLOOM_KNEE = 0.7;
-export const BLOOM_RADIUS = 0.26;
+/** Tight: the glow hugs the hot gold. Wider, the towers' light veiled the whole frame brown. */
+export const BLOOM_RADIUS = 0.12;
 export const EXPOSURE = 1.0;
 
 /** Calm rects (board cards + HUD) the output pass evaluates. */
@@ -254,7 +255,7 @@ export class ChiralGoldPost {
             const L = cgLuma(T);
             // The dark is not grey: what little light there is in the shadows is amber.
             const lo = float(1.0).sub(smoothstep(0.0, 0.28, L));
-            T.assign(mix(T, T.mul(vec3(1.1, 0.98, 0.84)).add(vec3(0.0016, 0.0009, 0.0003)), lo.mul(0.55)));
+            T.assign(mix(T, T.mul(vec3(1.1, 0.98, 0.84)).add(vec3(0.0007, 0.0004, 0.0001)), lo.mul(0.55)));
             T.assign(mix(vec3(cgLuma(T)), T, 1.08));
             // Vignette, measured from the frame.
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
