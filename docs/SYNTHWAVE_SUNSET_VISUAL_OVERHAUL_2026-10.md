@@ -1,6 +1,8 @@
 # Synthwave Sunset — the pleasure pier (visual overhaul, 2026-10-20)
 
-**Status: shipped (branch `feature/synthwave-sunset-overhaul`, merged to `main` 2026-10-20). A
+**Status: shipped (branch `feature/synthwave-sunset-overhaul`, merged to `main` 2026-10-20; a
+second pass on the air, the shore and the evening, `feature/synthwave-sunset-second-pass`,
+2026-10-21: see [Second pass](#second-pass-2026-10-21-the-air-the-shore-the-evening)). A
 record of what was built and how it was checked — not a backlog.** Replaces the outrun picture (a slit sun behind wireframe mountains, flat box
 buildings, palm silhouettes and a scrolling neon grid), which showed nearly the same thing as Neon
 Dusk, the orb before it, with a retro seaside at dusk. The id, the name, the song and the Odyssey
@@ -111,6 +113,7 @@ before.
 | `-promenade.js` | Seawall, railing, lamps, the headland ridge; mounts the hotels and adds their beacons to the lamp bulbs. |
 | `-hotels.js` | The beachfront: streamline, resort and deco hotels, shops in the gaps and a row behind (one draw), their facade shader and the signs' 3 × 5 letters. |
 | `-palms.js` | Framing palms and the promenade row (one draw). |
+| `-gulls.js` | Gulls wheeling over the pier (one instanced draw; second pass). |
 | `-fireworks.js` | Shells, tails and bursts (one instanced draw, analytic motion) and the two sky glows. |
 | `-bulbs.js` | The shared static bulb field (pier, coaster, promenade). |
 | `-geo.js` | Tube, strut, box (any right-handed basis), lathe, rounded-rectangle outlines and convex prisms on them (winding set from each triangle's geometric normal); `outwardness` for winding tests. |
@@ -265,6 +268,110 @@ NVIDIA Blackwell GPU), with the town and the closed coaster: GPU p50 0.36 ms, p9
 The old theme's last record measured 0.39 ms p50 on an RTX 3070 in the perf lane; the two are not
 the same instrument (ADR-0016), so this is a sanity check, not a comparison.
 
+## Second pass (2026-10-21): the air, the shore, the evening
+
+The first build had the place; it lacked the air between the eye and the place, and its shore
+gave itself away (a hard white line across the frame, flat sand, a mirror that tore into blocks).
+Everything below is in the same modules, on every tier unless the table says otherwise.
+
+| Before | After (High, native WebGPU) |
+| --- | --- |
+| ![before](synthwave-sunset-captures/second-pass-before-game.jpg) | ![after](synthwave-sunset-captures/second-pass-after-game.jpg) |
+| ![before, menu](synthwave-sunset-captures/second-pass-before-menu.jpg) | ![after, menu](synthwave-sunset-captures/second-pass-after-menu.jpg) |
+| ![before, the beach](synthwave-sunset-captures/second-pass-before-beach.jpg) | ![after, the beach](synthwave-sunset-captures/second-pass-after-beach.jpg) |
+| ![before, nightfall](synthwave-sunset-captures/second-pass-before-nightfall.jpg) | ![after, nightfall](synthwave-sunset-captures/second-pass-after-nightfall.jpg) |
+| ![before, four lines](synthwave-sunset-captures/second-pass-before-finale.jpg) | ![after, four lines](synthwave-sunset-captures/second-pass-after-finale.jpg) |
+
+### What changed
+
+- **Sea mist** (`-post.js`, `MIST`). An exponential height fog hugging the water (density 1/420
+  per metre at sea level, scale height 12 m), integrated in closed form along each view ray to
+  what the scene's depth says it meets, in the output pass. It is lit by the horizon's own colour
+  on that bearing (`swSkyGradient` along the flattened ray, so far things dissolve into the sky
+  that meets them) and warmed toward the sun. The pier's piles and the wheel's foot are hazed while
+  its crown stays clear; the town round the bay fades into it; the sand underfoot takes under 3 %.
+  Over the sky (whose gradient already holds the air) only `overSky` = 40 % of it is laid, which is
+  still enough to sink the setting sun's lower limb into a warm band. `mistOpticalDepth` is its JS
+  twin, and a test pins those shares.
+- **The sun's shafts through the wheel** (`-post.js`, `SHAFTS`, Medium and up). Three small passes
+  at `shaftScale` resolution: the emitters (where four depth taps say sky, the sun's own disc and
+  aureole computed from where it stands on screen), a radial march of `shafts` taps toward the sun,
+  and a six-tap fill over one of its steps (the breathing stage's two short marches: N + M taps
+  for the smoothness of N × M, no jitter). The spokes, the cabins and the pier cut dark lanes into
+  the light. Held back over the disc itself (`overDisc`) so the sun keeps its edge, faded to 15 %
+  once it is down.
+- **The swash** (`-sea.js`). The uprush's front is foam piled at the sheet's leading edge, crisp in
+  front and thinning out behind over a width that wanders along the beach, holed into lace in the
+  sheet's own coordinates (the holes ride up with it); a front thinner than its pixel is drawn no
+  brighter than the share it covers, so the far swash is a soft seam, not a white wire across the
+  frame. Where the sheet stops, a wavy swash mark of bubbles lingers while it drains.
+- **The sand** (`-sea.js`, Medium and up). Wind ripples above the highest swash (crests about a hand
+  apart, wandering and forking, asymmetric, patchy, each faded by its footprint), the wrack line of
+  the last high tide (seaweed in clumps along a wavy band, softened to its mean where the clumps
+  are under a pixel) and shells along it and, thinly, over the dry sand. The sun and the bright
+  western sky light the faces turned toward them, so the ripples read; after sunset the light comes
+  from above.
+- **The mirror on the water.** The reflection's screen-space shift is held to 3 % across and 5 %
+  down the screen (the eight trains' summed slope used to shift it by a fifth and tear the pier
+  into blocks), and the image is drawn down into short streaks on the water as on the wet sand.
+- **The evening sky** (`-tsl.js`). The stars come out in order of brightness: in the menu's early
+  dusk only the brightest fifth, by nightfall all of them, fewer low in the bright west. The
+  evening star (`EVENING_STAR`) hangs left of the sun above the cirrus, steady and warm with a soft
+  halo, brighter as the sky darkens.
+- **Gulls** (`-gulls.js`). Seven (by tier) wheel over the pier, each on its own slow loop in the
+  free sky beside the board (bearings about −24° to +32° of the sun, 38–140 m out), the loop's
+  centre drifting so none repeats. The silhouette is drawn in the fragment shader (a body, two
+  wings bent at the wrist into an M, their dihedral from the vertex stage: long glides broken by
+  bouts of flapping, banked into the turn) and catches a warm rim toward the sun. They glide slower
+  under Reduce motion (`u.gullTime` lags the clock like the wheel) and go to roost by full dusk.
+
+### Gotcha found on the way
+
+- **Screen-space shafts from the frame's bright sky take any light that draws no depth for sky.**
+  The first emitter was the scene's colour wherever the depth said sky: the wheel's bulbs and the
+  fireworks (additive, no depth write) passed for sky, and a finale near the sun threw searchlight
+  beams across the frame. The emitter is now the sun's own disc and aureole, computed from its
+  screen position, with the depth only as the mask; the bright scene is never read. (Recorded in
+  the `webgpu-threejs-tsl` skill's table.)
+
+### Tiers (additions)
+
+| Tier | Shafts (taps / resolution) | Sand detail | Gulls |
+| --- | --- | --- | --- |
+| Minimal | none | no | 3 |
+| Low | none | no | 4 |
+| Medium | 14 / 0.25 | yes | 5 |
+| High | 20 / 0.35 | yes | 7 |
+| Ultra | 24 / 0.4 | yes | 8 |
+| Extreme | 28 / 0.5 | yes | 9 |
+
+The sea mist and the evening sky are on every tier. Playground: `noMist=1` and `noShafts=1` turn
+the two post effects off for an A/B; `parts=` knows `gulls`.
+
+### Verification
+
+Single-effect playground captures (`?effect=synthwave-sunset`, 1584 × 787 and 1200 × 597, the mock
+solo board unless `board=0`) from a scratch Electron script against a private dev server, the
+before shots from a detached `origin/main` worktree on a second server: the game view, the menu,
+the beach close-up (`eye=6,2.2,17&aim=16,0,2&fov=55`) at three swash phases, nightfall
+(`dusk=0.55`, `0.88`), the four-line finale, Medium, Low, Minimal, the WebGL2 backend
+(`forceWebGL=1`) and a 430 × 932 portrait. No WebGPU validation errors or TSL warnings on either
+backend.
+
+Tests: the shader gate now builds the post with the world's uniforms, so the mist and all three
+shaft passes are built for WGSL and GLSL at High and Minimal under the same checks (size, no
+`mx_*`, no equal-edge smoothstep, no NaN literals, no unassigned reads), and checks the shafts
+exist exactly on the tiers that ask for them. `synthwave-sunset-theme.test.js` adds the gulls' loops
+(in the free sky, low over the sea, at every time over ten minutes; one draw a tier) and the
+mist's shares (the near sand, the pier's foot, the wheel's crown, the horizon, the sun's centre).
+
+Cost (playground, High, 2560 × 1600, GPU timestamps, RTX 5080 Laptop, four interleaved rounds
+against `origin/main`): the medians were about 0.8 ms before and 1.15 ms after, the shafts about
+0.2 ms of the difference and the mist under 0.1 ms. Other sessions were using the GPU throughout
+and single rounds swung by 2×, so these are an order of magnitude, not a measurement. The first
+shaft build read the multisampled scene and depth at every tap and cost twice as much; the emitter
+pass is what made it cheap. Not measured on the integrated Radeon.
+
 ## Known limits
 
 - **Portrait.** The composition solver is unchanged: on an upright phone the sun goes to the left
@@ -272,5 +379,8 @@ the same instrument (ADR-0016), so this is a sanity check, not a comparison.
   follow-up.
 - **The song** is the old theme's recording under the same title.
 - **The reflection pass** adds one pipeline per mirrored material (its target has no MSAA).
+- **The gulls are not mirrored** (camera-facing quads in a mirror pass would need their own
+  orientation rules), and the shafts are screen-space: they vanish with the sun off screen, as
+  in a portrait framing.
 - **Neighbours.** The beach, palms and a sun on the sea remain shared ground with Luminous Tides
   and Sunset; the differences above (dusk, unlit surf, a built hero) are what keep them apart.
