@@ -6,10 +6,11 @@
  *                thousands of motes that catch the sun for an instant as they turn. They live in
  *                the resting camera's own frame and pass through it at one common drift, so the
  *                near ones cross the frame quickly and the far ones hardly move.
- *   sparks       the ice a lock's mote throws up where it lands in the rings, and what a meteor
- *                strews as it burns: a pool written at event time, moved by a closed form.
+ *   sparks       the ice a lock's mote throws up where it lands in the rings: chips that streak
+ *                as they fly, a pool written at event time, moved by a closed form.
  *   meteors      the mote that carries a lock from the card to the rings (an arc in the piece's
- *                colour) and the meteors a chain brings (straight, white-hot at the head).
+ *                colour) and the meteors a chain brings (straight): each a ribbon of white-hot
+ *                trail cooling into a train that lingers and spreads, and a head of light.
  *
  * None of it is created at event time: every pool is drawn always, with idle slots collapsed.
  */
@@ -47,7 +48,8 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    METEOR_SLOTS, RING_RATE, TAU, mulberry32, sdFxMaterial, sdPart, sdQuadGeometry, sdSolidMaterial,
+    METEOR_SLOTS, METEOR_TRAIN, MOTE_TRAIN, RING_RATE, TAU, mulberry32, sdFxMaterial, sdPart, sdQuadGeometry,
+    sdSolidMaterial,
 } from './stellar-drift-tsl.js';
 
 /** The common drift of the ice through the camera's frame (radii per second, to the left). */
@@ -280,11 +282,22 @@ export function createSparks(u, count) {
         o.y.add(max(rise, 0.0)),
         flat.x.mul(sin(swing)).add(flat.y.mul(cos(swing))),
     );
-    const dist = length(at.sub(u.camPos));
+    const toCam = u.camPos.sub(at);
+    const dist = length(toCam);
     const size = u.pixelAngle.mul(dist).mul(v.w.mul(2.2).add(1.6)).mul(live);
+    // A chip streaks along its own motion while it is fast (the carry round the giant is slow
+    // beside it, and left out).
+    const slowing = exp(age.mul(-0.5));
+    const vFlat = v.xz.mul(slowing).mul(float(1.0).sub(age.mul(0.5)));
+    const vel = vec3(vFlat.x, v.y.sub(fall.mul(age)).mul(step(0.0, rise)), vFlat.y);
+    const look = toCam.div(max(dist, 1e-4));
+    const across = vel.sub(look.mul(dot(vel, look)));
+    const along = normalize(across.add(u.camRight.mul(1e-4)));
+    const side = normalize(cross(along, look));
+    const streak = length(across).mul(0.06).mul(live);
     material.positionNode = at
-        .add(u.camRight.mul(positionGeometry.x.mul(size)))
-        .add(u.camUp.mul(positionGeometry.y.mul(size)));
+        .add(along.mul(positionGeometry.x.mul(size.add(streak))))
+        .add(side.mul(positionGeometry.y.mul(size)));
     const twinkle = sin(age.mul(c.w.mul(22.0).add(9.0)).add(c.w.mul(50.0))).mul(0.35).add(0.65);
     const fade = exp(age.mul(-1.5)).mul(smoothstep(0.0, 0.05, age)).mul(live).mul(twinkle);
     const vSpark = varying(vec4(c.rgb, fade), 'vSdSpark');
@@ -345,12 +358,67 @@ export function createSparks(u, count) {
 
 // ── Meteors and motes ───────────────────────────────────────────────────────────
 
-/** Segments along a meteor's ribbon. */
-const RIBBON_SEGMENTS = 10;
+/** Rows along a ribbon (closer together toward the head, where the light is). */
+const RIBBON_SEGMENTS = 28;
 
 /**
- * A pool of ribbons. Each slot is four rows of a uniform table: (from, birth), (to, flight),
- * (colour, size), (the arc's control point, kind: 1 = a lock's mote, 0 = a meteor).
+ * The angle of a pixel of a 1080-line frame: what event sizes are authored in, so a fireball
+ * covers the same share of the sky at any resolution (and is floored at a real buffer pixel).
+ */
+const refPixel = (u) => u.pixelAngle.mul(u.viewport.y).div(1080.0);
+
+/** 1 where the giant does not stand between the camera and `at`. */
+const unhidden = (u, at) => {
+    const toAt = at.sub(u.camPos);
+    const dist = length(toAt);
+    const ray = toAt.div(max(dist, 1e-4));
+    const b = dot(u.camPos, ray);
+    const disc = b.mul(b).sub(dot(u.camPos, u.camPos).sub(1.0));
+    const near = b.negate().sub(sqrt(max(disc, 0.0)));
+    // A meteor ends ON the cloud tops: only a crossing well short of it hides it.
+    return float(1.0).sub(step(0.0, disc).mul(step(0.0, near)).mul(step(near, dist.mul(0.985))));
+};
+
+/**
+ * One flight of the pool, read from its four rows: where it is on its path at a share `s` of
+ * the way, how old it is, and what it is.
+ */
+function readFlight(u, table, slotAttr) {
+    const slot = int(slotAttr.add(0.5)).mul(4);
+    const A = table.element(slot);
+    const B = table.element(slot.add(1));
+    const C = table.element(slot.add(2));
+    const D = table.element(slot.add(3));
+    const age = u.time.sub(A.w);
+    const flight = max(B.w, 0.01);
+    const kind = D.w;
+    const bezier = (k) => {
+        const a = mix(A.xyz, D.xyz, k);
+        const b = mix(D.xyz, B.xyz, k);
+        return mix(a, b, k);
+    };
+    return {
+        age,
+        flight,
+        kind,
+        rgb: C.rgb,
+        size: C.w,
+        phase: clamp(age.div(flight), 0.0, 1.0),
+        train: mix(float(METEOR_TRAIN), float(MOTE_TRAIN), kind),
+        bezier,
+    };
+}
+
+/**
+ * The flights: the mote that carries a lock from the card into the rings (an arc in the piece's
+ * colour) and the meteors (straight). Each slot is four rows of a uniform table: (from, birth),
+ * (to, flight), (colour, size), (the arc's control point, kind: 1 = a lock's mote, 0 = a meteor).
+ * Two draws read it: the ribbons, and the heads (createHeads).
+ *
+ * A ribbon is the trail and the train it leaves: just behind the head the air is ionised white-hot
+ * and narrow; it cools through the piece's colour, and a meteor's goes on glowing for a couple of
+ * seconds as a faint train that widens as it spreads, breaking into pieces where the meteor shed
+ * them.
  */
 export function createMeteors(u) {
     const rows = Array.from({ length: METEOR_SLOTS * 4 }, () => new THREE.Vector4(0, 0, 0, -1e6));
@@ -365,45 +433,51 @@ export function createMeteors(u) {
     base.dispose();
 
     const material = sdFxMaterial('StellarDriftMeteors');
-    const slot = int(attribute('aSlot', 'float').add(0.5)).mul(4);
-    const A = table.element(slot);
-    const Bv = table.element(slot.add(1));
-    const C = table.element(slot.add(2));
-    const D = table.element(slot.add(3));
-    const age = u.time.sub(A.w);
-    const phase = clamp(age.div(max(Bv.w, 0.01)), 0.0, 1.0);
-    const live = step(0.0, age).mul(step(age, Bv.w.add(0.25)));
-    // A meteor's streak is long; a mote keeps a short tail behind it.
-    const tail = mix(float(0.55), float(0.5), D.w);
-    const along = uv().x;
-    const s = clamp(phase.sub(float(1.0).sub(along).mul(tail)), 0.0, 1.0);
-    const bezier = (k) => {
-        const a = mix(A.xyz, D.xyz, k);
-        const b = mix(D.xyz, Bv.xyz, k);
-        return mix(a, b, k);
-    };
-    const at = bezier(s);
-    const ahead = bezier(clamp(s.add(0.02), 0.0, 1.0)).sub(bezier(clamp(s.sub(0.02), 0.0, 1.0)));
+    const slotAttr = attribute('aSlot', 'float');
+    const f = readFlight(u, table, slotAttr);
+    const live = step(0.0, f.age).mul(step(f.age, f.flight.add(f.train)));
+    // The strip runs from where the train has faded to the head; its rows crowd toward the head.
+    const { x } = uv();
+    const lead = float(1.0).sub(float(1.0).sub(x).mul(float(1.0).sub(x)));
+    const span = mix(float(0.6), float(0.75), f.kind);
+    const s = clamp(f.phase.sub(float(1.0).sub(lead).mul(span)), 0.0, 1.0);
+    /** Seconds since the head passed this point of the path. */
+    const since = max(f.age.sub(s.mul(f.flight)), 0.0);
+    const at = f.bezier(s);
+    const ahead = f.bezier(clamp(s.add(0.01), 0.0, 1.0)).sub(f.bezier(clamp(s.sub(0.01), 0.0, 1.0)));
     const toCam = u.camPos.sub(at);
     const dist = length(toCam);
-    const side = normalize(cross(ahead.add(vec3(1e-5, 0.0, 0.0)), toCam));
-    const width = u.pixelAngle.mul(dist).mul(C.w.mul(mix(float(3.2), float(4.4), D.w)))
-        .mul(along.mul(0.8).add(0.2)).mul(live);
-    material.positionNode = at.add(side.mul(uv().y.sub(0.5).mul(width).mul(2.0)));
-    // Once it has landed the streak runs into the ground and goes out.
-    const out = float(1.0).sub(smoothstep(0.0, 0.25, age.sub(Bv.w)));
-    const vMeteor = varying(vec4(C.rgb, live.mul(out)), 'vSdMeteor');
-    const vKind = varying(D.w, 'vSdMeteorKind');
+    const side = normalize(cross(ahead.add(vec3(1e-5, 2e-5, 0.0)), toCam));
+    // Narrow and hot behind the head; behind that the train widens as it cools and spreads.
+    const hotFall = exp(since.mul(-4.0));
+    const widthPx = f.size.mul(mix(float(3.6), float(5.6), f.kind)).mul(hotFall)
+        .add(since.mul(mix(float(9.0), float(5.0), f.kind)).add(2.4).mul(float(1.0).sub(hotFall)).mul(sqrt(f.size)));
+    const width = max(widthPx.mul(refPixel(u)), u.pixelAngle.mul(1.5)).mul(dist).mul(live);
+    material.positionNode = at.add(side.mul(uv().y.sub(0.5).mul(width)));
+    const vSince = varying(since, 'vSdMeteorSince');
+    const vInfo = varying(vec4(f.kind, s, lead, live.mul(unhidden(u, at))), 'vSdMeteorInfo');
+    const vRgb = varying(vec4(f.rgb, slotAttr), 'vSdMeteorRgb');
     material.colorNode = Fn(() => {
-        const q = uv();
-        const across = clamp(abs(q.y.sub(0.5)).mul(2.0), 0.0, 1.0);
-        const body = exp(across.mul(across).mul(-5.0)).mul(float(1.0).sub(smoothstep(0.75, 1.0, across)));
-        const lengthways = pow(clamp(q.x, 0.0, 1.0), mix(float(2.2), float(1.6), vKind));
-        const head = exp(float(1.0).sub(q.x).mul(float(1.0).sub(q.x)).mul(-260.0));
-        const white = mix(vec3(1.0, 0.9, 0.74), vec3(1.0), vKind);
-        const colour = mix(vMeteor.rgb, white, head.mul(0.75).add(lengthways.mul(mix(float(0.35), float(0.1), vKind))));
-        const light = body.mul(lengthways.mul(1.6).add(head.mul(5.0)));
-        return vec4(colour.mul(light).mul(vMeteor.w).mul(mix(float(2.2), float(3.4), vKind)), 0.0);
+        const kind = vInfo.x;
+        const t = vSince.toVar();
+        const across = clamp(abs(uv().y.sub(0.5)).mul(2.0), 0.0, 1.0);
+        const a2 = across.mul(across);
+        const core = exp(a2.mul(-14.0));
+        const soft = exp(a2.mul(-2.6)).mul(float(1.0).sub(smoothstep(0.8, 1.0, across)));
+        const hot = exp(t.div(mix(float(0.05), float(0.07), kind)).negate());
+        const warm = exp(t.div(mix(float(0.16), float(0.2), kind)).negate());
+        const glowing = exp(t.div(mix(float(METEOR_TRAIN * 0.2), float(MOTE_TRAIN * 0.4), kind)).negate());
+        // A meteor sheds pieces as it burns: its trail breaks up along the path.
+        const seed = vRgb.w.mul(1.7);
+        const pieces = clamp(sin(vInfo.y.mul(157.0).add(seed)).mul(sin(vInfo.y.mul(61.0).add(seed.mul(3.1)))).mul(0.6)
+            .add(0.7), 0.25, 1.3);
+        const broken = mix(pieces, float(1.0), kind);
+        const whiteHot = mix(vec3(1.0, 0.95, 0.86), vRgb.rgb, smoothstep(0.0, 0.3, t));
+        const trainHue = mix(vRgb.rgb, vec3(0.55, 0.8, 1.0), mix(float(0.3), float(0.1), kind));
+        const light = whiteHot.mul(core).mul(hot.mul(4.2).add(warm.mul(1.1))).mul(broken)
+            .add(trainHue.mul(soft).mul(warm.mul(0.3).add(glowing.mul(0.24)).mul(mix(broken, float(1.0), 0.6))));
+        const tailFade = smoothstep(0.0, 0.2, vInfo.z);
+        return vec4(light.mul(tailFade).mul(vInfo.w).mul(mix(float(1.0), float(1.9), kind)), 0.0);
     })();
 
     const part = sdPart('StellarDriftMeteors', geometry, material, 9);
@@ -411,6 +485,7 @@ export function createMeteors(u) {
     const mid = new THREE.Vector3();
     return {
         ...part,
+        table,
         reset() {
             for (let i = 0; i < METEOR_SLOTS; i++) rows[i * 4].w = -1e6;
             cursor = 0;
@@ -431,135 +506,50 @@ export function createMeteors(u) {
     };
 }
 
-// ── Orbital resonances ──────────────────────────────────────────────────────────
-
-export const RESONANCE_SLOTS = 8;
-const RESONANCE_KINDS = Object.freeze({ sweep: 0, helix: 1, crown: 2 });
-const RESONANCE_LIVES = [2.1, 2.6, 3.4];
-
 /**
- * Two luminous strands per event, all in one draw. Sweeps open around the giant, a T-spin
- * winds a pair of inclined orbits, and a perfect clear opens a scalloped stellar crown.
- * A travelling white core and a softer coloured wake give each strand a sense of direction.
- * Slots and geometry are retained across events; time alone determines their pose.
+ * The heads of the flights: a point of white-hot light in a halo of the piece's colour, with the
+ * faint four-point spikes a lens gives a star. A meteor's head flickers as it burns and swells as
+ * it meets the giant's air; a mote's is steady and smaller.
  */
-export function createResonances(u) {
-    const rows = Array.from({ length: RESONANCE_SLOTS * 3 }, () => new THREE.Vector4());
-    const table = uniformArray(rows, 'vec4');
-    const base = new THREE.PlaneGeometry(1, 1, 128, 1);
-    const geometry = new THREE.InstancedBufferGeometry();
-    geometry.setIndex(base.getIndex());
-    geometry.setAttribute('position', base.getAttribute('position'));
-    geometry.setAttribute('uv', base.getAttribute('uv'));
-    const instances = new Float32Array(RESONANCE_SLOTS * 4);
-    for (let i = 0; i < RESONANCE_SLOTS * 2; i++) {
-        instances[i * 2] = Math.floor(i / 2);
-        instances[i * 2 + 1] = i % 2;
-    }
-    geometry.setAttribute('aResonance', new THREE.InstancedBufferAttribute(instances, 2));
-    geometry.instanceCount = RESONANCE_SLOTS * 2;
-    base.dispose();
-
-    const material = sdFxMaterial('StellarDriftResonances');
-    const instance = attribute('aResonance', 'vec2');
-    const slot = int(instance.x.add(0.5)).mul(3);
-    const event = table.element(slot); // birth, life, kind, power
-    const tint = table.element(slot.add(1)); // rgb, seeded rotation
-    const motion = table.element(slot.add(2)).x;
-    const lane = instance.y;
-    const age = u.time.sub(event.x);
-    const phase = clamp(age.div(max(event.y, 0.01)), 0.0, 1.0);
-    const live = step(0.0, age).mul(step(age, event.y));
-    const helix = float(1.0).sub(step(0.5, abs(event.z.sub(1.0))));
-    const crown = step(1.5, event.z);
-    const opening = float(1.0).sub(pow(float(1.0).sub(phase), 3.0));
-    const turnAngle = tint.w.add(lane.mul(Math.PI)).add(phase.mul(motion).mul(1.3));
-    const angle = uv().x.mul(TAU).add(turnAngle);
-    const scallop = sin(angle.mul(6.0));
-    const radius = float(1.08).add(lane.mul(0.055))
-        .add(opening.mul(motion).mul(mix(float(0.48), float(0.13), helix)))
-        .add(crown.mul(scallop.mul(scallop)).mul(opening).mul(0.11));
-    // The helix tilts into depth, so the far strand disappears behind the giant.
-    const tilt = helix.mul(lane.mul(2.0).sub(1.0)).mul(0.42);
-    const orbitX = cos(angle);
-    const orbitY = sin(angle).mul(mix(float(1.0), float(0.48), helix));
-    const radial = u.camRight.mul(orbitX.mul(cos(tilt)).sub(orbitY.mul(sin(tilt))))
-        .add(u.camUp.mul(orbitX.mul(sin(tilt)).add(orbitY.mul(cos(tilt)))));
-    const towardCamera = normalize(u.camPos);
-    const centre = radial.mul(radius)
-        .add(towardCamera.mul(sin(angle).mul(helix).mul(lane.mul(2.0).sub(1.0)).mul(0.9)));
-    // Reference-frame size plus a pixel floor: Low/portrait does not turn these into ropes.
-    const dist = length(u.camPos.sub(centre));
-    const width = max(float(0.0045), u.pixelAngle.mul(dist).mul(0.8))
-        .mul(event.w.mul(0.4).add(0.8));
-    const at = centre.add(normalize(radial).mul(uv().y.sub(0.5)).mul(width).mul(6.0)
-        .mul(live));
-    material.positionNode = at;
-    const vAt = varying(at, 'vSdResonanceAt');
-    const envelope = smoothstep(0.0, 0.12, phase).mul(float(1.0).sub(smoothstep(0.38, 1.0, phase)));
-    const vEvent = varying(vec4(phase, live.mul(envelope).mul(event.w), helix, crown), 'vSdResonance');
-    const vTint = varying(tint.rgb, 'vSdResonanceTint');
-    const vLane = varying(lane, 'vSdResonanceLane');
+export function createHeads(u, meteors) {
+    const slots = Float32Array.from({ length: METEOR_SLOTS }, (_, i) => i);
+    const geometry = sdQuadGeometry(METEOR_SLOTS, { aSlot: [slots, 1] });
+    const material = sdFxMaterial('StellarDriftHeads');
+    const slotAttr = attribute('aSlot', 'float');
+    const f = readFlight(u, meteors.table, slotAttr);
+    const showing = step(0.0, f.age).mul(step(f.age, f.flight.add(0.02)));
+    const at = f.bezier(f.phase);
+    const dist = length(u.camPos.sub(at));
+    const burst = mix(smoothstep(0.72, 1.0, f.phase).mul(1.6), smoothstep(0.85, 1.0, f.phase).mul(0.6), f.kind);
+    const sizePx = f.size.mul(mix(float(46.0), float(58.0), f.kind)).mul(burst.mul(0.5).add(1.0));
+    const size = max(sizePx.mul(refPixel(u)), u.pixelAngle.mul(5.0)).mul(dist).mul(showing);
+    material.positionNode = at
+        .add(u.camRight.mul(positionGeometry.x.mul(size)))
+        .add(u.camUp.mul(positionGeometry.y.mul(size)));
+    const flicker = mix(
+        sin(f.age.mul(71.0).add(slotAttr.mul(3.1))).mul(sin(f.age.mul(23.0).add(slotAttr))).mul(0.18).add(0.86),
+        float(1.0),
+        f.kind,
+    );
+    const gain = burst.mul(2.0).add(1.0).mul(flicker).mul(showing)
+        .mul(unhidden(u, at));
+    const vHead = varying(vec4(f.rgb, gain), 'vSdHead');
+    const vKind = varying(f.kind, 'vSdHeadKind');
     material.colorNode = Fn(() => {
-        const q = uv();
-        const across = abs(q.y.sub(0.5)).mul(2.0);
-        const core = exp(across.mul(across).mul(-36.0));
-        const glow = exp(across.mul(across).mul(-5.0))
-            .mul(float(1.0).sub(smoothstep(0.75, 1.0, across)));
-        // A partial sweep; the crown closes the circle with twelve bright beads.
-        const travel = fract(q.x.sub(vEvent.x.mul(0.8)).add(vLane.mul(0.5)).add(1.0));
-        const wake = smoothstep(0.12, 0.7, travel).mul(float(1.0).sub(smoothstep(0.92, 1.0, travel)));
-        const beads = pow(sin(q.x.mul(TAU * 12)).mul(0.5).add(0.5), 18.0);
-        const line = mix(wake, beads.mul(0.7).add(0.35), vEvent.w);
-        const headDistance = travel.sub(0.88);
-        const hot = exp(headDistance.mul(headDistance).mul(-1100.0));
-        const colour = vTint.mul(glow.mul(0.65).add(core.mul(1.1))).mul(line)
-            .add(mix(vTint, vec3(1.0), 0.75).mul(core).mul(hot).mul(1.6));
-        // The traced globe doesn't write geometry depth. Resolve its occlusion analytically.
-        const ray = normalize(vAt.sub(u.camPos)).toVar();
-        const b = dot(u.camPos, ray).toVar();
-        const disc = b.mul(b).sub(dot(u.camPos, u.camPos).sub(1.0)).toVar();
-        const near = b.negate().sub(sqrt(max(disc, 0.0)));
-        const hidden = step(0.0, disc).mul(step(0.0, near)).mul(step(near, length(vAt.sub(u.camPos))));
-        return vec4(colour.mul(vEvent.y).mul(float(1.0).sub(hidden)), 0.0);
+        const p = uv().sub(0.5).mul(2.0).toVar();
+        const r2 = dot(p, p).toVar();
+        const core = exp(r2.mul(-70.0));
+        const inner = exp(r2.mul(-16.0)).mul(0.8);
+        const halo = exp(r2.mul(-4.5)).mul(0.16);
+        const ax = abs(p.x);
+        const ay = abs(p.y);
+        const spikes = exp(ay.mul(-55.0)).mul(exp(p.x.mul(p.x).mul(-5.0)))
+            .add(exp(ax.mul(-55.0)).mul(exp(p.y.mul(p.y).mul(-5.0)))).mul(0.22);
+        const edge = float(1.0).sub(smoothstep(0.6, 1.0, r2));
+        const light = vec3(1.0).mul(core.mul(3.0))
+            .add(mix(vec3(1.0), vHead.rgb, 0.5).mul(inner))
+            .add(vHead.rgb.mul(halo.add(spikes)));
+        return vec4(light.mul(edge).mul(vHead.w).mul(mix(float(1.4), float(1.7), vKind)), 0.0);
     })();
-
-    const part = sdPart('StellarDriftResonances', geometry, material, 7);
-    let cursor = 0;
-    let emitted = 0;
-    const kinds = { sweep: 0, helix: 0, crown: 0 };
-    const reset = () => {
-        rows.forEach((row) => row.set(0, 0, 0, 0));
-        for (let i = 0; i < RESONANCE_SLOTS; i++) rows[i * 3].x = -1e6;
-        cursor = 0;
-        emitted = 0;
-        Object.keys(kinds).forEach((kind) => { kinds[kind] = 0; });
-    };
-    reset();
-    return {
-        ...part,
-        reset,
-        emit({
-            time, kind = 'sweep', power = 1, rgb, seed = 0, motion: amount = 1,
-        }) {
-            if (!Number.isFinite(time) || !Object.hasOwn(RESONANCE_KINDS, kind)) return;
-            const mode = RESONANCE_KINDS[kind];
-            const i = cursor * 3;
-            cursor = (cursor + 1) % RESONANCE_SLOTS;
-            rows[i].set(time, RESONANCE_LIVES[mode], mode, Math.max(0, Math.min(1.5, power)));
-            rows[i + 1].set(rgb[0], rgb[1], rgb[2], mulberry32(seed)() * TAU);
-            rows[i + 2].set(Math.max(0, Math.min(1, amount)), 0, 0, 0);
-            emitted += 1;
-            kinds[kind] += 1;
-        },
-        getState(time = u.time.value) {
-            let active = 0;
-            for (let i = 0; i < RESONANCE_SLOTS; i++) {
-                const row = rows[i * 3];
-                if (time >= row.x && time < row.x + row.y) active += 1;
-            }
-            return { active, emitted, kinds: { ...kinds } };
-        },
-        update() {},
-    };
+    return { ...sdPart('StellarDriftHeads', geometry, material, 10), update() {} };
 }
