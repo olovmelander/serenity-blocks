@@ -8,6 +8,7 @@
  * bars         the bars of cloud low over the sea          milky      the Milky Way
  * seaRings     rings of the sea's fan mesh                 seaSpokes  its spokes
  * ripples      ripple layers read from the noise (1..3)
+ * chop         short directional wind waves in the water's light
  * lanterns     lanterns alive at once (on the water and in the air)
  * lit          lanterns the water mirrors and is lit by     rings     rings alive on the water
  * motes        lights in flight from the card to the sea   drops     the splash pool
@@ -28,6 +29,7 @@ export const QUALITY = Object.freeze({
         seaRings: 90,
         seaSpokes: 64,
         ripples: 1,
+        chop: 6,
         lanterns: 24,
         lit: 4,
         rings: 4,
@@ -47,6 +49,7 @@ export const QUALITY = Object.freeze({
         seaRings: 120,
         seaSpokes: 96,
         ripples: 2,
+        chop: 8,
         lanterns: 32,
         lit: 6,
         rings: 5,
@@ -66,6 +69,7 @@ export const QUALITY = Object.freeze({
         seaRings: 160,
         seaSpokes: 128,
         ripples: 3,
+        chop: 10,
         lanterns: 40,
         lit: 10,
         rings: 6,
@@ -85,6 +89,7 @@ export const QUALITY = Object.freeze({
         seaRings: 220,
         seaSpokes: 176,
         ripples: 3,
+        chop: 12,
         lanterns: 48,
         lit: 14,
         rings: 8,
@@ -104,6 +109,7 @@ export const QUALITY = Object.freeze({
         seaRings: 260,
         seaSpokes: 208,
         ripples: 3,
+        chop: 14,
         lanterns: 56,
         lit: 18,
         rings: 8,
@@ -123,6 +129,7 @@ export const QUALITY = Object.freeze({
         seaRings: 300,
         seaSpokes: 240,
         ripples: 3,
+        chop: 16,
         lanterns: 64,
         lit: 22,
         rings: 8,
