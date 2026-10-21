@@ -62,10 +62,11 @@ const wrap = (a) => a.sub(round(a.div(TAU)).mul(TAU));
 /**
  * @param {{ u: object, noise: THREE.Texture, tier: object }} env
  * @param {Node} p  vec2, the point in the sun's plane (solar radii), screen-aligned
- * @param {Node} behind, cover, face, front  vars the results are written into
+ * @param {Node} behind, cover, face, front  vars the results are written into; `spikes` takes
+ *   the diamond's starburst, which belongs to the lens and is never seen in the mirror
  */
 export function drawSun(env, p, {
-    behind, cover, face, front,
+    behind, cover, face, front, spikes,
 }) {
     const { u, noise, tier } = env;
     const r = max(length(p), 1e-4).toVar();
@@ -264,36 +265,58 @@ export function drawSun(env, p, {
                 const s = wrap(ang.add(u.twist.mul(exp(r.sub(1.0).mul(-0.45)))).sub(A.x)).mul(r).toVar();
                 const z = r.sub(1.0).sub(lift).toVar();
                 const rise = smoothstep(0.0, PROMINENCE_RISE, age);
-                const hw = A.y.mul(erupt.mul(0.3).add(1.0)).div(lift.mul(0.5).add(1.0)).toVar();
+                // An erupting loop widens as it climbs: a bubble of field carried out.
+                const hw = A.y.mul(erupt.mul(0.85).add(1.0)).toVar();
                 const isJet = B.w.greaterThan(KIND.jet - 0.5);
                 const tall = select(isJet, float(7.0), A.z.mul(grow).mul(rise.mul(0.82).add(0.18))).max(0.02).toVar();
-                const near = abs(s).lessThan(hw.mul(1.6).add(0.08)).and(z.lessThan(tall.mul(1.45).add(0.1)))
-                    .and(z.greaterThan(-0.08));
+                // The box it is drawn in grows as it erupts (an eruption sways and spreads beyond
+                // its held shape), and its light fades out before the box's edge, never cut by it.
+                const goes = clamp(erupt.mul(0.8), 0.0, 1.0);
+                const boxS = hw.mul(goes.mul(1.4).add(1.6)).add(goes.mul(0.3).add(0.08)).toVar();
+                const boxZ = tall.mul(1.45).add(goes.mul(0.6).add(0.1)).toVar();
+                const near = abs(s).lessThan(boxS).and(z.lessThan(boxZ)).and(z.greaterThan(goes.mul(-0.6).sub(0.08)));
                 If(near, () => {
                     const life = float(1.0).sub(smoothstep(B.z.sub(PROMINENCE_FADE), B.z, t));
                     const spent = smoothstep(ERUPTION_SECONDS * 0.55, ERUPTION_SECONDS * 0.2, erupt);
                     const gone = select(isJet, exp(erupt.div(-0.9)), exp(erupt.div(-0.75)).mul(spent));
                     const fade = life.mul(gone).mul(smoothstep(0.0, 0.12, age));
-                    const up = smoothstep(-0.03, 0.02, z);
+                    // Read by every kind's branch, so pinned before them. An erupting loop's legs
+                    // trail away below it rather than end on a line.
+                    const up = smoothstep(goes.mul(-0.55).sub(0.03), goes.mul(0.12).add(0.02), z).toVar();
                     const glow = float(0.0).toVar();
 
-                    // As it erupts it twists and tears: the frame it is drawn in wobbles.
-                    const wobAt = vec2(s.mul(1.7).add(A.w.mul(9.0)), z.mul(1.3).sub(t.mul(0.22)));
-                    const wob = noiseAt(noise, wobAt, 1.0).r.sub(0.5)
-                        .mul(erupt.mul(0.32).add(0.035));
+                    // How far an eruption has gone: 0 held, 1 well on its way out.
+                    const going = goes.toVar();
+                    const inBox = float(1.0).sub(smoothstep(boxS.mul(0.72), boxS, abs(s)))
+                        .mul(float(1.0).sub(smoothstep(boxZ.mul(0.78), boxZ, z))).toVar();
+
+                    // As it erupts the frame it is drawn in bends in long, slow sways (a rope
+                    // twisting free, never a scribble).
+                    const wobAt = vec2(s.mul(0.9).add(A.w.mul(9.0)), z.mul(0.7).sub(t.mul(0.18)));
+                    const wob = noiseAt(noise, wobAt, 1.5).r.sub(0.5)
+                        .mul(going.mul(0.24).add(0.03));
                     const sw = s.add(wob).toVar();
-                    const zw = z.add(wob.mul(0.6)).toVar();
-                    const thin = max(px.mul(1.1), 0.011);
-                    If(B.w.lessThan(KIND.arch + 0.5), () => {
-                        // An arch: a bundle of fine threads along one loop, hottest where its feet
-                        // stand in the chromosphere, knots of plasma draining down its legs.
-                        const e = length(vec2(sw.div(hw), zw.div(tall)));
-                        const along = atan(zw.div(tall), sw.div(hw));
-                        const span = min(hw, tall);
-                        // Across the bundle, in thread widths from its middle.
-                        const across = e.sub(0.9).mul(span).div(thin);
-                        const bundle = seGauss(across.div(3.2));
+                    const zw = z.add(wob.mul(0.5)).toVar();
+                    // A thread is a pixel or so while it is held, and spreads as the plasma thins.
+                    const thin = max(px.mul(1.1), 0.011).mul(going.mul(1.6).add(1.0)).toVar();
+                    // A hedgerow that erupts lifts off as a loop, as an arch does.
+                    const erupting = B.w.lessThan(KIND.hedge + 0.5).and(going.greaterThan(0.0));
+                    const loop = B.w.lessThan(KIND.arch + 0.5).or(erupting);
+                    If(loop, () => {
+                        // An arch: a flux rope along one loop with fainter loops nested under it,
+                        // hottest where its feet stand in the chromosphere, its threads wound round
+                        // it, knots of plasma draining down its legs.
+                        const e = length(vec2(sw.div(hw), zw.div(tall))).toVar();
+                        const along = atan(zw.div(tall), sw.div(hw)).toVar();
+                        const span = min(hw, tall).toVar();
+                        // Across the rope, in thread widths from its middle.
+                        const across = e.sub(0.9).mul(span).div(thin).toVar();
+                        const rope = seGauss(across.div(3.4));
+                        // The arcade under it: lower loops of the same system, fainter and softer.
+                        const arcade = seGauss(e.sub(0.68).mul(span).div(thin.mul(1.8))).mul(0.24)
+                            .add(seGauss(e.sub(0.48).mul(span).div(thin.mul(1.8))).mul(0.11));
                         let threads = seGauss(across.div(1.6)).mul(0.9).add(0.35);
+                        let wound = float(1.0);
                         if (tier.fibres) {
                             const fibreAt = vec2(across.mul(0.035).add(A.w.mul(5.0)), along.mul(0.25)
                                 .add(A.w.mul(3.0)));
@@ -302,17 +325,24 @@ export function drawSun(env, p, {
                             const knot = pow(noiseAt(noise, vec2(flow, A.w.mul(2.0).add(0.4)), 0).g, 1.4)
                                 .mul(1.3).add(0.5);
                             threads = fibre.mul(knot);
+                            // Strands wound round the rope: diagonal across it, turning slowly.
+                            const turns = sin(across.mul(0.95).add(along.mul(16.0)).add(A.w.mul(40.0)).sub(t.mul(0.5)));
+                            wound = turns.mul(0.42).add(0.78);
                         }
                         const feet = float(1.0).sub(sin(along)).mul(0.7).add(0.65);
-                        const haze = seGauss(e.sub(0.9).div(0.35)).mul(0.1);
-                        glow.assign(bundle.mul(threads).mul(feet).add(haze).mul(up));
+                        const haze = seGauss(e.sub(0.8).div(0.4)).mul(0.1);
+                        glow.assign(rope.mul(threads).mul(wound).add(arcade.mul(threads.mul(0.4).add(0.6)))
+                            .mul(feet)
+                            .add(haze)
+                            .mul(up));
                     }).ElseIf(B.w.lessThan(KIND.hedge + 0.5), () => {
-                        // A hedgerow: a ragged sheet of threads standing on the limb.
-                        const across = s.div(hw);
+                        // A hedgerow: a ragged sheet of threads standing on the limb, its sides
+                        // fraying rather than cut.
+                        const across = sw.div(hw);
                         const crown = noiseAt(noise, vec2(s.mul(1.6).add(A.w.mul(7.0)), t.mul(0.004).add(0.3)), 0).r;
-                        const dome = sqrt(max(float(1.0).sub(across.mul(across)), 0.0));
+                        const dome = max(float(1.0).sub(across.mul(across)), 0.0);
                         const top = tall.mul(crown.mul(0.6).add(0.45)).mul(dome);
-                        const inside = smoothstep(top, top.sub(0.03), zw).mul(up);
+                        const inside = smoothstep(top, top.sub(going.mul(0.25).add(0.03)), zw).mul(up);
                         let threads = float(0.75);
                         if (tier.fibres) {
                             const threadAt = vec2(sw.mul(7.5).add(A.w.mul(5.0)), zw.mul(0.9).sub(t.mul(0.025)));
@@ -321,11 +351,18 @@ export function drawSun(env, p, {
                         }
                         glow.assign(inside.mul(threads).mul(float(1.0).sub(zw.div(tall.add(0.001)).mul(0.5))));
                     }).Else(() => {
-                        // A jet: a narrow ray running out from the limb.
+                        // A jet: a spray of fine rays running out from the limb.
                         const head = erupt.mul(3.4).add(0.05);
-                        const ray = seGauss(s.div(z.max(0.0).mul(0.035).add(0.02)));
-                        const run = smoothstep(head, head.sub(0.12), z).mul(exp(head.sub(z).div(-1.1)));
-                        glow.assign(ray.mul(run).mul(up).mul(1.6));
+                        const cone = z.max(0.0).mul(0.03).add(0.014);
+                        const ray = seGauss(s.div(cone));
+                        let strands = float(1.0);
+                        if (tier.fibres) {
+                            const strandAt = vec2(s.div(cone).mul(0.11).add(A.w.mul(7.0)), z.mul(0.12)
+                                .sub(erupt.mul(0.3)));
+                            strands = pow(noiseAt(noise, strandAt, 0.5).b, 2.0).mul(2.2).add(0.25);
+                        }
+                        const run = smoothstep(head, head.sub(0.3), z).mul(exp(head.sub(z).div(-1.1)));
+                        glow.assign(ray.mul(strands).mul(run).mul(up).mul(1.5));
                     });
 
                     // It is born in a flare at its feet: a bright knot on the limb that fades as the
@@ -337,12 +374,15 @@ export function drawSun(env, p, {
                         .mul(C.w.mul(C.w).mul(3.2));
                     glow.addAssign(flare);
 
-                    // As it erupts it breaks into blobs and cools.
-                    const tear = noiseAt(noise, vec2(sw.mul(0.9).add(A.w), zw.mul(0.7)), 2.0).r;
-                    const torn = mix(float(1.0), smoothstep(0.32, 0.68, tear), clamp(erupt.mul(0.8), 0.0, 1.0));
-                    glow.mulAssign(torn);
+                    // As it erupts it thins into strands and cools: soft gaps open, never cut.
+                    const tear = noiseAt(noise, vec2(sw.mul(0.7).add(A.w), zw.mul(0.5).sub(erupt.mul(0.2))), 2.5).r;
+                    glow.mulAssign(mix(float(1.0), smoothstep(0.25, 0.75, tear).mul(1.3), going).mul(inBox));
                     const hot = clamp(glow.mul(0.5), 0.0, 1.0);
-                    const shade = mix(mix(C.xyz, u.chromo, 0.18), WHITE_HOT, hot.mul(hot).mul(0.5));
+                    // Rooted in the chromosphere: its feet take the limb's own pink, the body the
+                    // piece's colour.
+                    const rooted = float(1.0).sub(smoothstep(0.0, 0.4, zw.div(tall)));
+                    const body = mix(C.xyz, u.chromo, rooted.mul(0.42).add(0.14));
+                    const shade = mix(body, WHITE_HOT, hot.mul(hot).mul(0.5));
                     behind.addAssign(shade.mul(glow).mul(C.w).mul(fade).mul(1.8));
                 });
             });
@@ -383,7 +423,8 @@ export function drawSun(env, p, {
         };
         const star = spike(spin, 0.95, 0.014).add(spike(spin.add(Math.PI / 2), 0.95, 0.014)).mul(0.75)
             .add(spike(spin.add(Math.PI / 4), 0.5, 0.01).add(spike(spin.add((3 * Math.PI) / 4), 0.5, 0.01)).mul(0.3));
-        front.addAssign(vec3(1.0, 0.95, 0.86).mul(core.add(star)).mul(u.diamond.z));
+        front.addAssign(vec3(1.0, 0.95, 0.86).mul(core).mul(u.diamond.z));
+        spikes.addAssign(vec3(1.0, 0.95, 0.86).mul(star).mul(u.diamond.z));
     });
 
     return { r, ang };
