@@ -1398,7 +1398,7 @@ export function rbMistAir(u, over, field, Tx, front, w) {
  * `opaque` says P is the vapour itself (the backdrop's ray down). Away from the mist, in the middle
  * distance, the haze leaves some of the colour's hue and lends it the air's own (AIR_PASTEL).
  */
-export function rbAir(u, col, P, pre = null, { billows = 2, opaque = false } = {}) {
+export function rbAir(u, col, P, pre = null, { billows = 2, opaque = false, share = null } = {}) {
     const inside = rbMistInside(u).toVar();
     const reach = mix(rbMistReach(u, P), float(1.0), inside);
     const seen = u.camPos.add(P.sub(u.camPos).mul(reach));
@@ -1422,6 +1422,8 @@ export function rbAir(u, col, P, pre = null, { billows = 2, opaque = false } = {
         }
         vapour = rbVapour(u, dir, field, inscatter).toVar();
     }
+    // (Handed back on request: what else lies along this ray sees the same air.)
+    if (share) Object.assign(share, { inscatter, vapour });
     const front = mix(inscatter, vapour, inside).toVar();
     const over = rbAirOver(col, T, front, vapour).toVar();
     // How much of the pixel is the mist's vapour (none from inside: there it is the air).
@@ -1531,10 +1533,19 @@ export const CANOPY_FADE_NEAR = Object.freeze({ ref: 60, least: 0.6, mist: 2.5 }
  *    `understoryUp`[0] to [1]: lower rays are the haze's own).
  *  - Farther than single leaves resolve, the clumps' edges rag over `fringeFar`[1] pixels with a
  *    noise of `fringeFar`[0] pixels' period (never a cloud's smooth rim).
+ *  - Each mass hangs as a dome (`relief`): the field read `step` metres (or `px` pixels, if more)
+ *    either way along the sun's azimuth, at that step's own level, gives its slope toward the sun;
+ *    over the last `depth` metres of its rim (its heart stays level: no crease down its middle) the
+ *    rim facing the sun glows `lit` of the way to the backlit green (the first looking away from
+ *    the sun, the second toward it) and the rim turned away falls `shade` darker (`depth` and
+ *    `shade`: far below the canopy, then just under it, where a dome is seen whole). The storeys under
+ *    the canopy (CANOPY_MID, CANOPY_UNDER) are domed the same way, and a trunk rising past one goes
+ *    into its clusters' undersides: up to `hang` metres under its plane in a cluster's heart
+ *    (reached `hangIn` metres in), softly over `soft` metres, never at one level line.
  *  - Low and Minimal (`lite`) keep the picture on fewer reads: no leaf lace (the field's sprays rag
- *    the edges alone) and no crown-gap lobes; the size test is the same field's. With no bloom to
- *    lift the dark leaves against the bright sky (its halation), their leaves are `liteLift` as
- *    light.
+ *    the edges alone), no crown-gap lobes, no relief and no storeys; the size test is the same
+ *    field's. With no bloom to lift the dark leaves against the bright sky (its halation), their
+ *    leaves are `liteLift` as light.
  */
 export const CANOPY = Object.freeze({
     bias: 0.0,
@@ -1557,6 +1568,16 @@ export const CANOPY = Object.freeze({
     liteLift: 1.6,
     tone: 0.2,
     clusters: Object.freeze({ tile: 48, shade: 0.34, lit: 0.22 }),
+    relief: Object.freeze({
+        step: 1.4,
+        px: 2.5,
+        depth: Object.freeze([2.6, 5.5]),
+        lit: Object.freeze([0.35, 0.75]),
+        shade: Object.freeze([0.45, 0.62]),
+        hang: 5,
+        hangIn: 3,
+        soft: 1.2,
+    }),
     core: Object.freeze([0.4, 2.2, 0.82]),
     through: Object.freeze([0.42, 0.5, 0.7]),
     rim: 0.3,
@@ -1605,6 +1626,20 @@ export const BARK_TONE = Object.freeze({
 export const GROVE_RIM = Object.freeze({
     k: 0.85, g: 0.45, edge: 2.2, side: Object.freeze([0.55, 0.95]), shadeSheen: 0.08, shade: 0.55,
 });
+/**
+ * The crowns' middle storey (rbCanopy), between the canopy plane and the lower storey: the same
+ * fields as CANOPY_UNDER (below), denser and lighter, so the crowns stand in three depths.
+ */
+export const CANOPY_MID = Object.freeze({
+    drop: 12,
+    scale: 0.86,
+    shift: Object.freeze([5.3, 29.7]),
+    sparse: 0.45,
+    dark: 0.92,
+    rim: 0.7,
+    seen: Object.freeze([200, 340]),
+    near: Object.freeze([8, 22]),
+});
 export const CANOPY_UNDER = Object.freeze({
     drop: 24,
     scale: 0.72,
@@ -1651,6 +1686,121 @@ const crownCell = (g, salt) => {
     return vec2(fx.mul(c).sub(f.y.mul(s)), fx.mul(s).add(f.y.mul(c))).add(shift);
 };
 
+/** The storeys under the canopy plane, farthest first (rbStoreys), and their lattices' salts. */
+const STOREYS = Object.freeze([CANOPY_MID, CANOPY_UNDER]);
+const STOREY_SALTS = Object.freeze([[71.9, 53.3], [83.1, 97.3]]);
+/**
+ * How far (metres of the crown field) a storey's clusters are cut back as the eye climbs to it
+ * (its `near` band): more than a cluster's deepest heart, so at the band's start none is left.
+ */
+const STOREY_THIN = 7;
+
+/**
+ * The storeys of leaf clusters under the canopy plane along a view ray (STOREYS: CANOPY_MID, then
+ * CANOPY_UNDER, the nearer laid last), each nearer, sparser and darker than the one above it, its
+ * own pattern (scaled, shifted), rimmed with light toward the sun and domed by its relief
+ * (CANOPY.relief): the crowns read in layers that part as the camera breathes and climbs, never one
+ * flat ceiling. Each is seen through its own, nearer air (`pre`: the air's inscatter and vapour
+ * along the ray), read only where it can show and laid over `base` (what the ray sees behind it).
+ * The backdrop lays them over the canopy; a trunk that rises past a storey's plane lies behind it
+ * (`beyondY`, the height the ray ends at: a storey hides it only where the ray crosses the storey's
+ * plane first), so the trunks climb into the crowns, never through them, and the leaves over a
+ * trunk are the very leaves painted beside it. One Loop over the storeys: the body (its field
+ * reads and its air) is written once.
+ * @param {object} u    the shared uniforms (with textures)
+ * @param {object} dir  unit view direction (vec3 node)
+ * @param {object} pre  { inscatter, vapour } along dir
+ * @param {object} base  what the ray sees behind the storeys (vec3 node)
+ * @param {object} [options]
+ * @param {boolean} [options.relief]  the clusters' relief toward the sun
+ * @param {object} [options.solid]  how far a trunk's dissolving top fills the canopy (none of the storeys then)
+ * @param {object} [options.beyondY]  the height of what the ray ends on (float node), if not the sky
+ * @returns {object} vec3 node: `base` with the storeys laid over it
+ */
+export function rbStoreys(u, dir, pre, base, { relief = true, solid = null, beyondY = null } = {}) {
+    const C = CANOPY;
+    const RL = C.relief;
+    const T = CANOPY_CROWNS.tile;
+    const R = CANOPY_CROWNS.range;
+    const texel = T / u.tex.crowns.image.width;
+    const upY = max(dir.y, 1e-3).toVar();
+    const cot = sqrt(max(float(1.0).sub(upY.mul(upY)), 0.0)).div(upY).toVar();
+    const under = smoothstep(u.canopyY.sub(C.near[0]), u.canopyY.sub(C.near[1]), u.camPos.y);
+    const lightOf = u.col.crown.mul(mix(float(C.light[0]), float(C.light[1]), under)).toVar();
+    const cosSun = dot(dir, u.sunDir).toVar();
+    const glow = rbHgMix(cosSun, float(0.75)).mul(C.glow).add(1.0).toVar();
+    const forward = rbHgMix(cosSun, float(0.5)).toVar();
+    const backlit = u.col.crown.mul(BACKLIT_GAIN).add(vec3(...BACKLIT_WARM)).toVar();
+    const sunFlat = normalize(u.sunDir.xz).toVar();
+    const out = vec3(base).toVar();
+    Loop({
+        start: int(0), end: int(STOREYS.length), type: 'int', condition: '<', name: 'sy',
+    }, ({ sy }) => {
+        // (Each storey's constants, picked by the index.)
+        const second = sy.equal(1);
+        const pick = (key) => select(second, float(STOREYS[1][key]), float(STOREYS[0][key]));
+        const pick2 = (key, j) => select(second, float(STOREYS[1][key][j]), float(STOREYS[0][key][j]));
+        const salt = (j) => select(second, float(STOREY_SALTS[1][j]), float(STOREY_SALTS[0][j]));
+        const scale = pick('scale').toVar();
+        const yS = u.canopyY.sub(pick('drop')).toVar();
+        const tU = max(yS.sub(u.camPos.y), 1.0).div(upY).toVar();
+        const atU = u.camPos.add(dir.mul(tU)).toVar();
+        // (It thins out as the eye climbs near it: from just under it, its clusters would be slabs.
+        // Thinned, never faded: its clusters shrink and drop out whole (STOREY_THIN), so no
+        // half-seen leaves ever hang over a trunk as a ghost.)
+        const above = yS.sub(u.camPos.y);
+        const nearK = smoothstep(pick2('near', 0), pick2('near', 1), above).toVar();
+        let shows = float(1.0).sub(smoothstep(pick2('seen', 0), pick2('seen', 1), tU))
+            .mul(float(1.0).sub(u.pearl));
+        if (beyondY) shows = shows.mul(step(yS.sub(RL.hang + RL.soft), beyondY));
+        if (solid) shows = shows.mul(float(1.0).sub(solid));
+        shows = shows.toVar();
+        If(shows.mul(nearK).greaterThan(0.001), () => {
+            const footU = tU.mul(u.pixelAngle).mul(inversesqrt(upY)).mul(scale).toVar();
+            const lodU = clamp(log2(footU.div(texel)).add(C.bias), 0.0, 9.0);
+            const gU = atU.xz.mul(scale).add(vec2(pick2('shift', 0), pick2('shift', 1))).div(T).toVar();
+            const s0 = salt(0).toVar();
+            const s1 = salt(1).toVar();
+            const read = (gIn, lodIn) => {
+                const fU = fract(gIn).sub(0.5);
+                const ux = smoothstep(0.0, C.seam, float(0.5).sub(abs(fU.x)).mul(T)).toVar();
+                const uz = smoothstep(0.0, C.seam, float(0.5).sub(abs(fU.y)).mul(T)).toVar();
+                const f = u.crowns(crownCell(gIn, s0), lodIn).mul(ux.mul(uz)).toVar();
+                If(ux.lessThan(0.999).or(uz.lessThan(0.999)), () => {
+                    f.addAssign(u.crowns(crownCell(gIn.add(0.5), s1), lodIn).mul(float(1.0).sub(ux.mul(uz))));
+                });
+                return f;
+            };
+            const dU = read(gU, lodU).x.mul(2 * R).sub(R).sub(pick('sparse')).add(cot.mul(C.layers))
+                .sub(float(1.0).sub(nearK).mul(STOREY_THIN))
+                .toVar();
+            const wU = footU.mul(C.aa);
+            const rimU = float(1.0).sub(smoothstep(0.0, max(float(C.rim), footU.mul(1.5)), dU));
+            const c = mix(lightOf.mul(pick('dark')).mul(glow), backlit.mul(glow), rimU.mul(min(forward.mul(C.rimLit), 1.0)).mul(pick('rim')))
+                .toVar();
+            if (relief) {
+                const reachU = max(float(RL.step), footU.mul(RL.px)).toVar();
+                const lodRU = clamp(log2(reachU.div(texel)), 0.0, 9.0).toVar();
+                const offU = sunFlat.mul(reachU.div(T)).toVar();
+                const tiltU = clamp(read(gU.sub(offU), lodRU).x.sub(read(gU.add(offU), lodRU).x).mul(R).div(reachU), -1.0, 1.0)
+                    .toVar();
+                const bevelU = exp(max(dU, 0.0).div(-RL.depth[0])).toVar();
+                const litK = mix(float(RL.lit[0]), float(RL.lit[1]), forward);
+                c.assign(mix(c, backlit.mul(glow), max(tiltU, 0.0).mul(bevelU).mul(litK)));
+                c.mulAssign(float(1.0).sub(max(tiltU.negate(), 0.0).mul(bevelU).mul(RL.shade[0])));
+            }
+            let cover = smoothstep(wU.negate(), wU, dU).mul(shows);
+            if (beyondY) {
+                // (A trunk goes into a cluster's underside, which hangs lower toward its heart.)
+                const hang = float(RL.hang).mul(float(1.0).sub(exp(max(dU, 0.0).div(-RL.hangIn)))).toVar();
+                cover = cover.mul(smoothstep(yS.sub(hang).sub(RL.soft), yS.sub(hang).add(RL.soft), beyondY));
+            }
+            out.assign(mix(out, rbAir(u, c, atU, pre, { billows: 0 }), cover));
+        });
+    });
+    return out;
+}
+
 /**
  * The canopy where a view ray meets its plane (§4.4 item 3), seen through the air: dark clumps of
  * leaves against the bright sky (CANOPY), read in perspective at the footprint, the crowns' limbs
@@ -1664,11 +1814,15 @@ const crownCell = (g, salt) => {
  * @param {object} [options]
  * @param {object} [options.solid]  how far the openings are filled with leaves (float node 0 … 1)
  * @param {boolean} [options.lite]  Low and Minimal: fewer reads (CANOPY)
- * @param {boolean} [options.lowerStorey]  the lower storey (CANOPY_UNDER); a trunk's dissolving top, which
- *   enters the canopy plane itself, leaves it out (it would double the canopy's air in the bark's
- *   shader, a slow compile on the WebGL2 backend)
+ * @param {boolean} [options.lowerStorey]  the storeys under the canopy (CANOPY_MID, CANOPY_UNDER); a
+ *   trunk's dissolving top, which enters the canopy plane itself, leaves them out (they would double
+ *   the canopy's air in the bark's shader, a slow compile on the WebGL2 backend)
+ * @param {boolean} [options.relief]  the masses' relief toward the sun (CANOPY.relief; never on Low and
+ *   Minimal)
  */
-export function rbCanopy(u, dir, pre = null, { solid = null, lite = false, lowerStorey = true } = {}) {
+export function rbCanopy(u, dir, pre = null, {
+    solid = null, lite = false, lowerStorey = true, relief = true,
+} = {}) {
     const C = CANOPY;
     const upY = max(dir.y, 1e-3).toVar();
     const t = max(u.canopyY.sub(u.camPos.y), 1.0).div(upY).toVar();
@@ -1689,24 +1843,42 @@ export function rbCanopy(u, dir, pre = null, { solid = null, lite = false, lower
     const lod = clamp(log2(foot.div(texel)).add(C.bias), 0.0, 9.0).toVar();
     // (Four lattices, offset half a cell along x, along z and both: each weighs nothing at its own
     // edges, so the blend is seamless; inside a cell only the first is read.)
+    const bombed = (gIn, lodIn) => {
+        const fA = fract(gIn).sub(0.5);
+        const tx = smoothstep(0.0, C.seam, float(0.5).sub(abs(fA.x)).mul(T)).toVar();
+        const tz = smoothstep(0.0, C.seam, float(0.5).sub(abs(fA.y)).mul(T)).toVar();
+        const f = u.crowns(crownCell(gIn, 13.7), lodIn).mul(tx.mul(tz)).toVar();
+        const seamX = tx.lessThan(0.999);
+        const seamZ = tz.lessThan(0.999);
+        If(seamX, () => {
+            f.addAssign(u.crowns(crownCell(gIn.add(vec2(0.5, 0.0)), 29.3), lodIn).mul(float(1.0).sub(tx).mul(tz)));
+        });
+        If(seamZ, () => {
+            f.addAssign(u.crowns(crownCell(gIn.add(vec2(0.0, 0.5)), 47.9), lodIn).mul(tx.mul(float(1.0).sub(tz))));
+        });
+        If(seamX.and(seamZ), () => {
+            f.addAssign(u.crowns(crownCell(gIn.add(0.5), 61.1), lodIn).mul(float(1.0).sub(tx).mul(float(1.0).sub(tz))));
+        });
+        return f;
+    };
     const g = q.div(T).toVar();
-    const fA = fract(g).sub(0.5);
-    const tx = smoothstep(0.0, C.seam, float(0.5).sub(abs(fA.x)).mul(T)).toVar();
-    const tz = smoothstep(0.0, C.seam, float(0.5).sub(abs(fA.y)).mul(T)).toVar();
-    const field = u.crowns(crownCell(g, 13.7), lod).mul(tx.mul(tz)).toVar();
-    const seamX = tx.lessThan(0.999);
-    const seamZ = tz.lessThan(0.999);
-    If(seamX, () => {
-        field.addAssign(u.crowns(crownCell(g.add(vec2(0.5, 0.0)), 29.3), lod).mul(float(1.0).sub(tx).mul(tz)));
-    });
-    If(seamZ, () => {
-        field.addAssign(u.crowns(crownCell(g.add(vec2(0.0, 0.5)), 47.9), lod).mul(tx.mul(float(1.0).sub(tz))));
-    });
-    If(seamX.and(seamZ), () => {
-        field.addAssign(u.crowns(crownCell(g.add(0.5), 61.1), lod).mul(float(1.0).sub(tx).mul(float(1.0).sub(tz))));
-    });
+    const field = bombed(g, lod);
     const R = CANOPY_CROWNS.range;
     const d = field.x.mul(2 * R).sub(R).toVar();
+    // ── The masses' relief toward the sun (CANOPY.relief): the field read a step either way along
+    // the sun's azimuth, at that step's own level (smooth), gives each mass's slope toward the sun:
+    // + on a rim that faces it, − on the rim turned from it. ──
+    const RL = C.relief;
+    const sunFlat = normalize(u.sunDir.xz).toVar();
+    let tilt = null;
+    if (!lite && relief) {
+        const reach = max(float(RL.step), foot.mul(RL.px)).toVar();
+        const lodR = clamp(log2(reach.div(texel)), 0.0, 9.0).toVar();
+        const off = sunFlat.mul(reach.div(T)).toVar();
+        const toward = bombed(g.add(off), lodR).x;
+        const away = bombed(g.sub(off), lodR).x;
+        tilt = clamp(away.sub(toward).mul(R).div(reach), -1.0, 1.0).toVar();
+    }
     const limb = field.y;
     const halfWidth = field.z.mul(R);
     const tone = field.w;
@@ -1800,6 +1972,16 @@ export function rbCanopy(u, dir, pre = null, { solid = null, lite = false, lower
     let leafCol = mix(deep, backlit, fringe.mul(rimLight)).mul(glow);
     if (!lite) leafCol = mix(leafCol, lightOf.mul(C.core[2]), limb.mul(C.limbs[1]));
     leafCol = leafCol.toVar();
+    if (tilt) {
+        // (A mass hangs as a dome: its rim toward the sun glows with the light through it, the rim
+        // turned away falls into its own shade; only the rims tilt, over CANOPY.relief.depth metres,
+        // so its heart is level and no crease runs down its middle.)
+        const bevel = exp(inLeaves.div(mix(float(RL.depth[0]), float(RL.depth[1]), under)).negate()).toVar();
+        const toSun = max(tilt, 0.0).mul(bevel);
+        const fromSun = max(tilt.negate(), 0.0).mul(bevel);
+        leafCol.assign(mix(leafCol, backlit.mul(glow), toSun.mul(mix(float(RL.lit[0]), float(RL.lit[1]), forward))));
+        leafCol.mulAssign(float(1.0).sub(fromSun.mul(mix(float(RL.shade[0]), float(RL.shade[1]), under))));
+    }
     // (A limb narrower than a couple of pixels would only draw hairline cracks: CANOPY.limbFoot.)
     const limbK = limb.mul(float(1.0).sub(smoothstep(C.limbFoot[0], C.limbFoot[1], foot))).toVar();
     // ── Through an opening: the sky (brighter far below, toward the sun; only the openings toward
@@ -1832,37 +2014,6 @@ export function rbCanopy(u, dir, pre = null, { solid = null, lite = false, lower
     if (solid) open.mulAssign(float(1.0).sub(solid));
     // (In a pearly zone the canopy is a faint shadow in the pearl: CANOPY.faint.)
     const canopy = mix(mix(leafCol, through, open), u.col.hazeShade.mul(C.faint[1]), u.pearl.mul(C.faint[0])).toVar();
-    let lower = null;
-    if (!lite && lowerStorey) {
-        // A second, sparser storey of leaf clusters CANOPY_UNDER.drop metres under the canopy plane,
-        // nearer and darker, rimmed with light toward the sun: the crowns read in layers (and part
-        // as the camera breathes), never one flat ceiling. Its own pattern (scaled, shifted), laid
-        // over the canopy after the canopy's own reach (so its clumps hang below where the canopy
-        // melts into the haze), through its own, nearer air.
-        const U = CANOPY_UNDER;
-        const tU = max(u.canopyY.sub(U.drop).sub(u.camPos.y), 1.0).div(upY).toVar();
-        const atU = u.camPos.add(dir.mul(tU));
-        const footU = tU.mul(u.pixelAngle).mul(inversesqrt(upY)).mul(U.scale).toVar();
-        const lodU = clamp(log2(footU.div(texel)).add(C.bias), 0.0, 9.0);
-        const gU = atU.xz.mul(U.scale).add(vec2(U.shift[0], U.shift[1])).div(T).toVar();
-        const fU = fract(gU).sub(0.5);
-        const ux = smoothstep(0.0, C.seam, float(0.5).sub(abs(fU.x)).mul(T)).toVar();
-        const uz = smoothstep(0.0, C.seam, float(0.5).sub(abs(fU.y)).mul(T)).toVar();
-        const fieldU = u.crowns(crownCell(gU, 83.1), lodU).mul(ux.mul(uz)).toVar();
-        If(ux.lessThan(0.999).or(uz.lessThan(0.999)), () => {
-            fieldU.addAssign(u.crowns(crownCell(gU.add(0.5), 97.3), lodU).mul(float(1.0).sub(ux.mul(uz))));
-        });
-        const dU = fieldU.x.mul(2 * R).sub(R).sub(U.sparse).add(cot.mul(C.layers))
-            .toVar();
-        const wU = footU.mul(C.aa);
-        const leafU = smoothstep(wU.negate(), wU, dU).mul(float(1.0).sub(u.pearl)).toVar();
-        const rimU = float(1.0).sub(smoothstep(0.0, max(float(C.rim), footU.mul(1.5)), dU));
-        const colU = mix(lightOf.mul(U.dark).mul(glow), backlit.mul(glow), rimU.mul(min(forward.mul(C.rimLit), 1.0)).mul(U.rim));
-        // (It thins out as the eye climbs near it: from just under it, its clusters would be slabs.)
-        const above = u.canopyY.sub(U.drop).sub(u.camPos.y);
-        const leaves = leafU.mul(float(1.0).sub(smoothstep(U.seen[0], U.seen[1], tU))).mul(smoothstep(U.near[0], U.near[1], above));
-        lower = { col: colU, at: atU, k: (solid ? leaves.mul(float(1.0).sub(solid)) : leaves).toVar() };
-    }
     const lost = pre ? mix(canopy, pre.vapour, inside.mul(float(1.0).sub(veiled))) : canopy;
     // Beyond what can be told apart the canopy is its mean (dark leaves with `farOpen` of sky), and
     // farther still the air's own light along the ray (in a pearly zone those distances are
@@ -1880,7 +2031,8 @@ export function rbCanopy(u, dir, pre = null, { solid = null, lite = false, lower
     // (Under a sunlit canopy the air itself is lit through the leaves: green-gold, never a grey
     // lid; CANOPY.understory, gone in the pearl.)
     let seenThrough = rbAir(u, mix(farTone, lost, seen), at, pre, { billows: 0 });
-    if (lower) seenThrough = mix(seenThrough, rbAir(u, lower.col, lower.at, pre, { billows: 0 }), lower.k);
+    // (The storeys under the canopy plane, laid over it: rbStoreys.)
+    if (!lite && lowerStorey && pre) seenThrough = rbStoreys(u, dir, pre, seenThrough, { relief, solid });
     // (Only where the canopy is what the ray sees, up steeply: low rays are the haze's own.)
     // (On the leaves, never the sky through an opening.)
     const understoryK = smoothstep(C.understoryUp[0], C.understoryUp[1], dir.y).mul(float(1.0).sub(u.pearl))
@@ -3123,7 +3275,8 @@ export function rbBark(u, at, {
         const grey = vec3(rbLuma(lit));
         lit.assign(mix(lit, mix(grey, lit, LIMB_SHADE.chroma).mul(LIMB_SHADE.light), shaded));
     }
-    const seen = rbAir(u, lit, Pw, null, { billows }).toVar();
+    const airAlong = {};
+    const seen = rbAir(u, lit, Pw, null, { billows, share: airAlong }).toVar();
     if (!fine) {
         // (Every far trunk stands its own depth in the haze, some clearer, some fainter, hashed from
         // its seed (BARK_TONE.haze), above the mist, where the air is the haze's own: the ranks
@@ -3146,9 +3299,20 @@ export function rbBark(u, at, {
         // its top melts into leaves, never sawn off under a gap; a limb's tip takes the canopy whole.)
         const solid = float(1.0).sub(limbAt ? max(topK, limbAt.y) : topK.mul(CANOPY_TOP.trunkOpen)).toVar();
         const ray = Pw.sub(cameraPosition).normalize().toVar();
+        // (Without the masses' relief: this top is mostly hidden behind the storeys below.)
         If(into.greaterThan(0.001), () => {
-            seen.assign(mix(seen, rbCanopy(u, ray, null, { solid, lite, lowerStorey: false }), into));
+            seen.assign(mix(seen, rbCanopy(u, ray, null, {
+                solid, lite, lowerStorey: false, relief: false,
+            }), into));
         });
+        if (!lite) {
+            // …and where it rises past the storeys under the canopy, their leaves hang in front of it
+            // (rbStoreys: the very leaves the backdrop paints beside it, through the same air along
+            // the same ray), so it climbs into the crowns, never through them.
+            If(Pw.y.greaterThan(u.canopyY.sub(CANOPY_UNDER.drop)), () => {
+                seen.assign(rbStoreys(u, ray, airAlong, seen, { beyondY: Pw.y }));
+            });
+        }
     }
     return seen;
 }
