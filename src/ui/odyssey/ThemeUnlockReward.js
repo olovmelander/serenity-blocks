@@ -114,7 +114,8 @@ function appendCeremonyCopy(copy, {
 
 /**
  * A saved collection receipt, with no claim action, timing or input ownership.
- * `variant: 'ceremony'` is the large completion reveal; the compact card serves Results and the finale.
+ * `variant: 'ceremony'` is the large reveal (the completion ceremony and the campaign finale);
+ * the compact card serves Results.
  */
 export function createThemeUnlockReward(receipt, {
     reducedMotion = false, variant = 'compact', nowPlaying = false,

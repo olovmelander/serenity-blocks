@@ -1,89 +1,539 @@
-/* A quiet, untimed horizon after the whole campaign has been completed. */
+/* =================================================================================
+ * ODYSSEY FINALE — the campaign's ending (#odyssey-finale-modal), once, after the last orb
+ * ---------------------------------------------------------------------------------
+ * The navigator's grammar (odyssey-navigator.css) for the climax: a night sky that carries
+ * all eight chapters' light; the journey as an ascent of the chapters, each in its light
+ * with its boss's world as the art (.sb-orb-art, odyssey-shared.css); the last theme at the
+ * ceremony size (.ody-theme-reward--ceremony, odyssey-flow.css); the journey in figures and
+ * cells; three ways on with their keys and controller buttons. Wide windows fit without
+ * scrolling; phones and large text scroll, the actions last. Entrances move transform and
+ * opacity only and are dropped for reduced motion. No backdrop blur.
+ * Builder: src/ui/odyssey/CampaignFinale.js.
+ * ================================================================================ */
 .ody-finale {
+    --sb-accent-rgb: var(--sb-gold-rgb);
+    --finale-gap: clamp(12px, 3vh, 34px);
+    --finale-orb: clamp(52px, min(6vw, 10vh), 104px);
+    --finale-rise: clamp(24px, 8vh, 88px);
     position: fixed;
     inset: 0;
     z-index: 10050;
+    display: flex;
+    flex-direction: column;
     overflow: auto;
     overscroll-behavior: contain;
     isolation: isolate;
-    display: grid;
-    place-items: center;
-    padding: max(36px, env(safe-area-inset-top)) 28px max(28px, env(safe-area-inset-bottom));
     box-sizing: border-box;
-    color: #f7f0e7;
-    font-family: var(--sb-font-text, sans-serif);
-    background: radial-gradient(ellipse at 50% 15%, #332038 0%, #161125 42%, #080713 78%);
+    padding:
+        max(clamp(16px, 3.4vh, 40px), env(safe-area-inset-top))
+        clamp(16px, 3vw, 48px)
+        max(clamp(14px, 2.8vh, 32px), env(safe-area-inset-bottom));
+    background: var(--sb-bg);
+    color: var(--sb-text);
+    font-family: var(--sb-font-text);
 }
-.ody-finale__horizon {
+
+.ody-finale *,
+.ody-finale *::before,
+.ody-finale *::after {
+    box-sizing: border-box;
+}
+
+/* ---- The sky: night, the eight chapters' light climbing it, stars, a horizon ------------ */
+.ody-finale__sky {
     position: fixed;
-    z-index: -1;
     inset: 0;
+    z-index: -1;
+    overflow: hidden;
     pointer-events: none;
     background:
-        radial-gradient(circle at 21% 16%, #edceb9 0 1px, transparent 2px),
-        radial-gradient(circle at 79% 22%, #edceb9 0 1px, transparent 2px),
-        radial-gradient(circle at 67% 9%, #c5c8ed 0 1px, transparent 2px),
-        radial-gradient(circle at 8% 43%, #c5c8ed 0 1px, transparent 2px),
-        radial-gradient(circle at 93% 58%, #c5c8ed 0 1px, transparent 2px);
+        radial-gradient(70% 50% at 50% 0%, rgba(var(--sb-lavender-rgb), 0.08), transparent 72%),
+        linear-gradient(180deg, rgba(var(--sb-night-rgb), 0.4) 0%, transparent 46%, rgba(0, 0, 0, 0.45) 100%),
+        var(--sb-bg);
+    animation: ody-finale-fade 1200ms ease-out backwards;
 }
-.ody-finale__horizon::after {
-    content: '';
+
+.ody-finale__light {
     position: absolute;
-    top: 5%;
-    left: 50%;
-    width: min(78vw, 1050px);
-    aspect-ratio: 1;
+    left: var(--x);
+    top: var(--y);
+    width: 44vmax;
+    height: 44vmax;
+    margin: -22vmax 0 0 -22vmax;
     border-radius: 50%;
-    border: 1px solid #efb79635;
-    box-shadow: 0 -22px 100px #f0a16d16, inset 0 22px 100px #e9a9850c;
+    background: radial-gradient(closest-side, rgba(var(--ody-hue-rgb), 0.24), rgba(var(--ody-hue-rgb), 0.08) 52%, transparent);
+    animation: ody-finale-fade 1800ms calc(240ms + var(--light, 0) * 110ms) ease-out backwards;
+}
+
+.ody-finale__stars,
+.ody-finale__stars::after {
+    position: absolute;
+    inset: 0;
+    background-image:
+        radial-gradient(1.2px 1.2px at 8% 14%, rgba(var(--sb-cream-rgb), 0.8), transparent 70%),
+        radial-gradient(1px 1px at 23% 61%, rgba(var(--sb-cream-rgb), 0.55), transparent 70%),
+        radial-gradient(1.4px 1.4px at 37% 28%, rgba(var(--sb-cream-rgb), 0.7), transparent 70%),
+        radial-gradient(1px 1px at 52% 83%, rgba(var(--sb-cream-rgb), 0.5), transparent 70%),
+        radial-gradient(1.2px 1.2px at 66% 9%, rgba(var(--sb-cream-rgb), 0.65), transparent 70%),
+        radial-gradient(1px 1px at 78% 47%, rgba(var(--sb-cream-rgb), 0.5), transparent 70%),
+        radial-gradient(1.6px 1.6px at 91% 72%, rgba(var(--sb-cream-rgb), 0.7), transparent 70%),
+        radial-gradient(1px 1px at 14% 92%, rgba(var(--sb-cream-rgb), 0.45), transparent 70%),
+        radial-gradient(1px 1px at 47% 4%, rgba(var(--sb-cream-rgb), 0.5), transparent 70%),
+        radial-gradient(1.2px 1.2px at 84% 24%, rgba(var(--sb-cream-rgb), 0.55), transparent 70%);
+    background-size: 560px 460px;
+    opacity: 0.6;
+}
+
+/* A second, sparser field that breathes slowly: the night is alive, never busy. */
+.ody-finale__stars::after {
+    content: '';
+    background-size: 830px 690px;
+    background-position: 210px 130px;
+    opacity: 0.9;
+    animation: ody-finale-twinkle 7s var(--sb-ease-breathe) infinite alternate;
+}
+
+/* The horizon the journey reached: a wide, faint arc low in the sky. */
+.ody-finale__horizon {
+    position: absolute;
+    left: 50%;
+    top: 72%;
+    width: 150vw;
+    height: 80vh;
+    border-radius: 50%;
+    border-top: 1px solid rgba(var(--sb-cream-rgb), 0.12);
+    background: radial-gradient(60% 40% at 50% 0%, rgba(var(--sb-gold-rgb), 0.07), transparent 70%);
+    box-shadow: 0 -24px 90px rgba(var(--sb-gold-rgb), 0.06);
     transform: translateX(-50%);
-    mask-image: linear-gradient(#000 0%, transparent 52%);
 }
-.ody-finale__content { width: min(900px, 100%); text-align: center; animation: ody-finale-arrive 900ms ease-out both; }
-.ody-finale__eyebrow { margin: 0 0 20px; color: #e9b795; font-size: 0.75rem; letter-spacing: 0.25em; text-transform: uppercase; }
+
+/* ---- The page: it answers to its own width in text units (@container finale, below), so a
+   phone and a window with very large text both get the stacked layout. -------------------- */
+.ody-finale__content {
+    container: finale / inline-size;
+    width: min(1320px, 100%);
+    margin: auto;
+}
+
+.ody-finale__layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1.12fr) minmax(0, 0.88fr);
+    grid-template-areas:
+        'head head'
+        'journey journey'
+        'reward summary'
+        'actions actions';
+    align-items: center;
+    gap: var(--finale-gap) clamp(24px, 4vw, 64px);
+}
+
+.ody-finale__layout[data-reward='false'] {
+    grid-template-areas:
+        'head head'
+        'journey journey'
+        'summary summary'
+        'actions actions';
+}
+
+/* ---- Eyebrow, title, lede ----------------------------------------------------------------- */
+.ody-finale__head {
+    grid-area: head;
+    text-align: center;
+}
+
+.ody-finale__head > * {
+    animation: ody-finale-rise 720ms var(--sb-ease-lock) backwards;
+}
+
 .ody-finale__title {
-    max-width: 14ch;
-    margin: 0 auto;
-    font: 500 clamp(2.1rem, 5.5vw, 4.7rem) / 1.12 var(--sb-font-display, sans-serif);
-    letter-spacing: -0.035em;
+    margin: clamp(6px, 1.4vh, 14px) auto 0;
+    font: 600 clamp(2rem, min(4.4vw, 7.6vh), 4.25rem) / 1.06 var(--sb-font-display);
+    letter-spacing: -0.025em;
     text-wrap: balance;
+    animation-delay: 90ms;
 }
-.ody-finale__lede { max-width: 47ch; margin: 24px auto 0; font-size: 1rem; line-height: 1.7; color: #d0c5dc; text-wrap: balance; }
+
+.ody-finale__title:focus,
+.ody-finale__title:focus-visible {
+    outline: none;
+}
+
+.ody-finale__lede {
+    max-width: 80ch;
+    margin: clamp(6px, 1.4vh, 14px) auto 0;
+    color: var(--sb-text-muted);
+    font: 500 clamp(0.875rem, 1.05vw, 1rem) / 1.55 var(--sb-font-text);
+    text-wrap: balance;
+    animation-delay: 190ms;
+}
+
+/* ---- The ascent: chapter 1 at the foot, the encore at the summit ------------------------- */
 .ody-finale__journey {
+    grid-area: journey;
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(var(--stations, 8), minmax(0, 1fr));
+    align-items: start;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* The line of the chapters' light between their worlds (the SVG is scaled to the row). */
+.ody-finale__ascent {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(var(--finale-orb) / 2);
+    height: var(--finale-rise);
+    pointer-events: none;
+    transform-origin: 0 50%;
+    animation: ody-finale-draw 1500ms 420ms var(--sb-ease-lock) backwards;
+}
+
+.ody-finale__ascent svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.ody-finale__ascent stop {
+    stop-color: rgb(var(--ody-hue-rgb, var(--sb-gold-rgb)));
+}
+
+.ody-finale__ascent path {
+    fill: none;
+    stroke: url(#ody-finale-ascent-light);
+    stroke-width: 2;
+    stroke-linecap: round;
+    vector-effect: non-scaling-stroke;
+    opacity: 0.85;
+}
+
+.ody-finale__ascent path.ody-finale__ascent-glow {
+    stroke-width: 10;
+    opacity: 0.16;
+}
+
+.ody-finale__station {
     position: relative;
     display: flex;
-    justify-content: space-between;
-    list-style: none;
-    padding: 0;
-    margin: 40px auto;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: calc((1 - var(--lift, 1)) * var(--finale-rise)) 4px 0;
+    text-align: center;
+    animation: ody-finale-rise 760ms calc(360ms + var(--station, 0) * 95ms) var(--sb-ease-lock) backwards;
+}
+
+.ody-finale__station .sb-orb-art {
+    --orb-art-size: var(--finale-orb);
+    margin-bottom: 12px;
+}
+
+/* Every world here is cleared: each orbit and tab wears its own chapter's light, not gold. */
+.ody-finale__station .sb-orb-art__orbit {
+    border-color: rgba(var(--ody-hue-rgb), 0.6);
+}
+
+.ody-finale__station .sb-orb-art__number {
+    border-color: rgba(var(--ody-hue-rgb), 0.7);
+    color: var(--sb-text);
+}
+
+.ody-finale__station[data-summit='true'] .sb-orb-art {
+    transform: scale(1.16);
+}
+
+.ody-finale__station[data-summit='true'] .sb-orb-art__orbit {
+    border-width: 2px;
+    box-shadow: 0 0 26px rgba(var(--ody-hue-rgb), 0.4);
+}
+
+.ody-finale__station-name {
+    max-width: 13ch;
+    color: var(--sb-text);
+    font: 600 clamp(0.6875rem, 0.92vw, 0.8125rem) / 1.25 var(--sb-font-display);
+    letter-spacing: 0.01em;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    text-wrap: balance;
+}
+
+.ody-finale__station-stars {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    color: var(--sb-text);
+    font: 600 0.6875rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+}
+
+.ody-finale__station-stars small {
+    color: var(--sb-text-faint);
+    font-size: 0.85em;
+}
+
+.ody-finale__station-stars i {
+    display: block;
+    width: 11px;
+    height: 11px;
+    margin-left: 3px;
+}
+
+.ody-finale__station-stars svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    fill: var(--sb-gold);
+}
+
+/* ---- The last theme, at the ceremony size ------------------------------------------------ */
+.ody-finale__reward {
+    grid-area: reward;
+    display: flex;
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.ody-finale .ody-theme-reward {
+    margin: 0;
+}
+
+.ody-finale .ody-theme-reward--ceremony {
+    width: min(39rem, 100%);
+}
+
+.ody-finale .ody-theme-reward--ceremony .ody-theme-reward__name {
+    font-size: clamp(1.3rem, min(2.4vw, 4.3vh), 2.1rem);
+}
+
+/* ---- The journey in figures and cells ------------------------------------------------------ */
+.ody-finale__summary {
+    grid-area: summary;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(10px, 1.8vh, 18px);
+    min-width: 0;
+    max-width: 600px;
+    animation: ody-finale-rise 760ms 1050ms var(--sb-ease-lock) backwards;
+}
+
+.ody-finale__layout[data-reward='false'] .ody-finale__summary {
+    align-items: center;
+    justify-self: center;
     width: min(640px, 100%);
+    text-align: center;
 }
-.ody-finale__journey::before { content: ''; position: absolute; inset: 50% 14px auto; height: 1px; background: linear-gradient(90deg, #f0ab73, #8bcddf, #b1c2a6, #c6a6e7, #eeb8a1); }
-.ody-finale__station { position: relative; }
-.ody-finale__orb { display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid #e6b99380; border-radius: 50%; background: #1c1527; box-shadow: 0 0 24px #e8b99b18; color: #edc2a6; font-size: 0.7rem; font-variant-numeric: tabular-nums; }
-.ody-finale__facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin: 0 auto; max-width: 660px; padding: 26px 0; border-block: 1px solid #b7a2ce25; }
-.ody-finale__fact dt { color: #bbb0c8; font-size: 0.76rem; line-height: 1.5; }
-.ody-finale__fact dd { margin: 8px 0 0; font: 500 clamp(1.1rem, 2.8vw, 1.8rem) / 1.3 var(--sb-font-display, sans-serif); font-variant-numeric: tabular-nums; }
-.ody-finale__invitation { max-width: 48ch; margin: 27px auto 0; color: #d0c5dc; line-height: 1.6; font-size: 0.9rem; text-wrap: balance; }
-.ody-finale__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 28px; }
-.ody-finale .sb-btn { min-height: 44px; max-width: 100%; white-space: normal; }
-.ody-finale :focus-visible { outline: 2px solid #edbb99; outline-offset: 5px; }
-.ody-finale__breath { margin: 24px 0 0; color: #a99cb9; font-size: 0.75rem; line-height: 1.5; }
-@keyframes ody-finale-arrive { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-.ody-finale[data-reduced-motion='true'] * { animation: none; }
-@media (prefers-reduced-motion: reduce) { .ody-finale * { animation: none; } }
-@media (max-width: 480px) {
-    .ody-finale { padding-inline: 18px; }
-    .ody-finale__eyebrow { font-size: 0.65rem; }
-    .ody-finale__lede { font-size: 0.88rem; }
-    .ody-finale__journey { margin-block: 30px; }
-    .ody-finale__orb { width: 27px; height: 27px; font-size: 0.6rem; }
-    .ody-finale__facts { gap: 8px; }
-    .ody-finale__fact dt { font-size: 0.65rem; }
-    .ody-finale__actions { flex-direction: column; align-items: stretch; }
+
+.ody-finale__figures {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px clamp(18px, 2.4vw, 36px);
+    margin: 0;
 }
-@media (max-height: 500px) and (min-width: 600px) {
-    .ody-finale { padding-block: 24px; }
-    .ody-finale__journey { margin-block: 24px; }
-    .ody-finale__title { max-width: none; font-size: 2.2rem; }
+
+.ody-finale__layout[data-reward='false'] .ody-finale__figures {
+    justify-content: center;
+}
+
+.ody-finale__figure {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.ody-finale__figure dt {
+    order: 2;
+    color: var(--sb-text-faint);
+    font: 600 0.5625rem / 1.3 var(--sb-font-display);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+.ody-finale__figure dd {
+    margin: 0;
+    color: var(--sb-text);
+    font: 700 clamp(1.5rem, min(2.6vw, 4.6vh), 2.375rem) / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.ody-finale__figure dd small {
+    margin-left: 3px;
+    color: var(--sb-text-faint);
+    font-size: 0.55em;
+    font-weight: 600;
+}
+
+.ody-finale__figure[data-figure='stars'] dd b {
+    color: var(--sb-gold);
+}
+
+/* Every orb of the journey as a cell, chapter by chapter in its own light: all lit. */
+.ody-finale__meter {
+    display: flex;
+    gap: 5px;
+    width: 100%;
+}
+
+.ody-finale__meter-chapter {
+    display: flex;
+    flex: var(--cells, 1) 1 0;
+    gap: 2px;
+    min-width: 0;
+    transform-origin: 0 50%;
+    animation: ody-finale-cells 620ms calc(1150ms + var(--station, 0) * 70ms) var(--sb-ease-lock) backwards;
+}
+
+.ody-finale__meter-chapter > i {
+    flex: 1 1 0;
+    height: 6px;
+    border-radius: 2px;
+    background: rgba(var(--ody-hue-rgb), 0.92);
+    box-shadow: 0 0 8px rgba(var(--ody-hue-rgb), 0.35);
+}
+
+.ody-finale__invitation {
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 500 0.875rem / 1.55 var(--sb-font-text);
+    text-wrap: balance;
+}
+
+/* ---- Three ways on, each with its key and controller button ------------------------------ */
+.ody-finale__actions {
+    grid-area: actions;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 10px 12px;
+    padding-top: clamp(12px, 2.4vh, 22px);
+    border-top: 1px solid var(--sb-line);
+    animation: ody-finale-rise 760ms 1250ms var(--sb-ease-lock) backwards;
+}
+
+.ody-finale .ody-finale__actions .sb-btn {
+    max-width: 100%;
+    white-space: normal;
+    text-align: center;
+}
+
+.ody-finale .sb-btn:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
+    outline-offset: 3px;
+}
+
+.ody-finale__breath {
+    flex-basis: 100%;
+    margin: 2px 0 0;
+    color: var(--sb-text-faint);
+    font: 500 0.75rem / 1.5 var(--sb-font-text);
+    text-align: center;
+}
+
+@keyframes ody-finale-fade {
+    from { opacity: 0; }
+}
+
+@keyframes ody-finale-rise {
+    from { opacity: 0; transform: translateY(14px); }
+}
+
+@keyframes ody-finale-draw {
+    from { opacity: 0; transform: scaleX(0.04); }
+}
+
+@keyframes ody-finale-cells {
+    from { opacity: 0; transform: scaleX(0.2); }
+}
+
+@keyframes ody-finale-twinkle {
+    from { opacity: 0.25; }
+    to { opacity: 0.95; }
+}
+
+.ody-finale[data-reduced-motion='true'] *,
+.ody-finale[data-reduced-motion='true'] *::after {
+    animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ody-finale *,
+    .ody-finale *::after {
+        animation: none;
+    }
+}
+
+/* ---- Too little room for eight worlds abreast (a narrow window, or very large text): the
+   climb wraps upward, four worlds a row, chapter 1 on the lower row. --------------------- */
+@container finale (max-width: 56rem) {
+    .ody-finale__journey {
+        display: flex;
+        flex-wrap: wrap-reverse;
+        justify-content: center;
+        gap: 20px 0;
+    }
+
+    .ody-finale__ascent {
+        display: none;
+    }
+
+    .ody-finale__station {
+        flex: 0 0 25%;
+        padding-top: 0;
+    }
+
+    .ody-finale__station[data-summit='true'] .sb-orb-art {
+        transform: none;
+    }
+}
+
+/* ---- Phones and very large text: one column, the actions last ------------------------- */
+@container finale (max-width: 48rem) {
+    .ody-finale__layout {
+        --finale-orb: clamp(52px, 16cqi, 80px);
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas: 'head' 'journey' 'reward' 'summary' 'actions';
+        gap: 24px;
+    }
+
+    .ody-finale__layout[data-reward='false'] {
+        grid-template-areas: 'head' 'journey' 'summary' 'actions';
+    }
+
+    .ody-finale__title {
+        font-size: clamp(1.75rem, 8.6cqi, 2.6rem);
+    }
+
+    .ody-finale__reward {
+        justify-content: center;
+    }
+
+    .ody-finale__summary {
+        align-items: center;
+        justify-self: stretch;
+        max-width: none;
+        text-align: center;
+    }
+
+    .ody-finale__figures {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, auto));
+        justify-content: center;
+        width: 100%;
+    }
+
+    .ody-finale__figure {
+        align-items: center;
+    }
+
+    .ody-finale__actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
 }
