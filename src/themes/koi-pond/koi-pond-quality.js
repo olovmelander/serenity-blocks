@@ -8,6 +8,10 @@
  * pebbles      the bed's baked pebble texture (pixels across; the tile grows with it)
  * prism        caustics split by colour (two more fetches of the surface per fragment)
  * refraction   the bed and the fish bend through the surface (a copy of the frame)
+ * mirror       steps the water walks its mirrored ray to find the garden standing over it (0 =
+ *              the garden is not mirrored; needs refraction)
+ * shafts       points down the line of sight where the water asks how much moonlight the
+ *              ripples gather (the moonbeams in it; 0 = none; needs refraction)
  * pads         lily pads           lotus     flowers
  * leaves       maple leaves on the boughs      floaters   leaves and petals adrift
  * fireflies    over the water      droplets  spray pool for leaps and hard drops
@@ -25,6 +29,8 @@ export const QUALITY = Object.freeze({
         pebbles: 512,
         prism: false,
         refraction: false,
+        mirror: 0,
+        shafts: 0,
         pads: 16,
         lotus: 4,
         leaves: 1400,
@@ -42,6 +48,8 @@ export const QUALITY = Object.freeze({
         pebbles: 512,
         prism: false,
         refraction: true,
+        mirror: 0,
+        shafts: 0,
         pads: 22,
         lotus: 5,
         leaves: 2400,
@@ -59,6 +67,8 @@ export const QUALITY = Object.freeze({
         pebbles: 1024,
         prism: false,
         refraction: true,
+        mirror: 0,
+        shafts: 0,
         pads: 30,
         lotus: 6,
         leaves: 4200,
@@ -76,6 +86,8 @@ export const QUALITY = Object.freeze({
         pebbles: 1024,
         prism: true,
         refraction: true,
+        mirror: 8,
+        shafts: 4,
         pads: 38,
         lotus: 7,
         leaves: 6400,
@@ -93,6 +105,8 @@ export const QUALITY = Object.freeze({
         pebbles: 1024,
         prism: true,
         refraction: true,
+        mirror: 12,
+        shafts: 5,
         pads: 44,
         lotus: 8,
         leaves: 8000,
@@ -110,6 +124,8 @@ export const QUALITY = Object.freeze({
         pebbles: 1024,
         prism: true,
         refraction: true,
+        mirror: 14,
+        shafts: 6,
         pads: 50,
         lotus: 9,
         leaves: 9600,

@@ -19,6 +19,7 @@ import {
     cos,
     cross,
     dot,
+    exp,
     float,
     max,
     mix,
@@ -26,7 +27,9 @@ import {
     positionGeometry,
     positionWorld,
     pow,
+    select,
     sin,
+    smoothstep,
     uv,
     varying,
     vec2,
@@ -34,11 +37,13 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    mulberry32, ocFog, ocLight, ocPart, ocRings, ocSway,
+    SURFACE, mulberry32, ocCaustic, ocFog, ocLight, ocPart, ocRings, ocSway,
 } from './ocean-tsl.js';
 
 /** Metres a kelp stand's top is carried sideways per unit of lean, as a share of its height. */
 const KELP_FLEX = 0.2;
+/** What a kelp blade lets through of the light behind it, per unit of its own colour: gold. */
+const KELP_THROUGH = vec3(0.95, 0.72, 0.2);
 
 /**
  * Where a stand's curve is at a share `f` of its height: the offset from straight up (x, z).
@@ -187,15 +192,19 @@ export function createKelp(u, stands, bladesPerStand) {
         const vHigh = varying(aBlade.x, 'vKelpHigh');
         const vSeed = varying(aBlade.w, 'vKelpSeed');
         const vRing = varying(Fn(() => ocRings(u, vec2(aStand.x.mul(u.squeeze), aStand.z)))(), 'vKelpRing');
-        bladeMaterial.positionNode = Fn(() => {
+        /**
+         * Where a point of a blade is, and which way its face looks. A blade leaves the stipe on
+         * its own bearing, but the water streams it downstream, and its float holds it up: it
+         * rises a little as it trails, twisting as it goes.
+         */
+        const blade = () => {
             const along = positionGeometry.x;
             const across = positionGeometry.z;
-            const bend = ocSway(u, aStand.x, aMore.x).mul(aMore.y).toVar();
+            const bend = ocSway(u, aStand.x, aMore.x).mul(aMore.y);
             const off = kelpOffset(u, bend, aStand.w, aBlade.x, aMore.x);
             const root = vec3(aStand.x.add(off.x), aStand.y.add(aBlade.x.mul(aStand.w)), aStand.z.add(off.y));
-            // A blade leaves the stipe on its own bearing, but the water streams it downstream, and
-            // its float holds it up: it rises a little as it trails.
-            const heading = normalize(vec2(cos(aBlade.y), sin(aBlade.y)).mul(0.55).add(vec2(bend.x.mul(2.2).add(0.6), bend.y)));
+            const heading = normalize(vec2(cos(aBlade.y), sin(aBlade.y)).mul(0.55)
+                .add(vec2(bend.x.mul(2.2).add(0.6), bend.y)));
             const side = vec2(heading.y.negate(), heading.x);
             const length = aBlade.z;
             const t = u.sway;
@@ -206,21 +215,49 @@ export function createKelp(u, stands, bladesPerStand) {
             const ruffle = sin(along.mul(26.0).add(aBlade.w.mul(9.0))).mul(across.abs()).mul(0.05);
             const twist = sin(t.mul(1.1).add(aBlade.w.mul(17.0)).add(along.mul(2.5))).mul(0.65);
             const flat = heading.mul(along.mul(length)).add(side.mul(across.mul(width).mul(cos(twist))));
-            return root.add(vec3(flat.x, rise.mul(length).add(across.mul(width).mul(sin(twist))).add(ruffle), flat.y));
-        })();
+            const lift = rise.mul(length).add(across.mul(width).mul(sin(twist))).add(ruffle);
+            const position = root.add(vec3(flat.x, lift, flat.y));
+            // The face: across the blade (as twisted) crossed with along it (as it rises).
+            const wide = vec3(side.x.mul(cos(twist)), sin(twist), side.y.mul(cos(twist)));
+            const long = vec3(heading.x, float(0.32).sub(along.mul(0.24)), heading.y);
+            return { position, normal: normalize(cross(long, wide)) };
+        };
+        const vFace = varying(Fn(() => blade().normal)(), 'vKelpFace');
+        bladeMaterial.positionNode = Fn(() => blade().position)();
         bladeMaterial.colorNode = Fn(() => {
             const P = positionWorld;
-            // Brown at the stipe, amber toward the end and the higher it hangs.
-            const young = clamp(vAlong.mul(0.6).add(vHigh.mul(0.5)), 0.0, 1.0);
-            const hue = mix(vec3(0.14, 0.075, 0.02), vec3(0.62, 0.36, 0.06), young)
-                .mul(vSeed.mul(0.4).add(0.8));
-            // A rib down the middle, crinkles across, a darker edge.
+            const toEye = normalize(cameraPosition.sub(P)).toVar();
+            // Brown at the stipe, gold toward the end and the higher it hangs; each blade its own.
+            const young = clamp(vAlong.mul(0.6).add(vHigh.mul(0.5)), 0.0, 1.0).toVar();
+            const hue = mix(vec3(0.07, 0.045, 0.012), vec3(0.34, 0.22, 0.045), young)
+                .mul(vSeed.mul(0.5).add(0.75));
+            // A rib down the middle, crinkles across, a darker margin.
             const across = uv().y.mul(2.0).sub(1.0).abs();
-            const crinkle = sin(vAlong.mul(70.0).add(across.mul(6.0))).mul(0.08).add(0.92);
+            const crinkle = sin(vAlong.mul(70.0).add(across.mul(6.0)));
             const rib = float(1.0).sub(across);
-            const N = normalize(vec3(0.0, 1.0, 0.3));
-            const col = leafLight(u, hue.mul(rib.mul(0.3).add(0.72)).mul(crinkle), N, P, young.mul(0.9).add(0.5)).toVar();
-            col.addAssign(hue.mul(vRing).mul(1.4).mul(u.breath));
+            const albedo = hue.mul(rib.mul(0.25).add(0.75)).mul(crinkle.mul(0.08).add(0.92))
+                .mul(float(1.0).sub(smoothstep(0.75, 1.0, across).mul(0.35))).toVar();
+            // The face the eye sees (a blade has two), tilted a little by the crinkles.
+            const face = normalize(vFace).toVar();
+            const N = normalize(face.mul(select(dot(face, toEye).lessThan(0.0), -1.0, 1.0))
+                .add(toEye.mul(crinkle.mul(0.12)))).toVar();
+            const net = ocCaustic(u, P);
+            const col = albedo.mul(ocLight(u, {
+                N, P, caustic: net, wrap: 0.25,
+            })).toVar();
+            // Lit from behind, a blade glows: the light comes through it gold, most of all looking
+            // up through it toward the sun.
+            const behind = clamp(dot(N, u.sunDir).negate(), 0.0, 1.0);
+            const toward = clamp(dot(toEye, u.sunDir).negate(), 0.0, 1.0);
+            const forward = toward.mul(toward).mul(toward);
+            const depth = max(float(SURFACE).sub(P.y), 0.0);
+            const sunk = exp(u.ext.mul(depth).mul(-0.32));
+            const glow = behind.mul(0.45).add(forward.mul(0.9)).mul(young.mul(0.6).add(0.4));
+            col.addAssign(KELP_THROUGH.mul(hue.div(0.34)).mul(u.sun).mul(net).mul(glow)
+                .mul(sunk)
+                .mul(rib.mul(0.4).add(0.6))
+                .mul(u.breath));
+            col.addAssign(albedo.mul(vRing).mul(4.0).mul(u.breath));
             return vec4(ocFog(u, col, P), 1.0);
         })();
     }

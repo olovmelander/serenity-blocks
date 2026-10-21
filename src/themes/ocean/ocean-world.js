@@ -106,7 +106,7 @@ import { creaturesLoaded, loadCreatures } from './ocean-creatures.js';
 import {
     CAST, KINDS, laneVisit, makeVisit, planVisits, poseOnRoute,
 } from './ocean-visits.js';
-import { createMotes, createPool } from './ocean-fx.js';
+import { createMotes, createNearMotes, createPool } from './ocean-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './ocean-composition.js';
@@ -135,7 +135,7 @@ const GIANT_PARTS = KINDS.map((kind) => `giant:${kind}`);
 
 const PARTS = [
     'backdrop', 'surface', 'seabed', 'branching', 'tables', 'brains', 'sponges', 'fans', 'anemones', 'kelp', 'grass',
-    'school', 'reefFish', ...GIANT_PARTS, 'jellies', 'motes', 'pool',
+    'school', 'reefFish', ...GIANT_PARTS, 'jellies', 'motes', 'nearMotes', 'pool',
 ];
 
 const copyShape = (shape) => ({
@@ -296,7 +296,7 @@ export class OceanWorld {
 
         this.backdrop = createBackdrop(u);
         this.addPart('backdrop', this.backdrop);
-        this.addPart('surface', createSurface(u, { waves: tier.waves, clouds: tier.clouds }));
+        this.addPart('surface', createSurface(u, { waves: tier.waves, clouds: tier.clouds, light: tier.light }));
         this.addPart('seabed', createSeabed(u, { detail: tier.seabed }), { stage: true });
 
         // ── What grows on the canyon ──
@@ -320,6 +320,7 @@ export class OceanWorld {
         }
         if (tier.jellies > 0) this.addPart('jellies', createJellies(u, tier.jellies));
         this.addPart('motes', createMotes(u, tier.motes));
+        this.addPart('nearMotes', createNearMotes(u, tier.near));
         this.pool = createPool(u, tier.pool);
         this.addPart('pool', this.pool);
 
