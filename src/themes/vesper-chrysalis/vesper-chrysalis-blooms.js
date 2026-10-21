@@ -19,17 +19,22 @@ import {
     Fn,
     atan,
     attribute,
+    cameraPosition,
     cameraProjectionMatrix,
     cameraViewMatrix,
     clamp,
     cos,
+    dot,
     exp,
     float,
     int,
     length,
     max,
     mix,
+    normalize,
     positionGeometry,
+    positionWorld,
+    reflect,
     sin,
     smoothstep,
     step,
@@ -46,15 +51,24 @@ import {
     BLOOM_KEEP,
     BLOOM_MAX,
     BLOOM_RISE,
+    SUN_DIR,
     TAU,
     bloomLevel,
     mulberry32,
     vcBell,
+    vcFresnel,
     vcPart,
     vcSkyBase,
 } from './vesper-chrysalis-tsl.js';
 
 const PETALS_PER_WHORL = 7;
+/** Toward the place the sun went down, in plan: the side a petal is backlit from. */
+const GLOW_FLAT = (() => {
+    const l = Math.hypot(SUN_DIR[0], SUN_DIR[2]);
+    return [SUN_DIR[0] / l, SUN_DIR[2] / l];
+})();
+/** Veins in a lily pad. */
+const VEINS = 22;
 /** How far each whorl leans from upright when the lily is shut and when it is open (radians). */
 const LEAN_SHUT = [0.2, 0.13, 0.06];
 const LEAN_OPEN = [1.22, 0.86, 0.46];
@@ -187,9 +201,18 @@ export function createBlooms(u, plan, opts = {}) {
         const whorlGain = mix(float(1.0), float(1.5), clamp(vPetal.z.mul(0.5), 0.0, 1.0));
         const lit = vTint.mul(vLevel).mul(inner).mul(whorlGain).mul(1.6)
             .add(mix(vTint, vec3(1.0, 0.96, 0.9), 0.6).mul(vFlash).mul(3.0));
-        // A shut lily still holds an ember at its heart.
-        const ember = u.core.mul(float(1.0).sub(t).mul(0.1).add(vcBell(t.sub(0.86).div(0.3)).mul(0.14)));
-        return vec4(pale.add(lit.add(ember).mul(u.breath)), 1.0);
+        // A shut lily still holds an ember at its heart, and it shows through the petals' feet.
+        const ember = u.core.mul(float(1.0).sub(t).mul(0.16).add(vcBell(t.sub(0.86).div(0.3)).mul(0.14)));
+        // A petal is thin: seen against the afterglow the evening's light comes through it, most
+        // where it is thinnest (toward its edges and its tip), and its rim catches the glow.
+        const V = normalize(positionWorld.sub(cameraPosition));
+        const facing = clamp(dot(V, vec3(GLOW_FLAT[0], 0.0, GLOW_FLAT[1])), 0.0, 1.0);
+        const thin = across.abs().pow(2.0).mul(0.6).add(t.mul(0.5))
+            .add(0.25);
+        const through = u.glow.mul(facing.mul(facing).mul(facing)).mul(thin).mul(0.55);
+        const rim = vcBell(across.abs().sub(1.0).div(0.25)).mul(0.18);
+        const edges = mix(u.shell, u.glow, 0.5).mul(rim).mul(vcSkyBase(u, vec3(0.0, 0.3, -1.0)).mul(2.0).add(0.1));
+        return vec4(pale.add(through).add(edges).add(lit.add(ember).mul(u.breath)), 1.0);
     })();
     petals.material = petalMat;
 
@@ -229,14 +252,30 @@ export function createBlooms(u, plan, opts = {}) {
     padMat.colorNode = vec4(0.0, 0.0, 0.0, 1.0);
     padMat.outputNode = Fn(() => {
         const q = uv().sub(0.5).mul(2.0 * POOL).toVar(); // in lily sizes
-        const d = length(q);
-        // The pad: a round leaf with a notch, dark, its rim catching the sky.
-        const ang = atan(q.y, q.x).add(vPadSeed.mul(2.4));
+        const d = length(q).toVar();
+        // The pad: a round leaf with a notch, its waxy face holding the sky like the water does,
+        // only rougher; veins run out from the stem, and the rim turns up and catches the glow.
+        const ang = atan(q.y, q.x).add(vPadSeed.mul(2.4)).toVar();
         const notch = smoothstep(0.0, 0.16, ang.sin().abs().add(step(0.0, ang.cos())));
         const leaf = float(1.0).sub(smoothstep(1.16, 1.24, d)).mul(mix(float(1.0), notch, smoothstep(0.25, 0.5, d)));
-        const sky = vcSkyBase(u, vec3(0.0, 1.0, 0.0));
-        const leafRim = sky.mul(smoothstep(0.86, 1.2, d)).mul(0.95);
-        const leafCol = mix(u.deep, u.shell, 0.3).mul(0.4).add(sky.mul(0.22)).add(leafRim)
+        // Veins: ridges every so many degrees, fading toward the stem and the rim.
+        const vein = vcBell(sin(ang.mul(VEINS * 0.5)).div(0.07)).mul(smoothstep(0.12, 0.4, d))
+            .mul(float(1.0).sub(smoothstep(0.85, 1.15, d)));
+        // The leaf is a shallow dish: flat, with a lip that rises at the rim.
+        const lip = smoothstep(1.0, 1.22, d);
+        const out = q.div(max(d, 1e-3));
+        const leafN = normalize(vec3(out.x.mul(lip.mul(-0.45).add(vein.mul(0.05))), 1.0, out.y.mul(lip.mul(-0.45))));
+        const V = normalize(positionWorld.sub(cameraPosition)).toVar();
+        const R = reflect(V, leafN);
+        // (Wet patches shine more than the dry wax between them.)
+        const wet = smoothstep(0.35, 0.75, sin(ang.mul(3.0).add(d.mul(4.0)).add(vPadSeed.mul(7.0))).mul(0.5).add(0.5));
+        const sheen = vcFresnel(clamp(dot(V, leafN).negate(), 0.0, 1.0), 0.04).mul(wet.mul(0.5).add(0.75))
+            .add(0.05);
+        const mirrored = vcSkyBase(u, normalize(vec3(R.x, max(R.y, 0.0).add(0.03), R.z))).mul(sheen);
+        // Its own green, deep at dusk, a shade brighter along the veins.
+        const green = mix(vec3(0.03, 0.085, 0.045), vec3(0.07, 0.16, 0.07), vein.mul(0.6).add(lip.mul(0.3)))
+            .mul(vcSkyBase(u, vec3(0.0, 1.0, 0.0)).mul(2.4).add(0.2));
+        const leafCol = green.add(mirrored)
             .add(vPadTint.mul(vPadLevel).mul(exp(d.mul(-1.4))).mul(0.5).mul(u.breath));
         // The pool: the lantern's light lying on the water.
         const poolEdge = float(1.0).sub(smoothstep(POOL * 0.7, POOL, d));
