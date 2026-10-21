@@ -15,12 +15,15 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     abs,
+    atan,
     attribute,
     cameraPosition,
     clamp,
     dot,
     exp,
     float,
+    fwidth,
+    min,
     mix,
     normalWorld,
     normalize,
@@ -32,6 +35,7 @@ import {
     smoothstep,
     step,
     varying,
+    vec2,
     vec3,
     vec4,
 } from 'three/tsl';
@@ -42,6 +46,7 @@ import {
     vcBell,
     vcFresnel,
     vcPart,
+    vcLuma,
     vcSkyBase,
     vcSkyLight,
 } from './vesper-chrysalis-tsl.js';
@@ -65,13 +70,29 @@ function buildCrystalGeometry() {
     const top = ring(shoulder, 0.84);
     // (The point is on the axis: the silk is made fast to it, see spireTip.)
     const tip = [0, 1, 0];
+    // Per triangle, the distance (barycentric) to each of its edges: a facet's edges glint. The
+    // diagonal that splits a side into two triangles is not an edge of the crystal, so the
+    // coordinate that would fall to zero along it is lifted by one and never does.
+    const edge = [];
+    const triangle = (fake) => {
+        const b = [[1, 0, 0], [0, 1, 0], [0, 0, 1]];
+        if (fake >= 0) b.forEach((v) => { v[fake] += 1; });
+        b.forEach((v) => edge.push(...v));
+    };
     for (let i = 0; i < sides; i++) {
         const j = (i + 1) % sides;
-        pos.push(...foot[i], ...top[i], ...foot[j], ...foot[j], ...top[i], ...top[j]);
+        // (foot i, top i, foot j): the diagonal top i – foot j is opposite foot i.
+        pos.push(...foot[i], ...top[i], ...foot[j]);
+        triangle(0);
+        // (foot j, top i, top j): the same diagonal is opposite top j.
+        pos.push(...foot[j], ...top[i], ...top[j]);
+        triangle(2);
         pos.push(...top[i], ...tip, ...top[j]);
+        triangle(-1);
     }
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geometry.setAttribute('aEdge', new THREE.Float32BufferAttribute(edge, 3));
     geometry.computeVertexNormals();
     return geometry;
 }
@@ -115,15 +136,29 @@ export function createSpires(u, spires) {
     const aSpire = attribute('aSpire', 'vec2');
     const vSpire = varying(aSpire, 'vSpire');
     const vHeight = varying(positionGeometry.y, 'vSpireH');
+    const vEdge = varying(attribute('aEdge', 'vec3'), 'vSpireEdge');
+    const vLocal = varying(positionGeometry, 'vSpireLocal');
     material.fragmentNode = Fn(() => {
         const N = normalize(normalWorld).toVar();
         const V = normalize(cameraPosition.sub(positionWorld)).toVar();
         const ndv = clamp(dot(N, V), 0.0, 1.0).toVar();
         const h = clamp(vHeight, 0.0, 1.0).toVar();
         const R = reflect(V.negate(), N);
-        const env = vcSkyBase(u, normalize(vec3(R.x, abs(R.y).add(0.02), R.z)));
+        const env = vcSkyBase(u, normalize(vec3(R.x, abs(R.y).add(0.02), R.z))).toVar();
         const fres = vcFresnel(ndv, 0.16).mul(1.5);
-        const body = u.crystal.mul(vcSkyLight(u, N)).mul(0.42).add(u.crystal.mul(0.006));
+        // Inside: veils and threads of inclusions run up the crystal, each stone its own.
+        const around = atan(vLocal.z, vLocal.x);
+        const grain = u.noise(vec2(around.mul(0.37).add(vSpire.x.mul(7.0)), vLocal.y.mul(0.21).add(vSpire.x.mul(3.0))))
+            .toVar();
+        const veils = smoothstep(0.5, 0.85, grain.r).mul(0.7).add(grain.g.mul(0.3)).toVar();
+        // A facet's edges: a hairline of light where two faces meet (a pixel or so wide at any size),
+        // and the crystal thinner, so lighter, toward them.
+        const toEdge = min(vEdge.x, min(vEdge.y, vEdge.z)).toVar();
+        const px = fwidth(toEdge).max(1e-5);
+        const hairline = float(1.0).sub(smoothstep(px.mul(0.6), px.mul(1.8), toEdge));
+        const thinner = exp(toEdge.mul(-7.0));
+        const body = u.crystal.mul(vcSkyLight(u, N)).mul(veils.mul(0.36).add(0.26).add(thinner.mul(0.22)))
+            .add(u.crystal.mul(0.006));
         const edge = float(1.0).sub(ndv);
         const through = u.glow.mul(clamp(dot(N, vec3(SUN_FLAT[0], 0.0, SUN_FLAT[2])), 0.0, 1.0)).mul(edge).mul(0.5);
         // A cold light of its own, gathered at the foot and breathing.
@@ -142,7 +177,12 @@ export function createSpires(u, spires) {
             run.addAssign(u.pulseC[i].mul(lit.mul(mine).mul(A.z)));
         }
         const light = own.add(run.mul(u.pulsesLive).mul(edge.mul(0.7).add(0.5)).mul(1.6)).mul(u.breath);
-        return vec4(body.add(env.mul(fres)).add(through).add(light), 1.0);
+        // The edges hold the brightest of what the faces mirror, and the afterglow behind them.
+        // (Only where the faces catch something: on the shadowed side an edge is just a line.)
+        const catching = clamp(vcLuma(env).mul(6.0).add(dot(N, vec3(SUN_FLAT[0], 0.0, SUN_FLAT[2])).mul(0.5)), 0.0, 1.0);
+        const glint = hairline.mul(catching.mul(0.7).add(0.3)).mul(env.mul(1.1).add(u.glow.mul(0.3)).add(u.crystal.mul(0.05)))
+            .mul(u.breath.mul(0.5).add(0.5));
+        return vec4(body.add(env.mul(fres)).add(through).add(light).add(glint), 1.0);
     })();
     mesh.material = material;
     mesh.frustumCulled = false;
