@@ -9,7 +9,7 @@
 import * as THREE from 'three/webgpu';
 import {
     attribute, cameraPosition, color, dot, exp, float, instancedBufferAttribute, mix, normalize, normalWorld,
-    positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, vec3, vec4,
+    positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 import { goldenForestGroundHeight, goldenForestShoreDistance } from './golden-forest-terrain.js';
 
@@ -187,13 +187,29 @@ export class GoldenForestShore {
         const paint = attribute('color', 'vec4'); // tone, grain, occlusion, lichen
         const world = positionWorld;
         const speckle = light.noise(world.xz.mul(1.3).add(world.y.mul(0.7)));
-        const granite = mix(color(0x2c2420), color(0x8c7a6e), paint.r.mul(0.7).add(speckle.a.mul(0.3)))
+        // Granite up close: dark mica and pale quartz flecks in a grey-brown ground.
+        const grain = light.noise(world.xz.mul(7.3).add(vec2(world.y.mul(5.1), world.y.mul(-3.7))));
+        const ground = mix(color(0x2c2420), color(0x8c7a6e), paint.r.mul(0.7).add(speckle.a.mul(0.3)))
             .mul(paint.g.mul(0.3).add(0.82));
-        const lichen = mix(color(0x7c8262), color(0xa8662a), smoothstep(0.45, 0.6, speckle.g));
+        const granite = mix(
+            ground.mul(float(1).sub(smoothstep(0.6, 0.68, grain.a).mul(0.45))),
+            color(0xb4aca0),
+            smoothstep(0.66, 0.73, grain.b).mul(0.35),
+        );
+        // Lichen grows in crusty rosettes inside the baked patches, mostly pale sage, now and then
+        // the orange of a sunburst lichen.
+        const crust = light.noise(world.xz.mul(3.1).add(vec2(world.y.mul(2.3), world.y.mul(1.7))));
+        const rosettes = smoothstep(0.62, 0.74, crust.g.mul(0.55).add(paint.a.mul(0.6)));
+        const lichen = mix(color(0x8e917a), color(0xb06a28), smoothstep(0.7, 0.8, crust.r));
         // Dark and wet where the lake laps it.
         const wet = float(1).sub(smoothstep(0.02, 0.3, world.y));
-        const albedo = mix(granite, lichen, paint.a.mul(0.75)).mul(wet.mul(-0.55).add(1));
-        const normal = normalize(normalWorld);
+        // Moss keeps to the tops, out of the splash.
+        const mossy = smoothstep(0.62, 0.86, normalize(normalWorld).y.add(speckle.b.sub(0.5).mul(0.5)))
+            .mul(float(1).sub(wet)).mul(0.85);
+        const moss = mix(color(0x2a3410), color(0x5a6420), crust.b);
+        const albedo = mix(mix(granite, lichen, rosettes.mul(0.85)), moss, mossy).mul(wet.mul(-0.55).add(1));
+        // A rough surface: the flecks and the broad grain bend the normal a little.
+        const normal = normalize(normalWorld.add(grain.rgb.sub(0.5).mul(0.45)).add(speckle.rgb.sub(0.5).mul(0.35)));
         const view = normalize(cameraPosition.sub(world));
         const sun = light.sunlight();
         const facing = saturate(dot(normal, light.uSunDir));
