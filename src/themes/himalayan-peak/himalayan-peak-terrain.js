@@ -3,9 +3,10 @@
  *
  * One mesh of what the eye can see of the baked amphitheatre (himalayan-peak-field.js cuts it),
  * shaded per pixel from the field's textures: the big forms come from the baked normal, the
- * small ones are drawn on — striations pulled down the fall line of every steep face, strata
- * banded across the rock, snow lying where the ground is gentle or hollow and scoured off the
- * ribs. The sun is one direction and one lookup: the horizon map says whether the rest of the
+ * small ones are drawn on. Every steep face is divided, down its fall line, into snowfields and
+ * rock buttresses a few hundred metres wide (they wander, so no two are alike); the buttresses
+ * carry strong ribs and the snowfields only fine flutings; bands of rock cross the snow at a few
+ * heights; snow lies where the ground is gentle or hollow and is scoured off the ribs. The sun is one direction and one lookup: the horizon map says whether the rest of the
  * mountain stands in its way, for whatever elevation the chain has raised it to.
  */
 
@@ -73,20 +74,32 @@ export function createMassif(u, field, { stride = 2, air = 4 } = {}) {
         const steep = smoothstep(0.16, 0.5, slope);
 
         // ── Drawn detail ──
-        // Striations down the fall line: the noise is stretched tall and read on whichever
-        // upright plane the face is nearer to.
-        const tall = P.y.mul(0.13);
+        // Everything is read on whichever upright plane the face is nearer to, stretched tall so
+        // it runs down the fall line, and wandered by a slow warp so nothing repeats in step.
         const along = abs(N0.x).div(abs(N0.x).add(abs(N0.z)).add(1e-3));
-        const sA = u.noise(vec2(P.x, tall).mul(1 / 210));
-        const sB = u.noise(vec2(P.z, tall).mul(1 / 210));
-        const stria = mix(sA, sB, along).toVar();
-        const fA = u.noise(vec2(P.x, tall).mul(1 / 57).add(0.37));
-        const fB = u.noise(vec2(P.z, tall).mul(1 / 57).add(0.37));
-        const flute = mix(fA, fB, along).toVar();
+        const warp = u.noise(P.xz.mul(1 / 2300).add(0.71));
+        const wx = P.x.add(warp.x.sub(0.5).mul(1100.0));
+        const wz = P.z.add(warp.w.sub(0.5).mul(1100.0));
+        const face = (scale, offset, stretch) => mix(
+            u.noise(vec2(wx, P.y.mul(stretch)).mul(1 / scale).add(offset)),
+            u.noise(vec2(wz, P.y.mul(stretch)).mul(1 / scale).add(offset)),
+            along,
+        );
+        // Buttresses and snowfields: bands a few hundred metres wide down each face.
+        const big = face(620, 0.13, 0.2).toVar();
+        const buttress = smoothstep(0.5, 0.6, big.x.add(big.w.sub(0.5).mul(0.25))).mul(steep).toVar();
+        const stria = face(320, 0.0, 0.13).toVar();
+        const flute = face(52, 0.37, 0.16).toVar();
         const grain = u.noise(P.xz.mul(1 / 61)).toVar();
-        const rib = stria.x.mul(0.65).add(flute.x.mul(0.35));
+        // The ribs are strong on the buttresses and fade to flutings on the snowfields.
+        const ribGain = buttress.mul(0.7).add(0.3);
+        const rib = stria.x.sub(0.5).mul(ribGain).mul(1.3)
+            .add(0.5)
+            .mul(0.62)
+            .add(flute.x.mul(0.38))
+            .toVar();
         // The striations lean the surface across the face (their gradient along the horizontal).
-        const lean = stria.y.mul(0.9).add(flute.y.mul(0.75)).mul(steep);
+        const lean = stria.y.mul(ribGain).mul(1.05).add(flute.y.mul(0.7)).mul(steep);
         const N = normalize(vec3(
             N0.x.sub(lean.mul(float(1.0).sub(along))).sub(grain.y.mul(0.22)),
             N0.y,
@@ -95,13 +108,25 @@ export function createMassif(u, field, { stride = 2, air = 4 } = {}) {
 
         // ── Snow and rock ──
         const lee = N0.x.mul(0.5).add(0.5);
-        const cover = float(0.66).sub(slope.mul(1.18))
-            .add(hollow.mul(2.6))
-            .add(rib.sub(0.5).mul(0.3).mul(steep).negate())
+        // Bands of rock cross the snowfields at a few heights, tilted with the strata.
+        const bedLine = P.y.add(P.x.mul(0.21)).sub(P.z.mul(0.09)).add(grain.x.mul(90.0));
+        const crossing = u.noise(vec2(bedLine.mul(1 / 700), big.w.mul(0.6).add(0.19))).toVar();
+        const rockBand = smoothstep(0.6, 0.7, crossing.x).mul(smoothstep(0.82, 0.7, crossing.x)).mul(steep);
+        // The baked ribs and gullies: on a buttress the ribs are bare and the gullies hold snow;
+        // on a snowfield snow plasters the ribs too, so the faces are not striped in step.
+        const relief = mix(max(hollow, -0.03).mul(1.6), hollow.mul(2.6), buttress.mul(0.85).add(0.15));
+        const cover = float(0.86).sub(slope.mul(1.12))
+            .add(relief)
+            .sub(buttress.mul(0.75))
+            // Ribs scour the buttresses; on the snowfields they only thin the snow a little.
+            .sub(rib.sub(0.5).mul(0.42).mul(steep).mul(buttress.mul(0.85).add(0.15)))
+            .sub(rockBand.mul(0.55))
             .add(grain.w.sub(0.5).mul(0.3))
-            .add(u.noise(P.xz.mul(1 / 1100)).w.sub(0.5).mul(0.5))
+            .add(u.noise(P.xz.mul(1 / 1100)).w.sub(0.5).mul(0.42))
             .add(lee.mul(0.1))
-            .add(smoothstep(900.0, 2600.0, P.y).mul(0.07));
+            .add(smoothstep(900.0, 2600.0, P.y).mul(0.07))
+            // The steepest walls hold nothing.
+            .sub(smoothstep(0.55, 0.78, slope).mul(0.7));
         // (The snow line is never thinner than a pixel and a bit: a threshold has no other edge.)
         const blur = fwidth(cover).mul(1.3);
         const snow = smoothstep(float(-0.04).sub(blur), float(0.3).add(blur), cover).mul(smoothstep(-260.0, 120.0, P.y)).toVar();
@@ -114,6 +139,8 @@ export function createMassif(u, field, { stride = 2, air = 4 } = {}) {
         const band = smoothstep(2150.0, 2330.0, bed).mul(smoothstep(2760.0, 2560.0, bed));
         rock.assign(mix(rock, vec3(...ROCK_OCHRE), band.mul(smoothstep(0.35, 0.6, strata.w)).mul(0.85)));
         rock.mulAssign(rib.mul(0.5).add(0.72));
+        // The buttresses are darker, cleaner rock; the bands a shade paler.
+        rock.mulAssign(float(1.0).sub(buttress.mul(0.22)).add(rockBand.mul(0.18)));
         // Rime and last night's dusting cling to the rock itself.
         rock.assign(mix(rock, vec3(...SNOW).mul(0.82), smoothstep(0.4, 0.8, grain.w).mul(0.26)));
         // Old ice shows blue where the snow hangs steep.
@@ -127,12 +154,16 @@ export function createMassif(u, field, { stride = 2, air = 4 } = {}) {
         // Snow lets light into itself; rock does not.
         const soft = clamp(ndl.add(0.24).div(1.24), 0.0, 1.0);
         const diffuse = mix(clamp(ndl, 0.0, 1.0), soft, snow);
-        // Raking light picks out every flute: the hollows between ribs lose it first.
-        const raked = mix(float(1.0), smoothstep(0.0, 0.8, rib.add(ndl.mul(0.9))), steep.mul(0.6));
+        // Raking light picks out the ribs: the hollows between them lose it first (on the
+        // buttresses most; on the snowfields only the flutings show).
+        const rakeGain = steep.mul(buttress.mul(0.35).add(0.3));
+        const raked = mix(float(1.0), smoothstep(0.0, 0.8, rib.add(ndl.mul(0.9))), rakeGain);
         const direct = u.sunCol.mul(diffuse.mul(sun).mul(raked));
         const openSky = open.mul(open);
         const facing = max(dot(normalize(N.xz.add(vec2(1e-4, 0.0))), u.sunFlat), 0.0);
-        const ambient = u.shade.mul(N.y.mul(0.55).add(0.5)).mul(openSky)
+        // Snow in shade stays luminous: it is lit by the whole sky and passes light within itself.
+        const skyLit = openSky.mul(0.75).add(0.25).mul(snow.mul(0.55).add(1.0));
+        const ambient = u.shade.mul(N.y.mul(0.55).add(0.5)).mul(skyLit)
             .add(u.glow.mul(facing.mul(0.07).mul(openSky)))
             // The cloud sea gives a little of its light back to whatever leans over it.
             .add(u.cloudCol.mul(float(1.0).sub(N.y).mul(0.07)).mul(smoothstep(1500.0, 100.0, P.y)));

@@ -20,6 +20,7 @@ import {
     attribute,
     cameraPosition,
     clamp,
+    cos,
     dot,
     float,
     floor,
@@ -31,6 +32,7 @@ import {
     normalize,
     positionLocal,
     reflect,
+    sin,
     smoothstep,
     step,
     vec2,
@@ -115,13 +117,23 @@ export function createPassSnow(u, field, { glints = true } = {}) {
     material.colorNode = Fn(() => {
         const P = positionLocal;
         const near = P.xz.sub(vec2(EYE.x, EYE.z));
-        // Sastrugi: drifts drawn out along the wind, and the grain of the crust.
-        const drift = u.noise(near.mul(vec2(1 / 7.5, 1 / 2.1)));
+        // Sastrugi: drifts drawn out along the wind, and the grain of the crust. The wind turned
+        // as it laid them, so their run wanders and bends; it scoured some patches smooth and
+        // left others rippled; and under it all the drift rolls in low dunes.
+        const sway = u.noise(near.mul(1 / 75).add(0.17));
+        const bend = sway.x.sub(0.5).mul(0.42);
+        const q = vec2(
+            near.x.mul(cos(bend)).sub(near.y.mul(sin(bend))),
+            near.x.mul(sin(bend)).add(near.y.mul(cos(bend))),
+        ).add(vec2(sway.w.sub(0.5), sway.x.sub(0.5)).mul(2.5));
+        const drift = u.noise(q.mul(vec2(1 / 7.5, 1 / 2.1)));
         const crust = u.noise(near.mul(1 / 0.9).add(0.31));
+        const rough = smoothstep(0.32, 0.68, u.noise(near.mul(1 / 21).add(0.61)).w).mul(0.8).add(0.2);
+        const dune = u.noise(near.mul(1 / 17).add(0.83));
         const N = normalize(normalLocal.add(vec3(
-            drift.y.mul(0.4).add(crust.y.mul(0.3)),
+            drift.y.mul(0.4).mul(rough).add(crust.y.mul(0.3)).add(dune.y.mul(0.28)),
             0.0,
-            drift.z.mul(1.1).add(crust.z.mul(0.3)),
+            drift.z.mul(1.1).mul(rough).add(crust.z.mul(0.3)).add(dune.z.mul(0.28)),
         ).negate())).toVar();
         const V = normalize(cameraPosition.sub(P));
         // The chorten, the cairn and its pole throw long shadows once the sun is over the wall.
