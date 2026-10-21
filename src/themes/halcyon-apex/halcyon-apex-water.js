@@ -61,7 +61,6 @@ import {
     haPart,
     haSkyBase,
     haSkyLight,
-    haSunDisc,
 } from './halcyon-apex-tsl.js';
 
 /** Signed distance to an axis-aligned box of half-extents `h` centred on the origin (2D). */
@@ -207,7 +206,11 @@ export function createWater(u, opts = {}) {
             // No second render: the water returns the sky and the sun along its own mirror ray.
             const Rs = reflect(V, normalize(vec3(slope.x.mul(-0.6), 1.0, slope.y.mul(-1.2))));
             const Rup = vec3(Rs.x, abs(Rs.y).add(0.004), Rs.z);
-            mirror.assign(haSkyBase(u, Rup).add(haSunDisc(u, Rup).mul(0.4)));
+            // The sun's disc mirrored through a sloping surface bends into a hard blob: what a
+            // lagoon returns of it is a soft road of light, a narrow lobe in a broad one.
+            const rsun = max(dot(normalize(Rup), u.sunDir), 0.0);
+            const road = rsun.pow(900.0).mul(0.9).add(rsun.pow(70.0).mul(0.07));
+            mirror.assign(haSkyBase(u, Rup).add(u.sun.mul(road).mul(u.breath)));
         }
 
         // ── Under the surface: the bed, the net of light on it, and the water in between ──
