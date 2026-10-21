@@ -12,6 +12,7 @@ import { readFlag } from '../core/flags.js';
 import { markStartup } from './startup-debug.js';
 import { connectStartupWordmark } from './startup-wordmark-handoff.js';
 import { beginIntroMenuWordmarkHandoff } from './intro-menu-wordmark-handoff.js';
+import { guardMenuArrival } from './intro-begin-input-guard.js';
 import {
     beginAsyncRenderPipelines,
     preloadAsyncRenderPipelines,
@@ -77,6 +78,8 @@ export class IntroAnimation {
         /** Dismissed with its renderer kept, hidden, for the next return to the menu (parkRenderer()). */
         this.parked = false;
         this.boundHandlers = {};
+        /** Holds back the begin input from the menu it reveals (guardMenuArrival). */
+        this.releaseMenuArrivalGuard = null;
         this.soundManager = null;
         this.introMusicTrack = DEFAULT_MUSIC_TRACK;
         this.isLoadingMasked = false;
@@ -1093,15 +1096,15 @@ export class IntroAnimation {
      */
     setupEventListeners() {
         // Mouse click
-        this.boundHandlers.click = () => this.handleInteraction();
+        this.boundHandlers.click = (event) => this.handleInteraction(event);
         this.container.addEventListener('click', this.boundHandlers.click);
 
         // Keyboard
-        this.boundHandlers.keydown = () => this.handleInteraction();
+        this.boundHandlers.keydown = (event) => this.handleInteraction(event);
         window.addEventListener('keydown', this.boundHandlers.keydown);
 
         // Touch
-        this.boundHandlers.touchstart = () => this.handleInteraction();
+        this.boundHandlers.touchstart = (event) => this.handleInteraction(event);
         this.container.addEventListener('touchstart', this.boundHandlers.touchstart, { passive: true });
 
         // Optional external loading mask hook:
@@ -1208,13 +1211,17 @@ export class IntroAnimation {
 
     /**
      * Handle user interaction (click, key press, tap, gamepad)
+     * @param {Event} [event] the begin input (none for a gamepad press)
      */
-    handleInteraction() {
+    handleInteraction(event = null) {
         if (!this.isActive) return;
         // Ignore begin-input until the title has appeared (locked through the boot transition).
         if (!this.interactionEnabled) return;
         // Single-shot: once "begin" fires, ignore further presses (no double sound/dismiss).
         this.interactionEnabled = false;
+        // The menu appears under this input while still invisible: it must not choose on it.
+        this.releaseMenuArrivalGuard?.();
+        this.releaseMenuArrivalGuard = guardMenuArrival(event);
         this.onInteractionBegin?.();
 
         // "Begin" confirm — dark-space start pulse, in sync with the dismiss/warp-out.
@@ -1535,6 +1542,8 @@ export class IntroAnimation {
      */
     reset() {
         this.menuWordmarkFlight?.cancel();
+        this.releaseMenuArrivalGuard?.();
+        this.releaseMenuArrivalGuard = null;
         this.clearPhaseTimers();
         this.clearTitleRevealSafety();
         this.removeTetrominoPointerListener();
