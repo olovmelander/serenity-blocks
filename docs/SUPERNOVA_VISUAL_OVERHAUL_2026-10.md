@@ -273,3 +273,54 @@ brightness 1.06) and baked as a 512 px circle on a transparent ground. The same 
 ![Minimal, Low on WebGL2, Medium and Extreme](supernova-captures/tiers.jpg)
 
 ![Four more of the five palettes](supernova-captures/palettes.jpg)
+
+## Second pass (2026-10-21): a remnant in layers, a star that burns, fronts that tear
+
+The first build's nebula drew every shell in two of the three gas colours chosen per shell, so all
+three colours lay over each other everywhere: from a distance a tangle of neon squiggles with no
+body and no depth, like a plasma lamp. The star's surface swung so far in temperature that it
+read as blotches of dark red and yellow, its blue edge as an outline drawn round the disc, and a
+clear's fronts swept the frame as thick, smooth bands.
+([before and after](supernova-captures/pass2-before-after.jpg))
+
+| Part | Now |
+|---|---|
+| Colour | The standing shells are coloured by where they are in their life, not by their index: thrown off in the nebula's second gas colour (at the first level a teal), cooling through its third (gold) and dying in its first (crimson). Each glows in the colour of its place and, in wide patches, the next one out. The shells' colours turn through hue (`hueBlend`), never through grey, and never through green unless the palette is green itself |
+| Gas | Each crossing now has a body of glowing gas (the cloud the coarse read draws, and its dense heart), so the filaments run through clouds instead of hanging in black. The threads are sharper and fewer (the crossing second family, which drew the tangle, is a third of what it was), swirled along the coarse read so they run on as long strands, and knots burn where a thread crosses a dense spot. Dark dust lanes cut the gas and dim what is behind it |
+| Shell edges | The last stretch of a shell's graze fades, so its brightest band rides just inside the edge and the edge itself dissolves; a crisp rim read as a glass bubble |
+| Star | The photosphere is hotter on average and swings less: plasma with darker orange lanes, the limb darkening and reddening as a real one does. The chromosphere is a fringe of spicules of uneven height round the limb (read only just off it), not an even band |
+| Fronts | A front's skin is thinner, and torn: one extra read in the direction of the ray's closest approach (only while a front is live) breaks it into filaments and streamers with gaps |
+| Fireball | Fire only: its shells pair the gas colours of the remnant's outer layers (with the inner colour added over the others' light it went lime) |
+| Flares | A front flares a shell mostly white, a little in the shock's colour; the ring carries the colour |
+
+### Traps met
+
+- **Lime between teal and gold.** Two causes that looked alike: a hue blend the short way round from
+  teal (≈ 196°) to gold (≈ 33°) passes through green, and a shell's gold flare added straight onto a
+  teal shell reads green-white. The blend takes the long way round (through violet and rose)
+  whenever the short way crosses the greens and neither colour is green; a flare is mostly white.
+  New SKILL row.
+- **Glass bubbles.** A thin shell weighted by its graze is brightest exactly at its edge, where the
+  ray stops meeting it: a hard bright line round the bubble. Fading the graze over the last stretch
+  of the cosine (`smoothstep(0, 1.3 × skin, cos)`) moves the band inside and dissolves the edge. New
+  SKILL row.
+- **The hue boost made the lime worse.** A chroma lift where two hues meet keeps a blend from going
+  grey, and pushes a greenish blend greener: it only helps once the blend's hue is right.
+
+### Verification
+
+- **Unit tests:** the five Supernova files and a new shader gate, `tests/unit/supernova-shaders.test.js`
+  (every material of a High and a Minimal world built for WGSL and GLSL with no warning, no NaN,
+  no equal-edge smoothstep, no var read before it is assigned, and the post's output pass on both
+  backends for every look): 6 files, 185 tests. Two new world tests pin the colour rules (the
+  layers' order; no green on the way between two colours that are not, for every palette).
+- **Lint:** these files lint clean.
+- **Pictures:** rest, a lock, one to three lines, a T-spin, a chain of ten, four lines from the
+  fall to the pulsar, all five palettes and one mid-turn, Minimal, Extreme, the WebGL2 backend and a
+  portrait phone frame, clean consoles ([events](supernova-captures/pass2-events.jpg),
+  [palettes](supernova-captures/pass2-palettes.jpg),
+  [WebGL2, Minimal, portrait, Extreme](supernova-captures/pass2-backends-tiers.jpg)).
+- **GPU time** (RTX 5080 Laptop, the playground's demo loop at 1920 × 1080, GPU timestamps, p50 of
+  two alternating rounds against `origin/main`): High 0.59 → 0.64 ms, Minimal 0.24 → 0.27 ms; the
+  frame stayed at the display's cap.
+- **Not measured:** a physical phone, a weaker GPU, the perf lane (ADR-0016), real gameplay.

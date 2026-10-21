@@ -65,6 +65,7 @@ import {
     frontPassTime,
     frontRadius,
     heatForCombo,
+    lerp,
     mulberry32,
     paletteDrift,
     pieceColor,
@@ -136,10 +137,77 @@ const FLAG_TSPIN = 2;
 
 const PARTS = ['sky', 'nebula', 'beams', 'star', 'ring', 'loops', 'embers', 'streams', 'sparks'];
 
-/** Which two of the palette's three gas colours each standing shell glows in. */
-const SHELL_HUES = Object.freeze([
-    ['gasA', 'gasB'], ['gasC', 'gasA'], ['gasB', 'gasA'], ['gasC', 'gasB'], ['gasA', 'gasC'],
-]);
+/**
+ * The standing shells' colours from the inside out: a shell is thrown off in the nebula's second
+ * gas colour (hot, at the first level a teal), cools through its third (gold) and dies in its
+ * first (crimson). Each shell glows in the colour of its place and, in patches, the next one
+ * out, so the nebula reads in layers instead of every colour everywhere.
+ */
+const SHELL_ORDER = Object.freeze(['gasB', 'gasC', 'gasA']);
+/**
+ * The fireball's three shells, inside out: fire, in the nebula's outer two gas colours only (its
+ * second, added over the others' light, went lime against the first level's gold).
+ */
+const BLAST_HUES = Object.freeze([['gasC', 'gasA'], ['gasA', 'gasC'], ['gasC', 'gasA']]);
+
+/** Linear RGB → [hue 0..1, saturation, value]. */
+function toHsv(c) {
+    const max = Math.max(c[0], c[1], c[2]);
+    const min = Math.min(c[0], c[1], c[2]);
+    const d = max - min;
+    let h = 0;
+    if (d > 1e-6) {
+        if (max === c[0]) h = ((c[1] - c[2]) / d + 6) % 6;
+        else if (max === c[1]) h = (c[2] - c[0]) / d + 2;
+        else h = (c[0] - c[1]) / d + 4;
+    }
+    return [h / 6, max > 1e-6 ? d / max : 0, max];
+}
+
+/** [hue 0..1, saturation, value] → linear RGB, into `out`. */
+function fromHsv(h, s, v, out) {
+    const k = (n) => (n + h * 6) % 6;
+    const f = (n) => v - v * s * Math.max(0, Math.min(k(n), 4 - k(n), 1));
+    out[0] = f(5);
+    out[1] = f(3);
+    out[2] = f(1);
+    return out;
+}
+
+/** Hues (0..1) a blend should not pass through unless an end is there already: the greens. */
+const GREENS = [0.21, 0.44];
+const isGreen = (h) => h > GREENS[0] && h < GREENS[1];
+
+/** Whether turning from hue `h` by `dh` passes through the greens. */
+function crossesGreen(h, dh) {
+    for (let k = 1; k < 8; k++) {
+        const at = (((h + (dh * k) / 8) % 1) + 1) % 1;
+        if (isGreen(at)) return true;
+    }
+    return false;
+}
+
+/**
+ * Between two colours through their hues, never through grey: the short way round, unless that
+ * way crosses the greens and neither colour is green (teal into gold the short way goes lime;
+ * the long way passes through violet and rose).
+ */
+function hueBlend(a, b, t, out) {
+    const A = toHsv(a);
+    const B = toHsv(b);
+    let dh = B[0] - A[0];
+    if (dh > 0.5) dh -= 1;
+    if (dh < -0.5) dh += 1;
+    if (!isGreen(A[0]) && !isGreen(B[0]) && crossesGreen(A[0], dh)) dh -= Math.sign(dh);
+    return fromHsv((((A[0] + dh * t) % 1) + 1) % 1, lerp(A[1], B[1], t), lerp(A[2], B[2], t), out);
+}
+
+/** The colour of a place along SHELL_ORDER (0 = first … 2 = last), each held, then turned. */
+function shellColour(p, place, out) {
+    const x = Math.max(0, Math.min(SHELL_ORDER.length - 1, place));
+    const i = Math.min(SHELL_ORDER.length - 2, Math.floor(x));
+    return hueBlend(p[SHELL_ORDER[i]], p[SHELL_ORDER[i + 1]], smooth(0.3, 0.7, x - i), out);
+}
 /** Where in the noise each standing shell, then each shell of a fireball, reads its pattern. */
 const SHELL_SEEDS = Object.freeze([
     [0.13, 0.57, 0.91], [0.71, 0.23, 0.39], [0.37, 0.83, 0.11], [0.59, 0.07, 0.67], [0.89, 0.43, 0.29],
@@ -1322,9 +1390,11 @@ export class SupernovaWorld {
         for (let k = 0; k < count; k++) {
             const phase = shellPhase(k, count, this.drift);
             const radius = shellRadius(phase);
-            const [keyA, keyB] = SHELL_HUES[k % SHELL_HUES.length];
-            const colA = [p[keyA][0], p[keyA][1], p[keyA][2]];
-            const colB = [p[keyB][0], p[keyB][1], p[keyB][2]];
+            // Its colour by its place in its life; its second, the next colour out (the last
+            // shells take the one before theirs).
+            const place = phase * (SHELL_ORDER.length - 1) * 1.15;
+            const colA = shellColour(p, place, [0, 0, 0]);
+            const colB = shellColour(p, place < 1.6 ? place + 0.9 : place - 1.0, [0, 0, 0]);
             // What the fronts running through the nebula do to this shell.
             let energy = 0;
             for (let i = 0; i < FRONT_SLOTS; i++) {
@@ -1339,9 +1409,12 @@ export class SupernovaWorld {
                 const after = since > 0 ? Math.exp(-since / 0.7) * 0.28 : 0;
                 const w = Math.min(1.4, f.strength) * f.stir * (crossing * 1.3 + after);
                 energy += w;
+                // The shell flares mostly white, a little in the shock's colour: the ring carries
+                // the colour. (A gold shock added straight onto a teal shell went lime.)
                 for (let c = 0; c < 3; c++) {
-                    colA[c] += f.rgb[c] * w * 0.8;
-                    colB[c] += f.rgb[c] * w * 0.5;
+                    const lit = f.rgb[c] * 0.3 + 0.7;
+                    colA[c] += lit * w * 0.8;
+                    colB[c] += lit * w * 0.5;
                 }
             }
             // However many fronts are in it at once, a shell can only flare so far.
@@ -1388,7 +1461,7 @@ export class SupernovaWorld {
             const dying = 1 - smooth(BLAST_LIVE * 0.6, BLAST_LIVE, blastAge);
             const power = (this.blast.strength * 4.2 * Math.exp(-blastAge / 6) * dying) / (1 + (edge / 4.5) ** 2);
             for (let j = 0; j < BLAST_SHELLS; j++) {
-                const [keyA, keyB] = SHELL_HUES[(j + 1) % SHELL_HUES.length];
+                const [keyA, keyB] = BLAST_HUES[j % BLAST_HUES.length];
                 const colA = [0, 1, 2].map((c) => p[keyA][c] * (1 - hot) + STARFIRE[c] * hot);
                 const colB = [0, 1, 2].map((c) => p[keyB][c] * (1 - hot * 0.7) + BLUEWHITE[c] * hot * 0.7);
                 const seed = SHELL_SEEDS[STANDING_MAX + j];
@@ -1663,3 +1736,5 @@ export class SupernovaWorld {
 }
 
 export { PARTS as SUPERNOVA_PARTS };
+/** The standing shells' colour rules, for the tests. */
+export { SHELL_ORDER, hueBlend, shellColour };
