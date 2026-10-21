@@ -10,7 +10,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    attribute, cameraPosition, color, cross, dFdx, dFdy, dot, fract, instancedBufferAttribute, mix, normalize,
+    attribute, cameraPosition, color, cross, dFdx, dFdy, dot, float, fract, instancedBufferAttribute, mix, normalize,
     normalWorld, positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
@@ -121,6 +121,13 @@ export class ForestTrees {
             albedo = mix(scaled, lichen, smoothstep(0.2, 0.75, paint.a.mul(fine.g.mul(0.8).add(0.6))));
             relief = scale.mul(0.7).add(fine.r.mul(0.3));
         }
+        // A finer layer for the trunks near the eye (the elder fills a fifth of the screen): deep
+        // furrows between the plates, and moss in cushions with dark gaps rather than a felt.
+        // The noise is mipmapped, so on a far trunk it simply averages away.
+        const micro = light.noise(st.mul(vec2(13, 4.6)).add(fine.rg.mul(0.35)));
+        const furrow = smoothstep(0.56, 0.82, micro.b);
+        albedo = albedo.mul(float(1).sub(furrow.mul(species === 'birch' ? 0.2 : 0.55)));
+        relief = relief.add(micro.b.mul(0.45));
         // Moss climbs the foot of every old trunk, highest on its damp side.
         const smooth = normalize(normalWorld);
         const above = world.y.sub(tree.y);
@@ -128,7 +135,11 @@ export class ForestTrees {
         const mossLine = damp.mul(species === 'birch' ? 0.5 : 1.5).add(grain.b.mul(1.2));
         const moss = smoothstep(mossLine.sub(0.6), mossLine.add(0.5), above).oneMinus()
             .mul(smoothstep(0.3, 0.55, fine.g.mul(0.6).add(grain.a.mul(0.4)))).mul(paint.r.oneMinus());
-        albedo = mix(albedo, mix(color(0x0c1c08), color(0x2a4212), fine.r), moss.mul(0.85));
+        const cushion = smoothstep(0.32, 0.68, micro.g);
+        const mossLit = mix(color(0x0c1c08), color(0x2a4212), fine.r);
+        const mossTone = mix(color(0x040a03), mossLit, cushion.mul(0.85).add(0.15));
+        albedo = mix(albedo, mossTone, moss.mul(0.85));
+        relief = relief.add(cushion.mul(moss).mul(0.6));
 
         // Relief from the bark pattern itself: a low moon rakes across the plates.
         const across = dFdx(world);
@@ -231,18 +242,25 @@ export class ForestTrees {
             .add(crown.x.mul(0.2)));
         const leaf = ramp(FOLIAGE_RAMPS[species] || FOLIAGE_RAMPS.spruce, tone);
         const albedo = mix(color(0x120c09), leaf, paint.a).mul(paint.b);
-        // Moonlight through a spray is a cold silver, whatever the green in front of it.
-        const silver = pow(leaf, vec3(0.6)).mul(leafy ? vec3(0.74, 0.98, 1.08) : vec3(0.7, 0.9, 1.14));
+        // Moonlight through a spray is a cold silver, whatever the green in front of it: half
+        // its own hue, half the same brightness in grey, so a backlit bough is edged in silver
+        // rather than teal (and no brighter than before).
+        const sheer = pow(leaf, vec3(0.6));
+        const silver = mix(sheer, vec3(dot(sheer, vec3(0.3, 0.59, 0.11))), 0.5)
+            .mul(leafy ? vec3(0.74, 0.98, 1.08) : vec3(0.7, 0.9, 1.14));
         const cool = light.night(albedo);
 
         const moon = light.moonlight();
         const facing = dot(blade, light.uMoonDir);
-        const wrap = saturate(dot(normal, light.uMoonDir).mul(0.6).add(0.4));
+        // The moon stands behind the trees: the side the eye sees is the shaded side, so only a
+        // little light wraps round to it (it was 0.4, which lit backlit boughs as if from in front).
+        const wrap = saturate(dot(normal, light.uMoonDir).mul(0.7).add(0.18));
         const front = cool.mul(wrap).mul(saturate(facing.abs().mul(2.2).add(0.45)));
         // Needles are too fine to block the moon: looking up the beam, the fringe of every
         // spray is edged in light, and the tips most of all.
         const through = pow(saturate(dot(view, light.uMoonDir).negate()), 5);
-        const back = silver.mul(paint.a).mul(paint.r.mul(0.8).add(0.2))
+        // ... and only at the fringe: the tips (paint.r) carry it, the inner shoot barely.
+        const back = silver.mul(paint.a).mul(paint.r.mul(paint.r).mul(0.95).add(0.05))
             .mul(through.mul(leafy ? 1.3 : 1.0).add(saturate(facing.negate()).mul(0.16)))
             .mul(crown.x.mul(0.6).add(0.4));
         const occlusion = crown.x.mul(0.8).add(0.2);

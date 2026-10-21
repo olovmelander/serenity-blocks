@@ -6,6 +6,10 @@
  * rings — every lock, clear and falling drop is a travelling wave that bends both the
  * reflection and the bed beneath it and leaves a luminous crest. Where the water meets
  * rock or a crystal there is a thin living glow line.
+ *
+ * The mirror also holds the light in the air (`air.gather` along the mirrored ray): the
+ * crystals' halos and the skylight's shaft lie in the water under them. Fine ripples crossing
+ * the swell break the reflection into a slow shimmer and catch glints of the shaft.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -25,9 +29,10 @@ export const RING_SPEED = 5.2;
  * @param {number} [options.reflectionScale] 0 disables the planar reflection
  * @param {boolean} [options.refraction] bend the bed through the surface (needs a backdrop copy)
  * @param {number} [options.rings] ring slots
+ * @param {object} [options.air] the light in the air (`createCaveAirLight`), mirrored in the water
  */
 export function createCavePool({
-    light, scene, poolLevel, reflectionScale = 0.4, refraction = true, rings = 10,
+    light, scene, poolLevel, reflectionScale = 0.4, refraction = true, rings = 10, air = null,
 }) {
     const u = light.uniforms;
     const slots = Math.max(1, Math.floor(rings));
@@ -55,6 +60,13 @@ export function createCavePool({
         const swellA = texture(light.noise, point.xz.mul(0.021).add(vec2(drift, drift.mul(0.7))));
         const swellB = texture(light.noise, point.xz.mul(0.047).sub(vec2(drift.mul(1.3), drift.mul(0.4))));
         const slope = vec2(swellA.r.sub(swellB.a), swellA.a.sub(swellB.r)).mul(0.02).toVar();
+        // Fine ripples crossing the swell: two small trains that drift against each other,
+        // faded with distance where they would only alias.
+        const near = float(1).sub(smoothstep(18, 60, distance)).toVar();
+        const fineA = texture(light.noise, point.xz.mul(0.31).add(vec2(drift.mul(5.0), drift.mul(-3.1))));
+        const fineB = texture(light.noise, point.xz.mul(0.53).sub(vec2(drift.mul(-2.4), drift.mul(4.6))).add(0.41));
+        const ripple = vec2(fineA.r.sub(fineB.r), fineA.a.sub(fineB.a)).mul(0.012).mul(near);
+        slope.addAssign(ripple);
         const crest = vec3(0).toVar();
         for (let index = 0; index < slots; index += 1) {
             const ring = ringNode.element(index);
@@ -85,7 +97,7 @@ export function createCavePool({
             below.assign(viewportSharedTexture(screenUV.add(bend)).rgb);
             // Water scatters a little of the cave's light back on a long path.
             const murk = float(1).sub(exp(thickness.mul(-0.085)));
-            below.assign(mix(below, vec3(0.012, 0.075, 0.085).mul(u.energy.mul(1.5).add(1)), murk));
+            below.assign(mix(below, vec3(0.005, 0.042, 0.05).mul(u.energy.mul(1.5).add(1)), murk));
             shoreline.assign(exp(thickness.mul(-2.6)).mul(smoothstep(0.0, 0.05, thickness)));
         } else {
             below.assign(vec3(0.006, 0.04, 0.047));
@@ -100,10 +112,19 @@ export function createCavePool({
         } else {
             // No mirror on this tier: dark water, the vault's faint glow, and a path of light
             // laid toward the warm heart at the end of the hall.
-            const sheen = light.environment(reflect(view.negate(), normal), float(6), light.eventLight).mul(0.5);
+            const sheen = light.environment(reflect(view.negate(), normal), float(6), light.eventLight).mul(0.2);
             const offPath = point.x.sub(3).add(slope.x.mul(60)).div(6.5);
             const path = exp(offPath.mul(offPath).negate()).mul(smoothstep(-12, -70, point.z));
             mirrored.assign(vec3(0.006, 0.026, 0.036).add(sheen).add(vec3(1.0, 0.7, 0.38).mul(path).mul(0.3)));
+        }
+
+        // The light in the air seen in the water: the halos and the shaft along the mirrored ray.
+        if (air) {
+            const mirrorRay = reflect(view.negate(), normal).toVar();
+            const airSeen = air.gather(point, vec3(mirrorRay.x, mirrorRay.y.max(0.02), mirrorRay.z), float(70)).toVar();
+            // Where a fine ripple tilts toward it, the shaft's reflection breaks into glints.
+            const glint = smoothstep(0.55, 0.95, length(ripple).mul(60)).mul(near);
+            mirrored.addAssign(airSeen.mul(glint.mul(1.6).add(0.9)));
         }
 
         // A living line where water meets stone, lapping slowly.
@@ -112,7 +133,7 @@ export function createCavePool({
         const colour = below.mul(through).add(mirrored.mul(reflectance)).add(rim).add(crest.mul(0.9));
         // Far water is seen at a glancing angle through a long path: it hides its bed.
         const alpha = refraction ? float(1)
-            : max(mix(float(0.5), float(1), smoothstep(0.05, 0.6, reflectance)), smoothstep(22, 55, distance));
+            : max(mix(float(0.74), float(1), smoothstep(0.05, 0.6, reflectance)), smoothstep(14, 40, distance));
         // Without a mirror the far water would otherwise turn into a flat sheet of haze.
         return vec4(light.haze(colour, distance.mul(reflection ? 1 : 0.4), point.y), alpha);
     });

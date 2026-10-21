@@ -4,16 +4,19 @@
  * Bloom lets the crystal cores, the glints and the event light spill; a hue-preserving
  * tone curve keeps amethyst purple and rose pink instead of sliding them toward blue and
  * red; a gentle grade deepens the shadows. Low and Minimal draw the same scene directly.
+ * With `atmosphere` (the world's light and lamps) the light in the air is added to the
+ * scene before bloom (crystal-cave-atmosphere.js).
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, clamp, dot, float, floor, fract, length, mix, neutralToneMapping, pass, renderOutput, screenCoordinate,
-    screenUV, sin, smoothstep, uniform, vec2, vec3, vec4,
+    Fn, clamp, convertToTexture, dot, float, floor, fract, length, mix, neutralToneMapping, pass, renderOutput,
+    screenCoordinate, screenUV, sin, smoothstep, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { QUALITY_PRESETS } from './crystal-cave-quality.js';
+import { createCaveAtmosphere } from './crystal-cave-atmosphere.js';
 
 export const CRYSTAL_CAVE_EXPOSURE = 1.06;
 const BLOOM_STRENGTH = 0.34;
@@ -22,7 +25,7 @@ const bounded = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value
 
 export class CrystalCavePost {
     constructor({
-        renderer, scene, camera, quality = 'High',
+        renderer, scene, camera, quality = 'High', atmosphere = null,
     }) {
         this.renderer = renderer;
         this.scene = scene;
@@ -35,6 +38,7 @@ export class CrystalCavePost {
         this.pipeline = null;
         this.scenePass = null;
         this.bloomNode = null;
+        this.atmosphere = null;
         this.resolutionScale = this.disabled ? 0 : preset.bloomScale;
         this.uExposure = uniform(CRYSTAL_CAVE_EXPOSURE);
         this.uAspect = uniform(16 / 9);
@@ -46,12 +50,23 @@ export class CrystalCavePost {
         // depth cannot be shared with the (single-sample) mirror pass. FXAA below.
         this.scenePass = pass(scene, camera, { samples: 0 });
         const sceneColor = this.scenePass.getTextureNode('output');
-        this.bloomNode = bloom(sceneColor, BLOOM_STRENGTH, 0.55, BLOOM_THRESHOLD);
+        let lit = sceneColor;
+        if (atmosphere?.air?.count) {
+            this.atmosphere = createCaveAtmosphere({
+                air: atmosphere.air,
+                camera,
+                depthNode: this.scenePass.getTextureNode('depth'),
+            });
+            if (atmosphere.air.hasShaft) atmosphere.claimShaft?.();
+            const airNode = this.atmosphere.node();
+            lit = convertToTexture(Fn(() => vec4(sceneColor.rgb.add(airNode), 1))());
+        }
+        this.bloomNode = bloom(lit, BLOOM_STRENGTH, 0.55, BLOOM_THRESHOLD);
         this.bloomNode.smoothWidth.value = 0.3;
         this.bloomNode.setResolutionScale(this.resolutionScale);
 
         const graded = Fn(() => {
-            const combined = sceneColor.rgb.add(this.bloomNode.rgb).max(0);
+            const combined = lit.rgb.add(this.bloomNode.rgb).max(0);
             const toned = neutralToneMapping(combined, this.uExposure).toVar();
             const luma = dot(toned, vec3(0.2126, 0.7152, 0.0722));
             // Cool, slightly violet shadows; the lit stone keeps its own colour.
@@ -87,6 +102,7 @@ export class CrystalCavePost {
     render() {
         if (this.disposed) return;
         if (this.pipeline) {
+            this.atmosphere?.update();
             this.pipeline.render();
             return;
         }
@@ -118,6 +134,7 @@ export class CrystalCavePost {
             reaction: this.uReaction.value,
             bloomStrength: this.bloomNode?.strength.value ?? 0,
             bloomThreshold: BLOOM_THRESHOLD,
+            atmosphereLamps: this.atmosphere?.count ?? 0,
         };
     }
 
