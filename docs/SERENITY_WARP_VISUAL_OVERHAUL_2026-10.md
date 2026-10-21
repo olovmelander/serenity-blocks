@@ -103,6 +103,29 @@ All on 2026-10-11, on this laptop (RTX 3070 laptop GPU unless noted).
 Infinity, meditation and Odyssey layouts not captured; nobody has watched it move except through
 stills and strips; the icon (the ringed throat with a knot of coloured pieces in front) is my pick.
 
+## Second pass (2026-10-21): atmosphere, the jump, the light
+
+A pass over the look; nothing in the event language changed. All in `serenity-warp-sky.js` unless named.
+
+| Where | Before | Now |
+|---|---|---|
+| The vortex | A flat twirl: smooth ribbons streaked along the spiral, the same brightness on both sides of every arm | Lit by the throat: one more read of the gas a step nearer the gate (`turn + wind·dL`, `L − dL` in its log-polar frame) gives every billow a face that looks at the gate (bright, its edges in the gate's colour) and a far side in shade. A second, nearer veil of dust winds 30 % slower and crosses the arms, dark against the glow. The outer arms are broken by the open sky's clouds (far out the log-polar read magnifies itself into long smears). Nearest the throat the gas runs hot, toward the gate's white. |
+| The ring | One uniform white neon circle | Beamed: the side the swirl comes at us from is brighter and bluer, the other dimmer and in the gas's colour; the gas behind the throat is lensed into arcs along it; a fainter second ring a little outside. The halo is tinted by the glow and takes only half of a surge. |
+| The open sky | A flat mauve haze, evenly sprinkled | An emission nebula in two hues with dust threads (extinction, so the clouds have edges), a band of our own galaxy across the sky toward the gate with a dust rift down its spine and a fine grain of faint stars along it, star colours from orange to blue-white, dust hiding stars, and one cell in twenty of a coarse lattice holding a bright star with a halo and four spikes upright on the screen. |
+| A jump | Overlapping translucent discs with hard edges (rings drawn as `pow(fract(log θ), 14)`: a hard leading edge and a long tail each), fBm smears, green blotches | Hyperspace: lanes round the tunnel holding dashes of light that run out past us, a pixel wide at any angle, in the other sky's colours over a dim glow of its gas; thin rings rushing past. The zoom blur only softens it (half as strong). |
+| Lens fringe (`serenity-warp-post.js`) | Red and blue taken whole from the sharp scene while green stayed blurred: during the rush the picture broke into green and magenta | Only the split itself is added to the rushed picture. |
+| Clear waves | Broad flat bands of light | A lens: a dim body and wake, a thin crest whose colours split a little (blue leads, red trails), twice the bend of the sky behind it. |
+| A chain, an arrival (post, world) | A grey veil over the gate (the bloom's wide mips) | Bloom radius 0.62 → 0.42, and the bloom gives way while the scene itself burns brighter (`bloomEase`: the warp and the surge); the shafts grow less with a chain; a surge lifts the gate half as much. |
+| The pieces (`serenity-warp-glass.js`) | Lit by the gate's direction from the camera, so every piece as if it stood on the axis | Lit from where the gate stands; the silhouette on the gate's side burns in its light, and with the gate behind it a cooled piece glows through in its own colour (stained glass against a window). |
+
+**Tiers** (`serenity-warp-quality.js`): `vortexLight` (Medium up), `vortexDust` (High up), `heroStars` and `richFar` (the nebula, the band and its grain; Medium up). Low and Minimal keep the old open sky: on the integrated Radeon 610M the sky shader is most of the frame and is bound by arithmetic there, so every term shows (see the timing below). The environment pass (what the pieces mirror) never draws the relief, the near dust or the bright stars.
+
+**Gate**: `tests/unit/serenity-warp-shaders.test.js` (new) builds every material, the environment pass and the post output through the WGSL and GLSL builders at High and Minimal: no warning, under 96 KB a stage, no equal smoothstep edges, NaN/Infinity, stringified nodes, MaterialX noise, reserved parameter names or WGSL vars read before they are assigned; and it counts the gas reads each tier's sky makes (High 8, Minimal 4; the environment pass 6 and 4).
+
+**Verified** on 2026-10-21 (RTX 5080 Laptop unless named): playground captures of every event, six palettes, every tier, Ultra at 2400 × 1350, an upright phone and the WebGL2 backend, clean consoles; the lifecycle validator PASS (0 failures, 0 console errors); the real game (pinned theme, real hard drops) at High. **Frame cost** on the AMD Radeon 610M (`force_low_power_gpu`, 1600 × 900, GPU timestamps, median of 120 frames, old and new served side by side and interleaved, other sessions working on the machine): High 37.4 / 25.6 ms against 35.2 / 27.3 (inside the noise); Low 14.5 / 13.9 against 12.8 / 12.5 (about +1.5 ms, after the lean tiers were split off; with the rich sky everywhere Low was +3.6 ms). Medium too noisy to call (18.7 / 16.3 against 22.0 / 14.6).
+
+**Still open**: a run of hard drops at an unrealistic rate (about 500 pieces a minute) piles white-hot newborns beside the card into a pastel glow, as it did before this pass; nobody has watched it move except through stills; not on a physical phone.
+
 ## Reproduce
 
 Playground (`npm run dev:playground`, then `playground.html?effect=serenity-warp&...`):
@@ -114,7 +137,8 @@ Playground (`npm run dev:playground`, then `playground.html?effect=serenity-warp
 | a lock, hot / cooled | `t=20&quality=High&board=1&event=lock&eventAge=0.4&piece=J&turns=1&row=12&u=0.2` / `eventAge=4` |
 | a clear | `t=26&quality=High&board=1&locks=6&event=clear&lines=3&eventAge=0.7` |
 | a chain | `t=26&quality=High&board=1&locks=8&combo=7` |
-| the jump | `t=26&quality=High&board=1&event=quad&eventAge=0.75` (opening), `1.6` (inside), `3.4` (out) |
+| the jump | `t=26&quality=High&board=1&event=quad&eventAge=0.75` (opening), `1.2` / `1.6` / `2.2` (inside), `3.4` (out) |
+| the open sky alone | `t=20&quality=High&parts=sky,stars,motes` (Medium shows the rich sky, Low the lean one) |
 | palettes | `t=10&quality=High&level=1…7` (t=10 is inside the rest) |
 | the icon | `t=20&quality=High&icon=1` (square frame) |
 
