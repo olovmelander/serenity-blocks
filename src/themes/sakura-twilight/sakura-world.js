@@ -25,7 +25,7 @@ import { SakuraTerrain, sakuraLand, sakuraSurfaceHeight } from './sakura-terrain
 import { SAKURA_UNMIRRORED_LAYER, SakuraWater } from './sakura-water.js';
 import { drainSteps } from '../shared/build-steps.js';
 
-const UNMIRRORED = /^Sakura(SpringGrass|Fireflies|Foxfire|PetalFlashes|MistBank|PetalsInTheAir)/;
+const UNMIRRORED = /^Sakura(SpringGrass|FallenBlossom|Fireflies|Foxfire|PetalFlashes|MistBank|PetalsInTheAir)/;
 // Open water whatever the shape of the banks: straight out from the cove.
 const LAKE_HEART_Z = -22;
 
@@ -101,7 +101,7 @@ export class SakuraWorld {
         this.forest.build();
         yield 'forest';
         this.garden = new SakuraGarden({
-            light, props: assets.props, tier, paperLanterns: this.paperLanterns, rng,
+            light, props: assets.props, blossoms: assets.blossoms, tier, paperLanterns: this.paperLanterns, rng,
         });
         this.group.add(this.garden.group);
         this.garden.build();
