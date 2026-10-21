@@ -12,6 +12,11 @@ journey's ownership/cancellation rules are unchanged. The earlier records stay v
 where this one says it supersedes them (the fixed 2.6-second acknowledgment, the completion
 composition and the hold-on-black inside the portals).
 
+> **Superseded in part (2026-10-21).** Both portals are now the gate described in
+> [ODYSSEY_PORTAL_GATE_2026-10.md](ODYSSEY_PORTAL_GATE_2026-10.md): the orb opens into a gate
+> onto a passage of the destination's colours, and `portal-tunnel.js` is gone. Steps 3 and 5
+> below, the portal frames and the tunnel's implementation notes describe this pass's tunnel.
+
 ## What the player sees now
 
 **Within a chapter** (automatic, no input needed):
