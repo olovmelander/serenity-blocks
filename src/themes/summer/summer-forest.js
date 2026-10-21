@@ -243,7 +243,9 @@ export class SummerForest {
 
         const sun = light.sunlight();
         const facing = dot(blade, light.uSunDir);
-        const wrap = saturate(dot(normal, light.uSunDir).mul(0.6).add(0.4));
+        // A little light wraps round a crown to its shaded side (it was 0.4, which flattened the
+        // crowns: the side turned from the low sun was nearly as bright as the lit side).
+        const wrap = saturate(dot(normal, light.uSunDir).mul(0.75).add(0.25));
         const front = albedo.mul(wrap).mul(saturate(facing.abs().mul(2.2).add(0.45)));
         // Leaves are too thin to block the sun: looking up the beam, every spray lights up.
         const through = pow(saturate(dot(view, light.uSunDir).negate()), 4);

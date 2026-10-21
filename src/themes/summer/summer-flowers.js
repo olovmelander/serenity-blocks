@@ -180,19 +180,32 @@ function leaf(b, base, direction, length, width, colour = LEAF, tip = null) {
     b.tri(left, right, end);
 }
 
-/** A petal: a kite leaving a flower's `centre` along `out`, lifted along the flower's `axis`. */
+/**
+ * A petal leaving a flower's `centre` along `out`, lifted along the flower's `axis`: a strap
+ * that widens from a narrow claw, keeps its width and closes in a blunt, rounded tip (four
+ * triangles). A two-triangle kite, its widest point half-way, read as a paper triangle up close.
+ */
 function petal(b, centre, out, axis, {
     start = 0.01, length = 0.03, width = 0.016, lift = 0, base, tip, part = 1,
 }) {
     const across = new THREE.Vector3().crossVectors(axis, out).normalize();
+    const side = (t, half, sign) => b.vertex(
+        at(centre, out, start + length * t, across, sign * width * half, axis, lift * t),
+        base.clone().lerp(tip, t),
+        part,
+        t,
+        centre,
+    );
     const a = b.vertex(at(centre, out, start), base, part, 0, centre);
-    const l = b.vertex(at(centre, out, start + length * 0.55, across, width * 0.5, axis, lift * 0.5), base.clone()
-        .lerp(tip, 0.55), part, 0.55, centre);
-    const r = b.vertex(at(centre, out, start + length * 0.55, across, -width * 0.5, axis, lift * 0.5), base.clone()
-        .lerp(tip, 0.55), part, 0.55, centre);
+    const l1 = side(0.35, 0.5, 1);
+    const r1 = side(0.35, 0.5, -1);
+    const l2 = side(0.84, 0.4, 1);
+    const r2 = side(0.84, 0.4, -1);
     const end = b.vertex(at(centre, out, start + length, axis, lift), tip, part, 1, centre);
-    b.tri(a, r, l);
-    b.tri(l, r, end);
+    b.tri(a, r1, l1);
+    b.tri(l1, r1, r2);
+    b.tri(l1, r2, l2);
+    b.tri(l2, r2, end);
 }
 
 /** The eye of a flower: a low cone of `sides` faces. */
