@@ -15,8 +15,8 @@ import {
     clamp,
     cos,
     dot,
-    exp,
     float,
+    fwidth,
     length,
     max,
     mix,
@@ -25,13 +25,19 @@ import {
     reflect,
     smoothstep,
     sqrt,
+    texture,
     vec2,
     vec3,
     vec4,
 } from 'three/tsl';
 import {
-    DEG, SURFACE, TAU, WINDOW_INDEX, ocBackdrop, ocFog, ocLightRead, ocPart, ocPow4, ocPow8,
+    DEG, LIGHT_TILE, SURFACE, TAU, WINDOW_INDEX, ocBackdrop, ocBell, ocPart, ocPow4, ocPow8, ocThrough,
 } from './ocean-tsl.js';
+
+/** How far the skin's facets tilt across a thread of the light's net (slope per unit of the net). */
+const CRINKLE = 0.075;
+/** How much more (and less) the water bends blue (and red) than the window's own index. */
+const DISPERSION = 0.012;
 
 /** The swell's trains: (bearing in degrees, wavelength in metres, steepness, metres a second). */
 const WAVES = Object.freeze([
@@ -45,8 +51,10 @@ const WAVES = Object.freeze([
  * @param {object} [options]
  * @param {number} [options.waves=6]   how many wave trains to sum (the shortest go first)
  * @param {boolean} [options.clouds=true]  cloud in the sky seen through the window
+ * @param {number} [options.light=512]  the light pattern's edge in texels (the crinkle reads it at
+ *        the level whose texels are about 9 cm, so every tier draws facets of one size)
  */
-export function createSurface(u, { waves = WAVES.length, clouds = true } = {}) {
+export function createSurface(u, { waves = WAVES.length, clouds = true, light = 512 } = {}) {
     const reach = 260;
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.Float32BufferAttribute([
@@ -67,6 +75,8 @@ export function createSurface(u, { waves = WAVES.length, clouds = true } = {}) {
         const I = rel.div(max(dist, 1e-3)).toVar();
         const st = P.xz;
         const t = u.drift;
+        /** Metres of surface under one pixel (along the line of sight, where it is longest). */
+        const foot = max(max(fwidth(st.x), fwidth(st.y)), 1e-4).toVar();
 
         // ── The waves, as slopes ──
         const slope = vec2(0.0).toVar();
@@ -74,25 +84,45 @@ export function createSurface(u, { waves = WAVES.length, clouds = true } = {}) {
             const dx = Math.sin(bearing * DEG);
             const dz = -Math.cos(bearing * DEG);
             const k = TAU / wavelength;
-            // A wave too short to draw at its distance settles instead of shimmering.
-            const settle = exp(dist.div(-wavelength * 22));
+            // A wave too short to draw at its distance settles instead of shimmering (under
+            // about six pixels a wavelength).
+            const settle = float(1.0).sub(smoothstep(wavelength / 12, wavelength / 5, foot));
             const phase = st.x.mul(dx * k).add(st.y.mul(dz * k)).sub(t.mul(k * speed));
             slope.addAssign(vec2(dx, dz).mul(cos(phase)).mul(settle).mul(steep));
         });
-        // Chop on the swell, at three scales; the finer it is, the sooner it settles with distance.
-        const n1 = u.noise(st.mul(0.05).add(vec2(t.mul(0.009), t.mul(0.006))));
+        // Chop on the swell: broad and slow, so it only moves the window, never blots it.
         const n2 = u.noise(st.mul(0.19).add(vec2(t.mul(-0.021), t.mul(0.015))));
         const n3 = u.noise(st.mul(0.61).add(vec2(t.mul(0.04), t.mul(-0.03))));
-        slope.addAssign(n1.rg.sub(0.5).mul(0.2)
-            .add(n2.ba.sub(0.5).mul(0.3).mul(exp(dist.div(-45.0))))
-            .add(n3.rg.sub(0.5).mul(0.24).mul(exp(dist.div(-22.0)))));
+        slope.addAssign(n2.ba.sub(0.5).mul(0.16)
+            .add(n3.rg.sub(0.5).mul(0.2).mul(float(1.0).sub(smoothstep(0.03, 0.1, foot)))));
+        // The skin's own crinkle: the facets that focus the light into the net on the sand. The
+        // surface is that net's height (its threads are ridges), so every thread is a pair of
+        // facets, one turned into the window and one out of it. It is read where the sun's ray
+        // through this point lands on the pattern, i.e. here, so the bright threads overhead
+        // stand over the shafts and the net below them.
+        const LT = 1 / LIGHT_TILE;
+        const step = 0.07;
+        const lvl = Math.max(0, Math.log2(light / 256));
+        const h0 = texture(u.lightTex, st.mul(LT)).level(lvl).r;
+        const hx = texture(u.lightTex, st.add(vec2(step, 0.0)).mul(LT)).level(lvl).r;
+        const hz = texture(u.lightTex, st.add(vec2(0.0, step)).mul(LT)).level(lvl).r;
+        /** What of the crinkle the pixels can still draw (its threads are a few centimetres wide). */
+        const resolved = float(1.0).sub(smoothstep(0.035, 0.11, foot)).toVar();
+        slope.addAssign(vec2(hx.sub(h0), hz.sub(h0)).mul(CRINKLE / step).mul(resolved));
         slope.mulAssign(u.swell);
         /** The underside's normal: it points down, at the viewer. */
         const N = normalize(vec3(slope.x, -1.0, slope.y)).toVar();
+        /** What the pixel can no longer draw of the facets' tilt: it blurs the window's edge instead. */
+        const blur = float(CRINKLE * 0.11).mul(float(1.0).sub(resolved)).mul(u.swell).add(0.012);
 
         // ── Through the surface, or back off it ──
         const cosI = clamp(dot(N, I).negate(), 0.0, 1.0).toVar();
-        const k = float(1.0).sub(float(WINDOW_INDEX * WINDOW_INDEX).mul(float(1.0).sub(cosI.mul(cosI)))).toVar();
+        const sin2 = float(1.0).sub(cosI.mul(cosI)).toVar();
+        // Water bends red a little less than blue, so a facet's edge of the window is fringed.
+        const kOf = (n) => float(1.0).sub(sin2.mul(n * n));
+        const k = kOf(WINDOW_INDEX).toVar();
+        const kR = kOf(WINDOW_INDEX * (1 - DISPERSION));
+        const kB = kOf(WINDOW_INDEX * (1 + DISPERSION));
         const root = sqrt(max(k, 0.0)).toVar();
         const T = normalize(I.mul(WINDOW_INDEX).add(N.mul(cosI.mul(WINDOW_INDEX).sub(root)))).toVar();
 
@@ -102,7 +132,7 @@ export function createSurface(u, { waves = WAVES.length, clouds = true } = {}) {
         if (clouds) {
             const drift = vec2(t.mul(0.0015), t.mul(0.0006));
             const cloud = u.noise(T.xz.div(T.y.add(0.3)).mul(0.07).add(drift)).g;
-            dome.assign(mix(dome, u.horizon.mul(1.2), smoothstep(0.5, 0.78, cloud).mul(0.55)));
+            dome.assign(mix(dome, u.horizon.mul(1.15), smoothstep(0.55, 0.8, cloud).mul(0.3)));
         }
         const sunward = clamp(dot(T, u.sunAir), 0.0, 1.0);
         const s8 = ocPow8(sunward);
@@ -112,16 +142,21 @@ export function createSurface(u, { waves = WAVES.length, clouds = true } = {}) {
 
         // The mirror: the deep, and a little of the sand's glow from straight below.
         const R = reflect(I, N).toVar();
-        const mirror = ocBackdrop(u, R).mul(0.9)
+        const mirror = ocBackdrop(u, R).mul(0.8)
             .add(u.bounce.mul(0.55).mul(smoothstep(0.1, 0.8, R.y.negate())));
-        // The window opens softly: near its edge the surface is still mostly mirror.
+        // The window opens softly: right at its edge the light through it is all but gone (the
+        // facet's Fresnel), and what the pixel cannot resolve blurs the edge.
         const fresnel = ocPow4(float(1.0).sub(root));
-        const open = smoothstep(0.0, 0.2, k).mul(float(1.0).sub(fresnel));
+        const gate = (kk) => smoothstep(blur.negate(), blur.mul(2.0).add(0.15), kk);
+        const open = vec3(gate(kR), gate(k), gate(kB)).mul(float(1.0).sub(fresnel)).toVar();
         const col = mix(mirror, sky, open).toVar();
-        // The net is drawn on the underside too: the light gathered just under the skin.
-        const skin = ocLightRead(u, st).r;
-        col.addAssign(u.sun.mul(skin.mul(skin)).mul(0.05).mul(u.breath));
-        return vec4(ocFog(u, col, P), 1.0);
+        // Where a facet turns just past the edge the whole bright sky near the horizon is folded
+        // into it: a thin rim of light along every thread that crosses the edge.
+        const rim = ocBell(k.div(blur.mul(2.5).add(0.05))).mul(0.55);
+        col.addAssign(u.horizon.mul(rim).mul(u.breath.mul(0.5).add(0.5)));
+        // The surface is lit water seen through a shorter, brighter column than its distance says.
+        const through = ocThrough(u, dist.mul(0.55));
+        return vec4(mix(ocBackdrop(u, I), col, through), 1.0);
     })();
     return ocPart('OceanSurface', geometry, material, 20);
 }
