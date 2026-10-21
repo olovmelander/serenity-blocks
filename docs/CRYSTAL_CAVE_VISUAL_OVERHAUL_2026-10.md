@@ -1,6 +1,6 @@
 # Crystal Cave — the resonant hall (visual overhaul, 2026-10-05)
 
-**Status: implemented (branch `feature/crystal-cave-masterpiece`). A record of what was built
+**Status: implemented (branch `feature/crystal-cave-masterpiece`; second pass on `feature/crystal-cave-overhaul`, below). A record of what was built
 and how it was checked — not a backlog.** Supersedes the "jeweled cathedral" overhaul of the
 same week (commits `ee1f1c7a`, `f353a924`), whose flat-shaded procedural cave this replaces
 and whose record is in this file's history.
@@ -8,6 +8,75 @@ and whose record is in this file's history.
 | Before | After (High, native WebGPU) |
 | --- | --- |
 | ![before](crystal-cave-overhaul/before.webp) | ![after](crystal-cave-overhaul/idle.webp) |
+
+## Second pass (2026-10-20): the light in the air, and glass
+
+Branch `feature/crystal-cave-overhaul`. The first pass left the air empty and the crystals
+reading as tinted candy: every stone glowed evenly from inside, saw only a dark, featureless far
+field through itself, and the carpet of small points glowed as brightly as the heroes, so it
+read as confetti floating in the dark. The skylight's beam was a faint grey smear.
+
+| Before | After (High, native WebGPU) |
+| --- | --- |
+| ![before](crystal-cave-overhaul/air-before.jpg) | ![after](crystal-cave-overhaul/air-idle.jpg) |
+
+- **The light in the air** (`crystal-cave-atmosphere.js`, in the post before bloom). Every
+  cluster of big crystals is a lamp in the cave's damp air (`planAtmosphereLamps`: the big
+  stones grouped by family into up to sixteen weighted centres). A lamp is a soft point light,
+  and the light a straight view ray gathers from it has a closed form, an `atan` pair over the
+  ray's closest approach, so every lamp is integrated exactly along every pixel's ray up to the
+  scene depth: a stone in front of a lamp cuts its halo. Rays that pass far to a lamp's side
+  gather little of it (a halo, not a veil). A mist hangs over the pool, denser at the water and
+  lying in drifting banks (one noise read per pixel, where the ray crosses the mist's middle).
+  The lamps take the families' live levels, so a lock that flares a family flares the air
+  round its crystals, and each lamp breathes slowly out of step with the others.
+- **The skylight's shaft** is integrated in the same pass: the air round the chimney's axis lit
+  with a Gaussian profile that widens down its cone, `√(2π)·σ / sin θ` at the ray's closest
+  approach to the axis, only in front of what the ray hits (the rock pillar cuts it), streaked
+  by angle round the axis and brightest at the chimney's mouth. When the post draws it the
+  air's mesh beam is hidden (Low and Minimal, without post, keep the mesh).
+- **Glass.** The first exit of each traced ray now looks at the cave behind the stone: a copy of
+  the frame drawn so far (rock, pool), at the point a metre or two along the refracted ray, one
+  read per wavelength where the tier disperses, so the rock behind a crystal is seen warped and
+  fringed through it. The far facets' edges show through the clear body as fine lines of caught
+  light (`gemExitEdgeGap`: how far past the exit the ray would have met the next face). A facet
+  that mirrors the skylight or the far heart flashes whole, so facets flicker as the view
+  drifts. The even inner glow is lower, the far field's lights brighter, so facets differ.
+- **The small points** glow a third as much as the stones of size and their bodies are darker:
+  in the rock they read as glinting mineral, not as lamps.
+- **The pool mirrors the light in the air.** The air's light is one function of a ray
+  (`createCaveAirLight().gather`), shared by the post (along each pixel's view ray, up to the
+  scene depth) and the pool, which gathers it along its mirrored ray: the crystals' halos and
+  the skylight's shaft lie in the water under them, as the mirror pass alone cannot show (the
+  air is drawn after the scene). Two trains of fine ripples cross the swell and break the
+  reflection into a slow shimmer, and where they tilt toward it the shaft's reflection breaks
+  into glints. The bed under clear water is dark with a contrasty caustic net (it had an even
+  teal glow that read as murk), and the haze no longer lays a brighter teal band over the
+  water. Without a mirror (Low, Minimal) the water is more opaque and its sheen dimmer, so the
+  far pool stays water rather than a pale sheet.
+- **The rock** carries what a wet limestone cave has: flowstone flutes run down every steep
+  face (walls, stalactites), varied by a broad field so they never read as bark; thin calcite
+  veins catch the crystals' light in places; the baked occlusion now shades every light, so
+  crevices hold their dark; and the stone is wetter, its sheen stronger.
+
+| Inside the stones | The hall | Combo ×7 |
+| --- | --- | --- |
+| ![close-up](crystal-cave-overhaul/air-closeup.jpg) | ![hall](crystal-cave-overhaul/air-hall.jpg) | ![combo](crystal-cave-overhaul/air-combo.jpg) |
+
+| The pool | The vault | A wall |
+| --- | --- | --- |
+| ![pool](crystal-cave-overhaul/air-pool.jpg) | ![vault](crystal-cave-overhaul/air-vault.jpg) | ![wall](crystal-cave-overhaul/air-wall.jpg) |
+
+Verified in the playground on native WebGPU (RTX 5080 Laptop) and with `forceWebGL=1`, at
+Extreme, High, Medium, Low and Minimal, in portrait with the card, and with lock, hard drop,
+four-line and combo events: clean consoles throughout. `tests/unit/crystal-cave-shaders.test.js`
+(new) builds every material in the cave and the post's lit composite and output through the
+WGSL and GLSL node builders at High and Minimal. Two traps are in the TSL skill's gotcha table:
+the shared viewport copy read in both the main pass and the pool's mirror (destroyed texture
+every frame), and a capture taken before the High pipelines are created (a black frame that
+looks like a NaN).
+
+The first pass's record follows.
 
 ## What the player sees
 
@@ -105,7 +174,8 @@ Formats, the regeneration command and the bake are described in
 | `crystal-cave-effects.js` | The three event pools: sparks, prismatic fans, lattice beams. |
 | `crystal-cave-reactions.js` | The event director (pure). |
 | `crystal-cave-stage.js` | Board card → world. |
-| `crystal-cave-post.js` | Bloom, tone curve, grade, FXAA. |
+| `crystal-cave-atmosphere.js` | The light in the air (lamps, pool mist, the skylight's shaft) as a function of a ray, gathered by the post and by the pool's mirror. |
+| `crystal-cave-post.js` | The light in the air, bloom, tone curve, grade, FXAA. |
 | `crystal-cave-quality.js` | One table for everything a tier scales. |
 
 ### Techniques (three 0.186.1)
@@ -207,11 +277,12 @@ perf lane was not run. No measurement exists for a phone.
 
 ## Known limits
 
-- The crystals do not show each other through themselves: what a ray sees on leaving a
-  stone is the fixed far field, not the neighbouring crystal or the rock behind it.
+- The crystals show the rock and the pool behind them (from High down to Medium) but not each
+  other: one draw holds every stone, and the frame copy it looks through is taken before it.
 - The baked light is fixed to the authored layout. The crystals that sprout during play
   add their own glow and pulses but cast no light on the rock.
-- The skylight's beam is an analytic cone; stalactites do not cut it.
+- The skylight's shaft is analytic: what stands in front of it cuts it, but nothing shadows it
+  from inside the chimney.
 - Portrait is the landscape cave seen through a wider lens: the two hero clusters sit at
   the edges of the frame.
 - Low and Minimal have no mirror: the far water carries a painted path of light instead

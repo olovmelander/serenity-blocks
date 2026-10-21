@@ -272,6 +272,16 @@ describe.each(TIERS)('luminous tides shaders at %s', (quality) => {
         expect(shore.out.fragment.length).toBeGreaterThan(10_000);
     });
 
+    it('lays each far lamp on the water once, as a road of glints, not mirrored point for point too', () => {
+        // The water's mirror of the night is drawn without the far coast's lamps (skyColour's
+        // `lamps: false`): mirrored point for point through the ripples, each lamp drew the
+        // contours of a smooth slope field, stacks of crescents. The road is the one lamp field.
+        const shore = built.find((b) => b.object === world.parts.shore.mesh && b.label === 'WGSL');
+        const calls = shore.out.fragment.match(/\blt_lampField\s*\(/g) ?? [];
+        // One definition and one call.
+        expect(calls.length).toBe(2);
+    });
+
     it('reads no WGSL var where it may not have been assigned', () => {
         const found = [];
         built.filter((b) => b.label === 'WGSL' && !b.out.thrown).forEach(({ name, out }) => {

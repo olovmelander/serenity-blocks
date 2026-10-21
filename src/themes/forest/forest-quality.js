@@ -19,21 +19,23 @@
  * godrays, godraysScale   raymarch steps and resolution of the volumetric moonbeams
  *                         (0 leaves a brighter haze toward the moon instead)
  * bloomScale, post        the RenderPipeline (off: the scene is drawn directly with ACES)
+ * rays                    taps of the screen-space march that streams the moon's light through
+ *                         the gaps in the boughs (0: none)
  */
 const COLUMNS = ['groveTrees', 'farTrees', 'foliage', 'limbs', 'shadowMap', 'ferns', 'grass', 'fungi', 'flowers',
     'rocks', 'fireflies', 'trail', 'lightMap', 'pulses', 'motes', 'mist', 'stars', 'godrays', 'godraysScale',
-    'bloomScale', 'post'];
+    'bloomScale', 'post', 'rays'];
 const ROWS = {
     Extreme: [58, 380, 1, true, [4096, 2048], 360, 5200, 260, 900, 26, 3600, 8, 128, 6, 520, 5, true, 40, 0.5, 0.5,
-        true],
+        true, 24],
     Ultra: [52, 320, 1, true, [4096, 2048], 300, 4400, 220, 760, 24, 3000, 8, 128, 6, 420, 5, true, 32, 0.5, 0.5,
-        true],
+        true, 22],
     High: [44, 260, 0.86, true, [2048, 1024], 250, 3400, 180, 600, 20, 2400, 6, 96, 5, 320, 4, true, 26, 0.5, 0.45,
-        true],
+        true, 20],
     Medium: [34, 190, 0.62, true, [2048, 1024], 170, 2000, 120, 380, 16, 1600, 5, 64, 4, 200, 3, true, 16, 0.35,
-        0.35, true],
-    Low: [22, 120, 0.4, false, [1024, 512], 100, 900, 70, 180, 10, 900, 3, 0, 3, 110, 2, true, 0, 0, 0, false],
-    Minimal: [14, 80, 0.28, false, [1024, 512], 60, 420, 36, 0, 6, 480, 0, 0, 2, 60, 1, false, 0, 0, 0, false],
+        0.35, true, 14],
+    Low: [22, 120, 0.4, false, [1024, 512], 100, 900, 70, 180, 10, 900, 3, 0, 3, 110, 2, true, 0, 0, 0, false, 0],
+    Minimal: [14, 80, 0.28, false, [1024, 512], 60, 420, 36, 0, 6, 480, 0, 0, 2, 60, 1, false, 0, 0, 0, false, 0],
 };
 
 export const FOREST_TIERS = Object.freeze(Object.fromEntries(Object.entries(ROWS).map(([name, row]) => [
