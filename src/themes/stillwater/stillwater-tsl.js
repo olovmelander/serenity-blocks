@@ -20,6 +20,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     atan,
     cameraPosition,
@@ -31,7 +32,6 @@ import {
     fract,
     length,
     max,
-    min,
     mix,
     normalize,
     sin,
@@ -441,23 +441,27 @@ export const swLight = (u, albedo, N, P, opts = {}) => {
 // ── The far wood (constants baked into the shader) ──────────────────────────────
 
 /**
- * Ranks of spruce, far to near: trees per radian, hash row, the ground line (tan elevation), how
- * tall the trees stand above it, and how deep the mist has them (1 = all mist).
+ * Ranks of spruce, far to near: trees per radian (in each of the overlapping sets), hash row, the
+ * ground line (tan elevation), how tall the trees stand above it, and how deep the mist has them
+ * (1 = all mist). A spruce here is about four times as tall as it is wide.
  */
 const RANKS = [
     {
-        trees: 82, row: 0.13, base: 0.01, tall: 0.058, mist: 0.93,
+        trees: 70, row: 0.13, base: 0.01, tall: 0.058, mist: 0.93,
     },
     {
-        trees: 56, row: 0.37, base: 0.006, tall: 0.1, mist: 0.84,
+        trees: 42, row: 0.37, base: 0.006, tall: 0.1, mist: 0.84,
     },
     {
-        trees: 38, row: 0.61, base: 0.003, tall: 0.155, mist: 0.72,
+        trees: 27, row: 0.61, base: 0.003, tall: 0.155, mist: 0.72,
     },
     {
-        trees: 26, row: 0.83, base: 0.0, tall: 0.225, mist: 0.58,
+        trees: 19, row: 0.83, base: 0.0, tall: 0.225, mist: 0.58,
     },
 ];
+
+/** A far spruce's half-width at its foot, as a share of its place in the rank. */
+const FAR_HALF = 0.42;
 
 /**
  * Everything at a distance, along a direction. Call inside a `Fn` (it declares variables).
@@ -466,10 +470,12 @@ const RANKS = [
  * @param {object} [opts]
  * @param {boolean} [opts.lite=false]   no stars, no northern lights, two ranks fewer (low tiers' mirror)
  * @param {number} [opts.soft=1]        edge softness multiplier (the mirror's edges are softer)
+ * @param {number} [opts.wood=3]        overlapping sets of trees in each rank of the far wood (2 or 3)
  */
 export const swBackdrop = (u, dirIn, opts = {}) => {
     const lite = opts.lite === true;
     const soft = opts.soft ?? 1;
+    const wood = lite ? 2 : Math.max(2, Math.min(3, Math.round(opts.wood ?? 3)));
     const dir = vec3(dirIn).toVar();
     const up = clamp(dir.y, 0.0, 1.0).toVar();
     const horiz = max(length(dir.xz), 1e-4).toVar();
@@ -541,38 +547,63 @@ export const swBackdrop = (u, dirIn, opts = {}) => {
     /** The wood parts where the moon stands. */
     const gap = float(1.0).sub(swBell(az.sub(u.moonAz).div(0.34)).mul(0.52)).toVar();
     const ranks = lite ? RANKS.slice(1) : RANKS;
-    ranks.forEach((rank) => {
+    /** One rank of the far wood, laid over what stands behind it. */
+    const farRank = (rank) => {
         const hills = u.noise(vec2(az.mul(0.19).add(rank.row * 2.3), rank.row)).toVar();
         const ground = float(rank.base).add(hills.r.sub(0.4).mul(rank.tall * 0.3)).toVar();
-        const top = float(0.0).toVar();
-        // Two sets of trees half a place apart, so no tree is ever cut off by its neighbour's cell.
-        [0, 0.5].forEach((shift, set) => {
+        const cover = float(0.0).toVar();
+        // Overlapping sets of trees a share of a place apart (each tree stays inside its own
+        // place in its set, so none is cut off by a neighbour's), closing the rank into a wall.
+        const sets = wood === 2 ? [0, 0.5] : [0, 1 / 3, 2 / 3];
+        sets.forEach((shift, set) => {
             const x = az.mul(rank.trees).add(shift + rank.row * 31.0);
             const id = floor(x);
             const f = x.sub(id);
-            const h1 = swHash11(id.mul(1.37).add(rank.row * 91.0 + set * 13.0));
-            const h2 = swHash11(id.mul(2.11).add(rank.row * 57.0 + set * 7.0 + 3.1));
-            const centre = h1.mul(0.3).add(0.35);
-            const half = min(centre, float(1.0).sub(centre)).mul(0.92);
-            const t = clamp(abs(f.sub(centre)).div(half), 0.0, 1.0);
-            // A spruce: a slender spire whose sides fall in tiers of boughs. (Some places stand empty.)
-            const lean = float(1.0).sub(t);
-            const spire = lean.mul(float(1.14).sub(lean.mul(0.14)));
-            const tiers = abs(fract(spire.mul(9.0).add(h2.mul(4.0))).sub(0.5)).mul(0.17);
-            const height = h2.mul(0.42).add(0.58).mul(step(h1.mul(h2.add(0.5)), 0.86));
-            top.assign(max(top, spire.sub(tiers.mul(smoothstep(0.0, 0.25, t)).mul(lean.add(0.25))).mul(height)));
+            const salt = rank.row * 91.0 + set * 13.0;
+            const h1 = swHash11(id.mul(1.37).add(salt));
+            const h2 = swHash11(id.mul(2.11).add(salt + 3.1));
+            const h3 = swHash11(id.mul(0.73).add(salt + 7.7));
+            const centre = h1.sub(0.5).mul(0.16).add(0.5);
+            // Some places stand empty; now and then one tree stands over the rest.
+            const height = h2.mul(0.45).add(0.55).add(step(0.9, h3).mul(0.25))
+                .mul(step(h1.mul(h2.add(0.5)), 0.86))
+                .mul(rank.tall)
+                .mul(gap)
+                .toVar();
+            const v = el.sub(ground).div(max(height, 1e-4)).toVar();
+            // A spruce: a cone that falls in tiers, each widest at its foot where the boughs droop,
+            // the step back to full width drawn over one pixel.
+            const tiers = h3.mul(4.0).add(7.0);
+            const t = v.mul(tiers).add(h1.mul(3.0));
+            const p = fract(t);
+            const pixel = clamp(aa.mul(tiers).div(max(height, 1e-4)), 0.02, 0.5);
+            const narrow = mix(float(1.0).sub(p.mul(0.45)), float(1.0), smoothstep(float(1.0).sub(pixel), 1.0, p));
+            const jag = swHash11(floor(t).add(id.mul(7.3)).add(salt)).mul(0.25).add(0.75);
+            // A few have died back to a bare spire at the top.
+            const snag = step(0.94, h1).mul(smoothstep(0.72, 0.8, v));
+            const half = clamp(float(1.0).sub(v), 0.0, 1.0).mul(narrow).mul(jag)
+                .mul(float(1.0).sub(snag.mul(0.88)))
+                .mul(FAR_HALF / rank.trees);
+            const dx = abs(f.sub(centre)).div(rank.trees);
+            // (What is thinner than a pixel fades with its width: a tip is not a line up the sky.)
+            const thin = clamp(half.div(aa).mul(2.0), 0.0, 1.0);
+            cover.assign(max(cover, clamp(half.sub(dx).div(aa).add(0.5), 0.0, 1.0).mul(thin).mul(step(0.0, v))));
         });
         // Under the spires the wood is a wall with a ragged edge.
-        const fineLine = u.noise(vec2(az.mul(rank.trees * 0.11).add(rank.row * 5.1), rank.row + 0.3)).r;
-        const brush = hills.g.mul(0.2).add(fineLine.mul(0.22)).add(0.34);
-        const crest = ground.add(max(top, brush).mul(rank.tall).mul(gap)).toVar();
-        const below = float(1.0).sub(smoothstep(crest.sub(aa), crest.add(aa), el)).toVar();
-        // How far down from the crest, 0 at the tips → 1 at the water: the mist lies at the feet.
-        const under = clamp(crest.sub(el).div(max(crest, 1e-3)), 0.0, 1.0);
+        const fineLine = u.noise(vec2(az.mul(rank.trees * 0.15).add(rank.row * 5.1), rank.row + 0.3)).r;
+        const brush = hills.g.mul(0.2).add(fineLine.mul(0.22)).add(0.3);
+        const crest = ground.add(brush.mul(rank.tall).mul(gap));
+        const below = max(cover, float(1.0).sub(smoothstep(crest.sub(aa), crest.add(aa), el))).toVar();
+        // How far down from the trees' middle height, 0 up there → 1 at the water: the mist lies at the feet.
+        const mid = ground.add(gap.mul(rank.tall * 0.6));
+        const under = clamp(mid.sub(el).div(max(mid, 1e-3)), 0.0, 1.0);
         const wall = mix(u.forest.mul(gain), haze, rank.mist);
         const body = mix(wall, haze, under.mul(under).mul(0.75 - rank.mist * 0.35).mul(clear));
         col.assign(mix(col, body, below));
-    });
+    };
+    // (Above the tallest tree a rank can hold there is nothing of it to draw: most of the sky, and
+    // the steep mirror rays of the near water, skip it.)
+    ranks.forEach((rank) => If(el.lessThan(rank.base + rank.tall * 1.5), () => farRank(rank)));
 
     // Mist lies on the water all the way round.
     col.assign(mix(col, haze, exp(el.mul(-46.0)).mul(0.86).mul(clear.mul(0.6).add(0.4))));

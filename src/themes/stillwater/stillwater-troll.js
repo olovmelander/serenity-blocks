@@ -34,6 +34,7 @@ import {
     length,
     max,
     mix,
+    normalGeometry,
     normalWorld,
     normalize,
     positionGeometry,
@@ -59,7 +60,7 @@ import {
 } from './stillwater-tsl.js';
 import { buildFigure } from './stillwater-rig.js';
 import {
-    STAFF, TrollBody, parentsFromSpec, restFromSpec,
+    STAFF, TrollBody, parentsFromSpec, restFromSpec, tailsFromSpec,
 } from './stillwater-troll-body.js';
 import { Spring3 } from './stillwater-motion.js';
 
@@ -183,6 +184,9 @@ export function createTroll(u, opts = {}) {
     material.toneMapped = false;
     const col = attribute('color', 'vec4');
     const vModel = varying(positionLocal, 'vTrollModel');
+    // (His hide's grain is laid on his rest pose, so it stays on his skin however he moves.)
+    const vRest = varying(positionGeometry, 'vTrollRest');
+    const vRestN = varying(normalGeometry, 'vTrollRestN');
     material.positionNode = Fn(() => {
         const P = positionLocal;
         // The pelt hangs free below his shoulders, the more so the lower it hangs.
@@ -215,7 +219,28 @@ export function createTroll(u, opts = {}) {
         // Fine strands down his locks, in light relief (the locks themselves are the shape; a
         // surface-gradient bump from the screen derivatives of their height).
         const strand = u.noise(vec2(M.x.mul(46.0).add(M.z.mul(39.0)), M.y.mul(5.0))).g;
-        const height = strand.mul(hair).mul(0.004);
+        // His hide (face, hands, limbs): old troll skin, read off his rest pose three ways at once.
+        const flesh01 = fleshy.mul(notHair).mul(float(1.0).sub(eye)).toVar();
+        const R0 = vRest;
+        const nR = abs(normalize(vRestN));
+        const wR = nR.mul(nR).mul(nR.mul(nR)).toVar();
+        wR.divAssign(wR.x.add(wR.y).add(wR.z).add(1e-4));
+        const tri = (k) => u.noise(R0.zy.mul(k)).mul(wR.x)
+            .add(u.noise(R0.xz.mul(k).add(0.37)).mul(wR.y))
+            .add(u.noise(R0.xy.mul(k).add(0.71)).mul(wR.z));
+        const coarse = tri(4.0).toVar();
+        const fine = tri(17.0).toVar();
+        // Metres a pixel spans on him: the finer grain gives way as he grows small in the frame.
+        const pxm = length(P.sub(cameraPosition)).mul(u.pixelAngle);
+        // (A crease is a few centimetres: drawn only where a pixel is a few millimetres, never as speckle.)
+        const lumpsOn = float(1.0).sub(smoothstep(0.014, 0.035, pxm));
+        const creasesOn = float(1.0).sub(smoothstep(0.003, 0.008, pxm));
+        // Lumps and warts; a net of deep creases; a little grain.
+        const lumps = smoothstep(0.5, 0.85, coarse.b).mul(lumpsOn);
+        const crease = smoothstep(0.86, 0.98, float(1.0).sub(abs(fine.g.mul(2.0).sub(1.0)))).mul(creasesOn).toVar();
+        const grain = fine.r.sub(0.5).mul(creasesOn);
+        const hideHeight = lumps.mul(0.011).sub(crease.mul(0.0035)).add(grain.mul(0.0012)).mul(flesh01);
+        const height = strand.mul(hair).mul(0.004).add(hideHeight);
         const dpx = dFdx(P);
         const dpy = dFdy(P);
         const r1 = cross(dpy, N0);
@@ -232,12 +257,32 @@ export function createTroll(u, opts = {}) {
         const shadeOfLock = clamp(kind.div(0.6).mul(0.7).add(upward.mul(0.45)).sub(0.12), 0.0, 1.0);
         const pelt = mix(mossLo, mossHi, shadeOfLock).mul(strand.mul(0.3).add(0.82));
         const leather = mix(look.hide, u.stone, hour.mul(0.6));
-        const flesh = mix(mix(look.bare, look.skin, rosy), u.stone.mul(1.3), hour.mul(0.6));
+        // His skin is not one colour: olive and lichen-grey blotches over its earth, darker spots of
+        // age, the creases dark, the lumps a shade paler, and the ends of him flushed like his face
+        // (his hands hang at his sides in his rest pose, his feet are lowest).
+        const ends = smoothstep(0.24, 0.3, abs(R0.x)).mul(smoothstep(-0.02, -0.16, R0.y))
+            .add(smoothstep(-0.41, -0.46, R0.y))
+            .min(1.0);
+        const flush = max(rosy, ends.mul(0.55));
+        const ruddy = mix(look.bare, look.skin, flush);
+        const blotch = smoothstep(0.5, 0.74, coarse.r).mul(0.7);
+        const spots = smoothstep(0.62, 0.86, coarse.a).mul(0.18);
+        const mottled = mix(ruddy, ruddy.mul(vec3(0.8, 0.95, 0.7)), blotch).mul(float(1.0).sub(spots))
+            .mul(float(1.0).sub(crease.mul(0.3)))
+            .mul(lumps.mul(0.07).add(1.0));
+        const flesh = mix(mottled, u.stone.mul(1.3), hour.mul(0.6));
         const body = mix(mix(leather, pelt, hair), flesh, fleshy.mul(notHair));
         // Dark wet eyes; pale mushroom caps.
         const withParts = mix(mix(body, vec3(0.012, 0.009, 0.007), eye), vec3(0.42, 0.4, 0.33), cap);
-        const albedo = withParts.mul(ao.mul(0.85).add(0.15));
-        const lit = swLight(u, albedo, N, P, { wrap: 0.6, local: look.lampGain.mul(0.25) }).toVar();
+        // (His occlusion was baked with his arms hanging against his hips: on his arms it is let
+        // off lightly, or the hip's shadow would ride up with an arm he lifts.)
+        const limb = smoothstep(0.19, 0.25, abs(R0.x)).mul(smoothstep(-0.34, -0.28, R0.y)).mul(flesh01);
+        const albedo = withParts.mul(mix(ao, max(ao, 0.82), limb).mul(0.85).add(0.15));
+        // (Moss and leather take the light softly; his skin takes it with less wrap, so the moon
+        // models his face, his arms and his belly instead of lighting them all alike.)
+        const soft = swLight(u, albedo, N, P, { wrap: 0.6, local: look.lampGain.mul(0.25) });
+        const firm = swLight(u, albedo, N, P, { wrap: 0.3, local: look.lampGain.mul(0.25) });
+        const lit = mix(soft, firm, flesh01).toVar();
         // His own lantern, close by: it warms what faces it and falls away fast, so the side of
         // him the moon has stays cool and mossy.
         const toLantern = u.lanternAt.xyz.sub(P);
@@ -269,6 +314,32 @@ export function createTroll(u, opts = {}) {
         lit.addAssign(mix(u.moonLight, u.lantern, 0.6).mul(catchLight).mul(eye));
         const lampRim = e3.mul(max(dot(N0, lampDir), 0.0)).div(lampD.mul(lampD).mul(0.4).add(1.0));
         lit.addAssign(lampOnHim.mul(lampRim).mul(u.lanternAt.w).mul(albedo.mul(1.5).add(0.25)));
+        // His skin is not clay. Light goes a little way into it and comes out warm along the edge of
+        // the lit side, and glows red through what is thin (his ears, his nose) when the lantern is
+        // behind it; and it is damp, with a soft sheen, most on his nose and brow, none in a crease.
+        const lampFall = float(1.0).div(lampD.mul(lampD).mul(1.6).add(1.0)).mul(u.lanternAt.w).mul(u.breath);
+        const lampFacing = dot(N, lampDir);
+        const band = smoothstep(-0.45, 0.05, lampFacing).mul(float(1.0).sub(smoothstep(0.05, 0.6, lampFacing)));
+        const through = max(dot(V, lampDir), 0.0).pow(3.0).mul(rosy.add(ends.mul(0.5)));
+        const warm = vec3(1.0, 0.32, 0.16);
+        lit.addAssign(lampOnHim.mul(warm).mul(albedo).mul(band.mul(0.35).add(through.mul(1.4)))
+            .mul(lampFall)
+            .mul(flesh01)
+            .mul(2.2));
+        const moonFacing = dot(N, u.moonDir);
+        const moonBand = smoothstep(-0.4, 0.0, moonFacing).mul(float(1.0).sub(smoothstep(0.0, 0.5, moonFacing)));
+        lit.addAssign(u.moonLight.mul(vec3(0.9, 0.5, 0.45)).mul(albedo).mul(moonBand).mul(0.2)
+            .mul(flesh01)
+            .mul(u.breath.mul(0.5).add(0.5)));
+        const toEye = V.negate();
+        const fres = float(1.0).sub(max(dot(N, toEye), 0.0)).pow(5.0).mul(0.6)
+            .add(0.08);
+        const damp = rosy.mul(0.65).add(0.35).mul(float(1.0).sub(crease)).mul(fine.a.mul(0.4).add(0.6));
+        const sheenLamp = max(dot(N, normalize(lampDir.add(toEye))), 0.0).pow(28.0).mul(lampFall).mul(1.2);
+        const sheenMoon = max(dot(N, normalize(u.moonDir.add(toEye))), 0.0).pow(20.0).mul(0.25)
+            .mul(u.breath.mul(0.5).add(0.5));
+        lit.addAssign(lampOnHim.mul(sheenLamp).add(u.moonLight.mul(sheenMoon)).mul(fres).mul(damp)
+            .mul(flesh01));
         // The mushrooms in his moss glow the colour of the ones on the banks, faint at rest and
         // waking with the chain as theirs do.
         const wake = u.caps.y.mul(0.85).add(0.15);
@@ -418,6 +489,7 @@ export function createTroll(u, opts = {}) {
                 height: TROLL.height,
                 ground,
                 parents: parentsFromSpec(built.extras),
+                tails: tailsFromSpec(built.extras),
             });
             part.body.reset(pending.x, pending.z, pending.heading, pending.opts);
             part.ready = true;

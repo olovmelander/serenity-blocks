@@ -87,7 +87,9 @@ import {
 import { createSky } from './stillwater-sky.js';
 import { createWater } from './stillwater-water.js';
 import { createBoulders, createGround } from './stillwater-land.js';
-import { createBoughs, createTrunks, planBoughs } from './stillwater-trees.js';
+import {
+    createBoughs, createCrowns, createTrunks, planBoughs, planCrowns,
+} from './stillwater-trees.js';
 import {
     createCaps, createFerns, createLilies, createPads, createReeds, createSaplings,
 } from './stillwater-flora.js';
@@ -95,7 +97,7 @@ import { createSpirit } from './stillwater-spirit.js';
 import { createTroll } from './stillwater-troll.js';
 import { StillwaterStory, spiritPathPoint } from './stillwater-story.js';
 import {
-    createDrops, createEyes, createFireflies, createHeartOrb, createMist, createSparks, createWisps,
+    createDrops, createEyes, createFireflies, createHeartOrb, createMist, createSparks, createVeil, createWisps,
 } from './stillwater-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
@@ -125,8 +127,8 @@ const KNEEL_AT = 0.28;
 const WAKE_EVERY = 0.55;
 
 const PARTS = [
-    'sky', 'water', 'ground', 'boulders', 'trunks', 'boughs', 'fringe', 'saplings', 'ferns', 'reeds', 'pads', 'lilies',
-    'caps', 'spirit', 'troll', 'mist', 'eyes', 'fireflies', 'wisps', 'drops', 'sparks', 'orb',
+    'sky', 'water', 'ground', 'boulders', 'trunks', 'crowns', 'boughs', 'fringe', 'saplings', 'ferns', 'reeds', 'pads',
+    'lilies', 'caps', 'spirit', 'troll', 'mist', 'veil', 'eyes', 'fireflies', 'wisps', 'drops', 'sparks', 'orb',
 ];
 
 /** The troll's path: his seat to the shallows (for reading how far he has come). */
@@ -296,24 +298,31 @@ export class StillwaterWorld {
         this.water = createWater(u, {
             mirrorScale: tier.mirror,
             lite: tier.lite,
+            wood: tier.wood,
             glitter: tier.glitter,
             columns: tier.columns,
             samples: this.samples,
         });
         this.addPart('water', this.water);
         if (this.water.reflectorTarget) this.root.add(this.water.reflectorTarget);
-        this.addPart('sky', createSky(u, { lite: tier.lite }));
+        this.addPart('sky', createSky(u, { lite: tier.lite, wood: tier.wood }));
 
         // ── The stage: what stands in the scene (mirrored by the water's pass) ──
         this.trunkPlan = planTrunks(tier.trunks);
         this.addPart('ground', createGround(u, { cell: tier.cell }), banks);
         this.addPart('boulders', createBoulders(u, planBoulders(tier.boulders)), banks);
         this.addPart('trunks', createTrunks(u, this.trunkPlan), banks);
+        this.addPart('crowns', createCrowns(u, planCrowns(this.trunkPlan), { samples: this.samples }), banks);
         if (tier.boughs > 0) {
             const boughs = planBoughs(this.trunkPlan, tier.boughs);
             const fringe = boughs.filter((b) => b.fringe);
-            this.addPart('boughs', createBoughs(u, boughs.filter((b) => !b.fringe)), banks);
-            if (fringe.length) this.addPart('fringe', createBoughs(u, fringe, 'StillwaterFringe'), banks);
+            // The giants' living boughs fringe the frame; out in the wood the old trunks' dead
+            // branches carry beard lichen.
+            const opts = { samples: this.samples };
+            this.addPart('boughs', createBoughs(u, boughs.filter((b) => !b.fringe), 'StillwaterBoughs', {
+                ...opts, lichen: true,
+            }), banks);
+            if (fringe.length) this.addPart('fringe', createBoughs(u, fringe, 'StillwaterFringe', opts), banks);
         }
         if (tier.saplings > 0) this.addPart('saplings', createSaplings(u, planSaplings(tier.saplings)), banks);
         if (tier.ferns > 0) this.addPart('ferns', createFerns(u, planFerns(tier.ferns)), banks);
@@ -335,6 +344,8 @@ export class StillwaterWorld {
         // ── The air of the place, and what gameplay sets in flight (world space) ──
         const air = { hero: true };
         if (tier.mist > 0) this.addPart('mist', createMist(u, tier.mist), air);
+        // (The low mist lies on the water: the mirror does not take it.)
+        if (tier.veil > 0) this.addPart('veil', createVeil(u, tier.veil));
         this.addPart('eyes', createEyes(u, planEyes(tier.eyes)), air);
         if (tier.fireflies > 0) this.addPart('fireflies', createFireflies(u, tier.fireflies), air);
         this.addPart('wisps', createWisps(u), air);
