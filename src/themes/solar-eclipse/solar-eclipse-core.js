@@ -70,17 +70,69 @@ export const MIRROR = Object.freeze({
 });
 
 /**
- * The cloud deck low over the far shore: its height (km), how high in the sky it is drawn
- * (radians of altitude), the noise level its clouds start at and their opacity, and where the
- * moon's shadow ends on it (km from the lens): beyond, its clouds are in sunlight.
+ * The clouds low over the far shore: rows of heaped cloud standing at set distances, farthest
+ * first, each drawn as the face it turns to the lens (seen side on, a row keeps its lumps; a flat
+ * deck seen this low would be squashed into dashes). Their bases stand `base` km above the water;
+ * where a row lies beyond the moon's shadow (`shadowEdge` km from the lens, nearer on the bright
+ * side of the shadow, UMBRA) it is in sunlight and burns; nearer it is dark, its base lit from
+ * below by the band of light all round.
+ *
+ *   distance  km from the lens
+ *   depth     how tall its heaps grow above the base (km)
+ *   lump      a heap's width (km); `squash` how much wider than tall its heaps are read
+ *   cover     how much of the row is cloud (0..1)
+ *   wind      its drift along the horizon (km/s)
+ *   aerial    how far it sinks into the air behind it
  */
 export const CLOUDS = Object.freeze({
-    height: 4.2,
-    top: 0.11,
-    cover: 0.5,
-    opacity: 0.9,
+    base: 2.4,
+    opacity: 0.94,
     shadowEdge: 52,
+    rows: Object.freeze([
+        Object.freeze({
+            distance: 150, depth: 0.9, lump: 3.0, squash: 1.7, cover: 0.72, wind: 0.012, aerial: 0.34,
+        }),
+        Object.freeze({
+            distance: 66, depth: 1.2, lump: 2.8, squash: 1.8, cover: 0.7, wind: 0.009, aerial: 0.14,
+        }),
+        Object.freeze({
+            distance: 40, depth: 1.05, lump: 3.4, squash: 2.1, cover: 0.6, wind: 0.007, aerial: 0.05,
+        }),
+    ]),
 });
+
+/** A cloud row's base and top as altitudes seen from the lens (radians). */
+export function cloudRowSpan(row) {
+    return {
+        base: Math.atan(CLOUDS.base / row.distance),
+        top: Math.atan((CLOUDS.base + row.depth * 1.35) / row.distance),
+    };
+}
+
+/** The highest any cloud is drawn (radians of altitude). */
+export const CLOUDS_TOP = CLOUDS.rows.reduce((m, row) => Math.max(m, cloudRowSpan(row).top), 0);
+
+/**
+ * The moon's shadow on the land: the lens does not stand at its middle, so its edge lies nearer
+ * on one bearing (`az`, radians east of north: right of the line of sight) than on the opposite
+ * one. There the band of light round the horizon burns brighter and reaches higher, and the
+ * clouds are in sunlight nearer the lens; on the far side, under the sun, the air is darkest.
+ * `lean` is how much brighter, as a share; the bearing swings by `drift` over `seconds` as the
+ * shadow sweeps on.
+ */
+export const UMBRA = Object.freeze({
+    az: 0.85, lean: 0.34, drift: 0.3, seconds: 310,
+});
+
+/** The bearing the shadow's edge lies nearest at time `t` (radians east of north). */
+export function umbraAzAt(t) {
+    return UMBRA.az + UMBRA.drift * Math.sin((t / UMBRA.seconds) * TAU);
+}
+
+/** Where the shadow ends on a bearing `az` (km), seen from the lens; nearest at umbraAz. */
+export function shadowEdgeAt(az, umbraAz = UMBRA.az) {
+    return CLOUDS.shadowEdge * (1 - UMBRA.lean * Math.cos(az - umbraAz));
+}
 
 /**
  * The ground point under a direction (unit, three numbers) that looks down at the water, into

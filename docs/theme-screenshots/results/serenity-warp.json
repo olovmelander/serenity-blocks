@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-21T06:23:26.187Z",
-  "runId": "2026-08-21T06-12-57-693Z",
+  "generatedAt": "2026-10-21T17:57:19.915Z",
+  "runId": "2026-10-21T17-56-36-053Z",
   "theme": "serenity-warp",
   "themeMeta": {
     "displayName": "Serenity Warp",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-21T06-12-57-693Z",
+  "targetUrl": "http://127.0.0.1:5229/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-21T17-56-36-053Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -61,29 +61,29 @@
       "gpuDevice": [
         {
           "active": false,
-          "deviceId": 5688,
-          "deviceString": "AMD Radeon(TM) Graphics",
-          "driverVersion": "31.0.12044.3",
+          "deviceId": 5056,
+          "deviceString": "AMD Radeon(TM) 610M",
+          "driverVersion": "32.0.13062.9003",
           "gpuPreference": 2,
-          "revision": 197,
-          "subSysId": 978261930,
+          "revision": 212,
+          "subSysId": -2141841494,
           "vendorId": 4098
         },
         {
           "active": false,
-          "deviceId": 9437,
-          "deviceString": "NVIDIA GeForce RTX 3070 Laptop GPU",
-          "driverVersion": "32.0.15.7247",
+          "deviceId": 11353,
+          "deviceString": "NVIDIA GeForce RTX 5080 Laptop GPU",
+          "driverVersion": "32.0.15.7324",
           "gpuPreference": 3,
           "revision": 161,
-          "subSysId": 978261930,
+          "subSysId": -2141841494,
           "vendorId": 4318
         },
         {
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.8972",
+          "driverVersion": "10.0.26100.9711",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -92,21 +92,21 @@
       ]
     },
     "featureStatus": {
-      "2d_canvas": "disabled_software",
+      "2d_canvas": "enabled",
       "direct_rendering_display_compositor": "disabled_off_ok",
-      "gpu_compositing": "disabled_software",
+      "gpu_compositing": "enabled",
       "multiple_raster_threads": "enabled_on",
-      "opengl": "disabled_off",
-      "rasterization": "disabled_software",
+      "opengl": "enabled_on",
+      "rasterization": "enabled",
       "raw_draw": "disabled_off_ok",
       "skia_graphite": "disabled_off",
       "trees_in_viz": "disabled_off",
-      "video_decode": "disabled_software",
-      "video_encode": "disabled_software",
+      "video_decode": "enabled",
+      "video_encode": "enabled",
       "vulkan": "disabled_off",
-      "webgl": "disabled_off",
-      "webgl2": "disabled_off",
-      "webgpu": "disabled_off",
+      "webgl": "enabled",
+      "webgl2": "enabled",
+      "webgpu": "enabled",
       "webnn": "disabled_off"
     }
   },
@@ -135,6 +135,13 @@
           "sameMode": true,
           "running": true,
           "paused": true
+        }
+      },
+      {
+        "id": "boot-theme-settled",
+        "passed": true,
+        "details": {
+          "active": "forest"
         }
       },
       {
@@ -220,6 +227,11 @@
         "details": {
           "themeId": "serenity-warp"
         }
+      },
+      {
+        "id": "theme-detail-apply-reachable",
+        "passed": true,
+        "details": null
       },
       {
         "id": "theme-card-selection-started",
@@ -334,7 +346,7 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 14,
+          "renderCalls": 16,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
@@ -838,7 +850,7 @@
         "id": "outgoing-canvases-disconnected",
         "passed": true,
         "details": {
-          "added": 4,
+          "added": 1,
           "connected": 0
         }
       },
@@ -1207,7 +1219,7 @@
         "details": {
           "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 14,
+          "renderCalls": 16,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
@@ -1478,10 +1490,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.30000000004656613,
-      "firstTargetSelection": 1502.8000000000466,
-      "cleanup-anchor": 31,
-      "secondTargetSelection": 48.09999999997672
+      "initial-anchor": 0.5,
+      "firstTargetSelection": 1504.7999999998137,
+      "cleanup-anchor": 1270.2000000001863,
+      "secondTargetSelection": 12778.899999999441
     },
     "mode": {
       "modeId": "single",
@@ -1514,7 +1526,7 @@
     "firstRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 14,
+      "renderCalls": 16,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
@@ -1532,7 +1544,7 @@
     "secondRenderProbe": {
       "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 14,
+      "renderCalls": 16,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
@@ -1561,22 +1573,22 @@
   "screenshot": {
     "path": "docs\\theme-screenshots\\serenity-warp.png",
     "passed": true,
-    "width": 1584,
-    "height": 787,
-    "byteLength": 4986432,
-    "samples": 20107,
+    "width": 2538,
+    "height": 1506,
+    "byteLength": 15288912,
+    "samples": 20012,
     "luminance": {
-      "min": 0,
-      "max": 241.7208,
-      "mean": 9.025652469289318,
-      "range": 241.7208,
-      "variance": 349.0765562973767
+      "min": 6.3717999999999995,
+      "max": 246.9748,
+      "mean": 43.42205907455505,
+      "range": 240.60299999999998,
+      "variance": 1647.8599644244678
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 140,
-    "warningCount": 2,
+    "entryCount": 149,
+    "warningCount": 4,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
@@ -1584,21 +1596,36 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-21T06:23:12.861Z",
+        "timestamp": "2026-10-21T17:56:52.796Z",
         "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5229/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/c744bdd9-6edd-4c75-89bd-ffad25e53d69/scratchpad/vite-cache-5229/deps/chunk-VNXNK5DP.js?v=8e6c885c"
       },
       {
-        "timestamp": "2026-08-21T06:23:19.052Z",
+        "timestamp": "2026-10-21T17:56:56.525Z",
         "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5229/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/c744bdd9-6edd-4c75-89bd-ffad25e53d69/scratchpad/vite-cache-5229/deps/chunk-VNXNK5DP.js?v=8e6c885c"
+      },
+      {
+        "timestamp": "2026-10-21T17:56:59.771Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5229/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/c744bdd9-6edd-4c75-89bd-ffad25e53d69/scratchpad/vite-cache-5229/deps/chunk-VNXNK5DP.js?v=8e6c885c"
+      },
+      {
+        "timestamp": "2026-10-21T17:57:12.541Z",
+        "level": 2,
+        "message": "[ThemeManager] Swapping to \"serenity-warp\" with 0 pipeline(s) in flight and builds still deferred: false",
+        "line": 1486,
+        "sourceId": "http://127.0.0.1:5229/src/themes/theme-manager.js"
       }
     ],
     "processFailures": []
   },
+  "perf": null,
   "fatalError": null
 }
