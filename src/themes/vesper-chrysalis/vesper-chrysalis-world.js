@@ -111,10 +111,12 @@ export class VesperWorld {
      * @param {boolean} [params.capture=false]  deterministic captures: no wall-clock anywhere
      */
     constructor({
-        scene, quality = 'High', renderer = null, capture = false,
+        scene, quality = 'High', renderer = null, capture = false, mirrorSamples = 0,
     } = {}) {
         this.scene = scene;
         this.quality = quality;
+        /** The lake's mirror pass samples as the scene pass does (see createLake). */
+        this.mirrorSamples = mirrorSamples;
         this.tier = tierFor(quality);
         this.renderer = renderer;
         this.capture = capture;
@@ -228,7 +230,9 @@ export class VesperWorld {
             this.renderer.setClearColor(0x000000, 0);
         }
 
-        this.lake = createLake(u, { mirrorScale: tier.mirror, lite: tier.lite, glitter: tier.glitter });
+        this.lake = createLake(u, {
+            mirrorScale: tier.mirror, lite: tier.lite, glitter: tier.glitter, samples: this.mirrorSamples,
+        });
         this.addPart('lake', this.lake);
         if (this.lake.reflectorTarget) this.root.add(this.lake.reflectorTarget);
         this.addPart('sky', createSky(u, { lite: tier.lite }));
