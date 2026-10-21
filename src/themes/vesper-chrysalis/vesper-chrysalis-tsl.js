@@ -379,7 +379,7 @@ const RING_SUN = [
     PLANET_SUN[2],
 ];
 
-const VESPER_DIR = skyDirection(VESPER.azimuth, VESPER.elevation);
+export const VESPER_DIR = Object.freeze(skyDirection(VESPER.azimuth, VESPER.elevation));
 const [VESPER_X, VESPER_Y] = frameOf(VESPER_DIR);
 
 /** The three mountain ranges, far to near: azimuth frequency, noise row, base, height, depth. */
