@@ -7,8 +7,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    AURORA_REST, BAND_KEYS, BOLT_SLOTS, CHIME_SLOTS, DEG, EVENT_ROWS, JET_SLOTS, PALETTES, PALETTE_COUNT,
-    PALETTE_KEYS, PALETTE_REST, PALETTE_STEP, RINGS, RIPPLE_SLOTS, STRIKE_SLOTS, TAU, auroraForCombo, bandPlace,
+    BAND_KEYS, BOLT_SLOTS, CHIME_SLOTS, DEG, EVENT_ROWS, JET_SLOTS, PALETTES, PALETTE_COUNT,
+    PALETTE_KEYS, PALETTE_REST, PALETTE_STEP, RINGS, RIPPLE_SLOTS, STRIKE_SLOTS, TAU, bandPlace, chainHeat,
     bell, giantAnchors, linRGB, mulberry32, paletteAt, paletteName, palettePhase, palettePlace, pieceColor,
     ringOmega, rowLatitude, saturationOf, smooth, sunDirection,
 } from '../../src/themes/stellar-drift/stellar-drift-core.js';
@@ -105,7 +105,7 @@ describe('stellar drift plan: six palettes on a wheel', () => {
         for (let i = 0; i < PALETTE_COUNT; i++) {
             const half = paletteAt(i + 0.5);
             const pair = `${PALETTES[i].name} → ${PALETTES[(i + 1) % PALETTE_COUNT].name}`;
-            ['gasA', 'gasB', 'auroraLow', 'auroraHigh'].forEach((key) => {
+            ['gasA', 'gasB'].forEach((key) => {
                 expect(saturationOf(half[key]), `${pair} ${key}`).toBeGreaterThan(0.25);
             });
         }
@@ -168,17 +168,15 @@ describe('stellar drift plan: the sun, the board on the giant, colour', () => {
         expect(saturationOf(pieceColor('#2d4a8c'))).toBeGreaterThan(0.5);
     });
 
-    it('raises the aurora with the chain, toward one', () => {
-        expect(auroraForCombo(0)).toBe(0);
+    it('warms the giant with the chain, toward one', () => {
+        expect(chainHeat(0)).toBe(0);
         let last = 0;
         for (let n = 1; n <= 30; n++) {
-            const v = auroraForCombo(n);
+            const v = chainHeat(n);
             expect(v).toBeGreaterThan(last);
             expect(v).toBeLessThan(1);
             last = v;
         }
-        expect(AURORA_REST).toBeGreaterThan(0);
-        expect(AURORA_REST).toBeLessThan(auroraForCombo(1));
     });
 
     it('has the small maths right', () => {

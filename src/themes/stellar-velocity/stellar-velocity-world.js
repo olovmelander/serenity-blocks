@@ -128,7 +128,7 @@ const TWIST_DAMPING = 4.4;
 /** How far along the view ray (canyon units) a bolt leaves the card. */
 const BOLT_DEPTH = 1.5;
 /** How much brighter than its mesh a hoop's light on the cloud is. */
-const HOOP_CAST = 2.6;
+const HOOP_CAST = 3.4;
 
 const PARTS = ['canyon', 'stars', 'motes', 'hoops', 'bolts', 'jets'];
 
@@ -198,6 +198,8 @@ export class StellarVelocityWorld {
             rays: 0.12,
             blur: 0,
             bloomBoost: 0,
+            glint: 1,
+            glintTint: [0.7, 0.85, 1],
             exposure: 1,
             jump: 0,
             warp: 0,
@@ -1002,6 +1004,11 @@ export class StellarVelocityWorld {
         post.rays = hush ? 0.03 : Math.min(0.9, 0.16 + this.warp * 0.45 + this.surge * 0.4 + this.flash * 0.3);
         post.blur = calm ? 0 : Math.min(1, share * 0.55 + phase * 0.9 + this.kick * 0.12 + hush * 0.5);
         post.bloomBoost = this.surge * 0.2 + this.flash * 0.3;
+        // The sun's spikes and streak: brighter at speed and after a jump, gone in the tunnel.
+        post.glint = (hush ? 0.15 : 1) * (1 + this.warp * 0.9 + this.surge * 0.7) * (1 - phase * 0.95);
+        const g = p.glow;
+        const gPeak = Math.max(g[0], g[1], g[2], 1e-4);
+        for (let c = 0; c < 3; c++) post.glintTint[c] = p.sun[c] * 0.45 + (g[c] / gPeak) * 0.55;
         post.jump = phase;
         post.warp = this.warp;
         // The iris closes as the sky piles up ahead, so the starbow keeps its colours.
