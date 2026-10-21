@@ -111,17 +111,18 @@ own player's card.
 
 ## Quality tiers
 
-| Tier | March steps | Folds | Soft shadow | Strikes | Jewel cells | Veins |
-|---|---|---|---|---|---|---|
-| Minimal | 34 | 7 | — | 6 | 5 | 0.5 |
-| Low | 46 | 8 | — | 8 | 6 | 0.62 |
-| Medium | 66 | 9 | — | 10 | 8 | 0.85 |
-| High | 96 | 10 | — | 12 | 10 | 1 |
-| Ultra | 120 | 10 | 12 steps | 12 | 10 | 1 |
-| Extreme | 150 | 11 | 18 steps | 12 | 12 | 1 |
+| Tier | March steps | Folds | Strikes | Jewel cells | Veins | Light map | Beams | Jewel beams (shadowed) | Mirrored jewels |
+|---|---|---|---|---|---|---|---|---|---|
+| Minimal | 34 | 7 | 6 | 5 | 0.5 | 96² | 6 | — | — |
+| Low | 46 | 8 | 8 | 6 | 0.62 | 128² | 6 | 1 cell (1) | 1 cell |
+| Medium | 66 | 9 | 10 | 8 | 0.85 | 192² | 12 | 2 cells (2) | 1 cell |
+| High | 96 | 10 | 12 | 10 | 1 | 256² | 12 | 3 cells (2) | 2 cells |
+| Ultra | 120 | 10 | 12 | 10 | 1 | 320² | 12 | 4 cells (3) | 2 cells |
+| Extreme | 150 | 11 | 12 | 12 | 1 | 384² | 12 | 5 cells (3) | 3 cells |
 
-Bloom from Medium up; the chromatic fringe from Medium up. Every tier keeps every feature and
-every event.
+Bloom from Medium up; the chromatic fringe from Medium up; beam spots on the stone from Medium up.
+Every tier keeps every feature and every event. (Until the light pass, Ultra and Extreme had a
+12- and 18-step soft shadow toward the core; the light map now shadows the stone on every tier.)
 
 ## Decisions and traps
 
@@ -243,6 +244,116 @@ ratio (a softer fractal).
 `/playground.html?effect=kaleidosonic&quality=Extreme&profile=1&trackTimestamp=1` against the
 same with `&scout=0`, reading `window.__PLAYGROUND__.profile.snapshot().gpuMs` after
 `profile.reset()`. In the game, `?kaleidosonicScout=0` is the same A/B.
+
+## The light pass (2026-10-21)
+
+The owner asked for better visuals, effects, atmosphere and graphics. The temple read as dark
+stone covered evenly in thin neon lines: the air was flat, the core a small flower that lit
+nothing round it, the pearls matte, and the vaults a web of wire. This pass gives it light that
+travels.
+
+![Before and after](kaleidosonic-captures/light-before-after.jpg)
+*Before (left) and after (right), the same frames: `t=10&board=1&mood=0` and `t=14&mood=3`.*
+
+**What changed.**
+
+- **The gem throws beams.** Each of the core's twelve facets throws a narrow beam (light halves
+  8° off its axis), and the gem turns slowly about the vertical (faster in a trance, slowly under
+  reduced motion), so shafts of the mood's light sweep the halls. Every jewel is the core's image,
+  so every hall has its own small turning star of beams.
+- **The light map.** A small octahedral map holds, for every direction from the jewels' place in
+  the lattice, the distance to the first stone (`kaleidosonic-light.js`). The temple is periodic,
+  so one map shadows the core and every jewel. It is marched again only when the temple's shape
+  or the core's place changes (a refold, the trance's folds, a resize), and until it has really
+  been drawn (three skips draws whose pipelines are still building) the shaders take every point
+  as lit. The stone now has shadows from the core and the nearest jewel on every tier, and the
+  pillars cut the beams.
+- **Beams in closed form.** Seen from a light, the points of a view ray sweep one arc of
+  directions, so a beam's light along the ray is a Gaussian in that arc's angle, integrated with
+  erf between the ray's ends: no samples, no noise, at any sharpness. Each beam is shadowed by one
+  map lookup where it crosses the ray. A dim even glow round each light (also closed form) sits
+  under the beams. The core's beams are always shadowed; the jewels' in the first cells.
+- **Nacre.** The pearls keep a soft lustre toward each light, mirror the core and the nearest
+  jewels (a short walk of the reflected ray through the lattice), and all of it is tinted by a thin
+  film whose thickness changes pearl by pearl (from the orbit trap) and drifts with the breath:
+  every bead an oil-slick of the mood's light. The face-on reflectance is a real 4%.
+- **Quieter stone.** The veins' glow away from every light fell from 0.3 to 0.17 and the floor
+  figure's reach from 1.1 to 0.6 units, so the veins glow where a light, a beam or an event
+  excites them (beams make them fluoresce), and the vaults are no longer a uniform web.
+- **Events.** A lock's strike flashes in the mist round the struck point (closed form, the strikes
+  gathered and capped softly, so several hard drops never wash the frame white). A clear's
+  resonance makes the beams blaze; a lock does not (its light stays where it struck). The dive
+  lets the core's own shadows go while it carries the core off its jewel and holds them again as
+  it lands. While the twelve-sector kaleidoscope is open the air takes 30% less light, so the
+  mirrored cores' rays keep dark between them.
+
+![The six moods](kaleidosonic-captures/light-moods.jpg)
+*`t=10&board=1&mood=0…5`: rose mandala, violet hum, azure bell; teal chime, jade drone, amber gong.*
+
+![The kaleidoscope](kaleidosonic-captures/light-kaleidoscope.jpg)
+*`combo=2` (the mirror), `combo=5&mood=2` (six sectors), `combo=8&mood=4` (twelve: a wheel of
+radiant cores), a perfect clear (`event=perfect&eventAge=2.0&mood=5`).*
+
+![Gameplay events](kaleidosonic-captures/light-events.jpg)
+*An O locks left of the card (`event=lock&u=0.15&row=14&piece=O`, 0.2 s and 0.6 s: the strike's
+star in the mist, then the stone flooding gold); a hard drop right of the HUD
+(`event=drop&u=0.85&mood=2`); a three-line clear; a four-line dive at 1 s; game over 4 s on.*
+
+![In the real game](kaleidosonic-captures/light-ingame.jpg)
+*The real game, WebGPU, High: rest, six seconds later (the beams have turned), hard drops striking
+beside the card and beyond the stats panel, and a stack later in the run.*
+
+**Decisions and traps.**
+
+- **The air veiled the frame.** Two causes, each a few thousandths of linear light, plain after
+  sRGB: the air's light fell off as `exp(−r / reach)`, whose tail reached every pixel, and a beam
+  pointing at the eye lit the first stretch of every view ray (a veil each time the turning gem
+  swept one past the lens). The air's light now falls off as a Gaussian, and the first 0.45 units
+  in front of the lens are clear, as the fog's first half unit is. Bloom was not the cause (an
+  A/B with bloom off showed the same veil).
+- **Shafts need something to cut.** Lit only isotropically, the air round the core was a smooth
+  ball: the core hangs in open air, so the pearls round it cast their shadows away from the eye.
+  The gem's beams are what make shafts; the light map cuts them.
+- **Sampled shafts dithered.** Eight equi-angular samples along the ray either hit or missed an
+  8° beam, a fine dither over every shaft. The closed form has no samples.
+- **One beam end is not enough.** Integrating only the end of each beam that faces the ray's range
+  drew a straight seam where the choice flipped; both ends are integrated.
+- **The pearls went flat.** Replacing the old broad highlight with a sharp, Fresnel-weighted
+  reflection left the beads with nothing face-on; the broad lustre is back under the reflections.
+  A face-on reflectance of 14% lifted every dark stone; it is 4%. The lustre and the reflections
+  are occluded as the old highlight was (by the full occlusion, not a share of it), or the
+  fractal's deep crevices glow.
+- **Cost.** The beam maths, not its texture reads, was the cost (about 3.5 ms of 4.3 ms on an
+  integrated GPU at Low). Skipping beams that cannot come near a ray before any erf, a polynomial
+  erf, six beams instead of twelve and no beam spots on the stone on Minimal and Low, and analytic
+  glows instead of sampled ones brought it down. Extreme gained nothing in cost: the light map
+  replaced its 18-step shadow march.
+- **The flat vault catches the core.** With gloss the vaults reflect the core's lustre, so a lit
+  vault's straight edge against a void shows above the core in some views. It is geometry, kept.
+
+**Cost.** Median GPU time per frame from timestamp queries in the playground (a shown window
+placed off-screen: a hidden Electron window reports bogus timestamps), the original against this
+pass:
+
+| | Minimal | Low | High | Extreme |
+|---|---|---|---|---|
+| Integrated GPU (laptop), 1600 × 900 | 26.4 → 30.7 ms | 34.0 → 39.2 ms | 50.4 → 63.6 ms | — |
+| RTX 5080 Laptop, 2560 × 1600 | — | 1.57 → 1.97 ms | 2.69 → 3.60 ms | 4.52 → 4.65 ms |
+
+In the real game at High on the RTX 5080 Laptop: about 175 fps (the window uncapped off-screen).
+The temple's fragment shader is 56 KB of WGSL at High and Extreme, under the gate's 64 KB.
+
+**Verification.** Playground on WebGPU at every tier, the WebGL2 backend (`forceWebGL=1`, the
+nested beam loop included, on ANGLE's D3D11 path), 430 × 900 portrait, and the real game (menus,
+board, HUD, hard drops, game over); consoles clean apart from Electron's own notices. Unit tests:
+the light map's retry while three skips its draw and its never clearing, its redraw only on a
+refold or a moved core, the core's shadows through a dive, the gem's turn (trance, reduced
+motion, carried through a rebuild), clears blazing the beams and locks not, the beam axes; the
+shader gate builds the light map on both backends, counts one field call in it, and pins the beams
+as loops. All 7 Kaleidosonic test files pass (280 tests); typecheck, the lint ratchet (at
+baseline), dependency boundaries, perf budgets and the production build pass. The full suite's
+four red files (game-over modal, Odyssey briefing, records view, TTS recorder) fail the same way
+on `main`.
 
 ## Captures
 
