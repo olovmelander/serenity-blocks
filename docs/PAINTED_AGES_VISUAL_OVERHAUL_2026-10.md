@@ -167,10 +167,71 @@ Bloom from Medium, sun shafts from High.
   ([strip](painted-ages-captures/clock-ingame.jpg)).
 - **Not measured:** a physical phone, the perf lane (ADR-0016), multiplayer and Infinity layouts.
 
+## Atmosphere pass (2026-10-21)
+
+The owner asked to keep improving the visuals, effects, atmosphere and graphics. Full-resolution
+captures of every hour showed the sky and the air as the weakest parts, so this pass is about them.
+The land, the strata, the composition and the gameplay beats are unchanged.
+
+- **Cumulus banks** (`painted-ages-cumulus.js`, rebuilt). The old banks were sixteen soft spheres
+  each, and their edge noise alone pushed the alpha up across the whole card, so every bank sat in a
+  visible pale rectangle. Now the outline is a distance field: the billows' soft union, dilated by
+  two octaves of small sphere caps (a lattice; the highest cap wins), so the edge is cauliflower at
+  three scales and nothing outside the union is drawn. The card reaches past the heap, so no lump is
+  clipped. The light uses one smooth "pillow" normal from the outline's distance and gradient (a
+  per-billow normal drew a ring wherever one billow met the next), the caps' normals blended softly
+  (a hard max drew cracks), darker creases, a flat grey base, and the hour's sky light on the tops.
+  Backlit, the body darkens and a one-or-two-pixel silver thread burns on the edge facing the sun,
+  measured from the lumped outline at a steady pixel width. Towers climb in zigzag pairs of billows,
+  with a lean and a swell, so they have a body instead of a chimney.
+- **Where the banks stand.** A 16:9 frame shows ±33° and the board covers about ±11°, but the old
+  bearings were ±46–73° or behind the board: almost no cloud showed in play. The first four banks
+  (what Minimal draws first) now stand in the side thirds at about ±17° and ±39°, clear of the sun's
+  dawn and sunset bearings (±27°), so the heaps beside the sun take its silver lining. Narrow and
+  ultrawide screens get the rest.
+- **Cirrus** (`painted-ages-sky.js`). Everything the frame shows of the sky is 10–15° up, so the
+  cirrus deck 8 km up is seen 30–50 km away and squashed about six to one; its old features drew
+  scratch-like dashes. The strands are now sized for that view (kilometres long, hundreds of metres
+  across), stream away from the eye a little off its axis so they converge on the horizon, drift
+  slightly across their run, and come in patches.
+- **The cloud deck** keeps its shadows on the land but shows in the sky only above about 7° (low
+  down a flat deck drew white dashes). As a chain's storm thickens the cover, it comes down to the
+  horizon again.
+- **The sun** has a glare round its disc (a tight core and a wider skirt in the sun's colour), which
+  the bloom carries on. It was a flat white dot.
+- **Valley mist** (`painted-ages-light.js` `mistPatches`). The mist's density is modulated at the
+  ground point by two scales of noise creeping downwind, so it lies in banks and clear lanes along
+  the valleys at first light, sunset and the blue hour instead of a uniform sheet. The poplars read
+  the same banks.
+- **Depth.** The far ranges' bands soften into their mean from 2.4 km (was 3.5 km) and further
+  (68 %, was 55 %): ten kilometres off they read as rock in the air rather than contour lines. The
+  noon haze is a little thicker (1.05, was 0.85).
+- **The river** (`painted-ages-events.js` `riverWater`). Two crossing sine waves of ripples, about
+  7 m long, aliased into a twisted rope at the normal view. The ripples are now noise streaks drawn
+  down the current, faded once they are under a few pixels, where the unresolved roughness widens the
+  sun's glitter instead (a tight sparkling lobe near, a broad path far). The silty body is lighter,
+  the gravel shows through the shallows at the edges, and the water's mask reads the height per
+  pixel from the baked field: the mesh's rows are ~26 m apart a kilometre out, and its interpolated
+  height dashed the shallow channel.
+- **Perfect clear** also paints the cumulus banks: the pieces' colours in bands up each heap, like
+  the strata of the land below.
+
+Verification: the eight theme suites (242 tests, including every material built for WGSL and
+GLSL), typecheck, the lint ratchet (at baseline), the palette gate, and
+`scripts/validate-all-themes.mjs --theme painted-ages` (PASS, 0 console errors; its real-game frame
+shows the new sky). Frame cost in the playground, origin/main against this pass in interleaved
+runs: the same within noise on the RTX (about 0.7 ms at high day and 2 ms at first light, at
+2560 × 1440) and on the integrated GPU. WebGL2, Low, Minimal, Ultra, phone portrait and 21:9 were
+captured and look right. (Close-ups through the `look=` lens can show the land fan's edge: the
+lens turns past the bearings the land is built for.)
+
 ## Captures
 
 | What | Image |
 |---|---|
+| Atmosphere pass: before and after at five hours | [atmosphere-before-after.jpg](painted-ages-captures/atmosphere-before-after.jpg) |
+| Atmosphere pass: the six hours | [atmosphere-hours.jpg](painted-ages-captures/atmosphere-hours.jpg) |
+| Atmosphere pass: cumulus at high day and backlit, the sun at first light, the river, perfect clear (before / after) | [atmosphere-details.jpg](painted-ages-captures/atmosphere-details.jpg) |
 | The six hours at level 1 (first light, morning, high day, afternoon, sunset, blue hour) | [hours.jpg](painted-ages-captures/hours.jpg) |
 | Lock (red, teal), hard drop, clear, four lines (rainbow tide), the flood | [events-1.jpg](painted-ages-captures/events-1.jpg) |
 | T-spin dust devil, a chain's shower, its rainbow, perfect clear, game-over dusk, level-up marker bed | [events-2.jpg](painted-ages-captures/events-2.jpg) |
