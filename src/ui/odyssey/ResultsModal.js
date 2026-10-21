@@ -1,10 +1,15 @@
 /**
- * @fileoverview Odyssey level-complete results modal.
+ * @fileoverview Odyssey level-complete results sheet.
  *
- * Extracted verbatim from OdysseyMode._createResultsModal (masterplan E1 — UI layer out of the
- * 5,900-line god object). Pure DOM/view: it takes the resolved level outcome + the few pieces of
- * mode state it needs as explicit deps, and returns the modal element (the caller appends it).
- * No `OdysseyMode` coupling beyond the passed deps, so it is unit-testable in isolation.
+ * Extracted from OdysseyMode._createResultsModal (masterplan E1 — UI layer out of the god
+ * object). Pure DOM/view: it takes the resolved level outcome + the few pieces of mode state it
+ * needs as explicit deps, and returns the modal element (the caller appends it). No
+ * `OdysseyMode` coupling beyond the passed deps, so it is unit-testable in isolation.
+ *
+ * The navigator's grammar (odyssey-outcome-sheet.js, public/styles/odyssey-outcome.css): the
+ * orb's world as the hero in its chapter's light, the orb's name, the stars landing a beat apart
+ * and why, the run in figures, then what the clear left (a first-clear theme); the leaderboard
+ * has a column of its own, and Continue sits in a footer that never scrolls away.
  */
 
 import { STEAM_LEADERBOARDS } from '../../core/steam/steam-config.js';
@@ -19,13 +24,25 @@ import { createThemeUnlockReward } from './ThemeUnlockReward.js';
 import { createOdysseyStarNotes } from './odyssey-star-notes.js';
 import { describeOdysseyCharms } from '../../core/odyssey/odyssey-charm-bag.js';
 import { createOdysseyCharmIconNode } from './odyssey-charm-icon-stage.js';
+import { createOdysseyStarRow } from './odyssey-orb-art.js';
+import {
+    createOdysseyOutcomeFrame, describeOdysseyOutcomeEyebrow, describeOdysseyOutcomeOrb,
+} from './odyssey-outcome-sheet.js';
+
+/** A fact: its label and its value (dt/dd), the value drawn large as a figure. */
+function createFact(label, value, className = 'sb-ody-fact') {
+    const fact = el('div', className);
+    fact.appendChild(el('dt', '', label));
+    fact.appendChild(el('dd', '', String(value)));
+    return fact;
+}
 
 /**
  * Build the level-complete results sheet.
  * @param {object} deps
  * @param {{stars:number, score:number, lines:number, time:number}} deps.results resolved outcome
  * @param {Function} deps.onClose called once when the modal is dismissed (button/Enter/Space/Esc)
- * @param {?object} deps.levelConfig current level config (for the name line); may be null
+ * @param {?object} deps.levelConfig the orb's resolved level (its name, chapter and world); may be null
  * @param {string|number} deps.levelId current level id (Steam level-time board)
  * @param {number} deps.totalStars total stars earned (Steam total-stars board)
  * @param {function(number):string} deps.formatTime ms → mm:ss
@@ -42,30 +59,70 @@ export function createResultsModal({
     includeLegacyResults = true,
 }) {
     let leaderboardPanel = null;
-    // Keystone sheet (keystone-overlays.css): the level's name is the hero, its stars
-    // and numbers below, one primary action.
-    const { modal, panel: content } = createKeystoneSheet({
+    const { modal, panel } = createKeystoneSheet({
         id: 'odyssey-results-modal',
         label: 'Orb complete',
         variant: 'results',
     });
+    const orb = describeOdysseyOutcomeOrb(levelConfig);
+    const { main, side, footer } = createOdysseyOutcomeFrame(modal, panel, {
+        orb, state: 'cleared', side: includeLegacyResults,
+    });
 
-    content.appendChild(el('p', 'sb-eyebrow sb-ody-eyebrow', 'Orb complete'));
-    const title = el('h2', 'sb-ody-title', levelConfig?.name || 'Odyssey');
+    // Result first: where the orb lies, its name, the stars and the run. Reward second.
+    main.appendChild(el('p', 'sb-eyebrow sb-ody-eyebrow', orb?.number
+        ? describeOdysseyOutcomeEyebrow(orb, 'Cleared') : 'Orb complete'));
+    const title = el('h2', 'sb-ody-title', orb?.name || levelConfig?.name || 'Odyssey');
     title.tabIndex = -1;
-    content.appendChild(title);
-    const themeReward = includeLegacyResults
-        ? createThemeUnlockReward(results.themeUnlock, { reducedMotion: results.reducedMotion === true }) : null;
-    if (themeReward) content.appendChild(themeReward);
+    main.appendChild(title);
     if (results.duel) {
         const {
             playerFrags = 0, botFrags = 0, targetFrags = 3, botName = 'the rival',
         } = results.duel;
-        content.appendChild(el(
+        main.appendChild(el(
             'p',
             'sb-ody-lede',
             `You defeated ${botName}, ${playerFrags}–${botFrags}. First to ${targetFrags} knockouts.`,
         ));
+    }
+
+    // Stars: earned ones in gold, each landing a beat after the last.
+    const stars = createOdysseyStarRow(results.stars, {
+        className: 'sb-ody-stars',
+        label: `${results.stars} of 3 stars`,
+    });
+    if (stars) {
+        Array.from(stars.children || []).forEach((star, index) => {
+            if (star.style) star.style.animationDelay = `${250 + index * 160}ms`;
+        });
+        main.appendChild(stars);
+    }
+    // Why these stars: each goal marked, and the next one's shortfall in the player's numbers.
+    const starNotes = createOdysseyStarNotes(levelConfig, results, { className: 'sb-ody-star-notes' });
+    if (starNotes) main.appendChild(starNotes.list);
+
+    const statsContainer = el('dl', 'sb-ody-facts');
+    if (results.duel) {
+        statsContainer.appendChild(createFact('Knockouts', `${results.duel.playerFrags}–${results.duel.botFrags}`));
+    }
+    statsContainer.appendChild(createFact('Score', results.score.toLocaleString()));
+    statsContainer.appendChild(createFact('Lines', results.lines));
+    statsContainer.appendChild(createFact('Time', formatTime(results.time * 1000)));
+    main.appendChild(statsContainer);
+
+    // A fact, not a warning: the charms this clear used, each charm's live icon ahead of the
+    // names, quieter than the figures. Its stars count in full.
+    const charms = describeOdysseyCharms(results.charms);
+    if (charms.length) {
+        const used = el('dl', 'sb-ody-charms-used');
+        const fact = el('div', 'sb-ody-fact');
+        fact.appendChild(el('dt', '', 'Charms used'));
+        const value = el('dd', 'sb-ody-fact__charms', charms.map((charm) => charm.name).join(' · '));
+        const icons = charms.map((charm) => createOdysseyCharmIconNode(charm.id)).filter(Boolean);
+        if (icons.length && typeof value.prepend === 'function') value.prepend(...icons);
+        fact.appendChild(value);
+        used.appendChild(fact);
+        main.appendChild(used);
     }
 
     if (!includeLegacyResults) {
@@ -76,65 +133,27 @@ export function createResultsModal({
             '',
             'Run stars are a preview. Campaign progress and leaderboard results were not saved.',
         ));
-        content.appendChild(unrankedNotice);
+        main.appendChild(unrankedNotice);
     }
 
-    // Stars: earned ones in gold, each landing a beat after the last.
-    const starsContainer = el('div', 'sb-ody-stars');
-    starsContainer.role = 'img';
-    starsContainer.ariaLabel = `${results.stars} of 3 stars`;
-    for (let i = 0; i < 3; i++) {
-        const isFilled = i < results.stars;
-        const star = el('span', `sb-ody-star${isFilled ? ' is-earned' : ''}`);
-        star.style.animationDelay = `${0.25 + i * 0.16}s`;
-        star.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true">'
-            + '<path d="M12 2.6l2.7 5.6 6.1.8-4.4 4.3 1.1 6.1L12 16.5l-5.5 2.9 1.1-6.1-4.4-4.3 6.1-.8L12 2.6Z"/></svg>';
-        starsContainer.appendChild(star);
-    }
-    content.appendChild(starsContainer);
-    // Why these stars: each goal marked, and the next one's shortfall in the player's numbers.
-    const starNotes = createOdysseyStarNotes(levelConfig, results, { className: 'sb-ody-star-notes' });
-    if (starNotes) content.appendChild(starNotes.list);
+    // What the clear left: a first clear's theme and song, after the result it was earned by.
+    const themeReward = includeLegacyResults
+        ? createThemeUnlockReward(results.themeUnlock, { reducedMotion: results.reducedMotion === true }) : null;
+    if (themeReward) main.appendChild(themeReward);
 
-    const stats = [
-        { label: 'Score', value: results.score.toLocaleString() },
-        { label: 'Lines', value: results.lines },
-        { label: 'Time', value: formatTime(results.time * 1000) },
-    ];
-    if (results.duel) {
-        stats.unshift({ label: 'Knockouts', value: `${results.duel.playerFrags}–${results.duel.botFrags}` });
-    }
-    // A fact, not a warning: the charms this clear used. Its stars count in full.
-    const charms = describeOdysseyCharms(results.charms);
-    if (charms.length) {
-        stats.push({
-            label: 'Charms used',
-            value: charms.map((charm) => charm.name).join(' · '),
-            // Each charm's live icon ahead of its name.
-            icons: charms.map((charm) => createOdysseyCharmIconNode(charm.id)).filter(Boolean),
-        });
-    }
-    const statsContainer = el('dl', 'sb-ody-facts');
-    stats.forEach((stat) => {
-        const fact = el('div', 'sb-ody-fact');
-        fact.appendChild(el('dt', '', stat.label));
-        const value = el('dd', stat.icons?.length ? 'sb-ody-fact__charms' : '', String(stat.value));
-        if (stat.icons?.length && typeof value.prepend === 'function') value.prepend(...stat.icons);
-        fact.appendChild(value);
-        statsContainer.appendChild(fact);
-    });
-    content.appendChild(statsContainer);
-
-    if (includeLegacyResults) {
-        // Steam leaderboard panel (level time + total stars). Experimental clocks
-        // never construct this view because mount() immediately reads cached/live
-        // entries from the unversioned legacy boards.
+    if (includeLegacyResults && side) {
+        // Steam leaderboard panel (level time + total stars), in its own column so a long board
+        // never pushes Continue away. Experimental clocks never construct this view because
+        // mount() immediately reads cached/live entries from the unversioned legacy boards.
         const leaderboardHost = document.createElement('div');
         leaderboardHost.className = 'steam-leaderboard-panel';
-        content.appendChild(leaderboardHost);
+        side.appendChild(leaderboardHost);
 
         const levelBoard = `${STEAM_LEADERBOARDS.ODYSSEY_LEVEL_TIME_PREFIX}${levelId}`;
         const levelTimeMs = Math.max(1, Math.round((results.time || 0) * 1000));
+        // A charmed run is not uploaded to the orb's time board (OdysseyMode._syncSteamStats), so
+        // it is not placed among its times either.
+        const timeRanked = !(results.charms?.length > 0);
 
         leaderboardPanel = new SteamLeaderboardPanel({
             title: 'Odyssey leaderboards',
@@ -143,8 +162,10 @@ export function createResultsModal({
                     id: 'level-time',
                     label: 'Orb time',
                     name: levelBoard,
-                    currentScore: levelTimeMs,
+                    currentScore: timeRanked ? levelTimeMs : null,
                     formatScore: formatMilliseconds,
+                    sortOrder: 'asc',
+                    pendingLabel: 'You · this run',
                 },
                 {
                     id: 'total-stars',
@@ -152,6 +173,8 @@ export function createResultsModal({
                     name: STEAM_LEADERBOARDS.ODYSSEY_TOTAL_STARS,
                     currentScore: totalStars,
                     formatScore: formatNumber,
+                    sortOrder: 'desc',
+                    pendingLabel: 'You · now',
                 },
             ],
             defaultBoardId: 'level-time',
@@ -166,7 +189,7 @@ export function createResultsModal({
     button.type = 'button';
     appendKeyHint(button, 'Enter', 'A');
     actions.appendChild(button);
-    content.appendChild(actions);
+    footer.appendChild(actions);
 
     // Single-fire close shared by the button + keyboard (masterplan §2 #8 — the most-
     // pressed button in the mode was previously mouse-only). Capture phase so the modal

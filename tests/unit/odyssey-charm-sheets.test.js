@@ -212,19 +212,28 @@ describe('Odyssey charms on the failure sheet, the results sheet, the map and it
         vi.unstubAllGlobals();
     });
 
-    it('notes the charm the third fall left, right after the lede, with nothing to choose', () => {
+    it('shows the charm the third fall left as a gift card, with its key and nothing to choose', () => {
         const modal = createFailureModal({
             attemptNumber: 3, reasonText: 'You topped out!', onChoose: vi.fn(), charmPity: 'long-breath',
         });
         const note = all(modal).find((node) => node.className === 'sb-ody-note sb-ody-charm-pity');
         expect(note.role).toBe('status');
-        // The charm's icon (its glyph until the stills exist), then the words without a glyph of their own.
-        expect(note.children[0].dataset.charm).toBe('long-breath');
-        expect(note.children[1].textContent)
-            .toBe('After three falls here, the road leaves you Long Breath. Press 3 for 30 more seconds.');
-        const panel = all(modal).find((node) => node.children.includes(note));
-        const lede = panel.children.find((node) => node.className === 'sb-ody-lede');
-        expect(panel.children.indexOf(note)).toBe(panel.children.indexOf(lede) + 1);
+        // The card wears the charm's tone; its live icon (the glyph until the first frame) is the art.
+        expect(note.dataset.charm).toBe('long-breath');
+        const [art, copy] = note.children;
+        expect(art.className).toBe('sb-ody-gift__art');
+        expect(art.ariaHidden).toBe('true');
+        expect(all(art).find((node) => node.className === 'charm-sprite').dataset.charm).toBe('long-breath');
+        expect(copy.children.map((node) => text(node).replace(/\s+/g, ' ').trim())).toEqual([
+            'After three falls here',
+            'Long Breath',
+            'The road leaves you this charm. Press 3 for 30 more seconds.',
+        ]);
+        expect(all(copy).find((node) => node.tagName === 'kbd').textContent).toBe('3');
+        // It sits in the main column after the outcome (and the figures, when there are any).
+        const main = all(modal).find((node) => node.children.includes(note));
+        const lede = main.children.find((node) => node.className === 'sb-ody-lede');
+        expect(main.children.indexOf(note)).toBe(main.children.indexOf(lede) + 1);
         expect(all(modal).filter((node) => node.tagName === 'button').map((node) => node.textContent))
             .toEqual(['Retry', 'Back to Map']);
         expect(text(modal)).not.toMatch(/Not now|offers a charm/);

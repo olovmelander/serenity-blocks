@@ -92,6 +92,12 @@ export const formatWinRate = (value) => {
     return `${(value / 100).toFixed(2)}%`;
 };
 
+/**
+ * A board: `{ id, label, name, currentScore?, formatScore?, sortOrder?, pendingLabel? }`.
+ * `currentScore` is this run's score; until Steam lists the player it shows as a pending row,
+ * placed where it ranks among the rows shown (`sortOrder` 'asc' for boards where lower is
+ * better, such as times; otherwise read from the rows' order, else higher is better).
+ */
 export class SteamLeaderboardPanel {
     constructor(options = {}) {
         this.title = options.title || 'Steam Leaderboard';
@@ -401,26 +407,32 @@ export class SteamLeaderboardPanel {
             ? normalizedEntries.some((entry) => `${entry.steamId}` === `${localSteamId}`)
             : false;
 
-        if (currentScore !== null && !hasSelfEntry) {
-            const pendingRow = this._createRow({
-                rank: '—',
-                name: 'You (pending)',
-                score: currentScore,
-                pending: true,
-                steamId: localSteamId,
-            }, formatScore);
-            list.appendChild(pendingRow);
-        }
+        // This run's score, not yet on the board, sits where its value ranks among the rows
+        // shown (unranked: it has no place number until Steam gives it one).
+        const pendingRow = currentScore !== null && !hasSelfEntry ? this._createRow({
+            rank: null,
+            name: board.pendingLabel || 'You (pending)',
+            score: currentScore,
+            pending: true,
+            steamId: localSteamId,
+        }, formatScore) : null;
+        const pendingIndex = pendingRow
+            ? this._pendingIndex(board, normalizedEntries, currentScore) : -1;
+        // Slower or lower than a full page: it ranks somewhere below, not right after the last row.
+        if (pendingRow && pendingIndex >= this.pageSize) pendingRow.classList.add('beyond');
 
         if (normalizedEntries.length === 0) {
+            if (pendingRow) list.appendChild(pendingRow);
             const empty = document.createElement('div');
             empty.className = 'steam-leaderboard-empty';
             empty.textContent = supported ? 'No scores yet.' : 'Leaderboards unavailable.';
             list.appendChild(empty);
         } else {
-            normalizedEntries.forEach((entry) => {
+            normalizedEntries.forEach((entry, index) => {
+                if (index === pendingIndex) list.appendChild(pendingRow);
                 list.appendChild(this._createRow(entry, formatScore, localSteamId));
             });
+            if (pendingRow && pendingIndex >= normalizedEntries.length) list.appendChild(pendingRow);
         }
 
         if (notice) {
@@ -433,6 +445,30 @@ export class SteamLeaderboardPanel {
         this.listEl.innerHTML = '';
         this.listEl.appendChild(list);
         this._setStatus('');
+    }
+
+    /**
+     * Which way a board ranks: `board.sortOrder` ('asc' when lower is better, as for times;
+     * 'desc' when higher is better), else read from the rows' own order, else higher is better.
+     */
+    _sortOrder(board, entries) {
+        if (board?.sortOrder === 'asc' || board?.sortOrder === 'desc') return board.sortOrder;
+        const scores = entries.map((entry) => Number(entry.score)).filter(Number.isFinite);
+        const first = scores[0];
+        const last = scores[scores.length - 1];
+        if (scores.length >= 2 && first !== last) return first < last ? 'asc' : 'desc';
+        return 'desc';
+    }
+
+    /** The row index a score would take among `entries`: after every row it does not beat. */
+    _pendingIndex(board, entries, score) {
+        const ascending = this._sortOrder(board, entries) === 'asc';
+        const index = entries.findIndex((entry) => {
+            const value = Number(entry.score);
+            if (!Number.isFinite(value)) return false;
+            return ascending ? score < value : score > value;
+        });
+        return index === -1 ? entries.length : index;
     }
 
     _createRow(entry, formatScore, localSteamId) {
