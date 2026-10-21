@@ -27,6 +27,7 @@ import {
     positionWorld,
     sin,
     smoothstep,
+    step,
     sqrt,
     texture,
     vec2,
@@ -171,12 +172,37 @@ export function createSky({ u, noise, tier }) {
             sky.assign(mix(sky, col, cover));
         });
 
-        // Shelter belts on the horizon: a ragged dark line, taller here and there.
-        const belt = texture(noise, vec2(ua.mul(23.0), 0.11)).level(0.0).r;
-        const twig = texture(noise, vec2(ua.mul(140.0), 0.53)).level(0.0).g;
-        const crest = smoothstep(0.44, 0.7, belt).mul(0.0075).add(twig.mul(0.0035)).add(0.002);
-        const trees = smoothstep(crest.sub(0.0014), crest, d.y).oneMinus();
-        sky.assign(mix(sky, u.haze.mul(0.2).add(u.gapLow.mul(0.06)), trees.mul(0.92)));
+        // Shelter belts on the horizon, two lines of them. A single row of smoothed bumps read as a
+        // row of identical tents: each belt is now trees, rounded crowns of their own heights in
+        // stretches broken by open fields, the far one lower, fainter and lost in the haze.
+        const px = u.pixelAngle.mul(1.2).max(0.0004).toVar();
+        const hash = (k) => sin(k.mul(12.9898)).mul(43758.5453).fract();
+        const beltLine = (count, seedShift, base, tall, stretch) => {
+            // Two sets of crowns of different spacing, merged: trees of many widths overlapping.
+            const tree = (n, shift) => {
+                const x = ua.mul(n).add(shift).toVar();
+                const k = x.floor();
+                const f = x.fract().mul(2.0).sub(1.0);
+                const crown = float(1.0).sub(f.mul(f)).max(0.0).sqrt();
+                // Most are broad crowns, a few tall poplars, some missing.
+                const kind = hash(k.add(71.0));
+                const height = hash(k).mul(0.55).add(0.45)
+                    .mul(mix(float(1.0), float(1.8), step(0.9, kind)))
+                    .mul(step(0.12, kind));
+                return crown.mul(height);
+            };
+            const crowns = max(tree(count, float(seedShift)), tree(count.mul(1.73), float(seedShift + 0.41)).mul(0.85));
+            // Twigs and leaves along the top edge.
+            const ragged = texture(noise, vec2(ua.mul(count.mul(0.9)), 0.61)).level(0.0).a.sub(0.5).mul(0.35);
+            const present = smoothstep(0.34, 0.5, texture(noise, vec2(ua.mul(stretch).add(seedShift), 0.37)).level(0.0).r);
+            return crowns.add(ragged.mul(crowns.min(1.0))).mul(tall).add(base).mul(present);
+        };
+        const farCrest = beltLine(float(1900.0), 0.31, 0.0016, 0.0042, 9.0);
+        const farTrees = smoothstep(farCrest.sub(px), farCrest, d.y).oneMinus().mul(step(0.0002, farCrest));
+        sky.assign(mix(sky, mix(sky, u.haze.mul(0.45).add(u.gapLow.mul(0.12)), 0.6), farTrees));
+        const nearCrest = beltLine(float(1000.0), 0.77, 0.003, 0.012, 6.0);
+        const nearTrees = smoothstep(nearCrest.sub(px), nearCrest, d.y).oneMinus().mul(step(0.0002, nearCrest));
+        sky.assign(mix(sky, u.haze.mul(0.2).add(u.gapLow.mul(0.06)), nearTrees.mul(0.92)));
 
         // Shafts of sun under the deck, fanned out from the disc.
         const sr = normalize(vec3(u.sunDir.z.negate(), 0.0, u.sunDir.x));

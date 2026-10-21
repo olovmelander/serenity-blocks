@@ -366,6 +366,61 @@ budget or a comparison. The theme perf lane was not run, and there is no reading
 integrated or phone GPUs: the lower tiers are untested on real low-end hardware. How long the
 first activation takes to compile its pipelines was not measured either.
 
+## Second pass: the lip and the glass (2026-10-21)
+
+Olov: improve the visuals, effects, atmosphere and graphics in the Waves theme.
+
+**What read as computer graphics** (1:1 crops at 1920 × 1080): the falling lip was a pale, icy
+curtain ending in long regular icicles, its last centimetres cut by a per-pixel hash (a screen
+door on a single-sampled pass); and the face was a long exposure: its ribs were read from the
+noise drawn out 8:1 along the flow and tilted only across it, so every rib was a hairline, the
+evening it mirrored was smeared into brown scratches, and foam threads 80–125:1 long striped it.
+
+![The lip before and after](waves-overhaul/second-pass-lip.jpg)
+
+**The lip** (`waves-water.js`).
+- *Torn, not combed:* the tears are drawn out about 3:1 (lobes and tongues a hand to an arm
+  long), frayed finer at their tips, and the last of the edge is a fine lace of the water's own
+  noise (it stays on the water as it moves) written as the water's alpha. The water now cuts at
+  half that alpha (`alphaTest` 0.5 with `alphaToCoverage`): by coverage on the tiers with MSAA,
+  by a plain test on the others. The screen-space hash is gone.
+- *Glass, not milk:* a sheet seen at a slant is crossed on a longer path than it is thick, so the
+  thickness the light crosses is divided by how squarely the eye meets the surface (floored at
+  0.28) and the lip and roof turn green where they curve away. The milk of the aerated lip is
+  about half as strong, and its white edge narrower.
+- *A fringe of the sun:* along the torn edge the thin water carries the sun's own colour
+  (`bloom` × `fireTint`), strongest looking toward the sun, a little all along the lip: at sunset
+  the lobes are rimmed rose-gold.
+
+![The face before and after](waves-overhaul/second-pass-face.jpg)
+
+**The face.** The ribs are read 3.6:1 instead of 7.7:1 and every scale tilts along the flow as
+well as across it; the colour bands they carry are about half as strong; from High up a fine chop
+near the eye (one more read; the tiers below take the lip's lace from a read they already make)
+gives the glass its glitter; foam threads are thinner, rarer and a third as strong. The face still
+reads as moving water drawn up the wall, but as glass with crisp reflections, not a smear. The
+gain here is smaller than the lip's.
+
+**Antialiasing.** The scene pass takes the shared samples (`sceneSamples`: 4× MSAA from High up
+with the game's antialiasing on, as the ten themes of 2026-10-16 do), and FXAA runs only on a
+single-sampled pass. The playground reads `msaa=<n>` to override it.
+
+![The hours and a lock, before and after](waves-overhaul/second-pass-hours.jpg)
+
+**Verified.** Playground on WebGPU (RTX 5080 Laptop, a scratch Electron batch on a private dev
+server, the before frames from a detached worktree at the branch's base on its own server): six
+hours, the board at rest, a lock at sunset, a 430 × 852 portrait, Low, Minimal and the WebGL2
+backend; every console clean. A new shader gate, `tests/unit/waves-shaders.test.js`, builds
+every material in the wave through the WGSL and GLSL builders at High and Minimal (no warning,
+no NaN, no stringified node, no var read before it is assigned) and pins the coverage cut; the
+Waves suites (283 tests with the URL catalogue's) pass; `validate-all-themes --theme waves` PASS
+(0 lifecycle failures, 0 console errors); the static gates and the build pass. Frame cost at 2538 × 1544, interleaved
+five rounds with the base (each frame's node frame advanced, the queue drained): base High
+2.69 ms, this pass 2.58 ms with MSAA and 2.45 ms without, within the noise of a machine other
+sessions were using (earlier quieter runs read up to 0.45 ms more for this pass on High). **Not
+done:** an integrated GPU or a phone; the real game with a real board beyond the lifecycle
+check; anyone watching the torn edge move.
+
 ## Known limits
 
 - Nobody has watched it move. Every check above is a still, a console or a number; the flow,
