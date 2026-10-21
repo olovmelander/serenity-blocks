@@ -22,6 +22,7 @@ import {
     EVENT_ROWS_PER,
     EVENT_SLOTS,
     MISTFALL,
+    MOTES,
     MIST_DRIFT,
     MIST_GRAIN,
     MIST_SHEETS,
@@ -71,7 +72,7 @@ import {
 } from '../../src/themes/rainbark/rainbark-core.js';
 import { RAINBARK_TETROMINOS } from '../../src/themes/rainbark/rainbark-tetrominos.js';
 import { MIST_BILLOWS, MIST_INTERIOR } from '../../src/themes/rainbark/rainbark-tsl.js';
-import { QUALITY } from '../../src/themes/rainbark/rainbark-quality.js';
+import { QUALITY, QUALITY_NAMES } from '../../src/themes/rainbark/rainbark-quality.js';
 
 /** The familiar shape → hue bands, and the hue maths, of scripts/palette-guideline-check.mjs. */
 const GUIDELINE_BANDS = {
@@ -560,6 +561,23 @@ describe('Rainbark core: the shared tables', () => {
         expect(PALETTE_ROWS.phases).toBe(PALETTE_ROWS.pieceAge + PIECE_AGE.length);
         expect(PALETTE_ROWS.used).toBe(PALETTE_ROWS.phases + Math.ceil(ATLAS_RIBBONS / 4));
         expect(PALETTE_ROWS.used).toBeLessThanOrEqual(PALETTE_ROWS.total);
+    });
+
+    it('stands the motes in the air in front of the eye, more of them as the tier rises', () => {
+        expect(MOTES.near).toBeGreaterThan(3);
+        expect(MOTES.far).toBeGreaterThan(MOTES.near);
+        expect(MOTES.rise[0]).toBeLessThan(0);
+        expect(MOTES.rise[1]).toBeGreaterThan(0);
+        // (Wrapped beyond the lens's edge, so a mote never jumps across the frame.)
+        expect(MOTES.spread).toBeGreaterThan(1);
+        expect(MOTES.px[0]).toBeGreaterThanOrEqual(MOTES.least);
+        // (Lit by the sun's patches, never by the bright air round them: a snowfall.)
+        expect(MOTES.shade).toBeLessThan(0.1);
+        const counts = QUALITY_NAMES.map((name) => QUALITY[name].motes);
+        counts.forEach((n, i) => {
+            expect(n).toBeGreaterThan(0);
+            if (i > 0) expect(n).toBeGreaterThan(counts[i - 1]);
+        });
     });
 });
 
