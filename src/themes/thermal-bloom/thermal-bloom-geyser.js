@@ -77,6 +77,8 @@ import {
     STEAM_LEAN,
     TB_APRON,
     tbAerial,
+    tbCloudShade,
+    SURFACE_SUN,
     tbBounce,
     tbBow,
     tbFxMaterial,
@@ -626,11 +628,13 @@ export function createChalice(u, tier, tex) {
         const lit = clamp(ndl.add(0.1).div(1.1), 0.0, 1.0);
         const skyAmb = mix(u.haze, u.zenith, 0.6).mul(N.y.mul(0.22).add(0.22));
         const shadowT = plumeShadow(u, P);
+        // (a cloud takes the direct sun only, never the sky light)
+        const cloudT = tbCloudShade(u, P);
         // (the cone's sunlit face is the brightest sinter in the frame: lit a little softer, so it
         // stays under the bloom's knee, §3.3)
         const sunK = mix(mix(float(1.25), float(1.45), footW), float(1.0), cone);
         const bounce = tbBounce(u, N).mul(float(1.0).sub(footW));
-        const light = u.sunColor.mul(lit.mul(sunK).mul(shadowT)).add(skyAmb.mul(shadowT.mul(0.4).add(0.6))).add(bounce);
+        const light = u.sunColor.mul(lit.mul(sunK).mul(SURFACE_SUN).mul(shadowT).mul(cloudT)).add(skyAmb.mul(shadowT.mul(0.4).add(0.6))).add(bounce);
         const col = albedo.mul(light)
             .toVar();
         // Wet sinter: a faint sky sheen where the view grazes.

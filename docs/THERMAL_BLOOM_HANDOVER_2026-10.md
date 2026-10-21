@@ -58,7 +58,10 @@ and red brown), and the four-line column's water is brighter than its steam.
 **Phone validator:** pass at Low and Minimal, and its pictures were looked at.
 
 **Open, by priority:**
-1. **Light (a design decision for the owner).** Every critic named the light as the main gap:
+1. **Light: addressed by the light pass (2026-10-21)** without moving the sun: cloud shadows as the
+   lighting design, more direct sun, floor relief and a far ground fog (see the design record, "The
+   light pass"); the critic scored it above the original on light. The note below is kept for the
+   history. Every critic named the light as the main gap:
    - flat, even morning light;
    - no single strong light source;
    - no haze layers.

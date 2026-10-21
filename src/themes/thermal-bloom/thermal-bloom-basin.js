@@ -31,6 +31,7 @@ import {
     abs,
     atan,
     clamp,
+    cos,
     cross,
     dFdx,
     dFdy,
@@ -76,6 +77,8 @@ import {
     tbHash21,
     tbLuma,
     tbPart,
+    tbCloudShade,
+    SURFACE_SUN,
     tbPlumeShade,
     tbSchlick,
     tbSky,
@@ -112,6 +115,22 @@ const PROFILE = Object.freeze([
 const NOISE_TILE = 220;
 /** Water's absorption per metre (red goes first): white sinter under the shelf reads turquoise. */
 const ABSORB = Object.freeze([0.38, 0.065, 0.028]);
+/**
+ * The floor's broad relief: long swells (unit heading x, z; wavelength and height in metres;
+ * phase), at headings and wavelengths that never line up, so their sum reads as low mounds and
+ * swales rather than waves. Their slopes add to about 0.25 at most.
+ */
+export const RELIEF_SWELLS = Object.freeze([
+    [0.83, 0.56, 420, 4.0, 0.3],
+    [-0.42, 0.91, 265, 2.4, 1.7],
+    [0.97, -0.24, 172, 1.4, 4.1],
+    [-0.71, -0.7, 333, 2.8, 2.6],
+    [0.2, 0.98, 121, 0.75, 5.3],
+    [0.6, -0.8, 97, 0.45, 0.9],
+].map(([x, z, ...rest]) => {
+    const n = Math.hypot(x, z);
+    return Object.freeze([x / n, z / n, ...rest]);
+}));
 
 /** T for a radius: the piecewise-linear profile as a sum of clamped ramps (no branches). */
 function profileT(rs) {
@@ -533,9 +552,22 @@ export function createBasin(u, tier, tex) {
         // channels and terracettes are drawn in the albedo: a bump that thin only aliases).
         const lipR = exp(rs.sub(1.02).div(0.03).mul(rs.sub(1.02).div(0.03)).negate());
         const bump = lipR.mul(0.25).toVar();
+        // The floor's own relief: low sinter mounds and swales tens to hundreds of metres across,
+        // metres high, so the side light models the ground instead of lighting a flat map. A sum of
+        // long swells at incommensurate headings and wavelengths, its slope ANALYTIC: a slope read
+        // from a bilinear noise texture steps at every texel edge (camouflage blocks under the
+        // near camera), and one from screen derivatives steps every 2×2 pixels. Never over the
+        // Iris's water or its rim; it is the base normal the lip's bump is laid on.
+        const slope = vec2(0.0, 0.0).toVar();
+        for (const [dx, dz, wavelength, height, phase] of RELIEF_SWELLS) {
+            const k = (Math.PI * 2) / wavelength;
+            const wave = cos(P.x.mul(dx * k).add(P.z.mul(dz * k)).add(phase)).mul(height * k);
+            slope.addAssign(vec2(dx, dz).mul(wave));
+        }
+        slope.mulAssign(smoothstep(1.02, 1.35, rs));
         const dpdx = dFdx(P);
         const dpdy = dFdy(P);
-        const N0 = vec3(0.0, 1.0, 0.0);
+        const N0 = normalize(vec3(slope.x.negate(), 1.0, slope.y.negate()));
         const r1 = cross(dpdy, N0);
         const r2 = cross(N0, dpdx);
         const det = dot(dpdx, r1);
@@ -547,7 +579,8 @@ export function createBasin(u, tier, tex) {
         const lit = clamp(ndl.add(0.1).div(1.1), 0.0, 1.0);
         const cavity = float(1.0).sub(wet.mul(0.3));
         // (the low sun carries the light: the sky's fill is modest, so the shade reads)
-        const skyAmb = mix(u.haze, u.zenith, 0.6).mul(N.y.mul(0.16).add(0.16));
+        // (the shade is lit by the blue sky: cool shade against the warm sun is what reads as light)
+        const skyAmb = mix(u.haze, u.zenith, 0.82).mul(N.y.mul(0.17).add(0.18));
         // Plume shadows: each plume's axis, from its foot to 85% of its height, cast along the sun
         // onto the ground — a long soft streak (about 1.5× the plume's height at this sun) as wide
         // as the plume at that height, Beer over its thickness (a thin thread casts a faint one).
@@ -587,11 +620,15 @@ export function createBasin(u, tier, tex) {
                 .mul(step(0.001, S.w));
             snagT.mulAssign(float(1.0).sub(inS.mul(0.88)));
         }
-        const shadowT = exp(shade.mul(u.steam).mul(-1.55)).mul(snagT);
+        const shadowT = exp(shade.mul(u.steam).mul(-1.55)).mul(snagT).toVar();
+        // A cloud takes the direct sun only: the shade it casts is lit by the whole blue sky.
+        const cloudT = tbCloudShade(u, P).toVar();
         // In a plume's shadow the sky's share dims a little too (the plume hides part of it).
-        const ground = albedo.mul(u.sunColor.mul(lit.mul(1.45).mul(shadowT)).add(skyAmb.mul(shadowT.mul(0.4).add(0.6))))
+        const ground = albedo.mul(u.sunColor.mul(lit.mul(1.45 * SURFACE_SUN).mul(shadowT).mul(cloudT)).add(skyAmb.mul(shadowT.mul(0.4).add(0.6))))
             .mul(cavity)
             .toVar();
+        // In a cloud's shade the mats keep their colour (lit by the blue sky, never greyed).
+        ground.assign(max(mix(vec3(tbLuma(ground)), ground, cloudT.oneMinus().mul(0.3).add(1.0)), vec3(0.0)));
         // A broad, low wet sheen: the channels, the rim, and the season's meltwater, growing
         // toward the far field where the view grazes (a silver-blue sky reflection).
         // The channels' sheen flows outward with the water.
@@ -631,7 +668,10 @@ export function createBasin(u, tier, tex) {
             .add(bloom.pool.mul(0.12))
             .add(bloom.scour.mul(0.35))
             .add(u.wetness.mul(dry.add(onMats.mul(0.3))));
-        const fresnel = tbSchlick(max(dot(N, V), 0.0), float(0.02));
+        // (the wet sheen and the glints see the floor almost flat where the broad relief tilts it: a
+        // mound turned toward the eye must not draw a sheen streak along every runoff channel)
+        const Nsheen = normalize(mix(N, vec3(N.x.mul(0.25), N.y, N.z.mul(0.25)), smoothstep(1.02, 1.35, rs))).toVar();
+        const fresnel = tbSchlick(max(dot(Nsheen, V), 0.0), float(0.02));
         const skySheen = mix(u.haze, u.zenith, 0.55);
         const sheenCol = mix(vec3(tbLuma(skySheen)), skySheen, 0.4);
         ground.addAssign(sheenCol.mul(fresnel.mul(clamp(sheenMask, 0.0, 1.0)).mul(1.1)));
@@ -656,7 +696,7 @@ export function createBasin(u, tier, tex) {
         // The succession front glows as it runs out along the fingers (a level's year turning).
         ground.addAssign(u.frontTint.mul(fringe.mul(0.75)));
         // Sun glints on the wet ground, out of the plumes' shadows.
-        ground.addAssign(tbGlint(u, P, N, V, clamp(sheenMask, 0.0, 1.0).mul(shadowT), 0.55, 1.1));
+        ground.addAssign(tbGlint(u, P, Nsheen, V, clamp(sheenMask, 0.0, 1.0).mul(shadowT).mul(cloudT), 0.55, 1.1));
 
         // ── The Seal on the Iris's side (§1.5, §3.8): a cleared row's new lip sinters along the
         // microterrace nearest its row beside the card (broken, scalloped, frost sparkling as it

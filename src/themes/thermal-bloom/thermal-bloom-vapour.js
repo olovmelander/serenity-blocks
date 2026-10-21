@@ -63,6 +63,7 @@ import {
     VAPOUR_ROWS_PER,
     tbAerial,
     tbBow,
+    tbCloudShade,
     tbGustBand,
     tbHgMix,
     tbLuma,
@@ -231,6 +232,8 @@ export function createVapourMarch({
                 const bodyLight = vec3(0.0).toVar();
                 const bodyThrough = float(1.0).toVar();
                 const reach = rMax.mul(0.35).toVar();
+                // The drifting cumulus shade a column as they shade the floor (read once, mid-body).
+                const cloudLit = tbCloudShade(u, vec3(A.x, A.y.add(H.mul(0.4)), A.z)).toVar();
                 Loop(steps, () => {
                     const p = eye.add(dir.mul(tt)).toVar();
                     const raw = body(p);
@@ -297,7 +300,7 @@ export function createVapourMarch({
                             const ownTint = C.xyz.div(cMax);
                             const tintAmt = clamp(cMax.mul(0.45), 0.0, 0.7).mul(foot)
                                 .mul(float(1.0).sub(isDome));
-                            const sunLit = sunSteam.mul(sunT).mul(phase).mul(mix(float(1.05), float(1.2), isSpray))
+                            const sunLit = sunSteam.mul(sunT.mul(cloudLit)).mul(phase).mul(mix(float(1.05), float(1.2), isSpray))
                                 .mul(mix(vec3(1.0), ownTint, tintAmt));
                             const amb = mix(groundAmb, skyAmb, s.f.mul(0.7).add(0.3));
                             // Drops: whiter, with the bow in them (only while the eruption lights it).

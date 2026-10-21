@@ -254,10 +254,15 @@ export class VoltageStormPost {
             const X = H.mul(this.uExposure).add(veil);
             const T = stormFilmic(X).toVar();
             const L = vsLuma(T);
-            // Cold, slightly lifted shadows (the cloud is never a flat black); the lights keep their hues.
+            // Cold shadows, by scaling only (an added constant turned every black into a blue veil
+            // once encoded); the lights keep their hues.
             const lo = float(1.0).sub(smoothstep(0.0, 0.3, L));
-            T.assign(mix(T, T.mul(vec3(0.93, 0.97, 1.1)).add(vec3(0.0016, 0.002, 0.0042)), lo.mul(0.55)));
-            T.assign(mix(vec3(vsLuma(T)), T, 1.1));
+            T.assign(mix(T, T.mul(vec3(0.9, 0.96, 1.12)), lo.mul(0.6)));
+            // A little more contrast round the storm's mid-grey (darker darks, brighter lights),
+            // hue kept: the luminance is curved and the colour scaled with it.
+            const Lc = max(vsLuma(T), 1e-5);
+            T.mulAssign(clamp(Lc.div(0.16), 0.0, 8.0).pow(0.1));
+            T.assign(mix(vec3(vsLuma(T)), T, 1.18));
             // Vignette, measured from the frame, a touch heavier in the corners.
             const cv = screenUV.sub(0.5).mul(vec2(this.uAspect.div(1.778), 1.0));
             const vig = smoothstep(0.45, 1.1, length(cv.mul(1.5)));
