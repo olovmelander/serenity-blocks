@@ -5,6 +5,9 @@ from-scratch rebuild: it replaces the 2026-10-04 "celestial silk" pass in full (
 materials, compute, post, event language, lifecycle class and tests). This document records
 the shipped design and what was verified. It is a reference, not a backlog.
 
+A second pass (2026-10-21, `feature/astral-weave-atmosphere`) lit the sky: see
+[Second pass: the lit sky](#second-pass-the-lit-sky).
+
 ## The picture
 
 A monumental hoop hangs in a river of nebula with the gameplay card at its heart. The hoop is
@@ -56,9 +59,10 @@ and ring the hoop, but only the primary board owns the weft rows.
 | --- | --- |
 | `astral-weave-composition.js` | Three-free layout: reads the live card, board canvas and HUD rects, solves the hoop in screen space (sides on landscape, top and bottom strips on portrait), maps board rows to chords. |
 | `astral-weave-tsl.js` | Hashes, the three-stage spectrum, the baked half-float fBm texture, screen-space ribbon and sprite helpers, the premultiplied "over" material. |
-| `astral-weave-sky.js` | The nebula river and two hashed star layers (one full-screen draw, five texture fetches) and the instanced jewel stars. |
+| `astral-weave-sky.js` | The nebula river lit by the heart and two embedded lamps, two hashed star layers (one full-screen draw, five or six texture fetches; the gas density goes out in alpha) and the instanced jewel stars. |
 | `astral-weave-loom.js` | Rosette, wefts, warp, hoop, gimbals, pegs, heart and crown flares, the stateless spark pool. |
 | `astral-weave-dust.js` | Silk dust: a compute simulation on WebGPU, the same motes drawn at their homes elsewhere. |
+| `astral-weave-motes.js` | Near motes: out-of-focus dust between the lens and the loom (one instanced draw). |
 | `astral-weave-world.js` | Owns the shared uniforms, the choreography and the camera rig. Shared with the playground effect, so what is iterated there ships. |
 | `astral-weave-director.js` | Renderer-free: stages bus events per player and resolves one lock and one clear per frame. |
 | `astral-weave-post.js` | One scene pass, bloom, and one output pass. |
@@ -88,16 +92,17 @@ Techniques worth knowing before changing it:
 
 ## Tiers
 
-| Tier | Threads | Warp pairs | Sparks | Dust | Bloom |
-| --- | --- | --- | --- | --- | --- |
-| Minimal | 72 | 10 | 128 | none | off |
-| Low | 96 | 14 | 192 | 1,600 at home | off |
-| Medium | 132 | 20 | 320 | 5,000 simulated | on |
-| High | 180 | 26 | 512 | 14,000 simulated | on |
-| Ultra | 240 | 32 | 768 | 30,000 simulated | on |
-| Extreme | 300 | 40 | 1,024 | 60,000 simulated | on |
+| Tier | Threads | Warp pairs | Sparks | Dust | Near motes | Cloud relief | Bloom (and its scatter) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Minimal | 72 | 10 | 128 | none | none | off | off |
+| Low | 96 | 14 | 192 | 1,600 at home | 12 | off | off |
+| Medium | 132 | 20 | 320 | 5,000 simulated | 20 | on | on |
+| High | 180 | 26 | 512 | 14,000 simulated | 28 | on | on |
+| Ultra | 240 | 32 | 768 | 30,000 simulated | 34 | on | on |
+| Extreme | 300 | 40 | 1,024 | 60,000 simulated | 40 | on | on |
 
-Without WebGPU the dust is capped at 5,000 motes drawn at their homes.
+Without WebGPU the dust is capped at 5,000 motes drawn at their homes. Without relief the
+clouds keep the lamps' and the heart's light but lose their lit faces and shadows.
 
 ## Verification
 
@@ -129,14 +134,67 @@ Run `npm run dev:playground`, then:
 
 Add `event=lock|drop|clear|tetris|tspin|perfect|levelUp` with `eventAge=<s>`, `combo=<n>`,
 `level=<n>`, `lines=<n>`. `demo=1` (without `t`) plays a looping script. `parts=` draws only
-the named layers; `falseColor=1` bands the pre-tone-map peak; `forceWebGL=1` uses the WebGL2
-backend. In the game: `?astralWeaveTime=`, `?astralWeaveFixedDt=`, `?astralWeaveParts=`,
-`?astralWeaveFalseColor=1`.
+the named layers (`sky`, `rosette`, `wefts`, `warp`, `hoop`, `flares`, `sparks`, `dust`,
+`motes`); `falseColor=1` bands the pre-tone-map peak; `forceWebGL=1` uses the WebGL2
+backend; `hud=0` hides the playground's panel. In the game: `?astralWeaveTime=`,
+`?astralWeaveFixedDt=`, `?astralWeaveParts=`, `?astralWeaveFalseColor=1`.
+
+The second pass's beats: a lamp flaring under a clear's ring,
+`event=clear&lines=2&combo=1&eventAge=0.57`; the near motes struck by it, `eventAge=0.7`; a
+rose chain, `combo=5`; the amber iris, `event=tetris&eventAge=2.2`; the sky alone,
+`parts=sky`; a session an hour old (the jewels and lamps stay put, the gas has drifted),
+`t=3600`.
+
+## Second pass: the lit sky
+
+Before this pass the nebula was one mid-dim haze over nearly the whole frame (0.1 to 0.6 in
+false colour almost everywhere), lit by nothing, and the sky took no part in the event
+language beyond the clear's ring. The weave was right; the world it hung in was flat.
+
+![The sky alone, before and after](astral-weave-captures/sky-before-after.webp)
+
+| Change | What it does |
+| --- | --- |
+| Space is dark | The river holds the gas; outside it only thin wisps remain, so the corners read as deep space and the river as a shape. |
+| The gas is lit | Three lights: the hoop's heart (its light follows `uCore`, capped so lit gas stays darker than a hot weave) and two hot stars embedded in the free corners the river crosses (portrait frames move them into the strips above and below the card). Each is drawn as a star with spikes in a haze of its own light. |
+| Clouds have form | One more read of the broad octave, a little toward the lights: gas that thins toward the light is its lit face (a bright rim), gas that thickens toward it falls into its own shadow. Medium and up. |
+| The weave lights the sky | The deep field writes its gas density into ALPHA, and the post multiplies the bloom by `1 + 0.85 · gas`: the weave's glow scatters where there is gas and stays a glow in empty space, so cusps, fronts and the iris visibly light the nebula. |
+| Heat colours the light | A chain warms the gas round the loom to rose; the iris and the longest chains carry it on to amber. Hues are scaled to the gas's own brightness (warming never whitens) and take the long way round, teal → rose → amber (teal and gold meet in grey-green). |
+| The ring wakes the lamps | A clear's shock ring flares each lamp as it passes (computed once a frame on the CPU), and the lamp relights its cloud: the clear cascades outward from the loom. |
+| Depth in front of the loom | Near motes: a few dozen out-of-focus discs (flat, a faint rim, its colours split red out and blue in) beside the card column, carried 5–17 times further than the sky by the camera's parallax, and the other way. The clear's ring lights each as it passes. |
+| A long-session fix | The jewels took the sky's slow time drift (×1.4, the wrong way): about half a screen after 30 minutes, gone after an hour. They, the lamps and the near motes now take the camera's parallax alone (`uParallax`); the gas still drifts. |
+
+How the alpha channel is kept: three forces an opaque material's alpha to 1 only when its
+blending is `NormalBlending` (`NodeBuilder.isOpaque()`), and only blends when the material is
+transparent or not normal. The deep field is opaque with `blending = NoBlending`, so it writes
+`vec4(sky, gas)` as is. Every other part is premultiplied "over" with alpha 0 (`One,
+OneMinusSrcAlpha` for alpha too), which leaves the target's alpha untouched. The canvas is
+`alpha: false`, and the pass-through fallback presents `vec4(rgb, 1)`.
+
+Verified: a new shader gate (`tests/unit/astral-weave-shaders.test.js`) builds every material
+in the world through the WGSL and GLSL node builders at High, Low and Minimal and fails on a
+warning, a throw, equal smoothstep edges, NaN/Infinity literals, a stringified node, MaterialX
+noise, a stage over 32 KB (the deep field is about 14 KB) or a deep field that would not keep its
+alpha; it caught a missing import during this pass. Five new world tests cover the lamps'
+placement on landscape and portrait frames, the flare, the parallax that no longer drifts and
+the near motes. Playground captures on WebGPU (RTX 5080 Laptop) at High, Low and Minimal, a
+430×932 portrait, the forced WebGL2 backend (frame-identical to WebGPU) and `t=3600`; in the
+real game, single player with real hard drops plus a bus-injected four-line clear: the theme
+starts on WebGPU at High, seats on the live card and the dust simulation runs. No console errors
+or warnings.
+
+Not verified: frame cost. GPU timestamps A/B against `origin/main` were taken on the RTX 5080
+and on the integrated Radeon 610M while other sessions were loading both GPUs, and they did not
+resolve the difference (the same unchanged build swung 24–45 ms between rounds on the Radeon).
+What was added per pixel of the sky: one texture fetch (Medium and up), the three lights and
+their hue (a uniform branch skips the warming at rest), and each lamp's star only within about
+110 px of it (a coherent branch); plus one alpha read in the output pass and one instanced
+draw of at most 40 quads.
 
 ## Captured previews
 
-![Lock, clear, five-combo and iris](astral-weave-captures/desktop-events.webp)
+![Drop, a clear flaring the lamps, a five-chain and the iris](astral-weave-captures/desktop-events.webp)
 
-![The iris in game](astral-weave-captures/desktop-iris.webp)
+![The iris in game: the gas round the loom goes amber under the gold weave](astral-weave-captures/desktop-iris.webp)
 
-![Portrait: a three-combo and the iris](astral-weave-captures/portrait-events.webp)
+![Portrait: the lamps above and below the card, and the iris](astral-weave-captures/portrait-events.webp)
