@@ -27,7 +27,8 @@ import {
 } from './astral-weave-composition.js';
 import { approach, createNoiseTexture, mulberry32 } from './astral-weave-tsl.js';
 import { compileComputeAsync, isAsyncComputeCapable } from '../../rendering/webgpu-compute-pipeline-async.js';
-import { createSky } from './astral-weave-sky.js';
+import { createSky, lampFlare, lampPositions } from './astral-weave-sky.js';
+import { MOTE_TIERS, createMotes } from './astral-weave-motes.js';
 import { DUST_STATIC_MAX, DUST_TIERS, createDust } from './astral-weave-dust.js';
 import {
     LOOM_TIERS, PLUCK_SLOTS, SHUTTLE_SECONDS, SWEEP_SLOTS, WEFT_ROWS,
@@ -108,6 +109,7 @@ export class AstralWeaveWorld {
         this.rand = mulberry32(90210);
         this._scratch = { x: 0, y: 0 };
         this._heart = { x: 0.5, y: 0.5 };
+        this._lamps = [0, 0, 0, 0];
         this.resetState();
     }
 
@@ -151,6 +153,9 @@ export class AstralWeaveWorld {
             uLoomPx: uniform(670),
             uLoom: uniform(new THREE.Vector3(0, 0, 0.58)),
             uSkyShift: uniform(new THREE.Vector2(0, 0)),
+            uParallax: uniform(new THREE.Vector2(0, 0)),
+            uLamps: uniform(new THREE.Vector4(-0.68, -0.31, 0.71, 0.3)),
+            uLampFlare: uniform(new THREE.Vector2(1, 1)),
             uK: uniform(K_REST),
             uPhase: uniform(phaseForK(K_REST)),
             uSpin: uniform(0),
@@ -196,7 +201,11 @@ export class AstralWeaveWorld {
             this.loomGroup.add(this.dust.mesh);
         }
 
+        const moteCount = MOTE_TIERS[this.quality] ?? 0;
+        this.motes = moteCount > 0 ? createMotes(s, moteCount) : null;
+
         this.group.add(this.sky.field, this.sky.jewels, this.loomGroup);
+        if (this.motes) this.group.add(this.motes.mesh);
         this.loomGroup.add(
             this.flares.mesh,
             this.warp.mesh,
@@ -217,6 +226,7 @@ export class AstralWeaveWorld {
             flares: [this.flares.mesh],
             sparks: [this.sparks.mesh],
             dust: this.dust ? [this.dust.mesh] : [],
+            motes: this.motes ? [this.motes.mesh] : [],
         };
         this.setLayout(null, this.aspect);
         return this;
@@ -251,7 +261,7 @@ export class AstralWeaveWorld {
         return status;
     }
 
-    /** Debug: draw only the named parts (sky, rosette, wefts, warp, hoop, flares, sparks, dust). */
+    /** Debug: draw only the named parts (sky, rosette, wefts, warp, hoop, flares, sparks, dust, motes). */
     showOnlyParts(names) {
         const keep = new Set(names);
         Object.keys(this.parts).forEach((key) => {
@@ -308,6 +318,7 @@ export class AstralWeaveWorld {
         this.loomGroup.scale.setScalar(scale);
         s.uLoom.value.set(cx, cy, radius);
         s.uLoomPx.value = radius * s.uViewport.value.y;
+        s.uLamps.value.fromArray(lampPositions(this.aspect, this._lamps));
         s.uBoard.value.set(this.board.left, this.board.width, this.board.top, this.board.rowStep);
         this._heart.x = 0.5 + cx / this.aspect;
         this._heart.y = 0.5 - cy;
@@ -688,6 +699,9 @@ export class AstralWeaveWorld {
         // toward the loom at the origin: fully off under reduced motion (the drift keeps 25%).
         applyCameraBreath(camera, t, { distance: camera.position.length(), scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
+        // The gas also drifts with time; what is authored in the frame (jewels, lamps, near motes)
+        // takes the camera's parallax alone.
+        this.shared.uParallax.value.set(x * -0.011, y * -0.011);
         this.shared.uSkyShift.value.set(x * -0.011 + t * 0.00035, y * -0.011);
     }
 
@@ -769,6 +783,14 @@ export class AstralWeaveWorld {
         s.uWarpTwist.value = 0.52 + Math.sin(t * 0.061) * 0.14 * calm + this.energy * 0.05;
         if (shockTau >= 0) s.uShock.value.set(0.2 + shockTau * 1.9, this.shockGain * Math.exp(-shockTau * 1.15));
         else s.uShock.value.set(0, 0);
+        // The ring flares each lamp in the gas as it passes (where the lamp is drawn: parallax only).
+        const [l1x, l1y, l2x, l2y] = this._lamps;
+        const { x: px, y: py } = s.uParallax.value;
+        const [front, ringGain] = [s.uShock.value.x, s.uShock.value.y];
+        s.uLampFlare.value.set(
+            lampFlare(l1x - px, l1y - py, this.loom, front, ringGain),
+            lampFlare(l2x - px, l2y - py, this.loom, front, ringGain),
+        );
 
         // ── the loom's own slow life ──
         this.loomGroup.rotation.set(
@@ -806,7 +828,7 @@ export class AstralWeaveWorld {
         this.group.removeFromParent();
         [
             this.sky, this.rosette, this.wefts, this.warp, this.hoop, this.pegs, this.flares, this.sparks, this.dust,
-            ...this.gimbals,
+            this.motes, ...this.gimbals,
         ].forEach((part) => part?.dispose());
         this.noiseTex?.dispose();
         this.timers.length = 0;

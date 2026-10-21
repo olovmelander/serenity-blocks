@@ -9,7 +9,10 @@ import {
     LOOM_TIERS, PLUCK_SLOTS, SHUTTLE_SECONDS, SWEEP_SLOTS, WEFT_ROWS,
 } from '../../src/themes/astral-weave/astral-weave-loom.js';
 import { DUST_STATIC_MAX, DUST_TIERS } from '../../src/themes/astral-weave/astral-weave-dust.js';
-import { SKY_TIERS } from '../../src/themes/astral-weave/astral-weave-sky.js';
+import {
+    LAMPS, SKY_TIERS, lampFlare, lampPositions,
+} from '../../src/themes/astral-weave/astral-weave-sky.js';
+import { MOTE_TIERS, placeMotes } from '../../src/themes/astral-weave/astral-weave-motes.js';
 import { POST_LOOK } from '../../src/themes/astral-weave/astral-weave-post.js';
 import { VIEW_HEIGHT, fallbackLayout } from '../../src/themes/astral-weave/astral-weave-composition.js';
 import { createNoiseTexture } from '../../src/themes/astral-weave/astral-weave-tsl.js';
@@ -526,5 +529,98 @@ describe('astral weave world: robustness', () => {
         world.dispose();
         expect(scene.children).toHaveLength(0);
         spies.forEach((spy) => expect(spy).toHaveBeenCalledOnce());
+    });
+});
+
+describe('astral weave world: the lit sky and the near motes', () => {
+    it('sets the lamps in the free corners on a landscape frame and above and below the card on a portrait one', () => {
+        const wide = lampPositions(16 / 9);
+        const half = (16 / 9) / 2;
+        for (const [x, y] of [[wide[0], wide[1]], [wide[2], wide[3]]]) {
+            expect(Math.abs(x)).toBeGreaterThan(0.6 * half); // clear of the card and the HUD
+            expect(Math.abs(x)).toBeLessThan(half); // inside the frame
+            expect(Math.abs(y)).toBeLessThan(0.5);
+        }
+        // One lower left, one upper right: the corners the river crosses.
+        expect(wide[0]).toBeLessThan(0);
+        expect(wide[1]).toBeLessThan(0);
+        expect(wide[2]).toBeGreaterThan(0);
+        expect(wide[3]).toBeGreaterThan(0);
+        const tall = lampPositions(430 / 932);
+        for (const [x, y] of [[tall[0], tall[1]], [tall[2], tall[3]]]) {
+            expect(Math.abs(x)).toBeLessThan((430 / 932) / 2);
+            expect(Math.abs(y)).toBeGreaterThan(0.38); // the strips above and below the card
+            expect(Math.abs(y)).toBeLessThan(0.5);
+        }
+        expect(LAMPS).toHaveLength(2);
+    });
+
+    it('re-seats the lamps when the aspect changes', () => {
+        const { world } = makeWorld();
+        const { uLamps } = world.shared;
+        expect(uLamps.value.x).toBeCloseTo(lampPositions(16 / 9)[0], 8);
+        world.setViewport(430, 932, 430 / 932);
+        expect(uLamps.value.y).toBeCloseTo(lampPositions(430 / 932)[1], 8);
+        world.dispose();
+    });
+
+    it('flares each lamp only while a clear\'s shock ring passes it', () => {
+        const loom = { cx: 0, cy: 0, radius: 0.5 };
+        expect(lampFlare(0.6, 0, loom, 0, 0)).toBe(1);
+        expect(lampFlare(0.6, 0, loom, 1.2, 0.8)).toBeCloseTo(1 + 0.8 * 0.85, 6); // the front is on it
+        expect(lampFlare(0.6, 0, loom, 2.4, 0.8)).toBeLessThan(1.001); // long past
+        const { world } = makeWorld();
+        const camera = new THREE.PerspectiveCamera();
+        world.clear({ rows: [19, 18], lines: 2 });
+        const flares = [];
+        for (let i = 1; i <= 120; i++) {
+            const sim = { time: 10 + i / 60, delta: 1 / 60 };
+            world.updateCamera(camera, sim);
+            world.update(sim);
+            flares.push(Math.max(world.shared.uLampFlare.value.x, world.shared.uLampFlare.value.y));
+        }
+        expect(Math.max(...flares)).toBeGreaterThan(1.2);
+        expect(flares[flares.length - 1]).toBeLessThan(1.05);
+        world.dispose();
+    });
+
+    it('keeps what is authored in the frame in place however long the session runs', () => {
+        const { world } = makeWorld();
+        const camera = new THREE.PerspectiveCamera();
+        for (const time of [10, 1800, 3600, 7200]) {
+            world.updateCamera(camera, { time, pointerX: 1, pointerY: -1 });
+            // The gas drifts with time; the jewels, lamps and near motes take the camera's parallax
+            // alone, which stays a few thousandths of the view.
+            expect(Math.abs(world.shared.uParallax.value.x)).toBeLessThan(0.004);
+            expect(Math.abs(world.shared.uParallax.value.y)).toBeLessThan(0.004);
+        }
+        expect(world.shared.uSkyShift.value.x).toBeGreaterThan(2);
+        world.dispose();
+    });
+
+    it('places the near motes beside the card column, in the frame, and scales them with the tier', () => {
+        for (let i = 1; i < TIERS.length; i++) {
+            expect(MOTE_TIERS[TIERS[i]]).toBeGreaterThanOrEqual(MOTE_TIERS[TIERS[i - 1]]);
+        }
+        expect(MOTE_TIERS.Minimal).toBe(0);
+        const place = placeMotes(64);
+        for (let i = 0; i < 64; i++) {
+            const [x, y, depth] = place.subarray(i * 4, i * 4 + 3);
+            expect(Math.abs(x)).toBeGreaterThan(0.3);
+            expect(Math.abs(x)).toBeLessThanOrEqual(1.05);
+            expect(Math.abs(y)).toBeLessThanOrEqual(1.05);
+            expect(depth).toBeGreaterThanOrEqual(0);
+            expect(depth).toBeLessThanOrEqual(1);
+        }
+        const minimal = makeWorld('Minimal');
+        expect(minimal.world.motes).toBeNull();
+        expect(minimal.world.parts.motes).toEqual([]);
+        minimal.world.dispose();
+        const high = makeWorld('High');
+        expect(high.world.motes.count).toBe(MOTE_TIERS.High);
+        high.world.showOnlyParts(['sky', 'motes']);
+        expect(high.world.motes.mesh.visible).toBe(true);
+        expect(high.world.rosette.mesh.visible).toBe(false);
+        high.world.dispose();
     });
 });

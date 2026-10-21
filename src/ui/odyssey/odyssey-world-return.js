@@ -64,6 +64,9 @@ export async function returnToOdysseyWorld(mode, options = {}) {
         arrivalAnchor: {
             x: 0.5, y: 0.5, radius: 0.14, onScreen: true,
         },
+        // The world's camera settles on the finished orb as its gate opens: keep the gate on it.
+        trackArrivalAnchor: Number.isFinite(completedLevelId)
+            ? () => mode._resolveJourneyReturnArrivalAnchor(completedLevelId) : null,
         palette,
         timings,
         qualityPreset,

@@ -1,50 +1,37 @@
+/**
+ * Into an orb: light gathers onto the chosen orb, the orb opens into a gate that swells over the
+ * screen while the world darkens round it, the passage plays while the next board prepares, and
+ * on arrival a second gate opens from the light ahead onto the board. The picture is drawn by
+ * portal-gate.js; this class owns the timing, the readiness hold and the callbacks.
+ */
 import { TRANSITION_LAYERS } from './transition-layer-constants.js';
-import { advancePortalTravel, createPortalTunnel, drawPortalTunnel } from './portal-tunnel.js';
+import {
+    GATE_MAX_FRAME_STEP_MS, advancePortalTravel, createPortalGate, drawPortalGate, portalEase, portalReach,
+} from './portal-gate.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 const DEFAULT_TIMINGS = Object.freeze({
-    ignitionDelayMs: 120,
-    blackoutStartMs: 420,
-    blackoutFullMs: 760,
-    revealDurationMs: 420,
+    ignitionDelayMs: 60,
+    blackoutStartMs: 340,
+    blackoutFullMs: 900,
+    revealDurationMs: 640,
     particleDecayMs: 520,
     maxBlackoutHoldMs: 5200,
-});
-
-const QUALITY_PARTICLE_COUNTS = Object.freeze({
-    Minimal: 34,
-    Low: 48,
-    Medium: 68,
-    High: 92,
-    Ultra: 128,
-    Extreme: 168,
 });
 
 const BLACKOUT_READY_THRESHOLD = 0.96;
 const ABORT_FADE_MS = 240;
 const WHEEL_LOCK_ATTRIBUTE = 'data-odyssey-wheel-lock';
-const HOLD_STAGE_THRESHOLDS_MS = Object.freeze({
-    seamless: 900,
-    sustained: 1800,
-    arrivalVoid: 3000,
-});
+/** The share of the opening by which the gate covers the whole frame (readiness waits for it). */
+export const ENTRY_GATE_COVERED_AT = 0.86;
 
-function clamp01(value) {
-    return Math.max(0, Math.min(1, value));
-}
-
-function easeOutCubic(t) {
-    return 1 - ((1 - t) ** 3);
-}
-
-function easeInOutCubic(t) {
-    return t < 0.5
-        ? 4 * t * t * t
-        : 1 - (((-2 * t) + 2) ** 3) / 2;
-}
-
-function randomBetween(min, max) {
-    return min + (Math.random() * (max - min));
-}
+const { clamp01 } = portalEase;
+const easeOutCubic = portalEase.outCubic;
+const easeInOutCubic = portalEase.inOutCubic;
+const smooth = (lo, hi, value) => {
+    const t = clamp01((value - lo) / (hi - lo));
+    return t * t * (3 - 2 * t);
+};
 
 function toCssColor(value, fallback = '#ffffff') {
     if (!value) return fallback;
@@ -160,15 +147,21 @@ export class JourneyEntryTransition {
         }
         const callbacks = config.callbacks || {};
         const qualityPreset = config.qualityPreset || 'High';
-        const particleCount = QUALITY_PARTICLE_COUNTS[qualityPreset] ?? QUALITY_PARTICLE_COUNTS.High;
 
         return {
             anchor,
+            // The world's camera moves toward the orb as the gate gathers and opens: where the
+            // caller can say where the orb is now, the gate stays on it. An orb that was off
+            // screen at the click has no place to gather: its gate stays centred.
+            trackAnchor: anchor.onScreen && typeof config.trackAnchor === 'function' ? config.trackAnchor : null,
             palette,
             timings,
             reducedMotion,
             callbacks,
             startedAt: this.performance.now(),
+            // The gate's own clock (ms): starts at the first frame drawn, steps at most
+            // GATE_MAX_FRAME_STEP_MS a frame (reduced motion keeps real time).
+            clock: { t: 0, last: null },
             revealStartedAt: null,
             readyTriggered: false,
             readySettled: false,
@@ -187,33 +180,11 @@ export class JourneyEntryTransition {
             resolve: null,
             dom: null,
             canvasSize: { width: 1, height: 1, dpr: 1 },
-            particles: reducedMotion ? [] : this.createParticles(particleCount, anchor, palette),
-            tunnel: reducedMotion ? null : createPortalTunnel({ qualityPreset, palette }),
+            gate: reducedMotion ? null : createPortalGate({ qualityPreset, palette, documentRef: this.document }),
+            // What of the arrival's light the player allows (Reduce flashing).
+            flash: flashScale(),
             travelState: { travel: 0, lastTravelAt: null },
         };
-    }
-
-    createParticles(count, _anchor, palette) {
-        const particles = [];
-        const colors = [palette.primary, palette.accent, palette.highlight];
-
-        for (let index = 0; index < count; index += 1) {
-            const angle = randomBetween(0, Math.PI * 2);
-            const speed = randomBetween(120, 520);
-            const arc = randomBetween(-0.6, 0.6);
-            particles.push({
-                angle,
-                speed,
-                arc,
-                drift: randomBetween(-80, 80),
-                size: randomBetween(1.4, 5.6),
-                lifeMs: randomBetween(360, 820),
-                delayMs: randomBetween(0, 140),
-                color: colors[index % colors.length],
-            });
-        }
-
-        return particles;
     }
 
     mount(run) {
@@ -229,8 +200,8 @@ export class JourneyEntryTransition {
             opacity: 1;
         `;
 
-        // The calm path allocates no particle canvas and has no glow, aperture,
-        // vignette or white frame: only an opaque dark layer changes opacity.
+        // The calm path allocates no canvas and has no gate, glow or passage: only an opaque dark
+        // layer changes opacity.
         if (run.reducedMotion) {
             const veil = this.document.createElement('div');
             veil.style.cssText = 'position: absolute; inset: 0; background: #05070d; opacity: 0;';
@@ -241,7 +212,9 @@ export class JourneyEntryTransition {
             return;
         }
 
+        // One canvas draws the whole gate: the darkening world round it, the passage, the rims.
         const canvas = this.document.createElement('canvas');
+        canvas.className = 'journey-portal-gate';
         canvas.style.cssText = `
             position: absolute;
             inset: 0;
@@ -249,93 +222,17 @@ export class JourneyEntryTransition {
             height: 100%;
             pointer-events: none;
         `;
-
-        const flare = this.document.createElement('div');
-        flare.style.cssText = `
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            opacity: 0;
-            mix-blend-mode: screen;
-            background:
-                radial-gradient(circle at ${run.anchor.x * 100}% ${run.anchor.y * 100}%,
-                    ${run.palette.highlight} 0%,
-                    ${run.palette.accent} 10%,
-                    ${run.palette.primary} 22%,
-                    rgba(0, 0, 0, 0) 48%);
-        `;
-
-        const veil = this.document.createElement('div');
-        veil.style.cssText = `
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            background: #000000;
-            opacity: 0;
-        `;
-
-        const holdLayer = this.document.createElement('div');
-        holdLayer.style.cssText = `
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            opacity: 0;
-            background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0) 42%);
-            mix-blend-mode: screen;
-        `;
-
-        const vignette = this.document.createElement('div');
-        vignette.style.cssText = `
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            opacity: 0.5;
-            background:
-                radial-gradient(circle at 50% 40%, rgba(255, 255, 255, 0.03), rgba(0, 0, 0, 0) 32%),
-                radial-gradient(circle at 50% 50%, rgba(0, 0, 0, 0.04) 0%, rgba(0, 0, 0, 0.76) 100%);
-        `;
-
-        // The tunnel rides above the veil: the wait for the next board reads as travel, not black.
-        const tunnelCanvas = this.document.createElement('canvas');
-        tunnelCanvas.className = 'journey-portal-tunnel';
-        tunnelCanvas.style.cssText = `
-            position: absolute;
-            inset: 0;
-            width: 100%;
-            height: 100%;
-            pointer-events: none;
-        `;
-
         root.appendChild(canvas);
-        root.appendChild(flare);
-        root.appendChild(veil);
-        root.appendChild(holdLayer);
-        root.appendChild(vignette);
-        root.appendChild(tunnelCanvas);
         this.document.body.appendChild(root);
 
         let ctx = null;
-        let tunnelCtx = null;
         try {
             ctx = canvas.getContext('2d');
-            tunnelCtx = tunnelCanvas.getContext('2d');
         } catch {
-            ctx = ctx || null;
-            tunnelCtx = null;
+            ctx = null;
         }
 
-        run.dom = {
-            root,
-            canvas,
-            ctx,
-            flare,
-            veil,
-            holdLayer,
-            vignette,
-            tunnelCanvas,
-            tunnelCtx,
-        };
-
+        run.dom = { root, canvas, ctx };
         this.resizeCanvas(run);
         this.window?.addEventListener?.('resize', this.handleResize);
     }
@@ -350,12 +247,13 @@ export class JourneyEntryTransition {
         const width = this.window?.innerWidth || 1;
         const height = this.window?.innerHeight || 1;
         const dpr = this.window?.devicePixelRatio || 1;
-        [run.dom.canvas, run.dom.tunnelCanvas].filter(Boolean).forEach((canvas) => {
+        const { canvas } = run.dom;
+        if (canvas) {
             canvas.width = Math.max(1, Math.floor(width * dpr));
             canvas.height = Math.max(1, Math.floor(height * dpr));
             canvas.style.width = `${width}px`;
             canvas.style.height = `${height}px`;
-        });
+        }
 
         run.canvasSize = { width, height, dpr };
     }
@@ -367,8 +265,8 @@ export class JourneyEntryTransition {
 
         const frame = this.frameAt(run);
         this.updateReadiness(run, frame.blackoutOpacity, frame.now);
-        this.updateReveal(run, frame.now);
-        this.updatePlayable(run, frame.now);
+        this.updateReveal(run, frame.clock);
+        this.updatePlayable(run, frame.clock);
         this.render(run, frame);
 
         if (!run.finishing) {
@@ -379,21 +277,26 @@ export class JourneyEntryTransition {
     /** @private this moment of the run, as tick and the abort hold draw it */
     frameAt(run) {
         const now = this.performance.now();
-        const elapsed = now - run.startedAt;
+        const { clock } = run;
+        if (clock.last === null) clock.last = run.reducedMotion ? run.startedAt : now;
+        const step = Math.max(0, now - clock.last);
+        clock.t += run.reducedMotion ? step : Math.min(GATE_MAX_FRAME_STEP_MS, step);
+        clock.last = now;
+        const elapsed = clock.t;
         const sinceIgnition = Math.max(0, elapsed - run.timings.ignitionDelayMs);
         const baseBlackoutProgress = clamp01(
             (elapsed - run.timings.blackoutStartMs)
             / Math.max(1, run.timings.blackoutFullMs - run.timings.blackoutStartMs),
         );
-        const blackoutOpacity = this.computeBlackoutOpacity(run, baseBlackoutProgress, now);
+        const blackoutOpacity = this.computeBlackoutOpacity(run, baseBlackoutProgress, elapsed);
         return {
-            now, elapsed, sinceIgnition, blackoutOpacity,
+            now, clock: elapsed, elapsed, sinceIgnition, blackoutOpacity, opening: baseBlackoutProgress,
         };
     }
 
     /**
-     * An abort keeps the tunnel moving while the mode unwinds: its onAbort can wait seconds on a
-     * preparation still in flight, and a frozen tunnel then a hard cut read as a crash
+     * An abort keeps the passage moving while the mode unwinds: its onAbort can wait seconds on a
+     * preparation still in flight, and a frozen passage then a hard cut read as a crash
      * (audit 2026-10-18). Drawing only — no readiness, reveal or playable steps.
      * @private
      */
@@ -420,12 +323,18 @@ export class JourneyEntryTransition {
         this.window.setTimeout(() => this.teardown(run), ABORT_FADE_MS);
     }
 
+    /**
+     * How covered the frame is (0..1): the readiness signal. It follows the gate, which covers
+     * the whole frame by ENTRY_GATE_COVERED_AT of its opening, so preparation never starts with
+     * the world still showing round the gate.
+     */
     computeBlackoutOpacity(run, baseBlackoutProgress, now) {
         if (!run.revealTriggered) {
             if (run.readyTriggered) {
                 return 1;
             }
-            return easeInOutCubic(baseBlackoutProgress);
+            if (run.reducedMotion) return easeInOutCubic(baseBlackoutProgress);
+            return clamp01(baseBlackoutProgress / ENTRY_GATE_COVERED_AT);
         }
 
         const revealElapsed = now - run.revealStartedAt;
@@ -584,7 +493,7 @@ export class JourneyEntryTransition {
             run.dom.veil.style.opacity = String(clamp01(frame.blackoutOpacity));
             if (
                 run.revealTriggered
-                && frame.now - run.revealStartedAt >= run.timings.revealDurationMs
+                && frame.clock - run.revealStartedAt >= run.timings.revealDurationMs
                 && run.revealSettled
                 && !run.revealFailed
                 && run.playableSettled
@@ -595,57 +504,10 @@ export class JourneyEntryTransition {
             return;
         }
 
-        const {
-            ctx,
-            flare,
-            veil,
-            holdLayer,
-            vignette,
-        } = run.dom;
-        const { width, height, dpr } = run.canvasSize;
-        const revealElapsed = run.revealTriggered ? frame.now - run.revealStartedAt : 0;
         const revealProgress = run.revealTriggered
-            ? clamp01(revealElapsed / Math.max(1, run.timings.revealDurationMs))
+            ? clamp01((frame.clock - run.revealStartedAt) / Math.max(1, run.timings.revealDurationMs))
             : 0;
-        const particleFadeProgress = run.revealTriggered
-            ? clamp01(revealElapsed / Math.max(1, run.timings.particleDecayMs))
-            : 0;
-        const ignitionProgress = clamp01(frame.sinceIgnition / 620);
-        const holdElapsed = run.readyTriggered ? frame.now - (run.blackoutTriggeredAt ?? frame.now) : 0;
-        const waitingForReadiness = run.readyTriggered && !run.readySettled;
-        const holdStage = waitingForReadiness ? this.getHoldStage(frame.elapsed) : 0;
-        const holdBreath = waitingForReadiness
-            ? (0.07 + (((Math.sin(holdElapsed * 0.0035) + 1) * 0.5) * 0.08))
-            : 0;
-        const holdPulse = waitingForReadiness
-            ? (Math.sin(holdElapsed * 0.008) * (0.04 + (holdStage * 0.018)))
-            : 0;
-        const flareOpacity = (1 - revealProgress) * clamp01(
-            0.12
-            + (easeOutCubic(ignitionProgress) * 0.88)
-            + holdBreath
-            + (holdStage * 0.03),
-        );
-        const holdLayerOpacity = waitingForReadiness
-            ? clamp01(0.1 + (holdStage * 0.12) + (((Math.sin(holdElapsed * 0.0024) + 1) * 0.5) * 0.08))
-            : 0;
-
-        if (ctx) {
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.clearRect(0, 0, width * dpr, height * dpr);
-            ctx.scale(dpr, dpr);
-            this.drawParticles(run, frame, particleFadeProgress);
-            this.drawHoldAtmosphere(run, frame, holdStage);
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-        }
-
-        this.drawTunnel(run, frame, { revealProgress, waitingForReadiness, holdElapsed });
-
-        flare.style.opacity = String(Math.max(0, flareOpacity));
-        veil.style.opacity = String(clamp01(frame.blackoutOpacity));
-        holdLayer.style.opacity = String(holdLayerOpacity);
-        holdLayer.style.background = this.buildHoldBackground(run, holdStage, holdElapsed);
-        vignette.style.opacity = String(clamp01(0.42 + (frame.blackoutOpacity * 0.36) + holdPulse));
+        this.drawGate(run, frame, revealProgress);
 
         if (
             run.revealTriggered
@@ -660,161 +522,107 @@ export class JourneyEntryTransition {
     }
 
     /**
-     * Dive into the orb: the tunnel gathers at the orb as the veil closes, settles to the
-     * centre and flows while the next board prepares, then rushes and blooms into it.
+     * The gate as it stands this frame: gathering on the orb, opening over the screen, the
+     * passage while the board prepares, a second gate opening onto the board on arrival.
+     * @returns {object} the frame for drawPortalGate, and `speed` for the travel
      */
-    drawTunnel(run, frame, { revealProgress, waitingForReadiness, holdElapsed }) {
-        const { tunnelCtx } = run.dom;
-        if (!tunnelCtx || !run.tunnel) return;
-        const { width, height, dpr } = run.canvasSize;
-        const closing = easeInOutCubic(clamp01(frame.blackoutOpacity));
-        let intensity;
-        let speed;
-        let bloom = 0;
-        if (run.revealTriggered) {
-            intensity = 1 - easeOutCubic(revealProgress);
-            speed = 1 + revealProgress * 3;
-            bloom = Math.sin(Math.PI * Math.min(1, revealProgress * 1.15));
-        } else {
-            const breathing = waitingForReadiness ? 0.88 + (Math.sin(holdElapsed * 0.0021) * 0.12) : 1;
-            intensity = closing * breathing;
-            speed = 1.6 - (0.6 * closing);
+    describeGate(run, frame, revealProgress) {
+        const { width, height } = run.canvasSize;
+        if (run.trackAnchor && !run.readyTriggered) {
+            // Follow the orb while the gate is still on it (a hidden or failed read keeps the last).
+            try {
+                const live = run.trackAnchor();
+                if (live && live.onScreen !== false && Number.isFinite(live.x) && Number.isFinite(live.y)) {
+                    run.anchor = normalizeAnchor(live);
+                }
+            } catch {
+                run.trackAnchor = null;
+            }
         }
-        const travel = advancePortalTravel(run.travelState, frame.now, speed);
-        const settle = run.revealTriggered ? 1 : closing;
-        const anchorX = run.anchor.x * width;
-        const anchorY = run.anchor.y * height;
-        tunnelCtx.setTransform(1, 0, 0, 1, 0, 0);
-        tunnelCtx.clearRect(0, 0, width * dpr, height * dpr);
-        tunnelCtx.scale(dpr, dpr);
-        drawPortalTunnel(tunnelCtx, run.tunnel, {
+        const { anchor, timings } = run;
+        const middle = { x: width / 2, y: height / 2 };
+        const orb = {
+            x: anchor.x * width,
+            y: anchor.y * height,
+            r: anchor.radius * Math.min(width, height),
+        };
+        // The light gathering on a small, far orb still needs room to be seen.
+        const gatherRadius = Math.max(orb.r, Math.min(width, height) * 0.05);
+        const time = frame.clock / 1000;
+        if (run.revealTriggered) {
+            // Arrival: the light ahead swells, then the gate onto the board opens from it.
+            const q = revealProgress;
+            const open = easeOutCubic(clamp01((q - 0.12) / 0.88));
+            return {
+                speed: 1 + q * 3.2,
+                time,
+                center: middle,
+                region: {
+                    kind: 'hole', x: middle.x, y: middle.y, r: portalReach(width, height, middle.x, middle.y) * 1.06 * open,
+                },
+                rim: 1 - q * q,
+                // The light swells as the gate starts to open and is gone by the time it is a
+                // third open, so the board is never seen through a haze.
+                bloom: Math.sin(Math.PI * Math.min(1, q * 2.6)) * (1 - q),
+                rush: q * 1.8,
+            };
+        }
+        if (run.readyTriggered) {
+            // The passage, while the board prepares: the light ahead breathes, the travel never stops.
+            return {
+                speed: 1, time, center: middle, region: { kind: 'all' },
+            };
+        }
+        // The orb opens into a gate that swells over the screen and glides to its middle. Both are
+        // complete at the moment readiness fires, so preparation never starts with world showing.
+        const { opening } = frame;
+        const covered = clamp01(opening / (ENTRY_GATE_COVERED_AT * BLACKOUT_READY_THRESHOLD));
+        const grow = portalEase.inCubic(covered);
+        const glide = easeInOutCubic(covered);
+        const center = {
+            x: orb.x + (middle.x - orb.x) * glide,
+            y: orb.y + (middle.y - orb.y) * glide,
+        };
+        const reach = portalReach(width, height, center.x, center.y);
+        const radius = orb.r * 0.9 * smooth(0, 0.1, opening) + (reach * 1.04 - orb.r * 0.9) * grow;
+        const gatherSpan = Math.max(1, timings.blackoutStartMs - timings.ignitionDelayMs + 140);
+        const gatherT = clamp01((frame.elapsed - timings.ignitionDelayMs) / gatherSpan);
+        return {
+            speed: 1.25 + opening * 0.4,
+            time,
+            center,
+            region: {
+                kind: 'disc', x: center.x, y: center.y, r: radius,
+            },
+            dim: smooth(0, 1, opening) * 0.9,
+            rim: 1,
+            rush: opening * 0.5,
+            gather: anchor.onScreen && gatherT > 0
+                ? {
+                    x: orb.x, y: orb.y, r: gatherRadius, t: gatherT, fade: 1 - smooth(0.18, 0.55, opening),
+                }
+                : null,
+        };
+    }
+
+    /** @private */
+    drawGate(run, frame, revealProgress) {
+        const { ctx } = run.dom;
+        if (!ctx || !run.gate) return;
+        const { width, height, dpr } = run.canvasSize;
+        const gate = this.describeGate(run, frame, revealProgress);
+        const travel = advancePortalTravel(run.travelState, frame.clock, gate.speed);
+        ctx.setTransform?.(1, 0, 0, 1, 0, 0);
+        ctx.clearRect?.(0, 0, width * dpr, height * dpr);
+        drawPortalGate(ctx, run.gate, {
+            ...gate,
             width,
             height,
-            cx: anchorX + (((width / 2) - anchorX) * settle),
-            cy: anchorY + (((height / 2) - anchorY) * settle),
+            dpr,
             travel,
-            intensity,
-            bloom,
             direction: 1,
+            flash: run.flash,
         });
-        tunnelCtx.setTransform(1, 0, 0, 1, 0, 0);
-    }
-
-    drawParticles(run, frame, particleFadeProgress) {
-        const { ctx } = run.dom;
-        if (!ctx) return;
-
-        const { width, height } = run.canvasSize;
-        const originX = run.anchor.x * width;
-        const originY = run.anchor.y * height;
-        const ignitionTime = run.startedAt + run.timings.ignitionDelayMs;
-        const globalFade = 1 - easeOutCubic(particleFadeProgress);
-
-        for (const particle of run.particles) {
-            const ageMs = frame.now - ignitionTime - particle.delayMs;
-            if (ageMs <= 0) {
-                continue;
-            }
-
-            const localProgress = clamp01(ageMs / particle.lifeMs);
-            const fade = (1 - easeOutCubic(localProgress)) * globalFade;
-            if (fade <= 0.002) {
-                continue;
-            }
-
-            const distance = particle.speed * (ageMs / 1000);
-            const drift = particle.drift * ((ageMs / 1000) ** 1.35);
-            const spread = 1 + (run.anchor.radius * 6);
-            const x = originX
-                + (Math.cos(particle.angle) * distance * spread)
-                + (Math.sin(particle.arc * Math.PI) * drift);
-            const y = originY
-                + (Math.sin(particle.angle) * distance * spread)
-                - ((localProgress ** 1.2) * 180)
-                + (particle.arc * 60);
-            const size = particle.size * (0.5 + ((1 - localProgress) * 0.9));
-
-            ctx.globalAlpha = fade;
-            ctx.fillStyle = particle.color;
-            ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        ctx.globalAlpha = 1;
-    }
-
-    drawHoldAtmosphere(run, frame, holdStage) {
-        const { ctx } = run.dom;
-        if (!ctx || holdStage <= 0 || run.revealTriggered) return;
-
-        const { width, height } = run.canvasSize;
-        const driftTime = frame.now * 0.00035;
-        const anchorX = run.anchor.x * width;
-        const anchorY = run.anchor.y * height;
-        const moteCount = 8 + (holdStage * 4);
-
-        for (let index = 0; index < moteCount; index += 1) {
-            const phase = driftTime + (index * 0.73);
-            const orbit = 120 + (holdStage * 48) + ((index % 5) * 22);
-            const angle = phase + (index * 1.17);
-            const x = anchorX + (Math.cos(angle) * orbit) + Math.sin(phase * 0.7) * 18;
-            const y = anchorY + (Math.sin(angle * 0.82) * orbit * 0.48) + Math.cos(phase * 0.9) * 24;
-            const size = 1.8 + ((index % 4) * 0.6) + (holdStage * 0.28);
-            const alpha = 0.025 + (((Math.sin(phase * 1.9) + 1) * 0.5) * 0.035) + (holdStage * 0.012);
-            ctx.globalAlpha = alpha;
-            ctx.fillStyle = index % 3 === 0 ? run.palette.highlight : run.palette.accent;
-            ctx.beginPath();
-            ctx.arc(x, y, size, 0, Math.PI * 2);
-            ctx.fill();
-        }
-
-        ctx.globalAlpha = 1;
-    }
-
-    getHoldStage(totalElapsedMs) {
-        if (totalElapsedMs < HOLD_STAGE_THRESHOLDS_MS.seamless) {
-            return 0;
-        }
-        if (totalElapsedMs < HOLD_STAGE_THRESHOLDS_MS.sustained) {
-            return 1;
-        }
-        if (totalElapsedMs < HOLD_STAGE_THRESHOLDS_MS.arrivalVoid) {
-            return 2;
-        }
-        return 3;
-    }
-
-    buildHoldBackground(run, holdStage, holdElapsedMs) {
-        const anchorX = Math.round(run.anchor.x * 100);
-        const anchorY = Math.round(run.anchor.y * 100);
-        const shimmer = ((Math.sin(holdElapsedMs * 0.0022) + 1) * 0.5);
-
-        if (holdStage >= 3) {
-            return `
-                radial-gradient(circle at ${anchorX}% ${anchorY}%,
-                    rgba(255, 255, 255, ${0.04 + (shimmer * 0.04)}) 0%,
-                    rgba(255, 255, 255, 0.012) 8%,
-                    rgba(8, 12, 24, 0.12) 24%,
-                    rgba(4, 8, 18, 0.54) 52%,
-                    rgba(0, 0, 0, 0.88) 100%),
-                radial-gradient(circle at 50% 52%,
-                    ${run.palette.shadow} 0%,
-                    rgba(0, 0, 0, 0.96) 74%)
-            `;
-        }
-
-        const sweepAlpha = holdStage >= 2 ? 0.09 + (shimmer * 0.06) : 0.04 + (shimmer * 0.03);
-        return `
-            radial-gradient(circle at ${anchorX}% ${anchorY}%,
-                rgba(255, 255, 255, ${0.03 + (shimmer * 0.03)}) 0%,
-                rgba(255, 255, 255, 0.06) 14%,
-                rgba(0, 0, 0, 0) 44%),
-            linear-gradient(${120 + (shimmer * 20)}deg,
-                rgba(255, 255, 255, 0) 18%,
-                rgba(255, 255, 255, ${sweepAlpha}) 46%,
-                rgba(255, 255, 255, 0) 74%)
-        `;
     }
 
     finish(run, result) {
@@ -875,13 +683,13 @@ export class JourneyEntryTransition {
         if (root?.parentNode) {
             root.parentNode.removeChild(root);
         }
-        // Release the full-screen veil and tunnel backings now rather than at a later GC,
-        // which could otherwise land inside the next portal's preparation hold.
-        [run?.dom?.canvas, run?.dom?.tunnelCanvas].forEach((canvas) => {
-            if (!canvas) return;
+        // Release the full-screen backing now rather than at a later GC, which could otherwise
+        // land inside the next portal's preparation hold.
+        const canvas = run?.dom?.canvas;
+        if (canvas) {
             canvas.width = 0;
             canvas.height = 0;
-        });
+        }
     }
 }
 
