@@ -108,11 +108,22 @@ export const GRAIN_BANDS = Object.freeze([
     }),
 ]);
 
+/** The close stand's one band (grainfields-plan CLOSE_STAND: the clearing, for the portrait lens). */
+export const CLOSE_BAND = Object.freeze({
+    field: 'close', stalks: 6, stemRows: 4, earRows: 4, from: 0, to: Infinity,
+});
+
 /**
  * An opaque stem's ribbon: the share of its width the coverage kept (|w| below which it held more
  * than half), and how much thinner (pixels, from each side) its soft edge left it.
  */
 export const STEM_CUT = Object.freeze({ keep: 0.925, trim: 0.2 });
+
+/**
+ * The blaze's soft cap on a plant's brightest channel (linear, before exposure): untouched up to
+ * `knee`, then rolling toward `top` without ever reaching it, so a brighter ear stays brighter.
+ */
+export const BLAZE_CAP = Object.freeze({ knee: 1.5, top: 3.2 });
 
 /**
  * A clump's template: `stalks` stalks, each a stem of `stemRows` rows and an ear of `earRows`;
@@ -274,9 +285,11 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         tone.assign(mix(tone, crop.mul(vec3(1.06, 1.08, 1.5)), smoothstep(0.55, 0.75, ripe)));
         tone.assign(mix(tone, crop.mul(vec3(0.74, 1.0, 0.62)), smoothstep(0.62, 0.82, patch.g).mul(0.6)));
         tone.mulAssign(mix(float(0.72), float(1.12), h4));
-        // Laid over by a gust, the stand shows its paler sides.
+        // Laid over by a gust, the stand shows its paler sides; between the gusts, with the wind up,
+        // it stands upright in its own shade: the waves running over the field read as light and dark.
         const laid = clamp(gust.add(trail.lay).add(pulse.lay).add(tramp.lay.mul(0.6)), 0.0, 1.2);
-        vTone.assign(vec4(tone, laid.mul(0.5).add(1.0)));
+        const lull = u.windStrength.min(1.0).mul(float(1.0).sub(smoothstep(0.0, 0.5, laid))).mul(0.13);
+        vTone.assign(vec4(tone, laid.mul(0.58).add(1.0).sub(lull)));
         const shade = mix(float(0.16), float(1.0), inStand);
         // A clear's trail glints with its rows' colours; a gust's sheen: the laid stand's backs
         // catch the sky.
@@ -376,10 +389,13 @@ function grainMaterial(u, t, { coverage = false, stems = false } = {}) {
         // The events (worked out per vertex) and the four-line front running through as gold.
         col.addAssign(vLit.xyz);
         col.addAssign(warm.mul(u.sun).mul(vFlare));
-        // The blaze stays gold: a hue-preserving cap below the tone map's path to white, so a backlit
-        // awn never turns into a white speck.
+        // The blaze stays gold: a hue-preserving soft cap below the tone map's path to white, so a
+        // backlit awn never turns into a white speck. Soft, not a clamp: in the sun most of the
+        // stand stood over a hard cap, and every ear at the same value was one flat gold.
         const peak = max(max(col.x, col.y), max(col.z, 1e-4));
-        col.mulAssign(min(float(1.0), float(2.1).div(peak)));
+        const over = max(peak.sub(BLAZE_CAP.knee), 0.0);
+        const capped = min(peak, float(BLAZE_CAP.knee).add(over.div(over.div(BLAZE_CAP.top - BLAZE_CAP.knee).add(1.0))));
+        col.mulAssign(capped.div(peak));
         return col.mul(vAir.w).add(vAir.xyz);
     };
     if (stems) {
@@ -408,12 +424,12 @@ export function createGrain(u, t, sites, { coverage = false } = {}) {
     const parts = [];
     const counts = { near: 0, far: 0 };
     let triangles = 0;
-    let order = 1;
-    GRAIN_BANDS.forEach((band) => {
+    /** One band's draws (two under multisampling), from `order` up. */
+    const drawBand = (band, order) => {
         const { data, count } = bandSites(sites?.[band.field], band.from, band.to);
-        counts[band.field] += count;
         const buffer = new THREE.InstancedInterleavedBuffer(data, 8);
-        (coverage ? ['stem', 'ear'] : [null]).forEach((only) => {
+        const drawn = [];
+        (coverage ? ['stem', 'ear'] : [null]).forEach((only, k) => {
             const { geometry, triangles: perClump } = grainTemplate(band.stalks, band.stemRows, band.earRows, only);
             geometry.setAttribute('iA', new THREE.InterleavedBufferAttribute(buffer, 4, 0));
             geometry.setAttribute('iB', new THREE.InterleavedBufferAttribute(buffer, 4, 4));
@@ -423,19 +439,52 @@ export function createGrain(u, t, sites, { coverage = false } = {}) {
             mesh.name = `GrainfieldsBarley-${band.field}-${band.from}${only ? `-${only}s` : ''}`;
             mesh.frustumCulled = false;
             // Nearest first: the depth test then turns the stand behind away.
-            mesh.renderOrder = order;
-            order += 0.001;
-            meshes.push(mesh);
+            mesh.renderOrder = order + k * 0.001;
+            drawn.push(mesh);
             parts.push({ geometry, material });
             triangles += perClump * count;
         });
+        return { drawn, count };
+    };
+    // The close stand (the clearing round the eye, for the portrait lens): drawn first, and only
+    // while that lens looks down into it (setClose).
+    const close = [];
+    let closeOn = false;
+    if (sites?.close?.count) {
+        const { drawn, count } = drawBand(CLOSE_BAND, 0.9);
+        counts.close = count;
+        drawn.forEach((mesh) => {
+            mesh.visible = false;
+            close.push(mesh);
+        });
+        meshes.push(...drawn);
+    }
+    let order = 1;
+    GRAIN_BANDS.forEach((band) => {
+        const { drawn, count } = drawBand(band, order);
+        counts[band.field] += count;
+        order += drawn.length * 0.001;
+        meshes.push(...drawn);
     });
+    const main = meshes[close.length];
+    const showClose = () => {
+        // (A capture's showOnlyParts may have shown it: only the lens and the stand decide.)
+        close.forEach((mesh) => { mesh.visible = closeOn && main.visible; });
+    };
     return {
-        mesh: meshes[0],
+        mesh: main,
         meshes,
+        close,
         counts,
         triangles,
-        update() {},
+        /** Draw the close stand (under the portrait lens) or not. */
+        setClose(on) {
+            closeOn = on === true;
+            showClose();
+        },
+        update() {
+            showClose();
+        },
         dispose() {
             parts.forEach(({ geometry, material }) => {
                 geometry.dispose();
