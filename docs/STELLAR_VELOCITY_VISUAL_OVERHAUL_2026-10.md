@@ -236,3 +236,84 @@ transparent ground.
 ![The six palettes: aurora, ion, azure, violet, rose, solar](stellar-velocity-captures/palettes.jpg)
 
 ![The clock's own drift on level 1, at 10, 95, 180, 265, 350 and 435 s](stellar-velocity-captures/clock-drift.jpg)
+
+## Second pass (2026-10-21): gas that glows, a star with a lens, both backends alike
+
+The first build's canyon read as a soft photograph of pastel cloud: translucent veils with no
+silhouettes, a pale mauve "rose" round the sun, and every wall the same slate. The sun was a plain
+white blob. Clears and the arrival from a jump laid a grey veil over the frame. On the WebGL2
+backend the whole canyon turned lavender whenever the course held hoops.
+([before and after: rest, eight hoops held, a two-line clear, the arrival](stellar-velocity-captures/pass2-before-after.jpg))
+
+| Part | Now |
+| --- | --- |
+| The gas | Denser (`EXTINCTION_GAS` 2.3 → 0.95, dust 0.42 → 0.26), so masses stand as shapes with the deep sky between them. Lit by forward scatter: the sun's light reaches the eye from gas the ray looks through toward the sun, so the walls seen side-on are dark and the far canyon burns. A long-range shadow: gas deep inside a wall (by its distance from the course and the slow field) is in the shadow of the canyon ahead and takes only a share of the sun's light; what faces the open channel, and what stands where the walls open, is lit. |
+| Colour | Every term stays in its own colour family. The sunlit gas is the palette's glow (no sun white mixed in); the shade is the deep; the gas's own glow is zoned between the deep and the glow by the slow field; the third colour (`accent`) is kept to the dust's rims and the warm forward scatter round the sun. Laid over the glow in the same gas, a complement greys it (teal and orange made slate), so it is never spread over the walls. |
+| Streamers | Thin threads of glowing gas drawn out along the course, from the ridge of the grain the march already reads for the walls' filaments (`threads`): the walls stream past. Faded out where the grain is read at a coarse mip (the ridge of a blurred read is lit everywhere). Medium and up. |
+| Haze | The far canyon is hazed toward the glow, warm only in the narrow lobe round the sun, and keeps a third of its structure (0.82 → 0.66): the sun stands at the end of a luminous channel, not in a peach fog. |
+| The sun | A corona of fine rays round the disc (one grain read, only within 0.22 rad of the course). Four thin diffraction spikes and an anamorphic streak in the post (`glint`, Medium and up), as bright as the sun's heart reads in the scene pass where it stands: a cloud in front of it puts them out, and they are gone when it leaves the frame. Brighter at speed and in a jump's afterglow, out in the tunnel and in the hush; the streak takes the palette's glow. |
+| Fronts | The gas answers a front (a lock's pulse, a clear's fronts, a level's, the arrival's) mostly in its own glow, the front's colour a tint: a white front answered in white was a grey veil over the canyon. Hoops still light the gas in their own colours. |
+| Flash | The post's event flash mostly brightens what is there (exposure × (1 + 0.65 flash)); the colour it adds at the edges is a third of what it was. A lift of a few hundredths in linear light is a visible veil once encoded. |
+| Grade | The shadows are cooled by scaling only; the additive lift (a blue veil over every black) is gone. Saturation 1.12 → 1.18. |
+| Arrival | The forward scatter takes a compressed share of the surge's sun gain (`0.6 + 0.4 × gain`), so the gas round the sun stays its colour instead of going white. |
+| WebGL2 | The hoops' and fronts' light on the gas were loops nested inside the march. ANGLE's D3D11 path computed them differently from WebGPU: the same frame with six hoops held was teal on WebGPU and lavender on WebGL2 (also on `origin/main` before this pass). The slots are unrolled, each behind a branch on the live count (uniform across the pass, so idle slots cost nothing); both backends now draw the same frame ([before and after](stellar-velocity-captures/pass2-backends.jpg)). |
+
+Not changed: the event language, the hoops and bolts themselves, the tunnel, the palettes'
+values, the tiers' march budgets.
+
+### Traps met
+
+- **Thin march steps showed as hatching, then as sand.** Sharper density ramps (`EDGE_*` × 1.4)
+  made the cloud crisper and drew the march's interleaved-gradient jitter as diagonal hatching;
+  a white-noise jitter turned that into a sandy speckle on every edge (a four-tap tent cannot
+  average white noise). The ramps went back to their first values and definition comes from the
+  light (forward scatter, the long-range shadow) instead.
+- **One term per isolated capture.** The look was found by drawing each light term alone (sunlit,
+  shade, own glow, forward scatter, rims, threads) through a temporary switch: the pale mass round
+  the sun turned out to be the haze, in every panel, and the slate walls the accent laid over the
+  glow. Cheaper than guessing coefficients.
+- **A backend difference that was not the hoops' data.** The uniform tables, the live count and
+  the same loop run on its own all read identically on both backends; only the loop inside the
+  march differed. The SKILL row of 2026-10-13 (Pyrestorm's plume) said as much; the shader gate
+  now asserts the march is the canyon's only loop.
+
+### Verification
+
+- **Unit tests:** `tests/unit/stellar-velocity-*.test.js`, 173 tests. New:
+  `stellar-velocity-shaders.test.js` builds every material (the canyon pass, the backdrop, the near
+  stars, the dust, the hoops, the bolts, the jets) through the WGSL and the GLSL node builders at
+  High and Minimal: no warning, no NaN or stringified node, no WGSL var read before it is assigned,
+  the march the canyon's only loop and both light tables read where the tier lights the gas.
+- **Gates:** typecheck; TS ratchet; lint ratchet at its baseline (the theme's files add no
+  errors); architecture fitness; theme lifecycle audit; dependency boundaries; perf-budget gate;
+  release gates.
+- **Pictures** (playground, private Vite server, hidden Electron window with the harness-only
+  swizzle shim, RTX 5080 Laptop, 1600 × 900): rest, eight hoops held, a hard drop, a two-line
+  clear, a chain of eight, the tunnel, the arrival, a T-spin, a level-up, all six palettes,
+  Minimal, Low on WebGL2, Medium, High on WebGL2, Extreme and an upright 430 × 852 frame at rest
+  and through a clear; no console errors or warnings
+  ([events](stellar-velocity-captures/pass2-events.jpg),
+  [palettes](stellar-velocity-captures/pass2-palettes.jpg),
+  [tiers and a T-spin](stellar-velocity-captures/pass2-tiers.jpg),
+  [portrait](stellar-velocity-captures/pass2-portrait.jpg)).
+- **GPU time** (the playground's demo loop, GPU timestamps, `origin/main` and this pass served side
+  by side and alternated, two rounds): on the RTX 5080 at 1920 × 1080, High 0.92–1.11 → 1.11–1.18
+  ms, Medium 0.52–0.59 → 0.52–0.66 ms, Low 0.26 → 0.26–0.33 ms; the timestamps step in 0.066 ms and
+  other sessions were rendering on the same GPU, so this is within noise. On the integrated Radeon
+  610M at 1600 × 900 the machine was under load from parallel work (single-sample medians, frame
+  intervals of 50–230 ms): High read 38–42 → 31–43 ms and Low 10–11 → 14–64 ms. That is not a
+  measurement; the added work per pixel is small by construction (a few ALU terms per lit march
+  step, one grain read near the sun, one scene read and a branch for the glint), but the Low tier
+  on a weak GPU should be timed on a quiet machine before it is trusted.
+- **Whole suite**, once, on a machine busy with parallel work: 1,118 files, 21,238 tests; no Stellar
+  Velocity test failed. The thirteen failing files are this machine's (`records-view`,
+  `game-over-modal-result-compatibility`, `odyssey-level-briefing`, `tts-recorder-e2e`) or timing
+  under load: four passed when rerun alone, and the two left are bake-speed guards in Rainbark and
+  the Odyssey bake loader, which this pass does not touch.
+- **Production build** with the boot-closure guard, and the IP-string gate: pass.
+- **In the real game:** the lifecycle validator (`scripts/validate-all-themes.mjs --theme
+  stellar-velocity` against a private dev server) passed, 0 lifecycle failures and 0 console
+  errors. Its first run, with the machine loaded, failed only the switch-away checks (the theme
+  took 14 s to be selected and was still running when they looked); the rerun passed.
+  `docs/theme-screenshots/stellar-velocity.png` now shows this theme's own artwork.
+- **Not verified:** a physical phone; the perf lane (ADR-0016); a quiet-machine iGPU timing.
