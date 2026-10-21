@@ -2522,8 +2522,9 @@ export const PEEL = Object.freeze({
 
 /**
  * The Knock (§6.2): a gleam runs up the struck side of the trunk at `speed` m/s for `life` seconds:
- * a chevron round its lane's middle (gone from `side`[0] to [1] radians round), its front lagging
- * `bend` metres a radian² toward its sides, crisp over `half` metres ahead of the front and
+ * a band round its lane's middle (gone from `side`[0] to [1] radians round), its front lagging
+ * only `bend` metres a radian² toward its sides (nearly level round the bole, so the eye sees it
+ * ride the trunk's curve; a stronger lag drew a dome), crisp over `half` metres ahead of the front and
  * trailing a `tail` metres long behind it, the bark it passes `lift` brighter and gleaming `light`
  * of the sun in its own colour; its strength is 0.4 + 0.6·min(1, distance/`reach`)
  * rows; one per trunk per `gap` s.
@@ -2531,13 +2532,13 @@ export const PEEL = Object.freeze({
 export const KNOCK = Object.freeze({
     speed: 18,
     life: 0.6,
-    half: 0.12,
-    tail: 0.9,
-    bend: 1.6,
+    half: 0.1,
+    tail: 0.75,
+    bend: 0.35,
     gap: 0.25,
     reach: 18,
-    light: 0.32,
-    lift: 0.5,
+    light: 0.42,
+    lift: 0.65,
     side: Object.freeze([0.15, 0.75]),
 });
 
@@ -2575,8 +2576,11 @@ export function trunkHeightAt(record, lens, sy, theta, eyeY, offset = 0, out = [
  * `turns` of a turn, its radius tightening to `inner` of the outer one (the old bark outside, the
  * cream underside within, as a strip curls on the tree; open, so its turns never show through one
  * another). A T-spin's strip takes the same shape. A ring's sheet pieces peel down their band as
- * lips too, then ease into curved plates (rolled `roll` of the way a lock's strip is) that pop clear
- * of the blazing ring at once and fall away, never shards lying across it.
+ * lips too, then pop clear of the blazing ring at once and fall away still curled outward as
+ * peeled bark does, only `plate` of the way eased into curved plates (rolled `roll` of the way a
+ * lock's strip is: a short, wide plate rolled across its width is a capsule, a row of pills along
+ * the ring), each slanted by its own hash up to `slant` radians either way, so a ring's lips never
+ * lie level in a row.
  */
 export const CURL = Object.freeze({
     stride: 20,
@@ -2615,7 +2619,9 @@ export const CURL = Object.freeze({
         out: 2.4,
         outTau: 0.3,
         roll: 0.45,
-        lip: 2.1,
+        lip: 1.4,
+        plate: 0.3,
+        slant: 0.42,
         chroma: 0.6,
         back: 0.4,
         flutter: 0.3,
@@ -2701,6 +2707,43 @@ export function quickenRate(group, n) {
  */
 export const SET = Object.freeze({
     per: 8, over: 1.4, sheen: 0.3, sheenFor: 4,
+});
+
+/**
+ * The motes (rainbark-fx.js): seeds, pollen and spores adrift in the air in front of the eye,
+ * seen only where the canopy's light reaches them, so they glint in the sun's patches of air (the
+ * very light that lands as flecks on the bark) and are all but gone in the shade: light in the
+ * air without a shaft. Each slot holds one mote for good, `near` … `far` metres deep (more of them
+ * near), over `spread` of the lens's half-width at that depth and from `rise`[0] to [1] of its
+ * depth about the eye, world-fixed and wrapped round the eye (so the camera's breath gives
+ * parallax and a Climb streams them down past it), drifting on a breeze of `drift`[0] m/s and
+ * sinking `drift`[1] m/s, wandering ±`wander` metres (x, y) over periods of 7–13 s and 9–18 s. A
+ * mote is `px` pixels across on a 1080-line frame (and never under `least` of a buffer pixel); in
+ * the sun it glints `glint` of the sun's light, more toward the sun (forward scatter at g = `g`,
+ * `backlit` more), tumbling: `flash` of its light comes in brief flashes at `twinkle` radians a
+ * second; in the shade it keeps only `shade` of the sky's (lit by the bright air round it, every
+ * mote would show at once: a snowfall); in a pearly zone, where the vapour veils the sun, `pearl`
+ * of its light is gone. It fades over the band's edges (`edge` of
+ * it), within `card` (screen fraction) of the card, in the air in front of it and in the mist.
+ */
+export const MOTES = Object.freeze({
+    near: 4.5,
+    far: 36,
+    spread: 1.15,
+    rise: Object.freeze([-0.55, 0.95]),
+    drift: Object.freeze([0.16, 0.035]),
+    wander: Object.freeze([0.4, 0.25]),
+    px: Object.freeze([2.0, 4.2]),
+    least: 1.2,
+    glint: 1.1,
+    backlit: 0.9,
+    g: 0.7,
+    flash: 0.6,
+    twinkle: Object.freeze([1.1, 2.9]),
+    shade: 0.04,
+    pearl: 0.8,
+    edge: 0.08,
+    card: 0.03,
 });
 
 /**

@@ -165,6 +165,8 @@ export function createUniforms() {
         cme: uniform(new THREE.Vector4(0, -100, 0, 0.6)),
         /** Daylight returning for the moment the diamond burns, 0..1. */
         daylight: uniform(0),
+        /** The bearing the moon's shadow ends nearest (core.js umbraAzAt), radians east of north. */
+        umbraAz: uniform(0.5),
 
         zenith: colour(0.0035, 0.006, 0.02),
         mid: colour(0.013, 0.014, 0.04),
