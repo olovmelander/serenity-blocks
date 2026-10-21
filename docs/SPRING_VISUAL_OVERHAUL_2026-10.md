@@ -376,3 +376,75 @@ an eight-step loop over the patch rows and the haze; no texture reads) and the r
 most of them idle and clipped in the vertex stage). The fragments are a Gaussian each over a few
 pixels (a near tuft about twenty). Not measured on the RTX 3070; against the 8.1 M-triangle
 frame of the performance pass it is noise.
+
+## Second pass: the water, the fall and the game's light (2026-10-21)
+
+The owner asked for the theme's visuals, effects, atmosphere and graphics to be improved. Looked at
+from the knoll and close up, the weak places were the water and the fall: the river mirrored
+only the sky, so it read as a blue sheet with nothing standing over it; the fall was white
+blotches on a flat sheet, its rock bedded in level bands like masonry; a long chain or four lines
+laid hard white stripes across the pool; and what a lock does to the meadow was hard to see.
+
+**The water mirrors the valley** (`spring-river.js`). As the ribbon is built, each vertex measures
+each bank's horizon square across the river (`MIRROR`: the steepest rise of the ground and its
+woods over the water at 15 distances out to 340 m, from the valley's bake, `aBank`), and the
+material meets it where the reflected ray crosses toward that bank: turf low down, the woods over
+it, their crowns rising and falling along the bank; down the valley the fells' ridge under the
+haze; in the pool and the rapids, looking back up the river, the step (its white water between
+shoulders of dark rock). The reflection's edges are broken by the ripples and blurred by rough
+water. Without the bake (tests) the banks fall back to a flat horizon.
+
+**The fall** (`spring-fall.js`, `spring-fall-plan.js`). The water is read in fibres half a metre
+across, drawn out down the fall by its acceleration, so the white water hangs in columns rather
+than blotches; the thick tongue holds together glassy for most of a second, its fibres tearing
+white one by one; the glassy water mirrors less sky (it read silvered). The rock's layers fold a
+metre or two over tens of metres instead of running level, its dry face stands out in buttresses
+and leans back by different amounts, its blocks differ less from each other within a layer, and
+its wet sheen is broken (a strong one read as polished metal). The plan's tests still hold: no
+path runs through the rock.
+
+**The pool under the flood.** A surge's long back rose at full height right where the surges start
+and stood across the pool as a white step; it now rises out of the pool over its first nine metres,
+its front leads in mid-stream and wanders, and its white breaks into heaps and gaps. The mist's
+puffs thin to nothing where they meet the water (`vSoft`), and the boil behind the curtain lies in
+its shadow, so the ribbon's straight back edge no longer shows as a hard line. The flood's foam
+lines and rafts are broken into lace by the churn and widened by their own footprint, and the
+metre-scale rafts' share is halved (seen from the knoll they foreshortened into horizontal blots).
+
+**The game's light in the meadow** (`spring-meadow.js` `gameLight`, `PATCH_LIGHT`). A lock's patch
+now rolls a ring of light through the flowers in its flower's colour as it opens (taken to full
+strength, so the violet and the hepatica read as well as the campion), and its own flowers glow
+from within for a moment after the ring has passed; a clear's breath runs out from the eye through
+the meadow as a warm band. Both come from the patch rows and the breath's uniform the world
+already writes: closed form, nothing new per frame.
+
+**The air and the sky.** The air's motes and gameplay's motes end inside their quad's circle (a
+near tuft drew its quad as a glowing square). The morning's and the afternoon's zenith are a
+softer northern blue and their haze a little thicker (the sky read saturated cobalt), the golden
+evening's zenith follows; the hours' tests (chroma, continuity) still hold. The fells' lichen
+drifts have soft edges (they read as camouflage).
+
+| Morning: before, after | The fall: before, after |
+|---|---|
+| ![morning](spring-captures/second-morning-ab.webp) | ![fall](spring-captures/second-fall-ab.webp) |
+| **The pool: before, after** | **Down the valley: before, after** |
+| ![pool](spring-captures/second-pool-ab.webp) | ![river](spring-captures/second-river-ab.webp) |
+| **Golden evening: before, after** | |
+| ![golden](spring-captures/second-golden-ab.webp) | |
+
+| A hard drop of the Z: the campion's ring of light | A chain of six over the pool |
+|---|---|
+| ![lock](spring-captures/second-lock-light.webp) | ![chain](spring-captures/second-chain-pool.webp) |
+
+**Verification.** Playground captures on this laptop through Electron (WebGPU on the RTX 5080
+Laptop, `force_high_performance_gpu`; WebGL2 at Low with `forceWebGL=1`), 1600 × 900, from a
+private dev server: all six hours, the fall, the pool and the river close up, a lock, a hard drop,
+three lines, four lines, a T-spin, chains of six, a perfect clear. No WebGPU validation errors or
+console warnings in any. The Spring unit tests (eleven files, 229 tests, with the new
+`spring-river.test.js` for the banks' horizon), typecheck and the Spring files' lint pass. The
+cost: the river's colour gains about two dozen arithmetic lines and four texture reads, the
+meadow's flower vertices one more loop over the patch rows (like the one `patches()` already
+runs). The ribbon's build measures 30 ground points every 1.5 m along the river (`MIRROR.every`):
+on High it took 430–570 ms against 350–370 ms without, in Node while other sessions loaded the
+machine (noisy; about a tenth to a fifth of a second more, inside the river's own build step).
+Frame rate was not measured.
