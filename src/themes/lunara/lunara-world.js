@@ -100,8 +100,9 @@ const CLEAR_LIVE = 8;
 export const AURORA_MAX = 1.45;
 /** Seconds between the valley's own shooting stars. */
 export const METEOR_BEAT = 19;
-/** Where the moons' light comes from: off to the right and behind the viewer. */
-const SUN = new THREE.Vector3(0.9, 0.24, 0.26).normalize();
+/** Where the moons' light comes from: off to the right, a little behind the viewer, so the great
+ * moon stands gibbous with its terminator (and its relief) on the side away from the board. */
+const SUN = new THREE.Vector3(0.95, 0.3, -0.15).normalize();
 /** The moon map every moon in the fleet shares (Solar System Scope, CC BY 4.0: see CREDITS.md). */
 export const MOON_MAP_URL = './textures/2k_moon.jpg';
 /** Seconds the moons' faces take to fade in once the map has arrived. */

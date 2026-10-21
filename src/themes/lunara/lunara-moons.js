@@ -14,6 +14,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    clamp,
     cameraPosition,
     cross,
     dot,
@@ -31,7 +32,7 @@ import {
     vec3,
 } from 'three/tsl';
 import {
-    luBell, luLuma, luPart, luSkyBase,
+    luBell, luLuma, luPart, luSkyGradient,
 } from './lunara-tsl.js';
 
 /** Distance of the shell the moons hang on (inside the sky dome, beyond every mountain). */
@@ -63,8 +64,17 @@ export function createMoon(u, map, mapFade, { companion = false, relief = true }
         const st = uv().add(vec2(uniforms.turn, 0.0)).toVar();
         const tone = (at) => luLuma(map.sample(at).rgb);
         const lum = mix(float(0.5), tone(st), mapFade).toVar();
+        // The albedo reads the map a little softer (four taps round the point): maria and
+        // highlands, not a speckle of rims. (A biased read of this texture node leaves its
+        // sampler undeclared in WGSL; tests/unit/lunara-shaders.test.js gates that.)
+        const b = 1.6 / 1024;
+        const blurred = tone(st.add(vec2(b, b))).add(tone(st.add(vec2(-b, b))))
+            .add(tone(st.add(vec2(b, -b)))).add(tone(st.add(vec2(-b, -b))))
+            .mul(0.25);
+        const soft = mix(float(0.5), blurred, mapFade).toVar();
 
-        // Relief: the map's own slope tilts the normal, so craters throw shade near the terminator.
+        // Relief: the map's own slope tilts the normal, so craters throw shade near the terminator
+        // (where the light grazes) and the face under a high sun stays smooth.
         const Nb = N.toVar();
         if (relief) {
             const e = 1 / 900;
@@ -72,17 +82,24 @@ export function createMoon(u, map, mapFade, { companion = false, relief = true }
             const dv = tone(st.add(vec2(0.0, e))).sub(lum);
             const east = normalize(cross(vec3(0.0, 1.0, 0.0), N));
             const north = cross(N, east);
-            Nb.assign(normalize(N.sub(east.mul(du).add(north.mul(dv)).mul(mapFade).mul(companion ? 2.6 : 3.2))));
+            const grazing = float(1.0).sub(smoothstep(0.08, 0.62, dot(N, u.sunDir))).mul(0.85).add(0.15);
+            Nb.assign(normalize(N.sub(east.mul(du).add(north.mul(dv)).mul(mapFade).mul(grazing)
+                .mul(companion ? 1.6 : 2.2))));
         }
         const ndl = dot(Nb, u.sunDir);
-        const day = smoothstep(-0.05, 0.3, ndl).mul(max(ndl, 0.0).mul(0.5).add(0.5)).toVar();
+        // A crisp terminator: the relief reads where the light grazes.
+        const day = smoothstep(-0.02, 0.2, ndl).mul(max(ndl, 0.0).mul(0.6).add(0.4)).toVar();
 
         const own = companion ? u.companionCol : u.moonCol;
+        // The map with its contrast restored: dark maria, bright highlands and crater rims.
+        const lc = clamp(soft.sub(0.42).mul(1.8).add(0.5), 0.0, 1.0).toVar();
         // Low ground keeps the moon's hue, high ground pales toward white.
-        const ground = mix(own.mul(own).mul(0.6), mix(own, vec3(1.0), 0.16), smoothstep(0.2, 0.85, lum));
-        const body = ground.mul(lum.mul(1.05).add(0.22));
+        const ground = mix(own.mul(own).mul(0.55), mix(own, vec3(1.0), 0.2), smoothstep(0.15, 0.85, lc));
+        const body = ground.mul(lc.mul(1.15).add(0.1));
         const limb = pow(ndv, 0.5);
-        const col = body.mul(day.mul(limb).mul(companion ? 1.25 : 0.92).add(0.02)).toVar();
+        const col = body.mul(day.mul(limb).mul(companion ? 1.25 : 1.0)).toVar();
+        // Light thrown back by the valley: the night side is faint, never flat black.
+        col.addAssign(body.mul(own).mul(float(1.0).sub(day)).mul(0.01));
 
         // A thin atmosphere: a lit rim, brighter on the day side.
         const rim = pow(float(1.0).sub(ndv), 3.2);
@@ -104,9 +121,10 @@ export function createMoon(u, map, mapFade, { companion = false, relief = true }
                 .mul(0.7));
         }
 
-        // The air in front of the moon: its dark side is the colour of the sky, never black.
+        // The air in front of the moon: a little of the sky's colour, so the night side stands
+        // darker than the sky round it (it hides the glow behind it) but never black.
         const dir = toCam.negate();
-        return col.mul(u.breath.mul(0.75).add(0.25)).add(luSkyBase(u, dir).mul(0.7));
+        return col.mul(u.breath.mul(0.75).add(0.25)).add(luSkyGradient(u, dir).mul(0.6));
     })();
 
     const geometry = new THREE.SphereGeometry(1, companion ? 48 : 96, companion ? 24 : 48);
