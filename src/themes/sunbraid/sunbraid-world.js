@@ -22,7 +22,7 @@ import { createLand } from './sunbraid-land.js';
 import { createSpires } from './sunbraid-spires.js';
 import { createGliders } from './sunbraid-gliders.js';
 import { fallbackLayout } from './sunbraid-composition.js';
-import { Braid } from './sunbraid-braid.js';
+import { BRAID_EVENTS, Braid } from './sunbraid-braid.js';
 
 export const SUNBRAID_PARTS = Object.freeze(['sky', 'land', 'spires', 'gliders']);
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
@@ -30,6 +30,15 @@ export const fovForAspect = (aspect) => rigFor(aspect).fov;
 
 /** The braid's phase at clock 0: the coral sun rides lowest, a little past the bottom of the circle. */
 export const PHASE0 = -100 * DEG;
+
+/**
+ * The post's answers to the braid: the one white sun's glare (bloom boost) and flash (scaled by
+ * the photosensitivity setting in the post), noon's glare and how far the iris closes, and the
+ * grade's saturation at rest and its lift at a full chain's ribbons.
+ */
+export const POST_EVENTS = Object.freeze({
+    whiteGlare: 1.1, whiteFlash: 0.45, noonGlare: 0.5, noonIris: 0.26, saturation: 1.08, chainSaturation: 0.12,
+});
 
 const COUNTERS = [
     'locks', 'hardDrops', 'clears', 'lines', 'quads', 'tspins', 'perfects', 'chainSteps', 'b2bSteps', 'levelUps',
@@ -295,7 +304,8 @@ export class SunbraidWorld {
         const duskDrop = this.dusk * 16 * DEG - (this.lift || 0);
         // The dome's own colours away from the suns: cobalt-violet overhead, rose-mauve low.
         const night = 1 - 0.78 * this.dusk;
-        const zen = [0.03 * night + 0.012 * this.dusk, 0.036 * night, 0.15 * night + 0.02 * this.dusk];
+        // (Deep cobalt-violet overhead: the dome's top is the frame's darkest, saturated field.)
+        const zen = [0.022 * night + 0.012 * this.dusk, 0.026 * night, 0.17 * night + 0.02 * this.dusk];
         const hor = [0.27 * night + 0.16 * this.dusk, 0.17 * night + 0.04 * this.dusk, 0.25 * night + 0.1 * this.dusk];
         const lit = [0, 0, 0];
         const share = [0, 0, 0];
@@ -361,11 +371,29 @@ export class SunbraidWorld {
         // The high cloud drifts on a steady wind (closed form: the clock times a constant).
         u.cloudDrift.value.set((time * 7.5) % 160000, (time * -3.1) % 160000);
         this.writeSuns(time);
+        this.writePost();
         if (camera) {
             camera.updateMatrixWorld();
             u.eye.value.copy(camera.position);
         }
         for (const part of this.partList) part.update?.(time, dt, this);
+    }
+
+    /**
+     * What the gameplay does to the picture (POST_EVENTS): the one white sun of four lines glares and
+     * floods the frame with white; noon (a perfect clear) blazes and the iris closes a little so the
+     * floor keeps its crust; a chain's braid deepens the colour.
+     */
+    writePost() {
+        const post = this._post;
+        const P = POST_EVENTS;
+        const white = clamp(this.white || 0, 0, 1);
+        const noon = clamp((this.lift || 0) / BRAID_EVENTS.noon.lift, 0, 1);
+        const ribbon = clamp(this.braid.ribbon || 0, 0, 1);
+        post.bloomBoost = P.whiteGlare * white + P.noonGlare * noon;
+        post.flash = P.whiteFlash * white;
+        post.exposure = 1 - P.noonIris * noon;
+        post.saturation = P.saturation + P.chainSaturation * ribbon;
     }
 
     prerender() {}
