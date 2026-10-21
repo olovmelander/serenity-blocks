@@ -80,6 +80,38 @@ rows in fixed uniform arrays, and seed comes from a fixed hidden reserve.
 | --- | --- | --- |
 | ![kites](verdant-hills-kite-day/kites.webp) | ![combo](verdant-hills-kite-day/combo.webp) | ![in game](verdant-hills-kite-day/in-game.webp) |
 
+### The visual pass (2026-10-21)
+
+A look at the day with fresh eyes, keeping everything it already was.
+
+- **Cumulus with a shaded side.** The sun's ray lost half its light crossing a whole
+  kilometre-deep cloud (`SIGMA_SUN` 0.0062), so every cloud was as white turned from the
+  sun as toward it. It is 0.018: the far side of a heap is grey and the sun shows at its
+  edges as a silver lining. Skylight now brightens a cloud from its flat grey base up its
+  tower instead of lighting it evenly.
+- **Rounded tops, not tents.** The billows that lifted a cloud's top were distances to a
+  cell's heart, highest on the creases between cells, and lifted it by up to half the slab
+  over cells only some 250 m across: every heap stood a 500 m spire on each crease and read
+  as a row of pyramids. The lift is turned over (highest at a cell's heart), blurred, eased
+  and about as tall as a cell is wide, so each one is a rounded bulge; the billows that
+  carve the skin are squared, so their hearts are rounded lumps and the creases stay sharp.
+- **A June sward, not lime.** The near grass lit a blade by the sun's angle to either side
+  of it, so with the sun ahead every blade was lit from the front, and its glow was a
+  saturated lime. Now only the face turned to the sun is sunlit and light comes through a
+  blade seen against it; the greens are deeper and less saturated, and patches lean warmer
+  or cooler, so the meadow reads as grass. Flowers are lit the same way.
+- **The far bank in the water.** The tarn and the river were the sky's colour laid on the
+  valley floor. Seen from the hill the water reflects a ray that rises as steeply as the
+  eye's falls, so a bank, hedge or tree standing within h / tan(fall) beyond a point shows in
+  the water instead of the sky. Four steps along the line of sight in the land map find the
+  nearest land and how tall what stands on it is; there the water shows the bank's green,
+  darker and greyer, broken into streaks across the line of sight by the ripples.
+
+Checked in the playground at High and Low on native WebGPU, 1920×1080, 1280×720 and
+390×844: idle, lock, four lines, festival; clean consoles. GPU per frame at 1080p,
+interleaved against the day before the pass: about 4.0 ms against 4.1 ms (within run-to-run
+noise). `tests/unit/verdant-hills-*.test.js`: 832 tests.
+
 ## How it is built
 
 ### Trees and built things authored in Blender
@@ -239,8 +271,9 @@ cross them.
   about 2.4:1); they are not meant to be seen from elsewhere.
 - The shadow map is static, so swaying crowns, the swing and the kites do not move their
   shadows, and everything beyond the home hill is shaded by the baked map and the clouds.
-- The valley's hedgerows are drawn by the ground shader, not modelled; its water is the sky's
-  colour laid on the valley floor, not a mirror.
+- The valley's hedgerows are drawn by the ground shader, not modelled. Its water is the sky's
+  colour with the far bank's green where the bank would show, not a mirror: no tree, mill
+  or kite is reflected as a shape.
 - The pool of sunlight is seen at a grazing angle, so on the valley floor it is a bright
   band rather than a disc; the dimming around it and its shaft carry the event.
 - Portrait is the landscape world seen from the same spot: the windmill is out of frame.
