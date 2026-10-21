@@ -76,7 +76,9 @@ export const HOURS = Object.freeze([
         mist: [0.66, 0.71, 0.78],
         cloudLit: [1.55, 1.48, 1.38],
         cloudShade: [0.055, 0.068, 0.092],
-        exposure: 0.92,
+        // Exposed for the sunlit barley, as a photograph of storm light is: the field in the sun
+        // keeps its texture under the tone map's shoulder, and the deck goes dark over it.
+        exposure: 0.62,
         stars: 0,
         // The air the rain has washed: clear, with mist lying in the vale.
         hazeDensity: 0.4,
@@ -98,7 +100,7 @@ export const HOURS = Object.freeze([
         mist: [0.84, 0.7, 0.6],
         cloudLit: [2.1, 1.3, 0.62],
         cloudShade: [0.16, 0.13, 0.2],
-        exposure: 0.96,
+        exposure: 0.7,
         stars: 0,
         hazeDensity: 0.72,
         mistDensity: 0.07,
@@ -162,7 +164,8 @@ export const HOURS = Object.freeze([
         haze: [0.45, 0.55, 0.72],
         mist: [0.78, 0.82, 0.88],
         cloudLit: [2.0, 1.95, 1.9],
-        cloudShade: [0.42, 0.48, 0.64],
+        // (Flat grey-blue bases under the white heads: the heaps stand in depth.)
+        cloudShade: [0.33, 0.38, 0.53],
         exposure: 0.66,
         stars: 0,
         hazeDensity: 0.5,
