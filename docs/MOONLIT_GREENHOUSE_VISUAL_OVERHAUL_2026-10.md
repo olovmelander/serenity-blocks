@@ -89,13 +89,13 @@ the sky lightening low). Each is uniforms only: twelve colours and four numbers.
 Techniques worth knowing before changing it:
 
 - **The moonlight is a formula.** The house is a closed shape (two circular arcs over straight walls), so where a ray from any point toward the moon leaves it is closed form (two circle exits and a plane), and the iron there is a handful of line masks in the glass's own coordinates (metres along the house, metres of arc from the spring). Each bar's shadow softens with the distance it is thrown (the moon is a disc). The floor, the leaves, the water, the motes and the post's march all call the same `mgMoonlight`, so every beam in the air lands on its own lattice on the floor. CPU twin: `houseExit` + `glazingAt`.
-- **Beams need occluders.** Clear glazing passes about 85 % of the light everywhere, so at first the air was a uniform milky veil with faint dark lines. Lath blinds rolled part-way down a hashed share of the bays (`BLINDS`) and the palms' crowns as an analytic canopy (`mgCanopy`, picked each time the moon moves by where their shadows land) make the beams alternate bay by bay, ruled by laths and fronds. The bay the eye sees the moon through keeps its blind up, and the moon's line of sight is moved to the middle of its bay, so the hero is never behind a rib or a blind.
+- **Beams need occluders, and contrast.** Clear glazing passes about 85 % of the light everywhere, so at first the air was a uniform milky veil with faint dark lines. Lath blinds rolled part-way down most of the bays (`BLINDS`, 70 %) and the palms' crowns as an analytic canopy (`mgCanopy`, picked each time the moon moves by where their shadows land) make the beams alternate bay by bay, ruled by laths and fronds; and the march raises the moonlight a point of the air sees to a power (`TUNE.airContrast`), so clear glass throws a beam and the laths, fronds and fogged panes a shadow (see the second pass). The bay the eye sees the moon through keeps its blind up, and the moon's line of sight is moved to the middle of its bay, so the hero is never behind a rib or a blind.
 - **One sky, along any ray.** `mgSky(dir, disc)` is the whole night beyond the glass: the air, the moon's glow and aureole, cloud silvered near it, stars on a 3D lattice, the disc with seas and craters kept under the tone curve's shoulder, the corona of a perfect clear, the garden's trees through the side walls. The glass draws the disc in the lens's image plane (round anywhere in the frame); the canal's mirror draws it about the moon's direction.
-- **The march.** Each pixel walks its view ray from the eye to the scene pass's depth (reduced target, jittered start, depth-aware upsample) and gathers the moonlight the glazing and the canopy let through, scattered toward the eye by a Henyey–Greenstein lobe, plus the lanterns' and the blooms' glow in the same mist. The pass is given the scene camera's own matrices: inside a pass the camera nodes are the quad's.
+- **The march.** Each pixel walks its view ray from the eye to the scene pass's depth (reduced target, jittered start, depth-aware upsample) and gathers the moonlight the glazing and the canopy let through, scattered toward the eye by a Henyey–Greenstein lobe, plus the lanterns' and the blooms' glow in the same mist. The pass is given the scene camera's own matrices: inside a pass the camera nodes are the quad's. A step is metres long, so what is finer than a step is averaged, not sampled: the glazing bars' edges widen with the step (`TUNE.airSoft`), a pane's own glass gives way to the panes' mean once the softness passes a pane (`GLAZING.paneAverage`, in the CPU twin too), and the canopy's leaflets give way to their mean. Sampled, they alias into a mesh across the beams. The start jitter is a white hash: interleaved gradient noise left a diagonal hatch on the tiers that march few steps.
 - **Every surface lit the same way.** `mgSurface` drains the moon's colour from what it lights, adds light through thin leaves when the moon is behind them, the dim sky, and the lanterns, blooms and fireflies, which bring the colour back. Every part uses it.
 - **The fronds part for the moon.** Which crown stands in front of the moon depends on the aspect, the layout and the drift, so no plan can keep it clear. Instead the leaves' vertex shader moves every point the eye sees within about 7.5° of the moon outward onto a ring a degree past the disc (`mgClearMoon`; the map a → a + gap·(1 − a/reach)² is monotonic while gap ≤ reach / 2, so the fronds part without folding), and the leaves' cut-out drops what a strip still lays across the disc (`mgMoonGap`: a frond lying straight over the moon is only widened when its two edge vertices move apart). The palms' shadow parts the same way, so the mist toward the moon carries no shadow of a frond the eye cannot see. Trunks and baskets keep their shape: a trunk may cross the moon as a silhouette.
 - **No alpha-to-coverage.** Drivers dither partial coverage into a pixel stipple; across a crown of sub-pixel leaflets nearly every pixel is partial, so the crowns and the far ribs turned into a grey screen door. Every cut-out is hard (a bar never finer than a pixel, a small cell solid, a merged comb a toothed blade), and the scene pass's MSAA keeps the geometry's own edges.
-- **The air at full resolution is a joint bilateral upsample.** Each pixel blends the 3 × 3 texels of the reduced march target round it (2 × 2 on the two lowest tiers, where the march is cheaper than the filter), weighted by distance and by how near each texel's depth is to its own, so the sky's mist never bleeds onto a frond's edge.
+- **The air at full resolution is a joint bilateral upsample.** Each pixel blends the 3 × 3 texels of the reduced march target round it, weighted by distance and by how near each texel's depth is to its own, so the sky's mist never bleeds onto a frond's edge. Every tier: the two lowest once blended 2 × 2, which left the march's noise as blocks a few pixels wide once the beams were strong.
 - **One walk of each table a pixel.** `mgMoonVis` is shared between a surface's light and its reflection (the iron's glint, the floor's wet sheen); `mgLanternsTwoSided` / `mgBloomLightTwoSided` give a leaf the light on its face and the light through it from one loop. The shared light helpers pin what they are handed (`.toVar()`) before their loops: TSL emits an unpinned node at its first build site, and inside a loop that means once a lantern (a normal and two texture reads per lantern on the soil, the trunks and the water, until the review caught it). The Queen's age is pinned before her If chain for the other half of the same rule: a node first built in one branch reads zero in the others.
 - **The mirror is traced, not rendered.** The canal draws no second pass: its reflected ray is traced to where it leaves the house (the same closed form as the moonlight) and the glass there is shaded as the glass shades it; the crowns (through the canopy function), the beds' foliage, the kerbs and the reed clumps stand in it as approximations, and every light lies on it as a broken column.
 - **Flowers built in the vertex shader.** A bloom is a slot in an instanced pool (position and size, seed and kind, tint, open and close times); every vertex is a point of a flat parameter sheet and the shader builds the whole flower from the slot and the clock, so opening, settling and closing are curves of time and nothing is animated on the CPU. The Queen is the same idea at the scale of the frame.
@@ -223,3 +223,55 @@ file is kept at `public/assets/themes/moonlit-greenhouse-theme-icon.png`.
 ![Portrait: at rest and through four lines](moonlit-greenhouse-overhaul/portrait.webp)
 
 ![Minimal, Low on WebGL2, Medium on WebGL2 and Extreme](moonlit-greenhouse-overhaul/tiers.webp)
+
+The previews above are the first build, rendered in software (SwiftShader). The second pass below
+was judged on a real GPU.
+
+## Second pass (2026-10-21): on a real GPU
+
+The first build was never seen on a GPU (it was made in a cloud session with software rendering
+only). On this machine's RTX 5080 Laptop GPU, through native WebGPU, the house rendered as
+designed but its one idea did not show: almost the whole frame sat below 0.1 scene-linear, the
+air was an even grey-blue veil, and no beam stood in it. A look pass followed, in the same
+modules. Each change was iterated in the playground (`?effect=moonlit-greenhouse&t=20`, with
+`P.<name>=` overrides of `TUNE`, the false-colour view and zoomed crops) and the result checked
+in a real Single Player game at High.
+
+| ![Before: the first build on a real GPU](moonlit-greenhouse-overhaul/gpu-before-rest.webp) | ![After](moonlit-greenhouse-overhaul/gpu-after-rest.webp) |
+| --- | --- |
+
+| What | Before | After |
+| --- | --- | --- |
+| **Moonbeams** (`moonlit-greenhouse-post.js`, `-tsl.js`, `-core.js`) | The march's beams added about 0.003–0.01 scene-linear: invisible. Raising them alone gave a milky fog, because clear glass passes most of the light everywhere, so lit and shaded air hardly differ. | The moonlight a point of the air sees is raised to the third power (`airContrast`), so clear glass throws a beam and the blinds, fronds and fogged panes a shadow; 70 % of the bays have a blind down (was 55 %), their laths more closed; the mist is thicker (`airHaze` 0.011, `airBeam` 0.8), billows in drifting columns (`airBillow`), and thins to a quarter under the vault's crown (`airTop`), so the beams stand among the plants and over the canal while the iron overhead stays crisp. The beams fan out from the moon down into the canal, and the events now move them: the hush puts them out, four lines floods them. |
+| **The march's aliasing** (same) | Once the beams were strong, a fine mesh lay over the vault and the moon's disc (the 0.6 m glazing bars sampled by steps 1.5 m long), and a screen-door grid over the whole frame on Low and Minimal. | The bars' shadow edges widen with the step (`airSoft` 0.8 of a step); a pane's own glass and the palms' leaflets are averaged once a sample is wider than they are; the start jitter is a white hash (interleaved gradient noise drew a diagonal hatch); every tier upsamples with the 3 × 3 tent (the 2 × 2 left blocks). |
+| **The Queen of the Night** (`moonlit-greenhouse-blooms.js`) | Her petals' light from within (1.5 at the base) sat above the tone curve's shoulder: a flat white paper pinwheel of narrow blades, see-through at 60 % like cellophane. | At 0.85 (`TUNE.queenPetal`) her veins, glowing margins and the cream-to-silver run show; the inner whorl's petals are broad overlapping spoons (`WHORL.inner.half` 0.12, was 0.066), opaque but for their thin tips; the outer tepals run from russet-amber to gold. |
+| **Victoria pads** (`moonlit-greenhouse-pond.js`) | Dark grey plates with a uniform glossy-crimson rim. | A green that holds up under the moonlight; a weathered rim; a soft waxy shine broken up by the quilting; rain standing in puddles that mirror the vault, the moon and the lanterns, with the leaf darker under the water. |
+| **Lanterns** (`moonlit-greenhouse-tsl.js`) | A candle's light fell to nothing within a metre: the half of the house away from the moon was one flat grey-green. | It reaches further and burns a little stronger (`lampGain` 1.6, `lampReach` 1.4), so the ferns and pads round each lantern catch warm gold against the cool beams. |
+
+![The beams at t = 40 s, the moon drifted: they fall into the canal](moonlit-greenhouse-overhaul/gpu-after-beams.webp)
+
+| ![Before: the Queen in game](moonlit-greenhouse-overhaul/gpu-before-queen.webp) | ![After: the Queen in game](moonlit-greenhouse-overhaul/gpu-after-queen-ingame.webp) |
+| --- | --- |
+
+![The Queen open, and the moment four lines land: the flood, every firefly flashing](moonlit-greenhouse-overhaul/gpu-after-queen.webp)
+
+| ![Before: the pads](moonlit-greenhouse-overhaul/gpu-before-pads.webp) | ![After: the pads](moonlit-greenhouse-overhaul/gpu-after-pads.webp) |
+| --- | --- |
+
+![Harvest moon, jade dream and rose nocturne](moonlit-greenhouse-overhaul/gpu-nights.webp)
+
+![Low, Minimal, and Medium on the forced WebGL2 backend](moonlit-greenhouse-overhaul/gpu-tiers.webp)
+
+![In a real Single Player game at High](moonlit-greenhouse-overhaul/gpu-ingame.webp)
+
+Checked: playground captures on native WebGPU at High (rest at t = 20 and 40 s, the board with
+locks and a chain of eight, four lines at 0.3, 1.2 and 3 s, a perfect clear, 430 × 932 portrait,
+five of the six nights, all but lavender), Ultra, Low and Minimal, and Medium on the forced WebGL2 backend, each
+with a clean console; a real Single Player game at High (theme running on WebGPU, pieces locking,
+no warning or error from the theme); the 13 `tests/unit/moonlit-greenhouse-*.test.js` suites
+(221 tests); ESLint clean on the changed files.
+
+Not measured: frame time. The pass adds a power and a few mixes to each march step and moves Low
+and Minimal from four upsample taps to nine (each a depth read and an air read at full
+resolution); the theme perf lane (ADR-0016) has not been run on it, and the GPU here is far
+above what Low and Minimal are for.

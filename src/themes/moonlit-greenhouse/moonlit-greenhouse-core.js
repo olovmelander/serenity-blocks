@@ -145,6 +145,11 @@ export const GLAZING = Object.freeze({
     transoms: Object.freeze([1.9, 3.4]),
     transomWidth: 0.08,
     penumbra: 0.0046,
+    // The panes' mean transmission (see glazingAt), and the edge softness over which a pane's
+    // own glass gives way to it: a shadow, a march step or a pixel wider than a pane sees the
+    // mean, not one pane (the air's march would otherwise alias the panes into a mesh).
+    paneMean: 0.857,
+    paneAverage: Object.freeze([0.15, 0.6]),
 });
 
 /**
@@ -153,15 +158,16 @@ export const GLAZING = Object.freeze({
  * Victorian palm house shaded its glass. A blind is laths along the house with gaps between them,
  * so the moonlight through a blinded bay is ruled into fine bars, and the beams in the air
  * alternate bay by bay.
- *   share     the share of bays with a blind down
+ *   share     the share of bays with a blind down (most of them: the clear bays between are
+ *             where the beams come through, so the air carries separate shafts, not a veil)
  *   reach     how far down from the ridge a blind may come (share of the arc), least..most
  *   slat      the laths' spacing (metres) and the open share between them
  */
 export const BLINDS = Object.freeze({
-    share: 0.55,
+    share: 0.7,
     reach: Object.freeze([0.5, 1.0]),
     slat: 0.11,
-    open: 0.3,
+    open: 0.2,
 });
 
 /**
@@ -291,6 +297,7 @@ export function glazingAt(along, s, wall, soft = 0.01, side = -1, moonBay = null
     let pane = 0.8 + 0.15 * hash2(paneJ + 17, paneI - 5);
     if (h < 0.0875) pane = 0.55;
     if (h < 0.025) pane = 1;
+    pane = lerp(pane, g.paneMean, smooth(g.paneAverage[0], g.paneAverage[1], soft));
     const bay = Math.floor(along / g.ribEvery);
     const open = wall || (moonBay && Math.abs(bay - moonBay.bay) < 1.5 && side === moonBay.side);
     const blind = open ? 1 : blindAt(bay, side, s, soft);

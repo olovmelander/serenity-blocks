@@ -43,6 +43,48 @@ export const TUNE = {
     cloudLight: 0.22,
     // The trees outside, seen low through the side walls.
     treeLine: 0.12,
+    // How a surface is lit (mgSurface): the moon's key light, the sky's fill through the glass.
+    moonKey: 1.0,
+    skyFill: 1.0,
+    // The lanterns' warm light on a surface: its strength and its reach (metres at which it falls
+    // to half), and their glow in the mist.
+    lampGain: 1.6,
+    lampReach: 1.4,
+    lampAir: 1.0,
+    // The air (the post's march), where the moonbeams stand:
+    //   airHaze        the mist everywhere (per metre), what the beams are seen in
+    //   airLow         the mist low over the water (per metre), thinning with height over
+    //   airLowFall     metres
+    //   airBeam        how strongly the moonlight scatters toward the eye, and
+    //   airForward     how forward (Henyey–Greenstein g): the beams fan out from the moon
+    //   airMist        the mist's own dim light (kept low: it is a veil, not a beam)
+    //   airExtinction  how much the mist dims what lies behind it
+    //   airContrast    the moonlight a point of the air sees is raised to this power, so clear
+    //                  glass throws a beam and the laths, the fronds and the fogged panes a shadow
+    //   airSoft        the iron's shadow edges widened by this share of a march step: the fine
+    //                  glazing bars average out over a step instead of aliasing into a mesh
+    //   airBillow      how much the mist's density follows the drifting billows (0 even)
+    //   airTop         the mist's density under the vault's crown, as a share of its density
+    //                  low down: the air high in the house is clear, so the iron stays crisp
+    airHaze: 0.011,
+    airLow: 0.035,
+    airLowFall: 1.3,
+    airBeam: 0.8,
+    airForward: 0.66,
+    airMist: 0.002,
+    airExtinction: 0.38,
+    airContrast: 3.0,
+    airSoft: 0.8,
+    airBillow: 0.8,
+    airTop: 0.25,
+    // The Queen of the Night: her petals' light from within (scene-linear, a petal's peak). Kept
+    // under the tone curve's shoulder, so her veins, margins and the cream-to-silver run survive
+    // (at 1.5 she was flat white paper).
+    queenPetal: 0.85,
+    // The blinds' share of the bays and their laths' opening (BLINDS; the CPU twin reads BLINDS,
+    // so an override here is for the playground only).
+    blindShare: BLINDS.share,
+    blindOpen: BLINDS.open,
 };
 
 /** Apply overrides (numbers, or comma lists for the array entries) to TUNE. */
@@ -179,10 +221,10 @@ export const mgBlind = Fn(([along, side, s, soft]) => {
     const f = s.div(BLINDS.slat);
     const d = abs(f.sub(round(f)));
     const w = max(soft.div(BLINDS.slat), 0.04);
-    const gap = float(1.0).sub(smoothstep(float(BLINDS.open * 0.5).sub(w), float(BLINDS.open * 0.5).add(w), d));
-    const ruled = mix(gap, float(BLINDS.open), smoothstep(0.4, 1.6, soft.div(BLINDS.slat)));
+    const gap = float(1.0).sub(smoothstep(float(TUNE.blindOpen * 0.5).sub(w), float(TUNE.blindOpen * 0.5).add(w), d));
+    const ruled = mix(gap, float(TUNE.blindOpen), smoothstep(0.4, 1.6, soft.div(BLINDS.slat)));
     const blinded = mix(float(1.0), ruled.mul(0.96).add(0.04), cover);
-    return select(h.greaterThan(BLINDS.share), float(1.0), blinded);
+    return select(h.greaterThan(TUNE.blindShare), float(1.0), blinded);
 }).setLayout({
     name: 'mg_blind',
     type: 'float',
@@ -228,7 +270,8 @@ export const mgGlazing = Fn(([along, s, wall, soft, moonBay]) => {
     const pj = select(isWall, band, floor(s.div(g.purlinEvery)));
     const hp = mgPaneHash(pi, pj);
     const clear = float(0.8).add(mgPaneHash(pj.add(17.0), pi.sub(5.0)).mul(0.15));
-    const pane = select(hp.lessThan(0.025), float(1.0), select(hp.lessThan(0.0875), float(0.55), clear));
+    const own = select(hp.lessThan(0.025), float(1.0), select(hp.lessThan(0.0875), float(0.55), clear));
+    const pane = mix(own, float(g.paneMean), smoothstep(g.paneAverage[0], g.paneAverage[1], soft));
     // The blinds (the vault only): w 0 is left of the ridge, −1 right of it. The bay the eye sees
     // the moon through (and its neighbours) keeps its blind up, here as in the glass.
     const side = select(wall.lessThan(-0.5), float(1.0), float(-1.0));
@@ -384,9 +427,9 @@ export function mgLanterns(pIn, nIn, U) {
         const toL = row.xyz.sub(p);
         const d2 = dot(toL, toL);
         const wrap = clamp(dot(n, toL.mul(float(1.0).div(sqrt(d2).add(1e-4)))).mul(0.6).add(0.4), 0.0, 1.0);
-        sum.addAssign(vec3(row.w.mul(wrap).div(d2.mul(0.9).add(1.0))));
+        sum.addAssign(vec3(row.w.mul(wrap).div(d2.mul(0.9 / (TUNE.lampReach * TUNE.lampReach)).add(1.0))));
     });
-    return sum.mul(U.night.lantern).mul(U.lanternGain);
+    return sum.mul(U.night.lantern).mul(U.lanternGain).mul(TUNE.lampGain);
 }
 
 /**
@@ -433,11 +476,11 @@ export function mgLanternsTwoSided(pIn, nIn, U) {
         const toL = row.xyz.sub(p);
         const d2 = dot(toL, toL);
         const c = dot(n, toL.mul(float(1.0).div(sqrt(d2).add(1e-4))));
-        const fall = row.w.div(d2.mul(0.9).add(1.0));
+        const fall = row.w.div(d2.mul(0.9 / (TUNE.lampReach * TUNE.lampReach)).add(1.0));
         front.addAssign(fall.mul(clamp(c.mul(0.6).add(0.4), 0.0, 1.0)));
         back.addAssign(fall.mul(clamp(c.mul(-0.6).add(0.4), 0.0, 1.0)));
     });
-    const tint = U.night.lantern.mul(U.lanternGain);
+    const tint = U.night.lantern.mul(U.lanternGain).mul(TUNE.lampGain);
     return { front: tint.mul(front), back: tint.mul(back) };
 }
 
@@ -486,9 +529,11 @@ export const mgDesaturate = (c, k) => mix(c, vec3(mgLuma(c)), k);
  * seed, 0) (moonlit-greenhouse-plan.js palmCrownCentre / palmFrondAngle): where the ray toward
  * the moon crosses the crown's height, the fronds are a fan of narrowing blades made of leaflets,
  * so the beams under the palms are dappled and every frond lays its comb of shadow on what is
- * below. Inline: it reads the crowns' table.
+ * below. `extraSoft` (metres, optional) widens the fronds' edges and averages their leaflets, for
+ * a caller whose sample covers more than a leaflet (the air's march). Inline: it reads the
+ * crowns' table.
  */
-export function mgCanopy(pIn, moon, U) {
+export function mgCanopy(pIn, moon, U, extraSoft = null) {
     const p = pIn.toVar();
     const shade = float(1.0).toVar();
     Loop({
@@ -518,9 +563,13 @@ export function mgCanopy(pIn, moon, U) {
             const jitter = sin(b.z.mul(97.13).add(kk.mul(12.9898)).mul(43.7)).mul(0.12).mul(b.x).div(Math.PI * 2);
             const f = abs(sector.sub(k).sub(jitter));
             const width = mix(float(0.34), float(0.1), r);
-            const soft = h.mul(0.004).div(max(dist, 0.3)).add(0.03);
+            let soft = h.mul(0.004).div(max(dist, 0.3)).add(0.03);
+            // Metres across the frond are sectors at this radius: fronds / (2π · dist).
+            if (extraSoft) soft = soft.add(extraSoft.mul(b.x).div(max(dist, 0.3).mul(Math.PI * 2)));
             const blade = float(1.0).sub(smoothstep(width.sub(soft), width.add(soft), f));
-            const leaflets = smoothstep(0.18, 0.42, abs(fract(r.mul(15.0).add(f.mul(2.5))).sub(0.5)).mul(2.0));
+            let leaflets = smoothstep(0.18, 0.42, abs(fract(r.mul(15.0).add(f.mul(2.5))).sub(0.5)).mul(2.0));
+            // A sample wider than a leaflet (a crown's radius / 15) sees their mean.
+            if (extraSoft) leaflets = mix(leaflets, float(0.64), smoothstep(0.1, 0.35, extraSoft));
             const reach = float(1.0).sub(smoothstep(0.85, 1.05, r)).mul(smoothstep(0.03, 0.12, r));
             // Where the drawn fronds part round the moon (mgMoonGap) their shadow parts too, so the
             // mist toward the moon carries no shadow of a frond the eye cannot see.
@@ -613,7 +662,7 @@ export function mgSurface(pIn, nIn, albedoIn, U, {
     const wrap = clamp(ndl.mul(0.78).add(0.22), 0.0, 1.0);
     const grey = mgDesaturate(albedo, 0.55);
     const moonlight = night.moonlight.mul(U.moonLight).mul(vis);
-    let colour = grey.mul(moonlight).mul(wrap).mul(0.62);
+    let colour = grey.mul(moonlight).mul(wrap).mul(0.62 * TUNE.moonKey);
     if (translucency) {
         const v = view || normalize(p.sub(U.eye));
         // Light through the leaf: the moon behind it, the eye in front.
@@ -622,7 +671,7 @@ export function mgSurface(pIn, nIn, albedoIn, U, {
         const glow = through.mul(through).mul(0.7).add(0.3).mul(back);
         colour = colour.add(night.leafLit.mul(moonlight).mul(glow).mul(float(translucency).mul(0.42)));
     }
-    const sky = mix(night.horizon, night.zenith, n.y.mul(0.5).add(0.5)).mul(1.4).mul(ao);
+    const sky = mix(night.horizon, night.zenith, n.y.mul(0.5).add(0.5)).mul(1.4 * TUNE.skyFill).mul(ao);
     const lamps = (lampsGiven || mgLanterns(p, n, U)).mul(0.55);
     const blooms = (bloomsGiven || mgBloomLight(p, n, U)).mul(0.18);
     const flies = night.firefly.mul(U.fireflyGlow).mul(0.018).mul(ao);
