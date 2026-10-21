@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-21T06:40:50.790Z",
-  "runId": "2026-08-21T06-12-57-693Z",
+  "generatedAt": "2026-10-21T17:57:46.347Z",
+  "runId": "2026-10-21T17-57-08-242Z",
   "theme": "stellar-velocity",
   "themeMeta": {
     "displayName": "Stellar Velocity",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-21T06-12-57-693Z",
+  "targetUrl": "http://127.0.0.1:5263/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-21T17-57-08-242Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -61,29 +61,29 @@
       "gpuDevice": [
         {
           "active": false,
-          "deviceId": 5688,
-          "deviceString": "AMD Radeon(TM) Graphics",
-          "driverVersion": "31.0.12044.3",
+          "deviceId": 5056,
+          "deviceString": "AMD Radeon(TM) 610M",
+          "driverVersion": "32.0.13062.9003",
           "gpuPreference": 2,
-          "revision": 197,
-          "subSysId": 978261930,
+          "revision": 212,
+          "subSysId": -2141841494,
           "vendorId": 4098
         },
         {
           "active": false,
-          "deviceId": 9437,
-          "deviceString": "NVIDIA GeForce RTX 3070 Laptop GPU",
-          "driverVersion": "32.0.15.7247",
+          "deviceId": 11353,
+          "deviceString": "NVIDIA GeForce RTX 5080 Laptop GPU",
+          "driverVersion": "32.0.15.7324",
           "gpuPreference": 3,
           "revision": 161,
-          "subSysId": 978261930,
+          "subSysId": -2141841494,
           "vendorId": 4318
         },
         {
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.8972",
+          "driverVersion": "10.0.26100.9711",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -135,6 +135,13 @@
           "sameMode": true,
           "running": true,
           "paused": true
+        }
+      },
+      {
+        "id": "boot-theme-settled",
+        "passed": true,
+        "details": {
+          "active": "forest"
         }
       },
       {
@@ -220,6 +227,11 @@
         "details": {
           "themeId": "stellar-velocity"
         }
+      },
+      {
+        "id": "theme-detail-apply-reachable",
+        "passed": true,
+        "details": null
       },
       {
         "id": "theme-card-selection-started",
@@ -339,12 +351,10 @@
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "changedHeartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "sharedRendererHeartbeatAvailable": false,
           "sharedRendererHeartbeatObserved": false,
@@ -716,6 +726,13 @@
         }
       },
       {
+        "id": "outgoing-eventListeners-cleared",
+        "passed": true,
+        "details": {
+          "count": 0
+        }
+      },
+      {
         "id": "outgoing-eventUnsubscribers-cleared",
         "passed": true,
         "details": {
@@ -833,7 +850,7 @@
         "id": "outgoing-canvases-disconnected",
         "passed": true,
         "details": {
-          "added": 4,
+          "added": 1,
           "connected": 0
         }
       },
@@ -1207,12 +1224,10 @@
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "changedHeartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "sharedRendererHeartbeatAvailable": false,
           "sharedRendererHeartbeatObserved": false,
@@ -1475,10 +1490,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.19999999995343387,
-      "firstTargetSelection": 1603,
-      "cleanup-anchor": 38.199999999953434,
-      "secondTargetSelection": 231.39999999990687
+      "initial-anchor": 0.40000000037252903,
+      "firstTargetSelection": 1223.3999999994412,
+      "cleanup-anchor": 1266.3999999994412,
+      "secondTargetSelection": 12726.400000000373
     },
     "mode": {
       "modeId": "single",
@@ -1516,12 +1531,10 @@
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "changedHeartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "sharedRendererHeartbeatAvailable": false,
       "sharedRendererHeartbeatObserved": false,
@@ -1536,12 +1549,10 @@
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "changedHeartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "sharedRendererHeartbeatAvailable": false,
       "sharedRendererHeartbeatObserved": false,
@@ -1562,22 +1573,22 @@
   "screenshot": {
     "path": "docs\\theme-screenshots\\stellar-velocity.png",
     "passed": true,
-    "width": 1584,
-    "height": 787,
-    "byteLength": 4986432,
-    "samples": 20107,
+    "width": 2538,
+    "height": 1506,
+    "byteLength": 15288912,
+    "samples": 20012,
     "luminance": {
-      "min": 7.2916,
-      "max": 241.7208,
-      "mean": 12.226503854382981,
-      "range": 234.4292,
-      "variance": 65.62223854986726
+      "min": 11.0252,
+      "max": 254.14959999999996,
+      "mean": 71.99329428342952,
+      "range": 243.12439999999995,
+      "variance": 1846.6370060576091
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 169,
-    "warningCount": 7,
+    "entryCount": 150,
+    "warningCount": 4,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
@@ -1585,56 +1596,36 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-21T06:40:37.420Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:40:37.422Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:40:37.428Z",
+        "timestamp": "2026-10-21T17:57:20.095Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 587,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5263/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/8149829a-cf7b-4c52-9680-7658ae2f7146/scratchpad/vite-cache-5263/deps/chunk-VNXNK5DP.js?v=de528236"
       },
       {
-        "timestamp": "2026-08-21T06:40:41.405Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:40:43.663Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:40:43.664Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:40:43.664Z",
+        "timestamp": "2026-10-21T17:57:23.930Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 587,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5263/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/8149829a-cf7b-4c52-9680-7658ae2f7146/scratchpad/vite-cache-5263/deps/chunk-VNXNK5DP.js?v=de528236"
+      },
+      {
+        "timestamp": "2026-10-21T17:57:26.213Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5263/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/8149829a-cf7b-4c52-9680-7658ae2f7146/scratchpad/vite-cache-5263/deps/chunk-VNXNK5DP.js?v=de528236"
+      },
+      {
+        "timestamp": "2026-10-21T17:57:38.933Z",
+        "level": 2,
+        "message": "[ThemeManager] Swapping to \"stellar-velocity\" with 0 pipeline(s) in flight and builds still deferred: false",
+        "line": 1486,
+        "sourceId": "http://127.0.0.1:5263/src/themes/theme-manager.js"
       }
     ],
     "processFailures": []
   },
+  "perf": null,
   "fatalError": null
 }

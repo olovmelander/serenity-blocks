@@ -175,8 +175,10 @@ export function faceBlock(across, y, out = {}) {
     // The cracks lean and wander as they climb.
     const u = across + 0.1 * (y - 20) + 0.9 * (noise1(y / 5.5, 17) - 0.5);
     const column = edgeBelow(COLUMNS, u);
-    // The layers dip across the step and wave a little.
-    const v = y + DIP * across + 0.35 * (noise1(across / 13, 19) - 0.5);
+    // The layers dip across the step and wave: folded a metre or two over tens of metres, so no
+    // band runs level along the face like a course of masonry.
+    const v = y + DIP * across + 0.35 * (noise1(across / 13, 19) - 0.5) + 2.6 * (noise1(across / 23, 21) - 0.5)
+        + 0.7 * (noise1(across / 6.5, 23) - 0.5);
     const sheet = edgeBelow(SHEETS, v);
     // Each layer stands in or out along its length, broken where a crack crosses it: most nearly
     // flush, now and then one standing well out as a ledge or worn back under one.
@@ -258,9 +260,12 @@ export function faceAlong(across, y) {
     const left = lip + stairProfile(dz);
     const right = lip + ledgeProfile(dz);
     // Beside the river: a broken face standing forward of the lip at its foot, leaning back as it
-    // climbs, bulging and hollowed on the scale of a house.
+    // climbs (more in some places than others), bulging and hollowed on the scale of a house, in
+    // buttresses and the gullies between them.
     const bulge = noise1(across / 9, 3) - 0.5 + 0.6 * (noise1(across / 4.2 + y / 11, 5) - 0.5);
-    const dry = lip + 2.2 + 2.2 * bulge + 0.22 * dz;
+    const buttress = noise1(across / 6.5, 41) - 0.5;
+    const lean = 0.14 + 0.16 * noise1(across / 15, 43);
+    const dry = lip + 2.2 + 2.2 * bulge + 3.2 * buttress * smooth(1, 6, dz) + lean * dz;
     let at = zones.main * main + zones.left * left + zones.right * right + zones.dry * dry;
     // The ribs between the tongues stand proud of the water either side, down to the boil.
     for (const rib of RIBS) {
