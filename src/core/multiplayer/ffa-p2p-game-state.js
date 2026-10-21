@@ -43,6 +43,7 @@ import {
     rollbackFixedTickOnPromotion,
     transitionFfaSimulationClock,
 } from './ffa-fixed-tick-policy.js';
+import { applyMatchLevelProgression, applyMatchLevelRule } from './match-level-rule.js';
 import {
     cancelFfaRoundRestart,
     handleFfaMatchEnd,
@@ -1165,12 +1166,13 @@ export class FFAGameStateP2P {
             if (isFullReset) {
                 player.frags = 0;
                 player.gameState.reset();
-                player.gameState.level = this.matchConfig.startLevel;
+                applyMatchLevelRule(player.gameState, this.matchConfig);
             } else {
-                // Totals carry over as the host counts them (ffa-round-policy.js).
+                // Totals carry over as the host counts them (ffa-round-policy.js), the level as the match's rule allows.
                 const carried = readRoundCarry(data?.totals, player.steamId, player.gameState);
                 player.gameState.reset();
                 Object.assign(player.gameState, carried);
+                applyMatchLevelRule(player.gameState, this.matchConfig, carried.level);
             }
         });
 
@@ -1903,8 +1905,9 @@ export class FFAGameStateP2P {
     initializePlayerForMatch(player, seed) {
         const roundSeed = normalizeFfaRoundSeed(seed);
         if (roundSeed === null) return false;
-        // Reset game state
+        // Reset game state, onto the match's level rule (host and peers alike: match-level-rule.js)
         player.gameState.reset();
+        applyMatchLevelRule(player.gameState, this.matchConfig);
         player.garbageQueue = new GarbageQueue();
         player.isAlive = !isDeparted(player);
         player.awaitingSpawn = false; // they're spawning now — no longer a waiting late-joiner
@@ -2815,6 +2818,7 @@ export class FFAGameStateP2P {
         if (state.matchConfig) {
             this.matchConfig = { ...this.matchConfig, ...state.matchConfig };
             clockProjectionReset = this._transitionSimulationClock(this.matchConfig.simulationClock);
+            applyMatchLevelProgression(this.players, this.matchConfig); // not in a board's resync fields
         }
         if (carriesSharedSeed) {
             this.sharedSeed = resyncSeed;
@@ -3808,15 +3812,12 @@ export class FFAGameStateP2P {
             player.garbageQueue.clear();
             player.lastAttackerId = null; // Clear last attacker for new round
 
-            // Reset board/pieces/flags in place but preserve cumulative stats.
-            const oldScore = player.gameState.score;
-            const oldLines = player.gameState.lines;
-            const oldLevel = player.gameState.level;
-
+            // Reset board/pieces/flags in place but keep score and lines across rounds, and the
+            // level only when the match levels up (match-level-rule.js), at that level's speed.
+            const { score, lines, level } = player.gameState;
             player.gameState.reset();
-            player.gameState.score = oldScore; // Keep score across rounds
-            player.gameState.lines = oldLines; // Keep lines across rounds
-            player.gameState.level = oldLevel; // Keep level progression
+            Object.assign(player.gameState, { score, lines });
+            applyMatchLevelRule(player.gameState, this.matchConfig, level);
         });
 
         // Clear buffered inputs/ticks from the finished round (the jitter buffer is
@@ -4103,9 +4104,8 @@ export class FFAGameStateP2P {
             player.garbageQueue.clear();
             player.lastAttackerId = null; // Clear last attacker for new game
 
-            // Complete reset
+            // Complete reset (startMatch puts every board on the match's level rule)
             player.gameState.reset();
-            player.gameState.level = this.matchConfig.startLevel;
         });
 
         // Clear buffered inputs/ticks from the finished game (host only).
