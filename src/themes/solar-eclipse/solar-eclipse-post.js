@@ -77,6 +77,9 @@ export const BLOOM_KNEE = 0.5;
 export const BLOOM_RADIUS = 0.4;
 export const EXPOSURE = 1.0;
 
+/** The column a reflection is drawn out into on the water: (reach in screen heights, weight). */
+const WATER_STREAK = Object.freeze([[0.012, 0.62], [0.026, 0.44], [0.045, 0.28], [0.07, 0.16]]);
+
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
 
@@ -141,6 +144,8 @@ export class SolarEclipsePost {
         this.uMoon = uniform(new THREE.Vector4(0.2, 0.36, 0, 0));
         /** The moon's reflection in the mirror, the same four numbers. */
         this.uEcho = uniform(new THREE.Vector4(0.2, 0.84, 0, 0));
+        /** The water: (where the horizon stands, y down in UV; how far the film is stirred, 0..1). */
+        this.uWater = uniform(new THREE.Vector2(0.6, 1));
 
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
         this.uCalm = this.calmRects.map((v) => uniform(v));
@@ -232,7 +237,22 @@ export class SolarEclipsePost {
             // ── Bloom ──
             const glare = vec3(0.0).toVar();
             if (this.bloomNode) {
-                const B = vec3(this.bloomNode.getTextureNode().sample(st).rgb);
+                const bloomTex = this.bloomNode.getTextureNode();
+                const B = vec3(bloomTex.sample(st).rgb).toVar();
+                // Below the horizon the film of water is never quite still: whatever burns in
+                // the mirror is drawn out into a soft column up and down the water. A chain
+                // stills it.
+                const below = smoothstep(this.uWater.x.add(0.004), this.uWater.x.add(0.05), st.y)
+                    .mul(this.uWater.y).toVar();
+                If(below.greaterThan(0.01), () => {
+                    const column = vec3(0.0).toVar();
+                    WATER_STREAK.forEach(([reach, weight]) => {
+                        const dy = vec2(0.0, reach);
+                        const pair = vec3(bloomTex.sample(st.add(dy)).rgb).add(vec3(bloomTex.sample(st.sub(dy)).rgb));
+                        column.addAssign(pair.mul(weight));
+                    });
+                    B.addAssign(column.mul(below));
+                });
                 glare.assign(B.mul(float(1.0).add(this.uBloomBoost.mul(0.6))));
                 glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
                 const held = (disc) => {
@@ -248,9 +268,10 @@ export class SolarEclipsePost {
             const X = H.mul(this.uExposure).add(veil);
             const T = nightFilmic(X).toVar();
             const L = seLuma(T);
-            // The shadow's dark is a deep blue, never a flat black.
+            // The shadow's dark leans to a deep blue, by scaling alone: a constant added here would
+            // lift every black to a veil once encoded.
             const lo = float(1.0).sub(smoothstep(0.0, 0.22, L));
-            T.assign(mix(T, T.mul(vec3(0.94, 0.98, 1.1)).add(vec3(0.0016, 0.002, 0.0042)), lo.mul(0.6)));
+            T.assign(mix(T, T.mul(vec3(0.92, 0.98, 1.14)), lo.mul(0.6)));
             const hi = smoothstep(0.5, 0.95, L);
             T.assign(mix(T, T.mul(vec3(1.03, 1.0, 0.96)), hi.mul(0.5)));
             T.assign(mix(vec3(seLuma(T)), T, 1.14));
@@ -292,8 +313,9 @@ export class SolarEclipsePost {
 
     /** Per-frame values (all optional). */
     update({
-        flash, kick, bloomBoost, exposure, ripple, moon, echo, time,
+        flash, kick, bloomBoost, exposure, ripple, moon, echo, water, time,
     } = {}) {
+        if (water) this.uWater.value.set(water.horizon, water.stir);
         if (moon) this.uMoon.value.set(moon.x, moon.y, moon.radius, moon.matte);
         if (echo) this.uEcho.value.set(echo.x, echo.y, echo.radius, echo.matte);
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
