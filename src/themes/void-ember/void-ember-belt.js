@@ -31,6 +31,7 @@ import {
     dot,
     exp,
     float,
+    fract,
     length,
     max,
     min,
@@ -42,6 +43,7 @@ import {
     positionWorld,
     sin,
     smoothstep,
+    step,
     varying,
     vec3,
     vec4,
@@ -183,6 +185,8 @@ export function createRocks(u, cls, count, seed, { cracks = true } = {}) {
 
     const vWorld = varying(world, 'veRockWorld');
     const vNormal = varying(spinV(normalGeometry), 'veRockNormal');
+    // The way out from the stone's middle: a rounded normal, smooth across the facets (the rim).
+    const vRound = varying(spinV(positionGeometry), 'veRockRound');
     const vLocal = varying(positionGeometry, 'veRockLocal');
     const vWave = varying(wave, 'veRockWave');
     const vSeed = varying(vec3(seeds.y, seeds.z, orbit.x), 'veRockSeed');
@@ -205,17 +209,35 @@ export function createRocks(u, cls, count, seed, { cracks = true } = {}) {
             .mul(0.05)));
         // What little the void gives the night side.
         col.addAssign(u.fill.mul(N.y.mul(0.35).add(0.65)).mul(albedo.x.mul(8.0)).mul(u.iris.pow(0.72)));
+        // Backlit: a stone between the eye and the star wears a thin rim of its light, where the
+        // dust on its edges scatters it on toward the eye (without it, a flat cut-out).
+        // (The star is large seen from the belt: "behind" is a wide cone. The edge is read from the
+        // rounded normal: from the facets' own, whole faces at the silhouette lit up like glass.)
+        const behind = smoothstep(0.35, 0.92, dot(V.negate(), L));
+        const edge = float(1.0).sub(clamp(dot(normalize(vRound), V), 0.0, 1.0));
+        const edge2 = edge.mul(edge);
+        const rimLine = edge2.mul(edge2).mul(edge2);
+        col.addAssign(u.starLight.mul(rimLine.mul(behind).mul(fall).mul(0.5)));
         // The wave's front lights the side that faces the star.
         col.addAssign(albedo.mul(vWave.rgb).mul(day.mul(0.6).add(0.4)).mul(6.0));
         if (cracks) {
-            // Fire in the cracks: what the wave leaves behind, and the star's own heat close in.
-            const n = u.noise3(vLocal.mul(2.7).add(vec3(vSeed.y, vSeed.y.mul(1.7), 3.0)));
-            const seam = float(1.0).sub(abs(n.x.mul(2.0).sub(1.0)));
-            const crack = seam.mul(seam).mul(seam).mul(seam).mul(seam)
-                .mul(smoothstep(0.25, 0.7, n.y));
+            // Fire in the fractures: what the wave leaves behind, and the star's own heat close in.
+            // Hairlines between the stone's own plates (the star's baked plates, read along the
+            // stone's own directions and mirrored per stone), not blotches of value noise.
             const near = float(1.0).sub(smoothstep(2.1, 3.6, vSeed.z)).mul(max(u.heat.sub(0.4), 0.0)).mul(1.5);
-            const fire = vWave.w.mul(0.8).add(near);
-            col.addAssign(veBlackbody(fire.mul(0.4).add(0.22)).mul(crack.mul(fire).mul(2.4)));
+            const fire = vWave.w.mul(0.8).add(near).toVar();
+            If(fire.greaterThan(0.004), () => {
+                const flip = vec3(
+                    step(0.5, fract(vSeed.y.mul(1.7))),
+                    step(0.5, fract(vSeed.y.mul(3.1))),
+                    step(0.5, fract(vSeed.y.mul(5.3))),
+                ).mul(2.0).sub(1.0);
+                const shards = u.plates(vLocal.mul(flip).add(vec3(0.0, 0.0, 0.001)));
+                // Only some plates' borders carry fire: a few fractures, not a crazed glaze.
+                const crack = float(1.0).sub(smoothstep(0.0, 0.06, shards.x))
+                    .mul(smoothstep(0.5, 0.8, shards.y.add(vSeed.x.mul(0.25))));
+                col.addAssign(veBlackbody(fire.mul(0.45).add(0.3)).mul(crack.mul(fire).mul(3.2)));
+            });
         }
         return vec4(col.mul(u.breath.mul(0.75).add(0.25)), 1.0);
     })();
