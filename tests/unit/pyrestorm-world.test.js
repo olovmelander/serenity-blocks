@@ -261,6 +261,64 @@ describe('PyrestormWorld locks', () => {
         expect(world.getState().hits).toBeGreaterThan(0);
     });
 
+    it('throws a lock\'s bombs on arcs over the vent, each lying as an ember where its arc comes down', () => {
+        const { world } = makeWorld();
+        const thrown = [];
+        const spawn = world.bombs.spawn.bind(world.bombs);
+        vi.spyOn(world.bombs, 'spawn').mockImplementation((b) => {
+            thrown.push({ ...b });
+            return spawn(b);
+        });
+        world.onLock({
+            u: 0.4, rows: [19], color: PIECE_COLORS[1], cells: T_CELLS,
+        });
+        const bombs = thrown.filter((b) => b.kind === BOMB.bomb);
+        const embers = thrown.filter((b) => b.kind === BOMB.ember);
+        expect(bombs.length).toBeGreaterThan(4);
+        expect(embers).toHaveLength(bombs.length);
+        bombs.forEach((b, i) => {
+            // It climbs well over the vent and draws a trail of its arc...
+            expect(b.y + (b.vy * b.vy) / (2 * b.g)).toBeGreaterThan(CRATER.y + 100);
+            expect(b.trail).toBeGreaterThan(0);
+            // ...and its ember is born where and when the arc meets the ground.
+            const e = embers[i];
+            const t = b.life;
+            expect(e.born).toBeCloseTo(b.born + t, 5);
+            expect(e.x).toBeCloseTo(b.x + b.vx * t, 2);
+            expect(e.z).toBeCloseTo(b.z + b.vz * t, 2);
+            expect(e.y - 2).toBeCloseTo(b.y + b.vy * t - 0.5 * b.g * t * t, 1);
+            expect(e.life).toBeGreaterThan(1);
+        });
+    });
+
+    it('glows in the crater on a lock and lets it fade; locks as fast as frames hold it steady under its cap', () => {
+        const { world, camera } = makeWorld();
+        expect(world.u.burst.value).toBe(0);
+        world.onLock({ u: 0.5, rows: [19], color: PIECE_COLORS[0] });
+        stepTo(world, camera, world.time + 0.2);
+        const lit = world.u.burst.value;
+        expect(lit).toBeGreaterThan(0.2);
+        // Its light reaches the cone and the cloud, and a puff of hot ash leaves the crater.
+        expect(world.u.lightCount.value).toBeGreaterThan(0);
+        expect(world.getState().eventPuffs).toBeGreaterThan(0);
+        stepTo(world, camera, world.time + 4);
+        expect(world.u.burst.value).toBeLessThan(lit * 0.05);
+        // Hard drops every frame: a swell to a steady glow, never a strobe and never past its cap.
+        let last = world.u.burst.value;
+        let jump = 0;
+        for (let k = 0; k < 90; k++) {
+            world.onLock({
+                u: 0.5, rows: [19], color: PIECE_COLORS[0], hardDrop: true, distance: 18,
+            });
+            stepTo(world, camera, world.time + 1 / 30);
+            const now = world.u.burst.value;
+            expect(now).toBeLessThanOrEqual(1.6);
+            if (k > 15) jump = Math.max(jump, Math.abs(now - last));
+            last = now;
+        }
+        expect(jump).toBeLessThan(0.05);
+    });
+
     it('opens the crust with a tremor on a hard drop that fades', () => {
         const { world, camera } = makeWorld();
         world.onLock({ u: 0.5, rows: [19], color: PIECE_COLORS[0] });
