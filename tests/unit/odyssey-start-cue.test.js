@@ -130,6 +130,35 @@ describe('Odyssey Ready → Go cue', () => {
         expect(document.body.children).toHaveLength(0);
     });
 
+    it('fits the plate to the well it starts, and stays centred without one', async () => {
+        const mode = createMode();
+        const plain = showOdysseyStartCue(mode, mode.currentLevelConfig, { dropInterval: 1000 });
+        expect(document.getElementById('odyssey-level-start-cue').dataset.fit).toBeUndefined();
+        clearOdysseyStartCue(mode);
+        await plain;
+        const properties = new Map();
+        const bounds = {
+            left: 498, top: 129, width: 284, height: 569,
+        };
+        const well = { getBoundingClientRect: () => bounds };
+        const wellSelector = '#single-player-container .player-board-section';
+        document.querySelector = (selector) => (selector === wellSelector ? well : null);
+        const realCreate = document.createElement;
+        document.createElement = (tag) => {
+            const node = realCreate(tag);
+            node.style.setProperty = (name, value) => properties.set(name, value);
+            return node;
+        };
+        const fitted = showOdysseyStartCue(mode, mode.currentLevelConfig, { dropInterval: 1000 });
+        const overlay = document.getElementById('odyssey-level-start-cue');
+        expect(overlay.dataset.fit).toBe('well');
+        expect(Object.fromEntries(properties)).toEqual({
+            '--cue-well-x': '640px', '--cue-well-y': '414px', '--cue-well-w': '284px',
+        });
+        await vi.advanceTimersByTimeAsync(700);
+        await expect(fitted).resolves.toBe(true);
+    });
+
     it('refuses to cue a missing game state', async () => {
         await expect(showOdysseyStartCue(createMode(), null, null)).resolves.toBe(false);
         expect(document.body.children).toHaveLength(0);
