@@ -180,25 +180,32 @@ export class SakuraSpirits {
             .add(this.uRingUp.mul(rank.mul(2).sub(1).mul(0.94)))
             .add(vec3(0, sin(t.mul(2.3).add(seed.y.mul(29))).mul(0.12), 0));
         const size = alight.mul(seed.y.mul(0.25).add(0.8)).mul(this.uSpirit.mul(0.2).add(1)).mul(0.6);
-        // A flame stands on its base, taller than it is wide.
+        // A kitsunebi is a will-o'-wisp: a round head of cold fire trailing a tail that licks
+        // upward. The sprite stands upright with the head on its centre, in a halo of its own.
         const toEye = normalize(cameraPosition.sub(centre));
         const right = normalize(cross(vec3(0, 1, 0), toEye));
         const st = uv();
         material.positionNode = centre
-            .add(right.mul(positionGeometry.x.mul(size).mul(0.7)))
-            .add(vec3(0, 1, 0).mul(positionGeometry.y.add(0.3).mul(size)));
-        // A round belly drawn up into a tip that licks from side to side.
-        const lick = sin(t.mul(11).add(seed.y.mul(53)).add(st.y.mul(7))).mul(st.y).mul(0.2);
-        const half = pow(st.y, 0.55).mul(pow(st.y.oneMinus(), 0.9)).mul(1.9);
-        const edge = st.x.sub(0.5).mul(2).add(lick).abs()
-            .div(max(half, 0.001));
-        const body = smoothstep(0, 1, saturate(edge.oneMinus()));
-        const heart = smoothstep(0.2, 1, saturate(edge.mul(2.3).oneMinus())).mul(smoothstep(0.12, 0.7, st.y).oneMinus());
+            .add(right.mul(positionGeometry.x.mul(size).mul(0.9)))
+            .add(vec3(0, 1, 0).mul(positionGeometry.y.add(0.2).mul(size).mul(1.5)));
+        // In units of the sprite's height: the head at (0, 0.3), the tail thinning to 0.92.
+        const across = st.x.sub(0.5).mul(0.6);
+        const rise = saturate(st.y.sub(0.3).div(0.62));
+        const reach = sin(t.mul(7.3).add(seed.y.mul(31))).mul(0.06).add(0.94);
+        const lick = sin(t.mul(9).add(seed.y.mul(53)).sub(st.y.mul(9))).mul(rise).mul(0.07);
+        const head = length(vec2(across, st.y.sub(0.3))).sub(0.15);
+        const tail = across.sub(lick).abs().sub(pow(rise.div(reach).oneMinus().max(0), 1.4).mul(0.15))
+            .max(st.y.sub(0.3).negate());
+        const shape = head.min(tail);
+        const body = smoothstep(0.025, -0.03, shape);
+        const heart = smoothstep(-0.02, -0.13, head);
+        const halo = exp(shape.max(0).mul(-15)).mul(0.32);
         const flicker = sin(t.mul(13).add(seed.y.mul(71))).mul(0.12).add(0.88);
-        const outer = mix(vec3(0.03, 0.16, 1.0), vec3(0.3, 0.14, 1.0), this.uSpirit.mul(0.7));
-        const flame = mix(outer, vec3(0.16, 0.85, 1.35), body).mul(body)
-            .add(vec3(0.9, 1.2, 1.3).mul(heart).mul(1.1));
-        material.colorNode = flame.mul(alight).mul(flicker).mul(1.5);
+        const outer = mix(vec3(0.1, 0.24, 1.0), vec3(0.42, 0.2, 1.0), this.uSpirit.mul(0.7));
+        const flame = outer.mul(halo)
+            .add(mix(outer.mul(1.6), vec3(0.3, 1.0, 1.45), smoothstep(0.0, -0.08, shape)).mul(body))
+            .add(vec3(0.8, 1.15, 1.4).mul(heart).mul(0.9));
+        material.colorNode = flame.mul(alight).mul(flicker).mul(1.4);
         const mesh = new THREE.InstancedMesh(this.quad, material, count);
         mesh.name = 'SakuraFoxfire';
         mesh.frustumCulled = false;

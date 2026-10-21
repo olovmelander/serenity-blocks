@@ -102,33 +102,44 @@ export class SakuraSky {
         const radius = length(disc);
         const facing = saturate(dot(direction, axis));
         const inside = smoothstep(0.97, 1.0, radius).oneMinus().mul(smoothstep(0.5, 0.9, facing));
-        // Seas and highlands from two octaves of the shared noise.
+        // Seas and highlands from two octaves of the shared noise, pocked by craters. The disc
+        // is kept below the tone curve's shoulder so its seas still read; the glow is the halo's.
         const seas = light.noise(disc.mul(0.21).add(vec2(0.37, 0.61))).r.mul(0.62)
             .add(light.noise(disc.mul(0.53).add(vec2(0.11, 0.83))).g.mul(0.38));
-        const surface = mix(0.5, 1.0, smoothstep(0.36, 0.62, seas))
-            .mul(light.noise(disc.mul(1.7)).b.mul(0.16).add(0.92));
+        const craters = light.noise(disc.mul(1.7)).b.mul(0.6).add(light.noise(disc.mul(3.9).add(0.3)).a.mul(0.4));
+        const surface = mix(0.4, 1.0, smoothstep(0.38, 0.6, seas)).mul(craters.mul(0.26).add(0.87));
         const limb = pow(saturate(float(1).sub(radius.mul(radius))), 0.28);
         // A low moon is warm at its lower limb, where it looks through more air.
-        const tint = mix(vec3(1.0, 0.88, 0.8), vec3(0.9, 0.96, 1.08), saturate(disc.y.mul(0.5).add(0.62)));
-        const body = tint.mul(surface).mul(limb.mul(0.5).add(0.5)).mul(2.3);
+        const tint = mix(vec3(1.0, 0.86, 0.78), vec3(0.92, 0.97, 1.08), saturate(disc.y.mul(0.5).add(0.62)));
+        const body = tint.mul(surface).mul(limb.mul(0.45).add(0.55)).mul(1.5);
         const angle = radius.mul(SAKURA_MOON_RADIUS);
-        const corona = exp(angle.mul(-26)).mul(0.42).add(exp(angle.mul(-7)).mul(0.07));
+        // Oborozuki, the hazy moon of spring: a bright aureole in the thin cloud round the disc
+        // and the faint rings of its corona, red-brown, then blue-green, then rose.
+        const out = radius.sub(1).max(0);
+        const aureole = exp(out.mul(-2.4)).mul(0.55)
+            .add(exp(angle.mul(-26)).mul(0.3))
+            .add(exp(angle.mul(-7)).mul(0.07));
+        const band = (at, width) => exp(radius.sub(at).div(width).pow2().negate());
+        const corona = vec3(1.0, 0.55, 0.42).mul(band(2.5, 0.42)).mul(0.055)
+            .add(vec3(0.42, 0.78, 1.0).mul(band(3.35, 0.4)).mul(0.034))
+            .add(vec3(1.0, 0.5, 0.75).mul(band(4.15, 0.45)).mul(0.02));
         const glow = this.uMoonGlow.mul(0.9).add(1);
-        return body.mul(inside)
-            .add(light.uMoonColor.mul(corona.mul(inside.oneMinus()).mul(glow)).mul(0.62).mul(step(0.2, facing)));
+        const around = light.uMoonColor.mul(aureole).mul(0.62).add(corona);
+        return body.mul(inside).add(around.mul(inside.oneMinus()).mul(glow).mul(step(0.2, facing)));
     }
 
-    /** Stars seen along a unit direction: two sizes, each with its own twinkle. */
+    /** Stars seen along a unit direction: two sizes and a dust of faint ones, each twinkling. */
     stars(direction) {
         const { light } = this;
         let total = float(0);
-        [[150, 0.07, 1.0], [70, 0.045, 2.6]].forEach(([scale, size, gain], layer) => {
+        const layers = [[150, 0.07, 1.0, 9], [70, 0.045, 2.6, 9], [260, 0.15, 0.42, 3.5]];
+        layers.forEach(([scale, size, gain, rarity], layer) => {
             const cellPoint = direction.mul(scale);
             const cell = floor(cellPoint);
             const seed = hash3(cell.add(layer * 17.3));
             const centre = vec3(seed, fract(seed.mul(57.31)), fract(seed.mul(113.7))).mul(0.6).add(0.2);
             const distance = length(fract(cellPoint).sub(centre));
-            const magnitude = pow(fract(seed.mul(7.13)), 9);
+            const magnitude = pow(fract(seed.mul(7.13)), rarity);
             const twinkle = sin(light.uTime.mul(fract(seed.mul(3.7)).mul(2.6).add(0.9)).add(seed.mul(TAU)))
                 .mul(0.3).add(0.7);
             total = total.add(smoothstep(0, size, distance).oneMinus().mul(magnitude).mul(twinkle)
