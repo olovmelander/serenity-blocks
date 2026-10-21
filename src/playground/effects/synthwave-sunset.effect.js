@@ -16,7 +16,7 @@
  *   eventAge=<s>             ...and show it <s> seconds later (lines=<n>, chain=<n> links)
  *                            chain: the coaster lifted n notches; ride: a chain of n that broke
  *   parts=sky,sea,...        draw only these parts (SYNTHWAVE_PARTS: sky sea wheel pier coaster
- *                            promenade palms fireworks)
+ *                            promenade palms gulls fireworks)
  *   dusk=<0..1>              hold the evening: 0 = the sun on the sea, 1 = afterglow (default:
  *                            the menu's rest value)
  *   icon=1                   the theme-icon framing: a narrow lens on the wheel in front of the
@@ -26,6 +26,7 @@
  *                            default 40), in place of the game camera: e.g. the coaster's
  *                            circuit from above the sea, eye=95,38,-45&aim=37,12,-88&fov=42
  *   noPost=1                 raw scene (no bloom/grade)
+ *   noMist=1 / noShafts=1    the post without its sea mist / without the sun's shafts (A/B)
  *   pointerX / pointerY      hold a pointer-parallax offset (-1..1)
  */
 import * as THREE from 'three/webgpu';
@@ -101,7 +102,13 @@ export function create({
 
     const usePost = params.get('noPost') !== '1';
     const look = POST_LOOK[quality] || POST_LOOK.High;
-    const post = usePost ? new SynthwaveSunsetPost(renderer, scene, camera, { look, grain: false }) : null;
+    const post = usePost ? new SynthwaveSunsetPost(renderer, scene, camera, {
+        look,
+        grain: false,
+        uniforms: world.u,
+        mist: params.get('noMist') !== '1',
+        shafts: params.get('noShafts') !== '1',
+    }) : null;
     const overlay = params.get('board') === '0' ? null : mountBoardOverlay(params.get('hud') !== '0');
 
     const pointerX = num(params, 'pointerX');
