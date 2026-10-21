@@ -16,9 +16,11 @@ import {
     Fn,
     attribute,
     cameraPosition,
+    clamp,
     dot,
     exp,
     float,
+    length,
     max,
     mix,
     normalWorld,
@@ -34,7 +36,9 @@ import {
     TAU,
     haAtmosphere,
     haClearLight,
+    haFogAmount,
     haPart,
+    haSkyFog,
     haSkyLight,
     mulberry32,
     siteToWorld,
@@ -137,6 +141,12 @@ function buildRanges(land, segments, rand) {
     const ridges = [[2700, 420, 520], [1750, 250, 360], [1120, 150, 250]];
     const tones = [[0.36, 0.4, 0.5], [0.4, 0.4, 0.44], [0.46, 0.41, 0.38]];
     const span = 250 * DEG;
+    /** Rows of facets from the crest down to the foot: enough to carve spurs and gullies. */
+    const ROWS = 6;
+    // The slopes' carving draws from its own stream: the crests below take exactly the numbers
+    // they always took from `rand`, so the skyline, and the islets and trees seeded after it,
+    // stand where they always stood.
+    const carveRand = mulberry32(0x5eed + segments);
     ridges.forEach(([distance, peak, foot], layer) => {
         const n = Math.max(12, Math.round(segments * (1 - layer * 0.18)));
         // A ridge is a walk of peaks and saddles.
@@ -148,8 +158,6 @@ function buildRanges(land, segments, rand) {
             heights.push(Math.min(1, h * sharp));
         }
         const crest = [];
-        const shoulder = [];
-        const base = [];
         for (let i = 0; i <= n; i++) {
             const az = -span / 2 + (i / n) * span;
             // Low under the sun (to the right) and behind the pyramid (to the left).
@@ -157,23 +165,49 @@ function buildRanges(land, segments, rand) {
             const behind = 1 - 0.5 * smooth(26 * DEG, 6 * DEG, Math.abs(az + 25 * DEG));
             const y = peak * heights[i] * underSun * behind * (0.75 + rand() * 0.3);
             const jitter = 1 + (rand() - 0.5) * 0.06;
-            const at = (r, yy) => [Math.sin(az) * r, yy, -Math.cos(az) * r];
-            crest.push(at(distance * jitter, y));
-            const mid = distance - foot * (0.36 + rand() * 0.2);
-            const azMid = az + (rand() - 0.5) * (span / n) * 0.7;
-            shoulder.push([Math.sin(azMid) * mid, y * (0.32 + rand() * 0.22), -Math.cos(azMid) * mid]);
-            base.push(at(distance - foot, -2));
+            // (The old shoulder's three numbers, still drawn so the stream stays in step.)
+            rand(); rand(); rand();
+            crest.push({ az, y, r: distance * jitter });
         }
+        for (let i = 0; i < n * 4; i++) rand();
+        // Spurs run down from the peaks and gullies between them: every other column of the
+        // slope stands out a little, every other sinks.
+        const grid = crest.map(({ az, y, r: top }, i) => {
+            const spur = (i % 2 === 0 ? 1 : -1) * (0.5 + carveRand() * 0.5);
+            const column = [];
+            for (let k = 0; k <= ROWS; k++) {
+                const t = k / ROWS;
+                const r = top - foot * (t ** 0.9) * (k === 0 ? 0 : 0.92 + carveRand() * 0.16);
+                // The slope falls steeply under the crest and flattens toward the foot.
+                const fall = (1 - t) ** 1.55;
+                const inner = k > 0 && k < ROWS;
+                const carve = inner ? spur * peak * 0.05 * Math.sin(Math.PI * t) * (0.6 + carveRand() * 0.8) : 0;
+                const yy = k === ROWS ? -2 : Math.max(-1, y * fall + carve + (inner ? (carveRand() - 0.5) * y * 0.06 * (1 - t) : 0));
+                const azk = az + (inner ? (carveRand() - 0.5) * (span / n) * 0.55 : 0);
+                column.push([Math.sin(azk) * r, yy, -Math.cos(azk) * r]);
+            }
+            return column;
+        });
         const tone = tones[layer];
+        const shade = () => {
+            const k = 0.9 + carveRand() * 0.2;
+            return [tone[0] * k, tone[1] * k, tone[2] * k];
+        };
         for (let i = 0; i < n; i++) {
-            const shade = () => {
-                const k = 0.9 + rand() * 0.2;
-                return [tone[0] * k, tone[1] * k, tone[2] * k];
-            };
-            land.tri(crest[i], shoulder[i], crest[i + 1], shade(), LAND.range);
-            land.tri(shoulder[i], shoulder[i + 1], crest[i + 1], shade(), LAND.range);
-            land.tri(shoulder[i], base[i], shoulder[i + 1], shade(), LAND.range);
-            land.tri(base[i], base[i + 1], shoulder[i + 1], shade(), LAND.range);
+            for (let k = 0; k < ROWS; k++) {
+                const a = grid[i][k];
+                const b = grid[i + 1][k];
+                const c = grid[i][k + 1];
+                const d = grid[i + 1][k + 1];
+                // Alternate the diagonal so the facets do not all lean one way.
+                if ((i + k) % 2 === 0) {
+                    land.tri(a, c, b, shade(), LAND.range);
+                    land.tri(b, c, d, shade(), LAND.range);
+                } else {
+                    land.tri(a, c, d, shade(), LAND.range);
+                    land.tri(a, d, b, shade(), LAND.range);
+                }
+            }
         }
     });
 }
@@ -311,6 +345,24 @@ function createLandMaterial(u, { caster }) {
             .mul(0.3));
         const clear = haClearLight(u, p).mul(u.clearLive);
         col.addAssign(clear.rgb.mul(albedo).mul(1.2));
+        if (!caster) {
+            // ── The far ranges: snow on the high faces that look up, mist in the valleys ──
+            const snowLine = float(165.0).add(grain.sub(0.5).mul(40.0));
+            const snow = smoothstep(snowLine, snowLine.add(45.0), p.y).mul(smoothstep(0.3, 0.6, n.y)).mul(isRange);
+            const snowLit = u.sun.mul(facing.mul(1.15)).add(sky.mul(1.05)).mul(vec3(0.92, 0.93, 0.98));
+            col.assign(mix(col, snowLit, snow.mul(0.85)));
+            // Rock faces that look up hold a little scree; the steep ones stay dark.
+            col.mulAssign(mix(float(0.86), float(1.1), smoothstep(0.15, 0.7, n.y)).mul(isRange).add(float(1.0).sub(isRange)));
+            // The air, once: its colour along this ray and how much of it lies in between. Mist
+            // lies in the valleys at the foot of each range, and thickens the air there.
+            const rel = p.sub(cameraPosition);
+            const dist = length(rel);
+            const dir = rel.div(max(dist, 1e-3));
+            const fogCol = haSkyFog(u, vec3(dir.x, max(dir.y, 0.015), dir.z));
+            const mist = exp(max(p.y, 0.0).mul(-1 / 30)).mul(0.3);
+            const fade = haFogAmount(dist, p.y);
+            return vec4(mix(col, fogCol, clamp(fade.add(mist.mul(float(1.0).sub(fade))), 0.0, 1.0)), 1.0);
+        }
         return vec4(haAtmosphere(u, col, p), 1.0);
     })();
     return material;
