@@ -1,319 +1,62 @@
 /**
- * MainMenuPlayerCard Component
+ * MainMenuPlayerCard: the Steam account in the main menu's top-right corner (desktop builds).
  *
- * Displays the logged-in Steam user's avatar and name in the main menu.
- * Features:
- * - Shows Steam avatar with loading skeleton
- * - Displays player name and online status
- * - Click to open Steam overlay profile
- * - Graceful offline fallback
+ * - The avatar (a rounded tile), the Steam name and one status line: Online, Connecting or
+ *   Offline, with friends playing and a "Limited" note when Steam is up but missing APIs.
+ * - Click (or Enter/Space) opens the Steam overlay while Steam is online.
+ * - It belongs to the menu: shown only while the start modal is, hidden under any sheet
+ *   that covers the menu (body.start-modal-covered) and, in the narrow scrolling layout,
+ *   once the list scrolls under it.
+ * - Its state is read from steamService whenever it is shown, not only from events, so it
+ *   can never be left saying "Connecting" after Steam has settled.
+ *
+ * A browser build has no Steam client at all (no Electron IPC): there is no account to show
+ * and nothing to click, so the card is not built. "Player · Offline" with a Retry that can
+ * never succeed would only suggest something is broken; the menu says where Steam matters
+ * (Online Versus: "Steam required").
+ *
+ * Styles: public/styles/keystone-menu.css ("Main-menu player card").
  */
 
 import steamService from '../../core/steam/steam-service.js';
 import { STEAM_EVENTS } from '../../core/steam/steam-config.js';
 
-// CSS for main menu player card
-const MAIN_MENU_PLAYER_CARD_STYLES = `
-.main-menu-player-card {
-    position: fixed;
-    top: 16px;
-    right: 15px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 8px 12px 8px 8px;
-    background: rgba(15, 20, 30, 0.9);
-    border: 1px solid rgba(139, 92, 246, 0.3);
-    border-radius: 10px;
-    backdrop-filter: blur(12px);
-    cursor: pointer;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    z-index: 1000;
-    opacity: 0;
-    transform: translateY(-10px);
-    pointer-events: none;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+const SCROLL_HIDE_PX = 24;
+
+/** True in the desktop app, where the Steam client can be reached over Electron IPC. */
+export function hasSteamClient(win = typeof window !== 'undefined' ? window : null) {
+    return typeof win?.electronAPI?.invoke === 'function';
 }
 
-.main-menu-player-card.visible {
-    opacity: 1;
-    transform: translateY(0);
-    pointer-events: auto;
+function connectionState() {
+    if (typeof steamService.getConnectionState === 'function') return steamService.getConnectionState();
+    return steamService.isOnline ? 'connected' : 'offline';
 }
 
-.main-menu-player-card:hover {
-    background: rgba(20, 25, 40, 0.95);
-    border-color: rgba(139, 92, 246, 0.5);
-    box-shadow: 0 6px 24px rgba(139, 92, 246, 0.25),
-                0 4px 12px rgba(0, 0, 0, 0.4);
-    transform: translateY(-1px);
-}
+const isOnlineState = (state) => state === 'connected' || state === 'partial';
 
-.main-menu-player-card:active {
-    transform: scale(0.98) translateY(0);
-}
-
-.mmpc-avatar-container {
-    position: relative;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    overflow: hidden;
-    border: 2px solid rgba(139, 92, 246, 0.5);
-    box-shadow: 0 0 10px rgba(139, 92, 246, 0.3),
-                inset 0 0 8px rgba(139, 92, 246, 0.1);
-    flex-shrink: 0;
-    transition: all 0.25s ease;
-}
-
-.main-menu-player-card:hover .mmpc-avatar-container {
-    border-color: rgba(139, 92, 246, 0.7);
-    box-shadow: 0 0 16px rgba(139, 92, 246, 0.4),
-                inset 0 0 8px rgba(139, 92, 246, 0.15);
-}
-
-.mmpc-avatar-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    border-radius: 50%;
-}
-
-.mmpc-avatar-skeleton {
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 75%);
-    background-size: 200% 100%;
-    animation: mmpc-skeleton-shimmer 1.5s infinite;
-    border-radius: 50%;
-}
-
-@keyframes mmpc-skeleton-shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-}
-
-.mmpc-avatar-placeholder {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: linear-gradient(135deg, #8b5cf6, #6366f1);
-    font-size: 18px;
-    font-weight: bold;
-    color: white;
-    text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-    border-radius: 50%;
-}
-
-.mmpc-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    min-width: 0;
-}
-
-.mmpc-name {
-    font-family: 'Orbitron', sans-serif;
-    font-size: 13px;
-    font-weight: 700;
-    color: white;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 120px;
-    letter-spacing: 0.3px;
-}
-
-.mmpc-status {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 10px;
-    color: rgba(255, 255, 255, 0.6);
-}
-
-.mmpc-state-pill {
-    display: none;
-    align-items: center;
-    padding: 1px 6px;
-    border-radius: 999px;
-    font-size: 8px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-    border: 1px solid rgba(148, 163, 184, 0.4);
-    background: rgba(148, 163, 184, 0.12);
-    color: rgba(226, 232, 240, 0.9);
-}
-
-.mmpc-state-pill.visible {
-    display: inline-flex;
-}
-
-.mmpc-state-pill.partial {
-    border-color: rgba(251, 191, 36, 0.5);
-    background: rgba(251, 191, 36, 0.15);
-    color: rgba(254, 240, 138, 0.95);
-}
-
-.mmpc-state-pill.offline {
-    border-color: rgba(248, 113, 113, 0.5);
-    background: rgba(248, 113, 113, 0.12);
-    color: rgba(254, 226, 226, 0.95);
-}
-
-.mmpc-retry-btn {
-    display: none;
-    align-items: center;
-    padding: 1px 6px;
-    border-radius: 999px;
-    border: 1px solid rgba(99, 102, 241, 0.5);
-    background: rgba(99, 102, 241, 0.12);
-    color: rgba(224, 231, 255, 0.95);
-    font-size: 8px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
-    cursor: pointer;
-}
-
-.mmpc-retry-btn.visible {
-    display: inline-flex;
-}
-
-.mmpc-retry-btn:hover {
-    background: rgba(99, 102, 241, 0.2);
-    border-color: rgba(129, 140, 248, 0.7);
-}
-
-.mmpc-friends-badge {
-    display: none;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 6px;
-    border-radius: 999px;
-    background: rgba(34, 197, 94, 0.15);
-    border: 1px solid rgba(34, 197, 94, 0.5);
-    color: rgba(167, 243, 208, 0.95);
-    font-size: 8px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-}
-
-.mmpc-friends-badge.visible {
-    display: inline-flex;
-}
-
-.mmpc-status-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: #6b7280;
-    transition: all 0.3s ease;
-}
-
-.mmpc-status-dot.online {
-    background: #22c55e;
-    box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
-    animation: mmpc-pulse-online 2s ease-in-out infinite;
-}
-
-@keyframes mmpc-pulse-online {
-    0%, 100% { box-shadow: 0 0 6px rgba(34, 197, 94, 0.5); }
-    50% { box-shadow: 0 0 12px rgba(34, 197, 94, 0.7); }
-}
-
-.mmpc-status-dot.offline {
-    background: #6b7280;
-}
-
-.mmpc-status-dot.connecting {
-    background: #f59e0b;
-    box-shadow: 0 0 8px rgba(245, 158, 11, 0.55);
-    animation: mmpc-pulse-connecting 1.35s ease-in-out infinite;
-}
-
-@keyframes mmpc-pulse-connecting {
-    0%, 100% { box-shadow: 0 0 5px rgba(245, 158, 11, 0.4); }
-    50% { box-shadow: 0 0 10px rgba(245, 158, 11, 0.7); }
-}
-
-.mmpc-steam-icon {
-    width: 12px;
-    height: 12px;
-    opacity: 0.35;
-    margin-left: auto;
-    transition: opacity 0.2s, transform 0.2s;
-}
-
-.main-menu-player-card:hover .mmpc-steam-icon {
-    opacity: 0.75;
-    transform: scale(1.1);
-}
-
-/* Responsive: Medium screens */
-@media (max-width: 900px) {
-    .main-menu-player-card {
-        top: 14px;
-        right: 12px;
-        padding: 7px 10px 7px 7px;
-        gap: 8px;
+/**
+ * What the card says for a connection state (pure, for the tests).
+ * @returns {{ status: string, dot: 'online'|'connecting'|'offline', retry: boolean, title: string }}
+ */
+export function describeConnection(state, { queuedActions = 0 } = {}) {
+    const queueNote = queuedActions > 0 ? ` · ${queuedActions} waiting to sync` : '';
+    if (isOnlineState(state)) {
+        return {
+            status: 'Online', dot: 'online', retry: false, title: '',
+        };
     }
-    .mmpc-avatar-container {
-        width: 36px;
-        height: 36px;
+    if (state === 'connecting') {
+        return {
+            status: 'Connecting', dot: 'connecting', retry: false, title: 'Connecting to Steam',
+        };
     }
-    .mmpc-name {
-        font-size: 12px;
-        max-width: 100px;
-    }
-    .mmpc-avatar-placeholder {
-        font-size: 16px;
-    }
-}
-
-/* Responsive: Small screens */
-@media (max-width: 600px) {
-    .main-menu-player-card {
-        top: 10px;
-        right: 10px;
-        padding: 6px 10px 6px 6px;
-        gap: 8px;
-        border-radius: 8px;
-    }
-    .mmpc-avatar-container {
-        width: 32px;
-        height: 32px;
-    }
-    .mmpc-name {
-        font-size: 11px;
-        max-width: 80px;
-    }
-    .mmpc-status {
-        font-size: 9px;
-    }
-    .mmpc-avatar-placeholder {
-        font-size: 14px;
-    }
-    .mmpc-steam-icon {
-        width: 10px;
-        height: 10px;
-    }
-}
-`;
-
-// Inject styles once
-let stylesInjected = false;
-function injectStyles() {
-    if (stylesInjected) return;
-    const style = document.createElement('style');
-    style.id = 'main-menu-player-card-styles';
-    style.textContent = MAIN_MENU_PLAYER_CARD_STYLES;
-    document.head.appendChild(style);
-    stylesInjected = true;
+    return {
+        status: 'Offline',
+        dot: 'offline',
+        retry: true,
+        title: state === 'no_steam' ? `Steam is not running${queueNote}` : `Steam is offline${queueNote}`,
+    };
 }
 
 /**
@@ -332,23 +75,26 @@ class MainMenuPlayerCard {
         this.unsubscribers = [];
         this.isVisible = false;
         this.friendsPollInterval = null;
+        this.unavailable = false;
+        this.avatarFor = null;
     }
 
     /**
      * Initialize and create the player card
      */
     async initialize() {
-        injectStyles();
+        if (this.element || this.unavailable) return;
+        if (!hasSteamClient()) {
+            this.unavailable = true;
+            console.log('[MainMenuPlayerCard] No Steam client in this build; the card stays out');
+            return;
+        }
         this.createElement();
         this.setupEventListeners();
-
-        // Show immediately if Steam is already initialized
-        if (steamService.initComplete) {
-            await this.updateFromSteam();
-            await this.updateConnectionState();
-            await this.updateFriendsPlaying();
-            this.show();
-        }
+        // Whatever Steam has settled on so far (it may already be ready, failed or still
+        // connecting); the events below keep it current from here.
+        await this.refresh();
+        this.show();
 
         console.log('[MainMenuPlayerCard] Initialized');
     }
@@ -360,26 +106,23 @@ class MainMenuPlayerCard {
         this.element = document.createElement('div');
         this.element.className = 'main-menu-player-card';
         this.element.setAttribute('role', 'button');
-        this.element.setAttribute('aria-label', 'Steam Profile');
+        this.element.setAttribute('aria-label', 'Steam profile');
         this.element.setAttribute('tabindex', '0');
 
         this.element.innerHTML = `
-            <div class="mmpc-avatar-container">
+            <div class="mmpc-avatar-container" aria-hidden="true">
                 <div class="mmpc-avatar-skeleton"></div>
             </div>
             <div class="mmpc-info">
-                <div class="mmpc-name">Loading...</div>
+                <div class="mmpc-name"></div>
                 <div class="mmpc-status">
-                    <span class="mmpc-status-dot"></span>
-                    <span class="mmpc-status-text">Connecting...</span>
-                    <span class="mmpc-friends-badge">0 Friends Playing</span>
+                    <span class="mmpc-status-dot" aria-hidden="true"></span>
+                    <span class="mmpc-status-text"></span>
+                    <span class="mmpc-friends-badge"></span>
                     <span class="mmpc-state-pill"></span>
-                    <button type="button" class="mmpc-retry-btn">Retry now</button>
+                    <button type="button" class="mmpc-retry-btn">Retry</button>
                 </div>
             </div>
-            <svg class="mmpc-steam-icon" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-            </svg>
         `;
 
         this.avatarContainer = this.element.querySelector('.mmpc-avatar-container');
@@ -393,6 +136,7 @@ class MainMenuPlayerCard {
         // Click handler to open Steam overlay
         this.element.addEventListener('click', () => this.handleClick());
         this.element.addEventListener('keydown', (e) => {
+            if (e.target === this.retryButton) return;
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
                 this.handleClick();
@@ -403,11 +147,15 @@ class MainMenuPlayerCard {
             this.retryButton.addEventListener('click', async (e) => {
                 e.stopPropagation();
                 e.preventDefault();
+                this.setConnectionVisualState('connecting');
                 await steamService.retryConnection();
-                await this.updateConnectionState();
+                await this.refresh();
             });
         }
 
+        this.nameElement.textContent = steamService.playerName || 'Player';
+        this.setConnectionVisualState(connectionState());
+        this.showPlaceholder(steamService.playerName);
         document.body.appendChild(this.element);
     }
 
@@ -415,68 +163,21 @@ class MainMenuPlayerCard {
      * Setup Steam event listeners
      */
     setupEventListeners() {
-        // Listen for Steam ready
-        this.unsubscribers.push(
-            steamService.on(STEAM_EVENTS.READY, () => {
-                this.updateFromSteam();
-                this.updateConnectionState();
-                this.updateFriendsPlaying();
-                this.show();
-                this.syncFriendsPlayingPoll();
-            }),
-        );
-
-        // Listen for connection changes
-        this.unsubscribers.push(
-            steamService.on(STEAM_EVENTS.CONNECTED, () => {
-                this.setConnectionVisualState('connected');
-                this.updateConnectionState();
-                this.updateFriendsPlaying();
-                this.syncFriendsPlayingPoll();
-            }),
-        );
-
-        this.unsubscribers.push(
-            steamService.on(STEAM_EVENTS.DISCONNECTED, () => {
-                this.setConnectionVisualState('offline');
-                this.updateConnectionState();
-                this.setFriendsPlayingCount(0);
-                this.syncFriendsPlayingPoll();
-            }),
-        );
-
-        this.unsubscribers.push(
-            steamService.on(STEAM_EVENTS.RECONNECTED, () => {
-                this.updateFromSteam();
-                this.setConnectionVisualState('connected');
-                this.updateConnectionState();
-                this.updateFriendsPlaying();
-                this.syncFriendsPlayingPoll();
-            }),
-        );
-
-        // If Steam init failed, show offline state
-        this.unsubscribers.push(
-            steamService.on(STEAM_EVENTS.INIT_FAILED, () => {
-                this.setOfflineMode();
-                this.updateConnectionState();
-                this.setFriendsPlayingCount(0);
-                this.syncFriendsPlayingPoll();
-                this.show();
-            }),
-        );
-
-        this.unsubscribers.push(
-            steamService.on(STEAM_EVENTS.CAPABILITIES_UPDATED, () => {
-                this.updateConnectionState();
-            }),
-        );
-
-        this.unsubscribers.push(
-            steamService.on(STEAM_EVENTS.STATE_CHANGED, () => {
-                this.updateConnectionState();
-            }),
-        );
+        // Every Steam change re-reads the whole state: one path, whatever the event order.
+        const refresh = () => { this.refresh(); };
+        [
+            STEAM_EVENTS.READY,
+            STEAM_EVENTS.CONNECTED,
+            STEAM_EVENTS.DISCONNECTED,
+            STEAM_EVENTS.RECONNECTED,
+            STEAM_EVENTS.INIT_FAILED,
+            STEAM_EVENTS.CAPABILITIES_UPDATED,
+            STEAM_EVENTS.STATE_CHANGED,
+        ].forEach((event) => this.unsubscribers.push(steamService.on(event, refresh)));
+        // A settled Steam (ready or not) may surface the card if the menu is up.
+        [STEAM_EVENTS.READY, STEAM_EVENTS.INIT_FAILED].forEach((event) => {
+            this.unsubscribers.push(steamService.on(event, () => this.show()));
+        });
 
         // Hide as soon as any game mode is selected (immediate; the start-modal
         // observer below is the authoritative source of truth for re-showing).
@@ -502,84 +203,90 @@ class MainMenuPlayerCard {
         // missing hide-on-close is why the card leaked into gameplay (game start removes
         // the modal's `visible` class but nothing was hiding the card).
         this._startModalObserver = new MutationObserver((mutations) => {
-            mutations.forEach((mutation) => {
-                if (mutation.type === 'attributes' && mutation.attributeName === 'class') {
-                    if (this._isMenuVisible()) {
-                        this.show();
-                    } else {
-                        this.hide();
-                    }
-                }
-            });
+            if (!mutations.some((m) => m.type === 'attributes' && m.attributeName === 'class')) return;
+            if (this._isMenuVisible()) {
+                this.show();
+            } else {
+                this.hide();
+            }
         });
 
         const startModal = document.getElementById('start-modal');
         if (startModal) {
-            this._startModalObserver.observe(startModal, { attributes: true });
+            this._startModalObserver.observe(startModal, { attributes: true, attributeFilter: ['class'] });
+            // The narrow layout scrolls the menu under the corner: the card steps aside.
+            this._scrollHandler = () => {
+                this.element?.classList.toggle('is-scrolled', startModal.scrollTop > SCROLL_HIDE_PX);
+            };
+            startModal.addEventListener('scroll', this._scrollHandler, { passive: true });
+            this._startModal = startModal;
         }
+    }
+
+    /** Read name, connection, capabilities and friends from steamService and show them. */
+    async refresh() {
+        if (!this.element) return;
+        const state = connectionState();
+        this.nameElement.textContent = steamService.playerName || 'Player';
+        this.updateConnectionState();
+        if (isOnlineState(state)) {
+            const steamId = steamService.steamId || null;
+            if (steamId && this.avatarFor !== steamId) {
+                this.avatarFor = steamId;
+                await this.loadAvatar(steamId, steamService.playerName);
+            }
+        } else if (this.avatarFor !== 'placeholder') {
+            this.avatarFor = 'placeholder';
+            this.showPlaceholder(steamService.playerName);
+        }
+        await this.updateFriendsPlaying();
+        this.syncFriendsPlayingPoll();
     }
 
     /**
      * Update card from Steam data
      */
     async updateFromSteam() {
-        const status = steamService.getStatus();
-
-        // Update name
-        this.nameElement.textContent = status.playerName || 'Player';
-
-        this.setConnectionVisualState(
-            steamService.getConnectionState
-                ? steamService.getConnectionState()
-                : (status.isOnline ? 'connected' : 'offline'),
-        );
-
-        // Load avatar
-        await this.loadAvatar(status.steamId, status.playerName);
+        this.avatarFor = null;
+        await this.refresh();
     }
 
     /**
-     * Update connection state pill + retry button
+     * Update the status line, the "Limited" note and Retry
      */
     async updateConnectionState() {
-        if (!this.statePill || !this.retryButton) return;
+        if (!this.element || !this.statePill || !this.retryButton) return;
 
-        const state = steamService.getConnectionState
-            ? steamService.getConnectionState()
-            : (steamService.isOnline ? 'connected' : 'offline');
+        const state = connectionState();
         const capabilities = steamService.getCapabilities ? steamService.getCapabilities() : {};
         const status = steamService.getStatus ? steamService.getStatus() : {};
         const queuedActions = Number(status?.queuedActions || 0);
-        const queueNote = queuedActions > 0 ? ` • ${queuedActions} queued` : '';
+        const described = describeConnection(state, { queuedActions });
 
         this.setConnectionVisualState(state);
         this.statePill.classList.remove('visible', 'partial', 'offline');
-        this.retryButton.classList.remove('visible');
-        this.statusText.title = '';
+        this.retryButton.classList.toggle('visible', described.retry);
+        this.statusText.title = described.title;
+        this.statePill.title = '';
 
         if (state === 'partial') {
             this.statePill.textContent = 'Limited';
             this.statePill.classList.add('visible', 'partial');
             const missing = [];
             if (!capabilities.leaderboards) missing.push('leaderboards');
-            if (!capabilities.cloud) missing.push('cloud');
+            if (!capabilities.cloud) missing.push('cloud saves');
             if (!capabilities.achievements) missing.push('achievements');
             if (!capabilities.friends) missing.push('friends');
             this.statePill.title = missing.length
-                ? `Steam API missing: ${missing.join(', ')}${queueNote}`
-                : `Steam API limited${queueNote}`;
-        } else if (state === 'connecting') {
-            // The status line already says "Connecting"; the pill is only for "Limited".
-            this.statePill.title = 'Connecting to Steam';
-        } else if (state === 'offline' || state === 'no_steam') {
-            // The status line says "Offline"; its tooltip says why, and Retry now stays.
-            this.statusText.title = state === 'no_steam'
-                ? `Steam client unavailable${queueNote}`
-                : `Steam offline${queueNote}`;
-            this.retryButton.classList.add('visible');
-        } else {
-            this.statePill.title = '';
+                ? `Not available from Steam right now: ${missing.join(', ')}`
+                : 'Some Steam features are not available right now';
         }
+
+        const name = steamService.playerName || 'Player';
+        this.element.setAttribute('aria-label', isOnlineState(state)
+            ? `${name}, Steam online. Opens Steam friends`
+            : `${name}, Steam ${described.status.toLowerCase()}`);
+        this.element.setAttribute('aria-disabled', String(!isOnlineState(state)));
     }
 
     /**
@@ -610,8 +317,7 @@ class MainMenuPlayerCard {
             return;
         }
 
-        const label = count === 1 ? 'Friend' : 'Friends';
-        this.friendsBadge.textContent = `${count} ${label} Playing`;
+        this.friendsBadge.textContent = `${count} ${count === 1 ? 'friend' : 'friends'} playing`;
         this.friendsBadge.classList.add('visible');
     }
 
@@ -634,7 +340,7 @@ class MainMenuPlayerCard {
 
     syncFriendsPlayingPoll() {
         if (this.shouldPollFriendsPlaying()) {
-            this.startFriendsPlayingPoll();
+            if (!this.friendsPollInterval) this.startFriendsPlayingPoll();
             return;
         }
 
@@ -665,7 +371,7 @@ class MainMenuPlayerCard {
                 const img = document.createElement('img');
                 img.className = 'mmpc-avatar-img';
                 img.src = avatarUrl;
-                img.alt = playerName || 'Player';
+                img.alt = '';
                 img.onerror = () => this.showPlaceholder(playerName);
 
                 this.avatarContainer.innerHTML = '';
@@ -682,8 +388,13 @@ class MainMenuPlayerCard {
      * Show letter placeholder for avatar
      */
     showPlaceholder(name) {
-        const letter = (name || 'P').charAt(0).toUpperCase();
-        this.avatarContainer.innerHTML = `<div class="mmpc-avatar-placeholder">${letter}</div>`;
+        if (!this.avatarContainer) return;
+        const letter = (String(name || '').trim() || 'P').charAt(0).toUpperCase();
+        const placeholder = document.createElement('div');
+        placeholder.className = 'mmpc-avatar-placeholder';
+        placeholder.textContent = letter;
+        this.avatarContainer.innerHTML = '';
+        this.avatarContainer.appendChild(placeholder);
     }
 
     /**
@@ -694,27 +405,23 @@ class MainMenuPlayerCard {
     }
 
     setConnectionVisualState(state) {
-        const normalizedState = state || 'offline';
-        this.statusDot.classList.toggle('online', normalizedState === 'connected' || normalizedState === 'partial');
-        this.statusDot.classList.toggle('connecting', normalizedState === 'connecting');
-        this.statusDot.classList.toggle('offline', normalizedState === 'offline' || normalizedState === 'no_steam');
-
-        if (normalizedState === 'connecting') {
-            this.statusText.textContent = 'Connecting';
-            return;
-        }
-
-        this.statusText.textContent = normalizedState === 'connected' || normalizedState === 'partial'
-            ? 'Online'
-            : 'Offline';
+        if (!this.statusDot || !this.statusText) return;
+        const { status, dot } = describeConnection(state || 'offline');
+        this.statusDot.classList.toggle('online', dot === 'online');
+        this.statusDot.classList.toggle('connecting', dot === 'connecting');
+        this.statusDot.classList.toggle('offline', dot === 'offline');
+        this.statusText.textContent = status;
+        if (this.element) this.element.dataset.state = state || 'offline';
     }
 
     /**
      * Set offline mode (Steam unavailable)
      */
     setOfflineMode() {
+        if (!this.element) return;
         this.nameElement.textContent = steamService.playerName || 'Player';
         this.setOnlineStatus(false);
+        this.avatarFor = 'placeholder';
         this.showPlaceholder(steamService.playerName);
     }
 
@@ -751,14 +458,14 @@ class MainMenuPlayerCard {
         // Only ever surface the card on the main menu — neutralizes stray re-shows
         // from async Steam events (INIT_FAILED/READY/RECONNECTED) during gameplay,
         // regardless of event ordering or whether gameModeChanged fired.
-        if (!this._isMenuVisible()) return;
+        if (!this.element || !this._isMenuVisible()) return;
         if (this.isVisible) return;
         this.isVisible = true;
-        void this.updateFriendsPlaying();
-        this.syncFriendsPlayingPoll();
+        // Never stale: what Steam says now, not what the last event said.
+        this.refresh();
         // Use requestAnimationFrame for smooth animation
         requestAnimationFrame(() => {
-            this.element.classList.add('visible');
+            if (this.isVisible) this.element?.classList.add('visible');
         });
     }
 
@@ -769,7 +476,7 @@ class MainMenuPlayerCard {
         if (!this.isVisible) return;
         this.isVisible = false;
         this.syncFriendsPlayingPoll();
-        this.element.classList.remove('visible');
+        this.element?.classList.remove('visible');
     }
 
     /**
@@ -791,11 +498,15 @@ class MainMenuPlayerCard {
         if (this._startModalObserver) {
             this._startModalObserver.disconnect();
         }
+        if (this._startModal && this._scrollHandler) {
+            this._startModal.removeEventListener('scroll', this._scrollHandler);
+        }
 
         if (this.element && this.element.parentNode) {
             this.element.parentNode.removeChild(this.element);
         }
         this.element = null;
+        this.isVisible = false;
 
         console.log('[MainMenuPlayerCard] Destroyed');
     }

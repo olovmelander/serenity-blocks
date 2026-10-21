@@ -514,8 +514,53 @@ body.sb-input-gamepad :is(#game-over-modal, #demo-complete-modal, #settings-moda
     --sb-accent-rgb: var(--sb-aqua-rgb);
 }
 
+/* As tall as what it holds (main.css gave the old browser a fixed 80vh): a few replays,
+   or none, make a short sheet; a long list scrolls inside it. */
 #demo-browser-modal .modal-content {
-    min-height: min(560px, 100%);
+    height: auto;
+    min-height: 0;
+    max-height: 100%;
+}
+
+/* No replays yet: the one tile in its own light with a ring of halo, the sentence, and
+   the way on, open on the sheet rather than boxed in a dashed frame. */
+#demo-browser-modal .demo-list:has(> .demo-empty) {
+    padding-top: 0;
+}
+
+#demo-browser-modal .sb-empty.demo-empty {
+    gap: 12px;
+    margin: 0;
+    padding: clamp(18px, 3.4vh, 32px) 24px clamp(6px, 1.6vh, 14px);
+    border: 0;
+    border-radius: 0;
+    background: radial-gradient(closest-side at 50% 42%, rgba(var(--sb-accent-rgb), 0.08), transparent);
+    animation: sb-rise-in 0.42s var(--sb-ease-lock) 0.06s both;
+}
+
+#demo-browser-modal .demo-empty .sb-empty__icon {
+    width: 60px;
+    height: 60px;
+    margin-bottom: 8px;
+    border-radius: 17px;
+    box-shadow:
+        0 0 0 9px rgba(var(--sb-accent-rgb), 0.05),
+        0 0 0 10px rgba(var(--sb-accent-rgb), 0.14),
+        0 0 36px rgba(var(--sb-accent-rgb), 0.18);
+}
+
+#demo-browser-modal .demo-empty .sb-empty__icon svg {
+    width: 26px;
+    height: 26px;
+}
+
+#demo-browser-modal .demo-empty .sb-empty__title {
+    font: 700 1.25rem / 1.25 var(--sb-font-display);
+    letter-spacing: -0.005em;
+}
+
+#demo-browser-modal .demo-empty .sb-btn {
+    margin-top: 10px;
 }
 
 #demo-browser-modal .demo-browser-toolbar {
@@ -1321,6 +1366,7 @@ body.sb-input-gamepad #demo-browser-modal .demo-action:focus .demo-action__label
 @media (prefers-reduced-motion: reduce) {
     :is(#settings-modal, #high-scores-modal, #demo-browser-modal, #game-over-modal, #demo-complete-modal).visible > .modal-content,
     #demo-browser-modal .demo-card,
+    #demo-browser-modal .demo-empty,
     :is(#game-over-modal, #demo-complete-modal) .stat-card {
         animation: none !important;
     }

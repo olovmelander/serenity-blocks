@@ -14,9 +14,9 @@ function eventTarget(properties = {}) {
             listeners.get(type).add(listener);
         },
         removeEventListener(type, listener) { listeners.get(type)?.delete(listener); },
-        dispatch(type, properties = {}) {
+        dispatch(type, detail = {}) {
             const event = {
-                target: this, preventDefault: vi.fn(), stopPropagation: vi.fn(), ...properties,
+                target: this, preventDefault: vi.fn(), stopPropagation: vi.fn(), ...detail,
             };
             listeners.get(type)?.forEach((listener) => listener(event));
             return event;
@@ -185,16 +185,37 @@ describe('Odyssey journey flow overlay', () => {
         modal.dispose();
     });
 
-    it('keeps flowing when only secondary controls fall below a small phone fold', () => {
+    it('keeps flowing while every control and the next orb are in view', () => {
         const onChoose = vi.fn();
         window.innerHeight = 667;
         const modal = createOverlay({ onChoose });
-        // Results, Map and the preference scroll; the next orb and Pause are in view.
-        modal.scrollHeight = 722;
-        modal.clientHeight = 667;
-        action(modal, 'pause').getBoundingClientRect = () => ({ top: 562, bottom: 606 });
+        ['next', 'pause', 'details', 'map'].forEach((name) => {
+            action(modal, name).getBoundingClientRect = () => ({ top: 562, bottom: 606 });
+        });
+        nodes(modal).find((node) => node.className === 'ody-flow__preference')
+            .getBoundingClientRect = () => ({ top: 614, bottom: 642 });
         vi.advanceTimersByTime(modal.autoContinueMs);
         expect(onChoose).toHaveBeenCalledExactlyOnceWith('next');
+        modal.dispose();
+    });
+
+    const part = (className) => (modal) => nodes(modal).find((node) => node.className === className);
+    it.each([
+        ['Map', (modal) => action(modal, 'map')],
+        ['Results', (modal) => action(modal, 'details')],
+        ['the auto-continue preference', part('ody-flow__preference')],
+        ['the charm line', part('ody-flow__found')],
+    ])('holds the countdown when %s falls below the fold', (label, find) => {
+        const onChoose = vi.fn();
+        window.innerHeight = 667;
+        const modal = createOverlay({ onChoose, results: { stars: 2, charmsFound: ['tide'] } });
+        // Pause and the next orb are in view; one other visible part is not.
+        action(modal, 'pause').getBoundingClientRect = () => ({ top: 562, bottom: 606 });
+        find(modal).getBoundingClientRect = () => ({ top: 650, bottom: 694 });
+        vi.advanceTimersByTime(20000);
+        expect(onChoose).not.toHaveBeenCalled();
+        expect(modal.dataset.autoRunning).toBe('false');
+        expect(markup(modal)).toContain('Paused to give you time to read.');
         modal.dispose();
     });
 
@@ -1017,7 +1038,11 @@ describe('Odyssey journey flow overlay', () => {
         modal.beginTransit();
         modal.setScenic('travel');
         vi.advanceTimersByTime(DEPARTURE_MS);
-        modal.showChapter({ completedChapter: { id: 1, completed: 5, total: 5, stars: 15, maxStars: 15 } });
+        modal.showChapter({
+            completedChapter: {
+                id: 1, completed: 5, total: 5, stars: 15, maxStars: 15,
+            },
+        });
         const breath = nodes(modal).find((node) => node.className === 'ody-breath');
         expect(breath.dataset.worldOpened).toBe('true');
         expect(nodes(breath).find((node) => node.className === 'ody-breath__world-new').textContent).toBe('Yours now');
@@ -1046,6 +1071,89 @@ describe('Odyssey journey flow overlay', () => {
         modal.retainCover();
         expect(breath.isConnected).toBe(false);
         expect(vi.getTimerCount()).toBe(0);
+        modal.dispose();
+    });
+
+    it('gives a familiar completion the cleared orb as art, and the cover the orb ahead', () => {
+        const orbArts = (modal) => nodes(modal).filter((node) => node.className.split(' ').includes('sb-orb-art'));
+        const modal = createOverlay({ level: getLevelById(7), nextLevel: getLevelById(8) });
+        const hero = nodes(modal).find((node) => node.className === 'ody-flow__art');
+        expect(hero.ariaHidden).toBe('true');
+        // The portal's orbits frame the world; the old numbered core is gone.
+        expect(nodes(hero).some((node) => node.className === 'ody-flow__portal')).toBe(true);
+        expect(nodes(modal).some((node) => node.className === 'ody-flow__core')).toBe(false);
+        const [cleared, ahead] = orbArts(modal);
+        expect(cleared.dataset).toMatchObject({ orb: 'done', state: 'cleared', odyChapter: '2' });
+        expect(markup(cleared)).toContain('7');
+        expect(nodes(cleared).find((node) => node.className === 'sb-orb-art__image').src)
+            .toContain('luminous-tides');
+        expect(ahead.dataset).toMatchObject({ orb: 'next', state: 'next' });
+        expect(nodes(ahead).find((node) => node.className === 'sb-orb-art__image').src).toContain('koi-pond');
+        modal.dispose();
+        // The opaque cover between orbs shows only where the journey is going.
+        const cover = createOverlay({ variant: 'transit', level: getLevelById(11), nextLevel: getLevelById(12) });
+        expect(orbArts(cover).map((art) => art.dataset.orb)).toEqual(['next']);
+        expect(markup(orbArts(cover)[0])).toContain('12');
+        cover.dispose();
+        // A rival orb wears its VS, as on the map.
+        const rival = createOverlay({ level: getLevelById(10), nextLevel: getLevelById(11) });
+        expect(orbArts(rival)[0].dataset.kind).toBe('rival');
+        rival.dispose();
+    });
+
+    it('wears keycaps only for keys and pad buttons that really act', () => {
+        const caps = (button) => button.children.filter((node) => node.tagName === 'kbd')
+            .map((node) => `${node.textContent}:${'key' in node.dataset ? 'key' : 'pad'}`);
+        const modal = createOverlay();
+        expect(caps(action(modal, 'next'))).toEqual(['Enter:key', 'A:pad']);
+        expect(caps(action(modal, 'resume'))).toEqual(['Enter:key', 'A:pad']);
+        expect(caps(action(modal, 'pause'))).toEqual(['Enter:key', 'A:pad']);
+        expect(caps(action(modal, 'map'))).toEqual(['Esc:key', 'B:pad']);
+        // Results has no key of its own: no cap pretends otherwise.
+        expect(caps(action(modal, 'details'))).toEqual([]);
+        action(modal, 'next').children.filter((node) => node.tagName === 'kbd')
+            .forEach((cap) => expect(cap.ariaHidden).toBe('true'));
+        modal.dispose();
+    });
+
+    it('relabels Continue as Begin chapter without dropping its keycaps', () => {
+        const modal = createOverlay({
+            level: getLevelById(5), nextLevel: getLevelById(6), chapter: CHAPTER_CONFIGS[1], autoContinue: false,
+        });
+        action(modal, 'next').dispatch('click');
+        modal.beginTransit();
+        modal.setScenic('travel');
+        vi.advanceTimersByTime(DEPARTURE_MS);
+        modal.showChapter();
+        const primary = action(modal, 'next');
+        expect(primary.textContent).toBe('Begin chapter');
+        expect(primary.children.filter((node) => node.tagName === 'kbd').map((node) => node.textContent))
+            .toEqual(['Enter', 'A']);
+        // The arrival's untimed note rides in the action bar that stays in view.
+        const actions = nodes(modal).find((node) => node.className === 'ody-flow__actions');
+        const note = nodes(actions).find((node) => node.className === 'ody-flow__breath');
+        expect(note.hidden).toBe(false);
+        expect(note.textContent).toContain('as long as you like');
+        modal.dispose();
+    });
+
+    it('lets Enter pause the travelling journey, as its keycap says, and Enter resume it', () => {
+        const onTransit = vi.fn();
+        const modal = createOverlay({ autoContinue: false });
+        action(modal, 'next').dispatch('click');
+        modal.beginTransit({ onChoose: onTransit });
+        modal.setScenic('travel');
+        // Focus left the controls (a click on the world): Enter is still the default action.
+        document.activeElement = null;
+        const enter = document.dispatch('keydown', { key: 'Enter' });
+        expect(enter.preventDefault).toHaveBeenCalledOnce();
+        expect(modal.dataset.visibilityHeld).toBe('true');
+        expect(action(modal, 'resume').hidden).toBe(false);
+        expect(document.activeElement).toBe(action(modal, 'resume'));
+        document.activeElement = null;
+        document.dispatch('keydown', { key: 'Enter' });
+        expect(modal.dataset.visibilityHeld).toBe('false');
+        expect(onTransit).not.toHaveBeenCalled();
         modal.dispose();
     });
 });

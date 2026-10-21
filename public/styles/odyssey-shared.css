@@ -1,0 +1,236 @@
+/* =================================================================================
+ * ODYSSEY SHARED — the chapters' light, an orb's world as art, the star row
+ * ---------------------------------------------------------------------------------
+ * The navigator's grammar (odyssey-navigator.css, docs/ODYSSEY_NAVIGATOR_2026-10.md)
+ * for every other Odyssey surface that shows one orb: the map's orb panel, the outcome
+ * sheets, the travel cover, the finale. Built by src/ui/odyssey/odyssey-orb-art.js.
+ * Loaded after keystone-overlays.css and before the surfaces' own sheets.
+ * ================================================================================ */
+
+/* Each chapter's light, from Earth Core's ember to the encore's neon (the navigator's hues).
+   Any element can wear one: data-ody-chapter="3" sets --ody-hue-rgb for what is inside it. */
+[data-ody-chapter='1'] { --ody-hue-rgb: 255, 158, 98; }
+[data-ody-chapter='2'] { --ody-hue-rgb: 98, 204, 255; }
+[data-ody-chapter='3'] { --ody-hue-rgb: 172, 228, 134; }
+[data-ody-chapter='4'] { --ody-hue-rgb: 196, 226, 255; }
+[data-ody-chapter='5'] { --ody-hue-rgb: 255, 186, 214; }
+[data-ody-chapter='6'] { --ody-hue-rgb: 160, 178, 255; }
+[data-ody-chapter='7'] { --ody-hue-rgb: 206, 156, 255; }
+[data-ody-chapter='8'] { --ody-hue-rgb: 255, 110, 204; }
+
+/* ---- An orb's world in its rings ------------------------------------------------------ */
+.sb-orb-art {
+    --orb-art-size: 160px;
+    --orb-rgb: var(--ody-hue-rgb, var(--sb-gold-rgb));
+    position: relative;
+    display: inline-block;
+    flex: none;
+    width: var(--orb-art-size);
+    height: var(--orb-art-size);
+    vertical-align: middle;
+}
+
+.sb-orb-art__halo {
+    position: absolute;
+    inset: -22%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(var(--orb-rgb), 0.38) 0%, rgba(var(--orb-rgb), 0.11) 42%, transparent 68%);
+    pointer-events: none;
+    animation: sb-orb-art-breathe var(--sb-breath) var(--sb-ease-breathe) infinite;
+}
+
+.sb-orb-art[data-still='true'] .sb-orb-art__halo {
+    animation: none;
+}
+
+.sb-orb-art__orbit {
+    position: absolute;
+    inset: -7%;
+    border-radius: 50%;
+    border: 1px solid rgba(var(--orb-rgb), 0.4);
+    pointer-events: none;
+}
+
+.sb-orb-art__orbit::before {
+    content: '';
+    position: absolute;
+    inset: -7%;
+    border-radius: 50%;
+    border: 1px dashed rgba(var(--sb-cream-rgb), 0.12);
+}
+
+/* The world itself; the chapter's light shows while the artwork decodes, or where there is none. */
+.sb-orb-art__disc {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 34% 28%, rgba(var(--orb-rgb), 0.38), rgba(var(--orb-rgb), 0.06) 70%),
+        #0c0a22;
+    box-shadow: 0 0 0 1px rgba(var(--sb-cream-rgb), 0.16), 0 22px 60px rgba(0, 0, 0, 0.5);
+}
+
+.sb-orb-art__image {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: filter var(--sb-dur-3) var(--sb-ease-lock);
+}
+
+.sb-orb-art__image[hidden] {
+    display: none;
+}
+
+.sb-orb-art[data-state='cleared'] .sb-orb-art__orbit {
+    border-color: rgba(var(--sb-gold-rgb), 0.62);
+}
+
+/* The orb the journey waits on: its orbit is the keystone. */
+.sb-orb-art[data-state='next'] .sb-orb-art__orbit {
+    border: 2px solid rgba(var(--sb-coral-rgb), 0.85);
+    box-shadow: 0 0 24px rgba(var(--sb-coral-rgb), 0.35);
+}
+
+/* A fall: the world dims a little and the orbit takes the sheet's lavender. */
+.sb-orb-art[data-state='failed'] .sb-orb-art__image {
+    filter: saturate(0.82) brightness(0.86);
+}
+
+.sb-orb-art[data-state='failed'] .sb-orb-art__orbit {
+    border-color: rgba(var(--sb-lavender-rgb), 0.55);
+}
+
+.sb-orb-art[data-state='locked'] .sb-orb-art__image {
+    filter: grayscale(0.85) brightness(0.5) contrast(0.92);
+}
+
+.sb-orb-art[data-state='locked'] .sb-orb-art__halo {
+    opacity: 0.35;
+    animation: none;
+}
+
+.sb-orb-art[data-state='locked'] .sb-orb-art__orbit {
+    border-style: dashed;
+    border-color: rgba(var(--sb-cream-rgb), 0.24);
+}
+
+.sb-orb-art__lock {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    display: grid;
+    place-items: center;
+    width: 30%;
+    height: 30%;
+    min-width: 30px;
+    min-height: 30px;
+    border-radius: 28%;
+    border: 1px solid rgba(var(--sb-cream-rgb), 0.24);
+    background: rgba(12, 10, 30, 0.82);
+    transform: translate(-50%, -50%);
+}
+
+.sb-orb-art__lock svg {
+    width: 52%;
+    height: 52%;
+    fill: none;
+    stroke: var(--sb-text);
+    stroke-width: 1.8;
+}
+
+.sb-orb-art__badge {
+    position: absolute;
+    top: 2%;
+    right: 2%;
+    display: grid;
+    place-items: center;
+    width: 24%;
+    height: 24%;
+    min-width: 22px;
+    min-height: 22px;
+    border-radius: 30%;
+    border: 1px solid rgba(var(--sb-gold-rgb), 0.55);
+    background: #0c0a22;
+    color: var(--sb-gold);
+}
+
+.sb-orb-art__badge svg {
+    width: 58%;
+    height: 58%;
+    fill: currentColor;
+}
+
+.sb-orb-art__badge--rival {
+    border-color: rgba(var(--sb-rose-rgb), 0.6);
+    color: var(--sb-rose);
+    /* Sized with the art, not the root text: the badge is a mark on the ring (it is aria-hidden). */
+    font: 800 clamp(8px, calc(var(--orb-art-size) * 0.065), 14px) / 1 var(--sb-font-display);
+    letter-spacing: 0.02em;
+}
+
+.sb-orb-art__number {
+    position: absolute;
+    left: 50%;
+    bottom: -9px;
+    min-width: 26px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 7px;
+    border: 1px solid var(--sb-line-strong);
+    background: #0c0a22;
+    color: var(--sb-text);
+    font: 700 10px / 18px var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    white-space: nowrap;
+    transform: translateX(-50%);
+}
+
+.sb-orb-art[data-state='cleared'] .sb-orb-art__number {
+    border-color: rgba(var(--sb-gold-rgb), 0.6);
+    color: #fff1d0;
+}
+
+/* ---- Stars: the same star wherever stars are counted ------------------------------------ */
+.sb-star-row {
+    --star-size: 18px;
+    display: inline-flex;
+    align-items: center;
+    gap: calc(var(--star-size) * 0.28);
+    vertical-align: middle;
+}
+
+.sb-star-row i {
+    display: block;
+    width: var(--star-size);
+    height: var(--star-size);
+}
+
+.sb-star-row svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    fill: rgba(var(--sb-cream-rgb), 0.06);
+    stroke: rgba(var(--sb-cream-rgb), 0.28);
+    stroke-width: 1.4;
+    stroke-linejoin: round;
+}
+
+.sb-star-row i.is-earned svg {
+    fill: var(--sb-gold);
+    stroke: #ffe9b8;
+    filter: drop-shadow(0 0 6px rgba(var(--sb-gold-rgb), 0.45));
+}
+
+@keyframes sb-orb-art-breathe {
+    0%, 100% { opacity: 0.6; transform: scale(0.97); }
+    50% { opacity: 1; transform: scale(1.03); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sb-orb-art__halo {
+        animation: none;
+    }
+}

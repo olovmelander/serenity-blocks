@@ -12,11 +12,19 @@
  *
  * Layouts (data-layout): ceremony → departing → scenic | transit, and chapter.
  * State attributes (variant, world stage, covered, revealing, held) keep their old meanings.
+ *
+ * An ordinary completion and the opaque transit cover carry the orb's world as art (the orb
+ * just cleared, then the orb ahead) inside the portal's orbits. Every action that a key or a
+ * pad button really triggers here wears its keycaps: Enter / A for the state's default action
+ * (Continue, Begin chapter, Resume, and Pause while travelling), Esc / B for Map.
  */
-import { el, isSettingsOverSheet } from './keystone-sheet.js';
+import {
+    appendKeyHint, el, isSettingsOverSheet,
+} from './keystone-sheet.js';
 import { describeOdysseyCharmsFound } from './odyssey-charm-copy.js';
 import { createOdysseyCharmIconNode } from './odyssey-charm-icon-stage.js';
 import { getOdysseyLevelBriefing } from './odyssey-level-briefing.js';
+import { createOdysseyOrbArt, odysseyLevelThemeId } from './odyssey-orb-art.js';
 import { createOdysseyStarNotes } from './odyssey-star-notes.js';
 import { createThemeUnlockReward } from './ThemeUnlockReward.js';
 import { describeOpenings } from '../effects/breathing/breath-openings.js';
@@ -79,6 +87,34 @@ function destinationArtwork(level) {
     return image;
 }
 
+/** A rival wears VS and a chapter boss its crown, as the map marks them. */
+function orbKind(orb) {
+    if (orb?.mechanics?.versus) return 'rival';
+    return orb?.chapterBoss ? 'boss' : null;
+}
+
+/** One orb's world in its rings: `which` names it for the layout ('done' or 'next'). */
+function createOrbArt(orb, state, which) {
+    if (!orb) return null;
+    const art = createOdysseyOrbArt({
+        themeId: odysseyLevelThemeId(orb),
+        chapter: orb.chapter ?? null,
+        state,
+        kind: orbKind(orb),
+        number: orb.id ?? null,
+        className: 'ody-flow__orb',
+    });
+    if (art?.dataset) art.dataset.orb = which;
+    return art;
+}
+
+/** Relabel a button without dropping its keycaps (the label is its first text node). */
+function setButtonLabel(button, text) {
+    const label = button.firstChild;
+    if (label && label.nodeType === 3) label.nodeValue = text;
+    else button.textContent = text;
+}
+
 /**
  * @param {object} options
  * @returns {HTMLElement} Mount before calling cover(). dispose() cancels all waits.
@@ -126,16 +162,22 @@ export function createJourneyFlowOverlay({
         variant === 'completion' && crossesChapter ? level.chapter : chapterId,
     ));
 
+    // The portal's orbits frame the orb's world: the orb just cleared on an ordinary completion,
+    // the orb ahead on the opaque cover. A first-time reward brings its own art instead.
+    const hero = el('div', 'ody-flow__art');
+    hero.ariaHidden = 'true';
     const portal = el('div', 'ody-flow__portal');
-    portal.ariaHidden = 'true';
     ['halo', 'orbit', 'orbit ody-flow__orbit--inner', 'trail', 'trail ody-flow__trail--second'].forEach((part) => {
         portal.appendChild(el('span', `ody-flow__${part}`));
     });
-    const core = el('span', 'ody-flow__core', String(nextLevel?.id || level?.id || '').padStart(2, '0'));
-    portal.appendChild(core);
-    modal.appendChild(portal);
+    hero.appendChild(portal);
+    [
+        variant === 'completion' ? createOrbArt(level, 'cleared', 'done') : null,
+        createOrbArt(nextLevel, 'next', 'next'),
+    ].filter(Boolean).forEach((art) => hero.appendChild(art));
 
     const content = el('section', 'ody-flow__content');
+    content.appendChild(hero);
     const chapterCopy = [];
     const eyebrow = {
         chapter: arrivalEyebrow || `Chapter ${chapterId} · A new horizon`,
@@ -278,14 +320,20 @@ export function createJourneyFlowOverlay({
     primary.type = 'button';
     primary.dataset.flowAction = 'next';
     primary.hidden = variant === 'transit';
+    // Enter (away from a focused control) and A (on the heading or the primary) choose it.
+    appendKeyHint(primary, 'Enter', 'A');
     const resume = el('button', 'sb-btn sb-btn--primary', 'Resume journey');
     resume.type = 'button';
     resume.dataset.flowAction = 'resume';
     resume.hidden = true;
+    appendKeyHint(resume, 'Enter', 'A');
     const pause = el('button', 'sb-btn ody-flow__quiet', 'Pause');
     pause.type = 'button';
     pause.dataset.flowAction = 'pause';
     pause.hidden = variant === 'chapter' || (variant === 'completion' && !autoContinue);
+    // While travelling Pause is the default action (it holds focus, and Enter or A press it);
+    // beside Continue its caps stay hidden (odyssey-flow.css).
+    appendKeyHint(pause, 'Enter', 'A');
     const details = el('button', 'sb-btn ody-flow__quiet', 'Results');
     details.type = 'button';
     details.dataset.flowAction = 'details';
@@ -293,6 +341,8 @@ export function createJourneyFlowOverlay({
     const map = el('button', 'sb-btn ody-flow__quiet', 'Map');
     map.type = 'button';
     map.dataset.flowAction = 'map';
+    // Escape and B are the way back in every state (sheet-input backSelector).
+    appendKeyHint(map, 'Esc', 'B');
     [primary, resume, pause, details, map].forEach((button) => actions.appendChild(button));
     content.appendChild(actions);
 
@@ -308,9 +358,10 @@ export function createJourneyFlowOverlay({
         content.appendChild(preference);
     }
     if (chapter || variant === 'chapter') {
+        // Said beside Begin chapter, in the action bar that stays in view however short the window.
         const breath = el('p', 'ody-flow__breath', 'Rest here with the light for as long as you like.');
         breath.hidden = variant !== 'chapter';
-        content.appendChild(breath);
+        actions.appendChild(breath);
         chapterCopy.push(breath);
     }
     modal.appendChild(content);
@@ -428,8 +479,8 @@ export function createJourneyFlowOverlay({
         if (breathGuide || disposed || retained) return;
         const world = resolveChapterBreathWorld(chapterId);
         // The world this chapter just opened is yours from here: the arrival says so.
-        const opened = Boolean(world && results?.breathUnlock?.worlds?.includes(world.id));
-        breathGuide = createChapterBreath({ reducedMotion, world: world && { ...world, opened } });
+        const worldOpened = Boolean(world && results?.breathUnlock?.worlds?.includes(world.id));
+        breathGuide = createChapterBreath({ reducedMotion, world: world && { ...world, opened: worldOpened } });
         modal.appendChild(breathGuide);
         resumeBreath();
     };
@@ -440,12 +491,15 @@ export function createJourneyFlowOverlay({
         stopAuto();
         if (presentationVariant === 'completion') status.textContent = 'Paused. Continue when you’re ready.';
     };
-    // Reading needs the reward, the next orb and Pause in view. Results, Map and the
-    // preference may sit below a small phone's fold without stopping the journey.
+    // The countdown runs only while everything it asks about is in view: the reward, the charm
+    // line and the next orb, and every visible control (Continue, Pause, Results, Map and the
+    // preference), so it never carries on while the player cannot reach a way to stop it.
     const isClipped = () => {
         const height = window.innerHeight || document.documentElement?.clientHeight;
         if (!height) return false;
-        return [pause, themeReward, nextBlock].some((node) => {
+        return [
+            themeReward, foundNode, nextBlock, primary, resume, pause, details, map, preference,
+        ].some((node) => {
             const bounds = node?.getBoundingClientRect?.();
             return Boolean(bounds && bounds.bottom > bounds.top
                 && (bounds.bottom > height - 8 || bounds.top < 0));
@@ -749,7 +803,7 @@ export function createJourneyFlowOverlay({
         }
         eyebrowNode.textContent = `Chapter ${chapterId} · A new horizon`;
         titleNode.textContent = chapter?.name || 'A new horizon';
-        primary.textContent = 'Begin chapter';
+        setButtonLabel(primary, 'Begin chapter');
         primary.hidden = visibilityHeld;
         pause.hidden = true;
         details.hidden = true;
@@ -790,7 +844,7 @@ export function createJourneyFlowOverlay({
 
     listen(primary, 'click', () => choose('next'));
     listen(resume, 'click', resumeVisible);
-    listen(pause, 'click', () => {
+    const pauseJourney = () => {
         if (transitActive) {
             suspend();
             resume.focus({ preventScroll: true });
@@ -798,7 +852,8 @@ export function createJourneyFlowOverlay({
             hold();
             primary.focus({ preventScroll: true });
         }
-    });
+    };
+    listen(pause, 'click', pauseJourney);
     listen(details, 'click', () => choose('details'));
     listen(map, 'click', () => choose('map'));
     listen(modal, 'focusin', (event) => {
@@ -848,9 +903,12 @@ export function createJourneyFlowOverlay({
             // Space is a gameplay hard-drop key: never turn a carried key into Continue.
             event.preventDefault();
             event.stopPropagation();
+            // Enter is the state's default action, the one its keycaps name: Continue or Begin,
+            // Resume after a hold, and Pause while the journey travels.
             if (event.key === 'Enter') {
                 if (visibilityHeld) resumeVisible();
                 else if (!transitActive) choose('next');
+                else if (!pause.hidden && !pause.disabled) pauseJourney();
             }
         } else if (activation) {
             event.stopPropagation();

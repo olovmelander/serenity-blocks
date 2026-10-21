@@ -1,8 +1,9 @@
 /**
- * The Stillfall puzzle list on a gamepad (stillfall-pad-list.js) through the real
- * GamepadController poll: Select opens the list, which then owns the pad (up and down walk
- * it, A plays, B or Select closes); nothing it takes reaches the piece, and the A that chose
- * a puzzle does not rotate the new piece when the list lets go. Start still pauses.
+ * The Stillfall puzzle atlas on a gamepad (stillfall-pad-list.js) through the real
+ * GamepadController poll: Select opens it, and it then owns the pad (the D-pad walks the
+ * puzzles, LB and RB the tiers, A plays, B or Select closes); nothing it takes reaches the
+ * piece, and the A that chose a puzzle does not rotate the new piece when it lets go. Start
+ * still pauses.
  */
 import {
     afterEach, beforeEach, describe, expect, it, vi,
@@ -11,7 +12,7 @@ import { GamepadController } from '../../src/ui/gamepad-controller.js';
 import { createPuzzleListPadControls } from '../../src/ui/stillfall/stillfall-pad-list.js';
 
 const BUTTON = {
-    A: 0, B: 1, SELECT: 8, START: 9, D_UP: 12, D_DOWN: 13,
+    A: 0, B: 1, LB: 4, RB: 5, SELECT: 8, START: 9, D_UP: 12, D_DOWN: 13, D_LEFT: 14, D_RIGHT: 15,
 };
 
 function createHarness() {
@@ -47,6 +48,8 @@ function createHarness() {
     const hud = {
         onOpen: vi.fn(() => { list.open = true; }),
         onMove: vi.fn(),
+        onMoveAcross: vi.fn(),
+        onTier: vi.fn(),
         onChoose: vi.fn(() => { list.open = false; }),
         onClose: vi.fn(() => { list.open = false; }),
     };
@@ -63,9 +66,13 @@ function createHarness() {
         });
         controller.poll();
     };
+    const tilt = (x, y = 0) => {
+        pad.axes[0] = x;
+        pad.axes[1] = y;
+    };
     const wait = (ms) => { time += ms; };
     return {
-        actions, controls, controller, hud, list, press, wait,
+        actions, controls, controller, hud, list, press, tilt, wait,
     };
 }
 
@@ -112,6 +119,57 @@ describe('the Stillfall puzzle list on a gamepad', () => {
         expect(hud.onMove).toHaveBeenLastCalledWith(-1);
         expect(actions.softDrop).not.toHaveBeenCalled();
         expect(actions.move).not.toHaveBeenCalled();
+    });
+
+    it('walks across the cards with left and right, the stick too, and the piece stays put', () => {
+        const {
+            actions, hud, press, tilt, wait,
+        } = createHarness();
+        press();
+        press(BUTTON.SELECT);
+        press();
+        press(BUTTON.D_RIGHT);
+        expect(hud.onMoveAcross).toHaveBeenLastCalledWith(1);
+        wait(500);
+        press(BUTTON.D_RIGHT);
+        expect(hud.onMoveAcross).toHaveBeenCalledTimes(2);
+        press();
+        press(BUTTON.D_LEFT);
+        expect(hud.onMoveAcross).toHaveBeenLastCalledWith(-1);
+        press();
+        tilt(-0.9);
+        press();
+        expect(hud.onMoveAcross).toHaveBeenCalledTimes(4);
+        tilt(0);
+        press();
+        expect(hud.onMove).not.toHaveBeenCalled();
+        expect(actions.move).not.toHaveBeenCalled();
+    });
+
+    it('changes tier on LB and RB, once a press', () => {
+        const { actions, hud, press } = createHarness();
+        press();
+        press(BUTTON.SELECT);
+        press();
+        press(BUTTON.RB);
+        press(BUTTON.RB);
+        expect(hud.onTier).toHaveBeenCalledTimes(1);
+        expect(hud.onTier).toHaveBeenLastCalledWith(1);
+        press();
+        press(BUTTON.LB);
+        expect(hud.onTier).toHaveBeenLastCalledWith(-1);
+        expect(hud.onTier).toHaveBeenCalledTimes(2);
+        expect(Object.values(actions).every((action) => action.mock.calls.length === 0)).toBe(true);
+    });
+
+    it('leaves LB and RB alone while it is closed', () => {
+        const { hud, press } = createHarness();
+        press();
+        press(BUTTON.RB);
+        press();
+        press(BUTTON.LB);
+        expect(hud.onTier).not.toHaveBeenCalled();
+        expect(hud.onOpen).not.toHaveBeenCalled();
     });
 
     it('plays the marked puzzle on A, and that A never rotates the new piece', () => {

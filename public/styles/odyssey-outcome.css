@@ -1,0 +1,765 @@
+/* =================================================================================
+ * ODYSSEY OUTCOME — the results and failure sheets (#odyssey-results-modal,
+ * #odyssey-failure-modal)
+ * ---------------------------------------------------------------------------------
+ * The navigator's grammar (odyssey-navigator.css, docs/ODYSSEY_NAVIGATOR_2026-10.md) for
+ * the two sheets an orb ends on: the orb's world as the hero in its chapter's light
+ * (data-ody-chapter → --ody-hue-rgb, odyssey-shared.css), the orb's name as the title,
+ * figures and a cell meter instead of sentences, the stars landing a beat apart, the
+ * road's mercy charm as a gift card in the charm's own tone, the leaderboard in a column
+ * of its own, and the actions in a footer that never scrolls away. Wide windows get two
+ * or three columns (container queries in rem, so large text falls back to one column);
+ * phones get one. No backdrop blur: the map or the board renders on underneath.
+ * Built by src/ui/odyssey/odyssey-outcome-sheet.js, FailureModal.js and ResultsModal.js;
+ * loaded after keystone-overlays.css (.sb-ody-modal, .sb-ody-sheet, .charm-sprite) and
+ * odyssey-shared.css (.sb-orb-art, .sb-star-row).
+ * ================================================================================ */
+:is(#odyssey-results-modal, #odyssey-failure-modal) {
+    --outcome-rgb: var(--ody-hue-rgb, var(--sb-gold-rgb));
+    --sb-ody-rgb: var(--outcome-rgb);
+    --outcome-ink: #0c0a22;
+    --outcome-pad: clamp(20px, 2.8vw, 40px);
+    --outcome-gap: clamp(28px, 3.2vw, 48px);
+    --outcome-art: clamp(156px, min(17vw, 30vh), 232px);
+    background:
+        radial-gradient(56% 64% at 34% 46%, rgba(var(--outcome-rgb), 0.1), transparent 72%),
+        rgba(5, 4, 14, 0.72);
+}
+
+/* A fall keeps the orb's own light; with no chapter to lend one, the sheet rests in lavender. */
+#odyssey-failure-modal {
+    --outcome-rgb: var(--ody-hue-rgb, var(--sb-lavender-rgb));
+}
+
+#odyssey-results-modal {
+    --outcome-art: clamp(150px, min(15vw, 28vh), 210px);
+    --outcome-gap: clamp(24px, 2.6vw, 40px);
+}
+
+:is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-sheet {
+    width: min(64rem, 100%);
+}
+
+#odyssey-results-modal .sb-ody-sheet {
+    width: min(72rem, 100%);
+}
+
+/* The panel: a column of the scrolling body over the footer. */
+:is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-sheet__panel {
+    container: ody-outcome / inline-size;
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100dvh - 48px);
+    padding: 0;
+    overflow: hidden;
+    border-color: rgba(var(--outcome-rgb), 0.24);
+    background:
+        radial-gradient(46% 86% at 0% 42%, rgba(var(--outcome-rgb), 0.17), transparent 72%),
+        radial-gradient(52% 60% at 100% 0%, rgba(var(--outcome-rgb), 0.07), transparent 72%),
+        linear-gradient(180deg, rgba(27, 23, 60, 0.96) 0%, rgba(12, 10, 30, 0.97) 100%);
+}
+
+:is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome {
+    flex: 0 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    gap: 22px var(--outcome-gap);
+    padding: var(--outcome-pad);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--sb-cream-rgb), 0.2) transparent;
+}
+
+/* ---- The hero: the orb's world in its rings ---------------------------------------- */
+:is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome__hero {
+    display: grid;
+    place-items: center;
+    padding: 20px 0 12px;
+    animation: sb-ody-outcome-art-in 0.62s 0.06s var(--sb-ease-lock) both;
+}
+
+:is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome__orb {
+    --orb-art-size: clamp(112px, 32vw, 150px);
+}
+
+/* ---- The main column: eyebrow, the orb's name, the outcome -------------------------- */
+:is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome__main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 0;
+    --outcome-justify: center;
+    text-align: center;
+    animation: sb-ody-outcome-rise 0.5s 0.1s var(--sb-ease-lock) both;
+}
+
+:is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-eyebrow {
+    --sb-accent-rgb: var(--outcome-rgb);
+    max-width: 100%;
+}
+
+:is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-title {
+    max-width: 100%;
+    margin: 12px 0 0;
+    font-size: clamp(1.75rem, 2.6vw, 2.5rem);
+    line-height: 1.06;
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+}
+
+:is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome__line {
+    margin: 14px 0 0;
+    color: var(--sb-text);
+    font: 600 1.125rem / 1.4 var(--sb-font-text);
+    text-wrap: balance;
+}
+
+:is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-lede {
+    max-width: 52ch;
+    margin: 4px 0 0;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+}
+
+#odyssey-results-modal .sb-ody-title {
+    font-size: clamp(1.75rem, 2.4vw, 2.25rem);
+}
+
+#odyssey-results-modal .sb-ody-title + .sb-ody-lede {
+    margin-top: 12px;
+}
+
+/* Small capitals over figures, the navigator's label. */
+:is(#odyssey-results-modal, #odyssey-failure-modal) :is(.sb-ody-debrief__label, .sb-ody-outcome__tip strong, .sb-ody-fact dt) {
+    color: var(--sb-text-faint);
+    font: 600 0.5625rem / 1.4 var(--sb-font-display);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+/* ---- Failure: the main goal as a figure and a meter, the tip beside it ----------------- */
+#odyssey-failure-modal .sb-ody-outcome__facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+    gap: 20px 36px;
+    width: 100%;
+    margin: 24px 0 0;
+    padding: 22px 0 0;
+    border-top: 1px solid var(--sb-line);
+    text-align: left;
+}
+
+#odyssey-failure-modal .sb-ody-debrief {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    margin: 0;
+}
+
+#odyssey-failure-modal .sb-ody-debrief p {
+    margin: 0;
+}
+
+#odyssey-failure-modal .sb-ody-debrief__goal {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+}
+
+#odyssey-failure-modal .sb-ody-debrief__objective {
+    color: var(--sb-text-muted);
+    font: 600 0.8125rem / 1.4 var(--sb-font-text);
+}
+
+#odyssey-failure-modal .sb-ody-debrief__value {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 4px 10px;
+    margin-top: 4px;
+    color: var(--sb-text-muted);
+    font: 600 1rem / 1.2 var(--sb-font-display);
+}
+
+#odyssey-failure-modal .sb-ody-debrief__value b {
+    color: var(--sb-text);
+    font: 700 clamp(2.25rem, 3.4vw, 3rem) / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+}
+
+#odyssey-failure-modal .sb-ody-debrief__prefix {
+    flex-basis: 100%;
+    font-size: 0.75rem;
+}
+
+/* The meter: twenty cells, lit in the orb's light as far as the attempt got. */
+#odyssey-failure-modal .sb-ody-debrief__track {
+    position: relative;
+    width: 100%;
+    height: 10px;
+    overflow: hidden;
+    background: rgba(var(--sb-cream-rgb), 0.09);
+    -webkit-mask-image: repeating-linear-gradient(90deg, #000 0 calc(5% - 3px), transparent calc(5% - 3px) 5%);
+    mask-image: repeating-linear-gradient(90deg, #000 0 calc(5% - 3px), transparent calc(5% - 3px) 5%);
+}
+
+#odyssey-failure-modal .sb-ody-debrief__fill {
+    height: 100%;
+    background: linear-gradient(90deg, rgba(var(--outcome-rgb), 0.62), rgb(var(--outcome-rgb)));
+    transform-origin: 0 50%;
+    animation: sb-ody-outcome-fill 0.9s 0.38s var(--sb-ease-lock) both;
+}
+
+#odyssey-failure-modal .sb-ody-debrief__remaining {
+    color: var(--sb-text-muted);
+    font: 500 0.875rem / 1.45 var(--sb-font-text);
+}
+
+#odyssey-failure-modal .sb-ody-outcome__tip {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    min-width: 0;
+}
+
+#odyssey-failure-modal .sb-ody-outcome__tip span {
+    color: var(--sb-text-muted);
+    font: 500 0.875rem / 1.6 var(--sb-font-text);
+    text-wrap: pretty;
+}
+
+/* ---- Failure: a lost duel as a scoreboard ----------------------------------------------- */
+#odyssey-failure-modal .sb-ody-duel {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: 0;
+}
+
+#odyssey-failure-modal .sb-ody-duel .sb-ody-debrief__label {
+    margin: 0;
+}
+
+#odyssey-failure-modal .sb-ody-duel__board {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 14px 30px;
+}
+
+#odyssey-failure-modal .sb-ody-duel__side {
+    display: grid;
+    justify-items: start;
+    gap: 8px;
+    min-width: 0;
+}
+
+#odyssey-failure-modal .sb-ody-duel__frags {
+    color: var(--sb-text);
+    font: 700 clamp(2.25rem, 3.4vw, 3rem) / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+}
+
+#odyssey-failure-modal .sb-ody-duel__name {
+    max-width: 14rem;
+    overflow: hidden;
+    color: var(--sb-text-muted);
+    font: 600 0.625rem / 1.3 var(--sb-font-display);
+    letter-spacing: 0.18em;
+    text-overflow: ellipsis;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+#odyssey-failure-modal .sb-ody-duel__dash {
+    padding-top: 0.2em;
+    color: var(--sb-text-faint);
+    font: 600 clamp(1.75rem, 2.6vw, 2.25rem) / 1 var(--sb-font-display);
+}
+
+#odyssey-failure-modal .sb-ody-duel__cells {
+    display: flex;
+    gap: 3px;
+}
+
+#odyssey-failure-modal .sb-ody-duel__cells i {
+    width: 16px;
+    height: 6px;
+    border-radius: 2px;
+    background: rgba(var(--sb-cream-rgb), 0.1);
+}
+
+#odyssey-failure-modal .sb-ody-duel__side.is-you .sb-ody-duel__cells i.is-filled {
+    background: rgb(var(--outcome-rgb));
+}
+
+#odyssey-failure-modal .sb-ody-duel__side.is-rival .sb-ody-duel__cells i.is-filled {
+    background: var(--sb-rose);
+}
+
+/* ---- Failure: the road's mercy, a gift in the charm's own tone -------------------------- */
+#odyssey-failure-modal .sb-ody-note.sb-ody-charm-pity {
+    --charm-rgb: var(--sb-lavender-rgb);
+    --gift-art: clamp(80px, 8.4vw, 104px);
+    display: grid;
+    grid-template-columns: var(--gift-art) minmax(0, 1fr);
+    align-items: center;
+    gap: 16px 24px;
+    width: 100%;
+    margin: 24px 0 0;
+    padding: 16px 24px 16px 18px;
+    border-radius: var(--sb-r-lg);
+    border: 1px solid rgba(var(--charm-rgb), 0.38);
+    background:
+        radial-gradient(60% 150% at 0% 50%, rgba(var(--charm-rgb), 0.2), transparent 72%),
+        linear-gradient(180deg, rgba(27, 23, 60, 0.7) 0%, rgba(12, 10, 30, 0.82) 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07),
+        0 18px 50px rgba(0, 0, 0, 0.3),
+        0 0 42px rgba(var(--charm-rgb), 0.1);
+    color: var(--sb-text);
+    font: inherit;
+    text-align: left;
+    animation: sb-ody-outcome-gift 0.6s 0.42s var(--sb-ease-lock) both;
+}
+
+#odyssey-failure-modal .sb-ody-charm-pity[data-charm='tide'] { --charm-rgb: var(--sb-aqua-rgb); }
+#odyssey-failure-modal .sb-ody-charm-pity[data-charm='still-air'] { --charm-rgb: var(--sb-lavender-rgb); }
+#odyssey-failure-modal .sb-ody-charm-pity[data-charm='long-breath'] { --charm-rgb: var(--sb-gold-rgb); }
+#odyssey-failure-modal .sb-ody-charm-pity[data-charm='hearth'] { --charm-rgb: var(--sb-coral-rgb); }
+
+/* One column (a phone, large text): the gift comes straight after the outcome, ahead of the
+   figures, so it shows without scrolling; side by side there is room for both in view. */
+#odyssey-failure-modal .sb-ody-outcome__main > .sb-ody-outcome__facts {
+    order: 2;
+}
+
+#odyssey-failure-modal .sb-ody-outcome__main > .sb-ody-charm-pity {
+    order: 1;
+}
+
+#odyssey-failure-modal .sb-ody-outcome__main > .odyssey-failure-unranked {
+    order: 3;
+}
+
+#odyssey-failure-modal .sb-ody-gift__art {
+    position: relative;
+    display: block;
+    width: var(--gift-art);
+    aspect-ratio: 1;
+}
+
+/* The floor the charm stands on, its light in a halo and an orbit, as on the charm guide's card. */
+#odyssey-failure-modal .sb-ody-gift__art::before {
+    content: '';
+    position: absolute;
+    inset: 4%;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 50% 38%, rgba(var(--charm-rgb), 0.24), rgba(var(--charm-rgb), 0.05) 62%, transparent 72%),
+        rgba(12, 10, 30, 0.6);
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.08), 0 14px 36px rgba(0, 0, 0, 0.4);
+}
+
+#odyssey-failure-modal .sb-ody-gift__halo {
+    position: absolute;
+    inset: -20%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(var(--charm-rgb), 0.34) 0%, rgba(var(--charm-rgb), 0.1) 42%, transparent 68%);
+    animation: sb-orb-art-breathe var(--sb-breath) var(--sb-ease-breathe) infinite;
+}
+
+#odyssey-failure-modal .sb-ody-gift__orbit {
+    position: absolute;
+    inset: -2%;
+    border-radius: 50%;
+    border: 1px solid rgba(var(--charm-rgb), 0.55);
+    box-shadow: 0 0 18px rgba(var(--charm-rgb), 0.2);
+}
+
+#odyssey-failure-modal .sb-ody-gift__orbit::before {
+    content: '';
+    position: absolute;
+    inset: -9%;
+    border-radius: 50%;
+    border: 1px dashed rgba(var(--sb-cream-rgb), 0.12);
+}
+
+#odyssey-failure-modal .sb-ody-gift__art .charm-sprite {
+    position: absolute;
+    inset: 6%;
+    display: grid;
+    width: auto;
+    height: auto;
+}
+
+#odyssey-failure-modal .sb-ody-gift__art .charm-sprite__glyph {
+    color: rgb(var(--charm-rgb));
+    font-size: calc(var(--gift-art) * 0.36);
+    text-shadow: 0 0 22px rgba(var(--charm-rgb), 0.55);
+}
+
+#odyssey-failure-modal .sb-ody-gift__copy {
+    min-width: 0;
+}
+
+#odyssey-failure-modal .sb-ody-gift__eyebrow {
+    --sb-accent-rgb: var(--charm-rgb);
+}
+
+#odyssey-failure-modal .sb-ody-gift__name {
+    margin: 6px 0 4px;
+    color: var(--sb-text);
+    font: 700 clamp(1.375rem, 2vw, 1.75rem) / 1.1 var(--sb-font-display);
+    letter-spacing: -0.005em;
+}
+
+#odyssey-failure-modal .sb-ody-gift__line {
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 500 0.9375rem / 1.6 var(--sb-font-text);
+    text-wrap: pretty;
+}
+
+#odyssey-failure-modal .sb-ody-gift__key {
+    margin: 0 2px;
+    vertical-align: 1px;
+    border-color: rgba(var(--charm-rgb), 0.55);
+    background: rgba(var(--charm-rgb), 0.14);
+    color: var(--sb-text);
+}
+
+:is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-note:is(.odyssey-failure-unranked, .odyssey-results-unranked) {
+    width: 100%;
+    margin: 20px 0 0;
+    text-align: left;
+}
+
+/* ---- Results: the stars land one beat after another, and why ---------------------------- */
+#odyssey-results-modal .sb-ody-stars {
+    --star-size: clamp(40px, 3.4vw, 50px);
+    display: flex;
+    gap: 10px;
+    margin: 18px 0 0;
+}
+
+#odyssey-results-modal .sb-ody-stars i {
+    animation: sb-ody-outcome-star 0.42s var(--sb-ease-lock) both;
+}
+
+#odyssey-results-modal .sb-ody-stars i.is-earned svg {
+    filter: drop-shadow(0 0 12px rgba(var(--sb-gold-rgb), 0.55));
+}
+
+#odyssey-results-modal .sb-ody-star-notes {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: var(--outcome-justify, flex-start);
+    gap: 6px 20px;
+    margin: 14px 0 0;
+    padding: 0;
+    list-style: none;
+    color: var(--sb-text-faint);
+    font: 500 0.8125rem / 1.5 var(--sb-font-text);
+}
+
+#odyssey-results-modal .sb-ody-star-notes__tier {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 7px;
+}
+
+#odyssey-results-modal .sb-ody-star-notes__tier.is-earned {
+    color: var(--sb-text);
+}
+
+#odyssey-results-modal .sb-ody-star-notes__tier.is-earned .sb-ody-star-notes__glyph {
+    color: var(--sb-gold);
+}
+
+#odyssey-results-modal .sb-ody-star-notes__next {
+    flex-basis: 100%;
+    color: var(--sb-text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* ---- Results: the run in figures, then the charms it used ------------------------------- */
+#odyssey-results-modal .sb-ody-facts {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: var(--outcome-justify, flex-start);
+    gap: 14px clamp(20px, 2.2vw, 34px);
+    width: 100%;
+    margin: 22px 0 0;
+    padding: 20px 0 0;
+    border-top: 1px solid var(--sb-line);
+}
+
+#odyssey-results-modal .sb-ody-fact {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 9px;
+    margin: 0;
+}
+
+#odyssey-results-modal .sb-ody-facts .sb-ody-fact dd {
+    margin: 0;
+    color: var(--sb-text);
+    font: 700 clamp(1.5rem, 2vw, 1.875rem) / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
+}
+
+/* Quieter than the figures: a label, each charm's live icon, the names in the text face. */
+#odyssey-results-modal .sb-ody-charms-used {
+    margin: 16px 0 0;
+}
+
+#odyssey-results-modal .sb-ody-charms-used .sb-ody-fact {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: var(--outcome-justify, flex-start);
+    gap: 6px 12px;
+}
+
+#odyssey-results-modal .sb-ody-charms-used dd {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 600 0.875rem / 1.3 var(--sb-font-text);
+}
+
+#odyssey-results-modal .sb-ody-charms-used .charm-sprite {
+    width: 28px;
+    height: 28px;
+    vertical-align: middle;
+}
+
+#odyssey-results-modal .sb-ody-charms-used .charm-sprite + .charm-sprite {
+    margin-left: -8px;
+}
+
+/* What the clear left: the theme card, after the result. */
+#odyssey-results-modal .ody-theme-reward {
+    width: min(30rem, 100%);
+    margin: 22px 0 0;
+}
+
+/* ---- Results: the leaderboard, in a column of its own ----------------------------------- */
+#odyssey-results-modal .sb-ody-outcome__side {
+    min-width: 0;
+    animation: sb-ody-outcome-rise 0.5s 0.18s var(--sb-ease-lock) both;
+}
+
+#odyssey-results-modal .sb-ody-outcome__side .steam-leaderboard-panel {
+    gap: 10px;
+    margin: 0;
+    padding: 16px 16px 14px;
+    border-color: var(--sb-line);
+    border-radius: var(--sb-r-lg);
+    background: rgba(5, 4, 15, 0.32);
+}
+
+#odyssey-results-modal .sb-ody-outcome__side .steam-leaderboard-header {
+    flex-wrap: wrap;
+    gap: 4px 12px;
+}
+
+#odyssey-results-modal .sb-ody-outcome__side .steam-leaderboard-title {
+    color: rgba(var(--outcome-rgb), 0.92);
+}
+
+#odyssey-results-modal .sb-ody-outcome__side .steam-leaderboard-updated {
+    font-size: 0.75rem;
+}
+
+#odyssey-results-modal .sb-ody-outcome__side :is(.steam-leaderboard-board-tabs, .steam-leaderboard-view-tabs) {
+    gap: 2px;
+    max-width: 100%;
+}
+
+#odyssey-results-modal .sb-ody-outcome__side .steam-leaderboard-tab {
+    padding: 0 9px;
+    letter-spacing: 0.12em;
+}
+
+#odyssey-results-modal .sb-ody-outcome__side .steam-leaderboard-row {
+    grid-template-columns: 2.25rem minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 7px 10px;
+    font-size: 0.8125rem;
+}
+
+#odyssey-results-modal .sb-ody-outcome__side .steam-leaderboard-score {
+    font-size: 0.8125rem;
+}
+
+/* This run, where its time ranks among the rows (unnumbered until Steam lists it). */
+#odyssey-results-modal .sb-ody-outcome__side .steam-leaderboard-row.pending {
+    border: 1px dashed rgba(var(--outcome-rgb), 0.6);
+    background: rgba(var(--outcome-rgb), 0.1);
+    color: var(--sb-text);
+}
+
+#odyssey-results-modal .sb-ody-outcome__side .steam-leaderboard-row.pending .steam-leaderboard-rank {
+    color: rgb(var(--outcome-rgb));
+}
+
+/* Behind a full page: it ranks further down, so it stands apart from the last row. */
+#odyssey-results-modal .sb-ody-outcome__side .steam-leaderboard-row.pending.beyond {
+    margin-top: 8px;
+}
+
+/* ---- The footer: the actions, always in view ------------------------------------------- */
+:is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome__footer {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 24px;
+    padding: 16px var(--outcome-pad) max(16px, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--sb-line);
+    background: linear-gradient(180deg, rgba(7, 6, 26, 0.2), rgba(5, 4, 15, 0.62));
+    animation: sb-ody-outcome-rise 0.5s 0.16s var(--sb-ease-lock) both;
+}
+
+:is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome__footer .sb-ody-actions {
+    flex: 1 1 auto;
+}
+
+/* ---- Wide sheets: the world beside its story --------------------------------------------- */
+@container ody-outcome (min-width: 44rem) {
+    :is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome--art {
+        grid-template-columns: var(--outcome-art) minmax(0, 1fr);
+        align-items: center;
+    }
+
+    :is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome__hero {
+        align-self: center;
+        padding: 0;
+    }
+
+    :is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome__orb {
+        --orb-art-size: var(--outcome-art);
+    }
+
+    :is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome__main {
+        --outcome-justify: flex-start;
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    :is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome__side {
+        grid-column: 1 / -1;
+    }
+
+    #odyssey-failure-modal .sb-ody-outcome__main > :is(.sb-ody-outcome__facts, .sb-ody-charm-pity) {
+        order: 0;
+    }
+
+    /* The actions line up with the story, under the world. */
+    :is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome--art + .sb-ody-outcome__footer {
+        padding-left: calc(var(--outcome-pad) + var(--outcome-art) + var(--outcome-gap));
+    }
+}
+
+/* Room for the leaderboard beside the result. */
+@container ody-outcome (min-width: 62rem) {
+    #odyssey-results-modal .sb-ody-outcome--side {
+        grid-template-columns: minmax(0, 1fr) minmax(18rem, 21rem);
+    }
+
+    #odyssey-results-modal .sb-ody-outcome--art.sb-ody-outcome--side {
+        grid-template-columns: var(--outcome-art) minmax(0, 1fr) minmax(18rem, 21rem);
+    }
+
+    #odyssey-results-modal .sb-ody-outcome--side .sb-ody-outcome__side {
+        grid-column: auto;
+        align-self: center;
+    }
+}
+
+/* Short windows: a tighter frame. */
+@media (max-height: 760px) {
+    :is(#odyssey-results-modal, #odyssey-failure-modal) {
+        --outcome-pad: clamp(18px, 2.4vw, 30px);
+        padding-block: 16px;
+    }
+
+    :is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-sheet__panel {
+        max-height: calc(100dvh - 32px);
+    }
+
+    :is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-outcome__footer {
+        padding-block: 12px max(12px, env(safe-area-inset-bottom));
+    }
+}
+
+/* Phones: one column; the actions take the width. */
+@media (max-width: 480px) {
+    :is(#odyssey-results-modal, #odyssey-failure-modal) {
+        padding: 12px;
+    }
+
+    :is(#odyssey-results-modal, #odyssey-failure-modal) .sb-ody-sheet__panel {
+        max-height: calc(100dvh - 24px);
+        border-radius: var(--sb-r-lg);
+    }
+
+    #odyssey-failure-modal .sb-ody-note.sb-ody-charm-pity {
+        --gift-art: 72px;
+        gap: 14px 16px;
+        padding: 14px 16px 14px 14px;
+    }
+}
+
+@keyframes sb-ody-outcome-art-in {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes sb-ody-outcome-rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes sb-ody-outcome-gift {
+    from { opacity: 0; transform: translateY(10px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes sb-ody-outcome-fill {
+    from { transform: scaleX(0); }
+    to { transform: none; }
+}
+
+@keyframes sb-ody-outcome-star {
+    0% { opacity: 0; transform: translateY(-16px) scale(0.8); }
+    70% { opacity: 1; transform: translateY(1px) scale(1.04); }
+    100% { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    :is(#odyssey-results-modal, #odyssey-failure-modal) :is(
+        .sb-ody-outcome__hero,
+        .sb-ody-outcome__main,
+        .sb-ody-outcome__side,
+        .sb-ody-outcome__footer,
+        .sb-ody-debrief__fill,
+        .sb-ody-charm-pity,
+        .sb-ody-gift__halo,
+        .sb-ody-stars i
+    ) {
+        animation: none;
+    }
+}

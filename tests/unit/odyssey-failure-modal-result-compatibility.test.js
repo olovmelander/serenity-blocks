@@ -46,6 +46,22 @@ function findByText(element, text) {
     return null;
 }
 
+function findByClass(element, className) {
+    if (element.className === className) return element;
+    for (const child of element.children) {
+        const match = findByClass(child, className);
+        if (match) return match;
+    }
+    return null;
+}
+
+function findAllByClass(element, className) {
+    return [
+        ...(element.className === className ? [element] : []),
+        ...element.children.flatMap((child) => findAllByClass(child, className)),
+    ];
+}
+
 function findByRole(element, role) {
     if (element.role === role) return element;
     for (const child of element.children) {
@@ -111,14 +127,59 @@ describe('Odyssey failure modal result compatibility', () => {
         expect(onChoose).toHaveBeenCalledWith('map');
     });
 
-    it('explains the lost duel and that Retry starts a fresh frag score', () => {
+    it('shows the lost duel as a scoreboard and that Retry starts a fresh frag score', () => {
         const modal = createModal({
             results: { duel: { playerFrags: 4, botFrags: 7, targetFrags: 7 } },
             levelConfig: getLevelById(1),
             metrics: { lines: 18 },
         });
-        expect(collectMarkup(modal)).toContain('Knockouts: 4–7. First to 7 wins. Retry begins at 0–0.');
+        const markup = collectMarkup(modal);
+        const score = findByClass(modal, 'sb-ody-duel');
+        expect(score.ariaLabel).toBe('Knockouts: you 4, The rival 7. First to 7 wins.');
+        expect(markup).toContain('Knockouts · first to 7 wins');
+        expect(markup).toContain('Retry begins at 0–0.');
+        const frags = findAllByClass(modal, 'sb-ody-duel__frags').map((node) => node.textContent);
+        expect(frags).toEqual(['4', '7']);
+        const cells = findAllByClass(modal, 'sb-ody-duel__cells')
+            .map((row) => row.children.filter((cell) => cell.className === 'is-filled').length);
+        expect(cells).toEqual([4, 7]);
         expect(findByRole(modal, 'progressbar')).toBeNull();
+    });
+
+    it('names the rival from the orb when the duel result does not', () => {
+        const rivalOrb = {
+            id: 10, name: 'Wave Runner', chapter: 2, mechanics: { versus: { botName: 'Coral' } },
+        };
+        const modal = createModal({
+            results: { duel: { playerFrags: 1, botFrags: 3, targetFrags: 3 } },
+            levelConfig: rivalOrb,
+            reasonText: 'Coral reached 3 knockouts first.',
+        });
+        expect(findByClass(modal, 'sb-ody-duel').ariaLabel).toBe('Knockouts: you 1, Coral 3. First to 3 wins.');
+        expect(findByClass(modal, 'sb-orb-art sb-ody-outcome__orb').dataset.kind).toBe('rival');
+    });
+
+    it('makes the orb the hero: its world, its name as the title and the reason as the outcome', () => {
+        const modal = createModal({ levelConfig: getLevelById(1), metrics: { lines: 18 }, failureReason: 'top-out' });
+        const art = findByClass(modal, 'sb-orb-art sb-ody-outcome__orb');
+        expect(art.dataset).toMatchObject({ state: 'failed', odyChapter: '1' });
+        expect(modal.dataset.odyChapter).toBe('1');
+        expect(findByClass(modal, 'sb-eyebrow sb-ody-eyebrow').textContent).toBe('Orb 1 · Earth Core · Attempt 3');
+        expect(findByClass(modal, 'sb-ody-title').textContent).toBe(getLevelById(1).name);
+        expect(findByClass(modal, 'sb-ody-outcome__line').textContent).toBe('Time ran out.');
+        // The actions sit alone in the footer row: sheet-input.js finds Retry first, Back to Map last.
+        const footer = findByClass(modal, 'sb-ody-outcome__footer');
+        const actions = findByClass(footer, 'sb-ody-actions');
+        expect(actions.children.map((node) => node.textContent)).toEqual(['Retry', 'Back to Map']);
+        expect(findByClass(findByClass(modal, 'sb-ody-outcome sb-ody-outcome--art'), 'sb-ody-actions')).toBeNull();
+    });
+
+    it('keeps the reason as the title when no orb is known', () => {
+        const modal = createModal();
+        expect(findByClass(modal, 'sb-ody-title').textContent).toBe('Time ran out.');
+        expect(findByClass(modal, 'sb-ody-outcome__line')).toBeNull();
+        expect(findByClass(modal, 'sb-ody-outcome__hero')).toBeNull();
+        expect(findByClass(modal, 'sb-eyebrow sb-ody-eyebrow').textContent).toBe('Attempt 3');
     });
 
     it('shows the main-goal shortfall and preserves unranked keyboard retry', () => {
@@ -132,7 +193,10 @@ describe('Odyssey failure modal result compatibility', () => {
         });
         const markup = collectMarkup(modal);
         const progress = findByRole(modal, 'progressbar');
-        expect(markup).toContain('18 / 20 lines');
+        // The attempt's number as a figure over its target.
+        const value = findByClass(modal, 'sb-ody-debrief__value');
+        expect(value.children.map((node) => node.textContent)).toEqual(['18', '/ 20 lines']);
+        expect(progress.ariaValueText).toContain('18 / 20 lines');
         expect(markup).toContain('2 lines short of the goal.');
         expect(markup).toContain('Next attempt');
         expect(markup).toContain('Experimental Session · Unranked');
