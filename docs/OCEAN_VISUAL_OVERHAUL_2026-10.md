@@ -234,6 +234,90 @@ with a real board (the playground's board mock stands in); the visibility model 
 tier's kelp, so on Low and Minimal (fewer stands) the animals are seen more, not less. Playground:
 `visit=<act>&visitK=|visitAge=&visitSide=&visitSeed=`, `visits=0|1`, `follow=<kind>&followFit=`.
 
+## Second pass: the surface, the kelp, the reef, the water (2026-10-21)
+
+Olov: improve the visuals, effects, atmosphere and graphics in the Ocean theme.
+
+**What read as computer graphics** (1:1 crops of the playground at 1920 × 1080): the surface was a
+flat teal ceiling with cyan blobs on it, more cloud than water; every kelp blade was lit by one
+fixed normal, so a stand was one flat lime colour, like paper; the near colonies were smooth
+plastic (sponges with large camouflage blotches, a brain coral with a few dark wiggles); the
+caustic net on the sand was a soft grey fill; and the water in front of the eye was empty.
+
+![Before and after at four hours](ocean-overhaul/40-second-pass-hours.jpg)
+
+**The surface** (`ocean-surface.js`). The eye is 12.5 m down and the top of the frame meets the
+surface at the edge of Snell's window, so the picture there is decided by how each facet is tilted.
+The surface's slope is now read from the light pattern's caustic net itself (three reads a few
+centimetres apart, at the level whose texels are about 9 cm on every tier): the net is the
+surface's height, so each thread is a pair of facets, one turned into the window and one out of
+it, and the bright facets overhead stand over the shafts and the net on the sand below them. Waves
+settle by how many pixels a wavelength covers (`fwidth`), not by distance; what the pixels can no
+longer draw blurs the window's edge instead. The window is opened per channel at three indices
+(`DISPERSION`), so a facet's edge is fringed, and a thin rim of the low sky runs along every thread
+that crosses the edge. The broadest chop, which made the blobs, is gone; the surface is seen through
+a shorter, brighter column of water than its distance says. The moon hour's low sky is lifted a
+little (the surface is the only reader of `horizon`) so at night the facets show as faint ripples.
+
+![The surface at noon and at night](ocean-overhaul/41-second-pass-surface.jpg)
+
+**Kelp** (`ocean-flora.js`). Each blade's face is worked out in the vertex stage from its own twist
+and rise (`vKelpFace`) and shaded as a thin leaf: the face the eye sees takes the sea's light
+(front-lit olive, edge-on dark), and a blade with the sun behind it lets the light through gold
+(`KELP_THROUGH`), most of all looking up through it toward the sun. The water still takes the red
+out at 10–25 m, so at noon the canopy is olive and gold-green, and at sunset it glows amber.
+
+![Kelp before and after](ocean-overhaul/42-second-pass-kelp.jpg)
+
+**The reef** (`ocean-reef.js`). Stone colonies carry the cups of their polyps (two noise reads
+blended by which way the surface faces); a brain coral's maze is finer and every ridge has its
+groove; a sponge's pores are small and many; a table's plate has a lattice and a pale growing rim;
+every colony stands in its own shade where it meets the rock; and the water lights the edges a
+colony turns away from the eye (a grazing sheen of the ambient colour), so it stands in the sea.
+
+![The reef before and after](ocean-overhaul/43-second-pass-reef.jpg)
+
+**The caustic net** (`ocCaustic` in `ocean-tsl.js`). Measured on the CPU, the net's mean is 0.23
+and its median 0.19: read straight it was mostly a grey fill (threads 2.8 × the cells). It is now
+read squared (gain `0.62 + 7·net²`, mean 1.19), so the threads stand about six times brighter than
+the cells, on the sand, the reef and the kelp alike. The colour fringe's three reads moved from
+8.5 to 4 cm apart: with the sharper net the old spacing turned rock and sand oil-slick.
+
+**The water in front of the eye** (`createNearMotes` in `ocean-fx.js`, a new part `nearMotes`,
+120–1,000 a tier). Specks of a few millimetres in a box just in front of the rest eye, drifting
+with the current: in focus a few metres out they are points, sharp and bright where a shaft
+crosses them (the shafts' own mask, forward scatter toward the light); nearer than that they are
+the soft discs of a lens's blur (`NEAR_FOCUS` 9 m, `NEAR_APERTURE`) with a brighter rim, each
+keeping a share of a point's light. At night some are plankton with a light of their own.
+
+**Two shader faults the new gate found** (`tests/unit/ocean-shaders.test.js` builds every
+material in the sea and the light pass through the WGSL and GLSL builders at High and Minimal, and
+flags a var read before anything has assigned it):
+
+- *The large animals' body plans.* `part`, `sgn` and `root` were shared nodes built before the
+  `If`/`ElseIf` chain of body plans; WGSL assigned their vars inside the fishes' branch, so the
+  rays, the turtle and the sunfish read zeros. **The turtle's flippers never rowed, the sunfish's
+  tall fins never sculled, and the rays had no tail whip, curl or tuck** (since 2026-10-19; the
+  strokes were reviewed in Blender's renders). They are vars made at the top of the stage now.
+- *The colonies' rings.* One node for a colony's root fed both the held colours' varying and the
+  rings' varying; its var was assigned inside the held colours' loop, so with no colour held (a
+  level-up's ring at the start of a run) every colony took a passing ring's light as if it stood
+  at the origin. Each varying makes its own now.
+
+![The turtle rowing, 0.6 s apart](ocean-overhaul/44-second-pass-turtle-stroke.jpg)
+
+**Verified.** The playground on WebGPU (RTX 5080 Laptop, a scratch Electron batch on a private dev
+server): all six hours at 1920 × 1080 with 1:1 crops, the board with a lock, a clear, four lines
+and the whale, a 430 × 852 portrait frame, the Minimal tier and the WebGL2 backend; every console
+clean. The before/after pairs are from a detached worktree at `origin/main` on its own server. The
+Ocean suite (265 tests) passes, and `validate-all-themes --theme ocean` PASS. Frame cost at
+2538 × 1544 on the RTX 5080 Laptop (120 frames in one task, the node frame advanced before each,
+the queue drained; medians of three rounds interleaved with the baseline): High 5.10 → 5.42 ms,
+Ultra 5.70 → 5.91 ms, Low 2.31 → 2.38 ms, about +3 to 6 %. **Not done:** a reading on an integrated GPU (this
+laptop's Radeon 610M was left alone: captures have crashed an iGPU's driver on this project
+before) or a phone; the real game with a real board; anyone watching the specks and the surface
+move for long.
+
 ## Reproduce
 
 Playground: `npm run dev:playground`, then
