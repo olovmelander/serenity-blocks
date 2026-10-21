@@ -5,16 +5,38 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, dot, float, floor, fract, length, max, mix, normalize, normalWorld, positionWorld, reflect, smoothstep,
-    step, texture, vec2, vec3, vec4,
+    Fn, abs, cross, dFdx, dFdy, dot, float, floor, fract, fwidth, length, max, mix, normalize, normalWorld,
+    positionWorld, reflect, select, sign, smoothstep, step, texture, vec2, vec3, vec4,
 } from 'three/tsl';
 import { groundHeight } from './sunbraid-plan.js';
 import {
-    DEG, haze, mist, sbHash21, sunLight, sunVisibility,
+    DEG, haze, mist, sbCells, sbHash21, sunLight, sunVisibility,
 } from './sunbraid-tsl.js';
 
 /** The fan's reach (metres) and bearing span (degrees either side of the view axis). */
 export const FAN = Object.freeze({ near: 6, far: 18000, span: 100 });
+
+/**
+ * The salt crust: polygon cells `cell` metres across (centres jittered by `jitter`), their edge
+ * ridges `ridge` cell units wide and `height` metres high; each cell's tone varies by ±`tone`/2;
+ * the fine grain's relief (metres). Ridges and tones are drawn while a cell is wider than
+ * 1/`fade[1]` pixels, fully from 1/`fade[0]`; the bump itself is gone by `far` metres.
+ */
+export const FLOOR_CRUST = Object.freeze({
+    cell: 24,
+    jitter: 0.85,
+    ridge: 0.12,
+    height: 0.22,
+    tone: 0.07,
+    bright: 0.09,
+    grain: 0.03,
+    fade: Object.freeze([0.1, 0.3]),
+    relief: Object.freeze([0.025, 0.06]),
+    near: 700,
+    far: 3200,
+});
+/** The selenite: the share of the glitter's cells that hold a crystal, and how bright its glint is. */
+export const SELENITE = Object.freeze({ share: 0.018, gain: 3.6 });
 
 /** The fan's vertices, normals and indices (CPU). */
 export function buildFan(cols, rows) {
@@ -92,10 +114,42 @@ export function createLand(u, t, tier) {
         const scrub = vec3(0.72, 0.76, 0.7);
         const ground = mix(gypsum, warm, smoothstep(0.35, 0.75, patch).mul(0.6));
         const scrubby = smoothstep(0.55, 0.75, patch.add(fine.sub(0.5).mul(0.5))).mul(smoothstep(0.45, 0.7, grain));
-        const shade = float(0.94).add(grain.mul(0.08)).sub(rims.mul(0.035));
+        // The salt crust: polygons a couple of dozen metres across whose edges stand up in ridges a
+        // hand's breadth high. With the suns this low a ridge's face toward them catches the light and
+        // its back falls into shade, so the polygons tile away to the horizon; each polygon is its own
+        // shade of white. Ridges and tones fade to their mean where a cell shrinks toward a pixel.
+        const C = FLOOR_CRUST;
+        const cp = P.xz.div(C.cell).toVar();
+        const cells = sbCells(cp, float(C.jitter)).toVar();
+        const toEdge = cells.y.sub(cells.x).toVar();
+        const cellPx = fwidth(cp).length().toVar();
+        const crustSeen = float(1.0).sub(smoothstep(C.fade[0], C.fade[1], cellPx)).toVar();
+        // A ridge never narrower than about a pixel and a half: farther out it widens and fades by as
+        // much (a thinner one broke into dotted lines).
+        const width = max(float(C.ridge), cellPx.mul(1.6)).toVar();
+        const ridge = smoothstep(width, 0.0, toEdge).mul(float(C.ridge).div(width)).mul(crustSeen).toVar();
+        const cellTone = cells.z.sub(0.5).mul(C.tone).mul(crustSeen);
+        // The salt heaps up white along the ridges.
+        const shade = float(0.94).add(grain.mul(0.08)).sub(rims.mul(0.035)).add(cellTone)
+            .add(ridge.mul(C.bright));
         const albedo = mix(ground, scrub, scrubby.mul(0.7)).mul(shade).toVar();
+        // The relief only where a ridge is a few pixels wide: its normal comes from screen
+        // derivatives, which turn to stair steps (dotted lines) on a ridge a pixel or two across.
+        const reliefSeen = float(1.0).sub(smoothstep(C.relief[0], C.relief[1], cellPx));
+        const bumpH = ridge.mul(ridge).mul(float(3.0).sub(ridge.mul(2.0))).mul(C.height).mul(reliefSeen)
+            .add(grain.mul(C.grain))
+            .toVar();
+        const dpdx = dFdx(P);
+        const dpdy = dFdy(P);
+        const r1 = cross(dpdy, N);
+        const r2 = cross(N, dpdx);
+        const det = dot(dpdx, r1);
+        const grad = r1.mul(dFdx(bumpH)).add(r2.mul(dFdy(bumpH))).mul(sign(det));
+        const near = smoothstep(C.far, C.near, length(P.sub(u.eye)));
+        const bumped = N.mul(abs(det)).sub(grad.mul(near));
+        const Nb = select(length(bumped).greaterThan(1e-9), normalize(bumped), N).toVar();
         const vis = sunVisibility(u, P, t.noise);
-        const lit = sunLight(u, N, vis);
+        const lit = sunLight(u, Nb, vis);
         const ambient = mix(u.horizon, u.zenith, 0.55).mul(N.y.mul(0.35).add(0.65)).mul(0.07);
         // Selenite: a crystal now and then, each turned its own way, catching a sun's glint (the
         // glints of a sun hidden by a shadow go out with it, so the fans show in the sparkle too).
@@ -108,8 +162,9 @@ export function createLand(u, t, tier) {
         const f = fract(gridUv).sub(0.5);
         const h1 = sbHash21(cell);
         const h2 = sbHash21(cell.add(vec2(17.3, 41.7)));
-        const crystal = smoothstep(0.42, 0.08, length(f)).mul(step(h1, 0.07));
-        const tilt = vec3(h1.sub(0.035).mul(9.0), 1.0, h2.sub(0.5).mul(0.7));
+        // (Sparse and bright: a crystal in seven cells read as static over the whole floor.)
+        const crystal = smoothstep(0.42, 0.08, length(f)).mul(step(h1, SELENITE.share));
+        const tilt = vec3(h1.sub(SELENITE.share * 0.5).mul(9.0 * (0.07 / SELENITE.share)), 1.0, h2.sub(0.5).mul(0.7));
         const facet = normalize(tilt);
         const view = normalize(P.sub(u.eye));
         const mirror = reflect(view, facet);
@@ -123,7 +178,7 @@ export function createLand(u, t, tier) {
         const glint = u.col0.mul(glintOf(u.sun0).mul(vis.x))
             .add(u.col1.mul(glintOf(u.sun1).mul(vis.y)))
             .add(u.col2.mul(glintOf(u.sun2).mul(vis.z)))
-            .mul(crystal.mul(1.6).mul(smoothstep(3000.0, 700.0, dist)));
+            .mul(crystal.mul(SELENITE.gain).mul(smoothstep(3000.0, 700.0, dist)));
         const colour = albedo.mul(lit.add(ambient)).add(glint);
         return vec4(haze(u, mist(u, colour, P, vis), P), 1.0);
     })();

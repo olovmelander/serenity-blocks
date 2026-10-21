@@ -56,6 +56,8 @@ import {
     RECORD_ROWS,
     createThermalBloomTexture,
     tbAerial,
+    tbCloudShade,
+    SURFACE_SUN,
     tbBlooms,
     tbBounce,
     tbFills,
@@ -325,7 +327,8 @@ export function createTerraces(u, tier, tex) {
         const Nb = normalize(abs(det).mul(Nbase).sub(grad));
         const N = normalize(mix(Nbase, Nb, step(1e-9, abs(det)))).toVar();
         const ndl = dot(N, u.sunDir);
-        const wrapLit = clamp(ndl.add(0.25).div(1.25), 0.0, 1.0);
+        // (the drifting cumulus shade the Stair as they shade the floor)
+        const wrapLit = clamp(ndl.add(0.25).div(1.25), 0.0, 1.0).mul(tbCloudShade(u, P)).mul(SURFACE_SUN).toVar();
         const skyAmb = mix(u.haze, u.zenith, 0.55).mul(N.y.mul(0.25).add(0.28)).add(tbBounce(u, N));
         // Cavities: the shade under each lip (the crest overhangs its face), the grooves, the foot
         // of each riser.
