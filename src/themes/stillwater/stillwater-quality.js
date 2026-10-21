@@ -4,6 +4,7 @@
  * mirror      resolution scale of the pass that mirrors what stands in the scene (0 = none: the
  *             tarn still mirrors the sky, the moon and the far wood, which costs no pass)
  * lite        the cut-down sky function (no stars, no northern lights, one rank of spruce fewer)
+ * wood        overlapping sets of spruces in each rank of the far wood (2 leaves gaps between them)
  * glitter     the water's finest ripple
  * columns     the long reflections the lights lay on the water (wisps included)
  * cell        metres between the ground mesh's vertices
@@ -14,6 +15,7 @@
  * fireflies   fireflies over the banks
  * sparks      pool of the motes every splash, stroke and burst is made of
  * mist        sheets of mist lying over the water
+ * veil        layers of the low mist that lies on the water itself
  * troll       which of the troll's four meshes (0 = the finest)
  * spirit      which of the spirit's two meshes (0 = the full figure, 1 = half)
  * motes       motes of light that rise round the spirit
@@ -24,6 +26,7 @@ export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
         mirror: 0,
         lite: true,
+        wood: 2,
         glitter: false,
         columns: false,
         cell: 1.3,
@@ -39,6 +42,7 @@ export const QUALITY = Object.freeze({
         fireflies: 0,
         sparks: 192,
         mist: 2,
+        veil: 0,
         troll: 3,
         spirit: 1,
         motes: 0,
@@ -46,6 +50,7 @@ export const QUALITY = Object.freeze({
     Low: Object.freeze({
         mirror: 0,
         lite: false,
+        wood: 2,
         glitter: false,
         columns: true,
         cell: 1.0,
@@ -61,6 +66,7 @@ export const QUALITY = Object.freeze({
         fireflies: 50,
         sparks: 320,
         mist: 3,
+        veil: 1,
         troll: 3,
         spirit: 1,
         motes: 16,
@@ -68,6 +74,7 @@ export const QUALITY = Object.freeze({
     Medium: Object.freeze({
         mirror: 0.4,
         lite: false,
+        wood: 3,
         glitter: true,
         columns: true,
         cell: 0.75,
@@ -83,6 +90,7 @@ export const QUALITY = Object.freeze({
         fireflies: 100,
         sparks: 640,
         mist: 4,
+        veil: 2,
         troll: 2,
         spirit: 0,
         motes: 20,
@@ -90,6 +98,7 @@ export const QUALITY = Object.freeze({
     High: Object.freeze({
         mirror: 0.5,
         lite: false,
+        wood: 3,
         glitter: true,
         columns: true,
         cell: 0.55,
@@ -105,6 +114,7 @@ export const QUALITY = Object.freeze({
         fireflies: 150,
         sparks: 960,
         mist: 5,
+        veil: 3,
         troll: 1,
         spirit: 0,
         motes: 32,
@@ -112,6 +122,7 @@ export const QUALITY = Object.freeze({
     Ultra: Object.freeze({
         mirror: 0.6,
         lite: false,
+        wood: 3,
         glitter: true,
         columns: true,
         cell: 0.5,
@@ -127,6 +138,7 @@ export const QUALITY = Object.freeze({
         fireflies: 200,
         sparks: 1280,
         mist: 6,
+        veil: 3,
         troll: 0,
         spirit: 0,
         motes: 40,
@@ -134,6 +146,7 @@ export const QUALITY = Object.freeze({
     Extreme: Object.freeze({
         mirror: 0.75,
         lite: false,
+        wood: 3,
         glitter: true,
         columns: true,
         cell: 0.45,
@@ -149,6 +162,7 @@ export const QUALITY = Object.freeze({
         fireflies: 260,
         sparks: 1600,
         mist: 6,
+        veil: 3,
         troll: 0,
         spirit: 0,
         motes: 40,

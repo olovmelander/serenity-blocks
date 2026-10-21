@@ -63,6 +63,7 @@ import {
  * @param {object} [opts]
  * @param {number} [opts.mirrorScale=0]  reflector resolution scale (0 = no pass: mirrored distance only)
  * @param {boolean} [opts.lite=false]    the cut-down sky function in the mirror
+ * @param {number} [opts.wood=3]          sets of spruces in each rank of the mirrored far wood
  * @param {boolean} [opts.glitter=true]  the fine ripple that breaks bright things into sparks
  * @param {boolean} [opts.columns=true]  the lights' long reflections
  * @param {number} [opts.samples=0]      the reflector's samples: the scene pass's, so its edges are
@@ -158,7 +159,7 @@ export function createWater(u, opts = {}) {
         const fres = clamp(swFresnel(cosT, 0.02).mul(0.62).add(0.4), 0.0, 1.0).toVar();
         const R = reflect(V, N).toVar();
         const Rup = normalize(vec3(R.x, max(R.y, 0.0).add(0.002), R.z)).toVar();
-        const mirror = swBackdrop(u, Rup, { lite, soft: 2.2 }).toVar();
+        const mirror = swBackdrop(u, Rup, { lite, soft: 2.2, wood: opts.wood }).toVar();
         const shoreM = u.shore(st).sub(0.5).mul(SHORE_SPAN * 2).toVar();
         if (!reflection) {
             // No pass to mirror the banks: the water under them still takes the wood's dark.
