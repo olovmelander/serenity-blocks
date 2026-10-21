@@ -181,6 +181,46 @@ Still open from the critic's list: the canopy at the Bole still reads partly as 
 structural limit of the canopy as a textured plane); the L12 crowns as pads; a flake now and
 then face-on; the Floor's channels.
 
+### The canopy in depth (same day)
+
+The canopy felt flat because it was a picture on one plane (plus a sparse storey 24 m under it),
+each leaf mass a 2D blob of one tone, the trunks running straight up through it. Three changes,
+on Medium and up (Low and Minimal keep the single plane: their `lite` path):
+
+- **Each mass hangs as a dome** (`CANOPY.relief`). The crown field is a true signed distance, so
+  two extra reads a step either way along the sun's azimuth give each mass's slope toward the sun:
+  its rim facing the sun glows with the light through it, the rim turned away falls into its own
+  shade, over the last few metres of the rim only (its heart stays level: lit from a distance
+  field's gradient, a shape shows a crease down its medial axis). Just under the canopy the bevel
+  runs deeper and darker, where a dome is seen whole. No screen derivatives: the backdrop is
+  branched, and WGSL allows them only in uniform control flow.
+- **Three storeys**: a middle one (`CANOPY_MID`, 12 m under the plane) between the plane and the
+  old lower storey, each its own pattern and air, domed the same way, so crowns overlap crowns at
+  three depths and part as the camera breathes and climbs. `rbStoreys` draws them in ONE TSL
+  `Loop` (each storey's constants picked by the index): written twice in JavaScript they took the
+  near bark's fragment from 148 to 211 KB of WGSL, past the shader test's 192 KB budget; the loop,
+  and handing the trunk path the air its own `rbAir` already computed (`share`), brought it to
+  173 KB (the backdrop's to 175 KB, from 150).
+- **The trunks climb into the crowns.** The storeys are painted in the backdrop, so the opaque
+  trunks drew straight through them. Now a trunk pixel above a storey's plane, whose view ray
+  crossed that plane first, is covered by the very leaves the backdrop paints beside it (the same
+  function along the same ray, through the same air: no ghost outline), entering each cluster's
+  underside, which hangs lower toward its heart (`hang`), never at a level line.
+
+Two things tried and rejected: letting the middle storey come in nearer the eye (at L12 its
+clusters were half faded, translucent slabs and a green band across Sister One); and fading a
+storey by transparency as the eye climbs to it at all: a half-faded storey hangs over the trunks
+as a ghost. Storeys near the eye now THIN instead (`STOREY_THIN`: the clusters shrink and drop out
+whole), so the Climb from L11 to L12 never shows a translucent leaf. Captures:
+[`rainbark-captures/canopy-pass.jpg`](rainbark-captures/canopy-pass.jpg) (L10 and the L4 band
+before/after, L11 and its gold mood); checked at L4, L10, L11, L12, mid-Climb, the gold mood,
+Mistfall and the Fog Line (no storeys in the pearl), Medium, Low and Minimal, 21:9, the upright
+phone at L4 and L10, and on the WebGL2 backend at L10 and L11; every console clean. Not measured:
+the cost (the GPU was shared with other work); the canopy band pays two field reads for the relief
+and, where a storey shows, three more and its air; the trunks pay the storeys only above the lower
+storey's plane. The near bark's larger fragment also lengthens the WebGL2 backend's first compile
+on Medium and up (Low and Minimal are untouched).
+
 ## Reproduce
 
 Playground (`npm run dev:playground`, then `playground.html?effect=rainbark&…`):
