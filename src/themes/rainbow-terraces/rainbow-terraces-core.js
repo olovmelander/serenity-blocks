@@ -1098,8 +1098,8 @@ function level(field, spread = 0.17) {
 
 const toByte = (v) => Math.round(clamp01(v) * 255);
 
-/** How soft the union of two cloud heads is (a polynomial smooth maximum, in a cap's heights). */
-const SEA_SADDLE = 0.15;
+/** How soft the union of the cloud heads is (the log-sum-exp's temperature, in a head's heights). */
+const SEA_SADDLE = 0.07;
 
 /** A polynomial smooth maximum of a and b over a blend of width k. */
 function smoothMax(a, b, k) {
@@ -1109,8 +1109,9 @@ function smoothMax(a, b, k) {
 
 /**
  * The cloud sea's relief, as floats (RGBA, tileable), for a half-float texture:
- *   R  height 0..1: rounded cumulus heads, a union of spherical caps at three sizes (each head
- *      carries smaller heads on its shoulders, the cauliflower of real cloud tops), roughened
+ *   R  height 0..1: rounded cumulus heads, domes at four sizes joined without a crease (the
+ *      large billows carry the smaller on their shoulders and crowns, the cauliflower of real
+ *      cloud tops, while the valleys between the banks stay broad and soft), roughened
  *   G  dR/du, B  dR/dv: the slope, in height per tile (the normal without an 8-bit staircase)
  *   A  crease 0..1: how far a point lies below its neighbourhood (the shaded seams between heads)
  * @param {number} size
@@ -1139,6 +1140,9 @@ function computeSeaField(size, seed) {
             pr[i] = radius * (0.65 + 0.6 * rand());
         }
         const out = new Float32Array(n * n);
+        const dome = new Float64Array(9);
+        // (A head more than this far under the highest adds under 0.3 % to the sum: skipped.)
+        const reach = SEA_SADDLE * 6;
         for (let j = 0; j < n; j++) {
             for (let i = 0; i < n; i++) {
                 const at = j * n + i;
@@ -1146,7 +1150,12 @@ function computeSeaField(size, seed) {
                 const y = ((j + (warpY[at] - 0.5) * warp * n) / n) * cells;
                 const cx = Math.floor(x);
                 const cy = Math.floor(y);
-                let best = 0;
+                // A rounded dome per head (a paraboloid, its slope finite at the rim and running
+                // on below it), the heads joined by a log-sum-exp: one smooth surface with soft
+                // saddles where two meet and no crease anywhere (a cap union creased at every rim,
+                // and four sizes of creases read as crumpled foil across the whole sea).
+                let top = -Infinity;
+                let d = 0;
                 for (let oy = -1; oy <= 1; oy++) {
                     for (let ox = -1; ox <= 1; ox++) {
                         const gx = cx + ox;
@@ -1154,19 +1163,16 @@ function computeSeaField(size, seed) {
                         const k = (((gy % cells) + cells) % cells) * cells + (((gx % cells) + cells) % cells);
                         const dx = gx + px[k] - x;
                         const dy = gy + py[k] - y;
-                        const q = (dx * dx + dy * dy) / (pr[k] * pr[k]);
-                        // A spherical cap: the union of the heads, smoothed where two meet (vapour
-                        // fills the saddle between two heads: never a V crease, which would alias
-                        // into hatching across the middle distance).
-                        // (The blend narrows to nothing at a cap's rim, so no rim ever steps.)
-                        if (q < 1) {
-                            const cap = Math.sqrt(1 - q) * (pr[k] / radius);
-                            const soft = SEA_SADDLE * Math.min(1, cap / SEA_SADDLE, best / SEA_SADDLE);
-                            best = soft > 1e-6 ? smoothMax(best, cap, soft) : Math.max(best, cap);
-                        }
+                        const v = (1 - (dx * dx + dy * dy) / (pr[k] * pr[k])) * (pr[k] / radius);
+                        dome[d++] = v;
+                        if (v > top) top = v;
                     }
                 }
-                out[at] = best;
+                let sum = 0;
+                for (let q = 0; q < 9; q++) {
+                    if (dome[q] > top - reach) sum += Math.exp((dome[q] - top) / SEA_SADDLE);
+                }
+                out[at] = smoothMax(0, top + SEA_SADDLE * Math.log(sum) + 0.2, 0.1);
             }
         }
         return out;
@@ -1177,9 +1183,12 @@ function computeSeaField(size, seed) {
     const small = octave(27, 0.72, 0.06);
     const h = new Float32Array(n * n);
     for (let at = 0; at < n * n; at++) {
-        // Heads summed on heads: rounded lumps on lumps, the billow of real cloud tops.
-        const d = banks[at] * 0.46 + big[at] * 0.32 + mid[at] * 0.15 + small[at] * 0.07;
-        h[at] = d + (rough[at] - 0.5) * 0.04;
+        // Heads on heads: the large billows carry the smaller on their shoulders and crowns, so the
+        // cauliflower stands on the tops and the valleys between the banks stay broad and soft.
+        const base = banks[at] * 0.5 + big[at] * 0.34;
+        const ride = smoothMax(0, base * 1.1 - 0.15, 0.2);
+        const d = base + (mid[at] * 0.11 + small[at] * 0.035) * (0.35 + ride);
+        h[at] = d + (rough[at] - 0.5) * 0.025;
     }
     level(h, 0.2);
     // The gaps between heads are seams, not pits.

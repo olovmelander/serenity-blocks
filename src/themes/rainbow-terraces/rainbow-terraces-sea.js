@@ -3,8 +3,8 @@
  * Rainbow Terraces: the cloud sea, a kilometre down (one draw).
  *
  * A polar grid under the eye (rings growing geometrically from below the frame's foot out to the
- * haze), displaced by the baked field of rounded cumulus heads (sky noise G, three sizes of Worley
- * cells) swelled and sunk by a broad fBm, so its near domes are real relief with silhouettes and
+ * haze), displaced by the baked field of rounded cumulus heads (bakeSeaField: domes at four sizes
+ * joined without a crease) swelled and sunk by a broad fBm, so its near domes are real relief with silhouettes and
  * parallax, and where the broad field sinks the sea opens onto the shelves far below.
  *
  * The sun is behind the eye, so the domes we see are lit full face: the light lies in their curve
@@ -159,11 +159,14 @@ export function createSea({ tier, U, tex }) {
         // Lit full face by the sun behind the eye: the light lies in the domes' curve.
         const key = scWrap(dot(N, U.shadeKey), float(0.3));
         const heads = relief.x;
-        // The creases between heads are sky-occluded: cooler, a little darker; the crowns catch the
-        // light. (Only a little: vapour pools bright in a cloud sea's valleys.)
-        const crease = smoothstep(0.52, 0.9, relief.w).mul(settleAt(r)).mul(detail);
-        const occl = mix(float(0.76), float(1.0), smoothstep(0.1, 0.75, heads)).mul(float(1.0).sub(crease.mul(0.1)));
-        const shade = mix(light.mistShade.mul(0.8), light.mistShade, smoothstep(0.2, 0.6, heads));
+        // How much of a point is crown: high in the field and not down in a hollow of its
+        // neighbourhood. The crowns catch the light, the hollows between heads are sky-occluded,
+        // cooler and deeper (the billows read by value, not only by their slope, which the light
+        // behind the eye flattens).
+        const crease = smoothstep(0.5, 0.85, relief.w).mul(settleAt(r)).mul(detail);
+        const crown = smoothstep(0.18, 0.8, heads).mul(float(1.0).sub(crease.mul(0.55))).toVar();
+        const occl = mix(float(0.6), float(1.0), crown);
+        const shade = mix(light.mistShade.mul(0.72), light.mistShade, smoothstep(0.2, 0.6, heads));
         // The clouds' one light (the sky's, the cumulus'); at the rose and pearl hours the far sea
         // lies in the Earth's shadow, blue under the pink belt, the near domes still lit.
         const farShade = smoothstep(5000.0, 26000.0, r).mul(0.85);
@@ -175,10 +178,12 @@ export function createSea({ tier, U, tex }) {
         // Cloud is never plastic: a fine fuzz of brighter and duller wisps over every head.
         const fuzz = texture(tex.noise, P.xz.mul(1 / 900).add(drift.mul(3.0))).a;
         lit.mulAssign(fuzz.sub(0.5).mul(float(0.22).mul(settleAt(r)).mul(detail)).add(1.0));
-        // Low between the heads the vapour pools: the valleys fill with the mist's own glow, a
-        // soft luminous lane, never a dark seam.
-        const valley = float(1.0).sub(smoothstep(0.1, 0.45, heads)).mul(0.3);
-        lit.assign(mix(lit, mix(light.mistLit, horizonHaze(V, U), 0.5).mul(0.8), valley));
+        // Low between the heads the vapour pools: the deepest valleys fill with a cool glow of the
+        // mist, a soft lane, never a dark seam (but never as bright as the crowns either).
+        const valley = float(1.0).sub(smoothstep(0.08, 0.4, heads)).mul(0.16);
+        lit.assign(mix(lit, mix(light.mistShade, horizonHaze(V, U), 0.45), valley));
+        // The crowns turned square to the key run a little over white in the cloud's own light.
+        lit.addAssign(light.cloudLit.mul(pow(key, 4.0).mul(crown).mul(settleAt(r)).mul(0.16)));
         // The isles' shadows: wedges across the sea converging on the antisolar point, where they
         // dissolve into its glow (deepened by a set piece, they would only smudge the glory's rings).
         const shadow = casterShadow(P, U, tier.casters);
