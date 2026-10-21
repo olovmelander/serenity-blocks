@@ -20,7 +20,7 @@ import {
     positionWorld, sin, smoothstep, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    SEA_FAN, SEA_TIME, SWELL_CHOP, SWELL_ROWS, ringRadius,
+    CHOP_ROWS, SEA_FAN, SEA_TIME, SWELL_CHOP, SWELL_ROWS, ringRadius,
 } from './sunset-core.js';
 import {
     TUNE, glintLobe, horizonHaze, skyColour,
@@ -126,6 +126,25 @@ export function createSea({
             const ak = row[4] * row[2];
             slope.addAssign(vec2(row[0], row[1]).mul(cos(theta).mul(ak).mul(seen)));
             variance.addAssign(float(0.5 * ak * ak).mul(float(1.0).sub(seen)));
+        }
+
+        // The wind's chop: short directional trains in the light only, their phases bent by a
+        // slow warp (two smooth fields of the water's noise, read once) so they run in long,
+        // broken crests and never lock into a lattice.
+        const chopRows = CHOP_ROWS.slice(0, Math.max(0, tier.chop ?? 12));
+        if (chopRows.length) {
+            const warp = texture(seaNoise, xz.div(TUNE.chopWarpTile).add(vec2(0.31, 0.77))).ba.sub(0.5).mul(2.0)
+                .toVar();
+            chopRows.forEach((row) => {
+                const L = (2 * Math.PI) / row[2];
+                const seen = float(1.0).sub(smoothstep(L * 0.12, L * 0.45, foot));
+                const theta = dot(xz, vec2(row[0], row[1])).mul(row[2]).sub(t.mul(row[3])).add(row[5])
+                    .add(warp.x.mul(row[6]))
+                    .add(warp.y.mul(row[7]));
+                const s = row[4] * TUNE.chop;
+                slope.addAssign(vec2(row[0], row[1]).mul(cos(theta).mul(s).mul(seen)));
+                variance.addAssign(float(0.5 * s * s).mul(float(1.0).sub(seen)));
+            });
         }
 
         // Ripples from the noise: three scales, drifting with the breeze.
