@@ -80,7 +80,7 @@ export const HOURS = Object.freeze([
         snow: [1.7, 1.72, 1.78],
         exposure: 0.6,
         stars: 0,
-        hazeDensity: 0.85,
+        hazeDensity: 1.05,
         mistDensity: 0.2,
     }),
     Object.freeze({
