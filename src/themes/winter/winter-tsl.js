@@ -285,6 +285,8 @@ export const LOOK = {
     // light; a sharp mirror lobe on its bumps drew water's highlights. The sparkle carries the path.
     snowSheen: 0.1,
     snowSheenBroad: 0.1,
+    // How bright each of the fox of light's veils is where it faces the eye.
+    spiritVeil: 0.35,
 };
 
 /** Apply overrides ({ name: number }) to LOOK; unknown names and non-numbers are ignored. */
