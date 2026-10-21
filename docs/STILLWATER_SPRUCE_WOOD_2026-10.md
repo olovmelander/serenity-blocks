@@ -74,6 +74,35 @@ In the real game (High, WebGPU, after six real hard drops from the keyboard):
 
 ![In the game](stillwater-wood/ingame.jpg)
 
+## The troll's skin
+
+Asked for next: "Can we keep improving the skin of the troll, it looks a bit flat." His hide was
+one albedo (two colours, his ruddy face and his earthen hide) under the baked occlusion and the
+night's soft light: smooth clay. It is now (`stillwater-troll.js`):
+
+- **Grain laid on his rest pose** (`positionGeometry` and `normalGeometry`, sampled three ways), so
+  it stays on his skin as he moves: lumps and warts, a net of creases and a little grain, as relief
+  (the surface-gradient bump his moss already used) and in colour. What is finer than a pixel gives
+  way: the creases and grain are drawn only where a pixel spans a few millimetres (a close view, a
+  4K frame); in a normal frame at his 20 m they read as speckle, so they are off there and the lumps
+  carry the relief.
+- **Colour that is not one:** olive and lichen-grey blotches over the earth of it, darker spots of
+  age, the creases dark, the lumps a shade paler, and the ends of him (hands, feet) flushed like his
+  face.
+- **Light that goes into it:** warm light along the edge of the lit side (the lantern's, and a cooler
+  share of the moon's), and a red glow through what is thin (ears, nose) when the lantern is behind
+  it; a damp sheen, most on his nose and brow and none in a crease; his skin takes the moon with
+  less wrap than his moss and leather, so it models his face and arms instead of lighting them all
+  alike. On his arms the baked occlusion is let off lightly (it was baked with his arms hanging
+  against his hips).
+- **His arm no longer goes through his belly** (`stillwater-troll-body.js`). The patches on his
+  forearm while he held his lantern out to her were not his skin: the staff's grip was held nearer
+  his middle than his shoulder, so the arm could only reach it through his chest, whose skin showed
+  through the forearm. The grip for holding it out, and for laying it out over the water, now stands
+  out past his shoulder; a test pins it (and fails on the old grip).
+
+![The troll before and after: at rest, and holding his lantern out to her](stillwater-wood/troll-skin.jpg)
+
 ## Tiers
 
 | | Minimal | Low | Medium | High | Ultra | Extreme |
@@ -96,7 +125,8 @@ In the real game (High, WebGPU, after six real hard drops from the keyboard):
   tier), the wood's boughs (16–44 m off, across the line of sight), and in the world the parts,
   their layers (the veil not mirrored), the draw order (the veil first of what is blended) and the
   moon's sight lines cast through the crowns as they are really drawn (`crownCard` is the vertex
-  stage's CPU twin).
+  stage's CPU twin). For the troll: his staff hand held out past his left shoulder, not across his
+  belly (troll body, 19 tests).
 - **ESLint:** no errors and no new warnings in the theme, the playground effect and its tests.
 - **Playground (RTX 5080, Electron, WebGPU):** rest, a chain, four lines, midnight, elf dance, troll
   gold, Ultra / High / Medium / Low / Minimal, the WebGL2 backend at High, 430 × 932 with the board,
@@ -122,7 +152,9 @@ In the real game (High, WebGPU, after six real hard drops from the keyboard):
   camera that walked round a tree would show one.
 - The beard lichen on the crowns is drawn only where it is wider than a pixel or two, so on most
   crowns across the water it does not show; it shows on the dead branches and the nearer crowns.
-- The icon was not re-captured; the hours' palettes, the figures and the post are unchanged.
+- The icon was not re-captured; the hours' palettes, the spirit and the post are unchanged.
+- The troll's skin was judged in stills, close up and at 2560 × 1440; where his elbow bends hard
+  (holding the lantern out) a small seam of the skinning pinch remains.
 
 ## Reproduce
 

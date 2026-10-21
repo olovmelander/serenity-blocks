@@ -756,13 +756,14 @@ export class TrollBody {
                 dir = fwd.clone().multiplyScalar(0.12).addScaledVector(left, 0.12).add(UP)
                     .normalize();
             } else if (wantMode === 'offer') {
-                // Held out at chest height, leaning out toward what he watches.
-                grip = chest.clone().addScaledVector(left, 0.38).addScaledVector(fwd, 0.62);
+                // Held out at chest height, leaning out toward what he watches. (The hand is out past
+                // his shoulder: nearer his middle, the arm could only reach it through his belly.)
+                grip = chest.clone().addScaledVector(left, 0.6).addScaledVector(fwd, 0.58);
                 grip.y -= 0.05;
                 dir = fwd.clone().multiplyScalar(0.55).add(this._mid.set(0, 0.95, 0)).normalize();
             } else {
                 // Crouched at the water: the staff laid out over it, down to the surface.
-                grip = chest.clone().addScaledVector(left, 0.32).addScaledVector(fwd, 0.55);
+                grip = chest.clone().addScaledVector(left, 0.5).addScaledVector(fwd, 0.55);
                 grip.y -= 0.2;
                 dir = fwd.clone().multiplyScalar(0.96).add(this._mid.set(0, -0.1, 0)).normalize();
             }
