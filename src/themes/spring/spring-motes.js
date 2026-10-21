@@ -168,9 +168,11 @@ export class Motes {
         material.outputNode = Fn(() => {
             const corner = positionGeometry.xy.mul(2.0);
             const r2 = corner.dot(corner);
+            // (Ended inside the quad's circle, so a near tuft never shows the quad's square.)
+            const round = clamp(float(1.0).sub(r2), 0.0, 1.0);
             const speck = exp(r2.mul(-9.0)).mul(0.9).add(exp(r2.mul(-2.6)).sub(0.08).max(0.0).mul(0.2));
             const tuft = exp(r2.mul(-2.0)).mul(0.75).add(exp(r2.mul(-8.0)).mul(0.5));
-            return vec4(vGlow.xyz.mul(mix(speck, tuft, vGlow.w)), 0.0);
+            return vec4(vGlow.xyz.mul(mix(speck, tuft, vGlow.w)).mul(round.mul(round)), 0.0);
         })();
         return material;
     }
