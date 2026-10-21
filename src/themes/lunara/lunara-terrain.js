@@ -23,18 +23,20 @@ import {
     positionWorld,
     pow,
     reflect,
+    sin,
     smoothstep,
+    vec2,
     vec3,
 } from 'three/tsl';
 import {
-    TERRAIN, luAtmosphere, luClearLight, luLockLight, luMoonDiscs, luPart, luSkyBase, mulberry32,
+    TERRAIN, luAtmosphere, luBell, luClearLight, luLockLight, luMoonDiscs, luPart, luSkyBase, mulberry32,
 } from './lunara-tsl.js';
 
 /**
  * The facet shading the banks and both ranges share. `rock` and `frost` are the two albedos;
  * `frostLine` is the height above which facets turn to pale crystal.
  */
-function facetColor(u, { frostLine, glints = true }) {
+function facetColor(u, { frostLine, glints = true, veins = 0 }) {
     return Fn(() => {
         const p = positionWorld;
         const toCam = normalize(cameraPosition.sub(p)).toVar();
@@ -45,18 +47,19 @@ function facetColor(u, { frostLine, glints = true }) {
         const n = u.noise(p.xz.mul(0.013)).toVar();
         const frost = smoothstep(frostLine * 0.55, frostLine * 1.25, p.y.add(n.r.sub(0.5).mul(frostLine * 0.8)))
             .mul(smoothstep(0.25, 0.75, N.y));
-        const rock = mix(vec3(0.012, 0.009, 0.026), vec3(0.03, 0.018, 0.055), n.g);
-        const albedo = mix(rock, vec3(0.2, 0.16, 0.34), frost).toVar();
+        const rock = mix(vec3(0.016, 0.012, 0.032), vec3(0.042, 0.026, 0.072), n.g);
+        const albedo = mix(rock, vec3(0.27, 0.23, 0.44), frost).toVar();
 
         // The great moon is the key, its companion a rose kicker, the sky fills from above.
         const key = max(dot(N, u.moonDir), 0.0);
         const kick = max(dot(N, u.companionDir), 0.0);
         const fill = luSkyBase(u, vec3(N.x, max(N.y, 0.0).mul(0.6).add(0.4), N.z));
         const sun = max(dot(N, u.sunDir), 0.0);
-        const light = u.moonCol.mul(key.mul(1.25))
+        // The moon is a hard key against a dim fill: each facet reads as a plane turned to it.
+        const light = u.moonCol.mul(key.mul(1.9))
             .add(u.companionCol.mul(kick.mul(0.3)))
             .add(vec3(0.62, 0.72, 1.0).mul(sun.mul(0.3)))
-            .add(fill.mul(1.6))
+            .add(fill.mul(1.2))
             .mul(u.breath);
         const col = albedo.mul(light).toVar();
 
@@ -68,7 +71,19 @@ function facetColor(u, { frostLine, glints = true }) {
         }
         // Grazing facets pick up the sky (wet stone at night).
         const fres = pow(float(1.0).sub(max(dot(N, toCam), 0.0)), 4.0);
-        col.addAssign(luSkyBase(u, R).add(luMoonDiscs(u, R).mul(0.12)).mul(fres).mul(0.35));
+        col.addAssign(luSkyBase(u, R).add(luMoonDiscs(u, R).mul(0.12)).mul(fres).mul(0.12));
+
+        // Crystal veins in the bare rock: thin seams of the palette's light, as in a split geode.
+        // They wake with the valley's charge and burn bright as a clear's wave runs past.
+        if (veins) {
+            const vn = u.noise(p.xz.mul(veins).add(vec2(p.y.mul(veins * 0.9), p.y.mul(veins * -0.4)))).toVar();
+            const seam = luBell(vn.r.sub(0.5).mul(18.0)).add(luBell(vn.g.sub(0.5).mul(24.0)).mul(0.5));
+            const pulse = sin(u.time.mul(0.7).add(vn.b.mul(19.0))).mul(0.3).add(0.7);
+            const glow = mix(u.crystal, u.bed, smoothstep(0.35, 0.65, vn.a));
+            col.addAssign(glow.mul(seam).mul(pulse).mul(float(1.0).sub(frost)).mul(u.power.mul(0.9).add(0.22))
+                .mul(0.3)
+                .mul(u.breath));
+        }
 
         // Gameplay light travelling over the ground.
         If(u.ringsLive.greaterThan(0.5), () => {
@@ -125,7 +140,7 @@ export function createBanks(u, plan) {
     material.name = 'LunaraBanks';
     material.fog = false;
     material.side = THREE.DoubleSide;
-    material.colorNode = facetColor(u, { frostLine: 9 });
+    material.colorNode = facetColor(u, { frostLine: 9, veins: 0.045 });
     const part = luPart('LunaraBanks', geometry, material, -28);
     part.triangles = index.length / 3;
     return part;
@@ -180,7 +195,7 @@ export function createRanges(u, plan) {
     material.name = 'LunaraRanges';
     material.fog = false;
     material.side = THREE.DoubleSide;
-    material.colorNode = facetColor(u, { frostLine: 46 });
+    material.colorNode = facetColor(u, { frostLine: 46, veins: 0.011 });
     const part = luPart('LunaraRanges', geometry, material, -24);
     part.triangles = index.length / 3;
     return part;

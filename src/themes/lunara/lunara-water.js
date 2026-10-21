@@ -175,10 +175,13 @@ export function createWater(u, opts = {}) {
 
         // ── Moon glitter: the surface's finest facets, where its mirror ray finds the moon ──
         if (glitter) {
-            const g = u.noise(st.mul(0.71).add(vec2(u.time.mul(0.021), u.time.mul(0.013)))).a;
+            // Two fine reads drifting against each other: a facet flashes only where both crest,
+            // so the glitter is points that come and go, not streaks lying on the water.
+            const g = u.noise(st.mul(1.9).add(vec2(u.time.mul(0.031), u.time.mul(0.017)))).a;
+            const h = u.noise(st.mul(2.6).sub(vec2(u.time.mul(0.023), u.time.mul(-0.029)))).r;
             const lobe = pow(max(dot(Rw, u.moonDir), 0.0), 150.0);
-            const spark = smoothstep(0.66, 0.9, g).mul(lobe);
-            col.addAssign(u.moonCol.mul(u.moonCol).mul(spark).mul(0.9).mul(u.breath));
+            const spark = smoothstep(0.62, 0.8, g).mul(smoothstep(0.55, 0.78, h)).mul(lobe);
+            col.addAssign(mix(u.moonCol, vec3(1.0), 0.45).mul(spark).mul(2.2).mul(u.breath));
         }
 
         // ── Where water meets land: a thin line of the bed's light ──
