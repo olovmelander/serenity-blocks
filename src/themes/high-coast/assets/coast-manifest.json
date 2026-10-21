@@ -3,18 +3,18 @@
   "fields": {
     "near": {
       "size": 1024,
-      "bytes": 2078264,
-      "sha256": "b168fbdb7fb7a452fb34e746cd21a47b36b099217492b654ff7d8e15767d7f9a"
+      "bytes": 2083422,
+      "sha256": "2df39b31a54b3ef545f3a109c68eb53e70c64762a162224ce96fd22a3191e960"
     },
     "mid": {
       "size": 1024,
-      "bytes": 2135257,
-      "sha256": "b6d16d70b5056c2e70f4bdfd291d4d61004c0eb7d2b89209ae1aefae2ab4cdc5"
+      "bytes": 2135080,
+      "sha256": "6204687a11bed7d748c2a73ca67e7214f4f393e879d4d09b897434e9c8b0a96b"
     },
     "far": {
       "size": 512,
-      "bytes": 612274,
-      "sha256": "1b7d562fdfe3605e05ce6d0c7497d7d6772b965959b7e0bbf5339b6c511fefaa"
+      "bytes": 612283,
+      "sha256": "0916178d7b0956ae28d1ccb91249e8def97df208b1b061f77df1116f8fe9992d"
     }
   }
 }

@@ -14,7 +14,7 @@
 import * as THREE from 'three/webgpu';
 import {
     attribute, cameraPosition, color, dot, mix, normalGeometry, normalize, positionGeometry, positionWorld, pow,
-    saturate, smoothstep, uv, varying, vec3,
+    saturate, smoothstep, step, uv, varying, vec3,
 } from 'three/tsl';
 import { SUMMER_VIEWS, summerEye } from './summer-composition.js';
 import { SUMMER_FLOWERS, createSummerFlowerGeometry, createSummerGrassGeometry } from './summer-flowers.js';
@@ -182,12 +182,20 @@ export class SummerMeadow {
         // Seed heads: the purple-brown of timothy and meadow foxtail, on stalks still green.
         blade = mix(blade, color(0x4a6a1e), paint.w.mul(0.75));
         blade = mix(blade, mix(color(0x9a8a52), color(0x8f7a66), st.x), paint.y);
+        // The side of the blade the eye sees (blades are two-sided): it is sunlit only where it
+        // is turned to the sun. With the sun low behind the meadow that is the far side, so a
+        // blade seen against the light is dark and the light comes through it instead.
         const normal = normalize(plant.normal);
+        const seen = normal.mul(step(0, dot(normal, view)).mul(2).sub(1));
         const sun = light.sunlight();
-        const facing = dot(normal, light.uSunDir).abs().mul(0.85).add(0.28);
-        // Looking up the light, every blade is a sliver of stained glass.
+        const toSun = dot(seen, light.uSunDir);
+        const facing = saturate(toSun).mul(1.05).add(0.12);
+        // Looking up the light, every blade is a sliver of stained glass: brightest where the
+        // sun is straight behind it, along its upper half.
         const through = pow(saturate(dot(view, light.uSunDir).negate()), 3);
-        const glow = pow(blade, vec3(0.8)).mul(vec3(0.92, 1.2, 0.3)).mul(through.mul(0.6).add(0.05))
+        const behind = saturate(toSun.negate());
+        const glow = pow(blade, vec3(0.8)).mul(vec3(0.92, 1.2, 0.3))
+            .mul(through.mul(behind.mul(0.7).add(0.45)).add(0.05))
             .mul(st.y.mul(st.y));
         // A blade the wind has laid over shows the sky on its back.
         const sheen = light.uSkyLight.mul(air.x.mul(st.y).mul(0.2));
@@ -268,10 +276,16 @@ export class SummerMeadow {
         const petal = smoothstep(0.55, 0.9, paint.y);
         const tone = albedo.mul(turn.w.mul(0.26).add(0.87));
         const sun = light.sunlight();
-        const facing = dot(normal, light.uSunDir).abs().mul(0.72).add(0.3);
-        // Petals are thin: with the sun behind them they light up from inside.
+        // As the grass: the face the eye sees is sunlit only where it is turned to the sun.
+        const seen = normal.mul(step(0, dot(normal, view)).mul(2).sub(1));
+        const toSun = dot(seen, light.uSunDir);
+        const facing = saturate(toSun).mul(0.9).add(0.18);
+        // Petals are thin: with the sun behind them they light up from inside, most of all
+        // where the sun stands straight behind the petal.
         const through = pow(saturate(dot(view, light.uSunDir).negate()), 2.2);
-        const lantern = pow(tone, vec3(0.85)).mul(through.mul(0.62).add(0.1)).mul(petal.mul(0.75).add(0.25));
+        const behind = saturate(toSun.negate());
+        const lantern = pow(tone, vec3(0.85)).mul(through.mul(behind.mul(0.6).add(0.5)).add(0.1))
+            .mul(petal.mul(0.75).add(0.25));
         // Low on the plant its neighbours shade it.
         const shade = smoothstep(0.0, 0.3, paint.x.mul(turn.z)).mul(0.5).add(0.5);
         const lit = tone.mul(facing).add(lantern).mul(light.uSunColor).mul(sun)
