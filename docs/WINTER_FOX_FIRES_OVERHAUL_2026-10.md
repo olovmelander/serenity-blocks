@@ -391,3 +391,49 @@ The fox without a GPU (PNG sheets, from the repository root):
 ![Portrait: at rest and through four lines](winter-fox-fires/portrait.webp)
 
 ![Minimal, Low, Medium on WebGL2 and Extreme](winter-fox-fires/tiers.webp)
+
+The previews above are the first build. The second pass below changed what they show.
+
+## Second pass (2026-10-21): curtains, a moon with a face, snow, the fox of light
+
+A look pass on top of the fox fires, in the same modules. Every change was iterated in the
+playground (`?effect=winter&t=20`, with the new `P.<name>=` overrides of `LOOK` in
+`winter-tsl.js`, zoomed crops and the false-colour view) and the result checked in a real Single
+Player game at High.
+
+| ![Before](winter-fox-fires/pass2-before-rest.webp) | ![After](winter-fox-fires/pass2-after-rest.webp) |
+| --- | --- |
+| ![Before: a chain of eight](winter-fox-fires/pass2-before-chain.webp) | ![After: a chain of eight](winter-fox-fires/pass2-after-chain.webp) |
+
+| What | Before | After |
+| --- | --- | --- |
+| **Aurora** (`winter-tsl.js`, `wAurora`) | The rays were on/off strands up to a hundred kilometres tall, so every sheet ran off the top of the frame as an even comb of vertical lines, and in a chain the sky was one wall of stripes. | A curtain switches on sharply at its foot and is brightest just above it (`auroraHem`), so each fold reads as a bright ribbon (rose in a chain) with rays rising from it. The rays are shorter, fade in and out up their length (`auroraRayAlong`), and the sheet glows between them (`auroraRayBase`). |
+| **Moon** (`winter-sky.js`) | Laid on the dome, so in the corner of the wide lens it was an egg; its face was a blank disc with two smudges. | Drawn in the lens's image plane, so it is round anywhere in the frame (on an upright screen too). It has a face: dark seas gathered across its northern half with crisp shores, highlands with scattered craters, a young crater's rays low down; a little less bright (`moonGain` 1.6, was 2.3) so the face survives the tone curve. |
+| **Snow** (`winter-ground.js`) | The long wind ripple at full strength and a sharp mirror lobe for the moon's path: the foreground read as a lake of wavelets with highlights. | The ripple is a faint grain (`snowRipple` 0.3), broad swells the wind has heaped take its place (`snowSwell`), and the moon's path is a soft broad sheen (`snowSheen`); the sparkle carries the path, as it does on snow. |
+| **The fox of light** (`winter-fox.js`) | Each veil showed only its edge, so its eight veils drew eight concentric outlines: a contour map in green, hard to read as a fox. | Each veil glows where it faces the eye and is gone at its own silhouette (`spiritVeil`), so the veils sum to a soft aura round a body whose head, ears, legs and tail read. |
+| **Snow ghosts** (`winter-trees.js`) | Under every pillow the boughs were one even near-black crescent: every tree wore the same row of charcoal smiles. | The bough mask is broken up by noise (the snow hangs over the edge in tongues and clumps), the needles take some of the sky's blue in their shade, and rime frosts them in specks. |
+
+| ![The moon before and after](winter-fox-fires/pass2-moon.webp) | ![The trees before and after](winter-fox-fires/pass2-trees.webp) |
+| --- | --- |
+
+![The snow before and after](winter-fox-fires/pass2-snow.webp)
+
+![The fox of light before and after (Extreme, the icon lens)](winter-fox-fires/pass2-spirit.webp)
+
+![Rose noon, blue hour, violet dusk and deep night](winter-fox-fires/pass2-hours.webp)
+
+![Minimal, Low with a chain, and Medium on the forced WebGL2 backend with a chain](winter-fox-fires/pass2-tiers.webp)
+
+![In a real Single Player game at High](winter-fox-fires/pass2-ingame.webp)
+
+Checked: playground captures on native WebGPU (RTX 5080 Laptop) at High — rest, a lock, a
+chain of eight, four lines, a perfect clear, a T-spin, the four other hours, an upright
+430 × 852 frame through four lines, reduced motion — and Minimal, Low, Extreme, and Medium on the
+forced WebGL2 backend, sixteen frames with no console warning or error; a real Single Player game
+at High (the theme running on WebGPU, locks throwing sparks and rings, no warning or error from
+the theme); the twelve `tests/unit/winter-*.test.js` suites (390 tests, the shader build test
+among them); ESLint adds no finding in the changed files.
+
+Not measured: frame time. The pass adds a few noise reads to the sky, the snow and the trees, and
+a crater grid to the moon's disc; the perf lane (ADR-0016) has not been run on it. The theme icon
+(the fox of light) still shows the contour-map veils.
