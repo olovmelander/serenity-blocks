@@ -49,6 +49,25 @@ const SIDES = Object.freeze({ L: 1, R: -1 });
 /** The staff: metres from its foot to where it is gripped, and its whole length. */
 export const STAFF = Object.freeze({ grip: 0.66, length: 2.55, hook: 0.2 });
 
+/**
+ * Where the staff runs in his left fist, in the hand's own frame (model units from the wrist):
+ * down the hand to just short of where the fingers begin, and off the palm by its half-thickness
+ * and the staff's own radius (the sculpt's palm, troll_shape.py `_limb_hand`).
+ */
+export const FIST = Object.freeze({ along: 0.085, off: 0.04 });
+/**
+ * How far his left elbow is bent while his hand is on the staff (degrees from straight), and how far
+ * (metres) his hand may slide down (−) or up (+) the staff from its planned grip to get it so: leaning
+ * on it planted, the elbow well bent (a walking stick is held so); carrying it, any comfortable bend,
+ * and only a little sliding (the staff's butt is behind the hand: it must not come back into him).
+ */
+export const FIST_HOLD = Object.freeze({
+    planted: Object.freeze({ elbow: Object.freeze([60, 100]), slide: Object.freeze([-0.4, 0.8]) }),
+    held: Object.freeze({ elbow: Object.freeze([30, 95]), slide: Object.freeze([-0.25, 0.3]) }),
+});
+/** The share of the hand's turn about the forearm that the forearm takes (the rest is the wrist's). */
+const FOREARM_TWIST = 0.5;
+
 /** A smooth 0 → 1 → 0 over [a, b] with a plateau in the middle third. */
 const hump = (a, b, v) => smoothstep(a, a + (b - a) / 3, v) * (1 - smoothstep(b - (b - a) / 3, b, v));
 
@@ -59,9 +78,10 @@ export class TrollBody {
      * @param {number} opts.sole       the soles' height in the model frame
      * @param {number} opts.height     metres per model unit
      * @param {(x: number, z: number) => number} opts.ground   ground height in the walk frame
+     * @param {Record<string, THREE.Vector3>} [opts.tails]  each bone's tail (the hands' own length)
      */
     constructor(rest, {
-        sole = -0.503, height = 2.9, ground = () => 0, parents = {},
+        sole = -0.503, height = 2.9, ground = () => 0, parents = {}, tails = null,
     } = {}) {
         this.rest = rest;
         this.parents = parents;
@@ -90,6 +110,7 @@ export class TrollBody {
             L: this.limb('upperL', 'foreL', 'handL'),
             R: this.limb('upperR', 'foreR', 'handR'),
         };
+        this.fist = this.fistFrame(tails);
         /** Height of the ankle over the sole (model units), and of the hips' joint. */
         this.ankleUp = rest.footL ? rest.footL.y - sole : 0.05;
         this.hipUp = rest.thighL ? rest.thighL.y - sole : 0.29;
@@ -124,6 +145,33 @@ export class TrollBody {
             dir1: r[b].clone().sub(r[a]).normalize(),
             dir2: r[c].clone().sub(r[b]).normalize(),
             toe: d && r[d] ? r[d].clone().sub(r[c]) : null,
+        };
+    }
+
+    /**
+     * His left hand at rest, as the sculpt has it (model frame): its length (`h`), the back of the
+     * hand (`out`: the palm faces his body), across the palm (`width`, h × out), the side of it his
+     * thumb is on (`thumb`, ±1 along `width`: forward on a hanging hand), and the frame as a matrix.
+     */
+    fistFrame(tails) {
+        const arm = this.arms.L;
+        if (!arm || !this.rest.handL) return null;
+        const tail = tails?.handL;
+        const h = tail ? tail.clone().sub(this.rest.handL).normalize() : arm.dir2.clone();
+        const out = new THREE.Vector3(1, 0, 0).addScaledVector(h, -h.x).normalize();
+        const width = h.clone().cross(out);
+        const thumb = width.z < 0 ? -1 : 1;
+        // Shoulder to wrist (model units) for an elbow bent so far.
+        const { l1, l2 } = arm;
+        const span = (deg) => Math.sqrt(l1 * l1 + l2 * l2 + 2 * l1 * l2 * Math.cos(deg * THREE.MathUtils.DEG2RAD));
+        const band = (hold) => [span(hold.elbow[1]), span(hold.elbow[0])];
+        return {
+            h,
+            out,
+            width,
+            thumb,
+            basis: new THREE.Matrix4().makeBasis(h, out, width),
+            band: { planted: band(FIST_HOLD.planted), held: band(FIST_HOLD.held) },
         };
     }
 
@@ -582,7 +630,7 @@ export class TrollBody {
 
         // ── The staff, then the left hand on it ──
         this.updateStaff(dt, want, act);
-        this.solveArm('L', this.staffGripModel());
+        this.solveStaffHand();
         // ── The right hand: swinging, on the knee, or held out ──
         this.solveArm('R', this.rightHand(dt, want, act));
         this.forward();
@@ -685,6 +733,91 @@ export class TrollBody {
         if (this.local[hand]) this.local[hand].identity();
     }
 
+    /**
+     * His left hand closes on the staff. The staff runs across his palm inside his curled fingers,
+     * his thumb toward its top; the hand points on from his elbow through the staff (its length
+     * square to the staff), so the forearm comes to it in line; and the hand takes the staff where
+     * his elbow is comfortably bent, sliding up or down it from the planned grip as far as FIST_HOLD
+     * allows: an arm held straight or folded shut is what pinched. The
+     * staff itself, and the lantern on it, stay where they are. The forearm takes a share of the
+     * hand's turn about it, so the wrist does not wring.
+     */
+    solveStaffHand() {
+        const st = this.staff;
+        const { fist } = this;
+        const guess = this.staffGripModel();
+        this.solveArm('L', guess);
+        this.staffWrist = null;
+        this.staffSlide = 0;
+        if (!fist || !guess) return;
+        const k = this._fistScratch || (this._fistScratch = {
+            grip: new THREE.Vector3(),
+            at: new THREE.Vector3(),
+            axis: new THREE.Vector3(),
+            width: new THREE.Vector3(),
+            h: new THREE.Vector3(),
+            out: new THREE.Vector3(),
+            wrist: new THREE.Vector3(),
+            reach: new THREE.Vector3(),
+            g: new THREE.Quaternion(),
+            m: new THREE.Matrix4(),
+            restT: new THREE.Matrix4().copy(fist.basis).transpose(),
+        });
+        const grip = this.toModel(st.gripAt, k.grip);
+        const axis = this.dirToModel(st.dirN, k.axis).normalize();
+        const width = k.width.copy(axis).multiplyScalar(fist.thumb);
+        const {
+            at, h, out, g, m, wrist, reach,
+        } = k;
+        const shoulder = this.globalPos.upperL;
+        const hold = st.mode === 'held' ? 'held' : 'planted';
+        const [lo, hi] = fist.band[hold];
+        const slideMin = FIST_HOLD[hold].slide[0] / this.H;
+        const slideMax = FIST_HOLD[hold].slide[1] / this.H;
+        let slide = 0;
+        const elbow = this._mid;
+        for (let pass = 0; pass < 4; pass++) {
+            at.copy(grip).addScaledVector(axis, slide);
+            // On from his elbow (as last solved) through the staff, laid square to it.
+            h.copy(at).sub(elbow);
+            h.addScaledVector(axis, -h.dot(axis));
+            if (h.lengthSq() < 1e-8) h.set(0, 0, 1).addScaledVector(axis, -axis.z);
+            h.normalize();
+            out.crossVectors(width, h);
+            wrist.copy(at).addScaledVector(h, -FIST.along).addScaledVector(out, FIST.off);
+            // How far the wrist stands from the shoulder: too far, the arm is straight; too near, folded.
+            reach.copy(wrist).sub(shoulder);
+            const d = reach.length();
+            const want = Math.min(hi, Math.max(lo, d));
+            const along = reach.dot(axis) / Math.max(d, 1e-6);
+            if (want !== d && Math.abs(along) > 0.15) {
+                slide = Math.min(slideMax, Math.max(slideMin, slide + (want - d) / along));
+                at.copy(grip).addScaledVector(axis, slide);
+                wrist.copy(at).addScaledVector(h, -FIST.along).addScaledVector(out, FIST.off);
+            }
+            this.solveArm('L', wrist);
+        }
+        // The hand's turn from its rest frame onto this one.
+        m.makeBasis(h, out, width).multiply(k.restT);
+        g.setFromRotationMatrix(m);
+        /** Where the wrist was asked to be (model frame), and how far up the staff the hand moved (metres). */
+        this.staffWrist = wrist;
+        this.staffSlide = slide * this.H;
+        // The hand's turn relative to the forearm, and the share of its twist the forearm takes.
+        const rel = this._inv.copy(this.global.foreL).invert().multiply(g);
+        const a = this.arms.L.dir2;
+        const p = rel.x * a.x + rel.y * a.y + rel.z * a.z;
+        const twist = this._q2.set(a.x * p, a.y * p, a.z * p, rel.w);
+        if (twist.lengthSq() > 1e-10) {
+            twist.normalize();
+            const share = this._q.identity().slerp(twist, FOREARM_TWIST);
+            this.local.foreL.multiply(share);
+            this.global.foreL.multiply(share);
+        }
+        this.local.handL.copy(this._inv.copy(this.global.foreL).invert().multiply(g));
+        this.global.handL.copy(g);
+    }
+
     /** The look: yaw and pitch toward what he watches, the head first and the chest last. */
     updateLook(dt, want) {
         let yaw = 0;
@@ -746,24 +879,25 @@ export class TrollBody {
             st.tip = null;
             if (wantMode === 'raise') {
                 // High at his left, upright, the lantern above his head.
-                grip = chest.clone().addScaledVector(left, 0.62).addScaledVector(fwd, 0.25);
-                grip.y += 0.85;
+                // (Out from him, where his arm reaches it with the elbow bent, not folded.)
+                grip = chest.clone().addScaledVector(left, 0.78).addScaledVector(fwd, 0.45);
+                grip.y += 0.7;
                 dir = fwd.clone().multiplyScalar(0.18).add(UP).normalize();
             } else if (wantMode === 'high') {
                 // Walking home he carries it up, over his shoulder: seen from anywhere, it lights her way.
-                grip = chest.clone().addScaledVector(left, 0.58).addScaledVector(fwd, 0.18);
+                grip = chest.clone().addScaledVector(left, 0.72).addScaledVector(fwd, 0.36);
                 grip.y += 0.42;
                 dir = fwd.clone().multiplyScalar(0.12).addScaledVector(left, 0.12).add(UP)
                     .normalize();
             } else if (wantMode === 'offer') {
                 // Held out at chest height, leaning out toward what he watches. (The hand is out past
                 // his shoulder: nearer his middle, the arm could only reach it through his belly.)
-                grip = chest.clone().addScaledVector(left, 0.6).addScaledVector(fwd, 0.58);
+                grip = chest.clone().addScaledVector(left, 0.62).addScaledVector(fwd, 1.12);
                 grip.y -= 0.05;
                 dir = fwd.clone().multiplyScalar(0.55).add(this._mid.set(0, 0.95, 0)).normalize();
             } else {
                 // Crouched at the water: the staff laid out over it, down to the surface.
-                grip = chest.clone().addScaledVector(left, 0.5).addScaledVector(fwd, 0.55);
+                grip = chest.clone().addScaledVector(left, 0.5).addScaledVector(fwd, 0.85);
                 grip.y -= 0.2;
                 dir = fwd.clone().multiplyScalar(0.96).add(this._mid.set(0, -0.1, 0)).normalize();
             }
@@ -914,6 +1048,15 @@ export function restFromSpec(spec) {
     const out = {};
     (spec.bones || []).forEach((b) => {
         out[b.name] = new THREE.Vector3(b.head[0], b.head[1], b.head[2]);
+    });
+    return out;
+}
+
+/** Each bone's tail in the model frame, from a figure file's extras (bones without one are left out). */
+export function tailsFromSpec(spec) {
+    const out = {};
+    (spec.bones || []).forEach((b) => {
+        if (Array.isArray(b.tail)) out[b.name] = new THREE.Vector3(b.tail[0], b.tail[1], b.tail[2]);
     });
     return out;
 }

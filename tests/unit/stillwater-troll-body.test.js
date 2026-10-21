@@ -18,7 +18,7 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    ACT_TIME, STAFF, TrollBody, parentsFromSpec, restFromSpec,
+    ACT_TIME, FIST, FIST_HOLD, STAFF, TrollBody, parentsFromSpec, restFromSpec, tailsFromSpec,
 } from '../../src/themes/stillwater/stillwater-troll-body.js';
 import { wrapAngle } from '../../src/themes/stillwater/stillwater-motion.js';
 import { HEART, SPIRIT, TROLL } from '../../src/themes/stillwater/stillwater-core.js';
@@ -41,7 +41,11 @@ const HER = [SPIRIT.home[0], 1.4, SPIRIT.home[2]];
 
 function makeBody() {
     const body = new TrollBody(restFromSpec(SPEC), {
-        sole: SPEC.sole, height: TROLL.height, ground: groundHeight, parents: parentsFromSpec(SPEC),
+        sole: SPEC.sole,
+        height: TROLL.height,
+        ground: groundHeight,
+        parents: parentsFromSpec(SPEC),
+        tails: tailsFromSpec(SPEC),
     });
     body.reset(HOME[0], HOME[1], FACE, { seated: true, seat: [...TROLL.seat] });
     return body;
@@ -193,26 +197,42 @@ describe('stillwater troll body: his feet', () => {
         expect(worst).toBeLessThan(1e-6);
     });
 
-    // His left hand closes on the staff wherever the arm can reach the grip: not beyond the arm's
-    // length, and not nearer the shoulder than a fully folded elbow lets it (|upper − fore|).
-    it('closes his left hand on his staff, wherever his arm can reach it', () => {
+    // His left hand closes on the staff wherever the arm can reach: not beyond the arm's length, and
+    // not nearer the shoulder than a fully folded elbow lets it (|upper − fore|). The staff runs
+    // through his fist (across the palm, inside the curled fingers), square to his hand, his thumb
+    // toward its top. (Once his wrist was put on the staff with the hand left straight: the staff ran
+    // through the heel of his open hand.)
+    it('closes his left fist round his staff, wherever his arm can reach it: across the palm, thumb up', () => {
         const body = makeBody();
         const arm = body.arms.L;
         let reachable = 0;
         let worst = 0;
+        let leastSquare = 1;
+        let leastThumb = 1;
         live(body, NIGHT, {
             each: (b) => {
-                const grip = b.staffGripModel();
-                if (!grip) return;
+                if (!b.staffWrist) return;
                 const shoulder = b.globalPos.upperL;
-                const d = shoulder.distanceTo(grip);
+                const d = shoulder.distanceTo(b.staffWrist);
                 if (d > arm.l1 + arm.l2 - 1e-3 || d < Math.abs(arm.l1 - arm.l2) + 1e-3) return;
                 reachable += 1;
-                worst = Math.max(worst, b.globalPos.handL.distanceTo(grip) * b.H);
+                const g = b.global.handL;
+                const h = b.fist.h.clone().applyQuaternion(g);
+                const width = b.fist.width.clone().applyQuaternion(g);
+                const fistAt = b.globalPos.handL.clone().addScaledVector(h, FIST.along)
+                    .addScaledVector(b.fist.out.clone().applyQuaternion(g), -FIST.off);
+                const grip = b.toModel(b.staff.gripAt);
+                const axis = b.dirToModel(b.staff.dirN).normalize();
+                const off = fistAt.sub(grip);
+                worst = Math.max(worst, off.addScaledVector(axis, -off.dot(axis)).length() * b.H);
+                leastSquare = Math.min(leastSquare, 1 - Math.abs(h.dot(axis)));
+                leastThumb = Math.min(leastThumb, width.dot(axis) * b.fist.thumb);
             },
         });
         expect(reachable).toBeGreaterThan(200);
         expect(worst).toBeLessThan(1e-6);
+        expect(leastSquare).toBeGreaterThan(1 - 1e-6);
+        expect(leastThumb).toBeGreaterThan(1 - 1e-6);
     });
 
     // Once held nearer his middle than his shoulder: his arm could only reach it through his belly,
@@ -231,6 +251,56 @@ describe('stillwater troll body: his feet', () => {
             },
         });
         expect(held).toBeGreaterThan(60);
+    });
+
+    // Once his arm hung straight while he leaned on the staff (his hand bent square to it at the
+    // wrist) and folded shut while he carried it (the skin pinched at the elbow): his hand now takes
+    // the staff where the elbow is comfortably bent, sliding along it within FIST_HOLD. (Settled
+    // holds: in the moment the staff swings from one hold to the next, the arm goes with it.)
+    it('holds his staff with the elbow bent, never straight and never folded shut, and the wrist easy', () => {
+        const body = makeBody();
+        const deg = (a, b) => (Math.acos(Math.min(1, Math.max(-1, a.dot(b)))) * 180) / Math.PI;
+        let frames = 0;
+        let elbowLo = 180;
+        let elbowHi = 0;
+        let wristHi = 0;
+        let buttLo = Infinity;
+        const script = [
+            ...NIGHT.slice(0, 4),
+            ['holds it out to her', want(SHALLOWS, { staff: 'offer', reach: 1 }), 6],
+            ...NIGHT.slice(4, 6),
+            ['lifts it high', want(SHALLOWS, { staff: 'raise' }), 4],
+            ...NIGHT.slice(6),
+        ];
+        live(body, script, {
+            each: (b, label, t, i) => {
+                if (!b.staffWrist || i < 48) return;
+                frames += 1;
+                const s = b.globalPos.upperL;
+                const e = b.globalPos.foreL;
+                const w = b.globalPos.handL;
+                const upper = e.clone().sub(s).normalize();
+                const fore = w.clone().sub(e).normalize();
+                elbowLo = Math.min(elbowLo, deg(upper, fore));
+                elbowHi = Math.max(elbowHi, deg(upper, fore));
+                wristHi = Math.max(wristHi, deg(fore, b.fist.h.clone().applyQuaternion(b.global.handL)));
+                // The slide stays within what the staff allows.
+                const hold = FIST_HOLD[b.staff.mode === 'held' ? 'held' : 'planted'];
+                expect(b.staffSlide).toBeGreaterThanOrEqual(hold.slide[0] - 1e-9);
+                expect(b.staffSlide).toBeLessThanOrEqual(hold.slide[1] + 1e-9);
+                // Carried, the staff's butt (behind his hand) stays out of him.
+                if (b.staff.mode === 'held') {
+                    const foot = b.toModel(b.staff.foot);
+                    const { chest } = b.globalPos;
+                    buttLo = Math.min(buttLo, Math.hypot(foot.x - chest.x, foot.z - chest.z) * b.H);
+                }
+            },
+        });
+        expect(frames).toBeGreaterThan(1000);
+        expect(elbowLo).toBeGreaterThan(25);
+        expect(elbowHi).toBeLessThan(120);
+        expect(wristHi).toBeLessThan(100);
+        expect(buttLo).toBeGreaterThan(0.45);
     });
 });
 
