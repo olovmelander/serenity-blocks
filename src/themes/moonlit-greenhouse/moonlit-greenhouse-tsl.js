@@ -46,6 +46,11 @@ export const TUNE = {
     // How a surface is lit (mgSurface): the moon's key light, the sky's fill through the glass.
     moonKey: 1.0,
     skyFill: 1.0,
+    // The lanterns' warm light on a surface: its strength and its reach (metres at which it falls
+    // to half), and their glow in the mist.
+    lampGain: 1.6,
+    lampReach: 1.4,
+    lampAir: 1.0,
     // The air (the post's march), where the moonbeams stand:
     //   airHaze        the mist everywhere (per metre), what the beams are seen in
     //   airLow         the mist low over the water (per metre), thinning with height over
@@ -64,8 +69,8 @@ export const TUNE = {
     airHaze: 0.011,
     airLow: 0.035,
     airLowFall: 1.3,
-    airBeam: 0.9,
-    airForward: 0.72,
+    airBeam: 0.8,
+    airForward: 0.66,
     airMist: 0.002,
     airExtinction: 0.38,
     airContrast: 3.0,
@@ -422,9 +427,9 @@ export function mgLanterns(pIn, nIn, U) {
         const toL = row.xyz.sub(p);
         const d2 = dot(toL, toL);
         const wrap = clamp(dot(n, toL.mul(float(1.0).div(sqrt(d2).add(1e-4)))).mul(0.6).add(0.4), 0.0, 1.0);
-        sum.addAssign(vec3(row.w.mul(wrap).div(d2.mul(0.9).add(1.0))));
+        sum.addAssign(vec3(row.w.mul(wrap).div(d2.mul(0.9 / (TUNE.lampReach * TUNE.lampReach)).add(1.0))));
     });
-    return sum.mul(U.night.lantern).mul(U.lanternGain);
+    return sum.mul(U.night.lantern).mul(U.lanternGain).mul(TUNE.lampGain);
 }
 
 /**
@@ -471,11 +476,11 @@ export function mgLanternsTwoSided(pIn, nIn, U) {
         const toL = row.xyz.sub(p);
         const d2 = dot(toL, toL);
         const c = dot(n, toL.mul(float(1.0).div(sqrt(d2).add(1e-4))));
-        const fall = row.w.div(d2.mul(0.9).add(1.0));
+        const fall = row.w.div(d2.mul(0.9 / (TUNE.lampReach * TUNE.lampReach)).add(1.0));
         front.addAssign(fall.mul(clamp(c.mul(0.6).add(0.4), 0.0, 1.0)));
         back.addAssign(fall.mul(clamp(c.mul(-0.6).add(0.4), 0.0, 1.0)));
     });
-    const tint = U.night.lantern.mul(U.lanternGain);
+    const tint = U.night.lantern.mul(U.lanternGain).mul(TUNE.lampGain);
     return { front: tint.mul(front), back: tint.mul(back) };
 }
 
