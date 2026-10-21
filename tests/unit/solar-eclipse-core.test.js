@@ -1,12 +1,13 @@
 /**
  * Solar Eclipse — the numbers of the scene: frames, the far shore, the salt mirror, the cloud
- * deck, the corona's field, the moon, the light of the hour, the chain and the board on the limb.
+ * rows and the moon's shadow, the corona's field, the moon, the light of the hour, the chain and the board on the limb.
  * CPU only; nothing here pins a look.
  */
 import { describe, expect, it } from 'vitest';
 import {
     BRIGHT_POINTS,
     CLOUDS,
+    CLOUDS_TOP,
     CORONA,
     DEG,
     HOUR_REST,
@@ -27,10 +28,12 @@ import {
     STREAMERS,
     STREAMER_SET,
     TAU,
+    UMBRA,
     WORLD,
     axisAt,
     bakeNoise,
     bakeRanges,
+    cloudRowSpan,
     coneAt,
     crestAt,
     exposureFor,
@@ -42,9 +45,11 @@ import {
     paletteAt,
     prominenceShape,
     ringSlope,
+    shadowEdgeAt,
     streamersAt,
     sunFrame,
     sunPlaneToWorld,
+    umbraAzAt,
     worldToSunPlane,
     wrapAngle,
 } from '../../src/themes/solar-eclipse/solar-eclipse-core.js';
@@ -264,12 +269,50 @@ describe('solar eclipse core: the salt mirror', () => {
     });
 });
 
-describe('solar eclipse core: the cloud deck', () => {
-    it('burns where it reaches beyond the moon\'s shadow, low over the shore, under the top it is drawn to', () => {
-        const edge = Math.atan(CLOUDS.height / CLOUDS.shadowEdge);
-        expect(edge).toBeGreaterThan(0.01);
-        expect(edge).toBeLessThan(CLOUDS.top);
+describe('solar eclipse core: the clouds', () => {
+    it('stands its rows farthest first and lowest, every heap below the sun', () => {
+        const spans = CLOUDS.rows.map(cloudRowSpan);
+        for (let i = 1; i < spans.length; i += 1) {
+            expect(CLOUDS.rows[i].distance).toBeLessThan(CLOUDS.rows[i - 1].distance);
+            expect(spans[i].base).toBeGreaterThan(spans[i - 1].base);
+        }
+        spans.forEach((span, i) => {
+            expect(span.top).toBeGreaterThan(span.base);
+            expect(CLOUDS.rows[i].cover).toBeGreaterThan(0);
+            expect(CLOUDS.rows[i].cover).toBeLessThan(1);
+        });
+        expect(CLOUDS_TOP).toBe(Math.max(...spans.map((span) => span.top)));
+        // The farthest row stands on the far shore; the highest heap stays far under the sun's
+        // altitude at rest (the inner corona is never behind a cloud).
+        expect(spans[0].base).toBeLessThan(RANGES[0].base + RANGES[0].amp * 2);
+        expect(CLOUDS_TOP).toBeLessThan(0.14);
         expect(CLOUDS.opacity).toBeLessThanOrEqual(1);
+    });
+
+    it('burns beyond the moon\'s shadow and stands dark inside it, the shadow ending nearer on its bright side', () => {
+        const far = CLOUDS.rows[0].distance;
+        const near = CLOUDS.rows[CLOUDS.rows.length - 1].distance;
+        for (let az = -Math.PI; az <= Math.PI; az += 0.1) {
+            const edge = shadowEdgeAt(az, UMBRA.az);
+            expect(edge).toBeGreaterThan(0);
+            // The shader lights a row by smoothstep(0.85 edge, 1.18 edge, its distance).
+            expect(far).toBeGreaterThan(edge * 1.18);
+        }
+        expect(near).toBeLessThan(shadowEdgeAt(UMBRA.az + Math.PI, UMBRA.az) * 0.85);
+        expect(shadowEdgeAt(UMBRA.az, UMBRA.az)).toBeLessThan(shadowEdgeAt(UMBRA.az + Math.PI, UMBRA.az));
+    });
+
+    it('swings the shadow\'s bright side slowly, always right of the line of sight', () => {
+        let lo = Infinity;
+        let hi = -Infinity;
+        for (let t = 0; t < UMBRA.seconds; t += 1) {
+            const az = umbraAzAt(t);
+            lo = Math.min(lo, az);
+            hi = Math.max(hi, az);
+            expect(Math.abs(umbraAzAt(t + 1) - az)).toBeLessThan(0.01);
+        }
+        expect(lo).toBeGreaterThan(0);
+        expect(hi - lo).toBeCloseTo(UMBRA.drift * 2, 2);
     });
 });
 

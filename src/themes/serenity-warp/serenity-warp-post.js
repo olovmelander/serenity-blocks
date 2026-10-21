@@ -77,7 +77,8 @@ export const POST_LOOK = Object.freeze({
 
 export const BLOOM_THRESHOLD = 1.0;
 export const BLOOM_KNEE = 0.5;
-export const BLOOM_RADIUS = 0.62;
+/** Tight: the wide mips of a broad bloom laid a grey veil over the whole gate in a chain. */
+export const BLOOM_RADIUS = 0.42;
 export const EXPOSURE = 1.0;
 
 /** Calm rects (board cards + HUD) the output pass evaluates. */
@@ -194,11 +195,14 @@ export class SerenityWarpPost {
             const st = screenUV;
             const toHeart = this.uHeart.sub(st).toVar();
             const dist = length(toHeart.mul(aspect)).toVar();
+            // White noise, not interleaved gradient noise: with six taps IGN's lattice shows as a
+            // regular grid over the whole shaft region on Medium.
             const jitter = swHash21(floor(screenCoordinate).add(vec2(3.0, 71.0))).toVar();
             const fromCentre = st.sub(0.5);
 
             // ── The rush: the picture drawn in along the lines into the gate ──
-            const S = vec3(sceneColor.sample(st).rgb).toVar();
+            const S0 = vec3(sceneColor.sample(st).rgb).toVar();
+            const S = vec3(S0).toVar();
             if (rushTaps > 0) {
                 const rush = this.uRush.mul(float(1.0).sub(calm.mul(0.85))).toVar();
                 If(rush.greaterThan(0.004), () => {
@@ -223,12 +227,13 @@ export class SerenityWarpPost {
                 const fringe = r2.mul(float(0.0018).add(this.uRush.mul(0.0045))).add(this.uKick.mul(0.0025))
                     .mul(float(1.0).sub(calm));
                 If(fringe.greaterThan(2e-4), () => {
+                    // Only the split itself is added (the shifted taps less the sharp centre), so
+                    // over a rushed picture red and blue stay blurred with green: taking them
+                    // whole from the sharp scene broke the rush into green and magenta.
                     const spread = fromCentre.mul(fringe);
-                    S.assign(vec3(
-                        sceneColor.sample(st.sub(spread)).level(0).r,
-                        S.g,
-                        sceneColor.sample(st.add(spread)).level(0).b,
-                    ));
+                    const r = sceneColor.sample(st.sub(spread)).level(0).r.sub(S0.r);
+                    const b = sceneColor.sample(st.add(spread)).level(0).b.sub(S0.b);
+                    S.assign(max(S.add(vec3(r, 0.0, b)), vec3(0.0)));
                 });
             }
 
@@ -312,8 +317,13 @@ export class SerenityWarpPost {
 
     /** Per-frame values (all optional). */
     update({
-        heart, flash, flashTint, kick, bloomBoost, exposure, rays, blur, time,
+        heart, flash, flashTint, kick, bloomBoost, bloomEase, exposure, rays, blur, time,
     } = {}) {
+        // While the scene itself burns brighter (a chain, an arrival) the bloom gives way, or its
+        // wide glow lays a grey veil over the gate.
+        if (bloomEase !== undefined && this.bloomNode) {
+            this.bloomNode.strength.value = this.look.bloomStrength * (1 - Math.max(0, Math.min(0.7, bloomEase)));
+        }
         if (heart) this.uHeart.value.set(heart.x, heart.y);
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (flashTint) this.uFlashTint.value.set(flashTint[0], flashTint[1], flashTint[2]);
