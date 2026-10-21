@@ -19,6 +19,7 @@ import {
     exp,
     float,
     fract,
+    fwidth,
     length,
     max,
     mix,
@@ -33,7 +34,7 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { WORLD, mulberry32 } from './tornado-core.js';
+import { TAU, WORLD, mulberry32 } from './tornado-core.js';
 import {
     FLASHES, RINGS, funnelCentreNode, noiseAt, tnGauss,
 } from './tornado-tsl.js';
@@ -190,7 +191,19 @@ function createWheat({ u, noise, tier }) {
         const col = mix(u.wheatShade.mul(0.85), u.wheatLit.mul(1.05), lift).toVar();
         col.mulAssign(mix(vec3(0.86, 1.0, 0.78), vec3(1.12, 0.94, 0.8), fract(tone.z.mul(7.31))));
         col.mulAssign(tone.x.mul(0.6).add(0.7));
-        col.addAssign(u.sun.mul(clamp(earAt, 0.0, 1.0)).mul(tone.z.mul(0.12).add(0.1)));
+        // The stem low down is greener and in the crop's own shade.
+        const low = smoothstep(0.45, 0.05, clamp(y, 0.0, 1.0));
+        col.assign(mix(col, col.mul(vec3(0.62, 0.7, 0.42)), low.mul(0.7)));
+        // The ear: rows of grain (spikelets) up its length, each rounded, its edge catching the
+        // light; faded to their mean where a row is under a pixel (far stalks).
+        const earF = clamp(earAt, 0.0, 1.0);
+        const rows = clamp(y, 0.0, 1.0).sub(0.58).div(0.4).mul(11.0)
+            .add(tone.z.mul(3.0));
+        const rowRoom = float(1.0).sub(smoothstep(0.3, 0.7, fwidth(rows)));
+        const grain = cos(rows.mul(TAU)).mul(0.5).add(0.5);
+        const rounded = clamp(abs(positionGeometry.x).mul(2.0), 0.0, 1.0);
+        col.mulAssign(mix(float(1.0), grain.mul(0.32).add(0.78).mul(rounded.mul(-0.25).add(1.1)), earF.mul(rowRoom)));
+        col.addAssign(u.sun.mul(earF).mul(tone.z.mul(0.12).add(0.1)).mul(mix(float(1.0), grain.mul(0.6).add(0.7), rowRoom)));
         col.addAssign(ringGlow.mul(0.22).mul(lift).add(u.wheatLit.mul(tone.y).mul(0.18)));
         col.assign(mix(col, u.haze, exp(far.div(-2600.0)).oneMinus()));
         return vec4(col, 1.0);

@@ -12,6 +12,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    abs,
     attribute,
     clamp,
     dot,
@@ -246,7 +247,33 @@ function clamp01js(v) {
 }
 
 /**
- * Dust in the lamp's beam: a few soft, slow points between the eye and the canvas.
+ * The lens's depth of field on dust: the camera is focused on the canvas (z = 0), so a mote's
+ * blur disc grows with its height over it (radius = aperture · z / focus distance, world units),
+ * and the light it scatters is spread over that disc. `aperture` is the lens's radius.
+ */
+export const DUST = Object.freeze({
+    aperture: 0.042,
+    /** Share of the motes that hang high, near the lens (the rest drift low, near the paint). */
+    high: 0.3,
+    /** The beam's half-angle round the lamp's aim (cosine at its soft edge), and its brightness. */
+    beamCos: 0.86,
+    gain: 0.006,
+    /**
+     * How fast a disc dims as it grows (per unit of its screen radius squared). Spread over its
+     * whole area at full strength, a disc near the lens would vanish; held a little brighter, it
+     * reads as dust drifting out of focus between the eye and the canvas.
+     */
+    spread: 36,
+    /** The widest a blur disc may look (its radius on the canvas, canvas units: the frame is 2 tall). */
+    widest: 0.05,
+});
+
+/**
+ * Dust in the lamp's beam, between the eye and the canvas. The camera is focused on the paint:
+ * motes drifting near it are fine points, those that hang near the lens are broad, faint discs of
+ * light with a brighter rim (the aperture's shape). Each is lit only while it is in the lamp's
+ * beam (a cone aimed at the canvas from beyond its upper left), more brightly nearer the lamp, so
+ * the dust gathers on the lamp's side as the light does.
  *
  * @param {object} u
  * @param {number} count
@@ -258,6 +285,10 @@ export function createMotes(u, count) {
     const geometry = quadGeometry(count, { aSeed: new THREE.InstancedBufferAttribute(aSeed, 4) });
     const seed = attribute('aSeed', 'vec4');
     const frame = uniform(new THREE.Vector2(1.78, 1));
+    /** The camera's distance from the canvas (the focus distance). */
+    const focus = uniform(3.08);
+    /** The board's card on the canvas (x0, y0, x1, y1, canvas units): dust keeps out of it. */
+    const card = uniform(new THREE.Vector4(-0.4, -0.85, 0.4, 0.85));
 
     const material = fxMaterial('Chromatic Impasto — dust');
     const tt = u.time;
@@ -265,28 +296,62 @@ export function createMotes(u, count) {
     const drift = vec3(
         sin(tt.mul(seed.w.mul(0.05).add(0.03)).add(seed.x.mul(TAU))).mul(0.12),
         sin(tt.mul(seed.z.mul(0.04).add(0.025)).add(seed.y.mul(TAU))).mul(0.1),
-        sin(tt.mul(0.021).add(seed.w.mul(TAU))).mul(0.15),
+        sin(tt.mul(0.021).add(seed.w.mul(TAU))).mul(0.12),
     );
+    // Most drift low over the paint; a few hang near the lens. A high mote is placed in the
+    // narrower field the lens sees at its height.
+    const high = step(seed.z, DUST.high);
+    const z = mix(seed.z.mul(0.9).add(0.08), seed.w.mul(0.9).add(1.55), high);
+    const narrow = float(1.0).sub(z.div(focus));
     const home = vec3(
-        seed.x.mul(2.0).sub(1.0).mul(frame.x),
-        seed.y.mul(2.0).sub(1.0).mul(frame.y),
-        seed.z.mul(1.5).add(0.25),
+        seed.x.mul(2.0).sub(1.0).mul(frame.x).mul(narrow),
+        seed.y.mul(2.0).sub(1.0).mul(frame.y).mul(narrow),
+        z,
     );
-    const centre = home.add(drift);
-    // Nearer the eye a mote is further out of focus: larger and fainter.
-    const blur = centre.z.mul(0.0035).add(0.0016);
-    material.positionNode = vec3(centre.xy.add(positionGeometry.xy.mul(blur.mul(2.0))), centre.z);
-    const twinkle = sin(tt.mul(seed.w.mul(0.7).add(0.4)).add(seed.z.mul(40.0))).mul(0.4).add(0.6);
-    const vGlow = varying(twinkle.mul(float(0.012).div(blur.mul(blur).mul(9000.0).add(0.2))), 'ciMote');
+    const centre = home.add(drift).toVar();
+    // The blur disc (world radius), never smaller than a fine point, and never wider on screen
+    // than DUST.widest (a narrow phone frame would otherwise hold a few discs as big as coins).
+    const depth = focus.sub(centre.z).div(focus);
+    const coc = clamp(centre.z.mul(DUST.aperture).div(focus), 0.0016, depth.mul(DUST.widest));
+    material.positionNode = vec3(centre.xy.add(positionGeometry.xy.mul(coc.mul(2.0))), centre.z);
+    // The lamp's light at the mote: its beam (a soft cone toward the canvas's middle) and its
+    // falloff, spread over the disc as the eye sees it (the disc's screen area grows as coc² over
+    // the distance², and the light a mote scatters does not).
+    const fromLamp = centre.sub(u.lampPos);
+    const lampDist = length(fromLamp);
+    const aim = normalize(u.lampPos.negate());
+    const inBeam = smoothstep(DUST.beamCos, DUST.beamCos + 0.05, dot(fromLamp.div(lampDist), aim));
+    const near = u.lampFalloff.x.div(lampDist).pow(u.lampFalloff.y);
+    const seen = coc.mul(focus).div(max(focus.sub(centre.z), 0.2));
+    const twinkle = sin(tt.mul(seed.w.mul(0.7).add(0.4)).add(seed.z.mul(40.0))).mul(0.35).add(0.65);
+    // Where the eye sees the mote on the canvas: dust keeps clear of the board's card.
+    const onCanvas = centre.xy.div(max(depth, 0.1));
+    const middle = card.xy.add(card.zw).mul(0.5);
+    const halfSize = card.zw.sub(card.xy).mul(0.5);
+    const outside = length(max(abs(onCanvas.sub(middle)).sub(halfSize), vec2(0.0)));
+    const clear = smoothstep(seen.mul(0.6), seen.add(0.06), outside);
+    const vGlow = varying(
+        inBeam.mul(near).mul(twinkle).mul(clear).mul(DUST.gain)
+            .div(seen.mul(seen).mul(DUST.spread).add(0.004)),
+        'ciMote',
+    );
+    const vRim = varying(smoothstep(0.004, 0.02, coc), 'ciMoteRim');
     material.colorNode = Fn(() => {
         const st = uv().mul(2.0).sub(1.0);
-        const disc = float(1.0).sub(smoothstep(0.35, 1.0, dot(st, st)));
-        return vec4(u.keyColor.mul(disc.mul(vGlow)).mul(u.exposure), 0.0);
+        const r2 = dot(st, st);
+        // a soft point, or (out of focus) a disc of even light with a brighter rim
+        const point = float(1.0).sub(smoothstep(0.0, 1.0, r2)).pow(2.0);
+        const disc = float(1.0).sub(smoothstep(0.82, 1.0, r2)).mul(smoothstep(0.55, 0.95, r2).mul(0.6).add(0.7));
+        const shape = mix(point, disc, vRim);
+        // dust glows warmer than the lamp's own white: it scatters the lamp's long, low light
+        return vec4(u.keyColor.mul(vec3(1.0, 0.8, 0.58)).mul(shape.mul(vGlow)).mul(u.exposure), 0.0);
     })();
     const motes = part('Chromatic Impasto — dust', geometry, material, 6);
     motes.count = count;
-    motes.update = (time, aspect) => {
+    motes.update = (time, aspect, cameraDistance, cardRect = null) => {
         frame.value.set(Math.max(0.3, aspect) * 1.02, 1.02);
+        if (Number.isFinite(cameraDistance) && cameraDistance > 0.5) focus.value = cameraDistance;
+        if (cardRect) card.value.set(cardRect.x0, cardRect.y0, cardRect.x1, cardRect.y1);
     };
     return motes;
 }
