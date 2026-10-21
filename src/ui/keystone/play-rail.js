@@ -27,6 +27,8 @@ const RAIL_ID = 'sb-play-rail';
 const SETTINGS_ID = 'settings-btn-global';
 const HUB_ID = 'serenity-hub-icon';
 const NAVIGATOR_ID = 'odyssey-navigator-btn';
+/** Full surfaces whose own header ends just before the folded tray: a peek would cover it. */
+const RAIL_SHY_SURFACES = '#stillfall-atlas:not([hidden])';
 /** Left to right; the corner belongs to Settings. */
 const TILE_IDS = [NAVIGATOR_ID, HUB_ID, SETTINGS_ID];
 const MODE_EVENTS = ['modeActivated', 'modeStarted', 'modeStopped', 'modeDeactivated'];
@@ -160,6 +162,14 @@ function fold() {
     peekTimer = setTimeout(stopPeek, FOLD_MS);
 }
 
+/**
+ * Fold a running peek at once: a surface that opens under the tray (Stillfall's atlas) keeps
+ * its header to the folded width, and the named tray covered its Close.
+ */
+export function foldPlayRailPeek() {
+    if (rail?.classList.contains('is-peek') || rail?.classList.contains('is-folding')) stopPeek();
+}
+
 /** True when the tray is what the player sees at its own centre (no loading veil on it). */
 function trayIsSeen() {
     const box = rail.getBoundingClientRect?.();
@@ -182,6 +192,7 @@ function peekForNewcomers() {
         if (!rail || currentModeId() !== modeId) return;
         // Odyssey's board view is not play, and its header chips sit beside the tray.
         if (document.getElementById(NAVIGATOR_ID)?.classList.contains('visible')) return;
+        if (document.querySelector(RAIL_SHY_SURFACES)) return;
         // A mode can start behind its loading veil or countdown: wait until the tray is in view.
         if (!trayIsSeen()) {
             tries += 1;

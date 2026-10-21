@@ -163,9 +163,11 @@ export function showLocalMatchEnd({
     document.body.appendChild(overlay);
 
     let leaving = false;
+    let onMenuShown = null;
     const leave = (then) => {
         if (leaving) return;
         leaving = true;
+        window.removeEventListener('modalShown', onMenuShown);
         closeLayer(overlay);
         overlay.classList.add('is-leaving');
         setTimeout(() => {
@@ -180,6 +182,12 @@ export function showLocalMatchEnd({
         if (event.key !== 'Escape') event.stopPropagation();
     });
     openLayer(overlay, () => leave(onMainMenu));
+    // Any other way back to the main menu (the pause sheet, a controller, a quit to menu)
+    // takes the results with it: left behind, they covered every screen that followed.
+    onMenuShown = (event) => {
+        if (event.detail?.modalName === 'start') leave();
+    };
+    window.addEventListener('modalShown', onMenuShown);
 
     countUp(overlay);
     requestAnimationFrame(() => overlay.querySelector('#restart-match-btn')?.focus({ preventScroll: true }));

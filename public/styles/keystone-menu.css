@@ -95,7 +95,9 @@ body.start-modal-open #start-modal .main-menu-logo {
     --sb-pad-x: clamp(24px, 5vw, 88px);
     position: relative;
     display: grid;
-    grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
+    /* In rem, with the breakpoints in em: larger text widens the list (and switches to the
+       stacked layout sooner) instead of cutting "Online Versus" to "Onli…". 280-380 px at 16 px. */
+    grid-template-columns: minmax(17.5rem, 23.75rem) minmax(0, 1fr);
     grid-template-rows: auto minmax(0, 1fr) auto;
     column-gap: clamp(28px, 6vw, 112px);
     width: 100%;
@@ -1187,7 +1189,7 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
 
 /* ---- Responsive -------------------------------------------------------------------- */
 /* Large displays: a roomier stage. */
-@media (min-width: 1600px) and (min-height: 900px) {
+@media (min-width: 100em) and (min-height: 56.25em) {
     #start-modal .sb-stage { width: min(780px, 100%); }
     #start-modal .sb-stage__lede { font-size: 1.125rem; }
 }
@@ -1197,7 +1199,7 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
  * scrim keeps its edge tone), and the player card keeps to the frame's corner. Plain
  * calc() only: Chromium rejects min() in a radial-gradient's size, which voids the whole
  * background. */
-@media (min-width: 1921px) {
+@media (min-width: 120.0625em) and (min-height: 33.8125em) and (min-height: 649px) {
     :root {
         /* The frame's left edge; 50% resolves against the screen-wide box that uses it. */
         --sb-frame-x: calc(50% - var(--sb-menu-max) / 2);
@@ -1224,12 +1226,12 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
 }
 
 /* Short windows give the copy its room before the picture. */
-@media (max-height: 800px) and (min-width: 901px) {
+@media (max-height: 50em) and (min-width: 56.3125em) and (min-height: 33.8125em) and (min-height: 649px) {
     #start-modal .sb-stage__panel { --sb-art-h: clamp(160px, 26vh, 210px); }
 }
 
 /* Short windows: the player card keeps to the band above the stage. */
-@media (max-height: 860px) and (min-width: 901px) {
+@media (max-height: 53.75em) and (min-width: 56.3125em) and (min-height: 33.8125em) and (min-height: 649px) {
     .main-menu-player-card {
         top: 14px;
         gap: 10px;
@@ -1250,14 +1252,47 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
 
 /* Desktop builds end the dock with Quit; on a laptop-width screen the footer keeps to one
    line (so the stage keeps its height) by leaving out the headphones note. */
-@media (max-width: 1440px) and (min-width: 901px) {
+@media (max-width: 90em) and (min-width: 56.3125em) and (min-height: 33.8125em) and (min-height: 649px) {
     #start-modal .sb-menu__footer:has(.sb-dock__btn--quit) .headphone-badge {
         display: none;
     }
 }
 
+/* Narrower still, the footer wrapped (1024 x 768 left Settings alone on a second row, and
+   the hints under it): the note goes in every build, the dock tightens, and under 1100 px the
+   hints keep Play and Settings (the list shows its own arrows). One line from 901 px up,
+   with or without Quit (measured: the footer's height at every width). */
+@media (max-width: 79.9375em) and (min-width: 56.3125em) and (min-height: 33.8125em) and (min-height: 649px) {
+    #start-modal .sb-menu__footer .headphone-badge {
+        display: none;
+    }
+
+    #start-modal .sb-dock__btn {
+        gap: 8px;
+        padding: 0 10px;
+        letter-spacing: 0.12em;
+    }
+}
+
+@media (max-width: 68.6875em) and (min-width: 56.3125em) and (min-height: 33.8125em) and (min-height: 649px) {
+    #start-modal .sb-menu__footer .sb-hints > li:first-child {
+        display: none;
+    }
+}
+
+@media (max-width: 61.1875em) and (min-width: 56.3125em) and (min-height: 33.8125em) and (min-height: 649px) {
+    #start-modal .sb-menu__footer {
+        column-gap: 16px;
+    }
+
+    #start-modal .sb-dock__btn {
+        padding: 0 8px;
+        letter-spacing: 0.08em;
+    }
+}
+
 /* Laptops / short windows: tighter rhythm, smaller stage typography. */
-@media (max-height: 760px) and (min-width: 901px) {
+@media (max-height: 47.5em) and (min-width: 56.3125em) and (min-height: 33.8125em) and (min-height: 649px) {
     #start-modal .game-mode-card { min-height: 40px; padding-block: 7px; }
     #start-modal .sb-modes__label { margin-bottom: 4px; }
     #start-modal .sb-stage__title { margin: 14px 0 12px; min-height: 48px; }
@@ -1266,8 +1301,12 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
     #start-modal .sb-stage__progress { margin-bottom: 20px; }
 }
 
-/* Tablets and narrow windows: one column, the descriptions move into the list. */
-@media (max-width: 900px) {
+/* Tablets and narrow windows: one column, the descriptions move into the list. The
+   breakpoints are in em, so a player's larger default text reaches this layout sooner (at
+   32 px text a 1600-wide window, and a 1920 x 1080 one, whose height is 33.75 em, where the
+   two-column menu ran off its own bottom edge). Under 648 px tall the list ran into the
+   footer and the tagline into its first label at any text size. */
+@media (max-width: 56.25em), (max-height: 33.75em), (max-height: 648px) {
     #start-modal.modal.game-mode-selection {
         overflow-x: hidden;
         overflow-y: auto;
@@ -1296,7 +1335,7 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
         gap: 18px;
         height: auto;
         min-height: 100%;
-        max-width: 620px;
+        max-width: 38.75rem;
         margin: 0 auto;
         padding: max(18px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
         pointer-events: auto;
@@ -1429,7 +1468,7 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
     }
 }
 
-@media (max-width: 380px) {
+@media (max-width: 23.75em) {
     #start-modal .sb-menu__brand { padding-right: 0; }
     .main-menu-player-card .mmpc-name { max-width: 72px; }
     .main-menu-player-card .mmpc-retry-btn.visible { display: none; }
