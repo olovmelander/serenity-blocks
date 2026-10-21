@@ -84,7 +84,7 @@ export const HOURS = Object.freeze([
         water: [0.006, 0.03, 0.068],
         exposure: 0.95,
         stars: 0,
-        hazeDensity: 0.5,
+        hazeDensity: 0.78,
         mistDensity: 0.08,
     }),
     Object.freeze({
@@ -104,7 +104,7 @@ export const HOURS = Object.freeze([
         water: [0.005, 0.018, 0.05],
         exposure: 1.18,
         stars: 0.02,
-        hazeDensity: 0.62,
+        hazeDensity: 0.82,
         mistDensity: 0.18,
     }),
     Object.freeze({
@@ -165,7 +165,7 @@ export const HOURS = Object.freeze([
         water: [0.008, 0.042, 0.092],
         exposure: 0.62,
         stars: 0,
-        hazeDensity: 0.36,
+        hazeDensity: 0.9,
         mistDensity: 0.04,
     }),
     Object.freeze({
@@ -185,7 +185,7 @@ export const HOURS = Object.freeze([
         water: [0.008, 0.038, 0.085],
         exposure: 0.64,
         stars: 0,
-        hazeDensity: 0.42,
+        hazeDensity: 0.95,
         mistDensity: 0.04,
     }),
 ]);
