@@ -228,3 +228,45 @@ brightness 1.1) and baked as a 512 px circle on a transparent ground. The same f
 ![Portrait: at rest and a four-line clear](lunara-captures/portrait.webp)
 
 ![Minimal, Low on WebGL2, Medium and Extreme](lunara-captures/tiers.webp)
+
+## Night pass (2026-10-20)
+
+The valley read as dusk under a lavender veil: the night was lifted everywhere, the great moon
+looked full and flat, and the ranges dissolved into the same lilac as the sky. This pass deepens
+the night without touching the event language or the palettes.
+[Before](lunara-captures/night-before.jpg) and [after](lunara-captures/night-after.jpg), the same
+frame (`?effect=lunara&quality=High&t=20`, 1600 × 900, WebGPU).
+
+- **The sky.** The nebula band was a smooth lit veil over the whole upper frame (its glow
+  measured exactly the lilac of the sky there); it is now lit clouds with dark sky between them,
+  filaments at their bright edges and deeper lanes. The horizon's haze lies lower
+  (`luSkyBase`'s gradient reaches the zenith colour by about thirty degrees up).
+- **The aurora** is curtains, not a wash: two scales of rays with dark gaps (no floor of light
+  between them), a bright hem along the sharp lower border, rays whose tops reach as high as they
+  are bright, and the high colour only in the rays' upper reaches.
+- **The great moon** stands gibbous: the sun now lights it from the side away from the board, the
+  terminator is crisp, crater relief reads only where the light grazes (the face under a high sun
+  stays smooth), the albedo is read softly with its contrast restored (maria and highlands), and
+  the air in front of it carries the sky's gradient but not its own glare, so its night side
+  stands darker than the sky round it. `luMoonDiscs` is phase-aware, so the spires' facets and
+  the analytic water of Low and Minimal mirror the same half-lit moon.
+- **The ranges** keep their light at distance: the haze is thinner (`luFogAmount`), the moon is a
+  harder key against a dimmer fill, the wet-stone sky sheen that laid one lavender over every
+  grazing facet is a third of what it was, the frost is brighter, and seams of the palette's light
+  run through the bare rock, faint at rest and waking with the valley's charge.
+- **Mist** (`luAtmosphere`): drifting, patchy banks lie on the far flats and round the ranges'
+  feet, glowing toward the great moon, so the ranges stand out of them in layers.
+- **The water's moon glitter** is points that come and go (two fine reads crest together) instead
+  of white dashes lying over the reflection.
+- **Bloom** is a little weaker on the tiers that have it (0.45–0.5), so the moon's halo no longer
+  veils a third of the sky.
+
+`tests/unit/lunara-shaders.test.js` (new) builds every material in the valley through the WGSL
+and GLSL node builders at High and Low and fails on a warning, a throw, an equal-edge smoothstep,
+a NaN literal, a stringified node, MaterialX noise, or a texture binding a WGSL stage reads but
+never declares. That last check caught this pass's first moon (a biased read of the moon map left
+its sampler undeclared, the same error the browser reported) before it was replaced with a
+four-tap blur. Captured on WebGPU at High at rest, through a held chain of five
+([chain](lunara-captures/night-chain.jpg)) and a four-line clear; on WebGL2 at
+[Low](lunara-captures/night-low-webgl2.jpg) and Minimal; and upright at 430 × 852 on Medium: no
+console errors or warnings. Not measured: frame time. The theme icon still shows the earlier sky.

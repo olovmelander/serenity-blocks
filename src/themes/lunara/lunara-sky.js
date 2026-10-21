@@ -91,11 +91,17 @@ export function createSky(u, { curtains = 3, nebula = true } = {}) {
             const st = vec2(dot(dir, vec3(BAND_ALONG.x, BAND_ALONG.y, BAND_ALONG.z)), b).toVar();
             const c1 = u.noise(st.mul(0.55).add(vec2(0.13, 0.31))).toVar();
             const c2 = u.noise(st.mul(1.7).add(vec2(0.52, 0.07))).toVar();
-            const cloud = smoothstep(0.38, 0.86, c1.r.mul(0.62).add(c2.g.mul(0.38)));
-            const lanes = smoothstep(0.46, 0.72, c2.r.mul(0.6).add(c1.b.mul(0.4)));
+            const c3 = u.noise(st.mul(4.6).add(vec2(0.29, 0.83))).toVar();
+            // Lit clouds with dark sky between them, not a veil over the whole night: a wide
+            // threshold for the body, and filaments (ridges of a finer read) at its bright edges.
+            const cloud = smoothstep(0.46, 0.9, c1.r.mul(0.62).add(c2.g.mul(0.38))).toVar();
+            const filaments = luBell(c3.r.sub(0.5).mul(7.0)).mul(smoothstep(0.2, 0.7, cloud));
+            const lanes = smoothstep(0.44, 0.7, c2.r.mul(0.6).add(c1.b.mul(0.4)));
             const tint = mix(u.glow, u.companionCol, smoothstep(0.35, 0.7, c1.g))
                 .add(u.auroraLow.mul(smoothstep(0.6, 0.85, c2.b)).mul(0.5));
-            col.addAssign(tint.mul(cloud).mul(band).mul(float(1.0).sub(lanes.mul(0.75))).mul(0.2)
+            const lit = cloud.mul(0.8).add(filaments.mul(0.55));
+            col.addAssign(tint.mul(lit).mul(band).mul(float(1.0).sub(lanes.mul(0.85)))
+                .mul(0.15)
                 .mul(clearSky)
                 .mul(u.breath));
         }
@@ -178,12 +184,21 @@ export function createSky(u, { curtains = 3, nebula = true } = {}) {
                 const h = float(D).add(wave(qx.mul(h1))).div(ahead).toVar();
                 const x = qx.mul(h).toVar();
                 const hh = h.sub(base).div(tall).toVar();
-                // A sharp lower border, a body that thins upward.
-                const profile = smoothstep(0.0, 0.09, hh).mul(exp(max(hh, 0.0).mul(-2.5)).add(exp(max(hh, 0.0).mul(-14.0)).mul(0.45)));
+                const above = max(hh, 0.0);
+                // A sharp, bright lower border (the hem), a body that thins upward.
+                const hem = luBell(hh.sub(0.035).div(0.07));
+                const profile = smoothstep(0.0, 0.05, hh).mul(exp(above.mul(-3.4)).add(exp(above.mul(-16.0)).mul(0.6)))
+                    .add(hem.mul(0.55));
+                // Rays at two scales, with dark sky between them: a curtain, not a veil.
                 const rays = u.noise(vec2(x.mul(0.1).add(seed), drift.mul(0.27).add(seed))).g;
+                const threads = u.noise(vec2(x.mul(0.43).add(seed * 2.3), drift.mul(0.61).add(seed))).r;
                 const patches = u.noise(vec2(x.mul(0.011).add(drift.mul(0.04 * speed)), seed * 0.37)).r;
-                const fabric = smoothstep(0.24, 0.72, patches).mul(smoothstep(0.2, 0.8, rays).mul(1.1).add(0.3));
-                const tone = mix(u.auroraLow, u.auroraHigh, smoothstep(0.04, 0.62, hh));
+                const strands = smoothstep(0.42, 0.82, rays.mul(0.68).add(threads.mul(0.32)));
+                // The tallest rays reach highest: a ray's own brightness lifts its top.
+                const reachUp = exp(above.mul(-1.6).div(strands.mul(1.4).add(0.35)));
+                const fabric = smoothstep(0.28, 0.7, patches).mul(strands.mul(1.5).add(0.06)).mul(reachUp);
+                // Low colour in the body; the high colour only in the rays' upper reaches.
+                const tone = mix(u.auroraLow, u.auroraHigh, smoothstep(0.22, 0.85, hh));
                 acc.addAssign(tone.mul(profile.mul(fabric).mul(gain)));
             }
             // The curtains stand ahead of the viewer, and give way round the great moon.
