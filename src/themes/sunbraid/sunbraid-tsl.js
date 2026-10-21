@@ -17,6 +17,7 @@ import {
     dot,
     exp,
     float,
+    floor,
     fract,
     int,
     length,
@@ -50,7 +51,50 @@ export const sbHash21 = /* @__PURE__ */ Fn(([pIn]) => {
     return fract(p3.x.add(p3.y).mul(p3.z));
 }).setLayout({ name: 'sb_hash21', type: 'float', inputs: [{ name: 'pIn', type: 'vec2' }] });
 
+/** vec2 → vec2 in [0, 1) */
+export const sbHash22 = /* @__PURE__ */ Fn(([pIn]) => {
+    const p3 = fract(vec3(pIn.x, pIn.y, pIn.x).mul(vec3(0.1031, 0.103, 0.0973))).toVar();
+    p3.addAssign(dot(p3, p3.yzx.add(33.33)));
+    return fract(p3.xx.add(p3.yz).mul(p3.zy));
+}).setLayout({ name: 'sb_hash22', type: 'vec2', inputs: [{ name: 'pIn', type: 'vec2' }] });
+
+/**
+ * Voronoi cells at a point (in cell units, centres jittered by `jitter`): (distance to the nearest
+ * centre, to the second, the nearest cell's id in 0..1). The edge between two cells lies where the
+ * two distances meet, so (second − nearest) is a distance to the nearest edge (twice it, near one).
+ */
+export const sbCells = /* @__PURE__ */ Fn(([p, jitter]) => {
+    const ip = floor(p);
+    const fp = fract(p);
+    const d1 = float(8.0).toVar();
+    const d2 = float(8.0).toVar();
+    const id = float(0.0).toVar();
+    for (let j = -1; j <= 1; j += 1) {
+        for (let i = -1; i <= 1; i += 1) {
+            const o = vec2(i, j);
+            const h = sbHash22(ip.add(o));
+            const d = length(o.add(h.sub(0.5).mul(jitter)).add(0.5).sub(fp));
+            const nearer = d.lessThan(d1);
+            d2.assign(select(nearer, d1, min(d2, d)));
+            id.assign(select(nearer, h.x, id));
+            d1.assign(min(d1, d));
+        }
+    }
+    return vec3(d1, d2, id);
+}).setLayout({
+    name: 'sb_cells', type: 'vec3', inputs: [{ name: 'p', type: 'vec2' }, { name: 'jitter', type: 'float' }],
+});
+
 export const sbLuma = (c) => dot(c, vec3(0.2126, 0.7152, 0.0722));
+
+/**
+ * The suns as seen: the disc's white-hot core and its limb in the sun's own colour (linear, times
+ * the light's colour normalised), and the tight halo's strength.
+ */
+export const SUN_LOOK = Object.freeze({ core: 6.0, rim: 3.0, halo: 0.05 });
+
+/** The mist's light per unit of its (saturated) depth: the suns' share and the sky's. */
+export const MIST_LIGHT = Object.freeze({ sun: 0.22, sky: 0.18 });
 export const sbMax3 = (c) => max(c.x, max(c.y, c.z));
 
 // ── Baked noise ───────────────────────────────────────────────────────────────────
@@ -98,12 +142,15 @@ export function createUniforms() {
         horizon: uniform(new THREE.Vector3(0.5, 0.5, 0.52)),
         /** The light a flat patch of open ground receives from the three suns together. */
         groundLit: uniform(new THREE.Vector3(1, 1, 1)),
-        hazeDensity: uniform(1 / 9000),
+        // (Clean high-desert air: the distance goes violet, not white.)
+        hazeDensity: uniform(1 / 12000),
         hazeHeight: uniform(420),
         // The valley mist: its density at the floor (per metre), how fast it thins with height,
         // and the floor's height under the eye (world y).
-        mistDensity: uniform(1 / 900),
-        mistHeight: uniform(32),
+        // (Thinner and lower than it was: seen at a degree or two over the floor, the old mist hid
+        // three quarters of the valley beyond two kilometres behind one white band.)
+        mistDensity: uniform(1 / 1700),
+        mistHeight: uniform(26),
         /** 1 while the post lays the mist's light (with the towers' shadow wedges) over the frame. */
         airMarch: uniform(0),
         // The high cloud: its base (world y), the wind's offset (metres), how much of the sky it
@@ -287,12 +334,18 @@ function sunInSky(dir, S, C, G, share, discCos, up) {
     const band = exp(up.mul(-5.5));
     const horizonGlow = t2.mul(t2).mul(band).mul(share).mul(0.085);
     const broad = lobe(mu, 0.35).mul(0.012);
-    const corona = lobe(mu, 0.86).mul(0.05).add(lobe(mu, 0.975).mul(0.06));
+    // The corona: a tight bright halo in the sun's own colour, falling off fast (a star seen through
+    // clean air), then a broad faint one; the old pair was a wide soft wash round each disc.
+    const corona = lobe(mu, 0.86).mul(0.035).add(lobe(mu, 0.975).mul(0.05)).add(lobe(mu, 0.996).mul(SUN_LOOK.halo));
+    // `across` is (1 − mu) over the disc's (1 − cos r): it runs as the square of the angle, so
+    // sqrt(across) is the distance from the centre in disc radii.
     const across = float(1.0).sub(mu).div(max(float(1.0).sub(discCos), 1e-7)).toVar();
-    const discMask = smoothstep(1.08, 0.9, across);
-    const limb = smoothstep(0.1, 0.95, across);
+    const rad = across.max(0.0).sqrt().toVar();
+    const discMask = smoothstep(1.04, 0.96, rad);
+    // Limb darkening toward the sun's own colour at the edge (a star's rim is cooler than its heart).
+    const limb = smoothstep(0.25, 1.0, rad);
     const Cn = C.div(max(max(C.x, max(C.y, C.z)), 1e-3));
-    const discLight = mix(vec3(5.2, 5.2, 5.2), Cn.mul(3.4), limb).mul(discMask);
+    const discLight = mix(vec3(SUN_LOOK.core), Cn.mul(SUN_LOOK.rim), limb).mul(discMask);
     return G.mul(horizonGlow.add(broad)).add(C.mul(corona)).add(discLight);
 }
 
@@ -341,6 +394,9 @@ export function braidRibbons(u, dir) {
     return r.mul(u.ribbon.mul(0.22));
 }
 
+/** The high cloud's fill from the dome (shares of the zenith's and the horizon's colour). */
+export const CLOUD_FILL = Object.freeze({ zenith: 0.55, horizon: 0.2 });
+
 /**
  * The sky's light along a unit direction (the land and the haze read the same function, without
  * the discs and the cloud deck). The dome away from the suns has colours of its own: a deep
@@ -361,11 +417,13 @@ export function skyColor(u, dir, { discs = true, clouds = null, ribbons = false 
     const reach = u.cloudY.sub(u.eye.y).div(max(dir.y, 0.012)).toVar();
     const X = u.eye.xz.add(dir.xz.mul(reach)).toVar();
     const d = cloudDensity(u, clouds, X).toVar();
+    // (Little grey fill: away from the suns the cloud is the sky's own deep colour in shade, toward
+    // them it takes their light; with more fill every cloud was the same lavender-grey.)
     const lit = cloudLitBy(u, clouds, X, dir, u.sun0, u.col0)
         .add(cloudLitBy(u, clouds, X, dir, u.sun1, u.col1))
         .add(cloudLitBy(u, clouds, X, dir, u.sun2, u.col2))
-        .add(u.zenith.mul(0.9))
-        .add(u.horizon.mul(0.35))
+        .add(u.zenith.mul(CLOUD_FILL.zenith))
+        .add(u.horizon.mul(CLOUD_FILL.horizon))
         .toVar();
     // Thin edges glow where they stand before a sun (a silver lining); never brighter than 1.5.
     const edge = float(1.0).sub(d).mul(d).mul(4.0);
@@ -488,14 +546,18 @@ export function mistLight(u, E, D, T) {
         const m4 = m2.mul(m2);
         return m4.mul(m4).mul(1.4).add(m2.mul(0.35)).add(0.18);
     };
+    // The light the mist sends toward the eye saturates as 1 − e^(−τ) (what lies behind is dimmed by
+    // e^(−τ), so the two add to a veil, never past it); each sun's share of it is the lit share of
+    // the depth. Linear in τ, a long ray low over the floor ran to a white wall across the valley.
+    const veil = float(1.0).sub(exp(total.negate())).toVar();
+    const perDepth = veil.div(max(total, 1e-6)).toVar();
     const lit = u.col0.mul(max(total.sub(s0), 0.0).mul(phase(u.sun0)))
         .add(u.col1.mul(max(total.sub(s1), 0.0).mul(phase(u.sun1))))
         .add(u.col2.mul(max(total.sub(s2), 0.0).mul(phase(u.sun2))))
-        .mul(0.22)
-        .add(mix(u.horizon, u.zenith, 0.3).mul(total.mul(0.18)));
-    return lit;
+        .mul(MIST_LIGHT.sun)
+        .add(mix(u.horizon, u.zenith, 0.3).mul(total.mul(MIST_LIGHT.sky)));
+    return lit.mul(perDepth);
 }
-
 /**
  * Aerial perspective: the air between the eye and P, lit by the suns (the sky low along the same
  * bearing is the colour it fades to). Thinner with height.
