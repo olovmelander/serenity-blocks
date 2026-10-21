@@ -26,6 +26,7 @@
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom
+ *   msaa=<n>                 override the scene pass's samples (4 from High up, else 0)
  *   px=-1..1&py=-1..1        hold a pointer-parallax offset
  *   reduce=1                 reduced motion
  *   sunAz=<deg>&sunEl=<deg>  move the sun (degrees left of the line, degrees above the horizon)
@@ -36,6 +37,7 @@ import * as THREE from 'three/webgpu';
 import { WavesWorld } from '../../themes/waves/waves-world.js';
 import { WavesPost, POST_LOOK } from '../../themes/waves/waves-post.js';
 import { readLayoutRects } from '../../themes/waves/waves-composition.js';
+import { sceneSamples } from '../../themes/shared/scene-antialias.js';
 
 export const meta = {
     id: 'waves',
@@ -145,6 +147,7 @@ export function create({
     const post = noPost ? null : new WavesPost(renderer, scene, camera, {
         look,
         falseColor: params.get('falseColor') === '1',
+        samples: params.has('msaa') ? Math.max(0, Math.round(num(params, 'msaa', 0))) : sceneSamples(quality),
     });
     if (noPost) renderer.toneMapping = THREE.AgXToneMapping;
     const overlay = params.get('board') === '1' ? mountBoardOverlay(params.get('statsHud') !== '0') : null;
