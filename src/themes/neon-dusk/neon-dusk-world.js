@@ -188,6 +188,22 @@ export function createWorldUniforms() {
         shoot1: uniform(new THREE.Vector4(0, 0, 0, 2)),
         /** A wave of light rolling through the ranges toward the camera: (distance, energy). */
         contourWave: uniform(new THREE.Vector2(0, 0)),
+        /** The ambient light that moves at rest (the grid's slow pulse): 1, or 0 under reduced motion. */
+        ambient: uniform(1),
+    };
+}
+
+/** At rest a shooting star crosses the sky once in each window of this many seconds. */
+export const AMBIENT_SHOOT_PERIOD = 19;
+
+/** A small deterministic generator for one ambient window (so a seek replays the same star). */
+function windowRandom(k) {
+    let s = (Math.imul(k | 0, 0x9e3779b1) ^ 0x5bd1e995) >>> 0;
+    return () => {
+        s = (s + 0x6d2b79f5) >>> 0;
+        let t = Math.imul(s ^ (s >>> 15), 1 | s);
+        t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
 }
 
@@ -386,6 +402,8 @@ export class NeonDuskWorld {
         const motion = this.motion ?? 1;
         this.scrollLag = (this.scrollLag ?? 0) + dt * SCROLL_SPEED * 0.7 * (1 - motion);
         u.scroll.value = ((((t * SCROLL_SPEED) - this.scrollLag) % SCROLL_WRAP) + SCROLL_WRAP) % SCROLL_WRAP;
+        u.ambient.value = motion;
+        this.updateAmbientShoot(t, motion);
         this.sunPulse *= Math.exp(-1.1 * dt);
         if (motion < 1) this.sunPulse = Math.min(this.sunPulse, 0.5 + 0.7 * motion);
         this.glitch *= Math.exp(-3.5 * dt) * motion;
@@ -457,6 +475,7 @@ export class NeonDuskWorld {
         this.rings.forEach((r) => { r.t0 = -1e6; r.energy = 0; });
         this.holos.forEach((r) => { r.t0 = -1e6; r.energy = 0; });
         this.shoots.forEach((s) => { s.t0 = -1e6; });
+        this.ambientShootWindow = undefined;
         this.ripple.t0 = -1e6;
         this.contour.t0 = -1e6;
         this.fx?.clear();
@@ -586,12 +605,28 @@ export class NeonDuskWorld {
         holo.energy = energy;
     }
 
+    /**
+     * Now and then at rest a shooting star crosses the sky: one in each AMBIENT_SHOOT_PERIOD
+     * window, at a time and on a path drawn from the window's own hash, so a seek lands on the
+     * same star. None under reduced motion.
+     */
+    updateAmbientShoot(t, motion) {
+        if (motion < 0.5) return;
+        const k = Math.floor(t / AMBIENT_SHOOT_PERIOD);
+        if (this.ambientShootWindow === k) return;
+        const r = windowRandom(k);
+        const start = k * AMBIENT_SHOOT_PERIOD + 1 + r() * (AMBIENT_SHOOT_PERIOD - 3);
+        if (t < start) return;
+        this.ambientShootWindow = k;
+        // Fired late (a seek past it, a long frame): it is already over.
+        if (t - start < 0.9) this.emitShootingStar(start, r);
+    }
+
     /** A shooting star across the visible upper sky, falling away from the sun. */
-    emitShootingStar() {
-        const r = this.rand;
+    emitShootingStar(t0 = this.time, r = this.rand) {
         const slot = this.shootCursor;
         this.shootCursor = (slot + 1) % this.shoots.length;
-        this.shoots[slot].t0 = this.time;
+        this.shoots[slot].t0 = t0;
         const uni = slot === 0 ? this.u.shoot0 : this.u.shoot1;
         const halfH = Math.atan(Math.tan(THREE.MathUtils.degToRad(this.lens.vfov) / 2) * this.lens.aspect);
         const az = this.yaw + (r() * 2 - 1) * halfH * 0.75;
