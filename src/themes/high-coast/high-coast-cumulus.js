@@ -38,8 +38,12 @@ import { skyColour } from './high-coast-light.js';
 
 /** Billows per bank. */
 const BILLOWS = 26;
-/** The soft union's width (in bank widths): billows flow into each other instead of creasing. */
-const SOFT = 0.018;
+/**
+ * The soft union's width (in bank widths): billows flow into each other instead of creasing. At
+ * 0.018 every billow kept its own outline and its own terminator, and a bank read as a pile of
+ * balls; wide enough, neighbours merge into masses and only the silhouette keeps their lumps.
+ */
+const SOFT = 0.05;
 
 /** The banks: bearing (degrees right of the view axis), distance, base height, width, height. */
 export function cumulusBanks(count = 9, seed = 0xc0b5) {
@@ -71,23 +75,27 @@ function billowsFor(bank, random) {
     const inside = (x, y, r) => [Math.min(1 - r - 0.07, Math.max(r + 0.07, x)), Math.min(aspect - r - 0.06, Math.max(r * 0.55, y)), r];
     const baseCount = 8;
     for (let k = 0; k < baseCount; k++) {
-        const r = 0.05 + random() * 0.035;
+        const r = 0.06 + random() * 0.04;
         out.push(inside(0.12 + (0.76 * k) / (baseCount - 1) + (random() - 0.5) * 0.05, r * 0.6, r));
     }
     const centre = 0.32 + random() * 0.36;
     const midCount = 8;
     for (let k = 0; k < midCount; k++) {
-        const r = 0.05 + random() * 0.035;
-        out.push(inside(centre + (k / (midCount - 1) - 0.5) * 0.5 + (random() - 0.5) * 0.08, aspect * (0.22 + random() * 0.22), r));
+        const r = 0.065 + random() * 0.04;
+        out.push(inside(centre + (k / (midCount - 1) - 0.5) * 0.46 + (random() - 0.5) * 0.08, aspect * (0.22 + random() * 0.22), r));
     }
+    // Towers: a column of overlapping billows that narrows upward, leaning a little.
     const towers = 6;
+    const lean = (random() - 0.5) * 0.12;
     for (let k = 0; k < towers; k++) {
-        const r = 0.04 + random() * 0.03;
-        out.push(inside(centre + (random() - 0.5) * 0.3, aspect * (0.45 + 0.4 * ((k + random()) / towers)), r));
+        const up = (k + random() * 0.5) / towers;
+        const r = (0.07 - 0.03 * up) * (0.85 + random() * 0.3);
+        out.push(inside(centre + lean * up + (random() - 0.5) * 0.16, aspect * (0.42 + 0.46 * up), r));
     }
+    // Turrets crowning the towers: few, and never much smaller than a tower's billow.
     for (let k = out.length; k < BILLOWS; k++) {
-        const r = 0.022 + random() * 0.02;
-        out.push(inside(centre + (random() - 0.5) * 0.36, aspect * (0.35 + 0.6 * random()), r));
+        const r = 0.035 + random() * 0.025;
+        out.push(inside(centre + lean * 0.7 + (random() - 0.5) * 0.3, aspect * (0.4 + 0.55 * random()), r));
     }
     return out;
 }
@@ -166,8 +174,12 @@ export function createCumulus(u, t, tier, count = 9) {
         const nrm = normalize(nrmSum.add(vec3(0.0, 0.0, 1e-4))).toVar();
         // Flat base: the heap is cut a little above its row's centres.
         const floorCut = smoothstep(0.035, 0.07, p.y);
-        // Edges eroded by three octaves of the lattice (billowing, drifting slowly).
-        const q = vec3(p.mul(16.0), card.w.mul(37.0).add(u.time.mul(0.012)));
+        // Edges eroded by the lattice (billowing, drifting slowly). The read is warped by a broad
+        // one first, so the lumps never line up along a billow's circle.
+        const drift = card.w.mul(37.0).add(u.time.mul(0.012));
+        const warp = noise3(t.lattice, vec3(p.mul(5.0), drift.mul(0.7).add(3.1)));
+        const pw = p.add(vec2(warp.x, warp.y).sub(0.5).mul(0.05));
+        const q = vec3(pw.mul(16.0), drift);
         const n = noise3(t.lattice, q);
         const n2 = noise3(t.lattice, q.mul(2.7).add(5.3));
         const n3 = noise3(t.lattice, q.mul(7.1).add(11.9));
@@ -177,21 +189,31 @@ export function createCumulus(u, t, tier, count = 9) {
         // Billowy erosion (the noise folded about its middle): rounded lumps, never a circle.
         const b1 = n.x.sub(0.5).abs().mul(2.0);
         const b2 = n2.y.sub(0.5).abs().mul(2.0);
-        const edge = top.add(b1.sub(0.45).mul(0.085)).add(b2.sub(0.45).mul(0.045)).add(n3.x.sub(0.5).mul(crownward.mul(0.022).add(0.008)))
+        // The lumps are cut from the outline (folded noise: rounded, never a circle), deeper toward
+        // the crown where cumulus is cauliflower, shallow at the flat base.
+        const lumpy = crownward.mul(0.6).add(0.4);
+        const edge = top.add(b1.sub(0.5).mul(0.11).mul(lumpy)).add(b2.sub(0.5).mul(0.06).mul(lumpy))
+            .add(n3.x.sub(0.5).mul(crownward.mul(0.03).add(0.01)))
             .add(reach.min(0.0).mul(1.5));
-        const alpha = smoothstep(0.0, 0.035, edge).mul(floorCut).toVar();
+        // Firm at the crown, softer along the sides and the base (it frays into the air there).
+        const fray = mix(float(0.06), float(0.02), crownward);
+        const alpha = smoothstep(0.0, fray, edge).mul(floorCut).toVar();
         const nx = noise3(t.lattice, q.add(vec3(0.3, 0.0, 0.0))).x.sub(n.x);
         const ny = noise3(t.lattice, q.add(vec3(0.0, 0.3, 0.0))).x.sub(n.x);
         const nx2 = noise3(t.lattice, q.mul(2.7).add(vec3(5.6, 5.3, 5.3))).y.sub(n2.y);
         const ny2 = noise3(t.lattice, q.mul(2.7).add(vec3(5.3, 5.6, 5.3))).y.sub(n2.y);
-        nrm.assign(normalize(nrm.add(vec3(nx, ny, 0.0).mul(-3.0)).add(vec3(nx2, ny2, 0.0).mul(-2.2))));
+        nrm.assign(normalize(nrm.add(vec3(nx, ny, 0.0).mul(-4.0)).add(vec3(nx2, ny2, 0.0).mul(-2.6))));
         // Lighting in the bank's frame: right, up, and out toward the eye.
         const bearing = billows.element(id.mul(BILLOWS)).w;
         const right = vec3(cos(bearing), 0.0, sin(bearing));
         const out = vec3(sin(bearing).negate(), 0.0, cos(bearing));
         const sunCard = vec3(dot(u.sunDir, right), u.sunDir.y, dot(u.sunDir, out));
         // Cloud is lit softly through itself: a wide wrap, the heap's form more than each lump's.
-        const lambert = clamp(dot(nrm, sunCard).mul(0.5).add(0.5), 0.0, 1.0);
+        const lambert0 = clamp(dot(nrm, sunCard).mul(0.5).add(0.5), 0.0, 1.0);
+        // A billow's lit side lies under its neighbour's shadow where the heap is deep: the
+        // creases between lumps (where the noise folds in) and the heap's middle stay greyer.
+        const crease = smoothstep(0.15, 0.65, b1).mul(0.35).add(0.65);
+        const lambert = lambert0.mul(crease);
         const height = clamp(p.y.div(aspect), 0.0, 1.0);
         // The base is flat and darker; the sides take the sky's blue.
         const shade = mix(u.cloudShade.mul(0.85), u.cloudShade.mul(1.35).add(u.fill.mul(0.6)), smoothstep(0.0, 0.5, height));
