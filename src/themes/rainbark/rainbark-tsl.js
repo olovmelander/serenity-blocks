@@ -799,14 +799,20 @@ export const MIST_PEAK = Object.freeze({
  * flat, a billow could only read as a streak). With one octave (Low, Minimal) `one`: its light
  * takes `crest` from the height, only `amp` of two octaves' contrast, and its lees are only `lee`
  * as blue (a lone round dip would read as a crater, a lit far wall inside a dark ring).
+ * With two octaves a third, `third` times finer still, shades the billows' own surface (`relief`
+ * of its slope's light, never their blue): the small rounded heads a vapour's top is built of, so
+ * a lit front reads as cloud, never a flat cream plate, and a lee's edge breaks up instead of
+ * running round it as one smooth line; it melts out by its own footprint like the others.
  */
 export const MIST_BILLOWS = Object.freeze({
     scale: 0.03,
     second: 2.3,
     weight: 0.45,
+    third: 2.6,
+    relief: 0.32,
     boil: Object.freeze([1, 2]),
     slope: 0.4,
-    slopeRange: 0.16,
+    slopeRange: 0.26,
     lit: 1.25,
     crest: 0.45,
     ramp: Object.freeze([0.2, 0.8]),
@@ -1086,8 +1092,19 @@ export function rbMistField(u, dir, { billows = 2 } = {}) {
     }
     const hv = h.toVar();
     // Falling toward the sun: a front facing it; rising: a lee turned from it.
-    const range = mix(float(B.slopeRange), float(B.slopeRange * MIST_BREAKOUT.soften), rbBreakout(u));
+    const range = mix(float(B.slopeRange), float(B.slopeRange * MIST_BREAKOUT.soften), rbBreakout(u)).toVar();
     const slope = clamp(hv.sub(hs).div(range), -1.0, 1.0).mul(fine).toVar();
+    // (The billows' own heads, MIST_BILLOWS.third: their slope's light only, so the lees keep
+    // their broad blue.)
+    let relief = null;
+    if (billows > 1) {
+        const p3 = p.mul(B.second * B.third).add(vec2(5.7, 23.1)).toVar();
+        const boil3 = u.mistDrift.z.mul(B.boil[1] * 1.5).add(11.0);
+        const fine3 = float(1.0).sub(smoothstep(B.fade[0], B.fade[1], cells.mul(B.second * B.third))).mul(fine);
+        const n3 = u.noise3(vec3(p3, boil3)).x;
+        const n3s = u.noise3(vec3(p3.add(toSun), boil3)).x;
+        relief = clamp(n3.sub(n3s).div(range), -1.0, 1.0).mul(fine3).mul(B.relief);
+    }
     const crest = smoothstep(B.ramp[0], B.ramp[1], hv).sub(0.5).mul(2.0).mul(fine);
     // (One octave, Low and Minimal: its lone round dips would read as craters, a lit far wall in a
     // dark ring, so its light comes mostly from the height and its lees are held lighter.)
@@ -1096,7 +1113,9 @@ export function rbMistField(u, dir, { billows = 2 } = {}) {
         .mul(billows > 1 ? 1 : B.one.amp).toVar();
     // The lee: wherever the light falls (a slope turned from the sun, and the low ground between
     // billows as a whole, so a dip is one soft shadow, never a lit floor inside a dark ring).
-    const lee = smoothstep(MIST_HOLLOW.from, 1.0, light.negate()).mul(billows > 1 ? 1 : B.one.lee);
+    // (Pinned before the heads' light is added: an expression is emitted where it is read.)
+    const lee = smoothstep(MIST_HOLLOW.from, 1.0, light.negate()).mul(billows > 1 ? 1 : B.one.lee).toVar();
+    if (relief) light.assign(clamp(light.add(relief), -1.0, 1.0));
     // The sun's broad pools: where the sun ray from the mist crosses the canopy plane.
     const up = u.canopyY.sub(seenY).div(max(u.sunDir.y, 0.2));
     const q = hit.add(u.sunDir.xz.mul(up)).div(MIST_POOLS.tile).add(u.wind.mul(GAP_MASK.tile / MIST_POOLS.tile))
@@ -1531,17 +1550,18 @@ export const CANOPY = Object.freeze({
     layers: 0.16,
     layersDeep: 0.42,
     light: Object.freeze([0.55, 1.0]),
-    halo: Object.freeze([0.1, 1.4]),
+    halo: Object.freeze([0.14, 2.2]),
     understory: Object.freeze([0.93, 1.2, 0.8]),
     understoryUp: Object.freeze([0.28, 0.45]),
     fringeFar: Object.freeze([4, 3]),
     liteLift: 1.6,
-    tone: 0.38,
+    tone: 0.2,
+    clusters: Object.freeze({ tile: 48, shade: 0.34, lit: 0.22 }),
     core: Object.freeze([0.4, 2.2, 0.82]),
     through: Object.freeze([0.42, 0.5, 0.7]),
     rim: 0.3,
     rimLit: 1.1,
-    rimBase: 0.4,
+    rimBase: 0.25,
     rimPx: 4.5,
     fringe: Object.freeze([0.45, 0.75, 0.55]),
     glow: 0.75,
@@ -1572,6 +1592,18 @@ export const CANOPY = Object.freeze({
  */
 export const BARK_TONE = Object.freeze({
     value: 0.15, warm: Object.freeze([0.06, 0.0, -0.06]), haze: Object.freeze([0.6, 1.1]), over: 12,
+});
+/**
+ * A far trunk is a column standing in bright air with the sun to its right and a little behind
+ * it (rbBark, the far draw): its sun side's edge takes the sunlit haze wrapping round it (the
+ * zone's sunlit haze, `k` times its forward scatter toward the sun at g = `g`, over the edge's
+ * last `edge` power of 1 − N·V, from a sun side of `side`[0] to [1]), a warm sliver that rounds
+ * the pole; its shade side keeps only `shadeSheen` of the satin's sheen (two bright hairlines, one
+ * down either edge, read as glass pipes) and its body falls toward the shade by `shade` (the
+ * ambient on bark turned from the sun): lit on one side, cool on the other, never a tube.
+ */
+export const GROVE_RIM = Object.freeze({
+    k: 0.85, g: 0.45, edge: 2.2, side: Object.freeze([0.55, 0.95]), shadeSheen: 0.08, shade: 0.55,
 });
 export const CANOPY_UNDER = Object.freeze({
     drop: 24,
@@ -1751,8 +1783,16 @@ export function rbCanopy(u, dir, pre = null, { solid = null, lite = false, lower
     // little warm, most at a clump's thin edges and toward the sun, least in its thick heart:
     // CANOPY.through. Never a grey lid in the haze.)
     const thin = float(1.0).sub(core.mul(C.through[2])).mul(forward.mul(C.through[1]).add(1.0 - C.through[1]));
+    // (Inside a mass, its clusters: the undersides of leaf clusters a few metres across shaded, their
+    // edges lit through toward the sun, CANOPY.clusters, so a mass reads as foliage, never one flat
+    // patch of camouflage; the texture's own mips melt them into their mean where they are smaller
+    // than a pixel.)
+    const cl = u.fbm(q.div(C.clusters.tile).add(vec2(0.21, 0.67))).toVar();
+    const clusterShade = cl.b.mul(0.7).add(cl.a.mul(0.3)).sub(0.5).mul(2.0);
+    const clusterK = float(1.0).add(clusterShade.mul(mix(float(C.clusters.shade), float(C.clusters.lit), forward)));
     const deep = mix(lightOf, backlit, thin.mul(C.through[0])).mul(mix(float(1.0 - C.tone), float(1.0 + C.tone), tone))
-        .mul(mix(float(1.0), float(C.core[2]), core));
+        .mul(mix(float(1.0), float(C.core[2]), core))
+        .mul(clusterK);
     const fringe = rim.mul(mix(float(C.fringe[2]), smoothstep(C.fringe[0], C.fringe[1], leaf), nearK));
     // (The rims glow lime with the sun through them anywhere under the canopy, most toward it:
     // CANOPY.rimBase of the way at the least.)
@@ -2928,7 +2968,10 @@ export function rbBark(u, at, {
     const hazeFrom = mix(float(BARK_LIGHT.hazeFrom[0]), float(BARK_LIGHT.hazeFrom[1]), inHaze);
     const hazeFill = u.col.hazeSun.mul(smoothstep(hazeFrom, 1.0, sunSide))
         .mul(mix(float(BARK_LIGHT.haze[0]), float(BARK_LIGHT.haze[1]), inHaze));
-    const ambient = skyFill.add(hazeFill).mul(ao);
+    // (A far trunk's side turned from the sun falls toward the shade: GROVE_RIM.shade.)
+    const ambient = fine
+        ? skyFill.add(hazeFill).mul(ao)
+        : skyFill.add(hazeFill).mul(ao).mul(mix(float(GROVE_RIM.shade), float(1.0), smoothstep(0.15, 0.75, sunSide)));
     // Bounce (§2.4): warm light up from the mist top, fading with height above it, strongest on
     // bark that faces down toward it, and (BOUNCE) on the shade side below the eye.
     const facing = max(float(0.3).sub(N.y), 0.0).mul(0.55).add(0.45);
@@ -2958,7 +3001,7 @@ export function rbBark(u, at, {
         .mul(forward.mul(BARK_SHEEN.glow).add(1.0));
     const floorGlow = mix(u.col.mistTop, u.col.underglow, 0.5).mul(SHEEN_FLOOR);
     const sky = mix(air, floorGlow, smoothstep(0.0, -0.45, Rv.y).mul(float(1.0).sub(rbMistInside(u))));
-    const strip = mix(float(BARK_SHEEN.shade), float(1.0), smoothstep(0.3, 0.85, sunSide));
+    const strip = mix(float(fine ? BARK_SHEEN.shade : GROVE_RIM.shadeSheen), float(1.0), smoothstep(0.3, 0.85, sunSide));
     const sheenRaw = sky.mul(F.mul(u.sheenK).mul(float(1.0).sub(rough)).mul(strip).mul(BARK_SHEEN.k))
         .mul(max(float(1.0).sub(fl.mul(smoothstep(0.0, 0.15, ndl)).mul(BARK_SHEEN.fleck)), 0.0))
         .mul(near.mul(0.6).add(0.4))
@@ -3019,6 +3062,15 @@ export function rbBark(u, at, {
     const lit = sunlitBark.add(rich.mul(ambient.add(bounce))).add(sheen)
         .add(glaze)
         .toVar();
+    if (!fine) {
+        // A far trunk's sun side: the sunlit haze wrapping round its edge (GROVE_RIM).
+        const G = GROVE_RIM;
+        const e = float(1.0).sub(clamp(dot(N, V), 0.0, 1.0));
+        const edge = exp(log(max(e, 1e-4)).mul(G.edge));
+        const toSun = smoothstep(G.side[0], G.side[1], sunSide);
+        const behind = rbHgMix(dot(V.negate(), L), float(G.g));
+        lit.addAssign(u.col.hazeSun.mul(edge.mul(toSun).mul(behind).mul(G.k)));
+    }
     if (fine) {
         // The Sunshower's water runs down the near bark (u.wet): narrow threads along the grain,
         // wandering a little, each beaded with drops sliding down it, mirroring the bright air down
