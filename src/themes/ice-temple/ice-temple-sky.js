@@ -16,6 +16,7 @@ import {
     acos,
     attribute,
     cameraPosition,
+    cameraViewMatrix,
     clamp,
     cross,
     dot,
@@ -72,6 +73,9 @@ const starLayer = /* @__PURE__ */ Fn(([grid, time, keep]) => {
     inputs: [{ name: 'grid', type: 'vec2' }, { name: 'time', type: 'float' }, { name: 'keep', type: 'float' }],
 });
 
+/** The moon's angular radius (radians; about three and a half times the true moon, for the frame). */
+const MOON_RADIUS = 0.029;
+
 /** The dome: the night's gradient, stars, the moon with the halo ice crystals draw round it. */
 export function createSky(u) {
     const material = new THREE.MeshBasicNodeMaterial({ side: THREE.BackSide, depthWrite: false });
@@ -94,10 +98,23 @@ export function createSky(u) {
         const moonDir = itMoonDir();
         const m = dot(dir, moonDir);
         const ang = acos(clamp(m, -1.0, 1.0));
-        const disc = float(1.0).sub(smoothstep(0.027, 0.031, ang));
-        const face = u.noise(dir.xy.mul(6.0)).r.mul(0.32).add(0.78);
-        const limb = float(1.0).sub(smoothstep(0.0, 0.031, ang).mul(0.3));
-        const glow = exp(ang.mul(-22.0)).mul(0.55).add(exp(ang.mul(-5.5)).mul(0.07));
+        // The disc is measured on the screen, not on the sky: near the corner of a wide lens a
+        // round angle projects to an oval, and the moon stands near the corner.
+        const vd = cameraViewMatrix.mul(vec4(dir, 0.0)).xyz;
+        const vm = cameraViewMatrix.mul(vec4(moonDir, 0.0)).xyz;
+        const sd = vd.xy.div(max(vd.z.negate(), 1e-3)).mul(u.projScale);
+        const sm = vm.xy.div(max(vm.z.negate(), 1e-3)).mul(u.projScale);
+        const R = u.projScale.mul(MOON_RADIUS);
+        const q = sd.sub(sm).div(R).mul(step(0.0, vd.z.negate())).mul(step(0.0, vm.z.negate()))
+            .add(vec2(9.0, 9.0).mul(float(1.0).sub(step(0.0, vd.z.negate()))));
+        const r = length(q).toVar();
+        const disc = float(1.0).sub(smoothstep(0.9, 1.04, r));
+        // Maria: the darker seas, broad and soft, and a brighter highland between.
+        const maria = smoothstep(0.42, 0.7, u.noise(q.mul(0.16).add(vec2(0.31, 0.57))).r);
+        const face = float(1.0).sub(maria.mul(0.3)).mul(u.noise(q.mul(0.55).add(vec2(0.7, 0.2))).g.mul(0.14).add(0.93));
+        const limb = float(1.0).sub(r.mul(r).mul(0.22));
+        const rAng = r.mul(MOON_RADIUS);
+        const glow = exp(rAng.mul(-22.0)).mul(0.55).add(exp(ang.mul(-5.5)).mul(0.07));
         // Diamond dust in the air: the 22° halo, faintly red on its inner edge.
         const ringD = ang.sub(0.384);
         const halo = exp(ringD.mul(ringD).mul(-2600.0)).mul(0.05)
@@ -283,22 +300,33 @@ export function createAurora(u, count = 4) {
         const coarse = u.noise(vec2(vS.mul(4.2).add(flow), lanes)).r;
         const mid = u.noise(vec2(vS.mul(19.0).sub(flow.mul(2.2)), lanes.add(0.31))).g;
         const fine = u.noise(vec2(vS.mul(71.0).add(flow.mul(4.0)), lanes.add(0.67))).b;
-        const ray = pow(itSaturate(coarse.mul(1.4).sub(0.22)), 1.6)
-            .mul(mid.mul(0.9).add(0.3))
+        // (Rays with dark lanes between them: a curtain is drawn in light and dark, not a glow.)
+        const ray = pow(itSaturate(coarse.mul(1.55).sub(0.3)), 1.8)
+            .mul(mid.mul(1.0).add(0.22))
             .mul(fine.mul(0.9).add(0.55))
             .toVar();
         // The lower border is sharp, bright and ragged: every ray hangs to its own depth.
-        const vv = vV.add(mid.sub(0.5).mul(0.05)).sub(0.012);
-        const rise = smoothstep(0.0, 0.03, vv);
-        // A ray that burns brighter also reaches higher; none reaches the ribbon's own top.
-        const fall = exp(max(vv, 0.0).mul(mix(float(8.5), float(2.4), itSaturate(ray.mul(1.4)))).negate());
-        const top = float(1.0).sub(smoothstep(0.5, 1.0, vV));
+        const vv = vV.add(mid.sub(0.5).mul(0.05)).sub(0.012).toVar();
+        const rise = smoothstep(0.0, 0.025, vv);
+        // A ray that burns brighter also reaches higher, far above the border, and none reaches
+        // the ribbon's own top.
+        const reach = itSaturate(ray.mul(1.5));
+        const fall = exp(max(vv, 0.0).mul(mix(float(7.0), float(1.25), reach)).negate());
+        const top = float(1.0).sub(smoothstep(0.55, 1.0, vV));
         // Curtains come and go along their length.
         const ends = smoothstep(0.0, 0.1, vS).mul(float(1.0).sub(smoothstep(0.9, 1.0, vS)));
         const swell = sin(vS.mul(6.0).add(u.time.mul(0.11)).add(vMisc.y)).mul(0.5).add(0.5);
-        const body = mix(u.auroraA, u.auroraB, smoothstep(0.02, 0.3, vV));
-        const colour = mix(body, u.auroraC, smoothstep(0.28, 0.85, vV).mul(0.6));
-        const k = rise.mul(fall).mul(top).mul(ray.mul(2.3).add(0.09)).mul(ends)
+        // Colour with height: the border's colour, the body's above it, and up the tall rays the
+        // fringe's (green, then cyan, then violet on the first level).
+        const body = mix(u.auroraA, u.auroraB, smoothstep(0.03, 0.26, vv));
+        const colour = mix(body, u.auroraC, smoothstep(0.16, 0.6, vv).mul(0.85)).toVar();
+        // The hem: a thin line where the curtain is brightest, burning toward white in its knots.
+        const hem = exp(max(vv, 0.0).mul(-70.0)).mul(rise).mul(ray.mul(1.3).add(0.2));
+        colour.assign(mix(colour, vec3(0.86, 1.0, 0.94), itSaturate(hem.mul(ray).mul(1.2)).mul(0.45)));
+        // Light runs along the border in waves.
+        const run = sin(vS.mul(38.0).sub(u.time.mul(0.9).mul(vMisc.z.add(0.6))).add(vMisc.y.mul(5.0))).mul(0.5).add(0.5);
+        const k = rise.mul(fall).mul(top).mul(ray.mul(2.3).add(0.07)).mul(ends)
+            .add(hem.mul(run.mul(0.6).add(0.7)).mul(ends).mul(0.9))
             .mul(swell.mul(0.7).add(0.3))
             .mul(vMisc.w)
             .mul(u.auroraGain);

@@ -27,7 +27,7 @@ import {
     DEG, SHORE_FRAME, SURF, SWASH, TAU,
 } from './luminous-tides-core.js';
 import {
-    TUNE, breakOf, coastHeight, coastLamps, crestOf, hash22, horizonHaze, sandOf, shoreOf, skyColour,
+    TUNE, breakOf, coastHeight, coastLamps, crestOf, glintLobe, hash22, horizonHaze, sandOf, shoreOf, skyColour,
     surfPhaseOf, swashOf,
 } from './luminous-tides-tsl.js';
 
@@ -177,8 +177,11 @@ function surfAt(a, s, t, full, noise = null) {
         .add(brk.mul(H).mul(exp(dB.div(1.1).negate())).mul(sec.mul(0.6).add(0.4)))
         .mul(shoreward);
     const foam = brk.mul(exp(dB.div(WAVE * 0.3).negate())).mul(H.div(AVERAGE)).mul(sec.mul(0.5).add(0.5));
+    // The next crest seaward, for the water's mirror of it: how far away (metres across the shore),
+    // how high, where it breaks, how brightly this stretch of it breaks.
+    const ahead = vec4(dA, Hn, sbN, secN);
     return {
-        h, slope, lip: lip.div(AVERAGE).mul(wet), bore: bore.div(AVERAGE).mul(wet), foam: foam.mul(wet),
+        h, slope, lip: lip.div(AVERAGE).mul(wet), bore: bore.div(AVERAGE).mul(wet), foam: foam.mul(wet), ahead,
     };
 }
 
@@ -511,17 +514,68 @@ export function createShore({
             stars: true,
             milky: false,
             coast: true,
+            lamps: false,
         }).toVar();
-        // The far coast's lamps laid on the water as long streaks (the rougher the water, the longer).
-        const sigma = clamp(sqrt(variance).mul(1.7), 0.003, 0.06).div(DEG);
-        const brg = atan(R.x, R.z.negate()).mul(1 / DEG).toVar();
-        const height = coastHeight(brg, skyNoise);
-        const streaks = coastLamps(brg, R.y.mul(1 / DEG), U, height, sigma.mul(3.0)).mul(0.3)
-            .mul(float(1.0).sub(smoothstep(0.04, 0.12, R.y)));
+        // The far coast's lamps on the water. Each lamp lays a road of glints toward the eye: the
+        // facets that happen to tilt just so mirror it, more of them the rougher the water, so the
+        // road runs down the water from below its lamp and fades as the tilt it asks for grows.
+        // It is laid from a level sea's mirror ray, swayed a little by the ripples the water
+        // resolves (a lamp mirrored point for point through those ripples drew the contours of a
+        // smooth slope field: stacks of crescents), and broken into glints, short horizontal dashes
+        // that come and go, in cells of bearing and depression a few pixels wide at any range.
+        const level = vec3(V.x.negate(), V.y, V.z.negate()).toVar();
+        const brgLevel = atan(level.x, level.z.negate()).toVar();
+        const brgRay = atan(R.x, R.z.negate());
+        const brg = mix(brgLevel, brgRay, TUNE.lampWander).mul(1 / DEG).toVar();
+        const road = coastLamps(brg, float(0.0), U, coastHeight(brg, skyNoise), float(40.0));
+        const toLamp = normalize(vec3(level.x, length(level.xz).mul(0.004), level.z));
+        const lobe = glintLobe(vec2(0.0), variance.add(TUNE.lampRough), V, toLamp);
+        const pa = max(U.pixelAngle, 1e-5);
+        const glintAt = vec2(brgLevel.div(pa.mul(4.6)), V.y.div(pa.mul(1.7))).toVar();
+        const glintCell = floor(glintAt);
+        const within = fract(glintAt);
+        const beat = t.mul(TUNE.glintRate).add(hash22(glintCell).x.mul(7.0)).toVar();
+        const g0 = hash22(glintCell.add(vec2(floor(beat).mul(17.13), 3.7))).x;
+        const g1 = hash22(glintCell.add(vec2(floor(beat).add(1.0).mul(17.13), 3.7))).x;
+        const g = mix(g0, g1, smoothstep(0.0, 1.0, fract(beat)));
+        // A glint's light: most dim, a few bright (x^6 has a mean of 1/7), on a soft dash.
+        const dash = exp(within.y.sub(0.5).mul(3.6).pow2().negate()).mul(sin(within.x.mul(Math.PI)));
+        const glint = g.pow(6.0).mul(7.0 * 2.6).mul(dash);
+        // Torn water and foam mirror nothing: the road breaks off over a breaking wave.
+        const mirror = float(1.0).sub(smoothstep(0.15, 1.1, agitation)).mul(float(1.0).sub(surf.foam.min(1.0)));
+        const streaks = road.mul(lobe).mul(glint).mul(TUNE.lampRoad).mul(mirror)
+            .mul(float(1.0).sub(smoothstep(0.05, 0.16, V.y)));
 
-        // The water: dark looked into; the night and the lamps in its mirror.
+        // The sea's fire in its own mirror. A breaking wave stands up out of the water, so the water
+        // in front of it mirrors its lit lip and the wall of its bore: the mirror ray from here climbs
+        // at the view's grazing angle and meets the next crest seaward while it is still lower than
+        // the crest's lit top. The light it finds there is that crest's own lip and bore light.
+        // The ray is the water's own mirror ray, through the ripples it resolves: a long crest is
+        // wide enough that the facets tilted toward it draw it in wavering streaks (a point lamp,
+        // mirrored the same way, was a stack of crescents; its road is drawn above).
+        const ahead = surf.ahead.toVar();
+        const across = vec2(GRAD[0], GRAD[1]).normalize();
+        const toward = dot(normalize(R.xz.add(vec2(1e-5, 0.0))), across).toVar();
+        const run = ahead.x.div(max(toward, 0.05));
+        const rise = run.mul(R.y.div(max(length(R.xz), 1e-3)));
+        const crestTop = ahead.y.mul(0.9).add(0.15);
+        // Rough water blurs the image: a long, soft fall-off as the ray climbs past the crest's top,
+        // and less of it the further the crest is.
+        const meets = float(1.0).div(rise.div(crestTop).pow2().add(1.0)).mul(exp(run.div(-22.0)))
+            .mul(smoothstep(0.05, 0.25, toward));
+        const crestAt = s.add(ahead.x);
+        const lipThere = exp(crestAt.sub(ahead.z.sub(1.0)).div(1.7).pow2().negate());
+        const boreThere = smoothstep(ahead.z, ahead.z.sub(4.0), crestAt).mul(smoothstep(-0.2, 1.2, crestAt));
+        const fireThere = ahead.y.div(AVERAGE).mul(lipThere.mul(TUNE.lip).add(boreThere.mul(TUNE.bore)))
+            .mul(ahead.w);
+        const fireMirror = light.glow.mul(U.glowPower).mul(fireThere.mul(meets).mul(fresnel))
+            .mul(mirror).mul(TUNE.mirrorFire);
+
+        // The water: dark looked into; the night in its mirror, and the surf's fire; the lamps'
+        // roads of glints.
         const seaBody = light.sea.mul(float(1.0).add(surf.foam.mul(0.4))).toVar();
-        const water = seaBody.mul(float(1.0).sub(fresnel)).add(mirrored.add(streaks).mul(fresnel)).toVar();
+        const water = seaBody.mul(float(1.0).sub(fresnel)).add(mirrored.mul(fresnel)).add(streaks).add(fireMirror)
+            .toVar();
 
         // The sand: dry, its grain and wind ripples, a wrack line of dark weed along the top of the
         // wash; wet and dark where the swash has been, glossy; a thin sheet of water over it where
