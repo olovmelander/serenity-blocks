@@ -121,8 +121,11 @@ export function create({
     const saved = {
         fov: camera.fov, near: camera.near, far: camera.far, toneMapping: renderer.toneMapping,
     };
+    const look = { ...(POST_LOOK[quality] || POST_LOOK.High) };
+    if (params.has('bloom')) look.bloom = params.get('bloom') === '1';
+    if (params.has('msaa')) look.msaa = Math.max(0, Math.round(num(params, 'msaa')));
     const world = new VesperWorld({
-        scene, quality, capture: true, renderer,
+        scene, quality, capture: true, renderer, mirrorSamples: params.get('noPost') === '1' ? 0 : look.msaa ?? 0,
     }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
@@ -130,10 +133,6 @@ export function create({
     if (params.has('level')) world.setHourDrift(false);
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
-
-    const look = { ...(POST_LOOK[quality] || POST_LOOK.High) };
-    if (params.has('bloom')) look.bloom = params.get('bloom') === '1';
-    if (params.has('msaa')) look.msaa = Math.max(0, Math.round(num(params, 'msaa')));
     const noPost = params.get('noPost') === '1';
     const post = noPost ? null : new VesperPost(renderer, scene, camera, {
         look,
