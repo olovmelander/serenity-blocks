@@ -186,6 +186,37 @@ the forest shipped with, the rest and the melt, seek against a night lived throu
 three frame rates, the level as a step on top of the clock, and the short way round.
 Not run inside the real game.
 
+### The visual pass (2026-10-20)
+
+A look at the night with fresh eyes, keeping everything it already was.
+
+- **Moonbeams cut into rays.** The volumetric beams lit the air round the moon as one even
+  glow. A short screen-space march (High and up 20 to 24 taps, Medium 14, none at Low) now
+  weighs how open each pixel's line of sight to the moon is: open sky keeps more of the
+  beam, a bough or a trunk in the way dims it, so the light streams out between the
+  trees, near the moon only. Two short marches at quarter size, as the breathing stage
+  draws its shafts (`breath-post.js`): no jitter, no grain. New tier column `rays`.
+- **Backlit boughs are silhouettes.** The side of a tree the eye sees is the one turned
+  away from the moon, but the needles wrapped 40 % of the moonlight round to it, so the
+  boughs nearest the moon glowed teal. The wrap is 18 % now, and the light through a spray
+  is half its own hue, half grey, and held to the tips: dark boughs edged in silver.
+- **Grass in tussocks.** The grass was spread evenly and read as a lawn. Now it grows in
+  clumps a few metres across with moss between them (a two-octave value noise,
+  `forestGrassClump`), taller in a clump's heart, with drifts of last year's pale straw
+  (`forestGrassDry`). Same count per tier.
+- **Bark near the eye.** A finer layer of the bark noise draws furrows between the plates
+  and moss in cushions with dark gaps; on a far trunk the mipmapped noise averages away.
+- **The lens.** A firefly within about four metres of the eye goes out of focus: a soft
+  disc up to four times as wide with a slightly brighter rim, its light spread over the
+  disc (never brighter), and no sharp trail across its own blur.
+- **Trails at Low.** Low draws a trail in three segments, and a curling path drawn in three
+  chords looked like bent wire. A trail now covers less flight when it has fewer segments.
+
+Checked in the playground at High and Low on native WebGPU, 1920×1080, 1280×720 and
+390×844: idle, lock, hard drop, combo, four lines (the stag), moonrise; clean consoles.
+GPU per frame at 1080p, interleaved against the forest before the pass: about 1.25 ms
+against 1.15 ms. `tests/unit/forest-*.test.js`: 620 tests.
+
 ## How it is built
 
 ### Trees, fronds and props authored in Blender
@@ -266,12 +297,12 @@ MCP session was not used, so nothing in an open Blender was touched.
 
 ### Quality tiers
 
-| Tier | Stands / far trees | Sprays kept | Ferns / grass | Fireflies | Trail | Waves | Firefly light map | Beams | Post |
+| Tier | Stands / far trees | Sprays kept | Ferns / grass | Fireflies | Trail | Waves | Firefly light map | Beams (rays) | Post |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Extreme | 58 / 380 | 100 % | 360 / 5,200 | 3,600 | 8 seg. | 6 | 128² | 40 steps | on |
-| Ultra | 52 / 320 | 100 % | 300 / 4,400 | 3,000 | 8 | 6 | 128² | 32 steps | on |
-| High | 44 / 260 | 86 % | 250 / 3,400 | 2,400 | 6 | 5 | 96² | 26 steps | on |
-| Medium | 34 / 190 | 62 % | 170 / 2,000 | 1,600 | 5 | 4 | 64² | 16 steps, 0.35 scale | on |
+| Extreme | 58 / 380 | 100 % | 360 / 5,200 | 3,600 | 8 seg. | 6 | 128² | 40 steps (24 taps) | on |
+| Ultra | 52 / 320 | 100 % | 300 / 4,400 | 3,000 | 8 | 6 | 128² | 32 steps (22 taps) | on |
+| High | 44 / 260 | 86 % | 250 / 3,400 | 2,400 | 6 | 5 | 96² | 26 steps (20 taps) | on |
+| Medium | 34 / 190 | 62 % | 170 / 2,000 | 1,600 | 5 | 4 | 64² | 16 steps, 0.35 scale (14 taps) | on |
 | Low | 22 / 120 | 40 %, trunks only | 100 / 900 | 900 | 3 | 3 | off | analytic glow in the haze | off |
 | Minimal | 14 / 80 | 28 %, trunks only | 60 / 420 | 480 | none | 2 | off | analytic glow in the haze | off |
 

@@ -7,10 +7,14 @@
  * current colour and level, so a family that flares in play flares on the stone around
  * it too, with correct soft shadows, at no lighting cost. Fine relief is lit from the
  * baked dominant direction.
+ *
+ * The stone carries what a wet limestone cave has: flowstone flutes running down its walls and
+ * stalactites, thin calcite veins that catch the crystals' light, crevices that hold their dark
+ * (the baked occlusion shades every light, not the ambient alone), and a wet sheen.
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, abs, attribute, cameraPosition, clamp, cross, dFdx, dFdy, dot, exp, float, length, max, min, mix,
+    Fn, abs, attribute, cameraPosition, clamp, cross, dFdx, dFdy, dot, exp, float, fwidth, length, max, min, mix,
     normalWorld, normalize, positionWorld, pow, sign, smoothstep, texture, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { FAMILY_COUNT } from './crystal-cave-light.js';
@@ -63,13 +67,29 @@ export function createCaveRock({
             .add(coarse.r.mul(0.35)))).g;
         const depthBelow = max(float(poolLevel).sub(point.y), 0).toVar();
         const damp = smoothstep(poolLevel + 2.6, poolLevel + 0.1, point.y).toVar();
+        const steep = float(1).sub(smoothstep(0.5, 0.85, abs(surface.y))).toVar();
         const slate = mix(vec3(0.2, 0.2, 0.26), vec3(0.36, 0.33, 0.37), coarse.r);
         const warm = mix(slate, vec3(0.4, 0.31, 0.27), smoothstep(0.55, 0.85, coarse.a).mul(0.55));
         const albedo = warm.mul(bedding.mul(0.5).add(0.62)).mul(fine.g.mul(0.35).add(0.8))
             .mul(mix(float(1), float(0.5), damp)).toVar();
+        // Calcite veins: thin pale lines where a broad field crosses its middle, only in places.
+        const veinField = planar(0.035).toVar();
+        const veinWidth = max(fwidth(veinField.r).mul(1.2), 0.012);
+        const vein = float(1).sub(smoothstep(veinWidth.mul(0.5), veinWidth.mul(1.5), abs(veinField.r.sub(0.5))))
+            .mul(smoothstep(0.6, 0.78, coarse.a)).mul(steep.mul(0.7).add(0.3))
+            .mul(float(1).sub(damp))
+            .toVar();
+        albedo.assign(mix(albedo, vec3(0.6, 0.64, 0.68), vein.mul(0.55)));
 
         // ---- relief lit from the baked direction ---------------------------------
-        const height = coarse.g.mul(0.6).add(fine.r.mul(0.4)).toVar();
+        // Flowstone flutes: grooves running down every steep face (stalactites, walls), read
+        // along the face's horizontal run and stretched far downward.
+        const fluteX = texture(light.noise, vec2(point.z.mul(0.32), point.y.mul(0.028))).g;
+        const fluteZ = texture(light.noise, vec2(point.x.mul(0.32), point.y.mul(0.028))).g;
+        const flute = fluteX.mul(weight.x).add(fluteZ.mul(weight.z)).div(max(weight.x.add(weight.z), 1e-3));
+        const height = coarse.g.mul(0.6).add(fine.r.mul(0.4))
+            .add(flute.mul(steep).mul(smoothstep(0.3, 0.7, coarse.r).mul(0.5).add(0.1)))
+            .toVar();
         const shaped = surface.toVar();
         if (relief) {
             const dpdx = dFdx(point);
@@ -106,24 +126,26 @@ export function createCaveRock({
         const irradiance = crystals.mul(controls.gain).mul(shell.mul(1.6).add(1))
             .add(poolLight).add(skyLight)
             .toVar();
-        const lightColour = irradiance.mul(directional)
+        // Crevices hold their dark: the baked occlusion shades every light, not the ambient alone.
+        const hollow = mix(float(0.42), float(1), smoothstep(0.1, 0.85, occlusion)).toVar();
+        const lightColour = irradiance.mul(directional).mul(hollow)
             .add(vec3(0.3, 0.38, 0.6).mul(controls.ambient).mul(occlusion));
 
         // ---- wet stone and mineral glitter --------------------------------------
         const view = normalize(cameraPosition.sub(point)).toVar();
         const halfway = normalize(toLight.add(view));
-        const wet = mix(float(0.16), float(0.75), damp).mul(fine.a.mul(0.6).add(0.4));
+        const wet = mix(float(0.3), float(0.85), max(damp, steep.mul(0.35))).mul(fine.a.mul(0.6).add(0.4));
         const gloss = pow(max(dot(shaped, halfway), 0), mix(float(22), float(70), damp)).mul(wet);
         const fleck = smoothstep(0.86, 0.97, texture(light.noise, point.xy.add(point.z.mul(0.7)).mul(0.9)
             .add(view.xy.mul(0.55))).b).mul(smoothstep(0.25, 1.2, length(irradiance)));
         const colour = albedo.mul(lightColour)
-            .add(irradiance.mul(gloss.mul(0.55).add(fleck.mul(0.5))))
+            .add(irradiance.mul(gloss.mul(0.9).add(fleck.mul(0.5)).add(vein.mul(0.12))).mul(hollow))
             .add(controls.waveColor.mul(shell).mul(albedo).mul(0.35)).toVar();
 
         // ---- under the pool: water takes the red and the caustics dance -----------
         const sunk = smoothstep(0, 0.35, depthBelow);
         const absorbed = colour.mul(exp(vec3(0.95, 0.3, 0.24).mul(depthBelow).negate()));
-        const bedLight = vec3(0.05, 0.42, 0.46).mul(caustic.mul(1.4).add(0.2))
+        const bedLight = vec3(0.05, 0.42, 0.46).mul(caustic.mul(caustic).mul(1.8).add(0.045))
             .mul(exp(depthBelow.mul(-0.2))).mul(albedo)
             .mul(u.energy.mul(1.2).add(1));
         colour.assign(mix(colour, absorbed.add(bedLight), sunk));
