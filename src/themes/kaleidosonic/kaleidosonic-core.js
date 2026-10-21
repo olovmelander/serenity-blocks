@@ -208,6 +208,26 @@ export function foldSplit(folds, out = [0, 0]) {
 }
 
 /**
+ * The gem's facets: the six axes of the icosahedron (both ends: twelve facets), tilted a little so
+ * no beam runs straight along the lattice's floors or pillars. Each facet throws its light out as
+ * a narrow beam (kaleidosonic-light.js); the gem turns about the vertical, so the beams sweep the
+ * halls.
+ */
+const PHI = (1 + Math.sqrt(5)) / 2;
+const BEAM_TILT = 0.31;
+export const BEAM_AXES = Object.freeze([[0, 1, PHI], [0, 1, -PHI], [1, PHI, 0], [1, -PHI, 0], [PHI, 0, 1], [-PHI, 0, 1]]
+    .map((a) => {
+        const l = Math.hypot(a[0], a[1], a[2]);
+        const [x, y, z] = [a[0] / l, a[1] / l, a[2] / l];
+        // tilted about the x axis
+        const c = Math.cos(BEAM_TILT);
+        const s = Math.sin(BEAM_TILT);
+        return Object.freeze([x, y * c - z * s, y * s + z * c]);
+    }));
+/** A beam's sharpness: its light halves about 8° off its axis. */
+export const BEAM_K = 70;
+
+/**
  * The refolds a clear walks through, in order: each clear springs `s` to the next value (a chain
  * walks further). Chosen so neighbours differ enough to read as a new hall, never enough to close
  * the eye's corridor.
