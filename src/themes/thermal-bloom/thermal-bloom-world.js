@@ -101,6 +101,13 @@ import {
     vapourCode,
     visibleColumn,
     windAt,
+    DRIFT,
+    VAPOUR_RISE,
+    WIND_HEADING,
+    plumeDrift,
+    rigidDrift,
+    riseForLean,
+    windRunTable,
 } from './thermal-bloom-tsl.js';
 import { tierFor } from './thermal-bloom-quality.js';
 import { createSky } from './thermal-bloom-sky.js';
@@ -2283,7 +2290,7 @@ export class ThermalBloomWorld {
         const wind = windAt(t, this._wind);
         u.breath.value = breath;
         u.steam.value = steamForBreath(breath) * this.seasonValue('steam') * (1 - 0.45 * (this.drained || 0));
-        const heading = -0.35 + wind.angle; // the breeze leans the steam to the right
+        const heading = WIND_HEADING + wind.angle; // the breeze leans the steam to the right
         u.windDir.value.set(Math.cos(heading), Math.sin(heading));
         u.windSpeed.value = wind.speed;
         if (this.held.gust !== null) {
@@ -2393,6 +2400,8 @@ export class ThermalBloomWorld {
                 r1: 0,
                 density: 0,
                 lean: 0,
+                rise: 0,
+                drift: new Float32Array(DRIFT.nodes * 2),
                 ur: 0,
                 ug: 0,
                 ub: 0,
@@ -2407,10 +2416,24 @@ export class ThermalBloomWorld {
         list.length = 0;
         const pool = this._vapourPool;
         const cam = u.camPos.value;
-        /** One body (kind, seed, foot, height, radii, density, lean, the light from below). */
-        const add = (kind, seed, x, y, z, h, r0, r1, density, lean, under = null) => {
+        // The breeze's run back from now: every trailing column's bend is read from it.
+        this._windRun = windRunTable(this.time, this._windRun);
+        const run = this._windRun;
+        const centre = this._centre || (this._centre = [0, 0]);
+        centre[0] = u.irisCentre.value.x;
+        centre[1] = u.irisCentre.value.y;
+        const gustPhase = u.gust.value.x;
+        /**
+         * One body (kind, seed, foot, height, radii, density, lean, the light from below, and how
+         * fast its billows climb in m/s: RISE unless given). A plume trails its vent: its axis bends
+         * with the wind's history; any other body leans as one.
+         */
+        const add = (kind, seed, x, y, z, h, r0, r1, density, lean, under = null, rise = VAPOUR_RISE) => {
             if (!(density > 1e-3) || !(h > 0.2) || list.length >= pool.length) return;
             const b = pool[list.length];
+            b.rise = rise;
+            if (kind === VAPOUR_KIND.plume) plumeDrift(this.time, x, z, h, riseForLean(lean), run, centre, b.drift);
+            else rigidDrift(this.time, x, z, h, lean, centre, gustPhase, b.drift);
             b.x = x;
             b.y = y;
             b.z = z;
@@ -2442,8 +2465,12 @@ export class ThermalBloomWorld {
             const b = list[i];
             const o = i * VAPOUR_ROWS_PER;
             rows[o].set(b.x, b.y, b.z, b.h);
-            rows[o + 1].set(b.r0, b.r1, b.density, b.lean);
+            rows[o + 1].set(b.r0, b.r1, b.density, b.rise);
             rows[o + 2].set(b.ur, b.ug, b.ub, b.code);
+            const d = b.drift;
+            rows[o + 3].set(d[0], d[1], d[2], d[3]);
+            rows[o + 4].set(d[4], d[5], d[6], d[7]);
+            rows[o + 5].set(d[8], d[9], d[10], d[11]);
         }
         u.vapourCount.value = n;
     }
@@ -2480,6 +2507,8 @@ export class ThermalBloomWorld {
             lerp(1.1 * steam, 1.5 + 0.5 * size, dense) * lerp(1, 0.35, Math.max(0, grown - dense))
                 * (1 - this.drained * 0.85) * (1 - 0.85 * jetUp),
             lerp(0.11, 0.2, grown),
+            null,
+            riseForLean(lerp(0.11, 0.2, grown)) * 0.7,
         );
         // The Stair's hot upper pools breathe low wisps of steam (the water cools as it steps down).
         {
@@ -2534,6 +2563,8 @@ export class ThermalBloomWorld {
                 0.55 * p.density * steam * (bank ? 0.7 : 1) * (1 + 0.5 * sym),
                 bank ? lean * 2.5 : lean,
                 sym > 0 ? [0.5 * sym, 0.42 * sym, 0.3 * sym] : null,
+                // Their billows climb with their puffs: a far column visibly breathes upward.
+                riseForLean(bank ? lean * 2.5 : lean) * 0.7,
             );
         });
         // The Sleeper (§3.12): woken by a perfect clear, a towering column on the far rim, its

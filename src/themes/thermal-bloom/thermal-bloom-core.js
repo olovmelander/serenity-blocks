@@ -430,6 +430,174 @@ export function gustAt(t, out = { phase: -1, seed: 0 }) {
     return out;
 }
 
+// ── How a column of steam bends: the wind's history ────────────────────────────
+
+/** The heading the breeze leans the steam toward (radians); the wind's angle swings about it. */
+export const WIND_HEADING = -0.35;
+
+/**
+ * A steam column is the path of the puffs that left its vent: a puff at a height has been rising
+ * for an age, and has drifted with every wind it met on the way (the wind's run over that age).
+ * So a change in the wind bends the column from the bottom up and the top lags behind, and a gust
+ * leaves a kink that climbs the column with its puffs, instead of the whole column pivoting about
+ * its foot as one straight stick. The rise slows with height (`bend`), so tall columns bend over.
+ *
+ *   nodes     points along the column the shader's curved axis passes through (f = k / nodes)
+ *   bend      age at a height fraction f is T · f^bend (T = height / rise)
+ *   step      seconds a sample of the wind's run table spans; horizon its length
+ *   gust      how hard a gust's front pushes a puff it passes (m/s)
+ *   gustStep  seconds a gust's push is sampled at (a front crosses a vent in about a second)
+ *   ease      seconds over which a pushed puff hands its push from one node to the next
+ *   rise      the rise speed a lean implies is 1 / lean, inside these bounds (m/s)
+ */
+export const DRIFT = Object.freeze({
+    nodes: 6,
+    bend: 1.3,
+    step: 0.5,
+    horizon: 64,
+    gust: 14,
+    gustStep: 0.1,
+    ease: 3,
+    rise: Object.freeze([2.5, 16]),
+});
+
+const _wind = { angle: 0, speed: 0 };
+
+/** The breeze's velocity at t (m/s, world x and z), without gusts, written to `out`. */
+export function windVelocity(t, out = [0, 0]) {
+    windAt(t, _wind);
+    const heading = WIND_HEADING + _wind.angle;
+    out[0] = Math.cos(heading) * _wind.speed;
+    out[1] = Math.sin(heading) * _wind.speed;
+    return out;
+}
+
+/**
+ * The CPU twin of tbGustBand: a gust's front strength (0..1) at a ground point, for the gust's
+ * phase (0..1 across its crossing; negative: none), the Iris's centre and the wind's heading.
+ */
+export function gustBand(phase, x, z, cx, cz, dx, dz) {
+    if (!(phase >= 0)) return 0;
+    const along = (x - cx) * dx + (z - cz) * dz;
+    const front = -520 + 1040 * Math.min(1, phase);
+    const d = (along - front) / 140;
+    const ends = smooth(0, 0.12, phase) * (1 - smooth(0.85, 1, phase));
+    return Math.exp(-d * d) * ends;
+}
+
+/**
+ * The breeze's run back from t: entry i (x, z) is how far the air moved over the last i · step
+ * seconds. One table a frame serves every column.
+ */
+export function windRunTable(t, out = new Float32Array(2 * (Math.round(DRIFT.horizon / DRIFT.step) + 1))) {
+    const n = out.length / 2;
+    const v = windVelocity(t, [0, 0]);
+    let px = v[0];
+    let pz = v[1];
+    let rx = 0;
+    let rz = 0;
+    out[0] = 0;
+    out[1] = 0;
+    for (let i = 1; i < n; i++) {
+        windVelocity(t - i * DRIFT.step, v);
+        rx += (px + v[0]) * 0.5 * DRIFT.step;
+        rz += (pz + v[1]) * 0.5 * DRIFT.step;
+        px = v[0];
+        pz = v[1];
+        out[2 * i] = rx;
+        out[2 * i + 1] = rz;
+    }
+    return out;
+}
+
+/** The rise speed (m/s) a body's lean implies (a puff leans by wind / rise per metre). */
+export function riseForLean(lean) {
+    const [lo, hi] = DRIFT.rise;
+    return Math.max(lo, Math.min(hi, 1 / Math.max(lean, 1e-3)));
+}
+
+const _gust = [0, 0];
+
+/**
+ * Where a column's axis stands at the heights f = k / nodes (k = 1 … nodes), as offsets (metres,
+ * world x and z) from its vent at (x, z): each height's puffs have drifted with the breeze's run
+ * over their age and with every gust front that crossed the vent since they left it.
+ * @param {number} t           the world's time (the clock the wind and the gusts run on)
+ * @param {number} height      the column's height (metres)
+ * @param {number} rise        how fast its puffs rise (m/s)
+ * @param {Float32Array} run   windRunTable(t)
+ * @param {number[]} centre    the Iris's centre [x, z] (the gust's frame)
+ * @param {Float32Array|number[]} out  2 · nodes values
+ */
+export function plumeDrift(t, x, z, height, rise, run, centre, out) {
+    const { nodes, bend, step } = DRIFT;
+    const last = run.length / 2 - 1;
+    const T = Math.min(Math.max(height, 0) / Math.max(rise, 1e-3), last * step);
+    for (let k = 1; k <= nodes; k++) {
+        const age = T * (k / nodes) ** bend;
+        const at = Math.min(age / step, last);
+        const i = Math.floor(at);
+        const f = at - i;
+        const j = Math.min(i + 1, last);
+        out[2 * (k - 1)] = run[2 * i] + (run[2 * j] - run[2 * i]) * f;
+        out[2 * (k - 1) + 1] = run[2 * i + 1] + (run[2 * j + 1] - run[2 * i + 1]) * f;
+    }
+    // The gusts that crossed the vent within the column's age: each pushes the puffs it found
+    // there, and the push stays with them as they climb.
+    const t0 = t - T;
+    for (let cell = Math.floor(t0 / GUST_CELL) - 1; cell <= Math.floor(t / GUST_CELL); cell++) {
+        if (cell < 0) continue;
+        const start = cell * GUST_CELL + 5 + GUST_JITTER * hash1(cell, 11);
+        if (Math.min(start + GUST_CROSS, t) <= Math.max(start, t0)) continue;
+        // Slices fixed to the gust's start, each counted by the share of it inside the column's
+        // age, so the push grows (and leaves the top) continuously, never a slice at a time.
+        const slices = Math.round(GUST_CROSS / DRIFT.gustStep);
+        for (let n = 0; n < slices; n++) {
+            const s0 = start + n * DRIFT.gustStep;
+            const covered = (Math.min(s0 + DRIFT.gustStep, t) - Math.max(s0, t0)) / DRIFT.gustStep;
+            if (covered <= 0) continue;
+            const s = s0 + DRIFT.gustStep * 0.5;
+            windVelocity(s, _gust);
+            const speed = Math.hypot(_gust[0], _gust[1]) || 1;
+            const dx = _gust[0] / speed;
+            const dz = _gust[1] / speed;
+            const push = gustBand((s - start) / GUST_CROSS, x, z, centre[0], centre[1], dx, dz)
+                * DRIFT.gust * DRIFT.gustStep * Math.min(covered, 1);
+            if (push < 1e-4) continue;
+            const since = t - s;
+            for (let k = 1; k <= nodes; k++) {
+                // The puffs a gust pushed pass a node as they age past it: eased over a few
+                // seconds, so the kink climbs smoothly instead of hopping from node to node.
+                const held = clamp01((T * (k / nodes) ** bend - since) / DRIFT.ease + 0.5);
+                if (held <= 0) continue;
+                out[2 * (k - 1)] += dx * push * held;
+                out[2 * (k - 1) + 1] += dz * push * held;
+            }
+        }
+    }
+    return out;
+}
+
+/**
+ * A body that does not trail its vent (a heap, a puff, a devil, a spray) leans as one: its axis
+ * offset at f = k / nodes is the current lean times its height there, a gust at its foot leaning
+ * it harder (the old straight lean, which suits a body that moves as one).
+ */
+export function rigidDrift(t, x, z, height, lean, centre, gustPhase, out) {
+    const v = windVelocity(t, _gust);
+    const speed = Math.hypot(v[0], v[1]) || 1;
+    const dx = v[0] / speed;
+    const dz = v[1] / speed;
+    const g = gustBand(gustPhase, x, z, centre[0], centre[1], dx, dz);
+    const perMetre = speed * lean * (1 + 2 * g) + 0.22 * g;
+    for (let k = 1; k <= DRIFT.nodes; k++) {
+        const h = (height * k) / DRIFT.nodes;
+        out[2 * (k - 1)] = dx * perMetre * h;
+        out[2 * (k - 1) + 1] = dz * perMetre * h;
+    }
+    return out;
+}
+
 // ── The Chalice's idle cycle (§1.4, §3.9) ──────────────────────────────────────
 
 /** Preplay clusters: one per cell (35–50 s apart), each 2–4 splashes. */
@@ -1181,7 +1349,9 @@ export function visibleColumn(rig, base, height) {
  * The world writes them near to far (the march composites front to back) and the count.
  */
 export const VAPOUR_SLOTS = 32;
-export const VAPOUR_ROWS_PER = 3;
+/** Rows a body: (foot, height), (radii, density, billow climb), (underlight, code), then its curved
+ * axis as DRIFT.nodes (x, z) offsets, two a row. */
+export const VAPOUR_ROWS_PER = 6;
 /**
  * plume  a rising column: billows climbing it, fading out over its top third (vents, the
  *        Chalice's thread, the steam phases)
@@ -1191,6 +1361,9 @@ export const VAPOUR_ROWS_PER = 3;
  * devil  a spinning column (the T-spin's steam devils)
  * spray  a cloud of falling water drops: white, forward-scattering, the bow in it
  */
+/** How fast billows climb a body that names no speed of its own (m/s). */
+export const VAPOUR_RISE = 1.7;
+
 export const VAPOUR_KIND = Object.freeze({
     plume: 0, dome: 1, puff: 2, devil: 3, spray: 4,
 });
