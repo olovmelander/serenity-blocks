@@ -9,8 +9,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    cameraPosition, color, cos, dot, exp, float, length, mix, normalize, positionWorld, pow, reflect, reflector,
-    saturate, screenUV, sin, smoothstep, texture, uniform, uniformArray, vec2, vec3,
+    cameraPosition, color, cos, dot, exp, float, floor, fract, hash, length, max, mix, normalize, positionWorld, pow,
+    reflect, reflector, saturate, screenUV, sin, smoothstep, step, texture, uniform, uniformArray, vec2, vec3,
 } from 'three/tsl';
 import { GoldenForestRipples } from './golden-forest-ripples.js';
 import {
@@ -35,6 +35,9 @@ export class GoldenForestLake {
         this.group.name = 'GoldenForestLake';
         this.ripples = new GoldenForestRipples(tier.ripples);
         this.uShimmer = uniform(0);
+        // Where the eye rests, and how many glitter cells a unit of view angle holds (watch()).
+        this.uEye = uniform(new THREE.Vector3(0, 1.6, 8));
+        this.uGlintCells = uniform(260);
         this.reflection = null;
         this.owned = [];
     }
@@ -73,7 +76,13 @@ export class GoldenForestLake {
 
     /** Mirror only what was tagged: the lake itself and anything left untagged stay out. */
     watch(camera) {
-        if (!this.reflection || !camera) return;
+        if (!camera) return;
+        // The glitter is laid out from the resting eye, so it stays on the water as the camera
+        // breathes; about seven pixels a cell in a 1080-line frame.
+        this.uEye.value.copy(camera.position);
+        const angle = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov || 50) / 2);
+        this.uGlintCells.value = 1080 / (7 * angle);
+        if (!this.reflection) return;
         this.reflection.reflector.getVirtualCamera(camera).layers.set(GOLDEN_FOREST_MIRROR_LAYER);
     }
 
@@ -142,15 +151,39 @@ export class GoldenForestLake {
         const up = vec3(0, 1, 0);
         const body = gravel.mul(clear).mul(light.uSunColor.mul(sunlit).mul(0.3).add(light.ambient(up).mul(1.2)))
             .add(color(0x1a0d05).mul(clear.oneMinus()).mul(light.ambient(up)).mul(1.4));
+        const shallow = float(1).sub(smoothstep(0.0, 0.16, depth));
         // The sun's own glitter, crisper than the mirror can hold it.
         const micro = normalize(vec3(waves.x.mul(-2.4).sub(ringSlope.x), 1, waves.y.mul(-2.4).sub(ringSlope.y)));
         const glitter = pow(saturate(dot(micro, normalize(view.add(light.uSunDir)))), 700).mul(sunlit);
+        // Sun glitter: points of light that come and go on the ruffled water in the sun's path. A
+        // ripple facet flashes when it is tilted to the halfway vector between the eye and the
+        // sun; with a slope spread `rough`, the share of facets that are is about
+        // exp(-tan^2(theta_h) / 2 rough^2), so each cell lights with that chance. That draws the
+        // sun's column narrow across and long toward the eye, as on real water, and a breeze
+        // widens it. The cells are laid out in the angles the eye sees (bearing, depression), so
+        // a cell is a few pixels wide at any range and never shimmers into slivers far off.
+        const rel = world.xz.sub(this.uEye.xz);
+        const bearing = rel.x.div(max(rel.y.negate(), 0.5));
+        const depression = this.uEye.y.sub(world.y).div(max(length(rel), 0.5));
+        const grid = vec2(bearing, depression).mul(this.uGlintCells);
+        const cell = floor(grid).add(4096);
+        const id = cell.x.mul(1597).add(cell.y.mul(7919));
+        const seed = hash(id);
+        const jitter = vec2(hash(id.add(1)), hash(id.add(2))).sub(0.5).mul(0.5);
+        const spot = exp(length(fract(grid).sub(0.5).sub(jitter)).pow2().mul(-16));
+        const twinkle = pow(saturate(sin(t.mul(hash(id.add(3)).mul(4).add(1.5)).add(seed.mul(40)))), 6);
+        const halfway = normalize(view.add(light.uSunDir));
+        const tilt2 = halfway.x.mul(halfway.x).add(halfway.z.mul(halfway.z)).div(max(halfway.y.mul(halfway.y), 1e-4));
+        const rough = ruffle.min(1).mul(0.07).add(0.03);
+        const odds = exp(tilt2.div(rough.mul(rough).mul(2)).negate());
+        const sparkle = spot.mul(twinkle).mul(step(float(1).sub(odds.mul(0.85)), seed))
+            .mul(sunlit).mul(float(1).sub(shallow));
         const surface = mix(body, mirrored, fresnel)
             .add(light.uSunColor.mul(glitter).mul(this.uShimmer.mul(1.2).add(1.3)))
+            .add(light.uSunColor.mul(sparkle).mul(this.uShimmer.mul(1.2).add(2.8)))
             // Rings carry a thread of gold on their crests.
             .add(vec3(1.5, 0.84, 0.26).mul(ringLight).mul(light.uGlow.mul(0.5).add(0.22)));
         // The waterline is soft: the last finger of water barely tints the gravel under it.
-        const shallow = float(1).sub(smoothstep(0.0, 0.16, depth));
         const wetGravel = gravel.mul(0.55).mul(light.uSunColor.mul(sunlit).mul(0.4).add(light.ambient(up).mul(1.2)));
         material.colorNode = light.haze(mix(surface, wetGravel, shallow.mul(0.8)), { world });
         return material;

@@ -10,8 +10,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, acesFilmicToneMapping, clamp, dot, float, length, max, mix, pass, pow, renderOutput, saturate, screenUV,
-    smoothstep, uniform, vec2, vec3, vec4,
+    Fn, acesFilmicToneMapping, clamp, dot, float, length, max, mix, pass, perspectiveDepthToViewZ, pow, renderOutput,
+    saturate, screenUV, smoothstep, uniform, vec2, vec3, vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
@@ -42,6 +42,8 @@ export class GoldenForestPost {
         this.uExposure = uniform(1.0);
         this.uShafts = uniform(1);
         this.uSunScreen = uniform(new THREE.Vector2(0.26, 0.37));
+        this.uNear = uniform(camera?.near ?? 0.3);
+        this.uFar = uniform(camera?.far ?? 3400);
         this.sunPoint = new THREE.Vector3();
         if (this.disabled) return;
         this.pipeline = new THREE.RenderPipeline(renderer);
@@ -63,7 +65,13 @@ export class GoldenForestPost {
             const centred = screenUV.sub(this.uSunScreen).mul(vec2(this.uAspect, 1));
             const toward = float(1).sub(saturate(length(centred).mul(0.78)));
             const shaftColour = mix(vec3(0.16, 0.06, 0.035), vec3(1.6, 0.8, 0.24), pow(toward, 2.1));
-            lit = lit.add(shaftColour.mul(this.shaftsBlur.r).mul(this.uShafts));
+            // The shadow box ends about 300 m out, so the march counts everything beyond it as lit
+            // air and laid a veil over the ridges and the sky. Past the far forest the shafts keep
+            // only the glow round the sun; the haze and the dome carry the distance.
+            const distance = perspectiveDepthToViewZ(sceneDepth, this.uNear, this.uFar).negate();
+            const beyond = smoothstep(380, 620, distance);
+            const keep = mix(float(1), toward.pow3().mul(0.62).add(0.1), beyond);
+            lit = lit.add(shaftColour.mul(this.shaftsBlur.r).mul(this.uShafts).mul(keep));
         }
         this.bloomNode = bloom(sceneColor, BLOOM_STRENGTH, 0.62, 1.0);
         // Soft knee on the brightest channel, so a saturated sun keeps its hue in the bloom.
@@ -79,9 +87,12 @@ export class GoldenForestPost {
         const graded = Fn(() => {
             const toned = acesFilmicToneMapping(lit.add(this.bloomNode.rgb).max(0), this.uExposure).toVar();
             const luma = dot(toned, vec3(0.2126, 0.7152, 0.0722));
-            // Shadows lean toward red umber so the gold has something to stand against.
+            // Split tone by scaling only: the shade leans to dusk violet so the gold has something to
+            // stand against, and the highlights keep their gold.
             const shade = float(1).sub(smoothstep(0.02, 0.36, luma));
-            toned.mulAssign(mix(vec3(1), vec3(1.05, 0.95, 0.98), shade.mul(0.5)));
+            const highlight = smoothstep(0.5, 0.95, luma);
+            toned.mulAssign(mix(vec3(1), vec3(0.95, 0.94, 1.1), shade.mul(0.5)));
+            toned.mulAssign(mix(vec3(1), vec3(1.03, 1.0, 0.93), highlight.mul(0.45)));
             toned.assign(mix(vec3(dot(toned, vec3(0.2126, 0.7152, 0.0722))), toned, 1.1));
             const radius = length(screenUV.sub(0.5).mul(vec2(this.uAspect.div(1.778), 1)).mul(2));
             toned.mulAssign(float(1).sub(smoothstep(0.72, 1.7, radius).mul(0.24)));
@@ -119,6 +130,10 @@ export class GoldenForestPost {
         const warmth = Number.isFinite(frame.warmth) ? THREE.MathUtils.clamp(frame.warmth, 0, 1) : 0;
         const shafts = Number.isFinite(frame.shafts) ? THREE.MathUtils.clamp(frame.shafts, 0, 1) : 0;
         this.uExposure.value = this.exposure + warmth * 0.035;
+        if (this.camera?.isCamera) {
+            this.uNear.value = this.camera.near;
+            this.uFar.value = this.camera.far;
+        }
         this.uShafts.value = 1 + shafts * 0.55;
         if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + warmth * 0.07;
         if (this.light && this.camera?.isCamera) {
