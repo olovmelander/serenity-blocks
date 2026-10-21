@@ -360,18 +360,20 @@ export const HALCYON_PALETTES = Object.freeze([
     },
     {
         name: 'blue-hour',
-        sun: [3.4, 2.4, 2.6],
-        zenith: [0.03, 0.07, 0.3],
-        horizon: [0.56, 0.4, 0.66],
-        glow: [0.9, 0.5, 0.6],
-        rose: [0.36, 0.26, 0.6],
-        cloud: [0.86, 0.62, 0.8],
-        cloudShade: [0.16, 0.16, 0.4],
-        shallow: [0.1, 0.5, 0.72],
-        deep: [0.0, 0.07, 0.24],
-        crystal: [0.5, 0.42, 1.0],
-        ley: [0.6, 0.56, 1.0],
-        stone: [0.5, 0.46, 0.46],
+        // The sun has just gone: a dim rose ember on the horizon under a deep blue sky, the
+        // first stars overhead, and the sanctuary's own lights the brightest things left.
+        sun: [1.7, 1.05, 1.0],
+        zenith: [0.012, 0.035, 0.2],
+        horizon: [0.2, 0.24, 0.56],
+        glow: [1.0, 0.44, 0.36],
+        rose: [0.2, 0.15, 0.44],
+        cloud: [0.5, 0.38, 0.62],
+        cloudShade: [0.07, 0.08, 0.24],
+        shallow: [0.06, 0.38, 0.62],
+        deep: [0.0, 0.04, 0.18],
+        crystal: [0.7, 0.3, 1.0],
+        ley: [0.82, 0.42, 1.0],
+        stone: [0.42, 0.42, 0.52],
     },
 ]);
 

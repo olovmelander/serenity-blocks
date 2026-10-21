@@ -246,6 +246,42 @@ set for a square frame, where the rig is already part-way to its upright pose), 
 about the centre, given a colour lift (contrast 1.14, saturation 1.3, brightness 1.06) and
 baked as a 512 px circle on a transparent ground.
 
+## Depths pass (2026-10-21)
+
+A second visual pass on `feature/halcyon-apex-depths`. Evidence:
+[reports/halcyon-apex-depths/](../reports/halcyon-apex-depths/).
+
+| Before | After (High, WebGPU) |
+| --- | --- |
+| ![blue hour before](../reports/halcyon-apex-depths/before-blue-hour.jpg) | ![blue hour after](../reports/halcyon-apex-depths/after-blue-hour.jpg) |
+| ![ranges before](../reports/halcyon-apex-depths/before-ranges-closeup.jpg) | ![ranges after](../reports/halcyon-apex-depths/after-ranges-closeup.jpg) |
+| ![Minimal before](../reports/halcyon-apex-depths/before-minimal.jpg) | ![Minimal after](../reports/halcyon-apex-depths/after-minimal.jpg) |
+
+- **The blue hour is a dusk.** Its sky, clouds, sun and crystals sat on one lavender, so nothing
+  stood out. The palette now has a deep blue zenith and horizon, a dim rose sun on the horizon,
+  slate clouds with rose undersides toward it, cooler darker stone, and a saturated violet for
+  the crystals and the ley lines, which become the brightest things in the frame.
+- **Stars.** A 3D lattice of directions, one star at most per cell (round everywhere on the dome,
+  no seam, never under a pixel), two layers. They come out where the hour's zenith is dark enough
+  (`1 − smoothstep(0.035, 0.075, luma(zenith))`, so only the blue hour today), fade toward the sun's
+  glow and hide behind cloud. The whole term is skipped behind an `If` in the bright hours.
+- **The far ranges.** Each ridge was one row of four facets per crest point. It is now six rows from
+  crest to foot, steep under the crest and flattening toward the valley, carved into alternating
+  spurs and gullies with the diagonals alternating. The crests draw exactly the numbers they always
+  drew from the plan's stream, so the skyline, and the islets and trees seeded after it, stand where
+  they stood; the carving draws from a stream of its own. High faces that look up take snow; steep
+  faces darken; mist lies in the valleys at each range's foot, computed with the air's colour once
+  per pixel.
+- **Minimal's sun on the water.** Without a mirror pass the lagoon returned the sun's sharp disc
+  along its sloping mirror ray, which bent into a hard white blob (on `main` too). It now returns a
+  soft road of light: a narrow lobe in a broad one round the sun's mirror direction.
+
+Verified: the 159 Halcyon Apex tests; lint clean on the theme; playground captures with clean
+consoles on WebGPU (High at rest and in game, the blue hour at rest and in game, a four-line clear,
+an upright 430 × 850 frame, Minimal) and on the WebGL2 backend (Low in the blue hour). Cost: a
+back-to-back A/B against `main` at 1600 × 900, High, WebGPU (NVIDIA Blackwell), 200 frames awaited on
+the GPU queue: main 1.9–2.2 ms, this pass 1.6–2.6 ms, within the session's noise.
+
 ## Captured previews
 
 ![In the game: hard drops, two lines, a chain, the beacons](halcyon-apex-overhaul/in-game-events.jpg)
