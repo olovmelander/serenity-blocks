@@ -7,6 +7,7 @@
  * Styles: public/styles/keystone-multiplayer.css (#match-config-modal).
  */
 import { enhanceSegmented } from './components/cosmic-select.js';
+import { MATCH_START_LEVEL_MAX, MATCH_START_LEVEL_MIN } from '../core/multiplayer/match-level-rule.js';
 import {
     closeLayer, focusSoon, mpIcon, openLayer,
 } from './components/mp-sheet.js';
@@ -165,6 +166,24 @@ export class MatchConfigModal {
               <details class="advanced-settings sb-mp-more">
                 <summary><span>More rules</span>${mpIcon('chevron', 16, 'sb-mp-more__chevron')}</summary>
                 <div class="sb-mp-more__body">
+                  <div class="sb-mp-field sb-mp-field--inline" id="online-start-level-group">
+                    <div class="sb-mp-field__text">
+                      <label class="sb-mp-field__label" for="online-start-level">Starting level</label>
+                      <p class="sb-mp-help">Everyone plays at this level. Higher levels drop pieces faster.</p>
+                    </div>
+                    <div class="sb-stepper" data-stepper-for="online-start-level">
+                      <button type="button" class="sb-stepper__btn" data-step="-1" aria-label="Decrease the starting level">${mpIcon('minus', 16)}</button>
+                      <input type="number" id="online-start-level" name="startLevel" min="${MATCH_START_LEVEL_MIN}" max="${MATCH_START_LEVEL_MAX}" value="${MATCH_START_LEVEL_MIN}" inputmode="numeric" />
+                      <button type="button" class="sb-stepper__btn" data-step="1" aria-label="Increase the starting level">${mpIcon('plus', 16)}</button>
+                    </div>
+                  </div>
+                  <label class="sb-mp-switch" id="online-level-progression-group">
+                    <span class="sb-mp-field__text">
+                      <span class="sb-mp-field__label">Level up as you clear</span>
+                      <span class="sb-mp-help">One level for every 15 lines. Off: the level never changes.</span>
+                    </span>
+                    <input type="checkbox" class="sb-toggle" id="online-level-progression" name="levelProgression" />
+                  </label>
                   <div class="sb-mp-field">
                     <span class="sb-mp-field__label">Attacks</span>
                     <select id="online-attack-style" name="attackStyle" aria-label="Attacks">
@@ -373,6 +392,9 @@ export class MatchConfigModal {
             garbageCancellation: formData.get('garbageCancellation') || 'full',
             attackStyle: formData.get('attackStyle') || 'standard',
             attackRules: this._attackRulesFor(formData.get('attackStyle') || 'standard'),
+            // The level rule (match-level-rule.js): a fixed level unless levelling up is on.
+            startLevel: parseInt(formData.get('startLevel'), 10),
+            levelProgression: formData.get('levelProgression') === 'on',
         };
         config.hotPotato = config.attackStyle === 'hot_potato';
         if (config.hotPotato) {
@@ -381,6 +403,13 @@ export class MatchConfigModal {
         }
 
         // Validation
+        if (!(config.startLevel >= MATCH_START_LEVEL_MIN && config.startLevel <= MATCH_START_LEVEL_MAX)) {
+            this.showError(
+                `Choose a starting level from ${MATCH_START_LEVEL_MIN} to ${MATCH_START_LEVEL_MAX}.`,
+                this.container.querySelector('#online-start-level'),
+            );
+            return;
+        }
         if (config.endCondition !== 'never' && config.endConditionValue <= 0) {
             const unit = CONDITIONS[config.endCondition]?.unit || 'points';
             this.showError(`Set how many ${unit} win the match.`, this.container.querySelector('#online-end-condition-value'));

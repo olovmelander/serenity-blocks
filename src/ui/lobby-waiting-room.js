@@ -17,6 +17,7 @@ import { escapeHtml, sanitizeCssColor } from '../utils/dom-safety.js';
 import {
     closeLayer, conditionLabel, confirmSheet, describeGoal, mpIcon, openLayer,
 } from './components/mp-sheet.js';
+import { describeMatchLevelRule } from '../core/multiplayer/match-level-rule.js';
 
 const WELCOME = 'Welcome to the lobby.';
 
@@ -78,6 +79,10 @@ export class LobbyWaitingRoom {
               <div class="info-item">
                 <dt class="info-label">Target</dt>
                 <dd class="info-value" id="win-target-value">–</dd>
+              </div>
+              <div class="info-item">
+                <dt class="info-label">Level</dt>
+                <dd class="info-value" id="level-rule-value">–</dd>
               </div>
               <div class="info-item">
                 <dt class="info-label">Host</dt>
@@ -431,6 +436,9 @@ export class LobbyWaitingRoom {
             targetText = `${config.endConditionValue} ${config.endCondition}`;
         }
         this.setText('win-target-value', targetText);
+
+        // The level rule: a fixed level unless the host turned levelling up on.
+        this.setText('level-rule-value', describeMatchLevelRule(config));
 
         // Objective summary callout
         this.setText('lobby-objective', config.endCondition === 'never'
