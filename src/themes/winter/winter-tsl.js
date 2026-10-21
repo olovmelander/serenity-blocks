@@ -276,6 +276,15 @@ export const LOOK = {
     moonSea: 0.4,
     // Where the seas' field turns to sea (higher: fewer, smaller seas).
     moonSeaFrom: 0.56,
+    // The snow's surface: broad swells (their slope, and the noise tiles per metre) and the long
+    // ripple's share of its old strength.
+    snowSwell: 0.8,
+    snowSwellScale: 0.011,
+    snowRipple: 0.3,
+    // The moon's path on the snow: a sharp lobe (16th power) and a broad one (4th). Snow scatters
+    // light; a sharp mirror lobe on its bumps drew water's highlights. The sparkle carries the path.
+    snowSheen: 0.1,
+    snowSheenBroad: 0.1,
 };
 
 /** Apply overrides ({ name: number }) to LOOK; unknown names and non-numbers are ignored. */

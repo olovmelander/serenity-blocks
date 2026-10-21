@@ -38,7 +38,7 @@ import {
     vec3,
 } from 'three/tsl';
 import {
-    EYE, wAir, wAurora, wGust, wHash23, wMoonShadow, wPart, wPow4, wRingLight, wSky, wSolidMaterial, wSq,
+    EYE, LOOK, wAir, wAurora, wGust, wHash23, wMoonShadow, wPart, wPow4, wRingLight, wSky, wSolidMaterial, wSq,
 } from './winter-tsl.js';
 import { buildGroundFan } from './winter-field.js';
 
@@ -104,10 +104,13 @@ export function createGround(u, {
         const drift = u.noise(vec2(P.x.mul(0.043), P.z.mul(0.17)));
         const grain = u.noise(P.xz.mul(0.83));
         const near = float(1.0).sub(smoothstep(60.0, 320.0, dist));
+        // Broad swells the wind has heaped (the moon finds their slopes) and a faint long ripple:
+        // at full strength the ripple read as wavelets on water.
+        const swell = u.noise(P.xz.mul(LOOK.snowSwellScale).add(vec2(0.17, 0.41)));
         const bump = vec3(
-            drift.g.mul(0.5).add(grain.g.mul(0.2)),
+            drift.g.mul(0.5 * LOOK.snowRipple).add(grain.g.mul(0.2)).add(swell.g.mul(LOOK.snowSwell)),
             0.0,
-            drift.b.mul(1.5).add(grain.b.mul(0.2)),
+            drift.b.mul(1.5 * LOOK.snowRipple).add(grain.b.mul(0.2)).add(swell.b.mul(LOOK.snowSwell)),
         ).mul(near);
         const N = normalize(N0.sub(bump)).toVar();
 
@@ -128,7 +131,7 @@ export function createGround(u, {
         const R = reflect(V.negate(), N);
         const mirrored = max(dot(R, u.moonDir), 0.0);
         const lobe = wPow4(mirrored);
-        snow.addAssign(u.moonCol.mul(wPow4(lobe).mul(0.5).add(lobe.mul(0.07))).mul(shadow));
+        snow.addAssign(u.moonCol.mul(wPow4(lobe).mul(LOOK.snowSheen).add(lobe.mul(LOOK.snowSheenBroad))).mul(shadow));
 
         // ── Rock and wood on the fells ──
         const steep = float(1.0).sub(smoothstep(0.72, 0.9, N0.y));
