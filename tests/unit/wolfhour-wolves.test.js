@@ -6,10 +6,11 @@ import {
     CAPSULE_COUNT, CAPSULE_STRIDE, WOLF_BOUNDS, blendRigs, pawCycle, poseWolf,
 } from '../../src/themes/wolfhour/wolfhour-wolf-rig.js';
 import {
-    ANSWERER, HOWL, PACK, SCOUT, WALK_STRIDE, createWolfhourPack, eventEnvelope, scoutAt,
+    ANSWERER, HOWL, PACK, SCOUT, WALK_STRIDE, blinkAt, createWolfhourPack, eventEnvelope, scoutAt,
+    scoutLookout,
 } from '../../src/themes/wolfhour/wolfhour-wolves.js';
 import {
-    REPERTOIRES, YOUNG_MOVES, actionFor, behaviourAt,
+    LIVELY, POUNCE, REPERTOIRES, YOUNG_MOVES, actionFor, behaviourAt, glide, glidePace, postureMove,
 } from '../../src/themes/wolfhour/wolfhour-wolf-behaviour.js';
 import { WOLFHOUR_PROPS, standWolfhourProps } from '../../src/themes/wolfhour/wolfhour-props.js';
 import { FOREST_BELTS, createWolfhourForest, plantBelt } from '../../src/themes/wolfhour/wolfhour-forest.js';
@@ -124,10 +125,20 @@ describe('Wolfhour wolves', () => {
         expect(pack.howlLevel(5.6)).toBe(0);
     });
 
-    it('breathes vapour while it howls and draws one invisible puff at rest', () => {
+    it('breathes vapour while it howls; at rest only faint breath, none under Reduce motion', () => {
         const pack = own(createWolfhourPack());
         const vapour = pack.group.getObjectByName('Wolfhour breath vapour');
-        pack.update(1);
+        const puffs = () => Array.from(vapour.geometry.getAttribute('aPuff').array.slice(0, vapour.count));
+        // At rest each wolf's breath smokes faintly in the cold as it goes out.
+        let breaths = 0;
+        for (let t = 0.5; t < 6; t += 0.25) {
+            pack.update(t);
+            expect(puffs().every((alpha) => alpha >= 0 && alpha < 0.17)).toBe(true);
+            breaths = Math.max(breaths, puffs().filter((alpha) => alpha > 0.02).length);
+        }
+        expect(breaths).toBeGreaterThan(0);
+        // Under Reduce motion the one invisible puff stays (it keeps the vapour compiled).
+        pack.update(1, 0);
         expect(vapour.count).toBe(1);
         expect(vapour.geometry.getAttribute('aPuff').array[0]).toBe(0);
         pack.howl(2);
@@ -206,14 +217,21 @@ describe('Wolfhour wolves', () => {
 
     it('pounces in an arc, nose first, throwing snow where it lands, and shakes it off', () => {
         const { slot } = REPERTOIRES.young;
-        const k = Array.from({ length: 200 }, (_, i) => i + 1).find((i) => actionFor('young', i) === 'pounce');
-        const peak = behaviourAt('young', k * slot + 2.65);
+        // A pounce from standing (no posture to change first).
+        const k = Array.from({ length: 200 }, (_, i) => i + 1)
+            .find((i) => actionFor('young', i) === 'pounce' && actionFor('young', i - 1) !== 'scratch');
+        const at = (u) => behaviourAt('young', k * slot + u);
+        // It turns round to face the place first: half way round, then facing it.
+        expect(at(0).facing).toBe(REPERTOIRES.young.facing);
+        expect(Math.abs(at(POUNCE.stalk / 2).yaw)).toBeGreaterThan(1);
+        expect(at(POUNCE.stalk + 0.1).facing).toBe(-REPERTOIRES.young.facing);
+        const peak = at((POUNCE.leap + POUNCE.land) / 2);
         expect(peak.lift).toBeGreaterThan(YOUNG_MOVES.leapHeight * 0.9);
         expect(peak.tuck).toBeGreaterThan(0.5);
         expect(peak.busy).toBe(true);
-        const dive = behaviourAt('young', k * slot + 3.05);
+        const dive = at(POUNCE.leap + (POUNCE.land - POUNCE.leap) * 0.94);
         expect(dive.pitch).toBeLessThan(-0.5);
-        const landed = behaviourAt('young', k * slot + 3.4);
+        const landed = at(POUNCE.land + 0.3);
         expect(landed.bursts.some((b) => b.kind === 'plume')).toBe(true);
         expect(landed.bursts.some((b) => b.kind === 'ring')).toBe(true);
         expect(behaviourAt('young', (k + 1) * slot - 0.05).dx).toBe(0);
@@ -450,7 +468,7 @@ describe('Wolfhour wolves on the ground', () => {
         const pawsAt = (t) => {
             pack.update(t, 1);
             const { wolf } = pack.scout;
-            const cycle = scoutAt(t).travel / (WALK_STRIDE * SCOUT.scale);
+            const cycle = scoutAt(t).walked / (WALK_STRIDE * SCOUT.scale);
             return wolf.paws.map((paw, i) => ({
                 x: wolf.mesh.position.x + paw[0] * wolf.facing * SCOUT.scale,
                 planted: pawCycle(cycle + [0.25, 0.75, 0, 0.5][i], WALK_STRIDE)[1] === 0,
@@ -482,5 +500,187 @@ describe('Wolfhour wolves on the ground', () => {
                 expect(groupY - ridge(groupX)).toBeLessThan(0.7 + 15 * 0.17 + 0.6);
             }
         }
+    });
+});
+
+describe('Wolfhour wolves come alive', () => {
+    /** Each wolf's capsule ends in its group's frame (its quad's scale and place applied). */
+    const ends = (wolf) => {
+        if (!wolf.mesh.visible) return null;
+        const { x: sx, y: sy } = wolf.mesh.scale;
+        const { x: px, y: py } = wolf.mesh.position;
+        return wolf.rows.filter((_, i) => i % 2 === 0)
+            .map((r) => [r.x * sx + px, r.y * sy + py, r.z * sx + px, r.w * sy + py]);
+    };
+    /** The largest move of any capsule end between two frames (wolves out of sight skipped). */
+    const stepBetween = (before, now) => {
+        let largest = 0;
+        now.forEach((wolf, w) => {
+            if (!wolf || !before[w]) return;
+            wolf.forEach((end, i) => {
+                const was = before[w][i];
+                largest = Math.max(
+                    largest,
+                    Math.hypot(end[0] - was[0], end[1] - was[1]),
+                    Math.hypot(end[2] - was[2], end[3] - was[3]),
+                );
+            });
+        });
+        return largest;
+    };
+    /** The largest move of any capsule end from one frame to the next, over `seconds`. */
+    const largestStep = (motion, seconds) => {
+        const pack = own(createWolfhourPack());
+        const ridge = (x) => Math.sin(x * 0.05) * 6 + x * 0.06;
+        pack.settle(ridge);
+        pack.answerer.settle(ridge);
+        pack.scout.settle(ridge);
+        const all = [...pack.wolves, pack.answerer.wolf, pack.scout.wolf];
+        const events = [[61, 'howl'], [95, 'glance'], [130, 'excite'], [177, 'howl'], [240.3, 'howl'], [244, 'excite']];
+        let before = null;
+        let largest = 0;
+        for (let frame = 0; frame < seconds * 30; frame++) {
+            const t = frame / 30;
+            for (const [at, kind] of events) if (Math.abs(t - at) < 1 / 60) pack[kind](t);
+            pack.update(t, motion);
+            const now = all.map(ends);
+            if (before) largest = Math.max(largest, stepBetween(before, now));
+            before = now;
+        }
+        return largest;
+    };
+
+    it('never jumps from one frame to the next: turns, postures, howls and combos all move', () => {
+        // At 30 frames a second nothing moves more than a quick turn or a leap carries it.
+        expect(largestStep(1, 300)).toBeLessThan(6.5);
+        expect(largestStep(0, 300)).toBeLessThan(3);
+    });
+
+    it('turns round through a view of its face (both eyes catch the moon) instead of flipping', () => {
+        const { slot } = REPERTOIRES.young;
+        const k = Array.from({ length: 200 }, (_, i) => i + 1)
+            .find((i) => actionFor('young', i) === 'pace' && actionFor('young', i - 1) !== 'scratch');
+        const pack = own(createWolfhourPack());
+        pack.settle(() => 0);
+        const young = pack.wolves.find((w) => w.spec.name === 'young');
+        let both = 0;
+        let flips = 0;
+        let facing = null;
+        for (let u = 0; u < 2; u += 1 / 60) {
+            pack.update(k * slot + u);
+            if (young.uniforms.uEye.value.z > 0.05 && young.uniforms.uEye2.value.z > 0.05) both += 1;
+            const now = Math.sign(young.mesh.scale.x);
+            if (facing !== null && now !== facing) flips += 1;
+            facing = now;
+        }
+        expect(flips).toBe(1);
+        expect(both).toBeGreaterThan(3);
+        // The rig: in profile one eye shows, facing you both, facing away neither.
+        const seen = (yaw) => {
+            const rig = poseWolf({ yaw });
+            return [rig.eye[2], rig.eye2[2]];
+        };
+        expect(seen(0)).toEqual([1, 0]);
+        expect(seen(Math.PI / 2).every((v) => v > 0.9)).toBe(true);
+        expect(seen(-Math.PI / 2)).toEqual([0, 0]);
+        // A turned wolf is the same wolf mirrored once the turn is done.
+        const done = poseWolf({ yaw: Math.PI });
+        const rest = poseWolf({});
+        const pivot = (done.capsules[0] + rest.capsules[0]) / 2;
+        expect(done.capsules[1]).toBeCloseTo(rest.capsules[1], 6);
+        expect(pivot).toBeCloseTo((done.capsules[2] + rest.capsules[2]) / 2, 6);
+    });
+
+    it('sits down haunches first, gets up forequarters first, and walks its forepaws out to lie', () => {
+        const sitting = postureMove('standing', 'sitting');
+        expect(sitting.sit.at).toBe(0);
+        const lying = postureMove('standing', 'lying');
+        expect(lying.down.at).toBeGreaterThan(lying.sit.at);
+        const up = postureMove('lying', 'standing');
+        expect(up.sit.at).toBeGreaterThan(up.down.at);
+        // The sitter lying down: each forepaw steps, the far one after the near one.
+        const { slot } = REPERTOIRES.sitter;
+        const k = Array.from({ length: 200 }, (_, i) => i + 2)
+            .find((i) => actionFor('sitter', i) === 'lie' && actionFor('sitter', i - 1) !== 'lie');
+        let lifted = 0;
+        let apart = 0;
+        for (let u = 0; u < 1.6; u += 0.05) {
+            const act = behaviourAt('sitter', k * slot + u);
+            if (Math.max(...act.foreLift) > 0.5) lifted += 1;
+            apart = Math.max(apart, Math.abs(act.foreDown[0] - act.foreDown[1]));
+        }
+        expect(lifted).toBeGreaterThan(4);
+        expect(apart).toBeGreaterThan(0.1);
+        // The legs keep their bones at every point of the move.
+        for (let w = 0; w <= 1; w += 0.125) {
+            const rig = poseWolf({ sit: w, down: 0 });
+            expect(Array.from(rig.capsules).every(Number.isFinite)).toBe(true);
+            const c = rig.capsules;
+            const bone = (i) => Math.hypot(c[i * 8 + 2] - c[i * 8], c[i * 8 + 3] - c[i * 8 + 1]);
+            expect(bone(11)).toBeCloseTo(7.5, 3);
+        }
+    });
+
+    it('scratches, listens with a paw raised, looks back over its shoulder, digs and circles', () => {
+        const ground = 0;
+        // Scratching: the near hind paw comes up to the jaw, far off the ground.
+        const scratching = poseWolf({ build: 'sitting', scratch: 1 });
+        expect(scratching.paws[2][1] - ground).toBeGreaterThan(10);
+        expect(poseWolf({ build: 'sitting' }).paws[2][1]).toBeLessThan(1);
+        // Alert: the near forepaw lifts.
+        expect(poseWolf({ pawUp: 1 }).paws[0][1]).toBeGreaterThan(4);
+        // Looking back: the muzzle points behind the eyes.
+        const back = poseWolf({ headYaw: 2.9, neckYaw: 1.2, head: 30 });
+        expect(back.muzzle[0]).toBeLessThan(back.eye2[0]);
+        expect(poseWolf({}).muzzle[0]).toBeGreaterThan(poseWolf({}).eye[0]);
+        // Digging: the forepaws scrape back and forth.
+        const strokes = [Math.PI / 2, Math.PI * 1.5].map((digPhase) => poseWolf({ dig: 1, digPhase }).paws[0][0]);
+        expect(Math.max(...strokes) - Math.min(...strokes)).toBeGreaterThan(4);
+        // Every new action turns up in its wolf's repertoire and plays its part.
+        const find = (role, action) => {
+            const { slot } = REPERTOIRES[role];
+            const k = Array.from({ length: 400 }, (_, i) => i + 1)
+                .find((i) => actionFor(role, i) === action && actionFor(role, i - 1) === 'idle');
+            return (u) => behaviourAt(role, k * slot + u);
+        };
+        expect(find('sitter', 'scratch')(2).scratch).toBe(1);
+        expect(find('lead', 'alert')(2.5).pawUp).toBe(1);
+        expect(Math.abs(find('lead', 'lookBack')(2.4).headYaw)).toBeGreaterThan(2.5);
+        expect(find('young', 'dig')(2).dig).toBe(1);
+        expect(find('young', 'dig')(2).bursts.some((b) => b.kind === 'spray')).toBe(true);
+        // Circling: round once (facing back the way it came half way), then lying.
+        const circle = find('lead', 'circle');
+        expect(circle(0.3 + 0.9 * 1.4).facing).toBe(-REPERTOIRES.lead.facing);
+        expect(circle(3.2).facing).toBe(REPERTOIRES.lead.facing);
+        expect(circle(6).down).toBe(1);
+        // The scout at its lookout: sniffs, lifts a paw, looks at you, looks back.
+        expect(scoutLookout(2.6).head).toBeLessThan(-20);
+        expect(scoutLookout(4.8).pawUp).toBe(1);
+        expect(scoutLookout(7.5).turn).toBeGreaterThan(0.8);
+        expect(scoutLookout(10.1).headYaw).toBeGreaterThan(2.5);
+    });
+
+    it('walks off from a standstill and slows to a stop with its paws at rest', () => {
+        expect(glide(0, 18, 7.5)).toBe(0);
+        expect(glide(18 / 7.5 + 0.45, 18, 7.5)).toBe(18);
+        expect(glidePace(0.1, 18, 7.5)).toBeLessThan(0.3);
+        expect(glidePace(1.2, 18, 7.5)).toBe(1);
+        // Stride follows speed: at a standstill a walking wolf's paws are where a standing one's are.
+        const still = poseWolf({ stride: 0, gait: 0.37 });
+        expect(still.paws).toEqual(poseWolf({}).paws);
+    });
+
+    it('keeps the lively actions out under Reduce motion, so postures still follow on', () => {
+        for (const role of Object.keys(REPERTOIRES)) {
+            for (let k = 0; k < 300; k++) expect(LIVELY).not.toContain(actionFor(role, k, true));
+        }
+    });
+
+    it('blinks now and then', () => {
+        let closed = 0;
+        for (let t = 0; t < 20; t += 0.02) if (blinkAt(t, 0.3) > 0.5) closed += 1;
+        // Three or four blinks in 20 s, each a few frames.
+        expect(closed).toBeGreaterThan(10);
+        expect(closed).toBeLessThan(60);
     });
 });

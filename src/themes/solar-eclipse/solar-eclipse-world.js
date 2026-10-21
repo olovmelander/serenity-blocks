@@ -64,6 +64,7 @@ import {
     smooth01,
     streamersAt,
     sunFrame,
+    umbraAzAt,
     wrapAngle,
 } from './solar-eclipse-core.js';
 import { tierFor } from './solar-eclipse-quality.js';
@@ -181,7 +182,10 @@ export class SolarEclipseWorld {
             echo: {
                 x: 0.2, y: 0.84, radius: 0, matte: 0,
             },
+            /** The water: where the horizon stands on screen (y down) and how far it stirs. */
+            water: { horizon: WORLD.horizonY, stir: 1 },
         };
+        this._level = [0, 0, -1];
         this.frame = sunFrame(0, 12 * DEG);
         this.sunAz = 0;
         this.sunAlt = 12 * DEG;
@@ -897,6 +901,7 @@ export class SolarEclipseWorld {
 
         u.time.value = time;
         u.axis.value = axisAt(time);
+        u.umbraAz.value = umbraAzAt(time);
         u.exposure.value = this.exposure;
         // A chain stills the water to glass.
         u.glass.value = clamp01(this.exposure * 1.2);
@@ -929,6 +934,14 @@ export class SolarEclipseWorld {
         post.echo.y = echo.y;
         post.echo.radius = echo.front && centre[1] > 0 ? radius : 0;
         post.echo.matte = 0.9 * (1 - 0.65 * clamp01(glare)) * (1 - 0.4 * clamp01(this.surge));
+        // The horizon straight ahead, where the water begins; a chain stills it to glass.
+        const level = this._level;
+        const lf = Math.hypot(this._fwd.x, this._fwd.z) || 1;
+        level[0] = this._fwd.x / lf;
+        level[1] = 0;
+        level[2] = this._fwd.z / lf;
+        post.water.horizon = this.screenOf(level, this._echoScreen).y;
+        post.water.stir = 1 - 0.75 * u.glass.value;
     }
 
     getPostState() {
