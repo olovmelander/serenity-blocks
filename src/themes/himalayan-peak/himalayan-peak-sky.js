@@ -4,13 +4,16 @@
  * One dome, shaded per view direction and drawn after everything solid, so it costs only where
  * sky shows: the gradient and the sun's scatter (hpSky, the function every other surface fades
  * into), the disc itself with its corona — the headwall hides it until the chain has raised it —
- * the last stars of the night, the Milky Way at moonrise, and streaks of cirrus that catch the
- * sun long before the ground does.
+ * the last stars of the night, the Milky Way at moonrise, streaks of cirrus that catch the
+ * sun long before the ground does, and far beyond the headwall a range of giants, blue with
+ * distance, whose summits take the light first.
  */
 
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    abs,
+    atan,
     cameraPosition,
     clamp,
     dot,
@@ -18,6 +21,8 @@ import {
     float,
     floor,
     fract,
+    fwidth,
+    length,
     max,
     mix,
     normalize,
@@ -38,6 +43,42 @@ export const SKY_RADIUS = 46000;
 export const SUN_RADIUS = 0.021;
 
 const MILKY_NORMAL = new THREE.Vector3(0.52, 0.5, 0.69).normalize();
+
+/**
+ * The far range, 40 to 80 km beyond the headwall: its giants as [bearing, summit elevation,
+ * slope] (degrees right of the view axis; degrees over the eye's level; elevation lost per degree
+ * of bearing). They rise a degree to four over the headwall's skyline (6 to 8.5° from −14° to
+ * +30°), most of all in the gap between the hero's flank and the headwall, and stay below the
+ * skyline round the sun's bearing (30°), so they never hide the sunrise.
+ */
+export const FAR_PEAKS = Object.freeze([
+    Object.freeze([-11.5, 11.9, 0.6]),
+    Object.freeze([-5.0, 10.1, 0.74]),
+    Object.freeze([2.5, 11.1, 0.56]),
+    Object.freeze([6.2, 9.4, 0.9]),
+    Object.freeze([9.5, 10.2, 0.68]),
+    Object.freeze([13.2, 9.0, 0.85]),
+    Object.freeze([17.0, 9.4, 0.64]),
+    Object.freeze([21.5, 8.3, 0.8]),
+]);
+/** The range's own foot (degrees): everything under it is hidden by the headwall. */
+const FAR_FOOT = 5.2;
+
+/** The far range's skyline (elevation, radians) at bearing `az` (radians). */
+const farSkyline = (u, az) => {
+    const deg = az.mul(180 / Math.PI);
+    // A smooth maximum of the giants' pyramids, so the saddles between them are rounded.
+    let h = float(FAR_FOOT);
+    FAR_PEAKS.forEach(([b, top, k]) => {
+        const peak = float(top).sub(abs(deg.sub(b)).mul(k));
+        const m = clamp(peak.sub(h).mul(0.5).div(0.7).add(0.5), 0.0, 1.0);
+        h = mix(h, peak, m).add(m.mul(float(1.0).sub(m)).mul(0.7));
+    });
+    // Aretes, gendarmes and a ragged crest.
+    const r1 = float(1.0).sub(abs(u.noise(vec2(deg.mul(0.11), 0.37)).x.mul(2.0).sub(1.0)));
+    const r2 = float(1.0).sub(abs(u.noise(vec2(deg.mul(0.43), 0.71)).w.mul(2.0).sub(1.0)));
+    return h.add(r1.mul(0.42)).add(r2.mul(0.16)).sub(0.3).mul(Math.PI / 180);
+};
 
 /**
  * @param {object} u  shared uniforms
@@ -97,6 +138,37 @@ export function createSky(u, { cirrus = true } = {}) {
             // (Thinner once the day is up: high cloud burns off.)
             const cover = streak.mul(fade).mul(float(0.66).sub(u.power.mul(0.2)));
             col.assign(mix(col, cloud.mul(u.breath.mul(0.65).add(0.35)), cover));
+        }
+
+        // ── The far range: giants beyond the headwall, blue with distance ──
+        {
+            const az = atan(dir.x, dir.z.negate());
+            const el = atan(dir.y, length(dir.xz));
+            const top = farSkyline(u, az).toVar();
+            const w = max(fwidth(el), 1e-5);
+            const cover = smoothstep(w.negate(), w, top.sub(el)).toVar();
+            // Which side of its peak a point is on: the skyline falling to the right faces the sun.
+            const d = 0.0035;
+            const fall = farSkyline(u, az.add(d)).sub(farSkyline(u, az.sub(d))).div(2 * d);
+            const depth = clamp(top.sub(el).div((5.0 * Math.PI) / 180), 0.0, 1.0);
+            // Flutings and ribs run down the fall line: noise stretched tall, fanning out under
+            // each summit; the light's edge follows them, so no face is lit along a ruled line.
+            const flute = u.noise(vec2(az.mul(170.0), el.mul(44.0))).toVar();
+            const rib = u.noise(vec2(az.mul(46.0), el.mul(7.0)).add(0.53)).toVar();
+            const sunward = smoothstep(0.35, -0.75, fall.add(rib.x.sub(0.5).mul(0.9)));
+            // Snow plastered down the faces; rock shows lower down and on the ribs.
+            const rock = smoothstep(0.5, 0.78, rib.w.mul(0.55).add(flute.x.mul(0.3)).add(depth.mul(0.42)));
+            const snow = float(1.0).sub(rock.mul(0.85));
+            const fluted = flute.w.mul(0.3).add(0.85);
+            // The light comes down the giants as the sun rises: at rest only their summits glow.
+            const reach = smoothstep(-0.26, 0.24, u.sunTan).mul(1.25).add(0.1);
+            const edge = depth.add(rib.x.sub(0.5).mul(0.16));
+            const lit = smoothstep(edge.sub(0.05), edge.add(0.05), reach).mul(sunward.mul(0.85).add(0.15));
+            const shade = mix(u.shade.mul(1.05), u.zenith.mul(1.6), 0.35).mul(snow.mul(0.75).add(0.25)).mul(fluted);
+            const glow = u.sunCol.mul(lit).mul(snow.mul(0.8).add(0.2)).mul(fluted).mul(0.58);
+            // Forty kilometres of air: the shaded faces sink toward the sky behind them.
+            const far = mix(shade, col, 0.3).add(glow.mul(u.breath));
+            col.assign(mix(col, far, cover));
         }
 
         // ── The sun: a limb-darkened disc in a corona ──

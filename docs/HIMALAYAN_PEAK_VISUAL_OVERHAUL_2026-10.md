@@ -219,6 +219,31 @@ side and size, a frame that never turns over, whole-beat bouts at one pace howev
 has run, joint motion at 60 Hz in a rising and falling storm, reduced motion, and the model's
 skeleton.
 
+## The atmosphere pass (2026-10-20)
+
+![Before and after: at rest, the hero, the headwall, a chain of four](himalayan-peak-captures/atmosphere-pass.png)
+
+- **A far range beyond the headwall** (`himalayan-peak-sky.js`, `FAR_PEAKS`): eight giants
+  painted into the sky dome 40 to 80 km out, rising one to six degrees over the headwall's
+  skyline between the hero's flank and the sun, so the amphitheatre has a world behind it. Their
+  crest is a smooth maximum of pyramids roughened by two ridged reads; their faces carry ribs and
+  flutings down the fall line, and the light comes down them with the sun: at rest only their
+  summits burn rose, with a chain they are lit to the foot. They stay under the near skyline
+  round the sun's bearing, so the sunrise is never hidden (`himalayan-peak-far-range.test.js`
+  holds both against the planned massif). Cost: about 0.14 ms a frame at 1080p High on the RTX.
+- **Buttresses and snowfields** (`himalayan-peak-terrain.js`): every steep face is divided down
+  its fall line into bands a few hundred metres wide (wandering, so no two repeat): dark rock
+  buttresses with strong ribs, and snowfields where snow plasters even the ribs and only fine
+  flutings show. Bands of rock cross the snowfields at a few heights; the steepest walls hold
+  nothing. Before, every face carried the same even striping. Snow in shade is lit by the whole
+  sky and keeps its luminosity.
+- **Wind-shaped drifts** (`himalayan-peak-pass.js`): the sastrugi's run bends with a slow
+  warp, the wind has scoured some patches smooth and left others rippled, and the shoulder rolls
+  in low dunes, where before one even corduroy ran across the whole foreground.
+- **The cloud sea in the sky's light** (`himalayan-peak-clouds.js`): before the sun reaches it,
+  every billow's flank that faces the sunrise takes the glow over the wall, so the sea has form
+  at rest; the finest billows are flatter.
+
 ## Verification
 
 - Unit tests: 250 tests in eight files (composition 13, director 23, layout 23, field 46, effects
