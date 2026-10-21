@@ -496,12 +496,15 @@ describe('Vesper Chrysalis theme: one node renderer on both backends', () => {
         const [{ world, params }] = mocks.worlds;
         expect(theme.world).toBe(world);
         expect(world).toBeInstanceOf(mocks.worldModule.VesperWorld);
-        expect(Object.keys(params).sort()).toEqual(['capture', 'quality', 'renderer', 'scene']);
+        expect(Object.keys(params).sort()).toEqual(['capture', 'mirrorSamples', 'quality', 'renderer', 'scene']);
         expect(params.scene).toBe(theme.scene);
         expect(params.scene).toBeInstanceOf(THREE.Scene);
         expect(params.renderer).toBe(theme.renderer);
         expect(params.quality).toBe('High');
         expect(params.capture).toBe(false);
+        // The lake's mirror pass samples as the scene pass does (one pipeline per material).
+        // (Here the post module is mocked without sample counts: the theme falls back to none.)
+        expect(params.mirrorSamples).toBe(0);
         expect(world.build).toHaveBeenCalledOnce();
         expect(world.bindCamera).toHaveBeenCalledOnce();
         expect(world.bindCamera).toHaveBeenCalledWith(theme.camera);
