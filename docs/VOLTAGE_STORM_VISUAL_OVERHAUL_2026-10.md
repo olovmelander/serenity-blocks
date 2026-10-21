@@ -244,10 +244,10 @@ frames and frame sequences, so the pace of the rain, the flicker of a stroke and
 drift are tuned by arithmetic, not by watching; GPU cost per tier through the theme perf lane
 (ADR-0016); physical phones; local multiplayer, Infinity and Odyssey layouts in a capture (their
 routing is unit-tested only; with three or four boards in a row an inner board's arc crosses its
-neighbour's card); the repo's lifecycle validator (`scripts/validate-all-themes.mjs` fails every
-locked theme since the theme collection landed, and was not run); the icon on an Odyssey level
-orb; sessions of several hours. `docs/theme-screenshots/voltage-storm.png` still shows the
-previous artwork (a fleet capture writes it). The theme's music is still the placeholder track.
+neighbour's card); the repo's lifecycle validator (`scripts/validate-all-themes.mjs` failed every
+locked theme when this was written, and was not run; it passes since, see the contrast pass);
+the icon on an Odyssey level orb; sessions of several hours. The theme's music is still the
+placeholder track.
 
 ## Captured previews
 
@@ -260,3 +260,78 @@ previous artwork (a fleet capture writes it). The theme's music is still the pla
 ![Minimal, Low on WebGL2, Medium and Extreme](voltage-storm-captures/tiers.jpg)
 
 ![The five other palettes, each on its own level, in a clear; and a level-up on its way](voltage-storm-captures/palettes.jpg)
+
+## Contrast pass (2026-10-21)
+
+At rest the storm read as an overcast afternoon: one flat grey-teal from the cloud to the water,
+the cloud's lobes smeared into horizontal brush strokes, the towers dead silhouettes between
+strokes, and the blacks lifted into a blue veil. This pass deepens the night without touching the
+event language, the palettes or the draw list. Before and after, the same frames
+(`?effect=voltage-storm&quality=High`, 1600 × 900, WebGPU):
+
+![At rest, without the board](voltage-storm-captures/contrast-rest-before-after.jpg)
+
+![At rest, with the board](voltage-storm-captures/contrast-board-before-after.jpg)
+
+![A clear of two lines](voltage-storm-captures/contrast-clear-before-after.jpg)
+
+- **The cloud keeps its lobes.** A low ray crosses up to two kilometres of the slab, and fourteen
+  steps put a hundred metres of ground between samples: the lobes it passed were smeared along
+  it. The step count now follows the ray's run over the ground (about one step per 40 m, up to
+  twice the tier's `march`, 1.4× on Low and Minimal), so steep rays cost what they did and only
+  the long, low ones take more.
+- **The cloud has contrast.** The strip's light on a lobe was a product of five factors, each
+  with a high floor (0.3 to 0.6), which together held a lit side within about twice its shadowed
+  one. The floors are lower and the side that faces the strip is squared, so the recesses go
+  deep, and lobes near the cell's edge catch the strip's own colour (`horizon`) rather than only
+  the cloud's rim.
+- **The strip has a heart.** Its light gathers into a whiter glow just over the far shore and falls
+  off faster above it, and the shore stands as a dark line against it.
+- **The towers keep the field alive between strokes.** Two red obstruction beacons per tower
+  (under the electrode and at the guys' waist) pulse together about 38 times a minute, the
+  lower a beat behind the upper, and lie on the water as streaks broken by the ripple; a strike
+  blanks them; the finial carries a faint St Elmo's fire at rest. They are four more instances
+  per tower in the glows' existing draw (`BEACON`, `GLOWS_PER_TOWER` in
+  `voltage-storm-towers.js`); the two images are left out on the tier that has no tower images
+  (Minimal). Under reduced motion or Reduce flashing they burn steady (`u.blink`).
+- **The grade** colours the shadows by scaling only (it added a constant, which the sRGB encode
+  turned into a blue veil over every black), adds a little contrast round mid-grey with the hue
+  kept, and a little more saturation.
+
+![Red sprite and Low, before and after](voltage-storm-captures/contrast-red-low-before-after.jpg)
+
+![Four lines, a chain of five, and the real game](voltage-storm-captures/contrast-events.jpg)
+
+Tried and dropped: the cloud's underside as a height field (each ray marching to where it first
+meets a surface of hanging lobes, then bisecting, and shading the lobe it meets as a form). It
+gave crisp lobes, but from a lens seven metres over the water every ray meets it at a grazing
+angle: fixed steps tunnelled past lobe tips and ruled their edges into stair-step dashes, steps
+that followed the ray's run left fewer of them, a search round the closest miss flipped from row
+to row into stripes, and jittered steps turned them into a screen-door grain that nothing here
+averages away. The forms also read harder and more like folded paper than the soft slab.
+
+Verification:
+
+- `tests/unit/voltage-storm-shaders.test.js` (new) builds every material in the storm, and the
+  sky pass (a QuadMesh outside the scene), through the WGSL and GLSL node builders at High, Low
+  and Minimal and fails on a warning, a throw, an equal-edge smoothstep, a NaN literal, a
+  stringified node, MaterialX noise or an undeclared texture binding (the sky pass is 15 KB of
+  WGSL at High). With the theme's eight test files and the Reduce flashing and skill-mirror
+  tests: 321 tests, all passing. Lint on the theme and the new test, and the typecheck, pass.
+- Playground captures on WebGPU: rest with and without the board (the beacons on and off their
+  pulse), a lock, clears of two lines, four lines, a chain of five, the storm's own lightning,
+  the red sprite palette, Minimal, Low, Medium, High and Extreme, High and a clear at Low on the
+  forced WebGL2 backend, upright 430 × 852 and reduced motion: no console errors or warnings.
+- In the game (Electron, private dev server, single player, High, WebGPU): real hard drops from
+  the keyboard throw their arcs, clears called through the live world strike the towers, and the
+  beacons and their images hold in the solo layout. `scripts/validate-all-themes.mjs --theme
+  voltage-storm`: PASS, 0 lifecycle failures, 0 console errors;
+  `docs/theme-screenshots/voltage-storm.png` is its capture.
+- Cost: the playground's frame rendered 300 times in one task and waited on the queue, eight
+  interleaved rounds per arm against the unchanged code, on this laptop's discrete GPU while
+  other sessions held it: Low 0.55 ms before and 0.46 ms after, Minimal 0.41 and 0.43 (within
+  noise); High was too loaded to read (rounds from 0.86 to 3.3 ms), its best rounds 0.86 and
+  0.87 ms. Not measured: the theme perf lane, integrated GPUs, phones.
+
+The theme icon still shows the earlier cloud (it is a close-up of a strike, which this pass did
+not change).
