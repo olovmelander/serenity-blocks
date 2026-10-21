@@ -143,6 +143,48 @@ Not done: no perf-lane reading and no frame-rate measurement on an integrated GP
 the theme was not played by a person for a full session, and not in local multiplayer or
 Odyssey.
 
+## Second pass (2026-10-21): the funnel, the horizon and the wheat
+
+Branch `feature/tornado-overhaul`. Three things read as rendered rather than real.
+
+| Before | After (High, native WebGPU) |
+| --- | --- |
+| ![before](tornado-captures/storm-before.jpg) | ![after](tornado-captures/storm-after.jpg) |
+
+- **The funnel** (`tornado-funnel.js`) was a smooth grey tube: lit by which side faced the
+  sun, its opacity a clean gradient to the rim. It now carries striations, the bands of
+  condensation wound round it and rising with it (a read stretched along the winding), lighter on
+  the bands and thinner between them; wisps torn off its limbs; a darker side away from the sun
+  (lit with the square of the facing, so the terminator is an edge) and a wider glow where the
+  sun stands behind a limb; and dust dragged up its lower third. **The debris cloud** at its foot
+  was a tall translucent cone with a polygon outline: it is a heap that bulges above the ground
+  and rounds off, eaten away at its top by billows and soft at its silhouette, on a finer mesh.
+  **Debris** were small squares: they are ragged shards, and one in three a long board.
+
+  | Before | After |
+  | --- | --- |
+  | ![funnel before](tornado-captures/funnel-before.jpg) | ![funnel after](tornado-captures/funnel-after.jpg) |
+
+- **The shelter belts** (`tornado-sky.js`) were one row of identical rounded bumps that read
+  as tents. They are now two lines of trees: crowns of their own heights on two spacings merged
+  (trees of many widths overlapping), a few tall poplars, some gaps, a ragged top edge, the far
+  line lower and lost in the haze, both in stretches broken by open fields. The edge is
+  anti-aliased by the pixel's angle.
+- **The wheat** (`tornado-field.js`) was flat ribbons. Each ear carries rows of grain up its
+  length, rounded across the stalk and catching the low sun (faded to their mean where a row is
+  under a pixel), and the stem is greener and darker low down in the crop's own shade, so the
+  field reads as ripe wheat with depth.
+
+![A chain of seven](tornado-captures/storm-chain.jpg)
+
+**Checks.** `tests/unit/tornado-shaders.test.js` (new) builds every material in the storm and the
+post's output through the WGSL and GLSL node builders at High and Minimal, under a 48 KiB stage
+budget; it catches a JS number handed to a TSL method (the tree belts' first build did that, and
+only the browser had said so). Playground on native WebGPU (RTX 5080 Laptop) and WebGL2: the four
+hours, six ribbons, four lines, a chain of seven, Minimal, Low, Extreme and portrait 390 × 844,
+clean consoles. GPU p50 at High on the same server, main against this branch: 0.66 and 0.52 ms
+(within the probe's noise; the probe reads low for this scene, so the two are only compared).
+
 ## Captured previews
 
 ![In game: play, six ribbons after seven hard drops, a four-line clear](tornado-captures/desktop-ingame.jpg)
