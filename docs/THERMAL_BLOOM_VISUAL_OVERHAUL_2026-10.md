@@ -44,6 +44,50 @@ effects":
   fountains.
 - **The season wheel**: the year drifts slowly with the clock, and each level adds a step.
 
+### The light pass (2026-10-21)
+
+Every critic of the remake named the light as the main gap: flat, even morning light, no single
+strong light source. The sun cannot move (it stands behind the viewer for the theme's one rainbow),
+so this pass makes the light read without moving it.
+[Before](thermal-bloom-captures/light-before.jpg) and [after](thermal-bloom-captures/light-after.jpg)
+(`t=40`), and [before](thermal-bloom-captures/light-before-t95.jpg) /
+[after](thermal-bloom-captures/light-after-t95.jpg) at `t=95` (High, 1600 × 900, WebGPU).
+
+- **Cloud shadows are the lighting design** (`tbCloudShade`, `CLOUDS` in `thermal-bloom-tsl.js`).
+  Fair-weather cumulus stand out of frame and drift with the wind; only their shadows show. They are
+  large, about a stop and a half off the direct sun, and they take only the direct sun, so the
+  shade is lit by the whole blue sky. The field parts round the Iris and thins over the Stair, so
+  the spring and usually the Stair stand in a pool of sun against shaded floor. The shadows fade
+  out a kilometre or two away (dark patches there read as standing water) and soften from the
+  upright phone's high eye. Every sun term takes them: the floor, the Stair, the mounds, the pines,
+  the snags, the mist sheets and each marched steam body. The noise they read is put on the
+  uniform bag (`u.cloudTex`), so parts handed no textures can take them too.
+- **More direct sun on the lit surfaces** (`SURFACE_SUN`, 1.3×: floor, Stair, mounds; the steam
+  keeps its tuned level), so the contrast comes from light as well as from shade. Shaded mats keep
+  their colour instead of greying.
+- **The floor has relief**: a few long swells at incommensurate headings (`RELIEF_SWELLS` in
+  `thermal-bloom-basin.js`) with an analytic slope, as the base normal under the rim's lip. A slope
+  read from the noise texture showed 8–10 px camouflage blocks under the near camera (bilinear
+  filtering steps the gradient at every texel). The wet sheen and the glints see the floor nearly
+  flat where the relief tilts it, or they streak pink-white along the runoff fingers.
+- **A far ground fog** (`tbGroundFog`, `FOG`), taken by every surface and the backdrop through
+  `tbAerial`: none within 900 m, then drifting banks with clear gaps toward the rim, cool and pale
+  (the sun is behind the viewer, so it does not glow gold).
+- **The haze** is a little warmer on the sun's side of the view than on the far side.
+- **High Summer's sun** is a yellow-gold `#FFE39C` (was `#FFE0B4`).
+
+Judged by an independent critic over three rounds against the original frames. The first round
+scored the pass worse: a screen-space warm wash from the sun's side greyed the Iris's cobalt
+(saturation 0.52 to 0.12) and lifted the darks, and was dropped; the fog reached the mid-ground
+in the sinter's own cream. Final scores (light / depth / colour, out of 10): 4 / 4 / 7 → 6 / 5 / 7
+at `t=40`, 4.5 / 4 / 7 → 5.5 / 4.5 / 7 at `t=95`. The Iris measures as the original (saturation
+0.49 against 0.52, the same brightness), the darkest 5% of the frame went from 59 to 48 and the
+brightest stayed at 198–201, with nothing clipped. Captured on WebGPU at High and Ultra (rest, a
+lock, a clear, a six-link chain, [four lines](thermal-bloom-captures/light-four-lines.jpg)), on
+WebGL2 at Low and [Minimal](thermal-bloom-captures/light-minimal-webgl2.jpg), and upright at
+430 × 852 on Medium: no console errors. The bow is unchanged. Not measured: frame time (one more
+noise read for each sun term, two per marched body).
+
 ## Event language
 
 | Event | What happens |
