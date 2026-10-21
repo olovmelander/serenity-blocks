@@ -5,7 +5,7 @@
  * for what stays visible round it (where the giant and its moons hang for an aspect is
  * giantAnchors() in stellar-drift-core.js):
  *
- *   LEFT   — the giant itself, its bands, its aurora and its night side.
+ *   LEFT   — the giant itself, its bands and its night side.
  *   BEHIND — the rings sweeping across: what shows through the card is soft-clipped by the post.
  *   RIGHT  — the rings' far end, the two moons, the nebula.
  *   ABOVE / BELOW — on an upright phone the giant rises into the sky above the card.

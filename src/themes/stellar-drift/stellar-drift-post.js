@@ -9,7 +9,7 @@
  *   lens fringe (a radial chromatic split that widens toward the corners and on an impact) →
  *   calm zones (what shows through the translucent board card and HUD is soft-clipped and its
  *   bloom attenuated) → bloom → exposure and event flash → "drift filmic" tone map (hue
- *   preserving, so a violet aurora stays violet and only the brightest glints roll to white) →
+ *   preserving, so a violet corona stays violet and only the brightest glints roll to white) →
  *   grade (cool, slightly lifted shadows) → vignette → sRGB → grain and triangular dither.
  *
  * Tone mapping happens exactly once: renderer.toneMapping = NoToneMapping and the pipeline's
