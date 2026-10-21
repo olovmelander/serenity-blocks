@@ -105,14 +105,16 @@ the scene graph is identical before and after a burst of events).
   the bake stores tangents (not visibility), lowering the suns at dusk lengthens every shadow for
   free. Lifted Lambert (Journey), violet sky fill, warm bounce, horizon fill on sun-facing slopes,
   backlit forward-scatter sheen and specular, the contre-jour crest glow, wind ripples (bending,
-  breathing wavelength, faded by footprint, off the slip faces), grain glitter (sub-pixel dots on
-  random facets), rust rust stains, sheets of blowing sand streaming downwind, the drum rings,
-  and the shared aerial perspective (distance + analytic height fog, coloured by the sky).
+  spacing that breathes, faded by footprint, off the slip faces, shaded in their troughs so they
+  read inside a shadow too), grain glitter (sub-pixel dots on random facets), rust stains, sheets
+  of blowing sand streaming downwind, the drum rings, and the shared aerial perspective (distance
+  + analytic height fog, coloured by the sky, thickened and thinned by drifting dust banks).
 - **Sky.** Hot apricot horizon toward the suns → dusty rose away → violet → deep blue zenith; Mie
-  glow of both suns; faint crepuscular rays; cirrus on an altitude plane lit gold-pink from below;
-  the twin suns with limb darkening and coronae; two moons (shaded spheres, crescent toward the
-  suns, veiled by the haze); stars that surface as the dusk deepens. Drawn after the opaque world
-  so early-z skips every covered pixel.
+  glow of both suns; faint crepuscular rays; cirrus in wisps gathered into drifts, lit gold-pink
+  from below; two thin dust bars low over the suns' bearing; the twin suns (an ember disc whose
+  heart whitens to gold-cream and whose rim melts into its glow, and a white-hot companion) with
+  coronae; two moons (shaded spheres, crescent toward the suns, veiled by the haze); stars that
+  surface as the dusk deepens. Drawn after the opaque world so early-z skips every covered pixel.
 - **Formations.** Deformed lathes with closed-form radius (talus flare, cliff taper, irregular
   strata ledges, rain flutes, clefts, a caprock lip, a slight twist to the crown). Strata bands by
   height (shale base, red cliff, pale beds, pale caprock), desert varnish streaks, sand on ledges,
@@ -121,8 +123,10 @@ the scene graph is identical before and after a burst of events).
 - **The worm.** One tube mesh animated entirely in the vertex shader on a half-ellipse breach
   path; the body follows the head's own path. Annular plates, a fuller neck, a long taper to a
   pointed tail, and a maw that peels open from a closed dome into a flared bell as the worm rears
-  and closes as it dives. Back faces are the inside: ember flesh ringed with pale teeth.
-  Dusty grey-ochre hide, sand on its back, a backlit rim on the true silhouette only. Whatever is
+  and closes as it dives. The inside (the body's back faces, the cap's front faces: its rings wind
+  the other way) is ember flesh in wet folds with staggered rows of teeth on the lip and down the
+  throat. Dusty grey-ochre hide in plates of their own tones, a pleated lip, sand on its back, a
+  backlit rim on the true silhouette only. Whatever is
   below the sand is hidden by the opaque dunes. The mesh is instanced once per worm slot (two: the
   idle worm and the summoned one), each instance reading its slot's path.
 - **Where it breaches.** Anywhere in the visible erg. Each breach draws an azimuth inside the
@@ -193,10 +197,11 @@ coronae, glints and gold glow bloom, 4 mips (tight glare). One output pass:
 heat haze (a shimmer band on the far erg, strongest toward the suns; one noise fetch) → calm zones
 (what shows through the translucent board card and HUD is soft-clipped, its bloom attenuated; eased
 in/out as the board appears and leaves) → bloom → **occluded crepuscular shafts** (the sharp scene marched toward the
-primary sun, gathering only over-bright sky, jittered per pixel, weighted by the depth of lit air in
-front of the pixel — so crests, the butte and the worm cut real dark shafts and stay silhouettes) →
-an analytic sun flare (soft anamorphic streak + veil, gated by visibility) → **desert filmic** tone
-map (hue-preserving shoulder; cores roll to warm white) → split tone (violet-teal shadows, amber
+primary sun, gathering only over-bright sky within 0.13 screen heights of it, jittered per pixel,
+weighted by the depth of lit air in front of the pixel — so crests, the butte and the worm cut real
+dark shafts and stay silhouettes) → an analytic sun flare (soft anamorphic streak + veil, gated by
+visibility) → **desert filmic** tone map (hue-preserving shoulder; only values past about 4, the
+suns' hearts and the glints, roll to a warm white) → split tone (violet-teal shadows, amber
 highlights), gentle saturation and mid contrast → vignette → sRGB → grain on the dark floor (High+)
 → triangular dither. `?shiftingSandsFalseColor=1` bands the pre-tone-map max channel.
 
@@ -304,3 +309,43 @@ before a clean pair landed). Re-run on a quiet machine before a release claim:
   profile ever shows it.
 - A composition solver (as in Chromadelic) could shift the Sentinel/breach azimuths for very narrow
   aspects; today they are authored for 4:3–21:9 and unit-tested there.
+
+## 11. Dusk pass (2026-10-21)
+
+`feature/shifting-sands-pass`. A pass on the light, the air and the worm; the composition, the
+director, the events and the tiers are unchanged. Before/after captures (playground, High, WebGPU,
+1600×900, `t=8` unless noted) in [shifting-sands-overhaul/](shifting-sands-overhaul/):
+`pass-{before,after}-rest`, `-dusk` (`dusk=1`), `-suns`, `-crest` and `-ripples` (crops of the rest
+frame), `-maw-open` and `-maw-closing` (`breach=1&t=2.4|5.5&follow=1`), and `pass-ingame` (the real
+game, single player, High).
+
+| | Before | Why | After |
+|---|---|---|---|
+| **The ember sun** | A flat cream disc ("biscuit") | The disc took the shared sun light, whose green (0.38 linear) is right for lit sand and far too pale for a disc; the filmic curve whitened anything past 1.6 by up to 75 %; the sky round the disc sat at the same tone-curve shoulder (false colour: 1.0–2.5) | The disc has its own colours, heart (1, 0.62, 0.2) to rim (1, 0.4, 0.09), with per-channel limb darkening. Its heart passes the whitening point (now 4 → 24, toward a warm white) and reads gold-cream; its rim is the glow's own hue, so it melts into it instead of outlining a bubble. The lower limb is reddened and dimmed, the disc squashed 3.5 % by refraction, and at deep dusk it dims and reddens. The tight aureole is lower (0.03 → 0.018), so only the disc reaches the shoulder |
+| **The white sun** | Smeared into a grainy diagonal band | The shaft march gathered every over-bright pixel toward the primary, and the companion, a fifth of a screen away, is over-bright | Shaft emitters are confined to 0.13 screen heights round the primary (`SHAFT_EMIT_RADIUS`) |
+| **Dust bars** | — | — | Two thin strata of high dust at fixed heights over the suns' bearing, broken into long lengths, wavering. Against the suns' glow they are dark with a burning edge, further out they glow rose-gold, and they veil the ember where they cross it. The sinking ember (the level dusk) passes down behind them |
+| **Cirrus** | Long ruled diagonal strokes | Unbent streets streaming toward the suns line up as a comb | A slow warp bends the fibres, a slow mask gathers them into drifts, and a third read breaks the streets into wisps (one more fetch) |
+| **Far crest glow** | A chain of beads | Bisected term by term: it is the crest top catching the low sun (direct light), and it showed only on triangles that happened to expose it. Far off, the grid is a strip of 8-pixel-wide slivers under a pixel tall, and a lit crest one row high falls between rows | The normal's turn over the crest is filtered onto the windward side as distance grows (`lean`, up to 0.07 of the phase), and the glow reaches down the windward approach too. Both land on triangles the eye always sees: one continuous line. The crest's footprint is now a smooth estimate (fwidth is constant per triangle), and a shading normal facing away from the eye is bent to grazing |
+| **Wind ripples** | Sparse swirly patches, rings near the camera | The phase was `dot(xz, dir(x)) / λ(x)`: direction and wavelength both varied with position, so a hundred units out their derivatives multiplied the whole world coordinate and folded the ripples into loops | Fixed direction and wavelength; the noise offsets alone bend them and make their spacing breathe. The near slopes now carry real wind ripples |
+| **Shadowed sand** | A flat mauve field | Sky light depended on N.y only; a ripple's tilt changed nothing | Ripple troughs carry a little occlusion, the sun-side horizon reaches tilted faces (read from the normal's lean), the violet fill is about a fifth stronger, and blowing-sand sheets are dimmer in shadow (they read as a light leak) |
+| **Depth** | One even peach band across the mid-erg | — | Banks of suspended dust drifting downwind: a slow noise read 70 % of the way along each view ray scales the height haze between 0.3× and 2.7×, in the shared atmosphere, so sand, rock and every grain of dust sit in the same banks |
+| **The worm's maw** | A speaker grille on a closed dome; a plain orange cone when open | **A bug.** The cap's rings run forward from the rim while the body's run back from it, so its triangles wind the other way and its front faces are its inside. The closed dome showed its teeth (a lattice of 300 × 72 dots) to the world, and the open bell showed hide where the eye looks in | The inside test is flipped on the cap. The closed dome is pleated hide; the open bell shows three staggered rows of triangular teeth of uneven size pointing into the throat, and three more rows run down it. Teeth darken toward the gum, the flesh lies in wet folds, and each body plate has its own tone |
+| **The Sentinel's strata** | Faint diagonal scratches | The bed period varied across the face, so neighbouring beds converged | Level beds with a gentle undulation |
+
+**Cost.** Static, at High (WGSL bytes / texture reads in the fragment stage, origin/main → this
+pass): sky 13.3 → 17.9 KB / 5 → 9 (sky pixels only), dunes 27.1 → 28.6 KB / 7 → 8, rocks 7.0 → 7.7 KB
+/ 2 → 3, worm 6.6 → 10.0 KB / 1 → 2, each dust system +1 read (the dust banks). Frame cost was
+**not resolvable**: other sessions shared both GPUs. Interleaved playground rounds (render 60 frames
+in one task, await the queue, median of 9; arms alternated) gave per-round medians of 1.7–3.5 ms on
+the RTX 5080 at 2400×1350 and 63–130 ms on the Radeon 610M at 1600×900 (High) for the SAME build, with
+the arms' overall medians within that spread of each other and in no consistent order. Re-measure
+with the §8 lane on a quiet machine.
+
+**Verified.** Playground on WebGPU and `forceWebGL=1` at High and Low (rest, deep dusk, the idle
+breach from the game lens and a tight one, the maw open and closing, a Tetris with the board mock,
+three-line clear, lock); the real game (single player, High, six hard drops) on the RTX 5080; no
+console, WebGPU validation, WGSL or TSL message in any capture. New gate:
+`tests/unit/shifting-sands-shaders.test.js` builds every material and the post output through the
+WGSL and GLSL node builders at High and Minimal (size, NaN/Infinity literals, stringified nodes,
+equal smoothstep edges, MaterialX noise, unassigned WGSL vars) and pins the pass's three fixes: the
+ember's own colour, no fwidth in the crest's turn, the cap's inside chosen from its flag.
