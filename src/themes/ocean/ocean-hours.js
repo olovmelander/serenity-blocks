@@ -164,7 +164,8 @@ export const HOURS = Object.freeze([
         shaft: [0.45, 0.75, 1.0],
         halo: [0.1, 0.3, 0.45],
         zenith: [0.006, 0.014, 0.045],
-        horizon: [0.02, 0.05, 0.11],
+        // (The moonlit sky low down: the window's facets fold it into faint silver ripples.)
+        horizon: [0.055, 0.11, 0.22],
         disc: [5, 6.5, 8],
         spark: [0.25, 0.95, 1.0],
         glow: [0.3, 1.0, 0.8],
