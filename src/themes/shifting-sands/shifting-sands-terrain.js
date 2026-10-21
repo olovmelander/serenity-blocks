@@ -30,6 +30,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     If,
+    abs,
     atan,
     attribute,
     cameraPosition,
@@ -42,12 +43,14 @@ import {
     fwidth,
     length,
     max,
+    min,
     mix,
     normalize,
     positionLocal,
     positionWorld,
     pow,
     reflect,
+    select,
     smoothstep,
     uniformArray,
     vec2,
@@ -396,7 +399,7 @@ export const WELL_SLOTS = WORM_GROUND_SLOTS * 2;
 export function createSandMaterial(shared, { glitter = true, ripples = true } = {}) {
     const {
         uTime, uSunA, uSunB, uSunLightA, uSunLightB, uUpper, uZenith, uHorizonCool, atmosphere, noiseTex,
-        uWindDir, uWind, uGust,
+        uWindDir, uWind, uGust, uPxScale,
     } = shared;
     const C = DUNE.crest;
     const EW = DUNE.expWindward;
@@ -494,11 +497,22 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         // ── Exact ridge slope from the interpolated phase ──
         const u = aDune.x;
         const p = fract(u);
-        const fwu = fwidth(u);
+        // The phase's footprint in a pixel, estimated smoothly (pixel size at this range, stretched
+        // by how grazing the eye's view is, times the baked phase gradient). fwidth(u) is constant
+        // per triangle and jumps between neighbours, so the crest's filtering stepped from sliver
+        // to sliver of the far grid.
+        const graze = clamp(abs(cameraPosition.y.sub(wp.y)).div(dist), 0.05, 1.0);
+        const fwu = dist.div(uPxScale).div(graze).mul(length(aDune.yz)).mul(1.2);
         const w = clamp(fwu.mul(0.75), 0.004, 0.3);
         const pw = clamp(p, 0.0, C);
         const q = clamp(p, C, 1.0).sub(C).div(1.0 - C);
-        const crestT = smoothstep(float(C).sub(w), float(C).add(w), p);
+        // Far off the normal's turn over the crest is filtered onto the windward side. A far pixel
+        // averages the windward and lee slopes across its footprint, and the grid there is a strip
+        // of 8-pixel-wide slivers under a pixel tall: a lit crest one row high showed only where a
+        // triangle happened to expose it, and the brink broke into beads. On the windward approach
+        // it lands on triangles the eye always sees.
+        const lean = mix(0.0, 0.07, smoothstep(300.0, 1600.0, dist));
+        const crestT = smoothstep(float(C).sub(w).sub(lean), float(C).add(w.mul(0.4)), p);
         const slopeW = pow(pw.div(C).add(1e-4), EW - 1).mul(EW / C);
         const slopeL = pow(float(1.0).sub(q).add(1e-4), EL - 1).mul(-EL / (1 - C));
         const dprof = mix(slopeW, slopeL, crestT);
@@ -530,12 +544,17 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         }
 
         // ── Wind ripples (transverse, asymmetric), off the slip faces, faded by footprint ──
+        // rippleAO: the trough at the foot of each ripple's steep face sits in its own shade, so
+        // the ripples still read in the flat sky light inside a dune's shadow.
+        const rippleAO = float(1.0).toVar();
         if (ripples) {
-            // Ripples bend with a fine warp (tuning-fork junctions where the warp folds) and
-            // their wavelength breathes, so they read as wind-written sand, not corduroy.
+            // Ripples bend with a fine warp and their spacing breathes where the warp stretches and
+            // squeezes them, so they read as wind-written sand, not corduroy. The direction and the
+            // wavelength stay fixed: varying either multiplies the whole world coordinate, and a
+            // hundred units out its derivative swamped the phase, folding the ripples into rings.
             const nr = ssTexNoise(noiseTex, wp.xz.mul(0.19).add(vec2(nz.x.mul(2.0), 7.3)));
-            const rDir = normalize(uWindDir.add(vec2(uWindDir.y.negate(), uWindDir.x).mul(nz.y.sub(0.5).mul(0.7))));
-            const rc = dot(wp.xz, rDir).add(nz.x.mul(6.0)).add(nr.x.mul(2.2)).div(mix(0.75, 1.15, nz.w));
+            const rDir = uWindDir;
+            const rc = dot(wp.xz, rDir).div(0.95).add(nz.x.mul(7.0)).add(nr.x.mul(2.4));
             const rf = fract(rc);
             const rSlope = mix(float(0.55), float(-1.6), smoothstep(0.62, 0.78, rf))
                 .mul(float(1.0).sub(smoothstep(0.88, 1.0, rf)));
@@ -544,8 +563,14 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
                 .mul(smoothstep(0.25, 0.75, nr.y.mul(0.6).add(nz.z.mul(0.4))))
                 .mul(float(1.0).sub(scar));
             grad.addAssign(rDir.mul(rSlope.mul(0.075).mul(rFade).mul(rMask)));
+            const trough = smoothstep(0.6, 0.85, rf).mul(float(1.0).sub(smoothstep(0.88, 1.0, rf)));
+            rippleAO.assign(float(1.0).sub(trough.mul(0.13).mul(rFade).mul(rMask)));
         }
         const N = normalize(vec3(grad.x.negate(), 1.0, grad.y.negate())).toVar();
+        // A shading normal that faces away from the eye belongs to a surface the eye cannot see:
+        // past a far crest the coarse grid can show a sliver of the slip face, whose exact normal
+        // faces the suns. Bend such normals back to grazing so it never takes their full light.
+        N.assign(normalize(N.sub(V.mul(min(dot(N, V), 0.0)))));
 
         // ── Sun visibility: horizon tangent vs each sun's elevation tangent ──
         const hz = aShade.z;
@@ -569,13 +594,15 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         sand.mulAssign(mix(vec3(1.0, 1.0, 1.0), vec3(0.92, 0.94, 1.0).mul(scarTone), scar));
 
         // ── Light ──
-        const ao = mix(0.58, 1.0, smoothstep(0.0, 0.45, prof)).mul(mix(0.85, 1.0, smoothstep(-0.2, 0.5, N.y)));
+        const ao = mix(0.58, 1.0, smoothstep(0.0, 0.45, prof)).mul(mix(0.85, 1.0, smoothstep(-0.2, 0.5, N.y)))
+            .mul(rippleAO);
         // Shadows are lit by the violet-blue sky, so they turn cool against the gold.
-        const skyFill = mix(uHorizonCool.mul(0.55), uUpper.mul(1.1).add(uZenith.mul(0.9)), N.y.mul(0.5).add(0.5));
+        const skyFill = mix(uHorizonCool.mul(0.6), uUpper.mul(1.3).add(uZenith.mul(1.1)), N.y.mul(0.5).add(0.5));
         const bounce = uSunLightA.mul(0.03).mul(float(1.0).sub(N.y).add(0.2));
-        // The bright horizon toward the suns lights sun-facing slopes even inside a shadow.
-        const sunward = clamp(dot(normalize(vec2(N.x, N.z).add(vec2(1e-4, 0.0))), normalize(uSunA.xz)), 0.0, 1.0)
-            .mul(float(1.0).sub(N.y).mul(2.0).add(0.15));
+        // The bright horizon toward the suns lights sun-facing slopes even inside a shadow; the
+        // tilt toward it is read from the normal's lean itself (a few degrees on a ripple face).
+        const tilt = dot(vec2(N.x, N.z), normalize(uSunA.xz));
+        const sunward = clamp(tilt.mul(2.2).add(float(1.0).sub(N.y).mul(0.6)).add(0.12), 0.0, 1.0);
         const horizonFill = uSunLightA.mul(0.085).mul(sunward);
         const direct = uSunLightA.mul(dA).add(uSunLightB.mul(dB));
         const col = sand.mul(direct.add(skyFill.add(bounce).add(horizonFill).mul(ao))).toVar();
@@ -589,7 +616,13 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         col.addAssign(uSunLightA.mul(specA.mul(fresnel.mul(0.75).add(0.05)).add(fwd.mul(0.13))));
         col.addAssign(uSunLightB.mul(specB.mul(fresnel.mul(0.7).add(0.05))));
         // Contre-jour crest glow: the brink of every ridge between the camera and the suns burns.
-        const brink = exp(p.sub(C).div(w.mul(1.5).add(0.018)).pow(2.0).negate())
+        // Far off, the grid is too coarse to hold a razor crest (see crestT): there the glow
+        // reaches a little way down the windward approach, which the eye always sees, so it
+        // lands on the same triangles as the lit crest; near by it stays a hairline.
+        const dpC = p.sub(C);
+        const reachDown = mix(0.016, 0.075, smoothstep(250.0, 1600.0, dist));
+        const brinkW = select(dpC.lessThan(0.0), w.mul(1.5).add(reachDown), w.mul(1.2).add(0.014));
+        const brink = exp(dpC.div(brinkW).pow(2.0).negate())
             .mul(aDune.w.div(37.0)).mul(detail.mul(0.7).add(0.3));
         const backlit = pow(clamp(dot(V.negate(), uSunA).mul(0.5).add(0.5), 0.0, 1.0), 5.0);
         col.addAssign(uSunLightA.mul(brink.mul(backlit).mul(max(visA, visB.mul(0.5))).mul(0.55)));
@@ -637,7 +670,7 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
             .mul(float(1.0).sub(smoothstep(250.0, 1400.0, dist)))
             .mul(smoothstep(0.1, 0.6, p).mul(float(1.0).sub(crestT.mul(0.6))))
             .mul(uWind.mul(0.6).add(uGust.mul(1.2)));
-        const sheetCol = uSunLightA.mul(max(visA, 0.35)).mul(0.08).add(uSunLightA.mul(fwd.mul(0.18)));
+        const sheetCol = uSunLightA.mul(max(visA, 0.2)).mul(0.08).add(uSunLightA.mul(fwd.mul(0.18)));
         col.addAssign(sheetCol.mul(sheetMask));
 
         // ── Aerial perspective ──

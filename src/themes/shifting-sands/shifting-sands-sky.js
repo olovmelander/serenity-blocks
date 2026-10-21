@@ -4,9 +4,13 @@
  *  - the shared atmosphere gradient (hot apricot band toward the suns → dusty rose away from
  *    them → violet upper sky → deep blue zenith) and the suns' Mie glow;
  *  - faint crepuscular rays fanning from the primary sun;
- *  - high cirrus streaks on an altitude plane, lit gold-pink from below near the suns and dusky
- *    mauve away from them, drifting with the wind;
- *  - the twin suns: an ember-gold primary with limb darkening and a white-gold companion;
+ *  - high cirrus on an altitude plane, in wisps gathered into drifts (a slow warp bends the
+ *    fibres), lit gold-pink from below near the suns and dusky mauve away from them;
+ *  - dust bars: thin strata of high dust low over the suns' bearing, dark against the suns' own
+ *    glow with a burning edge, rose-gold further out; the sinking ember passes down behind them;
+ *  - the twin suns: an ember-gold primary whose heart passes the tone curve's whitening point and
+ *    whose rim melts into its glow (lower limb reddened, squashed a little by refraction, veiled
+ *    where a dust bar crosses it), and a white-hot companion;
  *  - the two moons: shaded spheres lit by the primary sun (thick crescents, the dark
  *    limb faintly lit by dust-glow), veiled by the haze;
  *  - stars that surface as the dusk deepens (one hash per pixel cell, no extra draw).
@@ -18,6 +22,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    abs,
     atan,
     cameraPosition,
     clamp,
@@ -33,7 +38,6 @@ import {
     mix,
     normalize,
     positionWorld,
-    pow,
     smoothstep,
     sqrt,
     vec2,
@@ -43,6 +47,29 @@ import {
 import { ssHash21, ssPhaseHG, ssTexNoise } from './shifting-sands-tsl.js';
 
 export const SKY_RADIUS = 20000;
+
+/**
+ * The suns' own discs (scene-linear). The ember's heart is bright enough to pass the tone curve's
+ * whitening point (it reads cream-gold) while its rim falls to an orange that melts into the glow.
+ */
+const SUN_A_CORE = vec3(1.0, 0.62, 0.2);
+const SUN_A_LIMB = vec3(1.0, 0.4, 0.09);
+const SUN_A_POWER = 12.0;
+const SUN_B_CORE = vec3(1.0, 0.9, 0.74);
+const SUN_B_POWER = 22.0;
+
+/** Bearing (radians) the dust bars gather over: between the two suns. */
+const SUN_BEARING = (-28.5 * Math.PI) / 180;
+const DUST_BARS_SPAN = (34 * Math.PI) / 180;
+/** el: sine of the bar's height; half: its half-thickness; wob: how far it wavers; gap: where it breaks. */
+const DUST_BARS = Object.freeze([
+    {
+        el: 0.066, half: 0.0085, wob: 0.008, gap: 0.36, dens: 0.72,
+    },
+    {
+        el: 0.118, half: 0.0055, wob: 0.012, gap: 0.46, dens: 0.58,
+    },
+]);
 
 /** A shaded moon disc at direction M with angular radius r (radians). Returns vec4(rgb, mask). */
 function moonDisc(dir, M, r, uSunA, noiseTex, seed) {
@@ -125,44 +152,104 @@ export function createSky(shared, opts) {
         col.assign(mix(col, col.mul(0.82).add(mB.xyz.mul(veil)), mB.w));
 
         // ── High cirrus on an altitude plane ──
+        // A slow warp bends the fibres and a slow mask gathers them into drifts: unbent fibres
+        // streaming toward the suns line up as a comb of ruled strokes.
         if (clouds) {
-            const q = dir.xz.div(max(el, 0.035)).toVar();
-            const drift = uWindDir.mul(uTime.mul(0.004));
-            // Stretch the wisps along the wind.
+            const q = dir.xz.div(el.add(0.1)).toVar();
+            const drift = uTime.mul(0.006);
             const along = dot(q, uWindDir);
             const across = dot(q, vec2(uWindDir.y.negate(), uWindDir.x));
-            const sq = vec2(along.mul(0.55), across.mul(2.4)).add(drift.mul(vec2(1.0, 0.0)));
-            const n1 = ssTexNoise(noiseTex, sq.mul(1.1).add(vec2(4.3, 1.7)));
-            const n2 = ssTexNoise(noiseTex, sq.mul(3.7).add(vec2(n1.z.mul(1.6), 9.2)));
-            const dens = smoothstep(0.5, 0.86, n1.x.mul(0.62).add(n2.y.mul(0.38))).toVar();
-            dens.mulAssign(smoothstep(0.03, 0.16, el).mul(float(1.0).sub(smoothstep(0.55, 0.9, el))));
+            const slow = ssTexNoise(noiseTex, vec2(along.mul(0.22), across.mul(0.45)).add(vec2(drift.mul(0.3), 3.1)));
+            const bent = across.add(slow.x.sub(0.5).mul(3.2));
+            const at = vec2(along.mul(1.3).add(drift), bent.mul(5.0));
+            const fibre = ssTexNoise(noiseTex, at.add(vec2(4.3, 1.7)));
+            const comb = ssTexNoise(noiseTex, at.mul(vec2(2.6, 3.2)).add(vec2(fibre.z.mul(0.9), 9.2)));
+            // Wisps: the streets break into lengths, each fraying out at its ends.
+            const lengths = ssTexNoise(noiseTex, vec2(along.mul(0.55), bent.mul(1.4)).add(vec2(11.0, 2.0)));
+            const wisps = smoothstep(0.3, 0.68, lengths.w);
+            const drifts = smoothstep(0.34, 0.7, slow.z);
+            const dens = smoothstep(0.48, 0.84, fibre.x.mul(0.66).add(comb.y.mul(0.34))).mul(drifts).mul(wisps).toVar();
+            dens.mulAssign(smoothstep(0.025, 0.14, el).mul(float(1.0).sub(smoothstep(0.5, 0.88, el))));
+            // Lit from below by the low suns: a gold-rose underside toward them, mauve away.
             const fwdA = ssPhaseHG(cA, float(0.72));
             const fwdB = ssPhaseHG(dot(dir, uSunB), float(0.75));
-            const rim = uSunLightA.mul(fwdA.mul(0.11).add(0.05)).add(uSunLightB.mul(fwdB.mul(0.05)));
-            const dusky = mix(vec3(0.26, 0.17, 0.22), vec3(0.42, 0.24, 0.2), atmosphere.towardSunA(dir));
-            const cloudCol = dusky.mul(0.55).add(rim.mul(mix(0.55, 1.0, n2.x)));
-            col.assign(mix(col, cloudCol, dens.mul(0.7)));
+            const toward = atmosphere.towardSunA(dir);
+            const rim = uSunLightA.mul(fwdA.mul(0.12).add(mix(0.03, 0.07, toward)))
+                .add(uSunLightB.mul(fwdB.mul(0.05)));
+            const dusky = mix(vec3(0.24, 0.16, 0.24), vec3(0.44, 0.24, 0.22), toward);
+            // Thick fibres are brighter at heart; thin ones are only veil.
+            const body = mix(0.6, 1.1, smoothstep(0.55, 0.95, fibre.x));
+            const cloudCol = dusky.mul(0.5).add(rim.mul(body).mul(mix(0.7, 1.0, comb.x)));
+            col.assign(mix(col, cloudCol, dens.mul(0.62)));
+        }
+
+        // ── Dust bars: a few thin strata of high dust over the suns' bearing, lit from behind ──
+        // They hang at fixed heights, so the sinking ember (the level dusk) passes down behind them.
+        const barCover = float(0.0).toVar();
+        if (clouds) {
+            const bearing = atan(dir.x, dir.z.negate());
+            const fromSuns = bearing.sub(SUN_BEARING).div(DUST_BARS_SPAN).toVar();
+            const reach = exp(fromSuns.mul(fromSuns).negate());
+            const drift = uTime.mul(0.0035);
+            const bn = ssTexNoise(noiseTex, vec2(bearing.mul(22.0).add(drift.mul(6.0)), 5.0));
+            const bl = ssTexNoise(noiseTex, vec2(bearing.mul(7.0).add(drift), 19.0));
+            for (let i = 0; i < DUST_BARS.length; i++) {
+                const b = DUST_BARS[i];
+                // Each bar wavers in height and thickness and breaks into long lengths.
+                const wob = bn.x.sub(0.5).mul(b.wob);
+                const thick = float(b.half).mul(bn.y.mul(0.8).add(0.5));
+                const cut = smoothstep(b.gap, b.gap + 0.22, i === 0 ? bl.x : bl.z);
+                const across = abs(el.sub(b.el).sub(wob)).div(thick);
+                const bar = float(1.0).sub(smoothstep(0.1, 1.0, across)).mul(cut).mul(reach)
+                    .mul(b.dens);
+                barCover.assign(max(barCover, bar));
+            }
+            // Against the suns' own glow a bar is a dark band with a burning edge; further out the
+            // low light catches its underside and it glows rose-gold.
+            const against = smoothstep(0.985, 0.9996, cA);
+            const edge = barCover.mul(float(1.0).sub(barCover)).mul(4.0);
+            const glowA = ssPhaseHG(cA, float(0.86)).mul(0.06).add(ssPhaseHG(dot(dir, uSunB), float(0.8)).mul(0.02));
+            const barCol = col.mul(mix(1.4, 0.5, against)).mul(vec3(1.0, 0.84, 0.8))
+                .add(uSunLightA.mul(glowA.mul(edge.mul(1.5).add(0.25))));
+            col.assign(mix(col, barCol, barCover.mul(0.85)));
         }
 
         // ── The twin suns ──
-        const angA = sqrt(max(float(2.0).mul(float(1.0).sub(cA)), 0.0));
-        const pxA = fwidth(angA).add(1e-6);
-        const discA = float(1.0).sub(smoothstep(float(sunRadA).sub(pxA), float(sunRadA).add(pxA), angA));
-        const muA = sqrt(max(float(1.0).sub(angA.div(sunRadA).pow(2.0)), 0.0));
-        const limbA = mix(vec3(0.62, 0.32, 0.16), vec3(1.0, 0.86, 0.6), pow(muA, 0.5));
+        // A is low in the thick air: an ember disc, its rim dark red (blue darkens fastest toward
+        // the limb), its lower limb redder and dimmer still, squashed a little by refraction, and
+        // crossed by the dust bars. B is higher and white-hot. Each disc's own colour is authored
+        // with its green low: the shared sun light is the colour the SAND takes, too pale for a disc.
+        const lA = vec2(dot(tp, right), dot(tp, upv)).div(sunRadA).toVar();
+        const rA = length(vec2(lA.x, lA.y.div(0.965)));
+        const pxA = fwidth(rA).add(1e-5);
+        // (The front hemisphere only: the disc's coordinates repeat at the antipode.)
+        const discA = float(1.0).sub(smoothstep(float(1.0).sub(pxA), float(1.0).add(pxA), rA))
+            .mul(smoothstep(-0.2, 0.2, cA));
+        const muA = sqrt(max(float(1.0).sub(rA.mul(rA)), 0.0));
+        const darkA = vec3(1.0).sub(vec3(0.5, 0.56, 0.64).mul(float(1.0).sub(muA)));
+        const heartA = mix(SUN_A_LIMB, SUN_A_CORE, smoothstep(0.3, 1.0, muA));
+        const lowLimb = smoothstep(0.35, -1.0, lA.y).mul(uDusk.mul(0.25).add(0.55));
+        const ember = mix(vec3(1.0), vec3(0.78, 0.5, 0.32), lowLimb);
+        // Sinking into the thick air at deep dusk, it dims and reddens.
+        const duskA = mix(vec3(1.0), vec3(0.62, 0.36, 0.26), uDusk);
         const flare = uSunFlare.add(1.0);
-        col.assign(mix(col, limbA.mul(uSunLightA).mul(5.5).mul(flare), discA));
+        const radA = heartA.mul(darkA).mul(ember).mul(duskA).mul(SUN_A_POWER)
+            .mul(flare);
+        // A dust bar across the disc veils it to a deeper ember.
+        const veiled = radA.mul(mix(vec3(1.0), vec3(0.42, 0.24, 0.16), barCover.mul(0.85)));
+        col.assign(mix(col, veiled, discA));
         const cB = dot(dir, uSunB);
         const angB = sqrt(max(float(2.0).mul(float(1.0).sub(cB)), 0.0));
         const pxB = fwidth(angB).add(1e-6);
         const discB = float(1.0).sub(smoothstep(float(sunRadB).sub(pxB), float(sunRadB).add(pxB), angB));
         const muB = sqrt(max(float(1.0).sub(angB.div(sunRadB).pow(2.0)), 0.0));
-        const limbB = mix(vec3(1.0, 0.82, 0.62), vec3(1.0, 0.98, 0.92), muB);
-        col.assign(mix(col, limbB.mul(uSunLightB).mul(20.0).mul(flare), discB));
-        // Tight corona just outside each disc.
-        const coronaA = exp(angA.div(sunRadA).sub(1.0).max(0.0).mul(-3.6)).mul(0.75).mul(float(1.0).sub(discA));
+        const darkB = vec3(1.0).sub(vec3(0.3, 0.45, 0.62).mul(float(1.0).sub(muB)));
+        col.assign(mix(col, SUN_B_CORE.mul(darkB).mul(SUN_B_POWER).mul(flare), discB));
+        // A tight corona just outside each disc: the ember's held close, the white sun's wider.
+        const coronaA = exp(rA.sub(1.0).max(0.0).mul(-4.0)).mul(0.5).mul(float(1.0).sub(discA))
+            .mul(float(1.0).sub(barCover.mul(0.7)));
         col.addAssign(uSunLightA.mul(coronaA));
-        const coronaB = exp(angB.div(sunRadB).sub(1.0).max(0.0).mul(-2.6)).mul(1.4).mul(float(1.0).sub(discB));
+        const coronaB = exp(angB.div(sunRadB).sub(1.0).max(0.0).mul(-2.6)).mul(1.2).mul(float(1.0).sub(discB));
         col.addAssign(uSunLightB.mul(coronaB));
 
         return vec4(col, 1.0);
