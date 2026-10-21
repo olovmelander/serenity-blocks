@@ -58,6 +58,7 @@ import { isEffectWarmEnabled, prewarmActiveThemeEffects } from '../../rendering/
 import { OdysseyBoardController } from '../../rendering/odyssey/OdysseyBoardController.js';
 import { JourneyEntryTransition } from '../../rendering/transitions/JourneyEntryTransition.js';
 import { JourneyReturnTransition } from '../../rendering/transitions/JourneyReturnTransition.js';
+import { scheduleWarmPortalGate } from '../../rendering/transitions/portal-gate.js';
 import { TRANSITION_LAYERS } from '../../rendering/transitions/transition-layer-constants.js';
 import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
 import { renderOdysseyLevelPanel, resetOdysseyPanelPlay } from '../../ui/odyssey/odyssey-level-panel.js';
@@ -330,6 +331,7 @@ export class OdysseyMode extends BaseGameMode {
         }
         if (!this.journeyEntryTransition) this.journeyEntryTransition = new JourneyEntryTransition();
         if (!this.journeyReturnTransition) this.journeyReturnTransition = new JourneyReturnTransition();
+        scheduleWarmPortalGate();
 
         // ═══════════════════════════════════════════════════════════════════
         // PERFORMANCE: Suspend the active theme's render loop while in
@@ -811,6 +813,7 @@ export class OdysseyMode extends BaseGameMode {
         try {
             const result = await this.journeyEntryTransition.play({
                 anchor: launchAnchor,
+                trackAnchor: () => this._resolveJourneyEntryAnchor(requestedLevelId),
                 palette,
                 timings: transitionTimings,
                 qualityPreset,
@@ -1161,11 +1164,8 @@ export class OdysseyMode extends BaseGameMode {
             maxBlackoutHoldMs += 800;
         }
 
+        // The gate paces its own closing and opening; only the hold budget depends on the level.
         return {
-            blackoutStartMs: 300,
-            blackoutFullMs: 620,
-            revealDurationMs: 680,
-            particleDecayMs: 760,
             maxBlackoutHoldMs: Math.min(9800, maxBlackoutHoldMs),
         };
     }
