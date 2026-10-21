@@ -8,9 +8,10 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
+    cameraPosition, dot, exp, float, length, max, mix, normalize, positionWorld, pow, saturate, shadow, sin,
     texture, uniform, vec2, vec3,
 } from 'three/tsl';
+import { gridShadowFilter } from '../shared/grid-shadow-filter.js';
 
 const SUN_AZIMUTH = THREE.MathUtils.degToRad(-23.4);
 const SUN_ELEVATION = THREE.MathUtils.degToRad(11.5);
@@ -56,27 +57,6 @@ function createNoiseTexture(rng, size = 128) {
     return noise;
 }
 
-/**
- * A soft shadow filter with no per-pixel noise. three's PCF turns its sample disc by
- * interleaved gradient noise from pixel to pixel, which a temporal filter would smooth; this
- * theme has none, and under a sun this low nearly every surface sits at the edge of its own
- * shadow, so the noise showed as a fine crosshatch over the whole grove. A fixed grid of
- * hardware-filtered compares (each a smooth 2x2) gives the same width of penumbra, clean.
- */
-export function fallShadowFilter(mapSize, radius, taps = 9) {
-    const step = vec2(radius / mapSize[0], radius / mapSize[1]);
-    const grid = taps >= 9
-        ? [-0.5, 0, 0.5].flatMap((y) => [-0.5, 0, 0.5].map((x) => [x, y]))
-        : [[-0.3, -0.3], [0.3, -0.3], [-0.3, 0.3], [0.3, 0.3]];
-    return Fn(({ depthTexture, shadowCoord }) => {
-        let sum = float(0);
-        grid.forEach(([x, y]) => {
-            sum = sum.add(texture(depthTexture, shadowCoord.xy.add(step.mul(vec2(x, y)))).compare(shadowCoord.z));
-        });
-        return sum.mul(1 / grid.length);
-    });
-}
-
 export class FallLight {
     constructor({ tier, rng = Math.random }) {
         this.tier = tier;
@@ -114,8 +94,10 @@ export class FallLight {
         sunShadow.bias = -0.0009;
         sunShadow.normalBias = 0;
         sunShadow.radius = 2.2;
-        // Nine smooth taps where the tier grades in post, four below.
-        sunShadow.filterNode = fallShadowFilter(tier.shadowMap, sunShadow.radius, tier.post ? 9 : 4);
+        // three's PCF turns its samples by per-pixel noise, which drew a crosshatch over the whole
+        // grove under this low sun; a fixed grid is as soft and clean. Nine taps where the tier
+        // grades in post, four below.
+        sunShadow.filterNode = gridShadowFilter(tier.shadowMap, sunShadow.radius, tier.post ? 9 : 4);
         // The grove never moves under a fixed sun, so its shadows are drawn once.
         sunShadow.autoUpdate = false;
         sunShadow.needsUpdate = true;

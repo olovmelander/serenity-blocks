@@ -22,8 +22,10 @@ const UP = new THREE.Vector3(0, 1, 0);
 
 /** Needle ramps per species, walked by `tone` from deep shade green to sunlit olive-gold. */
 const NEEDLE_RAMPS = Object.freeze({
-    spruce: [0x07130a, 0x112a10, 0x254414, 0x566418],
-    pine: [0x0b1c0d, 0x1b3a15, 0x38561a, 0x748024],
+    // Spruce is a deep blue-green and pine a warmer green: under an orange sun an olive-gold
+    // ramp read as yellow plastic, while the backlit fringe (below) keeps its own gold.
+    spruce: [0x061210, 0x0d2416, 0x1c3a1c, 0x3e5622],
+    pine: [0x0a1a0e, 0x183416, 0x2f4e1a, 0x5c6c22],
 });
 const FOLIAGE_SPECIES = Object.freeze({
     spruce_frond: 'spruce', spruce_bough: 'spruce', pine_tuft: 'pine', pine_clump: 'pine',

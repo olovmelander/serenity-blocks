@@ -244,3 +244,25 @@ and CPU throughout, so the numbers below are observations, not budgets:
 - Low and Minimal have no shafts, and their mirror is coarse enough to show its pixels in
   the reflections of near branches.
 - The far sprites face one camera; they are not meant to be seen from elsewhere.
+
+## Second pass (2026-10-20): sunset sky, clear distance, granite and sun glitter
+
+A look-and-feel pass on top of the lake, in the same modules. Each change was iterated in the
+playground (`?effect=golden-forest&orbit=0&hud=0&t=8`, landscape and 540 × 960 portrait) and
+checked in a real Single Player game at High.
+
+| What | Before | After |
+| --- | --- | --- |
+| **Distance** (`golden-forest-post.js`) | On every tier with shafts the ridges and the sky dissolved into one amber veil: the shadow box ends about 300 m out, so the shaft march counted everything beyond it (ridges 560–1,420 m away, the dome at 3 km) as lit air. | Past the far forest (380–620 m) the shafts keep only the glow round the sun; the haze and the dome carry the distance, so the four ridges stand in the air as they do on Low. |
+| **Sky** (`golden-forest-light.js`, `golden-forest-atmosphere.js`) | Burnt red overhead, ember orange in the middle: the whole frame one amber. | A sunset: dusk blue overhead, rose and mauve in the middle, ember low down, molten gold at the sun. The cloud bars crowd the low sky and open up higher, and their bodies turn dusky mauve away from the sun while their undersides still burn. The shaded haze and the sky's fill light lean rose-mauve, so the shade has a cool colour against the gold. |
+| **Shadows** (`golden-forest-light.js`, `shared/grid-shadow-filter.js`) | The same fine crosshatch over boughs, trunks and stones as Fall had: three's PCF turns its samples by per-pixel noise meant for a temporal filter. | The shared `gridShadowFilter` (moved out of Fall, which now uses it too): nine fixed taps with post, four below. |
+| **Grade** (`golden-forest-post.js`) | Shade pushed toward red umber. | Split tone by scaling only: dusk-violet shade, gold highlights. |
+| **Boulders** (`golden-forest-shore.js`) | Smooth pink-brown blobs under large orange lichen blotches. | Granite with dark mica and pale quartz flecks and a rough (bumped) normal; the lichen grows as crusty rosettes inside the baked patches, mostly pale sage with the odd sunburst orange; moss on the tops, out of the splash. |
+| **Spruce and pine** (`golden-forest-forest.js`) | Olive-gold ramps that read as yellow plastic under the orange sun. | Deep blue-green spruce and warmer green pine; the backlit fringe keeps its own gold. |
+| **Sun glitter** (`golden-forest-lake.js`, new) | The sun's path was one smooth smear. | Points of light come and go on the ruffled water in the sun's column: a cell lights with the chance that a ripple facet there is tilted to the halfway vector, so the column is narrow across, long toward the eye and wider in a breeze. Cells are laid out in the angles the eye sees from where it rests, a few pixels wide at any range, with no shimmer in the distance. |
+
+Checked: playground captures on native WebGPU (High, Low, Minimal, a held ×9 combo, a four-line
+clear, portrait) and on the forced WebGL2 backend, each with a clean console; a real Single
+Player game at High on this machine's integrated Radeon 610M (clean console); the seven
+`tests/unit/golden-forest-*.test.js` suites with Fall's and the skill mirror's (703 tests);
+ESLint at the same 10 pre-existing warnings in the two themes and the effect.
