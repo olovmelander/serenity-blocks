@@ -22,9 +22,9 @@ export const QUALITY_PRESETS = Object.freeze({
         useMRT: false,
         enableFluid: true,
         light: 0.8,
-        aperture: 0.005,
+        aperture: 0.002,
         maxBlur: 0.06,
-        stretch: 0.035,
+        stretch: 0.06,
         skyDetail: 'low',
     }),
     Low: Object.freeze({
@@ -32,9 +32,9 @@ export const QUALITY_PRESETS = Object.freeze({
         useMRT: false,
         enableFluid: true,
         light: 1,
-        aperture: 0.005,
+        aperture: 0.002,
         maxBlur: 0.08,
-        stretch: 0.04,
+        stretch: 0.07,
         skyDetail: 'low',
     }),
     Medium: Object.freeze({
@@ -42,9 +42,9 @@ export const QUALITY_PRESETS = Object.freeze({
         useMRT: true,
         enableFluid: true,
         light: 1.05,
-        aperture: 0.006,
+        aperture: 0.0024,
         maxBlur: 0.1,
-        stretch: 0.05,
+        stretch: 0.1,
         skyDetail: 'high',
     }),
     High: Object.freeze({
@@ -52,9 +52,9 @@ export const QUALITY_PRESETS = Object.freeze({
         useMRT: true,
         enableFluid: true,
         light: 1.1,
-        aperture: 0.006,
+        aperture: 0.0026,
         maxBlur: 0.12,
-        stretch: 0.055,
+        stretch: 0.13,
         skyDetail: 'high',
     }),
     Ultra: Object.freeze({
@@ -62,9 +62,9 @@ export const QUALITY_PRESETS = Object.freeze({
         useMRT: true,
         enableFluid: true,
         light: 1.15,
-        aperture: 0.007,
+        aperture: 0.0028,
         maxBlur: 0.14,
-        stretch: 0.06,
+        stretch: 0.14,
         skyDetail: 'high',
     }),
     Extreme: Object.freeze({
@@ -72,9 +72,9 @@ export const QUALITY_PRESETS = Object.freeze({
         useMRT: true,
         enableFluid: true,
         light: 1.2,
-        aperture: 0.007,
+        aperture: 0.003,
         maxBlur: 0.16,
-        stretch: 0.06,
+        stretch: 0.14,
         skyDetail: 'high',
     }),
 });
@@ -105,7 +105,7 @@ export function normalizeQuality(name) {
 
 /** The count at which a mote has its authored size, and the Low tier's total light. */
 const SIZE_REFERENCE_COUNT = 24000;
-const LIGHT_UNIT = 22000;
+const LIGHT_UNIT = 56000;
 
 /**
  * The mote size and per-mote exposure for a tier at a given count.
