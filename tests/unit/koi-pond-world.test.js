@@ -1155,11 +1155,17 @@ describe('koi pond tiers', () => {
     it('scales every budget monotonically with the tier, and keeps the whole picture and every event on each', () => {
         const keys = [
             'koi', 'shadows', 'pebbles', 'pads', 'lotus', 'leaves', 'floaters', 'fireflies', 'droplets',
-            'mist', 'dragon',
+            'mist', 'dragon', 'mirror', 'shafts',
         ];
         for (let i = 0; i < QUALITY_NAMES.length; i++) {
             const tier = QUALITY[QUALITY_NAMES[i]];
             for (const key of keys) expect(Number.isInteger(tier[key]), `${QUALITY_NAMES[i]}.${key}`).toBe(true);
+            // The garden in the water and the moonbeams both read the copy of the frame the
+            // window makes: a tier without the window has neither.
+            if (!tier.refraction) {
+                expect(tier.mirror, QUALITY_NAMES[i]).toBe(0);
+                expect(tier.shafts, QUALITY_NAMES[i]).toBe(0);
+            }
             // Koi to leap, lilies to open, spray for the splash, a dragon for the chain.
             for (const key of ['koi', 'pads', 'lotus', 'leaves', 'droplets', 'dragon']) {
                 expect(tier[key], `${QUALITY_NAMES[i]}.${key}`).toBeGreaterThan(0);
@@ -1262,6 +1268,49 @@ describe('koi pond tiers', () => {
         surface.dispose();
         for (const disposal of disposals) expect(disposal).toHaveBeenCalledOnce();
         expect(() => surface.update(renderer, 1, 7)).not.toThrow(); // a late frame after retirement
+        light.dispose();
+    });
+
+    it('loses nothing to a pass three has not built yet: no clear, and no swap', () => {
+        // In the game three builds pipelines in the background and skips a draw made before one
+        // is ready; the pass's clear would still land (alpha 1 = light left all over the water).
+        const tier = QUALITY.Minimal;
+        const light = new PondLight({ tier });
+        const surface = new PondSurface({ light, tier });
+        let building = true;
+        const clears = [];
+        const renderer = {
+            autoClear: true,
+            info: { render: { drawCalls: 0 } },
+            getRenderTarget: () => null,
+            setRenderTarget: () => {},
+            getClearColor: (colour) => colour,
+            getClearAlpha: () => 1,
+            setClearColor: vi.fn(),
+            clear: vi.fn(),
+            render() {
+                clears.push(this.autoClear);
+                if (!building) this.info.render.drawCalls += 1;
+            },
+        };
+        surface.reset(renderer, 0);
+        const before = surface.read;
+        surface.stepOnce(renderer);
+        surface.derive(renderer, 0);
+        // Skipped: the water keeps what it had, and the clock still runs.
+        expect(surface.read).toBe(before);
+        expect(light.waves.value).toBe(surface.targets[before].texture);
+        expect(surface.steps).toBe(1);
+        // Drawn: the step is swapped in.
+        building = false;
+        surface.stepOnce(renderer);
+        expect(surface.read).toBe(1 - before);
+        expect(light.waves.value).toBe(surface.targets[1 - before].texture);
+        // Never a clear under a pass, and the renderer's own setting handed back.
+        expect(clears.length).toBeGreaterThan(0);
+        expect(clears.every((auto) => auto === false)).toBe(true);
+        expect(renderer.autoClear).toBe(true);
+        surface.dispose();
         light.dispose();
     });
 
