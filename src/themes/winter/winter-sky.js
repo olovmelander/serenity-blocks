@@ -11,9 +11,10 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     acos,
+    atan,
     cameraPosition,
+    cameraViewMatrix,
     clamp,
-    cross,
     dot,
     exp,
     float,
@@ -27,11 +28,13 @@ import {
     sin,
     smoothstep,
     sqrt,
+    step,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 import {
-    DEG, MOON, wAurora, wHash23, wPart, wSky, wSolidMaterial, wSq,
+    DEG, LOOK, MOON, wAurora, wHash23, wPart, wSky, wSolidMaterial, wSq,
 } from './winter-tsl.js';
 
 /** The dome's radius (metres): inside the far plane, beyond the last fell. */
@@ -67,19 +70,44 @@ export function createSky(u, { curtains = 3 } = {}) {
         col.addAssign(tone.mul(star).mul(u.breath));
 
         // ── The moon ──
-        const right = normalize(cross(vec3(0.0, 1.0, 0.0), u.moonDir));
-        const upward = cross(u.moonDir, right);
+        // The disc is drawn in the lens's image plane, so it is round wherever the frame puts it:
+        // laid on the dome, a wide lens stretched it into an egg toward the corner it stands in.
+        // Its radius there is the egg's short axis (tan R over the cosine of its angle off the axis).
         const cs = dot(dir, u.moonDir);
-        const scale = 1 / Math.tan(MOON.radius);
-        const m = vec2(dot(dir, right), dot(dir, upward)).div(max(cs, 0.2)).mul(scale);
+        const vD = cameraViewMatrix.mul(vec4(dir, 0.0)).xyz;
+        const vM = cameraViewMatrix.mul(vec4(u.moonDir, 0.0)).xyz;
+        const offAxis = max(vM.z.negate(), 0.2);
+        const plane = vD.xy.div(max(vD.z.negate(), 0.05)).sub(vM.xy.div(offAxis));
+        const m = plane.mul(offAxis).div(Math.tan(MOON.radius)).toVar();
         const r = length(m);
         const disc = smoothstep(1.0, 0.965, r).mul(smoothstep(0.0, 0.2, cs));
         const limb = sqrt(max(float(1.0).sub(r.mul(r)), 0.0));
-        // Its seas: broad dark plains, and the rays of a young crater or two.
-        const seas = u.noise(m.mul(0.16).add(vec2(0.31, 0.62)));
-        const fineSeas = u.noise(m.mul(0.5).add(vec2(0.7, 0.2))).a;
-        const albedo = float(0.3).add(smoothstep(0.34, 0.62, seas.r).mul(0.7)).add(fineSeas.sub(0.5).mul(0.2));
-        const face = u.moonCol.mul(albedo).mul(limb.mul(0.35).add(0.65)).mul(2.3);
+        // Its face, as the full moon's: dark seas with crisp shores, gathered in its upper half;
+        // bright highlands pitted with small craters; and a young crater low down whose rays
+        // run out over half the disc.
+        const broadSeas = u.noise(m.mul(0.3).add(vec2(0.31, 0.62))).r;
+        const smallSeas = u.noise(m.mul(0.62).add(vec2(0.13, 0.47))).a;
+        const fine = u.noise(m.mul(0.5).add(vec2(0.7, 0.2))).a;
+        const north = smoothstep(-0.6, 0.5, m.y.add(m.x.mul(0.2)));
+        const seaField = broadSeas.mul(0.7).add(smallSeas.mul(0.3)).add(north.mul(0.14)).sub(0.07);
+        const sea = smoothstep(LOOK.moonSeaFrom, LOOK.moonSeaFrom + 0.05, seaField.add(fine.sub(0.5).mul(0.08)));
+        const pit = m.mul(4.2);
+        const pitCell = floor(pit);
+        const ph = wHash23(pitCell);
+        // (A crater in one cell of four, anywhere in its cell, of any size: denser or centred,
+        // they lie on a visible grid.)
+        const pitD = length(fract(pit).sub(0.5).sub(ph.xy.sub(0.5).mul(0.72))).div(wSq(ph.z).mul(0.3).add(0.06));
+        const has = step(0.75, fract(ph.z.mul(7.31)));
+        const rim = exp(wSq(pitD.sub(1.0).div(0.25)).negate()).mul(has);
+        const floorDark = smoothstep(1.0, 0.6, pitD).mul(has);
+        const young = m.sub(vec2(-0.12, -0.58));
+        const youngR = length(young);
+        const spokes = u.noise(vec2(atan(young.y, young.x).mul(3.0), 0.43)).r;
+        const rays = smoothstep(0.55, 0.85, spokes).mul(exp(youngR.mul(-2.4))).mul(smoothstep(0.06, 0.12, youngR))
+            .add(exp(wSq(youngR.div(0.05)).negate()).mul(1.4));
+        const highland = float(0.82).add(fine.sub(0.5).mul(0.22)).add(rim.mul(0.22)).sub(floorDark.mul(0.1));
+        const albedo = mix(highland, float(LOOK.moonSea).add(fine.sub(0.5).mul(0.1)), sea).add(rays.mul(0.5));
+        const face = u.moonCol.mul(albedo).mul(limb.mul(0.2).add(0.8)).mul(LOOK.moonGain);
         col.assign(mix(col, face, disc));
 
         // ── The ring of ice-light, 22° out: sharp and red inside, soft and blue outside ──

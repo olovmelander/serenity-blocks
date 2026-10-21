@@ -23,9 +23,9 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, Loop, abs, cameraPosition, clamp, cos, cross, dot, exp, float, floor, fract, int, length, max, min, mix,
+    Fn, Loop, abs, cameraPosition, clamp, cos, cross, dot, exp, float, int, length, max, min, mix,
     normalize,
-    positionGeometry, positionWorld, reflect, screenCoordinate, sin, smoothstep, texture, varying, vec2, vec3, vec4,
+    positionGeometry, positionWorld, reflect, sin, smoothstep, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { FLOW, WAVE } from './waves-core.js';
 import {
@@ -158,27 +158,46 @@ export function createWater({
         /** x across the flow, y along it: what the noise is read at. */
         const fc = flowCoords(surface, time).toVar();
 
+        // ── The water's noise, read once for everything below ──
+        // The flow draws the wall's ripples out into ribs, but only three or four to one: drawn
+        // out further (8:1, and tilted only across the flow) every rib became a hairline and the
+        // face read as a long exposure, not as glass. From High up a fine chop near the eye gives
+        // the glass its glitter (one read more on a full-screen material: the tiers below skip it).
+        const glass = tier.noise >= 512;
+        const rib = texture(noise, vec2(fc.x.mul(0.4), fc.y.mul(0.11))).toVar();
+        const fine = texture(noise, vec2(fc.x.mul(1.9).add(0.37), fc.y.mul(0.7).add(time.mul(0.03)))).toVar();
+        const broad = texture(noise, fc.mul(0.085).add(vec2(0.5, time.mul(0.01)))).toVar();
+        const chop = glass
+            ? texture(noise, vec2(fc.x.mul(4.6).add(0.13), fc.y.mul(2.9).sub(time.mul(0.05)))).toVar()
+            : null;
+
         // ── The lip's torn edge ──
-        const lace = texture(noise, vec2(fc.x.mul(0.62), fc.y.mul(0.085))).a.toVar();
+        // Lobes and tongues a hand to an arm long (not icicles: the tears are drawn out along the
+        // flow only about three to one), frayed finer at their tips.
+        const lace = texture(noise, vec2(fc.x.mul(0.62), fc.y.mul(0.2))).a.toVar();
         const torn = smoothstep(WAVE.lipCrest + 0.25, WAVE.lipClosed - 0.4, lip);
         const reach = mix(float(0.12), float(1.6), torn).mul(U.tear.mul(0.9).add(1.0));
-        const frayed = texture(noise, vec2(fc.x.mul(2.3).add(0.21), fc.y.mul(0.31))).b;
-        const cut = edge.sub(lace.mul(lace).mul(reach)).sub(frayed.sub(0.5).mul(reach).mul(0.22)).toVar();
-        // The very edge is spray, not a line: it thins out grain by grain.
-        const grain = fract(sin(dot(floor(screenCoordinate.xy), vec2(12.9898, 78.233))).mul(43758.5453));
-        cut.lessThan(grain.mul(reach).mul(0.14)).discard();
+        const frayed = texture(noise, vec2(fc.x.mul(2.3).add(0.21), fc.y.mul(0.8))).b;
+        const cut = edge.sub(lace.mul(lace).mul(reach)).sub(frayed.sub(0.5).mul(reach).mul(0.3)).toVar();
+        // The very edge is spray, not a line: a fine lace of holes and drops (a grain of the
+        // noise, not of the screen, so it stays on the water as it moves), and the last of it is
+        // cut by coverage, not by a pixel's yes or no (alphaToCoverage under MSAA).
+        const spray = glass ? chop.a : fine.a;
+        const edgeAlpha = smoothstep(0.0, reach.mul(0.14).add(0.03), cut.sub(spray.sub(0.35).mul(reach).mul(0.16)))
+            .toVar();
 
         // ── Ripples: the slope of the surface in (u, z) ──
-        const rib = texture(noise, vec2(fc.x.mul(0.4), fc.y.mul(0.052))).toVar();
-        const fine = texture(noise, vec2(fc.x.mul(1.7).add(0.37), fc.y.mul(0.42).add(time.mul(0.03)))).toVar();
-        const broad = texture(noise, fc.mul(0.085).add(vec2(0.5, time.mul(0.01)))).toVar();
         const g1 = rib.rg.sub(0.5);
         const g2 = fine.rg.sub(0.5);
         const g3 = broad.rg.sub(0.5);
-        const slope = across.mul(g1.x.mul(0.95).add(g2.x.mul(0.4)).add(g3.x.mul(0.6)))
-            .add(along.mul(g1.y.mul(0.13).add(g2.y.mul(0.1)).add(g3.y.mul(0.6))))
-            .mul(U.ripple)
+        const slope = across.mul(g1.x.mul(0.8).add(g2.x.mul(0.42)).add(g3.x.mul(0.6)))
+            .add(along.mul(g1.y.mul(0.34).add(g2.y.mul(0.26)).add(g3.y.mul(0.6))))
             .toVar();
+        if (glass) {
+            const g4 = chop.rg.sub(0.5).mul(float(1.0).sub(smoothstep(8.0, 34.0, dist)));
+            slope.addAssign(across.mul(g4.x.mul(0.3)).add(along.mul(g4.y.mul(0.24))));
+        }
+        slope.mulAssign(U.ripple);
 
         // ── Rings: a locked piece's refracting rings ──
         const ringGleam = float(0.0).toVar();
@@ -259,7 +278,11 @@ export function createWater({
 
         // ── Through the water ──
         const thin = skyBehind(phi).toVar();
-        const tau = mix(float(DEEP), sheetThickness(cut), thin);
+        // A sheet seen at a slant is crossed on a longer path than it is thick: the lip and the roof
+        // curving away from the eye are greener and darker than where they face it (seen square,
+        // a thin lip passed almost the whole sky and read as pale milk).
+        const slant = max(facing, 0.28);
+        const tau = mix(float(DEEP), sheetThickness(cut).mul(1.5).div(slant), thin);
         const through = transmit(tau, light.absorb).toVar();
         const bend = normalize(V.negate().add(N.sub(N0).mul(0.8)));
         const behind = wavesSky(bend, sun, float(0.6), warm, light);
@@ -271,8 +294,9 @@ export function createWater({
         const outside = float(1.0).sub(smoothstep(-5.0, -0.6, sU));
         const lift = max(smoothstep(0.3, 2.6, phi).mul(0.75).add(0.25), outside.mul(0.85));
         const ambient = vec3(0.3, 0.4, 0.5).mul(light.skyTint).mul(lift);
-        // The water is not one thickness of one stuff: it is drawn out in bands along the flow.
-        const bands = rib.b.mul(0.85).add(broad.b.mul(0.5)).add(0.38);
+        // The water is not one thickness of one stuff: it is drawn out in bands along the flow
+        // (gently: strong bands striped the face like a brushed sheet).
+        const bands = rib.b.mul(0.42).add(broad.b.mul(0.46)).add(0.56);
         const own = light.scatter.mul(ambient.add(lightIn.mul(f6.mul(2.4).add(0.95))))
             .mul(bands)
             .mul(U.glow.mul(0.6).add(1.0));
@@ -283,7 +307,7 @@ export function createWater({
         const milky = vec3(0.3, 0.74, 0.7).mul(light.waterTint)
             .mul(ambient.mul(0.9).add(behind.mul(0.2)).add(lightIn.mul(0.3)))
             .mul(falling);
-        body.assign(mix(body, milky, milk.mul(0.5)));
+        body.assign(mix(body, milky, milk.mul(0.28)));
 
         // ── Ribbons: a locked piece's colour, drawn up and over by the flow ──
         const ribbon = vec3(0.0).toVar();
@@ -313,12 +337,12 @@ export function createWater({
 
         // ── Foam ──
         // Threads of foam drawn up the face: fine, and never a sheet.
-        const streak = texture(noise, vec2(fc.x.mul(3.6), fc.y.mul(0.045))).b;
-        const thread = texture(noise, vec2(fc.x.mul(7.5).add(0.7), fc.y.mul(0.06))).a;
+        const streak = texture(noise, vec2(fc.x.mul(5.2), fc.y.mul(0.09))).b;
+        const thread = texture(noise, vec2(fc.x.mul(9.5).add(0.7), fc.y.mul(0.14))).a;
         // Each thread starts and ends, and they come in loose skeins, not as a comb.
         const dash = texture(noise, vec2(fc.x.mul(0.8).add(0.3), fc.y.mul(0.19))).b;
         const skein = smoothstep(0.5, 0.72, broad.a).mul(smoothstep(0.38, 0.62, dash));
-        const lines = smoothstep(0.7, 0.84, streak).mul(0.6).add(smoothstep(0.72, 0.84, thread).mul(0.45)).mul(skein);
+        const lines = smoothstep(0.82, 0.9, streak).mul(0.5).add(smoothstep(0.84, 0.92, thread).mul(0.35)).mul(skein);
         const low = float(1.0).sub(smoothstep(0.9, 3.3, phi));
         // Where the lip comes down on the trough.
         const down = smoothstep(4.7, 5.7, lip);
@@ -326,8 +350,8 @@ export function createWater({
         const boil = exp(fromLanding.mul(fromLanding).negate()).mul(down)
             .mul(float(1.0).sub(smoothstep(0.0, 0.5, phi)))
             .mul(broad.b.mul(0.9).add(0.45));
-        const white = float(1.0).sub(smoothstep(0.0, reach.mul(0.3).add(0.2), cut)).mul(0.5);
-        const foam = clamp(lines.mul(low).mul(0.75).add(boil).add(white.mul(thin)), 0.0, 1.0).toVar();
+        const white = float(1.0).sub(smoothstep(0.0, reach.mul(0.16).add(0.12), cut)).mul(0.4);
+        const foam = clamp(lines.mul(low).mul(0.32).add(boil).add(white.mul(thin)), 0.0, 1.0).toVar();
         const foamLight = ambient.mul(0.9).add(vec3(0.16, 0.2, 0.24).mul(light.skyTint))
             .add(min(lightIn, vec3(1.4)).mul(vec3(0.95, 0.92, 0.8)).mul(0.7))
             .add(through.mul(behind).mul(thin).mul(0.3));
@@ -341,6 +365,13 @@ export function createWater({
         colour.addAssign(vec3(1.0, 0.66, 0.34).mul(light.fireTint).mul(max(relief, 0.0)).mul(0.085)
             .mul(lift.mul(0.6).add(0.4)));
         colour.assign(mix(colour, foamColour, foam));
+        // The low sun through the lip's thin torn edge: a fringe of its own light along every lobe,
+        // strongest looking toward it, a little of it all along the lip (the water scatters it).
+        const fringe = float(1.0).sub(smoothstep(0.0, reach.mul(0.22).add(0.16), cut)).mul(torn).mul(thin);
+        const toSun = forward.mul(forward);
+        colour.addAssign(light.bloom.mul(light.fireTint).mul(fringe)
+            .mul(toSun.mul(toSun).mul(2.2).add(toSun.mul(0.5)).add(0.08))
+            .mul(through.y.mul(0.6).add(0.4)));
         colour.addAssign(ribbon.mul(threads).mul(thin.mul(0.7).add(0.7)).mul(1.5));
         colour.addAssign(vec3(0.72, 1.0, 0.94).mul(light.waterTint).mul(ringGleam).mul(0.075));
         // A clear's band of light, caught on every rib of the wall: the sun's colour where the
@@ -354,8 +385,11 @@ export function createWater({
         // The far water goes into the haze of the hour.
         const haze = wavesSky(normalize(vec3(V.x.negate(), 0.012, V.z.negate())), sun, float(0.0), warm, light);
         colour.assign(mix(colour, haze, float(1.0).sub(exp(dist.mul(-1 / 420)))));
-        return vec4(colour, 1.0);
+        return vec4(colour, edgeAlpha);
     })();
+    // The torn edge is cut at half its alpha: by coverage under MSAA, by a plain test without it.
+    material.alphaTest = 0.5;
+    material.alphaToCoverage = true;
 
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'waves-water';

@@ -243,6 +243,67 @@ export function createShadowTexture(data, size) {
     return tex;
 }
 
+// ── The look's numbers ──────────────────────────────────────────────────────────
+
+/**
+ * The look's numbers, read when the materials are built. The playground overrides any of them
+ * from the URL (`P.<name>=<value>`) before the world is built; the theme ships these.
+ */
+export const LOOK = {
+    // The aurora's sheet, along its height `a` above its foot (km): it switches on sharply between
+    // footFrom and footTo (a real curtain's lower border is crisp), then decays over
+    // `tall` = ray² · tallRay + tallBase. Rays a hundred kilometres tall ran every sheet off the
+    // top of the frame as a comb.
+    auroraFootFrom: -1.2,
+    auroraFootTo: 1.2,
+    auroraTallRay: 60.0,
+    auroraTallBase: 15.0,
+    // The hem: the curtain is brightest just above its foot (its strength, and how fast it falls
+    // off, km), so the folds read as a bright ribbon with the rays rising from it.
+    auroraHem: 2.2,
+    auroraHemFall: 6.0,
+    // The rays: how much of the sheet's light is in them (bright = ray · gain + base: the sheet
+    // glows between them, so they are not on/off strands), and how fast a ray's strength changes
+    // up its length (noise units per km), so a ray fades in and out instead of standing as a line.
+    auroraRayGain: 0.8,
+    auroraRayBase: 0.4,
+    auroraRayAlong: 0.003,
+    auroraRayFrom: 0.24,
+    auroraRayTo: 0.8,
+    // The moon's face: its brightness (scene-linear, × the hour's moon colour) and its seas'
+    // albedo against the highlands' 1.
+    moonGain: 1.6,
+    moonSea: 0.4,
+    // Where the seas' field turns to sea (higher: fewer, smaller seas).
+    moonSeaFrom: 0.56,
+    // The snow's surface: broad swells (their slope, and the noise tiles per metre) and the long
+    // ripple's share of its old strength.
+    snowSwell: 0.8,
+    snowSwellScale: 0.011,
+    snowRipple: 0.3,
+    // The moon's path on the snow: a sharp lobe (16th power) and a broad one (4th). Snow scatters
+    // light; a sharp mirror lobe on its bumps drew water's highlights. The sparkle carries the path.
+    snowSheen: 0.1,
+    snowSheenBroad: 0.1,
+    // How bright each of the fox of light's veils is where it faces the eye.
+    spiritVeil: 0.35,
+    // The snow ghosts' boughs under their pillows: how far noise breaks up where the needles show
+    // (in the bough mask's units), how much of the sky's light reaches them, and how much rime
+    // frosts the needles.
+    treeNeedleBreak: 0.4,
+    treeBoughSky: 0.3,
+    treeRime: 0.45,
+};
+
+/** Apply overrides ({ name: number }) to LOOK; unknown names and non-numbers are ignored. */
+export function tuneLook(overrides) {
+    if (!overrides) return;
+    Object.keys(overrides).forEach((key) => {
+        const v = Number(overrides[key]);
+        if (key in LOOK && Number.isFinite(v)) LOOK[key] = v;
+    });
+}
+
 // ── The aurora's sheets ─────────────────────────────────────────────────────────
 
 /** The height of the aurora's foot, in the units its sheets are laid out in ("km"). */
@@ -443,14 +504,17 @@ export const wAurora = (u, dir, { count = 3, fine = true } = {}) => {
         if (fine) {
             // (The rays are spaced by the broad pattern too: evenly spaced, they read as a comb.)
             const along = x.mul(c.rays).add(broad.a.mul(2.6)).sub(run.mul(0.5));
-            const strands = u.noise(vec2(along, a.mul(0.0006).add(i * 0.17 + 0.63)));
-            ray = smoothstep(0.24, 0.8, strands.r);
+            const strands = u.noise(vec2(along, a.mul(LOOK.auroraRayAlong).add(i * 0.17 + 0.63)));
+            ray = smoothstep(LOOK.auroraRayFrom, LOOK.auroraRayTo, strands.r);
             // Fine rays ride on the broad ones, and are never all one width.
             hair = u.noise(vec2(x.mul(c.rays * 2.3).add(run.mul(0.8)), i * 0.23 + 0.37)).a.mul(0.7).add(0.65);
         }
-        const tall = ray.mul(ray).mul(125.0).add(13.0).mul(E.mul(0.5).add(0.65));
-        const body = smoothstep(-5.0, 4.0, a).mul(exp(max(a, 0.0).div(tall).negate()));
-        const bright = patch.mul(1.5).add(0.1).mul(ray.mul(1.15).add(0.16)).mul(hair);
+        const tall = ray.mul(ray).mul(LOOK.auroraTallRay).add(LOOK.auroraTallBase).mul(E.mul(0.5).add(0.65));
+        let body = smoothstep(LOOK.auroraFootFrom, LOOK.auroraFootTo, a).mul(exp(max(a, 0.0).div(tall).negate()));
+        if (LOOK.auroraHem > 0) {
+            body = body.mul(float(1.0).add(exp(max(a, 0.0).div(-LOOK.auroraHemFall)).mul(LOOK.auroraHem)));
+        }
+        const bright = patch.mul(1.5).add(0.1).mul(ray.mul(LOOK.auroraRayGain).add(LOOK.auroraRayBase)).mul(hair);
         // The foot of an energetic sheet burns rose.
         const hem = exp(wSq(a.sub(1.5).div(6.0)).negate()).mul(smoothstep(0.7, 1.6, E));
         const colour = mix(tinted.rgb, u.crown, smoothstep(0.12, 1.15, max(a, 0.0).div(tall)))
