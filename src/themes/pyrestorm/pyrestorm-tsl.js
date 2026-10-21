@@ -30,7 +30,7 @@ import {
     vec3,
 } from 'three/tsl';
 import {
-    BILLOW, LATTICE_SIZE, LATTICE_SLICE, LAVA_FIELDS, NOISE_SIZE, bakeBillows, bakeLattice, bakeNoise,
+    BILLOW, CRUST, LATTICE_SIZE, LATTICE_SLICE, LAVA_FIELDS, NOISE_SIZE, bakeBillows, bakeCrust, bakeLattice, bakeNoise,
 } from './pyrestorm-bake.js';
 import { CRATER } from './pyrestorm-core.js';
 
@@ -96,6 +96,11 @@ export function createBillowTexture(data = bakeBillows()) {
     const size = BILLOW.tile * BILLOW.grid;
     // No mips: a puff is large on screen, and mips would bleed one heap's tile into the next.
     return dataTexture(data, size, size, { name: 'pyrestorm-billows', wrap: THREE.ClampToEdgeWrapping });
+}
+
+/** The lava's crust: plates and cracks, tiled and mipmapped (pyrestorm-bake's bakeCrust). */
+export function createCrustTexture(data = bakeCrust()) {
+    return dataTexture(data, CRUST.size, CRUST.size, { name: 'pyrestorm-crust', mips: true });
 }
 
 /** A lava field's two textures (channel geometry + heat + glow; flow heading + kind + arc). */
@@ -197,7 +202,8 @@ export function fireLightAt(u, P, N) {
     const L = toC.div(max(d, 1.0));
     const ndl = clamp(dot(N, L).mul(0.75).add(0.25), 0.0, 1.0);
     const fall = float(1.0).div(float(1.0).add(d.div(1900.0).mul(d.div(1900.0))));
-    return u.fireColour.mul(u.fountain.mul(ndl).mul(fall).mul(2.4));
+    // A lock's burst glows in the crater on top of the fountain (u.burst, eased).
+    return u.fireColour.mul(u.fountain.add(u.burst.mul(0.9)).mul(ndl).mul(fall).mul(2.4));
 }
 
 // ── The air ───────────────────────────────────────────────────────────────────────
@@ -214,10 +220,15 @@ export function aerial(u, t, P, colour) {
     const dens = u.hazeDensity.mul(exp(hMean.div(-2200.0)));
     const tau = dist.mul(dens).mul(0.000045);
     const keep = exp(tau.negate());
-    // The air glows over the lava: the wide glow under the point's line, a third of the way out.
-    const mid = u.eye.xz.add(toP.xz.mul(0.62));
-    const g = wideGlowAt(t, mid).mul(exp(hMean.div(-900.0)));
-    const air = u.haze.add(u.fireColour.mul(g.mul(0.11).mul(u.activity)));
+    // The air glows over the lava: the wide glow under the line of sight, read at three places
+    // along it (one read lit only the haze over whatever lay two thirds of the way out), the low
+    // air glowing most.
+    const g = wideGlowAt(t, u.eye.xz.add(toP.xz.mul(0.35)))
+        .add(wideGlowAt(t, u.eye.xz.add(toP.xz.mul(0.65))))
+        .add(wideGlowAt(t, u.eye.xz.add(toP.xz.mul(0.9))))
+        .mul(1.0 / 3.0)
+        .mul(exp(hMean.div(-900.0)));
+    const air = u.haze.add(u.fireColour.mul(g.mul(0.16).mul(u.activity)));
     return mix(air, colour, keep);
 }
 
@@ -286,7 +297,9 @@ export function createUniforms() {
         corona: uniform(0),
         /** A hard drop's tremor: the crust cracks open for a moment (0..1). */
         tremor: uniform(0),
+        /** A lock's burst glowing in the crater (0 … ~1.6, eased). */
+        burst: uniform(0),
     };
 }
 
-export { BILLOW, LAVA_FIELDS };
+export { BILLOW, CRUST, LAVA_FIELDS };
