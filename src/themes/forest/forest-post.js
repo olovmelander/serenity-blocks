@@ -2,7 +2,8 @@
  * Forest — the lens.
  *
  * Medium tiers and above print the night through a RenderPipeline: volumetric moonbeams
- * raymarched through the old trees' real shadow map (three's GodraysNode), a hue-preserving
+ * raymarched through the old trees' real shadow map (three's GodraysNode) and cut into rays by
+ * what stands between each pixel and the moon on screen (a short march), a hue-preserving
  * bloom that lets the moon and the fireflies glow without bleaching them, a filmic curve
  * with deep blue shadows, and smooth needle edges: 4× MSAA in the scene pass from High up
  * (`samples`, shared/scene-antialias.js), FXAA on a single-sampled pass. Low and Minimal draw
@@ -10,8 +11,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, acesFilmicToneMapping, clamp, dot, float, length, max, mix, pass, pow, renderOutput, saturate, screenUV,
-    smoothstep, uniform, vec2, vec3, vec4,
+    Fn, Loop, acesFilmicToneMapping, clamp, dot, exp, float, length, max, mix, pass, pow, renderOutput, rtt,
+    saturate, screenUV, smoothstep, uniform, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
@@ -21,6 +22,19 @@ import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { forestTier } from './forest-quality.js';
 
 const BLOOM_STRENGTH = 0.3;
+const LUMA = vec3(0.2126, 0.7152, 0.0722);
+
+/**
+ * The rays: how far a march reaches toward the moon (share of the way), how much a nearer
+ * step counts than a farther one, the scene brightness that counts as open sky (linear: the
+ * boughs and trunks are under 0.1, the sky round the moon 0.3 to 1.3), the ray targets'
+ * resolution, and how the beams answer: a line of sight blocked to the moon keeps 'shadowed'
+ * of the haze, an open one 'open', within 'reach' screen heights of the moon (beyond it the
+ * haze is left as it was).
+ */
+const RAYS = Object.freeze({
+    length: 0.94, decay: 0.94, sky: [0.08, 0.32], scale: 0.25, refine: 6, shadowed: 0.3, open: 1.25, reach: 0.75,
+});
 
 export class ForestPost {
     constructor({
@@ -45,6 +59,9 @@ export class ForestPost {
         this.uExposure = uniform(1.0);
         this.uShafts = uniform(1.5);
         this.uMoonScreen = uniform(new THREE.Vector2(0.26, 0.18));
+        // The crepuscular rays' strength (1 in play; events lift it with the beams).
+        this.uRays = uniform(1);
+        this.raysGain = 1;
         this.moonPoint = new THREE.Vector3();
         if (this.disabled) return;
         this.pipeline = new THREE.RenderPipeline(renderer);
@@ -68,7 +85,17 @@ export class ForestPost {
             // Brightest in a wide ring round the moon, eased off over the disc itself so it stays crisp.
             const clear = smoothstep(0.02, 0.17, length(centred)).mul(0.5).add(0.5);
             const beamColour = mix(light.uBeamCool, light.uBeamMoon, pow(toward, 2.2)).mul(clear);
-            lit = lit.add(beamColour.mul(this.shaftsBlur.r).mul(this.uShafts));
+            let beams = this.shaftsBlur.r;
+            if (this.tier.rays > 0) {
+                // Cut the moonlit air into rays: bright where the line to the moon is open,
+                // dim where a bough or a trunk stands in it, near the moon only.
+                this.raysNode = this.createRays(sceneColor, this.tier.rays);
+                const sight = this.raysNode.sample(screenUV);
+                const open = sight.r.div(max(sight.g, 1e-4));
+                const near = exp(dot(centred, centred).div(RAYS.reach * RAYS.reach).negate()).mul(this.uRays);
+                beams = beams.mul(mix(float(1), mix(float(RAYS.shadowed), float(RAYS.open), open), near));
+            }
+            lit = lit.add(beamColour.mul(beams).mul(this.uShafts));
         }
         this.bloomNode = bloom(sceneColor, BLOOM_STRENGTH, 0.6, 0.86);
         // Soft knee on the brightest channel, so a firefly keeps its green in the bloom.
@@ -95,6 +122,47 @@ export class ForestPost {
         })();
         // A multisampled pass is already smooth; FXAA over it would only soften the needles.
         this.pipeline.outputNode = this.samples > 0 ? graded : fxaa(graded);
+    }
+
+    /**
+     * How open each pixel's line of sight to the moon is, in two short marches instead of one
+     * long one (the breathing stage's recipe, ui/effects/breathing/stage/breath-post.js). The
+     * first walks each pixel toward the moon on screen and weighs what it crosses: open sky
+     * (bright) or a bough or trunk (dark), nearer steps counting more. It returns the open share
+     * as a sum and its weight (r / g), so the second can average them without bias: it walks the
+     * first's result over one of its steps, filling between its samples, the smoothness of
+     * N × M taps from N + M with no jitter and so no grain. Both at quarter size.
+     */
+    createRays(sceneColor, count) {
+        const gather = Fn(() => {
+            const coord = uv().toVar();
+            const stride = this.uMoonScreen.sub(coord).mul(RAYS.length).div(count).toVar();
+            const at = coord.toVar();
+            const open = float(0).toVar();
+            const total = float(0).toVar();
+            const weight = float(1).toVar();
+            Loop(count, () => {
+                at.addAssign(stride);
+                const lum = dot(sceneColor.sample(at).rgb, LUMA);
+                open.addAssign(smoothstep(RAYS.sky[0], RAYS.sky[1], lum).mul(weight));
+                total.addAssign(weight);
+                weight.mulAssign(RAYS.decay);
+            });
+            return vec4(open, total, 0, 1);
+        })();
+        this.raysFirst = rtt(gather, null, null, { resolutionScale: RAYS.scale });
+        const fill = Fn(() => {
+            const coord = uv().toVar();
+            const stride = this.uMoonScreen.sub(coord).mul(RAYS.length).div(count * RAYS.refine).toVar();
+            const at = coord.toVar();
+            const sum = vec2(0).toVar();
+            Loop(RAYS.refine, () => {
+                sum.addAssign(this.raysFirst.sample(at).rg);
+                at.addAssign(stride);
+            });
+            return vec4(sum.div(RAYS.refine), 0, 1);
+        })();
+        return rtt(fill, null, null, { resolutionScale: RAYS.scale });
     }
 
     /**
@@ -126,6 +194,7 @@ export class ForestPost {
         const shafts = Number.isFinite(frame.shafts) ? THREE.MathUtils.clamp(frame.shafts, 0, 1) : 0;
         this.uExposure.value = this.exposure + moon * 0.06;
         this.uShafts.value = (1.5 + shafts * 0.9) * this.shaftGain;
+        this.uRays.value = (1 + shafts * 0.8) * this.raysGain;
         if (this.bloomNode) this.bloomNode.strength.value = (BLOOM_STRENGTH + moon * 0.08) * this.bloomGain;
         if (this.light && this.camera?.isCamera) {
             // Screen position of the moon (uv, y down) for the beam tint.
@@ -162,7 +231,11 @@ export class ForestPost {
 
     getDiagnostics() {
         return {
-            quality: this.quality, disabled: this.disabled, useMRT: false, godrays: Boolean(this.godraysNode),
+            quality: this.quality,
+            disabled: this.disabled,
+            useMRT: false,
+            godrays: Boolean(this.godraysNode),
+            rays: Boolean(this.raysNode),
         };
     }
 
@@ -172,11 +245,15 @@ export class ForestPost {
         this.scenePass?.dispose();
         this.godraysNode?.dispose();
         this.shaftsBlur?.dispose?.();
+        this.raysFirst?.dispose?.();
+        this.raysNode?.dispose?.();
         disposeBloomNodeDeep(this.bloomNode);
         this.pipeline?.dispose();
         this.scenePass = null;
         this.godraysNode = null;
         this.shaftsBlur = null;
+        this.raysFirst = null;
+        this.raysNode = null;
         this.bloomNode = null;
         this.pipeline = null;
         this.renderer = null;
