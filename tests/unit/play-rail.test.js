@@ -264,4 +264,28 @@ describe('play rail', () => {
         expect(JSON.parse(store.get('serenity.playRail.peeks'))).toEqual({ single: 3 });
         expect(manager.on).toHaveBeenCalled();
     });
+
+    it('keeps folded over Stillfall\'s atlas, whose header ends at the folded tray', async () => {
+        vi.useFakeTimers();
+        const { handlers, store } = setup('stillfall');
+        const rail = await install();
+        const { foldPlayRailPeek } = await import('../../src/ui/keystone/play-rail.js');
+        const query = globalThis.document.querySelector;
+
+        // Open when the peek would start: no peek, and the run is not counted.
+        globalThis.document.querySelector = (selector) => (selector.startsWith('#stillfall-atlas') ? {} : query(selector));
+        handlers.get('modeStarted')();
+        vi.advanceTimersByTime(3300);
+        expect(rail.classList.contains('is-peek')).toBe(false);
+        expect(store.get('serenity.playRail.peeks')).toBeUndefined();
+
+        // Opened during a peek: the tray folds at once.
+        globalThis.document.querySelector = query;
+        handlers.get('modeStarted')();
+        vi.advanceTimersByTime(3300);
+        expect(rail.classList.contains('is-peek')).toBe(true);
+        foldPlayRailPeek();
+        expect(rail.classList.contains('is-peek')).toBe(false);
+        expect(rail.classList.contains('is-folding')).toBe(false);
+    });
 });

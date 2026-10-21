@@ -20,7 +20,7 @@
  * recovery and deterministic capture flags:
  *   ?astralWeaveTime=<s>      seek to t and freeze the simulation (captures)
  *   ?astralWeaveFixedDt=<ms>  fixed frame step
- *   ?astralWeaveParts=sky,rosette,wefts,warp,hoop,flares,sparks,dust   draw only these parts
+ *   ?astralWeaveParts=sky,rosette,wefts,warp,hoop,flares,sparks,dust,motes   draw only these parts
  *   ?astralWeaveFalseColor=1  post debug view
  *
  * Warm: none (every pool is always drawn with zero-size dormant slots, so the first frame

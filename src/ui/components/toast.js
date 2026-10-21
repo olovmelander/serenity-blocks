@@ -13,6 +13,10 @@ import { mpIcon } from './mp-sheet.js';
 const MAX_TOASTS = 3;
 const DEFAULT_TIMEOUT_MS = 6000;
 const TYPES = new Set(['info', 'success', 'warning', 'error']);
+/** Each tone's mark, drawn in its hue on a tinted tile: the kind of news reads before the words. */
+const TONE_ICONS = {
+    info: 'info', success: 'check', warning: 'alert', error: 'error',
+};
 
 let region = null;
 let installed = false;
@@ -56,6 +60,7 @@ export function showToast({ message, type = 'info', timeoutMs = DEFAULT_TIMEOUT_
     const tile = document.createElement('span');
     tile.className = 'sb-toast__tile';
     tile.setAttribute('aria-hidden', 'true');
+    tile.innerHTML = mpIcon(TONE_ICONS[tone], 16);
     const body = document.createElement('p');
     body.className = 'sb-toast__message';
     body.textContent = text;

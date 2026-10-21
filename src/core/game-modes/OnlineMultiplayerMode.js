@@ -7,6 +7,7 @@ import { GAME_MODES, COLS, ROWS } from '../constants.js';
 import { SteamNetworking } from '../steam/steam-networking.js';
 import steamService from '../steam/steam-service.js';
 import { FFAGameStateP2P } from '../multiplayer/ffa-p2p-game-state.js';
+import { readMatchLevelRule } from '../multiplayer/match-level-rule.js';
 import { LobbyBrowser } from '../../ui/lobby-browser.js';
 import { LobbyWaitingRoom } from '../../ui/lobby-waiting-room.js';
 import { MatchConfigModal } from '../../ui/match-config-modal.js';
@@ -455,12 +456,11 @@ export class OnlineMultiplayerMode extends BaseGameMode {
             );
             this._configureLocalInputHooks(this.ffaGameState);
 
-            // Set match configuration
+            // Set match configuration (the level rule: a fixed start level unless levelling up is on)
             this.ffaGameState.matchConfig = {
                 endCondition: config.endCondition,
                 endConditionValue: config.endConditionValue,
-                startLevel: 1,
-                levelProgression: false,
+                ...readMatchLevelRule(config),
                 allowHandicap: true,
                 boringRules: config.boringRules || false,
                 garbageCancellation: config.garbageCancellation || 'full',
