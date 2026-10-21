@@ -8,7 +8,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, attribute, color, dot, instancedBufferAttribute, mix, normalWorld, normalize, positionLocal,
+    Fn, atan, attribute, color, dot, instancedBufferAttribute, mix, normalWorld, normalize, positionLocal,
     positionWorld, pow, saturate, sin, smoothstep, texture, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 import { SAKURA_FUJI, SAKURA_VIEWS } from './sakura-composition.js';
@@ -49,11 +49,19 @@ export class SakuraBackdrop {
         const world = positionWorld;
         const normal = normalize(normalWorld);
         const grain = light.noise(world.xz.mul(0.011)).g;
-        const snow = smoothstep(0.42, 0.62, paint.r.add(grain.sub(0.5).mul(0.3)));
+        // The snow reaches down the gullies in long fingers: noise drawn out down the fall
+        // line, wrapped round the summit a whole number of times so it has no seam.
+        const around = atan(positionLocal.x, positionLocal.z).div(Math.PI * 2);
+        const fall = light.noise(vec2(around.mul(14), paint.b.mul(0.3))).g.mul(0.6)
+            .add(light.noise(vec2(around.mul(37), paint.b.mul(0.9).add(0.4))).b.mul(0.4));
+        const line = paint.r.add(fall.sub(0.5).mul(0.6)).add(grain.sub(0.5).mul(0.14));
+        const snow = smoothstep(0.47, 0.56, line);
         const rock = mix(color(0x0c0d1f), color(0x1c1c38), grain).mul(paint.g.mul(0.7).add(0.3));
-        const albedo = mix(rock, mix(color(0x9aa2c8), color(0xe9ecff), paint.g), snow);
+        // Snow in the gullies' shade is bluer than snow on the ribs between them.
+        const drift = mix(color(0x8e98c4), color(0xeceeff), paint.g.mul(fall.mul(0.5).add(0.6)).min(1));
+        const albedo = mix(rock, drift, snow);
         // Moon on the right flank, the last rose of the sunset on the left: alpenglow.
-        const moonFacing = saturate(dot(normal, light.uMoonDir).mul(0.7).add(0.3));
+        const moonFacing = saturate(dot(normal, light.uMoonDir).mul(0.85).add(0.15));
         const west = normalize(vec3(light.uGlowDir.x, 0.25, light.uGlowDir.y));
         const rose = pow(saturate(dot(normal, west).mul(0.6).add(0.4)), 1.6);
         const lit = albedo.mul(light.uMoonColor).mul(moonFacing).mul(0.55)
