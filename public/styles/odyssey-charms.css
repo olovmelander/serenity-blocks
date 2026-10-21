@@ -1,0 +1,939 @@
+/* =================================================================================
+ * ODYSSEY CHARMS — the charm guide over the Odyssey map (#odyssey-charm-guide)
+ * ---------------------------------------------------------------------------------
+ * The navigator's language (odyssey-navigator.css, docs/ODYSSEY_NAVIGATOR_2026-10.md)
+ * for the bag: a header with the bag in figures and cells, the four charms as a rail,
+ * the selected charm's card with its live icon as the art, and how charms work as a
+ * path of five steps. The selected charm lends the page its light (--charm-rgb: Tide
+ * aqua, Still Air lavender, Long Breath gold, Hearth coral). No backdrop blur: the map
+ * renders on underneath. Built by src/ui/odyssey/odyssey-charm-guide.js; loaded after
+ * keystone-overlays.css, whose .sb-ody-modal and .charm-sprite it builds on.
+ * ================================================================================ */
+#odyssey-charm-guide.sb-ody-modal--charms {
+    --charm-rgb: var(--sb-lavender-rgb);
+    --sb-ody-rgb: var(--charm-rgb);
+    --charms-ink: #0c0a22;
+    --charms-gutter: clamp(16px, 2.4vw, 36px);
+    /* The page's measure: wide windows centre it, so the card never stretches past 1680 px. */
+    --charms-inline: max(var(--charms-gutter), calc((100vw - 1680px) / 2));
+    --charms-rail: clamp(232px, 19vw, 296px);
+    --charm-art: clamp(168px, min(16.5vw, 31vh), 300px);
+    display: block;
+    padding: 0;
+    overflow: hidden;
+    isolation: isolate;
+    background:
+        radial-gradient(52% 62% at 34% 42%, rgba(var(--charm-rgb), 0.13), transparent 72%),
+        radial-gradient(46% 52% at 100% 0%, rgba(var(--charm-rgb), 0.08), transparent 70%),
+        radial-gradient(60% 50% at 0% 100%, rgba(var(--sb-lavender-rgb), 0.09), transparent 72%),
+        linear-gradient(180deg, #0d0b26 0%, #08071c 52%, #05040f 100%);
+    animation: sb-fade-in 0.32s ease-out both;
+}
+
+#odyssey-charm-guide *,
+#odyssey-charm-guide *::before,
+#odyssey-charm-guide *::after {
+    box-sizing: border-box;
+}
+
+/* Each charm's tone, on the page (the one selected) and on everything that names a charm. */
+#odyssey-charm-guide[data-charm='tide'],
+#odyssey-charm-guide [data-charm='tide'] { --charm-rgb: var(--sb-aqua-rgb); }
+#odyssey-charm-guide[data-charm='still-air'],
+#odyssey-charm-guide [data-charm='still-air'] { --charm-rgb: var(--sb-lavender-rgb); }
+#odyssey-charm-guide[data-charm='long-breath'],
+#odyssey-charm-guide [data-charm='long-breath'] { --charm-rgb: var(--sb-gold-rgb); }
+#odyssey-charm-guide[data-charm='hearth'],
+#odyssey-charm-guide [data-charm='hearth'] { --charm-rgb: var(--sb-coral-rgb); }
+
+/* ---- The sky: night, stars, a vignette, and the selected charm's light ------------ */
+#odyssey-charm-guide.sb-ody-modal--charms::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -2;
+    background-image:
+        radial-gradient(1.2px 1.2px at 8% 14%, rgba(var(--sb-cream-rgb), 0.8), transparent 70%),
+        radial-gradient(1px 1px at 23% 61%, rgba(var(--sb-cream-rgb), 0.55), transparent 70%),
+        radial-gradient(1.4px 1.4px at 37% 28%, rgba(var(--sb-cream-rgb), 0.7), transparent 70%),
+        radial-gradient(1px 1px at 52% 83%, rgba(var(--sb-cream-rgb), 0.5), transparent 70%),
+        radial-gradient(1.2px 1.2px at 66% 9%, rgba(var(--sb-cream-rgb), 0.65), transparent 70%),
+        radial-gradient(1px 1px at 78% 47%, rgba(var(--sb-cream-rgb), 0.5), transparent 70%),
+        radial-gradient(1.6px 1.6px at 91% 72%, rgba(var(--sb-cream-rgb), 0.7), transparent 70%),
+        radial-gradient(1px 1px at 14% 92%, rgba(var(--sb-cream-rgb), 0.45), transparent 70%),
+        radial-gradient(1px 1px at 47% 4%, rgba(var(--sb-cream-rgb), 0.5), transparent 70%),
+        radial-gradient(1.2px 1.2px at 84% 24%, rgba(var(--sb-cream-rgb), 0.55), transparent 70%);
+    background-size: 560px 460px;
+    opacity: 0.55;
+    pointer-events: none;
+}
+
+#odyssey-charm-guide.sb-ody-modal--charms::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(3, 2, 10, 0.55) 100%);
+    pointer-events: none;
+}
+
+/* The light behind the card's art: it blooms again when the charm changes. */
+#odyssey-charm-guide .sb-ody-charms__glow {
+    position: absolute;
+    top: 2vh;
+    left: calc(var(--charms-inline) + var(--charms-rail) - 8vw);
+    z-index: -1;
+    width: min(56vw, 900px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(var(--charm-rgb), 0.2) 0%, rgba(var(--charm-rgb), 0.07) 38%, transparent 68%);
+    pointer-events: none;
+}
+
+#odyssey-charm-guide .sb-ody-charms__glow.is-entering {
+    animation: sb-ody-charms-glow-in 0.9s ease-out both;
+}
+
+/* ---- The page: the sheet fills the window; header, body, footer -------------------- */
+#odyssey-charm-guide .sb-ody-sheet {
+    width: 100%;
+    height: 100%;
+    animation: none;
+}
+
+#odyssey-charm-guide .sb-ody-sheet__panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-height: none;
+    padding: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--sb-cream-rgb), 0.2) transparent;
+}
+
+/* ---- Header: the bag named and counted, its twelve cells, the way back -------------- */
+/* A row that wraps: the bag drops under the brand when large text or a narrow window wants it. */
+#odyssey-charm-guide .sb-ody-charms__header {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px clamp(20px, 3.4vw, 56px);
+    padding: clamp(18px, 3.2vh, 30px) var(--charms-inline) 14px;
+    animation: sb-ody-charms-drop 0.42s var(--sb-ease-lock) both;
+}
+
+#odyssey-charm-guide .sb-ody-charms__brand {
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+#odyssey-charm-guide .sb-ody-title {
+    margin: 2px 0 0;
+    font-size: clamp(1.6rem, 2.4vw, 2.25rem);
+}
+
+#odyssey-charm-guide .sb-ody-lede {
+    max-width: 46ch;
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+#odyssey-charm-guide .sb-ody-charms__bag {
+    display: flex;
+    flex: 1 1 300px;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+    max-width: 440px;
+}
+
+#odyssey-charm-guide .sb-ody-charms__figures {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 26px;
+    margin: 0;
+    color: var(--sb-text-faint);
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+#odyssey-charm-guide .sb-ody-charms__figure {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+#odyssey-charm-guide .sb-ody-charms__figure b {
+    color: var(--sb-text);
+    font: 700 1.125rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: nowrap;
+}
+
+#odyssey-charm-guide .sb-ody-charms__figure b small {
+    color: var(--sb-text-faint);
+    font-size: 0.75em;
+    font-weight: 600;
+}
+
+/* Every charm the bag can hold as a cell, three to a charm, each charm in its own tone. */
+#odyssey-charm-guide .sb-ody-charms__meter {
+    display: flex;
+    gap: 8px;
+    width: 100%;
+}
+
+#odyssey-charm-guide .sb-ody-charms__meter-group {
+    display: flex;
+    flex: 1 1 0;
+    gap: 3px;
+    padding: 3px 0;
+    cursor: pointer;
+}
+
+#odyssey-charm-guide .sb-ody-charms__meter-group > i {
+    flex: 1 1 0;
+    height: 6px;
+    border-radius: 2px;
+    background: rgba(var(--charm-rgb), 0.14);
+    transition: height var(--sb-dur-2) var(--sb-ease-lock), margin var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#odyssey-charm-guide .sb-ody-charms__meter-group > i.is-held {
+    background: rgb(var(--charm-rgb));
+    box-shadow: 0 0 8px rgba(var(--charm-rgb), 0.5);
+}
+
+#odyssey-charm-guide .sb-ody-charms__meter-group:hover > i,
+#odyssey-charm-guide[data-charm='tide'] .sb-ody-charms__meter-group[data-charm='tide'] > i,
+#odyssey-charm-guide[data-charm='still-air'] .sb-ody-charms__meter-group[data-charm='still-air'] > i,
+#odyssey-charm-guide[data-charm='long-breath'] .sb-ody-charms__meter-group[data-charm='long-breath'] > i,
+#odyssey-charm-guide[data-charm='hearth'] .sb-ody-charms__meter-group[data-charm='hearth'] > i {
+    height: 9px;
+    margin-top: -1.5px;
+}
+
+#odyssey-charm-guide .sb-ody-charms__close {
+    --sb-btn-h: 44px;
+    flex: none;
+    gap: 10px;
+    margin-left: auto;
+    padding: 0 12px 0 18px;
+}
+
+/* ---- The middle: the rail beside the card, the path under both, centred as one ------- */
+/* It grows into the window and never shrinks under its content: a tall page scrolls instead. */
+#odyssey-charm-guide .sb-ody-charms__main {
+    flex: 1 0 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: safe center;
+    gap: clamp(22px, 4.4vh, 48px);
+    padding: 6px var(--charms-inline) clamp(16px, 2.6vh, 28px);
+}
+
+#odyssey-charm-guide .sb-ody-charms__body {
+    display: grid;
+    grid-template-columns: var(--charms-rail) minmax(0, 1fr);
+    align-items: center;
+    gap: clamp(16px, 2.2vw, 36px);
+}
+
+/* ---- The rail: the four charms, in key order ------------------------------------------ */
+#odyssey-charm-guide .sb-ody-charms__rail {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    animation: sb-ody-charms-rise 0.48s 0.04s var(--sb-ease-lock) both;
+}
+
+#odyssey-charm-guide .sb-ody-charms__rail-label {
+    padding-left: 8px;
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__charm {
+    min-width: 0;
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__tab {
+    display: grid;
+    grid-template-columns: 52px minmax(0, 1fr);
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    min-height: clamp(66px, 9.4vh, 96px);
+    margin: 0;
+    padding: 8px 14px 8px 6px;
+    border: 1px solid transparent;
+    border-radius: var(--sb-r-md);
+    background: transparent;
+    color: var(--sb-text-muted);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__tab:hover {
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    color: var(--sb-text);
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__tab:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
+    outline-offset: 2px;
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__tab[aria-selected='true'] {
+    border-color: rgba(var(--charm-rgb), 0.42);
+    background: linear-gradient(90deg, rgba(var(--charm-rgb), 0.17), rgba(var(--charm-rgb), 0.03) 80%);
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06), 0 12px 30px rgba(0, 0, 0, 0.22);
+    color: var(--sb-text);
+}
+
+/* The icon sits in a gem of its tone (the navigator's chapter gem); dashed while none is held. */
+#odyssey-charm-guide .sb-ody-charm-guide__tab .charm-sprite {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    border: 1px solid rgba(var(--charm-rgb), 0.4);
+    background:
+        radial-gradient(90% 90% at 50% 64%, rgba(var(--charm-rgb), 0.3), rgba(var(--charm-rgb), 0.04) 72%),
+        var(--charms-ink);
+    box-shadow: 0 0 18px rgba(var(--charm-rgb), 0.12);
+    vertical-align: middle;
+    transition: border-color var(--sb-dur-2) var(--sb-ease-lock), box-shadow var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__tab[aria-selected='true'] .charm-sprite {
+    border-color: rgba(var(--charm-rgb), 0.8);
+    box-shadow: 0 0 0 3px rgba(var(--charm-rgb), 0.14), 0 0 22px rgba(var(--charm-rgb), 0.32);
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__charm[data-held='false'] .charm-sprite {
+    border-style: dashed;
+    border-color: rgba(var(--sb-cream-rgb), 0.2);
+    background: var(--charms-ink);
+    box-shadow: none;
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__charm[data-held='false'] [aria-selected='true'] .charm-sprite {
+    border-color: rgba(var(--charm-rgb), 0.6);
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__tab .charm-sprite__glyph {
+    font-size: 22px;
+}
+
+/* Not in the bag: the icon is drawn grey (its 'empty' look); the glyph fallback fades to match. */
+#odyssey-charm-guide .sb-ody-charm-guide__charm[data-held='false'] .charm-sprite__glyph {
+    color: var(--sb-text-faint);
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__body {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__name {
+    min-width: 0;
+    font: 600 0.875rem / 1.25 var(--sb-font-display);
+    letter-spacing: 0.01em;
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__head .sb-kbd {
+    flex: none;
+    min-width: 20px;
+    height: 20px;
+    font-size: 0.625rem;
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__tab[aria-selected='true'] .sb-ody-charm-guide__head .sb-kbd {
+    border-color: rgba(var(--charm-rgb), 0.5);
+    background: rgba(var(--charm-rgb), 0.12);
+    color: var(--sb-text);
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__count {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px 9px;
+    color: var(--sb-text-faint);
+    font: 600 0.5625rem / 1.3 var(--sb-font-display);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__charm[data-held='true'] .sb-ody-charm-guide__count {
+    color: rgb(var(--charm-rgb));
+}
+
+/* Pips: a diamond per charm the bag can hold of a kind, lit for each one held. */
+#odyssey-charm-guide :is(.sb-ody-charm-guide__pips, .sb-ody-charm-card__pips) {
+    display: flex;
+    gap: 6px;
+    padding-left: 1px;
+}
+
+#odyssey-charm-guide :is(.sb-ody-charm-guide__pips, .sb-ody-charm-card__pips) i {
+    width: 7px;
+    height: 7px;
+    border: 1px solid rgba(var(--charm-rgb), 0.45);
+    border-radius: 1px;
+    transform: rotate(45deg);
+}
+
+#odyssey-charm-guide :is(.sb-ody-charm-guide__pips, .sb-ody-charm-card__pips) i.is-held {
+    border-color: rgb(var(--charm-rgb));
+    background: rgb(var(--charm-rgb));
+    box-shadow: 0 0 8px rgba(var(--charm-rgb), 0.55);
+}
+
+/* ---- The stage: the selected charm's card ------------------------------------------- */
+#odyssey-charm-guide .sb-ody-charms__stage {
+    min-width: 0;
+    animation: sb-ody-charms-rise 0.5s 0.08s var(--sb-ease-lock) both;
+}
+
+/* ---- The card: the selected charm, its live icon as the art -------------------------- */
+#odyssey-charm-guide .sb-ody-charm-card {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--charm-art) minmax(0, 1.3fr) minmax(220px, 1fr);
+    align-items: center;
+    gap: clamp(24px, 3vw, 48px);
+    padding: clamp(24px, 4vh, 40px) clamp(24px, 3vw, 44px);
+    border-radius: var(--sb-r-xl);
+    border: 1px solid rgba(var(--charm-rgb), 0.24);
+    background:
+        radial-gradient(60% 130% at 0% 50%, rgba(var(--charm-rgb), 0.16), transparent 70%),
+        linear-gradient(180deg, rgba(27, 23, 60, 0.56) 0%, rgba(12, 10, 30, 0.72) 100%);
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07), 0 30px 80px rgba(0, 0, 0, 0.36);
+}
+
+#odyssey-charm-guide .sb-ody-charm-card.is-entering :is(.sb-ody-charm-card__art, .sb-ody-charm-card__copy, .sb-ody-charm-card__facts) {
+    animation: sb-ody-charms-card-in 0.38s var(--sb-ease-lock) both;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card.is-entering .sb-ody-charm-card__copy {
+    animation-delay: 0.03s;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card.is-entering .sb-ody-charm-card__facts {
+    animation-delay: 0.06s;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__art {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__halo {
+    position: absolute;
+    inset: -22%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(var(--charm-rgb), 0.36) 0%, rgba(var(--charm-rgb), 0.1) 42%, transparent 68%);
+    animation: sb-ody-charms-breathe var(--sb-breath) var(--sb-ease-breathe) infinite;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__orbit {
+    position: absolute;
+    inset: -4%;
+    border-radius: 50%;
+    border: 1px solid rgba(var(--charm-rgb), 0.5);
+    box-shadow: 0 0 24px rgba(var(--charm-rgb), 0.18), inset 0 0 40px rgba(var(--charm-rgb), 0.1);
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__orbit::before {
+    content: '';
+    position: absolute;
+    inset: -7%;
+    border-radius: 50%;
+    border: 1px dashed rgba(var(--sb-cream-rgb), 0.12);
+}
+
+/* The floor of the art: a disc of the charm's light the icon stands in. */
+#odyssey-charm-guide .sb-ody-charm-card__art::before {
+    content: '';
+    position: absolute;
+    inset: 4%;
+    border-radius: 50%;
+    background:
+        radial-gradient(circle at 50% 38%, rgba(var(--charm-rgb), 0.2), rgba(var(--charm-rgb), 0.04) 62%, transparent 72%),
+        rgba(12, 10, 30, 0.55);
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.08), 0 22px 60px rgba(0, 0, 0, 0.45);
+}
+
+/* Not in the bag: the orbit is dashed and the light rests. */
+#odyssey-charm-guide .sb-ody-charm-card[data-held='false'] .sb-ody-charm-card__orbit {
+    border: 1px dashed rgba(var(--sb-cream-rgb), 0.26);
+    box-shadow: none;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card[data-held='false'] .sb-ody-charm-card__halo {
+    opacity: 0.45;
+    animation: none;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__icon {
+    position: absolute;
+    inset: 7%;
+    display: grid;
+    place-items: center;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__icon[hidden] {
+    display: none;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__icon .charm-sprite {
+    width: 100%;
+    height: 100%;
+}
+
+/* The glyph stands in only where the icon never lands (no renderer): it waits a moment, so a
+   change of charm does not flash it before the next frame. */
+#odyssey-charm-guide .sb-ody-charm-card__icon .charm-sprite__glyph {
+    color: rgb(var(--charm-rgb));
+    font-size: calc(var(--charm-art) * 0.36);
+    text-shadow: 0 0 30px rgba(var(--charm-rgb), 0.55);
+    animation: sb-fade-in 0.3s 0.5s ease-out both;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__copy {
+    min-width: 0;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__eyebrow {
+    --sb-accent-rgb: var(--charm-rgb);
+}
+
+#odyssey-charm-guide .sb-ody-charm-card[data-held='false'] .sb-ody-charm-card__eyebrow {
+    color: var(--sb-text-faint);
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__title {
+    margin: 10px 0 14px;
+    color: var(--sb-text);
+    font: 700 clamp(1.8rem, 3vw, 2.75rem) / 1.04 var(--sb-font-display);
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__count {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 0 0 18px;
+    color: var(--sb-text-faint);
+    font: 600 0.6875rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card[data-held='true'] .sb-ody-charm-card__count {
+    color: rgb(var(--charm-rgb));
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__pips {
+    gap: 9px;
+    padding-left: 2px;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__pips i {
+    width: 11px;
+    height: 11px;
+    border-radius: 2px;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__pips i.is-held {
+    box-shadow: 0 0 12px rgba(var(--charm-rgb), 0.65);
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__rule {
+    max-width: 40ch;
+    margin: 0;
+    color: var(--sb-text);
+    font: 500 clamp(1rem, 1.2vw, 1.125rem) / 1.55 var(--sb-font-text);
+    text-wrap: pretty;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__facts {
+    display: grid;
+    align-content: center;
+    align-self: stretch;
+    gap: 18px;
+    margin: 0;
+    padding-left: clamp(18px, 2.2vw, 32px);
+    border-left: 1px solid var(--sb-line);
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__fact dt {
+    margin: 0 0 7px;
+    color: var(--sb-text-faint);
+    font: 600 0.5625rem / 1.4 var(--sb-font-display);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__fact dd {
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 500 0.875rem / 1.55 var(--sb-font-text);
+}
+
+#odyssey-charm-guide .sb-ody-charm-card__fact .sb-kbd {
+    margin: 0 2px;
+    vertical-align: 1px;
+    border-color: rgba(var(--charm-rgb), 0.55);
+    background: rgba(var(--charm-rgb), 0.14);
+    color: var(--sb-text);
+}
+
+/* ---- How charms work: five steps on a path ---------------------------------------- */
+#odyssey-charm-guide .sb-ody-charm-guide__rules {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    margin: 0;
+    padding: clamp(18px, 3vh, 28px) 8px 0;
+    border-top: 1px solid var(--sb-line);
+    animation: sb-ody-charms-rise 0.52s 0.12s var(--sb-ease-lock) both;
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__steps {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 20px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__step {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-width: 0;
+}
+
+/* The path to the next step: gem to gem, lit in the selected charm's tone. */
+#odyssey-charm-guide .sb-ody-charm-guide__step[data-link]::after {
+    content: '';
+    position: absolute;
+    top: 17px;
+    left: 46px;
+    right: -12px;
+    height: 2px;
+    border-radius: 1px;
+    background: linear-gradient(90deg, rgba(var(--charm-rgb), 0.55), rgba(var(--charm-rgb), 0.12));
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__gem {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: 11px;
+    border: 1px solid rgba(var(--charm-rgb), 0.5);
+    background:
+        radial-gradient(120% 120% at 28% 20%, rgba(var(--charm-rgb), 0.36), rgba(var(--charm-rgb), 0.08) 70%),
+        var(--charms-ink);
+    color: var(--sb-text);
+    font: 700 0.8125rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 0 18px rgba(var(--charm-rgb), 0.16);
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__step-copy strong {
+    display: block;
+    color: var(--sb-text);
+    font: 600 0.6875rem / 1.3 var(--sb-font-display);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+}
+
+#odyssey-charm-guide .sb-ody-charm-guide__step-copy p {
+    margin: 6px 0 0;
+    color: var(--sb-text-muted);
+    font: 500 0.8125rem / 1.5 var(--sb-font-text);
+    text-wrap: pretty;
+}
+
+/* ---- Footer: the keys --------------------------------------------------------------- */
+#odyssey-charm-guide .sb-ody-charms__footer {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 10px 24px;
+    margin: 0;
+    padding: 12px var(--charms-inline) max(14px, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--sb-line);
+    background: linear-gradient(180deg, rgba(7, 6, 26, 0.2), rgba(5, 4, 15, 0.7));
+}
+
+#odyssey-charm-guide .sb-ody-charms__hints .sb-kbd + .sb-kbd {
+    margin-left: -2px;
+}
+
+body.sb-input-gamepad #odyssey-charm-guide .sb-ody-charms__hints li[data-keys-only] {
+    display: none;
+}
+
+@keyframes sb-ody-charms-drop {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes sb-ody-charms-rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes sb-ody-charms-card-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes sb-ody-charms-glow-in {
+    from { opacity: 0; transform: scale(0.92); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes sb-ody-charms-breathe {
+    0%, 100% { opacity: 0.6; transform: scale(0.97); }
+    50% { opacity: 1; transform: scale(1.03); }
+}
+
+/* ---- Smaller screens ------------------------------------------------------------------ */
+/* Short laptop windows: a tighter card and path. */
+@media (max-height: 780px) and (min-width: 1101px) {
+    #odyssey-charm-guide.sb-ody-modal--charms {
+        --charm-art: clamp(144px, min(12vw, 26vh), 200px);
+    }
+
+    #odyssey-charm-guide .sb-ody-charms__header {
+        padding-bottom: 8px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charms__main {
+        gap: 18px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-card {
+        padding-block: 20px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-guide__rules {
+        padding-top: 16px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-card__title {
+        margin: 8px 0 10px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-card__count {
+        margin-bottom: 12px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-guide__tab {
+        min-height: 60px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charms__footer {
+        padding-top: 9px;
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+    }
+}
+
+/* Tablets and narrow windows: the rail becomes a row of charms above the stage. */
+@media (max-width: 1100px) {
+    #odyssey-charm-guide .sb-ody-charms__bag {
+        order: 3;
+        flex-basis: 100%;
+        max-width: 560px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charms__close {
+        order: 2;
+        align-self: flex-start;
+    }
+
+    #odyssey-charm-guide .sb-ody-charms__main {
+        flex: none;
+        justify-content: flex-start;
+    }
+
+    #odyssey-charm-guide .sb-ody-charms__body {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 16px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charms__rail-label {
+        display: none;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-guide {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-guide__tab {
+        grid-template-columns: 40px minmax(0, 1fr);
+        gap: 10px;
+        min-height: 0;
+        padding: 7px 10px 7px 7px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-guide__tab .charm-sprite {
+        width: 40px;
+        height: 40px;
+        border-radius: 12px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-guide__body {
+        gap: 6px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-card {
+        grid-template-columns: clamp(132px, 20vw, 180px) minmax(0, 1fr);
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-card__icon .charm-sprite__glyph {
+        font-size: 56px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-card__facts {
+        grid-column: 1 / -1;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        padding: 18px 0 0;
+        border-left: 0;
+        border-top: 1px solid var(--sb-line);
+    }
+
+}
+
+/* Too narrow for five steps in a row: three, then two, without the path between them. */
+@media (max-width: 860px) {
+    #odyssey-charm-guide .sb-ody-charm-guide__steps {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        row-gap: 22px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-guide__step[data-link]::after {
+        display: none;
+    }
+}
+
+/* Phones: one column, the charm above its story, the steps as a list. */
+@media (max-width: 640px) {
+    #odyssey-charm-guide .sb-ody-charms__close {
+        order: 4;
+        margin-left: 0;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-guide {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    /* The card says the key; a phone's rail keeps the room for the name. */
+    #odyssey-charm-guide .sb-ody-charm-guide__head .sb-kbd {
+        display: none;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-card {
+        grid-template-columns: minmax(0, 1fr);
+        justify-items: center;
+        gap: 22px;
+        text-align: center;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-card__art {
+        width: min(46vw, 180px);
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-card__count {
+        justify-content: center;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-card__facts {
+        justify-self: stretch;
+        text-align: left;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-guide__steps {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-guide__step {
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 14px;
+    }
+
+    #odyssey-charm-guide .sb-ody-charm-guide__gem {
+        flex: none;
+    }
+
+    #odyssey-charm-guide .sb-ody-charms__footer {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #odyssey-charm-guide.sb-ody-modal--charms,
+    #odyssey-charm-guide .sb-ody-charms__header,
+    #odyssey-charm-guide .sb-ody-charms__rail,
+    #odyssey-charm-guide .sb-ody-charms__stage,
+    #odyssey-charm-guide .sb-ody-charm-guide__rules,
+    #odyssey-charm-guide .sb-ody-charms__glow.is-entering,
+    #odyssey-charm-guide .sb-ody-charm-card.is-entering *,
+    #odyssey-charm-guide .sb-ody-charm-card__halo {
+        animation: none;
+    }
+}
