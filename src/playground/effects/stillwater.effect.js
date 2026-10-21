@@ -23,7 +23,7 @@
  *                            so a strip of frames shows one continuous story. Comma-separated
  *                            kind@time[:arg]: c combo n, l lock at u, d hard drop at u, x clear n
  *                            lines, q four lines, v level up, g game over (e.g. c@6:1,x@6:1,q@14)
- *   parts=sky,water,...      draw only these parts
+ *   parts=sky,water,crowns,veil,...   draw only these parts (STILLWATER_PARTS)
  *   falseColor=1             post debug view: band the pre-tone-map max channel
  *   noPost=1                 raw scene (no bloom/grade)
  *   bloom=0|1                override the tier's bloom

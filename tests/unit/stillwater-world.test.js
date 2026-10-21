@@ -29,6 +29,7 @@ import {
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/stillwater/stillwater-quality.js';
 import { boardPoint, cardUnion, fallbackLayout } from '../../src/themes/stillwater/stillwater-composition.js';
 import { groundHeight, shoreDistance } from '../../src/themes/stillwater/stillwater-plan.js';
+import { crownCard } from '../../src/themes/stillwater/stillwater-trees.js';
 import {
     HEART_FLIGHT, PARTING, chainBond, spiritPathPoint, trollStation,
 } from '../../src/themes/stillwater/stillwater-story.js';
@@ -71,10 +72,11 @@ vi.mock('three/addons/loaders/GLTFLoader.js', async (importOriginal) => {
 });
 
 /** What stands on the banks (drawn in with them on a narrow frame), what hangs in the air, and what is not mirrored. */
-const BANKS = ['ground', 'boulders', 'trunks', 'boughs', 'fringe', 'saplings', 'ferns', 'reeds', 'pads', 'lilies',
-    'caps', 'spirit', 'troll'];
+const BANKS = ['ground', 'boulders', 'trunks', 'crowns', 'boughs', 'fringe', 'saplings', 'ferns', 'reeds', 'pads',
+    'lilies', 'caps', 'spirit', 'troll'];
 const AIR = ['mist', 'eyes', 'fireflies', 'wisps', 'drops', 'sparks', 'orb'];
-const UNMIRRORED = ['sky', 'water'];
+/** (The low mist lies ON the water: what stands over it is mirrored, the veil itself is not.) */
+const UNMIRRORED = ['sky', 'water', 'veil'];
 
 /** The parts a tier may leave out, and the tier's number that says so. */
 const OPTIONAL = {
@@ -84,6 +86,7 @@ const OPTIONAL = {
     ferns: 'ferns',
     reeds: 'reeds',
     mist: 'mist',
+    veil: 'veil',
     fireflies: 'fireflies',
 };
 const partsOf = (tier) => STILLWATER_PARTS.filter((name) => !(name in OPTIONAL) || tier[OPTIONAL[name]] > 0);
@@ -407,6 +410,9 @@ describe('stillwater world: build', () => {
                 expect(world.parts.boughs.count + (world.parts.fringe?.count ?? 0), quality).toBe(tier.boughs);
             }
             if (tier.saplings > 0) expect(world.parts.saplings.count, quality).toBe(tier.saplings);
+            // Every tree but the two giants ends in a crown; the veil has the layers the tier pays for.
+            expect(world.parts.crowns.count, quality).toBe(tier.trunks - 2);
+            if (tier.veil > 0) expect(world.parts.veil.count, quality).toBe(tier.veil);
             if (tier.ferns > 0) expect(world.parts.ferns.count, quality).toBe(tier.ferns);
             if (tier.reeds > 0) {
                 expect(world.parts.reeds.count, quality).toBeLessThanOrEqual(tier.reeds);
@@ -592,7 +598,9 @@ describe('stillwater world: build', () => {
             expect(place(solid, pattern), String(pattern)).toBeGreaterThanOrEqual(0);
             expect(place(solid, pattern), String(pattern)).toBeLessThan(place(solid, /Water/));
         }
-        expect(place(blended, /Mist/)).toBe(0);
+        // The mist on the water first, then the sheets of it over the water, then every light.
+        expect(place(blended, /Veil/)).toBe(0);
+        expect(place(blended, /Mist/)).toBe(1);
         for (const pattern of [/Wisps/, /Sparks/, /Drops/, /Eyes/, /Fireflies/, /Halo/, /Glow/, /Motes/, /HeartOrb/]) {
             expect(place(blended, pattern), String(pattern)).toBeGreaterThan(0);
         }
@@ -1257,6 +1265,16 @@ describe('stillwater world: the frame', () => {
             for (const name of names) {
                 const part = world.parts[name];
                 if (!part || !part.mesh.visible || blocked) continue;
+                if (part.plan && name === 'crowns') {
+                    // A crown's card is placed by the vertex stage: its CPU twin says where.
+                    for (let c = 0; c < part.plan.length && !blocked; c++) {
+                        const card = crownCard(part.plan[c], camera.position.toArray(), world.squeeze)
+                            .map((p) => new THREE.Vector3(...p));
+                        if (ray.intersectTriangle(card[0], card[1], card[2], false, hit)
+                            || ray.intersectTriangle(card[2], card[1], card[3], false, hit)) blocked = true;
+                    }
+                    continue;
+                }
                 const position = part.geometry.getAttribute('position');
                 const index = part.geometry.getIndex();
                 for (let i = 0; i < index.count && !blocked; i += 3) {
@@ -1271,12 +1289,12 @@ describe('stillwater world: the frame', () => {
         return crossed;
     }
 
-    it('leaves the moon clear of trunks and boughs on any frame, as the frame is really drawn', () => {
+    it('leaves the moon clear of trunks, crowns and boughs on any frame, as the frame is really drawn', () => {
         for (const quality of ['Minimal', 'High']) {
             for (const [width, height] of [[1600, 900], [2560, 1080], [1280, 1024], [1000, 1000], ...UPRIGHT]) {
                 const { camera, world } = makeWorld(quality, { width, height, reduced: true });
                 const label = `${quality} at ${width} × ${height}`;
-                expect(moonCrossings(world, camera, ['trunks', 'boughs', 'fringe']), label).toBe(0);
+                expect(moonCrossings(world, camera, ['trunks', 'crowns', 'boughs', 'fringe']), label).toBe(0);
                 // The moon the sky draws is the one the sight lines were cast at.
                 const moon = moonFor(width / height);
                 expect(world.u.moonDir.value.toArray(), label).toEqual(skyDirection(moon.azimuth, moon.elevation));
