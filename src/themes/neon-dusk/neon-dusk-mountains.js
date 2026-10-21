@@ -29,7 +29,6 @@ import {
     normalWorld,
     normalize,
     positionWorld,
-    pow,
     smoothstep,
     step,
     vec2,
@@ -37,8 +36,8 @@ import {
 } from 'three/tsl';
 import {
     RIG,
-    ndApplyHaze,
     ndLineAA,
+    ndSkyGradient,
     ndSunAlign,
     rgb,
 } from './neon-dusk-tsl.js';
@@ -50,6 +49,8 @@ const DEG = Math.PI / 180;
  * heights (base lifts a continuous wall; cut drops the noise floor so valleys reach the ground);
  * pass = how deep the pass at azimuth 0 cuts (0..1) and passWidth its half-width (rad);
  * frame = the extra height of the two peaks framing the pass; span = azimuth half-width (°).
+ * octaves = how many ridged octaves the band's mesh can hold: finer ones would be shorter than
+ * two of its vertex steps, so they only alias into noise that the scan lines trace as jaggies.
  * Each farther range rises higher in angle than the one in front, so all three read in layers.
  */
 export const RANGES = Object.freeze([
@@ -66,6 +67,7 @@ export const RANGES = Object.freeze([
         span: 128,
         seg: 260,
         rows: 20,
+        octaves: 4,
     },
     {
         r0: 900,
@@ -80,6 +82,7 @@ export const RANGES = Object.freeze([
         span: 124,
         seg: 380,
         rows: 32,
+        octaves: 4,
     },
     {
         r0: 380,
@@ -94,6 +97,7 @@ export const RANGES = Object.freeze([
         span: 112,
         seg: 620,
         rows: 48,
+        octaves: 4,
     },
 ]);
 
@@ -160,13 +164,13 @@ function makePerlin(rand) {
  * Ridged multifractal (Musgrave) over a lightly warped domain: knife-edge crests, branching
  * gullies, eroded valleys. Peaks are sharpened by a power. ~[0, 1].
  */
-function ridged(noise, x, y) {
+function ridged(noise, x, y, octaves = 6) {
     let sum = 0;
     let amp = 0.55;
     let weight = 1;
     let fx = x + 0.4 * noise(x * 0.5 + 5.2, y * 0.5 + 1.3);
     let fy = y + 0.4 * noise(x * 0.5 + 9.1, y * 0.5 + 4.7);
-    for (let o = 0; o < 6; o += 1) {
+    for (let o = 0; o < octaves; o += 1) {
         let s = 1 - Math.abs(noise(fx, fy));
         s *= s;
         s *= weight;
@@ -206,7 +210,7 @@ function buildRange(range, index, noise) {
             const env = (0.6 + 0.4 * Math.exp(-across * across))
                 * THREE.MathUtils.smoothstep(t, 0, 0.08)
                 * (1 - THREE.MathUtils.smoothstep(t, 0.86, 1));
-            const n = ridged(noise, x * range.freq, z * range.freq);
+            const n = ridged(noise, x * range.freq, z * range.freq, range.octaves);
             // Valleys reach the floor: separate peaks with gullies between them (no smooth
             // ramp anywhere — contour lines wrap real forms instead of striping a slope). The
             // massifs framing the pass are always there, textured by the same noise.
@@ -310,18 +314,28 @@ export function createMountains(u, { detail = 1, contours = true, seed = TERRAIN
         const cr = restDist.div(spacing);
         const fwC = fwidth(cr);
 
-        // ── Body: near-black violet, lifted by sky light on the up-facing slopes ──
-        const body = mix(mix(rgb(0x2a1650), rgb(0x150a2b), wMid), rgb(0x090416), wNear);
-        const col = body.mul(float(0.6).add(n.y.mul(0.4))).toVar();
-        col.addAssign(rgb(0x4a2a8c).mul(clamp(n.y, 0.0, 1.0).mul(0.12)));
+        // ── Body: silhouettes that step back in tone, near-black violet in front. The sun is
+        // behind them, so the faces the eye sees are in shadow: the sky above lifts them only a
+        // little, which keeps each range one flat layer instead of a lit, glossy model ──
+        const body = mix(mix(rgb(0x241248), rgb(0x150a2c), wMid), rgb(0x0a0418), wNear);
+        const sky = clamp(n.y, 0.0, 1.0);
+        const col = body.mul(float(0.72).add(sky.mul(0.3))).toVar();
+        col.addAssign(rgb(0x3c2280).mul(sky.mul(sky).mul(0.06)));
 
-        // ── Sunset rim: slopes turning edge-on to the view burn hot where they face the sun ──
+        // ── Backlit ridges: only facets turned fully edge-on, and only near the sun's bearing,
+        // catch a thin line of its light (gold beside the sun, rose farther out) ──
         const sa = ndSunAlign(rel.z.div(max(dist, 1e-3))).toVar();
-        const edgeOn = float(1.0).sub(abs(dot(n, V)));
-        const toward = pow(max(dot(V, L), 0.0), 3.0);
-        const facingSun = clamp(dot(n, vec3(L.x, 0.0, L.z)).mul(0.6).add(0.4), 0.0, 1.0);
-        const rimCol = mix(rgb(0xd0257a, 1.2), rgb(0xff9a4a, 2.6), toward);
-        const rim = pow(edgeOn, 5.0).mul(facingSun).mul(sa.mul(1.4).add(0.14));
+        const nv = clamp(abs(dot(n, V)), 0.0, 1.0);
+        const edgeOn = float(1.0).sub(nv);
+        const e2 = edgeOn.mul(edgeOn);
+        const e4 = e2.mul(e2);
+        const e16 = e4.mul(e4).mul(e4).mul(e4);
+        const cosL = clamp(dot(V, L), 0.0, 1.0);
+        const toward = cosL.mul(cosL).mul(cosL).mul(cosL).toVar();
+        const close = toward.mul(toward).mul(toward).mul(toward);
+        const facingSun = clamp(dot(n, vec3(L.x, 0.0, L.z)).mul(0.7).add(0.3), 0.0, 1.0);
+        const rimCol = mix(rgb(0xd0257a, 0.7), rgb(0xff8a34, 1.9), close);
+        const rim = e16.mul(facingSun).mul(close.mul(1.4).add(sa.mul(0.12)));
         col.addAssign(rimCol.mul(rim).mul(float(1.0).add(u.sunPulse.mul(0.6))));
 
         // ── Neon scan lines: cross-sections at fixed distances trace every hill's profile,
@@ -330,7 +344,11 @@ export function createMountains(u, { detail = 1, contours = true, seed = TERRAIN
             const d = fract(cr.add(0.5)).sub(0.5);
             // Width capped at ~2 px: on faces turned square to the camera the distance barely
             // changes across the face, and an uncapped line would flood it.
-            const line = ndLineAA(d, min(float(0.05), fwC.mul(1.1)), fwC);
+            const core = ndLineAA(d, min(float(0.05), fwC.mul(1.1)), fwC);
+            // A soft glow a few pixels wide round each line, gone where the lines crowd.
+            const glow = exp(abs(d).div(max(fwC.mul(2.2), 1e-4)).negate())
+                .mul(float(1.0).sub(smoothstep(0.04, 0.12, fwC))).mul(0.22);
+            const line = core.add(glow);
             // Line clears: a wave of light rolls through the ranges toward the camera.
             const wd = restDist.sub(u.contourWave.x).div(70.0);
             const wave = exp(wd.mul(wd).negate()).mul(u.contourWave.y);
@@ -344,14 +362,27 @@ export function createMountains(u, { detail = 1, contours = true, seed = TERRAIN
         }
 
         // ── Mist pooling at the feet, luminous toward the sun ──
-        const mistCol = mix(rgb(0x5a2a8a, 0.9), rgb(0xff6a7e, 1.25), sa);
-        const mist = exp(max(p.y, 0.0).div(mix(mix(float(30.0), float(14.0), wMid), float(8.0), wNear)).negate())
-            .mul(mix(mix(float(0.6), float(0.5), wMid), float(0.45), wNear));
+        const mistCol = mix(rgb(0x5a2a8a, 0.9), rgb(0xff6a7e, 1.2), sa);
+        const mist = exp(max(p.y, 0.0).div(mix(mix(float(40.0), float(16.0), wMid), float(8.0), wNear)).negate())
+            .mul(mix(mix(float(0.55), float(0.5), wMid), float(0.45), wNear));
         col.assign(mix(col, mistCol, clamp(mist, 0.0, 1.0)));
 
-        // ── Atmospheric perspective: the far wall dissolves into the horizon haze ──
-        const hazeK = mix(mix(float(1 / 3000), float(1 / 3600), wMid), float(1 / 5000), wNear);
-        return ndApplyHaze(col, rel, hazeK);
+        // ── Light in the air: toward the sun the distance glows, so the ranges beside the pass
+        // stand in layers of warm haze, each paler than the one in front ──
+        const ak = dist.mul(1 / 2600);
+        const air = float(1.0).sub(exp(ak.mul(ak).negate()));
+        const t8 = toward.mul(toward);
+        const t16 = t8.mul(t8);
+        col.addAssign(mix(rgb(0xff2a86, 0.45), rgb(0xff6a3e, 0.75), t8).mul(air.mul(t16.mul(0.6).add(sa.mul(0.04)))));
+
+        // ── Atmospheric perspective: each range fades toward the colour of the sky right
+        // behind it, never past it, so even the far wall stays a silhouette darker than its sky ──
+        const elev = max(rel.y.div(max(length(rel), 1e-3)), 0.0);
+        const behind = ndSkyGradient(elev, sa).mul(0.88);
+        const hazeK = mix(mix(float(1 / 2500), float(1 / 3400), wMid), float(1 / 5000), wNear);
+        const fk = dist.mul(hazeK);
+        const amount = min(float(1.0).sub(exp(fk.mul(fk).negate())), 0.85);
+        return mix(col, behind, amount);
     })();
 
     const mesh = new THREE.Mesh(geometry, material);
