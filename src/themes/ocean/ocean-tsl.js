@@ -374,13 +374,18 @@ export const ocLightPoint = (u, P) => {
 export const ocLightRead = (u, q) => texture(u.lightTex, q.div(LIGHT_TILE));
 
 /**
- * The caustic net on a world point, as a gain on the direct light (about 1 on average). It only
- * comes into focus some way under the surface and softens with distance from the eye.
+ * The caustic net on a world point, as a gain on the direct light (about 1.2 on average). It only
+ * comes into focus some way under the surface and softens with distance from the eye. The net is
+ * read squared (r⁴ of the stored root): its mean is 0.23 but its median 0.19, so read straight it
+ * is mostly a grey fill; squared, the threads stand about six times brighter than the cells
+ * between them, as they do on real sand (`netmean` in the 2026-10-21 notes: mean of the square
+ * 0.081, p50 0.034, p99 0.64).
  */
 export const ocCaustic = (u, P, shift = null) => {
     const q = ocLightPoint(u, P);
     const { r } = ocLightRead(u, shift ? q.add(shift) : q);
-    const net = r.mul(r).mul(3.4).add(0.5);
+    const r2 = r.mul(r);
+    const net = r2.mul(r2).mul(7.0).add(0.62);
     const focus = smoothstep(0.4, 5.0, float(SURFACE).sub(P.y));
     const near = exp(length(P.sub(cameraPosition)).mul(-0.028));
     return mix(float(1.0), net, focus.mul(near).mul(u.power.mul(0.2).add(0.8)));
