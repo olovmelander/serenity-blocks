@@ -24,13 +24,17 @@ import {
     attribute,
     clamp,
     dot,
+    exp,
     float,
+    floor,
+    fract,
     fwidth,
     max,
     mix,
     normalize,
     positionLocal,
     positionWorld,
+    sin,
     smoothstep,
     texture,
     varying,
@@ -41,10 +45,11 @@ import {
 import { clamp as clampJs, smooth } from './spring-core.js';
 import { aerial, skyColour, sunShare } from './spring-light.js';
 import {
-    FALL_FRAME, LIP_Y, POOL_Y, POUR_TIME, TONGUES, faceAlong, faceBlock, fallToWorld, lipCrest, lipDepth, lipFlow,
+    FALL_FRAME, LIP_Y, POOL_Y, POUR_TIME, RIBS, TONGUES, faceAlong, faceBlock, fallToWorld, lipCrest, lipDepth, lipFlow,
     pathAt, pourPath,
 } from './spring-fall-plan.js';
 import { groundHeight } from './spring-terrain.js';
+import { spHash21 } from './spring-tsl.js';
 
 /** The tongue a column across the lip belongs to (the one whose water there is deepest). */
 function tongueAt(across) {
@@ -179,6 +184,19 @@ export function createPourGeometry({ cols = 190, rows = 150 } = {}) {
 // Linear colours.
 const GLASS = [0.032, 0.03, 0.014];
 const FOAM = [0.68, 0.71, 0.73];
+/** Thin peat-brown water lit through by the sun behind it. */
+const PEAT_LIT = [0.2, 0.13, 0.04];
+
+/**
+ * The falling water's clumps: a column's width (m), how many a second each column throws (from,
+ * to), and how fast a clump's tail fades behind its head (per share of its period).
+ */
+export const PACKET = Object.freeze({ width: 0.8, rate: Object.freeze([0.7, 1.5]), tail: 5.5 });
+/** How strongly the strands rib the sheet's light across it, and how bright its glitter. */
+const RIB = 4.2;
+/** How far a strand meanders across as it falls (m). */
+const SWAY = 0.65;
+const GLITTER = 3.2;
 
 export function createPourMaterial(u, tex) {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -204,112 +222,133 @@ export function createPourMaterial(u, tex) {
         const V = normalize(P.sub(u.eye)).toVar();
         const L = u.sunDir;
         const sunLight = u.sun.mul(sunShare(u, P)).toVar();
-        // Each parcel is read by the moment it left the lip: its streaks fall with it.
-        const launch = u.flowClock.sub(tt);
-        const ropes = texture(tex.noise, vec2(across.div(11.0), launch.mul(0.34))).toVar();
-        const lace = texture(tex.noise, vec2(across.div(3.4).add(0.37), launch.mul(1.1))).toVar();
-        const lumps = texture(tex.noise, vec2(across.div(6.3).add(0.71), launch.mul(2.3))).toVar();
-        // Billows: the white water's big lumps, a couple of metres across, rolling down with it;
-        // read twice a moment apart so each lump can be lit, its top bright, its crease grey.
-        const billowAt = (dt) => {
-            const b = texture(tex.noise, vec2(across.div(19.0).add(0.13), launch.add(dt).mul(0.5)));
-            return b.r.mul(0.65).add(b.g.mul(0.35));
-        };
-        const billow = billowAt(0.0).toVar();
-        const billowRise = billowAt(0.06).sub(billow).mul(9.0);
-        // Fibres: the falling water's fine columns (half a metre across, a second or two of travel
-        // long), each a little thicker or thinner than its neighbours. Read by launch they are
-        // drawn out down the fall by the water's own acceleration: short at the brink, long
-        // streaks lower down.
-        const fibre = texture(tex.noise, vec2(across.div(4.8).add(0.53), launch.mul(0.083))).r.mul(0.6)
-            .add(texture(tex.noise, vec2(across.div(6.1).add(0.17), launch.mul(0.06))).g.mul(0.4))
+        // Each parcel is read by the moment it left the lip: whatever it carries falls with it,
+        // drawn out down the fall by the water's own acceleration (short at the brink, long
+        // streaks lower down).
+        const launch = u.flowClock.sub(tt).toVar();
+        // The strands meander a little as they fall (each its own way), never ruled straight.
+        const sway = texture(tex.noise, vec2(across.div(9.0).add(0.41), launch.mul(0.09))).g.sub(0.5).mul(SWAY);
+        const lane = across.add(sway).toVar();
+
+        // ── Strands: the falling water's columns, a third of a metre to a couple of metres
+        // across, each a little thicker or thinner than its neighbours ──
+        const strandAt = (shift) => texture(tex.noise, vec2(lane.add(shift).div(2.6).add(0.53), launch.mul(0.07))).r;
+        const fine = strandAt(0.0).toVar();
+        const ridge = strandAt(0.09).sub(fine).toVar();
+        const mid = texture(tex.noise, vec2(lane.div(7.0).add(0.17), launch.mul(0.05))).g;
+        const broad = texture(tex.noise, vec2(across.div(14.0).add(0.71), launch.mul(0.03))).r;
+        const strands = fine.mul(0.45).add(mid.mul(0.35)).add(broad.mul(0.2)).toVar();
+        // Small lumps riding on it (for its surface and its glints).
+        const lumps = texture(tex.noise, vec2(across.div(1.3).add(0.29), launch.mul(1.6))).toVar();
+        // Packets: the water breaks into clumps as it falls, a column at a time (each column its
+        // own rhythm). A clump's head leads, bright; its tail streams up behind it.
+        const cell = floor(lane.div(PACKET.width));
+        const seed = spHash21(vec2(cell, 7.0));
+        const rate = seed.mul(PACKET.rate[1] - PACKET.rate[0]).add(PACKET.rate[0]);
+        // (Its head is ragged across the column, never a ruled line.)
+        const phase = fract(launch.mul(rate).add(seed.mul(7.3)).add(fine.mul(0.22)));
+        const round = sin(fract(lane.div(PACKET.width)).mul(Math.PI));
+        const packet = smoothstep(0.0, 0.12, phase).mul(exp(phase.mul(-PACKET.tail))).mul(round)
+            .mul(smoothstep(0.35, 1.2, tt))
             .toVar();
 
-        // ── How white: glassy at the brink, torn white within a second (thick water holds out
-        // longer), white lines spilling from the start, and a burst where it meets the rock.
-        // Every threshold is widened by its own footprint on screen, so nothing sparkles ──
+        // ── How white: glassy at the brink, aerated within a second (thick water holds out
+        // longer), whitest along its strands and in its clumps, a burst where it meets the rock ──
         const aer = smoothstep(0.05, 0.85, tt.mul(float(1.2).sub(q.mul(0.5)))).toVar();
-        const streak = ropes.g.mul(0.35).add(fibre.mul(0.35)).add(lace.g.mul(0.2)).add(lumps.r.mul(0.1))
-            .add(aer.mul(0.5))
-            .toVar();
-        const aaLines = fwidth(streak).mul(1.2).add(0.02);
-        const lines = smoothstep(float(0.6).sub(aaLines), float(0.74).add(aaLines), streak);
-        const white = clamp(lines.add(aer.mul(0.7)).add(burst.mul(1.5)), 0.0, 1.0).toVar();
+        const field = strands.add(aer.mul(0.3)).add(packet.mul(0.35)).toVar();
+        const aaField = fwidth(field).mul(1.2).add(0.02);
+        const white = clamp(aer.mul(smoothstep(float(0.28).sub(aaField), float(0.62).add(aaField), field))
+            .add(burst.mul(1.5)).add(packet.mul(0.5)), 0.0, 1.0).toVar();
+        // The brink: for its first moments over the lip the water is a smooth glassy roll before
+        // it tears white; the thick tongue holds together for most of a second, its strands
+        // tearing white one by one.
+        const holds = q.mul(0.75).add(0.2);
+        const brink = float(1.0).sub(smoothstep(holds.mul(0.15), holds, tt.add(fine.sub(0.5).mul(holds).mul(0.6))))
+            .mul(q.mul(0.5).add(0.5));
+        white.mulAssign(float(1.0).sub(brink.mul(0.95)));
 
-        // ── The surface's normal: the sheet's own, bulged by its billows, roughened by its lumps ──
+        // ── The surface: the sheet's own normal, ribbed across by its strands (each column lit
+        // as a column), roughened by its lumps where it is white ──
         const N0 = normalize(vN);
         const r = vec3(...R3);
-        const lumpy = vec2(lumps.g.sub(0.5), lace.r.sub(0.5)).mul(float(0.4).add(white.mul(0.9)));
-        const bulge = clamp(billowRise, -1.2, 1.2).mul(white).mul(0.8);
-        const N = normalize(N0.add(r.mul(lumpy.x)).add(vec3(0.0, lumpy.y.add(bulge), 0.0))).toVar();
+        const rib = clamp(ridge.mul(RIB), -0.9, 0.9).mul(white.mul(0.6).add(0.4));
+        const lumpy = vec2(lumps.g.sub(0.5), lumps.r.sub(0.5)).mul(white.mul(0.7).add(0.2));
+        const N = normalize(N0.add(r.mul(rib.add(lumpy.x))).add(vec3(0.0, lumpy.y, 0.0))).toVar();
 
-        // ── Glassy water: dark peat-tea, the sky mirrored on its curve ──
+        // ── Glassy water: dark peat-tea, the sky on its curve; lit through amber when the sun
+        // stands behind it, its strands showing as ropes of thicker water ──
         const cosV = clamp(dot(N, V.negate()), 0.0, 1.0);
         const m = float(1.0).sub(cosV);
         const m2 = m.mul(m);
         const fresnel = float(0.04).add(m2.mul(m2).mul(m).mul(0.96));
         const R = V.sub(N.mul(dot(V, N).mul(2.0)));
         const sky = skyColour(u, vec3(R.x, abs(R.y), R.z), { withSun: false });
-        const body = vec3(...GLASS).mul(u.fill.mul(2.4).add(sunLight.mul(0.1)));
-        // (Only a little of the sky over the whole curve: more read as a silvered sheet.) The
-        // fibres show in it as ropes of thicker, darker water.
-        const glassy = mix(body.mul(fibre.mul(0.8).add(0.6)), sky, fresnel.mul(0.85).add(0.035)).toVar();
+        const behind = clamp(dot(V, L), 0.0, 1.0);
+        const b2 = behind.mul(behind);
+        const b4 = b2.mul(b2);
+        const body = vec3(...GLASS).mul(u.fill.mul(2.4).add(sunLight.mul(0.1)))
+            .add(vec3(...PEAT_LIT).mul(sunLight).mul(b4.mul(0.9).add(0.04)));
+        // (Only a little of the sky over the whole curve: more read as a silvered sheet.)
+        const glassy = mix(body.mul(fine.mul(0.8).add(0.6)), sky, fresnel.mul(0.85).add(0.035)).toVar();
         const glint = max(dot(R, L), 0.0);
         const g4 = glint.mul(glint).mul(glint).mul(glint);
         const g16 = g4.mul(g4).mul(g4).mul(g4);
         glassy.addAssign(sunLight.mul(g16.mul(1.2).add(g4.mul(0.05))));
 
-        // ── White water: a heap of bubbles, lit through itself ──
+        // ── White water: a heap of bubbles, lit through itself. Its strands and clumps stand
+        // bright, the thinner water between them greyer; broad bands of the fall run brighter or
+        // duller where more or less water comes over ──
         const wrap = clamp(dot(N, L).add(0.55).div(1.55), 0.0, 1.0);
-        // Billows and ropes of thicker water stand bright, the creases and thin water between
-        // them are greyer; broad bands of the fall run brighter or duller where more or less
-        // water comes over.
-        const bands = texture(tex.noise, vec2(across.div(30.0).add(0.61), launch.mul(0.05))).r;
-        const hollow = billow.mul(0.16).add(smoothstep(0.2, 0.8, fibre).mul(0.62)).add(ropes.g.mul(0.1))
-            .add(lumps.r.mul(0.06))
-            .add(0.34)
-            .mul(bands.mul(0.5).add(0.75));
-        const behind = clamp(dot(V, L), 0.0, 1.0);
-        const b2 = behind.mul(behind);
-        const glow = b2.mul(b2).mul(float(1.0).sub(white.mul(0.4)));
-        const foamLight = sunLight.mul(wrap.mul(0.5).add(0.08).add(glow.mul(0.5)))
-            .add(u.fill.mul(1.25)).add(u.bounce.mul(0.3));
-        const foam = vec3(...FOAM).mul(foamLight).mul(hollow);
-        // The brink: for its first moments over the lip the water is a smooth glassy roll, the
-        // sky bright along its curve, before it tears white; the thick tongue holds together
-        // for most of a second, its fibres tearing white one by one.
-        const holds = q.mul(0.75).add(0.2);
-        const brink = float(1.0).sub(smoothstep(holds.mul(0.15), holds, tt.add(fibre.sub(0.5).mul(holds).mul(0.6))))
-            .mul(q.mul(0.5).add(0.5));
-        white.mulAssign(float(1.0).sub(brink.mul(0.95)));
+        const bright = mix(float(0.34), float(1.0), smoothstep(0.25, 0.8, strands)).add(packet.mul(0.4))
+            .mul(broad.mul(0.36).add(0.78))
+            .mul(float(1.0).sub(b4.mul(0.35)))
+            .add(b4.mul(0.35));
+        // With the sun behind it the thin water between the strands glows through, the thick
+        // strands stand darker against it (a flat blaze hid every strand at the golden hour).
+        const glow = b4.mul(float(1.15).sub(smoothstep(0.3, 0.75, strands).mul(0.85)))
+            .mul(float(1.0).sub(white.mul(0.3)));
+        const foamLight = sunLight.mul(wrap.mul(0.55).add(0.08).mul(float(1.0).sub(b4.mul(0.55))).add(glow.mul(0.34)))
+            .add(u.fill.mul(mix(float(1.05), float(1.35), N.y.mul(0.5).add(0.5)))).add(u.bounce.mul(0.3));
+        const foam = vec3(...FOAM).mul(foamLight).mul(bright).toVar();
+        // Droplets catching the sun: streaks of glitter on the white water where a lump faces
+        // between the sun and the eye.
+        const H = normalize(L.sub(V));
+        const facing = clamp(dot(normalize(N.add(r.mul(lumps.b.sub(0.5).mul(1.6)))), H), 0.0, 1.0);
+        const f4 = facing.mul(facing).mul(facing).mul(facing);
+        const glitterField = lumps.a.mul(0.6).add(fine.mul(0.4));
+        const aaGlitter = fwidth(glitterField).add(0.01);
+        const glitter = smoothstep(float(0.74).sub(aaGlitter), float(0.86).add(aaGlitter), glitterField)
+            .mul(f4.mul(f4)).mul(white).mul(GLITTER);
+        foam.addAssign(sunLight.mul(glitter));
         const col = mix(glassy, foam, white).toVar();
 
-        // ── Coverage: thick water is a sheet; thin water and the falling water lower down tear
-        // into strands that show the wet rock behind; the ends fray ──
-        // (Water running on the rock, down a slab or off a ledge, stays a film: only water in the
-        // air tears.)
+        // ── Coverage: thick water is a sheet; lower down the falling water breaks into strands
+        // and clumps with the wet rock and the spray between them (thin water sooner); the ends
+        // fray. (Water running on the rock, down a slab or off a ledge, stays a film: only water
+        // in the air tears.) ──
         const thinness = float(1.0).sub(q);
         const inAir = float(1.0).sub(clamp(vPour2.y, 0.0, 1.0).mul(0.85));
-        const tear = smoothstep(0.35, 2.4, tt).mul(thinness.mul(thinness.sqrt())).add(float(1.0).sub(edge).mul(0.35))
+        const tear = smoothstep(0.5, 2.6, tt).mul(thinness.mul(0.55).add(0.3)).add(float(1.0).sub(edge).mul(0.35))
             .mul(inAir)
-            .mul(0.62);
-        const strands = lace.g.mul(0.45).add(ropes.g.mul(0.35)).add(ropes.r.mul(0.2)).toVar();
-        const aaStrands = fwidth(strands).add(0.025);
-        const cover = smoothstep(tear.sub(0.06).sub(aaStrands), tear.add(0.1).add(aaStrands), strands);
-        const ragged = edge.add(lace.r.sub(0.5).mul(0.35)).add(billow.sub(0.5).mul(0.5)).toVar();
+            .mul(0.7);
+        const held = strands.add(packet.mul(0.25)).add(lumps.r.sub(0.5).mul(0.12)).toVar();
+        const aaHeld = fwidth(held).add(0.025);
+        const cover = smoothstep(tear.sub(0.08).sub(aaHeld), tear.add(0.1).add(aaHeld), held);
+        const ragged = edge.add(fine.sub(0.5).mul(0.5)).add(lumps.g.sub(0.5).mul(0.25)).toVar();
         const aaEdge = fwidth(ragged).add(0.02);
         const fray = smoothstep(float(0.02).sub(aaEdge), float(0.45).add(aaEdge), ragged);
         // The water vanishes into the boil and the spray at the pool.
-        const foot = smoothstep(POOL_Y - 0.4, POOL_Y + 1.6, P.y.sub(u.flood));
-        const thin = mix(float(0.82), float(1.0), white);
-        // Low down the falling water is lost in its own spray: flatter, softer, thinning, the more
-        // so the faster and the more of it there is.
-        const spray = smoothstep(POOL_Y + 13.0, POOL_Y + 2.0, P.y).mul(smoothstep(8.0, 20.0, speed))
+        // (Its foot is ragged: strand by strand it is lost in the boil.)
+        const foot = smoothstep(POOL_Y - 0.4, POOL_Y + 1.6, P.y.sub(u.flood).add(strands.sub(0.5).mul(1.6)).add(0.5));
+        const thin = mix(float(0.8), float(1.0), white);
+        // Low down the falling water is lost in its own spray: softer and paler, the more so the
+        // faster and the more of it there is.
+        const spray = smoothstep(POOL_Y + 12.0, POOL_Y + 1.5, P.y).mul(smoothstep(8.0, 20.0, speed))
             .mul(q.mul(0.5).add(0.5)).toVar();
         const flat = vec3(...FOAM).mul(u.fill.mul(1.4).add(sunLight.mul(0.34)).add(u.bounce.mul(0.3)));
-        col.assign(mix(col, flat, spray.mul(0.45)));
+        col.assign(mix(col, flat, spray.mul(0.35)));
         const alpha = clamp(alive.mul(cover).mul(fray).mul(foot).mul(thin)
-            .mul(mix(float(1.0), billow.mul(0.4).add(0.6), spray)), 0.0, 1.0);
+            .mul(mix(float(1.0), strands.mul(0.5).add(0.5), spray)), 0.0, 1.0);
         return vec4(aerial(u, P, col), alpha);
     })();
     return material;
@@ -468,6 +507,15 @@ const MOSS = [0.035, 0.075, 0.02];
 const WET = [0.016, 0.017, 0.019];
 const TURF = [0.05, 0.085, 0.022];
 const STRAW = [0.12, 0.1, 0.05];
+/** Spray-fed moss and liverwort beside the fall: vivid, wet greens. */
+const SPRAY_MOSS = [0.03, 0.11, 0.015];
+const SPRAY_MOSS_LIT = [0.075, 0.2, 0.025];
+
+/** How much the rib of rock between two tongues at `across` stands in their spray (TSL, 0..1). */
+const rib = (across) => RIBS.reduce(
+    (most, r) => most.max(smoothstep(r.half * 1.2, r.half * 0.4, abs(across.sub(r.at)))),
+    float(0.0),
+);
 
 export function createFaceMaterial(u, tex) {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -512,6 +560,22 @@ export function createFaceMaterial(u, tex) {
         // Black streaks where seepage runs down the dry face.
         const seep = smoothstep(0.6, 0.78, texture(tex.noise, vec2(across.div(9.0), P.y.div(60.0))).g).mul(dry);
         albedo.mulAssign(float(1.0).sub(seep.mul(0.45)));
+        // Beside the tongues, where the spray drifts but the water does not scour, the rock is
+        // carpeted in vivid moss and liverwort: kept wet all summer, the greenest thing in the
+        // gorge. It grows on all but the overhangs, in cushions broken by the bare rock.
+        const beside = smoothstep(FALL_FRAME.halfWidth - 2.0, FALL_FRAME.halfWidth + 1.5, abs(across))
+            .mul(float(1.0).sub(smoothstep(FALL_FRAME.halfWidth + 14.0, FALL_FRAME.halfWidth + 24.0, abs(across))));
+        const misted = beside.mul(smoothstep(POOL_Y + 22.0, POOL_Y + 4.0, P.y)).max(rib(across).mul(0.75));
+        const cushions = smoothstep(0.42, 0.62, mid.g.mul(0.55).add(grain.b.mul(0.25)).add(broad.a.mul(0.2)))
+            .mul(smoothstep(-0.25, 0.15, N.y)).mul(misted).toVar();
+        albedo.assign(mix(albedo, mix(vec3(...SPRAY_MOSS), vec3(...SPRAY_MOSS_LIT), grain.r), cushions.mul(0.9)));
+        // Trickles: threads of water running down the face beside the tongues and seeping out of
+        // its joints, dark and glistening, beaded with light that runs down them.
+        const thread = texture(tex.noise, vec2(across.div(1.7).add(0.33), P.y.div(55.0))).r;
+        const aaThread = fwidth(thread).add(0.01);
+        const trickle = smoothstep(float(0.8).sub(aaThread), float(0.86).add(aaThread), thread)
+            .mul(smoothstep(0.35, 0.7, broad.g)).mul(beside.max(dry.mul(0.35))).toVar();
+        albedo.assign(mix(albedo, vec3(...WET), trickle.mul(0.85)));
         // Wet granite: near black, glistening.
         const wetness = clamp(wet.mul(grain.g.mul(0.3).add(0.85)), 0.0, 1.0);
         albedo.assign(mix(albedo, vec3(...WET).mul(mid.a.mul(0.5).add(0.75)), wetness.mul(0.85)));
@@ -529,6 +593,12 @@ export function createFaceMaterial(u, tex) {
         const glisten = smoothstep(0.45, 0.8, grain.a.mul(0.6).add(mid.r.mul(0.4)));
         col.addAssign(sunLight.mul(g16.mul(0.14).mul(glisten).add(g4.mul(0.02))).mul(wetness).mul(shade));
         col.addAssign(u.fill.mul(wetness.mul(0.06)).mul(smoothstep(0.0, 0.6, R.y)).mul(shade));
+        // The trickles' beads of light running down, and the wet moss's sheen in the sun.
+        const beads = texture(tex.noise, vec2(across.div(1.7).add(0.33), P.y.add(u.time.mul(1.6)).div(2.2)));
+        const bead = smoothstep(0.7, 0.95, beads.a);
+        col.addAssign(sunLight.mul(0.35).add(u.fill.mul(1.2)).mul(trickle).mul(bead.mul(0.9).add(0.12))
+            .mul(shade));
+        col.addAssign(sunLight.mul(g4.mul(0.05)).mul(cushions).mul(glisten));
         return vec4(aerial(u, P, col), 1.0);
     })();
     return material;
