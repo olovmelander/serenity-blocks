@@ -69,7 +69,7 @@ import {
     DEG, EYE, FLOOR, HOUSE, TIMING, clamp as clampJs, clamp01, lerp, smooth, vaultHeightAt,
 } from './moonlit-greenhouse-core.js';
 import { fovForAspect } from './moonlit-greenhouse-composition.js';
-import { mgSurface } from './moonlit-greenhouse-tsl.js';
+import { TUNE, mgSurface } from './moonlit-greenhouse-tsl.js';
 
 const TAU = Math.PI * 2;
 /** A time far in the future: a bloom that is not closing closes then. */
@@ -155,7 +155,8 @@ export const BLOOM_KIND = Object.freeze({ bed: 0, water: 1 });
  *   innerShare           share of the tier's petals in the inner whorl (the rest are outer tepals)
  *   wave                 share of the opening the unfurling takes to run round a whorl
  *   spin, counterSpin    the whorls' slow turn (radians a second)
- *   petal, heart, anther the light from within (scene-linear): a petal's peak, the heart's, an anther's
+ *   heart, anther        the light from within (scene-linear): the heart's, an anther's (a petal's
+ *                        is the look's, TUNE.queenPetal)
  *   halo, rays           her radiance round the heart
  *   fold                 the lower petals spread on the canal where they would pass under the water
  *   lightStrength, lightReach   the light she throws on the garden (× her radius)
@@ -171,7 +172,6 @@ export const QUEEN = Object.freeze({
     wave: 0.42,
     spin: 0.03,
     counterSpin: -0.045,
-    petal: 1.5,
     heart: 6.0,
     anther: 4.0,
     halo: 0.12,
@@ -1209,13 +1209,17 @@ export function createBlooms({ tier, U }) {
 
 // ── The Queen of the Night ─────────────────────────────────────────────────────────────────
 
-/** Her petals' parameters, per whorl: closed and open elevations at base and tip, length, width, cup, r0. */
+/**
+ * Her petals' parameters, per whorl: closed and open elevations at base and tip, length, width,
+ * cup, r0. The inner whorl's petals are broad spoons that overlap, as the real flower's are (narrow
+ * blades read as a paper pinwheel).
+ */
 const WHORL = Object.freeze({
     outer: {
         th0: [1.45, 0.3], th1: [1.55, -0.75], len: 1.1, half: 0.03, cup: 0.3, r0: 0.05, twist: 1.2,
     },
     inner: {
-        th0: [1.5, 0.92], th1: [1.55, 0.02], len: 0.84, half: 0.066, cup: 0.42, r0: 0.06, twist: 0.0,
+        th0: [1.5, 0.92], th1: [1.55, 0.02], len: 0.84, half: 0.12, cup: 0.42, r0: 0.06, twist: 0.0,
     },
     second: {
         th0: [1.5, 1.1], th1: [1.55, 0.5], len: 0.66, half: 0.055, cup: 0.45, r0: 0.05, twist: 0.0,
@@ -1430,14 +1434,15 @@ function queenMaterial(U, Q) {
             .mul(tip)
             .mul(through)
             .mul(h.mul(0.16).add(0.92))
-            .mul(QUEEN.petal);
-        // The outer tepals amber at the base, pale gold-pink out to their tips, a deeper line down
-        // the middle; the inner whorl pure white; the second whorl warm white-gold.
+            .mul(TUNE.queenPetal);
+        // The outer tepals a deep russet-amber at the base, gold along their length, pale at their
+        // tips, a deeper line down the middle; the inner whorl pure white; the second whorl warm
+        // white-gold.
         const isOuter = kind.lessThan(0.5);
         const amber = mix(
-            mix(vec3(1.0, 0.42, 0.28), vec3(1.0, 0.7, 0.52), smoothstep(0.0, 0.45, s)),
-            vec3(1.0, 0.9, 0.8),
-            smoothstep(0.55, 1.0, s),
+            mix(vec3(0.85, 0.26, 0.1), vec3(1.0, 0.55, 0.24), smoothstep(0.0, 0.5, s)),
+            vec3(1.0, 0.82, 0.6),
+            smoothstep(0.6, 1.0, s),
         );
         const outerTint = mix(amber, vec3(0.9, 0.36, 0.26), exp(c.div(0.22).mul(c.div(0.22)).negate()).mul(0.4))
             .mul(float(0.72).add(smoothstep(0.7, 1.0, ac).mul(0.4)));
@@ -1461,8 +1466,9 @@ function queenMaterial(U, Q) {
         // The moon's cold light on her, and four lines' flood of it.
         const moon = night.moonlight.mul(U.moonLight).mul(clamp(dot(n, U.moon), 0.0, 1.0).mul(0.05).add(0.02))
             .add(night.moonlight.mul(U.flood.mul(0.25)));
-        // Translucent: the house shows faintly through the thin petals, most at their tips.
-        const petalAlpha = mix(float(0.94), float(0.6), smoothstep(0.3, 1.0, s)).add(margin.mul(0.2));
+        // Translucent toward the tips: the house shows faintly through their thin ends (through the
+        // whole petal they read as cellophane).
+        const petalAlpha = mix(float(0.98), float(0.8), smoothstep(0.45, 1.0, s)).add(margin.mul(0.2));
         const alpha = select(isPetal, min(petalAlpha, 1.0), float(1.0)).mul(smoothstep(0.0, 0.12, open));
         return vec4(light.add(moon.mul(smoothstep(0.0, 0.1, open))), alpha);
     })();

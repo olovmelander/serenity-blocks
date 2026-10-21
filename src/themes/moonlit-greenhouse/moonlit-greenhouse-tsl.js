@@ -72,6 +72,10 @@ export const TUNE = {
     airSoft: 0.8,
     airBillow: 0.8,
     airTop: 0.25,
+    // The Queen of the Night: her petals' light from within (scene-linear, a petal's peak). Kept
+    // under the tone curve's shoulder, so her veins, margins and the cream-to-silver run survive
+    // (at 1.5 she was flat white paper).
+    queenPetal: 0.85,
     // The blinds' share of the bays and their laths' opening (BLINDS; the CPU twin reads BLINDS,
     // so an override here is for the playground only).
     blindShare: BLINDS.share,
