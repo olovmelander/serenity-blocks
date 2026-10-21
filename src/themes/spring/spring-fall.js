@@ -217,12 +217,20 @@ export function createPourMaterial(u, tex) {
         };
         const billow = billowAt(0.0).toVar();
         const billowRise = billowAt(0.06).sub(billow).mul(9.0);
+        // Fibres: the falling water's fine columns (half a metre across, a second or two of travel
+        // long), each a little thicker or thinner than its neighbours. Read by launch they are
+        // drawn out down the fall by the water's own acceleration: short at the brink, long
+        // streaks lower down.
+        const fibre = texture(tex.noise, vec2(across.div(4.8).add(0.53), launch.mul(0.083))).r.mul(0.6)
+            .add(texture(tex.noise, vec2(across.div(6.1).add(0.17), launch.mul(0.06))).g.mul(0.4))
+            .toVar();
 
         // ── How white: glassy at the brink, torn white within a second (thick water holds out
         // longer), white lines spilling from the start, and a burst where it meets the rock.
         // Every threshold is widened by its own footprint on screen, so nothing sparkles ──
         const aer = smoothstep(0.05, 0.85, tt.mul(float(1.2).sub(q.mul(0.5)))).toVar();
-        const streak = ropes.g.mul(0.5).add(lace.g.mul(0.3)).add(lumps.r.mul(0.2)).add(aer.mul(0.5))
+        const streak = ropes.g.mul(0.35).add(fibre.mul(0.35)).add(lace.g.mul(0.2)).add(lumps.r.mul(0.1))
+            .add(aer.mul(0.5))
             .toVar();
         const aaLines = fwidth(streak).mul(1.2).add(0.02);
         const lines = smoothstep(float(0.6).sub(aaLines), float(0.74).add(aaLines), streak);
@@ -243,7 +251,9 @@ export function createPourMaterial(u, tex) {
         const R = V.sub(N.mul(dot(V, N).mul(2.0)));
         const sky = skyColour(u, vec3(R.x, abs(R.y), R.z), { withSun: false });
         const body = vec3(...GLASS).mul(u.fill.mul(2.4).add(sunLight.mul(0.1)));
-        const glassy = mix(body, sky, fresnel.mul(0.8).add(0.12)).toVar();
+        // (Only a little of the sky over the whole curve: more read as a silvered sheet.) The
+        // fibres show in it as ropes of thicker, darker water.
+        const glassy = mix(body.mul(fibre.mul(0.8).add(0.6)), sky, fresnel.mul(0.85).add(0.035)).toVar();
         const glint = max(dot(R, L), 0.0);
         const g4 = glint.mul(glint).mul(glint).mul(glint);
         const g16 = g4.mul(g4).mul(g4).mul(g4);
@@ -255,7 +265,9 @@ export function createPourMaterial(u, tex) {
         // them are greyer; broad bands of the fall run brighter or duller where more or less
         // water comes over.
         const bands = texture(tex.noise, vec2(across.div(30.0).add(0.61), launch.mul(0.05))).r;
-        const hollow = billow.mul(0.6).add(ropes.g.mul(0.2)).add(lumps.r.mul(0.12)).add(0.36)
+        const hollow = billow.mul(0.16).add(smoothstep(0.2, 0.8, fibre).mul(0.62)).add(ropes.g.mul(0.1))
+            .add(lumps.r.mul(0.06))
+            .add(0.34)
             .mul(bands.mul(0.5).add(0.75));
         const behind = clamp(dot(V, L), 0.0, 1.0);
         const b2 = behind.mul(behind);
@@ -264,9 +276,12 @@ export function createPourMaterial(u, tex) {
             .add(u.fill.mul(1.25)).add(u.bounce.mul(0.3));
         const foam = vec3(...FOAM).mul(foamLight).mul(hollow);
         // The brink: for its first moments over the lip the water is a smooth glassy roll, the
-        // sky bright along its curve, before it tears white.
-        const brink = float(1.0).sub(smoothstep(0.04, 0.24, tt)).mul(q.mul(0.6).add(0.4));
-        white.mulAssign(float(1.0).sub(brink.mul(0.8)));
+        // sky bright along its curve, before it tears white; the thick tongue holds together
+        // for most of a second, its fibres tearing white one by one.
+        const holds = q.mul(0.75).add(0.2);
+        const brink = float(1.0).sub(smoothstep(holds.mul(0.15), holds, tt.add(fibre.sub(0.5).mul(holds).mul(0.6))))
+            .mul(q.mul(0.5).add(0.5));
+        white.mulAssign(float(1.0).sub(brink.mul(0.95)));
         const col = mix(glassy, foam, white).toVar();
 
         // ── Coverage: thick water is a sheet; thin water and the falling water lower down tear
@@ -292,7 +307,7 @@ export function createPourMaterial(u, tex) {
         const spray = smoothstep(POOL_Y + 13.0, POOL_Y + 2.0, P.y).mul(smoothstep(8.0, 20.0, speed))
             .mul(q.mul(0.5).add(0.5)).toVar();
         const flat = vec3(...FOAM).mul(u.fill.mul(1.4).add(sunLight.mul(0.34)).add(u.bounce.mul(0.3)));
-        col.assign(mix(col, flat, spray.mul(0.65)));
+        col.assign(mix(col, flat, spray.mul(0.45)));
         const alpha = clamp(alive.mul(cover).mul(fray).mul(foot).mul(thin)
             .mul(mix(float(1.0), billow.mul(0.4).add(0.6), spray)), 0.0, 1.0);
         return vec4(aerial(u, P, col), alpha);
@@ -373,7 +388,9 @@ export function createFaceGeometry(baked, { cols = 300, rows = 170, capRows = 6 
             along[o] = x;
             height[o] = y;
             faceBlock(a, y, blk);
-            tone[o] = ((blk.band * 7919 + blk.column * 104729) % 1000) / 1000;
+            // Each layer a shade apart, and only faintly each block within it (a shade per block
+            // read as masonry).
+            tone[o] = (((blk.band * 7919) % 1000) / 1000) * 0.8 + (((blk.column * 104729) % 1000) / 1000) * 0.2;
             joint[o] = blk.joint;
         }
     }
@@ -502,14 +519,16 @@ export function createFaceMaterial(u, tex) {
         const diffuse = max(dot(N, L), 0.0);
         const sky = u.fill.mul(N.y.mul(0.35).add(0.65)).add(u.bounce.mul(float(0.5).sub(N.y.mul(0.5))));
         const col = albedo.mul(sunLight.mul(diffuse).mul(shade.mul(0.6).add(0.4)).add(sky.mul(shade))).toVar();
-        // The wet rock's sheen toward the sun, and the sky's on it.
+        // The wet rock's sheen toward the sun, and the sky's on it: rough rock, so a broken, patchy
+        // sheen (a strong one read as polished metal with the sun behind the eye).
         const V = normalize(P.sub(u.eye));
         const R = V.sub(N.mul(dot(V, N).mul(2.0)));
         const g = clamp(dot(R, L), 0.0, 1.0);
         const g4 = g.mul(g).mul(g).mul(g);
         const g16 = g4.mul(g4).mul(g4).mul(g4);
-        col.addAssign(sunLight.mul(g16.mul(0.45).add(g4.mul(0.04))).mul(wetness).mul(shade));
-        col.addAssign(u.fill.mul(wetness.mul(0.12)).mul(smoothstep(0.0, 0.6, R.y)).mul(shade));
+        const glisten = smoothstep(0.45, 0.8, grain.a.mul(0.6).add(mid.r.mul(0.4)));
+        col.addAssign(sunLight.mul(g16.mul(0.14).mul(glisten).add(g4.mul(0.02))).mul(wetness).mul(shade));
+        col.addAssign(u.fill.mul(wetness.mul(0.06)).mul(smoothstep(0.0, 0.6, R.y)).mul(shade));
         return vec4(aerial(u, P, col), 1.0);
     })();
     return material;

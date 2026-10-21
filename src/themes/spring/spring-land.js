@@ -325,7 +325,9 @@ export function createLandMaterial(u, tex) {
         const fell = smoothstep(360.0, 520.0, P.y.add(f1.r.sub(0.5).mul(140.0)).add(n1.r.mul(40.0)));
         const heath = mix(vec3(...HEATH_DARK), vec3(...HEATH), smoothstep(0.3, 0.6, f2.g))
             .mul(f2.b.mul(0.3).add(0.85)).toVar();
-        const lichenHeath = smoothstep(0.55, 0.75, f2.r.add(f1.b.sub(0.5).mul(0.4))).mul(0.6);
+        // (Soft-edged drifts: hard ones read as camouflage from the knoll.)
+        const lichenHeath = smoothstep(0.42, 0.88, f2.r.add(f1.b.sub(0.5).mul(0.4)).add(n1.r.sub(0.5).mul(0.2)))
+            .mul(0.5);
         heath.assign(mix(heath, vec3(...HEATH_PALE), lichenHeath));
         const scree = smoothstep(0.3, 0.55, slope.add(f2.a.sub(0.5).mul(0.3)));
         const fellCol = mix(heath, vec3(...GRANITE).mul(f2.a.mul(0.3).add(0.55)), scree);
