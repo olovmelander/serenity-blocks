@@ -17,12 +17,14 @@ import {
     dot,
     exp,
     float,
+    fract,
     length,
     max,
     mix,
     normalize,
     select,
     smoothstep,
+    vec3,
 } from 'three/tsl';
 import { SKYLINE_GATE } from './spring-hours.js';
 
@@ -128,6 +130,33 @@ export function sunShare(u, P) {
     return smoothstep(SKYLINE_GATE[0], SKYLINE_GATE[1], u.sunEl.sub(u.skyline).add(lift))
         .mul(smoothstep(-1.2, 0.4, u.sunEl));
 }
+
+/**
+ * The spray bow: sunlight turned back by the fall's droplets. The primary bow stands 40.3° (violet)
+ * to 42.4° (red) from the point opposite the sun, the secondary 50.4° (red) to 53.5° (violet),
+ * colours reversed and fainter; inside the primary the spray is a little brighter. Degrees in,
+ * relative radiance out (times the sun's light).
+ */
+export const BOW = Object.freeze({
+    primary: Object.freeze([40.3, 42.4]), secondary: Object.freeze([50.4, 53.5]), second: 0.42, inside: 0.06,
+});
+
+const bowHue = (hue) => clamp(abs(fract(vec3(hue).add(vec3(0.0, 2 / 3, 1 / 3))).mul(6.0).sub(3.0)).sub(1.0), 0.0, 1.0);
+
+/** The bow's colour at `theta` degrees from the antisolar point (TSL). */
+export const sprayBow = /* @__PURE__ */ Fn(([theta]) => {
+    const [p0, p1] = BOW.primary;
+    const h1 = theta.sub(p0).div(p1 - p0);
+    const band1 = smoothstep(-0.15, 0.1, h1).mul(float(1.0).sub(smoothstep(0.9, 1.2, h1)))
+        .mul(h1.clamp(0.0, 1.0).mul(0.45).add(0.55));
+    const primary = mix(bowHue(float(0.7).mul(float(1.0).sub(h1.clamp(0.0, 1.0)))), vec3(1.0), 0.38).mul(band1);
+    const [s0, s1] = BOW.secondary;
+    const h2 = theta.sub(s0).div(s1 - s0);
+    const band2 = smoothstep(-0.15, 0.1, h2).mul(float(1.0).sub(smoothstep(0.9, 1.2, h2)));
+    const secondary = mix(bowHue(float(0.7).mul(h2.clamp(0.0, 1.0))), vec3(1.0), 0.42).mul(band2).mul(BOW.second);
+    const inside = float(1.0).sub(smoothstep(24.0, p0 + 0.3, theta)).mul(BOW.inside);
+    return primary.add(secondary).add(inside);
+}).setLayout({ name: 'sp_sprayBow', type: 'vec3', inputs: [{ name: 'theta', type: 'float' }] });
 
 /** Transmittance only (for light that must fade with the air: glints, pollen, spray). */
 export function airClarity(u, P) {

@@ -448,3 +448,79 @@ runs). The ribbon's build measures 30 ground points every 1.5 m along the river 
 on High it took 430–570 ms against 350–370 ms without, in Node while other sessions loaded the
 machine (noisy; about a tenth to a fifth of a second more, inside the river's own build step).
 Frame rate was not measured.
+
+## Third pass: the waterfall (2026-10-21)
+
+The owner asked for the waterfall's water, and everything round the water at the fall, to be more
+stunning and impressive. Close up, the curtain was a flat sheet of evenly bright white with a few
+vertical lines; the spray was a uniform fog; the rock beside the water was the same grey schist
+as everywhere else; the pool at the foot was flat foam; and a clear laid a straight white bar
+across the pool.
+
+**The curtain** (`spring-fall.js`, the pour material, rewritten). The water falls in strands, a third
+of a metre to a couple of metres across, that meander a little as they fall (`SWAY`) and are drawn
+out by the water's own acceleration (short at the brink, long streaks lower down). Each strand
+ribs the sheet's light across it (`RIB`), so it reads as a column. The water breaks into clumps a
+column at a time (`PACKET`: 0.8 m columns, each throwing 0.7–1.5 clumps a second), each a bright
+ragged head with its tail streaming up behind it. Droplets glitter where a lump faces between the
+sun and the eye (`GLITTER`). Lower down the curtain tears into strands and clumps with the wet
+rock and the spray between them, and its foot is ragged, strand by strand lost in the boil. With
+the sun behind it (the golden evening), the thin water glows peat-amber through itself and the
+thick strands stand darker against it. The glassy brink and its tearing are kept.
+
+**The spray** (`spring-mist.js`, `spring-light.js`). A **spray bow**: sunlight turned back by the
+droplets, at the true angles (`BOW`: the primary 40.3°–42.4° from the point opposite the sun,
+violet inside; the fainter secondary 50.4°–53.5°, its colours reversed; the spray inside the
+primary a little brighter). With the sun high behind the eye (morning and the late morning) the
+bow arcs through the spray at the fall's foot; from close in, a double bow. Its angle is worked out
+once a corner (the ring is smooth enough across a puff to interpolate), its colour once a pixel.
+**Splash plumes** (`PUFF.splash`) where each tongue hits the pool: quick, crisp, solid nearly down
+to the water. The drifting cloud billows: each puff is lumps whose edges are its noise's, lit on
+their upper sides and shaded under the lumps over them, instead of a soft glow.
+
+**The rock round the water** (`spring-fall.js`, the face material). Beside the tongues and on the
+ribs between them, where the spray drifts but the water does not scour, the schist is carpeted in
+vivid spray-fed moss and liverwort, in cushions broken by bare rock: the greenest thing in the
+gorge. Trickles run down the face beside the tongues, dark and glistening, beaded with light that
+runs down them. At the fall's foot the ground the spray reaches is soaked dark (`spring-land.js`).
+
+**The pool** (`spring-river.js`). The boil heaps up in domes where the tongues land (`BOIL`: 22 m
+domes up to 1.1 m high, welling and sinking as they roll out downstream), which tilt its surface;
+its foam is a finer froth; water full of air under it glows pale aqua instead of grey. Behind the
+curtain, under the overhang, the water lies in shadow.
+
+**The straight white bar** (fixed). A clear's surge, seen from the knoll, lies almost edge-on 15 m
+out from the fall: its breaking front was one unbroken white line across the river, and the water
+it lifted at the edges stood out through the banks. The surge now stays in the river (fading out
+before the banks) and its front breaks in stretches where the water piles over the stones under
+it, with smooth water between. (The second pass had darkened the recess for this line; that was
+not its cause.)
+
+| The fall: before, after | From close in: before, after |
+|---|---|
+| ![the fall](spring-captures/waterfall-fall-ab.webp) | ![close in](spring-captures/waterfall-near-ab.webp) |
+| **The brink: before, after** | **The foot: before, after** |
+| ![the brink](spring-captures/waterfall-lip-ab.webp) | ![the foot](spring-captures/waterfall-foot-ab.webp) |
+| **Golden evening, the sun behind it: before, after** | |
+| ![golden evening](spring-captures/waterfall-golden-ab.webp) | |
+
+| The view from the knoll | A chain of six |
+|---|---|
+| ![the knoll](spring-captures/waterfall-hero.webp) | ![chain](spring-captures/waterfall-chain.webp) |
+
+**Verification.** Playground captures through Electron on this laptop (WebGPU on the RTX 5080
+Laptop; WebGL2 at Low with `forceWebGL=1`), 1600 × 900, from a private dev server: the fall, its
+brink, its foot and a close-in view at the late morning, the golden evening, the light night and
+dawn mist; a lock, three lines, four lines, a T-spin and a chain of six; Minimal on WebGPU. No
+WebGPU validation errors or console warnings in any. The Spring unit tests (twelve files, 234
+tests, with the new `spring-waterfall.test.js`: the splash plumes stand where the tongues land, the
+bow's angles, the clumps' sizes and rates, the boil's reach), typecheck and the Spring files' lint
+pass.
+
+**Cost.** The curtain's colour reads six noise texels a pixel (it read eight) and does more
+arithmetic for the strands, the clumps and the glitter; the mist's fragment gains the bow's colour
+(two hue ramps; the angle is per corner) and a crisper heap, with the same two texels; 14 % of the
+puffs became short-lived splash plumes (the cloud's feet went from 50 % to 40 % of them, so the
+count per tier is the same); the pool's colour reads one more texel everywhere (the froth) and three
+more inside the boil only. The face reads six texels (it read four) for its moss and trickles.
+Frame rate was not measured: the GPU was shared with the owner's other work.

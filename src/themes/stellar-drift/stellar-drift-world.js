@@ -10,18 +10,23 @@
  * other side, one of ice that vents into the dark, one of rust; and the camera drifts in the
  * thin outer haze of the rings, among slow shards of ice. The board plays on it:
  *
- *   lock     a mote of the piece's colour leaves the card and falls into the rings: a flash, a
- *            splash of lit ice, and a ring of light that runs out from where it landed and is
- *            wound into a spiral by the rings' own turning. A hard drop lands harder.
+ *   lock     a comet of the piece's colour leaves the card and falls into the rings: a white-hot
+ *            impact, the ringlet it lands on lit along its orbit, a splash of ice chips and a
+ *            density wave that brightens and thins the rings as it runs out, wound into a
+ *            spiral by their own turning. A hard drop lands harder.
  *   clear    the rings chime: light runs out through the whole system, one front per line, and
- *            every cleared row is written round the giant as a streak of light on its own
- *            latitude; lightning answers under the night side's cloud and the aurora flares.
- *   combo    the aurora is the chain: every step raises it, a second oval lights inside the
- *            first, lightning walks the night side, the rings hum in the chain's colour and
- *            meteors start to fall — more with every step.
- *   four     a meteor storm burns into the cloud tops, the icy moon vents a great fan of ice,
- *            and the whole ring system rings four times over.
- *   T-spin   a two-armed spiral of light winds round through the rings.
+ *            every cleared row is written round the giant as a hairline of light with a
+ *            white-hot head; lightning branches under the night side's cloud.
+ *   combo    the rings are the chain: every step raises their hum in the chain's colour,
+ *            lightning walks the night side and meteors start to fall; at 3 and 5 two arcs of
+ *            its light race round the rings, and at 8 a corona of light leaves the giant.
+ *   four     a storm of bolides strikes the cloud tops (fireball, shock, embers, a dark scar
+ *            the wind shears), the icy moon vents, a corona of light leaves the giant and the
+ *            whole ring system rings four times over.
+ *   T-spin   a cyclone is spun into the cloud bands, its arms lit, and a two-armed spiral of
+ *            light winds round through the rings.
+ *   b2b      the rings' outer strand blazes, braided and knotted with light.
+ *   perfect  all of it in gold.
  *   level    the hour turns: the picture moves one palette round its wheel of six (the giant's
  *            bands take the new colours one by one, like weather), and the sun moves with it.
  *   time     by itself, with no level change, the picture drifts round the same wheel: one
@@ -33,10 +38,10 @@
 
 import * as THREE from 'three/webgpu';
 import {
-    AURORA_REST,
     BOLT_SLOTS,
     CHIME_LIVE,
     CHIME_SLOTS,
+    CYCLONE_LIFE,
     DEG,
     EVENT_ROWS,
     GIANT,
@@ -49,11 +54,15 @@ import {
     RINGS,
     RIPPLE_LIFE,
     RIPPLE_SLOTS,
+    SHOCK_LIFE,
+    STRAND_LIFE,
     STRIKE_LIFE,
     STRIKE_SLOTS,
+    SURGE_LIFE,
+    SURGE_SPEED,
     TAU,
     approach,
-    auroraForCombo,
+    chainHeat,
     bakeBandColors,
     bakeBandMeta,
     bakeFbm,
@@ -86,7 +95,7 @@ import { tierFor } from './stellar-drift-quality.js';
 import { EventPool } from './stellar-drift-pool.js';
 import { createSpace } from './stellar-drift-space.js';
 import {
-    createIce, createMeteors, createResonances, createSparks,
+    createHeads, createIce, createMeteors, createSparks,
 } from './stellar-drift-fx.js';
 import {
     BOARD_GRID, PLAYER_SLOTS, boardFor, boardPoint, fallbackLayout,
@@ -114,7 +123,7 @@ export function fovForAspect(aspect) {
 export const SPIN_RATE = TAU / 1150;
 /** How fast the level's place on the wheel is taken up (1/s). */
 const PLACE_RATE = 0.42;
-/** Seconds an aurora flare after a clear takes to fade to 1/e. */
+/** Seconds the rings' flare after a clear takes to fade to 1/e. */
 const SURGE_FADE = 2.6;
 /** Seconds the icy moon's great vent after a four-line clear takes to fade to 1/e. */
 const VENT_FADE = 7;
@@ -126,9 +135,21 @@ const METEOR_PERIOD = 12.5;
 /** How long a bolt's light lasts. */
 const BOLT_LIFE = 0.62;
 
-const PARTS = ['space', 'boulders', 'shards', 'motes', 'sparks', 'meteors', 'resonances'];
+const PARTS = ['space', 'boulders', 'shards', 'motes', 'sparks', 'meteors', 'heads'];
 const COMBO_MILESTONES = [3, 5, 8];
 const MAX_TIMED_MOMENTS = RIPPLE_SLOTS + METEOR_SLOTS;
+/** The flourishes (stellar-drift-core.js) and what each milestone of a chain plays. */
+const FLOURISH_KINDS = ['cyclone', 'surge', 'crown', 'strand', 'shock'];
+const MILESTONE_SURGES = [
+    { power: 0.75, tall: 0.25 },
+    { power: 1.0, tall: 0.6 },
+    { power: 1.4, tall: 1.2 },
+];
+
+/** A flourish at rest: born long ago. */
+const idleFlourish = () => ({
+    birth: -1e6, power: 0, rgb: [1, 1, 1], lon: 0, lat: 0, dir: 1, tall: 0, seed: 0,
+});
 
 export class StellarDriftWorld {
     /**
@@ -157,7 +178,13 @@ export class StellarDriftWorld {
         this.ice = null;
         this.sparks = null;
         this.meteors = null;
-        this.resonances = null;
+        this.heads = null;
+        /** The flourishes in play, one of each (a new one takes the place of the last). */
+        this.flourish = {
+            cyclone: idleFlourish(), surge: idleFlourish(), strand: idleFlourish(), shock: idleFlourish(),
+        };
+        /** How many of each kind have been played since the session began. */
+        this.flourishes = Object.fromEntries(FLOURISH_KINDS.map((kind) => [kind, 0]));
         this.chains = Array.from({ length: PLAYER_SLOTS }, () => ({ player: null, combo: 0, milestone: 0 }));
         this.ringProfile = null;
         this.disposed = false;
@@ -214,7 +241,7 @@ export class StellarDriftWorld {
             lat: 0, strength: 0, lon: 0, rgb: [1, 1, 1],
         }));
         this.strikes = new EventPool(STRIKE_SLOTS, STRIKE_LIFE, () => ({
-            lon: 0, lat: 0, strength: 0, size: 0.05, rgb: [1, 1, 1],
+            lon: 0, lat: 0, strength: 0, bearing: 0, rgb: [1, 1, 1],
         }));
         this.bolts = new EventPool(BOLT_SLOTS, BOLT_LIFE, () => ({
             lon: 0, lat: 0, strength: 0, size: 0.05, seed: 0,
@@ -230,7 +257,6 @@ export class StellarDriftWorld {
         /** The level's place on the wheel (level − 1), eased when a level changes. */
         this.levelPlace = 0;
         this.place = palettePlace(0, time);
-        this.aurora = AURORA_REST;
         this.surge = 0;
         this.crown = 0;
         this.hum = 0;
@@ -268,7 +294,7 @@ export class StellarDriftWorld {
         this.bolts?.reset();
         this.sparks?.reset();
         this.meteors?.reset();
-        this.resonances?.reset();
+        this.retireFlourishes();
         this.chains.forEach((chain) => {
             chain.player = null;
             chain.combo = 0;
@@ -309,8 +335,8 @@ export class StellarDriftWorld {
         this.addPart('sparks', this.sparks);
         this.meteors = createMeteors(u);
         this.addPart('meteors', this.meteors);
-        this.resonances = createResonances(u);
-        this.addPart('resonances', this.resonances);
+        this.heads = createHeads(u, this.meteors);
+        this.addPart('heads', this.heads);
 
         this.resetState(this.time);
         this.compose();
@@ -371,7 +397,7 @@ export class StellarDriftWorld {
             // These pools retain their launch speed. Retire them when the preference changes.
             this.meteors?.reset();
             this.sparks?.reset();
-            this.resonances?.reset();
+            this.retireFlourishes();
             this.bolts.reset();
             this.queue.length = 0;
         }
@@ -660,19 +686,64 @@ export class StellarDriftWorld {
         chime.rgb = [...rgb];
     }
 
-    resonance(time, kind, power, rgb, seed) {
-        this.resonances?.emit({
-            time,
-            kind,
-            power: power * (this.reducedMotion ? 0.4 : 1),
-            rgb,
-            seed,
-            motion: this.reducedMotion ? 0.2 : 1,
+    // ── Flourishes ──────────────────────────────────────────────────────────────
+
+    /** Drop every flourish in play (a new run, a seek, reduced motion switched on). */
+    retireFlourishes() {
+        if (!this.flourish) return;
+        Object.keys(this.flourish).forEach((key) => Object.assign(this.flourish[key], idleFlourish()));
+        FLOURISH_KINDS.forEach((kind) => { this.flourishes[kind] = 0; });
+        this.crownBoost = 0;
+    }
+
+    /** Start the flourish `key` (cyclone, surge, strand, shock), counted under `kind`. */
+    flourishAt(key, kind, time, power, rgb, extra = {}) {
+        const f = this.flourish[key];
+        Object.assign(f, idleFlourish(), extra);
+        f.birth = time;
+        f.power = power * (this.reducedMotion ? 0.4 : 1);
+        f.rgb = [...rgb];
+        this.flourishes[kind] += 1;
+        return f;
+    }
+
+    /** A chain's surge round the rings, from the bearing that faces the camera. */
+    surgeAt(time, kind, power, tall, rgb) {
+        const camera = this._camera || this.restCamera();
+        this.flourishAt('surge', kind, time, power, rgb, {
+            lon: Math.atan2(camera.position.z, camera.position.x),
+            tall: tall * (this.reducedMotion ? 0.3 : 1),
         });
     }
 
+    /** A T-spin's cyclone, wound into the cloud somewhere on the day side the camera sees. */
+    cycloneAt(time, power, rgb, seed) {
+        const rand = mulberry32(0xc1c1 + seed * 7919);
+        const camera = this._camera || this.restCamera();
+        const sun = this.u.sunDir.value;
+        const toCam = this._a.copy(camera.position).normalize();
+        let lon = Math.atan2(toCam.z, toCam.x);
+        let lat = 0.3;
+        for (let i = 0; i < 16; i++) {
+            lat = lerp(-0.12, 0.72, rand());
+            lon = Math.atan2(toCam.z, toCam.x) + (rand() - 0.62) * 1.5;
+            const c = Math.cos(lat);
+            const p = this._b.set(c * Math.cos(lon), Math.sin(lat), c * Math.sin(lon));
+            if (p.dot(sun) > 0.3 && p.dot(toCam) > 0.6) break;
+        }
+        // Stored in the giant's own frame, so the storm rides round with the cloud.
+        this.flourishAt('cyclone', 'cyclone', time, power, rgb, {
+            lon: lon + this.spin, lat, dir: rand() < 0.5 ? -1 : 1,
+        });
+    }
+
+    /** A shell of light thrown off the giant. */
+    shockAt(time, power, rgb) {
+        this.flourishAt('shock', 'shock', time, power, rgb);
+    }
+
     /** Celebrate a threshold once per player's chain, even across multiple cascade waves. */
-    comboMilestone(player, combo, time, rgb, seed) {
+    comboMilestone(player, combo, time, rgb) {
         const id = Number.isFinite(player) ? player : 0;
         const chain = this.chains.find((entry) => entry.player === id)
             || this.chains.find((entry) => entry.player === null);
@@ -686,7 +757,15 @@ export class StellarDriftWorld {
         }
         if (tier <= chain.milestone) return;
         chain.milestone = tier;
-        this.resonance(time + 0.08, ['sweep', 'helix', 'crown'][tier - 1], 0.65 + tier * 0.2, rgb, seed);
+        const { power, tall } = MILESTONE_SURGES[tier - 1];
+        // The highest milestone crowns the chain: the inner oval blazes and a shell of light
+        // leaves the giant in the chain's colour.
+        const crown = tier === COMBO_MILESTONES.length;
+        this.surgeAt(time + 0.08, crown ? 'crown' : 'surge', power, tall, rgb);
+        if (crown) {
+            this.crownBoost = this.reducedMotion ? 0.3 : 1;
+            this.shockAt(time + 0.12, 0.6, rgb);
+        }
         this.counts.milestones += 1;
     }
 
@@ -706,11 +785,12 @@ export class StellarDriftWorld {
         const pale = rgb.map((v) => lerp(v, 1, 0.35));
         const seed = this.seed + this.counts.clears * 977 + this.counts.tspins * 131;
 
-        // A clear sends fronts across the rings; a zero-line spin has its own twisting signature.
+        // A clear sends fronts across the rings; a spin winds a spiral through them and a
+        // cyclone into the cloud (a zero-line spin too, more gently).
         if (lines > 0) this.ringChime(t, 0.7 + lines * 0.2 + (quad ? 0.25 : 0), lines, 0, pale);
         if (tspin) {
             this.ringChime(t + 0.05, lines > 0 ? 1.1 : 0.7, 1, 2, rgb);
-            this.resonance(t, 'helix', lines > 0 ? 1.05 : 0.7, rgb, seed + 11);
+            this.cycloneAt(t, lines > 0 ? 1.0 : 0.7, rgb, seed + 11);
             this.counts.tspins += 1;
         }
 
@@ -725,7 +805,7 @@ export class StellarDriftWorld {
             jet.lon = start;
             jet.rgb = [...rgb];
         }
-        // Lightning answers under the cloud, and the aurora flares.
+        // Lightning answers under the cloud, and the rings flare.
         const bolts = calm ? Math.min(1, lines) : lines * 2 + (quad ? 4 : 0);
         for (let i = 0; i < bolts; i++) this.throwBolt(t + i * 0.09, seed + i, rows[i % rows.length]);
         this.surge = Math.min(1.4, this.surge + (0.3 + lines * 0.14 + (quad ? 0.4 : 0)) * (calm ? 0.4 : 1));
@@ -737,19 +817,26 @@ export class StellarDriftWorld {
             this.ringChime(t + 0.24 + i * 0.24, 0.55 + i * 0.12, 1, 0, rgb);
         }
         if (echoes > 0) this.counts.cascades += 1;
-        if (lines > 0) this.comboMilestone(c.player, combo, t, rgb, seed + 29);
+        if (lines > 0) this.comboMilestone(c.player, combo, t, rgb);
 
-        // Difficult clears answer with an offset returning sweep, independent of the spin/storm.
+        // A difficult clear sets the rings' outer strand ablaze, a beat after the clear itself.
         if (c.b2b && lines > 0) {
-            this.resonance(t + 0.3, 'sweep', 0.85, pale, seed + 47);
+            this.flourishAt('strand', 'strand', t + 0.3, 1.0, pale, { seed: (seed % 1000) * 0.37 });
             this.counts.b2b += 1;
         }
-        // A perfect clear unfurls a crown; it is not counted as a four-line clear.
+        // A perfect clear is the giant's whole answer in gold: light racing round the rings, a corona
+        // of light thrown off, the strand ablaze. It is not counted as a four-line clear.
         if (perfect) {
             const gold = [lerp(rgb[0], 1, 0.65), lerp(rgb[1], 0.9, 0.65), lerp(rgb[2], 0.55, 0.65)];
-            this.resonance(t + 0.1, 'crown', 1.45, gold, seed + 71);
+            this.surgeAt(t + 0.1, 'crown', 1.4, 1.2, gold);
+            this.crownBoost = calm ? 0.3 : 1;
+            this.shockAt(t + 0.05, 1.25, gold);
+            this.flourishAt('strand', 'strand', t + 0.35, 1.2, gold, { seed: (seed % 1000) * 0.53 });
             this.vent = Math.max(this.vent, calm ? 0.2 : 0.7);
             this.counts.perfects += 1;
+        } else if (quad) {
+            // Four lines throw a shell of light off the giant in the piece's colour.
+            this.shockAt(t + 0.05, 0.7, pale);
         }
 
         // Varying approach bearings keep the meteor rewards from looking like the same salvo.
@@ -821,23 +908,28 @@ export class StellarDriftWorld {
         const camera = this._camera || this.restCamera();
         const toCam = this._a.copy(camera.position).normalize();
         // Where it strikes: anywhere on the face the camera sees.
-        const lat = (rand() - 0.4) * 1.5;
+        const lat = (rand() - 0.28) * 1.3;
         const lon = Math.atan2(toCam.z, toCam.x) + (rand() - 0.5) * 2.0;
         const c = Math.cos(lat);
         const to = this._b.set(c * Math.cos(lon), Math.sin(lat), c * Math.sin(lon));
         // Fan in from either upper quarter or steeply overhead, chosen by the event seed.
         const bearing = lerp(0.22, Math.PI - 0.22, rand());
-        const reach = 2.8 + rand() * 1.8;
+        const reach = 1.5 + rand() * 1.1;
         const from = this._c.copy(to).multiplyScalar(1.02)
             .addScaledVector(this._right, Math.cos(bearing) * reach)
             .addScaledVector(this._up, Math.sin(bearing) * reach)
-            .addScaledVector(toCam, 0.5 + rand() * 1.2);
+            .addScaledVector(toCam, 0.3 + rand() * 0.8);
         const flight = 0.5 + rand() * 0.3;
+        // Which way it crosses the cloud where it strikes (east and north there): its ejecta are
+        // thrown downrange.
+        const way = this._ray.copy(to).sub(from);
+        const east = way.x * -Math.sin(lon) + way.z * Math.cos(lon);
+        const north = -way.x * Math.sin(lat) * Math.cos(lon) + way.y * c - way.z * Math.sin(lat) * Math.sin(lon);
         this.meteors.launch({
             from, to, birth: time, flight, rgb, size: strength, mote: false,
         });
         this.schedule(time + flight, 'strike', {
-            lon, lat, rgb: [...rgb], strength,
+            lon, lat, rgb: [...rgb], strength, bearing: Math.atan2(north, east),
         });
         this.counts.meteors += 1;
     }
@@ -847,7 +939,7 @@ export class StellarDriftWorld {
         strike.lon = data.lon + this.spin;
         strike.lat = data.lat;
         strike.strength = data.strength;
-        strike.size = 0.035 + data.strength * 0.03;
+        strike.bearing = data.bearing;
         strike.rgb = data.rgb;
         if (!this.reducedMotion) this.flash = Math.min(1, this.flash + 0.05);
     }
@@ -869,6 +961,8 @@ export class StellarDriftWorld {
         chime.fronts = 2;
         chime.arms = 0;
         chime.rgb = [1.0, 0.94, 0.82];
+        // ...and a soft shell of the star's own light leaves the giant.
+        this.shockAt(this.time, 0.55, [1.0, 0.92, 0.78]);
         this.surge = Math.min(1.4, this.surge + (this.reducedMotion ? 0.2 : 0.5));
         if (!this.reducedMotion) this.flash = Math.min(1, this.flash + 0.3);
     }
@@ -900,7 +994,7 @@ export class StellarDriftWorld {
             // One tick per frame at most: a long pause must not release a salvo.
             this.boltTick = tick;
             const rand = mulberry32(0x5f3 + tick * 2654435761);
-            const chance = 0.2 + auroraForCombo(this.combo) * 0.55;
+            const chance = 0.2 + chainHeat(this.combo) * 0.55;
             if (rand() < chance) this.throwBolt(t, 0x4000 + tick);
         }
         const beat = Math.floor(t / METEOR_PERIOD);
@@ -923,7 +1017,7 @@ export class StellarDriftWorld {
         this.drain(t);
 
         // The slow clocks.
-        const heat = auroraForCombo(this.combo);
+        const heat = chainHeat(this.combo);
         this.spin += dt * SPIN_RATE * motion;
         this.flow += (dt / GIANT.flowCycle) * motion;
         this.flutter += dt * (0.6 + heat * 1.6 + this.surge * 1.4) * motion;
@@ -935,8 +1029,9 @@ export class StellarDriftWorld {
         this.applyPalette();
 
         // The chain.
-        this.aurora += (AURORA_REST + heat * 0.9 - this.aurora) * approach(1.6, dt);
-        this.crown += (smooth(3.5, 8, this.combo) - this.crown) * approach(1.2, dt);
+        // The inner oval: lit by a long chain, and blazing for a while after a crown.
+        this.crownBoost *= Math.exp(-dt / 2.4);
+        this.crown += (Math.max(smooth(3.5, 8, this.combo), this.crownBoost) - this.crown) * approach(1.2, dt);
         this.hum += (heat - this.hum) * approach(1.4, dt);
         this.surge *= Math.exp(-dt / SURGE_FADE);
         this.vent *= Math.exp(-dt / VENT_FADE);
@@ -947,9 +1042,13 @@ export class StellarDriftWorld {
         u.time.value = t;
         u.spin.value = this.spin % TAU;
         u.flow.value = this.flow;
-        const level = Math.min(1.6, this.aurora + this.surge);
-        u.aurora.value.set(level, level * 0.85, this.flutter, this.crown);
-        u.ringGlow.value.set(this.hum + this.surge * 0.35, 0.5 + this.hum * 0.6, this.flutter, 0);
+        // The chain's glow: the rings hum, their spokes stand out, more so under a crown.
+        u.ringGlow.value.set(
+            this.hum + this.surge * 0.35 + this.crown * 0.25,
+            0.5 + this.hum * 0.6 + this.crown * 0.4,
+            this.flutter,
+            this.crown,
+        );
         u.accent.value.set(this._accent[0], this._accent[1], this._accent[2]);
         u.plume.value = VENT_REST * (0.8 + 0.2 * Math.sin(t * 0.23)) + this.vent * 0.9 + this.surge * 0.12;
 
@@ -969,7 +1068,7 @@ export class StellarDriftWorld {
         });
         const nStrikes = this.strikes.flush(t, (e, i) => {
             rows[EVENT_ROWS.strike + i * 2].set(e.lon, e.lat, e.birth, e.strength);
-            rows[EVENT_ROWS.strike + i * 2 + 1].set(e.rgb[0], e.rgb[1], e.rgb[2], e.size);
+            rows[EVENT_ROWS.strike + i * 2 + 1].set(e.rgb[0], e.rgb[1], e.rgb[2], e.bearing);
         });
         const nBolts = this.bolts.flush(t, (e, i) => {
             // A bolt stutters: a hard first stroke, then two fainter returns.
@@ -985,6 +1084,7 @@ export class StellarDriftWorld {
         });
         u.counts.value.set(nRipples, nChimes, nJets, nStrikes);
         u.bolts.value = nBolts;
+        this.writeFlourishes(t);
 
         // The camera, as the full-screen pass traces it.
         const cam = this._camera;
@@ -1001,7 +1101,7 @@ export class StellarDriftWorld {
         this.ice?.update(t, dt, motion);
         this.sparks?.update(t);
         this.meteors?.update(t);
-        this.resonances?.update(t);
+        this.heads?.update(t);
 
         // What the post needs: where the giant is on screen now.
         if (cam) {
@@ -1014,6 +1114,42 @@ export class StellarDriftWorld {
         post.flash = this.reducedMotion ? 0 : this.flash;
         post.kick = this.reducedMotion ? 0 : this.kick;
         post.bloomBoost = clamp01(this.surge * 0.5 + this.hum * 0.3);
+    }
+
+    /** The flourishes in play, as the full-screen pass reads them. */
+    writeFlourishes(t) {
+        const { u, flourish } = this;
+        const {
+            cyclone, surge, strand, shock,
+        } = flourish;
+        u.cyclone.value.set(cyclone.lon, cyclone.lat, cyclone.birth, cyclone.power);
+        u.cycloneTint.value.set(cyclone.rgb[0], cyclone.rgb[1], cyclone.rgb[2], cyclone.dir);
+        // The surge is laid out here: how far round it has run, and how strong it still is.
+        const age = t - surge.birth;
+        if (age >= 0 && age < SURGE_LIFE) {
+            const env = smooth(0, 0.15, age) * Math.exp(-age * 0.7);
+            const tall = surge.tall * smooth(0, 0.4, age) * (1 - smooth(SURGE_LIFE * 0.45, SURGE_LIFE, age));
+            u.surge.value.set(surge.lon, age * SURGE_SPEED, env * surge.power, tall);
+            u.surgeTint.value.set(surge.rgb[0], surge.rgb[1], surge.rgb[2]);
+        } else {
+            u.surge.value.set(0, 0, 0, 0);
+        }
+        u.strand.value.set(strand.birth, strand.power, strand.seed, 0);
+        u.strandTint.value.set(strand.rgb[0], strand.rgb[1], strand.rgb[2]);
+        u.shock.value.set(shock.birth, shock.power, 0, 0);
+        u.shockTint.value.set(shock.rgb[0], shock.rgb[1], shock.rgb[2]);
+    }
+
+    /** What is in play of each flourish at `time`, and how many of each have been played. */
+    flourishState(time = this.time) {
+        const lives = {
+            cyclone: CYCLONE_LIFE, surge: SURGE_LIFE, strand: STRAND_LIFE, shock: SHOCK_LIFE,
+        };
+        const active = Object.keys(lives).filter((key) => {
+            const age = time - this.flourish[key].birth;
+            return age >= 0 && age < lives[key];
+        });
+        return { active, played: { ...this.flourishes } };
     }
 
     getPostState() {
@@ -1031,7 +1167,7 @@ export class StellarDriftWorld {
             paletteNext: PALETTES[phase.next].name,
             paletteMix: Number(phase.mix.toFixed(3)),
             place: Number(this.place.toFixed(3)),
-            aurora: Number((this.aurora + this.surge).toFixed(3)),
+            glow: Number((this.hum + this.surge * 0.35 + this.crown * 0.25).toFixed(3)),
             heart: { x: Number(this.heart.x.toFixed(4)), y: Number(this.heart.y.toFixed(4)) },
             heartRadius: this.heartRadius,
             distance: Number(this.distance.toFixed(3)),
@@ -1044,7 +1180,7 @@ export class StellarDriftWorld {
                 bolts: this.u.bolts.value,
             } : null,
             counts: { ...this.counts },
-            resonances: this.resonances?.getState(this.time) || null,
+            flourishes: this.flourishState(this.time),
             queued: this.queue.length,
             parts: Object.keys(this.parts).filter((name) => this.parts[name].mesh.visible),
         };
