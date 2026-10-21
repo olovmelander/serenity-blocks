@@ -54,7 +54,7 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    SHAPES, SHAPE_KEYS, cellsFromMatrix, packCells,
+    GATE, SHAPES, SHAPE_KEYS, cellsFromMatrix, packCells,
 } from './serenity-warp-core.js';
 import { swQuatRotate } from './serenity-warp-tsl.js';
 
@@ -69,6 +69,8 @@ export const PIECE_CORNER = 0.14;
 
 /** A soft light from above, a little toward us and to the right (world space). */
 const TOP_LIGHT = /* @__PURE__ */ vec3(0.36, 0.84, 0.4).normalize();
+/** The throat itself, down the axis (the camera stands at the origin). */
+const GATE_POINT = /* @__PURE__ */ vec3(0.0, 0.0, -GATE.distance);
 
 /** A cell code (see packCell) → its offset (x, y) in cells. */
 const decodeCell = (code) => {
@@ -293,9 +295,11 @@ export function createGlass(u, { count = 24, bevel = 3 } = {}) {
         const hot = vState.x;
         const fallen = vState.y;
 
-        // ── The body: its own colour, lit by the gate, by a soft light from above and the sky,
-        //    with a light of its own as the game's pieces have ──
-        const toward = dot(N, u.gateDir);
+        // ── The body: its own colour, lit by the gate (from where it really stands, so a piece
+        //    beside it is lit on that side), by a soft light from above and the sky, with a light
+        //    of its own as the game's pieces have ──
+        const toThroat = normalize(GATE_POINT.sub(vWorld)).toVar();
+        const toward = dot(N, toThroat);
         const key = clamp(toward.add(0.45).div(1.45), 0.0, 1.0);
         const keyLight = u.gateCol.mul(key.mul(key).mul(0.75)).mul(u.gateGain);
         const top = clamp(dot(N, TOP_LIGHT), 0.0, 1.0);
@@ -306,7 +310,19 @@ export function createGlass(u, { count = 24, bevel = 3 } = {}) {
         const half = normalize(TOP_LIGHT.sub(V));
         const spec = pow(clamp(dot(N, half), 0.0, 1.0), 56.0).mul(0.75);
         const m = float(1.0).sub(cosI);
-        const rim = m.mul(m).mul(m).mul(0.42);
+        const rim = m.mul(m).mul(m).mul(0.3);
+        // The throat behind it outlines the piece: the silhouette on the gate's side burns in the
+        // gate's light (an edge light), and seen with the gate behind it the crystal glows through
+        // in its own colour, as stained glass does against a window.
+        const edgeLit = m.mul(m).mul(clamp(toward.mul(0.8).add(0.35), 0.0, 1.0));
+        const backlit = clamp(dot(V, toThroat), 0.0, 1.0);
+        const b2 = backlit.mul(backlit);
+        const b8 = b2.mul(b2).mul(b2.mul(b2));
+        const gateRim = mix(u.gateCol, rgb, 0.3).mul(edgeLit.mul(0.95)).mul(u.gateGain);
+        // Not while it is still white hot: a run of hard drops piles newborn pieces in front of
+        // the gate, and their glow on top of the heat washed the whole gate out.
+        const cool = clamp(float(1.0).sub(vState.x), 0.0, 1.0);
+        const glowThrough = rgb.mul(b8.mul(0.5).add(b2.mul(0.1))).mul(u.gateGain).mul(cool.mul(cool));
 
         // ── A little of the sky seen through it, bent and stained by the crystal ──
         const o = vLocal.toVar();
@@ -359,6 +375,8 @@ export function createGlass(u, { count = 24, bevel = 3 } = {}) {
             .add(mix(rgb, vec3(1.0), 0.35).mul(sheen.mul(F.add(0.35))))
             .add(vec3(spec))
             .add(mix(rgb, vec3(1.0), 0.55).mul(rim))
+            .add(gateRim)
+            .add(glowThrough)
             .add(heat)
             .toVar();
         // Falling into the throat it burns to light.
