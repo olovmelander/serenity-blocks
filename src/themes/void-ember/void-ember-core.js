@@ -329,3 +329,144 @@ export function emberAnchors(aspect) {
         },
     };
 }
+
+// ── The crust's plates, baked ──────────────────────────────────────────────────
+
+/**
+ * The plates of the star's crust: cellular noise on the unit sphere, at two scales (the plates and
+ * the finer crackle inside them). Baked once on the CPU into six faces of a cube laid out 3 × 2,
+ * so the photosphere reads it with one fetch instead of searching 27 cells per pixel twice (that
+ * search cost a third of the scene pass on an integrated GPU). The pattern lives in the star's own
+ * frame; the photosphere's warp moves it.
+ */
+export const PLATES = Object.freeze({
+    /** Cells per unit of the sphere's radius: the plates, and the crackle. */
+    scale: 4.3,
+    chips: 10.5,
+    /** Texels per cube face, and the gutter round each face (continued pattern, for filtering). */
+    face: 320,
+    gutter: 3,
+    /** The distances stored, 0..1 of the channel. */
+    range: 0.5,
+});
+
+/** The atlas's size in texels: 3 tiles across, 2 down. */
+export function plateAtlasSize(face = PLATES.face, gutter = PLATES.gutter) {
+    const tile = face + gutter * 2;
+    return { width: tile * 3, height: tile * 2, tile };
+}
+
+/**
+ * The cube face a direction falls on and where on it (u, v in −1..1). Faces 0..5 are +x, −x, +y,
+ * −y, +z, −z. TSL twin: the lookup in void-ember-star.js. Writes into `out` = [face, u, v].
+ */
+export function cubeFace(x, y, z, out = [0, 0, 0]) {
+    const ax = Math.abs(x);
+    const ay = Math.abs(y);
+    const az = Math.abs(z);
+    if (ax >= ay && ax >= az) {
+        out[0] = x >= 0 ? 0 : 1; out[1] = y / ax; out[2] = z / ax;
+    } else if (ay >= az) {
+        out[0] = y >= 0 ? 2 : 3; out[1] = z / ay; out[2] = x / ay;
+    } else {
+        out[0] = z >= 0 ? 4 : 5; out[1] = x / az; out[2] = y / az;
+    }
+    return out;
+}
+
+/** The direction at (u, v) of cube face `face` (not normalised). The inverse of cubeFace. */
+function faceDirection(face, u, v, out) {
+    const s = face % 2 === 0 ? 1 : -1;
+    if (face < 2) { out[0] = s; out[1] = u; out[2] = v; } else if (face < 4) {
+        out[0] = v; out[1] = s; out[2] = u;
+    } else { out[0] = u; out[1] = v; out[2] = s; }
+    return out;
+}
+
+/** A cell lattice's feature points (xyz in the cell, jittered) and numbers, for cells in −n..n. */
+function featurePoints(n, seed) {
+    const side = n * 2 + 1;
+    const rand = mulberry32(seed);
+    const pts = new Float32Array(side * side * side * 4);
+    for (let i = 0; i < pts.length; i += 4) {
+        pts[i] = 0.07 + rand() * 0.86;
+        pts[i + 1] = 0.07 + rand() * 0.86;
+        pts[i + 2] = 0.07 + rand() * 0.86;
+        pts[i + 3] = rand();
+    }
+    return { pts, n, side };
+}
+
+/** (F2 − F1, the nearest cell's number) at point (x, y, z) of a feature-point lattice. */
+function cellsAt(lattice, x, y, z, out) {
+    const { pts, n, side } = lattice;
+    const cx = Math.floor(x);
+    const cy = Math.floor(y);
+    const cz = Math.floor(z);
+    let f1 = 64;
+    let f2 = 64;
+    let id = 0;
+    for (let dz = -1; dz <= 1; dz++) {
+        const kz = cz + dz;
+        const iz = (kz + n) * side * side;
+        for (let dy = -1; dy <= 1; dy++) {
+            const ky = cy + dy;
+            const iy = iz + (ky + n) * side;
+            for (let dx = -1; dx <= 1; dx++) {
+                const kx = cx + dx;
+                const j = (iy + kx + n) * 4;
+                const ex = kx + pts[j] - x;
+                const ey = ky + pts[j + 1] - y;
+                const ez = kz + pts[j + 2] - z;
+                const d = ex * ex + ey * ey + ez * ez;
+                if (d < f1) {
+                    f2 = f1;
+                    f1 = d;
+                    id = pts[j + 3];
+                } else if (d < f2) f2 = d;
+            }
+        }
+    }
+    out[0] = Math.sqrt(f2) - Math.sqrt(f1);
+    out[1] = id;
+    return out;
+}
+
+/**
+ * Bake the plates: RGBA8, R = the plates' F2 − F1 (0 on a crack) over PLATES.range, G = the plate's
+ * own number, B = the crackle's F2 − F1, A = the crackle's cell number.
+ * @returns {{ data: Uint8Array, width: number, height: number }}
+ */
+export function bakePlates(seed = 5179, face = PLATES.face, gutter = PLATES.gutter) {
+    const { width, height, tile } = plateAtlasSize(face, gutter);
+    const plates = featurePoints(Math.ceil(PLATES.scale) + 2, seed);
+    const chips = featurePoints(Math.ceil(PLATES.chips) + 2, seed + 1);
+    const data = new Uint8Array(width * height * 4);
+    const dir = [0, 0, 0];
+    const a = [0, 0];
+    const b = [0, 0];
+    const k = 255 / PLATES.range;
+    for (let f = 0; f < 6; f++) {
+        const ox = (f % 3) * tile;
+        const oy = Math.floor(f / 3) * tile;
+        for (let j = 0; j < tile; j++) {
+            const v = ((j + 0.5 - gutter) / face) * 2 - 1;
+            for (let i = 0; i < tile; i++) {
+                const u = ((i + 0.5 - gutter) / face) * 2 - 1;
+                faceDirection(f, u, v, dir);
+                const inv = 1 / Math.hypot(dir[0], dir[1], dir[2]);
+                const x = dir[0] * inv;
+                const y = dir[1] * inv;
+                const z = dir[2] * inv;
+                cellsAt(plates, x * PLATES.scale, y * PLATES.scale, z * PLATES.scale, a);
+                cellsAt(chips, x * PLATES.chips, y * PLATES.chips, z * PLATES.chips, b);
+                const o = ((oy + j) * width + ox + i) * 4;
+                data[o] = Math.min(255, Math.round(a[0] * k));
+                data[o + 1] = Math.round(a[1] * 255);
+                data[o + 2] = Math.min(255, Math.round(b[0] * k));
+                data[o + 3] = Math.round(b[1] * 255);
+            }
+        }
+    }
+    return { data, width, height };
+}

@@ -260,3 +260,64 @@ transparent ground.
 
 Any of them can be reached at once: a palette's place is `level − 1 + t / 80`, so `level=2`,
 `level=3`, `level=6` and `level=7` at `t=20` stand on violet, garnet, abyss and verdigris.
+
+## The slag pass: a plated crust, a blinding gold, stones lit from behind, plasma threads (2026-10-21)
+
+Up close four things read as computer graphics rather than as a dying star. Before and after:
+`void-ember-captures/ember-pass.webp` (rest, a chain of six, four lines at 1 s, and 1:1 crops of
+the coal and the hot star), `void-ember-captures/belt-and-loops.webp` (stones after a clear,
+stones crossing the star, the loops of six locks).
+
+- **The crust was worms, not plates.** Its cracks were the ridges of value noise, which draw long
+  smeared ribbons. The crust is now cellular noise (F2 − F1 of a jittered lattice) on the sphere:
+  polygonal plates of black slag parted by cracks that are red at their margins and orange-gold
+  down their middle (`core`), with heat bleeding into each plate's edge (`bleed`) and a finer
+  crackle inside some plates (High and up). Each plate carries its own number, which moves its
+  coast a little, so as the star heats whole plates sink and the crust's shore steps along the
+  cracks; heat also opens the cracks wider (`width`). The plates are **baked once** on the CPU
+  into a 3 × 2 cube atlas in the star's frame (`bakePlates` in `void-ember-core.js`, 978 × 652
+  RGBA8, about 140 ms, once per page) and read with one fetch along the warped direction, so the
+  photosphere's warp still moves them. A per-pixel search of 27 cells, twice, cost the scene pass
+  about 30 % on the integrated GPU in a paired run; the fetch costs nothing measurable (below).
+- **A hot star was a biscuit.** At a chain the granulation kept the coal's contrast, so the gold
+  face was brown lanes on tan cells. The cells' spread now falls as the star heats (`grain`, 0.7 →
+  0.17 of heat) and the limb cools much further (in temperature, not only in light: past the tone
+  curve's shoulder a dimmer limb hardly shows, a redder one does), so a hot star is a blinding
+  white-gold disc with fine granulation, darkening to orange at its edge. The whole-tier warp also
+  runs on Minimal and Low now (without it the plates were a turtle shell of straight polygons).
+- **A four-line flare went dark.** The iris closed on the surge itself (×2.3), the moment the flare
+  went off, so the white-gold afterglow came out as dark leather. The surge now drives the heat
+  harder (`surge × 0.62`, was 0.42) and the iris mostly follows the heat the star has reached
+  (`surge × 0.4` in the exposure, was 2.3): like an eye it is a beat behind, so the flare is at its
+  brightest when it goes off.
+- **The stones were flat cut-outs, and their fire was blotches.** A stone between the eye and the
+  star now wears a thin rim of the star's light (from its rounded normal, `vRound`: from the facets'
+  own normals whole faces lit up like glass), and the fire a wave leaves in a stone runs along a
+  few fractures between its own plates (the same baked atlas, read along the stone's own
+  directions and mirrored per stone), only on the tiers with cracks and only while there is fire.
+- **The loops were smoke.** Their glow was a wide dim veil; it is now bright thin threads of plasma
+  over a faint sheath (`threads`), so a loop reads as filaments, not a puff.
+
+Verification (playground, RTX 5080 Laptop, WebGPU unless noted, `board=1`, `t=20`): rest, chains of
+two, three, six and nine, a two-line clear, four lines at 0.3, 0.6, 1 and 2 s, a perfect clear, six
+held locks, with 1:1 crops of the star, the stones and the loops; Minimal, Low, Medium; the WebGL2
+backend (`forceWebGL=1`) at High and at Low through a clear; a 430 × 852 portrait frame at rest and
+at a chain of six. Consoles clean. In the real game (single player, High, WebGPU): the theme boots
+and runs, hard drops land as comets with loops and sparks, console clean but for the adapter's
+power-preference note. Tests: a new shader gate, `tests/unit/void-ember-shaders.test.js` (every
+material of the built world and the post output through the WGSL and GLSL builders at High and
+Minimal, with the reserved-word, unassigned-read, NaN, string-node and module-size checks; that no
+material searches cells per pixel; and the bake: the cube mapping, crack coverage at both scales,
+seamless faces, made once); the theme's six files pass (233 tests); the lint ratchet is at its
+baseline.
+
+Cost of the scene pass alone (300 frames timed against `onSubmittedWorkDone`, median of five,
+alternating before/after runs; the post stack is unchanged and not included): RTX 5080 at
+2560 × 1440, High at rest 0.52 against 0.51 ms, High at a chain of six 0.63 against 0.52 ms,
+Minimal 0.38 against 0.36 ms; the integrated Radeon at 1920 × 1080, High at rest 15.5 against 15.8
+ms, Minimal 10.5 against 10.1 ms. Within the noise on the integrated GPU (whose readings also drift
+by a third between sessions); on the discrete one the hot star costs about a tenth of a millisecond
+more, cause not isolated.
+
+Not done: a physical phone; the theme icon and `docs/theme-screenshots/void-ember.png` still show
+the earlier look.

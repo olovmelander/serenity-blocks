@@ -59,6 +59,7 @@ import {
     clamp01,
     createFbmTexture,
     createLatticeTexture,
+    createPlatesTexture,
     createVoidEmberUniforms,
     emberAnchors,
     emberColor,
@@ -270,8 +271,9 @@ export class VoidEmberWorld {
     build() {
         const lattice = createLatticeTexture(bakeLattice());
         const fbm = createFbmTexture(bakeFbm());
-        this.textures.push(lattice, fbm);
-        const u = createVoidEmberUniforms({ lattice, fbm });
+        const plates = createPlatesTexture();
+        this.textures.push(lattice, fbm, plates);
+        const u = createVoidEmberUniforms({ lattice, fbm, plates });
         this.u = u;
         const { tier } = this;
 
@@ -1027,7 +1029,8 @@ export class VoidEmberWorld {
         this.dip *= Math.exp(-dt / 0.35);
         this.spinKick *= Math.exp(-dt / 2.4);
         this.drain(t);
-        const target = Math.min(HEAT_FLARE, heatForCombo(this.combo) + this.stoke + this.surge * 0.42);
+        // A four-line clear blows even a banked coal up to gold for a few seconds.
+        const target = Math.min(HEAT_FLARE, heatForCombo(this.combo) + this.stoke + this.surge * 0.62);
         this.heat += (target - this.heat) * approach(target > this.heat ? 2.6 : 0.55, dt);
         const hush = t < this.hushUntil ? 1 : 0;
         const breathTarget = hush ? 0.1 : 1 - this.dip;
@@ -1124,8 +1127,10 @@ export class VoidEmberWorld {
         post.streak = hush ? 0 : Math.min(0.9, warm * warm * 0.45 + this.surge * 0.5 + this.flash * 0.8);
         post.haze = (0.35 + warm * 0.9 + this.surge * 0.6) * (this.reducedMotion ? 0.3 : 1);
         post.bloomBoost = this.surge * 0.12 + swell * 0.1;
-        // The iris closes as the ember flares, so its colours survive the heat.
-        post.exposure = 1 / (1 + this.surge * 2.3 + swell * 0.5 + warm * 1.3 + this.flash * 0.3);
+        // The iris closes as the ember heats, so its colours survive the heat. It follows the heat
+        // the star has reached, not the surge that is driving it there: like an eye, it is a beat
+        // behind, so a four-line flare is at its brightest the moment it goes off.
+        post.exposure = 1 / (1 + this.surge * 0.4 + swell * 0.5 + warm * 1.3 + this.flash * 0.3);
         u.iris.value = (1 / post.exposure) ** 0.8;
         const rippleAge = t - this.spaceRipple.birth;
         post.ripple.radius = Math.max(0, rippleAge) * RIPPLE_SPEED;

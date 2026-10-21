@@ -29,6 +29,7 @@ import {
     min,
     mix,
     pow,
+    select,
     smoothstep,
     step,
     texture,
@@ -43,6 +44,7 @@ import {
     EMBER,
     HEAT_RAMP,
     IMPACT_SLOTS,
+    PLATES,
     REST_HEAT,
     TAU,
     VOID_PALETTES,
@@ -53,7 +55,9 @@ import {
     WAVE_SHAPE,
     WAVE_SLOTS,
     WAVE_TRAVEL,
+    bakePlates,
     mulberry32,
+    plateAtlasSize,
 } from './void-ember-core.js';
 
 export * from './void-ember-core.js';
@@ -81,6 +85,54 @@ export const veHash33 = /* @__PURE__ */ Fn(([pIn]) => {
     p3.addAssign(dot(p3, p3.yxz.add(33.33)));
     return fract(p3.xxy.add(p3.yxx).mul(p3.zyx));
 }).setLayout({ name: 've_hash33', type: 'vec3', inputs: [{ name: 'pIn', type: 'vec3' }] });
+
+// ── The crust's plates ──────────────────────────────────────────────────────────
+
+/** The plates' bake, made once per page: every world (a rebuild, a quality change) shares it. */
+let platesBake = null;
+
+/** The crust's plates as a texture (bakePlates). Bilinear and no mips: R and B are distances. */
+export function createPlatesTexture() {
+    if (!platesBake) platesBake = bakePlates();
+    const tex = new THREE.DataTexture(
+        platesBake.data,
+        platesBake.width,
+        platesBake.height,
+        THREE.RGBAFormat,
+        THREE.UnsignedByteType,
+    );
+    tex.wrapS = THREE.ClampToEdgeWrapping;
+    tex.wrapT = THREE.ClampToEdgeWrapping;
+    tex.magFilter = THREE.LinearFilter;
+    tex.minFilter = THREE.LinearFilter;
+    tex.generateMipmaps = false;
+    tex.colorSpace = THREE.NoColorSpace;
+    tex.name = 'void-ember-plates';
+    tex.needsUpdate = true;
+    return tex;
+}
+
+/**
+ * The plates at a direction (any length) in the frame they were baked in: vec4(the plates'
+ * F2 − F1 (0 on a crack), the plate's number, the crackle's F2 − F1, the crackle cell's number).
+ * One fetch. The cube face is picked as cubeFace() picks it.
+ */
+function platesLookup(tex, d) {
+    const { width, height, tile } = plateAtlasSize();
+    const a = abs(d);
+    const useX = a.x.greaterThanEqual(a.y).and(a.x.greaterThanEqual(a.z));
+    const useY = a.y.greaterThanEqual(a.z);
+    const along = select(useX, d.x, select(useY, d.y, d.z));
+    const m = max(abs(along), 1e-5);
+    const fu = select(useX, d.y, select(useY, d.z, d.x)).div(m);
+    const fv = select(useX, d.z, select(useY, d.x, d.y)).div(m);
+    const face = select(useX, float(0.0), select(useY, float(2.0), float(4.0)))
+        .add(select(along.greaterThanEqual(0.0), float(0.0), float(1.0)));
+    const tileAt = vec2(face.mod(3.0), floor(face.div(3.0))).mul(tile).add(PLATES.gutter);
+    const st = tileAt.add(vec2(fu, fv).mul(0.5).add(0.5).mul(PLATES.face)).div(vec2(width, height));
+    const t = texture(tex, st).level(0);
+    return vec4(t.x.mul(PLATES.range), t.y, t.z.mul(PLATES.range), t.w);
+}
 
 // ── Small maths ─────────────────────────────────────────────────────────────────
 
@@ -294,7 +346,7 @@ const v3 = (a) => uniform(new THREE.Vector3(a[0], a[1], a[2]));
 
 /**
  * Every uniform the scene's materials share. The world owns the values; materials only read.
- * @param {{ lattice: THREE.Texture, fbm: THREE.Texture }} textures
+ * @param {{ lattice: THREE.Texture, fbm: THREE.Texture, plates?: THREE.Texture }} textures
  */
 export function createVoidEmberUniforms(textures) {
     const p = VOID_PALETTES[0];
@@ -362,7 +414,14 @@ export function createVoidEmberUniforms(textures) {
         wavesLive: uniform(0),
         latticeTex: textures.lattice,
         fbmTex: textures.fbm,
+        /** The crust's plates, baked (createPlatesTexture). */
+        platesTex: textures.plates ?? null,
     };
+    /**
+     * The crust's plates at a direction in the star's frame (or a stone's): one fetch of the
+     * baked atlas, vec4(plates' F2 − F1, plate number, crackle's F2 − F1, crackle cell number).
+     */
+    u.plates = (dir) => platesLookup(u.platesTex, dir);
     /** The fBm clouds (mipped). */
     u.fbm = (st) => texture(u.fbmTex, st);
     /** A fixed mip: for fetches whose coordinates jump or that run in a vertex stage. */
