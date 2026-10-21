@@ -157,7 +157,7 @@
     border: 1px solid var(--sb-line);
     background:
         radial-gradient(90% 60% at 100% 0%, rgba(var(--sb-accent-rgb), 0.12), transparent 62%),
-        linear-gradient(180deg, rgba(27, 23, 60, 0.95) 0%, rgba(12, 10, 30, 0.97) 100%);
+        linear-gradient(180deg, rgb(27, 23, 60) 0%, rgb(12, 10, 30) 100%);
     box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
     animation: none;
     contain: layout paint;
@@ -207,38 +207,25 @@
 }
 
 /* Close tile. */
+/* The labelled Close every sheet carries (Settings, Records, Replays, the Hub): a quiet
+   button with its keys. It was an icon-only square here, the one sheet family without words. */
 .sb-mp-screen .sb-mp-close {
+    --sb-btn-h: 40px;
     flex: none;
-    display: inline-grid;
-    place-items: center;
-    width: 42px;
-    height: 42px;
+    gap: 10px;
     margin: 0;
-    padding: 0;
-    border-radius: 12px;
-    border: 1px solid var(--sb-line);
-    background: rgba(var(--sb-cream-rgb), 0.03);
-    color: var(--sb-text-muted);
-    font: inherit;
-    cursor: pointer;
-    transform: none;
-    box-shadow: none;
-    transition:
-        color var(--sb-dur-2) var(--sb-ease-lock),
-        background var(--sb-dur-2) var(--sb-ease-lock),
-        border-color var(--sb-dur-2) var(--sb-ease-lock);
+    padding: 0 10px 0 14px;
 }
 
-.sb-mp-screen .sb-mp-close:hover {
-    color: var(--sb-text);
-    background: rgba(var(--sb-cream-rgb), 0.08);
-    border-color: var(--sb-line-strong);
-    transform: none;
-    box-shadow: none;
+.sb-mp-screen .sb-mp-close:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 3px;
 }
 
-.sb-mp-screen .sb-mp-close:active {
-    transform: translateY(1px);
+@media (max-width: 700px) {
+    .sb-mp-screen .sb-mp-close kbd {
+        display: none;
+    }
 }
 
 /* Body and footer -------------------------------------------------------------------- */
@@ -3022,6 +3009,33 @@ body.start-modal-open .sb-toast-region {
     bottom: calc(max(24px, env(safe-area-inset-bottom)) + 64px);
 }
 
+/* With the stage beside the list (keystone-menu.css's two-column layout, the same em
+   breakpoints), the bottom centre is the stage's own action: three toasts
+   stacked there covered its Play button. They hang from the top instead, over the free band
+   above the stage and its picture, and leave the list, the action and the dock alone. */
+@media (min-width: 56.3125em) and (min-height: 33.8125em) and (min-height: 649px) {
+    body.start-modal-open .sb-toast-region {
+        top: max(20px, env(safe-area-inset-top));
+        bottom: auto;
+    }
+
+    body.start-modal-open .sb-toast-region .sb-toast {
+        animation-name: sb-toast-drop-in;
+    }
+
+    body.start-modal-open .sb-toast-region .sb-toast.is-leaving {
+        animation-name: sb-toast-lift-out;
+    }
+}
+
+@keyframes sb-toast-drop-in {
+    from { opacity: 0; transform: translateY(-10px); }
+}
+
+@keyframes sb-toast-lift-out {
+    to { opacity: 0; transform: translateY(-8px); }
+}
+
 body.start-modal-open #invite-toast-container {
     bottom: calc(max(24px, env(safe-area-inset-bottom)) + 138px);
 }
@@ -3051,18 +3065,39 @@ body.start-modal-open #invite-toast-container {
     to { opacity: 0; transform: translateY(8px); }
 }
 
-.sb-toast__tile {
-    flex: none;
-    width: 8px;
-    height: 8px;
-    margin-top: 6px;
-    border-radius: 2px;
-    background: var(--sb-aqua);
+/* The tone's mark on a tile in its hue (it was an 8 px square that only colour told apart),
+   and a hairline of the same hue along the toast's leading edge. */
+.sb-toast {
+    --toast-rgb: var(--sb-aqua-rgb);
+    position: relative;
+    align-items: center;
+    overflow: hidden;
 }
 
-.sb-toast--success .sb-toast__tile { background: var(--sb-success); }
-.sb-toast--warning .sb-toast__tile { background: var(--sb-warning); }
-.sb-toast--error .sb-toast__tile { background: var(--sb-danger); }
+.sb-toast::before {
+    content: '';
+    position: absolute;
+    inset: 10px auto 10px 0;
+    width: 2px;
+    border-radius: 0 2px 2px 0;
+    background: rgba(var(--toast-rgb), 0.75);
+}
+
+.sb-toast--success { --toast-rgb: var(--sb-success-rgb); }
+.sb-toast--warning { --toast-rgb: var(--sb-warning-rgb); }
+.sb-toast--error { --toast-rgb: var(--sb-danger-rgb); }
+
+.sb-toast__tile {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    border: 1px solid rgba(var(--toast-rgb), 0.32);
+    background: rgba(var(--toast-rgb), 0.14);
+    color: rgb(var(--toast-rgb));
+}
 
 .sb-toast--warning { border-color: rgba(var(--sb-warning-rgb), 0.35); }
 .sb-toast--error { border-color: rgba(var(--sb-danger-rgb), 0.4); }
@@ -3755,7 +3790,7 @@ body.start-modal-open #invite-toast-container {
     border: 1px solid var(--sb-line);
     background:
         radial-gradient(90% 60% at 100% 0%, rgba(var(--sb-accent-rgb), 0.12), transparent 62%),
-        linear-gradient(180deg, rgba(27, 23, 60, 0.95), rgba(12, 10, 30, 0.97));
+        linear-gradient(180deg, rgb(27, 23, 60), rgb(12, 10, 30));
     box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
     color: var(--sb-text);
 }
