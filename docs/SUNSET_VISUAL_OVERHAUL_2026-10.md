@@ -246,6 +246,74 @@ All on 2026-10-11, on the feature tree (main 489105cf plus this rebuild).
 - **Picks**: the station palettes, the 565 s day and its timetable, the arcs' heights, the moon's
   lag and 50° phase are my choices.
 
+## The sea and sky pass (2026-10-21)
+
+A pass over the rebuild, on `feature/sunset-atmosphere`: the day, the lanterns, the events and
+the composition are as above; the water, the high cloud and the twilight's light are new.
+
+**What was wrong.** The sea read as smeared paint: the broad ripple layer from the noise drew
+blots of mirrored sky with no direction, and the swell was too low to be seen, so at sunset the
+water was orange and lilac smudges and at noon a turquoise sheet with white streaks. The cirrus
+was ruled hairlines fanning toward the place it streams to (the across-stream frequency was
+tiny), and between the sun and the deck the sky was an even glow.
+
+| Before | After |
+| --- | --- |
+| ![Before, sunset](sunset-overhaul/pass-before-sunset.jpg) | ![After, sunset](sunset-overhaul/pass-after-sunset.jpg) |
+| ![Before, the afterglow](sunset-overhaul/pass-before-afterglow.jpg) | ![After, the afterglow](sunset-overhaul/pass-after-afterglow.jpg) |
+| ![Before, the golden hour](sunset-overhaul/pass-before-golden.jpg) | ![After, the golden hour](sunset-overhaul/pass-after-golden.jpg) |
+| ![Before, noon](sunset-overhaul/pass-before-noon.jpg) | ![After, noon](sunset-overhaul/pass-after-noon.jpg) |
+| ![Before, the sea at sunset](sunset-overhaul/pass-before-sea.jpg) | ![After, the sea at sunset](sunset-overhaul/pass-after-sea.jpg) |
+
+**The wind's chop.** `CHOP_ROWS` in `sunset-core.js`: sixteen short trains (9 m down to 0.4 m,
+none the length of a swell train) with headings spread round the wind's, every one about equally
+steep, drawn in the sea's fragment only (its slope, never its shape: the vertex stage, the CPU's
+`seaHeight` and the floats are untouched). Their crests run across the view in long, broken
+lines, so the water mirrors the sky in bands: the back of a crest the bright horizon, its front
+the sky higher up. Each train's phase is bent by its own mix of two smooth fields read once from
+the water's noise (`chopWarpTile` 140 m), so they never lock into a lattice of fish scales. Each
+fades by the pixel's footprint like the swell's trains, and what a pixel cannot resolve goes into
+the slope variance that draws the roads, so far out the chop widens the sun's road into its
+shimmering band. `TUNE.chop` (0.45) scales them all; tiers draw 6 (Minimal) to 16 (Extreme).
+The broadest ripple layer is weaker (0.22 → 0.1) and the swell is a little higher (every train
+from a steepness of 0.024 to 0.033, still far from breaking; the sum stays under the eye).
+
+**Roads.** `TUNE.glint` 0.02 → 0.04: the sun's road is a clear column of light down the chop at
+sunset and a broad glitter at the golden hour, and the lanterns' streaks break along the crests.
+
+**Cirrus.** Wider across the stream (`cirrusScale` 0.06, 0.2 instead of 0.019, 0.085), bent by a
+slow warp (`cirrusWarp`) and gathered into drifts by a slow mask (`cirrusPatch`), so it reads as
+wisps in some parts of the sky, not a comb over all of it.
+
+**Twilight rays.** `skyColour(…, { rays: true })` on the dome (not the sea's mirror): the shadows
+of clouds beyond the horizon fan from the sun across its own glow, read on a circle round the sun
+(no seam) from a blurred level of the noise (`.level(2.5)`: the fine octaves ruled hairlines down
+every ray), mostly light with soft gaps between, never darker than the sky behind. They scale with
+the sun's glow, so they come with the golden hour, are strongest once the sun is on or under the
+sea (`sunLow`) and are gone at night; from under the horizon they fan up from the place the sun
+went down. `rays`, `rayReach`, `rayCount` in `TUNE`.
+
+**Left as it was.** The sun's disc on the horizon still reads soft and peach rather than a hot
+coal; raising its power (tried: 9 → 17 on the horizon) changed nothing, because the disc and the
+band round it sit together on the tone curve's shoulder. That needs a darker exposure at the
+horizon hours and is a pass of its own.
+
+![In the game](sunset-overhaul/pass-ingame.jpg)
+
+**Verification (2026-10-21, on main 1ce8fd7d plus this pass).**
+
+- **Playground** (WebGPU on the RTX 5080 Laptop at High; Low, Minimal, the WebGL2 backend and a
+  430 × 932 portrait frame too; no console warning or error): every station of the day, lanterns
+  afloat and lifted, crops of the sea at full resolution.
+- **Real game** (Electron, the dev server): WebGPU at High, `sunsetTime=70`, no warning or error.
+- **Cost**: 60 frames rendered in one task and the queue awaited, at 1920 × 1080, old and new
+  back to back twice: 2.5–3.1 ms a frame at High against 2.5–2.7 ms before, the same within the
+  noise on Medium and below (other sessions shared the GPU).
+- **Unit tests**: `tests/unit/sunset-shaders.test.js` (new) builds every material and the post
+  output through the WGSL and GLSL node builders at High and Minimal without a word, under budget,
+  with no unassigned var read, and checks that every chop train is in the sea's fragment and none
+  in its vertex stage. All eight Sunset files, 133 tests, pass.
+
 Not done: no perf-lane (ADR-0016) reading, no integrated-GPU or real-phone reading, the
 multiplayer, Infinity, meditation and Odyssey layouts not captured, and nobody has watched it
 move except through stills and strips. Blender was not used: the scene is a sky, a sea and small

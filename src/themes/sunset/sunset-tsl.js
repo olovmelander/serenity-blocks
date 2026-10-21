@@ -57,17 +57,25 @@ export const TUNE = {
     barHeight: 6.2,
     barCover: [0.53, 0.7],
     barSpan: [0.008, 0.045, 0.14, 0.26],
+    // Crepuscular rays: their strength, how far round the sun they reach, how many there are.
+    rays: 0.75,
+    rayReach: 9,
+    rayCount: 0.55,
     // Cirrus.
     cirrusCurve: 0.24,
-    cirrusScale: [0.019, 0.085],
+    cirrusScale: [0.06, 0.2], // along the streets, across them
     cirrusCover: [0.5, 0.86],
+    cirrusWarp: 5, // how far a slow warp bends the streaks, across them (deck units)
+    cirrusPatch: [0.36, 0.72], // the drifts the cirrus comes in: where the slow mask lets it be
     // The sea.
-    glint: 0.02, // the sun's road: overall strength
+    glint: 0.04, // the sun's road: overall strength
     glintFloor: 0.0009, // the smallest slope variance a pixel is given (the sharpest glint)
     sparkle: 22, // the diamonds in the road near the eye
     hazeReach: 2600, // metres: the air over the sea
-    ripple: [0.22, 0.26, 0.24], // slope of the three ripple layers
+    ripple: [0.1, 0.2, 0.22], // slope of the three ripple layers
     rippleTile: [23, 6.1, 1.7], // metres a tile of each layer spans
+    chop: 0.45, // the wind's chop: a gain on every train's steepness (CHOP_ROWS in sunset-core.js)
+    chopWarpTile: 140, // metres a tile of the warp that bends the chop's crests spans
 };
 
 /** Apply overrides (numbers, or comma lists for the array entries) to TUNE. */
@@ -201,6 +209,7 @@ function discOf(dir, body, right, upAxis, size, squash, wobble) {
  *                             sea draws their roads itself)
  * @param {boolean} o.stars    the stars
  * @param {boolean} o.milky    the Milky Way
+ * @param {boolean} [o.rays]   crepuscular rays fanning from the sun across its glow
  */
 export function skyColour(dir, U, noise, o) {
     const { light } = U;
@@ -218,6 +227,25 @@ export function skyColour(dir, U, noise, o) {
     const awayMoon = min(muMoon.sub(1.0), 0.0);
     const { moonUp } = U; // 0..1: how much of the moon is over the sea
     sky.addAssign(exp(awayMoon.mul(34.0)).mul(light.moonGlow).mul(moonUp));
+
+    // ── Crepuscular rays: the shadows of clouds beyond the horizon fan out across the sun's own
+    // glow, light and dark, from the disc or (after it has set) from under the sea. Read on a
+    // circle round the sun (no seam), drifting slowly; only as strong as the sun's glow, so they
+    // are there from the golden hour to the afterglow and gone at night. ──
+    if (o.rays) {
+        const around = atan(dot(dir, U.sunTop), dot(dir, U.sunRight));
+        const ring = vec2(cos(around), sin(around)).mul(TUNE.rayCount).add(vec2(U.time.mul(0.004), 0.37));
+        // Broad and soft (the smooth fBm), more light than shadow: a shadow band only dims the
+        // glow a little, never below the sky behind it.
+        // A blurred level of the noise: its fine octaves would rule hairlines down every ray.
+        const beam = smoothstep(0.38, 0.62, texture(noise, ring).level(2.5).r).sub(0.35);
+        const fan = exp(away.mul(TUNE.rayReach)).mul(float(1.0).sub(exp(away.mul(TUNE.rayReach * 14))))
+            .mul(smoothstep(0.0, 0.05, up));
+        // Strongest once the sun is on or under the sea (the twilight's display); while it is up
+        // its glare all but hides them.
+        const when = U.sunLow.mul(0.7).add(0.3);
+        sky.addAssign(light.sunBloom.mul(beam.mul(fan).mul(when).mul(TUNE.rays)));
+    }
     if (o.discs) {
         sky.addAssign(exp(away.mul(TUNE.aureoleTight)).mul(light.sunAureole).mul(U.flare.mul(1.6).add(1.0)));
         sky.addAssign(exp(away.mul(TUNE.bloomTight * 2.5)).mul(light.sunBloom).mul(U.flare.mul(1.2)));
@@ -354,11 +382,17 @@ export function skyColour(dir, U, noise, o) {
         const plane = dir.xz.div(up.add(TUNE.cirrusCurve));
         const along = dot(plane, U.street);
         const across = dot(plane, vec2(U.street.y.negate(), U.street.x));
-        const at = vec2(along.mul(TUNE.cirrusScale[0]), across.mul(TUNE.cirrusScale[1])).add(U.drift.mul(0.35));
+        // A slow warp bends the streaks and a slow mask gathers them into drifts: facing the place
+        // they stream to, unbent streaks line up as a comb of ruled hairlines.
+        const slow = texture(noise, vec2(along.mul(0.0045), across.mul(0.009)).add(U.drift.mul(0.08))
+            .add(vec2(0.29, 0.63))).toVar();
+        const bent = across.add(slow.r.sub(0.5).mul(TUNE.cirrusWarp));
+        const at = vec2(along.mul(TUNE.cirrusScale[0]), bent.mul(TUNE.cirrusScale[1])).add(U.drift.mul(0.35));
         const fibre = texture(noise, at).b;
-        const comb = texture(noise, at.mul(vec2(2.3, 3.7)).add(vec2(0.43, 0.17))).a;
-        const veil = smoothstep(TUNE.cirrusCover[0], TUNE.cirrusCover[1], fibre.mul(0.72).add(comb.mul(0.28)))
-            .mul(smoothstep(0.03, 0.2, up)).mul(U.cover.mul(0.9).add(0.2));
+        const comb = texture(noise, at.mul(vec2(1.9, 2.3)).add(vec2(0.43, 0.17))).a;
+        const drifts = smoothstep(TUNE.cirrusPatch[0], TUNE.cirrusPatch[1], slow.b);
+        const veil = smoothstep(TUNE.cirrusCover[0], TUNE.cirrusCover[1], fibre.mul(0.78).add(comb.mul(0.22)))
+            .mul(drifts).mul(smoothstep(0.03, 0.2, up)).mul(U.cover.mul(0.9).add(0.2));
         const lit = light.cirrus.mul(toward.mul(0.55).add(0.45)).mul(U.skyFire.mul(0.45).add(1.0));
         sky.assign(mix(sky, lit, veil.mul(0.4)));
     }
