@@ -12,8 +12,9 @@ import {
     DEFAULT_POTATO_DURATION_MS, DEFAULT_POTATO_PENALTY_LINES,
 } from './garbage.js';
 import { processPhysics } from './physics.js';
-import { LEVEL_SPEEDS, COLS, ROWS } from './constants.js';
+import { COLS, ROWS } from './constants.js';
 import { INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1 } from './infinity-spawn-policy.js';
+import { applyMatchLevelRule } from './multiplayer/match-level-rule.js';
 
 /**
  * Player color scheme for visual distinction
@@ -413,25 +414,10 @@ export class MultiPlayerState {
                 this.players[i].currentTopRow = startingCameraRow;
 
                 console.log(`[MultiPlayerState] Player ${i + 1} initialized for Infinity LMS: 44 rows, max ${this.players[i].maxRows}`);
-            } else {
-                // Apply normal match configuration settings
-                if (this.matchConfig) {
-                    this.players[i].disableLevelProgression = !this.matchConfig.levelProgression;
-
-                    // Set start level from match config
-                    if (this.matchConfig.startLevel) {
-                        this.players[i].level = this.matchConfig.startLevel;
-
-                        // Update drop interval based on start level
-                        const speedIndex = Math.min(
-                            this.matchConfig.startLevel - 1,
-                            LEVEL_SPEEDS.length - 1,
-                        );
-                        this.players[i].dropInterval = LEVEL_SPEEDS[speedIndex];
-
-                        console.log(`[MultiPlayerState] Player ${i + 1} reset: level=${this.players[i].level}, dropInterval=${this.players[i].dropInterval}ms`);
-                    }
-                }
+            } else if (this.matchConfig) {
+                // The match's level rule (match-level-rule.js, shared with online play): the
+                // starting level and its speed, and no levelling up unless the match turns it on.
+                applyMatchLevelRule(this.players[i], this.matchConfig);
             }
 
             this.garbageQueues[i].clear();

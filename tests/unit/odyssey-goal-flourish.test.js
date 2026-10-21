@@ -76,10 +76,16 @@ describe('Odyssey goal flourish', () => {
         expect(last.type).toBe('perfectClear');
         expect(last.payload).toMatchObject({ depth: 4, source: 'odyssey-goal', levelId: 7 });
         expect(reel.every((step, index) => index === 0 || step.at >= reel[index - 1].at)).toBe(true);
-        // Physics pacing compressed to a celebration: over a second, well under two.
-        expect(last.at).toBeGreaterThan(1000);
-        expect(last.at).toBeLessThan(1700);
+        // Physics pacing compressed to a celebration, but each burst its own: about two seconds
+        // to the board emptying, the cascade's waves a quarter of a second or more apart.
+        expect(last.at).toBeGreaterThan(1800);
+        expect(last.at).toBeLessThan(2800);
+        const waves = reel.filter((step) => step.type === 'combo').map((step) => step.at);
+        waves.slice(1).forEach((at, index) => expect(at - waves[index]).toBeGreaterThanOrEqual(250));
+        // Then the theme's own answer to the board emptying plays out: seconds, not a frame.
+        expect(SHOWPIECE_SETTLE_MS).toBeGreaterThanOrEqual(2000);
         expect(odysseyShowpieceDuration(reel)).toBe(last.at + SHOWPIECE_SETTLE_MS);
+        expect(odysseyShowpieceDuration(reel)).toBeLessThan(6000);
         expect(GOAL_FLOURISH_MS).toBe(odysseyShowpieceDuration(buildOdysseyShowpiece()));
         // Reduced motion: one still moment.
         expect(buildOdysseyShowpiece({ reducedMotion: true, levelId: 3 })).toEqual([{

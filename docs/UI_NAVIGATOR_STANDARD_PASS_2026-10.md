@@ -144,7 +144,8 @@ HUD for its counts), so the boot bundle does not carry it.
 - All captures ran the icon stage on its WebGL2 fallback (headless Chromium fails three r186's
   texture-view swizzle on WebGPU); a GPU look at the large live icons is still owed.
 - With 32 px root text the completion ceremony scrolls without a sticky bar (auto-continue
-  holds); the main menu at 32 px root text overlapped before this pass and still does.
+  holds). (The main menu's overlap at large text was fixed in the 2026-10-21 audit:
+  [MENU_UI_OVERHAUL_2026-10.md](MENU_UI_OVERHAUL_2026-10.md) §8.)
 - The mercy card names the keyboard key only: a pad's charm button depends on the bindings.
 - The board keeps rendering under the opaque navigator, charm guide and atlas.
 - Not re-audited: online versus (needs Steam), game over, the local match results.

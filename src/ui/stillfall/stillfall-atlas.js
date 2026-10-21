@@ -38,6 +38,7 @@ import {
 } from './stillfall-atlas-model.js';
 import { goalParts } from '../../core/stillfall/stillfall-puzzle.js';
 import { countWord, goalText } from './stillfall-copy.js';
+import { foldPlayRailPeek } from '../keystone/play-rail.js';
 
 const ROOT_ID = 'stillfall-atlas';
 /** The narrowest puzzle card, in rem, unless stillfall.css says otherwise (--atlas-card-min-rem). */
@@ -680,6 +681,7 @@ export function createStillfallAtlas({ onPlay, onClose, isCovered = () => false 
         const wasOpen = view.open;
         view.open = true;
         view.root.hidden = false;
+        foldPlayRailPeek();
         view.signature = signature(state);
         render(state);
         if (!wasOpen) {

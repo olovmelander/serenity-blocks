@@ -39,7 +39,8 @@ const GUIDANCE_WORDS = {
 const CHAPTER_MS = 3600;
 const SESSION_ACCENTS = {
     BASE: [125, 211, 252],
-    ELIXIR: [255, 150, 120],
+    // Keystone gold, as in the Hub (a coral-like accent here read as a primary action).
+    ELIXIR: [243, 210, 141],
     REST: [196, 176, 255],
     FLOW: [110, 234, 212],
     // The beginner sessions take the accent of the world they introduce.

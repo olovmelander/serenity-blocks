@@ -18,12 +18,20 @@ export const DEFAULT_ODYSSEY_SHOWPIECE = Object.freeze(['quad', 'cascade-6', 'pe
  */
 export const ODYSSEY_THEME_SHOWPIECES = Object.freeze({});
 
-/** The catalogue's physics pacing, compressed: a reel, not a replay. */
-export const SHOWPIECE_TIME_SCALE = 0.45;
+/**
+ * The catalogue's physics pacing, compressed: a reel, not a replay. At 0.45 the quad, the
+ * cascade and the perfect clear ran together into one 1.3 s blur; at 0.75 each lands as its
+ * own burst and the cascade still reads as a cascade.
+ */
+export const SHOWPIECE_TIME_SCALE = 0.75;
 /** Breath between the reel's effects. */
-export const SHOWPIECE_GAP_MS = 180;
-/** The reel's last event lands, then the ceremony may take over. */
-export const SHOWPIECE_SETTLE_MS = 300;
+export const SHOWPIECE_GAP_MS = 320;
+/**
+ * After the reel's last event (the board emptying) the theme's own answer plays out before the
+ * ceremony covers it: a theme's perfect-clear reaction runs for seconds (Serenity Warp falls
+ * through its gate), and 300 ms showed only its first frames.
+ */
+export const SHOWPIECE_SETTLE_MS = 2600;
 export const SHOWPIECE_SOURCE = 'odyssey-goal';
 
 export function getOdysseyShowpieceEffects(themeId) {
