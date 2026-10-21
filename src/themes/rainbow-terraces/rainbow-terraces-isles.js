@@ -2240,16 +2240,24 @@ export function createStoneMaterial({
         // its own shadowed, undercut foot (aBed: the bed's tone, how far down into it; −1 off the cliff).
         const bedA = attribute('aBed', 'vec2');
         const onBed = smoothstep(-0.1, 0.0, bedA.x);
-        const cups = smoothstep(0.35, 0.75, s2.g).mul(0.4);
-        const rims = smoothstep(0.55, 0.9, s2.b).mul(0.35);
+        // The honeycomb weathering is a texture of the stone, not a pattern on it: faint, and gone
+        // where a cup spans only a pixel or two (it would only read as a printed net of cells).
+        const cupSeen = float(1.0).sub(smoothstep(0.15, 0.4, length(fwidth(lp)).mul(0.093 * 17)));
+        const cups = smoothstep(0.35, 0.75, s2.g).mul(0.4).mul(cupSeen.mul(0.6).add(0.4));
+        const rims = smoothstep(0.55, 0.9, s2.b).mul(0.35).mul(cupSeen);
         const ironBed = light.rock.mul(0.82);
-        const limeBed = mix(light.rock, light.stone.mul(0.5), 0.38);
-        // Most beds are iron; a few pale ones, each fading in and out along the cliff.
-        const bedTone = mix(ironBed, limeBed, smoothstep(0.55, 0.8, bedA.x.add(s1.r.sub(0.5).mul(0.35))));
+        const limeBed = mix(light.rock, light.stone.mul(0.5), 0.3);
+        // Most beds are iron; a few pale ones, each pinching out and coming back along the cliff (a
+        // broad read round the isle's bearing), so no bed rings the root like a hoop.
+        // (Three whole tiles a turn, so the read closes on itself behind the isle.)
+        const pinchAt = vec2(atan(lp.x, lp.z).mul(3 / (2 * Math.PI)), lp.y.mul(0.0031)).add(vec2(0.19, 0.57));
+        const pinch = texture(tex.noise, pinchAt).r;
+        const pale = bedA.x.add(s1.r.sub(0.5).mul(0.45)).add(pinch.sub(0.5).mul(0.7));
+        const bedTone = mix(ironBed, limeBed, smoothstep(0.55, 0.8, pale));
         const capLine = float(1.0).sub(smoothstep(0.03, 0.09, bedA.y)).mul(onBed);
         const foot = smoothstep(0.72, 1.0, bedA.y).mul(onBed);
-        const rock = mix(light.rock, bedTone, onBed).mul(float(1.0).sub(cups.mul(0.3)).add(rims.mul(0.22)))
-            .mul(float(1.0).add(capLine.mul(0.3)).sub(foot.mul(0.18)))
+        const rock = mix(light.rock, bedTone, onBed).mul(float(1.0).sub(cups.mul(0.12)).add(rims.mul(0.06)))
+            .mul(float(1.0).add(capLine.mul(0.24)).sub(foot.mul(0.16)))
             .toVar();
         // White mineral drips: long vertical streaks down the cliff, hanging from the rim and the
         // ledges (a biplanar read of the stone's drip channel, streaks 3-4 m wide, tens of metres long).
@@ -2259,6 +2267,12 @@ export function createStoneMaterial({
         const underLip = smoothstep(-200.0, -12.0, lp.y.sub(lipY));
         const dripMask = smoothstep(0.55, 0.85, drip).mul(underLip).mul(float(1.0).sub(foot.mul(0.6)));
         rock.assign(mix(rock, light.stone.mul(0.5), dripMask.mul(0.32)));
+        // …and between them the dark varnish the rain leaves running off every ledge: long soft
+        // stains down the faces, so the cliff reads by its falls of water as much as by its beds.
+        const vX = texture(tex.stone, vec2(lp.z.mul(0.0042), lp.y.mul(0.0011)).add(0.61)).a;
+        const vZ = texture(tex.stone, vec2(lp.x.mul(0.0042), lp.y.mul(0.0011)).add(0.27)).a;
+        const varnish = vX.mul(an.x.mul(an.x)).add(vZ.mul(an.z.mul(an.z))).div(an.x.mul(an.x).add(an.z.mul(an.z)).add(1e-3));
+        rock.mulAssign(float(1.0).sub(smoothstep(0.45, 0.8, varnish).mul(float(1.0).sub(dripMask)).mul(underLip).mul(0.22)));
         if (wet) {
             // Under the spillway the cliff runs wet: dark, a little green, for the first tens of metres.
             const off = scWrapPi(atan(lp.x, lp.z).sub(wet[0]));
@@ -2409,7 +2423,7 @@ export function createStoneMaterial({
             .mul(mix(float(1.0), lipShade, ironK));
         const col = albedo.mul(lit.add(fill.mul(ironDim))).toVar();
         // Cavities hold the shadow colour, never black.
-        col.assign(mix(col, light.shadow.mul(albedo).mul(0.9), cups.mul(ironK).mul(0.35)));
+        col.assign(mix(col, light.shadow.mul(albedo).mul(0.9), cups.mul(ironK).mul(0.16)));
         // A thin rim of sky only where a form turns away from the key (the shadow side): the sky
         // it faces, never the key's colour.
         const away = float(1.0).sub(smoothstep(-0.1, 0.35, ndl));
@@ -2651,13 +2665,36 @@ export function entryToWorld(e, x, y, z, out = [0, 0, 0]) {
  */
 export const FAR_UNIT = 100;
 
+/**
+ * A far isle's hanging mass: [bearing (body angle; π/2 faces the eye), offset, width, end] (shares
+ * of its radius and depth). Each stands out of the main lobe as an inverted peak of its own, held
+ * wide under the rim and ending quickly, so a far root reads as a broken mountain hung upside down
+ * from afar; a lone smooth taper reads as a funnel.
+ */
+const farLobe = ([phi, off, w, end]) => ({
+    phi, off, w, end, power: 1.25, shoulder: 2,
+});
+
 /** The far isles' five builds (each at FAR_UNIT metres of radius), and how each is grown. */
 export const FAR_SHAPES = Object.freeze([
-    // [top, root, lobes] (the lip at 0)
-    [12, -150, 2], [18, -330, 1], [15, -210, 3], [22, -250, 2], [10, -180, 2],
-].map(([top, root, lobes], v) => Object.freeze({
+    // [top, root, lobes, lean [share, bearing]] (the lip at 0); the side lobes stand on the
+    // silhouette's bearings (near 0 and π), where the eye sees them break the outline.
+    [12, -130, [[0.25, 0.62, 0.52, 0.66], [2.95, 0.58, 0.46, 0.5], [4.5, 0.6, 0.4, 0.36]], [0.22, 0.9]],
+    [18, -290, [[1.0, 0.55, 0.5, 0.38], [3.6, 0.6, 0.46, 0.26]], [0.34, 2.4]],
+    [15, -200, [[0.1, 0.7, 0.58, 0.82], [3.3, 0.52, 0.46, 0.46], [5.1, 0.6, 0.36, 0.3]], [0.16, 0.2]],
+    [22, -230, [[2.9, 0.62, 0.54, 0.62], [5.9, 0.56, 0.5, 0.5], [1.4, 0.64, 0.34, 0.32]], [0.26, 3.9]],
+    [10, -165, [[5.8, 0.6, 0.55, 0.7], [2.6, 0.56, 0.46, 0.44]], [0.2, 5.5]],
+].map(([top, root, lobes, lean], v) => Object.freeze({
     p: {
-        top, lip: 0, root, lobes, radius: FAR_UNIT, dome: true, knolls: [[0.2, -0.2, 6, 0.3]], shapeSeed: 300 + v,
+        top,
+        lip: 0,
+        root,
+        lobes: lobes.map(farLobe),
+        lean,
+        radius: FAR_UNIT,
+        dome: true,
+        knolls: [[0.2, -0.2, 6, 0.3]],
+        shapeSeed: 300 + v,
     },
     build: { seed: 200 + v * 7, asym: 0.35 },
 })));
@@ -2666,8 +2703,9 @@ export const FAR_GROVE = Object.freeze([[-20, -20, 9, 0], [5, -30, 10, 0], [-35,
 export const FAR_RUIN = Object.freeze([35, -10, 14]);
 
 export function buildFarIsles(detail = 1) {
-    const radial = Math.max(10, Math.round(14 * detail));
-    const rings = Math.max(8, Math.round(10 * detail));
+    // (Enough bearings that the hanging lobes and the saddles between them carry the silhouette.)
+    const radial = Math.max(14, Math.round(22 * detail));
+    const rings = Math.max(12, Math.round(16 * detail));
     // Built at FAR_UNIT metres of radius (the cliff's beds and the rim are in metres), scaled at placement.
     return FAR_SHAPES.map(({ p, build }, v) => {
         const parts = [buildMassif(p, { radial, rings, ...build })];
