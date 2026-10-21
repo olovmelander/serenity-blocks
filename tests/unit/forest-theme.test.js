@@ -2100,6 +2100,7 @@ describe('Forest with its real artwork', () => {
             disabled: !QUALITY_PRESETS.High.enablePost,
             useMRT: false,
             godrays: FOREST_TIERS.High.post && FOREST_TIERS.High.godrays > 0,
+            rays: FOREST_TIERS.High.post && FOREST_TIERS.High.godrays > 0 && FOREST_TIERS.High.rays > 0,
         });
         expect(renderer.shadowMap.enabled).toBe(true);
         // The beams read the moon's shadow map, which one priming render of the scene builds.
@@ -2238,7 +2239,7 @@ describe('Forest with its real artwork', () => {
         expect(theme.reactions.maxEmitters).toBe(FOREST_REACTION_LIMITS.Minimal);
         expect(post.disabled).toBe(!theme.qualityPreset.enablePost);
         expect(post.getDiagnostics()).toEqual({
-            quality: 'Minimal', disabled: true, useMRT: false, godrays: false,
+            quality: 'Minimal', disabled: true, useMRT: false, godrays: false, rays: false,
         });
         // No pipeline: nothing is rendered until the first frame, and that frame goes straight out.
         expect(renderer.render).not.toHaveBeenCalled();

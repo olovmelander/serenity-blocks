@@ -15,9 +15,9 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, If, abs, attribute, cameraPosition, clamp, cos, cross, dot, exp, float, fract, int,
-    length, max, min, mix, normalize, positionGeometry, pow, reflect, smoothstep, sqrt, step,
-    uv, varying, vec3, vec4,
+    Fn, If, abs, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, clamp, cos, cross, dot, exp,
+    float, fract, int, length, max, min, mix, normalize, positionGeometry, pow, reflect, smoothstep, sqrt, step,
+    uv, varying, vec2, vec3, vec4, viewportTexture,
 } from 'three/tsl';
 
 const TAU = Math.PI * 2;
@@ -159,6 +159,42 @@ const traceExit = Fn(([origin, direction, shape]) => {
     ],
 });
 
+/**
+ * How far past the exit the ray would have met the next face, in world units: small where
+ * the exit lands near an edge of its face, so the far facets' edges can be drawn inside the
+ * stone. Same planes and inputs as `traceExit`; `first` is its distance.
+ */
+const exitEdgeGap = Fn(([origin, direction, shape, first]) => {
+    const tau = shape.x;
+    const apex = vec3(shape.y, tau.add(1), shape.z);
+    const second = float(1e6).toVar();
+    const consider = (normal, slack) => {
+        const approach = dot(normal, direction);
+        const distance = max(slack, 0).div(max(approach, 1e-6));
+        If(approach.greaterThan(1e-6).and(distance.greaterThan(first.add(1e-4))).and(distance.lessThan(second)), () => {
+            second.assign(distance);
+        });
+    };
+    SIDES.forEach(({ c, s }) => {
+        const side = vec3(c, 0, s);
+        consider(side, float(1).sub(dot(side, origin)));
+        const lean = shape.y.mul(c).add(shape.z.mul(s));
+        const termination = vec3(tau.mul(c), float(1).sub(lean), tau.mul(s));
+        consider(termination, dot(termination, apex.sub(origin)));
+    });
+    consider(vec3(0, -1, 0), origin.y);
+    return second.sub(first);
+}).setLayout({
+    name: 'gemExitEdgeGap',
+    type: 'float',
+    inputs: [
+        { name: 'origin', type: 'vec3' },
+        { name: 'direction', type: 'vec3' },
+        { name: 'shape', type: 'vec3' },
+        { name: 'first', type: 'float' },
+    ],
+});
+
 /** Signed depth below the termination faces, in canonical heights (0 on the faces). */
 const terminationDepth = Fn(([point, shape]) => {
     const tau = shape.x;
@@ -184,9 +220,11 @@ const terminationDepth = Fn(([point, shape]) => {
  * @param {number} [options.bounces] internal ray segments (1–4)
  * @param {boolean} [options.dispersion] split the first exit into three wavelengths
  * @param {boolean} [options.inclusions] phantoms and rainbow fractures
+ * @param {boolean} [options.seeThrough] the first exit sees the cave behind the stone (a copy
+ *   of the frame drawn so far), refracted, instead of the fixed far field alone
  */
 export function createGemField({
-    light, capacity, bounces = 3, dispersion = true, inclusions = true,
+    light, capacity, bounces = 3, dispersion = true, inclusions = true, seeThrough = false,
 }) {
     const count = Math.max(1, Math.floor(capacity));
     const u = light.uniforms;
@@ -230,6 +268,9 @@ export function createGemField({
     const vFace = varying(attribute('aFace', 'vec3'), 'vGemFace');
 
     // ---- fragment stage -----------------------------------------------------------
+    // The frame behind the stones, one copy per render target (the pool's mirror draws them too,
+    // into a smaller target: a shared copy would be resized under the main pass).
+    const backdrop = seeThrough ? viewportTexture() : null;
     const shade = Fn(() => {
         const shape = vShape.toVar();
         const size = vScale.toVar();
@@ -243,6 +284,8 @@ export function createGemField({
         const view = normalize(rigid.sub(vEye)).toVar();
         const event = light.eventLight.toVar();
         const far = (direction, spread) => light.environment(rotate(direction, vQuat), float(spread), event);
+        // Where the stone sits in the world: its entry point less the canonical offset.
+        const centre = vWorld.sub(rotate(vCanonical.mul(vScale), vQuat)).toVar();
 
         // The facet we entered through, with the fine horizontal striae real prism
         // faces carry and a softened edge so facets do not meet as a razor line.
@@ -279,7 +322,10 @@ export function createGemField({
         // Body colour: how much of each wavelength survives one girth of travel.
         const body = mix(vec3(1), tint, 0.82).toVar();
         const fire = mix(tint, vec3(1), 0.12).toVar();
-        const glow = vLook.y.mul(level).toVar();
+        // The carpet of small points glows less than the stones of size: in the rock they read
+        // as glinting mineral, not as lamps (a third of the light at the smallest).
+        const small = float(1).sub(smoothstep(0.2, 0.75, girth)).toVar();
+        const glow = vLook.y.mul(level).mul(mix(float(1), float(0.32), small)).toVar();
         const age = max(u.time.sub(vPulse.x), 0).toVar();
         // A pulse may be scheduled ahead (a wave reaches each crystal in turn).
         const pulse = vPulse.y.mul(exp(age.mul(-1.15))).mul(step(vPulse.x, u.time)).toVar();
@@ -307,8 +353,8 @@ export function createGemField({
             const idle = exp(closest.y.sub(climb).div(0.24).pow2().negate()).mul(0.55);
             const filament = exp(miss.mul(-FILAMENT)).mul(chord);
             const middle = start.add(run.mul(reach.mul(0.5)));
-            const halo = exp(dot(middle.xz, middle.xz).mul(-2.2)).mul(reach.div(girth)).mul(0.045);
-            return filament.mul(root.add(idle).mul(breath).mul(glow).mul(4.4)
+            const halo = exp(dot(middle.xz, middle.xz).mul(-2.2)).mul(reach.div(girth)).mul(0.022);
+            return filament.mul(root.add(idle).mul(breath).mul(glow).mul(2.6)
                 .add(band.mul(pulse).mul(9))
                 .add(pulse.mul(2.6))
                 .add(hum.mul(glow).mul(2.2)))
@@ -326,6 +372,13 @@ export function createGemField({
             const span = hit.w.div(girth).toVar();
             const half = pow(body, vec3(min(span, 1.7).mul(0.5)));
             radiance.addAssign(through.mul(half).mul(fire).mul(gather(point, step3, hit.w)));
+            if (bounce === 0) {
+                // The far facets' edges, seen through the clear body: fine lines of caught light.
+                const gap = exitEdgeGap(point, step3, shape, hit.w);
+                const line = float(1).sub(smoothstep(hair.mul(0.45), hair.mul(1.5), gap));
+                radiance.addAssign(through.mul(half).mul(line)
+                    .mul(fire.mul(glow.mul(0.28).add(pulse.mul(1.1)).add(0.07)).add(far(heading, 2).mul(0.4))));
+            }
 
             if (bounce === 0 && inclusions) {
                 // Growth phantoms: earlier terminations, seen as nested veils.
@@ -374,7 +427,29 @@ export function createGemField({
                 return normalize(heading.mul(index).sub(wall.mul(float(index).mul(cosOut).sub(ct))));
             };
             const seen = vec3(0).toVar();
-            if (bounce === 0 && dispersion) {
+            if (bounce === 0 && seeThrough) {
+                // The first exit looks at the cave behind the stone: the frame drawn so far (rock,
+                // pool, the sky's light), at the point a metre or two along the refracted ray,
+                // one read per wavelength with dispersion. Off screen it falls back to the far field.
+                const exitWorld = rotate(point.mul(size), vQuat).add(centre).toVar();
+                const behind = (index) => {
+                    const direction = rotate(leave(index), vQuat);
+                    const ahead = exitWorld.add(direction.mul(girth.mul(2.2).add(1.6)));
+                    const clip = cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec4(ahead, 1)));
+                    const ndc = clip.xy.div(max(clip.w, 1e-3));
+                    const at = vec2(ndc.x.mul(0.5).add(0.5), float(0.5).sub(ndc.y.mul(0.5)));
+                    const margin = min(min(at.x, at.y), min(float(1).sub(at.x), float(1).sub(at.y)));
+                    const onScreen = smoothstep(0, 0.04, margin)
+                        .mul(step(0, clip.w));
+                    const frame = backdrop.sample(clamp(at, 0.001, 0.999)).rgb;
+                    return mix(far(leave(index), 1), frame.mul(1.15).add(far(leave(index), 1).mul(0.35)), onScreen);
+                };
+                if (dispersion) {
+                    seen.assign(vec3(behind(IOR_SPECTRUM[0]).r, behind(IOR_SPECTRUM[1]).g, behind(IOR_SPECTRUM[2]).b));
+                } else {
+                    seen.assign(behind(IOR));
+                }
+            } else if (bounce === 0 && dispersion) {
                 seen.assign(vec3(
                     far(leave(IOR_SPECTRUM[0]), 1).r,
                     far(leave(IOR_SPECTRUM[1]), 1).g,
@@ -398,9 +473,17 @@ export function createGemField({
             .add(fire.mul(glow.mul(0.42).add(pulse.mul(0.5)))));
         const stone = mix(radiance, frosted, milk);
 
+        // Crisp glints: a facet that mirrors the skylight (or the far heart) flashes whole,
+        // so facets flicker on and off as the view drifts.
+        const bounceWorld = rotate(reflect(view, normal), vQuat).toVar();
+        const toSky = clamp(dot(bounceWorld, vec3(-0.4, 0.79, -0.46)), 0, 1);
+        const toHeart = clamp(dot(bounceWorld, vec3(0.0, 0.14, -0.99)), 0, 1);
+        const glintLight = vec3(0.82, 0.92, 1.0).mul(pow(toSky, 900).mul(26))
+            .add(vec3(1.0, 0.78, 0.5).mul(pow(toHeart, 600).mul(10)));
         const surface = mirrored.mul(fresnelIn.mul(2.4).add(edge.mul(0.3)))
+            .add(glintLight.mul(fresnelIn.mul(3).add(0.15)))
             .add(fire.mul(edge).mul(glow.mul(0.07).add(pulse.mul(0.9))));
-        const colour = stone.mul(float(1).sub(fresnelIn)).add(surface);
+        const colour = stone.mul(float(1).sub(fresnelIn)).mul(mix(float(1), float(0.6), small)).add(surface);
         return vec4(light.haze(colour, distance, vWorld.y), 1);
     });
 
@@ -412,6 +495,8 @@ export function createGemField({
     const mesh = new THREE.Mesh(geometry, material);
     mesh.name = 'Crystal Cave — crystals';
     mesh.frustumCulled = false;
+    // After the rock among the solids, so the copy of the frame it looks through holds the rock.
+    if (seeThrough) mesh.renderOrder = 1;
 
     let used = 0;
     let disposed = false;
