@@ -70,14 +70,18 @@ export function createDustMaterial(u) {
         const dist = length(toCam);
         const right = normalize(cross(vec3(0.0, 1.0, 0.0), toCam));
         const up = normalize(cross(toCam, right));
-        const size = max(M.w, dist.mul(u.pixelAngle).mul(1.3)).mul(smoothstep(0.05, 0.3, lit));
+        const size = max(M.w, dist.mul(u.pixelAngle).mul(2.6)).mul(smoothstep(0.05, 0.3, lit));
         return centre.add(right.mul(positionGeometry.x.mul(size))).add(up.mul(positionGeometry.y.mul(size)));
     })();
     const color = Fn(() => {
         const r = length(uv().sub(0.5)).mul(2.0);
         const disc = clamp(float(1.0).sub(r), 0.0, 1.0);
-        const twinkle = sin(u.time.mul(1.7).add(M.z.mul(91.0))).mul(0.35).add(0.65);
-        const light = u.beamCore.mul(disc.mul(disc)).mul(twinkle).mul(SUNFALL_LIGHT.sun * 0.012)
+        // Pollen and spray catching the sun: each mote glints now and then (its own phase and
+        // rate, so they never flash together), bright enough to read against the column itself.
+        const wave = clamp(sin(u.time.mul(mix(0.9, 2.3, fract(M.z.mul(17.0)))).add(M.z.mul(91.0))), 0.0, 1.0);
+        const glint = wave.mul(wave).mul(wave.mul(wave));
+        const twinkle = glint.mul(0.96).add(0.04);
+        const light = u.beamCore.mul(disc.mul(disc)).mul(twinkle).mul(SUNFALL_LIGHT.sun * 0.3)
             .mul(u.sunGain)
             .mul(float(1.0).add(u.comboLift));
         return vec4(light, 0.0);
