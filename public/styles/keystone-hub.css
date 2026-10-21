@@ -2182,6 +2182,94 @@ body.custom-cursor-active.serenity-volume-dragging * {
 }
 
 /* =================================================================================
+ * Hale sessions tab: the opening row (SessionsTab.js; the catalogue itself is styled in
+ * breathwork-sessions.css). The title stands beside its lede, or, once you practise,
+ * beside your practice, instead of above them; on a shorter sheet the pictures give
+ * height back. The first session's Begin is in view as the tab opens, at 1280 x 720 as
+ * at 1600 x 900.
+ * ================================================================================ */
+@media (min-width: 761px) {
+    #serenity-hub-panel .hale {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        column-gap: clamp(24px, 3.4vw, 48px);
+        row-gap: 18px;
+    }
+
+    #serenity-hub-panel .hale > * {
+        grid-column: 1 / -1;
+        min-width: 0;
+    }
+
+    /* Eyebrow and title on the left, the lede on the right, on one baseline. */
+    #serenity-hub-panel .hale > .hale__intro {
+        display: grid;
+        grid-template-columns: subgrid;
+        align-items: end;
+        max-width: none;
+    }
+
+    #serenity-hub-panel .hale__intro .sb-eyebrow {
+        grid-column: 1;
+        grid-row: 1;
+        justify-self: start;
+    }
+
+    #serenity-hub-panel .hale__intro h2 {
+        grid-column: 1;
+        grid-row: 2;
+        max-width: 26ch;
+        margin: 12px 0 0;
+    }
+
+    #serenity-hub-panel .hale__intro p {
+        grid-column: 2;
+        grid-row: 1 / span 2;
+        max-width: 54ch;
+        margin: 0;
+        padding-bottom: 2px;
+    }
+
+    /* Returning: your practice takes the lede's place (the cards say how the rest open). */
+    #serenity-hub-panel .hale:has(> .hale__practice:not([hidden])) > .hale__intro {
+        grid-column: 1;
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    #serenity-hub-panel .hale:has(> .hale__practice:not([hidden])) .hale__intro p {
+        display: none;
+    }
+
+    #serenity-hub-panel .hale > .hale__practice:not([hidden]) {
+        grid-column: 2;
+        grid-row: 1;
+        align-self: end;
+        gap: 12px 24px;
+        padding: 14px 18px;
+    }
+}
+
+/* The session's world as a band: its full 16:7 where the sheet is tall, shorter on a
+   laptop-height sheet. */
+#serenity-hub-panel .hale-card__art {
+    max-height: max(120px, calc(46vh - 196px));
+}
+
+@media (max-height: 760px) and (min-width: 761px) {
+    #serenity-hub-panel .hale-card__body { gap: 6px; }
+    #serenity-hub-panel .hale-card h3 { margin-top: 4px; }
+    #serenity-hub-panel .hale-card__facts { margin: 6px 0 10px; }
+}
+
+/* Phones: one column; a tighter opening and a lower band keep Begin in view. */
+@media (max-width: 760px) {
+    #serenity-hub-panel .hale { gap: 16px; }
+    #serenity-hub-panel .hale__intro h2 { margin: 10px 0 8px; font-size: 1.2rem; }
+    #serenity-hub-panel .hale__intro p { font-size: var(--sb-fs-small); line-height: 1.55; }
+    #serenity-hub-panel .hale-card__art { max-height: 120px; }
+}
+
+/* =================================================================================
  * Responsive
  * ================================================================================ */
 @media (max-width: 1100px) {

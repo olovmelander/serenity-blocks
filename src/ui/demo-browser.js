@@ -10,6 +10,8 @@ import { csIcon } from './components/cosmic-icons.js';
 
 const STATUS_CLEAR_MS = 4500;
 const DELETE_CONFIRM_MS = 4000;
+/** The main menu's Single Player card (index.html): the way on from an empty sheet. */
+const PLAY_CARD_ID = 'single-player-card-btn';
 
 const MODE_NAMES = {
     'single-player': 'Single Player',
@@ -157,13 +159,7 @@ export class DemoBrowser {
             if (generation !== this.refreshGeneration) return;
 
             if (demos.length === 0) {
-                this.listContainer.innerHTML = `
-                    <div class="sb-empty demo-empty">
-                        <span class="sb-empty__icon" aria-hidden="true">${csIcon('play', 24)}</span>
-                        <p class="sb-empty__title">No replays yet</p>
-                        <p class="sb-empty__text">Finish a Single Player game and it is saved here to watch again.
-                            A replay file someone shared with you comes in through Import file.</p>
-                    </div>`;
+                this.renderEmpty();
                 return;
             }
 
@@ -184,6 +180,29 @@ export class DemoBrowser {
             this.listContainer.innerHTML = '<p class="error-state">'
                 + 'Replays could not be loaded. Close this and try again.</p>';
         }
+    }
+
+    /**
+     * No replays yet: what fills the sheet and, from the main menu, the one way on (a game
+     * of Single Player, which is what saves one).
+     */
+    renderEmpty() {
+        const startModal = typeof document !== 'undefined' ? document.getElementById?.('start-modal') : null;
+        const canStart = Boolean(startModal?.classList?.contains('visible'));
+        this.listContainer.innerHTML = `
+            <div class="sb-empty demo-empty">
+                <span class="sb-empty__icon" aria-hidden="true">${csIcon('play', 26)}</span>
+                <p class="sb-empty__title">No replays yet</p>
+                <p class="sb-empty__text">Finish a Single Player game and it is saved here to watch again.
+                    A replay file someone shared with you comes in through Import file.</p>
+                ${canStart ? `<button type="button" class="sb-btn sb-btn--primary demo-empty__play"
+                    data-play-card="${PLAY_CARD_ID}">Play Single Player</button>` : ''}
+            </div>`;
+        const play = canStart ? this.listContainer.querySelector?.('.demo-empty__play') : null;
+        play?.addEventListener?.('click', () => {
+            this.hide();
+            document.getElementById(PLAY_CARD_ID)?.click();
+        });
     }
 
     createDemoCard(demo) {

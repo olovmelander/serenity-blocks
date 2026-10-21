@@ -192,6 +192,29 @@ describe('SteamService startup state handling', () => {
         expect(connectedSpy).toHaveBeenCalledTimes(1);
     });
 
+    it('settles at once in a browser build (no IPC) and says so with INIT_FAILED', async () => {
+        vi.stubGlobal('window', {});
+
+        const { SteamService } = await import('../../src/core/steam/steam-service.js');
+        const service = new SteamService();
+        const failedSpy = vi.fn();
+        const readySpy = vi.fn();
+        service.on(STEAM_EVENTS.INIT_FAILED, failedSpy);
+        service.on(STEAM_EVENTS.READY, readySpy);
+
+        const connected = await service.initialize();
+
+        expect(connected).toBe(false);
+        expect(service.initComplete).toBe(true);
+        expect(service.getConnectionState()).toBe('no_steam');
+        expect(failedSpy).toHaveBeenCalledTimes(1);
+        expect(failedSpy).toHaveBeenCalledWith({ source: 'no-ipc' });
+        expect(readySpy).not.toHaveBeenCalled();
+        // A second call is the same settled promise: no second event.
+        await service.initialize();
+        expect(failedSpy).toHaveBeenCalledTimes(1);
+    });
+
     it('falls back to no_steam after init failure', async () => {
         const harness = createElectronApiHarness({
             initialized: false,

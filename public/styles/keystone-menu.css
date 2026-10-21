@@ -38,18 +38,58 @@ body.start-modal-open #start-modal .main-menu-logo {
     pointer-events: none;
 }
 
-/* Ambient light: a left scrim for legibility plus an aura in the current mode's hue. */
+/* Legibility: a left scrim under the list and a floor under the dock. The mode's own light
+   lies beneath it (.sb-menu-light). */
 #start-modal.game-mode-selection::before {
     content: '';
     position: absolute;
     inset: 0;
     pointer-events: none;
     background:
-        radial-gradient(55% 60% at 72% 46%, rgba(var(--sb-stage-rgb, var(--sb-aqua-rgb)), 0.12), transparent 70%),
         linear-gradient(90deg, rgba(7, 6, 22, 0.66) 0%, rgba(7, 6, 22, 0.28) 34%, rgba(7, 6, 22, 0) 58%),
         linear-gradient(0deg, rgba(7, 6, 22, 0.55) 0%, rgba(7, 6, 22, 0) 22%);
-    transition: background 0.6s var(--sb-ease-breathe);
 }
+
+/* ---- The page's light: the current mode lends it (main-menu.js, MenuLight) -------------
+ * The way a chapter tints the Odyssey navigator's sky: a soft glow around the stage, a
+ * wash from the top corner and a floor of light under the stage, in the mode's hue. Two
+ * layers hand the light over (opacity only), so a change of mode cross-fades instead of
+ * switching; at rest they cost nothing. Gradients only, no blur; above the intro world,
+ * which shows through, and beneath the legibility scrim. */
+#start-modal .sb-menu-light {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+#start-modal .sb-menu-light__layer {
+    --sb-light-rgb: var(--sb-aqua-rgb);
+    --sb-light-x: 66%;
+    position: absolute;
+    inset: 0;
+    background:
+        radial-gradient(60% 76% at var(--sb-light-x) 48%,
+            rgba(var(--sb-light-rgb), 0.24), rgba(var(--sb-light-rgb), 0.15) 48%,
+            rgba(var(--sb-light-rgb), 0.055) 72%, transparent 92%),
+        radial-gradient(40% 50% at 100% 0%, rgba(var(--sb-light-rgb), 0.16), transparent 72%),
+        radial-gradient(50% 30% at var(--sb-light-x) 104%, rgba(var(--sb-light-rgb), 0.16), transparent 72%);
+    opacity: 0;
+    transition: opacity 0.9s var(--sb-ease-breathe);
+}
+
+#start-modal .sb-menu-light__layer.is-on {
+    opacity: 1;
+}
+
+#start-modal .sb-menu-light__layer[data-light='single'] { --sb-light-rgb: var(--sb-aqua-rgb); }
+#start-modal .sb-menu-light__layer[data-light='infinity'] { --sb-light-rgb: var(--sb-lavender-rgb); }
+#start-modal .sb-menu-light__layer[data-light='stillfall'] { --sb-light-rgb: var(--sb-coral-rgb); }
+#start-modal .sb-menu-light__layer[data-light='local-multiplayer'] { --sb-light-rgb: var(--sb-rose-rgb); }
+#start-modal .sb-menu-light__layer[data-light='online-multiplayer'] { --sb-light-rgb: var(--sb-sky-rgb); }
+#start-modal .sb-menu-light__layer:is([data-light='serenity'], [data-light='hale']) { --sb-light-rgb: var(--sb-mint-rgb); }
+#start-modal .sb-menu-light__layer[data-light='odyssey'] { --sb-light-rgb: var(--sb-gold-rgb); }
 
 #start-modal .sb-menu {
     --sb-pad-x: clamp(24px, 5vw, 88px);
@@ -88,16 +128,6 @@ body.start-modal-open #start-modal .main-menu-logo {
 #start-modal .sb-menu[data-current='hale'] { --sb-mode-rgb: var(--sb-mint-rgb); --sb-mode: var(--sb-mint); }
 #start-modal [data-mode='odyssey'],
 #start-modal .sb-menu[data-current='odyssey'] { --sb-mode-rgb: var(--sb-gold-rgb); --sb-mode: var(--sb-gold); }
-
-/* The aura follows the stage (set on the modal by main-menu.js). */
-#start-modal[data-current='single'] { --sb-stage-rgb: var(--sb-aqua-rgb); }
-#start-modal[data-current='infinity'] { --sb-stage-rgb: var(--sb-lavender-rgb); }
-#start-modal[data-current='stillfall'] { --sb-stage-rgb: var(--sb-coral-rgb); }
-#start-modal[data-current='local-multiplayer'] { --sb-stage-rgb: var(--sb-rose-rgb); }
-#start-modal[data-current='online-multiplayer'] { --sb-stage-rgb: var(--sb-sky-rgb); }
-#start-modal[data-current='serenity'],
-#start-modal[data-current='hale'] { --sb-stage-rgb: var(--sb-mint-rgb); }
-#start-modal[data-current='odyssey'] { --sb-stage-rgb: var(--sb-gold-rgb); }
 
 /* ---- Brand ------------------------------------------------------------------------ */
 #start-modal .sb-menu__brand {
@@ -833,73 +863,227 @@ body.start-modal-open #start-modal .main-menu-logo {
     100% { opacity: 1; transform: scale(1); }
 }
 
-/* ---- Main-menu player card (top right) ------------------------------------------ */
-body.start-modal-open .main-menu-player-card {
+/* ---- Main-menu player card (desktop builds: the Steam account, top right) ----------
+ * src/ui/components/main-menu-player-card.js builds it only where a Steam client can be
+ * reached (Electron); a browser build has no card. A night tile on the menu frame's
+ * corner: the avatar as a rounded tile, the name in Unbounded, one status line with a
+ * square status cell. It leaves under any sheet that covers the menu. */
+.main-menu-player-card {
+    position: fixed;
+    top: clamp(22px, 4.6vh, 50px);
+    right: clamp(24px, 5vw, 88px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: min(320px, calc(100vw - 32px));
+    min-height: 52px;
+    padding: 6px 14px 6px 6px;
+    box-sizing: border-box;
     border-radius: var(--sb-r-md);
     border: 1px solid var(--sb-line);
     background: linear-gradient(180deg, rgba(27, 23, 60, 0.86), rgba(12, 10, 30, 0.9));
-    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
-    -webkit-backdrop-filter: none;
-    backdrop-filter: none;
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
+    color: var(--sb-text);
     font-family: var(--sb-font-text);
+    cursor: default;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-6px);
+    pointer-events: none;
+    transition:
+        opacity 0.32s var(--sb-ease-lock),
+        transform 0.32s var(--sb-ease-lock),
+        visibility 0s linear 0.32s,
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        background var(--sb-dur-2) var(--sb-ease-lock);
 }
 
-body.start-modal-open .main-menu-player-card:hover {
+.main-menu-player-card.visible {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+    pointer-events: auto;
+    transition-delay: 0s;
+}
+
+/* A sheet over the menu (Hub, Records, Replays, Settings, a match setup) has the screen;
+   in the narrow layout (below) the list scrolls under the corner. */
+body.start-modal-covered .main-menu-player-card.visible {
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-6px);
+    pointer-events: none;
+    transition:
+        opacity 0.2s ease,
+        transform 0.2s ease,
+        visibility 0s linear 0.2s;
+}
+
+/* Online, it opens the Steam overlay. */
+.main-menu-player-card:is([data-state='connected'], [data-state='partial']) {
+    cursor: pointer;
+}
+
+.main-menu-player-card:is([data-state='connected'], [data-state='partial']):hover {
     border-color: var(--sb-line-strong);
     background: linear-gradient(180deg, rgba(36, 31, 76, 0.9), rgba(16, 13, 38, 0.92));
-    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.08);
 }
 
-body.start-modal-open .main-menu-player-card:focus-visible {
+.main-menu-player-card:focus-visible,
+body.sb-input-gamepad .main-menu-player-card:focus {
     outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
     outline-offset: 3px;
 }
 
-body.start-modal-open .main-menu-player-card .mmpc-avatar-container {
-    border-radius: 10px;
-    border-color: rgba(var(--sb-aqua-rgb), 0.5);
-    box-shadow: none;
+/* The avatar: a rounded tile, never a circle. */
+.main-menu-player-card .mmpc-avatar-container {
+    position: relative;
+    flex: none;
+    width: 38px;
+    height: 38px;
+    overflow: hidden;
+    border-radius: 11px;
+    box-shadow: inset 0 0 0 1px rgba(var(--sb-cream-rgb), 0.12);
+    background: rgba(var(--sb-night-rgb), 0.6);
 }
 
-/* The card's own injected styles (main-menu-player-card.js) still name Orbitron and
-   pill chips; the Keystone type and tile chips win here. */
-body.start-modal-open .main-menu-player-card .mmpc-name {
-    font-family: var(--sb-font-display);
-    font-weight: 600;
+.main-menu-player-card .mmpc-avatar-img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.main-menu-player-card .mmpc-avatar-skeleton {
+    width: 100%;
+    height: 100%;
+    background: rgba(var(--sb-cream-rgb), 0.08);
+    animation: mmpc-breathe 2.2s var(--sb-ease-breathe) infinite;
+}
+
+@keyframes mmpc-breathe {
+    0%, 100% { opacity: 0.55; }
+    50% { opacity: 1; }
+}
+
+.main-menu-player-card .mmpc-avatar-placeholder {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 100%;
+    background:
+        radial-gradient(90% 90% at 30% 20%, rgba(var(--sb-lavender-rgb), 0.32), transparent 70%),
+        rgba(var(--sb-lavender-rgb), 0.1);
     color: var(--sb-text);
+    font: 700 0.9375rem / 1 var(--sb-font-display);
 }
 
-body.start-modal-open .main-menu-player-card .mmpc-status {
+.main-menu-player-card .mmpc-info {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+}
+
+.main-menu-player-card .mmpc-name {
+    max-width: 180px;
+    overflow: hidden;
+    color: var(--sb-text);
+    font: 600 0.8125rem / 1.15 var(--sb-font-display);
+    letter-spacing: 0.005em;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.main-menu-player-card .mmpc-status {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    min-height: 18px;
     color: var(--sb-text-muted);
-    font-family: var(--sb-font-text);
-    font-size: 11px;
+    font: 500 0.75rem / 1.2 var(--sb-font-text);
+    white-space: nowrap;
 }
 
-body.start-modal-open .main-menu-player-card :is(.mmpc-state-pill, .mmpc-retry-btn, .mmpc-friends-badge) {
-    padding: 2px 7px;
-    border-radius: 6px;
-    border-color: var(--sb-line-strong);
-    background: rgba(var(--sb-cream-rgb), 0.06);
-    color: var(--sb-text-muted);
-    font-family: var(--sb-font-display);
-    font-size: 8px;
-    font-weight: 600;
-    letter-spacing: 0.14em;
+/* The status cell: the eyebrow's square, in the state's light. */
+.main-menu-player-card .mmpc-status-dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: var(--sb-text-faint);
 }
 
-body.start-modal-open .main-menu-player-card .mmpc-state-pill.partial {
-    border-color: rgba(var(--sb-warning-rgb), 0.45);
-    color: var(--sb-warning);
+.main-menu-player-card .mmpc-status-dot.online {
+    background: var(--sb-success);
 }
 
-body.start-modal-open .main-menu-player-card .mmpc-friends-badge {
-    border-color: rgba(var(--sb-mint-rgb), 0.45);
+.main-menu-player-card .mmpc-status-dot.connecting {
+    background: var(--sb-warning);
+    animation: mmpc-breathe 1.6s var(--sb-ease-breathe) infinite;
+}
+
+/* Friends playing and "Limited": words on the status line, after a middot. */
+.main-menu-player-card :is(.mmpc-friends-badge, .mmpc-state-pill) {
+    display: none;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.main-menu-player-card :is(.mmpc-friends-badge, .mmpc-state-pill).visible {
+    display: inline-block;
+}
+
+.main-menu-player-card :is(.mmpc-friends-badge, .mmpc-state-pill)::before {
+    content: '\00b7';
+    margin-right: 7px;
+    color: var(--sb-text-faint);
+}
+
+.main-menu-player-card .mmpc-friends-badge {
     color: var(--sb-mint);
 }
 
-body.start-modal-open .main-menu-player-card .mmpc-retry-btn:hover {
+.main-menu-player-card .mmpc-state-pill.partial {
+    color: rgba(var(--sb-warning-rgb), 0.9);
+}
+
+.main-menu-player-card .mmpc-retry-btn {
+    display: none;
+    align-items: center;
+    height: 18px;
+    margin-left: 3px;
+    padding: 0 7px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: var(--sb-r-xs);
+    background: transparent;
+    color: var(--sb-text-muted);
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition:
+        color var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        background var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+.main-menu-player-card .mmpc-retry-btn.visible {
+    display: inline-flex;
+}
+
+.main-menu-player-card .mmpc-retry-btn:hover {
     border-color: rgba(var(--sb-cream-rgb), 0.4);
+    background: rgba(var(--sb-cream-rgb), 0.06);
     color: var(--sb-text);
+}
+
+.main-menu-player-card .mmpc-retry-btn:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.82);
+    outline-offset: 2px;
 }
 
 /* ---- Corner tiles (game-wide) ----------------------------------------------------
@@ -1019,10 +1203,13 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
         --sb-frame-x: calc(50% - var(--sb-menu-max) / 2);
     }
 
+    /* The light keeps to the stage on the centred frame. */
+    #start-modal .sb-menu-light__layer {
+        --sb-light-x: calc(var(--sb-frame-x) + var(--sb-menu-max) * 0.66);
+    }
+
     #start-modal.game-mode-selection::before {
         background:
-            radial-gradient(calc(var(--sb-menu-max) * 0.55) 60% at calc(var(--sb-frame-x) + var(--sb-menu-max) * 0.72) 46%,
-                rgba(var(--sb-stage-rgb, var(--sb-aqua-rgb)), 0.12), transparent 70%),
             linear-gradient(90deg,
                 rgba(7, 6, 22, 0.66) var(--sb-frame-x),
                 rgba(7, 6, 22, 0.28) calc(var(--sb-frame-x) + var(--sb-menu-max) * 0.34),
@@ -1030,17 +1217,43 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
             linear-gradient(0deg, rgba(7, 6, 22, 0.55) 0%, rgba(7, 6, 22, 0) 22%);
     }
 
-    /* Not tied to start-modal-open: the card only shows on the menu, and the class leaves
-       as the card fades (transition: all), which would slide it to the screen's corner.
-       `body` lifts this over the card's injected base style. */
-    body .main-menu-player-card {
-        right: calc(var(--sb-frame-x) + 15px);
+    /* The player card keeps to the frame's corner (its right padding, --sb-pad-x). */
+    .main-menu-player-card {
+        right: calc(var(--sb-frame-x) + 88px);
     }
 }
 
 /* Short windows give the copy its room before the picture. */
 @media (max-height: 800px) and (min-width: 901px) {
     #start-modal .sb-stage__panel { --sb-art-h: clamp(160px, 26vh, 210px); }
+}
+
+/* Short windows: the player card keeps to the band above the stage. */
+@media (max-height: 860px) and (min-width: 901px) {
+    .main-menu-player-card {
+        top: 14px;
+        gap: 10px;
+        min-height: 44px;
+        padding: 5px 12px 5px 5px;
+    }
+
+    .main-menu-player-card .mmpc-avatar-container {
+        width: 32px;
+        height: 32px;
+        border-radius: 9px;
+    }
+
+    .main-menu-player-card .mmpc-info { gap: 4px; }
+    .main-menu-player-card .mmpc-name { font-size: 0.75rem; }
+    .main-menu-player-card .mmpc-status { font-size: 0.6875rem; }
+}
+
+/* Desktop builds end the dock with Quit; on a laptop-width screen the footer keeps to one
+   line (so the stage keeps its height) by leaving out the headphones note. */
+@media (max-width: 1440px) and (min-width: 901px) {
+    #start-modal .sb-menu__footer:has(.sb-dock__btn--quit) .headphone-badge {
+        display: none;
+    }
 }
 
 /* Laptops / short windows: tighter rhythm, smaller stage typography. */
@@ -1063,9 +1276,18 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
 
     #start-modal.game-mode-selection::before {
         position: fixed;
+        background: linear-gradient(180deg, rgba(7, 6, 22, 0.35), rgba(7, 6, 22, 0.7));
+    }
+
+    /* One column: the light falls from above, over the list. */
+    #start-modal .sb-menu-light {
+        position: fixed;
+    }
+
+    #start-modal .sb-menu-light__layer {
         background:
-            radial-gradient(80% 50% at 50% 30%, rgba(var(--sb-stage-rgb, var(--sb-aqua-rgb)), 0.1), transparent 70%),
-            linear-gradient(180deg, rgba(7, 6, 22, 0.35), rgba(7, 6, 22, 0.7));
+            radial-gradient(90% 46% at 50% 22%, rgba(var(--sb-light-rgb), 0.16), transparent 72%),
+            radial-gradient(70% 30% at 100% 0%, rgba(var(--sb-light-rgb), 0.12), transparent 72%);
     }
 
     #start-modal .sb-menu {
@@ -1084,6 +1306,40 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
     #start-modal .sb-menu__brand {
         padding-right: 150px;
         gap: 10px;
+    }
+
+    /* The card on the brand's line: avatar, name and the status cell's word. */
+    .main-menu-player-card {
+        top: max(18px, env(safe-area-inset-top));
+        right: 16px;
+        gap: 10px;
+        min-height: 46px;
+        padding: 5px 12px 5px 5px;
+    }
+
+    .main-menu-player-card .mmpc-avatar-container {
+        width: 34px;
+        height: 34px;
+        border-radius: 10px;
+    }
+
+    .main-menu-player-card .mmpc-name {
+        max-width: 112px;
+    }
+
+    .main-menu-player-card :is(.mmpc-friends-badge, .mmpc-state-pill).visible {
+        display: none;
+    }
+
+    .main-menu-player-card.visible.is-scrolled {
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(-6px);
+        pointer-events: none;
+        transition:
+            opacity 0.2s ease,
+            transform 0.2s ease,
+            visibility 0s linear 0.2s;
     }
 
     #start-modal .main-menu-logo img {
@@ -1175,6 +1431,8 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
 
 @media (max-width: 380px) {
     #start-modal .sb-menu__brand { padding-right: 0; }
+    .main-menu-player-card .mmpc-name { max-width: 72px; }
+    .main-menu-player-card .mmpc-retry-btn.visible { display: none; }
     #start-modal .sb-dock__btn { font-size: 0.5rem; letter-spacing: 0.08em; }
 }
 
@@ -1208,9 +1466,25 @@ body.start-modal-open #hale-sessions-btn.hale-sessions-entry {
         to { opacity: 1; }
     }
 
-    #start-modal.game-mode-selection::before,
     #start-modal .sb-stage__panel {
         transition: none !important;
+    }
+
+    /* The light still hands over, as a shorter plain fade. */
+    #start-modal .sb-menu-light__layer {
+        transition-duration: 0.5s;
+        transition-timing-function: linear;
+    }
+
+    /* The card fades (opacity only) and never slides; its cells hold still. */
+    .main-menu-player-card,
+    .main-menu-player-card.visible {
+        transform: none !important;
+    }
+
+    .main-menu-player-card .mmpc-avatar-skeleton,
+    .main-menu-player-card .mmpc-status-dot.connecting {
+        animation: none;
     }
 
     #start-modal .cs-icon * {
