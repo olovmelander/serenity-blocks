@@ -287,6 +287,12 @@ export const LOOK = {
     snowSheenBroad: 0.1,
     // How bright each of the fox of light's veils is where it faces the eye.
     spiritVeil: 0.35,
+    // The snow ghosts' boughs under their pillows: how far noise breaks up where the needles show
+    // (in the bough mask's units), how much of the sky's light reaches them, and how much rime
+    // frosts the needles.
+    treeNeedleBreak: 0.4,
+    treeBoughSky: 0.3,
+    treeRime: 0.45,
 };
 
 /** Apply overrides ({ name: number }) to LOOK; unknown names and non-numbers are ignored. */
