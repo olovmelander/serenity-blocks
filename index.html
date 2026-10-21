@@ -126,6 +126,10 @@
             color: #fff;
             font-weight: 700;
         }
+        /* The path to the setting reads as one thing (it broke after "Reduce"). */
+        @media (min-width: 560px) {
+            #photosensitivity-warning .photosensitivity-warning__setting strong { white-space: nowrap; }
+        }
         /* The way on appears once the warning has been on screen long enough to be read. */
         #photosensitivity-warning .photosensitivity-warning__actions {
             margin-top: 32px;

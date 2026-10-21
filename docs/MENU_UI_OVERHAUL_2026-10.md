@@ -1116,8 +1116,8 @@ counts are numbers from the bridge on (`electron/steam-integration.js`,
 - **One sheet primitive.** `keystone-modals.css` (`#… .sb-sheet`-style rules for
   Settings, Records, Replays, results), `mp-sheet.js` and `keystone-sheet.js` grew the
   same anatomy three times (open-corner panel, key, head, title, close, body, foot).
-  Promote it to `keystone.css` as `.sb-sheet` and give multiplayer the labelled Close
-  the other sheets use (it has an icon ✕ plus a footer Back).
+  Promote it to `keystone.css` as `.sb-sheet`. (Multiplayer's labelled Close landed in
+  the 2026-10-21 audit, §8.)
 - **More primitives** suggested by the surface work: segmented control, stepper,
   `.sb-sr-only`, `.sb-empty`, `.sb-tabs`, `.sb-chip--gold/--accent`, and a player-colour
   helper (`color-mix(in oklab, var(--player-color) 58%, #fff6e9)`).
@@ -1125,10 +1125,44 @@ counts are numbers from the bridge on (`electron/steam-integration.js`,
   them with `!important`); move them to classes when `main.js` has room.
 - `SerenityMode._onKeyPress` should ignore keys typed into text fields centrally (the
   Hub's search guards itself today).
-- The breathing guide's ELIXIR accent (255, 150, 120) sits close to coral and is pinned
-  by a test; the Hub uses gold for ELIXIR. Moving the guide to gold would keep coral
-  for the primary action alone.
 - Odyssey's tall-board map listens for `minimap-jump` but reads `event.detail.row`; the
   map has always sent `targetRow`, so a click there hands the camera `undefined`.
   Reading `targetRow` (and pausing as Infinity does while exploring) wants a GPU run of
   a tall Odyssey level to verify.
+
+---
+
+## 8. Audit pass (2026-10-21)
+
+Every DOM surface was captured in the real game on the GPU (Electron, WebGPU, a private dev
+server; the launch, the main menu with each mode's stage, every Settings tab and controls
+subtab, Records, Replays, the Hub's four tabs, Hale's prepare and countdown, single player
+with the play rail, pause, game over, Infinity, Stillfall and its atlas, Local Versus setup,
+match and results, the online browser, create, waiting room, match and results, Odyssey's
+arrival and navigator, Serenity and its controls overlay, toasts, the loading cover and the
+countdown), in pointer and gamepad hint modes, at 1600 x 900, 1280 x 720, 1024 x 768,
+1920 x 1080, 390 x 844 and with the browser's default text at 24 and 32 px. Found and fixed:
+
+| Defect | Fix |
+|---|---|
+| Every sheet (Settings and pause, Records, Replays, game over) let the screen behind it read through its 95 % panel: the menu stage's wordmark, copy and coral Play as a dark ghost inside Records and Replays, the game's ledger numbers through pause and game over | Solid panel fills: the menu sheets, every multiplayer sheet (`.sb-mp-sheet__panel`), the Odyssey outcome sheets, the Tab scoreboard and the Hub's header band (`tests/unit/keystone-ui-guards.test.js`). The scrims stay as they were; in-game HUD panels keep their slight translucency over the worlds |
+| Toasts stacked bottom-centre, over the menu stage's Play button (three of them covered it) | With the stage beside the list they hang from the top centre, over the free band above the stage and its picture, dropping in and lifting out (`keystone-multiplayer.css`); narrow windows keep bottom-centre above the dock |
+| A toast's kind was an 8 px square told apart by colour only | A 28 px tile in the tone's hue with its mark (info, check, alert, error; `TONE_ICONS` in `toast.js`, the icons in `mp-sheet.js`) and a hairline of the hue along the leading edge |
+| At 1024 x 768 the footer wrapped and left Settings alone on a second row (desktop builds with Quit wrapped up to 1100 px wide) | Under 1280 px the headphones note goes in every build and the dock tightens, under 1100 px the hints keep Play and Settings, under 980 px the dock tightens again: one line from 901 px up, measured with and without Quit |
+| With the browser's text at 24 or 32 px the menu broke: the tagline over the first label, "Online Versus" cut to "O.", the dock over the list, the stage past the bottom (open since the navigator pass) | The menu's breakpoints are in em and its list column in rem: larger text widens the list and reaches the stacked layout sooner (a 1600-wide window at 32 px; 1920 x 1080 at 32 px, whose height is 33.75 em); under 648 px tall the stacked layout takes over at any text size (the list ran into the footer from 640 px). Identical at 16 px |
+| Stillfall's atlas put its Back to the puzzle under the play rail while the tray named its controls (a mode's first three runs) | The atlas folds a peek when it opens, and no peek starts while it is open (`foldPlayRailPeek`, `RAIL_SHY_SURFACES` in `play-rail.js`) |
+| Local Versus results left by any way but their own buttons (the pause sheet's Main menu, a quit to menu) stayed over every screen that followed, the menu, the online lobby and Odyssey included | The overlay leaves when the main menu is shown (`modalShown` with `start`; `tests/unit/local-match-end-overlay.test.js`) |
+| The multiplayer sheets (Local versus, Online versus, Create a match) closed with an icon-only ✕, the one sheet family without words | The labelled Close with its Esc and B keycaps that Settings, Records, Replays and the Hub carry |
+| Hale Sessions was the one mode stage titled in plain text | Its own wordmark, HALE over SESSIONS, in the logo's alphabet (an H added to `generate-mode-wordmarks.mjs`; a short row scales up no further than LOCAL over VERSUS, so every other wordmark is byte-identical) |
+| The breathing guide's ELIXIR accent (255, 150, 120) sat beside coral | Keystone gold (243, 210, 141), as the Hub has it |
+| The photosensitivity warning broke the path to its setting after "Reduce" | The path stays on one line from 560 px wide (inline style; still plain white on black, ADR-0021) |
+
+Seen and left as they are, on purpose:
+
+- The Settings tab **URL parameters** is a developer reference that tells players
+  `unlockAll=1` works; its removal before release is the owner's call
+  ([URL_PARAMETER_REFERENCE.md](URL_PARAMETER_REFERENCE.md), audit item UI-09).
+- Dates and numbers follow the player's locale everywhere ("21 okt. 2026", "1 786" on a
+  Swedish system); one surface in English formatting would stand out.
+- Stillfall's coral in the list and on its stage is its in-game hue (the well and the
+  panel's edge).
