@@ -24,6 +24,7 @@ import { haleSessionName } from '../effects/breathing/breath-openings.js';
 import { formatPracticeTime, readPracticeLog, summarizePractice } from '../effects/breathwork-practice-log.js';
 import { statisticsForMode } from '../../core/progression/score-statistics.js';
 import { MENU_ART_DIR, StageArt } from './stage-art.js';
+import { MenuLight } from './menu-light.js';
 import { STILLFALL_PUZZLES, openPuzzleIds } from '../../core/stillfall/puzzle-bank.js';
 import { installStillfallHud, readSolvedStillfall } from '../stillfall/stillfall-hud.js';
 import { odysseyMeterHtml } from '../keystone/odyssey-meter.js';
@@ -291,6 +292,7 @@ class MainMenu {
         this.scoreStats = null;
         this.odysseyShape = null;
         this.haleNewest = null;
+        this.light = this.modal ? new MenuLight(this.modal) : null;
         this.buildStageShell();
         this.mountQuit();
         this.bind();
@@ -554,6 +556,7 @@ class MainMenu {
             this.cards.forEach((card) => card.classList.toggle('is-current', card.dataset.mode === mode));
             this.root.dataset.current = mode;
             if (this.modal) this.modal.dataset.current = mode;
+            this.light?.to(mode);
             this.renderStage();
         };
         // A pointer sweeping down the list should not flicker the stage.

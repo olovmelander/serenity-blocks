@@ -252,10 +252,14 @@ class SteamService {
      */
     async _doInitialize() {
         if (!electronApi) {
+            // A browser build: there is no Steam client to wait for, so say so at once.
+            // Listeners that wait for READY or INIT_FAILED (the menu's player card, the
+            // Online Versus gate) would otherwise stay in their "connecting" state forever.
             console.log('[SteamService] No IPC available - running in offline mode');
             this._enterOfflineMode();
             this._updateConnectionState();
             this.initComplete = true;
+            this.emit(STEAM_EVENTS.INIT_FAILED, { source: 'no-ipc' });
             return false;
         }
 

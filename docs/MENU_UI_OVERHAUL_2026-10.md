@@ -367,7 +367,7 @@ in the corner. It now opens with a picture of the mode, taken from the game itse
 
 | Surface | Layer | Status |
 |---|---|---|
-| Main menu, dock, corner tiles, player card | `keystone-menu.css` | Shipped |
+| Main menu, dock, corner tiles, player card | `keystone-menu.css` | Shipped. 2026-10-21: the player card is a Keystone tile read from `steamService` on every show, absent in browser builds (no Steam client); the selected mode lights the page (`menu-light.js`). See [UI_NAVIGATOR_STANDARD_PASS_2026-10.md](UI_NAVIGATOR_STANDARD_PASS_2026-10.md). |
 | Settings (also the pause sheet), Records, Replays, game over, replay complete | `keystone-settings.css`, `keystone-modals.css` | Shipped |
 | Serenity Hub (Themes, Music, Breathing, Hale sessions), Hale flow, breathing guide chrome, Serenity controls overlay | `keystone-hub.css`, `breathwork-sessions.css`, `breathing-library.css`, `breathing-guide.css` | Shipped |
 | Multiplayer (local setup, lobby browser, create match, waiting room, results, toasts, invite, in-game HUD type) | `keystone-multiplayer.css` | Shipped |

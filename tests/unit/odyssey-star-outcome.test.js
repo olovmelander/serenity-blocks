@@ -43,6 +43,8 @@ function createPanelDocument() {
 }
 
 const texts = (node) => node.children.map((child) => child.textContent);
+// A star goal is its tier's stars (here "2 ★", with no document to draw them) and its words.
+const goalTexts = (node) => node.children.map((item) => item.children.map((part) => part.textContent).join(' '));
 
 describe('Odyssey star outcome: why an attempt earned the stars it did', () => {
     it('marks earned tiers from the engine count and names the next star’s shortfall in the player’s numbers', () => {
@@ -198,7 +200,7 @@ describe('Odyssey map orb panel', () => {
         expect(text('level-panel-stars')).toBe('☆☆☆');
         expect(doc.nodes.get('level-panel-stars').dataset.earned).toBe('false');
         expect(text('level-panel-goal')).toBe('Defeat Cinder · First to 3 knockouts');
-        expect(texts(doc.nodes.get('level-panel-star-goals'))).toEqual([
+        expect(goalTexts(doc.nodes.get('level-panel-star-goals'))).toEqual([
             '1 ★ Win the match', '2 ★ Win 3 knockouts + At most 1 top-out', '3 ★ Win 3 knockouts + No top-outs',
         ]);
         expect(text('level-panel-rules-label')).toBe('What changes here');
@@ -224,7 +226,7 @@ describe('Odyssey map orb panel', () => {
         expect(node('level-panel-stars').ariaLabel).toBe('2 of 3 stars earned');
         expect(node('level-panel-stars').attributes['aria-label']).toBe('2 of 3 stars earned');
         expect(node('level-panel-goal').textContent).toBe('Clear 20 lines');
-        expect(texts(node('level-panel-star-goals'))).toEqual([
+        expect(goalTexts(node('level-panel-star-goals'))).toEqual([
             '1 ★ Clear the orb', '2 ★ 20 lines + Under 2:30', '3 ★ 20 lines + Under 2 min + Clear no single lines',
         ]);
         expect(node('level-panel-rules-label').textContent).toBe('Rules');

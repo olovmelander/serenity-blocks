@@ -94,6 +94,33 @@ describe('Odyssey theme collection reward', () => {
         expect(window.listenerCount()).toBe(0);
     });
 
+    it('puts the result first and the first-clear reward second on the results sheet', () => {
+        vi.spyOn(SteamLeaderboardPanel.prototype, 'mount').mockImplementation(() => {});
+        vi.spyOn(SteamLeaderboardPanel.prototype, 'destroy').mockImplementation(() => {});
+        const modal = createResultsModal({
+            results: {
+                score: 1000, lines: 20, time: 30, stars: 2, themeUnlock: receipt({ themeIds: ['pyrestorm'] }),
+            },
+            onClose: () => {},
+            levelConfig: {
+                id: 1, name: 'Ashen Dawn', chapter: 1, theme: { primary: 'cinder-drift' },
+            },
+            levelId: 1,
+            totalStars: 2,
+            formatTime: () => '0:30',
+        });
+        const main = nodes(modal).find((node) => node.className === 'sb-ody-outcome__main');
+        const order = main.children.map((node) => node.className);
+        expect(order.indexOf('sb-star-row sb-ody-stars')).toBeLessThan(order.indexOf('sb-ody-facts'));
+        expect(order.indexOf('sb-ody-facts')).toBeLessThan(order.indexOf('ody-theme-reward'));
+        // The stars land one beat apart.
+        const stars = main.children.find((node) => node.className === 'sb-star-row sb-ody-stars');
+        expect(stars.children.map((star) => star.style.animationDelay)).toEqual(['250ms', '410ms', '570ms']);
+        expect(stars.children.map((star) => star.className)).toEqual(['is-earned', 'is-earned', '']);
+        expect(stars['aria-label']).toBe('2 of 3 stars');
+        modal.dispose();
+    });
+
     it.each([undefined, receipt({ persisted: false }), receipt({ themeIds: [] }),
         receipt({ themeIds: ['unknown', 'forest'] })])('does not fabricate an award for %j', (saved) => {
         expect(createThemeUnlockReward(saved)).toBeNull();

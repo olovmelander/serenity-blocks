@@ -49,13 +49,32 @@
     background: linear-gradient(180deg, transparent 50%, rgba(5, 5, 16, 0.2) 72%, rgba(5, 5, 16, 0.64));
 }
 
-/* ---- Portal motif (centred transit and familiar completions) ------------------- */
+/* ---- The orb's world (familiar completions and the opaque cover) ---------------- */
+/* The orb just cleared, then the orb ahead, as the navigator draws them (odyssey-shared.css
+   .sb-orb-art): its world in a ring, a halo in the chapter's light and its number on a tab. The
+   portal's orbits and trails turn around it. A first-time reward brings its own art instead. */
+.ody-flow__art {
+    --orb-art-size: clamp(92px, min(17vh, 30vw), 172px);
+    position: relative;
+    isolation: isolate;
+    display: none;
+    width: var(--orb-art-size);
+    height: var(--orb-art-size);
+    margin: 0 auto clamp(26px, 4.4vh, 40px);
+}
+/* Low specificity on purpose: the short-screen rules below hide it with a plain layout selector. */
+.ody-flow:where([data-layout='ceremony']:not([data-theme-reward='true']), [data-layout='transit']) .ody-flow__art {
+    display: block;
+}
+.ody-flow[data-layout='ceremony'] .ody-flow__art [data-orb='next'],
+.ody-flow[data-layout='transit'] .ody-flow__art [data-orb='done'] { display: none; }
+.ody-flow__art > .sb-orb-art { position: absolute; inset: 0; width: 100%; height: 100%; }
 .ody-flow__portal {
     position: absolute;
     z-index: -1;
-    top: 128px;
+    top: 50%;
     left: 50%;
-    width: min(66vw, 400px);
+    width: calc(var(--orb-art-size) * 2.5);
     aspect-ratio: 1;
     transform: translate(-50%, -50%);
     pointer-events: none;
@@ -80,7 +99,7 @@
 .ody-flow__orbit--inner { inset: 16%; opacity: 0.32; transform: rotate(32deg) scaleY(0.56); }
 .ody-flow__trail {
     position: absolute;
-    inset: 22%;
+    inset: 24%;
     border-radius: 50%;
     border: 1px solid transparent;
     border-top-color: currentColor;
@@ -98,24 +117,15 @@
     background: currentColor;
     box-shadow: 0 0 20px 3px currentColor;
 }
-.ody-flow__trail--second { inset: 30%; animation-direction: reverse; animation-duration: 24s; opacity: 0.24; }
-.ody-flow__core {
-    position: absolute;
-    inset: 37%;
-    display: grid;
-    place-items: center;
-    border-radius: 50%;
-    border: 1px solid color-mix(in srgb, currentColor 38%, transparent);
-    background: radial-gradient(circle at 38% 30%, color-mix(in srgb, currentColor 12%, #0c0b1b), #0c0b1b);
-    box-shadow: 0 0 60px color-mix(in srgb, currentColor 10%, transparent), inset 0 0 28px #080714;
-    font: 400 clamp(25px, 4vw, 42px) / 1 var(--sb-font-display, sans-serif);
-    letter-spacing: 0.08em;
-}
+.ody-flow__trail--second { inset: 28%; animation-direction: reverse; animation-duration: 24s; opacity: 0.3; }
+/* The world arrives inside its orbits; the cover's destination is already there. */
+.ody-flow[data-layout='ceremony'] .ody-flow__art > .sb-orb-art { animation: ody-flow-art 900ms 60ms var(--ody-ease-out) backwards; }
 
 /* ---- Shared copy ---------------------------------------------------------------- */
+/* Centred when it fits; auto margins collapse to zero instead of hiding its top. */
 .ody-flow__content {
     width: min(640px, 100%);
-    margin: max(220px, 24vh) auto 0;
+    margin: auto;
     position: relative;
     text-align: center;
     animation: ody-flow-arrive 550ms var(--ody-ease-out) both;
@@ -256,12 +266,37 @@
 .ody-flow__primary { min-width: min(196px, 100%); overflow: hidden; isolation: isolate; }
 .ody-flow__quiet { background: rgba(15, 12, 29, 0.5); }
 .ody-flow [data-flow-action='pause'] { min-width: 88px; }
-.ody-flow__preference { display: inline-flex; align-items: center; justify-content: center; gap: 9px; margin-top: 18px; min-height: 32px; cursor: pointer; color: #c8c0d7; font-size: 0.77rem; line-height: 1.5; }
-.ody-flow__preference input { accent-color: var(--ody-flow-color); width: 16px; height: 16px; flex: 0 0 auto; }
+/* Keycaps name what Enter, Escape and the pad really do here. Pause wears its caps only while
+   travelling, where it holds focus as the default action; beside Continue they would mislead. */
+.ody-flow .sb-btn .sb-kbd { margin-right: -8px; }
+.ody-flow[data-layout='ceremony'] [data-flow-action='pause'] .sb-kbd { display: none; }
+/* The auto-continue choice stays with the ceremony, but as a quiet aside (the map panel has it too). */
+.ody-flow__preference {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    margin-top: 12px;
+    min-height: 28px;
+    cursor: pointer;
+    color: var(--sb-text-faint);
+    font-size: 0.7rem;
+    line-height: 1.4;
+    transition: color 160ms ease;
+}
+.ody-flow__preference:hover,
+.ody-flow__preference:focus-within { color: var(--sb-text-muted); }
+.ody-flow__preference input {
+    flex: 0 0 auto;
+    width: 13px;
+    height: 13px;
+    margin: 0;
+    accent-color: color-mix(in srgb, var(--ody-flow-color) 60%, #77708a);
+}
 .ody-flow :focus-visible { outline: 2px solid var(--ody-flow-color); outline-offset: 5px; }
 .ody-flow .ody-flow__eyebrow:focus-visible,
 .ody-flow .ody-flow__title:focus-visible { outline: none; }
-.ody-flow__breath { margin: 18px 0 0; font-size: 0.77rem; line-height: 1.5; color: #b8afc9; }
+.ody-flow__breath { margin: 0; font-size: 0.77rem; line-height: 1.5; color: #b8afc9; text-align: left; }
 
 /* The Continue button fills while the beat lingers; Pause freezes it where it is. */
 .ody-flow__primary::after {
@@ -305,8 +340,6 @@
 .ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__next { animation-delay: 1220ms; }
 .ody-flow[data-entrance='afterglow'][data-layout='ceremony'] .ody-flow__preference { animation-delay: 860ms; }
 .ody-flow[data-layout='ceremony'] .ody-flow__content { width: min(660px, 100%); }
-/* Centre the ceremony when it fits; auto margins collapse to zero instead of hiding its top. */
-.ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__content { margin: auto; }
 .ody-flow[data-layout='ceremony'] .ody-flow__eyebrow { animation: ody-flow-rise 520ms 80ms var(--ody-ease-out) backwards; }
 .ody-flow[data-layout='ceremony'] .ody-flow__achievement {
     animation: ody-flow-hero 820ms 160ms var(--ody-ease-out) backwards;
@@ -335,7 +368,6 @@
 .ody-flow[data-layout='ceremony'] .ody-flow__status,
 .ody-flow[data-layout='ceremony'] .ody-flow__actions,
 .ody-flow[data-layout='ceremony'] .ody-flow__preference { animation: ody-flow-rise 520ms 540ms var(--ody-ease-out) backwards; }
-.ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__portal { display: none; }
 .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__next { animation-delay: 1900ms; }
 .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__status,
 .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__actions,
@@ -468,10 +500,11 @@
 /* ---- Chapter: an untimed arrival with a breathing light ------------------------- */
 .ody-flow[data-layout='chapter'] {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(220px, 32vw);
+    grid-template-columns: minmax(0, 1fr) minmax(220px, 29vw);
     align-items: end;
     gap: 24px;
-    padding: 40px clamp(24px, 7vw, 110px) max(40px, env(safe-area-inset-bottom));
+    /* No bottom padding: the action bar carries it, so it can stay in view as the story scrolls. */
+    padding: clamp(20px, 4.4vh, 40px) clamp(24px, 7vw, 110px) 0;
 }
 .ody-flow[data-layout='chapter']::before {
     opacity: 1;
@@ -499,31 +532,40 @@
     animation: ody-flow-arrive 900ms 200ms var(--ody-ease-out) both;
 }
 .ody-flow[data-layout='chapter'] .ody-flow__eyebrow { animation: ody-flow-rise 700ms 380ms var(--ody-ease-out) backwards; }
+.ody-flow[data-layout='chapter'] .ody-flow__recognition { margin-bottom: clamp(10px, 2vh, 18px); }
+.ody-flow[data-layout='chapter'] .ody-flow__eyebrow { margin-bottom: clamp(6px, 1.4vh, 12px); }
 .ody-flow[data-layout='chapter'] .ody-flow__title {
-    font-size: clamp(1.75rem, 5vw, 4rem);
+    font-size: clamp(1.75rem, min(5vw, 7.4vh), 4rem);
     animation: ody-flow-hero 1000ms 480ms var(--ody-ease-out) backwards;
 }
 .ody-flow[data-layout='chapter'] .ody-flow__subtitle { animation: ody-flow-rise 700ms 760ms var(--ody-ease-out) backwards; }
 .ody-flow[data-layout='chapter'] .ody-flow__narrative { animation: ody-flow-rise 800ms 900ms var(--ody-ease-out) backwards; }
 .ody-flow[data-layout='chapter'] .ody-flow__destination,
 .ody-flow[data-layout='chapter'] .ody-flow__changes { animation: ody-flow-rise 700ms 1100ms var(--ody-ease-out) backwards; }
-.ody-flow[data-layout='chapter'] .ody-flow__actions,
-.ody-flow[data-layout='chapter'] .ody-flow__breath { animation: ody-flow-rise 700ms 1250ms var(--ody-ease-out) backwards; }
+/* The untimed note rides inside the action bar, so it rises with it. */
+.ody-flow[data-layout='chapter'] .ody-flow__actions { animation: ody-flow-rise 700ms 1250ms var(--ody-ease-out) backwards; }
 /* Arrival focuses the static heading for reading; only actions need the focus ring. */
-.ody-flow__subtitle { margin: 16px 0 0; color: var(--ody-flow-color); font-size: 1.08rem; line-height: 1.5; }
-.ody-flow__narrative { max-width: 55ch; margin: 16px 0 0; color: #e5deeb; font-size: 0.95rem; line-height: 1.65; text-wrap: pretty; }
+.ody-flow__subtitle { margin: clamp(8px, 1.8vh, 16px) 0 0; color: var(--ody-flow-color); font-size: 1.08rem; line-height: 1.5; }
+.ody-flow__narrative {
+    max-width: 55ch;
+    margin: clamp(8px, 1.8vh, 16px) 0 0;
+    color: #e5deeb;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    text-wrap: pretty;
+}
 /* A first arrival's orientation: how orbs, stars, charms and the pause sheet work. */
 .ody-flow__orientation {
     list-style: none;
     max-width: 58ch;
-    margin: 18px 0 0;
-    padding: 14px 0 0;
+    margin: clamp(10px, 2vh, 18px) 0 0;
+    padding: clamp(10px, 1.6vh, 14px) 0 0;
     border-top: 1px solid rgba(255, 246, 233, 0.12);
     color: #c8c0d7;
     font-size: 0.88rem;
     line-height: 1.55;
 }
-.ody-flow__orientation li { position: relative; padding-left: 18px; }
+.ody-flow__orientation li { position: relative; padding-left: 18px; text-wrap: pretty; }
 .ody-flow__orientation li + li { margin-top: 6px; }
 .ody-flow__orientation li::before {
     content: '✦';
@@ -551,10 +593,57 @@
 .ody-flow__found-line .charm-sprite__glyph { color: #c8b2ed; font-size: 18px; }
 .ody-flow__found-hint { color: #c8c0d7; }
 .ody-flow[data-layout='ceremony'] .ody-flow__found { animation: ody-flow-rise 520ms 900ms var(--ody-ease-out) backwards; }
-.ody-flow[data-layout='chapter'] .ody-flow__destination { border-left: 1px solid var(--ody-flow-color); padding-left: 16px; margin-top: 24px; }
+.ody-flow[data-layout='chapter'] .ody-flow__destination {
+    border-left: 1px solid var(--ody-flow-color);
+    padding-left: 16px;
+    margin-top: clamp(12px, 2.6vh, 24px);
+}
 .ody-flow[data-layout='chapter'] .ody-flow__changes { margin-left: 0; max-width: 55ch; }
 .ody-flow[data-layout='chapter'] .ody-flow__status:empty { display: none; }
-.ody-flow[data-layout='chapter'] .ody-flow__actions { justify-content: flex-start; margin-top: 26px; }
+/* The head is eyebrow → title; what the finished chapter opened is said after its story. */
+.ody-flow[data-layout='chapter'] .ody-flow__next { display: flex; flex-direction: column; align-items: flex-start; }
+.ody-flow[data-layout='chapter'] .ody-flow__breath-opening { order: 1; margin: clamp(10px, 2vh, 16px) 0 0; }
+.ody-flow[data-layout='chapter'] .ody-flow__destination,
+.ody-flow[data-layout='chapter'] .ody-flow__changes { order: 2; }
+/* Wide arrivals set the orientation's four notes as a two-by-two, half the lines of a list. */
+@media (min-width: 900px) {
+    .ody-flow[data-layout='chapter'] .ody-flow__orientation {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 6px 28px;
+        max-width: 100ch;
+    }
+    .ody-flow[data-layout='chapter'] .ody-flow__orientation li + li { margin-top: 0; }
+}
+/* However short the window, Begin chapter and Map stay in view; the story scrolls above them. */
+.ody-flow[data-layout='chapter'] .ody-flow__actions {
+    position: sticky;
+    z-index: 1;
+    bottom: 0;
+    justify-content: flex-start;
+    gap: 10px 12px;
+    margin: clamp(14px, 2.6vh, 24px) -16px 0;
+    padding: 12px 16px max(clamp(16px, 4.4vh, 40px), env(safe-area-inset-bottom));
+}
+/* A feathered shade, not a box: it is solid under the buttons and fades out only beyond them,
+   so scrolled text vanishes under the bar instead of showing through it. */
+.ody-flow[data-layout='chapter'] .ody-flow__actions::before {
+    content: '';
+    position: absolute;
+    inset: -32px -56px 0;
+    z-index: -1;
+    pointer-events: none;
+    background: #080713;
+    -webkit-mask-image:
+        linear-gradient(180deg, transparent, #000 32px),
+        linear-gradient(90deg, transparent, #000 56px, #000 calc(100% - 56px), transparent);
+    -webkit-mask-composite: source-in;
+    mask-image:
+        linear-gradient(180deg, transparent, #000 32px),
+        linear-gradient(90deg, transparent, #000 56px, #000 calc(100% - 56px), transparent);
+    mask-composite: intersect;
+}
+.ody-flow[data-layout='chapter'] .ody-flow__breath { flex: 1 1 200px; max-width: 34ch; margin: 0 0 0 6px; text-wrap: balance; }
 .ody-flow[data-layout='chapter'] .ody-breath { grid-column: 2; grid-row: 1; align-self: center; justify-self: center; }
 
 /* ---- Departing: the visible composition fades in place ------------------------- */
@@ -747,10 +836,7 @@
 /* ---- Responsive -------------------------------------------------------------------- */
 @media (max-height: 700px), (max-width: 480px) {
     .ody-flow { align-items: flex-start; }
-    .ody-flow__portal { width: 290px; top: 116px; }
-    .ody-flow__content { margin-top: 176px; }
-    .ody-flow[data-layout='chapter'] { padding-top: 24px; }
-    .ody-flow__preference { margin-top: 12px; }
+    .ody-flow__preference { margin-top: 10px; }
     .ody-flow__stars { margin: 10px 0 6px; font-size: 22px; }
 }
 @media (max-width: 760px) {
@@ -767,11 +853,14 @@
     .ody-flow[data-layout='chapter'] .ody-flow__content { grid-row: 2; }
     .ody-breath__orb { width: clamp(110px, 30vw, 150px); }
     .ody-breath__hint { display: none; }
+    /* A narrow bar keeps to its two buttons: nothing on an arrival counts down, and the note
+       would double the bar that stays over the story. */
+    .ody-flow[data-layout='chapter'] .ody-flow__breath { display: none; }
 }
 @media (max-width: 480px) {
-    .ody-flow__portal { width: 180px; top: 64px; }
-    .ody-flow__content { margin-top: 96px; }
     .ody-flow__actions { gap: 8px; }
+    /* A phone is touched: its buttons keep their pad caps for a controller, not keyboard caps. */
+    .ody-flow .sb-kbd[data-key] { display: none; }
     .ody-flow__primary { min-width: 0; flex: 1 1 150px; padding-inline: 12px; font-size: 0.72rem; }
     .ody-flow__quiet { padding-inline: 12px; font-size: 0.72rem; }
     .ody-flow[data-layout='scenic'] { padding: 12px 12px max(12px, env(safe-area-inset-bottom)); }
@@ -780,54 +869,49 @@
     .ody-flow[data-layout='scenic'] .ody-flow__dest-art { width: 44px; height: 44px; }
 }
 
-/* However short the window, Begin chapter stays in view; the story scrolls above it. */
-@media (max-height: 700px) {
-    .ody-flow[data-layout='chapter'] { padding-bottom: 0; }
-    .ody-flow[data-layout='chapter'] .ody-flow__actions {
-        position: sticky;
-        z-index: 1;
-        bottom: 0;
-        margin: 18px -16px 0;
-        padding: 12px 16px max(16px, env(safe-area-inset-bottom));
-    }
-    /* A feathered shade, not a box: scrolled text fades out under the buttons. */
-    .ody-flow[data-layout='chapter'] .ody-flow__actions::before {
-        content: '';
-        position: absolute;
-        inset: -28px -48px 0;
-        z-index: -1;
-        pointer-events: none;
-        background: #080713;
-        -webkit-mask-image:
-            linear-gradient(180deg, transparent, #000 55%),
-            linear-gradient(90deg, transparent, #000 14%, #000 72%, transparent);
-        -webkit-mask-composite: source-in;
-        mask-image:
-            linear-gradient(180deg, transparent, #000 55%),
-            linear-gradient(90deg, transparent, #000 14%, #000 72%, transparent);
-        mask-composite: intersect;
-    }
-}
-
-/* Wide but short windows (a laptop browser, a windowed game): the reward and the next orb sit
-   side by side so the whole ceremony fits without scrolling and the journey never stalls. */
-@media (min-width: 900px) and (max-height: 760px) and (min-height: 501px) {
+/* Wide but short windows (a laptop browser, a windowed game, a Steam Deck): the reward and the
+   next orb sit side by side so the whole ceremony fits without scrolling and the journey never
+   stalls. Named areas keep the charm line under the reward, beside the next orb: placed in
+   source order it spanned both columns between them and pushed the next orb a row down. */
+@media (min-width: 900px) and (max-height: 860px) and (min-height: 501px) {
     .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__content {
         display: grid;
         grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+        grid-template-areas:
+            'eyebrow eyebrow'
+            'hero hero'
+            'score score'
+            'notes notes'
+            'reward next'
+            'found next'
+            'status status'
+            'progress progress'
+            'actions actions'
+            'pref pref';
         column-gap: 28px;
         width: min(1000px, 100%);
         align-items: center;
     }
     .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__content > * { grid-column: 1 / -1; }
+    .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__eyebrow { grid-area: eyebrow; }
+    .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__achievement { grid-area: hero; }
+    .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__score { grid-area: score; }
+    .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__star-notes { grid-area: notes; }
+    .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__status { grid-area: status; }
+    .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__progress { grid-area: progress; }
+    .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__actions { grid-area: actions; }
+    .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__preference { grid-area: pref; justify-self: center; }
     .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-theme-reward {
-        grid-column: 1;
+        grid-area: reward;
+        align-self: end;
         width: 100%;
-        margin: 12px 0;
+        margin: 12px 0 8px;
     }
+    .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__found { grid-area: found; align-self: start; margin: 0 0 6px; }
     .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-theme-reward__song-note { display: block; }
     .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__next {
-        grid-column: 2;
+        grid-area: next;
+        align-self: center;
         margin: 0;
         padding: 4px 0 4px 24px;
         border-top: 0;
@@ -836,10 +920,13 @@
     }
     .ody-flow[data-layout='ceremony'][data-theme-reward='true'] .ody-flow__changes { margin-left: 0; }
 }
-/* Short screens drop the decorative portal from a familiar orb's brief beat. */
-@media (max-height: 640px) and (min-height: 501px) {
-    .ody-flow[data-layout='ceremony'] .ody-flow__portal { display: none; }
-    .ody-flow[data-layout='ceremony'] .ody-flow__content { margin: auto; }
+/* Short screens keep a familiar orb's world small, then let the words carry the brief beat. */
+@media (max-height: 800px) {
+    .ody-flow__art { --orb-art-size: clamp(88px, 14vh, 128px); margin-bottom: clamp(22px, 3.6vh, 32px); }
+}
+@media (max-height: 640px) {
+    .ody-flow__art { --orb-art-size: clamp(72px, 14vh, 96px); margin-bottom: 22px; }
+    .ody-flow[data-layout='ceremony'] .ody-flow__art { display: none; }
 }
 
 /* On short landscape screens, use the width for goals and keep Pause in view. */
@@ -847,10 +934,12 @@
     .ody-flow[data-layout='ceremony'],
     .ody-flow[data-layout='transit'] { padding-block: 8px; }
     .ody-flow[data-layout='ceremony'] .ody-flow__preference { min-height: 26px; margin-top: 2px; }
+    /* The next orb's rules wait for the journey's briefing (and the HUD), so every control fits. */
+    .ody-flow[data-layout='ceremony'] .ody-flow__changes { display: none; }
     .ody-flow[data-layout='ceremony'] .ody-flow__actions { margin-top: 6px; }
     .ody-flow[data-layout='ceremony'] .ody-flow__status { margin-top: 4px; }
-    .ody-flow[data-layout='ceremony'] .ody-flow__portal,
-    .ody-flow[data-layout='transit'] .ody-flow__portal { display: none; }
+    .ody-flow[data-layout='ceremony'] .ody-flow__art,
+    .ody-flow[data-layout='transit'] .ody-flow__art { display: none; }
     .ody-flow[data-layout='ceremony'] .ody-flow__content,
     .ody-flow[data-layout='transit'] .ody-flow__content {
         display: grid;
@@ -919,7 +1008,7 @@
 .odyssey-flow-preference__copy small { display: block; margin-top: 3px; color: var(--sb-text-muted, #c8c0d7); font-size: 0.75rem; }
 .odyssey-flow-preference input:focus-visible { outline: 2px solid var(--sb-keystone, #eda890); outline-offset: 4px; }
 
-/* ---- Theme + song reward: compact card (Results, finale) ------------------------- */
+/* ---- Theme + song reward: compact card (Results; the finale uses the ceremony card) ---- */
 .ody-theme-reward {
     --ody-reward-color: #ebcb9c;
     --ody-reward-glow: #fff1d3;
@@ -1179,9 +1268,9 @@
     .ody-theme-reward--ceremony .ody-theme-reward__song { justify-content: center; }
     .ody-theme-reward--ceremony .ody-theme-reward__song-note { margin-left: 0; }
 }
-/* Small phones: a smaller artwork, and the next orb's rules wait for the journey's briefing
-   (and the HUD), so the reward, the next orb and Pause fit and the flow carries on. */
-@media (max-width: 560px) and (max-height: 760px) {
+/* Phones: a smaller artwork, and the next orb's rules wait for the journey's briefing (and the
+   HUD), so the reward, the next orb and every control fit and the flow carries on. */
+@media (max-width: 560px) and (max-height: 900px) {
     .ody-theme-reward--ceremony { gap: 10px; padding: 16px 16px 14px; margin-block: 10px 12px; }
     .ody-theme-reward--ceremony .ody-theme-reward__art { width: 80px; height: 80px; }
     .ody-theme-reward--ceremony .ody-theme-reward__seal { font-size: 30px; }
@@ -1212,20 +1301,24 @@
     align-items: center;
     justify-content: center;
     pointer-events: auto;
-    background: radial-gradient(circle at 50% 50%, rgba(10, 18, 34, 0.06), rgba(2, 6, 18, 0.28) 70%, rgba(0, 0, 0, 0.36) 100%);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
+    /* A veil, never a blur: the live scene stays sharp under the cue (no backdrop-filter). */
+    background: radial-gradient(circle at var(--cue-well-x, 50%) var(--cue-well-y, 50%),
+        rgba(10, 18, 34, 0.06), rgba(2, 6, 18, 0.3) 70%, rgba(0, 0, 0, 0.4) 100%);
     animation: ody-cue-veil 220ms ease-out both;
 }
+/* The plate sits on the well and never overhangs it onto the HUD: odyssey-start-cue.js measures
+   the well (--cue-well-*); without one the plate is centred and capped. */
 .odyssey-start-cue__panel {
     position: relative;
+    box-sizing: border-box;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
     gap: 10px;
-    min-width: 220px;
-    padding: 18px 28px;
+    width: min(calc(var(--cue-well-w, 380px) - 24px), calc(100vw - 32px));
+    container-type: inline-size;
+    padding: 18px 12px;
     border-radius: 22px;
     background: linear-gradient(180deg, rgba(8, 15, 28, 0.32), rgba(4, 10, 22, 0.16));
     border: 1px solid rgba(255, 246, 233, 0.12);
@@ -1236,9 +1329,9 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 240px;
-    height: 240px;
-    margin: -120px 0 0 -120px;
+    width: min(240px, 88cqi);
+    aspect-ratio: 1;
+    translate: -50% -50%;
     border-radius: 50%;
     border: 1.5px solid rgba(158, 232, 237, 0.55);
     box-shadow: 0 0 30px rgba(158, 232, 237, 0.18), inset 0 0 24px rgba(158, 232, 237, 0.12);
@@ -1247,10 +1340,22 @@
     transform: scale(0.6);
     animation: ody-cue-ready-ring 900ms ease-in-out infinite alternate;
 }
+.odyssey-start-cue[data-fit='well'] {
+    display: block;
+    transform-origin: var(--cue-well-x) var(--cue-well-y);
+}
+.odyssey-start-cue[data-fit='well'] .odyssey-start-cue__panel {
+    position: absolute;
+    left: var(--cue-well-x);
+    top: var(--cue-well-y);
+    translate: -50% -50%;
+}
 .odyssey-start-cue__label {
     position: relative;
-    font: 700 clamp(48px, 7vw, 92px) / 1 'Unbounded', 'Orbitron', sans-serif;
-    letter-spacing: 0.18em;
+    /* Sized by the plate, so READY always fits the well it starts (container query units). */
+    font: 700 clamp(28px, 17cqi, 84px) / 1 var(--sb-font-display, 'Unbounded', sans-serif);
+    letter-spacing: 0.16em;
+    margin-right: -0.16em;
     text-transform: uppercase;
     color: #9ee8ed;
     text-shadow: 0 0 18px rgba(158, 232, 237, 0.85), 0 0 48px rgba(158, 232, 237, 0.4);
@@ -1258,8 +1363,10 @@
 }
 .odyssey-start-cue__subtitle {
     position: relative;
-    font: 400 clamp(12px, 1.2vw, 16px) / 1.4 'Unbounded', 'Manrope', sans-serif;
-    letter-spacing: 0.18em;
+    max-width: 100%;
+    font: 400 clamp(11px, 1.1vw, 15px) / 1.4 var(--sb-font-display, 'Unbounded', sans-serif);
+    letter-spacing: 0.16em;
+    overflow-wrap: anywhere;
     text-transform: uppercase;
     color: rgba(255, 246, 233, 0.78);
     text-align: center;
@@ -1275,11 +1382,7 @@
     box-shadow: 0 0 36px rgba(255, 172, 136, 0.3), inset 0 0 24px rgba(255, 172, 136, 0.16);
     animation: ody-cue-go-ring 560ms cubic-bezier(0.05, 0.7, 0.1, 1) forwards;
 }
-.odyssey-start-cue--afterglow {
-    pointer-events: none !important;
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-}
+.odyssey-start-cue--afterglow { pointer-events: none !important; }
 .odyssey-start-cue--afterglow,
 .odyssey-start-cue--afterglow * { animation: none !important; }
 .odyssey-start-cue--afterglow .odyssey-start-cue__label { transform: scale(1.06); }

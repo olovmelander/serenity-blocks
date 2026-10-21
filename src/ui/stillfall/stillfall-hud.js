@@ -7,17 +7,23 @@
  * in localStorage, so the mode never touches storage. Styles: public/styles/stillfall.css.
  *
  * Keys: Backspace (or Ctrl+Z) takes back a piece, R restarts, ? asks for a hint, Enter
- * goes on after a solve and takes the last piece back after a miss. Gamepad: LB takes back,
- * RB restarts, LT asks for a hint, A does what Enter does. The pad is read here
- * (navigator.getGamepads) while a puzzle is on the board; the gamepad controller keeps the
- * piece controls. Select opens the puzzle list, which then
- * owns the pad (stillfall-pad-list.js): up and down walk it, A plays, B closes.
+ * goes on after a solve and takes the last piece back after a miss, P opens the puzzle
+ * atlas. Gamepad: LB takes back, RB restarts, LT asks for a hint, A does what Enter does.
+ * The pad is read here (navigator.getGamepads) while a puzzle is on the board; the gamepad
+ * controller keeps the piece controls.
+ *
+ * The Puzzles button, P and Select open the atlas (stillfall-atlas.js), the whole pyramid
+ * on one page. While it is open it owns the keys and the first pad (stillfall-pad-list.js):
+ * the D-pad walks the puzzles, LB and RB the tiers, A plays, B or Select closes.
  */
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { stillfallProgress } from '../../core/stillfall/stillfall-progress.js';
-import { SOLVES_TO_OPEN_NEXT_TIER, TIERS, tierName } from '../../core/stillfall/puzzle-bank.js';
+import { tierName } from '../../core/stillfall/puzzle-bank.js';
 import { escapeHtml } from '../../utils/dom-safety.js';
 import { csIcon } from '../components/cosmic-icons.js';
+import {
+    capitalised, goalText, plural, theMarked,
+} from './stillfall-copy.js';
 import { createPuzzleListPadControls } from './stillfall-pad-list.js';
 
 const SOLVED_KEY = 'serenity.stillfall.solved';
@@ -57,39 +63,11 @@ function writeSolved(ids) {
     } catch { /* storage blocked: the solve still counts for this session */ }
 }
 
-const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 const key = (label) => `<kbd class="sb-kbd" data-key aria-hidden="true">${escapeHtml(label)}</kbd>`;
 const pad = (label) => `<kbd class="sb-kbd" data-pad aria-hidden="true">${label}</kbd>`;
 
-const NUMBER_WORDS = ['no', 'one', 'two', 'three'];
-/** "the relic", "both relics", "all three relics" */
-const theMarked = (count, one, many) => {
-    if (count === 1) return `the ${one}`;
-    return count === 2 ? `both ${many}` : `all ${NUMBER_WORDS[count] || count} ${many}`;
-};
-const capitalised = (text) => text.charAt(0).toUpperCase() + text.slice(1);
-
-/** One goal in the panel's words. */
-function partText(part) {
-    if (part.type === 'waves') return `Set off a cascade ${plural(part.atLeast, 'wave', 'waves')} deep`;
-    if (part.type === 'lines') return `Clear ${plural(part.atLeast, 'line', 'lines')}`;
-    if (part.type === 'clear-all') return 'Empty the well';
-    if (part.type === 'seal') return 'Break the seal';
-    return 'Bring the relic to the floor';
-}
-
-/** The goal as one sentence: two or three goals are joined, the counts first. */
-export function goalText(goal) {
-    if (goal.type !== 'all') return partText(goal);
-    const relics = goal.of.filter((part) => part.type === 'relic-floor').length;
-    const seals = goal.of.filter((part) => part.type === 'seal').length;
-    const phrases = goal.of.filter((part) => part.type !== 'relic-floor' && part.type !== 'seal').map(partText);
-    if (relics) phrases.push(`bring ${theMarked(relics, 'relic', 'relics')} to the floor`);
-    if (seals) phrases.push(`break ${theMarked(seals, 'seal', 'seals')}`);
-    const words = phrases.map((phrase) => phrase.charAt(0).toLowerCase() + phrase.slice(1));
-    const sentence = words.length > 2 ? `${words.slice(0, -1).join(', ')} and ${words.at(-1)}` : words.join(' and ');
-    return capitalised(sentence);
-}
+/** The goal as one sentence (stillfall-copy.js; the atlas uses it too). */
+export { goalText };
 
 const goalPartsOf = (goal) => (goal.type === 'all' ? goal.of : [goal]);
 /** The single goals and where each stands; a state without them reads the goal itself. */
@@ -230,42 +208,59 @@ export function outcomeHtml(state) {
     return '';
 }
 
-export function bankHtml(state) {
-    const solvedIn = (tier) => state.bank.filter((e) => e.tier === tier && e.solved).length;
-    return TIERS.map(({ tier, name }, index) => {
-        const entries = state.bank.filter((e) => e.tier === tier);
-        if (entries.length === 0) return '';
-        // A tier that is not open yet is one line; its puzzles are listed once it opens.
-        if (!entries.some((e) => e.open)) {
-            const count = plural(entries.length, 'puzzle', 'puzzles');
-            return `
-        <div class="stillfall-tier is-locked">
-            <p class="stillfall-tier__name">${escapeHtml(name)} <span class="stillfall-tier__note">${count} · locked</span></p>
-        </div>`;
+/**
+ * The atlas, fetched once Stillfall shows its first puzzle rather than at boot: the main menu
+ * imports this module for the puzzle counts, and the atlas is a whole page of its own. Until it
+ * lands it is shut and keeps the latest state; an open asked for meanwhile happens on arrival.
+ */
+function createLazyAtlas(options, { onOpened } = {}) {
+    let atlas = null;
+    let loading = null;
+    let latest = null;
+    let pendingOpen = null;
+    const load = () => {
+        if (!loading) {
+            loading = import('./stillfall-atlas.js').then(({ createStillfallAtlas }) => {
+                atlas = createStillfallAtlas(options);
+                if (latest) atlas.update(latest);
+                if (pendingOpen) {
+                    const { state, openOptions } = pendingOpen;
+                    pendingOpen = null;
+                    atlas.open(state, openOptions);
+                    onOpened?.();
+                }
+                return atlas;
+            }).catch((error) => {
+                loading = null;
+                console.warn('[Stillfall] The puzzle atlas could not load:', error?.message || error);
+            });
         }
-        const next = TIERS[index + 1];
-        const nextOpen = next && entries.some((e) => e.open) && state.bank.some((e) => e.tier === next.tier && e.open);
-        let note = `${solvedIn(tier)} of ${entries.length} solved`;
-        if (next && !nextOpen) {
-            note += ` · ${SOLVES_TO_OPEN_NEXT_TIER - solvedIn(tier)} more to open ${escapeHtml(next.name)}`;
-        }
-        return `
-        <div class="stillfall-tier">
-            <p class="stillfall-tier__name">${escapeHtml(name)} <span class="stillfall-tier__note">${note}</span></p>
-            <ol class="stillfall-tier__list">${entries.map((entry) => {
-        const current = entry.id === state.puzzle.id;
-        let mark = entry.open ? '' : '·';
-        if (entry.solved) mark = '✓';
-        const classes = `stillfall-puzzle${current ? ' is-current' : ''}${entry.solved ? ' is-solved' : ''}${entry.open ? '' : ' is-locked'}`;
-        return `<li><button type="button" class="${classes}" data-stillfall-action="load" data-puzzle="${escapeHtml(entry.id)}"
-                    ${entry.open ? '' : 'disabled aria-disabled="true"'} ${current ? 'aria-current="true"' : ''}
-                    aria-label="${escapeHtml(entry.title)}${entry.solved ? ', solved' : ''}${entry.open ? '' : ', locked'}">
-                    <span class="stillfall-puzzle__mark" aria-hidden="true">${mark}</span>
-                    <span>${escapeHtml(entry.title)}</span>
-                </button></li>`;
-    }).join('')}</ol>
-        </div>`;
-    }).join('');
+        return loading;
+    };
+    return {
+        load,
+        update(state) {
+            latest = state;
+            atlas?.update(state);
+        },
+        isOpen: () => Boolean(atlas?.isOpen()),
+        open(state, openOptions) {
+            if (atlas) {
+                atlas.open(state, openOptions);
+                return;
+            }
+            pendingOpen = { state, openOptions };
+            load();
+        },
+        close(closeOptions) {
+            pendingOpen = null;
+            atlas?.close(closeOptions);
+        },
+        move: (step) => atlas?.move(step),
+        moveRow: (step) => atlas?.moveRow(step),
+        stepTier: (step) => atlas?.stepTier(step),
+        choose: () => atlas?.choose(),
+    };
 }
 
 class StillfallHud {
@@ -274,16 +269,23 @@ class StillfallHud {
         this.live = null;
         this.stage = null;
         this.state = null;
-        this.listOpen = false;
+        /** The puzzle atlas (stillfall-atlas.js): the whole pyramid, over the board. */
+        this.atlas = createLazyAtlas({
+            onPlay: (puzzleId) => {
+                this.render();
+                this.send('load', { puzzleId });
+            },
+            onClose: () => this.render(),
+            isCovered: () => this.covered(),
+        }, { onOpened: () => this.render() });
         /** Failed attempts per puzzle this session; the hint opens after HINT_AFTER_FAILS. */
         this.fails = new Map();
         /** When the latest solve or miss came; a press right at it must not skip the result. */
         this.outcomeAt = 0;
         this.padFrame = null;
         this.padPrev = new Map();
-        /** The list's pad owner while a puzzle is on the board, and where the pad is in the list. */
+        /** The atlas's pad owner while a puzzle is on the board. */
         this.padList = null;
-        this.padFocusId = null;
         stillfallProgress.restore(readSolvedStillfall());
         eventBus.on(EVENTS.STILLFALL_STATE, (state) => this.onState(state));
         document.addEventListener('keydown', (event) => this.onKeyDown(event));
@@ -316,6 +318,8 @@ class StillfallHud {
                 && (this.fails.get(state.puzzle.id) || 0) >= HINT_AFTER_FAILS,
         };
         this.render();
+        this.atlas.load();
+        this.atlas.update(this.state);
         this.announce(previous);
         this.watchPad();
         this.claimPadList();
@@ -347,9 +351,20 @@ class StillfallHud {
         return true;
     }
 
+    get listOpen() {
+        return this.atlas.isOpen();
+    }
+
+    /** Opens the atlas on the puzzle on the board; Back hands focus to `returnFocus`. */
+    openAtlas({ returnFocus = null } = {}) {
+        if (!this.state) return;
+        this.atlas.open(this.state, { returnFocus });
+        this.render();
+    }
+
     hide() {
         this.state = null;
-        this.listOpen = false;
+        this.atlas.close({ notify: false, restoreFocus: false });
         this.panel?.remove();
         this.panel = null;
         this.live = null;
@@ -361,47 +376,22 @@ class StillfallHud {
         this.padPrev.clear();
         this.padList?.dispose?.();
         this.padList = null;
-        this.padFocusId = null;
     }
 
-    /** The puzzle list on a gamepad: Select opens it, and while open it owns the first pad. */
+    /** The atlas on a gamepad: Select opens it, and while open it owns the first pad. */
     claimPadList() {
         const controller = typeof window !== 'undefined' ? window.gamepadController : null;
         if (this.padList || !controller?.setPanelControls) return;
         this.padList = controller.setPanelControls(createPuzzleListPadControls(controller, {
             isActive: () => Boolean(this.state) && !this.covered(),
-            isListOpen: () => this.listOpen,
-            onOpen: () => {
-                this.listOpen = true;
-                this.padFocusId = this.state.puzzle.id;
-                this.render();
-            },
-            onMove: (step) => {
-                const ids = this.state.bank.filter((entry) => entry.open).map((entry) => entry.id);
-                const at = Math.max(0, ids.indexOf(this.padFocusId));
-                this.padFocusId = ids[Math.min(ids.length - 1, Math.max(0, at + step))] ?? this.padFocusId;
-                this.markPadFocus();
-            },
-            onChoose: () => {
-                const puzzleId = this.padFocusId;
-                this.listOpen = false;
-                this.render();
-                if (puzzleId) this.send('load', { puzzleId });
-            },
-            onClose: () => {
-                this.listOpen = false;
-                this.render();
-            },
+            isListOpen: () => this.atlas.isOpen(),
+            onOpen: () => this.openAtlas(),
+            onMove: (step) => this.atlas.moveRow(step),
+            onMoveAcross: (step) => this.atlas.move(step),
+            onTier: (step) => this.atlas.stepTier(step),
+            onChoose: () => this.atlas.choose(),
+            onClose: () => this.atlas.close({ restoreFocus: false }),
         }));
-    }
-
-    markPadFocus() {
-        this.content?.querySelectorAll('.stillfall-puzzle.is-pad-focus').forEach((el) => el.classList.remove('is-pad-focus'));
-        const button = this.padFocusId
-            ? this.content?.querySelector(`.stillfall-puzzle[data-puzzle="${this.padFocusId}"]`)
-            : null;
-        button?.classList.add('is-pad-focus');
-        button?.scrollIntoView?.({ block: 'nearest' });
     }
 
     /**
@@ -478,14 +468,11 @@ class StillfallHud {
                     ${csIcon('cycle', 14, 'btn-icon-svg')}<span>Restart</span>${key('R')}${pad('RB')}
                 </button>
                 ${hintButton}
-                <button type="button" class="sb-btn sb-btn--quiet stillfall-list-btn" data-stillfall-action="list" aria-expanded="${this.listOpen}">
-                    ${csIcon('line-stack', 14, 'btn-icon-svg')}<span>Puzzles</span>${pad('Select')}
+                <button type="button" class="sb-btn sb-btn--quiet stillfall-list-btn" data-stillfall-action="list"
+                    aria-haspopup="dialog" aria-controls="stillfall-atlas" aria-expanded="${this.listOpen}">
+                    ${csIcon('line-stack', 14, 'btn-icon-svg')}<span>Puzzles</span>${key('P')}${pad('Select')}
                 </button>
-            </div>
-            ${this.listOpen ? `<nav class="stillfall-bank" aria-label="Puzzles">${bankHtml(state)}</nav>` : ''}`;
-        if (!this.listOpen) this.padFocusId = null;
-        else if (this.padFocusId) this.markPadFocus();
-        else this.content.querySelector('.stillfall-puzzle.is-current')?.scrollIntoView?.({ block: 'nearest' });
+            </div>`;
     }
 
     send(type, extra = {}) {
@@ -520,15 +507,10 @@ class StillfallHud {
         // instead of pressing this button again; a keyboard press keeps its place.
         const byPointer = event.detail > 0;
         if (action === 'list') {
-            this.listOpen = !this.listOpen;
-            this.render();
-            if (!byPointer) this.content?.querySelector('[data-stillfall-action="list"]')?.focus();
-            return;
-        }
-        if (action === 'load') {
-            this.listOpen = false;
-            this.render();
-            this.send('load', { puzzleId: button.dataset.puzzle });
+            // Back from the atlas returns a keyboard user to this button; a pointer, to the board.
+            this.openAtlas({
+                returnFocus: byPointer ? null : () => this.content?.querySelector('[data-stillfall-action="list"]'),
+            });
             return;
         }
         if (action === 'next' || action === 'retry') {
@@ -564,6 +546,9 @@ class StillfallHud {
             this.send('restart');
         } else if (event.key === '?' && this.state.hintOffered) {
             this.send('hint');
+        } else if (event.key === 'p' || event.key === 'P') {
+            event.preventDefault();
+            this.openAtlas();
         } else if (event.key === 'Enter' && !event.target?.closest?.('button')) {
             if (this.goOn()) event.preventDefault();
         }
@@ -595,7 +580,7 @@ class StillfallHud {
             Object.entries(PAD).forEach(([action, index]) => { now[action] = Boolean(gamepad.buttons[index]?.pressed); });
             const prev = this.padPrev.get(gamepad.index) || {};
             this.padPrev.set(gamepad.index, now);
-            // The open list owns the pad (stillfall-pad-list.js): its A plays a puzzle.
+            // The open atlas owns the pad (stillfall-pad-list.js): its A plays a puzzle.
             if (covered || this.listOpen) continue;
             if (now.undo && !prev.undo) this.send('undo');
             if (now.restart && !prev.restart) this.send('restart');

@@ -4,7 +4,9 @@ import {
 import { getOdysseyCampaignSummary } from '../../src/core/odyssey/odyssey-campaign-summary.js';
 import { completeOdysseyLevel } from '../../src/core/game-modes/odyssey-completion.js';
 import { createCampaignFinale } from '../../src/ui/odyssey/CampaignFinale.js';
-import { showOdysseyCampaignFinale } from '../../src/ui/odyssey/odyssey-campaign-finale.js';
+import {
+    describeCampaignFinaleJourney, showOdysseyCampaignFinale,
+} from '../../src/ui/odyssey/odyssey-campaign-finale.js';
 import { createOdysseyFlowDom } from '../helpers/odyssey-flow-dom.js';
 import { DEMO_FIXED_SIMULATION_CLOCK, DEMO_LEGACY_SIMULATION_CLOCK } from '../../src/core/demo/DemoRecorder.js';
 
@@ -58,6 +60,11 @@ const nodes = (root) => [root, ...root.children.flatMap(nodes)];
 const action = (modal, name) => nodes(modal).find((node) => node.dataset.finaleAction === name);
 const currentModal = () => document.getElementById('odyssey-finale-modal');
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
+const CEREMONY = 'ody-theme-reward ody-theme-reward--ceremony';
+const byClass = (root, className) => nodes(root).filter((node) => node.className.split(' ').includes(className));
+const pad = (pressed = []) => ({
+    buttons: Array.from({ length: 17 }, (_, index) => ({ pressed: pressed.includes(index) })),
+});
 
 describe('Odyssey campaign conclusion', () => {
     beforeEach(() => {
@@ -167,7 +174,8 @@ describe('Odyssey campaign conclusion', () => {
         };
         const result = showOdysseyCampaignFinale(mode, { campaignCompleted: true, themeUnlock }, session);
         const first = currentModal();
-        const reward = nodes(first).find((node) => node.className === 'ody-theme-reward');
+        // The campaign's last theme is shown at the ceremony size, as the completion ceremony shows it.
+        const reward = nodes(first).find((node) => node.className === CEREMONY);
         expect(reward.dataset.celebrating).toBe('true');
         await vi.advanceTimersByTimeAsync(0);
         expect(document.activeElement).toBe(nodes(first).find((node) => node.tagName === 'h1'));
@@ -177,7 +185,7 @@ describe('Odyssey campaign conclusion', () => {
         await flush();
         expect(mode._showDetailedLevelResults.mock.calls[0][0].themeUnlock).toBe(themeUnlock);
         const second = currentModal();
-        const returnedReward = nodes(second).find((node) => node.className === 'ody-theme-reward');
+        const returnedReward = nodes(second).find((node) => node.className === CEREMONY);
         expect(returnedReward.dataset.celebrating).toBe('false');
         expect(nodes(second).map((node) => node.textContent).join(' ')).toContain('Neon District');
         action(second, 'world').dispatch('click');
@@ -258,5 +266,122 @@ describe('Odyssey campaign conclusion', () => {
         action(modal, 'world').dispatch('click');
         expect(onChoose).not.toHaveBeenCalled();
         modal.dispose();
+    });
+    it('climbs every chapter in its light, named, with its boss world and the stars earned there', () => {
+        const orbs = [{ id: 1, chapter: 1 }, { id: 2, chapter: 1 }, { id: 3, chapter: 2 }];
+        const worlds = { 1: 'pyrestorm', 2: 'bioluminescence', 3: 'waves' };
+        const registry = {
+            getAllLevels: () => orbs,
+            getAllChapters: () => [
+                { id: 1, name: 'Earth Core & Subterranean Origins' }, { id: 2, name: 'Deep Ocean & Liquid Worlds' }],
+            getLevelsInChapter: (id) => orbs.filter((level) => level.chapter === id),
+            // Levels carry no themeId: the art comes from the presentation's icon theme.
+            resolveLevelPresentation: (id) => ({
+                ...orbs.find((level) => level.id === id), iconThemeId: worlds[id], chapterBoss: id === 1,
+            }),
+        };
+        const state = { isLevelCompleted: () => true, getLevelStars: (id) => (id === 1 ? 2 : 3) };
+        const summary = getOdysseyCampaignSummary(registry, state);
+        const chapters = describeCampaignFinaleJourney(registry, state, summary);
+        expect(chapters).toEqual([
+            expect.objectContaining({
+                id: 1, themeId: 'pyrestorm', orbs: 2, stars: 5, maxStars: 6,
+            }),
+            // No boss in the chapter: its last orb's world stands for it.
+            expect.objectContaining({
+                id: 2, themeId: 'waves', orbs: 1, stars: 3, maxStars: 3,
+            }),
+        ]);
+        const modal = createCampaignFinale({ summary: { ...summary, chapters } });
+        const stations = byClass(modal, 'ody-finale__station');
+        expect(stations.map((station) => station.dataset.odyChapter)).toEqual(['1', '2']);
+        expect(stations[0].ariaLabel).toBe('Chapter 1: Earth Core & Subterranean Origins, complete, 5 of 6 stars');
+        expect(stations[1].dataset.summit).toBe('true');
+        expect(byClass(stations[0], 'ody-finale__station-name')[0].textContent).toBe('Earth Core');
+        expect(nodes(stations[0]).find((node) => node.tagName === 'img').src).toContain('pyrestorm');
+        expect(nodes(stations[1]).find((node) => node.tagName === 'img').src).toContain('waves');
+        // Every orb is a lit cell in its chapter's light; the sky carries each chapter's light.
+        expect(byClass(modal, 'ody-finale__meter-chapter').map((group) => group.children.length)).toEqual([2, 1]);
+        expect(byClass(modal, 'ody-finale__light').map((light) => light.dataset.odyChapter)).toEqual(['1', '2']);
+        modal.dispose();
+    });
+
+    it('gives every way on its key and controller button, and each key chooses it', () => {
+        const { registry, state } = fixture();
+        const summary = getOdysseyCampaignSummary(registry, state);
+        const caps = (modal, name) => action(modal, name).children
+            .map((cap) => `${cap.dataset.key === '' ? 'key' : 'pad'}:${cap.textContent}`);
+        const onChoose = vi.fn();
+        let modal = createCampaignFinale({ summary, onChoose });
+        expect(caps(modal, 'world')).toEqual(['key:Enter', 'pad:A']);
+        expect(caps(modal, 'mastery')).toEqual(['key:N', 'pad:X']);
+        expect(caps(modal, 'details')).toEqual(['key:R', 'pad:Y']);
+        document.dispatch('keydown', { key: 'n', repeat: true });
+        document.dispatch('keydown', { key: 'r', ctrlKey: true });
+        expect(onChoose).not.toHaveBeenCalled();
+        const preventDefault = vi.fn();
+        document.dispatch('keydown', { key: 'n', code: 'KeyN', preventDefault });
+        expect(onChoose).toHaveBeenCalledExactlyOnceWith('mastery');
+        expect(preventDefault).toHaveBeenCalled();
+        expect(document.listenerCount()).toBe(0);
+        modal = createCampaignFinale({ summary, onChoose });
+        document.dispatch('keydown', { key: 'R', code: 'KeyR' });
+        expect(onChoose).toHaveBeenLastCalledWith('details');
+        expect(currentModal()).toBeNull();
+        modal.dispose();
+    });
+
+    it('leaves the next-star key alone when every star is already earned', () => {
+        const { registry, state, saved } = fixture();
+        saved.set(1, { stars: 3 });
+        const onChoose = vi.fn();
+        const modal = createCampaignFinale({ summary: getOdysseyCampaignSummary(registry, state), onChoose });
+        const preventDefault = vi.fn();
+        document.dispatch('keydown', { key: 'n', code: 'KeyN', preventDefault });
+        expect(onChoose).not.toHaveBeenCalled();
+        expect(preventDefault).not.toHaveBeenCalled();
+        modal.dispose();
+    });
+
+    it('chooses on X and Y only for a fresh press while the finale is the top sheet', () => {
+        const { registry, state } = fixture();
+        const onChoose = vi.fn();
+        let modal = null;
+        let top = null;
+        const controller = {
+            panel: null,
+            odysseyHeldInputs: [null],
+            getMenuSheet: () => ({ element: top }),
+            getGameplayPressedState: () => ({ rotate: true }),
+            clearFixedTickInput: vi.fn(),
+            clearDasTimers: vi.fn(),
+            setPanelControls(controls) {
+                controller.panel = controls;
+                controls.dispose = () => { if (controller.panel === controls) controller.panel = null; };
+                return controls;
+            },
+        };
+        modal = createCampaignFinale({
+            summary: getOdysseyCampaignSummary(registry, state), onChoose, gamepadController: controller,
+        });
+        document.body.appendChild(modal);
+        top = modal;
+        // X still held from play never chooses; it has to be seen up first.
+        expect(controller.panel.process(pad([2]), 0)).toBe(false);
+        expect(controller.panel.process(pad([2]), 0)).toBe(false);
+        expect(controller.panel.process(pad(), 0)).toBe(false);
+        // Only the first controller, and never under another sheet.
+        expect(controller.panel.process(pad([3]), 1)).toBe(false);
+        top = {};
+        expect(controller.panel.process(pad([3]), 0)).toBe(false);
+        expect(controller.panel.process(pad(), 0)).toBe(false);
+        top = modal;
+        expect(onChoose).not.toHaveBeenCalled();
+        expect(controller.panel.process(pad([2]), 0)).toBe(true);
+        expect(onChoose).toHaveBeenCalledExactlyOnceWith('mastery');
+        expect(controller.odysseyHeldInputs[0]).toEqual({ rotate: true });
+        expect(controller.clearDasTimers).toHaveBeenCalledWith(0);
+        expect(controller.panel).toBeNull();
+        expect(currentModal()).toBeNull();
     });
 });

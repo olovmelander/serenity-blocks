@@ -104,6 +104,51 @@ describe('Odyssey results modal compatibility', () => {
         expect(mountLeaderboard).toHaveBeenCalledOnce();
     });
 
+    it('lays out the orb as the hero, the board in its own column and Continue in the footer', () => {
+        let boards = null;
+        vi.spyOn(SteamLeaderboardPanel.prototype, 'mount').mockImplementation(function mount() {
+            ({ boards } = this);
+        });
+        const modal = createModal({
+            levelConfig: {
+                id: 8, name: 'Koi Sanctuary', chapter: 2, theme: { primary: 'koi-pond' },
+            },
+            levelId: 8,
+        });
+        const body = findByClass(modal, 'sb-ody-outcome sb-ody-outcome--art sb-ody-outcome--side');
+        expect(body.children.map((node) => node.className))
+            .toEqual(['sb-ody-outcome__hero', 'sb-ody-outcome__main', 'sb-ody-outcome__side']);
+        expect(body.children[0].children[0].className).toBe('sb-orb-art sb-ody-outcome__orb');
+        const [, main, side] = body.children;
+        expect(findByClass(main, 'sb-eyebrow sb-ody-eyebrow').textContent).toBe('Orb 8 · Deep Ocean · Cleared');
+        expect(findByClass(main, 'sb-ody-title').textContent).toBe('Koi Sanctuary');
+        expect(findByClass(side, 'steam-leaderboard-panel')).not.toBeNull();
+        expect(findByClass(main, 'steam-leaderboard-panel')).toBeNull();
+        // However long the board, Continue is not under it: it sits in the footer.
+        const footer = findByClass(modal, 'sb-ody-outcome__footer');
+        expect(findByClass(footer, 'sb-btn sb-btn--primary').textContent).toBe('Continue');
+        expect(findByClass(body, 'sb-ody-actions')).toBeNull();
+        // The orb time ranks lower-is-better, so the pending row lands where this run's time ranks.
+        expect(boards.map(({ id, sortOrder, currentScore }) => ({ id, sortOrder, currentScore }))).toEqual([
+            { id: 'level-time', sortOrder: 'asc', currentScore: 12500 },
+            { id: 'total-stars', sortOrder: 'desc', currentScore: 14 },
+        ]);
+    });
+
+    it('keeps a charmed run off the orb time ranking, which it is not uploaded to', () => {
+        let boards = null;
+        vi.spyOn(SteamLeaderboardPanel.prototype, 'mount').mockImplementation(function mount() {
+            ({ boards } = this);
+        });
+        createModal({
+            results: {
+                lines: 18, score: 4321, stars: 2, time: 12.5, charms: ['tide'],
+            },
+        });
+        expect(boards[0].currentScore).toBeNull();
+        expect(boards[1].currentScore).toBe(14);
+    });
+
     it('shows the decisive frag result when a bot duel is completed', () => {
         const modal = createModal({
             includeLegacyResults: false,
