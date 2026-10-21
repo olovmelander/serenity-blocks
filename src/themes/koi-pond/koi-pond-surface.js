@@ -314,6 +314,25 @@ export class PondSurface {
         renderer.setClearColor(colour, alpha);
     }
 
+    /**
+     * Draw one full-screen pass into `target` without clearing it first, and say whether it was
+     * drawn. In the game three builds a new pipeline in the background and skips a draw made
+     * before it is ready, while a pass's clear still lands: the step's target came back holding
+     * the clear colour (alpha 1 = light left in the water everywhere: the pond washed amber for
+     * its first seconds). Every pass here covers its whole target, so nothing needs the clear.
+     */
+    drawPass(renderer, quad, target) {
+        renderer.setRenderTarget(target);
+        const auto = renderer.autoClear;
+        renderer.autoClear = false;
+        const stats = renderer.info?.render;
+        const before = stats?.drawCalls;
+        quad.render(renderer);
+        renderer.autoClear = auto;
+        if (typeof before !== 'number' || typeof stats.drawCalls !== 'number') return true;
+        return stats.drawCalls !== before;
+    }
+
     /** One fixed step of the wave equation. */
     stepOnce(renderer) {
         const t = this.simTime;
@@ -336,10 +355,11 @@ export class PondSurface {
         const src = this.targets[this.read];
         const dst = this.targets[1 - this.read];
         this.source.value = src.texture;
-        renderer.setRenderTarget(dst);
-        this.stepQuad.render(renderer);
-        this.read = 1 - this.read;
-        this.light.waves.value = this.targets[this.read].texture;
+        // A step three could not draw yet changed nothing: the water keeps what it had.
+        if (this.drawPass(renderer, this.stepQuad, dst)) {
+            this.read = 1 - this.read;
+            this.light.waves.value = this.targets[this.read].texture;
+        }
         this.simTime += SIM_STEP;
         this.steps += 1;
     }
@@ -367,8 +387,7 @@ export class PondSurface {
     derive(renderer, time) {
         this.u.time.value = time;
         this.heights.value = this.targets[this.read].texture;
-        renderer.setRenderTarget(this.output);
-        this.deriveQuad.render(renderer);
+        this.drawPass(renderer, this.deriveQuad, this.output);
     }
 
     /**

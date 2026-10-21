@@ -52,16 +52,16 @@ import { flashScale } from '../../utils/photosensitivity.js';
  */
 export const POST_LOOK = Object.freeze({
     Extreme: {
-        bloom: true, bloomStrength: 0.62, bloomResolution: 0.5, shafts: 14, fringe: true, msaa: 4,
+        bloom: true, bloomStrength: 0.5, bloomResolution: 0.5, shafts: 14, fringe: true, msaa: 4,
     },
     Ultra: {
-        bloom: true, bloomStrength: 0.62, bloomResolution: 0.5, shafts: 12, fringe: true, msaa: 4,
+        bloom: true, bloomStrength: 0.5, bloomResolution: 0.5, shafts: 12, fringe: true, msaa: 4,
     },
     High: {
-        bloom: true, bloomStrength: 0.6, bloomResolution: 0.45, shafts: 10, fringe: true, msaa: 4,
+        bloom: true, bloomStrength: 0.48, bloomResolution: 0.45, shafts: 10, fringe: true, msaa: 4,
     },
     Medium: {
-        bloom: true, bloomStrength: 0.56, bloomResolution: 0.33, shafts: 6, fringe: false, msaa: 0,
+        bloom: true, bloomStrength: 0.45, bloomResolution: 0.33, shafts: 6, fringe: false, msaa: 0,
     },
     Low: {
         bloom: false, bloomStrength: 0, bloomResolution: 0.25, shafts: 0, fringe: false, msaa: 0,
