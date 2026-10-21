@@ -384,9 +384,15 @@ export class VerdantHillsLight {
         // The field is mounds on mounds; the square root of what stands above the
         // threshold rounds each one into a dome with steep sides.
         // Whole multiples of the field's own coordinate, so the billows ride with their cloud.
-        const swell = texture(this.cloudTexture, at.mul(7)).level(detail ? 0 : 1).g;
-        // Its top is not smooth either: the same billows lift it here and let it sag there.
-        const top = shape.sqrt().mul(swell.mul(0.5).add(0.7)).mul(0.94).add(0.03);
+        // Its top is not smooth either: it bulges over the heart of each billow and sags in the
+        // creases between them. The billow channel is low at a cell's heart and highest on the
+        // creases where cells meet, and its cells are only some 250 m across: lifting the top by
+        // up to half the slab with it stood a 500 m spire on every crease, so the heaps read as
+        // tents and pyramids. Turned over, blurred and eased, and only about as tall as a cell is
+        // wide, each one is a rounded bulge on the heap.
+        const heart = texture(this.cloudTexture, at.mul(7)).level(detail ? 2 : 2.5).g.oneMinus();
+        const turret = smoothstep(0.3, 0.8, heart);
+        const top = shape.sqrt().mul(turret.mul(0.16).add(0.86)).mul(0.94).add(0.03);
         // How far under the cloud's own top a point is, in slab heights.
         const under = top.sub(h);
         let density = saturate(under.div(this.uCloudSoft)).mul(smoothstep(0.0, 0.03, h))
@@ -397,7 +403,10 @@ export class VerdantHillsLight {
             // The finest billows are below a far sample's footprint: read them blurred there.
             const blur = range ? saturate(range.div(14000)).mul(3) : float(0);
             const fine = texture(this.cloudTexture, at.mul(22).add(lean.mul(2.3))).level(blur).b;
-            const carve = billow.mul(0.68).add(fine.mul(0.32));
+            // Both are distances to a cell's heart, which subtracted as they are leave a cone over
+            // every heart: a pyramid of a cloud. Squared, each heart is a rounded lump and the
+            // creases between lumps stay sharp, as a cauliflower's do.
+            const carve = billow.mul(billow).mul(1.25).add(fine.mul(fine).mul(0.45));
             // Billows eat into the skin of the cloud — its top and its flanks — and leave the heart whole.
             const skin = saturate(under.div(0.5)).oneMinus().max(smoothstep(0.3, 0.0, shape));
             density = saturate(density.sub(carve.mul(skin.mul(0.9).add(0.1)).mul(this.uCloudCarve)).mul(2.2));
