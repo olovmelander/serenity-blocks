@@ -35,7 +35,7 @@ import {
 } from 'three/tsl';
 
 import {
-    AURORA_REST, EVENT_ROWS, GIANT, PALETTES, PALETTE_COUNT,
+    EVENT_ROWS, GIANT, PALETTES, PALETTE_COUNT,
 } from './stellar-drift-core.js';
 import { LATTICE_SIZE, LATTICE_SLICE } from './stellar-drift-bake.js';
 import { derivedOnce } from '../shared/bake-cache.js';
@@ -243,11 +243,9 @@ export function createStellarDriftUniforms(textures, sizes) {
         sunGain: uniform(1),
         /** Where the bands read their colours: row + the way through the step to the next. */
         bandPlace: uniform(0),
-        /** The aurora: (north, south, flutter clock, crown 0..1). */
-        aurora: uniform(new THREE.Vector4(AURORA_REST, AURORA_REST, 0, 0)),
-        /** The rings' own light: (resonance glow 0..1, spoke strength, sparkle, _). */
+        /** The rings' own light: (the chain's hum 0..1, spoke strength, the swell's clock, crown 0..1). */
         ringGlow: uniform(new THREE.Vector4(0, 0.5, 0, 0)),
-        /** The colour the rings and the aurora take from the board (a chain's own colour). */
+        /** The colour the rings take from the board (a chain's own colour). */
         accent: uniform(new THREE.Vector3(0.4, 0.9, 1.0)),
         /** The moons: centre and radius. */
         moonA: uniform(new THREE.Vector4(6, 2, -8, 0.5)),
@@ -266,8 +264,6 @@ export function createStellarDriftUniforms(textures, sizes) {
         gasB: v3(p.gasB),
         deep: v3(p.deep),
         starTint: v3(p.starTint),
-        auroraLow: v3(p.auroraLow),
-        auroraHigh: v3(p.auroraHigh),
         bolt: v3(p.bolt),
         moonIce: v3(p.moonIce),
         moonRust: v3(p.moonRust),
@@ -280,6 +276,20 @@ export function createStellarDriftUniforms(textures, sizes) {
         events: uniformArray(Array.from({ length: EVENT_ROWS.total }, idle), 'vec4'),
         counts: uniform(new THREE.Vector4(0, 0, 0, 0)),
         bolts: uniform(0),
+        // The flourishes (stellar-drift-core.js), one of each at a time.
+        /** A T-spin's cyclone: (longitude in the giant's frame, latitude, birth, power). */
+        cyclone: uniform(new THREE.Vector4(0, 0, -1000, 0)),
+        /** Its colour, and which way it winds (±1). */
+        cycloneTint: uniform(new THREE.Vector4(1, 1, 1, 1)),
+        /** A surge round the rings: (bearing it leaves, how far round it has run, power, breadth), and its colour. */
+        surge: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        surgeTint: uniform(new THREE.Vector3(1, 1, 1)),
+        /** The outer strand ablaze: (birth, power, seed, _), and its colour. */
+        strand: uniform(new THREE.Vector4(-1000, 0, 0, 0)),
+        strandTint: uniform(new THREE.Vector3(1, 0.9, 0.7)),
+        /** A shell of light thrown off the giant: (birth, power, _, _), and its colour. */
+        shock: uniform(new THREE.Vector4(-1000, 0, 0, 0)),
+        shockTint: uniform(new THREE.Vector3(1, 0.9, 0.7)),
         latticeTex: textures.lattice,
         fbmTex: textures.fbm,
         ringTex: textures.rings,
