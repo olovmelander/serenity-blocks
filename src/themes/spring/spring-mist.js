@@ -13,6 +13,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    acos,
     attribute,
     cameraProjectionMatrix,
     cameraViewMatrix,
@@ -22,6 +23,7 @@ import {
     exp,
     float,
     fract,
+    max,
     mix,
     normalize,
     positionGeometry,
@@ -29,6 +31,7 @@ import {
     select,
     sin,
     smoothstep,
+    step,
     texture,
     varying,
     vec2,
@@ -36,7 +39,7 @@ import {
     vec4,
 } from 'three/tsl';
 import { mulberry32 } from './spring-core.js';
-import { airClarity } from './spring-light.js';
+import { airClarity, sprayBow } from './spring-light.js';
 import {
     FALL, LEDGES, S_OUTLET, S_POOL, courseAt, levelAt,
 } from './spring-plan.js';
@@ -44,10 +47,16 @@ import {
     BURSTS, FALL_FRAME, LANDINGS, fallToWorld,
 } from './spring-fall-plan.js';
 
-/** Puff kinds: where a tongue lands, the pool's boil, a rapids ledge's spray, a burst on the face. */
+/**
+ * Puff kinds: where a tongue lands, the pool's boil, a rapids ledge's spray, a burst on the face,
+ * and the splash a tongue throws up where it hits the pool (quick, crisp plumes).
+ */
 export const PUFF = Object.freeze({
-    foot: 0, boil: 1, ledge: 2, burst: 3,
+    foot: 0, boil: 1, ledge: 2, burst: 3, splash: 4,
 });
+
+/** How bright the spray bow is in the spray (times the sun's light). */
+export const MIST_BOW = 0.36;
 
 /** One of `rows` picked by weight (its `power`). */
 function pickBy(rows, random) {
@@ -68,10 +77,11 @@ function pickBy(rows, random) {
 export function mistLayout(count = 360, seed = 0x3a17) {
     const random = mulberry32(seed);
     const rows = [];
-    const nFoot = Math.round(count * 0.5);
+    const nFoot = Math.round(count * 0.4);
+    const nSplash = Math.round(count * 0.14);
     const nBurst = BURSTS.length ? Math.round(count * 0.14) : 0;
     const nBoil = Math.round(count * 0.16);
-    const nLedge = count - nFoot - nBurst - nBoil;
+    const nLedge = count - nFoot - nSplash - nBurst - nBoil;
     const { tx, tz } = FALL_FRAME;
     const p = {};
     // Where the tongues land, by how hard: the main one throws a cloud that billows up the face
@@ -86,6 +96,16 @@ export function mistLayout(count = 360, seed = 0x3a17) {
         rows.push([p.x, FALL.pool + 1.0, p.z, 7 + random() * 5,
             tx * (7 + random() * 15), tz * (7 + random() * 15), (3 + random() * 9) * big, (7 + random() * 10) * big,
             random(), PUFF.foot, (0.16 + random() * 0.2) * Math.min(1, 0.45 + row.power), random()]);
+    }
+    // The splash where each tongue hits the pool: plumes thrown up and out in a second or two,
+    // the harder the landing the bigger.
+    for (let i = 0; i < nSplash; i++) {
+        const row = pickBy(landings, random);
+        fallToWorld(row.along + random() * 1.5, row.across + (random() - 0.5) * 2, p);
+        const big = 0.5 + 0.7 * row.power;
+        rows.push([p.x, FALL.pool + 0.3, p.z, 1.3 + random() * 0.9,
+            tx * (2 + random() * 5), tz * (2 + random() * 5), (3 + random() * 6) * big, (1.6 + random() * 2.2) * big,
+            random(), PUFF.splash, 0.3 + random() * 0.25, random()]);
     }
     // Spray thrown up off the face where the water lands on a ledge or meets a slab.
     for (let i = 0; i < nBurst; i++) {
@@ -183,8 +203,12 @@ export class Mist {
         // its height over the pool) is worked out once a corner, not once a pixel: the puffs
         // overlap many deep where the tongues land.
         const vLight = varying(vec3(0.0), 'spMistLight'); // forward scatter, clarity, height's lift
+        // How far (degrees) this corner stands from the point opposite the sun, for the spray bow:
+        // worked out a corner (the bow's ring is smooth enough across a puff to interpolate).
+        const vTheta = varying(float(0.0), 'spMistTheta');
         // The puff's middle over the water under it, and its card's half-height (m).
-        const vSoft = varying(vec2(0.0), 'spMistSoft');
+        // (z: how crisp its edge is: a splash's plume is crisp, the drifting cloud soft.)
+        const vSoft = varying(vec3(0.0), 'spMistSoft');
         material.vertexNode = Fn(() => {
             const period = aBase.w;
             const t = fract(u.time.div(period).add(aLook.w));
@@ -214,38 +238,59 @@ export class Mist {
                 aBase.y.sub(0.5),
                 float(FALL.pool),
             )).add(u.flood);
-            vSoft.assign(vec2(centre.y.sub(water), size.mul(0.5)));
+            vSoft.assign(vec3(centre.y.sub(water), size.mul(0.5), step(3.5, kind)));
             // Droplets: dim from the sky, bright with the sun behind them.
             const V = normalize(centre.sub(u.eye));
             const fwd = clamp(dot(V, u.sunDir), 0.0, 1.0);
             const f2 = fwd.mul(fwd);
             const f8 = f2.mul(f2).mul(f2).mul(f2);
             vLight.assign(vec3(
-                f8.mul(0.75).add(0.36),
+                f8.mul(0.48).add(0.36),
                 airClarity(u, centre),
                 smoothstep(0.0, 14.0, centre.y.sub(FALL.pool)).mul(0.35),
             ));
+            const anti = normalize(cameraViewMatrix.mul(vec4(u.sunDir.negate(), 0.0)).xyz);
+            vTheta.assign(acos(clamp(dot(normalize(lifted.xyz), anti), -1.0, 1.0)).mul(180 / Math.PI));
             return cameraProjectionMatrix.mul(lifted);
         })();
         material.colorNode = vec4(0.0, 0.0, 0.0, 1.0);
         material.fragmentNode = Fn(() => {
             const corner = vInfo.xy;
             const r2 = dot(corner, corner);
-            // A soft round puff broken by noise that turns as it rises.
+            // A billowing puff: lumps of cloud whose edges are its noise's, turning as it rises
+            // (a splash's crisper than the drifting cloud's).
             const swirl = texture(tex.noise, corner.mul(0.35).add(vec2(vInfo.z.mul(0.3), vCentre.x.mul(0.013)))).r;
             const curls = texture(tex.noise, corner.mul(0.9).add(vec2(vCentre.z.mul(0.011), vInfo.z.mul(0.5)))).g;
-            const shape = exp(r2.mul(-2.6)).mul(clamp(swirl.mul(1.1).add(curls.mul(0.5)).sub(0.35), 0.0, 1.2));
+            const heap = swirl.mul(0.7).add(curls.mul(0.45)).add(float(1.0).sub(r2).mul(0.45)).sub(0.42)
+                .toVar();
+            const crisp = vSoft.z;
+            const edgeLo = mix(float(0.05), float(0.3), crisp);
+            const edgeHi = mix(float(0.75), float(0.5), crisp);
+            const shape = exp(r2.mul(-2.2)).mul(smoothstep(edgeLo, edgeHi, heap)).mul(1.15);
             // The lower edge fades, and the puff thins to nothing where it meets the water: a puff
             // standing in the pool was cut by its surface in a hard white line (a long chain's
             // thick cloud the brightest).
             const over = vSoft.x.add(corner.y.mul(vSoft.y));
-            const foot = smoothstep(-1.0, -0.2, corner.y).mul(smoothstep(0.0, vSoft.y.mul(0.35).add(0.8), over));
+            // (A splash's plume stands solid nearly down to the water it bursts from.)
+            const meets = mix(vSoft.y.mul(0.35).add(0.8), float(0.3), vSoft.z);
+            const lower = mix(smoothstep(-1.0, -0.2, corner.y), float(1.0), vSoft.z);
+            const foot = lower.mul(smoothstep(0.0, meets, over));
             const alpha = clamp(shape.mul(foot).mul(vInfo.w), 0.0, 1.0);
             // Spray in the sun is white; with the sun behind it, it blazes. A cloud's low parts are
             // shaded by the spray over them, its top and its upper edge lit.
-            const top = smoothstep(-0.6, 0.8, corner.y).mul(0.35).add(vLight.z).add(0.45);
-            const lit = u.fill.mul(1.8).add(u.sun.mul(u.sunUp).mul(vLight.x).mul(top));
-            const col = mix(u.haze, lit.mul(0.92), vLight.y);
+            // Each lump is lit on its upper side and shaded under the lumps over it: the cloud
+            // reads as heaped, not as a glow.
+            const top = smoothstep(-0.6, 0.8, corner.y.add(curls.sub(0.5).mul(0.6))).mul(0.45).add(vLight.z).add(0.35);
+            // (Not under a splash, and not where the cloud meets the water: a dark underside there
+            // stood the white boil out against it as a bar.)
+            const under = smoothstep(-0.9, 0.5, corner.y.add(swirl.sub(0.5).mul(0.8)));
+            const shade = mix(float(0.78), float(1.0), max(under, max(vSoft.z, smoothstep(2.5, 0.5, over))));
+            const lit = u.fill.mul(mix(float(1.35), float(1.9), shade)).add(u.sun.mul(u.sunUp).mul(vLight.x).mul(top))
+                .mul(shade);
+            // The spray bow: where the spray stands about 42° from the point opposite the sun
+            // (with the sun high behind the eye, the bow arcs through the spray at the fall's foot).
+            const bow = sprayBow(vTheta).mul(u.sun).mul(u.sunUp).mul(MIST_BOW);
+            const col = mix(u.haze, lit.mul(0.92).add(bow), vLight.y);
             return vec4(col, alpha);
         })();
         return material;
