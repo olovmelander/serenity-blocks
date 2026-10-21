@@ -82,11 +82,12 @@ straight from the simulation's buffers.
   is (and how old it is along its ribbon), not by which mote it is. Neighbours share a hue, so
   colour runs through the swarm in bands. A third of the cycle spans the frame, so the swarm
   is never a rainbow; the phase drifts with time and steps on by 0.17 with each level.
-- **Streak.** The quad stretches along the mote's screen-space velocity and gives most of the
-  extra area back in brightness.
+- **Trail.** The mote draws the path it has just flown: its head on the mote, a tail behind
+  it that thins and fades (a comet, not a capsule), giving part of the extra area back in
+  brightness. (Until 2026-10-21 a symmetric capsule; see the silk pass below.)
 - **Focus.** A thin-lens blur circle from the distance to the focal plane; a defocused mote
-  becomes a soft disc dimmed by its area. Kept small: a hard-rimmed disc repeated tens of
-  thousands of times reads as scales.
+  becomes a soft disc dimmed by its area and draws no trail. Kept small: a hard-rimmed disc
+  repeated tens of thousands of times reads as scales.
 - **Pixel floor.** A mote smaller than about a pixel keeps its energy at one pixel instead of
   shimmering.
 - **Heroes.** About one mote in 150 is larger and carries a four-point glint.
@@ -430,3 +431,66 @@ In the game the console helper is `window.murmuration`: `shape(name, strength)`,
 ![A perfect clear's snowflake, a cube held through a chain of five, a butterfly at level 4; a star at Low, a lotus at Minimal, a torus at Medium on the WebGL2 backend](murmuration-captures/formations.webp)
 
 ![The real game three seconds after a live tier change: Medium, Minimal, Low, Extreme](murmuration-captures/live-tiers.webp)
+
+## The silk pass: trails, the turn, a sunset for heat, a sky the swarm lights (2026-10-21)
+
+Up close the swarm read as texture rather than as light. Most motes sat half out of focus (the
+lens was shallow enough that a typical mote was a soft disc a few pixels wide), the streak drew
+that disc out into a flat-topped slab, and at a long chain the whole swarm was a field of pastel
+bricks with red and blue fringes on every edge. Heat mixed cyan with gold, which is grey half way,
+so a chain bleached the swarm to cream instead of warming it. The sky was soft blue smoke that
+nothing in the swarm touched. Before and after: `murmuration-captures/silk.webp` (rest, a chain of
+six, a two-line clear, then 1:1 crops at 1080p); the new looks: `murmuration-captures/heat-and-sky.webp`.
+
+- **Motes are finer, sharper, and draw silk.** `BASE_PARTICLE_SIZE` 0.042 → 0.023, with the light
+  budget raised to match (`LIGHT_UNIT` 22 000 → 56 000; the swarm's total light is about 0.8 of
+  what it was, spread over finer motes, so the lanes between the ribbons stay dark). The lens is
+  narrower (`aperture` 0.005–0.007 → 0.002–0.003 by tier, `maxBlur` unchanged), so only the wing
+  that swims toward the lens and the strays near it go to bokeh. Each mote draws the path it has
+  just flown: the quad sits half a trail behind the mote, the head is a round point on the mote,
+  and the tail narrows to `vTrail` radii (never under about a pixel) while its light falls away
+  (`TRAIL_CAP` 12 radii, `stretch` 0.06–0.14 s by tier). A mote more than a little out of focus
+  draws no trail at all (`sharp`): a blurred disc dragged along its path was the slab.
+- **The turn.** A murmuration's signature, a ripple of banking that runs through the flock. Every
+  `TURN_PERIOD` (6.5 s) a bent front crosses the swarm from a new bearing in about four seconds;
+  the motes it reaches swing their trails off their line of flight (left or right, by the wave)
+  and catch the light (`crest`, about 0.75 units wide), and those it has just passed are a shade
+  darker for a moment (`wake`), so it reads as a fold travelling through the body. Renderer only
+  (the simulation is untouched), half strength in a formation, `uTurn` gates it
+  (`tune=turn:0` in the playground). It is a slow local sweep, not a frame-wide flash.
+- **Heat is a sunset.** Each mote's hue now turns toward its own fire (ember, amber or gold by
+  place) the long way round the wheel: cyan through blue, violet and rose to fire, never through
+  green or grey (`murm_turnHue` in the shader; `turnHue` in `swarm-palette.js` is the same in JS).
+  How far is `heatWarmth(heat) = (0.9 · heat)^0.65`: a chain of three is blue-violet, six rose,
+  nine fire. The board's halo, the nebula's tints and the swarm's light on the dust turn with it.
+- **The sky has structure, and the swarm lights it.** In the nebula (High detail): bright threads
+  read from the cloud squeezed along the band, so they run as long strands (`(1 − |2n − 1|)^12`),
+  dark threads in the dust, and extinction (`exp(-tau)`) drawing the dust's edges instead of a
+  threshold; a third, fine layer of stars thickens along the band. Round the swarm, a faint glow
+  in each wing's own colour (`uWingA`, `uWingB`, set by the show where the renderer colours the
+  middle of each wing), strongest over the ring of the swarm and weaker in the board's hole,
+  brighter where there is gas to catch it.
+- **Less chromatic aberration.** The tiers' base offset is about a third of what it was
+  (High 0.0034 → 0.0012): at 1280 px the old value split every one-pixel star and mote into three
+  at the frame's edges. A lock's flick of colour is 0.002 (hard drop 0.0035), was 0.008 (0.012).
+
+Verification (playground, this machine's GPU, WebGPU unless noted, `board=1`, `t=40`): rest,
+chains of two, three, six and nine, a lock, a hard drop, a two-line clear, four lines, a perfect
+clear, a held galaxy and the game-over heart at High; Minimal, Low and Extreme; the WebGL2 backend
+(`forceWebGL=1`) at rest and at a chain of nine; a 390 × 844 portrait frame at rest and at a chain
+of nine; a time series across one turn, with an amplified difference against `tune=turn:0`.
+Consoles clean. In the real game (single player, High, WebGPU, 60 000 motes): the theme boots and
+runs with nothing in the console but the adapter's power-preference note, and the swarm reads as
+in the playground behind the live card. Tests: a new shader gate,
+`tests/unit/murmuration-shaders.test.js` (the swarm, the sky and the post output built through the
+WGSL and GLSL builders at High and Minimal; it also rejects a laid-out helper whose parameter is a
+reserved word — the first `murm_turnHue` took `from`, which WGSL reserves, and the swarm drew
+nothing), and `tests/unit/murmuration-palette.test.js` (the turn of hue never passes through green
+or grey; the halo, tints and wings warm with a chain). The theme's 13 test files and the two shared
+ones that cover it pass (262 tests); the lint ratchet is at its baseline; `npm run build` passes.
+Four unrelated suites fail the same way on `origin/main` on this machine (among them a number-format
+locale in the records view and a symlink permission in the recorder test).
+
+Not done: a perf-lane reading (the trail quads are longer, but the motes are smaller and fewer
+pixels are covered by out-of-focus discs; the sky adds one three-octave noise read and one star
+layer on High); a physical phone; the theme icon still shows the old look.
