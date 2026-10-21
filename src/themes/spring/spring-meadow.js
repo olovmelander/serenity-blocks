@@ -22,8 +22,11 @@ import {
     attribute,
     clamp,
     dot,
+    exp,
     float,
+    int,
     length,
+    max,
     mix,
     normalGeometry,
     normalize,
@@ -60,6 +63,14 @@ export const MEADOW = Object.freeze({
  * open (s), and how long it takes to close again (s).
  */
 export const PATCH = Object.freeze({ speed: 3.5, hold: 18, close: 6 });
+/**
+ * The light the game sends through the flowers (spring-meadow gameLight): a patch's ring (its
+ * width, s of the opening's travel; its gain), its own flowers' glow after the ring (how long it
+ * lasts, s; its gain), and a clear's breath (its band's width, m; its gain).
+ */
+export const PATCH_LIGHT = Object.freeze({
+    ring: 0.3, ringGain: 1.1, glow: 1.8, glowGain: 1.4, band: 1.6, breathGain: 0.9,
+});
 /** The breeze's direction across the knoll (unit x, z): down the valley, toward the right. */
 const BREEZE = Object.freeze([0.86, -0.51]);
 
@@ -209,6 +220,40 @@ export class SpringMeadow {
         return clamp(open, 0.0, 1.0);
     }
 
+    /**
+     * The light the game sends through the meadow over a plant rooted at `root` (TSL, linear rgb,
+     * before the petals take it): each lock's patch rolls a ring of light out from where it landed
+     * as it opens, in its flower's colour, and its own flowers glow from within for a moment
+     * after the ring has passed them; a clear's breath runs out from the eye as a warm band.
+     */
+    gameLight(root, kind) {
+        const { u } = this;
+        let light = vec3(0.0);
+        for (let k = 0; k < this.tier.patches; k += 1) {
+            const where = u.events.element(EVENT_ROWS.patch + k * 2); // x, z, born, power
+            const what = u.events.element(EVENT_ROWS.patch + k * 2 + 1); // slot, radius
+            const distance = length(root.xz.sub(where.xy));
+            const front = u.time.sub(where.z).sub(distance.div(PATCH.speed));
+            const ring = exp(front.div(PATCH_LIGHT.ring).pow2().negate())
+                .mul(smoothstep(what.y.mul(1.6), what.y.mul(0.7), distance));
+            const mine = float(1.0).sub(step(0.5, abs(kind.sub(what.x))));
+            const glow = mine.mul(smoothstep(0.0, 0.35, front)).mul(exp(front.max(0.0).div(-PATCH_LIGHT.glow)))
+                .mul(smoothstep(what.y, what.y.mul(0.35), distance));
+            // Its flower's colour at full strength (the violet's and the hepatica's are dark petals:
+            // their light must read as well as the campion's).
+            const petal = u.palette.element(int(clamp(what.x, 0.0, 6.0))).xyz;
+            const colour = petal.div(max(petal.x, max(petal.y, petal.z)).max(0.05)).mul(0.8);
+            light = light.add(colour.mul(ring.mul(PATCH_LIGHT.ringGain).add(glow.mul(PATCH_LIGHT.glowGain)))
+                .mul(where.w));
+        }
+        // A clear's breath: (start, power, speed m/s).
+        const age = u.time.sub(u.airWave.x);
+        const off = length(root.xz.sub(vec2(EYE.x, EYE.z))).sub(age.mul(u.airWave.z)).div(PATCH_LIGHT.band);
+        const breath = exp(off.mul(off).negate()).mul(u.airWave.y).mul(step(0.0, age))
+            .mul(float(1.0).sub(smoothstep(4.0, 7.0, age)));
+        return light.add(vec3(1.0, 0.9, 0.66).mul(breath.mul(PATCH_LIGHT.breathGain)));
+    }
+
     /** Stand a plant on its root, turned and scaled, and bend it in the breeze. */
     stand(flex, shape = null) {
         const root = attribute('aRoot', 'vec4'); // x, y, z, phase
@@ -323,6 +368,7 @@ export class SpringMeadow {
         material.positionNode = plant.position;
         const { paint, turn } = plant;
         const shine = varying(opened, 'springFlowerOpened');
+        const played = varying(this.gameLight(attribute('aRoot', 'vec4').xyz, head.w), 'springFlowerLight');
         material.colorNode = Fn(() => {
             const P = positionWorld;
             const V = normalize(P.sub(u.eye));
@@ -342,7 +388,9 @@ export class SpringMeadow {
                 .add(tone.mul(sky).mul(1.35))
                 .mul(shade)
                 // Opened by the game, its petals spread to the light: a little brighter, fresher.
-                .add(tone.mul(petal).mul(shine.mul(0.9)).mul(u.fill.mul(1.6).add(u.sun.mul(u.sunUp).mul(0.14))));
+                .add(tone.mul(petal).mul(shine.mul(0.9)).mul(u.fill.mul(1.6).add(u.sun.mul(u.sunUp).mul(0.14))))
+                // The game's light: petals lit from within, the stem and leaves a little.
+                .add(played.mul(petal.mul(0.8).add(0.2)).mul(1.6));
             return vec4(aerial(u, P, lit), 1.0);
         })();
         return material;
