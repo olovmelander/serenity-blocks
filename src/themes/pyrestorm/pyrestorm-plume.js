@@ -111,6 +111,8 @@ export const ALONG = (() => {
 
 /** How far the tube reaches below the vent (m): the foot rounds off down in the crater. */
 const FOOT = 700;
+/** The crater's rim over the vent (m; pyrestorm-core's land, all round but the breach). */
+const RIM_LIFT = 330;
 
 /** The proxy: a closed tube round the axis, its faces outward (front faces start the rays). */
 export function plumeGeometry(rings = 72, segs = 28) {
@@ -247,7 +249,12 @@ export function createPlume(u, t, tier) {
         const raw = float(1.0).sub(rho).mul(1.3).add(f.sub(0.42).mul(1.25));
         // Rounded off below the vent (the distance to the axis' foot), gone into the anvil's head.
         // Pinned: read in several branches, it must be computed once.
-        return { den: smoothstep(-0.04, 0.34, raw).mul(float(1.0).sub(smoothstep(0.92, 1.0, k))).toVar(), k: k.toVar() };
+        // No ash below the crater's rim (≈ 330 m over the vent): the tube is wider than the crater
+        // and a ray starts at its front face, so ash down inside the crater was drawn over the near
+        // rim and hung down the breach like a curtain. The column rises out of the crater instead.
+        const below = smoothstep(CRATER.y + RIM_LIFT - 130.0, CRATER.y + RIM_LIFT + 70.0, P.y);
+        const den = smoothstep(-0.04, 0.34, raw).mul(float(1.0).sub(smoothstep(0.92, 1.0, k))).mul(below);
+        return { den: den.toVar(), k: k.toVar() };
     };
 
     material.outputNode = Fn(() => {
@@ -290,7 +297,7 @@ export function createPlume(u, t, tier) {
                 // The fire: it reaches the column's lower third, reddening through the ash it crosses.
                 const reach = exp(above.div(-900.0));
                 const deep = mix(vec3(1.0, 0.45, 0.3), vec3(1.0, 1.0, 1.0), reach);
-                const burn = u.fountain.mul(u.activity).mul(reach.mul(0.95).add(0.05));
+                const burn = u.fountain.add(u.burst.mul(1.3)).mul(u.activity).mul(reach.mul(0.95).add(0.05));
                 // Each light by the density's slope toward it (a lobe's face turned to it is lit,
                 // round and soft) and by what lies between (the folds between lobes go dark): a tap
                 // a step toward the fire and a step up, the step a share of the column's width.
@@ -306,7 +313,8 @@ export function createPlume(u, t, tier) {
                 const shock = exp(dShock.div(260.0).mul(dShock.div(260.0)).negate()).mul(u.shock.y);
                 const light = fire.add(lavaBelow).add(sky).add(bolts).add(vec3(0.7, 0.68, 0.74).mul(shock));
                 // Incandescent ejecta in the column's foot.
-                const hot = float(1.0).sub(smoothstep(0.0, 0.06, k)).mul(u.activity).mul(u.fountain.mul(0.3).add(0.7));
+                const hot = float(1.0).sub(smoothstep(0.0, 0.06, k)).mul(u.activity)
+                    .mul(u.fountain.mul(0.3).add(0.7).add(u.burst.mul(0.6)));
                 const col = u.ash.mul(light).add(pyBlackbody(hot.mul(0.45).add(0.12)).mul(hot).mul(0.1));
                 const a = float(1.0).sub(exp(den.mul(sigma).mul(dt).negate()));
                 acc.addAssign(col.mul(a).mul(keep));
