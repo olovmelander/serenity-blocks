@@ -4,7 +4,7 @@
  */
 import { serveBakes } from '../shared/bake-worker-host.js';
 import {
-    bakeBillows, bakeLattice, bakeLavaFields, bakeNoise,
+    bakeBillows, bakeCrust, bakeLattice, bakeLavaFields, bakeNoise,
 } from './pyrestorm-bake.js';
 
 serveBakes({
@@ -13,5 +13,6 @@ serveBakes({
         noise: bakeNoise(),
         lattice: bakeLattice(),
         billows: bakeBillows(),
+        crust: bakeCrust(),
     }),
 });
