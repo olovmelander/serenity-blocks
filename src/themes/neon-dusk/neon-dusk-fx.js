@@ -24,6 +24,7 @@ import {
     length,
     max,
     mix,
+    normalLocal,
     positionLocal,
     pow,
     sin,
@@ -183,9 +184,14 @@ function createBurstPixels(u, count) {
     };
 }
 
+/** How a locked piece's hologram cubes stand: full height (in grid cells) and when they rise. */
+export const TILE_HOLOGRAM = Object.freeze({ height: 0.9, rise: 0.16, sink: 0.45 });
+
 /**
- * Tetromino tiles lit in the glass: one grid cell each, a bright neon border around a soft fill,
- * riding the floor's scroll toward the camera and fading out.
+ * Tetromino tiles lit in the glass: each cell of a locked piece stands up out of the glass as a
+ * hologram cube — glowing edges, a fill that fades toward its top, a lit floor tile — then sinks
+ * back into the glass as it rides the floor's scroll toward the camera, leaving the tile to fade.
+ * One unit box per instance, its height a function of age (closed form, no uploads per frame).
  */
 function createTiles(u, count) {
     const material = new THREE.MeshBasicNodeMaterial();
@@ -193,6 +199,7 @@ function createTiles(u, count) {
     material.transparent = true;
     material.depthWrite = false;
     material.blending = THREE.AdditiveBlending;
+    material.side = THREE.DoubleSide;
     material.fog = false;
 
     const cell = attribute('iCell', 'vec4'); // x, z, t0, life
@@ -200,21 +207,39 @@ function createTiles(u, count) {
     const age = u.time.sub(cell.z);
     const lifeT = clamp(age.div(max(cell.w, 1e-3)), 0.0, 1.0);
     const alive = step(0.0, age).mul(step(age, cell.w));
+    // Pops up (a small overshoot), holds, then sinks back into the glass by `sink` of its life.
+    const up = smoothstep(0.0, TILE_HOLOGRAM.rise, age);
+    const pop = up.add(exp(age.sub(TILE_HOLOGRAM.rise).mul(-9.0)).mul(0.18).mul(up));
+    const stand = pop.mul(float(1.0).sub(smoothstep(TILE_HOLOGRAM.sink * 0.35, TILE_HOLOGRAM.sink, lifeT)));
+    const height = stand.mul(GRID_SPACING * TILE_HOLOGRAM.height).add(0.02);
     // Ride the scroll: the grid moves toward +z at SCROLL_SPEED.
-    material.positionNode = positionLocal.mul(alive).add(vec3(cell.x, 0.04, cell.y.add(age.mul(SCROLL_SPEED))));
+    const local = positionLocal.mul(alive);
+    material.positionNode = vec3(local.x, local.y.mul(height), local.z)
+        .add(vec3(cell.x, 0.04, cell.y.add(age.mul(SCROLL_SPEED))));
     material.colorNode = Fn(() => {
-        const local = uv().sub(0.5).mul(2.0);
-        const box = max(abs(local.x), abs(local.y));
-        const border = smoothstep(0.72, 0.86, box).mul(float(1.0).sub(smoothstep(0.92, 1.0, box)));
-        const fill = float(1.0).sub(smoothstep(0.0, 0.95, box)).mul(0.35).add(0.12);
-        const flash = exp(age.mul(-6.0)).mul(1.5);
+        const st = uv().sub(0.5).mul(2.0);
+        const box = max(abs(st.x), abs(st.y));
+        const ny = normalLocal.y;
+        const isTop = step(0.5, ny);
+        const isBase = step(0.5, ny.negate());
+        const isSide = float(1.0).sub(isTop).sub(isBase);
+        // Every face draws its rim: together the rims are the cube's glowing edges.
+        const edge = smoothstep(0.8, 0.93, box).mul(float(1.0).sub(smoothstep(0.96, 1.0, box)));
+        // The base is the lit tile in the glass; the sides fade toward the top like a hologram.
+        const baseFill = float(1.0).sub(smoothstep(0.0, 0.95, box)).mul(0.35).add(0.14);
+        const sideFill = float(1.0).sub(clamp(uv().y, 0.0, 1.0)).mul(0.17).add(0.025);
+        const scan = sin(uv().y.mul(26.0).sub(u.time.mul(7.0))).mul(0.5).add(0.5).mul(0.08);
+        const fill = baseFill.mul(isBase).add(sideFill.add(scan).mul(isSide)).add(isTop.mul(0.05));
+        const flash = exp(age.mul(-6.0)).mul(1.4);
         const fade = smoothstep(0.0, 0.04, lifeT).mul(pow(float(1.0).sub(lifeT), 1.4));
-        return tint.xyz.mul(border.mul(2.2).add(fill).add(flash.mul(fill))).mul(fade);
+        const edgeGain = mix(float(1.2), float(2.3), isBase.add(isTop.mul(0.6)));
+        return tint.xyz.mul(edge.mul(edgeGain).add(fill).add(flash.mul(fill))).mul(fade);
     })();
     material.opacityNode = float(1.0);
 
-    const geometry = new THREE.PlaneGeometry(GRID_SPACING * 0.96, GRID_SPACING * 0.96);
-    geometry.rotateX(-Math.PI / 2);
+    // A unit-height box standing on y = 0 (the shader stretches it to the hologram's height).
+    const geometry = new THREE.BoxGeometry(GRID_SPACING * 0.96, 1, GRID_SPACING * 0.96);
+    geometry.translate(0, 0.5, 0);
     const mesh = new THREE.InstancedMesh(geometry, material, count);
     mesh.name = 'NeonDuskTiles';
     const iCell = instanced(count, 4);
