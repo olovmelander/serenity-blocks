@@ -16,6 +16,7 @@ import * as THREE from 'three/webgpu';
 import {
     Fn,
     abs,
+    cameraViewMatrix,
     dot,
     exp,
     float,
@@ -24,10 +25,13 @@ import {
     max,
     min,
     mix,
+    sign,
     smoothstep,
     sqrt,
+    tan,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 
 // ── World constants ─────────────────────────────────────────────────────────────
@@ -132,10 +136,10 @@ export const ndSkyGradient = /* @__PURE__ */ Fn(([e, sa]) => {
     const s = sqrt(max(e, 0.0));
     const c = ndHazeColor(sa).toVar();
     c.assign(mix(c, mix(rgb(0xb02a6c), rgb(0xff6f5a, 1.1), sa), smoothstep(0.0, 0.1, s)));
-    c.assign(mix(c, mix(rgb(0x6e1a68), rgb(0xc8306a), sa), smoothstep(0.06, 0.2, s)));
-    c.assign(mix(c, rgb(0x341266), smoothstep(0.15, 0.32, s)));
-    c.assign(mix(c, rgb(0x150b42), smoothstep(0.27, 0.5, s)));
-    c.assign(mix(c, rgb(0x060418), smoothstep(0.45, 0.85, s)));
+    c.assign(mix(c, mix(rgb(0x6e1a68), rgb(0xc8306a), sa), smoothstep(0.06, 0.22, s)));
+    c.assign(mix(c, rgb(0x3a1470), smoothstep(0.17, 0.4, s)));
+    c.assign(mix(c, rgb(0x1a0d4c), smoothstep(0.34, 0.62, s)));
+    c.assign(mix(c, rgb(0x06051a), smoothstep(0.56, 0.92, s)));
     return c;
 }).setLayout({
     name: 'nd_skyGradient',
@@ -161,3 +165,34 @@ export const ndApplyHaze = /* @__PURE__ */ Fn(([col, rel, k]) => {
 
 /** Max of the three channels. */
 export const ndMax3 = (c) => max(c.x, max(c.y, c.z));
+
+// ── The sun's disc, drawn in the lens's image plane ────────────────────────────
+
+/**
+ * Where a world direction lands in the image plane of the camera drawing it: (x, y) in tangent
+ * units, z = its depth along the view axis (the cosine of its angle off the axis for a unit d).
+ * Built from the camera nodes, so the floor's mirror camera gets its own image plane.
+ */
+export const ndImagePlane = (d) => {
+    const v = cameraViewMatrix.mul(vec4(d, 0.0)).xyz;
+    const depth = v.z.negate();
+    return vec3(v.xy.div(max(depth, 1e-4)), depth);
+};
+
+/**
+ * The sun's disc in sun radii from its centre, measured in the drawing camera's image plane: a
+ * true circle on screen wherever the yaw puts it (a disc measured on the sky stretches into an
+ * oval toward the frame's edge). Its size matches the sky disc's height. y runs toward world up
+ * for the mirror camera too (the reflector rolls it upside down), so both draw the same face.
+ * `mirrored` draws the sun's image in the glass along a view ray d (the analytic mirror): the
+ * mirrored sun stands below the horizon, its face upside down.
+ */
+export const ndSunDisc = (u, d, mirrored = false) => {
+    const s = mirrored ? vec3(u.sunDir.x, u.sunDir.y.negate(), u.sunDir.z) : u.sunDir;
+    const P = ndImagePlane(d);
+    const S = ndImagePlane(s);
+    const rImg = tan(u.sunRadius).div(max(S.z, 1e-3));
+    const local = P.xy.sub(S.xy).div(rImg);
+    const up = sign(cameraViewMatrix.mul(vec4(0.0, 1.0, 0.0, 0.0)).y);
+    return vec2(local.x, local.y.mul(mirrored ? up.negate() : up));
+};
