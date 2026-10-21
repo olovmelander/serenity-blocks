@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-21T06:35:04.828Z",
-  "runId": "2026-08-21T06-12-57-693Z",
+  "generatedAt": "2026-10-21T09:24:38.370Z",
+  "runId": "2026-10-21T09-24-04-559Z",
   "theme": "chiral-gold",
   "themeMeta": {
     "displayName": "Chiral Gold",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-21T06-12-57-693Z",
+  "targetUrl": "http://127.0.0.1:5285/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-21T09-24-04-559Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -61,29 +61,29 @@
       "gpuDevice": [
         {
           "active": false,
-          "deviceId": 5688,
-          "deviceString": "AMD Radeon(TM) Graphics",
-          "driverVersion": "31.0.12044.3",
+          "deviceId": 5056,
+          "deviceString": "AMD Radeon(TM) 610M",
+          "driverVersion": "32.0.13062.9003",
           "gpuPreference": 2,
-          "revision": 197,
-          "subSysId": 978261930,
+          "revision": 212,
+          "subSysId": -2141841494,
           "vendorId": 4098
         },
         {
           "active": false,
-          "deviceId": 9437,
-          "deviceString": "NVIDIA GeForce RTX 3070 Laptop GPU",
-          "driverVersion": "32.0.15.7247",
+          "deviceId": 11353,
+          "deviceString": "NVIDIA GeForce RTX 5080 Laptop GPU",
+          "driverVersion": "32.0.15.7324",
           "gpuPreference": 3,
           "revision": 161,
-          "subSysId": 978261930,
+          "subSysId": -2141841494,
           "vendorId": 4318
         },
         {
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.8972",
+          "driverVersion": "10.0.26100.9711",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -135,6 +135,13 @@
           "sameMode": true,
           "running": true,
           "paused": true
+        }
+      },
+      {
+        "id": "boot-theme-settled",
+        "passed": true,
+        "details": {
+          "active": "forest"
         }
       },
       {
@@ -220,6 +227,11 @@
         "details": {
           "themeId": "chiral-gold"
         }
+      },
+      {
+        "id": "theme-detail-apply-reachable",
+        "passed": true,
+        "details": null
       },
       {
         "id": "theme-card-selection-started",
@@ -339,12 +351,10 @@
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "changedHeartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "sharedRendererHeartbeatAvailable": false,
           "sharedRendererHeartbeatObserved": false,
@@ -716,6 +726,13 @@
         }
       },
       {
+        "id": "outgoing-eventListeners-cleared",
+        "passed": true,
+        "details": {
+          "count": 0
+        }
+      },
+      {
         "id": "outgoing-eventUnsubscribers-cleared",
         "passed": true,
         "details": {
@@ -833,7 +850,7 @@
         "id": "outgoing-canvases-disconnected",
         "passed": true,
         "details": {
-          "added": 4,
+          "added": 1,
           "connected": 0
         }
       },
@@ -1207,12 +1224,10 @@
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "changedHeartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "sharedRendererHeartbeatAvailable": false,
           "sharedRendererHeartbeatObserved": false,
@@ -1475,10 +1490,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.30000000004656613,
-      "firstTargetSelection": 1407.9000000001397,
-      "cleanup-anchor": 31.699999999953434,
-      "secondTargetSelection": 228.0999999998603
+      "initial-anchor": 0.09999999962747097,
+      "firstTargetSelection": 362.09999999962747,
+      "cleanup-anchor": 378.7000000011176,
+      "secondTargetSelection": 12763.300000000745
     },
     "mode": {
       "modeId": "single",
@@ -1516,12 +1531,10 @@
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "changedHeartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "sharedRendererHeartbeatAvailable": false,
       "sharedRendererHeartbeatObserved": false,
@@ -1536,12 +1549,10 @@
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "changedHeartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "sharedRendererHeartbeatAvailable": false,
       "sharedRendererHeartbeatObserved": false,
@@ -1562,22 +1573,22 @@
   "screenshot": {
     "path": "docs\\theme-screenshots\\chiral-gold.png",
     "passed": true,
-    "width": 1584,
-    "height": 787,
-    "byteLength": 4986432,
-    "samples": 20107,
+    "width": 2538,
+    "height": 1506,
+    "byteLength": 15288912,
+    "samples": 20012,
     "luminance": {
-      "min": 0,
-      "max": 254.13359999999997,
-      "mean": 9.33344181628286,
-      "range": 254.13359999999997,
-      "variance": 318.2174657750538
+      "min": 2.2808,
+      "max": 246.9748,
+      "mean": 46.89015350789473,
+      "range": 244.694,
+      "variance": 2286.3077092169274
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 142,
-    "warningCount": 6,
+    "entryCount": 149,
+    "warningCount": 4,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
@@ -1585,49 +1596,36 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-21T06:34:51.444Z",
+        "timestamp": "2026-10-21T09:24:13.084Z",
         "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5285/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/161cbe30-dadd-4bc8-a5be-930c4579bbe4/scratchpad/vite-cache-5285/deps/chunk-VNXNK5DP.js?v=fdd7df51"
       },
       {
-        "timestamp": "2026-08-21T06:34:52.521Z",
+        "timestamp": "2026-10-21T09:24:16.027Z",
         "level": 2,
-        "message": "THREE.AttributeNode: Vertex attribute \"uv\" not found on geometry.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5285/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/161cbe30-dadd-4bc8-a5be-930c4579bbe4/scratchpad/vite-cache-5285/deps/chunk-VNXNK5DP.js?v=fdd7df51"
       },
       {
-        "timestamp": "2026-08-21T06:34:52.763Z",
+        "timestamp": "2026-10-21T09:24:18.286Z",
         "level": 2,
-        "message": "THREE.AttributeNode: Vertex attribute \"uv\" not found on geometry.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5285/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/161cbe30-dadd-4bc8-a5be-930c4579bbe4/scratchpad/vite-cache-5285/deps/chunk-VNXNK5DP.js?v=fdd7df51"
       },
       {
-        "timestamp": "2026-08-21T06:34:57.681Z",
+        "timestamp": "2026-10-21T09:24:31.047Z",
         "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:34:57.751Z",
-        "level": 2,
-        "message": "THREE.AttributeNode: Vertex attribute \"uv\" not found on geometry.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:34:57.862Z",
-        "level": 2,
-        "message": "THREE.AttributeNode: Vertex attribute \"uv\" not found on geometry.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "message": "[ThemeManager] Swapping to \"chiral-gold\" with 0 pipeline(s) in flight and builds still deferred: false",
+        "line": 1486,
+        "sourceId": "http://127.0.0.1:5285/src/themes/theme-manager.js?t=1792574574423"
       }
     ],
     "processFailures": []
   },
+  "perf": null,
   "fatalError": null
 }

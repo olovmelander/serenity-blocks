@@ -19,6 +19,14 @@ import {
     haze, mist, sbHash21, sunLight, sunVisibility,
 } from './sunbraid-tsl.js';
 
+/**
+ * The stone's layers (metres): formations (each its own pale sandstone) and the thin beds within
+ * them; `rim` the gain of the light grazing round a silhouette seen against the suns.
+ */
+export const TOWER_BEDS = Object.freeze({
+    formation: 34, contrast: 0.7, bed: 3.2, rim: 1.1, sky: 0.32,
+});
+
 function createSpireMaterial(u, t) {
     const material = new THREE.MeshBasicNodeMaterial();
     material.colorNode = Fn(() => {
@@ -45,18 +53,32 @@ function createSpireMaterial(u, t) {
         const shape = attribute('aSpire', 'vec2');
         const ao = shape.y;
         const seed = attribute('aSeed', 'float');
-        // The beds: a few metres thick, each a faintly different pale stone.
-        // Beds a metre to a few metres thick: cream, ochre, rose and a little lilac, pale.
-        const bedCoord = P.y.div(3.2).add(texture(t.noise, P.xz.div(900.0)).r.mul(3.0)).add(seed.mul(13.0));
-        const bed = floor(bedCoord);
-        const pick = sbHash21(vec2(bed, floor(seed.mul(97.0))));
+        // The stone comes in formations (units tens of metres thick, each its own pale sandstone:
+        // cream, ochre, rose, a little lilac) with thin beds inside them. Each formation's colour
+        // shades into the next over a few metres; the beds are fine lines. Both fade to their mean
+        // where they would be finer than a few pixels (a random colour a bed, 3 m thick, aliased into
+        // rainbow scan lines at a kilometre).
+        const B = TOWER_BEDS;
+        const sag = texture(t.noise, P.xz.div(900.0)).r.mul(3.0);
+        const unitCoord = P.y.div(B.formation).add(sag.mul(0.25)).add(seed.mul(7.0)).toVar();
+        const unit = floor(unitCoord);
+        const into = fract(unitCoord);
+        const pickOf = (k) => sbHash21(vec2(k, floor(seed.mul(97.0))));
         const cream = vec3(0.95, 0.9, 0.8);
-        const ochre = vec3(0.93, 0.79, 0.6);
-        const rose = vec3(0.94, 0.78, 0.74);
-        const lilac = vec3(0.86, 0.84, 0.92);
-        const warm = mix(cream, ochre, smoothstep(0.25, 0.45, pick));
-        const cool = mix(rose, lilac, smoothstep(0.75, 0.9, pick));
-        const tint = mix(warm, cool, smoothstep(0.5, 0.62, pick));
+        const ochre = vec3(0.93, 0.76, 0.56);
+        const rose = vec3(0.94, 0.74, 0.7);
+        const lilac = vec3(0.84, 0.82, 0.92);
+        const stoneOf = (pick) => {
+            const warm = mix(cream, ochre, smoothstep(0.25, 0.45, pick));
+            const cool = mix(rose, lilac, smoothstep(0.75, 0.9, pick));
+            return mix(warm, cool, smoothstep(0.5, 0.62, pick));
+        };
+        const meanStone = vec3(0.915, 0.82, 0.74);
+        // (Toward the mean a little: at full strength a butte read as a layer cake.)
+        const unitTint = mix(meanStone, mix(stoneOf(pickOf(unit)), stoneOf(pickOf(unit.add(1.0))), smoothstep(0.86, 1.0, into)), B.contrast);
+        const unitSeen = float(1.0).sub(smoothstep(0.08, 0.25, fwidth(unitCoord)));
+        const tint = mix(meanStone, unitTint, unitSeen);
+        const bedCoord = P.y.div(B.bed).add(sag).add(seed.mul(13.0));
         const bedRoom = float(1.0).sub(smoothstep(0.12, 0.35, fwidth(bedCoord)));
         const bedLine = smoothstep(0.9, 1.0, fract(bedCoord)).mul(0.05).mul(bedRoom);
         // Streaks run down the cliffs from the ledges; fine grain over everything.
@@ -72,7 +94,10 @@ function createSpireMaterial(u, t) {
         const vis = sunVisibility(u, P, t.noise);
         const cavity = ao.mul(0.4).add(0.6);
         const lit = sunLight(u, N, vis, 0.18).mul(cavity);
-        const sky = mix(u.horizon, u.zenith, N.y.mul(0.5).add(0.5)).mul(N.y.mul(0.35).add(0.65)).mul(0.45).mul(ao);
+        // (Little sky fill: a face turned from every sun stays dark, so the rims and the lit faces
+        // read against it.)
+        const sky = mix(u.horizon, u.zenith, N.y.mul(0.5).add(0.5)).mul(N.y.mul(0.35).add(0.65)).mul(TOWER_BEDS.sky)
+            .mul(ao);
         // Light thrown up off the white valley floor onto the cliffs, strongest low down.
         const lowness = smoothstep(260.0, 0.0, P.y.sub(u.groundY));
         const bounce = u.groundLit.mul(0.3).mul(float(0.5).sub(N.y.mul(0.5))).mul(ao).mul(lowness.mul(0.7).add(0.3));
@@ -80,14 +105,18 @@ function createSpireMaterial(u, t) {
         const V = normalize(P.sub(u.eye));
         const edge = float(1.0).sub(max(dot(N, V.negate()), 0.0));
         const edge2 = edge.mul(edge);
+        // (Each sun's rim lies on the side of the silhouette it stands on: a face turned toward it
+        // takes it, so a backlit tower is edged in three colours.)
+        const edge3 = edge2.mul(edge);
         const sheenOf = (S) => {
             const m = max(dot(V, S), 0.0);
             const m2 = m.mul(m);
             const m4 = m2.mul(m2);
-            return m4.mul(m4).mul(edge2);
+            const side = smoothstep(-0.4, 0.3, dot(N, S));
+            return m4.mul(m2).mul(edge3).mul(side);
         };
         const sheen = u.col0.mul(sheenOf(u.sun0).mul(vis.x)).add(u.col1.mul(sheenOf(u.sun1).mul(vis.y)))
-            .add(u.col2.mul(sheenOf(u.sun2).mul(vis.z))).mul(0.32);
+            .add(u.col2.mul(sheenOf(u.sun2).mul(vis.z))).mul(TOWER_BEDS.rim);
         const colour = albedo.mul(lit.add(sky).add(bounce)).add(sheen);
         return vec4(haze(u, mist(u, colour, P, vis), P), 1.0);
     })();

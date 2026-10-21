@@ -61,6 +61,7 @@ import {
     STEAM_LEAN,
     STEAM_SLOTS,
     tbAerial,
+    tbCloudShade,
     tbFxMaterial,
     tbHgMix,
     tbPart,
@@ -422,7 +423,7 @@ export function createMist(u, tier, tex) {
             sunShare = sunShare.mul(exp(tbPlumeShade(u, P).shade.mul(u.steam).mul(-1.2)));
             alpha.mulAssign(float(1.15));
         }
-        const lit = u.sunColor.mul(sunShare).add(mix(u.haze, u.zenith, 0.5).mul(0.3));
+        const lit = u.sunColor.mul(sunShare.mul(tbCloudShade(u, P))).add(mix(u.haze, u.zenith, 0.5).mul(0.3));
         const col = tbAerial(u, lit, dist, V.negate());
         return vec4(col.mul(alpha), alpha);
     });
