@@ -17,7 +17,7 @@
  * strands         vines and roots hanging from the Spring Isle's rim
  * seaRings        rings out across the cloud sea, and `seaSegments` segments round it
  * seaField        edge of the baked cloud-sea relief (half floats), texels
- * cumulusPuffs    puffs the world's cumulus are heaped from (the tower, the bank, the small ones)
+ * cumulusPuffs    puffs the world's cumulus are heaped from (the tower, and the two veils' fixed share)
  * terraceSegments segments round a terrace lip
  * archipelago     far isles along the horizon, and `hairlineFalls` the threads of water on them (0..4)
  * fallRows        rows down the Mother Fall (the other falls take a share), and `fallCols` columns
@@ -51,7 +51,7 @@ export const QUALITY = Object.freeze({
         seaRings: 36,
         seaSegments: 64,
         seaField: 256,
-        cumulusPuffs: 110,
+        cumulusPuffs: 130,
         terraceSegments: 96,
         archipelago: 6,
         hairlineFalls: 2,
@@ -88,7 +88,7 @@ export const QUALITY = Object.freeze({
         seaRings: 44,
         seaSegments: 88,
         seaField: 256,
-        cumulusPuffs: 140,
+        cumulusPuffs: 164,
         terraceSegments: 128,
         archipelago: 8,
         hairlineFalls: 3,
@@ -125,7 +125,7 @@ export const QUALITY = Object.freeze({
         seaRings: 56,
         seaSegments: 112,
         seaField: 256,
-        cumulusPuffs: 180,
+        cumulusPuffs: 210,
         terraceSegments: 160,
         archipelago: 10,
         hairlineFalls: 4,
@@ -162,7 +162,7 @@ export const QUALITY = Object.freeze({
         seaRings: 64,
         seaSegments: 128,
         seaField: 512,
-        cumulusPuffs: 230,
+        cumulusPuffs: 268,
         terraceSegments: 224,
         archipelago: 12,
         hairlineFalls: 4,
@@ -199,7 +199,7 @@ export const QUALITY = Object.freeze({
         seaRings: 80,
         seaSegments: 160,
         seaField: 512,
-        cumulusPuffs: 280,
+        cumulusPuffs: 326,
         terraceSegments: 288,
         archipelago: 14,
         hairlineFalls: 4,
@@ -236,7 +236,7 @@ export const QUALITY = Object.freeze({
         seaRings: 96,
         seaSegments: 192,
         seaField: 512,
-        cumulusPuffs: 330,
+        cumulusPuffs: 384,
         terraceSegments: 320,
         archipelago: 16,
         hairlineFalls: 4,

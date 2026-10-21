@@ -346,13 +346,77 @@ card; fresh paint; the rename's migration), the full suite (only environmental r
 locale-formatted numbers, one symlink EPERM), the build with its boot-closure guard, the lint
 ratchet, dependency-cruiser and the architecture fitness check.
 
+## The atmosphere pass (2026-10-21)
+
+The owner asked for better visuals, effects, atmosphere and graphics. A baseline of the b frame set
+([CAPTURE_TOOLS.md](rainbow-terraces-handover/CAPTURE_TOOLS.md)) on the RTX 5080 Laptop (WebGPU,
+through Electron) showed what held the picture back, largest share of the frame first: the cloud sea
+read as crumpled foil; nothing stood between the near isles and the far field; the tower's front
+billows were darker than the ones behind them; the storm wall hung from a ruled, pixel-crisp base;
+the cirrus was combed into parallel strokes; the far isles were funnels; the Spring Isle's root wore a
+printed honeycomb and hoops of pale bed; the Mother Fall's ropes ended in square tips.
+
+![Before and after: at rest, the cloud sea, from the overlook](rainbow-terraces-overhaul/atmosphere-a.webp)
+![Before and after: the Spring Isle and the storm, the Far Gate and the Twin Isle, the cirrus](rainbow-terraces-overhaul/atmosphere-b.webp)
+
+- **The cloud sea is cloud.** `bakeSeaField` joined hemispherical caps at four sizes, and every cap's
+  rim was a crease (a cap's slope is vertical there, and the smooth maximum narrowed to nothing at
+  it), so the middle distance was a net of creases. Each head is now a paraboloid that runs on below
+  its rim, and the heads are joined by a log-sum-exp (`SEA_SADDLE` its temperature): one surface,
+  soft saddles, no crease anywhere. The small heads ride on the large billows' shoulders and crowns,
+  so the valleys between the banks stay broad. The slope's jump from texel to texel fell from 12.5 to
+  5.3 at the 99th percentile (the core test pins it under 7.5). The 512² bake takes about 0.7 s
+  against 0.5 s before, in the bake worker (only heads within reach of a pixel's highest are summed).
+  In the sea's shader the crowns catch the light and run a little over white, the hollows (the crease
+  channel) fall into a cool shade, and the deepest valleys pool a cool, dim mist (they had been lit
+  almost to the crowns' value, which flattened the whole sea).
+- **Veils of stratus** (`cumulusPlan`, kind 3): two long, thin banks lie level just under the
+  horizon, 2.3 and 2.9 km out, one each side of the board, behind the near isles and in front of
+  everything far (the archipelago, the Far Gate's mesa, the storm's foot), so the distance reads in
+  planes: the Twin Isle and the gate both stand in cloud. Long puffs (2.6 to 4.2 times as wide as
+  tall) in the cumulus draw, torn at the edge, thinning downward, broken into drifts and gaps fixed in
+  the air, swaying slowly along the wind. A veil takes a fixed share of the buffer and each tier's
+  `cumulusPuffs` grew by that share, so the tower keeps its puffs. None in a smile frame.
+- **The tower faces its light.** The cloud's form normal used each puff's offsets in the cloud's own
+  frame (across the view, along it) as world x and z: the face standing toward the eye got a normal
+  pointing away from it, so the front billows were darker than the back ones (dimples, a pile of
+  balls). It is built from the cloud's own axes now, and each billow's own sphere weighs more (its top
+  lit, its underside in shade): the tower reads as lit cumulus, its crown burning pink at Rose.
+- **The storm's base** sags in broad pouches and frays into its rain (a soft tear a few pixels wide,
+  wider under the heart) instead of a ruled line with rounded corners; each billow's edge is vapour,
+  soft over 5 % of its own size.
+- **The cirrus** bends along its run (a slow bend fans the streaks apart and together, and the fibres
+  follow it), and each streak has a dense head that frays into a tail: curls and hooks, never a comb.
+- **The far isles** hang lobed roots on their silhouette's bearings (`FAR_SHAPES`: a lobe table and a
+  lean per build, shorter roots) on 22 bearings and 16 rings: broken mountains turned over, not funnels.
+- **The stone.** The honeycomb cups are a faint texture, gone where a cup spans less than a few
+  pixels (close up they read as a printed net of cells); the pale beds pinch out and come back round
+  the isle (a read round its bearing, three tiles a turn), so no bed rings the root like a hoop; dark
+  rain varnish runs down the faces between the white drips.
+- **The Mother Fall's ropes**: each comet's head is a rounded nose (the rope's middle leads, its sides
+  trail) over a softer rise, never a step straight across the rope (piano keys).
+
+**Verified:** the b set before and after on the RTX 5080 (WebGPU); Minimal, Low and Extreme; the WebGL2
+backend at High and at Medium by night; every hour, the events, a phone and an ultrawide: consoles clean.
+The real game on WebGPU at High through a run of hard drops: console clean (three warnings, none from
+the theme). The theme's 17 test files (364 tests; new: the sea's creases, the veils), typecheck, the TS,
+lint and fitness ratchets at baseline, dependency boundaries, the lifecycle audit and the IP gate. No
+frame timing: the GPU was shared with the owner's parallel work, so an A/B would only have been noise.
+Cost by construction: the dome's fragment grew from 57.9 to 59.3 KB of WGSL at High (6.2 KB under its
+gate), the stone gained three texture reads and the cumulus one; the draws are the same 15 (the veils
+are in the cumulus draw); scene triangles Minimal 50.4 k, Low 63.2 k, Medium 80.4 k, High 107.4 k,
+Ultra 137.3 k, Extreme 172.2 k (the far isles' finer roots), all within their budgets.
+
+**Not done:** the storm wall's billows still step down its steepest heaves in columns (mostly hidden
+behind the tower and the card), and the Spring Isle's root keeps its silhouette.
+
 ## Tiers
 
 Every tier keeps the whole picture and every event. Scene triangles as built (the world test's
-census, instances at capacity): Minimal 48.5 k, Low 60.8 k, Medium 77.3 k, High 102.6 k, Ultra
-131.7 k, Extreme 165.8 k, all inside their budgets (60 / 80 / 100 / 140 / 180 / 230 k); the same
-15 draws on every tier. The sky dome's fragment stage is under its 64 KB gate (about 55 KB before
-the third pass, which added a little to it); the shaders test enforces it.
+census, instances at capacity, after the atmosphere pass): Minimal 50.4 k, Low 63.2 k, Medium
+80.4 k, High 107.4 k, Ultra 137.3 k, Extreme 172.2 k, all inside their budgets (60 / 80 / 100 /
+140 / 180 / 230 k); the same 15 draws on every tier. The sky dome's fragment stage is under its
+64 KB gate (59.3 KB of WGSL at High after the atmosphere pass); the shaders test enforces it.
 
 ## Verification
 

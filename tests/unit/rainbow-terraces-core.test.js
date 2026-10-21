@@ -6,8 +6,8 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    FALL_SWAY, G, OPTICS, OPTICS_RANGE, OPTICS_ROWS, OPTICS_WIDTH, WATER_WRAP, airyAi, bakeOpticsLut, bakePuff, bakeSkyNoise,
-    bakeStoneNoise, besselJ0, besselJ1, bowRay, cellsFromMatrix, fallLength, fallPoint, fallSway, fromOklch, hexToLinear,
+    FALL_SWAY, G, OPTICS, OPTICS_RANGE, OPTICS_ROWS, OPTICS_WIDTH, WATER_WRAP, airyAi, bakeOpticsLut, bakePuff, bakeSeaField,
+    bakeSkyNoise, bakeStoneNoise, besselJ0, besselJ1, bowRay, cellsFromMatrix, fallLength, fallPoint, fallSway, fromOklch, hexToLinear,
     lerpOklch, linearToOklab, mulberry32, oklabToLinear, opticsAt, pieceLight, sunTransmission, sunsetLight, toOklch, travelTime,
 } from '../../src/themes/rainbow-terraces/rainbow-terraces-core.js';
 import { RAINBOW_TERRACES_TETROMINOS } from '../../src/themes/rainbow-terraces/rainbow-terraces-tetrominos.js';
@@ -373,6 +373,34 @@ describe('Rainbow Terraces noise', () => {
         t = performance.now();
         bakeStoneNoise(512);
         expect(performance.now() - t).toBeLessThan(300);
+    });
+
+    // The cloud sea's heads join in soft saddles, never in creases: a union of hemispherical caps
+    // creased at every rim, and four sizes of creases read as crumpled foil across the sea. The
+    // slope (G, B: height per tile) may only turn gently from texel to texel.
+    it('bakes the cloud sea\'s heads without creases: the slope never jumps between texels', () => {
+        const n = 256;
+        const d = bakeSeaField(n, 36);
+        const jumps = [];
+        for (let j = 0; j < n; j++) {
+            for (let i = 0; i < n; i++) {
+                const at = j * n + i;
+                const east = j * n + ((i + 1) % n);
+                const north = ((j + 1) % n) * n + i;
+                jumps.push(Math.hypot(d[east * 4 + 1] - d[at * 4 + 1], d[north * 4 + 2] - d[at * 4 + 2]));
+            }
+        }
+        jumps.sort((a, b) => a - b);
+        // (The creased caps measured 12.5 at the 99th percentile; the joined domes 5.3.)
+        expect(jumps[Math.floor(jumps.length * 0.99)]).toBeLessThan(7.5);
+        // …and still a field of heads, not a flat sheet: the height keeps its spread.
+        let lo = 1;
+        let hi = 0;
+        for (let i = 0; i < n * n; i++) {
+            lo = Math.min(lo, d[i * 4]);
+            hi = Math.max(hi, d[i * 4]);
+        }
+        expect(hi - lo).toBeGreaterThan(0.6);
     });
 
     it('bakes a white puff of spray whose alpha dies before the square\'s edge', () => {
