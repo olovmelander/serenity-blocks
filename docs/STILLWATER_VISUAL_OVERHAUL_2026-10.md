@@ -3,6 +3,10 @@
 > 2026-10-18: the troll and the spirit were rebuilt (new figures, posed every frame, a story
 > between them). The place, the water, the wood, the hours and the event language below still
 > stand; for the figures read `docs/STILLWATER_STORY_2026-10.md`.
+>
+> 2026-10-21: the wood and the air were reworked (spruce crowns on every tree, the far wood as
+> tiered spruce, the boughs, the veil of mist on the water); read
+> `docs/STILLWATER_SPRUCE_WOOD_2026-10.md` for those, and for the tiers' new `wood` and `veil`.
 
 Implemented 2026-10-09 on `feature/stillwater-masterpiece`, with Three.js 0.186.1. A from-scratch
 rebuild: it replaces the earlier theme in full (a 2,000-line lifecycle adapter with a pooled
