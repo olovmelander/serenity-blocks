@@ -9,8 +9,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    cameraPosition, color, dot, exp, instancedBufferAttribute, mix, normalize, positionLocal, positionWorld, pow,
-    saturate, sin, uv, varying, vec3, vec4,
+    attribute, cameraPosition, color, dot, exp, instancedBufferAttribute, length, mix, normalize, positionLocal,
+    positionWorld, pow, saturate, sin, smoothstep, uv, varying, vec3, vec4,
 } from 'three/tsl';
 import {
     SAKURA_BRIDGE, SAKURA_PAGODA, SAKURA_STONE_LANTERNS, SAKURA_TORII, SAKURA_VIEWS,
@@ -19,21 +19,38 @@ import { createSakuraPropMaterial } from './sakura-prop-material.js';
 import { sakuraLand, sakuraPathDistance, sakuraTerrainHeight } from './sakura-terrain.js';
 
 const TAU = Math.PI * 2;
+/** Fallen flowers in the grass, as a share of the tier's tufts. */
+const FALLEN_SHARE = 0.06;
+
+/** A small seeded generator of its own (mulberry32). */
+function mulberry32(seed) {
+    let state = seed >>> 0;
+    return () => {
+        state = (state + 0x6d2b79f5) >>> 0;
+        let mixed = Math.imul(state ^ (state >>> 15), 1 | state);
+        mixed ^= mixed + Math.imul(mixed ^ (mixed >>> 7), 61 | mixed);
+        return ((mixed ^ (mixed >>> 14)) >>> 0) / 4294967296;
+    };
+}
 
 export class SakuraGarden {
-    /** `paperLanterns` come from planPaperLanterns(): [{x, y, z, phase, red}]. */
+    /**
+     * `paperLanterns` come from planPaperLanterns(): [{x, y, z, phase, red}]; `blossoms` is the
+     * flower pack (its `flower` falls into the grass; without it the grass has none).
+     */
     constructor({
-        light, props, tier, paperLanterns = [], rng = Math.random,
+        light, props, blossoms = null, tier, paperLanterns = [], rng = Math.random,
     }) {
         this.light = light;
         this.props = props;
+        this.blossoms = blossoms;
         this.tier = tier;
         this.paperLanterns = paperLanterns;
         this.rng = rng;
         this.group = new THREE.Group();
         this.group.name = 'SakuraGarden';
         this.owned = [];
-        this.stats = { props: 0, grass: 0 };
+        this.stats = { props: 0, grass: 0, blossom: 0 };
     }
 
     own(resource) {
@@ -228,15 +245,27 @@ export class SakuraGarden {
             .mul(0.3);
         material.positionNode = positionLocal.add(vec3(light.uWindDir.x.mul(bend), bend.mul(-0.25), light.uWindDir.z.mul(bend)));
         const world = positionWorld;
-        const view = normalize(cameraPosition.sub(world));
-        const blade = mix(mix(color(0x06120a), color(0x0c2112), look.y), mix(color(0x234a24), color(0x41703a), look.y), st.x);
+        const offset = cameraPosition.sub(world);
+        const view = normalize(offset);
+        // Night grass: blue-green in the open, olive where it grows rank, its roots in the dark.
+        // Patches a few metres across keep the knoll from reading as one carpet.
+        const patch = light.noise(world.xz.mul(0.035)).g.mul(0.7).add(look.y.mul(0.3));
+        const tip = mix(mix(color(0x234638), color(0x35583c), look.y), color(0x56603a), smoothstep(0.45, 0.75, patch));
+        const blade = mix(mix(color(0x050b0a), color(0x0a1410), look.y), tip, st.x.mul(st.x.mul(0.4).add(0.6)));
         // Backlit blades glow at their tips; lantern light and the board's ring pass over them.
         const through = pow(saturate(dot(view, light.uMoonDir).negate()), 2).mul(st.x);
         const lamp = varying(light.lamps(positionWorld));
         const ring = varying(light.rings(positionWorld.xz).band);
-        const lit = blade.mul(light.uMoonColor).mul(through.mul(1.5).add(0.5)).mul(light.moonlight())
-            .add(blade.mul(light.ambient(vec3(0, 1, 0))).mul(1.4))
-            .add(blade.mul(lamp).mul(1.3))
+        const moon = light.moonlight();
+        // The moon silvers the tips it catches: a cool sheen, not a brighter green.
+        const sheen = vec3(0.5, 0.56, 0.86).mul(pow(st.x, 2.5)).mul(through.mul(0.8).add(0.12)).mul(moon);
+        // The nearest grass stands in the shade of the knoll's lip: a dark frame for the garden.
+        const shade = smoothstep(2.5, 9, length(offset)).mul(0.45).add(0.55);
+        const lit = blade.mul(light.uMoonColor).mul(through.mul(1.3).add(0.42)).mul(moon)
+            .add(blade.mul(light.ambient(vec3(0, 1, 0))).mul(1.25))
+            .add(sheen.mul(0.3))
+            .mul(shade)
+            .add(blade.mul(lamp).mul(1.5))
             .add(mix(blade, vec3(1.0, 0.6, 0.74), 0.5).mul(ring).mul(0.6).mul(st.x));
         material.colorNode = vec4(light.haze(lit, { world }), 1);
         const mesh = new THREE.InstancedMesh(geometry, material, tufts.length);
@@ -256,6 +285,67 @@ export class SakuraGarden {
         mesh.matrixAutoUpdate = false;
         this.group.add(mesh);
         this.stats.grass = tufts.length;
+        this.buildFallenBlossom(tufts, eye);
+    }
+
+    /**
+     * Whole flowers the boughs have let fall, caught in the tops of the tufts near the eye:
+     * the foreground's own blossom. Placed from a generator of their own, so the garden's
+     * shared sequence (and everything built after the grass) is the same with or without them.
+     */
+    buildFallenBlossom(tufts, eye) {
+        const flower = this.blossoms?.meshes?.flower;
+        const wanted = Math.round(this.tier.grass * FALLEN_SHARE);
+        if (!flower || !wanted) return;
+        const near = tufts.filter((tuft) => eye[2] - tuft.z < 24);
+        if (!near.length) return;
+        const random = mulberry32(0x5a4b);
+        const lookData = new Float32Array(wanted * 4);
+        const look = instancedBufferAttribute(new THREE.InstancedBufferAttribute(lookData, 4)); // tone, -, -, -
+        const mesh = new THREE.InstancedMesh(flower, this.createFallenMaterial(look), wanted);
+        mesh.name = 'SakuraFallenBlossom';
+        const dummy = new THREE.Object3D();
+        for (let index = 0; index < wanted; index += 1) {
+            const tuft = near[Math.floor(random() * near.length)];
+            const spread = 0.12 * tuft.scale;
+            dummy.position.set(
+                tuft.x + (random() - 0.5) * spread,
+                tuft.y + (0.3 + random() * 0.14) * tuft.scale,
+                tuft.z + (random() - 0.5) * spread,
+            );
+            // Lying on the blades, face up, at whatever slant they caught it.
+            dummy.rotation.set(-Math.PI / 2 + (random() - 0.5) * 0.9, (random() - 0.5) * 0.7, random() * TAU);
+            dummy.scale.setScalar(0.1 + random() * 0.06);
+            dummy.updateMatrix();
+            mesh.setMatrixAt(index, dummy.matrix);
+            lookData[index * 4] = random();
+        }
+        mesh.instanceMatrix.needsUpdate = true;
+        mesh.castShadow = false;
+        mesh.frustumCulled = false;
+        mesh.matrixAutoUpdate = false;
+        this.group.add(mesh);
+        this.stats.blossom = wanted;
+    }
+
+    /** Fallen flowers: white going pink at the heart, lit like the petals in the air. */
+    createFallenMaterial(look) {
+        const { light } = this;
+        const material = this.own(new THREE.MeshBasicNodeMaterial({ fog: false, side: THREE.DoubleSide }));
+        material.name = 'SakuraFallenBlossom';
+        const paint = attribute('color', 'vec4'); // along the petal, flower id, shade, petal
+        const world = positionWorld;
+        const pale = mix(color(0xfff0f3), color(0xffc4d4), look.x);
+        const heart = mix(color(0xe0799a), color(0xb8365e), look.x);
+        const petal = mix(heart, pale, smoothstep(0.05, 0.5, paint.r)).mul(paint.b.mul(0.35).add(0.65));
+        const lamp = varying(light.lamps(positionWorld));
+        const ring = varying(light.rings(positionWorld.xz).band);
+        const lit = petal.mul(light.uMoonColor).mul(light.moonlight()).mul(0.42)
+            .add(petal.mul(light.ambient(vec3(0, 1, 0))).mul(1.5))
+            .add(petal.mul(lamp).mul(1.2))
+            .add(petal.mul(vec3(1.0, 0.6, 0.78)).mul(ring).mul(0.7));
+        material.colorNode = vec4(light.haze(lit, { world }), 1);
+        return material;
     }
 
     dispose() {

@@ -11,18 +11,66 @@ import * as THREE from 'three/webgpu';
 import {
     attribute, cameraPosition, color, cross, dot, faceDirection, float, instancedBufferAttribute, length, mix,
     normalGeometry, normalize, positionGeometry, positionLocal, positionWorld, pow, saturate, sin, smoothstep, uniform,
-    varying, vec3, vec4,
+    uv, varying, vec3, vec4,
 } from 'three/tsl';
 import { SakuraPetalSim } from './sakura-petal-sim.js';
 import { SAKURA_SURFACE_CEILING, SAKURA_WATER_LEVEL, sakuraSurfaceHeight } from './sakura-terrain.js';
 import { SakuraPetalSimRemote } from './sakura-petal-sim-remote.js';
 
 const RESERVE_SHARE = 0.45;
+/**
+ * The refined petal's rows from claw to tip, in a petal of unit length and 0.35 half-width:
+ * [along, half-width, where the midrib is]. The last row's midrib stops short of its lobes:
+ * the notch a cherry petal ends in.
+ */
+const PETAL_ROWS = [[0, 0.035, 0], [0.2, 0.19, 0.2], [0.45, 0.33, 0.45], [0.67, 0.35, 0.67], [0.86, 0.27, 0.8],
+    [1, 0.13, 0.87]];
 
 /** Rotate a vector by a unit quaternion (TSL). */
 function rotate(vector, quaternion) {
     const axis = quaternion.xyz;
     return vector.add(cross(axis, cross(axis, vector).add(vector.mul(quaternion.w))).mul(2));
+}
+
+/**
+ * The petal in the air, drawn finer than the pack's four-triangle one and at its size: a
+ * rounded blade, cupped across and rolled back toward the notched tip, so a petal near the
+ * eye reads as a petal and its shading turns across it as it tumbles. Same frame as the
+ * pack's (lying in XY, claw toward -Y, +Z up) and the same paint (along, -, shade, 1).
+ */
+export function createSakuraPetalGeometry(authored) {
+    if (!authored.boundingBox) authored.computeBoundingBox();
+    const box = authored.boundingBox;
+    const span = box.max.y - box.min.y;
+    const across = (box.max.x - box.min.x) / 0.7;
+    const positions = [];
+    const paint = [];
+    const uvs = [];
+    const indices = [];
+    PETAL_ROWS.forEach(([along, half, midrib]) => {
+        [-1, 0, 1].forEach((side) => {
+            const y = side === 0 ? midrib : along;
+            const x = side * half;
+            const lift = 0.09 * (x / 0.35) ** 2 - 0.06 * y * y;
+            positions.push(x * across, box.min.y + y * span, lift * span);
+            paint.push(Math.min(1, y), 0, 0.82 + 0.18 * Math.min(1, y), 1);
+            uvs.push(0.5 + x / 0.7, y);
+        });
+    });
+    for (let row = 0; row < PETAL_ROWS.length - 1; row += 1) {
+        const [left, mid, right] = [row * 3, row * 3 + 1, row * 3 + 2];
+        indices.push(left, mid, left + 3, mid, mid + 3, left + 3, mid, right, mid + 3, right, right + 3, mid + 3);
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setAttribute('color', new THREE.Float32BufferAttribute(paint, 4));
+    geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
+    geometry.name = 'SakuraPetalRefined';
+    return geometry;
 }
 
 export class SakuraPetals {
@@ -63,8 +111,10 @@ export class SakuraPetals {
                 // (No worker: the page steps the petals, as before.)
             }
         }
-        const geometry = this.blossoms.meshes.petal;
-        if (!geometry) throw new Error('[Sakura] The blossom pack has no "petal" mesh.');
+        const authored = this.blossoms.meshes.petal;
+        if (!authored) throw new Error('[Sakura] The blossom pack has no "petal" mesh.');
+        const geometry = createSakuraPetalGeometry(authored);
+        this.owned.push(geometry);
         const { sim, light } = this;
         this.positions = new THREE.InstancedBufferAttribute(sim.outPosition, 4);
         this.rotations = new THREE.InstancedBufferAttribute(sim.outRotation, 4);
@@ -86,7 +136,10 @@ export class SakuraPetals {
         const view = normalize(cameraPosition.sub(world));
         const pale = mix(color(0xffe6ed), color(0xffa6c2), look.x);
         const heart = mix(color(0xe9779a), color(0xc23463), look.x);
-        const petal = mix(heart, pale, smoothstep(0.02, 0.42, paint.r)).mul(paint.b);
+        // Blushed at the claw, palest at the margins of the blade.
+        const margin = pow(uv().x.sub(0.5).abs().mul(2), 2).mul(smoothstep(0.25, 0.7, paint.r));
+        const petal = mix(mix(heart, pale, smoothstep(0.02, 0.42, paint.r)), color(0xfff3f6), margin.mul(0.4))
+            .mul(paint.b);
         const moon = light.moonlight();
         const facing = dot(blade, light.uMoonDir);
         const through = pow(saturate(dot(view, light.uMoonDir).negate()), 3);

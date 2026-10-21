@@ -1,8 +1,9 @@
 /**
  * The moment an orb's goal is reached, the well answers before any sheet appears: the theme
- * plays its showpiece reel (the events of a quad, a cascade and a perfect clear, compressed
- * into about a second and a half), the well's border flares in the chapter's colour with a
- * sweep of light that returns on the final clear, and the chimes play. It runs while the
+ * plays its showpiece reel (the events of a quad, a cascade and a perfect clear, over about two
+ * and a quarter seconds), the well's border flares in the chapter's colour with a sweep of light
+ * that returns on the final clear, and the chimes play. Then the theme's own answer to the board
+ * emptying plays out for a few seconds more before the ceremony covers it. It runs while the
  * attempt drains and saves, so it adds a beat of payoff (the peak the ceremony then confirms)
  * rather than a wait, and the ceremony arrives through an afterglow instead of a cut. A
  * showcase that already celebrated its goal at the start of its lap, a hidden page and
@@ -19,7 +20,7 @@ const REDUCED_FLOURISH_MS = 280;
 const FLARE_LIFETIME_MS = GOAL_FLOURISH_MS + 900;
 
 // The flourish in flight: its timers and its promise. Untracked, a player leaving within the
-// ~1.5 s reel still sent the theme's showpiece events to whatever theme came next (audit
+// reel still sent the theme's showpiece events to whatever theme came next (audit
 // 2026-10-18); clearOdysseyGoalFlourish cancels them and settles the promise with false.
 let inFlight = null;
 
