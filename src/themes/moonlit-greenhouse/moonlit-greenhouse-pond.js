@@ -1310,10 +1310,14 @@ export function createPads({
         // turning crimson toward the lip; the outer skirt the underside's red-purple, ribbed and
         // set with spines.
         const mottle = texture(noise, local.mul(0.9).add(seed.mul(5.0))).level(1.0).x;
-        const green = mix(vec3(0.045, 0.11, 0.03), vec3(0.07, 0.14, 0.04), mottle).mul(seed.mul(0.3).add(0.85));
-        const floorCol = mix(green.mul(cellShade), vec3(0.13, 0.18, 0.06), veins.mul(0.85))
+        // A living green, light enough that the moonlight's grey does not swallow it.
+        const green = mix(vec3(0.06, 0.15, 0.04), vec3(0.1, 0.2, 0.05), mottle).mul(seed.mul(0.3).add(0.85));
+        const floorCol = mix(green.mul(cellShade), vec3(0.17, 0.24, 0.08), veins.mul(0.85))
             .add(vec3(0.05, -0.02, 0.0).mul(smoothstep(0.85, 1.0, k)));
-        const crimson = vec3(0.17, 0.028, 0.05);
+        // The rim's crimson is weathered: darker in patches, browner where it has aged.
+        const age = texture(noise, vec2(phi.mul(R).mul(0.7), hRim.mul(0.6)).add(seed.mul(3.0))).level(1.0).z;
+        const crimson = mix(vec3(0.17, 0.028, 0.05), vec3(0.11, 0.035, 0.03), smoothstep(0.35, 0.75, age))
+            .mul(mottle.mul(0.35).add(0.8));
         const h2 = hRim.mul(hRim);
         const innerCol = mix(green.mul(0.9), crimson, h2.mul(h2).mul(0.85).add(smoothstep(0.92, 1.0, hRim).mul(0.15)));
         const ribs = mgLine(phi.mul(R), float(0.035), float(0.008), foot);
@@ -1338,12 +1342,29 @@ export function createPads({
             .mul(through.mul(through).mul(backlit)).mul(thin)
             .mul(0.05)
             .mul(select(part.greaterThan(0.5), float(1.0), float(0.0)));
-        // A wet sheen on the floor at grazing angles: the vault's glow.
-        const cosV = clamp(dot(n, v.negate()), 0.0, 1.0);
+        // The face is waxy, and rain from the glass stands on it in puddles. A puddle is a level
+        // mirror (the vault's glow, the moon's and the lanterns' glints); the waxy skin round it
+        // shines softly, its glints broken up cell by cell by the quilting.
+        const pool = texture(noise, local.mul(0.55).add(vec2(seed.mul(17.0), seed.mul(-9.0)))).level(1.0).y;
+        const puddle = smoothstep(0.56, 0.6, pool).mul(float(1.0).sub(smoothstep(0.7, 0.82, k)))
+            .mul(select(part.lessThan(0.5), float(1.0), float(0.0)));
+        const nS = normalize(mix(n, nG, puddle));
+        const r = reflect(v, nS).toVar();
+        const cosV = clamp(dot(nS, v.negate()), 0.0, 1.0);
         const g1 = float(1.0).sub(cosV);
-        const sheen = mix(night.horizon, night.glassFog.mul(0.08), 0.5).mul(g1.mul(g1).mul(g1).mul(0.8));
+        const g2 = g1.mul(g1);
+        const fres = g2.mul(g2).mul(g1).mul(0.96).add(0.04);
+        const towardMoon = float(1.0).sub(clamp(dot(r, U.moon), 0.0, 1.0));
+        const skyish = mix(night.horizon, night.zenith, clamp(r.y, 0.0, 1.0)).mul(0.9)
+            .add(night.glassFog.mul(exp(towardMoon.mul(-6.0))).mul(0.06));
+        const moonGlint = night.moonlight.mul(vis).mul(U.moonLight).mul(exp(towardMoon.mul(-900.0))).mul(0.6);
+        const glints = lanternGlints(p, r, U, 0.035).mul(0.35);
+        const shine = mix(float(0.22), float(1.0), puddle).mul(select(part.lessThan(0.5), float(1.0), float(0.5)));
+        const sheen = skyish.mul(fres).add(moonGlint.add(glints).mul(fres.mul(2.0).add(0.1))).mul(shine);
         const beads = dew(local, seed, vis, foot, p).mul(select(part.lessThan(0.5), float(1.0), float(0.0)));
-        return vec4(lit.add(ruby).add(sheen).add(beads), 1.0);
+        // Under a puddle the leaf is darker (wet), and no dew stands on the water.
+        const under = float(1.0).sub(puddle.mul(0.35));
+        return vec4(lit.mul(under).add(ruby).add(sheen).add(beads.mul(float(1.0).sub(puddle))), 1.0);
     })();
     add(buildVictoriaGeometry(plan.pads, detail.victoria), victoria, 'moonlit-greenhouse-pads-victoria', 4);
 
