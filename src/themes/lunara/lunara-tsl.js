@@ -336,7 +336,8 @@ export function createValleyUniforms(textures) {
  */
 export const luSkyBase = (u, dir) => {
     const up = clamp(dir.y, 0.0, 1.0);
-    const grad = mix(u.horizon, u.zenith, pow(up, 0.3));
+    // The horizon's haze lies low: by thirty degrees up the sky is the deep zenith.
+    const grad = mix(u.horizon, u.zenith, float(1.0).sub(exp(up.mul(-5.5))));
     const cm = max(dot(dir, u.moonDir), 0.0);
     const cm2 = cm.mul(cm);
     const cm8 = cm2.mul(cm2).mul(cm2).mul(cm2);
@@ -345,33 +346,77 @@ export const luSkyBase = (u, dir) => {
     return grad.add(scatter).add(band).mul(u.breath.mul(0.6).add(0.4));
 };
 
+/**
+ * The sky's gradient alone, without the great moon's glare: the air in front of a moon, which
+ * must not wash the glare it causes back over its own night side.
+ */
+export const luSkyGradient = (u, dir) => {
+    const up = clamp(dir.y, 0.0, 1.0);
+    const grad = mix(u.horizon, u.zenith, float(1.0).sub(exp(up.mul(-5.5))));
+    return grad.add(u.horizon.mul(exp(up.mul(-9.0))).mul(0.35)).mul(u.breath.mul(0.6).add(0.4));
+};
+
+/**
+ * How much of a moon's face is lit along a direction inside its disc: the sphere's normal there
+ * (as the eye sees it) against the sun, so a mirror shows the same phase as the sky.
+ */
+const moonPhase = (u, dir, centre, radius) => {
+    const along = dot(dir, centre);
+    const off = dir.sub(centre.mul(along));
+    const reach = length(off);
+    const r = clamp(reach.div(max(radius.sin(), 1e-4)), 0.0, 1.0);
+    const normal = off.div(max(reach, 1e-5)).mul(r).sub(centre.mul(max(float(1.0).sub(r.mul(r)), 0.0).sqrt()));
+    return smoothstep(-0.02, 0.2, dot(normal, u.sunDir)).mul(0.96).add(0.04);
+};
+
 /** The two moons' discs along a direction (what a facet or still water mirrors of them). */
 export const luMoonDiscs = (u, dir) => {
     const soft = float(0.012);
     const a = smoothstep(u.discs.x.cos().sub(soft), u.discs.x.cos().add(soft.mul(0.25)), dot(dir, u.moonDir));
     const b = smoothstep(u.discs.y.cos().sub(soft.mul(0.3)), u.discs.y.cos().add(soft.mul(0.1)), dot(dir, u.companionDir));
-    return u.moonCol.mul(a).mul(1.5).add(u.companionCol.mul(b).mul(1.3)).mul(u.breath);
+    return u.moonCol.mul(a.mul(moonPhase(u, dir, u.moonDir, u.discs.x))).mul(1.5)
+        .add(u.companionCol.mul(b.mul(moonPhase(u, dir, u.companionDir, u.discs.y))).mul(1.3))
+        .mul(u.breath);
 };
 
 /** Fraction of light lost between the camera and a point `dist` away at height `y`. */
 export const luFogAmount = (dist, y) => {
     const thin = mix(float(1.0), float(0.4), smoothstep(4.0, 200.0, y));
-    const k = dist.mul(1 / 860);
+    const k = dist.mul(1 / 1250);
     const air = float(1.0).sub(exp(k.mul(k).mul(thin).negate()));
     // Mist lies on the water and round the feet of the ranges.
     const mist = float(1.0).sub(exp(dist.mul(-1 / 420))).mul(exp(y.mul(-0.085))).mul(0.42);
     return float(1.0).sub(float(1.0).sub(air).mul(float(1.0).sub(mist)));
 };
 
-/** Apply the atmosphere to a shaded colour at world point `p`. */
+/**
+ * Apply the atmosphere to a shaded colour at world point `p`: the even haze of distance, then
+ * banks of moonlit mist lying on the far flats and round the feet of the ranges. The banks are
+ * patchy and drift (a noise read where the view ray ends, counted only where it ends low), and
+ * glow toward the great moon, so the ranges stand out of them in layers.
+ */
 export const luAtmosphere = (u, col, p) => {
     const rel = p.sub(cameraPosition);
-    const dist = length(rel);
-    const dir = rel.div(max(dist, 1e-3));
-    const f = luFogAmount(dist, max(p.y, 0.0));
+    const dist = length(rel).toVar();
+    const dir = rel.div(max(dist, 1e-3)).toVar();
+    const y = max(p.y, 0.0).toVar();
+    const f = luFogAmount(dist, y);
     // Low mist near the water glows a little with the bed's own light.
-    const mist = u.bed.mul(exp(max(p.y, 0.0).mul(-0.3))).mul(0.012).mul(u.power.mul(1.5).add(1.0));
-    return mix(col, luSkyBase(u, vec3(dir.x, max(dir.y, 0.0), dir.z)).add(mist), f);
+    const mist = u.bed.mul(exp(y.mul(-0.3))).mul(0.012).mul(u.power.mul(1.5).add(1.0));
+    const hazed = mix(col, luSkyBase(u, vec3(dir.x, max(dir.y, 0.0), dir.z)).add(mist), f);
+
+    const drift = vec2(u.time.mul(0.0035), u.time.mul(-0.0014));
+    const banks = u.noise(p.xz.mul(0.0032).add(drift)).b;
+    const wisps = u.noise(p.xz.mul(0.013).sub(drift.mul(2.1))).a;
+    const patch = smoothstep(0.36, 0.78, banks.mul(0.72).add(wisps.mul(0.28)));
+    const lying = exp(y.mul(-0.11)).mul(float(1.0).sub(exp(dist.mul(-1 / 320)))).mul(patch).mul(0.85);
+    const toward = max(dot(dir, u.moonDir), 0.0);
+    const t2 = toward.mul(toward);
+    const mistCol = luSkyBase(u, vec3(dir.x, 0.05, dir.z)).mul(1.35)
+        .add(u.moonCol.mul(t2.mul(t2).mul(0.05).add(0.01)))
+        .add(u.bed.mul(u.power.mul(2.0).add(1.0)).mul(0.005))
+        .mul(u.breath.mul(0.6).add(0.4));
+    return mix(hazed, mistCol, lying);
 };
 
 /**
