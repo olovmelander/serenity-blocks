@@ -4,6 +4,8 @@
  * It takes the ledger's place (keystone-solo.css) and its look: one panel from the well's
  * top, the mode's hue (coral) as its left edge. The well walls take the same hue. The
  * ledger's score and level mean nothing in a puzzle, so it steps aside.
+ *
+ * Below it: the puzzle atlas (#stillfall-atlas, src/ui/stillfall/stillfall-atlas.js).
  * ================================================================================ */
 
 .single-player-stage[data-board='well'][data-stillfall='on'] {
@@ -69,8 +71,7 @@
 
 .stillfall-eyebrow,
 .stillfall-label,
-.stillfall-progress__label,
-.stillfall-tier__name {
+.stillfall-progress__label {
     margin: 0;
     color: var(--sb-text-faint);
     font: 600 9px / 1.3 var(--sb-font-display);
@@ -173,20 +174,6 @@
     background: linear-gradient(90deg, rgba(var(--sb-cream-rgb), 0.08), transparent);
 }
 
-/* The tier's count sits on its own line under the name, so it never breaks mid-phrase. */
-.stillfall-tier__note {
-    display: block;
-    margin-top: 3px;
-    color: var(--sb-text-faint);
-    letter-spacing: 0.08em;
-    text-transform: none;
-}
-
-.stillfall-puzzle.is-locked,
-.stillfall-tier.is-locked {
-    opacity: 0.55;
-}
-
 .stillfall-outcome__title {
     display: flex;
     align-items: center;
@@ -247,79 +234,6 @@
     cursor: default;
 }
 
-/* The open list scrolls in its own box, so the puzzle's title, lesson and goal stay in
-   view above it; the panel itself scrolls only when even a short list cannot fit. */
-.stillfall-panel__content {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-}
-
-.stillfall-panel__content > * {
-    flex-shrink: 0;
-}
-
-.stillfall-panel__content > .stillfall-bank {
-    flex: 1 1 auto;
-    min-height: 150px;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    scrollbar-color: rgba(var(--sb-cream-rgb), 0.18) transparent;
-    scrollbar-width: thin;
-}
-
-.stillfall-bank {
-    display: grid;
-    align-content: start;
-    gap: 12px;
-}
-
-.stillfall-tier__list {
-    display: grid;
-    gap: 2px;
-    margin: 6px 0 0;
-    padding: 0;
-    list-style: none;
-}
-
-.stillfall-puzzle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    width: 100%;
-    min-height: 30px;
-    padding: 0 8px;
-    border: 1px solid transparent;
-    border-radius: 8px;
-    background: none;
-    color: var(--sb-text);
-    font: 500 13px / 1.2 var(--sb-font-text);
-    text-align: left;
-    cursor: pointer;
-}
-
-.stillfall-puzzle:hover:not([disabled]),
-.stillfall-puzzle:focus-visible,
-.stillfall-puzzle.is-pad-focus {
-    border-color: var(--sb-line);
-    background: rgba(var(--sb-cream-rgb), 0.05);
-}
-
-.stillfall-puzzle.is-current {
-    border-color: rgba(var(--sb-coral-rgb), 0.6);
-}
-
-.stillfall-puzzle[disabled] {
-    color: var(--sb-text-faint);
-    cursor: default;
-}
-
-.stillfall-puzzle__mark {
-    width: 12px;
-    color: var(--sb-gold);
-    text-align: center;
-}
-
 /* Portrait: the panel becomes a strip under the board, as the ledger does, on the same
    breakpoint as keystone-solo.css; the stage reserves the strip's height so the board
    shrinks instead of being covered. */
@@ -352,16 +266,9 @@
     }
 
     .stillfall-panel__content > .stillfall-outcome,
-    .stillfall-panel__content > .stillfall-actions,
-    .stillfall-panel__content > .stillfall-bank {
+    .stillfall-panel__content > .stillfall-actions {
         grid-column: 1 / -1;
         border-top: 1px solid var(--sb-line);
-    }
-
-    /* The strip is too short for a list box of its own: the whole strip scrolls instead. */
-    .stillfall-panel__content > .stillfall-bank {
-        min-height: 0;
-        overflow: visible;
     }
 
     .stillfall-title {
@@ -382,5 +289,1390 @@
 @media (prefers-reduced-motion: reduce) {
     .stillfall-pip.is-lit {
         box-shadow: none;
+    }
+}
+
+/* =================================================================================
+ * The puzzle atlas (#stillfall-atlas): the whole pyramid on one page, over the board.
+ * src/ui/stillfall/stillfall-atlas.js builds it; the Odyssey navigator's grammar
+ * (odyssey-navigator.css): figures and cells in the header, the tiers as a rail, the
+ * selected tier on the stage with the card of the selected puzzle and its tier's puzzles
+ * as a grid, each drawn from its own starting structure.
+ *
+ * The light is the descent's: each tier lends the page its own (--atlas-hue-rgb), from the
+ * pale gold of First light down through amber and ember to the Core's magma. Coral stays
+ * for the puzzle on the board and the one primary action. Opaque, and no backdrop blur:
+ * the board renders on underneath (only the ambient image, a static layer, is blurred).
+ * Under the sheets (Settings and the pause sheet are 1000) and the play rail.
+ * ================================================================================ */
+#stillfall-atlas.stillfall-atlas {
+    --sb-accent: var(--sb-coral);
+    --sb-accent-rgb: var(--sb-coral-rgb);
+    --atlas-hue-rgb: 246, 224, 170;
+    --atlas-ink: var(--sb-surface-solid);
+    --atlas-gutter: clamp(16px, 2.4vw, 36px);
+    /* The narrowest puzzle card, in rem (read by layoutGrid in stillfall-atlas.js). */
+    --atlas-card-min-rem: 7.25;
+    --well-cell: clamp(6px, min(0.6vw, 1.05vh), 12px);
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    display: block;
+    overflow: hidden;
+    background: var(--sb-bg);
+    color: var(--sb-text);
+    font-family: var(--sb-font-text);
+    isolation: isolate;
+    container: stillfall-atlas / size;
+}
+
+#stillfall-atlas.stillfall-atlas[hidden] {
+    display: none;
+}
+
+#stillfall-atlas.is-opening {
+    animation: sb-fade-in 0.3s ease-out both;
+}
+
+/* The descent's light, from the surface to the Core. */
+#stillfall-atlas[data-tier='1'], #stillfall-atlas [data-tier='1'] { --atlas-hue-rgb: 246, 224, 170; }
+#stillfall-atlas[data-tier='2'], #stillfall-atlas [data-tier='2'] { --atlas-hue-rgb: 243, 206, 142; }
+#stillfall-atlas[data-tier='3'], #stillfall-atlas [data-tier='3'] { --atlas-hue-rgb: 250, 186, 118; }
+#stillfall-atlas[data-tier='4'], #stillfall-atlas [data-tier='4'] { --atlas-hue-rgb: 255, 168, 110; }
+#stillfall-atlas[data-tier='5'], #stillfall-atlas [data-tier='5'] { --atlas-hue-rgb: 232, 160, 130; }
+#stillfall-atlas[data-tier='6'], #stillfall-atlas [data-tier='6'] { --atlas-hue-rgb: 255, 142, 98; }
+#stillfall-atlas[data-tier='7'], #stillfall-atlas [data-tier='7'] { --atlas-hue-rgb: 255, 126, 112; }
+#stillfall-atlas[data-tier='8'], #stillfall-atlas [data-tier='8'] { --atlas-hue-rgb: 247, 116, 136; }
+#stillfall-atlas[data-tier='9'], #stillfall-atlas [data-tier='9'] { --atlas-hue-rgb: 236, 100, 106; }
+#stillfall-atlas[data-tier='10'], #stillfall-atlas [data-tier='10'] { --atlas-hue-rgb: 255, 88, 68; }
+
+#stillfall-atlas *,
+#stillfall-atlas *::before,
+#stillfall-atlas *::after {
+    box-sizing: border-box;
+}
+
+/* ---- The sky: night, the tier's light, strata of rock, the Core's glow from below -- */
+#stillfall-atlas .stillfall-atlas__sky {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    background:
+        radial-gradient(52% 60% at 30% 44%, rgba(var(--atlas-hue-rgb), 0.12), transparent 72%),
+        radial-gradient(46% 52% at 100% 0%, rgba(var(--atlas-hue-rgb), 0.08), transparent 70%),
+        radial-gradient(80% 46% at 50% 114%, rgba(var(--sb-coral-rgb), 0.14), transparent 72%),
+        linear-gradient(180deg, #100b24 0%, #0b0818 54%, #080510 100%);
+}
+
+#stillfall-atlas .stillfall-atlas__sky::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: repeating-linear-gradient(180deg, transparent 0 39px, rgba(var(--atlas-hue-rgb), 0.05) 39px 40px);
+    -webkit-mask-image: linear-gradient(180deg, transparent 18%, #000 100%);
+    mask-image: linear-gradient(180deg, transparent 18%, #000 100%);
+}
+
+#stillfall-atlas .stillfall-atlas__sky::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(120% 90% at 50% 40%, transparent 55%, rgba(3, 2, 10, 0.55) 100%);
+}
+
+#stillfall-atlas .stillfall-atlas__ambient {
+    position: absolute;
+    right: -8vw;
+    bottom: -14vh;
+    width: min(64vw, 1000px);
+    height: auto;
+    aspect-ratio: 16 / 9;
+    border-radius: 50%;
+    object-fit: cover;
+    opacity: 0.26;
+    filter: blur(72px) saturate(1.2);
+    transform: translateZ(0);
+}
+
+/* ---- The frame: header, body, footer ------------------------------------------------ */
+#stillfall-atlas .stillfall-atlas__frame {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+#stillfall-atlas .stillfall-atlas__header {
+    flex: none;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 14px clamp(20px, 3vw, 44px);
+    margin: 0;
+    /* The play rail (Hub, Settings) keeps the corner: end before its two tiles. */
+    padding: calc(var(--sb-play-inset, 16px) - 2px) calc(var(--sb-play-inset, 16px) + 2 * var(--sb-play-tile, 40px) + 28px)
+        12px var(--atlas-gutter);
+}
+
+#stillfall-atlas .stillfall-atlas__brand {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+#stillfall-atlas .stillfall-atlas__title {
+    margin: 0;
+    line-height: 0;
+}
+
+#stillfall-atlas .stillfall-atlas__wordmark {
+    width: auto;
+    max-width: 100%;
+    /* Grows with large text, so the name keeps its weight beside the figures. */
+    height: max(clamp(22px, 3.2vh, 30px), 1.5rem);
+}
+
+#stillfall-atlas .stillfall-atlas__lede {
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 500 0.8125rem / 1.4 var(--sb-font-text);
+}
+
+#stillfall-atlas .stillfall-atlas__journey {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-width: 0;
+    max-width: 760px;
+}
+
+#stillfall-atlas .stillfall-atlas__figures {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 26px;
+    color: var(--sb-text-faint);
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+#stillfall-atlas .stillfall-atlas__figure {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+#stillfall-atlas .stillfall-atlas__figure b {
+    color: var(--sb-text);
+    font: 700 1.125rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-transform: none;
+    white-space: nowrap;
+}
+
+#stillfall-atlas .stillfall-atlas__figure b small {
+    color: var(--sb-text-faint);
+    font-size: 0.75em;
+    font-weight: 600;
+}
+
+/* Every puzzle as a cell, tier by tier in its own light; the one on the board in coral. */
+#stillfall-atlas .stillfall-atlas__meter {
+    display: flex;
+    gap: 6px;
+    width: 100%;
+}
+
+#stillfall-atlas .stillfall-atlas__meter-tier {
+    display: flex;
+    flex: 1 1 0;
+    gap: 2px;
+    min-width: 0;
+    padding: 3px 0;
+    cursor: pointer;
+}
+
+#stillfall-atlas :is(.stillfall-atlas__meter-tier, .stillfall-atlas__tier-meter) > i {
+    flex: 1 1 0;
+    min-width: 1px;
+    height: 6px;
+    border-radius: 2px;
+    background: rgba(var(--sb-cream-rgb), 0.08);
+    transition: height var(--sb-dur-2) var(--sb-ease-lock), background var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#stillfall-atlas :is(.stillfall-atlas__meter-tier, .stillfall-atlas__tier-meter) > i[data-state='solved'] {
+    background: rgba(var(--atlas-hue-rgb), 0.92);
+}
+
+#stillfall-atlas :is(.stillfall-atlas__meter-tier, .stillfall-atlas__tier-meter) > i[data-state='open'] {
+    background: rgba(var(--atlas-hue-rgb), 0.3);
+}
+
+#stillfall-atlas :is(.stillfall-atlas__meter-tier, .stillfall-atlas__tier-meter) > i[data-current] {
+    background: var(--sb-keystone);
+    box-shadow: 0 0 10px rgba(var(--sb-coral-rgb), 0.7);
+}
+
+#stillfall-atlas .stillfall-atlas__meter-tier:hover > i,
+#stillfall-atlas .stillfall-atlas__meter-tier.is-selected > i {
+    height: 9px;
+    margin-top: -1.5px;
+}
+
+#stillfall-atlas .stillfall-atlas__meter-tier.is-selected > i[data-state='locked'] {
+    background: rgba(var(--atlas-hue-rgb), 0.16);
+}
+
+#stillfall-atlas .stillfall-atlas__close {
+    --sb-btn-h: 44px;
+    gap: 10px;
+    padding: 0 12px 0 18px;
+}
+
+/* ---- Body: the descent beside the stage --------------------------------------------- */
+#stillfall-atlas .stillfall-atlas__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: clamp(236px, 19vw, 300px) minmax(0, 1fr);
+    gap: clamp(16px, 2.2vw, 36px);
+    padding: 6px var(--atlas-gutter) 0;
+}
+
+#stillfall-atlas .stillfall-atlas__rail {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    padding-bottom: 14px;
+}
+
+#stillfall-atlas .stillfall-atlas__rail-label {
+    padding-left: 8px;
+}
+
+#stillfall-atlas .stillfall-atlas__tiers {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    justify-content: safe center;
+    gap: 3px;
+    min-height: 0;
+    margin: 0;
+    padding: 2px 6px 2px 0;
+    list-style: none;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--sb-cream-rgb), 0.2) transparent;
+}
+
+#stillfall-atlas .stillfall-atlas__tiers-item {
+    position: relative;
+    flex: none;
+}
+
+/* The line down to the next tier's gem, lit once that tier is open; the gem below covers its end. */
+#stillfall-atlas .stillfall-atlas__tiers-item[data-link]::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 23px;
+    width: 2px;
+    height: calc(100% + 6px);
+    border-radius: 1px;
+    background: repeating-linear-gradient(180deg, rgba(var(--sb-cream-rgb), 0.16) 0 4px, transparent 4px 9px);
+}
+
+#stillfall-atlas .stillfall-atlas__tiers-item[data-link='lit']::before {
+    background: linear-gradient(180deg, rgba(var(--atlas-hue-rgb), 0.85), rgba(var(--atlas-hue-rgb), 0.35));
+    box-shadow: 0 0 10px rgba(var(--atlas-hue-rgb), 0.3);
+}
+
+#stillfall-atlas .stillfall-atlas__tier {
+    position: relative;
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    min-height: clamp(50px, 7vh, 80px);
+    margin: 0;
+    padding: 6px 12px 6px 2px;
+    border: 1px solid transparent;
+    border-radius: var(--sb-r-md);
+    background: transparent;
+    color: var(--sb-text-muted);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition:
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#stillfall-atlas .stillfall-atlas__tier:hover {
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    color: var(--sb-text);
+}
+
+#stillfall-atlas .stillfall-atlas__tier:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
+    outline-offset: 2px;
+}
+
+#stillfall-atlas .stillfall-atlas__tier[aria-selected='true'] {
+    border-color: rgba(var(--atlas-hue-rgb), 0.42);
+    background: linear-gradient(90deg, rgba(var(--atlas-hue-rgb), 0.17), rgba(var(--atlas-hue-rgb), 0.03) 80%);
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06), 0 12px 30px rgba(0, 0, 0, 0.22);
+    color: var(--sb-text);
+}
+
+#stillfall-atlas .stillfall-atlas__gem {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-left: 2px;
+    border: 1px solid rgba(var(--atlas-hue-rgb), 0.55);
+    border-radius: 12px;
+    background:
+        radial-gradient(120% 120% at 28% 20%, rgba(var(--atlas-hue-rgb), 0.42), rgba(var(--atlas-hue-rgb), 0.1) 70%),
+        var(--atlas-ink);
+    color: var(--sb-text);
+    font: 700 0.875rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    box-shadow: 0 0 18px rgba(var(--atlas-hue-rgb), 0.16);
+}
+
+#stillfall-atlas .stillfall-atlas__gem svg {
+    position: absolute;
+    right: -5px;
+    bottom: -5px;
+    width: 16px;
+    height: 16px;
+    padding: 2px;
+    border-radius: 5px;
+    background: var(--atlas-ink);
+    fill: none;
+    stroke: var(--sb-text-faint);
+    stroke-width: 2;
+}
+
+#stillfall-atlas .stillfall-atlas__tier[data-state='complete'] .stillfall-atlas__gem {
+    border-color: rgba(var(--atlas-hue-rgb), 0.9);
+    background:
+        radial-gradient(120% 120% at 28% 20%, rgba(255, 255, 255, 0.5), rgba(var(--atlas-hue-rgb), 1) 55%),
+        rgb(var(--atlas-hue-rgb));
+    color: var(--sb-keystone-ink);
+}
+
+/* The tier of the puzzle on the board: a breathing ring in coral. */
+#stillfall-atlas .stillfall-atlas__tier[data-current] .stillfall-atlas__gem::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border: 1px solid rgba(var(--sb-coral-rgb), 0.7);
+    border-radius: 15px;
+    box-shadow: 0 0 20px rgba(var(--sb-coral-rgb), 0.35);
+    animation: stillfall-atlas-breathe var(--sb-breath) var(--sb-ease-breathe) infinite;
+}
+
+#stillfall-atlas .stillfall-atlas__tier[data-state='locked'] .stillfall-atlas__gem {
+    border-style: dashed;
+    border-color: rgba(var(--sb-cream-rgb), 0.18);
+    background: var(--atlas-ink);
+    color: var(--sb-text-faint);
+    box-shadow: none;
+}
+
+#stillfall-atlas .stillfall-atlas__tier[data-state='locked'] {
+    color: var(--sb-text-faint);
+}
+
+#stillfall-atlas .stillfall-atlas__tier[data-state='locked'][aria-selected='true'] {
+    color: var(--sb-text-muted);
+}
+
+#stillfall-atlas .stillfall-atlas__tier-body {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 3px 10px;
+    min-width: 0;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-line + .stillfall-atlas__tier-line {
+    flex-wrap: nowrap;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-name {
+    min-width: 0;
+    font: 600 0.8125rem / 1.25 var(--sb-font-display);
+    letter-spacing: 0.01em;
+}
+
+#stillfall-atlas .stillfall-atlas__here {
+    color: var(--sb-coral);
+    font: 700 0.5rem / 1.2 var(--sb-font-display);
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    white-space: nowrap;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-meter {
+    display: flex;
+    flex: 1 1 0;
+    gap: 2px;
+    min-width: 0;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-meter > i {
+    max-width: 16px;
+    height: 4px;
+    border-radius: 1.5px;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-count {
+    flex: none;
+    color: var(--sb-text);
+    font: 600 0.75rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-count small {
+    color: var(--sb-text-faint);
+    font-size: 0.8em;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-note {
+    color: var(--sb-text-faint);
+    font: 500 0.75rem / 1.35 var(--sb-font-text);
+}
+
+#stillfall-atlas .stillfall-atlas__tier[aria-selected='true'] .stillfall-atlas__tier-note {
+    color: var(--sb-text-muted);
+}
+
+/* ---- The stage ------------------------------------------------------------------------ */
+#stillfall-atlas .stillfall-atlas__stage {
+    display: flex;
+    flex-direction: column;
+    justify-content: safe center;
+    gap: clamp(12px, 2vh, 22px);
+    min-width: 0;
+    min-height: 0;
+    padding: 2px 4px 18px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--sb-cream-rgb), 0.2) transparent;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-head {
+    display: flex;
+    flex: none;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px 28px;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-copy {
+    min-width: 0;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-eyebrow {
+    --sb-accent-rgb: var(--atlas-hue-rgb);
+}
+
+#stillfall-atlas .stillfall-atlas__tier-title {
+    margin: 6px 0 4px;
+    color: var(--sb-text);
+    font: 700 clamp(1.35rem, 2.2vw, 2rem) / 1.12 var(--sb-font-display);
+    letter-spacing: -0.005em;
+    text-wrap: balance;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-lede {
+    max-width: 70ch;
+    margin: 0;
+    color: var(--sb-text-muted);
+    font: 500 0.875rem / 1.5 var(--sb-font-text);
+}
+
+#stillfall-atlas .stillfall-atlas__tier-side {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 18px;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-tally {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    text-align: right;
+}
+
+#stillfall-atlas .stillfall-atlas__tally {
+    color: var(--sb-text-faint);
+    font: 600 0.75rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+#stillfall-atlas .stillfall-atlas__tally b {
+    color: var(--sb-text);
+    font-size: 1.125rem;
+}
+
+#stillfall-atlas .stillfall-atlas__tier-note[data-atlas-text] {
+    max-width: 30ch;
+    color: var(--sb-text-muted);
+    font: 500 0.8125rem / 1.35 var(--sb-font-text);
+}
+
+#stillfall-atlas .stillfall-atlas__tier-note[data-atlas-text]:empty {
+    display: none;
+}
+
+#stillfall-atlas .stillfall-atlas__steps {
+    display: flex;
+    gap: 6px;
+}
+
+#stillfall-atlas .stillfall-atlas__step {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 12px;
+    background: rgba(var(--sb-cream-rgb), 0.04);
+    color: var(--sb-text);
+    cursor: pointer;
+    transition: background var(--sb-dur-2) var(--sb-ease-lock), border-color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#stillfall-atlas .stillfall-atlas__step:hover:not(:disabled) {
+    border-color: rgba(var(--sb-cream-rgb), 0.34);
+    background: rgba(var(--sb-cream-rgb), 0.09);
+}
+
+#stillfall-atlas .stillfall-atlas__step:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
+    outline-offset: 3px;
+}
+
+#stillfall-atlas .stillfall-atlas__step:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+#stillfall-atlas .stillfall-atlas__step svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+/* ---- The well: a puzzle's starting structure, one cell per square ------------------ */
+#stillfall-atlas .stillfall-well {
+    --well-ink: rgb(var(--sb-night-rgb));
+    --well-seam: max(1px, calc(var(--well-cell) * 0.12));
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(10, var(--well-cell));
+    grid-auto-rows: var(--well-cell);
+    flex: none;
+    padding: calc(var(--well-cell) * 0.35);
+    border: 1px solid rgba(var(--atlas-hue-rgb), 0.2);
+    border-bottom: 2px solid rgba(var(--atlas-hue-rgb), 0.6);
+    border-radius: calc(var(--well-cell) * 0.7) calc(var(--well-cell) * 0.7) 3px 3px;
+    background:
+        linear-gradient(180deg, rgba(var(--atlas-hue-rgb), 0.015), rgba(var(--atlas-hue-rgb), 0.08)),
+        var(--well-ink);
+}
+
+#stillfall-atlas .stillfall-well > i {
+    display: block;
+}
+
+#stillfall-atlas .stillfall-well > i.s0 { background: rgb(var(--atlas-hue-rgb)); }
+#stillfall-atlas .stillfall-well > i.s1 { background: color-mix(in srgb, rgb(var(--atlas-hue-rgb)) 52%, var(--sb-cream)); }
+#stillfall-atlas .stillfall-well > i.s2 { background: color-mix(in srgb, rgb(var(--atlas-hue-rgb)) 62%, var(--sb-surface-solid)); }
+#stillfall-atlas .stillfall-well > i.s3 { background: color-mix(in srgb, rgb(var(--atlas-hue-rgb)) 50%, var(--sb-lavender)); }
+
+/* Where two bodies meet, a seam: each body reads as one shape. */
+#stillfall-atlas .stillfall-well > i.r { border-right: var(--well-seam) solid var(--well-ink); }
+#stillfall-atlas .stillfall-well > i.b { border-bottom: var(--well-seam) solid var(--well-ink); }
+
+/* The relic (to bring to the floor) in cream; the seal (to clear away) hatched in cream. */
+#stillfall-atlas .stillfall-well > i.is-relic,
+#stillfall-atlas .stillfall-atlas__legend i.is-relic {
+    background: var(--sb-cream);
+}
+
+#stillfall-atlas .stillfall-well > i.is-seal,
+#stillfall-atlas .stillfall-atlas__legend i.is-seal {
+    background: repeating-linear-gradient(135deg, rgba(var(--sb-cream-rgb), 0.9) 0 1.5px, rgba(var(--sb-cream-rgb), 0.2) 1.5px 3.5px);
+}
+
+/* ---- The card: the selected puzzle --------------------------------------------------- */
+#stillfall-atlas .stillfall-atlas__card {
+    position: relative;
+    display: grid;
+    flex: none;
+    grid-template-columns: auto minmax(0, 1.3fr) minmax(210px, 1fr);
+    align-items: center;
+    gap: clamp(20px, 2.6vw, 40px);
+    padding: clamp(18px, 2.8vh, 28px) clamp(20px, 2.6vw, 36px);
+    border: 1px solid rgba(var(--atlas-hue-rgb), 0.24);
+    border-radius: var(--sb-r-xl);
+    background:
+        radial-gradient(60% 130% at 0% 50%, rgba(var(--atlas-hue-rgb), 0.15), transparent 70%),
+        linear-gradient(180deg, var(--sb-surface-raised) 0%, var(--sb-surface) 100%);
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07), 0 30px 80px rgba(0, 0, 0, 0.36);
+}
+
+#stillfall-atlas .stillfall-atlas__card.is-entering :is(.stillfall-atlas__card-art, .stillfall-atlas__card-copy,
+.stillfall-atlas__facts) {
+    animation: stillfall-atlas-card-in 0.36s var(--sb-ease-lock) both;
+}
+
+#stillfall-atlas .stillfall-atlas__card.is-entering .stillfall-atlas__card-copy {
+    animation-delay: 0.03s;
+}
+
+#stillfall-atlas .stillfall-atlas__card.is-entering .stillfall-atlas__facts {
+    animation-delay: 0.06s;
+}
+
+#stillfall-atlas .stillfall-atlas__card-art {
+    --well-cell: clamp(11px, min(1.2vw, 2vh), 22px);
+    position: relative;
+    display: grid;
+    place-items: center;
+}
+
+#stillfall-atlas .stillfall-atlas__halo {
+    position: absolute;
+    inset: -24%;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgba(var(--atlas-hue-rgb), 0.4), rgba(var(--atlas-hue-rgb), 0.1) 58%, transparent);
+    animation: stillfall-atlas-breathe var(--sb-breath) var(--sb-ease-breathe) infinite;
+    pointer-events: none;
+}
+
+#stillfall-atlas .stillfall-atlas__card-well {
+    position: relative;
+    display: block;
+    line-height: 0;
+}
+
+#stillfall-atlas .stillfall-atlas__card-well .stillfall-well {
+    box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(var(--sb-cream-rgb), 0.05);
+}
+
+#stillfall-atlas .stillfall-atlas__card[data-current] .stillfall-atlas__card-well .stillfall-well {
+    border-color: rgba(var(--sb-coral-rgb), 0.55);
+    border-bottom-color: var(--sb-keystone);
+}
+
+#stillfall-atlas .stillfall-atlas__card-lock {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    display: none;
+    place-items: center;
+    width: 50px;
+    height: 50px;
+    border: 1px solid rgba(var(--sb-cream-rgb), 0.24);
+    border-radius: 15px;
+    background: rgba(12, 9, 26, 0.86);
+    transform: translate(-50%, -50%);
+}
+
+#stillfall-atlas .stillfall-atlas__card-lock svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: var(--sb-text);
+    stroke-width: 1.8;
+}
+
+#stillfall-atlas .stillfall-atlas__card[data-state='locked'] .stillfall-atlas__card-lock {
+    display: grid;
+}
+
+#stillfall-atlas .stillfall-atlas__card[data-state='locked'] .stillfall-atlas__card-well .stillfall-well {
+    filter: grayscale(0.85) brightness(0.5);
+}
+
+#stillfall-atlas .stillfall-atlas__card[data-state='locked'] .stillfall-atlas__halo {
+    opacity: 0.3;
+    animation: none;
+}
+
+#stillfall-atlas .stillfall-atlas__card-copy {
+    min-width: 0;
+    container-type: inline-size;
+}
+
+#stillfall-atlas .stillfall-atlas__card-eyebrow {
+    --sb-accent-rgb: var(--atlas-hue-rgb);
+}
+
+#stillfall-atlas .stillfall-atlas__card[data-current] .stillfall-atlas__card-eyebrow {
+    --sb-accent-rgb: var(--sb-coral-rgb);
+}
+
+#stillfall-atlas .stillfall-atlas__card-title {
+    margin: 10px 0 8px;
+    color: var(--sb-text);
+    font: 700 clamp(1.4rem, 2.2vw, 2rem) / 1.08 var(--sb-font-display);
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+}
+
+#stillfall-atlas .stillfall-atlas__card-lesson {
+    display: -webkit-box;
+    max-width: 58ch;
+    margin: 0;
+    overflow: hidden;
+    color: var(--sb-text-muted);
+    font: 500 0.9375rem / 1.5 var(--sb-font-text);
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+
+#stillfall-atlas .stillfall-atlas__card-lock-note {
+    margin: 12px 0 0;
+    color: var(--sb-text);
+    font: 600 0.8125rem / 1.4 var(--sb-font-text);
+}
+
+#stillfall-atlas .stillfall-atlas__card-lock-note[hidden] {
+    display: none;
+}
+
+#stillfall-atlas .stillfall-atlas__card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 18px;
+}
+
+#stillfall-atlas .stillfall-atlas__play {
+    min-width: 150px;
+}
+
+/* A shut puzzle's Play says so, without the keystone or a key: nothing happens there yet. */
+#stillfall-atlas .stillfall-atlas__play:disabled {
+    border-color: var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.05);
+    color: var(--sb-text-faint);
+    box-shadow: none;
+    opacity: 1;
+}
+
+#stillfall-atlas .stillfall-atlas__play:disabled .sb-kbd {
+    display: none;
+}
+
+@container (max-width: 300px) {
+    #stillfall-atlas .stillfall-atlas__play .sb-kbd {
+        display: none;
+    }
+}
+
+#stillfall-atlas .stillfall-atlas__facts {
+    display: grid;
+    align-content: center;
+    align-self: stretch;
+    gap: 16px;
+    margin: 0;
+    padding-left: clamp(18px, 2.2vw, 32px);
+    border-left: 1px solid var(--sb-line);
+}
+
+#stillfall-atlas .stillfall-atlas__fact dt {
+    margin: 0 0 7px;
+    color: var(--sb-text-faint);
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+#stillfall-atlas .stillfall-atlas__fact dd {
+    margin: 0;
+    color: var(--sb-text);
+    font: 600 0.875rem / 1.4 var(--sb-font-text);
+}
+
+#stillfall-atlas .stillfall-atlas__legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    margin-top: 6px;
+    color: var(--sb-text-muted);
+    font: 500 0.8125rem / 1.3 var(--sb-font-text);
+}
+
+#stillfall-atlas .stillfall-atlas__legend[hidden] {
+    display: none;
+}
+
+#stillfall-atlas .stillfall-atlas__legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+}
+
+#stillfall-atlas .stillfall-atlas__legend i {
+    width: 11px;
+    height: 11px;
+    border-radius: 2px;
+}
+
+#stillfall-atlas .stillfall-atlas__supply {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 12px;
+}
+
+#stillfall-atlas .stillfall-atlas__pieces {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+/* A piece of the supply, as it spawns. */
+#stillfall-atlas .stillfall-atlas__piece {
+    display: grid;
+    grid-template-columns: repeat(var(--piece-cols), 7px);
+    grid-auto-rows: 7px;
+    gap: 1px;
+}
+
+#stillfall-atlas .stillfall-atlas__piece > i.is-on {
+    border-radius: 1.5px;
+    background: var(--sb-cream);
+    box-shadow: 0 0 6px rgba(var(--sb-cream-rgb), 0.3);
+}
+
+/* ---- The grid: the tier's puzzles ------------------------------------------------- */
+#stillfall-atlas .stillfall-atlas__grid {
+    display: grid;
+    flex: none;
+    grid-template-columns: repeat(var(--atlas-columns, 7), minmax(0, 1fr));
+    gap: 0.75rem; /* layoutGrid in stillfall-atlas.js */
+    max-width: calc(var(--atlas-columns, 7) * 12.5rem);
+    margin: 0;
+    padding: 10px 0 0;
+    list-style: none;
+}
+
+#stillfall-atlas .stillfall-atlas__slot {
+    display: flex;
+    min-width: 0;
+}
+
+#stillfall-atlas .stillfall-atlas__grid.is-entering .stillfall-atlas__slot {
+    animation: stillfall-atlas-fall 0.4s var(--sb-ease-lock) both;
+    animation-delay: calc(min(var(--i), 13) * 18ms);
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    margin: 0;
+    padding: 14px 8px 10px;
+    border: 1px solid rgba(var(--sb-cream-rgb), 0.06);
+    border-radius: var(--sb-r-md);
+    background: rgba(var(--sb-cream-rgb), 0.025);
+    color: var(--sb-text-muted);
+    font: inherit;
+    cursor: pointer;
+    transition:
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle:hover {
+    border-color: rgba(var(--sb-cream-rgb), 0.14);
+    background: rgba(var(--sb-cream-rgb), 0.05);
+    color: var(--sb-text);
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
+    outline-offset: 2px;
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle[aria-current='true'] {
+    border-color: rgba(var(--atlas-hue-rgb), 0.5);
+    background: linear-gradient(180deg, rgba(var(--atlas-hue-rgb), 0.18), rgba(var(--atlas-hue-rgb), 0.04));
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.26);
+    color: var(--sb-text);
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle[data-current] {
+    border-color: rgba(var(--sb-coral-rgb), 0.4);
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle[data-current][aria-current='true'] {
+    border-color: rgba(var(--sb-coral-rgb), 0.75);
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle-art {
+    position: relative;
+    display: block;
+    line-height: 0;
+    transition: transform var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle:hover .stillfall-atlas__puzzle-art {
+    transform: translateY(-2px);
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle[data-state='locked'] .stillfall-well {
+    filter: grayscale(0.9) brightness(0.45);
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle[data-current] .stillfall-well {
+    border-bottom-color: var(--sb-keystone);
+}
+
+#stillfall-atlas .stillfall-atlas__solved {
+    position: absolute;
+    top: -7px;
+    right: -9px;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border: 1px solid rgba(var(--sb-gold-rgb), 0.6);
+    border-radius: 7px;
+    background: var(--atlas-ink);
+}
+
+#stillfall-atlas .stillfall-atlas__solved svg {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: var(--sb-gold);
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+#stillfall-atlas .stillfall-atlas__lock {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+}
+
+#stillfall-atlas .stillfall-atlas__lock svg {
+    width: 20px;
+    height: 20px;
+    padding: 3px;
+    border-radius: 7px;
+    background: rgba(12, 9, 26, 0.8);
+    fill: none;
+    stroke: rgba(var(--sb-cream-rgb), 0.8);
+    stroke-width: 1.8;
+    box-sizing: content-box;
+}
+
+#stillfall-atlas .stillfall-atlas__flag {
+    position: absolute;
+    top: -9px;
+    left: 50%;
+    z-index: 1;
+    padding: 4px 7px 3px;
+    border-radius: 6px;
+    background: var(--sb-keystone);
+    color: var(--sb-keystone-ink);
+    font: 800 0.5rem / 1 var(--sb-font-display);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    transform: translateX(-50%);
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle-line {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 7px;
+    max-width: 100%;
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle-number {
+    flex: none;
+    min-width: 20px;
+    height: 17px;
+    padding: 0 4px;
+    border: 1px solid var(--sb-line-strong);
+    border-radius: 6px;
+    background: var(--atlas-ink);
+    color: var(--sb-text);
+    font: 700 0.5625rem / 15px var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle[data-state='solved'] .stillfall-atlas__puzzle-number {
+    border-color: rgba(var(--sb-gold-rgb), 0.55);
+    color: #fff1d0;
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle-name {
+    display: -webkit-box;
+    min-width: 0;
+    overflow: hidden;
+    font: 600 0.75rem / 1.3 var(--sb-font-text);
+    text-align: left;
+    overflow-wrap: anywhere;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+
+#stillfall-atlas .stillfall-atlas__puzzle[data-state='locked'] .stillfall-atlas__puzzle-name {
+    color: var(--sb-text-faint);
+}
+
+/* ---- Footer: the rule and the keys ----------------------------------------------------- */
+#stillfall-atlas .stillfall-atlas__footer {
+    flex: none;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 24px;
+    padding: 12px var(--atlas-gutter) max(14px, env(safe-area-inset-bottom));
+    border-top: 1px solid var(--sb-line);
+    background: linear-gradient(180deg, rgba(7, 5, 20, 0.2), rgba(5, 3, 12, 0.7));
+}
+
+#stillfall-atlas .stillfall-atlas__rule {
+    margin: 0;
+    color: var(--sb-text-faint);
+    font: 500 0.8125rem / 1.4 var(--sb-font-text);
+}
+
+#stillfall-atlas .stillfall-atlas__hints .sb-kbd + .sb-kbd {
+    margin-left: -2px;
+}
+
+/* ---- Entrances: the page drops in, then each tier's puzzles fall into place -------- */
+#stillfall-atlas.is-opening .stillfall-atlas__header {
+    animation: stillfall-atlas-drop 0.42s var(--sb-ease-lock) both;
+}
+
+#stillfall-atlas.is-opening .stillfall-atlas__rail {
+    animation: stillfall-atlas-rise 0.48s 0.04s var(--sb-ease-lock) both;
+}
+
+#stillfall-atlas.is-opening .stillfall-atlas__stage {
+    animation: stillfall-atlas-rise 0.5s 0.08s var(--sb-ease-lock) both;
+}
+
+@keyframes stillfall-atlas-drop {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes stillfall-atlas-rise {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes stillfall-atlas-card-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes stillfall-atlas-fall {
+    from { opacity: 0; transform: translateY(-12px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes stillfall-atlas-breathe {
+    0%, 100% { opacity: 0.6; transform: scale(0.97); }
+    50% { opacity: 1; transform: scale(1.03); }
+}
+
+/* ---- Short windows: a tighter card and grid ----------------------------------------- */
+@container stillfall-atlas (max-height: 48.75rem) and (min-width: 68.8125rem) {
+    #stillfall-atlas .stillfall-atlas__header {
+        padding-bottom: 8px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__lede {
+        display: none;
+    }
+
+    #stillfall-atlas .stillfall-atlas__stage {
+        gap: 10px;
+        padding-bottom: 6px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__tier-title {
+        margin: 4px 0 2px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__tier-lede {
+        display: -webkit-box;
+        overflow: hidden;
+        -webkit-line-clamp: 1;
+        -webkit-box-orient: vertical;
+    }
+
+    #stillfall-atlas .stillfall-atlas__card {
+        padding-block: 14px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__card-lesson {
+        -webkit-line-clamp: 2;
+    }
+
+    #stillfall-atlas .stillfall-atlas__card-actions {
+        margin-top: 14px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__puzzle {
+        gap: 6px;
+        padding: 11px 6px 7px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__grid {
+        gap: 0.625rem;
+        padding-top: 6px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__tier {
+        min-height: 46px;
+        padding-block: 4px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__footer {
+        padding-top: 9px;
+        padding-bottom: max(10px, env(safe-area-inset-bottom));
+    }
+}
+
+/* ---- Tablets, narrow windows and large text: the descent becomes a strip of tiers above
+ * the stage, the card's facts move under it, and the page scrolls. --------------------- */
+@container stillfall-atlas (max-width: 68.75rem) {
+    #stillfall-atlas .stillfall-atlas__frame {
+        overflow-y: auto;
+    }
+
+    #stillfall-atlas .stillfall-atlas__header {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    #stillfall-atlas .stillfall-atlas__journey {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        max-width: none;
+    }
+
+    #stillfall-atlas .stillfall-atlas__close {
+        justify-self: end;
+    }
+
+    #stillfall-atlas .stillfall-atlas__body {
+        display: flex;
+        flex: none;
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__rail {
+        padding-bottom: 0;
+    }
+
+    #stillfall-atlas .stillfall-atlas__rail-label {
+        display: none;
+    }
+
+    #stillfall-atlas .stillfall-atlas__tiers {
+        flex-direction: row;
+        justify-content: flex-start;
+        gap: 6px;
+        padding: 2px 28px 8px 2px;
+        overflow-x: auto;
+        overflow-y: visible;
+        /* The strip runs on past the edge: it fades there rather than stopping. */
+        -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
+        mask-image: linear-gradient(90deg, #000 calc(100% - 36px), transparent);
+    }
+
+    #stillfall-atlas .stillfall-atlas__tiers-item {
+        flex: 0 0 auto;
+    }
+
+    #stillfall-atlas .stillfall-atlas__tiers-item[data-link]::before {
+        display: none;
+    }
+
+    #stillfall-atlas .stillfall-atlas__tier {
+        grid-template-columns: 34px auto;
+        gap: 6px 10px;
+        width: auto;
+        min-height: 0;
+        padding: 7px 12px 7px 7px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__gem {
+        width: 34px;
+        height: 34px;
+        margin: 0;
+        border-radius: 10px;
+        font-size: 0.75rem;
+    }
+
+    #stillfall-atlas .stillfall-atlas__tier-name {
+        white-space: nowrap;
+    }
+
+    #stillfall-atlas .stillfall-atlas__here,
+    #stillfall-atlas .stillfall-atlas__tier-body > .stillfall-atlas__tier-note {
+        display: none;
+    }
+
+    #stillfall-atlas .stillfall-atlas__tier-meter {
+        min-width: 56px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__stage {
+        justify-content: flex-start;
+        overflow: visible;
+        padding-bottom: 12px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__card {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    #stillfall-atlas .stillfall-atlas__facts {
+        grid-column: 1 / -1;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+        padding: 16px 0 0;
+        border-top: 1px solid var(--sb-line);
+        border-left: 0;
+    }
+
+    #stillfall-atlas .stillfall-atlas__grid {
+        max-width: none;
+    }
+}
+
+/* ---- Phones: one column, the structure above its story ------------------------------- */
+@container stillfall-atlas (max-width: 40rem) {
+    /* The container cannot restyle itself: the frame carries the phone's sizes. */
+    #stillfall-atlas .stillfall-atlas__frame {
+        --atlas-card-min-rem: 5.5;
+        --well-cell: 6px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__header {
+        grid-template-columns: minmax(0, 1fr);
+        padding-right: calc(var(--sb-play-inset, 16px) + 2 * var(--sb-play-tile, 40px) + 18px);
+    }
+
+    #stillfall-atlas .stillfall-atlas__close {
+        grid-row: 3;
+        justify-self: start;
+    }
+
+    #stillfall-atlas .stillfall-atlas__tier-head {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    #stillfall-atlas .stillfall-atlas__tier-side {
+        align-self: stretch;
+        justify-content: space-between;
+    }
+
+    #stillfall-atlas .stillfall-atlas__tier-tally {
+        align-items: flex-start;
+        text-align: left;
+    }
+
+    #stillfall-atlas .stillfall-atlas__card {
+        grid-template-columns: minmax(0, 1fr);
+        padding: 20px 18px;
+        text-align: center;
+    }
+
+    #stillfall-atlas .stillfall-atlas__card-art {
+        --well-cell: 15px;
+        justify-self: center;
+    }
+
+    #stillfall-atlas .stillfall-atlas__card-actions {
+        justify-content: center;
+    }
+
+    #stillfall-atlas .stillfall-atlas__facts {
+        justify-self: stretch;
+        text-align: left;
+    }
+
+    #stillfall-atlas .stillfall-atlas__puzzle {
+        padding: 12px 4px 8px;
+    }
+
+    #stillfall-atlas .stillfall-atlas__hints {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #stillfall-atlas.is-opening,
+    #stillfall-atlas.is-opening :is(.stillfall-atlas__header, .stillfall-atlas__rail, .stillfall-atlas__stage),
+    #stillfall-atlas .stillfall-atlas__card.is-entering :is(.stillfall-atlas__card-art, .stillfall-atlas__card-copy,
+    .stillfall-atlas__facts),
+    #stillfall-atlas .stillfall-atlas__grid.is-entering .stillfall-atlas__slot,
+    #stillfall-atlas .stillfall-atlas__halo,
+    #stillfall-atlas .stillfall-atlas__tier[data-current] .stillfall-atlas__gem::after {
+        animation: none;
+    }
+
+    #stillfall-atlas .stillfall-atlas__puzzle-art,
+    #stillfall-atlas :is(.stillfall-atlas__meter-tier, .stillfall-atlas__tier-meter) > i {
+        transition: none;
     }
 }
