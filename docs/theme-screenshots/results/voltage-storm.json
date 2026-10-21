@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-21T06:31:08.045Z",
-  "runId": "2026-08-21T06-12-57-693Z",
+  "generatedAt": "2026-10-21T09:22:41.522Z",
+  "runId": "2026-10-21T09-22-07-725Z",
   "theme": "voltage-storm",
   "themeMeta": {
     "displayName": "Voltage Storm",
@@ -10,7 +10,7 @@
     "performanceClass": "light"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-21T06-12-57-693Z",
+  "targetUrl": "http://127.0.0.1:5267/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-21T09-22-07-725Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -61,29 +61,29 @@
       "gpuDevice": [
         {
           "active": false,
-          "deviceId": 5688,
-          "deviceString": "AMD Radeon(TM) Graphics",
-          "driverVersion": "31.0.12044.3",
+          "deviceId": 5056,
+          "deviceString": "AMD Radeon(TM) 610M",
+          "driverVersion": "32.0.13062.9003",
           "gpuPreference": 2,
-          "revision": 197,
-          "subSysId": 978261930,
+          "revision": 212,
+          "subSysId": -2141841494,
           "vendorId": 4098
         },
         {
           "active": false,
-          "deviceId": 9437,
-          "deviceString": "NVIDIA GeForce RTX 3070 Laptop GPU",
-          "driverVersion": "32.0.15.7247",
+          "deviceId": 11353,
+          "deviceString": "NVIDIA GeForce RTX 5080 Laptop GPU",
+          "driverVersion": "32.0.15.7324",
           "gpuPreference": 3,
           "revision": 161,
-          "subSysId": 978261930,
+          "subSysId": -2141841494,
           "vendorId": 4318
         },
         {
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.8972",
+          "driverVersion": "10.0.26100.9711",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -135,6 +135,13 @@
           "sameMode": true,
           "running": true,
           "paused": true
+        }
+      },
+      {
+        "id": "boot-theme-settled",
+        "passed": true,
+        "details": {
+          "active": "forest"
         }
       },
       {
@@ -220,6 +227,11 @@
         "details": {
           "themeId": "voltage-storm"
         }
+      },
+      {
+        "id": "theme-detail-apply-reachable",
+        "passed": true,
+        "details": null
       },
       {
         "id": "theme-card-selection-started",
@@ -332,19 +344,17 @@
         "id": "first-target-render-activity",
         "passed": true,
         "details": {
-          "evidenceType": "shared-background-renderer",
+          "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 1,
+          "renderCalls": 16,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "changedHeartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "sharedRendererHeartbeatAvailable": false,
           "sharedRendererHeartbeatObserved": false,
@@ -716,6 +726,13 @@
         }
       },
       {
+        "id": "outgoing-eventListeners-cleared",
+        "passed": true,
+        "details": {
+          "count": 0
+        }
+      },
+      {
         "id": "outgoing-eventUnsubscribers-cleared",
         "passed": true,
         "details": {
@@ -751,11 +768,12 @@
         }
       },
       {
-        "id": "outgoing-renderer-field-cleared-or-shared",
+        "id": "outgoing-dedicated-renderer-terminal",
         "passed": true,
         "details": {
           "fieldCleared": true,
-          "retainsExpectedSharedRenderer": false
+          "terminalMarker": false,
+          "canvasConnected": false
         }
       },
       {
@@ -832,7 +850,7 @@
         "id": "outgoing-canvases-disconnected",
         "passed": true,
         "details": {
-          "added": 4,
+          "added": 1,
           "connected": 0
         }
       },
@@ -1199,19 +1217,17 @@
         "id": "second-target-render-activity",
         "passed": true,
         "details": {
-          "evidenceType": "shared-background-renderer",
+          "evidenceType": "theme-owned-renderer",
           "supported": true,
-          "renderCalls": 1,
+          "renderCalls": 16,
           "sharedRendererMatchesThemeReference": true,
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "changedHeartbeatFields": [
-            "animationIds",
-            "animationFrameId"
+            "animationIds"
           ],
           "sharedRendererHeartbeatAvailable": false,
           "sharedRendererHeartbeatObserved": false,
@@ -1474,10 +1490,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.19999999995343387,
-      "firstTargetSelection": 259.9000000001397,
-      "cleanup-anchor": 31.5,
-      "secondTargetSelection": 52.60000000009313
+      "initial-anchor": 0.10000000149011612,
+      "firstTargetSelection": 352.09999999962747,
+      "cleanup-anchor": 360,
+      "secondTargetSelection": 12770.200000001118
     },
     "mode": {
       "modeId": "single",
@@ -1508,19 +1524,17 @@
       }
     },
     "firstRenderProbe": {
-      "evidenceType": "shared-background-renderer",
+      "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 1,
+      "renderCalls": 16,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "changedHeartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "sharedRendererHeartbeatAvailable": false,
       "sharedRendererHeartbeatObserved": false,
@@ -1528,19 +1542,17 @@
       "changedSharedRendererHeartbeatFields": []
     },
     "secondRenderProbe": {
-      "evidenceType": "shared-background-renderer",
+      "evidenceType": "theme-owned-renderer",
       "supported": true,
-      "renderCalls": 1,
+      "renderCalls": 16,
       "sharedRendererMatchesThemeReference": true,
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "changedHeartbeatFields": [
-        "animationIds",
-        "animationFrameId"
+        "animationIds"
       ],
       "sharedRendererHeartbeatAvailable": false,
       "sharedRendererHeartbeatObserved": false,
@@ -1561,29 +1573,59 @@
   "screenshot": {
     "path": "docs\\theme-screenshots\\voltage-storm.png",
     "passed": true,
-    "width": 1584,
-    "height": 787,
-    "byteLength": 4986432,
-    "samples": 20107,
+    "width": 2538,
+    "height": 1506,
+    "byteLength": 15288912,
+    "samples": 20012,
     "luminance": {
-      "min": 29.2286,
-      "max": 254.99999999999997,
-      "mean": 139.24892405629657,
-      "range": 225.77139999999997,
-      "variance": 5359.287832318263
+      "min": 7.7993999999999994,
+      "max": 246.9748,
+      "mean": 74.10761438137087,
+      "range": 239.1754,
+      "variance": 2351.702679588164
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 142,
-    "warningCount": 0,
+    "entryCount": 149,
+    "warningCount": 4,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
     "patternFailures": [],
     "errorSamples": [],
-    "warningSamples": [],
+    "warningSamples": [
+      {
+        "timestamp": "2026-10-21T09:22:16.189Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5267/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/f2a23ee2-16cf-4d96-af51-842052da097d/scratchpad/vite-cache-5267/deps/chunk-VNXNK5DP.js?v=44b79702"
+      },
+      {
+        "timestamp": "2026-10-21T09:22:19.158Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5267/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/f2a23ee2-16cf-4d96-af51-842052da097d/scratchpad/vite-cache-5267/deps/chunk-VNXNK5DP.js?v=44b79702"
+      },
+      {
+        "timestamp": "2026-10-21T09:22:21.421Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5267/@fs/C:/Users/olovm/AppData/Local/Temp/claude/c--Users-olovm-repos-serenity-blocks/f2a23ee2-16cf-4d96-af51-842052da097d/scratchpad/vite-cache-5267/deps/chunk-VNXNK5DP.js?v=44b79702"
+      },
+      {
+        "timestamp": "2026-10-21T09:22:34.188Z",
+        "level": 2,
+        "message": "[ThemeManager] Swapping to \"voltage-storm\" with 0 pipeline(s) in flight and builds still deferred: false",
+        "line": 1486,
+        "sourceId": "http://127.0.0.1:5267/src/themes/theme-manager.js"
+      }
+    ],
     "processFailures": []
   },
+  "perf": null,
   "fatalError": null
 }
