@@ -10,7 +10,7 @@
  *   board=1                  overlay a mock gameplay board + HUD (the solo layout rules); events
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
- *   combo=<n>                hold a combo of n (the aurora's height)
+ *   combo=<n>                hold a combo of n (the rings' hum)
  *   level=<n>                rest on level n's palette
  *   locks=<n>                before anything else, play n locks (their ripples in the rings)
  *   event=lock|drop|clear|quad|tspin|perfect|b2b|cascade|levelUp   fire a gameplay event...
@@ -36,7 +36,7 @@ import { readLayoutRects } from '../../themes/stellar-drift/stellar-drift-compos
 export const meta = {
     id: 'stellar-drift',
     title: 'Stellar Drift (full world)',
-    description: 'A ringed giant the board plays on: locks ripple its rings, clears write on its cloud, chains raise its aurora.',
+    description: 'A ringed giant the board plays on: locks ripple its rings, clears write on its cloud, chains set its rings humming.',
 };
 
 function num(params, key, fallback = 0) {

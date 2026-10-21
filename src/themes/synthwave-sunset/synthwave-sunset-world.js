@@ -33,6 +33,7 @@ import { createPier } from './synthwave-sunset-pier.js';
 import { createCoaster } from './synthwave-sunset-coaster.js';
 import { createPromenade } from './synthwave-sunset-promenade.js';
 import { createPalms } from './synthwave-sunset-palms.js';
+import { createGulls } from './synthwave-sunset-gulls.js';
 import { FIREWORK_COLORS, Fireworks } from './synthwave-sunset-fireworks.js';
 import { SYNTHWAVE_SUNSET_TETROMINOS } from './synthwave-sunset-tetrominos.js';
 import { applyCameraBreath, easedMotion, prefersReducedMotion } from '../shared/camera-breath.js';
@@ -45,7 +46,7 @@ import { flashScale, prefersReducedFlashing } from '../../utils/photosensitivity
 export const MIRROR_LAYER = 3;
 
 /** The parts, in build order (the playground's `parts=` names). */
-export const SYNTHWAVE_PARTS = Object.freeze(['sky', 'sea', 'wheel', 'pier', 'coaster', 'promenade', 'palms', 'fireworks']);
+export const SYNTHWAVE_PARTS = Object.freeze(['sky', 'sea', 'wheel', 'pier', 'coaster', 'promenade', 'palms', 'gulls', 'fireworks']);
 
 /** Per-tier content. Every tier keeps the full composition; tiers trade detail, not layout. */
 export const WORLD_QUALITY = Object.freeze({
@@ -56,8 +57,10 @@ export const WORLD_QUALITY = Object.freeze({
         seaTrains: 4,
         seaClouds: 0,
         swash: false,
+        sandDetail: false,
         mirrorScale: 0,
         palms: 6,
+        gulls: 3,
         fireworks: 900,
         stars0: 70,
         finale: 3,
@@ -69,8 +72,10 @@ export const WORLD_QUALITY = Object.freeze({
         seaTrains: 5,
         seaClouds: 0,
         swash: true,
+        sandDetail: false,
         mirrorScale: 0.25,
         palms: 10,
+        gulls: 4,
         fireworks: 1400,
         stars0: 90,
         finale: 4,
@@ -84,6 +89,7 @@ export const WORLD_QUALITY = Object.freeze({
         swash: true,
         mirrorScale: 0.35,
         palms: 14,
+        gulls: 5,
         fireworks: 2000,
         stars0: 120,
         finale: 5,
@@ -97,6 +103,7 @@ export const WORLD_QUALITY = Object.freeze({
         swash: true,
         mirrorScale: 0.5,
         palms: 20,
+        gulls: 7,
         fireworks: 2600,
         stars0: 150,
         finale: 6,
@@ -110,6 +117,7 @@ export const WORLD_QUALITY = Object.freeze({
         swash: true,
         mirrorScale: 0.5,
         palms: 24,
+        gulls: 8,
         fireworks: 3200,
         stars0: 170,
         finale: 7,
@@ -123,6 +131,7 @@ export const WORLD_QUALITY = Object.freeze({
         swash: true,
         mirrorScale: 0.6,
         palms: 28,
+        gulls: 9,
         fireworks: 4000,
         stars0: 200,
         finale: 8,
@@ -192,6 +201,8 @@ const CHASE_SLOTS = 3;
 export function createWorldUniforms() {
     const u = {
         time: uniform(0),
+        /** The gulls' clock: the scene's, held back under reduced motion (they glide slower). */
+        gullTime: uniform(0),
         sunDir: uniform(new THREE.Vector3(0, 0, -1)),
         sunRight: uniform(new THREE.Vector3(1, 0, 0)),
         sunUp: uniform(new THREE.Vector3(0, 1, 0)),
@@ -296,7 +307,7 @@ export class SynthwaveWorld {
         const { q, u, rand } = this;
         this.parts.sky = createSky(u, { cloudOctaves: q.cloudOctaves, stars: q.stars, shootingStars: q.shooting });
         this.parts.sea = createSea(u, {
-            trains: q.seaTrains, clouds: q.seaClouds, swash: q.swash, mirrorScale: q.mirrorScale,
+            trains: q.seaTrains, clouds: q.seaClouds, swash: q.swash, mirrorScale: q.mirrorScale, sandDetail: q.sandDetail !== false,
         });
         this.reflection = this.parts.sea.userData.reflection ?? null;
         if (this.reflection) this.root.add(this.reflection.target);
@@ -305,6 +316,7 @@ export class SynthwaveWorld {
         this.parts.coaster = createCoaster(u, { mirrorLayer: MIRROR_LAYER });
         this.parts.promenade = createPromenade(u, { rand, mirrorLayer: MIRROR_LAYER });
         this.parts.palms = createPalms(u, { rand, count: q.palms });
+        this.parts.gulls = createGulls(u, { count: q.gulls });
         this.fireworks = new Fireworks(u, { capacity: q.fireworks, rand, mirrorLayer: MIRROR_LAYER });
         this.parts.fireworks = this.fireworks.mesh;
         this.track = this.parts.coaster.userData;
@@ -476,6 +488,8 @@ export class SynthwaveWorld {
         // The wheel turns on the clock (a seek lands right); reduced motion slows it to a crawl.
         this.wheelLag = (this.wheelLag ?? 0) + dt * (1 - motion) * 0.85;
         u.wheelAngle.value = ((t - this.wheelLag) * (Math.PI * 2)) / WHEEL.period;
+        this.gullLag = (this.gullLag ?? 0) + dt * (1 - motion) * 0.6;
+        u.gullTime.value = t - this.gullLag;
         u.wheelNeonMix.value += (this.neonTarget - u.wheelNeonMix.value) * approach(0.8, dt);
 
         // The evening deepens while a game is being played, and eases toward its target.
@@ -565,6 +579,7 @@ export class SynthwaveWorld {
     seek(time) {
         this.time = time;
         this.u.time.value = time;
+        this.u.gullTime.value = time - (this.gullLag ?? 0);
         this.lastPlayed = -1e6;
         this.dusk = this.duskBase;
         this.duskTarget = this.duskBase;
