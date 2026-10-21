@@ -27,7 +27,8 @@ import {
     outwardness, box, lathe, makeOut, prism, roundedRectOutline, tube,
 } from '../../src/themes/synthwave-sunset/synthwave-sunset-geo.js';
 import { HOTEL_WORDS, buildHotels, glyphCode } from '../../src/themes/synthwave-sunset/synthwave-sunset-hotels.js';
-import { POST_LOOK } from '../../src/themes/synthwave-sunset/synthwave-sunset-post.js';
+import { MIST, POST_LOOK, mistOpticalDepth } from '../../src/themes/synthwave-sunset/synthwave-sunset-post.js';
+import { GULL_LOOPS, gullPosition } from '../../src/themes/synthwave-sunset/synthwave-sunset-gulls.js';
 import { REDUCED_FLASH_SCALE } from '../../src/utils/photosensitivity.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 
@@ -282,7 +283,7 @@ describe('synthwave-sunset world', () => {
         });
         expect(drawables.sort()).toEqual([
             'SynthwaveCoasterBulbs', 'SynthwaveCoasterStructure', 'SynthwaveCoasterTrain', 'SynthwaveFireworks',
-            'SynthwaveHotels', 'SynthwavePalms', 'SynthwavePierBulbs', 'SynthwavePierStructure', 'SynthwavePromenadeLamps',
+            'SynthwaveGulls', 'SynthwaveHotels', 'SynthwavePalms', 'SynthwavePierBulbs', 'SynthwavePierStructure', 'SynthwavePromenadeLamps',
             'SynthwavePromenadeStructure', 'SynthwaveSea', 'SynthwaveSkyDome', 'SynthwaveWheelBulbs',
             'SynthwaveWheelStructure',
         ]);
@@ -523,6 +524,47 @@ describe('synthwave-sunset world', () => {
         expect(world.u.fireworkCalm.value).toBe(0);
         expect(Math.max(world.u.burst0.value.w, world.u.burst1.value.w)).toBeGreaterThan(0.5);
         world.dispose();
+    });
+
+    it('keeps its gulls wheeling in the free sky beside the board, low over the sea, one draw a tier', () => {
+        const eye = new THREE.Vector3(RIG.x, RIG.height, RIG.z);
+        const at = new THREE.Vector3();
+        GULL_LOOPS.forEach((_, i) => {
+            for (let t = 0; t <= 600; t += 7.3) {
+                gullPosition(i, t, at);
+                const rel = at.clone().sub(eye);
+                const flat = Math.hypot(rel.x, rel.z);
+                const bearing = THREE.MathUtils.radToDeg(Math.atan2(rel.x, -rel.z));
+                const elevation = THREE.MathUtils.radToDeg(Math.atan2(rel.y, flat));
+                // Between the left edge of a game's view and the board's left edge.
+                expect(bearing).toBeGreaterThan(-24);
+                expect(bearing).toBeLessThan(32);
+                expect(elevation).toBeGreaterThan(1.5);
+                expect(elevation).toBeLessThan(18);
+                expect(flat).toBeGreaterThan(20);
+                expect(at.z).toBeLessThan(shoreLineZ(at.x));
+            }
+        });
+        for (const quality of ['Minimal', 'High', 'Extreme']) {
+            const world = new SynthwaveWorld({ scene: new THREE.Scene(), quality, random: seeded() }).build();
+            expect(world.parts.gulls.geometry.instanceCount).toBe(WORLD_QUALITY[quality].gulls);
+            world.dispose();
+        }
+    });
+
+    it('lays the sea mist on the far scene and the sun\'s lower limb, not on the near sand', () => {
+        // The output pass's closed form: optical depth along a ray from the eye.
+        const tau = (dirY, t) => mistOpticalDepth(RIG.height, dirY, t);
+        const sand = tau(-RIG.height / 10, 10);
+        const pierFoot = tau(0.005, 165);
+        const wheelCrown = tau((WHEEL.hubY + WHEEL.radius - RIG.height) / 165, 165);
+        expect(sand).toBeLessThan(0.03);
+        expect(pierFoot).toBeGreaterThan(0.1);
+        expect(pierFoot).toBeLessThan(0.6);
+        expect(wheelCrown).toBeLessThan(pierFoot / 3);
+        // The horizon itself is mist; the sun's centre keeps most of its light.
+        expect(tau(0.0, MIST.reach) * MIST.overSky).toBeGreaterThan(1);
+        expect(tau(Math.sin(SUN.radius * SUN.lift), MIST.reach) * MIST.overSky).toBeLessThan(0.35);
     });
 
     it('treats board rects within half a percent as the same layout', () => {

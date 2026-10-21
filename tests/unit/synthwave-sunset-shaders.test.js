@@ -285,24 +285,42 @@ describe.each(TIERS)('synthwave-sunset shaders at %s', (quality) => {
         expect(seen).toBeGreaterThan(0);
     });
 
-    it('builds the post stack\'s output on both backends without a word', () => {
-        const camera = new THREE.PerspectiveCamera();
-        const post = new SynthwaveSunsetPost(fakeRenderer(), scene, camera, { look: POST_LOOK[quality] });
-        const material = new THREE.NodeMaterial();
-        material.fragmentNode = post.postProcessing.outputNode;
-        const quad = new THREE.QuadMesh(material);
+    it('builds the post stack\'s output, its sea mist and the sun\'s shafts on both backends without a word', () => {
+        const camera = new THREE.PerspectiveCamera(58, 16 / 9, 0.3, 9000);
+        const post = new SynthwaveSunsetPost(fakeRenderer(), scene, camera, { look: POST_LOOK[quality], uniforms: world.u });
+        // The shafts' emitters and two marches are their own passes (rtt), built lazily by the
+        // renderer.
+        const stages = [['post output', post.postProcessing.outputNode]];
+        if (post.shaftsFirst) {
+            stages.push(
+                ['post shafts (emitters)', post.shaftsEmit.node],
+                ['post shafts (gather)', post.shaftsFirst.node],
+                ['post shafts (fill)', post.shaftsNode.node],
+            );
+        }
+        expect(Boolean(post.shaftsNode)).toBe(POST_LOOK[quality].shafts > 0);
+        const materials = [];
         try {
             const problems = [];
-            BACKENDS.forEach(([label, Builder]) => {
-                const [out, heard] = listening(() => build(Builder, quad, material, postRenderer(), scene, quad.camera));
-                problems.push(...problemsOf({
-                    name: 'post output', label, out, heard,
-                }));
+            stages.forEach(([name, node]) => {
+                const material = new THREE.NodeMaterial();
+                materials.push(material);
+                material.fragmentNode = node;
+                const quad = new THREE.QuadMesh(material);
+                BACKENDS.forEach(([label, Builder]) => {
+                    const [out, heard] = listening(() => build(Builder, quad, material, postRenderer(), scene, quad.camera));
+                    problems.push(...problemsOf({
+                        name, label, out, heard,
+                    }));
+                    if (label === 'WGSL' && !out.thrown) {
+                        unassignedReads(out.fragment ?? '').forEach((read) => problems.push(`${name}: ${read}`));
+                    }
+                });
             });
             expect(problems).toEqual([]);
         } finally {
             post.dispose();
-            material.dispose();
+            materials.forEach((material) => material.dispose());
         }
     });
 });
