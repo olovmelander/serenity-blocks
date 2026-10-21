@@ -35,7 +35,7 @@
  */
 import * as THREE from 'three/webgpu';
 import { PyrestormWorld } from '../../themes/pyrestorm/pyrestorm-world.js';
-import { PyrestormPost, POST_LOOK } from '../../themes/pyrestorm/pyrestorm-post.js';
+import { PyrestormPost, POST_LOOK, sceneSamples } from '../../themes/pyrestorm/pyrestorm-post.js';
 import { readLayoutRects } from '../../themes/pyrestorm/pyrestorm-composition.js';
 import { PYRESTORM_TETROMINOS } from '../../themes/pyrestorm/pyrestorm-tetrominos.js';
 import { CRATER, DEG, EYE } from '../../themes/pyrestorm/pyrestorm-core.js';
@@ -298,6 +298,7 @@ export function create({
             post = new PyrestormPost(renderer, scene, camera, {
                 look,
                 falseColor: params.get('falseColor') === '1',
+                samples: sceneSamples(quality),
             });
         }
         syncViewport();

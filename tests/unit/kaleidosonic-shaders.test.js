@@ -5,14 +5,15 @@
  * too: today the one full-screen temple march) and the post stack's output (its look per tier, and
  * the falseColor debug view) are built through three's own node builders against a stub renderer:
  * the WGSL one of the WebGPU backend and the GLSL one of the WebGL2 fallback, at the tier the theme
- * defaults to, at the leanest and at the richest (the only one here with the soft shadow). The
- * temple's scout pass (drawn before the frame, not in the scene) is built with them. A graph one
- * builder cannot turn into a shader throws or warns here instead of leaving the temple undrawn on
- * someone's machine.
+ * defaults to, at the leanest (six beams, no jewel beams) and at the richest. The temple's scout
+ * pass and its light map (drawn before the frame, not in the scene) are built with them. A graph
+ * one builder cannot turn into a shader throws or warns here instead of leaving the temple
+ * undrawn on someone's machine.
  *
- * Also gated: how often each march calls the field (a value read twice can be emitted twice: the
- * soft shadow once ran the whole fractal twice a step), each stage's size (a march unrolled in JS
- * instead of looped shows up as a module of hundreds of KB), MaterialX noise (`mx_*`), a
+ * Also gated: how often each march calls the field (a value read twice can be emitted twice: a
+ * soft shadow once ran the whole fractal twice a step), that the beams are integrated in loops
+ * (six beams unrolled at the two sites that draw them were 15 KB), each stage's size (a march
+ * unrolled in JS instead of looped shows up as a module of hundreds of KB), MaterialX noise (`mx_*`), a
  * smoothstep whose two edges are the same constant (a hard WGSL error), a NaN/Infinity literal, a
  * WGSL var read where it may not have been assigned, and a laid-out `ks_*` helper that closes over
  * a uniform or a texture (cached module-wide, it would emit invalid WGSL in the second material
@@ -243,8 +244,9 @@ describe.each(TIERS)('kaleidosonic shaders at %s', (quality) => {
                 targets.push([object.name || material.name || object.type, object, material]);
             });
         });
-        const { scout } = world.parts.temple;
+        const { scout, lightMap } = world.parts.temple;
         targets.push([scout.quad.name, scout.quad, scout.material]);
+        targets.push([lightMap.quad.name, lightMap.quad, lightMap.material]);
         for (const [name, object, material] of targets) {
             BACKENDS.forEach(([label, Builder]) => {
                 const [out, heard] = listening(() => build(Builder, object, material));
@@ -289,17 +291,30 @@ describe.each(TIERS)('kaleidosonic shaders at %s', (quality) => {
         expect(fields).toEqual([`ks_temple${Math.max(2, Math.round(folds))}`]);
     });
 
-    it('calls the field once a site: the march, four normal taps, the occlusion tap and the shadow step', () => {
-        const { folds, shadowSteps } = tierFor(quality);
+    it('calls the field once a site: the march, four normal taps, the occlusion tap; the scout, the light map', () => {
+        const { folds } = tierFor(quality);
         const field = new RegExp(`\\bks_temple${Math.max(2, Math.round(folds))}\\s*\\(`, 'g');
         // the definition's own `fn ks_templeN (` is not a call
         const calls = (wgsl, pattern) => (wgsl.match(pattern) || []).length - 1;
         const wgslOf = (object) => built.find((b) => b.object === object && b.label === 'WGSL').out.fragment;
-        const { mesh, scout } = world.parts.temple;
-        expect(calls(wgslOf(mesh), field)).toBe(1 + 4 + 1 + (shadowSteps > 0 ? 1 : 0));
+        const { mesh, scout, lightMap } = world.parts.temple;
+        // (the stone's shadows come from the light map: no shadow march)
+        expect(calls(wgslOf(mesh), field)).toBe(1 + 4 + 1);
         // the orbit trap colours the stone: read once, at the hit
         expect(calls(wgslOf(mesh), /\bks_templeTrap\d+\s*\(/g)).toBe(1);
         expect(calls(wgslOf(scout.quad), field)).toBe(1);
+        expect(calls(wgslOf(lightMap.quad), field)).toBe(1);
+    });
+
+    it('integrates the beams in loops: one beam call at the core\'s site and one at the jewels\'', () => {
+        const { airBeamCells } = tierFor(quality);
+        const temple = built.find((b) => b.object === world.parts.temple.mesh && b.label === 'WGSL').out.fragment;
+        // the definition's own `fn ks_beamLobe (` is not a call
+        const lobeCalls = (temple.match(/\bks_beamLobe\s*\(/g) || []).length - 1;
+        expect(lobeCalls).toBe(airBeamCells > 0 ? 2 : 1);
+        // the light map is read where the stone is lit (the core, the nearest jewel) and once per beam site
+        const lookups = (temple.match(/\bks_octUv\s*\(/g) || []).length - 1;
+        expect(lookups).toBe(2 + (airBeamCells > 0 ? 2 : 1));
     });
 
     it('reads no WGSL var where it may not have been assigned', () => {
