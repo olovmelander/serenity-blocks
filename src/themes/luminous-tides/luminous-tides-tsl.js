@@ -51,6 +51,17 @@ export const TUNE = {
     deckEmboss: 5.5,
     deckSlot: [0.012, 0.07],
     deckFog: 0.16,
+    // The stars: a spot's radius in buffer pixels, and how bright each layer's stars are (the
+    // bright few, the many, the faint dust).
+    starSpot: 0.62,
+    starGain: [18.0, 0.75, 0.16],
+    // The lamps' roads on the water (drawn by the water, not mirrored): how far a road follows the
+    // resolved ripples sideways (0: straight down from its lamp), how rough the sea is to them
+    // beyond what the water resolves, how bright, and how fast a glint comes and goes (per second).
+    lampWander: 0.3,
+    lampRough: 0.0025,
+    lampRoad: 0.0055,
+    glintRate: 4.5,
     // The water.
     glintFloor: 0.0012,
     hazeReach: 2400,
@@ -64,6 +75,7 @@ export const TUNE = {
     lace: 0.9, // the lace the backwash leaves
     sparkle: 0.55, // the sparks in the foam
     calm: 0.05, // the faint fire of calm water
+    mirrorFire: 0.08, // the water's mirror of a breaking wave's lit lip and bore
     // The land at night (landLight): how much of the sky's air, the far coast's warm glow and the
     // sea's blue fire falls on the trees, how brightly the sky behind wraps their edges, and the
     // mist lying in the jungle's foot and between it and the headland.
@@ -299,6 +311,8 @@ export function coastLamps(bearing, elevation, U, height, spread) {
  * @param {boolean} o.stars    the stars
  * @param {boolean} o.milky    the Milky Way
  * @param {boolean} o.coast    the far coast and its lamps (off: the water draws their streaks itself)
+ * @param {boolean} [o.lamps]  with the coast, its lamps (default on; the water's mirror turns them
+ *                             off and lays each lamp's road of glints itself)
  */
 export function skyColour(dir, U, noise, o) {
     const { light } = U;
@@ -316,18 +330,27 @@ export function skyColour(dir, U, noise, o) {
         const axis = vec3(0.0, 0.62, 0.785);
         const q = dir.mul(c).add(axis.cross(dir).mul(s)).add(axis.mul(dot(axis, dir)).mul(float(1.0).sub(c))).toVar();
         const dark = U.stars.mul(smoothstep(0.01, 0.14, up));
-        const starLayer = (scale, power, gain) => {
+        // A star is a point: its spot is about a buffer pixel across whatever the lens (a few
+        // tenths of a milliradian at least), so brightness, not size, says which stars are bright.
+        // A spot a fixed angle wide drew every star as a disc several pixels across, the sky as snow.
+        const spot = max(U.pixelAngle.mul(TUNE.starSpot), 0.00032).toVar();
+        const fall = float(-0.5).div(spot.mul(spot)).toVar();
+        const starLayer = (scale, power, gain, chance) => {
             const p = q.mul(scale);
             const cell = floor(p);
             const h = hash33(cell).toVar();
             const star = normalize(cell.add(h.mul(0.56).add(0.22)));
-            const off = q.sub(star).mul(scale);
-            const bright = h.y.pow(power).mul(smoothstep(0.4, 0.5, h.x));
+            const off = q.sub(star);
+            const bright = h.y.pow(power).mul(smoothstep(chance, chance + 0.1, h.x));
             const twinkle = sin(U.time.mul(h.x.mul(1.7).add(0.6)).add(h.z.mul(40.0))).mul(0.3).add(0.7);
             const tint = mix(vec3(1.0, 0.82, 0.64), vec3(0.72, 0.84, 1.0), fract(h.z.mul(7.31)));
-            return tint.mul(exp(dot(off, off).mul(-150.0)).mul(bright).mul(twinkle).mul(gain));
+            return tint.mul(exp(dot(off, off).mul(fall)).mul(bright).mul(twinkle).mul(gain));
         };
-        const stars = starLayer(44.0, 9.0, 2.2).add(starLayer(105.0, 6.0, 0.55)).toVar();
+        // The bright few, the many, and a dust of faint ones that gives the dark its depth.
+        const stars = starLayer(44.0, 9.0, TUNE.starGain[0], 0.4)
+            .add(starLayer(105.0, 6.0, TUNE.starGain[1], 0.4))
+            .add(starLayer(190.0, 4.0, TUNE.starGain[2], 0.3))
+            .toVar();
         if (o.milky) {
             const pole = vec3(0.42, -0.70, -0.58);
             const off = dot(q, pole).toVar();
@@ -400,7 +423,9 @@ export function skyColour(dir, U, noise, o) {
         const land = float(1.0).sub(smoothstep(height.sub(0.03), height.add(0.03), elevation)).mul(step0(height));
         const shade = horizonHaze(dir, U).mul(0.42);
         sky.assign(mix(sky, shade, land));
-        sky.addAssign(coastLamps(bearing, elevation, U, height, float(0.0)).mul(land.mul(0.85).add(0.15)));
+        if (o.lamps !== false) {
+            sky.addAssign(coastLamps(bearing, elevation, U, height, float(0.0)).mul(land.mul(0.85).add(0.15)));
+        }
     }
     return sky.mul(U.squallDim.mul(0.4).add(0.6));
 }

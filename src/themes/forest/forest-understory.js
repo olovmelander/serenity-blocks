@@ -31,6 +31,44 @@ const FEATURE_STONES = [
     [FOREST_KNOLL.x + 4.6, FOREST_KNOLL.z - 3.2, 2.3], [3.4, -21, 1.3], [-14.5, -1.5, 1],
 ];
 
+/** Deterministic 0..1 hash of a lattice point (no draw from the forest's generator). */
+function latticeHash(x, z, salt) {
+    const h = Math.sin(x * 127.1 + z * 311.7 + salt * 74.7) * 43758.5453;
+    return h - Math.floor(h);
+}
+
+/** Smooth value noise over a lattice of `cell` metres. */
+function valueNoise(x, z, cell, salt) {
+    const fx = x / cell;
+    const fz = z / cell;
+    const x0 = Math.floor(fx);
+    const z0 = Math.floor(fz);
+    const tx = (fx - x0) * (fx - x0) * (3 - 2 * (fx - x0));
+    const tz = (fz - z0) * (fz - z0) * (3 - 2 * (fz - z0));
+    const a = latticeHash(x0, z0, salt);
+    const b = latticeHash(x0 + 1, z0, salt);
+    const c = latticeHash(x0, z0 + 1, salt);
+    const d = latticeHash(x0 + 1, z0 + 1, salt);
+    return (a * (1 - tx) + b * tx) * (1 - tz) + (c * (1 - tx) + d * tx) * tz;
+}
+
+/**
+ * How thickly grass grows at a floor point, 0..1: tussocks a few metres across with moss
+ * between them, not an even lawn. Two octaves; the finer one breaks each clump's edge.
+ */
+export function forestGrassClump(x, z) {
+    const n = valueNoise(x, z, 4.2, 1) * 0.7 + valueNoise(x, z, 1.5, 2) * 0.3;
+    const t = Math.min(1, Math.max(0, (n - 0.34) / 0.36));
+    return t * t * (3 - 2 * t);
+}
+
+/** Where the grass is last year's: dry and pale, in drifts across the glade (0..1). */
+export function forestGrassDry(x, z) {
+    const n = valueNoise(x, z, 9, 3);
+    const t = Math.min(1, Math.max(0, (n - 0.55) / 0.3));
+    return t * t * (3 - 2 * t);
+}
+
 /** A tuft of grass: a few tapering blades that lean out from one root. */
 function createTuftGeometry() {
     const blades = 6;
@@ -417,15 +455,17 @@ export class ForestUnderstory {
         if (!(count > 0)) return;
         const geometry = this.own(createTuftGeometry());
         const lookData = new Float32Array(count * 4);
-        const look = instancedBufferAttribute(new THREE.InstancedBufferAttribute(lookData, 4)); // phase, tone, -, -
+        const look = instancedBufferAttribute(new THREE.InstancedBufferAttribute(lookData, 4)); // phase, tone, dry, -
         const material = this.own(new THREE.MeshBasicNodeMaterial({ fog: false, side: THREE.DoubleSide }));
         material.name = 'ForestGrass';
         const up = uv().y;
         material.positionNode = positionLocal.add(this.sway(up, look.x));
         const world = positionWorld;
         const view = normalize(cameraPosition.sub(world));
-        const albedo = mix(color(0x0a1a09), color(0x3a5a22), look.y.mul(0.6).add(up.mul(0.4)))
-            .mul(up.mul(0.75).add(0.25));
+        // Green tussocks, and drifts of last year's grass gone pale straw (look.z).
+        const green = mix(color(0x0a1a09), color(0x3a5a22), look.y.mul(0.6).add(up.mul(0.4)));
+        const straw = mix(color(0x1c1a10), color(0x5a5636), look.y.mul(0.5).add(up.mul(0.5)));
+        const albedo = mix(green, straw, look.z.mul(0.75)).mul(up.mul(0.75).add(0.25));
         const moon = light.moonlight();
         const through = pow(saturate(dot(view, light.uMoonDir).negate()), 6);
         const glow = light.glow(world);
@@ -438,19 +478,26 @@ export class ForestUnderstory {
         mesh.name = 'ForestGrass';
         const dummy = new THREE.Object3D();
         let made = 0;
-        for (let attempt = 0; made < count && attempt < count * 6; attempt += 1) {
+        // Tussocks: a place is kept as often as the clump field is thick there (a little grass
+        // stands between clumps too), so the floor reads as moss with grass in it, not a lawn.
+        // The keep test is a hash of the place, so the generator's draws are spent as before
+        // per attempt; more attempts are allowed, so the tier still gets its count.
+        for (let attempt = 0; made < count && attempt < count * 14; attempt += 1) {
             const range = 2.8 + rng() ** 1.7 * 40;
             const bearing = (rng() * 2 - 1) * 0.9 - 0.04;
             const x = FOREST_EYE.x + Math.sin(bearing) * range;
             const z = FOREST_EYE.z - Math.cos(bearing) * range;
-            if (this.clear(x, z, 0.1) && forestGroundHeight(x, z) > -3) {
+            const clump = forestGrassClump(x, z);
+            const keep = latticeHash(Math.round(x * 31), Math.round(z * 31), 5) < 0.12 + clump * 0.88;
+            if (keep && this.clear(x, z, 0.1) && forestGroundHeight(x, z) > -3) {
                 dummy.position.set(x, forestGroundHeight(x, z) - 0.02, z);
                 dummy.rotation.set(0, rng() * TAU, 0);
-                const size = 0.55 + rng() * 0.85;
+                // Taller in the heart of a clump, short and sparse between them.
+                const size = (0.45 + rng() * 0.7) * (0.65 + clump * 0.6);
                 dummy.scale.set(size, size * (0.8 + rng() * 0.6), size);
                 dummy.updateMatrix();
                 mesh.setMatrixAt(made, dummy.matrix);
-                lookData.set([rng(), rng(), 0, 0], made * 4);
+                lookData.set([rng(), rng(), forestGrassDry(x, z), 0], made * 4);
                 made += 1;
             }
         }
