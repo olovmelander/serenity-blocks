@@ -232,9 +232,8 @@ describe('JourneyReturnTransition', () => {
         await expect(playPromise).resolves.toMatchObject({ success: true, aborted: false });
         expect(order).toEqual(['blackout', 'reveal', 'complete']);
         expect(dom.document.querySelector('.journey-return-transition')).toBeNull();
-        // The veil and the tunnel release their full-screen backings at teardown, not at GC.
-        expect(canvases.map((canvas) => canvas.className)).toContain('journey-portal-tunnel');
-        expect(canvases.length).toBe(2);
+        // One canvas draws the whole gate, and releases its full-screen backing at teardown, not at GC.
+        expect(canvases.map((canvas) => canvas.className)).toEqual(['journey-portal-gate']);
         canvases.forEach((canvas) => expect([canvas.width, canvas.height]).toEqual([0, 0]));
     });
 
@@ -325,7 +324,12 @@ describe('JourneyReturnTransition', () => {
         const root = dom.document.querySelector('.journey-return-transition');
         expect(root).not.toBeNull();
         expect(order).toEqual(['blackout']);
-        expect(Number.parseFloat(root.children[4].style.opacity || '0')).toBeGreaterThan(0.15);
+        // The passage back fills the frame and keeps travelling through the whole hold.
+        const run = transition.activeRun;
+        expect(transition.describeGate(run, { clock: run.clock.t, closing: 1 }, 0).region).toEqual({ kind: 'all' });
+        const travelled = run.travelState.travel;
+        await harness.flushUntil(() => harness.performance.now() >= 2800, { stepMs: 50, maxSteps: 20 });
+        expect(run.travelState.travel).toBeGreaterThan(travelled + 0.3);
 
         releaseReadiness();
         await Promise.resolve();
@@ -368,8 +372,7 @@ describe('JourneyReturnTransition', () => {
         expect(run.dom.root.children).toEqual([run.dom.veil]);
         expect(run.dom.veil.style.cssText).toContain('background: #05070d');
         expect(run.dom.canvas).toBeUndefined();
-        expect(run.departureParticles).toEqual([]);
-        expect(run.arrivalParticles).toEqual([]);
+        expect(run.gate).toBeNull();
 
         // The fade is gradual, but gameplay preparation cannot start while uncovered.
         harness.step(110);
