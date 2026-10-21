@@ -321,7 +321,11 @@ export function createFalls({ tier, U, tex }) {
         // of speed and weight); each rope's rate is a whole number of turns per wrap.
         const rate = floor(h2.mul(0.4).add(0.9).mul(WATER_WRAP).add(0.5)).div(WATER_WRAP);
         const q = float(1.0).sub(fract(stream.mul(rate).add(h3)));
-        const jet = smoothstep(0.0, 0.02, q).mul(exp(q.mul(-4.0)));
+        // Its head is a rounded nose (the rope's middle leads, its sides trail), never a ruled
+        // end straight across the rope: a column of square-ended comets reads as piano keys.
+        const side = clamp(abs(fract(x).sub(0.5)).div(max(w, 1e-3)), 0.0, 1.0);
+        const nose = side.mul(side).mul(0.07);
+        const jet = smoothstep(nose, nose.add(0.05), q).mul(exp(q.mul(-4.0)));
         // Seen too small to resolve across (a thread a few pixels wide), a rope gives way to its
         // mean; its comets still ride down it (they are long along it), so it beads as water does.
         const resolve = float(1.0).sub(smoothstep(0.35, 0.9, fwidth(x)));

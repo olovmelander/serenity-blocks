@@ -395,11 +395,17 @@ export function cirrusLayer(dir, up, bearing, thetaA, calm, U, tex) {
     const W = windFrame(P).toVar();
     // Where the drifts are (R), and the currents that bend them (B).
     const broad = texture(tex.noise, P.mul(1 / 70000).add(vec2(0.21, 0.64))).toVar();
-    // Bands along the wind, bent across it by the currents so they curve and hook.
-    const q = vec2(W.x.mul(1 / 42000), W.y.mul(1 / 5200).add(broad.b.sub(0.5).mul(0.8)));
+    // Bands along the wind, bent across it by the currents so they curve and hook: a slow bend that
+    // fans the streaks apart and together along their run.
+    const curl = texture(tex.noise, vec2(W.x.mul(1 / 40000), W.y.mul(1 / 14000)).add(vec2(0.61, 0.07))).r;
+    const bend = broad.b.sub(0.5).mul(0.8).add(curl.sub(0.5).mul(1.1)).toVar();
+    const q = vec2(W.x.mul(1 / 42000), W.y.mul(1 / 5200).add(bend));
     const bands = smoothstep(0.5, 0.78, texture(tex.noise, q).r);
-    // Combed into fibres along their length.
-    const fibre = texture(tex.noise, vec2(W.x.mul(1 / 16000), W.y.mul(1 / 2200)).add(vec2(0.37, 0.19))).a;
+    // Each streak has a dense head and frays into a tail (never a stroke of one width end to end).
+    const headAt = vec2(W.x.mul(1 / 11000), W.y.mul(1 / 4200).add(bend.mul(0.8))).add(vec2(0.13, 0.81));
+    const heads = smoothstep(0.32, 0.72, texture(tex.noise, headAt).g);
+    // Combed into fibres along their length, the fibres following the same bend.
+    const fibre = texture(tex.noise, vec2(W.x.mul(1 / 16000), W.y.mul(1 / 2200).add(bend.mul(2.36))).add(vec2(0.37, 0.19))).a;
     // Most drifts lie up the sky away from the storm: the empty upper sky on the storm's far side.
     const away = smoothstep(-0.05, -0.5, scWrapPi(bearing.sub(U.shower.x))).mul(0.6).add(0.4);
     const patch = smoothstep(0.45, 0.7, broad.r).mul(away);
@@ -409,7 +415,7 @@ export function cirrusLayer(dir, up, bearing, thetaA, calm, U, tex) {
     const inside = float(1.0).sub(smoothstep(R1.sub(0.09), R1.sub(0.055), thetaA));
     const keep = float(1.0).sub(inBows).mul(mix(1.0, 0.5, inside)).mul(smoothstep(0.12, 0.4, up))
         .mul(float(1.0).sub(calm.mul(0.4)));
-    const a = bands.mul(fibre.mul(0.75).add(0.4)).mul(patch).mul(keep)
+    const a = bands.mul(fibre.mul(0.85).add(0.3)).mul(heads.mul(0.75).add(0.25)).mul(patch).mul(keep)
         .mul(U.cirrus)
         .mul(0.34);
     // Thin ice lit by the hour, warmed toward the belt's colour at twilight.
@@ -664,8 +670,11 @@ export function stormWall(dir, bearing, thetaA, calm, U, tex, hazeIn = null) {
         const k = float(27.0).div(n.mul(0.72).add(1.0));
         const b = scBillow(bearing, el, base.add(height.mul(share)), slope.mul(share), k, n.mul(2.9).add(3.7), squash);
         const rRow = float(0.475).div(k);
-        const d = b.x.sub(el).sub(fray.mul(rRow).mul(0.12));
-        const cover = smoothstep(pa.negate(), pa, d);
+        const d = b.x.sub(el).sub(fray.mul(rRow).mul(0.16));
+        // A billow's edge is vapour, not a cut-out: soft over a share of its own size (never under
+        // a pixel), so the rows stack as rounded masses instead of a pile of discs.
+        const edge = max(pa, rRow.mul(0.05));
+        const cover = smoothstep(edge.negate(), edge, d);
         // Deeper under its own top a billow lies in the shade of the ones over it; the crown's
         // turrets stand in a little more air (they are further back).
         const occl = float(1.0).sub(smoothstep(0.0, rRow.mul(2.6), d).mul(0.4));
@@ -680,8 +689,15 @@ export function stormWall(dir, bearing, thetaA, calm, U, tex, hazeIn = null) {
     // end as the body rounds over (a cloud's end is one billow, never a corner).
     // (A frame with no room for the body, sh.w 0, keeps only the rain falling from above it.)
     const endU = clamp(abs(u.sub(0.05)).div(reach).sub(0.7).div(0.3), 0.0, 1.0);
-    const baseU = base.add(sh.w.mul(0.2).mul(endU.mul(endU)));
-    bodyA.mulAssign(smoothstep(baseU.sub(pa), baseU.add(pa), el).mul(smoothstep(reach.mul(1.12), reach, abs(u.sub(0.05))))
+    // The base is level but never ruled: it sags in broad pouches where the rain hangs heaviest and
+    // lifts between them, its edge frayed into the falling rain (a few pixels of soft tear, wider
+    // under the heart), so the body and its rain are one storm, not a slab with a curtain hung on.
+    const sag = texture(tex.noise, vec2(bearing.mul(4.3).add(0.61), 0.27)).g.sub(0.5);
+    const tear = texture(tex.noise, vec2(bearing.mul(11.0).add(0.3), el.mul(11.0).sub(U.mistClock.mul(0.0006)))).a.sub(0.5);
+    const baseU = base.add(sh.w.mul(0.2).mul(endU.mul(endU))).add(sag.mul(sh.w).mul(0.07))
+        .add(tear.mul(sh.w).mul(0.028)).sub(core.mul(sh.w).mul(0.025));
+    const soft = pa.add(sh.w.mul(mix(0.018, 0.04, core)));
+    bodyA.mulAssign(smoothstep(baseU.sub(soft), baseU.add(soft), el).mul(smoothstep(reach.mul(1.12), reach, abs(u.sub(0.05))))
         .mul(smoothstep(0.004, 0.02, sh.w)));
     const bodyCol = slate.mul(tone).toVar();
     // Its upper body faces the sun behind us: the top third of the wall catches the light (a lit
