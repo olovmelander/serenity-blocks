@@ -11,7 +11,8 @@
  *    tier reaches past the crest, so its skyline is ears), at constant density on screen;
  *  - forest: the shelterbelts: Blender trees out to `near` metres (keeping `sprays` of their
  *    sprays, fewer far out), sprites beyond when `sprites`;
- *  - herd, birds, motes: the horses, a flock's size, the mote pool.
+ *  - herd, birds, motes: the horses, a flock's size, the mote pool;
+ *  - lens: the ears by the lens (soft in the frame's bottom corners; a handful of quads).
  */
 const TIERS = {
     Extreme: {
@@ -27,6 +28,7 @@ const TIERS = {
         herd: 9,
         birds: 34,
         motes: 2600,
+        lens: 6,
     },
     Ultra: {
         fan: { cols: 288, rows: 270 },
@@ -41,6 +43,7 @@ const TIERS = {
         herd: 9,
         birds: 30,
         motes: 2200,
+        lens: 6,
     },
     High: {
         fan: { cols: 256, rows: 240 },
@@ -55,6 +58,7 @@ const TIERS = {
         herd: 8,
         birds: 26,
         motes: 1800,
+        lens: 6,
     },
     Medium: {
         fan: { cols: 200, rows: 190 },
@@ -69,6 +73,7 @@ const TIERS = {
         herd: 7,
         birds: 18,
         motes: 1100,
+        lens: 6,
     },
     Low: {
         fan: { cols: 150, rows: 140 },
@@ -83,6 +88,7 @@ const TIERS = {
         herd: 6,
         birds: 12,
         motes: 600,
+        lens: 4,
     },
     Minimal: {
         fan: { cols: 110, rows: 100 },
@@ -97,6 +103,7 @@ const TIERS = {
         herd: 5,
         birds: 8,
         motes: 300,
+        lens: 2,
     },
 };
 

@@ -11,7 +11,7 @@ import {
     uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
-    MOODS, MOOD_COLOURS, TEMPLE, foldSplit,
+    BEAM_AXES, MOODS, MOOD_COLOURS, TEMPLE, foldSplit,
 } from './kaleidosonic-core.js';
 
 export * from './kaleidosonic-core.js';
@@ -208,6 +208,15 @@ export function createUniforms() {
         state: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** Fog density per unit and the air's glow gain. */
         air: uniform(new THREE.Vector4(0.42, 1, 0, 0)),
+        /**
+         * The light map (kaleidosonic-light.js): (drawn yet 0|1, how far the core's own shadows
+         * hold (1 at rest; the dive carries the core off its jewel), the light in the air's gain, -).
+         */
+        light: uniform(new THREE.Vector4(0, 1, 1, 0)),
+        /** The gem's turn (its facets throw the beams): (cos, sin) of the angle about the vertical. */
+        gem: uniform(new THREE.Vector4(1, 0, 0, 0)),
+        /** The gem's facet axes (BEAM_AXES), a fixed table the beams loop over. */
+        beamAxes: uniformArray(BEAM_AXES.map(([x, y, z]) => new THREE.Vector4(x, y, z, 0)), 'vec4'),
         /** The two moods' colours (stoneA, stoneB, vein, heart, haze, glow) ×2, and the mix. */
         moods: uniformArray(moodRows, 'vec4'),
         moodMix: uniform(0),
