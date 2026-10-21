@@ -44,8 +44,16 @@ export function fovForAspect() {
     return REST_RIG.fov;
 }
 
-/** The lamp at rest: up and to the left, low over the cloth. */
-export const LAMP = Object.freeze({ azimuth: 142 * DEG, elevation: 25 * DEG });
+/**
+ * The lamp at rest: up and to the left, low over the cloth, `distance` canvas units from the
+ * canvas's centre (the frame is two units tall). It is a lamp, not the sun: its light falls off
+ * across the cloth (as 1 / distance^falloff, 1 at the centre), so the corner nearest it is lit
+ * warm and full and the far corner sinks toward the room's cool fill, and its rays meet the cloth
+ * lower the further they travel, so the relief rakes harder there.
+ */
+export const LAMP = Object.freeze({
+    azimuth: 142 * DEG, elevation: 25 * DEG, distance: 3.9, falloff: 1.6,
+});
 /** Seconds between the painter's own strokes. */
 export const AMBIENT_BEAT = 2.6;
 /** Wetness is stepped at this interval, and falls to 1/e in DRY_TAU seconds. */
@@ -176,7 +184,13 @@ export class ChromaticImpastoWorld {
             time: uniform(0),
             thickness: uniform(RELIEF.thickness),
             reliefGain: uniform(1),
+            /** Toward the lamp from the canvas's centre (drops' shadows, their glints). */
             lightDir: uniform(dirFromAngles(LAMP.azimuth, LAMP.elevation, new THREE.Vector3())),
+            /** Where the lamp stands (canvas units; the cloth is the plane z = 0), and its falloff. */
+            lampPos: uniform(
+                dirFromAngles(LAMP.azimuth, LAMP.elevation, new THREE.Vector3()).multiplyScalar(LAMP.distance),
+            ),
+            lampFalloff: uniform(new THREE.Vector2(LAMP.distance, LAMP.falloff)),
             keyColor: uniform(new THREE.Vector3(2.5, 2.4, 2.2)),
             fillColor: uniform(new THREE.Vector3(0.3, 0.33, 0.4)),
             rimDir: uniform(dirFromAngles(-32 * DEG, 34 * DEG, new THREE.Vector3())),
@@ -1034,7 +1048,7 @@ export class ChromaticImpastoWorld {
         }
 
         this.droplets?.update(t);
-        this.motes?.update(t, this.aspect);
+        this.motes?.update(t, this.aspect, VIEW_DISTANCE, this.layoutLive ? this.card : null);
 
         // ── Uniforms ──
         u.time.value = t;
@@ -1046,6 +1060,7 @@ export class ChromaticImpastoWorld {
         const elevation = LAMP.elevation
             + (Math.sin(t * 0.05 + 1.1) * 0.05 + this.power * 0.025 + this.surge * 0.025) * (motion * 0.6 + 0.4);
         dirFromAngles(azimuth, elevation, u.lightDir.value);
+        u.lampPos.value.copy(u.lightDir.value).multiplyScalar(LAMP.distance);
         const { key } = this.period;
         const lift = (1 + this.power * 0.2 + this.surge * 0.28) * this.breath;
         const tint = mixRgb(key, GOLD, clamp01(this.surge * 0.45));
