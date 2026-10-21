@@ -5,7 +5,7 @@
  *   fanCols × fanRows    the land around the eye (a polar fan: fine near, coarse far)
  *   coneRings × coneSegs the volcano's own mesh
  *   plumeSteps           march steps through the eruption column (a volume)
- *   eventPuffs           puffs for the vortex ring, the surge and the shock's condensation
+ *   eventPuffs           puffs for the vortex ring, the surge and a lock's burst of ash
  *   jets / fissureJets   the crater's fountain and the fissure's curtain (incandescent spatter)
  *   bombs                event bombs, sparks and splashes (a ring buffer)
  *   motes                embers and ash at the eye
