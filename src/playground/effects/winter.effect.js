@@ -32,6 +32,7 @@
  *                            foxCamFov=<deg>)
  *   foxAct=<acts>            stop the fox <foxActAge> seconds before the frame and have it do
  *                            these (comma-separated: Sit, or Listen,Pounce,Dig,Shake — `hunt` is that)
+ *   P.<name>=<value>         override a number of the look (LOOK in winter-tsl.js)
  *   icon=1                   the theme-icon framing: a longer lens raised to where the fox of light runs
  *                            (iconFov, iconYaw, iconPitch; capture a square frame)
  */
@@ -40,6 +41,7 @@ import { WinterWorld } from '../../themes/winter/winter-world.js';
 import { WinterPost, POST_LOOK } from '../../themes/winter/winter-post.js';
 import { readLayoutRects } from '../../themes/winter/winter-composition.js';
 import { planGhosts } from '../../themes/winter/winter-ghosts.js';
+import { tuneLook } from '../../themes/winter/winter-tsl.js';
 
 export const meta = {
     id: 'winter',
@@ -123,6 +125,12 @@ export function create({
     scene, camera, renderer, params,
 }) {
     const quality = params.get('quality') || 'High';
+    // P.<name>=<value> overrides a number of the look (LOOK in winter-tsl.js) before the build.
+    const lookOverrides = {};
+    params.forEach((value, key) => {
+        if (key.startsWith('P.')) lookOverrides[key.slice(2)] = value;
+    });
+    tuneLook(lookOverrides);
     const saved = {
         fov: camera.fov, near: camera.near, far: camera.far, toneMapping: renderer.toneMapping,
     };

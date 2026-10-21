@@ -61,8 +61,8 @@ incandescent orange `#FF6A1F`, S ember crimson `#C21E3A`, Z storm blue `#2673E6`
 
 | Event | What the volcano does |
 |---|---|
-| Lock | A Strombolian burst: the crater throws incandescent bombs (as many as the piece has cells), leaning the way the piece locked (left columns left, right columns right); each arcs out with a trail and splashes where it lands on the cone, tinted a little by the piece's colour |
-| Hard drop | A bigger burst, sparks, and a tremor: the crust tears open along every channel for a moment |
+| Lock | A Strombolian burst: the crater glows up and throws incandescent bombs (three for each of the piece's cells), leaning the way the piece locked (left columns left, right columns right); each draws its whole arc as a glowing trail, splashes where it lands on the cone and lies there as a cooling ember, tinted a little by the piece's colour; sparks spray from the mouth and a puff of hot ash climbs into the column (second pass, below) |
+| Hard drop | A bigger, higher burst (more bombs the further the piece fell), a stronger glow, sparks, and a tremor: the crust tears open along every channel for a moment |
 | Clear | One cloud-to-ground bolt out of the column per line, staggered; a higher row strikes higher up the cone, the floor rows strike the plain; each strike scorches the ground and lights the column from inside; the fountain kicks |
 | Chain | The storm charges: spider lightning crawls along the anvil's underside, more often as the chain grows; the fountain climbs and the column's foot burns hotter |
 | Chain break (peak ≥ 4) | The charge goes in one great branched discharge from the anvil to the summit |
@@ -89,7 +89,8 @@ eased; a lock or a chain step never flashes.
 Module split (`src/themes/pyrestorm/`): `core` (three-free constants, height functions, rivers,
 column, pieces, timings), `hours` (the watches), `bake` (lava network, noise, lattice, billow
 atlas), `tsl` (uniform bag, readers), `land` (fan + cone meshes, the lava surface), `sky`,
-`anvil`, `plume` (the column as a ray-marched volume), `smoke` (CPU-sorted event puffs), `bolts`, `fire` (jets, bombs, motes), `world`, `post`,
+`anvil`, `plume` (the column as a ray-marched volume), `smoke` (CPU-sorted event puffs), `fume` (the fissure's fume
+and the anvil's ash fall, as noise sheets; second pass), `bolts`, `fire` (jets, bombs, motes), `world`, `post`,
 `quality`, `composition`, `director`, `theme`, `tetrominos`; the playground effect
 `src/playground/effects/pyrestorm.effect.js` mounts the same world and post.
 
@@ -236,3 +237,73 @@ atlas), `tsl` (uniform bag, readers), `land` (fan + cone meshes, the lava surfac
   level 1 in every frame): the wheel went 0.13 → 2.91 in 290 s of theme clock, ember dusk →
   magenta night → violet night ([strip](pyrestorm-captures/clock-ingame.jpg)).
 - **Not measured:** a physical phone, the perf lane (ADR-0016), multiplayer and Infinity layouts.
+
+## Second pass (2026-10-21): bursts you can see, lava with a crust, air that burns
+
+From the ridge the eruption is fifteen kilometres away, and at that range the first build's
+events and surfaces did not read: a lock's Strombolian bombs flew under real gravity and crossed a
+pixel or two a second inside the crater's white glow (a single lock showed nothing at all), the
+fountain was a fuzzy sprinkle, the far lava streams were dashed lines, the near rivers were
+blotches, and the air over the country held nothing but haze.
+([before and after](pyrestorm-captures/pass2-before-after.jpg))
+
+| Part | Now |
+|---|---|
+| Lock | Each bomb draws its whole arc over the last 0.7–1.3 s as a ribbon (its position in closed form at every row of the strip, so the trail is a true parabola, a hot clot at its head). Bombs fly under a time-lapsed gravity (`BOMB_G` = 300 m/s²) and climb 150–1100 m before falling 0.6–2.4 km out on the cone, and each one leaves an ember that lies glowing where it lands and cools for seconds, so steady play peppers the upper cone. A spray of fast, dragged sparks leaves the mouth, a puff of hot ash climbs into the column, and the crater glows up (`u.burst`, eased: it swells fast and fades slowly, so locks as fast as frames hold a steady glow under its cap instead of strobing) through the crater's own light on the cone, the column's foot, the smoke and the anvil |
+| Hard drop | More bombs (by how far the piece fell), higher, and a stronger glow; the crust still tears open |
+| Fountain | Time-lapsed too (`JET_G` = 52 m/s²) and drawn with a long exposure (0.2 s streaks whose light is spread along them), so it visibly climbs and falls: a near-upright jet that falls back into the crater and a third of its spatter thrown wide in arcs that fall out down the cone. Its glow is a narrow column, less white; a burst swells its halo, not its heart. An apron of fresh spatter glows in clots round the crater, wider as the fountain climbs |
+| Lava | A baked crust (`bakeCrust`: a tileable Voronoi network, R the exact distance to a crack) dragged downstream by the flow map, faster mid-channel than at the banks. Two scales: rafts about 120 m across floating in lanes of open lava, and plates about 30 m across on them with hairline cracks, each plate its own age, its rim glowing dull. The light of plates and cracks is mixed, not their temperatures, so a far river averages to a dimmer orange, never to dull red. Bright seams along the banks once a channel is wide on screen. Threads too thin for a crust burn steady (the old beads read as dashes). Levees crack in cooling joints from the same network |
+| Fume | The fissure's three vents breathe gas and steam: per vent a tall narrow sheet and a short wide one, turned about their upright axis to the eye, a column profile widening with height, billows from two octaves of the lattice noise read in the plume's own frame and carried up it, leaning downwind, lit orange from below by the vents' fire and river (`pyrestorm-fume.js`) |
+| Ash fall | Five curtains of ash hang from the anvil's near underside in the right-hand sky, streaked and falling, ragged where they thin out, lit at their tops by the anvil's glow and from inside by its lightning |
+| Anvil | The underside's relief is lit by its slope toward the column's burning foot (the slopes exaggerated: at this range the true ones barely turn the normal), so the lumps and pouches stand out from the folds between them |
+| Air | The haze reads the lava's wide glow at three places along each line of sight (one read lit only what lay two thirds of the way out) |
+| Column | No ash below the crater's rim (≈ 330 m over the vent): see the traps |
+| Post | 4× MSAA on the scene pass from High up (`sceneSamples`, as the other themes); the heat shimmer only in the low part of the frame, with two incommensurate waves |
+
+### Traps met
+
+- **Every arc was a wavy line.** Bomb trails came out as sine waves; widening and softening them
+  (a sub-pixel core stair-stepping was the first guess) changed nothing. It was the post's heat
+  shimmer: wherever the bloom said something bright lay just below, the scene was read through a
+  regular wobble with a 15-pixel period, and a thin bright line in the sky (an arc, a bolt) wobbled
+  into a wave. The shimmer now lives only in the low part of the frame (over the near lava) and
+  sums two incommensurate waves. New SKILL row.
+- **A curtain of ash down the breach.** The column's proxy tube (radius 0.8 × its width) is wider
+  than the crater, and each ray starts at its front face with no depth test per sample, so ash down
+  inside the crater was drawn over the near rim and, through the breach, hung down the notch like a
+  grey curtain. Fading the density below the vent was not enough (a ray climbs as it crosses the
+  tube); it fades below the rim (`RIM_LIFT`). New SKILL row.
+- **Far lava went dull red.** Plates and cracks mixed by temperature and then lit through the
+  blackbody ramp average to a cool red; mixing their light (two blackbody reads) keeps a far river
+  orange. New SKILL row.
+- **The bombs broke the WebGL2 build.** Two blackbody calls inside nested `select`s failed in the
+  GLSL builder (`addToStack` of undefined) while WGSL built: the SKILL row of 2026-10-09. One
+  temperature and one gain chosen per kind by masks, one blackbody read.
+- **Fume as puffs was bubble wrap again.** Looping puffs over the vents read as a few brown balls,
+  as the first build's column did; sheets with noise in the plume's own frame read as fume at once.
+- **Embers as squares.** A landed ember is a streak with no motion, a square quad, and the streak's
+  end fade drew it as a square on a phone's close lens; a still ember takes a round profile.
+
+### Verification
+
+- **Unit tests:** `tests/unit/pyrestorm-*.test.js`, 282 tests (four new: the crust tiles, each
+  plate has one value and changes only across a crack, a lock's embers lie where and when its
+  arcs come down, the crater's glow rises, fades and holds steady under its cap through locks
+  as fast as frames). Every material, the fume and the ash fall included, builds for WGSL and GLSL
+  at High and Minimal with no warning, no NaN and no var read before it is assigned.
+- **Gates:** typecheck clean; the lint ratchet at its baseline; these files lint with no errors and
+  fewer warnings than before (59 → 55).
+- **Lifecycle:** `scripts/validate-all-themes.mjs --theme pyrestorm` against a private dev server:
+  PASS (0 lifecycle failures, 0 console errors).
+- **Pictures:** every event, both backends, Minimal, Ultra and a portrait phone frame, clean
+  consoles ([a lock at 1080p, 0.15 → 5 s](pyrestorm-captures/pass2-lock.jpg),
+  [events](pyrestorm-captures/pass2-events.jpg),
+  [WebGL2, Minimal, portrait, Ultra](pyrestorm-captures/pass2-backends-tiers.jpg)). Captured in a
+  hidden Electron window against a private Vite server; Electron 38 needs the harness-only swizzle
+  shim (PLAYBOOK § 5.6).
+- **GPU time** (RTX 5080 Laptop, the playground's demo loop at 1920 × 1080, GPU timestamps, p50 of
+  two alternating rounds each, a shown window parked off-screen): High 0.85 → 1.2 ms (most of it the
+  4× MSAA), Medium 0.75 → 0.77 ms, Minimal 0.49 → 0.56 ms. The frame stayed at the display's cap
+  (5.5 ms) in every run.
+- **Not measured:** a physical phone, a weaker GPU, the perf lane (ADR-0016), real gameplay beyond
+  the lifecycle validator.
