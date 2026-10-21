@@ -25,9 +25,11 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    abs,
     attribute,
     clamp,
     float,
+    fwidth,
     mix,
     normalWorld,
     normalize,
@@ -35,6 +37,7 @@ import {
     smoothstep,
     texture,
     varying,
+    vec2,
     vec3,
     vec4,
 } from 'three/tsl';
@@ -270,17 +273,36 @@ export function createGateGeometry(cols = 420, rows = 150) {
     return geometry;
 }
 
-/** Linear albedos up the fells. */
+/**
+ * Linear albedos up the fells. Early September at Abisko is the ruska: the mountain birch on the
+ * skirts gone gold and rust in patches among the last green, the heath above red with bilberry.
+ * The amphibolite walls are dark grey-green, weathered paler on the ribs; scree fans pale.
+ */
 const COLOURS = Object.freeze({
-    birch: [0.032, 0.05, 0.022],
-    birchTurned: [0.11, 0.07, 0.02],
-    heath: [0.075, 0.068, 0.032],
-    heathRed: [0.1, 0.05, 0.026],
-    scree: [0.13, 0.12, 0.11],
-    rock: [0.06, 0.062, 0.06],
-    snow: [0.84, 0.86, 0.9],
+    birch: [0.045, 0.068, 0.028],
+    birchGold: [0.25, 0.155, 0.03],
+    birchRust: [0.2, 0.075, 0.024],
+    heath: [0.085, 0.078, 0.038],
+    heathRed: [0.115, 0.056, 0.032],
+    scree: [0.18, 0.17, 0.15],
+    rock: [0.075, 0.08, 0.078],
+    rockPale: [0.15, 0.148, 0.135],
+    snow: [0.86, 0.88, 0.92],
 });
 const c3 = (rgb) => vec3(rgb[0], rgb[1], rgb[2]);
+
+/**
+ * The walls' texture, finer than the mesh can carry (a pixel at twelve kilometres is ~10 m):
+ * gullies and the ribs between them down the fall line, and the amphibolite's ledges across it.
+ * `STREAK` the gullies' spacing across the fall line and their run along it (metres); `LEDGE` the
+ * strata's spacing (silhouette metres) and how far they wander up and down over a kilometre.
+ */
+export const WALL = Object.freeze({
+    streak: Object.freeze({ across: 2600, along: 15000 }),
+    ledge: Object.freeze({ spacing: 36, wander: 2.6 }),
+    /** How far a rib's slope tips the normal (the bump's strength). */
+    bump: 1.35,
+});
 
 export function createLapporten(u, t, tier) {
     const geometry = createGateGeometry(tier.fells.cols, tier.fells.rows);
@@ -290,45 +312,112 @@ export function createLapporten(u, t, tier) {
     const vShape = varying(attribute('aShape', 'vec3'), 'gfGateShape');
     material.colorNode = Fn(() => {
         const P = positionWorld.toVar();
-        const N = normalize(normalWorld).toVar();
+        const Nm = normalize(normalWorld).toVar();
         // Heights in the silhouette's own metres (the zones are Lapporten's).
-        const h = P.y.div(SIZE.up);
+        const h = P.y.div(SIZE.up).toVar();
         const relief = vShape.x;
         const face = vShape.y;
         const cirque = vShape.z;
-        const steep = smoothstep(0.55, 0.85, float(1.0).sub(N.y));
         const grain = texture(t.noise, P.xz.div(5200.0)).g;
         const fine = texture(t.noise, P.xz.div(900.0)).b;
         const crowns = texture(t.noise, P.xz.div(240.0)).a;
-        // Birch on the skirts (its upper edge ragged, higher up the gullies), turning here and
-        // there; heath above, rusty in patches; scree and rock on the steep faces.
-        const birchLine = float(430.0).add(grain.sub(0.5).mul(220.0)).sub(relief.mul(90.0));
-        const birch = mix(c3(COLOURS.birch), c3(COLOURS.birchTurned), smoothstep(0.55, 0.85, fine).mul(0.6))
-            .mul(crowns.mul(0.6).add(0.7));
-        const heath = mix(c3(COLOURS.heath), c3(COLOURS.heathRed), smoothstep(0.4, 0.75, fine));
-        const albedo = mix(birch, heath, smoothstep(birchLine.sub(80.0), birchLine.add(80.0), h)).toVar();
-        const bare = mix(c3(COLOURS.scree), c3(COLOURS.rock), smoothstep(0.3, 0.7, fine).mul(0.6).add(relief.max(0.0).mul(0.4)));
-        const rockShare = smoothstep(800.0, 1150.0, h.add(fine.mul(220.0))).mul(0.55).add(steep.mul(0.75));
-        albedo.assign(mix(albedo, bare, clamp(rockShare, 0.0, 1.0)));
-        // The last snow: in the cirques and the gullies' heads, on the shaded high ground.
-        const snowLine = float(1320.0).sub(cirque.mul(200.0)).add(grain.sub(0.5).mul(200.0));
-        const streak = smoothstep(0.62, 0.8, relief.negate().mul(0.9).add(fine.mul(0.45)));
-        const snow = smoothstep(snowLine.sub(40.0), snowLine.add(40.0), h)
-            .mul(streak.max(smoothstep(0.75, 0.95, cirque).mul(smoothstep(0.55, 0.8, fine))))
-            .mul(float(1.0).sub(steep.mul(0.7)));
+
+        // ── The walls' texture: the gate's frame at this point ──
+        const rel = P.xz.sub(vec2(G.x, G.z));
+        const gc = rel.x.mul(AXIS.right[0]).add(rel.y.mul(AXIS.right[1])).toVar();
+        const ga = rel.x.mul(AXIS.toEye[0]).add(rel.y.mul(AXIS.toEye[1])).toVar();
+        const nC = Nm.x.mul(AXIS.right[0]).add(Nm.z.mul(AXIS.right[1]));
+        const nA = Nm.x.mul(AXIS.toEye[0]).add(Nm.z.mul(AXIS.toEye[1]));
+        // Down a front face the fall line runs along the trough; down a wall of the U, across it.
+        const onWall = smoothstep(0.3, 0.7, abs(nC).div(abs(nC).add(abs(nA)).add(1e-3))).toVar();
+        const S = WALL.streak;
+        // Gullies a few tens of metres apart, runnels between them; each runs a long way down.
+        const streakAt = (across, along) => {
+            const st = vec2(across.div(S.across), along.div(S.along));
+            return texture(t.noise, st).b.mul(0.62).add(texture(t.noise, st.mul(vec2(2.3, 1.4)).add(vec2(0.31, 0.6))).a.mul(0.38));
+        };
+        const streakHere = (dc, da) => mix(
+            streakAt(gc.add(dc), ga.add(da)),
+            streakAt(ga.add(da).add(5000.0), gc.add(dc)),
+            onWall,
+        );
+        const sv = streakHere(0.0, 0.0).toVar();
+        // A rib stands proud (its sides turned to and from the light), a gully is cut in: the bump
+        // tips the normal across the fall line by the streak's slope there.
+        const STEP = 24.0;
+        const across = mix(vec3(AXIS.right[0], 0.0, AXIS.right[1]), vec3(AXIS.toEye[0], 0.0, AXIS.toEye[1]), onWall);
+        const slope = streakHere(mix(float(STEP), float(0.0), onWall), mix(float(0.0), float(STEP), onWall)).sub(sv);
+        const steepM = smoothstep(0.35, 0.75, float(1.0).sub(Nm.y)).toVar();
+        const N = normalize(Nm.sub(across.mul(slope.mul(WALL.bump * 2.2)).mul(steepM.mul(0.8).add(0.2)))).toVar();
+        const steep = smoothstep(0.55, 0.85, float(1.0).sub(N.y)).toVar();
+        // A gully is where the streak runs low, a rib where it runs high.
+        const gully = smoothstep(0.47, 0.33, sv).toVar();
+        const rib = smoothstep(0.52, 0.68, sv).toVar();
+        // The strata: ledges across the steep faces every few tens of metres, wandering up and down.
+        const L = WALL.ledge;
+        const wander = texture(t.noise, vec2(gc, ga).div(14000.0).add(vec2(0.7, 0.2))).r.mul(L.wander)
+            .add(sv.mul(0.35));
+        const strata = h.div(L.spacing).add(wander).fract();
+        const strataPx = fwidth(h.div(L.spacing)).max(1e-4);
+        // Fade the strata where they shrink under a couple of pixels (no moiré on a foreshortened face).
+        // Only the cliffs are banded, and a ledge runs out and starts again along the face.
+        const alongLedge = mix(gc, ga, onWall);
+        const broken = smoothstep(0.44, 0.62, texture(t.noise, vec2(alongLedge.div(1900.0), h.div(520.0)).add(vec2(0.13, 0.71))).g);
+        const strataSeen = float(1.0).sub(smoothstep(0.25, 0.5, strataPx)).mul(smoothstep(0.45, 0.8, float(1.0).sub(Nm.y)));
+        const ledge = smoothstep(0.8, 0.9, strata).mul(float(1.0).sub(smoothstep(0.93, 1.0, strata))).mul(strataSeen).mul(broken)
+            .toVar();
+        const cliff = smoothstep(0.05, 0.55, strata).mul(float(1.0).sub(smoothstep(0.55, 0.8, strata))).mul(strataSeen);
+        const rocky = smoothstep(780.0, 1050.0, h.add(fine.mul(200.0))).mul(0.5).add(steep.mul(0.8)).clamp(0.0, 1.0)
+            .toVar();
+
+        // ── The ground up the fells ──
+        // The birch on the skirts (its upper edge ragged, higher up the gullies) in the ruska: gold
+        // and rust in patches, a few stands still green; heath above, red with bilberry in patches.
+        const birchLine = float(450.0).add(grain.sub(0.5).mul(220.0)).sub(relief.mul(90.0)).add(gully.mul(70.0));
+        const turned = smoothstep(0.32, 0.62, fine.mul(0.7).add(crowns.mul(0.3)));
+        const birch = mix(
+            c3(COLOURS.birch),
+            mix(c3(COLOURS.birchGold), c3(COLOURS.birchRust), smoothstep(0.45, 0.75, crowns)),
+            turned,
+        ).mul(crowns.mul(0.55).add(0.68));
+        const heath = mix(c3(COLOURS.heath), c3(COLOURS.heathRed), smoothstep(0.38, 0.7, fine.mul(0.75).add(rib.mul(0.25))));
+        const albedo = mix(birch, heath, smoothstep(birchLine.sub(70.0), birchLine.add(70.0), h)).toVar();
+        // The bare rock: dark and wet in the gullies, weathered pale on the ribs and the ledges; scree
+        // fanning out where the gullies open onto gentler ground.
+        const rock = mix(c3(COLOURS.rock), c3(COLOURS.rockPale), rib.mul(0.55).add(ledge.mul(0.3)).add(fine.sub(0.5).mul(0.3)).clamp(0.0, 1.0))
+            .mul(float(1.0).sub(gully.mul(0.35)).sub(cliff.mul(0.14)));
+        const fan = gully.mul(float(1.0).sub(steep)).mul(smoothstep(500.0, 800.0, h)).mul(0.7);
+        const bare = mix(rock, c3(COLOURS.scree).mul(fine.mul(0.3).add(0.85)), fan);
+        albedo.assign(mix(albedo, bare, rocky));
+        // The last snow: down the gullies from the high ground (farther in the deeper ones), on the
+        // ledges near the top, and lying in the cirques; patchy, never on the sheerest rock.
+        // (Early September: only the deepest gullies still hold a streak, broken where it thaws.)
+        const deep = smoothstep(0.42, 0.31, sv);
+        const snowLine = float(1290.0).sub(cirque.mul(260.0)).add(grain.sub(0.5).mul(200.0)).sub(deep.mul(220.0));
+        const high = smoothstep(snowLine.sub(50.0), snowLine.add(50.0), h);
+        const patchy = smoothstep(0.36, 0.58, fine.mul(0.6).add(crowns.mul(0.4)));
+        const thaw = smoothstep(0.32, 0.52, texture(t.noise, vec2(alongLedge.div(5200.0), h.div(900.0)).add(vec2(0.57, 0.29))).r);
+        const lies = deep.mul(patchy).mul(thaw).max(ledge.mul(smoothstep(1350.0, 1550.0, h)).mul(patchy).mul(0.7))
+            .max(smoothstep(0.7, 0.92, cirque).mul(smoothstep(0.45, 0.7, fine)));
+        const snow = high.mul(lies).mul(float(1.0).sub(smoothstep(0.75, 0.95, steep).mul(0.75))).toVar();
         albedo.assign(mix(albedo, c3(COLOURS.snow), clamp(snow, 0.0, 1.0)));
+
         const lit = lightSurface(u, t.noise, P, N, albedo);
         const col = lit.colour.toVar();
         // The relief's own shade: the gullies and cirques hold the dark, the ribs catch the light
-        // that comes in under the deck from the bright band round the horizon.
+        // that comes in under the deck from the bright band round the horizon; so do the ledges.
         const open = clamp(relief.mul(0.5).add(0.6).sub(cirque.mul(0.25)), 0.0, 1.0);
         col.mulAssign(open.mul(0.85).add(0.4).mul(float(1.0).sub(face.mul(0.1))));
+        const crevice = mix(float(1.0), float(0.62), gully.mul(rocky).mul(snow.oneMinus()))
+            .mul(mix(float(1.0), float(1.15), rib.mul(rocky)));
+        col.mulAssign(crevice);
         // Ledges, the plateau and the shoulders face the bright overcast; the steep faces turn from
         // it: the relief reads even when the sun is behind the fells.
         col.mulAssign(mix(float(0.55), float(1.35), N.y.mul(N.y)));
         const toEye = normalize(vec3(u.eye.x.sub(P.x), 0.0, u.eye.z.sub(P.z)));
         const band = clamp(N.dot(toEye), 0.0, 1.0).mul(open);
-        col.addAssign(albedo.mul(u.horizon).mul(band).mul(0.14));
+        // (Strongest under a heavy deck: then it is nearly all the light the faces get.)
+        col.addAssign(albedo.mul(u.horizon).mul(band).mul(mix(float(0.14), float(0.34), smoothstep(0.6, 0.9, u.cover))));
         // Afterglow: after the sun has gone the high faces keep its light a while (alpenglow).
         const afterglow = u.day.oneMinus().mul(smoothstep(-0.25, 0.25, u.sunDir.y.add(0.12)))
             .mul(smoothstep(450.0, 1300.0, h));

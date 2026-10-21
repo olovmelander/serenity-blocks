@@ -46,16 +46,28 @@ const G = 9.81;
 /** The crater fountain's ordinary height (m) and the fissure's. */
 export const FOUNTAIN_HEIGHT = 640;
 export const FISSURE_HEIGHT = 165;
+/**
+ * The fountains' time-lapsed gravity (m/s²): under the real one a 640 m fountain takes 23 s to
+ * rise and fall and its spatter crawls a few pixels a second at fifteen kilometres.
+ */
+export const JET_G = 52;
 
 /**
  * A streak's clip position: a quad from `p` back along the screen motion of `v` (m/s) over the
- * exposure, `px` pixels wide (and at least that long).
+ * exposure, `px` pixels wide (and at least that long). `lift` (0..1) draws it a few of its own
+ * widths nearer the eye, so a spot lying on a slope is not half buried in the ground it lies on.
  */
-function streakVertex(u, p, v, px, exposure) {
-    const viewP = cameraViewMatrix.mul(vec4(p, 1.0));
-    const viewV = cameraViewMatrix.mul(vec4(v, 0.0)).xyz;
-    const depth = viewP.z.negate().max(1.0);
+function streakVertex(u, p, v, px, exposure, lift = null) {
+    return streakParts(u, p, v, px, exposure, lift).clip;
+}
+
+/** streakVertex's clip position and how many widths long the streak is (`stretch`). */
+function streakParts(u, p, v, px, exposure, lift = null) {
+    const viewP0 = cameraViewMatrix.mul(vec4(p, 1.0));
+    const depth = viewP0.z.negate().max(1.0);
     const pixel = u.pixelAngle.mul(depth);
+    const viewP = lift ? viewP0.add(vec4(0.0, 0.0, pixel.mul(px).mul(6.0).mul(lift), 0.0)) : viewP0;
+    const viewV = cameraViewMatrix.mul(vec4(v, 0.0)).xyz;
     // Screen-plane motion over the exposure (metres in view space).
     const move = viewV.xy.mul(exposure);
     const len = length(move);
@@ -65,7 +77,7 @@ function streakVertex(u, p, v, px, exposure) {
     const width = pixel.mul(px);
     const along = len.add(width).mul(corner.y.add(0.5)).sub(width.mul(0.5));
     const offset = dir.mul(along.negate()).add(side.mul(corner.x.mul(width)));
-    return cameraProjectionMatrix.mul(viewP.add(vec4(offset, 0.0, 0.0)));
+    return { clip: cameraProjectionMatrix.mul(viewP.add(vec4(offset, 0.0, 0.0))), stretch: len.div(width.max(1e-4)) };
 }
 
 /** The streak's profile across and along (soft round ends). */
@@ -106,12 +118,16 @@ export function createJets(u, tier) {
     const count = crater + fissure;
     const random = mulberry32(0x7e75);
     // Per particle: (seed, emitter: 0 crater / 1 fissure, place along the fissure, speed share).
+    // Two crowds in each fountain: the jet (most of the spatter, near upright, the tallest) and
+    // the arcs thrown wide that fall out down the cone; an arc's speed share is stored negative.
     const data = new Float32Array(count * 4);
     for (let i = 0; i < count; i++) {
+        const arc = random() < 0.34;
         data[i * 4] = random();
         data[i * 4 + 1] = i < crater ? 0 : 1;
         data[i * 4 + 2] = random();
-        data[i * 4 + 3] = 0.55 + 0.45 * Math.sqrt(random());
+        const share = arc ? 0.45 + 0.4 * Math.sqrt(random()) : 0.62 + 0.38 * Math.sqrt(random());
+        data[i * 4 + 3] = arc ? -share : share;
     }
     const geometry = quad();
     const attr = new THREE.InstancedBufferAttribute(data, 4);
@@ -134,9 +150,13 @@ export function createJets(u, tier) {
         const vents = max(ventAt(0.22, 0.07), max(ventAt(0.55, 0.09), ventAt(0.81, 0.06))).mul(0.8).add(0.2)
             .mul(smoothstep(0.0, 0.1, along0))
             .mul(float(1.0).sub(smoothstep(0.9, 1.0, along0)));
-        const h0 = mix(float(FOUNTAIN_HEIGHT), float(FISSURE_HEIGHT).mul(vents), isF).mul(jet.w.mul(jet.w));
-        const vy0 = h0.mul(2.0 * G).sqrt();
-        const period = vy0.mul(2.0 / G).add(mix(float(0.6), float(0.3), isF));
+        const isArc = jet.w.lessThan(0.0).select(float(1.0), float(0.0));
+        const share = jet.w.abs();
+        const h0 = mix(float(FOUNTAIN_HEIGHT), float(FISSURE_HEIGHT).mul(vents), isF).mul(share.mul(share));
+        const vy0 = h0.mul(2.0 * JET_G).sqrt();
+        // Up, and down past the vent: the jet falls back into the crater, an arc out down the cone.
+        const fall = mix(mix(float(60.0), float(380.0), isArc), mix(float(4.0), float(30.0), isArc), isF);
+        const period = vy0.div(JET_G).add(h0.add(fall).mul(2.0 / JET_G).sqrt()).add(mix(float(0.25), float(0.12), isF));
         const clock = u.time.add(seed.mul(period));
         const cycle = floor(clock.div(period));
         const age = clock.sub(cycle.mul(period));
@@ -149,31 +169,44 @@ export function createJets(u, tier) {
             vec3(fa.x, fissureY, fa.z).add(vec3(fb.x - fa.x, 0.0, fb.z - fa.z).mul(along)).add(vec3(h2.sub(0.5).mul(30.0), 0.0, h1.sub(0.5).mul(30.0))),
             isF,
         );
-        // Sideways: a cone of spread round the vertical (the fissure's curtain leans less).
+        // Sideways: the jet stands near upright, the arcs are thrown wide (the fissure's curtain
+        // leans less).
         const a = h1.mul(TAU);
-        const spread = mix(float(0.24), float(0.14), isF).mul(h2.mul(0.7).add(0.3));
+        const spread = mix(mix(float(0.09), float(0.42), isArc), mix(float(0.06), float(0.24), isArc), isF)
+            .mul(h2.mul(0.6).add(0.4));
         const vh = vy0.mul(spread);
         const v0 = vec3(cos(a).mul(vh), vy0, sin(a).mul(vh));
         // The fountain uniform scales the arc's rise; activity shrinks everything at game over.
         const lift = mix(u.fountain, u.fountain.mul(0.5).add(0.5), isF).mul(u.activity.mul(0.6).add(0.4));
         const t = age;
-        const p = vec3(vent.x.add(v0.x.mul(t)), vent.y.add(v0.y.mul(t).sub(t.mul(t).mul(0.5 * G)).mul(lift)), vent.z.add(v0.z.mul(t)));
-        const v = vec3(v0.x, v0.y.sub(t.mul(G)).mul(lift), v0.z);
+        const p = vec3(
+            vent.x.add(v0.x.mul(t)),
+            vent.y.add(v0.y.mul(t).sub(t.mul(t).mul(0.5 * JET_G)).mul(lift)),
+            vent.z.add(v0.z.mul(t)),
+        );
+        const v = vec3(v0.x, v0.y.sub(t.mul(JET_G)).mul(lift), v0.z);
         const life = age.div(period);
         return {
-            p, v, life, isF,
+            p, v, life, isF, isArc,
         };
     };
+    // A long exposure (the spatter draws its arcs), its light spread along the streak it draws.
+    const vStretch = varying(float(0.0), 'vPyJetStretch');
     material.vertexNode = Fn(() => {
         const s = state();
-        return streakVertex(u, s.p, s.v, mix(float(2.4), float(1.9), s.isF), 1 / 24);
+        const px = mix(float(2.2), float(1.9), s.isF);
+        const streak = streakParts(u, s.p, s.v, px, mix(float(0.2), float(0.14), s.isF));
+        vStretch.assign(streak.stretch);
+        return streak.clip;
     })();
     material.outputNode = Fn(() => {
         const s = state();
-        // Hot leaving the vent, cooling through orange to red as it falls.
-        const temp = float(0.98).sub(s.life.mul(0.55)).sub(s.life.mul(s.life).mul(0.2));
-        const fade = smoothstep(0.0, 0.03, s.life).mul(float(1.0).sub(smoothstep(0.88, 1.0, s.life)));
-        const power = mix(float(1.7), float(1.0), s.isF).mul(u.activity.mul(0.7).add(0.3));
+        // Hot leaving the vent, cooling through orange to red as it falls; the arcs cool faster.
+        const temp = float(0.99).sub(s.life.mul(mix(float(0.42), float(0.62), s.isArc)))
+            .sub(s.life.mul(s.life).mul(0.12));
+        const fade = smoothstep(0.0, 0.04, s.life).mul(float(1.0).sub(smoothstep(0.86, 1.0, s.life)));
+        const power = mix(float(2.2), float(1.3), s.isF).mul(u.activity.mul(0.7).add(0.3))
+            .div(vStretch.mul(0.35).add(1.0).sqrt());
         return vec4(pyBlackbody(temp).mul(streakProfile()).mul(fade).mul(power), 0.0);
     })();
     const mesh = new THREE.InstancedMesh(geometry, material, count);
@@ -203,22 +236,27 @@ function createFireGlow(u) {
     const ventGeo = quad();
     const vent = additive('PyrestormVentGlow');
     vent.vertexNode = Fn(() => {
-        const h = u.fountain.mul(u.activity.mul(0.6).add(0.4)).mul(FOUNTAIN_HEIGHT);
+        const h = u.fountain.mul(u.activity.mul(0.6).add(0.4)).add(u.burst.mul(0.25)).mul(FOUNTAIN_HEIGHT);
         const centre = vec3(CRATER.x, CRATER.y, CRATER.z).add(vec3(0.0, h.mul(0.42), 0.0));
         const view = cameraViewMatrix.mul(vec4(centre, 1.0));
-        const size = vec2(h.mul(0.4).add(100.0), h.mul(0.62).add(130.0));
+        const size = vec2(h.mul(0.32).add(90.0), h.mul(0.62).add(130.0));
         return cameraProjectionMatrix.mul(view.add(vec4(positionGeometry.xy.mul(size).mul(2.0), 0.0, 0.0)));
     })();
     vent.outputNode = Fn(() => {
         const c = varying(positionGeometry.xy, 'vPyVent').mul(2.0);
         // A column of glow, hottest low and on its axis.
-        const core = exp(c.x.mul(c.x).mul(-9.0).add(c.y.add(0.35).mul(c.y.add(0.35)).mul(-2.2)));
+        // A narrow column, hottest low on its axis, narrowing as it climbs.
+        const narrow = float(1.0).add(c.y.add(1.0).mul(0.6));
+        const core = exp(c.x.mul(c.x).mul(narrow).mul(-14.0).add(c.y.add(0.45).mul(c.y.add(0.45)).mul(-2.4)));
         // Faded to nothing at the quad's border (no box shows when the fountain is boosted).
         const win = float(1.0).sub(c.x.mul(c.x)).max(0.0).mul(float(1.0).sub(c.y.mul(c.y)).max(0.0));
         const halo = exp(c.dot(c).mul(-2.6)).mul(0.25).mul(win.mul(win));
         const heat = u.fountain.mul(u.activity);
-        const T = float(0.58).add(core.mul(0.24)).add(heat.sub(1.0).mul(0.05)).min(0.95);
-        return vec4(pyBlackbody(T).mul(core.mul(win).mul(0.32).add(halo.mul(0.8))).mul(heat.mul(0.6).add(0.2)), 0.0);
+        const T = float(0.56).add(core.mul(0.22)).add(heat.sub(1.0).mul(0.04)).min(0.84);
+        // A burst swells the glow round the mouth (orange), not its white heart.
+        const swell = u.burst.mul(0.5);
+        const body = core.mul(win).mul(0.26).add(halo.mul(float(0.7).add(swell)));
+        return vec4(pyBlackbody(T).mul(body).mul(heat.mul(0.6).add(0.2)), 0.0);
     })();
     const ventMesh = new THREE.Mesh(ventGeo, vent);
     ventMesh.name = 'PyrestormVentGlow';
@@ -273,9 +311,23 @@ function createFireGlow(u) {
 
 // ── The bombs (event-thrown) ──────────────────────────────────────────────────────
 
+/**
+ * kinds: a bomb (a clot of lava on a ballistic arc, drawn as its whole glowing trail), a spark
+ * (fast, dragged, short-lived), a splash (spatter where a bomb lands), an ember (a landed bomb
+ * cooling where it lies on the cone).
+ */
 export const BOMB = Object.freeze({
     bomb: 0, spark: 1, splash: 2, ember: 3,
 });
+
+/**
+ * Event bombs fly under a stronger gravity than the world's: seen from fifteen kilometres a real
+ * Strombolian arc takes ten seconds and moves a pixel a second. Time-lapsed, a burst's arcs climb
+ * hundreds of metres and land on the cone in a few seconds, like a long exposure played back.
+ */
+export const BOMB_G = 300;
+/** Rows a bomb's trail is drawn with (each a segment of its arc). */
+export const TRAIL_SEGMENTS = 14;
 
 export class Bombs {
     constructor(u, count = 512) {
@@ -285,19 +337,25 @@ export class Bombs {
         this.start = new Float32Array(count * 4);
         this.move = new Float32Array(count * 4);
         this.look = new Float32Array(count * 4);
+        // (gravity m/s², trail s, drag /s, —)
+        this.fly = new Float32Array(count * 4);
         for (let i = 0; i < count; i++) {
             this.start[i * 4 + 3] = -1e6;
             this.move[i * 4 + 3] = 0.001;
         }
-        const geometry = quad();
+        const geometry = new THREE.PlaneGeometry(1, 1, 1, TRAIL_SEGMENTS);
+        geometry.deleteAttribute('normal');
+        geometry.deleteAttribute('uv');
         this.attr = {
             start: new THREE.InstancedBufferAttribute(this.start, 4).setUsage(THREE.DynamicDrawUsage),
             move: new THREE.InstancedBufferAttribute(this.move, 4).setUsage(THREE.DynamicDrawUsage),
             look: new THREE.InstancedBufferAttribute(this.look, 4).setUsage(THREE.DynamicDrawUsage),
+            fly: new THREE.InstancedBufferAttribute(this.fly, 4).setUsage(THREE.DynamicDrawUsage),
         };
         geometry.setAttribute('aStart', this.attr.start);
         geometry.setAttribute('aMove', this.attr.move);
         geometry.setAttribute('aLook', this.attr.look);
+        geometry.setAttribute('aFly', this.attr.fly);
         this.geometry = geometry;
         this.material = this.createMaterial();
         this.mesh = new THREE.InstancedMesh(geometry, this.material, count);
@@ -313,47 +371,102 @@ export class Bombs {
         const start = attribute('aStart', 'vec4');
         const move = attribute('aMove', 'vec4');
         const look = attribute('aLook', 'vec4');
-        // look: (tint r, g, b packed as a fire tint), size px + kind × 100
+        const fly = attribute('aFly', 'vec4');
+        // look: (tint r, g, b as a fire tint), size px + kind × 100; fly: (gravity, trail, drag).
         const kindOf = () => floor(look.w.div(100.0));
-        const state = () => {
-            const age = u.time.sub(start.w).max(0.0);
-            const kind = kindOf();
-            // Gravity for bombs, sparks and splashes; an ember rises and drifts.
-            const g = kind.equal(3.0).select(float(-0.6), float(G));
-            const drag = kind.equal(1.0).select(float(0.6), float(0.0));
-            const k = drag.greaterThan(0.0).select(float(1.0).sub(exp(age.mul(drag).negate())).div(drag.max(1e-3)), age);
-            const p = start.xyz.add(move.xyz.mul(k)).sub(vec3(0.0, age.mul(age).mul(0.5).mul(g), 0.0));
-            const v = move.xyz.mul(exp(age.mul(drag).negate())).sub(vec3(0.0, age.mul(g), 0.0));
-            return {
-                p, v, age, life: move.w, kind,
-            };
+        /** Where (and how fast) a particle is `tau` seconds after it left. */
+        const flight = (tau) => {
+            const g = fly.x;
+            const drag = fly.z;
+            const dragged = float(1.0).sub(exp(tau.mul(drag).negate())).div(drag.max(1e-3));
+            const k = drag.greaterThan(1e-3).select(dragged, tau);
+            const p = start.xyz.add(move.xyz.mul(k)).sub(vec3(0.0, tau.mul(tau).mul(0.5).mul(g), 0.0));
+            const v = move.xyz.mul(exp(tau.mul(drag).negate())).sub(vec3(0.0, tau.mul(g), 0.0));
+            return { p, v };
         };
+        const vAlong = varying(float(0.0), 'vPyBombS');
         material.vertexNode = Fn(() => {
-            const s = state();
-            const alive = s.age.greaterThanEqual(0.0).and(u.time.greaterThanEqual(start.w)).and(s.age.lessThan(s.life));
-            const px = look.w.sub(s.kind.mul(100.0));
-            // A bomb leaves a long trail (a quarter second), sparks a short one.
-            const exposure = s.kind.equal(0.0).select(float(0.22), float(0.06));
-            const clip = streakVertex(u, s.p, s.v, px, exposure);
+            const kind = kindOf().toVar();
+            const age = u.time.sub(start.w).toVar();
+            const life = move.w;
+            const trail = fly.y;
+            const px = look.w.sub(kind.mul(100.0));
+            const isBomb = kind.equal(0.0);
+            // ── A bomb: its whole arc over the last `trail` seconds, a ribbon a few pixels wide ──
+            const s = positionGeometry.y.add(0.5);
+            const tau = clamp(age.sub(float(1.0).sub(s).mul(trail)), 0.0, life);
+            const here = flight(tau);
+            const viewP = cameraViewMatrix.mul(vec4(here.p, 1.0)).toVar();
+            const tangent = cameraViewMatrix.mul(vec4(here.v, 0.0)).xy;
+            const tl = length(tangent);
+            const across0 = tl.greaterThan(1e-4)
+                .select(vec2(tangent.y.negate(), tangent.x).div(tl.max(1e-4)), vec2(1.0, 0.0));
+            // Keep the ribbon's sides one way round along the whole arc (never a twist).
+            const head = cameraViewMatrix.mul(vec4(flight(clamp(age, 0.0, life)).p, 1.0)).xy;
+            const tail = cameraViewMatrix.mul(vec4(flight(clamp(age.sub(trail), 0.0, life)).p, 1.0)).xy;
+            const chord = head.sub(tail);
+            const across = across0.dot(vec2(chord.y.negate(), chord.x)).lessThan(0.0).select(across0.negate(), across0);
+            const depth = viewP.z.negate().max(1.0);
+            // The head is the clot; the trail narrows behind it.
+            const width = u.pixelAngle.mul(depth).mul(px.mul(1.3).max(3.0)).mul(mix(float(0.55), float(1.0), s));
+            const side = across.mul(positionGeometry.x.mul(width));
+            const ribbon = cameraProjectionMatrix.mul(viewP.add(vec4(side, 0.0, 0.0)));
+            // ── Everything else: a short streak along its motion ──
+            const now = flight(age.max(0.0));
+            const exposure = kind.equal(1.0).select(float(0.14), float(0.07));
+            const streak = streakVertex(u, now.p, now.v, px, exposure, kind.equal(3.0).select(float(1.0), float(0.0)));
+            vAlong.assign(s);
+            const flying = isBomb.select(age.sub(trail).lessThan(life), age.lessThan(life));
+            const alive = age.greaterThanEqual(0.0).and(flying);
+            // One select over values built first (nested selects round calls break the GLSL builder).
+            const clip = isBomb.select(ribbon, streak).toVar();
             return alive.select(clip, vec4(0.0, 0.0, -2.0, 1.0));
         })();
         material.outputNode = Fn(() => {
-            const s = state();
-            const f = clamp(s.age.div(s.life), 0.0, 1.0);
-            // Bombs cool slowly; sparks and splashes flash and die.
-            const temp = s.kind.equal(0.0).select(float(0.95).sub(f.mul(0.45)), float(0.9).sub(f.mul(0.7)));
-            const fade = float(1.0).sub(smoothstep(0.6, 1.0, f)).mul(smoothstep(0.0, 0.02, f));
-            const gain = s.kind.equal(0.0).select(float(2.4), s.kind.equal(2.0).select(float(1.4), float(1.8)));
+            const kind = kindOf().toVar();
+            const age = u.time.sub(start.w).max(0.0);
+            const f = clamp(age.div(move.w), 0.0, 1.0);
+            const s = vAlong;
+            const c = varying(positionGeometry.xy, 'vPyStreak');
+            // A soft profile: the core keeps at least a pixel's width at any range.
+            const across = exp(c.x.mul(c.x).mul(kind.equal(0.0).select(float(-7.0), float(-9.0))));
+            // A bomb: a hot clot at the head, its trail fading behind it (a long exposure's
+            // persistence), cooling as it flies; once landed the trail drains into the ground.
+            const isBomb = kind.equal(0.0).select(float(1.0), float(0.0));
+            const isEmber = kind.equal(3.0).select(float(1.0), float(0.0));
+            const isSplash = kind.equal(2.0).select(float(1.0), float(0.0));
+            const tailFade = smoothstep(0.0, 0.85, s).mul(s.mul(0.6).add(0.4));
+            const clot = exp(float(1.0).sub(s).mul(float(1.0).sub(s)).mul(-90.0));
+            const landed = smoothstep(0.0, 0.04, age.sub(move.w));
+            const bombT = float(0.98).sub(f.mul(0.32)).sub(float(1.0).sub(s).mul(0.08));
+            const bombGain = tailFade.mul(0.55).add(clot.mul(1.2).mul(float(1.0).sub(landed)))
+                .mul(smoothstep(0.0, 0.08, age)).mul(1.9);
+            // Sparks and splashes flash and die; an ember glows where it fell and cools for seconds.
+            const streakAlong = smoothstep(-0.5, -0.3, c.y).mul(float(1.0).sub(smoothstep(0.35, 0.5, c.y).mul(0.5)));
+            const sparkT = float(0.92).sub(f.mul(0.7));
+            const emberT = float(0.74).mul(exp(f.mul(-1.6))).add(0.12);
+            const sparkGain = float(1.0).sub(smoothstep(0.6, 1.0, f)).mul(smoothstep(0.0, 0.02, f))
+                .mul(mix(float(2.8), float(1.6), isSplash));
+            const emberGain = float(1.0).sub(smoothstep(0.7, 1.0, f)).mul(smoothstep(0.0, 0.03, f)).mul(1.5);
+            // One temperature and one gain per kind, one blackbody (no call inside a select).
+            const T = mix(mix(sparkT, emberT, isEmber), bombT, isBomb).toVar();
+            // A still ember is a round spot, not a streak (its quad is square: the streak's ends drew it as one).
+            const round = exp(c.y.mul(c.y).mul(-9.0));
+            const gain = mix(mix(sparkGain.mul(streakAlong), emberGain.mul(round), isEmber), bombGain, isBomb).toVar();
             // A piece's colour tints the fire (look.rgb is the fire tint, ~1 = plain lava).
-            const rgb = pyBlackbody(temp).mul(look.xyz);
-            return vec4(rgb.mul(streakProfile()).mul(fade).mul(gain), 0.0);
+            const rgb = pyBlackbody(T).mul(gain).mul(across).mul(look.xyz);
+            return vec4(rgb, 0.0);
         })();
         return material;
     }
 
-    /** Throw one: position (m), velocity (m/s), born (theme clock), life (s), tint, px, kind. */
+    /**
+     * Throw one: position (m), velocity (m/s), born (theme clock), life (s: a bomb's flight to
+     * where it lands), tint, px, kind; `g` its gravity, `trail` how many seconds of its arc it
+     * draws (bombs), `drag` per second (sparks).
+     */
     spawn({
-        x, y, z, vx, vy, vz, born, life, tint = [1, 1, 1], px = 2, kind = BOMB.bomb,
+        x, y, z, vx, vy, vz, born, life, tint = [1, 1, 1], px = 2, kind = BOMB.bomb, g = G, trail = 0.6, drag = 0,
     }) {
         const i = this.cursor;
         this.cursor = (this.cursor + 1) % this.count;
@@ -369,6 +482,10 @@ export class Bombs {
         this.look[i * 4 + 1] = tint[1];
         this.look[i * 4 + 2] = tint[2];
         this.look[i * 4 + 3] = kind * 100 + Math.max(0.6, Math.min(40, px));
+        this.fly[i * 4] = g;
+        this.fly[i * 4 + 1] = kind === BOMB.bomb ? Math.max(0.05, trail) : 0;
+        this.fly[i * 4 + 2] = Math.max(0, drag);
+        this.fly[i * 4 + 3] = 0;
         this.dirty = true;
         return i;
     }
@@ -383,7 +500,7 @@ export class Bombs {
         let n = 0;
         for (let i = 0; i < this.count; i++) {
             const age = time - this.start[i * 4 + 3];
-            if (age >= 0 && age < this.move[i * 4 + 3]) n++;
+            if (age >= 0 && age < this.move[i * 4 + 3] + this.fly[i * 4 + 1]) n++;
         }
         return n;
     }
@@ -393,6 +510,7 @@ export class Bombs {
         this.attr.start.needsUpdate = true;
         this.attr.move.needsUpdate = true;
         this.attr.look.needsUpdate = true;
+        this.attr.fly.needsUpdate = true;
         this.dirty = false;
     }
 

@@ -1,8 +1,8 @@
 /**
  * Pyrestorm — post stack (TSL RenderPipeline, both WebGPURenderer backends).
  *
- * One scene pass (no MRT, no MSAA), one bloom chain (Medium and up) and ONE full-screen output
- * pass:
+ * One scene pass (no MRT; 4× MSAA from High up, shared/scene-antialias.js), one bloom chain
+ * (Medium and up) and ONE full-screen output pass:
  *
  *   heat shimmer (the scene read through a small wobble wherever the bloom says something burns
  *   below, so the air over the lava trembles; tiers with bloom) → calm zones (what shows through
@@ -45,6 +45,8 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
 import { pyHash21, pyLuma, pyMax3 } from './pyrestorm-tsl.js';
 import { flashScale } from '../../utils/photosensitivity.js';
+
+export { sceneSamples } from '../shared/scene-antialias.js';
 
 /** Per-tier look. `bloom: false` builds no BloomNode (and so no shimmer, which reads it). */
 export const POST_LOOK = Object.freeze({
@@ -97,12 +99,14 @@ export class PyrestormPost {
      * @param {object} params
      * @param {object} params.look        POST_LOOK entry
      * @param {boolean} [params.falseColor=false]
+     * @param {number} [params.samples=0]  the scene pass's MSAA (sceneSamples(quality, antialias))
      */
     constructor(renderer, scene, camera, params = {}) {
         const look = params.look || POST_LOOK.High;
         this.look = look;
         this.pipeline = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera, { samples: 0 });
+        // Thin lava threads, bomb arcs and bolts step in single pixels without samples of their own.
+        this.scenePass = pass(scene, camera, { samples: Math.max(0, Math.round(params.samples || 0)) });
         const sceneColor = this.scenePass.getTextureNode('output');
 
         this.uAspect = uniform(16 / 9);
@@ -169,13 +173,18 @@ export class PyrestormPost {
             const st = screenUV.toVar();
             if (this.bloomNode) {
                 const B0 = vec3(this.bloomNode.getTextureNode().sample(screenUV.add(vec2(0.0, 0.012))).rgb);
-                const hot = smoothstep(0.03, 0.4, pyMax3(B0)).mul(this.uHeat).mul(float(1.0).sub(calm));
+                // Only the air low in the frame shimmers (over the near lava): a thin bright thing
+                // in the sky (a bomb's arc, a bolt) wobbled by a regular wave reads as a wavy line.
+                const low = smoothstep(0.42, 0.7, screenUV.y);
+                const hot = smoothstep(0.03, 0.4, pyMax3(B0)).mul(this.uHeat).mul(float(1.0).sub(calm)).mul(low);
                 const t = this.uTime;
+                // Two incommensurate waves, each bent by a third, so no single period shows.
                 const wob = vec2(
-                    sin(screenUV.y.mul(310.0).sub(t.mul(7.0)).add(sin(screenUV.x.mul(120.0).add(t.mul(1.3))).mul(1.6))),
+                    sin(screenUV.y.mul(310.0).sub(t.mul(7.0)).add(sin(screenUV.x.mul(120.0).add(t.mul(1.3))).mul(1.6)))
+                        .add(sin(screenUV.y.mul(173.0).add(screenUV.x.mul(61.0)).sub(t.mul(4.3))).mul(0.7)),
                     cos(screenUV.x.mul(260.0).add(t.mul(5.0)).add(sin(screenUV.y.mul(170.0).sub(t.mul(2.1))).mul(1.4))).mul(0.5),
                 );
-                st.addAssign(wob.mul(this.uSrcTexel).mul(hot.mul(1.6)));
+                st.addAssign(wob.mul(this.uSrcTexel).mul(hot.mul(0.9)));
             }
             const S = vec3(sceneColor.sample(st).rgb).toVar();
 
