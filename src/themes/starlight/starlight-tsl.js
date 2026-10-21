@@ -22,6 +22,7 @@ import {
     dot,
     exp,
     float,
+    floor,
     fract,
     length,
     log2,
@@ -31,6 +32,7 @@ import {
     pow,
     sin,
     smoothstep,
+    step,
     texture,
     uniform,
     uniformArray,
@@ -70,6 +72,20 @@ export function createNoiseTexture(data = bakeNoise()) {
 
 /** Sample the noise at an explicit level (vertex stage, or where an angle wraps). */
 export const noiseAt = (tex, uvNode, level = 0) => texture(tex, uvNode).level(level);
+
+/**
+ * The noise at a whole mip `level`, with the texel's bilinear weights eased (quintic): a read that
+ * is sharpened afterwards (the dust's edges, its threads) then draws curves, not the facets of a
+ * magnified texel grid. One fetch; starlight-core.js sampleNoiseSmooth() is the CPU's copy.
+ */
+export const noiseSmooth = (tex, uvNode, level = 0) => {
+    const size = NOISE_SIZE / 2 ** level;
+    const p = uvNode.mul(size).add(0.5);
+    const i = floor(p);
+    const f = fract(p);
+    const e = f.mul(f).mul(f).mul(f.mul(f.mul(6.0).sub(15.0)).add(10.0));
+    return texture(tex, i.add(e).sub(0.5).div(size)).level(level);
+};
 
 // ── The scene's state ────────────────────────────────────────────────────────────
 
@@ -138,6 +154,7 @@ export function createUniforms() {
         bandPower: uniform(1),
         starPower: uniform(1),
         glowHeight: uniform(0.11),
+        zodiac: uniform(0.18),
     };
 }
 
@@ -183,6 +200,45 @@ export const ridges = (noise, d) => {
     const farCrest = pow(max(far.sub(0.22), 0.0), 1.6).mul(0.11).add(farFine.mul(0.007)).add(0.006);
     const nearCrest = pow(max(near.sub(0.34), 0.0), 1.9).mul(0.085).add(nearFine.mul(0.0045)).add(0.0025);
     return vec2(nearCrest, farCrest);
+};
+
+// ── The woods on the near shore ──────────────────────────────────────────────────
+
+/** The tallest spruce on the near crest, radians of altitude, and the cells they stand in. */
+export const WOODS_TREE = 0.0092;
+const WOODS_CELL = 0.0036;
+
+/** Where the woods stand along the near crest, by azimuth (turns): 0 bare … 1 wooded. */
+export const woodsShare = (noise, ua) => smoothstep(0.44, 0.6, noiseAt(noise, vec2(ua.mul(6.0).add(0.37), 0.91), 1).g);
+
+/** How high the woods stand over the near crest in a direction, on average: the stars set behind it. */
+export const woodsTop = (noise, d) => woodsShare(noise, atan(d.x, d.z.negate()).div(TAU)).mul(WOODS_TREE * 0.62);
+
+/**
+ * The woods' silhouette in direction `d` (azimuth `az`): 1 inside a tree, 0 in the air. Spruce
+ * stand on the near crest (`base`, as a height in d.y) in stretches, one a cell of azimuth, each a
+ * narrow cone with its tiers of branches; edges anti-aliased over `fuzz` radians.
+ */
+export const woods = (noise, d, az, base, fuzz) => {
+    const stand = woodsShare(noise, az.div(TAU));
+    const id = floor(az.div(WOODS_CELL));
+    let inside = float(0.0);
+    for (let k = -1; k <= 1; k += 1) {
+        const cell = id.add(k);
+        const h1 = slHash21(vec2(cell, 7.1));
+        const h2 = slHash21(vec2(cell, 3.7));
+        const h3 = slHash21(vec2(cell, 9.3));
+        const tall = h1.mul(h1).mul(0.65).add(0.35).mul(stand)
+            .mul(WOODS_TREE);
+        const cx = cell.add(0.5).add(h2.sub(0.5).mul(0.7)).mul(WOODS_CELL);
+        const rise = d.y.sub(base).div(max(tall, 1e-6));
+        const tiers = fract(rise.mul(4.0).add(h3)).mul(0.34).add(0.66);
+        // Negative above the tip (never clamped to 0, which leaves a pixel-wide line up the sky).
+        const half = rise.oneMinus().mul(WOODS_CELL * 0.6).mul(tiers);
+        const edge = smoothstep(fuzz, fuzz.negate(), abs(az.sub(cx)).sub(half));
+        inside = max(inside, edge.mul(step(0.0, rise)).mul(step(1e-5, tall)));
+    }
+    return inside;
 };
 
 // ── The water ────────────────────────────────────────────────────────────────────
@@ -255,8 +311,11 @@ export const mirrorDir = (u, noise, eye, d, tier) => {
     );
 };
 
-/** How much of the sky the water gives back at a downward direction: nearly all, at a glance. */
-export const mirrorShare = (d) => mix(0.6, 0.94, exp(abs(d.y).mul(-5.0)));
+/**
+ * How much of the sky the water gives back at a downward direction: nearly all at a glance, less
+ * as the eye looks down into it (the frame's foot shows the lake's own dark).
+ */
+export const mirrorShare = (d) => mix(0.44, 0.95, exp(abs(d.y).mul(-7.0)));
 
 /** The sky's own radius, for the parts. */
 export const SKY_RADIUS = WORLD.skyRadius;

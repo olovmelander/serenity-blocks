@@ -21,6 +21,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     asin,
     atan,
@@ -50,7 +51,8 @@ import {
     BAND, DUST, GALAXY, TAU,
 } from './starlight-core.js';
 import {
-    mirrorShare, ridges, ringLight, sized, slGauss, slHash21, waterPoint, waterSlope,
+    WOODS_TREE, mirrorShare, noiseSmooth, ridges, ringLight, sized, slGauss, slHash21, waterPoint, waterSlope,
+    woods,
 } from './starlight-tsl.js';
 
 const v3 = (a) => vec3(a[0], a[1], a[2]);
@@ -58,6 +60,19 @@ const v3 = (a) => vec3(a[0], a[1], a[2]);
 /** The far shore's lamps: (azimuth east of north in radians, brightness) each. */
 const LAMPS = Object.freeze([[0.418, 1.0], [0.446, 0.6], [0.503, 0.8], [-0.612, 0.7]]);
 const LAMP_COLOUR = vec3(1.0, 0.58, 0.22);
+/** The town behind the right-hand lamps: the azimuth of its light dome, and how bright it is. */
+const TOWN_AZ = 0.47;
+const TOWN_GLOW = 0.02;
+/** How thick the mist on the water lies where its bank is deepest (0..1 of what it veils). */
+const MIST = 0.86;
+/** The zodiacal light's foot (azimuth) and the way it leans as it climbs (unit: azimuth, altitude). */
+const ZODIAC_AZ = 0.5;
+const ZODIAC_LEAN = Object.freeze([-0.5, 0.866]);
+/**
+ * Below this height (the sine of the altitude) a direction may meet the hills, the woods or the
+ * mist: the tallest far crest stands under 0.125.
+ */
+const HORIZON_BAND = 0.16;
 
 export function createSky({ u, noise, tier }) {
     const geometry = new THREE.SphereGeometry(6000, 32, 16);
@@ -126,41 +141,76 @@ export function createSky({ u, noise, tier }) {
         const bulge = exp(bl.mul(bl).add(bw.mul(bw)).negate())
             .mul(BAND.bulge).toVar();
 
-        // Dust: the same reads as starlight-core.js dustAt. Long lanes that keep to the plane.
         // Star clouds: the band is not one smooth glow, but its mottling is soft and broad.
-        const clouds = texture(noise, vec2(lu.mul(5.0).add(0.4), b.mul(1.1).add(0.8)))
-            .level(soft.mul(0.5).add(1.5)).r.toVar();
-        // The lanes are bent by that same broad field (level 0 in the catalogue's copy: near enough).
-        const bend = clouds.sub(0.5).mul(DUST.bend);
-        const n1 = texture(noise, vec2(lu.mul(DUST.tilesL).add(bend), b.mul(DUST.tilesB).add(0.37).add(bend)))
-            .level(soft.mul(0.5).add(1.0)).g.toVar();
-        const n2 = texture(noise, vec2(lu.mul(DUST.fineL).add(n1.mul(DUST.warp)), b.mul(DUST.fineB).add(0.11)))
-            .level(soft.add(1.0)).b.toVar();
-        const lane = b.sub(0.014).sub(sin(l.mul(3.0).add(1.1)).mul(0.024));
-        const riftOn = texture(noise, vec2(lu.mul(DUST.riftTiles), 0.15)).level(1.0).r;
-        const there = max(smoothstep(0.4, 0.6, riftOn), slGauss(l.div(0.45)));
-        const rift = slGauss(lane.div(DUST.riftWidth)).mul(DUST.rift).mul(there);
-        const field = n1.mul(0.6).add(n2.mul(0.4)).add(rift).toVar();
-        const reach = slGauss(b.div(DUST.reach)).toVar();
-        const dust = smoothstep(DUST.lo, DUST.hi, field).mul(reach).toVar();
+        const clouds = noiseSmooth(noise, vec2(lu.mul(5.0).add(0.4), b.mul(1.1).add(0.8)), 2).r.toVar();
 
-        const mottle = clouds.mul(0.9).add(0.55);
+        // Dust: the same reads as starlight-core.js dustTau. Its edges are drawn by extinction
+        // (exp(−τ) of a depth that varies strongly), never by a narrow threshold: a cut-out of
+        // fBm reads as torn paper or as cotton. It keeps to the plane, so the reads are skipped
+        // wherever it cannot reach (most of the sky: the branch is coherent over wide regions).
+        const tau = float(0.0).toVar();
+        If(abs(b).lessThan(DUST.reach * 2.6), () => {
+            // The dark clouds are bent by the same broad field.
+            const bend = clouds.sub(0.5).mul(DUST.bend);
+            const cloudAt = vec2(lu.mul(DUST.tilesL).add(bend), b.mul(DUST.tilesB).add(0.37).add(bend));
+            const n1 = noiseSmooth(noise, cloudAt, 1).g.toVar();
+            const fineAt = vec2(lu.mul(DUST.fineL).add(n1.mul(DUST.warp)), b.mul(DUST.fineB).add(0.11));
+            const n2 = noiseSmooth(noise, fineAt, 0).b;
+            const patch = n1.mul(0.68).add(n2.mul(0.32)).toVar();
+            const clump = smoothstep(DUST.lo, DUST.hi, patch);
+            tau.assign(clump.mul(clump).mul(DUST.patch));
+            // The Great Rift: a lane along the plane that wanders a little and is widest at the
+            // core, there for about half the band's length.
+            const wander = noiseSmooth(noise, vec2(lu.mul(4.0), 0.62), 1).r.sub(0.5);
+            const lane = b.sub(0.014).sub(sin(l.mul(3.0).add(1.1)).mul(0.024)).sub(wander.mul(DUST.wander)).toVar();
+            const riftOn = noiseSmooth(noise, vec2(lu.mul(DUST.riftTiles), 0.15), 1).r;
+            const there = max(smoothstep(0.38, 0.62, riftOn), slGauss(l.div(0.45))).toVar();
+            const width = n1.mul(0.9).add(0.55).mul(DUST.riftWidth).mul(slGauss(l.div(0.6)).mul(0.7).add(1.0))
+                .toVar();
+            if (tier.dustDetail) {
+                // Its edges are torn by a fine read, and threads drawn out along the band run off
+                // the clouds: ridges of a smooth field, their sharpness the shader's own.
+                const frayAt = vec2(lu.mul(DUST.frayL).add(n1.mul(0.25)), b.mul(DUST.frayB).add(0.53));
+                const fray = noiseSmooth(noise, frayAt, 1).a;
+                lane.addAssign(fray.sub(0.5).mul(width).mul(DUST.fray));
+                // The threads run along the band (the read is drawn out 6:1), bend round the
+                // clouds, and a second field switches each one on and off along its length.
+                const strandAt = vec2(lu.mul(DUST.threadL), b.mul(DUST.threadB).add(n1.mul(0.35)).add(0.29));
+                const strand = noiseSmooth(noise, strandAt, 2).b;
+                // Cubed: a soft strand of smoke a few pixels wide, not a hairline crack.
+                const ridge = abs(strand.mul(2.0).sub(1.0)).oneMinus();
+                const runs = noiseSmooth(noise, vec2(lu.mul(9.0).add(0.71), b.mul(3.2).add(0.17)), 1).r;
+                const near = smoothstep(0.3, 0.6, patch.add(there.mul(0.18))).mul(smoothstep(0.42, 0.62, runs));
+                tau.addAssign(ridge.mul(ridge).mul(ridge).mul(near).mul(DUST.thread));
+            }
+            tau.addAssign(slGauss(lane.div(width)).mul(DUST.rift).mul(there));
+            tau.mulAssign(slGauss(b.div(DUST.reach)));
+        });
+        // The share of the band's light the dust takes (the catalogue thins its stars by it).
+        const dust = exp(tau.negate()).oneMinus().toVar();
+
+        // Star clouds: where the broad field is high the disc is crowded with stars, and bright.
+        const crowd = smoothstep(0.3, 0.78, clouds).toVar();
+        const mottle = crowd.mul(crowd).mul(1.25).add(0.42);
         // The bulge is old and warm, the disc young and blue: the light takes the colour of
-        // whichever gives more of it here.
+        // whichever gives more of it here, and a crowded star cloud is a warm white between them.
         const warmth = bulge.div(bulge.add(lit.mul(0.7)).add(0.04));
-        const light = mix(u.band, u.core, warmth)
+        const disc = mix(u.band, mix(u.band, u.core, 0.5), crowd.mul(0.7));
+        const light = mix(disc, u.core, warmth)
             .mul(lit.mul(mottle).add(bulge.mul(clouds.mul(0.35).add(0.82)))).toVar();
 
         if (tier.detail) {
             // The band's own fine weave: a soft unevenness, never a speck.
-            const n3 = texture(noise, vec2(lu.mul(44.0).add(n2.mul(0.12)), b.mul(9.0).add(0.3))).level(soft.add(2.0)).a;
-            light.mulAssign(n3.mul(0.26).add(0.87));
+            const weaveAt = vec2(lu.mul(44.0).add(clouds.mul(0.12)), b.mul(9.0).add(0.3));
+            const n3 = texture(noise, weaveAt).level(soft.add(2.0)).a;
+            light.mulAssign(n3.mul(0.3).add(0.85));
             // Star powder: the band is made of stars. Two grids of cells in the galaxy's own
-            // coordinates, at most one star a cell, more of them where the band is bright. They
+            // coordinates, at most one star a cell, more of them where the band is crowded. They
             // are points, not texels, so they neither blur nor crawl as the sky turns; a long
-            // exposure washes them into the glow.
-            const dense = clamp(lit.add(bulge).mul(0.5), 0.0, 0.85);
-            const powder = (cells, seed, gain) => {
+            // exposure washes them into the glow. Most are faint (a steep share of bright ones),
+            // so they read as the band's grain, not as salt over it.
+            const dense = clamp(lit.mul(mottle).add(bulge).mul(0.5), 0.0, 0.9).toVar();
+            const powder = (cells, seed, gain, floorShare, share) => {
                 const size = TAU / cells;
                 const g = vec2(l, b).div(size);
                 const id = floor(g);
@@ -170,26 +220,36 @@ export function createSky({ u, noise, tier }) {
                 const r = sized(u, 0.9, 0.62);
                 const point = exp(away.dot(away).div(r.mul(r)).negate());
                 const h = slHash21(id.add(seed + 41.9));
-                const power = h.mul(h).mul(h).mul(gain).add(gain * 0.045);
-                return point.mul(power).mul(step(slHash21(id.add(seed + 77.7)), dense));
+                const h3 = h.mul(h).mul(h);
+                const power = h3.mul(h3).mul(h3).mul(gain).add(gain * floorShare);
+                return point.mul(power).mul(step(slHash21(id.add(seed + 77.7)), dense.mul(share)));
             };
             const closed = u.shutter.oneMinus();
-            const specks = powder(2800, 3.1, 2.4).add(powder(1150, 9.7, 5.0)).mul(closed.mul(closed));
-            light.addAssign(mix(vec3(1.0, 0.86, 0.7), vec3(0.78, 0.87, 1.0), clouds).mul(specks).mul(u.starPower));
+            // A fine grain nearly everywhere the band is crowded, and a sparse scatter of resolved
+            // stars; none at all where the band is too thin to hold any.
+            If(dense.greaterThan(0.004), () => {
+                const specks = powder(3000, 3.1, 1.8, 0.03, 1.0).add(powder(1100, 9.7, 7.0, 0.0, 0.4))
+                    .mul(closed.mul(closed));
+                light.addAssign(mix(vec3(1.0, 0.86, 0.7), vec3(0.78, 0.87, 1.0), clouds).mul(specks).mul(u.starPower));
+            });
         }
-        // What the dust covers goes dark and red (blue is taken first)…
-        light.mulAssign(exp(vec3(2.0, 2.35, 2.8).mul(dust).negate()));
-        // …and the lanes' thin edges glow a little with the light behind them.
-        const edge = dust.mul(dust.oneMinus()).mul(4.0);
-        light.addAssign(u.core.mul(edge).mul(lit.add(bulge)).mul(0.03));
+        // What the dust covers goes dark and red (blue is taken first).
+        light.mulAssign(exp(vec3(1.0, 1.2, 1.45).mul(tau).negate()));
 
         if (tier.nebulae) {
-            // Emission clouds: a few knots along the plane, at the lanes' edges.
-            const nm = texture(noise, vec2(lu.mul(9.0).add(0.27), b.mul(2.4).add(0.63)))
-                .level(soft.mul(0.5).add(1.5)).b;
-            const knot = smoothstep(0.7, 0.94, nm).mul(slGauss(b.div(0.065))).mul(lit.add(0.2))
-                .mul(dust.mul(0.5).add(0.5));
-            light.addAssign(u.nebula.mul(knot).mul(0.5).add(vec3(1.0, 0.88, 0.92).mul(knot.mul(knot)).mul(0.3)));
+            // Emission clouds: a few small knots along the plane, at the lanes' edges, wisped by a
+            // finer read (Medium and up) so each is a cloud with a bright heart, not a smudge.
+            If(abs(b).lessThan(0.2), () => {
+                const nm = noiseSmooth(noise, vec2(lu.mul(14.0).add(0.27), b.mul(3.6).add(0.63)), 1).b.toVar();
+                const wisp = tier.detail
+                    ? noiseSmooth(noise, vec2(lu.mul(40.0).add(nm.mul(0.4)), b.mul(10.0).add(0.41)), 0).a
+                    : float(0.62);
+                const knot = smoothstep(0.73, 0.96, nm).mul(slGauss(b.div(0.06))).mul(lit.add(0.25))
+                    .mul(dust.mul(0.6).add(0.4))
+                    .mul(wisp.mul(wisp).mul(1.6).add(0.25))
+                    .toVar();
+                light.addAssign(u.nebula.mul(knot).mul(0.62).add(vec3(1.0, 0.86, 0.9).mul(knot.mul(knot)).mul(0.34)));
+            });
         }
 
         // The air between: the band drowns in the horizon's glow and thins toward it.
@@ -202,19 +262,21 @@ export function createSky({ u, noise, tier }) {
         const lit2 = pow(near, 60.0).mul(0.2).add(pow(near, 14.0).mul(0.012)).add(0.0012);
         sky.addAssign(u.meteor.mul(u.flash.w).mul(lit2));
 
-        // ── The far hills: two crests, darker than the low sky behind them ──
-        const crest = ridges(noise, d).toVar();
-        const fuzz = u.texel.mul(1.5);
-        const farHill = smoothstep(crest.y.add(fuzz), crest.y.sub(fuzz), d.y);
-        const nearHill = smoothstep(crest.x.add(fuzz), crest.x.sub(fuzz), d.y);
-        // A fireball lights their faces for the moment it is up.
-        const lightning = u.meteor.mul(u.flash.w).mul(0.006);
-        const haze = u.horizon.mul(0.2).add(u.ridge).add(lightning.mul(1.6));
-        sky.assign(mix(sky, haze, farHill));
-        sky.assign(mix(sky, u.ridge.add(lightning), nearHill));
+        // The zodiacal light: a cone of sunlit dust leaning up off the right-hand horizon along the
+        // ecliptic, wide and warm at its foot, narrowing and fading as it climbs.
+        const zx = az.sub(ZODIAC_AZ);
+        const zAlong = zx.mul(ZODIAC_LEAN[0]).add(up.mul(ZODIAC_LEAN[1]));
+        const zAcross = zx.mul(ZODIAC_LEAN[1]).sub(up.mul(ZODIAC_LEAN[0]));
+        const zWide = exp(max(zAlong, 0.0).div(-0.42)).mul(0.17).add(0.05);
+        const cone = slGauss(zAcross.div(zWide)).mul(exp(max(zAlong, 0.0).div(-0.5)))
+            .mul(smoothstep(-0.02, 0.06, zAlong));
+        sky.addAssign(mix(u.core, u.horizon, 0.3).mul(cone).mul(u.zodiac).mul(0.085));
 
-        // The far shore's lamps: a few warm points at the waterline.
-        const lampHeight = slGauss(d.y.sub(0.0024).div(0.0017));
+        // The far shore's town: a faint warm dome of light over its lamps, behind the hills.
+        sky.addAssign(LAMP_COLOUR.mul(slGauss(az.sub(TOWN_AZ).div(0.2)).mul(exp(up.div(-0.07)))).mul(TOWN_GLOW));
+
+        // The far shore's lamps: a few warm points at the waterline, and the paths they lay on the
+        // water (read along the view ray, below).
         const lamps = float(0.0).toVar();
         const wake = float(0.0).toVar();
         const viewAz = atan(view.x, view.z.negate());
@@ -222,6 +284,50 @@ export function createSky({ u, noise, tier }) {
             lamps.addAssign(slGauss(az.sub(lampAz).div(0.0019)).mul(lampPower));
             wake.addAssign(slGauss(viewAz.sub(lampAz).div(0.0024)).mul(lampPower));
         });
+
+        // Everything that stands on the horizon or lies on the water is low: the hills, the woods
+        // and the mist are read only there.
+        If(d.y.lessThan(HORIZON_BAND), () => {
+            // ── The far hills: two crests, darker than the low sky behind them ──
+            const crest = ridges(noise, d).toVar();
+            const fuzz = u.texel.mul(1.5);
+            const farHill = smoothstep(crest.y.add(fuzz), crest.y.sub(fuzz), d.y);
+            const nearHill = smoothstep(crest.x.add(fuzz), crest.x.sub(fuzz), d.y).toVar();
+            // Woods along the near crest: a serrated edge of spruce, in stretches.
+            If(d.y.lessThan(crest.x.add(WOODS_TREE)), () => {
+                nearHill.assign(max(nearHill, woods(noise, d, az, crest.x, u.texel.mul(0.8))));
+            });
+            // A fireball lights their faces for the moment it is up.
+            const lightning = u.meteor.mul(u.flash.w).mul(0.006);
+            const haze = u.horizon.mul(0.2).add(u.ridge).add(lightning.mul(1.6));
+            sky.assign(mix(sky, haze, farHill));
+            sky.assign(mix(sky, u.ridge.add(lightning), nearHill));
+
+            // ── The mist on the water ──
+            // A low bank on the lake and in the far shore's hollows, in front of the hills: thicker
+            // in places, drifting slowly along the shore, lit by the hour's glow on the horizon
+            // and, round each lamp, by the lamp. The lake mirrors it with everything else.
+            const ua = az.div(TAU);
+            const bank = noiseSmooth(noise, vec2(ua.mul(7.0).add(u.time.mul(0.0008)), 0.83), 1).g.toVar();
+            const low = max(d.y, 0.0).toVar();
+            const veil = exp(low.div(bank.mul(bank).mul(0.03).add(0.004)).negate())
+                .mul(bank.mul(0.75).add(0.25)).toVar();
+            if (tier.airglow) {
+                // Its own slow curls, drifting the other way.
+                const curlAt = vec2(ua.mul(29.0).sub(u.time.mul(0.0015)), low.mul(36.0).add(0.3));
+                const curl = texture(noise, curlAt).level(1.0).b;
+                veil.mulAssign(curl.mul(0.8).add(0.6));
+            }
+            const halo = float(0.0).toVar();
+            LAMPS.forEach(([lampAz, lampPower]) => {
+                halo.addAssign(slGauss(az.sub(lampAz).div(0.03)).mul(lampPower));
+            });
+            const mistLight = u.horizon.mul(0.85).add(u.mid)
+                .add(LAMP_COLOUR.mul(halo).mul(exp(low.div(-0.012))).mul(0.05));
+            sky.assign(mix(sky, mistLight, clamp(veil.mul(MIST), 0.0, 0.8)));
+        });
+
+        const lampHeight = slGauss(d.y.sub(0.0024).div(0.0017));
         const flicker = sin(u.time.mul(2.3).add(az.mul(700.0))).mul(0.08).add(0.92);
         sky.addAssign(LAMP_COLOUR.mul(lamps).mul(lampHeight).mul(flicker).mul(2.6));
 
