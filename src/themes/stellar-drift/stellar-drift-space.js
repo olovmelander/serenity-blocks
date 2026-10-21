@@ -21,7 +21,8 @@
  * ovals twist the lookup into spirals; and the whole globe turns under it.
  *
  * What the board does arrives as rows of one uniform table (EVENT_ROWS): ripples and chimes in
- * the rings, jets, strikes and lightning on the cloud, and the aurora's level.
+ * the rings, jets, strikes and lightning on the cloud; the larger rewards' flourishes (a
+ * cyclone, a surge round the rings, the outer strand ablaze, a corona) as uniforms of their own.
  */
 
 import * as THREE from 'three/webgpu';
@@ -43,6 +44,7 @@ import {
     length,
     log2,
     max,
+    min,
     mix,
     normalize,
     positionGeometry,
@@ -61,6 +63,7 @@ import {
 import {
     CHIME_FRONT_GAP,
     CHIME_TRAVEL,
+    CYCLONE_LIFE,
     DEG,
     EVENT_ROWS,
     GIANT,
@@ -70,6 +73,8 @@ import {
     RING_TAU_MAX,
     RIPPLE_SHEAR,
     RIPPLE_SPEED,
+    SHOCK_LIFE,
+    STRAND_LIFE,
     TAU,
     sdBell,
     sdHash33,
@@ -77,6 +82,20 @@ import {
     sdPart,
     sdPhase,
 } from './stellar-drift-tsl.js';
+
+/** An angle wrapped into −π..π. */
+const wrapPi = (a) => fract(a.div(TAU).add(0.5)).mul(TAU).sub(Math.PI);
+
+/**
+ * The flare a large reward throws off the giant, at an age: the radius of its shell, how thick it
+ * is, and how far the front it sends through the ring plane has run (that one runs on through the
+ * whole system; the shell itself stays close, or it would cross the card as a giant's outline).
+ */
+const shockShape = (age) => [
+    float(1.04).add(float(0.55).mul(float(1.0).sub(exp(age.mul(-1.8))))),
+    age.mul(0.06).add(0.045),
+    float(1.15).add(float(1.3).mul(float(1.0).sub(exp(age.mul(-1.3))))),
+];
 
 /** Radians of longitude the fastest jet carries the cloud over one flow cycle. */
 export const FLOW_SPAN = 0.62;
@@ -136,6 +155,15 @@ export function createSpace(u, tier) {
         return vec4(p.r.mul(p.r).mul(RING_TAU_MAX), p.g, p.b, p.a);
     };
 
+    /**
+     * A chain's surge round the rings at a bearing (the world's frame): two arcs of light that
+     * leave the bearing facing the camera and race apart round the system, behind the giant.
+     */
+    const surgeAt = (bearing) => {
+        const x = abs(wrapPi(bearing.sub(u.surge.x))).sub(u.surge.y).div(0.3);
+        return exp(x.mul(x).negate()).mul(u.surge.z);
+    };
+
     material.colorNode = Fn(() => {
         // ── The ray ─────────────────────────────────────────────────────────────
         const ndc = uv().mul(2.0).sub(1.0);
@@ -165,6 +193,16 @@ export function createSpace(u, tier) {
         const muV = max(abs(rd.y), 0.02).toVar();
         /** 1 where the ring crossing lies nearer than the giant. */
         const front = step(tR, tc).toVar();
+
+        // The flare a large reward throws off the giant (its front lights the rings as it crosses them).
+        const shockAge = u.time.sub(u.shock.x).toVar();
+        const shockLive = step(0.0, shockAge).mul(step(shockAge, SHOCK_LIFE)).toVar();
+        const [shellRadius, shellWidth, frontRadius] = shockShape(shockAge);
+        const shockR = shellRadius.toVar();
+        const shockW = shellWidth.toVar();
+        const shockFront = frontRadius.toVar();
+        const shockFade = smoothstep(0.0, 0.08, shockAge).mul(exp(shockAge.mul(-1.6))).mul(u.shock.y).mul(shockLive)
+            .toVar();
 
         // ── The sky ─────────────────────────────────────────────────────────────
         If(cover.lessThan(0.999), () => {
@@ -350,8 +388,14 @@ export function createSpace(u, tier) {
 
                 // What carries light in the rings is their ice: gaps stay dark under any event.
                 const body = float(1.0).sub(exp(tau.mul(-2.6))).toVar();
+                // Light that runs through the rings lights them ringlet by ringlet, like the grooves
+                // of a record, never as a smooth wash.
+                const grooves = prof.z.mul(prof.z).mul(1.3).add(0.25).toVar();
+                // How much the passing waves crowd the ice: a crest brightens the rings themselves,
+                // the trough behind it thins them.
+                const crowd = float(0.0).toVar();
 
-                // Ripples: a lock's ring of light, wound into a spiral by the rings' own shear.
+                // Ripples: a lock's density wave, wound into a spiral by the rings' own shear.
                 const omega = pow(max(rr, 1.0), -1.5).mul(RING_RATE).toVar();
                 Loop({
                     start: int(0), end: int(u.counts.x), type: 'int', condition: '<', name: 'rp',
@@ -359,23 +403,37 @@ export function createSpace(u, tier) {
                     const A = row(EVENT_ROWS.ripple, rp, 0);
                     const C = row(EVENT_ROWS.ripple, rp, 1);
                     const age = max(u.time.sub(A.z), 0.0).toVar();
+                    const born = step(A.z, u.time).mul(A.w).toVar();
                     // Unwind the shear since the lock: inner ice has run ahead, outer ice has fallen behind.
                     const turn = omega.sub(C.w).mul(age).mul(-RIPPLE_SHEAR).toVar();
                     const cs = cos(turn);
                     const sn = sin(turn);
-                    const q = vec2(hit.x.mul(cs).sub(hit.z.mul(sn)), hit.x.mul(sn).add(hit.z.mul(cs)));
+                    const q = vec2(hit.x.mul(cs).sub(hit.z.mul(sn)), hit.x.mul(sn).add(hit.z.mul(cs))).toVar();
                     const d = length(q.sub(A.xy)).toVar();
                     const reach = age.mul(RIPPLE_SPEED);
-                    const x = d.sub(reach).div(age.mul(0.03).add(0.03)).toVar();
-                    // Two crests with a trough between them: a ripple, not a hoop.
-                    const crest = exp(x.mul(x).negate()).mul(cos(x.mul(2.6)).mul(0.4).add(0.6))
-                        .mul(exp(age.mul(-0.8))).mul(1.9);
-                    const flash = exp(d.mul(d).div(age.mul(0.02).add(0.002)).negate()).mul(exp(age.mul(-4.0))).mul(3.2);
+                    // A density wave: the ice crowds at the front and thins behind it, so the rings
+                    // themselves brighten and dim as it passes; only its first crest carries colour.
+                    const x = d.sub(reach).div(age.mul(0.025).add(0.018)).toVar();
+                    const envelope = exp(x.mul(x).mul(mix(float(-0.3), float(-1.0), step(0.0, x))));
+                    const wave = cos(x.mul(2.2)).mul(envelope).mul(exp(age.mul(-0.75))).mul(born)
+                        .toVar();
+                    crowd.addAssign(wave.mul(0.5));
+                    const crest = max(wave, 0.0).mul(grooves).mul(exp(age.mul(-1.5))).mul(0.5);
+                    // The impact: a white-hot point, and the ringlet it falls on lit along its orbit
+                    // both ways (the unwound frame above carries that light round at its own pace):
+                    // an arc that lies along the rings' own grain, never a hoop across it.
+                    const r0 = length(A.xy).toVar();
+                    const flash = exp(d.mul(d).div(age.mul(0.012).add(0.0005)).negate()).mul(exp(age.mul(-5.0))).mul(4.5);
+                    const dr = length(q).sub(r0).div(age.mul(0.003).add(0.0035));
+                    const arcLen = atan(A.x.mul(q.y).sub(A.y.mul(q.x)), dot(A.xy, q)).mul(r0);
+                    const glint = exp(dr.mul(dr).negate()).mul(exp(abs(arcLen).div(age.mul(0.6).add(0.04)).negate()))
+                        .mul(exp(age.mul(-0.9))).mul(smoothstep(0.0, 0.04, age))
+                        .mul(3.0);
                     // What the lock leaves in the ice: a stain of its colour, drawn out into an
                     // arc by the shear and fading over a quarter of a minute.
-                    const stain = exp(d.mul(d).mul(-170.0)).mul(exp(age.mul(-0.12))).mul(smoothstep(0.0, 0.5, age)).mul(1.3);
-                    const live = step(A.z, u.time).mul(A.w);
-                    ringGlow.addAssign(C.rgb.mul(crest.add(flash).add(stain).mul(live)));
+                    const stain = exp(d.mul(d).mul(-170.0)).mul(exp(age.mul(-0.12))).mul(smoothstep(0.0, 0.5, age)).mul(1.1);
+                    ringGlow.addAssign(C.rgb.mul(crest.add(stain.mul(grooves).mul(born)))
+                        .add(mix(C.rgb, vec3(1.0), 0.6).mul(flash.add(glint).mul(born))));
                 });
 
                 // Chimes: a clear's light running out through the whole system, one front per line.
@@ -387,16 +445,29 @@ export function createSpace(u, tier) {
                     const since = u.time.sub(A.x).sub(rr.sub(RINGS.cInner).div(RINGS.aOuter - RINGS.cInner).mul(CHIME_TRAVEL))
                         .toVar();
                     let fronts = float(0.0);
+                    let lead = float(0.0);
                     for (let k = 0; k < 4; k++) {
-                        fronts = fronts.add(sdBell(since.sub(k * CHIME_FRONT_GAP).div(0.07)).mul(step(k + 0.5, A.z)));
+                        const on = step(k + 0.5, A.z);
+                        const at = since.sub(k * CHIME_FRONT_GAP);
+                        fronts = fronts.add(sdBell(at.div(0.05)).mul(on));
+                        // Its leading edge burns white.
+                        lead = lead.add(sdBell(at.add(0.016).div(0.018)).mul(on));
                     }
-                    const after = exp(max(since, 0.0).mul(-0.9)).mul(step(0.0, since)).mul(0.22);
-                    // A T-spin's chime is a spiral: arms of light wound through the rings, turning.
-                    const age = max(u.time.sub(A.x), 0.0);
-                    const arm = fract(theta.div(TAU).mul(A.w).sub(rr.sub(RINGS.cInner).mul(2.4)).add(age.mul(0.55)));
-                    const spiral = sdBell(arm.sub(0.5).div(0.13)).mul(exp(age.mul(-0.6))).mul(smoothstep(0.0, 0.25, age)).mul(2.6);
-                    const light = mix(fronts.mul(1.5).add(after), spiral, step(0.5, A.w));
-                    ringGlow.addAssign(C.rgb.mul(light).mul(A.y).mul(prof.z.mul(0.7).add(0.5)));
+                    const after = exp(max(since, 0.0).mul(-1.1)).mul(step(0.0, since)).mul(0.3);
+                    // A T-spin's chime is a spiral: two arms of light wound through the rings,
+                    // winding tighter as they turn.
+                    const age = max(u.time.sub(A.x), 0.0).toVar();
+                    const arm = fract(theta.div(TAU).mul(A.w).sub(rr.sub(RINGS.cInner).mul(age.mul(1.4).add(2.0)))
+                        .add(age.mul(0.5))).toVar();
+                    const spiralEnv = exp(age.mul(-0.55)).mul(smoothstep(0.0, 0.2, age));
+                    const spiral = sdBell(arm.sub(0.5).div(0.06)).mul(2.4).add(sdBell(arm.sub(0.5).div(0.2)).mul(0.35))
+                        .mul(spiralEnv);
+                    const spiralEdge = sdBell(arm.sub(0.535).div(0.022)).mul(spiralEnv);
+                    const isSpiral = step(0.5, A.w);
+                    crowd.addAssign(fronts.mul(0.45).add(spiral.mul(0.2)).mul(A.y));
+                    const light = mix(fronts.mul(1.3).add(after), spiral, isSpiral);
+                    ringGlow.addAssign(C.rgb.mul(light).mul(grooves).add(vec3(1.0).mul(mix(lead, spiralEdge, isSpiral)).mul(1.2))
+                        .mul(A.y));
                 });
 
                 // A chain's glow: the rings hum in the chain's colour, brightest in the dense ice.
@@ -404,9 +475,42 @@ export function createSpace(u, tier) {
                 const swell = sin(rr.mul(34.0).sub(u.ringGlow.z.mul(1.7))).mul(0.5).add(0.5);
                 ringGlow.addAssign(u.accent.mul(u.ringGlow.x).mul(prof.z.mul(0.6).add(0.4))
                     .mul(swell.mul(swell).mul(0.55).add(0.1)));
+                // A milestone of the chain: two arcs of its light race round the rings, leaving a
+                // wake that lights the ringlets as it passes.
+                If(u.surge.z.greaterThan(0.002), () => {
+                    const surged = surgeAt(theta).toVar();
+                    ringGlow.addAssign(u.surgeTint.mul(surged).mul(grooves).mul(u.surge.w.mul(0.8).add(1.6)));
+                    crowd.addAssign(surged.mul(0.35));
+                });
+                // The shell a large reward throws off the giant lights the rings as it crosses them.
+                const crossX = rr.sub(shockFront).div(0.07);
+                const crossing = exp(crossX.mul(crossX).negate()).mul(shockFade).toVar();
+                ringGlow.addAssign(u.shockTint.mul(crossing).mul(grooves).mul(1.4));
+                crowd.addAssign(crossing.mul(0.6));
                 // Many lights at once (a storm, a long chain) must not burn the rings white: the
                 // sum is rolled off on its brightest channel, so each light keeps its colour.
                 ringGlow.mulAssign(body.div(sdMax3(ringGlow).mul(0.42).add(1.0)));
+                ringCol.mulAssign(clamp(crowd.add(1.0), 0.4, 2.4));
+
+                // A back-to-back clear sets the outer strand ablaze: two threads braided round
+                // each other, with knots of light running along them. (Not held back by the ice:
+                // it burns in the strand's own gaps.)
+                const strandAge = u.time.sub(u.strand.x).toVar();
+                If(strandAge.greaterThan(0.0).and(strandAge.lessThan(STRAND_LIFE)), () => {
+                    const env = smoothstep(0.0, 0.3, strandAge).mul(exp(strandAge.mul(-0.75))).mul(u.strand.y);
+                    // Never thinner than a pixel and a half across the plane.
+                    const w = max(u.pixelAngle.mul(tR).div(muV).mul(0.75), 0.0028);
+                    const wob = sin(theta.mul(11.0).add(strandAge.mul(1.6)).add(u.strand.z)).mul(0.0045);
+                    const a = rr.sub(RINGS.strand).sub(wob).div(w);
+                    const b = rr.sub(RINGS.strand).add(wob).div(w);
+                    const braid = exp(a.mul(a).negate()).add(exp(b.mul(b).negate()));
+                    const sheathX = rr.sub(RINGS.strand).div(0.022);
+                    const sheath = exp(sheathX.mul(sheathX).negate()).mul(0.22);
+                    const knotWave = sin(theta.mul(6.0).sub(strandAge.mul(2.6)).add(u.strand.z)).mul(0.5).add(0.5);
+                    const k2 = knotWave.mul(knotWave);
+                    const knots = k2.mul(k2).mul(k2).mul(2.6).add(0.4);
+                    ringGlow.addAssign(u.strandTint.mul(braid.mul(knots).add(sheath)).mul(env).mul(1.6));
+                });
             }).Else(() => {
                 // The haze of ice beyond the rings: seen only by the light it throws forward.
                 const span = smoothstep(RINGS.hazeInner, RINGS.hazePeak, rr)
@@ -416,7 +520,8 @@ export function createSpace(u, tier) {
                 ringCol.assign(mix(u.ringIce, u.haze, 0.3).mul(sunLight).mul(forward).mul(shade)
                     .mul(0.085));
                 ringA.assign(float(1.0).sub(exp(column.mul(-0.5))));
-                ringGlow.assign(u.accent.mul(u.ringGlow.x).mul(ringA).mul(0.05));
+                // (Faint: this haze covers much of the sky, and a lift there veils the whole frame.)
+                ringGlow.assign(u.accent.mul(u.ringGlow.x).mul(ringA).mul(0.012));
             });
         });
 
@@ -470,6 +575,39 @@ export function createSpace(u, tier) {
                     });
                 });
             }
+            // A T-spin's cyclone: where it was spun the bands are wound into a storm that tightens
+            // for a few seconds and then lets go; two arms of light are wound with them.
+            const cycloneLight = float(0.0).toVar();
+            const cyAge = u.time.sub(u.cyclone.z).toVar();
+            If(cyAge.greaterThan(0.0).and(cyAge.lessThan(CYCLONE_LIFE)), () => {
+                const size = 0.15;
+                const dx = wrapPi(lon0.sub(u.cyclone.x)).mul(cosLat).div(size).toVar();
+                const dy = lat0.sub(u.cyclone.y).div(size).toVar();
+                const r2 = dx.mul(dx).add(dy.mul(dy)).toVar();
+                If(r2.lessThan(10.0), () => {
+                    const env = smoothstep(0.0, 0.6, cyAge).mul(float(1.0).sub(smoothstep(CYCLONE_LIFE * 0.4, CYCLONE_LIFE, cyAge)))
+                        .mul(u.cyclone.w).toVar();
+                    // Tapered to nothing before the edge of the test, or the bands would step there.
+                    const fall = exp(r2.mul(-0.55)).mul(float(1.0).sub(smoothstep(5.0, 10.0, r2))).toVar();
+                    const ang = u.cycloneTint.w.mul(smoothstep(0.0, 3.0, cyAge).mul(5.5).add(1.0)).mul(env).mul(fall).toVar();
+                    const cs = cos(ang);
+                    const sn = sin(ang);
+                    const rx = dx.mul(cs).sub(dy.mul(sn));
+                    const ry = dx.mul(sn).add(dy.mul(cs));
+                    lon.addAssign(rx.sub(dx).mul(size).div(max(cosLat, 0.2)));
+                    lat.addAssign(ry.sub(dy).mul(size));
+                    churn.addAssign(fall.mul(env));
+                    // The arms follow the cloud's own spiral: a feature at angle φ is carried to φ − ang.
+                    const armPhase = atan(dy, dx).add(ang).mul(2.0).sub(u.cycloneTint.w.mul(cyAge).mul(0.5));
+                    const armWave = cos(armPhase).mul(0.5).add(0.5);
+                    const arms = armWave.mul(armWave).mul(armWave).mul(armWave);
+                    const band = exp(r2.mul(-0.32)).mul(float(1.0).sub(exp(r2.mul(-4.0))));
+                    const eye = exp(r2.mul(-26.0));
+                    cycloneLight.assign(arms.mul(arms).mul(band).add(eye.mul(0.9)).mul(env));
+                    collar.addAssign(exp(r2.mul(-0.3)).mul(env).mul(0.25));
+                });
+            });
+
             // A six-sided jet rings the north pole.
             lat.addAssign(cos(lon.mul(6.0)).mul(0.014).mul(smoothstep(1.2, 1.3, lat0))
                 .mul(float(1.0).sub(smoothstep(1.38, 1.47, lat0))));
@@ -568,25 +706,48 @@ export function createSpace(u, tier) {
             const emit = vec3(0.0).toVar();
             const glow = vec3(0.0).toVar();
             const under = mottle.mul(0.6).add(0.8).toVar(); // light from below shows the cloud's structure
+            // Light inside the cloud shows its relief more strongly still, and breaks a line of it
+            // into brighter and fainter pieces where the cloud is thick and thin.
+            const relief = clamp(under.mul(under), 0.2, 2.2).toVar();
+            const lumps = clamp(nC.r.mul(2.4).add(nB.b.mul(1.4)).add(0.75), 0.15, 1.6).toVar();
 
-            // Jets: a cleared row runs round the giant on its own latitude.
+            // The cyclone's arms, lit in the colour of the piece that spun it.
+            glow.addAssign(u.cycloneTint.xyz.mul(cycloneLight).mul(relief).mul(lumps).mul(0.4));
+
+            // Jets: a cleared row is written round the giant on its own latitude: a hairline of
+            // light with a white-hot head, racing from the limb, the line behind it lit through
+            // the cloud and cooling from its far end.
             Loop({
                 start: int(0), end: int(u.counts.z), type: 'int', condition: '<', name: 'jt',
             }, ({ jt }) => {
                 const A = row(EVENT_ROWS.jet, jt, 0);
                 const C = row(EVENT_ROWS.jet, jt, 1);
                 const age = max(u.time.sub(A.y), 0.0).toVar();
-                const dLat = lat0.add(bend.mul(0.5)).sub(A.x).toVar();
-                const line = exp(dLat.mul(dLat).mul(-2600.0)).add(exp(dLat.mul(dLat).mul(-260.0)).mul(0.32));
-                const dl = abs(fract(lonSky.sub(A.w).div(TAU).add(0.5)).mul(TAU).sub(Math.PI)).toVar();
-                const reach = age.mul(JET_SPEED);
-                const head = sdBell(dl.sub(reach).div(0.16)).mul(1.6);
-                const trail = exp(max(reach.sub(dl), 0.0).mul(-1.1)).mul(step(dl, reach));
-                const fade = exp(age.mul(-0.7)).mul(step(A.y, u.time)).mul(A.z);
-                glow.addAssign(C.rgb.mul(line.mul(head.add(trail)).mul(fade)).mul(under));
+                // It hugs the band's festoons, as the wind that carries it would.
+                const dLat = lat0.add(bend.mul(0.45)).sub(A.x).toVar();
+                // Nothing of it shows more than a few degrees off its latitude.
+                If(abs(dLat).lessThan(0.12), () => {
+                    // Never thinner than a pixel and a half on the cloud.
+                    const w = max(arc.mul(1.3), 0.0045);
+                    const lx = dLat.div(w);
+                    const line = exp(lx.mul(lx).negate()).toVar();
+                    const halo = exp(dLat.mul(dLat).mul(-1400.0)).toVar();
+                    const dl = abs(wrapPi(lonSky.sub(A.w))).toVar();
+                    const reach = age.mul(JET_SPEED);
+                    const ahead = dl.sub(reach);
+                    const hot = exp(ahead.mul(ahead).mul(-180.0)).mul(exp(age.mul(-0.5))).toVar();
+                    const trail = exp(max(reach.sub(dl), 0.0).mul(-1.8)).mul(step(dl, reach)).mul(exp(age.mul(-0.45)))
+                        .toVar();
+                    const fade = step(A.y, u.time).mul(A.z);
+                    const core = C.rgb.mul(trail.mul(lumps).mul(1.4)).add(mix(C.rgb, vec3(1.0), 0.75).mul(hot.mul(3.5)));
+                    const lit = C.rgb.mul(trail.mul(0.22).add(hot.mul(0.9))).mul(relief);
+                    glow.addAssign(core.mul(line).add(lit.mul(halo)).mul(fade));
+                });
             });
 
-            // Strikes: a meteor's fireball, its shock in the cloud, and the scar it leaves.
+            // Strikes, as the comet that hit Jupiter in 1994 struck: a blinding fireball, a shock
+            // running out through the cloud tops and lighting them, heat cooling to embers, then a
+            // dark scar with a crescent of ejecta thrown downrange, sheared by the band's own wind.
             const scar = float(0.0).toVar();
             Loop({
                 start: int(0), end: int(u.counts.w), type: 'int', condition: '<', name: 'sk',
@@ -594,41 +755,86 @@ export function createSpace(u, tier) {
                 const A = row(EVENT_ROWS.strike, sk, 0);
                 const C = row(EVENT_ROWS.strike, sk, 1);
                 const age = max(u.time.sub(A.z), 0.0).toVar();
-                const dl = fract(lon0.sub(A.x).div(TAU).add(0.5)).mul(TAU).sub(Math.PI).mul(cosLat);
-                const dy = lat0.sub(A.y);
-                const d = sqrt(dl.mul(dl).add(dy.mul(dy))).toVar();
-                const born = step(A.z, u.time).mul(A.w);
-                // The fireball, then the cloud round it lit from inside, then the bruise it leaves.
-                const flash = exp(d.mul(d).div(age.mul(0.01).add(0.0012)).negate()).mul(exp(age.mul(-3.2))).mul(4.0);
-                const lit = exp(d.mul(d).div(age.mul(0.006).add(0.003)).negate()).mul(exp(age.mul(-1.4))).mul(0.5);
-                glow.addAssign(mix(C.rgb, vec3(1.0, 0.9, 0.75), 0.5).mul(flash.add(lit.mul(under)).mul(born)));
-                scar.addAssign(exp(d.mul(d).div(C.w.mul(C.w)).negate()).mul(exp(age.mul(-0.15))).mul(born)
-                    .mul(smoothstep(0.2, 1.2, age)));
+                const s = A.w.mul(0.03).add(0.035).toVar(); // strikeSize()
+                // The scar rides its band's wind (a few times faster than the cloud's, so it shows):
+                // each latitude through it drifts its own way, and it shears.
+                const drift = wind.mul(age).mul((FLOW_SPAN * 4) / GIANT.flowCycle);
+                const dl = wrapPi(lon0.sub(A.x).sub(drift)).mul(cosLat).toVar();
+                const dy = lat0.sub(A.y).toVar();
+                const d2 = dl.mul(dl).add(dy.mul(dy)).toVar();
+                const k = sqrt(d2).div(s).toVar();
+                const born = step(A.z, u.time).mul(min(A.w, 1.5)).toVar();
+                // Nothing of it reaches past six of its sizes.
+                If(k.lessThan(6.0), () => {
+                    const s2 = s.mul(s);
+                    const fire = exp(d2.div(s2.mul(age.mul(0.6).add(0.04))).negate()).mul(exp(age.mul(-11.0))).mul(7.0);
+                    const heat = exp(d2.div(s2.mul(age.mul(0.8).add(0.3))).negate()).mul(exp(age.mul(-1.2))).mul(lumps);
+                    const ember = exp(d2.div(s2.mul(0.4)).negate()).mul(exp(age.mul(-0.31))).mul(smoothstep(0.3, 1.0, age))
+                        .mul(lumps);
+                    // One broad front, seen only in the cloud it lights (its thick parts catch it).
+                    const r1 = float(1.0).sub(exp(age.mul(-1.6))).mul(2.6).add(0.5);
+                    const x1 = k.sub(r1).div(age.mul(0.4).add(0.35));
+                    const shock = exp(x1.mul(x1).negate()).mul(exp(age.mul(-1.7))).mul(smoothstep(0.0, 0.05, age))
+                        .mul(relief)
+                        .mul(relief);
+                    const hotCol = mix(
+                        mix(vec3(1.0, 0.92, 0.8), C.rgb, smoothstep(0.1, 0.7, age)),
+                        vec3(1.0, 0.45, 0.15),
+                        smoothstep(0.7, 2.0, age),
+                    );
+                    glow.addAssign(vec3(1.0).mul(fire).add(hotCol.mul(heat.mul(2.2)))
+                        .add(vec3(1.0, 0.32, 0.08).mul(ember.mul(0.8)))
+                        .add(mix(C.rgb, vec3(1.0), 0.35).mul(shock).mul(0.45))
+                        .mul(born));
+                    // Downrange: the way the meteor was crossing the cloud when it hit.
+                    const down = dl.mul(cos(C.w)).add(dy.mul(sin(C.w))).div(max(sqrt(d2), 1e-4));
+                    const cx = k.sub(2.2).div(0.75);
+                    const crescent = exp(cx.mul(cx).negate()).mul(smoothstep(-0.25, 0.85, down));
+                    const heart = exp(k.mul(k).mul(-0.9));
+                    scar.addAssign(heart.mul(1.1).add(crescent.mul(0.8)).mul(exp(age.div(-11.0))).mul(smoothstep(0.25, 1.4, age))
+                        .mul(born));
+                });
             });
-            surface.mulAssign(mix(vec3(1.0), vec3(0.42, 0.36, 0.34), clamp(scar, 0.0, 1.0)));
+            surface.mulAssign(mix(vec3(1.0), vec3(0.2, 0.15, 0.14), clamp(scar, 0.0, 1.0)));
 
-            // Lightning under the cloud.
+            // Lightning under the cloud: a flash that lights the cloud from below, and in its heart
+            // the branching channels themselves (where a fine field crosses its middle).
             Loop({
                 start: int(0), end: int(u.bolts), type: 'int', condition: '<', name: 'bl',
             }, ({ bl }) => {
                 const A = row(EVENT_ROWS.bolt, bl, 0);
                 const C = row(EVENT_ROWS.bolt, bl, 1);
-                const dl = fract(lon0.sub(A.x).div(TAU).add(0.5)).mul(TAU).sub(Math.PI).mul(cosLat);
-                const dy = lat0.sub(A.y);
-                const d2 = dl.mul(dl).add(dy.mul(dy));
-                const flare = exp(d2.div(C.x.mul(C.x)).negate()).add(exp(d2.div(C.x.mul(C.x).mul(12.0)).negate()).mul(0.22));
-                emit.addAssign(u.bolt.mul(flare.mul(A.w)).mul(under));
+                If(A.w.greaterThan(0.002), () => {
+                    const dl = wrapPi(lon0.sub(A.x)).mul(cosLat);
+                    const dy = lat0.sub(A.y);
+                    const s2 = C.x.mul(C.x).toVar();
+                    const d2 = dl.mul(dl).add(dy.mul(dy)).toVar();
+                    // Only the cloud round the cell is lit (four of its radii; beyond, nothing shows).
+                    If(d2.lessThan(s2.mul(64.0)), () => {
+                        const flare = exp(d2.div(s2).negate()).mul(0.7)
+                            .add(exp(d2.div(s2.mul(16.0)).negate()).mul(relief).mul(0.18))
+                            .toVar();
+                        // The channels themselves (Medium and up): one fetch, only near the heart.
+                        if (tier.cloudDetail >= 2) {
+                            If(d2.lessThan(s2.mul(16.0)), () => {
+                                const n = u.fbmLod(vec2(dl, dy).div(C.x).mul(0.07).add(vec2(C.y.mul(7.31), C.y.mul(3.17))), 0.0);
+                                const ra = float(1.0).sub(abs(n.r.mul(2.0).sub(1.0)));
+                                const rb = float(1.0).sub(abs(n.g.mul(2.0).sub(1.0)));
+                                const ra2 = ra.mul(ra);
+                                const ra4 = ra2.mul(ra2);
+                                const rb2 = rb.mul(rb);
+                                const veins = ra4.mul(ra4).mul(ra4).mul(ra2).mul(1.6)
+                                    .add(rb2.mul(rb2).mul(rb2).mul(rb2).mul(0.5));
+                                flare.addAssign(veins.mul(exp(d2.div(s2.mul(4.0)).negate())));
+                            });
+                        }
+                        emit.addAssign(u.bolt.mul(flare.mul(A.w)).mul(under));
+                    });
+                });
             });
             // Lightning reads on the night side; by day the sun drowns it. What the board
             // writes is seen on both.
             surface.addAssign(emit.mul(dark.mul(0.8).add(0.2))).addAssign(glow.mul(dark.mul(0.5).add(1.0)).mul(1.5));
-
-            // The aurora's foot on the cloud tops, round each pole.
-            const colat = float(Math.PI / 2).sub(abs(lat0));
-            const oval = colat.sub(GIANT.auroraColat).div(0.045);
-            const level = mix(u.aurora.y, u.aurora.x, step(0.0, P.y));
-            const flutter = u.fbmLod(vec2(lonSky.div(TAU).mul(6.0).add(u.aurora.z.mul(0.11)), u.aurora.z.mul(0.05)), 1.0).r;
-            surface.addAssign(u.auroraLow.mul(exp(oval.mul(oval).negate()).mul(level).mul(flutter.mul(1.4).add(0.3)).mul(0.3)));
 
             // A chain is felt in the air itself: a breath of the chain's colour in the limb.
             surface.addAssign(u.accent.mul(u.ringGlow.x).mul(rim2).mul(0.05));
@@ -649,50 +855,32 @@ export function createSpace(u, tier) {
                 .add(u.night.mul(air).mul(float(1.0).sub(sunny)).mul(0.22)));
         });
 
-        // ── The aurora: curtains standing on an oval round each pole ─────────────
-        // Each oval is a cone from the giant's centre; where the ray crosses it inside the thin
-        // shell above the cloud tops there is a curtain. Seen along its length a curtain is
-        // bright, seen face on it is a veil, so the oval's two ends blaze at the limb.
-        If(u.aurora.x.greaterThan(0.004), () => {
-            const curtain = (colat, gain) => {
-                const c2 = Math.cos(colat) ** 2;
-                const qa = rd.y.mul(rd.y).sub(c2).toVar();
-                const qb = ro.y.mul(rd.y).sub(B.mul(c2)).toVar();
-                const qc = ro.y.mul(ro.y).sub(dot(ro, ro).mul(c2));
-                const disc = qb.mul(qb).sub(qa.mul(qc)).toVar();
-                If(disc.greaterThan(0.0).and(abs(qa).greaterThan(1e-5)), () => {
-                    const root = sqrt(disc).toVar();
-                    for (let k = 0; k < 2; k++) {
-                        const t = qb.negate().add(root.mul(k === 0 ? -1 : 1)).div(qa).toVar();
-                        const p = ro.add(rd.mul(t)).toVar();
-                        const lift = length(p).sub(1.0).div(GIANT.auroraHeight).toVar();
-                        // In front of the lens, inside the shell, and not behind the giant.
-                        const seen = step(0.0, t).mul(step(0.0, lift)).mul(step(lift, 1.7))
-                            .mul(float(1.0).sub(cover.mul(step(tP, t))))
-                            .toVar();
-                        If(seen.greaterThan(0.001), () => {
-                            const lonP = atan(p.z, p.x).div(TAU).toVar();
-                            const level = mix(u.aurora.y, u.aurora.x, step(0.0, p.y));
-                            const rays = u.fbmLod(vec2(lonP.mul(9.0).add(u.aurora.z.mul(0.06)), lift.mul(0.22).add(u.aurora.z.mul(0.045))), 0.0);
-                            const fine = u.fbmLod(vec2(lonP.mul(44.0).sub(u.aurora.z.mul(0.03)), lift.mul(0.12)), 0.0).g;
-                            // The cone's own normal: how nearly the ray runs along the curtain.
-                            const n = normalize(vec3(p.x.mul(-c2), p.y.mul(1.0 - c2), p.z.mul(-c2)));
-                            const run = float(1.0).div(max(abs(dot(n, rd)), 0.34));
-                            const rise = exp(lift.mul(-2.2)).mul(smoothstep(0.0, 0.07, lift));
-                            const shape = rise.mul(rays.r.mul(1.7).add(0.08)).mul(fine.mul(1.3).add(0.35)).mul(run);
-                            const hue = mix(u.auroraLow, u.auroraHigh, smoothstep(0.08, 0.9, lift));
-                            col.addAssign(hue.mul(shape).mul(level).mul(gain).mul(seen)
-                                .mul(0.55));
-                        });
-                    }
-                });
-            };
-            curtain(GIANT.auroraColat, float(1.0));
-            if (tier.aurora >= 2) curtain(GIANT.auroraColat * 0.6, u.aurora.w);
-        });
-
         // ── The rings' near side ────────────────────────────────────────────────
         col.assign(mix(col, ringCol, ringA.mul(front)).add(ringGlow.mul(front)));
+
+        // ── The flare a large reward throws off the giant ───────────────────────
+        // A shell of plasma with a soft Gaussian profile, seen through: brightest where the ray
+        // runs along it (just off the limb), with no hard line at either edge, torn into
+        // filaments by 3D noise, and its far half hidden by the giant.
+        If(shockFade.greaterThan(0.002).and(tc.greaterThan(0.0)), () => {
+            const twoRw = shockR.mul(shockW).mul(2.0).toVar();
+            const inside = sqrt(twoRw.div(max(shockR.mul(shockR).sub(imp2), 0.0).add(twoRw)));
+            // Outside the shell its light thins out slowly, so it has no rim to trace.
+            const g = imp.sub(shockR).div(shockW.mul(3.0));
+            const shell = mix(inside, exp(g.mul(g).negate()), step(shockR, imp)).toVar();
+            // Over the disc only a breath of it shows: the giant's face must stay readable.
+            const shown = shell.mul(shockFade).mul(float(1.0).sub(cover.mul(0.85))).toVar();
+            If(shown.greaterThan(0.004), () => {
+                const T = normalize(ro.add(rd.mul(tc)));
+                const n = u.noise3(T.mul(8.0).add(vec3(shockAge.mul(0.6), 0.0, 1.3)));
+                const ridge = float(1.0).sub(abs(n.x.mul(2.0).sub(1.0)));
+                const r2 = ridge.mul(ridge);
+                const filaments = r2.mul(r2).mul(1.8).add(n.y.mul(0.3)).add(0.1);
+                const s4 = shell.mul(shell).mul(shell.mul(shell));
+                const hue = mix(u.shockTint, vec3(1.0), s4.mul(0.4));
+                col.addAssign(hue.mul(shown.mul(filaments)));
+            });
+        });
 
         return vec4(max(col, vec3(0.0)), 1.0);
     })();
