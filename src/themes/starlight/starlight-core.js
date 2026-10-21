@@ -308,44 +308,125 @@ export function sampleNoise(data, u, v, channel, size = NOISE_SIZE) {
     return (a + (b - a) * tx + (c + (d - c) * tx - (a + (b - a) * tx)) * ty) / 255;
 }
 
-/** How the dust lanes are laid over the band: the shader reads the same numbers. */
+/**
+ * The baked noise's mip chain on the CPU, the way the GPU builds it (each level the mean of 2 × 2
+ * texels of the one above). Level 0 is `data` itself. Cached per array.
+ */
+const MIP_CACHE = new WeakMap();
+export function noiseLevels(data, size = NOISE_SIZE) {
+    let levels = MIP_CACHE.get(data);
+    if (levels) return levels;
+    levels = [data];
+    let n = size;
+    let src = data;
+    while (n > 1) {
+        const m = n >> 1;
+        const dst = new Uint8Array(m * m * 4);
+        for (let y = 0; y < m; y += 1) {
+            for (let x = 0; x < m; x += 1) {
+                for (let c = 0; c < 4; c += 1) {
+                    const a = src[((2 * y) * n + 2 * x) * 4 + c];
+                    const b = src[((2 * y) * n + 2 * x + 1) * 4 + c];
+                    const d = src[((2 * y + 1) * n + 2 * x) * 4 + c];
+                    const e = src[((2 * y + 1) * n + 2 * x + 1) * 4 + c];
+                    dst[(y * m + x) * 4 + c] = Math.round((a + b + d + e) / 4);
+                }
+            }
+        }
+        levels.push(dst);
+        src = dst;
+        n = m;
+    }
+    MIP_CACHE.set(data, levels);
+    return levels;
+}
+
+const quintic = (t) => t * t * t * (t * (t * 6 - 15) + 10);
+
+/**
+ * The noise at a whole mip `level` with the texel's weights eased, as the shader reads it
+ * (starlight-tsl.js noiseSmooth). 0..1.
+ */
+export function sampleNoiseSmooth(data, u, v, channel, level = 0) {
+    const size = NOISE_SIZE >> level;
+    const map = noiseLevels(data)[level];
+    const fx = (u - Math.floor(u)) * size + 0.5;
+    const fy = (v - Math.floor(v)) * size + 0.5;
+    const ix = Math.floor(fx);
+    const iy = Math.floor(fy);
+    return sampleNoise(map, (ix + quintic(fx - ix) - 0.5) / size, (iy + quintic(fy - iy) - 0.5) / size, channel, size);
+}
+
+/** How the dust is laid over the band: the shader reads the same numbers. */
 export const DUST = Object.freeze({
-    /** The long lanes: noise tiles round the whole band, and per radian of latitude. */
+    /** The dark clouds: noise tiles round the whole band, and per radian of latitude. */
     tilesL: 6,
     tilesB: 1.6,
-    /** The filaments torn off them. */
+    /** The finer read that tears their edges. */
     fineL: 19,
     fineB: 4.6,
     warp: 0.16,
     bend: 0.3,
-    /** The lanes keep to the plane: half-width of their share, radians. */
+    /** A dark cloud's ramp in the clouds' field, and its optical depth at the core. */
+    lo: 0.47,
+    hi: 0.82,
+    patch: 2.0,
+    /** The dust keeps to the plane: half-width of its share, radians. */
     reach: 0.15,
-    /** The Great Rift: a lane along the plane's own line, widest at the core. */
-    rift: 0.3,
-    riftWidth: 0.03,
+    /** The Great Rift: a lane along the plane's own line, widest at the core. Optical depth. */
+    rift: 2.6,
+    riftWidth: 0.026,
+    /** How far it wanders off the plane's line, radians. */
+    wander: 0.05,
     /** The rift is there for about half the band's length: tiles of its on-and-off round the band. */
     riftTiles: 3,
-    lo: 0.51,
-    hi: 0.73,
+    /** Its frayed edges (Medium and up): tiles, and how far the fray pushes, in lane widths. */
+    frayL: 12,
+    frayB: 4,
+    fray: 1.4,
+    /** Threads drawn out along the band (Medium and up): tiles, and their optical depth. */
+    threadL: 3,
+    threadB: 3,
+    thread: 0.75,
 });
 
-/** The dust in front of the band at (l, b): 0 = clear, 1 = a dark lane. */
-export function dustAt(noise, l, b) {
+/**
+ * The dust's optical depth in front of the band at (l, b), as the shader builds it (starlight-sky.js),
+ * `detail` = the tier's frayed edges and threads.
+ */
+export function dustTau(noise, l, b, detail = true) {
     const u = l / TAU;
-    // The lanes are bent by the same broad field that mottles the band.
-    const bend = sampleNoise(noise, u * 5 + 0.4, b * 1.1 + 0.8, 0) - 0.5;
-    const n1 = sampleNoise(noise, u * DUST.tilesL + bend * DUST.bend, b * DUST.tilesB + 0.37 + bend * DUST.bend, 1);
-    const n2 = sampleNoise(noise, u * DUST.fineL + n1 * DUST.warp, b * DUST.fineB + 0.11, 2);
-    const line = b - 0.014 - 0.024 * Math.sin(3 * l + 1.1);
+    // The dark clouds are bent by the same broad field that mottles the band.
+    const bend = (sampleNoiseSmooth(noise, u * 5 + 0.4, b * 1.1 + 0.8, 0, 2) - 0.5) * DUST.bend;
+    const n1 = sampleNoiseSmooth(noise, u * DUST.tilesL + bend, b * DUST.tilesB + 0.37 + bend, 1, 1);
+    const n2 = sampleNoiseSmooth(noise, u * DUST.fineL + n1 * DUST.warp, b * DUST.fineB + 0.11, 2, 0);
+    const patch = n1 * 0.68 + n2 * 0.32;
+    const clump = smooth01((patch - DUST.lo) / (DUST.hi - DUST.lo));
+    let tau = clump * clump * DUST.patch;
+    const wander = sampleNoiseSmooth(noise, u * 4, 0.62, 0, 1) - 0.5;
+    let lane = b - 0.014 - 0.024 * Math.sin(3 * l + 1.1) - wander * DUST.wander;
     // …and always across the core, where it splits the bulge.
     const there = Math.max(
-        smooth01((sampleNoise(noise, u * DUST.riftTiles, 0.15, 0) - 0.4) / 0.2),
-        Math.exp(-((l / 0.45) ** 2)),
+        smooth01((sampleNoiseSmooth(noise, u * DUST.riftTiles, 0.15, 0, 1) - 0.38) / 0.24),
+        gauss(l / 0.45),
     );
-    const rift = DUST.rift * Math.exp(-((line / DUST.riftWidth) ** 2)) * there;
-    const field = n1 * 0.6 + n2 * 0.4 + rift;
-    const lane = smooth01((field - DUST.lo) / (DUST.hi - DUST.lo));
-    return lane * Math.exp(-((b / DUST.reach) ** 2));
+    const width = (n1 * 0.9 + 0.55) * DUST.riftWidth * (1 + 0.7 * gauss(l / 0.6));
+    if (detail) {
+        const fray = sampleNoiseSmooth(noise, u * DUST.frayL + n1 * 0.25, b * DUST.frayB + 0.53, 3, 1);
+        lane += (fray - 0.5) * width * DUST.fray;
+        const strand = sampleNoiseSmooth(noise, u * DUST.threadL, b * DUST.threadB + n1 * 0.35 + 0.29, 2, 2);
+        const ridge = 1 - Math.abs(strand * 2 - 1);
+        const runs = sampleNoiseSmooth(noise, u * 9 + 0.71, b * 3.2 + 0.17, 0, 1);
+        const near = smooth01((patch + there * 0.18 - 0.3) / 0.3) * smooth01((runs - 0.42) / 0.2);
+        tau += ridge ** 3 * near * DUST.thread;
+    }
+    tau += gauss(lane / width) * DUST.rift * there;
+    return tau * gauss(b / DUST.reach);
+}
+
+/** The dust in front of the band at (l, b): the share of its light taken, 0 = clear … 1 = a dark lane. */
+export function dustAt(noise, l, b, detail = true) {
+    return 1 - Math.exp(-dustTau(noise, l, b, detail));
 }
 
 // ── The star catalogue ───────────────────────────────────────────────────────────
@@ -395,7 +476,8 @@ export function generateCatalog(count, noise, seed = 20261011) {
         const theta = rand() * TAU;
         skyToGalactic(rho, theta, gal);
         const light = bandLight(gal[0], gal[1]);
-        const dust = dustAt(noise, gal[0], gal[1]);
+        // The broad dust only: a thread or a frayed edge thins no star a viewer could count.
+        const dust = dustAt(noise, gal[0], gal[1], false);
         const mag = magnitude();
         // Faint stars follow the band closely and vanish behind its dust; bright ones (near
         // ones) are spread over the whole sky.
@@ -448,11 +530,13 @@ export function generateCatalog(count, noise, seed = 20261011) {
  * bandPower              how strongly the Milky Way shows through this hour's air
  * starPower              the same for the stars
  * glowHeight             how high the horizon's glow reaches (radians of altitude)
+ * zodiac                 the zodiacal light: a faint leaning cone of light off the right-hand
+ *                        horizon, faint in every dark hour and the hero of its own
  */
 export const PALETTE_KEYS = Object.freeze([
     'zenith', 'mid', 'horizon', 'airglow', 'band', 'core', 'nebula', 'water', 'ridge', 'line', 'meteor',
 ]);
-export const PALETTE_SCALARS = Object.freeze(['bandPower', 'starPower', 'glowHeight']);
+export const PALETTE_SCALARS = Object.freeze(['bandPower', 'starPower', 'glowHeight', 'zodiac']);
 
 export const PALETTES = Object.freeze([
     Object.freeze({
@@ -471,6 +555,7 @@ export const PALETTES = Object.freeze([
         bandPower: 1.0,
         starPower: 1.0,
         glowHeight: 0.11,
+        zodiac: 0.18,
     }),
     Object.freeze({
         name: 'airglow',
@@ -488,6 +573,7 @@ export const PALETTES = Object.freeze([
         bandPower: 0.95,
         starPower: 1.0,
         glowHeight: 0.14,
+        zodiac: 0.12,
     }),
     Object.freeze({
         name: 'first light',
@@ -505,6 +591,7 @@ export const PALETTES = Object.freeze([
         bandPower: 0.72,
         starPower: 0.86,
         glowHeight: 0.085,
+        zodiac: 0.06,
     }),
     Object.freeze({
         name: 'afterglow',
@@ -522,6 +609,7 @@ export const PALETTES = Object.freeze([
         bandPower: 0.76,
         starPower: 0.88,
         glowHeight: 0.09,
+        zodiac: 0.3,
     }),
     Object.freeze({
         name: 'zodiacal',
@@ -539,6 +627,7 @@ export const PALETTES = Object.freeze([
         bandPower: 0.96,
         starPower: 1.0,
         glowHeight: 0.13,
+        zodiac: 1.0,
     }),
     Object.freeze({
         name: 'blue hour',
@@ -556,6 +645,7 @@ export const PALETTES = Object.freeze([
         bandPower: 0.8,
         starPower: 0.9,
         glowHeight: 0.12,
+        zodiac: 0.1,
     }),
 ]);
 
