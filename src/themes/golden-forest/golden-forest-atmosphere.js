@@ -59,11 +59,15 @@ export class GoldenForestAtmosphere {
         const density = light.noise(plane.mul(vec2(0.043, 0.15)).add(vec2(drift, 0))).g.mul(0.55)
             .add(light.noise(plane.mul(vec2(0.1, 0.4)).sub(vec2(drift.mul(1.7), 0.3))).b.mul(0.3))
             .add(light.noise(plane.mul(vec2(0.29, 0.86)).add(vec2(drift.mul(2.6), 0.1))).a.mul(0.15));
+        // Bars crowd the low sky and open up overhead, where the dusk blue shows between them.
         const cover = smoothstep(0.54, 0.66, density).mul(smoothstep(0.015, 0.16, direction.y))
-            .mul(smoothstep(0.95, 0.5, direction.y).mul(0.7).add(0.3));
-        // Their thin edges catch the sun from below and burn; their bodies stay ember-brown.
+            .mul(smoothstep(0.62, 0.18, direction.y).mul(0.75).add(0.25));
+        // Their thin edges catch the sun from below and burn; their bodies are ember-brown near the
+        // sun and turn a dusky mauve away from it and higher up, where the sky is cooler.
         const edge = float(1).sub(smoothstep(0.52, 0.76, density));
-        const body = mix(vec3(0.34, 0.1, 0.04), vec3(0.82, 0.27, 0.08), toward.oneMinus().mul(0.5).add(0.15));
+        const warmBody = mix(vec3(0.34, 0.1, 0.04), vec3(0.82, 0.27, 0.08), toward.oneMinus().mul(0.5).add(0.15));
+        const coolBody = mix(vec3(0.3, 0.14, 0.18), vec3(0.13, 0.08, 0.15), smoothstep(0.08, 0.5, direction.y));
+        const body = mix(coolBody, warmBody, smoothstep(0.35, 0.85, toward));
         const cloud = mix(body, vec3(2.3, 1.0, 0.24), edge.mul(pow(toward, 1.6)).mul(light.uWarmth.mul(0.3).add(1)));
         const sky = mix(light.sky(direction), cloud, cover.mul(0.86));
         // The sun: a clean disc with a hot rim of glare, dimmed where a cloud bar crosses it.
