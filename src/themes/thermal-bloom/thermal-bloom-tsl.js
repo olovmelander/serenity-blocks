@@ -345,9 +345,69 @@ export function tbAerial(u, col, dist, dir) {
     const T = exp(tau.negate());
     const sunward = dot(dir, u.sunDir);
     // Lit haze: mostly the season's cool horizon haze, warmed a little by the pearl.
-    // (toward the low sun the haze glows gold: forward scattering in the morning air)
-    const inscatter = mix(u.pearl, u.haze, 0.65).add(u.sunColor.mul(tbHgMix(sunward, float(0.55)).mul(0.42)));
-    return col.mul(T).add(inscatter.mul(float(1.0).sub(T)));
+    // (toward the low sun the haze glows gold: forward scattering in the morning air; and the
+    // whole sun side of the basin is a little warmer and brighter than the far side, so the
+    // frame carries the light's direction across it)
+    const side = clamp(sunward.mul(0.5).add(0.5), 0.0, 1.0);
+    const inscatter = mix(u.pearl, u.haze, 0.65).mul(mix(float(0.9), float(1.08), side))
+        .add(u.sunColor.mul(tbHgMix(sunward, float(0.55)).mul(0.42).add(side.mul(side).mul(0.12))));
+    const hazed = col.mul(T).add(inscatter.mul(float(1.0).sub(T)));
+    return tbGroundFog(u, hazed, dist, dir);
+}
+
+/**
+ * The morning's ground fog: steam that has cooled into a low fog lying across the FAR basin (a
+ * Yellowstone morning). None of it within `start` metres (the Iris, the Stair and the mid-ground
+ * keep their colour), then banks with clear gaps between them toward the rim, cool and pale (the
+ * sun is behind the viewer: it does not glow gold); the far columns' feet and the forest's foot
+ * stand in it. An exponential layer `height` metres deep, integrated in closed form along the
+ * part of the ray beyond `start`; every surface and the backdrop take it through tbAerial.
+ */
+export const FOG = Object.freeze({
+    /** Scale height (metres) and density at the floor (per metre). */
+    height: 14,
+    density: 0.0017,
+    /** Where along the ray it begins (metres). */
+    start: 900,
+    /** Noise UV per metre for the banks, and how fast they drift (m/s). */
+    scale: 1 / 620,
+    drift: 1.6,
+});
+
+/** Optical depth of an exponential layer along a straight path from height h0 to h1. */
+function layerDepth(h0, h1, pathLength, scaleHeight, density) {
+    const a = max(h0, 0.0).div(scaleHeight).toVar();
+    const b = max(h1, 0.0).div(scaleHeight).toVar();
+    const span = b.sub(a).toVar();
+    const ea = exp(a.negate()).toVar();
+    const level = abs(span).lessThan(1e-3);
+    const mean = select(level, ea.mul(span.mul(-0.5).add(1.0)), ea.sub(exp(b.negate())).div(select(level, float(1e-3), span)));
+    return mean.mul(pathLength).mul(density);
+}
+
+export function tbGroundFog(u, col, dist, dir) {
+    const L = min(max(dist, 0.0), 30000.0).toVar();
+    const L0 = min(L, FOG.start).toVar();
+    const h0 = u.camPos.y;
+    const hStart = u.camPos.y.add(dir.y.mul(L0));
+    const h1 = u.camPos.y.add(dir.y.mul(L)).toVar();
+    // The whole ray's depth less the near part's: fog only beyond `start`.
+    let tau = max(
+        layerDepth(h0, h1, L, FOG.height, FOG.density).sub(layerDepth(h0, hStart, L0, FOG.height, FOG.density)),
+        0.0,
+    );
+    if (u.cloudTex) {
+        // Banks with clear gaps: thick in some swales, nothing over others, drifting downwind.
+        const end = u.camPos.xz.add(dir.xz.mul(L)).sub(u.windDir.mul(u.time.mul(FOG.drift)));
+        const n = texture(u.cloudTex, end.mul(FOG.scale).add(vec2(0.53, 0.19))).level(0).y;
+        const low = exp(max(h1, 0.0).div(-60.0));
+        tau = tau.mul(mix(float(1.0), smoothstep(0.4, 0.72, n).mul(2.1), low));
+    }
+    // (a colder, steamier day lays more of it)
+    const T = exp(min(tau.mul(u.steam.mul(0.3).add(0.7)), 12.0).negate());
+    // Cool, pale fog: the sky's light more than the sun's (the sun stands behind the viewer).
+    const fogLight = mix(u.pearl, u.haze, 0.55).mul(0.92).add(u.zenith.mul(0.07)).add(u.sunColor.mul(0.1));
+    return col.mul(T).add(fogLight.mul(float(1.0).sub(T)));
 }
 
 /**
@@ -463,6 +523,70 @@ export function tbPlumeShade(u, P) {
         halo.assign(max(halo, exp(hd.mul(hd).negate()).mul(isFar)));
     });
     return { shade, vent, halo };
+}
+
+/**
+ * Fair-weather cumulus drifting over the basin, out of frame above it: only their shadows show.
+ * They are the frame's lighting design (the critics' "flat, even light", answered without moving
+ * the sun the bow needs): deep, cool, large shadows that gather over the near floor and part round
+ * the Iris, so the spring and most often the Stair stand in a pool of sun against shaded ground.
+ * They drift with the wind across the floor, the Stair, the mounds and the steam alike.
+ */
+/**
+ * The direct sun on the lit surfaces (ground, Stair, mounds), raised against the shade the clouds
+ * cast: the contrast between sun and shade has to come from light as well as from shadow.
+ * (The steam keeps its own tuned brightness.)
+ */
+export const SURFACE_SUN = 1.3;
+
+export const CLOUDS = Object.freeze({
+    /** The cloud layer's base above the basin (metres): a shadow lies down-sun of its cloud. */
+    base: 1500,
+    /** How fast the field drifts downwind (m/s). */
+    speed: 6,
+    /** Noise UV per metre of the cloud layer (two reads at unrelated scales): large clouds. */
+    scale: 1 / 1700,
+    /** How much of the sun a cloud takes: about a stop and a half of the direct light. */
+    depth: 0.78,
+    /** The pool of sun round the Iris and round the Stair (metres), and how firmly each holds. */
+    irisPool: 175,
+    irisHold: 0.92,
+    stairPool: 150,
+    stairHold: 0.55,
+    /** Within this reach of the eye the clouds gather (the near floor sits in shade more often). */
+    near: 420,
+    /** Between these distances from the eye the shadows fade into the haze (metres). */
+    fadeFrom: 800,
+    fadeTo: 2000,
+});
+
+/**
+ * The share of the sun that reaches world point `P` past the cumulus (1 in full sun, 0.3 under a
+ * cloud). Where the sun's ray from `P` crosses the cloud layer, two drifting noise reads decide
+ * whether a cloud stands there; the field is thinned over the Iris and the Stair and thickened
+ * over the near floor. Explicit mip level: callers sit inside branches and loops.
+ */
+export function tbCloudShade(u, P) {
+    if (!u.cloudTex) return float(1.0);
+    const run = u.sunDir.xz.div(max(u.sunDir.y, 0.12));
+    const at = P.xz.add(run.mul(float(CLOUDS.base).sub(P.y)));
+    const q = at.sub(u.windDir.mul(u.time.mul(CLOUDS.speed)));
+    const a = texture(u.cloudTex, q.mul(CLOUDS.scale)).level(0);
+    const b = texture(u.cloudTex, q.mul(CLOUDS.scale * 2.7).add(vec2(0.37, 0.61))).level(0);
+    const nearEye = float(1.0).sub(smoothstep(CLOUDS.near * 0.3, CLOUDS.near, length(P.xz.sub(u.camPos.xz))));
+    const n = a.x.mul(0.72).add(b.y.mul(0.28)).add(nearEye.mul(0.025));
+    // Seen from a high eye (the upright phone looks down across the pale apron from 220 m) the
+    // shadows are softer and shallower: there they would only add dark blotches to the flats.
+    const high = smoothstep(70.0, 180.0, u.camPos.y).toVar();
+    const cover = smoothstep(mix(float(0.55), float(0.5), high), mix(float(0.61), float(0.66), high), n).toVar();
+    const di = length(P.xz.sub(u.irisCentre)).div(CLOUDS.irisPool);
+    const ds = length(P.xz.sub(u.chalice.xz)).div(CLOUDS.stairPool);
+    cover.mulAssign(float(1.0).sub(exp(di.mul(di).negate()).mul(CLOUDS.irisHold)));
+    cover.mulAssign(float(1.0).sub(exp(ds.mul(ds).negate()).mul(CLOUDS.stairHold)));
+    // A kilometre or two out the shadows melt into the haze (darker patches on the far flats read
+    // as standing water, not as shade).
+    cover.mulAssign(float(1.0).sub(smoothstep(CLOUDS.fadeFrom, CLOUDS.fadeTo, length(P.xz.sub(u.camPos.xz))).mul(0.85)));
+    return float(1.0).sub(cover.mul(CLOUDS.depth).mul(float(1.0).sub(high.mul(0.55))));
 }
 
 /**
