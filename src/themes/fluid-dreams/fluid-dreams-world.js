@@ -682,9 +682,12 @@ export class FluidDreamsWorld {
         // reduced motion: no lens jump, and a flash is a breath of light, not a strobe
         post.flash = choreo.flash * (this.reducedMotion ? 0.3 : 1);
         post.kick = this.reducedMotion ? 0 : choreo.kick;
-        post.bloomBoost = choreo.charge * 0.5 + choreo.surge * 0.8;
+        // The surge's share of the glare is half what it was: at 0.8 and 0.6 the bloom and the
+        // shafts out of the dream sun poured a milky veil over the half of the frame the crown
+        // stands in, and hid it.
+        post.bloomBoost = choreo.charge * 0.5 + choreo.surge * 0.4;
         post.exposure = 1 - choreo.hush * 0.2;
-        post.shafts = 0.35 + choreo.charge * 0.35 + choreo.surge * 0.6;
+        post.shafts = 0.35 + choreo.charge * 0.35 + choreo.surge * 0.3;
     }
 
     getPostState() {
