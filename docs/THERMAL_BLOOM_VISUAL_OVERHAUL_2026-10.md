@@ -88,6 +88,30 @@ WebGL2 at Low and [Minimal](thermal-bloom-captures/light-minimal-webgl2.jpg), an
 430 × 852 on Medium: no console errors. The bow is unchanged. Not measured: frame time (one more
 noise read for each sun term, two per marched body).
 
+### How the columns move (2026-10-21)
+
+The far steam columns read as static and swayed strangely in play. Two causes:
+
+- Each column leaned as one straight line from its vent, set by the wind of the moment. As the wind's
+  speed and heading wandered (1.5–4 m/s, ±20° over a minute or so) every column pivoted about its
+  foot like a metronome, and a gust's front tipped whole columns over and back within seconds.
+- Their billows climbed at 1.7 m/s, which on a column of a few hundred metres a few kilometres off
+  is no visible motion at all.
+
+Now a column is the path of the puffs that left its vent (`plumeDrift` in
+`thermal-bloom-core.js`): each height's puffs have drifted with every wind they met since they
+rose from it, so a change in the wind bends the column from the bottom up while the top lags, the
+rise slowing with height bends tall columns over, and a gust leaves a kink in the puffs it pushed
+that climbs the column with them. The world writes six points of each body's axis a frame (one wind
+run table serves every column; about 0.07 ms), and the march's axis passes through them
+(`driftAt` in `thermal-bloom-vapour.js`). Bodies that move as one (the dome, puffs, devils, spray)
+keep their straight lean (`rigidDrift`). The far columns' billows climb with their puffs (about
+5–10 m/s), and every plume's billows evolve in place: its read slides slowly through the noise volume
+along the line of sight, so lobes swell, split and merge without drifting sideways (a rolling warp
+was tried first and sheared the cauliflower lobes into ribbons).
+`tests/unit/thermal-bloom-drift.test.js` pins the behaviour, including that no point of an axis
+ever moves more than a gust's own push in a frame.
+
 ## Event language
 
 | Event | What happens |
