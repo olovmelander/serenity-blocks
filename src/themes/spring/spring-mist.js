@@ -26,6 +26,7 @@ import {
     normalize,
     positionGeometry,
     pow,
+    select,
     sin,
     smoothstep,
     texture,
@@ -182,6 +183,8 @@ export class Mist {
         // its height over the pool) is worked out once a corner, not once a pixel: the puffs
         // overlap many deep where the tongues land.
         const vLight = varying(vec3(0.0), 'spMistLight'); // forward scatter, clarity, height's lift
+        // The puff's middle over the water under it, and its card's half-height (m).
+        const vSoft = varying(vec2(0.0), 'spMistSoft');
         material.vertexNode = Fn(() => {
             const period = aBase.w;
             const t = fract(u.time.div(period).add(aLook.w));
@@ -203,6 +206,15 @@ export class Mist {
             const life = smoothstep(0.0, 0.1, t).mul(float(1.0).sub(smoothstep(0.35, 1.0, t)));
             vInfo.assign(vec4(positionGeometry.xy.mul(2.0), t, aLook.z.mul(life).mul(swell.min(1.8))));
             vCentre.assign(centre);
+            // The water under the puff: the pool's (a foot or the boil's puff stands a metre over it,
+            // a burst's falls to it), a rapids ledge's (half a metre under its puff); the flood lifts it.
+            const kind = aLook.y;
+            const water = select(kind.lessThan(1.5), aBase.y.sub(1.0), select(
+                kind.lessThan(2.5),
+                aBase.y.sub(0.5),
+                float(FALL.pool),
+            )).add(u.flood);
+            vSoft.assign(vec2(centre.y.sub(water), size.mul(0.5)));
             // Droplets: dim from the sky, bright with the sun behind them.
             const V = normalize(centre.sub(u.eye));
             const fwd = clamp(dot(V, u.sunDir), 0.0, 1.0);
@@ -223,8 +235,11 @@ export class Mist {
             const swirl = texture(tex.noise, corner.mul(0.35).add(vec2(vInfo.z.mul(0.3), vCentre.x.mul(0.013)))).r;
             const curls = texture(tex.noise, corner.mul(0.9).add(vec2(vCentre.z.mul(0.011), vInfo.z.mul(0.5)))).g;
             const shape = exp(r2.mul(-2.6)).mul(clamp(swirl.mul(1.1).add(curls.mul(0.5)).sub(0.35), 0.0, 1.2));
-            // The lower edge fades so a puff never cuts into the water.
-            const foot = smoothstep(-1.0, -0.2, corner.y);
+            // The lower edge fades, and the puff thins to nothing where it meets the water: a puff
+            // standing in the pool was cut by its surface in a hard white line (a long chain's
+            // thick cloud the brightest).
+            const over = vSoft.x.add(corner.y.mul(vSoft.y));
+            const foot = smoothstep(-1.0, -0.2, corner.y).mul(smoothstep(0.0, vSoft.y.mul(0.35).add(0.8), over));
             const alpha = clamp(shape.mul(foot).mul(vInfo.w), 0.0, 1.0);
             // Spray in the sun is white; with the sun behind it, it blazes. A cloud's low parts are
             // shaded by the spray over them, its top and its upper edge lit.
