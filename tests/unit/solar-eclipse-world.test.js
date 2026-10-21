@@ -13,7 +13,7 @@ import {
 } from '../../src/themes/solar-eclipse/solar-eclipse-world.js';
 import {
     DEG, ERUPTION_SECONDS, HOUR_SECONDS, KIND, MIRROR, MOON, PALETTES, PROMINENCES, PROMINENCE_LIFE, WORLD,
-    limbAngleFor, highestCrest, RIDGE_SPAN,
+    limbAngleFor, highestCrest, RIDGE_SPAN, umbraAzAt,
 } from '../../src/themes/solar-eclipse/solar-eclipse-core.js';
 import { STREAKS } from '../../src/themes/solar-eclipse/solar-eclipse-tsl.js';
 import { cardUnion, fallbackLayout } from '../../src/themes/solar-eclipse/solar-eclipse-composition.js';
@@ -518,6 +518,17 @@ describe('SolarEclipseWorld: the salt mirror', () => {
         expect(echo.matte).toBeLessThanOrEqual(moon.matte);
     });
 
+    it('tells the post where the water begins, and stills the reflections\' column in a chain', () => {
+        const { world, camera } = makeWorld('Low', { width: 1920, height: 1080 });
+        const { water } = world.getPostState();
+        expect(Math.abs(water.horizon - WORLD.horizonY)).toBeLessThan(0.03);
+        expect(water.stir).toBeCloseTo(1, 6);
+        world.onCombo(8);
+        step(world, camera, world.time, world.time + 5);
+        expect(world.getPostState().water.stir).toBeLessThan(0.6);
+        expect(world.getPostState().water.stir).toBeGreaterThan(0);
+    });
+
     it('forgets every ring on a seek, so a replay draws the same water', () => {
         const { world } = makeWorld();
         lock(world, 0);
@@ -525,6 +536,21 @@ describe('SolarEclipseWorld: the salt mirror', () => {
         world.seek(START + 30);
         expect(world.getState().ripples).toBe(0);
         expect(world.u.tables.ripples.every((r, i) => i % 2 !== 0 || r.w === 0)).toBe(true);
+    });
+});
+
+describe('SolarEclipseWorld: the moon\'s shadow', () => {
+    it('turns its bright side slowly with the clock, away from the sun\'s side of the frame', () => {
+        const { world, camera } = makeWorld();
+        const before = world.u.umbraAz.value;
+        expect(before).toBeCloseTo(umbraAzAt(world.time), 6);
+        step(world, camera, world.time, world.time + 30, 1 / 10);
+        const after = world.u.umbraAz.value;
+        expect(after).toBeCloseTo(umbraAzAt(world.time), 6);
+        expect(after).not.toBe(before);
+        expect(Math.abs(after - before)).toBeLessThan(0.2);
+        // The sun stands left of the card; the band burns brightest toward the right.
+        expect(world.sunAz).toBeLessThan(after);
     });
 });
 

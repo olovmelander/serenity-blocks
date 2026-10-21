@@ -4,6 +4,10 @@
  * detail       the vortex's second, finer read of the gas (frays the arms' edges)
  * warpRead     the far gas is read through a second, warping read (its lanes curl)
  * skyLayers    lattices of far stars in the sky
+ * vortexLight  the vortex is lit by the throat (one more read of the gas: each billow gets a lit face)
+ * vortexDust   a second, nearer veil of dust winds across the arms more slowly (one more read)
+ * heroStars    a few bright stars with halos and spikes
+ * richFar      the open sky as a nebula with dust lanes under a band of stars (else one soft field)
  * env          the environment target the glass refracts (width; height is half): the sky in
  *              every direction, painted each frame (`envEvery` = every n-th frame)
  * pieces       glass pieces held at once, and `ambient` how many drift there with no play
@@ -15,6 +19,10 @@ export const QUALITY = Object.freeze({
         detail: false,
         warpRead: false,
         skyLayers: 1,
+        vortexLight: false,
+        vortexDust: false,
+        heroStars: false,
+        richFar: false,
         env: 256,
         envEvery: 2,
         pieces: 12,
@@ -27,6 +35,10 @@ export const QUALITY = Object.freeze({
         detail: false,
         warpRead: false,
         skyLayers: 2,
+        vortexLight: false,
+        vortexDust: false,
+        heroStars: false,
+        richFar: false,
         env: 384,
         envEvery: 2,
         pieces: 16,
@@ -39,6 +51,10 @@ export const QUALITY = Object.freeze({
         detail: true,
         warpRead: false,
         skyLayers: 2,
+        vortexLight: true,
+        vortexDust: false,
+        heroStars: true,
+        richFar: true,
         env: 512,
         envEvery: 1,
         pieces: 20,
@@ -51,6 +67,10 @@ export const QUALITY = Object.freeze({
         detail: true,
         warpRead: true,
         skyLayers: 3,
+        vortexLight: true,
+        vortexDust: true,
+        heroStars: true,
+        richFar: true,
         env: 768,
         envEvery: 1,
         pieces: 24,
@@ -63,6 +83,10 @@ export const QUALITY = Object.freeze({
         detail: true,
         warpRead: true,
         skyLayers: 3,
+        vortexLight: true,
+        vortexDust: true,
+        heroStars: true,
+        richFar: true,
         env: 1024,
         envEvery: 1,
         pieces: 24,
@@ -75,6 +99,10 @@ export const QUALITY = Object.freeze({
         detail: true,
         warpRead: true,
         skyLayers: 3,
+        vortexLight: true,
+        vortexDust: true,
+        heroStars: true,
+        richFar: true,
         env: 1024,
         envEvery: 1,
         pieces: 24,
