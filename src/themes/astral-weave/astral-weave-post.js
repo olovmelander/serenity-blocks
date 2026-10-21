@@ -59,6 +59,8 @@ export const POST_LOOK = Object.freeze({
 export const BLOOM_THRESHOLD = 0.82;
 export const BLOOM_KNEE = 0.5;
 export const BLOOM_RADIUS = 0.42;
+/** How much more of the bloom the gas scatters than empty space (gas density 1 → 1 + this). */
+export const GAS_SCATTER = 0.85;
 
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
@@ -164,7 +166,10 @@ export class AstralWeavePost {
             calm.mulAssign(this.uCalmStrength);
 
             // ── Impact fringe: split the channels radially from the heart, only while it rings ──
-            const S = vec3(sceneColor.sample(st).rgb).toVar();
+            const S0 = sceneColor.sample(st).toVar();
+            const S = vec3(S0.rgb).toVar();
+            // The sky wrote its gas density into alpha (every other part adds with alpha 0).
+            const gas = clamp(S0.a, 0.0, 1.0);
             const fromHeart = st.sub(this.uHeart);
             const fringe = this.uKick.mul(0.007).mul(float(1.0).sub(calm));
             If(fringe.greaterThan(1e-5), () => {
@@ -187,6 +192,9 @@ export class AstralWeavePost {
                 const bt = this.bloomNode.getTextureNode();
                 B = vec3(bt.sample(st).rgb).mul(float(1.0).add(this.uBloomBoost.mul(0.5)))
                     .mul(float(1.0).sub(calm.mul(0.86)));
+                // The weave's light scatters in the gas: the bloom is a glow in empty space and
+                // lights the nebula where the nebula is, so cusps, fronts and the iris light the sky.
+                B = B.mul(gas.mul(GAS_SCATTER).add(1.0));
             }
             const H = S.add(B);
 
@@ -281,7 +289,8 @@ export class AstralWeavePost {
 export function createPassThroughPipeline(renderer, scene, camera) {
     const pipeline = new THREE.RenderPipeline(renderer);
     const scenePass = pass(scene, camera, { samples: 0 });
-    pipeline.outputNode = scenePass;
+    // The sky's alpha is its gas density, not coverage: present the colour opaque.
+    pipeline.outputNode = vec4(scenePass.rgb, 1.0);
     return {
         render: () => pipeline.render(),
         update() {},
