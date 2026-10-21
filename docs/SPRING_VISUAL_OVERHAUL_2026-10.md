@@ -517,9 +517,10 @@ tests, with the new `spring-waterfall.test.js`: the splash plumes stand where th
 bow's angles, the clumps' sizes and rates, the boil's reach), typecheck and the Spring files' lint
 pass.
 
-**Cost.** The curtain's colour reads seven noise texels a pixel (it read six) and does more
+**Cost.** The curtain's colour reads six noise texels a pixel (it read eight) and does more
 arithmetic for the strands, the clumps and the glitter; the mist's fragment gains the bow's colour
-(two hue ramps; the angle is per corner) and a crisper heap; 14 % of the puffs became short-lived
-splash plumes (the cloud's feet went from 50 % to 40 % of them, so the count per tier is the same);
-the pool's colour reads three more texels inside the boil only. The face gains three texels for its
-moss and trickles. Frame rate was not measured: the GPU was shared with the owner's other work.
+(two hue ramps; the angle is per corner) and a crisper heap, with the same two texels; 14 % of the
+puffs became short-lived splash plumes (the cloud's feet went from 50 % to 40 % of them, so the
+count per tier is the same); the pool's colour reads one more texel everywhere (the froth) and three
+more inside the boil only. The face reads six texels (it read four) for its moss and trickles.
+Frame rate was not measured: the GPU was shared with the owner's other work.
