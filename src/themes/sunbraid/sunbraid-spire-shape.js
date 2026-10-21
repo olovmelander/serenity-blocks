@@ -18,6 +18,8 @@ import { noiseAt } from './sunbraid-noise.js';
 export const SPIRE_VARIANTS = 8;
 /** The surface starts this far below the foot (unit heights), so a tower never floats. */
 export const SPIRE_BURY = 0.05;
+/** How far a bed's top ledge stands out (a share of the radius). */
+export const BED_LEDGE = 0.011;
 
 /**
  * The kinds: slender towers (several tiers), buttes (broad, one or two tiers, flat-topped) and
@@ -126,10 +128,11 @@ export function spireRadius(rec, t, theta) {
     const tc = Math.max(0, t);
     const { keep } = tierAt(rec, t);
     let r = rec.base * keep * (1 - rec.taper * tc) * polygonRadius(rec, theta, tc);
-    // The beds: thin layers that each stand out a little at their top (a ledge every few metres).
+    // The beds: thin layers that each stand out a little at their top (a ledge every few metres;
+    // stronger, every tower read as a stack of pancakes).
     const bedT = tc * rec.beds + 0.6 * Math.sin(tc * 5.3 + rec.tint * 9);
     const u = bedT - Math.floor(bedT);
-    r *= 1 + 0.026 * smooth(0.0, 0.18, u) * smooth(1.0, 0.7, u) - 0.012;
+    r *= 1 + BED_LEDGE * smooth(0.0, 0.18, u) * smooth(1.0, 0.7, u) - BED_LEDGE * 0.46;
     // Irregular swelling and waisting up the column.
     r *= 1 + rec.swell * Math.sin(tc * 6.1 + rec.tint * 4.0) * Math.sin(tc * 2.7 + theta * 0.5 + rec.tint * 7.0);
     // The faces are never ruler-straight: a slow waviness, and vertical cracks cut into them.
