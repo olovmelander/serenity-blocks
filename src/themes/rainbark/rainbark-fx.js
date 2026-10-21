@@ -18,6 +18,11 @@
  *           RAIN.shade of that against the shade. A drop that would cross the card collapses.
  *           Additive (vec4(rgb, 0)).
  *
+ *   motes   seeds and pollen adrift in the air in front of the eye (MOTES), each slot one mote for
+ *           good, world-fixed and wrapped round the eye, glinting only where the canopy's light
+ *           reaches it (rbFleck at its place: the sun's patches of air that land as flecks on the
+ *           bark), in brief flashes as it tumbles, faint in the shade. Additive (vec4(rgb, 0)).
+ *
  * Every slot is drawn on every frame (a shut gap's shaft has no width), so the first frame compiles
  * the pipeline and the scene never changes after it is built. A tier with no shafts at all
  * (Minimal: its gaps' pools alone) builds no shaft draw.
@@ -40,12 +45,14 @@ import {
     exp,
     float,
     floor,
+    fract,
     max,
     min,
     mix,
     normalize,
     positionGeometry,
     screenUV,
+    sin,
     smoothstep,
     step,
     varying,
@@ -57,9 +64,12 @@ import {
     EVENT_ROWS,
     EVENT_SLOTS,
     GAP_MASK,
+    MOTES,
     RAIN,
     SHAFT_LIGHT,
+    TAU,
     rbAirTransmittance,
+    rbDrown,
     rbFleck,
     rbFxMaterial,
     rbHash21,
@@ -131,6 +141,87 @@ function createDrops(u, count) {
         return vec4(max(vLight, vec3(0.0)).mul(float(1.0).sub(x.mul(x))).mul(ends), 0.0);
     })();
     const part = rbPart('RainbarkDrops', geometry, material, DROP_ORDER);
+    part.count = count;
+    return part;
+}
+
+/** The motes draw after the drops. */
+const MOTE_ORDER = 74;
+
+/**
+ * The motes (MOTES): `count` instanced specks, closed form in the clock. Each slot is one mote for
+ * good: a depth, a place across the lens's width there and a height in its band, world-fixed and
+ * wrapped round the eye, drifting and wandering; lit per vertex by the canopy's light at its place.
+ */
+function createMotes(u, count) {
+    const geometry = new THREE.InstancedBufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute([-1, -1, 0, 1, -1, 0, -1, 1, 0, 1, 1, 0], 3));
+    geometry.setIndex([0, 1, 2, 2, 1, 3]);
+    geometry.instanceCount = count;
+    const material = rbFxMaterial('RainbarkMotes');
+    const vLight = varying(vec3(0.0), 'rbMoteLight');
+    const vAt = varying(vec2(0.0), 'rbMoteAt');
+    const M = MOTES;
+    material.positionNode = Fn(() => {
+        const i = float(instanceIndex).toVar();
+        const h1 = rbHash21(vec2(i, 3.7)).toVar();
+        const h2 = rbHash21(vec2(i, 8.3)).toVar();
+        const h3 = rbHash21(vec2(i.mul(1.7), 1.1)).toVar();
+        const h4 = rbHash21(vec2(i, 13.9)).toVar();
+        const t = u.time;
+        // Its depth (more of them near the eye), and a slow wander both ways.
+        const d = mix(float(M.near), float(M.far), h1.mul(h1)).toVar();
+        const wx = sin(t.mul(mix(float(TAU / 13), float(TAU / 7), h2)).add(h3.mul(TAU))).mul(M.wander[0]);
+        const wy = sin(t.mul(mix(float(TAU / 18), float(TAU / 9), h4)).add(h2.mul(TAU))).mul(M.wander[1]);
+        // Across: the lens's width at that depth (and a little more), wrapped round the eye.
+        const W = u.tanHalf.x.mul(d).mul(2 * M.spread).toVar();
+        const xRaw = h2.mul(W).add(t.mul(M.drift[0])).add(wx);
+        const fx = fract(xRaw.sub(u.camPos.x).div(W).add(0.5)).toVar();
+        // Up: its band about the eye at that depth, sinking; world-fixed, so the eye's own rise
+        // (a Climb) streams the motes down past it.
+        const H = d.mul(M.rise[1] - M.rise[0]).toVar();
+        const lo = u.camPos.y.add(d.mul(M.rise[0])).toVar();
+        const yRaw = h3.mul(H).sub(t.mul(M.drift[1])).add(wy);
+        const fy = fract(yRaw.sub(lo).div(H)).toVar();
+        const P = vec3(u.camPos.x.add(fx.sub(0.5).mul(W)), lo.add(fy.mul(H)), u.camPos.z.sub(d)).toVar();
+        const edges = smoothstep(0.0, M.edge, fx).mul(smoothstep(0.0, M.edge, float(1.0).sub(fx)))
+            .mul(smoothstep(0.0, M.edge, fy))
+            .mul(smoothstep(0.0, M.edge, float(1.0).sub(fy)));
+        // Out of the card's band.
+        const clip = cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(P, 1.0)).toVar();
+        const ndc = clip.xy.div(max(abs(clip.w), 1e-4));
+        const scr = vec2(ndc.x.mul(0.5).add(0.5), float(0.5).sub(ndc.y.mul(0.5)));
+        const r = u.cardRect;
+        const away = max(max(r.x.sub(scr.x), scr.x.sub(r.z)), max(r.y.sub(scr.y), scr.y.sub(r.w)));
+        const keep = smoothstep(0.0, M.card, away).mul(step(0.0, clip.w)).mul(edges).toVar();
+        // Its light: the canopy's at its place (glinting in the sun's patches, more toward the sun,
+        // in brief flashes as it tumbles), a trace of the sky's in the shade; through the air, and
+        // gone down in the vapour.
+        const fl = rbFleck(u, P, { lod: 'fixed' }).mul(u.fleckLight);
+        const toward = rbHgMix(dot(normalize(P.sub(cameraPosition)), u.sunDir), float(M.g));
+        const s = max(sin(t.mul(mix(float(M.twinkle[0]), float(M.twinkle[1]), h4)).add(h1.mul(29.0))), 0.0);
+        const s2 = s.mul(s);
+        const tumble = s2.mul(s2).mul(s2).mul(M.flash * 3).add(1 - M.flash);
+        const sun = u.sunCol.mul(fl.mul(toward.mul(M.backlit).add(1.0)).mul(tumble).mul(M.glint));
+        // (In the shade only a trace of the sky's: lit by the bright air round it, every mote would
+        // show at once, a snowfall. In a pearly zone the sun is veiled: MOTES.pearl.)
+        const light = sun.add(u.col.sky.mul(M.shade)).mul(float(1.0).sub(u.pearl.mul(M.pearl)));
+        const clear = float(1.0).sub(rbDrown(u, P.y));
+        vLight.assign(light.mul(rbAirTransmittance(u, P)).mul(clear).mul(keep));
+        vAt.assign(positionGeometry.xy);
+        // A speck `px` pixels across on a 1080-line frame, never under `least` of a buffer pixel;
+        // the quad twice that, for its soft fall.
+        const dist = length(cameraPosition.sub(P));
+        const angle = max(u.tanHalf.y.mul(2 / 1080).mul(mix(float(M.px[0]), float(M.px[1]), h4)), u.pixelAngle.mul(M.least));
+        const half = dist.mul(angle).mul(step(0.001, keep));
+        return P.add(u.camRight.mul(positionGeometry.x.mul(half))).add(u.camUp.mul(positionGeometry.y.mul(half)));
+    })();
+    material.colorNode = Fn(() => {
+        const at = clamp(vAt, -1.0, 1.0);
+        const spot = exp(dot(at, at).mul(-4.0));
+        return vec4(max(vLight, vec3(0.0)).mul(spot), 0.0);
+    })();
+    const part = rbPart('RainbarkMotes', geometry, material, MOTE_ORDER);
     part.count = count;
     return part;
 }
@@ -271,19 +362,22 @@ export function createFx(u, tier = {}) {
     const records = shaftRecords(tier.shaftsAmbient ?? AMBIENT_SHAFTS.length, tier.shaftsCombo ?? EVENT_SLOTS.gaps);
     const shafts = records.ambient + records.combo > 0 ? createShafts(u, records) : null;
     const drops = (tier.drops || 0) > 0 ? createDrops(u, tier.drops) : null;
-    if (!shafts && !drops) return null;
+    const motes = (tier.motes || 0) > 0 ? createMotes(u, tier.motes) : null;
+    if (!shafts && !drops && !motes) return null;
     const group = new THREE.Group();
     group.name = 'RainbarkFx';
     if (shafts) group.add(shafts.mesh);
     if (drops) group.add(drops.mesh);
+    if (motes) group.add(motes.mesh);
     return {
         mesh: group,
         material: null,
         geometry: null,
         shafts,
         drops,
+        motes,
         dispose() {
-            [shafts, drops].forEach((p) => {
+            [shafts, drops, motes].forEach((p) => {
                 p?.geometry.dispose();
                 p?.material.dispose();
             });
