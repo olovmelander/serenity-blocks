@@ -1417,6 +1417,9 @@ export class GamepadController {
             navigator.querySelector(`[data-navigator-step="${direction < 0 ? -1 : 1}"]:not(:disabled)`)?.click();
         }
 
+        // The charm guide: LB and RB walk the four charms.
+        document.getElementById('odyssey-charm-guide')?.stepCharm?.(direction);
+
         // Records: one tab per mode.
         const recordsModal = document.getElementById('high-scores-modal');
         if (recordsModal && recordsModal.classList.contains('visible')) {
