@@ -12,7 +12,7 @@ import {
 import * as THREE from 'three/webgpu';
 
 import NeonDuskTheme from '../../src/themes/neon-dusk/neon-dusk-theme.js';
-import { NeonDuskWorld, WORLD_QUALITY } from '../../src/themes/neon-dusk/neon-dusk-world.js';
+import { AMBIENT_SHOOT_PERIOD, NeonDuskWorld, WORLD_QUALITY } from '../../src/themes/neon-dusk/neon-dusk-world.js';
 import { POST_LOOK } from '../../src/themes/neon-dusk/neon-dusk-post.js';
 import { GRID_SPACING, RIG, SUN } from '../../src/themes/neon-dusk/neon-dusk-tsl.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
@@ -260,6 +260,39 @@ describe('neon-dusk world', () => {
         }
         expect(cells.size).toBeGreaterThanOrEqual(11);
         world.dispose();
+    });
+
+    it('sends a shooting star now and then at rest: the same one after a seek, none under reduced motion', () => {
+        const live = (world) => [world.u.shoot0.value, world.u.shoot1.value].find((s) => s.w < 1);
+        const world = new NeonDuskWorld({ scene: new THREE.Scene(), random: seeded() }).build();
+        world.setLayout(16 / 9, null, { immediate: true });
+        let fired = null;
+        for (let t = 0; t < AMBIENT_SHOOT_PERIOD * 2 && fired === null; t += 0.05) {
+            world.update({ time: t, delta: 0.05 });
+            if (live(world)) fired = t;
+        }
+        expect(fired).not.toBeNull();
+        const at = fired + 0.3;
+        world.update({ time: at, delta: 0.05 });
+        const first = live(world).toArray();
+        expect(first[3]).toBeGreaterThan(0);
+
+        // A seek straight to that moment lands on the same star.
+        world.seek(at);
+        world.update({ time: at, delta: 0 });
+        expect(live(world).toArray()).toEqual(first);
+
+        // Under reduced motion the sky stays still.
+        const calm = new NeonDuskWorld({ scene: new THREE.Scene(), random: seeded() }).build();
+        calm.setLayout(16 / 9, null, { immediate: true });
+        calm.motion = 0;
+        for (let t = 0; t < AMBIENT_SHOOT_PERIOD * 3; t += 0.1) {
+            calm.update({ time: t, delta: 0.1 });
+            expect(live(calm)).toBeUndefined();
+        }
+        expect(calm.u.ambient.value).toBe(0);
+        world.dispose();
+        calm.dispose();
     });
 
     it('clears every live pixel and tile on the GPU too (one full-buffer upload range)', () => {
