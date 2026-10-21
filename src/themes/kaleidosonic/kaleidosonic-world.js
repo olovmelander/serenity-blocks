@@ -49,6 +49,8 @@ const STRIKE_REACH = 1.15;
  * take of them (0.15, 0.25, 0.5, 0.7, 1.5, 1.6, 2), so the wrap never shows as a jump.
  */
 export const PHASE_WRAP = TAU * 80;
+/** The gem's turn (radians per second): at rest, more in a deep trance, and the share reduced motion keeps. */
+export const GEM_TURN = Object.freeze({ rest: 0.07, trance: 0.16, reduced: 0.3 });
 /** Flashes (four lines, a perfect clear) come at most this often (seconds). */
 const FLASH_GAP = 0.34;
 /** The eye's right, across its lane (level). */
@@ -175,6 +177,8 @@ export class KaleidosonicWorld {
         this.kick = { x: 0, v: 0 };
         /** The kaleidoscope's slow turn during a deep chain (radians; unwinds when it breaks). */
         this.turn = 0;
+        /** The gem's turn about the vertical (radians): its facets' beams sweep the halls. */
+        this.gemTurn = 0;
         this.lastEventAt = time;
         this.strikeCursor = 0;
         this.harmonicCursor = 0;
@@ -792,6 +796,18 @@ export class KaleidosonicWorld {
         const surge = this.diveProgress * (1 - this.diveProgress) * 1.6;
         u.state.value.set(this.trance, Math.min(1.6, this.resonance + surge), this.mandala, this.flash);
         u.air.value.set(lerp(0.34, 0.26, this.trance), 1, 0, 0);
+        // the light map is marched from the core's resting place: the dive carries the core off it,
+        // so the core's own shadows let go while it flies and hold again as it lands
+        u.light.value.y = 1 - Math.sin(Math.PI * this.diveProgress);
+        // the gem turns (its facets sweep the beams through the halls), faster in a trance,
+        // slowly under reduced motion
+        const gemRate = GEM_TURN.rest + GEM_TURN.trance * this.trance;
+        this.gemTurn = (this.gemTurn + dt * gemRate * (this.reducedMotion ? GEM_TURN.reduced : 1)) % TAU;
+        u.gem.value.set(Math.cos(this.gemTurn), Math.sin(this.gemTurn), 0, 0);
+        // a clear's resonance makes the beams blaze; a lock's strike does not (its light stays where it
+        // struck). The twelve-sector kaleidoscope mirrors twelve cores' beams round the frame: the air
+        // takes a share less while it is open, so dark stays between the rays.
+        u.light.value.z = (1 + Math.min(1.6, this.resonance + surge) * 0.55) * (1 - 0.3 * this.folds[2]);
 
         // the moods
         const place = this.moodPlace();
@@ -939,6 +955,7 @@ export class KaleidosonicWorld {
             sinkTarget: this.sinkTarget,
             sink: this.sink,
             drone: this.drone,
+            gemTurn: this.gemTurn,
             // a perfect clear's mandala still holding, as its age (none once it has let go)
             mandalaAge: this.time - this.mandalaAt < TIMING.mandalaHold + TIMING.mandalaRelease
                 ? this.time - this.mandalaAt : null,
@@ -960,6 +977,11 @@ export class KaleidosonicWorld {
         this.sinkTarget = state.sinkTarget === 1 ? 1 : 0;
         if (Number.isFinite(state.sink)) this.sink = clamp01(state.sink);
         if (Number.isFinite(state.drone)) this.drone = clamp01(state.drone);
+        // the beams carry on from where they had turned to
+        if (Number.isFinite(state.gemTurn)) {
+            const turn = state.gemTurn % TAU;
+            this.gemTurn = turn < 0 ? turn + TAU : turn;
+        }
         // a mandala still holding goes on from the age it had
         if (Number.isFinite(state.mandalaAge)) this.mandalaAt = this.time - state.mandalaAge;
     }

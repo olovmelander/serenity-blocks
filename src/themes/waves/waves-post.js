@@ -107,12 +107,15 @@ export class WavesPost {
      * @param {object} params
      * @param {object} params.look        POST_LOOK entry
      * @param {boolean} [params.falseColor=false]
+     * @param {number} [params.samples=0]  scene-pass MSAA (sceneSamples(); 0 keeps the look's FXAA)
      */
     constructor(renderer, scene, camera, params = {}) {
         const look = params.look || POST_LOOK.High;
         this.look = look;
         this.pipeline = new THREE.RenderPipeline(renderer);
-        this.scenePass = pass(scene, camera, { samples: 0 });
+        /** The scene pass's samples (4× MSAA from High up, shared/scene-antialias.js); FXAA only without. */
+        this.samples = Math.max(0, Math.round(params.samples ?? 0));
+        this.scenePass = pass(scene, camera, { samples: this.samples });
         const sceneColor = this.scenePass.getTextureNode('output');
 
         this.uAspect = uniform(16 / 9);
@@ -248,7 +251,7 @@ export class WavesPost {
         });
 
         this.pipeline.outputColorTransform = false;
-        this.pipeline.outputNode = look.fxaa && !falseColor ? fxaa(outputFn()) : outputFn();
+        this.pipeline.outputNode = look.fxaa && !falseColor && this.samples === 0 ? fxaa(outputFn()) : outputFn();
         this.pipeline.needsUpdate = true;
     }
 

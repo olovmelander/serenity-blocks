@@ -5,7 +5,8 @@
  * behind them, so they are figures against the light: its light on the pillows turned to it,
  * a rim where the snow is thin enough to let it through, the sky's blue in the hollows, the
  * twilight's rose on the side turned to the horizon, and the dark of the boughs under each
- * pillow. They take the fires' colour from above as the chain grows, sparkle where they mirror
+ * pillow (spruce green with rime on it and the sky's blue in its shade, showing in tongues and
+ * clumps rather than one even band). They take the fires' colour from above as the chain grows, sparkle where they mirror
  * the moon, and flash as a ring of powder passes their foot.
  */
 
@@ -30,7 +31,7 @@ import {
     vec3,
 } from 'three/tsl';
 import {
-    wAir, wPow4, wRingLight, wSolidMaterial,
+    LOOK, wAir, wPow4, wRingLight, wSolidMaterial,
 } from './winter-tsl.js';
 import { ghostMesh } from './winter-ghosts.js';
 import { snowGlint } from './winter-ground.js';
@@ -53,7 +54,10 @@ function ghostMaterial(u, { glints }) {
         const V = toEye.div(max(length(toEye), 1e-3)).toVar();
         const shade = clamp(vShade, 0.0, 1.0);
         const open = shade.x;
-        const needles = smoothstep(0.3, 0.62, shade.y);
+        // Where the needles show under a pillow, broken up: the snow hangs in tongues and clumps
+        // over the boughs' edge, so it is never one even band.
+        const breakup = u.noise(vec2(P.x.mul(2.1).add(P.z.mul(1.3)), P.y.mul(3.4).add(P.z.mul(0.7)))).r;
+        const needles = smoothstep(0.3, 0.62, shade.y.add(breakup.sub(0.5).mul(LOOK.treeNeedleBreak)));
         const thin = shade.z;
 
         // Rime is rough: the pillows' skin, from the noise's own slope.
@@ -78,11 +82,15 @@ function ghostMaterial(u, { glints }) {
         const fireLight = mix(u.fire, u.crown, 0.2).mul(burning.mul(0.05)).mul(max(N.y, 0.0).add(0.15)).mul(u.breath);
         const snow = vec3(0.9, 0.93, 1.0).mul(moonLit.add(through).add(rim).add(skyFill.add(rose).add(fireLight).mul(cavity)));
 
-        // The boughs: nearly black, a little of the sky's light, snow dust where they face up.
+        // The boughs: deep spruce green, the sky's blue light in their shade, rime on the needles,
+        // snow dust where they face up.
         const bough = vec3(0.012, 0.03, 0.028).add(u.shade.mul(0.07)).add(u.moonCol.mul(max(ndl, 0.0)).mul(0.03))
+            .add(skyFill.mul(LOOK.treeBoughSky))
             .mul(open.mul(0.6).add(0.4));
+        const rimeSpeck = smoothstep(0.52, 0.72, u.noise(vec2(P.x.mul(7.0).add(P.z.mul(5.0)), P.y.mul(8.0))).a);
+        const rimed = mix(bough, snow.mul(0.55), rimeSpeck.mul(LOOK.treeRime));
         const dusted = needles.mul(float(1.0).sub(smoothstep(0.25, 0.85, N.y).mul(0.75)));
-        const col = mix(snow, bough, dusted).toVar();
+        const col = mix(snow, rimed, dusted).toVar();
 
         // A ring of powder passing the foot lights the tree, most on its edges.
         const ringNow = wRingLight(u, P);
