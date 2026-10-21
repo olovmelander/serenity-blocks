@@ -17,7 +17,6 @@ import {
     Fn,
     abs,
     clamp,
-    exp,
     float,
     floor,
     length,
@@ -98,14 +97,18 @@ const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
 });
 
 /**
- * Filmic: identity below the knee, a hue-preserving exponential shoulder above it, and a path to
- * white only for the hottest values (the sun's disc, a flash), so sunlit gold stays gold.
+ * Filmic: identity below the knee, a hue-preserving shoulder above it, and a path to white only for
+ * the hottest values (the suns' discs, a flash). The shoulder is rational (z / (1 + z)): the same
+ * slope at the knee as an exponential, but it spreads 1–4 over the top of the range instead of
+ * reaching white by 1.6, so the lit floor and the bright mist keep their colour and their texture.
  */
+export const FILMIC_KNEE = 0.6;
 const sbFilmic = /* @__PURE__ */ Fn(([cIn]) => {
     const c = max(cIn, vec3(0.0));
     const peak = max(max(c.x, max(c.y, c.z)), 1e-5);
-    const k = float(0.6);
-    const shoulder = k.add(float(1.0).sub(k).mul(float(1.0).sub(exp(peak.sub(k).div(float(1.0).sub(k)).negate()))));
+    const k = float(FILMIC_KNEE);
+    const z = peak.sub(k).div(float(1.0).sub(k)).max(0.0);
+    const shoulder = k.add(float(1.0).sub(k).mul(z.div(z.add(1.0))));
     const mapped = select(peak.greaterThan(k), shoulder, peak);
     const toned = c.mul(mapped.div(peak));
     const w = smoothstep(2.4, 9.0, peak).mul(0.9);

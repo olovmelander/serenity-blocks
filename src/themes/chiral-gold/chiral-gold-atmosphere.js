@@ -15,7 +15,9 @@ import {
     Fn,
     abs,
     attribute,
+    clamp,
     cos,
+    cross,
     dot,
     exp,
     float,
@@ -24,14 +26,13 @@ import {
     max,
     min,
     mix,
-    normalView,
     normalize,
     positionGeometry,
-    positionViewDirection,
     positionWorld,
     pow,
     sin,
     smoothstep,
+    sqrt,
     uv,
     varying,
     vec2,
@@ -40,7 +41,6 @@ import {
     cameraPosition,
 } from 'three/tsl';
 import {
-    HELIX,
     STAGE,
     cgClip,
     cgFxMaterial,
@@ -61,15 +61,21 @@ export function hallSky(u, dir) {
     const back = float(1.0).sub(smoothstep(-0.5, 0.1, dir.z.div(flat)));
     const low = exp(abs(up).mul(-7.5));
     const haze = low.mul(back.mul(0.75).add(0.25));
-    const poolL = exp(side.add(0.38).mul(side.add(0.38)).mul(-26.0));
-    const poolR = exp(side.sub(0.38).mul(side.sub(0.38)).mul(-26.0));
-    const rise = exp(max(up, 0.0).mul(-2.6));
+    // The pools are kept narrow and low: wide and bright, they washed a third of the frame brown
+    // and the gold had no dark to stand against.
+    const poolL = exp(side.add(0.38).mul(side.add(0.38)).mul(-55.0));
+    const poolR = exp(side.sub(0.38).mul(side.sub(0.38)).mul(-55.0));
+    const rise = exp(max(up, 0.0).mul(-3.4));
     const pools = poolL.mul(u.flare.x.mul(0.6).add(1.0)).add(poolR.mul(u.flare.y.mul(0.6).add(1.0)))
         .mul(rise).mul(back);
-    const warm = u.heat.mul(0.5).add(1.0);
-    return vec3(0.0011, 0.0009, 0.0008)
-        .add(u.glow.mul(haze).mul(0.011).mul(warm))
-        .add(u.glow.mul(vec3(1.0, 0.72, 0.5)).mul(pools).mul(0.02).mul(warm))
+    const warm = u.heat.mul(0.6).add(1.0);
+    // A thin line of warm light along the far waterline: the floor reads as a plane going back
+    // into the dark (the water mirrors it, so it is one line, not a seam).
+    const line = exp(abs(up).mul(-48.0)).mul(back);
+    return vec3(0.0006, 0.0005, 0.0005)
+        .add(u.glow.mul(haze).mul(0.0065).mul(warm))
+        .add(u.glow.mul(vec3(1.0, 0.8, 0.6)).mul(line).mul(0.007).mul(warm))
+        .add(u.glow.mul(vec3(1.0, 0.72, 0.5)).mul(pools).mul(0.0085).mul(warm))
         .mul(u.emit.mul(0.8).add(0.2));
 }
 
@@ -83,55 +89,120 @@ export function createBackdrop(u) {
     return cgPart('ChiralGoldBackdrop', geometry, material, -30, true);
 }
 
-/** One cone of lit air over each tower. */
+/**
+ * The beams: a lamp high above each outer corner of the hall throws a beam down onto the foot of
+ * its tower, the left one the mirror of the right. They follow the towers as the layout moves them.
+ * Lamp and foot are in tower units: x out from the tower's axis (times its scale), y, z.
+ */
+export const BEAM = Object.freeze({
+    lamp: Object.freeze([7.5, 20, -2.5]),
+    /** Below the water: the opaque surface cuts the beam where it lands, as a floor does. */
+    foot: Object.freeze([0, -2.2, 0.7]),
+    /** Radius at the lamp and at the foot (metres, times the tower's scale). */
+    rLamp: 0.55,
+    rFoot: 3.1,
+});
+
+/**
+ * A side's beam (−1 left, +1 right), built from the shared uniforms so every part that reads it
+ * agrees: its foot, length, axis and a frame across it.
+ */
+export function beamFrame(u, side) {
+    const sd = float(side);
+    const foot = vec3(sd.mul(u.helixX.add(u.helixScale.mul(BEAM.foot[0]))), BEAM.foot[1], BEAM.foot[2]);
+    const lamp = vec3(sd.mul(u.helixX.add(u.helixScale.mul(BEAM.lamp[0]))), BEAM.lamp[1], BEAM.lamp[2]);
+    const span = lamp.sub(foot);
+    const len = length(span);
+    const axis = span.div(len);
+    const across = normalize(cross(axis, vec3(0.0, 0.0, 1.0)));
+    const depth = cross(axis, across);
+    return {
+        foot, len, axis, across, depth,
+    };
+}
+
+/** The beam's radius at `h` along it (0 foot, 1 lamp). */
+export const beamRadius = (u, h) => mix(float(BEAM.rFoot), float(BEAM.rLamp), h).mul(u.helixScale);
+
+/**
+ * Seen through haze a beam is brightest where the eye's path through it is longest, so each
+ * pixel's light is worked out from the line it looks along: how close that line passes the beam's
+ * axis against the beam's radius there gives the chord through it (even across the body, falling
+ * away only at the very edge, as a real beam does), and where along the axis it passes gives how
+ * near the lamp. Dust hangs in it in threads along its length, drifting down. The cone mesh only
+ * covers the beam; its far faces are drawn (one fragment a pixel) and the light is computed.
+ */
 export function createShafts(u) {
-    const height = HELIX.top + 3;
-    const cone = new THREE.CylinderGeometry(0.9, 3.4, height, 28, 1, true);
-    cone.translate(0, height / 2 - 0.2, 0);
+    const unit = new THREE.CylinderGeometry(1, 1, 1, 40, 1, true);
     const geometry = new THREE.InstancedBufferGeometry();
-    geometry.setIndex(cone.getIndex());
-    geometry.setAttribute('position', cone.getAttribute('position'));
-    geometry.setAttribute('normal', cone.getAttribute('normal'));
-    geometry.setAttribute('uv', cone.getAttribute('uv'));
+    geometry.setIndex(unit.getIndex());
+    geometry.setAttribute('position', unit.getAttribute('position'));
+    geometry.setAttribute('normal', unit.getAttribute('normal'));
+    geometry.setAttribute('uv', unit.getAttribute('uv'));
     geometry.setAttribute('aSide', new THREE.InstancedBufferAttribute(new Float32Array([-1, 1]), 1));
     geometry.instanceCount = 2;
 
     const side = attribute('aSide', 'float');
     const material = new THREE.MeshBasicNodeMaterial({
-        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+        transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.BackSide,
     });
     material.name = 'ChiralGoldShafts';
     material.fog = false;
-    material.positionNode = vec3(
-        positionGeometry.x.mul(u.helixScale).add(u.helixX.mul(side)),
-        positionGeometry.y,
-        positionGeometry.z.mul(u.helixScale),
-    );
+    const frame = (sd) => beamFrame(u, sd);
+    const radiusAt = (h) => beamRadius(u, h);
+    material.positionNode = Fn(() => {
+        const f = frame(side);
+        const h = positionGeometry.y.add(0.5);
+        const r = radiusAt(h).mul(1.08);
+        return f.foot.add(f.axis.mul(h.mul(f.len)))
+            .add(f.across.mul(positionGeometry.x.mul(r)))
+            .add(f.depth.mul(positionGeometry.z.mul(r)));
+    })();
     const vSide = varying(side, 'cgShaftSide');
     material.colorNode = Fn(() => {
-        const st = uv();
-        // Seen through its thickness: bright where the eye passes through the middle of the cone.
-        const through = pow(abs(dot(normalView, positionViewDirection)), 2.2);
-        const streaks = u.noise(vec2(st.x.mul(2.0).add(vSide.mul(0.37)), st.y.mul(0.16).sub(u.time.mul(0.008)))).r;
-        const drift = u.noise(vec2(st.x.mul(0.7).add(u.time.mul(0.004)), st.y.mul(0.4).add(u.time.mul(0.012)))).g;
-        const fall = smoothstep(0.0, 0.12, st.y).mul(float(1.0).sub(smoothstep(0.55, 1.0, st.y)).mul(0.75).add(0.25));
+        const f = frame(vSide);
+        const C = cameraPosition;
+        const D = normalize(positionWorld.sub(C));
+        // Closest approach of the eye's line to the beam's axis.
+        const w = C.sub(f.foot);
+        const b = dot(D, f.axis);
+        const dD = dot(D, w);
+        const e = dot(f.axis, w);
+        const denom = max(float(1.0).sub(b.mul(b)), 1e-4);
+        const sRay = b.mul(e).sub(dD).div(denom);
+        const tAxis = clamp(e.sub(b.mul(dD)).div(denom), 0.0, f.len);
+        const gap = C.add(D.mul(sRay)).sub(f.foot.add(f.axis.mul(tAxis)));
+        const h = tAxis.div(f.len);
+        const R = radiusAt(h);
+        const x = dot(gap, f.across).div(R);
+        const q = clamp(length(gap).div(R), 0.0, 1.0);
+        const chord = sqrt(float(1.0).sub(q.mul(q)));
+        // Threads of dust along it, drifting down, and slow billows of haze through them.
+        const threads = u.noise(vec2(x.mul(1.9).add(vSide.mul(0.37)), h.mul(1.3).add(u.time.mul(0.008)))).r;
+        const fine = u.noise(vec2(x.mul(4.3).add(vSide.mul(0.71)), h.mul(2.6).add(u.time.mul(0.013)))).b;
+        // (Kept faint: strong, they drew the beam as a curtain of rain.)
+        const lines = smoothstep(0.3, 0.85, threads).mul(0.32).add(smoothstep(0.5, 0.9, fine).mul(0.14));
+        const haze = u.noise(vec2(x.mul(0.6).add(u.time.mul(0.004)), h.mul(3.0).add(u.time.mul(0.017)))).g;
+        // Brighter toward the lamp.
+        const along = mix(float(0.35), float(1.0), h);
         const flare = mix(u.flare.x, u.flare.y, smoothstep(-0.5, 0.5, vSide));
-        const power = u.heat.mul(0.35).add(0.55).add(flare.mul(0.35));
-        return u.glow.mul(vec3(1.0, 0.9, 0.74)).mul(through).mul(streaks.mul(0.9).add(0.25))
-            .mul(drift.mul(0.7).add(0.5))
-            .mul(fall)
+        const power = u.heat.mul(0.45).add(0.5).add(flare.mul(0.45));
+        const tint = mix(u.glow, vec3(1.0, 0.9, 0.76), 0.55);
+        return tint.mul(chord.pow(0.85)).mul(lines.add(0.5))
+            .mul(haze.mul(0.9).add(0.35))
+            .mul(along)
             .mul(power)
-            .mul(0.03)
+            .mul(0.045)
             .mul(u.emit);
     })();
     const part = cgPart('ChiralGoldShafts', geometry, material, 24, false);
-    part.dispose = () => cone.dispose();
+    part.dispose = () => unit.dispose();
     return part;
 }
 
 /** The volume the motes hang in (metres): |x| < spanX, 0 < y < spanY, zNear > z > zFar. */
 export const MOTES = Object.freeze({
-    spanX: 15, spanY: 11, zNear: 12.5, zFar: -12,
+    spanX: 15, spanY: 11, zNear: 10, zFar: -12,
 });
 
 /**
@@ -165,7 +236,7 @@ export function createMotes(u, count) {
     // The lens is focused on the towers: away from that plane a mote opens into a disc.
     const blur = min(
         abs(clip.w.sub(STAGE.camera.z)).div(max(clip.w, 0.8)).mul(u.viewport.y.mul(0.0105)),
-        u.viewport.y.mul(0.034),
+        u.viewport.y.mul(0.024),
     );
     const radius = max(sharp, 0.9).add(blur);
     const spread = sharp.mul(sharp).div(radius.mul(radius)).mul(1.0).add(0.015);
