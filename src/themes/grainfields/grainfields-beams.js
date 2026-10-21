@@ -27,9 +27,7 @@ import {
     normalize,
     positionGeometry,
     positionWorld,
-    texture,
     varying,
-    vec2,
     vec3,
     vec4,
 } from 'three/tsl';
@@ -91,19 +89,22 @@ export function createBeams(u, t, reactions) {
         const heart = exp(d.mul(d).div(r.mul(r)).mul(-2.2));
         const chord = clamp(float(1.0).sub(d.div(r).mul(d.div(r))), 0.0, 1.0).sqrt().mul(r).div(nn)
             .min(r.mul(6.0));
-        // The dust thins with height over the field; it drifts and glints.
+        // The dust thins with height over the field.
         const up = max(P.y.sub(vFoot.y), 0.0);
-        const dust = exp(up.div(-DUST_HEIGHT)).mul(0.9).add(exp(up.div(-260.0)).mul(0.07));
-        const swirl = texture(t.noise, vec2(P.x.add(P.z).mul(0.012), P.y.mul(0.006).sub(u.time.mul(0.03)))).b;
-        const glint = swirl.mul(0.3).add(0.8);
+        // (Little of it reaches far up: a column standing in the barley, not a searchlight from the
+        // sky; ten beams at once in play, each one's long upper reach summed into one pale haze.)
+        const dust = exp(up.div(-DUST_HEIGHT)).mul(0.9).add(exp(up.div(-200.0)).mul(0.03));
+        // (No glinting texture on the column: its noise cells, a few metres across, shrank to a pixel
+        // along a beam and aliased into regular bands, which the beams converging on the sun drew as
+        // rings. The motes in the beam are its glints.)
         // Light scattered toward the eye: strongest looking up the beam toward the sun.
         const mu = clamp(dot(V, A), 0.0, 1.0);
         const m2 = mu.mul(mu);
         const phase = m2.mul(m2).mul(1.3).add(m2.mul(0.4)).add(0.45);
-        const tint = mix(vec3(1.0), vLook.xyz.mul(1.3).add(0.15), 0.28);
+        // Sunlight first, the piece's pigment a breath in it (its motes carry the colour).
+        const tint = mix(vec3(1.0, 0.96, 0.88), vLook.xyz.mul(1.3).add(0.15), 0.16);
         const glow = u.sun.mul(u.sunUp).mul(tint).mul(heart).mul(chord)
             .mul(dust)
-            .mul(glint)
             .mul(phase)
             .mul(vLook.w)
             .mul(0.015);

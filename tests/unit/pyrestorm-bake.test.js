@@ -11,8 +11,8 @@ import {
     beforeAll, describe, expect, it, vi,
 } from 'vitest';
 import {
-    BILLOW, LATTICE_SIZE, LATTICE_SLICE, LAVA_FIELDS, NOISE_SIZE, bakeBillows, bakeLattice, bakeLavaFields, bakeNoise,
-    lavaFieldSteps,
+    BILLOW, CRUST, LATTICE_SIZE, LATTICE_SLICE, LAVA_FIELDS, NOISE_SIZE, bakeBillows, bakeCrust, bakeLattice,
+    bakeLavaFields, bakeNoise, lavaFieldSteps,
     buildBreakouts, buildChannels, buildFissure, buildFlankStreams, buildRivers,
 } from '../../src/themes/pyrestorm/pyrestorm-bake.js';
 import {
@@ -308,6 +308,50 @@ describe('Pyrestorm lava fields', () => {
             expect(Buffer.compare(Buffer.from(again[name].a), Buffer.from(fields[name].a)), `${name}.a`).toBe(0);
             expect(Buffer.compare(Buffer.from(again[name].b), Buffer.from(fields[name].b)), `${name}.b`).toBe(0);
         }
+    });
+});
+
+describe('Pyrestorm crust', () => {
+    it('bakes a tileable network of plates parted by cracks, the same for a seed', () => {
+        const crust = bakeCrust();
+        const N = CRUST.size;
+        expect(crust).toHaveLength(N * N * 4);
+        expect(Buffer.compare(Buffer.from(bakeCrust()), Buffer.from(crust))).toBe(0);
+        expect(Buffer.compare(Buffer.from(bakeCrust(7)), Buffer.from(crust))).not.toBe(0);
+        // Cracks (R near 0) and the middles of plates (R high) both cover a real share of the tile.
+        let cracks = 0;
+        let middles = 0;
+        for (let i = 0; i < N * N; i++) {
+            if (crust[i * 4] < 20) cracks++;
+            if (crust[i * 4] > 150) middles++;
+        }
+        expect(cracks / (N * N)).toBeGreaterThan(0.05);
+        expect(middles / (N * N)).toBeGreaterThan(0.05);
+        // The seam across the wrap is no harsher than a step inside the tile (it tiles).
+        let seam = 0;
+        let inner = 0;
+        for (let j = 0; j < N; j++) {
+            seam += Math.abs(crust[(j * N + N - 1) * 4] - crust[j * N * 4]);
+            inner += Math.abs(crust[(j * N + N / 2) * 4] - crust[(j * N + N / 2 + 1) * 4]);
+        }
+        expect(seam).toBeLessThan(inner * 2);
+    });
+
+    it('gives each plate one value, changing only across a crack', () => {
+        const crust = bakeCrust();
+        const N = CRUST.size;
+        let crossings = 0;
+        for (let j = 0; j < N; j++) {
+            for (let i = 0; i < N - 1; i++) {
+                const a = (j * N + i) * 4;
+                const b = a + 4;
+                if (crust[a + 1] === crust[b + 1]) continue;
+                crossings++;
+                // A neighbour on another plate: both texels sit on the crack between them.
+                expect(Math.min(crust[a], crust[b])).toBeLessThan(48);
+            }
+        }
+        expect(crossings).toBeGreaterThan(N * 4);
     });
 });
 
