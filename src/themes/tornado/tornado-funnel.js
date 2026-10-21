@@ -36,6 +36,7 @@ import {
     smoothstep,
     step,
     texture,
+    uv,
     varying,
     vec2,
     vec3,
@@ -56,7 +57,7 @@ function createShell({
 }) {
     const [around, upward] = tier.radial;
     let geometry;
-    if (kind === 'skirt') geometry = new THREE.PlaneGeometry(1, 1, Math.round(around * 0.75), 12);
+    if (kind === 'skirt') geometry = new THREE.PlaneGeometry(1, 1, around, 24);
     else if (kind === 'child') geometry = new THREE.PlaneGeometry(1, 1, 24, 28);
     else geometry = new THREE.PlaneGeometry(1, 1, around, upward);
     const material = new THREE.MeshBasicNodeMaterial({
@@ -80,10 +81,14 @@ function createShell({
     const lump = noiseAt(noise, vec2(a.mul(3.0).add(u.spin.mul(spinRate)), h.mul(2.0).sub(u.flow.mul(0.4)))).r.sub(0.5);
     let radius;
     if (kind === 'skirt') {
+        // The debris cloud: it bulges a little above the ground and rounds off at its top, a
+        // heap of dust rolled round the foot rather than a cone.
         const foot = funnelRadiusNode(u, float(0.0));
-        radius = foot.mul(2.2).add(34.0).add(u.fury.mul(40.0))
-            .mul(pow(g, 0.8).mul(-0.5).add(1.0))
-            .mul(lump.mul(0.7).add(1.0));
+        const bulge = sin(clamp(g.mul(0.85).add(0.18), 0.0, 1.0).mul(Math.PI)).mul(0.55).add(0.45);
+        radius = foot.mul(2.4).add(40.0).add(u.fury.mul(44.0))
+            .mul(bulge)
+            .mul(pow(g, 1.6).mul(-0.42).add(1.0))
+            .mul(lump.mul(0.8).add(1.0));
     } else if (kind === 'veil') {
         radius = funnelRadiusNode(u, h).mul(1.34).add(4.0).mul(lump.mul(0.5).add(1.0));
     } else if (kind === 'child') {
@@ -113,11 +118,23 @@ function createShell({
         const n2 = (tier.detail
             ? texture(noise, vec2(sa.mul(8.0).add(h.mul(4.0)).add(n1.mul(0.3)), h.mul(7.0).sub(u.flow.mul(1.3)))).g
             : float(0.5)).toVar();
-        const body = rim.mul(n1.mul(0.7).add(0.7)).add(n2.sub(0.5).mul(0.35)).toVar();
+        // Striations: the bands of condensation wound round the funnel, rising with it (a read
+        // stretched along the winding), and the fine wisps torn off its limbs.
+        const stRead = texture(noise, vec2(sa.mul(1.4).add(h.mul(4.0)), h.mul(8.5).sub(u.flow.mul(1.2)))).b;
+        const bands = float(1.0).sub(abs(stRead.mul(2.0).sub(1.0))).toVar();
+        const wisp = (tier.detail
+            ? texture(noise, vec2(sa.mul(14.0).add(h.mul(9.0)), h.mul(16.0).sub(u.flow.mul(2.4)))).a
+            : float(0.5)).toVar();
+        const limbTorn = rim.oneMinus().mul(rim.oneMinus());
+        const body = rim.mul(n1.mul(0.7).add(0.7)).add(n2.sub(0.5).mul(0.35))
+            .add(wisp.sub(0.5).mul(0.55).mul(limbTorn))
+            .toVar();
 
         const alpha = float(0.0).toVar();
         if (kind === 'body') {
-            alpha.assign(smoothstep(0.1, 0.46, body).mul(smoothstep(0.93, 1.0, h).oneMinus()));
+            // Between the bands the wall is thinner: the funnel reads as wound condensation.
+            alpha.assign(smoothstep(0.1, 0.46, body).mul(smoothstep(0.93, 1.0, h).oneMinus())
+                .mul(mix(float(0.8), float(1.0), smoothstep(0.2, 0.8, bands))));
         } else if (kind === 'veil') {
             const ends = smoothstep(0.9, 1.0, h).oneMinus().mul(smoothstep(0.0, 0.05, h));
             alpha.assign(smoothstep(0.36, 0.98, body).mul(0.46).mul(ends));
@@ -126,7 +143,12 @@ function createShell({
             alpha.assign(smoothstep(0.28, 0.98, body).mul(born).mul(0.6));
         } else {
             const thinning = pow(clamp(g.oneMinus(), 0.0, 1.0), 0.8);
-            alpha.assign(smoothstep(0.2, 0.8, body).mul(thinning).mul(u.fury.mul(0.3).add(0.62)));
+            // A billowing debris cloud: soft at its silhouette (no polygon outline), eaten away at
+            // its top by the billows, denser low down where it hides the foot.
+            const billowTop = smoothstep(g.mul(0.9).sub(0.05), g.mul(0.9).add(0.3), n1.add(n2.sub(0.5).mul(0.5)));
+            alpha.assign(smoothstep(0.12, 0.62, body).mul(thinning).mul(smoothstep(0.05, 0.55, rim))
+                .mul(billowTop)
+                .mul(u.fury.mul(0.25).add(0.62)));
         }
 
         // The low sun lights the side that faces it and burns through the thin limbs.
@@ -134,18 +156,27 @@ function createShell({
         const lit = smoothstep(0.3, 1.0, side).toVar();
         const through = clamp(dot(V.negate(), u.sunDir), 0.0, 1.0);
         const limb = rim.oneMinus().mul(rim.oneMinus()).mul(through.mul(through).mul(through).mul(through));
-        const col = mix(u.funnelShade, u.funnelLit, lit).mul(n1.mul(0.65).add(0.6)).toVar();
+        // Thick condensation: the side away from the sun is dark, the lit side bright, and the
+        // bands catch more light than the troughs between them.
+        const col = mix(u.funnelShade.mul(0.8), u.funnelLit, lit.mul(lit)).mul(n1.mul(0.65).add(0.6)).toVar();
         col.mulAssign(n2.mul(0.3).add(0.82));
-        col.addAssign(u.sun.mul(limb).mul(1.5));
+        col.mulAssign(mix(float(0.82), float(1.1), smoothstep(0.2, 0.8, bands)));
+        // The limb the sun stands behind glows through (a wider, stronger rim than before).
+        const limbWide = rim.oneMinus().mul(through.mul(through));
+        col.addAssign(u.sun.mul(limb.mul(1.9).add(limbWide.mul(0.35))));
         if (kind === 'skirt') {
-            col.assign(u.dust.mul(lit.mul(1.1).add(0.4)).mul(n1.mul(0.7).add(0.55)));
+            // Billowing dust: lit tops, a darker heart, the sun burning through its thin edge.
+            const billow = smoothstep(0.3, 0.75, n1.add(n2.sub(0.5).mul(0.6)));
+            col.assign(u.dust.mul(lit.mul(1.1).add(0.35)).mul(billow.mul(0.75).add(0.45))
+                .mul(g.mul(0.5).add(0.75))
+                .add(u.sun.mul(limbWide.mul(0.25))));
         } else if (kind === 'child') {
             // Thin condensation: paler than the stem, with the foot in the dust.
             col.assign(mix(col, u.funnelLit.mul(0.55).add(u.cloudMid.mul(1.6)), 0.45));
             col.assign(mix(col, u.dust.mul(lit.mul(0.9).add(0.5)), exp(g.mul(-5.0)).mul(0.6)));
         } else {
-            // Dust at the foot, cloud at the top.
-            col.assign(mix(col, u.dust.mul(lit.mul(0.9).add(0.45)), exp(h.mul(-6.0)).mul(0.75)));
+            // Dust at the foot (dragged up the lower third, darker and browner), cloud at the top.
+            col.assign(mix(col, u.dust.mul(lit.mul(0.9).add(0.4)).mul(bands.mul(0.3).add(0.8)), exp(h.mul(-4.5)).mul(0.82)));
             const crown = u.cloudMid.mul(1.25).add(u.cloudLit.mul(lit).mul(0.16));
             col.assign(mix(col, crown, smoothstep(0.7, 1.0, h).mul(0.8)));
         }
@@ -261,7 +292,7 @@ function createFront({ u, noise }) {
 }
 
 /** Boards and shingles in the air round the foot: instanced quads, flown in the vertex stage. */
-function createDebris({ u, tier }) {
+function createDebris({ u, noise, tier }) {
     const base = new THREE.PlaneGeometry(1, 1);
     const geometry = new THREE.InstancedBufferGeometry();
     geometry.index = base.index;
@@ -291,16 +322,29 @@ function createDebris({ u, tier }) {
     // A board tumbling: the quad turns in the view plane and flips edge-on.
     const roll = u.wind.mul(d.z.mul(4.0).add(3.0)).add(d.y.mul(50.0));
     const flip = abs(sin(u.wind.mul(5.0).add(d.y.mul(31.0)))).mul(0.78).add(0.22);
-    const cx = positionGeometry.x.mul(cos(roll)).sub(positionGeometry.y.mul(flip).mul(sin(roll)));
-    const cy = positionGeometry.x.mul(sin(roll)).add(positionGeometry.y.mul(flip).mul(cos(roll)));
+    // Some are long boards, the rest shards (the fragment cuts them ragged).
+    const board = step(0.62, fract(d.y.mul(17.3)));
+    const stretch = mix(float(1.0), fract(d.y.mul(5.9)).mul(2.6).add(2.2), board);
+    const lx = positionGeometry.x.mul(stretch);
+    const cx = lx.mul(cos(roll)).sub(positionGeometry.y.mul(flip).mul(sin(roll)));
+    const cy = lx.mul(sin(roll)).add(positionGeometry.y.mul(flip).mul(cos(roll)));
     // More of it in the air as the chain builds.
     const shown = step(fract(d.y.mul(91.7)), u.fury.mul(0.62).add(0.38));
     material.positionNode = centre.add(u.camRight.mul(cx).add(u.camUp.mul(cy)).mul(d.w).mul(shown));
     const fade = varying(sin(cycle.mul(Math.PI)));
     const glint = varying(pow(max(sin(u.wind.mul(6.0).add(d.y.mul(40.0))), 0.0), 6.0));
+    const seed = varying(d.y);
+    const isBoard = varying(board);
     material.colorNode = Fn(() => {
         const col = mix(vec3(0.014, 0.012, 0.012), u.funnelLit.mul(0.55), glint);
-        return vec4(mix(col, u.haze, 0.14), clamp(fade, 0.0, 1.0).mul(0.92));
+        // A ragged shard: the quad's corners and edges bitten away by noise (boards keep their
+        // straight sides and only lose a corner or two).
+        const st = uv().sub(0.5).mul(2.0);
+        const edge = max(abs(st.x), abs(st.y));
+        const bite = texture(noise, uv().mul(0.35).add(vec2(seed.mul(13.1), seed.mul(7.7)))).g;
+        const keep = edge.add(bite.sub(0.5).mul(mix(float(1.1), float(0.35), isBoard)));
+        const shape = float(1.0).sub(smoothstep(0.62, 0.78, keep));
+        return vec4(mix(col, u.haze, 0.14), clamp(fade, 0.0, 1.0).mul(0.92).mul(shape));
     })();
     const mesh = new THREE.Mesh(geometry, material);
     mesh.frustumCulled = false;
@@ -340,7 +384,7 @@ export function createFunnel({ u, noise, tier }) {
     meshes.push(front);
     meshes.forEach((m) => group.add(m));
 
-    const debris = createDebris({ u, tier });
+    const debris = createDebris({ u, noise, tier });
     const debrisGroup = new THREE.Group();
     debrisGroup.name = 'tornado-debris';
     debrisGroup.add(debris.mesh);
