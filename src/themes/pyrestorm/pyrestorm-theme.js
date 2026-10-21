@@ -29,6 +29,7 @@ import {
     PyrestormWorld, REST_RIG, fovForAspect, pyrestormBakes,
 } from './pyrestorm-world.js';
 import { POST_LOOK, PyrestormPost, createPassThroughPipeline } from './pyrestorm-post.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
 import { PLAYER_SLOTS, readLayoutRects } from './pyrestorm-composition.js';
 import { PYRESTORM_EVENT_HANDLERS, PyrestormDirector } from './pyrestorm-director.js';
 import { approach } from './pyrestorm-core.js';
@@ -373,6 +374,7 @@ export default class PyrestormTheme extends BaseTheme {
             this.post = new PyrestormPost(this.renderer, this.scene, this.camera, {
                 look,
                 falseColor: this.flags.falseColor,
+                samples: sceneSamples(this.quality, this.getAntialiasEnabled()),
             });
         } catch (error) {
             console.warn(`${LOG_PREFIX} Post stack failed; rendering pass-through:`, error);
