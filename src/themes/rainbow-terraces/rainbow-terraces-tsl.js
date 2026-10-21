@@ -673,12 +673,12 @@ export function stormWall(dir, bearing, thetaA, calm, U, tex, hazeIn = null) {
         const d = b.x.sub(el).sub(fray.mul(rRow).mul(0.16));
         // A billow's edge is vapour, not a cut-out: soft over a share of its own size (never under
         // a pixel), so the rows stack as rounded masses instead of a pile of discs.
-        const edge = max(pa, rRow.mul(0.05));
+        const edge = max(pa, rRow.mul(0.08));
         const cover = smoothstep(edge.negate(), edge, d);
         // Deeper under its own top a billow lies in the shade of the ones over it; the crown's
         // turrets stand in a little more air (they are further back).
         const occl = float(1.0).sub(smoothstep(0.0, rRow.mul(2.6), d).mul(0.4));
-        const row = mix(float(0.6), float(2.3), b.y.pow(1.6).mul(quiet)).mul(occl).add(select(i.equal(0), float(0.1), float(0.0)));
+        const row = mix(float(0.7), float(2.0), b.y.pow(1.4).mul(quiet)).mul(occl).add(select(i.equal(0), float(0.1), float(0.0)));
         tone.assign(mix(tone, row, cover));
         bodyA.assign(max(bodyA, cover));
     });
@@ -693,19 +693,32 @@ export function stormWall(dir, bearing, thetaA, calm, U, tex, hazeIn = null) {
     // lifts between them, its edge frayed into the falling rain (a few pixels of soft tear, wider
     // under the heart), so the body and its rain are one storm, not a slab with a curtain hung on.
     const sag = texture(tex.noise, vec2(bearing.mul(4.3).add(0.61), 0.27)).g.sub(0.5);
+    const swing = texture(tex.noise, vec2(bearing.mul(1.7).add(0.17), 0.61)).r.sub(0.5);
     const tear = texture(tex.noise, vec2(bearing.mul(11.0).add(0.3), el.mul(11.0).sub(U.mistClock.mul(0.0006)))).a.sub(0.5);
-    const baseU = base.add(sh.w.mul(0.2).mul(endU.mul(endU))).add(sag.mul(sh.w).mul(0.07))
-        .add(tear.mul(sh.w).mul(0.028)).sub(core.mul(sh.w).mul(0.025));
+    const pouch = sag.mul(0.12).add(swing.mul(0.1)).add(tear.mul(0.03)).sub(core.mul(0.04));
+    const baseU = base.add(sh.w.mul(0.2).mul(endU.mul(endU))).add(pouch.mul(sh.w)).toVar();
     const soft = pa.add(sh.w.mul(mix(0.018, 0.04, core)));
-    bodyA.mulAssign(smoothstep(baseU.sub(soft), baseU.add(soft), el).mul(smoothstep(reach.mul(1.12), reach, abs(u.sub(0.05))))
-        .mul(smoothstep(0.004, 0.02, sh.w)));
+    const inWall = smoothstep(reach.mul(1.12), reach, abs(u.sub(0.05))).mul(smoothstep(0.004, 0.02, sh.w)).toVar();
+    // Under the base hangs scud: ragged dark rags of the storm's own cloud, thickest just under
+    // it and under the heart, thinning as they hang lower, drifting on the storm's own wind.
+    const under = baseU.sub(el);
+    // (Broad lobes a few degrees across with soft edges: fine noise here only reads as confetti.)
+    const scudN = texture(tex.noise, vec2(bearing.mul(5.5).add(0.71), el.mul(7.0).add(U.mistClock.mul(0.0003)))).g;
+    const scudReach = sh.w.mul(mix(0.12, 0.22, core));
+    const hang = float(1.0).sub(smoothstep(0.0, scudReach, under));
+    const scud = smoothstep(0.5, 0.74, scudN.mul(0.7).add(tear.mul(0.25)).add(hang.mul(0.4)).sub(0.05))
+        .mul(smoothstep(0.0, soft, under)).mul(hang.mul(hang));
+    bodyA.assign(max(bodyA.mul(smoothstep(baseU.sub(soft), baseU.add(soft), el)), scud.mul(0.88)).mul(inWall));
     const bodyCol = slate.mul(tone).toVar();
     // Its upper body faces the sun behind us: the top third of the wall catches the light (a lit
     // crown grading down into the slate body over its own billows), so it reads as a storm cloud
     // standing in the sun, never a dark mesa. Quieter by the card and the bow, as the brows are.
-    const upper = smoothstep(0.5, 0.95, el.sub(base).div(max(height, 1e-3))).mul(quiet).mul(float(1.0).sub(flank.mul(0.5)));
-    const crownLit = cloudLight(U, tone.mul(0.42).clamp(0.0, 1.0), float(0.0), float(0.6)).mul(0.82);
-    bodyCol.assign(mix(bodyCol, crownLit, upper.mul(0.75)));
+    // (Lit down to the middle of its height: the light falls into the dark from top to bottom
+    // across the whole storm, as it does over the tower in front, never a white cloud on the left
+    // glued to a dark one on the right.)
+    const upper = smoothstep(0.34, 0.92, el.sub(base).div(max(height, 1e-3))).mul(quiet).mul(float(1.0).sub(flank.mul(0.5)));
+    const crownLit = cloudLight(U, tone.mul(0.42).clamp(0.0, 1.0), float(0.0), float(0.6)).mul(0.86);
+    bodyCol.assign(mix(bodyCol, crownLit, upper.mul(0.85)));
 
     // ── The rain: broad shafts under the base, slanting with the wind ──
     const fall = base.sub(el).toVar();
@@ -725,13 +738,15 @@ export function stormWall(dir, bearing, thetaA, calm, U, tex, hazeIn = null) {
     // Under the heart a dense dark curtain, full down to the last degree over the horizon, then
     // thinning on into the mist (the bow's leg keeps its dark ground under the base).
     const heart = smoothstep(0.3, 0.75, core).toVar();
-    dense.assign(max(dense, heart.mul(mix(float(0.3), float(1.05), smoothstep(-0.035, 0.014, el)))));
-    // Soft change down each shaft (never a comb), calmer in the curtain.
+    // (Not one block: curtains side by side, a paler gap of thinner rain between them.)
+    const curtains = smoothstep(0.3, 0.7, texture(tex.noise, vec2(lean.mul(2.6).add(0.41), 0.83)).r);
+    dense.assign(max(dense, heart.mul(mix(float(0.3), float(1.05), smoothstep(-0.035, 0.014, el))).mul(curtains.mul(0.5).add(0.5))));
+    // Soft change down each shaft (never a comb), streaked where the rain falls in sheets.
     const vary = texture(tex.noise, vec2(lean.mul(1.9), fall.mul(4.0).sub(U.mistClock.mul(0.004)))).b;
     const streak = texture(tex.noise, vec2(lean.mul(9.0), fall.mul(1.8).sub(U.mistClock.mul(0.015)))).a;
-    const grain = vary.mul(0.45).add(0.8).mul(streak.mul(0.14).add(0.93));
+    const grain = vary.mul(0.45).add(0.8).mul(streak.mul(0.3).add(0.85));
     // (It hangs from just above the base, so the body's edge never shows sky through a seam.)
-    const rainA = min(dense.mul(mix(grain, float(1.0), heart.mul(0.6))), 0.985)
+    const rainA = min(dense.mul(mix(grain, float(1.0), heart.mul(0.3))), 0.985)
         .mul(smoothstep(-0.007, -0.002, fall)).mul(smoothstep(-0.03, -0.012, el))
         .mul(smoothstep(0.1, 0.75, U.showerAmt))
         .mul(smoothstep(reach, reach.mul(0.7), abs(lean)))
