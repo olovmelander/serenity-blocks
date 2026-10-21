@@ -259,3 +259,64 @@ baked as a 512 px circle. The same file is kept at
 ![Minimal, Low on WebGL2, and the other four periods](chromatic-impasto-overhaul/tiers.webp)
 
 ![Portrait: at rest, three lines, a chain of five, four lines](chromatic-impasto-overhaul/portrait.webp)
+
+## The light pass (2026-10-21)
+
+The owner asked for better visuals, effects, atmosphere and graphics. The canvas read as an
+evenly lit photograph of plastic paint: the lamp lit every corner the same, each stroke was one
+flat tube colour, and the gold leaf of a four-line clear or a long chain came out as pale beige
+tubing. This pass makes the studio and the paint more physical.
+
+![Before and after](chromatic-impasto-overhaul/light-before-after.jpg)
+*Before (left) and after (right): at rest, four lines at 1.5 s, a chain of nine
+(`t=40&quality=High&board=1`).*
+
+![The paint and the gold leaf, close](chromatic-impasto-overhaul/light-close.jpg)
+*The same through the icon lens, close: the paint, and the gold leaf of a perfect clear.*
+
+- **A lamp, not the sun.** The lamp stands 3.9 canvas units off the canvas's centre (the frame is
+  two units tall), beyond the upper left, and its light falls off across the cloth as
+  1 / distance^1.6 (1 at the centre): the corner nearest it is lit warm and full, the far corner
+  sinks toward the room's cool fill, and the rays meet the cloth lower the further they travel,
+  so the relief rakes harder there. Only the diffuse light and the lamp's own highlight fall
+  off; the window mirrored in the wet skin is still found from the canvas's centre (a per-point
+  direction moved its reflection onto the flat paint next to the lamp, a grey veil over that
+  corner). The drops' shadows keep the centre's direction too.
+- **Broken colour.** Paint loaded from the palette is never mixed through: groups of bristles
+  carry it lighter (white worked into it) or deeper, in streaks that run along the stroke and
+  break off, each stroke mixed more or less carelessly (a knife drags its colour in broader
+  bands), and the paint pushed up into the rails reads deeper. White goes into the colours, not
+  the darks: a navy or a deep green worked lighter is the same dark lifted, not chalk.
+- **Coloured shadows.** Oil paint is a little translucent: the lamp's light scattered inside a
+  ridge leaves the shadow it throws faintly lit in the paint's own colour, deepened (albedo²),
+  instead of a grey hole.
+- **Gold leaf.** Laid in leaves (0.062 units a side) in courses offset by half a leaf, each leaf
+  pressed down at its own tilt and crinkled, its edge overlapping the next as a seam, the red
+  bole showing where the leaf has cracked. The leaves are placed in paint coordinates, so they
+  turn with the paint when a chain stirs it. Gold mirrors a warm studio: under the eye a flat
+  leaf mirrors the ceiling over the canvas, which the lamp lights from its side, so leaves tipped
+  toward the lamp shine and leaves tipped away go umber; the lamp itself is a broad lobe in the
+  crinkles. The mosaic of bright and dark leaves glitters as the lamp wanders. Only gilded
+  fragments run the leaf (`If(metal > 0.001)`): run everywhere, it cost a quarter of the frame
+  on an integrated GPU.
+- **Dust in the lamp's beam.** The camera is focused on the paint: motes low over it are fine
+  points, the few that hang near the lens are broad, faint discs with a brighter rim (the blur
+  disc is aperture × height / focus distance, capped on screen at 0.05 units so a phone frame
+  holds no coin-sized discs). Each is lit only while it is in the lamp's beam (a soft cone toward
+  the canvas's middle) and more brightly nearer the lamp, in a warmer light than the lamp's white,
+  and none drifts over the board's card. Medium and up, as before.
+
+**Cost.** GPU time per frame from timestamp queries, the original against this pass, medians
+of 120 frames: RTX 5080 Laptop at 2560 × 1600, High 0.79 → 0.85 ms and Extreme 0.98 → 0.98 ms;
+the laptop's integrated Radeon at 1600 × 900, Low 11.9 → 12.6 ms and High within noise (other
+sessions shared the GPU and moved readings by ±2 ms). In the real game at High: about 177 fps.
+
+**Verification.** Playground on WebGPU at Minimal, Low, High and Extreme, the WebGL2 backend
+(four lines), a 430 × 900 portrait frame at rest and through four lines, and the real game
+(menus, board, HUD, hard drops), consoles clean apart from Electron's own notices. A new shader
+gate, `tests/unit/chromatic-impasto-shaders.test.js` (Kaleidosonic's harness), builds every
+material the world draws, every pass of the paint canvas (both stamps, fill, dry, both bakes) and
+the post's output through the WGSL and GLSL node builders at High, Minimal and Extreme, and fails
+on a warning, a throw, a stage over 64 KB, MaterialX noise, equal smoothstep edges, a NaN literal,
+a var read before it is assigned, or a laid-out `ci_*` helper that closes over a uniform or a
+texture. All five Chromatic Impasto test files pass.
