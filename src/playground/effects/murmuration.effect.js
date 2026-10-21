@@ -19,7 +19,7 @@
  *   tune=key:value,...       override look constants for an A/B capture: count, size, exposure,
  *                            aperture, maxBlur, stretch, span, ambient, gyre, turbulence, tiltX,
  *                            tiltY, bloom, bloomRadius, bloomThreshold, postExposure, saturation,
- *                            contrast, vignette, lead
+ *                            contrast, vignette, lead, turn
  *
  * With ?t=<seconds> the simulation is replayed from its first frame in fixed steps, so a
  * capture of a given URL is the same picture every time.
@@ -180,6 +180,7 @@ export function create({
         maxBlur: tune.maxBlur ?? preset.maxBlur,
         stretch: tune.stretch ?? preset.stretch,
         paletteSpan: tune.span,
+        turn: tune.turn,
     });
     const setExposure = () => applyCrowding(fluid, look, frame.crowding);
     setExposure();

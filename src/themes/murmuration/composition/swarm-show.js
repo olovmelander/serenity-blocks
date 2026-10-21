@@ -19,7 +19,9 @@
  *   GAME OVER     a heart, held until the next run
  */
 import { IMPULSE_TYPE } from '../sim/fluid-particles.js';
-import { PALETTE_LEVEL_STEP, PALETTE_SPAN, samplePalette } from './swarm-palette.js';
+import {
+    FIRE, PALETTE_LEVEL_STEP, PALETTE_SPAN, heatWarmth, samplePalette, turnHue,
+} from './swarm-palette.js';
 import { flashScale } from '../../../utils/photosensitivity.js';
 
 /**
@@ -226,7 +228,7 @@ export class SwarmShow {
             if (hard) this.camera?.dolly(0.08);
         }
         const { fx } = this;
-        fx.chromaPunch = Math.max(fx.chromaPunch, hard ? 0.012 : 0.008);
+        fx.chromaPunch = Math.max(fx.chromaPunch, hard ? 0.0035 : 0.002);
         fx.bloomPunch = Math.max(fx.bloomPunch, hard ? 0.18 : 0.10);
         fx.vignettePunch = Math.max(fx.vignettePunch, hard ? 0.10 : 0.06);
     }
@@ -451,7 +453,11 @@ export class SwarmShow {
             // so a long chain turns the swarm gold instead of bleaching it.
             u.uExposure.value = (visual.baseExposure ?? 1) * (1 - held * 0.66) * (1 - this.heat * 0.3);
         }
+        // The board's halo and the sky are lit by the swarm, so they warm as it does — along
+        // the same turn of hue the motes take (shader: murm_turnHue).
+        const warmth = heatWarmth(this.heat, this.shapeColor);
         samplePalette(this.palettePhase + time * 0.006 + PALETTE_SPAN * 0.3, this.haloTint);
+        turnHue(this.haloTint, FIRE.amber, warmth, this.haloTint);
         if (sky?.uniforms) {
             const u = sky.uniforms;
             u.uHeat.value = this.heat;
@@ -459,10 +465,29 @@ export class SwarmShow {
             if (u.uFlash) u.uFlash.value = this.skyFlash * flashScale();
             if (u.uTintA && u.uTintB) {
                 const drift = time * 0.006;
-                const a = samplePalette(this.palettePhase + drift - PALETTE_SPAN * 0.2, this._tint);
+                const a = turnHue(
+                    samplePalette(this.palettePhase + drift - PALETTE_SPAN * 0.2, this._tint),
+                    FIRE.ember,
+                    warmth * 0.8,
+                    this._tint,
+                );
                 u.uTintA.value.setRGB(a[0] * 0.7, a[1] * 0.7, a[2] * 0.7);
-                const b = samplePalette(this.palettePhase + drift + PALETTE_SPAN * 0.75, this._tint);
+                const b = turnHue(
+                    samplePalette(this.palettePhase + drift + PALETTE_SPAN * 0.75, this._tint),
+                    FIRE.gold,
+                    warmth * 0.8,
+                    this._tint,
+                );
                 u.uTintB.value.setRGB(b[0] * 0.7, b[1] * 0.7, b[2] * 0.7);
+            }
+            if (u.uWingA && u.uWingB) {
+                // The hues the renderer gives the middle of each wing (seven units out).
+                const drift = this.palettePhase + time * 0.006;
+                const wing = PALETTE_SPAN * 0.7;
+                const a = turnHue(samplePalette(drift - wing, this._tint), FIRE.ember, warmth, this._tint);
+                u.uWingA.value.setRGB(a[0], a[1], a[2]);
+                const b = turnHue(samplePalette(drift + wing, this._tint), FIRE.gold, warmth, this._tint);
+                u.uWingB.value.setRGB(b[0], b[1], b[2]);
             }
         }
     }

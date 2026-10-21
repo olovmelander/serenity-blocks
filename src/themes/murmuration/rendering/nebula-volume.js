@@ -23,6 +23,7 @@ import * as THREE from 'three';
 import { MeshBasicNodeMaterial } from 'three/webgpu';
 import {
     Fn,
+    abs,
     cameraPosition,
     dot,
     exp,
@@ -74,6 +75,8 @@ const noise3 = /* @__PURE__ */ Fn(([pIn]) => {
 }).setLayout({ name: 'murm_noise3', type: 'float', inputs: [{ name: 'pIn', type: 'vec3' }] });
 
 const OCTAVE_TURN = mat3(0.00, 0.80, 0.60, -0.80, 0.36, -0.48, -0.60, -0.48, 0.64);
+/** The direction the nebula's band runs across the sky (unit length, folded in JS). */
+const BAND_AXIS = vec3(0.94 / Math.hypot(0.94, 0.34), 0.34 / Math.hypot(0.94, 0.34), 0.0);
 
 function makeFbm(octaves, name) {
     return Fn(([pIn]) => {
@@ -140,6 +143,9 @@ export function createNebulaSky(options = {}) {
     // The two hues the swarm is wearing now; the nebula is lit in them.
     const uTintA = uniform(new THREE.Color(0.26, 0.10, 0.72));
     const uTintB = uniform(new THREE.Color(0.02, 0.42, 0.62));
+    // The colours of the swarm's left and right wings: its light on the dust round it.
+    const uWingA = uniform(new THREE.Color(0.0, 0.7, 0.9));
+    const uWingB = uniform(new THREE.Color(0.6, 0.2, 1.0));
     // Camera offset from rest (world units): star layers shift against each other.
     const uParallax = uniform(new THREE.Vector2(0, 0));
 
@@ -173,27 +179,59 @@ export function createNebulaSky(options = {}) {
         const across = s.x.mul(0.34).sub(s.y.mul(0.94));
         const band = exp(across.mul(across).mul(-7.0)).mul(0.75).add(0.25).toVar();
         const density = smoothstep(0.42, 0.78, cloud.mul(band.mul(0.5).add(0.72))).toVar();
-        const dust = float(1.0).sub(smoothstep(0.5, 0.74, lanes).mul(0.82));
+
+        // Threads. Read from the cloud squeezed along the band, so where the field crosses
+        // its middle the crossings run on as long strands instead of closing into loops:
+        // bright ones in the gas, dark ones in the dust. (High detail only.)
+        let threads = float(0.0);
+        let darkThreads = float(0.0);
+        if (high) {
+            const strand = p.sub(BAND_AXIS.mul(dot(p, BAND_AXIS).mul(0.55))).toVar();
+            const nBright = fbmWarp(strand.mul(3.4).add(warp.mul(1.3)).add(vec3(7.0, 3.0, 11.0)));
+            const rB = float(1.0).sub(abs(nBright.mul(2.0).sub(1.0))).toVar();
+            const rB2 = rB.mul(rB);
+            const rB4 = rB2.mul(rB2).toVar();
+            threads = rB4.mul(rB4).mul(rB4).mul(smoothstep(0.1, 0.65, density)).toVar();
+            const rD = float(1.0).sub(abs(lanes.mul(2.0).sub(1.0))).toVar();
+            darkThreads = rD.mul(rD).mul(rD);
+        }
+        // Dust: extinction draws the edges, so they are soft however sharp the lanes are.
+        const tau = smoothstep(0.46, 0.76, lanes).mul(1.7).add(darkThreads.mul(0.9));
+        const dust = exp(tau.negate()).toVar();
         const wisps = smoothstep(0.55, 0.95, cloud).mul(density);
 
         const hueMix = smoothstep(0.3, 0.7, fbmWarp(p.mul(0.6).add(vec3(0.0, 21.0, 3.0))));
         const tint = mix(uTintA, uTintB, hueMix).toVar();
         const inner = float(1.0).add(uPulse.mul(1.2)).add(uFlash.mul(1.4));
-        const nebula = tint.mul(density.mul(0.11))
-            .add(mix(tint, vec3(1.0, 0.82, 0.9), 0.35).mul(wisps.mul(0.13)))
-            .mul(dust).mul(inner);
-        const warmed = mix(nebula, nebula.mul(vec3(1.55, 0.9, 0.55)), uHeat.mul(0.5));
+        // The light swells on a wide ramp, with a brighter heart where the cloud is thickest.
+        const nebula = tint.mul(density.mul(0.085).add(density.mul(density).mul(0.06)))
+            .add(mix(tint, vec3(1.0, 0.82, 0.9), 0.35).mul(wisps.mul(0.11)))
+            .add(mix(tint, vec3(0.9, 0.95, 1.0), 0.5).mul(threads.mul(0.12)))
+            .mul(dust)
+            .mul(inner);
+        // The tints already turn with the swarm's heat; this only warms the gas a touch more.
+        const warmed = mix(nebula, nebula.mul(vec3(1.4, 0.92, 0.65)), uHeat.mul(0.25));
 
-        // 3. Stars. Dust hides the faint layer.
+        // 3. Stars. Dust hides the faint layers; a dust of tiny stars thickens along the band.
         const far = starLayer(s.add(uParallax.mul(0.004)), float(96.0), float(0.5), float(0.085), uTime);
         const nearAt = s.add(uParallax.mul(0.012)).add(vec2(3.7, 1.9));
         const near = starLayer(nearAt, float(38.0), float(0.2), float(0.07), uTime);
-        const stars = far.mul(dust.mul(0.55)).mul(float(1.0).sub(density.mul(0.7))).add(near.mul(1.5)).toVar();
+        let stars = far.mul(dust.mul(0.55)).mul(float(1.0).sub(density.mul(0.7))).add(near.mul(1.5));
+        if (high) {
+            const fineAt = s.add(uParallax.mul(0.002)).add(vec2(11.3, 5.1));
+            const fine = starLayer(fineAt, float(230.0), band.mul(0.55).sub(0.1), float(0.11), uTime);
+            stars = stars.add(fine.mul(dust).mul(0.32));
+        }
 
-        // 4. The swarm's light in the dust.
-        const halo = exp(s.x.mul(s.x).mul(-2.2).sub(s.y.mul(s.y).mul(6.5)));
-        const scatterGain = float(0.012).add(uPulse.mul(0.03)).add(uFlash.mul(0.07));
-        const scatter = mix(uTintA, uTintB, 0.5).mul(halo.mul(scatterGain));
+        // 4. The swarm's light in the dust: a faint glow round the swarm, each wing in its own
+        // colour, brighter where there is gas to catch it. Play lifts it.
+        const wingTint = mix(uWingA, uWingB, smoothstep(-0.5, 0.5, s.x));
+        // Strongest over the swarm's ring, less in the hole the board stands in.
+        const ring = length(vec2(s.x.div(0.66), s.y.div(0.31))).sub(0.62).div(0.42);
+        const reach = exp(ring.mul(ring).negate());
+        const catchLight = float(0.3).add(density.mul(1.1)).add(threads.mul(1.4)).mul(dust.mul(0.6).add(0.4));
+        const scatterGain = float(0.022).add(uPulse.mul(0.04)).add(uFlash.mul(0.09));
+        const scatter = wingTint.mul(reach.mul(catchLight).mul(scatterGain));
 
         return ground.add(warmed).add(scatter).add(stars);
     })();
@@ -215,7 +253,7 @@ export function createNebulaSky(options = {}) {
     return {
         mesh,
         uniforms: {
-            uTime, uHeat, uActProgress, uPulse, uFlash, uTintA, uTintB, uParallax,
+            uTime, uHeat, uActProgress, uPulse, uFlash, uTintA, uTintB, uWingA, uWingB, uParallax,
         },
         dispose: () => {
             geometry.dispose();
