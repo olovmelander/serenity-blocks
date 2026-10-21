@@ -328,6 +328,10 @@ describe('Rainbark light: in the world', () => {
             const wanted = tier.shaftsAmbient + tier.shaftsCombo;
             // (Every tier has the drops: the Sunshower's rain; a tier without shafts builds none.)
             expect(fx.drops.count).toBe(tier.drops);
+            // (And the motes adrift in the air, drawn after the drops.)
+            expect(fx.motes.count).toBe(tier.motes);
+            expect(fx.motes.geometry.instanceCount).toBe(tier.motes);
+            expect(fx.motes.mesh.renderOrder).toBeGreaterThan(fx.drops.mesh.renderOrder);
             if (wanted === 0) {
                 expect(fx.shafts).toBeNull();
             } else {

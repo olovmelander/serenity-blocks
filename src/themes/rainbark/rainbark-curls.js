@@ -201,13 +201,19 @@ function curlMaterial(u) {
         const sz = rho.mul(cos(psiS.add(spun)));
         const spiral = vec3(sx, along, sz.sub(rho0));
         const spiralN = vec3(sin(psiS.add(spun)), 0.0, cos(psiS.add(spun)));
-        // (A ring's sheet, kind 5, peels down its band as a lip too, then eases into a curved plate
-        // once free: never a tumbling shard across the blazing ring.)
-        const isSheet = step(4.5, D.z).mul(step(D.z, 5.5));
+        // (A ring's sheet, kind 5, peels down its band as a lip too, and once free stays mostly a
+        // lip, only CURL.sheet.plate of the way eased into a curved plate (a short, wide plate rolled
+        // across its width reads as a pill); each slanted by its own hash, CURL.sheet.slant.)
+        const isSheet = step(4.5, D.z).mul(step(D.z, 5.5)).toVar();
         const free = float(1.0).sub(riding).mul(smoothstep(0.0, LOCK.settle, a));
-        const pageK = isLock.add(isSheet.mul(float(1.0).sub(free))).toVar();
-        const local = mix(mix(quill, page, pageK), spiral, dry).toVar();
-        const localN = normalize(mix(mix(quillN, pageN, pageK), spiralN, dry));
+        const pageK = isLock.add(isSheet.mul(float(1.0).sub(free.mul(CURL.sheet.plate)))).toVar();
+        // (Most of its slant while it peels down its band, the rest as it pops clear.)
+        const slant = isSheet.mul(h2.sub(0.5).mul(2 * CURL.sheet.slant)).mul(free.mul(0.4).add(0.6));
+        const cs = cos(slant).toVar();
+        const sn = sin(slant).toVar();
+        const tilt = (v) => vec3(v.x.mul(cs).sub(v.y.mul(sn)), v.x.mul(sn).add(v.y.mul(cs)), v.z);
+        const local = tilt(mix(mix(quill, page, pageK), spiral, dry)).toVar();
+        const localN = normalize(tilt(mix(mix(quillN, pageN, pageK), spiralN, dry)));
         // Its own frame on the trunk: across (T), up, out (N).
         const out = normalize(vec3(B.x, 0.0, B.y).add(vec3(1e-6, 0.0, 0.0))).toVar();
         const T = vec3(out.z.negate(), 0.0, out.x);
