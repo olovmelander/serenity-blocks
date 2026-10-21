@@ -190,6 +190,24 @@ export function inKeepClear(x, z, margin = 0) {
     return false;
 }
 
+/**
+ * How high (elevation from the rest camera, radians) a spruce's crown must start when it
+ * spreads `half` metres either side of a trunk at (x, z), so it hangs into no window: above the
+ * moon and its halo on the spirit's side (at any range: the moon is beyond them all), above the
+ * troll and his lantern on his. Null when the crown is clear of every window.
+ */
+export function crownFloor(x, z, half) {
+    const az = azimuthOf(x, z) / DEG;
+    const range = rangeOf(x, z);
+    const spread = (Math.atan2(half, range) / DEG) || 0;
+    const over = (w) => az + spread > w[0] && az - spread < w[1];
+    let floor = null;
+    // (Above the top of a wide frame: a crown lifted to a line inside the picture ends in a ledge.)
+    if (over(KEEP_CLEAR[0]) || over(KEEP_CLEAR[1])) floor = 18.5 * DEG;
+    if (over(KEEP_CLEAR[2]) && range <= KEEP_CLEAR[2][3] + half) floor = Math.max(floor ?? 0, 9.5 * DEG);
+    return floor;
+}
+
 // ── Trunks ──────────────────────────────────────────────────────────────────────
 
 /** The trees placed by hand: the two giants that frame the view, and the ranks behind the figures. */

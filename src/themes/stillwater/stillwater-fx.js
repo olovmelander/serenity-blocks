@@ -25,6 +25,7 @@ import {
     cameraViewMatrix,
     clamp,
     cos,
+    dot,
     exp,
     float,
     fract,
@@ -619,6 +620,100 @@ export function createMist(u, count) {
     })();
     const part = swPart('StillwaterMist', geometry, material, 50);
     part.count = sheets.length;
+    return part;
+}
+
+// ── The veil on the water ───────────────────────────────────────────────────────
+
+/** The low mist's layers: height over the water (metres), and how much each can hide. */
+const VEIL_LAYERS = [
+    { y: 0.16, alpha: 0.5 },
+    { y: 0.55, alpha: 0.36 },
+    { y: 1.15, alpha: 0.24 },
+];
+/** What the veil covers (world metres): the tarn and a little of its banks. */
+const VEIL_SPAN = Object.freeze({
+    x0: -36, x1: 36, z0: -72, z1: 4.6,
+});
+
+/**
+ * The elf dance: mist lying on the still water at night, in layers that drift and curl over
+ * one another, thin where the banks rise, gone close to the eye and lost in the far mist. The
+ * lights that live here glow in it. It lies on the water and is not mirrored by it.
+ * @param {object} u
+ * @param {number} count  how many layers (the lowest first)
+ */
+export function createVeil(u, count) {
+    const layers = VEIL_LAYERS.slice(0, Math.max(1, Math.min(VEIL_LAYERS.length, count)));
+    const positions = [];
+    const info = [];
+    const index = [];
+    const {
+        x0, x1, z0, z1,
+    } = VEIL_SPAN;
+    layers.forEach((layer, i) => {
+        const base = positions.length / 3;
+        positions.push(x0, layer.y, z1, x1, layer.y, z1, x0, layer.y, z0, x1, layer.y, z0);
+        for (let k = 0; k < 4; k++) info.push(layer.alpha, i * 0.29 + 0.07, layer.y, i);
+        index.push(base, base + 1, base + 2, base + 2, base + 1, base + 3);
+    });
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
+    geometry.setAttribute('aVeil', new THREE.BufferAttribute(new Float32Array(info), 4));
+    geometry.setIndex(index);
+
+    const material = new THREE.MeshBasicNodeMaterial();
+    material.name = 'StillwaterVeil';
+    material.transparent = true;
+    material.premultipliedAlpha = true;
+    material.depthWrite = false;
+    material.fog = false;
+    material.toneMapped = false;
+    material.side = THREE.DoubleSide;
+    material.fragmentNode = Fn(() => {
+        const layer = attribute('aVeil', 'vec4');
+        const P = positionWorld;
+        const rel = P.sub(cameraPosition);
+        const dist = length(rel);
+        // Banks of it lying across the view, each layer drifting at its own pace; the curls are
+        // the same field folded over itself.
+        const flow = u.drift.mul(layer.w.mul(0.35).add(1.0));
+        const q = vec2(P.x.mul(0.032), P.z.mul(0.06)).add(vec2(flow.mul(0.0045), flow.mul(-0.0012)).add(layer.y));
+        const warp = u.noise(q.mul(0.6).add(vec2(0.31, flow.mul(0.0007)))).rg.sub(0.5);
+        const bank = u.noise(q.add(warp.mul(0.7))).r;
+        const curl = u.noise(q.mul(2.7).add(warp.mul(1.6)).add(vec2(flow.mul(0.006), 0.17))).b;
+        const body = smoothstep(0.34, 0.78, bank.mul(0.62).add(curl.mul(0.38)));
+        // Over the water, thinning where the banks rise; none at the eye, lost in the far mist.
+        const over = float(1.0).sub(smoothstep(0.5, 0.6, u.shore(P.xz)));
+        const near = smoothstep(3.5, 13.0, dist);
+        const far = float(1.0).sub(smoothstep(50.0, 72.0, dist));
+        const a = body.mul(over).mul(near).mul(far).mul(layer.x)
+            .mul(u.mist.mul(0.55).add(0.3))
+            .mul(float(1.0).sub(u.lift))
+            .mul(u.breath.mul(0.4).add(0.6))
+            .toVar();
+        // Its colour is the night's haze, lit: the moon's light is scattered on toward the eye
+        // where the veil lies between it and the moon. The lights that live here glow in it.
+        const dir = rel.div(max(dist, 1e-3));
+        const t = clamp(dot(dir, u.moonDir), 0.0, 1.0);
+        const t2 = t.mul(t);
+        const t8 = t2.mul(t2).mul(t2).mul(t2);
+        const col = swHaze(u, dir).mul(1.6).add(u.moonLight.mul(t8.mul(0.22).add(0.025)).mul(u.breath))
+            .toVar();
+        const glow = (posPower, colour, reach) => {
+            const d = length(posPower.xyz.sub(P));
+            return colour.mul(posPower.w.div(d.mul(d).mul(reach).add(1.0)));
+        };
+        col.addAssign(glow(u.lanternAt, u.lantern, 0.35).mul(1.8)
+            .add(glow(u.spiritAt, u.spirit, 0.5).mul(0.9))
+            .add(glow(u.orbAt, u.heart, 0.12).mul(1.6))
+            .add(glow(u.poolL, u.poolColL, 0.3).mul(0.5))
+            .add(glow(u.poolR, u.poolColR, 0.3).mul(0.5))
+            .mul(u.breath));
+        return vec4(col.mul(a), a);
+    })();
+    const part = swPart('StillwaterVeil', geometry, material, 48);
+    part.count = layers.length;
     return part;
 }
 
