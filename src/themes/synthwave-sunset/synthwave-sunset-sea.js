@@ -44,6 +44,7 @@ import {
     sin,
     smoothstep,
     sqrt,
+    step,
     vec2,
     vec3,
     vec4,
@@ -53,6 +54,8 @@ import {
     SHORE,
     rgb,
     swFresnel,
+    swHash21,
+    swHash22,
     swNoise2,
     swSky,
     swSkyGradient,
@@ -113,11 +116,13 @@ const shoreZ = (x) => {
  * @param {number} [opts.clouds=2]   cloud octaves in the reflection
  * @param {boolean} [opts.swash=true] the swash's moving sheet and foam edge
  * @param {number} [opts.mirrorScale=0]  reflector resolution scale (0 = mirrored sky only)
+ * @param {boolean} [opts.sandDetail=true] wind ripples, the wrack line and shells on the sand
  */
 export function createSea(u, opts = {}) {
     const trains = WAVE_TRAINS.slice(0, Math.max(2, Math.min(WAVE_TRAINS.length, opts.trains ?? 8)));
     const reflectionClouds = opts.clouds ?? 2;
     const withSwash = opts.swash !== false;
+    const sandDetail = opts.sandDetail !== false;
     const T = SHORE.period;
     const mirrorScale = opts.mirrorScale ?? 0;
     const reflection = mirrorScale > 0
@@ -204,22 +209,69 @@ export function createSea(u, opts = {}) {
         const film = float(0.0).toVar();
         const swashFoam = float(0.0).toVar();
         if (withSwash) {
-            const fwUp = max(fwidth(up), 1e-4);
+            const fwUp = max(fwidth(up), 1e-4).toVar();
             film.assign(smoothstep(0.0, max(fwUp.mul(1.5), 0.25), edge.sub(up))
                 .mul(smoothstep(-0.4, 0.2, up))
                 .mul(mix(float(1.0), float(0.55), smoothstep(UPRUSH, 1.0, psi))));
             const running = float(1.0).sub(smoothstep(UPRUSH - 0.08, UPRUSH + 0.14, psi));
-            const lace = smoothstep(0.3, 0.75, swNoise2(vec2(p.x.mul(0.6), cycle.mul(5.3))));
-            swashFoam.assign(exp(abs(up.sub(uprushFront)).mul(-3.2)).mul(running).mul(mix(float(0.4), float(1.0), lace))
-                .mul(smoothstep(0.0, 0.6, up)));
+            const draining = smoothstep(UPRUSH - 0.04, UPRUSH + 0.06, psi).toVar();
+            // The front: foam piled at the leading edge of the sheet, crisp in front and thinning
+            // out behind over a width that wanders along the beach.
+            const behind = uprushFront.sub(up).toVar();
+            const width = mix(float(0.2), float(0.85), swNoise2(vec2(p.x.mul(0.31), cycle.mul(2.7)))).toVar();
+            const band = smoothstep(fwUp.mul(-1.2), fwUp.mul(0.4), behind).mul(exp(max(behind, 0.0).div(width).negate()));
+            // Lace: holes through the foam in the sheet's own coordinates (they ride up the beach
+            // with the front). The fine octave fades by its footprint; far lace keeps its mean.
+            const lp = vec2(p.x.mul(1.9), behind.mul(3.1).add(cycle.mul(7.3))).toVar();
+            const fwL = max(fwidth(lp.x), fwidth(lp.y)).toVar();
+            const fineLace = float(1.0).sub(smoothstep(0.25, 0.8, fwL));
+            const coarseLace = float(1.0).sub(smoothstep(0.6, 1.6, fwL)).toVar();
+            const laceN = swNoise2(lp).mul(0.62)
+                .add(mix(float(0.5), swNoise2(lp.mul(2.6).add(vec2(5.2, 1.3))), fineLace).mul(0.38))
+                .toVar();
+            const holes = mix(float(0.55), smoothstep(0.4, 0.62, laceN), coarseLace);
+            // A front thinner than the pixel is drawn no brighter than the share it covers, so the
+            // far swash is a soft seam instead of a bright wire across the frame.
+            const cover = clamp(width.div(fwUp.mul(1.5)), 0.0, 1.0);
+            swashFoam.assign(band.mul(holes).mul(cover).mul(running).mul(smoothstep(0.0, 0.6, up)));
+            // The swash mark: where the sheet stopped, a wavy line of bubbles lingers while it drains.
+            const markAt = reach.sub(0.1).add(swNoise2(vec2(p.x.mul(1.3), cycle.mul(3.1))).sub(0.5).mul(0.3));
+            const markW = 0.06;
+            const mark = exp(abs(up.sub(markAt)).div(max(fwUp.mul(0.6), markW)).negate())
+                .mul(clamp(float(markW).div(fwUp.mul(0.6)), 0.0, 1.0))
+                .mul(draining).mul(float(1.0).sub(smoothstep(UPRUSH + 0.12, 0.96, psi)))
+                .mul(mix(float(0.75), smoothstep(0.2, 0.7, swNoise2(vec2(p.x.mul(1.1), cycle.mul(5.9)))), coarseLace));
+            swashFoam.addAssign(mark.mul(0.45));
         }
 
         // ── Sand: damp everywhere, glossy where the last waves ran, runnels of standing water ──
         const onSand = smoothstep(-0.25, 0.25, up).toVar();
+        // Wind ripples on the dry sand above the highest swash: crests along the beach about a
+        // hand apart, wandering and forking, asymmetric (a long gentle back, a short steep lee).
+        // Each is faded out by its footprint before it can alias.
+        const dryUp = SHORE.reach + SHORE.reachSpread + 1.5;
+        let ripple = float(0.0);
+        if (sandDetail) {
+            const ripplePhase = up.mul(8.6)
+                .add(swNoise2(vec2(p.x, p.z).mul(0.85)).mul(2.4))
+                .add(swNoise2(vec2(p.x, p.z).mul(2.3).add(1.7)).mul(0.7))
+                .add(swNoise2(vec2(p.x.mul(0.21), p.z.mul(0.21)).add(4.1)).mul(5.0))
+                .toVar();
+            const rippleKeep = float(1.0).sub(smoothstep(0.28, 0.75, fwidth(ripplePhase)))
+                .mul(smoothstep(dryUp, dryUp + 3.0, up))
+                .mul(float(1.0).sub(smoothstep(SHORE.promenade - 2.5, SHORE.promenade - 0.5, up)));
+            const rippleArg = ripplePhase.mul(Math.PI * 2);
+            // Patchy: the wind combs some stretches into ripples and leaves others smooth.
+            const ripplePatch = mix(float(0.25), float(1.0), smoothstep(0.3, 0.72, swNoise2(vec2(p.x.mul(0.13), p.z.mul(0.2)).add(9.4))));
+            ripple = sin(rippleArg).add(sin(rippleArg.mul(2.0).add(1.1)).mul(0.38)).mul(0.085)
+                .mul(rippleKeep)
+                .mul(ripplePatch);
+        }
         const sandSlope = vec2(
             cos(p.x.mul(1.3).add(p.z.mul(0.4))).mul(0.012).add(cos(p.x.mul(0.31).sub(p.z.mul(0.9))).mul(0.02)),
-            cos(p.z.mul(1.7).sub(p.x.mul(0.5))).mul(0.012).add(cos(p.z.mul(0.27).add(p.x.mul(0.6))).mul(0.02)),
-        );
+            cos(p.z.mul(1.7).sub(p.x.mul(0.5))).mul(0.012).add(cos(p.z.mul(0.27).add(p.x.mul(0.6))).mul(0.02))
+                .add(ripple),
+        ).toVar();
         const glossy = float(1.0).sub(smoothstep(reach.mul(0.9), reach.add(3.0), up)).toVar();
         const dryness = smoothstep(7.0, 22.0, up).toVar();
         // Grain: damp and drier sand in long streaks along the beach (metres wide, so it never
@@ -249,8 +301,40 @@ export function createSea(u, opts = {}) {
         const duskLight = mix(float(1.0), float(0.5), u.dusk);
         // Beyond the promenade the land is the town's dark ground, not sand.
         const town = smoothstep(SHORE.promenade - 1.0, SHORE.promenade + 2.0, up);
+        // Relief: the low sun and the bright western sky light the faces that turn toward them
+        // (the ripples' backs, the beach's swells); after sunset the light comes from above.
+        const relief = float(1.0).add(dot(sandSlope.negate(), u.sunAz).mul(mix(float(2.2), float(0.8), u.dusk)))
+            .toVar();
+        // The wrack line: the last high tide's seaweed in a wavy band just above the swash, in
+        // clumps, with shells scattered along it and, more thinly, over the dry sand.
+        let wrack = float(0.0);
+        let shell = float(0.0);
+        if (sandDetail) {
+            const wrackAt = float(dryUp + 0.6).add(swNoise2(vec2(p.x.mul(0.045), 7.7)).sub(0.5).mul(3.0))
+                .add(sin(p.x.mul(0.21)).mul(0.5));
+            const wrackOff = up.sub(wrackAt).div(0.55);
+            const wrackBand = exp(wrackOff.mul(wrackOff).mul(2.2).negate()).toVar();
+            const clumps = smoothstep(0.5, 0.78, swNoise2(vec2(p.x.mul(2.6), p.z.mul(3.4))).mul(0.6)
+                .add(swNoise2(vec2(p.x.mul(7.9), p.z.mul(8.3)).add(3.3)).mul(0.4)));
+            // Far away, where the clumps are under a pixel, the band keeps their mean and softens.
+            const clumpsKept = mix(float(0.3), clumps, float(1.0).sub(smoothstep(0.08, 0.3, fwZ.mul(3.4))));
+            wrack = wrackBand.mul(clumpsKept).mul(float(1.0).sub(town)).toVar();
+            const shellCell = floor(vec2(p.x, p.z).mul(5.0));
+            const shellHash = swHash21(shellCell.add(vec2(13.1, 71.7)));
+            const shellOdds = mix(float(0.996), float(0.955), smoothstep(0.1, 0.6, wrackBand));
+            const shellAt = fract(vec2(p.x, p.z).mul(5.0)).sub(0.5).sub(swHash22(shellCell).sub(0.5).mul(0.5));
+            const shellR = length(shellAt.mul(vec2(1.0, 1.35)));
+            const fwShell = max(fwZ.mul(5.0), 1e-4);
+            shell = float(1.0).sub(smoothstep(0.16, max(fwShell.mul(1.2), 0.03).add(0.16), shellR))
+                .mul(step(shellOdds, shellHash)).mul(smoothstep(dryUp - 2.0, dryUp + 0.5, up))
+                .mul(float(1.0).sub(town))
+                .mul(float(1.0).sub(smoothstep(0.08, 0.3, fwShell)))
+                .toVar();
+        }
+        const sandTone = mix(rgb(0x4a3446), rgb(0x9a7a80), dryness.mul(0.85)).mul(mix(float(0.82), float(1.12), mottle))
+            .mul(relief);
         const sandCol = mix(
-            mix(rgb(0x4a3446), rgb(0x9a7a80), dryness.mul(0.85)).mul(mix(float(0.82), float(1.12), mottle)),
+            mix(mix(sandTone, rgb(0x3a2a2e), wrack.mul(0.6)), rgb(0xe8c8d0), shell.mul(0.7)),
             rgb(0x2a2232),
             town,
         ).mul(duskLight);
@@ -275,10 +359,17 @@ export function createSea(u, opts = {}) {
             // sand the image is smeared down the line of sight into streaks.
             const mirrorReach = float(1.0).div(dist.mul(0.02).add(1.0));
             const sandy = onSand.mul(float(1.0).sub(pool));
-            const wobble = vec2(sl.x, sl.y.mul(1.6)).mul(mirrorReach).mul(mix(float(0.9), float(0.18), sandy));
+            // The shift is held to a few per cent of the screen (the trains' summed slope would tear
+            // the image into blocks), and the image is drawn down into short streaks on the
+            // water too, as lights on a rippled sea are.
+            const wobble = clamp(
+                vec2(sl.x.mul(0.55), sl.y.mul(1.15)).mul(mirrorReach).mul(mix(float(0.55), float(0.18), sandy)),
+                vec2(-0.03, -0.05),
+                vec2(0.03, 0.05),
+            );
             const ruv = screenUV.flipX().add(wobble).toVar();
             // Five taps down the line of sight, Gaussian weights: a soft streak, not ghost copies.
-            const smear = sandy.mul(rough.mul(0.35).add(0.006));
+            const smear = sandy.mul(rough.mul(0.35).add(0.006)).add(float(1.0).sub(sandy).mul(abs(sl.y).mul(0.035).add(0.003)));
             const held = vec4(reflection.sample(ruv)).mul(0.36)
                 .add(vec4(reflection.sample(ruv.add(vec2(0.0, smear)))).mul(0.22))
                 .add(vec4(reflection.sample(ruv.sub(vec2(0.0, smear)))).mul(0.22))
