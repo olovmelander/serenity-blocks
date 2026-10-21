@@ -78,7 +78,7 @@ export const SUNFALL_LIGHT = Object.freeze({
     bounce: 3.5, // extra weight on the baked bounce (secondary light, with occlusion)
     sky: 4.0, // sky radiance seen through the oculus
     fill: 0.0045, // the cave's own darkness floor, times occlusion
-    pool: 26.0, // art gain on the sunlit pool's light on the vault (sent upward: lobe³)
+    pool: 34.0, // art gain on the sunlit pool's light on the vault (sent upward: lobe^2.5)
     column: 0.85, // the column's own light (irradiance at its radius) on what stands round it
     farPool: 16.0, // art gain on the far doline's sunlit floor lighting the passage's end
 });
@@ -272,19 +272,47 @@ export const sfOculusCoord = (u, P) => {
  * The sunfall's mask at `q` (oculus coordinates) for a point `along` metres below the plane:
  * the ragged rim and the vine fringe of the polar skylight texture, blurred by the sun disc's
  * penumbra with distance, narrowed into the combo's fingers and widened by a perfect clear.
+ *
+ * `dq` (optional): the stretch of the mask a march step covers (oculus coordinates). The fetch
+ * then averages the mask along that segment (anisotropic, by explicit gradients) and keeps the
+ * penumbra's width across it, so a march with few steps sees each streak it crosses instead of
+ * hitting or missing it pixel by pixel (a static screen-door grain over the whole column).
  */
-export const sfMaskAt = (u, q, along, { vines: withVines = true } = {}) => {
+export const sfMaskAt = (u, q, along, { vines: withVines = true, dq = null } = {}) => {
     const open = max(u.cloudHoleOpen, 0.2);
     const qq = q.div(open);
     const r = length(qq);
     const ang = atan(qq.y, qq.x).div(TWO_PI).add(0.5);
     const v = clamp(r.div(OCULUS_TEX.reach), 0.0, 1.0);
-    // Penumbra: the sun disc (0.0093 rad) over the distance, in radial texels of the map.
-    const texel = (OCULUS_TEX.reach * Math.min(OCULUS_RX, OCULUS_RZ)) / OCULUS_TEX.height;
-    const lod = clamp(log2(max(along.mul(0.0093).div(texel), 1.0)), 0.0, 4.0);
-    const rim = texture(u.oculusTex, vec2(ang, v)).level(lod).x;
     const turned = vec2(ang.add(u.fringeAngle.div(TWO_PI)), v);
-    const vines = withVines ? texture(u.oculusTex, turned).level(lod).y : float(1.0);
+    let rim;
+    let vines;
+    if (dq) {
+        // The polar map's Jacobian at q: radial texels along e_r, angular ones along e_t / r.
+        const rs = max(r, 0.08);
+        const er = qq.div(rs);
+        const et = vec2(er.y.negate(), er.x);
+        const toUv = (d) => vec2(
+            clamp(dot(d, et).div(rs.mul(TWO_PI)), -0.25, 0.25),
+            dot(d, er).div(OCULUS_TEX.reach),
+        );
+        const along1 = dq.div(open);
+        // The penumbra: the sun disc (0.0093 rad) over the distance, in oculus radii.
+        const pen = along.mul(0.0093 / Math.min(OCULUS_RX, OCULUS_RZ)).div(open).add(1e-4);
+        const len = length(along1);
+        const major = along1.mul(max(len, pen).div(max(len, 1e-6)));
+        const minor = vec2(along1.y.negate(), along1.x).div(max(len, 1e-6)).mul(pen);
+        const gx = toUv(major).toVar();
+        const gy = toUv(minor).toVar();
+        rim = texture(u.oculusTex, vec2(ang, v)).grad(gx, gy).x;
+        vines = withVines ? texture(u.oculusTex, turned).grad(gx, gy).y : float(1.0);
+    } else {
+        // Penumbra: the sun disc (0.0093 rad) over the distance, in radial texels of the map.
+        const texel = (OCULUS_TEX.reach * Math.min(OCULUS_RX, OCULUS_RZ)) / OCULUS_TEX.height;
+        const lod = clamp(log2(max(along.mul(0.0093).div(texel), 1.0)), 0.0, 4.0);
+        rim = texture(u.oculusTex, vec2(ang, v)).level(lod).x;
+        vines = withVines ? texture(u.oculusTex, turned).level(lod).y : float(1.0);
+    }
     const base = rim.mul(mix(1.0, vines, 0.9));
     // Combo fingers: the vines close over the opening except for gaps on a ring, one per link.
     const n = u.comboColumns;
@@ -299,10 +327,13 @@ export const sfMaskAt = (u, q, along, { vines: withVines = true } = {}) => {
     return base.mul(mix(1.0, max(fingers, 0.14), comboOn));
 };
 
-/** The sunfall's mask at a world point (1 above the oculus plane: the open air outside). */
-export const sfSunMask = (u, P) => {
+/**
+ * The sunfall's mask at a world point (1 above the oculus plane: the open air outside).
+ * `dq`: the march step's stretch of the mask (see `sfMaskAt`).
+ */
+export const sfSunMask = (u, P, dq = null) => {
     const along = max(float(OCULUS_CENTER[1]).sub(P.y), 0.0).div(max(u.sunDir.y, 0.15));
-    const m = sfMaskAt(u, sfOculusCoord(u, P), along);
+    const m = sfMaskAt(u, sfOculusCoord(u, P), along, { dq });
     return select(P.y.greaterThan(OCULUS_CENTER[1] - 2.0), float(1.0), m);
 };
 
@@ -521,7 +552,7 @@ export function createShellMaterial(u, { kind = 'shell' } = {}) {
         const Lf = toFoot.div(fd2.sqrt());
         const poolArea = Math.PI * 58 * 58;
         const lobe = clamp(Lf.y.negate(), 0.0, 1.0);
-        const poolLight = clamp(dot(N, Lf), 0.0, 1.0).mul(lobe.mul(lobe).mul(lobe))
+        const poolLight = clamp(dot(N, Lf), 0.0, 1.0).mul(lobe.mul(lobe).mul(lobe.sqrt()))
             .mul(poolArea / Math.PI).div(fd2)
             .mul(aoC.mul(0.85).add(0.15))
             .mul(u.sunGain)

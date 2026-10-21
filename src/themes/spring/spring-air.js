@@ -242,10 +242,13 @@ export class SpringAir {
         material.outputNode = Fn(() => {
             const corner = positionGeometry.xy.mul(2.0);
             const r2 = dot(corner, corner);
-            // Pollen a bright point; down a soft tuft with a brighter heart.
+            // Pollen a bright point; down a soft tuft with a brighter heart. Both end inside the
+            // quad's circle: a tuft's tail still at a tenth of its heart at the quad's sides drew
+            // a near one as a glowing square.
+            const round = clamp(float(1.0).sub(r2), 0.0, 1.0);
             const speck = exp(r2.mul(-3.2));
             const tuft = exp(r2.mul(-2.0)).mul(0.75).add(exp(r2.mul(-8.0)).mul(0.5));
-            return vec4(vGlow.xyz.mul(mix(speck, tuft, vGlow.w)), 0.0);
+            return vec4(vGlow.xyz.mul(mix(speck, tuft, vGlow.w)).mul(round.mul(round)), 0.0);
         })();
         return material;
     }
