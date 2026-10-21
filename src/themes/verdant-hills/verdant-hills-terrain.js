@@ -531,8 +531,35 @@ export class VerdantHillsTerrain {
         const bounce = reflect(view.negate(), waterNormal);
         const mirror = light.sky(normalize(vec3(bounce.x, bounce.y.abs().add(0.02), bounce.z)));
         const sparkle = pow(saturate(dot(bounce, light.uSunDir)), 90).mul(light.cloudShadow(world));
-        const pool = mirror.mul(0.82).add(color(0x0d2a2e).mul(0.25))
-            .add(light.uSunColor.mul(sparkle).mul(0.6));
+        // The far bank is mirrored too. Looked down on from the hill the water reflects a ray that
+        // rises as steeply as the eye's falls, so a bank or a tree standing within h / tan(fall)
+        // beyond a point, straight on along the line of sight, shows in the water there instead
+        // of the sky. A few steps along that line in the map find the nearest land and how tall
+        // what stands on it is (grass bank, hedge or trees).
+        const across = world.xz.sub(cameraPosition.xz);
+        const ahead = normalize(across);
+        const fall = cameraPosition.y.sub(world.y).max(1).div(length(across).max(1));
+        // Ripples break the reflection into streaks lying across the line of sight.
+        const streak = light.noise(vec2(
+            dot(world.xz, vec2(ahead.y, ahead.x.negate())).mul(0.016),
+            dot(world.xz, ahead).mul(0.2).add(light.uTime.mul(0.05)),
+        ));
+        let banked = float(0);
+        for (const metres of [7, 18, 38, 75]) {
+            const reach = streak.r.sub(0.5).mul(0.9).add(1).mul(metres);
+            const beyond = vec3(world.x.add(ahead.x.mul(reach)), 0, world.z.add(ahead.y.mul(reach)));
+            const there = texture(this.landMap, verdantHillsMapCoordinate(beyond).clamp(0, 1)).level(1);
+            const ground = saturate(float(0.498).sub(there.r).mul(2.02)).oneMinus();
+            const tall = float(1.4).add(saturate(there.r.sub(0.502).mul(2.02)).mul(3)).add(there.b.mul(12));
+            banked = banked.max(ground.mul(smoothstep(0.55, 1.6, tall.div(fall.mul(metres)))));
+        }
+        banked = banked.mul(rim);
+        // A mirrored bank is its own green seen through the water: darker, cooler and greyer,
+        // and darker again where trees stand on it.
+        const depths = mirror.mul(0.18).add(color(0x0d2a2e).mul(0.2));
+        const bankColour = mix(grass.mul(mix(float(0.42), float(0.26), shade)), depths, 0.35);
+        const pool = mix(mirror.mul(0.8).add(color(0x0d2a2e).mul(0.25)), bankColour, banked.mul(0.85))
+            .add(light.uSunColor.mul(sparkle).mul(0.6).mul(banked.mul(0.8).oneMinus()));
         const lit = mix(grass, pool, smoothstep(0.35, 0.65, water));
         material.colorNode = light.haze(lit, { world });
         return material;

@@ -161,20 +161,34 @@ export class VerdantHillsMeadow {
         const tuft = light.noise(root.xz.mul(0.11));
         // Dark at the root where blades shade each other, the green of June above, and the
         // pale green-gold of tips the wind has dried.
-        const base = mix(color(0x0d2c07), color(0x1e5010), field.g);
-        const tip = mix(color(0x3a8a1e), color(0x72ab2c), tuft.r.mul(0.6).add(st.x.mul(0.4)));
+        const base = mix(color(0x0e2a09), color(0x214c14), field.g);
+        const tip = mix(color(0x3f8524), color(0x78a836), tuft.r.mul(0.6).add(st.x.mul(0.4)));
         let blade = mix(base, tip, smoothstep(0.03, 0.82, st.y));
+        // A down is never one green: broad patches lean blue-green (fescue, damp hollows) or warm
+        // olive (bents, drier ground), and the whole sward is a touch less saturated than paint.
+        const lean = smoothstep(0.25, 0.75, field.b);
+        blade = blade.mul(mix(vec3(0.86, 1.0, 1.12), vec3(1.1, 1.0, 0.78), lean));
+        blade = mix(vec3(dot(blade, vec3(0.3, 0.59, 0.11))), blade, 0.86);
         const dry = smoothstep(0.6, 0.92, field.r.mul(0.6).add(st.x.mul(0.4))).mul(st.y).mul(0.42);
         blade = mix(blade, color(0xa8ac52), dry);
         // Seed heads: the purple-brown of timothy and foxtail, on stalks still green.
         blade = mix(blade, color(0x52701f), paint.w.mul(0.75));
         blade = mix(blade, mix(color(0x8f8a4a), color(0x7d6c52), st.x), paint.y);
+        // The side of the blade the eye sees (blades are two-sided): sunlit only where it is
+        // turned to the sun. The sun stands ahead of the lens, so most blades show their shaded
+        // side and the light comes through them instead; the meadow gets depth instead of a
+        // uniform lime.
         const normal = normalize(plant.normal);
+        const seen = normal.mul(step(0, dot(normal, view)).mul(2).sub(1));
         const sun = light.sunlight();
-        const facing = dot(normal, light.uSunDir).abs().mul(0.85).add(0.28);
-        // Looking up the light, every blade is a sliver of stained glass.
+        const toSun = dot(seen, light.uSunDir);
+        const facing = saturate(toSun).mul(1.0).add(0.16);
+        // Looking up the light, every blade is a sliver of stained glass: brightest where the sun
+        // stands straight behind it, a warm green rather than a lime.
         const through = pow(saturate(dot(view, light.uSunDir).negate()), 2.4);
-        const glow = pow(blade, vec3(0.8)).mul(vec3(0.95, 1.2, 0.3)).mul(through.mul(0.75).add(0.06))
+        const behind = saturate(toSun.negate());
+        const glow = pow(blade, vec3(0.8)).mul(vec3(0.92, 1.08, 0.42))
+            .mul(through.mul(behind.mul(0.6).add(0.4)).mul(0.75).add(0.05))
             .mul(st.y.mul(st.y));
         // A blade the wind has laid over shows the sky on its back.
         // Only where a band of the breeze is passing, however hard it blows: the wind shows as
@@ -246,10 +260,16 @@ export class VerdantHillsMeadow {
         const petal = smoothstep(0.55, 0.9, paint.y);
         const tone = albedo.mul(turn.w.mul(0.24).add(0.88));
         const sun = light.sunlight();
-        const facing = dot(normal, light.uSunDir).abs().mul(0.72).add(0.3);
-        // Petals and down are thin: with the sun behind them they light up from inside.
+        // As the grass: the face the eye sees is sunlit only where it is turned to the sun.
+        const seen = normal.mul(step(0, dot(normal, view)).mul(2).sub(1));
+        const toSun = dot(seen, light.uSunDir);
+        const facing = saturate(toSun).mul(0.9).add(0.2);
+        // Petals and down are thin: with the sun behind them they light up from inside, most of
+        // all where the sun stands straight behind the petal.
         const through = pow(saturate(dot(view, light.uSunDir).negate()), 2.2);
-        const lantern = pow(tone, vec3(0.85)).mul(through.mul(0.7).add(0.1)).mul(petal.mul(0.75).add(0.25));
+        const behind = saturate(toSun.negate());
+        const lantern = pow(tone, vec3(0.85)).mul(through.mul(behind.mul(0.6).add(0.5)).add(0.1))
+            .mul(petal.mul(0.75).add(0.25));
         // Low on the plant its neighbours shade it.
         const shade = smoothstep(0.0, 0.3, paint.x.mul(turn.z)).mul(0.5).add(0.5);
         const lit = tone.mul(facing).add(lantern).mul(light.uSunColor).mul(sun)
