@@ -489,8 +489,13 @@ export function createColonyMaterial(u, name, style) {
     const aShape = attribute('aShape', 'vec2');
     const turnS = sin(aPlace.w);
     const turnC = cos(aPlace.w);
-    /** Where the colony stands in the world (its root), for what the board lays on the reef. */
-    const rootXZ = vec2(aPlace.x.mul(u.squeeze), aPlace.z);
+    /**
+     * Where the colony stands in the world (its root), for what the board lays on the reef: a new
+     * node, pinned, for each stage that reads it. (One node shared by the held colours' and the
+     * rings' varyings was assigned inside the held colours' loop, so with no colour held the
+     * rings read the root as the origin; ocean-shaders.test.js gates it.)
+     */
+    const rootXZ = () => vec2(aPlace.x.mul(u.squeeze), aPlace.z).toVar();
 
     material.positionNode = Fn(() => {
         const local = positionGeometry.mul(aTint.w).toVar();
@@ -521,12 +526,13 @@ export function createColonyMaterial(u, name, style) {
     if (fan) material.maskNode = fan.lace.greaterThan(0.45);
 
     const vNormal = varying(ocTurnY(normalGeometry, turnS, turnC), `v${name}N`);
-    const vHeld = varying(Fn(() => ocStains(u, rootXZ))(), `v${name}Held`);
-    const vRing = varying(Fn(() => ocRings(u, rootXZ))(), `v${name}Ring`);
+    const vHeld = varying(Fn(() => ocStains(u, rootXZ()))(), `v${name}Held`);
+    const vRing = varying(Fn(() => ocRings(u, rootXZ()))(), `v${name}Ring`);
 
     material.colorNode = Fn(() => {
         const P = positionWorld;
         const N = normalize(vNormal).toVar();
+        const toEye = normalize(cameraPosition.sub(P)).toVar();
         const tip = clamp(aShape.x, 0.0, 1.0);
         const ao = clamp(aShape.y, 0.0, 1.0);
         const hue = aTint.rgb;
@@ -534,38 +540,59 @@ export function createColonyMaterial(u, name, style) {
         /** Where the colony is growing: its tips, a brain's ridges, a fan's veins. */
         const growing = smoothstep(0.55, 1.0, tip).toVar();
         const albedo = hue.mul(tip.mul(pale).add(1.0 - pale * 0.5)).toVar();
+        // Stone is never smooth: the cups of the polyps, a few millimetres across, read from two
+        // sides of the colony and blended by which way the surface faces.
+        if (pattern !== 'fan' && pattern !== 'anemone') {
+            const upward = abs(N.y);
+            const cupsA = u.noise(own.xz.mul(7.0).add(aSeed.x.mul(5.0))).a;
+            const cupsB = u.noise(own.xy.add(own.zy).mul(7.0).add(aSeed.x.mul(3.0))).a;
+            const cups = mix(cupsB, cupsA, smoothstep(0.3, 0.8, upward));
+            albedo.mulAssign(cups.sub(0.5).mul(0.55).add(1.0));
+        }
 
         if (pattern === 'brain') {
-            // The maze: ridges where a slow field crosses its middle, valleys between.
+            // The maze: ridges where a slow field crosses its middle, valleys between, and down
+            // the crown of every ridge the groove that makes it a brain.
             const field = u.noise(own.xz.mul(0.42).add(own.y.mul(0.27)).add(aSeed.x.mul(3.0))).r;
             const fold = u.noise(own.zy.mul(0.9).add(own.x.mul(0.31)).add(aSeed.x.mul(7.0))).g;
-            const ridge = abs(fract(field.mul(5.0).add(fold.mul(1.4))).mul(2.0).sub(1.0));
-            const valley = float(1.0).sub(smoothstep(0.1, 0.5, ridge));
-            albedo.mulAssign(valley.mul(-0.55).add(1.05));
-            N.assign(normalize(N.add(vec3(ridge.sub(0.5), 0.0, fold.sub(0.5)).mul(0.5))));
+            const ridge = abs(fract(field.mul(8.0).add(fold.mul(1.6))).mul(2.0).sub(1.0));
+            const valley = float(1.0).sub(smoothstep(0.15, 0.55, ridge));
+            const groove = smoothstep(0.82, 0.97, ridge);
+            albedo.mulAssign(valley.mul(-0.5).add(1.08).mul(float(1.0).sub(groove.mul(0.45))));
+            N.assign(normalize(N.add(vec3(ridge.sub(0.5), 0.0, fold.sub(0.5)).mul(0.45))));
             growing.assign(valley);
         } else if (pattern === 'table') {
-            // Ribs running out to the rim, and the rim itself pale where it is growing.
+            // Ribs running out to the rim, and the rim itself pale where it is growing; the plate
+            // is a lattice of branchlets, so its face is never one flat colour.
             const angle = uv().y.mul(TAU);
             const rib = sin(angle.mul(34.0).add(sin(uv().x.mul(9.0)).mul(1.2))).mul(0.5).add(0.5);
-            albedo.mulAssign(rib.mul(0.22).mul(uv().x).add(0.9));
+            const twig = sin(angle.mul(90.0).add(uv().x.mul(40.0))).mul(sin(uv().x.mul(55.0).sub(angle.mul(30.0))));
+            albedo.mulAssign(rib.mul(0.4).mul(uv().x).add(0.8).mul(twig.mul(0.12).add(1.0)));
+            albedo.mulAssign(smoothstep(0.9, 1.0, uv().x).mul(0.45).add(1.0));
             growing.assign(smoothstep(0.82, 1.0, tip));
         } else if (pattern === 'fan') {
             albedo.mulAssign(fan.vein.mul(0.25).add(0.85));
             growing.assign(fan.lace.mul(smoothstep(0.35, 1.0, uv().x)));
         } else if (pattern === 'sponge') {
-            // Pores: dark pits in the wall, and fine vertical ridges.
-            const pores = u.noise(own.xz.mul(5.0).add(own.y.mul(3.1)).add(aSeed.x.mul(11.0))).b;
-            const pit = smoothstep(0.62, 0.72, pores);
+            // Pores: small dark pits all over the wall, and fine vertical ridges.
+            const pores = u.noise(own.xz.mul(4.0).add(own.y.mul(2.6)).add(aSeed.x.mul(11.0))).a;
+            const pit = smoothstep(0.66, 0.74, pores);
             const ridge = sin(own.y.mul(40.0).add(pores.mul(6.0))).mul(0.06).add(0.94);
-            albedo.mulAssign(float(1.0).sub(pit.mul(0.6)).mul(ridge));
+            albedo.mulAssign(float(1.0).sub(pit.mul(0.55)).mul(ridge));
             growing.assign(smoothstep(0.75, 1.0, tip).mul(float(1.0).sub(pit)));
         } else if (pattern === 'anemone') {
             growing.assign(smoothstep(0.35, 1.0, uv().y));
         }
 
+        // Where a colony meets the rock it stands in its own shade.
+        const foot = smoothstep(-0.04, 0.3, own.y).mul(0.55).add(0.45);
         const light = ocLight(u, { N, P, wrap });
-        const col = albedo.mul(light).mul(ao).toVar();
+        const col = albedo.mul(light).mul(ao).mul(foot).toVar();
+        // The water all round lights the edges a thing turns away from the eye: it stands in the
+        // sea, not in front of it.
+        const graze = float(1.0).sub(abs(dot(N, toEye)));
+        col.addAssign(u.ambient.mul(albedo.mul(0.6).add(0.12)).mul(graze.mul(graze).mul(graze)).mul(ao).mul(1.4)
+            .mul(u.breath));
         // A soft thing lets the light through: seen against the sun, its edges glow.
         if (wrap > 0.6) {
             const through = clamp(dot(normalize(P.sub(cameraPosition)), u.sunDir), 0.0, 1.0);

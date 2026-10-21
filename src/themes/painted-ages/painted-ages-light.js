@@ -91,15 +91,33 @@ export function skyColour(u, dir, { withSun = true } = {}) {
         const disc = float(1.0).sub(smoothstep(cos.mul(0.82), cos, r));
         const limb = float(0.55).add(float(0.45).mul(float(1.0).sub(r.div(cos)).clamp(0.0, 1.0).sqrt()));
         base.addAssign(u.sun.mul(disc).mul(limb).mul(9.0).mul(u.sunUp));
+        // The glare round the disc (the air right beside the sun, which the bloom carries on):
+        // a tight core and a wider skirt, in the sun's own colour.
+        const outside = float(1.0).sub(disc);
+        const corona = exp(r.div(-0.0065)).mul(1.1).add(exp(r.div(-0.028)).mul(0.3));
+        base.addAssign(u.sun.mul(corona).mul(outside).mul(u.sunUp));
     }
     return base;
 }
 
 /**
- * The air between the eye and a world point P over a surface colour `colour`. Returns the
- * composited colour. `extinctionScale` thins the air for things that should read through it.
+ * How thick the valley mist lies over a ground point, as a factor on its density (mean about 1):
+ * banks and clear lanes at two scales, creeping slowly downwind. The mist is thin and lies low,
+ * so a ray meets it near the point it ends on: reading it there is enough.
  */
-export function aerial(u, P, colour) {
+export function mistPatches(u, noise, xz) {
+    const drift = u.wind.mul(0.35);
+    const a = texture(noise, xz.add(drift).div(1900.0)).r;
+    const b = texture(noise, xz.sub(drift.mul(0.6)).div(620.0).add(vec2(0.3, 0.7))).g;
+    return smoothstep(0.34, 0.66, a.mul(0.62).add(b.mul(0.38))).mul(1.75).add(0.15);
+}
+
+/**
+ * The air between the eye and a world point P over a surface colour `colour`. Returns the
+ * composited colour. `mistScale` (a node, default 1) thickens or thins the valley mist there
+ * (mistPatches).
+ */
+export function aerial(u, P, colour, mistScale = null) {
     const V = P.sub(u.eye);
     const d = max(length(V), 1e-3);
     const rd = V.div(d);
@@ -108,7 +126,8 @@ export function aerial(u, P, colour) {
     const tauHaze = layerDepth(hazeA, float(HAZE_HEIGHT), u.eye.y, rd.y, d);
     // The valley mist: a thin layer on the valley floor (relative to its floor height).
     const mistA = u.mistDensity.mul(1.0 / 700);
-    const tauMist = layerDepth(mistA, float(MIST_HEIGHT), u.eye.y.sub(MIST_FLOOR), rd.y, d);
+    const tauFlat = layerDepth(mistA, float(MIST_HEIGHT), u.eye.y.sub(MIST_FLOOR), rd.y, d);
+    const tauMist = mistScale ? tauFlat.mul(mistScale) : tauFlat;
     const mu = dot(rd, u.sunDir);
     const sunward = sunGlow(mu);
     // In-scatter: the haze colour, warmed toward the sun; the mist paler and lit through.

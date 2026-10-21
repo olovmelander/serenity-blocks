@@ -49,7 +49,7 @@ import {
     columnU, fieldUV, fieldWeight, landAt, paHash22, paLuma, paStrataG,
 } from './painted-ages-tsl.js';
 import { shadowAt } from './painted-ages-shadow.js';
-import { aerial, cloudShadow } from './painted-ages-light.js';
+import { aerial, cloudShadow, mistPatches } from './painted-ages-light.js';
 import {
     rainbow, ribbonLight, riverWater, sparkle, waveLight,
 } from './painted-ages-events.js';
@@ -206,8 +206,9 @@ export function createLandMaterial(u, t, tier) {
         const albedo = bed.rgb.toVar();
         // The local mean (the colluvium that dusts the gentle slopes and fills the washes).
         const mean = texture(t.column, vec2(cu, 0.5)).level(8.0).rgb;
-        // Far ranges: the bands soften into their mean as the air takes them.
-        albedo.assign(mix(albedo, mean, smoothstep(3500.0, 14000.0, dist).mul(0.55)));
+        // Far ranges: the bands soften into their mean as the air takes them (kept sharp, a
+        // range ten kilometres off reads as contour lines rather than rock).
+        albedo.assign(mix(albedo, mean, smoothstep(2400.0, 11000.0, dist).mul(0.68)));
         const upslope = texture(t.column, vec2(columnU(g.add(9.0)), 0.5)).level(6.0).rgb;
 
         // The mineral record crowns the hills: its beds stack down from recordTop.
@@ -307,7 +308,9 @@ export function createLandMaterial(u, t, tier) {
         // Back-to-back: mica glints where the sun reaches.
         lit.addAssign(sparkle(u, xz, dist, u.sun.mul(ndl).mul(shadow).mul(clouds).mul(u.sunUp)));
         // The water in the valley (and the flood).
-        const water = riverWater(u, t.noise, texture, xz, above, dist, V);
+        // (Its height over the bed is read per pixel off the field: the mesh's rows lie tens of
+        // metres apart out there, and its interpolated height would dash a shallow channel.)
+        const water = riverWater(u, t.noise, texture, xz, land.x.sub(floorY), dist, V);
         lit.assign(mix(lit, water.xyz, water.w));
         // What gameplay lights: the ribbons along their beds, the waves through the strata, the record.
         // (Strata light belongs to the rock: the alluvium on the flats takes little of it.)
@@ -315,7 +318,7 @@ export function createLandMaterial(u, t, tier) {
         const rock = float(1.0).sub(plain.mul(0.85)).sub(onFloor.mul(0.1)).max(0.0)
             .mul(smoothstep(0.06, 0.32, slope));
         lit.addAssign(ribbonLight(u, xz, g, gw).add(waveLight(u, g, gw)).mul(rock).add(recordGlow));
-        const col = aerial(u, P, lit).toVar();
+        const col = aerial(u, P, lit, mistPatches(u, t.noise, xz)).toVar();
         // The bow stands in the air in front of the far hills; rain veils hang beyond the front.
         col.addAssign(rainbow(u, V.div(dist)).mul(smoothstep(500.0, 2600.0, dist)).mul(0.55));
         const veil = u.showerPower.mul(smoothstep(u.showerFront.sub(150.0), u.showerFront.add(900.0), dist))
