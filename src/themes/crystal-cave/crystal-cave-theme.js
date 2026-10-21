@@ -220,7 +220,11 @@ export default class CrystalCaveTheme extends BaseTheme {
             scene: this.scene, camera: this.camera, assets: this.assets, quality: this.quality,
         });
         this.post = new CrystalCavePost({
-            renderer: this.renderer, scene: this.scene, camera: this.camera, quality: this.quality,
+            renderer: this.renderer,
+            scene: this.scene,
+            camera: this.camera,
+            quality: this.quality,
+            atmosphere: this.world.getAtmosphere(),
         });
     }
 

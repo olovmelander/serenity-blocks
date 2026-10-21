@@ -47,9 +47,10 @@ function billboard(centre, size) {
  * @param {object} options.assets parsed cavern (`glowworms`, `crystals`, `meta.skylight`)
  * @param {object} options.wave rock controls carrying the travelling wave uniforms
  * @param {object} options.quality `{ glowworms, motes, glints, shaft }` counts and switches
+ * @param {object} [options.shaft] the shaft's strength uniform, when the world shares it
  */
 export function createCaveAir({
-    light, assets, wave, quality,
+    light, assets, wave, quality, shaft = null,
 }) {
     const u = light.uniforms;
     const group = new THREE.Group();
@@ -58,7 +59,7 @@ export function createCaveAir({
     const controls = {
         /** Extra brightness of every glow-worm (events). */
         worms: uniform(0),
-        shaft: uniform(1),
+        shaft: shaft ?? uniform(1),
     };
     const eyeDistance = (centre) => length(centre.sub(cameraPosition));
     const veil = (distance) => exp(distance.mul(u.hazeDensity).mul(-0.75));
@@ -246,6 +247,12 @@ export function createCaveAir({
     return {
         group,
         controls,
+        /** The post draws the shaft in the air instead (crystal-cave-atmosphere.js). */
+        hideBeam() {
+            group.children.forEach((mesh) => {
+                if (mesh.name === 'Crystal Cave — skylight beam') mesh.visible = false;
+            });
+        },
         counts: { glowworms: wormCount, motes: moteCount, glints: glintCount },
         dispose() {
             if (disposed) return;
