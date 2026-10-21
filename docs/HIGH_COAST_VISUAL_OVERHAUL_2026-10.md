@@ -315,3 +315,63 @@ every 100; now something moves at every moment (by day the colours hardly change
 crosses the sky and the shadows follow it). A level-up's
 worst moment is 3.0 stops a second (it was 10.3; Sunset's is 7.4). The land's shadow targets are
 repainted on 4.4 % of frames at 120 Hz, as before. `high-coast-hours.test.js` pins all of it.
+
+## Air, cloud and ground (2026-10-20)
+
+Branch `feature/high-coast-overhaul`. A pass over what read as artificial in the whole frame.
+
+| Before (morning) | After |
+| --- | --- |
+| ![before](high-coast-overhaul/day-before.jpg) | ![after](high-coast-overhaul/day-after.jpg) |
+
+- **Cumulus that are heaps, not balls** (`high-coast-cumulus.js`). The banks' soft union was so
+  tight (`SOFT` 0.018 bank widths) that every billow kept its own outline and its own
+  terminator, so a bank read as a pile of spheres. The union is now 0.05 wide, so neighbours
+  merge into masses; billows are larger and fewer small turrets crown the towers, which are
+  columns that narrow upward and lean; the outline is cut by warped, folded noise, deeper toward
+  the crown (cauliflower) and frayed at the sides; the creases between lumps stay greyer.
+
+  | Before | After |
+  | --- | --- |
+  | ![cumulus before](high-coast-overhaul/cumulus-before.jpg) | ![cumulus after](high-coast-overhaul/cumulus-after.jpg) |
+
+- **Aerial perspective** (`aerial`, shared by every surface). The day's haze was thin enough
+  that islands three kilometres off kept their full colour (morning: 7 % of the light taken over
+  3 km). The daytime densities are about doubled (morning 0.36 → 0.9, afternoon 0.42 → 0.95,
+  golden hour 0.5 → 0.78, sunset 0.62 → 0.82), and the haze takes each colour at its own rate,
+  blue first (`HAZE_SPECTRUM` 0.7 / 1.0 / 1.45): distance turns blue rather than grey, and the
+  far land is seen through warmer light.
+- **A forest, not trees on a lawn** (`high-coast-land.js`). The ground between the real trees
+  was lit as an open field, so every island read as scattered pines on bright grass. Under the
+  near forest the floor now lies in its canopy's shade (sun 14–54 % by how thick the cover is,
+  sky 45 %); the raised canopy beyond about 3 km carries crowns a few metres across with dark
+  gaps, faded to their mean where they are under a couple of pixels.
+
+  ![forest](high-coast-overhaul/forest-after.jpg)
+
+- **The headland's face** (`high-coast-plan.js`, re-baked). The lip's buttresses were a
+  symmetric zigzag at a fixed 52 m and read as a drawn curtain. Each joint cell is now its own
+  width (a stronger warp), its own depth (7–25 m), lopsided (a flat face on one side, a sharp
+  re-entrant corner on the other), and one in six has opened into a gully. In face space
+  (`cliffFace`) the sheeting ledges' spacing wanders, the vertical joints run through three
+  ledges at a time and only in some columns, broad stains cross the face, and every line fades
+  to its mean once it is thinner than a few pixels: the far islands' cliffs had drawn a brick
+  grid.
+- **The summit's granite.** The near rock read as smooth clay: its detail only showed inside a
+  metre or two. Feldspar and biotite grain (2.5 cm, one read) now shows wherever a grain is wider
+  than about a pixel, mid-scale roughness (0.16 m, from the reads the detail already made) breaks
+  up the polished humps, the heath cushions carry twigs and a shaded rim where they meet the
+  slab.
+- **The hamlet's yard** is an unmown meadow (olive, seed-pale and damp-dark in drifts) rather
+  than a bright lawn.
+
+| Dawn mist |
+| --- |
+| ![dawn mist](high-coast-overhaul/dawn-mist.jpg) |
+
+**Checks.** Playground on native WebGPU (RTX 5080 Laptop) and WebGL2: every hour, lock, four
+lines, combo 5, Minimal, Low, High, Ultra and portrait 390 × 844, clean consoles. The 265 theme
+tests pass, including the re-baked coast's checksums and the shader budget: the land's GLSL
+fragment is 48.8 KB against the 48 KiB cap (46.3 KB before; the new detail reuses the noise reads
+the shader already made). GPU p50 at golden hour, 1898 × 998: High 2.56 → 2.75 ms, Ultra 3.15 →
+3.15 ms (the reference was main's High Coast on another session's server).
