@@ -43,22 +43,26 @@ import {
     cross,
     dot,
     float,
+    floor,
     fract,
     frontFacing,
+    fwidth,
     max,
+    min,
     mix,
     normalize,
     pow,
     select,
     sin,
     smoothstep,
+    step,
     uniformArray,
     vec2,
     vec3,
     vec4,
     vertexStage,
 } from 'three/tsl';
-import { mulberry32, ssTexNoise } from './shifting-sands-tsl.js';
+import { mulberry32, ssHash21, ssTexNoise } from './shifting-sands-tsl.js';
 
 const DEG = Math.PI / 180;
 const TAU = Math.PI * 2;
@@ -184,11 +188,11 @@ function clearance(br, phi, groundAt, p) {
  */
 function pierceAngle(br, dir, groundAt, p) {
     const limit = Math.PI * 0.7;
-    const step = 0.05;
+    const dPhi = 0.05;
     let hi = Math.max(0, br.phi0 - 0.55);
     if (clearance(br, dir * hi, groundAt, p) <= 0) hi = 0;
     let lo = -1;
-    for (let phi = hi + step; phi <= limit; phi += step) {
+    for (let phi = hi + dPhi; phi <= limit; phi += dPhi) {
         if (clearance(br, dir * phi, groundAt, p) <= 0) {
             lo = phi;
             break;
@@ -883,32 +887,68 @@ export function createWorm(shared, { rings = 160, segs = 32, capRings = 10 } = {
     material.colorNode = Fn(() => {
         const wp = vertexStage(worldPos);
         const Ng = normalize(vertexStage(geomNormal));
-        // Back faces are the inside of the worm: what the open maw reveals.
-        const inside = select(frontFacing, float(0.0), float(1.0));
-        const N = Ng.mul(mix(1.0, -1.0, inside)).toVar();
         const vSig = vertexStage(sigma);
         const vTh = vertexStage(theta);
         const vCap = vertexStage(isCap);
+        // Back faces are the inside of the worm: what the open maw reveals. The cap's rings run
+        // forward from the rim while the body's run back from it, so its triangles wind the other
+        // way and its front faces are the inside: the closed dome showed its teeth to the world
+        // and the open bell showed hide where the eye looks in.
+        const inside = select(frontFacing, vCap, float(1.0).sub(vCap));
+        const N = Ng.mul(mix(1.0, -1.0, inside)).toVar();
         const vAlpha = vertexStage(alpha);
         const vPlate = vertexStage(plate);
         const V = normalize(cameraPosition.sub(wp));
 
         // ── Hide: dusty grey-ochre plates with dark creases, sand on the back ──
-        const n1 = ssTexNoise(noiseTex, vec2(vTh.mul(3.0), vSig.mul(96.0)));
-        const hide = mix(vec3(0.2, 0.16, 0.13), vec3(0.31, 0.24, 0.18), n1.x).toVar();
-        hide.mulAssign(mix(0.3, 1.0, max(vPlate, vCap)));
+        // The body reads its grain along its length; the lip (σ = 0) across its flare.
+        const grainAt = mix(vec2(vTh.mul(3.0), vSig.mul(96.0)), vec2(vTh.mul(5.0), vAlpha.mul(7.0)), vCap);
+        const n1 = ssTexNoise(noiseTex, grainAt);
+        // Each plate its own weathered tone (hashed on the plate index), so the rings read.
+        const plateId = floor(vSig.mul(72.0));
+        const plateTone = mix(0.82, 1.12, ssHash21(vec2(plateId, 3.7)));
+        const hide = mix(vec3(0.2, 0.16, 0.13), vec3(0.31, 0.24, 0.18), n1.x).mul(plateTone).toVar();
+        // The lip is pleated: radial folds that open and close with the bell.
+        const pleats = sin(vTh.mul(18.0).add(n1.y.mul(1.5))).mul(0.5).add(0.5);
+        const lipFold = mix(1.0, mix(0.55, 1.1, pleats), vCap.mul(smoothstep(0.1, 0.6, vAlpha)));
+        hide.mulAssign(mix(0.22, 1.0, max(vPlate, vCap)).mul(lipFold));
         const back = smoothstep(0.35, 0.85, N.y);
         hide.assign(mix(hide, vec3(0.7, 0.41, 0.2), back.mul(0.5).mul(n1.y.mul(0.5).add(0.5))));
 
-        // ── Inside: ember flesh ringed with pale teeth, darkening down the throat ──
-        const teethRings = smoothstep(0.55, 0.8, fract(vSig.mul(300.0).add(vAlpha.mul(5.0))));
-        const teethCols = smoothstep(0.7, 0.95, abs(fract(vTh.mul(72.0 / 6.2831)).sub(0.5)).mul(2.0));
-        const nearMouth = float(1.0).sub(smoothstep(0.0, 0.05, vSig)).mul(float(1.0).sub(vCap))
-            .add(vCap.mul(smoothstep(0.15, 0.7, vAlpha)));
-        const tooth = teethRings.mul(teethCols).mul(nearMouth);
+        // ── Inside: ember flesh in wet folds, and rows of pale teeth pointing down the throat ──
+        // Teeth are triangles in (around, along) space, a row at a time, each row offset half a
+        // tooth: on the flaring lip their bases sit at the outer edge of the row; in the throat,
+        // at the mouth's side.
+        const toothShape = (around, rowCoord, count, stagger) => {
+            const at = around.mul(count / 6.2831).add(stagger);
+            const tx = abs(fract(at).sub(0.5)).mul(2.0);
+            // Each tooth its own size: no two in a row alike.
+            const size = mix(0.62, 1.0, ssHash21(vec2(floor(at), stagger.mul(7.0).add(count))));
+            // A smaller tooth is shorter (its point starts further back) and narrower at its root.
+            const along = clamp(rowCoord.sub(float(1.0).sub(size)).div(size), 0.0, 1.0);
+            const edge = tx.sub(pow(along, 0.85).mul(size.mul(0.82)));
+            const aw = fwidth(edge).add(1e-4);
+            return float(1.0).sub(smoothstep(aw.negate(), aw, edge)).mul(smoothstep(0.04, 0.16, rowCoord));
+        };
+        const lipRows = clamp(vAlpha.sub(0.34).div(0.66), 0.0, 1.0).mul(3.0);
+        const lipRow = floor(min(lipRows, 2.999));
+        const lipAt = fract(lipRows);
+        const lipTooth = toothShape(vTh, lipAt, 30.0, lipRow.mul(0.5)).mul(step(0.34, vAlpha)).mul(vCap);
+        const throatRows = vSig.div(0.05).mul(3.0);
+        const throatRow = floor(throatRows);
+        const throatAt = float(1.0).sub(fract(throatRows));
+        const throatTooth = toothShape(vTh, throatAt, 26.0, throatRow.mul(0.5))
+            .mul(step(throatRows, 3.0)).mul(float(1.0).sub(vCap))
+            .mul(float(1.0).sub(smoothstep(0.0, 0.05, vSig).mul(0.6)));
+        const tooth = max(lipTooth, throatTooth);
+        // A tooth is palest at its point and darkens toward its root in the gum.
+        const rootward = mix(throatAt, lipAt, vCap);
+        const toothTone = mix(1.0, 0.42, smoothstep(0.3, 1.0, rootward));
         const depth = float(1.0).sub(smoothstep(0.0, 0.06, vSig)).mul(float(1.0).sub(vCap)).add(vCap);
-        const flesh = mix(vec3(0.02, 0.005, 0.004), vec3(0.2, 0.045, 0.025), depth);
-        const insideAlbedo = mix(flesh, vec3(0.8, 0.74, 0.62), tooth.mul(0.7));
+        const folds = sin(vTh.mul(14.0).add(n1.z.mul(2.0))).mul(0.5).add(0.5);
+        const flesh = mix(vec3(0.02, 0.005, 0.004), vec3(0.2, 0.045, 0.025), depth)
+            .mul(mix(0.6, 1.25, folds));
+        const insideAlbedo = mix(flesh, vec3(0.6, 0.48, 0.34).mul(toothTone), tooth.mul(0.65));
 
         const albedo = mix(hide, insideAlbedo, inside);
         const nlA = dot(N, uSunA);
@@ -918,7 +958,7 @@ export function createWorm(shared, { rings = 160, segs = 32, capRings = 10 } = {
         const light = direct.mul(float(1.0).sub(inside.mul(0.9))).add(skyFill.mul(float(1.0).sub(inside.mul(0.55))));
         const col = albedo.mul(light).toVar();
         // The teeth hold a faint ember glow so the maw reads as depth, not as a hole.
-        col.addAssign(vec3(1.0, 0.55, 0.25).mul(tooth.mul(inside).mul(0.22)));
+        col.addAssign(vec3(1.0, 0.55, 0.25).mul(tooth.mul(toothTone).mul(inside).mul(0.12)));
         // Backlit rim: only the true silhouette burns, and only when the suns are behind.
         const rimF = pow(float(1.0).sub(clamp(abs(dot(N, V)), 0.0, 1.0)), 6.0).mul(float(1.0).sub(inside));
         const behind = smoothstep(0.55, 1.0, dot(V.negate(), uSunA).mul(0.5).add(0.5));
