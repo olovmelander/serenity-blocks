@@ -96,14 +96,16 @@ describe('Ocean quality tiers', () => {
         expect(QUALITY_NAMES).toEqual(['Minimal', 'Low', 'Medium', 'High', 'Ultra', 'Extreme']);
         QUALITY_NAMES.forEach((name) => {
             const t = QUALITY[name];
-            ['school', 'reefFish', 'kelp', 'grass', 'motes', 'pool'].forEach((k) => expect(t[k]).toBeGreaterThan(0));
+            ['school', 'reefFish', 'kelp', 'grass', 'motes', 'near', 'pool']
+                .forEach((k) => expect(t[k]).toBeGreaterThan(0));
             expect(POST_LOOK[name]).toBeTruthy();
             expect(POST_LOOK[name].shafts).toBeGreaterThan(0);
         });
     });
 
     it('never asks less of a higher tier', () => {
-        ['seabed', 'corals', 'kelp', 'blades', 'grass', 'school', 'reefFish', 'jellies', 'motes', 'pool', 'light', 'waves']
+        ['seabed', 'corals', 'kelp', 'blades', 'grass', 'school', 'reefFish', 'jellies', 'motes', 'near', 'pool', 'light',
+            'waves']
             .forEach((k) => {
                 for (let i = 1; i < QUALITY_NAMES.length; i++) {
                     expect(QUALITY[QUALITY_NAMES[i]][k]).toBeGreaterThanOrEqual(QUALITY[QUALITY_NAMES[i - 1]][k]);
