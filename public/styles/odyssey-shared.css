@@ -165,7 +165,8 @@
 .sb-orb-art__badge--rival {
     border-color: rgba(var(--sb-rose-rgb), 0.6);
     color: var(--sb-rose);
-    font: 800 0.625rem / 1 var(--sb-font-display);
+    /* Sized with the art, not the root text: the badge is a mark on the ring (it is aria-hidden). */
+    font: 800 clamp(8px, calc(var(--orb-art-size) * 0.065), 14px) / 1 var(--sb-font-display);
     letter-spacing: 0.02em;
 }
 
@@ -180,9 +181,10 @@
     border: 1px solid var(--sb-line-strong);
     background: #0c0a22;
     color: var(--sb-text);
-    font: 700 0.625rem / 18px var(--sb-font-display);
+    font: 700 10px / 18px var(--sb-font-display);
     font-variant-numeric: tabular-nums;
     text-align: center;
+    white-space: nowrap;
     transform: translateX(-50%);
 }
 

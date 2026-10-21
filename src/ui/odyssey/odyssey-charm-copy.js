@@ -37,11 +37,15 @@ export function describeOdysseyCharmHeader(entries) {
 }
 
 /**
- * Write the header line into the map's overlay: each charm held as its live icon with its count;
- * the count in words where no icon node can be made (no document). The chip is a button that
- * opens the charm guide, so its name says the bag in words (the icons are hidden from readers).
+ * Write the header chip into the map's overlay: "Charms" in small capitals, then each charm held
+ * as its live icon with its count, or "None yet"; the line in words where no icon node can be
+ * made (no document). The chip is a button that opens the charm guide, so its name says the bag
+ * in words (the icons are hidden from readers).
  */
-export function renderOdysseyCharmHeader(entries, node = globalThis.document?.getElementById?.('odyssey-header-charms')) {
+export function renderOdysseyCharmHeader(
+    entries,
+    node = globalThis.document?.getElementById?.('odyssey-header-charms'),
+) {
     if (!node) return;
     const { text, title } = describeOdysseyCharmHeader(entries);
     const held = (entries || []).filter((entry) => entry.count > 0);
@@ -49,18 +53,27 @@ export function renderOdysseyCharmHeader(entries, node = globalThis.document?.ge
     const named = held.map((entry) => `${entry.count} ${entry.name}`).join(', ');
     node.setAttribute?.('aria-label', `Charms: ${named || 'none yet'}`);
     const doc = globalThis.document;
-    if (held.length && typeof node.replaceChildren === 'function' && doc?.createElement) {
+    if (typeof node.replaceChildren === 'function' && doc?.createElement) {
+        const part = (className, words) => {
+            const span = doc.createElement('span');
+            span.className = className;
+            span.textContent = words;
+            return span;
+        };
         const parts = [];
         held.forEach((entry) => {
             const icon = createOdysseyCharmIconNode(entry.id);
             if (!icon) return;
-            const count = doc.createElement('span');
-            count.className = 'charm-count';
-            count.textContent = `×${entry.count}`;
-            parts.push(icon, count);
+            const item = part('odyssey-map-charms__item', '');
+            item.append(icon, part('charm-count', `×${entry.count}`));
+            parts.push(item);
         });
-        if (parts.length) {
-            node.replaceChildren(...parts);
+        if (parts.length || !held.length) {
+            if (node.dataset) node.dataset.empty = parts.length ? 'false' : 'true';
+            node.replaceChildren(
+                part('odyssey-map-charms__label', 'Charms'),
+                ...(parts.length ? parts : [part('odyssey-map-charms__none', 'None yet')]),
+            );
             return;
         }
     }
