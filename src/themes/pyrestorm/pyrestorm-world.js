@@ -43,10 +43,10 @@ import {
 } from './pyrestorm-hours.js';
 import { tierFor } from './pyrestorm-quality.js';
 import {
-    bakeBillows, bakeLattice, bakeNoise, lavaFieldSteps,
+    bakeBillows, bakeCrust, bakeLattice, bakeNoise, lavaFieldSteps,
 } from './pyrestorm-bake.js';
 import {
-    HITS, LIGHTS, createBillowTexture, createLatticeTexture, createLavaTextures, createNoiseTexture, createUniforms,
+    HITS, LIGHTS, createBillowTexture, createCrustTexture, createLatticeTexture, createLavaTextures, createNoiseTexture, createUniforms,
 } from './pyrestorm-tsl.js';
 import { createLand, landSteps } from './pyrestorm-land.js';
 import { bakeInWorker } from '../shared/bake-worker-client.js';
@@ -54,11 +54,12 @@ import { createSky } from './pyrestorm-sky.js';
 import { createAnvil } from './pyrestorm-anvil.js';
 import { PUFF, Smoke } from './pyrestorm-smoke.js';
 import { createPlume } from './pyrestorm-plume.js';
+import { createFume } from './pyrestorm-fume.js';
 import {
     BOLT, BOLT_LIFE, BOLT_SLOTS, boltLightEnvelope, createBolts,
 } from './pyrestorm-bolts.js';
 import {
-    BOMB, Bombs, createJets, createMotes,
+    BOMB, BOMB_G, Bombs, createJets, createMotes,
 } from './pyrestorm-fire.js';
 import { cardUnion, fallbackLayout } from './pyrestorm-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
@@ -89,8 +90,10 @@ function* bakeSteps() {
     const lattice = bakeLattice();
     yield 'lattice';
     const billows = bakeBillows();
+    yield 'billows';
+    const crust = bakeCrust();
     sharedBakes = {
-        lava, noise, lattice, billows,
+        lava, noise, lattice, billows, crust,
     };
     return sharedBakes;
 }
@@ -254,6 +257,9 @@ export class PyrestormWorld {
         this.fountainLevel = 1;
         this.tremor = 0;
         this.corona = 0;
+        /** A burst's glow in the crater: asked by each lock, eased (it swells and fades, never strobes). */
+        this.burstAsk = 0;
+        this.burstGlow = 0;
         this.spiderClock = 0;
         this.ambientClock = 0;
         this.ambientGap = 6;
@@ -287,6 +293,7 @@ export class PyrestormWorld {
             noise: createNoiseTexture(bakes.noise),
             lattice: createLatticeTexture(bakes.lattice),
             billows: createBillowTexture(bakes.billows),
+            crust: createCrustTexture(bakes.crust),
         };
         const t = this.textures;
         this.addPart('land', createLand(u, t, tier, prepared.land));
@@ -296,12 +303,15 @@ export class PyrestormWorld {
         // The eruption's cloud: the column (a volume) and the event puffs. The blast's shock front
         // shows where it passes through them (and through the anvil), never as a shell in clear air.
         this.plume = createPlume(u, t, tier);
+        // The fissure's fume: its vents' gas, lit from below (sheets, not puffs).
+        this.fume = createFume(u, t);
         this.addPart('ash', {
             mesh: this.smoke.mesh,
-            meshes: [this.plume.mesh, this.smoke.mesh],
+            meshes: [this.plume.mesh, this.smoke.mesh, ...this.fume.meshes],
             dispose: () => {
                 this.plume.dispose();
                 this.smoke.dispose();
+                this.fume.dispose();
             },
         });
         this.bolts = createBolts(u, tier);
@@ -479,8 +489,8 @@ export class PyrestormWorld {
         const drop = clamp01((context.distance || 0) / 18);
         const lean = clamp(Number.isFinite(context.u) ? context.u : 0.5, 0, 1) - 0.5;
         const tint = this.tintOf(context.color);
-        const count = Math.round(cells * (hard ? 4 + drop * 2 : 2.2));
-        this.burst(this.time, count, lean, tint, hard ? 1.25 : 1);
+        const count = Math.round(cells * (hard ? 5 + drop * 3 : 3));
+        this.burst(this.time, count, lean, tint, hard ? 1.25 + drop * 0.2 : 1);
         if (hard) {
             this.tremor = Math.max(this.tremor, 0.65 + drop * 0.35);
             this.fountainKick = Math.max(this.fountainKick, 0.25);
@@ -488,8 +498,41 @@ export class PyrestormWorld {
     }
 
     /**
+     * One bomb from `o` to a landing point: it climbs `apex` metres over the vent under the
+     * bombs' time-lapsed gravity and falls onto the land, where an ember of it lies cooling.
+     * Returns its flight (s).
+     */
+    throwBomb(o, land, apex, born, tint, px, glow = 4.5) {
+        const r = this.random;
+        const g = BOMB_G;
+        const vy = Math.sqrt(2 * g * apex);
+        const drop = Math.max(1, o[1] + apex - land[1]);
+        const flight = vy / g + Math.sqrt((2 * drop) / g);
+        this.bombs?.spawn({
+            x: o[0],
+            y: o[1],
+            z: o[2],
+            vx: (land[0] - o[0]) / flight,
+            vy,
+            vz: (land[2] - o[2]) / flight,
+            born,
+            life: flight,
+            tint,
+            px,
+            kind: BOMB.bomb,
+            g,
+            trail: 0.7 + r() * 0.6,
+        });
+        this.bombs?.spawn({
+            x: land[0], y: land[1] + 2, z: land[2], vx: 0, vy: 0, vz: 0, born: born + flight, life: glow * (0.7 + r() * 0.6), tint, px: px * 0.8, kind: BOMB.ember, g: 0,
+        });
+        return flight;
+    }
+
+    /**
      * A Strombolian burst: `count` bombs from the crater, leaning by `lean` (−0.5 left … 0.5
-     * right on screen), each aimed at a landing point on the cone and splashing there.
+     * right on screen), each on its own arc to a landing point on the cone, where it splashes and
+     * lies glowing; a spray of sparks out of the mouth, a puff of hot ash, and the crater glows.
      */
     burst(time, count, lean, tint, power = 1) {
         const r = this.random;
@@ -499,38 +542,75 @@ export class PyrestormWorld {
         const o = [CRATER.x, CRATER.y + 30, CRATER.z];
         const land = this._p;
         for (let i = 0; i < count; i++) {
-            const bearing = bias + (r() - 0.5) * 1.4;
-            const radius = (380 + r() * 1100) * power;
+            const bearing = bias + (r() - 0.5) * 1.5;
+            const radius = (600 + r() ** 0.8 * 1800) * (0.75 + 0.25 * power);
             this.groundFromCrater(bearing, radius, land);
-            const flight = 2.4 + r() * 1.6;
-            const vx = (land[0] - o[0]) / flight;
-            const vz = (land[2] - o[2]) / flight;
-            const vy = (land[1] - o[1]) / flight + 0.5 * 9.81 * flight;
-            const delay = r() * 0.25;
-            this.bombs?.spawn({
-                x: o[0], y: o[1], z: o[2], vx, vy, vz, born: time + delay, life: flight, tint, px: 2.6 + r() * 1.6, kind: BOMB.bomb,
-            });
+            // A wide parabola: the higher it climbs, the further out it falls.
+            const apex = (130 + radius * (0.24 + r() * 0.24)) * power;
+            const delay = r() * 0.22;
+            const flight = this.throwBomb(o, land, apex, time + delay, tint, 3.2 + r() * 2.2);
             if (i < 4) this.schedule(time + delay + flight, 'splash', tint[0] * 0.5 + 0.5, 0, 0, land[0], land[1], land[2]);
         }
-        // Sparks at the mouth.
-        for (let i = 0; i < 6 + count; i++) {
+        // Sparks out of the mouth: fast, dragged to a stop within a few hundred metres.
+        for (let i = 0; i < 10 + count; i++) {
             const a = r() * TAU;
-            const s = 25 + r() * 60;
+            const up = 0.35 + r() * 0.65;
+            const s = (520 + r() * 900) * power;
             this.bombs?.spawn({
-                x: o[0], y: o[1], z: o[2], vx: Math.cos(a) * s, vy: 50 + r() * 70, vz: Math.sin(a) * s, born: time + r() * 0.2, life: 1.4 + r(), tint, px: 1.4, kind: BOMB.spark,
+                x: o[0],
+                y: o[1],
+                z: o[2],
+                vx: Math.cos(a) * s * Math.sqrt(1 - up * up),
+                vy: s * up,
+                vz: Math.sin(a) * s * Math.sqrt(1 - up * up),
+                born: time + r() * 0.12,
+                life: 0.9 + r() * 0.7,
+                tint,
+                px: 1.6 + r() * 0.7,
+                kind: BOMB.spark,
+                g: 220,
+                drag: 2.3,
             });
         }
+        this.puff(time, power);
+        this.burstAsk = Math.min(1.6, Math.max(this.burstAsk, 0.5 + 0.35 * power + count * 0.01));
         this.fountainKick = Math.max(this.fountainKick, 0.12 * power);
+    }
+
+    /** A burst's puff of ash out of the crater: hot at first, it climbs and joins the column. */
+    puff(time, power = 1) {
+        if (!this.smoke) return;
+        const r = this.random;
+        const n = Math.max(2, Math.round((this.tier.eventPuffs / 42) * (0.7 + 0.3 * power)));
+        for (let i = 0; i < n; i++) {
+            const a = r() * TAU;
+            const out = 25 + r() * 45;
+            this.smoke.spawn({
+                x: CRATER.x + Math.cos(a) * 60,
+                y: CRATER.y + 60 + r() * 60,
+                z: CRATER.z + Math.sin(a) * 60,
+                vx: Math.cos(a) * out,
+                vy: (130 + r() * 110) * (0.8 + 0.2 * power),
+                vz: Math.sin(a) * out,
+                born: time + i * 0.05,
+                life: 6 + r() * 3,
+                radius: (90 + r() * 70) * (0.8 + 0.2 * power),
+                grow: 34 + r() * 22,
+                kind: PUFF.burst,
+                heat: 0.75 + r() * 0.2,
+                variant: Math.floor(r() * 16),
+            });
+        }
     }
 
     /** Where a bomb lands: a splash of spatter and a glowing spot on the cone. */
     splash(time, p, glow = 1, big = 0) {
         const r = this.random;
-        for (let i = 0; i < 5 + big * 10; i++) {
+        for (let i = 0; i < 6 + big * 10; i++) {
             const a = r() * TAU;
-            const s = 6 + r() * 14;
+            const s = 40 + r() * 70;
             this.bombs?.spawn({
-                x: p[0], y: p[1] + 3, z: p[2], vx: Math.cos(a) * s, vy: 8 + r() * 16, vz: Math.sin(a) * s, born: time, life: 0.9 + r() * 0.8, tint: [1, 1, 1], px: 1.3, kind: BOMB.splash,
+                x: p[0], y: p[1] + 4, z: p[2], vx: Math.cos(a) * s, vy: 50 + r() * 70, vz: Math.sin(a) * s, born: time, life: 0.7 + r() * 0.6, tint: [1, 1, 1], px: 1.4, kind: BOMB.splash, g: 160, drag: 1.2,
             });
         }
         this.addHit(p, time, [glow, glow * 0.95, glow * 0.9], 0, 6);
@@ -612,7 +692,7 @@ export class PyrestormWorld {
                 const a = r() * TAU;
                 const s = 15 + r() * 30;
                 this.bombs?.spawn({
-                    x: B[0], y: B[1] + 4, z: B[2], vx: Math.cos(a) * s, vy: 20 + r() * 30, vz: Math.sin(a) * s, born: time + TIMING.leader, life: 0.8 + r() * 0.6, tint: [0.75, 0.8, 1.2], px: 1.3, kind: BOMB.spark,
+                    x: B[0], y: B[1] + 4, z: B[2], vx: Math.cos(a) * s * 3, vy: 60 + r() * 90, vz: Math.sin(a) * s * 3, born: time + TIMING.leader, life: 0.8 + r() * 0.6, tint: [0.75, 0.8, 1.2], px: 1.4, kind: BOMB.spark, g: 120, drag: 2.2,
                 });
             }
         }
@@ -682,12 +762,12 @@ export class PyrestormWorld {
         for (let i = 0; i < n; i++) {
             const bearing = (i / n) * TAU + r() * 0.2;
             this.groundFromCrater(bearing, 700 + r() * 2200, land);
-            const flight = 3 + r() * 2.2;
-            this.bombs?.spawn({
-                x: o[0], y: o[1], z: o[2], vx: (land[0] - o[0]) / flight, vy: (land[1] - o[1]) / flight + 0.5 * 9.81 * flight, vz: (land[2] - o[2]) / flight, born: t + r() * 0.15, life: flight, tint: [1, 1, 1], px: 3 + r() * 2, kind: BOMB.bomb,
-            });
-            if (i % 5 === 0) this.schedule(t + flight, 'splash', 1, 1, 0, land[0], land[1], land[2]);
+            const born = t + r() * 0.15;
+            const flight = this.throwBomb(o, land, 550 + r() * 800, born, [1, 1, 1], 3 + r() * 2, 7);
+            if (i % 5 === 0) this.schedule(born + flight, 'splash', 1, 1, 0, land[0], land[1], land[2]);
         }
+        this.puff(t, 2.2);
+        this.burstAsk = 1.6;
         this.schedule(t + 0.3, 'surge');
         this.schedule(t + 1.25, 'bolt', BOLT.discharge, 0, 1.5);
     }
@@ -870,6 +950,10 @@ export class PyrestormWorld {
         this.fountainLevel += (fountainAsk - this.fountainLevel) * approach(fountainAsk > this.fountainLevel ? 3.5 : 0.9, dt);
         this.tremor *= 1 - approach(2.6, dt);
         this.corona += (this.b2b / 4 - this.corona) * approach(1.2, dt);
+        // A lock's glow in the crater: the ask decays, the glow follows it fast up and slowly down.
+        this.burstAsk *= 1 - approach(1.6, dt);
+        this.burstGlow += (this.burstAsk - this.burstGlow) * approach(this.burstAsk > this.burstGlow ? 11 : 2.4, dt);
+        u.burst.value = this.burstGlow * this.activity;
         u.activity.value = this.activity;
         u.charge.value = this.charge;
         u.fountain.value = this.fountainLevel;
@@ -969,6 +1053,14 @@ export class PyrestormWorld {
                     w: e * 0.5,
                 });
             }
+        }
+        // A burst: the crater's mouth glows up through the foot of the column and on the cone.
+        const glow = this.burstGlow * this.activity;
+        if (glow > 0.02) {
+            const e = glow * 1.2;
+            list.push({
+                x: CRATER.x, y: CRATER.y + 260, z: CRATER.z, radius: 2600, r: e * 1.0, g: e * 0.46, b: e * 0.16, w: e * 0.9,
+            });
         }
         // The blast: the crater flashes (once).
         const fAge = time - this.craterFlashAt;
@@ -1094,6 +1186,7 @@ export class PyrestormWorld {
             this.textures.noise.dispose();
             this.textures.lattice.dispose();
             this.textures.billows.dispose();
+            this.textures.crust.dispose();
         }
         this.root.clear();
         this.partList.length = 0;

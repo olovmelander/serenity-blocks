@@ -12,6 +12,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     clamp,
     dot,
     exp,
@@ -63,8 +64,8 @@ export const POST_LOOK = {
     },
 };
 
-export const BLOOM_THRESHOLD = 1.0;
-export const BLOOM_KNEE = 0.55;
+export const BLOOM_THRESHOLD = 1.5;
+export const BLOOM_KNEE = 0.45;
 export const BLOOM_RADIUS = 0.45;
 
 const LUMA = vec3(0.2126, 0.7152, 0.0722);
@@ -145,21 +146,30 @@ export class NimbusVeilPost {
                 // above a threshold), so the towers in front of the sun cut gaps into them ──
                 if (rayTaps > 0) {
                     const toSun = this.uSun.sub(st);
-                    const stepV = toSun.mul(0.92 / rayTaps);
-                    const acc = vec3(0.0).toVar();
-                    let weight = 1.0;
-                    let total = 0.0;
-                    for (let i = 1; i <= rayTaps; i += 1) {
-                        const tap = vec3(sceneColor.sample(st.add(stepV.mul(i))).rgb);
-                        acc.addAssign(max(tap.sub(0.95), 0.0).mul(weight));
-                        total += weight;
-                        weight *= 0.94;
-                    }
-                    // Strongest near the sun, fading smoothly with distance (no visible rim).
-                    const d = length(toSun.mul(vec2(this.uAspect, 1.0)));
-                    const falloff = exp(d.mul(d).mul(-3.2));
-                    const rays = acc.div(total).mul(falloff).mul(this.uSunVis).mul(this.uRays);
-                    B.addAssign(rays.mul(vec3(1.0, 0.84, 0.62)).mul(0.75));
+                    // Strongest near the sun, fading smoothly with distance (no visible rim);
+                    // past ~1.1 screen heights nothing reaches, so the march is skipped there.
+                    const d = length(toSun.mul(vec2(this.uAspect, 1.0))).toVar();
+                    If(d.lessThan(1.1).and(this.uSunVis.greaterThan(0.001)), () => {
+                        const stepV = toSun.mul(0.92 / rayTaps);
+                        const acc = vec3(0.0).toVar();
+                        let weight = 1.0;
+                        let total = 0.0;
+                        for (let i = 1; i <= rayTaps; i += 1) {
+                            const at = st.add(stepV.mul(i));
+                            // An explicit level: implicit-derivative sampling is not allowed in a branch.
+                            const tap = vec3(sceneColor.sample(at).level(0).rgb);
+                            // Only light near the sun emits: bright rims elsewhere (a tower's
+                            // silver lining) would otherwise be smeared into streaks pointing at it.
+                            const fromSun = at.sub(this.uSun).mul(vec2(this.uAspect, 1.0));
+                            const near = exp(dot(fromSun, fromSun).mul(-40.0));
+                            acc.addAssign(max(tap.sub(1.2), 0.0).mul(weight).mul(near));
+                            total += weight;
+                            weight *= 0.94;
+                        }
+                        const falloff = exp(d.mul(d).mul(-3.2));
+                        const rays = acc.div(total).mul(falloff).mul(this.uSunVis).mul(this.uRays);
+                        B.addAssign(rays.mul(vec3(1.0, 0.84, 0.62)).mul(0.75));
+                    });
                 }
             }
             const H = S.add(B).toVar();
