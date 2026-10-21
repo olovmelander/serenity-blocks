@@ -4,7 +4,9 @@
  * Its timings are part of the start contract (the first frame stays frozen until GO and fast
  * orbs get a longer Ready), so presentation only adds motion around them: the plate settles in,
  * GO lands with a ring of light, and an afterglow fades after control has already been handed
- * over. The afterglow is pointer-transparent and never delays the first live tick.
+ * over. The afterglow is pointer-transparent and never delays the first live tick. The plate is
+ * fitted to the well it starts (never wider), and its veil is a plain gradient: the live scene
+ * under it is never blurred.
  * Styles: `.odyssey-start-cue` in public/styles/odyssey-flow.css.
  */
 import { prefersOdysseyReducedMotion } from '../../core/game-modes/odyssey-physics-callbacks.js';
@@ -59,8 +61,23 @@ function createCue(mode, levelConfig, gameState) {
     cueState.panel.appendChild(cueState.label);
     cueState.panel.appendChild(cueState.subtitle);
     overlay.appendChild(cueState.panel);
+    fitToWell(overlay);
     document.body.appendChild(overlay);
     return cueState;
+}
+
+/**
+ * The plate sits on the well, never wider than it: it used to overhang onto the HUD. Without a
+ * measurable well (or in a test stub) the stylesheet's centred, capped plate stands.
+ */
+function fitToWell(overlay) {
+    const well = document.querySelector?.('#single-player-container .player-board-section');
+    const bounds = well?.getBoundingClientRect?.();
+    if (!bounds || !(bounds.width > 0) || !(bounds.height > 0) || !overlay.style?.setProperty) return;
+    overlay.dataset.fit = 'well';
+    overlay.style.setProperty('--cue-well-x', `${Math.round(bounds.left + bounds.width / 2)}px`);
+    overlay.style.setProperty('--cue-well-y', `${Math.round(bounds.top + bounds.height / 2)}px`);
+    overlay.style.setProperty('--cue-well-w', `${Math.round(bounds.width)}px`);
 }
 
 function setPhase(mode, cueState, phase) {
