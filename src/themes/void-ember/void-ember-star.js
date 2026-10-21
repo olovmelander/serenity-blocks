@@ -44,23 +44,20 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    EMBER, IMPACT_FADE, IMPACT_SPEED, veBell, veBlackbody, veFxMaterial, veGlow, vePart, veSolidMaterial,
+    EMBER, IMPACT_FADE, IMPACT_SPEED, veBell, veBlackbody, veFxMaterial, veGlow, vePart,
+    veSolidMaterial,
 } from './void-ember-tsl.js';
 
 // ── Photosphere ─────────────────────────────────────────────────────────────────
 
 /** 1 on the half-way contour of a noise field, 0 at its extremes: where a hairline runs. */
 const ridge = (n) => float(1.0).sub(abs(n.mul(2.0).sub(1.0)));
-const pow8 = (x) => {
-    const a = x.mul(x);
-    const b = a.mul(a);
-    return b.mul(b);
-};
 
 /**
  * @param {object} u  shared uniforms
  * @param {object} opts
- * @param {number} [opts.detail=3]     0 = three noise reads, 1 = four, 2 = five, 3 = six
+ * @param {number} [opts.detail=3]     0 = four noise reads, 1 = four, 2 = five, 3 = six; plus one
+ *                                     fetch of the baked plates
  * @param {number} [opts.segments=96]  sphere tessellation
  */
 export function createPhotosphere(u, { detail = 3, segments = 96 } = {}) {
@@ -76,10 +73,10 @@ export function createPhotosphere(u, { detail = 3, segments = 96 } = {}) {
         const heat = u.heat.toVar();
 
         // ── What the surface is made of ──
-        // A slow warp carries every pattern: plates and cells are torn, never round.
-        const warp = detail >= 1
-            ? u.noise3(p.mul(2.6).add(vec3(3.1, u.boil.mul(0.03), 7.7))).toVar()
-            : vec2(0.5, 0.5).toVar();
+        // A slow warp carries every pattern: plates and cells are torn, never round. Every tier
+        // has it: without it the plates are a turtle shell of straight-sided polygons and the
+        // cells line up on the noise lattice in squares.
+        const warp = u.noise3(p.mul(2.6).add(vec3(3.1, u.boil.mul(0.03), 7.7))).toVar();
         const pw = p.add(vec3(warp.x.sub(0.5), warp.y.sub(0.5), warp.x.sub(warp.y)).mul(0.3)).toVar();
         // The crust: plates whose coast is broken at every scale (octaves of the lattice).
         const o1 = u.noise3(pw.mul(2.1).add(vec3(11.3, 4.1, u.boil.mul(0.01)))).toVar();
@@ -88,13 +85,37 @@ export function createPhotosphere(u, { detail = 3, segments = 96 } = {}) {
             ? u.noise3(pw.mul(12.7).add(vec3(1.7, u.boil.mul(0.05), 33.0))).toVar()
             : vec2(0.5, 0.5).toVar();
         const field = o1.x.mul(0.56).add(o2.x.mul(0.29)).add(o3.x.mul(0.15)).toVar();
-        // Heat decides how much of the star the crust still covers.
+
+        // The plates: cellular noise, so the crust breaks into polygons the way a cooling slag
+        // crust does (the ridges of value noise drew long smeared worms instead). Baked once into
+        // a cube atlas in the star's frame (bakePlates) and read along the warped direction, so
+        // the warp moves them; F2 − F1 is ~0 along the border between two plates, and a little of
+        // the finer octaves is added to it so no border is ruler-straight.
+        const plates = u.plates(pw).toVar();
+        const jag = detail >= 2
+            ? o3.x.sub(0.5).mul(0.07).add(o2.y.sub(0.5).mul(0.05))
+            : o2.y.sub(0.5).mul(0.08);
+        const gap = plates.x.add(jag).toVar();
+        // Heat opens the cracks.
+        const width = mix(float(0.045), float(0.12), smoothstep(0.2, 0.95, heat)).toVar();
+        const crackA = float(1.0).sub(smoothstep(0.0, width, gap)).toVar();
+        // Inside the plates a finer crackle, the alligator skin of a cooling crust, on some.
+        const crazed = float(1.0).sub(smoothstep(0.0, width.mul(0.5), plates.z.add(jag.mul(0.6))))
+            .mul(smoothstep(0.3, 0.62, plates.y.mul(0.6).add(o1.y.mul(0.4))));
+        const cracks = max(crackA, crazed.mul(0.7)).toVar();
+        // The hottest thread down the middle of a wide crack.
+        const core = float(1.0).sub(smoothstep(0.0, width.mul(0.38), gap)).toVar();
+        // Heat bleeds out of a crack into the edges of the plates either side.
+        const bleed = exp(gap.div(-0.085)).toVar();
+
+        // Heat decides how much of the star the crust still covers. Whole plates sink first:
+        // each plate's own number moves its coast, so the crust's shore steps along the cracks.
         const edge = mix(float(0.56), float(0.26), smoothstep(0.15, 1.1, heat)).toVar();
-        const crust = float(1.0).sub(smoothstep(edge.sub(0.035), edge.add(0.035), field)).toVar();
-        // Fire in the cracks between the plates: hairline ridges at two scales.
-        // (Without the third octave its ridge would be a constant 1: fire all over the crust.)
-        const hairlines = detail >= 2 ? max(pow8(ridge(o2.y)), pow8(ridge(o3.y)).mul(0.8)) : pow8(ridge(o2.y));
-        const cracks = hairlines.mul(smoothstep(0.12, 0.55, o1.y)).toVar();
+        const crust = float(1.0).sub(smoothstep(
+            edge.sub(0.03),
+            edge.add(0.03),
+            field.add(plates.y.sub(0.5).mul(0.16)),
+        )).toVar();
 
         // Convection cells: bright tops parted by a net of thin dark lanes.
         const g1 = u.noise3(pw.mul(o1.y.mul(10.0).add(27.0)).add(vec3(0.0, 0.0, u.boil.mul(0.16)))).toVar();
@@ -110,8 +131,22 @@ export function createPhotosphere(u, { detail = 3, segments = 96 } = {}) {
 
         // ── Its temperature ──
         const shore = veBell(field.sub(edge).div(0.07));
-        const hot = heat.add(cells.sub(0.66).mul(0.7)).add(o1.y.sub(0.5).mul(0.26)).add(shore.mul(0.12));
-        const cold = heat.mul(0.5).sub(0.085).add(cracks.mul(heat.mul(0.6).add(0.44))).add(o3.x.sub(0.5).mul(0.05));
+        // A hot star's granulation is a faint pattern on a blinding face: the lanes stay orange
+        // fire instead of going brown (at the banked coal's contrast the gold star was a biscuit).
+        // Light rises with T^2.3, so the spread of T is kept to a few hundredths when hot; the
+        // depth then comes from the limb, as on a real star.
+        const blown = smoothstep(0.24, 0.66, heat).toVar();
+        const grain = mix(float(0.7), float(0.17), blown);
+        // At rest the open lava glows a dull red between the plates of black slag.
+        const glowing = float(1.0).sub(smoothstep(0.2, 0.6, heat)).mul(0.1);
+        const hot = heat.add(glowing).add(cells.sub(0.66).mul(grain))
+            .add(o1.y.sub(0.5).mul(mix(float(0.26), float(0.1), blown)))
+            .add(shore.mul(0.12));
+        // The crust: black slag, a shade warmer on the thin plates and toward their cracked
+        // edges; the cracks red at their margins and orange-gold down their middle.
+        const slag = heat.mul(0.5).sub(0.09).add(plates.y.sub(0.5).mul(0.07))
+            .add(bleed.mul(heat.mul(0.25).add(0.11)));
+        const cold = slag.add(cracks.mul(heat.mul(0.6).add(0.4))).add(core.mul(0.1)).add(o3.x.sub(0.5).mul(0.04));
         const T = mix(hot, cold, crust).toVar();
 
         // ── What the board has done to it ──
@@ -138,9 +173,13 @@ export function createPhotosphere(u, { detail = 3, segments = 96 } = {}) {
                 .mul(born));
         });
 
-        // The limb is cooler and dimmer: the eye reads the ball from it.
+        // The limb is cooler and dimmer: the eye reads the ball from it. A hot star darkens
+        // toward its limb more (a white-gold middle, an orange edge), as a star does.
+        // (Read as temperature, not only as light: past the tone curve's shoulder a dimmer limb
+        // hardly shows, a redder one does.)
         const rim = float(1.0).sub(mu);
-        T.subAssign(rim.mul(rim).mul(0.34));
+        T.subAssign(rim.mul(rim).mul(mix(float(0.34), float(0.72), blown)));
+        T.addAssign(mu.mul(mu).mul(0.15).mul(blown).mul(float(1.0).sub(crust)));
         const light = veGlow(T).mul(mu.pow(0.7).mul(0.74).add(0.26));
         const col = veBlackbody(T).mul(light).add(struck.mul(mu.mul(0.6).add(0.4))).toVar();
         return vec4(col.mul(u.breath), 1.0);

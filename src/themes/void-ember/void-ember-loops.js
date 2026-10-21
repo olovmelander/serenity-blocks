@@ -189,8 +189,11 @@ export function createLoops(u) {
         // A blurred mip: the slow octaves wander, the fast ones would saw the threads.
         const d1 = y.sub(weave.r.sub(0.5).mul(3.2));
         const d2 = y.add(weave.g.sub(0.5).mul(3.4));
-        const threads = exp(d1.mul(d1).mul(-42.0)).add(exp(d2.mul(d2).mul(-70.0)).mul(0.7));
-        const sheath = exp(y.mul(y).mul(-3.2)).mul(0.2);
+        // Bright, thin threads over a faint glow: plasma, not a veil (wide dim ribbons of orange
+        // over the purple void read as pale smoke).
+        const threads = exp(d1.mul(d1).mul(-110.0)).mul(1.9).add(exp(d2.mul(d2).mul(-160.0)).mul(1.2))
+            .add(exp(d1.mul(d1).mul(-14.0)).mul(0.22));
+        const sheath = exp(y.mul(y).mul(-3.2)).mul(0.07);
         // The ribbon's own edge is soft, whatever the threads do.
         const inside = float(1.0).sub(y.mul(y));
         const knots = smoothstep(0.3, 0.7, flow.r).mul(0.5).add(0.7);
