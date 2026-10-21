@@ -292,6 +292,11 @@ export function createLandMaterial(u, tex) {
         const wet = smoothstep(1.4, 0.0, above).mul(smoothstep(8.0, 0.0, edge));
         const groundCol = mix(grass, granite, rockMask).toVar();
         groundCol.assign(mix(groundCol, vec3(...WET_ROCK).mul(n2.r.mul(0.5).add(0.75)), wet.mul(0.85)));
+        // At the fall's foot, under the step, everything the spray reaches low down is soaked dark
+        // (pale granite there read as a lit ledge under the curtain).
+        const soaked = smoothstep(34.0, 14.0, length(xz.sub(vec2(FALL_FOOT.x, FALL_FOOT.z))))
+            .mul(smoothstep(level.add(u.flood).add(5.0), level.add(u.flood).add(1.0), P.y));
+        groundCol.assign(mix(groundCol, vec3(...WET_ROCK).mul(n2.r.mul(0.4).add(0.7)), soaked.mul(0.9)));
 
         // ── The forest's canopy ──
         // Far off, a canopy's texture and its edge are read at the far country's own scale (the
