@@ -49,6 +49,7 @@ import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { getViewport } from '../../utils/viewport.js';
+import { sceneSamples } from '../shared/scene-antialias.js';
 import { WAVES_TETROMINOS } from './waves-tetrominos.js';
 import { WavesWorld, REST_RIG, fovForAspect } from './waves-world.js';
 import { POST_LOOK, WavesPost, createPassThroughPipeline } from './waves-post.js';
@@ -348,6 +349,9 @@ export default class WavesTheme extends BaseTheme {
             this.post = new WavesPost(this.renderer, this.scene, this.camera, {
                 look,
                 falseColor: this.flags.falseColor,
+                // 4× MSAA from High up with the game's antialiasing on (the lip's torn edge is
+                // smoothed by coverage); FXAA below that.
+                samples: sceneSamples(this.quality, this.getAntialiasEnabled()),
             });
         } catch (error) {
             console.warn(`${LOG_PREFIX} Post stack failed; rendering pass-through:`, error);
