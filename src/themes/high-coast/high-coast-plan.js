@@ -367,10 +367,22 @@ function headland(x, z) {
     const crown = c.y + 9 * fbm(x / 140, z / 140, 3);
     if (c.side <= 0) return crown * Math.exp(-((u / 1.3) ** 2.2)) - 20 * smooth(1.6, 3.2, u);
     // The lip wanders slowly, and the face is broken into buttresses and recesses along its
-    // vertical joints (a zigzag every ~50 m), not fluted.
-    const phase = z / 52 + 0.35 * fbm(x / 300, z / 300, 2);
-    const zig = Math.abs((((phase % 1) + 1) % 1) - 0.5) * 2;
-    const lip = c.cliff * c.w + 30 * fbm(x / 160, z / 160, 2) + 16 * zig;
+    // vertical joints, not fluted. Joint spacing in granite is irregular: each buttress is its
+    // own width (the warp stretches some cells, squeezes others), its own depth, and lopsided (a
+    // flat face on one side, a sharp re-entrant corner on the other); now and then a joint has
+    // opened into a deep gully. A symmetric zigzag at a fixed 52 m read as a drawn curtain.
+    const phase = z / 58 + 0.9 * fbm(x / 260, z / 260, 2);
+    const cell = Math.floor(phase);
+    const f = phase - cell;
+    const hash = (k) => {
+        const s = Math.sin(cell * 127.1 + k * 311.7) * 43758.5453;
+        return s - Math.floor(s);
+    };
+    const skew = 0.25 + 0.5 * hash(1);
+    const profile = f < skew ? f / skew : (1 - f) / (1 - skew);
+    const depth = 7 + 18 * hash(2);
+    const gully = hash(3) > 0.82 ? 14 * Math.exp(-(((f - skew) / 0.06) ** 2)) : 0;
+    const lip = c.cliff * c.w + 30 * fbm(x / 160, z / 160, 2) + depth * profile + gully;
     // The plateau falls a little toward the lip…
     if (c.side < lip) return crown * (1 - 0.2 * (c.side / lip) ** 2);
     // …then down in jointed steps: steep risers between narrow ledges (where pines take hold),
