@@ -123,6 +123,16 @@ export function bakeOculus(seed = SUNFALL_SEED, { width, height, reach } = OCULU
     const vines = Array.from({ length: 120 }, () => ({
         a: rng(), reach: 0.10 + rng() * 0.48, w: 0.0018 + rng() * 0.006, density: 0.6 + rng() * 0.4,
     }));
+    // The rim forest's boughs leaning out over the opening: leafy tongues, widest at the rim and
+    // tapering to a tip, dappled with gaps. They comb the column into separate shafts with dark
+    // lanes between them (a ring of vines alone left its middle one even tube of light).
+    const boughs = Array.from({ length: 7 }, (_, k) => ({
+        a: (k + 0.2 + rng() * 0.6) / 7,
+        depth: 0.24 + rng() * 0.30,
+        w: 0.018 + rng() * 0.022,
+        bend: (rng() - 0.5) * 0.05,
+    }));
+    const h3 = makeTileHash(seed ^ 0x0c04);
     const data = new Uint8Array(width * height * 4);
     for (let y = 0; y < height; y += 1) {
         const r = ((y + 0.5) / height) * reach;
@@ -146,6 +156,21 @@ export function bakeOculus(seed = SUNFALL_SEED, { width, height, reach } = OCULU
                 const inBand = smooth(edge - vn.reach - 0.03, edge - vn.reach + 0.03, r);
                 clear *= 1 - (1 - smooth(vn.w * 0.5, vn.w, d)) * inBand * vn.density;
             }
+            let bough = 0;
+            for (const b of boughs) {
+                const tip = edge - b.depth;
+                const toRim = clamp01((r - tip) / b.depth);
+                // The tongue bends a little along its length, and its edge is leafy.
+                let d = Math.abs(u - b.a - b.bend * (1 - toRim));
+                d = Math.min(d, 1 - d);
+                const lobe = 0.75 + 0.5 * tileNoise(u, r / reach, 32, h3);
+                const half = b.w * (0.3 + 0.7 * Math.sqrt(toRim)) * lobe;
+                const across = 1 - smooth(half * 0.55, half, d);
+                bough = Math.max(bough, across * smooth(tip - 0.01, tip + 0.07, r));
+            }
+            // Leaf gaps: sun flecks through the bough (fine) and holes between its sprays (coarser).
+            const gaps = 0.55 * tileNoise(u, r / reach, 64, h3) + 0.45 * tileNoise(u, r / reach, 16, h2);
+            clear *= 1 - bough * (0.92 - 0.6 * smooth(0.55, 0.78, gaps));
             const i = (y * width + x) * 4;
             data[i] = Math.round(clamp01(open) * 255);
             data[i + 1] = Math.round(clamp01(clear) * 255);
@@ -333,6 +358,8 @@ export function bakeAllSunfallTextures(seed = SUNFALL_SEED, assets = null) {
     const fbm = repeatTexture(bakeFbm(seed), FBM_SIZE, FBM_SIZE, { name: 'sunfall-fbm' });
     const oculus = repeatTexture(bakeOculus(seed), OCULUS_TEX.width, OCULUS_TEX.height, { name: 'sunfall-oculus' });
     oculus.wrapT = THREE.ClampToEdgeWrapping;
+    // The column's march averages the mask along each step (explicit gradients, anisotropic).
+    oculus.anisotropy = 16;
     const manifest = assets?.manifest;
     const plan = assets?.plan || { count: 0, position: new Float32Array(0), crown: new Float32Array(0) };
     const floorGrid = manifest?.floorGrid || {
