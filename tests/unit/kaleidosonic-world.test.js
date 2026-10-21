@@ -13,11 +13,11 @@ import {
 import * as THREE from 'three/webgpu';
 import { readFileSync } from 'node:fs';
 import {
-    KALEIDOSONIC_PARTS, KaleidosonicWorld, PHASE_WRAP, REST_RIG, fovForAspect,
+    GEM_TURN, KALEIDOSONIC_PARTS, KaleidosonicWorld, PHASE_WRAP, REST_RIG, fovForAspect,
 } from '../../src/themes/kaleidosonic/kaleidosonic-world.js';
 import {
-    DIVE_LENGTH, EYE, FOLD_AT, MOODS, MOOD_COLOURS, NOTES, PIECE_CODE, PIECE_COLORS, PIECE_ORDER, REFOLDS, TAU, TEMPLE,
-    TIMING, foldSplit, hexToLinear, marchTemple, moodMix, templeDistance,
+    BEAM_AXES, BEAM_K, DIVE_LENGTH, EYE, FOLD_AT, MOODS, MOOD_COLOURS, NOTES, PIECE_CODE, PIECE_COLORS, PIECE_ORDER,
+    REFOLDS, TAU, TEMPLE, TIMING, foldSplit, hexToLinear, marchTemple, moodMix, templeDistance,
 } from '../../src/themes/kaleidosonic/kaleidosonic-core.js';
 import {
     HARMONICS, HARMONIC_ROWS, STRIKES, STRIKE_ROWS,
@@ -239,9 +239,10 @@ describe('KaleidosonicWorld build', () => {
         });
     });
 
-    it('lays the scout\'s blocks over the buffer, and draws it before the frame only while the temple shows', () => {
+    it('lays the scout\'s blocks over the buffer, and draws it (after the light map, when that is stale) '
+        + 'before the frame only while the temple shows', () => {
         withWorld(({ world }) => {
-            const { scout } = world.parts.temple;
+            const { scout, lightMap } = world.parts.temple;
             for (const [width, height] of [[1920, 1080], [637, 359], [390, 844]]) {
                 world.setViewport(width, height, width / height);
                 const blocks = [Math.ceil(width / SCOUT_TILE), Math.ceil(height / SCOUT_TILE)];
@@ -256,20 +257,29 @@ describe('KaleidosonicWorld build', () => {
             };
             const order = [];
             renderer.render.mockImplementation((object) => order.push([object, renderer.target]));
+            expect(world.u.light.value.x).toBe(0); // no light map yet: the shaders take every point as lit
             world.prerender(renderer);
-            expect(order).toEqual([[scout.quad, scout.target]]);
+            expect(order).toEqual([[lightMap.quad, lightMap.target], [scout.quad, scout.target]]);
+            expect(world.u.light.value.x).toBe(1);
             expect(renderer.target).toBeNull();
+            // the temple's shape and the core's place unchanged: the map is not marched again
+            world.prerender(renderer);
+            expect(order.slice(2)).toEqual([[scout.quad, scout.target]]);
+            // a refold changes the shape: the map is marched again before the scout
+            world.u.shape.value.x += 0.01;
+            world.prerender(renderer);
+            expect(order.slice(3)).toEqual([[lightMap.quad, lightMap.target], [scout.quad, scout.target]]);
             world.showOnlyParts([]);
             world.prerender(renderer);
-            expect(order).toHaveLength(1);
+            expect(order).toHaveLength(5);
         });
-        // The A/B: a world without the scout marches from the eye and draws no pass of its own.
+        // The A/B: a world without the scout marches from the eye; its only pass is the light map.
         const scene = new THREE.Scene();
         const world = new KaleidosonicWorld({ scene, scout: false }).build();
         expect(world.parts.temple.scout).toBeNull();
         const render = vi.fn();
         world.prerender({ render, getRenderTarget: () => null, setRenderTarget: vi.fn() });
-        expect(render).not.toHaveBeenCalled();
+        expect(render.mock.calls.map(([object]) => object)).toEqual([world.parts.temple.lightMap.quad]);
         world.dispose();
     });
 
@@ -1242,6 +1252,155 @@ describe('KaleidosonicWorld: determinism and state', () => {
     });
 });
 
+describe('KaleidosonicWorld: the light (the light map and the gem\'s beams)', () => {
+    /** A renderer stub with three's draw counter: `skip` makes every draw a no-op, as while a pipeline builds. */
+    const counting = ({ skip = false } = {}) => {
+        const renderer = {
+            target: null,
+            autoClear: true,
+            info: { render: { drawCalls: 0 } },
+            seenAutoClear: [],
+            getRenderTarget() { return this.target; },
+            setRenderTarget(target) { this.target = target; },
+            render() {
+                this.seenAutoClear.push(this.autoClear);
+                if (!skip) this.info.render.drawCalls += 1;
+            },
+        };
+        return renderer;
+    };
+
+    it('keeps every point lit until the light map has really been drawn, and tries again each frame', () => {
+        withWorld((w) => {
+            const { world } = w;
+            begin(w);
+            const { lightMap } = world.parts.temple;
+            const skipped = counting({ skip: true });
+            world.prerender(skipped);
+            world.prerender(skipped);
+            // three skipped the draws (the pipeline still building): the shaders keep taking every point as lit
+            expect(world.u.light.value.x).toBe(0);
+            // the map is never cleared (a clear that lands while the draw is skipped would wipe it)
+            expect(skipped.seenAutoClear).toEqual([false, true, false, true]);
+            expect(skipped.autoClear).toBe(true);
+            const drawing = counting();
+            world.prerender(drawing);
+            expect(world.u.light.value.x).toBe(1);
+            expect(drawing.target).toBeNull();
+            // drawn once for this shape and this core: the next frame does not march it again
+            const before = drawing.info.render.drawCalls;
+            world.prerender(drawing);
+            expect(drawing.info.render.drawCalls - before).toBe(1); // the scout alone
+            expect(lightMap.size).toBe(tierFor('Minimal').lightMap);
+        });
+    });
+
+    it('marches the light map again when a clear refolds the temple or the core moves, and only then', () => {
+        withWorld((w) => {
+            const { world } = w;
+            begin(w);
+            const renderer = counting();
+            const draws = () => {
+                const before = renderer.info.render.drawCalls;
+                world.prerender(renderer);
+                return renderer.info.render.drawCalls - before;
+            };
+            expect(draws()).toBe(2); // the map, then the scout
+            stepTo(w, START + 1);
+            expect(draws()).toBe(1); // nothing moved: the scout alone
+            world.onClear({ lines: 2, combo: 1 });
+            stepTo(w, START + 1.2);
+            expect(draws()).toBe(2); // the refold springs the shape: the map again
+            stepTo(w, START + 6);
+            draws();
+            expect(draws()).toBe(1); // settled
+            world.setViewport(390, 844, 390 / 844);
+            world.update(sim(world.time, 0), w.camera);
+            expect(draws()).toBe(2); // the core hangs somewhere else on a tall frame
+        });
+    });
+
+    it('lets the core\'s shadows go while the dive carries it off its jewel, and holds them as it lands', () => {
+        withWorld((w) => {
+            const { world } = w;
+            begin(w);
+            expect(world.u.light.value.y).toBe(1);
+            const at = world.time;
+            world.onClear({ lines: 4, combo: 1 });
+            const held = [];
+            stepTo(w, at + TIMING.dive * 0.999, 1 / 60, () => held.push(world.u.light.value.y));
+            expect(Math.min(...held)).toBeLessThan(0.01);
+            expect(held.every((v) => v >= 0 && v <= 1)).toBe(true);
+            expect(held.at(-1)).toBeGreaterThan(0.99);
+            stepTo(w, at + TIMING.dive + 0.1);
+            expect(world.u.light.value.y).toBe(1);
+        });
+    });
+
+    it('turns the gem with the clock, faster in a deep trance, slowly under reduced motion', () => {
+        const turned = (setup) => withWorld((w) => {
+            const { world } = w;
+            begin(w);
+            setup(world);
+            const angle = () => Math.atan2(world.u.gem.value.y, world.u.gem.value.x);
+            let total = 0;
+            let last = angle();
+            stepTo(w, START + 4, 1 / 30, () => {
+                const now = angle();
+                total += Math.atan2(Math.sin(now - last), Math.cos(now - last));
+                last = now;
+            });
+            const [c, sn] = world.u.gem.value.toArray();
+            expect(Math.hypot(c, sn)).toBeCloseTo(1, 12);
+            return total;
+        });
+        const rest = turned(() => {});
+        expect(rest).toBeCloseTo(GEM_TURN.rest * 4, 6);
+        const trance = turned((world) => {
+            world.onCombo(10);
+            world.trance = 1;
+        });
+        expect(trance).toBeGreaterThan(rest * 2);
+        const reduced = turned((world) => world.setReducedMotion(true));
+        expect(reduced).toBeCloseTo(rest * GEM_TURN.reduced, 6);
+    });
+
+    it('blazes the beams on a clear\'s resonance, never on a lock', () => {
+        withWorld((w) => {
+            const { world } = w;
+            begin(w);
+            expect(world.u.light.value.z).toBe(1);
+            world.onLock({
+                u: 0.3, rows: [19], hardDrop: true, distance: 16, color: PIECE_COLORS[0], shape: 'I',
+            });
+            stepTo(w, START + 0.1);
+            expect(world.u.light.value.z).toBe(1);
+            world.onClear({ lines: 3, combo: 1 });
+            stepTo(w, START + 0.2);
+            const blaze = world.u.light.value.z;
+            expect(blaze).toBeGreaterThan(1.4);
+            stepTo(w, START + 8);
+            expect(world.u.light.value.z).toBeLessThan(1 + (blaze - 1) * 0.05);
+        });
+    });
+
+    it('throws the beams along the gem\'s twelve facets: six distinct unit axes, both ends of each', () => {
+        expect(BEAM_AXES).toHaveLength(6);
+        for (const a of BEAM_AXES) expect(Math.hypot(...a)).toBeCloseTo(1, 12);
+        for (let i = 0; i < BEAM_AXES.length; i++) {
+            for (let j = i + 1; j < BEAM_AXES.length; j++) {
+                const cos = Math.abs(BEAM_AXES[i].reduce((sum, v, k) => sum + v * BEAM_AXES[j][k], 0));
+                // the icosahedron's axes: any two meet at 63.4°, so no two beams overlap
+                expect(cos).toBeCloseTo(1 / Math.sqrt(5), 9);
+            }
+        }
+        // a beam is a narrow cone: its light halves within about ten degrees of its axis
+        const half = Math.acos(1 - Math.log(2) / BEAM_K) * (180 / Math.PI);
+        expect(half).toBeGreaterThan(5);
+        expect(half).toBeLessThan(15);
+    });
+});
+
 describe('KaleidosonicWorld teardown', () => {
     it('disposes once, however often it is asked, and lets go of the scene', () => {
         const own = makeWorld();
@@ -1250,13 +1409,15 @@ describe('KaleidosonicWorld teardown', () => {
         world.onLock({
             u: 0.3, rows: [12], color: PIECE_COLORS[1], shape: 'T',
         });
-        const { geometry, material } = world.parts.temple;
+        const { geometry, material, lightMap } = world.parts.temple;
         const disposeGeometry = vi.spyOn(geometry, 'dispose');
         const disposeMaterial = vi.spyOn(material, 'dispose');
+        const disposeMap = vi.spyOn(lightMap.target, 'dispose');
         world.dispose();
         expect(() => world.dispose()).not.toThrow();
         expect(disposeGeometry).toHaveBeenCalledOnce();
         expect(disposeMaterial).toHaveBeenCalledOnce();
+        expect(disposeMap).toHaveBeenCalledOnce();
         expect(world.disposed).toBe(true);
         expect(world.root.parent).toBeNull();
         expect(scene.children).not.toContain(world.root);

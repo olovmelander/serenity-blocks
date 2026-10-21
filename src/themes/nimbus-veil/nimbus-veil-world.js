@@ -20,7 +20,7 @@ import {
     SUN,
 } from './nimbus-veil-tsl.js';
 import { createSky } from './nimbus-veil-sky.js';
-import { createCloudSea } from './nimbus-veil-cloudsea.js';
+import { SEA_SHADOW_TAPS, createCloudSea } from './nimbus-veil-cloudsea.js';
 import { createCumulus } from './nimbus-veil-cumulus.js';
 import { NimbusFx } from './nimbus-veil-fx.js';
 import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
@@ -28,22 +28,47 @@ import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
 /** Per-tier content. Every tier keeps the composition; tiers trade detail, not layout. */
 export const WORLD_QUALITY = Object.freeze({
     Minimal: {
-        rings: 90, segments: 100, towers: 3, puffs: 14, motes: 0, sparkles: 120, veils: 0, cirrus: false,
+        rings: 90, segments: 100, towers: 3, billows: 22, motes: 0, sparkles: 120, veils: 0, cirrus: false,
     },
     Low: {
-        rings: 120, segments: 130, towers: 4, puffs: 18, motes: 40, sparkles: 200, veils: 1, cirrus: true,
+        rings: 120, segments: 130, towers: 4, billows: 28, motes: 40, sparkles: 200, veils: 1, cirrus: true,
     },
     Medium: {
-        rings: 150, segments: 150, towers: 5, puffs: 24, motes: 80, sparkles: 300, veils: 1, cirrus: true,
+        rings: 150, segments: 150, towers: 5, billows: 34, motes: 80, sparkles: 300, veils: 1, cirrus: true,
     },
     High: {
-        rings: 180, segments: 180, towers: 7, puffs: 30, motes: 120, sparkles: 450, veils: 2, cirrus: true,
+        rings: 180, segments: 180, towers: 7, billows: 44, motes: 120, sparkles: 450, veils: 2, cirrus: true,
     },
     Ultra: {
-        rings: 200, segments: 200, towers: 7, puffs: 38, motes: 160, sparkles: 600, veils: 2, cirrus: true,
+        rings: 200, segments: 200, towers: 7, billows: 50, motes: 160, sparkles: 600, veils: 2, cirrus: true,
     },
     Extreme: {
-        rings: 220, segments: 220, towers: 7, puffs: 46, motes: 200, sparkles: 800, veils: 2, cirrus: true,
+        rings: 220, segments: 220, towers: 7, billows: 56, motes: 200, sparkles: 800, veils: 2, cirrus: true,
+    },
+});
+
+/**
+ * Per-tier cloud-sea and sky detail: self-shadow taps toward the sun, the cauliflower and finest
+ * octaves in the deck's light, and the distant cumulus banks on the horizon.
+ */
+export const SEA_DETAIL = Object.freeze({
+    Minimal: {
+        seaShadow: 'none', cauliflower: false, fine: false, banks: false,
+    },
+    Low: {
+        seaShadow: 'one', cauliflower: true, fine: false, banks: true,
+    },
+    Medium: {
+        seaShadow: 'two', cauliflower: true, fine: false, banks: true,
+    },
+    High: {
+        seaShadow: 'four', cauliflower: true, fine: true, banks: true,
+    },
+    Ultra: {
+        seaShadow: 'four', cauliflower: true, fine: true, banks: true,
+    },
+    Extreme: {
+        seaShadow: 'four', cauliflower: true, fine: true, banks: true,
     },
 });
 
@@ -51,6 +76,9 @@ const GLINT_COLORS = [0xfff1c9, 0xffd88f, 0xffc2a8, 0xf3dcff, 0xffffff].map((h) 
 
 /** Camera-space depth the combo burst floats at: past the near veil, well before the towers. */
 const BURST_DEPTH = 60;
+
+/** Where a light wave starts (distance from the camera): beyond the farthest tower. */
+const RING_START = 1100;
 
 /** Gameplay boards carry data-player; the lobby's avatar cards reuse .player-card without it. */
 export const BOARD_SELECTOR = '.player-card[data-player]';
@@ -164,9 +192,17 @@ export class NimbusWorld {
 
     build() {
         const { q, u, rand } = this;
-        this.parts.sky = createSky(u, { cirrus: q.cirrus });
-        this.parts.sea = createCloudSea(u, { rings: q.rings, segments: q.segments });
-        this.parts.cumulus = createCumulus(u, { rand, towers: q.towers, puffsPerTower: q.puffs });
+        const detail = SEA_DETAIL[this.qualityName];
+        this.parts.sky = createSky(u, { cirrus: q.cirrus, banks: detail.banks });
+        this.parts.sea = createCloudSea(u, {
+            rings: q.rings,
+            segments: q.segments,
+            shadowTaps: SEA_SHADOW_TAPS[detail.seaShadow],
+            cauliflower: detail.cauliflower,
+            fine: detail.fine,
+            towers: q.towers,
+        });
+        this.parts.cumulus = createCumulus(u, { rand, towers: q.towers, billowsPerTower: q.billows });
         this.fx = new NimbusFx(u, {
             motes: q.motes, sparkles: q.sparkles, veils: q.veils, rand,
         });
@@ -300,7 +336,9 @@ export class NimbusWorld {
         this.seaGlow *= Math.exp(-0.8 * dt);
         u.sunPulse.value = Math.min(1.2, this.sunPulse);
         u.seaGlow.value = Math.min(1.5, this.seaGlow);
-        // Light waves: in from 260 units to past the camera in ~3 s, strongest mid-field.
+        // Light waves: they roll in from the far deck, past the towers (which light as the wave
+        // goes through them), to under the camera in 3 s — slowing as they near, so the band
+        // crosses the screen at an even pace.
         this.rings.forEach((ring, i) => {
             const age = t - ring.t0;
             const uni = i === 0 ? u.ring0 : u.ring1;
@@ -308,9 +346,9 @@ export class NimbusWorld {
                 uni.value.z = 0;
                 return;
             }
-            const radius = Math.max(0, 260 - age * 90);
-            const width = 4 + radius * 0.06;
-            const env = Math.min(1, age / 0.2) * (1 - THREE.MathUtils.smoothstep(age, 2.3, 3.2));
+            const radius = RING_START * Math.max(0, 1 - age / 3) ** 1.4;
+            const width = 5 + radius * 0.06;
+            const env = Math.min(1, age / 0.25) * (1 - THREE.MathUtils.smoothstep(age, 2.5, 3.2));
             uni.value.set(radius, 1 / width, ring.energy * env, 0);
         });
     }

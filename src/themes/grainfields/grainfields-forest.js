@@ -57,21 +57,25 @@ const FOLIAGE_SPECIES = Object.freeze({ larch_tuft: 'larch', birch_sprig: 'birch
 
 /**
  * Foliage ramps per species (sRGB), walked by `tone` from a crown's dark heart to its sunlit
- * skin: the larch soft and light at the end of summer, the spruce near black-green, the birch a
- * fresh yellow-green.
+ * skin: the larch soft and light at the end of summer, its outer needles going olive toward the
+ * autumn's gold; the spruce near black-green; the birch's outer leaves the first to yellow.
  */
 const FOLIAGE_RAMPS = Object.freeze({
-    larch: [0x12240b, 0x284a15, 0x4a6e22, 0x7c973c],
-    birch: [0x0f2609, 0x224a12, 0x44741e, 0x779b36],
+    larch: [0x14230b, 0x2c4a16, 0x546f26, 0x93983f],
+    birch: [0x10260a, 0x264a12, 0x52771f, 0x9fa23a],
     spruce: [0x050f08, 0x0b2010, 0x183517, 0x324d27],
 });
-/** How sprays answer the light and the wind: flutter (amount, floor), the glow's tint, its strength. */
+/**
+ * How sprays answer the light and the wind: flutter (amount, floor), the glow's tint, its
+ * strength. Lit from behind, the needles and leaves glow warm (the harvest's light through them),
+ * not lime.
+ */
 const FOLIAGE_LOOK = Object.freeze({
     larch: {
-        flutter: [0.035, 0.008], glow: [1.45, 1.4, 0.35], through: 0.8, sun: 0.3, ambient: 1.0,
+        flutter: [0.035, 0.008], glow: [1.5, 1.28, 0.32], through: 0.72, sun: 0.3, ambient: 1.0,
     },
     birch: {
-        flutter: [0.07, 0.02], glow: [1.25, 1.5, 0.3], through: 0.75, sun: 0.28, ambient: 0.95,
+        flutter: [0.07, 0.02], glow: [1.42, 1.38, 0.3], through: 0.72, sun: 0.28, ambient: 0.95,
     },
     spruce: {
         flutter: [0.025, 0.005], glow: [1.5, 1.2, 0.3], through: 0.6, sun: 0.45, ambient: 1.05,
@@ -309,7 +313,7 @@ function spriteMaterial(u, t, impostors, tile, look, coverage) {
         const isBirch = smoothstep(0.25, 0.3, tile.w).mul(float(1.0).sub(smoothstep(0.7, 0.75, tile.w)));
         const bark = mix(color(0x2a1a12), color(0xcfc9ba), isBirch);
         const albedo = mix(bark, leaf, data.g).mul(data.r.mul(0.85).add(0.15));
-        const glowing = pow(leaf, vec3(0.62)).mul(vec3(1.45, 1.35, 0.32)).mul(data.g).mul(data.r);
+        const glowing = pow(leaf, vec3(0.62)).mul(vec3(1.48, 1.3, 0.32)).mul(data.g).mul(data.r);
         const ahead = clamp(dot(V, u.sunDir), 0.0, 1.0);
         const a2 = ahead.mul(ahead);
         const sunlit = deckShadow(u, t.noise, P).mul(u.sunUp);

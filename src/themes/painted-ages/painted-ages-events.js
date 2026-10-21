@@ -194,19 +194,34 @@ export function riverWater(u, noise, texture, xz, above, dist, view) {
         const lowEnough = float(1.0).sub(smoothstep(0.8, mix(float(2.2), float(4.5), flooding), above));
         const wet = float(1.0).sub(smoothstep(width, width.add(max(dist.mul(0.004), 1.2)), r.x)).mul(lowEnough);
         If(wet.greaterThan(0.01), () => {
-            // Ripples and the flood's surge in the surface.
+            // Ripples: streaks drawn down the current (the river's own coordinates: along, across),
+            // a metre or two long, as two taps of the noise's slope. Where a ripple is narrower
+            // than a few pixels it is faded (it would alias into a twisted rope), and what the eye
+            // cannot resolve roughens the mirror instead, so the sun's glitter widens. The flood's
+            // surge is the same field, deeper and faster.
             const t = u.time;
-            const rip = vec2(
-                sin(xz.x.mul(0.9).add(t.mul(2.1)).add(xz.y.mul(0.4))),
-                sin(xz.y.mul(1.1).sub(t.mul(1.7)).add(xz.x.mul(0.3))),
-            ).mul(mix(float(0.04), float(0.16), flooding));
+            const footprint = dist.mul(u.pixelAngle);
+            const unresolved = smoothstep(0.06, 0.4, footprint);
+            const flowAt = vec2(r.y.sub(t.mul(mix(float(1.1), float(6.0), flooding))).div(64.0 * 2.2), r.x.div(64.0 * 0.7));
+            const h0 = texture(noise, flowAt).a;
+            const hA = texture(noise, flowAt.add(vec2(0.25 / 64.0, 0.0))).a;
+            const hX = texture(noise, flowAt.add(vec2(0.0, 0.25 / 64.0))).a;
+            const rip = vec2(hX.sub(h0), hA.sub(h0)).mul(mix(float(1.6), float(3.5), flooding))
+                .mul(float(1.0).sub(unresolved));
             const n = normalize(vec3(rip.x, 1.0, rip.y));
             const v = normalize(view);
             const cosv = clamp(dot(n, v.negate()), 0.0, 1.0);
             const m = float(1.0).sub(cosv);
             const fres = float(0.02).add(m.mul(m).mul(m).mul(m).mul(m)
                 .mul(0.98));
-            const mirrored = skyColour(u, v.sub(n.mul(dot(v, n).mul(2.0))), { withSun: true });
+            const reflected = v.sub(n.mul(dot(v, n).mul(2.0)));
+            const mirrored = skyColour(u, reflected, { withSun: false });
+            // The sun's glitter: a tight lobe on near, resolved water; a broad, dimmer path far off.
+            const toSun = clamp(dot(normalize(reflected), u.sunDir), 0.0, 1.0);
+            const lobe = pow(toSun, mix(float(900.0), float(70.0), unresolved));
+            const twinkle = texture(noise, xz.div(2.6).add(vec2(t.mul(0.21), t.mul(-0.17)))).a;
+            const glint = lobe.mul(mix(smoothstep(0.55, 0.85, twinkle).mul(5.0), float(0.9), unresolved))
+                .mul(float(1.0).sub(flooding.mul(0.7)));
             // The flood carries the four cleared rows' pigments down the river, one after another in
             // pulses, streaked by the current.
             const streak = sin(r.y.mul(0.045).add(r.x.mul(0.35)).sub(t.mul(4.0))).mul(0.5).add(0.5);
@@ -219,12 +234,18 @@ export function riverWater(u, noise, texture, xz, above, dist, view) {
             // A clear stream shows the sky; the flood is opaque with the rows' pigment, streaked
             // down the current, white where it breaks over the bars and at its front.
             const pigment = mix(pulse.mul(0.6).add(0.03), pulse.mul(1.05).add(0.06), streak);
-            const body = mix(vec3(0.07, 0.09, 0.1), pigment, flooding);
+            // A clear braided stream is silty, a little teal over its gravel, and its gravel shows
+            // through the shallows at its edges.
+            const shallow = smoothstep(width.mul(0.25), width, r.x).mul(float(1.0).sub(flooding));
+            const clear = mix(vec3(0.09, 0.12, 0.115), vec3(0.24, 0.22, 0.18), shallow.mul(0.7));
+            const body = mix(clear, pigment, flooding);
             const sunk = u.sun.mul(u.sunUp).mul(clamp(u.sunDir.y, 0.15, 1.0)).mul(0.55).add(u.fill.mul(1.2));
             const churn = texture(noise, vec2(r.y.mul(0.012).sub(t.mul(0.55)), r.x.mul(0.05))).b;
             const foam = smoothstep(0.62, 0.78, churn).mul(flooding).mul(0.8)
                 .add(exp(sq(r.y.sub(u.flood.x).div(40.0)).negate()).mul(flooding).mul(1.4));
-            const water = mix(body.mul(sunk), mirrored, fres.mul(mix(float(1.0), float(0.35), flooding)).add(float(1.0).sub(flooding).mul(0.35)))
+            const sheen = fres.mul(mix(float(1.0), float(0.35), flooding)).add(float(1.0).sub(flooding).mul(0.3));
+            const water = mix(body.mul(sunk), mirrored, sheen)
+                .add(u.sun.mul(glint).mul(u.sunUp))
                 .add(vec3(0.95, 0.93, 0.88).mul(foam.min(1.0)).mul(sunk))
                 // The pigment glows a little of its own, so the flood reads in any light.
                 .add(pulse.mul(flooding).mul(0.35));
