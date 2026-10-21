@@ -29,7 +29,7 @@ import {
 import { FIELDS, mulberry32 } from './painted-ages-core.js';
 import { groundHeight, inField } from './painted-ages-field.js';
 import { RIVER, riverFloor } from './painted-ages-plan.js';
-import { aerial, cloudShadow } from './painted-ages-light.js';
+import { aerial, cloudShadow, mistPatches } from './painted-ages-light.js';
 import { shadowAt } from './painted-ages-shadow.js';
 
 // ── Poplars ───────────────────────────────────────────────────────────────────────
@@ -139,7 +139,8 @@ export function createPoplars(u, t, tier, fields) {
         const direct = u.sun.mul(wrap.add(through)).mul(shadow).mul(clouds).mul(u.sunUp);
         const sky = u.fill.mul(n.y.mul(0.35).add(0.65));
         const lit = albedo.mul(direct.add(sky).add(u.bounce.mul(0.5)));
-        return vec4(aerial(u, P, lit), 1.0);
+        // The same mist banks the valley floor stands in.
+        return vec4(aerial(u, P, lit, mistPatches(u, t.noise, P.xz)), 1.0);
     })();
     const mesh = new THREE.InstancedMesh(geometry, material, Math.max(1, sites.length));
     mesh.name = 'PaintedAgesPoplars';
