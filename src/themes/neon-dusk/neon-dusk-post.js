@@ -46,16 +46,16 @@ import { ndHash21, ndMax3 } from './neon-dusk-tsl.js';
  */
 export const POST_LOOK = {
     Extreme: {
-        bloom: true, bloomStrength: 0.9, bloomResolution: 0.5, chroma: true, msaa: 4,
+        bloom: true, bloomStrength: 0.74, bloomResolution: 0.5, chroma: true, msaa: 4,
     },
     Ultra: {
-        bloom: true, bloomStrength: 0.88, bloomResolution: 0.45, chroma: true, msaa: 4,
+        bloom: true, bloomStrength: 0.72, bloomResolution: 0.45, chroma: true, msaa: 4,
     },
     High: {
-        bloom: true, bloomStrength: 0.85, bloomResolution: 0.35, chroma: true, msaa: 4,
+        bloom: true, bloomStrength: 0.7, bloomResolution: 0.35, chroma: true, msaa: 4,
     },
     Medium: {
-        bloom: true, bloomStrength: 0.78, bloomResolution: 0.3, chroma: true, msaa: 0,
+        bloom: true, bloomStrength: 0.64, bloomResolution: 0.3, chroma: true, msaa: 0,
     },
     Low: {
         bloom: false, bloomStrength: 0, bloomResolution: 0.25, chroma: false, msaa: 0,
@@ -66,8 +66,9 @@ export const POST_LOOK = {
 };
 
 export const BLOOM_THRESHOLD = 1.0;
-export const BLOOM_KNEE = 0.55;
-export const BLOOM_RADIUS = 0.36;
+export const BLOOM_KNEE = 0.4;
+/** Tight: the neon lines glow, but the great disc no longer veils a third of the sky. */
+export const BLOOM_RADIUS = 0.22;
 
 const LUMA = vec3(0.2126, 0.7152, 0.0722);
 
@@ -149,7 +150,8 @@ export class NeonDuskPost {
             if (withChroma) {
                 // VHS chroma: R and B pull apart toward the edges (and a lot during a glitch).
                 const r2 = dot(centered, centered);
-                const split = centered.mul(r2.mul(0.012).add(g.mul(0.012)));
+                // A whisper at rest (stronger, it fringed every neon line in the corners).
+                const split = centered.mul(r2.mul(0.0045).add(g.mul(0.012)));
                 const sr = sceneColor.sample(st.add(split)).r;
                 const sg = sceneColor.sample(st).g;
                 const sb = sceneColor.sample(st.sub(split)).b;
