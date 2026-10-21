@@ -18,6 +18,7 @@ import {
     atan,
     cameraPosition,
     clamp,
+    cos,
     dot,
     exp,
     float,
@@ -44,9 +45,15 @@ import {
     ndNoise2,
     ndSkyGradient,
     ndSunAlign,
+    ndSunDisc,
     rgb,
 } from './neon-dusk-tsl.js';
-import { ndSunColor } from './neon-dusk-sky.js';
+import { ndSunColor, ndSunSlits } from './neon-dusk-sky.js';
+
+/** The grid's slow pulse at rest: every `period` s a band runs in from `from` units in `run` s. */
+export const AMBIENT_PULSE = Object.freeze({
+    period: 11, run: 7.5, from: 900, energy: 0.2,
+});
 
 /** A gaussian ring at `dist` for pulse slot P = (radius, 1/width, energy, 0). */
 const ringTerm = (dist, P) => {
@@ -67,10 +74,19 @@ const analyticReflection = (R, u) => {
     const lx = dot(R, u.sunRight);
     const ly = dot(R, u.sunUp);
     const ang = length(vec2(lx, ly));
-    col.addAssign(rgb(0xff3a8c).mul(exp(ang.mul(-3.8)).mul(0.3)).add(rgb(0xff9a5a).mul(exp(ang.mul(-7.5)).mul(0.85))));
-    const r = ang.div(u.sunRadius);
-    const disc = float(1.0).sub(smoothstep(0.96, 1.04, r));
-    col.assign(mix(col, ndSunColor(ly.div(u.sunRadius)), disc));
+    // The sun's image in the glass, measured in the lens's image plane along the view ray (the
+    // mirror ray turned back down), so it is as round as the sun above it.
+    const sd = ndSunDisc(u, vec3(R.x, R.y.negate(), R.z), true).toVar();
+    const r = length(sd);
+    const fwR = max(fwidth(r), 1e-4);
+    const inside = float(1.0).sub(smoothstep(0.92, 1.06, r));
+    const halo = exp(max(r.sub(1.0), 0.0).mul(-2.6)).mul(mix(float(0.42), float(0.13), inside));
+    col.addAssign(rgb(0xff2a7a).mul(exp(ang.mul(-3.4)).mul(0.16)).add(rgb(0xff6a2e).mul(halo)));
+    // Soft-edged, as the reflector's rough glass draws it on the tiers above.
+    const soft = max(fwR, 0.07);
+    const disc = float(1.0).sub(smoothstep(float(1.0).sub(soft), float(1.0).add(soft), r));
+    const slit = ndSunSlits(sd.y, max(fwidth(sd.y), 0.025), u.time);
+    col.assign(mix(col, ndSunColor(sd.y), disc.mul(slit)));
     const a = abs(atan(R.x, R.z.negate()));
     const vee = max(a.mul(0.25).add(0.026), a.sub(0.02));
     const ridge = float(0.25).add(sin(a.mul(23.0)).mul(0.02)).add(sin(a.mul(57.0)).mul(0.012));
@@ -123,6 +139,14 @@ export function createFloor(u, opts = {}) {
         const rippleD = toRipple.sub(u.ripple.z).mul(0.22);
         const rippleRing = exp(rippleD.mul(rippleD).negate()).mul(u.ripple.w).toVar();
         const wave = ringTerm(dist, u.ring0).add(ringTerm(dist, u.ring1)).toVar();
+        // At rest a soft band of light runs in along the grid every AMBIENT_PULSE.period seconds
+        // (closed form in time, so a seek lands on it; off under reduced motion).
+        const ambT = fract(u.time.div(AMBIENT_PULSE.period)).mul(AMBIENT_PULSE.period);
+        const ambR = float(AMBIENT_PULSE.from).mul(max(float(1.0).sub(ambT.div(AMBIENT_PULSE.run)), 0.0));
+        const ambEnd = smoothstep(AMBIENT_PULSE.run - 1.5, AMBIENT_PULSE.run, ambT);
+        const ambEnv = smoothstep(0.0, 0.6, ambT).mul(float(1.0).sub(ambEnd));
+        const ambD = dist.sub(ambR).div(ambR.mul(0.06).add(5.0));
+        wave.addAssign(exp(ambD.mul(ambD).negate()).mul(ambEnv).mul(u.ambient).mul(AMBIENT_PULSE.energy));
 
         // ── The mirror ──
         // Slow swell in the glass, fading with distance so the far mirror stays calm; the
@@ -132,6 +156,19 @@ export function createFloor(u, opts = {}) {
         const push = rippleD.mul(exp(rippleD.mul(rippleD).negate())).mul(u.ripple.w).mul(0.012);
         const cosT = clamp(V.y.negate(), 0.0, 1.0);
         const fres = mix(float(0.16), float(0.82), pow(float(1.0).sub(cosT), 4.0));
+
+        // Ripples lying across the view, riding the floor's scroll: each crest tilts the glass
+        // toward the eye, so the mirror's image breaks into bars that run in toward the lens —
+        // the sun lies in the glass as a road of light. Fine toward the horizon, faded out where
+        // a crest would be narrower than a pixel.
+        const rph = p.z.sub(u.scroll).mul(0.45).add(u.time.mul(0.8))
+            .add(ndNoise2(vec2(p.x.mul(0.012), p.z.sub(u.scroll).mul(0.02))).mul(6.0))
+            .toVar();
+        const rfw = fwidth(rph);
+        const rippleOn = float(1.0).sub(smoothstep(0.6, 1.8, rfw)).toVar();
+        const crest = sin(rph).toVar();
+        const barMask = mix(float(1.0), smoothstep(-0.55, 0.45, crest).mul(0.9).add(0.18), rippleOn.mul(0.85));
+
         const mirror = vec3(0.0).toVar();
         if (reflection) {
             // Wind ripples: thin horizontal bands that shift the mirror sideways a few pixels,
@@ -140,15 +177,28 @@ export function createFloor(u, opts = {}) {
             const band = sin(screenUV.y.mul(260.0).add(u.time.mul(1.3))
                 .add(ndNoise2(vec2(screenUV.x.mul(6.0), screenUV.y.mul(40.0).add(u.time.mul(0.2)))).mul(5.0)));
             const bars = band.mul(0.0017).mul(smoothstep(0.0, 0.25, float(1.0).sub(cosT)));
-            const ruv = screenUV.flipX().add(vec2(swell.add(push).add(bars), swell.mul(0.6)));
-            // A touch of roughness: reading a mip down blurs the mirrored neon into soft glows
-            // (the grid lines on top stay crisp).
-            const tap = reflection.sample(ruv);
-            mirror.assign((reflectionBlur > 0 ? tap.level(float(reflectionBlur)) : tap).rgb);
+            const tilt = cos(rph).mul(rippleOn).mul(0.006);
+            const ruv = screenUV.flipX().add(vec2(swell.add(push).add(bars), swell.mul(0.6).add(tilt))).toVar();
+            // Wet glass: the image is drawn out DOWN the screen (five taps along the vertical,
+            // weighted toward the middle), so the sun lies in the glass as a long road of bars
+            // and every neon line as a short streak, and it is rough only near the lens: crisp
+            // toward the horizon, a mip or two softer underfoot (the grid on top stays crisp).
+            const reach = mix(float(0.004), float(0.016), smoothstep(0.0, 0.3, cosT)).toVar();
+            const lod = reflectionBlur > 0
+                ? mix(float(0.35), float(reflectionBlur + 0.4), smoothstep(0.02, 0.4, cosT)).toVar()
+                : null;
+            const tap = (k, w) => {
+                const s = reflection.sample(ruv.add(vec2(0.0, reach.mul(k))));
+                return (lod ? s.level(lod) : s).rgb.mul(w);
+            };
+            mirror.assign(tap(0, 0.3).add(tap(-1, 0.2)).add(tap(1, 0.2)).add(tap(-2, 0.15))
+                .add(tap(2, 0.15)));
         } else {
-            const R = normalize(vec3(V.x.add(swell.add(push).mul(2.0)), V.y.negate(), V.z));
+            const tiltY = cos(rph).mul(rippleOn).mul(0.012);
+            const R = normalize(vec3(V.x.add(swell.add(push).mul(2.0)), V.y.negate().add(tiltY), V.z));
             mirror.assign(analyticReflection(R, u));
         }
+        mirror.mulAssign(barMask);
         // Dark violet-tinted glass.
         const glass = rgb(0x06020e);
         const col = mix(glass, mirror.mul(vec3(0.8, 0.72, 0.9)), fres).toVar();

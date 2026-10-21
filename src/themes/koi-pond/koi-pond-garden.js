@@ -15,7 +15,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn, abs, attribute, cameraPosition, clamp, cos, dot, float, fract, max, mix, normalWorld, normalize,
-    positionGeometry, positionWorld, pow, sin, smoothstep, step, uniform, uv, varying, vec3, vec4,
+    positionGeometry, positionWorld, pow, sin, smoothstep, step, uniform, uv, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
@@ -215,7 +215,7 @@ export function createStones(light, plan) {
     const v = new THREE.Vector3();
     const n = new THREE.Vector3();
     const normalMatrix = new THREE.Matrix3();
-    const append = (geometry, matrix, tone, moss, flat = 0) => {
+    const append = (geometry, matrix, tone, moss, flat = 0, foot = 0) => {
         const offset = positions.length / 3;
         const pos = geometry.getAttribute('position');
         const nor = geometry.getAttribute('normal');
@@ -225,7 +225,8 @@ export function createStones(light, plan) {
             n.fromBufferAttribute(nor, i).applyMatrix3(normalMatrix).normalize();
             positions.push(v.x, v.y, v.z);
             normals.push(n.x, n.y, n.z);
-            tones.push(tone, moss, flat);
+            // (The last: how high this point stands above the stone's own foot.)
+            tones.push(tone, moss, flat, v.y - foot);
         }
         const index = geometry.getIndex();
         if (index) for (let i = 0; i < index.count; i += 1) indices.push(offset + index.getX(i));
@@ -240,40 +241,80 @@ export function createStones(light, plan) {
             rock.radius * rock.squash,
             rock.radius * (1.1 - rock.tone * 0.25),
         ));
-        append(shapes[rock.shape], m, rock.tone, rock.moss);
+        // (Its foot: its lowest point, or the ground round it where it stands half buried.)
+        const foot = Math.max(rock.y - rock.radius * rock.squash * 0.72, groundHeight(rock.x, rock.z) - 0.04);
+        append(shapes[rock.shape], m, rock.tone, rock.moss, 0, foot);
     });
     const lanternPieces = buildLanternPieces(plan.lantern);
-    lanternPieces.forEach(([geometry, matrix]) => append(geometry, matrix, 0.72, 0.45, 1));
+    lanternPieces.forEach(([geometry, matrix]) => append(geometry, matrix, 0.72, 0.45, 1, plan.lantern.y));
 
     const geometry = new THREE.BufferGeometry();
     geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
     geometry.setAttribute('normal', new THREE.BufferAttribute(new Float32Array(normals), 3));
-    geometry.setAttribute('aStone', new THREE.BufferAttribute(new Float32Array(tones), 3));
+    geometry.setAttribute('aStone', new THREE.BufferAttribute(new Float32Array(tones), 4));
     geometry.setIndex(indices);
-    const vStone = varying(attribute('aStone', 'vec3'), 'vStone');
+    const vStone = varying(attribute('aStone', 'vec4'), 'vStone');
 
     const paint = Fn(() => {
         const point = positionWorld.toVar();
-        const normal = normalize(normalWorld).toVar();
+        const smooth = normalize(normalWorld).toVar();
         const view = normalize(cameraPosition.sub(point)).toVar();
         const under = smoothstep(0.012, -0.012, point.y).toVar();
         const depth = max(point.y.negate(), 0.0).toVar();
-        const grain = light.noise.sample(point.xz.mul(0.55).add(point.y.mul(0.37))).toVar();
-        const speck = light.noise.sample(point.xz.mul(2.3).add(point.y.mul(1.9)));
-        // Granite greys, a few warmer and a few nearly black.
+        // The stone's own coordinates on its surface: a plane read along whichever axis it faces
+        // least, so the grain does not smear down the sides.
+        const side = smoothstep(0.35, 0.75, abs(smooth.y));
+        const st = mix(vec2(point.x.add(point.z.mul(0.7)), point.y.mul(1.3)), point.xz, side).toVar();
+        const grain = light.noise.sample(st.mul(0.55)).toVar();
+        const speck = light.noise.sample(st.mul(2.3)).toVar();
+        // Weathered relief: knobs and hollows from the noise's slope, and fine pits.
+        const fine = light.noise.sample(st.mul(6.1)).toVar();
+        const e = 0.012;
+        const nx = light.noise.sample(st.mul(2.3).add(vec2(e, 0.0))).g.sub(speck.g);
+        const nz = light.noise.sample(st.mul(2.3).add(vec2(0.0, e))).g.sub(speck.g);
+        const relief = vec3(nx.negate(), 0.0, nz.negate()).mul(1.0 / e).mul(0.05)
+            .add(vec3(fine.b.sub(0.5), 0.0, fine.a.sub(0.5)).mul(0.22));
+        // (Wet stone is smoother to the eye: the film of water fills its pits.)
+        const damp = smoothstep(0.1, 0.0, point.y);
+        const normal = normalize(smooth.add(relief.mul(float(1.0).sub(damp.mul(0.6))))).toVar();
+        // Cracks: thin dark seams along the ridges of the noise, and dirt held in the hollows.
+        const seam = float(1.0).sub(abs(grain.b.mul(2.0).sub(1.0)));
+        const crack = smoothstep(0.88, 0.97, seam).mul(smoothstep(0.2, 0.7, speck.r));
+        const hollow = smoothstep(0.55, 0.2, speck.g);
+        // Granite greys, a few warmer and a few nearly black, flecked with mica.
         const stone = mix(vec3(0.06, 0.065, 0.072), vec3(0.17, 0.16, 0.145), vStone.x)
-            .mul(grain.g.mul(0.6).add(0.7)).mul(speck.a.mul(0.3).add(0.85)).toVar();
-        // Moss lies on what faces the sky, above the splash line; lichen spots the rest.
+            .mul(grain.g.mul(0.6).add(0.7)).mul(speck.a.mul(0.3).add(0.85))
+            .mul(float(1.0).sub(crack.mul(0.75)))
+            .mul(float(1.0).sub(hollow.mul(0.3)))
+            .toVar();
+        // Pale lichen in round rosettes on the dry faces.
+        const rosette = smoothstep(0.72, 0.8, fine.r.mul(0.6).add(grain.a.mul(0.4))).mul(smoothstep(0.1, 0.3, point.y));
+        stone.assign(mix(stone, vec3(0.2, 0.21, 0.16).mul(fine.g.mul(0.4).add(0.8)), rosette.mul(0.7)));
+        // Moss lies in cushions on what faces the sky, above the splash line: thick in the
+        // hollows of the stone, thinning to threads over its knobs.
         const upward = smoothstep(0.1, 0.7, normal.y.add(grain.r.sub(0.5).mul(0.6)));
+        // (The lantern's dressed stone holds less of it than the rough rocks.)
         const mossy = upward.mul(smoothstep(0.03, 0.16, point.y)).mul(vStone.y.mul(0.5).add(0.5))
-            .mul(smoothstep(0.12, 0.4, grain.b.add(vStone.y.mul(0.45))));
-        const moss = mix(vec3(0.03, 0.085, 0.022), vec3(0.085, 0.17, 0.035), speck.r);
-        const dry = mix(stone, moss, mossy.mul(0.92));
-        // Wet and dark where the water has been; green-brown below it.
-        const wet = smoothstep(0.1, 0.0, point.y).mul(under.oneMinus());
-        const above = dry.mul(mix(1.0, 0.5, wet));
-        const sunk = stone.mul(vec3(0.5, 0.7, 0.52));
-        const skin = mix(above, sunk, under);
+            .mul(smoothstep(0.12, 0.4, grain.b.add(vStone.y.mul(0.45)).add(hollow.mul(0.15))))
+            .mul(float(1.0).sub(vStone.z.mul(0.55)))
+            .toVar();
+        const tufts = fine.g.mul(0.6).add(speck.b.mul(0.4));
+        // Deep green in the hollows, olive and gold-green where its tips catch the light.
+        const moss = mix(vec3(0.022, 0.055, 0.02), vec3(0.085, 0.15, 0.04), tufts)
+            .mul(mix(vec3(1.0), vec3(1.15, 1.0, 0.7), smoothstep(0.55, 0.85, grain.a)))
+            .mul(hollow.mul(-0.35).add(1.0))
+            .mul(smoothstep(0.0, 0.6, mossy).mul(0.35).add(0.7));
+        const dry = mix(stone, moss, smoothstep(0.15, 0.55, mossy).mul(0.94));
+        // Wet and dark where the water has been (a band that the ripples keep washing); green-
+        // brown with algae below it.
+        const wash = light.noise.sample(point.xz.mul(1.7).add(vec2(u.time.mul(0.03), 0.0))).r;
+        const wet = smoothstep(wash.mul(0.06).add(0.07), 0.0, point.y).mul(under.oneMinus()).toVar();
+        const above = dry.mul(mix(1.0, 0.42, wet));
+        const algae = smoothstep(0.3, 0.7, grain.r);
+        const sunk = mix(stone.mul(vec3(0.5, 0.7, 0.52)), vec3(0.05, 0.085, 0.03), algae.mul(0.6));
+        // The stone grows dark where it meets the ground and the water.
+        const foot = smoothstep(0.0, 0.16, vStone.w);
+        const skin = mix(above, sunk, under).mul(mix(0.55, 1.0, foot));
 
         const lit = light.moonlight().toVar();
         const toMoon = normalize(mix(u.moonDir, normalize(vec3(u.underSlope.x, 1.0, u.underSlope.y)), under));
@@ -282,12 +323,15 @@ export function createStones(light, plan) {
         const moon = u.moonColor.mul(ndl).mul(gathered).mul(lit).mul(light.downwelling(depth))
             .mul(u.breath.mul(0.8).add(0.2));
         const ambient = mix(u.skyAmbient, u.waterAmbient, under).mul(normal.y.mul(0.4).add(0.6));
-        // The moss's nap and the wet stone each give a little of the moon back.
+        // The moss's nap and the wet stone each give a little of the moon back; the mica flecks
+        // in the dry granite catch it in points.
         const half = normalize(toMoon.add(view));
-        const gloss = pow(clamp(dot(normal, half), 0.0, 1.0), 26.0).mul(wet.mul(0.9).add(0.06)).mul(under.oneMinus());
-        const fuzz = pow(float(1.0).sub(clamp(dot(normal, view), 0.0, 1.0)), 3.0).mul(mossy).mul(0.07);
+        const facing = clamp(dot(normal, half), 0.0, 1.0);
+        const gloss = pow(facing, 34.0).mul(wet.mul(0.7).add(0.04)).mul(under.oneMinus());
+        const mica = pow(facing, 12.0).mul(smoothstep(0.82, 0.9, fine.a)).mul(mossy.oneMinus()).mul(0.5);
+        const fuzz = pow(float(1.0).sub(clamp(dot(normal, view), 0.0, 1.0)), 3.0).mul(mossy).mul(0.08);
         const colour = skin.mul(moon.add(ambient).add(light.lantern(point, normal).mul(1.7)).add(light.ringLight(point.xz).mul(0.6)))
-            .add(u.moonColor.mul(gloss.add(fuzz)).mul(lit));
+            .add(u.moonColor.mul(gloss.add(fuzz).add(mica)).mul(lit));
         return vec4(colour, 1.0);
     });
 

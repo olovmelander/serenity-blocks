@@ -10,8 +10,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    cameraPosition, color, cos, dot, exp, float, length, mix, normalize, positionWorld, pow, reflect, reflector,
-    saturate, screenUV, sin, smoothstep, texture, uniform, uniformArray, vec2, vec3,
+    cameraPosition, color, cos, dot, exp, float, floor, fract, length, mix, normalize, positionWorld, pow, reflect,
+    reflector, saturate, screenUV, sin, smoothstep, texture, uniform, uniformArray, vec2, vec3,
 } from 'three/tsl';
 import { SummerRings } from './summer-rings.js';
 import { SUMMER_MAP_BIAS, SUMMER_MAP_RANGE, summerLakeMapCoordinate } from './summer-terrain.js';
@@ -138,8 +138,31 @@ export class SummerLake {
         // The sun's own glitter, crisper than the mirror can hold it.
         const micro = normalize(vec3(waves.x.mul(-2.4).sub(ringSlope.x), 1, waves.y.mul(-2.4).sub(ringSlope.y)));
         const glitter = pow(saturate(dot(micro, normalize(view.add(light.uSunDir)))), 600).mul(sunlit);
+        // The sun's path proper: a column of separate sparks on the ripples, each a facet of
+        // the fine ripple that tilts to the sun for a moment and winks out. A hashed lattice on
+        // the water (about 0.35 m cells), each cell a spark if its own random tilt meets the
+        // path's: the column widens and thins out away from the reflected sun, like the real one.
+        const toSunFlat = normalize(vec2(light.uSunDir.x, light.uSunDir.z));
+        const across = vec2(toSunFlat.y.negate(), toSunFlat.x);
+        // Cells grow with distance (the lattice is laid in metres / range), so a spark stays a
+        // few pixels at any depth; each cell's facet takes its own random tilt, and only those
+        // tilted to put the sun in the eye light: the path breaks into separate sparks.
+        const spotUv = vec2(dot(world.xz, across).mul(1.6), dot(world.xz, toSunFlat).mul(0.55))
+            .div(range.mul(0.035).add(0.4));
+        const cell = floor(spotUv);
+        const seed = fract(sin(dot(cell, vec2(127.1, 311.7))).mul(43758.5453));
+        const seed2 = fract(seed.mul(7.31).add(0.13));
+        const seed3 = fract(seed.mul(13.7).add(0.71));
+        const local = fract(spotUv).sub(vec2(seed.mul(0.5).add(0.25), seed2.mul(0.5).add(0.25)));
+        const spot = float(1).sub(smoothstep(0.06, 0.24, length(local.mul(vec2(1, 1.6)))));
+        const facet = normalize(normal.add(vec3(seed2.sub(0.5), 0, seed3.sub(0.5)).mul(0.16)));
+        const tilt = pow(saturate(dot(facet, normalize(view.add(light.uSunDir)))), 400);
+        const wink = sin(t.mul(seed2.mul(5).add(2)).add(seed.mul(30))).mul(0.5).add(0.5);
+        const sparks = spot.mul(tilt).mul(wink.mul(0.7).add(0.3)).mul(ruffle.mul(1.2).add(0.3))
+            .mul(sunlit)
+            .mul(smoothstep(180, 6, range));
         const surface = mix(body, mirrored, fresnel)
-            .add(light.uSunColor.mul(glitter).mul(this.uShimmer.mul(1.2).add(1.25)))
+            .add(light.uSunColor.mul(glitter.add(sparks.mul(2.5))).mul(this.uShimmer.mul(1.2).add(1.25)))
             // Rings carry a thread of light on their crests.
             .add(vec3(1.5, 1.24, 0.72).mul(ringLight).mul(light.uGlow.mul(0.5).add(0.2)));
         // The waterline is soft: the last finger of water barely tints the sand under it.
