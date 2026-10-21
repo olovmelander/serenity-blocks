@@ -50,7 +50,7 @@ describe('Odyssey journey flow preference', () => {
         expect(upgraded.get().musicVolume).toBe(0.3);
     });
 
-    it('offers a labelled choice before Play and preserves either selection across reloads', () => {
+    it('offers a quiet labelled choice at the panel’s foot and preserves either selection across reloads', () => {
         const manager = createManager();
         const input = stubOverlayDocument();
         const onAutoContinueChange = vi.fn((odysseyAutoContinue) => {
@@ -66,8 +66,10 @@ describe('Odyssey journey flow preference', () => {
         expect(overlay.innerHTML).toContain('aria-describedby="odyssey-flow-preference-hint"');
         expect(overlay.innerHTML).toContain('Flow to the next orb automatically');
         expect(overlay.innerHTML).toContain('Chapter arrivals always wait for you.');
+        // Play comes first; the preference is the panel's last, quiet line.
         expect(overlay.innerHTML.indexOf('id="odyssey-auto-continue"'))
-            .toBeLessThan(overlay.innerHTML.indexOf('id="level-panel-play-btn"'));
+            .toBeGreaterThan(overlay.innerHTML.indexOf('id="level-panel-play-btn"'));
+        expect(overlay.innerHTML).toContain('id="odyssey-auto-continue" class="sb-toggle"');
         expect(onAutoContinueChange).not.toHaveBeenCalled();
 
         for (const enabled of [false, true]) {

@@ -1,1 +1,1053 @@
-/* Placeholder: filled by the odyssey-map pass. */
+/* =================================================================================
+ * ODYSSEY MAP — the board view over the live world (#odyssey-board-overlay)
+ * ---------------------------------------------------------------------------------
+ * The navigator's grammar (odyssey-navigator.css, docs/ODYSSEY_NAVIGATOR_2026-10.md),
+ * made compact for the map:
+ *
+ *   - The header: the wordmark, the journey in figures (stars, orbs cleared, the
+ *     chapter you are in) over a slim cell meter of every orb in its chapter's light,
+ *     and the charm chip, a tile beside the play rail's tray that opens the charm guide.
+ *   - The orb panel: the navigator's orb card, docked under the play rail between the
+ *     header and the bottom edge. The orb's world is the art, its chapter's light tints
+ *     the card, its story scrolls on its own and Play stays in view at its foot. Short
+ *     windows set the art beside the title; phones dock the card as a bottom sheet.
+ *
+ * The overlay is a column: the header in flow, then the panel, so the panel always
+ * starts below the header however tall the header grows (large text, a phone). No
+ * backdrop blur: the map renders on underneath. Shell: src/ui/odyssey/BoardInfoOverlay.js;
+ * the panel's content: src/ui/odyssey/odyssey-level-panel.js.
+ * ================================================================================ */
+#odyssey-board-overlay {
+    --map-gutter: clamp(16px, 2.4vw, 36px);
+    --map-edge: var(--sb-play-inset, 16px);
+    position: fixed;
+    inset: 0;
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    color: var(--sb-text);
+    font-family: var(--sb-font-text);
+    pointer-events: none;
+}
+
+#odyssey-board-overlay *,
+#odyssey-board-overlay *::before,
+#odyssey-board-overlay *::after {
+    box-sizing: border-box;
+}
+
+/* ---- Header: the brand, the journey in numbers and cells, the charm chip ---------- */
+#odyssey-board-overlay .odyssey-header-bar {
+    position: relative;
+    flex: none;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    gap: 12px clamp(18px, 2.4vw, 34px);
+    padding: var(--map-edge) var(--map-gutter) 12px;
+    pointer-events: auto;
+}
+
+/* The night the header stands on reaches below its box, so the panel can start close under it. */
+#odyssey-board-overlay .odyssey-header-bar::before {
+    content: '';
+    position: absolute;
+    inset: 0 0 -36px;
+    z-index: -1;
+    background: linear-gradient(180deg, rgba(7, 6, 22, 0.8) 0%, rgba(7, 6, 22, 0.46) 56%, rgba(7, 6, 22, 0) 100%);
+    pointer-events: none;
+}
+
+/* The row lines up with the play rail's tray: same top, same height (the tray's own rule
+   in keystone-overlays.css ends the chips before it). */
+body:has(#sb-play-rail > #odyssey-navigator-btn.visible) #odyssey-board-overlay .odyssey-header-bar {
+    padding-top: max(var(--sb-play-inset), env(safe-area-inset-top));
+}
+
+#odyssey-board-overlay .odyssey-header-bar h1 {
+    flex: none;
+    margin: 0;
+    line-height: 0;
+    text-shadow: none;
+}
+
+#odyssey-board-overlay .odyssey-header-wordmark {
+    width: auto;
+    height: 24px;
+}
+
+#odyssey-board-overlay .odyssey-progress-info {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: 12px clamp(18px, 2.4vw, 34px);
+    min-width: 0;
+    min-height: var(--sb-play-tray, 48px);
+}
+
+/* The journey: figures over the cells, after a hairline from the wordmark. */
+#odyssey-board-overlay .odyssey-map-journey {
+    display: grid;
+    flex: 0 1 35rem;
+    gap: 9px;
+    min-width: 0;
+    padding-left: clamp(18px, 2.4vw, 34px);
+    border-left: 1px solid var(--sb-line);
+}
+
+#odyssey-board-overlay .odyssey-map-figures {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px clamp(14px, 1.6vw, 24px);
+    color: rgba(var(--sb-cream-rgb), 0.56);
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+#odyssey-board-overlay .odyssey-map-figure {
+    display: flex;
+    align-items: baseline;
+    gap: 7px;
+    white-space: nowrap;
+}
+
+#odyssey-board-overlay .odyssey-map-figure b {
+    color: var(--sb-text);
+    font: 700 1rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+#odyssey-board-overlay .odyssey-map-figure b small {
+    color: var(--sb-text-faint);
+    font-size: 0.72em;
+    font-weight: 600;
+}
+
+#odyssey-board-overlay .odyssey-map-figure[data-figure='stars'] b {
+    color: var(--sb-gold);
+}
+
+/* Every orb of the journey as a cell, chapter by chapter in its own light. */
+#odyssey-board-overlay .odyssey-map-meter {
+    display: flex;
+    gap: 4px;
+    width: 100%;
+    min-width: 0;
+}
+
+#odyssey-board-overlay .odyssey-map-meter__chapter {
+    display: flex;
+    flex: 1 1 0;
+    gap: 1.5px;
+    min-width: 0;
+}
+
+#odyssey-board-overlay .odyssey-map-meter__chapter > i {
+    flex: 1 1 0;
+    min-width: 1px;
+    height: 4px;
+    border-radius: 1.5px;
+    background: rgba(var(--sb-cream-rgb), 0.16);
+    transition: height var(--sb-dur-2) var(--sb-ease-lock), transform var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#odyssey-board-overlay .odyssey-map-meter__chapter > i[data-state='cleared'] {
+    background: rgba(var(--ody-hue-rgb, var(--sb-gold-rgb)), 0.92);
+}
+
+#odyssey-board-overlay .odyssey-map-meter__chapter > i[data-state='open'] {
+    background: rgba(var(--ody-hue-rgb, var(--sb-gold-rgb)), 0.32);
+}
+
+#odyssey-board-overlay .odyssey-map-meter__chapter > i[data-state='next'] {
+    background: var(--sb-keystone);
+    box-shadow: 0 0 8px rgba(var(--sb-coral-rgb), 0.7);
+}
+
+/* The chapter of the orb on the panel stands a little taller. */
+#odyssey-board-overlay .odyssey-map-meter__chapter.is-selected > i {
+    transform: scaleY(1.6);
+}
+
+#odyssey-board-overlay .odyssey-map-meter__chapter.is-selected > i[data-state='locked'] {
+    background: rgba(var(--ody-hue-rgb, var(--sb-gold-rgb)), 0.18);
+}
+
+/* Until the journey has been drawn, the mode's two lines stand in for the figures. */
+#odyssey-board-overlay .odyssey-header-bar:not([data-journey='ready']) .odyssey-map-journey,
+#odyssey-board-overlay .odyssey-header-bar[data-journey='ready'] .odyssey-header-line {
+    display: none;
+}
+
+#odyssey-board-overlay .odyssey-header-line {
+    color: var(--sb-text-muted);
+    font: 600 0.6875rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+}
+
+#odyssey-board-overlay #odyssey-header-stars {
+    padding-left: clamp(18px, 2.4vw, 34px);
+    border-left: 1px solid var(--sb-line);
+    color: var(--sb-gold);
+}
+
+/* The charm chip: a tile beside the tray, the bag's live icons and counts. It is a button: it
+   opens the charm guide (odyssey-charm-guide.js, wired by odyssey-map-input.js). */
+#odyssey-board-overlay #odyssey-header-charms {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 10px;
+    min-height: var(--sb-play-tray, 48px);
+    margin: 0 0 0 auto;
+    padding: 0 14px;
+    border-radius: 14px;
+    border: 1px solid rgba(var(--sb-lavender-rgb), 0.24);
+    background: linear-gradient(180deg, rgba(27, 23, 60, 0.84), rgba(12, 10, 30, 0.9));
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.06);
+    color: var(--sb-lavender);
+    font: 600 0.6875rem / 1 var(--sb-font-display);
+    letter-spacing: 0.08em;
+    white-space: nowrap;
+    cursor: pointer;
+    transition:
+        border-color var(--sb-dur-2) var(--sb-ease-lock),
+        background-color var(--sb-dur-2) var(--sb-ease-lock),
+        color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#odyssey-board-overlay #odyssey-header-charms:hover {
+    border-color: rgba(var(--sb-lavender-rgb), 0.55);
+    background: linear-gradient(180deg, rgba(44, 38, 92, 0.9), rgba(20, 17, 46, 0.94));
+}
+
+#odyssey-board-overlay #odyssey-header-charms:active {
+    transform: translateY(1px);
+}
+
+#odyssey-board-overlay #odyssey-header-charms:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
+    outline-offset: 3px;
+}
+
+#odyssey-board-overlay .odyssey-map-charms__label {
+    color: var(--sb-lavender);
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+#odyssey-board-overlay .odyssey-map-charms__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+}
+
+#odyssey-board-overlay #odyssey-header-charms .charm-sprite {
+    width: 26px;
+    height: 26px;
+    vertical-align: middle;
+}
+
+#odyssey-board-overlay #odyssey-header-charms .charm-count {
+    color: var(--sb-text);
+    font: 700 0.6875rem / 1 var(--sb-font-display);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+}
+
+#odyssey-board-overlay .odyssey-map-charms__none {
+    color: var(--sb-text-faint);
+    font: 600 0.8125rem / 1 var(--sb-font-text);
+    letter-spacing: 0;
+}
+
+/* With a controller, Y opens the guide: its round keycap rides on the chip. */
+body.sb-input-gamepad #odyssey-board-overlay #odyssey-header-charms::after {
+    content: 'Y';
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    margin-left: 2px;
+    padding: 0 4px;
+    border-radius: 11px;
+    border: 1px solid var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.07);
+    color: var(--sb-text-muted);
+    font: 700 0.625rem / 1 var(--sb-font-display);
+    letter-spacing: 0;
+}
+
+/* ---- The chapter arrival card ----------------------------------------------------------- */
+#odyssey-board-overlay .odyssey-chapter-arrival-card {
+    position: absolute;
+    left: 50%;
+    top: 18%;
+    min-width: min(460px, calc(100vw - 48px));
+    max-width: min(620px, calc(100vw - 48px));
+    text-align: center;
+    color: var(--sb-text);
+    text-shadow: 0 2px 24px rgba(7, 6, 22, 0.8);
+    opacity: 0;
+    transform: translate(-50%, -10px);
+    transition: opacity 260ms ease, transform 360ms var(--sb-ease-lock);
+    pointer-events: none;
+}
+
+/* A soft night behind the words, so a bright world (snow, sky) never washes them out. */
+#odyssey-board-overlay .odyssey-chapter-arrival-card::before {
+    content: '';
+    position: absolute;
+    inset: -48px -96px;
+    z-index: -1;
+    background: radial-gradient(closest-side, rgba(7, 6, 22, 0.5), rgba(7, 6, 22, 0.22) 60%, transparent);
+    pointer-events: none;
+}
+
+#odyssey-board-overlay .odyssey-chapter-arrival-card.visible {
+    opacity: 1;
+    transform: translate(-50%, 0);
+}
+
+#odyssey-board-overlay .odyssey-arrival-kicker {
+    margin: 0 0 12px;
+    font: 600 0.625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: rgba(var(--sb-gold-rgb), 0.92);
+}
+
+#odyssey-board-overlay .odyssey-arrival-title {
+    font: 700 clamp(1.6rem, 4vw, 2.7rem) / 1.05 var(--sb-font-display);
+    letter-spacing: -0.005em;
+}
+
+#odyssey-board-overlay .odyssey-arrival-subtitle {
+    margin-top: 10px;
+    font: 500 clamp(0.9rem, 2vw, 1.05rem) / 1.5 var(--sb-font-text);
+    color: var(--sb-text-muted);
+}
+
+/* ---- The orb panel: the navigator's card, docked under the play rail -------------------- */
+#odyssey-board-overlay .odyssey-level-panel {
+    --panel-pad: 22px;
+    --panel-hue-rgb: var(--ody-hue-rgb, var(--sb-gold-rgb));
+    position: relative;
+    display: flex;
+    flex: 0 1 auto;
+    flex-direction: column;
+    width: min(max(330px, 21.5rem), 42vw, calc(100vw - 2 * var(--map-edge)));
+    min-height: 0;
+    margin: 4px var(--map-edge) max(var(--map-edge), env(safe-area-inset-bottom));
+    border-radius: var(--sb-r-xl);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.36);
+    pointer-events: auto;
+    isolation: isolate;
+}
+
+/* The fill is its own layer: night, lit from the top by the orb's chapter. */
+#odyssey-board-overlay .odyssey-level-panel::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    border: 1px solid rgba(var(--panel-hue-rgb), 0.26);
+    background:
+        radial-gradient(85% 38% at 50% 0%, rgba(var(--panel-hue-rgb), 0.2), transparent 72%),
+        linear-gradient(180deg, rgba(27, 23, 60, 0.95) 0%, rgba(12, 10, 30, 0.97) 100%);
+    box-shadow: inset 0 1px 0 rgba(var(--sb-cream-rgb), 0.07);
+    pointer-events: none;
+}
+
+#odyssey-board-overlay .odyssey-level-panel.hidden {
+    display: none;
+}
+
+/* The story scrolls on its own; Play stays at the foot. */
+#odyssey-board-overlay .level-panel__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 24px var(--panel-pad) 18px;
+    border-radius: var(--sb-r-xl) var(--sb-r-xl) 0 0;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--sb-cream-rgb), 0.18) transparent;
+}
+
+/* More story below: its last lines fade into the foot until the end is reached. */
+@supports (animation-timeline: scroll()) {
+    #odyssey-board-overlay .level-panel__body {
+        animation: odyssey-map-more-below linear both;
+        animation-timeline: scroll(self);
+    }
+}
+
+/* The head: the orb's world above its name, centred, like the navigator's card art. */
+#odyssey-board-overlay .level-panel__head {
+    display: grid;
+    justify-items: center;
+    gap: 22px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid var(--sb-line);
+    text-align: center;
+}
+
+#odyssey-board-overlay .level-panel__art {
+    display: grid;
+    place-items: center;
+    min-height: 126px;
+    padding-top: 10px;
+}
+
+#odyssey-board-overlay .level-panel__orb {
+    --orb-art-size: clamp(104px, 12.5vh, 124px);
+}
+
+#odyssey-board-overlay .level-panel__titles {
+    display: grid;
+    justify-items: inherit;
+    min-width: 0;
+}
+
+/* Eyebrow: the orb's number in the chapter's light (coral while it is next), its kind beneath
+   in the badge's own colour: gold for a boss's crown, rose for a rival's VS. */
+#odyssey-board-overlay .level-panel__eyebrow {
+    display: grid;
+    justify-items: inherit;
+    gap: 2px;
+    margin: 0;
+    color: rgba(var(--panel-hue-rgb), 0.95);
+    font: 600 0.625rem / 1.5 var(--sb-font-display);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+}
+
+#odyssey-board-overlay .odyssey-level-panel[data-state='next'] .level-panel__eyebrow {
+    color: var(--sb-keystone);
+}
+
+#odyssey-board-overlay .level-number-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+}
+
+#odyssey-board-overlay .level-number-badge::before {
+    content: '';
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 2px;
+    background: currentColor;
+}
+
+#odyssey-board-overlay .level-kind[hidden] {
+    display: none;
+}
+
+#odyssey-board-overlay .level-kind[data-kind='boss'],
+#odyssey-board-overlay .level-kind[data-kind='showcase'] {
+    color: var(--sb-gold);
+}
+
+#odyssey-board-overlay .level-kind[data-kind='rival'] {
+    color: var(--sb-rose);
+}
+
+#odyssey-board-overlay .odyssey-level-panel h2 {
+    margin: 9px 0 5px;
+    color: var(--sb-text);
+    font: 700 clamp(1.25rem, 1.5vw, 1.5rem) / 1.12 var(--sb-font-display);
+    letter-spacing: -0.01em;
+    text-shadow: none;
+    text-wrap: balance;
+}
+
+#odyssey-board-overlay .level-chapter {
+    margin: 0;
+    color: var(--sb-text-faint);
+    font: 600 0.8125rem / 1.4 var(--sb-font-text);
+    text-wrap: balance;
+}
+
+#odyssey-board-overlay .level-stars {
+    margin: 12px 0 0;
+    color: rgba(var(--sb-cream-rgb), 0.3);
+    font-size: 1.25rem;
+    line-height: 1;
+}
+
+#odyssey-board-overlay .level-panel__star-row {
+    --star-size: 22px;
+}
+
+#odyssey-board-overlay .level-description {
+    margin: 18px 0 0;
+    color: var(--sb-text-muted);
+    font: 500 0.9375rem / 1.55 var(--sb-font-text);
+}
+
+#odyssey-board-overlay .level-lock-hint {
+    margin: 14px 0 0;
+    padding: 10px 12px;
+    border-radius: var(--sb-r-sm);
+    border: 1px dashed rgba(var(--sb-cream-rgb), 0.22);
+    color: var(--sb-text);
+    font: 600 0.8125rem / 1.45 var(--sb-font-text);
+}
+
+#odyssey-board-overlay .level-lock-hint[hidden] {
+    display: none;
+}
+
+/* The charms held that help here: their live icons, then the words. Read-only. */
+#odyssey-board-overlay .level-charm-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 14px 0 0;
+    padding: 6px 12px 6px 8px;
+    border-radius: var(--sb-r-sm);
+    border: 1px solid rgba(var(--sb-lavender-rgb), 0.2);
+    background: rgba(var(--sb-lavender-rgb), 0.07);
+    color: var(--sb-lavender);
+    font: 600 0.75rem / 1.45 var(--sb-font-text);
+}
+
+#odyssey-board-overlay .level-charm-hint[hidden] {
+    display: none;
+}
+
+#odyssey-board-overlay .level-charm-hint .charm-sprite {
+    flex: none;
+    width: 28px;
+    height: 28px;
+    vertical-align: middle;
+}
+
+#odyssey-board-overlay .level-charm-hint .charm-sprite + .charm-sprite {
+    margin-left: -4px;
+}
+
+/* The facts: small-capital labels over plain answers, as on the navigator's card. */
+#odyssey-board-overlay .level-objectives {
+    margin: 20px 0 0;
+    padding: 0;
+    border: 0;
+    background: none;
+}
+
+#odyssey-board-overlay .level-objectives > * {
+    margin: 0;
+    padding: 0;
+}
+
+#odyssey-board-overlay .level-objectives > * + * {
+    margin-top: 16px;
+}
+
+#odyssey-board-overlay .level-objectives__label,
+#odyssey-board-overlay .level-goal strong {
+    display: block;
+    color: var(--sb-text-faint);
+    font: 600 0.5625rem / 1 var(--sb-font-display);
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+}
+
+#odyssey-board-overlay .level-goal strong {
+    margin-bottom: 8px;
+}
+
+#odyssey-board-overlay .level-goal span {
+    color: var(--sb-text);
+    font: 600 0.875rem / 1.4 var(--sb-font-text);
+}
+
+#odyssey-board-overlay .level-objectives > .level-objectives__label + ul {
+    margin-top: 9px;
+}
+
+#odyssey-board-overlay .level-objectives [hidden] {
+    display: none;
+}
+
+#odyssey-board-overlay .level-objectives ul {
+    display: grid;
+    gap: 6px;
+    list-style: none;
+}
+
+#odyssey-board-overlay .level-star-goals li {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    color: var(--sb-text-muted);
+    font: 500 0.8125rem / 1.4 var(--sb-font-text);
+}
+
+#odyssey-board-overlay .level-star-goals li.is-earned {
+    color: var(--sb-text);
+}
+
+/* The tier's stars in a column three stars wide, so every goal starts on one line. */
+#odyssey-board-overlay .level-star-goal__tier {
+    --star-size: 12px;
+    flex: none;
+    width: 44px;
+    transform: translateY(1px);
+    color: var(--sb-text-faint);
+    font: 700 0.6875rem / 1 var(--sb-font-display);
+}
+
+#odyssey-board-overlay .level-star-goal__tier svg {
+    fill: rgba(var(--sb-cream-rgb), 0.1);
+    stroke: rgba(var(--sb-cream-rgb), 0.5);
+}
+
+#odyssey-board-overlay .level-star-goal__tier i.is-earned svg {
+    fill: var(--sb-gold);
+    stroke: #ffe9b8;
+}
+
+#odyssey-board-overlay .level-rules li {
+    position: relative;
+    padding-left: 16px;
+    color: var(--sb-text-muted);
+    font: 500 0.8125rem / 1.5 var(--sb-font-text);
+}
+
+#odyssey-board-overlay .level-rules li::before {
+    content: '';
+    position: absolute;
+    left: 1px;
+    top: 0.6em;
+    width: 6px;
+    height: 6px;
+    border-radius: 2px;
+    background: rgba(var(--panel-hue-rgb), 0.7);
+}
+
+#odyssey-board-overlay .level-objectives .level-tip {
+    padding-left: 12px;
+    border-left: 2px solid rgba(var(--sb-mint-rgb), 0.45);
+    color: rgba(var(--sb-mint-rgb), 0.92);
+    font: 500 0.8125rem / 1.5 var(--sb-font-text);
+}
+
+/* ---- The foot: Play, the map's keys, and the flow preference ---------------------------- */
+#odyssey-board-overlay .level-panel__actions {
+    position: relative;
+    flex: none;
+    display: grid;
+    gap: 11px;
+    padding: 14px var(--panel-pad) 14px;
+    border-top: 1px solid var(--sb-line);
+}
+
+#odyssey-board-overlay .level-play-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    min-height: 50px;
+    margin: 0;
+    padding: 0 18px;
+    border: 1px solid transparent;
+    border-radius: 13px;
+    background: var(--sb-keystone);
+    color: var(--sb-keystone-ink);
+    font: 600 0.8125rem / 1 var(--sb-font-display);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    box-shadow: 0 12px 32px rgba(var(--sb-coral-rgb), 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.45);
+    cursor: pointer;
+    transition:
+        background var(--sb-dur-2) var(--sb-ease-lock),
+        box-shadow var(--sb-dur-2) var(--sb-ease-lock),
+        transform var(--sb-dur-1) var(--sb-ease-lock);
+}
+
+/* Its keycap, Enter (A with a controller), drawn here: the mode rewrites the button's words
+   while an orb launches, which would take an element keycap with them. */
+#odyssey-board-overlay .level-play-btn::after {
+    content: 'Enter';
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 6px;
+    border: 1px solid rgba(43, 19, 8, 0.16);
+    background: rgba(43, 19, 8, 0.12);
+    color: var(--sb-keystone-ink);
+    font: 700 0.6875rem / 1 var(--sb-font-text);
+    letter-spacing: 0;
+    text-transform: none;
+}
+
+body.sb-input-gamepad #odyssey-board-overlay .level-play-btn::after {
+    content: 'A';
+    padding: 0 4px;
+    border-radius: 11px;
+    font-family: var(--sb-font-display);
+    font-size: 0.625rem;
+}
+
+#odyssey-board-overlay .level-play-btn:hover {
+    background: #ffbb9c;
+    box-shadow: 0 14px 40px rgba(var(--sb-coral-rgb), 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+#odyssey-board-overlay .level-play-btn:active {
+    transform: translateY(1px);
+}
+
+#odyssey-board-overlay .level-play-btn:focus-visible {
+    outline: 2px solid rgba(var(--sb-cream-rgb), 0.85);
+    outline-offset: 3px;
+}
+
+/* A shut orb's Play says so, without the keystone or a key: nothing happens next there. */
+#odyssey-board-overlay .level-play-btn:disabled {
+    border-color: var(--sb-line-strong);
+    background: rgba(var(--sb-cream-rgb), 0.05);
+    color: var(--sb-text-faint);
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+#odyssey-board-overlay .level-play-btn:is(:disabled, .clicked)::after {
+    display: none;
+}
+
+/* Launching: the button holds a calm lit state. */
+#odyssey-board-overlay .level-play-btn.clicked {
+    background: #ffd2bd;
+    color: var(--sb-keystone-ink);
+    text-shadow: none;
+    animation: sb-launch-breath 1.6s var(--sb-ease-breathe) infinite;
+    pointer-events: none;
+}
+
+/* The map's keys: orb by orb, chapter by chapter (the D-pad does the same). */
+#odyssey-board-overlay .level-nav-hint {
+    justify-content: center;
+    gap: 6px 18px;
+    font: 600 0.6875rem / 1 var(--sb-font-text);
+}
+
+#odyssey-board-overlay .level-nav-hint li {
+    gap: 4px;
+}
+
+#odyssey-board-overlay .level-nav-hint .sb-kbd {
+    min-width: 20px;
+    height: 20px;
+    font-size: 0.625rem;
+}
+
+#odyssey-board-overlay .level-nav-hint li > .sb-kbd:last-of-type {
+    margin-right: 3px;
+}
+
+/* The flow preference: one quiet line with a small switch. */
+#odyssey-board-overlay .odyssey-flow-preference {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin: 0;
+    color: var(--sb-text-faint);
+    font: 500 0.75rem / 1.35 var(--sb-font-text);
+    cursor: pointer;
+    transition: color var(--sb-dur-2) var(--sb-ease-lock);
+}
+
+#odyssey-board-overlay .odyssey-flow-preference:hover {
+    color: var(--sb-text-muted);
+}
+
+#odyssey-board-overlay .odyssey-flow-preference input[type='checkbox'].sb-toggle {
+    width: 32px;
+    height: 18px;
+    border-radius: 6px;
+}
+
+#odyssey-board-overlay .odyssey-flow-preference input[type='checkbox'].sb-toggle::after {
+    top: 3px;
+    left: 3px;
+    width: 10px;
+    height: 10px;
+    border-radius: 3px;
+}
+
+#odyssey-board-overlay .odyssey-flow-preference input[type='checkbox'].sb-toggle:checked::after {
+    transform: translateX(14px);
+}
+
+/* The hint is said to readers (and on hover); the line itself stays one line. */
+#odyssey-board-overlay .odyssey-flow-preference__copy small {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+/* ---- Entrance: a new orb's card settles in (transform and opacity only) ----------------- */
+#odyssey-board-overlay .odyssey-level-panel.is-entering .level-panel__orb {
+    animation: odyssey-map-orb-in 0.5s var(--sb-ease-lock) backwards;
+}
+
+#odyssey-board-overlay .odyssey-level-panel.is-entering .level-panel__titles {
+    animation: odyssey-map-rise-in 0.38s var(--sb-ease-lock) 0.04s backwards;
+}
+
+#odyssey-board-overlay .odyssey-level-panel.is-entering .level-panel__head ~ * {
+    animation: odyssey-map-rise-in 0.38s var(--sb-ease-lock) 0.08s backwards;
+}
+
+@keyframes odyssey-map-orb-in {
+    from { opacity: 0; transform: scale(0.9); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes odyssey-map-rise-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: none; }
+}
+
+@keyframes odyssey-map-more-below {
+    0%, 94% { mask-image: linear-gradient(180deg, #000 calc(100% - 36px), transparent); }
+    100% { mask-image: none; }
+}
+
+@keyframes sb-launch-breath {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(var(--sb-coral-rgb), 0.45); }
+    50% { box-shadow: 0 0 0 10px rgba(var(--sb-coral-rgb), 0); }
+}
+
+/* ---- Short windows: the art beside the title, so the story has the room ----------------- */
+@media (max-height: 820px), (max-width: 640px) {
+    #odyssey-board-overlay .level-panel__head {
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        justify-items: start;
+        gap: 18px;
+        padding-bottom: 16px;
+        text-align: left;
+    }
+
+    #odyssey-board-overlay .level-panel__body {
+        padding-top: 20px;
+    }
+
+    #odyssey-board-overlay .level-panel__art {
+        min-height: 0;
+        padding: 6px 4px 10px;
+    }
+
+    #odyssey-board-overlay .level-panel__orb {
+        --orb-art-size: 80px;
+    }
+
+    #odyssey-board-overlay .odyssey-level-panel h2 {
+        margin-top: 7px;
+        font-size: 1.2rem;
+    }
+
+    #odyssey-board-overlay .level-stars {
+        margin-top: 10px;
+    }
+
+    #odyssey-board-overlay .level-panel__star-row {
+        --star-size: 18px;
+    }
+
+    #odyssey-board-overlay .level-description {
+        margin-top: 16px;
+    }
+
+    #odyssey-board-overlay .level-panel__actions {
+        gap: 9px;
+        padding: 12px var(--panel-pad);
+    }
+
+    #odyssey-board-overlay .level-play-btn {
+        min-height: 46px;
+    }
+}
+
+/* ---- Narrower windows: "Orbs cleared" says "Orbs", a full chip keeps only its icons ------ */
+@media (max-width: 1100px) {
+    #odyssey-board-overlay .odyssey-map-figure__more,
+    #odyssey-board-overlay #odyssey-header-charms[data-empty='false'] .odyssey-map-charms__label {
+        display: none;
+    }
+}
+
+/* ---- Very short windows (a phone on its side): the keys go, the card keeps its story ----- */
+@media (max-height: 520px) {
+    #odyssey-board-overlay .level-nav-hint {
+        display: none;
+    }
+
+    #odyssey-board-overlay .level-panel__body {
+        padding-top: 14px;
+    }
+
+    #odyssey-board-overlay .level-panel__head {
+        gap: 14px;
+        padding-bottom: 12px;
+    }
+
+    #odyssey-board-overlay .level-panel__orb {
+        --orb-art-size: 60px;
+    }
+
+    #odyssey-board-overlay .odyssey-level-panel h2 {
+        font-size: 1.05rem;
+    }
+
+    #odyssey-board-overlay .level-panel__actions {
+        gap: 8px;
+        padding: 10px var(--panel-pad);
+    }
+
+    #odyssey-board-overlay .level-play-btn {
+        min-height: 42px;
+    }
+}
+
+/* ---- Phones: the header in two rows under the tray, the card as a bottom sheet ---------- */
+@media (max-width: 640px) {
+    #odyssey-board-overlay {
+        --map-gutter: 14px;
+    }
+
+    #odyssey-board-overlay .odyssey-header-bar {
+        flex-wrap: wrap;
+        row-gap: 10px;
+        padding-bottom: 10px;
+    }
+
+    /* The tray holds the top-right corner; the second row runs beneath it, edge to edge. */
+    body:has(#sb-play-rail > #odyssey-navigator-btn.visible) #odyssey-board-overlay .odyssey-header-bar {
+        padding-right: var(--map-gutter);
+    }
+
+    #odyssey-board-overlay .odyssey-header-bar h1 {
+        display: flex;
+        align-items: center;
+        min-height: var(--sb-play-tray, 48px);
+    }
+
+    #odyssey-board-overlay .odyssey-header-wordmark {
+        height: 18px;
+    }
+
+    /* The journey takes the row; the chip follows beneath it, under the figures. */
+    #odyssey-board-overlay .odyssey-progress-info {
+        flex-basis: 100%;
+        flex-wrap: wrap;
+        gap: 10px 12px;
+        min-height: 0;
+    }
+
+    #odyssey-board-overlay .odyssey-map-journey {
+        flex: 1 1 100%;
+        padding-left: 0;
+        border-left: 0;
+    }
+
+    #odyssey-board-overlay #odyssey-header-stars {
+        padding-left: 0;
+        border-left: 0;
+    }
+
+    #odyssey-board-overlay .odyssey-map-figures {
+        gap: 4px 14px;
+        letter-spacing: 0.16em;
+    }
+
+    #odyssey-board-overlay .odyssey-map-figure {
+        gap: 5px;
+    }
+
+    #odyssey-board-overlay .odyssey-map-figure b {
+        font-size: 0.875rem;
+    }
+
+    #odyssey-board-overlay #odyssey-header-charms {
+        min-height: 38px;
+        gap: 8px;
+        margin-left: 0;
+        padding: 0 10px;
+        border-radius: 12px;
+    }
+
+    #odyssey-board-overlay #odyssey-header-charms .charm-sprite {
+        width: 22px;
+        height: 22px;
+    }
+
+    #odyssey-board-overlay .odyssey-level-panel {
+        --panel-pad: 18px;
+        width: calc(100vw - 2 * var(--map-edge));
+        max-height: 62vh;
+        margin-top: auto;
+        border-radius: var(--sb-r-lg);
+    }
+
+    #odyssey-board-overlay .level-panel__body {
+        padding-top: 16px;
+        border-radius: var(--sb-r-lg) var(--sb-r-lg) 0 0;
+    }
+
+    #odyssey-board-overlay .level-panel__orb {
+        --orb-art-size: 68px;
+    }
+
+    #odyssey-board-overlay .level-panel__actions {
+        gap: 10px;
+        padding: 12px var(--panel-pad) 14px;
+    }
+}
+
+/* Touch screens have no keys to show (a controller brings its own back). */
+@media (hover: none) and (pointer: coarse) {
+    body:not(.sb-input-gamepad) #odyssey-board-overlay .level-nav-hint,
+    body:not(.sb-input-gamepad) #odyssey-board-overlay .level-play-btn::after {
+        display: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    #odyssey-board-overlay .odyssey-level-panel.is-entering :is(.level-panel__orb, .level-panel__titles),
+    #odyssey-board-overlay .odyssey-level-panel.is-entering .level-panel__head ~ *,
+    #odyssey-board-overlay .level-play-btn.clicked {
+        animation: none;
+    }
+
+    #odyssey-board-overlay .odyssey-map-meter__chapter > i,
+    #odyssey-board-overlay #odyssey-header-charms,
+    #odyssey-board-overlay .level-play-btn {
+        transition: none;
+    }
+}

@@ -60,7 +60,7 @@ import { JourneyEntryTransition } from '../../rendering/transitions/JourneyEntry
 import { JourneyReturnTransition } from '../../rendering/transitions/JourneyReturnTransition.js';
 import { TRANSITION_LAYERS } from '../../rendering/transitions/transition-layer-constants.js';
 import { OdysseyHUD } from '../../ui/odyssey/OdysseyHUD.js';
-import { renderOdysseyLevelPanel } from '../../ui/odyssey/odyssey-level-panel.js';
+import { renderOdysseyLevelPanel, resetOdysseyPanelPlay } from '../../ui/odyssey/odyssey-level-panel.js';
 import { createResultsModal } from '../../ui/odyssey/ResultsModal.js';
 import { createFailureModal } from '../../ui/odyssey/FailureModal.js';
 import {
@@ -78,7 +78,7 @@ import {
 import { mountOdysseyOutcome } from '../../ui/odyssey/odyssey-outcome-owner.js';
 import { createGoalCompleteOverlay } from '../../ui/odyssey/GoalCompleteOverlay.js';
 import { installOdysseyShowcaseInput } from '../../ui/odyssey/odyssey-showcase-input.js';
-import { createBoardInfoOverlay } from '../../ui/odyssey/BoardInfoOverlay.js';
+import { createBoardInfoOverlay, scheduleOdysseyMapHeader } from '../../ui/odyssey/BoardInfoOverlay.js';
 import { createLevelSelectOverlay } from '../../ui/odyssey/LevelSelectOverlay.js';
 import { presentOdysseyFirstArrival } from '../../ui/odyssey/odyssey-first-arrival.js';
 import { installOdysseyCharmInput } from '../../ui/odyssey/odyssey-charm-input.js';
@@ -1284,11 +1284,7 @@ export class OdysseyMode extends BaseGameMode {
             this._setBoardOverlaySuppressed(true);
             return;
         }
-        const playBtn = document.getElementById('level-panel-play-btn');
-        if (playBtn) {
-            playBtn.classList.remove('clicked');
-            playBtn.textContent = this.selectedLevelId ? 'Play' : playBtn.textContent;
-        }
+        resetOdysseyPanelPlay(document, this.selectedLevelId, this.odysseyState);
 
         const panel = document.getElementById('odyssey-level-panel');
         if (panel) {
@@ -3372,7 +3368,7 @@ export class OdysseyMode extends BaseGameMode {
             }
 
             playBtn.classList.add('clicked');
-            playBtn.textContent = 'Launching...';
+            playBtn.textContent = 'Setting out';
             this.launchOdysseyLevel(launchLevelId, { source: 'board-panel' });
         });
     }
@@ -3427,6 +3423,8 @@ export class OdysseyMode extends BaseGameMode {
             progress.textContent = `Progress: ${pct}%`;
         }
         renderOdysseyCharmHeader(this.odysseyState.getCharmBag?.() || []);
+        // The journey in figures and cells, as the navigator's header has it.
+        scheduleOdysseyMapHeader(this);
     }
 
     /**
@@ -3472,6 +3470,8 @@ export class OdysseyMode extends BaseGameMode {
             chapterName: this._getChapterName(level.chapter),
             charms: this.odysseyState.getCharmBag?.() || [],
         });
+        // The header's meter raises the selected orb's chapter.
+        scheduleOdysseyMapHeader(this);
 
         // Show panel
         panel.classList.remove('hidden');
