@@ -215,7 +215,7 @@ export const SEASONS = Object.freeze([
         snow: 0,
         frost: 0,
         wet: 0,
-        sun: '#FFE0B4',
+        sun: '#FFE39C',
         sat: 1.0,
     }),
     Object.freeze({

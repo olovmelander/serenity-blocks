@@ -33,7 +33,9 @@ import {
     vec3,
     vec4,
 } from 'three/tsl';
-import { mulberry32, tbAerial, tbBounce } from './thermal-bloom-tsl.js';
+import {
+    mulberry32, tbAerial, tbBounce, tbCloudShade,
+} from './thermal-bloom-tsl.js';
 
 /** A tree's geometry in its own frame (y up from its foot), unit height; `seed` shapes it. */
 function snagGeometry(seed, rings = 18, segments = 10) {
@@ -145,7 +147,7 @@ export function createSnags(u, tex, count = 3) {
         const sky = mix(u.haze, u.zenith, 0.55).mul(N.y.mul(0.2).add(0.2));
         // (silvered where the low sun catches the weathered grain: a warm, bright flank)
         const sheen = smoothstep(0.35, 0.9, ndl).mul(0.35);
-        const col = albedo.mul(u.sunColor.mul(lit.mul(1.15).add(sheen)))
+        const col = albedo.mul(u.sunColor.mul(lit.mul(1.15).add(sheen).mul(tbCloudShade(u, P))))
             .add(albedo.mul(sky.add(tbBounce(u, N))))
             .toVar();
         // A wet sheen at the foot (it stands in the runoff).
