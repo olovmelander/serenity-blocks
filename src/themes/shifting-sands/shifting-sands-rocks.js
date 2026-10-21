@@ -370,11 +370,13 @@ export function createRockMaterial(shared) {
         const kind = aRock.z;
         const escarp = smoothstep(1.5, 2.0, kind);
 
-        // ── Strata: bands by height, warped by noise, slightly dipping ──
+        // ── Strata: level beds that undulate a little ──
+        // The period is fixed: a period that varied across the face made neighbouring beds
+        // converge, and the pale beds crossed the cliff as diagonal scratches.
         const nw = ssTexNoise(noiseTex, vec2(wp.x.add(wp.z).mul(0.004), wp.y.mul(0.006)));
         // Formation-relative height: a darker shale base, the red cliff sandstone with thin pale
         // beds, a pale caprock.
-        const band = fract(wp.y.add(nw.x.mul(5.0)).div(mix(34.0, 52.0, nw.y)));
+        const band = fract(wp.y.add(nw.x.mul(4.0)).div(41.0));
         const red = vec3(0.52, 0.2, 0.09);
         const orange = vec3(0.64, 0.31, 0.14);
         const buff = vec3(0.76, 0.56, 0.38);

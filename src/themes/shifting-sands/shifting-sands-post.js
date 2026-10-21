@@ -88,6 +88,8 @@ export const BLOOM_THRESHOLD = 2.1;
 export const BLOOM_KNEE = 0.7;
 export const BLOOM_RADIUS = 0.3;
 export const BLOOM_MIPS = 4;
+/** Screen heights round the primary sun whose bright sky feeds the shafts. */
+export const SHAFT_EMIT_RADIUS = 0.13;
 
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 4;
@@ -106,8 +108,8 @@ const roundBoxSdf = /* @__PURE__ */ Fn(([p, rect, radius]) => {
 
 /**
  * Desert filmic: a hue-preserving shoulder on the max channel (identity below `k`), then a
- * gentle path to warm white for the hottest values (the sun cores), so the gold of the sand never
- * skews yellow and the suns never clip to a flat hue.
+ * gentle path to warm white for the hottest values only (the white sun's face, glints), so the
+ * gold of the sand never skews yellow and the ember sun keeps its colour instead of paling to cream.
  */
 const desertFilmic = /* @__PURE__ */ Fn(([cIn]) => {
     const c = max(cIn, vec3(0.0));
@@ -116,8 +118,9 @@ const desertFilmic = /* @__PURE__ */ Fn(([cIn]) => {
     const shoulder = k.add(float(1.0).sub(k).mul(float(1.0).sub(exp(peak.sub(k).div(float(1.0).sub(k)).negate()))));
     const mapped = select(peak.greaterThan(k), shoulder, peak);
     const toned = c.mul(mapped.div(peak));
-    const white = vec3(1.0, 0.97, 0.9).mul(mapped);
-    return mix(toned, white, smoothstep(1.6, 9.0, peak).mul(0.75));
+    // A warm white: a sun's heart whitens to gold-cream, never to salmon.
+    const white = vec3(1.0, 0.93, 0.8).mul(mapped);
+    return mix(toned, white, smoothstep(4.0, 24.0, peak).mul(0.75));
 }).setLayout({ name: 'ss_desertFilmic', type: 'vec3', inputs: [{ name: 'cIn', type: 'vec3' }] });
 
 export class ShiftingSandsPost {
@@ -246,7 +249,8 @@ export class ShiftingSandsPost {
                     const toSun = this.uSunUV.sub(st);
                     // Shafts live within ~0.6 screen heights of the sun; everything beyond skips the march
                     // (the cutoff is where the falloff is already below 4 %).
-                    const reach = exp(length(toSun.mul(vec2(this.uAspect, 1.0))).mul(-3.0)).mul(this.uSunVis);
+                    const sunDist = length(toSun.mul(vec2(this.uAspect, 1.0))).toVar();
+                    const reach = exp(sunDist.mul(-3.0)).mul(this.uSunVis);
                     const shafts = vec3(0.0).toVar();
                     // Per-pixel jitter of the tap positions turns step banding into fine grain.
                     const jitter = ssHash21(floor(screenCoordinate.xy)).sub(0.5).div(rayTaps + 1);
@@ -254,9 +258,14 @@ export class ShiftingSandsPost {
                         for (let k = 1; k <= rayTaps; k++) {
                             const f = k / (rayTaps + 1);
                             const w = (1 - f) * 0.9 + 0.1;
+                            const at = jitter.add(f * 0.92);
+                            // Only the primary's neighbourhood emits: the white sun, a fifth of a
+                            // screen away, would otherwise be dragged out into a streak.
+                            const left = sunDist.mul(float(1.0).sub(at)).div(SHAFT_EMIT_RADIUS);
+                            const emit = exp(left.mul(left).negate());
                             // Explicit LOD: implicit derivatives are undefined in a divergent branch.
-                            const c = vec3(sceneColor.sample(st.add(toSun.mul(jitter.add(f * 0.92)))).level(0).rgb);
-                            shafts.addAssign(clamp(c.sub(1.15), 0.0, 1.6).mul(w));
+                            const c = vec3(sceneColor.sample(st.add(toSun.mul(at))).level(0).rgb);
+                            shafts.addAssign(clamp(c.sub(1.15), 0.0, 1.6).mul(w).mul(emit));
                         }
                     });
                     // In-scatter grows with the lit air in front of the pixel: the sky gets the full

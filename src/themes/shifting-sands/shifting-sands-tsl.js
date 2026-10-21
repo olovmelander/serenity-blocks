@@ -163,10 +163,16 @@ export const ATMOSPHERE_LOOK = Object.freeze({
     }),
 });
 
+/** Dust banks: world units per noise cell, cells drifted per second, height-haze multiplier range. */
+const DUST_BANK_SCALE = 850;
+const DUST_BANK_DRIFT = 0.006;
+const DUST_BANK_RANGE = Object.freeze([0.3, 2.7]);
+
 /**
  * Build the atmosphere graph helpers from the shared uniform nodes:
  *   u = { uSunA, uSunB, uSunLightA, uSunLightB, uZenith, uUpper, uHorizonWarm, uHorizonCool,
- *         uFog (x: distance density, y: height density, z: height falloff, w: max amount) }
+ *         uFog (x: distance density, y: height density, z: height falloff, w: max amount),
+ *         uTime, uWindDir, noiseTex (the drifting dust banks) }
  * All helpers are plain JS graph builders: each material evaluates them once.
  */
 export function createAtmosphere(u) {
@@ -183,7 +189,9 @@ export function createAtmosphere(u) {
     const mieGlow = (dir, strength = 1.0) => {
         const cA = dot(dir, u.uSunA);
         const cB = dot(dir, u.uSunB);
-        const a = ssPhaseHG(cA, float(0.9)).mul(0.03).add(ssPhaseHG(cA, float(0.6)).mul(0.032));
+        // The tight aureole is held low so the sky beside the ember disc stays under the tone
+        // curve's shoulder: only the disc itself reaches it.
+        const a = ssPhaseHG(cA, float(0.9)).mul(0.018).add(ssPhaseHG(cA, float(0.6)).mul(0.032));
         const b = ssPhaseHG(cB, float(0.92)).mul(0.025).add(ssPhaseHG(cB, float(0.65)).mul(0.025));
         return u.uSunLightA.mul(a).add(u.uSunLightB.mul(b)).mul(strength);
     };
@@ -207,8 +215,20 @@ export function createAtmosphere(u) {
     const hazeColor = (dir) => horizonColor(dir).mul(0.94).add(mieGlow(dir, 0.6));
 
     /**
+     * Banks of suspended dust drifting downwind: a slow noise read part-way along the view ray
+     * (so a bank stands in front of what it veils, not painted on it), in [0, 1].
+     */
+    const dustBanks = (worldPos) => {
+        const mid = mix(cameraPosition.xz, worldPos.xz, 0.7);
+        const p = mid.div(DUST_BANK_SCALE).sub(u.uWindDir.mul(u.uTime.mul(DUST_BANK_DRIFT)));
+        const n = ssTexNoise(u.noiseTex, p.add(vec2(23.1, 7.7)));
+        return smoothstep(0.3, 0.75, n.x.mul(0.65).add(n.y.mul(0.35)));
+    };
+
+    /**
      * Aerial perspective amount in [0, uFog.w]: exponential distance fog plus an analytic
-     * exponential height fog (dense dust in the troughs, thin over the crests).
+     * exponential height fog (dense dust in the troughs, thin over the crests), thickened and
+     * thinned by the drifting dust banks.
      */
     const fogAmount = (worldPos) => {
         const v = worldPos.sub(cameraPosition);
@@ -218,7 +238,8 @@ export function createAtmosphere(u) {
         const by = b.mul(v.y);
         const exact = float(1.0).sub(exp(by.negate())).div(by);
         const ratio = select(abs(by).greaterThan(1e-3), exact, float(1.0).sub(by.mul(0.5)));
-        const heightOD = u.uFog.y.mul(exp(b.mul(cameraPosition.y).negate())).mul(dist).mul(ratio);
+        const banks = mix(DUST_BANK_RANGE[0], DUST_BANK_RANGE[1], dustBanks(worldPos));
+        const heightOD = u.uFog.y.mul(exp(b.mul(cameraPosition.y).negate())).mul(dist).mul(ratio).mul(banks);
         const distOD = u.uFog.x.mul(dist);
         return min(float(1.0).sub(exp(heightOD.add(distOD).negate())), u.uFog.w);
     };
