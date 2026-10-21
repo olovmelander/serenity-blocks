@@ -51,26 +51,27 @@ import { flashScale } from '../../utils/photosensitivity.js';
 
 /**
  * Per-tier look. `bloom: false` builds no BloomNode (and so no shafts). `rays` and `rush` are
- * tap counts (0 = off); `fringe` = the chromatic split (two more scene taps).
+ * tap counts (0 = off); `fringe` = the chromatic split (two more scene taps); `glint` = the sun's
+ * spikes and anamorphic streak (one more scene tap).
  */
 export const POST_LOOK = Object.freeze({
     Extreme: {
-        bloom: true, bloomStrength: 0.6, bloomResolution: 0.5, rays: 14, rush: 10, fringe: true,
+        bloom: true, bloomStrength: 0.6, bloomResolution: 0.5, rays: 14, rush: 10, fringe: true, glint: true,
     },
     Ultra: {
-        bloom: true, bloomStrength: 0.6, bloomResolution: 0.5, rays: 12, rush: 8, fringe: true,
+        bloom: true, bloomStrength: 0.6, bloomResolution: 0.5, rays: 12, rush: 8, fringe: true, glint: true,
     },
     High: {
-        bloom: true, bloomStrength: 0.58, bloomResolution: 0.45, rays: 10, rush: 7, fringe: true,
+        bloom: true, bloomStrength: 0.58, bloomResolution: 0.45, rays: 10, rush: 7, fringe: true, glint: true,
     },
     Medium: {
-        bloom: true, bloomStrength: 0.54, bloomResolution: 0.33, rays: 6, rush: 5, fringe: false,
+        bloom: true, bloomStrength: 0.54, bloomResolution: 0.33, rays: 6, rush: 5, fringe: false, glint: true,
     },
     Low: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, rays: 0, rush: 4, fringe: false,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, rays: 0, rush: 4, fringe: false, glint: false,
     },
     Minimal: {
-        bloom: false, bloomStrength: 0, bloomResolution: 0.25, rays: 0, rush: 0, fringe: false,
+        bloom: false, bloomStrength: 0, bloomResolution: 0.25, rays: 0, rush: 0, fringe: false, glint: false,
     },
 });
 
@@ -138,6 +139,8 @@ export class StellarVelocityPost {
         this.uRays = uniform(0.12); // sun shafts, 0..1
         this.uRush = uniform(0); // the zoom's blur, 0..1
         this.uBloomBoost = uniform(0);
+        this.uGlint = uniform(1); // the sun's spikes and streak, 0..
+        this.uGlintTint = uniform(new THREE.Vector3(0.7, 0.85, 1));
 
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
         this.uCalm = this.calmRects.map((v) => uniform(v));
@@ -258,21 +261,48 @@ export class StellarVelocityPost {
                 }
                 glare.mulAssign(float(1.0).sub(calm.mul(0.86)));
             }
+            if (look.glint) {
+                // ── The sun through the lens: four thin spikes and an anamorphic streak ──
+                // As bright as the sun's heart is in the frame: read where it stands, so a cloud
+                // in front of it puts them out, and they are gone when it leaves the frame.
+                const heart = this.uHeart;
+                const inFrame = step(0.0, heart.x).mul(step(heart.x, 1.0)).mul(step(0.0, heart.y)).mul(step(heart.y, 1.0));
+                const core = svMax3(vec3(sceneColor.sample(heart).level(0).rgb));
+                const shown = smoothstep(1.5, 40.0, core).mul(inFrame).mul(this.uGlint).toVar();
+                If(shown.greaterThan(0.002), () => {
+                    // Screen heights from the sun's heart.
+                    const d = st.sub(heart).mul(aspect).toVar();
+                    const spikes = float(0.0).toVar();
+                    for (let k = 0; k < 2; k++) {
+                        // Two crossed bars make four spikes, tilted off the frame's axes.
+                        const a = 0.42 + k * (Math.PI / 2);
+                        const along = abs(d.x.mul(Math.cos(a)).add(d.y.mul(Math.sin(a))));
+                        const across = abs(d.y.mul(Math.cos(a)).sub(d.x.mul(Math.sin(a))));
+                        const width = along.mul(0.006).add(0.0011);
+                        spikes.addAssign(exp(across.div(width).negate()).mul(exp(along.mul(-9.0))).div(along.mul(60.0).add(1.0)));
+                    }
+                    const ax = abs(d.x);
+                    const streak = exp(abs(d.y).mul(-520.0)).mul(exp(ax.mul(-4.2))).div(ax.mul(8.0).add(1.0));
+                    const glint = vec3(spikes.mul(2.4)).add(this.uGlintTint.mul(streak.mul(1.5)));
+                    glare.addAssign(glint.mul(shown).mul(float(1.0).sub(calm.mul(0.9))));
+                });
+            }
             const H = S.add(glare);
 
             // ── Tone map + grade ──
-            const lift = this.uFlashTint.mul(this.uFlash.mul(0.5)).mul(float(1.0).sub(calm.mul(0.7)));
-            // A flash lifts the whole frame a little and lays its colour on the edges, where a
-            // hoop has just gone past.
+            const lift = this.uFlashTint.mul(this.uFlash.mul(0.16)).mul(float(1.0).sub(calm.mul(0.7)));
+            // A flash brightens what is there and lays a little of its colour on the edges, where
+            // a hoop has just gone past. (A larger lift added in linear light is a grey veil.)
             const edge = smoothstep(0.15, 0.75, length(fromCentre.mul(aspect).mul(vec2(0.62, 1.0))));
-            const X = H.mul(this.uExposure).mul(float(1.0).add(this.uFlash.mul(0.3)))
-                .add(lift.mul(edge.mul(0.5).add(0.04)));
+            const X = H.mul(this.uExposure).mul(float(1.0).add(this.uFlash.mul(0.65)))
+                .add(lift.mul(edge.mul(0.5).add(0.02)));
             const T = starlightFilmic(X).toVar();
             const L = svLuma(T);
-            // Cool, slightly lifted shadows (space is never a flat black); the lights keep their hues.
+            // Cool shadows; the lights keep their hues. Scaled, never lifted: a linear lift of a
+            // few thousandths is a veil over every black once encoded.
             const lo = float(1.0).sub(smoothstep(0.0, 0.24, L));
-            T.assign(mix(T, T.mul(vec3(0.94, 0.97, 1.1)).add(vec3(0.0008, 0.0009, 0.0026)), lo.mul(0.5)));
-            T.assign(mix(vec3(svLuma(T)), T, 1.12));
+            T.assign(mix(T, T.mul(vec3(0.94, 0.97, 1.1)), lo.mul(0.5)));
+            T.assign(mix(vec3(svLuma(T)), T, 1.18));
             // Vignette, measured from the frame, a touch heavier in the corners.
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
             const vig = smoothstep(0.45, 1.08, length(cv.mul(1.5)));
@@ -311,8 +341,10 @@ export class StellarVelocityPost {
 
     /** Per-frame values (all optional). */
     update({
-        heart, flash, flashTint, kick, bloomBoost, exposure, rays, blur, time,
+        heart, flash, flashTint, kick, bloomBoost, exposure, rays, blur, time, glint, glintTint,
     } = {}) {
+        if (glint !== undefined) this.uGlint.value = glint;
+        if (glintTint) this.uGlintTint.value.set(glintTint[0], glintTint[1], glintTint[2]);
         if (heart) this.uHeart.value.set(heart.x, heart.y);
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (flashTint) this.uFlashTint.value.set(flashTint[0], flashTint[1], flashTint[2]);
