@@ -116,7 +116,7 @@ night's soft light: smooth clay. It is now (`stillwater-troll.js`):
 
 ## Verification
 
-- **Unit tests:** the Stillwater suite is 489 tests in 16 files, all passing. New: the crowns (one per
+- **Unit tests:** the Stillwater suite is 490 tests in 16 files, all passing. New: the crowns (one per
   tree but the giants, the same every time and no tree's crown moved by another; each on its own
   trunk with its tip over the trunk's top and its card in front of it; the trees at the water
   keeping their low branches; every crown above any window it would reach into; the cards square to
