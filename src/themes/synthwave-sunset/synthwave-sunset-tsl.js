@@ -91,6 +91,16 @@ export const SHORE = Object.freeze({
 /** Mean distance haze over the sea (1/m). */
 export const SEA_HAZE = 1 / 1900;
 
+/**
+ * The evening star: a unit direction (folded to constants in JS, so it never becomes a shader
+ * var) left of the sun and above the cirrus, in frame in the menu and beside the wheel in a game.
+ */
+export const EVENING_STAR = Object.freeze((() => {
+    const az = THREE.MathUtils.degToRad(-10.5);
+    const el = THREE.MathUtils.degToRad(13.5);
+    return { dir: [Math.sin(az) * Math.cos(el), Math.sin(el), -Math.cos(az) * Math.cos(el)] };
+})());
+
 // ── Palette (sRGB hex → linear) ─────────────────────────────────────────────────
 
 /** A linear-space vec3 constant from an sRGB hex, optionally scaled (HDR). */
@@ -360,12 +370,28 @@ export function swSky(u, d, o) {
         const radiusPx = float(0.42).add(mag.mul(0.7));
         const core = float(1.0).sub(smoothstep(radiusPx.sub(0.5), radiusPx.add(0.5), dPx)).mul(step(0.93, h));
         const twinkle = sin(u.time.mul(float(1.1).add(h.mul(2.3))).add(h.mul(77.0))).mul(0.3).add(0.7);
-        const vis = smoothstep(0.1, 0.36, e)
-            .mul(float(0.3).add(u.dusk.mul(0.7)))
+        // The stars come out in order of brightness as the evening deepens: in the menu's early
+        // dusk only the brightest third, by nightfall all of them. Low in the bright west fewer.
+        const needed = float(1.0).sub(clamp(u.dusk.mul(1.1).add(0.1), 0.0, 1.0))
+            .add(float(1.0).sub(smoothstep(0.12, 0.45, e)).mul(0.25));
+        const out = smoothstep(needed, needed.add(0.18), mag);
+        const vis = smoothstep(0.08, 0.3, e)
+            .mul(out)
+            .mul(float(0.5).add(u.dusk.mul(0.5)))
             .mul(float(1.0).sub(cloud))
-            .mul(float(1.0).sub(smoothstep(0.06, 0.32, swLuma(col))));
-        const starI = core.mul(float(0.14).add(mag.mul(mag).mul(mag).mul(1.4))).mul(twinkle).mul(vis);
+            .mul(float(1.0).sub(smoothstep(0.08, 0.36, swLuma(col))));
+        const starI = core.mul(float(0.18).add(mag.mul(mag).mul(mag).mul(1.5))).mul(twinkle).mul(vis);
         col.addAssign(mix(rgb(0xc8dcff), rgb(0xffe2f0), swHash31(cell.add(3.7))).mul(starI));
+
+        // The evening star, low in the west beside the sun: the first light of the night, steady,
+        // a little warm, with a soft halo, brighter as the sky darkens behind it.
+        const venus = vec3(EVENING_STAR.dir[0], EVENING_STAR.dir[1], EVENING_STAR.dir[2]);
+        const vPx = length(d.sub(venus)).div(o.pxRad);
+        const vCore = exp(vPx.mul(vPx).mul(-0.32));
+        const vHalo = exp(vPx.mul(-0.22)).mul(0.05);
+        const vLevel = float(0.9).add(u.dusk.mul(1.6)).mul(float(1.0).sub(cloud.mul(0.85)))
+            .mul(smoothstep(0.995, 0.9995, dot(d, venus)));
+        col.addAssign(rgb(0xfff0dc).mul(vCore.mul(2.6).add(vHalo)).mul(vLevel));
     }
 
     return {
