@@ -19,7 +19,7 @@ session built was replaced on 2026-10-20 (see the Charms section below).
 | No onboarding, thin pause, no reset | A fresh journey is welcomed by the Chapter 1 arrival with a four-line orientation (once per journey, remembered in the save). The pause sheet offers **Retry orb** and **Back to map** while an orb is in progress and names the orb. The navigator offers **Start a new journey** as a two-step reset that keeps earned themes. | `ui/odyssey/{odyssey-first-arrival,odyssey-pause-actions,odyssey-new-journey,odyssey-navigator-list}.js`, `settings.js`, `index.html` |
 | Hard walls, skip-after-three-failures wanted | **Charms** (below): since 2026-10-20, typed consumables found by clearing orbs and spent with one key press during an orb. The design and its reasons are in [ODYSSEY_CHARMS_AUDIT_2026-10.md](ODYSSEY_CHARMS_AUDIT_2026-10.md). | `core/odyssey/{odyssey-charm-bag,odyssey-charm-use}.js`, `ui/odyssey/{odyssey-charm-input,odyssey-charm-copy,OdysseyHUD,JourneyFlowOverlay,FailureModal}.js` |
 | Map without keys or pad; locked orbs inert; no duel markers | Arrows and the D-pad step orbs, Up/Down jump chapters, Home/End, Enter/A plays. Locked orbs hover and open a read-only panel. Rival duels and chapter bosses wear a marker under the orb. | `ui/odyssey/odyssey-map-input.js`, `rendering/odyssey/LevelNodeManager.js`, `gamepad-controller.js` |
-| Completion cut straight to a sheet | The goal plays the theme's showpiece reel (quad, six-wave cascade, perfect clear, from the Serenity catalogue, re-timed to about 1.5 s); the ceremony dims in through its afterglow. | `ui/odyssey/{odyssey-showpiece,odyssey-goal-flourish}.js`, `odyssey-flow.css` |
+| Completion cut straight to a sheet | The goal plays the theme's showpiece reel (quad, six-wave cascade, perfect clear, from the Serenity catalogue, re-timed to about 2.3 s, then 2.6 s more for the theme's own answer to the board emptying, so the ceremony arrives about 4.9 s after the goal; it was 1.6 s until 2026-10-21, which hid each theme's biggest reaction behind the scrim); the ceremony dims in through its afterglow. | `ui/odyssey/{odyssey-showpiece,odyssey-goal-flourish}.js`, `odyssey-flow.css` |
 
 ## Charms
 
@@ -86,7 +86,10 @@ reason; only a strip too short even for that scrolls, without a scrollbar.
   chapters' different camera angles and the near-lens fade.
 - The **showpiece reel** per theme: every theme plays the default reel. `ODYSSEY_THEME_SHOWPIECES`
   is the place to give a theme its strongest reaction (ids from `serenity-effects.js`); tune in
-  the playground (`?effect=<id>`) with screenshots.
+  the playground (`?effect=<id>`) with screenshots. The reel's pacing (time scale 0.75, 320 ms
+  between effects, a 2.6 s hold after the last) was lengthened on 2026-10-21 at the owner's
+  request, with no skip; filmed in the real game on orb 1 (Ashen Dawn): the lava's fountains,
+  its answer to the perfect clear, now peak about 1.8 s after it, before the ceremony.
 - The **afterglow** ceremony entrance. (The charm surfaces changed with Charms v3; their open
   visual checks are listed in the audit.)
 

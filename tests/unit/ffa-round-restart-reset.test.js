@@ -17,6 +17,7 @@ import {
 } from 'vitest';
 import { FFAGameStateP2P } from '../../src/core/multiplayer/ffa-p2p-game-state.js';
 import { GameState } from '../../src/core/game.js';
+import { LEVEL_SPEEDS } from '../../src/core/constants.js';
 import {
     drainFfaPendingResyncs,
     queueFfaResync,
@@ -46,7 +47,7 @@ function restartStub(gameState) {
         _pendingFfaInputGroup: { id: 2 },
         _readyBarrierEnabled: false, // instant-restart path
         players: new Map([['HOST', player]]),
-        matchConfig: { startLevel: 1 },
+        matchConfig: { startLevel: 1, levelProgression: true },
         inputJitterBuffer: { clear() { jitterCleared += 1; }, addPlayer() {} },
         fragTracker: { reset() {} },
         attackRouter: { clearHistory() {}, resetHotPotato() {} },
@@ -84,13 +85,26 @@ describe('FFA round restart — in-place gameState reset (no object swap)', () =
         expect(player.gameState).toBe(gs);
         // Board was cleared by reset() — the stale cell is gone.
         expect(player.gameState.boardGrid[23][0]).toBeNull();
-        // Cumulative stats preserved across the round.
+        // Cumulative stats preserved across the round (the level because this match
+        // levels up; a fixed-level match restarts at its level, match-level-rule.test.js).
         expect(player.gameState.score).toBe(5000);
         expect(player.gameState.lines).toBe(14);
         expect(player.gameState.level).toBe(3);
         // Player revived and round generation bumped.
         expect(player.isAlive).toBe(true);
         expect(stub.roundGeneration).toBe(1);
+    });
+
+    it('puts a fixed-level match back on its starting level and speed', () => {
+        const gs = new GameState();
+        gs.level = 3;
+        const { stub, player } = restartStub(gs);
+        stub.matchConfig = { startLevel: 2, levelProgression: false };
+        FFAGameStateP2P.prototype.restartMatch.call(stub);
+        expect(player.gameState).toBe(gs);
+        expect(player.gameState.level).toBe(2);
+        expect(player.gameState.dropInterval).toBe(LEVEL_SPEEDS[1]);
+        expect(player.gameState.disableLevelProgression).toBe(true);
     });
 
     it('clears the input jitter buffer and restarts the loop on restart', () => {
