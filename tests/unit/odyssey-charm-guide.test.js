@@ -22,6 +22,12 @@ describe('Odyssey charm guide: what it says', () => {
         expect(guide.charms[2].when).toBe('Only on orbs with a clock.');
         guide.charms.forEach((charm) => expect(charm.when).not.toBe(''));
         expect(guide.total).toBe(3);
+        expect(guide.capacity).toBe(12);
+    });
+
+    it('opens on the first charm in the bag, or on Tide while the bag is empty', () => {
+        expect(describeOdysseyCharmGuide({ counts: { 'long-breath': 1, hearth: 2 } }).selected).toBe('long-breath');
+        expect(describeOdysseyCharmGuide().selected).toBe('tide');
     });
 
     it('caps counts at three, drops unknown charms and garbage, and counts the bag in its lede', () => {
@@ -50,6 +56,9 @@ describe('Odyssey charm guide: what it says', () => {
         expect(rules).toMatch(/After three falls in a row/);
         expect(rules).toMatch(/never costs stars/);
         expect(rules).not.toMatch(/carry|draft|slot|gem/i);
+        expect(describeOdysseyCharmGuide().steps.map((step) => step.title))
+            .toEqual(['Find', 'Use', 'Keep', 'Mercy', 'Stars']);
+        expect(describeOdysseyCharmGuide().steps.map((step) => step.line)).toEqual([...ODYSSEY_CHARM_GUIDE_RULES]);
     });
 });
 
@@ -87,6 +96,14 @@ function createElement(tagName) {
 const nodes = (element) => [element, ...element.children.flatMap(nodes)];
 const byClass = (root, className) => nodes(root).filter((node) => node.className === className);
 const textOf = (element) => nodes(element).map((node) => node.textContent).join(' ');
+const backOf = (root) => nodes(root).find((node) => node.attributes?.['data-charm-guide-action'] === 'close');
+const tabsOf = (root) => nodes(root).filter((node) => node.attributes?.role === 'tab');
+const selectedOf = (root) => tabsOf(root).filter((tab) => tab.attributes['aria-selected'] === 'true')
+    .map((tab) => tab.dataset.charm);
+const cardTitleOf = (root) => byClass(root, 'sb-ody-charm-card__title')[0].textContent;
+const shownHeroOf = (root) => byClass(root, 'sb-ody-charm-card__icon').filter((slot) => !slot.hidden)
+    .map((slot) => slot.dataset.charm);
+const onTab = { closest: (selector) => (selector === '[role="tab"]' ? {} : null) };
 
 describe('Odyssey charm guide: the sheet', () => {
     let body;
@@ -111,9 +128,63 @@ describe('Odyssey charm guide: the sheet', () => {
         expect(textOf(rows[2])).toContain('3 of 3');
         expect(textOf(rows[0])).toContain('None in your bag');
         expect(textOf(modal)).toContain('How charms work');
-        const back = byClass(modal, 'sb-btn sb-btn--primary')[0];
-        expect(back.attributes['data-charm-guide-action']).toBe('close');
+        const back = backOf(modal);
+        expect(back.textContent).toBe('Back to the map');
         expect(back.type).toBe('button');
+    });
+
+    it('shows one charm at a time on the card, the bag’s first, and lends the page its light', () => {
+        const modal = createOdysseyCharmGuideSheet({ counts: { 'still-air': 2 } });
+        expect(selectedOf(modal)).toEqual(['still-air']);
+        expect(modal.dataset.charm).toBe('still-air');
+        expect(cardTitleOf(modal)).toBe('Still Air');
+        expect(shownHeroOf(modal)).toEqual(['still-air']);
+        const card = byClass(modal, 'sb-ody-charm-card')[0];
+        expect(card.dataset.held).toBe('true');
+        expect(textOf(card)).toContain('In your bag');
+        expect(textOf(card)).toContain('2 of 3');
+        expect(textOf(card)).toContain('Slows the fall for 20 seconds.');
+        expect(textOf(card)).toContain('Best when the pace outruns you.');
+        tabsOf(modal).forEach((tab) => expect(tab.attributes['aria-controls']).toBe('odyssey-charm-guide-stage'));
+
+        // Focus is the selection: a tab the D-pad or Tab lands on shows its charm.
+        tabsOf(modal)[3].dispatch('focus');
+        expect(selectedOf(modal)).toEqual(['hearth']);
+        expect(modal.dataset.charm).toBe('hearth');
+        expect(cardTitleOf(modal)).toBe('Hearth');
+        expect(shownHeroOf(modal)).toEqual(['hearth']);
+        expect(card.dataset.held).toBe('false');
+        expect(textOf(card)).toContain('Not in your bag yet');
+        expect(textOf(card)).toContain('0 of 3');
+        tabsOf(modal)[0].dispatch('click');
+        expect(cardTitleOf(modal)).toBe('Tide');
+    });
+
+    it('walks the rail with the arrows round its ends, Home and End, 1 to 4 and the pad’s shoulders', () => {
+        const modal = createOdysseyCharmGuideSheet({ selected: 'hearth' });
+        expect(selectedOf(modal)).toEqual(['hearth']);
+        const down = modal.dispatch('keydown', { key: 'ArrowDown', target: onTab });
+        expect(down.preventDefault).toHaveBeenCalled();
+        expect(selectedOf(modal)).toEqual(['tide']);
+        modal.dispatch('keydown', { key: 'ArrowUp', target: onTab });
+        expect(selectedOf(modal)).toEqual(['hearth']);
+        modal.dispatch('keydown', { key: 'Home', target: onTab });
+        expect(selectedOf(modal)).toEqual(['tide']);
+        modal.dispatch('keydown', { key: 'End', target: onTab });
+        expect(selectedOf(modal)).toEqual(['hearth']);
+        // Arrows elsewhere (the way back) are left alone; the digits work anywhere on the page.
+        const away = modal.dispatch('keydown', { key: 'ArrowDown', target: { closest: () => null } });
+        expect(away.preventDefault).not.toHaveBeenCalled();
+        expect(selectedOf(modal)).toEqual(['hearth']);
+        modal.dispatch('keydown', { key: '3', target: { closest: () => null } });
+        expect(selectedOf(modal)).toEqual(['long-breath']);
+        modal.dispatch('keydown', { key: '2', ctrlKey: true, target: onTab });
+        expect(selectedOf(modal)).toEqual(['long-breath']);
+        modal.stepCharm(1);
+        expect(selectedOf(modal)).toEqual(['hearth']);
+        modal.stepCharm(-1);
+        modal.stepCharm(-1);
+        expect(selectedOf(modal)).toEqual(['still-air']);
     });
 
     it('closes from its button or a click on the scrim, never from a click inside the sheet', () => {
@@ -123,7 +194,7 @@ describe('Odyssey charm guide: the sheet', () => {
         expect(onClose).not.toHaveBeenCalled();
         modal.dispatch('click', { target: modal });
         expect(onClose).toHaveBeenCalledOnce();
-        byClass(modal, 'sb-btn sb-btn--primary')[0].dispatch('click');
+        backOf(modal).dispatch('click');
         expect(onClose).toHaveBeenCalledTimes(2);
     });
 
@@ -149,7 +220,7 @@ describe('Odyssey charm guide: the sheet', () => {
         expect(guide.open()).toBe(true);
         expect(body.children).toHaveLength(1);
 
-        byClass(modal, 'sb-btn sb-btn--primary')[0].dispatch('click');
+        backOf(modal).dispatch('click');
         expect(modal.isConnected).toBe(false);
         expect(guide.isOpen()).toBe(false);
         expect(window.dispatchEvent.mock.calls[1][0].type).toBe('modalHidden');
