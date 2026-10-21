@@ -16,8 +16,10 @@ import {
     cameraPosition,
     clamp,
     cross,
+    dot,
     exp,
     int,
+    length,
     max,
     min,
     mix,
@@ -41,6 +43,8 @@ export const MOTE_FADE = 0.16;
 
 /** The share of a mote's light the water gives back. */
 const ECHO = 0.5;
+/** How close to the sun's centre a mote may pass (solar radii): just outside the limb. */
+const LIMB_CLEAR = 1.045;
 
 function moteMaterial({ u, echo = false }) {
     const material = new THREE.MeshBasicNodeMaterial({
@@ -68,8 +72,17 @@ function moteMaterial({ u, echo = false }) {
     // The tail follows a set share behind, and catches up once the head has landed.
     const tail = max(min(head.sub(shape.y).add(over.div(MOTE_FADE).mul(shape.y)), head), 0.0);
     const bowAxis = normalize(cross(from.xyz, to.xyz).add(vec3(0.0, 1e-5, 0.0)));
-    const placeAt = (share) => normalize(mix(from.xyz, to.xyz, share)
-        .add(bowAxis.mul(sin(share.mul(Math.PI)).mul(shape.w))));
+    // Round the moon, never across it: a point that would fall on the black disc is carried out
+    // to the limb in the sun's plane, so a mote aimed at the far limb runs round the edge.
+    const clearOfDisc = (dir) => {
+        const f = max(dot(dir, u.camFwd), 1e-4);
+        const p = vec2(dot(dir, u.camRight), dot(dir, u.camUp)).div(f).sub(u.sunAt).div(u.sunTan);
+        const r = max(length(p), 1e-4);
+        const q = p.mul(max(r, LIMB_CLEAR).div(r)).mul(u.sunTan).add(u.sunAt);
+        return normalize(u.camFwd.add(u.camRight.mul(q.x)).add(u.camUp.mul(q.y)));
+    };
+    const placeAt = (share) => clearOfDisc(normalize(mix(from.xyz, to.xyz, share)
+        .add(bowAxis.mul(sin(share.mul(Math.PI)).mul(shape.w)))));
     const at = mix(tail, head, s);
     const d = placeAt(at);
     const ahead = placeAt(at.add(0.01));

@@ -1,14 +1,17 @@
 # Solar Eclipse — the black sun over the salt mirror
 
 Rebuilt from scratch on 2026-10-11 (`feature/solar-eclipse-masterpiece`, merged 6c14c6bf) as "the
-crown of the black sun", and taken further on 2026-10-12 (`feature/solar-eclipse-totality`), both
-with Three.js 0.186.1. The rebuild replaced the earlier theme in full (a classic
+crown of the black sun", taken further on 2026-10-12 (`feature/solar-eclipse-totality`), and given
+its atmosphere on 2026-10-21 (`feature/solar-eclipse-third-pass`), all with Three.js 0.186.1. The rebuild replaced the earlier theme in full (a classic
 `WebGLRenderer` scene of a plasma sun sphere, a moon sphere that slid across it, particle
 coronas, flares, meteors, nebula quads and lens flares, finished by an `EffectComposer` with
 UnrealBloom, chromatic aberration and a vignette, all in GLSL `ShaderMaterial`s). The second pass
 kept the rebuild's sun, its event language and its palettes, and changed the world it stands in:
 the lens came down from a high ridge to the edge of a flooded salt flat, and the water gives the
-whole eclipse back. Solar Eclipse keeps its identity — the sun and the moon in one line, a
+whole eclipse back. The third pass kept all of that and worked on the air and the light in it: the
+flat cloud deck became rows of heaped cloud, the sky leans toward the near edge of the moon's
+shadow, the prominences became flux ropes that erupt as loops, and the water draws its bright
+reflections out into a soft column. Solar Eclipse keeps its identity — the sun and the moon in one line, a
 corona, a diamond ring. This document records the shipped design and what was verified. It is a
 reference, not a backlog.
 
@@ -29,10 +32,16 @@ swell bends the reflection slowly, and the wind's patches roughen some reaches a
 still.
 
 On the far shore stands a low line of ranges and, right of the card, a broad volcanic shield
-with a broken summit and a parasitic cone on its flank, every one doubled in the water. Low over
-them lies a broken deck of cloud: where it reaches out beyond the edge of the moon's shadow it is
-still in sunlight and burns orange; nearer, under the shadow, it is dark against the band of
-light behind it. All round the horizon burns the light of the world beyond the shadow.
+with a broken summit and a parasitic cone on its flank, every one doubled in the water. Over them
+stand three rows of heaped cloud, each farther and lower than the last: the farthest, out beyond
+the edge of the moon's shadow, is still in sunlight and burns orange from the top down, its
+creases in the sky's cool light; the nearest, under the shadow, are dark bodies whose undersides
+the band of light lights from below, their thin edges letting it through. All round the horizon
+burns the light of the world beyond the shadow, but the lens does not stand in the shadow's
+middle: toward its nearest edge (right of the card, and swinging slowly with the clock) the band
+burns brighter and climbs higher and even the near clouds catch the sun, while over the black sun
+the air is darkest. Between the warm band and the dark the light pales toward blue, and a breath
+of mist lies on the far water.
 
 The card sits in the middle of the frame, so the picture is composed round it: the sun stands in
 the middle of the free space on the card's left (the world reads the live card rect), its size a
@@ -55,15 +64,15 @@ the water stills to glass.
 
 | Event | What happens |
 |---|---|
-| Lock | A mote of the piece's colour leaves the card's edge at the piece's height and eases along a bowed path to the limb (its reflection flies in the water below), where a prominence of that colour is born in a flare at its feet and rises in under a second: an arch, a bundle of fine threads hottest at its feet with knots draining down its legs, or a ragged hedgerow. The limb keeps twelve; each stands about half a minute, then fades. Nothing lands on the water at the card's foot: the lock belongs to the sun. |
+| Lock | A mote of the piece's colour leaves the card's edge at the piece's height and eases along a bowed path to the limb, running round the edge of the moon rather than across it (its reflection flies in the water below), where a prominence of that colour is born in a flare at its feet and rises in under a second: an arch, a flux rope with strands wound round it and fainter loops of the same system nested under it, hottest at its feet (which take the chromosphere's pink) with knots draining down its legs, or a ragged hedgerow. The limb keeps twelve; each stands about half a minute, then fades. Nothing lands on the water at the card's foot: the lock belongs to the sun. |
 | Hard drop | A taller, wider arch, a brighter flare and mote, a jolt of the lens and a kick of the fringe. |
-| Clear | A necklace of beads, one per line, races round the black sun; the chromosphere flashes; the corona swells; the two oldest prominences per line ERUPT: each lifts off the limb, twists and tears into blobs and is flung out through the corona within two seconds. With none held, white jets run out instead. A ring drops into the sun's own reflection, stronger for more lines, and breaks it into wavering bands as it spreads. |
-| Four lines | The diamond ring: the moon slides off until the photosphere breaks through one lunar valley on the card's side; a brilliant bead with a modest starburst, a ring of beads, daylight flooding back into the air, the lens breathing; its light lays a glitter path down the water and shadow bands race over the salt; then the moon slides back and totality returns. Two rings follow each other into the reflection. Half a second later a coronal mass ejection leaves the limb into the open sky (up and away from the card beside it, sideways over it): a bubble that blows the corona's own rays outward. Every held prominence erupts with it. |
+| Clear | A necklace of beads, one per line, races round the black sun; the chromosphere flashes; the corona swells; the two oldest prominences per line ERUPT: each lifts off the limb as a loop (a hedgerow too) that widens as it climbs, sways in long bends, thins into strands with its legs trailing below it, and is flung out through the corona within two seconds. With none held, sprays of white jets run out instead. A ring drops into the sun's own reflection, stronger for more lines, and breaks it into wavering bands as it spreads. |
+| Four lines | The diamond ring: the moon slides off until the photosphere breaks through one lunar valley on the card's side; a brilliant bead with a modest starburst, a ring of beads, daylight flooding back into the air, the lens breathing; its light lays a glitter path down the water (a soft pillar there; the starburst is the lens's own and is never in the mirror) and shadow bands race over the salt; then the moon slides back and totality returns. Two rings follow each other into the reflection. Half a second later a coronal mass ejection leaves the limb into the open sky (up and away from the card beside it, sideways over it): a bubble that blows the corona's own rays outward. Every held prominence erupts with it. |
 | Perfect clear | The four-line show, with a larger flash, a stronger diamond and a second, six-bead necklace. |
 | T-spin | The corona twists: the rays wind into a spiral that is strongest at the limb and unwinds outward, the prominences swept round with it, then rings down over about two seconds. A whirl winds into the reflection. |
 | Chain | The exposure lengthens: the outer corona and the streamers' wings reach further, the faint stars come out (and stand in the water), earthshine shows the moon's maria; the swell and the wind die down and the mirror goes to glass. It all closes slowly when the chain breaks. |
 | Level up | The light turns one step (and the solar cycle with it), the chromosphere flashes all round the limb, two beads run round it and a gentle ring spreads through the reflection. |
-| Clock alone | The light turns one step every 100 s, whatever the level, resting 15 s at each end (so it is on its way 70 % of the time); the solar cycle rides the same wheel, so the corona's shape changes too. The sun's axis sways over 260 s and the moon wanders over 83 s and 131 s, so the chromosphere's sliver creeps round the limb; the cloud deck drifts and the wind's patches wander over the water. |
+| Clock alone | The light turns one step every 100 s, whatever the level, resting 15 s at each end (so it is on its way 70 % of the time); the solar cycle rides the same wheel, so the corona's shape changes too. The sun's axis sways over 260 s and the moon wanders over 83 s and 131 s, so the chromosphere's sliver creeps round the limb; the moon's shadow swings its bright side over 310 s; the cloud rows drift along the horizon and the wind's patches wander over the water. |
 
 The palettes, in hue order round the wheel: **ember** (amber horizon, indigo shadow, the quiet
 sun's long wings), **gold**, **jade**, **azure** (an icy horizon, the round crown of solar
@@ -71,7 +80,8 @@ maximum), **violet**, **rose**. Each palette carries where the solar cycle stand
 watches the corona change from the two long wings of a quiet sun to a crown of streamers and
 back. Neighbours' glow and band colours are staggered by a family so a blend never passes
 through grey (`solar-eclipse-core.test.js` checks the saturation half-way between every pair).
-The burning clouds take each palette's sunlit colour, the salt each palette's air.
+The burning clouds take each palette's sunlit colour, their creases and the shadowed rows its
+air, the salt its air too.
 
 ## How it is built
 
@@ -82,14 +92,19 @@ Everything is one dome and one set of strips:
   direction the mirror sends the eye on to, and draws the sky in THAT direction: the reflection
   is not a second pass and not a reflector, it is the same function read once per pixel. Then:
   the air (the dark of the shadow, the band beyond it, the bright rim at the horizon, daylight
-  for the diamond), the planets and the exposure's faint stars, the sun (below), the cloud deck
-  (a plane 4.2 km up read through the baked noise at a footprint-matched level, gapped by a
-  broad field, held clear of the black sun so its disc stays the darkest thing in the sky;
-  sunlit beyond 52 km, the shadow's edge), then six crest lines from a baked half-float table,
+  for the diamond; the band leans toward the moon's shadow's near edge, `UMBRA` and
+  `u.umbraAz`, and pales toward blue above it), the planets and the exposure's faint stars, the
+  sun (below), the clouds (core.js `CLOUDS`: three rows at 150, 66 and 40 km, each read in
+  (bearing, height above its base) so a heap keeps its shape however low it stands, the
+  threshold climbing with height for flat bases and heaped tops, a second tap a little higher
+  telling tops from undersides; lit from above where the row lies beyond `shadowEdgeAt`, lit from
+  below by the band inside it; held off the black disc), then six crest lines from a baked half-float table,
   farthest first: each darker than the air behind it, mist along its foot, its crest rimmed by
   the light behind; the farthest is the sunlit range beyond the shadow. Last, for the water's
   own pixels: Fresnel over the salt's floor, the salt under the film, the crust's ridges lit by
-  the whole sky (shadow bands flicker over them at the diamond), and the diamond's glitter.
+  the whole sky (shadow bands flicker over them at the diamond; sunk under the film where the
+  water gives the sun back, so no vein crosses its reflection), the diamond's glitter, and a
+  breath of mist on the far water.
   Every exponential is bounded before it is masked.
 - `solar-eclipse-mirror.js` — the water under a direction that looks down: its ground point
   (the lens stands 1.7 m above it), three faint swells that fade wherever a wave would be finer
@@ -111,12 +126,15 @@ Everything is one dome and one set of strips:
   with a whisper of loops; a bright cusp where they close; a stalk narrowing as `0.2/r + 0.075`
   radians and falling off as `r^−1.85`, its rays calmed, so the wing is one long streamer and
   never a beam; ten extra streamers rise as the cycle climbs. Then the chromosphere, the
-  prominence table (a Loop over twelve rows; arches as fibre bundles, hedgerows and jets; the
-  birth flare; each eruption a wobble of its own frame, a lift, a tearing and a fade), a CME, the
+  prominence table (a Loop over twelve rows; arches as flux ropes with wound strands and a
+  nested arcade, hedgerows, sprays of jets; the birth flare; each eruption a slow sway of its own
+  frame, a lift, a widening loop whose threads spread and thin, and a fade, all inside a box that
+  grows with it and fades its light before its edge), a CME, the
   moon (its limb notched by lunar valleys where beads break through), the bead necklace and the
   diamond's glare.
 - `solar-eclipse-fx.js` — the motes: instanced strips laid along the great circle from the card's
-  edge to the limb, bowed, eased in, with a rounded nose; a second set reads the same table
+  edge to the limb, bowed, eased in, with a rounded nose, every point carried out of the moon's
+  disc in the sun's plane so a mote runs round the limb; a second set reads the same table
   turned over the horizon and dimmed by the water, drawn only where the mote is above it.
 - `solar-eclipse-world.js` — the state: the composition, the prominence table, the ripple table,
   the moon's wander and slide, the exposure and the glass, the twist, the diamond's glitter
@@ -130,9 +148,11 @@ Everything is one dome and one set of strips:
   the corona's field constants and streamer set, the moon, the palettes and their wheel, the
   exposure curve, the board-to-limb mapping, the prominence shapes.
 - `solar-eclipse-post.js` — one scene pass, a max-channel bloom (Medium and up), one output pass:
-  lens breath, fringe, calm zones over the card and HUD, the two moon mattes (held off from
+  lens breath, fringe, calm zones over the card and HUD, below the horizon the bloom drawn out
+  into a soft vertical column (eight taps; a chain stills it), the two moon mattes (held off from
   98.5 % of the disc's radius to its edge, so the limb is crisp), exposure, a hue-preserving
-  filmic tone map, grade, vignette, grain and dither.
+  filmic tone map, a grade that leans the shadows blue by scaling alone (an added constant
+  lifted every black to a veil), vignette, grain and dither.
 - `solar-eclipse-theme.js`, `-director.js`, `-composition.js` — the lifecycle, the renderer
   (WebGPU, else its WebGL2 backend), the gameplay intake (the true combo, several boards), the
   layout watch, settings, reduced motion and device-loss recovery, as in the sibling rebuilds.
@@ -148,7 +168,7 @@ the board's foot, was tried in this pass and taken out again.
 Every tier keeps the whole picture and every event (`solar-eclipse-quality.js`); the mirror, its
 rings and whirls, the glitter path and the reflected motes are on every tier:
 
-| Tier | Corona rays | Outflow | Prominence threads | Sunlit range's snow | Valley mist | Exposure stars | Swell | Salt crust | Cloud deck | Motes | Bloom |
+| Tier | Corona rays | Outflow | Prominence threads | Sunlit range's snow | Valley mist | Exposure stars | Swell | Salt crust | Cloud rows | Motes | Bloom (and the water's column) |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | Minimal | 1 octave | — | — | — | — | — | — | — | — | 8 | — |
 | Low | 1 octave | — | yes | — | — | yes | yes | — | — | 10 | — |
@@ -175,6 +195,40 @@ The icon: `t=14&quality=Ultra&icon=1&iconHorizon=1&iconFov=34&locks=10` captured
 brightness 1.04: the black sun over its own reflection, the burning horizon between.
 
 ## Verification
+
+### The atmosphere pass (2026-10-21, origin/main 8a064bb7 plus this change)
+
+- **What changed, and why:** in the baseline captures the cloud deck read as horizontal dashes
+  over the whole band (a flat deck seen this low; the TSL notes' own trap) and again in the
+  water; the sky was one lavender wash; the prominences read as neon hoops, their eruptions tore
+  into straight-edged chunks (the box each is drawn in clipped them) and a mote could fly across
+  the black disc; the lens's starburst stood in the water as a zigzag and the salt crust drew
+  veins over the moon's reflection, so it read as a cracked boulder.
+- **Two bugs the new shader gate found:** the white jets a clear sends out with no prominence
+  held had never drawn (their `up` was assigned in the hedgerow branch only, the jet branch read
+  zero), and the first build of the cloud rows read zero in two of three rows for the same
+  reason. Both pinned; `tests/unit/solar-eclipse-shaders.test.js` (new) builds the dome and the
+  motes through the WGSL and GLSL builders at High and Minimal and fails on a warning, an
+  unassigned var read, an equal-edge smoothstep, a NaN literal, MaterialX noise or a helper that
+  closes over a uniform. The High dome is 73 KB of WGSL (about 69 KB before).
+- **Unit tests:** the five Solar Eclipse files, 164 tests, green; new: the cloud rows (farthest
+  first and lowest, under the sun, the farthest in sunlight on every bearing, the nearest in the
+  shadow on its dark side), the shadow's bright side (nearer edge, a slow swing always right of
+  the line of sight), the world writing it, and the post told where the water begins and how a
+  chain stills it.
+- **Playground:** WebGPU on the RTX 5080 Laptop: every event, the six palettes, Minimal, Low and
+  Medium, a narrow portrait, prominence close-ups at 2400 × 1350; the WebGL2 backend at rest and
+  on four lines; consoles clean.
+- **Real game** (the private dev server, theme pinned, sixteen real hard drops, a shown
+  off-screen window): WebGPU at about 169 frames a second on the RTX, no console errors; twelve
+  prominences held at once.
+- **Cost:** on the RTX at 2560 × 1440 Ultra the playground frame (seek included) measured 2.13 ms
+  on origin/main and 2.24 ms with this change (median of nine interleaved runs, a few per cent and
+  within the run-to-run spread). On the Radeon 610M iGPU other sessions shared the GPU and single
+  runs swung from 25 to 80 ms, so no difference there can be read; not measured further.
+
+Not verified in this pass: a perf-lane reading, a real phone, the phone validator, multiplayer and
+Odyssey layouts; `aspects.jpg`, `clock-ingame.jpg` and the icon are the previous pass's.
 
 ### The salt-mirror pass (2026-10-12, origin/main 3ff50fe7 plus this change)
 
@@ -233,13 +287,18 @@ PASS; phone validator Low/Minimal pass. Recorded in full in this file's history 
 
 ## Captured previews
 
-- `solar-eclipse-captures/events.jpg` — a lock's flare, a hard drop, a clear's ring in the
-  reflection, the diamond ring and its glitter path, the CME, a T-spin, a perfect clear, a
-  level-up.
+- `solar-eclipse-captures/third-pass.jpg` — before and after the atmosphere pass, at rest and on
+  four lines.
+- `solar-eclipse-captures/prominences.jpg` — before and after: held, erupting, and a mote on its
+  way to the limb.
+- `solar-eclipse-captures/events.jpg` — a hard drop, a clear's eruptions and ring, a clear's
+  jets, the diamond ring and its glitter path, the CME, a T-spin, a perfect clear, a level-up, a
+  chain.
 - `solar-eclipse-captures/palettes.jpg` — the six palettes at their rest (`level=1…6`, `t=14`).
-- `solar-eclipse-captures/clock-ingame.jpg` — the clock alone in the real game, level 1.
-- `solar-eclipse-captures/tiers.jpg` — Minimal, Low, Medium, Extreme.
-- `solar-eclipse-captures/aspects.jpg` — 21:9, 4:3, a narrow portrait.
-- `solar-eclipse-captures/ingame.jpg` — the real game: at rest, after hard drops, a clear, a
-  chain, the diamond.
+- `solar-eclipse-captures/tiers.jpg` — Minimal, Low, Medium.
+- `solar-eclipse-captures/ingame.jpg` — the real game: at rest, after hard drops, twelve
+  prominences held.
+- `solar-eclipse-captures/clock-ingame.jpg` — the clock alone in the real game, level 1 (the
+  salt-mirror pass).
+- `solar-eclipse-captures/aspects.jpg` — 21:9, 4:3, a narrow portrait (the salt-mirror pass).
 - `solar-eclipse-captures/icon.jpg` — the old icon, the new one and the gold alternative.
