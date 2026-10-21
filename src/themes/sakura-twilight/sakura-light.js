@@ -18,6 +18,8 @@ import {
 const TAU = Math.PI * 2;
 export const SAKURA_RING_SLOTS = 6;
 export const SAKURA_RING_SPEED = 13;
+/** Frames after the shadows were framed on which the static map is drawn again. */
+const SHADOW_REDRAWS = new Set([45, 150, 300, 600, 1200]);
 
 /** Unit vector from the scene toward a moon at `azimuth` (right of -Z) and `elevation` degrees. */
 export function sakuraMoonDirection(azimuth, elevation, target = new THREE.Vector3()) {
@@ -314,9 +316,12 @@ export class SakuraLight {
             this.uFront.value.set(frame.front.x, clamp01(frame.front.strength) * 2.2, 14, 0);
         } else this.uFront.value.y = 0;
         // Pipelines may still be compiling when the first shadow map is drawn; redraw it
-        // over the first frames so no late tree is missing from the static map.
+        // over the first frames so no late tree is missing from the static map. In the game
+        // the prewarm compiles asynchronously and skips what is not ready, so on a busy machine
+        // the casters' shadow pipelines can come later than frame 150: a few later redraws
+        // (one shadow pass each) keep the near grass from standing in full moonlight.
         this.shadowFrames += 1;
-        if (this.shadowFrames < 10 || this.shadowFrames === 45 || this.shadowFrames === 150) {
+        if (this.shadowFrames < 10 || SHADOW_REDRAWS.has(this.shadowFrames)) {
             this.moon.shadow.needsUpdate = true;
         }
     }

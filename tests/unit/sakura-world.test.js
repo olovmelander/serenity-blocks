@@ -800,13 +800,23 @@ describe('Sakura world scene contracts', () => {
                 expect(mesh.material.fragmentNode?.isNode, mesh.name).toBe(true);
             }
         }
-        // Bark, blossom, petals, furniture, lanterns and the mountain are drawn straight from the pack.
+        // Bark, blossom, fallen flowers, furniture, lanterns and the mountain are drawn straight
+        // from the pack.
         const borrowed = named(
             world.group,
-            /^Sakura(Bark|Blossom|Garden) |^Sakura(PetalsInTheAir|Mountain|LanternsAfloat|SkyLanterns)$/,
+            /^Sakura(Bark|Blossom|Garden) |^Sakura(FallenBlossom|Mountain|LanternsAfloat|SkyLanterns)$/,
         );
         expect(borrowed.length).toBeGreaterThan(20);
         for (const mesh of borrowed) expect(shared.has(mesh.geometry), mesh.name).toBe(true);
+        // The petals in the air are the pack's petal drawn finer, at its size, and owned by the world.
+        const [airborne] = named(world.group, 'SakuraPetalsInTheAir');
+        expect(shared.has(airborne.geometry)).toBe(false);
+        const packPetal = assets.blossoms.meshes.petal;
+        packPetal.computeBoundingBox();
+        const refined = airborne.geometry.boundingBox;
+        expect(refined.max.y - refined.min.y).toBeCloseTo(packPetal.boundingBox.max.y - packPetal.boundingBox.min.y, 5);
+        expect(refined.max.x - refined.min.x).toBeCloseTo(packPetal.boundingBox.max.x - packPetal.boundingBox.min.x, 2);
+        expect(airborne.geometry.index.count / 3).toBeGreaterThan(packPetal.index.count / 3);
 
         // Light: one low moon whose shadow-casting direction is the one every material shades with.
         const { moon } = world.light;
@@ -914,9 +924,16 @@ describe('Sakura world scene contracts', () => {
         const [grass] = named(world.group, 'SakuraSpringGrass');
         expect(grass.count).toBeGreaterThan(0);
         expect(grass.count).toBeLessThanOrEqual(tier.grass);
+        // Flowers fallen into the grass near the eye, a few for every hundred tufts.
+        const [fallen] = named(world.group, 'SakuraFallenBlossom');
+        expect(fallen.geometry).toBe(assets.blossoms.meshes.flower);
+        expect(fallen.count).toBeGreaterThan(0);
+        expect(fallen.count).toBeLessThan(grass.count * 0.1);
+        expect(fallen.castShadow).toBe(false);
         expect(world.garden.stats).toEqual({
             props: SAKURA_STONE_LANTERNS.length + paper.count + 3 + sum(rocks.map((mesh) => mesh.count)),
             grass: grass.count,
+            blossom: fallen.count,
         });
 
         // The lake: a real mirror where the tier can afford one.
@@ -964,8 +981,9 @@ describe('Sakura world scene contracts', () => {
         const spared = meshes.filter((mesh) => mesh.layers.mask === unmirrored.mask);
         const mirrored = meshes.filter((mesh) => mesh.layers.mask !== unmirrored.mask);
         for (const mesh of meshes) expect(camera.layers.test(mesh.layers), mesh.name).toBe(true);
-        for (const pattern of [/^SakuraSpringGrass$/, /^SakuraPetalsInTheAir$/, /^SakuraFireflies$/, /^SakuraFoxfire$/,
-            /^SakuraPetalFlashes$/, /^SakuraMistBank /, FOX_SKIN, /^SakuraFoxShade /,
+        for (const pattern of [/^SakuraSpringGrass$/, /^SakuraFallenBlossom$/, /^SakuraPetalsInTheAir$/,
+            /^SakuraFireflies$/, /^SakuraFoxfire$/, /^SakuraPetalFlashes$/, /^SakuraMistBank /, FOX_SKIN,
+            /^SakuraFoxShade /,
             ...(furred ? [/^SakuraFoxFur /] : [])]) {
             expect(spared.some((mesh) => pattern.test(mesh.name)), String(pattern)).toBe(true);
             expect(mirrored.some((mesh) => pattern.test(mesh.name)), String(pattern)).toBe(false);
