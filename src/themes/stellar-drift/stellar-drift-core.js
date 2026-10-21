@@ -18,9 +18,6 @@ export const GIANT = Object.freeze({
     flowCycle: 150,
     /** Scale height of the limb's haze (radii). */
     hazeHeight: 0.011,
-    /** Where the aurora stands: colatitude of its oval (radians) and how tall its curtains are. */
-    auroraColat: 19 * DEG,
-    auroraHeight: 0.085,
 });
 
 /**
@@ -69,15 +66,41 @@ export const CHIME_LIVE = 7;
 export const JET_SLOTS = 8;
 export const JET_SPEED = 2.4;
 export const JET_LIFE = 5.5;
-/** Strikes on the cloud tops (a meteor's fireball, a scar that lingers). */
+/**
+ * Strikes on the cloud tops: a meteor's fireball, the shock it sends through the cloud, an ember,
+ * and a scar with a crescent of ejecta that the band's own wind shears as it lingers.
+ */
 export const STRIKE_SLOTS = 8;
 export const STRIKE_LIFE = 16;
+/** A strike's size on the cloud (radians) for its strength. */
+export const strikeSize = (strength) => 0.035 + strength * 0.03;
 /** Lightning cells under the night side's cloud. */
 export const BOLT_SLOTS = 10;
 /** Meteors in flight at once, and motes of each one's tail. */
 export const METEOR_SLOTS = 14;
 /** Seconds a lock's mote takes from the card to the rings. */
 export const MOTE_FLIGHT = 0.42;
+/**
+ * Seconds the train behind a meteor and behind a lock's mote glows on after the head has passed:
+ * the ionised trail cools from white through the piece's colour into a fading, widening train.
+ */
+export const METEOR_TRAIN = 1.2;
+export const MOTE_TRAIN = 0.5;
+
+/**
+ * The flourishes the larger rewards play on the giant itself (one of each at a time; a new one
+ * takes the place of the last). Seconds each lives:
+ *   cyclone   a T-spin winds a storm into the cloud bands, its arms lit in the piece's colour
+ *   surge     a chain's milestone sends two arcs of its light racing both ways round the rings
+ *   strand    a back-to-back clear sets the rings' outer strand ablaze, braided and knotted
+ *   shock     four lines, a perfect clear or a new level throw a torn shell of light off the giant
+ */
+export const CYCLONE_LIFE = 8;
+export const SURGE_LIFE = 3.4;
+export const STRAND_LIFE = 4.2;
+export const SHOCK_LIFE = 3.2;
+/** A surge runs round the oval this fast (radians of longitude per second). */
+export const SURGE_SPEED = 1.9;
 
 /** Rows of the event table the world shader reads (vec4 each), by block. */
 export const EVENT_ROWS = Object.freeze({
@@ -188,7 +211,6 @@ const L = linRGB;
  *   gasA / gasB     the nebula's two gases
  *   deep            the sky's own colour
  *   starTint        the far stars
- *   auroraLow / auroraHigh   the aurora at its foot and at its crown
  *   bolt            lightning under the cloud
  *   moonIce / moonRust       the two moons
  */
@@ -210,8 +232,6 @@ export const PALETTES = Object.freeze([
         gasB: L(0x7a3cf0),
         deep: [0.0016, 0.0026, 0.0072],
         starTint: [0.84, 0.92, 1.0],
-        auroraLow: L(0x36ffb0),
-        auroraHigh: L(0xb04dff),
         bolt: L(0xbfd4ff),
         moonIce: L(0xdfeeff),
         moonRust: L(0xd98a4a),
@@ -233,8 +253,6 @@ export const PALETTES = Object.freeze([
         gasB: L(0xd43cc0),
         deep: [0.0026, 0.0018, 0.0068],
         starTint: [0.92, 0.88, 1.0],
-        auroraLow: L(0x4dffe0),
-        auroraHigh: L(0xff4d9c),
         bolt: L(0xffd0f0),
         moonIce: L(0xf4e6f4),
         moonRust: L(0xd0705a),
@@ -256,8 +274,6 @@ export const PALETTES = Object.freeze([
         gasB: L(0xff4f9a),
         deep: [0.0022, 0.0016, 0.0078],
         starTint: [0.88, 0.86, 1.0],
-        auroraLow: L(0x62a8ff),
-        auroraHigh: L(0xff5ae0),
         bolt: L(0xe0c8ff),
         moonIce: L(0xe6e2ff),
         moonRust: L(0xb86a8a),
@@ -279,8 +295,6 @@ export const PALETTES = Object.freeze([
         gasB: L(0x20c4e8),
         deep: [0.0012, 0.0024, 0.0084],
         starTint: [0.8, 0.9, 1.0],
-        auroraLow: L(0x40e8ff),
-        auroraHigh: L(0x8a6aff),
         bolt: L(0xc8e8ff),
         moonIce: L(0xd8ecff),
         moonRust: L(0x8a8ab0),
@@ -302,8 +316,6 @@ export const PALETTES = Object.freeze([
         gasB: L(0x30e08a),
         deep: [0.001, 0.003, 0.0066],
         starTint: [0.82, 1.0, 0.94],
-        auroraLow: L(0x50ff8a),
-        auroraHigh: L(0x40c8ff),
         bolt: L(0xd0fff0),
         moonIce: L(0xdcfaf0),
         moonRust: L(0x9ab070),
@@ -325,8 +337,6 @@ export const PALETTES = Object.freeze([
         gasB: L(0xa8c830),
         deep: [0.0014, 0.003, 0.0052],
         starTint: [0.94, 0.98, 0.9],
-        auroraLow: L(0x8aff5a),
-        auroraHigh: L(0x40ffb0),
         bolt: L(0xfff2c0),
         moonIce: L(0xf2f2dc),
         moonRust: L(0xd0a040),
@@ -338,7 +348,7 @@ export const PALETTE_COUNT = PALETTES.length;
 /** The colours the world mixes on the CPU and hands to the shaders as uniforms. */
 export const PALETTE_KEYS = Object.freeze([
     'storm', 'haze', 'night', 'sun', 'ringIce', 'ringDust', 'gasA', 'gasB', 'deep', 'starTint',
-    'auroraLow', 'auroraHigh', 'bolt', 'moonIce', 'moonRust',
+    'bolt', 'moonIce', 'moonRust',
 ]);
 
 /** The colours baked into the band texture, one row per palette. */
@@ -427,13 +437,10 @@ export function rowLatitude(row, rows = 20) {
     return (2 + up * 3.3) * DEG;
 }
 
-/** How strongly a chain of n clears lights the aurora (0 at rest → 1). */
-export function auroraForCombo(combo) {
+/** How strongly a chain of n clears warms the giant: its rings' hum, its lightning (0 at rest → 1). */
+export function chainHeat(combo) {
     return combo > 0 ? 1 - Math.exp(-combo / 3.2) : 0;
 }
-
-/** The aurora the giant keeps by itself. */
-export const AURORA_REST = 0.07;
 
 // ── Composition ─────────────────────────────────────────────────────────────────
 
