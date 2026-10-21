@@ -186,6 +186,56 @@ of 1,033, the same count as `main` without this change. The typecheck, the build
 boot-closure guard, the shipping checks and one more run in the real game were repeated on the
 candidate and passed.
 
+## Atmosphere pass (2026-10-21)
+
+The owner asked to keep improving the visuals, effects, atmosphere and graphics. Full-resolution
+captures showed the gold itself in good shape and the hall around it weak: the dark the gold
+should stand against was a brown veil, and the water at rest was invisible except as broken
+reflections. This pass is about the hall. The towers, the ring, the events and the tiers are
+unchanged.
+
+![Before and after, the hall at 1600 × 900](chiral-gold-captures/atmosphere-hall.jpg)
+
+- **A dark hall.** Isolating each part showed where the veil came from: the backdrop's two amber
+  pools behind the towers were broad (they reached a third of the frame each side) and the
+  bloom spread the towers' light wide on top. The pools are now narrow and low, the backdrop's
+  base and the grade's amber lift in the shadows are halved, and the bloom radius is 0.12 (was
+  0.26), so the glow hugs the hot gold. The gold reads brighter for it with no change to its
+  material.
+- **Beams from above** (`chiral-gold-atmosphere.js`, `createShafts`). The vertical cones over the
+  towers drew as soft brown curtains. Each tower now has a beam slanting in from a lamp high
+  above the hall's outer corner (the left one the mirror of the right), and its light is
+  computed per pixel from the line the eye looks along: how close that line passes the beam's
+  axis against the beam's radius there gives the chord through it, so the beam has an even body
+  and a defined edge like a real one, brighter toward the lamp, with faint threads of dust and
+  slow billows of haze in it. The beam goes down into the water (the opaque surface cuts it as a
+  floor does), and where it lands the water takes a soft pool of its light. Same tiers as before
+  (Medium and up); `BEAM`, `beamFrame` and `beamRadius` are exported so the water reads the same
+  beam.
+- **The water.** At rest it now shows as a surface: a thin warm line along the far waterline
+  (the backdrop's, so the water mirrors it into one line), fine crests of light on the rings each
+  tower stirs (on every tier, including the analytic mirror of Low and Minimal), a thread of
+  light where each braid goes into the water, and the beams' pools. The swell is about a third
+  calmer (it broke the reflections into heat haze), and the mirror has a floor of blur
+  (mip 1.25, was 0.45): the thin wires aliased into dotted lines in the half-size reflector, and
+  water never returns a perfectly sharp image.
+- **Dust.** The nearest motes start 2.5 m further from the lens and a mote's bokeh disc can open
+  to 2.4 % of the frame height (was 3.4 %): the largest discs had filled the corners with grey
+  coins.
+
+Verification: the five Chiral Gold suites (112 tests), typecheck, the lint ratchet (at
+baseline), the palette gate, the theme lifecycle audit and import boundaries, and
+`scripts/validate-all-themes.mjs --theme chiral-gold` (PASS, 0 console errors; its real-game
+screenshot `docs/theme-screenshots/chiral-gold.png` is refreshed). Playground captures at rest,
+in a chain of five, a clear, the four-line strike and in rose gold (before and after below), on
+Minimal, Low, Medium, High and Extreme, on the forced WebGL2 backend, and in a 430 × 852 portrait
+frame, all without console errors. Frame cost against `main` in interleaved runs in the
+playground: the same within noise on the RTX (0.6–2.5 ms at 2560 × 1440, run to run) and on the
+integrated GPU (about 4.8 ms at rest and in the strike once its clocks settle; single runs there
+swing between 5 and 17 ms).
+
+![Before and after: the hall, at rest, a chain of five, a clear, four lines, rose gold](chiral-gold-captures/atmosphere-before-after.jpg)
+
 ## Reproduce
 
 Run `npm run dev:playground`, then:
