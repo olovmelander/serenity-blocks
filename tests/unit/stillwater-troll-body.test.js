@@ -214,6 +214,24 @@ describe('stillwater troll body: his feet', () => {
         expect(reachable).toBeGreaterThan(200);
         expect(worst).toBeLessThan(1e-6);
     });
+
+    // Once held nearer his middle than his shoulder: his arm could only reach it through his belly,
+    // and his chest showed through his forearm in patches.
+    it('holds his lantern out past his left shoulder, not across his belly', () => {
+        const body = makeBody();
+        const time = live(body, NIGHT.slice(0, 4));
+        let held = 0;
+        live(body, [['holds it out to her', want(SHALLOWS, { staff: 'offer', reach: 1 }), 4]], {
+            start: time,
+            each: (b, label, t, i) => {
+                if (i < 120 || b.staff.mode !== 'held') return;
+                held += 1;
+                // (Model frame: he faces +z, his left is +x.)
+                expect(b.staffGripModel().x).toBeGreaterThan(b.globalPos.upperL.x);
+            },
+        });
+        expect(held).toBeGreaterThan(60);
+    });
 });
 
 describe('stillwater troll body: where he goes', () => {
