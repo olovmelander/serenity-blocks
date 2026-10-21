@@ -18,6 +18,7 @@
  * mistSheets     horizontal mist sheets, and `wisps` the camera-facing wisps between ranks
  * curlsAmbient   ambient curl slots, and `curlsEvent` the event curl and sheet slots
  * flakes         bark-chip flakes, and `drops` the drips, gust veil and sunshower streaks
+ * motes          seeds and pollen adrift in the air, glinting in the canopy's light (MOTES)
  * vapour         vapour threads off lit bark, and `beads` the amber resin beads
  * shaftsAmbient  ambient shaft slabs, and `shaftsCombo` the canopy-gap shafts of a chain
  * lorikeets      birds crossing a gap (0 = none)
@@ -39,6 +40,7 @@ export const QUALITY = Object.freeze({
         curlsEvent: 48,
         flakes: 32,
         drops: 160,
+        motes: 80,
         vapour: 0,
         beads: 0,
         shaftsAmbient: 0,
@@ -61,6 +63,7 @@ export const QUALITY = Object.freeze({
         curlsEvent: 64,
         flakes: 48,
         drops: 240,
+        motes: 150,
         vapour: 0,
         beads: 18,
         shaftsAmbient: 0,
@@ -83,6 +86,7 @@ export const QUALITY = Object.freeze({
         curlsEvent: 96,
         flakes: 64,
         drops: 400,
+        motes: 250,
         vapour: 4,
         beads: 36,
         shaftsAmbient: 3,
@@ -105,6 +109,7 @@ export const QUALITY = Object.freeze({
         curlsEvent: 128,
         flakes: 96,
         drops: 600,
+        motes: 360,
         vapour: 6,
         beads: 54,
         shaftsAmbient: 3,
@@ -127,6 +132,7 @@ export const QUALITY = Object.freeze({
         curlsEvent: 192,
         flakes: 128,
         drops: 800,
+        motes: 460,
         vapour: 8,
         beads: 72,
         shaftsAmbient: 3,
@@ -149,6 +155,7 @@ export const QUALITY = Object.freeze({
         curlsEvent: 256,
         flakes: 160,
         drops: 1000,
+        motes: 560,
         vapour: 10,
         beads: 84,
         shaftsAmbient: 3,

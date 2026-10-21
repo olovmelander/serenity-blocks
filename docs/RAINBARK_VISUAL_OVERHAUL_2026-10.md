@@ -76,7 +76,7 @@ and air. Nothing leaves the card as light; nothing crosses it.
 | `rainbark-world.js` | Turns the director's sink calls into the beats: where a lock peels (`peelTarget`: the lane, the column across it, the rows cast onto the trunk through the rest lens), the Shed's rings (`shed`, `visibleArc`), the Moult, the gap stations (`solveStations`, every frame from the live layout), Quickening (integrated group-clock rates), the Set's curtain, the Unwinding, the Sunshower's rain and wetness, the Floor's drain, meditation's clicks; the light wheel over the palette; the curls' emitters. |
 | `rainbark-tsl.js` | `rbBarkEvents` (the near trunks' overlay: one named Loop per block over its live rows), `rbLaneOld`, `rbMoult` (every trunk, near and far), `rbBandAlbedo`, `rbSpots` (the flecks' clusters, a laid-out pure helper), the canopy's lower storey (`CANOPY_UNDER`), the bark's streaks and lips. |
 | `rainbark-curls.js` | One instanced draw of strips (14 × 10 segments) for every shed thing: ambient quills (respawned per slot and cycle, closed form in the clock), a lock's strip (an open lip riding the unzip front, then drying into a spiral quill), the Shed's plates, the Moult's and the Set's quills, flakes, leaves, the T-spin's corkscrew. Rolled, tumbled, eased and fluttered in the vertex stage; rolled round a centre behind the old bark, so the old bark is outside and the pale underside inside, as a strip curls on the tree; backlit where the sun is behind; kept clear of the card vertex by vertex. Unlike the other fx it writes depth (an alpha-tested strip hides its own inner turns). |
-| `rainbark-fx.js` | The shafts (ambient, god-rays in the Fog Line; one per open gap) and the Sunshower's drops. |
+| `rainbark-fx.js` | The shafts (ambient, god-rays in the Fog Line; one per open gap), the Sunshower's drops and (third pass) the motes adrift in the air. |
 | `rainbark-life.js` | The liana (two twisted strands) and the lorikeets. |
 | `rainbark-sky.js` | The backdrop, now with the Floor's branch. |
 
@@ -155,6 +155,72 @@ The `*.webp` files there are the first pass's.
 fov 30°, an I piece's peel 0.45 s in), cropped by the critic's reframe (the lime strip and its
 curl right of centre against the blue air, ~1.3× in), a 512 px full-bleed circle, judged at 80 px.
 
+## Third pass (2026-10-21): light in the air
+
+A short pass on the round-10 critic's open list and a fresh look at the rest frames, keeping the
+spec's light design (pinhole flecks, blue aerial perspective, the glowing mist: never god rays).
+Before/after: [`rainbark-captures/third-pass.jpg`](rainbark-captures/third-pass.jpg).
+
+| What | Change | Where |
+|---|---|---|
+| **Motes** (new) | Seeds, pollen and spores adrift in the air in front of the eye: one instanced draw (80 on Minimal … 560 on Extreme), closed form in the clock, world-fixed and wrapped round the eye (parallax with the breath; a Climb streams them down past it). Each glints only where the canopy's light reaches it (`rbFleck` at its place, the very light that lands as flecks on the bark), more toward the sun, in brief flashes as it tumbles; in the shade only a trace of the sky's light (lit by the bright air, every mote showed at once, a snowfall); veiled in the pearly zones; out of the card's band. | `MOTES` (core), `createMotes` (fx), `QUALITY[*].motes` |
+| **The far grove** | Each far trunk lit on one side: the sunlit haze wraps its sun-side edge (`GROVE_RIM`), its shade side keeps 8 % of the satin sheen (two bright hairlines, one down either edge, read as glass pipes) and its ambient falls toward the shade. | `GROVE_RIM`, `rbBark` (far draw) |
+| **The canopy** | The leaf masses' tone spread halved (`tone` 0.38 → 0.2: the patchwork read as camouflage), clusters a few metres across shaded inside each mass from the fBm's fine bands (`clusters`), the backlit rims lime toward the sun only (`rimBase` 0.4 → 0.25), a slightly wider halo round the openings. A wide halo (30 % over 4.5 px) was tried and rejected: the masses turned to dark islands on a pale ceiling. | `CANOPY`, `rbCanopy` |
+| **The mist** | The billows' slope saturates later (`slopeRange` 0.16 → 0.26: most of each lee was one flat blue fill, a puddle), and with two octaves a third, 2.6× finer, shades their surface (`third`, `relief`: light only, never the blue), so the lees break up and a lit front reads as cloud. | `MIST_BILLOWS`, `rbMistField` |
+| **The Shed's lips** | A ring's sheet pieces were short, wide strips rolled into tight tubes (a level row of pills along the ring): the lip opens to 1.4 rad (was 2.1), stays a lip once free (only 30 % eased into the plate), and each slants by its own hash up to ±24°. | `CURL.sheet` (`lip`, `plate`, `slant`), `rainbark-curls.js` |
+| **The Knock** | The gleam's front lags 0.35 m a radian² toward its sides (was 1.6: a dome), a little crisper and brighter, so it reads as a band riding the trunk's curve. A modest change: at 0.25 s it is still a soft arc. | `KNOCK` |
+
+Verified in the playground on the RTX 5080 Laptop (WebGPU and the WebGL2 backend): rest, L1,
+L7, L8 (pearl), L10, L12, the gold and pearl moods, Mistfall, the Climb, a lock, a hard drop, a
+triple at 0.45 / 0.75 / 1.2 s, Minimal, Low on WebGPU, Low on WebGL2 at 390 × 844, the phone at
+High, 21:9; every console clean. Not measured: frame cost (the GPU was shared with other work all
+session, so any timing would be noise; the motes add one small instanced draw with a gobo read
+per vertex, the mist one more octave on Medium and up, the canopy one fBm read).
+
+Still open from the critic's list: the canopy at the Bole still reads partly as camouflage (a
+structural limit of the canopy as a textured plane); the L12 crowns as pads; a flake now and
+then face-on; the Floor's channels.
+
+### The canopy in depth (same day)
+
+The canopy felt flat because it was a picture on one plane (plus a sparse storey 24 m under it),
+each leaf mass a 2D blob of one tone, the trunks running straight up through it. Three changes,
+on Medium and up (Low and Minimal keep the single plane: their `lite` path):
+
+- **Each mass hangs as a dome** (`CANOPY.relief`). The crown field is a true signed distance, so
+  two extra reads a step either way along the sun's azimuth give each mass's slope toward the sun:
+  its rim facing the sun glows with the light through it, the rim turned away falls into its own
+  shade, over the last few metres of the rim only (its heart stays level: lit from a distance
+  field's gradient, a shape shows a crease down its medial axis). Just under the canopy the bevel
+  runs deeper and darker, where a dome is seen whole. No screen derivatives: the backdrop is
+  branched, and WGSL allows them only in uniform control flow.
+- **Three storeys**: a middle one (`CANOPY_MID`, 12 m under the plane) between the plane and the
+  old lower storey, each its own pattern and air, domed the same way, so crowns overlap crowns at
+  three depths and part as the camera breathes and climbs. `rbStoreys` draws them in ONE TSL
+  `Loop` (each storey's constants picked by the index): written twice in JavaScript they took the
+  near bark's fragment from 148 to 211 KB of WGSL, past the shader test's 192 KB budget; the loop,
+  and handing the trunk path the air its own `rbAir` already computed (`share`), brought it to
+  173 KB (the backdrop's to 175 KB, from 150).
+- **The trunks climb into the crowns.** The storeys are painted in the backdrop, so the opaque
+  trunks drew straight through them. Now a trunk pixel above a storey's plane, whose view ray
+  crossed that plane first, is covered by the very leaves the backdrop paints beside it (the same
+  function along the same ray, through the same air: no ghost outline), entering each cluster's
+  underside, which hangs lower toward its heart (`hang`), never at a level line.
+
+Two things tried and rejected: letting the middle storey come in nearer the eye (at L12 its
+clusters were half faded, translucent slabs and a green band across Sister One); and fading a
+storey by transparency as the eye climbs to it at all: a half-faded storey hangs over the trunks
+as a ghost. Storeys near the eye now THIN instead (`STOREY_THIN`: the clusters shrink and drop out
+whole), so the Climb from L11 to L12 never shows a translucent leaf. Captures:
+[`rainbark-captures/canopy-pass.jpg`](rainbark-captures/canopy-pass.jpg) (L10 and the L4 band
+before/after, L11 and its gold mood); checked at L4, L10, L11, L12, mid-Climb, the gold mood,
+Mistfall and the Fog Line (no storeys in the pearl), Medium, Low and Minimal, 21:9, the upright
+phone at L4 and L10, and on the WebGL2 backend at L10 and L11; every console clean. Not measured:
+the cost (the GPU was shared with other work); the canopy band pays two field reads for the relief
+and, where a storey shows, three more and its air; the trunks pay the storeys only above the lower
+storey's plane. The near bark's larger fragment also lengthens the WebGL2 backend's first compile
+on Medium and up (Low and Minimal are untouched).
+
 ## Reproduce
 
 Playground (`npm run dev:playground`, then `playground.html?effect=rainbark&…`):
@@ -173,6 +239,7 @@ Playground (`npm run dev:playground`, then `playground.html?effect=rainbark&…`
 | perfect clear | `t=55&level=4&board=1&event=perfect&eventAge=5&sheds=700` |
 | the light wheel | `t=10&level=4` (morning) … `t=110` (noon), `t=210` (gold), `t=310` (pearl) |
 | the icon | `t=55&level=4&icon=1&iconFov=30&iconYaw=24&iconPitch=8&event=lock&piece=I&u=0.2&row=8&eventAge=0.45` (square) |
+| the motes alone (third pass) | `t=55&level=4&parts=sky,fx&noPost=1` |
 
 Real game: `?skipIntro=1&unlockAll=1`, then pick Rainbark; capture flags `rainbarkTime`,
 `rainbarkFixedDt`, `rainbarkParts=sky,trunks,mist,curls,fx,life`, `rainbarkFalseColor`,
