@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-21T06:28:28.581Z",
-  "runId": "2026-08-21T06-12-57-693Z",
+  "generatedAt": "2026-10-20T21:19:10.646Z",
+  "runId": "2026-10-20T21-18-45-577Z",
   "theme": "fluid-dreams",
   "themeMeta": {
     "displayName": "Fluid Dreams",
@@ -10,7 +10,7 @@
     "performanceClass": "heavy"
   },
   "anchorTheme": "forest",
-  "targetUrl": "http://127.0.0.1:4174/?skipIntro=1&noThemeWarm=1&themeValidation=1&captureBust=2026-08-21T06-12-57-693Z",
+  "targetUrl": "http://127.0.0.1:5192/?skipIntro=1&noThemeWarm=1&themeValidation=1&unlockAll=1&captureBust=2026-10-20T21-18-45-577Z",
   "passed": true,
   "config": {
     "width": 1920,
@@ -61,29 +61,29 @@
       "gpuDevice": [
         {
           "active": false,
-          "deviceId": 5688,
-          "deviceString": "AMD Radeon(TM) Graphics",
-          "driverVersion": "31.0.12044.3",
+          "deviceId": 5056,
+          "deviceString": "AMD Radeon(TM) 610M",
+          "driverVersion": "32.0.13062.9003",
           "gpuPreference": 2,
-          "revision": 197,
-          "subSysId": 978261930,
+          "revision": 212,
+          "subSysId": -2141841494,
           "vendorId": 4098
         },
         {
           "active": false,
-          "deviceId": 9437,
-          "deviceString": "NVIDIA GeForce RTX 3070 Laptop GPU",
-          "driverVersion": "32.0.15.7247",
+          "deviceId": 11353,
+          "deviceString": "NVIDIA GeForce RTX 5080 Laptop GPU",
+          "driverVersion": "32.0.15.7324",
           "gpuPreference": 3,
           "revision": 161,
-          "subSysId": 978261930,
+          "subSysId": -2141841494,
           "vendorId": 4318
         },
         {
           "active": false,
           "deviceId": 140,
           "deviceString": "Microsoft Basic Render Driver",
-          "driverVersion": "10.0.26100.8972",
+          "driverVersion": "10.0.26100.9711",
           "gpuPreference": 0,
           "revision": 0,
           "subSysId": 0,
@@ -92,21 +92,21 @@
       ]
     },
     "featureStatus": {
-      "2d_canvas": "disabled_software",
+      "2d_canvas": "enabled",
       "direct_rendering_display_compositor": "disabled_off_ok",
-      "gpu_compositing": "disabled_software",
+      "gpu_compositing": "enabled",
       "multiple_raster_threads": "enabled_on",
-      "opengl": "disabled_off",
-      "rasterization": "disabled_software",
+      "opengl": "enabled_on",
+      "rasterization": "enabled",
       "raw_draw": "disabled_off_ok",
       "skia_graphite": "disabled_off",
       "trees_in_viz": "disabled_off",
-      "video_decode": "disabled_software",
-      "video_encode": "disabled_software",
+      "video_decode": "enabled",
+      "video_encode": "enabled",
       "vulkan": "disabled_off",
-      "webgl": "disabled_off",
-      "webgl2": "disabled_off",
-      "webgpu": "disabled_off",
+      "webgl": "enabled",
+      "webgl2": "enabled",
+      "webgpu": "enabled",
       "webnn": "disabled_off"
     }
   },
@@ -135,6 +135,13 @@
           "sameMode": true,
           "running": true,
           "paused": true
+        }
+      },
+      {
+        "id": "boot-theme-settled",
+        "passed": true,
+        "details": {
+          "active": "forest"
         }
       },
       {
@@ -220,6 +227,11 @@
         "details": {
           "themeId": "fluid-dreams"
         }
+      },
+      {
+        "id": "theme-detail-apply-reachable",
+        "passed": true,
+        "details": null
       },
       {
         "id": "theme-card-selection-started",
@@ -339,10 +351,10 @@
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
-            "animationFrame"
+            "animationIds"
           ],
           "changedHeartbeatFields": [
-            "animationFrame"
+            "animationIds"
           ],
           "sharedRendererHeartbeatAvailable": false,
           "sharedRendererHeartbeatObserved": false,
@@ -714,6 +726,13 @@
         }
       },
       {
+        "id": "outgoing-eventListeners-cleared",
+        "passed": true,
+        "details": {
+          "count": 0
+        }
+      },
+      {
         "id": "outgoing-eventUnsubscribers-cleared",
         "passed": true,
         "details": {
@@ -831,7 +850,7 @@
         "id": "outgoing-canvases-disconnected",
         "passed": true,
         "details": {
-          "added": 4,
+          "added": 1,
           "connected": 0
         }
       },
@@ -844,7 +863,7 @@
         "id": "outgoing-container-descendants-restored",
         "passed": true,
         "details": {
-          "baseline": 5,
+          "baseline": 0,
           "actual": 0
         }
       },
@@ -1205,10 +1224,10 @@
           "themeOwnedHeartbeatAvailable": true,
           "themeOwnedHeartbeatObserved": true,
           "heartbeatFields": [
-            "animationFrame"
+            "animationIds"
           ],
           "changedHeartbeatFields": [
-            "animationFrame"
+            "animationIds"
           ],
           "sharedRendererHeartbeatAvailable": false,
           "sharedRendererHeartbeatObserved": false,
@@ -1471,10 +1490,10 @@
       }
     ],
     "timings": {
-      "initial-anchor": 0.19999999995343387,
-      "firstTargetSelection": 1234.9000000001397,
-      "cleanup-anchor": 32.5,
-      "secondTargetSelection": 181.39999999990687
+      "initial-anchor": 0.6000000014901161,
+      "firstTargetSelection": 899,
+      "cleanup-anchor": 1448.8000000044703,
+      "secondTargetSelection": 139.40000000596046
     },
     "mode": {
       "modeId": "single",
@@ -1512,10 +1531,10 @@
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
-        "animationFrame"
+        "animationIds"
       ],
       "changedHeartbeatFields": [
-        "animationFrame"
+        "animationIds"
       ],
       "sharedRendererHeartbeatAvailable": false,
       "sharedRendererHeartbeatObserved": false,
@@ -1530,10 +1549,10 @@
       "themeOwnedHeartbeatAvailable": true,
       "themeOwnedHeartbeatObserved": true,
       "heartbeatFields": [
-        "animationFrame"
+        "animationIds"
       ],
       "changedHeartbeatFields": [
-        "animationFrame"
+        "animationIds"
       ],
       "sharedRendererHeartbeatAvailable": false,
       "sharedRendererHeartbeatObserved": false,
@@ -1554,22 +1573,22 @@
   "screenshot": {
     "path": "docs\\theme-screenshots\\fluid-dreams.png",
     "passed": true,
-    "width": 1584,
-    "height": 787,
-    "byteLength": 4986432,
-    "samples": 20107,
+    "width": 2538,
+    "height": 1506,
+    "byteLength": 15288912,
+    "samples": 20012,
     "luminance": {
-      "min": 6.498,
-      "max": 241.7208,
-      "mean": 43.682329964688414,
-      "range": 235.2228,
-      "variance": 3157.050602870361
+      "min": 16.7978,
+      "max": 246.9748,
+      "mean": 102.5722727963225,
+      "range": 230.177,
+      "variance": 2512.5872285764945
     }
   },
   "console": {
     "ok": true,
-    "entryCount": 144,
-    "warningCount": 5,
+    "entryCount": 149,
+    "warningCount": 3,
     "errorCount": 0,
     "processFailureCount": 0,
     "shaderPipelineFailureCount": 0,
@@ -1577,42 +1596,29 @@
     "errorSamples": [],
     "warningSamples": [
       {
-        "timestamp": "2026-08-21T06:28:14.171Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:28:14.178Z",
+        "timestamp": "2026-10-20T21:18:57.478Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 587,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5192/.vite-cache-5192/deps/chunk-PR536EWM.js?v=19101832"
       },
       {
-        "timestamp": "2026-08-21T06:28:19.160Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:28:21.430Z",
-        "level": 2,
-        "message": "THREE.Clock: This module has been deprecated. Please use THREE.Timer instead.",
-        "line": 5,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
-      },
-      {
-        "timestamp": "2026-08-21T06:28:21.431Z",
+        "timestamp": "2026-10-20T21:19:00.320Z",
         "level": 2,
         "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
-        "line": 587,
-        "sourceId": "http://127.0.0.1:4174/assets/three-DzBc_X0u.js"
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5192/.vite-cache-5192/deps/chunk-PR536EWM.js?v=19101832"
+      },
+      {
+        "timestamp": "2026-10-20T21:19:03.583Z",
+        "level": 2,
+        "message": "The powerPreference option is currently ignored when calling requestAdapter() on Windows. See https://crbug.com/369219127",
+        "line": 45905,
+        "sourceId": "http://127.0.0.1:5192/.vite-cache-5192/deps/chunk-PR536EWM.js?v=19101832"
       }
     ],
     "processFailures": []
   },
+  "perf": null,
   "fatalError": null
 }

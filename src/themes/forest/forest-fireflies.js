@@ -22,6 +22,21 @@ import { FOREST_FIREFLY_COLOUR, FOREST_FIREFLY_HOT } from './forest-light.js';
 const TAU = Math.PI * 2;
 const RESERVE_SHARE = 0.56;
 const SPARK_TRAIL_SECONDS = 0.2;
+/**
+ * The lens: a firefly nearer than FOCUS metres is out of focus, a soft disc up to
+ * 1 + DEFOCUS_GROWTH times as wide; its light is spread over the disc (divided by the growth
+ * to the power DEFOCUS_SPREAD, a little under 2 so a near one still reads), never brighter.
+ */
+const FOCUS = 4.2;
+const DEFOCUS_NEAR = 1.2;
+const DEFOCUS_GROWTH = 3.2;
+const DEFOCUS_SPREAD = 2;
+
+/** 0 in focus, 1 at the nearest a firefly comes to the lens (TSL, shared by lights and trails). */
+function defocusAt(range) {
+    const d = saturate(float(FOCUS).sub(range).div(FOCUS - DEFOCUS_NEAR));
+    return d.mul(d);
+}
 
 /** TSL twin of forestFireflyWander(). */
 function wander(seed, t) {
@@ -131,17 +146,26 @@ export class ForestFireflies {
         const bright = glow.x.add(stirred.mul(1.5).mul(dew.oneMinus())).mul(alight);
         // A far firefly is kept a few pixels wide and dimmed instead, so it never flickers
         // in and out between pixels.
+        // Out of focus near the lens (dew too: a drop falling past the eye is a disc of moonlight).
+        const defocus = defocusAt(range);
+        const growth = defocus.mul(DEFOCUS_GROWTH).add(1);
         const size = place.w.mul(mix(float(0.66), float(0.9), dew)).add(range.mul(0.0025))
-            .mul(bright.min(1.6).mul(0.3).add(0.8)).mul(alight);
+            .mul(bright.min(1.6).mul(0.3).add(0.8)).mul(alight)
+            .mul(growth);
         material.positionNode = centre
             .add(right.mul(positionGeometry.x.mul(size)))
             .add(up.mul(positionGeometry.y.mul(size)));
-        const light = varying(this.colour(glow, dew).mul(bright).mul(exp(range.mul(-0.011)).mul(0.8).add(0.2)));
+        const light = varying(this.colour(glow, dew).mul(bright).mul(exp(range.mul(-0.011)).mul(0.8).add(0.2))
+            .div(pow(growth, DEFOCUS_SPREAD)));
+        const blur = varying(defocus);
         const radius = length(uv().sub(0.5)).mul(2);
         const core = pow(saturate(float(1).sub(radius)), 3);
         const halo = exp(radius.mul(-4.4)).mul(saturate(float(1).sub(radius)));
+        // A defocused light is a disc: flat across, a slightly brighter rim, a soft edge.
+        const rimLift = saturate(radius.sub(0.55).div(0.4)).mul(0.35).add(0.65);
+        const disc = saturate(float(1).sub(radius).div(0.16)).mul(rimLift);
         material.colorNode = light.mul(1.4);
-        material.opacityNode = core.mul(1.2).add(halo.mul(0.5));
+        material.opacityNode = mix(core.mul(1.2).add(halo.mul(0.5)), disc.mul(0.75), saturate(blur.mul(1.6)));
         const mesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1), material, count);
         mesh.name = 'ForestFireflyLights';
         mesh.frustumCulled = false;
@@ -163,7 +187,11 @@ export class ForestFireflies {
         material.name = 'ForestFireflyTrails';
         // 0 at the firefly, 1 at the far end of its trail.
         const along = positionGeometry.y.add(0.5);
-        const span = mix(float(SPARK_TRAIL_SECONDS).mul(glow.w), this.uTrail, ambient);
+        // A wanderer's path curls, and a trail of few segments draws it as straight chords (wire,
+        // at Low's three): its time span shrinks with its segment count, so every segment covers
+        // a piece of flight short enough to be nearly straight. Six and up draw the full span.
+        const curl = Math.min(1, this.tier.trail / 6);
+        const span = mix(float(SPARK_TRAIL_SECONDS).mul(glow.w), this.uTrail.mul(curl), ambient);
         const back = along.mul(span);
         // Where the firefly was `seconds` ago: an ambient one on its closed-form path, a
         // spark by flying its present velocity backward (dew also un-falls).
@@ -183,8 +211,10 @@ export class ForestFireflies {
         // An ambient firefly's trail is lit where it was flashing; a spark's simply fades.
         const then = this.flash(home.w, glow.z, back);
         const lit = mix(glow.x, then, ambient).mul(pow(along.oneMinus(), 1.4));
+        // A firefly out of focus by the lens draws no sharp trail across its own blur.
         const light = varying(this.colour(glow, dew).mul(lit).mul(exp(range.mul(-0.011)).mul(0.8).add(0.2))
-            .mul(place.w.greaterThan(0.001)));
+            .mul(place.w.greaterThan(0.001))
+            .mul(defocusAt(range).oneMinus()));
         const edge = saturate(float(1).sub(positionGeometry.x.abs().mul(2)));
         material.colorNode = light.mul(0.6);
         material.opacityNode = edge.mul(edge);

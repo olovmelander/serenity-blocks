@@ -78,6 +78,39 @@ burst at different, random places. Now every four-line clear gives the Drop a ne
 - The home survives a new run; a frame change that leaves no room where it was stands it at the
   composition's home. Playground: `quads=<n>` plays n four-line clears first.
 
+### The sea's second pass (2026-10-20)
+
+The rebuild's sea read as a painted floor: regular horizontal stripes out to a hard sea line,
+nothing glowing in the water, and stains that went milky when the sea held many colours. All
+of it is in `fluid-dreams-liquid.js` ([captures](fluid-dreams-overhaul/second-pass/)):
+
+- **No more stripes.** The swell had two straight-crested trains; seen in perspective their
+  crests ruled the open sea into bands. Now three trains with incommensurate wavelengths and
+  headings, each with its phase bent by a slow sine across the sea (about 120 m long, two
+  radians deep), so the crests curve and wander. The march and the shading read the same
+  warped phase and its exact gradient (chain rule), so the traced surface and its normal agree.
+  The finer wind-ripple layer (a tile that repeats every 3.2 m) is read in coordinates turned
+  37° and its slope turned back, so the two ripple tiles no longer repeat in step.
+- **Liquid light.** Threads of the palette's glow run under the surface: a ridge (`(1 − |2n −
+  1|)⁷`) of a slow field warped by the stains' marble, coloured from glow to ink C, seen through
+  the ripples and brighter as a chain charges the sea. They fade out with the pixel's footprint,
+  because blurred far out the field sits at its middle everywhere and the same ridge would light
+  the whole sea.
+- **A sea line that dissolves.** The air between the eye and the sea took a hand-mixed colour
+  darker than the sky just above the sea line, so the horizon was a step. It now takes the sky's
+  own colour at the sea line on that bearing, and the haze is a little thinner (0.0027 per
+  metre, from 0.0034): the far sea melts into a luminous mist that is the sky where they meet.
+- **Stains keep their colours.** Overlapping stains take the hue of the strongest (weights
+  cubed) and a level capped on its own (the Ocean recipe), instead of a sum that averaged seven
+  piece colours to white. One stain reads about as it did; a full sea reaches 1.05, not white.
+- **The four-line glare.** The surge's share of the bloom boost and the sun shafts is halved
+  (0.4 and 0.3, from 0.8 and 0.6) and the sky flash lifts the sky by 0.3 (from 0.45): the milky
+  veil they poured over the half of the frame the crown stands in hid the crown.
+- **A latent fault, fixed.** The new gate (`tests/unit/fluid-dreams-shaders.test.js`) found the
+  key light's direction, a module-level `.normalize()`, compiled to a WGSL var assigned only in
+  the branch that first built it (a drop's lens): on sea-only pixels every later sky read took it
+  as zero. The light sits behind the viewer, so no frame showed it; it is now a literal.
+
 ## How it is built
 
 | File | Role |
@@ -228,6 +261,18 @@ and Low the second fold of the sky's ink. These are budgets, not measurements of
   theme card, and its URL builder drops an `unlockAll=1` given with `--base-url`. It fails at
   "theme-card-selection-started" before the theme is ever asked to start. The lifecycle checks
   above were made with the in-game harness instead.
+- **Second pass (2026-10-20).** Playground captures through Electron on this machine (WebGPU,
+  `nvidia blackwell`, 1584 × 813) from a private dev server, no console warning or error in any:
+  at rest, a sea holding sixteen locks' colours, a chain of six, a four-line clear at 2.4 s, the
+  lagoon palette and Low on the WebGL2 backend ([second-pass](fluid-dreams-overhaul/second-pass/)),
+  and a 430 × 852 portrait; also taken: the crown at 1.6 s, rose gold, Minimal and portrait Low on
+  WebGL2. The 175 Fluid Dreams tests pass, with four more in the new shader gate (both backends at
+  High and Minimal: no throw, warning, NaN/Infinity or stringified-node literal, no WGSL var read
+  before it is assigned). `validate-all-themes.mjs --theme fluid-dreams --base-url` now runs, and
+  passed (0 lifecycle failures, 0 console errors, 0 process failures); it refreshed
+  `docs/theme-screenshots/fluid-dreams.png`. The pass adds a texture read, a few sines and a sky
+  read per sea pixel and two sines per march step; its cost was not measured (other sessions'
+  jobs shared the machine).
 
 Observed, not measured. Playground, 1584 × 813, vsync off, other sessions on the machine:
 
@@ -252,8 +297,8 @@ Not verified: GPU cost per tier through the theme perf lane (ADR-0016); physical
 390-pixel-wide window the board covers all but two slivers of the picture, as it does for
 every theme); local multiplayer and Infinity layouts in a capture (their routing is
 unit-tested only); the icon on an Odyssey level orb; sessions of several hours.
-`docs/theme-screenshots/fluid-dreams.png` still shows the previous artwork (a fleet capture
-writes it).
+`docs/theme-screenshots/fluid-dreams.png` showed the previous artwork until the second pass's
+validator run refreshed it (2026-10-20).
 
 ## Reproduce
 

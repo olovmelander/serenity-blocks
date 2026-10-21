@@ -10,6 +10,8 @@
  *    draws back toward the headwall as the chain raises the sun;
  *  - every billow shades the one behind it (one more read of the billows toward the sun);
  *  - the creases between billows are dark, their crests toward the sun burn;
+ *  - before the sun reaches it, the sky lights it: every billow's flank that faces the sunrise
+ *    takes the glow over the wall, the rest the blue of the zenith;
  *  - it thins to nothing where the ground comes up through it (the field's coarse heights), so
  *    it laps the walls instead of cutting them.
  */
@@ -45,7 +47,7 @@ const FAR = 44000;
 /** Swell, billow and curd: [metres across one tile of noise, metres of height]. */
 const SWELL = [14000, 250];
 const BILLOW = [3700, 115];
-const CURD = [900, 36];
+const CURD = [900, 22];
 
 /**
  * @param {object} u  shared uniforms
@@ -130,7 +132,12 @@ export function createCloudSea(u, { cloud = [224, 160], billows = 3, air = 4 } =
         const into = hpPow4(max(dot(V.negate(), u.sunDir), 0.0));
         const lining = u.sunCol.mul(into.mul(sun).mul(self).mul(crest).mul(0.55));
         const wave = hpWaveLight(u, float(0.0));
-        const col = u.cloudCol.mul(direct.mul(0.46).add(ambient)).add(lining.mul(0.8))
+        // The sky's glow over the wall on the flanks that face it; strongest where the sun has
+        // not yet come (once it has, the direct light says the same thing louder).
+        const toward = clamp(dot(normalize(N.xz.add(vec2(1e-4, 0.0))), u.sunFlat).mul(0.5).add(0.5), 0.0, 1.0);
+        const glowLit = u.glow.mul(toward.mul(toward).mul(0.2).add(0.025))
+            .mul(crest.mul(0.75).add(0.25)).mul(float(1.0).sub(sun.mul(0.65)));
+        const col = u.cloudCol.mul(direct.mul(0.46).add(ambient).add(glowLit)).add(lining.mul(0.8))
             .add(u.cloudCol.mul(wave.rgb).mul(0.5))
             .mul(u.breath.mul(0.85).add(0.15));
         const alpha = shore.mul(0.985);

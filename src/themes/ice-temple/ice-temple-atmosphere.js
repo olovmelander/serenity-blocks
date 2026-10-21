@@ -118,17 +118,24 @@ export function createSnow(u, count) {
     const pxPerMetre = u.viewport.y.mul(u.projScale).div(max(clip.w, 0.3));
     // Flakes close to the lens are out of focus: bigger and fainter.
     const near = float(1.0).sub(smoothstep(1.5, 7.0, air.dist));
-    const sizeM = seed.w.mul(0.03).add(0.022).mul(near.mul(2.6).add(1.0));
+    const blur = near.mul(1.9).add(1.0);
+    const sizeM = seed.w.mul(0.03).add(0.022).mul(blur);
     const sizePx = max(sizeM.mul(pxPerMetre), 1.5);
     material.vertexNode = vec4(clip.xy.add(positionGeometry.xy.mul(sizePx.mul(2.0)).div(half).mul(clip.w)), clip.z, clip.w);
-    const gain = float(1.0).sub(air.fog).mul(mix(float(1.0), float(0.3), near))
+    // (Out of focus, a flake's light is spread over a disc many times its area: it is faint,
+    // falling faster than the disc grows so a half-blurred flake is no brighter orb.)
+    const gain = float(1.0).sub(air.fog).div(blur.mul(blur).mul(blur))
         // A flake smaller than the pixel floor carries less light, not the same light.
         .mul(itSaturate(sizeM.mul(pxPerMetre).div(1.5)));
     const vLight = varying(air.light.mul(gain), 'itSnowLight');
+    const vNear = varying(near, 'itSnowNear');
     material.colorNode = Fn(() => {
         const d = length(uv().sub(0.5)).mul(2.0);
-        const disc = float(1.0).sub(smoothstep(0.25, 1.0, d));
-        return vec4(vLight.mul(disc.mul(disc)).mul(vec3(0.9, 0.96, 1.0)).mul(1.15), 0.0);
+        const soft = float(1.0).sub(smoothstep(0.25, 1.0, d));
+        // A flake at the lens is a bokeh disc: flat, with a brighter rim.
+        const bokeh = float(1.0).sub(smoothstep(0.82, 0.95, d)).mul(smoothstep(0.55, 0.9, d).mul(0.55).add(0.45));
+        const shape = mix(soft.mul(soft), bokeh, smoothstep(0.2, 0.7, vNear));
+        return vec4(vLight.mul(shape).mul(vec3(0.9, 0.96, 1.0)).mul(1.15), 0.0);
     })();
     const part = itPart('IceTempleSnow', geometry, material, 40, false);
     part.count = count;
