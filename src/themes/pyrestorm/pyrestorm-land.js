@@ -32,6 +32,7 @@ import {
     mix,
     normalize,
     positionWorld,
+    sin,
     smoothstep,
     step,
     texture,
@@ -43,8 +44,11 @@ import {
     DEG, EYE, VOLCANO, landHeight, plainHeight, satelliteHeight, smooth, volcanoHeight,
 } from './pyrestorm-core.js';
 import {
-    aerial, fireLightAt, lavaAt, lightningAt, pyBlackbody,
+    CRUST, aerial, fireLightAt, lavaAt, lightningAt, pyBlackbody,
 } from './pyrestorm-tsl.js';
+
+/** The crust tile's span (m): CRUST.cells plates across, each about thirty metres. */
+export const CRUST_TILE = 480;
 
 /** The fan's bearings (degrees right of the view axis) and reach (m). */
 export const FAN = Object.freeze({
@@ -254,68 +258,111 @@ export function createLandMaterial(u, t, tier) {
         const line = clamp(lava.hw.mul(2.0).div(pw), 0.0, 1.0).mul(exp(lava.dc.div(pw).mul(lava.dc.div(pw)).negate()));
         const cover = max(inside, line).toVar();
         const heat = lava.heat.mul(u.lavaHeat).mul(smoothstep(0.02, 0.12, lava.heat)).toVar();
-        // Crust dragged along the flow: rafts (tens of metres) and plates (a few), each by two
-        // phases of a flow map crossfaded, so the crust drifts downstream without stretching.
         const { dir } = lava;
+        // Across the channel: 0 on its centreline, 1 at its banks.
+        const across = lava.dc.div(lava.hw.max(1.0)).toVar();
+        const coreK = float(1.0).sub(smoothstep(0.0, 1.0, across)).toVar();
+        // The fissure (kind 3) runs fresh; breakouts (kind 4) are their own, cooler toes.
+        const fissure = smoothstep(2.5, 3.0, lava.kind).mul(float(1.0).sub(smoothstep(3.5, 4.0, lava.kind)));
+        // The crust: plates of a baked network (pyrestorm-bake.js, bakeCrust) dragged downstream by
+        // a two-phase flow map (each phase fades out before it has dragged its plates far), faster
+        // in the channel's middle than by its banks, so the crust shears as it goes.
         const ph1 = fract(u.flow.mul(0.045));
         const ph2 = fract(u.flow.mul(0.045).add(0.5));
         const wPh = abs(ph1.mul(2.0).sub(1.0));
-        const rafts = mix(
-            texture(t.noise, P.xz.div(430.0).sub(dir.mul(ph1.mul(0.5)))).g,
-            texture(t.noise, P.xz.div(430.0).sub(dir.mul(ph2.mul(0.5))).add(vec2(0.37, 0.19))).g,
-            wPh,
-        );
-        const plates = mix(
-            texture(t.noise, P.xz.div(90.0).sub(dir.mul(ph1.mul(2.3)))).b,
-            texture(t.noise, P.xz.div(90.0).sub(dir.mul(ph2.mul(2.3))).add(vec2(0.61, 0.43))).b,
-            wPh,
-        );
-        const aaPlates = smoothstep(0.35, 1.2, length(fwidth(P.xz.div(90.0))));
-        const aaRafts = smoothstep(0.35, 1.2, length(fwidth(P.xz.div(430.0))));
-        const crustN = mix(rafts, float(0.5), aaRafts).mul(0.58).add(mix(plates, float(0.5), aaPlates).mul(0.42)).toVar();
-        // Hot lava has little crust; the centre of a channel runs hottest and fastest.
-        const coreK = float(1.0).sub(smoothstep(0.0, 1.0, lava.dc.div(lava.hw.max(1.0))));
-        const edge = mix(float(0.36), float(0.52), heat.mul(0.5).add(coreK.mul(0.5))).sub(u.tremor.mul(0.1));
-        const crustAmt = smoothstep(edge.sub(0.04), edge.add(0.04), crustN).toVar();
-        // Seams between plates glow (the crust tearing open as it moves).
-        const seam = float(1.0).sub(smoothstep(0.0, 0.026, abs(crustN.sub(edge)))).mul(smoothstep(0.3, 0.7, heat));
-        // The levees: the channel's skin by its banks runs cooler.
-        const bank = smoothstep(-0.45, 0.0, sd.div(lava.hw.max(1.0)));
-        // A thread too thin to show its crust beads instead: brighter and dimmer along its length.
-        const beads = texture(t.noise, vec2(lava.arc.mul(1.7).sub(u.flow.mul(0.012)), lava.kind.mul(0.31))).r;
-        const thin = float(1.0).sub(smoothstep(1.0, 3.0, lava.hw.mul(2.0).div(pw)));
+        const crustUV = P.xz.div(CRUST_TILE);
+        const drag = dir.mul(coreK.mul(0.55).add(0.45)).mul(0.4);
+        const cA = texture(t.crust, crustUV.sub(drag.mul(ph1)));
+        const cB = texture(t.crust, crustUV.sub(drag.mul(ph2)).add(vec2(0.37, 0.61)));
+        // How many plates a pixel spans: where the network is finer than the eye, its average.
+        const platesPerPx = length(fwidth(crustUV)).mul(CRUST.cells);
+        const detail = float(1.0).sub(smoothstep(0.2, 0.65, platesPerPx)).toVar();
+        // How far the cracks open (R is about 1 at a plate's middle): hotter lava opens more of the
+        // crust, the middle of a channel more than its sides; a hard drop's tremor tears it open.
+        const open = heat.mul(coreK.mul(0.6).add(0.4)).mul(0.24).add(0.035).add(u.tremor.mul(0.14))
+            .add(fissure.mul(0.14))
+            .toVar();
+        const aa = platesPerPx.mul(0.8).add(0.02);
+        const crackOf = (r) => float(1.0).sub(smoothstep(open.sub(aa), open.add(aa), r));
+        const crack = mix(crackOf(cA.r), crackOf(cB.r), wPh);
+        const smallK = mix(open.mul(1.7).min(1.0), crack, detail);
+        // Rafts: crust four times the plates' size floats in lanes of open lava (it keeps a flow
+        // mottled where its plates are finer than a pixel). Same flow map, slower: rafts drag.
+        const raftUV = crustUV.mul(0.25).add(vec2(0.19, 0.53));
+        const rA = texture(t.crust, raftUV.sub(drag.mul(ph1).mul(0.2))).r;
+        const rB = texture(t.crust, raftUV.sub(drag.mul(ph2).mul(0.2)).add(vec2(0.41, 0.17))).r;
+        const raftPerPx = platesPerPx.mul(0.25);
+        const raftDetail = float(1.0).sub(smoothstep(0.2, 0.65, raftPerPx));
+        const lane = heat.mul(coreK.mul(0.6).add(0.4)).mul(0.24).add(0.05).add(u.tremor.mul(0.12))
+            .add(fissure.mul(0.16));
+        const raa = raftPerPx.mul(0.8).add(0.03);
+        const laneOf = (r) => float(1.0).sub(smoothstep(lane.sub(raa), lane.add(raa), r));
+        const lanes = mix(lane.mul(1.7).min(1.0), mix(laneOf(rA), laneOf(rB), wPh), raftDetail);
+        // Open in the lanes; on a raft only its own cracks, narrower.
+        const crackK = lanes.add(float(1.0).sub(lanes).mul(smallK).mul(0.6)).toVar();
+        // A plate glows dull at its rim (the crust thins there), its hairline cracks faintly, and
+        // each plate has its own age.
+        const rimOf = (r) => exp(r.sub(open).max(0.0).div(0.1).negate());
+        const plateRim = mix(rimOf(cA.r), rimOf(cB.r), wPh).mul(detail);
+        const hairOf = (r) => float(1.0).sub(smoothstep(0.0, aa.mul(2.5).add(0.06), r));
+        const hair = mix(hairOf(cA.a), hairOf(cB.a), wPh).mul(detail).mul(smoothstep(0.25, 0.7, heat));
+        const plateAge = mix(cA.g, cB.g, wPh);
+        // The banks: a bright seam where the moving lava shears against its levees, only where the
+        // channel is wide on screen (at a few pixels two seams read as rails, not as lava).
+        const bankSeam = exp(across.sub(0.84).div(0.08).mul(across.sub(0.84).div(0.08)).negate())
+            .mul(smoothstep(24.0, 60.0, lava.hw.mul(2.0).div(pw)));
         // A surge of fresh lava down every channel (a level-up), and the fissure always fresh.
         const behind = u.pulse.x.sub(lava.arc);
         const surge = exp(behind.div(0.55).mul(behind.div(0.55)).negate())
             .add(float(1.0).sub(smoothstep(0.0, 2.8, behind)).mul(step(0.0, behind)).mul(0.45))
             .mul(u.pulse.y);
-        // The fissure (kind 3) runs fresh; breakouts (kind 4) are their own, cooler toes.
-        const fissure = smoothstep(2.5, 3.0, lava.kind).mul(float(1.0).sub(smoothstep(3.5, 4.0, lava.kind)));
-        const molten = coreK.mul(0.38).add(0.62).mul(float(1.0).sub(crustAmt.mul(0.78))).mul(float(1.0).sub(bank.mul(0.35)));
-        const T = heat.mul(molten.add(seam.mul(0.45)))
-            .mul(mix(float(1.0), beads.mul(0.7).add(0.55), thin))
-            .add(surge.mul(0.2))
-            .add(u.tremor.mul(0.12))
-            .add(fissure.mul(0.18))
-            .mul(u.activity.mul(0.55).add(0.45))
-            .min(0.82)
-            .toVar();
-        const emit = pyBlackbody(T).mul(cover).toVar();
-        // Cracks glow on the crust beside the channel (levees, older lobes), red and fine.
+        const warm = surge.mul(0.2).add(u.tremor.mul(0.08)).add(fissure.mul(0.12)).toVar();
+        const act = u.activity.mul(0.55).add(0.45).toVar();
+        // The light is mixed, not the temperatures: a crust of dark plates parted by bright cracks
+        // averages, far off, to a dimmer orange, never to a dull red.
+        const Topen = heat.mul(coreK.mul(0.26).add(0.6)).add(bankSeam.mul(heat).mul(0.14)).add(warm).mul(act)
+            .min(0.86);
+        const Tplate = heat.mul(plateAge.mul(0.12).add(0.06).add(plateRim.mul(0.32)).add(hair.mul(0.2)))
+            .add(warm.mul(0.6))
+            .mul(act).min(0.86);
+        const channelLight = mix(pyBlackbody(Tplate), pyBlackbody(Topen), crackK);
+        // A thread too thin to show its crust burns steady, swelling a little as pulses run down it.
+        const thin = float(1.0).sub(smoothstep(1.0, 3.0, lava.hw.mul(2.0).div(pw)));
+        const pulse = sin(lava.arc.mul(2.3).sub(u.flow.mul(0.35))).mul(0.05).add(0.95);
+        const Tthin = heat.mul(0.66).mul(pulse).add(warm).mul(act)
+            .min(0.86);
+        const emit = mix(channelLight, pyBlackbody(Tthin), thin).mul(cover).toVar();
+        // The levees and older lobes beside a channel crack in cooling joints that glow red near it.
         if (tier.landDetail > 1) {
-            const fineCrust = texture(t.noise, P.xz.div(38.0)).b;
-            const crack = smoothstep(0.03, 0.0, abs(fineCrust.sub(0.5))).mul(exp(sd.max(0.0).div(-26.0)))
-                .mul(float(1.0).sub(inside));
-            emit.addAssign(pyBlackbody(heat.mul(0.45)).mul(crack).mul(0.8));
+            const jointUV = P.xz.div(CRUST_TILE * 0.55);
+            const joints = texture(t.crust, jointUV.add(vec2(0.23, 0.71))).r;
+            const jaa = length(fwidth(jointUV)).mul(CRUST.cells).mul(0.8).add(0.02);
+            const joint = float(1.0).sub(smoothstep(0.0, jaa.add(0.05), joints))
+                .mul(float(1.0).sub(smoothstep(0.2, 0.6, jaa)));
+            const nearBank = exp(sd.max(0.0).div(-30.0)).mul(float(1.0).sub(inside));
+            emit.addAssign(pyBlackbody(heat.mul(0.42)).mul(joint).mul(nearBank).mul(0.7));
         }
         // St Elmo's fire on the summit (a back-to-back run): a violet corona round the rim.
         const rim = exp(length(P.xz.sub(vec2(VOLCANO.x, VOLCANO.z))).div(-520.0))
             .mul(smoothstep(VOLCANO.height - 700.0, VOLCANO.height - 60.0, P.y));
         emit.addAssign(u.bolt.mul(rim.mul(u.corona).mul(0.35)));
         // The crater's throat glows on the rock inside the breach.
-        const throat = exp(length(P.xz.sub(vec2(VOLCANO.x, VOLCANO.z))).div(-260.0))
+        const fromVent = length(P.xz.sub(vec2(VOLCANO.x, VOLCANO.z))).toVar();
+        const throat = exp(fromVent.div(-260.0))
             .mul(smoothstep(VOLCANO.height - 520.0, VOLCANO.height - 140.0, P.y));
-        emit.addAssign(pyBlackbody(float(0.78)).mul(throat).mul(u.fountain.mul(0.4).add(0.6)).mul(u.activity));
+        // The fountain's fallout: an apron of fresh spatter round the crater, glowing in clots
+        // (wider as the fountain climbs), cooling to a dull red at its edge.
+        const apronR = u.fountain.mul(170.0).add(430.0);
+        const apron = exp(fromVent.div(apronR).mul(fromVent.div(apronR)).negate())
+            .mul(smoothstep(VOLCANO.height - 1100.0, VOLCANO.height - 300.0, P.y));
+        const clotsA = texture(t.noise, P.xz.div(70.0)).b;
+        const clotsB = texture(t.noise, P.xz.div(23.0).add(vec2(0.37, 0.71))).g;
+        const clot = smoothstep(0.5, 0.78, clotsA.mul(0.65).add(clotsB.mul(0.35)).add(apron.mul(0.12)));
+        const apronHeat = u.fountain.mul(0.5).add(0.5).add(u.burst.mul(0.4)).mul(u.activity);
+        const clotT = clot.mul(0.16).add(apron.mul(0.2)).add(0.36);
+        emit.addAssign(pyBlackbody(clotT).mul(clot.mul(apron)).mul(apronHeat).mul(0.55));
+        const throatHeat = u.fountain.mul(0.4).add(0.6).add(u.burst.mul(0.5));
+        emit.addAssign(pyBlackbody(float(0.78)).mul(throat).mul(throatHeat).mul(u.activity));
 
         // ── Hits: bomb splashes and bolt strikes ──
         Loop({
