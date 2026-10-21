@@ -239,6 +239,7 @@ export default class VesperChrysalisTheme extends BaseTheme {
                 quality: this.quality,
                 capture: this.flags.time !== null || this.flags.fixedDt !== null,
                 renderer,
+                mirrorSamples: (POST_LOOK[this.quality] || POST_LOOK.High).msaa ?? 0,
             }).build();
             this.world.bindCamera(this.camera);
             if (this.flags.parts) this.world.showOnlyParts(this.flags.parts);
