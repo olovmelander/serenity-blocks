@@ -228,7 +228,7 @@ export class LocalMatchConfigModal {
               <h2 class="sb-mp-sheet__title" id="local-match-config-title">Local versus</h2>
               <p class="sb-mp-sheet__lede" id="local-match-config-lede">Up to four players on one screen — keyboards, controllers or bots.</p>
             </div>
-            <button type="button" class="sb-mp-close" id="close-local-match-config" aria-label="Close and return to the menu">${mpIcon('close', 20)}</button>
+            <button type="button" class="sb-btn sb-btn--quiet sb-mp-close" id="close-local-match-config" aria-label="Close and return to the menu"><span>Close</span><kbd class="sb-kbd" data-key aria-hidden="true">Esc</kbd><kbd class="sb-kbd" data-pad aria-hidden="true">B</kbd></button>
           </header>
 
           <form id="local-match-config-form" class="match-config-form sb-mp-sheet__form" novalidate>
