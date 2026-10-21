@@ -8,7 +8,6 @@
  * storms         ovals the cloud lookup is twisted round
  * nebulaDetail   the nebula's fine field (one more fetch per sky pixel)
  * starLayers     lattices of far stars
- * aurora         ovals of curtains round each pole (the second lights inside the first on a long chain)
  * ice            the drifting ice: [boulders, shards, motes]
  * sparks         the pool a lock's splash and a meteor's burst throw from
  */
@@ -21,7 +20,6 @@ export const QUALITY = Object.freeze({
         storms: 3,
         nebulaDetail: 0,
         starLayers: 2,
-        aurora: 1,
         ice: Object.freeze([2, 24, 400]),
         sparks: 160,
     }),
@@ -33,7 +31,6 @@ export const QUALITY = Object.freeze({
         storms: 4,
         nebulaDetail: 0,
         starLayers: 2,
-        aurora: 1,
         ice: Object.freeze([3, 40, 700]),
         sparks: 260,
     }),
@@ -45,7 +42,6 @@ export const QUALITY = Object.freeze({
         storms: 6,
         nebulaDetail: 1,
         starLayers: 3,
-        aurora: 2,
         ice: Object.freeze([4, 70, 1300]),
         sparks: 420,
     }),
@@ -57,7 +53,6 @@ export const QUALITY = Object.freeze({
         storms: 8,
         nebulaDetail: 1,
         starLayers: 3,
-        aurora: 2,
         ice: Object.freeze([6, 110, 2200]),
         sparks: 700,
     }),
@@ -69,7 +64,6 @@ export const QUALITY = Object.freeze({
         storms: 8,
         nebulaDetail: 1,
         starLayers: 3,
-        aurora: 2,
         ice: Object.freeze([8, 150, 3200]),
         sparks: 1000,
     }),
@@ -81,7 +75,6 @@ export const QUALITY = Object.freeze({
         storms: 8,
         nebulaDetail: 1,
         starLayers: 3,
-        aurora: 2,
         ice: Object.freeze([10, 200, 4600]),
         sparks: 1400,
     }),
