@@ -297,7 +297,7 @@ export class SpringWorld {
         });
         yield 'land';
         // The river's surface, and the fall's water pouring over the step.
-        const river = createRiver(this.u, this.textures, tier);
+        const river = createRiver(this.u, this.textures, tier, this.ground);
         const pour = createPour(this.u, this.textures, tier);
         this.addPart('river', {
             mesh: river.mesh,
