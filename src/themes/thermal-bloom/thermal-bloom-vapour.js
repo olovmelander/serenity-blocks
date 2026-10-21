@@ -44,6 +44,7 @@ import {
     max,
     min,
     mix,
+    normalize,
     rtt,
     screenCoordinate,
     sin,
@@ -75,9 +76,10 @@ const SIGMA = 0.11;
 const MIST_TOP = 14;
 const MIST_DENSITY = 0.011;
 const MIST_FALL = 4.5;
-/** How fast billows climb a body (m/s) and how fast a spray's drops fall. */
-const RISE = 1.7;
+/** How fast a spray's drops fall (m/s); every other body climbs at its own speed (its row). */
 const FALL = 7.5;
+/** How fast a plume's billows evolve: its read's slide through the noise volume (billow units a second). */
+const EVOLVE = 0.22;
 
 /** The vapour's 3D noise as a tileable, linearly filtered volume (RGBA8: filterable everywhere). */
 export function createVapourTexture(data, size) {
@@ -162,14 +164,32 @@ export function createVapourMarch({
             const isSpray = isKind(VAPOUR_KIND.spray).toVar();
             const H = max(A.w, 0.5).toVar();
             const rMax = max(B.x, B.y).toVar();
-            // Lean: metres downwind per metre of height (a puff and a spray drift as one); a
-            // gust's front leans every column it reaches hard downwind and tears it thinner.
+            // The axis: where it stands (offsets from the foot) at the heights f = k / 6, written
+            // by the world. A plume's bends with the wind's history (its puffs drifted with every
+            // wind they met since they left the vent, so a change bends it from the bottom up);
+            // any other body leans as one. A gust's front tears whatever it reaches thinner.
+            const D1 = u.vapour.element(vb.mul(VAPOUR_ROWS_PER).add(3)).toVar();
+            const D2 = u.vapour.element(vb.mul(VAPOUR_ROWS_PER).add(4)).toVar();
+            const D3 = u.vapour.element(vb.mul(VAPOUR_ROWS_PER).add(5)).toVar();
+            const nodes = [D1.xy, D1.zw, D2.xy, D2.zw, D3.xy, D3.zw];
             const gustHere = tbGustBand(u, A.xz).toVar();
-            const leanK = u.windSpeed.mul(B.w).mul(gustHere.mul(2.0).add(1.0)).add(gustHere.mul(0.22));
-            const lean = u.windDir.mul(leanK).toVar();
-            const leanTop = lean.mul(H);
-            const lo = vec3(min(A.x, A.x.add(leanTop.x)).sub(rMax), A.y, min(A.z, A.z.add(leanTop.y)).sub(rMax));
-            const hi = vec3(max(A.x, A.x.add(leanTop.x)).add(rMax), A.y.add(H), max(A.z, A.z.add(leanTop.y)).add(rMax));
+            let dLo = vec2(0.0, 0.0);
+            let dHi = vec2(0.0, 0.0);
+            nodes.forEach((n) => {
+                dLo = min(dLo, n);
+                dHi = max(dHi, n);
+            });
+            const lo = vec3(A.x.add(dLo.x).sub(rMax), A.y, A.z.add(dLo.y).sub(rMax));
+            const hi = vec3(A.x.add(dHi.x).add(rMax), A.y.add(H), A.z.add(dHi.y).add(rMax));
+            /** The axis's offset at a height fraction f: through the nodes, piecewise linear. */
+            const driftAt = (f) => {
+                const x = f.mul(nodes.length);
+                let sum = vec2(0.0, 0.0);
+                nodes.forEach((n, k) => {
+                    sum = sum.add(n.mul(max(float(1.0).sub(abs(x.sub(k + 1))), 0.0)));
+                });
+                return sum;
+            };
             const t0 = lo.sub(eye).mul(inv);
             const t1 = hi.sub(eye).mul(inv);
             const tIn = max(max(min(t0.x, t1.x), min(t0.y, t1.y)), min(t0.z, t1.z));
@@ -180,14 +200,21 @@ export function createVapourMarch({
                 // The billows' size follows the body (a 3 m puff is not made of 25 m billows).
                 const scale = clamp(mix(B.x, B.y, 0.5).mul(0.85), 2.5, 26.0).toVar();
                 const ofs = vec3(seed.mul(0.137), seed.mul(0.291), seed.mul(0.073)).toVar();
-                const climb = mix(float(RISE), float(-FALL), isSpray).mul(t).div(scale).toVar();
+                // Billows climb at the body's own speed (a far column's with its puffs; drops fall).
+                const climb = mix(B.w, float(-FALL), isSpray).mul(t).div(scale).toVar();
                 const spin = t.mul(mix(float(0.0), float(1.4), isDevil)).toVar();
+                // A plume's billows evolve as they climb: its read slides slowly through the noise
+                // volume along the line of sight, so each billow swells, splits and merges in place
+                // (a slide across the view would read as drift, a warp shears the lobes).
+                const isPlume = isKind(VAPOUR_KIND.plume).toVar();
+                const sight = normalize(A.xz.sub(eye.xz).add(vec2(1e-3, 0.0)));
+                const evolve = vec3(sight.x, 0.0, sight.y).mul(t.mul(EVOLVE).mul(isPlume)).toVar();
 
                 /** The body's envelope at a point (0..1) and where its billows are read. */
                 const body = (p) => {
                     const h = p.y.sub(A.y);
                     const f = clamp(h.div(H), 0.0, 1.0);
-                    const axis = A.xz.add(lean.mul(h));
+                    const axis = A.xz.add(driftAt(f));
                     const R = max(mix(B.x, B.y, f.pow(0.7)), 0.3);
                     const rel = p.xz.sub(axis);
                     const d = length(rel);
@@ -220,7 +247,7 @@ export function createVapourMarch({
                     const sa = sin(ang);
                     const twisted = vec2(rel.x.mul(ca).sub(rel.y.mul(sa)), rel.x.mul(sa).add(rel.y.mul(ca)));
                     const local = vec3(twisted.x, h.div(mix(float(1.0), float(3.0), isDevil)), twisted.y).div(scale);
-                    const q = local.add(ofs).sub(vec3(0.0, climb, 0.0));
+                    const q = local.add(ofs).sub(vec3(0.0, climb, 0.0)).add(evolve);
                     return {
                         env, q, f, h,
                     };
@@ -300,7 +327,8 @@ export function createVapourMarch({
                             const ownTint = C.xyz.div(cMax);
                             const tintAmt = clamp(cMax.mul(0.45), 0.0, 0.7).mul(foot)
                                 .mul(float(1.0).sub(isDome));
-                            const sunLit = sunSteam.mul(sunT.mul(cloudLit)).mul(phase).mul(mix(float(1.05), float(1.2), isSpray))
+                            const sunLit = sunSteam.mul(sunT.mul(cloudLit)).mul(phase)
+                                .mul(mix(float(1.05), float(1.2), isSpray))
                                 .mul(mix(vec3(1.0), ownTint, tintAmt));
                             const amb = mix(groundAmb, skyAmb, s.f.mul(0.7).add(0.3));
                             // Drops: whiter, with the bow in them (only while the eruption lights it).

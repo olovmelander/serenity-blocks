@@ -51,7 +51,7 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    SHELL_STRIDE, snFxMaterial, snPart, snRidge,
+    SHELL_STRIDE, snFxMaterial, snLuma, snPart, snRidge,
 } from './supernova-tsl.js';
 
 /** How much finer than the coarse read the third, finest read of a shell's gas is. */
@@ -95,45 +95,67 @@ export function createNebula(u, { detail = 2 } = {}) {
             const radius = A.x.mul(float(1.0).add(nudge.mul(D.x))).toVar();
             const h = b.mul(b).sub(c0).add(radius.mul(radius)).toVar();
             If(D.w.greaterThan(0.5), () => {
-                // A front: an even skin of some thickness, solved. The light along the ray is
-                // how far it runs inside the skin: most where it grazes the skin's inner face,
-                // falling to nothing at the outer one. Cubed, so the front is a ring and the
-                // film across its face is next to nothing.
-                const inside = radius.mul(float(1.0).sub(A.y)).toVar();
+                // A front: a skin of some thickness, solved. The light along the ray is how far it
+                // runs inside the skin: most where it grazes the skin's inner face, falling to
+                // nothing at the outer one. Cubed, so the front is a ring and the film across its
+                // face is next to nothing. The skin is thinner than it was asked for: a thick one
+                // swept the frame as a smooth band, a lens's ghost rather than a shock.
+                const inside = radius.mul(float(1.0).sub(A.y.mul(0.62))).toVar();
                 const inner2 = inside.mul(inside);
                 const outer2 = radius.mul(radius);
                 const run = sqrt(max(outer2.sub(d2), 0.0)).sub(sqrt(max(inner2.sub(d2), 0.0)))
                     .div(sqrt(max(outer2.sub(inner2), 1e-6))).toVar();
-                // Brighter and dimmer round its rim, never an even hoop.
+                // Brighter and dimmer round its rim, never an even hoop; and torn: the shock
+                // lights the gas it sweeps up in filaments and knots, with gaps between them.
                 const ragged = mix(wob.b, wob.a, D.y).mul(1.5).add(0.25);
-                const ring = run.mul(run).mul(run).mul(ragged);
+                const swept = u.noise(dc.mul(1.6).add(vec3(A.x.mul(0.013), 0.37, A.x.mul(0.007)))).toVar();
+                const strands = snRidge(swept.r);
+                const torn = strands.mul(strands).mul(strands).mul(1.7).add(0.3)
+                    .mul(smoothstep(0.26, 0.56, swept.g).mul(0.75).add(0.25));
+                const ring = run.mul(run).mul(run).mul(ragged).mul(torn);
                 light.addAssign(mix(B.rgb, C.rgb, run.mul(run)).mul(ring.mul(B.w)));
             }).ElseIf(h.greaterThan(0.0), () => {
                 const sq = sqrt(h).toVar();
                 // How long the ray stays in the skin, against going straight through it.
                 const cosine = sq.div(radius);
-                const graze = A.y.div(sqrt(cosine.mul(cosine).add(A.y.mul(A.y)))).toVar();
+                // The skin's outer face is not a hard line: the last stretch of the graze fades, so
+                // the brightest band rides just inside the edge and the edge itself dissolves (a
+                // crisp rim read as a glass bubble).
+                const graze = A.y.div(sqrt(cosine.mul(cosine).add(A.y.mul(A.y))))
+                    .mul(smoothstep(0.0, A.y.mul(1.3), cosine)).toVar();
                 // Each shell's gas is combed along an axis of its own: the pattern is read from a
                 // sphere squeezed along it, so its threads run on as long strands.
                 const comb = normalize(E.xyz.sub(0.5)).toVar();
                 const room = float(1.0).sub(smoothstep(0.5, 1.15, pixel.div(radius).mul(A.z).mul(FINE * 64))).toVar();
                 const crossing = (t, dim) => {
                     const onShell = ro.add(rd.mul(t)).div(radius).toVar();
-                    const dir = onShell.sub(comb.mul(dot(onShell, comb).mul(0.45))).toVar();
+                    const dir = onShell.sub(comb.mul(dot(onShell, comb).mul(0.62))).toVar();
                     const n1 = u.noise(dir.mul(A.z).add(E.xyz)).toVar();
-                    // Where the gas is: a wide ramp, so a cloud swells and thins instead of being cut out.
-                    const gas = smoothstep(C.w, C.w.add(0.34), n1.r).toVar();
+                    // Where the gas is: a wide ramp, so a cloud swells and thins instead of being
+                    // cut out; its dense heart a little further up the same field.
+                    const gas = smoothstep(C.w, C.w.add(0.36), n1.r).toVar();
+                    const heart = smoothstep(C.w.add(0.1), C.w.add(0.46), n1.r);
                     let thread;
                     let weave;
                     let halo;
+                    let knot;
+                    let dust;
                     if (detail >= 2) {
-                        const n2 = u.noise(dir.mul(A.z.mul(2.7)).add(n1.xyz.sub(0.5).mul(0.3)).add(E.zxy)).toVar();
+                        // Warped hard by the coarse read: the threads swirl along its flow as long
+                        // strands instead of closing into small loops.
+                        const n2 = u.noise(dir.mul(A.z.mul(2.3)).add(n1.xyz.sub(0.5).mul(0.75)).add(E.zxy)).toVar();
                         const ridge = snRidge(n2.r).toVar();
-                        thread = ridge.pow(A.w);
+                        thread = ridge.pow(A.w.mul(1.25)).toVar();
                         halo = ridge.mul(ridge).mul(ridge);
-                        // A second family crosses the first, and comes and goes along its length.
-                        weave = snRidge(n2.g).pow(A.w.mul(1.5)).mul(smoothstep(0.42, 0.62, n2.b)).mul(0.7)
+                        // A sparse second family, coming and going along its length (more of it
+                        // drew a tangle: every thread crossing every other).
+                        weave = snRidge(n2.g).pow(A.w.mul(1.7)).mul(smoothstep(0.52, 0.7, n2.b)).mul(0.32)
                             .toVar();
+                        // Knots: where a thread runs through a dense spot of a second field it
+                        // brightens into a clump of hot gas.
+                        knot = smoothstep(0.64, 0.86, n2.g).mul(thread).mul(heart.mul(0.7).add(0.3));
+                        // Dust: dark lanes across the gas, cut by the same medium-scale read.
+                        dust = smoothstep(0.5, 0.76, n2.a).mul(gas).mul(float(1.0).sub(thread));
                         if (detail >= 3) {
                             // The finest threads, only on a shell large enough on screen that a
                             // texel of this read is no smaller than a pixel (there are no mips).
@@ -141,28 +163,42 @@ export function createNebula(u, { detail = 2 } = {}) {
                                 const n3 = u.noise(
                                     dir.mul(A.z.mul(FINE)).add(n2.xyz.sub(0.5).mul(0.14)).add(E.yzx),
                                 ).toVar();
-                                const fine = snRidge(n3.r).pow(A.w.mul(1.1)).mul(smoothstep(0.4, 0.62, n2.a));
-                                weave.addAssign(fine.mul(room).mul(0.45));
+                                const fine = snRidge(n3.r).pow(A.w.mul(1.3)).mul(smoothstep(0.45, 0.65, n2.a));
+                                weave.addAssign(fine.mul(room).mul(0.4));
                             });
                         }
                     } else {
                         const ridge = snRidge(n1.g).toVar();
                         // One read: the threads are as thin as the coarse field can draw them.
-                        thread = ridge.pow(A.w.mul(0.8));
+                        thread = ridge.pow(A.w.mul(0.9));
                         halo = ridge.mul(ridge).mul(ridge);
-                        weave = snRidge(n1.a).pow(A.w).mul(0.5);
+                        weave = snRidge(n1.a).pow(A.w).mul(0.25);
+                        knot = float(0.0);
+                        dust = smoothstep(0.6, 0.82, n1.a).mul(gas).mul(0.6);
                     }
-                    // Threads in their own glow on a faint body of gas; each thread brightens and
-                    // fades along its way.
+                    // A body of glowing gas (the nebula's mass, not only its outlines), threads in
+                    // their own glow running through it, brightening and fading along their way,
+                    // and knots burning on them; dust lanes dim all of it.
                     const run = smoothstep(0.3, 0.7, n1.g);
-                    const filaments = gas.mul(
-                        float(0.03).add(halo.mul(0.09)).add(thread.mul(run.mul(0.85).add(0.15))).add(weave.mul(0.8)),
-                    );
-                    const density = filaments.mul(step(0.0, t)).mul(dim).toVar();
-                    const hue = mix(B.rgb, C.rgb, smoothstep(0.38, 0.62, n1.b));
-                    // The brightest threads burn toward white.
-                    const hot = thread.mul(thread).mul(run).mul(gas).mul(0.3);
-                    return vec4(hue.add(vec3(hot)).mul(density), density);
+                    const body = gas.mul(gas).mul(0.06).add(heart.mul(0.07));
+                    const lines = gas.mul(halo.mul(0.06).add(thread.mul(run.mul(0.8).add(0.2))).add(weave.mul(0.7)))
+                        .add(knot.mul(1.4));
+                    const clear = float(1.0).sub(dust.mul(0.9));
+                    const shown = step(0.0, t).mul(dim);
+                    const glow = body.add(lines).mul(clear).mul(shown).toVar();
+                    // The gas hides what lies behind it a little; the dust a lot.
+                    const veilHere = gas.mul(0.18).add(lines.mul(0.4)).add(dust.mul(1.1)).mul(shown);
+                    // One hue over wide patches, the shell's second in others, met over a narrow
+                    // band whose chroma is lifted (gold and teal mixed straight go lime); the
+                    // brightest threads and the knots burn toward white.
+                    const k = smoothstep(0.4, 0.6, n1.b);
+                    const blend = mix(B.rgb, C.rgb, k);
+                    const grey = snLuma(blend);
+                    const lift = k.mul(float(1.0).sub(k)).mul(2.4).add(1.0);
+                    const hue = max(blend.sub(grey).mul(lift).add(grey), vec3(0.0));
+                    const hot = thread.mul(thread).mul(run).mul(gas).mul(0.22)
+                        .add(knot.mul(0.7));
+                    return vec4(hue.mul(glow).add(vec3(hot.mul(clear).mul(shown))), veilHere);
                 };
                 // The far side is seen through the shell's own gas: a little dimmer.
                 const near = crossing(b.negate().sub(sq), 1.0).toVar();
