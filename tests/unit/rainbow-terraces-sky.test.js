@@ -93,6 +93,37 @@ describe('Rainbow Terraces sky: the storm tower', () => {
         expect(world.U.shower.value.w).toBe(0);
     });
 
+    // Two veils of stratus lie level just under the horizon, one each side of the board, a few
+    // kilometres out: behind the near isles, in front of everything far. Never on the card or the
+    // HUD, and none in a smile frame (a phone's strip of sky has no room for them).
+    it('lays a veil each side of the board, under the horizon, between the near isles and the far field', () => {
+        const world = makeWorld('High');
+        const veils = cumulusPlan(world.frame, world.U.shower.value.x).filter((c) => c.kind === 3);
+        expect(veils).toHaveLength(2);
+        const { cards, hud } = world.layout;
+        const ui = [cards[0], hud].filter(Boolean);
+        const xs = veils.map((v) => {
+            const n = Math.hypot(v.x, v.y, v.z);
+            const p = project([v.x / n, v.y / n, v.z / n], world.frame.cam);
+            expect(p.front).toBe(true);
+            // Under the horizon…
+            expect(p.y).toBeGreaterThan(world.frame.horizon);
+            // …nearer than the far field and the storm, beyond the near isles.
+            const dist = Math.hypot(v.x, v.z);
+            ['spring', 'twin'].forEach((name) => {
+                expect(dist).toBeGreaterThan(Math.hypot(world.placement[name].pos[0], world.placement[name].pos[2]));
+            });
+            world.placement.archipelago.forEach((e) => expect(dist).toBeLessThan(Math.hypot(e.pos[0], e.pos[2])));
+            // Each veil's middle stands clear of the UI.
+            ui.forEach((r) => expect(p.x < r.x0 || p.x > r.x1).toBe(true));
+            return p.x;
+        });
+        expect(Math.min(...xs)).toBeLessThan(cards[0].x0);
+        expect(Math.max(...xs)).toBeGreaterThan(cards[0].x1);
+        const phone = makeWorld('High', 430, 932);
+        expect(cumulusPlan(phone.frame, phone.U.shower.value.x).filter((c) => c.kind === 3)).toHaveLength(0);
+    });
+
     it.each(QUALITY_NAMES)('fills the cumulus draw within its capacity at %s, sorted back to front on flat bases', (quality) => {
         const world = makeWorld(quality);
         const puffs = puffsOf(world);

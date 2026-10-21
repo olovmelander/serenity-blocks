@@ -20,8 +20,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, atan, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, dot, exp, float, length, max, mix,
-    normalize, positionGeometry, pow, smoothstep, sqrt, texture, varying, vec2, vec3, vec4,
+    Fn, atan, attribute, cameraPosition, cameraProjectionMatrix, cameraViewMatrix, dot, exp, float, fract, length, max, mix,
+    normalize, positionGeometry, pow, sin, smoothstep, sqrt, texture, varying, vec2, vec3, vec4,
 } from 'three/tsl';
 import { DEG, mulberry32 } from './rainbow-terraces-core.js';
 import { project, unproject } from './rainbow-terraces-frame.js';
@@ -34,13 +34,41 @@ const STRIDE = 12;
 
 /**
  * The clouds for a solved frame: [{ x, y, z (base centre), W (across), D (deep), H, kind, seed }].
- * kind 0 tower, 1 bank, 2 small. Today the frame holds the storm's tower alone: the sky's other
- * clouds are the dome's (the deck, the cirrus, the far banks), which need no puffs and no sort,
- * and small cumulus scattered in the free sky only read as confetti there.
+ * kind 0 tower, 1 bank, 2 small, 3 veil. The frame holds the storm's tower and, in landscape, two
+ * veils of stratus lying level just under the horizon a few kilometres out, one each side of the
+ * board: behind the near isles and in front of everything far (the archipelago, the Far Gate's
+ * mesa, the storm's foot), so the distance stands in planes. The sky's other clouds are the
+ * dome's (the deck, the cirrus, the far banks), which need no puffs and no sort, and small cumulus
+ * scattered in the free sky only read as confetti there.
  */
 export function cumulusPlan(frame, showerBearing) {
     const smile = frame.plan === 'smile';
     const out = [];
+    // A veil lying level from frame x0 to x1 (at the horizon's height), `dist` metres out, its
+    // middle `elevDeg` under the horizon. (Laid before the tower, whose early returns keep them.)
+    const veil = (x0, x1, elevDeg, dist, H, seed) => {
+        if (!frame.cam || x1 - x0 < 0.08) return;
+        const a = unproject(x0, frame.horizon, frame.cam, [0, 0, -1]);
+        const b = unproject(x1, frame.horizon, frame.cam, [0, 0, -1]);
+        const b0 = Math.atan2(a[0], -a[2]);
+        const b1 = Math.atan2(b[0], -b[2]);
+        const mid = (b0 + b1) / 2;
+        out.push({
+            x: Math.sin(mid) * dist,
+            y: Math.tan(elevDeg * DEG) * dist,
+            z: -Math.cos(mid) * dist,
+            W: 2 * dist * Math.tan(Math.abs(b1 - b0) / 2),
+            D: dist * 0.18,
+            H,
+            kind: 3,
+            seed,
+        });
+    };
+    if (!smile && frame.cam) {
+        const free = frame.free || { left: 0.35, right: 0.75 };
+        veil(-0.06, Math.min(0.36, free.left - 0.03), -0.75, 2300, 105, 23);
+        veil(Math.max(0.62, free.right + 0.03), 1.08, -0.9, 2900, 120, 37);
+    }
     const atBearing = (bearing, dist, elevDeg, W, D, H, kind, seed) => {
         const y = Math.tan(elevDeg * DEG) * dist;
         out.push({
@@ -178,6 +206,44 @@ function cloudPuffs(c, count, puffs) {
 }
 
 /**
+ * The puffs of a veil: long, low heads overlapping along its length (each drawn `stretch` times as
+ * wide as it is tall), higher and fuller toward its middle and thinning to wisps at its ends, in
+ * two loose rows so it has a front and a back.
+ */
+function veilPuffs(c, count, puffs) {
+    const rand = mulberry32(c.seed * 613 + 5);
+    const len = Math.hypot(c.x, c.z);
+    const ax = -c.z / len;
+    const az = c.x / len;
+    const dx = c.x / len;
+    const dz = c.z / len;
+    for (let i = 0; i < count; i++) {
+        const f = (i + 0.5 + (rand() - 0.5) * 0.7) / count;
+        const u = (f - 0.5) * c.W;
+        // Fullest in its middle, a wisp at either end (a long sine, nudged by the seed).
+        const body = Math.sin(Math.PI * Math.min(1, Math.max(0, f))) ** 0.7 * (0.75 + 0.25 * Math.sin(f * 9.1 + c.seed));
+        const r = c.H * (0.45 + 0.55 * body) * (0.8 + rand() * 0.4);
+        const v = (i % 2 === 0 ? 0.25 : -0.2) * c.D + (rand() - 0.5) * c.D * 0.3;
+        const h = c.H * (0.15 + 0.5 * body) + (rand() - 0.5) * c.H * 0.25;
+        puffs.push({
+            x: c.x + ax * u + dx * v,
+            y: c.y + h,
+            z: c.z + az * u + dz * v,
+            r,
+            hf: Math.max(0, Math.min(1, 0.35 + h / c.H)),
+            seed: rand() * 100,
+            ox: u / (c.W * 0.5),
+            oz: v / (c.D * 0.5),
+            // (Its base well under every head: a veil has no flat base, it thins out downward.)
+            base: c.y - c.H * 2,
+            H: c.H,
+            kind: 3,
+            stretch: 2.6 + rand() * 1.6,
+        });
+    }
+}
+
+/**
  * @param {object} p
  * @param {object} p.tier  the quality tier (cumulusPuffs)
  * @param {object} p.U     the world's uniforms
@@ -193,7 +259,7 @@ export function createCumulus({ tier, U, tex }) {
     const buffer = new THREE.InstancedInterleavedBuffer(data, STRIDE);
     geometry.setAttribute('iPuff', new THREE.InterleavedBufferAttribute(buffer, 4, 0)); // xyz, radius
     geometry.setAttribute('iTone', new THREE.InterleavedBufferAttribute(buffer, 4, 4)); // heightFrac, seed, ox, oz
-    geometry.setAttribute('iCloud', new THREE.InterleavedBufferAttribute(buffer, 4, 8)); // baseY, H, kind, -
+    geometry.setAttribute('iCloud', new THREE.InterleavedBufferAttribute(buffer, 4, 8)); // baseY, H, kind, stretch
     geometry.instanceCount = 0;
 
     const material = new THREE.MeshBasicNodeMaterial({
@@ -218,12 +284,18 @@ export function createCumulus({ tier, U, tex }) {
     const vThread = varying(vec3(0.0), 'vCuThread');
     const vThread2 = varying(vec3(0.0), 'vCuThread2');
     material.vertexNode = Fn(() => {
-        const view = cameraViewMatrix.mul(vec4(puff.xyz, 1.0));
+        // A veil's heads drift slowly to and fro along the wind (never away: the frame is composed).
+        const veil = smoothstep(2.5, 3.5, cloud.z);
+        const sway = sin(U.mistClock.mul(0.004).add(tone.y)).mul(cloud.y.mul(0.9)).mul(veil);
+        const centre = puff.xyz.add(vec3(sway, 0.0, sway.mul(0.3)));
+        const view = cameraViewMatrix.mul(vec4(centre, 1.0));
         const g = positionGeometry.xy;
         vLocal.assign(g);
-        const at = view.xyz.add(vec3(g.mul(puff.w), 0.0));
+        // (A veil's heads are long and low: drawn `stretch` times as wide as they are tall.)
+        const span = vec2(puff.w.mul(max(cloud.w, 1.0)), puff.w);
+        const at = view.xyz.add(vec3(g.mul(span), 0.0));
         // The point's world position (the billboard turned back into the world).
-        const world = puff.xyz.add(cameraViewMatrix.transpose().mul(vec4(g.mul(puff.w), 0.0, 0.0)).xyz).toVar();
+        const world = centre.add(cameraViewMatrix.transpose().mul(vec4(g.mul(span), 0.0, 0.0)).xyz).toVar();
         vWorld.assign(world);
         const thread = vec3(0.0).toVar();
         const thread2 = vec3(0.0).toVar();
@@ -245,14 +317,19 @@ export function createCumulus({ tier, U, tex }) {
         const camBack = inv.mul(vec4(0.0, 0.0, 1.0, 0.0)).xyz;
         // The tower is the storm's crown; the others are fair-weather cumulus.
         const tower = max(float(1.0).sub(cloud.z), 0.0);
-        // The cloud's form: outward from its axis, turning up toward the crown.
-        const formN = normalize(vec3(tone.z.mul(2.2), hf.mul(1.6).sub(0.45), tone.w.mul(1.2)).add(camBack.mul(0.35)));
+        // The cloud's form: outward from its axis, turning up toward the crown. The puff's offsets
+        // are in the cloud's own frame (ox across the view, oz along it, away from the eye), so
+        // the face standing toward the eye (oz < 0) turns toward it.
+        const deep = normalize(puff.xz.add(vec2(0.0, -1e-3)));
+        const across = vec2(deep.y.negate(), deep.x);
+        const out = across.mul(tone.z.mul(2.2)).add(deep.mul(tone.w.mul(1.2)));
+        const formN = normalize(vec3(out.x, hf.mul(1.6).sub(0.45), out.y).add(camBack.mul(0.35)));
         const puffN = camRight.mul(local.x).add(camUp.mul(local.y)).add(camBack.mul(nz));
-        const N = normalize(formN.add(puffN.mul(1.1))).toVar();
+        const N = normalize(formN.add(puffN.mul(1.5))).toVar();
         // Lit full face by the sun behind the eye; each billow's underside in its own mass's
         // shade, the foot darker still, sky light on the tops.
         const lit = pow(scWrap(dot(N, U.shadeKey), float(0.35)), 1.2)
-            .mul(float(1.0).sub(float(1.0).sub(smoothstep(-0.9, 0.3, local.y)).mul(0.4)))
+            .mul(float(1.0).sub(float(1.0).sub(smoothstep(-0.9, 0.35, local.y)).mul(0.5)))
             .mul(mix(float(0.6), float(1.0), smoothstep(0.0, 0.5, hf)));
         // The rose and pearl hours: the Earth's shadow climbs the cloud; only the crown burns.
         const line = cloud.x.add(cloud.y.mul(U.twilight.mul(0.7)));
@@ -262,12 +339,15 @@ export function createCumulus({ tier, U, tex }) {
         // The tower's lower body is the storm itself: dark slate in its own rain and shade, the
         // billows still showing; only the crown stands in the sun.
         // (By the point's own height, so the dark climbs the tower smoothly across the puffs.)
-        const rise = vWorld.y.sub(cloud.x).div(cloud.y);
+        // (Measured mostly by the billow's own height, a little by the point's, so the dark climbs
+        // the tower billow by billow along a cauliflower edge, never across it in a level band.)
+        const jitter = fract(tone.y.mul(0.618)).sub(0.5).mul(0.14);
+        const rise = mix(vWorld.y.sub(cloud.x).div(cloud.y), tone.x.add(jitter), 0.65);
         // (And across its form: the flank toward the storm's heart turns slate over its last
         // billows, so the lit crown grades into the dark wall, never a white cut-out against it.)
         const shower = smoothstep(0.15, 0.55, U.showerAmt);
         const storm = max(
-            float(1.0).sub(smoothstep(0.26, 0.6, rise)),
+            float(1.0).sub(smoothstep(0.2, 0.5, rise)),
             smoothstep(0.25, 0.8, tone.z).mul(float(1.0).sub(smoothstep(0.7, 0.95, rise))).mul(0.8),
         ).mul(tower).mul(shower);
         // Each billow of the storm's body shows by its lighter brow over a darker underside.
@@ -294,10 +374,23 @@ export function createCumulus({ tier, U, tex }) {
         const p = local.mul(0.3).add(vec2(tone.y.mul(0.137), tone.y.mul(0.071)))
             .add(vec2(U.mistClock.mul(0.0015), 0.0));
         const n = texture(tex.noise, p).g.mul(0.6).add(texture(tex.noise, p.mul(2.3).add(0.31)).a.mul(0.4));
-        const edge = length(local).add(n.sub(0.5).mul(mix(float(0.45), float(0.7), storm)));
-        const soft = mix(float(0.74), float(0.45), storm);
-        const flat = smoothstep(cloud.x.sub(cloud.y.mul(0.012)), cloud.x.add(cloud.y.mul(0.03)), vWorld.y);
-        const alpha = float(1.0).sub(smoothstep(soft, 0.92, edge)).mul(flat).mul(0.97);
+        // A veil is thin vapour: its heads torn deeper at the edge, soft all round, thinning out
+        // downward, and broken along its length into drifts and gaps fixed in the air it lies in
+        // (so the heads drift through them), its lower half taking the light the sea throws up.
+        const veil = smoothstep(2.5, 3.5, cloud.z);
+        const edge = length(local).add(n.sub(0.5).mul(mix(mix(float(0.45), float(0.7), storm), float(1.05), veil)));
+        const soft = mix(mix(float(0.74), float(0.45), storm), float(0.12), veil);
+        // The tower's base is the storm's: level, but sagging and torn along its run (the puff's
+        // own noise and a broad one across the cloud), and its foot thins out into the rain.
+        const sagN = texture(tex.noise, vec2(vWorld.x.mul(1 / 3200), vWorld.z.mul(1 / 3200)).add(0.29)).r;
+        const baseLine = cloud.x.sub(cloud.y.mul(sagN.sub(0.5).mul(0.07).add(n.sub(0.5).mul(0.04))));
+        const flat = smoothstep(baseLine.sub(cloud.y.mul(0.02)), baseLine.add(cloud.y.mul(0.06)), vWorld.y);
+        const body = float(1.0).sub(smoothstep(soft, 0.92, edge));
+        const drift = texture(tex.noise, vWorld.xz.mul(1 / 1400).add(vec2(0.37, U.mistClock.mul(0.00002)))).r;
+        const gaps = smoothstep(0.36, 0.7, drift.add(n.sub(0.5).mul(0.3)));
+        const thin = mix(float(0.97), smoothstep(-1.0, 0.5, local.y).mul(gaps).mul(0.4), veil);
+        col.assign(mix(col, col.add(light.mistLit.mul(0.08)), veil.mul(float(1.0).sub(smoothstep(-0.6, 0.3, local.y)))));
+        const alpha = body.mul(flat).mul(thin);
         return vec4(col.mul(alpha), alpha);
     })();
 
@@ -314,17 +407,26 @@ export function createCumulus({ tier, U, tex }) {
             const clouds = cumulusPlan(frame, showerBearing);
             // Puffs shared by size: the tower takes the most.
             const weight = clouds.map((c) => c.W * c.H * (c.kind === 0 ? 1.6 : 1));
-            const total = weight.reduce((a, b) => a + b, 0) || 1;
-            const counts = clouds.map((c, i) => Math.max(c.kind === 2 ? 12 : 10, Math.floor((capacity * weight[i]) / total)));
+            // A veil takes a fixed share of the buffer (its puffs are few and long); the tower and
+            // the rest share what is left by size.
+            const perVeil = Math.max(10, Math.round(capacity * 0.08));
+            const veils = clouds.filter((c) => c.kind === 3).length;
+            const shared = capacity - veils * perVeil;
+            const total = clouds.reduce((sum, c, i) => sum + (c.kind === 3 ? 0 : weight[i]), 0) || 1;
+            const counts = clouds.map((c, i) => (c.kind === 3 ? perVeil
+                : Math.max(c.kind === 2 ? 12 : 10, Math.floor((shared * weight[i]) / total))));
             // Never more than the buffer holds (the sort below would drop the nearest).
             const over = counts.reduce((a, b) => a + b, 0) / capacity;
             const puffs = [];
-            clouds.forEach((c, i) => cloudPuffs(c, over > 1 ? Math.floor(counts[i] / over) : counts[i], puffs));
+            clouds.forEach((c, i) => {
+                const n = over > 1 ? Math.floor(counts[i] / over) : counts[i];
+                (c.kind === 3 ? veilPuffs : cloudPuffs)(c, n, puffs);
+            });
             puffs.sort((a, b) => Math.hypot(b.x, b.y, b.z) - Math.hypot(a.x, a.y, a.z));
             const n = Math.min(capacity, puffs.length);
             for (let i = 0; i < n; i++) {
                 const q = puffs[i];
-                data.set([q.x, q.y, q.z, q.r, q.hf, q.seed, q.ox, q.oz, q.base, q.H, q.kind, 0], i * STRIDE);
+                data.set([q.x, q.y, q.z, q.r, q.hf, q.seed, q.ox, q.oz, q.base, q.H, q.kind, q.stretch ?? 1], i * STRIDE);
             }
             geometry.instanceCount = n;
             buffer.needsUpdate = true;
