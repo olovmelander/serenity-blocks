@@ -543,6 +543,9 @@ export class ThermalBloomWorld {
     build() {
         this.u = createThermalBloomUniforms();
         this.tex = this.bakeTextures();
+        // The cloud shadows (tbCloudShade) read the shared noise from the bag, so every part's
+        // sun term can take them, including the parts that are handed no textures.
+        this.u.cloudTex = this.tex.noise;
         THERMAL_BLOOM_PARTS.forEach((name) => {
             const make = PART_BUILDERS[name];
             if (make) this.addPart(name, make(this));
