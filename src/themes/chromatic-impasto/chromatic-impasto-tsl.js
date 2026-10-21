@@ -21,6 +21,7 @@ import {
     fract,
     length,
     max,
+    min,
     mix,
     normalize,
     sin,
@@ -28,6 +29,7 @@ import {
     step,
     vec2,
     vec3,
+    vec4,
 } from 'three/tsl';
 
 export * from './chromatic-impasto-core.js';
@@ -125,6 +127,34 @@ export const ciWeave = /* @__PURE__ */ Fn(([p]) => {
     const bump = sin(across.mul(Math.PI)).mul(sin(along.mul(Math.PI)).mul(0.45).add(0.55));
     return bump.mul(slub.mul(0.5).add(0.6));
 }).setLayout({ name: 'ci_weave', type: 'float', inputs: [{ name: 'p', type: 'vec2' }] });
+
+// ── Gilding ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Gold leaf at a point measured in leaves (canvas point / leaf side): returns (the leaf's slope
+ * x, y: its own tilt and the crinkles pressed into it; where the bole shows through a crack,
+ * 0..1; the overlapping seam at the leaf's edge, 0..1). Leaves are laid in courses, each course
+ * offset by half a leaf, as a gilder lays them.
+ */
+export const ciGildLeaf = /* @__PURE__ */ Fn(([pIn]) => {
+    const course = floor(pIn.y);
+    const p = vec2(pIn.x.add(fract(course.mul(0.5)).mul(1.0)), pIn.y).toVar();
+    const cell = floor(p);
+    const f = fract(p);
+    // each leaf pressed down at its own small tilt
+    const tilt = vec2(ciHash21(cell.add(vec2(3.1, 7.7))), ciHash21(cell.add(vec2(11.3, 1.9)))).sub(0.5).mul(0.5);
+    // crinkles: soft folds across the leaf
+    const fold = vec2(ciNoise2(pIn.mul(5.3)), ciNoise2(pIn.mul(5.3).add(vec2(13.1, 4.7)))).sub(0.5).mul(0.42);
+    const fine = vec2(ciNoise2(pIn.mul(19.0)), ciNoise2(pIn.mul(19.0).add(vec2(5.3, 9.1)))).sub(0.5).mul(0.16);
+    // the seam where a leaf's edge lies over the next
+    const edge = min(min(f.x, float(1.0).sub(f.x)), min(f.y, float(1.0).sub(f.y)));
+    const seam = float(1.0).sub(smoothstep(0.0, 0.035, edge));
+    // cracks: thin lines where a smooth field crosses its middle, broken along their length
+    const n = ciNoise2(pIn.mul(2.6).add(vec2(31.0, 17.0)));
+    const crack = float(1.0).sub(smoothstep(0.0, 0.035, abs(n.sub(0.5))))
+        .mul(smoothstep(0.55, 0.75, ciNoise2(pIn.mul(1.3).add(vec2(7.0, 3.0)))));
+    return vec4(tilt.add(fold).add(fine), crack, seam);
+}).setLayout({ name: 'ci_gildLeaf', type: 'vec4', inputs: [{ name: 'pIn', type: 'vec2' }] });
 
 // ── The twist ───────────────────────────────────────────────────────────────────
 
