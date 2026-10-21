@@ -15,22 +15,30 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     acos,
     cameraPosition,
     clamp,
     dot,
     exp,
     float,
+    floor,
+    fract,
+    fwidth,
+    length,
     max,
     mix,
     normalize,
     positionWorld,
+    sin,
     smoothstep,
     step,
     vec2,
     vec3,
 } from 'three/tsl';
-import { haBell, haPart, haSkyBase } from './halcyon-apex-tsl.js';
+import {
+    haBell, haLuma, haPart, haSkyBase,
+} from './halcyon-apex-tsl.js';
 
 /** Radians a second the four-line ring opens across the sky, and how long it lasts. */
 export const SHOCK_SPEED = 0.9;
@@ -110,6 +118,37 @@ export function createSky(u, opts = {}) {
         }
         // The sun burns through thin cloud, not through a bank.
         col.addAssign(sunLight.mul(float(1.0).sub(clamp(veil, 0.0, 1.0).mul(0.8))));
+
+        // ── Stars, where the hour's zenith is dark enough to show them (the blue hour) ──
+        // One star at most in each cell of a 3D lattice of directions: round everywhere on the
+        // dome, no seam. They come out overhead first and sink into the glow toward the sun.
+        const dark = float(1.0).sub(smoothstep(0.035, 0.075, haLuma(u.zenith))).toVar();
+        const starLayer = (scale, gain) => {
+            const q = dir.mul(scale);
+            const cell = floor(q);
+            const h = vec3(
+                fract(sin(dot(cell, vec3(127.1, 311.7, 74.7))).mul(43758.5453)),
+                fract(sin(dot(cell, vec3(269.5, 183.3, 246.1))).mul(43758.5453)),
+                fract(sin(dot(cell, vec3(113.5, 271.9, 124.6))).mul(43758.5453)),
+            ).toVar();
+            const at = normalize(cell.add(h.mul(0.56).add(0.22)));
+            const off = length(dir.sub(at)).mul(scale);
+            // Never under a pixel: a sub-pixel star would shimmer as the camera breathes.
+            const px = length(fwidth(dir)).mul(scale);
+            const r = max(float(0.09), px.mul(0.7));
+            const core = exp(off.mul(off).div(r.mul(r)).negate()).mul(float(0.09).div(r).pow(2.0));
+            const mag = h.y.pow(6.0).mul(smoothstep(0.35, 0.5, h.x));
+            const twinkle = sin(u.time.mul(h.z.mul(2.0).add(0.8)).add(h.x.mul(30.0))).mul(0.25).add(0.75);
+            const tint = mix(vec3(1.0, 0.86, 0.74), vec3(0.76, 0.86, 1.0), h.z);
+            return tint.mul(core.mul(mag).mul(twinkle).mul(gain));
+        };
+        // Skipped outright in the bright hours: a zero gain is not free.
+        If(dark.greaterThan(0.01), () => {
+            const stars = starLayer(60.0, 2.4).add(starLayer(140.0, 0.8));
+            const overhead = smoothstep(0.06, 0.35, up).mul(float(1.0).sub(toward.pow(4.0).mul(0.9)));
+            col.addAssign(stars.mul(dark).mul(overhead).mul(float(1.0).sub(clamp(veil, 0.0, 1.0)))
+                .mul(u.breath));
+        });
 
         // ── A four-line clear: a ring of light opens over the sky from the Apex ──
         const age = u.time.sub(u.shock.x);
