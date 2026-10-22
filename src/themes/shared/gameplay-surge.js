@@ -219,6 +219,25 @@ export class GameplaySurge {
         this._add(SURGE_WEIGHTS.punch.perfect, SURGE_WEIGHTS.heat.perfect, at);
     }
 
+    /**
+     * For a theme that hears the parts of a clear one by one rather than as one resolved clear:
+     * one more cascade wave, a T-spin, a back-to-back, each worth what clear() adds for it.
+     * @param {number} at seconds
+     */
+    wave(at) {
+        this._add(SURGE_WEIGHTS.punch.wave, SURGE_WEIGHTS.heat.wave, at);
+    }
+
+    /** @param {number} at seconds */
+    tspin(at) {
+        this._add(SURGE_WEIGHTS.punch.tspin, SURGE_WEIGHTS.heat.tspin, at);
+    }
+
+    /** @param {number} at seconds */
+    b2b(at) {
+        this._add(SURGE_WEIGHTS.punch.b2b, SURGE_WEIGHTS.heat.b2b, at);
+    }
+
     /** A T-spin that cleared nothing: a little over half a T-spin's worth. @param {number} at seconds */
     spin(at) {
         this._add(SURGE_WEIGHTS.punch.tspin * 0.6, SURGE_WEIGHTS.heat.tspin * 0.5, at);
