@@ -71,6 +71,8 @@ import {
 import { LATTICE_SIZE, LATTICE_SLICE, OCULUS_TEX } from './sunfall-bake.js';
 
 const TWO_PI = Math.PI * 2;
+/** The order the oculus fingers open in, as homes on a ring of seven: two face each other. */
+const FINGER_ORDER = Object.freeze([0, 4, 2, 6, 1, 5, 3]);
 
 /** Light gains (HDR units per unit of Blender sun/sky in the bakes). */
 export const SUNFALL_LIGHT = Object.freeze({
@@ -130,6 +132,20 @@ export function createSunfallUniforms(textures = null, manifest = null) {
 
         flushPulse: uniform(0),
         flushU: uniform(0.5),
+        /** Each side's strand kick (left, right): every lock adds to its side's. */
+        kick: uniform(new THREE.Vector2(0, 0)),
+        /** The strands' wind and the swiftlets' flight run on clocks that quicken with play. */
+        windClock: uniform(0),
+        windGain: uniform(1),
+        swiftClock: uniform(0),
+        /** The motes' brightness: the chain, the heat of play, a glint on each event. */
+        moteGain: uniform(1),
+        /** The cataract curtain already standing while a new pour's front falls over it. */
+        cataractHold: uniform(0),
+        /** How much of a piece's pigment the rain and the motes in the light catch (heat). */
+        prism: uniform(0),
+        /** The light left between the oculus fingers (it floods back in a fever). */
+        fingerFloor: uniform(0.14),
         pixelAngle: uniform((2 * Math.tan((26 * Math.PI) / 180)) / 1080),
         flushColor: v3(PIECE_SWATCH_RGB.T),
         flushWorldPos: v3([-140, CANOPY_LEVEL, -350]),
@@ -315,16 +331,21 @@ export const sfMaskAt = (u, q, along, { vines: withVines = true, dq = null } = {
     }
     const base = rim.mul(mix(1.0, vines, 0.9));
     // Combo fingers: the vines close over the opening except for gaps on a ring, one per link.
+    // `n` eases between counts: each gap has a fixed home on a ring of seven (in an order that
+    // keeps the open ones spread) and fades in or out there, so no gap ever jumps; the ring
+    // turns with the fringe. A lone gap sits at the centre and moves out as the second opens.
     const n = u.comboColumns;
+    const ring = smoothstep(1.0, 2.0, n).mul(0.52);
     let fingers = float(0.0);
-    for (let k = 0; k < 7; k += 1) {
-        const a = float(k).mul(TWO_PI).div(max(n, 1.0)).add(0.4);
-        const c = vec2(cos(a), sin(a)).mul(select(n.greaterThan(1.5), float(0.52), float(0.0)));
+    FINGER_ORDER.forEach((home, k) => {
+        const a = u.fringeAngle.add(home * (TWO_PI / 7) + 0.4);
+        const c = vec2(cos(a), sin(a)).mul(ring);
         const live = clamp(n.sub(k), 0.0, 1.0);
         fingers = max(fingers, float(1.0).sub(smoothstep(0.13, 0.19, length(q.sub(c)))).mul(live));
-    }
-    const comboOn = smoothstep(0.12, 0.42, u.comboLift);
-    return base.mul(mix(1.0, max(fingers, 0.14), comboOn));
+    });
+    // A chain of three hints at it; four and on the light is in blades.
+    const comboOn = smoothstep(0.2, 0.55, u.comboLift);
+    return base.mul(mix(1.0, max(fingers, u.fingerFloor), comboOn));
 };
 
 /**
