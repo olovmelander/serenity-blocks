@@ -7,7 +7,8 @@
  * suns burn along their crests, and the worm breaches there, a black arch against the light.
  * On the right the Sentinel, a monumental sandstone butte, takes the low sun on its flank under
  * two pale moons. The board is the drum: every lock sends a ring of lifted sand across the
- * erg, clears throw up geysers of dust, and a Tetris calls the worm.
+ * erg, clears throw up geysers of dust, and a Tetris calls the worm. Play builds: a quick hand
+ * raises a sandstorm, a fever breaks it (shifting-sands-world.js, shared/gameplay-surge.js).
  *
  * Content lives in ShiftingSandsWorld (shifting-sands-world.js), shared with the playground
  * effect src/playground/effects/shifting-sands.effect.js, so what is iterated there ships. This
@@ -158,7 +159,7 @@ export default class ShiftingSandsTheme extends BaseTheme {
             time: 0, delta: 0, pointerX: 0, pointerY: 0,
         };
         this._post = {
-            time: 0, sunUV: null, sunVis: 1, horizonY: 0.42, flash: 0,
+            time: 0, sunUV: null, sunVis: 1, horizonY: 0.42, flash: 0, bloomBoost: 0, exposure: 1,
         };
     }
 
@@ -322,19 +323,45 @@ export default class ShiftingSandsTheme extends BaseTheme {
         this.eventUnsubscribers = [];
         const allowed = () => this.isActive && !this.isPaused && this.comboEffects
             && (typeof window === 'undefined' || window.settings?.backgroundComboEffects !== false);
+        const player = (d) => (Number.isInteger(d?.player) ? d.player : undefined);
 
+        // The true combo and the cascade depth are bookkeeping: kept while the theme is active even
+        // with the reactions off (react: false), so they are right the moment they come back on.
         this.eventUnsubscribers.push(
-            eventBus.on(EVENTS.PIECE_LOCK, () => {
-                if (allowed() && this.lockRipple) this.world?.onPieceLock();
+            eventBus.on(EVENTS.HARD_DROP, () => {
+                if (this.isActive) this.world?.onHardDrop();
+            }),
+            eventBus.on(EVENTS.PIECE_LOCK, (d) => {
+                if (!this.isActive) return;
+                const react = allowed();
+                this.world?.onPieceLock({ react, ring: react && this.lockRipple, player: player(d) });
             }),
             eventBus.on(EVENTS.LINE_CLEAR, (d) => {
-                if (allowed()) this.world?.onLineClear(Number.isFinite(d?.lineCount) ? d.lineCount : 1);
+                if (!this.isActive) return;
+                this.world?.onLineClear(Number.isFinite(d?.lineCount) ? d.lineCount : 1, {
+                    cascade: Number.isFinite(d?.cascadeCount) ? d.cascadeCount : undefined,
+                    react: allowed(),
+                    player: player(d),
+                });
             }),
             eventBus.on(EVENTS.COMBO, (d) => {
-                if (allowed()) this.world?.onCombo(Number.isFinite(d?.comboCount) ? d.comboCount : 0);
+                if (this.isActive) {
+                    this.world?.onCombo(Number.isFinite(d?.comboCount) ? d.comboCount : 0, { react: allowed() });
+                }
+            }),
+            eventBus.on(EVENTS.TSPIN, (d) => {
+                if (allowed()) this.world?.onTSpin(Number.isFinite(d?.lineCount) ? d.lineCount : undefined);
+            }),
+            eventBus.on(EVENTS.B2B, (d) => {
+                if (allowed() && d?.active !== false) this.world?.onBackToBack();
+            }),
+            eventBus.on(EVENTS.PERFECT_CLEAR, () => {
+                if (allowed()) this.world?.onPerfectClear();
             }),
             eventBus.on(EVENTS.LEVEL_UP, (d) => {
-                if (this.isActive) this.world?.onLevelUp(Number.isFinite(d?.level) ? d.level : undefined);
+                if (this.isActive) {
+                    this.world?.onLevelUp(Number.isFinite(d?.level) ? d.level : undefined, { react: allowed() });
+                }
             }),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (p) => this.handleSettingsChanged(p)),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (v) => {
@@ -574,6 +601,8 @@ export default class ShiftingSandsTheme extends BaseTheme {
             p.sunVis = sun.visible;
             p.horizonY = sun.horizonY;
             p.flash = world.flash;
+            p.bloomBoost = world.bloomBoost;
+            p.exposure = world.exposure;
             this.post.update(p);
             this.post.render();
         } else if (this.passThrough) {

@@ -383,8 +383,12 @@ export function bakeTerrainGeometry(field, { tier, shadowDir }) {
 
 // ── Sand material ───────────────────────────────────────────────────────────────
 
-/** Drum rings (piece locks) and other ground pulses: (x, z, t0, strength). */
-export const GROUND_PULSE_SLOTS = 4;
+/**
+ * Drum rings (piece locks, cascade waves, a T-spin's turn) and the geysers' rings: (x, z, t0,
+ * strength). A new pulse takes the slot with the least light left, so a quick hand's beats
+ * stand as a train of rings instead of cutting each other off.
+ */
+export const GROUND_PULSE_SLOTS = 6;
 /** Worms that can mark the sand at once: each owns a sign, a ground wave and two wells. */
 export const WORM_GROUND_SLOTS = 2;
 /** Wells: where each worm comes up and where it goes down. */
@@ -399,7 +403,7 @@ export const WELL_SLOTS = WORM_GROUND_SLOTS * 2;
 export function createSandMaterial(shared, { glitter = true, ripples = true } = {}) {
     const {
         uTime, uSunA, uSunB, uSunLightA, uSunLightB, uUpper, uZenith, uHorizonCool, atmosphere, noiseTex,
-        uWindDir, uWind, uGust, uPxScale,
+        uWindDir, uWind, uGust, uPxScale, uFlow, uHeat,
     } = shared;
     const C = DUNE.crest;
     const EW = DUNE.expWindward;
@@ -473,7 +477,10 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
             const age = uTime.sub(P.z);
             const d = length(p.xz.sub(P.xy));
             const x = d.sub(age.mul(260.0)).div(14.0);
-            const env = exp(age.mul(-1.3)).mul(smoothstep(0.0, 0.05, age)).mul(P.w);
+            // A louder beat lights its ring fully (fragment) but lifts the sand less than in
+            // proportion, so a chain's rings never dig a crater of shade.
+            const lift = min(P.w, P.w.sub(1.0).mul(0.4).add(1.0));
+            const env = exp(age.mul(-1.3)).mul(smoothstep(0.0, 0.05, age)).mul(lift);
             h.addAssign(exp(x.mul(x).negate()).mul(env).mul(0.8));
         }
         // Wells: the sand heaved, rimmed and cratered where a body pierces the surface.
@@ -625,7 +632,9 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         const brink = exp(dpC.div(brinkW).pow(2.0).negate())
             .mul(aDune.w.div(37.0)).mul(detail.mul(0.7).add(0.3));
         const backlit = pow(clamp(dot(V.negate(), uSunA).mul(0.5).add(0.5), 0.0, 1.0), 5.0);
-        col.addAssign(uSunLightA.mul(brink.mul(backlit).mul(max(visA, visB.mul(0.5))).mul(0.55)));
+        // The heat of play makes them burn hotter (uHeat.w: 0 at rest).
+        const burnCrest = uHeat.w.mul(0.6).add(1.0).mul(0.55);
+        col.addAssign(uSunLightA.mul(brink.mul(backlit).mul(max(visA, visB.mul(0.5))).mul(burnCrest)));
 
         // ── Grain glitter: a sub-pixel dot per world cell with a random facet ──
         if (glitter) {
@@ -662,15 +671,18 @@ export function createSandMaterial(shared, { glitter = true, ripples = true } = 
         col.addAssign(mix(vec3(1.0, 0.78, 0.48), vec3(1.0, 0.55, 0.22), rust).mul(ringLight).mul(ringSum));
 
         // ── Blowing sand: sheets of saltating grains streaming downwind over the surface ──
+        // The phase is integrated by the world (speed · dt), so a gust quickens the sheets instead
+        // of jumping them; a storm (uHeat.z) spreads them wider and further across the erg.
         const along = dot(wp.xz, uWindDir);
         const across = dot(wp.xz, vec2(uWindDir.y.negate(), uWindDir.x));
-        const flow = uTime.mul(uWind.mul(26.0).add(uGust.mul(40.0)).add(6.0));
-        const sheet = ssTexNoise(noiseTex, vec2(along.sub(flow).mul(0.018), across.mul(0.09)));
-        const sheetMask = smoothstep(0.55, 0.85, sheet.x.mul(0.7).add(sheet.y.mul(0.3)))
-            .mul(float(1.0).sub(smoothstep(250.0, 1400.0, dist)))
+        const storm = uHeat.z;
+        const sheet = ssTexNoise(noiseTex, vec2(along.sub(uFlow.x).mul(0.018), across.mul(0.09)));
+        const sheetMask = smoothstep(storm.mul(-0.16).add(0.55), 0.85, sheet.x.mul(0.7).add(sheet.y.mul(0.3)))
+            .mul(float(1.0).sub(smoothstep(250.0, storm.mul(1000.0).add(1400.0), dist)))
             .mul(smoothstep(0.1, 0.6, p).mul(float(1.0).sub(crestT.mul(0.6))))
-            .mul(uWind.mul(0.6).add(uGust.mul(1.2)));
-        const sheetCol = uSunLightA.mul(max(visA, 0.2)).mul(0.08).add(uSunLightA.mul(fwd.mul(0.18)));
+            .mul(min(uWind.mul(0.6).add(uGust.mul(1.2)), 1.4));
+        const sheetCol = uSunLightA.mul(max(visA, 0.2)).mul(0.08).add(uSunLightA.mul(fwd.mul(0.18)))
+            .mul(storm.mul(0.7).add(1.0));
         col.addAssign(sheetCol.mul(sheetMask));
 
         // ── Aerial perspective ──
