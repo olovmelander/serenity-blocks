@@ -290,20 +290,46 @@ describe('kaleidosonic director: intake', () => {
         });
     });
 
-    it('resolves a perfect clear on its own frame as a clear with no rows', () => {
+    it('resolves a perfect clear on its own frame as the crown on its clear: no lines, no rows', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: I });
         director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
         director.flush();
-        // The game says so once the last wave has settled, a frame or more later.
+        expect(calls.clear[0]).toMatchObject({ lines: 4, crown: false, perfect: false });
+        // The game says so once the last wave has settled, a frame or more later: a crown on the
+        // clear still ringing, never a second (one-line) clear.
         director.onPerfectClear({ depth: 4, perfectClearBonus: 800 });
         director.flush();
         expect(calls.clear).toHaveLength(2);
         expect(calls.clear[1]).toMatchObject({
-            lines: 1, rows: [], rowCodes: [], perfect: true, screen: null,
+            lines: 0, crown: true, rows: [], rowCodes: [], perfect: true, screen: null, combo: 1,
         });
         // Its frame has no lock in it: the chain stands.
         expect(calls.combo).toEqual([[1, 0]]);
+        // A perfect clear in the same frame as its clear rides on that clear, no crown.
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear[2]).toMatchObject({ lines: 4, crown: false, perfect: true });
+    });
+
+    it('resolves a T-spin that clears nothing as a lineless T-spin, and it breaks the chain', () => {
+        const { director, calls } = makeDirector();
+        clearingLock(director, I, [23]);
+        director.flush();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
+        expect(calls.clear[1]).toMatchObject({
+            lines: 0, tspin: true, crown: false, perfect: false, rows: [],
+        });
+        expect(calls.combo).toEqual([[1, 0], [0, 0]]);
+        // A plain lock that clears nothing still sends no clear.
+        director.onPieceLock({ piece: I });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
     });
 
     it('turns a meditation click into a clear at a screen position', () => {

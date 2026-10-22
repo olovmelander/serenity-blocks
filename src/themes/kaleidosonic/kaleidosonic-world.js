@@ -23,9 +23,23 @@
  *   perfect     every mirror aligns into one still mandala and the floors' pattern flares
  *   level up    the mood wheel steps on (it also turns by itself with the clock)
  *   game over   the light sinks; a new run raises it again
+ *
+ * What fast play builds (nothing restarts: src/themes/shared/gameplay-surge.js). Every envelope an
+ * event lights is a Swell that adds to what still rings; harmonics and strikes take the slot with
+ * the least light left. A chain's clears CLIMB the refolds (each link draws the temple further the
+ * same way) and the overtones (finer shells round the core), instead of churning through the
+ * cycle. The heat of play is the crescendo, in four acts: calm (the temple as it is), warm (the
+ * veins flow faster, the gem's beams sweep quicker, the core burns brighter, a quick hand's notes
+ * ring louder), hot (the core starts to hum: the drone's rings round it with no back-to-back; the
+ * kaleidoscope wheels faster), fever (the temple sings: the floors' Chladni figures blaze, the
+ * harmonics climb an overtone, the drone is full, the iris closes so the neon stays saturated).
+ * A perfect clear's crown is the release: the whole chord in the core's colour, a held glow, and
+ * the mandala stilling every motion. The kaleidoscope lets go stage by stage when the chain ends.
  */
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import {
     DEG, DIVE_LENGTH, EYE, FOLD_AT, HARMONICS, foldLens, MOODS, MOOD_COLOURS, MoodWheel, NOTES, PIECE_COLORS, REFOLDS,
     RIG, STRIKES, STRIKE_ROWS, HARMONIC_ROWS, TAU, TEMPLE, TIMING, approach, clamp, clamp01, createUniforms,
@@ -51,8 +65,40 @@ const STRIKE_REACH = 1.15;
 export const PHASE_WRAP = TAU * 80;
 /** The gem's turn (radians per second): at rest, more in a deep trance, and the share reduced motion keeps. */
 export const GEM_TURN = Object.freeze({ rest: 0.07, trance: 0.16, reduced: 0.3 });
-/** Flashes (four lines, a perfect clear) come at most this often (seconds). */
+/**
+ * A frame-wide flash (four lines) starts at most this often (seconds, ADR-0021): one that lands
+ * sooner is not dropped, its light joins the core's held glow.
+ */
 const FLASH_GAP = 0.34;
+/** A harmonic's light falls to 1/e in this long (its shell runs on until TIMING.harmonic). */
+const HARMONIC_FADE = 1.1;
+/** The most light one harmonic carries (its own, and what the faintest it took over still had). */
+const HARMONIC_MAX = 2.4;
+/** The highest overtone a harmonic sounds: a clear's lines give 1-4, a chain climbs past them. */
+const HARMONIC_TOP = 8;
+/** A strike's light as the shader fades it (per second). */
+const STRIKE_DECAY = 1.05;
+/**
+ * A chain's refolds climb instead of walking the cycle: each link draws the temple further toward
+ * the strongest inversion of the refolds' range (the halls close in round the eye, their pearls
+ * near and their lace lit), `keep` of the way still left after each (a cascade's later wave half
+ * a link), so the shape deepens in one gesture and never cycles back.
+ */
+const CLIMB = Object.freeze({ lo: Math.min(...REFOLDS), hi: Math.max(...REFOLDS), keep: 0.8 });
+/**
+ * The kaleidoscope's stages open as its mirrors turn into place (ksLensFold, kaleidosonic-tsl.js),
+ * eased in and out. A broken chain's kaleidoscope lets go stage by stage, the reverse of how it
+ * opened (each stage starting once the one above it has all but closed), so one set of mirrors
+ * moves at a time and the whole lets go over TIMING.foldOut. Seconds per stage.
+ */
+const FOLD_OPEN = TIMING.foldIn;
+const FOLD_RELEASE = TIMING.foldOut / 3;
+/** A zero-line T-spin rocks the eye: this much roll speed (radians per second), settling level. */
+const TWIST = 0.7;
+/** s(1 − s)³(1 + 3s): leaves 0 at speed 1 and comes back to 0 at rest (a roll's carried speed). */
+const lead = (s) => s * (1 - s) ** 3 * (1 + 3 * s);
+const leadRate = (s) => 1 - 18 * s * s + 32 * s ** 3 - 15 * s ** 4;
+const smootherRate = (s) => 30 * s * s * (1 - s) * (1 - s);
 /** The eye's right, across its lane (level). */
 const EYE_RIGHT = Object.freeze([-EYE.dir[2], 0, EYE.dir[0]]);
 
@@ -139,10 +185,34 @@ export class KaleidosonicWorld {
             wavelength: 0.05,
             speed: 1,
             hard: 0,
+            /** Struck order (the newest has the highest): ties are drawn newest first. */
+            seq: 0,
         }));
         this.harmonics = Array.from({ length: HARMONICS }, () => ({
             birth: -1e6, mode: 1, strength: 0, rgb: [0, 0, 0],
         }));
+        this._strikeLight = new Float32Array(STRIKES);
+        this._heart = [1, 1, 1];
+        this._moodTmp = { from: 0, to: 1, mix: 0 };
+        this._rollOut = { angle: 0, speed: 0, active: false };
+        /** The heat of play: the crescendo the temple builds (read once a frame, on its clock). */
+        this.surge = new GameplaySurge();
+        /** A clear's resonance through the veins: each clear adds to what still rings. */
+        this.ring = new Swell({
+            release: 1.3, ceiling: 1.6, knee: 1.2, headroom: 1.2,
+        });
+        /** The core's flare: rapid locks build its corona instead of lighting it again. */
+        this.flare = new Swell({
+            release: 0.9, ceiling: 1, knee: 0.75, headroom: 1.3,
+        });
+        /** The frame's flash (four lines): at most one onset per FLASH_GAP. */
+        this.flash = new Swell({
+            release: 0.35, ceiling: 0.9, knee: 0.7, headroom: 1.2,
+        });
+        /** The core's held glow: a perfect clear's crown, and every flash the gap held back. */
+        this.glow = new Swell({
+            attack: 0.12, release: 2.4, ceiling: 1, knee: 0.7, headroom: 1.3,
+        });
         this.resetState(0);
     }
 
@@ -158,18 +228,33 @@ export class KaleidosonicWorld {
         this.folds = [0, 0, 0];
         this.refoldIndex = 0;
         this.sSpring = { x: REFOLDS[0], v: 0 };
+        /** Where the refold spring is heading: a shape of the cycle, or a chain's climb. */
+        this.refoldTarget = REFOLDS[0];
+        this.climbLinks = 0;
+        this.climbBase = REFOLDS[0];
+        this.climbFar = REFOLDS[0];
         this.breath = 0;
         this.pulse = 0;
         this.resonance = 0;
-        this.flash = 0;
+        this.ring.reset();
+        this.flare.reset();
+        this.flash.reset();
         this.flashAt = -1e6;
-        this.flare = 0;
+        this.flashPeak = 0;
+        this.glow.reset();
+        this.surge.reset();
+        this.heat = this.surge.sample(time);
         this.mandala = 0;
         this.mandalaAt = -1e6;
         this.sink = 0;
         this.sinkTarget = 0;
         this.drone = 0;
+        /** The T-spin roll: `rollFrom` to `rollTo` (radians) over `rollDur` from `rollAt`, leaving at `rollSpeed`. */
         this.rollAt = -1e6;
+        this.rollFrom = 0;
+        this.rollTo = 0;
+        this.rollSpeed = 0;
+        this.rollDur = TIMING.roll;
         this.diveAt = -1e6;
         this.diveQueue = 0;
         this.diveProgress = 0;
@@ -180,11 +265,11 @@ export class KaleidosonicWorld {
         /** The gem's turn about the vertical (radians): its facets' beams sweep the halls. */
         this.gemTurn = 0;
         this.lastEventAt = time;
-        this.strikeCursor = 0;
-        this.harmonicCursor = 0;
+        this.strikeSeq = 0;
         for (const s of this.strikes) {
             s.birth = -1e6;
             s.strength = 0;
+            s.seq = 0;
         }
         for (const h of this.harmonics) {
             h.birth = -1e6;
@@ -229,6 +314,9 @@ export class KaleidosonicWorld {
         this.diveProgress = 0;
         this.diveTravel = 0;
         this.rollAt = -1e6;
+        this.rollFrom = 0;
+        this.rollTo = 0;
+        this.rollSpeed = 0;
         this.kick.x = 0;
         this.kick.v = 0;
         this.turn = 0;
@@ -299,8 +387,7 @@ export class KaleidosonicWorld {
         const base = Math.atan2(-EYE.dir[0], -EYE.dir[2]);
         let roll = 0;
         if (!rest && !this.reducedMotion) {
-            const k = (time - this.rollAt) / TIMING.roll;
-            if (k > 0 && k < 1) roll = smoother(k) * TAU;
+            roll = this.rollState(time).angle;
             // a deep chain turns the kaleidoscope slowly (the crown of jewels wheels round the card)
             roll += this.turn;
         }
@@ -538,45 +625,161 @@ export class KaleidosonicWorld {
         const hit = this.stoneAt(site.x, site.y);
         const code = pieceCode(context.shape);
         const note = NOTES[code] || NOTES[7];
-        const slot = this.strikes[this.strikeCursor % STRIKES];
-        this.strikeCursor = (this.strikeCursor + 1) % (STRIKES * 1000);
+        const slot = this.strikes[this.faintestStrike()];
+        this.strikeSeq += 1;
+        slot.seq = this.strikeSeq;
         slot.birth = this.time;
         slot.x = hit.x;
         slot.y = hit.y;
         slot.z = hit.z;
         this.pigment(context.color || PIECE_COLORS[code % 7], slot.rgb);
-        slot.strength = hard ? 1.7 : 1;
+        // a quick hand's notes ring louder: the strikes of fast play sound together as a chord
+        slot.strength = (hard ? 1.7 : 1) * (1 + 0.6 * smooth(0.12, 0.85, this.heat.level));
         slot.wavelength = note.wavelength * (hard ? 1.25 : 1);
         slot.speed = note.speed * (hard ? 1.3 : 1);
         slot.hard = hard ? 1 : 0;
-        this.flare = Math.max(this.flare, hard ? 0.5 : 0.25);
+        this.flare.hit(hard ? 0.5 : 0.25, this.time);
         if (hard && !this.reducedMotion) {
             const fell = clamp(Number(context.distance) || 8, 1, 20) / 20;
             this.kick.v -= 0.18 + 0.32 * fell;
         }
+        this.surge.lock(context, this.time);
     }
 
-    onClear(context = {}) {
-        this.counts.clears += 1;
-        this.lastEventAt = this.time;
-        if (this.sinkTarget > 0) this.sinkTarget = 0;
-        const lines = clamp(Math.round(Number(context.lines) || 1), 1, 4);
-        const perfect = context.perfect === true;
-        // the harmonic takes the colour the cleared rows were mostly made of
-        const rgb = this.dominantColour(context.rowCodes, this._rgb);
-        const slot = this.harmonics[this.harmonicCursor % HARMONICS];
-        this.harmonicCursor = (this.harmonicCursor + 1) % (HARMONICS * 1000);
-        slot.birth = this.time;
-        slot.mode = lines;
-        slot.strength = 0.8 + lines * 0.25;
+    /** A strike's light left at `time` (a new note never cuts a louder one). */
+    strikeLight(s, time) {
+        const age = time - s.birth;
+        if (!(s.strength > 0) || age > TIMING.strike) return 0;
+        return age < 0 ? s.strength : s.strength * Math.exp(-age * STRIKE_DECAY);
+    }
+
+    /** The strike slot with the least light left (a free one first). */
+    faintestStrike() {
+        let pick = 0;
+        let least = Infinity;
+        for (let i = 0; i < STRIKES; i++) {
+            const light = this.strikeLight(this.strikes[i], this.time);
+            if (light < least) {
+                least = light;
+                pick = i;
+            }
+        }
+        return pick;
+    }
+
+    /** A harmonic's light left at `time` (one scheduled ahead keeps all of it). */
+    harmonicLight(h, time) {
+        const age = time - h.birth;
+        if (!(h.strength > 0) || age > TIMING.harmonic) return 0;
+        return age < 0 ? h.strength : h.strength * Math.exp(-age / HARMONIC_FADE);
+    }
+
+    /**
+     * Sound a harmonic of `mode` shells from `birth` on: in the slot with the least light left (a
+     * free one first), so a shell still ringing is never cut while a fainter one can make room;
+     * the light the taken one still had joins the new shell instead of going out.
+     */
+    soundHarmonic(mode, strength, rgb, birth) {
+        let pick = 0;
+        let least = Infinity;
+        for (let i = 0; i < HARMONICS; i++) {
+            const light = this.harmonicLight(this.harmonics[i], this.time);
+            if (light < least) {
+                least = light;
+                pick = i;
+            }
+        }
+        const slot = this.harmonics[pick];
+        slot.birth = birth;
+        slot.mode = mode;
+        slot.strength = Math.min(HARMONIC_MAX, strength + least);
         slot.rgb[0] = rgb[0];
         slot.rgb[1] = rgb[1];
         slot.rgb[2] = rgb[2];
-        // the temple refolds: one step, a chain's later links further
-        const chain = Math.max(1, Number(context.combo) || 1);
-        this.refoldIndex += chain > 3 ? 2 : 1;
-        this.resonance = Math.max(this.resonance, 0.6 + lines * 0.25);
-        this.flare = Math.max(this.flare, 0.4 + lines * 0.15);
+    }
+
+    /** The mood's heart colour, normalised (the core's own light, for its chords). */
+    heartColour(out = this._heart) {
+        const hc = MOODS[moodMix(this.moodPlace(), this._moodTmp).from].heart;
+        const mx = Math.max(hc[0], hc[1], hc[2]);
+        out[0] = hc[0] / mx;
+        out[1] = hc[1] / mx;
+        out[2] = hc[2] / mx;
+        return out;
+    }
+
+    /** A clear on its own refolds the temple one step round the cycle. */
+    stepRefold() {
+        this.climbLinks = 0;
+        this.refoldIndex += 1;
+        this.refoldTarget = REFOLDS[this.refoldIndex % REFOLDS.length];
+    }
+
+    /**
+     * A chain's link (a cascade's later wave: half of one) draws the temple further the same way:
+     * from where the chain found it toward the strongest inversion of the range, a smaller step
+     * each time, so the shape deepens and never cycles back.
+     */
+    climbRefold(links) {
+        if (this.climbLinks <= 0) {
+            this.climbBase = this.refoldTarget;
+            this.climbFar = CLIMB.hi;
+        }
+        this.climbLinks = Math.min(64, this.climbLinks + links);
+        this.refoldTarget = this.climbFar + (this.climbBase - this.climbFar) * CLIMB.keep ** this.climbLinks;
+    }
+
+    onClear(context = {}) {
+        const { time } = this;
+        const named = Math.round(Number(context.lines) || 0);
+        // A perfect clear settled after its clear's last wave (the director's crown): it crowns
+        // the clear still ringing, never a second clear.
+        if (context.crown === true || (named <= 0 && context.perfect === true)) {
+            this.onCrown(context);
+            return;
+        }
+        // A T-spin that cleared nothing: something small.
+        if (named <= 0 && context.tspin === true) {
+            this.onSpin();
+            return;
+        }
+        this.counts.clears += 1;
+        this.lastEventAt = time;
+        if (this.sinkTarget > 0) this.sinkTarget = 0;
+        const lines = clamp(named || 1, 1, 4);
+        const perfect = context.perfect === true;
+        const chain = Math.max(1, Math.round(Number(context.combo) || 1));
+        const wave = Math.max(1, Math.round(Number(context.cascade) || 1));
+        const deeper = Math.min(6, wave - 1);
+        // The harmonic takes the colour the cleared rows were mostly made of. A chain climbs the
+        // overtones (a cascade's later waves, a long chain's links and a fever sound finer shells
+        // round the core), and each wave rings louder than the last.
+        const rgb = this.dominantColour(context.rowCodes, this._rgb);
+        const overtone = Math.min(3, deeper) + Math.min(3, Math.floor((chain - 1) / 3))
+            + (this.heat.stage >= 3 ? 1 : 0);
+        const mode = Math.min(HARMONIC_TOP, lines + overtone);
+        this.soundHarmonic(mode, (0.8 + lines * 0.25) * (1 + 0.15 * deeper), rgb, time);
+        // Back-to-back: the octave answers a beat later in the core's own colour, louder the
+        // longer the run (the drone holds under it).
+        if (context.b2b === true) {
+            const run = clamp(this.b2b + 1, 1, 4);
+            this.soundHarmonic(Math.min(HARMONIC_TOP, mode * 2), 0.55 + 0.2 * run, this.heartColour(), time + 0.14);
+        }
+        // The temple refolds: a clear on its own steps round the cycle; a chain (or a cascade's
+        // later wave) climbs, deepening one shape instead of churning through them.
+        if (chain >= 2 || wave >= 2) this.climbRefold(wave >= 2 ? 0.5 : 1);
+        else this.stepRefold();
+        let ring = 0.6 + lines * 0.25;
+        let flare = 0.4 + lines * 0.15;
+        if (context.tspin) ring = Math.max(ring, 0.8);
+        if (lines >= 4) {
+            ring = Math.max(ring, 1.3);
+            flare = Math.max(flare, 1.2);
+        }
+        if (perfect) ring = Math.max(ring, 1.6);
+        this.ring.hit(ring * (1 + 0.08 * deeper), time);
+        this.flare.hit(flare, time);
+        this.surge.clear(context, time);
         // A meditation click (a screen point, no board) sounds its harmonic without flash or dive.
         const calm = Boolean(context.screen);
         if (lines >= 4) this.onQuad({ calm });
@@ -584,12 +787,28 @@ export class KaleidosonicWorld {
         if (perfect) this.onPerfect({ calm });
     }
 
-    /** A flash, at most one per FLASH_GAP (events landing on the same frame share it). */
+    /**
+     * A frame-wide flash: at most one onset per FLASH_GAP (ADR-0021). Events on the same frame
+     * share it (the largest); one that lands inside the gap is not dropped: its light joins the
+     * core's held glow instead of flashing the frame again.
+     */
     flashUp(value) {
         const since = this.time - this.flashAt;
-        if (since > 0 && since < FLASH_GAP) return;
+        if (since === 0) {
+            const more = value - this.flashPeak;
+            if (more > 0) {
+                this.flash.hit(more, this.time);
+                this.flashPeak = value;
+            }
+            return;
+        }
+        if (since > 0 && since < FLASH_GAP) {
+            this.glow.hit(value, this.time);
+            return;
+        }
         this.flashAt = this.time;
-        this.flash = Math.max(this.flash, value);
+        this.flashPeak = value;
+        this.flash.hit(value, this.time);
     }
 
     /** The most common piece among a clear's cells (garbage and unknown cells left out). */
@@ -622,8 +841,6 @@ export class KaleidosonicWorld {
 
     onQuad({ calm = false } = {}) {
         this.counts.quads += 1;
-        this.resonance = Math.max(this.resonance, 1.3);
-        this.flare = Math.max(this.flare, 1.2);
         if (calm) return;
         this.flashUp(0.6);
         if (this.reducedMotion) return;
@@ -635,17 +852,78 @@ export class KaleidosonicWorld {
         }
     }
 
+    /** A T-spin's clear: the eye rolls a full turn (one mid-roll spins it a turn further). */
     onTSpin() {
         this.counts.tspins += 1;
-        this.resonance = Math.max(this.resonance, 0.8);
-        if (!this.reducedMotion && this.time - this.rollAt >= TIMING.roll) this.rollAt = this.time;
+        if (!this.reducedMotion) this.planRoll(1, 0);
     }
 
+    /** A T-spin that cleared nothing: the eye rocks and settles, and a small chord in the T's colour. */
+    onSpin() {
+        this.counts.tspins += 1;
+        this.lastEventAt = this.time;
+        this.soundHarmonic(2, 0.55, this.pigment(PIECE_COLORS[pieceCode('T')], this._rgb), this.time);
+        this.ring.hit(0.4, this.time);
+        this.flare.hit(0.35, this.time);
+        if (!this.reducedMotion) this.planRoll(0, TWIST);
+        this.surge.spin(this.time);
+    }
+
+    /**
+     * The eye's roll from where it is now: `turns` more whole turns (at most three ahead) and
+     * `push` more speed. Angle and speed carry on without a jump, and it always lands level.
+     */
+    planRoll(turns, push = 0) {
+        const now = this.rollState(this.time);
+        const from = now.active ? now.angle : 0;
+        let to = now.active ? this.rollTo : 0;
+        if (turns > 0 && to + TAU * turns - from <= 3.2 * TAU) to += TAU * turns;
+        this.rollFrom = from;
+        this.rollTo = to;
+        this.rollSpeed = (now.active ? now.speed : 0) + push;
+        this.rollAt = this.time;
+        this.rollDur = TIMING.roll * clamp(0.5 + (0.5 * Math.abs(to - from)) / TAU, 0.8, 2);
+    }
+
+    /** The roll at `time`: its angle and speed (0 when none is under way). Fills one object. */
+    rollState(time, out = this._rollOut) {
+        const k = (time - this.rollAt) / this.rollDur;
+        out.active = k >= 0 && k < 1;
+        if (!out.active) {
+            out.angle = 0;
+            out.speed = 0;
+            return out;
+        }
+        const span = this.rollTo - this.rollFrom;
+        const push = this.rollDur * this.rollSpeed;
+        out.angle = this.rollFrom + span * smoother(k) + push * lead(k);
+        out.speed = (span * smootherRate(k) + push * leadRate(k)) / this.rollDur;
+        return out;
+    }
+
+    /** A perfect clear in the same frame as its clear. */
     onPerfect({ calm = false } = {}) {
         this.counts.perfects += 1;
         this.mandalaAt = this.time;
-        this.resonance = Math.max(this.resonance, 1.6);
+        this.glow.hit(0.6, this.time);
         if (!calm) this.flashUp(0.5);
+    }
+
+    /**
+     * A perfect clear settled after its clear's last wave (the director's crown): it crowns the
+     * clear still ringing. Every mirror aligns into the still mandala, the whole chord sounds once
+     * in the core's own colour at the top overtone, and the core takes a held glow: no second
+     * clear, no second flash (the quad's own is still lit).
+     */
+    onCrown(context = {}) {
+        this.counts.perfects += 1;
+        this.lastEventAt = this.time;
+        if (this.sinkTarget > 0) this.sinkTarget = 0;
+        this.mandalaAt = this.time;
+        this.soundHarmonic(HARMONIC_TOP, 1.6, this.heartColour(), this.time);
+        this.ring.hit(1.1, this.time);
+        this.glow.hit(context.screen ? 0.5 : 1, this.time);
+        this.surge.crown(this.time);
     }
 
     onCombo(value) {
@@ -653,6 +931,8 @@ export class KaleidosonicWorld {
         this.combo = n;
         this.peak = Math.max(this.peak, n);
         if (n > 0) this.lastEventAt = this.time;
+        // the next chain climbs from wherever this one left the temple
+        else this.climbLinks = 0;
     }
 
     onB2B(level) {
@@ -664,7 +944,10 @@ export class KaleidosonicWorld {
         if (n > this.level && !silent) this.counts.levelUps += 1;
         this.wheel.levelUp(n, time, silent);
         this.level = n;
-        if (!silent) this.flare = Math.max(this.flare, 0.8);
+        if (!silent) {
+            this.flare.hit(0.8, time);
+            this.surge.levelUp(time);
+        }
     }
 
     onGameOver() {
@@ -710,39 +993,58 @@ export class KaleidosonicWorld {
         // A long quiet forgets the chain.
         if (this.combo > 0 && time - this.lastEventAt > TIMING.idle) this.combo = 0;
 
+        // The heat of play (the same clock as the events): `warm` is nothing under casual play and
+        // all of it in a quick, steady hand; `fever` the sustained crescendo.
+        const heat = this.surge.sample(time);
+        this.heat = heat;
+        const { level, fever, punch } = heat;
+        const warm = smooth(0.12, 0.85, level);
+        const motion = this.reducedMotion ? 0.3 : 1;
+        this.resonance = this.ring.valueAt(time);
+        // What of it reaches the air and the post: a clear on its own all of it, a chain's build
+        // (which rides higher) mostly in the veins, so the haze never washes the darks out.
+        const aired = this.resonance <= 0.9 ? this.resonance : 0.9 + (this.resonance - 0.9) * 0.35;
+        const flare = this.flare.valueAt(time);
+        const glow = this.glow.valueAt(time);
+        const flash = this.flash.valueAt(time);
+
         // the trance and the lens's mirrors
         const want = tranceFor(this.combo);
         this.trance += (want - this.trance) * approach(want > this.trance ? 1.6 : 0.45, dt);
         const mandalaAge = time - this.mandalaAt;
         const holdMandala = mandalaAge >= 0 && mandalaAge < TIMING.mandalaHold;
-        for (let k = 0; k < FOLD_AT.length; k++) {
-            const open = holdMandala || this.combo >= FOLD_AT[k] ? 1 : 0;
-            const rate = open > this.folds[k] ? 1 / TIMING.foldIn : 1 / TIMING.foldOut;
-            const step = rate * dt;
-            this.folds[k] = open > this.folds[k]
-                ? Math.min(open, this.folds[k] + step)
-                : Math.max(open, this.folds[k] - step);
+        // (the top stage first: a stage lets go once the one above it is mostly closed)
+        for (let k = FOLD_AT.length - 1; k >= 0; k--) {
+            const open = holdMandala || this.combo >= FOLD_AT[k];
+            if (open) {
+                this.folds[k] = Math.min(1, this.folds[k] + dt / FOLD_OPEN);
+            } else if (this.folds[k] > 0 && (k + 1 >= FOLD_AT.length || this.folds[k + 1] < 0.1)) {
+                this.folds[k] = Math.max(0, this.folds[k] - dt / FOLD_RELEASE);
+            }
         }
         const mandalaWant = holdMandala ? 1 : 0;
         const mandalaRate = mandalaWant > this.mandala ? 3 : 1 / TIMING.mandalaRelease;
         this.mandala += (mandalaWant - this.mandala) * approach(mandalaRate, dt);
+        // the crown's mandala stills the temple at the top of the chord: the exhale
+        const still = 1 - 0.75 * this.mandala;
 
-        // the refold spring
-        const target = REFOLDS[((this.refoldIndex % REFOLDS.length) + REFOLDS.length) % REFOLDS.length];
-        springStep(this.sSpring, target, dt, 4.2);
+        // the refold spring (a shape of the cycle, or a chain's climb)
+        springStep(this.sSpring, this.refoldTarget, dt, 4.2);
         this.sSpring.x = clamp(this.sSpring.x, TEMPLE.sMin, TEMPLE.sMax);
 
         // integrated phases (their rates follow gameplay; the clock is never multiplied by a rate)
-        // the rings flow outward; as the light sinks (game over) they turn and fall back into the core
-        const flow = (0.32 + this.trance * 0.75 + this.resonance * 0.4) * (1 - this.sink * 1.8);
+        // the rings flow outward, faster as play heats; as the light sinks (game over) they turn
+        // and fall back into the core
+        const flow = (0.32 + this.trance * 0.75 + this.resonance * 0.4 + (warm * 0.3 + fever * 0.35) * motion * still)
+            * (1 - this.sink * 1.8);
         this.breath = (((this.breath + dt * flow) % PHASE_WRAP) + PHASE_WRAP) % PHASE_WRAP;
-        this.pulse = (this.pulse + dt * (1.1 + this.trance * 2.2 + this.drone * 0.6)) % PHASE_WRAP;
+        const beat = 1.1 + this.trance * 2.2 + this.drone * 0.6 + fever * 0.9 * motion * still;
+        this.pulse = (this.pulse + dt * beat) % PHASE_WRAP;
 
-        // decays
-        this.resonance *= Math.exp(-dt / 1.5);
-        this.flash *= Math.exp(-dt / 0.35);
-        this.flare *= Math.exp(-dt / 0.9);
-        this.drone += (Math.min(1, this.b2b / 3) - this.drone) * approach(1.5, dt);
+        // the drone: a back-to-back run's rings round the core, and the core's own hum once play
+        // runs hot (full in a fever)
+        const droneWant = Math.max(Math.min(1, this.b2b / 3), 0.25 * smooth(0.45, 0.85, level) + 0.4 * fever);
+        this.drone += (droneWant - this.drone) * approach(1.5, dt);
         const sinkRate = this.sinkTarget > this.sink ? 1 / TIMING.sink : 1 / TIMING.rise;
         this.sink = this.sinkTarget > this.sink
             ? Math.min(this.sinkTarget, this.sink + sinkRate * dt)
@@ -751,9 +1053,12 @@ export class KaleidosonicWorld {
         // the hard drop's kick (a damped spring back to rest)
         if (dt > 0) springStep(this.kick, 0, dt, 7);
 
-        // the kaleidoscope turns while its six sectors are open, and unwinds when they close
-        if (this.folds[1] > 0.5 && !this.reducedMotion) this.turn = (this.turn + dt * 0.07 * this.folds[1]) % TAU;
-        else this.turn *= Math.exp(-dt / 1.4);
+        // the kaleidoscope turns while its six sectors are open (wheeling faster as play heats,
+        // all but still in the crown's mandala), and unwinds when they close
+        if (this.folds[1] > 0.5 && !this.reducedMotion) {
+            const wheel = 0.07 * this.folds[1] * (1 + 0.8 * warm + 1.6 * fever) * (1 - 0.85 * this.mandala);
+            this.turn = (this.turn + dt * wheel) % TAU;
+        } else this.turn *= Math.exp(-dt / 1.4);
 
         // the dive
         const diveK = (time - this.diveAt) / TIMING.dive;
@@ -789,25 +1094,37 @@ export class KaleidosonicWorld {
         u.shape.value.set(this.sSpring.x, folds, whole, weight);
         const dv = this.diveOffset();
         u.dive.value.set(dv[0], dv[1], dv[2]);
-        u.lensS.value.set(this.folds[0], this.folds[1], this.folds[2], 0);
-        // the pulse lights the stone; an event's flare brightens only the core's corona and gem
+        // each stage's mirrors ease into place and out of it
+        u.lensS.value.set(smoother(this.folds[0]), smoother(this.folds[1]), smoother(this.folds[2]), 0);
+        // the pulse lights the stone; an event's flare, the crown's held glow and the heat of play
+        // brighten only the core's corona and gem (the hero burns brighter as play heats)
         const pulseLight = 1 + Math.sin(this.pulse) * 0.08 * (0.4 + this.trance);
-        u.heartState.value.set(pulseLight, this.drone, this.sink, this.flare);
+        const hot = Math.min(1.6, flare + glow + 0.1 * warm + 0.15 * fever);
+        u.heartState.value.set(pulseLight, this.drone, this.sink, hot);
         const surge = this.diveProgress * (1 - this.diveProgress) * 1.6;
-        u.state.value.set(this.trance, Math.min(1.6, this.resonance + surge), this.mandala, this.flash);
+        // a quick hand lights the veins before any chain does (the temple takes notice), a fever
+        // past the trance, and sets the floors' Chladni figures blazing; the frame's flash is held
+        // back under Reduce flashing (ADR-0021), as the post's is
+        u.state.value.set(
+            this.trance + (1 - this.trance) * 0.45 * warm + 0.12 * fever,
+            Math.min(1.6, this.resonance + surge),
+            Math.max(this.mandala, 0.45 * fever),
+            flash * flashScale(),
+        );
         u.air.value.set(lerp(0.34, 0.26, this.trance), 1, 0, 0);
         // the light map is marched from the core's resting place: the dive carries the core off it,
         // so the core's own shadows let go while it flies and hold again as it lands
         u.light.value.y = 1 - Math.sin(Math.PI * this.diveProgress);
         // the gem turns (its facets sweep the beams through the halls), faster in a trance,
         // slowly under reduced motion
-        const gemRate = GEM_TURN.rest + GEM_TURN.trance * this.trance;
+        // (sweeping the halls quicker as play heats, all but still in the crown's mandala)
+        const gemRate = GEM_TURN.rest + GEM_TURN.trance * this.trance + (0.1 * warm + 0.2 * fever) * still;
         this.gemTurn = (this.gemTurn + dt * gemRate * (this.reducedMotion ? GEM_TURN.reduced : 1)) % TAU;
         u.gem.value.set(Math.cos(this.gemTurn), Math.sin(this.gemTurn), 0, 0);
-        // a clear's resonance makes the beams blaze; a lock's strike does not (its light stays where it
-        // struck). The twelve-sector kaleidoscope mirrors twelve cores' beams round the frame: the air
-        // takes a share less while it is open, so dark stays between the rays.
-        u.light.value.z = (1 + Math.min(1.6, this.resonance + surge) * 0.55) * (1 - 0.3 * this.folds[2]);
+        // a clear's resonance makes the beams blaze; a lock's strike does not (its light stays where
+        // it struck). The twelve-sector kaleidoscope mirrors twelve cores' beams round the frame:
+        // the air takes a share less while it is open, so dark stays between the rays.
+        u.light.value.z = (1 + Math.min(1.6, aired + surge) * 0.55) * (1 - 0.3 * this.folds[2]);
 
         // the moods
         const place = this.moodPlace();
@@ -825,18 +1142,31 @@ export class KaleidosonicWorld {
         }
         u.moodMix.value = mix;
 
-        // strikes: live rows compacted at the front, newest first (a tier that draws fewer than are
-        // ringing drops the OLDEST), ages written (the shader never sees a clock)
+        // strikes: live rows compacted at the front, loudest first (a tier that draws fewer than
+        // are ringing leaves out the FAINTEST, all but rung out), ages written (the shader never
+        // sees a clock)
+        const light = this._strikeLight;
+        for (let i = 0; i < STRIKES; i++) {
+            const age = time - this.strikes[i].birth;
+            light[i] = age >= 0 ? this.strikeLight(this.strikes[i], time) : 0;
+        }
         let live = 0;
         const cap = Math.min(STRIKES, this.tier.strikes);
         const sRows = u.tables.strikes;
-        for (let n = 0; n < STRIKES && live < cap; n++) {
-            const s = this.strikes[(((this.strikeCursor - 1 - n) % STRIKES) + STRIKES) % STRIKES];
-            const age = time - s.birth;
-            if (s.strength <= 0 || age < 0 || age > TIMING.strike) continue;
+        const dim = 1 - this.sink * 0.7;
+        while (live < cap) {
+            let best = -1;
+            for (let i = 0; i < STRIKES; i++) {
+                if (!(light[i] > 0)) continue;
+                const louder = best < 0 || light[i] > light[best]
+                    || (light[i] === light[best] && this.strikes[i].seq > this.strikes[best].seq);
+                if (louder) best = i;
+            }
+            if (best < 0) break;
+            light[best] = 0;
+            const s = this.strikes[best];
             const j = live * STRIKE_ROWS;
-            const dim = 1 - this.sink * 0.7;
-            sRows[j].set(s.x, s.y, s.z, age);
+            sRows[j].set(s.x, s.y, s.z, time - s.birth);
             sRows[j + 1].set(s.rgb[0], s.rgb[1], s.rgb[2], s.strength * dim);
             sRows[j + 2].set(s.wavelength, s.speed, s.hard, 0);
             live += 1;
@@ -848,7 +1178,7 @@ export class KaleidosonicWorld {
             const age = time - h.birth;
             if (h.strength <= 0 || age < 0 || age > TIMING.harmonic) continue;
             const j = hLive * HARMONIC_ROWS;
-            const fade = Math.exp(-age / 1.1) * smooth(0, 0.08, age);
+            const fade = Math.exp(-age / HARMONIC_FADE) * smooth(0, 0.08, age);
             hRows[j].set(0.15 + age * 1.9, age, h.mode, h.strength * fade);
             hRows[j + 1].set(h.rgb[0], h.rgb[1], h.rgb[2], 0);
             hLive += 1;
@@ -861,17 +1191,21 @@ export class KaleidosonicWorld {
         const mood = MOODS[from];
         const moodB = MOODS[to];
         const post = this._post;
-        post.exposure = lerp(mood.exposure, moodB.exposure, mix) * (1 - this.sink * 0.45);
-        post.bloomBoost = Math.min(1.2, this.resonance * 0.45 + this.trance * 0.35);
+        // An iris: it closes a little as play heats (the core, the beams and the veins add light),
+        // so the neon stays saturated and the dark between the halls stays dark.
+        post.exposure = lerp(mood.exposure, moodB.exposure, mix) * (1 - this.sink * 0.45)
+            * (1 - 0.07 * warm - 0.08 * fever);
+        post.bloomBoost = Math.min(1.2, aired * 0.45 + this.trance * 0.35 + glow * 0.1);
         const diving = this.diveProgress * (1 - this.diveProgress);
-        post.fringe = Math.min(3, this.resonance * 0.7 + diving * 8 + this.trance * 0.4);
-        post.flash = this.flash;
+        // every event's punch gives the fringe a kick, riding on a floor under rapid locks
+        post.fringe = Math.min(3, aired * 0.7 + diving * 8 + this.trance * 0.4 + punch * 0.4);
+        post.flash = flash;
         const hc = mood.heart;
         const mx = Math.max(hc[0], hc[1], hc[2]);
         post.flashColour[0] = hc[0] / mx;
         post.flashColour[1] = hc[1] / mx;
         post.flashColour[2] = hc[2] / mx;
-        post.saturation = 1.1 + this.trance * 0.16;
+        post.saturation = 1.1 + this.trance * 0.16 + 0.05 * warm + 0.06 * fever;
     }
 
     /** The newest live strike and harmonic, for the jewels' sympathetic ringing. */
@@ -937,6 +1271,9 @@ export class KaleidosonicWorld {
             resonance: this.resonance,
             mandala: this.mandala,
             sink: this.sink,
+            surge: {
+                punch: this.heat.punch, level: this.heat.level, fever: this.heat.fever, stage: this.heat.stage,
+            },
             counts: { ...this.counts },
             reducedMotion: this.reducedMotion,
         };
@@ -947,6 +1284,9 @@ export class KaleidosonicWorld {
             wheel: this.wheel.exportState(),
             refoldIndex: this.refoldIndex,
             shape: this.sSpring.x,
+            // where the spring is heading, and a chain's climb (it carries on from there)
+            refoldTarget: this.refoldTarget,
+            climb: { links: this.climbLinks, base: this.climbBase, far: this.climbFar },
             combo: this.combo,
             peak: this.peak,
             b2b: this.b2b,
@@ -967,6 +1307,13 @@ export class KaleidosonicWorld {
         this.wheel.importState(state.wheel);
         this.refoldIndex = Math.max(0, Math.round(Number(state.refoldIndex) || 0));
         if (Number.isFinite(state.shape)) this.sSpring.x = clamp(state.shape, TEMPLE.sMin, TEMPLE.sMax);
+        this.refoldTarget = Number.isFinite(state.refoldTarget)
+            ? clamp(state.refoldTarget, TEMPLE.sMin, TEMPLE.sMax)
+            : REFOLDS[this.refoldIndex % REFOLDS.length];
+        const climb = state.climb || {};
+        this.climbLinks = clamp(Number(climb.links) || 0, 0, 64);
+        this.climbBase = Number.isFinite(climb.base) ? clamp(climb.base, CLIMB.lo, CLIMB.hi) : this.refoldTarget;
+        this.climbFar = Number.isFinite(climb.far) ? clamp(climb.far, CLIMB.lo, CLIMB.hi) : this.refoldTarget;
         this.combo = Math.max(0, Math.round(Number(state.combo) || 0));
         this.peak = Math.max(this.combo, Math.round(Number(state.peak) || 0));
         this.b2b = clamp(Math.round(Number(state.b2b) || 0), 0, 4);
