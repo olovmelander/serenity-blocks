@@ -69,7 +69,7 @@ import {
     cancelOdysseyEntryPresence, createOdysseyEntryPresence, runOdysseyEntryReadyCue, restartOdysseyLevelInPlace,
     returnToOdysseyWorld, isOdysseyScenicJourney, isOdysseyWorldInterlude, noticeOdysseyEntryAbort,
 } from '../../ui/odyssey/odyssey-journey-flow.js';
-import { completeOdysseyLevel } from './odyssey-completion.js';
+import { completeOdysseyLevel, deferFinishPastCascade, settleOdysseyLevelEnd } from './odyssey-completion.js';
 import {
     applyOdysseyBoardAudioPolicy, captureOdysseyBoardTrack, releaseOdysseyLevelMusic, releaseOdysseyBoardMusic,
 } from './odyssey-audio-policy.js';
@@ -482,6 +482,9 @@ export class OdysseyMode extends BaseGameMode {
         if (ownsDrivers) {
             stopOdysseyTowerLook(this);
             this._stopFixedTickSession();
+            // A showcase lap's banner and Finish keys leave with the attempt (Retry used to keep them).
+            this._hideGoalCompleteOverlay();
+            this._removeVictoryLapInputs();
             this._restoreInputs();
             this._disposeCharmInput?.();
             this._disposeCharmInput = null;
@@ -1916,7 +1919,7 @@ export class OdysseyMode extends BaseGameMode {
      * @param {Object} results - Level results
      */
     completeLevel(results) {
-        return completeOdysseyLevel(this, results);
+        return settleOdysseyLevelEnd(this, completeOdysseyLevel(this, results));
     }
 
     _celebrateGoalReached(session) {
@@ -1936,7 +1939,11 @@ export class OdysseyMode extends BaseGameMode {
      * Fail the current level
      * @param {string} reason - Failure reason
      */
-    async failLevel(reason = 'top-out') {
+    failLevel(reason = 'top-out') {
+        return settleOdysseyLevelEnd(this, this._failLevel(reason));
+    }
+
+    async _failLevel(reason) {
         // Prevent multiple completions/failures
         const session = this._activeLevelSession;
         if (this.levelCompleting || !this._isLevelSessionActive(session)) return;
@@ -2475,23 +2482,15 @@ export class OdysseyMode extends BaseGameMode {
     _finishVictoryLap() {
         const session = this._activeLevelSession;
         if (!this._isLevelSessionActive(session) || !session.gameState.victoryLapActive) return;
-
+        if (deferFinishPastCascade(this, session)) return;
         console.log('[Odyssey] Victory lap finished, completing level...');
         session.gameState.victoryLapActive = false;
-
-        // Hide overlay
         this._hideGoalCompleteOverlay();
-
-        // Remove victory lap input handler
         this._removeVictoryLapInputs();
-
-        // Emit event
         eventBus.emit(EVENTS.ODYSSEY_VICTORY_LAP_END, {
             levelId: session.levelId,
             metrics: session.hybridEngine.getMetrics(),
         });
-
-        // Complete the level with final metrics
         this.completeLevel({});
     }
 

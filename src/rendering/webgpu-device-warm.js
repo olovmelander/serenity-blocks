@@ -87,6 +87,30 @@ export function warmWebGpuDeviceMs() {
     return warmed?.ms ?? null;
 }
 
+/**
+ * Let go of a disposed renderer that ran on the warm device. three hooks every renderer to its
+ * device's `lost` promise (WebGPUBackend.init: `device.lost.then(() => renderer.onDeviceLost())`)
+ * and can never unhook it. The warm device is never destroyed, so its promise never settles, and
+ * the callback kept every disposed renderer alive with its canvas context (swap chain) and render
+ * targets: about 70 MB of VRAM per Odyssey visit, measured. Once the renderer is disposed, its
+ * canvas is unconfigured and every reference it holds is cut, so the callback keeps only a husk.
+ * @param {object | null | undefined} renderer a disposed WebGPURenderer
+ */
+export function releaseDisposedRenderer(renderer) {
+    if (!renderer) return;
+    try {
+        renderer.backend?.context?.unconfigure?.();
+    } catch { /* already unconfigured or never configured */ }
+    for (const key of Object.keys(renderer)) {
+        try {
+            renderer[key] = null;
+        } catch { /* a read-only field: leave it */ }
+    }
+    // The device can still be lost later, or raise an error: answer with nothing.
+    renderer.onDeviceLost = () => {};
+    renderer.onError = () => {};
+}
+
 /** Test hook: forget the cache (does not destroy the device). */
 export function resetWarmWebGpuDeviceForTests() {
     warmed = null;

@@ -62,6 +62,7 @@ import {
 } from 'three/tsl';
 import { fbm3, hash21, ridged3 } from './shared/odyssey-tsl-noise.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
+import { keepOdysseyTexture } from './shared/odyssey-resident-textures.js';
 import { billboardLocal, makeQuadInstancedGeometry } from './shared/odyssey-tsl-billboard.js';
 
 const TAU = Math.PI * 2;
@@ -150,7 +151,7 @@ function getJourneyPaletteTexture() {
     tex.wrapT = THREE.ClampToEdgeWrapping;
     tex.generateMipmaps = false;
     tex.needsUpdate = true;
-    _journeyPalette = tex;
+    _journeyPalette = keepOdysseyTexture(tex);
     return tex;
 }
 

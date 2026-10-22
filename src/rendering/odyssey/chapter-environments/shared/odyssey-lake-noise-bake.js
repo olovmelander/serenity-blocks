@@ -7,6 +7,7 @@
 
 import * as THREE from 'three/webgpu';
 import { texture3D, vec3 } from 'three/tsl';
+import { keepOdysseyTexture } from './odyssey-resident-textures.js';
 import {
     LAKE_BAKE_K, LAKE_BAKE_RES, bakeLakeNoise, lakeNoisePeriod,
 } from './odyssey-lake-noise-math.js';
@@ -109,7 +110,7 @@ export function getLakeNoiseTexture(options = {}) {
     const k = options.k ?? LAKE_BAKE_K;
     const tex = buildLakeNoise3D(new Uint16Array(res * res * res), res, lakeNoisePeriod(k));
     tex.userData.ready = false;
-    _lakeTexture = tex;
+    _lakeTexture = keepOdysseyTexture(tex);
     startLakeNoiseBake({ res, k }).then((result) => {
         if (_lakeTexture !== tex) return; // disposed/reset meanwhile
         tex.image.data.set(result.data);
