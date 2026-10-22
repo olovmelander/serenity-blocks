@@ -14,6 +14,13 @@ const TAU = Math.PI * 2;
 // At most one spark's ring per cooldown: the lake's pool is small and belongs to the game.
 const MAX_TOUCHES = 1;
 const TOUCH_COOLDOWN = 0.22;
+/** A burning spark may be relit elsewhere only in its last moments (seconds of life left). */
+const RECYCLE_LIFE = 0.4;
+/** How far a full reserve is searched for a dark spark before the new one is refused. */
+const SEARCH_LIMIT = 96;
+/** Sparks alight before a crowd dims them, and how fast it does (crowd = 1/sqrt(1 + over/scale)). */
+const CROWD_EASY = 220;
+const CROWD_SCALE = 320;
 
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
 
@@ -65,6 +72,12 @@ export class GoldenForestSparkSim {
 
     reset() {
         this.time = 0;
+        // How hot play runs (step()'s env): the ambient fireflies wake, fall into step and lift.
+        this.wake = 0;
+        this.sync = 0;
+        this.lift = 0;
+        this.syncPhase = 0;
+        this.crowd = 1;
         this.cursor = this.ambient;
         this.touchCount = 0;
         this.touchCooldown = 0;
@@ -83,7 +96,11 @@ export class GoldenForestSparkSim {
         this.write(0, 0);
     }
 
-    /** Light one reserve spark; when none is dark, the one nearest its end is taken. */
+    /**
+     * Light one reserve spark. When none is dark, the one nearest its end is taken, but only if it
+     * was all but out (RECYCLE_LIFE): a spark still burning is never snuffed to light another
+     * elsewhere (it would blink out mid-flight), so a full reserve refuses the new one (-1).
+     */
     spawn(x, y, z, vx, vy, vz, life = 2.4, heat = 0, size = 0.085) {
         if (![x, y, z, vx, vy, vz].every(Number.isFinite)) return -1;
         let selected = -1;
@@ -92,14 +109,21 @@ export class GoldenForestSparkSim {
             const index = this.ambient + ((this.cursor - this.ambient + step) % this.reserve);
             if (this.life[index] <= 0) {
                 selected = index;
+                least = 0;
                 break;
             }
             if (this.life[index] < least) {
                 least = this.life[index];
                 selected = index;
             }
-            // A full pool is searched only a little way: the oldest of the next few will do.
-            if (step >= 24 && selected >= 0) break;
+            // A full pool is searched only a little way: the oldest of the next few will do if it
+            // is all but out; otherwise a little further for a dark one.
+            if ((step >= 24 && least <= RECYCLE_LIFE) || step >= SEARCH_LIMIT) break;
+        }
+        if (least > RECYCLE_LIFE) {
+            // Search on from further along next time, so a full pool is not combed in one place.
+            this.cursor = this.ambient + ((this.cursor - this.ambient + SEARCH_LIMIT) % this.reserve);
+            return -1;
         }
         this.cursor = this.ambient + ((selected - this.ambient + 1) % this.reserve);
         this.x[selected] = x;
@@ -182,12 +206,21 @@ export class GoldenForestSparkSim {
         const settled = env.settled === true;
         const t = this.time;
         const pull = this.pull || (this.pull = [0, 0, 0]);
+        const unit = (value) => (Number.isFinite(value) ? clamp(value, 0, 1) : 0);
+        this.wake = unit(env.wake);
+        this.sync = unit(env.sync);
+        // The fever's lift eases, so the fireflies climb and settle rather than jump.
+        const lift = Number.isFinite(env.lift) ? clamp(env.lift, 0, 3) : 0;
+        this.lift += (lift - this.lift) * (1 - Math.exp(-step * 1.5));
+        // One shared signal the fireflies fall in with as play runs hot: a slow pulse that
+        // quickens with the heat (2.6 s at rest, 1.4 s at full).
+        this.syncPhase = (this.syncPhase + step / (2.6 - 1.2 * this.wake)) % 1;
         if (step > 0) {
             // Ambient fireflies: `x,y,z` hold their displacement from the wander path.
             for (let i = 0; i < this.ambient; i += 1) {
                 const phase = this.seed[i] * TAU;
                 const hx = this.home[i * 3] + Math.sin(t * 0.31 + phase) * 1.3 + Math.sin(t * 0.83 + phase * 3) * 0.3;
-                const hy = this.home[i * 3 + 1] + Math.sin(t * 0.47 + phase * 1.9) * 0.55;
+                const hy = this.home[i * 3 + 1] + Math.sin(t * 0.47 + phase * 1.9) * 0.55 + this.lift;
                 const hz = this.home[i * 3 + 2] + Math.cos(t * 0.27 + phase * 1.3) * 1.3;
                 this.force(fields, i, hx + this.x[i], hy + this.y[i], hz + this.z[i], 0.4, pull);
                 this.vx[i] += (pull[0] + windX * gust * 0.8 - this.x[i] * 1.1 - this.vx[i] * 1.5) * step;
@@ -198,8 +231,10 @@ export class GoldenForestSparkSim {
                 this.z[i] += this.vz[i] * step;
             }
             // Sparks: free flight under drag, a little lift, a wandering breeze and the fields.
+            let live = 0;
             for (let i = this.ambient; i < this.count; i += 1) {
                 if (this.life[i] <= 0) continue;
+                live += 1;
                 const phase = this.seed[i] * 40;
                 this.force(fields, i, this.x[i], this.y[i], this.z[i], 1, pull);
                 const sink = settled ? -2.2 : 0.7;
@@ -233,6 +268,11 @@ export class GoldenForestSparkSim {
                     }
                 }
             }
+            // A crowded sky dims each spark a little (an iris for the fireflies): a few hundred
+            // burn as they always did, a full reserve gives more light, not a white-out. Eased,
+            // so a clear's burst never dips the sparks already flying.
+            const target = 1 / Math.sqrt(1 + Math.max(0, live - CROWD_EASY) / CROWD_SCALE);
+            this.crowd += (target - this.crowd) * (1 - Math.exp(-step * 3));
         }
         this.write(
             clamp(Number.isFinite(env.glow) ? env.glow : 0, 0, 1),
@@ -244,7 +284,7 @@ export class GoldenForestSparkSim {
     write(glow, heat) {
         const t = this.time;
         const {
-            outPlace, outGlow, outVelocity,
+            outPlace, outGlow, outVelocity, wake, sync, syncPhase,
         } = this;
         for (let i = 0; i < this.ambient; i += 1) {
             const phase = this.seed[i] * TAU;
@@ -253,14 +293,22 @@ export class GoldenForestSparkSim {
                 + this.x[i];
             outPlace[o + 1] = Math.max(
                 0.06,
-                this.home[i * 3 + 1] + Math.sin(t * 0.47 + phase * 1.9) * 0.55 + this.y[i],
+                this.home[i * 3 + 1] + Math.sin(t * 0.47 + phase * 1.9) * 0.55 + this.y[i] + this.lift,
             );
             outPlace[o + 2] = this.home[i * 3 + 2] + Math.cos(t * 0.27 + phase * 1.3) * 1.3 + this.z[i];
             outPlace[o + 3] = this.size[i];
-            // A firefly's signal: a quick flash and a dimmer echo, on its own clock.
-            const beat = (t / (3.2 + this.seed[i] * 3.6) + this.seed[i] * 7) % 1;
-            const flash = Math.exp(-(((beat - 0.15) / 0.07) ** 2)) + 0.3 * Math.exp(-(((beat - 0.4) / 0.1) ** 2));
-            outGlow[o] = 0.1 + flash * 0.95 + glow * 0.75;
+            // A firefly's signal: a quick flash and a dimmer echo, on its own clock; as play runs
+            // hot they fall in with the shared one (a ripple of near-unison across the reeds), and
+            // the hotter it runs the brighter they burn between flashes.
+            const own = (t / (3.2 + this.seed[i] * 3.6) + this.seed[i] * 7) % 1;
+            let flash = Math.exp(-(((own - 0.15) / 0.07) ** 2)) + 0.3 * Math.exp(-(((own - 0.4) / 0.1) ** 2));
+            if (sync > 0) {
+                const shared = (syncPhase + this.seed[i] * 0.08) % 1;
+                const together = Math.exp(-(((shared - 0.15) / 0.07) ** 2))
+                    + 0.3 * Math.exp(-(((shared - 0.4) / 0.1) ** 2));
+                flash += (together - flash) * sync;
+            }
+            outGlow[o] = 0.1 + wake * 0.14 + flash * (0.95 + wake * 0.3) + glow * 0.75;
             outGlow[o + 1] = glow * 0.25;
             outGlow[o + 2] = Math.min(1, Math.hypot(this.vx[i], this.vy[i], this.vz[i]) * 0.1);
             outGlow[o + 3] = this.seed[i];
@@ -282,7 +330,7 @@ export class GoldenForestSparkSim {
             outPlace[o + 1] = this.y[i];
             outPlace[o + 2] = this.z[i];
             outPlace[o + 3] = this.size[i];
-            outGlow[o] = Math.min(1, age / 0.07) * (life / this.span[i]) ** 0.6 * flicker * 1.25;
+            outGlow[o] = Math.min(1, age / 0.07) * (life / this.span[i]) ** 0.6 * flicker * 1.25 * this.crowd;
             outGlow[o + 1] = Math.max(this.heat[i], heat);
             outGlow[o + 2] = Math.min(1, Math.hypot(this.vx[i], this.vy[i], this.vz[i]) * 0.13);
             outGlow[o + 3] = this.seed[i];

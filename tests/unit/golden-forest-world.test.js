@@ -1246,8 +1246,9 @@ describe('Golden Forest world in play', () => {
         reactions.onCombo(12);
         const frame = reactions.update(STEP);
         // A full frame: every envelope, a front, rings, emitters, a river.
-        expect(Object.keys(frame).sort()).toEqual(['emitters', 'epoch', 'flock', 'front', 'glow', 'gust', 'heat',
-            'ribbons', 'rings', 'settled', 'shafts', 'shimmer', 'streak', 'vortex', 'warmth']);
+        expect(Object.keys(frame).sort()).toEqual(['crown', 'emitters', 'epoch', 'fever', 'flock', 'front', 'fronts',
+            'glow', 'gold', 'gust', 'heat', 'level', 'punch', 'ribbons', 'rings', 'settled', 'shafts', 'shimmer',
+            'stage', 'streak', 'vortex', 'warmth']);
         expect(() => world.update(reactions.time, STEP, frame)).not.toThrow();
         // The four rings the frame asked for are on the water, at age zero plus this frame.
         expect(ripples.active()).toBe(4);
@@ -1258,11 +1259,21 @@ describe('Golden Forest world in play', () => {
         }
         expect(sim.time).toBeCloseTo(STEP, 9);
         expect(sim.counts().live).toBeGreaterThan(0);
-        expect(world.light.uGust.value).toBeGreaterThan(1);
-        expect(world.light.uWarmth.value).toBeCloseTo(frame.warmth, 12);
-        expect(world.light.uGlow.value).toBeCloseTo(frame.glow, 12);
-        expect(world.lake.uShimmer.value).toBeCloseTo(frame.shimmer, 12);
-        expect(world.birds.uStartle.value).toBeCloseTo(frame.flock, 12);
+        // Nothing that moves the scene jumps on the first frame: the gust leans the forest in, the
+        // warmth of the sky and the startled flock ease in (GoldenForestWorld.wear).
+        expect(world.light.uGust.value).toBeGreaterThan(0);
+        expect(world.light.uGust.value).toBeLessThan(frame.gust * 1.6 * 0.1);
+        expect(world.light.uWarmth.value).toBeGreaterThan(0);
+        expect(world.light.uWarmth.value).toBeLessThan(frame.warmth * 0.3);
+        expect(world.birds.uStartle.value).toBeGreaterThan(0);
+        expect(world.birds.uStartle.value).toBeLessThan(frame.flock * 0.1);
+        // Light that does not move anything answers at once (plus a little for how hot play
+        // runs, which has hardly begun to climb).
+        expect(frame.level).toBeLessThan(0.05);
+        expect(world.light.uGlow.value).toBeGreaterThanOrEqual(frame.glow);
+        expect(world.light.uGlow.value).toBeLessThanOrEqual(frame.glow + frame.level * 0.2 + 1e-9);
+        expect(world.lake.uShimmer.value).toBeGreaterThanOrEqual(frame.shimmer);
+        expect(world.lake.uShimmer.value).toBeLessThanOrEqual(frame.shimmer + frame.level * 0.2 + 1e-9);
         // The river has not built yet on its first frame.
         expect(world.ribbons.uLevel.value).toBe(frame.ribbons);
 
@@ -1279,6 +1290,9 @@ describe('Golden Forest world in play', () => {
         expect(world.ribbons.group.children.every((ribbon) => ribbon.visible)).toBe(true);
         expect(world.light.uFront.value.y).toBeGreaterThan(0);
         expect(world.director.fields.map((field) => field.kind)).toContain('vortex');
+        // By now the gust has leaned the forest right over and the flock is up.
+        expect(world.light.uGust.value).toBeGreaterThan(1);
+        expect(world.birds.uStartle.value).toBeGreaterThan(0.5);
         // The boat rides the water rather than sitting still on it.
         const { boat } = world.shore;
         const heel = boat.rotation.z;
@@ -1316,13 +1330,65 @@ describe('Golden Forest world in play', () => {
         expect(world.ribbons.uHeat.value).toBe(0);
     }, SLOW);
 
+    it('spends how hot play runs on the wind, the colour and the air, calmed under Reduce motion', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const resting = {
+            wind: light.uWind.value, sunG: light.uSunColor.value.g, haze: light.uHaze.value,
+        };
+        const crossing = { position: 0, direction: 1, strength: 0.8 };
+        const hot = {
+            level: 1, fever: 1, gust: 0.6, front: crossing, fronts: [crossing],
+        };
+        const hold = (frame, seconds = 3) => {
+            for (let step = 0; step < seconds * 60; step++) world.update(1 + step * STEP, STEP, frame);
+        };
+        hold(hot);
+        // The evening wind rises, the golden hour deepens toward sunset and the air clears.
+        expect(light.uWind.value).toBeGreaterThan(resting.wind + 0.4);
+        expect(light.uSunColor.value.g).toBeLessThan(resting.sunG - 0.4);
+        expect(light.uHaze.value).toBeLessThan(resting.haze * 0.75);
+        expect(light.uClearAir.value).toBeCloseTo(1, 9);
+        // A fever keeps the flock up even with no startle of its own.
+        expect(world.birds.uStartle.value).toBeCloseTo(0.45, 3);
+        const full = {
+            gust: light.uGust.value,
+            front: light.uFront.value.y,
+            wind: light.uWind.value - resting.wind,
+            startle: world.birds.uStartle.value,
+        };
+        expect(full.front).toBeGreaterThan(1);
+        // Reduce motion: the wind, the fronts and the startled flock keep only a share of their motion.
+        world.setMotion(0.35);
+        hold(hot);
+        expect(light.uGust.value).toBeCloseTo(full.gust * 0.35, 3);
+        expect(light.uFront.value.y).toBeCloseTo(full.front * 0.35, 6);
+        expect(light.uWind.value - resting.wind).toBeCloseTo(full.wind * 0.35, 6);
+        expect(world.birds.uStartle.value).toBeCloseTo(full.startle * 0.35, 3);
+        // The colour is light, not motion: it deepens all the same.
+        expect(light.uSunColor.value.g).toBeLessThan(resting.sunG - 0.4);
+        // And when play cools the lake is the lake at rest again.
+        world.setMotion(1);
+        hold({}, 4);
+        expect(light.uWind.value).toBeCloseTo(resting.wind, 9);
+        expect(light.uSunColor.value.g).toBeCloseTo(resting.sunG, 6);
+        expect(light.uHaze.value).toBeCloseTo(resting.haze, 9);
+        expect(light.uFront.value.y).toBe(0);
+        expect(light.uGust.value).toBeCloseTo(0, 4);
+    }, SLOW);
+
     it('keeps invalid time inputs out of the world clock and bounds scene excitement', async () => {
         const { world } = await buildWorld('Minimal');
         const { light, sparks } = world;
-        world.update(4, 0, { gust: 1 });
+        // What moves the scene follows its envelope over a moment (GoldenForestWorld.wear): hold a
+        // frame for a few seconds and read where it settles.
+        const settle = (frame) => {
+            for (let step = 0; step < 240; step++) world.update(4, STEP, frame);
+        };
+        settle({ gust: 1 });
         const fullGust = light.uGust.value;
-        expect(fullGust).toBeGreaterThan(0);
-        world.update(4, 0, {
+        expect(fullGust).toBeCloseTo(1.6, 3);
+        settle({
             gust: 2,
             warmth: -5,
             shafts: Infinity,
@@ -1334,21 +1400,26 @@ describe('Golden Forest world in play', () => {
             ribbons: NaN,
         });
         expect(light.uTime.value).toBe(4);
-        expect(light.uGust.value).toBe(fullGust);
-        expect(light.uWarmth.value).toBe(0);
+        expect(light.uGust.value).toBeCloseTo(fullGust, 6);
+        expect(light.uGust.value).toBeLessThanOrEqual(1.6);
+        expect(light.uWarmth.value).toBeCloseTo(0, 6);
         expect(light.uGlow.value).toBe(0);
         expect(world.lake.uShimmer.value).toBe(1);
-        expect(world.birds.uStartle.value).toBe(0);
+        expect(world.birds.uStartle.value).toBeCloseTo(0, 6);
         expect(world.ribbons.uLevel.value).toBe(0);
         expect(world.ribbons.uHeat.value).toBe(1);
-        world.update(4, 0, {
+        settle({
             warmth: 0.5, glow: 0.25, shimmer: 0.4, flock: 0.7,
         });
-        expect(light.uGust.value).toBe(0);
-        expect(light.uWarmth.value).toBe(0.5);
+        expect(light.uGust.value).toBeCloseTo(0, 4);
+        expect(light.uWarmth.value).toBeCloseTo(0.5, 6);
         expect(light.uGlow.value).toBe(0.25);
         expect(world.lake.uShimmer.value).toBe(0.4);
-        expect(world.birds.uStartle.value).toBe(0.7);
+        expect(world.birds.uStartle.value).toBeCloseTo(0.7, 3);
+        // A frozen frame moves nothing that has inertia.
+        world.update(4, 0, { gust: 1, flock: 0 });
+        expect(light.uGust.value).toBeCloseTo(0, 4);
+        expect(world.birds.uStartle.value).toBeCloseTo(0.7, 3);
         for (const time of [NaN, Infinity, -Infinity, undefined, null, '9']) {
             world.update(time, 0);
             // The boat, like the light, stays at the last moment that made sense.
