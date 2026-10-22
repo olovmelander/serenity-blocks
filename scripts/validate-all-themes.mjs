@@ -24,10 +24,15 @@ import {
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { THEME_REGISTRY } from '../src/themes/theme-registry.js';
-// Lazy electron import: the npm shim throws when the binary is absent
-// (npm ci --ignore-scripts), and the unit tests import this module only for
-// its pure argument/matrix helpers. Spawning workers still requires the binary.
-const electronPath = await import('electron').then((m) => m.default ?? m).catch(() => null);
+// Electron is resolved when a worker is first spawned, never at import: the unit tests import
+// this module only for its pure argument/matrix helpers, and from Electron 42 resolving the
+// package downloads the binary (about 100 MB) when it is absent, as after
+// `npm ci --ignore-scripts` in CI.
+let electronPathPromise = null;
+const resolveElectronPath = () => {
+    electronPathPromise ??= import('electron').then((m) => m.default ?? m).catch(() => null);
+    return electronPathPromise;
+};
 
 export const THEME_VALIDATION_CONCURRENCY = 1;
 export const DEFAULT_THEME_VALIDATION_PORT = 4174;
@@ -539,8 +544,9 @@ async function runThemeWorker(config, entry, baseUrl, runId) {
     };
     delete env.ELECTRON_RUN_AS_NODE;
 
+    const electronPath = await resolveElectronPath();
     if (!electronPath) {
-        throw new Error('Electron binary missing — run `node node_modules/electron/install.js` first.');
+        throw new Error('Electron binary missing — run `npx install-electron --no` first.');
     }
     const child = spawn(electronPath, workerArgs, {
         cwd: ROOT,
