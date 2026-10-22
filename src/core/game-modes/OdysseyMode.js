@@ -17,7 +17,7 @@ import { BoardJuice } from '../../rendering/phaser/board-juice.js';
 import { spawnPiece, fillBag } from '../game.js';
 import {
     INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
-    projectInfinityPresentationCamera,
+    resolveInfinityFollowCameraRow,
     synchronizeInfinitySimulationCamera,
 } from '../infinity-spawn-policy.js';
 import {
@@ -130,6 +130,11 @@ import { openParallelShaderWindow } from '../../rendering/phaser/phaser-parallel
 const ENTRY_HOLD_MARGIN_MS = 250;
 // 6 s full-ready waits before the safe backdrop lifts regardless (_scheduleThemeFullReadySettlement).
 const THEME_FULL_READY_ATTEMPTS = 10;
+// The tall well's follow glide (_updateCameraPosition): the scene's per-frame lerp, and the quick
+// return home once the target leaps more than this many rows up (Infinity's snap to the top).
+const WELL_CAMERA_LERP = 0.08;
+const WELL_CAMERA_RETURN_LERP = 0.25;
+const WELL_CAMERA_RETURN_ROWS = 3;
 
 /**
  * OdysseyMode - Narrative-driven progression through themed levels
@@ -201,10 +206,9 @@ export class OdysseyMode extends BaseGameMode {
         // Any well taller than the visible twenty rows scrolls, so it gets the minimap.
         this.MINIMAP_ROW_THRESHOLD = ODYSSEY_VISIBLE_ROWS + 1;
 
-        // Tall board camera system (ported from InfinityMode)
+        // Tall board camera system (Infinity's follow rule, see _updateCameraPosition)
         this.visibleRows = 20;
         this.boardScene = null;
-        this._wellCameraTarget = null; // the follow glide in flight (_updateCameraPosition)
 
         // Looking around a tall well (the ascent, ui/odyssey/odyssey-tower-look.js).
         this._towerLook = null;
@@ -465,9 +469,8 @@ export class OdysseyMode extends BaseGameMode {
 
     _retireLevelSession(session = this._activeLevelSession) {
         const retirementGeneration = ++this._levelSessionGeneration;
-        // A goal flourish and a camera glide still playing belong to the attempt that is leaving.
+        // A goal flourish still playing belongs to the attempt that is leaving.
         clearOdysseyGoalFlourish();
-        this._wellCameraTarget = null;
         if (!session) {
             stopOdysseyTowerLook(this);
             this._stopFixedTickSession();
@@ -2089,21 +2092,20 @@ export class OdysseyMode extends BaseGameMode {
             const prefersReducedMotion = prefersOdysseyReducedMotion(this, settings);
             const isInfinityBased = mechanics.baseMode === 'infinity'
                 || mechanics.baseMode === 'hybrid';
-            const startingRows = Math.max(0, Number(mechanics.board.startingRows) || 0);
             gameState = hybridEngine.createGameState({
                 inputHandling: settings,
                 hitStopEnabled: !prefersReducedMotion,
                 rngSeed: seed === undefined ? generateSessionSeed() : seed,
                 ...(isInfinityBased ? {
                     infinitySpawnPolicy: INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
-                    // Include authored garbage below the presentation viewport.
-                    // This preserves legacy's first spawn anchor without allowing
-                    // Phaser camera interpolation to own simulation state.
-                    infinityVisibleRows: this.visibleRows + startingRows,
+                    // The window the player sees: spawns enter just above it, and the
+                    // camera frames it (resolveInfinityFollowCameraRow).
+                    infinityVisibleRows: this.visibleRows,
                 } : {}),
             });
-            // Publish the virtual window's deterministic initial bottom anchor.
-            synchronizeInfinitySimulationCamera(gameState, gameState.board.length);
+            // Publish the deterministic initial window: over the seeded garbage, not the empty
+            // board's floor.
+            synchronizeInfinitySimulationCamera(gameState);
         } else {
             // Preserve the exact legacy HybridEngine call contract while flag-off.
             gameState = hybridEngine.createGameState();
@@ -4180,55 +4182,29 @@ export class OdysseyMode extends BaseGameMode {
     }
 
     /**
-     * Update camera position for tall boards - follows piece through viewport
-     * Ported from InfinityMode for proper tall board camera tracking
+     * THE WELL'S CAMERA IS THE SPAWN'S CAMERA (2026-10-22). A tall well's view follows
+     * resolveInfinityFollowCameraRow every frame: the window the next piece is anchored to (the
+     * tower's top at 20 % of the view, spawns entering two rows above it), lowered only while a
+     * falling piece's bottom would pass 80 %. It used to move on thresholds of its own (follow a
+     * piece past 60 % to 30 %, follow the tower only into the top 40 %), so the view and the spawn
+     * anchor drifted apart: in orb 7 every piece spawned ten rows above the view and fell unseen
+     * for eight seconds. Presentation only: under the board-anchor policy nothing here writes the
+     * simulation.
      * @private
      */
     _updateCameraPosition() {
-        if (!this.boardScene?.cameraSettings) return;
-        if (this.boardScene.cameraSettings.manualControl) return;
-
-        const { cameraSettings } = this.boardScene;
+        const scene = this.boardScene;
+        const cameraSettings = scene?.cameraSettings;
+        if (!cameraSettings || cameraSettings.manualControl || !this.gameState) return;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
-        const blockSize = this.boardScene.boardConfig?.blockSize || 30;
-
-        // Get current camera position
-        const camera = this.boardScene.cameras?.main;
-        if (!camera) return;
-
-        const currentCameraRow = Math.floor(camera.scrollY / blockSize);
-
-        // CRITICAL: Update gameState.cameraRow for spawn position
-        projectInfinityPresentationCamera(this.gameState, currentCameraRow);
-
-        // ONE target per frame, kept until reached (audit 2026-10-18). The piece follow and the
-        // tower follow each called the lerp, so a frame where both fired stepped toward two
-        // targets; and each was re-checked against the moving camera, so a glide stopped dead
-        // the moment its threshold flipped. A falling piece wins, as in Infinity.
-        let target = null;
-        const { currentPiece } = this.gameState;
-        if (currentPiece) {
-            const pieceBottomRow = currentPiece.y + (currentPiece.shape?.length || 0);
-            // When piece goes below 60% of viewport, follow it
-            if (pieceBottomRow > currentCameraRow + Math.floor(visibleRows * 0.6)) {
-                const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
-                target = Math.min(maxCameraRow, pieceBottomRow - Math.floor(visibleRows * 0.3));
-            }
-        }
-        // Blocks building up high: follow upward
-        const highestBlockRow = this._findHighestBlockRow();
-        if (target === null && highestBlockRow < currentCameraRow + Math.floor(visibleRows * 0.4)) {
-            const upRow = Math.max(0, highestBlockRow - Math.floor(visibleRows * 0.3));
-            if (upRow < currentCameraRow) target = upRow;
-        }
-        if (target !== null) this._wellCameraTarget = target;
-        if (!Number.isFinite(this._wellCameraTarget)) return;
-        this.boardScene.updateCameraPosition(this._wellCameraTarget);
-        // Update gameState.cameraRow for spawn position
-        projectInfinityPresentationCamera(this.gameState, this._wellCameraTarget);
-        // Against the scene's CLAMPED target: a target past the well's floor is never reached.
-        const reached = cameraSettings.targetTopRow ?? this._wellCameraTarget;
-        if (Math.abs((cameraSettings.currentTopRow ?? reached) - reached) < 0.02) this._wellCameraTarget = null;
+        const target = resolveInfinityFollowCameraRow(this.gameState, visibleRows);
+        // Home at Infinity's quick pace after a deep soft drop locks (its snap to the top area):
+        // the target leaps several rows up while the next piece is already entering at the top.
+        const current = Number.isFinite(cameraSettings.currentTopRow) ? cameraSettings.currentTopRow : target;
+        cameraSettings.lerpSpeed = current - target > WELL_CAMERA_RETURN_ROWS
+            ? WELL_CAMERA_RETURN_LERP
+            : WELL_CAMERA_LERP;
+        scene.updateCameraPosition(target);
     }
 
     /**

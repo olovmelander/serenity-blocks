@@ -5,7 +5,11 @@ import { ensureCircleTexture } from './utils/index.js';
 import { getQualityConfig, normalizeQuality } from '../../utils/quality.js';
 import { performanceMonitor } from '../../utils/performance-monitor.js';
 import { getGhostLandingY } from '../../core/game.js';
-import { projectInfinityPresentationCamera } from '../../core/infinity-spawn-policy.js';
+import {
+    projectInfinityPresentationCamera,
+    resolveInfinityFollowCameraRow,
+    usesDeterministicInfinitySpawn,
+} from '../../core/infinity-spawn-policy.js';
 import { TetrominoStyleManager } from '../tetromino-style-manager.js';
 import { drawWellGhost, wellGarbageColor } from './well-board-style.js';
 
@@ -682,7 +686,14 @@ export function createBaseBoardScene(
                 // In a 1000-row grid: row 0 = TOP (goal), row 1000 = BOTTOM (starting point)
                 // Initial camera should show bottom 20 rows (rows 980-1000)
                 const STARTING_CAMERA_ROW = Math.max(0, totalRows - visibleRows);
-                const initialTopRow = STARTING_CAMERA_ROW;
+                // ...unless the well starts over seeded garbage (an Odyssey dig): a board-anchor
+                // well opens where its follow camera holds it, over the garbage's top, rather than
+                // on twenty rows of solid garbage gliding up into place. An empty well's target is
+                // its floor, so a fresh Infinity tower opens as before (a restored one opens on its
+                // top instead of gliding up from the floor).
+                const initialTopRow = usesDeterministicInfinitySpawn(this.gameState)
+                    ? resolveInfinityFollowCameraRow(this.gameState, visibleRows, null)
+                    : STARTING_CAMERA_ROW;
                 const centerY = initialTopRow * blockSize + visibleHeight / 2;
 
                 // Camera bounds encompass entire grid (will expand to 1000 rows)

@@ -101,7 +101,6 @@ export class GameplayHybridEngine {
         // Determine if using infinity mode features
         const isInfinityBased = mechanics.baseMode === 'infinity' || mechanics.baseMode === 'hybrid';
         const initialRows = (mechanics.board.rows || ROWS) + HIDDEN_ROWS;
-        const startingRows = resolveStartingRowCount(mechanics.board.startingRows, initialRows);
 
         // Keep authored Odyssey mechanics authoritative. This optional seam exists only
         // for deterministic clock/input policy; it is not a general override bag.
@@ -125,10 +124,14 @@ export class GameplayHybridEngine {
         const options = {
             ...(isInfinityBased ? {
                 // Pause exploration and camera interpolation must not move the
-                // spawn position. Include seeded garbage below the initial
-                // 20-row window to retain the authored first-piece anchor.
+                // spawn position. The window is the 20 rows the player sees, so a
+                // piece enters just above the view's top as in every other well.
+                // (It used to add the seeded garbage, which put the window's top —
+                // and every early spawn — that many rows above the view: orb 7's
+                // pieces fell ten rows unseen. Snapshots keep the value they ran
+                // with, so a recorded attempt replays as it was played.)
                 infinitySpawnPolicy: INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
-                infinityVisibleRows: ROWS + startingRows,
+                infinityVisibleRows: ROWS,
             } : {}),
             ...supplementalOptions,
             isInfinityMode: isInfinityBased,

@@ -15,8 +15,8 @@
  *   call it a pause; a menu opened over a look keeps its pause after the look ends, and a
  *   resume from elsewhere ends the look without resuming twice (Infinity's rules);
  * - home is where the follow camera held the well when the look began;
- * - after a game key ends the look the camera settles home here, because Odyssey's follow only
- *   moves on its thresholds (Infinity's re-targets every frame).
+ * - after a game key ends the look the camera settles home here at once (the follow, which
+ *   re-targets every frame as Infinity's does since 2026-10-22, would glide back at its own pace).
  */
 
 import { InfinityAscent } from '../infinity/ascent/infinity-ascent.js';

@@ -83,3 +83,65 @@ Meaningful regressions cover all three base modes through real cascading physics
 Browser evidence is recorded under ignored `artifacts/odyssey-orb-ui/` (initial gameplay/HUD pass) and `artifacts/odyssey-board-parity/` (final shared board/effects pass). Gameplay was prepared directly through the production mode, avoiding a full journey capture on the integrated GPU. The final parity pass used Phaser WebGL at Minimal quality, desktop 1440×900, phone portrait 390×844 and landscape 844×390. Its summary indexes 15 verified screenshots and 15 runtime probes. Captures check Standard/timed/tall orbs, a live bot, pause, match results and retry. The final pass additionally checks short landscape, real keyboard locks/clears, natural bot placement and queue advancement, both scenes' Hub cover, and removal of old knockout/win objects immediately after the production round barrier restarts play. Phone sizes are emulated viewports. Quad/cascade stacks are seeded fixtures with actual input, pooled piece identity and production physics. Match terminal captures use credited-knockout fixtures through the production barrier; they do not represent naturally played complete seven-frag matches. This validates gameplay UI and effect wiring; it makes no new claim about High-quality or chapter GPU performance or changes to world art.
 
 Bot strength rises through tiers 1–8. Subjective difficulty calibration still benefits from human play through the whole campaign; the tests establish the rules and progression rather than a claimed human win rate.
+
+## Tall wells: the camera is the spawn's camera (2026-10-22)
+
+Olov: *"the orb levels with infinity boards. The camera and spawning tetrominos, cascades and
+everything must be aligned better in the gameplay!"*
+
+**What was wrong, measured in game.** A probe sampled every 100 ms in the real orb: the falling
+piece's row, the view's top row and the stack's top. In Sunken Depths (orb 7: 28 rows, 8 of
+starting garbage) every piece spawned at row 2 while the view started at row 12. Pieces appeared
+**10 rows above the view** and, at the orb's 0.8 s a row, fell unseen for about eight seconds, with
+only the ghost on screen. Indra's Net (orb 55: 100 rows, 30 of garbage) spawned its first piece at
+row 52 with the view at row 84, 32 rows above. A standard orb spawns 2 rows above its view, and so
+does Infinity. Three framing rules disagreed:
+
+- **The spawn window** (the board-anchor policy) was `20 + startingRows` tall, so its top sat that
+  many rows above the 20-row view.
+- **Odyssey's follow camera** moved only on thresholds of its own: it followed a piece past 60 % of
+  the view to 30 %, and the tower only into the top 40 %. Infinity frames the tower's top at 20 %
+  and a piece's bottom at most 80 %, every frame.
+- **The opening frame** (`configureOdysseyBoardPresentation`) put the tower's top at the view's
+  bottom edge. Indra's Net opened on twenty rows of empty well, and the follow then glided sixteen
+  rows down as play began.
+
+On the fixed simulation clock (`fixedTick`) the tall-well camera never followed at all.
+
+**What it does now.**
+
+- `resolveInfinityFollowCameraRow` (`src/core/infinity-spawn-policy.js`) is the one framing rule.
+  It frames the simulation's own window (the tower's top at 20 % of the view, the row the next
+  spawn is anchored to) and lowers it only while a falling piece's bottom would pass 80 %.
+  Odyssey's camera follows it every frame, on both clocks. The opening frame and the scene's
+  initial camera use it too.
+- The spawn window is the 20 rows shown (`GameplayHybridEngine` and `OdysseyMode`), so every piece
+  enters two rows above the view, as in standard orbs and Infinity. Snapshots keep the window they
+  ran with, so a recorded attempt replays as it was played.
+- After a deep soft drop locks, the camera goes home at Infinity's quick pace (lerp 0.25 once the
+  target leaps more than 3 rows up). Otherwise it glides at the scene's 0.08.
+- Presentation only. Under the board-anchor policy the camera's writes to `cameraRow` are rejected,
+  and a test runs the real follow on the fixed clock to check that.
+
+**Seen in game** (WebGPU, 1280×800, the real orb through the journey's own entry, blind hard drops):
+
+| Orb | Before | After |
+|---|---|---|
+| 7 Sunken Depths | Spawn 10 rows above the view, unseen ~8 s | 2 rows above (2.5–3.2 while the view lifts after a lock) |
+| 55 Indra's Net | First spawn 32 rows above; opens on empty well | Opens over the garbage (view row 70, its top at 74); spawns 2 rows above |
+| 19 Mountain Base (hybrid) | — | 2 rows above |
+
+A seeded two-wave cascade under a 20-row column (the game's own `processPhysics`) moved the view
+with the tower: up to frame the column, then down to keep its top at 20 % as two lines cleared.
+Theme effects for locks and clears are placed inside this viewport, so they now land where the
+action is instead of clamping to the well's edge.
+
+**Tests.** `odyssey-well-camera-follow` is rewritten for the rule: it frames the spawn window, rests
+on an empty floor, follows a deep piece only past 80 %, makes the quick return, never writes the
+simulation camera, and leaves the view to the tower look. `infinity-spawn-policy` covers the rule
+and the opening frame. `odyssey-infinity-camera-spawn` and `odyssey-fixed-tick-mode` assert the
+first spawn two rows above the opening view for 0, 6, 16 and 30 starting rows and orbs 55 and 38,
+and that the fixed clock follows without projecting into the simulation.
+`odyssey-board-presentation` frames Indra's Net at row 70. `odyssey-mastery-online`'s
+planning-latency case plans for 600 ms instead of 1000: the spawn is now six rows over the garbage
+rather than twenty-two, and at 1000 ms the piece landed during the second plan.

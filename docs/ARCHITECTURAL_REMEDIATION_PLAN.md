@@ -725,6 +725,13 @@ clocks are explicitly unranked and fail closed before every local or Steam legac
 those stores. A real seeded zero-wave fixture composes board-anchor spawning, the runner, synchronous
 fixed lock/spawn, and a 10-row maintenance expansion to the same canonical projection at 30/60/144 Hz.
 
+The flag-off Infinity clock latches the same board-anchor spawn rule (2026-10-22). Spawning at the
+presentation camera's row put the next piece inside a tall tower whenever the camera was still climbing
+back from a piece soft-dropped deep down the tower's side: a false top-out with hundreds of rows left
+(audit CORE-12, its spawn half). Its draw callback still expands the grid and detects the roof, and it
+republishes the board's camera anchor every frame no cascade owns. Every Infinity board now spawns from
+the board: solo Infinity on either clock, Infinity LMS, and Odyssey's Infinity wells.
+
 Odyssey is the fourth default-off `fixedTick` consumer. The mode latches one simulation clock per
 activation and copies it into every generation-fenced attempt, so retry cannot mix fixed and legacy rules.
 Its existing `FrameRateController` is the sole fixed timer; player-0 keyboard/gamepad edges drain inside

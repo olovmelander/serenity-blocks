@@ -14,6 +14,7 @@ import {
     INFINITY_SPAWN_POLICY_CAMERA_V1,
     normalizeInfinitySpawnPolicy,
     projectInfinityPresentationCamera,
+    resolveInfinityFollowCameraRow,
     resolveInfinitySimulationCameraRow,
     resolveInfinitySpawnRow,
 } from '../../src/core/infinity-spawn-policy.js';
@@ -111,6 +112,39 @@ describe('Infinity deterministic spawn policy', () => {
         expect(resolveInfinitySpawnRow(state)).toBe(16);
         state.piecesPlaced = 1;
         expect(resolveInfinitySpawnRow(state)).toBe(11);
+    });
+
+    it('spawns above a tall tower while the camera still frames a piece locked deep beside it', () => {
+        // The live top-out (2026-10-22): an 80-row tower in a 164-row well, a piece soft-dropped
+        // 50 rows down the open shaft beside it and locked at its floor. One snap step into its
+        // climb back the camera framed row 111, and a camera-anchored spawn put the next piece
+        // inside the tower: game over with a hundred rows still to build.
+        const deepLock = (policy) => {
+            const state = new GameState({
+                isInfinityMode: true,
+                initialInfinityRows: 44,
+                maxRows: 200,
+                infinitySpawnPolicy: policy,
+                infinityVisibleRows: 20,
+            });
+            while (state.boardGrid.length < 164) expandGridIfNeeded(state, 164);
+            for (let row = 84; row < 164; row += 1) {
+                for (let col = 3; col < 10; col += 1) state.boardGrid[row][col] = { color: '#fff' };
+            }
+            state.boardGrid[162][0] = { color: '#fff' };
+            state.boardGrid[163][0] = { color: '#fff' };
+            state.piecesPlaced = 2;
+            projectInfinityPresentationCamera(state, 111.75, 121.75);
+            return state;
+        };
+
+        const cameraAnchored = deepLock(INFINITY_SPAWN_POLICY_CAMERA_V1);
+        expect(spawnSeededPiece(cameraAnchored)).toBeNull();
+        expect(cameraAnchored.isGameOver).toBe(true);
+
+        const boardAnchored = deepLock(INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1);
+        expect(spawnSeededPiece(boardAnchored)?.y).toBe(84 - 4 - 2);
+        expect(boardAnchored.isGameOver).toBe(false);
     });
 
     it('reads canonical boardGrid before a stale Infinity render alias is repaired', () => {
@@ -223,6 +257,49 @@ describe('Infinity deterministic spawn policy', () => {
 
             expect(legacyState.cameraRow).toBe(24);
             expect(legacyState.cameraCenterRow).toBe(34);
+        } finally {
+            scenes.forEach((scene) => scene.styleManager?.destroy?.());
+            vi.unstubAllGlobals();
+        }
+    });
+
+    it('frames the follow camera on the spawn window, lowering it only for a deep piece', () => {
+        const state = createInfinityState();
+        // An empty well rests on its floor.
+        expect(resolveInfinityFollowCameraRow(state, 20, null)).toBe(24);
+        // A tower: its top at 20 % of the view, and the next spawn two rows above the view.
+        state.boardGrid[10][4] = { color: '#fff' };
+        state.piecesPlaced = 4;
+        expect(resolveInfinityFollowCameraRow(state, 20, null)).toBe(6);
+        expect(resolveInfinitySpawnRow(state)).toBe(6 - 2);
+        // A piece above 80 % of that view changes nothing...
+        expect(resolveInfinityFollowCameraRow(state, 20, { y: 18, shape: [[1], [1]] })).toBe(6);
+        // ...one soft-dropped past it lowers the view so its bottom sits at 80 %, within the floor.
+        expect(resolveInfinityFollowCameraRow(state, 20, { y: 30, shape: [[1], [1]] })).toBe(32 - 16);
+        expect(resolveInfinityFollowCameraRow(state, 20, { y: 42, shape: [[1], [1]] })).toBe(24);
+    });
+
+    it('opens a deterministic well framed over its stack, an empty one on its floor', () => {
+        vi.stubGlobal('window', {
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            settingsManager: null,
+            themeManager: null,
+        });
+        const scenes = [];
+        try {
+            const seeded = createInfinityState();
+            seeded.boardGrid[10][4] = { color: '#fff' };
+            const seededHarness = createCameraHarness(seeded);
+            scenes.push(seededHarness.scene);
+            seededHarness.scene.configureCamera();
+            expect(seededHarness.scene.cameraSettings.currentTopRow).toBe(6);
+
+            const empty = createInfinityState();
+            const emptyHarness = createCameraHarness(empty);
+            scenes.push(emptyHarness.scene);
+            emptyHarness.scene.configureCamera();
+            expect(emptyHarness.scene.cameraSettings.currentTopRow).toBe(24);
         } finally {
             scenes.forEach((scene) => scene.styleManager?.destroy?.());
             vi.unstubAllGlobals();

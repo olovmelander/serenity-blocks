@@ -22,6 +22,7 @@ import {
 import {
     INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
     projectInfinityPresentationCamera,
+    synchronizeInfinitySimulationCamera,
 } from '../infinity-spawn-policy.js';
 import { maintainInfinitySimulation } from '../infinity-simulation-maintenance.js';
 import { updateStats } from '../../rendering/draw.js';
@@ -271,11 +272,13 @@ export class InfinityMode extends BaseGameMode {
             disableLevelProgression: true, // Option A from plan: Fixed speed
             disableGarbage: true, // No garbage in infinity mode
             initialInfinityRows: 44,
-            ...(this._fixedTickEnabled ? {
-                infinitySpawnPolicy: INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
-                infinityVisibleRows: this.visibleRows,
-                inputHandling: settings,
-            } : {}),
+            // Both clocks spawn from the board, never from the camera. Spawning at the
+            // camera's row put the next piece inside a tall tower whenever the camera was
+            // still climbing back from a piece soft-dropped deep down the tower's side,
+            // and ended the run with hundreds of rows left.
+            infinitySpawnPolicy: INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
+            infinityVisibleRows: this.visibleRows,
+            ...(this._fixedTickEnabled ? { inputHandling: settings } : {}),
             ...(usesFixedRules ? {
                 hitStopEnabled: !this._prefersReducedMotion(settings),
             } : {}),
@@ -922,6 +925,9 @@ export class InfinityMode extends BaseGameMode {
             if (!usesFixedLoop) {
                 gameState.currentTopRow = calculateTopRow(gameState);
                 this._maybeExpandGrid();
+                // The fixed clock's maintenance keeps the simulation's camera anchor on the
+                // board after each stable tick; the legacy clock does it every frame no cascade owns.
+                if (!gameState.isProcessingPhysics) synchronizeInfinitySimulationCamera(gameState);
             }
 
             if (this.boardScene?.cameraSettings && !this.boardScene.cameraSettings.manualControl) {
