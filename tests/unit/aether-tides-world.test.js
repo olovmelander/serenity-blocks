@@ -975,8 +975,8 @@ describe('aether tides world: clears', () => {
         run(world, 2);
         expect(flowAt()).toBeCloseTo(rest, 6);
         // The post stack is struck.
-        expect(world.flash.strength).toBeGreaterThan(0);
-        expect(world.kick.strength).toBeGreaterThan(0);
+        expect(world.flash.rawAt(at)).toBeGreaterThan(0);
+        expect(world.kick.rawAt(at)).toBeGreaterThan(0);
         expectFiniteTables(world);
         world.dispose();
     });
@@ -998,7 +998,7 @@ describe('aether tides world: clears', () => {
             expect(beamsSince(world, at), `${lines} lines`).toHaveLength(lines * 2);
             const rings = ringsSince(world, at).sort((a, b) => a.t0 - b.t0);
             expect(rings, `${lines} lines`).toHaveLength(lines >= 3 ? 2 : 1);
-            fronts.push({ push: rings[0].push, heat: rings[0].heat, flash: world.flash.strength });
+            fronts.push({ push: rings[0].push, heat: rings[0].heat, flash: world.flash.rawAt(at) });
             // Nothing waits: fewer than four lines fire at once.
             expect(rings[0].t0).toBe(at);
             expect(world.picture.hush.value).toBe(0);
@@ -1150,7 +1150,8 @@ describe('aether tides world: clears', () => {
         run(world, 6);
         expect(world.picture.shock.value.r).toBeCloseTo(shock.r, 6);
         expect(world.picture.shock.value.b).toBeCloseTo(shock.b, 6);
-        expect(world.flareStrength(world.now)).toBe(0);
+        // Spent (it falls away rather than being cut off).
+        expect(world.flareStrength(world.now)).toBeLessThan(0.002);
         expect(world.picture.hush.value).toBe(0);
         expect(world.getPostState().flash).toBeLessThan(0.01);
         expectFiniteTables(world);
@@ -1187,7 +1188,7 @@ describe('aether tides world: clears', () => {
         // And the spring behind the board opens wider than a plain line's.
         const plain = makeWorld('Low').world;
         plain.onClear({ rows: [19], lines: 1 });
-        expect(world.burst.strength).toBeGreaterThan(plain.burst.strength);
+        expect(world.burst.swell.rawAt(at + HUSH_HOLD)).toBeGreaterThan(plain.burst.swell.rawAt(plain.eventClock));
         plain.dispose();
         world.dispose();
     });
@@ -1491,7 +1492,7 @@ describe('aether tides world: levels, seeks and reduced motion', () => {
         for (const key of PALETTE_KEYS) expect(world.palette[key], key).toEqual(third[key]);
         expect(world.fieldUniforms.gasC.value.b).toBeCloseTo(third.gasC[2], 6);
         expect(ringsSince(world, at)).toHaveLength(0);
-        expect(world.flash.strength).toBe(0);
+        expect(world.flash.rawAt(at)).toBe(0);
         run(world, 1);
         for (const key of PALETTE_KEYS) expect(world.palette[key], key).toEqual(third[key]);
         world.dispose();
@@ -1605,9 +1606,9 @@ describe('aether tides world: levels, seeks and reduced motion', () => {
         expect(ringsSince(calm, at)[0].push).toBeLessThan(ringsSince(lively, at)[0].push * 0.75);
         expect(ringsSince(calm, at)[0].rough).toBeLessThan(ringsSince(lively, at)[0].rough);
         expect(ringsSince(calm, at)[0].reach).toBe(ringsSince(lively, at)[0].reach);
-        expect(calm.kick.strength).toBeGreaterThan(0);
-        expect(calm.kick.strength).toBeLessThan(lively.kick.strength * 0.75);
-        expect(calm.flash.strength).toBeLessThan(lively.flash.strength * 0.75);
+        expect(calm.kick.rawAt(at)).toBeGreaterThan(0);
+        expect(calm.kick.rawAt(at)).toBeLessThan(lively.kick.rawAt(at) * 0.75);
+        expect(calm.flash.rawAt(at)).toBeLessThan(lively.flash.rawAt(at) * 0.75);
 
         // ── a clear ──
         for (const world of [lively, calm]) run(world, 1);
@@ -1620,7 +1621,7 @@ describe('aether tides world: levels, seeks and reduced motion', () => {
             expect(ring.push).toBeLessThan(ringsSince(lively, clearAt)[i].push * 0.75);
             expect(ring.push).toBeGreaterThan(0);
         });
-        expect(calm.flash.strength).toBeLessThan(lively.flash.strength * 0.75);
+        expect(calm.flash.rawAt(clearAt)).toBeLessThan(lively.flash.rawAt(clearAt) * 0.75);
 
         // ── a chain, and its release ──
         for (const world of [lively, calm]) {
@@ -1965,5 +1966,45 @@ describe('aether tides tiers', () => {
             expect(grid.width).toBeGreaterThanOrEqual(24);
             expect(grid.height).toBeGreaterThanOrEqual(24);
         }
+    });
+});
+
+describe('aether tides world: build-up', () => {
+    it('a single right after a quad adds to its light instead of cutting it', () => {
+        const { world } = makeWorld('Low');
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        run(world, HUSH_HOLD + 0.15);
+        const before = world.getPostState().flash;
+        world.onClear({ rows: [19], lines: 1 });
+        run(world, SIM_DT);
+        expect(world.getPostState().flash).toBeGreaterThan(before * 0.9);
+        world.dispose();
+    });
+
+    it('a long chain burns brighter and runs the tide faster than its first clear', () => {
+        const { world } = makeWorld('Low');
+        const read = () => ({
+            glow: world.picture.glow.value, flux: world.picture.starFlux.value.x, tide: world.tide.tide.value,
+        });
+        world.onLock({ ...T_LEFT, hardDrop: true });
+        world.onClear({ rows: [19], lines: 1, combo: 1 });
+        world.onCombo(1);
+        run(world, 0.5);
+        const first = read();
+        for (let n = 2; n <= 10; n += 1) {
+            world.onLock({ ...T_LEFT, hardDrop: true });
+            world.onClear({ rows: [19, 18], lines: 2, combo: n });
+            world.onCombo(n);
+            run(world, 0.6);
+        }
+        const tenth = read();
+        expect(tenth.glow).toBeGreaterThan(first.glow + 0.3);
+        expect(tenth.flux).toBeGreaterThan(first.flux + 0.3);
+        expect(tenth.tide).toBeGreaterThan(first.tide);
+        expect(world.surge.sample(world.now).stage).toBe(3);
+        // And the hands resting lets it all breathe out.
+        run(world, 12);
+        expect(world.picture.glow.value).toBeLessThan(tenth.glow - 0.3);
+        world.dispose();
     });
 });
