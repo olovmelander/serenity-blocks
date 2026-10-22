@@ -7,8 +7,9 @@
  * leaves do, lands, rests, and is taken up again by wind, by a gust front, or by one of
  * the gameplay force fields (bursts, jets and the combo vortex).
  *
- * Ambient leaves cycle crown -> air -> ground forever. Reserve leaves stay hidden until an
- * event spawns them, then land and fade back into the reserve.
+ * Ambient leaves cycle crown -> air -> ground forever; a storm (`env.storm`) shortens their rest
+ * on the floor, so the crowns shed faster and the gale lifts the litter in rolling waves. Reserve
+ * leaves stay hidden until an event spawns them, then land and fade back into the reserve.
  */
 
 export const LEAF_IDLE = 0;
@@ -20,6 +21,17 @@ const FALL_ACCEL = 4.6;
 const FALL_DRAG = 3.0;
 const WIND_DRAG = 2.4;
 const FADE_SECONDS = 1.4;
+/** How long a leaf lies on the floor before it fades: ambient (back to the crowns) and event leaves. */
+const AMBIENT_REST_SECONDS = 18;
+const EVENT_REST_SECONDS = 5;
+/** At a full storm an ambient leaf rests only this share of its usual time. */
+const STORM_REST = 0.15;
+/** At a full storm the gale lifts the litter wherever a gust's crest rolls (env.gust units). */
+const STORM_LIFT = 2.4;
+/** At a full storm this share of the leaves that let go do so from the crowns in view. */
+const STORM_NEAR = 0.8;
+/** How high above the floor a storm tears its leaves from the boughs in view: lowest, and range (m). */
+const STORM_BOUGHS = Object.freeze([4, 7]);
 
 function clamp(value, low, high) {
     return Math.max(low, Math.min(high, value));
@@ -38,6 +50,22 @@ export class FallLeafSim {
         this.rng = rng;
         this.groundHeight = groundHeight;
         this.crownPoints = crownPoints && crownPoints.length >= 4 ? crownPoints : null;
+        // The crowns that frame the view (the great trees beside the board, else any near it): a
+        // storm pours its leaves from these.
+        this.nearCrowns = [];
+        if (this.crownPoints) {
+            const pick = (half, depth) => {
+                this.nearCrowns.length = 0;
+                for (let i = 0; i + 3 < this.crownPoints.length; i += 4) {
+                    const points = this.crownPoints;
+                    if (Math.abs(points[i]) < half && points[i + 2] > depth) this.nearCrowns.push(i);
+                }
+            };
+            pick(22, -12);
+            if (this.nearCrowns.length < 12) pick(26, -34);
+        }
+        /** How hard the storm of play blows, as of the last step (0..1). */
+        this.storm = 0;
         this.bounds = bounds;
         const n = this.count;
         this.position = new Float32Array(n * 3);
@@ -59,6 +87,8 @@ export class FallLeafSim {
         this.time = 0;
         this.airborne = 0;
         this.cursor = this.ambient;
+        /** A one-front list for callers that pass `env.front` alone. */
+        this.oneFront = [null];
         this.reset();
     }
 
@@ -98,10 +128,14 @@ export class FallLeafSim {
         let y;
         let z;
         if (this.crownPoints) {
-            const pick = Math.floor(this.random() * (this.crownPoints.length / 4)) * 4;
+            const near = this.storm > 0 && this.nearCrowns.length > 0 && this.random() < this.storm * STORM_NEAR;
+            const pick = near ? this.nearCrowns[Math.floor(this.random() * this.nearCrowns.length)]
+                : Math.floor(this.random() * (this.crownPoints.length / 4)) * 4;
             x = this.crownPoints[pick] + (this.random() - 0.5) * 1.6;
             y = this.crownPoints[pick + 1] - this.random() * 0.8;
             z = this.crownPoints[pick + 2] + (this.random() - 0.5) * 1.6;
+            // A storm tears them from the lower boughs, where they cross the view at once.
+            if (near) y = Math.min(y, this.groundHeight(x, z) + STORM_BOUGHS[0] + this.random() * STORM_BOUGHS[1]);
         } else {
             const { bounds } = this;
             x = bounds.minX + (bounds.maxX - bounds.minX) * this.random();
@@ -146,12 +180,18 @@ export class FallLeafSim {
 
     /**
      * Take a hidden reserve leaf and throw it into the air. Returns its index, or -1 when
-     * the scene has no reserve (the tier then simply shows a smaller burst).
+     * the scene has no reserve (the tier then simply shows a smaller burst). Once every reserve
+     * leaf is out, the event leaf that has lain on the floor longest is taken; with every one in
+     * the air, `steal` takes the one that has flown longest (it has had its moment) rather than
+     * dropping the throw, so a lock in a storm still throws its leaves. Without `steal` (a
+     * continuous feed) nothing in the air is taken.
      */
-    spawn(x, y, z, vx, vy, vz, species = 0) {
+    spawn(x, y, z, vx, vy, vz, species = 0, steal = false) {
         if (this.reserve <= 0) return -1;
         let chosen = -1;
         let oldest = -1;
+        let flown = -1;
+        let longest = -1;
         for (let step = 0; step < this.reserve; step += 1) {
             const index = this.ambient + ((this.cursor - this.ambient + step) % this.reserve);
             if (this.state[index] === LEAF_IDLE) {
@@ -159,11 +199,17 @@ export class FallLeafSim {
                 break;
             }
             // Otherwise reuse the event leaf that has been lying around the longest.
-            if (this.state[index] !== LEAF_AIR && this.timer[index] > oldest) {
-                oldest = this.timer[index];
-                chosen = index;
+            if (this.state[index] !== LEAF_AIR) {
+                if (this.timer[index] > oldest) {
+                    oldest = this.timer[index];
+                    chosen = index;
+                }
+            } else if (steal && this.timer[index] > longest) {
+                longest = this.timer[index];
+                flown = index;
             }
         }
+        if (chosen < 0) chosen = flown;
         if (chosen < 0) return -1;
         this.cursor = this.ambient + ((chosen - this.ambient + 1) % this.reserve);
         const o = chosen * 3;
@@ -187,7 +233,9 @@ export class FallLeafSim {
      * env.windX, env.windZ   unit wind direction
      * env.breeze  number   steady wind speed (m/s)
      * env.gust    number   extra wind speed (m/s) pulsing across the grove
-     * env.front {x, strength, width, direction} | null   a gust front crossing along world x
+     * env.fronts [{x, strength, width, direction}]   gust fronts crossing along world x (or
+     *             env.front, one of them, or null)
+     * env.storm   number 0..1   how hard the crowns shed and the gale lifts the litter
      * env.fields [{kind:'burst'|'jet'|'vortex', ...}]   gameplay force fields
      */
     step(dt, env = {}) {
@@ -199,7 +247,16 @@ export class FallLeafSim {
         const windZ = env.windZ ?? 0;
         const breeze = env.breeze ?? 0;
         const gust = env.gust ?? 0;
-        const { front } = env;
+        let fronts = Array.isArray(env.fronts) ? env.fronts : null;
+        if (!fronts && env.front) {
+            this.oneFront[0] = env.front;
+            fronts = this.oneFront;
+        }
+        const frontCount = fronts ? fronts.length : 0;
+        const storm = Number.isFinite(env.storm) ? clamp(env.storm, 0, 1) : 0;
+        this.storm = storm;
+        const ambientRest = AMBIENT_REST_SECONDS * (1 - (1 - STORM_REST) * storm);
+        const lift = gust + storm * STORM_LIFT;
         const fields = env.fields || [];
         const { bounds } = this;
         const swellTime = time * 0.85;
@@ -212,17 +269,22 @@ export class FallLeafSim {
                 const x = this.position[o];
                 const y = this.position[o + 1];
                 const z = this.position[o + 2];
-                // Local wind: the breeze, a rolling swell and (when present) the gust front.
+                // Local wind: the breeze, a rolling swell and (when present) the gust fronts.
                 const swell = 0.65 + 0.7 * (0.5 + 0.5 * Math.sin(x * 0.05 + z * 0.02 - swellTime));
                 let frontPush = 0;
-                if (front) {
+                let frontDrive = 0;
+                for (let f = 0; f < frontCount; f += 1) {
+                    const front = fronts[f];
+                    if (!front || !(front.strength > 0)) continue;
                     const offset = (x - front.x) / front.width;
-                    frontPush = Math.exp(-offset * offset) * front.strength;
+                    const push = Math.exp(-offset * offset) * front.strength;
+                    frontPush += push;
+                    frontDrive += push * (front.direction ?? 1);
                 }
                 let ax = 0;
                 let ay = 0;
                 let az = 0;
-                let kicked = frontPush > 0.6 || (gust > 2.2 && swell > 1.15);
+                let kicked = frontPush > 0.6 || (lift > 2.2 && swell > 1.15);
                 for (let f = 0; f < fields.length; f += 1) {
                     const field = fields[f];
                     const dx = x - field.x;
@@ -240,6 +302,8 @@ export class FallLeafSim {
                             az += (nx * field.spin * field.turn - this.velocity[o + 2]) * field.grip * hold + nz * pull;
                             ay += (field.lift * (y < field.top ? 1 : -0.6) + FALL_ACCEL * 0.92) * hold;
                             kicked = kicked || hold > 0.15;
+                            // A leaf the column holds is in play: never the one a throw takes.
+                            if (hold > 0.15 && state === LEAF_AIR) this.timer[i] = 0;
                         }
                     } else {
                         const dy = y - field.y;
@@ -272,7 +336,7 @@ export class FallLeafSim {
                     az += Math.sin(heading) * swing * 3.4 * calm;
                     ay += Math.abs(Math.cos(this.phase[i])) * 1.5 * calm;
                     const speedHere = (breeze + gust) * swell;
-                    const localWindX = windX * speedHere + frontPush * 7 * (front ? front.direction : 1);
+                    const localWindX = windX * speedHere + frontDrive * 7;
                     const localWindZ = windZ * speedHere;
                     ax += (localWindX - this.velocity[o]) * WIND_DRAG;
                     az += (localWindZ - this.velocity[o + 2]) * WIND_DRAG;
@@ -306,13 +370,12 @@ export class FallLeafSim {
                     if (kicked) {
                         // Wind or a force field lifts the leaf back into the air.
                         this.state[i] = LEAF_AIR;
-                        this.velocity[o] = ax * 0.05 + (this.random() - 0.5) * 0.8
-                            + frontPush * 2.5 * (front ? front.direction : 1);
+                        this.velocity[o] = ax * 0.05 + (this.random() - 0.5) * 0.8 + frontDrive * 2.5;
                         this.velocity[o + 1] = 1.4 + this.random() * 1.8 + Math.max(0, ay) * 0.05 + frontPush * 1.2;
                         this.velocity[o + 2] = az * 0.05 + (this.random() - 0.5) * 0.8;
                         this.spin[i] = (this.random() - 0.5) * 10;
                         this.timer[i] = 0;
-                    } else if (this.timer[i] > (i < this.ambient ? 18 : 5)) {
+                    } else if (this.timer[i] > (i < this.ambient ? ambientRest : EVENT_REST_SECONDS)) {
                         this.state[i] = LEAF_FADE;
                         this.timer[i] = 0;
                     }
