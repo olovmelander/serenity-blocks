@@ -79,6 +79,7 @@ import {
     buildRenderWarmOrder,
 } from './odyssey-warmup-plan.js';
 import { computeTravelFrontier, isHeldAtFrontier } from './odyssey-travel-frontier.js';
+import { resolveOdysseyPathHorizon } from './odyssey-path-horizon.js';
 import { resolveChapterArrivalProgress, resolveOrbParkProgress } from './odyssey-chapter-arrival.js';
 import {
     normalizeOdysseyWarmupMode,
@@ -4401,6 +4402,15 @@ export class OdysseyBoardController {
 
             this._syncHeroCamera();
             this._syncRailCamera(cameraProgress);
+            // Through chapter 6 the rail and its nodes vanish into the black hole (one schedule
+            // of the eye's progress for both — odyssey-path-horizon.js).
+            const pathHorizon = resolveOdysseyPathHorizon(
+                cameraProgress,
+                this.presentationLayout?.chapterPositions,
+                this.presentationLayout?.levelPositions,
+            );
+            this.pathRenderer?.setHorizon?.(pathHorizon);
+            this.nodeManager?.setPathHorizon?.(pathHorizon);
             // Time-driven uniform tick (animated material uniforms) — always 60Hz.
             this.environmentManager.update(
                 delta,

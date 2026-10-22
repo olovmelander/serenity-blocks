@@ -97,6 +97,37 @@ re-scored after it: 25.9.
 
 ![The hole against a fixed screen mark, before (top) and after (bottom)](images/odyssey-audit-2026-10-22/ch6-black-hole.jpg)
 
+### Chapter 6 — the rail vanishes into the hole (`odyssey-path-horizon.js`)
+
+Olov, on landing day: *"hide the path beyond chapter 6 so it seems to vanish into the hole"*. From
+chapter 6 the rail past the 6→7 boundary (chapter 7's hairpin climb, and chapter 8 beyond it) drew
+as a thin line up and across the hole's side. It is the real path, but it read as the journey
+going past the hole, and the hole cannot sit on it.
+
+`resolveOdysseyPathHorizon(progress, chapterPositions, levelPositions)` is one schedule of the
+eye's progress. The board feeds it each frame to the ribbon (`OdysseyPathRenderer.setHorizon`:
+its radius collapses past the horizon over a 0.006 p taper, in the shared `ribbonRadius`, so the
+body and the haze shell stay one) and to the nodes (`LevelNodeManager.setPathHorizon`: they
+scale out by the same weight and are culled past it):
+
+- **Chapters 1–5:** nothing is hidden. Across the 5→6 seam the far rail retracts to the boundary,
+  a thin far line shortening in the dark departure.
+- **Through chapter 6:** the rail ends a taper past the boundary node (chapter 7's first, which
+  sits on it). The rail runs up under the hole and tapers out into it, and no node beyond it is
+  drawn.
+- **The glide from chapter 6's last node into the boundary node:** from a quarter of the way
+  along it, after the hole has become chapter 7's, the horizon sweeps up the climb to the
+  journey's end. A player parked on either node sees a whole picture, the rail into the hole or
+  the way on, never a rail stopped half-drawn. In chapter 7 and after, nothing is hidden.
+
+Guard: `tests/unit/odyssey-path-horizon.test.js`. It covers four things: nothing is hidden
+outside chapter 6, every chapter 6 node and the boundary node are drawn and nothing past them is,
+a player parked on the last chapter 6 node sees no far rail, and the horizon sweeps and never
+jumps. In game: no line or nodes past the hole at local 0.30–0.93; on the glide the climb is laid
+out; chapter 7 is unchanged from its first node.
+
+![Before (top): chapter 6 at 0.60 and 0.88, chapter 7's start. After (bottom): chapter 6 at 0.60, parked on its last node, chapter 7's first node](images/odyssey-audit-2026-10-22/ch6-rail.jpg)
+
 ### Chapter 7→8 — no city windows over the tunnel (`urban-dreams.tsl.js`)
 
 The nearest towers fade in under the warp tunnel. Their window grids drew over its streaks before
@@ -130,10 +161,6 @@ seam, a pass of its own.
   clocks (38 s / 64 s) and are not in every frame; a frozen-clock gallery shows the water without
   them.
 - **Chapters 3–5's painted style** (tree crowns, sticker clouds) is a style, not a defect; left.
-- **The chapter 7 rail** crosses the hole's right side as a thin line when seen from chapter 6
-  (the 6→7 hairpin, the real path). The hole cannot sit on it: chapter 7 keeps the hole
-  camera-locked. Hiding the path beyond the seam while in chapter 6 would make the rail
-  disappear into the hole. That is an owner call.
 
 ## Cost
 
@@ -144,6 +171,8 @@ seam, a pass of its own.
   submerged branch.
 - **Facades:** one multiply.
 - **Chapter 6 hole:** one spine-frame evaluation per frame on the CPU (it was a cached point).
+- **Rail horizon:** one smoothstep per ribbon vertex (two draws). On the CPU, one scalar per frame,
+  plus the node buffers' re-upload while the horizon moves (only across the two seams).
 
 No new draws, pipelines or textures. GPU timings were not taken: the machine's GPUs are shared by
 parallel sessions, and these deltas are below what an interleaved A/B can resolve under that load.
@@ -151,8 +180,9 @@ parallel sessions, and these deltas are below what an interleaved A/B can resolv
 ## Verification
 
 - Tests: `tests/unit/odyssey-ch6-hero-framing.test.js` (the path lock; it fails on the old
-  placement at the first station, 0.35 off the lock) and `tests/unit/odyssey-camera-controller.test.js`
-  (`followProgress` names where the eased eye stands).
+  placement at the first station, 0.35 off the lock), `tests/unit/odyssey-camera-controller.test.js`
+  (`followProgress` names where the eased eye stands) and `tests/unit/odyssey-path-horizon.test.js`
+  (the rail's horizon).
 - All 200 Odyssey test files pass except `odyssey-level-briefing`, which fails identically without
   these changes. `odyssey-forest`'s bake-budget timing test failed under load and passes alone.
 - `tsc`, the ts and lint ratchets, the architecture fitness ratchets and `depcruise` pass. The
