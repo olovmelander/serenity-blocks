@@ -67,6 +67,7 @@ export const STEAM_STORAGE_KEYS = {
     LEADERBOARD_CACHE: 'steamLeaderboardCache',
     CLOUD_MANIFEST: 'steamCloudManifest',
     CLOUD_DEVICE_ID: 'steamCloudDeviceId',
+    CLOUD_PENDING: 'steamCloudPending',
 };
 
 // Steam events emitted by SteamService

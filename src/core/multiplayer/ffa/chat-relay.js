@@ -2,7 +2,9 @@
 
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../../events/multiplayer-events.js';
 import { MessageTypes } from '../../network/message-types.js';
-import { capPeerText, MAX_CHAT_CHARS, MAX_NAME_CHARS } from '../../network/peer-text.js';
+import {
+    capPeerText, MAX_CHAT_CHARS, MAX_NAME_CHARS, peerColor,
+} from '../../network/peer-text.js';
 
 /** Messages a sender may send in a burst, and the time that earns one more. */
 export const CHAT_BURST = 5;
@@ -46,7 +48,7 @@ export function handleFfaChat(game, msg, now = Date.now()) {
         message,
         steamId: data.steamId,
         playerName: capPeerText(data.playerName, MAX_NAME_CHARS) || 'Player',
-        color: data.color,
+        color: peerColor(data.color) ?? undefined,
         timestamp: Number.isFinite(data.timestamp) ? data.timestamp : now,
     };
     if (game.isHost) {

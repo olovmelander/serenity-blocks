@@ -41,9 +41,16 @@ afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
 });
+// These cover saves after the session's first cloud read. Before it, whole documents
+// wait for that read (steam-cloud-first-read.test.js).
+function markCloudRead(manager) {
+    manager.cloudManifestSeen = { files: {} };
+    ['settings.json', 'keybinds.json'].forEach((file) => manager.reconciledFiles.add(file));
+}
 function createManager() {
     const settings = { musicVolume: 0.5, sfxVolume: 0.4, keyBindings: { moveLeft: 'a' } };
     const manager = new SteamCloudSyncManager({ settingsManager: { get: () => settings } });
+    markCloudRead(manager);
     managers.push(manager);
     return { settings, manager };
 }
@@ -152,6 +159,7 @@ describe('Steam Cloud coalesced settings saves', () => {
         const settingsManager = new SettingsManager();
         settingsManager.save({ emitEvent: false });
         const manager = new SteamCloudSyncManager({ settingsManager });
+        markCloudRead(manager);
         managers.push(manager);
         manager._registerEventHandlers();
         let release;

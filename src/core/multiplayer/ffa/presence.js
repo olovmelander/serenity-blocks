@@ -2,6 +2,8 @@
 
 import { emitMultiplayerEvent, MULTIPLAYER_EVENTS } from '../../../events/multiplayer-events.js';
 import { MessageTypes } from '../../network/message-types.js';
+import { peerColor } from '../../network/peer-text.js';
+import { MAX_LOBBY_PLAYERS } from './host-match-config.js';
 import { cancelFfaRoundRestart } from '../ffa-round-policy.js';
 import { routeFfaResync } from './resync-request-handler.js';
 
@@ -235,6 +237,9 @@ export function endMatchIfAlone(game) {
  * @param {Array<Record<string, any>>} list
  */
 export function adoptHostRoster(game, list) {
+    // A lobby seats eight players (spectators are listed apart). A longer list can only
+    // come from a modified host, and each entry would build a game state and a board.
+    if (!Array.isArray(list) || list.length > MAX_LOBBY_PLAYERS) return;
     const listed = new Set(list.map((entry) => entry?.steamId).filter(Boolean));
     if (!game.isSpectator && game.localPlayerId) {
         if (listed.has(game.localPlayerId)) {
@@ -273,5 +278,6 @@ function adoptRosterEntry(game, entry) {
     if (entry.awaitingSpawn !== undefined) player.awaitingSpawn = entry.awaitingSpawn === true;
     // Never ourselves: if the host is holding our seat, our pings are bringing us back.
     player.isDisconnected = entry.steamId !== game.localPlayerId && entry.isDisconnected === true;
-    if (entry.color) player.color = entry.color;
+    const color = peerColor(entry.color);
+    if (color) player.color = color;
 }

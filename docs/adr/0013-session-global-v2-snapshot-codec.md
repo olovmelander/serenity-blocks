@@ -62,3 +62,13 @@ oversized rejection, the session-tag derivation, and the 80-byte two-player budg
 session negotiation, raw-ingress role/session checks, transport parity, migration, and v1 byte-shape
 tests gate the opt-in wiring. `wireV2` is default-off and expiry-governed. The release soak aborts on
 increased delta decode failures or resync requests.
+
+## Amendment — 2026-10-22: `wireV2` re-dated to 2026-11-30
+
+The flag's first expiry, 2026-10-31, arrived before the two-peer soak this record requires: the run
+log in [TWO_MACHINE_STEAM_VALIDATION.md](../TWO_MACHINE_STEAM_VALIDATION.md) is still empty. Graduating
+without that run would skip this ADR's own bar, so the owner chose to re-date rather than graduate or
+drop it. Nothing changes at runtime: protocol 1 stays the default and protocol 2 stays opt-in. The plan
+is unchanged — one recorded two-machine session, then protocol 2 becomes the host default with
+protocol 1 kept as an undated rollback ([OWNER_DECISIONS_RESEARCH_2026-10-13.md](../OWNER_DECISIONS_RESEARCH_2026-10-13.md),
+decision 1). If that session cannot happen by 2026-11-30, re-date again here with the reason.
