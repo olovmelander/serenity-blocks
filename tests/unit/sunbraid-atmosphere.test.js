@@ -8,7 +8,7 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    POST_EVENTS, REST_RIG, SunbraidWorld, fovForAspect,
+    POST_EVENTS, REST_RIG, SURGE_LOOK, SunbraidWorld, fovForAspect,
 } from '../../src/themes/sunbraid/sunbraid-world.js';
 import { BRAID_EVENTS } from '../../src/themes/sunbraid/sunbraid-braid.js';
 import { FILMIC_KNEE } from '../../src/themes/sunbraid/sunbraid-post.js';
@@ -70,7 +70,10 @@ describe('Sunbraid atmosphere: the post answers the braid', () => {
         stepTo(START + c.close + c.hold * 0.5);
         const post = world.getPostState();
         expect(world.white).toBeCloseTo(1, 6);
-        expect(post.bloomBoost).toBeCloseTo(POST_EVENTS.whiteGlare, 6);
+        // The white sun's own glare and flash; the clear's shine and the heat of play add a little
+        // glare on top (the flash is the white sun's alone once the hit has passed).
+        expect(post.bloomBoost).toBeGreaterThanOrEqual(POST_EVENTS.whiteGlare - 1e-9);
+        expect(post.bloomBoost).toBeLessThan(POST_EVENTS.whiteGlare + 0.5);
         expect(post.flash).toBeCloseTo(POST_EVENTS.whiteFlash, 6);
         stepTo(START + c.close + c.hold + c.part + c.settle + 0.5);
         expect(post.bloomBoost).toBeLessThan(0.01);
@@ -83,7 +86,11 @@ describe('Sunbraid atmosphere: the post answers the braid', () => {
         const n = BRAID_EVENTS.noon;
         stepTo(START + n.rise + n.hold * 0.5);
         const post = world.getPostState();
-        expect(post.exposure).toBeCloseTo(1 - POST_EVENTS.noonIris, 2);
+        // Noon closes the iris by its own share; the heat a perfect clear brings closes it a little
+        // more, never past what the surge's look allows.
+        const heat = SURGE_LOOK.iris.level + SURGE_LOOK.iris.fever;
+        expect(post.exposure).toBeLessThanOrEqual(1 - POST_EVENTS.noonIris + 1e-9);
+        expect(post.exposure).toBeGreaterThanOrEqual(1 - POST_EVENTS.noonIris - heat - 1e-9);
         expect(post.bloomBoost).toBeGreaterThan(POST_EVENTS.noonGlare * 0.9);
         stepTo(START + n.rise + n.hold + n.sink + 1);
         expect(post.exposure).toBeCloseTo(1, 3);
