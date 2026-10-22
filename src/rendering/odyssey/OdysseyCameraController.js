@@ -806,6 +806,9 @@ export class OdysseyCameraController {
         this.mode = 'follow'; // 'follow' | 'free' | 'focus'
         this.currentPosition = this.startPosition; // Start framed toward Level 1
         this.targetPosition = this.startPosition;
+        // The progress the EASED follow eye stands at (see updateFollowPosition): a scroll eases
+        // the eye ~0.14 s behind currentPosition, a direct move (travel, teleport) puts it there.
+        this.followProgress = this.startPosition;
         // Travel frontier — 1 means "no limit". Only the board lowers it.
         this.travelFrontier = 1;
         this.lookAtTarget = new THREE.Vector3();
@@ -2737,6 +2740,7 @@ export class OdysseyCameraController {
             this.lookAtTarget.copy(lookTarget);
             this.followCameraUp.copy(normal);
             this._appliedFallEyeOffset.copy(fallEyeOffset);
+            this.followProgress = position;
             return;
         }
 
@@ -2746,6 +2750,9 @@ export class OdysseyCameraController {
         this._appliedFallEyeOffset.copy(fallEyeOffset);
         this.lookAtTarget.lerp(lookTarget, lookBlend);
         this.followCameraUp.lerp(normal, lookBlend).normalize();
+        // The eye eases toward the frame at `position` at this blend, so (to first order) it
+        // stands where the frame at the same eased progress would put it.
+        this.followProgress += (position - this.followProgress) * positionBlend;
     }
 
     getLookAtOffset(position) {
@@ -3075,6 +3082,15 @@ export class OdysseyCameraController {
      */
     getCurrentPosition() {
         return this.currentPosition;
+    }
+
+    /**
+     * The progress the eased follow eye stands at: currentPosition after a direct move, ~0.14 s
+     * behind it while a scroll eases the eye. Held while a close-up or free look moves the eye.
+     * @returns {number} 0 to 1
+     */
+    getFollowProgress() {
+        return this.followProgress;
     }
 
     getTravelState() {

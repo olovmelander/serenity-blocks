@@ -2835,7 +2835,15 @@ export function createOdysseyWorld({
             // far grazing ceiling took it everywhere and painted the TIR band a sandy gold.
             const sss = crestMask.mul(grazing).mul(clamp(dot(uSunDir, vec3(0, 1, 0)), 0, 1))
                 .mul(float(1).sub(smoothstep(float(30), float(140), wFragDist)));
-            const upCos = clamp(dot(viewDir.negate(), wN), 0, 1);
+            // THE FAR CEILING IS CALM (audit pass, 2026-10-22). From deep in the column the
+            // window's rim read the full swell normal on a ceiling 200-400 u away, so the swell
+            // pushed patches back and forth across the 0.60..0.72 threshold and the frame's edges
+            // filled with dark blurred blades — smudges, not water. Waves that far off average
+            // out; the rim keeps its ripple where the surface is near (the breach), by 3-D eye
+            // distance (the column looks straight up: the horizontal range overhead is ~0).
+            const ceilDist = length(positionWorld.sub(cameraPosition));
+            const ceilN = normalize(mix(wN, vec3(0, 1, 0), smoothstep(float(40), float(180), ceilDist)));
+            const upCos = clamp(dot(viewDir.negate(), ceilN), 0, 1);
             const snellWindow = smoothstep(float(0.60), float(0.72), upCos);
             // THE CAUSTIC WEB ON THE CEILING (item 4). Seen from below, a rippled surface is a
             // net of bright refracted lines, not a mottle. The lines are where the two ripple

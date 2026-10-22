@@ -300,8 +300,11 @@ function renderQueues(states) {
     });
 }
 
+/** How many pieces the queue beside the well shows (Stillfall's panel shows a longer supply). */
+export const NEXT_QUEUE_SLOTS = 3;
+
 export function updateNextQueue(nextPieces, containerId = 'next-queue-container') {
-    const count = 3;
+    const count = NEXT_QUEUE_SLOTS;
     ensureListeners();
     const queueContainer = document.getElementById(containerId);
     getLiveQueues();

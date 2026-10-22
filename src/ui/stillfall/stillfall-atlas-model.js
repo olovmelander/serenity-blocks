@@ -12,9 +12,23 @@ import { SOLVES_TO_OPEN_NEXT_TIER, STILLFALL_PUZZLES, TIERS } from '../../core/s
 import { goalParts } from '../../core/stillfall/stillfall-puzzle.js';
 import { capitalised, countWord } from './stillfall-copy.js';
 
-/** Columns of the well, and the tallest structure the bank holds (previews share this frame). */
+/** Columns of the well. */
 export const PREVIEW_COLUMNS = 10;
-export const PREVIEW_ROWS = Math.max(...STILLFALL_PUZZLES.map((puzzle) => puzzle.rows.length));
+
+/** Each tier's frame: the tallest structure in it or in any tier before it. */
+const FRAME_ROWS = new Map(TIERS.map(({ tier }) => [tier, STILLFALL_PUZZLES
+    .filter((puzzle) => puzzle.tier <= tier)
+    .reduce((most, puzzle) => Math.max(most, puzzle.rows.length), 1)]));
+
+/**
+ * The rows of a tier's preview frame, which every preview in the tier shares: its tallest
+ * structure or the tallest of any tier before it, so the frame never shrinks on the way down
+ * and the towers of the last tiers get the room they need.
+ * @param {number} [tier] a tier of the bank; any other value gets the tallest frame
+ */
+export function previewRows(tier) {
+    return FRAME_ROWS.get(/** @type {number} */ (tier)) ?? Math.max(...FRAME_ROWS.values());
+}
 /** Body shades a preview alternates so that touching bodies never share one. */
 const SHADES = 4;
 
@@ -30,6 +44,8 @@ export const TIER_LEDES = Object.freeze({
     8: 'Two goals at once, met by the same piece.',
     9: 'A fourth piece in the supply.',
     10: 'Four pieces, and two goals at once.',
+    11: 'Five pieces against towers twice as tall.',
+    12: 'Five pieces, tall towers, and two goals at once.',
 });
 
 const definitions = new Map(STILLFALL_PUZZLES.map((puzzle) => [puzzle.id, puzzle]));
@@ -73,13 +89,13 @@ function shadeBodies(order, touching) {
 }
 
 /**
- * A puzzle's starting structure as preview cells, bottom-aligned in a frame every preview
- * shares: rows of `null` (empty) or { body, shade, relic, seal, seamRight, seamBelow }.
- * A seam marks the edge between two different bodies, so each body reads as one shape.
- * @param {{ rows: string[], goal: object }} definition
+ * A puzzle's starting structure as preview cells, bottom-aligned in its tier's frame: rows of
+ * `null` (empty) or { body, shade, relic, seal, seamRight, seamBelow }. A seam marks the edge
+ * between two different bodies, so each body reads as one shape.
+ * @param {{ rows: string[], goal: object, tier?: number }} definition
  * @param {number} [frameRows]
  */
-export function previewCells(definition, frameRows = PREVIEW_ROWS) {
+export function previewCells(definition, frameRows = previewRows(definition?.tier)) {
     const rows = definition?.rows || [];
     const parts = definition?.goal ? goalParts(definition.goal) : [];
     const relics = new Set(parts.filter((part) => part.type === 'relic-floor').map((part) => part.body));

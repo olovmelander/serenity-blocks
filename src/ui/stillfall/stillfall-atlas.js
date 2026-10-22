@@ -38,6 +38,7 @@ import {
 } from './stillfall-atlas-model.js';
 import { goalParts } from '../../core/stillfall/stillfall-puzzle.js';
 import { countWord, goalText } from './stillfall-copy.js';
+import { pieceGlyphHtml } from './stillfall-piece-glyphs.js';
 import { foldPlayRailPeek } from '../keystone/play-rail.js';
 
 const ROOT_ID = 'stillfall-atlas';
@@ -51,17 +52,6 @@ const LOCK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.
 const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12.5l4 4 9-9.5"/></svg>';
 const PREV_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 6l-6 6 6 6"/></svg>';
 const NEXT_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 6l6 6-6 6"/></svg>';
-/** Each piece as it spawns, for the supply on the card. */
-const PIECE_ROWS = Object.freeze({
-    I: ['####'],
-    O: ['##', '##'],
-    T: ['.#.', '###'],
-    S: ['.##', '##.'],
-    Z: ['##.', '.##'],
-    J: ['#..', '###'],
-    L: ['..#', '###'],
-});
-
 const now = () => globalThis.performance?.now?.() ?? Date.now();
 
 function el(tag, className = '', text = '') {
@@ -93,12 +83,8 @@ function wellHtml(definition, className = '') {
     return `<span class="${classes}" style="--well-rows:${rows.length}">${cells}</span>`;
 }
 
-function pieceHtml(key) {
-    const rows = PIECE_ROWS[key] || PIECE_ROWS.O;
-    const cells = rows.join('').split('')
-        .map((mark) => (mark === '#' ? '<i class="is-on"></i>' : '<i></i>')).join('');
-    return `<span class="stillfall-atlas__piece" style="--piece-cols:${rows[0].length}" title="${key}">${cells}</span>`;
-}
+/** Each piece of the supply on the card, as it spawns. */
+const pieceHtml = (key) => pieceGlyphHtml(key, 'stillfall-atlas__piece');
 
 /** A header figure: the count, out of the whole, and what it counts. */
 function figureHtml(count, whole, label) {

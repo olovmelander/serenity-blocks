@@ -1,5 +1,5 @@
 import { ROWS } from '../../core/constants.js';
-import { calculateTopRow } from '../../core/infinity-grid.js';
+import { resolveInfinityFollowCameraRow } from '../../core/infinity-spawn-policy.js';
 
 const owners = new WeakMap();
 
@@ -36,10 +36,11 @@ export function configureOdysseyBoardPresentation({
     scene.setWellStyle?.(true);
     scene.configureCamera?.();
     if (session.gameState.isInfinityMode) {
-        const top = session.gameState.lockedPieces.length
-            ? calculateTopRow(session.gameState) : session.gameState.board.length;
-        const topRow = Math.max(0, Math.min(session.gameState.board.length - ROWS, top - ROWS));
-        scene.updateCameraPosition?.(topRow, true);
+        // Open on the frame the follow camera holds (resolveInfinityFollowCameraRow: the tower's
+        // top at 20 % of the view, the first piece entering two rows above it). This framed the
+        // tower's top at the view's bottom edge, so Indra's Net opened on twenty rows of empty
+        // well and the follow then glided sixteen rows down into place as play began.
+        scene.updateCameraPosition?.(resolveInfinityFollowCameraRow(session.gameState, ROWS, null), true);
     }
     syncSettings();
     globalThis.window?.addEventListener?.('settingsChanged', syncSettings);

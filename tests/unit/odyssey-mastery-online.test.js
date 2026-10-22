@@ -402,8 +402,11 @@ describe('Charged planning and exact-target recovery', () => {
     });
 
     it('runs gravity during positive planning latency and rejects a stale pose before any action', async () => {
+        // 600 ms a plan: gravity moves orb 55's piece (~500 ms a row) during each, and two plans
+        // stay clear of the garbage now that it spawns just above the view, six rows over it
+        // (2026-10-22). At 1000 ms the second plan's fall landed it and the run ended on pieces.
         const run = await runOnlineMastery(options({
-            maxPieces: 1, planningLatency: 'fixed', fixedPlanningMs: 1000, maxDecisions: 2,
+            maxPieces: 1, planningLatency: 'fixed', fixedPlanningMs: 600, maxDecisions: 2,
         }), { planner: drop });
         expect(run).toMatchObject({ traceValid: true, reason: 'decision-budget' });
         expect(run.commands).toHaveLength(0);
