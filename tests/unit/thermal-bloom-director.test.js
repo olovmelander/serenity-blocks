@@ -289,6 +289,24 @@ describe('thermal bloom director: intake', () => {
         expect(calls.combo).toEqual([[1, 0]]);
     });
 
+    it('tells the sink of a T-spin that cleared nothing, in place of a clear', () => {
+        const { director, calls, sink } = makeDirector();
+        const spins = [];
+        sink.tspin = vi.fn((player) => spins.push(player));
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(0);
+        expect(spins).toEqual([0]);
+        // A T-spin that clears rides on its clear instead.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 1 });
+        director.flush();
+        expect(spins).toEqual([0]);
+        expect(calls.clear[0].tspin).toBe(true);
+    });
+
     it('turns a meditation click into a clear at a screen position', () => {
         const { director, calls } = makeDirector();
         director.setViewport(1000, 500);

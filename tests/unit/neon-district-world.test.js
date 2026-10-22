@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
     BLACKOUT_HOLD, CRUISE_SPEED, DISTRICT_PALETTES, NeonDistrictWorld, REST_RIG, SCROLL_REBASE, fovForAspect,
@@ -190,12 +192,43 @@ describe('neon district world: camera', () => {
             glitch = Math.max(glitch, world.u.glitch.value);
             darkest = Math.min(darkest, world.u.neon.value);
         }
-        expect(storm[0]).toBeGreaterThan(0.3);
-        // It only ever fades: no frame is brighter than the one before, so nothing flickers.
-        for (let i = 1; i < storm.length; i++) expect(storm[i]).toBeLessThanOrEqual(storm[i - 1] + 1e-9);
+        // The lightning comes with the gold wave, once the hold is over; then it only ever
+        // fades: no frame is brighter than the one before, so nothing flickers.
+        const struck = storm.findIndex((v) => v > 0);
+        expect(struck).toBeGreaterThan(0);
+        expect(struck).toBeLessThanOrEqual(Math.ceil(BLACKOUT_HOLD * 60) + 1);
+        expect(storm[struck]).toBeGreaterThan(0.3);
+        for (let i = struck + 1; i < storm.length; i++) expect(storm[i]).toBeLessThanOrEqual(storm[i - 1] + 1e-9);
         expect(glitch).toBe(0);
         expect(darkest).toBeGreaterThan(0.5); // no blackout
         world.dispose();
+    });
+
+    it('holds the lightning steady and keeps the blackout and the tears soft under Reduce flashing', () => {
+        vi.stubGlobal('window', { settings: { reduceFlashing: true } });
+        try {
+            const { camera, world } = makeWorld('Minimal');
+            world.onClear({ lines: 4 });
+            const storm = [];
+            let glitch = 0;
+            let darkest = Infinity;
+            for (let i = 0; i < 120; i++) {
+                run(world, camera, 1 / 60, 1);
+                storm.push(world.u.storm.value);
+                glitch = Math.max(glitch, world.u.glitch.value);
+                darkest = Math.min(darkest, world.u.neon.value);
+            }
+            // ADR-0021: one soft stroke at a fraction of its strength, no flicker in it.
+            const struck = storm.findIndex((v) => v > 0);
+            expect(struck).toBeGreaterThan(0);
+            expect(Math.max(...storm)).toBeLessThan(0.1);
+            for (let i = struck + 1; i < storm.length; i++) expect(storm[i]).toBeLessThanOrEqual(storm[i - 1] + 1e-9);
+            expect(glitch).toBeLessThan(0.1);
+            expect(darkest).toBeGreaterThan(0.85); // the blackout is a dip, not a cut to black
+            world.dispose();
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 
     it('makes the distant sheet lightning one gentle swell under reduced motion, a flicker otherwise', () => {
@@ -319,10 +352,215 @@ describe('neon district world: clears, combos and the four-line overdrive', () =
         expect(one.distanceTo(two)).toBeGreaterThan(0.5);
         world.onClear({ lines: 3 });
         expect(world.u.clearA).toHaveLength(CLEAR_SLOTS);
-        expect(world.u.clearA[0].value.y).toBe(3);
+        expect(world.u.clearA[2].value.y).toBe(3);
         // Three lines: both accents at once, the least saturated of the three.
-        const three = world.u.clearC[0].value;
+        const three = world.u.clearC[2].value;
         expect(Math.min(three.x, three.y, three.z)).toBeGreaterThan(Math.min(one.x, one.y, one.z));
+        // Every slot taken: the next wave takes the one with the least light left (the oldest).
+        for (let i = 3; i < CLEAR_SLOTS; i++) world.onClear({ lines: 1 });
+        world.onClear({ lines: 2 });
+        expect(world.u.clearA[0].value.y).toBe(2);
+        world.dispose();
+    });
+
+    it('stacks a cascade\'s waves up the street, each more golden and wider than the last', () => {
+        const { camera, world } = makeWorld('Low');
+        const kicks = [];
+        for (let w = 1; w <= 4; w++) {
+            if (w > 1) run(world, camera, 0.36);
+            world.onClear({ lines: 1, combo: 2, cascade: w });
+            kicks.push(world.arriveKick.rawAt(world.time + 2));
+        }
+        // Four waves 360 ms apart are all in the street at once: none took another's slot.
+        const slots = world.u.clearA.map((s, i) => ({ a: s.value.clone(), c: world.u.clearC[i].value.clone() }))
+            .sort((p, q) => p.a.x - q.a.x);
+        expect(new Set(slots.map((s) => s.a.x)).size).toBe(4);
+        // Each wave burns more golden (red over blue climbs), never with fewer fronts.
+        const warmth = (c) => c.x / Math.max(c.z, 1e-3);
+        for (let i = 1; i < 4; i++) {
+            expect(slots[i].a.y).toBeGreaterThanOrEqual(slots[i - 1].a.y);
+            expect(warmth(slots[i].c)).toBeGreaterThan(warmth(slots[i - 1].c));
+        }
+        expect(slots[3].a.y).toBeGreaterThan(slots[0].a.y);
+        // Each arrives at the camera harder than the one before (they add up).
+        for (let i = 1; i < 4; i++) expect(kicks[i]).toBeGreaterThan(kicks[i - 1]);
+        // Waves in the street together share its light: the stack never paints the canyon.
+        const inFlight = slots.reduce((sum, s) => sum + s.a.z, 0);
+        expect(inFlight).toBeLessThan(3.2);
+        // The first wave's front is still on its way to the camera.
+        expect(world.time - slots[0].a.x).toBeLessThan(CLEAR_TRAVEL + 0.1);
+        world.dispose();
+    });
+
+    it('never cuts the light when a weak event follows a strong one', () => {
+        const quadAlone = makeWorld('High');
+        const quadThenSingle = makeWorld('High');
+        quadAlone.world.onClear({ lines: 4, combo: 3 });
+        quadThenSingle.world.onClear({ lines: 4, combo: 3 });
+        run(quadAlone.world, quadAlone.camera, 0.3);
+        run(quadThenSingle.world, quadThenSingle.camera, 0.3);
+        quadThenSingle.world.onClear({ lines: 1, combo: 4 });
+        quadThenSingle.world.onLock({ u: 0.5 });
+        // The quad's wave keeps its slot, its arrival kick and its flood: the single adds to them.
+        expect(quadThenSingle.world.u.clearA[0].value.y).toBe(4);
+        let kickA = 0;
+        let kickB = 0;
+        for (let i = 0; i < 90; i++) {
+            run(quadAlone.world, quadAlone.camera, 1 / 60, 1);
+            run(quadThenSingle.world, quadThenSingle.camera, 1 / 60, 1);
+            expect(quadThenSingle.world.kick).toBeGreaterThanOrEqual(quadAlone.world.kick - 1e-9);
+            const raysA = quadAlone.world.getPostState().rays;
+            expect(quadThenSingle.world.getPostState().rays).toBeGreaterThanOrEqual(raysA - 1e-9);
+            expect(quadThenSingle.world.u.neon.value).toBeGreaterThanOrEqual(quadAlone.world.u.neon.value - 1e-9);
+            kickA = Math.max(kickA, quadAlone.world.kick);
+            kickB = Math.max(kickB, quadThenSingle.world.kick);
+        }
+        expect(kickA).toBeGreaterThan(0.5); // the quad's own arrival kick, untouched
+        expect(kickB).toBeGreaterThan(kickA);
+        quadAlone.world.dispose();
+        quadThenSingle.world.dispose();
+    });
+
+    it('builds a long chain into a storm over the canyon, and breathes back to calm', () => {
+        const { camera, world } = makeWorld('High');
+        const rest = {
+            rain: world.u.rain.value,
+            neon: world.u.neon.value,
+            power: world.u.power.value,
+            exposure: world.getPostState().exposure,
+        };
+        expect(rest.rain).toBe(1);
+        const chain = [1, 1, 2, 1, 2, 2, 3, 2, 2, 3, 2, 3];
+        const after = [];
+        chain.forEach((lines, i) => {
+            world.onLock({ u: 0.5, hardDrop: true });
+            world.onClear({ lines, combo: i + 1 });
+            world.onCombo(i + 1);
+            run(world, camera, 0.64, 20);
+            after.push({
+                rain: world.u.rain.value,
+                downpour: world.downpour,
+                neon: world.u.neon.value,
+                charge: world.charge,
+                stage: world.play.stage,
+            });
+        });
+        const first = after[0];
+        const last = after[after.length - 1];
+        // The first clear leaves the world as it was; the chain brings the rain on and the
+        // district alive, act by act, into a fever.
+        expect(first.downpour).toBeLessThan(0.05);
+        expect(last.downpour).toBeGreaterThan(0.4);
+        expect(last.rain).toBeGreaterThan(first.rain + 0.3);
+        expect(last.neon).toBeGreaterThan(first.neon);
+        expect(last.charge).toBeGreaterThan(first.charge);
+        expect(last.stage).toBe(3);
+        // The rain thickens all the way: no clear in the chain drops it back.
+        for (let i = 2; i < after.length; i++) {
+            expect(after[i].downpour).toBeGreaterThanOrEqual(after[i - 1].downpour - 1e-6);
+        }
+        // The iris closes a little so the colours hold.
+        expect(world.getPostState().exposure).toBeLessThan(rest.exposure);
+        // The hands rest: the chain breaks, the storm passes, the district breathes back to calm.
+        world.onCombo(0);
+        run(world, camera, 4, 120);
+        const easing = world.charge;
+        expect(easing).toBeGreaterThan(0.05); // it eases down, it is not drained at once
+        run(world, camera, 26, 520);
+        expect(world.downpour).toBeLessThan(0.01);
+        expect(world.u.rain.value).toBeCloseTo(1, 2);
+        expect(world.u.power.value).toBeCloseTo(rest.power, 3);
+        expect(world.u.neon.value).toBeCloseTo(rest.neon, 3);
+        expect(world.play.stage).toBe(0);
+        world.dispose();
+    });
+
+    it('crowns a late perfect clear on the quad still playing: no second blackout, the storm breaks', () => {
+        const { camera, world } = makeWorld('High');
+        world.onClear({ lines: 4, combo: 6 });
+        const wave = world.u.clearA[0].value.clone();
+        const flight = world.dragon.uniforms.flight.value;
+        run(world, camera, 0.56);
+        const launched = flight.x;
+        const neonBefore = world.u.neon.value;
+        const mistBefore = world.getPostState().glassMist;
+        world.onPerfect({ combo: 6 });
+        let darkest = Infinity;
+        for (let i = 0; i < 60; i++) {
+            run(world, camera, 1 / 60, 1);
+            darkest = Math.min(darkest, world.u.neon.value);
+        }
+        // No new hush and no new wave: the same quad, crowned.
+        expect(darkest).toBeGreaterThanOrEqual(neonBefore * 0.9);
+        expect(world.counts.quads).toBe(1);
+        expect(world.counts.perfects).toBe(1);
+        expect(world.u.clearA[0].value.x).toBe(wave.x);
+        expect(world.u.clearA[0].value.z).toBeGreaterThan(wave.z);
+        // The dragon is not yanked back to the haze: it burns brighter where it is.
+        expect(flight.x).toBe(launched);
+        expect(flight.y).toBeGreaterThan(1);
+        // The glass wipes clear and the rain lets up.
+        expect(world.getPostState().glassMist).toBeLessThan(mistBefore * 0.5);
+        expect(world.u.rain.value).toBeLessThan(1);
+        // The crown feeds the dragon in flight; it does not call a second one after it.
+        run(world, camera, DRAGON_FLIGHT);
+        expect(world.getState().dragon).toBe(false);
+        world.dispose();
+    });
+
+    it('sends a second dragon after the first when quads come back to back', () => {
+        const { camera, world } = makeWorld('High');
+        const flight = world.dragon.uniforms.flight.value;
+        world.onClear({ lines: 4, combo: 1 });
+        run(world, camera, 2);
+        const first = flight.x;
+        world.onClear({ lines: 4, combo: 2, b2b: true });
+        // The one in the street is not yanked back to the haze: it burns brighter.
+        expect(flight.x).toBe(first);
+        expect(flight.y).toBeGreaterThan(1);
+        // Back-to-back quads stack the overdrive instead of resetting it.
+        expect(world.overdrive).toBeGreaterThan(1);
+        run(world, camera, DRAGON_FLIGHT);
+        expect(flight.x).toBeCloseTo(first + DRAGON_FLIGHT, 6);
+        expect(world.getState().dragon).toBe(true);
+        world.dispose();
+    });
+
+    it('never makes a car or a kerb light jump when the charge changes', () => {
+        const { camera, world } = makeWorld('Low');
+        run(world, camera, 1);
+        const dt = 1 / 60;
+        let traffic = world.u.traffic.value;
+        let chase = world.u.chase.value;
+        world.onCombo(12);
+        for (let i = 0; i < 180; i++) {
+            run(world, camera, dt, 1);
+            // The travel clock only ever advances at the (faster) pace, never by a jump.
+            const step = world.u.traffic.value - traffic;
+            expect(step).toBeGreaterThan(0);
+            expect(step).toBeLessThan(dt * 2);
+            const turn = (world.u.chase.value - chase + 1) % 1;
+            expect(turn).toBeLessThan(dt * 2);
+            traffic = world.u.traffic.value;
+            chase = world.u.chase.value;
+        }
+        world.dispose();
+    });
+
+    it('answers a T-spin that clears nothing, and a back-to-back with stretched flares', () => {
+        const { camera, world } = makeWorld('Low');
+        const restStreak = world.getPostState().streak;
+        world.onSpin({ player: 0 });
+        expect(world.glitch).toBeGreaterThan(0.3);
+        expect(world.counts.spins).toBe(1);
+        run(world, camera, 2);
+        world.onClear({ lines: 4, combo: 1 });
+        run(world, camera, 1.5);
+        world.onClear({ lines: 4, combo: 2, b2b: true });
+        run(world, camera, 0.25);
+        const once = world.getPostState().streak;
+        expect(once).toBeGreaterThan(restStreak + 0.3);
+        expect(world.b2bChain).toBe(1);
         world.dispose();
     });
 

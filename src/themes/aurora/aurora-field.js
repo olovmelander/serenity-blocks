@@ -107,6 +107,26 @@ export const EXCITATION = Object.freeze({
     width: 256,
     /** Tint energy at byte 255. */
     maxGlow: 2,
+    /**
+     * Where pulses of different colours overlap, their sum drifts toward white (cyan over
+     * magenta over lime reads as cream). Commit pulls each texel's floor this far back down,
+     * as `vivid()` does for one colour, so a crowded storm stays a storm of colours. A lone
+     * pulse is already vivid (its floor is zero) and passes unchanged.
+     */
+    resaturate: 0.75,
+});
+
+/**
+ * Sweeps: bright bands that climb the rays after a clear. Each band runs its course; a new
+ * one takes a free slot (or the weakest), so a cascade sends successive bands up the rays
+ * instead of yanking one band back to the foot of the curtain.
+ */
+export const SWEEP = Object.freeze({
+    slots: 3,
+    /** Seconds a band takes to climb, at its usual pace. */
+    seconds: 0.85,
+    /** Half-height of a band, km. */
+    width: 46,
 });
 
 /**
@@ -277,9 +297,21 @@ export class ExcitationMap {
         this.pending = false;
         const glowScale = 255 / EXCITATION.maxGlow;
         for (let i = 0; i < data.length; i += 4) {
-            const red = Math.min(255, Math.round(Math.max(0, scratch[i]) * glowScale));
-            const green = Math.min(255, Math.round(Math.max(0, scratch[i + 1]) * glowScale));
-            const blue = Math.min(255, Math.round(Math.max(0, scratch[i + 2]) * glowScale));
+            let r = Math.max(0, scratch[i]);
+            let g = Math.max(0, scratch[i + 1]);
+            let b = Math.max(0, scratch[i + 2]);
+            const high = Math.max(r, g, b);
+            if (high > 0) {
+                // Keep the peak (how far the curtain is taken over), deepen the hue.
+                const floor = (Math.min(r, g, b) / high) * EXCITATION.resaturate;
+                const gain = 1 / (1 - floor);
+                r = high * (r / high - floor) * gain;
+                g = high * (g / high - floor) * gain;
+                b = high * (b / high - floor) * gain;
+            }
+            const red = Math.min(255, Math.round(r * glowScale));
+            const green = Math.min(255, Math.round(g * glowScale));
+            const blue = Math.min(255, Math.round(b * glowScale));
             if (data[i] !== red || data[i + 1] !== green || data[i + 2] !== blue) {
                 data[i] = red;
                 data[i + 1] = green;

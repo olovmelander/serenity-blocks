@@ -301,21 +301,28 @@ describe('Golden Forest firefly simulation', () => {
             expectFinite(sim);
         });
 
-        it('takes the spark nearest its end when the whole reserve is alight', () => {
+        it('takes the spark nearest its end when the whole reserve is alight, but never one still burning', () => {
             const sim = create({ count: 12, reserve: 8 });
-            const lives = [5, 3, 1, 4, 2, 6, 7, 8];
+            const lives = [5, 0.3, 0.1, 4, 0.2, 6, 7, 8];
             const indices = lives.map((life, slot) => sim.spawn(slot, 2, 0, 0, 0, 0, life));
             expect(indices).toEqual([4, 5, 6, 7, 8, 9, 10, 11]);
             expect(sim.counts().live).toBe(8);
-            // 1 s left, then 2 s, then 3 s: always the one that would have gone out soonest.
+            // 0.1 s left, then 0.2 s, then 0.3 s: always the one that would have gone out soonest.
             expect(sim.spawn(50, 2, 0, 0, 0, 0, 9)).toBe(6);
             expect(sim.spawn(51, 2, 0, 0, 0, 0, 9)).toBe(8);
             expect(sim.spawn(52, 2, 0, 0, 0, 0, 9)).toBe(5);
             expect(sim.counts()).toEqual({ ambient: 4, reserve: 8, live: 8 });
             expect([sim.x[6], sim.x[8], sim.x[5]]).toEqual([50, 51, 52]);
             expect([sim.life[6], sim.life[8], sim.life[5]]).toEqual([9, 9, 9]);
-            // The others were left burning.
+            // The others were left burning ...
             expect([sim.life[4], sim.life[7], sim.life[9], sim.life[10], sim.life[11]]).toEqual([5, 4, 6, 7, 8]);
+            // ... and with every spark still burning brightly, a new one is refused rather than
+            // snuffing one out mid-flight (it would blink out and reappear elsewhere).
+            const before = Array.from(sim.life);
+            expect(sim.spawn(53, 2, 0, 0, 0, 0, 9)).toBe(-1);
+            expect(Array.from(sim.life)).toEqual(before);
+            expect(sim.cursor).toBeGreaterThanOrEqual(sim.ambient);
+            expect(sim.cursor).toBeLessThan(sim.count);
         });
 
         it('prefers a dark spark to one that is still burning', () => {
@@ -334,18 +341,24 @@ describe('Golden Forest firefly simulation', () => {
             const before = ambient();
             let lowest = Infinity;
             let highest = -Infinity;
+            let refused = 0;
             for (let frame = 0; frame < 120; frame++) {
                 for (let burst = 0; burst < 40; burst++) {
                     const life = 1 + random() * 3;
                     const index = sim.spawn(random() * 8 - 4, 1 + random() * 4, random() * 8 - 4, 0, 1, 0, life);
-                    lowest = Math.min(lowest, index);
-                    highest = Math.max(highest, index);
+                    if (index < 0) refused += 1;
+                    else {
+                        lowest = Math.min(lowest, index);
+                        highest = Math.max(highest, index);
+                    }
                 }
                 sim.step(STEP);
                 expect(sim.counts().live).toBeLessThanOrEqual(sim.reserve);
             }
             expect(sim.counts().live).toBe(200);
-            // Every one of the 4800 sparks went into the reserve, never over an ambient firefly.
+            // A full reserve refuses what it cannot place without snuffing a burning spark ...
+            expect(refused).toBeGreaterThan(0);
+            // ... and every spark it took went into the reserve, never over an ambient firefly.
             expect(lowest).toBe(sim.ambient);
             expect(highest).toBe(sim.count - 1);
             expect(ambient()).toEqual(before);
@@ -1062,5 +1075,87 @@ describe('Golden Forest firefly simulation', () => {
             expect(Array.from(sim.outPlace)).toEqual(Array.from(fresh.outPlace));
             expect(Array.from(sim.outGlow)).toEqual(Array.from(fresh.outGlow));
         });
+    });
+});
+
+describe('Golden Forest fireflies as play runs hot', () => {
+    /** Spread of the ambient fireflies' brightness: wide while each keeps its own clock. */
+    function spread(sim) {
+        const values = [];
+        for (let index = 0; index < sim.ambient; index++) values.push(sim.outGlow[index * 4]);
+        const average = values.reduce((sum, value) => sum + value, 0) / values.length;
+        return Math.sqrt(values.reduce((sum, value) => sum + (value - average) ** 2, 0) / values.length);
+    }
+
+    it('wakes them, brings them into step and lifts them off the reeds, then lets them go', () => {
+        const calm = create({ count: 400, reserve: 40 });
+        const hot = create({ count: 400, reserve: 40 });
+        let calmSpread = 0;
+        let hotSpread = 0;
+        let calmGlow = 0;
+        let hotGlow = 0;
+        for (let frame = 0; frame < 600; frame++) {
+            calm.step(STEP);
+            hot.step(STEP, { wake: 1, sync: 1, lift: 1.1 });
+            if (frame >= 300) {
+                calmSpread += spread(calm);
+                hotSpread += spread(hot);
+                for (let index = 0; index < calm.ambient; index++) {
+                    calmGlow += calm.outGlow[index * 4];
+                    hotGlow += hot.outGlow[index * 4];
+                }
+            }
+        }
+        // In step: they flash together, so at any moment they are far more alike.
+        expect(hotSpread).toBeLessThan(calmSpread * 0.45);
+        // Awake: brighter between flashes and in them.
+        expect(hotGlow).toBeGreaterThan(calmGlow * 1.15);
+        // Lifted: the whole population has climbed about a metre (eased, not jumped).
+        const height = (sim) => {
+            let sum = 0;
+            for (let index = 0; index < sim.ambient; index++) sum += sim.outPlace[index * 4 + 1];
+            return sum / sim.ambient;
+        };
+        expect(height(hot) - height(calm)).toBeGreaterThan(0.9);
+        // When play cools they drift back to their own clocks and homes.
+        run(hot, 6);
+        expect(height(hot) - height(calm)).toBeLessThan(0.05);
+        let rest = 0;
+        for (let frame = 0; frame < 300; frame++) {
+            hot.step(STEP);
+            rest += spread(hot);
+        }
+        expect(rest).toBeGreaterThan(hotSpread * 1.5);
+    });
+
+    it('dims each spark a little in a crowded sky, so a full reserve brightens without whiting out', () => {
+        const few = create({ count: 2000, reserve: 1600, groundHeight: DRY });
+        const many = create({ count: 2000, reserve: 1600, groundHeight: DRY });
+        const throwSparks = (sim, count) => {
+            for (let index = 0; index < count; index++) sim.spawn(index % 20, 5, 0, 0, 0, 0, 30);
+        };
+        throwSparks(few, 150);
+        throwSparks(many, 1500);
+        run(few, 2, { settled: false });
+        run(many, 2, { settled: false });
+        const brightness = (sim) => {
+            let sum = 0;
+            let lit = 0;
+            for (let index = sim.ambient; index < sim.count; index++) {
+                if (sim.life[index] > 0) {
+                    sum += sim.outGlow[index * 4];
+                    lit += 1;
+                }
+            }
+            return { each: sum / lit, total: sum };
+        };
+        const sparse = brightness(few);
+        const crowded = brightness(many);
+        // A few hundred burn as they always did; ten times as many give more light in all, but
+        // each is dimmer, so the total grows far slower than the count.
+        expect(few.crowd).toBe(1);
+        expect(crowded.each).toBeLessThan(sparse.each * 0.6);
+        expect(crowded.total).toBeGreaterThan(sparse.total * 3);
+        expect(crowded.total).toBeLessThan(sparse.total * 6);
     });
 });

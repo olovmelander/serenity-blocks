@@ -369,7 +369,7 @@ export function createBlooms(u, plan, opts = {}) {
             const held = bloomLevel(from, to, e.at - t0);
             from = held;
             t0 = e.at;
-            to = e.kind === 'strike' ? Math.min(BLOOM_FULL, held + e.amount) : held * BLOOM_KEEP;
+            to = e.kind === 'strike' ? Math.min(BLOOM_FULL, held + e.amount) : held * e.keep;
         }
         return bloomLevel(from, to, t - t0);
     };
@@ -398,17 +398,19 @@ export function createBlooms(u, plan, opts = {}) {
     part.strike = (index, rgb, at, amount) => {
         if (!(index >= 0 && index < count) || !Number.isFinite(at) || !(amount > 0)) return;
         schedule({
-            index, at, kind: 'strike', rgb: [rgb[0], rgb[1], rgb[2]], amount, tag: null,
+            index, at, kind: 'strike', rgb: [rgb[0], rgb[1], rgb[2]], amount, tag: null, keep: 1,
         });
     };
     /**
-     * Lily `index` lets its light go at `at`. `tag` names what makes it (a swell's birth), so
-     * `cancel(tag)` can call it off.
+     * Lily `index` lets its light go at `at`, keeping the share `keep` of it (BLOOM_KEEP; more
+     * when play runs hot). `tag` names what makes it (a swell's birth), so `cancel(tag)` can call
+     * it off.
      */
-    part.release = (index, at, tag = null) => {
+    part.release = (index, at, tag = null, keep = BLOOM_KEEP) => {
         if (!(index >= 0 && index < count) || !Number.isFinite(at)) return;
+        const share = Number.isFinite(keep) ? Math.max(0, Math.min(1, keep)) : BLOOM_KEEP;
         schedule({
-            index, at, kind: 'release', rgb: null, amount: 0, tag,
+            index, at, kind: 'release', rgb: null, amount: 0, tag, keep: share,
         });
     };
     /** Call off every release still to come that carries `tag`. */
@@ -446,7 +448,7 @@ export function createBlooms(u, plan, opts = {}) {
                 s.to = Math.min(BLOOM_FULL, held + e.amount);
                 s.rgb = e.rgb;
             } else {
-                s.to = held * BLOOM_KEEP;
+                s.to = held * e.keep;
             }
             rows[e.index].set(s.t0, s.from, s.to, e.at);
             tints[e.index].set(s.rgb[0], s.rgb[1], s.rgb[2], 0);

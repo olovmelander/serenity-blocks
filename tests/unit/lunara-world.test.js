@@ -6,8 +6,8 @@ import {
     LUNARA_PARTS, LunaraWorld, METEOR_BEAT, ORBIT_RATE, ORBIT_START, REST_RIG, SURGE_COOL, fovForAspect,
 } from '../../src/themes/lunara/lunara-world.js';
 import {
-    CLEAR_SLOTS, CLEAR_TRAVEL, DEG, HUSH_HOLD, LOCK_SLOTS, LUNARA_PALETTES, MOONFIRE, STORE_HOLD, STORE_MAX,
-    WISP_FLIGHT, WISP_SLOTS, WISP_TAIL, celestialAnchors, pieceColor, powerForCombo,
+    CLEAR_SLOTS, CLEAR_TRAVEL, DEG, HUSH_HOLD, LOCK_SLOTS, LUNARA_PALETTES, MOONFIRE, PULSE_FADE, STORE_HOLD,
+    STORE_MAX, WISP_FLIGHT, WISP_SLOTS, WISP_TAIL, celestialAnchors, pieceColor, powerForCombo,
 } from '../../src/themes/lunara/lunara-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/lunara/lunara-quality.js';
 import { MAX_CRYSTALS, MAX_FLORA } from '../../src/themes/lunara/lunara-layout.js';
@@ -59,10 +59,35 @@ function used(part, name) {
     return out;
 }
 
-/** When the wisps now in flight reach their spires (the latest arrival). */
+/**
+ * When the wisps now in flight reach their spires (the latest arrival). A strike is written into
+ * its spire when it lands, never before: until then it is a promise.
+ */
 function lastArrival(world) {
-    const pulse = instanced(world.crystals, 'aPulse');
-    return Math.max(...used(world.crystals, 'aPulse').map((i) => pulse.array[i * 4 + 3]));
+    return Math.max(...world.crystals.promises().map((promise) => promise.time));
+}
+
+/** The spires promised light by the wisps now in flight. */
+function promised(world) {
+    return world.crystals.promises().map((promise) => promise.index);
+}
+
+/** The flash a spire shows at `time`, as its shader reads it (brightest channel). */
+function flashAt(world, index, time) {
+    const pulse = instanced(world.crystals, 'aPulse').array;
+    const age = time - pulse[index * 4 + 3];
+    if (age < 0) return 0;
+    return Math.max(pulse[index * 4], pulse[index * 4 + 1], pulse[index * 4 + 2]) * Math.exp(-age / PULSE_FADE);
+}
+
+/** The light a spire holds at `time`, as its shader reads it (brightest channel). */
+function heldShown(world, index, time) {
+    const { aStore, aPrev, aAux } = world.crystals.state;
+    if (time > aAux[index * 4]) return 0;
+    const from = time >= aStore[index * 4 + 3]
+        ? aStore.subarray(index * 4, index * 4 + 3)
+        : aPrev.subarray(index * 3, index * 3 + 3);
+    return Math.max(from[0], from[1], from[2]) * Math.exp(-(time - aStore[index * 4 + 3]) / STORE_HOLD);
 }
 
 /**
@@ -362,7 +387,7 @@ describe('lunara world: camera and sky', () => {
         for (const index of world.targets.right) expect(tipScreenX(world, index)).toBeGreaterThan(card.x1);
         // A wisp flies to where its spire is drawn, not to where the plan lists it.
         world.onLock({ u: 0.1, rows: [14], color: '#a8e0ff' });
-        const [struck] = used(world.crystals, 'aPulse');
+        const [struck] = promised(world);
         const crystal = world.plan.crystals[struck];
         const to = world.wisps.geometry.getAttribute('aTo').array;
         const along = (to[1] - crystal.y) / crystal.axis[1];
@@ -371,10 +396,9 @@ describe('lunara world: camera and sky', () => {
         // And a clear's wave reaches the spires in the order they stand in on screen.
         world.onClear({ lines: 1 });
         const heart = world.u.heart.value;
-        const pulse = instanced(world.crystals, 'aPulse').array;
         const passes = [];
         for (let i = 0; i < world.crystals.count; i++) {
-            passes.push([Math.hypot(drawnX(world, i) - heart.x, world.plan.crystals[i].z - heart.y), pulse[i * 4 + 3]]);
+            passes.push([Math.hypot(drawnX(world, i) - heart.x, world.plan.crystals[i].z - heart.y), world.passes[i]]);
         }
         passes.sort((a, b) => a[0] - b[0]);
         for (let i = 1; i < passes.length; i++) expect(passes[i][1]).toBeGreaterThanOrEqual(passes[i - 1][1] - 1e-5);
@@ -540,9 +564,10 @@ describe('lunara world: locks', () => {
         expect(world.getState().held).toBe(0);
         world.onLock({ rows: [12], u: 0.1, color: '#a8ffe8' });
         expect(world.counts.wisps).toBe(1);
-        // One spire has been promised the light, a moment from now.
-        const struck = used(world.crystals, 'aPulse');
+        // One spire has been promised the light, a moment from now (nothing is written into it yet).
+        const struck = promised(world);
         expect(struck).toHaveLength(1);
+        expect(used(world.crystals, 'aPulse')).toHaveLength(0);
         const [index] = struck;
         const arrive = lastArrival(world);
         expect(arrive).toBeGreaterThan(world.time);
@@ -580,8 +605,10 @@ describe('lunara world: locks', () => {
         expect(ripple.colour.w).toBeLessThan(landing.colour.w); // it does not reach as far
         expect(ripple.colour.y / ripple.colour.x).toBeCloseTo(rgb[1] / rgb[0], 6);
 
-        // Once it has arrived the spire holds the light, in that colour, and throws dust.
+        // Once it has arrived the spire flashes and holds the light, in that colour, and throws dust.
         run(world, camera, arrive - world.time + 0.05);
+        expect(used(world.crystals, 'aPulse')).toEqual([index]);
+        expect(flashAt(world, index, world.time)).toBeGreaterThan(0);
         expect(world.getState().held).toBeGreaterThan(0);
         expect(world.crystals.heldAt(index, world.time)).toBeCloseTo(world.getState().held, 9);
         const store = instanced(world.crystals, 'aStore');
@@ -590,7 +617,7 @@ describe('lunara world: locks', () => {
 
         // A piece on the other side goes to a spire on the other side.
         world.onLock({ rows: [12], u: 0.9, color: '#ffd4a8' });
-        const other = used(world.crystals, 'aPulse').find((i) => i !== index);
+        const other = promised(world).find((i) => i !== index);
         expect(tipScreenX(world, other)).toBeGreaterThan(card.x1);
         world.dispose();
     });
@@ -734,7 +761,7 @@ describe('lunara world: locks', () => {
         run(world, camera, 1 / 60, 1);
         world.onLock({ screen: { x: 0.85, y: 0.9 } });
         expect(ringBornAt(world, world.time).place.x).toBeGreaterThan(1);
-        const [left, right] = used(world.crystals, 'aPulse')
+        const [left, right] = promised(world)
             .sort((a, b) => tipScreenX(world, a) - tipScreenX(world, b));
         expect(tipScreenX(world, left)).toBeLessThan(0.5);
         expect(tipScreenX(world, right)).toBeGreaterThan(0.5);
@@ -775,12 +802,15 @@ describe('lunara world: clears, combos and the four-line clear', () => {
         expect(beams.rows.value.z).toBe(-1);
         expect(beams.rows.value.w).toBe(-1);
         expect(world.counts.clears).toBe(1);
-        // Without rows it clears from the floor up.
+        // Without rows it clears from the floor up, in blades of its own: the last still fly.
         world.onClear({ lines: 3 });
-        expect(beams.rows.value.x).toBeGreaterThan(beams.rows.value.y);
-        expect(beams.rows.value.y).toBeGreaterThan(beams.rows.value.z);
-        expect(beams.rows.value.z).toBeGreaterThan(0);
-        expect(beams.rows.value.w).toBe(-1);
+        const next = world.beams.uniforms;
+        expect(next).not.toBe(beams);
+        expect(beams.frame.value.w).toBeGreaterThan(0);
+        expect(next.rows.value.x).toBeGreaterThan(next.rows.value.y);
+        expect(next.rows.value.y).toBeGreaterThan(next.rows.value.z);
+        expect(next.rows.value.z).toBeGreaterThan(0);
+        expect(next.rows.value.w).toBe(-1);
         world.dispose();
     });
 
@@ -799,18 +829,22 @@ describe('lunara world: clears, combos and the four-line clear', () => {
     it('answers one, two and three lines in different colours, ever stronger, and reuses its slots', () => {
         const { world } = makeWorld('Low');
         const slots = world.u.clearA.slice();
+        const wave = () => world.u.clearA[world.clearSlot].value;
+        const colour = () => world.u.clearC[world.clearSlot].value;
         world.onClear({ lines: 1 });
-        const one = world.u.clearC[0].value.clone();
-        const first = world.u.clearA[0].value.clone();
+        const one = colour().clone();
+        const first = wave().clone();
         world.onClear({ lines: 2 });
-        const two = world.u.clearC[1].value.clone();
-        const second = world.u.clearA[1].value.clone();
+        const two = colour().clone();
+        const second = wave().clone();
         world.onClear({ lines: 3 });
-        const three = world.u.clearC[0].value.clone();
+        const three = colour().clone();
         expect(world.u.clearA).toHaveLength(CLEAR_SLOTS);
         world.u.clearA.forEach((slot, i) => expect(slot).toBe(slots[i]));
-        expect(world.u.clearA[0].value.y).toBe(3);
-        expect(world.u.clearA[1].value.y).toBe(2);
+        // Each wave keeps its own slot while the others still cross the water.
+        expect(new Set(world.u.clearA.map((slot) => slot.value.y).filter((y, i) => world.u.clearA[i].value.z > 0)))
+            .toEqual(new Set([1, 2, 3]));
+        expect(wave().y).toBe(3);
         expect(one.distanceTo(two)).toBeGreaterThan(0.1);
         expect(one.distanceTo(three)).toBeGreaterThan(0.1);
         expect(two.distanceTo(three)).toBeGreaterThan(0.1);
@@ -819,67 +853,143 @@ describe('lunara world: clears, combos and the four-line clear', () => {
         expect(peak(two)).toBeCloseTo(peak(one), 6);
         expect(peak(three)).toBeCloseTo(peak(one), 6);
         expect(second.z).toBeGreaterThan(first.z);
-        expect(world.u.clearA[0].value.z).toBeGreaterThan(second.z);
+        expect(wave().z).toBeGreaterThan(second.z);
         // No line count is one line; more than four is four.
         world.onClear({});
-        expect(world.u.clearA[1].value.y).toBe(1);
+        expect(wave().y).toBe(1);
         world.onClear({ lines: 9 });
-        expect(world.u.clearA[0].value.y).toBe(4);
+        expect(wave().y).toBe(4);
         expect(world.counts.clears).toBe(5);
         world.dispose();
     });
 
-    it('lets every spire go of its light as the wave passes it', () => {
+    it('makes every spire answer as the wave passes it: it flares, and from rest lets most of its light go', () => {
         const { camera, world } = makeWorld('Low');
         world.onLock({ u: 0.2, hardDrop: true, color: '#ffa8d0' });
         world.onLock({ u: 0.8, hardDrop: true, color: '#a8e0ff' });
         run(world, camera, lastArrival(world) - world.time + 0.05);
+        // Let the play cool: this is a clear from rest.
+        run(world, camera, 8, 120);
         const { held } = world.getState();
         expect(held).toBeGreaterThan(0);
         const holders = [];
         for (let i = 0; i < world.crystals.count; i++) if (world.crystals.heldAt(i, world.time) > 0) holders.push(i);
+        const before = holders.map((i) => world.crystals.heldAt(i, world.time));
 
         const { storm } = world;
         world.onClear({ lines: 2 });
         const birth = world.time;
         expect(world.storm).toBeGreaterThan(storm); // the aurora surges
-        // Nothing is lost yet: the wave has only just left.
+        // Nothing is touched yet: the wave has only just left.
         expect(world.getState().held).toBeCloseTo(held, 9);
         // Every spire answers when the front reaches it: nearer ones first, all within its travel.
-        const pulse = instanced(world.crystals, 'aPulse');
         const heart = world.u.heart.value;
         const passes = [];
         for (let i = 0; i < world.crystals.count; i++) {
             const distance = Math.hypot(drawnX(world, i) - heart.x, world.plan.crystals[i].z - heart.y);
-            passes.push([distance, pulse.array[i * 4 + 3]]);
+            passes.push([distance, world.passes[i], i]);
         }
         passes.sort((a, b) => a[0] - b[0]);
         for (let i = 0; i < passes.length; i++) {
-            expect(passes[i][1]).toBeGreaterThan(birth);
+            expect(passes[i][1]).toBeGreaterThanOrEqual(birth);
             expect(passes[i][1]).toBeLessThanOrEqual(birth + CLEAR_TRAVEL + 1e-4);
             if (i > 0) expect(passes[i][1]).toBeGreaterThanOrEqual(passes[i - 1][1] - 1e-5);
         }
-        // A spire that held light flares in its own colour as it lets go, brighter than one that held none.
-        const empty = world.targets.left.find((i) => !holders.includes(i));
-        const flare = (i) => Math.max(pulse.array[i * 4], pulse.array[i * 4 + 1], pulse.array[i * 4 + 2]);
-        expect(flare(holders[0])).toBeGreaterThan(flare(empty));
+        // Before its front gets there a spire shows exactly what it showed: no spire goes dark early.
+        const pulse = instanced(world.crystals, 'aPulse').array;
+        const far = passes[passes.length - 1][2];
+        const stamp = pulse[far * 4 + 3];
+        run(world, camera, (world.passes[far] - world.time) * 0.5);
+        expect(pulse[far * 4 + 3]).toBe(stamp);
 
-        // Once the wave has passed, the valley holds nothing.
-        let previous = held;
-        for (let i = 0; i < 20; i++) {
-            run(world, camera, (CLEAR_TRAVEL * 1.05) / 20);
-            expect(world.getState().held).toBeLessThanOrEqual(previous);
-            previous = world.getState().held;
-        }
-        expect(world.getState().held).toBe(0);
-        for (const i of holders) expect(world.crystals.heldAt(i, world.time)).toBe(0);
+        // Once it has passed, each flared — one that held light in its own colour, brighter than one
+        // that held none — and from rest let most of what it held go (a breath of the wave stays).
+        run(world, camera, CLEAR_TRAVEL * 1.05, 40);
+        const flare = (i) => Math.max(pulse[i * 4], pulse[i * 4 + 1], pulse[i * 4 + 2]);
+        const empty = world.targets.left.find((i) => !holders.includes(i));
+        for (const i of holders) expect(pulse[i * 4 + 3]).toBeCloseTo(world.passes[i], 5);
+        expect(flare(holders[0])).toBeGreaterThan(flare(empty));
+        holders.forEach((i, k) => {
+            const now = world.crystals.heldAt(i, world.time);
+            expect(now).toBeGreaterThan(0);
+            expect(now).toBeLessThan(before[k] * 0.75);
+        });
+        expect(world.getState().held).toBeLessThan(held);
         // And it can be filled again.
+        const emptied = world.getState().held;
         world.onLock({ u: 0.2, color: '#ffa8d0' });
         run(world, camera, lastArrival(world) - world.time + 0.05);
-        expect(world.getState().held).toBeGreaterThan(0);
+        expect(world.getState().held).toBeGreaterThan(emptied);
         world.dispose();
     });
 
+    it('never puts out a spire a lock has just lit when a clear follows: the wave adds to its light', () => {
+        const { camera, world } = makeWorld('Low');
+        // A lock and its clear in the same frame, the way play delivers them.
+        world.onLock({ u: 0.2, hardDrop: true, color: '#ffa8d0' });
+        const [{ index, time: arrive }] = world.crystals.promises();
+        world.onClear({ lines: 1 });
+        const pass = world.passes[index];
+        // Frame by frame, from the strike to well after the wave, the spire's flash and its held
+        // light never drop away: each fades only at its own pace, and the wave's pass adds.
+        run(world, camera, arrive - world.time + 1e-3, 1);
+        let flash = flashAt(world, index, world.time);
+        let heldNow = heldShown(world, index, world.time);
+        expect(flash).toBeGreaterThan(0);
+        expect(heldNow).toBeGreaterThan(0);
+        const step = 1 / 60;
+        while (world.time < Math.max(pass, arrive) + 1) {
+            run(world, camera, step, 1);
+            const f = flashAt(world, index, world.time);
+            const h = heldShown(world, index, world.time);
+            // At most what a frame's fade takes, never more.
+            expect(f).toBeGreaterThanOrEqual(flash * Math.exp(-step / PULSE_FADE) - 1e-6);
+            if (world.time < pass) expect(h).toBeGreaterThanOrEqual(heldNow * Math.exp(-step / STORE_HOLD) - 1e-6);
+            flash = f;
+            heldNow = h;
+        }
+        world.dispose();
+    });
+
+    it('fills the shores through a hot chain instead of emptying them, and lets them go when the chain ends', () => {
+        const chain = makeWorld('Low');
+        const cold = makeWorld('Low');
+        const lit = (w) => w.world.getState().held;
+        // The same locks into both valleys.
+        for (const w of [chain, cold]) {
+            for (let k = 0; k < 4; k++) {
+                w.world.onLock({ u: k % 2 ? 0.8 : 0.2, hardDrop: true, color: '#a8e0ff' });
+                run(w.world, w.camera, 0.25);
+            }
+            run(w.world, w.camera, 1);
+        }
+        // One clear from cold: the shores let most of their light go.
+        run(cold.world, cold.camera, 8, 120);
+        const coldBefore = lit(cold);
+        cold.world.onClear({ lines: 2 });
+        run(cold.world, cold.camera, CLEAR_TRAVEL * 1.1);
+        expect(lit(cold)).toBeLessThan(coldBefore * 0.6);
+        // A hot chain: each clear's wave leaves its light in every spire, which keeps what it holds.
+        let combo = 0;
+        const readings = [lit(chain)];
+        for (let k = 0; k < 8; k++) {
+            combo += 1;
+            chain.world.onLock({ u: k % 2 ? 0.75 : 0.25, hardDrop: true, color: '#ffd4a8' });
+            chain.world.onClear({ lines: 1 + (k % 3), combo });
+            chain.world.onCombo(combo);
+            run(chain.world, chain.camera, 0.6);
+            readings.push(lit(chain));
+        }
+        run(chain.world, chain.camera, CLEAR_TRAVEL);
+        expect(lit(chain)).toBeGreaterThan(readings[0] * 2);
+        expect(lit(chain)).toBeGreaterThan(readings[2]);
+        // The chain ends: the valley lets everything it held go.
+        chain.world.onCombo(0);
+        run(chain.world, chain.camera, CLEAR_TRAVEL * 1.7);
+        expect(lit(chain)).toBe(0);
+        chain.world.dispose();
+        cold.world.dispose();
+    });
     it('swells the moon\'s shafts at once and kicks the camera a beat after a clear', () => {
         const { camera, world } = makeWorld('Low');
         const rest = { ...world.getPostState() };
@@ -1010,6 +1120,7 @@ describe('lunara world: clears, combos and the four-line clear', () => {
         expect(world.u.shock.value.x).toBeCloseTo(t0 + HUSH_HOLD, 9);
         expect(world.u.shock.value.y).toBeGreaterThan(0);
         // A pillar stands on the tallest spire of every cluster in view, from the moment the wave reaches it.
+        run(world, camera, t0 + HUSH_HOLD + CLEAR_TRAVEL + 0.01 - world.time);
         const pillars = standing();
         expect(pillars.length).toBeGreaterThan(0);
         for (let i = 0; i < world.crystals.count; i++) {
@@ -1115,6 +1226,211 @@ describe('lunara world: clears, combos and the four-line clear', () => {
         expect(world.getState().level).toBe(1);
         world.levelUp(-3);
         expect(world.getState().level).toBe(1);
+        world.dispose();
+    });
+});
+
+describe('lunara world: the build-up', () => {
+    /** One clearing lock of a chain, the way the director delivers it. */
+    const clearing = (world, combo, { lines = 1 + (combo % 3), hardDrop = true } = {}) => {
+        world.onLock({ u: combo % 2 ? 0.75 : 0.25, hardDrop, color: '#a8e0ff' });
+        world.onClear({ lines, combo });
+        world.onCombo(combo);
+    };
+
+    it('adds a weak event to a strong one still lit, never cutting its light', () => {
+        const alone = makeWorld('Low');
+        const joined = makeWorld('Low');
+        for (const w of [alone, joined]) {
+            w.world.onClear({ lines: 4 });
+            run(w.world, w.camera, HUSH_HOLD + 0.3);
+        }
+        const ring = joined.world.u.shock.value.clone();
+        // A single and a T-spin that clears nothing land on the quad's light...
+        joined.world.onClear({ lines: 1 });
+        joined.world.onClear({ lines: 0, tspin: true });
+        for (const w of [alone, joined]) run(w.world, w.camera, 1 / 60, 1);
+        // ...and every light is at least where the quad alone left it.
+        for (const key of ['flash', 'kick', 'shafts', 'bloomBoost']) {
+            expect(joined.world.getPostState()[key], key).toBeGreaterThanOrEqual(alone.world.getPostState()[key]);
+        }
+        expect(joined.world.surge).toBeGreaterThanOrEqual(alone.world.surge);
+        expect(joined.world.u.aurora.value).toBeGreaterThanOrEqual(alone.world.u.aurora.value);
+        // The sky's ring runs on, brighter, instead of starting over smaller.
+        expect(joined.world.u.shock.value.x).toBe(ring.x);
+        expect(joined.world.u.shock.value.y).toBeGreaterThan(ring.y);
+        // The quad's moonfire is still on the water beside the single's wave.
+        expect(joined.world.u.clearA.some((slot) => slot.value.w === 1 && slot.value.z > 0)).toBe(true);
+        alone.world.dispose();
+        joined.world.dispose();
+    });
+
+    it('reads hotter through a long chain than at its first clear, and breathes back once the hands rest', () => {
+        const { camera, world } = makeWorld('Low');
+        const rest = {
+            aurora: world.u.aurora.value,
+            power: world.u.power.value,
+            exposure: world.getPostState().exposure,
+            shafts: world.getPostState().shafts,
+            high: world.u.auroraHigh.value.clone(),
+        };
+        expect(world.getState().heat).toEqual({
+            punch: 0, level: 0, fever: 0, stage: 0,
+        });
+        clearing(world, 1);
+        run(world, camera, 0.64);
+        const first = {
+            level: world.heat.level,
+            aurora: world.u.aurora.value,
+            power: world.u.power.value,
+            veins: world.u.veins.value,
+            rings: world.u.rings.value,
+            held: world.getState().held,
+        };
+        for (let combo = 2; combo <= 12; combo++) {
+            clearing(world, combo);
+            run(world, camera, 0.64);
+        }
+        const hot = world.getState();
+        // The heat of play has climbed into a fever...
+        expect(hot.heat.level).toBeGreaterThan(first.level * 2);
+        expect(hot.heat.fever).toBeGreaterThan(0.3);
+        expect(hot.heat.stage).toBeGreaterThanOrEqual(2);
+        // ...and the valley wears it: the curtains, the bed, the moon's veins, its rings, the shores.
+        expect(world.u.aurora.value).toBeGreaterThan(first.aurora);
+        expect(world.u.power.value).toBeGreaterThan(first.power);
+        expect(world.u.veins.value).toBeGreaterThan(first.veins);
+        expect(world.u.rings.value).toBeGreaterThan(first.rings);
+        expect(hot.held).toBeGreaterThan(first.held);
+        // The curtains' crowns blush toward the companion's rose in the fever.
+        expect(world.u.auroraHigh.value.distanceTo(rest.high)).toBeGreaterThan(0.05);
+        // It brightens with play: the iris closes only a little.
+        expect(world.getPostState().exposure).toBeGreaterThan(0.6);
+
+        // The hands rest, the chain ends: the valley breathes back to its night.
+        world.onLock({ u: 0.5 });
+        world.onCombo(0);
+        run(world, camera, 30, 900);
+        const calm = world.getState();
+        expect(calm.heat.level).toBeLessThan(1e-3);
+        expect(calm.heat.fever).toBe(0);
+        expect(calm.heat.stage).toBe(0);
+        expect(world.u.power.value).toBeCloseTo(rest.power, 3);
+        expect(world.u.aurora.value).toBeCloseTo(rest.aurora, 3);
+        expect(world.getPostState().exposure).toBeCloseTo(rest.exposure, 3);
+        expect(world.getPostState().shafts).toBeCloseTo(rest.shafts, 3);
+        expect(world.u.auroraHigh.value.distanceTo(rest.high)).toBeLessThan(1e-3);
+        world.dispose();
+    });
+
+    it('holds its breath on a quad as deep as play is cold: a quad in a fever only inhales', () => {
+        const cold = makeWorld('Low');
+        const fever = makeWorld('Low');
+        for (let combo = 1; combo <= 10; combo++) {
+            clearing(fever.world, combo);
+            run(fever.world, fever.camera, 0.64);
+        }
+        for (const w of [cold, fever]) {
+            w.world.onClear({ lines: 4, combo: 11 });
+            run(w.world, w.camera, HUSH_HOLD * 0.9);
+        }
+        expect(cold.world.getState().breath).toBeLessThan(0.2);
+        expect(fever.world.getState().breath).toBeGreaterThan(0.6);
+        cold.world.dispose();
+        fever.world.dispose();
+    });
+
+    it('crowns a perfect clear settled after its quad: no second hush or wave, every lit spire a pillar', () => {
+        const plain = makeWorld('High');
+        const { camera, world } = makeWorld('High');
+        for (const w of [plain, { camera, world }]) {
+            for (let k = 0; k < 4; k++) {
+                w.world.onLock({ u: k % 2 ? 0.8 : 0.2, hardDrop: true, color: '#ffd4a8' });
+                run(w.world, w.camera, 0.3);
+            }
+            run(w.world, w.camera, 1);
+            w.world.onClear({ lines: 4 });
+            run(w.world, w.camera, HUSH_HOLD + 0.14); // physics settles the perfect clear ~0.36 s on
+        }
+        const waves = world.u.clearA.map((slot) => slot.value.clone());
+        const fire = world.u.clearA.find((slot) => slot.value.w === 1).value.z;
+        const { surge } = world;
+        const hush = world.hushUntil;
+        world.onClear({
+            lines: 0, perfect: true, crown: true, combo: 1,
+        });
+        // Not a clear of its own: no hush, no new wave, no second quad...
+        expect(world.counts.quads).toBe(1);
+        expect(world.counts.clears).toBe(1);
+        expect(world.hushUntil).toBe(hush);
+        world.u.clearA.forEach((slot, i) => expect(slot.value.x).toBe(waves[i].x));
+        // ...a crown on the one still playing: its moonfire flares, the moon burns hotter.
+        expect(world.u.clearA.find((slot) => slot.value.w === 1).value.z).toBeGreaterThan(fire);
+        expect(world.surge).toBeGreaterThan(surge);
+        run(world, camera, 0.1);
+        expect(world.getState().breath).toBeGreaterThan(0.9);
+        // Every spire that held light gives it up as a pillar as the front reaches it: more stand
+        // than for the quad alone, and the shores are emptied.
+        run(world, camera, 0.1 + CLEAR_TRAVEL * 1.3);
+        run(plain.world, plain.camera, 0.1 + CLEAR_TRAVEL * 1.3);
+        const standing = (w) => {
+            const { aAux } = w.crystals.state;
+            let count = 0;
+            for (let i = 0; i < w.crystals.count; i++) if (aAux[i * 4 + 2] > 0) count += 1;
+            return count;
+        };
+        expect(standing(world)).toBeGreaterThan(standing(plain.world));
+        expect(world.getState().held).toBe(0);
+        expect(plain.world.getState().held).toBeGreaterThan(0);
+        world.dispose();
+        plain.world.dispose();
+    });
+
+    it('builds each wave of a cascade on the last: brighter, in the next colour', () => {
+        const { world } = makeWorld('Low');
+        const strengths = [];
+        const colours = [];
+        for (let wave = 1; wave <= 4; wave++) {
+            world.onClear({ lines: 1, cascade: wave });
+            strengths.push(world.u.clearA[world.clearSlot].value.z);
+            colours.push(world.u.clearC[world.clearSlot].value.clone());
+        }
+        for (let k = 1; k < 4; k++) {
+            expect(strengths[k]).toBeGreaterThan(strengths[k - 1]);
+            expect(colours[k].distanceTo(colours[k - 1])).toBeGreaterThan(0.1);
+        }
+        // Four waves, four slots: none of them wiped.
+        expect(new Set(world.u.clearA.map((slot) => slot.value.z)).size).toBe(4);
+        world.dispose();
+    });
+
+    it('answers a back-to-back with the companion, louder the second time', () => {
+        const { camera, world } = makeWorld('Low');
+        const rose = () => world.u.companionCol.value.x;
+        run(world, camera, 0.2);
+        const atRest = rose();
+        const { orbit } = world;
+        world.onClear({ lines: 2, tspin: true, b2b: true });
+        run(world, camera, 0.5);
+        const once = rose();
+        expect(once).toBeGreaterThan(atRest * 1.3);
+        // It lurches on round the great moon.
+        expect(world.orbit - orbit).toBeGreaterThan(ORBIT_RATE * 0.5 * 6);
+        world.onClear({ lines: 2, tspin: true, b2b: true });
+        run(world, camera, 0.5);
+        expect(rose()).toBeGreaterThan(once);
+        run(world, camera, 16, 320);
+        expect(rose()).toBeCloseTo(atRest, 3);
+        world.dispose();
+    });
+
+    it('turns the sky a little on a T-spin that clears nothing', () => {
+        const { world } = makeWorld('Low');
+        world.onClear({ lines: 0, tspin: true });
+        expect(world.twist).toBeGreaterThan(0.3);
+        expect(world.u.shock.value.y).toBeGreaterThan(0);
+        expect(world.counts.clears).toBe(0);
+        expect(world.u.clearA.every((slot) => slot.value.z === 0)).toBe(true);
         world.dispose();
     });
 });

@@ -22,7 +22,9 @@ describe('sunfall-director', () => {
         expect(snap.flushPulse).toBeGreaterThan(0.8);
         expect(snap.flushColor).toEqual(PIECE_SWATCH_RGB.I);
 
-        dir.onHardDrop({ code: 'S', col: 5, row: 14, distance: 12 });
+        dir.onHardDrop({
+            code: 'S', col: 5, row: 14, distance: 12,
+        });
         snap = dir.step(0.05);
         expect(snap.snapPulse).toBeGreaterThan(0.8);
         expect(snap.snapColor).toEqual(PIECE_SWATCH_RGB.S);
@@ -93,7 +95,10 @@ describe('sunfall-director', () => {
         const dir = new SunfallDirector({ level: 1 });
 
         dir.onPerfectClear();
-        let snap = dir.step(0.2);
+        // The zenith swings in (no jump of the beam in one frame) and peaks about a second on.
+        let snap = dir.step(0.05);
+        expect(snap.zenithPulse).toBeLessThan(0.3);
+        for (let i = 0; i < 9; i += 1) snap = dir.step(0.1);
         expect(snap.zenithPulse).toBeGreaterThan(0.8);
         expect(snap.cloudHoleOpen).toBeGreaterThan(1.1);
 

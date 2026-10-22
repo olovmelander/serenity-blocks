@@ -56,6 +56,7 @@ import {
     SUN_AZIMUTH,
     SUN_ELEVATION,
     TAU,
+    WAVE_SLOTS,
     mulberry32,
     sunDirection,
 } from './himalayan-peak-core.js';
@@ -315,8 +316,13 @@ export function createPeakUniforms(textures) {
         spark: uniform(new THREE.Vector4(1, 1, 1, 0)),
         /** The ring of ice-light round the sun that a perfect clear draws (0..1). */
         halo: uniform(0),
-        /** The avalanche: (birth time, strength). */
-        avalanche: uniform(new THREE.Vector2(-100, 0)),
+        /**
+         * How hot play runs, as the prayer lines show it (0 at rest .. 1 in a fever): the light
+         * the flags hold glows brighter the longer the hands stay quick.
+         */
+        prayer: uniform(0),
+        /** The avalanches: (birth time, strength) of the first slide, then of the second. */
+        avalanche: uniform(new THREE.Vector4(-100, 0, -100, 0)),
         /** The wind: how far it has carried things (metres, downwind) and how hard it blows now. */
         windRun: uniform(0),
         gale: uniform(GALE_REST),
@@ -336,7 +342,7 @@ export function createPeakUniforms(textures) {
         volumeTex: textures.volume,
         groundTex: textures.ground,
     };
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < WAVE_SLOTS; i++) {
         u.waveA.push(uniform(new THREE.Vector4(-100, 1, 0, 3300)));
         u.waveC.push(uniform(new THREE.Vector3(1, 1, 1)));
     }
@@ -463,7 +469,7 @@ export const hpAtmosphere = (u, col, p, { steps = 4, gain = 1 } = {}) => {
 export const hpWaveLight = (u, y) => {
     let front = vec3(0.0);
     let glow = float(0.0);
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < WAVE_SLOTS; i++) {
         const A = u.waveA[i];
         // The first front is at the top at birth and at the cloud 1.5 s later.
         const since = u.time.sub(A.x).sub(A.w.sub(y).div(A.w).mul(1.5));

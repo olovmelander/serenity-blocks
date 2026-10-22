@@ -15,10 +15,22 @@
  *                 and the fall's mist thickens; when the chain breaks it falls back
  *   four lines    the great surge, and the last of the winter's ice goes out on it
  *   T-spin        the pool turns in a whirl where it drains
- *   back-to-back  the river glitters while the run lasts
- *   perfect       two surges, and whooper swans come over the valley
+ *   back-to-back  the river glitters while the run lasts, and each back-to-back clear flares it
+ *                 and lights the bow in the fall's spray, brighter each step of the run
+ *   perfect       two surges, and whooper swans come over the valley (the crown on the clear it
+ *                 settles after: the knoll stands in full flower, the air stills)
  *   level up      the day steps a station forward (it also turns with the clock alone); cranes pass
  *   game over     the light falls to dusk; it comes back with the next run
+ *
+ * and the heat of play under all of it (shared/gameplay-surge.js, HEAT below): calm play looks as
+ * it always did; warm, the kinds of flower the player has been playing open all over the knoll
+ * and the air stirs; hot, the river rises and runs whiter, the fall's spray swells, the breeze
+ * leans the meadow and the colours deepen; in a fever the spring flood is at its height: the whole
+ * knoll in flower and glowing in the colours played, the bow blazing in the spray, the river
+ * glittering, cranes trumpeting over the valley. When the hands rest it all breathes back.
+ * Nothing restarts: a clear's flush of bloom, a T-spin's whirl, a perfect clear's stillness and a
+ * clear's breath are taken up where they stand by the next one (spring-core.js Rejoin, the shared
+ * Swell), so fast play builds on what is lit instead of blinking it out.
  *
  * and the air over it all (spring-air.js, spring-motes.js): willow down and pollen drift on the
  * breeze; a lock shakes the piece's own pollen out of its patch and puffs the air round it; a
@@ -36,8 +48,9 @@
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
-    DEG, PIECE_COLORS, TAU, TIMING, approach, clamp, hexToLinear, mulberry32, smooth,
+    DEG, PIECE_COLORS, Rejoin, TAU, TIMING, approach, clamp, hexToLinear, mulberry32, smooth,
 } from './spring-core.js';
 import {
     EYE, RIG, S_POOL, levelAt, pointAt, riverNearest, rigFor,
@@ -51,7 +64,7 @@ import {
     EVENT_ROWS, PALETTE_ROWS, PATCHES, SURGES, createLatticeTexture, createNoiseTexture, createUniforms,
 } from './spring-tsl.js';
 import { SPRING_FLOWERS, springFlowerSlotForPiece } from './spring-flowers.js';
-import { SpringMeadow } from './spring-meadow.js';
+import { PATCH, SpringMeadow } from './spring-meadow.js';
 import { createLand } from './spring-land.js';
 import { WHIRL, WHIRL_CENTRE_AT, createRiver } from './spring-river.js';
 import { createPour, createStepFace } from './spring-fall.js';
@@ -74,8 +87,8 @@ export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
 export const fovForAspect = (aspect) => rigFor(aspect).fov;
 
 const COUNTERS = [
-    'locks', 'hardDrops', 'clears', 'lines', 'quads', 'tspins', 'perfects', 'chainSteps', 'releases', 'b2bSteps',
-    'levelUps', 'gameOvers', 'mornings',
+    'locks', 'hardDrops', 'clears', 'lines', 'waves', 'quads', 'tspins', 'spins', 'perfects', 'chainSteps',
+    'releases', 'b2bSteps', 'levelUps', 'gameOvers', 'mornings', 'feverFlights',
 ];
 /** How long ago (s) an event row's moment was (Infinity before it). */
 const time0 = (now, born) => (now >= born ? now - born : Infinity);
@@ -83,9 +96,13 @@ const emptyCounts = () => Object.fromEntries(COUNTERS.map((k) => [k, 0]));
 /** Session scalars a rebuild in place carries over. */
 const SNAPSHOT = Object.freeze([
     'time', 'level', 'combo', 'peak', 'b2b', 'flood', 'foamBoost', 'flowClock', 'perfectAt', 'duskFrom', 'duskTarget',
-    'duskAt', 'gloryShown', 'surgeCursor', 'patchCursor', 'lastLockAt', 'levelUpAt', 'clearAt', 'clearPower',
-    'airClock', 'airGyre', 'stir', 'airWaveAt', 'airWavePower', 'burstSide', 'lastLockU',
+    'duskAt', 'gloryShown', 'surgeCursor', 'patchCursor', 'lastLockAt', 'levelUpAt', 'airClock', 'airGyre', 'stir',
+    'airWaveAt', 'airWavePower', 'airWave2At', 'airWave2Power', 'burstSide', 'lastLockU', 'gust', 'bowShown',
+    'feverFlightAt', 'lastStage',
 ]);
+/** The envelopes and swells a rebuild in place carries over (exportSessionState). */
+const ENVELOPES = Object.freeze(['flush', 'still', 'poolWhirl']);
+const SWELLS = Object.freeze(['flashKick', 'floodKick', 'gustKick', 'gloryKick', 'bowKick']);
 
 /**
  * A lock's patch of bloom: how wide it opens (radius m, wider for a hard drop) and how far, and
@@ -105,7 +122,17 @@ export const FLUSH = Object.freeze({ rise: 0.6, hold: 2.2, fall: 3.5 });
  * motion, and a clear's breath (its speed m/s; its power per line, from `wave`).
  */
 export const AIR_MOTION = Object.freeze({
-    hurry: 1.3, gyre: 0.45, fullChain: 8, reduced: 0.4, waveSpeed: 11, wave: 0.45, wavePerLine: 0.18,
+    hurry: 1.3,
+    gyre: 0.45,
+    fullChain: 8,
+    reduced: 0.4,
+    waveSpeed: AIR.breath.speed,
+    wave: 0.45,
+    wavePerLine: 0.18,
+    /** A clear this soon (s) after a breath set out feeds it; a later one sends the other breath. */
+    breathJoin: 1.8,
+    /** The most a fed breath carries. */
+    breathMost: 1.35,
 });
 /** A perfect clear's still, golden air: in, held, out (s from the clear). */
 export const STILL = Object.freeze({ rise: 2.5, hold: 10, fall: 18 });
@@ -117,6 +144,68 @@ const DOWN_WHITE = Object.freeze([1.0, 0.98, 0.94]);
 /** The flood: how high each link of a chain lifts the river (m), and the most it rises. */
 export const FLOOD = Object.freeze({
     perLink: 0.14, most: 0.9, foamPerLink: 0.09, foamMost: 0.6,
+});
+
+/**
+ * The heat of play in the valley (GameplaySurge: `level` 0..1 how hot play runs, `fever` 0..1 a
+ * sustained hot streak, `punch` each event's momentary hit), as amounts at full level / full fever:
+ *   flood, foam      the river's rise (m) and extra white water under the chain's own (Fever: the
+ *                    spring flood at its height); `room` how far past the chain's most they may go
+ *   wave             a cascade wave past the first lifts the river this much more (m, a swell)
+ *   gust             the breeze's lean on the meadow and the trees (eased: rise, fall per s)
+ *   stir             the air stirs (its motes thicken, run, wobble, turn round the gyres)
+ *   bloom            how far the kinds of flower the player has been playing open all over the
+ *                    knoll (from `bloomFrom` to `bloomTo` of the level, plus the fever's share);
+ *                    `kindHit` what a lock adds to its kind's share (a 24 s swell)
+ *   flushFever       the whole knoll in flower in a fever
+ *   glitter          the river glitters in a fever (a floor under back-to-back's glory)
+ *   bow              how much brighter the spray bow stands (back-to-back per step of the run)
+ *   saturation, iris the grade: deeper colour, and the iris closing a little so it stays deep
+ *   bloomBoost       a little more glare off the brightest water and petals
+ *   shafts           the sun's shafts through the fall's mist (where the sun is on screen)
+ *   patch            a lock's patch of bloom opens this much wider (share of its radius), and
+ *                    its light runs `patchLight` brighter through the flowers
+ *   warm             the sunlight warms toward gold (at full fever; the level adds 0.4 of it)
+ *   nudge            the lens dips this far (deg) at a punch of 1 (not under reduced motion)
+ *   flightGap        cranes come over at most this often (s) when play breaks into a fever
+ */
+export const HEAT = Object.freeze({
+    flood: 0.3,
+    floodFever: 0.25,
+    floodRoom: 0.15,
+    foam: 0.25,
+    foamFever: 0.2,
+    foamRoom: 0.15,
+    wave: 0.07,
+    gust: 0.2,
+    gustFever: 0.3,
+    gustRise: 1.6,
+    gustFall: 0.45,
+    stir: 0.45,
+    stirFever: 0.4,
+    bloomFrom: 0.15,
+    bloomTo: 0.8,
+    bloom: 0.5,
+    bloomFever: 0.45,
+    kindHit: 0.45,
+    flushFever: 0.75,
+    glitter: 0.4,
+    bow: 0.25,
+    bowFever: 0.75,
+    bowB2B: 0.3,
+    saturation: 0.08,
+    saturationFever: 0.06,
+    iris: 0.08,
+    irisFever: 0.03,
+    bloomBoost: 0.08,
+    bloomBoostFever: 0.06,
+    shafts: 0.25,
+    shaftsFever: 0.6,
+    patch: 0.3,
+    patchLight: 0.35,
+    warm: 0.3,
+    nudge: 0.16,
+    flightGap: 30,
 });
 
 let BAKED = null;
@@ -222,6 +311,40 @@ export class SpringWorld {
         };
         this.overrides = { hour: null };
         this.ground = null;
+        // ── What gameplay lights, all of it taken up where it stands by the next event ──
+        /** How hot play runs (shared/gameplay-surge.js); `heat` is this frame's reading of it. */
+        this.playSurge = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
+        /** A clear's flush of bloom over the whole knoll; a perfect clear's still, golden air. */
+        this.flush = new Rejoin({
+            rise: FLUSH.rise, holdEnd: FLUSH.rise + FLUSH.hold, fallEnd: FLUSH.rise + FLUSH.hold + FLUSH.fall,
+        });
+        this.still = new Rejoin({ rise: STILL.rise, holdEnd: STILL.hold, fallEnd: STILL.fall });
+        /** A T-spin's whirl in the plunge pool (the river's shader draws the same curve). */
+        this.poolWhirl = new Rejoin({
+            rise: WHIRL.life[0], holdEnd: WHIRL.life[1], fallEnd: WHIRL.life[2], ceiling: 1.6,
+        });
+        /** A four-line clear's flash; a cascade's lift of the river; each event's push on the breeze. */
+        this.flashKick = new Swell({ release: 0.35, ceiling: 0.8, knee: 0.6 });
+        this.floodKick = new Swell({
+            attack: 0.35, release: 4, ceiling: 0.35, knee: 0.25,
+        });
+        this.gustKick = new Swell({
+            attack: 0.12, release: 0.9, ceiling: 0.4, knee: 0.25,
+        });
+        /** A back-to-back clear: the river's glitter flares, and the bow in the spray brightens. */
+        this.gloryKick = new Swell({
+            attack: 0.15, release: 1.8, ceiling: 0.6, knee: 0.4,
+        });
+        this.bowKick = new Swell({
+            attack: 0.4, release: 3, ceiling: 1.2, knee: 0.8,
+        });
+        /** Each kind of flower's share of the player's recent locks (the heat opens those kinds). */
+        this.kindBloom = SPRING_FLOWERS.map(() => new Swell({
+            attack: 0.5, release: 24, ceiling: 1, knee: 0.6, headroom: 1.3,
+        }));
         this.placeGyres();
         this.resetState(0);
     }
@@ -247,13 +370,25 @@ export class SpringWorld {
         this.patchCursor = 0;
         this.lastLockAt = -1e6;
         this.levelUpAt = -1e6;
-        this.clearAt = -1e6;
-        this.clearPower = 0;
         this.airClock = time;
         this.airGyre = 0;
         this.stir = 0;
         this.airWaveAt = -1e6;
         this.airWavePower = 0;
+        this.airWave2At = -1e6;
+        this.airWave2Power = 0;
+        this.gust = 1;
+        this.bowShown = 1;
+        this.feverFlightAt = -1e6;
+        this.lastStage = 0;
+        this.playSurge.reset();
+        Object.assign(this.heat, {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        });
+        for (const key of ENVELOPES) this[key].reset();
+        for (const key of SWELLS) this[key].reset();
+        for (const swell of this.kindBloom) swell.reset();
+        for (let k = 0; k < PALETTE_ROWS.count; k++) this.u.tables.palette[PALETTE_ROWS.colour + k].w = 0;
         this.burstSide = 1;
         this.lastLockU = 0.5;
         this.lastRgb = [...GOLD];
@@ -353,7 +488,8 @@ export class SpringWorld {
         this.burstScale = clamp(Math.sqrt(tier.motes / 1280), 0.55, 1.35);
         this.mist = new Mist(this.u, this.textures, tier.mist);
         this.floes = new Floes(this.u, tier.floes);
-        this.flights = new Flights(this.u);
+        // Three flights at once: a perfect clear's swans, a level-up's cranes and a fever's.
+        this.flights = new Flights(this.u, { slots: 3 });
         this.addPart('fx', {
             mesh: this.motes.mesh,
             meshes: [this.mist.mesh, this.air.mesh, this.motes.mesh, this.floes.mesh, ...this.flights.meshes],
@@ -468,6 +604,13 @@ export class SpringWorld {
         this.pose(camera, this.time, sim.pointerX || 0, sim.pointerY || 0);
         // The shared breath (shared/camera-breath.js) on top of pose()'s drift. Off under reduced motion.
         if (applyCameraBreath(camera, this.time, { scale: this.reducedMotion ? 0 : 1 })) camera.updateMatrixWorld();
+        // Each event's punch dips the lens a touch (it rides on a floor under rapid locks rather
+        // than juddering; the last frame's reading). Off under reduced motion.
+        const nudge = this.reducedMotion ? 0 : this.heat.punch * HEAT.nudge;
+        if (nudge > 1e-4) {
+            camera.rotateX(-nudge * DEG);
+            camera.updateMatrixWorld();
+        }
         this._camera = camera;
     }
 
@@ -570,8 +713,10 @@ export class SpringWorld {
         // on the knoll's near edge at the same bearing.
         const kind = springFlowerSlotForPiece(context.shape);
         const slot = kind >= 0 ? kind : SPRING_FLOWERS.find((f) => f.id === 'anemone').slot;
-        const radius = hard ? BLOOM_PATCH.hardRadius : BLOOM_PATCH.radius;
-        const power = hard ? BLOOM_PATCH.hard : BLOOM_PATCH.soft;
+        // The hotter play runs, the wider each patch opens.
+        const radius = (hard ? BLOOM_PATCH.hardRadius : BLOOM_PATCH.radius) * (1 + HEAT.patch * this.heat.level);
+        // (and the brighter its light runs through the flowers).
+        const power = (hard ? BLOOM_PATCH.hard : BLOOM_PATCH.soft) * (1 + HEAT.patchLight * this.heat.level);
         const onKnoll = site && !site.water && site.distance < 40;
         if (!onKnoll && site?.water) this.spray(site, hard ? 1 : 0.5);
         const b = onKnoll ? 0
@@ -586,6 +731,12 @@ export class SpringWorld {
         this.lastRgb = tone;
         this.lastLockU = clamp(Number(context.u ?? 0.5), 0, 1);
         this.pollenBurst(x, z, tone, hard, radius);
+        // Its kind's share of the knoll (the heat opens the kinds played), a push on the breeze,
+        // and the heat of play.
+        this.kindBloom[slot]?.hit(power * HEAT.kindHit, this.time);
+        this.gustKick.hit(hard ? 0.14 : 0.07, this.time);
+        this.playSurge.lock(context, this.time);
+        if (context.tspin) this.onSpin();
     }
 
     /** True when gameplay may throw motes into the air (not under reduced motion). */
@@ -870,12 +1021,31 @@ export class SpringWorld {
         }
     }
 
-    /** A patch of one kind of flower bursting into bloom round (x, z). */
+    /**
+     * A patch of one kind of flower bursting into bloom round (x, z). Only the patches the tier's
+     * meadow reads are written (a lock written past them bloomed nothing), and a new one takes the
+     * patch that has closed furthest (the oldest of those closed alike); what a patch still open
+     * had left goes to its kind's share of the knoll, which the heat of play opens.
+     */
     bloomPatch(x, z, slot, power, radius) {
-        const k = this.patchCursor % PATCHES;
+        const { events } = this.u.tables;
+        const shown = clamp(Math.round(this.tier?.patches ?? PATCHES), 1, PATCHES);
+        let k = 0;
+        let least = Infinity;
+        for (let i = 0; i < shown; i++) {
+            const where = events[EVENT_ROWS.patch + i * 2];
+            const age = this.time - where.z;
+            const left = age < 0 ? where.w : where.w * (1 - smooth(PATCH.hold, PATCH.hold + PATCH.close, age));
+            if (left < least - 1e-6 || (left <= least + 1e-6 && where.z < events[EVENT_ROWS.patch + k * 2].z)) {
+                least = Math.min(least, left);
+                k = i;
+            }
+        }
+        const taken = Math.round(events[EVENT_ROWS.patch + k * 2 + 1].x);
+        if (least > 0.02) this.kindBloom[taken]?.hit(least * 0.3, this.time);
         this.patchCursor = (this.patchCursor + 1) % (PATCHES * 1000);
-        this.u.tables.events[EVENT_ROWS.patch + k * 2].set(x, z, this.time, power);
-        this.u.tables.events[EVENT_ROWS.patch + k * 2 + 1].set(slot, radius, 0, 0);
+        events[EVENT_ROWS.patch + k * 2].set(x, z, this.time, power);
+        events[EVENT_ROWS.patch + k * 2 + 1].set(slot, radius, 0, 0);
     }
 
     /** Spray thrown up from the water (or dew off the ground) at a site. */
@@ -906,32 +1076,86 @@ export class SpringWorld {
         }
     }
 
-    /** A surge of white water down the rapids from the pool (power ~1 a line). */
+    /**
+     * A surge of white water down the rapids from the pool (power ~1 a line). It takes the surge
+     * with the least left of it (faded furthest down the river), never one still to set out.
+     */
     surge(power, delay = 0) {
-        const slot = this.surgeCursor % SURGES;
+        const { events } = this.u.tables;
+        let slot = 0;
+        let least = Infinity;
+        for (let k = 0; k < SURGES; k++) {
+            const row = events[EVENT_ROWS.surge + k];
+            const age = this.time - row.x;
+            let left = 0;
+            if (age < 0) left = Infinity;
+            else if (age < 60) left = row.y * Math.exp(-age * 0.05);
+            if (left < least) {
+                least = left;
+                slot = k;
+            }
+        }
         this.surgeCursor = (this.surgeCursor + 1) % (SURGES * 1000);
-        this.u.tables.events[EVENT_ROWS.surge + slot].set(this.time + delay, power, 0, 0);
+        events[EVENT_ROWS.surge + slot].set(this.time + delay, power, 0, 0);
+    }
+
+    /**
+     * A clear's breath out across the valley from the eye. A clear soon after a breath set out
+     * feeds it (it rolls on, stronger); a later one sends the other breath, so neither is ever cut
+     * short mid-crossing by the next.
+     */
+    breathe(power) {
+        const t = this.time;
+        const newestIsA = this.airWaveAt >= this.airWave2At;
+        const newestAt = newestIsA ? this.airWaveAt : this.airWave2At;
+        if (t >= newestAt && t - newestAt < AIR_MOTION.breathJoin) {
+            const held = newestIsA ? this.airWavePower : this.airWave2Power;
+            const fed = Math.min(AIR_MOTION.breathMost, Math.max(held, power) + 0.3 * Math.min(held, power));
+            if (newestIsA) this.airWavePower = fed;
+            else this.airWave2Power = fed;
+            return;
+        }
+        // The older of the two (by now far out over the valley, or spent).
+        if (this.airWaveAt <= this.airWave2At) {
+            this.airWaveAt = t;
+            this.airWavePower = power;
+        } else {
+            this.airWave2At = t;
+            this.airWave2Power = power;
+        }
     }
 
     onClear(context = {}) {
         if (this.disposed) return;
-        if (context.perfect) {
+        // A perfect clear the game settled after the clear it crowns (the director's `crown`): the
+        // crown on the clear still playing, never a second clear of rows already gone.
+        if (context.perfect && context.crown) {
             this.onPerfect();
+            this.playSurge.crown(this.time);
             return;
         }
         const lines = clamp(Math.round(context.lines || 1), 1, 4);
+        // A cascade's waves build on each other: each deeper one sends a bigger surge, a fuller
+        // flush and breath, more of the knoll's pollen, and lifts the river a step more.
+        const deeper = clamp(Math.round(context.cascade || 1), 1, 10) - 1;
         this.counts.clears++;
         this.counts.lines += lines;
-        // One surge down the rapids, the bigger the more lines; the whole knoll flushes into bloom,
-        // its pollen and down lift off it, and a breath runs out through the air.
-        this.surge(0.55 + lines * 0.3, 0);
-        this.clearAt = this.time;
-        this.clearPower = Math.min(1, 0.45 + lines * 0.15);
-        this.airWaveAt = this.time;
-        this.airWavePower = Math.min(1.25, AIR_MOTION.wave + AIR_MOTION.wavePerLine * lines);
-        this.clearDrift(lines, context.rowCodes);
+        if (deeper > 0) this.counts.waves++;
+        // One surge down the rapids, the bigger the more lines; the whole knoll flushes into bloom
+        // (taken up where the last clear's flush stands), its pollen and down lift off it, and a
+        // breath runs out through the air.
+        this.surge(0.55 + lines * 0.3 + deeper * 0.25, 0);
+        this.flush.hit(Math.min(1, 0.45 + lines * 0.15 + deeper * 0.1), this.time, 0.1);
+        this.breathe(Math.min(1.25, AIR_MOTION.wave + AIR_MOTION.wavePerLine * lines) + deeper * 0.1);
+        if (deeper > 0) this.floodKick.hit(HEAT.wave * deeper, this.time);
+        this.gustKick.hit(0.1 + 0.05 * lines, this.time);
+        this.clearDrift(lines + deeper * 0.5, context.rowCodes);
         if (lines === 4) this.onQuad();
         if (context.tspin) this.onTSpin(context);
+        if (context.b2b) this.onB2BClear();
+        // A perfect clear in the clear's own frame: the clear, and its crown on top.
+        if (context.perfect) this.onPerfect();
+        this.playSurge.clear(context, this.time);
         if (context.combo > this.combo) this.onCombo(context.combo);
     }
 
@@ -939,24 +1163,49 @@ export class SpringWorld {
     onQuad() {
         this.counts.quads++;
         this.floes?.breakUp(this.time + 1.6, ICE_OUT.floes);
-        this._post.flashKick = 0.5;
+        this.flashKick.hit(0.5, this.time);
+    }
+
+    /** The plunge pool's whirl, taken up where it stands (a second T-spin keeps it turning, harder). */
+    spinPool(power) {
+        this.poolWhirl.hit(power, this.time, 0.3);
+        this.u.whirl.value.set(this.poolWhirl.at, this.poolWhirl.power);
     }
 
     /** A T-spin: the plunge pool turns in a whirl, and so does the air beside the card on its side. */
     onTSpin() {
         this.counts.tspins++;
-        this.u.whirl.value.set(this.time, 1);
+        this.spinPool(1);
         this.whirlSpray();
         this.whirlwind(this.lastLockU < 0.5 ? -1 : 1, 5, PIECE_RGB[1]);
     }
 
+    /** A T-spin that cleared nothing: the pool stirs a little, and a small whirl of air beside the card. */
+    onSpin() {
+        this.counts.spins++;
+        this.spinPool(0.45);
+        this.whirlSpray(36);
+        this.whirlwind(this.lastLockU < 0.5 ? -1 : 1, 2, PIECE_RGB[1]);
+        this.playSurge.spin(this.time);
+    }
+
+    /**
+     * A back-to-back clear: the river's glitter flares and the bow in the fall's spray brightens,
+     * more for each step of the run (the run's own glitter and bow hold while it lasts).
+     */
+    onB2BClear() {
+        const step = Math.min(4, this.b2b + 1);
+        this.gloryKick.hit(0.25 + 0.08 * step, this.time);
+        this.bowKick.hit(0.35 + 0.15 * step, this.time);
+    }
+
     /** Spray flung off the whirl's rim as it spins up: it turns, seen even edge-on. */
-    whirlSpray() {
+    whirlSpray(count = 90) {
         if (!this.motes) return;
         const r = this.random;
         const c = WHIRL_CENTRE_AT;
         const level = levelAt(S_POOL + WHIRL.at) + this.flood;
-        for (let i = 0; i < 90; i++) {
+        for (let i = 0; i < count; i++) {
             const a = r() * TAU;
             const rim = WHIRL.radius * (0.35 + r() * 0.5);
             // Tangential (the whirl turns anticlockwise seen from above), a little outward and up.
@@ -980,10 +1229,15 @@ export class SpringWorld {
         }
     }
 
-    /** A perfect clear: the river surges twice, and whooper swans come over the valley. */
+    /**
+     * A perfect clear: the river surges twice, the whole knoll stands in flower, the air stills
+     * and showers gold, and whooper swans come over the valley.
+     */
     onPerfect() {
         this.counts.perfects++;
         this.perfectAt = this.time;
+        this.still.hit(1, this.time);
+        this.flush.hit(1, this.time);
         this.surge(1.4, 0);
         this.surge(1.4, 1.2);
         this.flights?.launch('swan', this.time);
@@ -1028,6 +1282,7 @@ export class SpringWorld {
             // The day steps on, cranes pass over on their way north, and willow down drifts over.
             this.flights?.launch('crane', time);
             this.downDrift();
+            this.playSurge.levelUp(time);
         }
     }
 
@@ -1064,6 +1319,15 @@ export class SpringWorld {
         this.time = Number.isFinite(sim.time) ? sim.time : this.time;
         const { time, u } = this;
         const dt = Math.max(0, Math.min(0.25, sim.delta || 0));
+        // ── The heat of play: read once a frame, on the theme's clock ──
+        const sample = this.playSurge.sample(time);
+        const { heat } = this;
+        heat.punch = sample.punch;
+        heat.level = sample.level;
+        heat.fever = sample.fever;
+        heat.stage = sample.stage;
+        const { level, fever } = heat;
+        if (this.motes) this.motes.now = time;
         this.dusk = this.duskFrom + (this.duskTarget - this.duskFrom)
             * smooth(0, this.duskTarget ? TIMING.dusk : TIMING.dawn, time - this.duskAt);
         const place = this.overrides.hour !== null ? this.overrides.hour : this.wheel.place(time);
@@ -1075,12 +1339,14 @@ export class SpringWorld {
         u.sunUp.value = L.sunUp;
         u.sunEl.value = L.el;
         u.skyline.value = L.skyline;
-        u.sun.value.set(L.sun[0], L.sun[1], L.sun[2]);
+        // The heat of play warms the sunlight toward gold (the iris closes to match, updatePost).
+        const warm = HEAT.warm * (0.4 * level + fever);
+        u.sun.value.set(L.sun[0] * (1 + warm * 0.3), L.sun[1] * (1 + warm * 0.08), L.sun[2] * (1 - warm * 0.35));
         u.fill.value.set(L.fill[0], L.fill[1], L.fill[2]);
         u.bounce.value.set(L.bounce[0], L.bounce[1], L.bounce[2]);
         u.zenith.value.set(L.zenith[0], L.zenith[1], L.zenith[2]);
         u.horizon.value.set(L.horizon[0], L.horizon[1], L.horizon[2]);
-        u.glow.value.set(L.glow[0], L.glow[1], L.glow[2]);
+        u.glow.value.set(L.glow[0] * (1 + warm * 0.2), L.glow[1], L.glow[2] * (1 - warm * 0.3));
         u.haze.value.set(L.haze[0], L.haze[1], L.haze[2]);
         u.mist.value.set(L.mist[0], L.mist[1], L.mist[2]);
         u.cloudLit.value.set(L.cloudLit[0], L.cloudLit[1], L.cloudLit[2]);
@@ -1095,24 +1361,41 @@ export class SpringWorld {
         u.day.value = L.day;
         u.time.value = time;
         u.wind.value.set(time * 6.5, time * -2.2);
-        u.gust.value = 1 + 0.1 * Math.min(this.combo, 6);
+        // ── The breeze in the plants: a chain and the heat of play lean them harder. Eased, so a
+        // broken chain lets them settle instead of snapping every blade and tree back at once;
+        // each event's push rides on top (both calmer under reduced motion). ──
+        const sway = this.reducedMotion ? AIR_MOTION.reduced : 1;
+        const gustAsk = 1 + 0.1 * Math.min(this.combo, 6) + (HEAT.gust * level + HEAT.gustFever * fever) * sway;
+        this.gust += (gustAsk - this.gust) * approach(gustAsk > this.gust ? HEAT.gustRise : HEAT.gustFall, dt);
+        u.gust.value = this.gust + this.gustKick.valueAt(time) * sway;
 
-        // ── The air: a chain stirs it (it eases in and settles slowly), a perfect clear stills it ──
+        // ── The air: a chain stirs it (it eases in and settles slowly), and so does the heat of
+        // play (whichever stirs it more, but not in a perfect clear's stillness); a perfect clear
+        // stills it ──
         const stirAsk = clamp((this.combo - 1) / (AIR_MOTION.fullChain - 1), 0, 1);
         this.stir += (stirAsk - this.stir) * approach(stirAsk > this.stir ? 1.2 : 0.3, dt);
-        const stillAge = time - this.perfectAt;
-        const still = stillAge < 0 ? 0
-            : smooth(0, STILL.rise, stillAge) * (1 - smooth(STILL.hold, STILL.fall, stillAge));
+        const still = this.still.valueAt(time);
         const pace = this.reducedMotion ? AIR_MOTION.reduced : 1;
-        this.airClock += dt * (1 + AIR_MOTION.hurry * this.stir) * (1 - 0.85 * still) * pace;
-        this.airGyre += dt * this.stir * AIR_MOTION.gyre * pace;
-        u.air.value.set(this.airClock, this.airGyre, this.stir, still);
-        u.airWave.value.set(this.airWaveAt, this.airWavePower, AIR_MOTION.waveSpeed, 0);
+        const airStir = Math.max(this.stir, clamp(HEAT.stir * level + HEAT.stirFever * fever, 0, 1) * (1 - still));
+        this.airClock += dt * (1 + AIR_MOTION.hurry * airStir) * (1 - 0.85 * still) * pace;
+        this.airGyre += dt * airStir * AIR_MOTION.gyre * pace;
+        u.air.value.set(this.airClock, this.airGyre, airStir, still);
+        u.airWave.value.set(this.airWaveAt, this.airWavePower, this.airWave2At, this.airWave2Power);
 
-        // ── The spring flood: each link of a chain lifts the river; it falls back after ──
+        // ── The spring flood: each link of a chain lifts the river, and so does the heat of play
+        // (a cascade's deeper waves a step more); it falls back after ──
         const link = Math.max(0, this.combo - 1);
-        const floodAsk = this.combo >= 2 ? Math.min(FLOOD.most, FLOOD.perLink * link) : 0;
-        const foamAsk = this.combo >= 2 ? Math.min(FLOOD.foamMost, FLOOD.foamPerLink * link) : 0;
+        const lift = this.floodKick.valueAt(time);
+        const chainFlood = this.combo >= 2 ? Math.min(FLOOD.most, FLOOD.perLink * link) : 0;
+        const chainFoam = this.combo >= 2 ? Math.min(FLOOD.foamMost, FLOOD.foamPerLink * link) : 0;
+        const floodAsk = Math.min(
+            FLOOD.most + HEAT.floodRoom,
+            chainFlood + HEAT.flood * level + HEAT.floodFever * fever + lift,
+        );
+        const foamAsk = Math.min(
+            FLOOD.foamMost + HEAT.foamRoom,
+            chainFoam + HEAT.foam * level + HEAT.foamFever * fever + lift * 0.8,
+        );
         this.flood += (floodAsk - this.flood) * approach(floodAsk > this.flood ? 1.4 : 0.35, dt);
         this.foamBoost += (foamAsk - this.foamBoost) * approach(foamAsk > this.foamBoost ? 1.8 : 0.4, dt);
         u.flood.value = this.flood;
@@ -1120,13 +1403,28 @@ export class SpringWorld {
         // The water's own clock runs faster as the flood rises (integrated: never a jump).
         this.flowClock += dt * (1 + this.flood * 0.6);
         u.flowClock.value = this.flowClock;
-        // ── The meadow: a clear's flush of bloom ──
-        const flushAge = time - this.clearAt;
-        u.flush.value = flushAge < 0 ? 0 : this.clearPower * smooth(0, FLUSH.rise, flushAge)
-            * (1 - smooth(FLUSH.rise + FLUSH.hold, FLUSH.rise + FLUSH.hold + FLUSH.fall, flushAge));
-        // ── Back-to-back: the river glitters while the run lasts ──
+        // ── The meadow: a clear's flush of bloom; in a fever the whole knoll stands in flower; the
+        // heat of play opens the kinds the player has been playing all over it ──
+        u.flush.value = Math.max(this.flush.valueAt(time), HEAT.flushFever * fever);
+        const fill = smooth(HEAT.bloomFrom, HEAT.bloomTo, level) * HEAT.bloom + HEAT.bloomFever * fever;
+        for (let k = 0; k < this.kindBloom.length; k++) {
+            this.u.tables.palette[PALETTE_ROWS.colour + k].w = fill * this.kindBloom[k].valueAt(time);
+        }
+        // ── Back-to-back: the river glitters while the run lasts (flaring at each back-to-back
+        // clear), and in a fever; the bow in the spray brightens with the run and the heat ──
         this.gloryShown += (this.b2b / 3 - this.gloryShown) * approach(1.2, dt);
-        u.glory.value = clamp(this.gloryShown, 0, 1);
+        u.glory.value = clamp(Math.max(this.gloryShown + this.gloryKick.valueAt(time), HEAT.glitter * fever), 0, 1);
+        const bowAsk = 1 + HEAT.bowB2B * this.b2b + HEAT.bow * level + HEAT.bowFever * fever;
+        this.bowShown += (bowAsk - this.bowShown) * approach(bowAsk > this.bowShown ? 1.5 : 0.5, dt);
+        u.bow.value = this.bowShown + this.bowKick.valueAt(time);
+        u.whirl.value.set(this.poolWhirl.at, this.poolWhirl.power);
+        // ── Play breaks into a fever: cranes come trumpeting over the valley ──
+        if (heat.stage === 3 && this.lastStage < 3 && time - this.feverFlightAt > HEAT.flightGap) {
+            this.feverFlightAt = time;
+            this.counts.feverFlights++;
+            this.flights?.launch('crane', time);
+        }
+        this.lastStage = heat.stage;
 
         if (camera) {
             camera.updateMatrixWorld();
@@ -1137,22 +1435,30 @@ export class SpringWorld {
             u.tanHalfFov.value = Math.tan(camera.fov * DEG * 0.5);
             u.pixelAngle.value = (2 * u.tanHalfFov.value) / Math.max(1, this.viewportHeight || 1080);
         }
-        this.updatePost(camera, dt);
+        this.updatePost(camera);
         this.motes?.update();
         this.floes?.update(time, this.flood);
         this.flights?.update(time);
         for (const part of this.partList) part.update?.(time, dt, this);
     }
 
-    updatePost(camera, dt) {
+    updatePost(camera) {
         const post = this._post;
         const L = this.light;
-        post.exposure = L.exposure;
+        const { level, fever } = this.heat;
+        // The heat of play deepens the colours, and the iris closes a little as it does, so the
+        // brighter water and flowers stay saturated instead of washing out.
+        post.exposure = L.exposure * (1 - HEAT.iris * Math.max(0, level - 0.2) - HEAT.irisFever * fever);
         post.shaftColour = L.glow;
-        post.saturation = 1.1;
-        post.bloomBoost = Math.min(1, this.gloryShown * 0.2 + this.foamBoost * 0.3);
-        post.flashKick = Math.max(0, (post.flashKick || 0) - dt * 1.6);
-        post.flash = post.flashKick * post.flashKick * 0.3;
+        post.saturation = 1.1 + HEAT.saturation * level + HEAT.saturationFever * fever;
+        post.bloomBoost = Math.min(
+            1,
+            this.gloryShown * 0.2 + this.foamBoost * 0.3 + HEAT.bloomBoost * level + HEAT.bloomBoostFever * fever,
+        );
+        // A four-line clear's flash (a swell: a second quad adds to it; the post scales it by
+        // Reduce flashing).
+        const kick = this.flashKick.valueAt(this.time);
+        post.flash = kick * kick * 0.3;
         post.flashColour = L.glow;
         post.sun.strength = 0;
         if (camera) {
@@ -1165,7 +1471,9 @@ export class SpringWorld {
             post.sun.onScreen = inFront ? 1 - smooth(0.5, 0.9, margin) : 0;
             // The shafts outlast the disc a little: rays fan out from behind the rim it sank behind.
             post.sun.strength = post.sun.onScreen * smooth(-2.5, 1.5, L.el - L.skyline) * smooth(-1.2, 2, L.el)
-                * (1 - smooth(18, 34, L.el));
+                * (1 - smooth(18, 34, L.el))
+                // The shafts stand stronger through the fall's swollen mist as play heats.
+                * (1 + HEAT.shafts * level + HEAT.shaftsFever * fever);
         }
     }
 
@@ -1226,6 +1534,9 @@ export class SpringWorld {
                 .filter((row) => time0(this.time, row.z) < 24).length,
             flush: this.u.flush.value,
             whirlAge: this.u.whirl.value.y > 0 ? this.time - this.u.whirl.value.x : null,
+            heat: { level: this.heat.level, fever: this.heat.fever, stage: this.heat.stage },
+            gust: this.u.gust.value,
+            bow: this.u.bow.value,
             floes: this.floes?.live ?? 0,
             air: { clock: this.airClock, gyre: this.airGyre, stir: this.stir },
             // The woods' impostor atlas: kept (every tree drawn into it), and the bakes it took.
@@ -1243,11 +1554,19 @@ export class SpringWorld {
     exportSessionState() {
         const scalars = {};
         for (const key of SNAPSHOT) scalars[key] = this[key];
+        const envelopes = {};
+        for (const key of ENVELOPES) envelopes[key] = this[key].exportState();
+        const swells = {};
+        for (const key of SWELLS) swells[key] = this[key].exportState();
         return {
             scalars,
             wheel: this.wheel.exportState(),
             counts: { ...this.counts },
             events: this.u.tables.events.map((v) => v.toArray()),
+            envelopes,
+            swells,
+            kinds: this.kindBloom.map((swell) => swell.exportState()),
+            surge: this.playSurge.exportState(),
         };
     }
 
@@ -1257,6 +1576,11 @@ export class SpringWorld {
         this.wheel.importState(state.wheel);
         this.counts = { ...emptyCounts(), ...state.counts };
         if (Array.isArray(state.events)) state.events.forEach((row, k) => this.u.tables.events[k]?.fromArray(row));
+        for (const key of ENVELOPES) if (state.envelopes?.[key]) this[key].importState(state.envelopes[key]);
+        for (const key of SWELLS) if (state.swells?.[key]) this[key].importState(state.swells[key]);
+        if (Array.isArray(state.kinds)) state.kinds.forEach((o, k) => this.kindBloom[k]?.importState(o));
+        if (state.surge) this.playSurge.importState(state.surge);
+        this.u.whirl.value.set(this.poolWhirl.at, this.poolWhirl.power);
     }
 
     dispose() {

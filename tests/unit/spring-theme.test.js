@@ -876,6 +876,8 @@ describe('Spring theme: one node renderer on both backends', () => {
             color: themePieceColor('I'),
             shape: 'I',
             cells: [-1.5, 0, -0.5, 0, 0.5, 0, 1.5, 0],
+            // Its T-spin cleared lines: it rides on the clear, not the lock.
+            tspin: false,
             screen: null,
         });
         expect(theme.world.clears).toHaveLength(1);
@@ -887,6 +889,7 @@ describe('Spring theme: one node renderer on both backends', () => {
             cascade: 1,
             tspin: true,
             perfect: false,
+            crown: false,
             b2b: true,
             screen: null,
         });

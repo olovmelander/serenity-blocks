@@ -2,7 +2,10 @@
 /**
  * Theme effects in Serenity Mode: every reaction a theme has to play — a piece locking, a
  * hard drop, line clears, combos, cascades, a T-spin, back-to-back, a perfect clear, a level
- * up — on demand, so you can watch what each world does without playing a game.
+ * up — on demand, so you can watch what each world does without playing a game. Two more play
+ * the BUILD-UP of fast play (Rush: twenty quick hard drops; Fever: a twelve-clear chain to a
+ * perfect clear), where a theme's answers must accumulate rather than pop and restart
+ * (src/themes/shared/gameplay-surge.js).
  *
  * Each effect is a short script of the gameplay events real play sends, in the order and
  * with the payloads it sends them (the pinned physics schedule, ADR-0011 and
@@ -41,6 +44,10 @@ export const LOCK_MS = 720;
 export const B2B_MS = 1400;
 /** The plain piece that ends a chain comes this long before the effect's own lock. */
 export const BREAK_MS = 900;
+/** Rush: between the hard drops of a quick hand (over three pieces a second). */
+export const RUSH_MS = 300;
+/** Fever: between the clearing locks of a long chain. */
+export const FEVER_MS = 640;
 /** Play all: the quiet after each effect, so its afterglow can be seen. */
 export const TOUR_REST_MS = 2600;
 export const SOURCE = 'serenity-effects';
@@ -51,6 +58,7 @@ export const EFFECT_GROUPS = [
     { id: 'cascades', label: 'Cascades' },
     { id: 'chains', label: 'Chains' },
     { id: 'moments', label: 'Moments' },
+    { id: 'buildup', label: 'Build-up' },
 ];
 
 /**
@@ -181,6 +189,72 @@ function cascade(depth) {
             wave(s, ctx, rowsFromFloor(n % 3 === 0 ? 2 : 1), n);
         }
     };
+}
+
+/**
+ * Rush: twenty pieces hard-dropped at a quick hand's pace. Every fourth clears a line or two
+ * (the last a quad), with plain pieces between, so no combo forms: what builds is the PACE.
+ */
+function rush(s, ctx) {
+    freshChain(s, ctx);
+    for (let n = 0; n < 20; n += 1) {
+        if (n > 0) s.wait(RUSH_MS);
+        if (n === 19) {
+            lock(s, ctx, placePiece(ctx, 'I', { column: COLS - 1, turns: 1 }), { drop: true, clears: true });
+            wave(s, ctx, rowsFromFloor(4), 1);
+        } else if (n % 4 === 3) {
+            const lines = n % 8 === 3 ? 1 : 2;
+            const key = lines === 1 ? 'I' : 'O';
+            const column = LOCK_COLUMNS[n % LOCK_COLUMNS.length];
+            lock(s, ctx, placePiece(ctx, key, { column }), { drop: true, clears: true });
+            wave(s, ctx, rowsFromFloor(lines), 1);
+        } else {
+            lock(s, ctx, nextPiece(ctx), { drop: true });
+        }
+    }
+}
+
+/**
+ * Fever: twelve clearing locks in a row, hard-dropped, each one bigger than the play before —
+ * singles into doubles into triples, a T-spin, a four-wave cascade — ending in a quad that
+ * empties the board. A theme counts the combo from one to twelve.
+ */
+const FEVER_PIECES = [null, { key: 'I', turns: 0 }, { key: 'O', turns: 0 }, { key: 'L', turns: 1 }];
+
+function fever(s, ctx) {
+    freshChain(s, ctx);
+    const plan = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 'quad'];
+    plan.forEach((step, n) => {
+        if (n > 0) s.wait(FEVER_MS);
+        if (step === 'quad') {
+            lock(s, ctx, placePiece(ctx, 'I', { column: COLS - 1, turns: 1 }), { drop: true, clears: true });
+            wave(s, ctx, rowsFromFloor(4), 1);
+            s.wait(WAVE_MS);
+            const level = Math.max(1, ctx.level);
+            const perfectClearBonus = calculateLineClearScore(4, level, 1, true)
+                - calculateLineClearScore(4, level, 1, false);
+            s.emit('perfectClear', { depth: 4, perfectClearBonus });
+        } else if (step === 'tspin') {
+            lock(s, ctx, placePiece(ctx, 'T', { column: 3 }), { drop: true, clears: true });
+            wave(s, ctx, rowsFromFloor(2), 1);
+            s.emit('tspin', { lineCount: 2 });
+        } else if (step === 'cascade') {
+            const column = LOCK_COLUMNS[n % LOCK_COLUMNS.length];
+            lock(s, ctx, placePiece(ctx, 'S', { column }), { drop: true, clears: true });
+            wave(s, ctx, rowsFromFloor(2), 1);
+            for (let w = 2; w <= 4; w += 1) {
+                s.wait(WAVE_MS);
+                wave(s, ctx, rowsFromFloor(w % 3 === 0 ? 2 : 1), w);
+            }
+        } else {
+            // A flat I for one row, an O for two, an L stood on end for three.
+            const lines = Number(step);
+            const { key, turns } = FEVER_PIECES[lines];
+            const column = LOCK_COLUMNS[n % LOCK_COLUMNS.length];
+            lock(s, ctx, placePiece(ctx, key, { column, turns }), { drop: true, clears: true });
+            wave(s, ctx, rowsFromFloor(lines), 1);
+        }
+    });
 }
 
 /** @type {EffectDefinition[]} */
@@ -322,6 +396,20 @@ export const EFFECTS = [
             lock(s, ctx, nextPiece(ctx), { clears: true });
             wave(s, ctx, rowsFromFloor(1), 1, { levelUp: true });
         },
+    },
+    {
+        id: 'rush',
+        group: 'buildup',
+        label: 'Rush',
+        name: "Rush · twenty pieces at a quick hand's pace",
+        build: rush,
+    },
+    {
+        id: 'fever',
+        group: 'buildup',
+        label: 'Fever',
+        name: 'Fever · a twelve-clear chain to a perfect clear',
+        build: fever,
     },
 ];
 

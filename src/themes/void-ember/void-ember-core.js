@@ -25,8 +25,12 @@ export const EMBER = Object.freeze({
     spinPeriod: 380,
 });
 
-/** Flare loops the star can hold at once: the board's (one per lock) and its own. */
-export const LOCK_LOOPS = 18;
+/**
+ * Flare loops the star can hold at once: the board's (one per lock, plus the fire a chain blows
+ * up; a chain keeps a crown of them, so there is room for it and for the arcs still leaving) and
+ * its own.
+ */
+export const LOCK_LOOPS = 24;
 export const AMBIENT_LOOPS = 8;
 export const LOOP_SLOTS = LOCK_LOOPS + AMBIENT_LOOPS;
 /** Segments along one loop's ribbon. */
@@ -38,10 +42,18 @@ export const LOOP_LIFE = 70;
 export const LOOP_RISE = 0.55;
 export const ERUPT_LIFE = 1.9;
 
-/** Impact sites on the photosphere evaluated by the star's material. */
+/**
+ * Impact sites on the photosphere evaluated by the star's material: three rows each (site and
+ * birth, colour and strength, how long its scar lasts).
+ */
 export const IMPACT_SLOTS = 8;
-/** Clear waves (coronal mass ejections) in flight at once. */
-export const WAVE_SLOTS = 4;
+/** The longest a scar lasts (1/e, seconds): what one keeps at an easy pace. */
+export const SCAR_LIFE = 7;
+/**
+ * Clear waves (coronal mass ejections) in flight at once: enough for a four-wave cascade and the
+ * clears round it, so no wave is overwritten while its front still crosses the frame.
+ */
+export const WAVE_SLOTS = 6;
 /** Comets in flight at once (a lock throws one, a hard drop three), and motes per comet. */
 export const COMET_SLOTS = 12;
 export const COMET_TAIL = 28;

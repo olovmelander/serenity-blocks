@@ -18,7 +18,9 @@
  * Gameplay: a line clear makes the pack turn to look at you; a combo excites the young wolf (a
  * play bow, a wagging tail); a four-line clear makes the pack howl at the moon, one after another,
  * breath smoking (lying wolves sit up for it; a wolf in mid-pounce stays on the hunt), and the wolf
- * across the valley answers.
+ * across the valley answers; a back-to-back clear makes it answer on its own. Fast play never
+ * restarts these: the next clear holds the look, the bow or the howl's note on (heldEnvelope,
+ * rearm), and a howl that comes as the last one falls rises under it.
  *
  * Every pose is a pure function of time (and of when the howls, glances and excitements began),
  * so a seek or a capture lands on the same frame. Rig units: a wolf faces +x with paws on y = 0.
@@ -134,14 +136,20 @@ export const TROT_STRIDE = 22;
 
 /** The howl's timing (seconds): the head rises, holds the note, and comes down. */
 export const HOWL = Object.freeze({ rise: 0.6, hold: 2.6, fall: 1.0 });
+/**
+ * The longest a howl holds its note (seconds): a quad (a perfect clear, a fever) while the pack
+ * is already howling holds the note on for it instead of being refused, up to this; after it the
+ * pack draws breath, and the next one begins a fresh howl under the one still falling.
+ */
+export const HOWL_MAX_HOLD = 5.4;
+/** The wolf across the valley answering on its own (a back-to-back clear). */
+export const ANSWER = Object.freeze({ rise: 0.5, hold: 1.7, fall: 0.9 });
 /** A line clear's glance: the pack turns to look at you. */
 const GLANCE = Object.freeze({ rise: 0.4, hold: 1.6, fall: 0.8 });
 /** A combo's excitement: the young wolf bows, wags and bounces. */
 const EXCITE = Object.freeze({ rise: 0.35, hold: 2.6, fall: 0.7 });
-const EXCITE_SPAN = EXCITE.rise + EXCITE.hold + EXCITE.fall;
-const HOWL_SPAN = HOWL.rise + HOWL.hold + HOWL.fall;
-/** How long a moving wolf's behaviour stands still for a howl it joins. */
-const HOWL_STILL = HOWL_SPAN + 1.2;
+/** How long past a howl's note a moving wolf's behaviour still stands still for it. */
+const HOWL_STILL_TAIL = HOWL.fall + 1.2;
 /** Snow puffs: how long one lives (seconds). */
 const PUFF_LIFE = 1.6;
 /** A breath in the cold: how long a puff lives (seconds) and how dense it is. */
@@ -170,6 +178,44 @@ export function eventEnvelope(age, { rise, hold, fall }) {
     if (age < rise) return smooth(age / rise);
     if (age < rise + hold) return 1;
     return 1 - smooth((age - rise - hold) / fall);
+}
+
+/**
+ * 0..1 envelope of a HELD event at `t`: it rose from `start` over `rise`, holds until `holdEnd`
+ * (at least `start + rise`) and falls over `fall`. With `holdEnd = start + rise + hold` it is
+ * eventEnvelope; a later event of the same kind moves `holdEnd` on (rearm) instead of starting
+ * over, so the pose it drives never snaps back down to lift again.
+ */
+export function heldEnvelope(t, start, holdEnd, { rise, fall }) {
+    const age = t - start;
+    if (!Number.isFinite(age) || age < 0) return 0;
+    if (age < rise) return smooth(age / rise);
+    if (t < holdEnd) return 1;
+    return 1 - smooth((t - holdEnd) / fall);
+}
+
+/** The inverse of `smooth` on 0..1: how far along its rise a value lies. */
+export function inverseSmooth(value) {
+    const v = Math.min(1, Math.max(0, value));
+    return 0.5 - Math.sin(Math.asin(1 - 2 * v) / 3);
+}
+
+/**
+ * Re-arm a held event (`slot`: { start, holdEnd }) at `at`. While it is up (rising or holding)
+ * its hold runs on a full `hold` past this one (never past `maxHold` of note); once it is falling
+ * or over it rises again from exactly where it is. Either way the envelope stays continuous.
+ * @returns {boolean} whether a new event began (false: the one under way was held on)
+ */
+export function rearm(slot, at, timing, maxHold = Infinity) {
+    if (at >= slot.start && at < slot.holdEnd) {
+        const wanted = Math.max(slot.holdEnd, at + timing.rise + timing.hold);
+        slot.holdEnd = Math.min(wanted, slot.start + timing.rise + maxHold);
+        return false;
+    }
+    const value = heldEnvelope(at, slot.start, slot.holdEnd, timing);
+    slot.start = at - timing.rise * inverseSmooth(value);
+    slot.holdEnd = slot.start + timing.rise + timing.hold;
+    return true;
 }
 
 /**
@@ -407,15 +453,20 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
     scoutGroup.add(scout.mesh);
 
     const state = {
-        howlStart: -Infinity,
-        glanceStart: -Infinity,
-        exciteStart: -Infinity,
+        // The howl under way, and the one before it still falling while a fresh one rises (the
+        // pose follows whichever is higher, so a new howl never cuts the old one off). `joins`:
+        // whether the young wolf howls along (it stays on the hunt in mid-pounce).
+        howl: { start: -Infinity, holdEnd: -Infinity, joins: true },
+        echo: { start: -Infinity, holdEnd: -Infinity, joins: true },
+        // Held events: a later one holds them on, or lifts them again from where they are.
+        glance: { start: -Infinity, holdEnd: -Infinity },
+        excite: { start: -Infinity, holdEnd: -Infinity },
+        answer: { start: -Infinity, holdEnd: -Infinity },
         // The young wolf's own clock stands still through a howl it joins and while a combo
         // excites it: the stretches it stood still for, merged ([start, end] of the last one, and
         // the length of all those before it).
         stall: null,
         stalled: 0,
-        youngJoins: true,
         excited: false,
         spread: 1,
         members: wolves.length,
@@ -439,8 +490,11 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
         if (last) state.stalled += last[1] - last[0];
         state.stall = [from, to];
     };
-    const joins = (spec) => spec.role !== 'young' || state.youngJoins;
-    const howlOf = (spec, t) => (joins(spec) ? eventEnvelope(t - state.howlStart - spec.delay, HOWL) : 0);
+    const howls = [state.howl, state.echo];
+    const joins = (spec, howl) => spec.role !== 'young' || howl.joins;
+    const howlIn = (howl, spec, t) => (joins(spec, howl)
+        ? heldEnvelope(t - spec.delay, howl.start, howl.holdEnd, HOWL) : 0);
+    const howlOf = (spec, t) => Math.max(howlIn(state.howl, spec, t), howlIn(state.echo, spec, t));
 
     /**
      * Pose one wolf into its uniforms at `x`, facing ±1, on the ridge `groundAt` describes (the
@@ -598,16 +652,21 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
                 }
             }
             if (!wolves.includes(entry)) continue;
-            // Breath: a puff leaves the muzzle every 0.4 s while the note is held.
-            const age = joins(entry.spec) ? t - state.howlStart - entry.spec.delay : -1;
-            if (age >= HOWL.rise * 0.6 && age <= HOWL_SPAN + 2.2) {
+            // Breath: a puff leaves the muzzle every 0.4 s while the note is held (as long as a
+            // held howl holds it).
+            for (const howl of howls) {
+                const age = joins(entry.spec, howl) ? t - howl.start - entry.spec.delay : -1;
+                const note = howl.holdEnd - howl.start;
+                if (!(age >= HOWL.rise * 0.6 && age <= note + HOWL.fall + 2.2)) continue;
                 const m = toGroup(entry, entry.muzzle[0], entry.muzzle[1]);
                 const mx = m.x;
                 const my = m.y;
                 const mz = m.z;
-                for (let k = 0; k < 10; k++) {
+                // Only the puffs born in the last 2.2 s are still in the air.
+                const first = Math.max(0, Math.floor((age - 2.2 - HOWL.rise * 0.6) / 0.4));
+                for (let k = first; k < first + 7; k++) {
                     const born = HOWL.rise * 0.6 + k * 0.4;
-                    if (born > HOWL.rise + HOWL.hold) break;
+                    if (born > note) break;
                     const life = age - born;
                     if (life >= 0 && life <= 2.2) {
                         const f = life / 2.2;
@@ -685,30 +744,64 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
             state.members = members;
         },
         /**
-         * A four-line clear: the pack howls. Ignored while a howl is still sounding. The young
-         * wolf joins unless it is in mid-pounce, in which case it stays on the hunt.
+         * A four-line clear (a perfect clear, a fever): the pack howls. While the lead still
+         * holds its note the howl is held on for this one too (up to HOWL_MAX_HOLD of note), so
+         * a rapid run of quads swells one long chorus instead of being refused; once the note is
+         * falling a fresh howl begins under it. The young wolf joins unless it is in mid-pounce,
+         * in which case it stays on the hunt.
+         * @returns {boolean} whether a fresh howl began (false: the one sounding was held on)
          */
         howl(time) {
             if (!Number.isFinite(time)) return false;
-            if (time - state.howlStart < (HOWL_SPAN + 1.05) * 0.8) return false;
-            state.howlStart = time;
-            state.youngJoins = !busyAt('young', youngClock(time));
-            if (state.youngJoins) standStill(time, time + HOWL_STILL);
+            const current = state.howl;
+            if (time >= current.start && time < current.holdEnd) {
+                current.holdEnd = Math.min(
+                    Math.max(current.holdEnd, time + HOWL.rise + HOWL.hold),
+                    current.start + HOWL.rise + HOWL_MAX_HOLD,
+                );
+                if (current.joins) standStill(time, current.holdEnd + HOWL_STILL_TAIL);
+                return false;
+            }
+            // The howl before keeps sounding under the fresh one until it has fallen.
+            state.echo.start = current.start;
+            state.echo.holdEnd = current.holdEnd;
+            state.echo.joins = current.joins;
+            current.start = time;
+            current.holdEnd = time + HOWL.rise + HOWL.hold;
+            current.joins = !busyAt('young', youngClock(time));
+            if (current.joins) standStill(time, current.holdEnd + HOWL_STILL_TAIL);
             return true;
         },
-        /** A smaller clear: the pack turns to look at you. */
+        /**
+         * A back-to-back clear: the wolf across the valley answers on its own (held on, not
+         * restarted, by the next one).
+         */
+        answer(time) {
+            if (Number.isFinite(time)) rearm(state.answer, time, ANSWER, ANSWER.hold * 2);
+        },
+        /**
+         * A smaller clear: the pack turns to look at you, and keeps looking while the clears keep
+         * coming (each holds the look on rather than turning the heads away and back).
+         */
         glance(time) {
-            if (Number.isFinite(time)) state.glanceStart = time;
+            if (Number.isFinite(time)) rearm(state.glance, time, GLANCE);
         },
         /**
          * A combo: the young wolf gets excited (unless it is busy hunting): whatever it was doing
-         * waits while it bows and wags.
+         * waits while it bows and wags. A combo running on keeps it bowing and wagging.
          */
         excite(time) {
             if (!Number.isFinite(time)) return;
-            state.exciteStart = time;
-            state.excited = !busyAt('young', youngClock(time));
-            if (state.excited) standStill(time, time + EXCITE_SPAN);
+            const { excite } = state;
+            if (state.excited && heldEnvelope(time, excite.start, excite.holdEnd, EXCITE) > 0) {
+                rearm(excite, time, EXCITE);
+            } else {
+                // From rest (or while it was too busy hunting to show it) it starts afresh.
+                excite.start = time;
+                excite.holdEnd = time + EXCITE.rise + EXCITE.hold;
+                state.excited = !busyAt('young', youngClock(time));
+            }
+            if (state.excited) standStill(time, excite.holdEnd + EXCITE.fall);
         },
         /** How strongly the pack is howling now (0..1): drives the mist and the moon's answer. */
         howlLevel(time) {
@@ -726,8 +819,8 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
             const t = Number.isFinite(time) ? time : 0;
             const m = Number.isFinite(motion) ? Math.min(1, Math.max(0, motion)) : 1;
             const walking = m >= 0.5;
-            const glance = eventEnvelope(t - state.glanceStart, GLANCE);
-            const excite = eventEnvelope(t - state.exciteStart, EXCITE);
+            const glance = heldEnvelope(t, state.glance.start, state.glance.holdEnd, GLANCE);
+            const excite = heldEnvelope(t, state.excite.start, state.excite.holdEnd, EXCITE);
             // A wolf facing away from the moon when a howl begins turns round to it as its head
             // comes up, and back again as the note ends.
             const howlYaw = (yaw, facing, home, howl) => (howl > 0 && facing !== home
@@ -773,14 +866,18 @@ export function createWolfhourPack({ quality = 'High', noiseMap = null } = {}) {
                 groundAt: grounds.answerer,
                 facing: ANSWERER.facing,
                 act: far,
-                howl: howlOf(ANSWERER, t),
+                // It answers the pack's howls, and on its own a back-to-back clear.
+                howl: Math.max(
+                    howlOf(ANSWERER, t),
+                    heldEnvelope(t, state.answer.start, state.answer.holdEnd, ANSWER),
+                ),
                 glance: glance * 0.6,
             });
             const walk = walking ? scoutAt(t) : null;
             if (walk) {
                 // It fades in and out at the frame's edge rather than popping. At its lookout it
                 // looks round and at you, and howls with the pack if it stands there.
-                const howl = walk.moving ? 0 : eventEnvelope(t - state.howlStart - SCOUT.delay, HOWL);
+                const howl = walk.moving ? 0 : howlOf(SCOUT, t);
                 pose(scout, t, m, {
                     x: walk.x,
                     groundAt: grounds.scout,

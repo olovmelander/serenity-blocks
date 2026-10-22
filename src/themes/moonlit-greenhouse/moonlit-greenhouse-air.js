@@ -142,6 +142,8 @@ export const MOTE = Object.freeze({
  *   splash       seconds a drop's burst lasts where it lands
  *   drips        resting drips: their share of the curtain's pool (at least `fewest`) and the
  *                seconds between one drip's falls, least..most
+ *   most         the most a curtain's strength (U.dew.y) can reach: past 1 every drop is out and
+ *                each glitters brighter (rapid hard drops shake a heavier rain loose)
  */
 export const DEW = Object.freeze({
     gravity: 9.81,
@@ -157,6 +159,7 @@ export const DEW = Object.freeze({
     drips: 0.06,
     fewest: 10,
     dripEvery: Object.freeze([6.5, 15.0]),
+    most: 1.8,
     moonLight: 0.35,
     moonGlint: 4.0,
     lanternGlint: 2.0,
@@ -528,7 +531,7 @@ export function createFireflies({ tier, U, seed = 1861 }) {
         const perPixel = depth.mul(U.pixelAngle);
         // Never under a couple of pixels, the core never under one; what a floor spreads over more
         // pixels is paid back in light.
-        const lit = level.mul(live);
+        const lit = level.mul(live).mul(U.swarmGain);
         const shown = lit.greaterThan(0.002);
         const px = min(reachW, depth.mul(FIREFLY.widest)).div(perPixel);
         const pxDrawn = select(shown, max(px, FIREFLY.least), float(0.0));
@@ -1058,7 +1061,9 @@ export function createDew({ tier, U, seed = 1861 }) {
         const lamps = mgLanterns(head, view.negate(), U).mul(DEW.lanternGlint);
         const burst = select(landed, exp(max(since, 0.0).mul(-1.0 / 0.05)).mul(2.4).add(0.3), float(1.0));
         const gather = select(age.lessThan(0.0), smoothstep(-2.5, 0.0, age).mul(0.3), float(1.0));
-        const strength = select(isDrip, float(0.75), clamp(U.dew.y, 0.0, 1.0));
+        // (A curtain's strength runs past 1 when rapid hard drops shake a heavier rain loose: every
+        // drop is out, each glitters brighter.)
+        const strength = select(isDrip, float(0.75), clamp(U.dew.y, 0.0, DEW.most));
         // Each drop a lens of its own size and wobble: a few flare as they pass, most only gleam.
         const own = fract(A.x.mul(7.31).add(A.y.mul(3.17)));
         const wobble = sin(falling.mul(own.mul(9.0).add(14.0)).add(own.mul(40.0))).mul(0.5).add(0.5);

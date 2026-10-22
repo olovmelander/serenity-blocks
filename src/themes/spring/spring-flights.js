@@ -1,7 +1,7 @@
 /**
  * Spring — birds passing over the valley: whooper swans for a perfect clear (white, trumpeting
- * their way north in a long V), cranes for a level-up (grey, necks out, legs trailing), both the
- * birds a Norrland spring brings back.
+ * their way north in a long V), cranes for a level-up and when play breaks into a fever (grey,
+ * necks out, legs trailing), both the birds a Norrland spring brings back.
  *
  * A flight crosses the valley in a straight line high over the river, from behind the fall's
  * rim on the left toward the fells on the right, in a V that keeps its shape; each bird's wings
@@ -170,10 +170,23 @@ export class Flights {
         this.drawn = false;
     }
 
-    /** A flight sets out: `kind` 'swan' or 'crane', at time t. */
+    /**
+     * A flight sets out: `kind` 'swan' or 'crane', at time t. It takes a free slot, else the one
+     * furthest along its way (a flight never erases one still crossing the valley while a slot
+     * is free).
+     */
     launch(kind, time) {
-        const slot = this.slots[this.cursor];
-        this.cursor = (this.cursor + 1) % this.slots.length;
+        let pick = -1;
+        for (let k = 0; k < this.slots.length; k++) {
+            const i = (this.cursor + k) % this.slots.length;
+            if (!this.slots[i].kind) {
+                pick = i;
+                break;
+            }
+            if (pick < 0 || this.slots[i].born < this.slots[pick].born) pick = i;
+        }
+        const slot = this.slots[pick];
+        this.cursor = (pick + 1) % this.slots.length;
         slot.kind = BIRDS[kind] || BIRDS.swan;
         slot.born = time;
         slot.phase = this.random();

@@ -29,6 +29,14 @@ const REST_FRAME = Object.freeze({
     streak: 0,
     settled: false,
     front: null,
+    fronts: [],
+    // How hot play runs (shared/gameplay-surge.js), the perfect clear's crown, the B2B's gold.
+    punch: 0,
+    level: 0,
+    fever: 0,
+    stage: 0,
+    crown: 0,
+    gold: 0,
     rings: Array.from({ length: RING_QUEUE }, () => ({ ...REST_RING })),
     emitters: [],
 });
@@ -465,22 +473,68 @@ describe('Golden Forest reaction director', () => {
             expect(reactions.front.active).toBe(false);
         });
 
-        it('alternates the direction of successive fronts and restarts each one upwind', () => {
+        it('runs every front to the far side with the prevailing wind: a new one never restarts one crossing', () => {
             const reactions = create();
-            const directions = [];
-            for (const event of [() => reactions.onLineClear(2), () => reactions.onLevelUp(),
-                () => reactions.onPerfectClear(), () => reactions.onLineClear(4)]) {
-                advance(reactions, 0.7);
-                event();
-                const { front } = reactions.frame;
-                directions.push(front.direction);
-                expect(front.position).toBe(-1.4 * front.direction);
-                expect(front.strength).toBe(0);
+            reactions.onLineClear(2);
+            advance(reactions, 0.7);
+            const first = snapshot(reactions.frame.fronts[0]);
+            // A second front 0.7 s later takes a slot of its own; the first keeps going.
+            reactions.onLevelUp();
+            const { frame } = reactions;
+            expect(frame.fronts).toHaveLength(2);
+            expect(frame.fronts[0]).toEqual(first);
+            expect(frame.fronts[1]).toEqual({ position: -1.4, direction: 1, strength: 0 });
+            expect(frame.front).toEqual(frame.fronts[1]);
+            // Every front rolls the way the breeze blows, whatever sent it.
+            advance(reactions, 0.4);
+            reactions.onPerfectClear();
+            expect(reactions.frame.fronts.map((front) => front.direction)).toEqual([1, 1, 1]);
+            // A cascade sends fronts faster than the slots free up: the extra joins the youngest.
+            // Nothing crossing is restarted, cut or sent back upwind, and each runs to the far side.
+            const slots = reactions.fronts;
+            const last = slots.map((front) => ({ ...front }));
+            let finished = 0;
+            for (let step = 0; step < 300; step++) {
+                if (step % 22 === 0 && step < 200) reactions.onLineClear(4);
+                reactions.update(1 / 60);
+                for (let index = 0; index < slots.length; index++) {
+                    const front = slots[index];
+                    const was = last[index];
+                    if (was.active && front.active) {
+                        expect(front.age).toBeGreaterThan(was.age);
+                        expect(front.strength).toBeGreaterThan(was.strength - 0.05);
+                        expect(front.direction).toBe(1);
+                    }
+                    if (was.active && !front.active) {
+                        finished += 1;
+                        expect(was.age).toBeGreaterThan(2.15);
+                    }
+                    last[index] = { ...front };
+                }
             }
-            expect(directions).toEqual([1, -1, 1, -1]);
-            const { front } = advance(reactions, 1.1);
-            expect(front.position).toBeCloseTo(0, 9);
-            expect(front.direction).toBe(-1);
+            expect(finished).toBeGreaterThan(3);
+            expect(advance(reactions, 2.3).fronts).toEqual([]);
+        });
+
+        it('lets the bend accumulate: a front joined mid-crossing eases up instead of snapping', () => {
+            const reactions = create();
+            reactions.onLineClear(2);
+            reactions.onLineClear(2);
+            reactions.onLineClear(2);
+            expect(reactions.frame.fronts).toHaveLength(3);
+            advance(reactions, 0.3);
+            const youngest = reactions.fronts.reduce((a, b) => (a.age <= b.age ? a : b));
+            const before = youngest.strength;
+            const pushed = reactions.frame.front.strength;
+            reactions.onLineClear(4);
+            // No fourth slot: the youngest takes it on, its push still where it was this frame.
+            expect(reactions.frame.fronts).toHaveLength(3);
+            expect(youngest.strength).toBe(before);
+            expect(reactions.frame.front.strength).toBe(pushed);
+            expect(youngest.target).toBeGreaterThan(before);
+            advance(reactions, 0.25);
+            expect(youngest.strength).toBeGreaterThan(before);
+            expect(youngest.strength).toBeLessThan(youngest.target);
         });
     });
 
@@ -752,15 +806,18 @@ describe('Golden Forest reaction director', () => {
             expect(reactions.onGameOver()).toBe(true);
             const over = reactions.frame;
             expect(over.settled).toBe(true);
-            expect(over.front).toBeNull();
             expect(over.streak).toBe(0);
-            // Nothing is cut: emitters, envelopes and the rings already asked for play out.
+            // Nothing is cut: emitters, envelopes and the rings already asked for play out, and the
+            // front still crossing is where it was (the trees never snap upright).
+            expect(over.front).toEqual(playing.front);
             expect(over.emitters).toHaveLength(playing.emitters.length);
             expect(snapshot(over.rings)).toEqual(rings);
             for (const key of ENVELOPES) expect(over[key]).toBe(playing[key]);
-            // The river lets go at once instead of waiting out its hold.
+            // The river lets go at once instead of waiting out its hold, and the wind dies away.
             expect(over.vortex).toBe(playing.vortex);
-            expect(advance(reactions, 0.5).vortex).toBeLessThan(playing.vortex * 0.7);
+            const easing = advance(reactions, 0.5);
+            expect(easing.vortex).toBeLessThan(playing.vortex * 0.7);
+            expect(easing.front?.strength ?? 0).toBeLessThan(playing.front.strength * 0.4);
             const later = advance(reactions, 14);
             expect(later).toMatchObject({
                 vortex: 0, heat: 0, ribbons: 0, settled: true,
@@ -952,10 +1009,12 @@ describe('Golden Forest reaction director', () => {
 
         it('ignores invalid or non-positive timesteps and only advances on explicit updates', () => {
             const reactions = create();
+            // (Small enough that the gust, which now adds up, stays under its ceiling of 1.)
             reactions.onPieceLock({ piece: cell(2, 20) });
-            reactions.onLineClear(3);
-            reactions.onCombo(5);
+            reactions.onLineClear(1);
+            reactions.onCombo(2);
             const before = snapshot(reactions.frame);
+            expect(before.gust).toBeLessThan(1);
             for (const dt of [0, -0, -1, -1e9, NaN, Infinity, -Infinity, undefined, null, '0.1', {}, []]) {
                 expect(snapshot(reactions.update(dt))).toEqual(before);
             }
@@ -1037,17 +1096,19 @@ describe('Golden Forest reaction director', () => {
 
         it('takes a finished slot before recycling one that is still playing', () => {
             const reactions = create('Minimal');
+            // (A perfect clear while one's rising lake still pours raises no second one, so the
+            // long emitters here are one rise and two spirals.)
             reactions.onPerfectClear(); // slot 0, 3.4 s
             reactions.onPieceLock(); // slot 1, 1.1 s
-            reactions.onPerfectClear(); // slot 2
-            reactions.onPerfectClear(); // slot 3
+            reactions.onTSpin(); // slot 2, 1.7 s
+            reactions.onTSpin(); // slot 3, 1.7 s
             const frame = advance(reactions, 1.2);
             expect(frame.emitters.map((emitter) => emitter.id)).toEqual([0, 2, 3]);
             reactions.onTSpin();
             const after = reactions.frame.emitters;
             expect(after.map((emitter) => emitter.id)).toEqual([0, 1, 2, 3]);
-            expect(after.map((emitter) => emitter.kind)).toEqual(['rise', 'spin', 'rise', 'rise']);
-            expect(after.filter((emitter) => emitter.kind === 'rise').every((emitter) => emitter.age > 1)).toBe(true);
+            expect(after.map((emitter) => emitter.kind)).toEqual(['rise', 'spin', 'spin', 'spin']);
+            expect(after.filter((emitter) => emitter.id !== 1).every((emitter) => emitter.age > 1)).toBe(true);
         });
 
         it('numbers every emission with a fresh serial so a reused slot reads as a new event', () => {
@@ -1318,5 +1379,166 @@ describe('Golden Forest reaction director', () => {
             fallback.onCombo(3);
             expectBounded(fallback.frame);
         });
+    });
+});
+
+describe('Golden Forest builds with play', () => {
+    /** The tray's Fever (serenity-effects.js): twelve clearing hard drops, 640 ms apart. */
+    function fever(reactions, fps = 60) {
+        const plan = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 'quad'];
+        const samples = [];
+        const wait = (seconds) => {
+            for (let frame = 0; frame < Math.round(seconds * fps); frame++) samples.push(reactions.update(1 / fps));
+        };
+        const lock = () => {
+            reactions.onHardDrop({ distance: 18 });
+            reactions.onPieceLock({ piece: cell(4, 20) });
+        };
+        plan.forEach((step, index) => {
+            if (index > 0) wait(0.64);
+            lock();
+            if (step === 'quad') {
+                reactions.onLineClear({ lineCount: 4, clearedRows: [20, 21, 22, 23], cascadeCount: 1 });
+                wait(0.36);
+                reactions.onPerfectClear();
+            } else if (step === 'tspin') {
+                reactions.onLineClear({ lineCount: 2, clearedRows: [22, 23], cascadeCount: 1 });
+                reactions.onTSpin({ lineCount: 2 });
+            } else if (step === 'cascade') {
+                reactions.onLineClear({ lineCount: 2, clearedRows: [22, 23], cascadeCount: 1 });
+                for (let wave = 2; wave <= 4; wave++) {
+                    wait(0.36);
+                    reactions.onCombo({ comboCount: wave });
+                    reactions.onLineClear({ lineCount: wave % 3 === 0 ? 2 : 1, clearedRows: [23], cascadeCount: wave });
+                }
+            } else reactions.onLineClear({ lineCount: step, clearedRows: [23], cascadeCount: 1 });
+        });
+        return { samples, wait };
+    }
+
+    it('never cuts the light with a weak event after a strong one: every envelope only adds', () => {
+        const reactions = create();
+        reactions.onPieceLock({ piece: cell(4, 20) });
+        reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+        const quad = snapshot(advance(reactions, 0.25));
+        // A plain lock and a single straight after the quad: nothing falls, everything holds or rises.
+        reactions.onPieceLock({ piece: cell(1, 20) });
+        const lock = snapshot(reactions.frame);
+        reactions.onLineClear(1, { clearedRows: [23] });
+        const single = snapshot(reactions.frame);
+        for (const key of ENVELOPES) {
+            expect(lock[key], `lock ${key}`).toBeGreaterThanOrEqual(quad[key]);
+            expect(single[key], `single ${key}`).toBeGreaterThanOrEqual(lock[key]);
+        }
+        expect(single.gust).toBeGreaterThan(quad.gust);
+        expect(single.glow).toBeGreaterThan(quad.glow);
+        // Rapid locks raise the wind instead of showing the first lock's gust ten times over.
+        const rapid = create();
+        const gusts = [];
+        for (let count = 0; count < 10; count++) {
+            rapid.onPieceLock({ piece: cell(count % 10, 20) });
+            gusts.push(rapid.frame.gust);
+            advance(rapid, 0.3);
+        }
+        expect(gusts[0]).toBeCloseTo(0.1, 12);
+        expect(gusts.at(-1)).toBeGreaterThan(0.25);
+        for (let index = 1; index < gusts.length; index++) {
+            expect(gusts[index]).toBeGreaterThan(gusts[index - 1] - 1e-9);
+        }
+    });
+
+    it('reads a long chain hotter than its first clear, crowns the perfect clear and breathes back at rest', () => {
+        const reactions = create();
+        const { samples, wait } = fever(reactions);
+        const first = samples[Math.round(0.6 * 60)];
+        const peak = samples.reduce((a, b) => (b.level > a.level ? b : a));
+        // Calm at the first clear; the heat climbs across the chain and peaks late.
+        expect(first.stage).toBe(0);
+        expect(first.level).toBeLessThan(0.2);
+        expect(peak.level).toBeGreaterThan(0.85);
+        expect(samples.indexOf(peak)).toBeGreaterThan(samples.length * 0.6);
+        expect(Math.max(...samples.map((frame) => frame.fever))).toBeGreaterThan(0.4);
+        expect(Math.max(...samples.map((frame) => frame.stage))).toBe(3);
+        // The level never steps back down mid-chain by more than a breath.
+        for (let index = 1; index < samples.length; index++) {
+            expect(samples[index].level).toBeGreaterThan(samples[index - 1].level - 0.02);
+        }
+        // The perfect clear is its own crown on the quad: the sun flares, no second rising lake.
+        const crowned = reactions.frame;
+        expect(crowned.emitters.filter((emitter) => emitter.kind === 'rise')).toHaveLength(1);
+        // In the heat play's rings are gentler (they interfere instead of stacking into a pale
+        // disc); the perfect clear's two are whole: they are the release.
+        const asked = liveRings(crowned);
+        expect(asked.slice(-2).map((ring) => ring.strength)).toEqual([2.6, 1.6]);
+        const quadRing = asked.slice(0, -2).filter((ring) => ring.column === 0.5).at(-1);
+        expect(quadRing.strength).toBeLessThan((1.1 + 4 * 0.36) * 0.7);
+        wait(0.3);
+        expect(reactions.frame.crown).toBeGreaterThan(0.6);
+        // Hands at rest: the world breathes back to calm within a few seconds.
+        wait(4);
+        const cooling = reactions.frame;
+        expect(cooling.level).toBeLessThan(peak.level * 0.5);
+        wait(8);
+        const rest = reactions.frame;
+        expect(rest.level).toBeLessThan(0.05);
+        expect(rest.fever).toBe(0);
+        expect(rest.stage).toBe(0);
+        expect(rest.crown).toBeLessThan(0.01);
+        for (const key of ENVELOPES) expect(rest[key], key).toBeLessThan(0.05);
+    });
+
+    it('builds each cascade wave on the last: stronger jets, broader rings and a gust on every wave', () => {
+        const reactions = create();
+        reactions.onPieceLock({ piece: cell(4, 20) });
+        reactions.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        const jet = (frame) => frame.emitters.filter((emitter) => emitter.kind === 'clear').at(-1);
+        const strengths = [jet(reactions.frame).strength];
+        const rings = [newestRing(reactions.frame).strength];
+        expect(reactions.frame.fronts).toHaveLength(0);
+        for (let wave = 2; wave <= 4; wave++) {
+            advance(reactions, 0.36);
+            reactions.onCombo({ comboCount: wave });
+            reactions.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: wave });
+            strengths.push(jet(reactions.frame).strength);
+            const broad = liveRings(reactions.frame).filter((ring) => ring.column === 0.5 && ring.row < 0.1);
+            rings.push(broad.at(-1).strength);
+        }
+        for (let index = 1; index < strengths.length; index++) {
+            expect(strengths[index]).toBeGreaterThan(strengths[index - 1]);
+            expect(rings[index]).toBeGreaterThan(rings[index - 1]);
+        }
+        // One-line waves of a cascade each send wind across the forest, rolling one after another.
+        expect(reactions.frame.fronts.length).toBeGreaterThanOrEqual(2);
+        // The depth is read from the COMBO that came before when the payload has none.
+        const bare = create();
+        bare.onPieceLock();
+        bare.onLineClear(1);
+        bare.onCombo(3);
+        bare.onLineClear(1);
+        expect(bare.frame.fronts).toHaveLength(1);
+    });
+
+    it('answers a back-to-back with gold that burns brighter for the second in a row', () => {
+        const reactions = create();
+        reactions.onBackToBack();
+        const once = advance(reactions, 0.4).gold;
+        expect(once).toBeGreaterThan(0.5);
+        advance(reactions, 1);
+        reactions.onBackToBack();
+        const twice = advance(reactions, 0.4).gold;
+        expect(twice).toBeGreaterThan(once);
+        expect(twice).toBeLessThanOrEqual(1.5);
+        expect(advance(reactions, 15).gold).toBeLessThan(0.01);
+    });
+
+    it('still shows a T-spin that clears nothing, smaller than a clearing one in the heat it adds', () => {
+        const zero = create();
+        expect(zero.onTSpin({ lineCount: 0, piece: cell(4, 20) })).toBe(true);
+        expect(zero.frame.emitters.map((emitter) => emitter.kind)).toEqual(['spin']);
+        const clearing = create();
+        clearing.onTSpin({ lineCount: 2, piece: cell(4, 20) });
+        const heat = (reactions) => advance(reactions, 1).level;
+        expect(heat(zero)).toBeGreaterThan(0);
+        expect(heat(zero)).toBeLessThan(heat(clearing));
     });
 });

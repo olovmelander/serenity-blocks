@@ -283,6 +283,11 @@ export function createVesperUniforms(textures) {
         auroraB: v3(p.auroraB),
         /** What the chrysalis last took in: a colour, and how much of it is left (0..1). */
         fed: uniform(new THREE.Vector4(1, 0.7, 0.4, 0)),
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js): (level 0..1, fever 0..1, the
+         * gold a back-to-back lays in the wings' veins 0..~1.2, the evening star's flare 0..~2).
+         */
+        heat: uniform(new THREE.Vector4(0, 0, 0, 0)),
         // ── The wings ──
         /** (how far unfurled 0..1, stroke angle, how far fallen to dust 0..1, flash). */
         wing: uniform(new THREE.Vector4(0, 0, 0, 0)),
@@ -563,7 +568,8 @@ export const vcBackdrop = (u, dirIn, opts = {}) => {
         const halo = exp(d.mul(-150.0)).mul(0.55);
         const spikes = exp(abs(s.x).mul(-75.0)).mul(exp(s.y.div(w).mul(s.y.div(w)).negate()))
             .add(exp(abs(s.y).mul(-75.0)).mul(exp(s.x.div(w).mul(s.x.div(w)).negate())));
-        const breathe = sin(u.time.mul(1.7)).mul(0.08).add(0.92);
+        // It flares when play runs hot, and for a back-to-back or a perfect clear.
+        const breathe = sin(u.time.mul(1.7)).mul(0.08).add(0.92).add(u.heat.w);
         col.addAssign(vec3(1.0, 0.93, 0.82).mul(core.add(halo).add(spikes.mul(0.5))).mul(breathe).mul(u.breath));
     });
 

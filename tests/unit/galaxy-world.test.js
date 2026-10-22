@@ -6,8 +6,8 @@ import {
     GALAXY_PARTS, GalaxyWorld, METEOR_BEAT, REST_RIG, SPIN_RATE, SURGE_COOL, fovForAspect,
 } from '../../src/themes/galaxy/galaxy-world.js';
 import {
-    CLEAR_SLOTS, DEG, GALAXY, GALAXY_PALETTES, HUSH_HOLD, LOCK_SLOTS, MAX_RINGS, SEED_SLOTS, SEED_TAIL, STORE_HOLD,
-    STORE_MAX, WAVE_TRAVEL, galaxyAnchors, pieceColor, powerForCombo, wavePassTime,
+    CLEAR_SLOTS, DEG, GALAXY, GALAXY_PALETTES, HUSH_HOLD, LOCK_SLOTS, MAX_RINGS, SEED_SLOTS, SEED_TAIL, STARFIRE,
+    STORE_HOLD, STORE_MAX, WAVE_TRAVEL, galaxyAnchors, pieceColor, powerForCombo, wavePassTime,
 } from '../../src/themes/galaxy/galaxy-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/galaxy/galaxy-quality.js';
 import {
@@ -1937,6 +1937,228 @@ describe('galaxy world: clears, combos and the four-line clear', () => {
         expect(world.getState().level).toBe(1);
         world.levelUp(-3);
         expect(world.getState().level).toBe(1);
+        world.dispose();
+    });
+});
+
+describe('galaxy world: it builds with play', () => {
+    it('never lets a weaker event cut a stronger one: a T-spin single and a new level on an eruption', () => {
+        const quad = makeWorld('Low');
+        const both = makeWorld('Low');
+        for (const { world } of [quad, both]) world.onClear({ lines: 4 });
+        const birth = quad.world.time + HUSH_HOLD;
+        for (const { world, camera } of [quad, both]) run(world, camera, HUSH_HOLD + 0.15);
+        both.world.onClear({ lines: 1, tspin: true });
+        both.world.levelUp(2);
+        // The eruption's wave, its ring across the sky and its head up the jets are all still there.
+        const { world } = both;
+        expect(world.u.waveA.some((slot) => slot.value.x === birth && slot.value.y === 4)).toBe(true);
+        expect([world.u.shock.value, world.u.shockB.value].some((ring) => ring.x === birth && ring.y === 1)).toBe(true);
+        const { jets, jetBursts } = world.u;
+        const heads = [
+            [jets.value.z, jets.value.w],
+            [jetBursts.value.x, jetBursts.value.y],
+            [jetBursts.value.z, jetBursts.value.w],
+        ];
+        expect(heads.some(([at, power]) => at === birth && power === 1)).toBe(true);
+        // And the picture only gains: every flash, kick and ray adds to what the eruption lit.
+        for (let i = 0; i < 90; i++) {
+            for (const made of [quad, both]) run(made.world, made.camera, 1 / 60, 1);
+            const a = quad.world.getPostState();
+            const b = both.world.getPostState();
+            for (const key of ['flash', 'kick', 'rays', 'bloomBoost']) {
+                expect(b[key], key).toBeGreaterThanOrEqual(a[key] - 1e-9);
+            }
+            expect(b.exposure).toBeLessThanOrEqual(a.exposure + 1e-9);
+            expect(b.ripple.strength).toBeGreaterThanOrEqual(a.ripple.strength - 1e-9);
+            expect(both.world.getState().breath).toBeGreaterThan(0.9);
+        }
+        quad.world.dispose();
+        both.world.dispose();
+    });
+
+    it('builds through a chain, strings the arms with its light, lets it go at the end, breathes back', () => {
+        const chained = makeWorld('Low');
+        const lone = makeWorld('Low');
+        const rest = {
+            exposure: chained.world.getPostState().exposure,
+            nursery: chained.world.u.nursery.value.length(),
+            pulse: chained.world.u.skyPulse.value,
+        };
+        // Twelve hard-dropped clearing locks a steady hand apart: a chain, and the same play with
+        // every clear a lone one.
+        const step = (made, n, chain) => {
+            made.world.onLock({
+                u: n % 2 ? 0.2 : 0.8, rows: [6 + (n % 10)], hardDrop: true, color: '#ffd54f',
+            });
+            made.world.onClear({ lines: 1 + (n % 3), combo: chain ? n + 1 : 1 });
+            if (chain) made.world.onCombo(n + 1);
+            run(made.world, made.camera, 0.64);
+        };
+        step(chained, 0, true);
+        step(lone, 0, false);
+        const first = {
+            heat: chained.world.getState().heat,
+            exposure: chained.world.getPostState().exposure,
+            nursery: chained.world.u.nursery.value.length(),
+            reach: chained.world.jetReach,
+        };
+        for (let n = 1; n < 12; n++) {
+            step(chained, n, true);
+            step(lone, n, false);
+        }
+        const { world, camera } = chained;
+        // Hotter than its first clear, in every way the galaxy has of saying so.
+        expect(world.getState().heat).toBeGreaterThan(first.heat + 0.3);
+        expect(world.getState().fever).toBeGreaterThan(0.3);
+        expect(world.getState().stage).toBeGreaterThanOrEqual(2);
+        expect(world.u.nursery.value.length()).toBeGreaterThan(first.nursery);
+        expect(world.jetReach).toBeGreaterThan(first.reach);
+        expect(world.getPostState().exposure).toBeLessThan(first.exposure);
+        expect(world.u.companion.value.w).toBeGreaterThan(0);
+        // The chain's waves only fanned the nurseries: far more of the galaxy holds light than
+        // when every clear spends it.
+        run(world, camera, WAVE_TRAVEL);
+        run(lone.world, lone.camera, WAVE_TRAVEL);
+        const strung = holders(world).length;
+        expect(strung).toBeGreaterThan(holders(lone.world).length);
+        expect(strung).toBeGreaterThanOrEqual(6);
+        // The chain ends: one wide wave from the nucleus sets every one of them off.
+        const { novas } = world.counts;
+        const release = vi.spyOn(world.nurseries, 'release');
+        world.onCombo(0);
+        expect(release).toHaveBeenCalledOnce();
+        expect(release.mock.calls[0][1].keep).toBeFalsy();
+        expect(world.u.waveA.some((slot) => slot.value.x === world.time)).toBe(true);
+        run(world, camera, WAVE_TRAVEL + 0.1);
+        expect(holders(world)).toEqual([]);
+        expect(world.counts.novas - novas).toBeGreaterThanOrEqual(strung);
+        // When the hands rest it breathes back to its calm look.
+        run(world, camera, 30, 600);
+        expect(world.getState()).toMatchObject({ stage: 0, fever: 0 });
+        expect(world.getState().heat).toBeLessThan(1e-3);
+        expect(world.u.nursery.value.length()).toBeCloseTo(rest.nursery, 3);
+        expect(world.u.skyPulse.value).toBeCloseTo(rest.pulse, 3);
+        expect(world.u.companion.value.w).toBeLessThan(1e-4);
+        expect(world.getPostState().exposure).toBeCloseTo(rest.exposure, 2);
+        chained.world.dispose();
+        lone.world.dispose();
+    });
+
+    it('only inhales before a four-line clear in the heat of play, and holds its breath from cold', () => {
+        const cold = makeWorld('Low');
+        const hot = makeWorld('Low');
+        for (let n = 0; n < 12; n++) {
+            hot.world.onLock({ u: 0.3, hardDrop: true });
+            hot.world.onClear({ lines: 2, combo: n + 1 });
+            hot.world.onCombo(n + 1);
+            run(hot.world, hot.camera, 0.64);
+        }
+        expect(hot.world.getState().heat).toBeGreaterThan(0.6);
+        for (const { world } of [cold, hot]) world.onClear({ lines: 4, combo: 13 });
+        let coldLow = 1;
+        let hotLow = 1;
+        for (let i = 0; i < Math.ceil(HUSH_HOLD * 60); i++) {
+            run(cold.world, cold.camera, 1 / 60, 1);
+            run(hot.world, hot.camera, 1 / 60, 1);
+            coldLow = Math.min(coldLow, cold.world.getState().breath);
+            hotLow = Math.min(hotLow, hot.world.getState().breath);
+        }
+        expect(coldLow).toBeLessThan(0.3);
+        expect(hotLow).toBeGreaterThan(0.5);
+        cold.world.dispose();
+        hot.world.dispose();
+    });
+
+    it('crowns a late perfect clear on the eruption still playing: no second held breath, no second wave', () => {
+        const { camera, world } = makeWorld('Low');
+        world.onClear({ lines: 4 });
+        run(world, camera, HUSH_HOLD + 0.36);
+        const waves = world.u.waveA.map((slot) => slot.value.toArray());
+        const { quads, clears } = world.counts;
+        const glare = world.nucleus.uniforms.glare.value.x;
+        const companion = world.u.companion.value.w;
+        world.onClear({
+            lines: 1, perfect: true, crown: true, rows: [],
+        });
+        const crowned = world.time;
+        expect(world.u.waveA.map((slot) => slot.value.toArray())).toEqual(waves);
+        expect(world.counts).toMatchObject({ quads, clears });
+        expect([world.u.shock.value, world.u.shockB.value].some((ring) => ring.x === crowned && ring.y > 0)).toBe(true);
+        let lowest = 1;
+        let blaze = 0;
+        let wake = 0;
+        for (let i = 0; i < 60; i++) {
+            run(world, camera, 1 / 60, 1);
+            lowest = Math.min(lowest, world.getState().breath);
+            blaze = Math.max(blaze, world.nucleus.uniforms.glare.value.x);
+            wake = Math.max(wake, world.u.companion.value.w);
+        }
+        expect(lowest).toBeGreaterThan(0.95);
+        expect(blaze).toBeGreaterThan(glare);
+        expect(wake).toBeGreaterThan(companion + 0.5);
+        world.dispose();
+    });
+
+    it('builds each wave of a cascade on the last: hotter, wider, nearer starfire, none erasing another', () => {
+        const { camera, world } = makeWorld('Low');
+        const waves = [];
+        for (let depth = 1; depth <= 5; depth++) {
+            world.onClear({ lines: 1, cascade: depth });
+            const index = world.u.waveA.findIndex((slot) => slot.value.x === world.time);
+            waves.push({ slot: world.u.waveA[index].value.clone(), colour: world.u.waveC[index].value.clone() });
+            run(world, camera, 0.36);
+        }
+        const fire = new THREE.Vector3(...STARFIRE).normalize();
+        for (let i = 1; i < waves.length; i++) {
+            expect(waves[i].slot.z).toBeGreaterThan(waves[i - 1].slot.z);
+            expect(waves[i].slot.w).toBeGreaterThan(waves[i - 1].slot.w);
+            expect(waves[i].colour.clone().normalize().dot(fire))
+                .toBeGreaterThanOrEqual(waves[i - 1].colour.clone().normalize().dot(fire) - 1e-9);
+        }
+        const toward = (wave) => wave.colour.clone().normalize().dot(fire);
+        expect(toward(waves[4])).toBeGreaterThan(toward(waves[0]));
+        // Five waves 0.36 s apart are all still running out through the disc.
+        for (const { slot } of waves) expect(world.u.waveA.some((w) => w.value.x === slot.x)).toBe(true);
+        world.dispose();
+    });
+
+    it('answers a back-to-back with the companion galaxy, brighter for each difficult clear in a row', () => {
+        const plain = makeWorld('Low');
+        const b2b = makeWorld('Low');
+        const peaks = [];
+        for (let k = 0; k < 3; k++) {
+            plain.world.onClear({ lines: 4 });
+            b2b.world.onClear({ lines: 4, b2b: k > 0 });
+            let peak = 0;
+            for (let i = 0; i < 90; i++) {
+                run(plain.world, plain.camera, 1 / 30, 1);
+                run(b2b.world, b2b.camera, 1 / 30, 1);
+                peak = Math.max(peak, b2b.world.u.companion.value.w - plain.world.u.companion.value.w);
+            }
+            peaks.push(peak);
+        }
+        expect(peaks[0]).toBeLessThan(1e-6);
+        expect(peaks[1]).toBeGreaterThan(0.4);
+        expect(peaks[2]).toBeGreaterThan(peaks[1]);
+        plain.world.dispose();
+        b2b.world.dispose();
+    });
+
+    it('turns the arms a little and sends a faint ring for a T-spin that clears nothing', () => {
+        const { camera, world } = makeWorld('Low');
+        const { clears } = world.counts;
+        world.onSpin({ player: 0 });
+        expect(world.counts.clears).toBe(clears);
+        expect(world.u.shock.value.x).toBe(world.time);
+        expect(world.u.shock.value.y).toBeGreaterThan(0);
+        let wound = 0;
+        for (let i = 0; i < 60; i++) {
+            run(world, camera, 1 / 60, 1);
+            wound = Math.max(wound, world.u.winding.value - GALAXY.winding);
+        }
+        expect(wound).toBeGreaterThan(1e-3);
+        expect(world.getState().heat).toBeGreaterThan(0);
         world.dispose();
     });
 });

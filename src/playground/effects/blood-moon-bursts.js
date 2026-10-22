@@ -9,6 +9,14 @@ import {
 const SLOT_COUNT = 3;
 const LIFETIME = 6.8;
 const TAU = Math.PI * 2;
+/** A cue this soon after the youngest shower thickens it instead of throwing a new one. */
+const FEED_WINDOW = 0.45;
+/** Only a shower this faint (strength under its fall) may give up its slot to a new one. */
+const SPENT = 0.14;
+/** The strongest a fed shower burns. */
+const MAX_STRENGTH = 1.5;
+/** A shower's embers fall as exp(-EMBER_FALL · age) (the fragment's fade). */
+const EMBER_FALL = 0.42;
 
 function createGeometry(count, random) {
     const geometry = new THREE.InstancedBufferGeometry();
@@ -46,9 +54,13 @@ function createSlot(scene, geometry, shared, index) {
         serial: -1,
         ageNode: uniform(LIFETIME),
         strength: uniform(0),
+        /** Where the strength is heading: a fed shower brightens over a few frames, not at once. */
+        target: 0,
         origin: uniform(new THREE.Vector2()),
         radius: uniform(0),
         phase: uniform(0),
+        /** How hot play ran when it was thrown: hotter showers fly further and burn rosier. */
+        heat: uniform(0),
     };
     const flight = attribute('aBurstFlight', 'vec4');
     const scatter = attribute('aBurstScatter', 'vec4');
@@ -78,7 +90,7 @@ function createSlot(scene, geometry, shared, index) {
             .add(shellTime.mul(shellTime).mul(0.032));
         const fastTravel = age.mul(flight.y.pow(1.5).mul(1.5).add(0.28))
             .div(age.mul(0.48).add(1));
-        const travel = mix(shellTravel, fastTravel, fast);
+        const travel = mix(shellTravel, fastTravel, fast).mul(state.heat.mul(0.55).add(1));
         const launchRadius = state.radius.mul(flight.y.mul(0.13).add(1.035));
         // Bounded eddies use the existing per-particle phase. They build after
         // the initial flash and keep the fading cloud moving without a solver.
@@ -121,7 +133,8 @@ function createSlot(scene, geometry, shared, index) {
         const twinkle = sin(localAge.mul(8).add(flight.w)).mul(0.15).add(0.85);
         const crimson = mix(vec3(3.2, 0.003, 0.018), vec3(5, 0.025, 0.055), flight.z);
         const roseGlint = vec3(5.5, 2.3, 2.7).mul(core)
-            .mul(mix(float(0.24), float(1.3), smoothstep(0.65, 0.95, flight.z)));
+            .mul(mix(float(0.24), float(1.3), smoothstep(0.65, 0.95, flight.z)))
+            .mul(state.heat.mul(0.45).add(1));
         return crimson.mul(ember.mul(0.68).add(halo.mul(0.34)))
             .add(roseGlint).mul(fade).mul(twinkle)
             .mul(state.strength);
@@ -142,7 +155,10 @@ function createSlot(scene, geometry, shared, index) {
 /**
  * Three fixed slots preserve overlapping clears without allocating particles or
  * materials in gameplay. Calls between updates merge into one strongest shower.
- * `objects` exposes the dormant meshes for the owner's compile/warmup lifecycle.
+ * A shower is never cut off while it still burns: a cue right after the youngest
+ * one (a cascade's waves) thickens it, a free or spent slot takes a new one, and
+ * when every slot still burns the youngest is fed instead. `objects` exposes the
+ * dormant meshes for the owner's compile/warmup lifecycle.
  */
 export function createBloodMoonBursts({
     scene, shared, count, random = Math.random,
@@ -154,50 +170,79 @@ export function createBloodMoonBursts({
     const pendingOrigin = new THREE.Vector2();
     let pendingRadius = 0;
     let pendingStrength = 0;
+    let pendingHeat = 0;
     let serial = 0;
     let disposed = false;
 
-    const trigger = (strength = 1) => {
+    /** What is left of a shower's light. */
+    const energy = (slot) => (slot.age >= LIFETIME ? 0 : slot.target * Math.exp(-slot.age * EMBER_FALL));
+    const trigger = (strength = 1, heat = 0) => {
         if (disposed || particleCount === 0 || !Number.isFinite(strength) || strength <= 0) return;
-        const bounded = Math.min(1.5, strength);
+        const bounded = Math.min(MAX_STRENGTH, strength);
         if (bounded >= pendingStrength) {
             pendingStrength = bounded;
             pendingOrigin.copy(shared.center.value);
             pendingRadius = shared.radius.value;
         }
+        if (Number.isFinite(heat)) pendingHeat = Math.max(pendingHeat, Math.min(1, Math.max(0, heat)));
     };
     const update = (dt = 0) => {
         if (disposed) return;
         if (pendingStrength > 0) {
-            let slot = slots.find((candidate) => candidate.age >= LIFETIME);
-            if (!slot) {
-                slot = slots.reduce((oldest, candidate) => (candidate.serial < oldest.serial ? candidate : oldest));
+            let youngest = null;
+            let free = null;
+            let weakest = null;
+            for (const candidate of slots) {
+                if (candidate.age >= LIFETIME) {
+                    free ??= candidate;
+                    continue;
+                }
+                if (!youngest || candidate.age < youngest.age) youngest = candidate;
+                if (!weakest || energy(candidate) < energy(weakest)) weakest = candidate;
             }
-            slot.age = 0;
-            slot.serial = serial++;
-            slot.strength.value = pendingStrength;
-            slot.origin.value.copy(pendingOrigin);
-            slot.radius.value = pendingRadius;
-            slot.phase.value = (slot.serial * 2.39996323) % TAU;
-            slot.object.visible = true;
+            let slot = null;
+            if (youngest && youngest.age < FEED_WINDOW) slot = null;
+            else if (free) slot = free;
+            else if (weakest && energy(weakest) < SPENT) slot = weakest;
+            if (slot) {
+                slot.age = 0;
+                slot.serial = serial++;
+                slot.target = pendingStrength;
+                slot.strength.value = pendingStrength;
+                slot.heat.value = pendingHeat;
+                slot.origin.value.copy(pendingOrigin);
+                slot.radius.value = pendingRadius;
+                slot.phase.value = (slot.serial * 2.39996323) % TAU;
+                slot.object.visible = true;
+            } else if (youngest) {
+                // Every shower still burns: the youngest thickens and runs hotter.
+                youngest.target = Math.min(MAX_STRENGTH, youngest.target + pendingStrength * 0.55);
+                youngest.heat.value = Math.max(youngest.heat.value, pendingHeat);
+            }
             pendingStrength = 0;
+            pendingHeat = 0;
         }
         const delta = Number.isFinite(dt) ? Math.max(0, dt) : 0;
+        const ease = 1 - Math.exp(-delta * 14);
         for (const slot of slots) {
             if (slot.age >= LIFETIME) continue;
             slot.age = Math.min(LIFETIME, slot.age + delta);
             slot.ageNode.value = slot.age;
+            slot.strength.value += (slot.target - slot.strength.value) * ease;
             slot.object.visible = slot.age < LIFETIME;
         }
     };
     const reset = () => {
         pendingStrength = 0;
+        pendingHeat = 0;
         serial = 0;
         for (const slot of slots) {
             slot.age = LIFETIME;
             slot.serial = -1;
             slot.ageNode.value = LIFETIME;
             slot.strength.value = 0;
+            slot.target = 0;
+            slot.heat.value = 0;
             slot.object.visible = false;
         }
     };
@@ -223,6 +268,8 @@ export function createBloodMoonBursts({
                 slots: slots.map((slot) => ({
                     age: slot.age,
                     strength: slot.strength.value,
+                    target: slot.target,
+                    heat: slot.heat.value,
                     serial: slot.serial,
                     origin: { x: slot.origin.value.x, y: slot.origin.value.y },
                 })),

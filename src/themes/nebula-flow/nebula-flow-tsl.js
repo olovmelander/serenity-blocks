@@ -52,6 +52,7 @@ import {
     PILLAR_ROWS,
     PILLAR_SLOTS,
     RELEASE_FADE,
+    VORTEX_ARMS,
     bakeNoise,
     bakeRelief,
     buildMips,
@@ -211,9 +212,19 @@ export function createNebulaUniforms() {
         flow: uniform(0),
         /** The cluster's light (1 at rest; a clear and a chain raise it). */
         shine: uniform(1),
+        /** How hot the pillars' lit rims burn (1 at rest; the heat of play raises it). */
+        burn: uniform(1),
+        /** How much of the cluster's light keeps its place while the vortex winds the gas (0..1). */
+        lightHold: uniform(0),
         /** The vortex: (centre x, centre y, turn at the heart in radians, radius). */
         vortex: uniform(new THREE.Vector4(0, 0, 0, 0.9)),
-        vortexTint: uniform(new THREE.Vector3(1, 1, 1)),
+        /**
+         * The vortex's arms, one per quarter turn about its heart (in the wound gas, so they spiral):
+         * the colours of the chain's last VORTEX_ARMS steps.
+         */
+        vortexArms: Array.from({ length: VORTEX_ARMS }, () => uniform(new THREE.Vector3(1, 1, 1))),
+        /** The arms' turn about the heart: (cos, sin). */
+        vortexSpin: uniform(new THREE.Vector2(1, 0)),
         /** How strongly the vortex glows in its tint (0..1). */
         vortexGlow: uniform(0),
         /** A T-spin's twist of the whole flow (radians at the board). */

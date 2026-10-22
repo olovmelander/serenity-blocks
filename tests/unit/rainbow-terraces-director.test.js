@@ -569,3 +569,44 @@ describe('rainbow terraces director: settings and resets', () => {
         expect(calls.clear[0].screen).toEqual({ x: 1, y: 0 });
     });
 });
+
+describe('rainbow terraces director: clears with no lines of their own', () => {
+    it('resolves a perfect clear settled after its clear as the crown on it, never a second clear', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: false, crown: false });
+        // Physics settles it ~360 ms later, in a frame of its own.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
+        expect(calls.clear[1]).toMatchObject({ lines: 0, perfect: true, crown: true });
+        expect(calls.clear[1].rows).toEqual([]);
+        // The chain it crowns is not broken, nor counted again.
+        expect(calls.combo).toEqual([[1, 0]]);
+    });
+
+    it('keeps a perfect clear staged with its clear on that clear (no crown)', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: true, crown: false });
+    });
+
+    it('delivers a T-spin that clears nothing as a lineless clear, after its lock, with no combo', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.order).toEqual(['lock', 'clear']);
+        expect(calls.clear[0]).toMatchObject({
+            lines: 0, tspin: true, perfect: false, crown: false,
+        });
+        expect(calls.combo).toEqual([]);
+    });
+});

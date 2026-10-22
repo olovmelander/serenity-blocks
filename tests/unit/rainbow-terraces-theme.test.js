@@ -922,6 +922,7 @@ describe('Rainbow Terraces theme: one node renderer on both backends', () => {
             tspin: true,
             perfect: false,
             b2b: true,
+            crown: false,
             screen: null,
         });
         // The level is announced, not silenced.

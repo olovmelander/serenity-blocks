@@ -17,6 +17,7 @@ import {
     cos,
     cross,
     float,
+    floor,
     fract,
     length,
     max,
@@ -36,7 +37,7 @@ import {
 import {
     CANOPY_LEVEL, DECK, OCULUS_CENTER, OCULUS_RX, OCULUS_RZ, mulberry32,
 } from './sunfall-core.js';
-import { SUNFALL_LIGHT, sfSunMask } from './sunfall-tsl.js';
+import { SUNFALL_LIGHT, pieceSwatchNode, sfSunMask } from './sunfall-tsl.js';
 
 const additive = (material) => {
     material.transparent = true;
@@ -81,9 +82,12 @@ export function createDustMaterial(u) {
         const wave = clamp(sin(u.time.mul(mix(0.9, 2.3, fract(M.z.mul(17.0)))).add(M.z.mul(91.0))), 0.0, 1.0);
         const glint = wave.mul(wave).mul(wave.mul(wave));
         const twinkle = glint.mul(0.96).add(0.04);
-        const light = u.beamCore.mul(disc.mul(disc)).mul(twinkle).mul(SUNFALL_LIGHT.sun * 0.3)
+        // As play heats the pollen in the light glints in the pieces' pigments, one each.
+        const pigment = pieceSwatchNode(floor(fract(M.z.mul(53.0)).mul(7.0))).mul(1.7);
+        const tint = mix(u.beamCore, pigment, u.prism);
+        const light = tint.mul(disc.mul(disc)).mul(twinkle).mul(SUNFALL_LIGHT.sun * 0.3)
             .mul(u.sunGain)
-            .mul(float(1.0).add(u.comboLift));
+            .mul(u.moteGain);
         return vec4(light, 0.0);
     })();
     const material = additive(new THREE.MeshBasicNodeMaterial());
@@ -96,7 +100,8 @@ export function createDustMaterial(u) {
 export function createSwiftMaterial(u) {
     const W = attribute('aSwift', 'vec4'); // radius, height, angular speed, phase
     const vertex = Fn(() => {
-        const theta = u.time.mul(W.z).add(W.w);
+        // Their own clock: they fly faster as play heats, never jumping along their arcs.
+        const theta = u.swiftClock.mul(W.z).add(W.w);
         const r = W.x.mul(float(1.0).sub(u.comboLift.mul(0.25)));
         // Long arcs over the chamber, centred over the jungle, dipping and climbing.
         const centre = vec3(

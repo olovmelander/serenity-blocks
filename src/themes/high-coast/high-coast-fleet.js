@@ -4,9 +4,13 @@
  * Sailboats reach round loops of open water on both sides of the card (each loop checked against
  * the baked sea floor), at a constant pace (their place is a closed form of the clock). A lock
  * sets a SPINNAKER in the piece's colour on a boat on its side of the board: it pops open, glows
- * where the low sun shines through it, holds for a while and is doused; the boat surges and its
- * wake whitens. A T-spin brings the whole fleet about: every sail swings across and the boats
- * heel the other way. The boats ride the sea's level, so they sink with it as the land rises.
+ * where the low sun shines through it, holds while locks keep feeding it and is doused a while
+ * after the last; the boat surges and its wake whitens. A lock that reaches a sail already flying
+ * never douses it to set it again: it fills again from where it stands, its puff adds to the
+ * boat's surge, and its colour turns toward the new piece's. In hot play every boat whose sail is
+ * down sets one, and the sails burn in the low sun (u.heat.z). A T-spin brings the whole fleet
+ * about from where its heel stands: every sail swings across and the boats heel the other way.
+ * The boats ride the sea's level, so they sink with it as the land rises.
  *
  * Instanced: hulls and their rigs are one mesh (a part attribute tells hull, mast and sails apart),
  * spinnakers another (per-boat colour and how far each is set), wakes a third.
@@ -239,8 +243,9 @@ function spinnakerMaterial(u, t) {
         const L = u.sunDir;
         const view = normalize(P.sub(u.eye));
         const facing = dot(n, L).abs();
-        // The low sun through coloured nylon: the sail glows in its own colour.
-        const through = clamp(dot(view, L), 0.0, 1.0).pow(2.0).mul(1.4);
+        // The low sun through coloured nylon: the sail glows in its own colour (and, as play runs
+        // hot, every sail in the bay burns with it: u.heat.z).
+        const through = clamp(dot(view, L), 0.0, 1.0).pow(2.0).mul(1.4).add(u.heat.z);
         const shadow = shadowAt(t.shadow, P.xz);
         const lit = albedo.mul(u.sun.mul(facing.mul(0.7).add(through)).mul(shadow).mul(u.sunUp).add(u.fill.mul(1.1))
             .add(u.bounce.mul(0.5)));
@@ -270,6 +275,28 @@ function wakeMaterial(u) {
     return material;
 }
 
+/** The spinnaker filling: it pops open (overshooting) over its first second (`age` since set). */
+export function spinnakerRise(age) {
+    if (!(age >= 0)) return 0;
+    return clampJs(1.12 * smooth(0, 0.45, age) - 0.12 * smooth(0.45, 1.1, age), 0, 1.12);
+}
+
+/** How far a spinnaker stands: filling since `setAt`, doused TIMING.spinnaker after its last lock `fedAt`. */
+export function spinnakerOpen(boat, time) {
+    return spinnakerRise(time - boat.setAt) * (1 - smooth(TIMING.spinnaker, TIMING.spinnaker + 2.2, time - boat.fedAt));
+}
+
+/** The inverse of smooth(0, 1, x) on [0, 1]. */
+const unsmooth = (v) => 0.5 - Math.sin(Math.asin(1 - 2 * clampJs(v, 0, 1)) / 3);
+/** A sail this far set counts as down: a new lock may set it fresh. */
+const DOWN = 0.02;
+/** A sail turning to a new piece's colour takes this long (seconds). */
+const RECOLOUR = 0.8;
+/** A lock's puff in a flying sail: how hard (a hard drop more), and how fast it eases (seconds). */
+const PUFF = Object.freeze({
+    soft: 0.3, hard: 0.6, cap: 1.2, release: 2.5,
+});
+
 export function createFleet(u, t, tier) {
     const count = [4, 6, 8][Math.min(2, Math.max(0, tier.props))];
     const lanes = LANES.slice(0, count);
@@ -278,11 +305,67 @@ export function createFleet(u, t, tier) {
         lane,
         phase: random() * Math.PI * 2,
         scale: 1.45 + random() * 0.3,
+        /** The piece colour the sail turns to, and the colour it turns from since `blendAt`. */
         colour: [1, 1, 1],
+        from: [1, 1, 1],
+        blendAt: -1e6,
+        /** When the sail began to fill, and when a lock last fed it (the hold counts from there). */
         setAt: -1e6,
+        fedAt: -1e6,
         hard: 0,
+        /** The locks' puffs in the sail (a decaying sum: each feed adds, never restarts). */
+        puff: 0,
+        puffAt: -1e6,
         place: {},
     }));
+    const shown = [0, 0, 0];
+    /** The sail's colour at `time`: turning from `from` to `colour`. */
+    const colourAt = (b, time, out = shown) => {
+        const k = smooth(0, RECOLOUR, time - b.blendAt);
+        for (let c = 0; c < 3; c++) out[c] = b.from[c] + (b.colour[c] - b.from[c]) * k;
+        return out;
+    };
+    const puffAt = (b, time) => (time >= b.puffAt ? b.puff * Math.exp(-(time - b.puffAt) / PUFF.release) : b.puff);
+    /**
+     * A lock reaches a boat's sail. A sail that is down is set fresh in the piece's colour; one
+     * already flying is never doused to be set again: it fills again from where it stands, its hold
+     * starts over, and its colour turns toward the new piece's.
+     */
+    const feed = (b, rgb, time, hard) => {
+        const open = spinnakerOpen(b, time);
+        if (open < DOWN) {
+            b.setAt = time;
+            b.blendAt = -1e6;
+            for (let c = 0; c < 3; c++) {
+                b.colour[c] = rgb[c];
+                b.from[c] = rgb[c];
+            }
+            b.hard = hard ? 1 : 0;
+        } else {
+            colourAt(b, time, b.from);
+            for (let c = 0; c < 3; c++) b.colour[c] = rgb[c];
+            b.blendAt = time;
+            // Being doused: it fills again from where it stands (the same rise, met part-way).
+            if (time - b.setAt > 1.1 && open < 0.999) b.setAt = time - 0.45 * unsmooth(Math.min(1, open / 1.12));
+            b.hard = Math.max(b.hard, hard ? 1 : 0);
+        }
+        b.fedAt = time;
+        b.puff = Math.min(PUFF.cap, puffAt(b, time) + (hard ? PUFF.hard : PUFF.soft));
+        b.puffAt = time;
+    };
+    /** Of `boats` (on `side`, or any when side is 0): a sail that is down first (the one down longest), else the stalest flying one. */
+    const pick = (side, time, downOnly = false) => {
+        let down = null;
+        let flying = null;
+        for (const b of boats) {
+            boatPlace(b.lane, b.phase, time, b.place);
+            if (side !== 0 && b.place.side !== side) continue;
+            if (spinnakerOpen(b, time) < DOWN) {
+                if (!down || b.fedAt < down.fedAt) down = b;
+            } else if (!flying || b.fedAt < flying.fedAt) flying = b;
+        }
+        return downOnly ? down : down || flying;
+    };
     const boatGeo = boatGeometry();
     const boatMat = boatMaterial(u, t);
     const hulls = new THREE.InstancedMesh(boatGeo, boatMat, count);
@@ -312,13 +395,23 @@ export function createFleet(u, t, tier) {
     wakeAttr.setUsage(THREE.DynamicDrawUsage);
 
     const state = {
-        tackAt: -1e6, side: 1, sideFrom: 1,
+        tackAt: -1e6, side: 1, sideFrom: 1, swingFrom: 0, swingAt: -1e6, amount: 1,
     };
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const e = new THREE.Euler();
     const sc = new THREE.Vector3();
     const pos = new THREE.Vector3();
+    /** Where the fleet's heel stands between the two tacks at `time` (−1 … 1). */
+    const tackSideAt = (time) => state.sideFrom
+        + (state.side - state.sideFrom) * smooth(0, TIMING.tack, time - state.tackAt);
+    /** How far the sails stand swung through the light at `time` (a re-tack carries the last swing on). */
+    const swingAt = (time) => {
+        const k = smooth(0, TIMING.tack, time - state.tackAt);
+        const own = state.tackAt > -1e5 ? Math.sin(Math.PI * k) * state.amount : 0;
+        const carried = state.swingFrom * (1 - smooth(0, TIMING.tack * 0.6, time - state.swingAt));
+        return Math.min(1.2, own + carried);
+    };
 
     const part = {
         mesh: hulls,
@@ -328,42 +421,57 @@ export function createFleet(u, t, tier) {
             state.tackAt = -1e6;
             state.side = 1;
             state.sideFrom = 1;
-            for (const b of boats) b.setAt = -1e6;
-        },
-        /** Set a spinnaker on a boat on `side` (−1 left of the card, 1 right); returns its place. */
-        setSpinnaker(side, rgb, time, hard = false) {
-            let best = null;
+            state.swingFrom = 0;
+            state.swingAt = -1e6;
+            state.amount = 1;
             for (const b of boats) {
-                boatPlace(b.lane, b.phase, time, b.place);
-                if (b.place.side !== side) continue;
-                if (!best || b.setAt < best.setAt) best = b;
+                b.setAt = -1e6;
+                b.fedAt = -1e6;
+                b.blendAt = -1e6;
+                b.hard = 0;
+                b.puff = 0;
+                b.puffAt = -1e6;
             }
-            if (!best) best = boats.reduce((a, b) => (b.setAt < a.setAt ? b : a), boats[0]);
-            best.colour = [rgb[0], rgb[1], rgb[2]];
-            best.setAt = time;
-            best.hard = hard ? 1 : 0;
+        },
+        /**
+         * A lock on `side` (−1 left of the card, 1 right) reaches a boat there: a sail that is down
+         * is set in the piece's colour, or (every sail there flying) the stalest one fills again and
+         * turns toward it. Returns the boat's place.
+         */
+        setSpinnaker(side, rgb, time, hard = false) {
+            const best = pick(side, time) || pick(0, time);
+            feed(best, rgb, time, hard);
             boatPlace(best.lane, best.phase, time, best.place);
             return best.place;
         },
-        /** T-spin: every boat comes about. */
-        tack(time) {
-            state.sideFrom = state.side;
+        /** Hot play: a boat whose sail is down anywhere in the bay sets one too (none down: nothing). */
+        setSpare(rgb, time) {
+            const spare = pick(0, time, true);
+            if (spare) feed(spare, rgb, time, false);
+            return spare ? spare.place : null;
+        },
+        /**
+         * T-spin: every boat comes about, from where its heel stands now (a second T-spin mid-tack
+         * turns them back from there; the sails' swing carries on). `amount` scales the swing.
+         */
+        tack(time, amount = 1) {
+            state.swingFrom = swingAt(time);
+            state.swingAt = time;
+            state.sideFrom = tackSideAt(time);
             state.side = -state.side;
             state.tackAt = time;
+            state.amount = amount;
         },
         update(time, dt, world) {
             const sea = world ? world.u.sea.value : 0;
             const breeze = world ? world.u.breeze.value : 1;
-            const tackK = smooth(0, TIMING.tack, time - state.tackAt);
-            const tackSide = state.sideFrom + (state.side - state.sideFrom) * tackK;
-            const swing = Math.sin(Math.PI * tackK) * (state.tackAt > -1e5 ? 1 : 0);
+            const tackSide = tackSideAt(time);
+            const swing = swingAt(time);
             boats.forEach((b, i) => {
                 const p = boatPlace(b.lane, b.phase, time, b.place);
-                const age = time - b.setAt;
-                // The spinnaker pops open (overshooting), holds, then is doused.
-                const open = age < 0 ? 0 : clampJs(1.12 * smooth(0, 0.45, age) - 0.12 * smooth(0.45, 1.1, age), 0, 1.12)
-                    * (1 - smooth(TIMING.spinnaker, TIMING.spinnaker + 2.2, age));
-                const surge = open * (1 + b.hard * 0.6);
+                // The spinnaker pops open (overshooting), holds while locks feed it, then is doused.
+                const open = spinnakerOpen(b, time);
+                const surge = open * (1 + b.hard * 0.6 + puffAt(b, time));
                 const heel = (0.16 + 0.08 * breeze + 0.06 * surge) * tackSide;
                 // Bow along the heading (the geometry's bow is −z; a turn by −heading points it there).
                 e.set(0, -p.heading + swing * 0.5, heel * Math.cos(swing * 0.5), 'YXZ');
@@ -377,7 +485,8 @@ export function createFleet(u, t, tier) {
                 sc.set(s * set, s * set, s * set);
                 m.compose(pos, q, sc);
                 sails.setMatrixAt(i, m);
-                sailData.set([b.colour[0], b.colour[1], b.colour[2], clampJs(open, 0, 1)], i * 4);
+                const c = colourAt(b, time);
+                sailData.set([c[0], c[1], c[2], clampJs(open, 0, 1)], i * 4);
                 // The wake: longer and whiter while the spinnaker pulls.
                 const length = 26 + 30 * surge;
                 sc.set(9 * s + 6 * surge, 1, length);
@@ -403,19 +512,42 @@ export function createFleet(u, t, tier) {
                 tackAt: state.tackAt,
                 side: state.side,
                 sideFrom: state.sideFrom,
-                boats: boats.map((b) => ({ colour: b.colour.slice(), setAt: b.setAt, hard: b.hard })),
+                swingFrom: state.swingFrom,
+                swingAt: state.swingAt,
+                amount: state.amount,
+                boats: boats.map((b) => ({
+                    colour: b.colour.slice(),
+                    from: b.from.slice(),
+                    blendAt: b.blendAt,
+                    setAt: b.setAt,
+                    fedAt: b.fedAt,
+                    hard: b.hard,
+                    puff: b.puff,
+                    puffAt: b.puffAt,
+                })),
             };
         },
         importState(s) {
             if (!s) return;
+            const num = (v, fallback) => (Number.isFinite(v) ? v : fallback);
             state.tackAt = s.tackAt;
             state.side = s.side;
             state.sideFrom = s.sideFrom;
+            state.swingFrom = num(s.swingFrom, 0);
+            state.swingAt = num(s.swingAt, -1e6);
+            state.amount = num(s.amount, 1);
             s.boats?.forEach((saved, i) => {
-                if (!boats[i]) return;
-                boats[i].colour = saved.colour.slice();
-                boats[i].setAt = saved.setAt;
-                boats[i].hard = saved.hard;
+                const b = boats[i];
+                if (!b) return;
+                b.colour = saved.colour.slice();
+                b.from = Array.isArray(saved.from) ? saved.from.slice() : saved.colour.slice();
+                b.blendAt = num(saved.blendAt, -1e6);
+                b.setAt = saved.setAt;
+                // An older save held the sail from when it was set.
+                b.fedAt = num(saved.fedAt, saved.setAt);
+                b.hard = saved.hard;
+                b.puff = num(saved.puff, 0);
+                b.puffAt = num(saved.puffAt, -1e6);
             });
         },
         dispose() {

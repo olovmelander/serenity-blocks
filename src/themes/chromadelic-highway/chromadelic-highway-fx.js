@@ -138,9 +138,15 @@ function ringLattice(n, shared, centerY) {
     const curve = chdRoadCurve(zR, uTime);
     const C0 = vec3(curve.x, curve.y.add(centerY), zR);
     const depth = max(cameraViewMatrix.mul(vec4(C0, 1.0)).z.negate(), 1.0);
-    // The cascade: a front sweeping from where rings emerge down to the lens.
-    const cAge = max(uTime.sub(uCascade.x), 0.0);
-    const dcN = depth.sub(uCascade.y.sub(uCascade.z.mul(cAge))).div(180.0);
+    // The cascades: fronts sweeping from where rings emerge down to the lens. Two can run at once
+    // (a new one never restarts the one in flight); vertex stage, so the second costs nothing.
+    const front = (u) => {
+        const age = max(uTime.sub(u.x), 0.0);
+        const dN = depth.sub(u.y.sub(u.z.mul(age))).div(180.0);
+        return u.w.mul(exp(dN.mul(dN).negate()));
+    };
+    const cascadeA = front(uCascade);
+    const cascadeB = shared.uCascade2 ? front(shared.uCascade2) : float(0.0);
     return {
         zR,
         J,
@@ -152,7 +158,9 @@ function ringLattice(n, shared, centerY) {
         core: uRingPalette.element(slot),
         glow: uRingGlow.element(slot),
         form: uRingForm.element(slot),
-        cascade: uCascade.w.mul(exp(dcN.mul(dcN).negate())),
+        cascade: cascadeA.add(cascadeB),
+        cascadeA,
+        cascadeB,
         // Hidden behind the card: collapse to zero area (no fill), then emerge at the card edge.
         shown: step(depth, uDEmerge.add(250.0)),
     };
@@ -181,16 +189,18 @@ function shapeFactor(theta, shapeN) {
  * as they clear it), sweep out through the side zones, dim to a glass line over the hero planet,
  * and dissolve before the lens (D 330 → 150).
  *
- * Events: the light waves tint them, the cascade (Tetris, level-up) sweeps a front through them
- * (white, a colour, or a prism), and line clears send chase lights climbing every arch from its
- * feet to its crown. The packets' phase is integrated on the CPU (uRingPhase): its rate follows
- * the combo, so it must never be clock × rate.
+ * Events: the light waves tint them, the cascades (Tetris, level-up, back-to-back, a perfect
+ * clear, deep cascade waves) sweep fronts through them (white, a colour, or a prism; two at once),
+ * and line clears send chase lights climbing every arch from its feet to its crown (two chases at
+ * once). The packets' phase is integrated on the CPU (uRingPhase): its rate follows the combo and
+ * the heat of play, so it must never be clock × rate.
  *
  * @param {object} opts
  * @param {number} opts.count     rings on the lattice (must divide 240)
  * @param {object} opts.shared    { uTime, uTravel, uRingEnv, uPxScale, uRingPalette, uRingGlow,
  *                                  uRingForm, uRingPhase, uDEmerge, uCascade, uCascadeCol,
- *                                  uCascadePrism, uChase, uViewportPx, uHeroPx, waves }
+ *                                  uCascadePrism, uCascade2, uCascadeCol2, uCascadePrism2,
+ *                                  uChase, uChase2, uViewportPx, uHeroPx, waves }
  */
 export function createTunnelRings({
     count = 8,
@@ -201,7 +211,7 @@ export function createTunnelRings({
 } = {}) {
     const n = latticeRingCount(count);
     const {
-        uTime, uDEmerge, uCascadeCol, uCascadePrism, uChase, uRingPhase, uViewportPx, uHeroPx, waves,
+        uTime, uDEmerge, uCascadeCol, uCascadePrism, uChase, uChase2, uRingPhase, uViewportPx, uHeroPx, waves,
     } = shared;
     const uRingEnv = shared.uRingEnv ?? uniform(0);
     const uIntensity = uniform(1.0);
@@ -222,7 +232,7 @@ export function createTunnelRings({
     const wv = chdWaves(L.zR, waves, L.core);
     // The road's bands flash a ring as they pass under it, softly: the chase lights and the
     // cascade carry the rings' own event light.
-    const flash = max(wv.amount.mul(0.6), L.cascade);
+    const flash = max(wv.amount.mul(0.6), min(L.cascade, 1.3));
     const isDouble = step(0.5, L.form.y).mul(step(L.form.y, 1.5));
     const corePx = clamp(float(1.6).mul(L.pxPerW), 1.0, 2.4).mul(mix(1.0, 1.3, L.accent))
         .add(uRingEnv.mul(0.6))
@@ -231,9 +241,14 @@ export function createTunnelRings({
         .mul(mix(1.0, 1.5, isDouble));
     const waveHue = wv.color.div(max(wv.amount, 0.001));
     const waveMix = min(wv.amount, 1.0).mul(0.6);
-    const cascadeTint = min(L.cascade, 1.0).mul(uCascadeCol.w);
-    const coreTint = mix(mix(L.core, waveHue, waveMix), uCascadeCol.xyz, cascadeTint);
-    const glowTint = mix(mix(L.glow.xyz, waveHue, waveMix), uCascadeCol.xyz, cascadeTint);
+    // Each front tints toward its own colour; the prism share of the light drives the burst.
+    const uCascadeCol2 = shared.uCascadeCol2 ?? uniform(new THREE.Vector4(1, 1, 1, 0));
+    const uCascadePrism2 = shared.uCascadePrism2 ?? uniform(0);
+    const tintA = min(L.cascadeA, 1.0).mul(uCascadeCol.w);
+    const tintB = min(L.cascadeB, 1.0).mul(uCascadeCol2.w);
+    const coreTint = mix(mix(mix(L.core, waveHue, waveMix), uCascadeCol.xyz, tintA), uCascadeCol2.xyz, tintB);
+    const glowTint = mix(mix(mix(L.glow.xyz, waveHue, waveMix), uCascadeCol.xyz, tintA), uCascadeCol2.xyz, tintB);
+    const prismCascade = L.cascadeA.mul(uCascadePrism).add(L.cascadeB.mul(uCascadePrism2));
 
     material.vertexNode = Fn(() => {
         const p = positionGeometry;
@@ -244,7 +259,7 @@ export function createTunnelRings({
     })();
 
     material.colorNode = Fn(() => {
-        const vA = vertexStage(vec4(L.depth, L.C0.y.add(positionGeometry.y.mul(radius)), flash, L.cascade));
+        const vA = vertexStage(vec4(L.depth, L.C0.y.add(positionGeometry.y.mul(radius)), flash, prismCascade));
         const vB = vertexStage(vec4(corePx, stripPx, L.pxPerW.mul(radius), L.accent.add(L.parity.mul(2.0))));
         const vCore = vertexStage(coreTint);
         const vGlow = vertexStage(vec4(glowTint, L.glow.w));
@@ -253,7 +268,7 @@ export function createTunnelRings({
         const vDepth = vA.x;
         const vY = vA.y;
         const vFlash = vA.z;
-        const vCascade = vA.w;
+        const vPrismCascade = vA.w;
         const vParity = step(1.5, vB.w);
         const vAccent = vB.w.sub(vParity.mul(2.0));
         const vK = vB.x.div(vB.y);
@@ -295,25 +310,29 @@ export function createTunnelRings({
         const prismOn = step(0.5, vGlow.w);
         const prismCol = chdNeonColor(fract(vGlow.w).add(arcN.mul(0.85)), float(0.5));
         const burstCol = chdNeonColor(arcN.add(vJ.mul(0.137)), float(0.55));
-        const burst = min(vCascade.mul(1.8), 1.0).mul(uCascadePrism);
+        const burst = min(vPrismCascade.mul(1.8), 1.0);
         const coreCol = mix(mix(vCore, prismCol, prismOn), burstCol, burst);
         const glowCol = mix(mix(vGlow.xyz, prismCol.mul(0.84), prismOn), burstCol, burst);
 
         // Chase lights (line clears): the arch fills with light from both feet up to the crown,
-        // led by a bright head; up to three fronts, one per line, then the fill fades.
+        // led by a bright head; up to three fronts, one per line, then the fill fades. Two chases
+        // can climb at once: a new clear never sends the light back to the feet.
         const arcPos = abs(theta.sub(Math.PI / 2)).div(ARC_THETA1 - Math.PI / 2); // 0 crown → 1 feet
-        const chaseAge = uTime.sub(uChase.x);
-        let chase = float(0.0);
-        for (let i = 0; i < 3; i += 1) {
-            const s = chaseAge.sub(i * 0.12).div(uChase.y);
-            const front = float(1.0).sub(clamp(s, 0.0, 1.0));
-            const df = arcPos.sub(front).div(0.09);
-            const head = exp(df.mul(df).negate());
-            const filled = smoothstep(front.sub(0.03), front.add(0.03), arcPos).mul(0.45);
-            const live = step(0.0, s).mul(float(1.0).sub(smoothstep(0.9, 1.6, s))).mul(step(i + 0.5, uChase.z));
-            chase = chase.add(head.add(filled).mul(live));
-        }
-        chase = min(chase, 1.6).mul(uChase.w);
+        const chaseOf = (u) => {
+            const chaseAge = uTime.sub(u.x);
+            let sum = float(0.0);
+            for (let i = 0; i < 3; i += 1) {
+                const s = chaseAge.sub(i * 0.12).div(u.y);
+                const front = float(1.0).sub(clamp(s, 0.0, 1.0));
+                const df = arcPos.sub(front).div(0.09);
+                const head = exp(df.mul(df).negate());
+                const filled = smoothstep(front.sub(0.03), front.add(0.03), arcPos).mul(0.45);
+                const live = step(0.0, s).mul(float(1.0).sub(smoothstep(0.9, 1.6, s))).mul(step(i + 0.5, u.z));
+                sum = sum.add(head.add(filled).mul(live));
+            }
+            return min(sum, 1.6).mul(u.w);
+        };
+        const chase = min(chaseOf(uChase).add(uChase2 ? chaseOf(uChase2) : float(0.0)), 2.2);
 
         // Three packets orbit each ring; neighbouring rings spin opposite ways.
         const dir = mix(float(-1.0), float(1.0), vParity);
@@ -383,7 +402,7 @@ export function createRingAir({
 } = {}) {
     const n = latticeRingCount(count);
     const {
-        uTime, uDEmerge, uChase, uViewportPx, uHeroPx, uAirGain, waves,
+        uTime, uDEmerge, uChase, uChase2, uViewportPx, uHeroPx, uAirGain, waves,
     } = shared;
     const uIntensity = uniform(1.0);
     const geometry = buildArcStrip(segments, n);
@@ -434,8 +453,11 @@ export function createRingAir({
         const pPx = screenUV.mul(uViewportPx);
         const heroEdge = uHeroPx.z.add(uViewportPx.y.mul(0.06));
         const heroM = float(1.0).sub(smoothstep(uHeroPx.z, heroEdge, length(pPx.sub(uHeroPx.xy))));
-        const chaseAge = uTime.sub(uChase.x).div(uChase.y);
-        const chaseGlow = step(0.0, chaseAge).mul(float(1.0).sub(smoothstep(0.2, 1.2, chaseAge))).mul(uChase.w);
+        const glowOf = (u) => {
+            const chaseAge = uTime.sub(u.x).div(u.y);
+            return step(0.0, chaseAge).mul(float(1.0).sub(smoothstep(0.2, 1.2, chaseAge))).mul(u.w);
+        };
+        const chaseGlow = min(glowOf(uChase).add(uChase2 ? glowOf(uChase2) : float(0.0)), 1.8);
         const ig = vA.x.sub(uDEmerge).div(220.0);
         const gain = float(1.0).add(vA.z.mul(0.8)).add(chaseGlow.mul(0.8)).add(exp(ig.mul(ig).negate()).mul(0.5));
         // Near the lens a ring's air would veil half the frame: it thins out well before the ring.
@@ -834,19 +856,35 @@ export function createMeteors({ pool = 8, shared } = {}) {
     mesh.frustumCulled = false;
     mesh.renderOrder = 30;
 
-    let cursor = 0;
     const deathTimes = new Float64Array(n).fill(-1e4);
     return {
         mesh,
         material,
         uniforms: { uIntensity },
+        /** Pool size (a one-slot pool cannot hold a comet's two tails). */
+        capacity: n,
         /**
+         * A free slot first (the lowest, so a seek replays the same slots); a full pool gives up
+         * the trail nearest its end only when it is almost gone, or when `evict` (a comet) asks.
+         * A meteor never cuts a comet in mid-flight: it is skipped instead.
          * @param {{start: THREE.Vector3, velocity: THREE.Vector3, life: number, widthPx: number,
-         *   value: number, time: number}} s
+         *   value: number, time: number, evict?: boolean}} s
+         * @returns {boolean} whether it was spawned
          */
         spawn(s) {
-            const i = cursor;
-            cursor = (cursor + 1) % n;
+            let i = -1;
+            let nearest = 0;
+            for (let k = 0; k < n; k++) {
+                if (deathTimes[k] <= s.time) {
+                    i = k;
+                    break;
+                }
+                if (deathTimes[k] < deathTimes[nearest]) nearest = k;
+            }
+            if (i < 0) {
+                if (!s.evict && deathTimes[nearest] - s.time > 0.15) return false;
+                i = nearest;
+            }
             aStart.set([s.start.x, s.start.y, s.start.z], i * 3);
             aVel.set([s.velocity.x, s.velocity.y, s.velocity.z], i * 3);
             aTiming.set([s.time, s.life, s.widthPx, s.value], i * 4);
@@ -857,6 +895,7 @@ export function createMeteors({ pool = 8, shared } = {}) {
             startAttr.needsUpdate = true;
             velAttr.needsUpdate = true;
             timingAttr.needsUpdate = true;
+            return true;
         },
         /** Number of live slots at `time` (0 → the draw is skipped). */
         update(time) {
@@ -874,8 +913,7 @@ export function createMeteors({ pool = 8, shared } = {}) {
             timingAttr.clearUpdateRanges();
             timingAttr.addUpdateRange(0, aTiming.length);
             timingAttr.needsUpdate = true;
-            geometry.instanceCount = 0;
-            cursor = 0; // same slot assignment after every seek
+            geometry.instanceCount = 0; // every slot free: the same slot assignment after every seek
         },
         /** Make every slot drawable once so a warm-up compiles the pipeline. */
         armForWarmup() {

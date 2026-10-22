@@ -932,7 +932,8 @@ describe('vesper world: locks', () => {
         run(soft.world, soft.camera, 4);
         expect(hard.world.getState().held).toBeGreaterThan(soft.world.getState().held);
         expect(litLilies(hard.world)).toHaveLength(3);
-        // The kick is spent and the lens is back.
+        // The kick is spent and the lens is back (the punch that rides under it too).
+        run(hard.world, hard.camera, 2);
         expect(hard.world.getPostState().kick).toBeLessThan(1e-6);
         expect(hard.camera.fov).toBeCloseTo(fov, 5);
         soft.world.dispose();
@@ -1219,7 +1220,8 @@ describe('vesper world: the board on screen', () => {
         expect(ys[2]).toBeCloseTo(boardPoint(board, 0.5, 17).y, 9);
         world.onClear({ lines: 4, rows: [19, 18, 17, 16, 15, 14] });
         [ys, x0, x1, rgb, time, strength] = fires[2];
-        expect(ys).toHaveLength(BLADE_SLOTS);
+        expect(ys).toHaveLength(4); // four rows at most: a board clears no more at once
+        expect(BLADE_SLOTS).toBeGreaterThanOrEqual(12); // three clears' worth in the air at once
         // A clear that names a point on screen (a mode without a board) throws no blades...
         world.onClear({ lines: 2, screen: { x: 0.5, y: 0.5 } });
         expect(fires).toHaveLength(3);
@@ -1265,12 +1267,12 @@ describe('vesper world: clears', () => {
         expect(seen[1].colour).not.toEqual(seen[0].colour);
         expect(seen[2].colour).not.toEqual(seen[1].colour);
         // No more lines than a board can clear at once, no fewer than one; nonsense is one line.
+        const newest = () => world.u.swellA.reduce((a, b) => (b.value.x > a.value.x ? b : a)).value;
         for (const [lines, fronts] of [[0, 1], [-3, 1], ['two', 1], [undefined, 1], [2.4, 2], [9, 4]]) {
             run(world, camera, 0.1);
-            const slot = world.swellCursor % SWELL_SLOTS;
             world.onClear({ lines });
-            expect(world.u.swellA[slot].value.x, String(lines)).toBeGreaterThanOrEqual(world.time);
-            expect(world.u.swellA[slot].value.y, String(lines)).toBe(fronts);
+            expect(newest().x, String(lines)).toBeGreaterThanOrEqual(world.time);
+            expect(newest().y, String(lines)).toBe(fronts);
         }
         expect(() => world.onClear()).not.toThrow();
         world.dispose();
@@ -1514,21 +1516,23 @@ describe('vesper world: clears', () => {
         world.dispose();
     });
 
-    // The lake draws SWELL_SLOTS swells. One more clear inside the oldest one's crossing takes its
-    // slot, and that swell vanishes from the water: the releases it had still to make go with it
-    // (blooms.cancel by the swell's tag), or lilies it had not reached would let go of their light
-    // with no front anywhere near them. (Local multiplayer: boards clearing within the same
-    // second is ordinary.)
+    // The lake draws SWELL_SLOTS swells. One more clear while they all still cross takes the slot
+    // of the one with least left to give (the oldest of a run of singles), and that swell vanishes
+    // from the water: the releases it had still to make go with it (blooms.cancel by the swell's
+    // tag), or lilies it had not reached would let go of their light with no front anywhere near
+    // them. (Local multiplayer, or a fast cascade: swells this close together are ordinary.)
     it('lets no lily go of its light for a swell the lake has stopped drawing', () => {
         const { camera, world } = litWorld('High');
         const births = [];
         for (let i = 0; i < SWELL_SLOTS; i++) {
             births.push(world.time);
             world.onClear({ lines: 1 });
-            run(world, camera, 0.3);
+            run(world, camera, 0.05, 3);
         }
-        // Every swell so far is on the water, and has releases still to make.
-        for (const birth of births) expect(releases(world).some((e) => e.tag === birth)).toBe(true);
+        // Every swell so far is on the water; the first has releases still to make.
+        const drawn = world.u.swellA.map((slot) => slot.value.x);
+        for (const birth of births) expect(drawn).toContain(birth);
+        expect(releases(world).some((e) => e.tag === births[0])).toBe(true);
         const kept = releases(world).filter((e) => e.tag !== births[0]).length;
         births.push(world.time);
         world.onClear({ lines: 1 });
@@ -1563,10 +1567,10 @@ describe('vesper world: clears', () => {
         world.onClear({ lines: 1, player: 1 });
         world.onClear({ lines: 2, player: 2 });
         for (let i = 2; i < SWELL_SLOTS; i++) {
-            run(world, camera, 0.3);
+            run(world, camera, 0.05, 3);
             world.onClear({ lines: 1, player: 1 });
         }
-        run(world, camera, 0.3);
+        run(world, camera, 0.05, 3);
         // Both swells of the pair are on the water, with lilies still to reach, under two tags.
         const births = world.u.swellA.filter(pair).map((slot) => slot.value.x).sort((a, b) => a - b);
         expect(births).toHaveLength(2);
@@ -1869,10 +1873,11 @@ describe('vesper world: the chain', () => {
         world.dispose();
     });
 
-    it('lets the wings fall when the chain drops to a lower step: it broke, and a new one has begun', () => {
+    it('folds the wings back to the new chain\'s step when the chain breaks into a shorter one', () => {
         // The game reports a break only with the next lock. When that lock clears, the world is
         // never told "0": the chain goes straight from its old length to 1 (or, with several
-        // boards, to the longest chain left). The wings that stood fall all the same.
+        // boards, to the longest chain left). The wings that stood moult all the same, folding
+        // back to where the new chain stands, never vanishing first.
         const { camera, world } = makeWorld('Low');
         world.onCombo(4);
         run(world, camera, 3);
@@ -1883,33 +1888,37 @@ describe('vesper world: the chain', () => {
         world.onCombo(1);
         expect(world.combo).toBe(1);
         expect(world.counts.falls).toBe(1);
-        expect(dustInUse(world).length).toBeGreaterThan(scales); // they shed their scales
-        // The old wings burn away whole: they are not redrawn at the new step meanwhile.
-        const steps = 10;
-        for (let i = 1; i < steps; i++) {
-            run(world, camera, WING_FALL / steps, 3);
-            expect(world.u.wing.value.x, `step ${i}`).toBe(open);
-            expect(world.u.wing.value.z, `step ${i}`).toBeCloseTo((world.time - fell) / WING_FALL, 9);
-            expect(world.u.combo.value, `step ${i}`).toBe(1);
+        expect(world.moulting).toBe(true);
+        expect(dustInUse(world).length).toBeGreaterThan(scales); // a shudder of scales
+        // They fold back from the margin at an even pace, fraying, never below the new chain's step.
+        const step = wingForCombo(1);
+        let frayed = 0;
+        while (world.time < fell + (open - step) * WING_FALL - 0.1) {
+            run(world, camera, 1 / 20, 3);
+            expect(world.wing).toBeCloseTo(open - (world.time - fell) / WING_FALL, 9);
+            expect(world.u.wing.value.x).toBe(world.wing);
+            expect(world.u.combo.value).toBe(1);
+            frayed = Math.max(frayed, world.u.wing.value.z);
         }
-        // Then the new chain's wings are written, from nothing, to its own step.
-        run(world, camera, (2 * WING_FALL) / steps, 6);
+        expect(frayed).toBeGreaterThan(0.5);
+        // Then they stand at the new chain's step, and the fray knits.
+        run(world, camera, 0.5);
+        expect(world.wing).toBe(step);
+        expect(world.moulting).toBe(false);
+        run(world, camera, 4);
         expect(world.u.wing.value.z).toBe(0);
-        expect(world.wing).toBeGreaterThan(0);
-        expect(world.wing).toBeLessThan(wingForCombo(1));
-        run(world, camera, 3);
-        expect(world.wing).toBe(wingForCombo(1));
+        expect(world.wing).toBe(step);
         // Any lower number does it, not only 1: 3 -> 2 is a break as well.
         world.onCombo(3);
         run(world, camera, 3);
         world.onCombo(2);
         expect(world.counts.falls).toBe(2);
-        run(world, camera, WING_FALL / 2);
-        expect(world.u.wing.value.x).toBe(wingForCombo(3));
+        run(world, camera, 0.25);
+        expect(world.wing).toBeLessThan(wingForCombo(3));
+        expect(world.wing).toBeGreaterThan(wingForCombo(2));
         expect(world.u.wing.value.z).toBeGreaterThan(0.4);
-        run(world, camera, WING_FALL / 2 + 3);
+        run(world, camera, 3);
         expect(world.wing).toBe(wingForCombo(2));
-        expect(world.u.wing.value.z).toBe(0);
         world.dispose();
     });
 
@@ -1966,7 +1975,7 @@ describe('vesper world: the chain', () => {
         world.dispose();
     });
 
-    it('lets the wings fall to dust when the chain breaks, in WING_FALL seconds, to nothing', () => {
+    it('lets the wings moult away when the chain breaks: they fold back at an even pace, fraying, to nothing', () => {
         const { camera, world } = makeWorld('Low');
         world.onCombo(5);
         run(world, camera, 3);
@@ -1977,26 +1986,35 @@ describe('vesper world: the chain', () => {
         world.onCombo(0);
         expect(world.combo).toBe(0);
         expect(world.counts.falls).toBe(1);
-        // They shed their scales as they go.
+        expect(world.fallStart).toBe(t0);
+        expect(world.fallFrom).toBe(open);
+        // A shudder of scales as the chain lets go...
         expect(dustInUse(world).length).toBeGreaterThan(scales);
-        // The wings stay as they were while they burn away from the margin inward: the fall runs 0..1.
+        const shudder = world.dust.cursor;
+        // ...then the front folds back at 1 / WING_FALL of the span a second, frays as it goes
+        // and sheds its scales on the way. It never jumps: a full pair takes WING_FALL seconds.
+        let previous = open;
         const steps = 20;
         for (let i = 1; i < steps; i++) {
-            run(world, camera, WING_FALL / steps, 3);
-            expect(world.wing, `step ${i}`).toBe(open);
-            expect(world.u.wing.value.x, `step ${i}`).toBe(open);
-            expect(world.u.wing.value.z, `step ${i}`).toBeCloseTo((world.time - t0) / WING_FALL, 9);
+            run(world, camera, (open * WING_FALL) / steps, 3);
+            expect(world.wing, `step ${i}`).toBeCloseTo(open - (world.time - t0) / WING_FALL, 9);
+            expect(world.u.wing.value.x, `step ${i}`).toBe(world.wing);
+            expect(world.wing, `step ${i}`).toBeLessThan(previous);
+            expect(previous - world.wing, `step ${i}`).toBeLessThan(0.05);
+            expect(world.u.wing.value.z, `step ${i}`).toBeGreaterThan(0.3);
+            expect(world.u.wing.value.z, `step ${i}`).toBeLessThanOrEqual(1);
+            previous = world.wing;
         }
-        expect(world.u.wing.value.z).toBeGreaterThan(0.9);
-        expect(world.time).toBeLessThan(t0 + WING_FALL);
-        // And then they are gone: nothing left to draw, nothing left falling.
-        run(world, camera, (2 * WING_FALL) / steps, 6);
-        expect(world.time).toBeGreaterThan(t0 + WING_FALL);
+        expect(world.dust.cursor).toBeGreaterThan(shudder + 10); // the folding front shed its scales
+        expect(world.time).toBeLessThan(t0 + open * WING_FALL);
+        // And then they are gone: nothing left to draw; the fray settles.
+        run(world, camera, (2 * open * WING_FALL) / steps, 6);
         expect(world.wing).toBe(0);
         expect(world.u.wing.value.x).toBe(0);
-        expect(world.u.wing.value.z).toBe(0);
-        run(world, camera, 2);
+        expect(world.moulting).toBe(false);
+        run(world, camera, 4);
         expect(world.wing).toBe(0);
+        expect(world.u.wing.value.z).toBe(0);
         expect(world.getState().wing).toBe(0);
         // Breaking a chain that is already broken does nothing.
         world.onCombo(0);
@@ -2004,91 +2022,77 @@ describe('vesper world: the chain', () => {
         world.dispose();
     });
 
-    it('makes a new chain\'s wings wait until the old ones have finished falling', () => {
+    it('lets a new chain catch the folding wings where they stand, and lift them again', () => {
         const { camera, world } = makeWorld('Low');
         world.onCombo(6);
         run(world, camera, 3);
         const open = world.wing;
         expect(open).toBe(wingForCombo(6));
-        const fell = world.time;
         world.onCombo(0);
-        run(world, camera, WING_FALL * 0.4);
+        run(world, camera, 0.5);
+        const folding = world.wing;
+        expect(folding).toBeCloseTo(open - 0.5 / WING_FALL, 9);
         expect(world.u.wing.value.z).toBeGreaterThan(0);
-        const scales = world.dust.cursor;
         const pulses = world.pulseCursor;
-        // A new chain begins, and grows, while the old wings are still burning away.
-        let quiet = { flash: world.wingFlash, stroke: world.beatKick };
+        // A new chain begins while they fold: nothing is cut short and nothing waits. The link
+        // rings the silk, flashes the wings and makes them beat...
+        const quiet = { flash: world.wingFlash, stroke: world.beatKick };
         world.onCombo(1);
-        expect(world.wing).toBe(open); // nothing is cut short
-        expect({ flash: world.wingFlash, stroke: world.beatKick }).toEqual(quiet);
-        run(world, camera, WING_FALL * 0.2);
-        quiet = { flash: world.wingFlash, stroke: world.beatKick };
-        world.onCombo(2);
-        expect(world.combo).toBe(2);
-        expect(world.counts.falls).toBe(1);
-        // The silk still rings for each step...
-        expect(world.pulseCursor).toBe(pulses + 2);
-        // ...but no scales fly, nothing flashes and the wings do not beat: there is no wing to write on yet.
-        expect(world.dust.cursor).toBe(scales);
-        expect({ flash: world.wingFlash, stroke: world.beatKick }).toEqual(quiet);
-        // The fall runs its whole course, as if nothing had happened.
-        while (world.time + 2 / 60 < fell + WING_FALL) {
-            run(world, camera, 1 / 60, 1);
-            expect(world.wing).toBe(open);
-            expect(world.u.wing.value.x).toBe(open);
-            expect(world.u.wing.value.z).toBeCloseTo((world.time - fell) / WING_FALL, 9);
+        expect(world.wing).toBe(folding);
+        expect(world.pulseCursor).toBe(pulses + 1);
+        expect(world.wingFlash).toBeGreaterThan(quiet.flash);
+        expect(world.beatKick).toBeGreaterThan(quiet.stroke);
+        // ...and catches them: they hold where they stand a moment.
+        run(world, camera, 0.3);
+        expect(world.wing).toBe(folding);
+        // A chain that keeps coming keeps them up: they never fold down to its first step.
+        let lowest = world.wing;
+        for (let n = 2; n <= 7; n++) {
+            run(world, camera, 0.7, 42);
+            lowest = Math.min(lowest, world.wing);
+            world.onCombo(n);
         }
-        expect(world.u.wing.value.z).toBeGreaterThan(0.9);
-        // Then the old wings are gone, and the new chain's are written from the root to its step.
-        run(world, camera, 3 / 60, 3);
-        expect(world.time).toBeGreaterThan(fell + WING_FALL);
-        expect(world.u.wing.value.z).toBe(0);
-        expect(world.wing).toBeGreaterThan(0);
-        expect(world.wing).toBeLessThan(wingForCombo(2) * 0.5);
+        expect(lowest).toBeGreaterThan(wingForCombo(2));
+        // Once the chain's step reaches past them they rise again from where they stood, never from nothing.
         let previous = world.wing;
-        for (let i = 0; i < 30; i++) {
+        for (let i = 0; i < 120; i++) {
             run(world, camera, 1 / 60, 1);
-            expect(world.wing).toBeGreaterThan(previous);
-            expect(world.wing).toBeLessThanOrEqual(wingForCombo(2));
-            expect(world.u.wing.value.z).toBe(0);
+            expect(world.wing).toBeGreaterThanOrEqual(previous);
+            expect(world.wing).toBeLessThanOrEqual(wingForCombo(7));
             previous = world.wing;
         }
-        run(world, camera, 3);
-        expect(world.wing).toBe(wingForCombo(2));
-        // Well after the old fall has ended, nothing snaps the new wings shut.
-        run(world, camera, WING_FALL * 2);
-        expect(world.wing).toBe(wingForCombo(2));
-        // The next step, with no fall in the way, is written at once, with its scales and its flash.
-        world.onCombo(3);
-        expect(world.dust.cursor).toBeGreaterThan(scales);
-        expect(world.wingFlash).toBeGreaterThan(0.5);
+        expect(world.wing).toBe(wingForCombo(7));
+        expect(world.moulting).toBe(false);
+        expect(world.counts.falls).toBe(1);
         world.dispose();
     });
 
-    it('drops no second pair of wings when a chain that began during a fall breaks before the fall is over', () => {
+    it('drops no second pair of wings when a chain that began during a moult breaks before it caught them', () => {
         const { camera, world } = makeWorld('Low');
         world.onCombo(5);
         run(world, camera, 3);
         const open = world.wing;
         const fell = world.time;
         world.onCombo(0);
-        run(world, camera, WING_FALL * 0.3);
+        run(world, camera, 1);
         world.onCombo(1);
         world.onCombo(2);
-        run(world, camera, WING_FALL * 0.3);
+        run(world, camera, 0.6);
+        // The new chain's step is still below the folding wings: they are still the old ones.
+        expect(world.moulting).toBe(true);
+        expect(world.wing).toBeGreaterThan(wingForCombo(2));
         const scales = world.dust.cursor;
         world.onCombo(0);
-        // The wings on screen are still the old ones, part burned: they are not dropped again.
+        // They are not dropped again: no second fall, no second shudder of scales.
         expect(world.counts.falls).toBe(1);
         expect(world.dust.cursor).toBe(scales);
         expect(world.fallStart).toBe(fell);
-        run(world, camera, 1 / 60, 1);
-        expect(world.u.wing.value.x).toBe(open);
-        expect(world.u.wing.value.z).toBeCloseTo((world.time - fell) / WING_FALL, 9);
-        run(world, camera, WING_FALL);
+        expect(world.fallFrom).toBe(open);
+        // They fold on, to nothing.
+        run(world, camera, open * WING_FALL);
         expect(world.wing).toBe(0);
+        run(world, camera, 4);
         expect(world.u.wing.value.z).toBe(0);
-        run(world, camera, 2);
         expect(world.wing).toBe(0);
         world.dispose();
     });
@@ -2204,9 +2208,10 @@ describe('vesper world: the chain', () => {
             kicked = world.kick;
             expect(world.fed).toBeLessThanOrEqual(fed);
             ({ fed } = world);
-            // ...the wings fall as any broken chain's do...
-            expect(world.u.wing.value.x).toBe(open);
-            expect(world.u.wing.value.z).toBeCloseTo((world.time - reset) / WING_FALL, 9);
+            // ...the wings moult as any broken chain's do...
+            expect(world.wing).toBeCloseTo(open - (world.time - reset) / WING_FALL, 9);
+            expect(world.u.wing.value.x).toBe(world.wing);
+            expect(world.u.wing.value.z).toBeGreaterThan(0);
             // ...and the lilies fade, none of them flaring up on the way.
             held.push(world.getState().held);
             expect(held.at(-1)).toBeLessThanOrEqual(held.at(-2));
@@ -2229,7 +2234,9 @@ describe('vesper world: the chain', () => {
         expect(world.fed).toBeLessThanOrEqual(fed);
         expect(world.pendingFed.time).toBe(Infinity);
         expect(world.wing).toBe(0);
+        run(world, camera, 4); // the fray of the folded wings knits
         expect(world.u.wing.value.z).toBe(0);
+        expect(world.getState().held).toBe(0);
         expect(world.counts).toEqual({
             locks: 0, clears: 0, quads: 0, moths: 0, falls: 0,
         });
@@ -2252,21 +2259,22 @@ describe('vesper world: the chain', () => {
         world.resetSession();
         expect(snapshot(world, camera)).toEqual(rest);
         expect(world.counts.falls).toBe(0);
-        // Wings already falling fall on: the reset does not drop them again.
+        // Wings already moulting moult on: the reset does not drop them again.
         world.onCombo(5);
         run(world, camera, 3);
         const open = world.wing;
         const fell = world.time;
         world.onCombo(0);
-        run(world, camera, WING_FALL * 0.3);
+        run(world, camera, WING_FALL * 0.1);
         const scales = world.dust.cursor;
         world.resetSession();
         world.resetSession();
         expect(world.fallStart).toBe(fell);
+        expect(world.counts.falls).toBe(0); // (a new run's counts start over)
         expect(world.dust.cursor).toBe(scales);
         run(world, camera, 1 / 60, 1);
-        expect(world.u.wing.value.x).toBe(open);
-        expect(world.u.wing.value.z).toBeCloseTo((world.time - fell) / WING_FALL, 9);
+        expect(world.wing).toBeCloseTo(open - (world.time - fell) / WING_FALL, 9);
+        expect(world.u.wing.value.z).toBeGreaterThan(0);
         run(world, camera, WING_FALL);
         expect(world.wing).toBe(0);
         // A chain that began during that fall is forgotten with the run: no wings rise for it.
@@ -2301,11 +2309,14 @@ describe('vesper world: the chain', () => {
         world.resetSession();
         expect(world.combo).toBe(0);
         expect(world.wing).toBe(open);
-        run(world, camera, WING_FALL / 2);
-        expect(world.u.wing.value.x).toBe(open);
-        expect(world.u.wing.value.z).toBeCloseTo((world.time - t0) / WING_FALL, 9);
-        run(world, camera, WING_FALL / 2 + 0.1);
+        expect(world.counts.falls).toBe(0); // (counted, then the run's counts start over)
+        expect(world.fallStart).toBe(t0);
+        run(world, camera, (open * WING_FALL) / 2);
+        expect(world.wing).toBeCloseTo(open / 2, 9);
+        expect(world.u.wing.value.z).toBeGreaterThan(0.5);
+        run(world, camera, (open * WING_FALL) / 2 + 0.1);
         expect(world.wing).toBe(0);
+        run(world, camera, 4);
         expect(world.u.wing.value.z).toBe(0);
         // A run that ends with no chain has nothing to drop.
         world.onGameOver();
@@ -2459,6 +2470,231 @@ describe('vesper world: the chain', () => {
         world.applyPalette(1);
         frame(world, camera, world.time, 0);
         expect(gap(1)).toBeLessThan(1e-6);
+        world.dispose();
+    });
+});
+
+describe('vesper world: it builds with play', () => {
+    const newestSwell = (world) => world.u.swellA.reduce((a, b) => (b.value.x > a.value.x ? b : a)).value;
+
+    it('never cuts what is still lit when a weaker event follows a stronger one', () => {
+        const { camera, world } = makeWorld('Low');
+        const taken = [];
+        const fire = world.blades.fire.bind(world.blades);
+        world.blades.fire = (...args) => {
+            fire(...args);
+            taken.push([...world.blades.taken]);
+        };
+        world.onClear({ lines: 4, rows: [19, 18, 17, 16] });
+        run(world, camera, HUSH_HOLD + 0.2);
+        const ring = { ...world.shock };
+        const prism = world.getPostState().prism.strength;
+        expect(prism).toBeGreaterThan(0);
+        // A T-spin and a new level inside the four-line clear's ring: the ring crossing the frame is
+        // not started over from the chrysalis at half its light; it takes theirs and crosses on.
+        world.onClear({ lines: 1, tspin: true });
+        world.levelUp(2);
+        expect(world.shock.time).toBe(ring.time);
+        expect(world.shock.strength).toBeGreaterThanOrEqual(ring.strength);
+        run(world, camera, 1 / 60, 1);
+        expect(world.getPostState().prism.strength).toBeGreaterThan(prism * Math.exp(-1 / 60 / 0.75));
+        // The single's blade takes a spent slot: the four blades of the quad fly on.
+        expect(taken).toHaveLength(2);
+        expect(taken[0]).toHaveLength(4);
+        expect(taken[1]).toHaveLength(1);
+        expect(taken[0]).not.toContain(taken[1][0]);
+        // The overdrive of a perfect clear is not cut back by a four-line clear after it.
+        world.onClear({ lines: 4, perfect: true });
+        const overdrive = world.surge;
+        world.onClear({ lines: 4 });
+        expect(world.surge).toBeGreaterThanOrEqual(overdrive);
+        world.dispose();
+        // A weaker clear on another board in the same frame never takes the stronger one's kick.
+        const two = makeWorld('Low');
+        two.world.onClear({ lines: 4 });
+        const kick = two.world.pendingKick.amount;
+        two.world.onClear({ lines: 1, player: 1 });
+        expect(two.world.pendingKick.amount).toBeGreaterThanOrEqual(kick);
+        two.world.dispose();
+        // Nor does a second clear's feed replace the first's while that is still on its way home.
+        const fed = litWorld('Low');
+        fed.world.onClear({ lines: 2 });
+        const first = { ...fed.world.pendingFed };
+        expect(first.time).toBeLessThan(Infinity);
+        run(fed.world, fed.camera, 0.3);
+        fed.world.onClear({ lines: 1 });
+        expect(fed.world.pendingFed.amount).toBeGreaterThanOrEqual(first.amount);
+        expect(fed.world.pendingFed.time).toBeLessThanOrEqual(first.time);
+        fed.world.dispose();
+    });
+
+    /** A chain of twelve hard-dropped clears, 0.64 s apart (the tray's Fever, without its cascade). */
+    const FEVER = [1, 1, 2, 1, 2, 2, 3, 2, 2, 2, 3];
+    function reading(world) {
+        return {
+            level: world.heat.level,
+            warm: world.u.heat.value.x,
+            fever: world.u.heat.value.y,
+            aurora: world.u.aurora.value,
+            night: world.u.night.value,
+            wake: world.u.wake.value,
+            shafts: world.getPostState().shafts,
+            exposure: world.getPostState().exposure,
+        };
+    }
+
+    it('reads hotter the longer the chain runs, and breathes back to dusk when the hands rest', () => {
+        const { camera, world } = makeWorld('Low');
+        world.setHourDrift(false);
+        world.applyPalette(1);
+        run(world, camera, 1);
+        const rest = reading(world);
+        expect(rest.warm).toBe(0);
+        expect(rest.fever).toBe(0);
+        const seen = [];
+        FEVER.forEach((lines, i) => {
+            world.onLock({ u: i % 2 ? 0.7 : 0.3, hardDrop: true, rows: [18] });
+            world.onClear({ lines, combo: i + 1 });
+            world.onCombo(i + 1);
+            run(world, camera, 0.64, 38);
+            seen.push(reading(world));
+        });
+        const [first] = seen;
+        const late = seen.at(-1);
+        // The first clear barely stirs the evening; the long chain has set it alight.
+        expect(first.warm).toBeLessThan(0.15);
+        expect(first.fever).toBe(0);
+        expect(late.level).toBeGreaterThan(first.level + 0.5);
+        expect(late.fever).toBeGreaterThan(0.4);
+        expect(late.aurora).toBeGreaterThan(first.aurora + 0.5);
+        expect(late.night).toBeGreaterThan(first.night);
+        expect(late.wake).toBeGreaterThan(first.wake);
+        expect(late.shafts).toBeGreaterThan(first.shafts);
+        // The iris closes as it heats, so the colours keep their depth.
+        expect(late.exposure).toBeLessThan(first.exposure);
+        // It builds: no clear of the chain drops back from the one before it.
+        for (let i = 1; i < seen.length; i++) {
+            expect(seen[i].level, `clear ${i + 1}`).toBeGreaterThan(seen[i - 1].level - 0.08);
+            expect(seen[i].fever, `clear ${i + 1}`).toBeGreaterThan(seen[i - 1].fever - 0.02);
+        }
+        // The hands rest, the chain breaks: the evening breathes back to dusk.
+        world.onCombo(0);
+        run(world, camera, 25, 500);
+        const after = reading(world);
+        expect(after.warm).toBe(0);
+        expect(after.fever).toBe(0);
+        for (const key of ['aurora', 'night', 'wake', 'shafts', 'exposure']) {
+            expect(after[key], key).toBeCloseTo(rest[key], 2);
+        }
+        world.dispose();
+    });
+
+    it('crowns the clear still playing with a perfect clear that comes after it: no second hush or swell', () => {
+        const { camera, world } = litWorld('Low');
+        world.onClear({ lines: 4, rows: [19, 18, 17, 16] });
+        const { hushUntil } = world;
+        const swells = world.swellCursor;
+        const ring = { ...world.shock };
+        // Physics settles the perfect clear ~360 ms after the clear's last wave.
+        run(world, camera, 0.36);
+        const promised = recordStrikes(world);
+        let previous = world.u.breath.value;
+        world.onCrown({ player: 0 });
+        expect(world.hushUntil).toBe(hushUntil);
+        expect(world.swellCursor).toBe(swells);
+        expect(world.counts).toMatchObject({ clears: 1, quads: 1 });
+        expect(world.shock.time).toBe(ring.time);
+        // Every lily is promised vesperfire, from the chrysalis outward.
+        const struck = promised();
+        expect(struck.map((e) => e.index).sort((a, b) => a - b)).toEqual(world.blooms.plan.map((_, i) => i));
+        for (const e of struck) {
+            const b = world.blooms.plan[e.index];
+            expect(e.at).toBeCloseTo(world.time + swellPassTime(b.x, b.z) + 0.45, 9);
+        }
+        // The breath never sinks for it; the wings gild, the evening star flares, the aurora blazes.
+        for (let i = 0; i < 30; i++) {
+            run(world, camera, 1 / 60, 1);
+            expect(world.u.breath.value).toBeGreaterThanOrEqual(previous);
+            previous = world.u.breath.value;
+        }
+        expect(world.u.heat.value.z).toBeGreaterThan(0.3);
+        expect(world.u.heat.value.w).toBeGreaterThan(0.5);
+        expect(world.surge).toBeGreaterThanOrEqual(1.3 * Math.exp(-0.5 / SURGE_COOL));
+        world.dispose();
+    });
+
+    it('answers a T-spin that cleared nothing with a stroke of the wings and the silk', () => {
+        const { camera, world } = makeWorld('Low');
+        const pulses = world.pulseCursor;
+        const rings = world.ringCursor;
+        const swells = world.swellCursor;
+        world.onSpin({ player: 0 });
+        expect(world.pulseCursor).toBe(pulses + 1);
+        expect(world.ringCursor).toBe(rings + 1);
+        expect(world.swellCursor).toBe(swells);
+        expect(world.counts.clears).toBe(0);
+        expect(world.beatKick).toBeGreaterThan(0);
+        run(world, camera, 0.2);
+        expect(world.heat.level).toBeGreaterThan(0);
+        expect(world.u.breath.value).toBeGreaterThan(0.99);
+        world.dispose();
+    });
+
+    it('builds each wave of a cascade on the last: more fronts, hotter, a ring that reaches further', () => {
+        const { camera, world } = makeWorld('Low');
+        const waves = [];
+        [[2, 1], [1, 2], [2, 3], [1, 4]].forEach(([lines, cascade]) => {
+            world.onClear({ lines, cascade });
+            const swell = newestSwell(world);
+            const slot = world.u.swellA.findIndex((s) => s.value === swell);
+            const under = world.u.ringA.findIndex((s) => s.value.z === world.time
+                && Math.abs(s.value.x - HEART[0]) < 1e-9);
+            waves.push({
+                birth: swell.x,
+                fronts: swell.y,
+                strength: swell.z,
+                colour: world.u.swellC[slot].value.toArray(),
+                reach: under >= 0 ? world.u.ringC[under].value.w : 0,
+            });
+            run(world, camera, 0.36, 22);
+        });
+        // A single on the fourth wave outdoes a single on the second, and a double on the third the first wave's double.
+        expect(waves[3].fronts).toBeGreaterThan(waves[1].fronts);
+        expect(waves[3].strength).toBeGreaterThan(waves[1].strength);
+        expect(waves[2].fronts).toBeGreaterThan(waves[0].fronts);
+        expect(waves[2].strength).toBeGreaterThan(waves[0].strength);
+        // The waves after the first strike the water under the chrysalis, each further than the last.
+        expect(waves[0].reach).toBe(0);
+        expect(waves[2].reach).toBeGreaterThan(waves[1].reach);
+        expect(waves[3].reach).toBeGreaterThan(waves[2].reach);
+        // ...and turn toward vesperfire (the four-line clear's colour).
+        const fire = [1.0, 0.86, 0.62].map((c) => c * 0.92 + 0.08);
+        const fromFire = (c) => Math.hypot(c[0] - fire[0], c[1] - fire[1], c[2] - fire[2]);
+        expect(fromFire(waves[3].colour)).toBeLessThan(fromFire(waves[1].colour));
+        // No wave wiped another off the water.
+        const drawn = world.u.swellA.map((s) => s.value.x);
+        for (const wave of waves) expect(drawn).toContain(wave.birth);
+        world.dispose();
+    });
+
+    it('gilds the wings and rings the silk in gold for a back-to-back, deeper for a streak of them', () => {
+        const { camera, world } = makeWorld('Low');
+        world.onClear({ lines: 4 });
+        run(world, camera, 1.5);
+        expect(world.u.heat.value.z).toBe(0);
+        const pulses = world.pulseCursor;
+        world.onClear({ lines: 4, b2b: true });
+        expect(world.pulseCursor).toBe(pulses + 1);
+        run(world, camera, HUSH_HOLD + 0.3);
+        const once = world.u.heat.value.z;
+        expect(once).toBeGreaterThan(0.5);
+        expect(world.u.heat.value.w).toBeGreaterThan(0.2); // the evening star flares
+        world.onClear({ lines: 2, tspin: true, b2b: true });
+        run(world, camera, 0.3);
+        expect(world.u.heat.value.z).toBeGreaterThan(once);
+        // And it fades when the streak is over.
+        run(world, camera, 15, 300);
+        expect(world.u.heat.value.z).toBeLessThan(0.01);
         world.dispose();
     });
 });
@@ -3027,13 +3263,16 @@ describe('vesper world: time', () => {
         const hushed = still('in the hush');
         expect(hushed.breath).toBeLessThan(1);
         expect(hushed.breath).toBeGreaterThan(0.14);
-        // The wings part fallen, with a new chain waiting behind them.
+        // The wings part folded, fraying, as a new chain catches them.
         run(world, camera, 3);
         world.onCombo(0);
-        run(world, camera, WING_FALL * 0.4);
+        run(world, camera, WING_FALL * 0.1);
         world.onCombo(1);
-        const falling = still('falling');
-        expect(falling.shown[2]).toBeCloseTo(0.4, 6);
+        frame(world, camera, world.time, 0); // (the link's flash and stroke are written on the frame that follows it)
+        const folding = still('folding');
+        expect(folding.wing).toBeLessThan(wingForCombo(EYE_COMBO.fore));
+        expect(folding.wing).toBeGreaterThan(wingForCombo(1));
+        expect(folding.shown[2]).toBeGreaterThan(0.5);
         // A chain reported on a frame of no time waits for time to pass: it is not drawn at once.
         run(world, camera, WING_FALL + 3);
         expect(world.wing).toBe(wingForCombo(1));
@@ -3101,7 +3340,8 @@ describe('vesper world: the moth and ring pools', () => {
         };
         const ring = world.ring.bind(world);
         world.ring = (...args) => {
-            if (world.u.ringA[world.ringCursor % RING_SLOTS].value.z > world.time + 1e-9) lost.rings += 1;
+            // (The slot the world is about to take: the one with least left to give.)
+            if (world.u.ringA[world.ringSlot()].value.z > world.time + 1e-9) lost.rings += 1;
             return ring(...args);
         };
         for (let i = 0; i < drops; i++) {

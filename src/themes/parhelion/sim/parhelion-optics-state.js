@@ -28,6 +28,18 @@
  * Allocation discipline: the constructor allocates everything. applyCue(), update() and the
  * setters only write preallocated typed arrays and scratch objects. `out` is one object whose
  * identity, and whose arrays' identities, never change. "QUAD" is the four-line clear.
+ *
+ * Build-up (src/themes/shared/gameplay-surge.js): reactions ACCUMULATE instead of popping and
+ * restarting. A full pool replaces its weakest member, never a live one at full strength
+ * (envelopes, arcs, glint bursts); a hound pillar still standing is lit on, not dropped; the
+ * parhelic sweep continues from where it is. The Sun Cross is a Swell that every clear of a live
+ * apex chain feeds. Every cue also feeds a GameplaySurge, and the heat of play completes the halo
+ * display arc by arc: calm (as designed), warm (the hounds warm and the dust thickens), hot (the
+ * parhelic line, the tangent arc, the crown and the sun pillar draw in, the hounds grow comet
+ * tails, the spindrift quickens), fever (the full display: Lowitz arcs, the Sun Cross standing,
+ * the hounds blazing and running out along the parhelic line, glittering dust). The heat is an
+ * input like the resonance: the runtime samples it once a frame (sampleHeat) before update(),
+ * so update() stays a pure function of the cues, the heat and the time.
  */
 import {
     CAM_REST,
@@ -53,6 +65,8 @@ import {
     tanV,
     writePillarPlaces,
 } from '../../../playground/effects/parhelion-composition.js';
+import { flashScale } from '../../../utils/photosensitivity.js';
+import { GameplaySurge, Swell } from '../../shared/gameplay-surge.js';
 import { CUE, PARHELION_PLAYER_SLOTS, PARHELION_REDUCED_MOTION_INTENSITY } from './parhelion-reaction-director.js';
 
 const HALF_PI = Math.PI / 2;
@@ -263,6 +277,9 @@ const CROWN_DOG_FALLBACK = 0.2;
 // Pillars: bead end height (uv.y) and the reduced-motion "no climb" start.
 const PILLAR_BEAD_END = 1.05;
 const PILLAR_STAGGER = 0.08;
+/** The pillar shader's fade-in (s), and the brightest stacked pillars reach. */
+const PILLAR_RISE = 0.15;
+const PILLAR_STACK_MAX = 1.4;
 
 // Spawning (§7.3: nothing reactive spawns inside a live board rect).
 const SPAWN_MARGIN = 0.012;
@@ -287,6 +304,49 @@ const CLEAR_BEATS = Object.freeze([
         beadAmp: 0.8, beadDur: 0.9, dogs: 0.55, pillarAmp: 0.75, pillarLife: 1.5, motes: 24,
     }),
 ]);
+
+/**
+ * Resonance tiers (§7.4): Warm Hounds, Crowning, Parhelic Line, spread over the chain (combo
+ * 1→4, 3.5→6.5, 6→9) so the display completes itself link by link up to the apex at ten.
+ */
+const TIER_WARM = Object.freeze([0.1, 0.4]);
+const TIER_CROWN = Object.freeze([0.35, 0.65]);
+const TIER_LINE = Object.freeze([0.6, 0.9]);
+
+/**
+ * The heat of play (GameplaySurge): warm = ss(.18, .5, level), hot = ss(.45, .85, level), and
+ * the fever. Under .18 (casual play) nothing is added: the calm display stays as designed.
+ */
+const HEAT_WARM = Object.freeze([0.18, 0.5]);
+const HEAT_HOT = Object.freeze([0.45, 0.85]);
+
+/** APEX "Sun Cross" at full: what the cross adds to each optic (its old one-shot amplitudes). */
+const SUN_CROSS = Object.freeze({
+    sunPillar: 1.05,
+    parhelic: 0.98,
+    crown: 1.0,
+    crossArm: 1.2,
+    dustGain: 1.5,
+    density: 0.15,
+    rim: 0.45,
+});
+/** The cross stands at this while a chain past ten lives; each clear inside it feeds this much. */
+const CROSS_STANDING = 0.55;
+const CROSS_FEED = 0.4;
+
+/** In a fever the hounds run: a light travels out along the parhelic line every 1.8 s. */
+const FEVER_SWEEP_PERIOD = 1.8;
+const FEVER_SWEEP_AMP = 0.5;
+
+/** A quad meet this close after a lone perfect clear's reveal: the reveal waits for it (crown). */
+const CROWN_MEET_WINDOW = 0.6;
+
+/** B2B answers this close together escalate ("the hounds answer louder"). */
+const ECHO_RUN_WINDOW = 8;
+
+/** Arc slot roles: a bead/orbit (or free), or a lock station borrowing a free bead slot. */
+const ROLE_BEAD = 0;
+const ROLE_STATION = 1;
 
 // ---------------------------------------------------------------------------------------
 // Pure helpers
@@ -466,6 +526,8 @@ function createOut(caps) {
         density: PARHELION_OPTICS_IDLE.density,
         rim: PARHELION_OPTICS_IDLE.rim,
         bloomKick: 0,
+        /** Post exposure: the iris closes a little as the display heats, so colours stay deep. */
+        exposure: 1,
         /** Same value as k1[3]. */
         displayDim: 1,
         warmth: PARHELION_OPTICS_IDLE.warmth,
@@ -503,6 +565,20 @@ export class ParhelionOpticsState {
         this.resonance = 0;
         this.cueRm = false;
 
+        // The heat of play: fed by every cue, sampled by the runtime once a frame (sampleHeat).
+        this.surge = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
+        // The Sun Cross: opened by the apex, fed by every clear of the chain past ten.
+        this.cross = new Swell({
+            attack: 0.25, release: 2.0, ceiling: 1.6, knee: 1.1, headroom: 1.25,
+        });
+        // B2B answers in a row, and the latest quad meet (a lone perfect clear crowns it).
+        this.echoRun = 0;
+        this.echoAt = -Infinity;
+        this.meetAt = -Infinity;
+
         // Clocks.
         this.dustBaseRate = PARHELION_CLOCK_RATES.dust;
         this.dustClock = 0;
@@ -511,6 +587,8 @@ export class ParhelionOpticsState {
         this.hushActive = false;
         this.hushBirth = 0;
         this.hushBank = 0;
+        /** How deep the live hush slows the dust clock: shallower the hotter play already runs. */
+        this.hushDepth = HUSH_DEPTH;
 
         // Level ("Lower Sun"), eased: effective level = from → to over PARHELION_AMBIENT.warmthEase.
         this.levelFrom = 1;
@@ -534,7 +612,7 @@ export class ParhelionOpticsState {
         this.arcAttack = new Float64Array(ARC_SLOTS);
         this.arcHold = new Float64Array(ARC_SLOTS);
         this.arcTau = new Float64Array(ARC_SLOTS);
-        this.stationToggle = 0;
+        this.arcRole = new Uint8Array(ARC_SLOTS);
         this.spokeSlot = -1;
         this.spokeAngle = 0;
 
@@ -713,9 +791,26 @@ export class ParhelionOpticsState {
     setLevel(n, now = this.now) {
         const t = finiteNumber(now, this.now);
         const level = Math.max(1, Math.trunc(finiteNumber(n, 1)));
+        // A real level-up (not the reset back to 1) warms play a little too.
+        if (level > this.levelTo && this.intensity > 0) this.surge.levelUp(t);
         this.levelFrom = this._levelAt(t);
         this.levelTo = level;
         this.levelBirth = t;
+    }
+
+    /**
+     * The heat of play at `now` (GameplaySurge.sample): call once a frame on the theme clock,
+     * before update(). Its fever follows the calls (a seek holds it), so update() reads the
+     * copy kept here and stays a pure function of the cues, the heat and the time.
+     */
+    sampleHeat(now = this.now) {
+        const s = this.surge.sample(finiteNumber(now, this.now));
+        const { heat } = this;
+        heat.punch = s.punch;
+        heat.level = s.level;
+        heat.fever = s.fever;
+        heat.stage = s.stage;
+        return heat;
     }
 
     /** gameOver / modeStopped: forget every reaction, the resonance and the level (eased back). */
@@ -731,7 +826,7 @@ export class ParhelionOpticsState {
      */
     seek(t) {
         const time = finiteNumber(t, 0);
-        const live = this.hushActive ? HUSH_DEPTH * hushIntegral(time - this.hushBirth) : 0;
+        const live = this.hushActive ? this.hushDepth * hushIntegral(time - this.hushBirth) : 0;
         this.dustClock = time * this.dustBaseRate - this.hushBank - live;
         this.veilPhase = time * PARHELION_CLOCK_RATES.veil;
         this.driftPhase = time * PARHELION_CLOCK_RATES.drift;
@@ -765,8 +860,42 @@ export class ParhelionOpticsState {
         else if (kind === CUE.QUAD) this._haloCloses(c, t, s, rm);
         else if (kind === CUE.TSPIN) this._haloTurn(c, t, s, rm);
         else if (kind === CUE.APEX) this._sunCross(t, s, rm);
-        else if (kind === CUE.PERFECT) this._clearSky(t, s, rm);
+        else if (kind === CUE.PERFECT) this._clearSky(c, t, s, rm);
         else if (kind === CUE.ECHO) this._houndsAnswer(c, t, s, rm);
+        // A clear of a chain past ten inside the apex cooldown: its own beat AND the cross fed.
+        if (c.apex === true && kind !== CUE.APEX) this.cross.hit(CROSS_FEED * s, t);
+        this._feedSurge(c, t);
+    }
+
+    /** Every cue warms play (src/themes/shared/gameplay-surge.js); an echo was counted with its special. */
+    _feedSurge(c, t) {
+        const { kind } = c;
+        const { surge } = this;
+        if (kind === CUE.LOCK || kind === CUE.STONEFALL) {
+            surge.lock({ hardDrop: kind === CUE.STONEFALL }, t);
+            return;
+        }
+        if (kind === CUE.ECHO) return;
+        if (kind === CUE.PERFECT && c.crown === true) {
+            // A lone perfect clear after its clear's last wave: the crown, not a new clear.
+            surge.crown(t);
+            return;
+        }
+        const lines = finiteNumber(c.lines, 0);
+        if (kind === CUE.TSPIN && !(lines >= 1)) {
+            surge.spin(t);
+            return;
+        }
+        const cascade = Math.max(1, finiteNumber(c.cascade, 1));
+        surge.clear({
+            lines: Math.max(1, lines),
+            cascade,
+            // A later wave is the same lock: its combo steps were counted with the first.
+            combo: cascade > 1 ? 1 : finiteNumber(c.combo, 1),
+            tspin: kind === CUE.TSPIN,
+            perfect: kind === CUE.PERFECT,
+            b2b: c.b2b === true,
+        }, t);
     }
 
     /** The director's `count(n)`: "Full Circle", a brightness wave once around the ring. */
@@ -775,7 +904,7 @@ export class ParhelionOpticsState {
         const t = finiteNumber(now, this.now);
         this.now = t;
         const g = this.gain;
-        const slot = ARC_SLOT.WAVE;
+        const slot = this._waveSlot(0, t);
         if (this.reducedMotion) {
             const amp = 0.15 * clamp01(g / PARHELION_REDUCED_MOTION_INTENSITY);
             this._arc(slot, 0, t, amp, WHOLE_RING_WIDTH, ARC_MODE.WHITE);
@@ -801,79 +930,120 @@ export class ParhelionOpticsState {
         const step = clamp(finiteNumber(dt, 0), 0, MAX_DT);
         this.now = t;
         const { out, caps } = this;
+        const g = this.gain;
+
+        // The heat of play (sampled by the runtime): what the display wears as play heats.
+        const { heat } = this;
+        const heatWarm = smoothstep(HEAT_WARM[0], HEAT_WARM[1], heat.level) * g;
+        const heatHot = smoothstep(HEAT_HOT[0], HEAT_HOT[1], heat.level) * g;
+        const heatFever = clamp01(heat.fever) * g;
+        const punch = heat.punch * g;
+        // Motion that heat adds (the dust swirling, the spindrift) is calmed under reduced motion.
+        const motion = this.reducedMotion ? 0.3 : 1;
 
         // Clocks (§8). The hush takes its exact integral over this frame's window, so the dust
         // clock never runs backwards (even across a clamped hitch) and frame-stepping telescopes
-        // to the closed form seek() uses.
-        let dustStep = step * this.dustBaseRate;
+        // to the closed form seek() uses. Heat quickens the dust and the spindrift (seek() reads
+        // the resting rates: a seek holds the fever too).
+        const dustQuick = 1 + (0.3 * heatHot + 0.45 * heatFever) * motion;
+        let dustStep = step * this.dustBaseRate * dustQuick;
         let hushW = 0;
         if (this.hushActive) {
             const hushAge = t - this.hushBirth;
             hushW = hushWeight(hushAge);
-            dustStep -= HUSH_DEPTH * (hushIntegral(hushAge) - hushIntegral(hushAge - step));
+            dustStep -= this.hushDepth * (hushIntegral(hushAge) - hushIntegral(hushAge - step));
         }
         this.dustClock += dustStep;
         this.veilPhase += step * PARHELION_CLOCK_RATES.veil;
-        this.driftPhase += step * PARHELION_CLOCK_RATES.drift;
+        this.driftPhase += step * PARHELION_CLOCK_RATES.drift * (1 + (0.8 * heatHot + 1.2 * heatFever) * motion);
         const { clocks } = out;
         clocks.dustClock = this.dustClock;
         clocks.veilPhase = this.veilPhase;
         clocks.driftPhase = this.driftPhase;
-        clocks.dustClockRate = this.dustBaseRate * (1 - HUSH_DEPTH * hushW);
+        clocks.dustClockRate = this.dustBaseRate * dustQuick - this.hushDepth * hushW;
         out.time = t;
 
         // Resonance tiers (§7.4), scaled by the reaction gain.
-        const g = this.gain;
         const r = this.resonance;
-        const warm = smoothstep(0.1, 0.3, r) * g;
-        const crowning = smoothstep(0.3, 0.45, r) * g;
-        const line = smoothstep(0.6, 0.75, r) * g;
+        const warm = smoothstep(TIER_WARM[0], TIER_WARM[1], r) * g;
+        const crowning = smoothstep(TIER_CROWN[0], TIER_CROWN[1], r) * g;
+        const line = smoothstep(TIER_LINE[0], TIER_LINE[1], r) * g;
+        // The Sun Cross: standing while a chain past ten lives, plus the apex and its feeds.
+        const standing = smoothstep(0.9, 1, r) * CROSS_STANDING * g;
+        const fed = this.cross.valueAt(t);
+        const cross = Math.min(1.4, Math.max(standing, fed) + 0.3 * Math.min(standing, fed));
+        // Reduce flashing (ADR-0021): every frame-wide flash keeps flashScale() of its strength.
+        const flash = flashScale();
 
         // Level, warmth, breath (§7.4 Lower Sun, §8).
         const levelSteps = this._levelAt(t) - 1;
         const baseMul = 1 + Math.min(LEVEL_GAIN_CAP, LEVEL_GAIN_STEP * levelSteps);
         const warmthBase = Math.min(WARMTH_MAX, PARHELION_OPTICS_IDLE.warmth + WARMTH_STEP * levelSteps);
         const amb = PARHELION_AMBIENT;
-        out.warmth = warmthBase * (1 + amb.warmthDepth * Math.sin((TWO_PI * t) / amb.warmthPeriod));
+        // A fever lowers the hidden sun further (the Lower Sun of a few levels): the light runs golden.
+        const warmthHeat = Math.min(WARMTH_MAX, warmthBase + 0.15 * heatFever);
+        out.warmth = warmthHeat * (1 + amb.warmthDepth * Math.sin((TWO_PI * t) / amb.warmthPeriod));
         out.breath = 1 + amb.breathDepth * Math.sin((TWO_PI * t) / amb.breathPeriod);
         out.breathScale = this.reducedMotion ? amb.cameraBreathReducedMotion : 1;
         const twinkle = 1 + amb.dogTwinkle * (0.6 * Math.sin(t * 1.69) + 0.4 * Math.sin(t * 3.31 + 1.3));
 
-        // Optics gains.
+        // Optics gains. The resonance tiers follow the chain; the heat completes the display arc
+        // by arc (warm: the hounds; hot: the parhelic line, tangent arc, crown and sun pillar;
+        // fever: Lowitz arcs and the whole display); the Sun Cross stands on top past ten.
         const idle = PARHELION_OPTICS_IDLE;
         const { k0, k1 } = out;
         const dogFallback = caps.crown ? 0 : CROWN_DOG_FALLBACK * crowning;
-        const dogsBase = ((idle.k0[1] + 0.45 * warm) * baseMul + dogFallback) * twinkle;
-        k0[0] = clamp(idle.k0[0] * baseMul + this._channel(CH_HALO, t), 0, 3);
+        const hounds = 0.45 * warm + 0.25 * heatWarm + 0.3 * heatHot + 0.4 * heatFever;
+        const dogsBase = ((idle.k0[1] + hounds) * baseMul + dogFallback) * twinkle;
+        const ringHeat = 0.1 * heatWarm + 0.15 * heatHot + 0.2 * heatFever;
+        k0[0] = clamp(idle.k0[0] * baseMul + ringHeat + this._channel(CH_HALO, t), 0, 3);
         k0[1] = clamp(dogsBase + this._channel(CH_DOGS, t), 0, 3.5);
-        k0[2] = clamp(idle.k0[2] + 0.78 * line + this._channel(CH_PARHELIC, t), 0, 2.5);
+        const parhelicHeat = 0.3 * heatHot + 0.45 * heatFever;
+        k0[2] = clamp(idle.k0[2] + 0.78 * line + parhelicHeat + SUN_CROSS.parhelic * cross
+            + this._channel(CH_PARHELIC, t), 0, 2.5);
         // Crowning lifts the UTA base to .4·ss(r); the idle sliver is its floor (parhelion.effect agrees).
-        k0[3] = clamp(Math.max(idle.k0[3], 0.4 * crowning) + this._channel(CH_UTA, t), 0, 2.5);
-        k1[0] = caps.crown ? clamp(0.9 * crowning + this._channel(CH_CROWN, t), 0, 2) : 0;
-        k1[1] = clamp(idle.k1[1] + this._channel(CH_SUN_PILLAR, t), 0, 3);
-        k1[2] = caps.lowitz ? clamp(0.7 * line + this._channel(CH_LOWITZ, t), 0, 2) : 0;
+        const utaBase = Math.max(idle.k0[3], 0.4 * crowning, 0.4 * heatHot + 0.35 * heatFever);
+        k0[3] = clamp(utaBase + this._channel(CH_UTA, t), 0, 2.5);
+        const crownHeat = 0.3 * heatHot + 0.5 * heatFever;
+        k1[0] = caps.crown
+            ? clamp(0.9 * crowning + crownHeat + SUN_CROSS.crown * cross + this._channel(CH_CROWN, t), 0, 2)
+            : 0;
+        const pillarHeat = 0.2 * heatHot + 0.5 * heatFever;
+        k1[1] = clamp(idle.k1[1] + pillarHeat + SUN_CROSS.sunPillar * cross + this._channel(CH_SUN_PILLAR, t), 0, 3);
+        k1[2] = caps.lowitz
+            ? clamp(0.7 * line + 0.15 * heatHot + 0.7 * heatFever + this._channel(CH_LOWITZ, t), 0, 2)
+            : 0;
         k1[3] = clamp(idle.k1[3] + this._channel(CH_DIM, t), DIM_MIN, 1);
         out.displayDim = k1[3];
 
-        out.dogFlare[0] = clamp(this._channel(CH_FLARE_L, t), 0, 2);
-        out.dogFlare[1] = clamp(this._channel(CH_FLARE_R, t), 0, 2);
-        out.dogTail = clamp(idle.dogTail + this._channel(CH_TAIL, t), 1, 2.5);
-        out.dogTint = clamp01(warm);
-        out.pc[0] = this._pcAz(t);
-        out.pc[1] = clamp(this._channel(CH_PC, t), 0, 1.5);
+        // The hounds run with play: they flare, warm and grow longer comet tails.
+        const flareHeat = 0.12 * heatHot + 0.3 * heatFever;
+        out.dogFlare[0] = clamp(flareHeat + this._channel(CH_FLARE_L, t), 0, 2);
+        out.dogFlare[1] = clamp(flareHeat + this._channel(CH_FLARE_R, t), 0, 2);
+        out.dogTail = clamp(idle.dogTail + 0.35 * heatHot + 0.75 * heatFever + this._channel(CH_TAIL, t), 1, 2.5);
+        out.dogTint = clamp01(warm + 0.35 * heatWarm + 0.35 * heatFever);
+        this._writePc(t, heatFever);
 
-        // Dust effects, rim, bloom.
-        out.ringFlash = clamp(this._channel(CH_RING_FLASH, t), 0, 1.5);
-        out.prism = caps.prism ? clamp(this._channel(CH_PRISM, t), 0, 1.5) : 0;
-        out.shower = clamp(this._channel(CH_SHOWER, t), 0, 1.5);
-        out.crossArm = clamp(this._channel(CH_CROSS_ARM, t), 0, 1.5);
+        // Dust effects, rim, bloom. The diamond dust thickens and glitters with the heat, and
+        // sparkles with every hit (the punch rides on a floor under rapid locks).
+        out.ringFlash = clamp(this._channel(CH_RING_FLASH, t), 0, 1.5) * flash;
+        out.prism = caps.prism ? clamp(this._channel(CH_PRISM, t), 0, 1.5) * flash : 0;
+        out.shower = clamp(this._channel(CH_SHOWER, t), 0, 1.5) * flash;
+        out.crossArm = clamp(SUN_CROSS.crossArm * cross + 0.3 * heatFever + this._channel(CH_CROSS_ARM, t), 0, 1.5);
         const levelDensity = Math.min(LEVEL_DENSITY_CAP, LEVEL_DENSITY_STEP * idle.density * levelSteps);
-        out.density = clamp(idle.density + levelDensity + 0.15 * line + this._channel(CH_DENSITY, t), 0, 1);
-        const dustMul = (1 + 0.3 * line) * (1 + this._channel(CH_DUST_GAIN, t));
+        const densityHeat = 0.1 * heatWarm + 0.12 * heatHot + 0.15 * heatFever;
+        out.density = clamp(idle.density + levelDensity + 0.15 * line + densityHeat + SUN_CROSS.density * cross
+            + this._channel(CH_DENSITY, t), 0, 1);
+        const dustHeat = 0.25 * heatWarm + 0.45 * heatHot + 0.8 * heatFever + 0.5 * Math.min(1, punch);
+        const dustMul = (1 + 0.3 * line) * (1 + dustHeat + SUN_CROSS.dustGain * cross + this._channel(CH_DUST_GAIN, t));
         out.dustGain = clamp(idle.dustGain * dustMul, DUST_GAIN_MIN, DUST_GAIN_MAX);
+        // The Vigil Stone's rim burns progressively with the heat; its beat flares are flashes.
         const quietRim = Math.min(RIM_QUIET_MAX, this._channel(CH_RIM_QUIET, t));
-        out.rim = clamp(idle.rim + quietRim + this._channel(CH_RIM, t), 0, RIM_MAX);
-        out.bloomKick = clamp(this._channel(CH_KICK, t), 0, 1);
+        const rimHeat = 0.1 * heatHot + 0.25 * heatFever + SUN_CROSS.rim * cross;
+        out.rim = clamp(idle.rim + rimHeat + (quietRim + this._channel(CH_RIM, t)) * flash, 0, RIM_MAX);
+        out.bloomKick = clamp((this._channel(CH_KICK, t) + 0.1 * Math.min(1, punch)) * flash, 0, 1);
+        // The iris closes a little as the display heats, so the colours stay deep.
+        out.exposure = 1 - 0.04 * heatHot - 0.07 * heatFever;
 
         // Arc slots: recomputed from their scheduled motion every frame.
         const { arcs } = out;
@@ -946,6 +1116,8 @@ export class ParhelionOpticsState {
             reducedMotion: this.reducedMotion,
             intensity: this.intensity,
             exclusionCount: this.exclusionCount,
+            heat: { ...this.heat },
+            cross: this.cross.valueAt(this.now),
         };
     }
 
@@ -991,42 +1163,70 @@ export class ParhelionOpticsState {
         this._emitBurst(geo.laneLock, geo.lockY);
     }
 
-    /** CLEAR ×1/×2/×3 "One Hound Wakes / Both Hounds Rise / The Hounds Run". */
+    /**
+     * CLEAR ×1/×2/×3 "One Hound Wakes / Both Hounds Rise / The Hounds Run". A chain's later
+     * links answer a little stronger, and each cascade wave builds on the last: both hounds,
+     * more pillars, a parhelic sweep, the ring brightening and glitter falling through the dust.
+     */
     _houndsWake(c, t, s, rm) {
         const { geo } = this;
         const lines = clamp(Math.trunc(finiteNumber(c.lines, 1)), 1, 3);
         const beat = CLEAR_BEATS[lines - 1];
-        this._beadPair(this._allocBeadSlot(geo.player, t), t, beat.beadAmp * s, beat.beadDur, EASE_OUT_CUBIC, rm);
+        // Waves past the first (cascade depth), and the chain's link (true combo) up to ten.
+        const wave = clamp(Math.max(finiteNumber(c.cascade, 1), finiteNumber(c.depth, 0)) - 1, 0, 9);
+        const link = 1 + 0.03 * clamp(finiteNumber(c.combo, 1) - 1, 0, 9);
+        const sw = s * link * (1 + 0.1 * wave);
+        const bead = this._allocBeadSlot(geo.player, t);
+        this._beadPair(bead, t, Math.min(1.6, beat.beadAmp * sw), beat.beadDur, EASE_OUT_CUBIC, rm);
 
-        const flare = beat.dogs * s;
-        if (lines === 1) {
+        const flare = beat.dogs * sw;
+        if (lines === 1 && wave === 0) {
             this._env(geo.side < 0 ? CH_FLARE_L : CH_FLARE_R, t, 0.12, 0, 0.5, flare);
         } else {
             this._env(CH_FLARE_L, t, 0.12, 0, 0.5, flare);
             this._env(CH_FLARE_R, t, 0.12, 0, 0.5, flare);
         }
-        const pAmp = beat.pillarAmp * s;
-        if (lines === 1) {
+        const pAmp = Math.min(1.3, beat.pillarAmp * sw);
+        if (lines === 1 && wave === 0) {
             const lane = geo.side < 0 ? 0 : 1;
             this._pillar(lane, t, pAmp, this._beadStartV(lane, geo.rowY, rm), beat.pillarLife);
         } else {
             this._pillar(0, t, pAmp, this._beadStartV(0, geo.rowY, rm), beat.pillarLife);
             this._pillar(1, t + 0.06, pAmp, this._beadStartV(1, geo.rowY, rm), beat.pillarLife);
         }
-        if (lines === 3) {
+        if (lines === 3 || wave >= 1) {
             const outer = geo.side < 0 ? 2 : 3;
             this._pillar(outer, t + 0.12, pAmp, this._beadStartV(outer, geo.rowY, rm), beat.pillarLife);
+        }
+        if (wave >= 2) {
+            const far = geo.side < 0 ? 3 : 2;
+            this._pillar(far, t + 0.18, pAmp, this._beadStartV(far, geo.rowY, rm), beat.pillarLife);
+        }
+        if (wave >= 3) {
+            this._pillar(4, t + 0.24, pAmp * 0.8, this._beadStartV(4, geo.rowY, rm), beat.pillarLife);
+            this._pillar(5, t + 0.3, pAmp * 0.8, this._beadStartV(5, geo.rowY, rm), beat.pillarLife);
+        }
+        if (lines === 3) {
             this._env(CH_TAIL, t, 0.1, 0.2, 0.8, 0.6 * s);
             this._pcPulse(t, 0.9, 0.9 * s);
+        } else if (wave >= 1) {
+            this._pcPulse(t, 0.9, Math.min(1.2, (0.35 + 0.15 * wave) * s));
         }
-        const motes = beat.motes + 4 * Math.min(3, Math.max(0, finiteNumber(c.depth, 0)));
-        this._laneMotesTowardRing(t, s, motes, 0.9, 0.45);
+        if (wave >= 1) {
+            // The ring itself brightens wave on wave (the envelopes add while they last).
+            this._env(CH_HALO, t, 0.1, 0.25, 0.8, 0.12 * wave * s);
+            this._env(CH_TAIL, t, 0.1, 0.2, 0.8, 0.15 * wave * s);
+        }
+        if (wave >= 2) this._env(CH_SHOWER, t, 0.1, 0.2, 0.8, Math.min(0.9, 0.22 * (wave - 1)) * s);
+        const motes = beat.motes + 6 * wave;
+        this._laneMotesTowardRing(t, s * (1 + 0.08 * wave), motes, 0.9, 0.45);
     }
 
     /** QUAD "The Halo Closes": beads climb from the cleared rows and meet at the apex (+0.85 s). */
     _haloCloses(c, t, s, rm) {
         const { geo } = this;
         const meet = t + PARHELION_TIMING.quadMeet;
+        this.meetAt = Math.max(this.meetAt, meet);
         this._beadPair(this._allocBeadSlot(geo.player, t), t, 1.0 * s, PARHELION_TIMING.quadMeet, EASE_IN_CUBIC, rm);
         // Future-dated at the meet: no timers.
         this._env(CH_UTA, meet, 0.15, 0, 0.9, 1.0 * s);
@@ -1051,9 +1251,10 @@ export class ParhelionOpticsState {
         const withLines = finiteNumber(c.lines, 0) >= 1;
         const amp = (withLines ? 0.9 : 0.55) * s;
         if (rm) {
-            this._arc(ARC_SLOT.WAVE, geo.player, t, 0.25 * s, WHOLE_RING_WIDTH, ARC_MODE.WHITE);
-            this._arcMotion(ARC_SLOT.WAVE, HALF_PI, HALF_PI, 0, EASE_LINEAR);
-            this._arcEnvelope(ARC_SLOT.WAVE, 0.1, 0.35, 0.15);
+            const wave = this._waveSlot(geo.player, t);
+            this._arc(wave, geo.player, t, 0.25 * s, WHOLE_RING_WIDTH, ARC_MODE.WHITE);
+            this._arcMotion(wave, HALF_PI, HALF_PI, 0, EASE_LINEAR);
+            this._arcEnvelope(wave, 0.1, 0.35, 0.15);
         } else {
             const slot = this._allocBeadSlot(geo.player, t);
             const start = geo.side < 0 ? Math.PI - geo.phiLock : geo.phiLock;
@@ -1076,18 +1277,15 @@ export class ParhelionOpticsState {
         this._emitBurst(geo.laneLock, geo.lockY);
     }
 
-    /** APEX "Sun Cross": the ⊕ drawn around the stone; 4 pillars; the rim burns gold. */
+    /**
+     * APEX "Sun Cross": the ⊕ drawn around the stone; 4 pillars; the rim burns gold. The cross
+     * itself (sun pillar, parhelic line, crown, cross arms, dust, rim) is a Swell: it stands while
+     * the chain past ten lives, and every further clear of the chain feeds it (applyCue).
+     */
     _sunCross(t, s, rm) {
-        const idle = PARHELION_OPTICS_IDLE;
         const { geo } = this;
-        this._env(CH_SUN_PILLAR, t, 0.25, 2.5, 1.2, (1.6 - idle.k1[1]) * s);
-        this._env(CH_PARHELIC, t, 0.25, 2.5, 1.2, (1.2 - idle.k0[2]) * s);
-        this._env(CH_CROWN, t, 0.25, 2.5, 1.2, 1.0 * s);
-        this._env(CH_CROSS_ARM, t, 0.25, 2.5, 1.2, 1.2 * s);
-        this._env(CH_DUST_GAIN, t, 0.25, 1.2, 1.5, 1.5 * s);
-        this._env(CH_DENSITY, t, 0.25, 1.2, 1.5, 0.15 * s);
+        this.cross.hit(1.0 * s, t);
         this._env(CH_KICK, t, 0.1, 0, 0.6, 0.4 * s);
-        this._env(CH_RIM, t, 0.25, 2.0, 1.2, 0.9 * s);
         for (let lane = 0; lane < 4; lane++) {
             this._pillar(lane, t + lane * PILLAR_STAGGER, 1.0 * s, this._beadStartV(lane, geo.rowY, rm), 2.6);
         }
@@ -1095,19 +1293,31 @@ export class ParhelionOpticsState {
         this._laneMotesAir(t, 1.3 * s, 56, 1.6, 0.35, BURST_MODE.RADIAL);
     }
 
-    /** PERFECT "Clear Sky": hush (0–350 ms), reveal (+350), then the Lumen return. */
-    _clearSky(t, s, rm) {
+    /**
+     * PERFECT "Clear Sky": hush (0–350 ms), reveal (+350), then the Lumen return. The hush is as
+     * deep as play is cold: in a fever the sky only inhales. A lone perfect clear (the crown,
+     * physics sends it ~360 ms after its clear) whose quad is still climbing waits for the
+     * beads to meet: the halo closes and the sky clears in the same instant, one crowning
+     * moment layered on the clear still playing (its flash, prism and kick are the meet's).
+     */
+    _clearSky(c, t0, s, rm) {
         const idle = PARHELION_OPTICS_IDLE;
         const lumen = PARHELION_LUMEN_RETURN;
         const { geo } = this;
+        const meetAhead = this.meetAt - (t0 + PARHELION_TIMING.reveal);
+        const crowning = c.crown === true && meetAhead > 0 && meetAhead <= CROWN_MEET_WINDOW;
+        // Every stage below is timed from `t` (the hush's start).
+        const t = crowning ? this.meetAt - PARHELION_TIMING.reveal : t0;
         const reveal = t + PARHELION_TIMING.reveal;
         const attack = 0.15;
+        const own = crowning ? 0.5 : 1;
         // Hold each stage from the reveal until its Lumen-return start.
         const hold = (stage) => Math.max(0, stage.start - PARHELION_TIMING.reveal - attack);
         if (!rm) {
-            this._env(CH_DIM, t, PARHELION_TIMING.hushIn, 0.2, 0.1, -0.45);
-            this._env(CH_DUST_GAIN, t, PARHELION_TIMING.hushIn, 0.2, 0.25, -0.6);
-            this._startHush(t);
+            const depth = 1 - 0.75 * clamp01(this.heat.level);
+            this._env(CH_DIM, t, PARHELION_TIMING.hushIn, 0.2, 0.1, -0.45 * depth);
+            this._env(CH_DUST_GAIN, t, PARHELION_TIMING.hushIn, 0.2, 0.25, -0.6 * depth);
+            this._startHush(t, HUSH_DEPTH * depth);
             this._shake(reveal, 0.2, 0.19);
         }
         this._env(CH_HALO, reveal, attack, hold(lumen.ring), lumen.ring.tau, (1.6 - idle.k0[0]) * s);
@@ -1122,9 +1332,9 @@ export class ParhelionOpticsState {
         this._env(CH_CROSS_ARM, reveal, attack, hold(lumen.crossArm), lumen.crossArm.tau, 0.8 * s);
         this._env(CH_RIM, reveal, attack, hold(lumen.ring), 1.0, (1.6 - idle.rim) * s);
         this._env(CH_SHOWER, reveal, 0.3, 0.5, 2.4, 1.0 * s);
-        this._env(CH_KICK, reveal, 0.1, 0, 0.6, 0.5 * s);
-        this._env(CH_RING_FLASH, reveal, 0.05, 0, 0.45 / Math.LN2, 0.8 * s);
-        this._env(CH_PRISM, reveal, 0.05, 0, 0.7, 0.8 * s);
+        this._env(CH_KICK, reveal, 0.1, 0, 0.6, 0.5 * s * own);
+        this._env(CH_RING_FLASH, reveal, 0.05, 0, 0.45 / Math.LN2, 0.8 * s * own);
+        this._env(CH_PRISM, reveal, 0.05, 0, 0.7, 0.8 * s * own);
         this._pcPulse(reveal, 0.9, 0.9 * s);
         for (let lane = 0; lane < 4; lane++) {
             const birth = reveal + lane * PILLAR_STAGGER;
@@ -1134,10 +1344,23 @@ export class ParhelionOpticsState {
         this._laneMotesAir(reveal, 1.3 * s, 72, 2.2, 0.68, BURST_MODE.FALL);
     }
 
-    /** ECHO "The Hounds Answer": a fainter repeat 0.18 s later (strength already halved). */
-    _houndsAnswer(c, t, s, rm) {
+    /**
+     * ECHO "The Hounds Answer": a fainter repeat 0.18 s later (strength already halved). B2B in
+     * a row answers louder each time: the answer grows, both hounds flare and a crown forms.
+     * A second answer while the first still glows takes a free bead slot instead of cutting it.
+     */
+    _houndsAnswer(c, t, s0, rm) {
         const { geo } = this;
-        const slot = ARC_SLOT.ECHO;
+        this.echoRun = t - this.echoAt <= ECHO_RUN_WINDOW ? this.echoRun + 1 : 1;
+        this.echoAt = t;
+        const run = Math.min(3, this.echoRun - 1);
+        const s = Math.min(1.2, s0 * (1 + 0.35 * run));
+        if (run > 0) {
+            this._env(CH_FLARE_L, t, 0.1, 0.15, 0.6, 0.35 * run * s0);
+            this._env(CH_FLARE_R, t, 0.1, 0.15, 0.6, 0.35 * run * s0);
+            this._env(CH_CROWN, t, 0.15, 0.3, 0.8, 0.4 * run * s0);
+        }
+        const slot = this._arcLit(ARC_SLOT.ECHO, t) ? this._allocBeadSlot(geo.player, t) : ARC_SLOT.ECHO;
         if (rm) {
             this._arc(slot, geo.player, t, s, BEAD_WIDTH, ARC_MODE.PAIR);
             this._arcMotion(slot, HALF_PI, HALF_PI, 0, EASE_LINEAR);
@@ -1208,12 +1431,58 @@ export class ParhelionOpticsState {
         return (n - 1) % STATION_COUNT;
     }
 
+    /**
+     * A lock station: the station slots first, then a free bead slot, so rapid locks leave a lit
+     * trail behind the clock hand; only when all are lit is the weakest station replaced.
+     */
     _station(t, phi, amp, player) {
-        const slot = ARC_SLOT.STATION_A + this.stationToggle;
-        this.stationToggle ^= 1;
+        const slot = this._allocStation(t);
         this._arc(slot, player, t, amp, STATION_WIDTH, ARC_MODE.WHITE);
+        if (slot < PARHELION_OPTICS_CAPS.beadSlots) this.arcRole[slot] = ROLE_STATION;
         this._arcMotion(slot, phi, phi, 0, EASE_LINEAR);
         this._arcEnvelope(slot, 0.06, 0.18, 0.32);
+    }
+
+    _allocStation(t) {
+        const a = ARC_SLOT.STATION_A;
+        const b = ARC_SLOT.STATION_B;
+        if (!this._arcLit(a, t)) return a;
+        if (!this._arcLit(b, t)) return b;
+        for (let i = 0; i < PARHELION_OPTICS_CAPS.beadSlots; i++) {
+            if (!this._arcLit(i, t)) return i;
+        }
+        // Everything lit: the weakest station goes (never a bead or a sweep).
+        let pick = this._arcEnergy(a, t) <= this._arcEnergy(b, t) ? a : b;
+        let weakest = this._arcEnergy(pick, t);
+        for (let i = 0; i < PARHELION_OPTICS_CAPS.beadSlots; i++) {
+            if (this.arcRole[i] !== ROLE_STATION) continue;
+            const e = this._arcEnergy(i, t);
+            if (e < weakest) {
+                weakest = e;
+                pick = i;
+            }
+        }
+        return pick;
+    }
+
+    /** The count-wave slot, or a free bead slot while a previous sweep still runs there. */
+    _waveSlot(player, t) {
+        return this._arcLit(ARC_SLOT.WAVE, t) ? this._allocBeadSlot(player, t) : ARC_SLOT.WAVE;
+    }
+
+    /** Still giving light at `t` (or scheduled to). */
+    _arcLit(i, t) {
+        return this.arcAmp[i] !== 0 && t < this.arcEnd[i];
+    }
+
+    /** What an arc slot still has to give at `t`: its full amplitude until its tail, then the tail. */
+    _arcEnergy(i, t) {
+        if (!this._arcLit(i, t)) return 0;
+        const age = t - this.arcBirth[i];
+        const sustain = this.arcAttack[i] + this.arcHold[i];
+        if (age < sustain) return Math.abs(this.arcAmp[i]);
+        const tau = this.arcTau[i];
+        return tau > 0 ? Math.abs(this.arcAmp[i]) * Math.exp(-(age - sustain) / tau) : 0;
     }
 
     /** A mirrored bead pair climbing from the row's ring angle to the top (static under RM). */
@@ -1262,10 +1531,23 @@ export class ParhelionOpticsState {
         }
     }
 
+    /**
+     * The parhelic sweep out from the hounds. A sweep still lit carries on from where it is (its
+     * light grows; it never snaps back to the sundog); a fresh one starts at the hounds.
+     */
     _pcPulse(birth, dur, amp) {
+        const lit = birth >= this.pcBirth && this._channel(CH_PC, birth) > 0.05;
+        if (lit) {
+            const from = this._pcAz(birth);
+            const span = this.edgeAz - DOG_AZ;
+            const left = span > 1e-6 ? clamp01((this.edgeAz - from) / span) : 0;
+            this.pcFrom = from;
+            this.pcDur = Math.max(0.25, dur * left);
+        } else {
+            this.pcFrom = DOG_AZ;
+            this.pcDur = dur;
+        }
         this.pcBirth = birth;
-        this.pcDur = dur;
-        this.pcFrom = DOG_AZ;
         this.pcTo = this.edgeAz;
         this._env(CH_PC, birth, 0.06, dur, 0.4, amp);
     }
@@ -1273,6 +1555,28 @@ export class ParhelionOpticsState {
     _pcAz(t) {
         const u = clamp01((t - this.pcBirth) / this.pcDur);
         return this.pcFrom + (this.pcTo - this.pcFrom) * ease(EASE_OUT_CUBIC, u);
+    }
+
+    /**
+     * out.pc: the latest event sweep, or in a fever the hounds running: a light travelling out
+     * along the parhelic line from both sundogs every 1.8 s (not under reduced motion). The run
+     * gives way to an event sweep as it starts, so the two never jump between places lit.
+     */
+    _writePc(t, fever) {
+        const { pc } = this.out;
+        const event = clamp(this._channel(CH_PC, t), 0, 1.5);
+        let az = this._pcAz(t);
+        let amp = event;
+        if (fever > 0 && !this.reducedMotion) {
+            const u = (((t / FEVER_SWEEP_PERIOD) % 1) + 1) % 1;
+            const run = FEVER_SWEEP_AMP * fever * Math.sin(Math.PI * u) * (1 - smoothstep(0, 0.1, event));
+            if (run > event) {
+                az = DOG_AZ + (this.edgeAz - DOG_AZ) * ease(EASE_OUT_CUBIC, u);
+                amp = run;
+            }
+        }
+        pc[0] = az;
+        pc[1] = amp;
     }
 
     _shake(birth, deg, dur) {
@@ -1284,15 +1588,16 @@ export class ParhelionOpticsState {
         this.shakeDur = dur;
     }
 
-    _startHush(t) {
-        if (this.hushActive) this.hushBank += HUSH_DEPTH * hushIntegral(t - this.hushBirth);
+    _startHush(t, depth = HUSH_DEPTH) {
+        if (this.hushActive) this.hushBank += this.hushDepth * hushIntegral(t - this.hushBirth);
         this.hushActive = true;
         this.hushBirth = t;
+        this.hushDepth = depth;
     }
 
     _endHush() {
         if (!this.hushActive) return;
-        this.hushBank += HUSH_DEPTH * hushIntegral(this.now - this.hushBirth);
+        this.hushBank += this.hushDepth * hushIntegral(this.now - this.hushBirth);
         this.hushActive = false;
     }
 
@@ -1303,14 +1608,19 @@ export class ParhelionOpticsState {
 
     // ── envelopes ────────────────────────────────────────────────────────────────
 
-    /** Adds an envelope to a channel's pool (a spent one, else the oldest is replaced). */
+    /**
+     * Adds an envelope to a channel's pool: a spent one, else the WEAKEST (what it still has to
+     * give at the new one's birth) is replaced, so a fever's quick clears never evict a perfect
+     * clear's or an apex's long hold still at full strength.
+     */
     _env(ch, birth, attack, hold, tau, amp) {
         if (!(Math.abs(amp) > 1e-6)) return;
         const { env } = this;
         const base = ch * ENV_BLOCK;
         let pick = -1;
-        let oldest = Infinity;
-        let oldestIndex = 0;
+        let weakest = Infinity;
+        let weakestIndex = 0;
+        const at = Math.max(this.now, birth);
         for (let i = 0; i < ENVELOPES; i++) {
             const o = base + i * ENV_STRIDE;
             const spentAt = env[o] + env[o + 1] + env[o + 2] + ENV_TAIL_TAUS * env[o + 3];
@@ -1318,12 +1628,17 @@ export class ParhelionOpticsState {
                 pick = i;
                 break;
             }
-            if (env[o] < oldest) {
-                oldest = env[o];
-                oldestIndex = i;
+            // Still to give: the full amplitude until (and before) its tail, then the tail.
+            const sustainEnd = env[o] + env[o + 1] + env[o + 2];
+            let left = 1;
+            if (at > sustainEnd) left = env[o + 3] > 0 ? Math.exp(-(at - sustainEnd) / env[o + 3]) : 0;
+            const remaining = Math.abs(env[o + 4]) * left;
+            if (remaining < weakest) {
+                weakest = remaining;
+                weakestIndex = i;
             }
         }
-        const o = base + (pick >= 0 ? pick : oldestIndex) * ENV_STRIDE;
+        const o = base + (pick >= 0 ? pick : weakestIndex) * ENV_STRIDE;
         env[o] = birth;
         env[o + 1] = attack;
         env[o + 2] = hold;
@@ -1345,36 +1660,53 @@ export class ParhelionOpticsState {
 
     // ── arc slots ────────────────────────────────────────────────────────────────
 
-    /** Bead/orbit slots 0–3: at most 2 live per player (their oldest replaced), else a free one, else the oldest. */
+    /**
+     * Bead/orbit slots 0–3. A free one first, then one a lock station borrowed; when another
+     * player shares the halo each player keeps at most 2 (their weakest replaced); otherwise
+     * the weakest bead goes, so a cascade's waves (0.36 s apart, 1 s climbs) all climb.
+     */
     _allocBeadSlot(player, t) {
         const { beadSlots, arcsPerPlayer } = PARHELION_OPTICS_CAPS;
         let own = 0;
-        let ownOldest = -1;
-        let ownBirth = Infinity;
+        let ownWeakest = -1;
+        let ownEnergy = Infinity;
+        let others = 0;
         let free = -1;
-        let oldest = 0;
-        let oldestBirth = Infinity;
+        let station = -1;
+        let stationEnergy = Infinity;
+        let weakest = 0;
+        let weakestEnergy = Infinity;
         for (let i = 0; i < beadSlots; i++) {
-            const live = this.arcAmp[i] !== 0 && t < this.arcEnd[i];
-            if (!live) {
+            if (!this._arcLit(i, t)) {
                 if (free < 0) free = i;
+                continue;
+            }
+            const energy = this._arcEnergy(i, t);
+            if (this.arcRole[i] === ROLE_STATION) {
+                if (energy < stationEnergy) {
+                    stationEnergy = energy;
+                    station = i;
+                }
                 continue;
             }
             if (this.arcPlayer[i] === player) {
                 own += 1;
-                if (this.arcBirth[i] < ownBirth) {
-                    ownBirth = this.arcBirth[i];
-                    ownOldest = i;
+                if (energy < ownEnergy) {
+                    ownEnergy = energy;
+                    ownWeakest = i;
                 }
+            } else {
+                others += 1;
             }
-            if (this.arcBirth[i] < oldestBirth) {
-                oldestBirth = this.arcBirth[i];
-                oldest = i;
+            if (energy < weakestEnergy) {
+                weakestEnergy = energy;
+                weakest = i;
             }
         }
-        if (own >= arcsPerPlayer) return ownOldest;
+        if (others > 0 && own >= arcsPerPlayer) return ownWeakest;
         if (free >= 0) return free;
-        return oldest;
+        if (station >= 0) return station;
+        return weakest;
     }
 
     _arc(slot, player, birth, amp, width, mode) {
@@ -1383,6 +1715,7 @@ export class ParhelionOpticsState {
             this.spokeAngle = wrapPi(this._arcPhi(slot, birth));
             this.spokeSlot = -1;
         }
+        this.arcRole[slot] = ROLE_BEAD;
         this.arcPlayer[slot] = player;
         this.arcBirth[slot] = birth;
         this.arcAmp[slot] = amp;
@@ -1419,16 +1752,42 @@ export class ParhelionOpticsState {
         return clamp01(screenYToPillarV(rowY, this.out.pillarPlace[lane * 4 + 1], this.aspect));
     }
 
-    /** Writes a pillar lane; a stronger pillar still standing at `birth` is kept. */
+    /**
+     * Writes a pillar lane. A stronger pillar still waiting to rise is kept. A pillar still
+     * standing is lit on, never dropped or restarted dark: the new one is born already risen,
+     * at least as bright as what stands (a little brighter: the hounds' pillars stack) and
+     * standing at least as long, and its light knot climbs again from the new row.
+     */
     _pillar(lane, birth, amp, beadV, life) {
         if (lane >= this.caps.pillars || !(amp > 0) || !(life > 0)) return;
         const p = this.out.pillars;
         const o = lane * 4;
-        if (p[o + 1] > amp && p[o] + p[o + 3] > birth) return;
-        p[o] = birth;
-        p[o + 1] = amp;
+        const oldBirth = p[o];
+        const oldAmp = p[o + 1];
+        const oldLife = p[o + 3];
+        let b = birth;
+        let a = amp;
+        let l = life;
+        if (oldAmp > 0 && oldBirth + oldLife > birth) {
+            if (oldBirth > birth) {
+                // Still to rise: the stronger keeps the lane.
+                if (oldAmp > amp) return;
+            } else {
+                const age = birth - oldBirth;
+                const standing = oldAmp * smoothstep(0, PILLAR_RISE, age)
+                    * (1 - smoothstep(oldLife * 0.55, oldLife, age));
+                if (standing > 0.02) {
+                    // Born risen (no dark dip); bright and long enough to carry what stands.
+                    b = birth - PILLAR_RISE;
+                    a = Math.min(PILLAR_STACK_MAX, Math.max(amp, standing) + 0.15 * Math.min(amp, standing));
+                    l = Math.max(life, oldBirth + oldLife - birth) + PILLAR_RISE;
+                }
+            }
+        }
+        p[o] = b;
+        p[o + 1] = a;
         p[o + 2] = beadV;
-        p[o + 3] = life;
+        p[o + 3] = l;
         this.pillarsDirty = true;
     }
 
@@ -1506,15 +1865,20 @@ export class ParhelionOpticsState {
         return slot;
     }
 
-    /** ≤ 3 live slots per player (their oldest replaced), else a free slot, else the global oldest. */
+    /**
+     * When other players share the pool, ≤ 3 live slots per player (the one nearest its end
+     * replaced); else a free slot, else the slot nearest its end. A lone player uses the whole
+     * pool, so a big beat no longer deletes the motes still in flight.
+     */
     _allocBurst(player, t) {
         const slots = this.caps.burstSlots;
         let own = 0;
-        let ownOldest = -1;
-        let ownBirth = Infinity;
+        let ownFirst = -1;
+        let ownEnd = Infinity;
+        let others = 0;
         let free = -1;
-        let oldest = 0;
-        let oldestBirth = Infinity;
+        let first = 0;
+        let firstEnd = Infinity;
         for (let j = 0; j < slots; j++) {
             const i = (this.burstCursor + j) % slots;
             const live = this.burstOwner[i] >= 0 && t < this.burstEnd[i];
@@ -1524,18 +1888,20 @@ export class ParhelionOpticsState {
             }
             if (this.burstOwner[i] === player) {
                 own += 1;
-                if (this.burstBirth[i] < ownBirth) {
-                    ownBirth = this.burstBirth[i];
-                    ownOldest = i;
+                if (this.burstEnd[i] < ownEnd) {
+                    ownEnd = this.burstEnd[i];
+                    ownFirst = i;
                 }
+            } else {
+                others += 1;
             }
-            if (this.burstBirth[i] < oldestBirth) {
-                oldestBirth = this.burstBirth[i];
-                oldest = i;
+            if (this.burstEnd[i] < firstEnd) {
+                firstEnd = this.burstEnd[i];
+                first = i;
             }
         }
-        let slot = oldest;
-        if (own >= PARHELION_OPTICS_CAPS.burstsPerPlayer) slot = ownOldest;
+        let slot = first;
+        if (others > 0 && own >= PARHELION_OPTICS_CAPS.burstsPerPlayer) slot = ownFirst;
         else if (free >= 0) slot = free;
         this.burstCursor = (slot + 1) % slots;
         return slot;
@@ -1634,7 +2000,16 @@ export class ParhelionOpticsState {
         this.arcAmp.fill(0);
         this.arcPlayer.fill(-1);
         this.arcEnd.fill(-Infinity);
-        this.stationToggle = 0;
+        this.arcRole.fill(ROLE_BEAD);
+        this.surge.reset();
+        this.heat.punch = 0;
+        this.heat.level = 0;
+        this.heat.fever = 0;
+        this.heat.stage = 0;
+        this.cross.reset();
+        this.echoRun = 0;
+        this.echoAt = -Infinity;
+        this.meetAt = -Infinity;
         this.spokeSlot = -1;
         this.pcBirth = DORMANT_BIRTH;
         this.pcFrom = DOG_AZ;

@@ -5,6 +5,16 @@
  * frames the camera, and turns the reaction director's envelopes and cues into light:
  * which crystals a lock charges, where a fan leaves the board, which tips the lattice
  * links. Shared by the production theme and the playground, so both draw the same cave.
+ *
+ * It also spends how hot play runs (the director's surge: level and fever). Calm play looks
+ * as it always did. Warm: the hall takes notice — the glow-worms on the vault wake, the stones'
+ * resting glow lifts a little and the hum's standing bands begin to climb, faster as it heats,
+ * while the colours deepen and the iris closes. Hot: the lattice starts to link the great tips,
+ * chain or not, and the lamps' halos in the damp air hold back so the dark between the stones
+ * stays dark. Fever: the hall sings — a chorus of waves keeps every stone ringing between clears,
+ * the heart at the far end beats with light, glitter falls from the vault, the lattice
+ * completes and the view leans into the hall. When the hands rest it breathes back to the
+ * quiet cave.
  */
 import * as THREE from 'three/webgpu';
 import { uniform } from 'three/tsl';
@@ -13,7 +23,7 @@ import { createGemField } from './crystal-cave-gems.js';
 import { createCaveRock } from './crystal-cave-rock.js';
 import { createCavePool } from './crystal-cave-water.js';
 import { createCaveAir } from './crystal-cave-air.js';
-import { createCaveAirLight, planAtmosphereLamps } from './crystal-cave-atmosphere.js';
+import { CRYSTAL_CAVE_AIR, createCaveAirLight, planAtmosphereLamps } from './crystal-cave-atmosphere.js';
 import { SPARK_KIND, createCaveEffects } from './crystal-cave-effects.js';
 import { CRYSTAL_CAVE_STAGE_DEPTH, CrystalCaveStage } from './crystal-cave-stage.js';
 import { CRYSTAL_CAVE_WAVE_SPEED } from './crystal-cave-reactions.js';
@@ -23,8 +33,23 @@ import { flashScale } from '../../utils/photosensitivity.js';
 
 const FAMILIES = 5;
 const GROW_SECONDS = 1.15;
-const MAX_ACTIONS = 96;
+const MAX_ACTIONS = 128;
+/** The rock's resting gains (crystal-cave-rock.js); play raises them from here. */
+const ROCK_GAIN = 0.85;
+const SKY_GAIN = 2.4;
+/** The hum's bands climb this fast at rest (radians per second). */
+const HUM_SPEED = 3.2;
+/** Seconds a broken chain's lattice takes to let go of its links, newest first. */
+const LATTICE_LET_GO = 1.3;
+/** Glitter falling from the vault per second at the height of a fever. */
+const GLITTER_RATE = 28;
+/** The most light the waves in flight carry together (one strong wave is about 1). */
+const WAVE_LIGHT = 1.15;
 const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
+const smooth01 = (value) => {
+    const t = clamp(value, 0, 1);
+    return t * t * (3 - 2 * t);
+};
 
 /** World position of a point on a crystal's axis: 0 = root, 1 = apex. */
 function alongCrystal(crystal, fraction, target = new THREE.Vector3()) {
@@ -103,6 +128,16 @@ export class CrystalCaveWorld {
             skylight: assets.meta.skylight,
             shaft: this.shaftLevel,
         });
+
+        // The chimney's light: where it enters and where it meets the water (a back-to-back
+        // pours light down it).
+        const sky = assets.meta.skylight;
+        this.skyTop = new THREE.Vector3(...sky.position);
+        this.skyFoot = new THREE.Vector3(...sky.target);
+        this.skyAxis = this.skyFoot.clone().sub(this.skyTop);
+        this.skyLength = this.skyAxis.length();
+        this.skyAxis.normalize();
+        this.skySpread = Math.tan(sky.angle * 0.5);
 
         this.pool = createCavePool({
             light: this.light,
@@ -227,10 +262,12 @@ export class CrystalCaveWorld {
             }))
             .sort((first, second) => Math.hypot(first.x, first.z - 11) - Math.hypot(second.x, second.z - 11));
         this.heartTip = new THREE.Vector3(3, 18, -96);
+        this.heartIndex = -1;
         let tallest = 0;
         crystals.forEach((crystal, index) => {
             if (crystal.group === 0 && crystal.z < -85 && crystal.height > tallest) {
                 tallest = crystal.height;
+                this.heartIndex = index;
                 this.heartTip.copy(this.tipOf[index]);
             }
         });
@@ -263,6 +300,8 @@ export class CrystalCaveWorld {
         camera.far = 320;
         this.eye = new THREE.Vector3(...rest.eye);
         this.aim = new THREE.Vector3(...rest.target);
+        /** Into the hall: the view leans this way as play heats. */
+        this.forward = this.aim.clone().sub(this.eye).normalize();
         camera.position.copy(this.eye);
         camera.lookAt(this.aim);
         camera.updateProjectionMatrix();
@@ -274,8 +313,13 @@ export class CrystalCaveWorld {
     }
 
     schedule(delay, kind, a = 0, b = 0, c = 0) {
-        const slot = this.actions.find((action) => !action.active);
-        if (!slot) return;
+        let slot = this.actions.find((action) => !action.active);
+        if (!slot) {
+            // Every slot is waiting: the soonest plays now, a moment early, and makes room.
+            slot = this.actions.reduce((soonest, action) => (action.at < soonest.at ? action : soonest));
+            slot.active = false;
+            this.runAction(slot);
+        }
         slot.active = true;
         slot.at = this.time + delay;
         slot.kind = kind;
@@ -292,7 +336,7 @@ export class CrystalCaveWorld {
     onMoteArrive(index) {
         if (!(index >= 0)) return;
         const crystal = this.crystals[index];
-        this.gems.pulse(index, this.time, 1.15);
+        this.gems.pulse(index, this.time, 1.15, this.time);
         this.effects.spark(SPARK_KIND.flare, this.body[index], this.pointC.set(0, 0, 0), this.familyTint(crystal.family), {
             life: 0.5, size: crystal.radius * 2.4, strength: 0.9,
         });
@@ -383,25 +427,31 @@ export class CrystalCaveWorld {
             this.pool.ring(foot.x, foot.z - 1.5, this.time, 0.45 + cue.strength * 0.75, lockTint);
             if (cue.drop > 0.3) this.shower(Math.round(8 + cue.drop * 26));
         } else if (cue.type === 'wave') {
+            // Each wave has its own shell (slot): waves cross side by side and none re-centres another.
             const far = cue.count > 0;
             const origin = far ? this.heartTip : stage.centre(CRYSTAL_CAVE_STAGE_DEPTH, this.pointA);
-            this.rock.controls.waveOrigin.value.copy(origin);
+            const { waves } = this.rock.controls;
+            waves[Math.abs(Math.trunc(cue.slot)) % waves.length].value.set(origin.x, origin.y, origin.z, 0);
             this.gems.pulseWave(this.time, far ? this.fromHeart : this.fromBoard, 0.5 + cue.strength * 0.7);
             const white = this.tintScratch.setRGB(0.6, 1, 0.95);
+            this.pool.ring(origin.x, far ? origin.z + 6 : origin.z - 2, this.time, cue.strength, white);
             [[-6.5, 5, 0.12], [6.5, 3, 0.16], [-8, -10, 0.42], [8.5, -13, 0.46], [0, -30, 0.86], [-4, -52, 1.3]]
                 .slice(0, Math.max(2, this.pool.slots - 3))
                 .forEach(([x, z, delay]) => this.schedule(far ? 1.9 - delay : delay, 'ring', x, z, cue.strength * 0.8));
-            this.pool.ring(origin.x, far ? origin.z + 6 : origin.z - 2, this.time, cue.strength, white);
         } else if (cue.type === 'clear') {
+            // Each wave of a cascade fans wider, throws more light and burns in the next colour.
+            const deep = Math.max(0, (cue.count || 1) - 1);
+            if (deep === 0) this.fanHue = this.random();
             for (const side of [-1, 1]) {
                 const edge = stage.edge(side, cue.row, CRYSTAL_CAVE_STAGE_DEPTH, this.pointA);
-                effects.fan(edge, side, cue.strength, cue.lines, this.time, this.random());
+                const hue = this.fanHue + deep * 0.17 + side * 0.04;
+                effects.fan(edge, side, cue.strength, cue.lines + deep * 0.8, this.time, hue);
                 this.burst(
                     edge,
-                    6 + cue.lines * 5,
-                    4 + cue.lines,
+                    6 + cue.lines * 5 + deep * 4,
+                    4 + cue.lines + deep * 0.8,
                     this.familyTint(Math.floor(this.random() * FAMILIES)),
-                    { push: side * 4.5, strength: 1 },
+                    { push: side * (4.5 + deep), strength: 1 },
                 );
                 if (cue.lines >= 4) {
                     this.schedule(0.16, 'fan', side, clamp(cue.row + 0.12, 0, 1), cue.strength * 0.8);
@@ -427,8 +477,8 @@ export class CrystalCaveWorld {
             const lit = Math.min(this.lattice.length, Math.ceil(frame.lattice * this.lattice.length + 0.5));
             for (let index = 0; index < lit; index += 1) {
                 const link = this.lattice[index];
-                this.gems.pulse(link.from, this.time, 0.9);
-                this.gems.pulse(link.to, this.time + 0.12, 0.9);
+                this.gems.pulse(link.from, this.time, 0.9, this.time);
+                this.gems.pulse(link.to, this.time + 0.12, 0.9, this.time);
             }
             const newest = this.lattice[Math.max(0, lit - 1)];
             if (newest) {
@@ -448,26 +498,19 @@ export class CrystalCaveWorld {
                 0.5 + cue.strength * 0.5,
                 this.familyTint(cue.count % FAMILIES),
             );
-        } else if (cue.type === 'release') {
-            // The lattice lets go: each beam falls as a line of sparks.
-            this.lattice.forEach((link, index) => {
-                if (this.effects.beamLevelOf(index) < 0.15) return;
-                for (let step = 0; step < 5; step += 1) {
-                    this.pointA.copy(this.tipOf[link.from]).lerp(this.tipOf[link.to], (step + this.random()) / 5);
-                    this.pointC.set((this.random() - 0.5) * 1.5, this.random() * 1.2, (this.random() - 0.5) * 1.5);
-                    effects.spark(SPARK_KIND.fall, this.pointA, this.pointC, this.familyTint(this.crystals[link.to].family), {
-                        life: 2 + this.random() * 1.6, size: 0.1 + this.random() * 0.09, gravity: 2.6, drag: 0.7, phase: this.random() * 6.28,
-                    });
-                }
-            });
         } else if (cue.type === 'spin') {
+            // A full wheel for a T-spin that cleared, a small turn of light for one that did not.
+            const scale = clamp(cue.strength / 0.8, 0.35, 1.5);
+            const spokes = Math.max(8, Math.round(20 * scale));
             const edge = stage.edge(cue.side, cue.row, CRYSTAL_CAVE_STAGE_DEPTH, this.pointA);
             edge.x += cue.side * 3.2;
             const tint = this.tintHold.copy(this.familyTint(cue.family));
-            effects.spark(SPARK_KIND.flare, edge, this.pointC.set(0, 0, 0), tint, { life: 0.9, size: 4.2, star: 1 });
-            for (let index = 0; index < 20; index += 1) {
-                const angle = (index / 20) * Math.PI * 2;
-                const speed = 5 + (index % 4) * 1.4;
+            effects.spark(SPARK_KIND.flare, edge, this.pointC.set(0, 0, 0), tint, {
+                life: 0.9, size: 4.2 * scale, star: 1,
+            });
+            for (let index = 0; index < spokes; index += 1) {
+                const angle = (index / spokes) * Math.PI * 2;
+                const speed = (5 + (index % 4) * 1.4) * (0.6 + 0.4 * scale);
                 // Tangential launch: the sparks leave as a turning wheel.
                 this.pointC.set(Math.cos(angle + 1.1) * speed, Math.sin(angle + 1.1) * speed, -1.5);
                 this.pointB.set(edge.x + Math.cos(angle) * 0.9, edge.y + Math.sin(angle) * 0.9, edge.z);
@@ -475,7 +518,51 @@ export class CrystalCaveWorld {
                     life: 1.1 + (index % 3) * 0.2, size: 0.14, gravity: 1.2, drag: 1.7, phase: index,
                 });
             }
-            this.pool.ring(edge.x, edge.z - 2, this.time, 0.8, tint);
+            this.pool.ring(edge.x, edge.z - 2, this.time, 0.8 * scale, tint);
+        } else if (cue.type === 'release') {
+            // The chain broke: its lattice lets go link by link (holdLattice).
+            this.releasedAt = this.time;
+        } else if (cue.type === 'skyfall') {
+            // Back-to-back: the skylight opens (the shaft and the stone it lights brighten) and its
+            // light comes down the chimney and across the water to both sides of the board — more
+            // of it, and in every mineral's colour, for each difficult clear in a row. It leaves
+            // the shaft where the shaft is seen, between the water and the vault.
+            const run = Math.max(1, cue.count);
+            const count = Math.round(8 + cue.strength * 6 + run * 4);
+            for (let index = 0; index < count; index += 1) {
+                this.skyAt(this.poolLevel + 2 + this.random() * 24, this.pointA);
+                const side = index % 2 === 0 ? -1 : 1;
+                const edge = stage.edge(side, 0.2 + this.random() * 0.65, CRYSTAL_CAVE_STAGE_DEPTH, this.pointB);
+                this.pointC.set(side * 3 + (this.random() - 0.5) * 6, 5 + this.random() * 7, 3);
+                const tint = run >= 2 && index % 3 !== 0
+                    ? this.familyTint(index % FAMILIES) : this.tintScratch.setRGB(1, 0.9, 0.72);
+                const seconds = 1.2 + this.random() * 0.6 + index * 0.025;
+                effects.mote(this.pointA, edge, seconds, tint, 0.5 + run * 0.06, -1, this.pointC);
+            }
+            // The light breaks in low on the shaft, where it is seen, and the water takes it.
+            const sky = this.tintScratch.setRGB(0.8, 0.92, 1);
+            const breaks = this.skyAt(this.poolLevel + 12, this.pointB);
+            effects.spark(SPARK_KIND.flare, breaks, this.pointC.set(0, 0, 0), sky, {
+                life: 1.4, size: 6 + run * 2.5, strength: 0.75, star: 1,
+            });
+            this.pool.ring(this.skyFoot.x, this.skyFoot.z, this.time, 0.7 + run * 0.15, sky);
+            // The lattice answers: every linked stone rings with it.
+            this.lattice.forEach((link, index) => {
+                this.gems.pulse(link.to, this.time + 0.2 + index * 0.03, 0.8 + run * 0.1, this.time);
+            });
+        } else if (cue.type === 'crown') {
+            // A perfect clear: every grown crystal rings in turn, nearest the board first, and
+            // every stone the lattice links rings with them.
+            let order = 0;
+            this.sites.forEach((site, index) => {
+                if (site.target !== 1) return;
+                this.schedule(0.12 + order * 0.05, 'chime', index);
+                order += 1;
+            });
+            this.lattice.forEach((link, index) => {
+                this.gems.pulse(link.from, this.time + 0.1 + index * 0.04, 1.3, this.time);
+                this.gems.pulse(link.to, this.time + 0.14 + index * 0.04, 1.3, this.time);
+            });
         } else if (cue.type === 'heart') {
             const tint = this.tintHold.copy(this.familyTint(4));
             effects.spark(SPARK_KIND.flare, this.heartTip, this.pointC.set(0, 0, 0), tint, {
@@ -485,6 +572,8 @@ export class CrystalCaveWorld {
             this.burst(this.pointA, Math.round(16 + cue.strength * 22), 7, tint, { gravity: 2.5, rise: 1.4 });
         } else if (cue.type === 'wither') {
             this.sites.forEach((site) => { site.target = 0; });
+            this.linksHeld = 0;
+            this.latticePeak = 0;
             this.lattice.forEach((_link, index) => this.effects.setBeamTarget(index, 0));
         }
     }
@@ -509,8 +598,91 @@ export class CrystalCaveWorld {
             this.pointA.set(site.x, this.poolLevel + 0.6, site.z);
             this.burst(this.pointA, 9, 3.4, tint, { gravity: 3, rise: 1.5 });
             this.pool.ring(site.x * 0.86, site.z, this.time, 0.42, tint);
-            site.members.forEach((index, order) => this.gems.pulse(index, this.time + order * 0.07, 1.2));
+            site.members.forEach((index, order) => this.gems.pulse(index, this.time + order * 0.07, 1.2, this.time));
+        } else if (action.kind === 'chime') {
+            const site = this.sites[action.a];
+            if (!site) return;
+            site.members.forEach((index, order) => this.gems.pulse(index, this.time + order * 0.05, 1.5, this.time));
+            this.pointA.set(site.x, this.poolLevel + 1.4, site.z);
+            this.effects.spark(SPARK_KIND.flare, this.pointA, this.pointC.set(0, 0, 0), this.familyTint(site.family), {
+                life: 0.8, size: 2.6, strength: 0.8, star: 1,
+            });
         }
+    }
+
+    /** The point on the skylight's axis at a height (world y), in `target`. */
+    skyAt(height, target) {
+        const fall = clamp((this.skyTop.y - height) / (this.skyTop.y - this.skyFoot.y), 0, 1);
+        return target.copy(this.skyTop).addScaledVector(this.skyAxis, fall * this.skyLength);
+    }
+
+    /** One grain of the glitter a fever shakes from the vault. */
+    glitter() {
+        this.glitterCount = (this.glitterCount + 1) % 4;
+        this.pointA.set((this.random() - 0.5) * 62, 14 + this.random() * 9, 6 - this.random() * 60);
+        this.pointC.set(0, -1.2 - this.random() * 1.4, 0);
+        const tint = this.familyTint(Math.floor(this.random() * FAMILIES));
+        this.effects.spark(SPARK_KIND.fall, this.pointA, this.pointC, tint, {
+            life: 3.6 + this.random() * 2.2,
+            size: 0.07 + this.random() * 0.1,
+            strength: 0.9,
+            gravity: 0.8,
+            drag: 0.55,
+            phase: this.random() * 6.28,
+            star: this.glitterCount === 0 ? 1 : 0,
+        });
+    }
+
+    /** A link of the lattice lets go: its beam falls as a line of sparks. */
+    dropLink(index) {
+        const link = this.lattice[index];
+        if (!link || this.effects.beamLevelOf(index) < 0.15) return;
+        for (let step = 0; step < 5; step += 1) {
+            this.pointA.copy(this.tipOf[link.from]).lerp(this.tipOf[link.to], (step + this.random()) / 5);
+            this.pointC.set((this.random() - 0.5) * 1.5, this.random() * 1.2, (this.random() - 0.5) * 1.5);
+            const tint = this.familyTint(this.crystals[link.to].family);
+            this.effects.spark(SPARK_KIND.fall, this.pointA, this.pointC, tint, {
+                life: 2 + this.random() * 1.6,
+                size: 0.1 + this.random() * 0.09,
+                gravity: 2.6,
+                drag: 0.7,
+                phase: this.random() * 6.28,
+            });
+        }
+    }
+
+    /**
+     * The lattice holds every link the chain has earned for as long as the chain lives (resting
+     * hands dim it, they do not break it); when it breaks the links let go one by one, newest
+     * first, each falling as a line of sparks. Hot play links the hall too, chain or not: the
+     * first links wake dimly as the heat passes hot, and a fever completes the lattice.
+     */
+    holdLattice(frame, dt) {
+        const count = this.lattice.length;
+        this.latticePeak = frame.combo >= 2 ? Math.max(this.latticePeak, frame.lattice) : 0;
+        const chained = frame.combo >= 2 ? Math.min(count, Math.ceil(this.latticePeak * count + 0.5)) : 0;
+        const { level, fever } = this.heat;
+        // A broken chain is felt: the links the heat holds stay quiet a few seconds after it.
+        const quiet = smooth01((this.time - this.releasedAt - 2.5) / 2);
+        const heated = Math.floor(count * (smooth01((level - 0.5) / 0.35) * 0.35 + fever * 0.45) * quiet);
+        const earned = Math.max(chained, heated);
+        if (earned >= this.linksHeld) {
+            this.linksHeld = earned;
+        } else if (dt > 0) {
+            const before = Math.ceil(this.linksHeld - 1e-6);
+            this.linksHeld = Math.max(earned, this.linksHeld - dt * Math.max(3, count / LATTICE_LET_GO));
+            for (let index = Math.ceil(this.linksHeld - 1e-6); index < before; index += 1) this.dropLink(index);
+        }
+        const lit = Math.ceil(this.linksHeld - 1e-6);
+        // A chain's links burn full; links the heat alone woke burn softer until the fever.
+        const chainedLevel = Math.min(1, 0.5 + frame.lattice * 0.5 + fever * 0.2);
+        const heatedLevel = 0.32 + fever * 0.45;
+        this.lattice.forEach((_link, index) => {
+            let target = 0;
+            if (index < chained) target = chainedLevel;
+            else if (index < lit) target = heatedLevel;
+            this.effects.setBeamTarget(index, target);
+        });
     }
 
     /**
@@ -530,25 +702,68 @@ export class CrystalCaveWorld {
         const u = this.light.uniforms;
         u.time.value = time;
         const frame = director?.getFrame?.() ?? null;
+        const { heat } = this;
         if (frame) {
+            heat.level = Number.isFinite(frame.level) ? frame.level : 0;
+            heat.fever = Number.isFinite(frame.fever) ? frame.fever : 0;
+            heat.punch = Number.isFinite(frame.punch) ? frame.punch : 0;
+            heat.warm = smooth01((heat.level - 0.15) / 0.6);
+            const { warm, fever } = heat;
+            // Momentary flares are frame-wide light: Reduce flashing keeps a trace of them (ADR-0021).
+            const flashes = flashScale();
+            const skylight = Number.isFinite(frame.skylight) ? frame.skylight : 0;
             u.energy.value = frame.energy;
             u.resonance.value = frame.resonance;
             // Reduced motion keeps the board's light as a softer pulse.
             u.flash.value = frame.flash * (0.5 + 0.5 * motion) * flashScale();
             u.flashColor.value.setRGB(frame.flashColor[0], frame.flashColor[1], frame.flashColor[2], THREE.SRGBColorSpace);
             for (let family = 0; family < FAMILIES; family += 1) u.familyLevel.array[family] = frame.familyLevel[family];
-            this.rock.controls.waveRadius.value = frame.wave.radius;
-            this.rock.controls.waveStrength.value = frame.wave.strength;
-            this.air.controls.worms.value = frame.worms * 1.6 - frame.dim * 0.4;
-            this.air.controls.shaft.value = (1 + frame.shaft * 1.3) * (1 - frame.dim * 0.6);
+            // The hall leans in as play heats: the stone takes more of the crystals' light, the
+            // glow-worms wake, the skylight opens, the lamps in the damp air burn brighter.
+            const { controls } = this.rock;
+            controls.gain.value = ROCK_GAIN * (1 + warm * 0.03 + fever * 0.05);
+            controls.skyGain.value = SKY_GAIN * (1 + fever * 0.12 + skylight * 0.5 * flashes);
+            this.air.controls.worms.value = frame.worms * 1.6 + warm * 0.4 + fever * 0.75 - frame.dim * 0.4;
+            const opened = (frame.shaft * 1.3 + skylight * 1.1) * flashes + warm * 0.05 + fever * 0.12;
+            this.air.controls.shaft.value = (1 + opened) * (1 - frame.dim * 0.6);
+            // The lamps' halos in the damp air are what would turn the hall milky: they hold back
+            // as the stones' own light rises, so the air stays dark between the crystals.
+            this.airLight.uniforms.gain.value = CRYSTAL_CAVE_AIR.lampGain * (1 - warm * 0.2 - fever * 0.15);
             for (let index = 0; index < director.cueCount; index += 1) this.perform(director.cues[index], frame);
             director.clearCues();
-            // The lattice holds as many links as the chain has earned.
-            const lit = frame.combo >= 2 ? Math.min(this.lattice.length, Math.ceil(frame.lattice * this.lattice.length + 0.5)) : 0;
-            this.lattice.forEach((link, index) => {
-                this.effects.setBeamTarget(index, index < lit ? 0.5 + frame.lattice * 0.5 : 0);
+            // Every wave in flight has its own shell in the stone and the air. Together they carry
+            // no more light than about one strong wave: a cascade fills the hall with rings, it
+            // does not wash the rock out.
+            const waves = frame.waves ?? [frame.wave];
+            let carried = 0;
+            controls.waves.forEach((_shell, slot) => {
+                if (waves[slot]?.active) carried += waves[slot].strength;
             });
+            const share = carried > WAVE_LIGHT ? WAVE_LIGHT / carried : 1;
+            controls.waves.forEach((shell, slot) => {
+                const view = waves[slot];
+                shell.value.w = view?.active ? view.radius : -100;
+                controls.waveStrengths.value.setComponent(slot, view?.active ? view.strength * share : 0);
+            });
+            this.holdLattice(frame, dt);
+            // A fever lights the far end of the hall: the heart beats with light, and glitter
+            // falls from the vault for as long as it lasts.
+            if (fever > 0.3 && time >= this.nextBeacon) {
+                this.effects.spark(SPARK_KIND.flare, this.heartTip, this.pointC.set(0, 0, 0), this.familyTint(4), {
+                    life: 1.5, size: 5 + fever * 9, strength: 0.45 + fever * 0.45, star: 1,
+                });
+                if (this.heartIndex >= 0) this.gems.pulse(this.heartIndex, time, 0.5 + fever * 0.7, time);
+                this.nextBeacon = time + 1.25 - fever * 0.35;
+            }
+            this.trickle += dt * fever * fever * GLITTER_RATE * (0.5 + 0.5 * motion);
+            while (this.trickle >= 1) {
+                this.trickle -= 1;
+                this.glitter();
+            }
         }
+        // The hum's standing bands climb faster as play heats (more so with motion allowed).
+        this.humPhase = (this.humPhase + dt * (HUM_SPEED + (heat.warm * 1.6 + heat.fever * 2.6) * motion)) % 6283.1853;
+        u.humPhase.value = this.humPhase;
         for (const action of this.actions) {
             if (action.active && action.at <= time) {
                 action.active = false;
@@ -598,6 +813,8 @@ export class CrystalCaveWorld {
             this.eye.y + (Math.sin(time * 0.093 + 1.3) * 0.34 - (pointer?.y ?? 0) * 0.25) * motion,
             this.eye.z + Math.sin(time * 0.05) * 0.5 * motion,
         );
+        // The view leans into the hall as play heats, and a little more on every hit.
+        camera.position.addScaledVector(this.forward, (heat.warm * 0.5 + heat.fever * 0.8 + heat.punch * 0.3) * motion);
         const aimX = this.aim.x + camera.position.x * 0.22;
         camera.lookAt(aimX, this.aim.y, this.aim.z);
         // The shared breath (shared/camera-breath.js) on top of the drift above, pivoting on
@@ -615,6 +832,17 @@ export class CrystalCaveWorld {
         this.time = 0;
         this.nextDrip = 1.5;
         this.lastSplash = -10;
+        this.heat = {
+            level: 0, fever: 0, punch: 0, warm: 0,
+        };
+        this.humPhase = 0;
+        this.linksHeld = 0;
+        this.latticePeak = 0;
+        this.releasedAt = -Infinity;
+        this.nextBeacon = 0;
+        this.trickle = 0;
+        this.glitterCount = 0;
+        this.fanHue = 0;
         this.actions.forEach((action) => { action.active = false; });
         this.effects.reset();
         this.pool.reset();
@@ -629,8 +857,13 @@ export class CrystalCaveWorld {
         u.resonance.value = 0;
         u.flash.value = 0;
         u.familyLevel.array.fill(1);
-        this.rock.controls.waveRadius.value = -100;
-        this.rock.controls.waveStrength.value = 0;
+        u.humPhase.value = 0;
+        const { controls } = this.rock;
+        controls.waves.forEach((shell) => { shell.value.w = -100; });
+        controls.waveStrengths.value.set(0, 0, 0, 0);
+        controls.gain.value = ROCK_GAIN;
+        controls.skyGain.value = SKY_GAIN;
+        this.airLight.uniforms.gain.value = CRYSTAL_CAVE_AIR.lampGain;
         this.air.controls.worms.value = 0;
         this.air.controls.shaft.value = 1;
     }

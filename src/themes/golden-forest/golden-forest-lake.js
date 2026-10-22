@@ -10,8 +10,9 @@
 import * as THREE from 'three/webgpu';
 import {
     cameraPosition, color, cos, dot, exp, float, floor, fract, hash, length, max, mix, normalize, positionWorld, pow,
-    reflect, reflector, saturate, screenUV, sin, smoothstep, step, texture, uniform, uniformArray, vec2, vec3,
+    reflect, reflector, saturate, screenUV, sin, smoothstep, sqrt, step, texture, uniform, uniformArray, vec2, vec3,
 } from 'three/tsl';
+import { GOLDEN_FOREST_BREEZE } from './golden-forest-light.js';
 import { GoldenForestRipples } from './golden-forest-ripples.js';
 import {
     GOLDEN_FOREST_BOUNDS, GOLDEN_FOREST_MAP_BIAS, GOLDEN_FOREST_MAP_RANGE,
@@ -35,6 +36,8 @@ export class GoldenForestLake {
         this.group.name = 'GoldenForestLake';
         this.ripples = new GoldenForestRipples(tier.ripples);
         this.uShimmer = uniform(0);
+        // How hot play runs (GoldenForestWorld.wear): the rings tilt the mirror less as they crowd.
+        this.uHeat = uniform(0);
         // Where the eye rests, and how many glitter cells a unit of view angle holds (watch()).
         this.uEye = uniform(new THREE.Vector3(0, 1.6, 8));
         this.uGlintCells = uniform(260);
@@ -108,7 +111,9 @@ export class GoldenForestLake {
         const paws = smoothstep(0.42, 0.7, light.noise(world.xz.mul(0.004).sub(drift.mul(0.12))).g.mul(0.7)
             .add(swell.b.mul(0.3)));
         const lee = smoothstep(0.02, 0.5, map.g);
-        const ruffle = paws.mul(0.75).add(0.16).mul(lee.mul(0.8).add(0.2)).add(light.uGust.mul(0.3));
+        // Glassy at rest; the gusts and the evening wind play raises spread the cat's-paws out of the lee.
+        const ruffle = paws.mul(0.75).add(0.16).mul(lee.mul(0.8).add(0.2)).add(light.uGust.mul(0.3))
+            .add(light.uWind.sub(GOLDEN_FOREST_BREEZE).mul(0.55));
         const waves = swell.rg.sub(0.5).mul(0.05)
             .add(chop.gb.sub(0.5).mul(0.11))
             .add(ripple.ba.sub(0.5).mul(0.16))
@@ -129,7 +134,13 @@ export class GoldenForestLake {
             ringSlope = ringSlope.add(offset.div(distance).mul(sin(phase).mul(amplitude).mul(0.44)));
             ringLight = ringLight.add(amplitude.mul(cos(phase).mul(0.5).add(0.5)));
         }
-        const slope = waves.add(ringSlope);
+        // Rings that stack (a cascade, a run of hard drops) interfere rather than burn the water
+        // white: their tilt and their light both ease off as they pile up.
+        ringSlope = ringSlope.div(length(ringSlope).mul(0.6).add(1));
+        ringLight = ringLight.div(sqrt(ringLight.pow2().add(1)));
+        // In hot play the rings come thick and fast: they keep their gold crests and glints but
+        // tilt the mirror less, so the near water stays a deep mirror instead of filling with sky.
+        const slope = waves.add(ringSlope.mul(this.uHeat.mul(-0.6).add(1)));
         const normal = normalize(vec3(slope.x.negate(), 1, slope.y.negate()));
 
         // -- what the water shows --------------------------------------------------------
@@ -182,17 +193,26 @@ export class GoldenForestLake {
             .add(light.uSunColor.mul(glitter).mul(this.uShimmer.mul(1.2).add(1.3)))
             .add(light.uSunColor.mul(sparkle).mul(this.uShimmer.mul(1.2).add(2.8)))
             // Rings carry a thread of gold on their crests.
-            .add(vec3(1.5, 0.84, 0.26).mul(ringLight).mul(light.uGlow.mul(0.5).add(0.22)));
+            // (A thread, not a sheet: crowded rings in hot play draw finer threads, not a pale disc.)
+            .add(vec3(1.5, 0.78, 0.2).mul(ringLight).mul(light.uGlow.mul(0.15).add(0.22))
+                .mul(this.uHeat.mul(-0.45).add(1)));
         // The waterline is soft: the last finger of water barely tints the gravel under it.
         const wetGravel = gravel.mul(0.55).mul(light.uSunColor.mul(sunlit).mul(0.4).add(light.ambient(up).mul(1.2)));
         material.colorNode = light.haze(mix(surface, wetGravel, shallow.mul(0.8)), { world });
         return material;
     }
 
-    update(dt, frame = {}) {
+    /**
+     * `worn` (GoldenForestWorld.wear) carries how hot play runs: the sun's path on the water burns
+     * brighter with it, and a back-to-back's gold pours down it.
+     */
+    update(dt, frame = {}, worn = null) {
         this.ripples.update(dt);
-        const shimmer = Number.isFinite(frame.shimmer) ? THREE.MathUtils.clamp(frame.shimmer, 0, 1) : 0;
-        this.uShimmer.value = shimmer;
+        const unit = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
+        const gold = Number.isFinite(worn?.gold) ? THREE.MathUtils.clamp(worn.gold, 0, 1.5) : 0;
+        this.uHeat.value = unit(worn?.level);
+        this.uShimmer.value = Math.min(1.6, unit(frame.shimmer) + unit(worn?.level) * 0.2
+            + unit(worn?.fever) * 0.2 + gold * 0.4);
     }
 
     reset() {

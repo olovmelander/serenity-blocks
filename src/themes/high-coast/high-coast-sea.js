@@ -201,8 +201,9 @@ export function createSea(u, t, tier) {
                 const lump = texture(t.noise, off.div(w.mul(0.9)).add(a.xy.mul(0.001))).level(0).b.mul(0.8).add(0.5);
                 const g1 = shape.mul(envelope).mul(a.w).mul(lump);
                 gust.addAssign(g1);
-                // Its light: glitter in the piece's colour where it sets out, sun-white as it runs.
-                const young = float(1.0).sub(smoothstep(0.2, TIMING.gust * 0.7, age));
+                // Its light: glitter in the piece's colour where it sets out, sun-white as it runs
+                // (in hot play it keeps `c.w` of its colour all the way).
+                const young = max(float(1.0).sub(smoothstep(0.2, TIMING.gust * 0.7, age)), c.w);
                 gustTint.addAssign(mix(vec3(1.0, 0.92, 0.75), c.xyz.mul(2.2).add(0.15), young).mul(g1));
             });
         });

@@ -877,6 +877,8 @@ describe('Pyrestorm theme: one node renderer on both backends', () => {
             color: themePieceColor('I'),
             shape: 'I',
             cells: [-1.5, 0, -0.5, 0, 0.5, 0, 1.5, 0],
+            // The T-spin cleared lines: the clear carries it, not the lock.
+            tspin: false,
             screen: null,
         });
         expect(theme.world.clears).toHaveLength(1);

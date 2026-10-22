@@ -89,8 +89,11 @@ export const noiseSmooth = (tex, uvNode, level = 0) => {
 
 // ── The scene's state ────────────────────────────────────────────────────────────
 
-/** Streaks in the air at once: shooting stars, a fireball and its train, the motes of locks. */
-export const STREAKS = 16;
+/**
+ * Streaks in the air at once: shooting stars, a fireball and its train, the motes of locks. A
+ * fever's storm, a great clear's fireball and a lock's mote all fit at once.
+ */
+export const STREAKS = 24;
 /** Rings on the water at once. */
 export const RINGS = 6;
 
@@ -122,8 +125,21 @@ export function createUniforms() {
         shutter: uniform(0),
         /** The Milky Way swelling on a great clear, 0..1. */
         surge: uniform(0),
-        /** A fireball's light: (where it is, unit world direction; power). */
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js): `heat` the level, `fever` the
+         * slow tide. The trails turn to their stars' own colours and the faint ones thin out, so
+         * a fever's sky is drawn in vivid arcs on a dark night instead of a grey veil.
+         */
+        heat: uniform(0),
+        fever: uniform(0),
+        /** How far a figure's lines take the colours of the stars they join (0: the hour's line). */
+        tint: uniform(0),
+        /** How still the lake lies: 1 its own swell, less in a fever (the mirror goes glassy). */
+        still: uniform(1),
+        /** Two fireballs' light: (where each is, unit world direction; power), and their colour. */
         flash: uniform(new THREE.Vector4(0, 1, 0, 0)),
+        flashB: uniform(new THREE.Vector4(0, 1, 0, 0)),
+        bolide: colour(0.7, 1.0, 0.9),
 
         /** The pole and the two unit vectors across it (starlight-core.js poleFrame). */
         pole: uniform(new THREE.Vector3(0, 0.42, -0.9)),
@@ -253,7 +269,8 @@ export const waterSlope = (u, noise, p, tier) => {
     const swell = vec2(0.94, 0.34).mul(cos(dot(p, vec2(0.94, 0.34)).mul(0.62).add(t.mul(0.42))).mul(0.0009))
         .add(vec2(-0.5, 0.87).mul(cos(dot(p, vec2(-0.5, 0.87)).mul(1.05).sub(t.mul(0.55))).mul(0.0007)))
         .add(vec2(0.2, -0.98).mul(cos(dot(p, vec2(0.2, -0.98)).mul(1.9).add(t.mul(0.8))).mul(0.0005)));
-    let slope = swell;
+    // A fever stills the lake: the swell and the cat's paws lie down, the rings still run.
+    let slope = swell.mul(u.still);
     if (tier.ripples) {
         // Cat's paws: where the coarse read is high, a fine read roughens the mirror.
         const far = length(p);
@@ -262,7 +279,8 @@ export const waterSlope = (u, noise, p, tier) => {
         const level = clamp(log2(max(far, 1.0).div(14.0)), 0.0, 6.0);
         const fine = noiseAt(noise, p.div(vec2(5.5, 9.0)).add(vec2(t.mul(0.021), t.mul(0.013))), level);
         const grain = vec2(fine.b.sub(0.5), fine.a.sub(0.5));
-        slope = slope.add(grain.mul(paws.mul(0.011).add(0.0012)).mul(exp(far.div(-160.0)).mul(0.9).add(0.1)));
+        slope = slope.add(grain.mul(paws.mul(0.011).add(0.0012)).mul(exp(far.div(-160.0)).mul(0.9).add(0.1))
+            .mul(u.still));
     }
     for (let i = 0; i < RINGS; i += 1) {
         const ring = u.rings.element(i * 2);

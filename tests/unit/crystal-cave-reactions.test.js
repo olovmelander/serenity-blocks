@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     CRYSTAL_CAVE_FAMILY_COUNT, CRYSTAL_CAVE_MAX_CUES, CRYSTAL_CAVE_PIECE_FAMILY, CRYSTAL_CAVE_WAVE_SECONDS,
-    CRYSTAL_CAVE_WAVE_SPEED, CrystalCaveReactions,
+    CRYSTAL_CAVE_WAVE_SLOTS, CRYSTAL_CAVE_WAVE_SPEED, CrystalCaveReactions,
 } from '../../src/themes/crystal-cave/crystal-cave-reactions.js';
 
 function seeded(seed = 1) {
@@ -252,19 +252,45 @@ describe('Crystal Cave reactions — the wave', () => {
         expect(director.getFrame().wave).toMatchObject({ active: false, radius: -100, strength: 0 });
     });
 
-    it('keeps one wave in flight and one in hand, however many clears arrive', () => {
+    it('folds a burst of clears into one shell and keeps every wave inside its slots', () => {
         const director = new CrystalCaveReactions({ rng: seeded() });
         for (let index = 0; index < 40; index += 1) director.onLineClear(1 + (index % 4));
         expect(cuesOf(director).filter((cue) => cue.type === 'wave')).toHaveLength(1);
         director.clearCues();
-        let started = 0;
         for (let index = 0; index < 600; index += 1) {
-            director.update(1 / 60);
-            started += types(director).filter((type) => type === 'wave').length;
+            const frame = director.update(1 / 60);
+            const started = cuesOf(director).filter((cue) => cue.type === 'wave');
+            expect(started.length).toBeLessThanOrEqual(CRYSTAL_CAVE_WAVE_SLOTS);
+            expect(frame.waves.filter((wave) => wave.active).length).toBeLessThanOrEqual(CRYSTAL_CAVE_WAVE_SLOTS);
+            cuesOf(director).filter((cue) => cue.type === 'wave')
+                .forEach((cue) => expect(cue.slot).toBeLessThan(CRYSTAL_CAVE_WAVE_SLOTS));
             director.clearCues();
         }
-        expect(started).toBe(1);
+        run(director, 20);
         expect(director.getFrame().wave.active).toBe(false);
+    });
+
+    it('lets a new wave start beside one still crossing instead of restarting it', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onLineClear(4);
+        run(director, 0.6);
+        const crossing = director.getFrame().waves.filter((wave) => wave.active).map((wave) => ({ ...wave }));
+        expect(crossing.length).toBe(2);
+        director.onLineClear(1);
+        const cue = cuesOf(director).find((entry) => entry.type === 'wave');
+        expect(cue).toBeDefined();
+        const frame = director.update(1 / 60);
+        // The quad's two waves run on, a step further and barely fainter; the single runs beside them.
+        crossing.forEach((wave) => {
+            const step = CRYSTAL_CAVE_WAVE_SPEED / 60;
+            const still = frame.waves.find((entry) => entry.active
+                && Math.abs(entry.radius - wave.radius - step) < 1e-3);
+            expect(still).toBeDefined();
+            expect(still.strength).toBeGreaterThan(wave.strength * 0.95);
+        });
+        expect(frame.waves[cue.slot]).toMatchObject({ active: true, far: false });
+        expect(frame.waves[cue.slot].radius).toBeLessThan(1);
+        expect(frame.wave.radius).toBeLessThan(1);
     });
 
     it('starts from the far end of the hall for a level up', () => {
@@ -275,20 +301,29 @@ describe('Crystal Cave reactions — the wave', () => {
         expect(director.update(0.001).wave.far).toBe(true);
     });
 
-    it('answers a perfect clear from the board at once and from the heart a moment later', () => {
+    it('crowns the clear a perfect clear ends from the heart, while the clear\'s own waves cross on', () => {
         const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onPieceLock({ piece: piece('I') });
+        director.onLineClear(4);
+        // Physics sends the perfect clear a beat after the clear's last wave.
+        run(director, 0.36);
+        const board = director.getFrame().waves.filter((wave) => wave.active && !wave.far).length;
+        expect(board).toBe(2);
         director.onPerfectClear();
-        expect(cuesOf(director).filter((cue) => cue.type === 'wave').map((cue) => cue.count)).toEqual([0]);
-        expect(director.update(0.001).wave.far).toBe(false);
+        // No second wave from the board: the heart answers from the far end.
+        expect(cuesOf(director).filter((cue) => cue.type === 'wave').map((cue) => cue.count)).toEqual([1]);
+        expect(types(director)).toContain('crown');
+        const frame = director.update(0.001);
+        expect(frame.wave.far).toBe(true);
+        expect(frame.waves.filter((wave) => wave.active && !wave.far).length).toBe(board);
         director.clearCues();
         const later = [];
         for (let index = 0; index < 90; index += 1) {
             director.update(1 / 60);
-            later.push(...cuesOf(director).filter((cue) => cue.type === 'wave').map((cue) => cue.count));
+            later.push(...types(director).filter((type) => type === 'wave'));
             director.clearCues();
         }
-        expect(later).toEqual([1]);
-        expect(director.getFrame().wave.far).toBe(true);
+        expect(later).toEqual([]);
     });
 });
 
@@ -345,18 +380,35 @@ describe('Crystal Cave reactions — chains', () => {
         expect(director.getFrame().resonance).toBeLessThan(fading * 0.4);
     });
 
-    it('lets the lattice go by itself when the chain is simply not fed', () => {
+    it('holds a chain the hands rest on: the hum quiets, the count and the lattice stay', () => {
         const director = new CrystalCaveReactions({ rng: seeded() });
         chain(director, 4);
+        const fed = director.getFrame().lattice;
         let released = 0;
         for (let index = 0; index < 60 * 6; index += 1) {
             director.update(1 / 60);
             released += types(director).filter((type) => type === 'release').length;
             director.clearCues();
         }
-        expect(released).toBe(1);
+        // Slow, normal-gravity play: seconds between clears never break the true combo.
+        expect(released).toBe(0);
+        expect(director.getFrame()).toMatchObject({ combo: 4, streak: 4 });
+        expect(director.getFrame().lattice).toBeLessThan(fed * 0.75);
+        expect(director.getFrame().lattice).toBeGreaterThan(fed * 0.4);
+        // The next clearing lock carries the count on from where it was.
+        director.onPieceLock({ piece: piece('T') });
+        director.onLineClear(1);
+        director.update(1 / 60);
+        expect(director.getFrame().streak).toBe(5);
+        // Only a lock that clears nothing breaks it, and then the hum eases out.
+        director.onPieceLock({ piece: piece('O') });
+        director.onPieceLock({ piece: piece('O') });
+        expect(types(director)).toContain('release');
+        run(director, 0.5);
         expect(director.getFrame().combo).toBe(0);
-        expect(director.getFrame().resonance).toBeLessThan(0.1);
+        expect(director.getFrame().lattice).toBeGreaterThan(0.1);
+        run(director, 3);
+        expect(director.getFrame().lattice).toBeLessThan(0.1);
     });
 
     it.each([0, 1, -2, NaN, true, {}, [], null, undefined, ''])('stays quiet for a combo of %j', (count) => {
@@ -387,7 +439,7 @@ describe('Crystal Cave reactions — flourishes and the end of a game', () => {
     it('answers a perfect clear with everything the cave has', () => {
         const director = new CrystalCaveReactions({ rng: seeded() });
         director.onPerfectClear();
-        expect(types(director).sort()).toEqual(['grow', 'heart', 'shower', 'wave']);
+        expect(types(director).sort()).toEqual(['crown', 'grow', 'heart', 'shower', 'wave']);
         const frame = director.update(0.001);
         expect(frame.energy).toBeGreaterThan(0.99);
         expect(frame.worms).toBeGreaterThan(0.99);
@@ -407,6 +459,147 @@ describe('Crystal Cave reactions — flourishes and the end of a game', () => {
         expect(frame.combo).toBe(0);
         run(director, 30);
         expect([...director.getFrame().familyLevel].every((level) => level > 0.99 && level <= 1.01)).toBe(true);
+    });
+});
+
+describe('Crystal Cave reactions — the build-up', () => {
+    /** The tray's Fever: twelve hard-dropped clearing locks 0.64 s apart. */
+    function fever(director, clears = 12) {
+        const firsts = [];
+        for (let step = 1; step <= clears; step += 1) {
+            director.onHardDrop({ distance: 16 });
+            director.onPieceLock({ piece: piece('IOTSZJL'[step % 7], step % 8) });
+            director.onLineClear({ lineCount: 1 + (step % 3), clearedRows: [22, 23], cascadeCount: 1 });
+            director.update(1 / 60);
+            if (step === 1) firsts.push({ ...director.getFrame(), familyLevel: [...director.getFrame().familyLevel] });
+            director.clearCues();
+            run(director, 0.64 - 1 / 60);
+        }
+        return firsts[0];
+    }
+
+    it('never cuts the light when a weak event follows a strong one', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onPieceLock({ piece: piece('I') });
+        director.onLineClear(4);
+        director.update(1 / 60);
+        const strong = { ...director.getFrame(), familyLevel: [...director.getFrame().familyLevel] };
+        director.onPieceLock({ piece: piece('O') });
+        director.onTSpin({ lineCount: 0 });
+        const weak = director.update(1 / 60);
+        expect(weak.flash).toBeGreaterThanOrEqual(strong.flash * Math.exp(-4.2 / 60));
+        expect(weak.energy).toBeGreaterThanOrEqual(strong.energy * Math.exp(-1.45 / 60));
+        expect(weak.wave.strength).toBeGreaterThan(0.6);
+        weak.familyLevel.forEach((level, family) => expect(level).toBeGreaterThan(strong.familyLevel[family] * 0.97));
+        // The tint joins the light instead of replacing it.
+        expect(weak.flashColor.every((channel, index) => Math.abs(channel - [1, 1, 1][index]) < 0.6)).toBe(true);
+    });
+
+    it('reads a long chain hotter than its first clear, and lights the fever', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        const first = fever(director);
+        const late = director.getFrame();
+        expect(late.level).toBeGreaterThan(first.level + 0.4);
+        expect(late.fever).toBeGreaterThan(0.3);
+        expect(late.stage).toBeGreaterThanOrEqual(2);
+        expect(late.resonance).toBeGreaterThan(first.resonance + 0.3);
+        expect(late.combo).toBe(12);
+        late.familyLevel.forEach((level, family) => expect(level).toBeGreaterThan(first.familyLevel[family] - 1));
+        expect(Math.min(...late.familyLevel)).toBeGreaterThan(1.3);
+        // In a fever the hall keeps ringing between clears: a chorus of waves.
+        director.clearCues();
+        let chorus = 0;
+        for (let index = 0; index < 90; index += 1) {
+            director.update(1 / 60);
+            chorus += types(director).filter((type) => type === 'wave').length;
+            director.clearCues();
+        }
+        expect(chorus).toBeGreaterThan(0);
+    });
+
+    it('breathes back to the quiet cave once the hands rest', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        fever(director);
+        director.onPieceLock({ piece: piece('O') });
+        director.onPieceLock({ piece: piece('O') });
+        run(director, 14);
+        const rest = director.getFrame();
+        expect(rest.level).toBeLessThan(0.08);
+        expect(rest.fever).toBe(0);
+        expect(rest.stage).toBe(0);
+        expect(rest.resonance).toBeLessThan(0.02);
+        rest.familyLevel.forEach((level) => expect(level).toBeLessThan(1.05));
+    });
+
+    it('builds each wave of a cascade on the last', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        director.onPieceLock({ piece: piece('S') });
+        const strengths = [];
+        for (let depth = 1; depth <= 4; depth += 1) {
+            if (depth >= 2) director.onCombo(depth);
+            director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: depth });
+            const clear = cuesOf(director).find((cue) => cue.type === 'clear');
+            expect(clear.count).toBe(depth);
+            strengths.push([clear.strength, cuesOf(director).find((cue) => cue.type === 'wave')?.strength ?? 0]);
+            director.clearCues();
+            run(director, 0.36);
+        }
+        for (let index = 1; index < strengths.length; index += 1) {
+            expect(strengths[index][0]).toBeGreaterThan(strengths[index - 1][0]);
+            expect(strengths[index][1]).toBeGreaterThan(strengths[index - 1][1]);
+        }
+    });
+
+    it('opens the skylight for a back-to-back, wider for each in a row, and starts over after a plain clear', () => {
+        const director = new CrystalCaveReactions({ rng: seeded() });
+        const quad = () => {
+            director.onPieceLock({ piece: piece('I') });
+            director.onLineClear(4);
+        };
+        quad();
+        director.clearCues();
+        quad();
+        director.onBackToBack();
+        const one = cuesOf(director).find((cue) => cue.type === 'skyfall');
+        expect(one).toMatchObject({ count: 1 });
+        const opened = director.update(1 / 60).skylight;
+        expect(opened).toBeGreaterThan(0.5);
+        director.clearCues();
+        run(director, 0.7);
+        quad();
+        director.onBackToBack();
+        const two = cuesOf(director).find((cue) => cue.type === 'skyfall');
+        expect(two.count).toBe(2);
+        expect(two.strength).toBeGreaterThan(one.strength);
+        expect(director.update(1 / 60).skylight).toBeGreaterThan(opened);
+        director.clearCues();
+        // A T-spin is difficult too: the run goes on.
+        director.onPieceLock({ piece: piece('T') });
+        director.onLineClear(2);
+        director.onTSpin({ lineCount: 2 });
+        director.onBackToBack();
+        expect(cuesOf(director).find((cue) => cue.type === 'skyfall').count).toBe(3);
+        director.clearCues();
+        // A plain clear ends it; the next back-to-back starts a new run.
+        director.onPieceLock({ piece: piece('O') });
+        director.onLineClear(2);
+        quad();
+        quad();
+        director.onBackToBack();
+        expect(cuesOf(director).find((cue) => cue.type === 'skyfall').count).toBe(1);
+    });
+
+    it('answers a T-spin that cleared nothing with a small turn of light', () => {
+        const zero = new CrystalCaveReactions({ rng: seeded() });
+        zero.onTSpin({ lineCount: 0 });
+        const full = new CrystalCaveReactions({ rng: seeded() });
+        full.onTSpin({ lineCount: 2 });
+        const small = cuesOf(zero).find((cue) => cue.type === 'spin');
+        const big = cuesOf(full).find((cue) => cue.type === 'spin');
+        expect(small.strength).toBeGreaterThan(0.2);
+        expect(small.strength).toBeLessThan(big.strength * 0.7);
+        expect(zero.energy).toBeGreaterThan(0.1);
+        expect(zero.energy).toBeLessThan(full.energy);
     });
 });
 

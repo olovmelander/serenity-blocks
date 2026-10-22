@@ -281,7 +281,7 @@ export function createColumns(u, plan) {
         // ── The seams fill with light ──
         const seam = float(1.0).sub(smoothstep(0.0, 0.05, across)).mul(float(1.0).sub(cap)).toVar();
         // Lava rises between the columns with the chamber's pressure.
-        const level = u.power.mul(4.5).add(u.surge.mul(3.5)).add(afterglow.mul(2.0));
+        const level = u.power.mul(4.5).add(u.surge.mul(3.5)).add(afterglow.mul(2.0)).add(u.rise);
         const risen = float(1.0).sub(smoothstep(level.mul(0.35), level.add(0.4), h)).mul(step(0.01, level))
             .mul(float(1.0).sub(hang));
         const veins = float(0.0).toVar();

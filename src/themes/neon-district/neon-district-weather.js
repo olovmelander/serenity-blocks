@@ -24,6 +24,7 @@ import {
     fract,
     length,
     max,
+    min,
     mix,
     normalize,
     positionGeometry,
@@ -71,15 +72,17 @@ export function createRain(u, count, opts = {}) {
 
     // ── Where this streak is now ──
     const speed = seed.w.mul(5.0).add(15.0);
-    const fall = fract(seed.z.add(u.time.mul(speed).div(RAIN_BOX.top)));
+    // The rain's own clock (integrated by the world): it falls faster as it comes down harder.
+    const fall = fract(seed.z.add(u.rainClock.mul(speed).div(RAIN_BOX.top)));
     const y = float(RAIN_BOX.top).mul(float(1.0).sub(fall));
     // The city flows toward the camera and the rain with it.
     const z = fract(seed.y.add(u.scroll.div(depth))).mul(depth).add(RAIN_BOX.far);
-    // A light wind leans the fall.
-    const x = seed.x.mul(2.0).sub(1.0).mul(RAIN_BOX.halfWidth).add(y.mul(0.07));
+    // A light wind leans the fall; a downpour leans it harder and draws it into longer streaks.
+    const lean = u.downpour.mul(0.1).add(0.07);
+    const x = seed.x.mul(2.0).sub(1.0).mul(RAIN_BOX.halfWidth).add(y.mul(lean));
     const head = vec3(x, y, z);
-    const lengthM = speed.mul(0.021).add(0.12);
-    const along = normalize(vec3(0.07, 1.0, 0.0));
+    const lengthM = speed.mul(0.021).add(0.12).mul(u.downpour.mul(0.65).add(1.0));
+    const along = normalize(vec3(lean, 1.0, 0.0));
     const centre = head.add(along.mul(positionGeometry.y.mul(lengthM)));
 
     // Camera-facing strip, at least a pixel and a half wide.
@@ -115,9 +118,13 @@ export function createRain(u, count, opts = {}) {
     const fog = ndFogAmount(dist, head.y);
     // Streaks dissolve into the haze, and the nearest ones are soft and faint (out of focus).
     const visible = float(1.0).sub(fog).mul(smoothstep(0.8, 5.0, dist)).mul(mix(float(0.35), float(1.0), smoothstep(2.0, 12.0, dist)));
-    const energy = ambient.add(glow.mul(0.3)).add(lamp.mul(0.55)).add(pulse)
+    // In a downpour (rain > 1) the drops catch more of the neon and the pulses, but the haze
+    // they carry does not grow and a longer streak spreads its light thinner: thousands of
+    // streaks must not add up to a grey veil. Rain under 1 (a let-up) dims them all.
+    const caught = glow.mul(0.3).add(lamp.mul(0.55)).add(pulse).mul(u.rain);
+    const energy = ambient.mul(min(u.rain, 1.0)).add(caught)
         .mul(visible)
-        .mul(u.rain)
+        .div(u.downpour.mul(0.65).add(1.0))
         // A thin streak is spread over at least a pixel and a half: keep its energy.
         .mul(float(0.011).mul(pxPerMetre).div(widthPx).mul(0.75)
             .add(0.25));

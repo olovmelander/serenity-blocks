@@ -254,6 +254,7 @@ export default class PaintedAgesTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.sendWorld('onLock', c),
                 clear: (c) => this.sendWorld('onClear', c),
+                spin: (c) => this.sendWorld('onSpin', c),
                 combo: (n, player) => this.reportCombo(n, player),
                 b2b: (level, player) => this.reportB2B(level, player),
                 levelUp: (level) => {

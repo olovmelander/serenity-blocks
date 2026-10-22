@@ -858,29 +858,75 @@ describe('Summer reaction director', () => {
             expect(advance(reactions, 1).front).toBeNull();
         });
 
-        it('alternates the direction of successive fronts and restarts each one upwind', () => {
+        it('sends every front with the prevailing breeze and never restarts or turns one round', () => {
             const reactions = create();
             const directions = [];
+            const ages = new Map();
+            const watch = () => {
+                // A front in a slot only ever grows older until it has crossed: none is restarted.
+                reactions.fronts.forEach((front, slot) => {
+                    if (front.active && ages.has(slot)) expect(front.age).toBeGreaterThanOrEqual(ages.get(slot));
+                    if (front.active) ages.set(slot, front.age);
+                    else ages.delete(slot);
+                });
+            };
             for (const event of [() => reactions.onLineClear(2), () => reactions.onLevelUp(),
                 () => reactions.onPerfectClear(), () => reactions.onLineClear(4)]) {
-                advance(reactions, 0.7);
+                for (let step = 0; step < 42; step++) {
+                    reactions.update(1 / 60);
+                    watch();
+                }
+                const crossing = reactions.getFrame().fronts.map((front) => front.position);
                 event();
-                const { front } = reactions.frame;
+                watch();
+                const { front, fronts } = reactions.frame;
                 directions.push(front.direction);
-                expect(front.position * front.direction).toBeLessThan(-1);
-                expect(front.strength).toBe(0);
+                // Every front already crossing carries on from where it was.
+                for (const position of crossing) {
+                    expect(fronts.some((entry) => Math.abs(entry.position - position) < 1e-12)).toBe(true);
+                }
             }
-            expect(directions).toEqual([directions[0], -directions[0], directions[0], -directions[0]]);
-            // A mirrored crossing: the front that goes the other way is where its twin would be, reflected.
-            const twin = create();
-            twin.onLineClear(2);
-            const other = create();
-            other.onLineClear(2);
-            advance(other, 5);
-            other.onLineClear(2);
-            const [first, second] = [advance(twin, 0.8).front, advance(other, 0.8).front];
-            expect(second.direction).toBe(-first.direction);
-            expect(second.position).toBeCloseTo(-first.position, 9);
+            // One prevailing breeze: every front goes the same way.
+            expect(new Set(directions)).toEqual(new Set([1]));
+            // Three cross at once; the fourth found every slot busy and joined the youngest, which
+            // eases up instead of starting over.
+            expect(reactions.frame.fronts).toHaveLength(3);
+            const joined = reactions.front;
+            expect(joined.serial).toBe(reactions.sweeps);
+            expect(joined.age).toBeGreaterThan(0.6);
+            const eased = advance(reactions, 0.3);
+            expect(reactions.front).toBe(joined);
+            expect(eased.front.position).toBeGreaterThan(-1.4 + 2.8 * (0.6 / 2.2));
+        });
+
+        it('rolls a front of wind for every wave of a cascade, each one further on', () => {
+            const reactions = create();
+            reactions.onPieceLock({ piece: pieceOf('S') });
+            reactions.onLineClear(2, { clearedRows: [22, 23], cascadeCount: 1 });
+            const jets = [];
+            const rings = [];
+            jets.push(emittersOf(reactions.frame, 'clear')[0].strength);
+            rings.push(newest(reactions.frame.rings));
+            for (let wave = 2; wave <= 4; wave++) {
+                advance(reactions, 0.36);
+                reactions.onCombo(wave);
+                reactions.onLineClear(1, { clearedRows: [23], cascadeCount: wave });
+                jets.push(emittersOf(reactions.frame, 'clear').at(-1).strength);
+                rings.push(live(reactions.frame.rings).filter((ring) => ring.column === 0.5).at(-1));
+            }
+            // A wave of one line builds on the waves before it: its jets grow from wave to wave,
+            // and its ring opens further out on the lake.
+            for (let wave = 2; wave < jets.length; wave++) expect(jets[wave]).toBeGreaterThan(jets[wave - 1]);
+            for (let wave = 1; wave < rings.length; wave++) {
+                expect(rings[wave].row).toBeGreaterThan(rings[wave - 1].row);
+            }
+            // Three fronts are crossing, one behind the other, all the same way.
+            const { fronts } = reactions.frame;
+            expect(fronts).toHaveLength(3);
+            expect(new Set(fronts.map((front) => front.direction))).toEqual(new Set([1]));
+            expect(new Set(fronts.map((front) => front.position.toFixed(6))).size).toBe(3);
+            // It is one lock: the combo counts it once.
+            expect(reactions.frame.streak).toBe(1);
         });
     });
 
@@ -1188,12 +1234,16 @@ describe('Summer reaction director', () => {
             expect(reactions.onGameOver()).toBe(true);
             const over = snapshot(reactions.frame);
             expect(over.settled).toBe(true);
-            expect(over.front).toBeNull();
             expect(over.streak).toBe(0);
-            // Nothing is cut: emitters, envelopes, lanterns, rings and gusts already asked for play out.
-            expect({
-                ...over, settled: false, front: playing.front, streak: playing.streak,
-            }).toEqual(playing);
+            // Nothing is cut: emitters, envelopes, lanterns, rings, gusts and the front of wind
+            // already crossing play out.
+            expect({ ...over, settled: false, streak: playing.streak }).toEqual(playing);
+            // The wind dies: the front eases away instead of snapping the meadow upright.
+            const blowing = play();
+            const dying = advance(reactions, 0.3).front;
+            expect(dying).not.toBeNull();
+            expect(dying.strength).toBeLessThan(advance(blowing, 0.3).front.strength);
+            expect(advance(reactions, 2).front).toBeNull();
             // The crown lets go at once instead of waiting out its hold.
             const still = play();
             expect(advance(reactions, 0.5).crown).toBeLessThan(advance(still, 0.5).crown);
@@ -1329,6 +1379,165 @@ describe('Summer reaction director', () => {
         });
     });
 
+    describe('building with play', () => {
+        /** A twelve-clear chain at a quick hand's pace, hard-dropped, ending in a quad. */
+        const chain = (reactions, clears = 12, each = () => {}) => {
+            for (let n = 0; n < clears; n++) {
+                reactions.onHardDrop({ distance: 16 });
+                reactions.onPieceLock({ piece: pieceOf(LETTERS[n % LETTERS.length]) });
+                const lines = n === clears - 1 ? 4 : 1 + (n % 3);
+                reactions.onLineClear(lines, { clearedRows: [20, 21, 22, 23].slice(0, lines), cascadeCount: 1 });
+                each(advance(reactions, 0.64), n);
+            }
+        };
+
+        it('never lets a weak event cut the light a strong one left', () => {
+            const reactions = create();
+            reactions.onPieceLock({ piece: pieceOf('I') });
+            reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+            reactions.update(1 / 60);
+            const before = snapshot(reactions.frame);
+            // A soft lock and a single right on the heels of the quad.
+            reactions.onPieceLock({ piece: pieceOf('O') });
+            reactions.onLineClear(1, { clearedRows: [23] });
+            const after = snapshot(reactions.frame);
+            for (const key of ['gust', 'warmth', 'shafts', 'glow', 'shimmer', 'flock', 'flutter', 'sunburst']) {
+                expect(after[key], key).toBeGreaterThanOrEqual(before[key]);
+            }
+            for (let kind = 0; kind < SUMMER_BOUQUET_KINDS; kind++) {
+                expect(after.species[kind]).toBeGreaterThanOrEqual(before.species[kind]);
+            }
+            expect(after.crown).toBeGreaterThanOrEqual(before.crown);
+            expect(after.surge.punch).toBeGreaterThanOrEqual(before.surge.punch);
+            // And the quad's rising meadow plays on beside the single's jets.
+            expect(emittersOf(reactions.frame, 'rise')).toHaveLength(1);
+        });
+
+        it('reads a long chain hotter than its first clear, and lights the fever', () => {
+            const reactions = create();
+            const seen = [];
+            chain(reactions, 12, (frame) => seen.push(snapshot(frame)));
+            const [first] = seen;
+            const last = seen.at(-1);
+            expect(first.surge.stage).toBeLessThanOrEqual(1);
+            expect(last.surge.level).toBeGreaterThan(first.surge.level + 0.4);
+            expect(last.surge.fever).toBeGreaterThan(0.5);
+            expect(last.surge.stage).toBe(3);
+            // The level only climbs over the chain: the peak comes late, not in the first clears.
+            const levels = seen.map((frame) => frame.surge.level);
+            expect(levels.indexOf(Math.max(...levels))).toBeGreaterThan(5);
+            expect(levels[2]).toBeLessThan(0.6);
+            // The crown has wound up and the light is far beyond what one clear leaves.
+            expect(last.crown).toBeGreaterThan(first.crown);
+            expect(last.warmth).toBeGreaterThan(first.warmth);
+        });
+
+        it('rolls fronts of its own through the meadow in a fever, and breathes back to calm', () => {
+            const reactions = create();
+            chain(reactions, 12);
+            expect(reactions.frame.surge.stage).toBe(3);
+            // The hands rest. While the fever burns on, the meadow keeps rolling in waves of wind
+            // that no event sent ...
+            const sent = reactions.sweeps;
+            let rolled = 0;
+            for (let step = 0; step < 60 * 3; step++) {
+                const before = reactions.sweeps;
+                reactions.update(1 / 60);
+                if (reactions.sweeps > before) rolled += 1;
+            }
+            expect(rolled).toBeGreaterThan(0);
+            expect(reactions.sweeps).toBe(sent + rolled);
+            // ... and then it lets go: within seconds the evening is calm again.
+            const rested = advance(reactions, 9);
+            expect(rested.surge.stage).toBe(0);
+            expect(rested.surge.level).toBeLessThan(0.15);
+            expect(rested.surge.fever).toBe(0);
+            expect(rested.fronts).toEqual([]);
+            for (const key of ['gust', 'warmth', 'shafts', 'glow', 'shimmer', 'sunburst']) {
+                expect(rested[key], key).toBeLessThan(0.01);
+            }
+            // A run of rest after a game over stays calm: game over stops the fever's own wind.
+            reactions.onGameOver();
+            expect(advance(reactions, 3).fronts).toEqual([]);
+        });
+
+        it('crowns the quad with the perfect clear instead of playing a second one', () => {
+            const quad = () => {
+                const reactions = create();
+                reactions.onPieceLock({ piece: pieceOf('I') });
+                reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+                advance(reactions, 0.36);
+                return reactions;
+            };
+            const plain = quad();
+            const crowned = quad();
+            const crossing = crowned.getFrame().fronts.length;
+            crowned.onPerfectClear({ depth: 4 });
+            // No second rising meadow while the quad's is still lifting its petals.
+            expect(emittersOf(crowned.frame, 'rise')).toHaveLength(1);
+            // The front of wind still crossing is joined, not started over.
+            expect(crowned.frame.fronts).toHaveLength(crossing);
+            expect(crowned.front.age).toBeGreaterThan(0.3);
+            // The sunburst blazes on top of the quad's, and the maypole throws the bouquet.
+            expect(crowned.frame.sunburst).toBeGreaterThan(plain.frame.sunburst + 0.3);
+            expect(emittersOf(crowned.frame, 'bouquet')).toHaveLength(1);
+            expect(advance(crowned, 0.1).surge.punch).toBeGreaterThan(advance(plain, 0.1).surge.punch);
+            // On its own (no quad still playing) it raises the meadow as before.
+            const alone = create();
+            alone.onPerfectClear();
+            expect(emittersOf(alone.frame, 'rise')).toHaveLength(1);
+        });
+
+        it('answers a run of back-to-backs with a sun that burns brighter each time', () => {
+            const reactions = create();
+            const bursts = [];
+            for (let run = 0; run < 3; run++) {
+                const before = reactions.frame.sunburst;
+                reactions.onBackToBack();
+                bursts.push(reactions.frame.sunburst - before);
+                advance(reactions, 1.4);
+            }
+            expect(bursts[0]).toBeGreaterThan(0);
+            expect(bursts[1]).toBeGreaterThan(bursts[0]);
+            expect(bursts[2]).toBeGreaterThan(bursts[1]);
+            // A back-to-back long after the last starts a new run.
+            advance(reactions, 20);
+            reactions.onBackToBack();
+            expect(reactions.b2bRun).toBe(1);
+        });
+
+        it('shows a T-spin that clears nothing, smaller than one that clears', () => {
+            const empty = create();
+            empty.onTSpin({ piece: pieceOf('T'), lineCount: 0 });
+            const cleared = create();
+            cleared.onTSpin({ piece: pieceOf('T'), lineCount: 2 });
+            expect(emittersOf(empty.frame, 'spin')).toHaveLength(1);
+            const [quiet, loud] = [advance(empty, 0.5).surge, advance(cleared, 0.5).surge];
+            expect(quiet.punch).toBeGreaterThan(0);
+            expect(quiet.level).toBeGreaterThan(0);
+            expect(loud.level).toBeGreaterThan(quiet.level);
+        });
+
+        it('counts the true combo across locks, whatever depth the cascades report', () => {
+            const reactions = create();
+            reactions.onPieceLock();
+            reactions.onLineClear(2, { cascadeCount: 1 });
+            reactions.onCombo(2);
+            reactions.onLineClear(1, { cascadeCount: 2 });
+            reactions.onCombo(3);
+            reactions.onLineClear(1, { cascadeCount: 3 });
+            expect(reactions.frame.streak).toBe(1);
+            reactions.onPieceLock();
+            reactions.onLineClear(1);
+            expect(reactions.frame.streak).toBe(2);
+            // With lock effects off the theme still notes the lock: one that clears nothing ends it.
+            reactions.noteLock();
+            reactions.noteLock();
+            expect(reactions.frame.streak).toBe(0);
+            expect(reactions.frame.emitters.filter((emitter) => emitter.kind === 'lock')).toHaveLength(2);
+        });
+    });
+
     describe('time', () => {
         it('lets every envelope die away, never rise, and snaps a dying one to zero', () => {
             const reactions = create();
@@ -1450,9 +1659,13 @@ describe('Summer reaction director', () => {
             // Reading the frame is not the same as stepping it.
             for (let read = 0; read < 50; read++) reactions.getFrame();
             expect(snapshot(reactions.frame)).toEqual(before);
+            const stored = reactions.swells.gust.rawAt(clock);
             const after = reactions.update(0.2);
             expect(reactions.time).toBeCloseTo(clock + 0.2, 12);
-            expect(after.gust).toBeLessThan(before.gust);
+            // A frenzy holds the gust at its ceiling a moment (what it stores is past it); it is
+            // falling all the while.
+            expect(after.gust).toBeLessThanOrEqual(before.gust);
+            expect(reactions.swells.gust.rawAt(reactions.time)).toBeLessThan(stored);
             expect(after.bouquetFlash).toBeLessThan(before.bouquetFlash);
             expect(after.emitters.at(-1).age).toBeCloseTo(0.2, 12);
         });
@@ -1502,35 +1715,36 @@ describe('Summer reaction director', () => {
             },
         );
 
-        it('reclaims the emitter furthest through its own life, not the one that started first', () => {
+        it('reclaims the emitter with the least of its work left, not the one furthest through its life', () => {
             const reactions = create('Minimal');
             const capacity = reactions.maxEmitters;
-            // Fill the pool with the longest-lived emitters first, so that later ones overtake them.
-            for (let slot = 0; slot < capacity; slot++) {
-                reactions.emit('lock', { duration: capacity - slot, strength: 0.5 });
-                advance(reactions, 0.1);
+            // A short jet still blowing petals, and locks that threw theirs the moment they began.
+            reactions.emit('clear', { duration: 0.8, strength: 0.8, lines: 2 });
+            for (let slot = 1; slot < capacity; slot++) {
+                reactions.emit('lock', { duration: 1.4 + slot * 0.3, strength: 0.5 });
             }
-            advance(reactions, 0.2);
-            const first = reactions.frame.emitters;
-            expect(first).toHaveLength(capacity);
-            // The last to start is now the furthest through its life; the first is the least far.
-            expect(first.reduce((a, b) => (b.progress > a.progress ? b : a)).serial).toBe(capacity - 1);
-            for (let round = 0; round < capacity * 3; round++) {
-                const before = reactions.frame.emitters;
-                expect(before).toHaveLength(capacity);
-                const furthest = before.reduce((a, b) => (b.progress > a.progress ? b : a));
-                const serial = Math.max(...before.map((emitter) => emitter.serial)) + 1;
-                reactions.emit('spin', { duration: 1 + (round % 3), strength: 0.5 });
+            advance(reactions, 0.4);
+            const before = reactions.frame.emitters;
+            expect(before).toHaveLength(capacity);
+            const [jet] = emittersOf(reactions.frame, 'clear');
+            // The jet is the furthest through its life: the old rule would have cut it mid-blow.
+            expect(Math.max(...before.map((emitter) => emitter.progress))).toBe(jet.progress);
+            const locks = emittersOf(reactions.frame, 'lock').sort((a, b) => b.progress - a.progress);
+            // The spent locks go first, the furthest through its life first ...
+            for (const lock of locks) {
+                const { serial } = reactions;
+                reactions.emit('spin', { duration: 1.7, strength: 0.8 });
                 const after = reactions.frame.emitters;
                 expect(after).toHaveLength(capacity);
-                const [started] = after.filter((emitter) => emitter.serial === serial);
-                expect(started, `round ${round}`).toMatchObject({ id: furthest.id, age: 0, kind: 'spin' });
-                // Everything else plays on untouched.
-                for (const emitter of before.filter((entry) => entry.id !== furthest.id)) {
-                    expect(after.find((entry) => entry.id === emitter.id)).toEqual(emitter);
-                }
-                advance(reactions, 0.07);
+                expect(after.find((emitter) => emitter.serial === serial)).toMatchObject({ id: lock.id, age: 0 });
+                expect(after.find((emitter) => emitter.id === jet.id)).toEqual(jet);
             }
+            // ... and with every slot at work, the one with the least left: the jet near its end
+            // rather than a garland that has only begun.
+            const { serial } = reactions;
+            reactions.emit('combo', { duration: 1.4, strength: 0.6 });
+            expect(reactions.frame.emitters.find((emitter) => emitter.serial === serial)).toMatchObject({ id: jet.id });
+            expect(emittersOf(reactions.frame, 'spin')).toHaveLength(capacity - 1);
         });
 
         it('takes a finished slot before recycling one that is still playing', () => {

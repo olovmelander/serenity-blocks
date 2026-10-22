@@ -15,14 +15,28 @@
  *            the flags it passes take the piece's colour and hold it; a ring of lifted powder
  *            runs over the snow from under the board. A hard drop throws more and hits harder.
  *   clear    the cleared rows leave the card as blades of light and a storm of papers in all
- *            five colours; every flag lets go of what it was holding; the sun lifts for a
- *            moment, and a wave of light runs down the mountain, one front a line.
+ *            five colours; every flag lets go of the surplus of what it holds and keeps the
+ *            rest, so a chain's lines go on filling with the colours played; the sun lifts for
+ *            a moment, and a wave of light runs down the mountain, one front a line. A cascade's
+ *            every wave runs deeper and hotter than the one before.
  *   combo    the chain raises the sun. Its light comes down the hero's face step by step, the
  *            headwall's shadow draws back across the cloud sea, the shafts open, the crests
- *            smoke harder — and at three or four in a row the sun itself clears the col.
- *   four     the mountain holds its breath, then the sun stands clear of the wall: the whole
- *            amphitheatre is lit at once, every line snaps, the air fills with papers and
- *            diamond dust and an avalanche goes down the hero's face.
+ *            smoke harder — and three or four in a row bring the sun itself over the col.
+ *            When a long chain ends the lines let everything they hold go to the wind.
+ *   four     the mountain holds its breath (as deeply as play is cold), then the sun stands
+ *            clear of the wall: the whole amphitheatre is lit at once, the lines let most of
+ *            what they hold go, the air fills with papers and diamond dust and an avalanche
+ *            goes down the hero's face (a second beside it if the first is still coming down).
+ *   crown    a board cleared whole: the ice in the air draws its ring and two mock suns round
+ *            the sun, the lines let go of everything, and the spire and the pole send prayers.
+ *   b2b      the second difficult clear in a row: the ring flickers up round the sun, the
+ *            wave runs down in sunfire and the spire and the pole answer in gold.
+ *
+ * Under all of it the heat of play (src/themes/shared/gameplay-surge.js) builds: a quick hand
+ * raises the wind and the banners off the crests, the lines burn brighter and reach farther,
+ * the sun is lifted a little more, the iris closes so the colours stay deep; and in a fever the
+ * ring and the mock suns stand round the sun, diamond dust fires all through the air, the sun
+ * climbs past where any chain alone would take it. When the hands rest it all breathes back.
  *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame.
@@ -34,7 +48,10 @@
 
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
+    AVALANCHE_SLOTS,
+    BLESS_MAX,
     DEG,
     EYE,
     FLAG_TURN,
@@ -45,6 +62,7 @@ import {
     HUSH_HOLD,
     LUNG_TA,
     REST_RIG,
+    RING_FADE,
     SUNFIRE,
     SUN_AZIMUTH,
     SUN_ELEVATION,
@@ -102,6 +120,29 @@ const IDLE_BREATH = 0.5 * DEG;
 export const PAPER_DEPTH = 5.2;
 /** The papers pool the handfuls below are sized for; smaller pools throw proportionally fewer. */
 const PAPER_POOL = 720;
+/**
+ * Per second, how fast the mountain's charge closes on the chain's (rising; falling). A chain
+ * raises the sun over seconds: the first clears warm the wall, the light comes over it a few
+ * clears in, not on the third lock.
+ */
+const POWER_RISE = 0.6;
+const POWER_FALL = 0.7;
+/** The share of the heat of play (0..1) that adds to the chain's charge on the sun. */
+const PLAY_CHARGE = 0.25;
+/** How much higher than any chain alone the sun climbs in a fever (radians). */
+const FEVER_RISE = 3.5 * DEG;
+/** The deepest a quad's hush holds the light (breath) from cold; a fever only inhales. */
+const HUSH_BREATH = 0.12;
+/** What a broken chain dims the frame by, from cold (none at all once play runs hot). */
+const BREAK_DIP = 0.12;
+/** A chain at least this long lets everything the lines hold go when it ends. */
+const LONG_CHAIN = 3;
+
+/**
+ * Add a new amount `b` to a lingering one `a` without ever lowering it: the larger stands and
+ * a part of the smaller adds to it, under a cap.
+ */
+const gather = (a, b, cap, share = 0.3) => Math.min(cap, Math.max(a, b) + share * Math.min(a, b));
 
 export class HimalayanPeakWorld {
     /**
@@ -161,6 +202,7 @@ export class HimalayanPeakWorld {
         this._ray = new THREE.Vector3();
         this._rest = new THREE.PerspectiveCamera(50, 16 / 9, REST_RIG.near, REST_RIG.far);
         this._sun = [0, 0, 0];
+        this._tint = new THREE.Vector3();
         this._weights = [0, 0, 0, 0];
         this._point = { x: 0.5, y: 0.5 };
         this._from = [0, 0, 0];
@@ -181,6 +223,7 @@ export class HimalayanPeakWorld {
             exposure: 1,
             glare: 0,
             glareColor: [1, 0.8, 0.6],
+            saturation: 0,
         };
         this.resetState(0);
     }
@@ -201,14 +244,30 @@ export class HimalayanPeakWorld {
         this.breath = 1;
         this.spark = 0;
         this.halo = 0;
-        this.pendingHalo = { time: Infinity, amount: 0 };
         this.hushUntil = -1;
+        /** How deep the hush under way holds the light (1 from cold; shallower in hot play). */
+        this.hushDepth = 1;
         this.elevation = SUN_ELEVATION.rest;
-        this.waveCursor = 0;
-        this.ringCursor = 0;
-        this.gustCursor = 0;
-        this.lastClear = { time: -100, lines: 0 };
-        this.pendingKick = { time: Infinity, amount: 0 };
+        // Every momentary light ACCUMULATES (src/themes/shared/swell.js): a new event adds to
+        // what is still lit and never restarts it, so a single after a quad cannot cut its
+        // light, and a quick hand rides on a floor instead of flickering.
+        /** The camera's kick and the post's flash. */
+        this.kickSwell = new Swell({ release: 0.16, ceiling: 1.2, knee: 0.7 });
+        this.flashSwell = new Swell({ release: 0.25, ceiling: 0.5, knee: 0.3 });
+        /** A clear's lift of the shafts, the bloom and the iris. */
+        this.liftSwell = new Swell({ release: 0.7, ceiling: 1.1, knee: 0.75 });
+        /** The ring of ice-light round the sun (four lines, a back-to-back, a crown). */
+        this.haloSwell = new Swell({
+            attack: 0.12, release: 2.6, ceiling: 1.3, knee: 1,
+        });
+        /** The heat of play: how long and how hard the hands have been quick. */
+        this.play = new GameplaySurge();
+        /** The surge as of the last frame (events read it). */
+        this.heatOfPlay = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
+        /** The avalanches under way: when each started down, how hard, and how hard it grows to. */
+        this.slides = Array.from({ length: AVALANCHE_SLOTS }, () => ({ birth: -100, strength: 0, target: 0 }));
         this.pendingSwell = { time: Infinity, amount: 0 };
         this.pendingSurge = null;
         this.counts = {
@@ -225,7 +284,7 @@ export class HimalayanPeakWorld {
             for (let i = 0; i < this.u.waveA.length; i++) this.u.waveA[i].value.set(-100, 1, 0, 3300);
             for (let i = 0; i < this.u.ringA.length; i++) this.u.ringA[i].value.set(0, 0, -100, 0);
             for (let i = 0; i < this.u.gustA.length; i++) this.u.gustA[i].value.set(0, 0, -100, 0);
-            this.u.avalanche.value.set(-100, 0);
+            this.u.avalanche.value.set(-100, 0, -100, 0);
             this.u.spark.value.set(1, 1, 1, 0);
         }
     }
@@ -378,10 +437,30 @@ export class HimalayanPeakWorld {
     resetSession() {
         const {
             time, windRun, gale, flutter, power, surge, swell, elevation, breath, storm, halo, spark,
+            kick, flash, kickSwell, flashSwell, liftSwell, haloSwell, play, heatOfPlay,
         } = this;
         this.resetState(time);
+        // (The heat of play and every light still lit run down on their own.)
         Object.assign(this, {
-            windRun, gale, flutter, power, surge, swell, elevation, breath, storm, halo, spark,
+            windRun,
+            gale,
+            flutter,
+            power,
+            surge,
+            swell,
+            elevation,
+            breath,
+            storm,
+            halo,
+            spark,
+            kick,
+            flash,
+            kickSwell,
+            flashSwell,
+            liftSwell,
+            haloSwell,
+            play,
+            heatOfPlay,
         });
     }
 
@@ -514,13 +593,14 @@ export class HimalayanPeakWorld {
     // ── Gameplay ────────────────────────────────────────────────────────────────
 
     /** The point on a flag line nearest a screen point, on one side of the card (−1 / +1). */
-    nearestLinePoint(sx, sy, side) {
+    nearestLinePoint(sx, sy, side, skipLine = -1) {
         const card = cardUnion(this.layout) || { x0: 0.4, x1: 0.6 };
         const centre = (card.x0 + card.x1) * 0.5;
         let best = null;
         let bestD = Infinity;
         for (let i = 0; i < this.lineSamples.length; i++) {
             const s = this.lineSamples[i];
+            if (s.line === skipLine) continue;
             if (s.sx < -0.05 || s.sx > 1.05 || s.sy < -0.1 || s.sy > 1.05) continue;
             // Lines behind the card do not count, nor ones on the far side of it.
             if (s.sx > card.x0 && s.sx < card.x1) continue;
@@ -534,12 +614,144 @@ export class HimalayanPeakWorld {
         return best;
     }
 
-    /** Send a gust along `line` (−1 = every line) from `along` metres down it. */
+    /**
+     * Send a gust along `line` (−1 = every line) from `along` metres down it. It takes the slot
+     * whose gust has least left in it (one still running out along a long line keeps going).
+     */
     gust(line, along, time, strength) {
         const { u } = this;
-        const slot = this.gustCursor % u.gustA.length;
-        this.gustCursor += 1;
+        let slot = 0;
+        let least = Infinity;
+        for (let i = 0; i < u.gustA.length; i++) {
+            const A = u.gustA[i].value;
+            const left = A.w * Math.exp(-Math.max(0, this.time - A.z) / 2.5);
+            if (left < least) {
+                least = left;
+                slot = i;
+            }
+        }
         u.gustA[slot].value.set(line, along, time, strength);
+    }
+
+    /** The powder ring slot with least light left in it. */
+    ringSlot() {
+        const { ringA } = this.u;
+        let slot = 0;
+        let least = Infinity;
+        for (let i = 0; i < ringA.length; i++) {
+            const A = ringA[i].value;
+            const left = A.w * Math.exp(-Math.max(0, this.time - A.z) * RING_FADE);
+            if (left < least) {
+                least = left;
+                slot = i;
+            }
+        }
+        return slot;
+    }
+
+    /** The wave slot whose light set off longest ago (it is furthest down the face, or gone). */
+    waveSlot() {
+        const { waveA } = this.u;
+        let slot = 0;
+        for (let i = 1; i < waveA.length; i++) if (waveA[i].value.x < waveA[slot].value.x) slot = i;
+        return slot;
+    }
+
+    /**
+     * An avalanche of `strength` starting down at `birth`. A slide that set off moments ago takes
+     * the new snow with it (it grows); otherwise the new one starts beside whatever is still
+     * coming down, in the slot whose slide set off longest ago.
+     */
+    slide(birth, strength) {
+        let young = -1;
+        let oldest = 0;
+        for (let i = 0; i < this.slides.length; i++) {
+            const s = this.slides[i];
+            const since = birth - s.birth;
+            const fresh = s.target > 0 && since > -0.6 && since < 2.4;
+            if (fresh && (young < 0 || s.birth > this.slides[young].birth)) young = i;
+            if (s.birth < this.slides[oldest].birth) oldest = i;
+        }
+        if (young >= 0) {
+            const s = this.slides[young];
+            s.target = gather(s.target, strength, 1.5, 0.35);
+            return;
+        }
+        const s = this.slides[oldest];
+        s.birth = birth;
+        s.strength = strength;
+        s.target = strength;
+    }
+
+    /** How hot play runs, for the event at hand: the level of the last frame (0..1). */
+    heatNow() {
+        return this.heatOfPlay.level;
+    }
+
+    /** What one flag may hold: more the longer the chain and the hotter play runs. */
+    blessCeiling() {
+        const fill = Math.max(this.heatOfPlay.level, clamp01((this.combo - 1) / 8));
+        return BLESS_MAX * (1 + 0.3 * fill);
+    }
+
+    /**
+     * Let the lines go at `time` (every flag a moment after its neighbour, out from the centre
+     * of the view), holding on to `keep` of what each holds, and throw what they let go to the
+     * wind as paper horses in the flags' own colours. `rich` throws more of them.
+     */
+    releaseLines(time, keep = 0, rich = false) {
+        if (!this.flags || !this.papers) return 0;
+        const centre = this.screenToWorld(0.5, 0.5, PAPER_DEPTH + 4, [0, 0, 0]);
+        const freed = this.flags.release(time, centre, 0.012, keep);
+        const each = this.handful(rich ? 5 : 3);
+        for (let i = 0; i < freed.length && i < 48; i++) {
+            const f = freed[i];
+            // What a flag keeps back it does not throw: a surplus goes as a smaller handful.
+            const n = keep > 0 ? Math.max(1, Math.round(each * Math.min(1, f.amount / 0.6))) : each;
+            this.counts.papers += this.papers.emit({
+                from: [f.x, f.y - 0.25, f.z],
+                toward: [0.6, 0.7, -0.4],
+                n,
+                rgb: f.rgb,
+                time: f.time,
+                speed: [1.5, 5],
+                cone: 0.6,
+                life: [2.4, 4.2],
+                size: 0.08,
+                side: f.x < EYE.x ? -1 : 1,
+                glow: 1.3,
+            });
+        }
+        return freed.length;
+    }
+
+    /** Prayers from the chorten's spire and the cairn's pole: `n` papers each, every colour. */
+    sendPrayers(time, n, { speed = [2.5, 8], glow = 1, stagger = 0.4 } = {}) {
+        if (!this.papers || !this.anchors) return;
+        [[this.anchors.spire, -1], [this.anchors.pole, 1]].forEach(([at, side]) => {
+            this.counts.papers += this.papers.emit({
+                from: at,
+                toward: [side * 0.2, 1, -0.3],
+                n: this.handful(n),
+                rgb: null,
+                time,
+                speed,
+                cone: 0.7,
+                life: [3, 5.5],
+                size: 0.09,
+                side,
+                glow,
+                stagger,
+            });
+        });
+    }
+
+    /** Light the chorten's spire in `rgb`, mixed with what it already shows by how much each is. */
+    lightSpire(rgb, amount) {
+        const s = this.u.spark.value;
+        const k = amount / Math.max(1e-4, this.spark + amount);
+        s.set(s.x + (rgb[0] - s.x) * k, s.y + (rgb[1] - s.y) * k, s.z + (rgb[2] - s.z) * k, s.w);
+        this.spark = Math.max(this.spark, amount);
     }
 
     /** How many papers a handful of `n` is at this tier. */
@@ -583,10 +795,10 @@ export class HimalayanPeakWorld {
                 wy = this._point.y;
             }
         }
+        const heat = this.heatNow();
         // ── The ring: the piece lands in the snow under the foot of the board ──
         const strike = this.screenToSnow(fx, fy);
-        const slot = this.ringCursor % uniforms.ringA.length;
-        this.ringCursor += 1;
+        const slot = this.ringSlot();
         uniforms.ringA[slot].value.set(strike.x, strike.z, this.time, hardDrop ? 1.5 : 1);
         uniforms.ringC[slot].value.set(rgb[0] * 2.2, rgb[1] * 2.2, rgb[2] * 2.2, hardDrop ? 1 : 0.75);
 
@@ -607,6 +819,8 @@ export class HimalayanPeakWorld {
         });
 
         // ── The gust: out along the nearest line, and the flags it passes take the colour ──
+        // (The hotter play runs, the farther along the line a lock's colour reaches and the
+        // more of it the flags take: a quick hand fills the lines.)
         const start = this.nearestLinePoint(wx, wy, side);
         if (start && this.flags) {
             this.gust(start.line, start.along, this.time, hardDrop ? 1.25 : 0.75);
@@ -615,46 +829,79 @@ export class HimalayanPeakWorld {
                 start.along,
                 rgb,
                 this.time,
-                hardDrop ? 1.3 : 0.85,
-                hardDrop ? 4.4 : 3,
+                (hardDrop ? 1.3 : 0.85) * (1 + 0.4 * heat),
+                (hardDrop ? 4.4 : 3) * (1 + 0.7 * heat),
+                this.blessCeiling(),
             );
+            // Once play runs hot the colour reaches the next line over as well: in a fever
+            // every line across the sky fills with the colours played.
+            const reach = clamp01((heat - 0.3) / 0.5);
+            const next = reach > 0 ? this.nearestLinePoint(wx, wy, side, start.line) : null;
+            if (next) {
+                this.counts.blessed += this.flags.bless(
+                    next.line,
+                    next.along,
+                    rgb,
+                    this.time + 0.08,
+                    (hardDrop ? 1.1 : 0.7) * reach,
+                    (hardDrop ? 4.4 : 3) * (1 + 0.7 * heat),
+                    this.blessCeiling(),
+                );
+            }
         }
-        uniforms.spark.value.set(rgb[0], rgb[1], rgb[2], uniforms.spark.value.w);
-        this.spark = Math.max(this.spark, hardDrop ? 1 : 0.6);
-        this.kick = Math.max(this.kick, hardDrop ? 0.5 : 0.1);
-        this.flash = Math.max(this.flash, hardDrop ? 0.08 : 0.015);
+        // The spire takes the piece's colour, mixed into what it still shows.
+        this.lightSpire(rgb, hardDrop ? 1 : 0.6);
+        this.kickSwell.hit(hardDrop ? 0.5 : 0.1, this.time);
+        this.flashSwell.hit(hardDrop ? 0.08 : 0.015, this.time);
         this.storm = Math.max(this.storm, hardDrop ? 0.4 : 0.14);
+        this.play.lock({ hardDrop }, this.time);
         this.counts.locks += 1;
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`.
+     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `combo` = the chain's length;
+     * `cascade` = which wave of its lock this is (1 the first; each later one runs deeper).
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null,
+        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, combo = 1, cascade = 1, player = 0,
+        screen = null,
     } = {}) {
         const { u } = this;
         if (!u || !this.papers) return;
         const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
         const quad = n >= 4 || perfect;
+        // A cascade's waves: each later one runs deeper, hotter and wider than the one before.
+        const depth = Math.max(1, Math.min(10, Math.round(Number(cascade) || 1)));
+        const deeper = depth - 1;
+        const chain = Math.max(1, Math.round(Number(combo) || 1));
+        const heat = this.heatNow();
         const birth = quad ? this.time + HUSH_HOLD : this.time;
         const p = this._hour;
-        // The wave runs down in the hour's own light; four lines in sunfire.
-        let rgb = quad ? [...SUNFIRE] : [0, 1, 2].map((c) => p.sun[c] * 0.6 + p.glow[c] * 0.6);
+        // The wave runs down in the hour's own light; four lines and a back-to-back in sunfire,
+        // and a cascade's waves burn toward it.
+        let rgb = quad || b2b ? [...SUNFIRE] : [0, 1, 2].map((c) => p.sun[c] * 0.6 + p.glow[c] * 0.6);
         const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
         rgb = rgb.map((c) => (c / peak) * 0.92 + 0.08);
-        const strength = Math.min(1.5, 0.55 + 0.16 * n + (quad ? 0.3 : 0));
-        const slot = this.waveCursor % u.waveA.length;
-        this.waveCursor += 1;
-        u.waveA[slot].value.set(birth, perfect ? 4 : n, strength, 3300);
+        const burn = Math.min(1, deeper * 0.3);
+        rgb = rgb.map((c, k) => c + (SUNFIRE[k] - c) * burn);
+        const strength = Math.min(1.5, 0.55 + 0.16 * n + (quad ? 0.3 : 0)) * (1 + 0.14 * deeper);
+        const slot = this.waveSlot();
+        u.waveA[slot].value.set(birth, perfect ? 4 : Math.min(4, n + deeper), strength, 3300);
         u.waveC[slot].value.set(rgb[0], rgb[1], rgb[2]);
-        this.lastClear = { time: birth, lines: n };
+        this.liftSwell.hit(0.3 + 0.12 * n + 0.08 * deeper, birth);
         // (A clear still waiting behind a hush is not forgotten when another arrives.)
-        if (this.pendingSwell.time < Infinity) this.swell = Math.max(this.swell, this.pendingSwell.amount);
-        if (this.pendingSurge) this.surge = Math.max(this.surge, this.pendingSurge.amount);
-        this.pendingSwell = { time: birth, amount: SUN_ELEVATION.clear[n] };
-        this.pendingKick = { time: birth + 0.1, amount: 0.2 + 0.1 * n };
-        this.storm = Math.max(this.storm, Math.min(1.4, 0.4 + 0.18 * n + (quad ? 0.4 : 0)));
+        if (this.pendingSwell.time < Infinity) {
+            this.swell = gather(this.swell, this.pendingSwell.amount, SUN_ELEVATION.surge);
+        }
+        if (this.pendingSurge) {
+            this.surge = gather(this.surge, this.pendingSurge.amount, 1.4);
+            this.pendingSurge = null;
+        }
+        this.pendingSwell = { time: birth, amount: SUN_ELEVATION.clear[n] + deeper * 0.9 * DEG };
+        const kick = 0.2 + 0.1 * n + 0.06 * deeper;
+        this.kickSwell.hit(kick, birth + 0.1);
+        this.flashSwell.hit(kick * 0.4, birth + 0.1);
+        this.storm = Math.max(this.storm, Math.min(1.4, 0.4 + 0.18 * n + (quad ? 0.4 : 0) + 0.1 * deeper));
 
         // ── The cleared rows leave the card: blades of light, and papers in all five colours ──
         const board = boardFor(this.layout, player);
@@ -664,22 +911,24 @@ export class HimalayanPeakWorld {
             : Array.from({ length: n }, (_, i) => 19 - i);
         if (board && card && !screen) {
             const ys = list.map((row) => boardPoint(board, 0.5, row, this._point).y);
-            if (this.layoutLive) this.beams.fire(ys, card.x0, card.x1, rgb, this.time, Math.min(1.4, 0.7 + 0.18 * n));
+            if (this.layoutLive) {
+                this.beams.fire(ys, card.x0, card.x1, rgb, this.time, Math.min(1.4, 0.7 + 0.18 * n + 0.1 * deeper));
+            }
             ys.forEach((y, k) => {
                 [-1, 1].forEach((side) => {
                     const from = this.screenToWorld(side < 0 ? card.x0 : card.x1, y, PAPER_DEPTH);
                     this.counts.papers += this.papers.emit({
                         from,
                         toward: [side, 0.5, -0.3],
-                        n: this.handful(quad ? 34 : 22),
+                        n: this.handful((quad ? 34 : 22) * (1 + 0.25 * deeper)),
                         rgb: null,
                         time: birth + k * 0.03,
-                        speed: [3.5, quad ? 13 : 9.5],
+                        speed: [3.5, (quad ? 13 : 9.5) + deeper],
                         cone: 0.5,
                         life: [3, 5.2],
                         size: 0.09,
                         side,
-                        glow: 0.7,
+                        glow: 0.7 + 0.15 * deeper,
                         stagger: 0.12,
                     });
                 });
@@ -706,82 +955,138 @@ export class HimalayanPeakWorld {
             }
         }
 
-        // ── Every line snaps, and every flag lets go of what it holds ──
-        this.gust(-1, 0, birth, Math.min(1.6, 0.8 + 0.2 * n));
-        if (this.flags) {
-            const centre = this.screenToWorld(0.5, 0.5, PAPER_DEPTH + 4, [0, 0, 0]);
-            const freed = this.flags.release(birth, centre);
-            const each = this.handful(quad ? 5 : 3);
-            for (let i = 0; i < freed.length && i < 48; i++) {
-                const f = freed[i];
-                this.counts.papers += this.papers.emit({
-                    from: [f.x, f.y - 0.25, f.z],
-                    toward: [0.6, 0.7, -0.4],
-                    n: each,
-                    rgb: f.rgb,
-                    time: f.time,
-                    speed: [1.5, 5],
-                    cone: 0.6,
-                    life: [2.4, 4.2],
-                    size: 0.08,
-                    side: f.x < EYE.x ? -1 : 1,
-                    glow: 1.3,
-                });
-            }
+        // ── Every line snaps (harder with every wave of a cascade), and the flags let go ──
+        this.gust(-1, 0, birth, Math.min(1.9, 0.8 + 0.2 * n + 0.15 * deeper));
+        if (deeper === 0) {
+            // What they let go of: everything on a perfect clear; most of it on four lines;
+            // otherwise only the surplus, the more of it kept the longer the chain, so a
+            // chain's lines go on filling with the colours played. (A cascade's later waves
+            // are the same lock: the lines hold.)
+            let keep = Math.min(0.82, 0.5 + 0.055 * (chain - 1));
+            if (quad) keep = 0.3;
+            if (perfect) keep = 0;
+            this.releaseLines(birth, keep, quad);
         }
 
         if (quad) {
-            // The mountain holds its breath, then the sun stands clear of the wall.
+            // The mountain holds its breath, then the sun stands clear of the wall. From cold it
+            // holds it fully; the hotter play already runs, the less: a quad in a fever inhales.
             this.hushUntil = this.time + HUSH_HOLD;
+            this.hushDepth = 1 - 0.85 * heat;
             this.pendingSurge = { time: birth, amount: perfect ? 1.3 : 1 };
-            u.avalanche.value.set(birth + 0.35, perfect ? 1.2 : 1);
-            this.pendingHalo = { time: birth + 0.2, amount: perfect ? 1 : 0.55 };
+            this.slide(birth + 0.35, perfect ? 1.2 : 1);
+            this.haloSwell.hit(perfect ? 1 : 0.55, birth + 0.2);
             this.counts.quads += 1;
         } else if (n === 3) {
-            u.avalanche.value.set(birth + 0.25, 0.55);
+            this.slide(birth + 0.25, 0.55);
+        }
+        if (b2b) {
+            // The second difficult clear in a row: the ring flickers up round the sun, and the
+            // spire and the pole answer in gold.
+            this.haloSwell.hit(0.42, birth + 0.15);
+            this.lightSpire(LUNG_TA[4], 1);
+            this.sendPrayers(birth + 0.1, 18, { speed: [3, 9], glow: 1.4, stagger: 0.25 });
+            this.gust(-1, 0, birth + 0.3, 0.9);
         }
         if (tspin) {
             // The wind turns on itself: a second snap a moment later, the crests throw more,
             // and a wheel of papers spins up round the card before the wind takes it.
             this.gust(-1, 0, birth + 0.22, 1.2);
             this.storm = Math.max(this.storm, 1.1);
-            if (card && !screen) {
-                const cx = (card.x0 + card.x1) * 0.5;
-                const cy = (card.y0 + card.y1) * 0.5;
-                const centre = this.screenToWorld(cx, cy, PAPER_DEPTH, [0, 0, 0]);
-                const spokes = 14;
-                for (let k = 0; k < spokes; k++) {
-                    const a = (k / spokes) * Math.PI * 2;
-                    // Round the card's rim, each thrown along the rim: a wheel.
-                    const sx = cx + Math.cos(a) * (card.x1 - card.x0) * 0.62;
-                    const sy = cy + Math.sin(a) * (card.y1 - card.y0) * 0.56;
-                    const from = this.screenToWorld(sx, sy, PAPER_DEPTH);
-                    const out = [from[0] - centre[0], from[1] - centre[1], from[2] - centre[2]];
-                    this.counts.papers += this.papers.emit({
-                        from,
-                        toward: [out[1] + out[0] * 0.25, -out[0] + out[1] * 0.25, -0.2],
-                        n: this.handful(7),
-                        rgb: null,
-                        time: birth + k * 0.018,
-                        speed: [5, 9],
-                        cone: 0.16,
-                        life: [2.6, 4.4],
-                        size: 0.095,
-                        side: Math.cos(a) < 0 ? -1 : 1,
-                        glow: 1.2,
-                        stagger: 0.08,
-                    });
-                }
-            }
+            this.wheel(birth, card, screen, 14, 7);
+        }
+        if (deeper === 0) {
+            this.play.clear({
+                lines: n, combo: chain, tspin, perfect, b2b,
+            }, birth);
+        } else {
+            // (One more wave of a lock already counted: its own worth, and its lines'.)
+            this.play.wave(birth);
         }
         this.counts.clears += 1;
+    }
+
+    /** A wheel of `spokes` handfuls of `each` papers spinning up round the card. */
+    wheel(birth, card, screen, spokes, each) {
+        if (!card || screen) return;
+        const cx = (card.x0 + card.x1) * 0.5;
+        const cy = (card.y0 + card.y1) * 0.5;
+        const centre = this.screenToWorld(cx, cy, PAPER_DEPTH, [0, 0, 0]);
+        for (let k = 0; k < spokes; k++) {
+            const a = (k / spokes) * Math.PI * 2;
+            // Round the card's rim, each thrown along the rim: a wheel.
+            const sx = cx + Math.cos(a) * (card.x1 - card.x0) * 0.62;
+            const sy = cy + Math.sin(a) * (card.y1 - card.y0) * 0.56;
+            const from = this.screenToWorld(sx, sy, PAPER_DEPTH);
+            const out = [from[0] - centre[0], from[1] - centre[1], from[2] - centre[2]];
+            this.counts.papers += this.papers.emit({
+                from,
+                toward: [out[1] + out[0] * 0.25, -out[0] + out[1] * 0.25, -0.2],
+                n: this.handful(each),
+                rgb: null,
+                time: birth + k * 0.018,
+                speed: [5, 9],
+                cone: 0.16,
+                life: [2.6, 4.4],
+                size: 0.095,
+                side: Math.cos(a) < 0 ? -1 : 1,
+                glow: 1.2,
+                stagger: 0.08,
+            });
+        }
+    }
+
+    /**
+     * A board cleared whole, settled after its clear (physics sends it in a frame of its own):
+     * the crown on what is still playing, never a second clear and never a second hush. The ice
+     * in the air draws its whole ring and the mock suns round the sun, the lines let go of
+     * everything they hold, the spire and the pole send prayers in every colour, the light runs
+     * down the face once more in sunfire, and the slide still coming down grows.
+     */
+    onCrown() {
+        const { u } = this;
+        if (!u || !this.papers) return;
+        const t = this.time;
+        this.haloSwell.hit(1, t + 0.1);
+        this.releaseLines(t, 0, true);
+        this.sendPrayers(t, 46, { speed: [3, 10], glow: 1.5, stagger: 0.5 });
+        this.lightSpire(LUNG_TA[4], 1);
+        const slot = this.waveSlot();
+        u.waveA[slot].value.set(t, 4, 1.6, 3300);
+        u.waveC[slot].value.set(SUNFIRE[0], SUNFIRE[1], SUNFIRE[2]);
+        this.surge = Math.min(1.4, this.surge + 0.3);
+        this.slide(t + 0.2, 0.8);
+        this.gust(-1, 0, t, 1.5);
+        this.storm = Math.max(this.storm, 1.2);
+        this.kickSwell.hit(0.35, t);
+        this.flashSwell.hit(0.14, t);
+        this.liftSwell.hit(0.5, t);
+        this.play.crown(t);
+    }
+
+    /** A T-spin that cleared nothing: the wind turns on itself, a little. */
+    onSpin({ player = 0 } = {}) {
+        if (!this.u || !this.papers) return;
+        const t = this.time;
+        const card = player === 0 ? cardUnion(this.layout) : null;
+        this.gust(-1, 0, t + 0.05, 0.7);
+        this.storm = Math.max(this.storm, 0.5);
+        this.wheel(t, card, null, 8, 4);
+        this.kickSwell.hit(0.15, t);
+        this.play.spin(t);
     }
 
     /** The true combo changed (0 = the chain broke). */
     onCombo(combo) {
         const n = Math.max(0, Math.round(Number(combo) || 0));
-        // The chain broke: the mountain lets its breath go.
-        if (n === 0 && this.combo >= 2) this.dip = Math.max(this.dip, 0.25);
+        if (n === 0 && this.combo >= 2) {
+            // The chain broke: the mountain lets its breath go. From cold the light sinks a
+            // little; once play runs hot it does not dim at all.
+            this.dip = Math.max(this.dip, BREAK_DIP * (1 - this.heatNow()));
+            // A long chain's lines let go of everything they gathered, once the gust of the lock
+            // that broke it has landed: a sky full of the colours played.
+            if (this.combo >= LONG_CHAIN) this.releaseLines(this.time + 0.3, 0, true);
+        }
         this.combo = n;
     }
 
@@ -794,29 +1099,13 @@ export class HimalayanPeakWorld {
             return;
         }
         this.storm = Math.max(this.storm, 0.9);
-        this.flash = Math.max(this.flash, 0.12);
+        this.flashSwell.hit(0.12, this.time);
+        this.play.levelUp(this.time);
         if (!this.u || !this.papers || !this.anchors) return;
         // New prayers from the spire and the pole, and every line snaps.
         this.gust(-1, 0, this.time, 1.1);
-        [[this.anchors.spire, -1], [this.anchors.pole, 1]].forEach(([at, side]) => {
-            this.counts.papers += this.papers.emit({
-                from: at,
-                toward: [side * 0.2, 1, -0.3],
-                n: this.handful(40),
-                rgb: null,
-                time: this.time,
-                speed: [2.5, 8],
-                cone: 0.7,
-                life: [3, 5.5],
-                size: 0.09,
-                side,
-                glow: 1,
-                stagger: 0.4,
-            });
-        });
-        this.spark = Math.max(this.spark, 1);
-        const gold = LUNG_TA[4];
-        this.u.spark.value.set(gold[0], gold[1], gold[2], this.u.spark.value.w);
+        this.sendPrayers(this.time, 40);
+        this.lightSpire(LUNG_TA[4], 1);
     }
 
     /** The run is over: the light goes back under the wall. */
@@ -863,42 +1152,55 @@ export class HimalayanPeakWorld {
         const t = this.time;
         const motion = this.reducedMotion ? 0.3 : 1;
 
+        // ── The heat of play: what the world wears (copied: the sample object is reused) ──
+        const play = this.play.sample(t);
+        const pace = this.heatOfPlay;
+        pace.punch = play.punch;
+        pace.level = play.level;
+        pace.fever = play.fever;
+        pace.stage = play.stage;
+        const { level, fever, punch } = pace;
+
         // ── The charge ──
         const target = powerForCombo(this.combo);
-        this.power += (target - this.power) * approach(target > this.power ? 2.2 : 0.7, dt);
+        this.power += (target - this.power) * approach(target > this.power ? POWER_RISE : POWER_FALL, dt);
         this.surge *= Math.exp(-dt / SURGE_COOL);
         this.swell *= Math.exp(-dt / SWELL_FADE);
         this.storm *= Math.exp(-dt / 1.9);
-        this.flash *= Math.exp(-dt / 0.25);
-        this.kick *= Math.exp(-dt / 0.16);
         this.dip *= Math.exp(-dt / 0.4);
         this.spark *= Math.exp(-dt / 0.5);
-        this.halo *= Math.exp(-dt / 2.6);
-        if (t >= this.pendingHalo.time) {
-            this.halo = Math.max(this.halo, this.pendingHalo.amount);
-            this.pendingHalo.time = Infinity;
-        }
-        if (t >= this.pendingKick.time) {
-            this.kick = Math.max(this.kick, this.pendingKick.amount);
-            this.flash = Math.max(this.flash, this.pendingKick.amount * 0.4);
-            this.pendingKick.time = Infinity;
-        }
+        this.kick = this.kickSwell.valueAt(t);
+        this.flash = this.flashSwell.valueAt(t);
+        this.halo = this.haloSwell.valueAt(t);
+        const lift = this.liftSwell.valueAt(t);
         if (t >= this.pendingSwell.time) {
-            this.swell = Math.max(this.swell, this.pendingSwell.amount);
+            this.swell = gather(this.swell, this.pendingSwell.amount, SUN_ELEVATION.surge);
             this.pendingSwell.time = Infinity;
         }
         if (this.pendingSurge && t >= this.pendingSurge.time) {
-            this.surge = Math.max(this.surge, this.pendingSurge.amount);
+            this.surge = gather(this.surge, this.pendingSurge.amount, 1.4);
             this.pendingSurge = null;
         }
-        const hush = t < this.hushUntil ? 1 : 0;
-        const breathTarget = hush ? 0.12 : 1 - this.dip;
-        this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 12, dt);
+        // The avalanches: one that took more snow grows into it over a moment.
+        for (let i = 0; i < this.slides.length; i++) {
+            const s = this.slides[i];
+            s.strength += (s.target - s.strength) * (dt === 0 ? 1 : approach(3, dt));
+        }
+        const first = this.slides[0];
+        const second = this.slides[1];
+        u.avalanche.value.set(first.birth, first.strength, second.birth, second.strength);
+        const hush = t < this.hushUntil ? this.hushDepth : 0;
+        const breathTarget = hush > 0 ? 1 - (1 - HUSH_BREATH) * hush : 1 - this.dip;
+        this.breath += (breathTarget - this.breath) * approach(hush > 0 ? 40 : 12, dt);
         if (dt === 0) this.breath = breathTarget;
 
         // ── The sun ──
-        const idle = Math.sin(t * 0.097) * IDLE_BREATH * (1 - this.power) * (this.reducedMotion ? 0 : 1);
-        const wanted = this.heldElevation ?? (sunElevationFor(this.power, this.surge, this.swell) + idle);
+        // The chain's charge raises it, the heat of play lifts it a little more (so a broken
+        // chain lets it sag rather than set), and a fever carries it past where any chain would.
+        const charge = clamp01(this.power + level * PLAY_CHARGE);
+        const idle = Math.sin(t * 0.097) * IDLE_BREATH * (1 - charge) * (this.reducedMotion ? 0 : 1);
+        const wanted = this.heldElevation
+            ?? Math.min(SUN_ELEVATION.max, sunElevationFor(charge, this.surge, this.swell) + fever * FEVER_RISE + idle);
         this.elevation += (wanted - this.elevation) * approach(wanted > this.elevation ? 6 : 2.2, dt);
         if (dt === 0 && this.heldElevation !== null) this.elevation = wanted;
         const sun = sunDirection(this.elevation, this._sun);
@@ -914,8 +1216,9 @@ export class HimalayanPeakWorld {
 
         // ── The wind ──
         // An event raises the storm at a stroke; the air answers over a few frames, so nothing
-        // that hangs in it (flags, cords, plumes, papers) changes place in one.
-        const asked = GALE_REST + this.power * 0.5 + this.storm * 0.6 + this.surge * 0.4;
+        // that hangs in it (flags, cords, plumes, papers) changes place in one. A quick hand
+        // raises it under everything: the banners off the crests lengthen and thicken.
+        const asked = GALE_REST + this.power * 0.5 + this.storm * 0.6 + this.surge * 0.4 + level * 0.3 + fever * 0.35;
         this.gale += (asked - this.gale) * approach(GALE_EASE, dt);
         const { gale } = this;
         this.windRun += dt * WIND.x * motion * (0.6 + gale * 1.4);
@@ -925,15 +1228,17 @@ export class HimalayanPeakWorld {
         // ── Uniforms ──
         u.time.value = t;
         u.power.value = this.power;
-        u.surge.value = this.surge;
+        // (The diamond dust reads it: the hotter play, the more of the air fires.)
+        u.surge.value = this.surge + level * 0.25 + fever * 0.75;
         u.breath.value = this.breath;
         u.windRun.value = this.windRun;
         u.gale.value = gale;
         u.flutter.value = this.flutter;
         u.nearSun.value = seen;
         u.spark.value.w = this.spark;
-        // (The ring needs a sun that has cleared the wall to hang on.)
-        u.halo.value = this.halo * seen;
+        u.prayer.value = clamp01(level * 0.6 + fever * 0.55);
+        // (The ring needs a sun that has cleared the wall to hang on; a fever holds it up.)
+        u.halo.value = Math.max(this.halo, fever * 0.62) * seen;
         const p = this._hour;
         const fire = clamp01(this.surge * 0.5);
         const warm = (key, node, gain = 1) => {
@@ -945,11 +1250,18 @@ export class HimalayanPeakWorld {
             );
         };
         warm('sun', u.sunCol);
-        u.glow.value.set(p.glow[0], p.glow[1], p.glow[2]);
-        u.zenith.value.set(p.zenith[0], p.zenith[1], p.zenith[2]);
-        u.horizon.value.set(p.horizon[0], p.horizon[1], p.horizon[2]);
-        u.shade.value.set(p.shade[0], p.shade[1], p.shade[2]);
-        u.cloudCol.value.set(p.cloud[0], p.cloud[1], p.cloud[2]);
+        // Alpenglow: the hotter play runs, the deeper the hour's colours burn: the light warms
+        // toward rose gold, the shadows go cobalt, the sky overhead deepens toward the dark blue
+        // of altitude and the haze at its foot thins. (Nothing at rest or under casual play.)
+        // (A quad's overdrive keeps it burning while the sun stands high after the chain.)
+        const g = clamp01(fever * 0.85 + Math.max(0, level - 0.45) * 0.4 + this.surge * 0.3);
+        u.sunCol.value.multiply(this._tint.set(1 + 0.06 * g, 1 - 0.1 * g, 1 - 0.3 * g));
+        u.glow.value.set(p.glow[0], p.glow[1] * (1 - 0.12 * g), p.glow[2] * (1 - 0.25 * g));
+        u.zenith.value.set(p.zenith[0] * (1 - 0.5 * g), p.zenith[1] * (1 - 0.4 * g), p.zenith[2] * (1 - 0.15 * g));
+        const h = p.horizon;
+        u.horizon.value.set(h[0] * (1 - 0.15 * g), h[1] * (1 - 0.28 * g), h[2] * (1 - 0.18 * g));
+        u.shade.value.set(p.shade[0] * (1 - 0.35 * g), p.shade[1] * (1 - 0.15 * g), p.shade[2] * (1 + 0.2 * g));
+        u.cloudCol.value.set(p.cloud[0], p.cloud[1] * (1 - 0.14 * g), p.cloud[2] * (1 - 0.06 * g));
         u.stars.value = this._hourStars;
 
         this.eagle?.update(t, this.eagleAir());
@@ -962,19 +1274,24 @@ export class HimalayanPeakWorld {
         if (camera) this.projectSun(camera);
 
         // ── Post ──
-        const sinceClear = t - this.lastClear.time;
-        const lift = sinceClear >= 0 ? Math.exp(-sinceClear / 0.7) * (0.3 + 0.12 * this.lastClear.lines) : 0;
         const post = this._post;
-        post.flash = this.flash;
-        post.kick = this.kick;
-        post.shafts = hush ? 0.05 : 0.1 + heat * 0.12 + lift * 0.12 + this.surge * 0.16;
-        post.bloomBoost = this.surge * 0.12 + lift * 0.1;
-        post.glare = seen * (0.5 + 0.5 * heat) * this.breath;
+        // Every event's punch rides on a floor under a quick hand (the post scales the flash
+        // for Reduce flashing; the kick widens the lens's fringe).
+        post.flash = this.flash + punch * 0.04;
+        post.kick = this.kick + punch * 0.22 * motion;
+        const shafts = 0.1 + heat * 0.12 + lift * 0.12 + this.surge * 0.16;
+        post.shafts = shafts + (0.05 - shafts) * hush;
+        post.bloomBoost = this.surge * 0.12 + lift * 0.1 + fever * 0.05;
+        // The lens's veil thins as play heats: the light stays in the colours, not in a haze.
+        post.glare = seen * (0.5 + 0.5 * heat) * this.breath * (1 - 0.35 * level);
         post.glareColor[0] = u.sunCol.value.x * 0.25;
         post.glareColor[1] = u.sunCol.value.y * 0.25;
         post.glareColor[2] = u.sunCol.value.z * 0.25;
-        // The iris closes as the sun comes over the wall, so the lit snow keeps its colour.
-        post.exposure = 1 / (1 + seen * 0.5 + this.surge * 0.35 + lift * 0.25 + heat * 0.25);
+        // The iris closes as the sun comes over the wall, so the lit snow keeps its colour, and
+        // further as play heats, so a fever burns deep rather than pale.
+        post.exposure = (1 - 0.2 * level - 0.1 * fever)
+            / (1 + seen * 0.5 + this.surge * 0.35 + lift * 0.25 + heat * 0.25);
+        post.saturation = level * 0.1 + fever * 0.12;
     }
 
     /** What the post stack reads each frame (a reused object). */
@@ -988,6 +1305,10 @@ export class HimalayanPeakWorld {
             time: this.time,
             combo: this.combo,
             power: this.power,
+            // The heat of play (src/themes/shared/gameplay-surge.js) as of the last frame.
+            play: {
+                level: this.heatOfPlay.level, fever: this.heatOfPlay.fever, stage: this.heatOfPlay.stage,
+            },
             surge: this.surge,
             swell: this.swell,
             storm: this.storm,

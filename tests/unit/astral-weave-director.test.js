@@ -15,6 +15,8 @@ function recorder() {
         sink: {
             lock: (c) => calls.push(['lock', copy(c)]),
             clear: (c) => calls.push(['clear', copy(c)]),
+            perfect: (c) => calls.push(['perfect', { ...c }]),
+            spin: (c) => calls.push(['spin', { ...c }]),
             combo: (n, player) => calls.push(['combo', n, player]),
             levelUp: (level) => calls.push(['levelUp', level]),
         },
@@ -165,6 +167,40 @@ describe('astral weave director: clears and the true combo', () => {
         expect(r.of('clear')[0]).toMatchObject({
             rows: [16, 17, 18, 19], lines: 4, tspin: true, b2b: true, perfect: true,
         });
+        // In the same frame as its clear, the perfect clear rides on it: no crown of its own.
+        expect(r.of('perfect')).toHaveLength(0);
+    });
+
+    it('crowns the clear still playing with a perfect clear that settles after it, never a clear of its own', () => {
+        const r = recorder();
+        const director = new AstralWeaveDirector({ sink: r.sink });
+        director.onHardDrop({ piece: { shape: [[1], [1], [1], [1]], x: 9, y: HIDDEN + 16 } });
+        director.onPieceLock({ piece: { shape: [[1], [1], [1], [1]], x: 9, y: HIDDEN + 16 } });
+        director.onLineClear({
+            lineCount: 4, clearedRows: [HIDDEN + 16, HIDDEN + 17, HIDDEN + 18, HIDDEN + 19], cascadeCount: 1,
+        });
+        director.flush();
+        expect(r.of('clear')).toHaveLength(1);
+        // Physics settles the perfect clear ~360 ms later, in a tick of its own.
+        director.onPerfectClear({ depth: 4, perfectClearBonus: 1000, player: 0 });
+        director.flush();
+        expect(r.of('clear')).toHaveLength(1);
+        expect(r.of('perfect')).toEqual([{ player: 0 }]);
+        // The chain is the same chain: no new step, no break.
+        expect(r.of('combo').map(([n]) => n)).toEqual([1]);
+        director.flush();
+        expect(r.of('perfect')).toHaveLength(1);
+    });
+
+    it('answers a T-spin that clears nothing, alongside its lock', () => {
+        const r = recorder();
+        const director = new AstralWeaveDirector({ sink: r.sink });
+        director.onPieceLock({ piece: { shape: [[0, 1, 0], [1, 1, 1]], x: 3, y: HIDDEN + 18 } });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(r.of('lock')).toHaveLength(1);
+        expect(r.of('clear')).toHaveLength(0);
+        expect(r.of('spin')).toEqual([{ player: 0 }]);
     });
 
     it('keeps the widest wave when several clears are staged in one frame', () => {

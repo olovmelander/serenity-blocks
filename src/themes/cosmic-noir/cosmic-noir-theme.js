@@ -263,6 +263,7 @@ export default class CosmicNoirTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
+                spin: (c) => this.world?.onSpin?.(c),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => {
                     this.level = level;

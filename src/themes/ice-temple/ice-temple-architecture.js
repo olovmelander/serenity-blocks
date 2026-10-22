@@ -382,7 +382,7 @@ export function createArchitecture(u, plan, opts = {}) {
             .add(u.auroraA.mul(u.auroraGain).mul(Ns.y.mul(0.5).add(0.5)).mul(0.012))
             .toVar();
         // The lake carries the heart's light: it wells up into whatever stands on it.
-        const well = u.heartColor.mul(u.ambient).mul(exp(max(p.y, 0.0).mul(-0.085))).mul(0.085);
+        const well = u.lightColor.mul(u.ambient).mul(exp(max(p.y, 0.0).mul(-0.085))).mul(0.085);
 
         // ── Gameplay ──
         const lock = itLockLight(u, p);
@@ -390,7 +390,7 @@ export function createArchitecture(u, plan, opts = {}) {
         const fill = float(1.0).sub(smoothstep(u.resLevel.sub(3.0), u.resLevel.add(0.5), p.y));
         const pulse = lock.mul(1.2)
             .add(clear.rgb.mul(1.3))
-            .add(u.heartColor.mul(clear.w).mul(0.1))
+            .add(u.lightColor.mul(clear.w).mul(0.1))
             .add(itResonance(u, p).mul(fill).mul(0.62))
             .toVar();
         // Four fronts arriving together must light the ice, not white it out.

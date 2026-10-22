@@ -479,10 +479,23 @@ export function skyColour(dir, U, noise, o) {
     }
 
     // ── A halo round the light (a clear): prismatic, red on its inner edge ──
-    const across = dot(dir, U.pulseDir).sub(U.pulse.x).div(U.pulse.y).toVar();
-    const band = exp(across.mul(across).negate()).mul(U.pulse.z);
+    const toLight = dot(dir, U.pulseDir).toVar();
+    const across = toLight.sub(U.pulse.x).div(U.pulse.y).toVar();
+    const band = exp(across.mul(across).negate()).mul(U.pulse.z).toVar();
     const prism = mix(vec3(0.62, 0.78, 1.0), vec3(1.0, 0.42, 0.16), smoothstep(-1.2, 1.2, across));
-    sky.addAssign(prism.mul(band).mul(mix(light.cloudRim, light.moonGlint.mul(1.15), U.moonKey).mul(0.16)));
+    const haloLight = mix(light.cloudRim, light.moonGlint.mul(1.15), U.moonKey).mul(0.16).toVar();
+    if (o.discs) {
+        // Sun dogs (a back-to-back; held through a fever): two mock suns on the halo level with
+        // the light, each trailing pale away from it. The sea mirrors the halo, not these.
+        const beside = dir.y.sub(U.pulseDir.y).div(0.02);
+        const tail = mix(float(1.4), float(0.22), step(across, 0.0));
+        band.addAssign(exp(across.mul(across).mul(tail).add(beside.mul(beside)).negate()).mul(U.pulse.w).mul(4.5));
+        // The great halo, 46 degrees out (a fever, a perfect clear): wide and faint.
+        const far = toLight.sub(U.greatHalo.x).div(U.greatHalo.y);
+        const prismFar = mix(vec3(0.62, 0.78, 1.0), vec3(1.0, 0.42, 0.16), smoothstep(-1.2, 1.2, far));
+        sky.addAssign(prismFar.mul(exp(far.mul(far).negate()).mul(U.greatHalo.z)).mul(haloLight));
+    }
+    sky.addAssign(prism.mul(band).mul(haloLight));
     return sky;
 }
 

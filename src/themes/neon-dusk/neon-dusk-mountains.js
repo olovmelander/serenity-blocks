@@ -349,15 +349,22 @@ export function createMountains(u, { detail = 1, contours = true, seed = TERRAIN
             const glow = exp(abs(d).div(max(fwC.mul(2.2), 1e-4)).negate())
                 .mul(float(1.0).sub(smoothstep(0.04, 0.12, fwC))).mul(0.22);
             const line = core.add(glow);
-            // Line clears: a wave of light rolls through the ranges toward the camera.
-            const wd = restDist.sub(u.contourWave.x).div(70.0);
-            const wave = exp(wd.mul(wd).negate()).mul(u.contourWave.y);
+            // Line clears: waves of light roll through the ranges toward the camera (four slots,
+            // (distance, energy) pairs: a cascade sends a train of sweeps, none cut short).
+            const sweep = (at, energy) => {
+                const wd = restDist.sub(at).div(70.0);
+                return exp(wd.mul(wd).negate()).mul(energy);
+            };
+            const wave = sweep(u.contourA.x, u.contourA.y).add(sweep(u.contourA.z, u.contourA.w))
+                .add(sweep(u.contourB.x, u.contourB.y)).add(sweep(u.contourB.z, u.contourB.w))
+                .toVar();
             const low = mix(rgb(0xff2fa8, 1.2), rgb(0x9b4bff, 1.2), u.comboShift);
             const highC = mix(rgb(0x2ce8ff, 1.25), rgb(0xff6ad8, 1.3), u.comboShift);
             const lineCol = mix(low, highC, smoothstep(4.0, 70.0, p.y));
             const lineW = wMid.mul(0.6).add(wNear.mul(0.9)).mul(smoothstep(1.0, 6.0, p.y))
                 .mul(exp(dist.mul(-0.0005)));
-            col.addAssign(lineCol.mul(line.mul(lineW).mul(float(0.8).add(wave.mul(3.0)))));
+            // The lines' own light (0.8 at rest) rises as play heats: the ridges stay lit.
+            col.addAssign(lineCol.mul(line.mul(lineW).mul(u.scanGain.add(wave.mul(3.0)))));
             col.addAssign(lineCol.mul(wave.mul(wMid.add(wNear)).mul(0.06)));
         }
 

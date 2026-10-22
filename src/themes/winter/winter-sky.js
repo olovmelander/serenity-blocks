@@ -10,6 +10,7 @@
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    abs,
     acos,
     atan,
     cameraPosition,
@@ -119,6 +120,10 @@ export function createSky(u, { curtains = 3 } = {}) {
         // Its dogs stand on it at the moon's own height.
         const dogs = exp(wSq(dir.y.sub(u.moonDir.y).div(0.035)).negate()).mul(2.2).add(1.0);
         col.addAssign(u.moonCol.mul(ringTone).mul(ring.mul(dogs).mul(u.halo).mul(0.55)).mul(smoothstep(0.0, 0.08, dir.y)));
+        // A pillar of moonlight above and below the disc: plate crystals settling in the coldest
+        // air. It stands only when play runs hot (a fever, a back-to-back, a perfect clear).
+        const pillar = exp(wSq(m.x.div(0.5)).negate()).mul(exp(abs(m.y).div(-6.5))).mul(float(1.0).sub(disc));
+        col.addAssign(u.moonCol.mul(pillar.mul(u.heat.w).mul(0.55)).mul(smoothstep(0.0, 0.08, dir.y)));
 
         // ── The fires ──
         col.addAssign(wAurora(u, dir, { count: curtains, fine: true }));

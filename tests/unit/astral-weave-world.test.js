@@ -181,7 +181,7 @@ describe('astral weave world: the lock', () => {
         expect(pluck.x).toBeCloseTo(lockX, 10);
         expect(pluck.y).toBeCloseTo((world.rowY(17) + world.rowY(18)) / 2, 10);
         expect(pluck.z).toBe(world.time);
-        expect(world.energy).toBeGreaterThan(0);
+        expect(world.energySwell.valueAt(world.time)).toBeGreaterThan(0);
         world.dispose();
     });
 
@@ -200,13 +200,13 @@ describe('astral weave world: the lock', () => {
     it('rings the hoop from the peg the shuttle lands on, once it lands', () => {
         const { world } = makeWorld();
         world.lock({ rows: [10] });
-        const lockSlots = () => world.shared.uSweep.array.slice(2).filter((v) => v.y > 0).length;
+        const lockSlots = () => world.shared.uSweep.array.filter((v) => v.y > 0).length;
         expect(lockSlots()).toBe(0);
         run(world, SHUTTLE_SECONDS * 0.5);
         expect(lockSlots()).toBe(0);
         run(world, SHUTTLE_SECONDS);
         expect(lockSlots()).toBe(1);
-        const ring = world.shared.uSweep.array.slice(2).find((v) => v.y > 0);
+        const ring = world.shared.uSweep.array.find((v) => v.y > 0);
         const y = world.rowY(10);
         const landing = weft(world, 10).z > 0 ? Math.asin(y) : PI - Math.asin(y);
         expect(ring.x).toBeCloseTo(landing, 10);
@@ -233,13 +233,16 @@ describe('astral weave world: the clear', () => {
         world.clear({ rows: [18, 19], lines: 2, combo: 1 });
         expect(burn(world, 18).x).toBe(world.time);
         expect(burn(world, 19).y).toBeGreaterThan(0);
-        const [right, left] = world.shared.uSweep.array;
-        expect(right.y).toBe(world.time);
+        // The pair takes the slots with the least light left (the lock's own ring keeps its own).
+        const fronts = world.shared.uSweep.array.filter((v) => v.y === world.time);
+        expect(fronts).toHaveLength(2);
+        const [right, left] = fronts;
         expect(left.x).toBeCloseTo(PI - right.x, 10);
         expect(right.z).toBeGreaterThan(0.5);
         run(world, 0.2);
-        expect(world.shared.uShock.value.x).toBeGreaterThan(0.2);
-        expect(world.shared.uShock.value.y).toBeGreaterThan(0);
+        const { uShockR, uShockG } = world.shared;
+        expect(Math.max(uShockR.value.x, uShockR.value.y, uShockR.value.z, uShockR.value.w)).toBeGreaterThan(0.2);
+        expect(Math.max(uShockG.value.x, uShockG.value.y, uShockG.value.z, uShockG.value.w)).toBeGreaterThan(0);
         world.dispose();
     });
 
@@ -334,8 +337,9 @@ describe('astral weave world: the combo rosette', () => {
         expect(world.kTarget).toBe(K_REST + 1);
         world.levelUp(4);
         expect(world.kTarget).toBe(K_REST + 3);
+        // A level-up never takes petals away: from level 4 on it rests on the richest figure.
         world.levelUp(5);
-        expect(world.kTarget).toBe(K_REST);
+        expect(world.kTarget).toBe(K_REST + 3);
         world.levelUp(3);
         world.resetSession();
         expect(world.kTarget).toBe(K_REST);
@@ -416,7 +420,7 @@ describe('astral weave world: the quad', () => {
         });
         expect(world.quadHold).toBeGreaterThan(QUAD.hold);
         expect(world.irisFrom).toBe(IRIS.perfectFrom);
-        expect(world.crownGain).toBeGreaterThan(1);
+        expect(world.crownSwell.valueAt(world.time + QUAD.gather)).toBeGreaterThan(1);
         world.dispose();
     });
 
@@ -429,6 +433,230 @@ describe('astral weave world: the quad', () => {
         expect(world.k).toBeCloseTo(K_REST, 6);
         expect(world.shared.uCrown.value).toBeGreaterThan(0.5);
         expect(world.kick).toBe(0);
+        world.dispose();
+    });
+});
+
+describe('astral weave world: fast play builds instead of popping', () => {
+    const quadRows = [16, 17, 18, 19];
+    const sumGains = (v) => v.x + v.y + v.z + v.w;
+    const litFronts = (world) => world.shared.uSweep.array.filter((v) => v.w > 0.05).length;
+
+    it('never cuts the light of a quad with the single that follows it', () => {
+        const { world } = makeWorld();
+        world.clear({ rows: quadRows, lines: 4, combo: 1 });
+        run(world, 0.5);
+        const { quadAt } = world;
+        const before = {
+            flash: world.flash,
+            energy: world.energy,
+            crown: world.shared.uCrown.value,
+            fronts: litFronts(world),
+            rings: sumGains(world.shared.uShockG.value),
+        };
+        world.clear({ rows: [19], lines: 1, combo: 2 });
+        run(world, 1 / 60);
+        expect(world.flash).toBeGreaterThan(before.flash * 0.95);
+        expect(world.energy).toBeGreaterThan(before.energy * 0.95);
+        expect(world.shared.uCrown.value).toBeGreaterThan(before.crown * 0.95);
+        // The quad's fronts and its ring run on beside the single's.
+        expect(litFronts(world)).toBeGreaterThanOrEqual(before.fronts + 2);
+        expect(sumGains(world.shared.uShockG.value)).toBeGreaterThan(before.rings * 0.97 + 0.3);
+        expect(world.quadAt).toBe(quadAt);
+        world.dispose();
+    });
+
+    it('lets a burning row finish its burn when the next piece lands before it settles', () => {
+        const { world } = makeWorld();
+        world.lock({ rows: [19] });
+        run(world, 0.5);
+        world.clear({ rows: [19], lines: 1, combo: 1 });
+        const clearedAt = world.time;
+        run(world, 0.3);
+        world.lock({ rows: [19] }); // the tapestry drops the burnt row now: the board already has
+        expect(burn(world, 19).x).toBe(-2000); // a fresh thread on the floor row...
+        expect(world.getState().embers).toBe(1); // ...and the old one still burning, where it was
+        const slot = world.shared.uWeftB.array.slice(WEFT_ROWS).findIndex((v) => v.x === clearedAt);
+        expect(slot).toBeGreaterThanOrEqual(0);
+        expect(world.shared.uEmber.array[slot].x).toBe(19);
+        expect(world.shared.uWeftB.array[WEFT_ROWS + slot].y).toBeGreaterThan(0);
+        run(world, 2.5);
+        expect(world.getState().embers).toBe(0);
+        expect(world.getState().wefts).toBe(1);
+        world.dispose();
+    });
+
+    it('builds each cascade wave on the last: brighter burns, stronger fronts, faster rings', () => {
+        const { world } = makeWorld();
+        const burns = [];
+        const fronts = [];
+        const speeds = [];
+        for (let wave = 1; wave <= 6; wave++) {
+            world.clear({
+                rows: [19], lines: 1, combo: 1, cascade: wave,
+            });
+            burns.push(burn(world, 19).y);
+            fronts.push(Math.max(...world.shared.uSweep.array.filter((v) => v.y === world.time).map((v) => v.z)));
+            speeds.push(Math.max(...world.shockSpeed));
+            run(world, 0.36);
+        }
+        for (let i = 1; i < burns.length; i++) {
+            expect(burns[i], `wave ${i + 1}`).toBeGreaterThan(burns[i - 1]);
+            expect(fronts[i], `wave ${i + 1}`).toBeGreaterThan(fronts[i - 1]);
+            expect(speeds[i], `wave ${i + 1}`).toBeGreaterThan(speeds[i - 1]);
+        }
+        world.dispose();
+    });
+
+    it('reads hotter through a long chain than at its first clear, and breathes back when the hands rest', () => {
+        const { world } = makeWorld('High');
+        const read = () => {
+            const s = world.shared;
+            const post = world.getPostState();
+            return {
+                heat: s.uHeat.value,
+                energy: s.uEnergy.value,
+                lamps: s.uLampFlare.value.x,
+                carousel: s.uCarousel.value.y,
+                lace: s.uLace.value,
+                bloom: post.bloomBoost,
+                exposure: post.exposure,
+                stage: world.play.stage,
+            };
+        };
+        let first = null;
+        for (let i = 0; i < 12; i++) {
+            world.lock({ rows: [19], hardDrop: true });
+            world.clear({ rows: [19], lines: 1 + (i % 3), combo: i + 1 });
+            run(world, 0.64);
+            if (i === 0) first = read();
+        }
+        const last = read();
+        expect(first.stage).toBeLessThan(2);
+        expect(last.stage).toBe(3); // fever
+        expect(last.heat).toBeGreaterThan(first.heat + 0.5);
+        expect(last.energy).toBeGreaterThan(first.energy);
+        expect(last.lamps).toBeGreaterThan(first.lamps + 0.5);
+        expect(first.carousel).toBeLessThan(0.02);
+        expect(last.carousel).toBeGreaterThan(0.3);
+        expect(last.lace).toBeGreaterThan(0.3);
+        expect(last.bloom).toBeGreaterThan(first.bloom + 0.15);
+        // The iris closes a touch as the heat adds light, so the colours stay saturated.
+        expect(last.exposure).toBeLessThan(first.exposure);
+        run(world, 12);
+        const rested = read();
+        expect(rested.stage).toBe(0);
+        expect(rested.carousel).toBeLessThan(0.01);
+        expect(rested.lamps).toBeLessThan(1.02);
+        expect(rested.bloom).toBeLessThan(0.01);
+        expect(rested.exposure).toBeGreaterThan(0.995);
+        world.dispose();
+    });
+
+    it('leaves the loom as it always was under casual play', () => {
+        const { world } = makeWorld();
+        let most = 0;
+        for (let i = 0; i < 14; i++) {
+            world.lock({ rows: [19 - (i % 6)], u: (i * 0.37) % 1 });
+            if (i % 4 === 3) world.clear({ rows: [19], lines: 1, combo: 1 });
+            for (let f = 0; f < 90; f++) {
+                run(world, 1 / 60, 1);
+                most = Math.max(most, world.shared.uCarousel.value.y, world.getPostState().bloomBoost);
+            }
+        }
+        expect(most).toBeLessThan(0.02);
+        expect(world.play.stage).toBe(0);
+        expect(world.shared.uLampFlare.value.x).toBeLessThan(1.02);
+        world.dispose();
+    });
+
+    it('crowns the quad still playing with a late perfect clear: no re-gather, no row burns', () => {
+        const twin = makeWorld().world;
+        const { world } = makeWorld();
+        for (const w of [world, twin]) {
+            w.lock({ rows: quadRows });
+            w.clear({ rows: quadRows, lines: 4, combo: 1 });
+            run(w, 0.36);
+        }
+        const { quadAt } = world;
+        const burnt = quadRows.map((row) => burn(world, row).x);
+        const { k } = world;
+        world.onPerfect({ player: 0 });
+        expect(world.quadAt).toBe(quadAt);
+        expect(world.quadHold).toBeGreaterThan(twin.quadHold);
+        expect(quadRows.map((row) => burn(world, row).x)).toEqual(burnt);
+        run(world, 1 / 120, 1);
+        run(twin, 1 / 120, 1);
+        expect(Math.abs(world.k - twin.k)).toBeLessThan(1e-9); // the gather carries on untouched
+        expect(Math.abs(world.k - k)).toBeLessThan(0.6);
+        run(world, 0.2);
+        run(twin, 0.2);
+        expect(world.shared.uCrown.value).toBeGreaterThan(twin.shared.uCrown.value);
+        expect(world.play.punch).toBeGreaterThan(twin.play.punch);
+        world.dispose();
+        twin.dispose();
+    });
+
+    it('opens an iris of its own for a perfect clear after a smaller clear', () => {
+        const { world } = makeWorld();
+        world.clear({ rows: [19, 18], lines: 2, combo: 1 });
+        run(world, 0.36);
+        world.onPerfect({ player: 0 });
+        expect(world.quadK()).not.toBeNull();
+        expect(world.quadHold).toBeGreaterThan(QUAD.hold);
+        world.dispose();
+    });
+
+    it('holds and tightens the open iris for a back-to-back quad, never re-gathers, and laces the gimbals', () => {
+        const { world } = makeWorld();
+        world.clear({ rows: quadRows, lines: 4, combo: 1 });
+        run(world, 2.3);
+        const { quadAt } = world;
+        const holdBefore = world.quadHold;
+        const phase = world.shared.uPhase.value;
+        expect(world.k).toBe(K_IRIS);
+        world.clear({
+            rows: quadRows, lines: 4, combo: 1, b2b: true,
+        });
+        expect(world.quadAt).toBe(quadAt);
+        expect(world.quadHold).toBeGreaterThan(holdBefore);
+        run(world, 1 / 120, 1);
+        expect(world.k).toBe(K_IRIS);
+        expect(Math.abs(world.shared.uPhase.value - phase)).toBeLessThan(0.05);
+        run(world, 0.3);
+        // A tighter circle of tangency: a larger phase.
+        expect(world.shared.uPhase.value).toBeGreaterThan(phase + 0.05);
+        expect(world.shared.uLace.value).toBeGreaterThan(0.5);
+        world.dispose();
+    });
+
+    it('unweaves a broken chain one petal at a time', () => {
+        const { world } = makeWorld();
+        world.setCombo(9);
+        run(world, 4);
+        expect(world.kTarget).toBe(K_REST + 8);
+        world.setCombo(0);
+        let steepest = 0;
+        let last = world.k;
+        for (let i = 0; i < 300; i++) {
+            run(world, 1 / 60, 1);
+            steepest = Math.max(steepest, last - world.k);
+            last = world.k;
+            if (i === 30) expect(world.kTarget).toBeGreaterThan(K_REST + 5);
+        }
+        expect(world.kTarget).toBe(K_REST);
+        expect(world.k).toBeCloseTo(K_REST, 2);
+        expect(steepest * 60).toBeLessThan(4.5); // petals per second, at the fastest
+        world.dispose();
+    });
+
+    it('answers a T-spin that cleared nothing with a small wring of the hoop', () => {
+        const { world } = makeWorld();
+        world.onSpin({ player: 0 });
+        run(world, 0.2);
+        expect(Math.abs(world.spin)).toBeGreaterThan(0.02);
+        expect(world.play.punch).toBeGreaterThan(0);
+        expect(world.getState().wefts).toBe(0);
         world.dispose();
     });
 });
@@ -478,7 +706,7 @@ describe('astral weave world: robustness', () => {
         expect(world.getState().wefts).toBe(0);
         expect(world.combo).toBe(0);
         expect(world.shared.uPluck.array.some((v) => v.w > 0)).toBe(true);
-        expect(world.shockGain).toBeGreaterThan(0);
+        expect(Math.max(...world.shockGain)).toBeGreaterThan(0);
         world.onCombo(3, 0);
         expect(world.combo).toBe(3);
         world.dispose();

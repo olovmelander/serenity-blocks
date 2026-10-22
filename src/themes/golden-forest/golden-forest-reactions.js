@@ -19,8 +19,18 @@
  *                 speeds up and whitens as cascades or consecutive clears build, and
  *                 ribbons of light unfurl across the sky
  *   t-spin        a spiral flourish beside the board
- *   perfect clear / level up   the whole lake exhales: light, rings, wind and wings
+ *   back-to-back  the sun pours gold down its path on the water, more for every one in a row
+ *   perfect clear the crown: the sun flares on the treetops and the sky's ribbons ignite
+ *   level up      the whole lake exhales: light, rings, wind and wings
+ *
+ * It BUILDS rather than pops (src/themes/shared/gameplay-surge.js). Every envelope is a Swell:
+ * a new event adds to what is still lit and never restarts it, so a weak lock after a quad can
+ * only lift the light, and rapid locks raise the wind instead of shaking the trees. Wind fronts
+ * run to completion in slots, all with the prevailing wind; one that cannot get a slot joins the
+ * youngest still crossing. A GameplaySurge reads how hot play runs (`level`, `fever`, `stage`):
+ * the world spends it on the evening wind, the fireflies falling into step, the sun pouring in.
  */
+import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
 
 export const GOLDEN_FOREST_REACTION_LIMITS = Object.freeze({
     Minimal: 4,
@@ -40,9 +50,27 @@ const DECAY_RATES = Object.freeze({
     flock: 0.32,
 });
 const ENVELOPE_KEYS = Object.keys(DECAY_RATES);
+/**
+ * Each envelope accumulates (a Swell: one event reads exactly as it always did, a second adds to
+ * what is left of the first); the reading is capped at 1 and what is stored at 1.4, so after a
+ * frenzy the light lingers a moment and then falls away like any other.
+ */
+const envelopeSwell = (rate) => new Swell({
+    release: 1 / rate, ceiling: 1, knee: 1, headroom: 1.4,
+});
 const VORTEX_HOLD_SECONDS = 2.6;
 const VORTEX_RELEASE_RATE = 0.85;
 const FRONT_SECONDS = 2.2;
+/** Wind fronts crossing at once; another joins the youngest still crossing. */
+export const GOLDEN_FOREST_FRONT_SLOTS = 3;
+/** How fast a front that was joined eases up to its new strength (or away at game over). */
+const FRONT_EASE = 3;
+/** The prevailing wind: every front rolls across the lake the way the breeze blows. */
+const FRONT_DIRECTION = 1;
+/** Emitters do their work early in their lives (the director spawns within these windows). */
+const WORK_SECONDS = Object.freeze({
+    lock: 0.25, splash: 0.22, clear: 0.75, rise: 1.5, spin: 1.1, combo: 0,
+});
 const RING_QUEUE = 8;
 const BOARD_COLUMNS = 10;
 const BOARD_VISIBLE_ROWS = 20;
@@ -132,9 +160,21 @@ export class GoldenForestReactions {
         this.rings = Array.from({ length: RING_QUEUE }, () => ({
             serial: -1, column: 0.5, row: 0, strength: 0,
         }));
-        this.envelopes = Object.fromEntries(ENVELOPE_KEYS.map((key) => [key, 0]));
-        this.front = {
-            active: false, age: 0, direction: 1, strength: 0,
+        this.swells = Object.fromEntries(ENVELOPE_KEYS.map((key) => [key, envelopeSwell(DECAY_RATES[key])]));
+        this.fronts = Array.from({ length: GOLDEN_FOREST_FRONT_SLOTS }, () => ({
+            active: false, age: 0, direction: FRONT_DIRECTION, strength: 0, target: 0, serial: -1,
+        }));
+        /** The perfect clear's crown and the back-to-back's gold: each new one adds to the last. */
+        this.crown = new Swell({
+            attack: 0.12, release: 2.4, ceiling: 1.2, knee: 0.9,
+        });
+        this.gold = new Swell({
+            attack: 0.2, release: 2.8, ceiling: 1.5, knee: 1,
+        });
+        /** How hot play runs, on this director's clock (sampled once per update). */
+        this.surge = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
         };
         // Counts resets, so a consumer can tell a fresh run of serials from a stale one.
         this.epoch = 0;
@@ -152,14 +192,24 @@ export class GoldenForestReactions {
         this.streak = 0;
         this.clearedSinceLock = false;
         this.pendingDrop = 0;
+        this.pendingHard = false;
+        this.depth = 1;
         this.vortex = 0;
         this.vortexTarget = 0;
         this.vortexHold = 0;
         this.sweeps = 0;
         this.settled = false;
-        for (const key of ENVELOPE_KEYS) this.envelopes[key] = 0;
-        Object.assign(this.front, {
-            active: false, age: 0, direction: 1, strength: 0,
+        for (const key of ENVELOPE_KEYS) this.swells[key].reset();
+        for (const front of this.fronts) {
+            Object.assign(front, {
+                active: false, age: 0, direction: FRONT_DIRECTION, strength: 0, target: 0, serial: -1,
+            });
+        }
+        this.crown.reset();
+        this.gold.reset();
+        this.surge.reset();
+        Object.assign(this.heat, {
+            punch: 0, level: 0, fever: 0, stage: 0,
         });
         for (const ring of this.rings) {
             Object.assign(ring, {
@@ -188,18 +238,30 @@ export class GoldenForestReactions {
         return Number.isFinite(value) ? clamp(value, 0, 1 - Number.EPSILON) : 0.5;
     }
 
+    /** The envelopes as they read now: every event's light added to what was still lit. */
+    get envelopes() {
+        const values = {};
+        for (const key of ENVELOPE_KEYS) values[key] = this.swells[key].valueAt(this.time);
+        return values;
+    }
+
+    /** Add to the envelopes; nothing already lit is cut or restarted. */
     excite(values) {
         for (const key of ENVELOPE_KEYS) {
             const value = Number.isFinite(values[key]) ? clamp(values[key], 0, 1) : 0;
-            this.envelopes[key] = Math.max(this.envelopes[key], value);
+            this.swells[key].hit(value, this.time);
         }
     }
 
-    /** Claim a free slot, or the one furthest through its life. */
+    /**
+     * Claim a free slot, else the one with the least of its work left (an emitter does its work
+     * early: a jet that has thrown its sparks only lingers), the furthest through its life on a tie.
+     */
     emit(kind, {
         side = 0, column = 0.5, row = 0.3, strength = 0.5, lines = 0, duration = 1,
     }) {
         let selected = -1;
+        let least = Infinity;
         let furthest = -1;
         for (let step = 0; step < this.maxEmitters; step += 1) {
             const index = (this.cursor + step) % this.maxEmitters;
@@ -208,8 +270,11 @@ export class GoldenForestReactions {
                 selected = index;
                 break;
             }
+            const window = WORK_SECONDS[emitter.kind] ?? emitter.duration;
+            const left = window > 0 ? clamp(1 - emitter.age / window, 0, 1) * emitter.strength : 0;
             const progress = emitter.age / emitter.duration;
-            if (progress > furthest) {
+            if (left < least - 1e-9 || (Math.abs(left - least) <= 1e-9 && progress > furthest)) {
+                least = left;
                 furthest = progress;
                 selected = index;
             }
@@ -232,6 +297,15 @@ export class GoldenForestReactions {
         return this.emitters[selected];
     }
 
+    /**
+     * How strong play's rings are as it runs hot: they come thick and fast then, and each a little
+     * gentler interferes across the water instead of stacking into one pale disc in front of the
+     * eye. The perfect clear's and the level-up's rings stay whole: they are the release.
+     */
+    ringScale() {
+        return 1 - 0.45 * this.heat.level;
+    }
+
     /** Ask for a ring on the water behind a place on the board. */
     ripple(column, row, strength) {
         const ring = this.rings[this.ringCursor];
@@ -244,15 +318,44 @@ export class GoldenForestReactions {
         return ring;
     }
 
+    /**
+     * Send a front of wind across the forest with the prevailing breeze. It takes a free slot and
+     * runs to the far side; when every slot is crossing, it joins the youngest (which eases up to
+     * the stronger of the two, and a little more): no front is ever restarted or cut.
+     */
     sweep(strength) {
+        const value = clamp(strength, 0, 1);
+        if (!(value > 0)) return null;
         this.sweeps += 1;
-        Object.assign(this.front, {
-            active: true, age: 0, direction: this.sweeps % 2 === 0 ? -1 : 1, strength: clamp(strength, 0, 1),
-        });
+        let free = null;
+        let youngest = null;
+        for (const front of this.fronts) {
+            if (!front.active) {
+                if (!free) free = front;
+            } else if (!youngest || front.age < youngest.age) youngest = front;
+        }
+        if (free) {
+            return Object.assign(free, {
+                active: true, age: 0, direction: FRONT_DIRECTION, strength: value, target: value, serial: this.sweeps,
+            });
+        }
+        youngest.target = Math.min(1, Math.max(youngest.target, value) + 0.25 * Math.min(youngest.target, value));
+        youngest.serial = this.sweeps;
+        return youngest;
     }
 
+    /** The front most recently sent (or joined), or a resting one. */
+    get front() {
+        let newest = null;
+        for (const front of this.fronts) {
+            if (front.serial >= 0 && (!newest || front.serial > newest.serial)) newest = front;
+        }
+        return newest || this.fronts[0];
+    }
+
+    /** Raise the river. It never pulls down a river already running higher than it asks for. */
     raiseVortex(level) {
-        this.vortexTarget = Math.max(this.vortexTarget, clamp(level, 0, 1));
+        this.vortexTarget = Math.max(this.vortexTarget, clamp(level, 0, 1), this.vortex);
         this.vortexHold = VORTEX_HOLD_SECONDS;
     }
 
@@ -262,6 +365,7 @@ export class GoldenForestReactions {
         const distance = Number.isFinite(payload.distance) ? payload.distance
             : (Number(payload.endY) - Number(payload.startY));
         this.pendingDrop = Number.isFinite(distance) ? clamp(distance / BOARD_VISIBLE_ROWS, 0, 1) : 0;
+        this.pendingHard = true;
         return true;
     }
 
@@ -274,7 +378,10 @@ export class GoldenForestReactions {
         this.clearedSinceLock = false;
         const place = boardPlace(payload);
         const drop = this.pendingDrop;
+        this.surge.lock({ hardDrop: this.pendingHard }, this.time);
         this.pendingDrop = 0;
+        this.pendingHard = false;
+        this.depth = 1;
         const column = place?.column ?? 0.5;
         const row = place?.row ?? 0.12;
         this.excite({
@@ -285,7 +392,7 @@ export class GoldenForestReactions {
         this.emit('lock', {
             side, column, row, strength: 0.26 + drop * 0.5, duration: 1.1,
         });
-        this.ripple(column, row, 0.55 + drop * 0.9);
+        this.ripple(column, row, (0.55 + drop * 0.9) * this.ringScale());
         if (drop > 0.3) {
             this.emit('splash', {
                 side, column, row, strength: drop, duration: 0.9,
@@ -304,17 +411,29 @@ export class GoldenForestReactions {
             this.clearedSinceLock = true;
             this.streak += 1;
         }
+        // The cascade depth: the payload's own, else the COMBO event that came just before it.
+        const depth = Math.max(1, positiveCount(event.detail.cascadeCount, 12) || this.depth);
+        const deep = Math.min(4, depth - 1);
+        if (deep === 0) this.surge.clear({ lines, combo: this.streak }, this.time);
+        else {
+            // A later wave of the same lock: worth a wave, not a whole new clear.
+            const W = SURGE_WEIGHTS;
+            this.surge.punch.hit(W.punch.wave + W.punch.lines[lines] * 0.4, this.time);
+            this.surge.level.hit(W.heat.wave + W.heat.lines[lines] * 0.25, this.time);
+        }
         const row = clearedRow(event.detail) ?? boardPlace(event.detail)?.row ?? 0.2;
         const four = lines >= 4;
+        // Each wave of a cascade builds on the last: stronger jets, broader rings, another gust.
+        const build = 1 + deep * 0.15;
         this.excite({
-            gust: 0.28 + lines * 0.14,
+            gust: 0.28 + lines * 0.14 + deep * 0.06,
             warmth: 0.14 + lines * 0.11 + (four ? 0.3 : 0),
             shafts: 0.14 + lines * 0.13 + (four ? 0.3 : 0),
-            glow: 0.2 + lines * 0.11,
+            glow: (0.2 + lines * 0.11) * build,
             shimmer: 0.4 + lines * 0.15,
             flock: four ? 1 : 0,
         });
-        const strength = 0.36 + lines * 0.16;
+        const strength = Math.min(1, (0.36 + lines * 0.16) * build);
         // Fireflies are blown out of both sides of the board at the height of the cleared rows.
         this.emit('clear', {
             side: -1, row, strength, lines, duration: 1.5 + lines * 0.12,
@@ -323,11 +442,11 @@ export class GoldenForestReactions {
             side: 1, row, strength, lines, duration: 1.5 + lines * 0.12,
         });
         // One broad ring from under the whole row, and from two lines a second on its heels.
-        this.ripple(0.5, row, 1.1 + lines * 0.36);
-        if (lines >= 2) {
-            this.ripple(lines % 2 === 0 ? 0.12 : 0.88, row, 0.7 + lines * 0.2);
-            this.sweep(0.3 + lines * 0.17);
-        }
+        const calm = this.ringScale();
+        this.ripple(0.5, row, (1.1 + lines * 0.36 + deep * 0.25) * calm);
+        if (lines >= 2) this.ripple(lines % 2 === 0 ? 0.12 : 0.88, row, (0.7 + lines * 0.2 + deep * 0.15) * calm);
+        // From two lines a front of wind crosses the forest; a cascade sends one on every wave.
+        if (lines >= 2 || deep > 0) this.sweep(0.3 + lines * 0.17 + deep * 0.08);
         if (four) {
             this.emit('rise', {
                 row: 0, strength: 1, lines, duration: 2.8,
@@ -343,6 +462,8 @@ export class GoldenForestReactions {
         if (event.count < 2) return false;
         this.settled = false;
         const growth = 1 - Math.exp(-(event.count - 1) * 0.22);
+        // The wave this COMBO announces clears next: its LINE_CLEAR reads the depth from here.
+        this.depth = Math.max(this.depth, Math.min(12, event.count));
         this.excite({
             gust: 0.36 + growth * 0.5,
             warmth: 0.26 + growth * 0.6,
@@ -354,7 +475,7 @@ export class GoldenForestReactions {
         this.emit('combo', {
             row: 0.1, strength: 0.4 + growth * 0.6, lines: event.count, duration: 1.4,
         });
-        this.ripple(this.random(), 0.05, 0.7 + growth * 0.9);
+        this.ripple(this.random(), 0.05, (0.7 + growth * 0.9) * this.ringScale());
         return true;
     }
 
@@ -362,18 +483,32 @@ export class GoldenForestReactions {
         if (this.disposed) return false;
         const payload = unwrap(detail);
         const place = boardPlace(payload);
+        // A T-spin that cleared lines adds its own weight to the clear just counted; one that
+        // cleared nothing is a little flourish of its own.
+        if (positiveCount(payload.lineCount, 4) > 0) {
+            this.surge.punch.hit(SURGE_WEIGHTS.punch.tspin, this.time);
+            this.surge.level.hit(SURGE_WEIGHTS.heat.tspin, this.time);
+        } else this.surge.spin(this.time);
         this.excite({
             gust: 0.45, warmth: 0.3, shafts: 0.3, glow: 0.6, shimmer: 0.5,
         });
         this.emit('spin', {
             side: place && place.column >= 0.5 ? 1 : -1, row: place?.row ?? 0.3, strength: 0.8, duration: 1.7,
         });
-        this.ripple(place?.column ?? 0.5, place?.row ?? 0.3, 1.2);
+        this.ripple(place?.column ?? 0.5, place?.row ?? 0.3, 1.2 * this.ringScale());
         return true;
     }
 
+    /**
+     * Back-to-back: the sun pours gold down its path on the water and the river banks up. The
+     * gold is a swell of its own, so a second difficult clear in a row burns brighter than the
+     * first.
+     */
     onBackToBack() {
         if (this.disposed) return false;
+        this.surge.punch.hit(SURGE_WEIGHTS.punch.b2b, this.time);
+        this.surge.level.hit(SURGE_WEIGHTS.heat.b2b, this.time);
+        this.gold.hit(1, this.time);
         this.excite({
             warmth: 0.5, glow: 0.7, shafts: 0.45, shimmer: 0.6,
         });
@@ -381,15 +516,26 @@ export class GoldenForestReactions {
         return true;
     }
 
+    /**
+     * A perfect clear is the crown on the clear still playing (physics sends it after that
+     * clear's last wave): the sun flares on the treetops, the ribbons ignite, the birds lift.
+     * When the clear's own rising lake is still pouring off the water it is not raised again.
+     */
     onPerfectClear() {
         if (this.disposed) return false;
         this.settled = false;
+        this.surge.crown(this.time);
+        this.crown.hit(1, this.time);
         this.excite({
             gust: 0.9, warmth: 1, shafts: 1, glow: 1, shimmer: 1, flock: 1,
         });
-        this.emit('rise', {
-            row: 0, strength: 1, lines: 4, duration: 3.4,
-        });
+        const rising = this.emitters.some((emitter) => emitter.active && emitter.kind === 'rise'
+            && emitter.age < WORK_SECONDS.rise);
+        if (!rising) {
+            this.emit('rise', {
+                row: 0, strength: 1, lines: 4, duration: 3.4,
+            });
+        }
         this.ripple(0.5, 0.1, 2.6);
         this.ripple(0.5, 0.5, 1.6);
         this.sweep(1);
@@ -399,6 +545,7 @@ export class GoldenForestReactions {
 
     onLevelUp() {
         if (this.disposed) return false;
+        this.surge.levelUp(this.time);
         this.excite({
             gust: 0.6, warmth: 0.55, shafts: 0.6, glow: 0.8, shimmer: 0.8, flock: 0.7,
         });
@@ -413,7 +560,8 @@ export class GoldenForestReactions {
         this.vortexTarget = 0;
         this.vortexHold = 0;
         this.streak = 0;
-        this.front.active = false;
+        // The wind dies: fronts still crossing ease away instead of snapping the trees upright.
+        for (const front of this.fronts) front.target = 0;
         this.settled = true;
         return true;
     }
@@ -421,10 +569,11 @@ export class GoldenForestReactions {
     update(dt) {
         if (this.disposed || !Number.isFinite(dt) || dt <= 0) return this.getFrame();
         this.time += dt;
-        for (const key of ENVELOPE_KEYS) {
-            this.envelopes[key] *= Math.exp(-DECAY_RATES[key] * dt);
-            if (this.envelopes[key] < 0.00001) this.envelopes[key] = 0;
-        }
+        const heat = this.surge.sample(this.time);
+        this.heat.punch = heat.punch;
+        this.heat.level = heat.level;
+        this.heat.fever = heat.fever;
+        this.heat.stage = heat.stage;
         // The vortex rises quickly to its target, holds while clears keep coming, then unwinds.
         if (this.vortexHold > 0) {
             this.vortexHold = Math.max(0, this.vortexHold - dt);
@@ -434,9 +583,16 @@ export class GoldenForestReactions {
             this.vortex *= Math.exp(-VORTEX_RELEASE_RATE * dt);
             if (this.vortex < 0.0005) this.vortex = 0;
         }
-        if (this.front.active) {
-            this.front.age += dt;
-            if (this.front.age >= FRONT_SECONDS) this.front.active = false;
+        const ease = 1 - Math.exp(-dt * FRONT_EASE);
+        for (const front of this.fronts) {
+            if (!front.active) continue;
+            front.age += dt;
+            front.strength += (front.target - front.strength) * ease;
+            if (front.age >= FRONT_SECONDS) {
+                front.active = false;
+                front.strength = 0;
+                front.target = 0;
+            }
         }
         for (const emitter of this.emitters) {
             if (!emitter.active) continue;
@@ -449,9 +605,23 @@ export class GoldenForestReactions {
         return this.getFrame();
     }
 
+    /** Where a crossing front is on screen, and how hard it pushes there. */
+    static frontFrame(front) {
+        const travel = clamp(front.age / FRONT_SECONDS, 0, 1);
+        return {
+            // -1.4 .. 1.4 across the view, in the direction of travel.
+            position: (travel * 2.8 - 1.4) * front.direction,
+            direction: front.direction,
+            strength: clamp(front.strength * Math.sin(Math.PI * Math.min(1, travel * 1.15)), 0, 1),
+        };
+    }
+
     getFrame() {
         const { front } = this;
-        const travel = clamp(front.age / FRONT_SECONDS, 0, 1);
+        const fronts = [];
+        for (const crossing of this.fronts) {
+            if (crossing.active) fronts.push(GoldenForestReactions.frontFrame(crossing));
+        }
         return {
             ...this.envelopes,
             epoch: this.epoch,
@@ -462,12 +632,16 @@ export class GoldenForestReactions {
             ribbons: clamp((this.vortex - 0.3) / 0.5, 0, 1),
             streak: this.streak,
             settled: this.settled,
-            front: front.active ? {
-                // -1.4 .. 1.4 across the view, in the direction of travel.
-                position: (travel * 2.8 - 1.4) * front.direction,
-                direction: front.direction,
-                strength: front.strength * Math.sin(Math.PI * Math.min(1, travel * 1.15)),
-            } : null,
+            // The newest front; every front still crossing is in `fronts`.
+            front: front.active ? GoldenForestReactions.frontFrame(front) : null,
+            fronts,
+            // How hot play runs (shared/gameplay-surge.js), the perfect clear's crown and the B2B gold.
+            punch: this.heat.punch,
+            level: this.heat.level,
+            fever: this.heat.fever,
+            stage: this.heat.stage,
+            crown: clamp(this.crown.valueAt(this.time), 0, 1.2),
+            gold: clamp(this.gold.valueAt(this.time), 0, 1.5),
             rings: this.rings,
             emitters: this.emitters.filter((emitter) => emitter.active).map((emitter) => ({
                 ...emitter,

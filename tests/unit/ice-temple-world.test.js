@@ -3,11 +3,11 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    CROWN_RADIUS_MAX, FLAKE_DISTANCE, ICE_TEMPLE_PARTS, IceTempleWorld, RESONANCE_STEP, REST_RIG, SNOW_FALL,
-    SNOW_TURN, fovForAspect,
+    CROWN_RADIUS_MAX, ECHO_DELAY, FLAKE_DISTANCE, ICE_TEMPLE_PARTS, IceTempleWorld, RESONANCE_STEP, REST_RIG,
+    SNOW_FALL, SNOW_TURN, fovForAspect,
 } from '../../src/themes/ice-temple/ice-temple-world.js';
 import {
-    AURORA_PALETTES, CLEAR_SLOTS, CLEAR_TRAVEL, CROWN_LIFE, CROWN_SPIKES, FLAKE_LIFE, HUSH_HOLD, LOCK_SLOTS, NAVE,
+    AURORA_PALETTES, CLEAR_TRAVEL, CROWN_LIFE, CROWN_SPIKES, FLAKE_LIFE, HUSH_HOLD, LOCK_SLOTS, NAVE,
     linRGB,
 } from '../../src/themes/ice-temple/ice-temple-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/ice-temple/ice-temple-quality.js';
@@ -302,20 +302,21 @@ describe('ice temple world: clears, resonance and the four-line hush', () => {
         expect(A.z).toBeGreaterThan(0.6);
         expect(A.w).toBe(0);
         const beam = world.beams.uniforms;
-        expect(beam.frame.value.z).toBe(world.time);
-        expect(beam.rows.value.x).toBeGreaterThan(0.5);
-        expect(beam.rows.value.y).toBeGreaterThan(0.5);
-        expect(beam.rows.value.z).toBe(-1);
+        const volley = world.beams.slot;
+        expect(beam.frame[volley].value.z).toBe(world.time);
+        expect(beam.rows[volley].value.x).toBeGreaterThan(0.5);
+        expect(beam.rows[volley].value.y).toBeGreaterThan(0.5);
+        expect(beam.rows[volley].value.z).toBe(-1);
         const card = cardUnion(world.layout);
-        expect(beam.frame.value.x).toBeCloseTo(card.x0, 6);
-        expect(beam.frame.value.y).toBeCloseTo(card.x1, 6);
+        expect(beam.frame[volley].value.x).toBeCloseTo(card.x0, 6);
+        expect(beam.frame[volley].value.y).toBeCloseTo(card.x1, 6);
         world.dispose();
     });
 
     it('keeps the row beams dark when no board is on screen', () => {
         const { world } = makeWorld('High', { live: false });
         world.onClear({ lines: 3 });
-        expect(world.beams.uniforms.frame.value.w).toBe(0);
+        world.beams.uniforms.frame.forEach((frame) => expect(frame.value.w).toBe(0));
         expect(world.counts.clears).toBe(1);
         world.dispose();
     });
@@ -324,8 +325,7 @@ describe('ice temple world: clears, resonance and the four-line hush', () => {
         const { world } = makeWorld('Minimal');
         const colours = [1, 2, 3].map((lines) => {
             world.onClear({ lines });
-            const slot = (world.clearCursor - 1) % CLEAR_SLOTS;
-            return world.u.clearC[slot].value.clone();
+            return world.u.clearC[world.lastClearSlot].value.clone();
         });
         expect(colours[0].distanceTo(colours[1])).toBeGreaterThan(0.2);
         expect(colours[1].distanceTo(colours[2])).toBeGreaterThan(0.2);
@@ -334,6 +334,8 @@ describe('ice temple world: clears, resonance and the four-line hush', () => {
         expect(colours[0].y / colours[0].x).toBeGreaterThan(2);
         expect(border[1]).toBeGreaterThan(border[0]);
         expect(world.clearCursor).toBe(3);
+        // Three waves still running down the nave each keep their own slot.
+        expect(world.u.clearA.filter((slot) => slot.value.z > 0)).toHaveLength(3);
         world.dispose();
     });
 
@@ -381,6 +383,7 @@ describe('ice temple world: clears, resonance and the four-line hush', () => {
         const fallen = (combo) => {
             world.seek(10);
             world.onCombo(combo);
+            run(world, camera, 8); // the snow eases onto the chain
             const before = world.snowFall;
             run(world, camera, 2);
             return world.snowFall - before;
@@ -388,8 +391,34 @@ describe('ice temple world: clears, resonance and the four-line hush', () => {
         expect(fallen(0)).toBeCloseTo(SNOW_FALL * 2, 3);
         expect(fallen(2)).toBeLessThan(fallen(0));
         expect(fallen(2)).toBeGreaterThan(0);
-        expect(Math.abs(fallen(SNOW_TURN))).toBeLessThan(1e-6);
+        expect(Math.abs(fallen(SNOW_TURN))).toBeLessThan(1e-3);
         expect(fallen(SNOW_TURN + 3)).toBeLessThan(0);
+        world.dispose();
+    });
+
+    it('never flips the snow in one frame: a broken chain lets it settle back over seconds', () => {
+        const { camera, world } = makeWorld('Minimal');
+        world.onCombo(10);
+        run(world, camera, 6);
+        // Rising.
+        let before = world.snowFall;
+        run(world, camera, 0.1);
+        expect(world.snowFall - before).toBeLessThan(0);
+        world.onCombo(0);
+        // The frame after the break it is still rising: the fall comes back as a gesture.
+        before = world.snowFall;
+        run(world, camera, 1 / 60, 1);
+        expect(world.snowFall - before).toBeLessThan(0);
+        run(world, camera, 1.5);
+        before = world.snowFall;
+        run(world, camera, 0.1);
+        const settling = (world.snowFall - before) / 0.1;
+        expect(settling).toBeGreaterThan(0);
+        expect(settling).toBeLessThan(SNOW_FALL * 0.9);
+        run(world, camera, 6);
+        before = world.snowFall;
+        run(world, camera, 1);
+        expect(world.snowFall - before).toBeCloseTo(SNOW_FALL, 2);
         world.dispose();
     });
 
@@ -397,10 +426,13 @@ describe('ice temple world: clears, resonance and the four-line hush', () => {
         const { camera, world } = makeWorld('High');
         world.onCombo(6);
         run(world, camera, 4);
+        const held = world.u.auroraGain.value;
         world.onCombo(0);
+        run(world, camera, 0.3);
+        // The aurora sighs; the moonlight on the temple does not dip (no frame-wide dark).
         expect(world.exhale).toBeGreaterThan(0.5);
-        run(world, camera, 0.05);
-        expect(world.u.ambient.value).toBeLessThan(0.9);
+        expect(world.u.auroraGain.value).toBeLessThan(held * 0.8);
+        expect(world.u.ambient.value).toBeGreaterThan(0.999);
         run(world, camera, 12);
         const state = world.getState();
         expect(state.resonance).toBeLessThan(0.01);
@@ -419,8 +451,9 @@ describe('ice temple world: clears, resonance and the four-line hush', () => {
         expect(A.x).toBeCloseTo(t0 + HUSH_HOLD, 9);
         expect(A.y).toBe(4);
         expect(A.w).toBe(1);
+        run(world, camera, HUSH_HOLD * 0.3);
         const snow = world.snowFall;
-        run(world, camera, HUSH_HOLD * 0.6);
+        run(world, camera, HUSH_HOLD * 0.3);
         expect(world.getState().hush).toBe(true);
         expect(world.u.ambient.value).toBeLessThan(0.3);
         expect(world.u.heartPower.value).toBeLessThan(0.2);
@@ -452,10 +485,12 @@ describe('ice temple world: clears, resonance and the four-line hush', () => {
     });
 
     it('grows two snowflakes for a perfect clear', () => {
-        const { world } = makeWorld('High');
+        const { camera, world } = makeWorld('High');
         world.onClear({ lines: 2, perfect: true });
         expect(world.counts.quads).toBe(1);
         expect(world.flake.uniforms.state.value.z).toBe(2);
+        // The overdrive answers as the hush ends, hotter than a quad's.
+        run(world, camera, HUSH_HOLD + 0.3);
         expect(world.overdrive).toBeGreaterThan(1);
         world.dispose();
     });
@@ -496,6 +531,250 @@ describe('ice temple world: clears, resonance and the four-line hush', () => {
         world.update({ time: world.time, delta: 0 }, camera);
         expect(world.u.auroraA.value.x).toBeCloseTo(target[0], 5);
         expect(world.u.auroraA.value.y).toBeCloseTo(target[1], 5);
+        world.dispose();
+    });
+});
+
+/** What the temple shows, frame-wide and in its own light. */
+function look(world) {
+    const { u } = world;
+    const post = world.getPostState();
+    return {
+        heart: u.heartPower.value,
+        aurora: u.auroraGain.value,
+        dust: u.dustGain.value,
+        ambient: u.ambient.value,
+        overdrive: world.overdrive,
+        flash: post.flash,
+        kick: post.kick,
+        rays: post.rays,
+        level: world.heat.level,
+        fever: world.heat.fever,
+    };
+}
+
+/** A chain of `links` clearing hard drops, `gap` seconds apart, from link `from` on. */
+function chain(world, camera, links, { from = 1, gap = 0.64, each = null } = {}) {
+    for (let i = from; i < from + links; i++) {
+        world.onLock({ u: (i % 7) / 7, hardDrop: true });
+        world.onClear({ lines: 1 + (i % 3), combo: i });
+        world.onCombo(i);
+        run(world, camera, gap);
+        each?.(i);
+    }
+}
+
+describe('ice temple world: it builds with play', () => {
+    it('never cuts the light when a weak event follows a strong one', () => {
+        const alone = makeWorld('Minimal');
+        alone.world.onClear({ lines: 4 });
+        run(alone.world, alone.camera, 0.9);
+        const quad = look(alone.world);
+        const birth = alone.world.flake.uniforms.state.value.x;
+        alone.world.dispose();
+
+        const { camera, world } = makeWorld('Minimal');
+        world.onClear({ lines: 4 });
+        run(world, camera, 0.5);
+        world.onLock({ u: 0.4 });
+        world.onClear({ lines: 1 });
+        run(world, camera, 0.4);
+        const both = look(world);
+        for (const key of ['heart', 'aurora', 'dust', 'overdrive', 'flash', 'kick', 'rays']) {
+            expect(both[key], key).toBeGreaterThanOrEqual(quad[key] - 1e-9);
+        }
+        // The Great Snowflake keeps growing: a single never restarts it, and a second quad
+        // holds it up longer instead of calling it anew.
+        expect(world.flake.uniforms.state.value.x).toBe(birth);
+        const until = world.flakeUntil;
+        run(world, camera, 2);
+        world.onClear({ lines: 4 });
+        expect(world.flake.uniforms.state.value.x).toBe(birth);
+        expect(world.flake.uniforms.state.value.w).toBeGreaterThan(0);
+        expect(world.flakeUntil).toBeGreaterThan(until);
+        world.dispose();
+    });
+
+    it('reads a long chain hotter than its first clear, and staging its fever late', () => {
+        const { camera, world } = makeWorld('Minimal');
+        let first = null;
+        const clock0 = world.auroraClock;
+        const time0 = world.time;
+        chain(world, camera, 12, {
+            each: (i) => {
+                if (i === 1) first = { ...look(world), stage: world.heat.stage };
+            },
+        });
+        const late = { ...look(world), stage: world.heat.stage };
+        // Gentle at first: the first clear only warms the temple.
+        expect(first.level).toBeLessThan(0.25);
+        expect(first.fever).toBe(0);
+        expect(first.stage).toBeLessThanOrEqual(1);
+        // Late in the chain it sings.
+        expect(late.level).toBeGreaterThan(0.85);
+        expect(late.fever).toBeGreaterThan(0.5);
+        expect(late.stage).toBe(3);
+        expect(late.aurora).toBeGreaterThan(first.aurora * 1.6);
+        expect(late.dust).toBeGreaterThan(first.dust * 1.6);
+        expect(late.heart).toBeGreaterThan(first.heart);
+        // The aurora dances faster, and the rising snow turns round the nave.
+        expect(world.auroraClock - clock0).toBeGreaterThan((world.time - time0) * 1.2);
+        expect(world.swirl).toBeGreaterThan(0.1);
+        world.dispose();
+    });
+
+    it('breathes back to its calm when the hands rest', () => {
+        const { camera, world } = makeWorld('Minimal');
+        const rest = look(world);
+        chain(world, camera, 12);
+        // The next lock clears nothing: the chain breaks, and the hands rest.
+        world.onLock({ u: 0.5 });
+        world.onCombo(0);
+        run(world, camera, 1);
+        // The light drains with the heat, not in a second.
+        expect(world.resLevel).toBeGreaterThan(8);
+        expect(world.u.ambient.value).toBeGreaterThan(0.999);
+        run(world, camera, 14);
+        const calm = look(world);
+        expect(calm.level).toBeLessThan(0.06);
+        expect(calm.fever).toBe(0);
+        expect(world.heat.stage).toBe(0);
+        expect(calm.aurora).toBeCloseTo(rest.aurora, 1);
+        expect(calm.dust).toBeCloseTo(rest.dust, 1);
+        // The aurora keeps the world's pace again.
+        const clock = world.auroraClock;
+        run(world, camera, 1);
+        expect(world.auroraClock - clock).toBeCloseTo(1, 2);
+        world.dispose();
+    });
+
+    it('lets a quad in a fever inhale instead of going dark', () => {
+        const { camera, world } = makeWorld('Minimal');
+        chain(world, camera, 11);
+        world.onLock({ u: 0.9, hardDrop: true });
+        world.onClear({ lines: 4, combo: 12 });
+        run(world, camera, 0.15);
+        expect(world.getState().hush).toBe(true);
+        expect(world.u.ambient.value).toBeGreaterThan(0.7);
+        expect(world.u.heartPower.value).toBeGreaterThan(1);
+        world.dispose();
+    });
+
+    it('crowns a quad with a late perfect clear: no second hush, the flake grows on and takes a halo', () => {
+        const quadOnly = makeWorld('Minimal');
+        quadOnly.world.onClear({ lines: 4 });
+        run(quadOnly.world, quadOnly.camera, 0.36);
+        run(quadOnly.world, quadOnly.camera, 0.15);
+        let before = quadOnly.world.snowFall;
+        run(quadOnly.world, quadOnly.camera, 0.3);
+        const drift = Math.abs(quadOnly.world.snowFall - before);
+        const { overdrive } = quadOnly.world;
+        quadOnly.world.dispose();
+
+        const { camera, world } = makeWorld('Minimal');
+        world.onClear({ lines: 4 });
+        run(world, camera, 0.36); // physics sends PERFECT_CLEAR ~360 ms after the last wave
+        const birth = world.flake.uniforms.state.value.x;
+        world.onCrown({ player: 0 });
+        expect(world.counts.quads).toBe(1);
+        expect(world.getState().hush).toBe(false);
+        run(world, camera, 0.15);
+        expect(world.u.ambient.value).toBeGreaterThan(0.999); // never a second hush
+        expect(world.flake.uniforms.state.value.x).toBe(birth); // never restarted
+        const halo = world.flake.uniforms.state.value.z;
+        expect(halo).toBeGreaterThan(1);
+        expect(halo).toBeLessThan(2);
+        // The snow stands still in the air for a breath.
+        before = world.snowFall;
+        run(world, camera, 0.3);
+        expect(Math.abs(world.snowFall - before)).toBeLessThan(drift * 0.3 + 1e-4);
+        expect(world.overdrive).toBeGreaterThan(overdrive);
+        run(world, camera, 1);
+        expect(world.flake.uniforms.state.value.z).toBe(2);
+        // A diamond wave follows the quad's down the nave.
+        const waves = world.u.clearA.filter((slot) => slot.value.z > 0 && slot.value.w === 1);
+        expect(waves).toHaveLength(2);
+        world.dispose();
+    });
+
+    it('lets the Great Crystal blaze diamond white while the light it throws keeps its colour', () => {
+        const { camera, world } = makeWorld('Minimal');
+        // At rest the crystal's glow and the light it throws are one and the same.
+        expect(world.u.lightColor.value.distanceTo(world.u.heartColor.value)).toBeLessThan(1e-6);
+        expect(world.u.lightPower.value).toBeCloseTo(world.u.heartPower.value, 6);
+        // The snowflake moment: a quad and its perfect clear at the end of a long chain.
+        chain(world, camera, 11);
+        world.onLock({ u: 0.9, hardDrop: true });
+        world.onClear({ lines: 4, combo: 12 });
+        run(world, camera, 0.36);
+        world.onCrown({ player: 0 });
+        run(world, camera, 1);
+        const core = world.u.heartColor.value;
+        const light = world.u.lightColor.value;
+        // The crystal: diamond white, blazing.
+        expect(Math.min(core.x, core.y, core.z)).toBeGreaterThan(0.8);
+        expect(world.u.heartPower.value).toBeGreaterThan(world.u.lightPower.value * 1.3);
+        // Its light on the nave: a colour, under its ceiling.
+        const saturation = (c) => (Math.max(c.x, c.y, c.z) - Math.min(c.x, c.y, c.z)) / Math.max(c.x, c.y, c.z);
+        expect(saturation(light)).toBeGreaterThan(0.4);
+        expect(world.u.lightPower.value).toBeLessThanOrEqual(2.4);
+        world.dispose();
+    });
+
+    it('answers a back-to-back twice, the echo in the aurora\'s fringe colour', () => {
+        const { world } = makeWorld('Minimal');
+        world.onClear({ lines: 2 });
+        const t0 = world.time;
+        world.onClear({ lines: 2, tspin: true, b2b: true });
+        const births = world.u.clearA.map((slot) => slot.value.x).filter((x) => x > 0).sort((a, b) => a - b);
+        expect(births).toEqual([t0, t0, t0 + ECHO_DELAY]);
+        const echo = world.u.clearC[world.lastClearSlot].value;
+        // Boreal's fringe is violet: blue first, then red, green least.
+        expect(echo.z).toBeGreaterThan(echo.x);
+        expect(echo.x).toBeGreaterThan(echo.y);
+        world.dispose();
+    });
+
+    it('builds a cascade wave on wave: each deeper one rings longer and burns whiter', () => {
+        const { world } = makeWorld('Minimal');
+        world.onClear({ lines: 1, cascade: 1 });
+        const first = world.u.clearA[world.lastClearSlot].value.clone();
+        const firstC = world.u.clearC[world.lastClearSlot].value.clone();
+        world.onClear({ lines: 1, cascade: 3 });
+        const third = world.u.clearA[world.lastClearSlot].value.clone();
+        const thirdC = world.u.clearC[world.lastClearSlot].value.clone();
+        expect(third.y).toBeGreaterThan(first.y);
+        expect(third.z).toBeGreaterThan(first.z);
+        expect(Math.min(thirdC.x, thirdC.y, thirdC.z)).toBeGreaterThan(Math.min(firstC.x, firstC.y, firstC.z));
+        // The first wave is still running down the nave: the third took a free slot.
+        expect(world.u.clearA.filter((slot) => slot.value.z > 0)).toHaveLength(2);
+        world.dispose();
+    });
+
+    it('gives a T-spin that cleared nothing a small turn of the air', () => {
+        const { camera, world } = makeWorld('Minimal');
+        world.onSpin({ player: 0 });
+        run(world, camera, 3);
+        const small = world.swirl;
+        expect(small).toBeGreaterThan(0.3);
+        world.seek(10);
+        world.onClear({ lines: 2, tspin: true });
+        run(world, camera, 3);
+        expect(world.swirl).toBeGreaterThan(small);
+        world.dispose();
+    });
+
+    it('keeps the crowns of a quick hand standing and takes the oldest for a new one', () => {
+        const { camera, world } = makeWorld('High');
+        for (let i = 0; i < CROWN_SLOTS; i++) {
+            world.onLock({ u: i / CROWN_SLOTS, hardDrop: true });
+            run(world, camera, 0.3);
+        }
+        const births = world.crown.uniforms.place.map((place) => place.value.z);
+        expect(new Set(births).size).toBe(CROWN_SLOTS);
+        const oldest = births.indexOf(Math.min(...births));
+        world.onLock({ u: 0.5, hardDrop: true });
+        expect(world.crown.uniforms.place[oldest].value.z).toBe(world.time);
         world.dispose();
     });
 });
@@ -544,7 +823,7 @@ describe('ice temple world: time', () => {
         expect(world.u.clearA[0].value.x).toBe(-100);
         expect(world.crown.uniforms.place[0].value.z).toBe(-100);
         expect(world.flake.uniforms.state.value.y).toBe(0);
-        expect(world.beams.uniforms.frame.value.w).toBe(0);
+        world.beams.uniforms.frame.forEach((frame) => expect(frame.value.w).toBe(0));
         world.onCombo(3);
         world.seek(200);
         state = world.getState();
@@ -571,6 +850,8 @@ describe('ice temple world: time', () => {
         expect(post.rays).toBeCloseTo(rest.rays, 3);
         expect(post.exposure).toBeCloseTo(rest.exposure, 3);
         expect(world.u.heartPower.value).toBeCloseTo(heart, 3);
+        expect(world.u.lightPower.value).toBeCloseTo(heart, 3);
+        expect(world.u.lightColor.value.distanceTo(world.u.heartColor.value)).toBeLessThan(1e-3);
         expect(world.u.ambient.value).toBeCloseTo(1, 6);
         expect(world.u.resonance.value).toBeLessThan(1e-6);
         world.dispose();

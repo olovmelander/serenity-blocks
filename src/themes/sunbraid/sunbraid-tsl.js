@@ -155,8 +155,12 @@ export function createUniforms() {
         airMarch: uniform(0),
         // The high cloud: its base (world y), the wind's offset (metres), how much of the sky it
         // covers (the noise threshold) and the size of its tile (metres).
-        /** The ribbons braided between the suns (0 none .. 1 full): a chain and a back-to-back run. */
+        /** The ribbons braided between the suns (0 none .. 1 full, more in a fever): a chain, a back-to-back run. */
         ribbon: uniform(0),
+        /** How far the ribbons have wound (radians): the clock's pace, quicker as play heats. */
+        ribbonWind: uniform(0),
+        /** The suns' coronas (1 at rest): they blaze as play heats and with every clear. */
+        blaze: uniform(1),
         cloudY: uniform(2600),
         cloudDrift: uniform(new THREE.Vector2(0, 0)),
         cloudCover: uniform(0.53),
@@ -325,7 +329,7 @@ function lobe(mu, g) {
  * sky is ever without it), the glow along the horizon on its side, a tight corona, and the disc —
  * a white-hot core with a limb of the sun's own colour.
  */
-function sunInSky(dir, S, C, G, share, discCos, up) {
+function sunInSky(dir, S, C, G, share, discCos, up, blaze) {
     const mu = clamp(dot(dir, S), -1.0, 1.0).toVar();
     const flatDir = normalize(vec3(dir.x, 0.0, dir.z).add(vec3(1e-5, 0.0, 0.0)));
     const flatSun = normalize(vec3(S.x, 0.0, S.z).add(vec3(1e-5, 0.0, 0.0)));
@@ -336,7 +340,9 @@ function sunInSky(dir, S, C, G, share, discCos, up) {
     const broad = lobe(mu, 0.35).mul(0.012);
     // The corona: a tight bright halo in the sun's own colour, falling off fast (a star seen through
     // clean air), then a broad faint one; the old pair was a wide soft wash round each disc.
-    const corona = lobe(mu, 0.86).mul(0.035).add(lobe(mu, 0.975).mul(0.05)).add(lobe(mu, 0.996).mul(SUN_LOOK.halo));
+    // (The heat of play blazes the tight halo only: a broad wash would whiten the sky round the suns.)
+    const corona = lobe(mu, 0.86).mul(0.035)
+        .add(lobe(mu, 0.975).mul(0.05).add(lobe(mu, 0.996).mul(SUN_LOOK.halo)).mul(blaze));
     // `across` is (1 − mu) over the disc's (1 − cos r): it runs as the square of the angle, so
     // sqrt(across) is the distance from the centre in disc radii.
     const across = float(1.0).sub(mu).div(max(float(1.0).sub(discCos), 1e-7)).toVar();
@@ -374,7 +380,8 @@ function ribbonBetween(u, dir, A, B, CA, CB, wind) {
     const s = dot(dir.sub(mid), ax).div(half);
     const n = dot(dir, nrm).div(half);
     const inside = smoothstep(1.08, 0.9, abs(s)).mul(step(0.0, dot(dir, mid)));
-    const swing = float(1.0).sub(s.mul(s)).max(0.0).mul(0.42);
+    // The strands swing wider as the ribbons burn past full (a fever flings the braid out).
+    const swing = float(1.0).sub(s.mul(s)).max(0.0).mul(clamp(u.ribbon.sub(1.0), 0.0, 1.0).mul(0.2).add(0.42));
     const w = s.mul(3.1).add(wind);
     const strand = (offset) => {
         const d = abs(n.sub(sin(w.add(offset)).mul(swing)));
@@ -387,7 +394,7 @@ function ribbonBetween(u, dir, A, B, CA, CB, wind) {
 
 /** The braid made visible: ribbons of light between every pair of suns (u.ribbon's strength). */
 export function braidRibbons(u, dir) {
-    const wind = u.time.mul(0.7);
+    const wind = u.ribbonWind;
     const r = ribbonBetween(u, dir, u.sun0, u.sun1, u.col0, u.col1, wind)
         .add(ribbonBetween(u, dir, u.sun1, u.sun2, u.col1, u.col2, wind.add(2.1)))
         .add(ribbonBetween(u, dir, u.sun2, u.sun0, u.col2, u.col0, wind.add(4.2)));
@@ -405,7 +412,7 @@ export const CLOUD_FILL = Object.freeze({ zenith: 0.55, horizon: 0.2 });
 export function skyColor(u, dir, { discs = true, clouds = null, ribbons = false } = {}) {
     const up = max(dir.y, 0.0).toVar();
     const base = mix(u.horizon, u.zenith, pow(up, 0.38));
-    const one = (S, C, G, share, cosR) => sunInSky(dir, S, C, G, share, discs ? cosR : float(2.0), up);
+    const one = (S, C, G, share, cosR) => sunInSky(dir, S, C, G, share, discs ? cosR : float(2.0), up, u.blaze);
     const sky = base
         .add(one(u.sun0, u.col0, u.glow0, u.glowShare.x, u.discCos.x))
         .add(one(u.sun1, u.col1, u.glow1, u.glowShare.y, u.discCos.y))

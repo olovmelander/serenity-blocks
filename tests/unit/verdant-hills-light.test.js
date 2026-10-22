@@ -643,6 +643,77 @@ describe('Verdant Hills light rig', () => {
             }
         });
 
+        it('lays every front still crossing, and takes each away when it has gone', () => {
+            const light = createLight();
+            light.update(0, {
+                ...CALM,
+                front: { along: 40, strength: 1, width: 12 },
+                fronts: [{ along: 300, strength: 0.5, width: 54 }, { along: 900, strength: 0.25, width: 150 }],
+            });
+            expect(light.uFront.value.x).toBe(40);
+            expect(light.uFront2.value.toArray()).toEqual([300, 0.5 * 2.2, 54, 0]);
+            expect(light.uFront3.value.toArray()).toEqual([900, 0.25 * 2.2, 150, 0]);
+            // The second one finished: only it goes.
+            light.update(0, {
+                ...CALM, front: { along: 60, strength: 1, width: 14 }, fronts: [{ along: 320, strength: 0.5 }],
+            });
+            expect(light.uFront2.value.y).toBeCloseTo(1.1, 9);
+            expect(light.uFront2.value.z).toBeGreaterThan(0);
+            expect(light.uFront3.value.y).toBe(0);
+            for (const fronts of [undefined, null, [], 'many', [null, { along: NaN, strength: 1 }]]) {
+                light.update(0, { ...CALM, fronts });
+                expect([light.uFront2.value.y, light.uFront3.value.y], String(fronts)).toEqual([0, 0]);
+                expect(light.uFront2.value.toArray().every(Number.isFinite)).toBe(true);
+            }
+            light.update(0, { ...CALM, fronts: [{ along: 300, strength: 1, width: 40 }, { along: 600, strength: 1 }] });
+            light.reset();
+            expect([light.uFront.value.y, light.uFront2.value.y, light.uFront3.value.y]).toEqual([0, 0, 0]);
+            // The grass feels all three.
+            expect(light.windFront(vec2(0, 0)).isNode).toBe(true);
+        });
+
+        it('raises a gale past the dial and races the clouds as play runs hot', () => {
+            const dial = createLight();
+            settle(dial, { ...CALM, wind: 1 });
+            const gale = createLight();
+            settle(gale, { ...CALM, wind: 1, gale: 1 });
+            expect(gale.uWind.value).toBeGreaterThan(dial.uWind.value + 0.1);
+            expect(gale.cloudSpeed).toBeGreaterThan(dial.cloudSpeed);
+            // What is not a share is none.
+            const junk = createLight();
+            settle(junk, { ...CALM, wind: 1, gale: NaN });
+            expect(junk.uWind.value).toBeCloseTo(dial.uWind.value, 9);
+        });
+
+        it('thins the clouds and clears the air in a fever, smoothly, and gives both back after', () => {
+            const light = createLight();
+            const cover = light.uCloudCover.value;
+            const edge = light.uCloudEdge.value;
+            const haze = light.uHaze.value;
+            let previous = { edge, haze };
+            for (let frame = 1; frame <= 240; frame++) {
+                light.update(frame * STEP, { ...CALM, coverShift: -0.07, clearAir: 0.8 });
+                // The threshold rises (fewer clouds) a little at a time, never in a step.
+                expect(light.uCloudEdge.value).toBeGreaterThanOrEqual(previous.edge - 1e-9);
+                expect(light.uCloudEdge.value - previous.edge).toBeLessThan(0.02);
+                expect(light.uHaze.value).toBeLessThanOrEqual(previous.haze + 1e-12);
+                previous = { edge: light.uCloudEdge.value, haze: light.uHaze.value };
+            }
+            // The cover the theme chose is untouched; only how it is drawn has moved.
+            expect(light.uCloudCover.value).toBe(cover);
+            expect(light.uCloudEdge.value).toBeGreaterThan(edge);
+            expect(light.uHaze.value).toBeCloseTo(haze * (1 - 0.4 * 0.8), 9);
+            for (let frame = 241; frame <= 600; frame++) light.update(frame * STEP, CALM);
+            expect(light.uCloudEdge.value).toBe(edge);
+            expect(light.uHaze.value).toBe(haze);
+            // A haze set by hand (the playground's knob) is the one it clears from and returns to.
+            light.uHaze.value = 0.0004;
+            light.update(700, { ...CALM, clearAir: 1 });
+            expect(light.uHaze.value).toBeLessThan(0.0004);
+            light.rewind();
+            expect(light.uHaze.value).toBe(0.0004);
+        });
+
         it('opens the clouds over the pool the frame gives, and closes them when there is none', () => {
             const light = createLight();
             light.update(0, {

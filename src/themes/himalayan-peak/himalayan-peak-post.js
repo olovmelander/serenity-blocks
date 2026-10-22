@@ -138,6 +138,8 @@ export class HimalayanPeakPost {
         /** How much of the sun's disc the eye sees (0 behind the wall .. 1 clear), and its colour. */
         this.uGlare = uniform(0);
         this.uGlareColor = uniform(new THREE.Vector3(1, 0.8, 0.6));
+        /** Saturation added to the grade's own (0 at rest): hot play keeps its colours deep. */
+        this.uSaturation = uniform(0);
 
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
         this.uCalm = this.calmRects.map((v) => uniform(v));
@@ -254,7 +256,7 @@ export class HimalayanPeakPost {
             // Cold, slightly lifted shadows (thin air); the lights keep their hues.
             const lo = float(1.0).sub(smoothstep(0.0, 0.3, L));
             T.assign(mix(T, T.mul(vec3(0.9, 0.96, 1.14)).add(vec3(0.0008, 0.0012, 0.004)), lo.mul(0.5)));
-            T.assign(mix(vec3(hpLuma(T)), T, 1.12));
+            T.assign(mix(vec3(hpLuma(T)), T, this.uSaturation.add(1.12)));
             // A little more bite through the middle: snow in full sun must keep its drifts.
             T.assign(mix(T, T.mul(T).mul(vec3(3.0).sub(T.mul(2.0))), 0.22));
             // Vignette, measured from the frame, a touch heavier in the corners.
@@ -295,8 +297,9 @@ export class HimalayanPeakPost {
 
     /** Per-frame values (all optional). */
     update({
-        heart, flash, kick, bloomBoost, exposure, shafts, glare, glareColor, time,
+        heart, flash, kick, bloomBoost, exposure, shafts, glare, glareColor, saturation, time,
     } = {}) {
+        if (saturation !== undefined) this.uSaturation.value = saturation;
         if (heart) this.uHeart.value.set(heart.x, heart.y);
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;

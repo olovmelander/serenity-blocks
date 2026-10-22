@@ -12,10 +12,12 @@ const LETTERS = Object.keys(VERDANT_HILLS_PIECE_KITES);
 const ENVELOPES = ['gust', 'warmth', 'shafts', 'glow', 'shimmer', 'flock', 'flutter'];
 // What every frame must carry for the world, the post chain and the playground to read.
 const FRAME_KEYS = ['epoch', 'wind', 'whirl', 'heat', 'streamers', 'streak', 'settled', 'kites', 'kiteTug', 'height',
-    'aloft', 'festival', 'festivals', 'front', 'sunbreak', 'waves', 'streaks', 'emitters', ...ENVELOPES];
+    'aloft', 'festival', 'festivals', 'front', 'fronts', 'sunbreak', 'surge', 'still', 'waves', 'streaks', 'emitters',
+    ...ENVELOPES];
+const SURGE_KEYS = ['fever', 'level', 'punch', 'stage'];
 // Whole numbers; every other number at the top of a frame is a level in 0..1.
 const COUNTERS = ['epoch', 'streak', 'aloft', 'festivals'];
-const RIBBON_KINDS = ['lock', 'clear', 'great', 'spin', 'festival'];
+const RIBBON_KINDS = ['lock', 'clear', 'great', 'spin', 'festival', 'gold'];
 const BOARD_ROWS = 20;
 const MALFORMED_COUNTS = [NaN, Infinity, -Infinity, -5, 0, 0.8, '', ' ', 'garbage', null, false, true, [], [4], {},
     { lineCount: [] }, { detail: { lineCount: true } }, Symbol('count'), 4n];
@@ -98,8 +100,12 @@ function frameProblems(frame, reactions) {
         check(levels.length === VERDANT_HILLS_KITES, `${levels.length} ${name} levels`);
         levels.forEach((level, slot) => check(unit(level), `${name} ${slot} = ${level}`));
     }
-    if (frame.front !== null) {
-        const { front } = frame;
+    check(Array.isArray(frame.fronts) && frame.fronts.length <= 3, `${frame.fronts?.length} fronts`);
+    check(
+        JSON.stringify(frame.front) === JSON.stringify(frame.fronts?.[0] ?? null),
+        'front is not the newest of the fronts',
+    );
+    for (const front of frame.fronts || []) {
         check(Number.isFinite(front.position) && Math.abs(front.position) <= 1.4, `front.position = ${front.position}`);
         check(front.direction === 1, `front.direction = ${front.direction}`);
         check(unit(front.strength), `front.strength = ${front.strength}`);
@@ -108,7 +114,13 @@ function frameProblems(frame, reactions) {
         const { sunbreak } = frame;
         check(sunbreak.progress >= 0 && sunbreak.progress < 1, `sunbreak.progress = ${sunbreak.progress}`);
         check(unit(sunbreak.strength), `sunbreak.strength = ${sunbreak.strength}`);
+        check(unit(sunbreak.breadth), `sunbreak.breadth = ${sunbreak.breadth}`);
     }
+    check(Object.keys(frame.surge || {}).sort().join() === SURGE_KEYS.join(), 'surge keys');
+    for (const key of ['level', 'fever', 'punch']) {
+        check(unit(frame.surge?.[key]), `surge.${key} = ${frame.surge?.[key]}`);
+    }
+    check([0, 1, 2, 3].includes(frame.surge?.stage), `surge.stage = ${frame.surge?.stage}`);
     const queues = [['gust', frame.waves, ['column']], ['ribbon', frame.streaks, ['column', 'row']]];
     for (const [name, queue, places] of queues) {
         const serials = queue.filter((entry) => entry.serial >= 0).map((entry) => entry.serial);
@@ -176,7 +188,11 @@ function expectAtRest(frame) {
     }
     expect(frame.settled).toBe(false);
     expect(frame.front).toBeNull();
+    expect(frame.fronts).toEqual([]);
     expect(frame.sunbreak).toBeNull();
+    expect(frame.surge).toEqual({
+        level: 0, fever: 0, stage: 0, punch: 0,
+    });
     expect(frame.emitters).toEqual([]);
     expect(live(frame.waves)).toEqual([]);
     expect(live(frame.streaks)).toEqual([]);
@@ -213,7 +229,7 @@ describe('Verdant Hills reaction director', () => {
                 expect(reactions.emitters.map((emitter) => emitter.id)).toEqual([...Array(capacity).keys()]);
                 // The queues are the same on every tier: what a tier draws of them is the world's affair.
                 expect(reactions.waves).toHaveLength(8);
-                expect(reactions.streaks).toHaveLength(16);
+                expect(reactions.streaks).toHaveLength(20);
                 expectBounded(reactions.frame, reactions);
             });
         });
@@ -255,7 +271,16 @@ describe('Verdant Hills reaction director', () => {
             expect(frame.front).toEqual({
                 position: expect.any(Number), direction: 1, strength: expect.any(Number),
             });
-            expect(frame.sunbreak).toEqual({ progress: expect.any(Number), strength: expect.any(Number) });
+            expect(frame.sunbreak).toEqual({
+                progress: expect.any(Number), strength: expect.any(Number), breadth: expect.any(Number),
+            });
+            expect(frame.fronts).toEqual([frame.front]);
+            expect(frame.surge).toEqual({
+                level: expect.any(Number),
+                fever: expect.any(Number),
+                stage: expect.any(Number),
+                punch: expect.any(Number),
+            });
             expect(Object.keys(newest(frame.waves)).sort()).toEqual(['column', 'serial', 'strength']);
             expect(Object.keys(newest(frame.streaks)).sort())
                 .toEqual(['column', 'kind', 'kite', 'lines', 'row', 'serial', 'side', 'strength']);
@@ -730,7 +755,7 @@ describe('Verdant Hills reaction director', () => {
             for (const key of ENVELOPES) expect(held[key], key).toBeGreaterThan(plain[key]);
             // The wind freshens and the clouds open.
             expect(held.wind).toBeGreaterThan(plain.wind + 0.4);
-            expect(held.sunbreak).toEqual({ progress: 0, strength: 0 });
+            expect(held.sunbreak).toEqual({ progress: 0, strength: 0, breadth: 0 });
             // One ribbon and one gust of its own, on top of the lock's.
             expect(asked(ordinary)).toEqual([ribbonsBefore + 1, gustsBefore + 1]);
             expect(asked(completing)).toEqual([ribbonsBefore + 2, gustsBefore + 2]);
@@ -1034,7 +1059,7 @@ describe('Verdant Hills reaction director', () => {
                 side: 0, strength: 1, lines: 4, row: emittersOf(four.frame, 'clear')[0].row,
             });
             // The clouds open.
-            expect(four.frame.sunbreak).toEqual({ progress: 0, strength: 0 });
+            expect(four.frame.sunbreak).toEqual({ progress: 0, strength: 0, breadth: 0 });
             expect(advance(answer(4), 2).sunbreak.strength).toBeGreaterThan(0.8);
             // Warmth and shafts jump further than one more line would take them.
             for (const key of ['warmth', 'shafts']) {
@@ -1101,7 +1126,7 @@ describe('Verdant Hills reaction director', () => {
             expect(advance(reactions, 1).front).toBeNull();
         });
 
-        it('always sweeps with the wind, and restarts each front at the upwind edge', () => {
+        it('always sweeps with the wind, and sets each new front out from the upwind edge', () => {
             const reactions = create();
             for (const event of [() => reactions.onLineClear(2), () => reactions.onLevelUp(),
                 () => reactions.onPerfectClear(), () => reactions.onLineClear(4), () => reactions.sweep(0.5)]) {
@@ -1118,6 +1143,178 @@ describe('Verdant Hills reaction director', () => {
             expect(advance(reactions, 1.1).front.strength).toBeLessThanOrEqual(1);
             reactions.sweep(-3);
             expect(advance(reactions, 1.1).front.strength).toBe(0);
+        });
+
+        it('runs fronts side by side: a new one never restarts a crossing one, and a fourth joins the youngest', () => {
+            const reactions = create();
+            reactions.onLineClear(2);
+            advance(reactions, 0.8);
+            const first = { ...reactions.frame.front };
+            expect(first.strength).toBeGreaterThan(0.3);
+            reactions.onLineClear(3);
+            // The new one sets out from the upwind edge; the first carries on exactly where it was.
+            expect(reactions.frame.fronts).toHaveLength(2);
+            expect(reactions.frame.front).toEqual({ position: -1.4, direction: 1, strength: 0 });
+            expect(reactions.frame.fronts[1]).toEqual(first);
+            advance(reactions, 0.5);
+            reactions.onLineClear(2);
+            expect(reactions.frame.fronts).toHaveLength(3);
+            const crossing = reactions.frame.fronts.map((front) => front.position);
+            // Every slot crossing: a fourth joins the youngest, which is not moved back, and eases up.
+            const youngest = { ...reactions.frame.front };
+            reactions.onLineClear(4);
+            expect(reactions.frame.fronts.map((front) => front.position)).toEqual(crossing);
+            expect(reactions.frame.front).toEqual(youngest);
+            const joined = reactions.fronts.find((front) => front.active && front.age === 0);
+            expect(joined.target).toBeGreaterThan(joined.strength);
+            let previous = 0;
+            for (let step = 0; step < 30; step++) {
+                reactions.update(1 / 60);
+                expect(joined.strength).toBeGreaterThanOrEqual(previous);
+                previous = joined.strength;
+            }
+            expect(joined.strength).toBeGreaterThan(0.3 + 2 * 0.17);
+            // Each runs out on its own clock: the first is gone first.
+            advance(reactions, 1.2);
+            expect(reactions.frame.fronts.length).toBeLessThan(3);
+            expect(advance(reactions, 3).fronts).toEqual([]);
+        });
+
+        it('sends a harder front with every wave of a cascade, even a single line', () => {
+            const reactions = create();
+            reactions.onLineClear(2, { clearedRows: [21, 22], cascadeCount: 1 });
+            for (let wave = 2; wave <= 4; wave++) {
+                advance(reactions, 0.36);
+                reactions.onCombo(wave);
+                reactions.onLineClear(1, { clearedRows: [22], cascadeCount: wave });
+            }
+            const targets = reactions.fronts.map((front) => front.target);
+            // Three slots: the first wave's, the second's, and the third's joined by the fourth.
+            expect(reactions.frame.fronts).toHaveLength(3);
+            expect(Math.max(...targets)).toBeGreaterThan(0.3 + 2 * 0.17);
+            // A lone single that is no cascade sends none.
+            const single = create();
+            single.onLineClear(1, { clearedRows: [22], cascadeCount: 1 });
+            expect(single.frame.fronts).toEqual([]);
+        });
+    });
+
+    describe('the build-up', () => {
+        it('never cuts the light: a weak event right after a strong one only adds to it', () => {
+            const reactions = create();
+            reactions.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+            advance(reactions, 0.25);
+            const strong = snapshot(reactions.frame);
+            reactions.onPieceLock({ piece: pieceOf('S') });
+            reactions.onLineClear(1, { clearedRows: [23] });
+            const after = snapshot(reactions.frame);
+            for (const key of [...ENVELOPES, 'wind']) expect(after[key], key).toBeGreaterThanOrEqual(strong[key]);
+            expect(after.sunbreak.strength).toBeGreaterThanOrEqual(strong.sunbreak.strength);
+            expect(after.sunbreak.progress).toBeGreaterThanOrEqual(strong.sunbreak.progress);
+            expect(after.surge.level).toBeGreaterThanOrEqual(strong.surge.level);
+        });
+
+        it('warms the light step by step under rapid clears, where one clear alone holds still', () => {
+            const reactions = create();
+            const seen = [];
+            for (let clear = 0; clear < 6; clear++) {
+                reactions.onPieceLock({ piece: pieceOf('L') });
+                reactions.onLineClear(3, { clearedRows: [21, 22, 23] });
+                seen.push(snapshot(reactions.frame));
+                advance(reactions, 0.5);
+            }
+            for (const key of ['warmth', 'shafts', 'glow', 'shimmer']) {
+                expect(seen.at(-1)[key], key).toBeGreaterThan(seen[0][key]);
+                expect(seen.at(-1)[key], key).toBeLessThanOrEqual(1);
+            }
+        });
+
+        it('reads a long chain hotter than its first clear, and breathes back to calm when the hands rest', () => {
+            const reactions = create();
+            const chain = [];
+            for (let clear = 0; clear < 12; clear++) {
+                reactions.onHardDrop({ distance: 16 });
+                reactions.onPieceLock({ piece: pieceOf(LETTERS[clear % 7]) });
+                reactions.onLineClear(1 + (clear % 3), { clearedRows: [22] });
+                chain.push(snapshot(advance(reactions, 0.64).surge));
+            }
+            const [first, last] = [chain[0], chain.at(-1)];
+            expect(last.level).toBeGreaterThan(first.level + 0.4);
+            expect(last.stage).toBeGreaterThanOrEqual(2);
+            expect(last.fever).toBeGreaterThan(0);
+            // The peak comes late: the level never drops back mid-chain.
+            for (let index = 1; index < chain.length; index++) {
+                expect(chain[index].level).toBeGreaterThanOrEqual(chain[index - 1].level - 0.02);
+            }
+            // At rest it breathes back over a few seconds, all the way.
+            const resting = advance(reactions, 3).surge;
+            expect(resting.level).toBeLessThan(last.level);
+            const calm = advance(reactions, 12).surge;
+            expect(calm).toMatchObject({ fever: 0, stage: 0 });
+            expect(calm.level).toBeLessThan(0.05);
+            expect(calm.punch).toBeLessThan(0.001);
+        });
+
+        it('counts a lock with the ripple off: the streak carries on or ends, and nothing is shown', () => {
+            const reactions = create();
+            reactions.onQuietLock();
+            reactions.onLineClear(1);
+            reactions.onQuietLock();
+            reactions.onLineClear(1);
+            expect(reactions.frame.streak).toBe(2);
+            const [ribbons, gusts, emitters] = [reactions.streakSerial, reactions.waveSerial, reactions.serial];
+            const before = snapshot(reactions.frame);
+            reactions.onQuietLock();
+            // Nothing for the lock itself: no ribbon, gust, seed or kite.
+            expect([reactions.streakSerial, reactions.waveSerial, reactions.serial])
+                .toEqual([ribbons, gusts, emitters]);
+            expect(snapshot(reactions.frame)).toEqual(before);
+            reactions.onLineClear(2);
+            expect(reactions.frame.streak).toBe(3);
+            reactions.onQuietLock();
+            reactions.onQuietLock();
+            expect(reactions.frame.streak).toBe(0);
+            expect(reactions.frame.aloft).toBe(0);
+            reactions.dispose();
+            expect(reactions.onQuietLock()).toBe(false);
+        });
+
+        it('lets the whirl of a long chain go down the wind when the chain ends', () => {
+            const ended = (length) => {
+                const reactions = create();
+                for (let clear = 0; clear < length; clear++) {
+                    reactions.onPieceLock({ piece: pieceOf('I') });
+                    reactions.onLineClear(1);
+                }
+                reactions.onPieceLock({ piece: pieceOf('I') });
+                const [ribbons, gusts] = [reactions.streakSerial, reactions.waveSerial];
+                reactions.onPieceLock({ piece: pieceOf('O') });
+                return { reactions, ribbons: reactions.streakSerial - ribbons, gusts: reactions.waveSerial - gusts };
+            };
+            // A short streak ends with a plain lock: its ribbon and its gust.
+            expect(ended(2)).toMatchObject({ ribbons: 1, gusts: 1 });
+            // A chain lets go: one long ribbon over the hills and a gust of its own, stronger the longer it was.
+            const three = ended(3);
+            const eight = ended(8);
+            expect(three).toMatchObject({ ribbons: 2, gusts: 2 });
+            const release = (result) => ribbonsOf(result.reactions.frame, 'great').at(-1);
+            expect(release(three)).toMatchObject({ side: 0 });
+            expect(release(eight).strength).toBeGreaterThan(release(three).strength);
+        });
+
+        it('stills the day under Reduce motion, at once at first and eased after', () => {
+            const reactions = create();
+            expect(reactions.frame.still).toBe(0);
+            reactions.setStill(true);
+            expect(reactions.frame.still).toBe(1);
+            reactions.setStill(false);
+            expect(advance(reactions, 0.5).still).toBeCloseTo(0.5, 9);
+            expect(advance(reactions, 1).still).toBe(0);
+            // A setting, not a session: a reset keeps it.
+            reactions.setStill(true);
+            advance(reactions, 2);
+            reactions.reset();
+            expect(reactions.frame.still).toBe(1);
         });
     });
 
@@ -1385,22 +1582,54 @@ describe('Verdant Hills reaction director', () => {
             expect(live(bare.frame.waves)[0]).toMatchObject({ column: 0.5 });
         });
 
-        it('lets a back-to-back lift the light, the kites and the whirl without an emitter, a ribbon or a gust', () => {
+        it('answers a back-to-back with every kite bowing and golden ribbons, without an emitter or a gust', () => {
             const reactions = create();
+            lockKinds(reactions, ['I', 'O', 'T']);
+            advance(reactions, 2);
+            const [ribbonsBefore, gustsBefore] = [reactions.streakSerial, reactions.waveSerial];
+            expect(Array.from(reactions.tug).every((tug) => tug < 0.1)).toBe(true);
             expect(reactions.onBackToBack()).toBe(true);
             const { frame } = reactions;
             expect(frame.emitters).toEqual([]);
-            expect(live(frame.streaks)).toEqual([]);
-            expect(live(frame.waves)).toEqual([]);
+            // One cue for the golden ribbons, and no gust.
+            expect(reactions.streakSerial).toBe(ribbonsBefore + 1);
+            expect(reactions.waveSerial).toBe(gustsBefore);
+            expect(newest(frame.streaks)).toMatchObject({
+                kind: 'gold', side: 0, lines: 1, kite: VERDANT_HILLS_MIXED,
+            });
+            // Every kite on its line is tugged at once; a kite on the grass is not, and none is flown.
+            for (const letter of ['I', 'O', 'T']) expect(frame.kiteTug[VERDANT_HILLS_PIECE_KITES[letter]]).toBe(1);
+            expect(frame.kiteTug[VERDANT_HILLS_PIECE_KITES.L]).toBe(0);
+            expect(frame.aloft).toBe(3);
             for (const key of ['warmth', 'glow', 'shafts', 'shimmer']) expect(frame[key], key).toBeGreaterThan(0);
-            expect(frame.gust).toBe(0);
-            expect(frame.flock).toBe(0);
-            expect(frame.wind).toBe(0);
             const later = advance(reactions, 1.5);
             expect(later.whirl).toBeGreaterThan(0.5);
             expect(later.streamers).toBeGreaterThan(0);
             expect(later.height).toBeGreaterThan(0.5);
             expect(later.height).toBeLessThanOrEqual(0.6);
+            // On its own it leaves the air alone.
+            const alone = create();
+            alone.onBackToBack();
+            expect(alone.frame).toMatchObject({ gust: 0, flock: 0, wind: 0 });
+        });
+
+        it('escalates a run of back-to-backs, and starts a new run after a long pause', () => {
+            const reactions = create();
+            const runs = [];
+            for (let b2b = 0; b2b < 5; b2b++) {
+                reactions.onBackToBack();
+                runs.push({ ...newest(reactions.frame.streaks) });
+                advance(reactions, 3);
+            }
+            // More golden ribbons, stronger, a little higher each time, up to a ceiling.
+            expect(runs.map((ribbon) => ribbon.lines)).toEqual([1, 2, 3, 4, 4]);
+            for (let index = 1; index < 4; index++) {
+                expect(runs[index].strength).toBeGreaterThan(runs[index - 1].strength);
+            }
+            expect(reactions.heightTarget).toBeCloseTo(0.9, 9);
+            advance(reactions, 25);
+            reactions.onBackToBack();
+            expect(newest(reactions.frame.streaks)).toMatchObject({ lines: 1 });
         });
 
         it('makes the whole day exhale on a perfect clear', () => {
@@ -1484,19 +1713,28 @@ describe('Verdant Hills reaction director', () => {
 
             expect(reactions.onGameOver()).toBe(true);
             const over = snapshot(reactions.frame);
-            expect(over).toMatchObject({
-                settled: true, front: null, sunbreak: null, streak: 0, aloft: 0,
-            });
+            expect(over).toMatchObject({ settled: true, streak: 0, aloft: 0 });
             // Nothing is cut: emitters, envelopes, ribbons and gusts already asked for play out, and the
-            // wind, the whirl and the kites are where they were, only no longer held there.
+            // wind, the whirl, the kites, the front and the sunlight are where they were, only no longer
+            // held there.
             expect({
                 ...over,
                 settled: false,
-                front: playing.front,
-                sunbreak: playing.sunbreak,
                 streak: playing.streak,
                 aloft: playing.aloft,
             }).toEqual(playing);
+            // The front and the sunlight fade where they are, and are gone within a few seconds.
+            const fading = play();
+            fading.onGameOver();
+            let [front, sunlight] = [over.front.strength, over.sunbreak.strength];
+            for (let step = 0; step < 60 * 3; step++) {
+                const frame = fading.update(1 / 60);
+                if (frame.front) expect(frame.front.strength).toBeLessThanOrEqual(Math.max(front, 0.05));
+                if (frame.sunbreak) expect(frame.sunbreak.strength).toBeLessThanOrEqual(sunlight + 1e-9);
+                front = frame.front?.strength ?? 0;
+                sunlight = frame.sunbreak?.strength ?? 0;
+            }
+            expect(fading.frame).toMatchObject({ front: null, fronts: [], sunbreak: null });
             // The whirl, the wind and the kites let go at once instead of waiting out their holds.
             const still = play();
             const [settling, held] = [advance(reactions, 0.5), advance(still, 0.5)];
@@ -1680,7 +1918,7 @@ describe('Verdant Hills reaction director', () => {
         it('opens for six seconds and carries a pool of sunlight across the hills', () => {
             const reactions = create();
             reactions.sunbreak(1);
-            expect(reactions.frame.sunbreak).toEqual({ progress: 0, strength: 0 });
+            expect(reactions.frame.sunbreak).toEqual({ progress: 0, strength: 0, breadth: 0 });
             const seen = [];
             for (let frame = 0; frame < 60 * 20; frame++) {
                 const { sunbreak } = reactions.update(1 / 60);
@@ -1711,21 +1949,90 @@ describe('Verdant Hills reaction director', () => {
             expect(advance(reactions, 1).sunbreak).toBeNull();
         });
 
-        it('is as bright as it is asked to be, and starts over when the clouds open again', () => {
+        it('is as bright as it is asked to be, and feeds a break still crossing instead of starting it over', () => {
             const reactions = create();
             reactions.sunbreak(0.5);
             const half = advance(reactions, 3).sunbreak;
             expect(half.progress).toBeCloseTo(0.5, 9);
             expect(half.strength).toBeCloseTo(0.5 * Math.sin(Math.PI * 0.54) ** 0.7, 9);
+            expect(half.breadth).toBe(0);
+            // Opened again while it crosses: it never goes back to the left or darker in a frame; it
+            // swells back to its fullest, brighter and wider, and crosses more slowly.
             reactions.sunbreak(1);
-            expect(reactions.frame.sunbreak).toEqual({ progress: 0, strength: 0 });
-            expect(advance(reactions, 5.5).sunbreak).not.toBeNull();
-            expect(advance(reactions, 1).sunbreak).toBeNull();
+            let previous = { ...reactions.frame.sunbreak };
+            expect(previous).toEqual(half);
+            for (let step = 0; step < 60 * 2; step++) {
+                const { sunbreak } = reactions.update(1 / 60);
+                expect(sunbreak.progress).toBeGreaterThan(previous.progress);
+                expect(sunbreak.progress - previous.progress).toBeLessThan(1 / 360);
+                expect(sunbreak.strength).toBeGreaterThanOrEqual(previous.strength - 1e-9);
+                expect(sunbreak.breadth).toBeGreaterThanOrEqual(previous.breadth);
+                previous = { ...sunbreak };
+            }
+            expect(previous.strength).toBeGreaterThan(0.95);
+            expect(previous.breadth).toBeGreaterThan(0.3);
+            expect(previous.progress).toBeLessThan(0.5 + 1 / 6);
+            // Then it lets go from where it stands and fades out on its own, still crossing.
+            let fading = previous;
+            for (let step = 0; step < 60 * 5 && reactions.frame.sunbreak; step++) {
+                const { sunbreak } = reactions.update(1 / 60);
+                if (!sunbreak) break;
+                expect(sunbreak.progress).toBeGreaterThanOrEqual(fading.progress);
+                fading = { ...sunbreak };
+            }
+            expect(fading.strength).toBeLessThan(0.05);
+            expect(reactions.frame.sunbreak).toBeNull();
             // Clamped like every other level.
-            reactions.sunbreak(40);
-            expect(advance(reactions, 3).sunbreak.strength).toBeLessThanOrEqual(1);
-            reactions.sunbreak(-2);
-            expect(advance(reactions, 3).sunbreak).toEqual({ progress: expect.closeTo(0.5, 9), strength: 0 });
+            const bright = create();
+            bright.sunbreak(40);
+            expect(advance(bright, 3).sunbreak.strength).toBeLessThanOrEqual(1);
+            const none = create();
+            none.sunbreak(-2);
+            expect(advance(none, 3).sunbreak).toEqual({ progress: expect.closeTo(0.5, 9), strength: 0, breadth: 0 });
+            // Fed nothing, a break crossing carries on as it was.
+            const plain = create();
+            plain.sunbreak(0.8);
+            advance(plain, 2);
+            const before = { ...advance(plain, 1).sunbreak };
+            const twin = create();
+            twin.sunbreak(0.8);
+            advance(twin, 2);
+            twin.sunbreak(0);
+            expect(advance(twin, 1).sunbreak).toEqual(before);
+        });
+
+        it('stays open over the valley while a fever burns, and lets go when it cools', () => {
+            const reactions = create();
+            // A long, hot chain: a clear every 0.6 s with cascades between.
+            let opened = null;
+            for (let clear = 0; clear < 16; clear++) {
+                reactions.onPieceLock({ piece: pieceOf(LETTERS[clear % 7]) });
+                reactions.onLineClear(1 + (clear % 3), { clearedRows: [22] });
+                if (clear % 3 === 2) reactions.onCombo(2 + (clear % 4));
+                for (let step = 0; step < 36; step++) {
+                    const frame = reactions.update(1 / 60);
+                    if (opened === null && frame.sunbreak) opened = reactions.time;
+                }
+            }
+            const burning = snapshot(reactions.frame);
+            expect(burning.surge.fever).toBeGreaterThan(0.6);
+            // The fever opened the clouds itself (no four-line clear was played) and holds them open.
+            expect(opened).not.toBeNull();
+            expect(burning.sunbreak.strength).toBeGreaterThan(0.6);
+            expect(burning.sunbreak.breadth).toBeGreaterThan(0.2);
+            // The hands rest: the fever cools and the light lets go over a few seconds, not at once.
+            let previous = burning.sunbreak.strength;
+            let gone = null;
+            for (let step = 0; step < 60 * 12; step++) {
+                const frame = reactions.update(1 / 60);
+                const strength = frame.sunbreak?.strength ?? 0;
+                expect(previous - strength).toBeLessThan(0.05);
+                previous = strength;
+                if (gone === null && !frame.sunbreak) gone = step / 60;
+            }
+            expect(gone).toBeGreaterThan(2);
+            expect(gone).toBeLessThan(12);
+            expect(reactions.frame.surge.fever).toBe(0);
         });
 
         it('comes with four lines, a perfect clear and the festival, and with nothing less', () => {
@@ -2165,14 +2472,14 @@ describe('Verdant Hills reaction director', () => {
                 expect([reactions.streakSerial, reactions.waveSerial]).toEqual([issuedRibbons, issuedGusts]);
                 expect(snapshot({ streaks: reactions.streaks, waves: reactions.waves })).toEqual(queued);
             }
-            expect(reactions.streakSerial).toBe(13);
+            expect(reactions.streakSerial).toBe(14);
             expect(reactions.waveSerial).toBe(10);
         });
 
         it.each([
             ['waves', 8, (reactions, index) => reactions.gust(((index % 10) + 0.5) / 10, 1 + (index % 5) / 10),
                 (serial) => 1 + (serial % 5) / 10],
-            ['streaks', 16, (reactions, index) => reactions.streak('clear', {
+            ['streaks', 20, (reactions, index) => reactions.streak('clear', {
                 column: ((index % 10) + 0.5) / 10, strength: (1 + (index % 5)) / 10,
             }), (serial) => (1 + (serial % 5)) / 10],
         ])('wraps the queue of %s after %i, overwriting the oldest and never reusing a serial', (
@@ -2223,7 +2530,7 @@ describe('Verdant Hills reaction director', () => {
             expect(ribbons).toHaveLength(reactions.streakSerial - firstRibbon);
             expect(gusts).toHaveLength(reactions.waveSerial - firstGust);
             expect(ribbons.map((ribbon) => ribbon.kind))
-                .toEqual(['lock', 'clear', 'clear', 'great', 'spin', 'great', 'festival', 'great']);
+                .toEqual(['lock', 'clear', 'clear', 'great', 'spin', 'gold', 'great', 'festival', 'great']);
             expect(gusts).toHaveLength(7);
             // The lock's own, the first of each, are still there to be read.
             expect(ribbons[0].serial).toBe(firstRibbon);

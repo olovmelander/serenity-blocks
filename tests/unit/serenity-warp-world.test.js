@@ -337,6 +337,220 @@ describe('Serenity Warp world', () => {
         expect(wide.getState().gateRadius).toBeCloseTo(GATE.radius * DEG, 3);
     });
 
+    it('feeds a jump already running: four more lines and the crown stretch the tunnel, and we arrive once', () => {
+        const { world, camera } = makeWorld('High', { at: 20 });
+        const there = world.u.thereShift.value.clone();
+        frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18, 17, 16], lines: 4 }));
+        run(world, camera, HUSH_HOLD + 1.0, 1 / 60);
+        const first = world.getState();
+        expect(first.jump).toBe(1);
+        // Four more lines inside the throat: no second hush, no restart; the tunnel runs on, faster.
+        frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18, 17, 16], lines: 4 }));
+        let lowest = 1;
+        let breath = 1;
+        for (let i = 0; i < 40; i++) {
+            frame(world, camera, 1 / 60);
+            lowest = Math.min(lowest, world.getState().jump);
+            breath = Math.min(breath, world.breath);
+        }
+        expect(lowest).toBe(1);
+        expect(breath).toBeGreaterThan(0.99);
+        const fed = world.getState();
+        expect(fed.jumpLength).toBeGreaterThan(first.jumpLength);
+        expect(fed.jumpDepth).toBe(1);
+        expect(fed.gateRadius).toBeGreaterThan(90 * DEG);
+        // The perfect clear that settles after it crowns the same jump.
+        frame(world, camera, 1 / 60, () => world.onPerfect({ player: 0 }));
+        expect(world.getState().jumpLength).toBeGreaterThan(fed.jumpLength);
+        expect(world.getState().jump).toBe(1);
+        run(world, camera, 8 + JUMP_EXIT, 1 / 30);
+        const out = world.getState();
+        expect(out.jump).toBe(0);
+        // One arrival: our sky is the one the throat showed, swapped exactly once.
+        expect(out.jumps).toBe(1);
+        expect(world.u.hereShift.value.equals(there)).toBe(true);
+        expect(out.counts.quads).toBe(2);
+        expect(out.counts.crowns).toBe(1);
+    });
+
+    it('crowns a quad with the perfect clear that settles after it: one hush, one jump, one arrival', () => {
+        const { world, camera } = makeWorld('High', { at: 20 });
+        frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18, 17, 16], lines: 4 }));
+        run(world, camera, HUSH_HOLD + 0.1, 1 / 60);
+        // The hush is over and the throat is opening when the crown lands (physics: ~360 ms later).
+        // The breath only comes back from here: no second hush.
+        let prev = world.breath;
+        frame(world, camera, 1 / 60, () => world.onPerfect({ player: 0 }));
+        for (let i = 0; i < 60; i++) {
+            frame(world, camera, 1 / 60);
+            expect(world.breath).toBeGreaterThanOrEqual(prev - 1e-9);
+            prev = world.breath;
+        }
+        expect(world.getState().jumpLength).toBeGreaterThan(JUMP_TUNNEL);
+        const rings = world.waveCursor;
+        run(world, camera, JUMP_TUNNEL + JUMP_EXIT + 1, 1 / 30);
+        expect(world.getState().jumps).toBe(1);
+        // Crowned: the arrival sent more than its one ring, and its afterglow is the perfect one.
+        expect(world.waveCursor - rings).toBeGreaterThanOrEqual(3);
+        expect(world.getState().counts.crowns).toBe(1);
+        expect(world.surge).toBeGreaterThan(0.5);
+    });
+
+    it('a quad mid-fever only inhales: the hush is as deep as play is cold', () => {
+        const hushOf = (world, camera) => {
+            let breath = 1;
+            frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18, 17, 16], lines: 4 }));
+            for (let i = 0; i < Math.round(HUSH_HOLD * 60); i++) {
+                frame(world, camera, 1 / 60);
+                breath = Math.min(breath, world.breath);
+            }
+            return breath;
+        };
+        const cold = makeWorld('High', { at: 20 });
+        const coldBreath = hushOf(cold.world, cold.camera);
+        const hot = makeWorld('High', { at: 20 });
+        for (let n = 1; n <= 10; n++) {
+            frame(hot.world, hot.camera, 1 / 60, () => {
+                lock(hot.world, { hardDrop: true });
+                hot.world.onClear({ rows: [19, 18], lines: 2, combo: n });
+                hot.world.onCombo(n);
+            });
+            run(hot.world, hot.camera, 0.62, 1 / 60);
+        }
+        expect(hot.world.heat.level).toBeGreaterThan(0.6);
+        const hotBreath = hushOf(hot.world, hot.camera);
+        expect(coldBreath).toBeLessThan(0.4);
+        expect(hotBreath).toBeGreaterThan(coldBreath + 0.3);
+    });
+
+    it('builds with a long chain past what its first clear showed, and breathes back when the hands rest', () => {
+        const { world, camera } = makeWorld('High', { at: 20 });
+        const rest = {
+            radius: world.getState().gateRadius, gain: world.u.gateGain.value, rays: world.getPostState().rays,
+        };
+        const step = (n) => frame(world, camera, 1 / 60, () => {
+            lock(world, { hardDrop: true });
+            world.onClear({ rows: [19, 18], lines: 2, combo: n });
+            world.onCombo(n);
+        });
+        const read = () => ({
+            level: world.heat.level,
+            fever: world.heat.fever,
+            radius: world.getState().gateRadius,
+            gain: world.u.gateGain.value,
+            rays: world.getPostState().rays,
+            exposure: world.getPostState().exposure,
+            shutter: world.stars.uniforms.shutter.value,
+            warp: world.warp,
+        });
+        step(1);
+        run(world, camera, 0.6, 1 / 60);
+        const first = read();
+        for (let n = 2; n <= 12; n++) {
+            step(n);
+            run(world, camera, 0.6, 1 / 60);
+        }
+        const late = read();
+        // The first clear barely warms the world; twelve in a row light the fever.
+        expect(first.level).toBeLessThan(0.3);
+        expect(late.level).toBeGreaterThan(first.level + 0.4);
+        expect(late.fever).toBeGreaterThan(0.5);
+        expect(world.heat.stage).toBe(3);
+        // The gate opens, burns brighter and reaches further; the stars draw out; the iris closes.
+        expect(late.radius).toBeGreaterThan(first.radius * 1.1);
+        expect(late.gain).toBeGreaterThan(first.gain);
+        expect(late.rays).toBeGreaterThan(first.rays);
+        expect(late.shutter).toBeGreaterThan(first.shutter);
+        expect(late.warp).toBeGreaterThan(first.warp);
+        expect(late.exposure).toBeLessThan(first.exposure);
+        // The chain breaks and the hands rest: the world breathes back to how it was.
+        world.onCombo(0);
+        run(world, camera, 12, 1 / 30);
+        const after = read();
+        expect(after.level).toBeLessThan(0.1);
+        expect(after.fever).toBe(0);
+        expect(after.radius).toBeCloseTo(rest.radius, 3);
+        expect(after.gain).toBeLessThan(rest.gain + 0.1);
+        expect(after.rays).toBeLessThan(rest.rays + 0.05);
+    });
+
+    it('never cuts the light: a weak hit after a strong one adds to it; a burst of rings replaces the faintest', () => {
+        const { world, camera } = makeWorld('High', { at: 20 });
+        frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18, 17], lines: 3 }));
+        run(world, camera, 0.1, 1 / 60);
+        const strong = world.heat.punch;
+        frame(world, camera, 1 / 240, () => lock(world));
+        expect(world.heat.punch).toBeGreaterThan(strong * 0.99);
+        // Three fading rings, three in full light, then three more: the fading ones make room.
+        run(world, camera, 1.6, 1 / 60);
+        frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18, 17], lines: 3 }));
+        run(world, camera, 0.4, 1 / 60);
+        const bright = world.waveSlots.filter((s) => world.time - s.birth < 0.5).map((s) => s.birth);
+        expect(bright).toHaveLength(3);
+        frame(world, camera, 1 / 60, () => world.onClear({ rows: [19, 18, 17], lines: 3 }));
+        run(world, camera, 0.4, 1 / 60);
+        bright.forEach((birth) => expect(world.waveSlots.some((s) => s.birth === birth)).toBe(true));
+    });
+
+    it('builds a cascade wave on wave instead of replaying its first', () => {
+        const { world, camera } = makeWorld('High', { at: 20 });
+        const rings = [];
+        const wave = world.wave.bind(world);
+        world.wave = (time, data) => {
+            rings.push(data.strength);
+            wave(time, data);
+        };
+        const peaks = [];
+        const counts = [];
+        for (let depth = 1; depth <= 4; depth++) {
+            rings.length = 0;
+            frame(world, camera, 1 / 60, () => world.onClear({
+                rows: [19], lines: 1, cascade: depth, combo: 1,
+            }));
+            run(world, camera, 0.36, 1 / 60);
+            peaks.push(Math.max(...rings));
+            counts.push(rings.length);
+        }
+        for (let i = 1; i < peaks.length; i++) {
+            expect(peaks[i]).toBeGreaterThan(peaks[i - 1]);
+            expect(counts[i]).toBeGreaterThanOrEqual(counts[i - 1]);
+        }
+        expect(counts[3]).toBeGreaterThan(counts[0]);
+    });
+
+    it('rings twice for a back-to-back, more the longer the run, and answers a T-spin that cleared nothing', () => {
+        const { world, camera } = makeWorld('High', { at: 20 });
+        let rim = 0;
+        const clear = (b2b) => {
+            const before = world.waveCursor;
+            frame(world, camera, 1 / 60, () => world.onClear({
+                rows: [19, 18], lines: 2, tspin: true, b2b,
+            }));
+            rim = world.rimFlash;
+            run(world, camera, 0.4, 1 / 60);
+            return world.waveCursor - before;
+        };
+        const plain = clear(false);
+        const once = clear(true);
+        expect(once).toBeGreaterThanOrEqual(plain + 2);
+        expect(rim).toBeGreaterThan(0.7);
+        const twice = clear(true);
+        expect(twice).toBeGreaterThan(once);
+        expect(world.getState().b2bRun).toBe(2);
+        clear(false);
+        expect(world.getState().b2bRun).toBe(0);
+        // A T-spin that cleared nothing: a small twist, the glass turning over, one faint ring.
+        run(world, camera, 4, 1 / 30);
+        const before = world.waveCursor;
+        const { level } = world.heat;
+        frame(world, camera, 1 / 60, () => world.onSpin({ player: 0 }));
+        run(world, camera, 0.15, 1 / 60);
+        expect(Math.abs(world.twist)).toBeGreaterThan(0.01);
+        expect(world.waveCursor).toBe(before + 1);
+        expect(world.heat.level).toBeGreaterThan(level);
+        expect(world.getState().counts.spins).toBe(1);
+    });
+
     it('packs ambient shapes from the theme\'s own seven', () => {
         const { world } = makeWorld('Extreme', { at: 3 });
         const keys = new Set();

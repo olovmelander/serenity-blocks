@@ -469,6 +469,27 @@ describe('Geode theme: one node renderer on both backends', () => {
         expect(lock).toHaveBeenCalledOnce();
     });
 
+    it('crowns a four with its late perfect clear, and answers a T-spin that clears nothing', async () => {
+        const { theme } = await startTheme({ quality: 'High' });
+        const clear = vi.spyOn(theme.world, 'onClear');
+        const perfect = vi.spyOn(theme.world, 'onPerfect');
+        const spin = vi.spyOn(theme.world, 'onSpin');
+        eventBus.emit(EVENTS.HARD_DROP, { piece: I, distance: 12 });
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: I });
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        theme.stepFrame(16);
+        eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 4 });
+        theme.stepFrame(32);
+        expect(clear).toHaveBeenCalledOnce();
+        expect(perfect).toHaveBeenCalledOnce();
+        expect(theme.world.getState().counts).toMatchObject({ clears: 1, quads: 1, crowns: 1 });
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
+        eventBus.emit(EVENTS.TSPIN, { lineCount: 0 });
+        theme.stepFrame(48);
+        expect(spin).toHaveBeenCalledOnce();
+        expect(clear).toHaveBeenCalledOnce();
+    });
+
     it('carries a hard drop, a four-line clear and a new level through the director to the geode', async () => {
         const { theme } = await startTheme({ quality: 'High' });
         const lock = vi.spyOn(theme.world, 'onLock');

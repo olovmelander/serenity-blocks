@@ -170,21 +170,31 @@ export function createSky(u, { layers = 3, nebula = true, deepField = true } = {
         const cArm = cos(ca.sub(log(max(cr, 0.04).div(0.1)).mul(2.3)).mul(2.0).add(u.companion.y)).mul(0.5).add(0.5);
         const cDisc = exp(cr.mul(-3.4)).mul(cArm.mul(cArm).mul(smoothstep(0.08, 0.3, cr)).mul(1.1).add(0.22));
         const cCore = exp(cr.mul(cr).mul(-80.0)).mul(1.5).add(exp(cr.mul(cr).mul(-13.0)).mul(0.4));
-        col.addAssign(mix(u.nebulaB, u.armOuter, 0.5).add(vec3(0.12)).mul(cDisc).mul(0.7)
-            .add(u.core.mul(cCore).mul(0.62))
+        // It wakes (companion.w) when the player's run burns hot: a back-to-back, a fever, a
+        // perfect clear. Its core takes most of it, its arms a little.
+        const wake = u.companion.w;
+        const armsLight = mix(u.nebulaB, u.armOuter, 0.5).add(vec3(0.12)).mul(cDisc).mul(wake.mul(0.9).add(1.0));
+        // Awake, its heart burns and a soft glow stands round it, so the small far spiral reads.
+        const beacon = exp(cr.mul(cr).mul(-2.2)).mul(wake).mul(0.12);
+        col.addAssign(armsLight.mul(0.7)
+            .add(u.core.mul(cCore.mul(wake.mul(3.5).add(1.0)).add(beacon)).mul(0.62))
             .mul(facing)
             .mul(u.breath.mul(0.6).add(0.4)));
 
         // ── A four-line clear's ring across the sky, split like light through a prism ──
-        const age = u.time.sub(u.shock.x);
-        const front = age.mul(0.75);
-        const sky = acos(clamp(toNucleus, -1.0, 1.0));
-        const prism = vec3(
-            gxBell(sky.sub(front).div(0.007)),
-            gxBell(sky.sub(front.mul(0.992)).div(0.007)),
-            gxBell(sky.sub(front.mul(0.984)).div(0.007)),
-        ).add(gxBell(sky.sub(front.mul(0.992)).div(0.03)).mul(0.1));
-        col.addAssign(prism.mul(exp(max(age, 0.0).mul(-2.2))).mul(step(0.0, age)).mul(u.shock.y).mul(0.6));
+        // Two rings may cross it at once (an eruption's, and a T-spin's or a new level's).
+        const sky = acos(clamp(toNucleus, -1.0, 1.0)).toVar();
+        const ring = (shock) => {
+            const age = u.time.sub(shock.x);
+            const front = age.mul(0.75);
+            const prism = vec3(
+                gxBell(sky.sub(front).div(0.007)),
+                gxBell(sky.sub(front.mul(0.992)).div(0.007)),
+                gxBell(sky.sub(front.mul(0.984)).div(0.007)),
+            ).add(gxBell(sky.sub(front.mul(0.992)).div(0.03)).mul(0.1));
+            return prism.mul(exp(max(age, 0.0).mul(-2.2))).mul(step(0.0, age)).mul(shock.y).mul(0.6);
+        };
+        col.addAssign(ring(u.shock).add(ring(u.shockB)));
 
         return vec4(col, 1.0);
     })();
@@ -292,8 +302,14 @@ export function createMeteors(u, count) {
     })();
 
     const part = gxPart('GalaxyMeteors', geometry, material, 26);
-    let cursor = 0;
     let volleys = 0;
+    /** When each slot's meteor burns out: a new one takes a spent slot, else the one nearest its end. */
+    const ends = new Float64Array(count).fill(-Infinity);
+    const take = () => {
+        let pick = 0;
+        for (let i = 1; i < count; i++) if (ends[i] < ends[pick]) pick = i;
+        return pick;
+    };
     /**
      * Throw `n` meteors, spread over `stagger` seconds. With a `radiant` (a unit vector) they
      * leave that point of the sky in every direction — the nucleus spitting stars; without one
@@ -306,8 +322,7 @@ export function createMeteors(u, count) {
         volleys += 1;
         const R = SKY_RADIUS * 0.88;
         for (let j = 0; j < Math.min(n, count); j++) {
-            const i = cursor % count;
-            cursor += 1;
+            const i = take();
             let sx;
             let sy;
             let sz;
@@ -341,8 +356,11 @@ export function createMeteors(u, count) {
                 hz = (rand() - 0.5) * 0.2;
             }
             const speed = R * (radiant ? 0.22 + rand() * 0.3 : 0.4 + rand() * 0.35);
-            aStart.set([sx * R, sy * R, sz * R, time + rand() * stagger], i * 4);
-            aRun.set([hx * speed, hy * speed, hz * speed, 0.5 + rand() * 0.5], i * 4);
+            const born = time + rand() * stagger;
+            const burns = 0.5 + rand() * 0.5;
+            aStart.set([sx * R, sy * R, sz * R, born], i * 4);
+            aRun.set([hx * speed, hy * speed, hz * speed, burns], i * 4);
+            ends[i] = born + burns;
             const g = 2.2 + rand() * 2.6;
             aTint.set([rgb[0] * g, rgb[1] * g, rgb[2] * g, size * (0.7 + rand() * 0.7)], i * 4);
         }
@@ -353,8 +371,14 @@ export function createMeteors(u, count) {
     part.reset = () => {
         for (let i = 0; i < count; i++) aStart[i * 4 + 3] = -100;
         geometry.getAttribute('aStart').needsUpdate = true;
-        cursor = 0;
+        ends.fill(-Infinity);
         volleys = 0;
+    };
+    /** Meteors still to burn out at `time` (a fever's storm spends only what the sky has free). */
+    part.liveAt = (time) => {
+        let live = 0;
+        for (let i = 0; i < count; i++) if (ends[i] > time) live += 1;
+        return live;
     };
     part.count = count;
     return part;

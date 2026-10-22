@@ -31,6 +31,17 @@
  *   time     by itself, with no level change, the void drifts along the same line: one palette
  *            every PALETTE_STEP seconds, there and back. The two simply add.
  *
+ * Fast play BUILDS (src/themes/shared/gameplay-surge.js): every momentary light is a Swell that a
+ * new event adds to instead of restarting, and the heat of play is spent on the world's own parts.
+ * At an easy pace the ember is as above. A quick hand warms it: the corona reaches further, the
+ * wind streams, and the pace itself fans the coal. Hot play keeps a crown of loops on the star
+ * through a chain (each clear throws the oldest, the newest stand taller) and wakes the fire in
+ * the stones nearest it. A fever is the bellows wide open: the star turns and boils faster, the
+ * corona and the wind run to their limits, and every stone of the belt burns in its fractures,
+ * until a four or a perfect clear lets the whole crown go and the world breathes back out. A
+ * chain climbs from a coal to gold over its whole length, never in its first few clears, and the
+ * payoff burns in the loops, the shells and the corona rather than in a white sky.
+ *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame.
  */
@@ -43,6 +54,7 @@ import {
     EMBER,
     HUSH_HOLD,
     IMPACT_SLOTS,
+    SCAR_LIFE,
     LOCK_LOOPS,
     LOOP_SLOTS,
     NOVAFIRE,
@@ -51,6 +63,7 @@ import {
     REST_HEAT,
     TAU,
     VOID_PALETTES,
+    WAVE_AFTERGLOW,
     WAVE_LIVE,
     WAVE_SLOTS,
     approach,
@@ -80,12 +93,15 @@ import {
 } from './void-ember-belt.js';
 import { createSky } from './void-ember-sky.js';
 import {
-    createComets, createEmberWind, createRowBeams, createShells, createSparks,
+    SHELL_LIFE, createComets, createEmberWind, createRowBeams, createShells, createSparks,
 } from './void-ember-fx.js';
 import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './void-ember-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell, softCeiling } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
+import { VOID_EMBER_TETROMINOS } from './void-ember-tetrominos.js';
 
 /** The rest camera: a long lens, so the star keeps its roundness off-centre. */
 export const REST_RIG = Object.freeze({
@@ -107,12 +123,48 @@ export function fovForAspect(aspect) {
 /** The star's own turn at rest, radians per second. */
 export const SPIN_RATE = TAU / EMBER.spinPeriod;
 /** Seconds the overdrive after a four-line clear takes to cool to 1/e. */
-export const SURGE_COOL = 3.6;
+export const SURGE_COOL = 2.2;
 /** Seconds the stoking a lock gives takes to fade to 1/e, and the most it adds to the heat. */
 export const STOKE_COOL = 7;
 export const STOKE_MAX = 0.12;
-/** The hottest the ember gets: white-gold, in the first seconds after a four-line clear. */
-export const HEAT_FLARE = 1.04;
+/**
+ * The hottest the ember gets: deep gold, in the first seconds after a four-line clear (any hotter
+ * and the star, the biggest light in the frame, reads cream and takes every colour with it).
+ */
+export const HEAT_FLARE = 0.86;
+/** How much of the way from where the ember stands to HEAT_FLARE a four's flare (surge 1) takes it. */
+const FLARE_SHARE = 0.9;
+/**
+ * The most a chain heats the ember per second past its first clear's heat: a long chain climbs
+ * from a coal to gold over its whole length instead of in its first few clears.
+ */
+export const CHAIN_RISE = 0.045;
+/** What the pace of play alone (a quick hand, no chain) adds to the heat at its hottest. */
+export const PACE_HEAT = 0.28;
+/**
+ * The heat a chain, the pace and the stoking give the ember together: as they are up to
+ * EMBER_KNEE (every casual clear looks as it always did), then easing toward EMBER_TOP, a gold
+ * star with the last of its crust, so the four's flare (to HEAT_FLARE) still has somewhere to go.
+ */
+export const EMBER_KNEE = 0.6;
+export const EMBER_TOP = 0.78;
+export const emberBase = (heat) => softCeiling(heat, EMBER_KNEE, EMBER_TOP);
+/** The most loops a chain keeps on the star between its clears (the crown). */
+export const CROWN_MAX = 10;
+/**
+ * What a four spends of the heat the chain has built: the flare takes the star to HEAT_FLARE and,
+ * as it cools, lets it back to a coal that much cooler, which the chain then climbs from again.
+ */
+const QUAD_SPEND = 0.24;
+/**
+ * The colours a perfect clear's crown burns in: the pieces' own flames, the coloured ones (the
+ * magnesium white of the I would read as a white flash).
+ */
+const CROWN_FLAMES = ['S', 'T', 'J', 'Z', 'O', 'L'].map((key) => pieceColor(VOID_EMBER_TETROMINOS.colors[key]));
+/** Prominences in a perfect clear's crown, round the limb. */
+const CROWN_LOOPS = 9;
+/** The perfect clear's own ring: the nova's gold, a shade deeper. */
+const CROWNFIRE = Object.freeze([1.0, 0.62, 0.18]);
 /** The pinwheel's spring: how hard it pulls back and how fast it settles. */
 const TWIST_STIFFNESS = 26;
 const TWIST_DAMPING = 4.6;
@@ -214,7 +266,68 @@ export class VoidEmberWorld {
             ripple: { radius: 0, strength: 0 },
         };
         this.ambientCycle = new Int32Array(AMBIENT_LOOPS);
+        /**
+         * Every momentary light is a Swell (src/themes/shared/swell.js): a new hit ADDS to what is
+         * still lit, so a lock right after a clear never cuts its flash, and rapid play rides up
+         * to a plateau instead of flickering. Read through the getters below at the world clock.
+         */
+        this.swells = {
+            flash: new Swell({ release: 0.25, ceiling: 0.3, knee: 0.18 }),
+            kick: new Swell({ release: 0.16, ceiling: 0.8, knee: 0.5 }),
+            gust: new Swell({ release: 1.6, ceiling: 1.3, knee: 0.9 }),
+            /** The overdrive a four (1) or a perfect clear (1.3) blows the ember into. */
+            surge: new Swell({ release: SURGE_COOL, ceiling: 1.6, knee: 1.05 }),
+            /** The breath a broken chain lets go. */
+            dip: new Swell({
+                attack: 0.06, release: 0.35, ceiling: 0.35, knee: 0.25,
+            }),
+            /** A T-spin's spin-up of the star's turn. */
+            spinKick: new Swell({ release: 2.4, ceiling: 1.6, knee: 1 }),
+            /** The post's swell after a clear. */
+            swell: new Swell({ release: 0.7, ceiling: 0.8, knee: 0.55 }),
+            /** A back-to-back's gold ring on the limb (more with each in a row). */
+            b2b: new Swell({
+                attack: 0.12, release: 5, ceiling: 1.4, knee: 0.9,
+            }),
+            /** A perfect clear's crown: the corona blazing out, the belt alight. */
+            crown: new Swell({
+                attack: 0.15, release: 3, ceiling: 1.3, knee: 1,
+            }),
+        };
+        /** How hot play runs, and the reading of it this frame (copied: the surge reuses its own). */
+        this.play = new GameplaySurge();
+        this.playNow = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
+        /** Scratch: the loops a clear may tear, oldest first. */
+        this._order = new Int32Array(LOOP_SLOTS);
         this.resetState(0);
+    }
+
+    /** The light of the events' flashes, now. */
+    get flash() {
+        return this.swells.flash.valueAt(this.time);
+    }
+
+    get kick() {
+        return this.swells.kick.valueAt(this.time);
+    }
+
+    get gust() {
+        return this.swells.gust.valueAt(this.time);
+    }
+
+    /** The overdrive after a four-line clear (cools to 1/e in SURGE_COOL). */
+    get surge() {
+        return this.swells.surge.valueAt(this.time);
+    }
+
+    get dip() {
+        return this.swells.dip.valueAt(this.time);
+    }
+
+    get spinKick() {
+        return this.swells.spinKick.valueAt(this.time);
     }
 
     /** Everything the choreography remembers. */
@@ -222,28 +335,43 @@ export class VoidEmberWorld {
         this.time = time;
         this.combo = 0;
         this.heat = REST_HEAT;
+        /** The heat the chain has blown the ember up to so far (it climbs at most CHAIN_RISE a second). */
+        this.chainHeat = REST_HEAT;
         this.stoke = 0;
-        this.surge = 0;
-        this.gust = 0;
         this.level = 1;
         /** The level's place on the palettes' line (level − 1), eased when a level changes. */
         this.levelPlace = 0;
-        this.flash = 0;
-        this.kick = 0;
-        this.dip = 0;
         this.breath = 1;
         this.twist = 0;
         this.twistVelocity = 0;
-        this.spinKick = 0;
         this.hushUntil = -1;
+        /** How deep the hush before a four goes (1 from cold; shallower the hotter play runs). */
+        this.hushDepth = 1;
         this.impactCursor = 0;
+        /** Strikes come about this many seconds apart (an average): how long a scar may last. */
+        this.strikeGap = 1.5;
+        this.lastStrike = -1e6;
         this.waveCursor = 0;
-        this.lastClear = { time: -100, lines: 0 };
+        /** The afterglow carried for waves whose slots were taken (u.waveCarry), as of carryTime. */
+        this.carry = 0;
+        this.carryTime = time;
+        /** Back-to-back clears in a row. */
+        this.b2bStreak = 0;
+        /** The last clear's wave (a cascade's next wave builds on it). */
+        this.lastWave = {
+            time: -100, depth: 0, strength: 0, cover: 0,
+        };
+        Object.keys(this.swells).forEach((key) => this.swells[key].reset());
+        this.play.reset();
+        this.playNow.punch = 0;
+        this.playNow.level = 0;
+        this.playNow.fever = 0;
+        this.playNow.stage = 0;
         /** Timed moments still ahead: comet landings, kicks, the flare after a hush. */
         this.queue = [];
         this.spaceRipple = { birth: -100, strength: 0 };
         this.counts = {
-            locks: 0, clears: 0, quads: 0, comets: 0, eruptions: 0,
+            locks: 0, clears: 0, quads: 0, comets: 0, eruptions: 0, crowns: 0, spins: 0,
         };
         // The slow clocks are functions of the world clock until gameplay bends them.
         const motion = this.reducedMotion ? 0.3 : 1;
@@ -265,6 +393,7 @@ export class VoidEmberWorld {
             }
             this.u.impactCount.value = 0;
             this.u.wavesLive.value = 0;
+            this.u.waveCarry.value = 0;
         }
     }
 
@@ -493,7 +622,9 @@ export class VoidEmberWorld {
         // The staged gameplay is flushed between this and update(): it must carry this frame's time.
         this.time = t;
         const calm = this.reducedMotion ? 0 : 1;
-        const fov = fovForAspect(this.aspect) - this.kick * 0.4 * calm;
+        // Every event's kick rides on the punch of play, and a fever leans the lens in a little.
+        const kick = this.kick + this.playNow.punch * 0.15;
+        const fov = fovForAspect(this.aspect) - (kick * 0.4 + this.playNow.fever * 0.7) * calm;
         if (camera.fov !== fov || camera.near !== REST_RIG.near || camera.far !== REST_RIG.far) {
             camera.fov = fov;
             camera.near = REST_RIG.near;
@@ -507,7 +638,7 @@ export class VoidEmberWorld {
         const d = this.distance;
         const swayX = (Math.sin(t * 0.057) * 0.006 + Math.sin(t * 0.026 + 1.3) * 0.0036) * d * calm;
         const swayY = (Math.sin(t * 0.041 + 0.7) * 0.004 + Math.sin(t * 0.018) * 0.003) * d * calm;
-        camera.position.set(swayX + px * 0.013 * d, swayY - py * 0.008 * d, this.kick * 0.01 * d * calm);
+        camera.position.set(swayX + px * 0.013 * d, swayY - py * 0.008 * d, kick * 0.01 * d * calm);
         const yaw = (Math.sin(t * 0.034 + 2.1) * 0.005 - px * 0.01) * calm;
         const pitch = (Math.sin(t * 0.027) * 0.0035 - py * 0.007) * calm;
         this._look.set(
@@ -624,14 +755,65 @@ export class VoidEmberWorld {
         return out;
     }
 
-    /** Mark the photosphere: a flash, a ripple and a scar at `site`, born at `time`. */
+    /**
+     * Mark the photosphere: a flash, a ripple and a scar at `site`, born at `time`. The slots are
+     * taken in turn, so a slot is needed again IMPACT_SLOTS strikes later: at the pace strikes are
+     * coming, its scar lasts about that long (up to SCAR_LIFE at an easy pace), and the strike that
+     * takes the slot finds it already dark instead of putting a burning scar out.
+     */
     strike(site, rgb, time, strength) {
         const { impacts, impactCount } = this.u;
         const slot = this.impactCursor % IMPACT_SLOTS;
         this.impactCursor += 1;
-        impacts.array[slot * 2].set(site[0], site[1], site[2], time);
-        impacts.array[slot * 2 + 1].set(rgb[0], rgb[1], rgb[2], strength);
+        if (this.lastStrike > -1e5) {
+            const gap = Math.min(4, Math.max(0, time - this.lastStrike));
+            this.strikeGap += (gap - this.strikeGap) * 0.3;
+        }
+        this.lastStrike = Math.max(this.lastStrike, time);
+        const life = Math.min(SCAR_LIFE, Math.max(0.5, (IMPACT_SLOTS * this.strikeGap) / 1.7));
+        impacts.array[slot * 3].set(site[0], site[1], site[2], time);
+        impacts.array[slot * 3 + 1].set(rgb[0], rgb[1], rgb[2], strength);
+        impacts.array[slot * 3 + 2].set(life, 0, 0, 0);
         impactCount.value = Math.min(IMPACT_SLOTS, this.impactCursor);
+    }
+
+    /**
+     * A wave slot for a wave about to leave: the first spent one, in turn; else the one with the
+     * least left to show (never one still waiting to leave). Whatever afterglow it still held joins
+     * the carry, so the dust, the stones and the far world it lit do not go dark, and the stones it
+     * shoved keep their place and ease back.
+     */
+    takeWaveSlot() {
+        const { waves } = this.u;
+        let slot = -1;
+        let least = Infinity;
+        for (let k = 0; k < WAVE_SLOTS; k++) {
+            const i = (this.waveCursor + k) % WAVE_SLOTS;
+            const A = waves.array[i * 3];
+            const age = this.time - A.x;
+            if (!(A.y > 0) || age >= SHELL_LIFE) {
+                slot = i;
+                break;
+            }
+            const left = age < 0 ? Infinity : A.y * (1 - age / SHELL_LIFE);
+            if (left < least) {
+                least = left;
+                slot = i;
+            }
+        }
+        if (slot < 0) slot = this.waveCursor % WAVE_SLOTS;
+        const A = waves.array[slot * 3];
+        if (A.y > 0 && A.x <= this.time) {
+            this.carry = this.carryAt(this.time) + A.y * Math.exp(-(this.time - A.x) / WAVE_AFTERGLOW);
+            this.carryTime = this.time;
+        }
+        this.waveCursor = slot + 1;
+        return slot;
+    }
+
+    /** The afterglow carried for waves that gave up their slots, at `t`. */
+    carryAt(t) {
+        return this.carry > 0 ? this.carry * Math.exp(-Math.max(0, t - this.carryTime) / WAVE_AFTERGLOW) : 0;
     }
 
     /**
@@ -654,11 +836,11 @@ export class VoidEmberWorld {
             if (kind === 'land') this.land(time, data);
             else if (kind === 'shed') this.shed(time, data);
             else if (kind === 'kick') {
-                this.kick = Math.max(this.kick, data);
-                this.flash = Math.max(this.flash, data * 0.4);
+                this.swells.kick.hit(data, time);
+                this.swells.flash.hit(data * 0.4, time);
             } else if (kind === 'surge') {
-                // As if it had begun at its own moment, whatever frame noticed it.
-                this.surge = Math.max(this.surge, data * Math.exp(-(t - time) / SURGE_COOL));
+                // At its own moment, whatever frame noticed it (a swell reads it as that old).
+                this.swells.surge.hit(data, time);
             }
         }
     }
@@ -726,8 +908,8 @@ export class VoidEmberWorld {
             life: [0.5, 1.2],
             size: 0.1,
         });
-        this.kick = Math.max(this.kick, amount > 1 ? 0.5 : 0.09 * amount);
-        this.flash = Math.max(this.flash, amount > 1 ? 0.12 : 0.03);
+        this.swells.kick.hit(amount > 1 ? 0.5 : 0.09 * amount, time);
+        this.swells.flash.hit(amount > 1 ? 0.12 : 0.03, time);
     }
 
     /** A torn-off loop sheds its plasma as sparks, from where the star has carried it. */
@@ -804,56 +986,100 @@ export class VoidEmberWorld {
             this.feed(px, py, from, rgb, 0.6, 2);
         }
         this.stoke = Math.min(STOKE_MAX, this.stoke + (hardDrop ? 0.045 : 0.025));
+        this.play.lock({ hardDrop }, this.time);
         this.counts.locks += 1;
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`; `rows` = the visible rows that went.
+     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `rows` = the visible rows that went;
+     * `combo` = the chain this clear belongs to (1 = its first clear); `cascade` = which wave of
+     * its lock's cascade it is (each one builds on the last: stronger, wider, more fronts, hotter).
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null,
+        rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null, combo = 1, cascade = 1,
+        b2b = false,
     } = {}) {
         const { u } = this;
         if (!u || !this.loops) return;
         const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
         const quad = n >= 4 || perfect;
+        const depth = Math.max(0, Math.min(8, Math.round(Number(cascade) || 1) - 1));
+        const chain = Math.max(1, Math.round(Number(combo) || 1));
+        const { level, fever } = this.playNow;
         const birth = quad ? this.time + HUSH_HOLD : this.time;
+        this.play.clear({
+            lines: n, cascade: depth + 1, combo: chain, tspin, perfect, b2b,
+        }, this.time);
 
-        // ── Every held loop is torn off; the wave is tinted by what the star was holding ──
+        // ── What the star lets go of; the wave is tinted by it ──
+        // A clear on its own, or a four: everything it holds. Inside a chain it keeps a crown of
+        // its newest loops (more of them the longer the chain, up to CROWN_MAX) and throws the
+        // oldest, at least two and more for each wave of a cascade: every clear of a chain erupts,
+        // and what the star holds grows until a four, a perfect clear or the chain's end.
+        const last = quad ? LOOP_SLOTS : LOCK_LOOPS;
+        const order = this._order;
+        let lit = 0;
+        for (let i = 0; i < last; i++) {
+            if (this.loops.held(i, this.time) > 0.03) {
+                const born = this.loops.slot(i).birth;
+                let k = lit;
+                while (k > 0 && this.loops.slot(order[k - 1]).birth > born) {
+                    order[k] = order[k - 1];
+                    k -= 1;
+                }
+                order[k] = i;
+                lit += 1;
+            }
+        }
+        let tear = lit;
+        if (!quad && (chain >= 2 || depth > 0)) {
+            const keep = Math.min(CROWN_MAX, Math.floor(lit * Math.min(0.75, 0.3 + 0.05 * chain)));
+            tear = Math.max(Math.min(lit, 2 + Math.ceil(depth / 2)), lit - keep);
+        }
         const mixRgb = [0, 0, 0];
         let weight = 0;
         let torn = 0;
-        const last = quad ? LOOP_SLOTS : LOCK_LOOPS;
-        const lit = Math.max(1, this.loops.litCount(this.time, 0, last));
-        const each = loopSparkShare(this.sparks.count, lit);
-        for (let i = 0; i < last; i++) {
+        const each = loopSparkShare(this.sparks.count, Math.max(1, tear));
+        for (let j = 0; j < lit && torn < tear; j++) {
+            const i = order[j];
             const held = this.loops.held(i, this.time);
             const entry = this.loops.slot(i);
             const at = birth + torn * 0.045;
-            if (held > 0.03 && this.loops.erupt(i, at)) {
+            if (this.loops.erupt(i, at)) {
                 for (let c = 0; c < 3; c++) mixRgb[c] += entry.rgb[c] * held;
                 weight += held;
                 torn += 1;
                 this.schedule(at, 'shed', {
-                    site: [...entry.site], lift: 1 + entry.height * 0.7, rgb: [...entry.rgb], n: each, speed: 20 + n * 4,
+                    site: [...entry.site],
+                    lift: 1 + entry.height * 0.7,
+                    rgb: [...entry.rgb],
+                    n: each,
+                    speed: 20 + n * 4 + depth * 3,
                 });
             }
         }
-        // The star's own fire, a step hotter than it is, with a breath of what was torn off.
-        const own = emberColor(Math.min(0.74, this.heat + 0.1 + 0.04 * n), this._colour);
+        // The star's own fire, a step hotter than it is (a cascade's later waves hotter still),
+        // with a breath of what was torn off; a four flares in the nova's colour; a back-to-back
+        // burns half in it.
+        const own = emberColor(Math.min(0.74 + 0.04 * depth, this.heat + 0.1 + 0.04 * n + 0.05 * depth), this._colour);
         let rgb = [...own];
         if (quad) rgb = [...NOVAFIRE];
         else if (weight > 0.05) {
             const k = Math.min(0.34, weight / 5);
             rgb = rgb.map((c, i) => c * (1 - k) + (mixRgb[i] / weight) * k);
         }
+        if (b2b && !quad) rgb = rgb.map((c, i) => c * 0.55 + NOVAFIRE[i] * 0.45);
         const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
         rgb = rgb.map((c) => (c / peak) * 0.96 + 0.04);
-        const strength = Math.min(1.6, 0.55 + 0.16 * n + Math.min(0.35, weight * 0.08) + (quad ? 0.3 : 0));
+        const base = 0.55 + 0.16 * n + Math.min(0.35, weight * 0.08) + (quad ? 0.3 : 0);
+        let strength = Math.min(1.9, base * (1 + 0.14 * depth + 0.12 * fever) * (b2b ? 1.15 : 1));
+        // A cascade's later wave builds on the one before it, whatever it had left to tear.
+        const prev = this.lastWave;
+        const builds = depth > 0 && prev.depth === depth - 1 && this.time - prev.time < 1;
+        if (builds) strength = Math.max(strength, Math.min(1.9, prev.strength * 1.1));
 
         // ── The wave leaves the star, toward the board ──
-        const slot = this.waveCursor % WAVE_SLOTS;
-        this.waveCursor += 1;
+        const slot = this.takeWaveSlot();
         const card = cardUnion(this.layout) || {
             x0: 0.4, x1: 0.6, y0: 0.1, y1: 0.9,
         };
@@ -862,13 +1088,20 @@ export class VoidEmberWorld {
         const dl = Math.hypot(dx, dy) || 1;
         dx /= dl;
         dy /= dl;
-        const cover = quad ? 1 : [0.24, 0.36, 0.56][n - 1];
-        u.waves.array[slot * 3].set(birth, strength, perfect ? 4 : n, quad ? 1.5 : 1);
+        let cover = quad ? 1 : Math.min(1, [0.24, 0.36, 0.56][n - 1] + 0.1 * depth + 0.08 * fever);
+        if (builds) cover = Math.min(1, Math.max(cover, prev.cover + 0.06));
+        const fronts = perfect ? 4 : Math.min(4, n + (depth > 1 ? 1 : 0));
+        const thick = quad ? 1.5 : 1 + 0.08 * Math.min(4, depth);
+        u.waves.array[slot * 3].set(birth, strength, fronts, thick);
+        prev.time = this.time;
+        prev.depth = depth;
+        prev.strength = strength;
+        prev.cover = cover;
         u.waves.array[slot * 3 + 1].set(rgb[0], rgb[1], rgb[2], cover);
         u.waves.array[slot * 3 + 2].set(dx, dy, 0, 0);
-        this.lastClear = { time: birth, lines: n };
-        this.schedule(birth + 0.08, 'kick', 0.2 + 0.1 * n);
-        this.gust = Math.max(this.gust, 0.35 + 0.15 * n);
+        this.swells.swell.hit(0.3 + 0.12 * n, birth);
+        this.schedule(birth + 0.08, 'kick', 0.2 + 0.1 * n + 0.05 * Math.min(4, depth));
+        this.swells.gust.hit(0.35 + 0.15 * n + 0.1 * Math.min(4, depth), this.time);
 
         // ── The cleared rows leave the card as blades of light ──
         const board = boardFor(this.layout, player);
@@ -877,12 +1110,17 @@ export class VoidEmberWorld {
             const list = Array.isArray(rows) && rows.length ? rows : Array.from({ length: n }, (_, i) => 19 - i);
             const ys = [];
             for (let i = 0; i < list.length && i < 4; i++) ys.push(boardPoint(board, 0.5, list[i], this._point).y);
-            this.beams.fire(ys, ownCard.x0, ownCard.x1, rgb, this.time, Math.min(1.4, 0.7 + 0.18 * n));
+            this.beams.fire(ys, ownCard.x0, ownCard.x1, rgb, this.time, Math.min(1.5, 0.7 + 0.18 * n + 0.08 * depth));
         }
 
         if (quad) {
-            // The ember holds its breath; then it flares.
+            // The ember holds its breath; then it flares. From cold it holds it fully; the hotter
+            // play already runs the shallower it is (a four mid-fever is an inhale, not a
+            // blackout), and Reduce flashing keeps only a breath of it (ADR-0021).
             this.hushUntil = this.time + HUSH_HOLD;
+            this.hushDepth = Math.max(0.12, 1 - 1.15 * level - 0.5 * fever) * flashScale();
+            // The four burns what the chain had built: once its flare cools, the coal is cooler.
+            this.chainHeat = Math.max(heatForCombo(Math.min(1, chain)), this.chainHeat - QUAD_SPEND);
             this.schedule(birth, 'surge', perfect ? 1.3 : 1);
             this.ripple(birth, this.reducedMotion ? 0.25 : 1);
             this.twistVelocity += 1.2;
@@ -891,39 +1129,134 @@ export class VoidEmberWorld {
             });
             this.counts.quads += 1;
         } else if (n === 3) {
-            this.surge = Math.max(this.surge, 0.3);
+            this.swells.surge.hit(0.3, this.time);
         }
         if (tspin) {
             // The star spins up and the corona winds into a pinwheel.
             this.twistVelocity += 3.4;
-            this.spinKick = Math.max(this.spinKick, 1);
+            this.swells.spinKick.hit(1, this.time);
             this.ripple(this.time, this.reducedMotion ? 0.1 : 0.4);
         }
+        if (b2b) {
+            // A back-to-back rings the limb in gold, brighter with each one in a row.
+            this.b2bStreak += 1;
+            this.swells.b2b.hit(0.55 + 0.2 * Math.min(4, this.b2bStreak - 1), this.time);
+            this.ripple(birth, this.reducedMotion ? 0.08 : 0.3);
+        } else if (!quad && !tspin) this.b2bStreak = 0;
         this.counts.eruptions += torn;
         this.counts.clears += 1;
     }
 
-    /** Send a ripple through the picture — unless a stronger one is already on its way. */
+    /**
+     * A perfect clear, settled after the clear that made it (physics sends it ~360 ms after the
+     * last wave): the crown on the four still playing, never a second one. No hush and no second
+     * flare: the corona blazes out to its full reach and its limb rings in gold, the belt's stones
+     * catch fire, a ring of four fronts runs round the whole star, and a crown of sparks leaves it
+     * in the pieces' own flames.
+     */
+    onCrown() {
+        const { u } = this;
+        if (!u || !this.loops) return;
+        const t = this.time;
+        this.play.crown(t);
+        this.swells.crown.hit(1, t);
+        this.swells.surge.hit(0.3, t);
+        this.swells.gust.hit(0.8, t);
+        this.swells.swell.hit(0.4, t);
+        const slot = this.takeWaveSlot();
+        u.waves.array[slot * 3].set(t, 1.3, 4, 1.3);
+        u.waves.array[slot * 3 + 1].set(CROWNFIRE[0], CROWNFIRE[1], CROWNFIRE[2], 1);
+        u.waves.array[slot * 3 + 2].set(1, 0, 0, 0);
+        this.ripple(t, this.reducedMotion ? 0.15 : 0.55);
+        // Whatever the four left on the star (nothing, usually) goes too.
+        let torn = 0;
+        const each = loopSparkShare(this.sparks.count, Math.max(1, this.loops.litCount(t)));
+        for (let i = 0; i < LOOP_SLOTS; i++) {
+            const held = this.loops.held(i, t);
+            const entry = this.loops.slot(i);
+            const at = t + torn * 0.045;
+            if (held > 0.03 && this.loops.erupt(i, at)) {
+                torn += 1;
+                this.schedule(at, 'shed', {
+                    site: [...entry.site], lift: 1 + entry.height * 0.7, rgb: [...entry.rgb], n: each, speed: 30,
+                });
+            }
+        }
+        CROWN_FLAMES.forEach((rgb, k) => {
+            if (k % 2) return;
+            this.schedule(t + k * 0.04, 'shed', {
+                site: [0, 0, 0], lift: 0, rgb: [...rgb], n: this.sparks.count * 0.08, speed: 30 + k * 3, nova: true,
+            });
+        });
+        // ...and the star is crowned: a ring of prominences stands round its limb, one in each of
+        // the pieces' flames, and holds until the next clear lets it go.
+        for (let k = 0; k < CROWN_LOOPS; k++) {
+            const a = (k / CROWN_LOOPS) * TAU + 0.35;
+            this._vec.copy(this._right).multiplyScalar(Math.cos(a)).addScaledVector(this._up, Math.sin(a))
+                .addScaledVector(this._f, 0.22)
+                .normalize()
+                .applyMatrix3(u.starInv.value);
+            this.loops.raise(this.loops.weakest(0, LOCK_LOOPS, t), {
+                site: [this._vec.x, this._vec.y, this._vec.z],
+                azimuth: a * 1.7,
+                span: 0.13 + (k % 3) * 0.025,
+                height: 0.26 + (k % 2) * 0.1,
+                rgb: CROWN_FLAMES[k % CROWN_FLAMES.length],
+                time: t + 0.12 + k * 0.035,
+                strength: 1,
+                seed: 4001 + k,
+            });
+        }
+        this.schedule(t + 0.06, 'kick', 0.35);
+        this.counts.eruptions += torn;
+        this.counts.crowns += 1;
+    }
+
+    /** A T-spin that cleared nothing: the star still turns a little and the corona winds up. */
+    onSpin() {
+        if (!this.u) return;
+        this.play.spin(this.time);
+        this.twistVelocity += 1.6;
+        this.swells.spinKick.hit(0.45, this.time);
+        this.swells.gust.hit(0.3, this.time);
+        this.ripple(this.time, this.reducedMotion ? 0.04 : 0.15);
+        this.counts.spins += 1;
+    }
+
+    /**
+     * Send a ring through the picture. A ring still on its way (or still on screen and bright)
+     * takes the new one's energy and runs on, so two clears close together swell one ring instead
+     * of restarting it from the star; a faded or far one gives way.
+     */
     ripple(birth, strength) {
         const live = this.spaceRipple;
-        const liveNow = live.birth > this.time
-            ? live.strength
-            : live.strength * Math.exp(-(this.time - live.birth) / 0.85);
-        if (liveNow > strength) return;
+        const age = this.time - live.birth;
+        const decay = age > 0 ? Math.exp(-age / 0.85) : 1;
+        const liveNow = live.strength * decay;
+        if (liveNow > 0.02 && age < 1.1 && liveNow >= strength * 0.3) {
+            live.strength = Math.min(1.3, liveNow + strength * 0.35) / decay;
+            return;
+        }
         this.spaceRipple = { birth, strength };
     }
 
     /** The true combo changed (0 = the chain broke). */
     onCombo(combo) {
         const n = Math.max(0, Math.round(Number(combo) || 0));
-        // The chain broke: the ember lets its breath go.
-        if (n === 0 && this.combo >= 2) this.dip = Math.max(this.dip, 0.25);
+        // The chain broke: the ember lets its breath go, and a long one lets go of the crown it
+        // kept: every loop it still holds flies.
+        if (n === 0 && this.combo >= 2) {
+            this.swells.dip.hit(0.25, this.time);
+            if (this.combo >= 3) this.letGo();
+        }
         // Another step of the chain: the ember is blown on. A breath of brighter fire washes
-        // over its face from the side the board is on, and a gust goes through the wind.
+        // over its face from the side the board is on, a gust goes through the wind, and the fire
+        // it blows up stands on the star as loops of its own (so the next clear always has
+        // something to throw).
         if (n >= 2 && n > this.combo) {
-            this.gust = Math.max(this.gust, Math.min(1, 0.3 + 0.1 * n));
-            this.flash = Math.max(this.flash, 0.06);
-            if (this.u) {
+            this.swells.gust.hit(Math.min(1, 0.3 + 0.1 * n) * 0.6, this.time);
+            this.swells.flash.hit(0.06, this.time);
+            if (this.u && this.loops) {
                 const card = cardUnion(this.layout) || {
                     x0: 0.4, x1: 0.6, y0: 0.1, y1: 0.9,
                 };
@@ -935,11 +1268,55 @@ export class VoidEmberWorld {
                 this._vec.copy(this._right).multiplyScalar(bx).addScaledVector(this._up, by)
                     .addScaledVector(this._f, Math.sqrt(1 - bx * bx - by * by))
                     .applyMatrix3(this.u.starInv.value);
-                const fire = emberColor(Math.min(1, heatForCombo(n) + 0.25), this._colour);
-                this.strike([this._vec.x, this._vec.y, this._vec.z], fire, this.time, Math.min(1.1, 0.5 + 0.08 * n));
+                const site = [this._vec.x, this._vec.y, this._vec.z];
+                const fire = emberColor(Math.min(0.8, heatForCombo(n) + 0.25), this._colour);
+                this.strike(site, fire, this.time, Math.min(1.1, 0.5 + 0.08 * n));
+                this.raiseFire(n, site, fire);
             }
         }
         this.combo = n;
+    }
+
+    /** The fire a chain's step blows up: one loop (two from the sixth step) by the board's side. */
+    raiseFire(n, site, fire) {
+        const peak = Math.max(fire[0], fire[1], fire[2], 1e-4);
+        const rgb = [fire[0] / peak, fire[1] / peak, fire[2] / peak];
+        const count = n >= 6 ? 2 : 1;
+        for (let k = 0; k < count; k++) {
+            const rand = mulberry32(0x3c1d + n * 7919 + k * 131 + this.counts.clears * 31);
+            const p = [site[0] + (rand() - 0.5) * 0.5, site[1] + (rand() - 0.5) * 0.5, site[2] + (rand() - 0.5) * 0.5];
+            const pl = Math.hypot(p[0], p[1], p[2]) || 1;
+            const slot = this.loops.weakest(0, LOCK_LOOPS, this.time);
+            this.loops.raise(slot, {
+                site: [p[0] / pl, p[1] / pl, p[2] / pl],
+                azimuth: rand() * TAU,
+                span: 0.1 + rand() * 0.08,
+                height: 0.16 + rand() ** 1.5 * 0.22,
+                rgb,
+                time: this.time,
+                strength: 0.75,
+                seed: 997 + n * 13 + k,
+            });
+        }
+    }
+
+    /** The chain is over: the star lets go of what it kept, one loop after another. */
+    letGo() {
+        if (!this.loops || !this.sparks) return;
+        const each = loopSparkShare(this.sparks.count, Math.max(1, this.loops.litCount(this.time, 0, LOCK_LOOPS)));
+        let torn = 0;
+        for (let i = 0; i < LOCK_LOOPS; i++) {
+            const held = this.loops.held(i, this.time);
+            const entry = this.loops.slot(i);
+            const at = this.time + torn * 0.06;
+            if (held > 0.03 && this.loops.erupt(i, at)) {
+                torn += 1;
+                this.schedule(at, 'shed', {
+                    site: [...entry.site], lift: 1 + entry.height * 0.7, rgb: [...entry.rgb], n: each, speed: 18,
+                });
+            }
+        }
+        this.counts.eruptions += torn;
     }
 
     /**
@@ -953,14 +1330,14 @@ export class VoidEmberWorld {
             // The ring comes in the colour the void is on its way to.
             const tint = paletteAt(palettePlace(this.level - 1, this.time), this._ringPalette).dustA;
             const peak = Math.max(tint[0], tint[1], tint[2], 1e-4);
-            const slot = this.waveCursor % WAVE_SLOTS;
-            this.waveCursor += 1;
+            const slot = this.takeWaveSlot();
             this.u.waves.array[slot * 3].set(this.time, 0.75, 1, 1.8);
             const cold = tint.map((c) => (c / peak) * 0.8 + 0.2);
             this.u.waves.array[slot * 3 + 1].set(cold[0], cold[1], cold[2], 1);
             this.u.waves.array[slot * 3 + 2].set(1, 0, 0, 0);
-            this.flash = Math.max(this.flash, 0.12);
-            this.gust = Math.max(this.gust, 0.6);
+            this.swells.flash.hit(0.12, this.time);
+            this.swells.gust.hit(0.6, this.time);
+            this.play.levelUp(this.time);
         }
     }
 
@@ -1019,22 +1396,39 @@ export class VoidEmberWorld {
         this.time = sim.time;
         const t = this.time;
         const motion = this.reducedMotion ? 0.3 : 1;
+        // Reduce flashing (ADR-0021): every frame-wide flash below is scaled by it.
+        const fs = flashScale();
 
         // ── The heat ──
-        this.surge *= Math.exp(-dt / SURGE_COOL);
         this.stoke *= Math.exp(-dt / STOKE_COOL);
-        this.gust *= Math.exp(-dt / 1.6);
-        this.flash *= Math.exp(-dt / 0.25);
-        this.kick *= Math.exp(-dt / 0.16);
-        this.dip *= Math.exp(-dt / 0.35);
-        this.spinKick *= Math.exp(-dt / 2.4);
         this.drain(t);
-        // A four-line clear blows even a banked coal up to gold for a few seconds.
-        const target = Math.min(HEAT_FLARE, heatForCombo(this.combo) + this.stoke + this.surge * 0.62);
+        // How hot play runs (src/themes/shared/gameplay-surge.js), read once a frame on this clock.
+        const play = this.play.sample(t);
+        const now = this.playNow;
+        now.punch = play.punch;
+        now.level = play.level;
+        now.fever = play.fever;
+        now.stage = play.stage;
+        const { level, fever } = now;
+        const { surge, gust } = this;
+        const flash = this.flash * fs;
+        // A chain blows the ember up toward heatForCombo, but past its first clear's heat no
+        // faster than CHAIN_RISE a second: a long chain climbs from a coal to gold over its whole
+        // length. A break lets the goal go at once; the ember itself cools slowly (below).
+        const goal = heatForCombo(this.combo);
+        if (goal > this.chainHeat) {
+            const first = heatForCombo(Math.min(1, this.combo));
+            this.chainHeat = Math.min(goal, Math.max(this.chainHeat, first) + dt * CHAIN_RISE);
+        } else this.chainHeat = goal;
+        // A quick hand fans the coal too, chain or not; every lock stokes it; a four's flare takes
+        // it most of the way from there to HEAT_FLARE and lets it back as the overdrive cools.
+        const pace = REST_HEAT + PACE_HEAT * (0.7 * level + 0.3 * fever);
+        const base = Math.min(HEAT_FLARE, emberBase(Math.max(this.chainHeat, pace) + this.stoke));
+        const target = base + (HEAT_FLARE - base) * Math.min(1, surge * FLARE_SHARE);
         this.heat += (target - this.heat) * approach(target > this.heat ? 2.6 : 0.55, dt);
-        const hush = t < this.hushUntil ? 1 : 0;
-        const breathTarget = hush ? 0.1 : 1 - this.dip;
-        this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 14, dt);
+        const hush = t < this.hushUntil ? this.hushDepth : 0;
+        const breathTarget = hush > 0 ? 1 - 0.9 * hush : 1 - this.dip;
+        this.breath += (breathTarget - this.breath) * approach(hush > 0 ? 40 : 14, dt);
         if (dt === 0) this.breath = breathTarget;
         this.applyPalette(approach(1.1, dt));
 
@@ -1048,11 +1442,12 @@ export class VoidEmberWorld {
         }
 
         // ── The slow clocks ──
+        // Heat boils the star and streams its wind; hot play turns it, churns it and blows harder.
         const { heat } = this;
         const hurry = this.reducedMotion ? 0 : 1;
-        this.spin += dt * SPIN_RATE * motion * (1 + this.spinKick * 9 * hurry);
-        this.boil += dt * motion * (0.6 + heat * 2.2 + this.surge * 3 * hurry);
-        this.flow += dt * motion * (0.5 + heat * 1.6 + (this.surge * 4 + this.gust * 2) * hurry);
+        this.spin += dt * SPIN_RATE * motion * (1 + (this.spinKick * 9 + fever * 2) * hurry);
+        this.boil += dt * motion * (0.6 + heat * 2.2 + (surge * 3 + level * 0.6 + fever * 1.2) * hurry);
+        this.flow += dt * motion * (0.5 + heat * 1.6 + (surge * 4 + gust * 2 + level * 0.8 + fever * 1.6) * hurry);
 
         this.raiseAmbient();
         this.pose();
@@ -1060,8 +1455,9 @@ export class VoidEmberWorld {
         // ── Uniforms ──
         let impactsLive = 0;
         for (let i = 0; i < IMPACT_SLOTS; i++) {
-            const birth = u.impacts.array[i * 2].w;
-            if (i < this.impactCursor && t - birth < 30) impactsLive = i + 1;
+            const birth = u.impacts.array[i * 3].w;
+            const life = u.impacts.array[i * 3 + 2].x;
+            if (i < this.impactCursor && t - birth < Math.min(30, Math.max(3, life * 5))) impactsLive = i + 1;
         }
         u.impactCount.value = impactsLive;
         u.time.value = t;
@@ -1070,11 +1466,19 @@ export class VoidEmberWorld {
         u.heat.value = heat;
         u.breath.value = this.breath;
         u.twist.value = this.twist * (this.reducedMotion ? 0.25 : 1);
-        // What the star casts on the belt, the cinder world and the dust.
-        const light = emberColor(heat + 0.1, this._light);
-        const cast = 2.4 + 6.5 * Math.max(0, heat) ** 1.4 + this.flash * 4;
+        // The acts of play, spent on the world's own parts (never on the sky as a whole).
+        const warmAct = smooth(0.15, 0.55, level);
+        const hotAct = smooth(0.4, 0.85, level);
+        const crown = this.swells.crown.valueAt(t);
+        const b2b = this.swells.b2b.valueAt(t);
+        u.loopGrow.value = 0.35 * hotAct + 0.65 * fever + 0.35 * crown;
+        u.blaze.value = 0.3 * hotAct + 0.8 * fever + 0.5 * crown;
+        // What the star casts on the belt, the cinder world and the dust (never past gold in
+        // colour: a white-gold star's light would turn the belt and the dust cream).
+        const light = emberColor(Math.min(heat + 0.1, 0.9), this._light);
+        const cast = 2.4 + 6.5 * Math.max(0, heat) ** 1.4 + flash * 4;
         u.starLight.value.set(light[0] * cast, light[1] * cast, light[2] * cast);
-        const stain = 2.2 + 1.6 * heat + this.flash * 2;
+        const stain = 2.2 + 1.6 * heat + flash * 2;
         u.skyLight.value.set(light[0] * stain, light[1] * stain, light[2] * stain);
         const p = this._palette;
         u.voidCol.value.set(p.void[0], p.void[1], p.void[2]);
@@ -1084,14 +1488,19 @@ export class VoidEmberWorld {
         u.fill.value.set(p.fill[0], p.fill[1], p.fill[2]);
         u.starTint.value.set(p.star[0], p.star[1], p.star[2]);
         if (this.corona) {
+            // The corona reaches out with the heat of play and runs to its limit in a fever; a
+            // back-to-back and a perfect clear ring its limb in gold.
             const cu = this.corona.uniforms;
-            cu.reach.value = clamp01(0.14 + (heat - REST_HEAT) * 0.85 + this.surge * 0.45 + this.gust * 0.12);
-            cu.gain.value = 0.17 + heat * 0.62 + this.surge * 1.0 + this.flash * 0.6;
+            cu.reach.value = Math.min(0.76 + 0.24 * Math.min(1, crown + surge), 0.14 + (heat - REST_HEAT) * 0.62
+                + surge * 0.4 + gust * 0.08 + 0.04 * warmAct + 0.06 * hotAct + 0.14 * fever + 0.3 * crown);
+            cu.gain.value = 0.17 + heat * 0.62 + surge * 0.6 + flash * 0.6 + 0.1 * hotAct + 0.25 * fever + 0.35 * crown;
+            cu.fringe.value = 1 + 2.2 * b2b + 1.5 * crown + 0.5 * fever;
         }
         if (this.wind) {
             const wu = this.wind.uniforms;
-            wu.emit.value = clamp01(0.14 + (heat - REST_HEAT) * 1.05 + this.gust * 0.4 + this.surge);
-            wu.reach.value = 1.15 + heat * 2.1 + this.surge * 3 + this.gust * 0.8;
+            wu.emit.value = clamp01(0.14 + (heat - REST_HEAT) * 0.75 + gust * 0.22 + surge * 0.8
+                + 0.08 * warmAct + 0.12 * hotAct + 0.25 * fever + 0.3 * crown);
+            wu.reach.value = 1.15 + heat * 2.1 + surge * 2.4 + gust * 0.5 + 0.4 * level + 0.9 * fever + 0.8 * crown;
         }
 
         // What follows the camera: the dome, the star on screen, the corona's limb.
@@ -1116,34 +1525,52 @@ export class VoidEmberWorld {
         }
 
         // ── Post ──
-        const sinceClear = t - this.lastClear.time;
-        const swell = sinceClear >= 0 ? Math.exp(-sinceClear / 0.7) * (0.3 + 0.12 * this.lastClear.lines) : 0;
+        const swell = this.swells.swell.valueAt(t);
         const warm = Math.max(0, heat - REST_HEAT);
         const post = this._post;
         post.heartRadius = this.heartRadius;
         post.flash = this.flash;
-        post.kick = this.kick;
-        post.rays = hush ? 0.02 : Math.min(0.26, 0.05 + warm * 0.2 + this.surge * 0.1 + swell * 0.08);
-        post.streak = hush ? 0 : Math.min(0.9, warm * warm * 0.45 + this.surge * 0.5 + this.flash * 0.8);
-        post.haze = (0.35 + warm * 0.9 + this.surge * 0.6) * (this.reducedMotion ? 0.3 : 1);
-        post.bloomBoost = this.surge * 0.12 + swell * 0.1;
+        post.kick = this.kick + now.punch * 0.15;
+        let rays = Math.min(0.26, 0.05 + warm * 0.2 + surge * 0.1 + swell * 0.08);
+        let streak = Math.min(0.5, warm * warm * 0.35 + surge * 0.3 + flash * 0.6);
+        if (hush > 0) {
+            // The hush takes the streamers with it, as deep as it goes.
+            rays += (0.02 - rays) * hush;
+            streak *= 1 - hush;
+        }
+        post.rays = rays;
+        post.streak = streak;
+        post.haze = (0.35 + warm * 0.9 + surge * 0.6 + fever * 0.35) * (this.reducedMotion ? 0.3 : 1);
+        post.bloomBoost = surge * 0.12 + swell * 0.1 + fever * 0.05;
         // The iris closes as the ember heats, so its colours survive the heat. It follows the heat
         // the star has reached, not the surge that is driving it there: like an eye, it is a beat
-        // behind, so a four-line flare is at its brightest the moment it goes off.
-        post.exposure = 1 / (1 + this.surge * 0.4 + swell * 0.5 + warm * 1.3 + this.flash * 0.3);
+        // behind, so a four-line flare is at its brightest the moment it goes off. Hot play
+        // closes it a touch more, so the gold stays gold.
+        post.exposure = 1 / (1 + surge * 0.4 + swell * 0.5 + warm * 1.3 + flash * 0.3 + level * 0.3 + fever * 0.4);
         u.iris.value = (1 / post.exposure) ** 0.8;
         const rippleAge = t - this.spaceRipple.birth;
         post.ripple.radius = Math.max(0, rippleAge) * RIPPLE_SPEED;
         post.ripple.strength = rippleAge >= 0
             ? this.spaceRipple.strength * Math.exp(-rippleAge / 0.85) * smooth(0, 0.12, rippleAge)
             : 0;
-        // Waves that have left the frame cost nothing more.
+        // Waves that have left the frame cost nothing more (once their carried glow is gone too).
         let wavesLive = 0;
         for (let i = 0; i < WAVE_SLOTS; i++) {
             if (t - u.waves.array[i * 3].x < WAVE_LIVE) wavesLive = i + 1;
         }
+        const carry = this.carryAt(t);
+        u.waveCarry.value = carry > 2e-3 ? carry : 0;
+        // How much shell light is crossing the frame at once: past one great shell's worth the
+        // shells are eased toward the square root of their sum (u.shellGain).
+        let crowd = 0;
+        for (let i = 0; i < WAVE_SLOTS; i++) {
+            const A = u.waves.array[i * 3];
+            const age = t - A.x;
+            if (age >= 0 && age < SHELL_LIFE) crowd += A.y * Math.exp(-age / 1.25);
+        }
+        u.shellGain.value = crowd > 1.2 ? Math.sqrt(1.2 / crowd) : 1;
         this.wavesLive = wavesLive;
-        u.wavesLive.value = wavesLive > 0 ? 1 : 0;
+        u.wavesLive.value = wavesLive > 0 || carry > 2e-3 ? 1 : 0;
     }
 
     /** The fBm texture (the post's heat haze reads it). */
@@ -1163,7 +1590,10 @@ export class VoidEmberWorld {
             time: this.time,
             combo: this.combo,
             heat: this.heat,
+            chainHeat: this.chainHeat,
             stoke: this.stoke,
+            play: { ...this.playNow },
+            b2bStreak: this.b2bStreak,
             surge: this.surge,
             gust: this.gust,
             breath: this.breath,

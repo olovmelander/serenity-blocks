@@ -1130,6 +1130,60 @@ describe('Forest firefly director: the figure', () => {
         expect(late.spawn).not.toHaveBeenCalled();
     });
 
+    it('feeds the animal that stands: its lights stay, a finer layer joins them, they burn whiter', () => {
+        const rig = setup();
+        rig.director.apply({ epoch: 1, figure: { ...held(1), fed: 0, full: 0 } }, STEP);
+        const first = [...rig.director.figureSparks];
+        const lights = first.length;
+        for (let frame = 0; frame < 90; frame++) {
+            rig.sim.step(STEP, rig.director.apply({ epoch: 1, figure: { ...held(1, 1), fed: 0, full: 0 } }, STEP));
+        }
+        const heat = first.map((index) => rig.sim.heat[index]);
+        const size = first.map((index) => rig.sim.size[index]);
+        const release = vi.spyOn(rig.sim, 'release');
+        const pulses = rig.add.mock.calls.length;
+        // Fed: the same serial, one more feed.
+        rig.director.apply({ epoch: 1, figure: { ...held(1, 1), fed: 1, full: 0.45 } }, STEP);
+        expect(release).not.toHaveBeenCalled();
+        const extra = rig.director.figureExtraLights;
+        expect(extra).toBeGreaterThan(lights * 0.2);
+        expect(rig.spawn).toHaveBeenCalledTimes(lights + extra);
+        expect(rig.director.figureSparks).toHaveLength(lights + extra);
+        expect(rig.sim.counts().bound).toBe(lights + extra);
+        // The first lights are still bound where they were, whiter and a little larger.
+        first.forEach((index, n) => {
+            expect(rig.sim.bound[index]).toBeGreaterThan(0);
+            expect(rig.sim.heat[index]).toBeGreaterThan(heat[n] - 1e-6);
+            expect(rig.sim.size[index]).toBeGreaterThan(size[n]);
+        });
+        // It lifts its head: a strong, white-gold breath of light from under it.
+        const breath = rig.add.mock.calls.slice(pulses).map((call) => call[3]);
+        expect(breath.some((shape) => shape.strength > FOREST_WAVES.figure.gain * 2 && shape.heat > 0.8)).toBe(true);
+        // The same feed seen again does nothing more; a second feed only brightens (one finer layer).
+        rig.director.apply({ epoch: 1, figure: { ...held(1, 1), fed: 1, full: 0.45 } }, STEP);
+        rig.director.apply({ epoch: 1, figure: { ...held(1, 1), fed: 2, full: 1 } }, STEP);
+        expect(rig.spawn).toHaveBeenCalledTimes(lights + extra);
+        expect(release).not.toHaveBeenCalled();
+    });
+
+    it('gathers an animal called in a fever with its finer layer at once, from nearer', () => {
+        const cold = setup();
+        cold.director.apply({ epoch: 1, figure: { ...held(1, 0), fed: 0, full: 0 } }, STEP);
+        const hot = setup();
+        hot.director.apply({
+            epoch: 1, figure: { ...held(1, 0), fed: 0, full: 0.7 }, surge: { level: 0.9, fever: 0.95 },
+        }, STEP);
+        const { figureExtraLights } = hot.director;
+        expect(hot.director.figureSparks.length).toBe(cold.director.figureSparks.length + figureExtraLights);
+        const spread = (rig) => {
+            const { sim } = rig;
+            const far = rig.director.figureSparks.map((index) => (
+                Math.hypot(sim.x[index] - sim.tx[index], sim.z[index] - sim.tz[index])));
+            return far.reduce((sum, value) => sum + value, 0) / far.length;
+        };
+        expect(spread(hot)).toBeLessThan(spread(cold));
+    });
+
     it('breathes a slow light out over the moss from under its hooves while it stands', () => {
         const rig = setup();
         rig.director.apply({ epoch: 1, figure: held(1, 0.1) }, STEP);

@@ -143,8 +143,11 @@ function liveNumbers(world) {
     out['jets.frame'] = world.jets.uniforms.frame.value.toArray();
     out['jets.color'] = world.jets.uniforms.color.value.toArray();
     out.chime = world.crystals.uniforms.chime.value.toArray();
-    out['jellies.flash'] = world.jellies.uniforms.flash.value.toArray();
-    for (const name of ['time', 'power', 'surge', 'breath', 'pulse', 'moteLift', 'wake', 'sprout', 'swirl', 'squeeze']) {
+    out['jellies.flash'] = [world.jellies.uniforms.flash.value];
+    for (const name of [
+        'time', 'power', 'surge', 'breath', 'pulse', 'moteLift', 'wake', 'sprout', 'swirl', 'squeeze',
+        'glowFloor', 'beatGlow', 'keep',
+    ]) {
         out[`u.${name}`] = [world.u[name].value];
     }
     return out;
@@ -157,7 +160,7 @@ function expectAllFinite(world, when) {
         }
     });
     const post = world.getPostState();
-    for (const key of ['flash', 'kick', 'shafts', 'bloomBoost', 'exposure']) {
+    for (const key of ['flash', 'kick', 'shafts', 'bloomBoost', 'exposure', 'saturation']) {
         expect(Number.isFinite(post[key]), `${when}: post.${key}`).toBe(true);
     }
     expect(Number.isFinite(post.heart.x) && Number.isFinite(post.heart.y), `${when}: post.heart`).toBe(true);
@@ -735,12 +738,15 @@ describe('bioluminescence world: a clear', () => {
         }
         const [a, b] = [holding[0], holding[holding.length - 1]];
         if (distance(a) + 1 < distance(b)) expect(passes[a]).toBeLessThan(passes[b]);
-        // A cap holds its light until the front reaches it, flares, and then holds nothing.
+        // A cap holds its light until the front reaches it, flares, and then holds nothing. (What
+        // is left of its own bloom still burns until then: the wave's flare adds to it.)
         for (const i of holding) {
             expect(world.mushrooms.heldAt(i, passes[i] - 1e-3), `mushroom ${i}`).toBeGreaterThan(0);
             expect(world.mushrooms.heldAt(i, passes[i] + 1e-3), `mushroom ${i}`).toBe(0);
-            expect(Math.max(...world.mushrooms.flashAt(i, passes[i] + 1e-3)), `mushroom ${i}`).toBeGreaterThan(0);
-            expect(world.mushrooms.flashAt(i, passes[i] - 1e-3), `mushroom ${i}`).toEqual([0, 0, 0]);
+            const flare = Math.max(...world.mushrooms.flashAt(i, passes[i] + 1e-3));
+            const burning = Math.max(...world.mushrooms.flashAt(i, passes[i] - 1e-3));
+            expect(flare, `mushroom ${i}`).toBeGreaterThan(0);
+            expect(flare, `mushroom ${i}`).toBeGreaterThan(burning + 0.1);
         }
         run(made, CLEAR_TRAVEL + 0.2);
         expect(world.mushrooms.totalHeld(world.time)).toBe(0);
@@ -813,9 +819,11 @@ describe('bioluminescence world: a clear', () => {
         expect(world.u.swirl.value).toBe(0);
         const now = world.time;
         world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        expect(world.crystals.ringAt(now)).toBeGreaterThan(0);
+        run(made, 1 / 60, 1);
+        // The front left the roots as the T-spin landed, and the stones ring.
         expect(world.crystals.uniforms.chime.value.x).toBe(now);
         expect(world.crystals.uniforms.chime.value.y).toBeGreaterThan(0);
-        run(made, 1 / 60, 1);
         expect(world.u.swirl.value).toBeGreaterThan(0.5);
         run(made, 8);
         expect(world.u.swirl.value).toBeLessThan(0.01);
@@ -843,9 +851,9 @@ describe('bioluminescence world: the Great Bloom', () => {
         expect(Math.max(...world.mushrooms.flashAt(0, birth + 1e-3))).toBeGreaterThan(0);
         // The elder flashes; it is given nothing to hold.
         expect(world.mushrooms.heldAt(0, birth + 1)).toBe(0);
-        // The crystals chime and every jelly flashes with it.
-        expect(world.crystals.uniforms.chime.value.x).toBeCloseTo(birth, 9);
-        expect(world.jellies.uniforms.flash.value.x).toBeCloseTo(birth, 9);
+        // The crystals chime and every jelly flashes with it (and not a moment before).
+        expect(world.crystals.ringAt(birth + 1e-3)).toBeGreaterThan(world.crystals.ringAt(birth - 1e-3) + 0.5);
+        expect(world.jellies.flashAt(birth + 1e-3)).toBeGreaterThan(world.jellies.flashAt(birth - 1e-3) + 0.5);
 
         // ── The hush: every light sinks, and the overdrive has not begun ──
         expect(world.surge).toBe(0);
@@ -862,6 +870,7 @@ describe('bioluminescence world: the Great Bloom', () => {
         run(made, HUSH_HOLD * 0.25 + 1 / 60, 6);
         expect(world.time).toBeGreaterThanOrEqual(birth);
         expect(world.surge).toBeGreaterThan(0.5); // from the first frame of the bloom
+        expect(world.crystals.uniforms.chime.value.x).toBeCloseTo(birth, 9);
         run(made, 0.5, 30);
         expect(world.u.breath.value).toBeGreaterThan(0.8);
         expect(world.u.surge.value).toBeGreaterThan(0.5);
@@ -908,7 +917,7 @@ describe('bioluminescence world: the Great Bloom', () => {
         expect(three.u.shock.value.y).toBe(0);
         expect(three.surge).toBe(0);
         // But the crystals ring for it.
-        expect(three.crystals.uniforms.chime.value.x).toBeGreaterThanOrEqual(three.time);
+        expect(three.crystals.ringAt(three.time + 0.2)).toBeGreaterThan(0);
     });
 });
 
@@ -1017,9 +1026,12 @@ describe('bioluminescence world: a chain', () => {
         jellies.setTarget(-5, later + 30);
         expect(jellies.up).toBe(0);
         for (let i = 0; i < jellies.count; i++) expect(sink(i), `jelly ${i}`).toBeLessThan(later + 60);
-        // A flash is one uniform every jelly reads.
+        // A flash is one uniform every jelly reads, lit from its moment on.
         jellies.flash(later + 31, 0.7);
-        expect(jellies.uniforms.flash.value.toArray()).toEqual([later + 31, expect.closeTo(0.7, 6)]);
+        expect(jellies.flashAt(later + 31 - 1e-3)).toBe(0);
+        expect(jellies.flashAt(later + 31)).toBeCloseTo(0.7, 6);
+        jellies.update(later + 31);
+        expect(jellies.uniforms.flash.value).toBeCloseTo(0.7, 6);
         expect(life.every(Number.isFinite)).toBe(true);
     });
 
@@ -1119,8 +1131,8 @@ describe('bioluminescence world: the palette turns by itself', () => {
         expect(Math.hypot(...early.map((v, c) => v - late[c]))).toBeGreaterThan(0.2);
         // A one-line clear answers in the plankton's colour AS IT IS NOW.
         const world = at(made, HALF + PALETTE_PERIOD * 2);
-        const slot = world.clearCursor % CLEAR_SLOTS;
         world.onClear({ lines: 1, rows: [19] });
+        const slot = world.u.clearA.findIndex((s) => s.value.x === world.time);
         const fired = hue(world.u.clearC[slot].value.toArray());
         const now = hue(paletteAt(2.5).plankton.map((c) => c * 0.92 + 0.08));
         const first = hue(BIOLUM_PALETTES[0].plankton);
@@ -1756,7 +1768,14 @@ describe('bioluminescence world: faults that stay fixed', () => {
         expect(Math.hypot(firstOrigin[0] - secondHere.x, firstOrigin[1] - secondHere.z)).toBeGreaterThan(1);
         // `heart` names the latest one only.
         expect(world.u.heart.value.toArray()).toEqual(world.u.clearH[second].value.toArray());
-        // A third recycles the oldest slot, origin and all.
+        // More fill the free slots; once every slot has a wave rolling, the next takes the one with
+        // the least light left in it — the first here — origin and all.
+        for (let k = 2; k < CLEAR_SLOTS; k++) {
+            run(made, 0.3);
+            world.onClear({ lines: 1, screen: { x: 0.3 + 0.05 * k, y: 0.9 } });
+        }
+        expect(new Set(world.u.clearA.map((slot) => slot.value.x)).size).toBe(CLEAR_SLOTS);
+        expect(world.u.clearA[first].value.x).toBe(firstAt);
         run(made, 0.3);
         world.onClear({ lines: 1, screen: { x: 0.5, y: 0.95 } });
         expect(slotBornAt(world.time)).toBe(first);
@@ -1926,6 +1945,259 @@ describe('bioluminescence world: faults that stay fixed', () => {
         world.seek(world.time);
         world.update({ time: world.time, delta: 0 });
         expect(to(first)).toBeCloseTo(0, 6);
+    });
+});
+
+describe('bioluminescence world: it builds with play', () => {
+    it('never cuts the light when a weak clear follows a strong one', () => {
+        const made = makeWorld('High');
+        const { world } = made;
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        run(made, HUSH_HOLD + 0.3, 20);
+        const quad = world.u.clearA.findIndex((slot) => slot.value.w === 1);
+        expect(quad).toBeGreaterThanOrEqual(0);
+        const was = {
+            surge: world.surge,
+            jelly: world.jellies.flashAt(world.time),
+            ring: world.crystals.ringAt(world.time),
+            shafts: world.getPostState().shafts,
+        };
+        expect(was.jelly).toBeGreaterThan(0);
+        // A single, then two more in quick succession: every light still burning only gains.
+        for (let k = 0; k < 3; k++) {
+            const frame = 1 / 60;
+            const before = {
+                jelly: world.jellies.flashAt(world.time),
+                ring: world.crystals.ringAt(world.time),
+                surge: world.surge,
+                kick: world.kick,
+                flash: world.flash,
+            };
+            world.onClear({ rows: [19], lines: 1 });
+            // (Even before its own flash is due, nothing of the last one has gone out.)
+            for (const ahead of [0, 0.1, 0.2]) {
+                const at = world.time + ahead;
+                const jelly = before.jelly * Math.exp(-ahead * 1.6) * 0.99;
+                const ring = before.ring * Math.exp(-ahead / 1.1) * 0.99;
+                expect(world.jellies.flashAt(at), `clear ${k} +${ahead}`).toBeGreaterThan(jelly);
+                expect(world.crystals.ringAt(at), `clear ${k} +${ahead}`).toBeGreaterThanOrEqual(ring);
+            }
+            expect(world.kick).toBeGreaterThanOrEqual(before.kick);
+            expect(world.flash).toBeGreaterThanOrEqual(before.flash);
+            run(made, frame, 1);
+            expect(world.surge).toBeGreaterThan(before.surge * 0.99);
+            run(made, 0.25, 15);
+        }
+        // The quad's wave rolled on in its own slot all the while: no single took it.
+        expect(world.u.clearA[quad].value.w).toBe(1);
+        expect(world.getPostState().shafts).toBeGreaterThan(0.1);
+        expect(was.surge).toBeGreaterThan(0.5);
+    });
+
+    it('lets a wave whose slot is wanted go on glowing in the pool instead of going out', () => {
+        const made = makeWorld('High');
+        const { world } = made;
+        // Every slot rolling, then one more: the oldest is taken, and what it still left on the
+        // water carries on in the pool's memory.
+        for (let k = 0; k < CLEAR_SLOTS; k++) {
+            world.onClear({ rows: [19, 18], lines: 2 });
+            run(made, 0.36, 6);
+        }
+        const floor = world.u.glowFloor.value;
+        world.onClear({ rows: [19], lines: 1 });
+        run(made, 1 / 60, 1);
+        expect(world.u.glowFloor.value).toBeGreaterThan(floor + 0.02);
+        expect(world.u.clearLive.value).toBe(1);
+        // ...and fades as the wave's own afterglow would have.
+        run(made, 12, 120);
+        expect(world.u.glowFloor.value).toBeLessThan(0.01);
+    });
+
+    it('builds through a long chain, and breathes back to calm when the hands rest', () => {
+        const made = makeWorld('High');
+        const { world } = made;
+        const reading = () => ({
+            level: world.heat.level,
+            power: world.u.power.value,
+            floor: world.u.glowFloor.value,
+            keep: world.u.keep.value,
+            saturation: world.getPostState().saturation,
+            deepen: world.getPostState().deepen,
+            jellies: world.jellies.up,
+            pulse: world.pulse,
+        });
+        let first = null;
+        // Twelve clearing hard drops, a little over half a second apart: the tray's Fever, in short.
+        for (let k = 0; k < 12; k++) {
+            world.onLock({
+                u: k % 2 ? 0.2 : 0.8, rows: [19], color: k % 2 ? PINK : AMBER, hardDrop: true,
+            });
+            world.onCombo(k + 1);
+            world.onClear({ rows: [19, 18].slice(0, 1 + (k % 2)), lines: 1 + (k % 2), combo: k + 1 });
+            run(made, 0.64, 16);
+            if (k === 0) first = reading();
+        }
+        const hot = reading();
+        // Hotter than its first clear on every count the grotto shows.
+        expect(hot.level).toBeGreaterThan(first.level + 0.4);
+        expect(hot.floor).toBeGreaterThan(first.floor);
+        expect(hot.keep).toBeGreaterThan(first.keep + 0.3);
+        expect(hot.saturation).toBeGreaterThan(first.saturation);
+        expect(hot.deepen).toBeGreaterThan(first.deepen);
+        expect(hot.jellies).toBeGreaterThan(first.jellies);
+        expect(hot.power).toBeGreaterThan(first.power);
+        expect(world.heat.stage).toBeGreaterThanOrEqual(2);
+        expect(world.heat.fever).toBeGreaterThan(0);
+        // The caps keep the colours played through the clears: the grotto has filled.
+        const holding = world.mushrooms.list.filter((m, i) => world.mushrooms.heldAt(i, world.time) > 0.05).length;
+        expect(holding).toBeGreaterThan(3);
+        // The iris closes a little for the light it adds, and never as far as a Great Bloom does.
+        expect(world.getPostState().exposure).toBeGreaterThan(0.6);
+
+        // The hands rest: it breathes back over a few seconds, no faster.
+        world.onCombo(0);
+        run(made, 1, 20);
+        expect(world.heat.level).toBeGreaterThan(0.2);
+        run(made, 14, 280);
+        expect(world.heat.level).toBeLessThan(0.05);
+        expect(world.heat.stage).toBe(0);
+        expect(world.u.keep.value).toBeLessThan(0.01);
+        expect(world.u.glowFloor.value).toBeLessThan(0.01);
+        expect(world.u.beatGlow.value).toBeLessThan(0.01);
+        expect(world.getPostState().saturation).toBeLessThan(0.01);
+        expect(world.getPostState().exposure).toBeGreaterThan(0.95);
+        expect(world.jellies.up).toBe(jelliesForCombo(0, world.jellies.count));
+        expect(world.u.breath.value).toBeCloseTo(1, 3);
+    });
+
+    it('rolls each wave of a cascade out deeper than the last, and rings the crystals louder', () => {
+        const made = makeWorld('High');
+        const { world } = made;
+        const waves = [];
+        for (let depth = 1; depth <= 4; depth++) {
+            const now = world.time;
+            const ring = world.crystals.ringAt(now);
+            world.onClear({ rows: [19], lines: 1, cascade: depth });
+            const slot = world.u.clearA.find((s) => s.value.x === now).value;
+            const rang = world.crystals.ringAt(now + 0.1) - ring * Math.exp(-0.1 / 1.1);
+            waves.push({ fronts: slot.y, strength: slot.z, rang });
+            run(made, 0.36, 6);
+        }
+        for (let i = 1; i < waves.length; i++) {
+            expect(waves[i].fronts, `wave ${i + 1}`).toBeGreaterThanOrEqual(waves[i - 1].fronts);
+            expect(waves[i].strength, `wave ${i + 1}`).toBeGreaterThan(waves[i - 1].strength);
+        }
+        // Wider too: more fronts by the fourth wave than the first had.
+        expect(waves[3].fronts).toBeGreaterThan(waves[0].fronts);
+        for (let i = 2; i < waves.length; i++) {
+            expect(waves[i].rang, `wave ${i + 1}`).toBeGreaterThan(waves[i - 1].rang);
+        }
+        // The first is a plain one-line wave.
+        expect(waves[0].fronts).toBe(1);
+    });
+
+    it('rings the elder twice for a back-to-back: its own ring after the bloom\'s', () => {
+        const made = makeWorld('High');
+        const { world } = made;
+        const now = world.time;
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4, b2b: true });
+        const shock = world.u.shock.value;
+        const births = [shock.x, shock.z].sort((a, b) => a - b);
+        expect(births[0]).toBeCloseTo(now + HUSH_HOLD, 9);
+        expect(births[1]).toBeGreaterThan(births[0] + 0.2);
+        expect(shock.y).toBeGreaterThan(0);
+        expect(shock.w).toBeGreaterThan(0);
+        // A back-to-back T-spin double rings it once, with no hush; a plain double not at all.
+        const tspin = makeWorld('High').world;
+        tspin.onClear({
+            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+        });
+        expect(tspin.hushUntil).toBeLessThan(tspin.time);
+        expect(Math.max(tspin.u.shock.value.y, tspin.u.shock.value.w)).toBeGreaterThan(0);
+        expect(tspin.counts.blooms).toBe(0);
+        const plain = makeWorld('High').world;
+        plain.onClear({ rows: [19, 18], lines: 2 });
+        expect(Math.max(plain.u.shock.value.y, plain.u.shock.value.w)).toBe(0);
+    });
+
+    it('crowns a late perfect clear on the bloom still playing: no second hush, no second clear', () => {
+        const made = makeWorld('High');
+        const { world } = made;
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        // Physics settles the perfect clear a wave later, on a frame of its own.
+        run(made, 0.36, 22);
+        const counts = { ...world.counts };
+        const { hushUntil, surge } = world;
+        const slots = world.u.clearA.map((slot) => slot.value.toArray());
+        const breath = world.u.breath.value;
+        world.onCrown();
+        expect(world.counts).toMatchObject({ clears: counts.clears, blooms: counts.blooms, crowns: counts.crowns + 1 });
+        expect(world.hushUntil).toBe(hushUntil);
+        expect(world.u.clearA.map((slot) => slot.value.toArray())).toEqual(slots);
+        // (The grotto goes on breathing back in from the four's hush: it does not hold it again.)
+        for (let i = 0; i < 12; i++) {
+            const was = world.u.breath.value;
+            run(made, 1 / 60, 1);
+            expect(world.u.breath.value).toBeGreaterThanOrEqual(was);
+        }
+        expect(world.u.breath.value).toBeGreaterThan(breath);
+        // The elder burns hotter on the bloom still playing.
+        expect(world.surge).toBeGreaterThan(surge);
+        run(made, 2.5, 60);
+        // Every jelly is up, and the caps hold colours from all round the wheel.
+        expect(world.jellies.up).toBe(world.jellies.count);
+        const held = world.mushrooms.list.map((m, i) => world.mushrooms.heldAt(i, world.time)).filter((v) => v > 0.05);
+        expect(held.length).toBeGreaterThan(world.mushrooms.count * 0.5);
+        const hues = new Set();
+        world.mushrooms.list.forEach((m, i) => {
+            const c = world.mushrooms.heldColor(i, world.time);
+            const top = Math.max(...c);
+            if (top > 0.05) hues.add(c.map((v) => Math.round((v / top) * 4)).join());
+        });
+        expect(hues.size).toBeGreaterThan(4);
+        // A crown with no bloom to sit on (meditation, a test) is just as safe.
+        const alone = makeWorld('High').world;
+        expect(() => alone.onCrown()).not.toThrow();
+        expect(alone.hushUntil).toBeLessThan(alone.time);
+        expect(alone.counts.clears).toBe(0);
+    });
+
+    it('turns the air a little for a T-spin that cleared nothing', () => {
+        const made = makeWorld('High');
+        const { world } = made;
+        const now = world.time;
+        world.onSpin();
+        expect(world.crystals.ringAt(now)).toBeGreaterThan(0);
+        run(made, 1 / 60, 1);
+        expect(world.u.swirl.value).toBeGreaterThan(0.3);
+        expect(world.counts.clears).toBe(0);
+        expect(world.heat.punch).toBeGreaterThan(0);
+    });
+
+    it('keeps a cap burning when a second flash comes while the first still burns', () => {
+        const made = makeWorld('High');
+        const { world } = made;
+        const [{ index }] = world.targets.left;
+        const { mushrooms } = world;
+        const first = mushrooms.strike(index, pieceColor(PINK), world.time, 1.3, world.time);
+        run(made, first - world.time + 0.05, 6);
+        const lit = Math.max(...mushrooms.flashAt(index, world.time));
+        expect(lit).toBeGreaterThan(0);
+        // A softer lock's swimmer is on its way to the same cap.
+        const arrive = world.time + 0.4;
+        const second = mushrooms.strike(index, pieceColor(BLUE), arrive, 0.6, world.time);
+        let last = lit;
+        for (let i = 0; i < 40 && world.time < second + 0.3; i++) {
+            run(made, 1 / 60, 1);
+            const now = Math.max(...mushrooms.flashAt(index, world.time));
+            // It fades as a flash does, and never goes dark before the new one blooms.
+            const fading = last * Math.exp(-(1 / 60) / 0.6) * 0.98;
+            expect(now, `at +${(world.time - first).toFixed(3)}`).toBeGreaterThan(fading);
+            expect(now).toBeGreaterThan(0.05);
+            last = Math.max(now, 1e-6);
+            // (What the shader is handed says the same.)
+        }
+        expect(Math.max(...mushrooms.flashAt(index, second + 1e-3))).toBeGreaterThan(0);
     });
 });
 

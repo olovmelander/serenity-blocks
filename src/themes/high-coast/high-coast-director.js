@@ -9,6 +9,7 @@
  *
  *   sink.lock({ player, rows, u, hardDrop, distance, color, shape, cells, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, rowCodes, screen })
+ *   sink.spin({ player, screen })  a T-spin that cleared nothing
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.b2b(level, player)    the live back-to-back level (0..4), whenever it changes
  *   sink.levelUp(level)
@@ -455,7 +456,8 @@ function capturePosition(slot, payload) {
 export class HighCoastDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, combo?: Function, b2b?: Function, levelUp?: Function },
+     *   sink?: { lock?: Function, clear?: Function, spin?: Function, combo?: Function, b2b?: Function,
+     *     levelUp?: Function },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -493,6 +495,7 @@ export class HighCoastDirector {
             rowCodes: [],
             screen: null,
         };
+        this._spin = { player: 0, screen: null };
         this._screen = { x: 0.5, y: 0.5 };
     }
 
@@ -782,6 +785,13 @@ export class HighCoastDirector {
             c.b2b = slot.b2b;
             c.screen = screen;
             sink.clear(c);
+        }
+        if (slot.lines === 0 && slot.tspin && sink?.spin) {
+            // A T-spin that cleared nothing still answers (small).
+            const c = this._spin;
+            c.player = slot.player;
+            c.screen = screen;
+            sink.spin(c);
         }
     }
 

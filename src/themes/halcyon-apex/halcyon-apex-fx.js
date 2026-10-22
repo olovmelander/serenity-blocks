@@ -8,9 +8,11 @@
  *    crystal when it takes or lets go of light, the lagoon a crown of them under a hard drop:
  *    streaks that rise, slow and fall back to the water. A ring of preallocated slots.
  *  - Row beams: the cleared rows leave the card as blades of light at their own heights, drawn
- *    in screen space so they line up with the rows exactly.
- *  - Beacons: a thread of light holds each great crystal up; a four-line clear turns the thread
- *    into a pillar that stands into the sky.
+ *    in screen space so they line up with the rows exactly (two sets: the next clear never cuts
+ *    the last one's blades).
+ *  - Beacons: a thread of light holds each great crystal up; when it lets go of what it held
+ *    (a four-line clear, a perfect clear, the end of a chain) the thread becomes a pillar that
+ *    stands into the sky, as tall as what it held.
  *
  * Nothing is created at event time and every pool is always drawn (dormant slots collapse to
  * zero size), so the first frame compiles every pipeline.
@@ -43,7 +45,7 @@ import {
     vec4,
 } from 'three/tsl';
 import {
-    BEACON_LIFE, PYRAMID_TOP, SITE, TAU, WISP_SLOTS, WISP_TAIL, haFxMaterial, haPart, haQuadGeometry, mulberry32,
+    PYRAMID_TOP, SITE, TAU, WISP_SLOTS, WISP_TAIL, haFxMaterial, haPart, haQuadGeometry, mulberry32,
 } from './halcyon-apex-tsl.js';
 
 const viewProjection = (world) => cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
@@ -264,35 +266,50 @@ export const BEAM_ROWS = 4;
 /** Seconds a beam's head takes from the card to the edge of the frame, and its afterglow. */
 export const BEAM_TRAVEL = 0.14;
 export const BEAM_FADE = 0.17;
+/**
+ * Sets of blades: a clear fires the set that has burned longest, so a cascade's next wave (0.36 s
+ * on) leaves the last one's blades to finish instead of cutting them out of the air.
+ */
+export const BEAM_SETS = 2;
 
-/** Eight screen-space strips: one from each side of the card for up to four cleared rows. */
+/** Screen-space strips: one from each side of the card for up to four cleared rows, per set. */
 export function createRowBeams(u) {
-    const count = BEAM_ROWS * 2;
-    const aRow = new Float32Array(count * 2);
-    for (let i = 0; i < count; i++) aRow.set([Math.floor(i / 2), i % 2 ? 1 : -1], i * 2);
-    const geometry = haQuadGeometry(count, { aRow: [aRow, 2] });
-    const row = attribute('aRow', 'vec2');
-    const uniforms = {
+    const perSet = BEAM_ROWS * 2;
+    const count = perSet * BEAM_SETS;
+    const aRow = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+        const k = i % perSet;
+        aRow.set([Math.floor(k / 2), k % 2 ? 1 : -1, Math.floor(i / perSet)], i * 3);
+    }
+    const geometry = haQuadGeometry(count, { aRow: [aRow, 3] });
+    const row = attribute('aRow', 'vec3');
+    const sets = Array.from({ length: BEAM_SETS }, () => ({
         /** Screen y (fractions, y down) of up to four rows; < 0 = unused. */
         rows: uniform(new THREE.Vector4(-1, -1, -1, -1)),
         /** (card x0, card x1, birth time, strength) */
         frame: uniform(new THREE.Vector4(0.4, 0.6, -100, 0)),
         color: uniform(new THREE.Vector3(1, 1, 1)),
-    };
+    }));
+    // Each strip reads its own set (two sets: a mix on the set index, per instance).
+    const own = (key) => mix(sets[0][key], sets[1][key], row.z);
+    const rows = own('rows');
+    const frame = own('frame');
     const material = haFxMaterial('HalcyonApexRowBeams', { depthTest: false });
-    const rowY = mix(mix(uniforms.rows.x, uniforms.rows.y, step(0.5, row.x)), mix(uniforms.rows.z, uniforms.rows.w, step(2.5, row.x)), step(1.5, row.x));
-    const used = step(0.0, rowY).mul(step(0.001, uniforms.frame.w));
+    const rowY = mix(mix(rows.x, rows.y, step(0.5, row.x)), mix(rows.z, rows.w, step(2.5, row.x)), step(1.5, row.x));
+    const used = step(0.0, rowY).mul(step(0.001, frame.w));
     const along = positionGeometry.x.add(0.5);
     // From the card's edge out to the edge of the frame.
-    const edge = mix(uniforms.frame.x, uniforms.frame.y, step(0.0, row.y));
+    const edge = mix(frame.x, frame.y, step(0.0, row.y));
     const end = step(0.0, row.y);
     const sx = mix(edge, end, along);
     const thicknessPx = float(46.0);
     const sy = rowY.add(positionGeometry.y.mul(thicknessPx).div(u.viewport.y));
     material.vertexNode = vec4(sx.mul(2.0).sub(1.0).mul(used), float(1.0).sub(sy.mul(2.0)).mul(used), 0.0, 1.0);
     const vAlong = varying(along, 'haBeamT');
+    const vFrame = varying(frame.zw, 'haBeamF');
+    const vColor = varying(own('color'), 'haBeamC');
     material.colorNode = Fn(() => {
-        const age = u.time.sub(uniforms.frame.z);
+        const age = u.time.sub(vFrame.x);
         const head = age.div(BEAM_TRAVEL);
         const reached = step(vAlong, head);
         const dy = uv().y.sub(0.5).mul(thicknessPx);
@@ -303,22 +320,34 @@ export function createRowBeams(u) {
         const tip = exp(vAlong.sub(head).mul(vAlong.sub(head)).mul(-150.0)).mul(step(head, 1.25));
         const env = exp(max(age.sub(vAlong.mul(BEAM_TRAVEL)), 0.0).div(-BEAM_FADE)).mul(step(0.0, age));
         const k = core.add(sheath).mul(reached).mul(env).add(core.add(sheath).mul(tip).mul(2.2))
-            .mul(uniforms.frame.w)
+            .mul(vFrame.y)
             .mul(float(1.0).sub(vAlong).mul(float(1.0).sub(vAlong)).mul(0.9)
                 .add(0.1));
-        const col = mix(uniforms.color, vec3(1.0), core.mul(0.3));
+        const col = mix(vColor, vec3(1.0), core.mul(0.3));
         return vec4(col.mul(k).mul(2.4), 0.0);
     })();
     const part = haPart('HalcyonApexRowBeams', geometry, material, 60, false);
-    part.uniforms = uniforms;
+    let last = 0;
+    /** The set the last clear fired (rows, frame, color): what a reader of "the beams" wants. */
+    Object.defineProperty(part, 'uniforms', { get: () => sets[last], enumerable: true });
+    part.sets = sets;
     /** `ys` = screen y of each cleared row; `x0`/`x1` = the card's edges; all in screen fractions. */
     part.fire = (ys, x0, x1, rgb, time, strength = 1) => {
-        uniforms.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
-        uniforms.frame.value.set(x0, x1, time, strength);
-        uniforms.color.value.set(rgb[0], rgb[1], rgb[2]);
+        // The set that has burned longest (a dormant one is the oldest of all).
+        let pick = 0;
+        for (let i = 1; i < BEAM_SETS; i++) if (sets[i].frame.value.z < sets[pick].frame.value.z) pick = i;
+        const set = sets[pick];
+        set.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
+        set.frame.value.set(x0, x1, time, strength);
+        set.color.value.set(rgb[0], rgb[1], rgb[2]);
+        last = pick;
     };
     part.reset = () => {
-        uniforms.frame.value.set(0.4, 0.6, -100, 0);
+        sets.forEach((set) => {
+            set.rows.value.set(-1, -1, -1, -1);
+            set.frame.value.set(0.4, 0.6, -100, 0);
+        });
+        last = 0;
     };
     return part;
 }
@@ -328,7 +357,11 @@ export function createRowBeams(u) {
 /** How high a beacon stands (metres over its crystal's foot). */
 export const BEACON_HEIGHT = 1400;
 
-/** Two upright ribbons that face the viewer: [0] under and over the Apex, [1] the Halcyon. */
+/**
+ * Two upright ribbons that face the viewer: [0] under and over the Apex, [1] the Halcyon. Each
+ * stands as tall as the world says it does (u.beacon: its blaze and its flare, accumulated on the
+ * CPU), so a second four-line clear adds to a pillar still standing instead of restarting it.
+ */
 export function createBeacons(u) {
     const aWho = new Float32Array([0, 1]);
     const geometry = haQuadGeometry(2, { aWho: [aWho, 1] });
@@ -338,10 +371,9 @@ export function createBeacons(u) {
     // The thread starts at the dais (or the lagoon) and ends in the crystal's core.
     const foot = mix(float(PYRAMID_TOP + 1.3), float(0.0), who);
     const girth = mix(float(SITE.apex.girth), float(SITE.halcyon.girth), who);
-    const age = u.time.sub(u.beacon.x);
-    const live = step(0.0, age).mul(step(age, BEACON_LIFE)).mul(u.beacon.y);
-    const blaze = exp(age.mul(-0.9)).mul(live);
-    const width = girth.mul(float(0.5).add(blaze.mul(2.6)).add(exp(age.mul(-7.0)).mul(live).mul(2.6)));
+    const own = mix(u.beacon.xy, u.beacon.zw, who);
+    const blaze = own.x;
+    const width = girth.mul(float(0.5).add(blaze.mul(2.6)).add(own.y.mul(2.6)));
     const along = positionGeometry.y.add(0.5);
     const y = foot.add(along.mul(BEACON_HEIGHT));
     const base = vec3(centre.x, y, centre.z);
@@ -367,7 +399,9 @@ export function createBeacons(u) {
         const pillar = core.mul(2.4).add(sheath.mul(0.5)).mul(exp(vHeight.mul(-1 / 520))).mul(climb)
             .mul(vBlaze);
         const held = mix(u.held.x, u.held.y, vWho);
-        const col = u.ley.mul(thread.mul(float(1.0).add(held.mul(0.4)))).add(mix(u.ley, vec3(1.0, 0.9, 0.72), 0.6).mul(pillar).mul(2.2));
+        // The pillar burns in the ley's own colour (sunfire gold at a payoff), not a near-white.
+        const col = u.ley.mul(thread.mul(float(1.0).add(held.mul(0.4))))
+            .add(mix(u.ley, vec3(1.0, 0.9, 0.72), 0.3).mul(pillar).mul(2.2));
         return vec4(col.mul(u.breath.mul(0.8).add(0.2)), 0.0);
     })();
     const part = haPart('HalcyonApexBeacons', geometry, material, 22);

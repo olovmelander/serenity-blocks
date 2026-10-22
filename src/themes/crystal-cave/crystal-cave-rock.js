@@ -19,6 +19,10 @@ import {
 } from 'three/tsl';
 import { FAMILY_COUNT } from './crystal-cave-light.js';
 
+/** Travelling shells of light at once (one per wave the reactions keep in flight). */
+export const CAVE_WAVE_SLOTS = 4;
+const WAVE_COMPONENTS = ['x', 'y', 'z', 'w'];
+
 /**
  * @param {object} options
  * @param {object} options.light shared cave light
@@ -37,11 +41,27 @@ export function createCaveRock({
         poolGain: uniform(0.22),
         skyGain: uniform(2.4),
         ambient: uniform(0.016),
-        /** A travelling shell of light: origin, radius, strength (set by the reactions). */
-        waveOrigin: uniform(new THREE.Vector3(0, poolLevel, -20)),
-        waveRadius: uniform(-100),
-        waveStrength: uniform(0),
+        /**
+         * Travelling shells of light, one per wave in flight: origin xyz and radius per slot, and
+         * each slot's strength in one vec4 (set by the reactions). Waves cross side by side; a new
+         * one never re-centres or restarts another.
+         */
+        waves: Array.from({ length: CAVE_WAVE_SLOTS }, () => uniform(new THREE.Vector4(0, poolLevel, -20, -100))),
+        waveStrengths: uniform(new THREE.Vector4(0, 0, 0, 0)),
         waveColor: uniform(new THREE.Color(0xffffff)),
+    };
+    /**
+     * Inline TSL: the light of every shell at `point`, falling off as exp(-falloff · distance).
+     * Where shells cross they light the stone little more than one strong wave would (capped), so
+     * a cascade fills the hall with rings instead of washing the rock out.
+     */
+    controls.shell = (point, falloff) => {
+        const sum = controls.waves.reduce((total, wave, slot) => {
+            const one = exp(abs(length(point.sub(wave.xyz)).sub(wave.w)).mul(-falloff))
+                .mul(controls.waveStrengths[WAVE_COMPONENTS[slot]]);
+            return total ? total.add(one) : one;
+        }, null);
+        return min(sum, 1.1);
     };
 
     const shade = Fn(() => {
@@ -120,9 +140,8 @@ export function createCaveRock({
         const poolLight = vec3(0.1, 0.72, 0.78).mul(lit1.y.mul(lightScale[5]))
             .mul(caustic.mul(1.9).add(0.25)).mul(controls.poolGain);
         const skyLight = vec3(0.66, 0.82, 1.0).mul(lit1.z.mul(lightScale[6])).mul(controls.skyGain);
-        // A wave of light crossing the cave.
-        const shell = exp(abs(length(point.sub(controls.waveOrigin)).sub(controls.waveRadius)).mul(-0.42))
-            .mul(controls.waveStrength);
+        // Waves of light crossing the cave.
+        const shell = controls.shell(point, 0.42).toVar();
         const irradiance = crystals.mul(controls.gain).mul(shell.mul(1.6).add(1))
             .add(poolLight).add(skyLight)
             .toVar();

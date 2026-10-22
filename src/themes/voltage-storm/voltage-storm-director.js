@@ -11,6 +11,11 @@
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
+ *   sink.perfect({ player, b2b })  a perfect clear that came on its own frame (physics sends it
+ *                              after the clear's last wave has settled): a crown on the clear
+ *                              still playing, not a new clear. Without this sink it is passed
+ *                              on as a one-line clear marked `perfect`, as before.
+ *   sink.tspin({ player })     a T-spin that cleared nothing
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width; `color` is the piece's colour (a CSS hex string) or null. `screen`
@@ -207,6 +212,7 @@ export class VoltageStormDirector {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
         };
         this._screen = { x: 0.5, y: 0.5 };
+        this._moment = { player: 0, b2b: false };
     }
 
     /**
@@ -355,7 +361,9 @@ export class VoltageStormDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
+        // On a frame of its own it crowns the clear before it (resolve()); a sink that has no
+        // crown takes it as a one-line clear, as it always did.
+        if (slot.lines === 0 && typeof this.sink?.perfect !== 'function') slot.lines = 1;
         return true;
     }
 
@@ -418,6 +426,16 @@ export class VoltageStormDirector {
                 c.b2b = slot.b2b;
                 c.screen = screen;
                 sink.clear(c);
+            } else if (slot.perfect && sink?.perfect) {
+                const m = this._moment;
+                m.player = slot.player;
+                m.b2b = slot.b2b;
+                sink.perfect(m);
+            } else if (slot.tspin && sink?.tspin) {
+                const m = this._moment;
+                m.player = slot.player;
+                m.b2b = slot.b2b;
+                sink.tspin(m);
             }
             clearPending(slot);
         }

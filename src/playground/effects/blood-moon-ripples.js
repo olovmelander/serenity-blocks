@@ -5,6 +5,8 @@
  */
 
 export const RIPPLE_LIFETIME = 5.5;
+/** A ring's light falls as exp(-RING_FALL · age) (blood-moon-world.js). */
+const RING_FALL = 0.62;
 
 /** Rings each gameplay cue drops, and how strong they are (0..1.5). */
 const CUES = Object.freeze({
@@ -17,14 +19,26 @@ const CUES = Object.freeze({
     levelUp: [2, 0.85],
 });
 
-export function rippleCue(kind, payload) {
+/**
+ * The rings a cue drops. `options.hardDrop`: the lock landed from a hard drop (a stronger ring);
+ * `options.chain`: the true combo so far (each clear of a chain lands harder on the water).
+ * A T-spin that cleared nothing drops one ring.
+ */
+export function rippleCue(kind, payload, options = undefined) {
     const cue = CUES[kind];
     if (!cue) return null;
     let [count, strength] = cue;
+    const chain = Math.max(0, Math.min(8, Number(options?.chain) || 0));
     if (kind === 'clear') {
         const lines = Math.max(1, Math.min(4, Math.floor(Number(payload?.lineCount ?? payload?.lines) || 1)));
         count = lines >= 2 ? 2 : 1;
-        strength += lines * 0.08;
+        strength += lines * 0.08 + chain * 0.03;
+    } else if (kind === 'lock') {
+        if (options?.hardDrop) strength += 0.17;
+        strength += chain * 0.02;
+    } else if (kind === 'tspin' && Number(payload?.lineCount ?? payload?.lines) === 0) {
+        count = 1;
+        strength = 0.7;
     }
     return { count, strength };
 }
@@ -38,7 +52,10 @@ export class BloodMoonRipples {
         this.count = 0;
     }
 
-    /** Add a ring at world (x, z); when full, the oldest ring gives up its row. */
+    /**
+     * Add a ring at world (x, z); when full, the ring with the least left of it (strength under
+     * the shader's fall, exp(-0.62 age)) gives up its row, never a strong ring still spreading.
+     */
     add(x, z, strength) {
         if (![x, z, strength].every(Number.isFinite) || strength <= 0) return;
         let row;
@@ -46,9 +63,16 @@ export class BloodMoonRipples {
             row = this.rows[this.count];
             this.count += 1;
         } else {
-            let oldest = 0;
-            for (let i = 1; i < this.count; i++) if (this.rows[i].age > this.rows[oldest].age) oldest = i;
-            row = this.rows[oldest];
+            let weakest = 0;
+            let least = Infinity;
+            for (let i = 0; i < this.count; i++) {
+                const left = this.rows[i].strength * Math.exp(-this.rows[i].age * RING_FALL);
+                if (left < least) {
+                    least = left;
+                    weakest = i;
+                }
+            }
+            row = this.rows[weakest];
         }
         row.x = x; row.z = z; row.age = 0; row.strength = Math.min(1.5, strength);
     }

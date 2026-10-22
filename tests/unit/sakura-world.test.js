@@ -1641,7 +1641,10 @@ describe('Sakura world in play', () => {
         }
         expect(launched.mock.results.every((result) => result.value === true)).toBe(true);
         expect(released.mock.calls.length).toBeGreaterThanOrEqual(6);
-        expect(released.mock.results.every((result) => result.value === true)).toBe(true);
+        // Every slot of the sky is used before one is refused: a lantern still rising is never
+        // snuffed out to make room for another.
+        const lit = released.mock.results.filter((result) => result.value === true).length;
+        expect(lit).toBe(Math.min(released.mock.calls.length, spirits.skySlots.count));
         expect(shot.mock.calls.length).toBeGreaterThanOrEqual(4);
         // Every frame re-uploads the three petal buffers, and only moves the clock forward.
         expect(world.petals.positions.version).toBe(versions[0] + 150);
@@ -1667,6 +1670,8 @@ describe('Sakura world in play', () => {
         for (let clear = 0; clear < 240; clear += 1) {
             const count = 1 + (clear % 4);
             lines += count;
+            // (Far enough apart that the last clear's lanterns have burnt out: the lake has room.)
+            world.light.update(clear * 100, {});
             world.director.apply({
                 emitters: [{
                     id: clear % 5,
@@ -1980,7 +1985,9 @@ describe('Sakura world in play', () => {
         // bank, the two points and the islet alike, a lantern ends up afloat.
         const spots = [...SAKURA_FEATURE_TREES, ...SAKURA_STONE_LANTERNS];
         expect(spots.some((spot) => sakuraLand(spot.x, spot.z) > 5)).toBe(true);
-        for (const spot of spots) {
+        for (const [index, spot] of spots.entries()) {
+            // (Each a while after the last, so the lake always has room for it.)
+            light.update(112 + index * 100, {});
             expect(world.floatLantern(spot.x, spot.z, 0, -0.1, 1), `${spot.x}, ${spot.z}`).toBe(true);
             const [lakeX, lakeZ] = launch.mock.calls.at(-1);
             expect(sakuraLand(lakeX, lakeZ)).toBeLessThan(0);
@@ -2027,15 +2034,30 @@ describe('Sakura small lights and foxes', () => {
         // One slot rewritten, both buffers flagged for upload.
         expect(waterSlots.version).toBeGreaterThan(versions[0]);
         expect(waterMotion.version).toBeGreaterThan(versions[1]);
-        // More launches than slots: the oldest launch is the one replaced.
-        for (let index = 1; index <= reserve; index += 1) {
+        // The lake fills: every reserve slot takes a lantern.
+        for (let index = 1; index < reserve; index += 1) {
             expect(spirits.launchWater(100 + index, -30, 0, -0.1)).toBe(true);
         }
-        expect(waterSlots.getX(waterAmbient)).toBe(100 + reserve);
         expect(waterSlots.getX(waterAmbient + 1)).toBe(101);
-        expect(Array.from(waterSlots.array.subarray(0, waterAmbient * 4))).toEqual(ambient);
         // A launch without a power burns at the ordinary brightness.
         expect(waterMotion.getW(waterAmbient + 1)).toBe(1);
+        // A full lake: no lantern afloat is snuffed out to make room. The launch is refused and
+        // the oldest is let burn down over its last seconds instead (one more for each refusal).
+        const lives = Array.from({ length: reserve }, (_, index) => waterMotion.getZ(waterAmbient + index));
+        light.update(30, {});
+        expect(spirits.launchWater(500, -30, 0, -0.1)).toBe(false);
+        expect(waterSlots.getX(waterAmbient)).toBe(3);
+        expect(waterMotion.getZ(waterAmbient)).toBeCloseTo(10 + 7, 6);
+        expect(waterMotion.getZ(waterAmbient)).toBeLessThan(lives[0]);
+        expect(spirits.launchWater(501, -30, 0, -0.1)).toBe(false);
+        const burning = Array.from({ length: reserve }, (_, index) => waterMotion.getZ(waterAmbient + index))
+            .filter((life, index) => life < lives[index]);
+        expect(burning).toHaveLength(Math.min(2, reserve));
+        // Once the first has burnt out, its slot takes the next lantern.
+        light.update(20 + 17.5, {});
+        expect(spirits.launchWater(502, -30, 0, -0.1)).toBe(true);
+        expect(waterSlots.getX(waterAmbient)).toBe(502);
+        expect(Array.from(waterSlots.array.subarray(0, waterAmbient * 4))).toEqual(ambient);
     });
 
     it('sends the garden\'s own lanterns out again when they burn out', () => {
@@ -2079,9 +2101,18 @@ describe('Sakura small lights and foxes', () => {
         expect(skyMotion.getW(0)).toBeGreaterThan(0);
         expect(spirits.releaseSky(5, 1, -31)).toBe(true);
         expect(skySlots.getW(1)).toBe(30);
-        for (let index = 2; index <= skySlots.count; index += 1) spirits.releaseSky(200 + index, 1, -40, 0);
-        expect(skySlots.getX(0)).toBe(200 + skySlots.count);
+        for (let index = 2; index < skySlots.count; index += 1) {
+            expect(spirits.releaseSky(200 + index, 1, -40, 0)).toBe(true);
+        }
+        // A full sky: a lantern still rising is never snuffed to make room for another.
+        expect(spirits.releaseSky(999, 1, -40, 0)).toBe(false);
+        expect(skySlots.getX(0)).toBe(4);
         expect(skySlots.getX(1)).toBe(5);
+        // Once the first has burnt out (its whole life after it rose), its slot takes the next.
+        light.update(32.5 + 46, {});
+        expect(spirits.releaseSky(1000, 1, -40, 0)).toBe(true);
+        expect(skySlots.getX(0)).toBe(1000);
+        light.update(30, {});
         const climbs = new Set(Array.from({ length: skySlots.count }, (_, index) => skyMotion.getX(index)));
         expect(climbs.size).toBeGreaterThan(skySlots.count / 2);
     });
@@ -2157,6 +2188,87 @@ describe('Sakura small lights and foxes', () => {
         expect(light.uTime.value - sky.uShoot.value.z).toBeGreaterThan(50);
         expect([sky.uDraw.value, sky.uFigures.value, sky.uMoonGlow.value]).toEqual([0, 0, 0]);
         light.update(0, {});
+    });
+
+    it('lets a second shooting star fall beside the first instead of cutting it short', () => {
+        const { sky, light } = built.world;
+        sky.reset();
+        light.update(70, {});
+        sky.shoot(1);
+        const first = sky.lastShot;
+        light.update(70.2, {});
+        sky.shoot(0.6);
+        sky.shoot(0.6);
+        // Three in flight at once: the first still falls where it started.
+        expect(sky.shotData[first].toArray().slice(2)).toEqual([70, 1]);
+        expect(sky.shotData.map((shot) => shot.z).sort()).toEqual([70, 70.2, 70.2]);
+        // A fourth takes the slot with the least light left, never the brightest still falling.
+        light.update(70.4, {});
+        sky.shoot(0.8);
+        expect(sky.shotData[first].z).toBe(70);
+        expect(sky.lastShot).not.toBe(first);
+        // Back-to-back opens the corona; a fever and a perfect clear's crown brighten the moon.
+        sky.update({ corona: 1.2, fever: 1, crown: 1 });
+        expect(sky.uCorona.value).toBeCloseTo(1.2, 9);
+        expect(sky.uMoonGlow.value).toBeGreaterThan(0.8);
+        sky.update({
+            corona: 99, crown: 99, moon: 99, fever: 99,
+        });
+        expect(sky.uCorona.value).toBe(1.6);
+        expect(sky.uMoonGlow.value).toBeLessThanOrEqual(1.6);
+        sky.reset();
+        expect(sky.uCorona.value).toBe(0);
+        light.update(0, {});
+    });
+
+    it('bends the garden under every front crossing it, and wears the heat of play', () => {
+        const { light } = built.world;
+        light.update(5, {
+            fronts: [{ x: -10, strength: 0.5 }, { x: 4, strength: 1 }, { x: 18, strength: 0.25 }],
+        });
+        expect(light.uFront.value.x).toBe(-10);
+        expect(light.uFront.value.y).toBeCloseTo(1.1, 9);
+        expect(light.uFront2.value.toArray()).toEqual([4, 2.2, 18, 0.55]);
+        // A frame without fronts lets every one go.
+        light.update(5, {});
+        expect([light.uFront.value.y, light.uFront2.value.y, light.uFront2.value.w]).toEqual([0, 0, 0]);
+        // Hot play freshens the breeze, lights the lanterns and the blossom; the boughs bend under
+        // the sprung gust (`sway`) when it is given.
+        const rest = { wind: light.uWind.value, lamps: light.uLampGain.value, glow: light.uGlow.value };
+        light.update(5, { level: 1, fever: 1 });
+        expect(light.uWind.value).toBeGreaterThan(rest.wind);
+        expect(light.uLampGain.value).toBeGreaterThan(rest.lamps);
+        expect(light.uGlow.value).toBeGreaterThan(rest.glow);
+        // Reduce motion keeps the breeze where it was.
+        light.update(5, { level: 1, fever: 1, motion: 0 });
+        expect(light.uWind.value).toBe(rest.wind);
+        light.update(5, { gust: 1, sway: 0.25 });
+        expect(light.uGust.value).toBeCloseTo(0.4, 9);
+        light.update(0, {});
+    });
+
+    it('waits for the fox to land before it leaps for the next four-line clear', () => {
+        const { foxes } = built.world;
+        foxes.reset();
+        const pounce = vi.spyOn(foxes.mind, 'pounce');
+        foxes.update(1 / 30, { leap: 1 });
+        expect(pounce).toHaveBeenCalledOnce();
+        // A second quad while it is in the air does not yank it back to gather itself again.
+        for (let frame = 0; frame < 5; frame += 1) foxes.update(1 / 30, { leap: 2 });
+        expect(pounce).toHaveBeenCalledOnce();
+        let frames = 0;
+        while (foxes.foxes.some((fox) => fox.mind.mode === 'pounce') && frames < 600) {
+            foxes.update(1 / 30, { leap: 2 });
+            frames += 1;
+        }
+        expect(frames).toBeLessThan(600);
+        foxes.update(1 / 30, { leap: 2 });
+        expect(pounce).toHaveBeenCalledTimes(2);
+        // And never more leaps than four-line clears.
+        for (let frame = 0; frame < 300; frame += 1) foxes.update(1 / 30, { leap: 2 });
+        expect(pounce).toHaveBeenCalledTimes(2);
+        pounce.mockRestore();
+        foxes.reset();
     });
 
     it('keeps the fox to the stepping-stone path, wandering, and sets it running at a hard gust', () => {
@@ -2957,6 +3069,21 @@ describe('Sakura post tier ownership', () => {
         }
         // The lens stays subtle: a full celebration is a lift, not a flash.
         expect(hot.exposure).toBeLessThan(rest.exposure * 1.5);
+        // As play heats the iris closes, the colour deepens and only the brightest lights bloom.
+        const threshold = post.bloomNode.threshold.value;
+        const fever = read({ level: 1, fever: 1 });
+        expect(fever.exposure).toBeLessThan(rest.exposure);
+        expect(fever.spirit).toBe(1);
+        expect(post.bloomNode.threshold.value).toBeGreaterThan(threshold);
+        // (The beams veil the whole garden: a fever brightens the moon's halo in the sky instead.)
+        expect(fever.beams).toBe(rest.beams);
+        expect(read({ level: 1, moon: 1 }).beams).toBeLessThan(hot.beams);
+        // A perfect clear's crown opens the beams and the bloom.
+        const crowned = read({ crown: 1 });
+        expect(crowned.beams).toBeGreaterThan(rest.beams);
+        expect(crowned.bloom).toBeGreaterThan(rest.bloom);
+        read({});
+        expect(post.bloomNode.threshold.value).toBe(threshold);
     });
 
     it('tints the beams from where the moon really is on screen', () => {

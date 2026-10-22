@@ -26,6 +26,8 @@ const LEAF_RAMPS = Object.freeze({
     oak: [0x4a1c0a, 0x7c3a0c, 0xa8620f, 0xc08a1c],
     birch: [0xb8780c, 0xd8a012, 0xe8c226, 0xdcd04a],
 });
+/** How far down its ramp the canopy slides at a full turn of play (the leaves in the air go further). */
+const CANOPY_TURN = 0.16;
 const FOLIAGE_SPECIES = Object.freeze({
     maple_spray: 'maple', maple_clump: 'maple', oak_spray: 'oak', birch_strand: 'birch',
 });
@@ -201,9 +203,10 @@ export class FallForest {
         const view = normalize(cameraPosition.sub(world));
         const blade = normalize(normalWorld);
         const normal = normalize(mix(blade, bent.xyz, 0.6));
-        // Colour: each tree sits somewhere on its species' ramp; exposed leaves turn first.
+        // Colour: each tree sits somewhere on its species' ramp; exposed leaves turn first. Hot play
+        // turns the whole canopy a little further (FallLight.uTurn): gold deepens toward rust.
         const tone = saturate(bent.w.add(crown.w.sub(0.5).mul(0.34)).add(paint.g.sub(0.5).mul(0.3))
-            .add(crown.x.sub(0.5).mul(-0.22)));
+            .add(crown.x.sub(0.5).mul(-0.22)).sub(light.uTurn.mul(CANOPY_TURN)));
         const leaf = ramp(LEAF_RAMPS[species], tone);
         const vein = smoothstep(0.02, 0.09, uv().x.sub(0.5).abs()).mul(0.14).add(0.86);
         const albedo = mix(color(0x20140d), leaf.mul(vein), paint.a).mul(paint.b);

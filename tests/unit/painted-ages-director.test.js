@@ -941,3 +941,32 @@ describe('painted-ages director: settings and resets', () => {
         expect(calls.clear[0].screen).toEqual({ x: 1, y: 0 });
     });
 });
+
+describe('painted-ages director: a T-spin that clears nothing', () => {
+    it('tells it on its own (a small answer), and never for a T-spin that cleared lines', () => {
+        const { director, calls, sink } = makeDirector();
+        const spins = [];
+        sink.spin = vi.fn((c) => spins.push({ ...c }));
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(spins).toHaveLength(1);
+        expect(spins[0].player).toBe(0);
+        expect(spins[0].color).toBe(tableColor('T'));
+        expect(spins[0].u).toBeGreaterThan(0);
+        expect(spins[0].u).toBeLessThan(1);
+        expect(calls.clear).toEqual([]);
+        // A T-spin that clears lines is carried by its clear.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(spins).toHaveLength(1);
+        expect(calls.clear[0].tspin).toBe(true);
+        // A sink without `spin` is fine.
+        delete sink.spin;
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        expect(() => director.flush()).not.toThrow();
+    });
+});

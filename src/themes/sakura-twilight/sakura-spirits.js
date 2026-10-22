@@ -6,6 +6,11 @@
  * builds, paper lanterns set afloat on the lake by cleared lines, and sky lanterns
  * released at a level-up. Everything here is animated in the vertex shader from a few
  * per-instance numbers; launching a lantern only rewrites one slot of an attribute.
+ *
+ * A lantern is never snuffed out mid-flight to make room for a new one: a launch takes a slot
+ * whose lantern has burnt out. When the lake is full, the oldest lantern afloat is let burn down
+ * over a few seconds instead (and the launch waits for the next clear); when the sky is full, a
+ * new sky lantern is simply not lit. As play heats the fireflies wake and rise (`uWake`).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -21,6 +26,8 @@ const WATER_LIFE = 86;
 const SKY_LIFE = 46;
 const FLASH_SLOTS = 8;
 const FLASH_SECONDS = 0.62;
+/** A lantern afloat fades out over its last seconds (floating()): its presence falls over these. */
+const WATER_FADE = 7;
 
 /** Offset of a camera-facing sprite vertex around `centre` (TSL). */
 function billboard(centre, size) {
@@ -48,6 +55,7 @@ export class SakuraSpirits {
         this.uFoxfire = uniform(0);
         this.uSpirit = uniform(0);
         this.uScatter = uniform(0);
+        this.uWake = uniform(0);
         this.waterCursor = 0;
         this.skyCursor = 0;
         this.waterAmbient = 0;
@@ -141,10 +149,12 @@ export class SakuraSpirits {
         );
         // A gust (or the game) sends them up and outward for a moment.
         const startle = vec3(sin(seed.mul(91)), 1.2, cos(seed.mul(57))).mul(this.uScatter.mul(1.8));
-        const centre = home.xyz.add(roam).add(startle);
+        // As play heats they wake: they rise off the grass and glow brighter.
+        const woken = vec3(0, this.uWake.mul(seed.mul(0.9).add(0.35)), 0);
+        const centre = home.xyz.add(roam).add(startle).add(woken);
         // Each insect glows in slow pulses of its own.
         const pulse = smoothstep(0.25, 0.95, sin(t.mul(seed.mul(0.9).add(1.1)).add(seed.mul(41))))
-            .mul(this.uScatter.mul(0.8).add(1));
+            .mul(this.uScatter.mul(0.8).add(1).add(this.uWake.mul(0.9)));
         material.positionNode = billboard(centre, pulse.mul(0.12).add(0.1));
         const reach = length(uv().sub(0.5)).mul(2);
         const spark = exp(reach.mul(reach).mul(-22)).add(exp(reach.mul(-4.5)).mul(0.14))
@@ -217,7 +227,7 @@ export class SakuraSpirits {
     /** Where a lantern set afloat is at this moment (TSL): xyz and a 0..1 presence. */
     floating(slot, motion) {
         const age = this.light.uTime.sub(slot.z);
-        const presence = smoothstep(0, 2.2, age).mul(smoothstep(motion.z.sub(7), motion.z, age).oneMinus())
+        const presence = smoothstep(0, 2.2, age).mul(smoothstep(motion.z.sub(WATER_FADE), motion.z, age).oneMinus())
             .mul(max(age, 0).sign());
         const wander = vec2(sin(age.mul(0.21).add(slot.w.mul(TAU))), cos(age.mul(0.17).add(slot.w.mul(19)))).mul(0.5);
         const place = slot.xy.add(motion.xy.mul(age)).add(wander);
@@ -305,14 +315,43 @@ export class SakuraSpirits {
         this.waterMotion.needsUpdate = true;
     }
 
-    /** Set one lantern afloat at world (x, z), drifting with velocity (vx, vz). */
+    /**
+     * Set one lantern afloat at world (x, z), drifting with velocity (vx, vz). It takes a slot whose
+     * lantern has burnt out; when every one is still afloat, the oldest is let burn down over its
+     * last few seconds (it is never snuffed) and this launch is refused.
+     */
     launchWater(x, z, vx, vz, power = 1) {
         if (!this.waterSlots) return false;
         const { count } = this.waterSlots;
         const reserve = count - this.waterAmbient;
         if (reserve <= 0) return false;
-        const index = this.waterAmbient + (this.waterCursor % reserve);
-        this.waterCursor += 1;
+        const now = this.light.uTime.value;
+        let index = -1;
+        let oldest = -1;
+        let oldestAge = -Infinity;
+        for (let step = 0; step < reserve; step += 1) {
+            const slot = this.waterAmbient + ((this.waterCursor + step) % reserve);
+            const age = now - this.waterSlots.getZ(slot);
+            const life = this.waterMotion.getZ(slot);
+            if (age >= life || age < -1) {
+                index = slot;
+                break;
+            }
+            // (One already burning down is making room as it is.)
+            if (life > age + WATER_FADE && age > oldestAge) {
+                oldestAge = age;
+                oldest = slot;
+            }
+        }
+        if (index < 0) {
+            // The lake is full: the oldest lantern burns down over its last seconds to make room.
+            if (oldest >= 0) {
+                this.waterMotion.setZ(oldest, Math.max(oldestAge, 0) + WATER_FADE);
+                this.waterMotion.needsUpdate = true;
+            }
+            return false;
+        }
+        this.waterCursor = index - this.waterAmbient + 1;
         this.waterSlots.setXYZW(index, x, z, this.light.uTime.value, this.rng());
         this.waterMotion.setXYZW(index, vx, vz, WATER_LIFE * (0.7 + this.rng() * 0.3), power);
         this.waterSlots.needsUpdate = true;
@@ -373,11 +412,25 @@ export class SakuraSpirits {
         this.group.add(glow);
     }
 
-    /** Release one sky lantern from world (x, y, z); `delay` staggers a whole flight. */
+    /**
+     * Release one sky lantern from world (x, y, z); `delay` staggers a whole flight. It takes a
+     * slot whose lantern has burnt out (or was never lit); a lantern still rising is never snuffed
+     * to make room, so when the sky is full this one is not lit.
+     */
     releaseSky(x, y, z, delay = 0) {
         if (!this.skySlots) return false;
-        const index = this.skyCursor % this.skySlots.count;
-        this.skyCursor += 1;
+        const { count } = this.skySlots;
+        const now = this.light.uTime.value;
+        let index = -1;
+        for (let step = 0; step < count; step += 1) {
+            const slot = (this.skyCursor + step) % count;
+            if (now - this.skySlots.getW(slot) >= SKY_LIFE) {
+                index = slot;
+                break;
+            }
+        }
+        if (index < 0) return false;
+        this.skyCursor = index + 1;
         const { rng } = this;
         this.skySlots.setXYZW(index, x, y, z, this.light.uTime.value + delay);
         this.skyMotion.setXYZW(index, 1.0 + rng() * 0.9, 0.12 + rng() * 0.3, rng(), 0.9 + rng() * 0.7);
@@ -449,6 +502,7 @@ export class SakuraSpirits {
     reset() {
         this.uFoxfire.value = 0;
         this.uScatter.value = 0;
+        this.uWake.value = 0;
         this.waterCursor = 0;
         this.skyCursor = 0;
         this.flashCursor = 0;
@@ -471,6 +525,9 @@ export class SakuraSpirits {
         this.uFoxfire.value = Number.isFinite(frame.foxfire) ? Math.max(0, frame.foxfire) : 0;
         this.uSpirit.value = clamp01(frame.spirit);
         this.uScatter.value = clamp01(Math.max(clamp01(frame.gust) * 0.8, frame.front ? frame.front.strength : 0));
+        // The fireflies wake as play warms (Reduce motion keeps them low; they still brighten).
+        const motion = Number.isFinite(frame.motion) ? clamp01(frame.motion) : 1;
+        this.uWake.value = (0.55 * clamp01(frame.level) + 0.45 * clamp01(frame.fever)) * (0.4 + 0.6 * motion);
         // Ambient lanterns that have burnt out set off again from the bank.
         if (this.waterSlots) {
             for (let i = 0; i < this.waterAmbient; i += 1) {
