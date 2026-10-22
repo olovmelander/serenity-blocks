@@ -267,6 +267,34 @@ export class GameplaySurge {
         return s;
     }
 
+    /** The whole state as plain numbers (a theme that rebuilds in place carries on mid-surge). */
+    exportState() {
+        const num = (v) => (Number.isFinite(v) ? v : null);
+        return {
+            punch: this.punch.exportState(),
+            level: this.level.exportState(),
+            shown: this.shown,
+            shownAt: num(this.shownAt),
+            fever: this.fever,
+            feverAt: num(this.feverAt),
+            stage: this.stage,
+        };
+    }
+
+    /** Take up a state exportState() wrote (anything missing reads as at rest). */
+    importState(o) {
+        this.reset();
+        if (!o || typeof o !== 'object') return;
+        const finite = (v, fallback) => (Number.isFinite(v) ? v : fallback);
+        this.punch.importState(o.punch);
+        this.level.importState(o.level);
+        this.shown = Math.max(0, finite(o.shown, 0));
+        this.shownAt = finite(o.shownAt, Number.NaN);
+        this.fever = Math.max(0, Math.min(1, finite(o.fever, 0)));
+        this.feverAt = finite(o.feverAt, Number.NaN);
+        this.stage = Math.max(0, Math.min(SURGE_STAGES.length - 1, Math.round(finite(o.stage, 0))));
+    }
+
     /** A new run: everything at rest. */
     reset() {
         this.punch.reset();
