@@ -1543,6 +1543,13 @@
     backdrop-filter: none;
 }
 
+/* Outside Serenity Mode it names the theme N steps to (src/ui/theme-keys.js): a small pill
+   along the top edge, clear of the board's next queue. */
+body:not(.serenity-mode) #serenity-notification {
+    top: max(12px, env(safe-area-inset-top));
+    padding: 8px 18px;
+}
+
 #serenity-shortcuts-overlay {
     border-radius: var(--sb-r-lg);
     border: 1px solid var(--sb-line);
