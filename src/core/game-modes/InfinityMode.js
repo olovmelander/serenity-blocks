@@ -15,13 +15,13 @@ import {
     rotate as coreRotate,
     hardDrop as coreHardDrop,
     softDrop as coreSoftDrop,
+    getGhostLandingY,
 } from '../game.js';
 import {
     expandGridIfNeeded, calculateTopRow, getGridStats, checkInfinityGameOver,
 } from '../infinity-grid.js';
 import {
     INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
-    projectInfinityPresentationCamera,
     synchronizeInfinitySimulationCamera,
 } from '../infinity-spawn-policy.js';
 import { maintainInfinitySimulation } from '../infinity-simulation-maintenance.js';
@@ -29,6 +29,7 @@ import { updateStats } from '../../rendering/draw.js';
 import { updateNextQueue } from '../../ui/next-queue-ui.js';
 import { InfinityMinimap } from '../../ui/infinity/InfinityMinimap.js';
 import { InfinityHUD } from '../../ui/infinity/InfinityHUD.js';
+import { InfinityPlayCamera, filledRowSpan, playFramingTop } from '../../ui/infinity/infinity-play-camera.js';
 import { InfinityAscent } from '../../ui/infinity/ascent/infinity-ascent.js';
 import { installLegacyBoardJuiceInputWrapper } from '../../ui/infinity/legacy-board-juice-input-wrapper.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
@@ -79,7 +80,6 @@ export class InfinityMode extends BaseGameMode {
         this.maxRows = 1000;
         this.visibleRows = 20;
         this.currentTopRow = 0; // Tracks highest row with blocks
-        this.cameraPosition = 0; // Current camera viewport offset
 
         // Game state
         this.gameState = null;
@@ -100,40 +100,12 @@ export class InfinityMode extends BaseGameMode {
         this.explorationStartCameraRow = 0;
         this.ascent = null;
 
-        // Track if we were following a soft-dropping piece
-        this.wasFollowingPiece = false;
-        this.followMemoryFrames = 0;
-        this.followMemoryDuration = 12;
-
-        // Cooldown to prevent camera follow immediately after snapping
-        this.snapCooldownFrames = 0;
-        this.snapCooldownDuration = 8;
-
-        // Track whether the last drop action was a hard drop
-        this.lastDropWasHard = false;
-        this.suppressFollowUntilLock = false;
-
-        // Cascade camera following configuration
-        // Use faster lerp during cascades to keep up with falling blocks
-        this.cascadeCameraLerpSpeed = 0.15; // Faster to track cascading blocks (was 0.02)
-        this.normalCameraLerpSpeed = 0.08; // Default camera lerp speed
-
-        // Track cleared line positions for camera following
-        this.lastClearedLines = null; // Array of cleared line Y coordinates
-        this.lastClearedLinesCenter = null; // Center position of cleared lines
-        this.lowestFallingBlock = null; // Track the lowest block that's falling
-
-        // PERFORMANCE: Throttle camera updates during rapid gravity steps
-        // Update camera every N gravity steps instead of every single step
-        this.gravityStepCount = 0;
-        this.cameraUpdateInterval = 3; // Update camera every 3 gravity steps (configurable)
-        this.lastCameraUpdateTime = 0;
-        this.minCameraUpdateInterval = 32; // Minimum 32ms between updates (~30fps camera tracking)
+        // The play camera (src/ui/infinity/infinity-play-camera.js): one framing and one spring
+        // for every event of play. A new one per run.
+        this._playCamera = null;
 
         this._explorationSession = null;
         this._explorationOwnsPause = false;
-        this._explorationTransitionGeneration = 0;
-        this._cameraSnapGeneration = 0;
 
         // Cache physics callbacks so input handlers can reuse them
         this.physicsCallbacks = null;
@@ -298,6 +270,7 @@ export class InfinityMode extends BaseGameMode {
         });
         this._stoppedSession = null;
         this.isProcessingGameOver = false;
+        this._playCamera = new InfinityPlayCamera({ reducedMotion: () => this._prefersReducedMotion() });
 
         console.log('[Infinity] Game state initialized with infinity mode configuration');
         console.log('[Infinity] Initial grid size:', this.gameState.board.length, 'rows');
@@ -470,7 +443,6 @@ export class InfinityMode extends BaseGameMode {
         }
 
         console.log('[Infinity] Exploration started - pausing game');
-        this._explorationTransitionGeneration += 1;
         this._explorationSession = session;
         this._explorationOwnsPause = true;
         this.explorationStartCameraRow = this.boardScene?.cameraSettings?.currentTopRow ?? 0;
@@ -519,30 +491,11 @@ export class InfinityMode extends BaseGameMode {
         const shouldResumeMode = options.resumeMode !== false && this._explorationOwnsPause;
         this.isInExplorationMode = false;
         this._explorationOwnsPause = false;
-        const transitionGeneration = ++this._explorationTransitionGeneration;
         this.ascent?.onExplorationEnded();
 
-        const pieceTargetRow = this._calculatePieceCameraPosition();
-        const returnScene = this.boardScene;
-        if (returnScene) {
-            returnScene.disableManualCameraControl();
-            const originalLerpSpeed = returnScene.cameraSettings?.lerpSpeed || 0.08;
-            if (returnScene.cameraSettings) {
-                returnScene.cameraSettings.lerpSpeed = 0.15;
-            }
-            returnScene.updateCameraPosition(pieceTargetRow);
-            setTimeout(() => {
-                if (
-                    this._activeSession === session
-                    && this.boardScene === returnScene
-                    && this._explorationTransitionGeneration === transitionGeneration
-                    && !this.isInExplorationMode
-                    && returnScene.cameraSettings
-                ) {
-                    returnScene.cameraSettings.lerpSpeed = originalLerpSpeed;
-                }
-            }, 400);
-        }
+        // The play camera takes the view home from wherever the look left it, from rest.
+        this.boardScene?.disableManualCameraControl();
+        this._playCamera?.reset();
 
         if (shouldResumeMode) {
             this.onResume({ owner: 'infinity-exploration', session });
@@ -667,10 +620,9 @@ export class InfinityMode extends BaseGameMode {
         this.isInExplorationMode = false;
         this._explorationSession = null;
         this._explorationOwnsPause = false;
-        this._explorationTransitionGeneration += 1;
         this._cleanupEventListeners(this.cleanupHandlers);
         this.ascent?.stop();
-        this._cameraSnapGeneration += 1;
+        this._playCamera = null;
         this._restoreLegacyBoardJuiceInputWrappers();
 
         await baseStopPromise;
@@ -1187,6 +1139,7 @@ export class InfinityMode extends BaseGameMode {
         const addTrailCallback = () => {};
         let accepted = false;
 
+        if (action === 'move' || action === 'rotate') this._playCamera?.onPlayerInput();
         if (action === 'move') {
             accepted = coreMove(gameState, value, moveSound, addTrailCallback);
             if (this.boardJuice) {
@@ -1256,6 +1209,7 @@ export class InfinityMode extends BaseGameMode {
         const newTargetRow = oldTargetRow + rowsAdded;
 
         boardScene.updateCameraBounds();
+        this._playCamera?.shift(rowsAdded);
         cameraSettings.currentTopRow = newCameraRow;
         cameraSettings.activeTopRow = newCameraRow;
         cameraSettings.targetTopRow = newTargetRow;
@@ -1383,11 +1337,13 @@ export class InfinityMode extends BaseGameMode {
             onMove: () => {
                 if (ownsCallbackSession()) {
                     this.deps.soundManager.sfxPlayer.playMove();
+                    this._playCamera?.onPlayerInput();
                 }
             },
             onRotate: () => {
                 if (ownsCallbackSession()) {
                     this.deps.soundManager.sfxPlayer.playRotate();
+                    this._playCamera?.onPlayerInput();
                 }
             },
             onLineClear: (lineCount, ...rest) => {
@@ -1465,8 +1421,7 @@ export class InfinityMode extends BaseGameMode {
                     }
                 }
 
-                this.lastDropWasHard = true;
-                this.suppressFollowUntilLock = true;
+                this._playCamera?.onPlayerInput();
 
                 const sfxPlayer = this.deps.soundManager?.sfxPlayer;
                 if (sfxPlayer?.playHardDrop) {
@@ -1507,15 +1462,7 @@ export class InfinityMode extends BaseGameMode {
                 if (!ownsCallbackSession()) return;
                 console.log('[Infinity] triggerFlash called with fullLines:', fullLines);
 
-                // Store cleared line positions for camera following
-                this.lastClearedLines = fullLines;
-                if (fullLines && fullLines.length > 0) {
-                    // Calculate center of cleared lines for camera targeting
-                    const minRow = Math.min(...fullLines);
-                    const maxRow = Math.max(...fullLines);
-                    this.lastClearedLinesCenter = (minRow + maxRow) / 2;
-                }
-
+                this._cameraOnClear(fullLines);
                 effectHandlers.clearFlashBeat(fullLines);
             },
             // Line clear impact (camera shake and particles)
@@ -1575,19 +1522,7 @@ export class InfinityMode extends BaseGameMode {
                     callbackState.infinityStats._cascadeStartScore = callbackState.score;
                 }
 
-                const lockedBelowViewport = this._didPieceLockBelowViewport(piece);
-                const hardDropSnap = this.lastDropWasHard && lockedBelowViewport;
-
-                // If we were (recently) following a soft- or hard-dropped piece that landed out of view, snap back to the top
-                if (this.wasFollowingPiece || lockedBelowViewport || hardDropSnap) {
-                    this._snapCameraToTopArea();
-                    this.wasFollowingPiece = false;
-                    this.followMemoryFrames = 0;
-                    this.snapCooldownFrames = this.snapCooldownDuration;
-                }
-                // Reset hard drop tracking flags after handling the lock event
-                this.lastDropWasHard = false;
-                this.suppressFollowUntilLock = false;
+                this._cameraOnLock(piece);
             },
             onPerfectClear: (depth, perfectClearBonus) => {
                 if (!ownsCallbackSession()) return;
@@ -1612,34 +1547,12 @@ export class InfinityMode extends BaseGameMode {
                     boardScene.sharedEffects.playPerfectClear(depth);
                 }
             },
-            // Update camera during each gravity step to follow falling blocks
-            onGravityStep: () => {
-                if (!ownsCallbackSession()) return;
-                // PERFORMANCE: Throttle camera updates to reduce overhead during rapid cascades
-                // Only update camera every N steps or after minimum time interval
-                this.gravityStepCount++;
-                const now = performance.now();
-                const timeSinceLastUpdate = now - this.lastCameraUpdateTime;
-
-                // Update if either: enough steps have passed OR enough time has passed
-                const shouldUpdate = (this.gravityStepCount >= this.cameraUpdateInterval)
-                    || (timeSinceLastUpdate >= this.minCameraUpdateInterval);
-
-                if (shouldUpdate && this.boardScene?.cameraSettings) {
-                    this.boardScene.cameraSettings.lerpSpeed = this.cascadeCameraLerpSpeed;
-                    // Track the falling blocks and cleared lines to position camera optimally
-                    this._updateCameraDuringCascade();
-
-                    // Reset throttle counters
-                    this.gravityStepCount = 0;
-                    this.lastCameraUpdateTime = now;
-                }
-            },
-            // Update camera after cascade completes. No settle visual — parity
-            // with local MP; the non-visual work (camera, stats) stays.
+            // A cascade settled. No settle visual — parity with local MP; the
+            // non-visual work (camera, stats) stays.
             onCascadeComplete: (cascadeCount) => {
                 if (!ownsCallbackSession()) return;
                 if (cascadeCount > 0) {
+                    this._playCamera?.onCascadeComplete();
                     // Track cascade statistics for infinity mode
                     if (callbackState.infinityStats) {
                         // Calculate cascade score (points earned during this cascade sequence)
@@ -1658,21 +1571,6 @@ export class InfinityMode extends BaseGameMode {
                         }
                         console.log(`[Infinity] Cascade completed: count=${cascadeCount}, score=${cascadeScore}, max=${callbackState.infinityStats.maxCascadeScore}`);
                     }
-
-                    // PERFORMANCE: Reset camera update throttle counters
-                    this.gravityStepCount = 0;
-                    this.lastCameraUpdateTime = 0;
-
-                    // Restore normal camera lerp speed after cascade
-                    if (this.boardScene?.cameraSettings) {
-                        this.boardScene.cameraSettings.lerpSpeed = this.normalCameraLerpSpeed;
-                    }
-                    // Do final camera position adjustment (no cleared lines, use highest block)
-                    this._updateCameraAfterCascade();
-
-                    // Clear stored cleared line positions
-                    this.lastClearedLines = null;
-                    this.lastClearedLinesCenter = null;
                 }
             },
             // Spawn next piece after physics completes
@@ -1945,24 +1843,6 @@ export class InfinityMode extends BaseGameMode {
     }
 
     /**
-     * Determine if the locked piece finished below the current viewport.
-     * @param {Object} piece
-     * @private
-     */
-    _didPieceLockBelowViewport(piece) {
-        if (!piece || !this.boardScene?.cameraSettings) return false;
-
-        const { cameraSettings } = this.boardScene;
-        const visibleRows = cameraSettings.visibleRows || this.visibleRows;
-        const cameraTopRow = Math.floor(cameraSettings.activeTopRow ?? cameraSettings.currentTopRow ?? 0);
-        const cameraBottomRow = cameraTopRow + visibleRows - 1;
-
-        const pieceBottomRow = piece.y + (piece.shape?.length || 0) - 1;
-
-        return pieceBottomRow >= cameraBottomRow;
-    }
-
-    /**
      * On-screen normalized origin (0 = top of the viewport, 1 = bottom / left → right) of a
      * locked piece, using the SAME camera transform the Phaser board draws with
      * (screenRowFraction = (row - activeTopRow) / visibleRows). Themes consume this via the
@@ -2038,48 +1918,6 @@ export class InfinityMode extends BaseGameMode {
     }
 
     /**
-     * Quickly snap camera back to the top area after locking a soft-dropped piece
-     * @private
-     */
-    _snapCameraToTopArea() {
-        const session = this._activeSession;
-        const gameState = session?.gameState;
-        const { boardScene } = this;
-        if (!session || !gameState || !boardScene?.cameraSettings) return;
-
-        const { cameraSettings } = boardScene;
-        const visibleRows = cameraSettings.visibleRows || this.visibleRows;
-        const highestBlockRow = this._findHighestBlockRow();
-
-        let targetTopRow;
-
-        if (highestBlockRow >= gameState.board.length) {
-            targetTopRow = Math.max(0, gameState.board.length - visibleRows);
-        } else {
-            const preferredRow = highestBlockRow - Math.floor(visibleRows * 0.2);
-            const maxCameraRow = Math.max(0, gameState.board.length - visibleRows);
-            targetTopRow = Math.max(0, Math.min(maxCameraRow, preferredRow));
-        }
-
-        // Use fast lerp instead of instant jump for smoother feel
-        const originalLerpSpeed = cameraSettings.lerpSpeed || 0.08;
-        const snapGeneration = ++this._cameraSnapGeneration;
-        cameraSettings.lerpSpeed = 0.25;
-        boardScene.updateCameraPosition(targetTopRow);
-        setTimeout(() => {
-            if (
-                this._activeSession === session
-                && this.gameState === gameState
-                && this.boardScene === boardScene
-                && this._cameraSnapGeneration === snapGeneration
-                && boardScene.cameraSettings === cameraSettings
-            ) {
-                cameraSettings.lerpSpeed = originalLerpSpeed;
-            }
-        }, 300);
-    }
-
-    /**
      * Finds the highest block position (smallest row number with blocks)
      * @returns {number} Row number (0-999), or maxRows if no blocks exist
      * @private
@@ -2102,236 +1940,93 @@ export class InfinityMode extends BaseGameMode {
     }
 
     /**
-     * Calculate the optimal camera position to show the active piece
-     * This is where the camera should return after exploration ends
+     * The view's home for the board as it stands (playFramingTop): the tower's top a fifth of
+     * the way down, lowered to follow a piece that went deeper and to show where it will land.
+     * Also where the ascent flies home to.
      * @returns {number} Target camera top row
      * @private
      */
     _calculatePieceCameraPosition() {
-        if (!this.boardScene?.cameraSettings) {
-            return 0;
-        }
-
-        const visibleRows = this.boardScene.cameraSettings.visibleRows || this.visibleRows;
-        const totalRows = this.gameState?.board?.length || 1000;
-        const maxCameraRow = Math.max(0, totalRows - visibleRows);
-
-        // Use unified smart target: tower top at 20%, piece at 80%
-        const highestBlockRow = this._findHighestBlockRow();
-        let targetCameraRow = highestBlockRow < totalRows
-            ? highestBlockRow - Math.floor(visibleRows * 0.2)
-            : maxCameraRow;
-
-        const { currentPiece } = this.gameState;
-        if (currentPiece) {
-            const pieceBottomRow = currentPiece.y + (currentPiece.shape?.length || 0);
-            const pieceTarget = pieceBottomRow - Math.floor(visibleRows * 0.8);
-            targetCameraRow = Math.max(targetCameraRow, pieceTarget);
-        }
-
-        if (targetCameraRow <= maxCameraRow) {
-            return Math.max(0, Math.min(maxCameraRow, targetCameraRow));
-        }
-
-        // Ultimate fallback: bottom of grid
-        return maxCameraRow;
+        const { gameState } = this;
+        const board = gameState?.boardGrid || gameState?.board;
+        if (!board) return 0;
+        const visibleRows = this.boardScene?.cameraSettings?.visibleRows || this.visibleRows;
+        const piece = gameState.currentPiece || null;
+        return playFramingTop({
+            boardRows: board.length,
+            visibleRows,
+            highestRow: this._findHighestBlockRow(),
+            piece,
+            landingY: piece ? getGhostLandingY(gameState) : null,
+        });
     }
 
     /**
-     * Updates camera to follow player's building progress upward and falling pieces downward
-     * Camera scrolls UP (toward row 0) as blocks fill the viewport
-     * Camera scrolls DOWN to follow soft-dropping pieces
+     * Move the view one frame: the play camera's spring toward its framing or a beat.
+     * Presentation only; the simulation's camera anchor is the board's (board-anchor spawns).
      * @private
      */
     _updateCameraPosition() {
-        if (!this.boardScene?.cameraSettings) return;
-
-        const { cameraSettings } = this.boardScene;
+        const scene = this.boardScene;
+        const cameraSettings = scene?.cameraSettings;
+        const camera = this._playCamera;
+        const board = this.gameState?.boardGrid || this.gameState?.board;
+        if (!cameraSettings || !camera || !board) return;
+        if (cameraSettings.manualControl) {
+            camera.reset();
+            return;
+        }
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
-        const { board } = this.gameState;
-        const maxCameraRow = Math.max(0, board.length - visibleRows);
-        const { currentPiece } = this.gameState;
-
-        // Brief cooldown after snap to prevent jitter
-        if (this.snapCooldownFrames > 0) {
-            this.snapCooldownFrames--;
-            return;
-        }
-
-        // Find tower top
-        const highestBlockRow = this._findHighestBlockRow();
-
-        // No blocks yet — stay at bottom
-        if (highestBlockRow >= board.length) return;
-
-        // --- Unified smart target ---
-        // Base target: tower top at 20% from viewport top (maximize placement area below)
-        let targetCameraRow = highestBlockRow - Math.floor(visibleRows * 0.2);
-
-        // If piece exists, ensure it stays visible (bottom at ~80% of viewport)
-        if (currentPiece && !this.suppressFollowUntilLock) {
-            const pieceBottomRow = currentPiece.y + currentPiece.shape.length;
-            const pieceTarget = pieceBottomRow - Math.floor(visibleRows * 0.8);
-            targetCameraRow = Math.max(targetCameraRow, pieceTarget);
-        }
-
-        // Clamp to valid range
-        targetCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
-
-        // Stay at bottom until tower actually needs scrolling
-        const currentCameraRow = cameraSettings.currentTopRow ?? 0;
-        if (currentCameraRow >= maxCameraRow - 1 && highestBlockRow >= currentCameraRow + Math.floor(visibleRows * 0.2)) {
-            return;
-        }
-
-        // Smooth lerp to target
-        this.boardScene.updateCameraPosition(targetCameraRow);
-        projectInfinityPresentationCamera(this.gameState, targetCameraRow);
-
-        // Track piece following for snap-on-lock logic
-        if (currentPiece && !this.suppressFollowUntilLock) {
-            const pieceBottomRow = currentPiece.y + currentPiece.shape.length;
-            const pieceTarget = pieceBottomRow - Math.floor(visibleRows * 0.8);
-            if (pieceTarget > highestBlockRow - Math.floor(visibleRows * 0.2)) {
-                this.wasFollowingPiece = true;
-                this.followMemoryFrames = this.followMemoryDuration;
-            }
-        }
-
-        // Decay follow memory
-        if (this.followMemoryFrames > 0) {
-            this.followMemoryFrames--;
-            if (this.followMemoryFrames === 0) this.wasFollowingPiece = false;
-        } else {
-            this.wasFollowingPiece = false;
-        }
+        const top = Number.isFinite(cameraSettings.currentTopRow) ? cameraSettings.currentTopRow : 0;
+        const next = camera.step({
+            top,
+            home: this._calculatePieceCameraPosition(),
+            maxTop: Math.max(0, board.length - visibleRows),
+            visibleRows,
+        });
+        if (next !== top) scene.updateCameraPosition(next, true);
     }
 
     /**
-     * Update camera during cascade to follow falling blocks and show line clears
-     * This method is called on every gravity step during cascades
+     * Tell the play camera a piece locked, where, and where the view is.
+     * @param {Object} piece the locked piece's snapshot
      * @private
      */
-    _updateCameraDuringCascade() {
-        if (!this.boardScene || !this.boardScene.cameraSettings) return;
-        if (this.boardScene.cameraSettings.manualControl) return;
-
-        const { cameraSettings } = this.boardScene;
+    _cameraOnLock(piece) {
+        const cameraSettings = this.boardScene?.cameraSettings;
+        const board = this.gameState?.boardGrid || this.gameState?.board;
+        if (!this._playCamera || !cameraSettings || cameraSettings.manualControl || !board || !piece) return;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
-        const { board } = this.gameState;
-        const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
-
-        // Strategy: Follow the "action zone" where blocks are falling and lines are clearing
-        // Priority 1: If we have cleared lines, focus on that area
-        // Priority 2: Track the falling blocks in that region
-
-        let targetRow;
-
-        if (this.lastClearedLinesCenter !== null) {
-            // We know where lines were just cleared - that's the focal point
-            // Find blocks around this area to track the falling action
-            const searchStart = Math.max(0, Math.floor(this.lastClearedLinesCenter) - 10);
-            const searchEnd = Math.min(board.length, Math.ceil(this.lastClearedLinesCenter) + 10);
-
-            let highestInZone = searchEnd;
-            let lowestInZone = searchStart;
-
-            // Find the extent of blocks in the action zone
-            for (let row = searchStart; row < searchEnd; row++) {
-                for (let col = 0; col < board[row].length; col++) {
-                    if (board[row][col] !== null) {
-                        highestInZone = Math.min(highestInZone, row);
-                        lowestInZone = Math.max(lowestInZone, row);
-                    }
-                }
-            }
-
-            // Target the center of the active falling zone, weighted towards cleared lines
-            // This keeps both the cleared line flash AND the falling blocks visible
-            if (lowestInZone > searchStart) {
-                targetRow = (highestInZone + lowestInZone) / 2;
-            } else {
-                // No blocks found, just use cleared line center
-                targetRow = this.lastClearedLinesCenter;
-            }
-        } else {
-            // Fallback: track overall highest and lowest blocks
-            targetRow = this._findHighestBlockRow();
-        }
-
-        // Position camera to center the action zone at 50% viewport
-        // This ensures maximum visibility of both line clears and falling blocks
-        const targetCameraRow = Math.floor(targetRow - visibleRows * 0.5);
-
-        // Clamp and update camera position
-        const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
-        this.boardScene.updateCameraPosition(clampedCameraRow);
-        projectInfinityPresentationCamera(this.gameState, clampedCameraRow);
+        const span = filledRowSpan(piece.shape);
+        const framing = { boardRows: board.length, visibleRows, highestRow: this._findHighestBlockRow() };
+        this._playCamera.onLock({
+            pieceTop: piece.y + span.first,
+            pieceBottom: piece.y + span.last,
+            viewTop: cameraSettings.currentTopRow ?? 0,
+            visibleRows,
+            home: playFramingTop(framing),
+            pieceHome: playFramingTop({ ...framing, piece, landingY: piece.y }),
+            maxTop: Math.max(0, board.length - visibleRows),
+        });
     }
 
     /**
-     * Update camera after a cascade completes to follow new highest block position
-     * @param {number|null} clearedLineCenter - Center position of cleared lines (if available)
+     * Tell the play camera which rows a cascade wave is clearing.
+     * @param {number[]} rows
      * @private
      */
-    _updateCameraAfterCascade(clearedLineCenter = null) {
-        if (!this.boardScene || !this.boardScene.cameraSettings) return;
-        if (this.boardScene.cameraSettings.manualControl) return; // Don't interfere with manual control
-
-        const camera = this.boardScene.cameras.main;
-        const { cameraSettings } = this.boardScene;
+    _cameraOnClear(rows) {
+        const cameraSettings = this.boardScene?.cameraSettings;
+        const board = this.gameState?.boardGrid || this.gameState?.board;
+        if (!this._playCamera || !cameraSettings || cameraSettings.manualControl || !board) return;
         const visibleRows = cameraSettings.visibleRows || this.visibleRows;
-        const blockSize = this.boardScene.boardConfig?.blockSize || 30;
-
-        // Determine target row: use cleared line center if available, otherwise highest block
-        let targetRow;
-        if (clearedLineCenter !== null) {
-            // Follow the center of cleared lines (the action)
-            targetRow = clearedLineCenter;
-        } else {
-            // Fall back to highest block tracking
-            targetRow = this._findHighestBlockRow();
-        }
-
-        if (targetRow >= this.gameState.board.length) {
-            // No blocks left, return
-            return;
-        }
-
-        // Get current camera position
-        const currentCameraRow = Math.floor(camera.scrollY / blockSize);
-        const maxCameraRow = Math.max(0, this.gameState.board.length - visibleRows);
-
-        // When following cleared lines, center them at 50-60% from top
-        // When following highest block, use the unified 20%/80% thresholds
-        let targetCameraRow;
-        if (clearedLineCenter !== null) {
-            // Position camera so cleared lines appear at 55% from top
-            targetCameraRow = targetRow - Math.floor(visibleRows * 0.55);
-        } else {
-            // Unified logic for highest block tracking (matches _updateCameraPosition)
-            const topThreshold = currentCameraRow + Math.floor(visibleRows * 0.2);
-            const bottomThreshold = currentCameraRow + Math.floor(visibleRows * 0.8);
-
-            if (targetRow < topThreshold) {
-                // Blocks moved upward - keep them at 20% from top
-                targetCameraRow = targetRow - Math.floor(visibleRows * 0.2);
-            } else if (targetRow > bottomThreshold) {
-                // Blocks cascaded downward - keep them at 80% from top
-                targetCameraRow = targetRow - Math.floor(visibleRows * 0.8);
-            } else {
-                // Within viewport, no adjustment needed
-                return;
-            }
-        }
-
-        // Clamp and update camera position
-        const clampedCameraRow = Math.max(0, Math.min(maxCameraRow, targetCameraRow));
-        this.boardScene.updateCameraPosition(clampedCameraRow);
-        projectInfinityPresentationCamera(this.gameState, clampedCameraRow);
-
-        const target = clearedLineCenter !== null ? 'cleared lines' : 'highest block';
-        console.log(`[Infinity] Camera updated after cascade: ${target} at row ${Math.floor(targetRow)}, camera → row ${clampedCameraRow}`);
+        this._playCamera.onClear({
+            rows,
+            viewTop: cameraSettings.currentTopRow ?? 0,
+            visibleRows,
+            home: playFramingTop({ boardRows: board.length, visibleRows, highestRow: this._findHighestBlockRow() }),
+            maxTop: Math.max(0, board.length - visibleRows),
+        });
     }
 
     /**
@@ -2344,7 +2039,6 @@ export class InfinityMode extends BaseGameMode {
             maxRows: this.maxRows,
             visibleRows: this.visibleRows,
             currentTopRow: this.currentTopRow,
-            cameraPosition: this.cameraPosition,
             hasGameState: !!this.gameState,
             hasMinimap: !!this.minimap,
         };
