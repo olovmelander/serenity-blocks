@@ -28,6 +28,21 @@
  *   level up    the bell tolls the hour: every pool rings, a flight of gliders sails out, and the
  *               light turns one place round the wheel
  * and the clock turns the same wheel by itself (HOUR_SECONDS per hour), in every mode.
+ *
+ * Fast play BUILDS (src/themes/shared/gameplay-surge.js): nothing an event starts is restarted
+ * by the next. A quad while the glory stands feeds it (more rings, a longer hold, a deeper
+ * opposition) instead of hushing the world again; the hush itself is only as deep as play is
+ * cold (a quad in a fever inhales); the late perfect clear is a crown on the clear still playing
+ * (eight rings, the Far Gate's spillway, a pillar of colour out of every held pool), never a
+ * second hush; a cascade's waves each pour wider and brighter fronts and only one colour a line,
+ * so the terraces are not emptied by the first wave; a back-to-back sends a second front down
+ * every fall behind the first and throws a tower of spray; a pool still holding a colour lets it
+ * ride down the falls before it takes a new one. And the heat of play is worn by the whole
+ * world, never as a flash (every flash still asks the governor, and what it holds back glows on
+ * in the terraces): warm, the water swells and the bow stands brighter in the rain; hot, the
+ * falls run in spate, the plume climbs, the gliders quicken and the pools burn like jewels; in a
+ * fever the cataract roars, the whole bow stands in the storm's rain at full colour, the plume
+ * stands as a tower with the bow in it, and the flock wheels in ribbons of the colours played.
  */
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
@@ -63,6 +78,7 @@ import { FlashGovernor } from './rainbow-terraces-flash.js';
 import { boardFor } from './rainbow-terraces-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { prefersReducedFlashing } from '../../utils/photosensitivity.js';
 
 export { REST_RIG, fovForAspect };
@@ -193,9 +209,12 @@ export const FRESH = Object.freeze({
 /** Share of a stroke over which a link's light comes in while the pour's bow is fading. */
 const ONSET = 0.12;
 
-/** Seconds a stroke takes to paint; withdrawal spacing on a break; the B2B grace. */
+/**
+ * Seconds a stroke takes to paint; withdrawal spacing on a break (a long chain's bow lets go over
+ * seconds, newest stroke first, never in a blink); the B2B grace.
+ */
 const STROKE_SECONDS = 1.0;
-const UNWIND_SECONDS = 0.35;
+export const UNWIND_SECONDS = 0.6;
 /**
  * The paint's own light, in the glow layer (metres out the bow's lights stand, behind the near isles;
  * seconds a laid stroke glitters; seconds the sweep runs along a bow that has just closed).
@@ -213,6 +232,13 @@ const HUSH = 0.33;
 const HUSH_PERFECT = 0.4;
 /** The glory: when each ring opens (seconds after the hush ends), how long it holds. */
 const GLORY_HOLD = 7.6;
+/** Its first ring opens this long after it does, the next ones RING_GAP apart; at most RINGS. */
+const RING_FIRST = 0.07;
+const RING_GAP = 0.35;
+export const GLORY_RINGS = 8;
+/** Seconds it sinks into the mist over once its hold is done, and rises back over when fed. */
+const GLORY_FADE = 4;
+const GLORY_LIFT = 0.9;
 /** The falls' slots (the Mother, the span, the Twin's horsetails, the far hairlines, the spillway). */
 const SLOT = FALL_SLOT;
 
@@ -294,6 +320,8 @@ const SPRAY_BURST = Object.freeze({
     /** How many may stand at once (a tower and a quick run of drops on top of it). */
     most: 16,
 });
+/** Colours the fever's ribbons are drawn from: the last pieces played. */
+const RECENT = 7;
 /**
  * The Far Gate's spillway (a perfect clear): its life (s of fall: it breaks, goes to mist, and how
  * much is drawn), and how much faster than its water it unrolls.
@@ -406,8 +434,11 @@ function createUniforms() {
         flow: uniform(new THREE.Vector2(1, 1)),
         /** The bell's toll through every pool: x time it rang, y strength. */
         toll: uniform(new THREE.Vector2(-1e4, 0)),
-        /** The T-spin's wring: x water clock it began, y its strength. */
-        wring: uniform(new THREE.Vector2(-1e4, 0)),
+        /**
+         * The T-spins' wrings, two at once so a second never cuts the first: x water clock the
+         * first began, y its strength; z, w the second's.
+         */
+        wring: uniform(new THREE.Vector4(-1e4, 0, -1e4, 0)),
         /** Radians per buffer pixel (things that must stay a few pixels across). */
         pixelAngle: uniform(0.001),
         drift: uniform(new THREE.Vector2(0, 0)),
@@ -500,14 +531,69 @@ export class RainbowTerracesWorld {
         // The set pieces.
         /** Every flare asks first (WCAG 2.3.1: at most 3 onsets a second, a luminance allowance). */
         this.flashes = new FlashGovernor();
+        /**
+         * The hush before a quad: when, how long, and how deep (1 from cold; the hotter play runs
+         * the shallower it is, so a quad mid-fever inhales instead of stopping the world). `rings`
+         * mirrors the glory's.
+         */
         this.hush = {
-            at: -1e4, length: HUSH, rings: 0, perfect: false,
+            at: -1e4, length: HUSH, rings: 0, perfect: false, depth: 1,
         };
+        /**
+         * The glory standing at the tip of our shadow: when it opened, when each ring opens, until
+         * when it holds (a quad or a crown while it stands feeds it: more rings, a longer hold,
+         * rising back if it had begun to sink), and the governed flare it still owes.
+         */
+        this.glory = {
+            openAt: -1e4,
+            rings: 0,
+            ringAt: new Float64Array(GLORY_RINGS).fill(Infinity),
+            holdUntil: -1e4,
+            liftAt: -1e4,
+            liftFrom: -1e4,
+            flareAt: Infinity,
+            flareStrength: 0.8,
+        };
+        /** The opposition glow round the glory: every quad and crown adds to what still burns. */
+        this.oppose = new Swell({
+            attack: 0.3, release: 2.6, ceiling: 2.1, knee: 1.8,
+        });
         this.pourAt = -1e4;
         this.spillwayAt = -1e4;
-        this.burstAt = -1e4;
-        this.spanAt = -1e4;
+        /** Spray thrown out of the Mother's plume, waiting for the next frame (kind, when, scale). */
+        this.sprayQueue = [];
+        /** The broken span pours broad after a clear of two lines: every one adds to the pour. */
+        this.span = new Swell({
+            attack: 0.25, release: 1.6, ceiling: 1.8, knee: 1.25,
+        });
+        /** What the flash governor held back still lights the terraces (a glow, never a flash). */
+        this.kindle = new Swell({
+            attack: 0.15, release: 1.8, ceiling: 1.2, knee: 0.8,
+        });
+        /** Back-to-backs in a row: each throws a taller tower. */
+        this.b2bRun = 0;
+        /** The terraces overflowing in spate (spill): what has built up toward the next, and where. */
+        this.spillDue = 0;
+        this.spillNext = 0;
         this.oppRest = 1;
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js), sampled once a frame, and what
+         * the world wears for it: warm, hot and fever, each 0..1 (calm is the world as it was).
+         */
+        this.surge = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
+        this.look = {
+            warm: 0, hot: 0, fever: 0, punch: 0,
+        };
+        /** The last pieces played (their light), for the fever's ribbons; `recentN` how many. */
+        this.recent = Array.from({ length: RECENT }, () => [1, 1, 1]);
+        this.recentNext = 0;
+        this.recentN = 0;
+        this.recentView = null;
+        /** How bright the terraces' pools burn (sampleHeat). */
+        this.jewel = 1;
 
         // What the pools hold (index = pool slot).
         this.poolSlots = [];
@@ -1260,11 +1346,39 @@ export class RainbowTerracesWorld {
         this.closedAt[0] = -1e4;
         this.closedAt[1] = -1e4;
         this.hush.at = -1e4;
+        this.hush.depth = 1;
+        this.hush.rings = 0;
+        this.glory.openAt = -1e4;
+        this.glory.rings = 0;
+        this.glory.ringAt.fill(Infinity);
+        this.glory.holdUntil = -1e4;
+        this.glory.liftAt = -1e4;
+        this.glory.flareAt = Infinity;
+        this.oppose.reset();
         this.pourAt = -1e4;
         this.spillwayAt = -1e4;
-        this.burstAt = -1e4;
-        this.spanAt = -1e4;
+        this.sprayQueue.length = 0;
+        if (this.sprayArms) this.sprayArms.length = 0;
+        this.span.reset();
+        this.kindle.reset();
+        this.b2bRun = 0;
+        this.spillDue = 0;
+        this.spillNext = 0;
+        this.surge.reset();
+        this.heat.punch = 0;
+        this.heat.level = 0;
+        this.heat.fever = 0;
+        this.heat.stage = 0;
+        this.look.warm = 0;
+        this.look.hot = 0;
+        this.look.fever = 0;
+        this.look.punch = 0;
+        this.recentN = 0;
+        this.recentNext = 0;
+        this.recentView = null;
+        this.jewel = 1;
         if (this.flock) {
+            this.flock.ribbon = 0;
             this.flock.longWing = false;
             this.flock.helixAt = -1e4;
             this.flock.launchAt = -1e4;
@@ -1279,7 +1393,7 @@ export class RainbowTerracesWorld {
         U.mistClock.value = time;
         U.glory.value.set(0, 0, 0, this.oppRest);
         U.toll.value.set(-1e4, 0);
-        U.wring.value.set(-1e4, 0);
+        U.wring.value.set(-1e4, 0, -1e4, 0);
         U.counts.value.x = 0;
         this.packetUsed = 0;
         U.packets.array.forEach((row, k) => row.set(k % 2 ? 0 : -1, 0, 0, 0));
@@ -1366,7 +1480,9 @@ export class RainbowTerracesWorld {
             const age = lit ? this.time - h.at : 1e3;
             // A hard drop's light goes down: pools above the row cost more.
             const up = below && p.y < y ? 0.35 : 0;
-            const score = Math.abs(p.y - y) + up + (lit ? 1 - Math.min(1, age / 24) + 0.3 : 0);
+            // Every unlit pool on the side comes before a lit one (a fast hand fills the terraces
+            // instead of swapping colours in the same few pools), and of lit ones the oldest.
+            const score = Math.abs(p.y - y) + up + (lit ? 1.6 + 1 - Math.min(1, age / 24) : 0);
             if (score < bestScore) {
                 bestScore = score;
                 best = p.slot;
@@ -1379,6 +1495,9 @@ export class RainbowTerracesWorld {
     holdPool(slot, rgb, at, silent) {
         if (slot < 0 || !this.held[slot]) return;
         const h = this.held[slot];
+        // A pool still holding a colour lets it ride down the falls before it takes the new one
+        // (release, then refill): a held colour is never swapped out in place.
+        if (!h.released && h.at > -1e3 && at - h.at < 40) this.releaseSlot(slot, at, 0, 0.4);
         h.at = at;
         h.rgb[0] = rgb[0]; h.rgb[1] = rgb[1]; h.rgb[2] = rgb[2];
         h.released = false;
@@ -1392,20 +1511,22 @@ export class RainbowTerracesWorld {
         this.held.forEach((h, slot) => { if (!h.released && at - h.at < 40) live.push(slot); });
         live.sort((a, b) => this.held[a].at - this.held[b].at);
         const count = Math.min(live.length, n);
-        for (let k = 0; k < count; k++) {
-            const slot = live[k];
-            const h = this.held[slot];
-            h.released = true;
-            h.releasedAt = at;
-            this.parts.pools.release(slot, at);
-            const info = this.poolSlots.find((p) => p.slot === slot);
-            const fall = info ? info.fall : SLOT.mother;
-            // The colour runs down the terraces (0.4 s a hop), then rides the fall at water speed.
-            const hops = info ? Math.max(1, (info.level ?? 0) + 1) : 1;
-            // Spaced a band apart, so a great pour runs down as stripes of the held colours.
-            this.packet(fall, this.U.waterClock.value + hops * stagger * 0.5 + k * 0.5, 0.35, 1.0, h.rgb, 0);
-        }
+        for (let k = 0; k < count; k++) this.releaseSlot(live[k], at, k, stagger);
         return count;
+    }
+
+    /** Pool `slot` lets its colour go: it runs down the terraces and rides its fall (k-th of a pour). */
+    releaseSlot(slot, at, k, stagger) {
+        const h = this.held[slot];
+        h.released = true;
+        h.releasedAt = at;
+        this.parts.pools.release(slot, at);
+        const info = this.poolSlots.find((p) => p.slot === slot);
+        const fall = info ? info.fall : SLOT.mother;
+        // The colour runs down the terraces (0.4 s a hop), then rides the fall at water speed.
+        const hops = info ? Math.max(1, (info.level ?? 0) + 1) : 1;
+        // Spaced a band apart, so a great pour runs down as stripes of the held colours.
+        this.packet(fall, this.U.waterClock.value + hops * stagger * 0.5 + k * 0.5, 0.35, 1.0, h.rgb, 0);
     }
 
     /**
@@ -1413,7 +1534,7 @@ export class RainbowTerracesWorld {
      * one whose packet has run off the foot of its fall; failing that the oldest surge (a white
      * front is missed less than a colour), and only then the oldest ribbon.
      */
-    packet(fall, bornWater, width, strength, rgb, kind) {
+    packet(fall, bornWater, width, strength, rgb, kind, freeOnly = false) {
         const rows = this.U.packets.array;
         const water = this.U.waterClock.value;
         let free = -1;
@@ -1430,11 +1551,40 @@ export class RainbowTerracesWorld {
             if (oldest < 0 || a.y < rows[oldest * 2].y) oldest = k;
         }
         let i = free;
+        if (i < 0 && freeOnly) return;
         if (i < 0) i = surge >= 0 ? surge : oldest;
         rows[i * 2].set(fall, bornWater, width, strength);
         rows[i * 2 + 1].set(rgb[0], rgb[1], rgb[2], kind);
         this.packetUsed = Math.max(this.packetUsed, i + 1);
         this.U.counts.value.x = this.packetUsed;
+    }
+
+    /**
+     * The terraces overflow in spate: the hotter play runs, the more often a held colour spills
+     * over its lip and rides down its fall as a thin stripe (the pool keeps it), round the held
+     * pools in turn, so in a fever the falls run striped with the colours played. Only into a
+     * free packet slot: a spill never pushes out a colour a clear let go.
+     */
+    spill(dt) {
+        const { hot, fever } = this.look;
+        const rate = (0.8 * hot + 1.8 * fever) * (this.reduced ? 0.5 : 1);
+        if (!(rate > 0.01) || !this.poolSlots.length) {
+            this.spillDue = 0;
+            return;
+        }
+        this.spillDue = Math.min(3, this.spillDue + rate * dt);
+        const n = this.poolSlots.length;
+        while (this.spillDue >= 1) {
+            this.spillDue -= 1;
+            for (let k = 0; k < n; k++) {
+                this.spillNext = (this.spillNext + 1) % n;
+                const info = this.poolSlots[this.spillNext];
+                const h = this.held[info.slot];
+                if (!h || h.released || !(this.time - h.at < 24)) continue;
+                this.packet(info.fall, this.U.waterClock.value + 0.2, 0.26, 0.45 + 0.35 * fever, h.rgb, 0, true);
+                break;
+            }
+        }
     }
 
     // ── Events ──
@@ -1488,6 +1638,12 @@ export class RainbowTerracesWorld {
         if (!c) return;
         const rgb = pieceLight(c.color || '#ffffff', 0.35, [0, 0, 0]);
         this.lastLock.set(c.player ?? 0, { rgb: rgb.slice(), shape: c.shape ?? null });
+        this.surge.lock(c, this.time);
+        const keep = this.recent[this.recentNext];
+        keep[0] = rgb[0]; keep[1] = rgb[1]; keep[2] = rgb[2];
+        this.recentNext = (this.recentNext + 1) % RECENT;
+        this.recentN = Math.min(RECENT, this.recentN + 1);
+        this.recentView = this.recentN < RECENT ? this.recent.slice(0, this.recentN) : this.recent;
         const { card, board } = this.sourceOf(c);
         const rows = c.rows && c.rows.length ? c.rows : [10];
         let rowMid = 0;
@@ -1556,16 +1712,35 @@ export class RainbowTerracesWorld {
         });
         if (hard && !this.reduced) this.dip.v += 0.6 * 9;
         // A long drop (12 rows or more) bursts the Mother Fall's spray as it lands.
-        if (hard && (c.dropRows ?? 0) >= 12) this.burstAt = Math.max(this.burstAt, this.time + LOCK_JET);
+        if (hard && (c.dropRows ?? 0) >= 12) this.throwSpray(SPRAY_BURST.swell, this.time + LOCK_JET);
+    }
+
+    /** Throw spray up out of the Mother's plume (a long drop's swell, a tower) at `at`, `scale` × as high. */
+    throwSpray(kind, at, scale = 1) {
+        if (this.sprayQueue.length < SPRAY_BURST.most) this.sprayQueue.push({ kind, at, scale });
     }
 
     onClear(c) {
         if (!c) return;
+        // A perfect clear settled after its clear's last wave is the crown on that clear; a
+        // T-spin that clears nothing still turns the falls a little. Neither is a clear.
+        if (c.crown || (c.perfect && !(c.lines > 0))) {
+            this.crown();
+            return;
+        }
+        if (!(c.lines > 0)) {
+            if (c.tspin) this.spin(c);
+            return;
+        }
         const lines = Math.max(1, Math.min(4, c.lines || 1));
         const t = this.time;
         const h = this.hour;
         const accentA = h.colour.accent;
         const { accentB } = h.colour;
+        // A cascade's waves (360 ms apart, each its own clear): `wave` 0 for the first, and each
+        // one after builds on the last, wider and brighter.
+        const wave = Math.max(0, Math.min(9, Math.round(Number(c.cascade) || 1) - 1));
+        this.surge.clear(c, t);
         // The clear carries its own link number (combo(0) arrives a lock late).
         if (c.combo > 0) {
             const last = this.lastLock.get(c.player ?? 0);
@@ -1574,10 +1749,15 @@ export class RainbowTerracesWorld {
         }
         if (c.b2b) {
             this.b2b = true;
+            this.b2bRun += 1;
             if (this.flock) this.flock.longWing = true;
-        } else if (c.b2b === false && this.b2b) {
+            // The back-to-back's own answer: the Mother Fall throws a tower of spray with the bow
+            // standing in it, taller with every back-to-back in a row.
+            this.throwSpray(SPRAY_BURST.tower, t, 1 + 0.25 * Math.min(4, this.b2bRun - 1));
+        } else if (c.b2b === false && this.b2b && wave === 0) {
             // A clear that does not continue the back-to-back ends it: the long-wing lands.
             this.b2b = false;
+            this.b2bRun = 0;
             if (this.flock) this.flock.longWing = false;
         }
         // ── The rows leave the card horizontally, off both sides ──
@@ -1604,17 +1784,23 @@ export class RainbowTerracesWorld {
             this.beginHush(c.perfect === true, lines);
             return;
         }
-        // ── One surge down every fall per line ──
+        // ── One surge down every fall per line: wider and stronger with each cascade wave, and
+        //    under back-to-back a second front close behind the first, in the warm accent ──
+        const width = Math.min(1.0, 0.5 + 0.12 * wave);
+        const surge = Math.min(2.4, 1.2 + 0.3 * wave);
         for (let k = 0; k < lines; k++) {
             const accent = lineAccent(lines, k, accentA, accentB);
             // The five standing falls (the far hairlines are too thin to carry a front).
             for (let f = 0; f < SLOT.hair; f++) {
                 if (!this.fallCpu[f]) continue;
-                this.packet(f, this.U.waterClock.value + 0.15 + k * 0.3, 0.5, 1.2, accent, 1);
+                this.packet(f, this.U.waterClock.value + 0.15 + k * 0.3, width, surge, accent, 1);
+                if (!c.b2b) continue;
+                this.packet(f, this.U.waterClock.value + 0.5 + k * 0.3, width * 0.8, surge * 0.85, accentB, 1);
             }
         }
-        // ── Release: the oldest held colours ride down the falls ──
-        const n = RELEASE_PER_LINE * lines;
+        // ── Release: the oldest held colours ride down the falls (a cascade's later waves let
+        //    one go a line, so its first waves never empty the terraces) ──
+        const n = wave > 0 ? lines : RELEASE_PER_LINE * lines;
         const released = this.releaseOldest(this.b2b ? Math.ceil(n / 2) : n, t);
         if (!released) {
             // Nothing held: the Mother Fall and the span still carry the accent, so a clear answers.
@@ -1622,17 +1808,22 @@ export class RainbowTerracesWorld {
             this.packet(SLOT.span, this.U.waterClock.value + 0.3, 0.4, 1.0, accentA, 0);
         }
         if (lines >= 2) {
-            this.spanAt = t;
+            this.span.hit(1.2, t);
             this.flock?.bank(this.flightClock);
         }
-        if (lines >= 3) this.burstAt = t;
+        // A cascade runs the broken span broader with each wave.
+        if (wave > 0) this.span.hit(0.4 + 0.2 * wave, t);
+        // Three lines, or a cascade's third wave and on, throw a tower (each wave's taller); its
+        // second wave swells the plume.
+        if (lines >= 3 || wave >= 2) this.throwSpray(SPRAY_BURST.tower, t, 1 + 0.2 * Math.max(0, wave - 1));
+        else if (wave === 1) this.throwSpray(SPRAY_BURST.swell, t + 0.05, 1.5);
         if (c.tspin) this.tspin(c);
         this.flare(0.27, 0.62, 0.22, 0.35 + lines * 0.12, accentA);
     }
 
     /** A T-spin: the falls are wrung, two gliders rise, the link colours turn, the bell swings. */
     tspin(c) {
-        this.U.wring.value.set(this.U.waterClock.value, this.reduced ? 0.5 : 1);
+        this.wring(this.reduced ? 0.5 : 1);
         const { card, board } = this.sourceOf(c);
         const row = c.rows && c.rows.length ? c.rows[0] : 15;
         const y = board.y0 + ((row + 0.5) / 20) * (board.y1 - board.y0);
@@ -1648,20 +1839,145 @@ export class RainbowTerracesWorld {
         }
     }
 
+    /**
+     * A wring down the falls of `strength`: it takes the slot whose half-turn has run furthest,
+     * so a second T-spin never cuts the first one travelling down the sheets.
+     */
+    wring(strength) {
+        const w = this.U.wring.value;
+        const water = this.U.waterClock.value;
+        if (w.x <= w.z) {
+            w.x = water;
+            w.y = strength;
+        } else {
+            w.z = water;
+            w.w = strength;
+        }
+    }
+
+    /** A T-spin that cleared nothing: a gentler wring, one helix, the bell stirs. */
+    spin(c) {
+        this.surge.spin(this.time);
+        this.wring(this.reduced ? 0.25 : 0.5);
+        const { card, board } = this.sourceOf(c);
+        const row = c.rows && c.rows.length ? c.rows[0] : 15;
+        const y = board.y0 + ((row + 0.5) / 20) * (board.y1 - board.y0);
+        this.flock?.helix(this.worldAt(card.x0 - 0.06, y, 120), this.flightClock);
+        this.parts.isles?.swing(0.4);
+    }
+
+    /** Is a glory standing (or still to open after its hush)? */
+    gloryStands(t = this.time) {
+        const g = this.glory;
+        return g.openAt > -1e3 && t < g.holdUntil + GLORY_FADE;
+    }
+
+    /** The glory opens at `at` with `rings` rings (one per line; eight on a perfect clear). */
+    openGlory(at, rings, perfect) {
+        const g = this.glory;
+        g.openAt = at;
+        g.rings = Math.min(GLORY_RINGS, rings);
+        for (let k = 0; k < GLORY_RINGS; k++) g.ringAt[k] = k < g.rings ? at + RING_FIRST + k * RING_GAP : Infinity;
+        g.holdUntil = at + (perfect ? GLORY_HOLD + 0.4 : GLORY_HOLD);
+        g.liftAt = -1e4;
+        g.flareAt = at;
+        g.flareStrength = 0.8;
+        this.oppose.hit(1.8, at);
+        this.hush.rings = g.rings;
+    }
+
+    /**
+     * A quad (or a crown) while the glory stands FEEDS it, never restarts it: `add` more rings
+     * open out after the ones it has (eight on a perfect clear), it holds on from now (rising
+     * back if it had begun to sink), and the opposition burns deeper.
+     */
+    feedGlory(at, add, perfect) {
+        const g = this.glory;
+        const rings = Math.min(GLORY_RINGS, perfect ? GLORY_RINGS : g.rings + add);
+        for (let k = g.rings; k < rings; k++) {
+            g.ringAt[k] = Math.max(at + RING_FIRST, (k > 0 ? g.ringAt[k - 1] : -Infinity) + RING_GAP);
+        }
+        g.rings = rings;
+        const hold = at + (perfect ? GLORY_HOLD + 0.4 : GLORY_HOLD);
+        if (hold > g.holdUntil) {
+            if (at > g.holdUntil) {
+                g.liftAt = at;
+                g.liftFrom = g.holdUntil;
+            }
+            g.holdUntil = hold;
+        }
+        const from = Math.max(at, g.openAt);
+        this.oppose.hit(perfect ? 0.6 : 0.4, from);
+        g.flareAt = from;
+        g.flareStrength = 0.5;
+        this.hush.rings = g.rings;
+    }
+
+    /**
+     * The perfect clear's crown, layered on the clear still playing (physics settles it after the
+     * clear's last wave): eight rings round the glory (opened now if none stands: never a hush),
+     * the Far Gate's spillway, the pour if none is due, and every held pool crowned by a pillar
+     * of its own colour, one after another across the terraces.
+     */
+    crown() {
+        const t = this.time;
+        this.surge.crown(t);
+        if (this.gloryStands(t)) this.feedGlory(t, GLORY_RINGS, true);
+        else this.openGlory(t, GLORY_RINGS, true);
+        this.hush.perfect = true;
+        if (!(t >= this.spillwayAt && t < this.spillwayAt + 13)) this.spillwayAt = t + 1.2;
+        if (!(this.pourAt > t)) {
+            this.pourAt = t + 1.0;
+            this.drawPourBow(this.pourAt);
+        }
+        let k = 0;
+        for (let i = 0; i < this.poolSlots.length && k < 10; i++) {
+            const info = this.poolSlots[i];
+            const h = this.held[info.slot];
+            if (!h || h.released || !(t - h.at < 24)) continue;
+            const w = info.world;
+            const size = Math.max(1.2, Math.hypot(w[0], w[1], w[2]) * 0.006);
+            this.effects.crown(t + 0.06 * k, w, h.rgb, {
+                count: 10, size, speed: size * 5, flash: true,
+            });
+            k += 1;
+        }
+    }
+
     /** The hush, then the glory and the great pour (four lines; a perfect clear is bigger). */
     beginHush(perfect, lines) {
-        this.hush.at = this.time;
+        const t = this.time;
+        // A quad while the glory stands feeds it: no second hush, nothing restarted.
+        if (this.gloryStands(t)) {
+            this.feedGlory(t, 2, perfect);
+            if (perfect && !(t >= this.spillwayAt && t < this.spillwayAt + 13)) this.spillwayAt = t + 1.6;
+            if (!(this.pourAt > t)) {
+                this.pourAt = t + 1.27;
+                this.drawPourBow(this.pourAt);
+            }
+            return;
+        }
+        this.hush.at = t;
         this.hush.length = perfect ? HUSH_PERFECT : HUSH;
         this.hush.perfect = perfect;
-        this.hush.rings = perfect ? 8 : Math.max(4, lines);
-        this.pourAt = this.time + this.hush.length + 1.27;
-        if (perfect) this.spillwayAt = this.time + this.hush.length + 1.6;
-        // The pour draws the whole primary round from its foot. A clear while the last one's bow
-        // still stands (or is still to be drawn) keeps it: it holds on through the new pour, rising
-        // back from now if it had begun to fade.
+        // From cold the world holds its breath fully; the hotter play runs, the shallower (the
+        // level as it stood before this clear).
+        this.hush.depth = 1 - 0.8 * clamp01(this.heat.level);
+        this.openGlory(t + this.hush.length, perfect ? GLORY_RINGS : Math.max(4, lines), perfect);
+        this.pourAt = t + this.hush.length + 1.27;
+        if (perfect) this.spillwayAt = t + this.hush.length + 1.6;
+        this.drawPourBow(this.pourAt);
+    }
+
+    /**
+     * The pour draws the whole primary round from its foot. A clear while the last one's bow
+     * still stands (or is still to be drawn) keeps it: it holds on through the new pour, rising
+     * back from now if it had begun to fade.
+     */
+    drawPourBow(pourAt) {
         if (this.time >= this.revealFadeAt + REVEAL.fade) {
-            this.revealAt = this.pourAt;
-            this.revealFadeAt = this.pourAt + REVEAL.fadeAt;
+            this.revealAt = pourAt;
+            this.revealFadeAt = pourAt + REVEAL.fadeAt;
             this.revealLiftAt = -1e4;
             this.revealLaid.fill(0);
         } else {
@@ -1669,7 +1985,7 @@ export class RainbowTerracesWorld {
                 this.revealLiftAt = this.time;
                 this.revealLiftFrom = this.revealFadeAt;
             }
-            this.revealFadeAt = Math.max(this.revealFadeAt, this.pourAt + REVEAL.fadeAt);
+            this.revealFadeAt = Math.max(this.revealFadeAt, pourAt + REVEAL.fadeAt);
         }
     }
 
@@ -1680,9 +1996,13 @@ export class RainbowTerracesWorld {
         const wanted = Math.min(1.2, strength);
         const area = Math.min(1, Math.PI * radius * radius);
         const grant = this.flashes.request(kind, wanted, area, 0, this.time);
-        if (!(grant.strength > 0) || grant.at > this.time + 1e-3) return;
         const f = this.post.flare;
-        const s = Math.min(wanted, grant.strength);
+        const s = grant.strength > 0 && grant.at <= this.time + 1e-3 ? Math.min(wanted, grant.strength) : 0;
+        // What is not flashed (folded, queued, clipped, or under the flare still burning) still
+        // lights the terraces: the pools' jewels glow on with it, rising and falling over seconds.
+        const unlit = s >= f[3] ? wanted - s : wanted;
+        if (unlit > 1e-3) this.kindle.hit(unlit * 0.45, this.time);
+        if (!(s > 0)) return;
         if (s >= f[3]) {
             f[0] = x; f[1] = y; f[2] = radius; f[3] = s;
             this.post.flareTint[0] = 0.6 + tint[0] * 0.6;
@@ -1710,8 +2030,9 @@ export class RainbowTerracesWorld {
         if (combo === 0 && this.combo > 0 && this.b2b) this.graceUntil = this.time + B2B_GRACE;
         if (combo === 0) {
             this.b2b = false;
-            // The long-wing lands with the back-to-back.
-            if (this.flock) this.flock.longWing = false;
+            this.b2bRun = 0;
+            // The long-wing lands with the back-to-back, once its grace is over (update).
+            if (this.flock && !(this.time < this.graceUntil)) this.flock.longWing = false;
         }
         this.combo = combo;
         this.dialTarget = Math.min(DIAL_MAX, combo);
@@ -1720,7 +2041,12 @@ export class RainbowTerracesWorld {
     levelUp(level, { silent = false } = {}) {
         this.wheel.levelUp?.(Math.max(1, Math.round(level)), this.time, { silent });
         if (silent) return;
-        this.U.toll.value.set(this.time, 1);
+        this.surge.levelUp(this.time);
+        // A level while the bell still rings rings it louder; it never starts the rings again.
+        const toll = this.U.toll.value;
+        const tolling = this.time - toll.x;
+        if (tolling >= 0 && tolling < 2.5) toll.y = Math.min(1.5, toll.y + 0.35);
+        else toll.set(this.time, 1);
         this.parts.isles?.swing(0.6);
         const crown = this.isleToWorld('spring', 0, PLAN.spring.top + 10, PLAN.spring.radius * 0.3);
         this.flock?.launch(crown, this.flightClock);
@@ -1736,22 +2062,33 @@ export class RainbowTerracesWorld {
         const hushing = hushAge >= 0 && hushAge < this.hush.length;
         const pourAge = t - this.pourAt;
         const pour = pourAge >= 0 && pourAge < 3 ? 1 + 1.2 * (1 - smooth(0, 3, pourAge)) : 1;
-        const waterRate = hushing ? 0.15 : 1;
-        const sprayRate = hushing ? 0.05 : 1;
-        let flightRate = this.reduced ? 0.6 : 1;
-        if (hushing) flightRate = 0.05;
+        // The hush is as deep as play is cold (a quad mid-fever only slows the world a little),
+        // and the heat of play runs the water, the spray and the flight faster (motion: calmer
+        // under reduced motion).
+        const { depth } = this.hush;
+        const {
+            warm, hot, fever, punch,
+        } = this.look;
+        const calm = this.reduced ? 0.5 : 1;
+        const waterRate = (hushing ? 1 - 0.85 * depth : 1) * (1 + (0.15 * warm + 0.15 * hot + 0.15 * fever) * calm);
+        const sprayRate = (hushing ? 1 - 0.95 * depth : 1) * (1 + (0.15 * hot + 0.15 * fever) * calm);
+        let flightRate = (this.reduced ? 0.6 : 1) * (1 + (0.25 * warm + 0.3 * hot + 0.3 * fever) * calm);
+        if (hushing) flightRate += (0.05 - flightRate) * depth;
         U.time.value = t;
         U.waterClock.value += dt * waterRate * pour;
         U.sprayClock.value += dt * sprayRate;
         U.mistClock.value += dt;
         this.flightClock += dt * flightRate;
-        // The falls' width: thin in the hush, swollen in the pour, wide with the chain.
+        // The falls' width: thin in the hush, swollen in the pour, wide with the chain, in spate
+        // with the heat of play (a fever's cataract), and kicked by each beat of it.
         const chain = 1 + 0.05 * Math.min(this.dial, 7);
-        U.flow.value.y = (hushing ? 0.35 : 1) * (pourAge >= 0 && pourAge < 3 ? 1 + 0.4 * (1 - smooth(0, 3, pourAge)) : 1) * chain;
+        const spate = 1 + 0.1 * warm + 0.12 * hot + 0.15 * fever + 0.05 * punch;
+        const poured = pourAge >= 0 && pourAge < 3 ? 1 + 0.4 * (1 - smooth(0, 3, pourAge)) : 1;
+        U.flow.value.y = (hushing ? 1 - 0.65 * depth : 1) * poured * chain * spate;
         U.flow.value.x = waterRate;
         U.drift.value.set(t * 0.0011, t * 0.0004);
         U.starTurn.value = t * 0.004;
-        this.post.hush = hushing ? smooth(0, 0.08, hushAge) : Math.max(0, this.post.hush - dt * 6);
+        this.post.hush = hushing ? smooth(0, 0.08, hushAge) * depth : Math.max(0, this.post.hush - dt * 6);
     }
 
     /** The hour's colours and numbers into the uniforms. */
@@ -1789,7 +2126,7 @@ export class RainbowTerracesWorld {
         this.post.gradeLight = h.gradeLight;
     }
 
-    /** The dial eases toward the chain; strokes paint and withdraw one by one. */
+    /** The dial eases toward the chain; strokes paint and withdraw one by one (newest first). */
     stepDial(dt) {
         const target = this.time < this.graceUntil ? Math.max(this.dialTarget, this.dial) : this.dialTarget;
         if (this.dial < target) {
@@ -1800,9 +2137,11 @@ export class RainbowTerracesWorld {
             this.dial = Math.max(target, this.dial - dt / UNWIND_SECONDS);
         }
         // The great pour's bow lends the optics a long chain's dial while it stands (its
-        // supernumeraries and Alexander's band come in as it is drawn, and go as it fades).
+        // supernumeraries and Alexander's band come in as it is drawn, and go as it fades), and
+        // so does a fever: the bows burn deeper and, from the top of it, sing (the band of light
+        // running round what is painted).
         const reveal = this.revealNow();
-        this.U.bow.value.w = Math.max(this.dial, reveal ? reveal.dial : 0);
+        this.U.bow.value.w = Math.max(this.dial, reveal ? reveal.dial : 0, 10.2 * this.look.fever);
     }
 
     /**
@@ -2207,30 +2546,42 @@ export class RainbowTerracesWorld {
         }
     }
 
-    /** The glory: one ring per line after the hush, holding, then sinking into the mist. */
+    /**
+     * The glory: one ring per line after the hush (more as quads feed it), holding, then sinking
+     * into the mist; a feed while it sinks lifts it back from where it stands. Closed form in the
+     * clock: rings out of their opening times, the hold out of `holdUntil` and its lift.
+     */
     stepGlory() {
         const { U } = this;
-        const age = this.time - this.hush.at - this.hush.length;
-        if (this.hush.at < -1e3 || age < -this.hush.length) {
-            U.glory.value.set(0, 0, 0, this.oppRest);
+        const t = this.time;
+        const g = this.glory;
+        const opposition = this.oppose.valueAt(t);
+        const age = t - g.openAt;
+        if (g.openAt < -1e3) {
+            U.glory.value.set(0, 0, opposition, this.oppRest);
             return;
         }
-        const ringGap = this.hush.perfect ? 0.35 : 0.35;
-        const firstRing = 0.07;
         let rings = 0;
-        for (let k = 0; k < this.hush.rings; k++) if (age >= firstRing + k * ringGap) rings = k + 1;
-        const opening = clamp01((age - firstRing - (rings - 1) * ringGap) / 0.5);
+        for (let k = 0; k < g.rings; k++) if (t >= g.ringAt[k]) rings = k + 1;
+        const opening = rings > 0 ? clamp01((t - g.ringAt[rings - 1]) / 0.5) : 0;
         const reveal = rings > 0 ? 1.2 + (rings - 1 + opening) * 1.05 : 0;
-        const hold = this.hush.perfect ? GLORY_HOLD + 0.4 : GLORY_HOLD;
-        const strength = age < 0 ? 0 : (1 - smooth(hold, hold + 4, age)) * smooth(0, 0.3, age);
-        const opposition = age < 0 ? 0 : (1 - smooth(1, 6, age)) * 2;
+        let hold = 1 - smooth(g.holdUntil, g.holdUntil + GLORY_FADE, t);
+        if (t < g.liftAt + GLORY_LIFT) {
+            const before = 1 - smooth(g.liftFrom, g.liftFrom + GLORY_FADE, t);
+            hold = Math.min(hold, Math.max(before, smooth(g.liftAt, g.liftAt + GLORY_LIFT, t)));
+        }
+        const strength = age < 0 ? 0 : hold * smooth(0, 0.3, age);
         U.glory.value.set(strength, reveal, opposition, this.oppRest);
         // The wedges deepen while it holds.
         U.shadowDepth.value = Math.min(0.85, U.shadowDepth.value + 0.35 * strength);
-        // The light behind us flares as the hush ends (governed).
-        if (age >= 0 && age < 0.05) {
+        // The light behind us flares as the hush ends, and as a quad or a crown feeds it (governed:
+        // what the governor holds back glows on in the terraces).
+        if (t >= g.flareAt) {
+            g.flareAt = Infinity;
             const A = this.frame.Ascreen;
-            this.flare(A.x, A.y, 0.25, 0.9, this.hour.colour.key, 'set');
+            // Kept to the glory's own neighbourhood: the payoff's light is its rings, not a lift
+            // of the whole lower frame.
+            this.flare(A.x, A.y, 0.2, g.flareStrength, this.hour.colour.key, 'set');
         }
         // The great pour: every held colour goes down at once.
         if (this.pourAt > -1e3 && this.time >= this.pourAt && !this.pourDone) {
@@ -2285,42 +2636,42 @@ export class RainbowTerracesWorld {
      * the flash governor first. Under reduced motion nothing is thrown: the plume thickens slowly.
      */
     sprayBursts(out) {
-        if (!this.sprayArms) {
-            this.sprayArms = [];
-            this.sprayArm = -1e4;
-        }
+        if (!this.sprayArms) this.sprayArms = [];
         const arms = this.sprayArms;
-        const arm = this.burstAt;
-        if (arm < this.sprayArm) arms.length = 0;
-        if (arm !== this.sprayArm) {
-            this.sprayArm = arm;
-            if (arm > -1e3) {
-                const kind = arm > this.time + 1e-6 ? SPRAY_BURST.swell : SPRAY_BURST.tower;
-                let grant = null;
-                if (kind.bow > 0) {
-                    // About a twentieth of the frame brightened by a third, held while it stands.
-                    const g = this.flashes.request('routine', 0.35, 0.05, 0, arm, kind.length * 0.45);
-                    grant = { at: g.at, ramp: g.ramp, gain: Math.min(1, g.strength / 0.35) };
-                }
-                // Keep every one still standing (a crowd of drops lets its oldest swell go first).
-                for (let i = arms.length - 1; i >= 0; i--) if (this.time - arms[i].at >= arms[i].kind.length) arms.splice(i, 1);
-                if (arms.length >= SPRAY_BURST.most) {
-                    const swell = arms.findIndex((a) => a.kind === SPRAY_BURST.swell);
-                    arms.splice(Math.max(0, swell), 1);
-                }
-                arms.push({ at: arm, kind, grant });
+        const queue = this.sprayQueue;
+        for (let q = 0; q < queue.length; q++) {
+            const { kind, at, scale } = queue[q];
+            let grant = null;
+            if (kind.bow > 0) {
+                // About a twentieth of the frame brightened by a third, held while it stands.
+                const g = this.flashes.request('routine', 0.35, 0.05, 0, at, kind.length * 0.45);
+                grant = { at: g.at, ramp: g.ramp, gain: Math.min(1, g.strength / 0.35) };
             }
+            // Keep every one still standing (a crowd of drops lets its oldest swell go first).
+            for (let i = arms.length - 1; i >= 0; i--) {
+                if (this.time - arms[i].at >= arms[i].kind.length) arms.splice(i, 1);
+            }
+            if (arms.length >= SPRAY_BURST.most) {
+                const swell = arms.findIndex((a) => a.kind === SPRAY_BURST.swell);
+                arms.splice(Math.max(0, swell), 1);
+            }
+            arms.push({
+                at, kind, grant, scale,
+            });
         }
+        queue.length = 0;
         out.lift = 0;
         out.thick = 0;
         out.bow = 0;
         const ramp = this.reduced ? 1.2 : 0.3;
         for (let i = 0; i < arms.length; i++) {
-            const { at, kind, grant } = arms[i];
+            const {
+                at, kind, grant, scale,
+            } = arms[i];
             const age = this.time - at;
             if (age < 0 || age >= kind.length) continue;
             const env = smooth(0, ramp, age) * (1 - smooth(kind.length * 0.45, kind.length, age));
-            if (!this.reduced) out.lift = Math.max(out.lift, kind.height * (1 - Math.exp(-age / 0.7)) * env);
+            if (!this.reduced) out.lift = Math.max(out.lift, kind.height * scale * (1 - Math.exp(-age / 0.7)) * env);
             out.thick = Math.max(out.thick, env * (kind === SPRAY_BURST.tower ? 0.8 : 0.4));
             if (grant && grant.gain > 0) {
                 const g = this.time - grant.at;
@@ -2328,6 +2679,13 @@ export class RainbowTerracesWorld {
                 out.bow = Math.max(out.bow, kind.bow * grant.gain * lit);
             }
         }
+        // The heat of play keeps the plume up: hot, it climbs; in a fever it stands as a tower
+        // with the bow in it (over seconds, as the heat does: never a flash). No throw under
+        // reduced motion: there it only thickens.
+        const { hot, fever } = this.look;
+        if (!this.reduced) out.lift = Math.max(out.lift, 10 * hot + 28 * fever);
+        out.thick = Math.max(out.thick, 0.25 * hot + 0.5 * fever);
+        out.bow = Math.max(out.bow, 0.2 * hot + 0.5 * fever);
         return out;
     }
 
@@ -2344,7 +2702,9 @@ export class RainbowTerracesWorld {
         const rows = U.falls.array;
         const flow = U.flow.value.y;
         const cap = this.parts.spray.capacity;
-        const level = (this.hour.scalar.spray ?? 1) * (1 + 0.3 * Math.min(this.dial, 7)) * (0.5 + 0.5 * Math.min(1, flow));
+        const { warm, hot, fever } = this.look;
+        const level = (this.hour.scalar.spray ?? 1) * (1 + 0.3 * Math.min(this.dial, 7))
+            * (0.5 + 0.5 * Math.min(1, flow)) * (1 + 0.3 * warm + 0.3 * hot + 0.4 * fever);
         // What the layout lets it cover: fewer puffs, and smaller.
         const fit = this.sprayFit ?? 1;
         const fitN = Math.sqrt(fit);
@@ -2503,7 +2863,7 @@ export class RainbowTerracesWorld {
             const info = this.poolSlots.find((p) => p.slot === slot);
             const age = this.time - h.at;
             const env = smooth(0, 0.3, age) * (age < 18 ? 1 : Math.exp(-(age - 18) / 6))
-                * (h.released ? Math.max(0, 1 - (this.time - h.releasedAt) / 0.8) : 1);
+                * (h.released ? Math.max(0, 1 - (this.time - h.releasedAt) / 0.8) : 1) * this.jewel;
             const w = info ? info.world : [0, -1e5, 0];
             rows[i * 2].set(w[0], w[1] - 3, w[2], 9);
             rows[i * 2 + 1].set(h.rgb[0], h.rgb[1], h.rgb[2], env);
@@ -2550,10 +2910,10 @@ export class RainbowTerracesWorld {
             // A soft halo of the colour over the water and a hot heart in it, breathing slowly
             // (each pool at its own pace): a jewel set in the white stone, read from the overlook.
             const breath = this.reduced ? 1 : 0.85 + 0.15 * Math.sin(this.time * (1.3 + 0.4 * hash(info.slot)) + info.slot * 2.1);
-            const b = 0.7 * env * breath;
+            const b = 0.7 * env * breath * this.jewel;
             push(w[0], w[1] + 1, w[2], r, h.rgb[0] * b, h.rgb[1] * b, h.rgb[2] * b, GLOW.soft);
             const peak = Math.max(h.rgb[0], h.rgb[1], h.rgb[2], 1e-3);
-            const hb = 1.6 * env * breath;
+            const hb = 1.6 * env * breath * this.jewel;
             push(
                 w[0],
                 w[1] + 0.6,
@@ -2646,25 +3006,82 @@ export class RainbowTerracesWorld {
         g.end();
     }
 
+    /**
+     * How hot play runs now (the surge, once a frame on the world's clock), and what the world
+     * wears for it: `warm` from a quick steady hand, `hot` from a chain, `fever` once it holds;
+     * casual play stays under them (the world as it always was). `jewel` is how bright the
+     * terraces' pools burn (with what the flash governor held back), `punch` each beat.
+     */
+    sampleHeat() {
+        const s = this.surge.sample(this.time);
+        const { heat, look } = this;
+        heat.punch = s.punch;
+        heat.level = s.level;
+        heat.fever = s.fever;
+        heat.stage = s.stage;
+        look.warm = smooth(0.15, 0.55, s.level);
+        look.hot = smooth(0.45, 0.9, s.level);
+        look.fever = s.fever;
+        look.punch = s.punch;
+        this.jewel = 1 + 0.3 * look.warm + 0.35 * look.hot + 0.45 * look.fever + 0.5 * this.kindle.valueAt(this.time)
+            + 0.2 * s.punch;
+    }
+
+    /**
+     * The heat of play on the hour's own numbers (after applyHour): the bow burns brighter and
+     * deeper and stands ever more of itself in the real rain (in a fever, whole in the storm),
+     * the storm's rain thickens behind it, the wedges darken, the sun dims to storm light, and
+     * the iris closes a little so the colours stay saturated as the light grows.
+     */
+    wearHeat() {
+        const { U } = this;
+        const { warm, hot, fever } = this.look;
+        U.bowGain.value *= 1 + 0.1 * hot + 0.2 * fever;
+        U.bowSat.value *= 1 + 0.05 * warm + 0.1 * fever;
+        U.bowRest.value = Math.min(0.92, U.bowRest.value + 0.08 * warm + 0.12 * hot + 0.3 * fever);
+        U.fogbow.value += 0.01 * hot + 0.02 * fever;
+        U.showerAmt.value *= 1 + 0.15 * hot + 0.3 * fever;
+        // Storm light: the sun on the stone, the cloud and the white water dims a little as the
+        // heat rises, so the light the play makes (the bow, the dye, the jewels) burns against it.
+        U.keyGain.value *= 1 - 0.06 * hot - 0.1 * fever;
+        U.cloudGain.value *= 1 - 0.1 * fever;
+        U.shadowDepth.value = Math.min(0.85, U.shadowDepth.value + 0.08 * hot + 0.12 * fever);
+        this.post.exposure *= 1 - 0.04 * hot - 0.05 * fever;
+    }
+
     update(sim, camera) {
         const dt = Math.max(0, sim.delta ?? 0);
         this.time = sim.time;
+        this.sampleHeat();
         this.integrate(dt);
         this.applyHour(this.time);
+        this.wearHeat();
         this.stepDial(dt);
         this.writeStrokes(dt);
         this.stepGlory();
         this.stepSpillway();
-        // The broken span runs (two lines): it pours broad for 3 s.
-        const spanAge = this.time - this.spanAt;
+        const { hot, fever } = this.look;
+        const rows = this.U.falls.array;
+        // The broken span runs (two lines): it pours broad, every clear adding to the pour.
         if (this.fallCpu[SLOT.span]) {
-            const rows = this.U.falls.array;
-            rows[SLOT.span * 3 + 2].z = spanAge >= 0 && spanAge < 3.5 ? 1 + 1.2 * (1 - smooth(0.5, 3.5, spanAge)) : 1;
+            rows[SLOT.span * 3 + 2].z = 1 + this.span.valueAt(this.time) + 0.15 * hot + 0.2 * fever;
         }
+        // The Twin's horsetails and the far threads swell with the heat (the whole archipelago runs).
+        for (let f = SLOT.horse; f < SLOT.spillway; f++) {
+            if (this.fallCpu[f]) rows[f * 3 + 2].z = 1 + 0.12 * hot + 0.2 * fever;
+        }
+        this.spill(dt);
+        // The long-wing lands once the back-to-back and its grace are over.
+        if (this.flock?.longWing && !this.b2b && !(this.time < this.graceUntil)) this.flock.longWing = false;
         this.parts.isles?.update(dt, this.time);
         if (this.flock && this.parts.gliders) {
             this.bowInfo.dial = this.dial;
-            this.parts.gliders.write(this.flock.sample(this.flightClock, this.bowInfo, this.hour.scalar.aloft ?? 1));
+            // Hot, more of the flock takes to the air; in a fever every other one trails a
+            // ribbon of the colours played.
+            this.flock.ribbon = fever * (this.reduced ? 0.6 : 1);
+            this.flock.ribbons = this.recentView;
+            const aloft = Math.min(1, (this.hour.scalar.aloft ?? 1) + 0.4 * hot + 0.6 * fever);
+            this.parts.gliders.write(this.flock.sample(this.flightClock, this.bowInfo, aloft));
         }
         this.emitSpray();
         this.emitGlows();

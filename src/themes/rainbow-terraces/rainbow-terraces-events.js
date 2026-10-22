@@ -7,8 +7,9 @@
  * time and replaying reproduces the frame exactly, and nothing is allocated at event time.
  *
  *   lock     0.00 a light-copy of the piece just outside the card's edge at its rows, in its locked
- *                orientation, white-hot, cooling to its colour by 0.12
- *            0.12 the four cells melt into beads that run together
+ *                orientation, white-hot, cooling to its colour by 0.12: ONE solid shape (its cells
+ *                are tiles whose edges add up to one across every joint: no seam, one outline)
+ *            0.12 the piece shrinks as one and melts into four beads that run together
  *            0.24 a thread of light-water springs out: a head and its droplets on a glistening arc
  *                 to the pool that will hold the colour
  *            land a crown of glints at the pool (the world rings the pool and fills it)
@@ -34,6 +35,9 @@ const RING = 5;
 const GLINT = 3;
 const STREAK = 4;
 const SOFT = 6;
+/** fx.js GLOW.tile: one cell of a solid piece (its quad is TILE_SPAN cells across, half each way). */
+const TILE = 7;
+export const TILE_SPAN = 1.25;
 
 /** A uniform Catmull-Rom point between p1 and p2 (p0, p3 their neighbours), one axis. */
 const catmull = (p0, p1, p2, p3, u) => 0.5 * ((2 * p1) + (p2 - p0) * u + (2 * p0 - 5 * p1 + 4 * p2 - p3) * u * u
@@ -53,6 +57,11 @@ function take(ring) {
     ring.next = (ring.next + 1) % ring.items.length;
     return r;
 }
+
+/** Seconds a lock's record draws for (its shock, its copy and thread, or its jet's afterglow). */
+const lockLife = (r) => Math.max(LOCK.shock, r.hard ? LOCK.jet + LOCK.afterglow : LOCK.melt + r.flight + 0.05);
+/** When a lock's light lands in its pool. */
+const lockLands = (r) => r.at + (r.hard ? LOCK.jet : LOCK.melt + r.flight);
 
 const v3 = () => [0, 0, 0];
 
@@ -139,7 +148,7 @@ export class EventEffects {
         from, to, right, up, cells = null, cellSize = 1, colour, hardDrop = false, flight = LOCK.flight, lift = 0.1,
         pool = -1, fromScreen = null, toScreen = null, viaScreen = null, sparks = SPARKS.round,
     }) {
-        const r = take(this.locks);
+        const r = this.takeLock(at);
         if (!r.landed && r.pool >= 0) {
             const f = this.forced.find((x) => !x.used);
             if (f) {
@@ -209,6 +218,35 @@ export class EventEffects {
         return at + (hardDrop ? LOCK.jet : LOCK.melt + flight);
     }
 
+    /**
+     * The lock record a new lock takes: one whose light has gone out, else the one with the least
+     * of its light left to draw (an afterglow before a thread), and only when every one is still in
+     * flight the one nearest its pool, so under a fast hand a ribbon is never cut mid-arc while a
+     * spent one waits.
+     */
+    takeLock(at) {
+        const ring = this.locks;
+        const { items } = ring;
+        let best = -1;
+        let bestLeft = Infinity;
+        for (let k = 0; k < items.length; k++) {
+            const i = (ring.next + k) % items.length;
+            const r = items[i];
+            const end = r.at + lockLife(r);
+            if (r.landed && end <= at) {
+                best = i;
+                break;
+            }
+            const left = r.landed ? end - at : 1e3 + lockLands(r) - at;
+            if (left < bestLeft) {
+                bestLeft = left;
+                best = i;
+            }
+        }
+        ring.next = (best + 1) % items.length;
+        return items[best];
+    }
+
     crown(at, pos, colour, {
         count = 12, size = 1, speed = 6, flash = false,
     } = {}) {
@@ -246,8 +284,7 @@ export class EventEffects {
         // ── Locks ──
         for (const r of this.locks.items) {
             const age = time - r.at;
-            const life = Math.max(LOCK.shock, r.hard ? LOCK.jet + LOCK.afterglow : LOCK.melt + r.flight + 0.05);
-            if (age < 0 || age > life) continue;
+            if (age < 0 || age > lockLife(r)) continue;
             const [cr, cg, cb] = r.colour;
             if (age < LOCK.shock) {
                 // The shock: a ring of the piece's light running out from the copy, and sparks
@@ -293,7 +330,11 @@ export class EventEffects {
                 }
             }
             if (!r.hard && age < LOCK.melt) {
-                // The copy: white-hot cooling to the colour, then melting into beads.
+                // The copy: white-hot cooling to the colour, then melting into beads. The piece is
+                // ONE solid shape in one colour: each cell a tile a whole pitch across whose edge
+                // ramps add up to one across every joint, so the four read as one piece with one
+                // outline (no seams, no per-cell edges). As it melts the whole piece shrinks as one
+                // and fades, and four beads let go of its cells and run together.
                 const cool = smooth(0, LOCK.cool, age);
                 const melt = smooth(LOCK.cool, LOCK.melt, age);
                 const heat = 2.5 * (1 - cool) + 1.5 * cool;
@@ -301,19 +342,47 @@ export class EventEffects {
                 const wg = (1 - cool * 0.85) + cg * cool * 0.85;
                 const wb = (1 - cool * 0.85) + cb * cool * 0.85;
                 const n = r.hasCells ? 4 : 1;
+                const shrink = 1 - melt * 0.55;
+                const body = heat * (1 - smooth(0.3, 1, melt));
+                const beads = heat * smooth(0.15, 0.7, melt);
                 let mx = 0;
                 let my = 0;
                 for (let k = 0; k < n; k++) {
-                    const cx = r.hasCells ? r.cells[k * 2] * (1 - melt * 0.7) : 0;
-                    const cy = r.hasCells ? r.cells[k * 2 + 1] * (1 - melt * 0.7) : 0;
-                    mx += cx / n;
-                    my += cy / n;
-                    const x = r.from[0] + r.right[0] * cx + r.up[0] * cy;
-                    const y = r.from[1] + r.right[1] * cx + r.up[1] * cy;
-                    const z = r.from[2] + r.right[2] * cx + r.up[2] * cy;
-                    const rad = r.cell * (0.47 - melt * 0.15);
-                    push(x, y, z, rad, wr * heat, wg * heat, wb * heat, melt > 0.5 ? 0 : 2);
+                    const ox = r.hasCells ? r.cells[k * 2] : 0;
+                    const oy = r.hasCells ? r.cells[k * 2 + 1] : 0;
+                    mx += ox / n;
+                    my += oy / n;
+                    if (body > 1e-3) {
+                        const cx = ox * shrink;
+                        const cy = oy * shrink;
+                        push(
+                            r.from[0] + r.right[0] * cx + r.up[0] * cy,
+                            r.from[1] + r.right[1] * cx + r.up[1] * cy,
+                            r.from[2] + r.right[2] * cx + r.up[2] * cy,
+                            r.cell * 0.5 * TILE_SPAN * shrink,
+                            wr * body,
+                            wg * body,
+                            wb * body,
+                            TILE,
+                        );
+                    }
+                    if (beads > 1e-3) {
+                        const bx = ox * (1 - melt * 0.7);
+                        const by = oy * (1 - melt * 0.7);
+                        push(
+                            r.from[0] + r.right[0] * bx + r.up[0] * by,
+                            r.from[1] + r.right[1] * bx + r.up[1] * by,
+                            r.from[2] + r.right[2] * bx + r.up[2] * by,
+                            r.cell * 0.34,
+                            wr * beads,
+                            wg * beads,
+                            wb * beads,
+                            0,
+                        );
+                    }
                 }
+                mx *= 1 - melt * 0.7;
+                my *= 1 - melt * 0.7;
                 // The piece's own glow round it, its colour, fading as it melts and leaves.
                 const hb = (1 - melt * 0.6) * (0.9 - cool * 0.3);
                 push(
@@ -564,8 +633,7 @@ export class EventEffects {
         }
         for (const r of this.locks.items) {
             if (r.landed) continue;
-            const land = r.at + (r.hard ? LOCK.jet : LOCK.melt + r.flight);
-            if (time >= land) {
+            if (time >= lockLands(r)) {
                 r.landed = true;
                 out.push(r);
             }
