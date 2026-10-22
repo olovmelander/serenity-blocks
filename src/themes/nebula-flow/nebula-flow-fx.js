@@ -136,9 +136,10 @@ export function createJets(u) {
         const age = isAmbient.select(u.time, max(ageFire, 0));
         // knots: shocks that run outward along the beam, unevenly spaced (the outflow comes in
         // fits)
-        // (an ambient star's jets are short: their knots are closer, or there would be none)
-        const knotPhase = s.mul(isAmbient.select(64.0, 22.0).div(E.z)).sub(age.mul(5.0))
-            .add(sin(s.mul(isAmbient.select(23.0, 8.0).div(E.z)).add(E.w.mul(17.0))).mul(1.4));
+        // (spaced so that even a short jet carries several: at a third of this, a lock's jet was
+        // shorter than one spacing and drew as a lit rod)
+        const knotPhase = s.mul(isAmbient.select(64.0, 46.0).div(E.z)).sub(age.mul(5.0))
+            .add(sin(s.mul(isAmbient.select(23.0, 16.0).div(E.z)).add(E.w.mul(17.0))).mul(1.4));
         const knot = pow(clamp(cos(knotPhase).mul(0.5).add(0.5), 0, 1), 10.0);
         // the bow shock: a small cap at the tip, opening back toward the star (blunt, and dim off
         // the axis, so its arms never reach back round the star like a ring); it forms once the
@@ -150,12 +151,12 @@ export function createJets(u) {
         const glow = nfGauss(length(vec2(tx, x)).div(bow.mul(1.2))).mul(0.25);
         const edge = float(1).sub(smoothstep(0.55, 1.0, abs(positionGeometry.x)))
             .mul(float(1).sub(smoothstep(0.45, 1.0, tx.div(tip))));
-        // an ambient star's outflow is a faint chain of knots in the dust's haze, not a lit rod
-        // capped at both ends: its beam between the knots and its shocks are dimmer
-        const between = isAmbient.select(0.04, 0.35);
+        // an outflow is a chain of knots in a faint beam, not a lit rod capped at both ends; an
+        // ambient star's is fainter still
+        const between = isAmbient.select(0.04, 0.2);
         const core = beam.mul(knot.mul(2.2).add(between)).add(haze.mul(isAmbient.select(0.55, 1.0)));
         const colour = mix(C.rgb, vec3(1), clamp(beam.mul(knot).mul(0.5), 0, 0.7));
-        const cap = shock.mul(isAmbient.select(0.18, 0.9)).add(glow.mul(isAmbient.select(0.4, 1.0)));
+        const cap = shock.mul(isAmbient.select(0.18, 0.6)).add(glow.mul(isAmbient.select(0.4, 1.0)));
         const rgb = colour.mul(core.mul(2.2).add(cap))
             .mul(lightNow).mul(isAmbient.select(0.65, 1.0)).mul(u.iris)
             .mul(edge);
