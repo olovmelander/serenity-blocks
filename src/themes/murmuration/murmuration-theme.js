@@ -40,6 +40,7 @@ import { createFluidParticlesRenderer } from './rendering/fluid-particles-render
 import { SwarmPostPipeline, getSwarmPostProfile } from './post/render-pipeline.js';
 import { FLUID_BUDGETS, FluidParticleSim, getFluidBudget } from './sim/fluid-particles.js';
 import { SHAPE_NAMES } from './sim/shape-formations.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 const BOARD_MOUNT_SELECTOR = '#phaser-game-container, #online-main-board, .phaser-board-container';
 const BOARD_OBSERVATION_ROOT_SELECTOR = [
@@ -312,6 +313,10 @@ export default class MurmurationTheme extends BaseTheme {
             sink: {
                 lock: (detail) => this._onLock(detail),
                 clear: (detail) => this.show?.clear(detail),
+                // A perfect clear that settled after its clear: the crown on it, not a new clear.
+                crown: (detail) => this.show?.crown(detail),
+                // A T-spin that cleared nothing.
+                spin: (detail) => this.show?.spin(detail),
                 combo: (count, player) => this.show?.combo(count, player),
                 // With reactions switched off the palette still steps on; the wave stays home.
                 levelUp: (level) => this.show?.levelUp(level, { silent: this.playDirector?.enabled === false }),
@@ -809,7 +814,9 @@ export default class MurmurationTheme extends BaseTheme {
             }
             if (this.fluidRenderer) {
                 this.fluidRenderer.setLens(this.camera, this._pixelHeight, this._focal);
-                this.fluidRenderer.update(delta, this.time);
+                // The motes run on the flock's clock: it runs ahead in fast play, so the
+                // banking ripples come sooner (equal to the theme's clock at rest).
+                this.fluidRenderer.update(delta, this.show?.flockClock ?? this.time);
             }
 
             // Sky: time and parallax here; heat, pulse and tints come from the show.
@@ -823,20 +830,27 @@ export default class MurmurationTheme extends BaseTheme {
                 const dp = this._dynPostParams;
                 dp.time = this.time;
                 dp.baseBloom = this.postProfile.bloomStrength;
+                // The bloom punch lifts the whole frame: Reduce flashing keeps a trace of it (ADR-0021).
                 dp.bloomBoost = this.fxState.comboIntensity * BLOOM_REACTION.combo
                     + this.fxState.rewardPulse * BLOOM_REACTION.reward
-                    + this.fxState.bloomPunch * BLOOM_REACTION.punch;
+                    + this.fxState.bloomPunch * BLOOM_REACTION.punch * flashScale();
                 dp.baseChromatic = this.postProfile.chromaticStrength;
                 dp.chromaticBoost = this.fxState.comboPulse * 0.002
                     + this.fxState.chromaPunch;
                 dp.baseVignette = this.postProfile.vignetteDarkness;
                 dp.vignetteBoost = this.fxState.vignettePunch;
                 dp.baseExposure = this.postProfile.exposure;
-                dp.exposureDip = 0;
+                // Hot play closes the iris a little, so its heat deepens colour instead of adding haze.
+                dp.exposureDip = this.fxState.exposureDip || 0;
                 this.postPipeline.updateDynamic(dp);
-                // The board's halo wears the swarm's current hue.
+                // The board's halo wears the swarm's current hue, and burns in a fever (only
+                // round a board that is there).
                 const tint = this.show?.haloTint;
                 if (tint) this.postPipeline.uBoardHaloColor?.value.setRGB(tint[0] * 0.6, tint[1] * 0.6, tint[2] * 0.6);
+                if (this.postPipeline.uBoardHaloStrength) {
+                    this.postPipeline.uBoardHaloStrength.value = BOARD_HALO.strength
+                        + (this._boardRect ? (this.fxState.haloBoost || 0) : 0);
+                }
 
                 this.postPipeline.render();
             } else {

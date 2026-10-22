@@ -511,6 +511,30 @@ describe('murmuration swarm: impulses', () => {
         expect(sim.pushImpulse(new Vector3(), 9)).toBe(next);
         expect(sim._impulsePositions).toHaveLength(MAX_IMPULSES);
     });
+
+    it('frees the slot of a ring that has run out past the swarm, before evicting one still crossing it', () => {
+        const sim = new FluidParticleSim(4, { ...SWARM });
+        const reach = sim.uExtent.value.x;
+        // Seven strong rings, one weak one crossing the swarm right now.
+        const wide = {
+            speed: 9, width: 0.3, flash: 1, decay: 0.9,
+        };
+        const strong = Array.from({ length: MAX_IMPULSES - 1 }, (_, i) => (
+            sim.pushImpulse(new Vector3(i, 0, 0), 20, null, RADIAL, wide)));
+        const crossing = sim.pushImpulse(new Vector3(), 4, null, RADIAL, { speed: 7.5, width: 0.16, flash: 1 });
+        expect(new Set([...strong, crossing]).size).toBe(MAX_IMPULSES);
+        // The strong ones have left the swarm far behind (still strong: a ring decays slowly) …
+        strong.forEach((slot) => { sim._impulseWaves[slot].value.x = reach * 3; });
+        sim._impulseWaves[crossing].value.x = reach * 0.5;
+        // … so the next ring takes a spent slot, never the weak ring still crossing.
+        const slot = sim.pushImpulse(new Vector3(), 5, null, RADIAL, { speed: 7.5, width: 0.16, flash: 1 });
+        expect(strong).toContain(slot);
+        expect(slot).not.toBe(crossing);
+        expect(sim._impulsePositions[crossing].value.w).toBe(4);
+        // A ring still inside the swarm is never counted as spent.
+        strong.forEach((s) => { sim._impulseWaves[s].value.x = reach * 0.4; });
+        expect(sim.pushImpulse(new Vector3(), 30, null, RADIAL, {})).toBe(crossing);
+    });
 });
 
 describe('murmuration swarm: formations', () => {
@@ -711,6 +735,12 @@ describe('murmuration swarm: formations', () => {
         // A figure drawn for a play forms from the ribbons, in front of dust that keeps moving.
         sim.setShape('torus', { keepDust: true });
         expect(held()).toEqual({ dust: 0, ribbon: whole.ribbon });
+        // A share keeps that much of the dust flowing; the rest joins the figure (more birds).
+        sim.setShape('torus', { keepDust: 0.5 });
+        const half = held();
+        expect(half.ribbon).toBe(whole.ribbon);
+        expect(half.dust).toBeGreaterThan(whole.dust * 0.25);
+        expect(half.dust).toBeLessThan(whole.dust * 0.75);
         // And the next figure that wants everyone gets everyone back.
         sim.setShape('heart');
         expect(held()).toEqual(whole);
