@@ -154,6 +154,45 @@ describe('voltage storm director: intake', () => {
         expect(director.onB2B({ active: false })).toBe(false);
     });
 
+    it('crowns the clear before it with a perfect clear on its own frame, instead of a second clear', () => {
+        const { director, calls, sink } = makeDirector();
+        const crowns = [];
+        sink.perfect = vi.fn((c) => crowns.push({ ...c }));
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        // Physics sends it after the last wave has settled, on a frame of its own.
+        director.onPerfectClear({ depth: 4 });
+        director.onB2B({ active: true });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(sink.perfect).toHaveBeenCalledTimes(1);
+        expect(crowns[0]).toMatchObject({ player: 0, b2b: true });
+        // A sink with no crown takes it as a one-line clear, as it always did.
+        const plain = makeDirector();
+        plain.director.onPerfectClear({ depth: 4 });
+        plain.director.flush();
+        expect(plain.calls.clear).toHaveLength(1);
+        expect(plain.calls.clear[0]).toMatchObject({ lines: 1, perfect: true });
+    });
+
+    it('passes on a T-spin that cleared nothing, and keeps one that did on its clear', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.tspin = vi.fn();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(0);
+        expect(sink.tspin).toHaveBeenCalledTimes(1);
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(sink.tspin).toHaveBeenCalledTimes(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true });
+    });
+
     it('turns a meditation click into a clear at a screen position', () => {
         const { director, calls } = makeDirector();
         director.setViewport(1000, 500);
