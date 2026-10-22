@@ -157,6 +157,8 @@ export class GamepadController {
         // Serenity Mode support
         this.serenityModeActive = false;
         this.serenityModeCallbacks = null;
+        // RB / LB: the next or previous theme in play (src/ui/theme-keys.js)
+        this.themeStepper = null;
 
         // DAS (Delayed Auto Shift) states for each gamepad
         this.dasState = [
@@ -1987,6 +1989,8 @@ export class GamepadController {
             if (held) return;
         }
 
+        if (slot === 0 && !this.serenityShortcutsLive()) this.processThemeStepInput(gamepad, slot);
+
         // Use custom bindings if available, otherwise use default
         const config = this.getGameplayBindingConfig(slot);
 
@@ -2466,6 +2470,28 @@ export class GamepadController {
         this.serenityModeActive = false;
         this.serenityModeCallbacks = null;
         console.log('[Gamepad] Serenity Mode disabled');
+    }
+
+    /** @param {((direction: number) => boolean)|null} step RB / LB in play (src/ui/theme-keys.js) */
+    setThemeStepper(step) {
+        this.themeStepper = step;
+    }
+
+    /**
+     * RB the next theme, LB the previous, unless a game control is bound there. They keep the
+     * menu's last state of the shoulders: a press begun in Settings (where they change tabs)
+     * does not step the theme when Settings closes under it.
+     */
+    processThemeStepInput(gamepad, slot) {
+        if (!this.themeStepper) return;
+        const prevState = this.previousStates[slot];
+        const bound = new Set(Object.values(this.getGameplayBindingConfig(slot)).map((binding) => binding.index));
+        const shoulders = [[BUTTON_MAP.RB, 'menuRB', 1], [BUTTON_MAP.LB, 'menuLB', -1]];
+        for (const [index, stateKey, direction] of shoulders) {
+            const pressed = !bound.has(index) && Boolean(gamepad.buttons[index]?.pressed);
+            if (pressed && !prevState[stateKey]) this.themeStepper(direction);
+            prevState[stateKey] = pressed;
+        }
     }
 
     /**
