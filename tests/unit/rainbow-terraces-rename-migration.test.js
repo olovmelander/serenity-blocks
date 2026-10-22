@@ -56,7 +56,7 @@ describe('Sky Children was renamed Rainbow Terraces: what a player already has n
         const song = getThemeMusic('rainbow-terraces');
         expect(song).toMatchObject({
             name: 'Rainbow Terraces',
-            file: 'rainbow-terraces-placeholder-song.mp3',
+            path: './assets/music/blood-moon.mp3?song=rainbow-terraces',
             trackKey: 'RainbowTerraces',
             placeholder: true,
         });

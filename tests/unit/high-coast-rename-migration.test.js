@@ -63,7 +63,7 @@ describe('High Coast took the Mountain orb: what a player already has now means 
         const song = getThemeMusic('high-coast');
         expect(song).toMatchObject({
             name: 'High Coast',
-            file: 'high-coast-placeholder-song.mp3',
+            path: './assets/music/blood-moon.mp3?song=high-coast',
             trackKey: 'HighCoast',
             placeholder: true,
             placeholderSource: 'blood-moon.mp3',

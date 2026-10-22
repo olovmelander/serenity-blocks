@@ -13,11 +13,12 @@ import {
  */
 let availableSongs = [];
 let pendingSongsLoad = null;
-const catalogByFile = new Map(THEME_MUSIC_CATALOG.map((song) => [song.file, song]));
+// By path: placeholder songs share Blood Moon's file, but each has a URL of its own.
+const catalogByPath = new Map(THEME_MUSIC_CATALOG.map((song) => [song.path, song]));
 
 function validateManifestSong(song) {
     if (!song || typeof song !== 'object' || Array.isArray(song)) return null;
-    const canonical = catalogByFile.get(song.file);
+    const canonical = catalogByPath.get(song.path);
     if (!canonical || song.name !== canonical.name || song.path !== canonical.path
         || (song.trackKey !== undefined && song.trackKey !== canonical.trackKey)
         || (song.themeId !== undefined && song.themeId !== canonical.themeId)) return null;

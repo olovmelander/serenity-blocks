@@ -169,7 +169,7 @@ export class GameplaySurge {
 
     /**
      * A piece locked.
-     * @param {{ hardDrop?: boolean }} [lock]
+     * @param {{ hardDrop?: boolean } | null | undefined} lock
      * @param {number} at seconds
      */
     lock(lock, at) {

@@ -206,8 +206,8 @@ describe('Thermal Bloom, the chapter 1 collection bonus', () => {
             themeId: THEME,
             trackKey: 'ThermalBloom',
             name: 'Thermal Bloom',
-            file: 'thermal-bloom-placeholder-song.mp3',
-            path: './assets/music/thermal-bloom-placeholder-song.mp3',
+            file: 'blood-moon.mp3',
+            path: './assets/music/blood-moon.mp3?song=thermal-bloom',
             placeholder: true,
             placeholderSource: 'blood-moon.mp3',
         });
