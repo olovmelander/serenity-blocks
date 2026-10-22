@@ -73,7 +73,7 @@ function jetStar(u, aJet) {
     const isGreat = kind.greaterThan(KIND_GREAT - 0.5).and(kind.lessThan(KIND_GREAT + 0.5)).toVar();
     const isAmbient = kind.greaterThan(KIND_AMBIENT - 0.5).toVar();
     const isDrop = kind.greaterThan(KIND_DROP - 0.5).and(kind.lessThan(KIND_DROP + 0.5)).toVar();
-    const reachBase = isGreat.select(1.35, isDrop.select(0.4, isAmbient.select(0.13, 0.3))).mul(E.z);
+    const reachBase = isGreat.select(1.35, isDrop.select(0.4, isAmbient.select(0.17, 0.3))).mul(E.z);
     const run = max(jetReachNode(ageFire), jetReachNode(ageFree).mul(1.2));
     // an ambient star's jets never die; they breathe
     const breath = sin(u.time.mul(0.35).add(E.w.mul(30.0))).mul(0.25).add(0.45);
@@ -134,8 +134,13 @@ export function createJets(u) {
         const beam = nfGauss(x.div(w)).mul(step1(len.sub(s))).mul(fall);
         const haze = nfGauss(x.div(w.mul(4.0))).mul(step1(len.sub(s))).mul(fall).mul(0.12);
         const age = isAmbient.select(u.time, max(ageFire, 0));
-        // knots: shocks that run outward along the beam
-        const knot = pow(clamp(cos(s.mul(float(22.0).div(E.z)).sub(age.mul(5.0))).mul(0.5).add(0.5), 0, 1), 10.0);
+        // knots: shocks that run outward along the beam, unevenly spaced (the outflow comes in
+        // fits)
+        // (spaced so that even a short jet carries several: at a third of this, a lock's jet was
+        // shorter than one spacing and drew as a lit rod)
+        const knotPhase = s.mul(isAmbient.select(64.0, 46.0).div(E.z)).sub(age.mul(5.0))
+            .add(sin(s.mul(isAmbient.select(23.0, 16.0).div(E.z)).add(E.w.mul(17.0))).mul(1.4));
+        const knot = pow(clamp(cos(knotPhase).mul(0.5).add(0.5), 0, 1), 10.0);
         // the bow shock: a small cap at the tip, opening back toward the star (blunt, and dim off
         // the axis, so its arms never reach back round the star like a ring); it forms once the
         // jet has run out a few widths
@@ -146,9 +151,15 @@ export function createJets(u) {
         const glow = nfGauss(length(vec2(tx, x)).div(bow.mul(1.2))).mul(0.25);
         const edge = float(1).sub(smoothstep(0.55, 1.0, abs(positionGeometry.x)))
             .mul(float(1).sub(smoothstep(0.45, 1.0, tx.div(tip))));
-        const core = beam.mul(knot.mul(2.2).add(0.35)).add(haze);
+        // an outflow is a chain of knots in a faint beam, not a lit rod capped at both ends; an
+        // ambient star's is fainter still
+        const between = isAmbient.select(0.04, 0.2);
+        const core = beam.mul(knot.mul(2.2).add(between)).add(haze.mul(isAmbient.select(0.55, 1.0)));
         const colour = mix(C.rgb, vec3(1), clamp(beam.mul(knot).mul(0.5), 0, 0.7));
-        const rgb = colour.mul(core.mul(2.2).add(shock.mul(0.9)).add(glow)).mul(lightNow).mul(u.iris).mul(edge);
+        const cap = shock.mul(isAmbient.select(0.18, 0.6)).add(glow.mul(isAmbient.select(0.4, 1.0)));
+        const rgb = colour.mul(core.mul(2.2).add(cap))
+            .mul(lightNow).mul(isAmbient.select(0.65, 1.0)).mul(u.iris)
+            .mul(edge);
         return vec4(rgb, 0);
     })();
     return nfPart('jets', geometry, material, 14);
