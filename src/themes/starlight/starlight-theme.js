@@ -242,6 +242,10 @@ export default class StarlightTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
+                // The late perfect clear crowns the clear still playing; a T-spin that cleared
+                // nothing still turns the sky a little.
+                crown: () => this.world?.onCrown?.(),
+                spin: () => this.world?.onSpin?.(),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => {
                     this.level = level;
