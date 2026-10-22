@@ -24,8 +24,9 @@ const DEG = Math.PI / 180;
 /** The lock's geometry (mirrors GARGANTUA_LOCK; duplicated here so the camera need not import a
  * chapter environment). */
 const LOCK_DEPTH = 900;
-const LOCK_UP = 150;
-const LOCK_RIGHT = 26;
+// The rail runs into the hole's centre (GARGANTUA_LOCK, 2026-10-22: was 150 up / 26 right).
+const LOCK_UP = 29;
+const LOCK_RIGHT = 4;
 const SHADOW_RADIUS = 132;
 const LOCK_DISTANCE = Math.hypot(LOCK_DEPTH, LOCK_UP, LOCK_RIGHT);
 

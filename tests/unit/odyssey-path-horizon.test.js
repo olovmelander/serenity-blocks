@@ -1,7 +1,8 @@
 /**
  * THE PATH VANISHES INTO THE HOLE (2026-10-22): through chapter 6 the rail ends at the 6->7
- * boundary and the nodes beyond it are not drawn; the far rail retracts across the 5->6 seam and
- * is laid out again before the eye reaches chapter 7's first node.
+ * boundary and the nodes beyond it are not drawn; the far rail retracts across the 5->6 seam.
+ * From there the way on is laid out one node at a time, and all of it once chapter 7's fall has
+ * the hole swallowing the frame.
  */
 import { describe, expect, it } from 'vitest';
 import { getLevelRegistry } from '../../src/core/odyssey/LevelRegistry.js';
@@ -14,6 +15,7 @@ import {
 import {
     getChapterTransitionForChapter,
 } from '../../src/rendering/odyssey/chapter-environments/shared/chapter-profile.js';
+import { CH7_FALL } from '../../src/rendering/odyssey/transitions/odyssey-black-hole-fall.js';
 
 describe('Odyssey path horizon (the rail vanishes into the black hole)', () => {
     const { chapterPositions, levelPositions } = getLevelRegistry().getPresentationLayout();
@@ -21,11 +23,18 @@ describe('Odyssey path horizon (the rail vanishes into the black hole)', () => {
     const ch7Start = chapterPositions[6];
     const wIn = getChapterTransitionForChapter(5).seamWidth;
     const wOut = getChapterTransitionForChapter(6).seamWidth;
+    const ch8Start = chapterPositions[7];
     const horizon = (p) => resolveOdysseyPathHorizon(p, chapterPositions, levelPositions);
     const drawn = (x, p) => odysseyPathHorizonWeight(x, horizon(p));
+    // The way on's stops: the boundary node, then chapter 7's nodes until the hole has swallowed
+    // the frame (levels 49-52 in the shipped layout).
+    const swallowed = ch7Start + ((ch8Start - ch7Start) * CH7_FALL.horizon);
+    const stops = [ch7Start, ...levelPositions.filter((x) => x > ch7Start + 1e-6 && x <= swallowed + 1e-6)];
+    const wayOnEnd = stops[stops.length - 1];
 
-    it('hides nothing before chapter 6 and after the eye reaches chapter 7', () => {
-        [0, 0.1, 0.4, ch6Start - wIn - 1e-4, ch7Start, ch7Start + 0.01, 0.95, 1].forEach((p) => {
+    it('hides nothing before chapter 6 and once the hole has swallowed the frame', () => {
+        expect(stops.length).toBeGreaterThanOrEqual(3);
+        [0, 0.1, 0.4, ch6Start - wIn - 1e-4, wayOnEnd, wayOnEnd + 0.01, 0.95, 1].forEach((p) => {
             expect(horizon(p), `p=${p}`).toBe(PATH_HORIZON_OPEN);
             expect(drawn(1, p)).toBe(1);
         });
@@ -55,12 +64,26 @@ describe('Odyssey path horizon (the rail vanishes into the black hole)', () => {
         expect(resolveOdysseyPathHorizon(ch7Start, chapterPositions)).toBe(PATH_HORIZON_OPEN);
     });
 
-    it('lays the far rail out again before the eye reaches chapter 7, without a jump anywhere', () => {
-        // Fully open from the boundary on: a player parked on chapter 7's first node sees the way on.
-        expect(horizon(ch7Start)).toBe(PATH_HORIZON_OPEN);
-        expect(drawn(1, ch7Start - 1e-6)).toBeGreaterThan(0.99);
-        // The horizon SWEEPS, it never jumps: on the glide into chapter 7 it runs up the climb at
-        // most ~50x the eye's own speed (a pop would be a step of the whole climb, ~0.13).
+    it('lays the way on out one node at a time: the next node drawn, nothing past it', () => {
+        stops.slice(0, -1).forEach((stop, k) => {
+            const next = stops[k + 1];
+            // Parked on a stop the rail runs to the next node and tapers out just past it...
+            expect(horizon(stop), `stop ${k}`).toBeCloseTo(next + ODYSSEY_PATH_HORIZON.soft, 9);
+            expect(drawn(next, stop), `next node from stop ${k}`).toBe(1);
+            // ...so it never stops between two nodes, and no node past the next one is drawn.
+            levelPositions.filter((x) => x > next + ODYSSEY_PATH_HORIZON.soft)
+                .forEach((x) => expect(drawn(x, stop), `node ${x.toFixed(4)} from stop ${k}`).toBe(0));
+        });
+        // Measured from level 49: the climb at p 0.890-0.901 crossed the face of the hole. From the
+        // boundary node it is not drawn.
+        for (let x = 0.890; x <= 0.901; x += 0.001) expect(drawn(x, ch7Start), `x=${x.toFixed(3)}`).toBe(0);
+    });
+
+    it('lays the whole way on out on the glide onto the last stop, without a jump anywhere', () => {
+        expect(horizon(wayOnEnd)).toBe(PATH_HORIZON_OPEN);
+        expect(drawn(1, wayOnEnd - 1e-6)).toBeGreaterThan(0.99);
+        // The horizon SWEEPS, it never jumps: on each glide it runs ahead at most ~50x the eye's
+        // own speed (a pop would be a step of a whole stretch of rail).
         let prev = horizon(0);
         for (let p = 0.0005; p <= 1; p += 0.0005) {
             const h = Math.min(horizon(p), 1.02);
