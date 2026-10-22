@@ -11,6 +11,12 @@
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
+ *   sink.crown({ player })     a perfect clear that came on a frame of its own, after its clear
+ *   sink.spin({ player })      a T-spin that cleared nothing
+ *
+ * A perfect clear is settled by physics ~360 ms AFTER the last wave of the clear that made it, so
+ * it nearly always arrives alone. It is a crown on the clear still playing, never a clear of its
+ * own: the sink is told so (a sink with no `crown` gets the old one-line perfect clear instead).
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width; `color` is the piece's colour (a CSS hex string) or null. `screen`
@@ -191,7 +197,8 @@ function capturePosition(slot, payload) {
 export class VesperDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, combo?: Function, levelUp?: Function },
+     *   sink?: { lock?: Function, clear?: Function, combo?: Function, levelUp?: Function,
+     *     crown?: Function, spin?: Function },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -212,6 +219,8 @@ export class VesperDirector {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
         };
         this._screen = { x: 0.5, y: 0.5 };
+        /** What a crown or a spin is told (reused). */
+        this._crown = { player: 0 };
     }
 
     /**
@@ -361,7 +370,6 @@ export class VesperDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -432,6 +440,21 @@ export class VesperDirector {
             c.color = slot.lockColor;
             c.screen = null;
             sink.lock(c);
+        }
+        // A perfect clear on a frame of its own (after its clear's last wave): a crown, not a clear.
+        // (A meditation click carries its own position and is a clear of its own.)
+        if (slot.lines === 0 && slot.perfect) {
+            if (sink?.crown && !slot.hasPosition) {
+                const c = this._crown;
+                c.player = slot.player;
+                sink.crown(c);
+            } else slot.lines = 1;
+        }
+        // A T-spin that cleared nothing still shows.
+        if (slot.lines === 0 && slot.tspin && sink?.spin) {
+            const c = this._crown;
+            c.player = slot.player;
+            sink.spin(c);
         }
         if (slot.lines > 0 && sink?.clear) {
             const c = this._clear;
