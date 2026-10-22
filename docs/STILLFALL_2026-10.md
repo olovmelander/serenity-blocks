@@ -27,6 +27,19 @@ cascades, ending on an empty well four waves deep. All forty-four new puzzles ha
 winning first landing. The certifier got about nine times faster, which is what lets
 four-piece puzzles be proven on every CI run (see "Architecture").
 
+**2026-10-22:** a hundred and thirty-eight puzzles in twelve tiers, and from the core the
+climb turns upward. **Uplift** (twelve puzzles) deals five pieces against towers of ten to
+thirteen rows, where no earlier puzzle stands taller than nine, and **Pinnacle** (ten) five
+pieces against towers of twelve to fourteen rows with two goals at once. Most are built on
+before they come down: the player raises a layer, a column or a post on top of the tower, and
+one lock sends it all down through the tower's gaps, up to eight waves deep. All twenty-two
+have exactly one winning first landing. A five-piece tree is about thirty times a four-piece
+one, and on a tall tower proving one through the cascade resolver took up to six minutes; the
+solver now resolves its locks with `stillfall-cascade.js` (the resolver's own steps on typed
+arrays, held to it lock for lock) and judges what it can without building runs, so a
+five-piece tower is proved in half a second to five (see "Architecture"). The panel shows a
+supply longer than the queue can, and the atlas gives the tower tiers a taller frame.
+
 **Status: in the main menu since 2026-10-18,** between Infinity and Local Versus, with no
 URL parameter (the preview flag, `faultLines` from the mode's first name, is retired; an old
 `?faultLines=1` is simply ignored). What it still needs from the owner is listed at the end.
@@ -35,7 +48,8 @@ URL parameter (the preview flag, `faultLines` from the mode's first name, is ret
 
 A puzzle mode built on the rule that sets the game apart: after a clear, each body falls
 as one rigid unit until something holds it, and two bodies never glue together. A puzzle
-is an authored structure, a supply of one to four pieces shown in the queue, and a goal.
+is an authored structure, a supply of one to five pieces shown in the queue (and, past
+four, in the panel), and a goal.
 Gravity waits while you choose, every piece can be taken back, and nothing is scored.
 
 Goals:
@@ -82,6 +96,12 @@ still up.", "The relic was cleared away."); with two goals it names each one sti
   (`src/ui/stillfall/stillfall-pad-list.js`, through `GamepadController.setPanelControls`).
 - Steam rich presence shows "Stillfall" while a puzzle is on the board (`#Stillfall` in
   `steam/rich-presence/english.vdf`).
+- **A five-piece supply** is longer than the queue beside the well shows (the piece in hand
+  and three more), so the panel shows the whole supply under "Piece 1 of 5": each piece as it
+  spawns, the ones placed dimmed and the one in hand lit (`supplyStripHtml`, with the glyphs
+  of `stillfall-piece-glyphs.js`, which the atlas card shares). A glyph is one solid shape, an
+  SVG polygon round the piece's outline, as the queue and the board draw pieces; never four
+  separate squares. Shorter supplies leave it to the queue.
 - **Hints.** After two failed attempts on a puzzle, a Hint button (**?**) lights the next
   landing of the puzzle's stored solution. If the pieces placed so far left that line but a
   straight line on still exists, the hint follows that instead; only when no line on
@@ -112,7 +132,7 @@ still up.", "The relic was cleared away."); with two goals it names each one sti
 
 ## The puzzle bank
 
-A hundred and sixteen puzzles in ten tiers (`src/core/stillfall/puzzle-bank.js`):
+A hundred and thirty-eight puzzles in twelve tiers (`src/core/stillfall/puzzle-bank.js`):
 
 - **First light** (one piece each): First fall, Second wave, Lanterns, Clean break, Footstep,
   Lantern rain, Look below, Leftovers, Domino, Staircase. Each teaches one idea: a clear drops
@@ -168,13 +188,33 @@ A hundred and sixteen puzzles in ten tiers (`src/core/stillfall/puzzle-bank.js`)
   floors, Rebuild, Square one, Worn down, Three below, Middle out, Twin lanterns, Bare rock.
   Two seals in two rows cleared at once, a relic that loses its top on the way down, two
   lanterns dropping into two rows at once, and Bare rock: four waves deep and nothing left.
+- **Uplift** (five pieces, one way in, towers of ten to thirteen rows): Floorboards, Ratchet,
+  Cellar, Pile driver, Shaft, Lamplight, Battlements, Relay, Descent, Flagpole, Gatehouse,
+  Cornerstone. Build on the tower, then bring it down: four pieces laid across the top that
+  the long piece drops in two rows at once; a layer with a tooth over each gap, lowered a row a
+  wave; an upright long piece driven down a column of gaps like a pile; a crown of the
+  player's own row; a post planted at the edge for the tower to come down with; two columns
+  over two lines of gaps; lanterns that fall into a row low in the tower or into the row being
+  built; lines over three clears, each further down; seals under five rows, behind a first
+  clear of four lines, and at the very foot of the tower (Cornerstone: eleven lines, eight
+  waves from the last lock, three blocks left in the well).
+- **Pinnacle** (five pieces, one way in, towers of twelve to fourteen rows, two goals at once):
+  Capstone, Upper storey, Neighbours, Plank and post, Rubble, Last word, Watchtower, Lantern
+  stair, Long way down, Lantern tower. Two seals, or a seal with a cascade or a count of
+  lines: a seal crowning the tower, two seals built over at the top, a lantern and a seal side
+  by side, an opening at the edge that clears three lines, a cascade that meets its count and
+  leaves the seal a row lower for the last piece, a lantern seal that sinks a row with every
+  clear, a seal from the top that rides a six-line collapse to the bottom, and a tower hung
+  with lanterns that drop one by one into its gaps (Lantern tower: seven lines in six waves).
 
 ### The standard every puzzle meets
 
 The certifier proves, on every CI run (the standard is `tests/unit/helpers/stillfall-certify.js`;
-`stillfall-puzzles.test.js` holds it to tiers 1–6 beside the bank and rules tests, and
-`stillfall-puzzles-tiers-7-8`, `-tier-9` and `-tier-10` to the rest, so CI runs them side by
-side; a bank test fails if a tier is in no file):
+`stillfall-puzzles.test.js` holds it to tiers 1–6 beside the bank and rules tests,
+`stillfall-puzzles-tiers-7-8`, `-tier-9` and `-tier-10` to the next four, and the five-piece
+tiers in shards (`-tier-11-1` to `-3`, `-tier-12-1` and `-2`, as `CERTIFIED_SHARDS` says), so
+CI runs them side by side; a bank test fails if a tier is in no file or a shard's file is
+missing):
 
 1. **A straight-drop solution exists**: rotate and move at the top, then drop. A solution
    that needs a soft drop and a slide (a tuck) or a rotation at the bottom (a kick) is
@@ -209,7 +249,7 @@ plus a wide body held by one end. Before Stillfall it held only single cells and
         'AAAAA.CCCC',      // (authoring convention only: all bodies follow one rule)
         'BBBBBB.DDD',
     ],
-    supply: ['I'],          // dealt in order (one to four); nothing refills it
+    supply: ['I'],          // dealt in order (one to five); nothing refills it
     goal: { type: 'waves', atLeast: 2 },
     solution: [{ piece: 'I', rotation: 1, x: 3 }],   // right rotations, then the column
 }
@@ -240,6 +280,13 @@ touching bodies match (the board draws same-coloured neighbours as one shape).
    four-piece one about a dozen; most are not worth a name, so rank, then read the best few
    lock by lock before writing a lesson. For four pieces, check the real certifier's count
    of winning openings: tucks and kicks can add one the straight-drop search did not see.
+   Five pieces on towers: `--pieces=5 --style=tower` (nine to thirteen nearly full strata of
+   longer bodies, relics kept as goals), ranked with `--oneWay --maxRows=14 --maxBodies=26`.
+   It tries a structure every minute or two per worker, and keeps several goals from most;
+   the twenty-two tower puzzles came from about an hour on 26 workers. Run the real solver
+   over the ranked one-way candidates before reading any: tucks and kicks gave about a third
+   of the single goals, and about half of the pairs, a second winning opening, and one a
+   four-piece solution. Lessons are at most 101 characters (the bank test says so).
 1. Write the definition in `puzzle-bank.js` without a `solution`.
 2. Run `npx vitest run tests/unit/stillfall-puzzles.test.js`. It fails with the id if the
    puzzle is unsolvable, has no straight solution, solves early, wastes a piece, or lets
@@ -265,6 +312,7 @@ board at each wave as it is detected, so a lesson says what really falls where; 
 | Deal (the real spawn row), landings, lock + cascade, goal judge, failure reasons | `src/core/stillfall/stillfall-sim.js` | headless |
 | Every reachable landing: the bot pathfinder's search (same transitions, kicks, cap and path choice) without its allocations | `src/core/stillfall/stillfall-reach.js` | headless |
 | Exhaustive solver, straightness, every-piece-matters, a line on from any position | `src/core/stillfall/stillfall-solver.js` | headless |
+| The cascade resolver's answer for a lock (bodies after, waves, lines) on typed arrays, for the solver and the search | `src/core/stillfall/stillfall-cascade.js` | headless |
 | Certifier standard and the tier groups each certifier file holds | `tests/unit/helpers/stillfall-certify.js` | test |
 | Bank, tiers and the unlock rule | `src/core/stillfall/puzzle-bank.js` | headless |
 | Puzzle search and rank (offline) | `scripts/stillfall-search.mjs` | tool |
@@ -288,6 +336,24 @@ board at each wave as it is detected, so a lesson says what really falls where; 
   report field, every solution's landings and input paths, and the hint from every opening;
   the bank then certified about nine times faster (34 s to 3.7 s on a loaded machine), and a
   four-piece puzzle takes one to three seconds.
+- **Five pieces on tall towers.** A five-piece tree is about thirty times a four-piece one,
+  and a tall tower's locks clear more often and cascade deeper: through `resolveCascade`,
+  which also scores, builds hole masks and counts the animation's steps, one tower puzzle
+  took up to six minutes to prove. Three changes, none of which changes an answer. Locks that
+  clear are resolved by `stillfall-cascade.js`, the resolver's own steps on typed arrays (full
+  rows found bottom-up from the first visible row, cleared cells removed in place, same-id
+  fragments in reading order, settle passes over a bottom-edge order sorted once), held to
+  `resolveCascade` lock for lock by `tests/unit/stillfall-cascade.test.js` (every lock that
+  clears in each bank puzzle's first two locks, and 400 seeded towers with cut and hanging
+  bodies). The last piece's rests are judged on the cascade's cells (`outcomeAfter`), on a
+  board loaded once per position. And a landing of the piece before the last that clears
+  nothing is searched only when some rest of the last piece then solves (`couldSolveAfter`),
+  which most never need. Against the previous solver on all hundred and sixteen puzzles then
+  in the bank: every report field, every solution's landings and input paths, and the hint
+  from every opening matched; the search's candidates matched byte for byte. A five-piece
+  tower is proved in 0.5–4.5 s here, the four-piece tiers several times faster than before,
+  and all nine certifier files (570 cases over 138 puzzles) run in about half a minute.
+  Six pieces would need it about thirty times faster again.
 - **Marked bodies** are `GameState.relicPieceIds` and `sealPieceIds` (lists; the mode fills
   them from `markedBodies(goal)`), and the published state carries each goal part with
   whether it holds now and, for a seal, its blocks left.
@@ -362,14 +428,33 @@ board at each wave as it is detected, so a lesson says what really falls where; 
   on both relics, "Piece 1 of 4" with three pieces queued, both progress rows of a two-goal
   puzzle, the ten tiers in the list; no console errors.
 
+- 2026-10-22, the towers. Unit: 570 certifier cases over 138 puzzles in nine files (about half
+  a minute here), the fast cascade against the resolver (`stillfall-cascade.test.js`), the
+  solver's shortcuts against the runs they stand for, the panel's supply strip, each tier's
+  preview frame, and the lesson length. The optimized solver matched the previous one on all
+  116 puzzles then in the bank (every report field, every solution's landings and input
+  paths, the hint after every opening), and the search matched the previous search byte for
+  byte. Every one of the twenty-two was read lock by lock, the deciding lock wave by wave
+  through the live game, before its lesson was written. In the real game (private Vite,
+  Electron on WebGPU, an NVIDIA Blackwell, Cinder Drift), played from their stored lines by
+  key presses, each key confirmed on the live piece: Floorboards (eight lines, six waves) and
+  Lantern tower (two seals; seven lines, six waves) solved; "Piece 1 of 5" with the supply
+  strip, the placed pieces dimmed as play went on; the atlas with twelve tiers, "Tier 11 of
+  12 · Five pieces each" and the towers in their taller frame; Cornerstone in the portrait
+  strip at 900×1400; no console errors. That pass caught a count that broke over two lines
+  beside six pips or more ("0 /" over "6", already so on Plumb line): the count no longer
+  wraps, and seven pips or more sit smaller and closer, so nine fit with their label.
+
 ## Still open (owner)
 
 The owner shipped it to the main menu on 2026-10-18. Gamepad list navigation and Steam rich
 presence, which this list used to name, are done. What remains:
 
-1. **Owner playtest** of the hundred and sixteen puzzles and the difficulty curve between
-   tiers, above all whether the seal reads at a glance and whether four-piece puzzles (the
-   last two tiers) are fun to think through or only long.
+1. **Owner playtest** of the hundred and thirty-eight puzzles and the difficulty curve between
+   tiers, above all whether the seal reads at a glance, whether four-piece puzzles are fun to
+   think through or only long, and whether the five-piece towers (Uplift and Pinnacle) are
+   hard in the right way: each has one way in, and most ask the player to see a cascade of
+   five to eight waves before the first piece drops.
 2. **Name clearance** for "Stillfall", which is now player-facing. Names already in the
    mode's vocabulary if it fails: Seams, Fault.
 3. **Steamworks upload** of `steam/rich-presence/english.vdf`: until the file with

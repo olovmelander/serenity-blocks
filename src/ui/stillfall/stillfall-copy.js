@@ -5,7 +5,7 @@
 
 export const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`;
 
-const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four'];
+const NUMBER_WORDS = ['no', 'one', 'two', 'three', 'four', 'five'];
 /** "one", "two" … for the small counts the game names in words; larger counts stay digits. */
 export const countWord = (count) => NUMBER_WORDS[count] || String(count);
 

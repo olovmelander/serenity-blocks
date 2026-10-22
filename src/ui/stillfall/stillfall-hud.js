@@ -25,6 +25,8 @@ import {
     capitalised, goalText, plural, theMarked,
 } from './stillfall-copy.js';
 import { createPuzzleListPadControls } from './stillfall-pad-list.js';
+import { pieceGlyphHtml } from './stillfall-piece-glyphs.js';
+import { NEXT_QUEUE_SLOTS } from '../next-queue-ui.js';
 
 const SOLVED_KEY = 'serenity.stillfall.solved';
 /** Where the solves were kept while the mode was called Fault Lines (until 2026-10-18). */
@@ -122,6 +124,25 @@ function supplyText(state) {
     if (!state.inHand) return 'No pieces left';
     if (state.dealt + 1 === total) return total === 1 ? 'One piece' : 'Last piece';
     return `Piece ${state.dealt + 1} of ${total}`;
+}
+
+/**
+ * The whole supply, when it is longer than the queue beside the well shows (the piece in hand
+ * and NEXT_QUEUE_SLOTS more): each piece as it spawns, the ones placed dimmed and the one in
+ * hand lit, so a five-piece puzzle can be planned from its first piece. Shorter supplies leave
+ * it to the queue.
+ */
+export function supplyStripHtml(state) {
+    const { supply } = state.puzzle;
+    if (supply.length <= NEXT_QUEUE_SLOTS + 1) return '';
+    const glyphs = supply.map((piece, index) => {
+        let place = 'is-coming';
+        if (index < state.dealt) place = 'is-placed';
+        else if (index === state.dealt && state.inHand) place = 'is-in-hand';
+        return pieceGlyphHtml(piece, 'stillfall-supply__piece', place);
+    }).join('');
+    const label = `The pieces, in order: ${supply.join(', ')}`;
+    return `<span class="stillfall-supply" role="img" aria-label="${label}">${glyphs}</span>`;
 }
 
 /**
@@ -457,6 +478,7 @@ class StillfallHud {
                 <p class="stillfall-goal__text">${escapeHtml(goalText(state.puzzle.goal))}</p>
                 ${progressHtml(state)}
                 <p class="stillfall-pieces">${supplyText(state)}</p>
+                ${supplyStripHtml(state)}
                 ${firstPuzzle ? `<p class="stillfall-hint">${key(this.dropKeyLabel())}${pad('B')} drops the piece. Nothing locks until you do.</p>` : ''}
             </section>
             ${outcomeHtml(state)}

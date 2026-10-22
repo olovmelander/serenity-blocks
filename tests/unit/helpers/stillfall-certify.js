@@ -18,10 +18,19 @@ import { STILLFALL_PUZZLES } from '../../../src/core/stillfall/puzzle-bank.js';
 
 /**
  * Which file certifies which tiers: stillfall-puzzles.test.js the first group, then
- * stillfall-puzzles-tiers-7-8, -tier-9 and -tier-10. A new tier joins a group (the bank
- * test fails until it does).
+ * stillfall-puzzles-tiers-7-8, -tier-9 and -tier-10, and the five-piece tiers in shards
+ * (CERTIFIED_SHARDS). A new tier joins a group (the bank test fails until it does).
  */
-export const CERTIFIED_TIER_GROUPS = Object.freeze([[1, 2, 3, 4, 5, 6], [7, 8], [9], [10]]);
+export const CERTIFIED_TIER_GROUPS = Object.freeze([[1, 2, 3, 4, 5, 6], [7, 8], [9], [10], [11], [12]]);
+
+/**
+ * A five-piece tier takes seconds a puzzle to prove, so it is shared among several files that
+ * CI runs side by side: tier → how many. Shard n (from 0) is
+ * stillfall-puzzles-tier-<tier>-<n + 1>.test.js, which calls certifyShard(tier, n) and
+ * certifies every puzzle whose place in the tier is n modulo the count (the bank test checks
+ * that each file is there and does).
+ */
+export const CERTIFIED_SHARDS = Object.freeze({ 11: 3, 12: 2 });
 
 /** The share of first landings that may lead to a solution: a quarter, a tenth, then 6%. */
 export const maxWinningShare = (tier) => {
@@ -94,12 +103,14 @@ async function certifyLine(puzzle, line, label) {
 }
 
 /**
- * Certifies every bank puzzle in the given tiers.
+ * Certifies every bank puzzle in the given tiers, or one shard of them.
  * @param {number[]} tiers
+ * @param {{ shard?: number, of?: number }} [part] the puzzles whose place is `shard` modulo `of`
  */
-export function certifyTiers(tiers) {
-    const definitions = STILLFALL_PUZZLES.filter((definition) => tiers.includes(definition.tier));
-    it(`has puzzles in tiers ${tiers.join(', ')}`, () => {
+export function certifyTiers(tiers, { shard = 0, of = 1 } = {}) {
+    const definitions = STILLFALL_PUZZLES.filter((definition) => tiers.includes(definition.tier))
+        .filter((_, index) => index % of === shard);
+    it(`has puzzles in tiers ${tiers.join(', ')}${of > 1 ? ` (shard ${shard + 1} of ${of})` : ''}`, () => {
         expect(new Set(definitions.map((definition) => definition.tier))).toEqual(new Set(tiers));
     });
     describe.each(definitions.map((definition) => [definition.id, definition]))('%s', (id, definition) => {
@@ -137,4 +148,15 @@ export function certifyTiers(tiers) {
             }
         });
     });
+}
+
+/**
+ * Certifies one shard of a tier CERTIFIED_SHARDS splits.
+ * @param {number} tier
+ * @param {number} shard from 0
+ */
+export function certifyShard(tier, shard) {
+    const of = CERTIFIED_SHARDS[/** @type {keyof typeof CERTIFIED_SHARDS} */ (tier)];
+    if (!of || shard < 0 || shard >= of) throw new Error(`[Stillfall] Tier ${tier} has no shard ${shard}`);
+    certifyTiers([tier], { shard, of });
 }
