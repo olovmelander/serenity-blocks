@@ -2676,13 +2676,17 @@ export class OdysseyBoardController {
      * whatever the eye is doing — an orb close-up, its swing in and out, free look. Chapter 6
      * seats its gas giant on it across the 5->6 seam (a screen seat, so the climb's pitch-up does
      * not slide it), so a close-up no longer drags the planet into its own view: it stays where
-     * the rail's view has it. Published on `camera.userData.railCamera` every journey frame.
+     * the rail's view has it. Published on `camera.userData.railCamera` every journey frame,
+     * with `camera.userData.followProgress`: the progress the eased eye stands at, which chapter
+     * 6 seats its black hole by so a scroll's ease cannot carry the hole ahead of the view.
      * @private
      */
     _syncRailCamera(progress) {
         const cam = this.camera;
         if (!cam?.userData) return;
         const controller = this.cameraController;
+        const followProgress = controller?.getFollowProgress?.();
+        cam.userData.followProgress = Number.isFinite(followProgress) ? followProgress : null;
         if (!controller?.computeFollowFrame || !Number.isFinite(progress)) {
             cam.userData.railCamera = null;
             return;
