@@ -9,7 +9,7 @@
     "lines:OnlineMultiplayerMode": 2786,
     "shader-material:hits": 20,
     "shader-material:files": 2,
-    "core-nondeterminism": 193,
+    "core-nondeterminism": 192,
     "core-dom-globals": 364,
     "core-raf-drivers": 23,
     "resize-listeners": 18,
