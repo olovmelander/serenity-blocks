@@ -13,6 +13,7 @@
     "src/core/flags.js",
     "src/core/game-modes/StillfallMode.js",
     "src/core/game-modes/board-effect-callbacks.js",
+    "src/core/game-modes/local-match-rules.js",
     "src/core/game-modes/local-multiplayer-fixed-tick.js",
     "src/core/game-modes/local-multiplayer-loop.js",
     "src/core/game-modes/odyssey-fixed-tick.js",

@@ -275,7 +275,7 @@ describe('LocalMultiplayerMode loop ownership', () => {
     it('resolves simultaneous two-player fixed top-outs as a draw', async () => {
         vi.useFakeTimers();
         const { mode, roundOwner } = createFixedBatchMode();
-        const checkWinCondition = vi.spyOn(mode.multiplayerState, 'checkWinCondition');
+        const resolveMatchEnd = vi.spyOn(mode, '_resolveMatchEnd');
 
         const resolution = mode._handleFixedTickTopOutBatch([1, 0, 1], roundOwner);
 
@@ -285,7 +285,7 @@ describe('LocalMultiplayerMode loop ownership', () => {
         expect(mode._showPlayerDeathAnimation.mock.calls.map(([index]) => index))
             .toEqual([0, 1]);
         expect(mode._showVictoryAnimation).not.toHaveBeenCalled();
-        expect(checkWinCondition).toHaveBeenCalledOnce();
+        expect(resolveMatchEnd).toHaveBeenCalledOnce();
 
         await vi.advanceTimersByTimeAsync(ROUND_OUTCOME_MS);
         await expect(resolution).resolves.toBe(true);
@@ -330,14 +330,14 @@ describe('LocalMultiplayerMode loop ownership', () => {
         const { mode, roundOwner } = createFixedBatchMode(3);
         mode.multiplayerState.lastAttackerIds[0] = 2;
         mode.multiplayerState.lastAttackerIds[1] = 2;
-        const checkWinCondition = vi.spyOn(mode.multiplayerState, 'checkWinCondition');
+        const resolveMatchEnd = vi.spyOn(mode, '_resolveMatchEnd');
 
         const resolution = mode._handleFixedTickTopOutBatch([1, 0], roundOwner);
 
         expect(mode.multiplayerState.players.map((player) => player.isAlive))
             .toEqual([false, false, true]);
         expect(mode._showVictoryAnimation).toHaveBeenCalledWith(2);
-        expect(checkWinCondition).toHaveBeenCalledOnce();
+        expect(resolveMatchEnd).toHaveBeenCalledOnce();
         await vi.advanceTimersByTimeAsync(ROUND_OUTCOME_MS);
         await expect(resolution).resolves.toBe(true);
         expect(mode.handleRoundEnd).toHaveBeenCalledWith('player3', false);
@@ -420,6 +420,8 @@ describe('LocalMultiplayerMode loop ownership', () => {
             player4: { lines: 0, score: 0 },
         };
         mode.multiplayerState = {
+            numPlayers: 4,
+            frags: [0, 0, 0, 0],
             players: Array.from({ length: 4 }, () => ({
                 score: 0,
                 totalLinesCleared: 0,

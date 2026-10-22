@@ -213,6 +213,8 @@ export class OdysseyBotMatch {
             });
             const previousFrags = [...this.multiplayer.frags];
             this.multiplayer.handlePlayerDeaths([...this.pendingDeaths]);
+            // The duel's frags carry across its rounds, so the state's own frag rule is the match.
+            this.multiplayer.checkWinCondition();
             this.multiplayer.frags.forEach((frags, index) => {
                 if (frags > previousFrags[index]) this._callVisual(index, 'onRoundWin');
             });

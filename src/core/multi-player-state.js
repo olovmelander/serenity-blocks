@@ -441,6 +441,30 @@ export class MultiPlayerState {
     }
 
     /**
+     * Start the Hot Potato's countdown now. reset() arms it, but a match's first round
+     * begins only after its countdown: armed at reset, the first holder lost most of its
+     * time to the countdown.
+     * @param {number} now
+     */
+    startHotPotatoClock(now) {
+        if (!this.hotPotato?.enabled || this.hotPotato.holderIndex === null) return;
+        this.hotPotato.expiresAt = now + this.hotPotato.durationMs;
+    }
+
+    /**
+     * Push the Hot Potato's deadline back by the part of a pause that fell inside its
+     * countdown, so a pause never detonates it on resume.
+     * @param {number} pausedMs how long the game was paused
+     * @param {number} now when it resumed
+     */
+    shiftHotPotatoClock(pausedMs, now) {
+        const potato = this.hotPotato;
+        if (!potato?.enabled || !(potato.expiresAt > 0) || !(pausedMs > 0)) return;
+        const armedAt = potato.expiresAt - potato.durationMs;
+        potato.expiresAt += Math.max(0, Math.min(pausedMs, now - armedAt));
+    }
+
+    /**
      * Get player state by index
      */
     getPlayerState(playerIndex) {
@@ -803,18 +827,23 @@ export class MultiPlayerState {
     }
 
     /**
-     * Mark one player as dead and evaluate the match immediately.
-     * Legacy callers retain their one-callback-at-a-time behavior.
+     * Mark one player as dead. Legacy callers retain their one-callback-at-a-time behavior.
      */
     handlePlayerDeath(playerIndex) {
         return this.handlePlayerDeaths([playerIndex]).length > 0;
     }
 
     /**
-     * Mark a same-tick set of players as dead before evaluating the match.
+     * Mark a same-tick set of players as dead, all before anyone judges the match.
      * Indices are canonicalized ascending while invalid, duplicate, and
      * already-dead entries are ignored. A shared multiplayer tick can resolve a
      * full player barrier without giving the first callback an outcome edge.
+     *
+     * The match is not judged here: its owner judges it once the batch is in.
+     * OdysseyBotMatch calls checkWinCondition() (its frags carry across rounds).
+     * LocalMultiplayerMode judges its match totals (_resolveMatchEnd), since reset() clears
+     * these counters every round: judging them here ended a 3-4 player match by one round's
+     * frags while two players were still alive, which stopped the loop with no result shown.
      *
      * @param {number[]} playerIndices - Zero-based player indices
      * @returns {number[]} The canonical unique indices eliminated by this call
@@ -834,17 +863,13 @@ export class MultiPlayerState {
         }
         uniqueIndices.sort((left, right) => left - right);
 
-        const eliminatedIndices = uniqueIndices.filter(
-            (playerIndex) => this._handlePlayerDeathWithoutWinCheck(playerIndex) === true,
+        return uniqueIndices.filter(
+            (playerIndex) => this._eliminatePlayer(playerIndex) === true,
         );
-        if (eliminatedIndices.length > 0) {
-            this.checkWinCondition();
-        }
-        return eliminatedIndices;
     }
 
-    /** Mark one player dead without evaluating the match mid-batch. */
-    _handlePlayerDeathWithoutWinCheck(playerIndex) {
+    /** Mark one player dead and award the frag to the last attacker. */
+    _eliminatePlayer(playerIndex) {
         const player = this.players[playerIndex];
 
         if (!player.isAlive) {
