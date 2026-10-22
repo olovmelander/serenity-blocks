@@ -374,18 +374,19 @@ export const PLANET_SEAM_LOCK = Object.freeze({
 // camera moves.
 
 /**
- * THE HOLE'S SEAT AT THE HAND-OVER. On the rail's own line, 871 u down its direction from the 6->7
- * hand-over (42 u up, 51 u right): exactly where ch7's camera lock puts Gargantua for the path
- * camera there (solved by replaying the real controller over the real spline). Through the
- * chapter the hole rides the path at this seat's angle (resolveOmenPathPlace), so it arrives here
- * on its own; in the last few units before the hand-over it settles onto the live lock — on the
- * path camera a correction of a few thousandths of the frame — so chapter 7 picks it up where it
- * already is.
+ * THE HOLE'S SEAT AT THE HAND-OVER. 856 u down the rail's direction from the 6->7 hand-over (80 u
+ * below its tangent, 39 u right, so it sits where the rail's drawn end points; 871 / 42 up / 51
+ * until 2026-10-22, when the rail met the hole at its rim): exactly where ch7's camera lock puts
+ * Gargantua for the path camera there (solved by replaying the real controller over the real
+ * spline). Through the chapter the hole rides the path at this seat's angle (resolveOmenPathPlace),
+ * so it arrives here on its own; in the last few units before the hand-over it settles onto the
+ * live lock — on the path camera a correction of a few thousandths of the frame — so chapter 7
+ * picks it up where it already is.
  */
 export const OMEN_SPINE_ANCHOR = Object.freeze({
-    along: 871,
-    up: 42,
-    right: 51,
+    along: 855.6,
+    up: -79.7,
+    right: 39,
     // How much smaller than ch7's the shadow's world radius starts, on top of the real closing
     // distance: 1 / (1 + approachGain) at the boundary -> ch7's at the hand-over. 1.15 until the
     // 2026-10-20 overhaul (2.9 -> 8.2 deg, 2.15x of it a scripted swell that read as the hole
