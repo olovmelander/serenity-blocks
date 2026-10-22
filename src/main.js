@@ -67,7 +67,6 @@ import { setGlobalRenderScale, setGlobalAntialias } from './themes/base-theme.js
 import {
     ModalManager,
     setupModalUI,
-    showSettingsModal,
     showGameOverModal,
     showHighScoresModal,
     toggleFullScreen,
@@ -121,7 +120,6 @@ import {
 } from './ui/theme-collection-integration.js';
 
 // Utility imports
-import { initGridCache, clearThemeCaches } from './utils/cache.js';
 import { hexToRgb } from './utils/helpers.js';
 import { performanceMonitor } from './utils/performance-monitor.js';
 import {
@@ -146,6 +144,7 @@ import { formatGpuRemediationHtml } from './ui/desktop-gpu-remediation.js';
 import { installCosmicSelects, uninstallCosmicSelects } from './ui/components/cosmic-select.js';
 import { startStandaloneBreathing } from './ui/effects/breathing/standalone-breathing.js';
 import { installFocusPause } from './ui/focus-pause.js';
+import { installThemeKeys } from './ui/theme-keys.js';
 
 const RIPPLE_BORDER_ALPHA = 0.8;
 const RIPPLE_SHADOW_ALPHA = 0.6;
@@ -1152,6 +1151,7 @@ class SerenityBlocks {
         document.addEventListener('visibilitychange', handleVisibilityChange);
         this.cleanupHandlers.push(() => document.removeEventListener('visibilitychange', handleVisibilityChange));
         installFocusPause(this); // the run itself pauses on alt-tab, minimize or pad loss (R-08)
+        installThemeKeys(this); // N / Shift+N (RB / LB on a pad) step the theme in play
 
         // Listen for main-process window focus/blur events — more reliable than
         // visibilitychange for alt-tab on Windows where focus changes may not
