@@ -115,33 +115,33 @@ scale out by the same weight and are culled past it):
 - **Through chapter 6:** the rail ends a taper past the boundary node (chapter 7's first, which
   sits on it). The rail runs up into the middle of the hole and tapers out there, and no node
   beyond it is drawn.
-- **From chapter 6's last node on, one node at a time** (second pass, the same day). Each glide
-  lays out the stretch to the node after the one you are heading for, from a quarter of the way
-  along it to arrival. Parked on a node, you see the rail to the next one, tapering out there. The
-  glide onto the last stop (the last node before chapter 7's fall has the hole swallowing the
-  frame, level 52) lays out the rest of the journey: the tunnel, then the city. A player parked on
-  any node sees a whole picture, the rail into the hole or the rail to the next node, never a rail
-  stopped half-way between two.
+- **Nothing past the mouth until the eye is inside** (fourth pass, the same day). Olov: *"I dont
+  want to see any of the path behind it before we really get into the black hole."* The rail
+  stays ended at level 49, the mouth, until the eye is wholly inside the hole
+  (`resolveBlackHoleInsideProgress`). Then the rest of the journey is laid out, up the tunnel and
+  on to the city, finishing at level 50. Chapter 7's plunge moved to the glide from level 49 to
+  level 50 for this ([ODYSSEY_CH7_FALL_2026-10.md](ODYSSEY_CH7_FALL_2026-10.md)), so levels 50
+  onward all lie inside the tunnel.
 
-  The first pass laid the whole climb out on the glide into the boundary node. In game that drew
-  its far reach straight across the face of the glowing hole (from level 49 the rail at p
-  0.890–0.901 covers the shadow's disc; measured by projecting the rail against the shadow's
-  on-screen radius). The rail from level 49 to level 50 never covers it. From level 50 on, the
-  hole is filling the frame and the near rail crosses its lower edge as you are drawn in, as
-  chapter 7 intends (its fall keeps the hole's near surface behind the rail).
+  The second pass went on one node at a time (parked on a node, the rail to the next). But with
+  the hole growing over levels 49–52, levels 50–52 and the rail between them stayed in front of
+  it, drawn across its face. The glide onto level 52 also laid out the rest of the journey before
+  the eye was inside: measured, orbs 51–57 drew over the hole at p 0.905, while the eye was
+  inside only from p 0.912. (The first pass had laid the whole climb out on the glide into
+  level 49, across the face of the glowing hole.) Measured after: until the eye is inside (p
+  0.8808), the only path seen over the hole is the stretch the eye travels, ending at level 49.
 
 Guard: `tests/unit/odyssey-path-horizon.test.js`. It checks that:
-- nothing is hidden outside chapter 6 and the way on;
-- every chapter 6 node and the boundary node are drawn, and nothing past them is;
-- a player parked on the last chapter 6 node sees no far rail;
-- from each stop the next node is drawn and nothing past it is, and the stretch measured over the
-  hole is not drawn from level 49;
-- the horizon sweeps and never jumps.
+- the plunge sits between the mouth and the next node;
+- nothing is hidden before chapter 6 or once the eye reaches the node inside the hole;
+- every chapter 6 node and the mouth are drawn, and nothing past them is, until the eye is inside;
+- the way on is laid out by the next node, sweeping, never a step;
+- without node positions it still waits for the inside.
 
-In game: no line or nodes past the hole at local 0.30–0.93. From level 49 the hole's face is clear
-and the rail reaches level 50. The hole holds its place against the rail through chapter 6 (within
+In game: no line or nodes past the hole at local 0.30–0.93. At level 49 the hole's face is clear
+and the rail ends at the orb. The hole holds its place against the rail through chapter 6 (within
 0.017 of the frame from p 0.80 to the hand-over), lands exactly on chapter 7's lock (0.004, 0.050
-for both) and is dead centre (0.000, 0.000) from p 0.897 through the dive.
+for both) and is dead centre (0.000, 0.000) from p 0.877 through the dive.
 
 **Into the centre** (third pass, the same day). Olov: *"So does the path go in to the center of the
 black hole now?"* It did not: on the real path camera the rail's drawn end met the shadow 0.8–1.1
@@ -160,6 +160,8 @@ radii on the old placement).
 ![The way on, one node at a time. Before (top) and after (bottom) at p 0.867, 0.8709 (level 49, chapter 7's first node) and 0.876](images/odyssey-audit-2026-10-22/ch7-rail-one-node.jpg)
 
 ![Into the centre. Before (top) and after (bottom) at p 0.80, 0.835 and ~0.845](images/odyssey-audit-2026-10-22/ch6-rail-into-centre.jpg)
+
+![The dive at level 49. Before (top): p 0.875, 0.879 and level 50 (0.8835), the rail and orbs over the growing hole. After (bottom): p 0.8755, 0.8785 and level 50, the plunge with only the travelled rail in sight, then the tunnel](images/odyssey-audit-2026-10-22/ch7-dive-at-49.jpg)
 
 ### Chapter 7→8 — no city windows over the tunnel (`urban-dreams.tsl.js`)
 
