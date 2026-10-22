@@ -142,9 +142,12 @@ export function createDust(u, count) {
     const reach = smoothstep(0.5, 0.36, length(local.div(box)));
     const toMoon = max(dot(normalize(world.sub(cameraPosition)), u.moonDir), 0.0);
     const light = u.moonCol.mul(wSq(toMoon).mul(1.6).add(0.5))
-        .add(mix(u.fire, u.crown, seed.y).mul(u.power.mul(1.6).add(u.surge.mul(1.4))));
-    // More of it hangs in the air as the fires rise.
-    const present = smoothstep(0.0, 0.06, u.power.mul(0.75).add(0.3).add(u.surge.mul(0.4)).sub(seed.z));
+        .add(mix(u.fire, u.crown, seed.y).mul(u.power.mul(1.6).add(u.surge.mul(1.4))
+            .add(u.heat.y.mul(1.2))
+            .add(u.heat.z.mul(1.6))));
+    // More of it hangs in the air as the fires rise, and as play runs hot.
+    const present = smoothstep(0.0, 0.06, u.power.mul(0.75).add(0.3).add(u.surge.mul(0.4)).add(u.heat.x.mul(0.3))
+        .sub(seed.z));
     const vLight = varying(light.mul(flash.mul(reach).mul(present)).mul(u.breath), 'wDust');
     material.colorNode = Fn(() => {
         const q = uv().sub(0.5).mul(2.0);
