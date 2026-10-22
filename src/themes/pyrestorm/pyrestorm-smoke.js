@@ -77,10 +77,14 @@ export class Smoke {
         this.eventCount = tier.eventPuffs;
         const count = this.eventCount;
         this.count = count;
-        // Event puffs: a ring buffer of (origin, velocity, born, life, radius growth, kind).
+        // Event puffs: a pool of (origin, velocity, born, life, radius growth, kind). A full pool
+        // gives up the puff nearest the end of its life (a vortex ring's last), never punches a
+        // hole in a ring still climbing.
         this.events = new Float32Array(this.eventCount * 12);
         for (let i = 0; i < this.eventCount; i++) this.events[i * 12 + 3] = -1e6;
         this.eventCursor = 0;
+        /** The theme clock as of the last frame. */
+        this.now = 0;
 
         this.keys = new Float32Array(count);
         this.order = new Int32Array(count);
@@ -219,8 +223,7 @@ export class Smoke {
     spawn({
         x, y, z, vx = 0, vy = 0, vz = 0, born, life = 8, radius = 300, grow = 40, kind = PUFF.ring, heat = 0, variant = 0,
     }) {
-        const i = this.eventCursor;
-        this.eventCursor = (this.eventCursor + 1) % this.eventCount;
+        const i = this.pickEvent();
         const ev = this.events;
         const e = i * 12;
         ev[e] = x;
@@ -239,6 +242,34 @@ export class Smoke {
         return i;
     }
 
+    /**
+     * The slot the next event puff takes: the first one spent, walking on from the last written,
+     * else the one nearest its end (a ring's puff counts its time left twice: a hole shows).
+     */
+    pickEvent() {
+        const ev = this.events;
+        const n = this.eventCount;
+        let i = this.eventCursor;
+        let best = i;
+        let bestScore = Infinity;
+        for (let k = 0; k < n; k++) {
+            const e = i * 12;
+            const left = ev[e + 3] + ev[e + 7] - this.now;
+            if (left <= 0) {
+                best = i;
+                break;
+            }
+            const score = ev[e + 10] === PUFF.ring ? left * 2 : left;
+            if (score < bestScore) {
+                bestScore = score;
+                best = i;
+            }
+            i = i + 1 === n ? 0 : i + 1;
+        }
+        this.eventCursor = best + 1 === n ? 0 : best + 1;
+        return best;
+    }
+
     clear() {
         for (let i = 0; i < this.eventCount; i++) this.events[i * 12 + 3] = -1e6;
         this.eventCursor = 0;
@@ -246,6 +277,7 @@ export class Smoke {
 
     /** Place, sort and upload every puff for this frame. */
     update(time, eye, fwd) {
+        if (Number.isFinite(time)) this.now = time;
         const st = this.stage;
         let n = 0;
         // ── Event puffs ──
