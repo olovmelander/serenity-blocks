@@ -28,6 +28,17 @@
  *   level    the night turns to its next hour (seven of them on a wheel), and a breath of wind
  *            crosses the tarn.
  *
+ * Fast play BUILDS here instead of popping and starting over (src/themes/shared/gameplay-surge.js):
+ * every flash, kick, swell and flare is an accumulating envelope, so a weak answer after a strong
+ * one only adds to its light, and a GameplaySurge reads how hot play runs. Warm, the wood takes
+ * notice: eyes open between the far trunks, the caps and the lilies wake, the lantern and her
+ * light brighten and the falling lights burn longer over the water. Hot, it is alive with the
+ * player: the spruces stir, the moon's shafts stream between the trunks, fireflies swarm. In a
+ * fever the heart of the tarn burns: its gold comes up through the black water in a net of
+ * threads across the whole tarn, the mist on the water glows with it, and the two come down to
+ * the water's edge to meet over it, chain or none. A perfect clear crowns it: the mist lifts, the
+ * stars come out and both look up; then, as the hands rest, the night breathes back to calm.
+ *
  * The night also moves on by itself, whatever the level: an hour every 110 s of the world
  * clock, so the colours of mist, water and wood are never quite the same twice.
  *
@@ -103,6 +114,8 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './stillwater-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /** The rest camera's lens (the theme builds its camera from it). */
 export const REST_RIG = Object.freeze({
@@ -125,6 +138,9 @@ export const HOUR_TURN = 3.2;
 const KNEEL_AT = 0.28;
 /** Seconds between the rings her hem leaves as she drifts over the water. */
 const WAKE_EVERY = 0.55;
+/** The ring across the picture: how fast it fades, and how long it is still on screen. */
+const SHOCK_FADE = 0.75;
+const SHOCK_CROSS = 0.8;
 
 const PARTS = [
     'sky', 'water', 'ground', 'boulders', 'trunks', 'crowns', 'boughs', 'fringe', 'saplings', 'ferns', 'reeds', 'pads',
@@ -227,17 +243,23 @@ export class StillwaterWorld {
         this.time = time;
         this.combo = 0;
         this.power = 0;
+        /** The overdrive after four lines, as of the last frame (its swell: env.overdrive). */
         this.surge = 0;
         this.level = 1;
         /** The level's place on the wheel of hours, turning from one to the next. */
         this.turn = { from: 0, to: 0, time: -100 };
+        // (The envelopes' readings as of the last frame: the swells themselves are in `env`.)
         this.flash = 0;
         this.kick = 0;
+        this.crown = 0;
+        this.flare = 0;
         this.dip = 0;
         this.breath = 1;
         this.gust = 0;
         this.lift = 0;
         this.hushUntil = -1;
+        /** How deep the quad's hush goes: all the way from cold, a breath in a fever. */
+        this.hushDepth = 1;
         this.rings = [];
         this.strokes = [];
         /** Wisps over the water: { x, z, h, rgb, birth, seed, side, gain, gatherAt }. */
@@ -255,6 +277,11 @@ export class StillwaterWorld {
         this.capsR = 0.12;
         this.heart = 0;
         this.heartFlash = 0;
+        /** How far the heart is up out of the water (the bed lies dark while it is), eased. */
+        this.away = 0;
+        /** How hot play runs, smoothed into the acts (warm, hot) the world stages. */
+        this.warmth = 0;
+        this.hotness = 0;
         /** How far out the spirit is on her path (0..1), and the troll on his (0 his seat, 1 the shallows). */
         this.spiritS = 0;
         this.trollS = 0;
@@ -264,8 +291,9 @@ export class StillwaterWorld {
         this.resetFigures();
         this.lastLanding = null;
         this.shock = { time: -100, strength: 0 };
-        this.lastClear = { time: -100, lines: 0 };
-        this.pendingHeart = { time: Infinity, amount: 0 };
+        /** Four-line clears waiting for their hush to end. */
+        this.answers = [];
+        this.resetEnvelopes();
         this.counts = {
             locks: 0, clears: 0, quads: 0, wisps: 0, gathered: 0,
         };
@@ -275,6 +303,50 @@ export class StillwaterWorld {
         this.sparks?.reset();
         this.drops?.reset();
         if (this.u) this.u.counts.value.set(0, 0, 0, 0);
+    }
+
+    /**
+     * Every accumulating envelope, at rest (made once, reset after), and the surge of play. A hit
+     * joins whatever is still lit and never restarts it: rapid answers ride up to a plateau.
+     */
+    resetEnvelopes() {
+        if (!this.env) {
+            this.env = {
+                /** The post's flash and kick. */
+                flash: new Swell({ release: 0.25, ceiling: 0.45, knee: 0.3 }),
+                kick: new Swell({ release: 0.16, ceiling: 0.9, knee: 0.6 }),
+                /** The overdrive four lines give (a second quad adds to the first). */
+                overdrive: new Swell({
+                    release: SURGE_COOL, ceiling: 1.45, knee: 1.05, headroom: 1.3,
+                }),
+                /** A clear's swell of light (shafts, bloom, iris). */
+                swell: new Swell({ release: 0.7, ceiling: 1, knee: 0.7 }),
+                /** Both lights at a step of the chain (a longer chain steps brighter). */
+                step: new Swell({ release: 0.6, ceiling: 1.6, knee: 1 }),
+                /** The heart's flare under the water, every eye and every lily after four lines. */
+                heart: new Swell({ release: 2.4, ceiling: 1.2, knee: 0.9 }),
+                eyes: new Swell({ release: 1.7, ceiling: 1, knee: 0.85 }),
+                lilies: new Swell({ release: 3.2, ceiling: 1, knee: 0.85 }),
+                /** A perfect clear's crown. */
+                crown: new Swell({
+                    attack: 0.15, release: 2.6, ceiling: 1.3, knee: 1,
+                }),
+                /** Back to back: the lantern blazes and their lights run out toward each other. */
+                flare: new Swell({
+                    attack: 0.08, release: 1.6, ceiling: 2, knee: 1.2,
+                }),
+            };
+            this.play = new GameplaySurge();
+        } else {
+            Object.keys(this.env).forEach((key) => this.env[key].reset());
+            this.play.reset();
+        }
+        this.heat = this.play.sample(this.time);
+    }
+
+    /** How much more a falling light gives the hotter play runs (1 at rest). */
+    heatGain() {
+        return 1 + 0.2 * this.warmth + 0.2 * this.hotness + 0.2 * this.heat.fever;
     }
 
     build() {
@@ -497,7 +569,7 @@ export class StillwaterWorld {
         if (this.combo > 0) this.onCombo(0);
         this.combo = 0;
         this.hushUntil = -1;
-        this.pendingHeart.time = Infinity;
+        this.answers.length = 0;
         this.story.onEnd(this.time);
         this.gatherAll(this.time, 0.4);
         this.counts = {
@@ -529,7 +601,9 @@ export class StillwaterWorld {
         if (this.disposed) return;
         const t = sim.time;
         const calm = this.reducedMotion ? 0 : 1;
-        const fov = fovForAspect(this.aspect) - this.kick * 0.5 * calm;
+        // An impact nudges the lens; a fever of play leans the viewer in a little.
+        const kick = this.env.kick.valueAt(t);
+        const fov = fovForAspect(this.aspect) - (kick * 0.5 + this.heat.fever * 0.4) * calm;
         if (camera.fov !== fov || camera.near !== EYE.near || camera.far !== EYE.far) {
             camera.fov = fov;
             camera.near = EYE.near;
@@ -544,7 +618,7 @@ export class StillwaterWorld {
         camera.position.set(
             EYE.x + swayX + px * 0.35,
             EYE.y + swayY - py * 0.12,
-            EYE.z + this.kick * 0.08 * calm,
+            EYE.z + kick * 0.08 * calm,
         );
         const yaw = (Math.sin(t * 0.083 + 2.1) * 0.004 + px * 0.012) * calm;
         const pitch = EYE.pitch + (Math.sin(t * 0.097) * 0.002 - py * 0.008) * calm;
@@ -642,13 +716,77 @@ export class StillwaterWorld {
 
     // ── Gameplay ────────────────────────────────────────────────────────────────
 
-    /** Start a ring on the water at (x, z) at `time`. */
+    /**
+     * Start a ring on the water at (x, z) at `time`. A full pool gives up the ring with the least
+     * left in it (a spent one first; one still to come counts at full strength), never the oldest
+     * blindly: a great ring is not cut short by a footfall's.
+     */
     ring(x, z, time, strength, rgb, reach = 1) {
         if (!Number.isFinite(x) || !Number.isFinite(z) || !Number.isFinite(time)) return;
-        if (this.rings.length >= RING_SLOTS) this.rings.shift();
-        this.rings.push({
-            x, z, time, strength, rgb: [rgb[0], rgb[1], rgb[2]], reach,
-        });
+        if (this.rings.length < RING_SLOTS) {
+            this.rings.push({
+                x, z, time, strength, rgb: [rgb[0], rgb[1], rgb[2]], reach,
+            });
+            return;
+        }
+        let weakest = 0;
+        let least = Infinity;
+        for (let i = 0; i < this.rings.length; i++) {
+            const r = this.rings[i];
+            const age = this.time - r.time;
+            const left = age > RING_LIVE ? -1 : r.strength * Math.exp(-Math.max(0, age) * 0.38);
+            if (left < least) {
+                least = left;
+                weakest = i;
+            }
+        }
+        const r = this.rings[weakest];
+        r.x = x;
+        r.z = z;
+        r.time = time;
+        r.strength = strength;
+        r.rgb[0] = rgb[0];
+        r.rgb[1] = rgb[1];
+        r.rgb[2] = rgb[2];
+        r.reach = reach;
+    }
+
+    /** Add a clear's swell to the tarn: a full table gives up the one with the least left in it. */
+    addStroke(stroke) {
+        if (this.strokes.length >= STROKE_SLOTS) {
+            let weakest = 0;
+            let least = Infinity;
+            for (let i = 0; i < this.strokes.length; i++) {
+                const k = this.strokes[i];
+                const age = this.time - k.time;
+                const left = age > STROKE_LIVE ? -1 : k.strength * (1 + k.gold) * Math.exp(-Math.max(0, age) * 0.45);
+                if (left < least) {
+                    least = left;
+                    weakest = i;
+                }
+            }
+            this.strokes.splice(weakest, 1);
+        }
+        this.strokes.push(stroke);
+    }
+
+    /**
+     * Send the ring across the picture from the tarn's heart, or, while one is still crossing it
+     * (or waiting on a hush to be born), add this one's light to it: it is never pulled back to
+     * the middle and started again.
+     */
+    shockAt(time, strength) {
+        const s = this.shock;
+        const age = time - s.time;
+        if (age < 0) {
+            s.strength = Math.min(1.6, s.strength + strength * 0.7);
+        } else if (age < SHOCK_CROSS && s.strength * Math.exp(-age / SHOCK_FADE) > 0.02) {
+            const now = s.strength * Math.exp(-age / SHOCK_FADE);
+            s.strength = Math.min(1.6, now + strength * 0.7) * Math.exp(age / SHOCK_FADE);
+        } else {
+            s.time = time;
+            s.strength = strength;
+        }
     }
 
     /** Leave a wisp standing over the water at (x, z) from `time`. */
@@ -758,23 +896,29 @@ export class StillwaterWorld {
             }
         }
         this.lockAt(wx, wy, side, rgb, hardDrop);
-        this.kick = Math.max(this.kick, hardDrop ? 0.45 : 0.08);
-        this.flash = Math.max(this.flash, hardDrop ? 0.06 : 0.012);
+        // (Added to whatever is still lit: rapid drops ride on a floor instead of flickering.)
+        this.env.kick.hit(hardDrop ? 0.45 : 0.08, this.time);
+        this.env.flash.hit(hardDrop ? 0.06 : 0.012, this.time);
+        this.play.lock({ hardDrop }, this.time);
         this.counts.locks += 1;
     }
 
-    /** One drop of light from a world point to a point of the water; returns when it lands. */
-    sendDrop(from, to, rgb, strength, wisp) {
+    /**
+     * One drop of light from a world point to a point of the water; returns when it lands. `boost`
+     * (1 at rest) is how much more the water gives it when play runs hot.
+     */
+    sendDrop(from, to, rgb, strength, wisp, boost = 1) {
         const flight = this.reducedMotion ? 0.12 : DROP_FLIGHT * (0.8 + Math.min(0.6, Math.hypot(to[0] - from[0], to[2] - from[2]) / 14));
         const lands = this.time + flight;
         this.drops?.launch({
             from, to, rgb, time: this.time, flight, size: 0.2 + strength * 0.14,
         });
-        this.ring(to[0], to[2], lands, 0.42 + strength * 0.5, rgb, 0.7 + strength * 0.45);
+        const reach = (0.7 + strength * 0.45) * (0.8 + 0.2 * boost);
+        this.ring(to[0], to[2], lands, (0.42 + strength * 0.5) * boost, rgb, reach);
         // The crown of the splash: the water it throws up has the light in it.
         this.sparks?.emit({
             at: [to[0], 0.02, to[2]],
-            n: Math.round((7 + 9 * strength) * this.sparkShare()),
+            n: Math.round((7 + 9 * strength) * boost * this.sparkShare()),
             rgb,
             time: lands,
             vel: [0, 1.5 + strength * 1.1, 0],
@@ -796,7 +940,9 @@ export class StillwaterWorld {
     lockAt(wx, wy, side, rgb, hardDrop) {
         const from = this.screenToWorld(wx, wy, 6.5, [0, 0, 0]);
         const to = this.pickLanding(side, wy, 0);
-        const lands = this.sendDrop(from, [...to], rgb, hardDrop ? 1 : 0.45, hardDrop ? 1.3 : 1);
+        // The hotter play runs, the brighter and longer the lights it leaves over the water.
+        const boost = this.heatGain();
+        const lands = this.sendDrop(from, [...to], rgb, hardDrop ? 1 : 0.45, (hardDrop ? 1.3 : 1) * boost, boost);
         this.lastLanding = [to[0], to[2]];
         // The one on that side follows the light down (a little before it lands).
         this.story.onLock({
@@ -810,19 +956,38 @@ export class StillwaterWorld {
         }
     }
 
-    /** Lines cleared. `lines` 1..4; `tspin`, `perfect`. */
+    /**
+     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` = the deepest wave of the
+     * lock's cascade (each wave arrives as a clear of its own), `combo` the true chain. A `crown`
+     * (a perfect clear settled after the lines it crowns) and a T-spin that cleared nothing come
+     * with no lines.
+     */
     onClear({
-        rows = null, lines = 1, perfect = false, tspin = false, player = 0, screen = null,
+        rows = null, lines = 1, perfect = false, tspin = false, b2b = false, crown = false, combo = 1, cascade = 1,
+        player = 0, screen = null,
     } = {}) {
         if (!this.u) return;
+        if (crown) {
+            this.crownClear();
+            return;
+        }
+        if (tspin && Number(lines) === 0) {
+            this.turnTarn();
+            return;
+        }
         const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
         const quad = n >= 4 || perfect;
+        // A cascade's later waves build on the first: more fronts, stronger, burning toward gold.
+        const depth = Math.max(1, Math.min(10, Math.round(Number(cascade) || 1)));
+        const steps = Math.max(0, Math.min(10, Math.round(Number(combo) || 1) - 1));
+        const deep = quad ? 0 : Math.min(1, (depth - 1) * 0.3);
         const p = this._palette;
         let rgb;
         if (quad) rgb = [...TARNFIRE];
         else if (n === 1) rgb = [...p.crest];
         else if (n === 2) rgb = [0, 1, 2].map((c) => p.crest[c] * 0.6 + p.spirit[c] * 0.5);
         else rgb = [0, 1, 2].map((c) => p.crest[c] * 0.35 + p.heart[c] * 0.75);
+        if (deep > 0) rgb = rgb.map((c, i) => lerp(c, TARNFIRE[i], deep * 0.7));
         const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
         rgb = rgb.map((c) => (c / peak) * 0.9 + 0.1);
         let birth = quad ? this.time + HUSH_HOLD : this.time;
@@ -833,15 +998,20 @@ export class StillwaterWorld {
                 i = -1;
             }
         }
-        if (this.strokes.length >= STROKE_SLOTS) this.strokes.shift();
-        this.strokes.push({
+        this.addStroke({
             time: birth,
-            fronts: perfect ? 4 : n,
-            strength: Math.min(1.5, 0.6 + 0.15 * n + (quad ? 0.3 : 0)),
-            gold: quad ? 1 : 0,
+            fronts: Math.min(6, (perfect ? 4 : n) + depth - 1),
+            strength: Math.min(1.9, (0.6 + 0.15 * n + (quad ? 0.3 : 0)) * (1 + 0.18 * (depth - 1)) + 0.02 * steps),
+            gold: quad ? 1 : deep,
             rgb,
         });
-        this.lastClear = { time: birth, lines: n };
+        // (The light swells as the answer comes: after the hush for four lines.)
+        this.env.swell.hit((0.3 + 0.12 * n) * (1 + 0.15 * (depth - 1)), birth);
+        const clear = {
+            time: birth, lines: n, cascade: depth, combo, tspin, perfect, b2b,
+        };
+        // (Four lines are answered as their hush ends: see answerQuad.)
+        if (!quad) this.play.clear(clear, birth);
         this.story.onClear({ time: this.time, lines: n, perfect });
 
         // ── Every wisp the stroke passes is gathered and goes home ──
@@ -866,7 +1036,7 @@ export class StillwaterWorld {
                     this.screenToWorld(side < 0 ? card.x0 : card.x1, y, 7, at);
                     this.sparks.emit({
                         at,
-                        n: Math.round((9 + (quad ? 5 : 0)) * this.sparkShare()),
+                        n: Math.round((9 + (quad ? 5 : 0)) * (1 + 0.25 * (depth - 1)) * this.sparkShare()),
                         rgb,
                         time: this.time + i * 0.04,
                         vel: [side * 3.4, 0.5, -0.4],
@@ -880,12 +1050,19 @@ export class StillwaterWorld {
             }
         }
 
+        // From the third wave of a cascade the tarn's heart answers too, wider each time.
+        if (depth >= 3 && !quad) {
+            this.ring(HEART[0] * this.squeeze, HEART[2], birth, 0.3 + 0.1 * depth, rgb, 1 + 0.25 * depth);
+        }
         if (quad) {
             this.hushUntil = this.time + HUSH_HOLD;
-            this.surge = perfect ? 1.3 : 1;
-            this.shock = { time: birth, strength: this.reducedMotion ? 0.5 : 1 };
+            // From cold the night holds its breath; the hotter play runs, the less it needs to
+            // (a quad mid-fever draws a breath, it does not put the lights out).
+            this.hushDepth = (1 - 0.8 * this.heat.level) * flashScale();
+            this.shockAt(birth, this.reducedMotion ? 0.5 : 1);
             this.ring(HEART[0] * this.squeeze, HEART[2], birth, 1.5, rgb, 2.8);
-            this.pendingHeart = { time: birth, amount: 1 };
+            // The answer waits for the hush to end (a new run lets go of one still held).
+            this.answers.push(clear);
             this.counts.quads += 1;
             // Gold rises out of the tarn to either side of the board.
             if (this.sparks) {
@@ -914,9 +1091,102 @@ export class StillwaterWorld {
             const at = this.lastLanding || [-3 * this.squeeze, -2];
             for (let i = 0; i < 3; i++) this.ring(at[0], at[1], this.time + i * 0.22, 0.8 - i * 0.15, rgb, 0.9 + i * 0.25);
             this.gust = Math.max(this.gust, 0.6);
-            if (!quad) this.shock = { time: this.time, strength: 0.4 };
+            if (!quad) this.shockAt(this.time, this.reducedMotion ? 0.2 : 0.4);
         }
+        if (b2b) this.answerB2B();
         this.counts.clears += 1;
+    }
+
+    /**
+     * Four lines answered as their hush ends: the overdrive, the heart's flare under the water,
+     * every eye and every lily, the kick and the flash (each added to whatever is still lit).
+     */
+    answerQuad(clear) {
+        const E = this.env;
+        const at = clear.time;
+        E.overdrive.hit(clear.perfect ? 1.3 : 1, at);
+        E.heart.hit(1, at);
+        E.eyes.hit(1, at);
+        E.lilies.hit(1, at);
+        E.kick.hit(0.5, at);
+        E.flash.hit(0.22, at);
+        this.play.clear(clear, at);
+    }
+
+    /**
+     * A perfect clear settled on the four lines still playing (it comes ~360 ms after them): no
+     * second hush and no second stroke. The gold still crossing the tarn burns the brighter, the
+     * ring across the picture takes more light, the heart rising comes up brighter, the mist lifts
+     * and the stars come out, and both look up.
+     */
+    crownClear() {
+        const at = this.time;
+        const E = this.env;
+        this.lift = 1;
+        E.crown.hit(1, at);
+        E.overdrive.hit(0.35, at);
+        E.heart.hit(0.5, at);
+        E.eyes.hit(0.5, at);
+        E.lilies.hit(0.5, at);
+        E.flash.hit(0.12, at);
+        E.kick.hit(0.2, at);
+        this.shockAt(at, this.reducedMotion ? 0.3 : 0.6);
+        let gold = null;
+        for (let i = 0; i < this.strokes.length; i++) {
+            const k = this.strokes[i];
+            if (k.gold >= 1 && at - k.time < STROKE_LIVE && (!gold || k.time > gold.time)) gold = k;
+        }
+        if (gold) {
+            gold.strength = Math.min(1.9, gold.strength * 1.25);
+            gold.fronts = Math.max(gold.fronts, 4);
+        }
+        this.story.onCrown(at);
+        this.play.punch.hit(SURGE_WEIGHTS.punch.perfect, at);
+        this.play.level.hit(SURGE_WEIGHTS.heat.perfect, at);
+        // Gold rises out of the whole tarn, the far water first.
+        if (this.sparks) {
+            for (let i = 0; i < 10; i++) {
+                const side = i % 2 ? 1 : -1;
+                const spot = [side * (1.4 + (i >> 1) * 1.1) * this.squeeze, 0.05, -1.5 - (i >> 1) * 2.8];
+                if (!this.onWater(spot[0], spot[2], 0.2)) continue;
+                this.sparks.emit({
+                    at: spot,
+                    n: Math.round(10 * this.sparkShare()),
+                    rgb: TARNFIRE,
+                    time: at + 0.05 + (4 - (i >> 1)) * 0.1,
+                    vel: [0, 1.9, 0],
+                    spread: 0.5,
+                    scatter: 0.9,
+                    life: [1.8, 3.4],
+                    size: 0.1,
+                    stagger: 0.6,
+                });
+            }
+        }
+    }
+
+    /** A T-spin that cleared nothing: a small whirl where the piece went in, a breath of wind. */
+    turnTarn() {
+        const at = this.time;
+        const spot = this.lastLanding || [-3 * this.squeeze, -2];
+        const rgb = this._palette.crest;
+        for (let i = 0; i < 2; i++) this.ring(spot[0], spot[1], at + i * 0.22, 0.5 - i * 0.12, rgb, 0.8 + i * 0.2);
+        this.gust = Math.max(this.gust, 0.35);
+        this.env.eyes.hit(0.25, at);
+        this.play.punch.hit(SURGE_WEIGHTS.punch.tspin * 0.5, at);
+        this.play.level.hit(SURGE_WEIGHTS.heat.tspin * 0.45, at);
+    }
+
+    /**
+     * Back to back, a second difficult clear: the troll lifts his lantern and it blazes, her light
+     * answers, their eyes meet and their lights run out over the water toward each other. A second
+     * in a row blazes the brighter and runs the further.
+     */
+    answerB2B() {
+        const at = this.time;
+        this.env.flare.hit(1, at + 0.1);
+        this.env.flash.hit(0.05, at);
+        this.story.onB2B(at);
     }
 
     /**
@@ -929,9 +1199,11 @@ export class StillwaterWorld {
             this.combo = n;
             return;
         }
-        if (n < this.combo) this.dip = Math.max(this.dip, 0.25);
+        // A chain that breaks in a hot run dims the night less: what it built eases out.
+        if (n < this.combo) this.dip = Math.max(this.dip, 0.25 * (1 - 0.7 * this.heat.level));
         else if (n > this.combo) {
-            this.stepFlash = 1;
+            // Each step lights both of them, a longer chain the brighter (added to what is lit).
+            this.env.step.hit(0.55 + 0.05 * Math.min(n, 10), this.time);
             this.feeds.push({ time: this.time, side: n % 2 ? -1 : 1, amount: 0.12 });
         }
         this.combo = n;
@@ -958,7 +1230,8 @@ export class StillwaterWorld {
         this.turn = { from, to, time: this.time };
         this.story.onLevel(this.time);
         this.gust = Math.max(this.gust, 1);
-        this.flash = Math.max(this.flash, 0.1);
+        this.env.flash.hit(0.1, this.time);
+        this.play.levelUp(this.time);
         // The wind shakes the dew out of the boughs: it falls through the moonlight.
         if (this.sparks && this._camera) {
             const at = [0, 0, 0];
@@ -1039,7 +1312,9 @@ export class StillwaterWorld {
             if (trollRoot) {
                 want.face = Math.atan2(this._heartOf[0] - (want.at[0]), this._heartOf[2] - want.at[1]);
             }
-            want.wind = this.gust * 1.5 + this.surge * 0.5;
+            // (His cloak takes the wind a hot run raises in the wood.)
+            const stir = this.reducedMotion ? 0.3 : 1;
+            want.wind = this.gust * 1.5 + this.surge * 0.5 + (0.3 * this.hotness + 0.35 * this.heat.fever) * stir;
             want.startle = !this.reducedMotion;
             const events = this.troll.update(dt, want, t);
             for (let i = 0; i < events.length; i++) {
@@ -1081,8 +1356,12 @@ export class StillwaterWorld {
             b.hands = want.hands;
             b.look = toWorld(want.look, this._lookS);
             b.gazeDown = want.gazeDown;
-            b.wind = 0.25 + this.gust + this.surge * 0.4;
-            this.spirit.uFed.value = Math.min(1.5, this.fedL + this.story.heartTaken(t) * 1.2);
+            const stirred = (0.2 * this.hotness + 0.25 * this.heat.fever) * (this.reducedMotion ? 0.3 : 1);
+            b.wind = 0.25 + this.gust + this.surge * 0.4 + stirred;
+            // Her motes rise thicker with every heart she holds, and as play runs hot.
+            const holds = this.story.heartTaken(t) * 1.2 + this.story.heartsHeld(t) * 0.3;
+            this.spirit.uFed.value = Math.min(1.5, this.fedL + holds + 0.15 * this.hotness + 0.25 * this.heat.fever
+                + 0.3 * this.crown);
             const events = this.spirit.update(dt, b, t);
             for (let i = 0; i < events.length; i++) {
                 const e = events[i];
@@ -1108,7 +1387,8 @@ export class StillwaterWorld {
      */
     streamLight(t) {
         if (!this.sparks || this.story.path < 0.4) return;
-        const slot = Math.floor(t / 0.32);
+        // (A fever streams them twice as thick.)
+        const slot = Math.floor(t / (0.32 / (1 + this.heat.fever)));
         if (slot === this.streamSlot) return;
         this.streamSlot = slot;
         const h = this._heartOf;
@@ -1132,29 +1412,41 @@ export class StillwaterWorld {
         const t = this.time;
         const motion = this.reducedMotion ? 0.3 : 1;
 
+        // ── Four lines answered as their hush ends ──
+        for (let i = 0; i < this.answers.length; i++) {
+            if (t < this.answers[i].time) continue;
+            this.answerQuad(this.answers[i]);
+            this.answers.splice(i, 1);
+            i -= 1;
+        }
+
+        // ── How hot play runs, and every envelope at this moment ──
+        const heat = this.play.sample(t);
+        this.heat = heat;
+        const { level, fever, punch } = heat;
+        const warm = smooth(0.12, 0.5, level);
+        const hot = smooth(0.4, 0.85, level);
+        this.warmth = warm;
+        this.hotness = hot;
+        const E = this.env;
+        this.flash = E.flash.valueAt(t);
+        this.kick = E.kick.valueAt(t);
+        this.surge = E.overdrive.valueAt(t);
+        this.stepFlash = E.step.valueAt(t);
+        this.heartFlash = E.heart.valueAt(t);
+        this.eyesFlash = E.eyes.valueAt(t);
+        this.liliesFlash = E.lilies.valueAt(t);
+        this.crown = E.crown.valueAt(t);
+        this.flare = E.flare.valueAt(t);
+
         // ── The charge ──
         const target = powerForCombo(this.combo);
         this.power += (target - this.power) * approach(target > this.power ? 2.4 : 0.8, dt);
-        this.surge *= Math.exp(-dt / SURGE_COOL);
-        this.flash *= Math.exp(-dt / 0.25);
-        this.kick *= Math.exp(-dt / 0.16);
         this.dip *= Math.exp(-dt / 0.35);
         this.gust *= Math.exp(-dt / 2.4);
         this.lift *= Math.exp(-dt / 5.5);
         this.fedL *= Math.exp(-dt / 1.9);
         this.fedR *= Math.exp(-dt / 1.9);
-        this.stepFlash *= Math.exp(-dt / 0.6);
-        this.eyesFlash *= Math.exp(-dt / 1.7);
-        this.liliesFlash *= Math.exp(-dt / 3.2);
-        this.heartFlash *= Math.exp(-dt / 2.4);
-        if (t >= this.pendingHeart.time) {
-            this.heartFlash = Math.max(this.heartFlash, this.pendingHeart.amount);
-            this.eyesFlash = 1;
-            this.liliesFlash = 1;
-            this.kick = Math.max(this.kick, 0.5);
-            this.flash = Math.max(this.flash, 0.22);
-            this.pendingHeart.time = Infinity;
-        }
         // Light that has come home.
         if (this.feeds.length) {
             for (let i = this.feeds.length - 1; i >= 0; i--) {
@@ -1165,29 +1457,36 @@ export class StillwaterWorld {
                 this.feeds.splice(i, 1);
             }
         }
-        const hush = t < this.hushUntil ? 1 : 0;
-        const breathTarget = hush ? 0.2 : 1 - this.dip;
-        this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 14, dt);
+        // The quad's hush: as deep as it was asked to be when it began (0 = none).
+        const hush = t < this.hushUntil ? this.hushDepth : 0;
+        const breathTarget = hush > 0 ? 1 - 0.8 * hush : 1 - this.dip;
+        this.breath += (breathTarget - this.breath) * approach(hush > 0 ? 40 : 14, dt);
 
-        // ── What the chain wakes ──
-        const eyesTarget = eyesForCombo(this.combo);
+        // ── What the chain wakes, and what a hot run wakes whatever the chain ──
+        const eyesTarget = Math.max(eyesForCombo(this.combo), 0.3 * warm + 0.35 * hot + 0.35 * fever);
         this.eyes += (eyesTarget - this.eyes) * approach(eyesTarget > this.eyes ? 1.6 : 1.1, dt);
-        const liliesTarget = clamp01(this.combo / 6);
+        const liliesTarget = Math.max(clamp01(this.combo / 6), 0.3 * warm + 0.4 * hot + 0.3 * fever);
         this.lilies += (liliesTarget - this.lilies) * approach(liliesTarget > this.lilies ? 1.2 : 0.5, dt);
         // The caps light a step at a time, the left bank's first, from the frame's edge inward.
-        const capsLTarget = 0.12 + 0.88 * clamp01(Math.ceil(this.combo / 2) / 4);
-        const capsRTarget = 0.12 + 0.88 * clamp01(Math.floor(this.combo / 2) / 4);
+        const capsHeat = 0.12 + 0.4 * warm + 0.25 * hot + 0.23 * fever;
+        const capsLTarget = Math.max(0.12 + 0.88 * clamp01(Math.ceil(this.combo / 2) / 4), capsHeat);
+        const capsRTarget = Math.max(0.12 + 0.88 * clamp01(Math.floor(this.combo / 2) / 4), capsHeat);
         this.capsL += (capsLTarget - this.capsL) * approach(capsLTarget > this.capsL ? 2.2 : 0.9, dt);
         this.capsR += (capsRTarget - this.capsR) * approach(capsRTarget > this.capsR ? 2.2 : 0.9, dt);
-        const heartTarget = heartForCombo(this.combo);
+        // The heart on the bed: a chain wakes it, and a fever of play sets it burning.
+        const heartTarget = Math.max(heartForCombo(this.combo), 0.25 * hot + 0.6 * fever);
         this.heart += (heartTarget - this.heart) * approach(heartTarget > this.heart ? 0.9 : 0.6, dt);
 
         // The slow clock, and the air's own phase (integrated: its pace follows the wind, gently).
-        const wind = 0.25 + this.gust * 0.75 + this.surge * 0.2;
-        this.drift += dt * motion * (1 + this.power * 0.8 + this.surge * 1.5);
+        // A hot run stirs the spruces and the water; the mist and the fireflies hurry.
+        const stir = (0.08 * warm + 0.1 * hot + 0.12 * fever) * motion;
+        const wind = 0.25 + this.gust * 0.75 + this.surge * 0.2 + stir;
+        this.drift += dt * motion * (1 + this.power * 0.8 + this.surge * 1.5 + 0.3 * level + 0.4 * fever);
         this.sway += dt * motion * (0.85 + wind * 0.5);
 
         this.applyPalette();
+        // A fever of play draws the two out to the water's edge, chain or none.
+        this.story.setFervour(smooth(0.35, 0.9, fever));
         this.placeFigures(dt);
         this.streamLight(t);
 
@@ -1248,56 +1547,74 @@ export class StillwaterWorld {
 
         // ── Uniforms ──
         u.time.value = t;
-        u.power.value = this.power;
-        u.surge.value = this.surge;
+        // (The fireflies wake with the chain and with a hot run.)
+        u.power.value = Math.min(1, this.power + 0.3 * warm + 0.25 * hot + 0.3 * fever);
+        // (The overdrive of four lines only: the sky's northern lights read it, and the build-up
+        // of play is never laid on them.)
+        u.surge.value = Math.min(1.45, this.surge);
         u.breath.value = this.breath;
         u.drift.value = this.drift;
         u.sway.value = this.sway;
         u.wind.value = wind;
-        u.ruffle.value = hush ? 0.15 : 1;
+        u.ruffle.value = 1 - 0.85 * hush;
         u.lift.value = clamp01(this.lift);
         u.shafts.value = 0.3 + this.power * 0.5 + this.surge * 0.5;
-        u.eyes.value.set(this.eyes, this.eyesFlash);
-        u.lilies.value.set(this.lilies, this.liliesFlash);
+        // The tarnfire: how far the heart's gold spreads through the water and the mist on it.
+        u.heat.value.set(level, Math.min(1, fever + 0.5 * this.crown));
+        u.eyes.value.set(this.eyes, Math.min(1, this.eyesFlash));
+        u.lilies.value.set(this.lilies, Math.min(1, this.liliesFlash));
         u.caps.value.set(this.capsL, this.capsR);
         // The heart's flight: while it is up out of the water the bed lies dark, and it lights the night.
         const orb = this.story.heartAt(t, this._orb);
-        const away = orb ? clamp01(orb[1] + 0.6) : 0;
+        const awayTarget = orb ? clamp01(orb[1] + 0.6) : 0;
+        // (Eased: where one heart's flight ends and the next one's begins the bed comes back softly.)
+        this.away += (awayTarget - this.away) * approach(5, dt);
         u.heartAt.value.set(
             HEART[0] * this.squeeze,
             HEART[1],
             HEART[2],
-            clamp01(this.heart * 0.75 + this.heartFlash) * (1 - away * 0.85),
+            clamp01(this.heart * 0.75 + this.heartFlash + 0.35 * this.crown) * (1 - this.away * 0.85),
         );
         if (orb) u.orbAt.value.set(orb[0] * this.squeeze, orb[1], orb[2], orb[3]);
         else u.orbAt.value.w = 0;
         const taken = this.story.heartTaken(t);
+        const held = this.story.heartsHeld(t);
+        // Both lights burn brighter as play runs hot; she with every heart she holds; he blazes
+        // for a back-to-back, and she answers.
+        const glow = 0.25 * warm + 0.3 * hot + 0.35 * fever;
         const h = this._heartOf;
         u.spiritAt.value.set(h[0], h[1], h[2], 0.6 + this.power * 0.3 + this.fedL * 0.6 + this.stepFlash * 0.25 + taken * 1.6
-            + this.story.gaze * 0.15);
+            + this.story.gaze * 0.15 + held * 0.45 + glow + this.crown * 0.5 + this.flare * 0.5);
         const l = this._lantern;
         // (When their eyes meet, both lights warm a little.)
         u.lanternAt.value.set(l[0], l[1], l[2], 0.5 + this.power * 0.35 + this.fedR * 0.7 + this.stepFlash * 0.2
-            + this.story.gaze * 0.15);
-        // The path of light that runs between them on the water while the chain holds them near.
+            + this.story.gaze * 0.15 + glow * 1.15 + this.crown * 0.4 + this.flare * 1.1);
+        // The path of light that runs between them on the water while the chain holds them near
+        // (a back-to-back sends it running out from both for a moment, further for a second one).
         const sr = this.spirit?.rootWalk();
-        u.path.value.set(this.story.path, this.story.gaze, taken, 0);
+        u.path.value.set(Math.max(this.story.path, Math.min(1, 0.6 * this.flare)), this.story.gaze, taken, 0);
         if (sr) u.pathEnds.value.set(sr.x, sr.z, l[0], l[2]);
 
         // ── Post ──
-        const sinceClear = t - this.lastClear.time;
-        const swell = sinceClear >= 0 ? Math.exp(-sinceClear / 0.7) * (0.3 + 0.12 * this.lastClear.lines) : 0;
+        const swell = E.swell.valueAt(t);
         const post = this._post;
-        post.flash = this.flash;
-        post.kick = this.kick;
-        post.shafts = hush ? 0.05 : 0.26 + this.power * 0.24 + swell * 0.25 + this.surge * 0.4;
-        post.bloomBoost = this.surge * 0.1 + swell * 0.1;
-        // The iris closes a little as the night flares, so its colours survive the surge.
-        post.exposure = 1 / (1 + this.surge * 0.5 + swell * 0.2 + this.heartFlash * 0.3);
+        // (The punch of play keeps a floor under rapid locks: the flash rides on it.)
+        post.flash = this.flash + punch * 0.03;
+        post.kick = Math.min(1, this.kick);
+        // The moon's shafts stream between the trunks as play runs hot; the hush draws them in.
+        const shafts = 0.26 + this.power * 0.24 + swell * 0.25 + this.surge * 0.4
+            + 0.1 * hot + 0.22 * fever + 0.15 * this.crown;
+        post.shafts = shafts + (0.05 - shafts) * hush;
+        post.bloomBoost = this.surge * 0.1 + swell * 0.1 + 0.04 * level + 0.08 * fever + 0.12 * this.crown;
+        // The iris closes a little as the night flares and as play runs hot, so its colours
+        // survive the surge (a little: the four lines' answer must not darken the night).
+        post.exposure = 1 / (1 + this.surge * 0.25 + swell * 0.15 + this.heartFlash * 0.15 + 0.06 * level + 0.08 * fever
+            + 0.08 * this.crown);
         const ringAge = t - this.shock.time;
         const ringOn = ringAge >= 0 && ringAge < 2.2;
         post.prism.radius = ringOn ? ringAge * 1.25 + 0.02 : 0;
-        post.prism.strength = ringOn ? this.shock.strength * Math.exp(-ringAge / 0.75) : 0;
+        // (A bright band across the whole picture: held back under Reduce flashing.)
+        post.prism.strength = ringOn ? this.shock.strength * Math.exp(-ringAge / SHOCK_FADE) * flashScale() : 0;
         const p = this._palette;
         for (let c = 0; c < 3; c++) post.shade[c] = p.deep[c] * 0.6 + p.haze[c] * 0.08;
     }
@@ -1315,6 +1632,9 @@ export class StillwaterWorld {
             combo: this.combo,
             power: this.power,
             surge: this.surge,
+            heat: this.heat.level,
+            fever: this.heat.fever,
+            stage: this.heat.stage,
             breath: this.breath,
             level: this.level,
             hour: this.hourNow(),
