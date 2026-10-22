@@ -404,8 +404,8 @@ export function createNebulaMaterial(u, noiseTex, reliefTex, look = {}) {
                 const gShape = vec2(shapeAt(p.add(vec2(e, 0))).x.sub(s0), shapeAt(p.add(vec2(0, e))).x.sub(s0)).div(e);
                 const edgeW = exp(min(d, 0).mul(11.0));
                 const gRelief = billowSlope(qDust).mul(1.1)
-                    .add(gCoarse.mul(edgeW.mul(0.25).add(0.1)))
-                    .add(gGrain.mul(edgeW.mul(0.25).add(0.04)));
+                    .add(gCoarse.mul(edgeW.mul(0.25).add(0.16)))
+                    .add(gGrain.mul(edgeW.mul(0.25).add(0.09)));
                 const gradD = gShape.mul(edgeW.mul(1.3)).sub(gRelief);
                 n.assign(normalize(vec3(gradD, 1.0)));
             });
