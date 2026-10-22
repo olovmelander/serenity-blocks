@@ -4139,7 +4139,7 @@ export function createOdysseyWorld({
     // WAS: 110 copies of one hull each circling its OWN seed point, shaded near-black, and
     // ~3/7 of them seeded from rail samples inside the Earth Core shaft (below the seabed, so
     // early-Z'd invisible). The water column read as empty with a few dark slivers.
-    // NOW: the same 110 instances in ONE draw, organised into SCHOOLS. Each school follows a
+    // NOW: 150 instances (110 until 2026-10-22) in ONE draw, organised into SCHOOLS. Each school follows a
     // fixed ribbon (a gently undulating ellipse in open water around the ascent), and every fish
     // keeps a fixed offset inside it — along, across and above the ribbon — so the school moves
     // as one body with a living edge, the SCHOOL_LANES grammar of the ocean theme
@@ -4163,44 +4163,48 @@ export function createOdysseyWorld({
         // ~30 degree half-field, so a ring reads overhead only while it sits ~1.7x its radius
         // above the eye. Rings of 22-34 u stacked ~50 u apart keep one wheeling in frame for
         // most of the climb; the cruisers range wider and lower.
+        // SIZES ARE SET BY THE WHALES (2026-10-22): at 1.3-2 u (a sardine against a 58 u whale)
+        // a school ~50 u up drew as faint specks in the live journey. Fish are now 2.9-4.4 u (jacks,
+        // ~1 m at the whales' ~4 u/m) and the cruisers 6-9 u (tuna), with more of them in schools
+        // spread to match, so a school reads as fish wheeling overhead.
         {
-            count: 34,
+            count: 48,
             f: 0.30,
             dy: 55,
             rx: 26,
             rz: 22,
             omega: 0.085,
             bob: 4,
-            spread: [14, 4.0, 2.5],
-            scale: [0.30, 0.40],
+            spread: [20, 5.6, 3.5],
+            scale: [0.66, 0.88],
             tint: [0.66, 0.78, 0.84],
         },
         {
-            count: 30,
+            count: 42,
             f: 0.55,
             dy: 50,
             rx: 30,
             rz: 24,
             omega: -0.065,
             bob: 6,
-            spread: [16, 5.0, 3.0],
-            scale: [0.34, 0.46],
+            spread: [22, 7.0, 4.2],
+            scale: [0.75, 1.0],
             tint: [0.24, 0.66, 0.70],
         },
         {
-            count: 30,
+            count: 40,
             f: 0.84,
             dy: 14,
             rx: 34,
             rz: 42,
             omega: 0.060,
             bob: 3,
-            spread: [16, 5.0, 3.0],
-            scale: [0.30, 0.42],
+            spread: [22, 7.0, 4.2],
+            scale: [0.66, 0.92],
             tint: [0.86, 0.72, 0.38],
         },
         {
-            count: 16,
+            count: 20,
             f: 0.40,
             dy: 30,
             rx: 62,
@@ -4208,7 +4212,7 @@ export function createOdysseyWorld({
             omega: -0.030,
             bob: 10,
             spread: [60, 22, 18],
-            scale: [0.62, 0.92],
+            scale: [1.35, 2.0],
             tint: [0.34, 0.50, 0.64],
         },
     ];
