@@ -75,6 +75,7 @@ import {
     ODYSSEY_CHAPTER_PROFILES,
     ODYSSEY_WORLD_SUN,
 } from './chapter-environments/shared/chapter-profile.js';
+import { ODYSSEY_PATH_HORIZON, PATH_HORIZON_OPEN } from './odyssey-path-horizon.js';
 
 const CHAPTER_COUNT = 8;
 
@@ -390,6 +391,9 @@ export function createPathChapterUniforms(chapterPositions = [], opts = {}) {
         uFlow: uniform(0),
         uHead: uniform(0),
         uBeat: uniform(0),
+        // THE HORIZON (odyssey-path-horizon.js): the rail is not drawn past this path position
+        // (its radius collapses over ODYSSEY_PATH_HORIZON.soft before it). 2 = nothing hidden.
+        uHorizon: uniform(PATH_HORIZON_OPEN),
     };
 }
 
@@ -544,7 +548,7 @@ export function createPathCentreLineGeometry(curve, tubularSegments = 256, radia
  * MUST be called inside a positionNode (positionLocal = the centre-line point there).
  */
 function ribbonRadius({
-    baseRadius, width, arc, minPixels, maxScreen, nearStart, nearEnd, taper, thin = null,
+    baseRadius, width, arc, minPixels, maxScreen, nearStart, nearEnd, taper, thin = null, horizon = null,
 }) {
     const centreWorld = modelWorldMatrix.mul(vec4(positionLocal, 1.0)).xyz;
     const dCam = length(centreWorld.sub(cameraPosition));
@@ -567,7 +571,12 @@ function ribbonRadius({
     const near = smoothstep(nearStart, nearEnd, dCam);
     const s = uv().x.mul(arc);
     const ends = smoothstep(0.0, taper, s).mul(smoothstep(0.0, taper, arc.sub(s)));
-    return r.mul(near).mul(near).mul(ends);
+    // Past the horizon the rail is not drawn: it tapers into the black hole (the same weight as
+    // odysseyPathHorizonWeight, so the nodes beyond it scale out in step).
+    const beyond = horizon
+        ? float(1.0).sub(smoothstep(horizon.sub(ODYSSEY_PATH_HORIZON.soft), horizon, uv().x))
+        : float(1.0);
+    return r.mul(near).mul(near).mul(ends).mul(beyond);
 }
 
 /**
@@ -661,6 +670,7 @@ export function createPathOuterTSL(uTime = uniform(0), opts = {}) {
             nearStart: float(ODYSSEY_PATH_CROSS_SECTION.nearFadeStart),
             nearEnd: float(ODYSSEY_PATH_CROSS_SECTION.nearFadeEnd),
             taper: float(ODYSSEY_PATH_CROSS_SECTION.endTaper),
+            horizon: chapter.uHorizon,
         });
         return positionLocal.add(normalLocal.mul(r));
     })();
@@ -860,6 +870,7 @@ export function createPathGlowTSL(uTime = uniform(0), opts = {}) {
             nearStart: float(ODYSSEY_PATH_CROSS_SECTION.glowNearFadeStart),
             nearEnd: float(ODYSSEY_PATH_CROSS_SECTION.glowNearFadeEnd),
             taper: float(ODYSSEY_PATH_CROSS_SECTION.endTaper * 2.0),
+            horizon: chapter.uHorizon,
         });
         return positionLocal.add(normalLocal.mul(r));
     })();

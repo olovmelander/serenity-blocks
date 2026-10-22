@@ -93,6 +93,48 @@
     font: 400 13px / 1.45 var(--sb-font-text);
 }
 
+/* A supply longer than the queue shows, whole: placed pieces dimmed, the one in hand lit. Each
+   piece is one solid shape (stillfall-piece-glyphs.js), sized by its cells. */
+.stillfall-supply {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.stillfall-supply__piece {
+    display: block;
+    width: calc(var(--piece-cols) * 7px);
+    height: calc(var(--piece-rows) * 7px);
+    color: rgba(var(--sb-cream-rgb), 0.62);
+}
+
+.stillfall-supply__piece.is-in-hand {
+    color: var(--sb-cream);
+    filter: drop-shadow(0 0 4px rgba(var(--sb-coral-rgb), 0.6));
+}
+
+.stillfall-supply__piece.is-placed {
+    color: rgba(var(--sb-cream-rgb), 0.16);
+}
+
+/* The shape fills its box; a stroke of its own colour rounds the outer corners a little. */
+.stillfall-supply__piece > svg,
+#stillfall-atlas .stillfall-atlas__piece > svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+}
+
+.stillfall-supply__piece polygon,
+#stillfall-atlas .stillfall-atlas__piece polygon {
+    fill: currentColor;
+    stroke: currentColor;
+    stroke-width: 0.16;
+    stroke-linejoin: round;
+}
+
 .stillfall-goal {
     display: grid;
     gap: 8px;
@@ -115,11 +157,24 @@
     color: var(--sb-text-muted);
     font: 600 12px / 1 var(--sb-font-display);
     font-variant-numeric: tabular-nums;
+    white-space: nowrap; /* "6 / 6" never breaks at its spaces */
 }
 
 .stillfall-pips {
     display: inline-flex;
+    flex: none;
     gap: 5px;
+}
+
+/* Seven pips and more (the towers' longest goals, up to nine lines) sit smaller and closer, so
+   the row keeps room for its label. */
+.stillfall-pips:has(> :nth-child(7)) {
+    gap: 3px;
+}
+
+.stillfall-pips:has(> :nth-child(7)) > .stillfall-pip {
+    width: 9px;
+    height: 9px;
 }
 
 .stillfall-pip {
@@ -1168,18 +1223,13 @@
     gap: 8px;
 }
 
-/* A piece of the supply, as it spawns. */
+/* A piece of the supply, as it spawns: one solid shape (stillfall-piece-glyphs.js). */
 #stillfall-atlas .stillfall-atlas__piece {
-    display: grid;
-    grid-template-columns: repeat(var(--piece-cols), 7px);
-    grid-auto-rows: 7px;
-    gap: 1px;
-}
-
-#stillfall-atlas .stillfall-atlas__piece > i.is-on {
-    border-radius: 1.5px;
-    background: var(--sb-cream);
-    box-shadow: 0 0 6px rgba(var(--sb-cream-rgb), 0.3);
+    display: block;
+    width: calc(var(--piece-cols) * 8px);
+    height: calc(var(--piece-rows) * 8px);
+    color: var(--sb-cream);
+    filter: drop-shadow(0 0 4px rgba(var(--sb-cream-rgb), 0.3));
 }
 
 /* ---- The grid: the tier's puzzles ------------------------------------------------- */

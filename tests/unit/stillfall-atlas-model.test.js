@@ -10,8 +10,8 @@ import {
     piecesText,
     preferredPuzzle,
     PREVIEW_COLUMNS,
-    PREVIEW_ROWS,
     previewCells,
+    previewRows,
     puzzleLockNote,
     resolveAtlasKey,
     stepPuzzle,
@@ -95,13 +95,14 @@ describe('the Stillfall atlas model', () => {
         expect(tierNextNote(all.tiers[2], all.tiers[3])).toBe('');
     });
 
-    it('draws a structure bottom-aligned in the shared frame, with seams only where bodies meet', () => {
+    it("draws a structure bottom-aligned in its tier's frame, with seams only where bodies meet", () => {
         const firstFall = STILLFALL_PUZZLES.find((entry) => entry.id === 'first-fall');
         const rows = previewCells(firstFall);
-        expect(rows).toHaveLength(PREVIEW_ROWS);
+        const frame = previewRows(firstFall.tier);
+        expect(rows).toHaveLength(frame);
         expect(rows.every((row) => row.length === PREVIEW_COLUMNS)).toBe(true);
         // '.AA.......' over 'BBBBBB.CCC': the last two frame rows.
-        expect(rows.slice(0, PREVIEW_ROWS - 2).flat().every((cell) => cell === null)).toBe(true);
+        expect(rows.slice(0, frame - 2).flat().every((cell) => cell === null)).toBe(true);
         const [top, floor] = rows.slice(-2);
         expect(top.map((cell) => cell?.body ?? '.').join('')).toBe('.AA.......');
         expect(floor.map((cell) => cell?.body ?? '.').join('')).toBe('BBBBBB.CCC');
@@ -109,6 +110,20 @@ describe('the Stillfall atlas model', () => {
         expect(top[1].seamBelow).toBe(true);
         expect(floor[0].seamRight).toBe(false);
         expect(top[1].shade).not.toBe(floor[1].shade);
+    });
+
+    it('frames each tier to hold its tallest structure, and never shrinks the frame on the way down', () => {
+        const frames = TIERS.map(({ tier }) => previewRows(tier));
+        frames.forEach((rows, index) => {
+            const tier = TIERS[index].tier;
+            const tallest = Math.max(...STILLFALL_PUZZLES.filter((entry) => entry.tier === tier).map((entry) => entry.rows.length));
+            expect(rows).toBeGreaterThanOrEqual(tallest);
+            if (index > 0) expect(rows).toBeGreaterThanOrEqual(frames[index - 1]);
+        });
+        // Every puzzle of a tier shares its frame.
+        STILLFALL_PUZZLES.forEach((entry) => expect(previewCells(entry)).toHaveLength(previewRows(entry.tier)));
+        // The first ten tiers keep the frame they had before the towers came.
+        expect(frames.slice(0, 10)).toEqual(Array(10).fill(9));
     });
 
     it('marks the relic and the seal from the goal', () => {
@@ -160,7 +175,7 @@ describe('the Stillfall atlas model', () => {
         expect(stepRow(model, second[8], 1, 5).id).toBe(second[13]);
         expect(stepTier(model, 1, 1).tier).toBe(2);
         expect(stepTier(model, 1, -1)).toBeNull();
-        expect(stepTier(model, 10, 1)).toBeNull();
+        expect(stepTier(model, TIERS.at(-1).tier, 1)).toBeNull();
     });
 
     it('balances the grid rows', () => {

@@ -42,6 +42,10 @@ import {
     GARGANTUA_LOCK,
     resolveGargantuaLockPosition,
 } from '../../src/rendering/odyssey/chapter-environments/black-hole-transcendence.tsl.js';
+import {
+    ODYSSEY_PATH_HORIZON,
+    resolveOdysseyPathHorizon,
+} from '../../src/rendering/odyssey/odyssey-path-horizon.js';
 
 // Chapters 5-7 run the BEYOND act camera language (followDistance 42, fovBase 66).
 const BEYOND = ODYSSEY_CAMERA_PROFILES[ODYSSEY_ACTS.BEYOND];
@@ -191,24 +195,29 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
     });
 
     it('sets the black hole at the end of the rail from the first frame, and flies into it', () => {
-        // Entry composition (2026-10-19): the omen hangs on the rail's own line ahead
-        // (OMEN_SPINE_ANCHOR), so from the first frame it sits where the path leads, near the
-        // frame's centre; the gas giant lower-right of the rail, the galaxy a far jewel upper-LEFT
-        // (the level card owns the right edge).
+        // Entry composition: the omen rides the path (resolveOmenPathPlace, 2026-10-22), so from
+        // the first frame it sits where the rail heads, in the upper centre where chapter 7 will
+        // hold it; the gas giant low and right of the rail, the galaxy a far jewel upper-LEFT (the
+        // level card owns the right edge).
         {
-            // A real camera: the giant is still on the seam's screen seat here.
             const { frame, cam } = liveCamera(ch6Start);
             const heroes = heroesAt(env, cam, ch6Start);
             const bh = project(frame, heroes.blackHole, 16 / 9);
             const planet = project(frame, heroes.heroPlanet, 16 / 9);
             const galaxy = project(frame, heroes.galaxy, 16 / 9);
             expect(Math.abs(bh.x), `entry ndcX ${bh.x.toFixed(2)}`).toBeLessThan(0.25);
-            expect(Math.abs(bh.y), `entry ndcY ${bh.y.toFixed(2)}`).toBeLessThan(0.25);
+            expect(bh.y, `entry ndcY ${bh.y.toFixed(2)}`).toBeGreaterThan(0);
+            expect(bh.y, `entry ndcY ${bh.y.toFixed(2)}`).toBeLessThan(0.35);
             expect(planet.x).toBeGreaterThan(0.15);
             expect(planet.y).toBeLessThan(0);
             expect(galaxy.x).toBeLessThan(-0.25);
             expect(galaxy.y).toBeGreaterThan(0.25);
-            expect(Math.abs(bh.x - planet.x)).toBeGreaterThan(0.3);
+            // The giant hangs LOW, below the hole, so its clearance is 2-D (as at the exit).
+            expect(
+                Math.hypot(planet.x - bh.x, planet.y - bh.y),
+                `planet ${planet.x.toFixed(2)},${planet.y.toFixed(2)} vs bh ${bh.x.toFixed(2)},${bh.y.toFixed(2)}`,
+            ).toBeGreaterThan(0.3);
+            expect(planet.y).toBeLessThan(bh.y - 0.2);
             expect(Math.abs(planet.x - galaxy.x)).toBeGreaterThan(0.6);
         }
         // Exit (owner direction 2026-08-15): the rail flies STRAIGHT INTO the black
@@ -331,26 +340,53 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         }
     });
 
-    it('hangs the black hole at ONE place on the spine, then locks it onto chapter 7 just before the seam', () => {
+    it('rides the black hole on the path, then locks it onto chapter 7 just before the seam', () => {
         // Owner 2026-10-19: "i want the black hole for example to be locked on the spine path
         // instead pf drifting towards it and then lock just before we go into the black hole and
         // chapter 7". It used to march across a quarter of the frame on the camera's height and
-        // grow 3.9 -> 8.2 deg in the last 1 % of the path as it glided onto the lock.
+        // grow 3.9 -> 8.2 deg in the last 1 % of the path as it glided onto the lock. Then, parked
+        // at one world point, it wandered round the rail's vanishing point by up to 0.27 of the
+        // frame as the rail turned — owner 2026-10-22: "it feels like the black hole drifts, i
+        // want it to be locked at the journey path we are moving on". It now rides the path: its
+        // place against the rail's heading never changes.
         const handoff = resolveOmenHandoffWindow(chapterPositions);
+        const curve = getOdysseyPathCurve();
+        const pathLength = curve.getLength();
+        // Where the rail heads on the path camera: the vanishing point of its tangent.
+        const offFromHeading = (progress, r) => {
+            const frame = frameAt(controller, chapterPositions, 6, progress);
+            const heading = project(
+                frame,
+                frame.camPos.clone().addScaledVector(curve.getTangentAt(progress).normalize(), 1e5),
+                16 / 9,
+            );
+            return new THREE.Vector2(r.x - heading.x, r.y - heading.y);
+        };
         const first = omenAt(ch6Start);
-        let prevDeg = 0;
-        for (let p = ch6Start; p < handoff.start; p += 0.003) {
+        const firstOff = offFromHeading(ch6Start, first);
+        let prev = { ...first, p: ch6Start };
+        for (let p = ch6Start + 0.003; p < handoff.start; p += 0.003) {
             const r = omenAt(p);
             const where = `@p=${p.toFixed(4)}`;
-            // It never moves — neither with travel nor when the eye leaves the rail.
-            expect(r.world.distanceTo(first.world), `moved ${where}`).toBeLessThan(1e-6);
-            expect(omenAt(p, true).world.distanceTo(first.world), `orb eye moved it ${where}`).toBeLessThan(1e-6);
-            // It only grows, with progress, and stays ahead and in frame.
-            expect(r.deg, `shrank ${where}`).toBeGreaterThanOrEqual(prevDeg - 1e-9);
+            // Locked to the path: the rail runs into it at the same spot all chapter.
+            const off = offFromHeading(p, r);
+            expect(off.distanceTo(firstOff), `slid against the rail ${where}`).toBeLessThan(0.015);
+            // Placed by the rail's progress, never by the eye.
+            expect(omenAt(p, true).world.distanceTo(r.world), `orb eye moved it ${where}`).toBeLessThan(1e-6);
+            // Already on chapter 7's place on screen, so the hand-over is a settle, not a move.
+            const lock = project(
+                frameAt(controller, chapterPositions, 6, p),
+                resolveGargantuaLockPosition(r.cam, new THREE.Vector3()),
+                16 / 9,
+            );
+            expect(Math.hypot(r.x - lock.x, r.y - lock.y), `off the lock's place ${where}`).toBeLessThan(0.06);
+            // It closes on the eye as fast as the rail runs, and only grows; ahead and in frame.
+            const travelled = (p - prev.p) * pathLength;
+            expect(prev.dist - r.dist, `closing ${where}`).toBeGreaterThan(travelled * 0.7);
+            expect(prev.dist - r.dist, `closing ${where}`).toBeLessThan(travelled * 1.3);
+            expect(r.deg, `shrank ${where}`).toBeGreaterThanOrEqual(prev.deg - 1e-9);
             expect(r.behind).toBe(false);
-            expect(Math.abs(r.x)).toBeLessThan(0.3);
-            expect(Math.abs(r.y)).toBeLessThan(0.35);
-            prevDeg = r.deg;
+            prev = { ...r, p };
         }
         // On the path camera it is already where ch7's lock holds the hole, so the lock that
         // follows is a settle, not a move.
@@ -371,6 +407,30 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         expect(atEnd.deg / first.deg).toBeGreaterThan(1.1);
         expect(atEnd.deg / first.deg).toBeLessThan(1.6);
         expect(first.deg).toBeGreaterThan(5);
+    });
+
+    it('runs the rail into the middle of the hole, not its rim', () => {
+        // Olov 2026-10-22: "does the path go in to the center of the black hole now?" The rail's
+        // drawn end (it tapers out at the path horizon, odyssey-path-horizon.js) met the shadow
+        // 0.8-1.1 shadow radii below its centre all chapter; the hole now sits where that end
+        // points. From the chapter's first stretch to its last node the end stays in the middle.
+        const { levelPositions } = layout;
+        const lastNode = Math.max(...levelPositions.filter((x) => x > ch6Start && x < ch6End - 1e-6));
+        const curve = getOdysseyPathCurve();
+        const tanHalf = Math.tan(THREE.MathUtils.degToRad(BEYOND.fovBase / 2));
+        for (let p = ch6Start + 0.03; p <= lastNode + 1e-9; p += 0.004) {
+            const hole = omenAt(p);
+            const radius = (OMEN_SHADOW_RADIUS * hole.scale) / hole.dist / tanHalf;
+            const horizon = resolveOdysseyPathHorizon(p, chapterPositions, levelPositions);
+            const end = project(
+                frameAt(controller, chapterPositions, 6, p),
+                curve.getPointAt(Math.min(1, horizon - (ODYSSEY_PATH_HORIZON.soft / 2))),
+                16 / 9,
+            );
+            // In shadow radii from the hole's centre (x aspect-corrected).
+            const off = Math.hypot(((end.x - hole.x) * 16) / 9, end.y - hole.y) / radius;
+            expect(off, `rail end ${off.toFixed(2)} radii off the centre @p=${p.toFixed(4)}`).toBeLessThan(0.4);
+        }
     });
 
     it('keeps the galaxy at infinity: one direction, one distance, one turn, whatever the eye does', () => {

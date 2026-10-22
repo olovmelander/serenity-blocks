@@ -5,6 +5,7 @@
  * CI certifies them side by side. A rules change (kicks, spawn, gravity, cascade order) that
  * breaks a shipped puzzle fails here or there.
  */
+import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
     buildPuzzle, markedBodies, validatePuzzleDefinition, MAX_SUPPLY,
@@ -16,7 +17,7 @@ import { isStraight } from '../../src/core/stillfall/stillfall-solver.js';
 import {
     STILLFALL_PUZZLES, SOLVES_TO_OPEN_NEXT_TIER, TIERS, openPuzzleIds,
 } from '../../src/core/stillfall/puzzle-bank.js';
-import { CERTIFIED_TIER_GROUPS, certifyTiers } from './helpers/stillfall-certify.js';
+import { CERTIFIED_SHARDS, CERTIFIED_TIER_GROUPS, certifyTiers } from './helpers/stillfall-certify.js';
 
 describe('Stillfall puzzle bank', () => {
     it('holds valid puzzles with unique ids, lessons and stored solutions', () => {
@@ -25,6 +26,8 @@ describe('Stillfall puzzle bank', () => {
         for (const definition of STILLFALL_PUZZLES) {
             expect(validatePuzzleDefinition(definition), definition.id).toEqual([]);
             expect(definition.lesson, definition.id).toBeTruthy();
+            // The panel and the atlas card are laid out for a lesson of two short lines at most.
+            expect(definition.lesson.length, definition.id).toBeLessThanOrEqual(101);
             expect(definition.solution?.length, definition.id).toBe(definition.supply.length);
         }
     });
@@ -48,10 +51,19 @@ describe('Stillfall puzzle bank', () => {
         expect(withoutLanterns.length).toBeLessThan(SOLVES_TO_OPEN_NEXT_TIER);
     });
 
-    it('certifies every tier in exactly one certifier file', () => {
+    it('certifies every tier in exactly one certifier file, or a split tier in every one of its shards', () => {
         const groups = CERTIFIED_TIER_GROUPS.flat();
         expect(new Set(groups).size).toBe(groups.length);
         expect(groups.sort((a, b) => a - b)).toEqual(TIERS.map((entry) => entry.tier));
+        for (const [tier, count] of Object.entries(CERTIFIED_SHARDS)) {
+            expect(CERTIFIED_TIER_GROUPS, `tier ${tier} is split, so it is a group of its own`).toContainEqual([Number(tier)]);
+            expect(STILLFALL_PUZZLES.filter((p) => p.tier === Number(tier)).length).toBeGreaterThanOrEqual(count);
+            for (let shard = 0; shard < count; shard += 1) {
+                const file = new URL(`./stillfall-puzzles-tier-${tier}-${shard + 1}.test.js`, import.meta.url);
+                expect(fs.existsSync(file), `${file.pathname} is missing`).toBe(true);
+                expect(fs.readFileSync(file, 'utf8')).toContain(`certifyShard(${tier}, ${shard})`);
+            }
+        }
     });
 
     certifyTiers(CERTIFIED_TIER_GROUPS[0]);
@@ -64,7 +76,7 @@ describe('Stillfall rules', () => {
 
     it('rejects malformed definitions with every problem named', () => {
         expect(validatePuzzleDefinition({
-            id: 'Bad Id', title: '', rows: ['AAAA', 'BBBBBBBBBB'], supply: ['Q', 'I', 'I', 'I', 'I'], goal: { type: 'win' },
+            id: 'Bad Id', title: '', rows: ['AAAA', 'BBBBBBBBBB'], supply: Array(MAX_SUPPLY + 1).fill('I'), goal: { type: 'win' },
         })).toEqual(expect.arrayContaining([
             'id must be a short kebab-case string',
             'title is required',
@@ -73,6 +85,8 @@ describe('Stillfall rules', () => {
             `supply must hold 1–${MAX_SUPPLY} pieces`,
             expect.stringContaining('goal.type must be one of'),
         ]));
+        expect(validatePuzzleDefinition({ ...definition, supply: ['Q'], goal: { type: 'clear-all' } }))
+            .toEqual(["unknown supply piece 'Q'"]);
         const split = { ...definition, rows: ['A.A.......', 'BBBBBBBB..'], goal: { type: 'clear-all' } };
         expect(validatePuzzleDefinition(split)).toEqual(["body 'A' must be one connected group"]);
         expect(validatePuzzleDefinition({ ...definition, goal: { type: 'relic-floor', body: 'Z' } }))
