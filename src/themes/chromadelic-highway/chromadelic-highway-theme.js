@@ -20,6 +20,7 @@ import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { resolveTargetFps } from '../theme-frame-pacer.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { ComboTracker } from '../../core/combo-tracker.js';
 import { normalizeQuality } from '../../utils/quality.js';
 import { CHROMADELIC_HIGHWAY_TETROMINOS } from './chromadelic-highway-tetrominos.js';
 import { ChromadelicHighwayPost, POST_LOOK, createPassThroughPipeline } from './chromadelic-highway-post.js';
@@ -296,6 +297,8 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
 
         // Play pace tracking
         this.pieceLockTimes = [];
+        // The true consecutive-clear combo (the bus's COMBO is a cascade's depth, ADR-0011).
+        this.comboTracker = new ComboTracker();
         this.playPaceMultiplier = 1.0;
         this.targetPaceMultiplier = 1.0;
         this.reactiveState = {
@@ -753,6 +756,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         this.world = null;
         this.layoutState = null;
         this.pieceLockTimes = [];
+        this.comboTracker?.reset();
         this.pulseIntensity = 0;
         this.bloomBoost = 0;
         this.particleGlow = 0;
@@ -1939,17 +1943,30 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             this.pieceLockTimes.push(now);
             if (this.pieceLockTimes.length > 10) this.pieceLockTimes.shift();
             this.updatePlayPace();
+            // The true combo is bookkeeping, never gated by a visual setting (combo-tracker.js).
+            const chain = this.comboTracker.combo;
+            this.comboTracker.notePieceLocked();
             if (reactive()) {
                 // The most frequent event is the quietest: a rail tick and a faint chevron.
                 this.pushReactiveEnvelope({ particle: 0.15, ambient: 0.1 });
                 this.world?.onPieceLock();
+                if (chain >= 2 && this.comboTracker.combo === 0) this.world?.onChain(0);
             }
         });
 
+        // Same tick as, and just before, the PIECE_LOCK of the same piece: the lock slams.
+        const hardDropUnsub = eventBus.on(EVENTS.HARD_DROP, () => {
+            if (!reactive()) return;
+            this.pushReactiveEnvelope({ particle: 0.12 });
+            this.world?.onHardDrop();
+        });
+
+        // COMBO carries the CASCADE DEPTH of one lock (ADR-0011), never the combo: each wave of a
+        // cascade escalates on the last. The true combo comes from the ComboTracker below.
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             if (!reactive()) return;
-            const combo = Number.isFinite(data?.comboCount) ? data.comboCount : 0;
-            const intensity = Math.min(combo * 0.16, 1.0);
+            const depth = Number.isFinite(data?.comboCount) ? data.comboCount : 0;
+            const intensity = Math.min(depth * 0.16, 1.0);
             this.pushReactiveEnvelope({
                 pulse: 0.15 + intensity * 0.3,
                 bloom: 0.1 + intensity * 0.3,
@@ -1957,10 +1974,13 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 particle: 0.11 + intensity * 0.3,
                 ambient: 0.2 + intensity * 0.4,
             });
-            this.world?.onCombo(combo);
+            this.world?.onCombo(depth);
         });
 
         const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+            if (!this.isActive) return;
+            const before = this.comboTracker.combo;
+            const combo = this.comboTracker.noteLineClear();
             if (!reactive()) return;
             const lines = Number.isFinite(data?.lineCount) ? data.lineCount : 0;
             const intensity = Math.min(lines * 0.25, 1.0);
@@ -1971,7 +1991,33 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
                 particle: 0.1 + intensity * 0.5,
                 ambient: 0.12 + intensity * 0.25,
             });
-            this.world?.onLineClear(lines);
+            this.world?.onLineClear(lines, {
+                cascade: Number.isFinite(data?.cascadeCount) ? data.cascadeCount : 1,
+                combo,
+                chainStep: combo > before,
+            });
+        });
+
+        const tspinUnsub = eventBus.on(EVENTS.TSPIN, (data) => {
+            if (!reactive()) return;
+            const lines = Number.isFinite(data?.lineCount) ? data.lineCount : 0;
+            this.pushReactiveEnvelope({ ring: 0.25, ambient: 0.2 });
+            this.world?.onTSpin(lines);
+        });
+
+        const b2bUnsub = eventBus.on(EVENTS.B2B, (data) => {
+            if (!reactive() || data?.active === false) return;
+            this.pushReactiveEnvelope({ pulse: 0.2, ring: 0.3 });
+            this.world?.onB2B();
+        });
+
+        // Settles ~360 ms after the clear's last wave: a crown on that clear, never a new one.
+        const perfectUnsub = eventBus.on(EVENTS.PERFECT_CLEAR, () => {
+            if (!reactive()) return;
+            this.pushReactiveEnvelope({
+                pulse: 0.35, bloom: 0.2, ring: 0.45, ambient: 0.4,
+            });
+            this.world?.onPerfectClear();
         });
 
         const levelUpUnsub = eventBus.on(EVENTS.LEVEL_UP, (data) => {
@@ -1993,7 +2039,17 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
         window.addEventListener('pointermove', onPointerMove);
         const pointerUnsub = () => window.removeEventListener('pointermove', onPointerMove);
 
-        this.eventUnsubscribers.push(lockUnsub, comboUnsub, lineClearUnsub, levelUpUnsub, pointerUnsub);
+        this.eventUnsubscribers.push(
+            lockUnsub,
+            hardDropUnsub,
+            comboUnsub,
+            lineClearUnsub,
+            tspinUnsub,
+            b2bUnsub,
+            perfectUnsub,
+            levelUpUnsub,
+            pointerUnsub,
+        );
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -2197,7 +2253,7 @@ export default class ChromadelicHighwayTheme extends BaseTheme {
             quality: this.activeQualityLevel,
             backend: this.isWebGPU ? 'WebGPU' : 'WebGL2',
             time: this.time,
-            world: this.world ? { spectrum: this.world.getSpectrumDiagnostics() } : null,
+            world: this.world ? { spectrum: this.world.getSpectrumDiagnostics(), heat: { ...this.world.heat } } : null,
         };
     }
 
