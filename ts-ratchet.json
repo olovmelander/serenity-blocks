@@ -76,6 +76,7 @@
     "src/rendering/async-render-pipelines.js",
     "src/rendering/odyssey/chapter-environments/odyssey-ringed-giant.js",
     "src/rendering/odyssey/chapter-environments/registry.js",
+    "src/rendering/odyssey/odyssey-path-horizon.js",
     "src/rendering/webgpu-compute-pipeline-async.js",
     "src/themes/shared/bloom-dispose.js",
     "src/themes/shared/camera-breath.js",
