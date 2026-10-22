@@ -109,6 +109,8 @@ export class NimbusVeilPost {
         this.uSunVis = uniform(0);
         this.uRays = uniform(1);
         this.uBloomBoost = uniform(0);
+        /** The iris: closes a little as play heats, so the colours stay saturated. */
+        this.uExposure = uniform(1);
 
         this.bloomNode = null;
         if (look.bloom) {
@@ -172,7 +174,7 @@ export class NimbusVeilPost {
                     });
                 }
             }
-            const H = S.add(B).toVar();
+            const H = S.add(B).mul(this.uExposure).toVar();
             // Mid-tone contrast before the tone map (the darks are left alone).
             const Lh = max(dot(H, LUMA), 1e-4);
             H.mulAssign(pow(Lh.div(0.22), float(0.14).mul(smoothstep(0.015, 0.08, Lh))));
@@ -208,6 +210,7 @@ export class NimbusVeilPost {
         if (params.sunVis !== undefined) this.uSunVis.value = params.sunVis;
         if (params.bloomBoost !== undefined) this.uBloomBoost.value = params.bloomBoost;
         if (params.rays !== undefined) this.uRays.value = params.rays;
+        if (params.exposure !== undefined) this.uExposure.value = params.exposure;
     }
 
     render() {

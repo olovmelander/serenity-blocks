@@ -9,6 +9,16 @@
  * horizon at RIG.horizonFrac.
  *
  * Draws at High: sky, cloud sea, cumulus, two veils, motes, sparkles — seven.
+ *
+ * Play builds the light instead of restarting it (src/themes/shared/gameplay-surge.js). Every
+ * event's light is a Swell that adds to what is still lit; the light waves are a procession of
+ * RING_SLOTS bands, a new one taking the slot with the least light left. The heat of play goes
+ * into the world's own light, locally, never into the air: as play warms, the flight quickens
+ * and the sun's fan of beams sharpens; hot, the towers' crowns catch fire and the glare path on
+ * the deck turns molten; in a fever the air clears (the frame-wide glow gives way), the beams
+ * blaze in a turning gold crown and the camera skims low and fast over the heads. A perfect
+ * clear lights every tower crown at once and sends a great wave rolling OUT to the horizon: the
+ * world exhales.
  */
 
 import * as THREE from 'three/webgpu';
@@ -24,6 +34,8 @@ import { SEA_SHADOW_TAPS, createCloudSea } from './nimbus-veil-cloudsea.js';
 import { createCumulus } from './nimbus-veil-cumulus.js';
 import { NimbusFx } from './nimbus-veil-fx.js';
 import { applyCameraBreath, easedMotion } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /** Per-tier content. Every tier keeps the composition; tiers trade detail, not layout. */
 export const WORLD_QUALITY = Object.freeze({
@@ -80,6 +92,61 @@ const BURST_DEPTH = 60;
 /** Where a light wave starts (distance from the camera): beyond the farthest tower. */
 const RING_START = 1100;
 
+/**
+ * Light-wave slots: enough for a procession (a clear every ~0.6 s with each wave ~3 s long, or a
+ * cascade's waves 0.36 s apart) to show every band at once. The cloud sea and the towers each
+ * read them all (one exp per slot).
+ */
+export const RING_SLOTS = 6;
+
+/** Seconds after a lock with no clear before the chain it carried counts as ended. */
+const CHAIN_GRACE = 0.25;
+
+/** How a light wave travels: in from beyond the towers, in and halting mid-deck, or out. */
+const RING_IN = 0;
+const RING_HOLD = 1;
+const RING_OUT = 2;
+
+const smooth01 = (e0, e1, x) => {
+    const k = Math.min(1, Math.max(0, (x - e0) / (e1 - e0)));
+    return k * k * (3 - 2 * k);
+};
+
+/** A light wave at `age` seconds: its radius, 1/width and energy (0 when it has finished). */
+export function ringState(ring, age, out) {
+    const o = out;
+    o.radius = 0;
+    o.invWidth = 1;
+    o.energy = 0;
+    if (!(ring.energy > 0) || age < 0) return o;
+    const { dur } = ring;
+    let radius;
+    let env;
+    if (ring.mode === RING_OUT) {
+        // The exhale: from under the camera out to the horizon, slow to leave, quick at the end.
+        if (age > dur + 0.3) return o;
+        radius = 20 + (RING_START - 20) * Math.min(1, age / dur) ** 1.6;
+        env = smooth01(0, 0.35, age) * (1 - smooth01(dur - 0.6, dur + 0.3, age));
+    } else if (ring.mode === RING_HOLD) {
+        // A tide line: rolls in fast, halts at `hold` and lingers there, fading slowly.
+        const life = dur + ring.linger * 3;
+        if (age > life) return o;
+        radius = ring.hold + (RING_START - ring.hold) * Math.max(0, 1 - age / dur) ** 1.4;
+        env = Math.min(1, age / 0.2) * (age < dur ? 1 : Math.exp(-(age - dur) / ring.linger))
+            * (1 - smooth01(life - 0.6, life, age));
+    } else {
+        // In from beyond the farthest tower to under the camera, slowing as it nears, so the
+        // band crosses the screen at an even pace.
+        if (age > dur + 0.2) return o;
+        radius = RING_START * Math.max(0, 1 - age / dur) ** 1.4;
+        env = Math.min(1, age / 0.25) * (1 - smooth01(dur - 0.5, dur + 0.2, age));
+    }
+    o.radius = radius;
+    o.invWidth = 1 / ((5 + radius * 0.06) * ring.widthK);
+    o.energy = ring.energy * env;
+    return o;
+}
+
 /** Gameplay boards carry data-player; the lobby's avatar cards reuse .player-card without it. */
 export const BOARD_SELECTOR = '.player-card[data-player]';
 
@@ -133,8 +200,20 @@ export function createWorldUniforms() {
         sunRadius: uniform(SUN.radius),
         sunPulse: uniform(0),
         seaGlow: uniform(0),
-        ring0: uniform(new THREE.Vector4(0, 1, 0, 0)),
-        ring1: uniform(new THREE.Vector4(0, 1, 0, 0)),
+        /** Light waves: (radius, 1/width, energy, heat 0..1: gold → molten amber). */
+        rings: Array.from({ length: RING_SLOTS }, () => uniform(new THREE.Vector4(0, 1, 0, 0))),
+        /**
+         * The heat of play spent locally: x the sun's fan of beams (contrast, reach, gold), y the
+         * towers' burning crowns and rims, z the molten glare path on the deck, w every tower
+         * crown lit at once (perfect clear, back-to-back).
+         */
+        blaze: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        /** The turn of the sun's fan of beams (a T-spin turns it; a fever turns it slowly). */
+        beamTurn: uniform(0),
+        /** The flight clock: the veils and motes drift on it; it runs faster as play heats. */
+        flight: uniform(0),
+        /** The motes' brightness (1 at rest). */
+        moteGlow: uniform(1),
         camRight: uniform(new THREE.Vector3(1, 0, 0)),
         camUp: uniform(new THREE.Vector3(0, 1, 0)),
         camBack: uniform(new THREE.Vector3(0, 0, 1)),
@@ -175,10 +254,51 @@ export class NimbusWorld {
         this.u.sunUp.value.copy(this.sunUp);
         this.u.sunRight.value.copy(this.sunRight);
 
+        /**
+         * The air's glow (sky, haze, the sun's aureole) and the deck's warmth: frame-wide, so
+         * they stay low (a single reads as it always has; a frenzy never washes the frame) and
+         * Reduce flashing holds them back (ADR-0021). Every hit adds to what is still lit.
+         */
+        this.glow = new Swell({ release: 1.0, ceiling: 0.45, knee: 0.3 });
+        this.warmth = new Swell({ release: 1.25, ceiling: 0.6, knee: 0.35 });
+        /** The sun's flare (a quad, a T-spin, a perfect clear): its beams and the towers' rims. */
+        this.flare = new Swell({
+            attack: 0.06, release: 1.4, ceiling: 1.3, knee: 0.8,
+        });
+        /** Every tower crown lit at once (perfect clear, back-to-back, level up). */
+        this.crownLight = new Swell({
+            attack: 0.12, release: 2.4, ceiling: 1.4, knee: 0.9,
+        });
+        /** The camera's dip toward the deck (locks, hard drops): rides lower under a quick hand. */
+        this.dip = new Swell({
+            attack: 0.05, release: 0.35, ceiling: 1, knee: 0.6,
+        });
+        /** How fast a T-spin turns the sun's fan of beams (rad/s). */
+        this.spin = new Swell({ release: 0.7, ceiling: 1.6, knee: 1 });
+        /** How hot play runs (src/themes/shared/gameplay-surge.js). */
+        this.surge = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
+        this.heatAt = Number.NaN;
+        /** The values written last frame (the theme's post reads them). */
         this.sunPulse = 0;
         this.seaGlow = 0;
-        this.rings = [{ t0: -1e6, energy: 0 }, { t0: -1e6, energy: 0 }];
-        this.ringCursor = 0;
+        this.flareShown = 0;
+        this.rings = Array.from({ length: RING_SLOTS }, () => ({
+            t0: -1e6, energy: 0, dur: 3, widthK: 1, heat: 0, mode: RING_IN, hold: 0, linger: 1,
+        }));
+        this._ring = { radius: 0, invWidth: 1, energy: 0 };
+        this.flight = 0;
+        this.seaLead = 0;
+        this.beamTurn = 0;
+        this.hardDropPending = false;
+        /** A chain that ends unless the lock just made clears something (see onPieceLock). */
+        this.chainWatch = 0;
+        this.chainWatchAt = -1e6;
+        this.b2bStreak = 0;
+        this.b2bAt = -1e6;
+        this._post = { bloomBoost: 0, rays: 1, exposure: 1 };
 
         this._camRest = new THREE.Vector3(RIG.x, RIG.height, RIG.z);
         this._fwd = new THREE.Vector3();
@@ -286,8 +406,12 @@ export class NimbusWorld {
         const driftY = (Math.sin(t * 0.06 + 0.4) * 0.55 + Math.sin(t * 0.017) * 0.3) * motion;
         const px = (sim.pointerX ?? 0) * 1.2 * motion;
         const py = -(sim.pointerY ?? 0) * 0.5 * motion;
+        // The flight sinks toward the heads as play heats (a fever skims them) and bobs down
+        // with each lock; a quick hand rides lower. Held at rest under reduced motion.
+        const { level, fever } = this.sampleHeat(t);
+        const skim = (level * 0.6 + fever * 1.3 + this.dip.valueAt(t) * 1.1) * motion;
         camera.position.copy(this._camRest).addScaledVector(right, driftX + px);
-        camera.position.y += driftY + py;
+        camera.position.y += driftY + py - skim;
         this._target.copy(this._camRest).addScaledVector(fwd, 2000);
         camera.lookAt(this._target);
         // The shared breath (shared/camera-breath.js) on top of the drift above, before the basis
@@ -329,76 +453,269 @@ export class NimbusWorld {
         // Reduced motion: the cloud sea drifts at 30 % (a lag, so a seek still lands right) and the
         // sun's pulses stay soft.
         const motion = this.motion ?? 1;
+        if (this.chainWatch && t - this.chainWatchAt > CHAIN_GRACE) {
+            const chain = this.chainWatch;
+            this.chainWatch = 0;
+            this.onChainEnd(chain);
+        }
+        const { level, fever, punch } = this.sampleHeat(t);
+        // The flight quickens with play: a warm hand streams the deck under the camera, a fever
+        // races it (the extra distance is integrated, so a change of pace never jumps the deck).
+        const speedUp = (level * 1.1 + fever * 1.5) * motion;
+        this.seaLead += dt * SEA_SPEED * speedUp;
         this.seaLag = (this.seaLag ?? 0) + dt * SEA_SPEED * 0.7 * (1 - motion);
-        u.seaScroll.value = ((((t * SEA_SPEED) - this.seaLag) % SEA_WRAP) + SEA_WRAP) % SEA_WRAP;
-        this.sunPulse *= Math.exp(-1.0 * dt);
-        if (motion < 1) this.sunPulse = Math.min(this.sunPulse, 0.5 + 0.7 * motion);
-        this.seaGlow *= Math.exp(-0.8 * dt);
-        u.sunPulse.value = Math.min(1.2, this.sunPulse);
-        u.seaGlow.value = Math.min(1.5, this.seaGlow);
-        // Light waves: they roll in from the far deck, past the towers (which light as the wave
-        // goes through them), to under the camera in 3 s — slowing as they near, so the band
-        // crosses the screen at an even pace.
+        u.seaScroll.value = ((((t * SEA_SPEED) - this.seaLag + this.seaLead) % SEA_WRAP) + SEA_WRAP) % SEA_WRAP;
+        this.flight += dt * (1 + (level * 1.6 + fever * 2.2) * motion);
+        u.flight.value = this.flight;
+        const turn = this.spin.valueAt(t) + fever * 0.035;
+        this.beamTurn = (this.beamTurn + dt * turn * motion) % (Math.PI * 2);
+        u.beamTurn.value = this.beamTurn;
+
+        // Frame-wide light: low, held back under Reduce flashing, and in a fever the air clears
+        // (the light goes into the sun's crown, the towers and the deck instead).
+        const fs = flashScale();
+        const clearAir = 1 - 0.5 * fever;
+        this.sunPulse = Math.min(this.glow.valueAt(t) * fs, 0.5 + 0.7 * motion) * clearAir;
+        this.seaGlow = this.warmth.valueAt(t) * fs * clearAir;
+        u.sunPulse.value = this.sunPulse;
+        u.seaGlow.value = this.seaGlow;
+
+        // Local light: the acts of play. Calm shows nothing new; warm sharpens the beams and
+        // warms the glare path; hot sets the towers' crowns burning; a fever blazes all three.
+        const flare = this.flare.valueAt(t);
+        this.flareShown = flare;
+        const warm = smooth01(0.18, 0.55, level);
+        const hot = smooth01(0.45, 0.85, level);
+        u.blaze.value.set(
+            Math.min(1.6, 0.45 * warm + 0.35 * hot + 0.6 * fever + 0.7 * flare * fs),
+            Math.min(1.6, 0.35 * hot + 0.75 * fever + 0.5 * flare + 0.12 * punch),
+            Math.min(1.6, 0.3 * warm + 0.4 * hot + 0.85 * fever + 0.3 * flare),
+            this.crownLight.valueAt(t),
+        );
+        u.moteGlow.value = 1 + level * 0.7 + fever * 0.9;
+
+        // Light waves: a procession of bands rolling in over the deck, past the towers (which
+        // light as each goes through them).
+        const ringOut = this._ring;
         this.rings.forEach((ring, i) => {
-            const age = t - ring.t0;
-            const uni = i === 0 ? u.ring0 : u.ring1;
-            if (age < 0 || age > 3.2 || ring.energy <= 0) {
-                uni.value.z = 0;
-                return;
-            }
-            const radius = RING_START * Math.max(0, 1 - age / 3) ** 1.4;
-            const width = 5 + radius * 0.06;
-            const env = Math.min(1, age / 0.25) * (1 - THREE.MathUtils.smoothstep(age, 2.5, 3.2));
-            uni.value.set(radius, 1 / width, ring.energy * env, 0);
+            const s = ringState(ring, t - ring.t0, ringOut);
+            u.rings[i].value.set(s.radius, s.invWidth, s.energy, ring.heat);
         });
+
+        // The post: rays toward the sun lengthen with the beams; the iris closes a little as
+        // play heats, so the colours stay saturated and the deep sky stays deep.
+        const post = this._post;
+        post.bloomBoost = Math.min(1, this.sunPulse * 0.9 + flare * fs * 0.25 + fever * 0.15);
+        post.rays = 1 + u.blaze.value.x * 0.55;
+        post.exposure = 1 - Math.max(0, level - 0.2) * 0.1 - fever * 0.08;
+    }
+
+    /** The surge at `t`, sampled once per frame whichever of updateCamera/update asks first. */
+    sampleHeat(t) {
+        if (t !== this.heatAt) {
+            this.heatAt = t;
+            const s = this.surge.sample(t);
+            const h = this.heat;
+            h.punch = s.punch;
+            h.level = s.level;
+            h.fever = s.fever;
+            h.stage = s.stage;
+        }
+        return this.heat;
+    }
+
+    /** What the post stack reads this frame (bloom boost, rays, exposure). */
+    postState() {
+        return this._post;
     }
 
     seek(time) {
         this.time = time;
         this.sunPulse = 0;
         this.seaGlow = 0;
+        for (const swell of [this.glow, this.warmth, this.flare, this.crownLight, this.dip, this.spin]) swell.reset();
+        this.surge.reset();
+        this.heatAt = Number.NaN;
         this.rings.forEach((r) => { r.t0 = -1e6; r.energy = 0; });
+        this.flight = time;
+        this.seaLead = 0;
+        this.beamTurn = 0;
+        this.hardDropPending = false;
+        this.chainWatch = 0;
+        this.b2bStreak = 0;
+        this.b2bAt = -1e6;
         this.fx?.clear();
     }
 
     // ── Events ───────────────────────────────────────────────────────────────
+    // Each adds to what is lit; none restarts it. `at` is the world clock of the last frame.
 
-    onPieceLock() {
-        this.sunPulse = Math.min(1.2, this.sunPulse + 0.08);
-        this.seaGlow = Math.min(1.5, this.seaGlow + 0.05);
+    /** Same tick as, and just before, the PIECE_LOCK of the same piece. */
+    onHardDrop() {
+        this.hardDropPending = true;
     }
 
-    onLineClear(lines = 1) {
+    /**
+     * A piece locked. `chain` is the true combo it carries in (ComboTracker): when it is a chain
+     * of two or more and no clear follows within CHAIN_GRACE, the chain has ended (see update()).
+     */
+    onPieceLock({ chain = 0 } = {}) {
+        const at = this.time;
+        const hard = this.hardDropPending;
+        this.hardDropPending = false;
+        this.chainWatch = chain >= 2 ? chain : 0;
+        this.chainWatchAt = at;
+        this.surge.lock({ hardDrop: hard }, at);
+        this.glow.hit(0.08, at);
+        this.warmth.hit(0.05, at);
+        this.dip.hit(hard ? 0.45 : 0.15, at);
+        // A few glints lift off the heads; more the quicker the hand.
+        const glints = Math.round((hard ? 3 : 1) + 7 * this.heat.level);
+        if (glints > 0) this.emitRisingSparkles(glints);
+    }
+
+    /**
+     * A wave of a line clear. `cascade` is the wave's depth (1 = the lock's own clear), `combo`
+     * the true consecutive-clear combo (ComboTracker), `chainStep` true on the wave that
+     * advanced it. Each cascade wave builds on the last: brighter, wider, faster, hotter.
+     */
+    onLineClear(lines = 1, { cascade = 1, combo = 1, chainStep = false } = {}) {
         const n = Math.max(1, Math.min(4, lines | 0));
-        this.triggerRing(0.45 + 0.18 * n);
-        this.sunPulse = Math.min(1.2, this.sunPulse + 0.15 * n);
-        this.seaGlow = Math.min(1.5, this.seaGlow + 0.25 * n);
-        this.emitRisingSparkles(this.burstCount(0.06 * n, 24 * n));
+        const at = this.time;
+        const depth = Math.max(1, Math.min(12, cascade | 0));
+        const chain = Math.max(1, combo | 0);
+        const deep = depth - 1;
+        const steps = Math.min(9, chain - 1);
+        this.chainWatch = 0;
+        if (depth <= 1) this.surge.clear({ lines: n, cascade: 1, combo: chain }, at);
+        else this.surge.wave(at);
+        // The hotter play runs, the finer the bands: a procession of bright lines rolling in
+        // over the heads, not a flood of light over the whole deck.
+        const { level, fever } = this.heat;
+        this.triggerRing({
+            energy: (0.45 + 0.18 * n) * (1 + 0.3 * deep) * (1 + 0.05 * steps),
+            dur: 3 / (1 + 0.12 * deep),
+            widthK: (1 + 0.15 * deep + 0.04 * steps) / (1 + 1.1 * level + 0.6 * fever),
+            heat: Math.min(1, 0.2 * deep + 0.07 * steps + 0.5 * fever + 0.3 * level),
+        });
+        this.glow.hit(0.15 * n, at);
+        this.warmth.hit(0.25 * n, at);
+        this.emitRisingSparkles(this.burstCount(0.06 * n + 0.01 * deep, 24 * n + 8 * deep));
+        // A chain's every new step sheds glints from the sun, more the longer it runs.
+        if (chainStep && chain >= 3) {
+            this.emitHeavenlyBurst(this.burstCount(0.03 + 0.012 * steps, 24 + 8 * steps));
+        }
         if (n >= 4) {
-            this.sunPulse = 1.2;
+            this.glow.hit(0.2, at);
+            this.flare.hit(0.8, at);
+            this.crownLight.hit(0.3, at);
             this.emitHeavenlyBurst(this.burstCount(0.45, 220));
         }
     }
 
+    /** COMBO: the CASCADE depth of one lock (ADR-0011), from its second wave. */
     onCombo(count = 1) {
         const c = Math.max(0, count | 0);
-        this.sunPulse = Math.min(1.2, this.sunPulse + 0.25);
-        this.seaGlow = Math.min(1.5, this.seaGlow + 0.3);
-        if (c >= 2) this.emitHeavenlyBurst(this.burstCount(0.12 + c * 0.06, 60 + 28 * c));
+        const at = this.time;
+        this.glow.hit(0.12, at);
+        this.warmth.hit(0.2, at);
+        // Each wave flares the sun a little more than the last.
+        this.flare.hit(0.06 + 0.05 * Math.min(c, 10), at);
+        if (c >= 2) this.emitHeavenlyBurst(this.burstCount(0.08 + c * 0.04, 40 + 20 * c));
+    }
+
+    /** A T-spin turns the sun's fan of beams; one that cleared nothing turns it a little. */
+    onTSpin(lines = 0) {
+        const at = this.time;
+        const cleared = (lines | 0) > 0;
+        if (cleared) this.surge.tspin(at);
+        else this.surge.spin(at);
+        this.spin.hit(cleared ? 0.9 : 0.45, at);
+        this.flare.hit(cleared ? 0.5 : 0.18, at);
+        this.emitHeavenlyBurst(this.burstCount(cleared ? 0.08 : 0.03, cleared ? 70 : 24));
+    }
+
+    /**
+     * Back-to-back: a gold tide line rolls in fast and halts mid-deck, lingering, and the
+     * towers' crowns light. Each B2B in a streak sets its line nearer and brighter.
+     */
+    onB2B() {
+        const at = this.time;
+        this.surge.b2b(at);
+        this.b2bStreak = at - this.b2bAt < 25 ? this.b2bStreak + 1 : 1;
+        this.b2bAt = at;
+        const k = Math.min(4, this.b2bStreak);
+        this.triggerRing({
+            mode: RING_HOLD,
+            hold: 300 - 40 * k,
+            linger: 1.2 + 0.2 * k,
+            dur: 1.4,
+            energy: 0.8 + 0.15 * k,
+            widthK: 0.55,
+            heat: Math.min(1, 0.55 + 0.1 * k),
+        });
+        this.crownLight.hit(0.3 + 0.1 * k, at);
+        this.flare.hit(0.2, at);
+    }
+
+    /**
+     * A perfect clear settles ~360 ms after its clear's last wave: the crown on that clear,
+     * layered on its light, never a new clear. Every tower crown lights at once and a great
+     * wave rolls OUT from under the camera to the horizon: the release.
+     */
+    onPerfectClear() {
+        const at = this.time;
+        this.surge.crown(at);
+        this.crownLight.hit(1.0, at);
+        this.flare.hit(0.5, at);
+        this.triggerRing({
+            mode: RING_OUT, dur: 3.4, energy: 0.9, widthK: 0.9, heat: 0.85,
+        });
+        this.emitHeavenlyBurst(this.burstCount(0.5, 260));
+    }
+
+    /** A chain of clears ended (a lock that cleared nothing): the world breathes out. */
+    onChainEnd(chain = 2) {
+        const steps = Math.min(9, Math.max(1, chain | 0) - 1);
+        this.triggerRing({
+            mode: RING_OUT, dur: 3.8, energy: 0.35 + 0.05 * steps, widthK: 1.3, heat: 0.1,
+        });
+        this.emitRisingSparkles(this.burstCount(0.04 + 0.01 * steps, 20 + 6 * steps));
     }
 
     onLevelUp() {
-        this.sunPulse = 1.2;
-        this.seaGlow = 1.2;
-        this.triggerRing(1.0);
+        const at = this.time;
+        this.surge.levelUp(at);
+        this.glow.hit(0.4, at);
+        this.warmth.hit(0.5, at);
+        this.crownLight.hit(0.25, at);
+        this.triggerRing({ energy: 1.0, heat: 0.3 });
         this.emitHeavenlyBurst(this.burstCount(0.4, 180));
     }
 
-    triggerRing(energy) {
-        const ring = this.rings[this.ringCursor];
-        this.ringCursor = (this.ringCursor + 1) % this.rings.length;
-        ring.t0 = this.time;
-        ring.energy = energy;
+    /**
+     * Start a light wave in the slot with the least light left (a finished one first), so a
+     * wave still crossing the deck is never pulled back to the horizon while a weaker one waits.
+     */
+    triggerRing({
+        energy, dur = 3, widthK = 1, heat = 0, mode = RING_IN, hold = 0, linger = 1,
+    }) {
+        const t = this.time;
+        let slot = 0;
+        let least = Infinity;
+        this.rings.forEach((ring, i) => {
+            const age = t - ring.t0;
+            const s = ringState(ring, age, this._ring);
+            // What it still has to show: its light now, weighted by the life it has left.
+            const left = s.energy > 0 ? s.energy * (1 + Math.max(0, ring.dur - age)) : 0;
+            if (left < least) {
+                least = left;
+                slot = i;
+            }
+        });
+        Object.assign(this.rings[slot], {
+            t0: t, energy, dur, widthK, heat, mode, hold, linger,
+        });
     }
 
     burstCount(share, cap) {
