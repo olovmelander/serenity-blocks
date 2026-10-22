@@ -357,8 +357,9 @@ describe('Chiral Gold world: gameplay', () => {
         expect(world.flare[0]).toBeGreaterThan(0.5);
         expect(world.flare[0]).toBe(world.flare[1]);
         expect(world.spinKick).toBeGreaterThan(1.5);
-        expect(world.u.surge.value.y).toBeCloseTo(0.55 + 0.6, 9);
-        expect(world.u.surge.value.z).toBe(3);
+        const [front] = live(world.u.surgeA, 0, t0);
+        expect(front[1]).toBeCloseTo(0.55 + 0.6, 9);
+        expect(front[2]).toBe(3);
         const comets = live(world.u.cometA, 0, t0);
         expect(comets).toHaveLength(4);
         expect(comets.reduce((s, c) => s + c[1], 0)).toBeCloseTo(0, 9);
@@ -616,6 +617,222 @@ describe('Chiral Gold world: gameplay', () => {
         const life = world.leaf.geometry.getAttribute('aVel');
         expect(life.getW(0)).toBeLessThan(0);
         expect(life.getW(world.leaf.ambient)).toBeGreaterThan(0);
+    });
+});
+
+describe('Chiral Gold world: it builds instead of restarting', () => {
+    /**
+     * The tray's Fever, by the clock: twelve clearing hard drops 0.64 s apart (singles into
+     * triples, a T-spin, a four-wave cascade), ending in a quad and the late perfect clear.
+     */
+    const fever = (run) => {
+        const { world } = run;
+        const plan = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 'quad'];
+        plan.forEach((step, n) => {
+            if (n > 0) run.step(0.64);
+            const combo = n + 1;
+            world.onLock({ rows: [18, 19], u: 0.5, hardDrop: true });
+            if (step === 'quad') {
+                world.onClear({ rows: [19, 18, 17, 16], lines: 4, combo });
+                world.onCombo(combo);
+                run.step(0.36);
+                world.onClear({
+                    lines: 1, combo, crown: true, perfect: true,
+                });
+            } else if (step === 'tspin') {
+                world.onClear({
+                    rows: [19, 18], lines: 2, combo, tspin: true,
+                });
+                world.onCombo(combo);
+            } else if (step === 'cascade') {
+                world.onClear({
+                    rows: [19, 18], lines: 2, combo, cascade: 1,
+                });
+                world.onCombo(combo);
+                [1, 2, 1].forEach((lines, w) => {
+                    run.step(0.36);
+                    world.onClear({
+                        rows: [19, 18].slice(0, lines), lines, combo, cascade: w + 2,
+                    });
+                });
+            } else {
+                world.onClear({ rows: [19, 18, 17].slice(0, step), lines: step, combo });
+                world.onCombo(combo);
+            }
+        });
+    };
+
+    it('never lets a weak event cut the light a strong one left', () => {
+        const run = createWorld('High');
+        const { world } = run;
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        run.step(0.5);
+        const t1 = run.time;
+        const quadFront = live(world.u.surgeA, 0, t1).find((s) => s[2] === 4);
+        const { blaze } = world.getState();
+        const over = world.overdrive();
+        const flare = world.flare[0];
+        const quadBlades = world.blades.last;
+        const quadBirth = quadBlades.frame.value.z;
+        // A single right after it: the quad's four crests still run across the water, its blades
+        // finish their flight, and the towers, the ring and the overdrive only gain.
+        world.onClear({ rows: [19], lines: 1 });
+        expect(live(world.u.surgeA, 0, t1).find((s) => s[2] === 4)).toEqual(quadFront);
+        expect(quadBlades.frame.value.z).toBe(quadBirth);
+        expect(world.blades.last).not.toBe(quadBlades);
+        expect(world.flare[0]).toBeGreaterThanOrEqual(flare);
+        expect(world.getState().blaze).toBeCloseTo(blaze, 9);
+        expect(world.overdrive()).toBeGreaterThanOrEqual(over - 1e-9);
+        // A second quad inside the overdrive feeds the blaze: no second hush, the braid climbs on.
+        const aurumAt = world.u.aurum.value.x;
+        let lowest = Infinity;
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        expect(world.u.aurum.value.x).toBe(aurumAt);
+        for (let i = 0; i < 40; i++) {
+            run.step(1 / 120, 1 / 120);
+            lowest = Math.min(lowest, world.u.emit.value);
+        }
+        expect(lowest).toBeGreaterThanOrEqual(1);
+        expect(world.getState().blaze).toBeGreaterThan(blaze);
+        expect(world.counts.strikes).toBe(2);
+    });
+
+    it('fills the towers through a long chain, crowns the perfect clear and breathes back', () => {
+        const run = createWorld('High');
+        const { world } = run;
+        const glowG = () => world.u.glow.value.y;
+        const restGlow = glowG();
+        world.onLock({ rows: [18, 19], u: 0.5, hardDrop: true });
+        world.onClear({ rows: [19], lines: 1, combo: 1 });
+        world.onCombo(1);
+        run.step(0.6);
+        const first = { ...world.getState(), heat: world.u.heat.value, fillY: world.u.play.value.z };
+        // One clear barely wets the towers' feet.
+        expect(first.surge.stage).toBe(0);
+        expect(first.fill).toBeLessThan(0.1);
+        world.onCombo(0);
+        run.step(6);
+        fever(run);
+        const strikesAfterQuad = world.counts.strikes;
+        run.step(0.2);
+        const peak = { ...world.getState(), heat: world.u.heat.value, fillY: world.u.play.value.z };
+        // The chain reads far hotter than its first clear: the fever is lit, the towers are full
+        // to their crowns, the light runs molten (deeper), the ring is an open sphere.
+        expect(peak.surge.stage).toBe(3);
+        expect(peak.surge.fever).toBeGreaterThan(0.8);
+        expect(peak.fill).toBeGreaterThan(0.95);
+        expect(peak.fillY).toBeGreaterThan(first.fillY + 8);
+        expect(peak.heat).toBeGreaterThan(first.heat + 0.5);
+        expect(glowG()).toBeLessThan(restGlow * 0.9);
+        expect(peak.open.every((o) => o > 0.9)).toBe(true);
+        // The late perfect clear crowned the quad instead of replaying it: no second strike,
+        // and the great ring's crown is lit.
+        expect(strikesAfterQuad).toBe(1);
+        expect(world.counts.crowns).toBe(1);
+        expect(peak.crown).toBeGreaterThan(0.5);
+        // The hands rest: the gold runs back into the water and the hall is calm again.
+        world.onCombo(0);
+        run.step(16);
+        const rest = world.getState();
+        expect(rest.surge.stage).toBe(0);
+        expect(rest.surge.level).toBeLessThan(0.05);
+        expect(rest.fill).toBeLessThan(0.02);
+        expect(world.u.play.value.z).toBe(-100);
+        expect(glowG()).toBeCloseTo(restGlow, 3);
+        expect(world.u.heat.value).toBeLessThan(0.05);
+    });
+
+    it('builds each cascade wave on the last', () => {
+        const run = createWorld('High');
+        const { world } = run;
+        const t0 = run.time;
+        world.onClear({
+            rows: [19, 18], lines: 2, combo: 1, cascade: 1,
+        });
+        for (let w = 2; w <= 4; w++) {
+            run.step(0.36);
+            world.onClear({
+                rows: [19], lines: 1, combo: 1, cascade: w,
+            });
+        }
+        // The fronts of the later waves still run (three slots), each faster and stronger than a
+        // first wave of its size would be.
+        const fronts = live(world.u.surgeA, 0, t0).sort((a, b) => a[0] - b[0]);
+        expect(fronts).toHaveLength(3);
+        for (let i = 1; i < fronts.length; i++) expect(fronts[i][3]).toBeGreaterThan(fronts[i - 1][3]);
+        expect(fronts[2][1]).toBeGreaterThan(0.55 + 0.2);
+        // Every wave drove a pulse up out of the water, the deepest the strongest.
+        const climbs = live(world.u.pulseA, 1, t0).filter((p) => p[0] * world.place.scaleY < 0.2);
+        expect(climbs.length).toBeGreaterThanOrEqual(3);
+        expect(Math.max(...climbs.map((p) => p[2]))).toBeGreaterThan(0.75);
+    });
+
+    it('keeps a strong pulse through a flurry of weak ones', () => {
+        const run = createWorld('High');
+        const { world } = run;
+        const t0 = run.time;
+        world.pulse(3, t0 + 0.1, 1.2, 0);
+        for (let i = 0; i < PULSE_SLOTS * 2; i++) world.pulse(5, t0, 0.2, 1);
+        expect(live(world.u.pulseA, 1, t0).some((p) => p[2] === 1.2)).toBe(true);
+    });
+
+    it('answers a back-to-back from the crown of the ring, higher each time', () => {
+        const run = createWorld('High');
+        const { world } = run;
+        const t0 = run.time;
+        world.onClear({
+            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+        });
+        // Comets leave the crown and run down to both feet: the reverse of a clear's.
+        const fromCrown = live(world.u.cometA, 0, t0).filter((c) => Math.abs(c[3] - Math.PI / 2) < 1e-9);
+        expect(fromCrown).toHaveLength(2);
+        expect(fromCrown[0][1] + fromCrown[1][1]).toBeCloseTo(0, 9);
+        run.step(0.6);
+        const once = world.getState().crown;
+        expect(once).toBeGreaterThan(0.3);
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4, b2b: true });
+        run.step(0.6);
+        expect(world.getState().crown).toBeGreaterThan(once);
+        expect(world.counts.b2b).toBe(2);
+        run.step(20);
+        expect(world.getState().crown).toBeLessThan(0.01);
+    });
+
+    it('turns on a T-spin that clears nothing, and never snaps a turn back', () => {
+        const run = createWorld('High', { time: 5 });
+        const { world } = run;
+        const [, right] = world.towers;
+        const turned = () => right.group.rotation.y - world.spin;
+        world.onSpin();
+        expect(world.counts.spins).toBe(1);
+        run.step(1);
+        expect(turned()).toBeCloseTo(TAU / 2, 6);
+        // A full T-spin half-way through another turn carries on from where the towers are.
+        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        run.step(0.45);
+        const before = turned();
+        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        run.step(1 / 240, 1 / 240);
+        expect(Math.abs(turned() - before)).toBeLessThan(0.1);
+        run.step(2);
+        expect(turned()).toBeCloseTo(TAU / 2 + TAU * 2, 6);
+    });
+
+    it('pours a level reached mid-pour once the pour is done', () => {
+        const run = createWorld('High');
+        const { world } = run;
+        const { u } = world;
+        world.levelUp(2);
+        run.step(0.5);
+        world.levelUp(3);
+        // The towers keep pouring rose gold over fine gold; nothing jumps.
+        expect(u.alloyA.value.toArray()).toEqual(ALLOYS[1].ribbons[0]);
+        expect(u.prevA.value.toArray()).toEqual(ALLOYS[0].ribbons[0]);
+        expect(world.level).toBe(3);
+        run.step(3);
+        expect(u.alloyA.value.toArray()).toEqual(ALLOYS[2].ribbons[0]);
+        expect(u.prevA.value.toArray()).toEqual(ALLOYS[1].ribbons[0]);
+        expect(u.pour.value).toBeLessThan(HELIX.top);
     });
 });
 

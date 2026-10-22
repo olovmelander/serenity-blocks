@@ -74,8 +74,11 @@ export function wirePoint(s, j, count, hand) {
 
 // ── Gameplay slots evaluated by the materials ───────────────────────────────────
 
-/** Pulses running along the ribbons: (height, birth, strength, side). */
-export const PULSE_SLOTS = 8;
+/**
+ * Pulses running along the ribbons: (height, birth, strength, side). A new pulse takes the slot
+ * with the least light left (pickSlot), so quick play never cuts one off mid-tower.
+ */
+export const PULSE_SLOTS = 12;
 /** Speed a pulse front climbs/descends (m/s), its half-width (m) and fade (1/s). */
 export const PULSE_SPEED = 5.2;
 export const PULSE_WIDTH = 0.55;
@@ -89,6 +92,43 @@ export const RIPPLE_FADE = 0.85;
 
 /** Comets on the great ring: (birth, direction·speed in turns/s, strength, band). */
 export const COMET_SLOTS = 6;
+export const COMET_FADE = 0.85;
+
+/**
+ * The clear's fronts across the water: (birth, strength, lines, speed). Several run at once, so a
+ * cascade sends one front after another out across the mirror instead of restarting the first.
+ */
+export const SURGE_SLOTS = 3;
+export const SURGE_FADE = 1.25;
+
+/**
+ * The slot to write next in a ring of uniform slots: the one with the least light left at `now`
+ * (`strength · e^{-fade·age}`; one dated ahead counts at full strength), the oldest on a tie. A
+ * new event never cuts off a brighter one still running.
+ * @param {{ value: { getComponent(i: number): number } }[]} slots
+ * @param {number} birthIndex   component holding the birth time
+ * @param {number} strengthIndex component holding the strength
+ * @param {number} fade         1/s
+ * @param {number} now
+ */
+export function pickSlot(slots, birthIndex, strengthIndex, fade, now) {
+    let best = 0;
+    let bestLeft = Infinity;
+    let bestBirth = Infinity;
+    for (let i = 0; i < slots.length; i++) {
+        const v = slots[i].value;
+        const birth = v.getComponent(birthIndex);
+        const age = now - birth;
+        const strength = Math.abs(v.getComponent(strengthIndex));
+        const left = age < 0 ? strength : strength * Math.exp(-fade * age);
+        if (left < bestLeft - 1e-9 || (Math.abs(left - bestLeft) <= 1e-9 && birth < bestBirth)) {
+            best = i;
+            bestLeft = left;
+            bestBirth = birth;
+        }
+    }
+    return best;
+}
 
 /** Radius of a water ring `age` seconds after it starts. */
 export function rippleRadius(age) {

@@ -27,8 +27,20 @@
  *             a hush, then the ring ignites from its crown, the water is gilded outward from the
  *             board, and two sets of spiral arms of gold leaf climb around the board through one
  *             another. Then it rains gold.
- *   T-spin    both towers turn once on the spot.
+ *   T-spin    both towers turn once on the spot (half a turn for one that clears nothing).
+ *   back-to-back
+ *             the great ring's crown lights and a pair of comets runs DOWN from it to both feet
+ *             (a clear's comets climb up from them); it stays lit while the back-to-backs come.
+ *   perfect clear (late, after the clear's last wave)
+ *             the crown on the strike still burning: the towers brim over at the top, the ring's
+ *             crown blazes, comets leave it. Never a second hush.
  *   level up  the next alloy is poured up the towers.
+ *
+ * And it BUILDS (src/themes/shared/gameplay-surge.js): nothing restarts what is still lit. The
+ * heat of play fills the towers with molten gold from the water up (calm: nothing; warm: a molten
+ * foot; hot: half-full, the ring winding up, the water working; fever: full to the crowns, the
+ * light running molten red-gold, the crowns shedding leaf and the ring an open armillary sphere),
+ * and when the hands rest the gold runs back down into the water.
  *
  * Nothing is created at event time: events write numbers into ring-buffered uniform slots and
  * preallocated pools, often dated a moment ahead (a tower's pulse is dated for when the sparks
@@ -39,12 +51,17 @@ import * as THREE from 'three/webgpu';
 import {
     ALLOYS,
     AURUM,
+    COMET_FADE,
     COMET_SLOTS,
     HELIX,
+    PULSE_FADE,
     PULSE_SLOTS,
+    RIPPLE_FADE,
     RIPPLE_SLOTS,
     SPARK_FLIGHT,
     STAGE,
+    SURGE_FADE,
+    SURGE_SLOTS,
     TAU,
     alloyForLevel,
     approach,
@@ -56,6 +73,7 @@ import {
     heatForCombo,
     lerp,
     linRGB,
+    pickSlot,
     smooth,
 } from './chiral-gold-tsl.js';
 import { tierFor } from './chiral-gold-quality.js';
@@ -82,6 +100,8 @@ import {
     towerPlacement,
 } from './chiral-gold-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell, softCeiling } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 export const REST_RIG = Object.freeze({ near: STAGE.camera.near, far: STAGE.camera.far });
 
@@ -110,6 +130,21 @@ const RING_FOOT = Math.asin(-STAGE.ring.y / STAGE.ring.radius);
 
 const GOLD = Object.freeze([1.0, 0.72, 0.3]);
 const IVORY = Object.freeze([1.0, 0.92, 0.76]);
+
+/**
+ * A strike's blaze, gilt and braid stay up this long (the braid's last flakes rain out by then):
+ * another strike inside it feeds the one burning instead of lighting it again.
+ */
+const STRIKE_SPAN = 13;
+/** The most the ring's blaze may burn when strikes pile up. */
+const BLAZE_MAX = 1.35;
+/** The held flare a tower may store, and the glow it shows: soft over `FLARE_KNEE`. */
+const FLARE_STORE = 1.6;
+const FLARE_KNEE = 0.5;
+/** The molten fill line's top (tower units: just over the frame at full scale). */
+const FILL_TOP = 9.2;
+/** Seconds a pour takes to reach past the top of the towers. */
+const POUR_SPAN = (HELIX.top + 0.5 - HELIX.bottom) / 5.5;
 
 export class ChiralGoldWorld {
     /**
@@ -149,8 +184,11 @@ export class ChiralGoldWorld {
         this.time = 0;
         this.level = 1;
         this.combo = 0;
+        /** The chain's own heat (eased toward heatForCombo); what the hall wears is u.heat. */
         this.heat = 0;
+        /** The glow each tower holds (left, right) as shown, and what it has stored (soft-capped). */
         this.flare = [0, 0];
+        this.flareStore = [0, 0];
         this.spin = 0;
         this.spinKick = 0;
         this.ringSpin = 0;
@@ -158,17 +196,50 @@ export class ChiralGoldWorld {
         this.open = [0, 0, 0];
         /** The tally beside the board: the count it shows, how present it is, its stamp. */
         this.tallyState = { count: 0, shown: 0, punch: 0 };
+        /** The strike burning (its blaze, gilt and braid are dated from here). */
         this.aurumAt = -100;
         this.aurumStrength = 0;
+        /** The hush before a strike from cold: when, and how deep (shallower the hotter play runs). */
+        this.hushAt = -100;
+        this.hushDepth = 0;
+        /** T-spins: the towers turn from `from` to `to` (radians), eased from `tspinAt`. */
         this.tspinAt = -100;
+        this.pirouette = { from: 0, to: 0 };
         this.pourAt = -100;
+        /** A level reached while the last pour still climbs: poured once it is done. */
+        this.queuedLevel = 0;
         this.dip = 0;
         this.dolly = 0;
-        this.flash = 0;
-        this.kick = 0;
-        this.cursor = { pulse: 0, ripple: 0, comet: 0 };
+        // Everything an event lights ADDS to what is still lit (src/themes/shared/swell.js): a weak
+        // hit after a strong one can only lift it.
+        /** The post's flash and impact. */
+        this.flash = new Swell({ release: 1 / 4.2, ceiling: 0.5, knee: 0.3 });
+        this.kick = new Swell({ release: 0.2, ceiling: 1, knee: 0.7 });
+        /** The strike's overdrive, the hall's lift after the hush, the camera's pull, the ignition. */
+        this.over = new Swell({ release: AURUM.hold, ceiling: 1.6, knee: 1.25 });
+        this.lift = new Swell({ release: 1 / 1.4, ceiling: 0.14, knee: 0.1 });
+        this.pull = new Swell({
+            attack: 0.06, release: 1 / 1.1, ceiling: 0.8, knee: 0.6,
+        });
+        this.ignition = new Swell({ release: 1 / 3, ceiling: 0.45, knee: 0.35 });
+        this.rayLight = new Swell({ release: 1 / 0.9, ceiling: 0.14, knee: 0.1 });
+        /** The great ring's crown (back-to-backs, perfect clears) and the towers brimming over. */
+        this.crownGlow = new Swell({
+            attack: 0.08, release: 3.2, ceiling: 1.6, knee: 1,
+        });
+        this.brim = new Swell({
+            attack: 0.25, release: 2.2, ceiling: 1, knee: 0.8,
+        });
+        /** How hot play runs, sampled once a frame (src/themes/shared/gameplay-surge.js). */
+        this.surge = new GameplaySurge();
+        this.play = this.surge.sample(-100);
+        /** The molten gold in the towers: 0 below the water, 1 at their crowns (eased). */
+        this.fill = 0;
+        /** Leaf the crowns shed in a fever, as a running count. */
+        this.shed = 0;
+        this.glowBase = [...ALLOYS[0].glow];
         this.counts = {
-            locks: 0, clears: 0, strikes: 0,
+            locks: 0, clears: 0, strikes: 0, crowns: 0, spins: 0, b2b: 0,
         };
         this._post = {
             heart: { x: 0.5, y: 0.5 }, flash: 0, kick: 0, bloomBoost: 0, exposure: 1, rays: 0, streak: 1,
@@ -393,18 +464,25 @@ export class ChiralGoldWorld {
 
     // ── slots ───────────────────────────────────────────────────────────────────
 
+    // Every ring of slots is written where the least light is left (pickSlot): an event never
+    // cuts off a brighter one still running, however fast they come.
+
     /** A pulse through the towers from world height `y`. `side`: −1 left, +1 right, 0 both. */
     pulse(y, time, strength, side = 0) {
-        const i = this.cursor.pulse % PULSE_SLOTS;
-        this.cursor.pulse += 1;
+        const i = pickSlot(this.u.pulseA, 1, 2, PULSE_FADE, this.time);
         this.u.pulseA[i].value.set(y / Math.max(0.2, this.place.scaleY), time, strength, side);
     }
 
     ripple(x, z, time, strength, rgb = GOLD) {
-        const i = this.cursor.ripple % RIPPLE_SLOTS;
-        this.cursor.ripple += 1;
+        const i = pickSlot(this.u.rippleA, 2, 3, RIPPLE_FADE, this.time);
         this.u.rippleA[i].value.set(x, z, time, strength);
         this.u.rippleC[i].value.set(rgb[0], rgb[1], rgb[2]);
+    }
+
+    /** One comet on the great ring from angle `from`, `speed` radians a second (signed). */
+    comet(time, speed, strength, from) {
+        const i = pickSlot(this.u.cometA, 0, 2, COMET_FADE, this.time);
+        this.u.cometA[i].value.set(time, speed, strength, from);
     }
 
     /** `pairs` pairs of comets leave the ring's two feet and cross at its crown. */
@@ -412,12 +490,36 @@ export class ChiralGoldWorld {
         for (let p = 0; p < pairs; p++) {
             const speed = 2.3 + p * 0.9;
             const at = time + p * 0.2;
-            const right = this.cursor.comet % COMET_SLOTS;
-            const left = (this.cursor.comet + 1) % COMET_SLOTS;
-            this.cursor.comet += 2;
-            this.u.cometA[right].value.set(at, speed, strength, RING_FOOT);
-            this.u.cometA[left].value.set(at, -speed, strength, Math.PI - RING_FOOT);
+            this.comet(at, speed, strength, RING_FOOT);
+            this.comet(at, -speed, strength, Math.PI - RING_FOOT);
         }
+    }
+
+    /** A pair of comets leaves the ring's crown and runs down to both feet: the way a clear's come. */
+    crownComets(time, strength) {
+        this.comet(time, -2.1, strength, Math.PI / 2);
+        this.comet(time, 2.1, strength, Math.PI / 2);
+    }
+
+    /** A clear's front across the water, one crest per line; `speed` 1 = the usual pace. */
+    surgeFront(time, strength, lines, speed = 1) {
+        const i = pickSlot(this.u.surgeA, 0, 1, SURGE_FADE, this.time);
+        this.u.surgeA[i].value.set(time, strength, lines, speed);
+    }
+
+    /** Store glow in a tower (0 left, 1 right): it adds to what it holds. */
+    holdFlare(side, amount) {
+        this.flareStore[side] = Math.min(FLARE_STORE, this.flareStore[side] + amount);
+        this.showFlare();
+    }
+
+    /**
+     * The glow the towers show: what they store, under a soft ceiling that rises with the heat of
+     * play, so a chain's first clears warm them and only a long one brings them to full glow.
+     */
+    showFlare() {
+        const ceiling = 0.75 + 0.45 * this.play.level;
+        for (let i = 0; i < 2; i++) this.flare[i] = softCeiling(this.flareStore[i], FLARE_KNEE, ceiling);
     }
 
     /** A piece's colour, pulled toward the alloy: the hall is gold whatever lands in it. */
@@ -439,6 +541,7 @@ export class ChiralGoldWorld {
         if (!board || !card) return;
         this.counts.locks += 1;
         const hard = c.hardDrop === true;
+        this.surge.lock(c, t);
         const rows = c.rows?.length ? c.rows : [19];
         let rowMid = 0;
         for (let i = 0; i < rows.length; i++) rowMid += rows[i];
@@ -482,7 +585,7 @@ export class ChiralGoldWorld {
             const weight = (main ? 1 : 0.42) * (hard ? 1 : 0.62);
             this.pulse(aimY, arrive, weight, side);
             this.flares.fire(side * (helixX - 0.7 * scale), aimY, 0.9 * scale, arrive, weight * 0.5, 0.9, 0.42);
-            this.flare[side < 0 ? 0 : 1] = Math.min(1.2, this.flare[side < 0 ? 0 : 1] + weight * 0.08);
+            this.holdFlare(side < 0 ? 0 : 1, weight * 0.08);
         }
         // The water under the board, at the piece's own column.
         const w = this.waterAt(lockX, Math.min(0.985, card.y1)) || this._w.set((lockX - 0.5) * 4, 0, STAGE.boardZ);
@@ -502,16 +605,22 @@ export class ChiralGoldWorld {
                 size: 0.024,
             });
             if (!this.reducedMotion) this.dip = Math.min(0.12, this.dip + 0.05);
-            this.kick = Math.max(this.kick, 0.35);
+            this.kick.hit(0.35, t);
         }
     }
 
     /**
-     * @param {{ player?: number, rows?: number[], lines?: number, combo?: number, tspin?: boolean,
-     *   perfect?: boolean, screen?: {x:number,y:number}|null }} c
+     * @param {{ player?: number, rows?: number[], lines?: number, combo?: number, cascade?: number,
+     *   tspin?: boolean, b2b?: boolean, perfect?: boolean, crown?: boolean,
+     *   screen?: {x:number,y:number}|null }} c
      */
     onClear(c = {}) {
         const t = this.time;
+        // The late perfect clear, alone in its frame: the crown on the clear already shown.
+        if (c.crown) {
+            this.crown();
+            return;
+        }
         const layout = this.currentLayout();
         const board = boardFor(layout, c.player ?? 0);
         const card = cardFor(layout, board);
@@ -519,6 +628,17 @@ export class ChiralGoldWorld {
         this.counts.clears += 1;
         const lines = Math.max(1, Math.min(4, Math.round(c.lines || 1)));
         const combo = Math.max(1, Math.round(c.combo || 1));
+        // A cascade's waves arrive one by one; each builds on the last (deeper, brighter, faster).
+        const deeper = Math.max(0, Math.min(4, Math.round(c.cascade || 1) - 1));
+        if (deeper > 0) {
+            // One more wave of a clear already counted.
+            this.surge.wave(t);
+            if (c.tspin) this.surge.tspin(t);
+            if (c.b2b) this.surge.b2b(t);
+            if (c.perfect) this.surge.crown(t);
+        } else {
+            this.surge.clear(c, t);
+        }
         const { burst } = this.tier;
         const { helixX, scale } = this.place;
         const ys = this._ys;
@@ -547,9 +667,10 @@ export class ChiralGoldWorld {
         for (let i = 0; i < ys.length; i++) ends.push(this.screenOf(inner, heights[i], 0).y);
         const reachR = this.screenOf(inner, heights[0], 0).x;
         const reachL = this.screenOf(-inner, heights[0], 0).x;
-        this.blades.fire(ys, ends, x0, x1, reachL, reachR, t, 0.8 + 0.15 * lines);
+        this.blades.fire(ys, ends, x0, x1, reachL, reachR, t, 0.8 + 0.15 * lines + 0.1 * deeper);
         const hit = t + BLADE_TRAVEL;
-        const leafEach = Math.round((70 + 14 * Math.min(combo, 6)) * burst);
+        // Several rows tear less each, so one quad's leaf does not take the whole pool.
+        const leafEach = Math.round(((70 + 14 * Math.min(combo, 6) + 8 * deeper) * burst) / ys.length ** 0.35);
         for (let i = 0; i < ys.length; i++) {
             const y = heights[i];
             const at = hit + i * 0.035;
@@ -590,34 +711,117 @@ export class ChiralGoldWorld {
                 });
             }
         }
-        const held = 0.3 + 0.15 * lines;
-        this.flare[0] = Math.min(1.2, this.flare[0] + held);
-        this.flare[1] = Math.min(1.2, this.flare[1] + held);
-        this.spinKick = Math.min(8, this.spinKick + 0.7 + 0.45 * lines);
-        this.ringKick = Math.min(4, this.ringKick + 0.25 * lines);
-        this.u.surge.value.set(t + 0.04, 0.55 + 0.2 * lines, lines, 0);
-        this.comets(hit + 0.12, 0.65 + 0.2 * lines, lines >= 3 ? 2 : 1);
-        if (!this.reducedMotion) this.dolly = Math.min(0.7, this.dolly + 0.1 * lines);
-        this.flash = Math.max(this.flash, 0.06 + 0.04 * lines);
-        this.kick = Math.max(this.kick, 0.2 + 0.1 * lines);
-        if (c.tspin) this.tspinAt = t;
-        if (lines >= 4 || c.perfect) this.strike(t, c.perfect ? 1.25 : 1);
+        // Each wave past the first also drives a pulse up both towers out of the water, harder
+        // the deeper the cascade runs.
+        if (deeper > 0) this.pulse(0.1, hit, Math.min(1.2, 0.35 + 0.15 * deeper), 0);
+        const held = 0.3 + 0.15 * lines + 0.05 * deeper;
+        this.holdFlare(0, held);
+        this.holdFlare(1, held);
+        this.spinKick = Math.min(8, this.spinKick + 0.7 + 0.45 * lines + 0.3 * deeper);
+        this.ringKick = Math.min(4, this.ringKick + 0.25 * lines + 0.35 * deeper);
+        // A front across the water: a cascade's waves run out one after another, each faster.
+        this.surgeFront(t + 0.04, 0.55 + 0.2 * lines + 0.12 * deeper, lines, 1 + 0.15 * deeper);
+        const strikes = lines >= 4 || c.perfect === true;
+        // (A strike sends its own comets: two sets for one quad would crowd the ring's slots.)
+        if (!strikes) this.comets(hit + 0.12, 0.65 + 0.2 * lines + 0.1 * deeper, lines >= 3 || deeper >= 2 ? 2 : 1);
+        if (!this.reducedMotion) this.dolly = Math.min(0.7, this.dolly + 0.1 * lines + 0.05 * deeper);
+        this.flash.hit(0.06 + 0.04 * lines + 0.02 * deeper, t);
+        this.kick.hit(0.2 + 0.1 * lines, t);
+        if (c.tspin) this.turn(t, TAU);
+        if (c.b2b) this.backToBack(t);
+        if (strikes) this.strike(t, c.perfect ? 1.25 : 1);
+    }
+
+    /** A T-spin that cleared nothing: half a turn, and a breath of light up both towers. */
+    onSpin() {
+        const t = this.time;
+        this.counts.spins += 1;
+        this.surge.spin(t);
+        this.turn(t, TAU * 0.5);
+        this.pulse(0.1, t + 0.05, 0.45, 0);
+        this.holdFlare(0, 0.12);
+        this.holdFlare(1, 0.12);
+        this.spinKick = Math.min(8, this.spinKick + 0.6);
+    }
+
+    /**
+     * Turn both towers on the spot by `amount` radians, eased over 0.9 s. A turn asked for while
+     * one is still turning carries on from where the towers are: it never snaps back.
+     */
+    turn(t, amount) {
+        const now = this.pirouetteAt(t);
+        this.pirouette.from = now;
+        this.pirouette.to = Math.max(this.pirouette.to, now) + amount;
+        this.tspinAt = t;
+    }
+
+    /** How far the towers have turned on the spot at `t` (radians). */
+    pirouetteAt(t) {
+        const { from, to } = this.pirouette;
+        const k = clamp01((t - this.tspinAt) / 0.9);
+        return from + (to - from) * k * k * (3 - 2 * k);
+    }
+
+    /**
+     * A back-to-back: the great ring's crown lights in the alloy's colour and a pair of comets
+     * runs down from it to both feet, the reverse of a clear's. The crown stays lit while the
+     * back-to-backs keep coming: each lifts it higher.
+     */
+    backToBack(t) {
+        this.counts.b2b += 1;
+        this.crownGlow.hit(0.75, t + 0.1);
+        this.crownComets(t + 0.12, 1.15);
+        const scale = this.ringScale();
+        this.flares.fire(0, STAGE.ring.y + STAGE.ring.radius * scale, STAGE.ring.z, t + 0.1, 0.9, 2.4, 1.0);
+        this.ringKick = Math.min(6, this.ringKick + 1.2);
+    }
+
+    /**
+     * The strike's light: the ring's blaze, the gilt on the water, the braid, the overdrive. From
+     * cold it is lit afresh after a hush (shallower the hotter play runs: a strike in a fever
+     * inhales, it does not black the hall out). Inside one still burning it feeds the blaze and
+     * the gilt instead, with no second hush, and the braid climbs on.
+     * @returns {number} when the light goes up
+     */
+    ignite(t, strength, { hush = true } = {}) {
+        const go = t + AURUM.hush;
+        const a = this.u.aurum.value;
+        let depth = 0;
+        if (this.aurumAt > -50 && t - this.aurumAt < STRIKE_SPAN && a.y > 0) {
+            const age = Math.max(0, go - this.aurumAt - AURUM.hush);
+            const burning = a.z * Math.exp(-0.5 * age);
+            a.z = Math.min(BLAZE_MAX, burning + strength) * Math.exp(0.5 * age);
+        } else {
+            this.aurumAt = t;
+            this.aurumStrength = strength;
+            a.set(t, strength, strength, a.w);
+            if (hush && !this.reducedMotion) {
+                depth = Math.max(0, 1 - 0.85 * this.play.level);
+                this.hushAt = t;
+                this.hushDepth = depth;
+            }
+        }
+        this.over.hit(strength, go);
+        this.lift.hit(0.08 * strength, go);
+        this.ignition.hit(0.3 * strength, go);
+        this.rayLight.hit(0.08 * strength, go);
+        // The strike draws the camera back for the hush, less the less it hushes.
+        if (!this.reducedMotion) this.pull.hit(0.5 * strength * (0.4 + 0.6 * depth), t);
+        return go;
     }
 
     /** The four-line strike. */
     strike(t, strength = 1) {
         this.counts.strikes += 1;
-        this.aurumAt = t;
-        this.aurumStrength = strength;
-        this.u.aurum.value.set(t, strength, 0, 0);
-        const go = t + AURUM.hush;
+        const go = this.ignite(t, strength);
         this.ripple(0, STAGE.boardZ, go, 1.4, IVORY);
         this.ripple(0, STAGE.boardZ, go + 0.4, 0.9, GOLD);
         for (let k = 0; k < 3; k++) this.pulse(0.2, go + k * 0.24, 0.7 - k * 0.16, 0);
         this.spinKick = Math.min(10, this.spinKick + 4.5);
         this.ringKick = Math.min(6, this.ringKick + 2.4);
-        this.flare[0] = 0.9;
-        this.flare[1] = 0.9;
+        // Added to what the towers hold: a strike never dims a glow already burning.
+        this.holdFlare(0, 0.9);
+        this.holdFlare(1, 0.9);
         this.comets(go, 1.2, 2);
         const scale = this.ringScale();
         this.flares.fire(0, STAGE.ring.y + STAGE.ring.radius * scale, STAGE.ring.z, go, 1.2 * strength, 3.2, 1.3);
@@ -635,6 +839,55 @@ export class ChiralGoldWorld {
             size: 0.034,
             jitter: 3.5,
         });
+    }
+
+    /**
+     * The late perfect clear: the crown on the clear still playing. The towers brim over (the
+     * molten gold runs to their crowns and spills as leaf), the great ring's crown blazes and
+     * sends comets down both sides, and the strike burning takes it up. Never a second hush.
+     */
+    crown() {
+        const t = this.time;
+        this.counts.crowns += 1;
+        this.surge.crown(t);
+        this.ignite(t, 0.8, { hush: false });
+        this.crownGlow.hit(1.2, t + 0.05);
+        this.brim.hit(1, t);
+        this.crownComets(t + 0.08, 1.4);
+        const scale = this.ringScale();
+        this.flares.fire(0, STAGE.ring.y + STAGE.ring.radius * scale, STAGE.ring.z, t + 0.05, 1.3, 3.6, 1.6);
+        this.holdFlare(0, 0.4);
+        this.holdFlare(1, 0.4);
+        this.spinKick = Math.min(10, this.spinKick + 2);
+        const { helixX } = this.place;
+        const top = this.fillTop();
+        for (let side = -1; side <= 1; side += 2) {
+            this.pulse(0.1, t + 0.05, 0.9, side);
+            this.leaf.emit({
+                x: side * helixX,
+                y: top,
+                z: 0,
+                n: Math.round(60 * this.tier.burst),
+                time: t + 0.35,
+                dir: [-side * 0.35, 0.35, 0.3],
+                cone: 0.8,
+                speed: [0.8, 3.2],
+                life: [3, 5.5],
+                size: [0.05, 0.12],
+                swirl: side * 2.2,
+                axisX: side * helixX,
+                axisZ: 0,
+                flutter: [0.2, 0.5],
+                jitter: 0.8 * scale,
+                stagger: 0.4,
+            });
+        }
+    }
+
+    /** World height of the towers' crowns, where the molten gold brims over. */
+    fillTop() {
+        const frameTop = STAGE.camera.y + STAGE.camera.z * Math.tan((this.fov * Math.PI) / 360);
+        return Math.min(frameTop - 0.4, FILL_TOP * this.place.scaleY);
     }
 
     /** The true consecutive-clear combo (0 = the chain broke). */
@@ -684,18 +937,32 @@ export class ChiralGoldWorld {
         }
     }
 
-    /** Pour the alloy for `level` up the towers. `silent` = it is simply there. */
+    /**
+     * Pour the alloy for `level` up the towers. `silent` = it is simply there. A level reached
+     * while the last pour still climbs waits for it (the towers never jump to an alloy half way).
+     */
     levelUp(level, { silent = false } = {}) {
         const next = Math.max(1, Math.round(level || 1));
         if (next === this.level && !silent) return;
         this.level = next;
-        this.applyAlloy(alloyForLevel(next), silent);
-        if (!silent) {
-            this.pourAt = this.time;
-            this.comets(this.time, 0.8, 1);
-            this.flare[0] = Math.min(1.2, this.flare[0] + 0.4);
-            this.flare[1] = Math.min(1.2, this.flare[1] + 0.4);
+        if (silent) {
+            this.queuedLevel = 0;
+            this.applyAlloy(alloyForLevel(next), true);
+            return;
         }
+        this.surge.levelUp(this.time);
+        const pouring = this.time - this.pourAt < POUR_SPAN;
+        if (pouring) this.queuedLevel = next;
+        else this.pour(next);
+        this.comets(this.time, 0.8, 1);
+        this.holdFlare(0, 0.4);
+        this.holdFlare(1, 0.4);
+    }
+
+    /** Start pouring `level`'s alloy up the towers now. */
+    pour(level) {
+        this.applyAlloy(alloyForLevel(level), false);
+        this.pourAt = this.time;
     }
 
     applyAlloy(alloy, instantly) {
@@ -710,7 +977,8 @@ export class ChiralGoldWorld {
         u.alloyA.value.set(...alloy.ribbons[0]);
         u.alloyB.value.set(...alloy.ribbons[1]);
         u.alloyC.value.set(...alloy.ribbons[2]);
-        u.glow.value.set(...alloy.glow);
+        for (let i = 0; i < 3; i++) this.glowBase[i] = alloy.glow[i];
+        this.showGlow();
         if (instantly) {
             u.prevA.value.copy(u.alloyA.value);
             u.prevB.value.copy(u.alloyB.value);
@@ -718,13 +986,20 @@ export class ChiralGoldWorld {
         }
     }
 
+    /** The alloy's glow as the hall wears it: a fever runs it molten, deeper and redder. */
+    showGlow() {
+        const f = this.play.fever;
+        const g = this.glowBase;
+        this.u.glow.value.set(g[0], g[1] * (1 - 0.2 * f), g[2] * (1 - 0.55 * f));
+    }
+
     /** A new run: the hall back at rest, no chain in flight. */
     resetSession() {
         const { u } = this;
         this.combo = 0;
         this.heat = 0;
-        this.flare[0] = 0;
-        this.flare[1] = 0;
+        this.flare.fill(0);
+        this.flareStore.fill(0);
         this.spinKick = 0;
         this.ringKick = 0;
         this.open.fill(0);
@@ -733,19 +1008,29 @@ export class ChiralGoldWorld {
         this.tallyState.punch = 0;
         this.aurumAt = -100;
         this.aurumStrength = 0;
+        this.hushAt = -100;
+        this.hushDepth = 0;
         this.tspinAt = -100;
+        this.pirouette.from = 0;
+        this.pirouette.to = 0;
+        this.queuedLevel = 0;
         this.dip = 0;
         this.dolly = 0;
-        this.flash = 0;
-        this.kick = 0;
-        this.cursor.pulse = 0;
-        this.cursor.ripple = 0;
-        this.cursor.comet = 0;
+        const swells = [
+            this.flash, this.kick, this.over, this.lift, this.pull,
+            this.ignition, this.rayLight, this.crownGlow, this.brim,
+        ];
+        swells.forEach((swell) => swell.reset());
+        this.surge.reset();
+        this.play = this.surge.sample(this.time);
+        this.fill = 0;
+        this.shed = 0;
         for (let i = 0; i < PULSE_SLOTS; i++) u.pulseA[i].value.set(0, -100, 0, 0);
         for (let i = 0; i < RIPPLE_SLOTS; i++) u.rippleA[i].value.set(0, 0, -100, 0);
         for (let i = 0; i < COMET_SLOTS; i++) u.cometA[i].value.set(-100, 0, 0, 0);
-        u.surge.value.set(-100, 0, 1, 0);
+        for (let i = 0; i < SURGE_SLOTS; i++) u.surgeA[i].value.set(-100, 0, 1, 1);
         u.aurum.value.set(-100, 0, 0, 0);
+        u.play.value.set(0, 0, -100, 0);
         this.leaf?.reset();
         this.sparks?.reset();
         this.blades?.reset();
@@ -756,8 +1041,8 @@ export class ChiralGoldWorld {
 
     /** Jump to `time` with the hall at rest (captures replay events from here). */
     seek(time) {
-        this.resetSession();
         this.time = Math.max(0, time || 0);
+        this.resetSession();
         this.spin = TOWER_TURN * this.time;
         this.ringSpin = RING_TURN * this.time;
         this.applyLayout(true);
@@ -770,15 +1055,14 @@ export class ChiralGoldWorld {
         return Math.min(1.15, Math.max(0.35, this.place.helixX / 6.8));
     }
 
-    /** How far into its overdrive the four-line strike is: 0 before and long after, 1 at ignition. */
+    /** How far into its overdrive the strikes are: 0 before and long after, 1 at one's ignition. */
     overdrive() {
-        const age = this.time - this.aurumAt - AURUM.hush;
-        if (age < 0 || this.aurumStrength <= 0) return 0;
-        return this.aurumStrength * Math.exp(-age / AURUM.hold);
+        return this.over.valueAt(this.time);
     }
 
     /**
-     * The camera: a slow drift, pointer parallax, and the kicks gameplay gives it.
+     * The camera: a slow drift, pointer parallax, and the kicks gameplay gives it. The heat of
+     * play leans it in toward the anvil; a strike draws it back for the hush.
      * @param {THREE.PerspectiveCamera} camera
      * @param {{ time: number, delta: number, pointerX?: number, pointerY?: number }} sim
      */
@@ -790,17 +1074,11 @@ export class ChiralGoldWorld {
         const calm = this.reducedMotion ? 0.3 : 1;
         const px = sim.pointerX || 0;
         const py = sim.pointerY || 0;
-        // The strike draws the camera back for the hush, then lets it go.
-        let pull = 0;
-        const age = t - this.aurumAt;
-        if (!this.reducedMotion && age >= 0 && age < 8) {
-            pull = 0.5 * this.aurumStrength * (age < AURUM.hush
-                ? smooth(0, AURUM.hush, age)
-                : Math.exp(-(age - AURUM.hush) * 1.1));
-        }
+        const pull = this.reducedMotion ? 0 : this.pull.valueAt(t);
+        const lean = this.reducedMotion ? 0 : this.play.level * 0.45 + this.play.punch * 0.1;
         const x = (Math.sin(t * 0.047) * 0.42 + Math.sin(t * 0.031 + 1.3) * 0.2) * calm + px * 0.55;
         const y = STAGE.camera.y + Math.sin(t * 0.039 + 0.7) * 0.1 * calm - py * 0.18 - this.dip;
-        const z = STAGE.camera.z + Math.sin(t * 0.023) * 0.3 * calm - this.dolly + pull;
+        const z = STAGE.camera.z + Math.sin(t * 0.023) * 0.3 * calm - this.dolly - lean + pull;
         camera.position.set(x, y, z);
         if (camera.fov !== this.fov) {
             camera.fov = this.fov;
@@ -828,6 +1106,11 @@ export class ChiralGoldWorld {
         this.time = t;
         u.time.value = t;
 
+        // How hot play runs: one reading a frame on the hall's own clock.
+        const play = this.surge.sample(t);
+        this.play = play;
+        const { level, fever } = play;
+
         // Where the towers stand.
         const { place } = this;
         const ease = approach(3, dt);
@@ -836,33 +1119,45 @@ export class ChiralGoldWorld {
         // In a narrow margin a tower grows slender, not short.
         place.scaleY = Math.max(TOWER_MIN_HEIGHT, place.scale);
 
-        // The chain's heat, and the strike's overdrive on top of it.
+        // The chain's heat, and the strike's overdrive on top of it. What the hall wears is the
+        // chain's heat tempered by how long play has run hot (a chain's first clears warm it, its
+        // tenth blazes), with a little warmth from the pace alone; its motion takes the chain's
+        // own heat.
         const over = this.overdrive();
         const target = heatForCombo(this.combo);
         this.heat += (target - this.heat) * approach(target > this.heat ? 3.2 : 0.8, dt);
-        u.heat.value = Math.min(1.15, this.heat + over * 0.7);
+        const worn = this.heat * (0.6 + 0.4 * level) + level * (1 - this.heat) * 0.22;
+        u.heat.value = Math.min(1.15, worn + over * 0.7);
+        const moving = Math.min(1.15, this.heat + over * 0.7);
 
-        // The hush before the strike, and the flash after it.
-        let emit = 1;
-        const age = t - this.aurumAt;
-        if (age >= 0 && age < 6 && this.aurumStrength > 0) {
-            if (age < AURUM.hush) emit = this.reducedMotion ? 1 : lerp(1, 0.16, smooth(0, AURUM.hush * 0.55, age));
-            else emit = 1 + 0.15 * this.aurumStrength * Math.exp(-(age - AURUM.hush) * 1.4);
+        // The hush before a strike from cold (as deep as play was cold), and the lift after it
+        // (in what the hall gives off, never in the studio the gold reflects).
+        let hush = 1;
+        const hushAge = t - this.hushAt;
+        if (hushAge >= 0 && hushAge < AURUM.hush && this.hushDepth > 0) {
+            hush = lerp(1, 0.16, smooth(0, AURUM.hush * 0.55, hushAge) * this.hushDepth);
         }
-        u.emit.value = emit;
+        u.emit.value = hush + this.lift.valueAt(t) * flashScale();
 
         const fade = Math.exp(-1.45 * dt);
-        this.flare[0] *= fade;
-        this.flare[1] *= fade;
+        this.flareStore[0] *= fade;
+        this.flareStore[1] *= fade;
+        this.showFlare();
         u.flare.value.set(this.flare[0], this.flare[1]);
 
-        // Turning.
-        this.spinKick *= Math.exp(-0.85 * dt);
-        this.ringKick *= Math.exp(-0.6 * dt);
+        // Turning. A hot hand winds the hall up: its kicks run down slower.
         const slow = this.reducedMotion ? 0.5 : 1;
-        this.spin += (TOWER_TURN * (1 + u.heat.value * 2) + (this.spinKick + over * 2.5) * slow) * dt;
-        this.ringSpin += (RING_TURN * (1 + u.heat.value * 5) + (this.ringKick + over * 1.8) * slow) * dt;
-        const wanted = Math.max(bandsForCombo(this.combo), over > 0.12 ? 3 : 0);
+        this.spinKick *= Math.exp(-0.85 * (1 - 0.55 * level) * dt);
+        this.ringKick *= Math.exp(-0.6 * (1 - 0.6 * level) * dt);
+        this.spin += (TOWER_TURN * (1 + moving * 2) + (this.spinKick + over * 2.5) * slow) * dt;
+        this.ringSpin += (RING_TURN * (1 + moving * 5) + (this.ringKick + over * 1.8) * slow) * dt;
+        // The ring opens with the chain, with a strike, and with sustained heat: hot play opens a
+        // band, a fever the whole armillary sphere.
+        let bands = 0;
+        if (level >= 0.55) bands = 1;
+        if (level >= 0.8) bands = 2;
+        if (fever >= 0.5) bands = 3;
+        const wanted = Math.max(bandsForCombo(this.combo), over > 0.12 ? 3 : 0, bands);
         for (let i = 0; i < this.open.length; i++) {
             const goal = i < wanted ? 1 : 0;
             this.open[i] += (goal - this.open[i]) * approach(goal > this.open[i] ? 1.6 : 0.9, dt);
@@ -870,19 +1165,73 @@ export class ChiralGoldWorld {
 
         this.placeTally(dt);
 
-        // The level-up's pour climbs the towers.
+        // The level-up's pour climbs the towers; a level reached during it pours next.
         const pourAge = t - this.pourAt;
-        u.pour.value = pourAge >= 0 && pourAge < 4 ? HELIX.bottom + pourAge * 5.5 : 100;
+        if (this.queuedLevel > 0 && pourAge >= POUR_SPAN) {
+            const next = this.queuedLevel;
+            this.queuedLevel = 0;
+            this.pour(next);
+        }
+        const pourNow = t - this.pourAt;
+        u.pour.value = pourNow >= 0 && pourNow < 4 ? HELIX.bottom + pourNow * 5.5 : 100;
+
+        // The gold the towers take up: the heat of play fills them from the water toward their
+        // crowns (casual play barely wets their feet), a fever or a perfect clear brims them over,
+        // and when the hands rest it runs back down into the water.
+        // (The last fifth, to the crowns, only a fever fills.)
+        const filled = clamp01((level - 0.12) / 0.78) ** 0.85 * 0.8 + fever * 0.2;
+        const goal = Math.max(filled, this.brim.valueAt(t));
+        this.fill += (goal - this.fill) * approach(goal > this.fill ? 2.4 : 0.9, dt);
+        const fillY = this.fill > 0.004 ? HELIX.bottom + 0.3 + this.fill * (FILL_TOP - HELIX.bottom - 0.3) : -100;
+        const calmWater = this.reducedMotion ? 0.4 : 1;
+        u.play.value.set(level, fever, fillY, (level * 0.55 + fever * 0.5) * calmWater);
+        this.showGlow();
+        // The great ring's crown, lit by back-to-backs and perfect clears.
+        u.aurum.value.w = this.crownGlow.valueAt(t);
+        // Brimming over, the crowns shed leaf into the hall.
+        const spill = Math.max(fever - 0.25, 0) / 0.75;
+        if (spill > 0 && dt > 0) {
+            this.shed += dt * spill * 6;
+            if (this.shed >= 1) {
+                this.shed -= Math.floor(this.shed);
+                this.shedLeaf(t, spill);
+            }
+        } else {
+            this.shed = 0;
+        }
 
         this.pose(t);
 
         // The studio: its lights drift a little, so the gold is never quite still; the hush takes
         // them down with everything else.
-        this.scene.environmentIntensity = Math.min(1.2, emit) * (1 + u.heat.value * 0.12);
+        this.scene.environmentIntensity = hush * (1 + u.heat.value * 0.12);
         this.scene.environmentRotation.y = Math.sin(t * 0.043) * 0.3 + Math.cos(t * 0.029) * 0.12;
+    }
 
-        this.flash *= Math.exp(-4.2 * dt);
-        this.kick *= Math.exp(-5 * dt);
+    /** A breath of leaf off both towers' crowns, carried down round each in its own hand. */
+    shedLeaf(t, amount) {
+        const { helixX, scale } = this.place;
+        const top = this.fillTop();
+        for (let side = -1; side <= 1; side += 2) {
+            this.leaf.emit({
+                x: side * helixX,
+                y: top,
+                z: 0,
+                n: Math.max(2, Math.round(9 * amount * this.tier.burst)),
+                time: t,
+                dir: [-side * 0.3, 0.15, 0.25],
+                cone: 0.9,
+                speed: [0.4, 1.8],
+                life: [3, 5],
+                size: [0.05, 0.11],
+                swirl: side * 1.8,
+                axisX: side * helixX,
+                axisZ: 0,
+                flutter: [0.2, 0.5],
+                jitter: 1.1 * scale,
+                stagger: 0.15,
+            });
+        }
     }
 
     /**
@@ -914,9 +1263,8 @@ export class ChiralGoldWorld {
         const { u, place } = this;
         u.helixX.value = place.helixX;
         u.helixScale.value = place.scale;
-        // A T-spin: one whole turn on the spot, eased.
-        const k = clamp01((t - this.tspinAt) / 0.9);
-        const pirouette = this.tspinAt > -50 ? TAU * k * k * (3 - 2 * k) : 0;
+        // A T-spin: one whole turn on the spot, eased (turns asked for mid-turn carry on).
+        const pirouette = this.pirouetteAt(t);
         for (let i = 0; i < this.towers.length; i++) {
             const tower = this.towers[i];
             tower.group.position.set(tower.hand * place.helixX, 0, 0);
@@ -938,16 +1286,23 @@ export class ChiralGoldWorld {
         const union = cardUnion(this.currentLayout());
         p.heart.x = union ? (union.x0 + union.x1) * 0.5 : 0.5;
         p.heart.y = union ? (union.y0 + union.y1) * 0.5 : 0.5;
-        const age = this.time - this.aurumAt - AURUM.hush;
-        const lit = age >= 0 && this.aurumStrength > 0;
-        const ignite = lit ? 0.3 * this.aurumStrength * Math.exp(-age * 3) : 0;
-        p.flash = this.reducedMotion ? Math.min(0.15, this.flash) : Math.min(1.2, this.flash + ignite);
-        p.kick = this.reducedMotion ? 0 : Math.min(1, this.kick + ignite);
-        p.bloomBoost = this.u.heat.value * 0.15 + (this.flare[0] + this.flare[1]) * 0.06;
-        p.rays = (lit ? 0.22 * this.aurumStrength * Math.exp(-age * 0.9) : 0) + this.u.heat.value * 0.03;
-        p.streak = 1 + this.u.heat.value * 0.5;
-        // The iris closes as the hall flares, so its blacks and its colour survive the surge.
-        p.exposure = 1 / (1 + this.u.heat.value * 0.3 + (this.flare[0] + this.flare[1]) * 0.12);
+        const now = this.time;
+        const heat = this.u.heat.value;
+        const { level, punch } = this.play;
+        const ignite = this.ignition.valueAt(now);
+        const flash = this.flash.valueAt(now);
+        p.flash = this.reducedMotion ? Math.min(0.15, flash) : Math.min(1.2, flash + ignite);
+        // Impacts ride on the punch of play: under rapid locks the lens never quite settles.
+        p.kick = this.reducedMotion ? 0 : Math.min(1, this.kick.valueAt(now) + ignite + punch * 0.2);
+        // While a strike blazes the bloom draws in: its light stays in the ring, the braid and the
+        // gilt, in colour, instead of hazing the hall.
+        const over = this.over.valueAt(now);
+        p.bloomBoost = Math.max(-0.8, heat * 0.15 + (this.flare[0] + this.flare[1]) * 0.06 - over * 0.6);
+        p.rays = this.rayLight.valueAt(now) + heat * 0.03;
+        p.streak = Math.max(0.5, 1 + heat * 0.5 - over * 0.5);
+        // The iris closes as the hall flares and as play runs hot, so its blacks and its colour
+        // survive the surge: the light stays in the gold, the hall stays dark.
+        p.exposure = 1 / (1 + heat * 0.3 + (this.flare[0] + this.flare[1]) * 0.12 + level * 0.12 + over * 0.2);
         return p;
     }
 
@@ -970,6 +1325,12 @@ export class ChiralGoldWorld {
             scaleY: this.place.scaleY,
             layoutLive: this.layoutLive,
             strike: this.time - this.aurumAt,
+            blaze: this.u.aurum.value.z * Math.exp(-0.5 * Math.max(0, this.time - this.aurumAt - AURUM.hush)),
+            crown: this.crownGlow.valueAt(this.time),
+            fill: this.fill,
+            surge: {
+                punch: this.play.punch, level: this.play.level, fever: this.play.fever, stage: this.play.stage,
+            },
             counts: { ...this.counts },
             reflection: this.tier.reflection,
             bands: BANDS.length,
