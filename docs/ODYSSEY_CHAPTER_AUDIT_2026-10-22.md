@@ -113,20 +113,53 @@ scale out by the same weight and are culled past it):
 - **Chapters 1–5:** nothing is hidden. Across the 5→6 seam the far rail retracts to the boundary,
   a thin far line shortening in the dark departure.
 - **Through chapter 6:** the rail ends a taper past the boundary node (chapter 7's first, which
-  sits on it). The rail runs up under the hole and tapers out into it, and no node beyond it is
-  drawn.
-- **The glide from chapter 6's last node into the boundary node:** from a quarter of the way
-  along it, after the hole has become chapter 7's, the horizon sweeps up the climb to the
-  journey's end. A player parked on either node sees a whole picture, the rail into the hole or
-  the way on, never a rail stopped half-drawn. In chapter 7 and after, nothing is hidden.
+  sits on it). The rail runs up into the middle of the hole and tapers out there, and no node
+  beyond it is drawn.
+- **From chapter 6's last node on, one node at a time** (second pass, the same day). Each glide
+  lays out the stretch to the node after the one you are heading for, from a quarter of the way
+  along it to arrival. Parked on a node, you see the rail to the next one, tapering out there. The
+  glide onto the last stop (the last node before chapter 7's fall has the hole swallowing the
+  frame, level 52) lays out the rest of the journey: the tunnel, then the city. A player parked on
+  any node sees a whole picture, the rail into the hole or the rail to the next node, never a rail
+  stopped half-way between two.
 
-Guard: `tests/unit/odyssey-path-horizon.test.js`. It covers four things: nothing is hidden
-outside chapter 6, every chapter 6 node and the boundary node are drawn and nothing past them is,
-a player parked on the last chapter 6 node sees no far rail, and the horizon sweeps and never
-jumps. In game: no line or nodes past the hole at local 0.30–0.93; on the glide the climb is laid
-out; chapter 7 is unchanged from its first node.
+  The first pass laid the whole climb out on the glide into the boundary node. In game that drew
+  its far reach straight across the face of the glowing hole (from level 49 the rail at p
+  0.890–0.901 covers the shadow's disc; measured by projecting the rail against the shadow's
+  on-screen radius). The rail from level 49 to level 50 never covers it. From level 50 on, the
+  hole is filling the frame and the near rail crosses its lower edge as you are drawn in, as
+  chapter 7 intends (its fall keeps the hole's near surface behind the rail).
+
+Guard: `tests/unit/odyssey-path-horizon.test.js`. It checks that:
+- nothing is hidden outside chapter 6 and the way on;
+- every chapter 6 node and the boundary node are drawn, and nothing past them is;
+- a player parked on the last chapter 6 node sees no far rail;
+- from each stop the next node is drawn and nothing past it is, and the stretch measured over the
+  hole is not drawn from level 49;
+- the horizon sweeps and never jumps.
+
+In game: no line or nodes past the hole at local 0.30–0.93. From level 49 the hole's face is clear
+and the rail reaches level 50. The hole holds its place against the rail through chapter 6 (within
+0.017 of the frame from p 0.80 to the hand-over), lands exactly on chapter 7's lock (0.004, 0.050
+for both) and is dead centre (0.000, 0.000) from p 0.897 through the dive.
+
+**Into the centre** (third pass, the same day). Olov: *"So does the path go in to the center of the
+black hole now?"* It did not: on the real path camera the rail's drawn end met the shadow 0.8–1.1
+shadow radii below its centre all through chapter 6, at the rim, because the hole hung in the
+upper-centre third (chapter 7's lock: 150 u up, 26 u right at 900 u). The lock now sits where the
+rail's end points (29 u up, 4 u right), and chapter 6's seat (`OMEN_SPINE_ANCHOR`) is re-solved
+from it on the real camera (856 u along, 80 u below the tangent, 39 u right; it was 871 / 42 up /
+51). The end stays within ~0.26 radii of the centre from p 0.78 to chapter 6's last node, where it
+is 72 u away and slides to the lower inside of the shadow. The hole now hangs near the middle of
+the frame, the hand-over still lands exactly, and chapter 7's fall starts closer to the centre it
+drifts to. Guard: `odyssey-ch6-hero-framing` ("runs the rail into the middle of the hole"; 0.94
+radii on the old placement).
 
 ![Before (top): chapter 6 at 0.60 and 0.88, chapter 7's start. After (bottom): chapter 6 at 0.60, parked on its last node, chapter 7's first node](images/odyssey-audit-2026-10-22/ch6-rail.jpg)
+
+![The way on, one node at a time. Before (top) and after (bottom) at p 0.867, 0.8709 (level 49, chapter 7's first node) and 0.876](images/odyssey-audit-2026-10-22/ch7-rail-one-node.jpg)
+
+![Into the centre. Before (top) and after (bottom) at p 0.80, 0.835 and ~0.845](images/odyssey-audit-2026-10-22/ch6-rail-into-centre.jpg)
 
 ### Chapter 7→8 — no city windows over the tunnel (`urban-dreams.tsl.js`)
 
@@ -156,6 +189,10 @@ seam, a pass of its own.
 
 ## Still open
 
+- **Chapter 7's hole loses its glow on the approach.** By design (the 2026-10-20 overhaul), the
+  lensed halo fades out as the hole grows past ~9–19° and the photon ring dims past ~12–28°, so
+  the frame is not flooded with amber. From p 0.887 to the plunge the hole reads as a bare black
+  disc with the disk band across it. A pass of its own if it should keep a rim.
 - **Chapter 5's summit** — see above.
 - **Chapter 2's mid-water** is atmospheric but sparse. The whale shark and manta pass on their own
   clocks (38 s / 64 s) and are not in every frame; a frozen-clock gallery shows the water without

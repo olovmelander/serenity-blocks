@@ -42,6 +42,10 @@ import {
     GARGANTUA_LOCK,
     resolveGargantuaLockPosition,
 } from '../../src/rendering/odyssey/chapter-environments/black-hole-transcendence.tsl.js';
+import {
+    ODYSSEY_PATH_HORIZON,
+    resolveOdysseyPathHorizon,
+} from '../../src/rendering/odyssey/odyssey-path-horizon.js';
 
 // Chapters 5-7 run the BEYOND act camera language (followDistance 42, fovBase 66).
 const BEYOND = ODYSSEY_CAMERA_PROFILES[ODYSSEY_ACTS.BEYOND];
@@ -403,6 +407,30 @@ describe('Odyssey chapter 6 hero framing (real camera + real spline)', () => {
         expect(atEnd.deg / first.deg).toBeGreaterThan(1.1);
         expect(atEnd.deg / first.deg).toBeLessThan(1.6);
         expect(first.deg).toBeGreaterThan(5);
+    });
+
+    it('runs the rail into the middle of the hole, not its rim', () => {
+        // Olov 2026-10-22: "does the path go in to the center of the black hole now?" The rail's
+        // drawn end (it tapers out at the path horizon, odyssey-path-horizon.js) met the shadow
+        // 0.8-1.1 shadow radii below its centre all chapter; the hole now sits where that end
+        // points. From the chapter's first stretch to its last node the end stays in the middle.
+        const { levelPositions } = layout;
+        const lastNode = Math.max(...levelPositions.filter((x) => x > ch6Start && x < ch6End - 1e-6));
+        const curve = getOdysseyPathCurve();
+        const tanHalf = Math.tan(THREE.MathUtils.degToRad(BEYOND.fovBase / 2));
+        for (let p = ch6Start + 0.03; p <= lastNode + 1e-9; p += 0.004) {
+            const hole = omenAt(p);
+            const radius = (OMEN_SHADOW_RADIUS * hole.scale) / hole.dist / tanHalf;
+            const horizon = resolveOdysseyPathHorizon(p, chapterPositions, levelPositions);
+            const end = project(
+                frameAt(controller, chapterPositions, 6, p),
+                curve.getPointAt(Math.min(1, horizon - (ODYSSEY_PATH_HORIZON.soft / 2))),
+                16 / 9,
+            );
+            // In shadow radii from the hole's centre (x aspect-corrected).
+            const off = Math.hypot(((end.x - hole.x) * 16) / 9, end.y - hole.y) / radius;
+            expect(off, `rail end ${off.toFixed(2)} radii off the centre @p=${p.toFixed(4)}`).toBeLessThan(0.4);
+        }
     });
 
     it('keeps the galaxy at infinity: one direction, one distance, one turn, whatever the eye does', () => {
