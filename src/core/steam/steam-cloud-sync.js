@@ -51,15 +51,15 @@ const CLOUD_KEYBIND_KEYS = [
     'serenityGamepadBindings',
 ];
 
-// Documents whose upload first merges the remote copy, so a write can never
-// erase what another device added. A blind offline-queued write would skip
-// that merge, so these uploads wait in pendingUploads instead.
-const MERGED_BEFORE_UPLOAD = new Set([
-    CLOUD_FILES.UNLOCKS,
-    CLOUD_FILES.ODYSSEY,
-    CLOUD_FILES.HIGHSCORES,
-    CLOUD_FILES.STATS,
-]);
+// The unlocks, Odyssey, score and stats uploads first merge the remote copy, so a
+// write can never erase what another device added. These two are uploaded whole:
+// each upload replaces every key of the cloud copy. Until this session has read the
+// cloud, they would put this device's values, defaults included, over what another
+// device chose, so they wait for that read (_syncFile). No upload ever goes through
+// SteamService's offline queue, which replays blind writes before the first read;
+// unsent uploads wait in pendingUploads, which is saved, instead.
+const WHOLE_DOCUMENTS = new Set([CLOUD_FILES.SETTINGS, CLOUD_FILES.KEYBINDS]);
+const NO_OFFLINE_QUEUE = { queueIfOffline: false };
 
 const textEncoder = typeof TextEncoder !== 'undefined' ? new TextEncoder() : null;
 
@@ -130,6 +130,14 @@ export class SteamCloudSyncManager {
         this.flushPromise = null;
         this.flushRequested = false;
         this.uploadingFiles = new Set();
+        // Settings and keybind keys edited here since this device's last acknowledged
+        // upload of their document: the only keys it may keep over the cloud copy.
+        this.localEdits = new Map();
+        // The cloud manifest this session last read, and the whole documents whose cloud
+        // copy it has reconciled with. Null until the first read: no manifest goes up.
+        this.cloudManifestSeen = null;
+        this.reconciledFiles = new Set();
+        this._loadPending();
     }
 
     initialize() {
@@ -148,9 +156,11 @@ export class SteamCloudSyncManager {
             const dirtyKeys = event?.dirtyKeys;
             // Older save callers omit metadata; keep their full sync behavior.
             if (!dirtyKeys || dirtyKeys.some((key) => CLOUD_SETTINGS_KEYS.includes(key))) {
+                this._noteLocalEdits(CLOUD_FILES.SETTINGS, dirtyKeys, CLOUD_SETTINGS_KEYS);
                 this.queueUpload(CLOUD_FILES.SETTINGS);
             }
             if (!dirtyKeys || dirtyKeys.some((key) => CLOUD_KEYBIND_KEYS.includes(key))) {
+                this._noteLocalEdits(CLOUD_FILES.KEYBINDS, dirtyKeys, CLOUD_KEYBIND_KEYS);
                 this.queueUpload(CLOUD_FILES.KEYBINDS);
             }
         });
@@ -202,6 +212,7 @@ export class SteamCloudSyncManager {
         // Queue only the dirty category. Export, serialization and hashing happen
         // once after the debounce, using the latest settings rather than each input.
         this.pendingUploads.set(fileName, { queuedAt: this.now() });
+        this._savePending();
         if (flush) {
             if (this.flushPromise) await this.flushPromise;
             await this._flushPendingUploads();
@@ -254,11 +265,13 @@ export class SteamCloudSyncManager {
         const capabilities = steamService.getCapabilities ? steamService.getCapabilities() : {};
         if (steamService.isAvailable?.() && capabilities.cloud === false) return;
 
-        const entries = Array.from(this.pendingUploads.entries());
-        this.pendingUploads.clear();
+        const entries = Array.from(this.pendingUploads.entries())
+            .filter(([fileName]) => this._mayUpload(fileName));
+        entries.forEach(([fileName]) => this.pendingUploads.delete(fileName));
         for (const [fileName, entry] of entries) {
             const { payload: cachedPayload } = entry;
             let payload = cachedPayload;
+            const editsSent = new Set(this.localEdits.get(fileName));
             this.uploadingFiles.add(fileName);
             try {
                 if (fileName === CLOUD_FILES.UNLOCKS && this.themeCollection) {
@@ -309,13 +322,10 @@ export class SteamCloudSyncManager {
                     includeUpdatedAt: true, updatedAt: entry.queuedAt,
                 });
                 if (!payload) continue;
-                const result = await steamService.cloudWrite(
-                    fileName,
-                    payload.json,
-                    MERGED_BEFORE_UPLOAD.has(fileName) ? { queueIfOffline: false } : undefined,
-                );
+                const result = await steamService.cloudWrite(fileName, payload.json, NO_OFFLINE_QUEUE);
                 if (result?.supported && result.success !== false && !result.queued) {
                     this._updateManifestEntry(fileName, payload);
+                    this._forgetLocalEdits(fileName, editsSent);
                     continue;
                 }
             } catch (error) {
@@ -329,6 +339,7 @@ export class SteamCloudSyncManager {
                 this.pendingUploads.set(fileName, { ...entry, payload });
             }
         }
+        this._savePending();
         await this._uploadManifest();
     }
 
@@ -349,9 +360,13 @@ export class SteamCloudSyncManager {
 
             const cloudManifest = safeParse(manifestResponse.data);
             if (!cloudManifest || !cloudManifest.files) {
+                // No other device has written anything this device could overwrite.
+                this.cloudManifestSeen = { files: {} };
+                WHOLE_DOCUMENTS.forEach((fileName) => this.reconciledFiles.add(fileName));
                 await this._pushAllLocal();
                 return;
             }
+            this.cloudManifestSeen = cloudManifest;
 
             await this._bootstrapLocalManifest();
 
@@ -371,12 +386,18 @@ export class SteamCloudSyncManager {
         // built and acknowledged. A cloud refresh must not replace that source
         // while the debounce or an asynchronous upload is still in progress.
         if (this.flushPromise) await this.flushPromise;
+        const cloudEntry = cloudManifest.files?.[fileName] || null;
+        if (WHOLE_DOCUMENTS.has(fileName) && !this.reconciledFiles.has(fileName)
+            && this.pendingUploads.has(fileName) && cloudEntry) {
+            await this._adoptCloudUnderLocalEdits(fileName, cloudEntry);
+            return;
+        }
+        this.reconciledFiles.add(fileName);
         if (this.pendingUploads.has(fileName)) {
             await this._flushPendingUploads();
             if (this.pendingUploads.has(fileName)) return;
         }
         const localEntry = this.manifest.files?.[fileName] || null;
-        const cloudEntry = cloudManifest.files?.[fileName] || null;
 
         // Cosmetic ownership is monotonic on EVERY device/clock ordering, not
         // just the timestamp-tie conflict path used by settings documents.
@@ -415,6 +436,76 @@ export class SteamCloudSyncManager {
         }
 
         await this._mergeConflict(fileName, cloudEntry);
+    }
+
+    /**
+     * The session's first sight of a whole document's cloud copy, with this device's
+     * edits to it still unsent (made before Steam was online, or in an earlier session).
+     * Uploading the local document would put this device's every value over the
+     * cloud's, defaults included. Take the cloud copy instead, keep only the keys edited
+     * here, and upload that union.
+     */
+    async _adoptCloudUnderLocalEdits(fileName, cloudEntry) {
+        const response = await steamService.cloudRead(fileName);
+        if (!response?.supported || response.success === false) return;
+        // Save live slider edits first, so their keys are noted before they are read.
+        this._flushLiveSettingsBeforeCloudApply(fileName);
+        this.reconciledFiles.add(fileName);
+        const cloudData = safeParse(response.data);
+        if (!cloudData || !this.settingsManager) {
+            // Nothing readable to keep: this device's document goes up as it is.
+            await this._flushPendingUploads();
+            return;
+        }
+        const isSettings = fileName === CLOUD_FILES.SETTINGS;
+        let cloudValues = cloudData.settings || cloudData;
+        if (!isSettings) cloudValues = cloudData.keyBindings ? cloudData : (cloudData.keybinds || cloudData);
+        const edited = [...(this.localEdits.get(fileName) || [])];
+        const union = {
+            ...pickKeys(cloudValues, isSettings ? CLOUD_SETTINGS_KEYS : CLOUD_KEYBIND_KEYS),
+            ...pickKeys(this.settingsManager.get(), edited),
+        };
+        this.suppressLocalEvents = true;
+        try {
+            if (isSettings) this._applySettings(union);
+            else this._applyKeybinds(union);
+        } finally {
+            this.suppressLocalEvents = false;
+        }
+        if (edited.length > 0) {
+            // The union holds the cloud's values, so it is newer than the cloud copy.
+            this.pendingUploads.set(fileName, { queuedAt: this.now() });
+            await this._flushPendingUploads();
+            return;
+        }
+        // Nothing chosen here survives: the cloud copy stands and nothing goes up.
+        this.pendingUploads.delete(fileName);
+        this._savePending();
+        const hash = await this._computeHash(response.data);
+        this._updateManifestEntry(fileName, {
+            hash, updatedAt: cloudEntry.updatedAt || this.now(), json: response.data,
+        });
+    }
+
+    _mayUpload(fileName) {
+        return !WHOLE_DOCUMENTS.has(fileName) || this.reconciledFiles.has(fileName);
+    }
+
+    _noteLocalEdits(fileName, dirtyKeys, cloudKeys) {
+        // Older save callers omit the changed keys; there is nothing to keep for them.
+        if (!dirtyKeys) return;
+        const edits = this.localEdits.get(fileName) || new Set();
+        dirtyKeys.forEach((key) => {
+            if (cloudKeys.includes(key)) edits.add(key);
+        });
+        if (edits.size > 0) this.localEdits.set(fileName, edits);
+    }
+
+    _forgetLocalEdits(fileName, sentKeys) {
+        const edits = this.localEdits.get(fileName);
+        if (!edits) return;
+        sentKeys.forEach((key) => edits.delete(key));
+        if (edits.size === 0) this.localEdits.delete(fileName);
     }
 
     async _mergeUnlocksFromCloud() {
@@ -1002,10 +1093,46 @@ export class SteamCloudSyncManager {
     }
 
     async _uploadManifest() {
-        const json = JSON.stringify(this.manifest);
-        const result = await steamService.cloudWrite(CLOUD_FILES.MANIFEST, json);
-        if (result?.queued) {
-            // Queued for a later flush by steamService; nothing to do here.
+        // Before this session has read the cloud's manifest, this device's would replace
+        // the entries other devices wrote. Entries this device has not adopted yet stay.
+        if (!this.cloudManifestSeen) return;
+        const files = { ...(this.cloudManifestSeen.files || {}), ...(this.manifest.files || {}) };
+        await steamService.cloudWrite(
+            CLOUD_FILES.MANIFEST,
+            JSON.stringify({ ...this.manifest, files }),
+            NO_OFFLINE_QUEUE,
+        );
+    }
+
+    _loadPending() {
+        try {
+            const stored = safeParse(localStorage.getItem(STEAM_STORAGE_KEYS.CLOUD_PENDING));
+            if (!isRecord(stored?.files)) return;
+            const known = new Set(Object.values(CLOUD_FILES));
+            Object.entries(stored.files).forEach(([fileName, entry]) => {
+                if (!known.has(fileName) || fileName === CLOUD_FILES.MANIFEST || !isRecord(entry)) return;
+                this.pendingUploads.set(fileName, {
+                    queuedAt: Number.isFinite(entry.queuedAt) ? entry.queuedAt : this.now(),
+                });
+                if (Array.isArray(entry.edits) && entry.edits.length > 0) {
+                    this.localEdits.set(fileName, new Set(entry.edits.filter((key) => typeof key === 'string')));
+                }
+            });
+        } catch (err) {
+            // Unreadable storage: start with nothing pending.
+        }
+    }
+
+    /** Uploads not yet acknowledged survive a restart; the next session's sync sends them. */
+    _savePending() {
+        const files = {};
+        this.pendingUploads.forEach((entry, fileName) => {
+            files[fileName] = { queuedAt: entry.queuedAt, edits: [...(this.localEdits.get(fileName) || [])] };
+        });
+        try {
+            localStorage.setItem(STEAM_STORAGE_KEYS.CLOUD_PENDING, JSON.stringify({ version: 1, files }));
+        } catch (err) {
+            // Storage full or blocked: the uploads still wait in memory.
         }
     }
 

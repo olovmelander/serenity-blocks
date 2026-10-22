@@ -1036,9 +1036,12 @@ class SteamService {
             const ttlMs = 7 * 24 * 60 * 60 * 1000;
             const now = Date.now();
             if (!Array.isArray(parsed)) return [];
+            // The cloud sync keeps its own saved pending list. A cloud write saved here came from
+            // an older build: replayed before the first cloud read, it would overwrite what
+            // another device saved with this device's document (steam-cloud-sync.js).
             return parsed
                 .map((item) => this._normalizeQueueEntry(item))
-                .filter((item) => item && now - (item.timestamp || now) <= ttlMs);
+                .filter((item) => item && item.action !== 'cloudWrite' && now - (item.timestamp || now) <= ttlMs);
         } catch (err) {
             return [];
         }
