@@ -9,7 +9,9 @@ import * as sakuraAssets from '../../src/themes/sakura-twilight/sakura-assets.js
 import { sakuraViewFor } from '../../src/themes/sakura-twilight/sakura-composition.js';
 import { SakuraPost } from '../../src/themes/sakura-twilight/sakura-post.js';
 import { SAKURA_TIERS } from '../../src/themes/sakura-twilight/sakura-quality.js';
-import { SAKURA_REACTION_LIMITS, SakuraReactions } from '../../src/themes/sakura-twilight/sakura-reactions.js';
+import {
+    SAKURA_CALM_MOTION, SAKURA_REACTION_LIMITS, SakuraReactions,
+} from '../../src/themes/sakura-twilight/sakura-reactions.js';
 import { SAKURA_DEFAULT_BOARD } from '../../src/themes/sakura-twilight/sakura-stage.js';
 import { SAKURA_TWILIGHT_TETROMINOS } from '../../src/themes/sakura-twilight/sakura-twilight-tetrominos.js';
 import { SakuraWorld } from '../../src/themes/sakura-twilight/sakura-world.js';
@@ -118,6 +120,7 @@ function stubSceneBuild(theme) {
             onPerfectClear: vi.fn(),
             onLevelUp: vi.fn(),
             onGameOver: vi.fn(),
+            setMotion: vi.fn(),
             update: vi.fn(),
             reset: vi.fn(),
             dispose: vi.fn(),
@@ -1489,6 +1492,8 @@ describe('Sakura camera', () => {
         await theme.createScene();
         expect(window.matchMedia).toHaveBeenCalledWith('(prefers-reduced-motion: reduce)');
         expect(theme.reducedMotion).toBe(true);
+        // The garden's reactions are calmed too, not only the camera.
+        expect(theme.reactions.setMotion).toHaveBeenLastCalledWith(SAKURA_CALM_MOTION);
         const move = windowListener('pointermove');
         const rest = theme.restPosition.clone();
         move({ clientX: 1440, clientY: 0, pointerType: 'mouse' });
@@ -1501,6 +1506,7 @@ describe('Sakura camera', () => {
         query.matches = false;
         onChange();
         expect(theme.reducedMotion).toBe(false);
+        expect(theme.reactions.setMotion).toHaveBeenLastCalledWith(1);
         move({ clientX: 1440, clientY: 450, pointerType: 'mouse' });
         for (let frame = 0; frame < 120; frame += 1) theme.update(1 / 60);
         expect(theme.camera.position.x).toBeGreaterThan(rest.x);
@@ -1934,7 +1940,8 @@ describe('Sakura with its real artwork', () => {
 
         // Game over lets the wind go; switching effects off empties the air at once.
         windowListener('gameOver')();
-        expect(reactions.getFrame().front).toBeNull();
+        // (A front still crossing eases away rather than snapping the trees upright.)
+        expect(reactions.fronts.every((front) => front.target === 0)).toBe(true);
         expect(reactions.getFrame().emitters.length).toBeGreaterThan(0);
         eventBus.emit(EVENTS.SETTINGS_CHANGED, { changed: { backgroundComboEffects: false } });
         expect(reactions.getFrame().emitters).toEqual([]);

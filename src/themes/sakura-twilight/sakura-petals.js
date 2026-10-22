@@ -147,10 +147,11 @@ export class SakuraPetals {
         const back = petal.mul(saturate(facing.negate()).mul(0.5).add(through.mul(1.1)));
         const lamp = varying(light.lamps(positionWorld));
         const ring = varying(light.rings(positionWorld.xz).band);
-        // The game's petals are lit from within: pale rose, white-hot while a long combo holds.
+        // The game's petals are lit from within: pale rose, burning a deep rose-gold while a long
+        // combo holds (a colour, not a white veil over the garden).
         const flicker = sin(light.uTime.mul(8).add(look.x.mul(40))).mul(0.2).add(0.8);
-        const inner = mix(vec3(1.5, 0.62, 0.95), vec3(2.6, 1.7, 2.0), this.uHeat)
-            .mul(look.y).mul(this.uHeat.mul(1.4).add(1)).mul(flicker);
+        const inner = mix(vec3(1.5, 0.62, 0.95), vec3(2.5, 1.12, 1.5), this.uHeat)
+            .mul(look.y).mul(this.uHeat.mul(1.1).add(1)).mul(flicker);
         const lit = front.add(back).mul(light.uMoonColor).mul(moon)
             .add(petal.mul(light.ambient(blade)).mul(1.6))
             .add(petal.mul(lamp).mul(1.1))
