@@ -78,7 +78,8 @@ import {
 } from './ffa/resync-coordinator.js';
 import { handleFfaAttackRequest, noteCopyClear } from './ffa/attack-request.js';
 import { handleFfaChat } from './ffa/chat-relay.js';
-import { capPeerText, MAX_NAME_CHARS } from '../network/peer-text.js';
+import { capPeerText, MAX_NAME_CHARS, peerColor } from '../network/peer-text.js';
+import { mergeHostMatchConfig } from './ffa/host-match-config.js';
 import { getBinaryDecoder } from '../network/binary-encoding.js';
 import { createNetworkHandlerRegistry } from './ffa/network-handler-registry.js';
 import { createFfaResyncContext } from './ffa/resync-context.js';
@@ -931,7 +932,7 @@ export class FFAGameStateP2P {
         // Rematch Voting
         registry.register(MessageTypes.GAME_REMATCH_VOTE, (msg) => {
             const voterId = msg.from;
-            if (!this.players.has(voterId) || !acceptsRematchVote(this)) return;
+            if (!this.players.has(voterId) || this.rematchVotes.has(voterId) || !acceptsRematchVote(this)) return;
 
             console.log(`🗳️ Rematch vote from ${this.players.get(voterId).name}`);
             this.rematchVotes.add(voterId);
@@ -1075,9 +1076,10 @@ export class FFAGameStateP2P {
             return;
         }
         const player = this.players.get(msg.data.steamId);
-        if (player) {
-            player.isReady = msg.data.isReady;
-            console.log(`${player.name} is ${msg.data.isReady ? 'ready' : 'not ready'}`);
+        const isReady = msg.data.isReady === true; // only a change is news: each rebuilds the waiting room
+        if (player && player.isReady !== isReady) {
+            player.isReady = isReady;
+            console.log(`${player.name} is ${isReady ? 'ready' : 'not ready'}`);
             // Notify the lobby UI so the host's Activity Log records the peer's
             // ready change. (Player cards update via the 1s interval, but
             // _logRosterChanges only runs on PLAYER_LIST_CHANGED — so without this
@@ -1811,7 +1813,7 @@ export class FFAGameStateP2P {
 
             // Apply config if provided
             if (config) {
-                this.matchConfig = { ...this.matchConfig, ...config };
+                this.matchConfig = mergeHostMatchConfig(this.matchConfig, config);
             }
             this._transitionSimulationClock(
                 this._fixedTickEnabled ? 'fixed60-v1' : 'legacy-variable-v1',
@@ -1839,7 +1841,7 @@ export class FFAGameStateP2P {
             // Peer receives seed and config from host
             this.sharedSeed = suppliedSeed;
             if (config) {
-                this.matchConfig = { ...this.matchConfig, ...config };
+                this.matchConfig = mergeHostMatchConfig(this.matchConfig, config);
             }
             this._transitionSimulationClock(this.matchConfig.simulationClock);
 
@@ -2467,9 +2469,7 @@ export class FFAGameStateP2P {
             if (player) {
                 const isLocalPlayer = playerData.steamId === this.localPlayerId;
 
-                if (playerData.color) {
-                    player.color = playerData.color;
-                }
+                player.color = peerColor(playerData.color) || player.color;
 
                 // ── LOCAL-BOARD HOLD decision — computed BEFORE stats so SCORE/LINES/
                 // LEVEL and the GARBAGE queue can be gated by the SAME hold as the grid
@@ -2659,7 +2659,7 @@ export class FFAGameStateP2P {
                     player.garbageQueue.entries = gbEntries.map((e) => ({
                         type: e.type,
                         attackerId: e.attackerId,
-                        color: e.color,
+                        color: peerColor(e.color) ?? undefined,
                         holeMask: e.holeMask,
                         variant: e.variant,
                         duration: e.duration,
@@ -2816,7 +2816,7 @@ export class FFAGameStateP2P {
         }
         let clockProjectionReset = false;
         if (state.matchConfig) {
-            this.matchConfig = { ...this.matchConfig, ...state.matchConfig };
+            this.matchConfig = mergeHostMatchConfig(this.matchConfig, state.matchConfig);
             clockProjectionReset = this._transitionSimulationClock(this.matchConfig.simulationClock);
             applyMatchLevelProgression(this.players, this.matchConfig); // not in a board's resync fields
         }

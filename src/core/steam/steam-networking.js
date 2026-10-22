@@ -56,6 +56,9 @@ export const MAX_P2P_PACKET_BYTES = 64 * 1024;
 const LOBBY_DEPARTURES = new Set(['left', 'disconnected', 'kicked', 'banned']);
 /** The logical channels this protocol uses; a sender-chosen one grew the sequence map without bound. */
 const LOGICAL_CHANNELS = new Set([0, 1, 2]);
+/** Rejected-packet counts keep at most this many types, each name cut to this length. */
+const MAX_DROP_TYPE_KEYS = 32;
+const MAX_DROP_TYPE_CHARS = 64;
 
 /** @param {any} cell */
 const copyCell = (cell) => (cell && typeof cell === 'object' ? { ...cell } : cell);
@@ -1825,8 +1828,12 @@ export class SteamNetworking {
     }
 
     _rejectMessageRole(messageType, fromSteamId, reason) {
-        const key = messageType || 'unknown';
         const drops = this.packetStats.roleValidationDropsByType;
+        // The type is whatever the sender wrote. Bound the key and the number of keys, or a
+        // peer that invents a new 16 KB type per packet grows this map and the log forever.
+        let key = typeof messageType === 'string' && messageType
+            ? messageType.slice(0, MAX_DROP_TYPE_CHARS) : 'unknown';
+        if (!Object.hasOwn(drops, key) && Object.keys(drops).length >= MAX_DROP_TYPE_KEYS) key = 'other';
         drops[key] = (drops[key] || 0) + 1;
         // The 1st, 10th, 100th...: a flood of bad packets cannot flood the log as well.
         if (/^10*$/.test(String(drops[key]))) {
