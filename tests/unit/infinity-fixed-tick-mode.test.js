@@ -344,6 +344,41 @@ describe('InfinityMode fixed-tick loop adapter', () => {
         expect(mode._stoppedSession.rngDescriptor).toBe(descriptor);
     });
 
+    it('spawns from the board on the default legacy clock too', async () => {
+        vi.stubGlobal('window', {
+            location: { search: '' },
+            localStorage: { getItem: vi.fn(() => null) },
+            matchMedia: vi.fn(() => ({ matches: false })),
+            move: vi.fn(),
+            rotate: vi.fn(),
+        });
+        const { mode } = createMode();
+        mode.gameState = null;
+        mode.isRunning = false;
+        mode._activeSession = null;
+        mode._sessionGeneration = 0;
+        mode._preparePhaserScene = vi.fn(() => {
+            mode.boardScene = null;
+            mode.physicsCallbacks = null;
+        });
+        mode._initBoardJuice = vi.fn();
+        mode._disableGamepadExploration = vi.fn();
+        mode._enableGamepadExploration = vi.fn();
+        mode._enableScrollExploration = vi.fn();
+        mode._refreshNextQueue = vi.fn();
+        mode._updateStats = vi.fn();
+
+        await mode.onStart();
+
+        expect(mode._fixedTickEnabled).toBe(false);
+        expect(mode._activeSession.simulationClock).toBe(DEMO_LEGACY_SIMULATION_CLOCK);
+        expect(mode.gameState).toMatchObject({
+            infinitySpawnPolicy: INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
+            infinityVisibleRows: mode.visibleRows,
+        });
+        await mode.onStop();
+    });
+
     it('keeps fixed rendering observer-only and runs no Infinity maintenance writes', () => {
         const {
             boardScene, frameRateController, gameState, mode,
