@@ -79,6 +79,8 @@ export function createWolfhourLandscape({ scene = null, quality = 'High', seed =
     group.updateMatrix();
     const uPulse = uniform(0);
     const uTime = uniform(0);
+    // How hard play runs (0 at rest): under a waking moon more of the snow glitters, brighter.
+    const uSparkle = uniform(0);
     // Snow glints cost a few hashes on every terrain pixel: Medium and up.
     const glints = !['Minimal', 'Low'].includes(quality);
     const graniteTexture = makeGraniteTexture(seed);
@@ -131,10 +133,12 @@ export function createWolfhourLandscape({ scene = null, quality = 'High', seed =
             const offset = fract(gp).sub(spot).mul(GLINT_CELL);
             const radius = max(fwidth(positionGeometry.x).mul(0.75), 0.32);
             const twinkle = sin(uTime.mul(1.7).add(hash(cellId.mul(3).add(3)).mul(6.283))).max(0).pow(6);
-            const glint = step(0.955, chance).mul(exp(dot(offset, offset).div(radius.mul(radius)).negate()))
+            const glint = step(uSparkle.mul(-0.016).add(0.955), chance)
+                .mul(exp(dot(offset, offset).div(radius.mul(radius)).negate()))
                 .mul(twinkle).mul(snow)
                 .mul(lit)
-                .mul(light.x);
+                .mul(light.x)
+                .mul(uSparkle.mul(0.8).add(1));
             frost.addAssign(GLINT_COLOUR.mul(glint));
         }
         const ground = mix(rock, frost, snow).add(
@@ -244,6 +248,10 @@ export function createWolfhourLandscape({ scene = null, quality = 'High', seed =
         },
         triangles,
         vertices,
+        /** How hard play runs (0..1.5, 0 at rest): more of the moonlit snow glitters. */
+        setSparkle(value) {
+            uSparkle.value = Math.max(0, Math.min(1.5, Number.isFinite(value) ? value : 0));
+        },
         update(time, state = {}) {
             const pulse = typeof state === 'number' ? state
                 : (state.mountainPulse ?? state.ridgePulse ?? state.pulse ?? 0);
