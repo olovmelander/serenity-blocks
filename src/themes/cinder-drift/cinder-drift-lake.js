@@ -68,11 +68,10 @@ export function createLake(u, { fine = true, glint = true } = {}) {
 
         // ── Plate space: where the crust holds still ──
         const q = u.plateSpace(xz).toVar();
-        // A T-spin turns the crust round the foot of the board: a whirl that winds up and lets go.
+        // A T-spin turns the crust round the foot of the board: a whirl that winds up and lets go
+        // (the world winds it on the CPU, so a second T-spin adds to a turn still going).
         const wRel = xz.sub(u.whirl.xy);
-        const wAge = max(u.time.sub(u.whirl.z), 0.0);
-        const wind = u.whirl.w.mul(exp(wAge.div(-1.7))).mul(float(1.0).sub(exp(wAge.mul(-5.0))))
-            .mul(exp(dot(wRel, wRel).div(-380.0)));
+        const wind = u.whirl.w.mul(exp(dot(wRel, wRel).div(-380.0)));
         const cw = cos(wind);
         const sw = sin(wind);
         q.addAssign(vec2(wRel.x.mul(cw).sub(wRel.y.mul(sw)), wRel.x.mul(sw).add(wRel.y.mul(cw))).sub(wRel));

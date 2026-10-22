@@ -9,6 +9,10 @@
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.crown(player)         a PERFECT_CLEAR that came after its clear's frame (physics sends it
+ *                              ~360 ms after the last wave): the crown on the clear still playing,
+ *                              never a new clear (a sink without `crown` gets the old 1-line clear)
+ *   sink.tspin(player)         a T-spin that cleared nothing (no clear follows it)
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *
@@ -349,13 +353,13 @@ export class CinderDriftDirector {
         return true;
     }
 
+    /** In the same frame as its lines it rides on their clear; on its own it is a crown (resolve). */
     onPerfectClear(event) {
         if (!this.enabled) return false;
         const slot = this.slotFor(event || EMPTY);
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -405,6 +409,9 @@ export class CinderDriftDirector {
                 c.screen = null;
                 sink.lock(c);
             }
+            if (slot.lines === 0 && slot.perfect && sink?.crown) sink.crown(slot.player);
+            else if (slot.lines === 0 && slot.perfect) slot.lines = 1;
+            if (slot.lines === 0 && slot.tspin) sink?.tspin?.(slot.player);
             if (slot.lines > 0 && sink?.clear) {
                 const c = this._clear;
                 c.player = slot.player;

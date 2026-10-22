@@ -49,6 +49,8 @@ const viewProjection = (world) => cameraProjectionMatrix.mul(cameraViewMatrix).m
 
 /** A drop at rest lies this high on the crust. */
 const REST_Y = 0.05;
+/** How many drops not yet thrown a new burst passes over, at most, for each slot it takes. */
+const SKIP_UNBORN = 48;
 
 /**
  * Height of a drop `tau` seconds after it leaves `y0` at `vy` m/s under `gravity` with `drag`.
@@ -152,6 +154,12 @@ export function createSpatter(u, count) {
     let cursor = 0;
     let bursts = 0;
     /**
+     * The world's clock (it keeps this current): a drop born after it has not been thrown yet (a
+     * fountain staggers its drops over its life), and a new burst passes over it rather than
+     * taking its slot, so what follows a curtain of fire does not thin its fountains out.
+     */
+    part.clock = 0;
+    /**
      * Throw `n` drops from a world point at `time` (which may be ahead). `out` / `up` = (min,
      * max) speed outward / upward; `aim` = [x, z] biases the throw that way; `stagger` spreads
      * the births over that many seconds (a fountain); `gravity` < 0 makes sparks that rise.
@@ -164,7 +172,10 @@ export function createSpatter(u, count) {
         bursts += 1;
         const total = Math.min(Math.max(0, Math.round(n)), count);
         const first = cursor % count;
+        const start = cursor;
         for (let k = 0; k < total; k++) {
+            // Pass over drops not yet thrown (a bounded look: a pool full of them is overwritten).
+            for (let look = 0; look < SKIP_UNBORN && aBirth[(cursor % count) * 4 + 3] > part.clock; look++) cursor += 1;
             const i = cursor % count;
             cursor += 1;
             const a = rand() * TAU;
@@ -184,7 +195,9 @@ export function createSpatter(u, count) {
             aTint.set([c[0] * g, c[1] * g, c[2] * g, size * (0.5 + rand() * 1.0)], i * 4);
             aPhys.set([gravity, Math.max(0.02, drag), heat * (0.8 + rand() * 0.4), 0], i * 4);
         }
-        if (total > 0) names.forEach((name) => markSpatterSlots(geometry.getAttribute(name), first, total, count));
+        // (What was passed over goes up with what was written: one range.)
+        const written = Math.min(cursor - start, count);
+        if (total > 0) names.forEach((name) => markSpatterSlots(geometry.getAttribute(name), first, written, count));
         return total;
     };
     part.reset = () => {
@@ -260,13 +273,19 @@ export function createBombs(u) {
     })();
 
     const part = cdPart('CinderBombs', geometry, material, 34);
-    let cursor = 0;
-    /** Throw a bomb from `from` with `velocity` at `time`; it flies for `flight` seconds. */
+    /** When each slot's bomb (and the last ember of its tail) is down. */
+    const down = new Float64Array(BOMB_SLOTS).fill(-Infinity);
+    /**
+     * Throw a bomb from `from` with `velocity` at `time`; it flies for `flight` seconds. It takes
+     * the slot whose bomb comes down first (one already down, if any): a second volley never
+     * erases the first mid-arc while there is room.
+     */
     part.launch = ({
         from: p0, velocity, time, flight: span, rgb = [1, 1, 1],
     }) => {
-        const slot = cursor % BOMB_SLOTS;
-        cursor += 1;
+        let slot = 0;
+        for (let i = 1; i < BOMB_SLOTS; i++) if (down[i] < down[slot]) slot = i;
+        down[slot] = time + span + BOMB_LAG;
         for (let j = 0; j < BOMB_TAIL; j++) {
             const i = slot * BOMB_TAIL + j;
             aFrom.set([p0[0], p0[1], p0[2], time], i * 4);
@@ -281,7 +300,7 @@ export function createBombs(u) {
     part.reset = () => {
         for (let i = 0; i < count; i++) aFrom[i * 4 + 3] = -100;
         geometry.getAttribute('aFrom').needsUpdate = true;
-        cursor = 0;
+        down.fill(-Infinity);
     };
     part.count = count;
     return part;
@@ -366,37 +385,57 @@ export const JET_FADE = 0.2;
 /** How far a jet reaches out of the card, as a fraction of the screen's width. */
 export const JET_REACH = 0.17;
 
-/** Eight screen-space strips: one from each side of the card for up to four cleared rows. */
+/** Sets of row jets: a cascade's next wave fires the other set while the last one burns away. */
+export const JET_SETS = 2;
+/** Seconds after its birth a set of jets has burnt away (it may be fired again without a cut). */
+const JET_SPENT = JET_TRAVEL + JET_HOLD + JET_FADE * 3;
+
+/**
+ * Screen-space strips: one from each side of the card for up to four cleared rows, in JET_SETS
+ * sets, so a cascade's waves follow one another out of the card instead of the newest snapping
+ * the last back into it.
+ */
 export function createRowJets(u) {
-    const count = JET_ROWS * 2;
-    const aRow = new Float32Array(count * 2);
-    for (let i = 0; i < count; i++) aRow.set([Math.floor(i / 2), i % 2 ? 1 : -1], i * 2);
-    const geometry = cdQuadGeometry(count, { aRow: [aRow, 2] });
-    const row = attribute('aRow', 'vec2');
-    const uniforms = {
+    const perSet = JET_ROWS * 2;
+    const count = perSet * JET_SETS;
+    const aRow = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+        const j = i % perSet;
+        aRow.set([Math.floor(j / 2), j % 2 ? 1 : -1, Math.floor(i / perSet)], i * 3);
+    }
+    const geometry = cdQuadGeometry(count, { aRow: [aRow, 3] });
+    const row = attribute('aRow', 'vec3');
+    const makeSet = () => ({
         /** Screen y (fractions, y down) of up to four rows; < 0 = unused. */
         rows: uniform(new THREE.Vector4(-1, -1, -1, -1)),
         /** (card x0, card x1, birth time, strength) */
         frame: uniform(new THREE.Vector4(0.4, 0.6, -100, 0)),
         /** How hot the jet burns: 1 = a single line, 1.6 = four. */
         heat: uniform(1),
-    };
+    });
+    const sets = Array.from({ length: JET_SETS }, makeSet);
+    // (Two sets: a mix on the set index picks this strip's.)
+    const second = step(0.5, row.z);
+    const rows4 = mix(sets[0].rows, sets[1].rows, second);
+    const frame4 = mix(sets[0].frame, sets[1].frame, second);
     const material = cdFxMaterial('CinderRowJets', { depthTest: false });
-    const rowY = mix(mix(uniforms.rows.x, uniforms.rows.y, step(0.5, row.x)), mix(uniforms.rows.z, uniforms.rows.w, step(2.5, row.x)), step(1.5, row.x));
-    const used = step(0.0, rowY).mul(step(0.001, uniforms.frame.w));
+    const rowY = mix(mix(rows4.x, rows4.y, step(0.5, row.x)), mix(rows4.z, rows4.w, step(2.5, row.x)), step(1.5, row.x));
+    const used = step(0.0, rowY).mul(step(0.001, frame4.w));
     const along = positionGeometry.x.add(0.5);
     // From the card's edge outward.
-    const edge = mix(uniforms.frame.x, uniforms.frame.y, step(0.0, row.y));
+    const edge = mix(frame4.x, frame4.y, step(0.0, row.y));
     const sx = edge.add(row.y.mul(JET_REACH).mul(along));
     // (The strip is far taller than the row: a flame is not a ruled line.)
     const thickness = float(0.13);
     const sy = rowY.add(positionGeometry.y.mul(thickness));
     material.vertexNode = vec4(sx.mul(2.0).sub(1.0).mul(used), float(1.0).sub(sy.mul(2.0)).mul(used), 0.0, 1.0);
-    const vAlong = varying(vec2(along, row.x.mul(1.7).add(row.y.mul(0.37))), 'cdJetT');
+    // (The set's birth, strength and heat ride to the fragment with the strip.)
+    const vAlong = varying(vec2(along, row.x.mul(1.7).add(row.y.mul(0.37)).add(row.z.mul(5.3))), 'cdJetT');
+    const vSet = varying(vec3(frame4.z, frame4.w, mix(sets[0].heat, sets[1].heat, second)), 'cdJetSet');
     material.colorNode = Fn(() => {
         const a = vAlong.x;
         const seed = vAlong.y;
-        const raw = u.time.sub(uniforms.frame.z);
+        const raw = u.time.sub(vSet.x);
         const age = max(raw, 0.0);
         const dy = uv().y.sub(0.5).mul(2.0);
         // A tongue of fire: fat where it leaves the card, torn along its edges, a tip that licks.
@@ -417,19 +456,32 @@ export function createRowJets(u) {
         const env = exp(root.mul(-1.6));
         // Gold in its throat, orange along its body, red where it tears away.
         const temp = float(0.52).add(core.mul(0.42)).add(float(1.0).sub(a).mul(0.3)).add(curl.sub(0.5).mul(0.5))
-            .mul(uniforms.heat);
-        return vec4(cdHeatColor(u, temp).mul(body.mul(env).mul(uniforms.frame.w)).mul(0.6), 0.0);
+            .mul(vSet.z);
+        return vec4(cdHeatColor(u, temp).mul(body.mul(env).mul(vSet.y)).mul(0.6), 0.0);
     })();
     const part = cdPart('CinderRowJets', geometry, material, 60);
-    part.uniforms = uniforms;
-    /** `ys` = screen y of each cleared row; `x0`/`x1` = the card's edges; all in screen fractions. */
+    part.sets = sets;
+    /** The set fired last (its uniforms: rows, frame, heat). */
+    part.uniforms = sets[0];
+    /**
+     * `ys` = screen y of each cleared row; `x0`/`x1` = the card's edges; all in screen fractions.
+     * It fires the set that has burnt away (or the older one): the jets still burning finish.
+     */
     part.fire = (ys, x0, x1, time, strength = 1, heat = 1) => {
-        uniforms.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
-        uniforms.frame.value.set(x0, x1, time, strength);
-        uniforms.heat.value = heat;
+        let set = sets[0];
+        for (let i = 1; i < JET_SETS; i++) {
+            const age = time - sets[i].frame.value.z;
+            const best = time - set.frame.value.z;
+            if (best < JET_SPENT && (age >= JET_SPENT || sets[i].frame.value.z < set.frame.value.z)) set = sets[i];
+        }
+        set.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
+        set.frame.value.set(x0, x1, time, strength);
+        set.heat.value = heat;
+        part.uniforms = set;
     };
     part.reset = () => {
-        uniforms.frame.value.set(0.4, 0.6, -100, 0);
+        sets.forEach((set) => set.frame.value.set(0.4, 0.6, -100, 0));
+        part.uniforms = sets[0];
     };
     return part;
 }
