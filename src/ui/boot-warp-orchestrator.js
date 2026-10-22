@@ -5,10 +5,32 @@ import {
     BOOT_WARP_MAX_PREWARM_ATTEMPTS,
     BOOT_WARP_PREWARM_TIMEOUT_MS,
     BOOT_WARP_REQUIRED_TITLE_SAFETY_MS,
+    INTRO_TITLE_READY_TIMEOUT_MS,
     playBootWarpHandoff,
     waitForIntroRendererDecision,
+    waitForIntroTitle,
     waitForStartupThemeIdle,
 } from './boot-warp-startup.js';
+
+/** Resolve after `count` animation frames, or after `timeoutMs` (a backgrounded tab draws none). */
+function afterFrames(count, timeoutMs = 500) {
+    return new Promise((resolve) => {
+        if (typeof requestAnimationFrame !== 'function') {
+            resolve();
+            return;
+        }
+        const timer = setTimeout(resolve, timeoutMs);
+        const step = (left) => requestAnimationFrame(() => {
+            if (left > 1) {
+                step(left - 1);
+                return;
+            }
+            clearTimeout(timer);
+            resolve();
+        });
+        step(count);
+    });
+}
 
 function recordBootWarpSkip(reason, details = {}, level = undefined) {
     const payload = { reason, ...details };
@@ -34,14 +56,31 @@ export async function playBootWarpStartupSequence(options = {}) {
     const waitForStep = startupPipeline?.waitForStep || ((value) => Promise.resolve(value));
     const signal = startupPipeline?.signal || null;
     let surfaceReadyPromise = Promise.resolve();
-    const requestCssFallback = () => {
-        markStartup('startup-shell:dismiss-request', { reason: 'intro-begin-css-fallback' });
+    const requestCssFallback = async () => {
+        // The title must exist before the wordmark can travel into it. Without the warp (a phone
+        // without WebGPU) this runs ~1.5s into the intro, often while it is still fetching and
+        // starting its renderer, and its title is built only after that: the ident holds (its
+        // safety pushed past the wait) until the title is there.
+        introAnimation?.postponeTitleSafety?.(INTRO_TITLE_READY_TIMEOUT_MS + 1000);
+        const titleReady = await waitForStep(waitForIntroTitle(introAnimation), false);
+        // Let the intro draw its first frame (a synchronous compile on WebGL) under the still
+        // ident, so that stall never lands in the middle of the wordmark's travel.
+        if (titleReady) await waitForStep(afterFrames(2), false);
+        markStartup('startup-shell:dismiss-request', { reason: 'intro-begin-css-fallback', titleReady });
         // The same connected arrival as the warp's: the loading wordmark grows into the live title
         // while the cover dissolves over the opening world (no second copy fading in beside it).
         const durationMs = BOOT_WARP_DEFAULT_DURATION_MS;
-        introAnimation?.revealTitle?.('css-fallback', { deferInteraction: true, connectDurationMs: durationMs });
-        surfaceReadyPromise = Promise.resolve(dismissStartupShell?.('intro-begin', { quick: true, durationMs }));
-        return surfaceReadyPromise;
+        const connected = introAnimation?.revealTitle?.('css-fallback', {
+            deferInteraction: true,
+            connectDurationMs: durationMs,
+        }) === true;
+        // A wordmark with nowhere to land would hold its place beside the title until it faded,
+        // then vanish: the cover fades out whole instead. (Not returned: awaiting the fallback
+        // must not wait out the cover's whole exit.)
+        surfaceReadyPromise = Promise.resolve(dismissStartupShell?.(
+            'intro-begin',
+            connected ? { quick: true, durationMs } : {},
+        ));
     };
     let warpTransition = null;
     let handoffResult = {
@@ -202,7 +241,7 @@ export async function playBootWarpStartupSequence(options = {}) {
     }
 
     if (!warpTransition) {
-        requestCssFallback();
+        await requestCssFallback();
         return { ...handoffResult, surfaceReadyPromise };
     }
 
@@ -227,7 +266,7 @@ export async function playBootWarpStartupSequence(options = {}) {
                 status: handoffResult.status,
                 firstFrameRendered: handoffResult.firstFrameRendered,
             }, { level: 'warn' });
-            requestCssFallback();
+            await requestCssFallback();
         }
     } catch (error) {
         console.warn('[Startup] Boot warp play failed:', error);
@@ -237,7 +276,7 @@ export async function playBootWarpStartupSequence(options = {}) {
         markStartup('boot-warp:play-failed', {
             message: error?.message || String(error),
         }, { level: 'warn' });
-        if (!isStartupShellDismissed()) requestCssFallback();
+        if (!isStartupShellDismissed()) await requestCssFallback();
         handoffResult = {
             status: 'play-failed',
             shellDismissed: isStartupShellDismissed(),
