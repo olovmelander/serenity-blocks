@@ -29,41 +29,30 @@ import {
 import { loadOdysseyGltfCached } from '../chapter-environments/shared/odyssey-gltf-loader.js';
 import { getChapter2CreatureAssetById } from '../chapter-environments/shared/chapter-02-creature-assets.js';
 import { odysseyDeepWaterDim } from '../odyssey-colour-script.js';
+import { stepVisitorPassage } from './odyssey-ocean-visitors.js';
 
 /** Whale length in world units (the GLB is auto-scaled to this by its largest bound). */
 const MOTHER_LENGTH = 58;
 const CALF_LENGTH = 26;
 /**
- * Orbit radius around the ascent column and the period of one lap. TIGHT on purpose: the camera
- * looks almost straight up the column with a ~60 deg lens, so it sees a circle of only ~25-45 u
- * radius overhead at the pair's height; a 74 u orbit (first capture) kept them out of shot.
+ * THE PAIR'S STRETCH (2026-10-22, one encounter per stretch; see odyssey-ocean-visitors.js). The
+ * pair used to circle the rail itself at 32 u, 42 u under the surface, on show for the whole climb
+ * (eye 97-273), so at orb 9 it swam 38 u over the eye, overflowing the frame, among the whale
+ * shark and the manta, and from orb 10 (eye 272, looking ahead along the surface) it was behind
+ * the eye. It now owns orb 9 (the eye parks at y ~207): a loop centred on the rail just past it
+ * (the board puts `at` of chapter 2's span there), the mother 13 u under the surface on a 28 u lane
+ * and the calf on an inner lane above her, scored on the real camera: the mother in frame for
+ * ~85 % of a lap at ~0.7 of the frame and never over the orb. It arrives and leaves by swimming
+ * with the eye's height (stepVisitorPassage): from 190 (after the whale shark has gone) until the
+ * eye heads for orb 10, where the manta waits.
  */
-const ORBIT_RADIUS = 32;
+export const WHALE_PASS_STAGE = Object.freeze({
+    at: 0.62,
+    window: Object.freeze([190, 250]),
+    mother: Object.freeze({ radius: 28, depth: 13 }),
+    calf: Object.freeze({ radius: 20, depth: 8 }),
+});
 const ORBIT_PERIOD_S = 92;
-/** How far below sea level the pair swims (mid-water: above the camera for most of the climb). */
-const SWIM_DEPTH = 42;
-/** Camera-depth window in which the pair draws: below this the haze has them; above, the surface. */
-const VISIBLE_DEPTH_MAX = 190;
-const VISIBLE_DEPTH_MIN = 14;
-/**
- * THE WAY IN (2026-10-20, in-game feedback: the whales "just pop up" coming from chapter 1).
- * The pair used to fade in on the eye's depth, and the glide from orb 5 to orb 6 crossed that
- * fade in a second with both whales in frame ~110 u away. Now, once the water allows them, they
- * swim in from `reach` beyond their orbit over `approachS` seconds on the clock, met in the
- * haze; `rampS` is a short alpha ramp on the first frames so a compile landing mid-ocean never
- * pops either. Pure and exported for its test.
- */
-export const WHALE_PASS_ARRIVAL = Object.freeze({ approachS: 10, reach: 160, rampS: 0.6 });
-
-/** The arrival's offset outward from the orbit, and its alpha, at `approach` (0..1 of approachS). */
-export function whalePassArrival(approach) {
-    const t = Math.min(1, Math.max(0, approach));
-    const eased = t * t * (3 - (2 * t));
-    return {
-        radial: WHALE_PASS_ARRIVAL.reach * (1 - eased),
-        alpha: Math.min(1, (t * WHALE_PASS_ARRIVAL.approachS) / WHALE_PASS_ARRIVAL.rampS),
-    };
-}
 
 /**
  * Model-space bounds from the BIND-POSE geometry bounds. `Box3.setFromObject` on a skinned mesh
@@ -121,7 +110,8 @@ function createWhaleMaterial(uWater, uFade) {
 
 /**
  * @param {object} opts
- * @param {{x:number, z:number}} opts.axis world XZ of the ascent column the pair circles
+ * @param {{x:number, z:number}} opts.axis world XZ of the pair's loop centre (the board: the rail at
+ *   WHALE_PASS_STAGE.at of chapter 2's span)
  * @param {number} opts.seaLevel world Y of the sea surface
  * @param {THREE.Color} opts.shallowColour water colour near the surface
  * @param {THREE.Color} opts.deepColour water colour in the abyss
@@ -138,9 +128,8 @@ export function createWhalePass({
     const actors = [];
     let ready = false;
     let loaded = false;
-    // 0..1 time ramp from the moment the pair may show: its idle-gated compile can land with
-    // the camera mid-ocean, and the depth fades alone switched it on whole (audit 2026-10-18).
-    let arrival = 0;
+    // The pair's passage: in from the blue when the eye reaches its stretch, away when it leaves.
+    const passageState = {};
     const scratchColour = new THREE.Color();
 
     async function addActor(url, bodyLength, phase, radius, depth) {
@@ -176,8 +165,8 @@ export function createWhalePass({
             if (loaded) return true;
             const rec = getChapter2CreatureAssetById('whale-glide');
             if (!rec?.url) return false;
-            await addActor(rec.url, MOTHER_LENGTH, 0, ORBIT_RADIUS, SWIM_DEPTH);
-            await addActor(rec.url, CALF_LENGTH, 0.37, ORBIT_RADIUS - 12, SWIM_DEPTH - 8);
+            await addActor(rec.url, MOTHER_LENGTH, 0, WHALE_PASS_STAGE.mother.radius, WHALE_PASS_STAGE.mother.depth);
+            await addActor(rec.url, CALF_LENGTH, 0.37, WHALE_PASS_STAGE.calf.radius, WHALE_PASS_STAGE.calf.depth);
             loaded = true;
             return true;
         },
@@ -196,18 +185,15 @@ export function createWhalePass({
          *   never inside Earth Core's cavern. Defaults to 1 (no carry wired = today's behaviour).
          */
         update(time, delta, camera, submerged, inChapter, presence = 1) {
-            const depth = seaLevel - (camera?.position?.y ?? seaLevel);
-            const inDepth = depth > VISIBLE_DEPTH_MIN && depth < VISIBLE_DEPTH_MAX;
+            const camY = camera?.position?.y ?? seaLevel;
+            const depth = seaLevel - camY;
             const life = Number.isFinite(presence) ? Math.min(Math.max(presence, 0), 1) : 1;
-            const show = ready && inChapter && submerged > 0.5 && inDepth && life > 0.001;
-            // In from the deep edge by swimming (WHALE_PASS_ARRIVAL), out toward the surface by a
-            // fade the eye never sees: the pair is below and behind the frame by then.
-            const fadeDeep = THREE.MathUtils.smoothstep(VISIBLE_DEPTH_MAX - depth, 0, 40);
-            const fadeSurface = THREE.MathUtils.smoothstep(depth - VISIBLE_DEPTH_MIN, 0, 18);
-            arrival = show ? Math.min(1, arrival + (Math.max(0, delta || 0) / WHALE_PASS_ARRIVAL.approachS)) : 0;
-            const coming = whalePassArrival(arrival);
-            uFade.value = show ? Math.min(fadeDeep, fadeSurface) * life * coming.alpha : 0;
-            group.visible = show && uFade.value > 0.01;
+            const on = ready && inChapter && submerged > 0.5 && life > 0.001;
+            const passage = stepVisitorPassage(passageState, {
+                camY, on, dt: Math.max(0, delta || 0), window: WHALE_PASS_STAGE.window,
+            });
+            uFade.value = passage.shown ? passage.alpha * life : 0;
+            group.visible = passage.shown && uFade.value > 0.01;
             if (!group.visible) return;
 
             // Water colour at the camera's depth: shallow near the surface, abyss far below.
@@ -222,11 +208,12 @@ export function createWhalePass({
                 if (actor.mixer) actor.mixer.update(Math.max(0, delta) * 0.8);
                 // Calf slightly ahead on an inner lane; both bob and bank gently into the turn.
                 const a = (time * omega) + (actor.phase * 0.9);
-                // Still on its way in: farther out along the same bearing, spiralling to its orbit.
-                const radius = actor.radius + coming.radial;
+                // Arriving or leaving: farther out along the same bearing (and, leaving past the
+                // eye, down under it).
+                const radius = actor.radius + passage.radial;
                 const x = axis.x + Math.cos(a) * radius;
                 const z = axis.z + Math.sin(a) * radius;
-                const y = seaLevel - actor.depth + (Math.sin((time * 0.27) + (actor.phase * 5)) * 3.5);
+                const y = seaLevel - actor.depth + (Math.sin((time * 0.27) + (actor.phase * 5)) * 3.5) + passage.up;
                 actor.holder.position.set(x, y, z);
                 // Heading along the orbit tangent (counter-clockwise). The GLB leads with -Z
                 // (see deep-ocean-manta.js _whaleBaseFwd), so yaw so that -Z points along the
