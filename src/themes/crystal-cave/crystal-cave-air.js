@@ -45,7 +45,7 @@ function billboard(centre, size) {
  * @param {object} options
  * @param {object} options.light shared cave light
  * @param {object} options.assets parsed cavern (`glowworms`, `crystals`, `meta.skylight`)
- * @param {object} options.wave rock controls carrying the travelling wave uniforms
+ * @param {object} options.wave rock controls carrying the travelling waves (`shell(point, falloff)`)
  * @param {object} options.quality `{ glowworms, motes, glints, shaft }` counts and switches
  * @param {object} [options.shaft] the shaft's strength uniform, when the world shares it
  */
@@ -63,8 +63,7 @@ export function createCaveAir({
     };
     const eyeDistance = (centre) => length(centre.sub(cameraPosition));
     const veil = (distance) => exp(distance.mul(u.hazeDensity).mul(-0.75));
-    const shell = (centre) => exp(abs(length(centre.sub(wave.waveOrigin)).sub(wave.waveRadius)).mul(-0.3))
-        .mul(wave.waveStrength);
+    const shell = (centre) => wave.shell(centre, 0.3);
 
     // ---- glow-worms -----------------------------------------------------------------
     const wormCount = Math.min(assets.glowworms.count, Math.max(0, Math.floor(quality.glowworms ?? 0)));
