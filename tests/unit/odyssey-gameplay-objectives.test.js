@@ -12,6 +12,7 @@ vi.mock('../../src/ui/odyssey/FailureModal.js', () => ({
 }));
 
 import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';
+import { settleOdysseyLevelEnd } from '../../src/core/game-modes/odyssey-completion.js';
 import { OdysseyStateManager } from '../../src/core/odyssey/OdysseyStateManager.js';
 import { getLevelById } from '../../src/core/odyssey/data/levels.js';
 import { createFailureModal } from '../../src/ui/odyssey/FailureModal.js';
@@ -672,5 +673,64 @@ describe('OdysseyMode gameplay objectives', () => {
         expect(mode._fixedTickEnabled).toBe(true);
         expect(mode._activeLevelSession.simulationClock).toBe(DEMO_FIXED_SIMULATION_CLOCK);
         expect(mode._activeLevelSession.gameState.rngDescriptor).toBeTruthy();
+    });
+});
+
+describe('An orb\'s ending', () => {
+    function reachShowcaseGoal() {
+        const harness = createMode(getLevelById(32));
+        const { mode, session } = harness;
+        for (let sequence = 0; sequence < session.levelConfig.victory.primary.target; sequence++) {
+            session.hybridEngine.victoryEvaluator.onCascade(4);
+        }
+        mode._checkVictoryConditions(session);
+        expect(session.gameState.victoryLapActive).toBe(true);
+        return harness;
+    }
+
+    it('waits for a cascade under way before Finish ends the orb, so its waves count', async () => {
+        const harness = reachShowcaseGoal();
+        const { mode, session } = harness;
+        const cascade = deferred();
+        session.gameState.isProcessingPhysics = true;
+        session.gameState.latestPhysicsPromise = cascade.promise;
+
+        mode._finishVictoryLap();
+        mode._finishVictoryLap(); // a second press while waiting changes nothing
+        expect(mode.completeLevel).not.toHaveBeenCalled();
+        expect(session.gameState.victoryLapActive).toBe(true);
+
+        session.gameState.isProcessingPhysics = false;
+        session.gameState.latestPhysicsPromise = null;
+        cascade.resolve();
+        await vi.waitFor(() => expect(mode.completeLevel).toHaveBeenCalledOnce());
+        await finishUi(harness, true);
+        expect(mode.odysseyState.completeLevel).toHaveBeenCalledTimes(1);
+    });
+
+    it('takes the showcase banner and its Finish keys away with the attempt (Retry)', () => {
+        const { mode, session } = reachShowcaseGoal();
+        mode._hideGoalCompleteOverlay.mockClear();
+        mode._removeVictoryLapInputs.mockClear();
+
+        mode._retireLevelSession(session);
+
+        expect(mode._hideGoalCompleteOverlay).toHaveBeenCalledOnce();
+        expect(mode._removeVictoryLapInputs).toHaveBeenCalledOnce();
+    });
+
+    it('goes back to the map when ending the orb throws, instead of freezing the well', async () => {
+        const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+        const { mode } = createMode();
+        mode._failLevel = vi.fn().mockRejectedValue(new Error('save failed'));
+
+        await expect(mode.failLevel('top-out')).resolves.toBeUndefined();
+        expect(mode.returnToBoard).toHaveBeenCalledOnce();
+
+        const returnToBoard = vi.fn().mockRejectedValue(new Error('map gone'));
+        await expect(settleOdysseyLevelEnd({ returnToBoard }, Promise.reject(new Error('x')))).resolves.toBeUndefined();
+        expect(returnToBoard).toHaveBeenCalledOnce();
+        await expect(settleOdysseyLevelEnd({ returnToBoard }, Promise.resolve('done'))).resolves.toBe('done');
+        expect(error).toHaveBeenCalled();
     });
 });
