@@ -90,7 +90,7 @@ export class Swell {
         return amount * this.gain * (Math.exp(-this.r * dt) - Math.exp(-this.q * dt));
     }
 
-    /** Fold one hit into the history at `at` (≥ t0). */
+    /** Fold one hit into the history at `at` (≥ t0). Hits were bounded when they came in. */
     _fold(amount, at) {
         if (this.t0 > -Infinity && at > this.t0) {
             const dt = at - this.t0;
@@ -104,12 +104,39 @@ export class Swell {
         }
         this.slow += amount * this.gain;
         if (this.q > 0) this.fast += amount * this.gain;
-        // Bounded memory: a frenzy may hold the light a moment longer, not for a minute.
-        if (this.slow > this.limit) {
-            const k = this.limit / this.slow;
-            this.slow *= k;
-            this.fast *= k;
+    }
+
+    /** The highest a curve (slow, fast), counted from its own start, climbs from there on. */
+    _peak(slow, fast) {
+        const start = slow - fast;
+        // Rising at its start only while the attack still has more to give than the release takes.
+        if (this.q === 0 || fast <= 0 || this.q * fast <= this.r * slow) return Math.max(0, start);
+        const tau = Math.log((this.q * fast) / (this.r * slow)) / (this.q - this.r);
+        return slow * Math.exp(-this.r * tau) - fast * Math.exp(-this.q * tau);
+    }
+
+    /**
+     * Bounded memory: a frenzy may hold the light a moment longer, not for a minute. The NEW hit
+     * gives up what would carry the curve past the bound (`headroom` × ceiling) from `at` on; the
+     * history is never rescaled, so the reading never steps down when a hit arrives.
+     */
+    _bounded(amount, at) {
+        if (!Number.isFinite(this.limit)) return amount;
+        const dt = this.t0 > -Infinity ? Math.max(0, at - this.t0) : 0;
+        const slow = this.slow * Math.exp(-this.r * dt);
+        const fast = this.q > 0 ? this.fast * Math.exp(-this.q * dt) : 0;
+        const g = this.gain;
+        const withHit = (a) => this._peak(slow + a * g, fast + (this.q > 0 ? a * g : 0));
+        if (withHit(amount) <= this.limit) return amount;
+        if (withHit(0) >= this.limit) return 0;
+        let lo = 0;
+        let hi = amount;
+        for (let i = 0; i < 16; i += 1) {
+            const mid = (lo + hi) * 0.5;
+            if (withHit(mid) <= this.limit) lo = mid;
+            else hi = mid;
         }
+        return lo;
     }
 
     /** Fold every waiting hit due by `t`, oldest first. */
@@ -133,17 +160,17 @@ export class Swell {
      */
     hit(amount, at) {
         if (!(amount > 0) || !Number.isFinite(at)) return;
-        if (at <= this.t0) {
-            // Hits never go back in time: one stamped before the last joins it there.
-            this._fold(amount, this.t0);
+        // Hits never go back in time: one stamped before the last joins it there.
+        const when = Math.max(at, this.t0);
+        // Time only moves forward: every waiting hit due by then joins the history first, so only
+        // hits still ahead of this one wait.
+        this._settle(when);
+        const bounded = this._bounded(amount, when);
+        if (!(bounded > 0)) return;
+        if (when <= this.t0) {
+            this._fold(bounded, when);
             return;
         }
-        let latest = this.t0;
-        for (let i = 0; i < PENDING; i += 1) {
-            if (this.pendingAt[i] < Infinity) latest = Math.max(latest, this.pendingAt[i]);
-        }
-        // A hit later than everything waiting is scheduled; otherwise the queue settles first.
-        if (at < latest) this._settle(at);
         let slot = -1;
         for (let i = 0; i < PENDING; i += 1) {
             if (this.pendingAt[i] === Infinity) {
@@ -159,8 +186,8 @@ export class Swell {
             this.pendingAt[first] = Infinity;
             slot = first;
         }
-        this.pendingAt[slot] = at;
-        this.pendingAmount[slot] = amount;
+        this.pendingAt[slot] = when;
+        this.pendingAmount[slot] = bounded;
     }
 
     /** Unsoftened value at `now` (history plus every waiting hit already due). */
@@ -170,7 +197,9 @@ export class Swell {
         for (let i = 0; i < PENDING; i += 1) {
             if (this.pendingAt[i] <= now) value += this._single(this.pendingAmount[i], this.pendingAt[i], now);
         }
-        // Spent: a hit that has fallen this far is at rest, exactly.
+        // Never more than the bound (a hit scheduled ahead of a later one can overlap it); spent: a
+        // hit that has fallen this far is at rest, exactly.
+        value = Math.min(value, this.limit);
         return value > REST ? value : 0;
     }
 
