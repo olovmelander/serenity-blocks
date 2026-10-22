@@ -7,9 +7,10 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    BLOOM_PATCH, FLOOD, FLUSH, ICE_OUT, REST_RIG, SPRING_PARTS, SpringWorld, fovForAspect, useValleyGround,
+    BLOOM_PATCH, FLOOD, FLUSH, HEAT, ICE_OUT, REST_RIG, SPRING_PARTS, STILL, SpringWorld, fovForAspect,
+    useValleyGround,
 } from '../../src/themes/spring/spring-world.js';
-import { TIMING } from '../../src/themes/spring/spring-core.js';
+import { Rejoin, TIMING } from '../../src/themes/spring/spring-core.js';
 import {
     EVENT_ROWS, PALETTE_ROWS, PATCHES, SURGES,
 } from '../../src/themes/spring/spring-tsl.js';
@@ -210,7 +211,7 @@ describe('spring world: gameplay', () => {
         world.onClear({ lines: 4, perfect: true });
         world.levelUp(2);
         settle(world, camera, 0.5, 3);
-        expect(world.flights.slots.map((s) => s.kind?.id).sort()).toEqual([0, 1]);
+        expect(world.flights.slots.filter((s) => s.kind).map((s) => s.kind.id).sort()).toEqual([0, 1]);
         expect(world.flights.live).toEqual([7, 9]);
         // A silent level-up (a rebuild in place) sends no birds.
         const { world: quiet } = makeWorld();
@@ -286,5 +287,212 @@ describe('spring world: gameplay', () => {
         expect(c.wheel.exportState()).toEqual(a.wheel.exportState());
         c.importSessionState(null);
         [a, b, c].forEach((w) => w.dispose());
+    });
+});
+
+describe('spring world: play builds instead of popping', () => {
+    /** One frame, and what the valley shows in it. */
+    const look = (world, camera, t, step = 1 / 30) => {
+        world.updateCamera(camera, sim(t, step));
+        world.update(sim(t, step), camera);
+        const post = world.getPostState();
+        return {
+            flush: world.u.flush.value,
+            whirl: world.poolWhirl.valueAt(t),
+            flood: world.u.flood.value,
+            foam: world.u.foamBoost.value,
+            gust: world.u.gust.value,
+            bow: world.u.bow.value,
+            stir: world.u.air.value.z,
+            saturation: post.saturation,
+            exposure: post.exposure,
+            open: Math.max(...world.u.tables.palette.map((row) => row.w)),
+        };
+    };
+
+    it('takes an envelope up where it stands: a hit never steps it down, and it falls as before', () => {
+        const env = new Rejoin({ rise: 0.6, holdEnd: 2.8, fallEnd: 6.3 });
+        env.hit(1, 0);
+        // Late in its fall, a weaker hit holds it where it stands instead of cutting it...
+        const before = env.valueAt(5);
+        env.hit(0.25, 5);
+        expect(env.valueAt(5)).toBeCloseTo(before, 9);
+        expect(env.valueAt(7)).toBeCloseTo(before, 9);
+        // ...and a stronger one climbs from there, without a step, to its own power.
+        env.hit(0.8, 7);
+        expect(env.valueAt(7)).toBeCloseTo(before, 9);
+        expect(env.valueAt(7.3)).toBeGreaterThan(before);
+        expect(env.valueAt(7.6)).toBeCloseTo(0.8, 9);
+        // Held: a weak hit while it holds keeps it held at full, from the hit on.
+        env.reset();
+        env.hit(1, 0);
+        env.hit(0.2, 2);
+        expect(env.valueAt(2)).toBeCloseTo(1, 9);
+        expect(env.valueAt(4)).toBeCloseTo(1, 9);
+        expect(env.valueAt(2 + 6.3)).toBe(0);
+    });
+
+    it('a weak clear right after a strong one never cuts the flush, the pool\'s whirl or the breath', () => {
+        const { camera, world } = makeWorld();
+        settle(world, camera, 0, 1);
+        world.onClear({
+            lines: 4, rowCodes: [], combo: 1, tspin: true,
+        });
+        settle(world, camera, 1, 4);
+        const quad = look(world, camera, 4);
+        const breath = world.u.airWave.value.clone();
+        // A single (and its own T-spin) mid-way through the quad's flush and whirl.
+        world.onClear({
+            lines: 1, rowCodes: [], combo: 2, tspin: true,
+        });
+        // (Through the hold they now share: past it they fall as any one does.)
+        let last = quad;
+        for (let t = 4 + 1 / 30; t < 5.5; t += 1 / 30) {
+            const now = look(world, camera, t);
+            expect(now.flush).toBeGreaterThanOrEqual(last.flush - 1e-6);
+            expect(now.whirl).toBeGreaterThanOrEqual(last.whirl - 1e-6);
+            last = now;
+        }
+        expect(last.flush).toBeGreaterThan(0.99);
+        settle(world, camera, 5.5, 7);
+        // The quad's breath still crosses the valley: the single's goes out beside it.
+        const both = world.u.airWave.value;
+        expect([both.x, both.y]).toEqual([breath.x, breath.y]);
+        expect(both.z).toBeCloseTo(4, 3);
+        // Later, a new breath goes out in place of the spent one (the other still crossing), and
+        // a clear right after it feeds it instead of restarting it.
+        world.onClear({ lines: 2, rowCodes: [], combo: 3 });
+        expect(world.airWaveAt).toBe(world.time);
+        expect(world.airWave2At).toBeCloseTo(4, 3);
+        const sent = world.airWavePower;
+        world.onClear({ lines: 2, rowCodes: [], combo: 4 });
+        expect(world.airWaveAt).toBe(world.time);
+        expect(world.airWavePower).toBeGreaterThan(sent);
+        // A second perfect clear keeps the air still instead of letting it go and starting again.
+        world.onClear({ lines: 4, perfect: true, crown: true });
+        const at = 7.1 + STILL.rise + 2;
+        settle(world, camera, 7.1, at);
+        const still = world.u.air.value.w;
+        const bloom = world.u.flush.value;
+        world.onClear({ lines: 4, perfect: true, crown: true });
+        expect(look(world, camera, at + 1 / 30).flush).toBeGreaterThanOrEqual(bloom - 1e-6);
+        expect(world.u.air.value.w).toBeGreaterThanOrEqual(still - 1e-6);
+        // The knoll stands in full flower again, from where it stood.
+        expect(look(world, camera, at + FLUSH.rise + 0.1).flush).toBeGreaterThan(0.99);
+        world.dispose();
+    });
+
+    it('a long chain reads hotter than its first clear, and the valley breathes back to calm', () => {
+        const { camera, world } = makeWorld();
+        settle(world, camera, 0, 1);
+        const rest = look(world, camera, 1);
+        const shapes = ['I', 'O', 'L', 'T', 'S', 'Z', 'J'];
+        let t = 1;
+        const play = (n) => {
+            world.onLock({
+                rows: [18], u: 0.2 + 0.1 * (n % 6), shape: shapes[n % shapes.length], hardDrop: true, distance: 10,
+            });
+            world.onClear({
+                lines: 1 + (n % 3), rowCodes: [], combo: n + 1, cascade: n === 8 ? 3 : 1, b2b: n === 10,
+            });
+            world.onCombo(n + 1);
+        };
+        play(0);
+        settle(world, camera, t + 1 / 30, t + 0.6);
+        const first = look(world, camera, t + 0.64);
+        for (let n = 1; n < 12; n++) {
+            t += 0.64;
+            play(n);
+            settle(world, camera, t + 1 / 30, t + 0.6);
+        }
+        t += 0.64;
+        const peak = look(world, camera, t);
+        expect(world.heat.stage).toBe(3);
+        for (const key of ['flood', 'foam', 'gust', 'bow', 'stir', 'saturation', 'open']) {
+            expect(peak[key], key).toBeGreaterThan(first[key]);
+        }
+        // The iris closes a little so the colours stay deep, and cranes come over for the fever.
+        expect(peak.exposure).toBeLessThan(first.exposure);
+        expect(world.counts.feverFlights).toBe(1);
+        // At rest and under no play it is the valley as it always was.
+        expect(rest).toMatchObject({
+            flood: 0, foam: 0, gust: 1, bow: 1, stir: 0, saturation: 1.1, open: 0,
+        });
+        // The chain breaks and the hands rest: it all breathes back.
+        world.onLock({ rows: [18], u: 0.5, shape: 'O' });
+        world.onCombo(0);
+        settle(world, camera, t, t + 25, 1 / 20);
+        const after = look(world, camera, t + 25.05, 1 / 20);
+        expect(after.flood).toBeLessThan(0.03);
+        expect(after.gust).toBeCloseTo(1, 2);
+        expect(after.bow).toBeCloseTo(1, 2);
+        expect(after.saturation).toBeCloseTo(1.1, 3);
+        expect(after.open).toBeLessThan(0.01);
+        expect(world.heat.stage).toBe(0);
+        world.dispose();
+    });
+
+    it('eases the breeze when a long chain breaks instead of snapping every blade back', () => {
+        const { camera, world } = makeWorld();
+        settle(world, camera, 0, 0.5);
+        world.onCombo(7);
+        settle(world, camera, 0.5, 6);
+        const leaning = world.u.gust.value;
+        expect(leaning).toBeGreaterThan(1.5);
+        world.onCombo(0);
+        let last = leaning;
+        for (let t = 6 + 1 / 60; t < 9; t += 1 / 60) {
+            const now = look(world, camera, t, 1 / 60).gust;
+            expect(last - now).toBeLessThan(0.02);
+            last = now;
+        }
+        expect(last).toBeLessThan(leaning);
+        world.dispose();
+    });
+
+    it.each(['Minimal', 'Medium', 'High'])('blooms a patch for every lock on %s, taking the most closed', (quality) => {
+        const { camera, world } = makeWorld(quality);
+        settle(world, camera, 0, 0.5);
+        const shown = world.tier.patches;
+        let t = 0.5;
+        for (let n = 0; n < 12; n++) {
+            world.onLock({ rows: [19], u: n % 2 ? 0.2 : 0.8, shape: 'T' });
+            // The lock's own patch is one the meadow reads.
+            const rows = Array.from({ length: shown }, (_, k) => patch(world, k).where);
+            expect(rows.some((row) => row.z === world.time)).toBe(true);
+            t += 1;
+            settle(world, camera, t - 1 + 1 / 30, t);
+        }
+        // Nothing is written past what the tier reads.
+        for (let k = shown; k < PATCHES; k++) expect(patch(world, k).where.z).toBeLessThan(-1e5);
+        world.dispose();
+    });
+
+    it('sends a second ice-out without pulling the first off the river', () => {
+        const { camera, world } = makeWorld('High');
+        settle(world, camera, 0, 0.5);
+        world.onClear({ lines: 4, rowCodes: [], combo: 1 });
+        settle(world, camera, 0.5, 8, 1 / 10);
+        const first = world.floes.floes.filter((f) => f.alive).map((f) => f.born);
+        world.onClear({ lines: 4, rowCodes: [], combo: 2 });
+        const born = world.floes.floes.filter((f) => f.alive).map((f) => f.born);
+        first.forEach((b) => expect(born).toContain(b));
+        expect(born.length).toBeGreaterThan(first.length);
+        world.dispose();
+    });
+
+    it('answers a T-spin that cleared nothing with a little whirl, and feeds the heat of play', () => {
+        const { camera, world } = makeWorld();
+        settle(world, camera, 0, 0.5);
+        world.onLock({
+            rows: [19], u: 0.3, shape: 'T', tspin: true,
+        });
+        expect(world.counts.spins).toBe(1);
+        settle(world, camera, 0.5, 2);
+        expect(world.poolWhirl.valueAt(2)).toBeGreaterThan(0.3);
+        expect(world.poolWhirl.valueAt(2)).toBeLessThan(0.6);
+        expect(world.heat.level).toBeGreaterThan(0.05);
+        expect(HEAT.nudge).toBeGreaterThan(0);
+        world.dispose();
     });
 });

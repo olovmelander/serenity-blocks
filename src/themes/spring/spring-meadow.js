@@ -10,7 +10,9 @@
  *
  * The game speaks to it two ways: a lock makes a patch of the locked piece's own flower burst
  * into bloom where it lands, the buds opening outward from the spot and staying open a while;
- * a line clear opens every flower on the knoll at once in a flush of bloom.
+ * a line clear opens every flower on the knoll at once in a flush of bloom; and as play heats
+ * the kinds the player has been playing open (and glow) all over the knoll, until in a fever the
+ * whole knoll stands in flower.
  *
  * Adapted from Summer's meadow (summer-meadow.js): every flower kind and level of detail shares
  * one material, the grass another; instance data lives on the geometry, not in the node graph.
@@ -50,6 +52,7 @@ import {
     groundHeight, groundNormal, knollOutside, valueNoise, waterEdge,
 } from './spring-terrain.js';
 import { EVENT_ROWS } from './spring-tsl.js';
+import { AIR } from './spring-air.js';
 import { SPRING_FLOWERS, createSpringFlowerGeometry, createSpringGrassGeometry } from './spring-flowers.js';
 import { drainSteps } from '../shared/build-steps.js';
 
@@ -66,10 +69,11 @@ export const PATCH = Object.freeze({ speed: 3.5, hold: 18, close: 6 });
 /**
  * The light the game sends through the flowers (spring-meadow gameLight): a patch's ring (its
  * width, s of the opening's travel; its gain), its own flowers' glow after the ring (how long it
- * lasts, s; its gain), and a clear's breath (its band's width, m; its gain).
+ * lasts, s; its gain), a clear's breath (its band's width, m; its gain), and the glow the heat of
+ * play lends the kinds the player has been playing (its gain at full heat).
  */
 export const PATCH_LIGHT = Object.freeze({
-    ring: 0.3, ringGain: 1.1, glow: 1.8, glowGain: 1.4, band: 1.6, breathGain: 0.9,
+    ring: 0.3, ringGain: 1.1, glow: 1.8, glowGain: 1.4, band: 1.6, breathGain: 0.9, heatGain: 0.4,
 });
 /** The breeze's direction across the knoll (unit x, z): down the valley, toward the right. */
 const BREEZE = Object.freeze([0.86, -0.51]);
@@ -246,12 +250,26 @@ export class SpringMeadow {
             light = light.add(colour.mul(ring.mul(PATCH_LIGHT.ringGain).add(glow.mul(PATCH_LIGHT.glowGain)))
                 .mul(where.w));
         }
-        // A clear's breath: (start, power, speed m/s).
-        const age = u.time.sub(u.airWave.x);
-        const off = length(root.xz.sub(vec2(EYE.x, EYE.z))).sub(age.mul(u.airWave.z)).div(PATCH_LIGHT.band);
-        const breath = exp(off.mul(off).negate()).mul(u.airWave.y).mul(step(0.0, age))
-            .mul(float(1.0).sub(smoothstep(4.0, 7.0, age)));
-        return light.add(vec3(1.0, 0.9, 0.66).mul(breath.mul(PATCH_LIGHT.breathGain)));
+        // Clears' breaths: (start, power) of each of two, running out from the eye.
+        const reach = length(root.xz.sub(vec2(EYE.x, EYE.z)));
+        const band = (start, power) => {
+            const age = u.time.sub(start);
+            const off = reach.sub(age.mul(AIR.breath.speed)).div(PATCH_LIGHT.band);
+            return exp(off.mul(off).negate()).mul(power).mul(step(0.0, age))
+                .mul(float(1.0).sub(smoothstep(4.0, 7.0, age)));
+        };
+        const breath = band(u.airWave.x, u.airWave.y).add(band(u.airWave.z, u.airWave.w));
+        // The heat of play: the kinds the player has been playing glow from within all over the
+        // knoll (their row's w, see heatOpen()).
+        const own = u.palette.element(int(clamp(kind, 0.0, 6.0)));
+        const ownColour = own.xyz.div(max(own.x, max(own.y, own.z)).max(0.05)).mul(0.8);
+        return light.add(vec3(1.0, 0.9, 0.66).mul(breath.mul(PATCH_LIGHT.breathGain)))
+            .add(ownColour.mul(own.w.mul(PATCH_LIGHT.heatGain)));
+    }
+
+    /** How far the heat of play opens a flower of `kind` all over the knoll (TSL, 0..1). */
+    heatOpen(kind) {
+        return this.u.palette.element(int(clamp(kind, 0.0, 6.0))).w;
     }
 
     /** Stand a plant on its root, turned and scaled, and bend it in the breeze. */
@@ -358,8 +376,10 @@ export class SpringMeadow {
         material.name = 'SpringFlowers';
         const head = attribute('head', 'vec4'); // offset from the head's middle, flower kind
         const albedo = attribute('color', 'vec3');
-        // How far the game has opened this plant: a lock's patch of its kind, a clear's flush.
-        const opened = this.patches(attribute('aRoot', 'vec4').xyz, head.w).max(u.flush.mul(0.8));
+        // How far the game has opened this plant: a lock's patch of its kind, a clear's flush, the
+        // heat of play over the kinds the player has been playing.
+        const opened = this.patches(attribute('aRoot', 'vec4').xyz, head.w).max(u.flush.mul(0.8))
+            .max(this.heatOpen(head.w));
         // A head opens with the day, and wide when the game opens it.
         const plant = this.stand(0.45, () => {
             const open = u.open.mul(0.42).add(0.58).add(opened.mul(0.7));
