@@ -27,6 +27,7 @@ import {
 import {
     ODYSSEY_CHAPTER_PROFILES,
 } from './chapter-environments/shared/chapter-profile.js';
+import { PATH_HORIZON_OPEN } from './odyssey-path-horizon.js';
 
 // ── Path-tube tessellation ───────────────────────────────────────────────────────
 // The path is ALWAYS ON (drawn in every chapter). Centre-line geometry: the radius lives in
@@ -217,6 +218,16 @@ export class OdysseyPathRenderer {
      */
     setFocus(position) {
         this.focus = Number.isFinite(position) ? THREE.MathUtils.clamp(position, 0, 1) : null;
+    }
+
+    /**
+     * The path position past which the rail is not drawn (resolveOdysseyPathHorizon): through
+     * chapter 6 the rail vanishes into the black hole. A uniform, so it never recompiles.
+     * @param {number} horizon path progress (>= 1 + the taper: nothing hidden)
+     */
+    setHorizon(horizon) {
+        const uHorizon = this._chapterUniforms?.uHorizon;
+        if (uHorizon) uHorizon.value = Number.isFinite(horizon) ? horizon : PATH_HORIZON_OPEN;
     }
 
     getChapterColor(chapterId) {

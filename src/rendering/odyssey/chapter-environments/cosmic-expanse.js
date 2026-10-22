@@ -374,13 +374,13 @@ export const PLANET_SEAM_LOCK = Object.freeze({
 // camera moves.
 
 /**
- * THE HOLE ON THE SPINE. On the rail's own line, 871 u down its direction from the 6->7
+ * THE HOLE'S SEAT AT THE HAND-OVER. On the rail's own line, 871 u down its direction from the 6->7
  * hand-over (42 u up, 51 u right): exactly where ch7's camera lock puts Gargantua for the path
- * camera there (solved by replaying the real controller over the real spline). The rail flies at
- * it from the first frame of the chapter, so it sits at the end of the path wherever the path
- * turns; it grows only with progress; and in the last few units before the hand-over it settles
- * onto the live lock — a correction of well under a degree from the path — so chapter 7 picks it
- * up where it already is.
+ * camera there (solved by replaying the real controller over the real spline). Through the
+ * chapter the hole rides the path at this seat's angle (resolveOmenPathPlace), so it arrives here
+ * on its own; in the last few units before the hand-over it settles onto the live lock — on the
+ * path camera a correction of a few thousandths of the frame — so chapter 7 picks it up where it
+ * already is.
  */
 export const OMEN_SPINE_ANCHOR = Object.freeze({
     along: 871,
@@ -487,6 +487,29 @@ export function resolveSpineFramePoint(progress, seat, out) {
     return out.addScaledVector(_spineTangent, seat.along)
         .addScaledVector(_spineUp, seat.up)
         .addScaledVector(_spineRight, seat.right);
+}
+
+const _omenPathSeat = { along: 0, up: 0, right: 0 };
+
+/**
+ * THE HOLE RIDES THE PATH (2026-10-22). Olov: "it feels like the black hole drifts, i want it to be
+ * locked at the journey path we are moving on." Parked at its hand-over seat, the hole sat on the
+ * path's line only at the hand-over: the rail turns ~26 deg through the chapter, so on the path
+ * camera it wandered round the rail's vanishing point by up to 0.27 of the frame (below-left of it
+ * at the boundary, above-right mid-chapter, above it at the lock) and the ribbon met it at a
+ * different place at every orb. It is now written in the spine's frame at the CURRENT progress:
+ * OMEN_SPINE_ANCHOR's seat, pushed down the path's heading by the path still to run to the
+ * hand-over, at the seat's angle. So it holds one place against the rail all chapter, closes on
+ * the eye exactly as fast as the rail runs (6.6 -> 8.2 deg), and at `handoffEnd` it IS the seat.
+ * @returns {THREE.Vector3} `out`
+ */
+export function resolveOmenPathPlace(progress, handoffEnd, out) {
+    const ahead = Math.max(0, handoffEnd - progress) * getOdysseyPathCurve().getLength();
+    const k = (OMEN_SPINE_ANCHOR.along + ahead) / OMEN_SPINE_ANCHOR.along;
+    _omenPathSeat.along = OMEN_SPINE_ANCHOR.along * k;
+    _omenPathSeat.up = OMEN_SPINE_ANCHOR.up * k;
+    _omenPathSeat.right = OMEN_SPINE_ANCHOR.right * k;
+    return resolveSpineFramePoint(progress, _omenPathSeat, out);
 }
 
 // The heroes' places only change with the layout (the curve object is rebuilt when it does).
@@ -2246,10 +2269,18 @@ export function updateCosmicExpanseEnvironment(group, delta, time, camera = null
     const omenReveal = spaceReveal * smoothstep01(THREE.MathUtils.clamp(beatT / 0.5, 0, 1));
     if (blackHole?.userData?.uReveal) blackHole.userData.uReveal.value = omenReveal;
     if (blackHole) {
-        // THE HOLE ON THE SPINE: its place never moves; it grows only with progress (see
-        // OMEN_SPINE_ANCHOR). Without a resolved layout it keeps the old entry pose.
+        // THE HOLE RIDES THE PATH (resolveOmenPathPlace): placed by the progress the eased eye
+        // stands at (the board's `followProgress`; a scroll eases the eye ~0.14 s behind the rail,
+        // and seated on the rail itself the hole ran up to ~0.05 of the frame ahead of the view on
+        // the bends), never by where the eye looks, so a close-up or free look leaves it where the
+        // rail has it. Without a live camera it waits at its hand-over seat; without a resolved
+        // layout, the old entry pose.
         blackHole.scale.setScalar(resolveOmenSpineScale(toLock));
-        if (heroPlaces) {
+        const followProgress = camera?.userData?.followProgress;
+        const omenProgress = Number.isFinite(followProgress) ? followProgress : cameraProgress;
+        if (heroPlaces && camera && Number.isFinite(omenProgress)) {
+            resolveOmenPathPlace(omenProgress, handoffWindow.end, blackHole.position).sub(group.position);
+        } else if (heroPlaces) {
             blackHole.position.copy(heroPlaces.omen).sub(group.position);
         } else {
             blackHole.position.set(APPROACH.bhXa, APPROACH.bhYa, APPROACH.bhZa);
