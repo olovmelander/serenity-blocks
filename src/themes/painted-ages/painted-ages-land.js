@@ -228,9 +228,13 @@ export function createLandMaterial(u, t, tier) {
                 const near = float(1.0).sub(smoothstep(4.0, 30.0, footprint));
                 const rec = mix(rmean, cell.rgb, near);
                 albedo.assign(mix(albedo, rec, live.mul(select(cell.a.greaterThan(0.5), float(0.92), float(0.0)))));
-                // The newest bed glows in its pigments as it is laid down.
+                // The newest beds glow in their pigments as they are laid down (a chain's beds
+                // share the glow, so the crown lights bed by bed while it lasts).
                 const raw = texture(t.record, vec2(11.5 / RECORD_WIDTH, v)).level(0).rgb;
-                recordGlow.assign(raw.mul(u.fresh).mul(live).mul(float(1.0).sub(smoothstep(0.0, 1.0, row))).mul(1.6));
+                // (older beds of the run cooler than the newest)
+                const glowing = float(1.0).sub(smoothstep(u.freshRows.sub(1.0), u.freshRows, row))
+                    .mul(exp(row.mul(-0.4)));
+                recordGlow.assign(raw.mul(u.fresh).mul(live).mul(glowing).mul(1.6));
             });
         });
 
@@ -317,7 +321,15 @@ export function createLandMaterial(u, t, tier) {
         // A band in geological height covers a whole flat at once: only a slope shows it as a bed.
         const rock = float(1.0).sub(plain.mul(0.85)).sub(onFloor.mul(0.1)).max(0.0)
             .mul(smoothstep(0.06, 0.32, slope));
-        lit.addAssign(ribbonLight(u, xz, g, gw).add(waveLight(u, g, gw)).mul(rock).add(recordGlow));
+        // The heat of play: the beds glow in their own pigment, a slow tide of colour climbing
+        // them, and the beds between its crests sink into shadow, so the land keeps its darks
+        // (strataGlow is 0 at rest and under casual play).
+        const tide = sin(g.mul(0.045).sub(u.time.mul(1.2))).mul(0.5).add(0.5);
+        const crest = tide.mul(tide).mul(tide.mul(tide));
+        lit.mulAssign(float(1.0).sub(u.strataGlow.mul(0.55).mul(float(1.0).sub(tide)).mul(rock)));
+        const kindled = albedo.mul(u.strataGlow).mul(crest.mul(1.25));
+        lit.addAssign(ribbonLight(u, xz, g, gw).add(waveLight(u, g, gw)).add(kindled).mul(rock)
+            .add(recordGlow));
         const col = aerial(u, P, lit, mistPatches(u, t.noise, xz)).toVar();
         // The bow stands in the air in front of the far hills; rain veils hang beyond the front.
         col.addAssign(rainbow(u, V.div(dist)).mul(smoothstep(500.0, 2600.0, dist)).mul(0.55));

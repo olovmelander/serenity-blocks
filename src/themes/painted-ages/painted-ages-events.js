@@ -84,9 +84,21 @@ export function ribbonLight(u, xz, g, gw) {
     return sum;
 }
 
+/**
+ * Light above `knee` (its brightest channel) eases toward knee + room instead of piling up: many
+ * overlapping glows stay a colour rather than climbing to white. Below the knee it is untouched.
+ */
+function softKnee(c, knee, room) {
+    const m = max(c.x, max(c.y, c.z)).max(1e-4);
+    const over = m.sub(knee).max(0.0);
+    const eased = m.sub(over).add(over.div(over.div(room).add(1.0)));
+    return c.mul(eased.div(m));
+}
+
 /** The waves' light: bands of geological height climbing through the land. */
 export function waveLight(u, g, gw) {
     const sum = vec3(0.0).toVar();
+    const after = vec3(0.0).toVar();
     Loop({
         start: int(0), end: u.waveCount, type: 'int', condition: '<', name: 'wv',
     }, ({ wv }) => {
@@ -100,9 +112,13 @@ export function waveLight(u, g, gw) {
         // Below the band, the beds it has passed keep a little of its light for a moment.
         const passed = smoothstep(line, line.negate().mul(2.0), g.sub(at)).mul(exp(max(at.sub(g), 0.0).div(30.0).negate())).mul(0.12);
         const fade = smoothstep(0.0, 0.1, age).mul(float(1.0).sub(smoothstep(2.8, 4.2, age)));
-        sum.addAssign(c.xyz.mul(a.w).mul(band.add(passed)).mul(fade));
+        const light = c.xyz.mul(a.w).mul(fade);
+        sum.addAssign(light.mul(band));
+        after.addAssign(light.mul(passed));
     });
-    return sum;
+    // A chain keeps many bands climbing at once: their afterglow is held under a ceiling (one
+    // band's own stays as it was), so the land keeps its colours instead of washing out.
+    return sum.add(softKnee(after, 0.3, 0.25));
 }
 
 /**
