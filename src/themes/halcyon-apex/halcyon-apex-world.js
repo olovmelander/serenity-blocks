@@ -14,13 +14,35 @@
  *            the Apex (or round the stones and up into the Halcyon), which keeps it.
  *   clear    the cleared rows leave the card as blades of light, and a wave runs out through the
  *            sanctuary, one front per line: the masonry flashes as it passes, the bed floods, and
- *            the two great crystals let go of everything they were holding.
+ *            the two great crystals let go of what they were holding. In a chain they let go of
+ *            only part of it and the wave pours more in: the Apex, against the open sky, keeps
+ *            the chain's light (up to nearly twice its resting fill) until it burns like a star;
+ *            the Halcyon, before the sun, pours half back each time and keeps its resting fill.
+ *            Each wave of a cascade runs stronger, with one more front, and rings the lagoon
+ *            further out than the last.
  *   combo    the sanctuary lifts: pair by pair the ley shards rise off their plinths, the stones'
  *            crystals follow, drops of the lagoon bead up into the air, the splinters round the
  *            great crystals swing wider and faster, the clouds part.
- *   four     the sanctuary holds its breath — every light sinks for a fifth of a second — then a
- *            beacon stands on the Apex and on the Halcyon, a ring of light opens over the sky,
- *            and everything that floats is thrown up and comes down as rain.
+ *   four     the sanctuary holds its breath — every light sinks for a fifth of a second; mid-
+ *            fever it only inhales — then everything fires: a ring of light opens over the sky,
+ *            everything that floats is thrown up, and as the wave reaches each great crystal it
+ *            empties all it held into a beacon that stands into the sky, as tall as what it held.
+ *   perfect  the crown on the clear still playing (physics settles it a moment after the clear):
+ *            a second ring over the sky, both crystals pour out into their pillars, the flock is
+ *            thrown again. Never a second hush, never a second wave.
+ *   b2b      the two great crystals answer each other: a pillar stands on each, a second ring
+ *            opens over the sky, and the wave burns in sunfire whatever it cleared.
+ *   end      the chain is over: the great crystals pour out what it gave them (a pillar each, as
+ *            tall as what they kept), and what it lifted drifts back down over several seconds.
+ *
+ * Under it all runs the heat of play (src/themes/shared/gameplay-surge.js): every event adds to
+ * what is still lit and nothing restarts. Calm play looks as it always did. A quick hand wakes
+ * the sanctuary (the ley and the crystals glow, the lagoon's wind rises, the first shards leave
+ * their plinths); hot play lifts it (shards and stones aloft, beads streaming up, the splinters
+ * swinging wide, the flock climbing, the light the crystals hold leaning to the hour's crystal
+ * hue); a fever takes it into the air entire: the ley lines burn gold against the crystals' own
+ * colour, the zenith and the deep water darken, the iris closes so the colours stay deep. When
+ * the hands rest it breathes back to calm over a few seconds.
  *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame.
@@ -31,8 +53,9 @@
 import * as THREE from 'three/webgpu';
 import { float, shadow } from 'three/tsl';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell, softCeiling } from '../shared/gameplay-surge.js';
 import {
-    BEACON_LIFE,
+    CLEAR_AFTERGLOW,
     CLEAR_SLOTS,
     DEG,
     HALCYON_PALETTES,
@@ -45,6 +68,7 @@ import {
     LOCK_SLOTS,
     NOISE_SIZE,
     PALETTE_KEYS,
+    PULSE_AFTERGLOW,
     PULSE_SLOTS,
     PULSE_SPEED,
     SITE,
@@ -61,6 +85,7 @@ import {
     pieceColor,
     powerForCombo,
     siteToWorld,
+    smooth,
 } from './halcyon-apex-tsl.js';
 import { GEM, buildPlan } from './halcyon-apex-plan.js';
 import { tierFor } from './halcyon-apex-quality.js';
@@ -112,6 +137,28 @@ export const CHIME_PAIRS = 8;
 const ARRIVALS_MAX = 24;
 /** Arrivals on one crystal closer together than this (seconds) are one arrival. */
 const ARRIVAL_FOLD = 0.03;
+/** Seconds after a clear's wave leaves that the camera takes the blow. */
+export const CLEAR_KICK_DELAY = 0.12;
+/**
+ * What a great crystal lets go of leaves it at this rate (1/s): the light pours out over a
+ * quarter of a second as its sparks fly, instead of vanishing in a frame.
+ */
+export const POUR_RATE = 6;
+/**
+ * How much more than HOLD_MAX each great crystal holds at the height of a chain (a chain of nine):
+ * the Apex, against the open sky, stores the chain and becomes a star; the Halcyon hangs before
+ * the sun, where more light would only whiten the glare, so it keeps its resting fill.
+ */
+export const HOLD_CHAIN = Object.freeze([0.85, 0]);
+/** The Halcyon's pillar stands before the sun: it burns this much of the Apex's light and width. */
+export const HALCYON_PILLAR = Object.freeze([0.3, 0.25]);
+/**
+ * In a chain, the share of what it keeps that each great crystal spends as a clear's wave passes:
+ * the Apex hoards, the Halcyon pours half of it back into the lagoon every time.
+ */
+export const CHAIN_SPEND = Object.freeze([0.2, 0.5]);
+/** The most the overdrive of stacked four-line clears and crowns rises to. */
+const OVERDRIVE_CEILING = 2.0;
 
 const PARTS = [
     'sky', 'ranges', 'islets', 'flora', 'water', 'site', 'siteLey', 'dial', 'dialLey', 'crystals', 'halos',
@@ -186,6 +233,23 @@ export class HalcyonApexWorld {
             heart: this.heart, flash: 0, kick: 0, shafts: 0.3, bloomBoost: 0, exposure: 1,
         };
         this.arrivals = [];
+        // ── Envelopes that accumulate (src/themes/shared/swell.js): a new event adds to what is
+        //    still lit and never restarts it, so a weak one after a strong one never cuts the light ──
+        /** The overdrive after a four-line clear (a perfect clear, a crown, a back-to-back add to it). */
+        this.overdrive = new Swell({ release: SURGE_COOL, ceiling: OVERDRIVE_CEILING, knee: 1.4 });
+        /** The camera's blow and the post's flash. */
+        this.kicks = new Swell({ release: 0.16, ceiling: 1.2, knee: 0.8 });
+        this.flashes = new Swell({ release: 0.25, ceiling: 0.35, knee: 0.25 });
+        /** The swell of light after a clear (the sun's shafts, the bloom, the iris). */
+        this.afterglow = new Swell({ release: 0.7, ceiling: 1.3, knee: 0.85 });
+        /** Each great crystal's beacon: the pillar's light, and the burst of width it stands up with. */
+        this.blaze = [0, 1].map(() => new Swell({ release: 1 / 0.9, ceiling: 2.2, knee: 1.5 }));
+        this.flare = [0, 1].map(() => new Swell({ release: 1 / 7, ceiling: 1.4, knee: 1 }));
+        /** How hot play runs: punch, level, fever and the act (calm, warm, hot, fever). */
+        this.gameplay = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
         this.resetState(0);
     }
 
@@ -205,18 +269,30 @@ export class HalcyonApexWorld {
         this.twist = 0;
         this.breath = 1;
         this.hushUntil = -1;
+        /** How deep the last four-line clear's hush goes (1 from cold; mid-fever it only inhales). */
+        this.hushDepth = 1;
         this.lockCursor = 0;
-        this.clearCursor = 0;
-        this.pulseCursor = 0;
-        this.lastClear = { time: -100, lines: 0 };
-        this.pendingKick = { time: Infinity, amount: 0 };
-        /** What the Apex [0] and the Halcyon [1] hold, and its colour. */
+        /**
+         * What the Apex [0] and the Halcyon [1] hold (what they show, including what is still
+         * pouring out of them), what is pouring out, and its colour.
+         */
         this.held = [0, 0];
+        this.outflow = [0, 0];
         this.heldColor = [[1, 1, 1], [1, 1, 1]];
         this.arrivals.length = 0;
         this.counts = {
-            locks: 0, clears: 0, quads: 0, wisps: 0, pulses: 0,
+            locks: 0, clears: 0, quads: 0, crowns: 0, spins: 0, wisps: 0, pulses: 0,
         };
+        this.overdrive.reset();
+        this.kicks.reset();
+        this.flashes.reset();
+        this.afterglow.reset();
+        this.blaze.forEach((swell) => swell.reset());
+        this.flare.forEach((swell) => swell.reset());
+        this.gameplay.reset();
+        Object.assign(this.heat, {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        });
         // The slow clocks are functions of the world clock until gameplay bends them.
         const motion = this.reducedMotion ? 0.3 : 1;
         this.cloudDrift = time * motion;
@@ -232,8 +308,8 @@ export class HalcyonApexWorld {
             for (let i = 0; i < LOCK_SLOTS; i++) this.u.lockA[i].value.set(0, 0, -100, 0);
             for (let i = 0; i < CLEAR_SLOTS; i++) this.u.clearA[i].value.set(-100, 1, 0, 0);
             for (let i = 0; i < PULSE_SLOTS; i++) this.u.pulseA[i].value.set(-100, 0, 0, 0);
-            this.u.shock.value.set(-100, 0);
-            this.u.beacon.value.set(-100, 0);
+            this.u.shock.value.set(-100, 0, -100, 0);
+            this.u.beacon.value.set(0, 0, 0, 0);
         }
     }
 
@@ -644,29 +720,70 @@ export class HalcyonApexWorld {
         this.u.lockC[slot].value.set(rgb[0] * 1.4, rgb[1] * 1.4, rgb[2] * 1.4, reach);
     }
 
+    /** Fold an arrival into one already queued for the same crystal. */
+    static fold(queued, entry) {
+        if (entry.kind === 'hold') {
+            queued.amount = Math.min(HOLD_MAX, queued.amount + entry.amount);
+            queued.rgb = entry.rgb;
+            return;
+        }
+        queued.amount = Math.max(queued.amount, entry.amount);
+        queued.quad = queued.quad || entry.quad;
+        queued.spend = Math.max(queued.spend ?? 1, entry.spend ?? 1);
+        queued.feed = Math.max(queued.feed ?? 0, entry.feed ?? 0);
+        queued.pillar = Math.max(queued.pillar ?? 0, entry.pillar ?? 0);
+        queued.pour = Math.max(queued.pour ?? 0, entry.pour ?? 0);
+    }
+
     /**
      * Something that happens later on the world clock. The queue is kept in time order. What
      * would land on the same crystal at the same moment is folded into what is already queued
-     * (a flood of locks is a handful of arrivals), and a full queue refuses what comes after.
+     * (a flood of locks is a handful of arrivals); once the queue is full, what comes after is
+     * folded into the nearest arrival on the same crystal, so no light is ever lost.
      */
     schedule(entry) {
         const { arrivals } = this;
+        let nearest = null;
         for (let k = 0; k < arrivals.length; k++) {
             const queued = arrivals[k];
-            if (queued.kind !== entry.kind || queued.line !== entry.line || Math.abs(queued.time - entry.time) > ARRIVAL_FOLD) continue;
-            if (entry.kind === 'hold') {
-                queued.amount = Math.min(HOLD_MAX, queued.amount + entry.amount);
-                queued.rgb = entry.rgb;
-            } else {
-                queued.amount = Math.max(queued.amount, entry.amount);
-                queued.quad = queued.quad || entry.quad;
+            if (queued.kind !== entry.kind || queued.line !== entry.line) continue;
+            const gap = Math.abs(queued.time - entry.time);
+            if (gap <= ARRIVAL_FOLD) {
+                HalcyonApexWorld.fold(queued, entry);
+                return;
             }
+            if (!nearest || gap < Math.abs(nearest.time - entry.time)) nearest = queued;
+        }
+        if (arrivals.length >= ARRIVALS_MAX) {
+            if (nearest) HalcyonApexWorld.fold(nearest, entry);
             return;
         }
-        if (arrivals.length >= ARRIVALS_MAX) return;
         let i = arrivals.length;
         while (i > 0 && arrivals[i - 1].time > entry.time) i -= 1;
         arrivals.splice(i, 0, entry);
+    }
+
+    /**
+     * The pulse slot a new packet takes: a free one (its packet home and its warmth spent), else
+     * the one that reached its crystal longest ago; while every packet is still on its way, the
+     * one nearest home (it has the least road left to show).
+     */
+    pulseSlot() {
+        const { pulseA } = this.u;
+        let best = 0;
+        let bestDone = -Infinity;
+        for (let i = 0; i < PULSE_SLOTS; i++) {
+            const A = pulseA[i].value;
+            if (!(A.z > 0)) return i;
+            const length = A.y < 0.5 ? LEY_A.length : LEY_B.length;
+            const done = this.time - (A.x + length / PULSE_SPEED);
+            if (done > PULSE_AFTERGLOW) return i;
+            if (done > bestDone) {
+                bestDone = done;
+                best = i;
+            }
+        }
+        return best;
     }
 
     /**
@@ -674,8 +791,7 @@ export class HalcyonApexWorld {
      * arc length `s0` at `time`. Its crystal keeps the light when the pulse arrives.
      */
     sendPulse(line, s0, time, rgb, strength) {
-        const slot = this.pulseCursor % PULSE_SLOTS;
-        this.pulseCursor += 1;
+        const slot = this.pulseSlot();
         const birth = time - s0 / PULSE_SPEED;
         this.u.pulseA[slot].value.set(birth, line, strength, 0);
         this.u.pulseC[slot].value.set(rgb[0], rgb[1], rgb[2]);
@@ -789,31 +905,105 @@ export class HalcyonApexWorld {
             // A hard drop sends a second packet on the heels of the first.
             if (hardDrop) this.sendPulse(line, s0, arrive + 0.14, [rgb[0] * 0.5 + 0.5, rgb[1] * 0.5 + 0.5, rgb[2] * 0.5 + 0.5], 0.7);
         }
-        this.kick = Math.max(this.kick, hardDrop ? 0.5 : 0.1);
-        this.flash = Math.max(this.flash, hardDrop ? 0.1 : 0.02);
+        this.strike(hardDrop ? 0.5 : 0.1, hardDrop ? 0.1 : 0.02, this.time);
+        this.gameplay.lock({ hardDrop }, this.time);
         this.counts.locks += 1;
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`.
+     * A blow for the camera and a flash for the post at `at` (a moment ahead is fine), added to
+     * whatever is still lit: under a quick hand they ride on a floor instead of flickering.
+     */
+    strike(kick, flash, at) {
+        this.kicks.hit(kick, at);
+        this.flashes.hit(flash, at);
+        if (at <= this.time) {
+            this.kick = this.kicks.valueAt(this.time);
+            this.flash = this.flashes.valueAt(this.time);
+        }
+    }
+
+    /** The overdrive takes `amount` more at `at`. */
+    addOverdrive(amount, at) {
+        this.overdrive.hit(amount, at);
+        if (at <= this.time) this.surge = this.overdrive.valueAt(this.time);
+    }
+
+    /**
+     * A ring of light over the sky from the Apex, born at `birth`. Two can be open at once: a new
+     * one takes the slot with less light left, so a level's faint ring never cuts a four-line
+     * clear's, and a second four-line clear opens beside the first instead of pulling it back.
+     */
+    shockRing(birth, strength) {
+        const s = this.u.shock.value;
+        const left = (born, k) => (k > 0 ? k * Math.exp(-Math.max(0, this.time - born) * 1.5) : 0);
+        if (left(s.x, s.y) <= left(s.z, s.w)) {
+            s.x = birth;
+            s.y = strength;
+        } else {
+            s.z = birth;
+            s.w = strength;
+        }
+    }
+
+    /**
+     * The clear slot a new wave takes: a free one, else the one with the least light left (its
+     * afterglow furthest gone), so a wave still running out through the sanctuary is never cut.
+     */
+    clearSlot() {
+        const { clearA } = this.u;
+        let best = 0;
+        let least = Infinity;
+        for (let i = 0; i < CLEAR_SLOTS; i++) {
+            const A = clearA[i].value;
+            const age = this.time - A.x;
+            if (!(A.z > 0) || age > CLEAR_LIVE) return i;
+            const left = A.z * Math.exp(-Math.max(0, age) / CLEAR_AFTERGLOW);
+            if (left < least) {
+                least = left;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    /** What great crystal `line` can hold now: a chain raises its fill (the Apex's to nearly twice HOLD_MAX). */
+    holdCap(line) {
+        return HOLD_MAX * (1 + HOLD_CHAIN[line] * clamp01((this.combo - 1) / 8));
+    }
+
+    /**
+     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` = the deepest wave of the
+     * lock's cascade (1 = its first), `combo` = the true chain this clear belongs to.
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null,
+        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1, player = 0,
+        screen = null,
     } = {}) {
         const { u: uniforms } = this;
         if (!uniforms || !this.crystals) return;
         const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
         const quad = n >= 4 || perfect;
+        const back = b2b === true;
+        /** Waves of a cascade past its first, and steps of the chain past its first clear. */
+        const deeper = Math.max(0, Math.min(9, Math.round(Number(cascade) || 1) - 1));
+        const chain = Math.max(1, Math.round(Number(combo) || 1));
+        const steps = Math.min(LIFT_MAX, chain - 1);
         const p = this._palette;
         // One line answers in the ley's light, two in the crystal's, three in both at once.
+        // A back-to-back burns in sunfire like a four-line clear: the second difficult clear is
+        // gold whatever it cleared.
+        const fire = quad || back;
         let rgb;
-        if (quad) rgb = [...SUNFIRE];
+        if (fire) rgb = [...SUNFIRE];
         else if (n === 1) rgb = [...p.ley];
         else if (n === 2) rgb = [0, 1, 2].map((c) => p.crystal[c] * 0.7 + p.glow[c] * 0.45);
         else rgb = [0, 1, 2].map((c) => p.ley[c] * 0.6 + p.glow[c] * 0.6 + 0.15);
         const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
         rgb = rgb.map((c) => (c / peak) * 0.92 + 0.08);
-        const strength = Math.min(1.5, 0.62 + 0.14 * n + (quad ? 0.25 : 0));
+        // Deeper waves (a cascade's later ones) and longer chains run stronger, in their own colour.
+        const strength = Math.min(1.5, 0.62 + 0.14 * n + (quad ? 0.25 : 0) + 0.07 * deeper + 0.02 * steps
+            + (back ? 0.1 : 0));
         const birth = quad ? this.time + HUSH_HOLD : this.time;
 
         // ── The wave leaves the foot of the board ──
@@ -822,26 +1012,53 @@ export class HalcyonApexWorld {
         const heart = screen
             ? this.screenToLagoon(screen.x, Math.max(screen.y, 0.72))
             : this.screenToLagoon(board ? (board.x0 + board.x1) * 0.5 : 0.5, board ? Math.max(board.y1, 0.74) : 0.94);
-        const slot = this.clearCursor % CLEAR_SLOTS;
-        this.clearCursor += 1;
+        const slot = this.clearSlot();
         uniforms.clearH[slot].value.set(heart.x, heart.z);
-        uniforms.clearA[slot].value.set(birth, perfect ? 4 : n, strength, quad ? 1 : 0);
+        // A cascade's later waves carry one front more (up to four).
+        const fronts = perfect ? 4 : Math.min(4, n + (deeper > 0 ? 1 : 0));
+        uniforms.clearA[slot].value.set(birth, fronts, strength, fire ? 1 : 0);
         uniforms.clearC[slot].value.set(rgb[0] * 1.25, rgb[1] * 1.25, rgb[2] * 1.25);
-        this.lastClear = { time: birth, lines: n };
+        this.afterglow.hit(0.3 + 0.12 * n + 0.06 * deeper, birth);
 
-        // ── The two great crystals let go of what they hold as the wave reaches them ──
+        // ── The two great crystals as the wave reaches them ──
+        // A clear on its own: they let go of everything they hold. In a chain (or a cascade's
+        // later waves) they spend a little of it and the wave pours more in: they build. A
+        // four-line clear (or a perfect clear) is the payoff: everything they hold goes up their
+        // beacons, as tall as what they held. A back-to-back stands a pillar on each as well.
+        const building = !quad && (chain >= 2 || deeper > 0);
+        const spend = (line) => (building ? CHAIN_SPEND[line] : 1);
+        const feed = building ? 0.45 + 0.2 * n + 0.25 * deeper + (back ? 0.4 : 0) : 0;
+        let pillar = 0;
+        if (quad) pillar = (perfect ? 1.3 : 1) + (back ? 0.3 : 0);
+        else if (back) pillar = 0.45;
         const { apex } = this.plan;
         [[apex[0], apex[2]], [this.halcyon[0], this.halcyon[2]]].forEach(([hx, hz], line) => {
             this.schedule({
-                kind: 'release', time: birth + clearPassTime(Math.hypot(hx - heart.x, hz - heart.z)), line, rgb, amount: strength, quad,
+                kind: 'release',
+                time: birth + clearPassTime(Math.hypot(hx - heart.x, hz - heart.z)),
+                line,
+                rgb,
+                amount: strength,
+                quad,
+                spend: spend(line),
+                feed,
+                pillar,
+                pour: quad ? 0.07 : 0,
             });
         });
-        this.stir = Math.max(this.stir, Math.min(1.4, 0.3 + 0.16 * n + (quad ? 0.4 : 0)));
-        this.pendingKick = { time: birth + 0.12, amount: 0.22 + 0.1 * n };
+        this.stir = Math.max(this.stir, Math.min(1.4, 0.3 + 0.16 * n + (quad ? 0.4 : 0) + 0.1 * deeper));
+        // The camera takes the blow a beat after the wave leaves (added to whatever still rings).
+        const blow = birth + CLEAR_KICK_DELAY;
+        const kick = 0.22 + 0.1 * n + 0.05 * deeper;
+        this.strike(kick, kick * 0.5, blow);
+        this.gameplay.clear({
+            lines: n, cascade: deeper + 1, combo: chain, tspin, perfect, b2b: back,
+        }, blow);
 
         // ── Every crystal on the lines rings as the wave passes it ──
         const share = this.sparks.count / 512;
         const { gems } = this.crystals;
+        const chime = (quad ? 6 : 3) + Math.min(3, deeper) + (back ? 2 : 0);
         for (let i = 0; i < gems.length; i++) {
             const g = gems[i];
             // Every stone's crystal, and the nearest pairs of shards (the far ones are specks).
@@ -851,7 +1068,7 @@ export class HalcyonApexWorld {
                 x: at[0],
                 y: at[1],
                 z: at[2],
-                n: Math.max(1, Math.round((quad ? 6 : 3) * share)),
+                n: Math.max(1, Math.round(chime * share)),
                 rgb,
                 time: birth + clearPassTime(Math.hypot(at[0] - heart.x, at[2] - heart.z)),
                 out: [0.5, 2.6],
@@ -860,27 +1077,40 @@ export class HalcyonApexWorld {
                 size: 0.05 + g.half * 0.02,
             });
         }
+        // A cascade's later waves ring the lagoon from the board's foot in the ley's light, each
+        // one reaching further than the last.
+        if (deeper > 0) {
+            const strong = Math.min(0.8, 0.35 + 0.1 * deeper);
+            this.ring(heart.x, heart.z, birth, strong, p.ley, Math.min(1.6, 0.6 + 0.15 * deeper));
+        }
 
         // ── The cleared rows leave the card as blades of light ──
         if (board && card && this.layoutLive && !screen) {
             const list = Array.isArray(rows) && rows.length ? rows : Array.from({ length: n }, (_, i) => 19 - i);
             const ys = [];
             for (let i = 0; i < list.length && i < 4; i++) ys.push(boardPoint(board, 0.5, list[i], this._point).y);
-            this.beams.fire(ys, card.x0, card.x1, rgb, this.time, Math.min(1.4, 0.7 + 0.18 * n));
+            this.beams.fire(ys, card.x0, card.x1, rgb, this.time, Math.min(1.5, 0.7 + 0.18 * n + 0.08 * deeper));
         }
 
         if (quad) {
-            // The sanctuary holds its breath, then everything fires.
+            // The sanctuary holds its breath (as deep as play is cold: in a fever it only
+            // inhales), then everything fires.
             this.hushUntil = this.time + HUSH_HOLD;
-            this.surge = perfect ? 1.3 : 1;
-            uniforms.shock.value.set(birth, this.reducedMotion ? 0.5 : 1);
-            uniforms.beacon.value.set(birth, perfect ? 1.3 : 1);
+            this.hushDepth = 1 - 0.8 * this.heat.level;
+            this.addOverdrive(perfect ? 1.3 : 1, this.time);
+            this.shockRing(birth, this.reducedMotion ? 0.5 : 1);
             this.birds?.scatter(birth);
             this.counts.quads += 1;
         }
+        if (back) {
+            // The second difficult clear: the two great crystals answer each other (a pillar on
+            // each as the wave reaches it), a second ring opens over the sky, the overdrive rises.
+            this.addOverdrive(0.35, this.time);
+            this.shockRing(birth + 0.18, this.reducedMotion ? 0.3 : 0.6);
+        }
         if (tspin) {
             // Everything that floats turns on its axis.
-            this.twist = 1;
+            this.twist = Math.max(this.twist, 1);
             this.stir = Math.max(this.stir, 0.9);
             this.ring(heart.x, heart.z, this.time, 0.9, rgb, 0.7);
             this.ring(heart.x, heart.z, this.time + 0.16, 0.7, rgb, 0.45);
@@ -888,11 +1118,79 @@ export class HalcyonApexWorld {
         this.counts.clears += 1;
     }
 
+    /**
+     * A perfect clear that settled after its clear (physics sends it ~360 ms after the last wave):
+     * the crown on the clear still playing. No hush and no new wave: a second ring over the sky,
+     * both great crystals pour out everything into their pillars, the flock is thrown again.
+     */
+    onCrown() {
+        if (!this.u || !this.crystals) return;
+        const at = this.time;
+        this.addOverdrive(0.5, at);
+        this.shockRing(at, this.reducedMotion ? 0.4 : 0.8);
+        this.birds?.scatter(at, 0.6);
+        this.stir = Math.max(this.stir, 1.2);
+        this.strike(0.3, 0.12, at);
+        this.afterglow.hit(0.5, at);
+        this.gameplay.crown(at);
+        const rgb = [...SUNFIRE];
+        [0, 1].forEach((line) => {
+            this.schedule({
+                kind: 'release',
+                time: at + 0.06 + line * 0.08,
+                line,
+                rgb,
+                amount: 1.2,
+                quad: true,
+                spend: 1,
+                feed: 0,
+                pillar: 0.6,
+                pour: 0.07,
+            });
+        });
+        this.counts.crowns += 1;
+    }
+
+    /** A T-spin that cleared nothing: the floating things turn a little, a ring leaves the board's foot. */
+    onSpin({ player = 0, screen = null } = {}) {
+        if (!this.u || !this.crystals) return;
+        const board = boardFor(this.layout, player);
+        const heart = screen
+            ? this.screenToLagoon(screen.x, Math.max(screen.y, 0.72))
+            : this.screenToLagoon(board ? (board.x0 + board.x1) * 0.5 : 0.5, board ? Math.max(board.y1, 0.74) : 0.94);
+        this.twist = Math.max(this.twist, 0.55);
+        this.stir = Math.max(this.stir, 0.45);
+        this.ring(heart.x, heart.z, this.time, 0.7, this._palette.ley, 0.55);
+        this.strike(0.12, 0.03, this.time);
+        this.gameplay.spin(this.time);
+        this.counts.spins += 1;
+    }
+
     /** The true combo changed (0 = the chain broke). */
     onCombo(combo) {
         const n = Math.max(0, Math.round(Number(combo) || 0));
-        // The chain broke: the sanctuary lets its breath go, and what it lifted comes down.
-        if (n === 0 && this.combo >= 2) this.dip = Math.max(this.dip, 0.24);
+        if (n === 0 && this.combo >= 2) {
+            // The chain is over: the great crystals pour out everything it gave them (a pillar
+            // each, as tall as what they kept), the sanctuary sighs (barely, if play still runs
+            // hot), and what it lifted drifts back down over several seconds.
+            this.dip = Math.max(this.dip, 0.1 * (1 - this.heat.level));
+            [0, 1].forEach((line) => {
+                const c = this.heldColor[line];
+                const rgb = [0, 1, 2].map((k) => c[k] * 0.6 + SUNFIRE[k] * 0.4);
+                this.schedule({
+                    kind: 'release',
+                    time: this.time + 0.05 + line * 0.1,
+                    line,
+                    rgb,
+                    amount: 1,
+                    quad: false,
+                    spend: 1,
+                    feed: 0,
+                    pillar: 0,
+                    pour: 0.09,
+                });
+            });
+        }
         this.combo = n;
     }
 
@@ -903,8 +1201,9 @@ export class HalcyonApexWorld {
         if (silent) this.applyPalette(1);
         else {
             this.stir = Math.max(this.stir, 0.8);
-            this.flash = Math.max(this.flash, 0.14);
-            this.u?.shock.value.set(this.time, 0.4);
+            this.strike(0, 0.14, this.time);
+            if (this.u) this.shockRing(this.time, 0.4);
+            this.gameplay.levelUp(this.time);
         }
     }
 
@@ -930,35 +1229,53 @@ export class HalcyonApexWorld {
             arrivals.splice(i, 1);
             const where = a.line === 0 ? this.plan.apex : this.halcyon;
             const share = this.sparks ? this.sparks.count / 512 : 0;
+            // What the crystal shows is what it keeps plus what is still pouring out of it.
+            const out = this.outflow[a.line];
+            const kept = Math.max(0, this.held[a.line] - out);
+            const c = this.heldColor[a.line];
             if (a.kind === 'hold') {
-                // The crystal keeps the pulse: its colour leans to the newest light it took.
-                const had = this.held[a.line];
-                const now = Math.min(HOLD_MAX, had + a.amount);
+                // The crystal keeps the pulse: its colour leans to the newest light it took. A
+                // chain lets it hold more; what it already holds is never taken back.
+                const now = Math.max(kept, Math.min(this.holdCap(a.line), kept + a.amount));
                 const mixK = a.amount / Math.max(now, 1e-3);
-                const c = this.heldColor[a.line];
                 for (let k = 0; k < 3; k++) c[k] += (a.rgb[k] - c[k]) * Math.min(1, mixK * 1.4);
-                this.held[a.line] = now;
+                this.held[a.line] = now + out;
                 this.sparks?.emit({
                     x: where[0], y: where[1], z: where[2], n: Math.round(10 * share), rgb: a.rgb, time: a.time, out: [1.5, 7], up: [-1, 5], life: [0.8, 1.7], size: 0.3,
                 });
             } else if (a.kind === 'release') {
-                const had = this.held[a.line];
-                this.held[a.line] = 0;
-                const c = this.heldColor[a.line];
-                const rgb = had > 0.2 ? [c[0] * 0.6 + a.rgb[0] * 0.4, c[1] * 0.6 + a.rgb[1] * 0.4, c[2] * 0.6 + a.rgb[2] * 0.4] : a.rgb;
+                // It lets go of its share (all of it, or in a chain a little), which pours out
+                // over a moment as its sparks fly; a chain's wave pours light back in.
+                const spent = kept * (a.spend ?? 1);
+                const stays = kept - spent;
+                const fed = Math.max(stays, Math.min(this.holdCap(a.line), stays + (a.feed ?? 0)));
+                if (fed > stays) {
+                    const mixK = (fed - stays) / Math.max(fed, 1e-3);
+                    for (let k = 0; k < 3; k++) c[k] += (a.rgb[k] - c[k]) * Math.min(1, mixK);
+                }
+                this.held[a.line] = fed + out + spent;
+                this.outflow[a.line] = out + spent;
+                const rgb = kept > 0.2 ? [0, 1, 2].map((k) => c[k] * 0.6 + a.rgb[k] * 0.4) : a.rgb;
                 this.sparks?.emit({
                     x: where[0],
                     y: where[1],
                     z: where[2],
-                    n: Math.round((14 + had * 10 + (a.quad ? 40 : 0)) * share),
+                    n: Math.round((14 + Math.min(spent, 8) * 10 + (a.quad ? 40 : 0) + (fed - stays) * 6) * share),
                     rgb,
                     time: a.time,
-                    out: [3, 13 + had * 2],
+                    out: [3, 13 + Math.min(spent, 8) * 2],
                     up: [0, 11],
                     life: [1.2, 2.6],
                     size: 0.36,
                 });
-                this.stir = Math.max(this.stir, Math.min(1.4, 0.4 + had * 0.12));
+                this.stir = Math.max(this.stir, Math.min(1.4, 0.4 + spent * 0.12));
+                // What it lets go of on a four-line clear, a crown or the end of a chain goes up
+                // its beacon: a pillar as tall as what it held, added to any pillar still standing.
+                const pillar = (a.pillar ?? 0) + (a.pour ?? 0) * spent;
+                if (pillar > 0.01) {
+                    this.blaze[a.line].hit(pillar, a.time);
+                    this.flare[a.line].hit(Math.min(1.2, pillar), a.time);
+                }
             }
         }
     }
@@ -974,39 +1291,64 @@ export class HalcyonApexWorld {
         const motion = this.reducedMotion ? 0.3 : 1;
         this.resolveArrivals(t);
 
+        // ── How hot play runs (src/themes/shared/gameplay-surge.js): calm, warm, hot, fever ──
+        const sampled = this.gameplay.sample(t);
+        const { heat } = this;
+        heat.punch = sampled.punch;
+        heat.level = sampled.level;
+        heat.fever = sampled.fever;
+        heat.stage = sampled.stage;
+        const { level, fever } = heat;
+        /** A quick hand wakes the sanctuary (0 under casual play), a fever fills it. */
+        const awake = smooth(0.18, 0.8, level);
+
         // ── The charge ──
         const target = powerForCombo(this.combo);
-        this.power += (target - this.power) * approach(target > this.power ? 2.4 : 0.8, dt);
-        const liftTarget = Math.min(LIFT_MAX, this.combo);
-        this.lift += (liftTarget - this.lift) * approach(liftTarget > this.lift ? 2.6 : 1.1, dt);
-        this.surge *= Math.exp(-dt / SURGE_COOL);
+        this.power += (target - this.power) * approach(target > this.power ? 2.4 : 0.55, dt);
+        // The sanctuary leaves the ground with the chain and stays aloft while play runs hot: a
+        // quick hand lifts the first shards, a fever all of them. When it cools (or the chain
+        // ends) what it lifted drifts back down over several seconds.
+        const ascent = LIFT_MAX * (0.3 * smooth(0.35, 0.85, level) + 0.7 * fever);
+        const liftTarget = Math.max(Math.min(LIFT_MAX, this.combo), ascent);
+        this.lift += (liftTarget - this.lift) * approach(liftTarget > this.lift ? 2.6 : 0.5, dt);
+        this.surge = this.overdrive.valueAt(t);
         this.stir *= Math.exp(-dt / 1.7);
-        this.flash *= Math.exp(-dt / 0.25);
-        this.kick *= Math.exp(-dt / 0.16);
+        this.flash = this.flashes.valueAt(t);
+        this.kick = this.kicks.valueAt(t);
         this.dip *= Math.exp(-dt / 0.35);
         this.twist *= Math.exp(-dt / 0.7);
         const fade = Math.exp(-dt / HOLD_FADE);
-        this.held[0] *= fade;
-        this.held[1] *= fade;
-        if (t >= this.pendingKick.time) {
-            this.kick = Math.max(this.kick, this.pendingKick.amount);
-            this.flash = Math.max(this.flash, this.pendingKick.amount * 0.5);
-            this.pendingKick.time = Infinity;
+        for (let line = 0; line < 2; line++) {
+            this.held[line] *= fade;
+            let out = this.outflow[line] * fade;
+            if (out > 0 && dt > 0) {
+                // What a crystal lets go of pours out of it over a moment (the last of it at once).
+                const go = out < 0.02 ? out : out * approach(POUR_RATE, dt);
+                this.held[line] = Math.max(0, this.held[line] - go);
+                out -= go;
+            }
+            this.outflow[line] = out;
         }
-        const hush = t < this.hushUntil ? 1 : 0;
-        const breathTarget = hush ? 0.15 : 1 - this.dip;
-        this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 14, dt);
+        // The hush: as deep as play was cold when the four-line clear came.
+        const hush = t < this.hushUntil ? this.hushDepth : 0;
+        const breathTarget = hush > 0 ? 1 - 0.85 * hush : 1 - this.dip;
+        this.breath += (breathTarget - this.breath) * approach(hush > 0 ? 40 : 14, dt);
         if (dt === 0) this.breath = breathTarget;
         this.applyPalette(approach(0.8, dt));
 
         // ── The slow clocks ──
         // Under reduced motion the sky and the crystals keep their own slow pace whatever the board
-        // does; the beads still answer a chain (they are its feedback, and they are small).
+        // does; the beads still answer a chain (they are its feedback, and they are small). Hot
+        // play hurries the sky, swings the splinters and streams the beads up; a fever more so.
         const still = this.reducedMotion ? 0 : 1;
-        this.cloudDrift += dt * motion * (1 + (this.power * 2.5 + this.stir * 3 + this.surge * 5) * still);
-        this.spin += dt * motion * (0.22 + (this.power * 1.5 + this.stir * 0.8 + this.surge * 3 + this.twist * 7) * still);
-        this.beadLift += dt * motion * (0.6 + this.power * 2.6 + this.surge * 4 + this.stir * 0.8);
+        const { power, stir, surge } = this;
+        this.cloudDrift += dt * motion * (1 + (power * 2.5 + stir * 3 + surge * 5 + awake * 1.2 + fever * 2.5) * still);
+        this.spin += dt * motion
+            * (0.22 + (power * 1.5 + stir * 0.8 + surge * 3 + this.twist * 7 + awake * 0.5 + fever * 1.1) * still);
+        this.beadLift += dt * motion * (0.6 + power * 2.6 + surge * 4 + stir * 0.8 + awake * 1.2 + fever * 2.2);
         this.placeCrystals(dt);
+        // The flock climbs and widens its circle while play runs hot.
+        this.birds?.update(t, dt, (0.3 * smooth(0.5, 0.9, level) + 0.5 * fever) * (this.reducedMotion ? 0.3 : 1));
 
         // ── Uniforms ──
         let ringsLive = 0;
@@ -1025,7 +1367,10 @@ export class HalcyonApexWorld {
         u.clearLive.value = clearLive;
         u.pulsesLive.value = pulsesLive;
         u.time.value = t;
-        u.power.value = this.power;
+        // The charge the materials see: the chain's, and the heat of play under it (a quick hand
+        // wakes the ley and the crystals, the wind on the lagoon, the clouds part in a fever).
+        const charge = this.power + (1 - this.power) * (0.38 * awake + 0.3 * fever);
+        u.power.value = charge;
         u.lift.value = this.lift;
         u.surge.value = this.surge;
         u.breath.value = this.breath;
@@ -1033,28 +1378,51 @@ export class HalcyonApexWorld {
         u.spin.value = this.spin;
         u.beadLift.value = this.beadLift;
         u.held.value.set(this.held[0], this.held[1], 0, 0);
-        u.heldA.value.set(this.heldColor[0][0], this.heldColor[0][1], this.heldColor[0][2]);
-        u.heldB.value.set(this.heldColor[1][0], this.heldColor[1][1], this.heldColor[1][2]);
+        // What the great crystals hold shows in the pieces' colours; as play runs hot it leans to
+        // the hour's crystal hue, so a crystal that holds a chain burns as a coloured star (the
+        // Halcyon a teal one before the gold sun), never a white blot.
+        const lean = Math.min(0.85, 0.6 * awake + 0.3 * fever);
+        const heldTo = (node, c) => {
+            const q = this._palette.crystal;
+            node.value.set(c[0] + (q[0] - c[0]) * lean, c[1] + (q[1] - c[1]) * lean, c[2] + (q[2] - c[2]) * lean);
+        };
+        heldTo(u.heldA, this.heldColor[0]);
+        heldTo(u.heldB, this.heldColor[1]);
+        const blazeA = this.blaze[0].valueAt(t);
+        const blazeB = this.blaze[1].valueAt(t);
+        u.beacon.value.set(
+            blazeA,
+            this.flare[0].valueAt(t),
+            blazeB * HALCYON_PILLAR[0],
+            this.flare[1].valueAt(t) * HALCYON_PILLAR[1],
+        );
         const p = this._palette;
-        const heat = clamp01(this.surge * 0.5);
+        // The overdrive and the fever turn the ley to sunfire gold while the crystals keep their own
+        // hue: two saturated colours against each other at the payoff, never a pale mix of the two.
+        const warmth = { crystal: 0, ley: clamp01(this.surge * 0.9 + fever * 0.8 + awake * 0.08) };
         const warm = (key, node, gain = 1) => {
             const c = p[key];
+            const k = warmth[key];
             node.value.set(
-                (c[0] + (SUNFIRE[0] - c[0]) * heat) * gain,
-                (c[1] + (SUNFIRE[1] - c[1]) * heat) * gain,
-                (c[2] + (SUNFIRE[2] - c[2]) * heat) * gain,
+                (c[0] + (SUNFIRE[0] - c[0]) * k) * gain,
+                (c[1] + (SUNFIRE[1] - c[1]) * k) * gain,
+                (c[2] + (SUNFIRE[2] - c[2]) * k) * gain,
             );
         };
         const plain = (key, node, gain = 1) => node.value.set(p[key][0] * gain, p[key][1] * gain, p[key][2] * gain);
+        // The sky answers the chain alone (as it always has): hot play wakes the sanctuary's own
+        // lights, not more glare round the sun.
+        // In a fever the darks deepen (the zenith, the clouds' shade, the deep water), so the
+        // sanctuary's own lights carry the colour.
         plain('sun', u.sun, 1 + this.power * 0.12);
-        plain('zenith', u.zenith);
+        plain('zenith', u.zenith, 1 - 0.4 * fever);
         plain('horizon', u.horizon, 1 + this.power * 0.1);
-        plain('glow', u.glow, 1 + this.power * 0.25 + this.stir * 0.1);
-        plain('rose', u.rose);
+        plain('glow', u.glow, 1 + this.power * 0.25 + Math.min(this.stir, 0.5) * 0.1);
+        plain('rose', u.rose, 1 - 0.2 * fever);
         plain('cloud', u.cloud);
-        plain('cloudShade', u.cloudShade);
+        plain('cloudShade', u.cloudShade, 1 - 0.25 * fever);
         plain('shallow', u.shallow);
-        plain('deep', u.deep);
+        plain('deep', u.deep, 1 - 0.3 * fever);
         plain('stone', u.stone);
         warm('crystal', u.crystal);
         warm('ley', u.ley);
@@ -1076,17 +1444,22 @@ export class HalcyonApexWorld {
         }
 
         // ── Post ──
-        const sinceClear = t - this.lastClear.time;
-        const swell = sinceClear >= 0 ? Math.exp(-sinceClear / 0.7) * (0.3 + 0.12 * this.lastClear.lines) : 0;
-        const sinceBeacon = t - u.beacon.value.x;
-        const blaze = sinceBeacon >= 0 && sinceBeacon < BEACON_LIFE ? Math.exp(-sinceBeacon / 1.1) * u.beacon.value.y : 0;
+        const swell = this.afterglow.valueAt(t);
+        // The pillars' glare, softened: two pillars standing at once never wash the frame out.
+        const blaze = softCeiling(blazeA + blazeB * HALCYON_PILLAR[0], 1, 2);
         const post = this._post;
         post.flash = this.flash;
         post.kick = this.kick;
-        post.shafts = hush ? 0.06 : 0.42 + this.power * 0.2 + swell * 0.25 + blaze * 0.3;
-        post.bloomBoost = this.surge * 0.1 + swell * 0.1;
-        // The iris closes as the sanctuary flares, so its colours survive the surge.
-        post.exposure = 1 / (1 + this.surge * 0.85 + swell * 0.35 + this.power * 0.14 + this.stir * 0.08);
+        // The sun's shafts thin as play runs hot and while the overdrive burns: at the payoff the
+        // light is the pillars' and the rings', carried where they stand, never a veil of glare
+        // dragged across the frame.
+        const open = ((0.42 + this.power * 0.2 + swell * 0.15) * (1 - 0.35 * fever)) / (1 + 0.7 * this.surge);
+        post.shafts = open + (0.06 - open) * hush;
+        post.bloomBoost = this.surge * 0.04 + swell * 0.1;
+        // The iris closes as the sanctuary flares, and further as play runs hot, so its colours
+        // survive the surge and the frame keeps its depth.
+        post.exposure = 1 / (1 + this.surge * 0.85 + swell * 0.35 + charge * 0.14 + this.stir * 0.08 + blaze * 0.12
+            + awake * 0.12 + fever * 0.3);
     }
 
     /** What the post stack reads each frame (a reused object). */
@@ -1108,6 +1481,8 @@ export class HalcyonApexWorld {
             palette: HALCYON_PALETTES[this.paletteIndex].name,
             counts: { ...this.counts },
             held: [...this.held],
+            /** How hot play runs: the level (0..1), the fever (0..1) and the act (0 calm .. 3 fever). */
+            heat: { level: this.heat.level, fever: this.heat.fever, stage: this.heat.stage },
             arrivals: this.arrivals.length,
             crystals: this.crystals ? this.crystals.count : 0,
             targets: { a: this.targets.a.length, b: this.targets.b.length },

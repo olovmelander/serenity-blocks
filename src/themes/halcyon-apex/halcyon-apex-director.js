@@ -9,8 +9,15 @@
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.crown({ player, screen })  a perfect clear that settled on its own (no rows that frame)
+ *   sink.spin({ player, screen })   a T-spin that cleared nothing
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
+ *
+ * Physics settles a perfect clear ~360 ms after the clear's last wave, in a frame of its own: it
+ * is the crown on a clear already answered, never a new one-line clear (which would replay the
+ * four-line clear's hush and wave). One that lands in the same frame as its rows rides on the
+ * clear (`perfect: true`).
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width; `color` is the piece's colour (a CSS hex string) or null. `screen`
@@ -187,7 +194,8 @@ function capturePosition(slot, payload) {
 export class HalcyonApexDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, combo?: Function, levelUp?: Function },
+     *   sink?: { lock?: Function, clear?: Function, crown?: Function, spin?: Function,
+     *     combo?: Function, levelUp?: Function },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -207,6 +215,7 @@ export class HalcyonApexDirector {
         this._clear = {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
         };
+        this._moment = { player: 0, screen: null };
         this._screen = { x: 0.5, y: 0.5 };
     }
 
@@ -356,7 +365,6 @@ export class HalcyonApexDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -434,6 +442,18 @@ export class HalcyonApexDirector {
             c.b2b = slot.b2b;
             c.screen = screen;
             sink.clear(c);
+        } else if (slot.perfect && sink?.crown) {
+            // The perfect clear settled after its clear: the crown on what is still playing.
+            const c = this._moment;
+            c.player = slot.player;
+            c.screen = screen;
+            sink.crown(c);
+        }
+        if (slot.tspin && slot.lines === 0 && sink?.spin) {
+            const c = this._moment;
+            c.player = slot.player;
+            c.screen = screen;
+            sink.spin(c);
         }
     }
 
