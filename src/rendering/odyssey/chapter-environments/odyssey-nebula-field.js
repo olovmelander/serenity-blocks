@@ -414,7 +414,13 @@ function buildGasMaterial(uReveal, uTime, palette, tier = 'high', drive = {}) {
 
     // EROSION, bounded by the ellipsoid: the rim only reaches out where the noise is dense,
     // and nothing survives outside the ellipsoid (thick = 0 ⇒ d < 0).
-    const d = thick.sub(oneMinus(gas).mul(0.8));
+    // FRAYED RIMS (audit pass, 2026-10-22): the gas field is a mass's first octaves, smooth over
+    // the whole volume, so its edge drew an oval — the near mass, the largest thing on the left
+    // of the frame for half the chapter, read as a cotton ball. A finer octave now bites into the
+    // OUTER shell only ((1 - thick)^2: nothing at the heart), tearing the silhouette into wisps.
+    const rimBite = latticeNoise3(qFlow.mul(4.3).add(vec3(3.7, 1.9, 8.2)));
+    const fray = oneMinus(thick).mul(smoothstep(0.30, 0.70, oneMinus(rimBite))).mul(0.95);
+    const d = thick.sub(oneMinus(gas).mul(0.8)).sub(fray);
     const density = smoothstep(0.0, 0.45, d);
     // The hot heart follows the VOLUME (thickness), only lightly broken by the noise — a
     // glowing interior, not bright veins.

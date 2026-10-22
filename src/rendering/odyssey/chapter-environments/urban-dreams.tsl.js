@@ -699,7 +699,10 @@ function createFacadeMaterial(uTime, uEnergy, {
             .mul(buildingAlive);
 
         const structure = mix(body, roof, isRoof);
-        const lights = windows.add(trim).add(ledgeLight.mul(isSide));
+        // Lit only once the tunnel's mouth opens (`seamReveal`, the 7->8 carry), as the signs,
+        // lanterns, skybridges and traffic already are: the nearest towers fade in under the
+        // warp tunnel, and their window grids drew over its streaks before the city was seen.
+        const lights = windows.add(trim).add(ledgeLight.mul(isSide)).mul(N.seamReveal);
         const air = neonAir(N, pc, glowLow);
         // The air: lit windows punch a little further through it than the walls do.
         return mix(structure.add(lights), air.colour, air.amount)

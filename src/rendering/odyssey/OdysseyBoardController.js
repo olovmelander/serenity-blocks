@@ -79,6 +79,7 @@ import {
     buildRenderWarmOrder,
 } from './odyssey-warmup-plan.js';
 import { computeTravelFrontier, isHeldAtFrontier } from './odyssey-travel-frontier.js';
+import { resolveOdysseyPathHorizon } from './odyssey-path-horizon.js';
 import { resolveChapterArrivalProgress, resolveOrbParkProgress } from './odyssey-chapter-arrival.js';
 import {
     normalizeOdysseyWarmupMode,
@@ -2676,13 +2677,17 @@ export class OdysseyBoardController {
      * whatever the eye is doing — an orb close-up, its swing in and out, free look. Chapter 6
      * seats its gas giant on it across the 5->6 seam (a screen seat, so the climb's pitch-up does
      * not slide it), so a close-up no longer drags the planet into its own view: it stays where
-     * the rail's view has it. Published on `camera.userData.railCamera` every journey frame.
+     * the rail's view has it. Published on `camera.userData.railCamera` every journey frame,
+     * with `camera.userData.followProgress`: the progress the eased eye stands at, which chapter
+     * 6 seats its black hole by so a scroll's ease cannot carry the hole ahead of the view.
      * @private
      */
     _syncRailCamera(progress) {
         const cam = this.camera;
         if (!cam?.userData) return;
         const controller = this.cameraController;
+        const followProgress = controller?.getFollowProgress?.();
+        cam.userData.followProgress = Number.isFinite(followProgress) ? followProgress : null;
         if (!controller?.computeFollowFrame || !Number.isFinite(progress)) {
             cam.userData.railCamera = null;
             return;
@@ -4397,6 +4402,15 @@ export class OdysseyBoardController {
 
             this._syncHeroCamera();
             this._syncRailCamera(cameraProgress);
+            // Through chapter 6 the rail and its nodes vanish into the black hole (one schedule
+            // of the eye's progress for both — odyssey-path-horizon.js).
+            const pathHorizon = resolveOdysseyPathHorizon(
+                cameraProgress,
+                this.presentationLayout?.chapterPositions,
+                this.presentationLayout?.levelPositions,
+            );
+            this.pathRenderer?.setHorizon?.(pathHorizon);
+            this.nodeManager?.setPathHorizon?.(pathHorizon);
             // Time-driven uniform tick (animated material uniforms) — always 60Hz.
             this.environmentManager.update(
                 delta,
