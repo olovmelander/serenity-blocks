@@ -162,7 +162,10 @@ export function createGround(u, {
         const moonGlitter = wPow4(wPow4(max(dot(reflect(V.negate(), normalize(vec3(grain.g.mul(0.2), 1.0, grain.b.mul(0.2)))), u.moonDir), 0.0)));
         const cracks = smoothstep(0.016, 0.0, abs(u.noise(P.xz.mul(0.027)).r.sub(0.5)))
             .add(smoothstep(0.02, 0.0, abs(u.noise(P.xz.mul(0.083).add(0.4)).a.sub(0.5))).mul(0.5));
-        const deep = vec3(0.008, 0.03, 0.055).add(u.shade.mul(0.12)).add(vec3(0.5, 0.7, 0.9).mul(cracks.mul(0.1)));
+        // When play runs hot the fires' light runs in the cracks: the ice sings.
+        const singing = u.heat.y.mul(0.5).add(u.heat.z.mul(0.9));
+        const deep = vec3(0.008, 0.03, 0.055).add(u.shade.mul(0.12)).add(vec3(0.5, 0.7, 0.9).mul(cracks.mul(0.1)))
+            .add(mix(u.fire, u.crown, 0.3).mul(cracks.mul(singing)));
         const iceCol = mix(deep, mirrorSky, fresnel.mul(0.66))
             .add(u.moonCol.mul(moonGlitter.mul(2.2)).mul(shadow));
 
@@ -187,8 +190,10 @@ export function createGround(u, {
 
         // ── Sparkle ──
         if (glints) {
-            const glint = snowGlint(u, P, lobe, ringNow.a.mul(0.45));
-            const fired = mix(u.moonCol, ringNow.rgb.div(max(ringNow.a, 0.05)).mul(1.4), clamp(ringNow.a.mul(1.6), 0.0, 1.0));
+            // (The hotter play runs, the more of the snowfield glitters, in the fires' colours.)
+            const glint = snowGlint(u, P, lobe, ringNow.a.mul(0.45).add(u.heat.x.mul(0.055)));
+            const lit = mix(u.moonCol, mix(u.fire, u.crown, glint.y).mul(1.3), u.heat.y.mul(0.45));
+            const fired = mix(lit, ringNow.rgb.div(max(ringNow.a, 0.05)).mul(1.4), clamp(ringNow.a.mul(1.6), 0.0, 1.0));
             col.addAssign(fired.mul(glint.x).mul(glint.y.mul(9.0).add(3.0))
                 .mul(shadow.mul(0.85).add(0.15).add(ringNow.a)).mul(float(1.0).sub(ice.mul(0.7)))
                 .mul(u.breath));
