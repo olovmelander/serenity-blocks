@@ -43,8 +43,12 @@ export const GROUP_BLEND = Object.freeze([0.62, 0.3, 0.2, 0.2]);
 export const RING_SLOTS = 10;
 /** Colour a lock leaves glowing under the surface. */
 export const DYE_SLOTS = 12;
-/** Wave packets a clear sends through the sea. */
-export const WAVE_SLOTS = 3;
+/**
+ * Wave packets a clear sends through the sea. The last slot is kept for the big packets (four
+ * lines, the Drop's impact); when the rest are taken a new packet joins the youngest one still
+ * running instead of deleting a crest mid-sea (fluid-dreams-choreography.js `_wave`).
+ */
+export const WAVE_SLOTS = 5;
 
 // ── The Great Drop ──────────────────────────────────────────────────────────────
 
@@ -247,6 +251,19 @@ export const PALETTE_KEYS = Object.freeze([
 
 /** The colour a four-line clear fires in. */
 export const DREAMFIRE = Object.freeze([1.0, 0.86, 0.62]);
+
+/**
+ * Where the lights of the dusk lean in a fever (scene-linear), and how far at a full fever: the
+ * dream sun warms toward dreamfire. The zenith, the mid sky and the deep keep their dark, and the
+ * glow in the sea's veins and the inks keep their own hues (a cyan leaning to gold passes through
+ * grey, and the Great Drop went milky); the sea line burns deeper in its own hue (FEVER_HORIZON).
+ */
+export const FEVER_DUSK = Object.freeze({
+    sun: Object.freeze([[1.0, 0.72, 0.4], 0.4]),
+});
+
+/** In a fever the sea line burns deeper in its own hue: this much brighter, this much more saturated. */
+export const FEVER_HORIZON = Object.freeze({ lift: 0.12, saturate: 0.3 });
 
 /**
  * Where the picture's anchors sit on screen (fractions, y down) for an aspect ratio. Landscape

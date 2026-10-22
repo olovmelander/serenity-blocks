@@ -225,7 +225,7 @@ export const MOTE_BOX = Object.freeze({
 });
 
 /**
- * @param {object} u  shared uniforms (time, viewport, palette, charge)
+ * @param {object} u  shared uniforms (time, moteClock, viewport, palette, charge)
  * @param {number} count
  */
 export function createMotes(u, count) {
@@ -247,8 +247,9 @@ export function createMotes(u, count) {
     const kind = attribute('aKind', 'vec4');
 
     const material = fxMaterial('Fluid Dreams — motes');
-    const rise = kind.z.mul(u.charge.mul(1.6).add(1.0));
-    const y = mod(seed.y.add(u.time.mul(rise)), MOTE_BOX.height);
+    // They climb on their own clock, which runs faster as the sea charges (fluid-dreams-world.js):
+    // `time × rate` with a changing rate moved every mote at once.
+    const y = mod(seed.y.add(u.moteClock.mul(kind.z)), MOTE_BOX.height);
     const world = vec3(
         seed.x.add(sin(u.time.mul(0.21).add(seed.w)).mul(0.7)),
         y,
@@ -264,7 +265,7 @@ export function createMotes(u, count) {
     const hue = mix(mix(u.inkA, u.inkB, smoothstep(0.2, 0.8, kind.y)), u.sun, smoothstep(0.82, 1.0, kind.y));
     const vLight = varying(
         mix(hue, vec3(1.0), 0.3).mul(edge).mul(twinkle.mul(twinkle).mul(0.9).add(0.12))
-            .mul(u.charge.mul(1.5).add(1.0).add(u.surge))
+            .mul(u.charge.mul(1.5).add(1.0).add(u.surge).add(u.heat.y.mul(0.8)))
             .mul(float(1.0).div(px.div(u.viewport.y.mul(0.004)).add(1.0)).mul(1.6)),
         'fdMote',
     );

@@ -1763,3 +1763,106 @@ describe('fluid dreams spray', () => {
         world.dispose();
     });
 });
+
+describe('fluid dreams world: play builds', () => {
+    /** A chain as the tray's Fever plays it, through the world's own handlers. */
+    const chain = (world, camera, clears) => {
+        const plan = [1, 1, 2, 1, 2, 2, 3, 2, 2, 2, 3];
+        for (let n = 0; n < clears; n++) {
+            world.onLock({ u: n % 2 ? 0.8 : 0.2, rows: [18, 19], hardDrop: true });
+            const lines = plan[n % plan.length];
+            world.onClear({
+                rows: [19, 18, 17].slice(0, lines), lines, combo: n + 1, cascade: 1,
+            });
+            world.onCombo(n + 1);
+            run(world, camera, 0.64);
+        }
+    };
+    const saturation = (v) => Math.max(v.x, v.y, v.z) - Math.min(v.x, v.y, v.z);
+
+    it('wears the heat of a long chain, and breathes back to its resting look when the hands rest', () => {
+        const { camera, world } = makeWorld('Low');
+        const rest = { ...world.getPostState() };
+        const restHorizon = world.u.horizon.value.clone();
+        chain(world, camera, 1);
+        const first = {
+            heat: world.u.heat.value.clone(), r: world.u.hero.value.w, exposure: world.getPostState().exposure,
+        };
+        chain(world, camera, 10);
+        const { u } = world;
+        // hotter than its first clear: the veins and the ink burn, the Drop swells, a fever is lit
+        expect(u.heat.value.x).toBeGreaterThan(first.heat.x + 0.4);
+        expect(u.heat.value.y).toBeGreaterThan(0.5);
+        expect(u.hero.value.w).toBeGreaterThan(first.r);
+        // the sea line burns deeper in its own hue, and the iris closes so the colours keep
+        expect(saturation(u.horizon.value)).toBeGreaterThan(saturation(restHorizon) * 1.1);
+        expect(world.getPostState().exposure).toBeLessThan(first.exposure);
+        expect(world.getPostState().exposure).toBeGreaterThan(0.6);
+        // the darks keep their dark
+        for (const key of ['zenith', 'mid', 'deep']) {
+            expect(u[key].value.toArray(), key).toEqual(FLUID_PALETTES[0][key]);
+        }
+        // The hands rest.
+        world.onCombo(0);
+        run(world, camera, 25, 500);
+        expect(u.heat.value.x).toBeLessThan(0.01);
+        expect(u.heat.value.y).toBe(0);
+        expect(u.horizon.value.distanceTo(restHorizon)).toBeLessThan(1e-6);
+        expect(world.getPostState().exposure).toBeCloseTo(rest.exposure, 3);
+        expect(world.getPostState().bloomBoost).toBeLessThan(0.01);
+        world.dispose();
+    });
+
+    it('takes a late perfect clear as the crown on its clear: no second packet, no pour, glass after the crown', () => {
+        const { camera, world } = makeWorld('Low');
+        const spray = recordSpray(world);
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        run(world, camera, 0.36);
+        const { waves } = world.getState();
+        const pours = spray.filter((burst) => burst.kind === 'pour').length;
+        const { site } = world.getState();
+        world.onClear({
+            rows: [], lines: 1, perfect: true, crown: true, combo: 1, cascade: 1,
+        });
+        expect(spray.filter((burst) => burst.kind === 'pour')).toHaveLength(pours);
+        expect(world.getState().site).toEqual(site);
+        run(world, camera, 2 / 60);
+        expect(world.getState().waves).toBe(waves);
+        expect(world.choreo.glass.active).toBe(true);
+        expect(world.choreo.glass.level).toBe(0);
+        run(world, camera, HUSH_HOLD + world.choreo.plunge.fall + 2.5);
+        expect(world.choreo.glass.level).toBeGreaterThan(0.5);
+        world.dispose();
+    });
+
+    it('turns the sea a little on a T-spin that clears nothing', () => {
+        const { camera, world } = makeWorld('Low');
+        world.onSpin({ player: 0 });
+        run(world, camera, 0.5);
+        expect(world.u.vortex.value.z).toBeGreaterThan(0);
+        world.dispose();
+    });
+
+    it('lets the motes climb faster as the sea charges, without leaping when it does', () => {
+        const { camera, world } = makeWorld('Low');
+        let last = world.u.moteClock.value;
+        let most = 0;
+        const step = () => {
+            run(world, camera, 1 / 60, 1);
+            most = Math.max(most, world.u.moteClock.value - last);
+            last = world.u.moteClock.value;
+        };
+        for (let i = 0; i < 60; i++) step();
+        const calm = most;
+        expect(calm).toBeCloseTo(1 / 60, 6);
+        world.onCombo(12);
+        for (let i = 0; i < 300; i++) step();
+        // faster, but never more in a frame than its fastest rate allows
+        expect(most).toBeGreaterThan(calm * 1.5);
+        expect(most).toBeLessThan((1 / 60) * 4);
+        // a seek stands it at the clock, as a fresh sea would
+        world.seek(30);
+        expect(world.moteClock).toBe(30);
+        world.dispose();
+    });
+});
