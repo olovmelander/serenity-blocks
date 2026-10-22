@@ -107,6 +107,7 @@
     "src/ui/startup-ident-hold.js",
     "src/ui/startup-progress.js",
     "src/ui/startup-shell-clock.js",
+    "src/ui/theme-keys.js",
     "src/utils/gpu-loss-coordinator.js",
     "src/utils/page-teardown.js",
     "src/utils/photosensitivity.js",
