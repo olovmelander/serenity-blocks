@@ -122,10 +122,13 @@ export function createAir(u, stars, { motes, stars: starCount, seed = 0x5a17 }) 
         .mul(0.5).add(0.5);
     const t2 = turn.mul(turn);
     const flash = t2.mul(t2).mul(t2);
-    const wakeAt = gdClearLight(u, pos.w);
+    // (in an Fn of its own: the clear waves keep their sums in variables)
+    const wakeAt = Fn(() => gdClearLight(u, float(pos.w).toVar()))();
     const wake = gdLuma(gdPulseLight(u, pos.w)).mul(5.0).add(gdLuma(wakeAt.rgb).mul(5.0)).add(wakeAt.a.mul(0.2))
         .mul(isStar);
-    const charge = u.power.mul(0.9).add(u.surge.mul(1.6)).add(1.0);
+    // The stars flash brighter and the dust glitters harder the hotter play runs (u.heat: level, fever).
+    const charge = u.power.mul(0.9).add(u.surge.mul(1.6)).add(u.heat.x.mul(0.3)).add(u.heat.y.mul(0.6))
+        .add(1.0);
     const starLight = mix(mix(u.druzy, gdMineral(u, look.y), 0.6), vec3(1.0), 0.45)
         .mul(flash.mul(1.5).add(0.03).add(wake)).mul(charge);
     // Dust is brightest in the heart's stream, and fades at both ends of its run.
@@ -231,16 +234,19 @@ export function createWisps(u) {
     })();
 
     const part = gdPart('GeodeWisps', geometry, material, 40);
-    let cursor = 0;
+    /** When each slot's spark lands (−Infinity: never used). */
+    const lands = new Float64Array(WISP_SLOTS).fill(-Infinity);
     /**
      * Send a spark from `from` to `to` (world points), leaving at `time` and taking `flight`
-     * seconds; `bow` (a world vector) pushes the middle of the arc aside.
+     * seconds; `bow` (a world vector) pushes the middle of the arc aside. It takes the slot whose
+     * spark landed first (or lands soonest): a spark in flight is never cut while one has landed.
      */
     part.launch = ({
         from: p0, to: p1, rgb, time, flight, bow = [0, 0, 0], size = 0.3,
     }) => {
-        const slot = cursor % WISP_SLOTS;
-        cursor += 1;
+        let slot = 0;
+        for (let w = 1; w < WISP_SLOTS; w++) if (lands[w] < lands[slot]) slot = w;
+        lands[slot] = time + flight;
         const m = [(p0[0] + p1[0]) * 0.5 + bow[0], (p0[1] + p1[1]) * 0.5 + bow[1], (p0[2] + p1[2]) * 0.5 + bow[2]];
         for (let j = 0; j < WISP_TAIL; j++) {
             const i = slot * WISP_TAIL + j;
@@ -257,7 +263,7 @@ export function createWisps(u) {
     part.reset = () => {
         for (let i = 0; i < count; i++) aFrom[i * 4 + 3] = -100;
         geometry.getAttribute('aFrom').needsUpdate = true;
-        cursor = 0;
+        lands.fill(-Infinity);
     };
     part.count = count;
     return part;
@@ -340,11 +346,12 @@ export function createShards(u, count) {
     /**
      * Throw `n` shards from a world point at `time` (which may be a moment ahead), fanned round
      * the unit vector `dir`: `out` = (min, max) speed across it, `along` = (min, max) speed
-     * along it.
+     * along it. Given `now`, a shard thrown ahead that is not born yet keeps its place: the pool
+     * passes over it (a four-line clear schedules its dust up to two seconds ahead).
      */
     part.emit = ({
         x, y, z, n, rgb, time, dir: d = [0, 1, 0], out = [0.8, 4.5], along: al = [0.5, 4], life = [0.8, 1.9],
-        size = 0.035, stagger = 0,
+        size = 0.035, stagger = 0, now = Infinity,
     }) => {
         const rand = mulberry32(0x51a7 + bursts * 7919);
         bursts += 1;
@@ -357,7 +364,13 @@ export function createShards(u, count) {
         e1[2] *= inv;
         const e2 = [d[1] * e1[2] - d[2] * e1[1], d[2] * e1[0] - d[0] * e1[2], d[0] * e1[1] - d[1] * e1[0]];
         const total = Math.min(n, count);
+        let full = false;
         for (let k = 0; k < total; k++) {
+            // (once every slot is waiting to be born, the oldest go after all)
+            for (let tries = 0; !full && aBirth[(cursor % count) * 4 + 3] > now; tries++) {
+                if (tries >= count) full = true;
+                else cursor += 1;
+            }
             const i = cursor % count;
             cursor += 1;
             const a = rand() * TAU;
@@ -446,10 +459,18 @@ export function createRowBeams(u) {
     })();
     const part = gdPart('GeodeRowBeams', geometry, material, 60);
     part.uniforms = uniforms;
-    /** `ys` = screen y of each cleared row; `x0`/`x1` = the card's edges; all in screen fractions. */
+    /**
+     * `ys` = screen y of each cleared row; `x0`/`x1` = the card's edges; all in screen fractions.
+     * Blades still fading when the next fire (a cascade's next wave) carry their light into it:
+     * the new blades are never fainter than what was left.
+     */
     part.fire = (ys, x0, x1, rgb, time, strength = 1) => {
+        const frame = uniforms.frame.value;
+        const age = time - frame.z;
+        const left = age >= 0 && frame.w > 0
+            ? frame.w * Math.exp(-Math.max(0, age - BEAM_TRAVEL * 0.5) / BEAM_FADE) : 0;
         uniforms.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
-        uniforms.frame.value.set(x0, x1, time, strength);
+        uniforms.frame.value.set(x0, x1, time, Math.min(1.8, strength + left * 0.8));
         uniforms.color.value.set(rgb[0], rgb[1], rgb[2]);
     };
     part.reset = () => {
