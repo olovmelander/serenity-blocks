@@ -4,7 +4,8 @@
  * One instanced draw of the maple leaf mesh. Positions and orientations come straight from
  * FallLeafSim's typed arrays; the blades are lit as thin translucent surfaces by the shared
  * light rig, so a falling leaf flares gold as it crosses a sun shaft. Leaves spawned by
- * gameplay can also glow like embers while a long combo holds.
+ * gameplay can also glow like embers while a long combo holds, and in hot play every leaf in
+ * the air turns from gold toward crimson.
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -19,6 +20,13 @@ const MAPLE = [0x5c0a08, 0xa8200a, 0xd0560c, 0xdc9416];
 const OAK = [0x4a1c0a, 0x7c3a0c, 0xa8620f, 0xc08a1c];
 const BIRCH = [0xb8780c, 0xd8a012, 0xe8c226, 0xdcd04a];
 const RESERVE_SHARE = 0.38;
+/** How far down its colour ramp a leaf slides at a full turn of play (FallLight.uTurn). */
+const TURN_SHIFT = 0.32;
+/** What a fully turned leaf keeps of its backlit glow, per channel (deeper, redder). */
+const TURN_GLOW = Object.freeze([1.0, 0.58, 0.34]);
+/** How much less light a fully turned leaf lets through, and the colour its embers burn. */
+const TURN_DIM = 0.45;
+const TURN_EMBER = Object.freeze([2.9, 0.62, 0.08]);
 
 function ramp(stops, t) {
     const scaled = t.mul(stops.length - 1);
@@ -86,7 +94,8 @@ export class FallLeaves {
 
         const world = positionWorld;
         const view = normalize(cameraPosition.sub(world));
-        const tone = saturate(look.x.add(paint.r.sub(0.5).mul(0.2)));
+        // As play heats the leaves turn: every one slides down its ramp, gold toward crimson.
+        const tone = saturate(look.x.add(paint.r.sub(0.5).mul(0.2)).sub(light.uTurn.mul(TURN_SHIFT)));
         const leaf = mix(
             mix(ramp(MAPLE, tone), ramp(OAK, tone), saturate(look.y)),
             ramp(BIRCH, tone),
@@ -94,15 +103,20 @@ export class FallLeaves {
         );
         const vein = smoothstep(0.02, 0.09, uv().x.sub(0.5).abs()).mul(0.14).add(0.86);
         const albedo = leaf.mul(vein).mul(paint.b);
-        const glowing = pow(leaf, vec3(0.78)).mul(vec3(1.3, 1.08, 0.66));
+        // Turned leaves burn deeper when the sun is behind them: less gold, more flame.
+        const glowing = pow(leaf, vec3(0.78)).mul(vec3(1.3, 1.08, 0.66))
+            .mul(mix(vec3(1), vec3(...TURN_GLOW), light.uTurn));
         const sun = light.sunlight();
         const facing = dot(blade, light.uSunDir);
         const through = pow(saturate(dot(view, light.uSunDir).negate()), 3);
         const front = albedo.mul(saturate(facing.mul(0.6).add(0.4)));
-        const back = glowing.mul(saturate(facing.negate()).mul(0.6).add(through.mul(1.3)));
-        // Embers: leaves thrown by a long combo burn at their edges.
+        // A turned leaf lets less light through: it glows deep instead of washing out to cream.
+        const back = glowing.mul(saturate(facing.negate()).mul(0.6).add(through.mul(1.3)))
+            .mul(float(1).sub(light.uTurn.mul(TURN_DIM)));
+        // Embers: leaves thrown by a long combo burn at their edges, redder as the leaves turn.
         const flicker = sin(light.uTime.mul(9).add(look.w.mul(40))).mul(0.25).add(0.75);
-        const ember = vec3(3.2, 1.05, 0.2).mul(this.uHeat).mul(look.z).mul(flicker)
+        const ember = mix(vec3(3.2, 1.05, 0.2), vec3(...TURN_EMBER), light.uTurn).mul(this.uHeat).mul(look.z)
+            .mul(flicker)
             .mul(paint.r.mul(0.7).add(0.3));
         const lit = front.add(back).mul(light.uSunColor).mul(sun)
             .add(albedo.mul(light.ambient(blade)).mul(1.5))

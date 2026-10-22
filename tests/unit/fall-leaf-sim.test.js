@@ -412,6 +412,31 @@ describe('Fall leaf simulation', () => {
             for (const index of [0, 1]) expect(sim.state[index]).not.toBe(LEAF_IDLE);
         });
 
+        it('lets a throw that must fly take the leaf that has flown longest once every one is out', () => {
+            const sim = createSim({ count: 6, reserve: 4 });
+            const thrown = [];
+            for (let index = 0; index < 4; index++) {
+                thrown.push(sim.spawn(index, 12, 0, 0, 2, 0));
+                run(sim, 0.1, {});
+            }
+            for (const index of thrown) expect(sim.state[index]).toBe(LEAF_AIR);
+            // A continuous feed drops its leaf; an event's throw takes the oldest flier and throws it anew.
+            expect(sim.spawn(9, 5, 1, 0, 0, 0)).toBe(-1);
+            expect(sim.spawn(9, 5, 1, 0, 0, 0, 0, true)).toBe(thrown[0]);
+            expect(leaf(sim, thrown[0])).toMatchObject({
+                state: LEAF_AIR, x: 9, y: 5, z: 1,
+            });
+            expect(sim.timer[thrown[0]]).toBe(0);
+            expect(sim.spawn(9, 5, 1, 0, 0, 0, 0, true)).toBe(thrown[1]);
+            // A leaf lying on the floor still goes before any in the air.
+            const resting = createSim({ count: 6, reserve: 4 });
+            const low = resting.spawn(0, 0.03, 0, 0, -1, 0);
+            for (let index = 0; index < 3; index++) resting.spawn(index, 12, 0, 0, 2, 0);
+            run(resting, 0.2, {});
+            expect(resting.state[low]).toBe(LEAF_REST);
+            expect(resting.spawn(9, 5, 1, 0, 0, 0, 0, true)).toBe(low);
+        });
+
         it('prefers a hidden leaf to one that is lying in view', () => {
             const sim = createSim({ count: 5, reserve: 3 });
             const first = sim.spawn(0, 0.03, 0, 0, -1, 0);
@@ -556,6 +581,73 @@ describe('Fall leaf simulation', () => {
             const calm = carpet(400, 20);
             run(calm, 0.5, { front: { ...front, strength: 0.2 } });
             expect(calm.counts().rest).toBe(400);
+        });
+
+        it('carries leaves before every front crossing at once, each along its own travel', () => {
+            const sim = carpet(600, 30);
+            const fronts = [{
+                x: -15, strength: 1, width: 4, direction: 1,
+            }, {
+                x: 15, strength: 1, width: 4, direction: 1,
+            }];
+            sim.step(STEP, { fronts });
+            const under = (x) => leaves(sim, (entry) => Math.abs(entry.x - x) < 2.4);
+            for (const x of [-15, 15]) {
+                expect(under(x).length).toBeGreaterThan(10);
+                for (const entry of under(x)) {
+                    expect(entry.state).toBe(LEAF_AIR);
+                    expect(entry.vx).toBeGreaterThan(0);
+                }
+            }
+            const between = leaves(sim, (entry) => Math.abs(entry.x) < 4);
+            expect(between.every((entry) => entry.state === LEAF_REST)).toBe(true);
+            // An empty list blows nothing, and a one-front `front` still works.
+            const still = carpet(200, 10);
+            run(still, 0.3, { fronts: [] });
+            expect(still.counts().rest).toBe(200);
+        });
+
+        it('lets a storm lift the litter in rolling waves and pour the leaves of the crowns in view', () => {
+            const crowns = new Float32Array(4 * 40);
+            for (let index = 0; index < 40; index++) {
+                // Half the crowns frame the view, half stand far off in the wood.
+                const near = index % 2 === 0;
+                crowns.set([near ? -9 + (index % 5) : 30 + index, 14, near ? 2 : -60, 0], index * 4);
+            }
+            const grove = (storm) => {
+                const sim = createSim({
+                    count: 400, reserve: 0, crownPoints: crowns, seed: 9,
+                });
+                let released = 0;
+                let low = 0;
+                const was = Uint8Array.from(sim.state);
+                for (let frame = 0; frame < 60 * 12; frame++) {
+                    sim.step(STEP, { breeze: 1, storm });
+                    for (let index = 0; index < sim.count; index++) {
+                        if (sim.state[index] === LEAF_AIR && was[index] !== LEAF_AIR && sim.timer[index] === 0) {
+                            released += 1;
+                            if (sim.position[index * 3 + 2] > -10 && sim.position[index * 3 + 1] < 12) low += 1;
+                        }
+                        was[index] = sim.state[index];
+                    }
+                }
+                expectHealthy(sim);
+                return { released, low, air: sim.counts().air };
+            };
+            const calm = grove(0);
+            const storm = grove(1);
+            // The floor recycles into the crowns far faster, and most of it from the crowns in view,
+            // let go from the lower boughs.
+            expect(storm.released).toBeGreaterThan(calm.released * 2);
+            expect(storm.air).toBeGreaterThan(calm.air);
+            expect(storm.low).toBeGreaterThan(storm.released * 0.5);
+            expect(calm.low).toBeLessThan(calm.released * 0.3);
+            // A carpet under a storm with no gust is lifted where the swell rolls, not everywhere.
+            const litter = carpet(400, 20);
+            run(litter, 3, { breeze: 1, storm: 1 });
+            const lifted = 400 - litter.counts().rest;
+            expect(lifted).toBeGreaterThan(20);
+            expect(lifted).toBeLessThan(400);
         });
 
         it('lets strong gusts pick leaves off the floor where gentle wind cannot', () => {

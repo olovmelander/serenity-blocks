@@ -650,6 +650,134 @@ describe('Fall leaf director', () => {
         });
     });
 
+    describe('back-to-backs and perfect clears', () => {
+        it('lets both great trees go at once on a back-to-back, more for a stronger run', () => {
+            const left = [[-12, 14, -6], [-9, 11, 2]];
+            const right = [[9, 11, 2], [12, 15, -4]];
+            const crownPoints = new Float32Array([...left, ...right, [0, 16, -20], [1, 13, -2]]
+                .flatMap(([x, y, z], index) => [x, y, z, index % 3]));
+            const twin = (strength) => {
+                const { sim, director } = createDirector({ crownPoints });
+                const log = play(director, sim, [{
+                    kind: 'twin', strength, row: 1, duration: 1.6,
+                }], { seconds: 1.5 });
+                return { log, thrown: sim.thrown() };
+            };
+            const { log, thrown } = twin(0.75);
+            expect(thrown.length).toBeGreaterThan(60);
+            // Over a moment, not all in one frame, and with no force field of its own.
+            expect(log.filter((entry) => entry.spawned > 0).length).toBeGreaterThan(10);
+            expect(log.every((entry) => entry.fields.length === 0)).toBe(true);
+            let fromLeft = 0;
+            let fromRight = 0;
+            for (const entry of thrown) {
+                const crown = [...left, ...right].findIndex(([x, , z]) => (
+                    Math.abs(entry.x - x) <= 1.01 && Math.abs(entry.z - z) <= 1.01));
+                // Only the crowns beside the board, never the one straight behind it.
+                expect(crown).toBeGreaterThanOrEqual(0);
+                if (crown < left.length) {
+                    fromLeft += 1;
+                    expect(entry.vx).toBeGreaterThan(0);
+                } else {
+                    fromRight += 1;
+                    expect(entry.vx).toBeLessThan(0);
+                }
+                expect(entry.vy).toBeLessThan(0);
+            }
+            expect(Math.abs(fromLeft - fromRight)).toBeLessThanOrEqual(1);
+            expect(twin(1).thrown.length).toBeGreaterThan(twin(0.5).thrown.length * 1.2);
+        });
+
+        it('flings the column\'s leaves out over the grove for a moment when a perfect clear crowns it', () => {
+            const { stage, sim, director } = createDirector();
+            const log = play(director, sim, [{
+                kind: 'crown', strength: 1, row: 0.1, duration: 2.4,
+            }], { seconds: 2.3 });
+            const centre = stage.centre();
+            const bursting = log.filter((entry) => entry.fields.length > 0);
+            expect(bursting.length).toBeGreaterThan(10);
+            expect(bursting[0].age).toBeGreaterThanOrEqual(0.3);
+            expect(bursting.at(-1).age).toBeLessThanOrEqual(0.7);
+            for (const { fields } of bursting) {
+                expect(fields).toHaveLength(1);
+                expect(fields[0]).toMatchObject({ kind: 'burst', x: centre.x, z: centre.z });
+                expect(fields[0].radius).toBeGreaterThan(5);
+                expect(fields[0].up).toBeGreaterThan(0);
+            }
+            // It throws nothing of its own: it carries what the column holds.
+            expect(sim.spawn).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('the surge of play', () => {
+        it('climbs the column into the crowns and feeds it faster in a fever', () => {
+            const { director } = createDirector();
+            const column = (fever) => ({
+                ...director.apply(frameWith([], { vortex: 0.9, surge: { fever } }), 0).fields[0],
+            });
+            const calm = column(0);
+            const fevered = column(1);
+            for (const key of ['radius', 'reach', 'top', 'spin', 'lift']) {
+                expect(fevered[key], key).toBeGreaterThan(calm[key]);
+            }
+            expect(fevered.top - calm.top).toBeGreaterThan(4);
+            const fed = (fever) => {
+                const rig = createDirector();
+                for (let frame = 0; frame < 60; frame++) {
+                    rig.director.apply(frameWith([], { vortex: 0.9, surge: { fever } }), STEP);
+                }
+                return rig.sim.spawn.mock.calls;
+            };
+            expect(fed(1).length).toBeGreaterThan(fed(0).length * 1.3);
+            // The feed is continuous: it never takes a leaf from the air; an event's throw does.
+            expect(fed(1).every((call) => call[7] === false)).toBe(true);
+            const { sim, director: thrower } = createDirector();
+            play(thrower, sim, [{ kind: 'lock', strength: 0.5 }], { seconds: 0.1 });
+            expect(sim.spawn.mock.calls.length).toBeGreaterThan(0);
+            expect(sim.spawn.mock.calls.every((call) => call[7] === true)).toBe(true);
+        });
+
+        it('reports every front crossing in world x, and the strongest as the front', () => {
+            const { stage, director } = createDirector();
+            const env = director.apply(frameWith([], {
+                fronts: [
+                    { position: -1, direction: 1, strength: 0.3 },
+                    { position: 0.2, direction: 1, strength: 0.8 },
+                    { position: 1.2, direction: 1, strength: 0 },
+                ],
+            }), STEP);
+            expect(env.fronts).toHaveLength(2);
+            const across = stage.halfWidth(26);
+            expect(env.fronts.map((front) => front.x)).toEqual([-1 * across, 0.2 * across]);
+            expect(env.front).toBe(env.fronts[1]);
+            expect(env.front.strength).toBe(0.8);
+            // The list is reused, and an empty frame empties it.
+            const { fronts } = env;
+            expect(director.apply(frameWith(), STEP).fronts).toBe(fronts);
+            expect(fronts).toEqual([]);
+            expect(director.apply(frameWith()).front).toBeNull();
+        });
+
+        it('hands the storm to the leaves and calms every throw and field under reduced motion', () => {
+            const run = (motion) => {
+                const { sim, director } = createDirector();
+                const env = director.apply(frameWith([emitter({ kind: 'lock', strength: 0.6 })], {
+                    motion, storm: 0.7, gust: 0.5, fronts: [{ position: 0, direction: 1, strength: 1 }],
+                }), STEP);
+                const speed = mean(sim.thrown().map(({ vx, vy, vz }) => Math.hypot(vx, vy, vz)));
+                return {
+                    speed, power: env.fields[0].power, gust: env.gust, front: env.front.strength, storm: env.storm,
+                };
+            };
+            const full = run(undefined);
+            const calm = run(0.35);
+            expect(full.storm).toBe(0.7);
+            expect(run(1)).toEqual(full);
+            for (const key of ['speed', 'power', 'gust', 'front']) expect(calm[key], key).toBeLessThan(full[key]);
+            expect(calm.speed).toBeGreaterThan(full.speed * 0.5);
+        });
+    });
+
     describe('combos, spins and the vortex', () => {
         it('throws one ring around the board for a fresh combo, already turning', () => {
             const { stage, sim, director } = createDirector();

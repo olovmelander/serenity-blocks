@@ -5,6 +5,12 @@
  * call into this rig, so both renderer backends shade identically: a shared shadow node
  * (one static shadow map of the whole grove) says where the sun reaches, `haze()` adds the
  * same aerial perspective to every surface, and `wind()` moves bark and leaves together.
+ *
+ * Whatever MOVES the grove (the gust, the standing breeze of hot play, the wisps' wander) follows
+ * its target through a critically damped spring, so a lock or a clear makes the boughs lean in
+ * over a fraction of a second instead of jerking to a new pose in one frame. The light itself
+ * (warmth, glow) answers at once. As play heats the low sun deepens to late amber and the air
+ * clears; a perfect clear's sunburst brightens it (frame-wide, so under Reduce flashing).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -12,10 +18,42 @@ import {
     texture, uniform, vec2, vec3,
 } from 'three/tsl';
 import { gridShadowFilter } from '../shared/grid-shadow-filter.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 const SUN_AZIMUTH = THREE.MathUtils.degToRad(-23.4);
 const SUN_ELEVATION = THREE.MathUtils.degToRad(11.5);
 const TAU = Math.PI * 2;
+/** The low sun as it stands in a quiet afternoon, and the late amber a fever turns it to. */
+const SUN_COLOUR = Object.freeze([3.6, 2.15, 1.02]);
+const SUN_LATE = Object.freeze([3.9, 1.82, 0.62]);
+/** How far the colour of play turns the sun toward late amber (at a turn of 1). */
+const SUN_TURN = 0.8;
+/** How much brighter the sun burns at the height of a perfect clear's sunburst. */
+const SUN_CROWN = 0.14;
+const HAZE = 0.0095;
+/** How much the air clears in a fever (the far trees come forward, the colours hold). */
+const HAZE_CLEAR = 0.22;
+/** Spring rates (rad/s): the gust the boughs feel, the standing breeze, the wisps' wander. */
+const SPRING = Object.freeze({ gust: 9, wind: 2.6, stir: 4 });
+/** The steady breeze at rest, and how much a full standing breeze of hot play adds to it. */
+const WIND_REST = 0.3;
+const WIND_PLAY = 0.75;
+/** Gust fronts the wind carries at once, and how wide each blows (m). */
+export const FALL_LIGHT_FRONTS = 3;
+const FRONT_WIDTH = 14;
+
+/**
+ * One step of a critically damped spring toward `target`, exact for a target held over `dt`
+ * (so the same motion at any frame rate). `state` is {x, v}.
+ */
+function springTo(state, target, omega, dt) {
+    const offset = state.x - target;
+    const decay = Math.exp(-omega * dt);
+    const lead = state.v + omega * offset;
+    state.x = target + (offset + lead * dt) * decay;
+    state.v = (state.v - omega * lead * dt) * decay;
+    return state.x;
+}
 
 /** Unit vector from the scene toward the sun (behind the trees, left of the board). */
 export const FALL_SUN_DIRECTION = Object.freeze(new THREE.Vector3(
@@ -62,7 +100,7 @@ export class FallLight {
         this.tier = tier;
         this.uTime = uniform(0);
         this.uSunDir = uniform(FALL_SUN_DIRECTION.clone());
-        this.uSunColor = uniform(new THREE.Color(3.6, 2.15, 1.02));
+        this.uSunColor = uniform(new THREE.Color(...SUN_COLOUR));
         this.uSkyLight = uniform(new THREE.Color(0.2, 0.3, 0.5));
         this.uBounce = uniform(new THREE.Color(0.34, 0.2, 0.1));
         this.uZenith = uniform(new THREE.Color(0.02, 0.092, 0.21));
@@ -74,16 +112,27 @@ export class FallLight {
         this.uHazeCool = uniform(new THREE.Color(0.15, 0.22, 0.33));
         this.uHazeWarm = uniform(new THREE.Color(1.0, 0.6, 0.27));
         this.uHazeSun = uniform(tier.godrays > 0 ? 0.3 : 1);
-        this.uHaze = uniform(0.0095);
+        this.uHaze = uniform(HAZE);
         this.uGroundLevel = uniform(0);
         // Wind: a steady breeze, gusts that roll across the grove, and a travelling front.
         this.uWindDir = uniform(new THREE.Vector3(0.94, 0, 0.34));
-        this.uWind = uniform(0.3);
+        this.uWind = uniform(WIND_REST);
         this.uGust = uniform(0);
-        this.uFront = uniform(new THREE.Vector4(0, 0, 14, 0)); // x, strength, width
+        // Up to three gust fronts: x and strength of the first two, then the third and the width.
+        this.uFront = uniform(new THREE.Vector4(0, 0, 0, 0));
+        this.uFrontC = uniform(new THREE.Vector4(0, 0, FRONT_WIDTH, 0));
         // Gameplay envelopes shared by every material.
         this.uWarmth = uniform(0);
         this.uGlow = uniform(0);
+        // The glow as things that MOVE with it feel it (eased): the wisps wander wider in it.
+        this.uStir = uniform(0);
+        // How far play has turned the leaves from gold toward crimson (0..1).
+        this.uTurn = uniform(0);
+        this.frontSlots = new Float64Array(FALL_LIGHT_FRONTS * 2);
+        this.oneFront = [null];
+        this.springs = {
+            gust: { x: 0, v: 0 }, wind: { x: WIND_REST, v: 0 }, stir: { x: 0, v: 0 },
+        };
         this.noiseTexture = createNoiseTexture(rng);
 
         this.sun = new THREE.DirectionalLight(0xffffff, 1);
@@ -182,7 +231,10 @@ export class FallLight {
         const t = this.uTime;
         const along = world.x.mul(this.uWindDir.x).add(world.z.mul(this.uWindDir.z));
         const swell = sin(along.mul(0.05).sub(t.mul(0.85)).add(world.x.mul(0.021))).mul(0.5).add(0.5);
-        const front = exp(world.x.sub(this.uFront.x).div(this.uFront.z).pow2().negate()).mul(this.uFront.y);
+        const width = this.uFrontC.z;
+        const gale = (x, strength) => exp(world.x.sub(x).div(width).pow2().negate()).mul(strength);
+        const front = gale(this.uFront.x, this.uFront.y).add(gale(this.uFront.z, this.uFront.w))
+            .add(gale(this.uFrontC.x, this.uFrontC.y));
         const force = this.uWind.add(this.uGust.mul(swell.mul(0.7).add(0.65))).add(front);
         const lift = saturate(world.y.sub(base.y).div(height));
         const lean = lift.mul(lift).mul(height).mul(0.011).mul(force)
@@ -196,15 +248,58 @@ export class FallLight {
         return vec3(this.uWindDir.x.mul(push), bob.sub(limb.abs().mul(0.15)), this.uWindDir.z.mul(push));
     }
 
-    update(time, frame = {}) {
+    /**
+     * `frame` is the director's frame with the gust fronts in world x (`fronts`, or one `front`);
+     * `dt` moves the springs (none on a zero or invalid step: what moves holds still).
+     */
+    update(time, frame = {}, dt = 0) {
         this.uTime.value = Number.isFinite(time) ? Math.max(0, time) : this.uTime.value;
         const clamp01 = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
-        this.uGust.value = clamp01(frame.gust) * 1.6;
-        this.uWarmth.value = clamp01(frame.warmth);
-        this.uGlow.value = clamp01(frame.glow);
-        if (frame.front && Number.isFinite(frame.front.x)) {
-            this.uFront.value.set(frame.front.x, clamp01(frame.front.strength) * 2.2, 14, 0);
-        } else this.uFront.value.y = 0;
+        const step = Number.isFinite(dt) && dt > 0 ? Math.min(dt, 0.1) : 0;
+        const motion = Number.isFinite(frame.motion) ? clamp01(frame.motion) : 1;
+        const fever = clamp01(frame.surge?.fever);
+        const ripen = clamp01(frame.ripen);
+        const turn = clamp01(frame.turn);
+        this.uWarmth.value = clamp01(clamp01(frame.warmth) + ripen);
+        // Lanterns and wisps are called out of hiding in a fever.
+        this.uGlow.value = clamp01(clamp01(frame.glow) + 0.3 * fever);
+        this.uTurn.value = turn;
+        const { springs } = this;
+        if (step > 0) {
+            springTo(springs.gust, clamp01(frame.gust) * 1.6 * motion, SPRING.gust, step);
+            springTo(springs.wind, WIND_REST + WIND_PLAY * clamp01(frame.breeze), SPRING.wind, step);
+            springTo(springs.stir, this.uGlow.value * motion, SPRING.stir, step);
+        }
+        this.uGust.value = Math.max(0, springs.gust.x);
+        this.uWind.value = Math.max(0, springs.wind.x);
+        this.uStir.value = Math.max(0, springs.stir.x);
+        // The fronts: every one crossing, in the order given (they are summed, so order is free).
+        let { fronts } = frame;
+        if (!Array.isArray(fronts)) {
+            this.oneFront[0] = frame.front;
+            fronts = this.oneFront;
+        }
+        const slots = this.frontSlots.fill(0);
+        let used = 0;
+        for (let i = 0; i < fronts.length && used < FALL_LIGHT_FRONTS; i += 1) {
+            const front = fronts[i];
+            if (!front || !Number.isFinite(front.x)) continue;
+            slots[used * 2] = front.x;
+            slots[used * 2 + 1] = clamp01(front.strength) * 2.2;
+            used += 1;
+        }
+        this.uFront.value.set(slots[0], slots[1], slots[2], slots[3]);
+        this.uFrontC.value.set(slots[4], slots[5], FRONT_WIDTH, 0);
+        // The low sun deepens to late amber as play heats, and a perfect clear's sunburst
+        // brightens it a moment (frame-wide: Reduce flashing keeps a trace of it).
+        const late = turn * SUN_TURN;
+        const burst = 1 + SUN_CROWN * Math.max(0, Math.min(1.2, Number(frame.crown) || 0)) * flashScale();
+        this.uSunColor.value.setRGB(
+            (SUN_COLOUR[0] + (SUN_LATE[0] - SUN_COLOUR[0]) * late) * burst,
+            (SUN_COLOUR[1] + (SUN_LATE[1] - SUN_COLOUR[1]) * late) * burst,
+            (SUN_COLOUR[2] + (SUN_LATE[2] - SUN_COLOUR[2]) * late) * burst,
+        );
+        this.uHaze.value = HAZE * (1 - HAZE_CLEAR * fever);
         // Pipelines may still be compiling when the first shadow map is drawn; redraw it
         // over the first frames so no late tree is missing from the static map.
         this.shadowFrames += 1;
