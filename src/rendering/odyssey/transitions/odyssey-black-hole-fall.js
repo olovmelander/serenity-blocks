@@ -5,8 +5,7 @@
  * it and have amazing warp effects while inside." Gargantua stays CAMERA-LOCKED (a world-parked
  * hero slid out of frame on ch7's hairpin and kinks and left the chapter ~75 % black — the reason
  * the lock exists), but its ANGULAR SIZE is now authored by progress: it grows from the lock's
- * 8.3 deg radius until it swallows the frustum just past level 52, drifting to dead centre as it
- * comes. Its surface is a window onto the singularity's interior (the warp tunnel), which fades in
+ * 8.3 deg radius until it swallows the frustum, drifting to dead centre as it comes. Its surface is a window onto the singularity's interior (the warp tunnel), which fades in
  * as the shadow fills the frame — so "inside" is reached without a cut. The accretion disk's plane
  * sweeps through edge-on on the way (the disk-plane crossing), and the camera picks up a gentle,
  * progress-driven forward pull, roll and a widening FOV (frame dragging / speed), all zero at the chapter's
@@ -15,6 +14,15 @@
  *
  * Every consumer (the hero pose, the window shader, the post lens/bloom, the camera framing) reads
  * this one function, so they cannot drift out of step.
+ *
+ * THE DIVE IS AT LEVEL 49 (2026-10-22). Olov: "I dont want to see any of the path behind it before
+ * we really get into the black hole." Spread over levels 49-52, the fall left levels 50-52 and the
+ * rail between them in front of the growing hole, drawn across its face, and the journey's
+ * remaining path was laid out before the eye was inside. The whole plunge now happens on the glide
+ * from level 49 (the mouth, where chapter 6's rail runs into the hole's centre) to level 50: every
+ * stage keeps its order and shape, scaled onto a horizon just before level 50, and the path past
+ * level 49 is laid out only once the eye is inside (odyssey-path-horizon.js). The camera's pull,
+ * roll and widening FOV are unchanged: they build inside the warp and settle before the city.
  */
 
 import { seamHalfWidth, smooth01, smoother01 } from './odyssey-seam-schedule.js';
@@ -30,10 +38,15 @@ const LOCK_RIGHT = 4;
 const SHADOW_RADIUS = 132;
 const LOCK_DISTANCE = Math.hypot(LOCK_DEPTH, LOCK_UP, LOCK_RIGHT);
 
+// The plunge's schedule was authored for a horizon at local 0.44 (just past level 52); it is now
+// that schedule scaled onto 0.105, just before level 50 (local 0.14). One factor, so every stage
+// keeps its place in the plunge.
+const PLUNGE = 0.105 / 0.44;
+
 export const CH7_FALL = Object.freeze({
     /** Local ch7 progress (0 = level 49 / ch7 start, 1 = ch8 start) where the frustum is
-     * swallowed: just past level 52 (local 0.4286). */
-    horizon: 0.44,
+     * swallowed: just before level 50 (local 0.14), so the plunge is the glide from level 49. */
+    horizon: 0.44 * PLUNGE,
     /** Angular radius of the shadow at rest (the lock: 8.3 deg) and at the horizon (covers a
      * 70 deg-FOV frustum's corners with margin). */
     restAlpha: Math.asin(SHADOW_RADIUS / LOCK_DISTANCE),
@@ -44,24 +57,28 @@ export const CH7_FALL = Object.freeze({
      * level nodes (all within ~100 u) always draw in front of it. */
     nearSurface: 150,
     /** Local progress by which the hole has drifted onto the view axis. */
-    centred: 0.3,
+    centred: 0.3 * PLUNGE,
     /** The window onto the interior opens over this u range (u = local/horizon). 0.55 until the
      * 2026-10-20 overhaul: the shadow had swallowed most of the frame (local 0.3, ~50 deg) while
      * the window was still ~80 % black — a dead frame at the crossing. It now glimmers from where
-     * the shadow is ~22 deg (still shut at local 0.2), so the interior is already moving by then. */
+     * the shadow is ~22 deg (u 0.46), so the interior is already moving by then. */
     portalFrom: 0.46,
     portalTo: 1.0,
     /** The disk-plane crossing: the band's tilt sweeps through edge-on. */
     diskTiltRest: 0.10,
     diskTiltAfter: -0.14,
-    diskCrossFrom: 0.14,
-    diskCrossTo: 0.34,
+    diskCrossFrom: 0.14 * PLUNGE,
+    diskCrossTo: 0.34 * PLUNGE,
     /** The band, its fold arcs and the embers fade out once the disk has swept past. */
-    bandFadeFrom: 0.30,
-    bandFadeTo: 0.44,
+    bandFadeFrom: 0.30 * PLUNGE,
+    bandFadeTo: 0.44 * PLUNGE,
     /** The warp (streak speed / zoom) ramps up across the horizon. */
-    warpFrom: 0.36,
-    warpTo: 0.52,
+    warpFrom: 0.36 * PLUNGE,
+    warpTo: 0.52 * PLUNGE,
+    /** "Inside": from this far before the horizon, over this span (the far stars and the dome
+     * stop drawing once the window covers every pixel). */
+    insideLead: 0.04 * PLUNGE,
+    insideSpan: 0.06 * PLUNGE,
     /** Camera: a brief compression gives the attraction weight before the horizon rush. */
     fovCompressionDeg: 2.2,
     /** Frame dragging and speed stay bounded; the camera never changes logical rail progress. */
@@ -168,11 +185,25 @@ export function resolveBlackHoleFall(progress, chapterPositions) {
             * smoother01((local - F.diskCrossFrom) / (F.diskCrossTo - F.diskCrossFrom))),
         band: 1 - smooth01((local - F.bandFadeFrom) / (F.bandFadeTo - F.bandFadeFrom)),
         warp: smooth01((local - F.warpFrom) / (F.warpTo - F.warpFrom)),
-        inside: smooth01((local - (F.horizon - 0.04)) / 0.06),
+        inside: smooth01((local - (F.horizon - F.insideLead)) / F.insideSpan),
         rollDeg: camera.rollDeg,
         fovOffset: camera.fovOffset,
         camForward: camera.camForward,
     };
+}
+
+/**
+ * The path progress at which the eye is wholly inside the hole (the fall's `inside` reaches 1):
+ * the path past the mouth is laid out only from here (odyssey-path-horizon.js).
+ * @param {number[]} chapterPositions live chapter boundaries
+ * @returns {number|null} null without a usable layout
+ */
+export function resolveBlackHoleInsideProgress(chapterPositions) {
+    const ch7Start = chapterPositions?.[6];
+    const ch8Start = chapterPositions?.[7];
+    if (!Number.isFinite(ch7Start) || !Number.isFinite(ch8Start) || ch8Start <= ch7Start) return null;
+    const F = CH7_FALL;
+    return ch7Start + ((ch8Start - ch7Start) * (F.horizon - F.insideLead + F.insideSpan));
 }
 
 /**
