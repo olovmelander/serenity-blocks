@@ -418,10 +418,12 @@ export function createTraffic(u, count, opts = {}) {
 
     const cross = lane.x;
     const dir = lane.y;
-    const speed = seed.y.mul(16.0).add(26.0).mul(u.power.mul(0.5).add(1.0));
+    // Resting speed; `u.traffic` is the travel clock the world integrates (it runs faster as the
+    // district charges), so a change of pace never jumps a car along its lane.
+    const speed = seed.y.mul(16.0).add(26.0);
     const canyonLen = CANYON_NEAR - CANYON_FAR;
-    const zCanyon = fract(seed.x.add(u.time.mul(speed).mul(dir).div(canyonLen))).mul(canyonLen).add(CANYON_FAR);
-    const xCross = fract(seed.x.add(u.time.mul(speed.mul(1.4)).mul(dir).div(CROSS_HALF * 2))).mul(CROSS_HALF * 2).sub(CROSS_HALF);
+    const zCanyon = fract(seed.x.add(u.traffic.mul(speed).mul(dir).div(canyonLen))).mul(canyonLen).add(CANYON_FAR);
+    const xCross = fract(seed.x.add(u.traffic.mul(speed.mul(1.4)).mul(dir).div(CROSS_HALF * 2))).mul(CROSS_HALF * 2).sub(CROSS_HALF);
     const bob = sin(u.time.mul(0.7).add(seed.z.mul(40.0))).mul(0.5);
     const centre = vec3(
         mix(lane.z, xCross, cross),
