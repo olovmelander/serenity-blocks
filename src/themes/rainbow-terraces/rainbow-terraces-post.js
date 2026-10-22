@@ -279,14 +279,16 @@ export class RainbowTerracesPost {
         }
         if (gradeShadow) this.uGradeShadow.value.set(gradeShadow[0], gradeShadow[1], gradeShadow[2]);
         if (gradeLight) this.uGradeLight.value.set(gradeLight[0], gradeLight[1], gradeLight[2]);
-        if (flare) this.uFlare.value.set(flare[0], flare[1], flare[2], flare[3]);
+        // The flare lift and the hush's dip are the world's flashes (governed there): Reduce
+        // flashing (ADR-0021) scales them as it does the shared flash.
+        if (flare) this.uFlare.value.set(flare[0], flare[1], flare[2], flare[3] * flashScale());
         if (flareTint) this.uFlareTint.value.set(flareTint[0], flareTint[1], flareTint[2]);
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (iris !== undefined) this.uIris.value = iris;
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;
         if (time !== undefined) this.uTime.value = time;
-        if (hush !== undefined) this.uHush.value = hush;
+        if (hush !== undefined) this.uHush.value = hush * flashScale();
     }
 
     /**
