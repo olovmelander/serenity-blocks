@@ -34,8 +34,9 @@
  *
  * THE FALL (2026-10-02): the hole no longer floats beside the journey - the traveller falls into
  * it. Still camera-locked (it can never leave the frame), but its angular size is authored by
- * progress (transitions/odyssey-black-hole-fall.js): it grows until it swallows the frustum just
- * past level 52, drifting onto the view axis; the disk plane sweeps through edge-on; and the
+ * progress (transitions/odyssey-black-hole-fall.js): it grows until it swallows the frustum, on the
+ * glide from level 49 to level 50 (the dive, 2026-10-22), drifting onto the view axis; the disk
+ * plane sweeps through edge-on; and the
  * shadow's surface becomes a window onto the singularity's interior - the warp tunnel
  * (createSingularityWindowTSL) - so the eye is "inside" without a cut.
  */

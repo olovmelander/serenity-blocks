@@ -21,11 +21,22 @@ camera framing, so they cannot drift apart. Local ch7 progress (0 = level 49, 1 
 
 | Beat | Local | What happens |
 |---|---|---|
-| The pull | 0 → 0.30 | angular radius 8.3° → ~35° (u^1.9), eases onto the view axis by 0.30 |
-| Disk-plane crossing | 0.14 → 0.34 | the band's tilt sweeps +0.10 → −0.14 rad through edge-on: a razor line across the hole |
-| The horizon | → 0.44 (just past level 52) | the shadow reaches 72° (wider than the frame's corners); its surface has become the window onto the interior (portal 0.55 → 1 of u) |
-| Inside — the warp | 0.44 → 0.82 | the warp tunnel fills the view; band, fold arcs and embers gone; void dome and far stars stop drawing |
+| The pull | 0 → 0.072 | angular radius 8.3° → ~35° (u^1.9), eases onto the view axis by 0.072 |
+| Disk-plane crossing | 0.033 → 0.081 | the band's tilt sweeps +0.10 → −0.14 rad through edge-on: a razor line across the hole |
+| The horizon | → 0.105 (just before level 50, at 0.14) | the shadow reaches 72° (wider than the frame's corners); its surface has become the window onto the interior (portal 0.46 → 1 of u) |
+| Inside — the warp | 0.11 → 0.82 | the warp tunnel fills the view; band, fold arcs and embers gone; void dome and far stars stop drawing |
 | The exit | 7→8 window (0.82 → 1 and on) | the vanishing point glides onto the Retrosun and the tunnel's mouth opens from it, the city and its sun through it |
+
+**The dive is at level 49 (2026-10-22).** Olov: *"I dont want to see any of the path behind it
+before we really get into the black hole."* Spread over levels 49–52 (horizon at local 0.44), the
+fall left levels 50–52 and the rail between them in front of the growing hole, drawn across its
+face, and the rest of the journey was laid out before the eye was inside. The whole plunge now
+happens on the glide from level 49 (the mouth: chapter 6's rail runs into the hole's centre) to
+level 50. Every stage keeps its order and shape, scaled by one factor (0.105 / 0.44) onto a
+horizon just before level 50. The path past level 49 is laid out only once the eye is wholly
+inside (`resolveBlackHoleInsideProgress`, read by `odyssey-path-horizon.js`), finishing at level
+50, so levels 50 onward all lie inside the tunnel. The camera's pull, roll and widening FOV are
+unchanged: they build inside the warp and settle before the city.
 
 **Keeping the rail visible:** the hero recedes along the view axis just enough to keep the
 shadow's near surface ≥ 150 u from the eye (`resolveBlackHoleFallDepth`), and is scaled so it
@@ -76,7 +87,8 @@ Cost per pixel: one atan2 (+1 for the mouth), two hashes, two lattice fetches, o
   through ch7 (`--seam=7-8 --offsets=…`) stays within the gate (approach 14 → 34, the black frame
   dip 22, inside 30–46, exit 45 → city 32). No console errors.
 - `tests/unit/odyssey-black-hole-fall.test.js` pins: at rest before ch7, monotone growth, inside
-  by level 52, near surface ≥ 150 u, the disk crossing, roll/FOV zero at both seams, reduced motion.
+  before level 50 (the dive at level 49, since 2026-10-22), near surface ≥ 150 u, the disk
+  crossing, roll/FOV zero at both seams, reduced motion.
 
 ## 5. Performance
 
