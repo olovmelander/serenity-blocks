@@ -707,6 +707,8 @@ export function createVeil(u, count) {
         col.addAssign(glow(u.lanternAt, u.lantern, 0.35).mul(1.8)
             .add(glow(u.spiritAt, u.spirit, 0.5).mul(0.9))
             .add(glow(u.orbAt, u.heart, 0.12).mul(1.6))
+            // (The tarnfire: in a fever the mist on the water glows with the heart's gold.)
+            .add(glow(u.heartAt, u.heart, 0.012).mul(u.heat.y.mul(0.9)))
             .add(glow(u.poolL, u.poolColL, 0.3).mul(0.5))
             .add(glow(u.poolR, u.poolColR, 0.3).mul(0.5))
             .mul(u.breath));
