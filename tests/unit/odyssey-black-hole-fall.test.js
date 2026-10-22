@@ -38,7 +38,7 @@ describe('the ch7 fall schedule', () => {
         expect(resolveBlackHoleFallDepth(before.alpha)).toBe(CH7_FALL_LOCK.depth);
     });
 
-    it('grows monotonically and swallows the frame just past level 52', () => {
+    it('grows monotonically and swallows the frame on the glide from level 49 to level 50', () => {
         let last = -Infinity;
         for (let i = 0; i <= 100; i += 1) {
             const { alpha } = resolveBlackHoleFall(at(i / 100), positions);
@@ -50,8 +50,11 @@ describe('the ch7 fall schedule', () => {
         expect(horizon.alpha * (180 / Math.PI)).toBeGreaterThan(60);
         expect(horizon.portal).toBe(1);
         expect(horizon.inside).toBeGreaterThan(0.5);
-        // Level 52 sits at local 0.4286: still outside the window just before it.
-        expect(resolveBlackHoleFall(at(0.2), positions).portal).toBe(0);
+        // The dive is at level 49 (local 0): the window is shut there and the eye wholly inside
+        // before level 50 (local 0.14), so no level waits in front of the growing hole.
+        expect(resolveBlackHoleFall(at(0), positions).portal).toBe(0);
+        expect(resolveBlackHoleFall(at(0.04), positions).portal).toBe(0);
+        expect(resolveBlackHoleFall(at(0.135), positions).inside).toBe(1);
     });
 
     it('never brings the shadow near surface closer than the rail and nodes', () => {
@@ -64,10 +67,10 @@ describe('the ch7 fall schedule', () => {
     });
 
     it('crosses the disk plane: the band tilt passes through edge-on, then the band fades', () => {
-        expect(resolveBlackHoleFall(at(0.05), positions).diskTilt).toBeGreaterThan(0);
-        expect(resolveBlackHoleFall(at(0.4), positions).diskTilt).toBeLessThan(0);
-        expect(resolveBlackHoleFall(at(0.2), positions).band).toBe(1);
-        expect(resolveBlackHoleFall(at(0.5), positions).band).toBe(0);
+        expect(resolveBlackHoleFall(at(0.012), positions).diskTilt).toBeGreaterThan(0);
+        expect(resolveBlackHoleFall(at(0.095), positions).diskTilt).toBeLessThan(0);
+        expect(resolveBlackHoleFall(at(0.05), positions).band).toBe(1);
+        expect(resolveBlackHoleFall(at(0.12), positions).band).toBe(0);
     });
 
     it('compresses during attraction, then pulls forward and holds a wider view inside the warp', () => {
@@ -76,10 +79,12 @@ describe('the ch7 fall schedule', () => {
         expect(attraction.fovOffset).toBeLessThan(-1.5);
         expect(attraction.camForward).toBeGreaterThan(0);
 
-        const plunge = resolveBlackHoleFallCamera(CH7_FALL.horizon, exit);
-        expect(plunge.fovOffset).toBeGreaterThan(8);
-        expect(plunge.camForward).toBeGreaterThan(5);
-        expect(plunge.rollDeg).toBeGreaterThan(12);
+        // The rush builds inside the warp (the dive itself is on the glide from level 49): by local
+        // 0.44 the view has pulled forward, widened and rolled.
+        const rush = resolveBlackHoleFallCamera(0.44, exit);
+        expect(rush.fovOffset).toBeGreaterThan(8);
+        expect(rush.camForward).toBeGreaterThan(5);
+        expect(rush.rollDeg).toBeGreaterThan(12);
 
         const inside = resolveBlackHoleFallCamera(exit * 0.62, exit);
         expect(inside.rollDeg).toBe(CH7_FALL.rollPeakDeg);
