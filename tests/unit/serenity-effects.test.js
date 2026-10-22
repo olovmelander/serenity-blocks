@@ -7,8 +7,8 @@ import { COLORS, COLS } from '../../src/core/constants.js';
 import { calculateLineClearScore } from '../../src/core/scoring.js';
 import { eventBus, EVENTS } from '../../src/events/event-bus.js';
 import {
-    B2B_MS, BREAK_MS, EFFECTS, EFFECT_GROUPS, FLOOR_ROW, LOCK_MS, SOURCE, SerenityEffects, TOUR_REST_MS,
-    WAVE_MS, buildEffect, createEffectContext, effectDuration, rowsFromFloor,
+    B2B_MS, BREAK_MS, EFFECTS, EFFECT_GROUPS, FEVER_MS, FLOOR_ROW, LOCK_MS, RUSH_MS, SOURCE, SerenityEffects,
+    TOUR_REST_MS, WAVE_MS, buildEffect, createEffectContext, effectDuration, rowsFromFloor,
 } from '../../src/ui/serenity-mode/serenity-effects.js';
 
 /**
@@ -43,8 +43,8 @@ function comboAtEachClear(steps, tracker = new ComboTracker()) {
 }
 
 describe('the effects', () => {
-    it('are fourteen, each with its own id, in a known group', () => {
-        expect(EFFECTS).toHaveLength(14);
+    it('are sixteen, each with its own id, in a known group', () => {
+        expect(EFFECTS).toHaveLength(16);
         expect(new Set(EFFECTS.map((effect) => effect.id)).size).toBe(EFFECTS.length);
         const groups = EFFECT_GROUPS.map((group) => group.id);
         EFFECTS.forEach((effect) => {
@@ -169,6 +169,42 @@ describe('the effects', () => {
         expect(first[1].payload.level).toBe(2);
         const second = build('level-up', ctx);
         expect(second.find((step) => step.type === 'levelUp').payload.level).toBe(3);
+    });
+
+    it("rush: twenty hard drops at a quick hand's pace, clears between plain pieces, a quad last", () => {
+        const steps = build('rush');
+        const locks = steps.filter((step) => step.type === 'pieceLock');
+        expect(locks).toHaveLength(20);
+        expect(locks.map((step) => step.at)).toEqual(locks.map((_, n) => n * RUSH_MS));
+        // Every lock is hard-dropped, in the same tick and just before it.
+        locks.forEach((step) => {
+            const before = steps[steps.indexOf(step) - 1];
+            expect(before).toMatchObject({ type: 'hardDrop', at: step.at });
+            expect(before.payload.piece).toBe(step.payload.piece);
+        });
+        const clears = steps.filter((step) => step.type === 'lineClear');
+        expect(clears.map((step) => step.payload.lineCount)).toEqual([1, 2, 1, 2, 4]);
+        // Plain pieces between: the pace builds, not a combo.
+        expect(comboAtEachClear(steps)).toEqual([1, 1, 1, 1, 1]);
+    });
+
+    it('fever: twelve clearing locks in a row, counted one to twelve, to a perfect clear', () => {
+        const steps = build('fever');
+        expect(comboAtEachClear(steps.filter((step) => step.type !== 'lineClear' || step.payload.cascadeCount === 1)))
+            .toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+        const locks = steps.filter((step) => step.type === 'pieceLock');
+        expect(locks).toHaveLength(12);
+        locks.forEach((step) => expect(steps[steps.indexOf(step) - 1].type).toBe('hardDrop'));
+        // A T-spin, a four-wave cascade, and the board emptied at the end.
+        const tspin = steps.find((step) => step.type === 'tspin');
+        expect(steps[steps.indexOf(tspin) - 1].type).toBe('lineClear');
+        const waves = steps.filter((step) => step.type === 'combo').map((step) => step.payload.comboCount);
+        expect(waves).toEqual([2, 3, 4]);
+        expect(steps[steps.length - 1].type).toBe('perfectClear');
+        expect(steps[steps.length - 1].at - steps[steps.length - 2].at).toBe(WAVE_MS);
+        // The pace of a chain: a lock every FEVER_MS, the cascade's waves within its step.
+        const gaps = locks.slice(1).map((step, n) => step.at - locks[n].at);
+        expect(gaps.filter((gap) => gap === FEVER_MS).length).toBe(10);
     });
 });
 
