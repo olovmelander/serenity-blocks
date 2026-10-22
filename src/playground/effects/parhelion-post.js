@@ -171,6 +171,12 @@ export class ParhelionPost {
         this.uBloomKick = kick;
     }
 
+    /** The iris (1 at rest): closes a little as the display heats; writes only when it moves. */
+    setExposure(exposure) {
+        const value = Number.isFinite(exposure) ? exposure : 1;
+        if (Math.abs(this.uExposure.value - value) > WRITE_EPS) this.uExposure.value = value;
+    }
+
     render() {
         this.pipeline.render();
     }

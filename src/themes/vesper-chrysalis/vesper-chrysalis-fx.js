@@ -407,19 +407,38 @@ export function createBlades(u) {
     mesh.material = material;
 
     const part = vcPart('VesperChrysalisBlades', geometry, material, 80, { mesh });
+    /** What blade `i` still has to give at `time`: a blade not yet out counts in full. */
+    const left = (i, time) => {
+        const age = time - rows[i].w;
+        if (age < 0) return tints[i].w;
+        return age < BLADE_LIFE ? tints[i].w * Math.exp(-age * 4.2) : 0;
+    };
+    /** The slots the last fire took (a scratch list: read it before the next fire). */
+    const taken = [];
+    part.taken = taken;
     /**
+     * Each row takes the slot whose blade has least left to give, so a clear (or a cascade's next
+     * wave) never cuts the blades still flying from the one before.
      * @param {number[]} ys     screen y of each cleared row (fractions, y down)
      * @param {number} x0       the card's left edge
      * @param {number} x1       the card's right edge
      */
     part.fire = (ys, x0, x1, rgb, time, strength = 1) => {
-        for (let i = 0; i < BLADE_SLOTS; i++) {
-            if (i < ys.length) {
-                rows[i].set(ys[i], x0, x1, time + i * 0.035);
-                tints[i].set(rgb[0], rgb[1], rgb[2], strength);
-            } else {
-                rows[i].w = -100;
+        taken.length = 0;
+        for (let k = 0; k < ys.length && k < BLADE_SLOTS; k++) {
+            let pick = -1;
+            let least = Infinity;
+            for (let i = 0; i < BLADE_SLOTS; i++) {
+                if (taken.includes(i)) continue;
+                const energy = left(i, time);
+                if (energy < least) {
+                    least = energy;
+                    pick = i;
+                }
             }
+            taken.push(pick);
+            rows[pick].set(ys[k], x0, x1, time + k * 0.035);
+            tints[pick].set(rgb[0], rgb[1], rgb[2], strength);
         }
     };
     part.reset = () => {
@@ -465,9 +484,11 @@ export function createFireflies(u, count) {
         );
         const view = cameraViewMatrix.mul(vec4(aFly.xyz.add(wander), 1.0));
         const dist = max(view.z.negate(), 1.0);
-        // It shows its light in slow pulses, each firefly to its own count.
+        // It shows its light in slow pulses, each firefly to its own count; they burn brighter
+        // with the chain, and as play heats (u.heat.x: nothing under casual play) and in a fever.
         const pulse = sin(t.mul(s.mul(0.9).add(0.7)).add(s.mul(90.0))).mul(0.5).add(0.5);
-        vGlow.assign(pulse.mul(pulse).mul(pulse).mul(u.power.mul(0.8).add(1.0)));
+        vGlow.assign(pulse.mul(pulse).mul(pulse).mul(u.power.mul(0.8).add(u.heat.x.mul(0.7)).add(u.heat.y.mul(0.9))
+            .add(1.0)));
         const size = float(0.27).mul(dist.div(20.0).pow(0.5));
         const q = positionGeometry.xy.mul(size);
         return cameraProjectionMatrix.mul(vec4(view.x.add(q.x), view.y.add(q.y), view.z, 1.0));

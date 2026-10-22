@@ -12,7 +12,8 @@
  *    flash in forward scatter. Pixel-floored so they never vanish into sub-pixel speckle.
  *  - Spindrift: veils of sand torn off the crests by the wind, seated on real crest points found
  *    on the CPU dune field, streaming downwind and glowing gold where they are backlit.
- *  - Dust geysers: columns of gold dust and sand (line clears), slot-pooled.
+ *  - Dust geysers: columns of gold dust and sand (line clears), slot-pooled (a new column takes
+ *    the slot with the least column left, so a clear never yanks a rising one away).
  *
  * Blending: premultiplied "over" (One, OneMinusSrcAlpha) for every system, so a grain can be
  * alpha dust and additive glow at once — rgb·a + emission, a.
@@ -80,7 +81,8 @@ export const FX_TIERS = Object.freeze({
     },
 });
 
-export const BLOW_SLOTS = 3;
+/** Geyser columns that can stand at once: a cascade's waves and a perfect clear's ring of six. */
+export const BLOW_SLOTS = 6;
 
 function quadGeometry(count, seed, extra = null) {
     const geometry = new THREE.InstancedBufferGeometry();
@@ -557,14 +559,15 @@ export function createSpindrift(shared, field, count) {
     });
     const material = fxMaterial('shifting-sands-spindrift');
     const {
-        uTime, uWind, uGust, uWindDir, noiseTex, atmosphere,
+        uTime, uWind, uGust, uWindDir, uFlow, uHeat, noiseTex, atmosphere,
     } = shared;
     const seed = attribute('aSeed', 'vec4');
     const crest = attribute('aCrest', 'vec4');
 
     const W = normalize(vec3(uWindDir.x, -0.08, uWindDir.y));
     const C = crest.xyz.add(vec3(0.0, 0.6, 0.0));
-    const len = seed.x.mul(70.0).add(40.0).mul(crest.w.div(30.0).add(0.4));
+    // A storm tears longer veils off the crests: the crests smoke.
+    const len = seed.x.mul(70.0).add(40.0).mul(crest.w.div(30.0).add(0.4)).mul(uHeat.z.mul(0.6).add(1.0));
     const hgt = seed.y.mul(7.0).add(4.0).mul(crest.w.div(30.0).add(0.5));
     const toCam = normalize(cameraPosition.sub(C));
     // Axial billboard: long axis along the wind, the sheet turned to face the camera.
@@ -581,7 +584,8 @@ export function createSpindrift(shared, field, count) {
         const vSeed = vertexStage(seed);
         const vP = vertexStage(worldPos);
         const vLen = vertexStage(len);
-        const flow = uTime.mul(uWind.mul(1.2).add(0.4).add(uGust.mul(2.0)));
+        // The phase the world integrates (speed · dt): a gust quickens the streaks, never jumps them.
+        const flow = uFlow.y;
         const n1 = ssTexNoise(noiseTex, vec2(
             st.x.mul(vLen.mul(0.06)).sub(flow.mul(1.6)),
             st.y.mul(5.0).add(vSeed.z.mul(50.0)),

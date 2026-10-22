@@ -53,16 +53,10 @@ import {
     rgb,
     towerHalfWidth,
 } from './nimbus-veil-tsl.js';
-import { SEA_HAZE } from './nimbus-veil-cloudsea.js';
+import { SEA_HAZE, ringLight } from './nimbus-veil-cloudsea.js';
 
 /** The billows' soft union sharpness (1 / world units): creases a few units wide. */
 const UNION_K = 0.28;
-
-/** A light-wave slot P = (radius, 1/width, energy, 0) at distance `dist`, three times as wide. */
-const towerWave = (dist, P) => {
-    const d = dist.sub(P.x).mul(P.y).div(3.0);
-    return exp(d.mul(d).negate()).mul(P.z);
-};
 
 /**
  * A tower's billows in its card frame: [x across (world units, + = the card's right), y up,
@@ -255,7 +249,9 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
         const sunCol = rgb(0xffc48c, 1.85);
         // The shade is the sky's light scattered inside the cloud: violet low, lavender-blue
         // where the form turns up to the zenith and higher up the tower.
-        const shade = mix(rgb(0x6a62a2, 0.4), rgb(0x9496d8, 0.52), clamp(N.y.mul(0.5).add(height.mul(0.6)), 0.0, 1.0));
+        // The violet deepens as the crowns burn (u.blaze.y), so the fire reads against it.
+        const shade = mix(rgb(0x6a62a2, 0.4), rgb(0x9496d8, 0.52), clamp(N.y.mul(0.5).add(height.mul(0.6)), 0.0, 1.0))
+            .mul(float(1.0).sub(min(u.blaze.y, 1.2).mul(0.25)));
         // Creases and the deep base see less sky.
         const ao = mix(float(0.62), float(1.0), smoothstep(0.0, H.mul(0.05), top))
             .mul(mix(float(0.7), float(1.0), smoothstep(0.0, 0.35, height)));
@@ -273,8 +269,20 @@ export function createCumulus(u, { rand, towers, billowsPerTower }) {
         // band is widened here so the whole heap glows for a moment, not a sliver of it.
         const rel = positionWorld.sub(cameraPosition);
         const dist = sqrt(rel.x.mul(rel.x).add(rel.z.mul(rel.z)));
-        const wave = towerWave(dist, u.ring0).add(towerWave(dist, u.ring1));
-        col.addAssign(sunCol.mul(wave).mul(diff.mul(0.5).add(0.35)));
+        // Overlapping bands light a tower no more than about one does; a hot band lights the
+        // faces that turn to the sun and leaves the shade side violet.
+        const wave = ringLight(u.rings, dist, 2.5, 0.45, 0.35);
+        col.addAssign(mix(sunCol, rgb(0xff9450, 1.9), wave.heat).mul(wave.sum)
+            .mul(diff.mul(0.5).add(float(0.35).sub(wave.heat.mul(0.22)))));
+        // Hot play sets the crowns burning (u.blaze.y): the outline turns to a burning amber
+        // lining and the faces that turn to the sun catch fire; the rest stays violet.
+        const upper = smoothstep(0.35, 0.95, height);
+        const fire = rgb(0xff7438, 2.0).mul(thin).add(rgb(0xff8c4e, 0.8).mul(smoothstep(0.45, 0.85, diff)));
+        col.addAssign(fire.mul(upper).mul(u.blaze.y));
+        // A perfect clear (u.blaze.w) lights every crown at once: its top and its outline.
+        col.addAssign(rgb(0xffa458, 1.3).mul(smoothstep(0.5, 1.0, height))
+            .mul(diff.mul(0.7).add(thin.mul(0.8)).add(0.1))
+            .mul(u.blaze.w));
         col.mulAssign(float(1.0).add(u.seaGlow.mul(0.15)));
         const lit = nvApplyHaze(col, rel, float(SEA_HAZE * 0.9), u.sunPulse);
         return vec4(lit, alpha.mul(0.98));

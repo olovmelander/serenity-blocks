@@ -17,14 +17,23 @@
  *   clear    the cluster breathes out: one front of light per line runs down through the
  *            nursery, flaring every lit edge it crosses; the cleared rows leave the card as
  *            blades of light; and as the front reaches each star the board kindled, the dust
- *            round it boils away and it burns free, firing its jets again.
+ *            round it boils away and it burns free, firing its jets again. In a chain, or under a
+ *            quick hand, a clear keeps the stars instead and they burn brighter clear by clear,
+ *            so the pillars fill with the colours played; the chain's end, a great star or a
+ *            perfect clear frees them all at once. A cascade's waves each go deeper than the
+ *            last; a back-to-back sends twin fronts in the cluster's own light.
  *   combo    each step of a chain winds the gas into a vortex round the board, in the colour of
- *            the piece that made it, and the flow and the cluster's light quicken with it. When
- *            the chain breaks the vortex lets go.
- *   four     the nursery holds its breath, then a great star is born in the head of the tallest
- *            pillar: a flash, a front that crosses the frame, jets that span it, a hole blown in
- *            the dust that heals over the next half minute.
- *   T-spin   the whole flow twists round the board and springs back.
+ *            the piece that made it (one arm per step: the vortex keeps the chain's last four
+ *            colours), and the flow and the cluster's light quicken with it. When the chain breaks,
+ *            or a perfect clear crowns it, the vortex lets go.
+ *   four     the nursery holds its breath (as deep as play is cold), then a great star is born
+ *            in the head of the tallest pillar: a flash, a front that crosses the frame, jets that
+ *            span it, a hole blown in the dust that heals over the next half minute. A great star
+ *            while that hole is open is born in it and opens it wider. A perfect clear that
+ *            settles after its quad crowns the great star (never a second one).
+ *   T-spin   the whole flow twists round the board and springs back (a little, for one that
+ *            clears nothing).
+ *   heat     how hot play runs (the shared surge) builds the whole nursery up: see `surge`.
  *   level    the nursery moves one palette along its line of six, and a front in the new
  *            colours leaves the cluster.
  *   time     by itself the palette drifts along the same line, one step every PALETTE_STEP
@@ -43,6 +52,8 @@ import {
     BIRTH_LIFE,
     BIRTH_ROWS,
     BIRTH_SLOTS,
+    CONSTELLATION_HOLD,
+    CONSTELLATION_MERGE,
     DEG,
     FLIGHT,
     FLIGHT_DROP,
@@ -62,6 +73,7 @@ import {
     PALETTE_HOME,
     SHAPES,
     SHAPE_KEYS,
+    VORTEX_ARMS,
     approach,
     birthDone,
     birthLight,
@@ -99,6 +111,8 @@ import {
 } from './nebula-flow-composition.js';
 import { NEBULA_FLOW_TETROMINOS } from './nebula-flow-tetrominos.js';
 import { cameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /** The rest camera (the nursery is drawn in screen space; the camera only frames the sprites' pass). */
 export const REST_RIG = Object.freeze({
@@ -127,6 +141,26 @@ const TWIST_DAMPING = 3.4;
 const FRAME_MARGIN = 0.012;
 /** The fastest the palette walks along its line (places a second): a jump of levels walks, never strobes. */
 const PALETTE_WALK = 0.8;
+/**
+ * How hot play must run (the surge's level) for a clear outside a chain to keep the stars it
+ * would free: a quick, steady hand (casual play sits near 0.1–0.2 and frees them as it always has).
+ */
+const KEEP_HEAT = 0.35;
+/** A great star's hole that still shows this wide (nursery units) is fed by the next great star, not closed. */
+const HOLE_FEED = 0.012;
+/** The widest a great star's hole grows, fed quad after quad (nursery units). */
+const HOLE_MAX = 0.42;
+/** A great star this young is crowned by a perfect clear that settles after its quad. */
+const CROWN_WINDOW = 2.5;
+/** The most the vortex may turn (radians at the board): a chain's steps plus a cascade's waves. */
+const VORTEX_MAX = 7.5;
+
+/**
+ * How hot play runs, from the shared surge's level: 0 through casual play (a level under ~0.12
+ * changes nothing, so the nursery at rest and under an easy hand is what it always was), 1 at
+ * full heat.
+ */
+const warmth = (level) => Math.max(0, level - 0.12) / 0.88;
 
 function emptyBirth() {
     return {
@@ -194,6 +228,10 @@ export class NebulaFlowWorld {
         this._n = [0, 0];
         this._m = [0, 0];
         this._palette = paletteAt(0);
+        this._hole = [0, 0];
+        this._crown = [1, 1, 1];
+        /** The great star last born (a perfect clear that settles after its quad crowns it). */
+        this.lastGreat = null;
         this._post = {
             flash: 0,
             flashTint: [1, 1, 1],
@@ -208,6 +246,50 @@ export class NebulaFlowWorld {
         this.fronts = Array.from({ length: FRONT_SLOTS }, () => ({
             born: -1e5, x: 0, y: 0, speed: FRONT_SPEED, width: 0.06, rgb: [1, 1, 1], strength: 0, life: FRONT_LIFE,
         }));
+        /**
+         * Every event's light ACCUMULATES (src/themes/shared/swell.js): a new hit adds to what is
+         * still lit and never restarts it, so a single after a great star only lifts its flash,
+         * and a chain's steps hold the vortex's glow instead of pulsing it.
+         *   flash, kick   the post's frame-wide flash and its fringe and camera nudge
+         *   bloom         the bloom's swell on a clear, a step and a great star
+         *   breath        the cluster breathing out on a clear: its light, the gas's speed, the shafts
+         *   kindle        the stars a chain keeps in the dust, brightening clear by clear
+         *   glow          the vortex's glow, one hit per step of the chain
+         *   wind          a cascade's waves winding the gas round the board, wave on wave
+         *   twin          back-to-back: the cluster's twin fronts and the shafts they pour
+         */
+        this.swell = {
+            flash: new Swell({ release: 0.3, ceiling: 1, knee: 0.6 }),
+            kick: new Swell({ release: 0.25, ceiling: 1.2, knee: 0.8 }),
+            bloom: new Swell({ release: 1.4, ceiling: 0.6, knee: 0.4 }),
+            breath: new Swell({ release: 2.2, ceiling: 1.6, knee: 1 }),
+            kindle: new Swell({
+                attack: 0.2, release: 2.6, ceiling: 1.4, knee: 0.9,
+            }),
+            glow: new Swell({
+                attack: 0.12, release: 2.4, ceiling: 0.6, knee: 0.4,
+            }),
+            wind: new Swell({
+                attack: 0.25, release: 1.8, ceiling: 2.4, knee: 1.4,
+            }),
+            twin: new Swell({
+                attack: 0.1, release: 3, ceiling: 1.6, knee: 1,
+            }),
+        };
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js), sampled once a frame: the
+         * nursery leans in the longer the hands stay quick. Warm: the stars the board kindles are
+         * kept in the dust, glowing brighter clear by clear, and the pillars' rims begin to burn.
+         * Hot: the rims burn, the gas boils off faster, the shafts pour down. Fever: the chain's
+         * vortex wears every colour played and spreads over the cavity while the cluster's light
+         * holds its place (arms of colour over a deep cavity), the kept stars blaze in their
+         * colours, until a great star, a perfect clear or the chain's end sets them all free.
+         */
+        this.surge = new GameplaySurge();
+        this.heat = this.surge.sample(-1e5);
+        /** The vortex's arms: the colours of the chain's last steps, each easing to where it is aimed. */
+        this.arms = Array.from({ length: VORTEX_ARMS }, () => [1, 1, 1]);
+        this.armAims = Array.from({ length: VORTEX_ARMS }, () => [1, 1, 1]);
         this.resetState(0);
     }
 
@@ -222,21 +304,39 @@ export class NebulaFlowWorld {
          */
         this.levelBase = 0;
         this.levelPlace = 0;
+        /** The swells as of the last frame (the post state and the tests read these). */
         this.flash = 0;
         this.flashTint = [1, 1, 1];
         this.kick = 0;
-        this.bloomBoost = 0;
-        this.surge = 0;
         this.shine = 1;
+        Object.values(this.swell).forEach((s) => s.reset());
+        this.surge.reset();
+        this.heat = this.surge.sample(-1e5);
+        /** What the kept stars burn at, over what they burn at alone (1 at rest). */
+        this.emberGain = 1;
         this.vortex = 0;
         this.vortexGlow = 0;
+        /** The colour of the chain's newest step (its arm is aimed at it). */
         this.vortexTint = [1, 1, 1];
+        this.armCursor = 0;
+        this.armTurn = 0;
+        this.arms.forEach((a) => a.fill(1));
+        this.armAims.forEach((a) => a.fill(1));
+        /** A perfect clear lets the chain's whirl go into its light, until the chain steps on. */
+        this.unwound = false;
         this.twist = 0;
         this.twistVelocity = 0;
         this.hushStart = -100;
+        /** How deep the hush runs: as deep as play is cold (a quad mid-fever only inhales). */
+        this.hushDepth = 1;
+        /**
+         * The great star's hole: it opens from `from` (what was open when it was last fed) to
+         * `radius`, then heals. A second great star while it is open feeds it.
+         */
         this.hole = {
-            x: 0, y: -10, radius: 0, born: -1e5, anchor: null,
+            x: 0, y: -10, radius: 0, from: 0, born: -1e5, anchor: null,
         };
+        this.lastGreat = null;
         this.siteAnchor = null;
         this.lastRgb = [...PIECE_RGB[2]];
         this.birthCursor = 0;
@@ -601,7 +701,7 @@ export class NebulaFlowWorld {
             const age = t - b.born;
             // a spark still in flight is never taken from under itself; a young star of the
             // pillars' own goes after the fading ones (its slot comes back to it, writeBirths)
-            const seen = age < 0 ? 1e3 : b.power * birthLight(age, b.released, b.kind)
+            const seen = age < 0 ? 1e3 : b.power * this.gainOf(b, age) * birthLight(age, b.released, b.kind)
                 + (b.released >= 0 ? holeRadius(age - b.released, b.size) * 12 : 0)
                 + (b.kind === KIND_AMBIENT ? 0.5 : 0);
             if (seen < least) {
@@ -611,6 +711,21 @@ export class NebulaFlowWorld {
         }
         this.birthCursor = (best + 1) % BIRTH_SLOTS;
         return this.births[best];
+    }
+
+    /**
+     * What a star burns at, over what it burns at alone, `age` seconds after it lit: one still
+     * held in the dust burns as hot as play runs (emberGain: its sprite and its lantern); a freed
+     * one and the pillars' own young stars take part of it; a great star and a spark in flight
+     * none. A new star takes it as its piece's shape draws together into it (the shape itself
+     * lights as it always does).
+     */
+    gainOf(b, age) {
+        if (this.emberGain === 1 || age < 0 || b.kind === KIND_GREAT) return 1;
+        let share = smooth(CONSTELLATION_HOLD, CONSTELLATION_MERGE, age);
+        if (b.kind === KIND_AMBIENT) share = 0.4;
+        else if (b.released >= 0 && age >= b.released) share *= 0.5;
+        return 1 + (this.emberGain - 1) * share;
     }
 
     /** A board point → nursery space, and the card's edge on a side at that height. */
@@ -665,60 +780,164 @@ export class NebulaFlowWorld {
         this.addFront(b.born, site[0], site[1], {
             speed: hardDrop ? 0.42 : 0.3, width: 0.022, rgb, strength: hardDrop ? 0.6 : 0.38, life: 1.3,
         });
-        if (hardDrop) this.schedule(b.born, 'kick', 0.8);
+        // the kick lands with the star (a swell takes a hit a little ahead)
+        if (hardDrop) this.swell.kick.hit(0.8, b.born);
+        this.surge.lock({ hardDrop }, t);
         this.counts.locks += 1;
     }
 
+    /**
+     * A clear: the cluster breathes out. What it builds on:
+     *   cascade  each wave past the first goes deeper than the last: quicker, wider, brighter
+     *            fronts, brighter blades, and the gas winds a little further round the board;
+     *   b2b      the cluster answers a back-to-back with twin fronts in its own hot light, and
+     *            its shafts pour down (a second back-to-back answers bigger than the first);
+     *   stars    a clear in casual play frees every star the board kindled, as it always has. A
+     *            clear in a chain, or under a quick hand, KEEPS them and brightens them, so the
+     *            pillars fill with the colours played; they go free together on the payoff — a
+     *            great star, a perfect clear, or the chain's end (onCombo(0)).
+     */
     onClear({
-        rows, lines = 1, tspin = false, perfect = false, player = 0, screen = null,
+        rows, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1, player = 0, screen = null,
     } = {}) {
         const t = this.time;
         const n = Math.max(1, Math.min(4, lines | 0));
+        const grand = n >= 4 || perfect;
+        // waves past the first (a cascade), each deeper than the last
+        const deeper = Math.max(0, Math.min(9, (Math.floor(cascade) || 1) - 1));
+        const depth = 1 + Math.min(1.35, deeper * 0.22);
+        const speed = FRONT_SPEED * (1 + Math.min(0.6, deeper * 0.12));
         const { front } = this._palette;
         if (screen && Number.isFinite(screen.x) && Number.isFinite(screen.y)) {
             // a click with no board (meditation): one blade at the height it was made
             const [, y] = screenToNursery(screen.x, screen.y, this.aspect, this._n);
             const card = cardUnion(this.layout) || fallbackLayout(this.aspect * 1000, 1000).cards[0];
-            this.parts.blades?.fire(y, t, (card.x0 * 2 - 1) * this.aspect, (card.x1 * 2 - 1) * this.aspect, front, 1);
+            const [left, right] = [(card.x0 * 2 - 1) * this.aspect, (card.x1 * 2 - 1) * this.aspect];
+            this.parts.blades?.fire(y, t, left, right, front, depth);
         } else {
             const list = Array.isArray(rows) && rows.length ? rows.slice(0, 4) : [BOARD_GRID.rows - 1];
             list.forEach((row, i) => {
                 const at = this.boardSite(player, 0.5, row);
-                this.parts.blades?.fire(at.y, t + i * 0.05, at.left, at.right, front, 1);
+                this.parts.blades?.fire(at.y, t + i * 0.05, at.left, at.right, front, depth);
             });
         }
         // the cluster's own light, warmed a little by the rims it is about to set burning
-        const shell = [0, 1, 2].map((c) => this._palette.clusterGlow[c] * 0.7 + front[c] * 0.3);
+        const glow = this._palette.clusterGlow;
+        const shell = [0, 1, 2].map((c) => glow[c] * 0.7 + front[c] * 0.3);
         for (let i = 0; i < n; i += 1) {
             this.addFront(t + i * 0.16, this.cluster.x, this.cluster.y, {
-                speed: FRONT_SPEED, width: 0.05, rgb: shell, strength: 0.7 + n * 0.08, life: FRONT_LIFE,
+                speed,
+                width: 0.05 * (1 + Math.min(1.2, deeper * 0.3)),
+                rgb: shell,
+                strength: (0.7 + n * 0.08) * depth,
+                life: FRONT_LIFE,
             });
         }
-        this.releaseAll(t);
-        this.surge = Math.min(1.2, this.surge + 0.22 * n);
+        if (b2b) {
+            // back-to-back: twin fronts in the cluster's own hot light, close behind the clear's,
+            // and the shafts pour (each back-to-back adds to the last)
+            const twin = 1 + this.swell.twin.valueAt(t) * 0.5;
+            const hot = [0, 1, 2].map((c) => glow[c] * 0.55 + 0.45);
+            this.addFront(t + 0.12, this.cluster.x, this.cluster.y, {
+                speed: speed * 1.25, width: 0.035, rgb: hot, strength: 0.95 * twin, life: FRONT_LIFE,
+            });
+            this.addFront(t + 0.26, this.cluster.x, this.cluster.y, {
+                speed: speed * 1.25, width: 0.025, rgb: hot, strength: 0.7 * twin, life: FRONT_LIFE,
+            });
+            this.swell.twin.hit(1, t);
+        }
+        // Casual play frees the stars as it always has; a chain or a quick hand keeps them,
+        // brighter clear by clear, for the payoff (a great star frees them as its quad clears).
+        const kept = !grand && (combo >= 2 || this.heat.level >= KEEP_HEAT);
+        if (kept) this.swell.kindle.hit(0.3 + 0.12 * n + 0.15 * deeper, t);
+        else this.releaseAll(t, speed);
+        this.swell.breath.hit(0.22 * n * depth, t);
         // four lines hold their flash for the great star
-        if (n < 4 && !perfect) {
-            this.flash = Math.max(this.flash, 0.12 + n * 0.05);
-            this.flashTint = [...front];
-        }
-        this.bloomBoost = Math.min(1.5, this.bloomBoost + 0.25 * n);
-        if (n >= 4 || perfect) {
-            this.hushStart = t;
+        if (!grand) this.strike(0.12 + n * 0.05 + deeper * 0.03, front, t);
+        this.swell.bloom.hit(0.25 * n + 0.1 * deeper, t);
+        if (grand) {
+            // The nursery holds its breath: as deep as play is cold (a quad mid-fever only
+            // inhales), and never twice over one great star.
+            if (t - this.hushStart > HUSH_HOLD + 0.1) {
+                this.hushStart = t;
+                this.hushDepth = 1 - 0.85 * this.heat.level;
+            }
             this.schedule(t + HUSH_HOLD, 'great', perfect ? 1.3 : 1);
+            // a perfect clear lets the chain's whirl go into the great star's light
+            if (perfect) this.unwound = true;
         }
+        // each wave of a cascade winds the gas a little further round the board
+        if (deeper > 0) this.swell.wind.hit(0.35 * Math.min(4, deeper), t);
         if (tspin) {
             this.twistVelocity += 2.4;
-            this.kick = Math.max(this.kick, 0.5);
+            this.swell.kick.hit(0.5, t);
         }
+        // each wave past the first is worth one wave to the surge
+        this.surge.clear({
+            lines: n, cascade: deeper > 0 ? 2 : 1, combo, tspin, perfect, b2b,
+        }, t);
         this.counts.clears += 1;
     }
 
-    /** Free every star still held in the dust as the clear's front reaches it. */
-    releaseAll(t) {
+    /**
+     * A perfect clear that settled after its clear (physics sends it ~360 ms after the last wave,
+     * in a frame of its own): the crown on the great star its quad kindled — never a second
+     * clear, a second hush or a second great star. The chain's whirl lets go into its light.
+     */
+    onCrown() {
+        const t = this.time;
+        this.unwound = true;
+        this.surge.crown(t);
+        // still in the hush: the great star is born a perfect clear's
+        const queued = this.queue.find((e) => e.kind === 'great');
+        if (queued) {
+            queued.data = Math.max(queued.data || 1, 1.3);
+            return;
+        }
+        const great = this.lastGreat;
+        if (!great || great.kind !== KIND_GREAT || !(t - great.born >= 0) || t - great.born > CROWN_WINDOW) {
+            // a perfect clear with no great star burning: one is born now, with no hush
+            this.greatStar(t, 1.3);
+            return;
+        }
+        // it burns as a perfect clear's, a crown of light runs out from it, its hole opens wider
+        great.power = Math.max(great.power, 1.6 * 1.3);
+        const glow = this._palette.clusterGlow;
+        const crown = this._crown;
+        const { front } = this._palette;
+        for (let c = 0; c < 3; c += 1) crown[c] = glow[c] * 0.5 + front[c] * 0.5;
+        this.addFront(t, great.x, great.y, {
+            speed: GREAT_FRONT_SPEED * 1.15, width: 0.09, rgb: crown, strength: 0.7, life: FRONT_LIFE * 1.3,
+        });
+        const [open, healed] = this.holeAt(t);
+        const shown = open * (1 - healed);
+        Object.assign(this.hole, {
+            from: shown, radius: Math.min(HOLE_MAX, Math.max(shown, this.hole.radius) + 0.06), born: t,
+        });
+        this.releaseAll(t);
+        this.strike(0.4, crown, t);
+        this.swell.kick.hit(0.6, t);
+        this.swell.breath.hit(0.3, t);
+        this.swell.bloom.hit(0.3, t);
+        this.swell.twin.hit(0.8, t);
+    }
+
+    /** A T-spin that cleared nothing: the flow turns a little round the board and springs back. */
+    onSpin() {
+        this.twistVelocity += 1.1;
+        this.swell.kick.hit(0.25, this.time);
+        this.surge.spin(this.time);
+    }
+
+    /**
+     * Free every star still held in the dust as the front from the cluster (running at `speed`)
+     * reaches it.
+     */
+    releaseAll(t, speed = FRONT_SPEED) {
         for (let i = 0; i < BIRTH_SLOTS; i += 1) {
             const b = this.births[i];
             if (!(b.power > 0) || b.kind === KIND_AMBIENT || b.released >= 0 || b.born > t + 0.05) continue;
-            const reach = Math.hypot(b.x - this.cluster.x, b.y - this.cluster.y) / FRONT_SPEED;
+            const reach = Math.hypot(b.x - this.cluster.x, b.y - this.cluster.y) / speed;
             // a star that has burned out (or will have, by the time the front reaches it) stays out
             if (t + reach - b.born > BIRTH_LIFE + BIRTH_FADE) continue;
             b.released = t + reach - b.born;
@@ -729,10 +948,34 @@ export class NebulaFlowWorld {
     /** The true combo (0 = broken). */
     onCombo(n) {
         const c = Math.max(0, Math.floor(n) || 0);
+        const t = this.time;
         if (c >= 2 && c > this.combo) {
-            this.vortexTint = [...this.lastRgb];
-            this.vortexGlow = Math.min(1.4, this.vortexGlow + 0.55);
-            this.bloomBoost = Math.min(1.5, this.bloomBoost + 0.2);
+            this.unwound = false;
+            const rgb = this.lastRgb;
+            if (this.vortex < 0.05 && this.swell.glow.rawAt(t) < 0.02) {
+                // a new chain: every arm in the colour of the piece that started it (nothing
+                // shows yet, so nothing snaps)
+                for (let a = 0; a < VORTEX_ARMS; a += 1) {
+                    for (let k = 0; k < 3; k += 1) {
+                        this.arms[a][k] = rgb[k];
+                        this.armAims[a][k] = rgb[k];
+                    }
+                }
+            } else {
+                // each step winds a new arm in, in its piece's colour; the oldest arm takes it
+                this.armCursor = (this.armCursor + 1) % VORTEX_ARMS;
+                for (let k = 0; k < 3; k += 1) this.armAims[this.armCursor][k] = rgb[k];
+            }
+            for (let k = 0; k < 3; k += 1) this.vortexTint[k] = rgb[k];
+            this.swell.glow.hit(0.36, t);
+            this.swell.bloom.hit(0.2, t);
+        } else if (c === 0 && this.combo >= 2) {
+            // the chain's end: every star it kept goes free together as the cluster breathes out
+            const glow = this._palette.clusterGlow;
+            this.addFront(t, this.cluster.x, this.cluster.y, {
+                speed: FRONT_SPEED, width: 0.07, rgb: glow, strength: 0.55, life: FRONT_LIFE,
+            });
+            this.releaseAll(t);
         }
         this.combo = c;
     }
@@ -756,9 +999,22 @@ export class NebulaFlowWorld {
             this.addFront(this.time, this.cluster.x, this.cluster.y, {
                 speed: FRONT_SPEED * 0.7, width: 0.12, rgb: ahead.cavityNear, strength: 0.9, life: FRONT_LIFE * 1.3,
             });
-            this.flash = Math.max(this.flash, 0.15);
-            this.flashTint = [...ahead.clusterGlow];
+            this.strike(0.15, ahead.clusterGlow, this.time);
+            this.surge.levelUp(this.time);
         }
+    }
+
+    /**
+     * A frame-wide flash at `at`, added to whatever is still lit (a weak one after a strong one
+     * only lifts it); its tint is the mix of the lights in it, by how much each still gives.
+     */
+    strike(amount, rgb, at) {
+        const lit = this.swell.flash.valueAt(at);
+        const sum = lit + amount;
+        if (sum > 1e-6) {
+            for (let c = 0; c < 3; c += 1) this.flashTint[c] = (this.flashTint[c] * lit + rgb[c] * amount) / sum;
+        }
+        this.swell.flash.hit(amount, at);
     }
 
     // ── Moments ─────────────────────────────────────────────────────────────────
@@ -777,25 +1033,47 @@ export class NebulaFlowWorld {
     }
 
     fire(time, kind, data) {
-        if (kind === 'kick') {
-            this.kick = Math.max(this.kick, data || 0.6);
-        } else if (kind === 'great') {
-            this.greatStar(time, data || 1);
-        }
+        if (kind === 'great') this.greatStar(time, data || 1);
     }
 
-    /** Four lines: a great star is born in the head of the tallest pillar. */
+    /** The great star's hole at `t`: [radius open before healing, healed 0..1]. */
+    holeAt(t, out = this._hole) {
+        const age = t - this.hole.born;
+        out[0] = lerp(this.hole.from, this.hole.radius, smooth(0, 0.6, age));
+        out[1] = smooth(0, GREAT_HEAL, age);
+        return out;
+    }
+
+    /**
+     * Four lines: a great star is born in the head of the tallest pillar. While the last great
+     * star's hole is still open, the new one is born in it and feeds it (it opens wider from what
+     * shows) rather than shutting it and blowing another elsewhere.
+     */
     greatStar(t, power) {
-        // the head of the tallest pillar that shows (versus screens hide some behind the cards)
-        const byTop = [...this.pillars].sort((a, b) => b.top - a.top);
+        const [open, healed] = this.holeAt(t);
+        const shown = open * (1 - healed);
+        const feed = Boolean(this.hole.anchor) && shown > HOLE_FEED;
         const site = [0, 0];
-        const anchor = this.axisInView(byTop, [0.9, 0.84, 0.78, 0.72, 0.66, 0.6], site)
-            || { pillar: this.pillars.indexOf(byTop[0]), hh: 0.9, lateral: 0 };
-        this.resolveAnchor(anchor, site);
-        const tall = this.pillars[anchor.pillar];
+        let anchor = null;
+        if (feed) {
+            anchor = { ...this.hole.anchor };
+            site[0] = this.hole.x;
+            site[1] = this.hole.y;
+        } else {
+            // the head of the tallest pillar that shows (versus screens hide some behind the cards)
+            const byTop = [...this.pillars].sort((a, b) => b.top - a.top);
+            anchor = this.axisInView(byTop, [0.9, 0.84, 0.78, 0.72, 0.66, 0.6], site)
+                || { pillar: this.pillars.indexOf(byTop[0]), hh: 0.9, lateral: 0 };
+            this.resolveAnchor(anchor, site);
+        }
+        const tall = this.pillars[Math.min(anchor.pillar, this.pillars.length - 1)];
+        // a great star born into a live hole burns bigger; its front is a little gentler in a fever
+        // (the cavity already burns: a full one would only wash it out)
+        const grow = feed ? 1.15 : 1;
+        const blast = 1.6 * power * grow * (1 - 0.35 * this.heat.fever);
         const b = this.freeBirth(t);
         Object.assign(b, {
-            power: 1.6 * power,
+            power: 1.6 * power * grow,
             born: t,
             x: site[0],
             y: site[1],
@@ -811,18 +1089,28 @@ export class NebulaFlowWorld {
             bow: 0,
             anchor: { ...anchor },
         });
+        this.lastGreat = b;
         this.addFront(t, site[0], site[1], {
-            speed: GREAT_FRONT_SPEED, width: 0.1, rgb: this._palette.front, strength: 1.6 * power, life: FRONT_LIFE * 1.3,
+            speed: GREAT_FRONT_SPEED,
+            width: 0.1 * grow,
+            rgb: this._palette.front,
+            strength: blast,
+            life: FRONT_LIFE * 1.3,
         });
-        this.hole = {
-            x: site[0], y: site[1], radius: 0.17 * (tall.w0 / 0.36) + 0.05, born: t, anchor: { ...anchor },
-        };
+        const base = 0.17 * (tall.w0 / 0.36) + 0.05;
+        Object.assign(this.hole, {
+            x: site[0],
+            y: site[1],
+            from: feed ? shown : 0,
+            radius: feed ? Math.min(HOLE_MAX, Math.max(shown, base) + 0.07) : base,
+            born: t,
+            anchor: { ...anchor },
+        });
         this.releaseAll(t);
-        this.flash = Math.max(this.flash, 0.85);
-        this.flashTint = [...this._palette.clusterGlow];
-        this.kick = Math.max(this.kick, 1);
-        this.surge = Math.min(1.6, this.surge + 0.8);
-        this.bloomBoost = Math.min(2, this.bloomBoost + 1);
+        this.strike(0.85, this._palette.clusterGlow, t);
+        this.swell.kick.hit(1, t);
+        this.swell.breath.hit(0.6, t);
+        this.swell.bloom.hit(0.5, t);
         this.counts.quads += 1;
     }
 
@@ -893,17 +1181,33 @@ export class NebulaFlowWorld {
         this.time = t;
         const calm = this.reducedMotion ? 0.5 : 1;
 
-        this.flash *= Math.exp(-dt / 0.3);
-        this.kick *= Math.exp(-dt / 0.25);
-        this.bloomBoost *= Math.exp(-dt / 1.4);
-        this.surge *= Math.exp(-dt / 2.2);
         this.drain(t);
+        const { swell } = this;
+        // How hot play runs: the surge, once a frame on the world's clock.
+        const heat = this.surge.sample(t);
+        this.heat = heat;
+        const warm = warmth(heat.level);
+        const { fever } = heat;
+        this.flash = swell.flash.valueAt(t);
+        this.kick = swell.kick.valueAt(t);
+        const breathOut = swell.breath.valueAt(t);
+        const kindle = swell.kindle.valueAt(t);
+        const twin = swell.twin.valueAt(t);
 
-        // the chain's vortex winds up a step at a time and lets go when it breaks
-        const target = vortexForCombo(this.combo);
+        // The chain's vortex winds up a step at a time (a cascade's waves wind it further) and
+        // lets go when the chain breaks, or into a perfect clear's light.
+        const chain = this.unwound ? 0 : vortexForCombo(this.combo);
+        const target = Math.min(VORTEX_MAX, chain + swell.wind.valueAt(t));
         const k = dt === 0 ? 1 : approach(target > this.vortex ? 1.5 : 0.7, dt);
         this.vortex += (target - this.vortex) * k;
-        this.vortexGlow += (Math.min(0.32, this.vortex * 0.09) - this.vortexGlow) * (dt === 0 ? 0 : approach(0.8, dt));
+        // its glow holds while the chain lives (each step adds to it), burning brighter with the heat
+        this.vortexGlow = Math.min(0.32, this.vortex * 0.09) * (1 + warm * 0.3 + fever * 0.7) + swell.glow.valueAt(t);
+        // each arm eases to the colour its step was in, and the arms turn with the whirl
+        const ease = dt === 0 ? 0 : approach(2.5, dt);
+        for (let a = 0; a < VORTEX_ARMS; a += 1) {
+            for (let c = 0; c < 3; c += 1) this.arms[a][c] += (this.armAims[a][c] - this.arms[a][c]) * ease;
+        }
+        this.armTurn = (this.armTurn + dt * calm * this.vortex * 0.05 * (1 + fever)) % (Math.PI * 2);
         // a T-spin's twist springs back
         let left = dt;
         while (left > 1e-6) {
@@ -913,21 +1217,35 @@ export class NebulaFlowWorld {
             this.twist += this.twistVelocity * h;
             left -= h;
         }
-        this.flow += dt * FLOW_REST * flowForCombo(this.combo) * (1 + this.surge * 0.5) * calm;
-        this.shine = 1 + this.surge * 0.45 + Math.min(0.35, this.vortex * 0.05);
+        // the gas boils off faster the hotter play runs; the cluster's light rises with its breath
+        // and the chain only (a brighter cluster turns the cavity pale: the heat is spent in colour)
+        const boil = 1 + breathOut * 0.5 + warm * 0.35 + fever * 0.35;
+        this.flow += dt * FLOW_REST * flowForCombo(this.combo) * boil * calm;
+        this.shine = 1 + breathOut * 0.3 + Math.min(0.3, this.vortex * 0.045);
+        // the stars a chain keeps in the dust burn brighter clear by clear, and blaze in a fever
+        this.emberGain = 1 + kindle * 0.5 + warm * 0.35 + fever * 0.45;
         this.applyPalette(dt === 0 ? 0 : approach(1.1, dt), dt);
 
         const hush = smooth(this.hushStart, this.hushStart + 0.08, t) * (1 - smooth(this.hushStart + HUSH_HOLD - 0.03, this.hushStart + HUSH_HOLD + 0.04, t));
         u.time.value = t;
         u.flow.value = this.flow % 1000;
         u.shine.value = this.shine;
-        u.hush.value = hush;
-        u.vortex.value.set(this.heart.x, this.heart.y, this.vortex * calm, this.vortexRadius);
-        u.vortexTint.value.set(this.vortexTint[0], this.vortexTint[1], this.vortexTint[2]);
+        // the pillars' rims burn (ionization fronts) and boil hotter with the heat
+        u.burn.value = 1 + warm * 0.35 + fever * 0.4 + kindle * 0.08;
+        // in a fever the cluster's light holds its place while the whirl winds the gas through it
+        u.lightHold.value = fever * 0.6;
+        u.hush.value = hush * this.hushDepth;
+        // a fever widens the whirl over the whole cavity
+        u.vortex.value.set(this.heart.x, this.heart.y, this.vortex * calm, this.vortexRadius * (1 + fever * 0.3));
+        for (let a = 0; a < VORTEX_ARMS; a += 1) {
+            const [r, g, b] = this.arms[a];
+            u.vortexArms[a].value.set(r, g, b);
+        }
+        u.vortexSpin.value.set(Math.cos(this.armTurn), Math.sin(this.armTurn));
         u.vortexGlow.value = this.vortexGlow;
         u.twist.value = this.twist * calm;
-        const heal = smooth(0, GREAT_HEAL, t - this.hole.born);
-        u.hole.value.set(this.hole.x, this.hole.y, this.hole.radius * smooth(0, 0.6, t - this.hole.born), heal);
+        const [open, heal] = this.holeAt(t);
+        u.hole.value.set(this.hole.x, this.hole.y, open, heal);
         // a slow sway and the pointer lean the near layers against the far ones
         const px = this.pointer.x * calm;
         const py = this.pointer.y * calm;
@@ -950,10 +1268,18 @@ export class NebulaFlowWorld {
         const post = this._post;
         post.flash = this.flash;
         post.flashTint = this.flashTint;
-        post.kick = this.kick;
-        post.bloomBoost = this.bloomBoost + this.vortexGlow * 0.3;
-        post.exposure = 1 / (1 + this.flash * 0.35 + this.surge * 0.12);
-        post.rays = 0.35 + this.surge * 0.35 + Math.min(0.3, this.vortex * 0.04);
+        // the fringe rides on the surge's punch: under rapid locks it holds a floor, never flickers
+        post.kick = this.kick + heat.punch * 0.18 * calm;
+        // the bloom's swell is a frame-wide brightening: Reduce flashing holds it back (ADR-0021);
+        // the heat adds only a little (the gas's own emission carries the build, not a haze)
+        post.bloomBoost = swell.bloom.valueAt(t) * flashScale() + this.vortexGlow * 0.1 + warm * 0.03 + fever * 0.05;
+        // the iris closes for a flash, and a little with the heat: the gas dims a touch while every
+        // light the play sends (fronts, the stars, the vortex's arms, the blades) is lifted by the
+        // iris, so the build reads in colour and the deep stays deep
+        post.exposure = 1 / (1 + this.flash * 0.35) - warm * 0.06 - fever * 0.12;
+        // the cluster's shafts thicken with its breath, the chain, the heat and a back-to-back
+        post.rays = 0.35 + breathOut * 0.35 + Math.min(0.3, this.vortex * 0.04)
+            + warm * 0.25 + fever * 0.25 + twin * 0.3;
         u.iris.value = (1 / post.exposure) ** 0.8;
         if (camera) this._camera = camera;
     }
@@ -976,9 +1302,9 @@ export class NebulaFlowWorld {
             const b = this.births[i];
             const o = i * BIRTH_ROWS;
             // a star that is done is dark to every part: its sprites collapse
-            const power = b.kind !== KIND_AMBIENT && birthDone(b, t) ? 0 : b.power;
-            // the nursery's lantern and hole for it, once here rather than per pixel
             const age = t - b.born;
+            const power = b.kind !== KIND_AMBIENT && birthDone(b, t) ? 0 : b.power * this.gainOf(b, age);
+            // the nursery's lantern and hole for it, once here rather than per pixel
             if (power > 0 && age > 0) {
                 const light = birthLight(age, b.released, b.kind) * power;
                 const hole = b.released >= 0 ? holeRadius(age - b.released, b.size) : 0;
@@ -1038,6 +1364,8 @@ export class NebulaFlowWorld {
             palette: paletteName(palettePlace(this.levelPlace, t)),
             vortex: this.vortex,
             twist: this.twist,
+            /** How hot play runs (the shared surge): its level, fever and act (0 calm … 3 fever). */
+            heat: { level: this.heat.level, fever: this.heat.fever, stage: this.heat.stage },
             held,
             free,
             fronts: this.u ? this.u.frontCount.value : 0,

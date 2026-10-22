@@ -58,6 +58,11 @@ export class SummerHomestead {
         this.bouquetVectors = [new THREE.Vector4(0, 0, 0, 0), new THREE.Vector4(0, 0, 0, 0)];
         this.uBouquet = uniformArray(this.bouquetVectors);
         this.uFlash = uniform(0);
+        /**
+         * The ring dance: how strongly the lanterns on the wreaths run round in a fever (and
+         * glow a little brighter as play warms). A slow travelling wave, never a flash.
+         */
+        this.uFestival = uniform(0);
         this.places = {};
     }
 
@@ -163,8 +168,14 @@ export class SummerHomestead {
                 .add(high.x.mul(at(kind, 4)))
                 .add(high.y.mul(at(kind, 5)))
                 .add(high.z.mul(at(kind, 6)));
-            const lantern = blossom.mul(picked.mul(2.6).add(this.uFlash.mul(2.4))).mul(is(code, M.flowers));
-            // A finished bouquet lights the whole garland.
+            // In a fever the lanterns dance: a wave of light runs round the wreaths and up the
+            // pole, lifting every flower in turn (about one pass every two and a half seconds).
+            const dance = pow(sin(light.uTime.mul(2.4).sub(kind.mul(0.9)).add(world.x.mul(1.3))
+                .add(world.y.mul(0.7))).mul(0.5).add(0.5), 3);
+            const festive = this.uFestival.mul(dance.mul(3.2).add(0.5));
+            const lantern = blossom.mul(picked.mul(2.6).add(this.uFlash.mul(2.4)).add(festive))
+                .mul(is(code, M.flowers));
+            // A finished bouquet (or a sunburst) lights the whole garland.
             const blaze = garland.mul(vec3(2.4, 2.2, 0.9)).mul(this.uFlash).mul(is(code, M.garland));
             lit = lit.add(lantern).add(blaze);
         }
@@ -358,7 +369,7 @@ export class SummerHomestead {
         const cloth = attribute('cloth', 'vec4'); // hue, how readily it flies, phase, place along it
         const st = uv(); // metres across, metres along
         const t = light.uTime;
-        const front = saturate(this.light.uFront.y);
+        const front = saturate(this.light.frontStrength());
         const force = light.uWind.add(light.uGust.mul(1.4)).add(front).add(light.uGlow.mul(0.4));
         // Still air: it hangs. Wind: it streams, and the stronger the wind the flatter it flies.
         const lift = saturate(force.mul(0.85).add(cloth.y)).mul(1.38);
@@ -498,13 +509,18 @@ export class SummerHomestead {
      * Light the lanterns the game has picked and ride the boat; returns a point for a
      * faint ring when the boat rocks, else null.
      */
-    update(time, dt, frame = {}) {
+    update(time, dt, frame = {}, worn = null) {
         const bouquet = ArrayBuffer.isView(frame.bouquet) || Array.isArray(frame.bouquet) ? frame.bouquet : null;
         const level = (index) => (bouquet && Number.isFinite(bouquet[index])
             ? THREE.MathUtils.clamp(bouquet[index], 0, 1) : 0);
+        const unit = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
         this.bouquetVectors[0].set(level(0), level(1), level(2), level(3));
         this.bouquetVectors[1].set(level(4), level(5), level(6), 0);
-        this.uFlash.value = flashScale() * (Number.isFinite(frame.bouquetFlash) ? THREE.MathUtils.clamp(frame.bouquetFlash, 0, 1) : 0);
+        // The bouquet's flare, and the sunburst a quad, a back-to-back or a perfect clear sends
+        // through the wreath: a flash, so Reduce flashing holds it back (ADR-0021).
+        const flare = Math.max(unit(frame.bouquetFlash), unit(worn ? worn.sunburst : frame.sunburst) * 0.6);
+        this.uFlash.value = flashScale() * flare;
+        this.uFestival.value = worn ? unit(worn.fever * 0.9 + worn.level * 0.15) : 0;
         const { boat } = this;
         if (!boat || !Number.isFinite(time)) return null;
         boat.position.y = Math.sin(time * 0.9) * 0.018;

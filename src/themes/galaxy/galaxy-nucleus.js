@@ -144,9 +144,15 @@ export function createJet(u, side) {
             .mul(body)
             .mul(u.jets.y)
             .toVar();
-        // A burst: a bright head running the whole reach.
-        const age = u.time.sub(u.jets.z);
-        const head = gxBell(a.sub(age.div(JET_BURST_TRAVEL)).div(0.2)).mul(step(0.0, age)).mul(u.jets.w);
+        // Bursts: bright heads running the whole reach, up to three at once (an eruption, the
+        // knots of a chain queued one behind another), so a new one never pulls another back.
+        const headAt = (birth, strength) => {
+            const age = u.time.sub(birth);
+            return gxBell(a.sub(age.div(JET_BURST_TRAVEL)).div(0.2)).mul(step(0.0, age)).mul(strength);
+        };
+        const head = headAt(u.jets.z, u.jets.w)
+            .add(headAt(u.jetBursts.x, u.jetBursts.y))
+            .add(headAt(u.jetBursts.z, u.jetBursts.w));
         light.addAssign(sheath.mul(0.7).add(spine.mul(2.2)).mul(head).mul(3.0));
 
         const sheathTone = mix(u.jet, u.armInner, smoothstep(0.35, 1.3, abs(xx)).mul(0.45));

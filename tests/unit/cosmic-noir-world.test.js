@@ -6,15 +6,19 @@
  * DO, and that every clock is integrated (a rate change never jumps a phase) — never a tuning
  * number: constants are imported, and the assertions are relations.
  */
-import { describe, expect, it } from 'vitest';
+import {
+    describe, expect, it, vi,
+} from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
     COSMIC_NOIR_PARTS, CosmicNoirWorld, REST_RIG, SPIN_REST, fovForAspect,
 } from '../../src/themes/cosmic-noir/cosmic-noir-world.js';
 import {
-    CAGE, ECHO_LIFE, ECHO_SLOTS, PUFF_LIFE, PUFF_SLOTS, STOCK_STEP, TAU, stockPlace,
+    CAGE, ECHO_LIFE, ECHO_SLOTS, NEGATIVE_GAP, PUFF_LIFE, PUFF_SLOTS, STOCK_STEP, TAU, stockPlace,
 } from '../../src/themes/cosmic-noir/cosmic-noir-core.js';
 import { fallbackLayout } from '../../src/themes/cosmic-noir/cosmic-noir-composition.js';
+import { BLACK_POINT, CosmicNoirPost } from '../../src/themes/cosmic-noir/cosmic-noir-post.js';
+import { REDUCED_FLASH_SCALE } from '../../src/utils/photosensitivity.js';
 
 function makeWorld(quality = 'Minimal', {
     width = 1600, height = 900, at = 10, reduce = false,
@@ -271,6 +275,242 @@ describe('cosmic noir world: gameplay', () => {
         }
         expect(marks).toBe(2);
         expect(world.counts.levels).toBe(1);
+    });
+});
+
+describe('cosmic noir world: it builds with play instead of popping', () => {
+    /** One clearing lock of a chain, as the director resolves it (a hard drop, then its clear). */
+    const clearing = (world, combo, extra = {}) => () => {
+        world.onLock({ u: 0.4, rows: [18, 19], hardDrop: true });
+        world.onClear({
+            lines: 2, rows: [18, 19], combo, ...extra,
+        });
+        world.onCombo(combo);
+    };
+    /** A twelve-clear chain 0.64 s apart (the tray's Fever pace). */
+    const chain = (world, camera, clears = 12) => {
+        for (let n = 1; n <= clears; n++) {
+            frame(world, camera, 1 / 60, clearing(world, n));
+            run(world, camera, 0.64 - 1 / 60, 38);
+        }
+    };
+
+    it('a weak clear right after a strong one never cuts the light', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 4, rows: [16, 17, 18, 19] }));
+        run(world, camera, 0.4);
+        const before = { flare: world.flare, flash: world.getPostState().flash, echoes: world.getState().echoes };
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 1, rows: [19] }));
+        expect(world.flare).toBeGreaterThan(before.flare);
+        expect(world.getPostState().flash).toBeGreaterThan(before.flash);
+        // The quad's four rings still cross the smoke: the single's ring joins them.
+        run(world, camera, 0.05);
+        expect(world.getState().echoes).toBeGreaterThan(before.echoes);
+    });
+
+    it('lets a quad\'s four rings join the rings still crossing the smoke instead of wiping them', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 2, rows: [18, 19] }));
+        run(world, camera, 0.3);
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 2, rows: [18, 19] }));
+        run(world, camera, 0.3);
+        const crossing = world.echoSlots.filter((s) => world.time - s.birth < ECHO_LIFE).map((s) => s.birth);
+        expect(crossing).toHaveLength(4);
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 4, rows: [16, 17, 18, 19] }));
+        run(world, camera, 0.4);
+        const births = world.echoSlots.map((s) => s.birth);
+        crossing.forEach((b) => expect(births).toContain(b));
+        expect(world.getState().echoes).toBe(Math.min(ECHO_SLOTS, 8));
+    });
+
+    it('a long chain reads hotter than its first clear, and the world breathes back when the hands rest', () => {
+        const { world, camera } = makeWorld();
+        const rest = { ...world.getState(), ...world.getPostState() };
+        frame(world, camera, 1 / 60, clearing(world, 1));
+        run(world, camera, 0.5);
+        const first = { ...world.getState(), contrast: world.getPostState().contrast };
+        run(world, camera, 0.14);
+        chain(world, camera, 11);
+        const hot = { ...world.getState(), contrast: world.getPostState().contrast };
+        expect(hot.surge.level).toBeGreaterThan(first.surge.level + 0.4);
+        expect(hot.surge.fever).toBeGreaterThan(0.5);
+        // The lighthouse runs: the sweep quickens, the blinds open, the room fills with smoke, the
+        // print hardens and leans into its heat tone.
+        expect(hot.spinPeriod).toBeLessThan(first.spinPeriod * 0.6);
+        expect(hot.cageFill).toBeLessThan(first.cageFill - 0.1);
+        expect(hot.haze).toBeGreaterThan(first.haze * 1.5);
+        expect(hot.contrast).toBeGreaterThan(first.contrast + 0.5);
+        expect(hot.toneHeat).toBeGreaterThan(0.3);
+        // Calm play wears none of it.
+        expect(rest.toneHeat).toBe(0);
+        expect(rest.contrast).toBe(0);
+        // The chain lets go, the hands rest: back to calm (the smoke clears last).
+        frame(world, camera, 1 / 60, () => world.onCombo(0));
+        run(world, camera, 20, 600);
+        const after = { ...world.getState(), contrast: world.getPostState().contrast };
+        expect(after.surge.level).toBeLessThan(0.05);
+        expect(after.surge.fever).toBe(0);
+        expect(after.contrast).toBeLessThan(0.02);
+        expect(after.toneHeat).toBeLessThan(0.01);
+        expect(after.cageFill).toBeCloseTo(CAGE.fillClosed, 2);
+        expect(after.haze).toBeLessThan(first.haze * 1.2);
+    });
+
+    it('eases the beams\' chain light when a chain breaks (no one-frame cut)', () => {
+        const { world, camera } = makeWorld();
+        for (let i = 0; i < 600; i++) frame(world, camera, 1 / 60, () => world.onCombo(9));
+        const held = world.u.beamGain.value;
+        expect(world.chainGain).toBeGreaterThan(0.4);
+        let prev = held;
+        let biggest = 0;
+        for (let i = 0; i < 300; i++) {
+            frame(world, camera, 1 / 60, () => world.onCombo(0));
+            biggest = Math.max(biggest, prev - world.u.beamGain.value);
+            prev = world.u.beamGain.value;
+        }
+        expect(biggest).toBeLessThan(held * 0.01);
+        expect(world.u.beamGain.value).toBeLessThan(held * 0.85);
+    });
+
+    it('crowns a late perfect clear on the clear still ringing: no second flashbulb', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 4, rows: [16, 17, 18, 19] }));
+        run(world, camera, 0.36);
+        frame(world, camera, 1 / 60, () => world.onClear({
+            lines: 1, rows: [], perfect: true, crown: true,
+        }));
+        expect(world.counts.negatives).toBe(1);
+        expect(world.counts.quads).toBe(1);
+        expect(world.counts.crowns).toBe(1);
+        expect(world.getState().negative).toBeLessThan(0.05);
+        run(world, camera, 0.3);
+        // The crown: the print blazes in its heat tone and the blinds turn toward edge-on.
+        expect(world.getState().toneHeat).toBeGreaterThan(0.3);
+        expect(world.getState().crown).toBeGreaterThan(0.5);
+    });
+
+    it('spaces the flashbulb: a quad inside NEGATIVE_GAP pours its light into the lantern', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 4, rows: [16, 17, 18, 19] }));
+        run(world, camera, NEGATIVE_GAP * 0.5);
+        const { flare } = world;
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 4, rows: [16, 17, 18, 19] }));
+        expect(world.counts.negatives).toBe(1);
+        expect(world.getState().negative).toBeLessThan(0.5);
+        expect(world.flare).toBeGreaterThan(flare);
+        run(world, camera, NEGATIVE_GAP);
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 4, rows: [16, 17, 18, 19] }));
+        expect(world.counts.negatives).toBe(2);
+    });
+
+    it('solarises the flashbulb in hot play (the blacks kept), a plain negative from cold', () => {
+        const cold = makeWorld();
+        frame(cold.world, cold.camera, 1 / 60, () => cold.world.onClear({ lines: 4, rows: [16, 17, 18, 19] }));
+        expect(cold.world.getPostState().solar).toBe(0);
+        const { world, camera } = makeWorld();
+        chain(world, camera, 10);
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 4, rows: [16, 17, 18, 19], combo: 11 }));
+        expect(world.getPostState().negative).toBeGreaterThan(0.5);
+        expect(world.getPostState().solar).toBeGreaterThan(0.9);
+    });
+
+    it('answers a back-to-back with a double ring and a warmer print, warmer for each one in a row', () => {
+        const plain = makeWorld();
+        const b2b = makeWorld();
+        const spin = { lines: 2, rows: [18, 19], tspin: true };
+        frame(plain.world, plain.camera, 1 / 60, () => plain.world.onClear(spin));
+        frame(b2b.world, b2b.camera, 1 / 60, () => b2b.world.onClear({ ...spin, b2b: true }));
+        run(plain.world, plain.camera, 0.3);
+        run(b2b.world, b2b.camera, 0.3);
+        expect(b2b.world.getState().echoes).toBe(plain.world.getState().echoes + 1);
+        expect(plain.world.getState().toneHeat).toBe(0);
+        const warm = b2b.world.getState().toneHeat;
+        expect(warm).toBeGreaterThan(0.1);
+        run(b2b.world, b2b.camera, 4);
+        frame(b2b.world, b2b.camera, 1 / 60, () => b2b.world.onClear({ ...spin, b2b: true }));
+        run(b2b.world, b2b.camera, 0.3);
+        expect(b2b.world.b2bRun).toBe(2);
+        expect(b2b.world.getState().toneHeat).toBeGreaterThan(warm);
+    });
+
+    it('rings each cascade wave deeper, wider and quicker than the last', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 1, rows: [19], cascade: 1 }));
+        run(world, camera, 0.36);
+        const first = world.echoSlots.find((s) => s.strength > 0);
+        frame(world, camera, 1 / 60, () => world.onClear({ lines: 1, rows: [19], cascade: 4 }));
+        run(world, camera, 0.3);
+        const deep = world.echoSlots.filter((s) => s.strength > 0 && s !== first);
+        // A deep wave sends one more ring than its lines, brighter and wider.
+        expect(deep).toHaveLength(2);
+        deep.forEach((s) => {
+            expect(s.strength).toBeGreaterThan(first.strength * 1.4);
+            expect(s.width).toBeGreaterThan(first.width);
+        });
+    });
+
+    it('turns the cage and sends a faint ring for a T-spin that cleared nothing', () => {
+        const { world, camera } = makeWorld();
+        const turnRate = () => {
+            const a = world.cageTurn;
+            frame(world, camera, 1 / 60);
+            return turn(a, world.cageTurn) * 60;
+        };
+        const slow = turnRate();
+        frame(world, camera, 1 / 60, () => world.onSpin({ player: 0 }));
+        expect(turnRate() - slow).toBeGreaterThan(Math.abs(slow) * 5);
+        expect(world.getState().echoes).toBe(1);
+        expect(world.counts.spins).toBe(1);
+    });
+
+    it('lets a second reel change wait for the first one\'s marks instead of restarting them', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 1 / 60, () => world.levelUp(2));
+        run(world, camera, 0.3);
+        frame(world, camera, 1 / 60, () => world.levelUp(3));
+        let marks = 0;
+        let lit = false;
+        for (let i = 0; i < 300; i++) {
+            frame(world, camera, 1 / 60);
+            const on = world.getPostState().cue > 0;
+            if (on && !lit) marks += 1;
+            lit = on;
+        }
+        expect(marks).toBe(4);
+    });
+
+    it('holds a reel change still running when a third level-up comes (it announces that one too)', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 1 / 60, () => world.levelUp(2));
+        frame(world, camera, 1 / 60, () => world.levelUp(3));
+        const waiting = [...world.cueBirths];
+        frame(world, camera, 1 / 60, () => world.levelUp(4));
+        expect(world.cueBirths).toEqual(waiting);
+        expect(world.counts.levels).toBe(3);
+    });
+});
+
+describe('cosmic noir post: Reduce flashing (ADR-0021)', () => {
+    it('scales the flashbulb\'s frame-wide flip as it scales the flash', () => {
+        const fake = {
+            uFlash: { value: 0 },
+            uNegative: { value: 0 },
+            uSolar: { value: 0 },
+            uBlackPoint: { value: 0 },
+        };
+        CosmicNoirPost.prototype.update.call(fake, { flash: 0.5, negative: 1, solar: 1 });
+        expect(fake.uNegative.value).toBe(1);
+        expect(fake.uFlash.value).toBe(0.5);
+        vi.stubGlobal('window', { settings: { reduceFlashing: true } });
+        try {
+            CosmicNoirPost.prototype.update.call(fake, { flash: 0.5, negative: 1, contrast: 1 });
+            expect(fake.uNegative.value).toBeCloseTo(REDUCED_FLASH_SCALE, 9);
+            expect(fake.uFlash.value).toBeCloseTo(0.5 * REDUCED_FLASH_SCALE, 9);
+            // The paper's grade is no flash: kept.
+            expect(fake.uBlackPoint.value).toBeGreaterThan(BLACK_POINT * 2);
+        } finally {
+            vi.unstubAllGlobals();
+        }
     });
 });
 

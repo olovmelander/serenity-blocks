@@ -6,7 +6,9 @@
  * off for each link and flies the bow's arc at a fixed distance, so its screen position lies on the
  * bow: its short trail in the colour of the link is the brush the stroke is painted with. A T-spin
  * sends two up in a double helix; a level up launches a flight of them out over the gulf; while a
- * back-to-back holds, one larger "long-wing" keeps station along the bow's leg.
+ * back-to-back holds, one larger "long-wing" keeps station along the bow's leg. In a fever of play
+ * (`ribbon` 0..1, set by the world) every other glider on the thermals trails a ribbon of the
+ * colours played (`ribbons`), its paper lit in it: the flock wheels in the chain's colours.
  *
  * Everything is a function of the flight clock (integrated by the world, so a hush can freeze them)
  * and the event times, so any frame can be reproduced by seeking.
@@ -54,6 +56,10 @@ export class GliderFlock {
         this.longWing = false;
         this.aloft = 1;
         this.bankFlash = -1e4;
+        /** How far into a fever play runs (0..1): the thermals' gliders trail the colours played. */
+        this.ribbon = 0;
+        /** The colours they trail ([r, g, b] each), or null. */
+        this.ribbons = null;
     }
 
     /** The thermals' centres and radii (world), from the plan. */
@@ -120,6 +126,14 @@ export class GliderFlock {
             // A two-line clear: every glider banks hard at once.
             const bf = t - this.bankFlash;
             if (bf >= 0 && bf < 0.6) p.bank += Math.sin((bf / 0.6) * Math.PI) * 0.9 * tr.dir;
+            // A fever: every other one trails a ribbon of a colour played, its paper lit in it.
+            const { ribbons } = this;
+            if (this.ribbon > 0.01 && ribbons && ribbons.length && i % 2 === 1) {
+                const c = ribbons[(i >> 1) % ribbons.length];
+                p.colour[0] = c[0]; p.colour[1] = c[1]; p.colour[2] = c[2];
+                p.trail = this.ribbon * 0.55;
+                p.glow = this.ribbon * 0.6;
+            }
         }
 
         // ── Painting the bow: one glider per stroke being painted ──

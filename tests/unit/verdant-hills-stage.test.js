@@ -659,6 +659,38 @@ describe('Verdant Hills gusts through the grass', () => {
         expect(short.rings.map((ring) => ring.x).sort()).toEqual([1, 2, 9]);
     });
 
+    it('gives up the faintest gust when full, never one in full flood, and lets a twin join a fresh one', () => {
+        const pool = new VerdantHillsRings(3, 100);
+        // An old strong gust, a young faint one, and a middling one.
+        pool.add(0, 0, 3);
+        pool.update(1);
+        pool.add(10, 0, 0.2);
+        pool.update(0.5);
+        pool.add(20, 0, 1);
+        pool.update(0.5);
+        // Full: the next takes the faint one's slot, though the strong one started first.
+        const taken = pool.add(30, 0, 1);
+        expect(taken).toBe(pool.rings[1]);
+        expect(pool.rings.map((ring) => ring.x)).toEqual([0, 30, 20]);
+        // Full again, and asked for at (nearly) the place of one that has only just set out: it joins
+        // that one, which carries on stronger rather than starting over or pushing another out.
+        const before = pool.rings.map((ring) => ring.toArray());
+        pool.update(0.1);
+        const joined = pool.add(31, 1, 1);
+        expect(joined).toBe(pool.rings[1]);
+        expect(joined.toArray()).toEqual([30, 0, expect.closeTo(0.1, 9), 1.5]);
+        expect(pool.rings[0].x).toBe(before[0][0]);
+        expect(pool.rings[2].x).toBe(before[2][0]);
+        // Never past the ceiling.
+        for (let count = 0; count < 10; count++) pool.add(30, 0, 3);
+        expect(joined.w).toBeLessThanOrEqual(3);
+        // With room to spare, a twin is a gust of its own.
+        const roomy = new VerdantHillsRings(4, 100);
+        roomy.add(0, 0, 1);
+        roomy.add(0.5, 0, 1);
+        expect(roomy.active()).toBe(2);
+    });
+
     it('ages the gusts and clears each one at the end of its life', () => {
         const pool = new VerdantHillsRings(3, 6);
         pool.add(1, 2, 0.8);

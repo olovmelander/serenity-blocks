@@ -7,7 +7,7 @@
  * STAGES numbers into one of five preallocated player slots. flush() — called first in the
  * theme's frame — resolves each slot into at most one `lock` and one `clear` for the sink:
  *
- *   sink.lock({ player, rows, u, hardDrop, distance, color, shape, cells, screen })
+ *   sink.lock({ player, rows, u, hardDrop, distance, color, shape, cells, tspin, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, rowCodes, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.b2b(level, player)    the live back-to-back level (0..4), whenever it changes
@@ -18,7 +18,8 @@
  * drop fell (0 for any other lock); `color` is the piece's colour (a CSS hex string) or null;
  * `shape` is its key (I, O, T, S, Z, J, L) or null and `cells` its occupied cells in the
  * orientation it locked in (eight numbers: x, y offsets from their own centre, y up; see
- * cellsFromMatrix) or null. `rowCodes` holds each cleared row's ten cells as piece codes
+ * cellsFromMatrix) or null; `tspin` is true for a T-spin that cleared no line (it has no clear to
+ * ride on, so the lock carries it). `rowCodes` holds each cleared row's ten cells as piece codes
  * (PIECE_CODE: I 0, T 1, Z 2, L 3, S 4, J 5, O 6, 7 = garbage or unknown), flat and in step with
  * `rows`: row k's column c is rowCodes[k * 10 + c], left to right. `screen` ({ x, y } in window
  * fractions, y down) is set instead for the meditation mode's clicks, which carry a pixel
@@ -478,6 +479,7 @@ export class PyrestormDirector {
             color: null,
             shape: null,
             cells: null,
+            tspin: false,
             screen: null,
         };
         this._cells = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -762,6 +764,7 @@ export class PyrestormDirector {
                 for (let k = 0; k < 8; k += 1) this._cells[k] = slot.lockCells[k];
                 c.cells = this._cells;
             } else c.cells = null;
+            c.tspin = slot.tspin && slot.lines === 0;
             c.screen = null;
             sink.lock(c);
         }

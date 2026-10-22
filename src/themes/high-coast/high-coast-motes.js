@@ -33,6 +33,8 @@ import {
 import { airClarity } from './high-coast-light.js';
 
 export const MOTE_KIND = Object.freeze({ spray: 0, mist: 1, glint: 2 });
+/** How far past the cursor a spawn looks for a spent slot. */
+const SLOT_LOOKAHEAD = 48;
 
 /**
  * One instanced quad per mote. Attributes (written once at spawn):
@@ -136,12 +138,36 @@ export class Motes {
         return material;
     }
 
+    /**
+     * The slot the next mote takes: from the ring's cursor, the first spent one within a short
+     * look-ahead, else the one nearest its end there (a busy sky clips the last of a fading mote,
+     * not a splash mid-arc).
+     */
+    slot() {
+        const now = this.u.time.value;
+        let best = this.cursor;
+        let left = Infinity;
+        for (let k = 0; k < SLOT_LOOKAHEAD; k++) {
+            const i = (this.cursor + k) % this.count;
+            const remaining = this.start[i * 4 + 3] + this.move[i * 4 + 3] - now;
+            if (remaining <= 0) {
+                best = i;
+                break;
+            }
+            if (remaining < left) {
+                left = remaining;
+                best = i;
+            }
+        }
+        this.cursor = (best + 1) % this.count;
+        return best;
+    }
+
     /** Spawn one mote. `start` and `velocity` in metres and m/s, `born` on the theme clock. */
     spawn({
         x, y, z, vx = 0, vy = 0, vz = 0, born, life = 2, rgb = [1, 1, 1], size = 0.4, kind = MOTE_KIND.spray, seed = 0.5, drift = 0, gravity = -9.8,
     }) {
-        const i = this.cursor;
-        this.cursor = (this.cursor + 1) % this.count;
+        const i = this.slot();
         this.start.set([x, y, z, born], i * 4);
         this.move.set([vx, vy, vz, life], i * 4);
         this.look.set([rgb[0], rgb[1], rgb[2], size], i * 4);

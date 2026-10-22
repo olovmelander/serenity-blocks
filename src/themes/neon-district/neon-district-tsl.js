@@ -196,8 +196,20 @@ export function createDistrictUniforms(textures) {
         glitch: uniform(0),
         /** Sheet lightning in the smog, 0..1. */
         storm: uniform(0),
-        /** Rain density 0..1 and wetness of every surface. */
+        /** Rain energy and wetness of every surface: 1 at rest, up to ~1.75 in a downpour. */
         rain: uniform(1),
+        /** 0..1: how hard it is coming down (the rain leans in the wind and streaks longer). */
+        downpour: uniform(0),
+        /**
+         * Clocks that integrate a changing pace (seconds at the resting pace), so speeding up
+         * never jumps anything: the rain's fall (and the puddles' rings), the flying traffic, and
+         * the kerb lights' chase (a phase in [0, 1)).
+         */
+        rainClock: uniform(0),
+        traffic: uniform(0),
+        chase: uniform(0),
+        /** Afterglow left by a clear wave whose slot a newer wave took (fades on the CPU). */
+        clearGlow: uniform(0),
         /** How full the lungs are, 0..1: the breath Hale's adverts and logos follow. */
         breath: uniform(0),
         viewport: uniform(new THREE.Vector2(1920, 1080)),
@@ -309,7 +321,9 @@ export function ndClearLight(u, z) {
         front = front.add(u.clearC[i].mul(f.mul(A.z)));
         glow = glow.add(exp(since.div(-CLEAR_AFTERGLOW)).mul(live));
     }
-    return vec4(front, glow);
+    // Afterglows stack while waves overlap, up to a district fully lit (never past it: the
+    // halos in the haze scale with it, and a cascade must not turn the street to milk).
+    return vec4(front, min(glow.add(u.clearGlow), 1.4));
 }
 
 // ── Materials and geometry ──────────────────────────────────────────────────────

@@ -20,6 +20,8 @@ import {
 
 /** Ring speed across the water, world units per second. */
 export const RING_SPEED = 5.2;
+/** A ring's crest fades as exp(-RING_DECAY · seconds). */
+const RING_DECAY = 0.62;
 
 /**
  * @param {object} options
@@ -75,7 +77,7 @@ export function createCavePool({
             const age = max(u.time.sub(ring.z), 0);
             const front = reach.sub(age.mul(RING_SPEED));
             const width = age.mul(0.42).add(1.1);
-            const envelope = ring.w.mul(exp(age.mul(-0.62))).mul(smoothstep(0, 0.12, age))
+            const envelope = ring.w.mul(exp(age.mul(-RING_DECAY))).mul(smoothstep(0, 0.12, age))
                 .mul(exp(front.div(width).pow2().negate()));
             const phase = front.mul(2.4);
             slope.addAssign(offset.div(reach).mul(sin(phase).mul(envelope).mul(0.34)));
@@ -157,10 +159,25 @@ export function createCavePool({
         material,
         reflection,
         slots,
-        /** Start a ring. `tint` is a THREE.Color (or hex); `strength` about 0.2 to 1.5. */
+        /**
+         * Start a ring. `tint` is a THREE.Color (or hex); `strength` about 0.2 to 1.5. When every
+         * slot is busy the faintest ring gives way (the oldest among equals), never one still
+         * spreading strongly across the water.
+         */
         ring(x, z, time, strength, tint) {
-            const index = cursor;
-            cursor = (cursor + 1) % slots;
+            let index = cursor;
+            let faintest = Infinity;
+            for (let offset = 0; offset < slots; offset += 1) {
+                const slot = (cursor + offset) % slots;
+                const ring = ringData[slot];
+                const age = time - ring.z;
+                const left = age >= 0 ? ring.w * Math.exp(-age * RING_DECAY) : ring.w;
+                if (left < faintest) {
+                    faintest = left;
+                    index = slot;
+                }
+            }
+            cursor = (index + 1) % slots;
             ringData[index].set(x, z, time, strength);
             if (tint !== undefined) ringTint[index].set(tint);
             return index;

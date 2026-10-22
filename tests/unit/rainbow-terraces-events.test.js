@@ -8,8 +8,9 @@
  */
 import { describe, expect, it } from 'vitest';
 import {
-    CROWN_LIFE, EventEffects, LOCK, SHEET_LIFE,
+    CROWN_LIFE, EventEffects, LOCK, SHEET_LIFE, TILE_SPAN,
 } from '../../src/themes/rainbow-terraces/rainbow-terraces-events.js';
+import { GLOW } from '../../src/themes/rainbow-terraces/rainbow-terraces-fx.js';
 import { frameFor, project, unproject } from '../../src/themes/rainbow-terraces/rainbow-terraces-frame.js';
 
 const T_CELLS = [-1, -0.5, 0, -0.5, 1, -0.5, 0, 0.5];
@@ -126,15 +127,24 @@ describe('rainbow terraces event effects', () => {
     it('draws the copy at the card first, then the thread\'s head arriving at the pool as it lands', () => {
         const fx = new EventEffects(SIZES);
         const land = lockAt(fx, 1);
-        // The copy: four cells (rounded squares) round the start point, white-hot at first, inside
-        // the shock ring that runs out from it, sparks thrown off.
+        // The copy: ONE solid piece round the start point, white-hot at first, inside the shock
+        // ring that runs out from it, sparks thrown off. Its four cells are tiles a whole pitch
+        // across (their edges add up to one across every joint: no seam, one outline), each on
+        // its cell, all one colour, and no per-cell square is drawn.
         const first = lights(fx, 1.01);
-        const copy = first.filter((l) => l[7] === 2);
+        const copy = first.filter((l) => l[7] === GLOW.tile);
         expect(copy).toHaveLength(4);
+        expect(first.filter((l) => l[7] === GLOW.cell)).toEqual([]);
         expect(first.filter((l) => l[7] === 5)).toHaveLength(1);
         expect(first.filter((l) => l[7] === 3).length).toBeGreaterThan(4);
         copy.forEach((l) => expect(Math.hypot(l[0] + 20, l[1] - 5, l[2] + 40)).toBeLessThan(2));
         expect(Math.min(...copy.map((l) => l[4]))).toBeGreaterThan(2);
+        copy.forEach((l, k) => {
+            expect(l[3]).toBeCloseTo(0.8 * 0.5 * TILE_SPAN, 6);
+            expect(l.slice(4, 7)).toEqual(copy[0].slice(4, 7));
+            expect(l[0]).toBeCloseTo(-20 + T_CELLS[k * 2] * 0.8, 6);
+            expect(l[1]).toBeCloseTo(5 + T_CELLS[k * 2 + 1] * 0.8, 6);
+        });
         // In flight: a head and its droplets; just before landing the head is at the pool.
         const late = lights(fx, land - 1e-4);
         const head = late.find((l) => l[7] === 4);

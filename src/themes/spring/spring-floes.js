@@ -3,10 +3,10 @@
  * the fall, and its floes come out of the plunge pool's boil and ride the rapids down, round
  * under the knoll and away down the valley, turning, tipping over the ledges, wearing away.
  *
- * One instanced mesh of irregular slabs (a pool; the oldest is reused). Where a floe is follows
- * from its age alone, through a table of the time it takes to drift to every metre of the river at
- * the water's own speed (spring-plan speedAt), so any moment can be shown again exactly; a few
- * dozen matrices a frame. The slab's look (snow on the top, blue-green ice at the broken edges)
+ * One instanced mesh of irregular slabs (a pool: a new ice-out takes floes off the river only
+ * once they are wearing away). Where a floe is follows from its age alone, through a table of the
+ * time it takes to drift to every metre of the river at the water's own speed (spring-plan
+ * speedAt), so any moment can be shown again exactly; a few dozen matrices a frame. The slab's look (snow on the top, blue-green ice at the broken edges)
  * is the shader's.
  */
 import * as THREE from 'three/webgpu';
@@ -31,9 +31,12 @@ import {
     RIVER, S_POOL, courseAt, levelAt, slopeAt, speedAt,
 } from './spring-plan.js';
 
-/** How a floe lives: its speed against the water's, its life (s), its size range (m). */
+/**
+ * How a floe lives: its speed against the water's, its life (s), its size range (m), and the
+ * share of its life after which it wears away (and a new ice-out may take its place).
+ */
 export const FLOE = Object.freeze({
-    drift: 1.0, life: 46, size: Object.freeze([1.5, 4.5]), thickness: 0.36,
+    drift: 1.0, life: 46, size: Object.freeze([1.5, 4.5]), thickness: 0.36, worn: 0.6,
 });
 
 /** The travel-time table: seconds a floe takes from the pool to every metre down the river. */
@@ -167,12 +170,39 @@ export class Floes {
         return false;
     }
 
-    /** The ice goes out: `n` floes out of the pool's boil over `spread` seconds from `time`. */
+    /**
+     * A floe the next ice-out may take at `time`: one no longer on the river, else the one worn
+     * furthest (past WORN of its life it is already melting away), else none. Floes still riding
+     * the rapids are never taken: a second ice-out adds to the first instead of pulling it off
+     * the river mid-way.
+     */
+    spareFloe(time) {
+        let best = -1;
+        let bestAge = FLOE.life * FLOE.worn;
+        for (let k = 0; k < this.count; k++) {
+            const i = (this.cursor + k) % this.count;
+            const floe = this.floes[i];
+            if (!floe.alive) return i;
+            const age = time - floe.born;
+            if (age > bestAge) {
+                bestAge = age;
+                best = i;
+            }
+        }
+        return best;
+    }
+
+    /**
+     * The ice goes out: up to `n` floes out of the pool's boil over `spread` seconds from `time`
+     * (as many as the pool has spare: see spareFloe).
+     */
     breakUp(time, n = 24, spread = 3.5) {
         const r = this.random;
         for (let k = 0; k < Math.min(n, this.count); k++) {
-            const floe = this.floes[this.cursor];
-            this.cursor = (this.cursor + 1) % this.count;
+            const i = this.spareFloe(time);
+            if (i < 0) break;
+            const floe = this.floes[i];
+            this.cursor = (i + 1) % this.count;
             floe.alive = true;
             floe.s0 = S_POOL + 3 + r() * 9;
             floe.s = floe.s0;
@@ -212,7 +242,7 @@ export class Floes {
             const across = floe.across * c.halfWidth;
             // Tipped down a ledge's chute, rocked by the waves, worn away toward the end.
             const tilt = Math.atan(slopeAt(floe.s));
-            const wear = 1 - Math.max(0, age - FLOE.life * 0.6) / (FLOE.life * 0.4);
+            const wear = 1 - Math.max(0, age - FLOE.life * FLOE.worn) / (FLOE.life * (1 - FLOE.worn));
             const rise = Math.min(1, age / 0.8);
             this._p.set(
                 c.x - c.tz * across,

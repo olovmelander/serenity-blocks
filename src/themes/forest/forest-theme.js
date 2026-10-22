@@ -31,6 +31,8 @@ import { sceneSamples } from '../shared/scene-antialias.js';
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
 const BOARD_POLL_S = 0.75;
+/** Under reduced motion, how much of the motion hot play adds still plays (the standing breeze). */
+const REDUCED_MOTION_SURGE = 0.35;
 /** The seed the playground effect grows the same forest from. */
 const DEFAULT_SEED = 419;
 /** Deep night blue: what the canvas shows before the first frame, and behind the sky dome. */
@@ -575,6 +577,8 @@ export default class ForestTheme extends BaseTheme {
     update(delta) {
         const dt = Math.max(0, Math.min(MAX_DELTA_S, Number.isFinite(delta) ? delta : 0));
         this.time += dt;
+        // Reduced motion calms the breeze hot play keeps up (the events' own answers stay).
+        if (this.reactions) this.reactions.motion = this.reducedMotion ? REDUCED_MOTION_SURGE : 1;
         this.reactions?.update(dt);
         const frame = this.reactions?.getFrame();
         this.boardPoll -= dt;

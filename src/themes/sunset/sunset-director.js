@@ -9,6 +9,9 @@
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.crown({ player })     a perfect clear settled after its clear (physics sends it ~360 ms
+ *                              after the last wave): the crown on the clear, not a new clear
+ *   sink.spin({ player })      a T-spin that cleared nothing
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *
@@ -21,8 +24,8 @@
  * colour on the sea beside the card (`u` and the middle one of `rows` say where, `hardDrop` makes
  * it splash); a clear lifts a lantern off the water for each of its `lines` (`tspin` turns them
  * as they rise, four lines or `perfect` lift them all and fire the sky); the combo sets the sky
- * burning and calls the gulls. The world reads the chain from sink.combo, so a clear's
- * own `combo`, `cascade` and `b2b` go unused here.
+ * burning and calls the gulls. The world reads the chain from sink.combo; a clear's `cascade`
+ * (its wave) makes each wave build on the last, and `b2b` shows the sun dogs.
  *
  * Combo: the bus's COMBO event carries the CASCADE DEPTH of one lock, never a combo (ADR-0011).
  * The true consecutive-clear combo is derived here with one ComboTracker per player; an explicit
@@ -193,7 +196,10 @@ function capturePosition(slot, payload) {
 export class SunsetDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, combo?: Function, levelUp?: Function },
+     *   sink?: {
+     *     lock?: Function, clear?: Function, crown?: Function, spin?: Function, combo?: Function,
+     *     levelUp?: Function,
+     *   },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -214,6 +220,7 @@ export class SunsetDirector {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
         };
         this._screen = { x: 0.5, y: 0.5 };
+        this._moment = { player: 0 };
     }
 
     /**
@@ -356,13 +363,17 @@ export class SunsetDirector {
         return true;
     }
 
+    /**
+     * Physics settles a perfect clear ~360 ms after its clear's last wave, in a frame of its own:
+     * then it is the CROWN on the clear already shown (sink.crown), never a new one-line clear.
+     * In the clear's own frame it rides on that clear.
+     */
     onPerfectClear(event) {
         if (!this.enabled) return false;
         const slot = this.slotFor(event || EMPTY);
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -425,6 +436,27 @@ export class SunsetDirector {
                 c.b2b = slot.b2b;
                 c.screen = screen;
                 sink.clear(c);
+            } else if (slot.perfect && sink?.crown) {
+                // A perfect clear settled after its clear: the crown on it.
+                this._moment.player = slot.player;
+                sink.crown(this._moment);
+            } else if (slot.perfect && sink?.clear) {
+                // A sink that knows no crown hears it as a clear, as it always did.
+                const c = this._clear;
+                c.player = slot.player;
+                c.rows.length = 0;
+                c.lines = 1;
+                c.combo = Math.max(1, combo);
+                c.cascade = 1;
+                c.tspin = slot.tspin;
+                c.perfect = true;
+                c.b2b = slot.b2b;
+                c.screen = screen;
+                sink.clear(c);
+            } else if (slot.tspin && sink?.spin) {
+                // A T-spin that cleared nothing.
+                this._moment.player = slot.player;
+                sink.spin(this._moment);
             }
             clearPending(slot);
         }

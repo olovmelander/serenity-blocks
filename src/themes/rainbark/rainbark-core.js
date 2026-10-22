@@ -2435,9 +2435,12 @@ export const PALETTE_ROWS = Object.freeze({
     total: 28,
 });
 
-/** Slots per block of the event table, and rows per slot. */
+/**
+ * Slots per block of the event table, and rows per slot. (Sixteen rings: a chain's clears girdle
+ * up to four trunks a row, and a cascade climbs the bole, so twelve would cut rings still blazing.)
+ */
 export const EVENT_SLOTS = Object.freeze({
-    peels: 16, girdles: 12, helices: 6, knocks: 4, gaps: 7, moult: 1,
+    peels: 16, girdles: 16, helices: 6, knocks: 4, gaps: 7, moult: 1,
 });
 export const EVENT_ROWS_PER = Object.freeze({
     peels: 3, girdles: 3, helices: 2, knocks: 1, gaps: 1, moult: 1,
@@ -2452,7 +2455,7 @@ export const EVENT_ROWS = (() => {
         at += EVENT_SLOTS[block] * EVENT_ROWS_PER[block];
     });
     rows.used = at;
-    rows.total = 112;
+    rows.total = 124;
     return Object.freeze(rows);
 })();
 
@@ -2654,16 +2657,18 @@ export const CURL = Object.freeze({
  * Opening the canopy (§6.6, §4.10 as built): chain link n ≥ 2 opens gap n − 1 (at most 7). Each gap
  * is a hole in the crowns above a fixed station on the lanes, so its pinhole image (the gap's own
  * radius blurred by the sun's disc: about 2 m at the Bole) lands there as a big sun pool, with a
- * shaft of lit haze under it. A gap opens over `open` seconds and shuts over `close`; on the Set
- * they shut in reverse, `stagger` seconds apart. Its radius is `radius`[0] up to the Fog Line and
+ * shaft of lit haze under it. A gap opens over `open` seconds (`stagger` apart when a jump opens
+ * several) and shuts over `close`; on the Set they shut in reverse, `setStagger` seconds apart: a
+ * slow dusk of the canopy, never a blink. Its radius is `radius`[0] up to the Fog Line and
  * [1] from the Limb Storey (`high` metres) up. A gap that opens sheds `leaves` leaf bits from the
  * crowns above its station. Stations: [trunk code, screen row] in opening order, on a landscape
  * and on an upright frame (the Elder high, Sister One high, both mid, both low, then Sister Two).
  */
 export const GAP = Object.freeze({
     open: 0.5,
-    close: 0.45,
+    close: 0.9,
     stagger: 0.12,
+    setStagger: 0.3,
     radius: Object.freeze([0.35, 0.25]),
     high: 110,
     leaves: 12,
@@ -2677,7 +2682,7 @@ export const GAP = Object.freeze({
  * Quickening (§6.6): while a chain lives the bark's group clocks run at 1 + `per`·(n − 1) (n
  * capped at `cap`): the Elder from ×`join`[0], the Sisters from ×[1], the R1/R2 group from ×[2]
  * at `share`[2] of the speed-up, the far grove from ×[3] at `share`[3]. A rate eases toward its
- * target with τ `rise` (τ `fall` when it drops: the Set snaps the time-lapse back). From ×`gust`
+ * target with τ `rise` (τ `fall` when it drops: the Set eases the time-lapse back). From ×`gust`
  * the canopy's wind blows `wind` times as far (eased with τ `windTau`, so no fleck jumps).
  */
 export const QUICKEN = Object.freeze({
@@ -2686,7 +2691,7 @@ export const QUICKEN = Object.freeze({
     join: Object.freeze([2, 3, 5, 7]),
     share: Object.freeze([1, 1, 0.6, 0.4]),
     rise: 0.8,
-    fall: 0.25,
+    fall: 0.8,
     gust: 4,
     wind: 1.5,
     windTau: 1.5,
@@ -2822,6 +2827,68 @@ export function floorEnvelope(s) {
     const down = s > FLOOR.hold ? smoother((s - FLOOR.hold) / (FLOOR.back - FLOOR.hold)) : 0;
     return up * (1 - down);
 }
+
+/** Where smoother(x) = v (0 … 1): the place on a rising curve a value stands at. */
+export function smootherInverse(v) {
+    if (!(v > 0)) return 0;
+    if (v >= 1) return 1;
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 24; i++) {
+        const mid = (lo + hi) / 2;
+        if (smoother(mid) < v) lo = mid;
+        else hi = mid;
+    }
+    return (lo + hi) / 2;
+}
+
+/**
+ * The grove builds with play (src/themes/shared/gameplay-surge.js: `level` 0 … 1 the heat of play,
+ * `fever` the slow tide that only fills while play stays hot, `punch` each beat). Calm play looks
+ * as it always did; then, in the grove's own terms:
+ *   warm   the canopy takes notice: its wind runs faster (`wind`, the flecks slide quicker over the
+ *          bark), the bark's clocks quicken (`quicken`) and the bark gleams (`sheen`);
+ *   hot    the canopy opens: every gap's pool and beam widens a little (`gap`), the flecks and the
+ *          beams pour more light (`fleck`), the colours deepen (`sat`) while the iris closes a
+ *          little (`iris` stops), so the shade stays deep and the light stands out of it (the pools
+ *          already burn near the shoulder: they gain colour, not size);
+ *   fever  the canopy blows open: the sun turns gold (`gold`) and the sunlit air, the mist's top
+ *          and the highlights with it (`air`, rgb multipliers at full fever), leaves pour down from
+ *          the crowns over the open gaps (`leaves` a second per event curl slot), the bark runs in
+ *          time-lapse.
+ * Each term is level·[0] + fever·[1]. Past the seven gaps every link widens them by `gapLink`. A
+ * perfect clear crowns the clear before it: the canopy flares (`crown`: the flecks' light and the
+ * gaps' radius, rising over `rise` and falling over `release` seconds, its light under Reduce
+ * flashing). A back-to-back clear bursts the Sunshower (`shower`: more of the drops fall at once,
+ * more for every step of the run, falling away over `release`). Every beat dips the walkway a few
+ * centimetres (`kick` metres at most; none under reduced motion).
+ */
+export const GROVE_SURGE = Object.freeze({
+    wind: Object.freeze([0.6, 0.9]),
+    quicken: Object.freeze([1.2, 2.0]),
+    sheen: Object.freeze([0.25, 0.2]),
+    gap: Object.freeze([0.1, 0.18]),
+    gapLink: 0.04,
+    fleck: Object.freeze([0.06, 0.14]),
+    sat: Object.freeze([0.05, 0.08]),
+    iris: Object.freeze([0.2, 0.1]),
+    gold: 0.5,
+    goldColor: '#FFB850',
+    air: Object.freeze({
+        hazeSun: Object.freeze([1.05, 0.9, 0.68]),
+        mistTop: Object.freeze([1.04, 0.92, 0.76]),
+        underglow: Object.freeze([1.06, 0.9, 0.7]),
+        gradeLight: Object.freeze([1.03, 0.97, 0.86]),
+    }),
+    leaves: 0.05,
+    crown: Object.freeze({
+        fleck: 0.25, gap: 0.2, rise: 0.35, release: 3.5,
+    }),
+    shower: Object.freeze({
+        amount: 0.45, perStep: 0.35, rise: 0.4, release: 3.5,
+    }),
+    kick: 0.06,
+});
 
 /** Leaf bits (kind 3 curls): eucalyptus leaves shaken from the crowns. */
 export const LEAF = Object.freeze({

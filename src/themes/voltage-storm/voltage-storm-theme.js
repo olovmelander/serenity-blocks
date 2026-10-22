@@ -261,6 +261,8 @@ export default class VoltageStormTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
+                perfect: (c) => this.world?.onPerfect(c),
+                tspin: (c) => this.world?.onTSpin(c),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => {
                     this.level = level;

@@ -121,8 +121,10 @@ export function createBeams(u, t, reactions) {
         mesh,
         meshes: [mesh],
         count: 0,
-        update(time) {
+        update(time, dt, world) {
             const { gaps } = reactions;
+            // The hotter play runs, the more dust the beams stand in (the world's surge).
+            const glow = Number.isFinite(world?.beamGlow) ? world.beamGlow : 1;
             let n = 0;
             for (let i = 0; i < gaps.length && n < MAX_GAPS; i++) {
                 const g = gaps[i];
@@ -132,8 +134,15 @@ export function createBeams(u, t, reactions) {
                 const [dx, dz] = GrainfieldsReactions.gapShift(g, time);
                 const fx = g.footX + dx;
                 const fz = g.footZ + dz;
-                footData.set([fx, groundHeight(fx, fz), fz, g.radius], n * 4);
-                lookData.set([g.rgb[0], g.rgb[1], g.rgb[2], strength], n * 4);
+                const o = n * 4;
+                footData[o] = fx;
+                footData[o + 1] = groundHeight(fx, fz);
+                footData[o + 2] = fz;
+                footData[o + 3] = g.radius;
+                lookData[o] = g.rgb[0];
+                lookData[o + 1] = g.rgb[1];
+                lookData[o + 2] = g.rgb[2];
+                lookData[o + 3] = strength * glow;
                 n += 1;
             }
             instanced.instanceCount = n;

@@ -250,6 +250,8 @@ export default class SupernovaTheme extends BaseTheme {
                 clear: (c) => this.world?.onClear(c),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => this.world?.levelUp(level),
+                crown: () => this.world?.onCrown?.(),
+                spin: () => this.world?.onSpin?.(),
             },
         });
         this.appliedSize = null;

@@ -8,7 +8,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    attribute, cameraPosition, color, dot, exp, instancedBufferAttribute, mix, normalize, normalWorld, positionLocal,
+    attribute, cameraPosition, color, dot, instancedBufferAttribute, mix, normalize, normalWorld, positionLocal,
     positionWorld, pow, saturate, sin, smoothstep, uv, vec3,
 } from 'three/tsl';
 import { createSummerLilyGeometry } from './summer-flowers.js';
@@ -125,7 +125,7 @@ export class SummerShore {
         const st = uv();
         const spike = attribute('spike', 'float');
         const t = light.uTime;
-        const front = exp(positionLocal.x.sub(light.uFront.x).div(light.uFront.z).pow2().negate()).mul(light.uFront.y);
+        const front = light.front(positionLocal.x);
         const force = light.uWind.add(light.uGust).add(front);
         const sway = sin(t.mul(1.5).add(positionLocal.x.mul(0.45)).add(positionLocal.z.mul(0.31)).add(look.x.mul(6.3)))
             .mul(0.5).add(sin(t.mul(2.9).add(look.x.mul(31)).add(st.x.mul(9))).mul(0.18)).add(0.35);

@@ -1,6 +1,7 @@
 /** Blood Moon's verified playground scene, with game lifecycle and event ownership. */
 import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
+import { ComboTracker } from '../../core/combo-tracker.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { getViewport } from '../../utils/viewport.js';
 import { normalizeQuality } from '../../utils/quality.js';
@@ -48,6 +49,12 @@ export default class BloodMoonTheme extends BaseTheme {
         this.runtimeGeneration = 0;
         this.runtimeEntry = null;
         this.eventUnsubscribers = [];
+        /**
+         * The true combo, one tracker per player board: COMBO carries a lock's cascade depth, never
+         * a combo (ADR-0011), so the chain is counted here from the locks and clears.
+         * @type {Map<number, ComboTracker>}
+         */
+        this.comboTrackers = new Map();
         this.animationLoopStarted = false;
         this.animationDriver = null;
         this.lastFrameTime = null;
@@ -192,31 +199,71 @@ export default class BloodMoonTheme extends BaseTheme {
         }
     }
 
+    /** The combo tracker of one player board (0 when the event names none). */
+    comboTracker(player) {
+        const key = Number.isInteger(player) ? player : 0;
+        let tracker = this.comboTrackers.get(key);
+        if (!tracker) {
+            tracker = new ComboTracker();
+            this.comboTrackers.set(key, tracker);
+        }
+        return tracker;
+    }
+
+    /** A new run (or the end of one): every chain starts again. */
+    resetCombos() {
+        for (const tracker of this.comboTrackers.values()) tracker.reset();
+        this.runtime?.setCombo?.(0);
+    }
+
     setupListeners() {
         this.clearEventUnsubscribers();
         this.clearTrackedResources();
         this.modeManager = null;
+        this.comboTrackers.clear();
         this.reducedMotionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
         this.applyEffectSettings();
         const cue = (kind, payload) => {
             if (!this.isActive || this.isPaused || !this.effectsEnabled) return;
-            if (kind === 'lock' && !this.lockEnabled) return;
+            if ((kind === 'lock' || kind === 'hardDrop') && !this.lockEnabled) return;
             this.runtime?.cue(kind, payload);
         };
+        // Bookkeeping, not decoration: the chain is counted whatever the lock ripple setting.
+        const noteLock = (data) => {
+            if (!this.isActive || this.isPaused) return;
+            this.comboTracker(data?.player).notePieceLocked();
+            this.runtime?.noteLock?.();
+        };
+        const noteClear = (data) => {
+            if (!this.isActive || this.isPaused) return;
+            let combo = this.comboTracker(data?.player).noteLineClear();
+            const explicit = Number(data?.comboCount);
+            if (Number.isFinite(explicit) && explicit > combo) combo = Math.floor(explicit);
+            this.runtime?.setCombo?.(combo);
+        };
         this.eventUnsubscribers.push(
-            eventBus.on(EVENTS.PIECE_LOCK, (data) => cue('lock', data)),
+            eventBus.on(EVENTS.HARD_DROP, (data) => cue('hardDrop', data)),
+            eventBus.on(EVENTS.PIECE_LOCK, (data) => {
+                noteLock(data);
+                cue('lock', data);
+            }),
             eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+                noteClear(data);
                 cue((data?.lineCount ?? data?.lines) >= 4 ? 'tetris' : 'clear', data);
             }),
             eventBus.on(EVENTS.COMBO, (data) => cue('combo', data)),
             eventBus.on(EVENTS.TSPIN, (data) => cue('tspin', data)),
+            eventBus.on(EVENTS.B2B, (data) => cue('b2b', data)),
             eventBus.on(EVENTS.PERFECT_CLEAR, (data) => cue('perfectClear', data)),
             eventBus.on(EVENTS.LEVEL_UP, (data) => cue('levelUp', data)),
             eventBus.on(EVENTS.SETTINGS_CHANGED, (data) => this.handleSettings(data)),
             eventBus.on(EVENTS.VIEWPORT_RESIZED, (view) => this.resize(view?.width, view?.height)),
         );
         this.registerEventListener(window, 'settingsChanged', (event) => this.handleSettings(event));
-        this.registerEventListener(window, 'gameOver', () => this.runtime?.seek(this.time));
+        this.registerEventListener(window, 'gameOver', () => {
+            this.resetCombos();
+            this.runtime?.seek(this.time);
+        });
         if (this.reducedMotionQuery?.addEventListener) {
             this.registerEventListener(this.reducedMotionQuery, 'change', () => this.applyEffectSettings());
         }
@@ -230,7 +277,11 @@ export default class BloodMoonTheme extends BaseTheme {
         this.eventUnsubscribers.push(
             manager.on('modeStarted', () => this.scheduleLayout()),
             manager.on('modeActivated', () => this.scheduleLayout()),
-            manager.on('modeStopped', () => { this.runtime?.seek(this.time); this.scheduleLayout(); }),
+            manager.on('modeStopped', () => {
+                this.resetCombos();
+                this.runtime?.seek(this.time);
+                this.scheduleLayout();
+            }),
         );
     }
 

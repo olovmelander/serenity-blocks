@@ -680,7 +680,7 @@ describe('Fall world in play', () => {
             expect([...now[kind]].every((resource) => before[kind].has(resource))).toBe(true);
         }
         // The session really happened: every kind of emitter and force field was played.
-        expect([...seen.kinds].sort()).toEqual(['clear', 'combo', 'lock', 'shower', 'spin']);
+        expect([...seen.kinds].sort()).toEqual(['clear', 'combo', 'crown', 'lock', 'shower', 'spin', 'twin']);
         expect([...seen.fields].sort()).toEqual(['burst', 'jet', 'vortex']);
         expect(seen.front).toBe(true);
         expect(seen.finite).toBe(true);
@@ -698,22 +698,36 @@ describe('Fall world in play', () => {
     it('keeps invalid time inputs out of the world clock and bounds scene excitement', async () => {
         const { world } = await buildWorld('Minimal');
         const { light, leaves } = world;
+        // The boughs lean into a gust over a few frames (a spring), never in one: no step, no lean.
         world.update(4, 0, { gust: 1 });
-        const fullGust = light.uGust.value;
-        expect(fullGust).toBeGreaterThan(0);
-        world.update(4, 0, {
+        expect(light.uGust.value).toBe(0);
+        const lean = [];
+        for (let frame = 1; frame <= 60; frame++) {
+            world.update(4 + frame * STEP, STEP, { gust: 1 });
+            lean.push(light.uGust.value);
+        }
+        expect(lean[0]).toBeGreaterThan(0);
+        expect(lean[0]).toBeLessThan(0.1);
+        for (let index = 1; index < lean.length; index++) expect(lean[index]).toBeGreaterThanOrEqual(lean[index - 1]);
+        const fullGust = lean.at(-1);
+        expect(fullGust).toBeCloseTo(1.6, 2);
+        // Over the top of the range it is the same full gust; light answers at once.
+        world.update(5, STEP, {
             gust: 2, warmth: -5, shafts: Infinity, glow: NaN, vortex: 0.75, heat: 9,
         });
-        expect(light.uTime.value).toBe(4);
-        expect(light.uGust.value).toBe(fullGust);
+        expect(light.uTime.value).toBe(5);
+        expect(light.uGust.value).toBeCloseTo(fullGust, 3);
         expect(light.uWarmth.value).toBe(0);
         expect(light.uGlow.value).toBe(0);
         expect(leaves.uHeat.value).toBe(1);
-        world.update(4, 0, { warmth: 0.5, glow: 0.25, heat: 0.4 });
-        expect(light.uGust.value).toBe(0);
+        world.update(5, 0, { warmth: 0.5, glow: 0.25, heat: 0.4 });
         expect(light.uWarmth.value).toBe(0.5);
         expect(light.uGlow.value).toBe(0.25);
         expect(leaves.uHeat.value).toBe(0.4);
+        // The gust lets go as gently as it came.
+        for (let frame = 0; frame < 120; frame++) world.update(5, STEP, { emitters: [] });
+        expect(light.uGust.value).toBeLessThan(0.01);
+        world.update(4, 0, { warmth: 0.5, glow: 0.25, heat: 0.4 });
         for (const time of [NaN, Infinity, -Infinity, undefined, null, '9']) world.update(time, 0);
         expect(light.uTime.value).toBe(4);
         expect(leaves.uHeat.value).toBe(0);
@@ -732,6 +746,52 @@ describe('Fall world in play', () => {
         expect(allFinite(sim.outPosition) && allFinite(sim.outRotation) && allFinite(sim.velocity)).toBe(true);
         expect(Number.isFinite(light.uGust.value)).toBe(true);
         expect(light.uFront.value.toArray().every(Number.isFinite)).toBe(true);
+    });
+
+    it('carries three fronts at once, turns the sun to amber as play heats, calms under reduced motion', async () => {
+        const { world } = await buildWorld('Minimal');
+        const { light } = world;
+        const restSun = light.uSunColor.value.clone();
+        const sunHue = (sun) => sun.b / sun.r;
+        const fronts = [
+            { position: -1, direction: 1, strength: 0.4 },
+            { position: 0, direction: 1, strength: 0.6 },
+            { position: 1, direction: 1, strength: 0.8 },
+        ];
+        world.update(1, STEP, { fronts, emitters: [] });
+        const [x0, s0, x1, s1] = light.uFront.value.toArray();
+        const [x2, s2, width] = light.uFrontC.value.toArray();
+        expect([s0, s1, s2].every((strength) => strength > 0)).toBe(true);
+        expect(x0).toBeLessThan(x1);
+        expect(x1).toBeLessThan(x2);
+        expect(width).toBeGreaterThan(0);
+        world.update(1, STEP, { fronts: [], emitters: [] });
+        expect(light.uFront.value.y + light.uFront.value.w + light.uFrontC.value.y).toBe(0);
+        // A fever: the sun deepens toward late amber, the air clears a little, the leaves turn.
+        const haze = light.uHaze.value;
+        world.update(1, STEP, {
+            turn: 1, ripen: 0.7, surge: { fever: 1 }, emitters: [],
+        });
+        expect(sunHue(light.uSunColor.value)).toBeLessThan(sunHue(restSun) * 0.8);
+        expect(light.uHaze.value).toBeLessThan(haze);
+        expect(light.uTurn.value).toBe(1);
+        expect(light.uWarmth.value).toBeCloseTo(0.7, 9);
+        world.update(1, STEP, { emitters: [] });
+        expect(light.uSunColor.value.equals(restSun)).toBe(true);
+        // The standing breeze of hot play bends the boughs over seconds, less under reduced motion.
+        const breeze = (motion) => {
+            for (let frame = 0; frame < 240; frame++) {
+                world.update(1, STEP, {
+                    breeze: 0.8 * (motion ?? 1), gust: 0.5, motion, emitters: [],
+                });
+            }
+            return { wind: light.uWind.value, gust: light.uGust.value };
+        };
+        const full = breeze(undefined);
+        const calm = breeze(0.35);
+        expect(full.wind).toBeGreaterThan(0.6);
+        expect(calm.wind).toBeLessThan(full.wind);
+        expect(calm.gust).toBeLessThan(full.gust * 0.5);
     });
 
     it('does not advance the leaves on a zero or invalid timestep', async () => {
@@ -1207,5 +1267,37 @@ describe('Fall post tier ownership', () => {
         }
         // The lens stays subtle: a full celebration is a lift, not a flash.
         expect(hot.exposure).toBeLessThan(rest.exposure * 1.5);
+    });
+
+    it('holds the shafts and closes the iris as play ripens, and dims the crown under Reduce flashing', () => {
+        const { post } = createPost('High', lit());
+        const read = (frame) => {
+            post.update(frame);
+            return { exposure: post.uExposure.value, shafts: post.uShafts.value, bloom: post.bloomNode.strength.value };
+        };
+        const rest = read({});
+        // The ripened light of hot play: shafts stand in the air, the iris closes a little.
+        const ripe = read({ ripen: 0.8, surge: { level: 0.9, fever: 0.8 } });
+        expect(ripe.shafts).toBeGreaterThan(rest.shafts);
+        expect(ripe.exposure).toBeLessThan(rest.exposure);
+        expect(ripe.exposure).toBeGreaterThan(rest.exposure * 0.9);
+        // The same event lifts the lens less in hot play than from cold.
+        const coldLift = read({ warmth: 0.8 }).exposure - rest.exposure;
+        const hotLift = read({ warmth: 0.8, surge: { level: 1 } }).exposure - rest.exposure;
+        expect(hotLift).toBeGreaterThan(0);
+        expect(hotLift).toBeLessThan(coldLift);
+        // A perfect clear's sunburst is the one frame-wide lift, and Reduce flashing keeps a trace of it.
+        const crowned = read({ crown: 1 });
+        expect(crowned.exposure).toBeGreaterThan(rest.exposure);
+        expect(crowned.shafts).toBeGreaterThan(rest.shafts);
+        vi.stubGlobal('window', { settings: { reduceFlashing: true } });
+        try {
+            const gentle = read({ crown: 1 });
+            expect(gentle.exposure - rest.exposure).toBeLessThan((crowned.exposure - rest.exposure) * 0.1);
+            expect(gentle.shafts - rest.shafts).toBeLessThan((crowned.shafts - rest.shafts) * 0.1);
+        } finally {
+            vi.unstubAllGlobals();
+        }
+        expect(read({ crown: NaN, ripen: 'hot', surge: null })).toEqual(rest);
     });
 });

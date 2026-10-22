@@ -140,7 +140,8 @@ export function createStreet(u, opts = {}) {
         const dips = nA.r.add(gutter).add(nB.g.mul(0.07));
         const puddleRoad = smoothstep(0.5, 0.6, dips);
         const puddleWalk = smoothstep(0.6, 0.68, nA.g.add(nB.r.mul(0.08)));
-        const puddle = mix(puddleWalk.mul(0.85), puddleRoad, road).mul(u.rain.mul(0.5).add(0.5)).toVar();
+        // A downpour (rain > 1) spreads the puddles to their edges; never past full water.
+        const puddle = min(mix(puddleWalk.mul(0.85), puddleRoad, road).mul(u.rain.mul(0.5).add(0.5)), 1.0).toVar();
         const rough = mix(mix(float(0.36), float(0.66), nB.r), float(0.02), puddle).toVar();
 
         // ── Albedo ──
@@ -203,7 +204,9 @@ export function createStreet(u, opts = {}) {
         // a lock sends a comet along them, a clear lights them as its fronts pass ──
         const kerbX = float(STREET.halfRoad + 0.16);
         const led = stripe(ax, kerbX, float(0.04), fx.add(0.004)).mul(step(fract(zl.div(1.6)), 0.72));
-        const chase = smoothstep(0.7, 1.0, fract(zl.mul(14 / STREET.period).add(u.time.mul(u.power.mul(1.5).add(0.22)))));
+        // The chase's phase is integrated on the CPU (its speed follows the charge): a speed
+        // multiplied into the clock would scramble the dashes whenever the charge moved.
+        const chase = smoothstep(0.7, 1.0, fract(zl.mul(14 / STREET.period).add(u.chase)));
         const ledLight = mix(u.accentA, u.accentB, step(0.0, p.x)).mul(chase.mul(1.1).add(0.3).add(u.power.mul(0.7))).toVar();
         for (let i = 0; i < LOCK_SLOTS; i++) {
             const A = u.lockA[i];
@@ -224,8 +227,9 @@ export function createStreet(u, opts = {}) {
         const glint = float(0.0).toVar();
         if (withRings) {
             const wetArea = puddle.mul(0.85).add(0.15).mul(near).mul(u.rain);
-            const r1 = rainRings(st, u.time, float(0.62), float(0.9));
-            const r2 = rainRings(st.add(vec2(3.7, 1.9)), u.time, float(1.05), float(0.63));
+            // On the rain's own clock: the puddles boil faster as it comes down harder.
+            const r1 = rainRings(st, u.rainClock, float(0.62), float(0.9));
+            const r2 = rainRings(st.add(vec2(3.7, 1.9)), u.rainClock, float(1.05), float(0.63));
             slope.addAssign(r1.xy.add(r2.xy).mul(0.42).mul(wetArea));
             glint.assign(r1.z.add(r2.z).mul(wetArea));
         }

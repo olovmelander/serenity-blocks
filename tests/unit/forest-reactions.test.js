@@ -11,8 +11,8 @@ const ENVELOPES = ['gust', 'moon', 'shafts', 'glow'];
 const STEP = 1 / 60;
 const HANDLERS = ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCombo', 'onTSpin', 'onBackToBack', 'onPerfectClear',
     'onLevelUp', 'onGameOver'];
-const FRAME_KEYS = ['beatRate', 'emitters', 'epoch', 'figure', 'front', 'glow', 'gust', 'heat', 'moon', 'settled',
-    'shafts', 'stars', 'streak', 'sync', 'wake', 'waves'];
+const FRAME_KEYS = ['beatRate', 'blink', 'breeze', 'emitters', 'epoch', 'figure', 'front', 'glow', 'gust', 'halo',
+    'heat', 'moon', 'settled', 'shafts', 'stars', 'streak', 'surge', 'sync', 'wake', 'waves'];
 const EMITTER_KEYS = ['active', 'age', 'column', 'duration', 'id', 'kind', 'lines', 'progress', 'row', 'seed', 'serial',
     'side', 'strength'];
 const WAVE_KEYS = ['column', 'heat', 'kind', 'row', 'serial', 'strength'];
@@ -167,7 +167,10 @@ describe('Forest reactions: tiers and the resting frame', () => {
         const after = reactions.update(STEP);
         expect(after).toEqual(reactions.getFrame());
         expect(reactions.time).toBe(STEP);
-        expect(after.gust).toBeLessThan(before.gust);
+        // Every envelope under its cap falls with the clock (one pushed past it holds at 1 a moment).
+        const falling = ENVELOPES.filter((key) => before[key] < 1);
+        expect(falling.length).toBeGreaterThan(0);
+        for (const key of falling) expect(after[key], key).toBeLessThan(before[key]);
     });
 });
 
@@ -214,7 +217,7 @@ describe('Forest reactions: envelopes', () => {
         }
     });
 
-    it('keeps the stronger of two excitements and never lets a small event dim a big one', () => {
+    it('never lets a small event dim a big one: it adds to what is still lit', () => {
         const reactions = director();
         reactions.onPerfectClear();
         const peak = reactions.getFrame();
@@ -223,7 +226,17 @@ describe('Forest reactions: envelopes', () => {
         reactions.onLevelUp();
         reactions.onTSpin({});
         const after = reactions.getFrame();
-        for (const key of ENVELOPES) expect(after[key], key).toBe(peak[key]);
+        for (const key of ENVELOPES) {
+            expect(after[key], key).toBeGreaterThanOrEqual(peak[key]);
+            expect(after[key], key).toBeLessThanOrEqual(1);
+        }
+        // Half a second on, a single still lifts what the perfect clear left: it never resets it.
+        const later = advance(reactions, 0.5);
+        reactions.onPieceLock({ piece: cell(5, 20) });
+        reactions.onLineClear(1, { clearedRows: [23] });
+        const lifted = reactions.getFrame();
+        for (const key of ENVELOPES) expect(lifted[key], key).toBeGreaterThanOrEqual(later[key]);
+        expect(lifted.gust).toBeGreaterThan(later.gust);
         // And the other way round: a bigger event raises what a smaller one left.
         const quiet = director();
         quiet.onPieceLock({ piece: cell(2, 20) });
@@ -408,11 +421,151 @@ describe('Forest reactions: streaks and the waking forest', () => {
         expect(before).toBeGreaterThan(lifted);
         awake.onBackToBack();
         expect(advance(awake, 0.5).wake).toBeGreaterThanOrEqual(before);
-        // It queues no wave and throws no fireflies of its own.
+        // Its own answer: no fireflies thrown, but twin white-gold rings over the moss (a fast one
+        // and its echo), the moon's ice ring and a double blink of the whole wood.
         const alone = director();
         alone.onBackToBack({ active: true });
         expect(alone.getFrame().emitters).toEqual([]);
-        expect(queuedWaves(alone.getFrame())).toEqual([]);
+        expect(queuedWaves(alone.getFrame()).map((wave) => wave.kind)).toEqual(['b2b', 'echo']);
+        for (const wave of queuedWaves(alone.getFrame())) expect(wave.heat).toBeGreaterThan(0.8);
+        expect(advance(alone, 0.2).halo).toBeGreaterThan(0.5);
+    });
+
+    it('answers a back-to-back with a ring round the moon and a double blink, brighter for a second in a row', () => {
+        const blinks = (reactions) => {
+            const seen = [];
+            for (let frame = 0; frame < 90; frame++) seen.push(reactions.update(STEP).blink);
+            return seen;
+        };
+        const once = director();
+        once.onBackToBack();
+        const first = blinks(once);
+        const twice = director();
+        twice.onBackToBack();
+        advance(twice, 1.4);
+        twice.onBackToBack();
+        const second = blinks(twice);
+        // A frame at a time: the wood blinks twice, a breath apart, then is still.
+        const peaks = (seen) => seen.filter((value, index) => index > 0 && index < seen.length - 1
+            && value > seen[index - 1] && value >= seen[index + 1] && value > 0.2).length;
+        expect(peaks(first)).toBe(2);
+        expect(first.at(-1)).toBe(0);
+        // The second in a row blinks brighter, and its ring builds on the one still lit.
+        expect(Math.max(...second)).toBeGreaterThan(Math.max(...first));
+        expect(twice.getFrame().halo).toBeGreaterThan(once.getFrame().halo);
+        expect(twice.getFrame().halo).toBeLessThanOrEqual(1.5);
+    });
+});
+
+describe('Forest reactions: the build-up of hot play', () => {
+    /** A long chain: a clearing piece every 0.64 s, growing from singles to triples, with a cascade. */
+    function chain(reactions, moves = 12) {
+        for (let move = 0; move < moves; move++) {
+            const lines = [1, 1, 2, 1, 2, 2, 3, 2, 2, 2, 3, 2][move % 12];
+            reactions.onHardDrop({ distance: 18 });
+            clearingMove(reactions, lines);
+            if (move === 9) {
+                for (let wave = 2; wave <= 4; wave++) {
+                    advance(reactions, 0.36);
+                    reactions.onCombo(wave);
+                    reactions.onLineClear(1, { clearedRows: [23], cascadeCount: wave });
+                }
+            }
+            advance(reactions, 0.64);
+        }
+        return reactions.getFrame();
+    }
+
+    it('reads a long chain hotter than its first clear, and breathes back to calm when the hands rest', () => {
+        const reactions = director();
+        const resting = reactions.getFrame();
+        expect(resting.surge).toEqual({
+            punch: 0, level: 0, fever: 0, stage: 0,
+        });
+        reactions.onHardDrop({ distance: 18 });
+        clearingMove(reactions, 1);
+        const first = advance(reactions, 0.25);
+        const hot = chain(reactions);
+        expect(hot.surge.level).toBeGreaterThan(first.surge.level + 0.5);
+        expect(hot.surge.fever).toBeGreaterThan(0.6);
+        expect(hot.surge.stage).toBe(3);
+        // The wood lives it: every firefly in the chorus, a quicker beat, a standing breeze, and
+        // the fireflies burned toward white gold.
+        expect(hot.sync).toBe(1);
+        expect(hot.beatRate).toBeGreaterThan(first.beatRate + 0.5);
+        expect(hot.breeze).toBeGreaterThan(first.breeze + 0.15);
+        expect(hot.heat).toBeGreaterThan(first.heat + 0.5);
+        // Resting hands: back to calm within seconds, easing all the way (never a step up).
+        let previous = hot;
+        for (let frame = 0; frame < 12 * 60; frame++) {
+            const next = reactions.update(STEP);
+            expect(next.surge.fever).toBeLessThanOrEqual(previous.surge.fever + 1e-9);
+            expect(next.breeze).toBeLessThanOrEqual(previous.breeze + 1e-9);
+            previous = next;
+        }
+        expect(previous.surge.level).toBeLessThan(0.05);
+        expect(previous.surge).toMatchObject({ fever: 0, stage: 0 });
+        expect(previous.breeze).toBeLessThan(0.01);
+    });
+
+    it('keeps a wood that is kept busy awake between clears that come slower than its hold', () => {
+        const busy = director();
+        const idle = director();
+        for (const reactions of [busy, idle]) {
+            for (let move = 0; move < 3; move++) {
+                clearingMove(reactions, 2);
+                advance(reactions, 0.6);
+            }
+        }
+        // The busy hand keeps locking quickly through a long gap between clears.
+        for (let lock = 0; lock < 8; lock++) {
+            busy.onHardDrop({ distance: 18 });
+            busy.onPieceLock({ piece: cell(lock % 10, 22) });
+            advance(busy, 0.45);
+        }
+        advance(idle, 8 * 0.45);
+        expect(busy.getFrame().surge.level).toBeGreaterThan(idle.getFrame().surge.level);
+        expect(busy.getFrame().wake).toBeGreaterThan(idle.getFrame().wake);
+    });
+
+    it('builds each wave of a cascade on the last: hotter, stronger waves of light', () => {
+        const reactions = director();
+        clearingMove(reactions, 2);
+        const waves = [];
+        for (let wave = 2; wave <= 5; wave++) {
+            reactions.onCombo(wave);
+            reactions.onLineClear(1, { clearedRows: [23], cascadeCount: wave });
+            const tall = queuedWaves(reactions.getFrame()).filter((entry) => entry.kind === 'clear').at(-1);
+            waves.push(tall);
+        }
+        for (let index = 1; index < waves.length; index++) {
+            expect(waves[index].strength).toBeGreaterThan(waves[index - 1].strength);
+            expect(waves[index].heat).toBeGreaterThan(waves[index - 1].heat);
+        }
+        // And every wave of it sends wind through the trees, even a one-line wave.
+        expect(reactions.getFrame().front).not.toBeNull();
+    });
+
+    it('answers a T-spin that clears nothing with its spiral and a little heat of its own', () => {
+        const reactions = director();
+        expect(reactions.onTSpin({ lineCount: 0, piece: tee(5, 18) })).toBe(true);
+        const frame = advance(reactions, 0.5);
+        expect(frame.emitters.map((entry) => entry.kind)).toContain('spin');
+        expect(frame.surge.level).toBeGreaterThan(0);
+        const cleared = director();
+        cleared.onTSpin({ lineCount: 2, piece: tee(5, 18) });
+        expect(advance(cleared, 0.5).surge.level).toBeGreaterThan(frame.surge.level);
+    });
+
+    it('lets reduced motion calm the standing breeze, and only that', () => {
+        const still = director();
+        const moving = director();
+        still.motion = 0.35;
+        const a = chain(still, 8);
+        const b = chain(moving, 8);
+        expect(a.breeze).toBeGreaterThan(0);
+        expect(a.breeze).toBeCloseTo(b.breeze * 0.35, 6);
+        expect(a.surge).toEqual(b.surge);
     });
 });
 
@@ -798,9 +951,43 @@ describe('Forest reactions: the wind front and the falling stars', () => {
             expect(Math.sign(front.position)).toBe(-front.direction);
             expect(Math.abs(front.position)).toBeGreaterThan(1);
             expect(front.strength).toBe(0);
-            reactions.update(STEP);
+            // Each runs right across before the next comes.
+            advance(reactions, 2.5);
+            expect(reactions.getFrame().front).toBeNull();
         }
         expect(directions).toEqual([directions[0], -directions[0], directions[0], -directions[0]]);
+    });
+
+    it('joins a front still crossing instead of restarting it, and sends a late one back after it', () => {
+        const reactions = director();
+        reactions.onLineClear(2, {});
+        const mid = advance(reactions, 0.5).front;
+        const { direction } = mid;
+        // A stronger clear mid-crossing: the same front carries on, the same way, and only grows.
+        reactions.onLineClear(4, {});
+        let previous = mid;
+        for (let frame = 0; frame < 20; frame++) {
+            const { front } = reactions.update(STEP);
+            expect(front.direction).toBe(direction);
+            expect(front.position * direction).toBeGreaterThan(previous.position * direction);
+            previous = front;
+        }
+        const alone = director();
+        alone.onLineClear(2, {});
+        const plain = advance(alone, 0.5 + 20 * STEP).front;
+        expect(previous.strength).toBeGreaterThan(plain.strength);
+        // Joined late in its crossing, another comes back the other way once it has gone.
+        advance(reactions, 0.6);
+        reactions.onLineClear(2, {});
+        let returned = null;
+        for (let frame = 0; frame < 240 && !returned; frame++) {
+            const { front } = reactions.update(STEP);
+            expect(front).not.toBeNull();
+            if (front.direction !== direction) returned = front;
+        }
+        expect(returned).not.toBeNull();
+        expect(returned.strength).toBeLessThan(0.05);
+        expect(Math.sign(returned.position)).toBe(direction);
     });
 
     it('carries the front right across, swelling and fading, and then lets it go', () => {
@@ -892,10 +1079,10 @@ describe('Forest reactions: the figure', () => {
             const reactions = director();
             act(reactions);
             const { figure } = reactions.getFrame();
-            expect(Object.keys(figure).sort()).toEqual(['age', 'held', 'kind', 'presence', 'serial']);
+            expect(Object.keys(figure).sort()).toEqual(['age', 'fed', 'full', 'held', 'kind', 'presence', 'serial']);
             expect(FOREST_FIGURE_IDS).toContain(figure.kind);
             expect(figure).toMatchObject({
-                serial: 1, age: 0, held: true, presence: 0,
+                serial: 1, age: 0, held: true, presence: 0, fed: 0, full: 0,
             });
         }
     });
@@ -939,24 +1126,65 @@ describe('Forest reactions: the figure', () => {
         expect(advance(reactions, 5).figure).toBeNull();
     });
 
-    it('numbers every summons, and a new one starts over while the old one still stands', () => {
+    it('feeds the animal that stands instead of replacing it, and numbers every new one', () => {
         const reactions = director();
         reactions.onLineClear(4, {});
         const standing = advance(reactions, gather + hold * 0.5).figure;
-        expect(standing).toMatchObject({ serial: 1, held: true, presence: 1 });
+        expect(standing).toMatchObject({
+            serial: 1, held: true, presence: 1, fed: 0,
+        });
+        // Four lines again while it stands: the same animal, still standing, fed and fuller, and it
+        // stands a whole hold from now.
+        reactions.onLineClear(4, {});
+        const fed = reactions.getFrame().figure;
+        expect(fed).toMatchObject({
+            serial: 1, kind: standing.kind, age: standing.age, held: true, presence: 1, fed: 1,
+        });
+        expect(fed.full).toBeGreaterThan(standing.full);
+        expect(advance(reactions, hold - 0.1).figure).toMatchObject({ serial: 1, held: true });
+        // The perfect clear crowns it: fuller again, and it stands longest of all.
+        reactions.onPerfectClear();
+        const crowned = reactions.getFrame().figure;
+        expect(crowned).toMatchObject({
+            serial: 1, kind: standing.kind, held: true, fed: 2,
+        });
+        expect(crowned.full).toBeGreaterThan(fed.full);
+        expect(crowned.full).toBeLessThanOrEqual(1);
+        expect(advance(reactions, hold + 1.5).figure).toMatchObject({ serial: 1, held: true });
+        // One that comes while the last is letting go is a new figure.
+        const leaving = advance(reactions, 0.1 + release * 0.5).figure;
+        expect(leaving).toMatchObject({ serial: 1, held: false });
         reactions.onLineClear(4, {});
         expect(reactions.getFrame().figure).toMatchObject({
-            serial: 2, age: 0, held: true, presence: 0,
+            serial: 2, age: 0, held: true, presence: 0, fed: 0,
         });
-        // One that comes while the last is letting go is a new figure too.
-        const leaving = advance(reactions, gather + hold + release * 0.5).figure;
-        expect(leaving).toMatchObject({ serial: 2, held: false });
-        reactions.onPerfectClear();
-        expect(reactions.getFrame().figure).toMatchObject({ serial: 3, age: 0, held: true });
         advance(reactions, 60);
         expect(reactions.getFrame().figure).toBeNull();
-        reactions.onLineClear(4, {});
-        expect(reactions.getFrame().figure.serial).toBe(4);
+        reactions.onPerfectClear();
+        expect(reactions.getFrame().figure).toMatchObject({ serial: 3, age: 0, held: true });
+    });
+
+    it('gathers sooner and comes fuller when it is called in a fever', () => {
+        const cold = director();
+        cold.onLineClear(4, {});
+        const hot = director();
+        // A long hot chain: a clearing piece every half second, and a cascade now and then.
+        for (let move = 0; move < 16; move++) {
+            clearingMove(hot, move % 4 === 3 ? 3 : 2);
+            if (move % 5 === 4) {
+                hot.onCombo(3);
+                hot.onLineClear(1, { clearedRows: [23], cascadeCount: 3 });
+            }
+            advance(hot, 0.5);
+        }
+        expect(hot.getFrame().surge.fever).toBeGreaterThan(0.5);
+        hot.onPieceLock({ piece: cell(9, 20) });
+        hot.onLineClear(4, { clearedRows: [20, 21, 22, 23] });
+        const quick = hot.getFrame().figure;
+        expect(quick.full).toBeGreaterThan(0.3);
+        // Its presence fills in less time than a cold one's.
+        expect(advance(hot, gather * 0.75).figure.presence).toBe(1);
+        expect(advance(cold, gather * 0.75).figure.presence).toBeLessThan(1);
     });
 
     it('stands longer for a perfect clear than for four lines', () => {
@@ -1012,9 +1240,16 @@ describe('Forest reactions: the figure', () => {
 });
 
 describe('Forest reactions: which animal comes', () => {
-    /** The animals of `count` summonses in a row. */
+    /** Let a standing animal's hold run out: the next summons calls a new one, not a feed. */
+    function letGo(reactions) {
+        const { figure } = reactions;
+        if (figure.active) reactions.update(Math.max(STEP, figure.gather + figure.hold - figure.age + 1e-6));
+    }
+
+    /** The animals of `count` summonses in a row, each called once the last has let go. */
     function called(reactions, count) {
         return Array.from({ length: count }, () => {
+            letGo(reactions);
             reactions.onLineClear(4, {});
             return reactions.getFrame().figure.kind;
         });
@@ -1064,6 +1299,7 @@ describe('Forest reactions: which animal comes', () => {
         const reactions = director();
         const order = [];
         for (let index = 0; index < ROUND; index++) {
+            letGo(reactions);
             if (index % 2 === 0) reactions.onPerfectClear();
             else reactions.onLineClear(4, {});
             order.push(reactions.getFrame().figure.kind);
@@ -1124,6 +1360,7 @@ describe('Forest reactions: which animal comes', () => {
         const before = drawn.rng;
         const order = [];
         for (let index = 0; index < ROUND; index++) {
+            letGo(reactions);
             reactions.summon();
             order.push(reactions.getFrame().figure.kind);
         }
@@ -1135,6 +1372,7 @@ describe('Forest reactions: which animal comes', () => {
         const dealerAgain = seededRandom(11);
         const other = new ForestReactions({ quality: 'High', rng: seededRandom(999), figureRng: dealerAgain });
         expect(Array.from({ length: ROUND }, () => {
+            letGo(other);
             other.summon();
             return other.getFrame().figure.kind;
         })).toEqual(order);

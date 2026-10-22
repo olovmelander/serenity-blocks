@@ -8,7 +8,8 @@
  * theme's frame — resolves each slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, distance, color, shape, cells, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, rowCodes, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, rowCodes, screen })
+ *   sink.spin({ player, rows, u })  a T-spin that cleared nothing (the T's rows and column)
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.b2b(level, player)    the live back-to-back level (0..3), whenever it changes
  *   sink.levelUp(level)
@@ -23,6 +24,11 @@
  * `rows`: row k's column c is rowCodes[k * 10 + c], left to right. `screen` ({ x, y } in window
  * fractions, y down) is set instead for the meditation mode's clicks, which carry a pixel
  * position and no board.
+ *
+ * A perfect clear is settled by physics AFTER its clear's last wave (~360 ms later, in a frame of
+ * its own): it then resolves as a clear with `crown: true`, `perfect: true` and no rows of its own:
+ * the crown on the clear still playing, never a new one-line clear. A perfect clear that lands in
+ * its clear's own frame rides on that clear (`crown` false).
  *
  * Order inside one flush: a slot's lock, then its clear, then its combo, then its back-to-back
  * level. A clear therefore reaches the sink BEFORE the combo it raised: read the chain a clear
@@ -147,6 +153,8 @@ function createSlot() {
         tspin: false,
         perfect: false,
         b2b: false,
+        /** A perfect clear on a frame of its own: the crown on the clear before it. */
+        crown: false,
         hasPosition: false,
         posX: 0,
         posY: 0,
@@ -197,6 +205,7 @@ function clearPending(slot) {
     slot.tspin = false;
     slot.perfect = false;
     slot.b2b = false;
+    slot.crown = false;
     slot.hasPosition = false;
     slot.stash = 0;
 }
@@ -455,7 +464,10 @@ function capturePosition(slot, payload) {
 export class RainbarkDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, combo?: Function, b2b?: Function, levelUp?: Function },
+     *   sink?: {
+     *     lock?: Function, clear?: Function, spin?: Function, combo?: Function, b2b?: Function,
+     *     levelUp?: Function,
+     *   },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -490,9 +502,11 @@ export class RainbarkDirector {
             tspin: false,
             perfect: false,
             b2b: false,
+            crown: false,
             rowCodes: [],
             screen: null,
         };
+        this._spin = { player: 0, rows: [], u: 0.5 };
         this._screen = { x: 0.5, y: 0.5 };
     }
 
@@ -600,6 +614,8 @@ export class RainbarkDirector {
         slot.lines = Math.max(slot.lines, lines);
         slot.waves += 1;
         slot.cascade = Math.max(slot.cascade, cascade);
+        // A clear of its own: a perfect clear staged before it in this frame rides on it.
+        slot.crown = false;
         // A clear that turns up after its lock's frame (online play) picks the chain back up.
         slot.breakSent = false;
         slot.tracker.noteLineClear();
@@ -627,6 +643,7 @@ export class RainbarkDirector {
             slot.explicitCombo = Math.max(slot.explicitCombo, count);
             capturePosition(slot, payload);
             if (slot.lines === 0) slot.lines = 1;
+            slot.crown = false;
         } else if (slot.waves > 0 && slot.explicitCombo >= 0) {
             slot.explicitCombo = Math.max(slot.explicitCombo, count);
         } else if (slot.waves > 0) {
@@ -648,6 +665,7 @@ export class RainbarkDirector {
         slot.b2bCandidate = false;
         const lines = Math.max(0, Math.min(MAX_ROWS, Math.trunc(finite(payload.lineCount, 0))));
         if (lines > slot.lines) slot.lines = lines;
+        if (lines > 0) slot.crown = false;
         return true;
     }
 
@@ -670,7 +688,11 @@ export class RainbarkDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
+        if (slot.lines === 0) {
+            // Settled after its clear's last wave: the crown on that clear, not a clear of its own.
+            slot.lines = 1;
+            slot.crown = true;
+        }
         slot.wellStamp.fill(0);
         return true;
     }
@@ -780,8 +802,17 @@ export class RainbarkDirector {
             c.tspin = slot.tspin;
             c.perfect = slot.perfect;
             c.b2b = slot.b2b;
+            c.crown = slot.crown;
             c.screen = screen;
             sink.clear(c);
+        } else if (slot.lines === 0 && slot.tspin && sink?.spin) {
+            // A T-spin that cleared nothing still turns a little bark.
+            const c = this._spin;
+            c.player = slot.player;
+            c.rows.length = 0;
+            for (let r = 0; r < slot.lockRowCount; r += 1) c.rows.push(slot.lockRows[r]);
+            c.u = slot.lockU;
+            sink.spin(c);
         }
     }
 

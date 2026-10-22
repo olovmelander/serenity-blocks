@@ -783,35 +783,29 @@ export function createCelestialBeamNodeMaterial(params = {}) {
 
     const vUv = uv();
 
-    const distFromCenterX = abs(vUv.x.sub(0.5)).mul(2.0);
-    const distFromCenterY = abs(vUv.y.sub(0.5)).mul(2.0);
-
-    // Gaussian beam shape
-    const beamShape = exp(distFromCenterX.mul(distFromCenterX).mul(-20.0));
-    const vertFade = float(1.0).sub(smoothstep(0.1, 0.5, distFromCenterY));
-    const edgeFade = smoothstep(0.0, 0.15, vUv.y)
-        .mul(float(1.0).sub(smoothstep(0.85, 1.0, vUv.y)));
-    const shimmer = sin(vUv.y.mul(50.0).add(uTime.mul(10.0))).mul(0.08).add(0.92);
-    let volumetricDensity = float(1);
+    // A shaft of moonlight through a gap in the cloud: a bright core in a soft, cool shaft that
+    // widens a little as it falls, fading out high in the sky and into the valley air below.
+    const across = vUv.x.sub(0.5).mul(2.0);
+    const spread = float(1.0).add(float(1.0).sub(vUv.y).mul(0.35));
+    const x = across.div(spread);
+    const x2 = x.mul(x);
+    const core = exp(x2.mul(-90.0));
+    const shaft = exp(x2.mul(-9.0));
+    const ends = smoothstep(0.0, 0.3, vUv.y)
+        .mul(float(1.0).sub(smoothstep(0.35, 0.9, vUv.y)));
+    // Frost drifting in the light (where volumetric beams are on): slow, never a flicker.
+    let density = float(1);
     if (volumetricStrength > 0) {
-        const volumeCoord = vec2(vUv.y.mul(4).add(uTime.mul(0.22)), vUv.x.mul(3).add(uTime.mul(0.17)));
-        const volumetricNoise = tslFbm(volumeCoord).mul(1.1);
-        volumetricDensity = mix(
-            float(1),
-            volumetricNoise.mul(float(1.1).add(uVolumetricPulse.mul(0.35))),
-            uVolumetricStrength,
-        );
+        const volumeCoord = vec2(vUv.y.mul(3.0).sub(uTime.mul(0.12)), vUv.x.mul(1.6).add(uTime.mul(0.05)));
+        const frost = tslFbm(volumeCoord).mul(1.25).add(0.2).mul(float(1.0).add(uVolumetricPulse.mul(0.3)));
+        density = mix(float(1), frost, uVolumetricStrength.mul(0.55));
     }
 
-    const alpha = beamShape
-        .mul(vertFade)
-        .mul(edgeFade)
-        .mul(uOpacity)
-        .mul(shimmer)
-        .mul(volumetricDensity)
-        .mul(0.12); // Reduced from 0.5 — beams should be subtle light shafts
-
-    const beamColor = vec3(0.7, 0.72, 0.8); // Cooler, dimmer beam tint
+    const light = core.mul(0.55).add(shaft.mul(0.24)).mul(ends).mul(density)
+        .mul(uOpacity);
+    const alpha = clamp(light, 0.0, 1.0).mul(0.22);
+    // Tinted by the moon: a silver-white core in a blue shaft.
+    const beamColor = mix(vec3(0.42, 0.53, 0.84), vec3(0.88, 0.93, 1.0), core);
 
     const material = new MeshBasicNodeMaterial({
         transparent: true,
@@ -822,7 +816,8 @@ export function createCelestialBeamNodeMaterial(params = {}) {
 
     material.colorNode = beamColor;
     material.opacityNode = alpha;
-    material.emissiveNode = beamColor.mul(alpha.mul(0.1)); // Reduced from 0.55
+    // The bloom catches the core, not the shaft.
+    material.emissiveNode = beamColor.mul(alpha).mul(core.mul(0.5).add(0.05));
 
     return {
         material,
@@ -1211,9 +1206,14 @@ export function createDebrisNodeMaterial(params = {}) {
     const ry = point.x.mul(sin(spin)).add(point.y.mul(cos(spin)));
     const shard = float(1).sub(smoothstep(0.55, 0.72, rx.abs().mul(0.8).add(ry.abs().mul(1.4))));
     const spark = exp(dot(point, point).mul(-18));
-    const hot = smoothstep(0.70, 0.86, fract(computeSeed.mul(0.618)));
-    const col = mix(vec3(0.14, 0.16, 0.20), vec3(0.9, 0.93, 1), hot);
-    const alpha = mix(shard, spark, hot).mul(computeLife).mul(twinkle).mul(computeActive);
+    // Snow and ice thrown up by the strike: soft moonlit flakes and chips, a few catching the
+    // flash as hot glints.
+    const flake = exp(dot(point, point).mul(-4.5));
+    const hot = smoothstep(0.62, 0.8, fract(computeSeed.mul(0.618)));
+    const chip = smoothstep(0.35, 0.36, fract(computeSeed.mul(1.37)));
+    const col = mix(vec3(0.5, 0.58, 0.74), vec3(1.15, 1.2, 1.3), hot);
+    const alpha = mix(mix(flake.mul(0.8), shard.mul(0.9), chip), spark, hot)
+        .mul(computeLife).mul(twinkle).mul(computeActive);
 
     const material = new MeshBasicNodeMaterial({
         colorNode: vec4(0.0),
@@ -1325,28 +1325,24 @@ export function createShockwaveNodeMaterial() {
     const uProgress = uniform(0);
     const uOpacity = uniform(1.0);
 
-    const vUv = uv();
+    // A meteor striking the snow (uProgress 0..1 over the strike's 2.5 s): a hot white-blue flash
+    // at the impact point that lights the snow round it and dies within a second, and under it a
+    // soft glow of lit powder that spreads and fades. No outline: everything is filled and soft.
+    const p = uv().sub(0.5).mul(2.0);
+    const r2 = dot(p, p);
+    const t = clamp(uProgress, 0.0, 1.0);
+    const flashLife = float(1.0).sub(smoothstep(0.0, 0.34, t));
+    const flash = exp(r2.mul(-320.0)).mul(0.9).add(exp(r2.mul(-45.0)).mul(0.35))
+        .mul(flashLife.mul(flashLife));
+    const reach = t.mul(0.5).add(0.12);
+    const glow = exp(r2.div(reach.mul(reach)).mul(-2.0))
+        .mul(pow(float(1.0).sub(t), 1.6))
+        .mul(0.26);
+    const gate = clamp(uOpacity.mul(4.0), 0.0, 1.0);
+    const total = flash.add(glow).mul(gate);
 
-    const center = vUv.sub(0.5);
-    const dist = length(center).mul(2.0);
-
-    const angle = atan(center.y, center.x.add(1e-5));
-    const distortion = sin(angle.mul(5).add(uProgress.mul(2))).mul(0.012)
-        .add(sin(angle.mul(11).sub(uProgress)).mul(0.007));
-    const ringRadius = uProgress.mul(1.04).add(0.025).add(distortion);
-    const ringWidth = float(0.045).mul(float(1.0).sub(uProgress.mul(0.45)));
-
-    const ring = smoothstep(ringRadius.sub(ringWidth), ringRadius.sub(ringWidth.mul(0.5)), dist)
-        .mul(float(1.0).sub(
-            smoothstep(ringRadius, ringRadius.add(ringWidth.mul(0.5)), dist),
-        ));
-
-    const fade = float(1.0).sub(uProgress).mul(uOpacity);
-    const shockColor = vec3(0.9, 0.92, 1.0);
-    const brokenArc = smoothstep(-0.5, 0.7, sin(angle.mul(3).add(0.8))
-        .add(sin(angle.mul(7).sub(uProgress)).mul(0.45)));
-    const alpha = ring.mul(fade).mul(brokenArc.mul(0.7).add(0.3)).mul(0.38);
-
+    const flashColor = vec3(2.2, 2.4, 2.7);
+    const glowColor = vec3(0.5, 0.62, 0.92);
     const material = new MeshBasicNodeMaterial({
         transparent: true,
         blending: THREE.AdditiveBlending,
@@ -1354,9 +1350,10 @@ export function createShockwaveNodeMaterial() {
         side: THREE.DoubleSide,
     });
 
-    material.colorNode = shockColor;
-    material.opacityNode = alpha;
-    material.emissiveNode = shockColor.mul(alpha.mul(0.08)); // Reduced from 0.3
+    material.colorNode = flashColor.mul(flash).add(glowColor.mul(glow)).div(max(flash.add(glow), 0.0001));
+    material.opacityNode = clamp(total, 0.0, 1.0);
+    // The bloom takes the flash itself.
+    material.emissiveNode = flashColor.mul(flash.mul(gate)).mul(0.35);
 
     return {
         material,
@@ -1383,17 +1380,19 @@ export function createDustCloudNodeMaterial(params = {}) {
     const centerNode = Fn(() => {
         const pos = positionLocal.sub(positionGeometry).toVar();
         pos.addAssign(aVelocity.mul(uTime));
-        pos.y.addAssign(sin(uTime.mul(2.0).add(aPhase)).mul(20.0));
-        pos.x.addAssign(cos(uTime.mul(1.5).add(aPhase)).mul(15.0));
-        pos.y.addAssign(uTime.mul(30.0)); // Slow rise
+        pos.y.addAssign(sin(uTime.mul(2.0).add(aPhase)).mul(8.0));
+        pos.x.addAssign(cos(uTime.mul(1.5).add(aPhase)).mul(12.0));
+        // Powder hugs the summit: it barely rises and the night wind carries it off (to the
+        // right, as it does the spindrift).
+        pos.y.addAssign(uTime.mul(6.0));
         return pos;
     })();
 
-    const fadeIn = smoothstep(0.0, 0.2, uTime);
-    const life = float(1.0).sub(smoothstep(1.0, 4.5, uTime));
-    const vAlpha = fadeIn.mul(life).mul(0.16);
+    const fadeIn = smoothstep(0.0, 0.15, uTime);
+    const life = float(1.0).sub(smoothstep(0.5, 3.4, uTime));
+    const vAlpha = fadeIn.mul(life).mul(0.15);
 
-    const grow = float(1.0).add(uTime.mul(0.5));
+    const grow = float(1.0).add(uTime.mul(0.8));
     const sizeNode = aSize.mul(grow);
 
     // Fragment
@@ -1401,7 +1400,9 @@ export function createDustCloudNodeMaterial(params = {}) {
     const soft = pow(max(float(1.0).sub(smoothstep(0.0, 1.0, dist)), 0.0), 0.8);
     const billow = sin(uv().x.mul(11).add(aPhase))
         .mul(sin(uv().y.mul(9).sub(aPhase))).mul(0.18).add(0.82);
-    const dustColor = vec3(0.10, 0.115, 0.14);
+    // Powder snow in the moonlight: lit white-blue by the strike's flash at first, then the
+    // moonlit blue of the mist as it rises and spreads.
+    const dustColor = mix(vec3(0.8, 0.86, 1.0), vec3(0.28, 0.34, 0.48), smoothstep(0.05, 0.9, uTime));
     const alpha = soft.mul(vAlpha).mul(billow);
 
     const material = new MeshBasicNodeMaterial({

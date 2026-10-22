@@ -32,6 +32,7 @@ import {
     fract,
     length,
     max,
+    min,
     mix,
     modelViewMatrix,
     modelWorldMatrix,
@@ -139,7 +140,10 @@ const CABIN_COLORS = [0xff86b8, 0x7ff0d4, 0xffd88a, 0xc8a8ff];
 /**
  * The lock chases at a rim angle `phi` (rad, in the wheel's plane): two bands of the piece's
  * colour leave a point near the bottom and run both ways round to meet at the top (π in 1.25 s).
- * Returns vec4(colour, weight): the slots' hues averaged by weight, the strongest weight.
+ * Each slot is u.chase<i> = (start time, start angle, strength, 0) with its colour in
+ * u.chaseCol<i>, for as many slots as the world made. Returns vec4(colour, weight): the slots'
+ * hues averaged by weight, and their summed weight, so bands that meet or pile up (rapid locks,
+ * a hard drop's stronger band) burn brighter instead of only recolouring the rim.
  */
 function wheelChase(u, phi) {
     const one = (C) => {
@@ -148,14 +152,17 @@ function wheelChase(u, phi) {
         const gap = (h) => abs(fract(phi.sub(h).div(Math.PI * 2).add(0.5)).sub(0.5)).mul(Math.PI * 2);
         const band = (h) => exp(gap(h).div(0.34).pow(2.0).negate());
         const env = smoothstep(0.0, 0.08, age).mul(float(1.0).sub(smoothstep(1.15, 1.6, age)));
-        return max(band(C.y.add(run)), band(C.y.sub(run))).mul(env);
+        return max(band(C.y.add(run)), band(C.y.sub(run))).mul(env).mul(C.z);
     };
-    const w0 = one(u.chase0);
-    const w1 = one(u.chase1);
-    const w2 = one(u.chase2);
-    const sum = max(w0.add(w1).add(w2), 1e-3);
-    const col = u.chaseCol0.mul(w0).add(u.chaseCol1.mul(w1)).add(u.chaseCol2.mul(w2)).div(sum);
-    return vec4(col.mul(2.4), max(w0, max(w1, w2)));
+    let sum = float(0.0);
+    let col = vec3(0.0);
+    for (let i = 0; u[`chase${i}`]; i += 1) {
+        const w = one(u[`chase${i}`]).toVar();
+        sum = sum.add(w);
+        col = col.add(u[`chaseCol${i}`].mul(w));
+    }
+    const total = sum.toVar();
+    return vec4(col.div(max(total, 1e-3)).mul(2.4), total);
 }
 
 /** Turn a local point about the axle (z) by angle a. */
@@ -202,7 +209,7 @@ function createStructureMaterial(u) {
         // A lock's chase lights the rim tube itself, so it reads as a moving arc of colour.
         const rimAngle = atan(local.y, local.x).add(u.wheelAngle);
         const ch = wheelChase(u, rimAngle);
-        warmed.addAssign(ch.xyz.mul(ch.w).mul(nearBulbs).mul(1.6));
+        warmed.addAssign(ch.xyz.mul(min(ch.w, 1.25)).mul(nearBulbs).mul(1.6));
 
         // Cabins: pastel bodies with lit windows (a band around the middle).
         const colorIdx = meta.z;
@@ -292,19 +299,24 @@ function createBulbs(u) {
         const idx = B.y;
         const n = max(B.z, 1.0);
         const t = u.time;
+        // The chase programmes run on the midway's clock, which quickens as play heats.
+        const pace = u.chaseTime ?? t;
         // Programme: warm steady with a slow twinkle; every third rim bulb flamingo, every fifth
         // mint; a soft chase runs round the rims; spokes pulse outward.
         const tw = sin(t.mul(2.3).add(swHash11(idx.add(ring.mul(311.0))).mul(40.0))).mul(0.12).add(0.88);
         const third = step(fract(idx.div(3.0)), 0.2);
         const fifth = step(fract(idx.div(5.0)), 0.12);
         const rimCol = mix(mix(rgb(0xffd88a), rgb(0xff6fae), third), rgb(0x7ff0d4), fifth);
-        const chase = smoothstep(0.82, 1.0, fract(idx.div(n).mul(6.0).sub(t.mul(0.22)))).mul(0.8);
-        const spokePulse = smoothstep(0.6, 1.0, fract(idx.div(WHEEL.spokeBulbs).sub(t.mul(0.5)))).mul(0.6);
+        const chase = smoothstep(0.82, 1.0, fract(idx.div(n).mul(6.0).sub(pace.mul(0.22)))).mul(0.8);
+        const spokePulse = smoothstep(0.6, 1.0, fract(idx.div(WHEEL.spokeBulbs).sub(pace.mul(0.5)))).mul(0.6);
         const level = select(ring.lessThan(1.5), float(1.0).add(chase), select(ring.lessThan(2.5), float(0.8).add(spokePulse), float(0.9)));
         const baseCol = select(ring.lessThan(1.5), rimCol, rgb(0xffe2b0)).mul(level).mul(tw).toVar();
-        // Lock chases (see wheelChase): the bands of the piece's colour on the rim bulbs.
+        // Lock chases (see wheelChase): the bands of the piece's colour on the rim bulbs; where
+        // bands pile up (rapid locks, a hard drop) the bulbs burn brighter, not only recoloured.
         const ch = wheelChase(u, theta);
-        baseCol.assign(mix(baseCol, ch.xyz.mul(1.4), clamp(ch.w, 0.0, 1.0).mul(step(ring, 1.5))));
+        const onRim = step(ring, 1.5);
+        baseCol.assign(mix(baseCol, ch.xyz.mul(1.4), clamp(ch.w, 0.0, 1.0).mul(onRim)));
+        baseCol.addAssign(ch.xyz.mul(max(ch.w.sub(1.0), 0.0).mul(0.35).mul(onRim)));
         const col = baseCol;
         const back = select(ring.greaterThan(0.5).and(ring.lessThan(1.5)), float(0.7), float(1.0));
         return col.mul(shape).mul(dim).mul(back).mul(u.wheelGlow)

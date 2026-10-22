@@ -28,6 +28,78 @@ export function smooth(lo, hi, v) {
     return t * t * (3 - 2 * t);
 }
 
+/** The inverse of the Hermite step on [0, 1]: where 3x² − 2x³ reaches `y`. */
+export function smoothInverse(y) {
+    const v = clamp01(y);
+    if (v <= 0 || v >= 1) return v;
+    return 0.5 - Math.sin(Math.asin(1 - 2 * v) / 3);
+}
+
+/**
+ * A rise–hold–fall envelope (`power` × smooth(0, rise) × (1 − smooth(holdEnd, fallEnd)) of the
+ * time since `at`) that a new event REJOINS instead of restarting. Restarting it from its start
+ * dropped whatever was lit back to nothing and let a weak event cut a strong one short; a hit
+ * here takes up the curve where it stands: the reading never steps down, the new power is the
+ * larger of the two (plus `gain` of the new one on top), and the curve climbs from what shows to
+ * it over what is left of the rise, holds again and falls as before. Two numbers (`at`, `power`),
+ * so a shader can draw the same curve from them.
+ */
+export class Rejoin {
+    /** @param {{ rise: number, holdEnd: number, fallEnd: number, ceiling?: number }} shape seconds */
+    constructor({
+        rise, holdEnd, fallEnd, ceiling = 1,
+    }) {
+        this.rise = Math.max(0, rise);
+        this.holdEnd = Math.max(this.rise, holdEnd);
+        this.fallEnd = Math.max(this.holdEnd, fallEnd);
+        this.ceiling = ceiling;
+        this.reset();
+    }
+
+    /** The unit curve at `age` seconds (0 before its start). */
+    shape(age) {
+        if (!(age >= 0)) return 0;
+        return smooth(0, this.rise, age) * (1 - smooth(this.holdEnd, this.fallEnd, age));
+    }
+
+    valueAt(now) {
+        return this.power > 0 ? this.power * this.shape(now - this.at) : 0;
+    }
+
+    /**
+     * Take up the curve at `now` with an event of `power`.
+     * @param {number} power
+     * @param {number} now seconds
+     * @param {number} [gain] share of the new power added on top of what is lit
+     */
+    hit(power, now, gain = 0) {
+        if (!(power > 0) || !Number.isFinite(now)) return;
+        const shown = this.valueAt(now);
+        const next = Math.min(this.ceiling, Math.max(power, shown + power * gain, shown));
+        if (!(next > 0)) return;
+        // Back onto the rise where it shows what is lit now: no step, then up to the new power.
+        this.at = now - this.rise * smoothInverse(shown / next);
+        this.power = next;
+    }
+
+    reset() {
+        this.at = -1e6;
+        this.power = 0;
+    }
+
+    exportState() {
+        return { at: this.at, power: this.power };
+    }
+
+    importState(o) {
+        this.reset();
+        if (Number.isFinite(o?.at) && Number.isFinite(o?.power)) {
+            this.at = o.at;
+            this.power = Math.max(0, o.power);
+        }
+    }
+}
+
 /** Small, fast, deterministic PRNG (returns a function giving floats in [0, 1)). */
 export function mulberry32(seed) {
     let a = seed >>> 0;

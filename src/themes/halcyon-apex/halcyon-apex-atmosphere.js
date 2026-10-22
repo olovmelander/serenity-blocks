@@ -7,7 +7,8 @@
  *  - Beads: when a chain of clears lifts the sanctuary, drops of the lagoon bead up all over it
  *    and rise, each one a small lens with the sun in it. The longer the chain, the more of them.
  *  - Motes: dust in the morning light, bright only toward the sun.
- *  - The flock: birds circling far out over the water, thrown up by a four-line clear.
+ *  - The flock: birds circling far out over the water, thrown up by a four-line clear (and kept
+ *    aloft, higher and wider, while play runs hot).
  *
  * Every particle is a closed-form function of the world's clocks and its own seed: nothing is
  * simulated and nothing is created at event time.
@@ -34,7 +35,6 @@ import {
     positionGeometry,
     sin,
     smoothstep,
-    step,
     uniform,
     uv,
     varying,
@@ -55,6 +55,7 @@ import {
     haSkyBase,
     mulberry32,
 } from './halcyon-apex-tsl.js';
+import { Swell } from '../shared/swell.js';
 
 const viewProjection = (world) => cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
 
@@ -230,14 +231,14 @@ export function createBirds(u, count) {
     geometry.setAttribute('aBird', new THREE.InstancedBufferAttribute(aBird, 4));
     geometry.instanceCount = count;
     const bird = attribute('aBird', 'vec4');
-    const scatter = uniform(-100);
+    /** How far the flock is thrown up and out (0 at rest), and its wings' extra beat, both from the CPU. */
+    const thrown = uniform(0);
+    const beat = uniform(0);
     const material = new THREE.MeshBasicNodeMaterial();
     material.name = 'HalcyonApexBirds';
     material.fog = false;
     material.side = THREE.DoubleSide;
     // The flock rides a wide circle over the far lagoon; each bird keeps its own place in it.
-    const since = u.time.sub(scatter);
-    const thrown = exp(max(since, 0.0).mul(-1 / (SCATTER_LIFE * 0.4))).mul(step(0.0, since));
     const round = u.time.mul(0.045).add(bird.x.mul(0.5)).add(1.2);
     const centre = vec3(-30.0, 46.0, -330.0);
     const ring = bird.y.mul(46.0).add(96.0).add(thrown.mul(40.0));
@@ -245,7 +246,8 @@ export function createBirds(u, count) {
     const heading = vec3(sin(round).negate(), 0.0, cos(round).mul(0.55));
     const fwd = normalize(heading);
     const side = normalize(vec3(fwd.z, 0.0, fwd.x.negate()));
-    const flap = sin(u.time.mul(bird.w.mul(2.5).add(5.5).add(thrown.mul(6.0))).add(bird.x.mul(40.0)));
+    // Thrown birds beat faster: the extra beat is integrated on the CPU, so the wings never jump.
+    const flap = sin(u.time.mul(bird.w.mul(2.5).add(5.5)).add(beat).add(bird.x.mul(40.0)));
     const tip = abs(positionGeometry.x);
     const span = float(1.25);
     const local = side.mul(positionGeometry.x.mul(span).mul(float(1.0).sub(abs(flap).mul(0.18).mul(tip))))
@@ -255,12 +257,28 @@ export function createBirds(u, count) {
     material.colorNode = haAtmosphere(u, vec3(0.03, 0.045, 0.06).add(u.sun.mul(0.012)), centre.add(flight));
     const part = haPart('HalcyonApexBirds', geometry, material, -8);
     part.count = count;
-    /** Throw the flock up at `time`. */
-    part.scatter = (time) => {
-        scatter.value = time;
+    // A throw rises over half a second and settles over SCATTER_LIFE; a second one adds to the
+    // flight still in the air (never back to the top of the first, never a jump).
+    const throws = new Swell({
+        attack: 0.45, release: SCATTER_LIFE * 0.4, ceiling: 1.6, knee: 1.05,
+    });
+    let beatPhase = 0;
+    /** Throw the flock up at `time` (a moment ahead is fine); `amount` 1 = a four-line clear. */
+    part.scatter = (time, amount = 1) => {
+        throws.hit(amount, time);
+    };
+    /** Each frame: where the flock is at `time`; `floor` keeps it aloft while play runs hot. */
+    part.update = (time, delta = 0, floor = 0) => {
+        const up = throws.valueAt(time) + Math.max(0, floor);
+        thrown.value = up;
+        beatPhase = (beatPhase + up * 6 * Math.max(0, delta)) % (Math.PI * 2000);
+        beat.value = beatPhase;
     };
     part.reset = () => {
-        scatter.value = -100;
+        throws.reset();
+        beatPhase = 0;
+        thrown.value = 0;
+        beat.value = 0;
     };
     return part;
 }

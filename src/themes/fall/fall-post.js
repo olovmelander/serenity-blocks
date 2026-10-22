@@ -6,6 +6,11 @@
  * hue-preserving bloom, a filmic curve with cool shadows, and smooth leaf edges: 4× MSAA in
  * the scene pass from High up (`samples`, shared/scene-antialias.js), FXAA on a single-sampled
  * pass. Low and Minimal draw the same scene directly with ACES tone mapping (the canvas's MSAA).
+ *
+ * As play heats the shafts stand in the air between the trees (never over the sky, which keeps
+ * its resting veil), each event's lift of the lens shrinks, and the iris closes a little so the
+ * late gold stays saturated and the darks stay dark. A perfect clear's sunburst is the one
+ * frame-wide brightening, so it goes through flashScale() (Reduce flashing, ADR-0021).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -17,7 +22,15 @@ import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { godrays } from 'three/addons/tsl/display/GodraysNode.js';
 import { bilateralBlur } from 'three/addons/tsl/display/BilateralBlurNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { fallTier } from './fall-quality.js';
+
+/** How far the iris closes at a full ripening of the light (exposure). */
+const POST_IRIS = 0.075;
+/** The share of the ripened light that stands in the shafts. */
+const POST_SHAFT_FLOOR = 0.55;
+/** A perfect clear's sunburst at its height: a lift of the exposure and of the shafts' gain. */
+const POST_CROWN = Object.freeze({ exposure: 0.05, shafts: 0.7 });
 
 export class FallPost {
     constructor({
@@ -65,7 +78,9 @@ export class FallPost {
             const distance = perspectiveDepthToViewZ(sceneDepth, this.uNear, this.uFar).negate();
             const skyward = smoothstep(280, 390, distance);
             const keep = mix(float(1), toward.pow2().pow2().mul(0.45).add(0.06), skyward);
-            lit = lit.add(shaftColour.mul(this.shaftsBlur.r).mul(this.uShafts).mul(keep));
+            // The gain play adds stands in the air among the trees; the sky keeps its resting veil.
+            const gain = mix(this.uShafts, float(1), skyward);
+            lit = lit.add(shaftColour.mul(this.shaftsBlur.r).mul(gain).mul(keep));
         }
         this.bloomNode = bloom(sceneColor, 0.22, 0.6, 1.05);
         // Soft knee on the brightest channel, so a saturated sun keeps its hue in the bloom.
@@ -121,11 +136,21 @@ export class FallPost {
     }
 
     update(frame = {}) {
-        const warmth = Number.isFinite(frame.warmth) ? THREE.MathUtils.clamp(frame.warmth, 0, 1) : 0;
-        const shafts = Number.isFinite(frame.shafts) ? THREE.MathUtils.clamp(frame.shafts, 0, 1) : 0;
-        this.uExposure.value = 1.0 + warmth * 0.05;
-        this.uShafts.value = 1 + shafts * 1.4;
-        if (this.bloomNode) this.bloomNode.strength.value = 0.22 + warmth * 0.1;
+        const unit = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
+        const warmth = unit(frame.warmth);
+        const shafts = unit(frame.shafts);
+        const level = unit(frame.surge?.level);
+        const fever = unit(frame.surge?.fever);
+        const ripen = unit(frame.ripen);
+        const crown = (Number.isFinite(frame.crown) ? THREE.MathUtils.clamp(frame.crown, 0, 1.2) : 0) * flashScale();
+        // Each event lifts the lens less the hotter play runs; the iris closes as the light ripens.
+        this.uExposure.value = 1.0 + warmth * 0.05 * (1 - 0.5 * level) + crown * POST_CROWN.exposure
+            - ripen * POST_IRIS;
+        // The shafts hold while the action lasts: the ripened light is a floor under the events'.
+        this.uShafts.value = 1 + Math.min(1, shafts + ripen * POST_SHAFT_FLOOR) * 1.4 + crown * POST_CROWN.shafts;
+        if (this.bloomNode) {
+            this.bloomNode.strength.value = 0.22 + warmth * 0.1 * (1 - 0.4 * level) + fever * 0.03;
+        }
         if (this.camera?.isCamera) {
             this.uNear.value = this.camera.near;
             this.uFar.value = this.camera.far;

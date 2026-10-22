@@ -20,6 +20,7 @@ import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { resolveTargetFps } from '../theme-frame-pacer.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { NEON_DUSK_TETROMINOS } from './neon-dusk-tetrominos.js';
 import { RIG } from './neon-dusk-tsl.js';
 import {
@@ -66,7 +67,7 @@ export default class NeonDuskTheme extends BaseTheme {
             time: 0, delta: 0, pointerX: 0, pointerY: 0,
         };
         this._postParams = {
-            time: 0, bloomBoost: 0, glitch: 0,
+            time: 0, bloomBoost: 0, glitch: 0, exposure: 1, bloomGain: 1,
         };
 
         this.layoutWatch = null;
@@ -342,20 +343,35 @@ export default class NeonDuskTheme extends BaseTheme {
 
     setupEventListeners() {
         this.clearEventUnsubscribers();
-        // Neon Dusk reacts when background combo effects are switched on (as it always has).
-        const reactive = () => this.isActive && window.settings?.backgroundComboEffects === true;
+        // Neon Dusk reacts unless background combo effects are switched off (the default is on).
+        const reactive = () => this.isActive && window.settings?.backgroundComboEffects !== false;
 
+        // A hard drop comes in the same moment as its lock (which then lands harder).
+        const dropUnsub = eventBus.on(EVENTS.HARD_DROP, () => {
+            if (reactive()) this.world?.onHardDrop?.();
+        });
         const lockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
             if (reactive()) this.world?.onPieceLock(data?.piece);
         });
         const clearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (reactive()) this.world?.onLineClear(data?.lineCount ?? 1);
+            if (reactive()) this.world?.onLineClear(data?.lineCount ?? 1, { cascade: data?.cascadeCount ?? 1 });
         });
+        // COMBO carries the cascade depth (waves past the first); the true combo is counted
+        // from the lock sequence in the world (src/core/combo-tracker.js).
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             if (reactive()) this.world?.onCombo(data?.comboCount ?? 0);
         });
         const levelUnsub = eventBus.on(EVENTS.LEVEL_UP, () => {
             if (reactive()) this.world?.onLevelUp();
+        });
+        const tspinUnsub = eventBus.on(EVENTS.TSPIN, (data) => {
+            if (reactive()) this.world?.onTSpin?.(data?.lineCount ?? 0);
+        });
+        const b2bUnsub = eventBus.on(EVENTS.B2B, (data) => {
+            if (reactive()) this.world?.onB2B?.(data?.active !== false);
+        });
+        const perfectUnsub = eventBus.on(EVENTS.PERFECT_CLEAR, () => {
+            if (reactive()) this.world?.onPerfectClear?.();
         });
 
         const onPointerMove = (e) => {
@@ -367,10 +383,14 @@ export default class NeonDuskTheme extends BaseTheme {
         window.addEventListener('pointermove', onPointerMove);
         window.addEventListener('resize', onResize);
         this.eventUnsubscribers.push(
+            dropUnsub,
             lockUnsub,
             clearUnsub,
             comboUnsub,
             levelUnsub,
+            tspinUnsub,
+            b2bUnsub,
+            perfectUnsub,
             () => window.removeEventListener('pointermove', onPointerMove),
             () => window.removeEventListener('resize', onResize),
         );
@@ -433,7 +453,10 @@ export default class NeonDuskTheme extends BaseTheme {
             const pp = this._postParams;
             pp.time = this.time;
             pp.bloomBoost = Math.min(1, this.world.sunPulse);
-            pp.glitch = this.flags.baseline ? 0 : this.world.glitch;
+            // The tape glitch is a frame-wide flicker: Reduce flashing holds it back (ADR-0021).
+            pp.glitch = this.flags.baseline ? 0 : this.world.glitch * flashScale();
+            pp.exposure = this.world.drive.exposure;
+            pp.bloomGain = this.world.drive.bloomGain;
             this.postProcessing.update(pp);
             this.postProcessing.render();
         } else if (this.passThrough) {

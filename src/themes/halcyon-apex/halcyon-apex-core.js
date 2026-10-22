@@ -12,9 +12,13 @@
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
-/** Gameplay pulse slots evaluated by the materials. */
+/**
+ * Gameplay pulse slots evaluated by the materials. Four clear waves: a chain of clears 0.64 s
+ * apart (and a cascade's waves 0.36 s apart) keeps three or four waves on the lagoon at once, and
+ * a new one takes the slot with the least light left instead of cutting a wave still running.
+ */
 export const LOCK_SLOTS = 6;
-export const CLEAR_SLOTS = 2;
+export const CLEAR_SLOTS = 4;
 /** Pulses of light running up a ley line at once (a lock sends one, a hard drop two). */
 export const PULSE_SLOTS = 6;
 /** Wisps in flight at once, and the motes in one wisp's tail. */

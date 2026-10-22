@@ -10,11 +10,16 @@
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
-/** Gameplay pulse slots evaluated by the materials. */
-export const LOCK_SLOTS = 6;
-export const CLEAR_SLOTS = 2;
-/** Wisps in flight at once (a lock throws one, a hard drop three). */
-export const WISP_SLOTS = 8;
+/**
+ * Gameplay pulse slots evaluated by the materials. A new ring or wave takes the slot whose light
+ * has faded most, so under fast play the oldest fade out instead of the newest vanishing: two
+ * rings a lock (the board's and the struck spire's) for a few quick locks, and the waves of a
+ * four-deep cascade side by side on the water.
+ */
+export const LOCK_SLOTS = 8;
+export const CLEAR_SLOTS = 4;
+/** Wisps in flight at once (a lock throws one, a hard drop three): a quick hand's worth. */
+export const WISP_SLOTS = 12;
 /** Motes in one wisp's tail. */
 export const WISP_TAIL = 28;
 

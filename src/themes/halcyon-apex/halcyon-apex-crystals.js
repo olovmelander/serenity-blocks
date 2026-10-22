@@ -53,7 +53,7 @@ import {
     TAU,
     clamp01,
     haAtmosphere,
-    haClearLight,
+    haClearLightLive,
     haFresnel,
     haFxMaterial,
     haPart,
@@ -224,7 +224,7 @@ export function createCrystals(u, plan, opts = {}) {
         const edgeLight = haSkyBase(u, normalize(vec3(N.x, abs(N.y).add(0.3), N.z))).mul(0.8).add(u.crystal.mul(idle.mul(0.5)))
             .mul(arris);
 
-        const wave = haClearLight(u, p).mul(u.clearLive);
+        const wave = haClearLightLive(u, p);
         const col = mix(inside, mirror.add(glint), fres).add(glow).add(edgeLight)
             .add(wave.rgb.mul(thick.add(0.35)).mul(1.3));
         return vec4(haAtmosphere(u, col, p), 1.0);

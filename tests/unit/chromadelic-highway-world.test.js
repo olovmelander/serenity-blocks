@@ -15,7 +15,9 @@ import {
     TUNNEL_SPAN,
     worldSpeedFactor,
 } from '../../src/themes/chromadelic-highway/chromadelic-highway-tsl.js';
-import { ChromadelicWorld, WORLD_TIERS } from '../../src/themes/chromadelic-highway/chromadelic-highway-world.js';
+import {
+    ChromadelicWorld, RING_PHASE_MAX_RATE, WORLD_TIERS,
+} from '../../src/themes/chromadelic-highway/chromadelic-highway-world.js';
 import {
     MOVEMENTS, SPECTRUM_HOME, STEP_TRAVEL, movementAt, skyTurnAt,
 } from '../../src/themes/chromadelic-highway/chromadelic-highway-spectrum.js';
@@ -353,8 +355,9 @@ describe('chromadelic highway spectrum in the world', () => {
                 maxStep = Math.max(maxStep, step);
                 prev = w.ringPhase;
             });
-            // Never more than the fastest rate (0.7 + 1.4 rad/s) times one frame.
-            expect(maxStep, `session ${start} s old`).toBeLessThanOrEqual((2.1 / 60) * 1.0001);
+            // Never more than the fastest rate (rest + a full combo + the heat of play + a T-spin's
+            // whirl) times one frame.
+            expect(maxStep, `session ${start} s old`).toBeLessThanOrEqual((RING_PHASE_MAX_RATE / 60) * 1.0001);
         }
     });
 
@@ -367,6 +370,155 @@ describe('chromadelic highway spectrum in the world', () => {
         b.restoreSpectrumState(state);
         expect(b.level).toBe(3);
         expect(b.ringPlace()).toBeCloseTo(state.place, 9);
+    });
+});
+
+describe('chromadelic highway build-up', () => {
+    /** An unbuilt world with stand-ins for the parts update() touches (no GPU, no textures). */
+    const liveWorld = (quality = 'High') => {
+        const world = new ChromadelicWorld({ scene: null, quality, random: () => 0.5 });
+        world.spawnComet = vi.fn();
+        world.spawnMeteor = vi.fn();
+        world.sky = {
+            uniforms: { uTime: { value: 0 }, uNebBreath: { value: 0 } },
+            setHueShift: vi.fn(),
+            setAir: vi.fn(),
+            setDirections: vi.fn(),
+        };
+        world.stars = {
+            uniforms: { uTime: { value: 0 }, uBinaryFlare: { value: 0 }, uBinaryDir: { value: { copy() {} } } },
+            triggerWave: vi.fn(),
+        };
+        world.meteors = { update: () => 0, clear: vi.fn() };
+        world.updateBodies = () => {};
+        return world;
+    };
+    const step = (world, seconds, dt = 1 / 60) => {
+        const steps = Math.round(seconds / dt);
+        for (let i = 0; i < steps; i++) {
+            world.update({
+                time: world.time + dt, delta: dt, pace: 1, pulse: 0, ring: 0, particle: 0, ambient: 0,
+            }, null);
+        }
+    };
+    const bandLight = (world) => world.waveSlots.reduce((sum, w) => sum + (w ? world.bandEnergy(w) : 0), 0);
+
+    it('a lock right after a quad adds to its bands instead of cutting one in mid-flight', () => {
+        for (const quality of ['High', 'Minimal']) {
+            const world = liveWorld(quality);
+            world.seek(20);
+            world.onLineClear(4);
+            step(world, 0.25);
+            const quad = world.waveSlots.filter(Boolean);
+            const light = bandLight(world);
+            expect(light, quality).toBeGreaterThan(0.5);
+            world.onPieceLock();
+            // Every quad band is still in flight, and the light only rose.
+            expect(world.waveSlots.filter((w) => quad.includes(w)), quality).toHaveLength(quad.length);
+            expect(bandLight(world), quality).toBeGreaterThan(light);
+        }
+        // Minimal's one slot: the quad's four bands are one band that kept gaining.
+        const minimal = liveWorld('Minimal');
+        minimal.seek(20);
+        minimal.onLineClear(4);
+        step(minimal, 0.2);
+        expect(minimal.waveSlots[0].amp).toBeGreaterThan(0.8 * 3);
+    });
+
+    it('a lock inside the band gap folds into the live lock band and the road pulse, never dropped', () => {
+        const world = liveWorld();
+        world.seek(20);
+        world.onHardDrop();
+        world.onPieceLock();
+        const band = world.lockBand;
+        const { amp } = band;
+        step(world, 0.15);
+        const pulse = world.env.roadPulse.rawAt(world.time);
+        const tick = world.env.railTick.rawAt(world.time);
+        world.onPieceLock();
+        expect(world.lockBand).toBe(band);
+        expect(band.amp).toBeGreaterThan(amp);
+        expect(world.env.roadPulse.rawAt(world.time)).toBeGreaterThan(pulse);
+        expect(world.env.railTick.rawAt(world.time)).toBeGreaterThan(tick);
+    });
+
+    it('runs a level-up front and a quad front side by side, and a cascade never sends the chase back', () => {
+        const world = liveWorld();
+        world.seek(30);
+        world.onLevelUp(2);
+        const levelFront = world.shared.uCascade.value.x;
+        step(world, 0.05);
+        world.onLineClear(4);
+        step(world, 0.2);
+        const { uCascade, uCascade2 } = world.shared;
+        // The level-up's front kept its birth (not restarted); the quad's prism front took the other.
+        expect([uCascade.value.x, uCascade2.value.x]).toContain(levelFront);
+        expect(uCascade.value.w).toBeGreaterThan(0);
+        expect(uCascade2.value.w).toBeGreaterThan(0);
+
+        // A double, then its cascade's next wave 360 ms later: the chase climbs on, brighter.
+        world.onLineClear(2, { cascade: 1, combo: 1, chainStep: true });
+        const chase = world.chases.find((c) => c.birth === world.time);
+        const { birth, amp } = chase;
+        step(world, 0.36);
+        world.onCombo(2);
+        world.onLineClear(1, { cascade: 2, combo: 1 });
+        expect(chase.birth).toBe(birth);
+        expect(chase.amp).toBeGreaterThan(amp);
+    });
+
+    it('a long chain runs hotter than its first clear, crowns its perfect clear and breathes back', () => {
+        const world = liveWorld();
+        world.seek(40);
+        const read = () => ({
+            ring: world.shared.uRingEnv.value,
+            air: world.shared.uAirGain.value,
+            streak: world.shared.uStreakLength.value,
+            speed: world.speed,
+            pulse: world.shared.uPulse.value,
+        });
+        const clear = (n, lines) => {
+            world.onHardDrop();
+            world.onPieceLock();
+            world.onLineClear(lines, { cascade: 1, combo: n, chainStep: true });
+        };
+        clear(1, 1);
+        step(world, 0.64);
+        const first = read();
+        for (let n = 2; n <= 11; n++) {
+            clear(n, n % 3 === 0 ? 3 : 2);
+            step(world, 0.64);
+        }
+        clear(12, 4);
+        step(world, 0.36);
+        const peak = read();
+        for (const key of Object.keys(first)) expect(peak[key], key).toBeGreaterThan(first[key] * 1.2);
+        expect(world.heat.stage).toBe(3);
+        expect(world.feverPrism).toBe(true);
+        // The perfect clear lands on the clear still playing: a crown (a prism front, a prism
+        // tunnel), not a second quad: no new quad bands from the board.
+        const bands = world.waveSlots.slice();
+        world.onPerfectClear();
+        step(world, 0.05);
+        const fresh = world.waveSlots.filter((w) => w && !bands.includes(w));
+        expect(fresh.filter((w) => w.hue === -1)).toHaveLength(0);
+        expect(world.crownRings).toBeGreaterThan(0);
+        // The hands rest: the heat coasts back to calm, the road to cruise.
+        step(world, 14);
+        const rest = read();
+        expect(world.heat.stage).toBe(0);
+        expect(world.feverPrism).toBe(false);
+        expect(rest.ring).toBeLessThan(peak.ring * 0.3);
+        expect(rest.speed).toBeLessThan(peak.speed * 0.8);
+    });
+
+    it('a T-spin that clears nothing still turns the tunnel', () => {
+        const world = liveWorld();
+        world.seek(20);
+        world.onTSpin(0);
+        expect(world.waveSlots.some(Boolean)).toBe(true);
+        step(world, 0.1);
+        expect(world.env.twist.valueAt(world.time)).toBeGreaterThan(0.1);
     });
 });
 

@@ -7,8 +7,11 @@
  * the glass. Lower tiers mirror the sky analytically (gradient + sun), with no second render.
  *
  * Grid lines are "pristine grid" anti-aliased (crisp near, their true average at the horizon).
- * Events write into the glass: piece locks send a ripple ring out from where the piece landed,
- * line clears roll a wave of light in from the horizon.
+ * Events write into the glass: piece locks send a ripple ring out from where the piece landed
+ * (four rings, so a quick hand's locks run through each other instead of cutting the last one),
+ * line clears roll a wave of light in from the horizon (three slots), and the end of a chain
+ * breathes one back out. As play heats, the grid's own pulse comes faster and brighter until
+ * the bands run in on the beat.
  */
 
 import * as THREE from 'three/webgpu';
@@ -48,12 +51,20 @@ import {
     ndSunDisc,
     rgb,
 } from './neon-dusk-tsl.js';
-import { ndSunColor, ndSunSlits } from './neon-dusk-sky.js';
+import { SUN_CROWN, ndSunColor, ndSunSlits } from './neon-dusk-sky.js';
 
-/** The grid's slow pulse at rest: every `period` s a band runs in from `from` units in `run` s. */
+/**
+ * The grid's slow pulse at rest: every `period` s a band runs in from `from` units in `run` s.
+ * The world drives its phase (u.pulse.x, 0..1 per band) and energy (u.pulse.y): at rest this
+ * period and energy; quicker and brighter as play heats. A band always runs over the same share
+ * of its cycle.
+ */
 export const AMBIENT_PULSE = Object.freeze({
     period: 11, run: 7.5, from: 900, energy: 0.2,
 });
+const PULSE_RUN = AMBIENT_PULSE.run / AMBIENT_PULSE.period;
+const PULSE_IN = 0.6 / AMBIENT_PULSE.period;
+const PULSE_OUT = (AMBIENT_PULSE.run - 1.5) / AMBIENT_PULSE.period;
 
 /** A gaussian ring at `dist` for pulse slot P = (radius, 1/width, energy, 0). */
 const ringTerm = (dist, P) => {
@@ -85,8 +96,8 @@ const analyticReflection = (R, u) => {
     // Soft-edged, as the reflector's rough glass draws it on the tiers above.
     const soft = max(fwR, 0.07);
     const disc = float(1.0).sub(smoothstep(float(1.0).sub(soft), float(1.0).add(soft), r));
-    const slit = ndSunSlits(sd.y, max(fwidth(sd.y), 0.025), u.time);
-    col.assign(mix(col, ndSunColor(sd.y), disc.mul(slit)));
+    const slit = mix(ndSunSlits(sd.y, max(fwidth(sd.y), 0.025), u.slitPhase), float(1.0), u.crown);
+    col.assign(mix(col, mix(ndSunColor(sd.y.add(u.sunHeat.mul(0.25))), SUN_CROWN, u.crown.mul(0.6)), disc.mul(slit)));
     const a = abs(atan(R.x, R.z.negate()));
     const vee = max(a.mul(0.25).add(0.026), a.sub(0.02));
     const ridge = float(0.25).add(sin(a.mul(23.0)).mul(0.02)).add(sin(a.mul(57.0)).mul(0.012));
@@ -134,26 +145,31 @@ export function createFloor(u, opts = {}) {
         const dx = fract(gx.add(0.5)).sub(0.5);
         const dz = fract(gz.add(0.5)).sub(0.5);
 
-        // ── Event waves: a ripple ring from the last lock, light waves from the horizon ──
-        const toRipple = length(p.xz.sub(u.ripple.xy));
-        const rippleD = toRipple.sub(u.ripple.z).mul(0.22);
-        const rippleRing = exp(rippleD.mul(rippleD).negate()).mul(u.ripple.w).toVar();
-        const wave = ringTerm(dist, u.ring0).add(ringTerm(dist, u.ring1)).toVar();
-        // At rest a soft band of light runs in along the grid every AMBIENT_PULSE.period seconds
-        // (closed form in time, so a seek lands on it; off under reduced motion).
-        const ambT = fract(u.time.div(AMBIENT_PULSE.period)).mul(AMBIENT_PULSE.period);
-        const ambR = float(AMBIENT_PULSE.from).mul(max(float(1.0).sub(ambT.div(AMBIENT_PULSE.run)), 0.0));
-        const ambEnd = smoothstep(AMBIENT_PULSE.run - 1.5, AMBIENT_PULSE.run, ambT);
-        const ambEnv = smoothstep(0.0, 0.6, ambT).mul(float(1.0).sub(ambEnd));
+        // ── Event waves: ripple rings from the last locks, light waves from the horizon ──
+        const rippleRing = float(0.0).toVar();
+        const rippleWave = float(0.0).toVar();
+        for (const R of [u.ripple0, u.ripple1, u.ripple2, u.ripple3]) {
+            const rd = length(p.xz.sub(R.xy)).sub(R.z).mul(0.22);
+            const ring = exp(rd.mul(rd).negate()).mul(R.w);
+            rippleRing.addAssign(ring);
+            rippleWave.addAssign(rd.mul(ring));
+        }
+        const wave = ringTerm(dist, u.ring0).add(ringTerm(dist, u.ring1)).add(ringTerm(dist, u.ring2)).toVar();
+        // At rest a soft band of light runs in along the grid every AMBIENT_PULSE.period seconds;
+        // as play heats the bands come quicker and brighter (off under reduced motion).
+        const ambP = u.pulse.x;
+        const ambR = float(AMBIENT_PULSE.from).mul(max(float(1.0).sub(ambP.div(PULSE_RUN)), 0.0));
+        const ambEnd = smoothstep(PULSE_OUT, PULSE_RUN, ambP);
+        const ambEnv = smoothstep(0.0, PULSE_IN, ambP).mul(float(1.0).sub(ambEnd));
         const ambD = dist.sub(ambR).div(ambR.mul(0.06).add(5.0));
-        wave.addAssign(exp(ambD.mul(ambD).negate()).mul(ambEnv).mul(u.ambient).mul(AMBIENT_PULSE.energy));
+        wave.addAssign(exp(ambD.mul(ambD).negate()).mul(ambEnv).mul(u.ambient).mul(u.pulse.y));
 
         // ── The mirror ──
         // Slow swell in the glass, fading with distance so the far mirror stays calm; the
         // ripple ring adds its own push.
         const swell = ndNoise2(vec2(p.x.mul(0.035), p.z.sub(u.scroll).mul(0.05)).add(u.time.mul(0.04)))
             .sub(0.5).mul(0.012).mul(exp(dist.mul(-0.004)));
-        const push = rippleD.mul(exp(rippleD.mul(rippleD).negate())).mul(u.ripple.w).mul(0.012);
+        const push = rippleWave.mul(0.012);
         const cosT = clamp(V.y.negate(), 0.0, 1.0);
         const fres = mix(float(0.16), float(0.82), pow(float(1.0).sub(cosT), 4.0));
 
@@ -209,8 +225,10 @@ export function createFloor(u, opts = {}) {
         const haloNear = max(exp(abs(dx).mul(-14.0)), exp(abs(dz).mul(-14.0)));
         const haloMix = smoothstep(0.05, 0.3, max(fx, fz));
         const halo = mix(haloNear, float(0.2), haloMix).mul(0.16);
-        const near = mix(rgb(0xff2a9d), rgb(0xff3fd2), smoothstep(0.0, 0.5, u.comboShift));
-        const shifted = mix(near, rgb(0x2ce8ff), smoothstep(0.5, 1.0, u.comboShift));
+        // Magenta, pink, then through violet to cyan (never through a grey lavender).
+        const near = mix(rgb(0xff2a9d), rgb(0xff3fd2), smoothstep(0.0, 0.35, u.comboShift));
+        const violet = mix(near, rgb(0x9a4dff), smoothstep(0.3, 0.65, u.comboShift));
+        const shifted = mix(violet, rgb(0x2ce8ff), smoothstep(0.6, 1.0, u.comboShift));
         const far = mix(rgb(0x8a3cff), rgb(0x3a7bff), u.comboShift);
         const lineCol = mix(shifted, far, smoothstep(60.0, 700.0, dist)).mul(1.9);
         const energy = line.add(halo).mul(float(1.0).add(wave.mul(2.6)).add(rippleRing.mul(2.0)));

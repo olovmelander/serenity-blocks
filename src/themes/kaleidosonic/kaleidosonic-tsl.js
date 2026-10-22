@@ -7,8 +7,8 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    Fn, If, Loop, abs, atan, cos, dot, float, floor, fract, int, max, min, mix, normalize, sign, sin, uniform,
-    uniformArray, vec2, vec3, vec4,
+    Fn, If, Loop, abs, atan, cos, dot, float, floor, fract, int, max, min, mix, normalize, sign, sin, step,
+    uniform, uniformArray, vec2, vec3, vec4,
 } from 'three/tsl';
 import {
     BEAM_AXES, MOODS, MOOD_COLOURS, TEMPLE, foldSplit,
@@ -16,10 +16,15 @@ import {
 
 export * from './kaleidosonic-core.js';
 
-/** Event slots: strikes (three rows each) and harmonics (two rows each). */
+/**
+ * Event slots: strikes (three rows each) and harmonics (two rows each). Eight harmonics: a chain's
+ * clears and a cascade's waves (0.36 s apart) each sound one that rings for TIMING.harmonic, so the
+ * core fills with nested shells instead of a few blinking in turn (the shaders loop only the live
+ * ones).
+ */
 export const STRIKES = 12;
 export const STRIKE_ROWS = 3;
-export const HARMONICS = 4;
+export const HARMONICS = 8;
 export const HARMONIC_ROWS = 2;
 
 // ── Small helpers ─────────────────────────────────────────────────────────────────
@@ -110,50 +115,60 @@ export function createTempleTrap(maxFolds) {
 }
 
 /**
- * A polar kaleidoscope of n sectors about the lens's axis, centred on the angle a0 (mirror-folded).
- * Returns the folded point and the sector's parity (0 or 1: alternate sectors take another colour).
+ * A mirror wall's softness (radians²): a pearl the wall crosses is not split by a crease. It grows
+ * with the stage, so a stage that is shut leaves every ray exactly where it was (no hairline along
+ * a wall parked at the edge of the view).
  */
-const polarFold = (xy, a0, n) => {
-    const r = xy.length();
-    const wedge = Math.PI / n;
-    // (a hair added to x: atan(0, 0) is undefined in GLSL and WGSL)
-    const local = atan(xy.y, xy.x.add(1e-7)).sub(a0);
-    const sector = floor(local.add(wedge).div(2 * wedge));
-    const m = local.add(wedge).sub(sector.mul(2 * wedge)).sub(wedge);
-    // a hair of softness at the mirror line, so a pearl it crosses is not split by a crease
-    const a = a0.add(m.mul(m).add(0.00002).sqrt());
-    // sectors counted round the circle (the angle's branch cut must not flip a colour)
-    const round = sector.sub(floor(sector.div(n)).mul(n));
-    const parity = round.sub(floor(round.mul(0.5)).mul(2.0));
-    return { xy: vec2(cos(a), sin(a)).mul(r), parity };
-};
+const WALL_SOFT = 0.00002;
+/** The angle `th` reflected to the far side of a wall at `wall` when it lies below it (softened by `k`). */
+const above = (th, wall, k) => wall.add(th.sub(wall).mul(th.sub(wall)).add(k.mul(WALL_SOFT)).sqrt());
+/** The angle `th` reflected back under a wall at `wall` when it lies beyond it (softened by `k`). */
+const below = (th, wall, k) => wall.sub(wall.sub(th).mul(wall.sub(th)).add(k.mul(WALL_SOFT)).sqrt());
 
 /**
  * The kaleidoscope, in three stages that open one after another: a mirror whose line runs through
  * the lens's axis square to the core's bearing (the core's half kept, so as the eye rolls the
  * mirror turns with it and never flips), then six sectors, then twelve, all centred on the core's
- * bearing from the lens's axis. Each stage blends in by its own strength, so the picture folds
- * continuously. lens = (core bearing a0, -, -, -); s = (bilateral, six, twelve, -).
- * Returns (direction, how far the ray's sector is an "other" one: 0..1, for the alternate colour).
+ * bearing from the lens's axis. Each stage OPENS AS A REAL KALEIDOSCOPE'S MIRRORS WOULD, never by
+ * blending two views (a half-blend smears the halls): the mirror slides in from beyond the frame's
+ * far side to the axis; the six's two walls turn in from the kept half's edges, one onto the core's
+ * own line, one to 60° past it; the twelve's wall turns in from 60° to 30°. Every step is a
+ * reflection, so neighbouring rays stay neighbours (the scout's cone holds). Fully open, the folds
+ * are the CPU's foldLens (kaleidosonic-core.js). lens = (core bearing a0, -, -, -); s = (bilateral,
+ * six, twelve, -). Returns (direction, how far the ray's sector is an "other" one: 0..1, for the
+ * alternate colour).
  */
 export const ksLensFold = /* @__PURE__ */ Fn(([dIn, lens, s]) => {
     const d = dIn.toVar();
     const xy = d.xy.toVar();
-    const other = float(0).toVar();
     const n = vec2(cos(lens.x), sin(lens.x)).toVar();
-    const dn = dot(xy, n).toVar();
-    // reflected across the line where it is on the far side (softened by a hair at the line)
-    const mirrored = xy.add(n.mul(dn.mul(dn).add(0.000004).sqrt().sub(dn)));
-    other.assign(mix(other, float(0.5).sub(sign(dn).mul(0.5)), s.x));
-    xy.assign(mix(xy, mirrored, s.x));
-    // six sectors (three mirrored pairs) cannot alternate round an odd ring: no colour of their own
-    const six = polarFold(xy, lens.x, 3);
-    xy.assign(mix(xy, six.xy, s.y));
+    // the mirror: its line square to the core's bearing, sliding in from beyond the frame (a unit
+    // direction's xy never reaches 1) to the axis; the far side shows the near side's reflection
+    const dn = dot(xy, n).add(float(1).sub(s.x)).toVar();
+    xy.assign(xy.add(n.mul(dn.mul(dn).add(s.x.mul(0.000004)).sqrt().sub(dn))));
+    const other = float(0.5).sub(sign(dn).mul(0.5)).mul(s.x).toVar();
+    // the angle from the core's bearing, in [-π, π)
+    const r = xy.length();
+    // (a hair added to x: atan(0, 0) is undefined in GLSL and WGSL)
+    const raw = atan(xy.y, xy.x.add(1e-7)).sub(lens.x);
+    const th = raw.sub(floor(raw.add(Math.PI).div(2 * Math.PI)).mul(2 * Math.PI)).toVar();
+    // six sectors (three mirrored pairs): two walls turn in from the edges of what the mirror keeps
+    // (the whole circle while it is shut), one onto the core's own line, one to 60° past it
+    const edge = float(1).sub(s.x).add(1).mul(Math.PI / 2);
+    const wallIn = mix(edge.negate(), float(0), s.y);
+    const wallOut = mix(edge, float(Math.PI / 3), s.y).toVar();
+    th.assign(above(th, wallIn, s.y));
+    th.assign(below(th, wallOut, s.y));
+    // six sectors cannot alternate round an odd ring: no colour of their own
     other.assign(other.mul(float(1).sub(s.y.mul(0.5))));
-    const twelve = polarFold(xy, lens.x, 6);
-    xy.assign(mix(xy, twelve.xy, s.z));
-    other.assign(mix(other, max(other, twelve.parity), s.z));
-    return vec4(normalize(vec3(xy, d.z)), other);
+    // twelve: one more wall turns in from the six's outer wall to 30°; what it folds back is the
+    // alternate sector
+    const wall12 = mix(wallOut, float(Math.PI / 6), s.z);
+    const parity = step(wall12, th).toVar();
+    th.assign(below(th, wall12, s.z));
+    other.assign(mix(other, max(other, parity), s.z));
+    const a = lens.x.add(th);
+    return vec4(normalize(vec3(vec2(cos(a), sin(a)).mul(r), d.z)), other);
 }).setLayout({
     name: 'ks_lensFold',
     type: 'vec4',

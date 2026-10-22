@@ -9,6 +9,8 @@
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.perfect({ player, screen })   a perfect clear that settled after its clear (no new rows)
+ *   sink.spin({ player, screen })      a T-spin that cleared nothing
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *
@@ -22,8 +24,13 @@
  * where, `hardDrop` makes it splash harder) and bursts in a crown of glowing droplets; a clear
  * throws a wave of light per line at the shore (`b2b` makes it stronger, `tspin` sends a shoal of
  * fish through the shallows, four lines or `perfect` raise a great set wave, `perfect` lights the
- * whole bay); a chain brings rain. The world reads the chain from sink.combo, so a clear's own
- * `combo` and `cascade` go unused here.
+ * whole bay); a chain brings rain. The world reads the chain from sink.combo; a clear's
+ * `cascade` makes its waves bigger, and its `combo` feeds the shared surge.
+ *
+ * Perfect clear: physics sends PERFECT_CLEAR once the clear's last wave has settled, ~360 ms
+ * after it, in a frame of its own. That is the crown on the clear still playing, not a new clear:
+ * on its own it resolves as sink.perfect (never a second great wave); in the same frame as its
+ * clear it rides on that clear as `perfect`.
  *
  * Combo: the bus's COMBO event carries the CASCADE DEPTH of one lock, never a combo (ADR-0011).
  * The true consecutive-clear combo is derived here with one ComboTracker per player; an explicit
@@ -194,7 +201,8 @@ function capturePosition(slot, payload) {
 export class LuminousTidesDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, combo?: Function, levelUp?: Function },
+     *   sink?: { lock?: Function, clear?: Function, perfect?: Function, spin?: Function, combo?: Function,
+     *     levelUp?: Function },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -214,6 +222,7 @@ export class LuminousTidesDirector {
         this._clear = {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
         };
+        this._moment = { player: 0, screen: null };
         this._screen = { x: 0.5, y: 0.5 };
     }
 
@@ -357,13 +366,13 @@ export class LuminousTidesDirector {
         return true;
     }
 
+    /** On its own (no rows this frame) it is the crown on the clear before it: see flush(). */
     onPerfectClear(event) {
         if (!this.enabled) return false;
         const slot = this.slotFor(event || EMPTY);
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -426,6 +435,18 @@ export class LuminousTidesDirector {
                 c.b2b = slot.b2b;
                 c.screen = screen;
                 sink.clear(c);
+            } else if (slot.perfect) {
+                // The late crown on the clear still playing.
+                const c = this._moment;
+                c.player = slot.player;
+                c.screen = screen;
+                sink?.perfect?.(c);
+            } else if (slot.tspin) {
+                // A T-spin that cleared nothing.
+                const c = this._moment;
+                c.player = slot.player;
+                c.screen = screen;
+                sink?.spin?.(c);
             }
             clearPending(slot);
         }

@@ -8,7 +8,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    attribute, cameraPosition, color, dot, exp, float, instancedBufferAttribute, mix, normalize, normalWorld,
+    attribute, cameraPosition, color, dot, float, instancedBufferAttribute, mix, normalize, normalWorld,
     positionLocal, positionWorld, pow, saturate, sin, smoothstep, uv, vec2, vec3, vec4,
 } from 'three/tsl';
 import { goldenForestGroundHeight, goldenForestShoreDistance } from './golden-forest-terrain.js';
@@ -132,8 +132,7 @@ export class GoldenForestShore {
         material.name = 'GoldenForestReedsAndGrass';
         const st = uv();
         const t = light.uTime;
-        const front = exp(positionLocal.x.sub(light.uFront.x).div(light.uFront.z).pow2().negate()).mul(light.uFront.y);
-        const force = light.uWind.add(light.uGust).add(front);
+        const force = light.uWind.add(light.uGust).add(light.front(positionLocal.x));
         const sway = sin(t.mul(1.5).add(positionLocal.x.mul(0.45)).add(positionLocal.z.mul(0.31)).add(look.y.mul(6.3)))
             .mul(0.5).add(sin(t.mul(2.9).add(look.y.mul(31)).add(st.x.mul(9))).mul(0.18)).add(0.35);
         const bend = st.y.mul(st.y).mul(look.z).mul(force).mul(sway)

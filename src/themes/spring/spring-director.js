@@ -7,8 +7,8 @@
  * STAGES numbers into one of five preallocated player slots. flush() — called first in the
  * theme's frame — resolves each slot into at most one `lock` and one `clear` for the sink:
  *
- *   sink.lock({ player, rows, u, hardDrop, distance, color, shape, cells, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, rowCodes, screen })
+ *   sink.lock({ player, rows, u, hardDrop, distance, color, shape, cells, tspin, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, crown, b2b, rowCodes, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.b2b(level, player)    the live back-to-back level (0..4), whenever it changes
  *   sink.levelUp(level)
@@ -22,7 +22,10 @@
  * (PIECE_CODE: I 0, T 1, Z 2, L 3, S 4, J 5, O 6, 7 = garbage or unknown), flat and in step with
  * `rows`: row k's column c is rowCodes[k * 10 + c], left to right. `screen` ({ x, y } in window
  * fractions, y down) is set instead for the meditation mode's clicks, which carry a pixel
- * position and no board.
+ * position and no board. A lock's `tspin` is a T-spin that cleared nothing (one that cleared rides
+ * on its clear). A clear's `crown` is a perfect clear the game settled on a later frame than the
+ * clear it crowns, on its own (no wave of its own: `lines` 1, no rows): the crown on a clear the
+ * sink has already answered, never a new clear.
  *
  * Order inside one flush: a slot's lock, then its clear, then its combo, then its back-to-back
  * level. A clear therefore reaches the sink BEFORE the combo it raised: read the chain a clear
@@ -478,6 +481,7 @@ export class SpringDirector {
             color: null,
             shape: null,
             cells: null,
+            tspin: false,
             screen: null,
         };
         this._cells = [0, 0, 0, 0, 0, 0, 0, 0];
@@ -489,6 +493,7 @@ export class SpringDirector {
             cascade: 1,
             tspin: false,
             perfect: false,
+            crown: false,
             b2b: false,
             rowCodes: [],
             screen: null,
@@ -762,6 +767,7 @@ export class SpringDirector {
                 for (let k = 0; k < 8; k += 1) this._cells[k] = slot.lockCells[k];
                 c.cells = this._cells;
             } else c.cells = null;
+            c.tspin = slot.tspin && slot.lines === 0;
             c.screen = null;
             sink.lock(c);
         }
@@ -779,6 +785,7 @@ export class SpringDirector {
             c.cascade = slot.cascade;
             c.tspin = slot.tspin;
             c.perfect = slot.perfect;
+            c.crown = slot.perfect && slot.waves === 0;
             c.b2b = slot.b2b;
             c.screen = screen;
             sink.clear(c);

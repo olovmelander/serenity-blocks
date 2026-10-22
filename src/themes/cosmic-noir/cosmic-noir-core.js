@@ -40,6 +40,12 @@ export const PULSAR = Object.freeze({
     /** The core's own glow round the lantern (all directions, through the slats). */
     coreGain: 2.0,
     coreReach: 2.2,
+    /**
+     * Forward scatter of the beams in the smoke (Henyey–Greenstein g) at rest: a beam that looks
+     * toward us is a blaze. Hot play lowers it (the world's `u.forward`): the blades seen side-on
+     * gain, the blaze toward the lens gives way.
+     */
+    forward: 0.4,
 });
 
 /**
@@ -80,23 +86,37 @@ export const SMOKE = Object.freeze({
 
 // ── Events ──────────────────────────────────────────────────────────────────────
 
-/** Light echoes (clears): shells of light expanding from the pulsar through the smoke. */
-export const ECHO_SLOTS = 4;
+/**
+ * Light echoes (clears): shells of light expanding from the pulsar through the smoke. Eight live at
+ * once, so a quad's four join the rings still crossing the smoke (a new echo takes the slot with
+ * the least light left) and a cascade draws concentric rings.
+ */
+export const ECHO_SLOTS = 8;
 export const ECHO_SPEED = 26;
 export const ECHO_LIFE = 2.2;
 /** An echo's light falls off with its distance from the pulsar (as 1 / (1 + (r/ECHO_REACH)²)). */
 export const ECHO_REACH = 9;
 /** An echo slows as it spreads and never reaches the camera (~24 away): inside it, it would be a wall. */
 export const ECHO_MAX = 19;
-/** Puffs (locks): smoke billowing out of the card's edge, lit from within by a dying ember. */
-export const PUFF_SLOTS = 6;
+/**
+ * Puffs (locks): smoke billowing out of the card's edge, lit from within by a dying ember. A new
+ * puff takes the slot with the least smoke left; what that one still held thins into the room.
+ */
+export const PUFF_SLOTS = 8;
 export const PUFF_LIFE = 4.5;
 /** The flashbulb (four lines): the print flips to its negative for a moment. */
 export const NEGATIVE_HOLD = 0.06;
 export const NEGATIVE_FADE = 0.2;
+/**
+ * The flashbulb never fires twice inside this (seconds): a frame-wide flip stays under ~2.2 Hz
+ * (photosensitivity, ADR-0021). A quad inside it pours its light into the lantern instead.
+ */
+export const NEGATIVE_GAP = 0.45;
 /** The reel change (level-up): two cue marks, a second apart, each this long. */
 export const CUE_GAP = 1.0;
 export const CUE_SHOW = 0.2;
+/** How long one reel change's marks run (a second reel change inside it waits its turn). */
+export const CUE_SPAN = 0.35 + CUE_GAP + CUE_SHOW;
 
 // ── Film stocks ─────────────────────────────────────────────────────────────────
 
@@ -123,6 +143,16 @@ export const FILM_STOCKS = Object.freeze([
         name: 'platinum', shadow: [1.14, 1.0, 0.84], high: [1.04, 1.02, 0.94], paper: [0.002, 0.0018, 0.0014], grain: 0.85,
     }),
 ]);
+/**
+ * The heat of play tones the print too: a split tone (cold cyanotype shadows, gold highlights) the
+ * stock leans toward as play burns hot, and blazes in on a perfect clear or a back-to-back. Each
+ * multiplier keeps luminance about 1, so the toning colours the print without lifting it.
+ */
+export const HEAT_TONE = Object.freeze({
+    shadow: Object.freeze([0.6, 0.96, 1.7]),
+    high: Object.freeze([1.24, 1.0, 0.56]),
+    paper: Object.freeze([0.0005, 0.0013, 0.0034]),
+});
 /** The stock level 1 starts on (silver). */
 export const STOCK_HOME = 1;
 /** Seconds the clock alone takes to carry the print one stock along. A level-up is one step. */

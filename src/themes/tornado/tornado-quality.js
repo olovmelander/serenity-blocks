@@ -11,6 +11,8 @@
  * debris      boards and shingles in the air round the foot
  * motes       sparks per locked piece
  * poles       the power line's poles (nearest first)
+ * ribbons     ribbons the funnel can hold at once (at most RIBBONS, tornado-tsl.js): a long chain
+ *             winds this many on before the oldest climbs off into the cloud to make room
  */
 export const QUALITY = Object.freeze({
     Minimal: Object.freeze({
@@ -23,6 +25,7 @@ export const QUALITY = Object.freeze({
         debris: 180,
         motes: 16,
         poles: 5,
+        ribbons: 6,
     }),
     Low: Object.freeze({
         shear: false,
@@ -34,6 +37,7 @@ export const QUALITY = Object.freeze({
         debris: 320,
         motes: 24,
         poles: 6,
+        ribbons: 6,
     }),
     Medium: Object.freeze({
         shear: true,
@@ -45,6 +49,7 @@ export const QUALITY = Object.freeze({
         debris: 640,
         motes: 40,
         poles: 8,
+        ribbons: 8,
     }),
     High: Object.freeze({
         shear: true,
@@ -56,6 +61,7 @@ export const QUALITY = Object.freeze({
         debris: 1100,
         motes: 60,
         poles: 9,
+        ribbons: 10,
     }),
     Ultra: Object.freeze({
         shear: true,
@@ -67,6 +73,7 @@ export const QUALITY = Object.freeze({
         debris: 1500,
         motes: 72,
         poles: 9,
+        ribbons: 10,
     }),
     Extreme: Object.freeze({
         shear: true,
@@ -78,6 +85,7 @@ export const QUALITY = Object.freeze({
         debris: 2000,
         motes: 84,
         poles: 9,
+        ribbons: 10,
     }),
 });
 

@@ -234,8 +234,7 @@ export function create({
         let cursor = start;
         if (holdLift) {
             world.liftAsk = Math.min(28, holdLift);
-            world.drainAt = cursor;
-            world.drainPower = 0.8;
+            world.drainSwell.hit(0.8, cursor);
             stepTo(cursor, cursor + 4, 0.05);
             cursor += 4;
         }

@@ -1426,16 +1426,27 @@ describe('supernova world: four lines', () => {
         for (const shell of blast) expect(shell.gain).toBeGreaterThan(0);
         expect(world.u.echo.value.x).toBe(birth);
         expect(world.u.echo.value.y).toBeGreaterThan(0);
-        // The old star's surface is gone, and its prominences with it.
-        for (const slot of world.u.impactC) expect(slot.value.w).toBe(0);
-        expect(world.u.impactsLive.value).toBe(0);
-        expect(now.loops).toBe(0);
         // Most of the ejecta pool is thrown at once.
         const thrown = sparkBirths(world).filter((time) => time >= birth - 1e-4 && time <= birth + 0.5);
         expect(thrown.length).toBeGreaterThan(world.sparks.count * 0.5);
         expect(thrown.length).toBeLessThanOrEqual(world.sparks.count);
         // No pulsar inside the flash.
         expect(world.u.pulsar.value.x).toBe(0);
+        // The old star's surface burns off, and its prominences are torn away with it: still
+        // there at the flash, gone within a moment of it, and never in one frame.
+        const markOf = () => Math.max(...world.u.impactC.map((slot) => slot.value.w));
+        expect(markOf()).toBeGreaterThan(0);
+        expect(now.loops).toBeGreaterThan(0);
+        let mark = markOf();
+        let drop = 0;
+        run(world, camera, 0.8, 96, () => {
+            drop = Math.max(drop, mark - markOf());
+            mark = markOf();
+        });
+        expect(drop).toBeLessThan(0.15);
+        for (const slot of world.u.impactC) expect(slot.value.w).toBe(0);
+        expect(world.u.impactsLive.value).toBe(0);
+        expect(world.getState().loops).toBe(0);
 
         // The blast wave bends the picture, running out from the star.
         run(world, camera, 0.3);
@@ -1766,8 +1777,8 @@ describe('supernova world: the chain', () => {
         world.dispose();
     });
 
-    it('goes off by itself when the chain reaches its critical step, once', () => {
-        const { camera, world } = makeWorld('High');
+    it('takes the star to the brink at its critical step, and sets it off when the chain lets go, once', () => {
+        const { camera, world } = makeWorld('High', { capture: false });
         const promises = watchPromises(world);
         const landings = watchLandings(world);
         for (let combo = 1; combo < CRITICAL_COMBO; combo++) {
@@ -1776,80 +1787,127 @@ describe('supernova world: the chain', () => {
         }
         expect(promises).toEqual([]);
         expect(world.canDetonate()).toBe(true);
-        const t0 = world.time;
+        const cold = { heat: world.u.heat.value, fissure: world.u.fissure.value };
+        expect(world.getState().critical).toBe(0);
+        // The critical step: nothing goes off yet. The star swells, burns hotter and cracks open
+        // while the chain holds it there.
         world.onCombo(CRITICAL_COMBO);
-        expect(promises).toHaveLength(1);
-        expect(promises[0].time).toBeCloseTo(t0 + COLLAPSE_HOLD, 9);
-        expect(world.canDetonate()).toBe(false);
-        // The chain goes on: the star has already been set off.
+        expect(promises).toEqual([]);
+        run(world, camera, 1.5);
+        expect(world.getState().critical).toBeGreaterThan(0.8);
+        expect(world.swollen).toBeGreaterThan(1.03);
+        expect(world.u.heat.value).toBeGreaterThan(cold.heat + 0.2);
+        expect(world.u.fissure.value).toBeGreaterThan(cold.fissure + 0.15);
+        // The chain goes on, and the star holds.
         for (let combo = CRITICAL_COMBO + 1; combo <= CRITICAL_COMBO + 4; combo++) {
             world.onCombo(combo);
             run(world, camera, 0.3);
         }
+        expect(promises).toEqual([]);
+        expect(world.canDetonate()).toBe(true);
+        // The chain lets go: so does the star, harder for every step it held past critical.
+        const t0 = world.time;
+        world.onCombo(0);
         expect(promises).toHaveLength(1);
+        expect(promises[0].time).toBeCloseTo(t0 + COLLAPSE_HOLD, 9);
+        expect(promises[0].amount).toBeGreaterThan(1.15 + 0.3);
+        expect(world.canDetonate()).toBe(false);
+        run(world, camera, 1);
         expect(landings.map((landing) => landing.name)).toEqual(['detonate']);
         expect(world.getState().counts.novas).toBe(1);
-        // It breaks and is built again before the star has rearmed: nothing.
-        world.onCombo(0);
+        run(world, camera, 1);
+        expect(world.getState().critical).toBeLessThan(0.1);
+        // Built again and let go before the star has rearmed: an aftershock, not a second flash.
         world.onCombo(CRITICAL_COMBO);
         run(world, camera, 1);
-        expect(world.getState().counts.novas).toBe(1);
+        world.onCombo(0);
+        run(world, camera, 1);
+        expect(world.getState().counts).toMatchObject({ novas: 1, aftershocks: 1 });
         // And again once it has: a second detonation.
         runTo(world, camera, world.nova.birth + NOVA_REARM + 0.2);
-        world.onCombo(0);
         world.onCombo(CRITICAL_COMBO);
+        run(world, camera, 1);
+        world.onCombo(0);
         run(world, camera, 1);
         expect(world.getState().counts.novas).toBe(2);
         world.dispose();
     });
 
-    it('waits for the rows of the clear that set it off, and gives that clear\'s shock up for the flash', () => {
+    it('goes off harder when four lines push a star at the brink over, and the chain that did it is spent', () => {
+        const brink = makeWorld('High');
+        const cold = makeWorld('High');
+        const promised = [brink, cold].map(({ world }) => watchPromises(world));
+        brink.world.onCombo(CRITICAL_COMBO + 2);
+        run(brink.world, brink.camera, 2);
+        run(cold.world, cold.camera, 2);
+        expect(brink.world.getState().critical).toBeGreaterThan(0.9);
+        for (const { world } of [brink, cold]) world.onClear({ rows: bottom(4), lines: 4 });
+        expect(promised[0]).toHaveLength(1);
+        expect(promised[1]).toHaveLength(1);
+        expect(promised[0][0].amount).toBeGreaterThan(promised[1][0].amount + 0.2);
+        run(brink.world, brink.camera, 1);
+        expect(brink.world.getState().counts.novas).toBe(1);
+        // The chain goes on after the flash: the newborn star is not taken to the brink again,
+        // and when the chain breaks it lets its breath go instead of going off a second time.
+        brink.world.onCombo(CRITICAL_COMBO + 3);
+        run(brink.world, brink.camera, 1.5);
+        expect(brink.world.getState().critical).toBeLessThan(0.1);
+        const { fronts } = brink.world.getState().counts;
+        brink.world.onCombo(0);
+        run(brink.world, brink.camera, 1);
+        expect(promised[0]).toHaveLength(1);
+        expect(brink.world.getState().counts).toMatchObject({ novas: 1, aftershocks: 0, fronts: fronts + 1 });
+        brink.world.dispose();
+        cold.world.dispose();
+    });
+
+    it('waits for the rows of the last clear when the chain lets go, and gives their shock to the flash', () => {
         const { camera, world } = makeWorld('High');
         const promises = watchPromises(world);
         const landings = watchLandings(world);
-        world.onCombo(CRITICAL_COMBO - 1);
+        world.onCombo(CRITICAL_COMBO);
         run(world, camera, 3);
-        // As the director delivers them: the clear, then the chain's new length.
+        // The last clear of the chain, and the chain letting go before its rows have arrived.
         const t0 = world.time;
         world.onClear({ rows: bottom(2), lines: 2 });
         expect(world.getState().pending).toBe(1); // its shock
-        world.onCombo(CRITICAL_COMBO);
-        // The shock is given up: the one thing due is the flash, a fall after the rows arrive.
+        world.onCombo(0);
+        // The fall begins when the rows arrive; the flash is a fall after that.
         const flashAt = t0 + ROW_FLIGHT + COLLAPSE_HOLD;
-        expect(world.getState().pending).toBe(1);
         expect(promises).toHaveLength(2);
         expect(promises[1].time).toBeCloseTo(flashAt, 9);
         expect(world.nova.next).toBeCloseTo(flashAt, 9);
+        const promised = promises[1].amount;
         expect(world.canDetonate()).toBe(false);
         // Nothing falls while the rows are in flight...
         runTo(world, camera, t0 + ROW_FLIGHT - 0.01, () => {
             expect(world.getPostState().fall).toBe(0);
         });
         expect(world.getState().starRadius).toBeGreaterThan(0.95);
-        // ...then it falls, in a hush nothing breaks...
+        // ...then it falls; the rows feed it instead of breaking the hush with a shock...
         let pull = 0;
         runTo(world, camera, flashAt - 0.01, () => {
             pull = Math.max(pull, world.getPostState().fall);
-            expect(landings).toEqual([]);
         });
         expect(pull).toBeGreaterThan(0.5);
         expect(world.getState().counts.fronts).toBe(0);
-        // ...and goes off: the flash is the clear's whole answer.
+        // ...and goes off, the bigger for them: the flash is the clear's whole answer.
         run(world, camera, 0.5);
-        expect(landings.map((landing) => landing.name)).toEqual(['detonate']);
-        expect(landings[0].time).toBeCloseTo(flashAt, 9);
+        expect(landings.map((landing) => landing.name)).toEqual(['shock', 'detonate']);
+        expect(landings[1].time).toBeCloseTo(flashAt, 9);
+        expect(landings[1].amount).toBeGreaterThan(promised);
         expect(world.getState().counts).toMatchObject({
             novas: 1, clears: 1, aftershocks: 0, fronts: 3,
         });
         // A clear whose rows have already arrived is not waited for, and its shock is not undone.
         runTo(world, camera, world.nova.birth + NOVA_REARM + 0.2);
         world.onCombo(0);
-        world.onCombo(CRITICAL_COMBO - 1);
+        world.onCombo(CRITICAL_COMBO);
         landings.length = 0;
         world.onClear({ rows: bottom(1), lines: 1 });
         run(world, camera, ROW_FLIGHT + 0.05);
         expect(landings.map((landing) => landing.name)).toEqual(['shock']);
-        world.onCombo(CRITICAL_COMBO);
+        world.onCombo(0);
         expect(world.nova.next).toBeCloseTo(world.time + COLLAPSE_HOLD, 9);
         run(world, camera, 1);
         expect(landings.map((landing) => landing.name)).toEqual(['shock', 'detonate']);
@@ -1861,14 +1919,16 @@ describe('supernova world: the chain', () => {
      * Fault in the fix for the critical chain: the shock it cancels carried the T-spin's flag, and
      * beginCollapse() is called there without `twist`. A T-spin that takes the chain to its
      * critical step never winds the corona: no twist, no thin front, no answer from the sky.
-     * Carry the cancelled shock's FLAG_TSPIN into beginCollapse(…, 1.15, twist).
+     * Carry the cancelled shock's FLAG_TSPIN into beginCollapse(…, 1.15, twist). (The chain now
+     * sets the star off when it lets go: the T-spin is the last clear before it does, and its
+     * rows arrive in the fall.)
      */
-    it('still winds the corona when the clear that reaches the critical step is a T-spin', () => {
+    it('still winds the corona when the clear whose rows the flash waits for is a T-spin', () => {
         const { camera, world } = makeWorld('High');
-        world.onCombo(CRITICAL_COMBO - 1);
+        world.onCombo(CRITICAL_COMBO);
         run(world, camera, 3);
         world.onClear({ rows: bottom(2), lines: 2, tspin: true });
-        world.onCombo(CRITICAL_COMBO);
+        world.onCombo(0);
         let wound = 0;
         run(world, camera, 1.5, 180, () => {
             wound = Math.max(wound, Math.abs(world.getState().twist));
@@ -1907,8 +1967,10 @@ describe('supernova world: the chain', () => {
         world.onCombo('x', { silent: true });
         world.onCombo(-4, { silent: true });
         expect(world.getState().combo).toBe(0);
-        // The same call without the flag is the event: this chain sets the star off.
+        // The same calls without the flag are the events: this chain, let go, sets the star off.
         world.onCombo(held);
+        expect(promises).toEqual([]);
+        world.onCombo(0);
         expect(promises).toHaveLength(1);
         expect(world.canDetonate()).toBe(false);
         world.dispose();
@@ -2353,6 +2415,7 @@ describe('supernova world: time', () => {
             flow: world.flow,
             drift: world.drift,
             ringTurn: world.ringTurn,
+            ring: world.u.ring.value.z,
         });
         const clocks = readClocks();
         expect(clocks.spin).not.toBeCloseTo(clocks.time * STAR.spin, 3); // the chain and the surge have turned it on
@@ -2383,8 +2446,8 @@ describe('supernova world: time', () => {
         expect(world.nova).toMatchObject({ next: Infinity, twist: false });
         run(world, camera, 1 / 60, 1);
         expect(world.getState().shells).toBe(standing);
-        expect(world.u.ring.value.z).toBeGreaterThan(clocks.ringTurn);
-        expect(world.u.ring.value.z - clocks.ringTurn).toBeLessThan(0.01);
+        expect(world.u.ring.value.z).toBeGreaterThan(clocks.ring);
+        expect(world.u.ring.value.z - clocks.ring).toBeLessThan(0.01);
         expect(world.getState().starRadius).toBeGreaterThan(0.95);
         expect(world.u.pulsar.value.x).toBe(0);
         expect(world.spin).toBeGreaterThan(clocks.spin);
@@ -2939,5 +3002,298 @@ describe('supernova world: the colours of the nebula', () => {
         const teal = [0.05, 0.7, 0.95];
         const gold = [1.0, 0.6, 0.12];
         expect(green(hueBlend(teal, gold, 0.5, [0, 0, 0]))).toBe(false);
+    });
+});
+
+describe('supernova world: play builds', () => {
+    /** The fronts of the shock that left at `arrive` (a shock's own skin), first first, as they are now. */
+    const frontsAt = (world, arrive) => world.fronts
+        .filter((front) => front.strength > 0 && front.skin === 0.065
+            && front.birth >= arrive - 1e-6 && front.birth <= arrive + 4 * FRONT_GAP)
+        .sort((a, b) => a.birth - b.birth)
+        .map((front) => ({ ...front, rgb: [...front.rgb] }));
+
+    it('never cuts the light when a weak answer follows a strong one', () => {
+        const strong = makeWorld('Low', { capture: false });
+        const both = makeWorld('Low', { capture: false });
+        for (const { world } of [strong, both]) world.onClear({ rows: bottom(3), lines: 3 });
+        for (const { world, camera } of [strong, both]) run(world, camera, ROW_FLIGHT + 0.05, 15);
+        // A plain lock right on the heels of the shock: its stream lands while the shock still burns.
+        both.world.onLock({ u: 0.5, rows: [19], color: '#64dcff' });
+        let lowest = Infinity;
+        for (let frame = 0; frame < 120; frame++) {
+            run(strong.world, strong.camera, 1 / 60, 1);
+            run(both.world, both.camera, 1 / 60, 1);
+            const a = strong.world.getPostState();
+            const b = both.world.getPostState();
+            lowest = Math.min(
+                lowest,
+                b.flash - a.flash,
+                b.kick - a.kick,
+                both.world.getState().pulse - strong.world.getState().pulse,
+                both.world.getState().storm - strong.world.getState().storm,
+            );
+        }
+        expect(lowest).toBeGreaterThanOrEqual(-1e-9);
+        // And the lock's own answer is there on top of the shock's.
+        expect(both.world.getState().counts.impacts).toBe(1);
+        strong.world.dispose();
+        both.world.dispose();
+    });
+
+    it('reads a long chain hotter than its first clear, and breathes back to rest when the hands do', () => {
+        const { camera, world } = makeWorld('High', { capture: false });
+        const rest = {
+            corona: world.u.coronaGain.value, ring: world.u.ring.value.x, exposure: world.getPostState().exposure,
+        };
+        const clearOf = (step) => {
+            world.onLock({
+                u: 0.3 + (step % 3) * 0.2, rows: [19, 18], hardDrop: true, color: '#ffaa00',
+            });
+            const arrive = world.time + ROW_FLIGHT;
+            world.onClear({ rows: bottom(2), lines: 2, combo: step });
+            world.onCombo(step);
+            run(world, camera, 0.64, 38);
+            return { arrive, fronts: frontsAt(world, arrive) };
+        };
+        const sample = () => ({
+            level: world.getState().pressure,
+            stage: world.getState().stage,
+            corona: world.u.coronaGain.value,
+            ring: world.u.ring.value.x,
+            exposure: world.getPostState().exposure,
+        });
+        const first = clearOf(1);
+        const early = sample();
+        let last = first;
+        // Seven quick doubles in a row: a chain just short of the star's critical step.
+        for (let step = 2; step < CRITICAL_COMBO; step++) last = clearOf(step);
+        const late = sample();
+        expect(late.level).toBeGreaterThan(early.level + 0.4);
+        expect(late.stage).toBeGreaterThanOrEqual(2);
+        expect(late.corona).toBeGreaterThan(early.corona);
+        expect(late.ring).toBeGreaterThan(early.ring);
+        // The iris closes as play heats, so the colours survive it.
+        expect(late.exposure).toBeLessThan(early.exposure);
+        // The chain's last clear runs out stronger, further and in more of its own colour than its first.
+        expect(last.fronts[0].strength).toBeGreaterThan(first.fronts[0].strength * 1.15);
+        expect(last.fronts[0].reach).toBeGreaterThan(first.fronts[0].reach);
+        expect(last.fronts[0].white).toBeLessThan(first.fronts[0].white * 0.75);
+        // The hands rest: the chain breaks and the star breathes back to how it was.
+        world.onCombo(0);
+        run(world, camera, 14, 14 * 30);
+        const settled = sample();
+        expect(settled.level).toBeLessThan(0.02);
+        expect(settled.stage).toBe(0);
+        expect(settled.corona).toBeCloseTo(rest.corona, 2);
+        expect(settled.ring).toBeCloseTo(rest.ring, 2);
+        expect(settled.exposure).toBeCloseTo(rest.exposure, 2);
+        world.dispose();
+    });
+
+    it('answers a cascade\'s waves each deeper, wider and faster than the last, each in the next gas colour', () => {
+        const { camera, world } = makeWorld('High');
+        const waves = [];
+        for (let wave = 1; wave <= 4; wave++) {
+            const arrive = world.time + ROW_FLIGHT;
+            world.onClear({ rows: bottom(1), lines: 1, cascade: wave });
+            run(world, camera, ROW_FLIGHT + 0.02, 14);
+            waves.push(frontsAt(world, arrive));
+            run(world, camera, 0.34, 20);
+        }
+        for (let i = 1; i < waves.length; i++) {
+            const [was] = waves[i - 1];
+            const [now] = waves[i];
+            expect(now.strength, `wave ${i + 1}`).toBeGreaterThan(was.strength);
+            expect(now.reach, `wave ${i + 1}`).toBeGreaterThan(was.reach);
+            expect(now.tau, `wave ${i + 1}`).toBeLessThan(was.tau);
+            expect(now.rgb, `wave ${i + 1}`).not.toEqual(was.rgb);
+        }
+        // From the third wave on, one front more than the first sent.
+        expect(waves[3].length).toBeGreaterThan(waves[0].length);
+        world.dispose();
+    });
+
+    it('answers a back-to-back with a twin front in the rim\'s colour and a flare of the ring, more for each', () => {
+        const pair = makeWorld('High');
+        const plain = makeWorld('High');
+        const flare = { pair: 0, plain: 0 };
+        for (const [name, { world, camera }] of [['pair', pair], ['plain', plain]]) {
+            world.onClear({ rows: bottom(2), lines: 2, tspin: true });
+            run(world, camera, 1);
+            world.onClear({
+                rows: bottom(2), lines: 2, tspin: true, b2b: name === 'pair',
+            });
+            run(world, camera, 1.2, 72, () => {
+                flare[name] = Math.max(flare[name], world.u.ring.value.y);
+            });
+        }
+        expect(pair.world.getState().counts.fronts).toBe(plain.world.getState().counts.fronts + 1);
+        expect(flare.pair).toBeGreaterThan(flare.plain + 0.3);
+        expect(pair.world.fronts.some((front) => front.strength > 0
+            && front.rgb.every((c, k) => Math.abs(c - pair.world._palette.rim[k]) < 1e-9)
+            && front.white < 0.3)).toBe(true);
+        // The next difficult clear in the run flares the ring harder still.
+        const before = pair.world.b2bGlow;
+        pair.world.onClear({
+            rows: bottom(2), lines: 2, tspin: true, b2b: true,
+        });
+        let most = 0;
+        run(pair.world, pair.camera, 0.6, 36, () => {
+            most = Math.max(most, pair.world.b2bGlow);
+        });
+        expect(pair.world.b2bRun).toBe(2);
+        expect(most - before).toBeGreaterThan(0.6);
+        pair.world.dispose();
+        plain.world.dispose();
+    });
+
+    it('crowns a flash with a perfect clear that settles after its clear, instead of clearing again', () => {
+        // During the fall: no second fall, the flash to come is bigger and crowned.
+        const falling = makeWorld('High');
+        const promises = watchPromises(falling.world);
+        falling.world.onClear({ rows: bottom(4), lines: 4 });
+        run(falling.world, falling.camera, 0.36, 22);
+        const promised = falling.world.pending.find((p) => p.live && p.amount > 0 && p.kind === 3).amount;
+        falling.world.onCrown();
+        expect(promises).toHaveLength(1);
+        expect(falling.world.pending.find((p) => p.live && p.kind === 3).amount).toBeGreaterThan(promised);
+        run(falling.world, falling.camera, 1);
+        expect(falling.world.getState().counts).toMatchObject({ novas: 1, clears: 1, fronts: 3 + 3 });
+        // Just after a flash: the crown now, the young star's fire lit again; never a second flash.
+        const after = makeWorld('High');
+        const twin = makeWorld('High');
+        for (const { world, camera } of [after, twin]) {
+            world.onClear({ rows: bottom(4), lines: 4 });
+            run(world, camera, 1.2);
+        }
+        after.world.onCrown();
+        run(after.world, after.camera, 0.5);
+        run(twin.world, twin.camera, 0.5);
+        expect(after.world.getState().counts.novas).toBe(1);
+        expect(after.world.getState().counts.fronts).toBe(twin.world.getState().counts.fronts + 3);
+        expect(after.world.u.pulsar.value.x).toBeGreaterThan(twin.world.u.pulsar.value.x);
+        expect(after.world.u.ring.value.y).toBeGreaterThan(twin.world.u.ring.value.y);
+        // On a cold star a perfect clear sets it off, as one always has.
+        const cold = makeWorld('High');
+        cold.world.onCrown();
+        run(cold.world, cold.camera, 1);
+        expect(cold.world.getState().counts.novas).toBe(1);
+        for (const { world } of [falling, after, twin, cold]) world.dispose();
+    });
+
+    it('re-lights the fireball when four lines come too soon for a flash, and carries them into the next', () => {
+        const { camera, world } = makeWorld('High');
+        const promises = watchPromises(world);
+        world.onClear({ rows: bottom(4), lines: 4 });
+        run(world, camera, 3);
+        const fire = world.rekindle;
+        world.onClear({ rows: bottom(4), lines: 4 });
+        let most = 0;
+        run(world, camera, 1.5, 90, () => {
+            most = Math.max(most, world.rekindle);
+        });
+        expect(most).toBeGreaterThan(fire + 0.5);
+        expect(world.nova.charge).toBe(1);
+        // The next flash is the bigger for it.
+        runTo(world, camera, world.nova.birth + NOVA_REARM + 0.2);
+        world.onClear({ rows: bottom(4), lines: 4 });
+        const flashes = promises.filter((p) => p.kind === 3);
+        expect(flashes).toHaveLength(2);
+        expect(flashes[1].amount).toBeGreaterThan(flashes[0].amount);
+        world.dispose();
+    });
+
+    it('turns the corona a little for a T-spin that clears nothing', () => {
+        const { camera, world } = makeWorld('High');
+        world.onSpin();
+        expect(world.getState().counts).toMatchObject({ fronts: 1, clears: 0 });
+        let wound = 0;
+        run(world, camera, 1, 120, () => {
+            wound = Math.max(wound, Math.abs(world.getState().twist));
+        });
+        expect(wound).toBeGreaterThan(0.02);
+        // Less than a T-spin that clears.
+        const full = makeWorld('High');
+        full.world.windCorona(full.world.time);
+        let fullWound = 0;
+        run(full.world, full.camera, 1, 120, () => {
+            fullWound = Math.max(fullWound, Math.abs(full.world.getState().twist));
+        });
+        expect(wound).toBeLessThan(fullWound);
+        world.dispose();
+        full.world.dispose();
+    });
+
+    it('keeps the star\'s marks through a fast run of locks: a mark gives way over a flight, never in a frame', () => {
+        const { camera, world } = makeWorld('High', { capture: false });
+        const colours = ['#64dcff', '#ffaa00', '#ff0033', '#00ff88', '#ff00ff', '#0088ff', '#ffdd00'];
+        const birth = (i) => world.u.impactA[i].value.w;
+        // What is left of each slot's mark (its own fade on the photosphere included).
+        const left = (i) => world.u.impactC[i].value.w * Math.exp(-Math.max(0, world.time - birth(i)) / 9);
+        const lastBirth = world.u.impactA.map((_, i) => birth(i));
+        const lastLeft = world.u.impactA.map((_, i) => left(i));
+        const worst = { replace: 0, step: 0 };
+        const watch = () => {
+            for (let i = 0; i < IMPACT_SLOTS; i++) {
+                if (birth(i) !== lastBirth[i]) worst.replace = Math.max(worst.replace, lastLeft[i]);
+                else worst.step = Math.max(worst.step, lastLeft[i] - left(i));
+                lastBirth[i] = birth(i);
+                lastLeft[i] = left(i);
+            }
+        };
+        for (let n = 0; n < 24; n++) {
+            world.onLock({
+                u: (n * 0.37) % 1, rows: [19 - (n % 6)], hardDrop: n % 3 === 0, color: colours[n % colours.length],
+            });
+            run(world, camera, 0.25, 15, watch);
+        }
+        expect(world.getState().counts.impacts).toBeGreaterThan(IMPACT_SLOTS * 2);
+        // A slot is taken over only once the mark in it has given way...
+        expect(worst.replace).toBeLessThan(0.05);
+        // ...and it gives way smoothly.
+        expect(worst.step).toBeLessThan(0.12);
+        world.dispose();
+    });
+
+    it('throws the colours it was fed back out when it goes off', () => {
+        const { camera, world } = makeWorld('High');
+        const fed = pieceColor('#00ff88');
+        world.onLock({ u: 0.4, rows: [19], color: '#00ff88' });
+        run(world, camera, 1);
+        world.onClear({ rows: bottom(4), lines: 4 });
+        run(world, camera, 1);
+        const { birth } = world.nova;
+        const tint = instanced(world.sparks, 'aTint').array;
+        const born = instanced(world.sparks, 'aBirth').array;
+        let ofTheFeed = 0;
+        for (let i = 0; i < world.sparks.count; i++) {
+            const t = born[i * 4 + 3];
+            if (t < birth || t > birth + 0.5) continue;
+            const scale = tint[i * 4 + 1] / fed[1];
+            if ([0, 1, 2].every((c) => Math.abs(tint[i * 4 + c] - fed[c] * scale) < 1e-4)) ofTheFeed += 1;
+        }
+        expect(ofTheFeed).toBeGreaterThan(world.sparks.count * 0.1);
+        world.dispose();
+    });
+
+    it('holds back the flash\'s afterglow under Reduce flashing (ADR-0021)', () => {
+        const seen = (reduce) => {
+            vi.stubGlobal('window', { settings: { reduceFlashing: reduce } });
+            const { camera, world } = makeWorld('High');
+            world.onClear({ rows: bottom(4), lines: 4 });
+            runTo(world, camera, world.nova.next + 0.05);
+            const out = {
+                star: world.u.starGain.value, glare: world.u.glare.value.x, streak: world.getPostState().streak,
+            };
+            world.dispose();
+            vi.unstubAllGlobals();
+            return out;
+        };
+        const full = seen(false);
+        const held = seen(true);
+        expect(held.star).toBeLessThan(full.star * 0.4);
+        expect(held.glare).toBeLessThan(full.glare * 0.5);
+        expect(held.streak).toBeLessThan(full.streak);
     });
 });

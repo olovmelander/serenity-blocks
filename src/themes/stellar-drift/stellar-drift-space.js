@@ -22,7 +22,9 @@
  *
  * What the board does arrives as rows of one uniform table (EVENT_ROWS): ripples and chimes in
  * the rings, jets, strikes and lightning on the cloud; the larger rewards' flourishes (a
- * cyclone, a surge round the rings, the outer strand ablaze, a corona) as uniforms of their own.
+ * cyclone, two surges round the rings, the outer strand ablaze, two shells of light) as uniforms
+ * of their own. How hot play runs (`drive`) winds the ovals tighter, lights their hearts and, in
+ * a fever, sets the giant's air burning along its limb: a plasma corona.
  */
 
 import * as THREE from 'three/webgpu';
@@ -63,7 +65,6 @@ import {
 import {
     CHIME_FRONT_GAP,
     CHIME_TRAVEL,
-    CYCLONE_LIFE,
     DEG,
     EVENT_ROWS,
     GIANT,
@@ -74,7 +75,6 @@ import {
     RIPPLE_SHEAR,
     RIPPLE_SPEED,
     SHOCK_LIFE,
-    STRAND_LIFE,
     TAU,
     sdBell,
     sdHash33,
@@ -158,10 +158,25 @@ export function createSpace(u, tier) {
     /**
      * A chain's surge round the rings at a bearing (the world's frame): two arcs of light that
      * leave the bearing facing the camera and race apart round the system, behind the giant.
+     * `S` is one of the two surges in flight.
      */
-    const surgeAt = (bearing) => {
-        const x = abs(wrapPi(bearing.sub(u.surge.x))).sub(u.surge.y).div(0.3);
-        return exp(x.mul(x).negate()).mul(u.surge.z);
+    const surgeAt = (bearing, S) => {
+        const x = abs(wrapPi(bearing.sub(S.x))).sub(S.y).div(0.3);
+        return exp(x.mul(x).negate()).mul(S.z);
+    };
+
+    /** One of the two shells in flight, at this frame's time: its shape and how bright it is. */
+    const shockLane = (K) => {
+        const age = u.time.sub(K.x).toVar();
+        const live = step(0.0, age).mul(step(age, SHOCK_LIFE));
+        const [shellRadius, shellWidth, frontRadius] = shockShape(age);
+        return {
+            R: shellRadius.toVar(),
+            W: shellWidth.toVar(),
+            front: frontRadius.toVar(),
+            fade: smoothstep(0.0, 0.08, age).mul(exp(age.mul(-1.6))).mul(K.y).mul(live)
+                .toVar(),
+        };
     };
 
     material.colorNode = Fn(() => {
@@ -194,15 +209,10 @@ export function createSpace(u, tier) {
         /** 1 where the ring crossing lies nearer than the giant. */
         const front = step(tR, tc).toVar();
 
-        // The flare a large reward throws off the giant (its front lights the rings as it crosses them).
-        const shockAge = u.time.sub(u.shock.x).toVar();
-        const shockLive = step(0.0, shockAge).mul(step(shockAge, SHOCK_LIFE)).toVar();
-        const [shellRadius, shellWidth, frontRadius] = shockShape(shockAge);
-        const shockR = shellRadius.toVar();
-        const shockW = shellWidth.toVar();
-        const shockFront = frontRadius.toVar();
-        const shockFade = smoothstep(0.0, 0.08, shockAge).mul(exp(shockAge.mul(-1.6))).mul(u.shock.y).mul(shockLive)
-            .toVar();
+        // The flares large rewards throw off the giant (each front lights the rings as it crosses
+        // them). Two can be in flight: a second never wipes the first.
+        const shockA = shockLane(u.shock);
+        const shockB = shockLane(u.shockB);
 
         // ── The sky ─────────────────────────────────────────────────────────────
         If(cover.lessThan(0.999), () => {
@@ -477,16 +487,21 @@ export function createSpace(u, tier) {
                     .mul(swell.mul(swell).mul(0.55).add(0.1)));
                 // A milestone of the chain: two arcs of its light race round the rings, leaving a
                 // wake that lights the ringlets as it passes.
-                If(u.surge.z.greaterThan(0.002), () => {
-                    const surged = surgeAt(theta).toVar();
-                    ringGlow.addAssign(u.surgeTint.mul(surged).mul(grooves).mul(u.surge.w.mul(0.8).add(1.6)));
-                    crowd.addAssign(surged.mul(0.35));
+                If(u.surge.z.add(u.surgeB.z).greaterThan(0.002), () => {
+                    const surged = surgeAt(theta, u.surge).toVar();
+                    const surgedB = surgeAt(theta, u.surgeB).toVar();
+                    ringGlow.addAssign(u.surgeTint.mul(surged).mul(u.surge.w.mul(0.8).add(1.6))
+                        .add(u.surgeTintB.mul(surgedB).mul(u.surgeB.w.mul(0.8).add(1.6)))
+                        .mul(grooves));
+                    crowd.addAssign(surged.add(surgedB).mul(0.35));
                 });
-                // The shell a large reward throws off the giant lights the rings as it crosses them.
-                const crossX = rr.sub(shockFront).div(0.07);
-                const crossing = exp(crossX.mul(crossX).negate()).mul(shockFade).toVar();
-                ringGlow.addAssign(u.shockTint.mul(crossing).mul(grooves).mul(1.4));
-                crowd.addAssign(crossing.mul(0.6));
+                // The shells a large reward throws off the giant light the rings as they cross them.
+                const crossA = rr.sub(shockA.front).div(0.07);
+                const crossB = rr.sub(shockB.front).div(0.07);
+                const crossingA = exp(crossA.mul(crossA).negate()).mul(shockA.fade).toVar();
+                const crossingB = exp(crossB.mul(crossB).negate()).mul(shockB.fade).toVar();
+                ringGlow.addAssign(u.shockTint.mul(crossingA).add(u.shockTintB.mul(crossingB)).mul(grooves).mul(1.4));
+                crowd.addAssign(crossingA.add(crossingB).mul(0.6));
                 // Many lights at once (a storm, a long chain) must not burn the rings white: the
                 // sum is rolled off on its brightest channel, so each light keeps its colour.
                 ringGlow.mulAssign(body.div(sdMax3(ringGlow).mul(0.42).add(1.0)));
@@ -494,10 +509,11 @@ export function createSpace(u, tier) {
 
                 // A back-to-back clear sets the outer strand ablaze: two threads braided round
                 // each other, with knots of light running along them. (Not held back by the ice:
-                // it burns in the strand's own gaps.)
+                // it burns in the strand's own gaps.) Its light is the world's: a second blaze feeds
+                // the one still burning, and a streak of them keeps it smouldering.
                 const strandAge = u.time.sub(u.strand.x).toVar();
-                If(strandAge.greaterThan(0.0).and(strandAge.lessThan(STRAND_LIFE)), () => {
-                    const env = smoothstep(0.0, 0.3, strandAge).mul(exp(strandAge.mul(-0.75))).mul(u.strand.y);
+                If(strandAge.greaterThan(0.0).and(u.strand.y.greaterThan(0.003)), () => {
+                    const env = u.strand.y;
                     // Never thinner than a pixel and a half across the plane.
                     const w = max(u.pixelAngle.mul(tR).div(muV).mul(0.75), 0.0028);
                     const wob = sin(theta.mul(11.0).add(strandAge.mul(1.6)).add(u.strand.z)).mul(0.0045);
@@ -559,7 +575,8 @@ export function createSpace(u, tier) {
                     const r2 = dx.mul(dx).add(dy.mul(dy)).toVar();
                     If(r2.lessThan(7.0), () => {
                         const fall = exp(r2.mul(-0.85)).toVar();
-                        const ang = C.x.mul(fall).toVar();
+                        // Hot play winds them tighter.
+                        const ang = C.x.mul(fall).mul(u.drive.x).toVar();
                         const cs = cos(ang);
                         const sn = sin(ang);
                         const rx = dx.mul(cs).sub(dy.mul(sn));
@@ -576,17 +593,17 @@ export function createSpace(u, tier) {
                 });
             }
             // A T-spin's cyclone: where it was spun the bands are wound into a storm that tightens
-            // for a few seconds and then lets go; two arms of light are wound with them.
+            // for a few seconds and then lets go; two arms of light are wound with them. Its
+            // strength is the world's: a second spin feeds the storm still turning.
             const cycloneLight = float(0.0).toVar();
             const cyAge = u.time.sub(u.cyclone.z).toVar();
-            If(cyAge.greaterThan(0.0).and(cyAge.lessThan(CYCLONE_LIFE)), () => {
+            If(cyAge.greaterThan(0.0).and(u.cyclone.w.greaterThan(0.004)), () => {
                 const size = 0.15;
                 const dx = wrapPi(lon0.sub(u.cyclone.x)).mul(cosLat).div(size).toVar();
                 const dy = lat0.sub(u.cyclone.y).div(size).toVar();
                 const r2 = dx.mul(dx).add(dy.mul(dy)).toVar();
                 If(r2.lessThan(10.0), () => {
-                    const env = smoothstep(0.0, 0.6, cyAge).mul(float(1.0).sub(smoothstep(CYCLONE_LIFE * 0.4, CYCLONE_LIFE, cyAge)))
-                        .mul(u.cyclone.w).toVar();
+                    const env = u.cyclone.w.toVar();
                     // Tapered to nothing before the edge of the test, or the bands would step there.
                     const fall = exp(r2.mul(-0.55)).mul(float(1.0).sub(smoothstep(5.0, 10.0, r2))).toVar();
                     const ang = u.cycloneTint.w.mul(smoothstep(0.0, 3.0, cyAge).mul(5.5).add(1.0)).mul(env).mul(fall).toVar();
@@ -713,6 +730,8 @@ export function createSpace(u, tier) {
 
             // The cyclone's arms, lit in the colour of the piece that spun it.
             glow.addAssign(u.cycloneTint.xyz.mul(cycloneLight).mul(relief).mul(lumps).mul(0.4));
+            // In a fever the great storms burn in their hearts.
+            glow.addAssign(u.storm.mul(clamp(tint, 0.0, 1.0)).mul(lumps).mul(u.drive.y));
 
             // Jets: a cleared row is written round the giant on its own latitude: a hairline of
             // light with a white-hot head, racing from the limb, the line behind it lit through
@@ -855,6 +874,24 @@ export function createSpace(u, tier) {
                 .add(u.night.mul(air).mul(float(1.0).sub(sunny)).mul(0.22)));
         });
 
+        // ── The plasma corona: hot play sets the giant's air burning along its limb ──
+        // Fine streamers of the chain's colour, each its own reach (a ridge of noise across the
+        // limb, the same all the way out along each ray from the giant, drifting slowly), white-hot
+        // where they leave the cloud, brightest over the night side (the day side's own air
+        // already shines there).
+        If(u.drive.z.greaterThan(0.003).and(tc.greaterThan(0.0)).and(imp.lessThan(1.45)), () => {
+            const T = normalize(ro.add(rd.mul(tc)));
+            const h = max(imp.sub(1.0), 0.0).toVar();
+            const n = u.noise3(T.mul(6.0).add(vec3(1.7, u.time.mul(0.04), 0.4)));
+            const ridge = float(1.0).sub(abs(n.x.mul(2.0).sub(1.0)));
+            const streamer = ridge.mul(ridge).mul(ridge).toVar();
+            const reach = streamer.mul(0.12).add(n.y.mul(0.03)).add(0.018);
+            const air = exp(h.div(reach).negate()).mul(float(1.0).sub(cover));
+            const nightward = float(1.0).sub(smoothstep(-0.3, 0.25, dot(T, S)).mul(0.6));
+            const hue = mix(u.accent, vec3(1.0), exp(h.mul(-90.0)).mul(0.5));
+            col.addAssign(hue.mul(air.mul(streamer.mul(0.9).add(0.25)).mul(nightward).mul(u.drive.z).mul(0.55)));
+        });
+
         // ── The rings' near side ────────────────────────────────────────────────
         col.assign(mix(col, ringCol, ringA.mul(front)).add(ringGlow.mul(front)));
 
@@ -862,23 +899,33 @@ export function createSpace(u, tier) {
         // A shell of plasma with a soft Gaussian profile, seen through: brightest where the ray
         // runs along it (just off the limb), with no hard line at either edge, torn into
         // filaments by 3D noise, and its far half hidden by the giant.
-        If(shockFade.greaterThan(0.002).and(tc.greaterThan(0.0)), () => {
-            const twoRw = shockR.mul(shockW).mul(2.0).toVar();
-            const inside = sqrt(twoRw.div(max(shockR.mul(shockR).sub(imp2), 0.0).add(twoRw)));
-            // Outside the shell its light thins out slowly, so it has no rim to trace.
-            const g = imp.sub(shockR).div(shockW.mul(3.0));
-            const shell = mix(inside, exp(g.mul(g).negate()), step(shockR, imp)).toVar();
+        // Two shells may be in flight (a crown inside a four-line clear's): one tear of noise
+        // serves both.
+        If(shockA.fade.add(shockB.fade).greaterThan(0.002).and(tc.greaterThan(0.0)), () => {
+            const shellOf = (K) => {
+                const twoRw = K.R.mul(K.W).mul(2.0);
+                const inside = sqrt(twoRw.div(max(K.R.mul(K.R).sub(imp2), 0.0).add(twoRw)));
+                // Outside the shell its light thins out slowly, so it has no rim to trace.
+                const g = imp.sub(K.R).div(K.W.mul(3.0));
+                return mix(inside, exp(g.mul(g).negate()), step(K.R, imp));
+            };
+            const shellA = shellOf(shockA).toVar();
+            const shellB = shellOf(shockB).toVar();
             // Over the disc only a breath of it shows: the giant's face must stay readable.
-            const shown = shell.mul(shockFade).mul(float(1.0).sub(cover.mul(0.85))).toVar();
+            const open = float(1.0).sub(cover.mul(0.85));
+            const shownA = shellA.mul(shockA.fade).mul(open).toVar();
+            const shownB = shellB.mul(shockB.fade).mul(open).toVar();
+            const shown = shownA.add(shownB).toVar();
             If(shown.greaterThan(0.004), () => {
                 const T = normalize(ro.add(rd.mul(tc)));
-                const n = u.noise3(T.mul(8.0).add(vec3(shockAge.mul(0.6), 0.0, 1.3)));
+                const n = u.noise3(T.mul(8.0).add(vec3(u.time.mul(0.6), 0.0, 1.3)));
                 const ridge = float(1.0).sub(abs(n.x.mul(2.0).sub(1.0)));
                 const r2 = ridge.mul(ridge);
                 const filaments = r2.mul(r2).mul(1.8).add(n.y.mul(0.3)).add(0.1);
-                const s4 = shell.mul(shell).mul(shell.mul(shell));
-                const hue = mix(u.shockTint, vec3(1.0), s4.mul(0.4));
-                col.addAssign(hue.mul(shown.mul(filaments)));
+                const s = max(shellA, shellB);
+                const s4 = s.mul(s).mul(s.mul(s));
+                const light = u.shockTint.mul(shownA).add(u.shockTintB.mul(shownB));
+                col.addAssign(mix(light, vec3(shown), s4.mul(0.4)).mul(filaments));
             });
         });
 

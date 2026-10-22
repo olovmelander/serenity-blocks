@@ -12,7 +12,9 @@
 import * as THREE from 'three/webgpu';
 import { FOREST_FIGURES, forestFigure, forestFigureLights } from './forest-figures.js';
 import { FOREST_FIREFLY_DEW } from './forest-firefly-sim.js';
+import { FOREST_FIGURE_TIMING } from './forest-reactions.js';
 import { FOREST_STAGE_DEPTH } from './forest-stage.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 const REFERENCE_FIREFLIES = 2400;
 const CLEAR_WINDOW = 0.5;
@@ -41,10 +43,44 @@ export const FOREST_WAVES = Object.freeze({
     level: {
         speed: 10, width: 3.6, reach: 12, life: 5.5, gain: 1.1,
     },
+    // A back-to-back's twin rings: a fast thin one and its slower echo, white gold.
+    b2b: {
+        speed: 17, width: 0.8, reach: 8, life: 3, gain: 1.3,
+    },
+    echo: {
+        speed: 10, width: 0.8, reach: 6, life: 3.4, gain: 1.15,
+    },
     figure: {
         speed: 6, width: 2.2, reach: 3, life: 2.6, gain: 0.5,
     },
 });
+/**
+ * What hot play does to the fireflies (the reactions' `surge`, level and fever 0..1): how much
+ * brighter the shared flash of the chorus burns at a full fever and how much of its broad swell
+ * rolls through the wood with it (`pulse`: the wood's heartbeat), the steady light every firefly
+ * keeps (`lantern`, per unit of level and of fever), how much of each event's flash of the whole
+ * wood hot play holds back (`glowHot`, at a level of 1: the light comes in the chorus's beats
+ * instead), how much faster and higher the garlands and the wheel behind the board are fed, how
+ * far up the trunks a fever winds the garlands, how much whiter a fever burns the jets, and how
+ * much longer the sparks a lock or a clear throws linger at a level of 1 (`linger`).
+ */
+export const FOREST_FEVER = Object.freeze({
+    chorus: 1.25,
+    chorusFever: 0.5,
+    pulseFever: 0.9,
+    lanternLevel: 0,
+    lanternFever: 0.06,
+    glowHot: 0.5,
+    garlandFeed: 0.25,
+    garlandClimb: 5,
+    wheelFeed: 0.5,
+    wheelTop: 5,
+    sparkHeat: 0.3,
+    linger: 0.6,
+});
+/** A fed animal: the share more lights it comes with, and the most a light may grow to. */
+const FIGURE_FULLER = 0.4;
+const FIGURE_SIZE_MAX = 0.17;
 
 export class ForestFireflyDirector {
     constructor({
@@ -80,7 +116,16 @@ export class ForestFireflyDirector {
             settled: false,
             front: null,
             fields: this.fields,
+            // How bright the chorus's shared flash burns, the steady light every firefly keeps,
+            // and a back-to-back's double blink (see FOREST_FEVER).
+            chorus: FOREST_FEVER.chorus,
+            pulse: 0,
+            lantern: 0,
+            blink: 0,
         };
+        /** How hot play runs this frame (the reactions' `surge`), 0..1 each. */
+        this.level = 0;
+        this.fever = 0;
         // The trunks worth winding a garland round: old, near, and in front of the eye.
         const posts = trunks
             .filter((trunk) => trunk.radius > 0.24 && trunk.z < eye.z - 2)
@@ -93,12 +138,24 @@ export class ForestFireflyDirector {
         // out now, so a summons finds its lights waiting and builds nothing.
         this.figureAnchor = figureAnchor;
         this.figureLights = Math.max(60, Math.min(Math.round(sim.reserve * 0.42), Math.round(560 * this.scale)));
+        // A fed animal comes fuller: a second, finer layer of lights laid between the first's.
+        this.figureExtraLights = Math.max(24, Math.round(this.figureLights * FIGURE_FULLER));
         this.figurePoints = new Map();
+        this.figureExtra = new Map();
         this.figureSparks = [];
         this.figureSerial = 0;
         this.figureHeld = false;
         this.figureBeat = 0;
-        if (figureAnchor) FOREST_FIGURES.forEach((figure) => this.pointsFor(figure));
+        this.figureKind = null;
+        this.figureFed = 0;
+        this.figureFuller = false;
+        this.figureFull = 0;
+        if (figureAnchor) {
+            FOREST_FIGURES.forEach((figure) => {
+                this.pointsFor(figure);
+                this.extraPointsFor(figure);
+            });
+        }
     }
 
     /** The lights of one animal, in its own plane (shared with every forest: not to be written to). */
@@ -107,6 +164,16 @@ export class ForestFireflyDirector {
         if (!points) {
             points = forestFigureLights(figure, this.figureLights);
             this.figurePoints.set(figure.id, points);
+        }
+        return points;
+    }
+
+    /** The finer layer a fed animal adds (laid out once, like the first; read only). */
+    extraPointsFor(figure) {
+        let points = this.figureExtra.get(figure.id);
+        if (!points) {
+            points = forestFigureLights(figure, this.figureExtraLights);
+            this.figureExtra.set(figure.id, points);
         }
         return points;
     }
@@ -125,6 +192,8 @@ export class ForestFireflyDirector {
         });
         this.figureSparks.length = 0;
         this.figureHeld = false;
+        this.figureFuller = false;
+        this.figureFull = 0;
     }
 
     /** Start counting afresh when the reactions have been reset. */
@@ -135,6 +204,7 @@ export class ForestFireflyDirector {
         this.emitted.clear();
         this.waveSerial = -1;
         this.figureSerial = 0;
+        this.figureFed = 0;
     }
 
     random() {
@@ -187,7 +257,13 @@ export class ForestFireflyDirector {
                     side * speed,
                     0.4 + 2.4 * this.random(),
                     (this.random() - 0.5) * 2.6,
-                    { life: 1.6 + 1.6 * this.random(), heat: 0.1 * strength, size: 0.1 + 0.05 * this.random() },
+                    {
+                        // Under hot play the sparks linger: the swarm builds instead of thinning
+                        // between locks.
+                        life: (1.6 + 1.6 * this.random()) * (1 + FOREST_FEVER.linger * this.level),
+                        heat: 0.1 * strength,
+                        size: 0.1 + 0.05 * this.random(),
+                    },
                 );
             }
         }
@@ -242,7 +318,12 @@ export class ForestFireflyDirector {
                 side * speed,
                 -0.2 + 2.6 * this.random(),
                 (this.random() - 0.5) * 4,
-                { life: 1.9 + 1.9 * this.random(), heat: 0.15 + 0.14 * lines, size: 0.1 + 0.06 * this.random() },
+                {
+                    life: (1.9 + 1.9 * this.random()) * (1 + FOREST_FEVER.linger * this.level),
+                    // In a fever the jets burn toward white gold.
+                    heat: 0.15 + 0.14 * lines + this.fever * FOREST_FEVER.sparkHeat,
+                    size: 0.1 + 0.06 * this.random(),
+                },
             );
         }
         if (emitter.age < 0.75) {
@@ -339,13 +420,16 @@ export class ForestFireflyDirector {
         }
     }
 
-    /** While the forest is awake, fireflies wind up the old trunks in garlands. */
+    /**
+     * While the forest is awake, fireflies wind up the old trunks in garlands; in a fever they
+     * are fed faster and climb on up into the crowns.
+     */
     garlands(wake, heat, step) {
-        const { sim, fields } = this;
+        const { sim, fields, fever } = this;
         for (let i = 0; i < this.posts.length; i += 1) {
             const post = this.posts[i];
             const orbit = post.radius + 0.5;
-            const climb = 1.6 + wake * Math.min(post.crownBase + 4, 15);
+            const climb = 1.6 + wake * (Math.min(post.crownBase + 4, 15) + fever * FOREST_FEVER.garlandClimb);
             fields.push({
                 kind: 'vortex',
                 x: post.x,
@@ -358,9 +442,9 @@ export class ForestFireflyDirector {
                 turn: post.turn,
                 grip: 3.4,
                 pull: 12,
-                lift: 0.55 + 0.9 * wake,
+                lift: 0.55 + 0.9 * wake + 0.6 * fever,
             });
-            post.feed += step * (5 + 14 * wake) * this.scale;
+            post.feed += step * (5 + 14 * wake) * (1 + fever * FOREST_FEVER.garlandFeed) * this.scale;
             const feed = Math.floor(post.feed);
             if (feed > 0) {
                 post.feed -= feed;
@@ -375,7 +459,7 @@ export class ForestFireflyDirector {
                         0.6 + this.random(),
                         Math.cos(angle) * speed * post.turn,
                         {
-                            life: 5 + 4 * this.random() + wake * 3,
+                            life: 5 + 4 * this.random() + wake * 3 + fever * 2,
                             heat: 0.12 + heat * 0.7,
                             size: 0.085 + 0.05 * this.random(),
                         },
@@ -385,48 +469,116 @@ export class ForestFireflyDirector {
         }
     }
 
-    /** Call an animal: fireflies lift from the ferns round the knoll and fly to their places. */
-    gatherFigure(kind) {
+    /**
+     * Send one layer of an animal's lights to their places: each starts in the ferns within
+     * `reach` metres and rises to its place, gripped by `grip` (quicker for an animal that has
+     * to gather sooner). `full` 0..1 makes it whiter and its lights a little larger.
+     */
+    callLights(figure, points, {
+        near = 1.5, far = 8, grip = 1, full = 0,
+    } = {}) {
         const { sim, figureAnchor } = this;
-        if (!figureAnchor) return;
-        const figure = forestFigure(kind);
-        const figurePoints = this.pointsFor(figure);
-        // Whatever figure was standing gives way to the new one.
-        if (this.figureSparks.length) sim.release(0.8);
-        this.figureSparks.length = 0;
-        const count = figurePoints.length / 4;
+        const count = points.length / 4;
         for (let i = 0; i < count; i += 1) {
-            const u = figurePoints[i * 4] * figure.scale;
-            const v = figurePoints[i * 4 + 1] * figure.scale;
-            const w = figurePoints[i * 4 + 2] * figure.scale;
+            const u = points[i * 4] * figure.scale;
+            const v = points[i * 4 + 1] * figure.scale;
+            const w = points[i * 4 + 2] * figure.scale;
             const tx = figureAnchor.x + figureAnchor.facing.x * u + figureAnchor.depth.x * w;
             const tz = figureAnchor.z + figureAnchor.facing.z * u + figureAnchor.depth.z * w;
             const ty = figureAnchor.y + v;
             // Each light starts in the ferns somewhere near and rises to its place.
             const angle = this.random() * Math.PI * 2;
-            const reach = 1.5 + this.random() * 6.5;
+            const reach = near + this.random() * (far - near);
             const x = tx + Math.cos(angle) * reach;
             const z = tz + Math.sin(angle) * reach;
             const index = sim.spawn(x, this.groundHeight(x, z) + 0.15 + this.random() * 0.5, z, 0, 0.8, 0, {
                 life: 30,
-                heat: 0.45 + 0.4 * figurePoints[i * 4 + 3],
-                size: 0.07 + 0.045 * figurePoints[i * 4 + 3],
+                heat: Math.min(1, 0.45 + 0.4 * points[i * 4 + 3] + 0.3 * full),
+                size: (0.07 + 0.045 * points[i * 4 + 3]) * (1 + 0.15 * full),
             });
             if (index >= 0) {
                 // The lights do not all arrive together: the animal draws itself.
-                sim.bind(index, tx, ty, tz, 0.5 + this.random() * 0.7);
+                sim.bind(index, tx, ty, tz, (0.5 + this.random() * 0.7) * grip);
                 this.figureSparks.push(index);
             }
         }
+    }
+
+    /**
+     * Call an animal: fireflies lift from the ferns round the knoll and fly to their places. One
+     * called in a fever (`cue.full`) gathers sooner, from nearer, and comes with its finer layer
+     * of lights at once.
+     */
+    gatherFigure(cue) {
+        const { sim, figureAnchor } = this;
+        if (!figureAnchor) return;
+        const figure = forestFigure(cue.kind);
+        // A summons that finds another still bound (the reactions never send one, but a reset
+        // upstream might) lets the old lights go first.
+        if (this.figureSparks.length) sim.release(0.8);
+        this.figureSparks.length = 0;
+        const full = Number.isFinite(cue.full) ? Math.max(0, Math.min(1, cue.full)) : 0;
+        const gather = Number.isFinite(cue.gather) && cue.gather > 0 ? cue.gather : FOREST_FIGURE_TIMING.gather;
+        const quicker = Math.max(1, Math.min(2.5, FOREST_FIGURE_TIMING.gather / gather));
+        this.figureKind = figure.id;
+        this.figureFull = full;
+        this.callLights(figure, this.pointsFor(figure), {
+            near: 1.5 / quicker, far: 8 / quicker, grip: quicker, full,
+        });
+        this.figureFuller = false;
+        if (full >= 0.5) this.fillFigure(figure, quicker);
         this.figureHeld = true;
         this.figureBeat = 0.4;
+    }
+
+    /** The finer layer of an animal's lights, once per animal: it comes fuller. */
+    fillFigure(figure, grip = 1.6) {
+        if (this.figureFuller) return;
+        this.figureFuller = true;
+        this.callLights(figure, this.extraPointsFor(figure), {
+            near: 0.8, far: 3.5, grip, full: Math.max(0.5, this.figureFull),
+        });
+    }
+
+    /**
+     * Feed the standing animal (four lines again, or the perfect clear's crown): it comes fuller
+     * (its finer layer joins it), every light of it burns whiter and a little larger, and it lifts
+     * its head in a strong breath of white-gold light over the moss.
+     */
+    feedFigure(cue) {
+        const { sim, figureAnchor } = this;
+        if (!figureAnchor || !this.figureKind) return;
+        const full = Number.isFinite(cue.full) ? Math.max(0, Math.min(1, cue.full)) : 1;
+        const lift = Math.max(0, full - this.figureFull);
+        this.figureFull = Math.max(this.figureFull, full);
+        for (let i = 0; i < this.figureSparks.length; i += 1) {
+            const index = this.figureSparks[i];
+            sim.heat[index] = Math.min(1, sim.heat[index] + 0.15 + 0.35 * lift);
+            sim.size[index] = Math.min(FIGURE_SIZE_MAX, sim.size[index] * (1.06 + 0.12 * lift));
+        }
+        this.fillFigure(forestFigure(this.figureKind), 1.8);
+        const shape = FOREST_WAVES.figure;
+        this.pulses?.add(figureAnchor.x, figureAnchor.y, figureAnchor.z, {
+            strength: 1.1 + 0.5 * this.figureFull,
+            speed: 9,
+            width: shape.width * 1.2,
+            reach: shape.reach * 2,
+            heat: 0.9,
+            life: 3.2,
+        });
+        // And it keeps breathing, a little quicker now.
+        this.figureBeat = 1.2;
     }
 
     figure(frame, step) {
         const cue = frame.figure;
         if (cue && cue.serial !== this.figureSerial) {
             this.figureSerial = cue.serial;
-            if (cue.held) this.gatherFigure(cue.kind);
+            this.figureFed = Number.isFinite(cue.fed) ? cue.fed : 0;
+            if (cue.held) this.gatherFigure(cue);
+        } else if (cue && cue.held && this.figureHeld && Number.isFinite(cue.fed) && cue.fed > this.figureFed) {
+            this.figureFed = cue.fed;
+            this.feedFigure(cue);
         }
         if (!this.figureHeld) return;
         if (!cue || !cue.held) {
@@ -436,17 +588,18 @@ export class ForestFireflyDirector {
             this.figureHeld = false;
             return;
         }
-        // While it stands, a slow light breathes out over the moss from under its hooves.
+        // While it stands, a slow light breathes out over the moss from under its hooves (the
+        // fuller it stands, the quicker and brighter its breath).
         this.figureBeat -= step;
         if (this.figureBeat <= 0 && cue.presence > 0.8) {
-            this.figureBeat = 1.5;
+            this.figureBeat = 1.5 - 0.4 * this.figureFull;
             const shape = FOREST_WAVES.figure;
             this.pulses?.add(this.figureAnchor.x, this.figureAnchor.y, this.figureAnchor.z, {
-                strength: shape.gain,
+                strength: shape.gain * (1 + 0.6 * this.figureFull),
                 speed: shape.speed,
                 width: shape.width,
                 reach: shape.reach,
-                heat: 0.6,
+                heat: 0.6 + 0.3 * this.figureFull,
                 life: shape.life,
             });
         }
@@ -461,6 +614,10 @@ export class ForestFireflyDirector {
         fields.length = 0;
         this.follow(frame.epoch);
         const step = Number.isFinite(dt) ? Math.max(0, dt) : 0;
+        const unit = (value) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0);
+        this.level = unit(frame.surge?.level);
+        this.fever = unit(frame.surge?.fever);
+        const { fever } = this;
         const emitters = frame.emitters || [];
         for (let i = 0; i < emitters.length; i += 1) {
             const emitter = emitters[i];
@@ -495,7 +652,7 @@ export class ForestFireflyDirector {
         const heat = Number.isFinite(frame.heat) ? Math.max(0, Math.min(1, frame.heat)) : 0;
         if (wake > 0.03) {
             this.garlands(wake, heat, step);
-            // And a slow wheel of them turns behind the board itself.
+            // And a slow wheel of them turns behind the board itself: in a fever, taller and fuller.
             const centre = stage.centre(FOREST_STAGE_DEPTH, this.point);
             fields.push({
                 kind: 'vortex',
@@ -504,14 +661,14 @@ export class ForestFireflyDirector {
                 radius: 2.9 + 0.7 * wake,
                 reach: 7.5,
                 floor: this.groundHeight(centre.x, centre.z),
-                top: this.groundHeight(centre.x, centre.z) + 2 + 5.2 * wake,
+                top: this.groundHeight(centre.x, centre.z) + 2 + 5.2 * wake + fever * FOREST_FEVER.wheelTop,
                 spin: 0.3 + 0.4 * wake,
                 turn: 1,
                 grip: 3,
                 pull: 9,
-                lift: 0.5 + 0.9 * wake,
+                lift: 0.5 + 0.9 * wake + 0.5 * fever,
             });
-            this.haloFeed += step * (8 + 26 * wake) * this.scale;
+            this.haloFeed += step * (8 + 26 * wake) * (1 + fever * FOREST_FEVER.wheelFeed) * this.scale;
             const feed = Math.floor(this.haloFeed);
             if (feed > 0) {
                 this.haloFeed -= feed;
@@ -524,11 +681,21 @@ export class ForestFireflyDirector {
         const { env } = this;
         env.windX = wind.x;
         env.windZ = wind.z;
-        env.gust = Number.isFinite(frame.gust) ? Math.max(0, Math.min(1, frame.gust)) : 0;
-        env.glow = Number.isFinite(frame.glow) ? frame.glow : 0;
+        // The event gusts and the standing breeze hot play keeps up.
+        env.gust = unit(unit(frame.gust) + unit(frame.breeze));
+        // Each event's flash of the whole wood, held back as play heats: then the light comes in
+        // the chorus's beats instead, so the night between them stays dark.
+        env.glow = unit(frame.glow) * (1 - FOREST_FEVER.glowHot * this.level);
         env.heat = heat;
         env.sync = Number.isFinite(frame.sync) ? frame.sync : 0;
         env.beatRate = Number.isFinite(frame.beatRate) ? frame.beatRate : 0.3;
+        // Hot play: the chorus's shared flash burns brighter, every firefly keeps a little light
+        // of its own, and a back-to-back blinks the whole wood twice (a frame-wide brightening:
+        // Reduce flashing holds it back, ADR-0021).
+        env.chorus = FOREST_FEVER.chorus + fever * FOREST_FEVER.chorusFever;
+        env.pulse = fever * FOREST_FEVER.pulseFever;
+        env.lantern = this.level * FOREST_FEVER.lanternLevel + fever * FOREST_FEVER.lanternFever;
+        env.blink = Number.isFinite(frame.blink) ? Math.max(0, Math.min(1.5, frame.blink)) * flashScale() : 0;
         env.settled = frame.settled === true;
         if (frame.front && frame.front.strength > 0.001) {
             this.front.x = frame.front.position * stage.halfWidth(46);

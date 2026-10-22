@@ -237,6 +237,8 @@ export default class GeodeTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
+                perfect: (c) => this.world?.onPerfect(c),
+                spin: (c) => this.world?.onSpin(c),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => this.world?.levelUp(level),
             },

@@ -75,6 +75,8 @@ function fakeWorld() {
         onCombo: vi.fn(),
         onChain: vi.fn(),
         onLevelUp: vi.fn(),
+        onTSpin: vi.fn(),
+        onPerfectClear: vi.fn(),
         dispose: vi.fn(),
     };
 }
@@ -132,8 +134,10 @@ describe('synthwave-sunset theme wiring', () => {
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
         expect(world.onPieceLock).not.toHaveBeenCalled();
         theme.flushEvents();
-        expect(world.onPieceLock).toHaveBeenCalledWith({ type: 'T', x: 3, rotation: 0 });
-        expect(world.onLineClear).toHaveBeenCalledWith(2);
+        expect(world.onPieceLock).toHaveBeenCalledWith({ type: 'T', x: 3, rotation: 0 }, { hardDrop: false });
+        expect(world.onLineClear).toHaveBeenCalledWith(2, {
+            cascade: 1, combo: 1, tspin: false, b2b: false,
+        });
         expect(world.onCombo).toHaveBeenCalledWith(3);
         expect(world.onLevelUp).toHaveBeenCalledTimes(1);
         expect(world.onChain).toHaveBeenLastCalledWith(1);
@@ -171,6 +175,68 @@ describe('synthwave-sunset theme wiring', () => {
         expect(world.onLineClear).toHaveBeenCalledTimes(2);
         expect(win.listenerCount('pointermove')).toBe(0);
         expect(win.listenerCount('resize')).toBe(0);
+    });
+
+    it('counts the true combo whatever the setting; hands over hard drops, T-spins, B2B, perfect clears, waves', () => {
+        const theme = new SynthwaveSunsetTheme();
+        theme.isActive = true;
+        const world = fakeWorld();
+        theme.world = world;
+        theme.setupEventListeners();
+
+        // Reactions off: nothing reaches the world, but the chain is still counted.
+        win.settings.backgroundComboEffects = false;
+        for (let i = 0; i < 3; i += 1) {
+            eventBus.emit(EVENTS.PIECE_LOCK, { piece: { type: 'I', x: 0 } });
+            eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1 });
+            theme.flushEvents();
+        }
+        expect(world.onLineClear).not.toHaveBeenCalled();
+        expect(theme.combo.combo).toBe(3);
+        // Switched on mid-run, the next clearing lock is the chain's fourth.
+        win.settings.backgroundComboEffects = true;
+        eventBus.emit(EVENTS.HARD_DROP, { piece: { type: 'T', x: 3 } });
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: { type: 'T', x: 3 } });
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2, cascadeCount: 1 });
+        eventBus.emit(EVENTS.TSPIN, { lineCount: 2 });
+        eventBus.emit(EVENTS.B2B, { active: true });
+        theme.flushEvents();
+        expect(world.onPieceLock).toHaveBeenLastCalledWith({ type: 'T', x: 3 }, { hardDrop: true });
+        expect(world.onLineClear).toHaveBeenLastCalledWith(2, {
+            cascade: 1, combo: 4, tspin: true, b2b: true,
+        });
+        expect(world.onChain).toHaveBeenLastCalledWith(4);
+        expect(world.onTSpin).not.toHaveBeenCalled();
+
+        // Cascade waves arrive in their own ticks, each with its depth (COMBO announces it).
+        eventBus.emit(EVENTS.COMBO, { comboCount: 2 });
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1 });
+        theme.flushEvents();
+        expect(world.onLineClear).toHaveBeenLastCalledWith(1, {
+            cascade: 2, combo: 4, tspin: false, b2b: false,
+        });
+        // Two waves landing in one frame (a stall) stay two clears, not one bigger one.
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2, cascadeCount: 3 });
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2, cascadeCount: 4 });
+        const before = world.onLineClear.mock.calls.length;
+        theme.flushEvents();
+        expect(world.onLineClear.mock.calls.slice(before).map(([lines, info]) => [lines, info.cascade]))
+            .toEqual([[2, 3], [2, 4]]);
+
+        // The perfect clear comes in its own tick: a crown, never a new clear.
+        const clears = world.onLineClear.mock.calls.length;
+        eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 4 });
+        theme.flushEvents();
+        expect(world.onPerfectClear).toHaveBeenCalledTimes(1);
+        expect(world.onLineClear).toHaveBeenCalledTimes(clears);
+
+        // A T-spin that clears nothing still shows something.
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: { type: 'T', x: 4 } });
+        eventBus.emit(EVENTS.TSPIN, { lineCount: 0 });
+        theme.flushEvents();
+        expect(world.onTSpin).toHaveBeenCalledTimes(1);
+        expect(world.onChain).toHaveBeenLastCalledWith(0);
+        theme.stop();
     });
 
     it('survives stop() on a theme that never built a scene (stale-start retirement path)', () => {
@@ -484,6 +550,141 @@ describe('synthwave-sunset world', () => {
         expect(lap).toBe(1);
         expect(minC).toBeCloseTo(COASTER.returnAcross, 0);
         expect(world.coaster.t).toBeCloseTo(marks.station, 4);
+        world.dispose();
+    });
+
+    it('never cuts light still burning: sky glows, wheel bands and the coaster meter build and drain', () => {
+        const { world, camera } = builtWorld();
+        const { u } = world;
+        // A quad's finale, then a single hard on its heels: every burst adds to the sky's glow.
+        world.onPieceLock({ type: 'I', x: 8 });
+        world.onLineClear(4);
+        let t = run(world, camera, 0, 0.5);
+        world.onPieceLock({ type: 'O', x: 2 });
+        world.onLineClear(1);
+        let prev = u.burst0.value.w + u.burst1.value.w;
+        let peak = prev;
+        for (let i = 0; i < 60 * 4; i += 1) {
+            t = run(world, camera, t, 1 / 60);
+            const sum = u.burst0.value.w + u.burst1.value.w;
+            // Between bursts the glow only fades at its own pace; a burst never knocks it down.
+            expect(sum).toBeGreaterThanOrEqual(prev * Math.exp(-1.8 / 60) * 0.98 - 1e-6);
+            prev = sum;
+            peak = Math.max(peak, sum);
+        }
+        // The volley built a sky brighter than one burst.
+        expect(peak).toBeGreaterThan(1.3);
+        // The finale's willow is gold, and so is the sky it lights (it used to default to mint).
+        world.onLineClear(4);
+        expect(world.fireworks.pending.at(-1).kind).toBe('willow');
+        expect(world.fireworks.pending.at(-1).color.getHex()).toBe(new THREE.Color(0xffb04c).getHex());
+
+        // Rapid locks: no band round the wheel is cut off before it has begun to fade.
+        t = run(world, camera, t, 3);
+        const started = world.chases.map((ch) => ch.t0);
+        let piled = 0;
+        for (let i = 0; i < 12; i += 1) {
+            world.onPieceLock({ type: 'T', x: i % 9 }, { hardDrop: i % 2 === 0 });
+            piled = Math.max(piled, ...world.chases.map((ch) => ch.strength));
+            world.chases.forEach((ch, k) => {
+                if (ch.t0 !== started[k]) {
+                    expect(world.time - started[k]).toBeGreaterThanOrEqual(1.15);
+                    started[k] = ch.t0;
+                }
+            });
+            t = run(world, camera, t, 0.15);
+        }
+        // ...the piled-up bands burn brighter instead.
+        expect(piled).toBeGreaterThan(1.3);
+
+        // The coaster: a chain that lets go drains its lemon down the lift instead of going dark.
+        for (let link = 1; link <= 5; link += 1) {
+            world.onChain(link);
+            t = run(world, camera, t, 2);
+        }
+        const top = u.coasterMeter.value;
+        world.onChain(0);
+        t = run(world, camera, t, 1 / 60);
+        expect(u.coasterCharge.value).toBeGreaterThan(0.9);
+        expect(u.coasterMeter.value).toBeGreaterThan(top - 0.01);
+        t = run(world, camera, t, 4);
+        expect(u.coasterCharge.value).toBeLessThan(0.05);
+        expect(world.coaster.mode).toBe('ride');
+        // A chain built during the ride is not lost: it charges the lift, and the train climbs
+        // it when it is back.
+        world.onChain(1);
+        world.onChain(2);
+        t = run(world, camera, t, 3);
+        expect(world.coaster.mode).toBe('ride');
+        expect(u.coasterMeter.value).toBeGreaterThan(world.track.marks.liftFoot);
+        expect(u.coasterCharge.value).toBeGreaterThan(0.9);
+        for (let i = 0; i < 60 * 40 && world.coaster.mode === 'ride'; i += 1) t = run(world, camera, t, 1 / 60);
+        expect(world.coaster.mode).toBe('lift');
+        world.dispose();
+    });
+
+    it('builds with play: a long chain lights the bay hotter than its first clear, then breathes back', () => {
+        const { world, camera } = builtWorld();
+        const { u } = world;
+        let t = run(world, camera, 0, 1);
+        const rest = { power: u.pierPower.value - world.dusk * 0.85 };
+        expect(world.exposure).toBe(1);
+        const shellsFor = (fn) => {
+            const before = world.fireworks.pending.length;
+            fn();
+            return world.fireworks.pending.length - before;
+        };
+        const clear = (link) => {
+            world.onPieceLock({ type: 'O', x: link % 8 }, { hardDrop: true });
+            return shellsFor(() => world.onLineClear(1, { combo: link }));
+        };
+        const firstShells = clear(1);
+        world.onChain(1);
+        t = run(world, camera, t, 0.64);
+        const first = {
+            power: u.pierPower.value,
+            glow: u.wheelGlow.value,
+            town: u.townLights.value,
+            spin: world.bay.spin,
+            chase: world.bay.chase,
+        };
+        let lastShells = 0;
+        for (let link = 2; link <= 12; link += 1) {
+            lastShells = clear(link);
+            world.onChain(link);
+            t = run(world, camera, t, 0.64);
+        }
+        // A cascade's deeper waves burst fuller than its first.
+        const wave1 = shellsFor(() => world.onLineClear(2, { cascade: 1, combo: 12 }));
+        const wave3 = shellsFor(() => world.onLineClear(2, { cascade: 3, combo: 12 }));
+        expect(wave3).toBeGreaterThan(wave1);
+        t = run(world, camera, t, 0.3);
+        expect(world.heat.level).toBeGreaterThan(0.8);
+        expect(world.heat.fever).toBeGreaterThan(0.3);
+        expect(lastShells).toBeGreaterThan(firstShells);
+        expect(u.pierPower.value).toBeGreaterThan(first.power);
+        expect(u.wheelGlow.value).toBeGreaterThan(first.glow);
+        expect(u.townLights.value).toBeGreaterThan(first.town);
+        expect(world.bay.spin).toBeGreaterThan(first.spin + 1);
+        expect(world.bay.chase).toBeGreaterThan(first.chase + 1);
+        expect(world.exposure).toBeLessThan(1);
+        // The perfect clear crowns it: gold willows across the sky, no second finale.
+        const crown = shellsFor(() => world.onPerfectClear());
+        expect(crown).toBeGreaterThanOrEqual(3);
+        expect(world.fireworks.pending.slice(-crown).every((b) => b.kind === 'willow')).toBe(true);
+        t = run(world, camera, t, 0.5);
+        expect(world.bay.crown).toBeGreaterThan(0.5);
+
+        // The hands rest: the bay breathes back to the evening (which has itself moved on a
+        // little with the game: its lights are the evening's own again, nothing added).
+        run(world, camera, t, 16);
+        expect(world.heat.level).toBeLessThan(0.05);
+        expect(world.bay.spin).toBeLessThan(0.05);
+        expect(world.bay.power + world.bay.glow + world.bay.town).toBeLessThan(0.03);
+        expect(u.wheelGlow.value).toBeCloseTo(0.85 + world.dusk * 0.5, 2);
+        expect(u.pierPower.value).toBeLessThan(rest.power + world.dusk * 0.85 + 0.02);
+        expect(u.townLights.value).toBeCloseTo(0.5 + world.dusk * 0.5, 1);
+        expect(world.exposure).toBeGreaterThan(0.99);
         world.dispose();
     });
 

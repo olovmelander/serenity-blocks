@@ -76,6 +76,9 @@ export const BLOOM_THRESHOLD = 1.05;
 export const BLOOM_KNEE = 0.5;
 export const BLOOM_RADIUS = 0.55;
 export const EXPOSURE = 1.0;
+/** The grade's saturation and the vignette's depth at rest (the world raises both as play heats). */
+export const SATURATION = 1.1;
+export const VIGNETTE = 0.5;
 
 /** Calm rects (board cards + HUD) the output pass evaluates. */
 export const CALM_RECTS_MAX = 5;
@@ -132,6 +135,8 @@ export class ChromaticImpastoPost {
         this.uHush = uniform(0); // the breath held before a four-line clear
         this.uBloomBoost = uniform(0);
         this.uWarmth = uniform(0); // gold in the air after a four-line clear
+        this.uSaturation = uniform(SATURATION); // the colours' fullness (it rises as play heats)
+        this.uVignette = uniform(VIGNETTE); // how far the lamp falls off toward the corners
 
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
         this.uCalm = this.calmRects.map((v) => uniform(v));
@@ -221,13 +226,13 @@ export class ChromaticImpastoPost {
             // The darks stay rich (oil never goes to a dead black), the colours a touch fuller.
             const lo = float(1.0).sub(smoothstep(0.0, 0.25, L));
             T.assign(mix(T, T.mul(vec3(0.98, 0.97, 1.08)).add(vec3(0.0018, 0.0012, 0.0024)), lo.mul(0.5)));
-            T.assign(mix(vec3(ciLuma(T)), T, 1.1));
+            T.assign(mix(vec3(ciLuma(T)), T, this.uSaturation));
             // Gold in the air after a four-line clear.
             T.assign(mix(T, T.mul(vec3(1.1, 1.0, 0.84)), this.uWarmth.mul(0.6)));
             // Vignette, measured from the frame: the lamp falls off toward the corners.
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
             const vig = smoothstep(0.4, 1.1, length(cv.mul(1.5)));
-            T.mulAssign(float(1.0).sub(vig.mul(0.5)));
+            T.mulAssign(float(1.0).sub(vig.mul(this.uVignette)));
 
             // ── Encode, then finish in display space ──
             const D = vec3(renderOutput(vec4(clamp(T, 0.0, 1.0), 1.0), THREE.NoToneMapping).rgb).toVar();
@@ -262,7 +267,7 @@ export class ChromaticImpastoPost {
 
     /** Per-frame values (all optional). */
     update({
-        flash, kick, bloomBoost, exposure, hush, warmth, time,
+        flash, kick, bloomBoost, exposure, hush, warmth, saturation, vignette, time,
     } = {}) {
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
@@ -270,6 +275,8 @@ export class ChromaticImpastoPost {
         if (exposure !== undefined) this.uExposure.value = exposure;
         if (hush !== undefined) this.uHush.value = hush;
         if (warmth !== undefined) this.uWarmth.value = warmth;
+        if (saturation !== undefined) this.uSaturation.value = saturation;
+        if (vignette !== undefined) this.uVignette.value = vignette;
         if (time !== undefined) this.uTime.value = time;
     }
 

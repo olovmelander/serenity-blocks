@@ -14,9 +14,12 @@ import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 
 import { BaseTheme } from '../base-theme.js';
 import { warmParkedDrawables } from '../shared/warm-hidden-drawables.js';
+import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
+import { ComboTracker } from '../../core/combo-tracker.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { readLockViewportOrigin } from '../../events/lock-origin.js';
 import { normalizeQuality } from '../../utils/quality.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { WOLFHOUR_TETROMINOS } from './wolfhour-tetrominos.js';
 
 // Import shaders
@@ -27,8 +30,6 @@ import {
     mountainFragmentShader,
     starfieldVertexShader,
     starfieldFragmentShader,
-    spiritVertexShader,
-    spiritFragmentShader,
     burstVertexShader,
     burstFragmentShader,
     beamVertexShader,
@@ -102,7 +103,8 @@ const QUALITY_PRESETS = {
         meteorTrailSegments: 40,
         maxStarBursts: 5,
         maxCosmicRifts: 1,
-        maxCelestialBeams: 0,
+        // One beam: the lowest tiers answer a clear with less light, never with none.
+        maxCelestialBeams: 1,
         maxMeteorCrashes: 0,
         starTwinkleSpeed: 0.5,
         enableDiffraction: false,
@@ -133,7 +135,8 @@ const QUALITY_PRESETS = {
         meteorTrailSegments: 40,
         maxStarBursts: 8,
         maxCosmicRifts: 2,
-        maxCelestialBeams: 0,
+        // One beam: the lowest tiers answer a clear with less light, never with none.
+        maxCelestialBeams: 1,
         maxMeteorCrashes: 0,
         starTwinkleSpeed: 0.7,
         enableDiffraction: false,
@@ -555,6 +558,50 @@ export default class WolfhourTheme extends BaseTheme {
         this.lastReactiveOrigin = null;
         this.reactiveOriginsByPlayer = new Map();
         this.comboProgressByPlayer = new Map();
+        /**
+         * The true combo per player (consecutive clearing locks: the bus's COMBO is one lock's
+         * cascade depth), and how far the chain's escalation has gone (rifts, shooting stars and
+         * meteor strikes answer each new step once; a lock that clears nothing ends the chain).
+         */
+        this.comboTrackers = new Map();
+        this.chainProgressByPlayer = new Map();
+        /** Players whose next lock is a hard drop (HARD_DROP comes just before its PIECE_LOCK). */
+        this.hardDropPending = new Set();
+        /**
+         * How hot play runs (shared/gameplay-surge.js), on the theme's clock, and what the night
+         * makes of it each frame (updateSurge): the moon wakes and lights the sky, its halo comes
+         * out, the cloud thins, the stars burn, the snow glitters, the wind tears snow off the
+         * summits, shooting stars fall, and in a fever the pack howls in chorus.
+         */
+        this.surge = new GameplaySurge();
+        /** A perfect clear's crown: the halo and the moon flare over the clear still playing. */
+        this.crown = new Swell({
+            attack: 0.2, release: 2.4, ceiling: 1.3, knee: 0.9,
+        });
+        /** The night wind's kicks (hard drops, T-spins): snow torn off the summits. */
+        this.gust = new Swell({
+            attack: 0.12, release: 1.1, ceiling: 1, knee: 0.6,
+        });
+        /** What the night wears this frame (updateSurge writes it; one object, reused). */
+        this.night = {
+            level: 0,
+            fever: 0,
+            punch: 0,
+            stage: 0,
+            crown: 0,
+            wake: 0,
+            halo: 0,
+            open: 0,
+            stars: 0,
+            sparkle: 0,
+            wind: 0,
+            glow: 0,
+            bloom: 0,
+            iris: 1,
+            shake: 0,
+        };
+        this.nextChorusAt = Number.NEGATIVE_INFINITY;
+        this.nextShowerAt = Number.NEGATIVE_INFINITY;
         this.reactiveOriginScratch = {
             raycaster: new THREE.Raycaster(),
             plane: new THREE.Plane(new THREE.Vector3(0, 0, 1), -100),
@@ -1836,10 +1883,13 @@ export default class WolfhourTheme extends BaseTheme {
         instancedMesh.matrixAutoUpdate = false;
 
         // Copy all other explicit attributes as InstancedBufferAttributes
-        for (const key in pointsGeometry.attributes) {
+        for (const key of Object.keys(pointsGeometry.attributes)) {
             if (key !== 'position') {
                 const attr = pointsGeometry.attributes[key];
-                instancedMesh.geometry.setAttribute(key, new THREE.InstancedBufferAttribute(attr.array, attr.itemSize, attr.normalized));
+                instancedMesh.geometry.setAttribute(
+                    key,
+                    new THREE.InstancedBufferAttribute(attr.array, attr.itemSize, attr.normalized),
+                );
             }
         }
 
@@ -1975,7 +2025,7 @@ export default class WolfhourTheme extends BaseTheme {
                     texture: config.texture,
                     opacity: config.opacity,
                 });
-                material = result.material;
+                ({ material } = result);
                 nodeData = result;
             } else {
                 material = new THREE.ShaderMaterial({
@@ -2407,7 +2457,7 @@ export default class WolfhourTheme extends BaseTheme {
             fogResult = this.materialFactories.createGroundFogNodeMaterial({
                 opacity: 0.18,
             });
-            material = fogResult.material;
+            ({ material } = fogResult);
         } else {
             material = new THREE.ShaderMaterial({
                 uniforms: {
@@ -2572,33 +2622,23 @@ export default class WolfhourTheme extends BaseTheme {
     // ─────────────────────────────────────────────────────────────────────────
 
     setupEventListeners() {
-        const lineClearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
+        // Every canonical gameplay event, behind the background-reactions setting.
+        const reactions = [
+            [EVENTS.HARD_DROP, 'onHardDrop'],
+            [EVENTS.PIECE_LOCK, 'onPieceLock'],
+            [EVENTS.LINE_CLEAR, 'onLineClear'],
+            [EVENTS.COMBO, 'onCombo'],
+            [EVENTS.TSPIN, 'onTSpin'],
+            [EVENTS.B2B, 'onB2B'],
+            [EVENTS.PERFECT_CLEAR, 'onPerfectClear'],
+            [EVENTS.LEVEL_UP, 'onLevelUp'],
+        ];
+        const reactionUnsubs = reactions.map(([event, handler]) => eventBus.on(event, (data) => {
             const { settings } = window;
             if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onLineClear(data);
+                this[handler](data);
             }
-        });
-
-        const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            const { settings } = window;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onCombo(data);
-            }
-        });
-
-        const pieceLockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
-            const { settings } = window;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onPieceLock(data);
-            }
-        });
-
-        const levelUpUnsub = eventBus.on(EVENTS.LEVEL_UP, (data) => {
-            const { settings } = window;
-            if (this.isActive && settings?.backgroundComboEffects === true) {
-                this.onLevelUp(data);
-            }
-        });
+        }));
 
         // Pointer tracking for parallax camera
         const onPointerMove = (e) => {
@@ -2617,7 +2657,7 @@ export default class WolfhourTheme extends BaseTheme {
             window.removeEventListener('blur', resetPointer);
         };
 
-        this.eventUnsubscribers.push(lineClearUnsub, comboUnsub, pieceLockUnsub, levelUpUnsub, pointerUnsub);
+        this.eventUnsubscribers.push(...reactionUnsubs, pointerUnsub);
     }
 
     setupQualityListener() {
@@ -2842,7 +2882,13 @@ export default class WolfhourTheme extends BaseTheme {
         });
     }
 
-    triggerLunarReaction({ strength = 1, combo = 0, duration = 1.1 } = {}) {
+    /**
+     * Ring the moon: a wave through its corona. Strength follows the play (a lock < a single <
+     * … < a quad < a perfect clear); `delay` (seconds) starts it a moment later (a B2B's twin).
+     */
+    triggerLunarReaction({
+        strength = 1, combo = 0, duration = 1.1, delay = 0,
+    } = {}) {
         const capacity = Math.min(
             this.getLunarReactionSlotCapacity(),
             this.moonHaloNodeData?.maxPulses ?? MAX_LUNAR_REACTION_SLOTS,
@@ -2884,7 +2930,7 @@ export default class WolfhourTheme extends BaseTheme {
 
         const reaction = this.lunarReactions[Math.max(0, slotIndex)];
         reaction.active = true;
-        reaction.startTime = this.time;
+        reaction.startTime = this.time + Math.max(0, Number(delay) || 0);
         reaction.duration = safeDuration;
         reaction.strength = THREE.MathUtils.clamp(Number(strength) || 0, 0, 1.35);
         reaction.combo = THREE.MathUtils.clamp(Number(combo) || 0, 0, 1);
@@ -2907,9 +2953,91 @@ export default class WolfhourTheme extends BaseTheme {
         const motion = Number.isFinite(this.cameraMotion) ? this.cameraMotion : 1;
         this.wolfPack?.update(this.time, motion);
         this.valleyHut?.update(this.time);
-        this.spindrift?.update(this.time);
+        // Play drives the night wind (calmer under Reduce motion: the snow still streams).
+        this.spindrift?.update(this.time, this.night.wind * (0.4 + 0.6 * motion));
         const howl = this.wolfPack?.howlLevel(this.time) ?? 0;
-        this.valleyMist?.update(this.time, (this.effectState.mountainPulse || 0) * 0.4 + howl * 0.5);
+        this.valleyMist?.update(
+            this.time,
+            (this.effectState.mountainPulse || 0) * 0.4 + howl * 0.5 + this.night.glow,
+        );
+    }
+
+    /** The true combo tracker for a player's board. */
+    comboTrackerFor(playerKey) {
+        let tracker = this.comboTrackers.get(playerKey);
+        if (!tracker) {
+            tracker = new ComboTracker();
+            this.comboTrackers.set(playerKey, tracker);
+        }
+        return tracker;
+    }
+
+    /** One of SURGE_WEIGHTS' extras (a T-spin, a B2B, a perfect clear) added to the play's heat. */
+    surgeBonus(kind, scale = 1, at = this.time) {
+        const punch = SURGE_WEIGHTS.punch[kind] * scale;
+        const heat = SURGE_WEIGHTS.heat[kind] * scale;
+        if (punch > 0) this.surge.punch.hit(punch, at);
+        if (heat > 0) this.surge.level.hit(heat, at);
+    }
+
+    /**
+     * How hot play runs, made into the night each frame (all of it 0 at rest and under casual
+     * play, so the theme looks as it always did):
+     *   warm  the world takes notice: the moon's corona widens and it lights more of the sky,
+     *         the stars brighten, the snow begins to glitter, the wind picks up;
+     *   hot   the halo comes out round the moon, the cloud thins, shooting stars start to fall,
+     *         the mist glows with the moonlight;
+     *   fever the wolf moon: the halo burns with its moon dogs, a meteor shower streams across
+     *         the open sky, and the pack howls in chorus, again and again while it lasts;
+     *   a perfect clear crowns it (crown); when the hands rest it all breathes back to calm.
+     * Kicks (punch) ride on a floor under rapid locks: a little camera shake and bloom.
+     */
+    updateSurge() {
+        const now = this.time;
+        const heat = this.surge.sample(now);
+        const crown = this.crown.valueAt(now);
+        const gust = this.gust.valueAt(now);
+        const { level, fever, punch } = heat;
+        const n = this.night;
+        const warm = THREE.MathUtils.smoothstep(level, 0.12, 0.6);
+        const hot = THREE.MathUtils.smoothstep(level, 0.4, 0.85);
+        n.level = level;
+        n.fever = fever;
+        n.punch = punch;
+        n.stage = heat.stage;
+        n.crown = crown;
+        n.wake = Math.min(1.25, warm * 0.45 + hot * 0.2 + fever * 0.35 + crown * 0.45);
+        n.halo = Math.min(1.5, hot * 0.35 + fever * 0.75 + crown * 0.8);
+        n.open = Math.min(1, hot * 0.35 + fever * 0.55 + crown * 0.3);
+        n.stars = Math.min(1.3, warm * 0.35 + hot * 0.3 + fever * 0.4 + crown * 0.3);
+        n.sparkle = Math.min(1.5, warm * 0.5 + fever * 0.6 + crown * 0.5);
+        n.wind = Math.min(1.2, warm * 0.35 + hot * 0.3 + fever * 0.35 + gust);
+        n.glow = Math.min(0.9, hot * 0.25 + fever * 0.3 + crown * 0.35);
+        // Light added frame-wide is held back under Reduce flashing (ADR-0021).
+        n.bloom = (level * 0.05 + fever * 0.08 + (crown * 0.18 + punch * 0.06) * flashScale());
+        // The iris closes a little as the moon wakes, so the night keeps its darks.
+        n.iris = 1 - Math.max(0, level - 0.25) * 0.08 - fever * 0.03 - crown * 0.03;
+        n.shake = Math.min(0.3, punch * 0.12);
+
+        this.celestialSky?.setSurge?.(n);
+        this.alpineLandscape?.setSparkle?.(n.sparkle);
+
+        // A fever: the pack howls in chorus, the note held on and taken up again while it lasts.
+        if (heat.stage >= 3 && now >= this.nextChorusAt && this.wolfPack) {
+            this.wolfPack.howl(now);
+            this.nextChorusAt = now + 2.2;
+        }
+
+        // Hot play: shooting stars begin to fall from one radiant, faster as the fever takes
+        // hold (none under Reduce motion, like the night's own meteors).
+        if (level > 0.42 && now >= this.nextShowerAt && !prefersReducedMotion()) {
+            const room = this.getReactivePoolCapacity('meteor') - this.meteors.length;
+            if (room > 1) this.enqueueReactiveToken('meteor', { shower: true, reactive: true });
+            const pace = THREE.MathUtils.lerp(1.5, 0.42, Math.min(1, fever + crown * 0.5));
+            this.nextShowerAt = now + pace * (0.75 + this.random() * 0.5);
+            // The night's own meteors wait while the shower falls.
+            this.lastMeteorTime = now;
+        }
     }
 
     updateLunarReaction() {
@@ -3053,13 +3181,14 @@ export default class WolfhourTheme extends BaseTheme {
         const maxCredits = this.getReactiveBudgetCredits();
         let credits = adaptivePacingEnabled ? maxCredits : Number.POSITIVE_INFINITY;
         const attemptedTokens = new Set();
+        // A token dearer than a whole frame's budget (a meteor on Minimal/Low) takes the whole
+        // frame rather than never showing: the lowest tiers degrade to fewer, not to none.
+        const costOf = (type) => Math.min(this.reactiveTokenCosts[type] ?? 1, maxCredits);
 
         while (this.reactiveQueue.length > 0 && credits > 0) {
             for (let i = this.reactiveQueue.length - 1; i >= 0; i -= 1) {
                 const queuedToken = this.reactiveQueue[i];
-                const queuedCost = this.reactiveTokenCosts[queuedToken.type] ?? 1;
-                if (queuedToken.expiresAtMs <= now
-                    || (adaptivePacingEnabled && queuedCost > maxCredits)) {
+                if (queuedToken.expiresAtMs <= now) {
                     this.reactiveQueue.splice(i, 1);
                     this.applyReactiveExpiryEnvelope(queuedToken);
                 }
@@ -3069,8 +3198,7 @@ export default class WolfhourTheme extends BaseTheme {
             for (let i = 0; i < this.reactiveQueue.length; i += 1) {
                 const queuedToken = this.reactiveQueue[i];
                 if (attemptedTokens.has(queuedToken) || queuedToken.createdAtMs > now) continue;
-                const queuedCost = this.reactiveTokenCosts[queuedToken.type] ?? 1;
-                if (!adaptivePacingEnabled || queuedCost <= credits) {
+                if (!adaptivePacingEnabled || costOf(queuedToken.type) <= credits) {
                     tokenIndex = i;
                     break;
                 }
@@ -3078,7 +3206,7 @@ export default class WolfhourTheme extends BaseTheme {
             if (tokenIndex < 0) break;
 
             const token = this.reactiveQueue[tokenIndex];
-            const cost = this.reactiveTokenCosts[token.type] ?? 1;
+            const cost = costOf(token.type);
 
             const spawnStart = performance.now();
             const created = this.spawnReactiveToken(token);
@@ -3103,6 +3231,51 @@ export default class WolfhourTheme extends BaseTheme {
         }
     }
 
+    /**
+     * A chain's escalation: the true combo (a run of clearing locks) or one lock's cascade (its
+     * depth) reaching a new step. Every step past the second tears a rift in the sky and sends
+     * shooting stars; the fifth and the tenth bring a meteor down on the mountains. `progress`
+     * remembers how far this chain got, so each step is answered once and a long chain keeps
+     * building instead of answering every clear the same.
+     * @returns {boolean} whether a new step was reached
+     */
+    escalateChain(progress, playerKey, step, payload) {
+        const stored = progress.get(playerKey) || 0;
+        const previous = step < stored ? 0 : stored;
+        if (step <= previous) return false;
+        progress.set(playerKey, step);
+        const crossed = Math.max(0, step - Math.max(previous, 2));
+
+        if (step >= 3) {
+            // Preserve every active meteor. Delaying the next ambient spawn protects the
+            // bounded pool while the authored combo shower accumulates alongside it.
+            this.lastMeteorTime = this.time;
+            this.nextMeteorDelay = 4 + this.random() * 3;
+            const riftCount = Math.min(Math.max(1, crossed), 2);
+            this.enqueueReactiveBurst('rift', riftCount, payload);
+            const maxComboMeteors = ['Ultra', 'Extreme'].includes(this.activeQualityLevel) ? 4 : 3;
+            const meteorCount = Math.min(crossed + (previous < 3 ? 1 : 0), maxComboMeteors);
+            this.enqueueReactiveBurst('meteor', meteorCount, payload);
+        }
+
+        const crashCapacity = this.getReactivePoolCapacity('crash');
+        let crashCount = 0;
+        if (previous < 5 && step >= 5 && crashCapacity >= 1) crashCount += 1;
+        if (previous < 10 && step >= 10 && crashCapacity >= 2) crashCount += 1;
+        if (crashCount > 0) {
+            this.enqueueReactiveBurst('crash', crashCount, payload);
+        }
+        return true;
+    }
+
+    /** HARD_DROP: the same tick as, and just before, the PIECE_LOCK of the same piece. */
+    onHardDrop(data = {}) {
+        this.hardDropPending.add(this.getReactivePlayerKey(data));
+        if (globalThis.window?.settings?.pieceLockRipple === false) return;
+        // The slam shakes snow loose on the summits: a gust in the spindrift.
+        this.gust.hit(0.22, this.time);
+    }
+
     onPieceLock(data = {}) {
         const playerKey = this.getReactivePlayerKey(data);
         const origin = this.resolvePieceLockOrigin(data);
@@ -3110,24 +3283,35 @@ export default class WolfhourTheme extends BaseTheme {
             this.lastReactiveOrigin = { ...origin };
             this.reactiveOriginsByPlayer.set(playerKey, { ...origin });
         }
+        // The true combo: a lock that cleared nothing ended the chain (noted at the next lock).
+        if (this.comboTrackerFor(playerKey).notePieceLocked() === 0) {
+            this.chainProgressByPlayer.set(playerKey, 0);
+        }
+        // The cascade depth is one lock's.
         this.comboProgressByPlayer.set(playerKey, 0);
+        const hardDrop = this.hardDropPending.delete(playerKey);
+        // Settings > piece-lock ripple off: the lock itself shows nothing (its clears still do).
+        if (globalThis.window?.settings?.pieceLockRipple === false) return;
         this.enqueueReactiveToken('starBurst', { origin });
 
+        // A lock is the smallest thing the night answers: less than any clear (a hard drop a
+        // little more). The heat of a quick hand builds in the surge, not in each lock's kick.
         this.addEffectState({
-            starBurstIntensity: 0.72,
-            mountainPulse: 0.8,
-            mountainShockwave: 1.0,
-            ambientScatter: 0.85,
-            nebulaDefinition: 0.35,
+            starBurstIntensity: hardDrop ? 0.5 : 0.36,
+            mountainPulse: hardDrop ? 0.3 : 0.18,
+            mountainShockwave: 0.4,
+            ambientScatter: 0.5,
+            nebulaDefinition: 0.12,
+            cameraShake: hardDrop ? 0.05 : 0,
         });
-        this.triggerLunarReaction({ strength: 1.0, combo: 0.12, duration: 1.25 });
+        this.triggerLunarReaction({ strength: hardDrop ? 0.36 : 0.28, combo: 0.06, duration: 1.0 });
+        this.surge.lock({ hardDrop }, this.time);
     }
 
     onLineClear(data = {}) {
-        const lineCount = Math.max(
-            1,
-            Number(data?.detail?.lineCount ?? data?.lineCount) || 1,
-        );
+        const detail = data?.detail || data;
+        const lineCount = Math.max(1, Math.min(4, Number(detail?.lineCount) || 1));
+        const cascade = Math.max(1, Math.floor(Number(detail?.cascadeCount) || 1));
         const playerKey = this.getReactivePlayerKey(data);
         const origin = this.resolveLineClearOrigin(data);
         if (origin) {
@@ -3136,30 +3320,60 @@ export default class WolfhourTheme extends BaseTheme {
         }
         const payload = { origin };
 
-        // The pack answers: a four-line clear makes it howl at the moon; a smaller clear makes
-        // the lead wolf lift its head.
+        // The true combo: only a lock's first clearing wave advances it (its later waves are
+        // depth). An explicit comboCount (a meditation click, Odyssey's victory lap) can raise it.
+        const tracker = this.comboTrackerFor(playerKey);
+        const before = tracker.combo;
+        let combo = tracker.noteLineClear();
+        const advanced = tracker.combo > before;
+        const explicit = Number(detail?.comboCount);
+        if (Number.isFinite(explicit)) combo = Math.max(combo, Math.floor(explicit));
+        const steps = Math.min(8, Math.max(0, combo - 1));
+        const depth = cascade - 1;
+
+        // The pack answers: a four-line clear makes it howl at the moon (held on if it is
+        // already howling); a smaller clear makes it look at you, and a run of clears keeps it
+        // looking and gets the young wolf excited.
         if (lineCount >= 4) this.wolfPack?.howl(this.time);
         else this.wolfPack?.glance(this.time);
+        if (combo >= 2) this.wolfPack?.excite(this.time);
 
-        this.enqueueReactiveBurst('beam', Math.min(lineCount, 2), payload);
+        // Shafts of moonlight: one more once the chain runs on, one more as a cascade deepens.
+        const beams = Math.min(lineCount, 2) + (combo >= 4 ? 1 : 0) + (depth >= 2 ? 1 : 0);
+        this.enqueueReactiveBurst('beam', beams, payload);
 
         // Create horizontal ripple
         this.enqueueReactiveToken('wave', payload);
 
         this.addEffectState({
             nebulaBoost: 0.1 + lineCount * 0.02,
-            bloomBoost: 0.05 + lineCount * 0.02,
-            mountainPulse: Math.min(lineCount * 0.3, 1.0),
-            nebulaDefinition: Math.min(0.35 + lineCount * 0.1, 0.9),
+            bloomBoost: 0.05 + lineCount * 0.02 + steps * 0.008,
+            mountainPulse: Math.min(0.3 + lineCount * 0.15 + steps * 0.03 + depth * 0.06, 1.1),
+            nebulaDefinition: Math.min(0.35 + lineCount * 0.1 + steps * 0.03, 1.0),
             nebulaColorShift: Math.min(0.18 + lineCount * 0.08, 0.85),
         });
+        // The moon rings louder for every line, every step of the chain and every wave of the
+        // cascade: a single 0.59, a quad 0.92, a long chain or a deep cascade up to 1.25.
         this.triggerLunarReaction({
-            strength: Math.min(0.5 + lineCount * 0.09, 0.86),
-            combo: Math.min(lineCount / 8, 0.5),
-            duration: 1.25,
+            strength: Math.min(0.48 + lineCount * 0.11 + steps * 0.03 + depth * 0.05, 1.25),
+            combo: Math.min(1, lineCount / 8 + steps * 0.07 + depth * 0.12),
+            duration: 1.25 + lineCount * 0.1,
         });
+
+        if (advanced && combo >= 2) {
+            this.escalateChain(this.chainProgressByPlayer, playerKey, combo, { origin, reactive: true });
+            this.addEffectState({
+                cosmicRiftIntensity: combo >= 3 ? Math.min(combo * 0.12, 1.0) : 0,
+                cameraShake: Math.min(combo * 0.025, 0.3),
+            });
+        }
+        this.surge.clear({ lines: lineCount, cascade, combo }, this.time);
     }
 
+    /**
+     * COMBO carries one lock's CASCADE DEPTH (once per wave from the second, ADR-0011), never a
+     * combo: each wave builds on the last (a deeper wave rings the moon harder and shakes more).
+     */
     onCombo(data = {}) {
         const comboCount = Math.max(
             0,
@@ -3171,39 +3385,11 @@ export default class WolfhourTheme extends BaseTheme {
             return;
         }
 
-        const storedCombo = this.comboProgressByPlayer.get(playerKey) || 0;
-        const previousCombo = comboCount < storedCombo ? 0 : storedCombo;
-        if (comboCount === previousCombo) return;
-        this.comboProgressByPlayer.set(playerKey, comboCount);
-        // A run of clears gets the young wolf excited: a play bow and a wagging tail.
-        if (comboCount >= 2) this.wolfPack?.excite(this.time);
-
         const origin = this.reactiveOriginsByPlayer.get(playerKey) || this.lastReactiveOrigin;
         const payload = { origin, reactive: true };
-        const newlyCrossedComboSteps = Math.max(0, comboCount - Math.max(previousCombo, 2));
-
-        if (comboCount >= 3) {
-            // Preserve every active meteor. Delaying the next ambient spawn protects the
-            // bounded pool while the authored combo shower accumulates alongside it.
-            this.lastMeteorTime = this.time;
-            this.nextMeteorDelay = 4 + this.random() * 3;
-            const riftCount = Math.min(Math.max(1, newlyCrossedComboSteps), 2);
-            this.enqueueReactiveBurst('rift', riftCount, payload);
-            const maxComboMeteors = ['Ultra', 'Extreme'].includes(this.activeQualityLevel) ? 4 : 3;
-            const meteorCount = Math.min(
-                newlyCrossedComboSteps + (previousCombo < 3 ? 1 : 0),
-                maxComboMeteors,
-            );
-            this.enqueueReactiveBurst('meteor', meteorCount, payload);
-        }
-
-        const crashCapacity = this.getReactivePoolCapacity('crash');
-        let crashCount = 0;
-        if (previousCombo < 5 && comboCount >= 5 && crashCapacity >= 1) crashCount += 1;
-        if (previousCombo < 10 && comboCount >= 10 && crashCapacity >= 2) crashCount += 1;
-        if (crashCount > 0) {
-            this.enqueueReactiveBurst('crash', crashCount, payload);
-        }
+        if (!this.escalateChain(this.comboProgressByPlayer, playerKey, comboCount, payload)) return;
+        // A run of clears gets the young wolf excited: a play bow and a wagging tail.
+        if (comboCount >= 2) this.wolfPack?.excite(this.time);
 
         this.addEffectState({
             cosmicRiftIntensity: comboCount >= 3 ? Math.min(comboCount * 0.2, 1.0) : 0,
@@ -3214,10 +3400,64 @@ export default class WolfhourTheme extends BaseTheme {
             cameraShake: Math.min(comboCount * 0.045, 0.48),
         });
         this.triggerLunarReaction({
-            strength: Math.min(0.62 + comboCount * 0.045, 1),
+            strength: Math.min(0.62 + comboCount * 0.05, 1.1),
             combo: Math.min(comboCount / 8, 1),
             duration: 1.9,
         });
+    }
+
+    /**
+     * A T-spin: the wind whirls snow off the summits and the moon rings in its palest light;
+     * with lines, two rifts cross the sky. A T-spin that clears nothing still stirs the wind.
+     */
+    onTSpin(data = {}) {
+        const detail = data?.detail || data;
+        const lines = Math.max(0, Math.floor(Number(detail?.lineCount) || 0));
+        const playerKey = this.getReactivePlayerKey(data);
+        const origin = this.reactiveOriginsByPlayer.get(playerKey) || this.lastReactiveOrigin;
+        this.gust.hit(lines > 0 ? 0.75 : 0.4, this.time);
+        this.triggerLunarReaction({ strength: lines > 0 ? 0.85 : 0.42, combo: 1, duration: 1.6 });
+        if (lines > 0) this.enqueueReactiveBurst('rift', 2, { origin, reactive: true });
+        else this.enqueueReactiveToken('starBurst', { origin });
+        this.addEffectState({
+            ambientSwirl: 0.6,
+            nebulaDefinition: lines > 0 ? 0.4 : 0.2,
+            cosmicRiftIntensity: lines > 0 ? 0.5 : 0.15,
+        });
+        // Its clear (if any) already counted its lines: only the spin's own worth is added.
+        this.surgeBonus('tspin', lines > 0 ? 1 : 0.45);
+    }
+
+    /**
+     * Back to back: the lone wolf across the valley answers on its own, and the moon rings
+     * twice, the second ring hard on the first: the second difficult clear is recognisably more.
+     */
+    onB2B(data = {}) {
+        if ((data?.detail || data)?.active === false) return;
+        const playerKey = this.getReactivePlayerKey(data);
+        const origin = this.reactiveOriginsByPlayer.get(playerKey) || this.lastReactiveOrigin;
+        this.wolfPack?.answer(this.time);
+        this.triggerLunarReaction({ strength: 0.95, combo: 0.85, duration: 1.7 });
+        this.triggerLunarReaction({
+            strength: 0.8, combo: 1, duration: 1.7, delay: 0.32,
+        });
+        this.enqueueReactiveToken('beam', { origin });
+        this.addEffectState({ bloomBoost: 0.08, mountainPulse: 0.25 });
+        this.surgeBonus('b2b');
+    }
+
+    /**
+     * The perfect clear: a crown over the clear still playing (physics sends it ~0.36 s after
+     * the clear's last wave), never a second clear: no new beams or ripples. The moon flares in
+     * its full halo and moon dogs, the pack's howl is held on as one long note, stars fall.
+     */
+    onPerfectClear() {
+        this.crown.hit(1, this.time);
+        this.wolfPack?.howl(this.time);
+        this.triggerLunarReaction({ strength: 1.35, combo: 1, duration: 2.6 });
+        this.enqueueReactiveBurst('meteor', prefersReducedMotion() ? 1 : 4, { shower: true, reactive: true });
+        this.addEffectState({ bloomBoost: 0.2, mountainPulse: 0.5, nebulaDefinition: 0.6 });
+        this.surgeBonus('perfect');
     }
 
     onLevelUp() {
@@ -3232,6 +3472,7 @@ export default class WolfhourTheme extends BaseTheme {
         this.triggerLunarReaction({ strength: 0.7, combo: 0.45, duration: 1.55 });
         // Trigger multiple beams
         this.enqueueReactiveBurst('beam', 3);
+        this.surge.levelUp(this.time);
     }
 
     ensureSharedGeometries() {
@@ -3282,6 +3523,10 @@ export default class WolfhourTheme extends BaseTheme {
         const capacity = this.getReactivePoolCapacity(type);
 
         let effect = pool.pop();
+        if (!effect && this.getReactivePoolTotal(type, activeList) >= capacity
+            && this.recycleFadingReactive(type, activeList)) {
+            effect = pool.pop();
+        }
         if (!effect) {
             if (this.getReactivePoolTotal(type, activeList) >= capacity) {
                 return null;
@@ -3298,6 +3543,30 @@ export default class WolfhourTheme extends BaseTheme {
         effect.visible = true;
         activeList.push(effect);
         return effect;
+    }
+
+    /**
+     * A full pool hands over its most-faded effect (past 60 % of its life, so little light is
+     * cut short) instead of refusing the new one: fast play keeps being answered rather than
+     * dropped. Never a meteor crash (its impact is long and staged).
+     * @returns {boolean} whether one was released
+     */
+    recycleFadingReactive(type, activeList) {
+        if (type === 'crash') return false;
+        let index = -1;
+        let furthest = 0.6;
+        for (let i = 0; i < activeList.length; i += 1) {
+            const data = activeList[i].userData;
+            const progress = (this.time - data.startTime) / Math.max(0.001, data.duration);
+            if (progress > furthest) {
+                furthest = progress;
+                index = i;
+            }
+        }
+        if (index < 0) return false;
+        if (type === 'meteor') this.releaseMeteor(index, activeList[index]);
+        else this.releaseReactiveEffect(type, activeList, index, activeList[index]);
+        return true;
     }
 
     releaseReactiveEffect(type, activeList, index, effect) {
@@ -3434,7 +3703,7 @@ export default class WolfhourTheme extends BaseTheme {
             const result = this.materialFactories.createStarBurstNodeMaterial({
                 pixelRatio: this.renderer.getPixelRatio(),
             });
-            material = result.material;
+            ({ material } = result);
             nodeData = result;
         } else {
             material = new THREE.ShaderMaterial({
@@ -3513,7 +3782,7 @@ export default class WolfhourTheme extends BaseTheme {
             const result = this.materialFactories.createCelestialBeamNodeMaterial({
                 volumetricStrength: this.qualityPreset.enableVolumetricBeams ? 0.82 : 0.0,
             });
-            material = result.material;
+            ({ material } = result);
             nodeData = result;
         } else {
             material = new THREE.ShaderMaterial({
@@ -3538,14 +3807,22 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     resetCelestialBeamEffect(beam, payload = {}) {
-        const beamWidth = 40 + this.random() * 60;
         const origin = payload?.origin || this.lastReactiveOrigin;
         const beamX = Number.isFinite(origin?.x)
             ? origin.x + (this.random() - 0.5) * 50
             : (this.random() - 0.5) * 1000;
-        beam.scale.set(beamWidth, 4000, 1);
-        beam.position.set(beamX, -200, -800);
-        beam.rotation.z = (this.random() - 0.5) * 0.1;
+        // A shaft of moonlight: wide enough for its soft falloff, from high in the sky (fading out
+        // above the frame's top third) down into the valley air, leaning a little away from the
+        // moon (upper left) as moonlight falls.
+        if (this.usesNodeMaterials && beam.userData.nodeData) {
+            beam.scale.set(150 + this.random() * 80, 1150, 1);
+            beam.position.set(beamX, 20, -800);
+            beam.rotation.z = 0.1 + this.random() * 0.07;
+        } else {
+            beam.scale.set(40 + this.random() * 60, 4000, 1);
+            beam.position.set(beamX, -200, -800);
+            beam.rotation.z = (this.random() - 0.5) * 0.1;
+        }
         beam.userData.startTime = this.time;
 
         if (beam.userData.nodeData?.uniforms) {
@@ -3574,7 +3851,7 @@ export default class WolfhourTheme extends BaseTheme {
         let nodeData = null;
         if (this.usesNodeMaterials && this.materialFactories) {
             const result = this.materialFactories.createCosmicRiftNodeMaterial();
-            material = result.material;
+            ({ material } = result);
             nodeData = result;
         } else {
             material = new THREE.ShaderMaterial({
@@ -3637,7 +3914,7 @@ export default class WolfhourTheme extends BaseTheme {
         let nodeData = null;
         if (this.usesNodeMaterials && this.materialFactories) {
             const result = this.materialFactories.createCosmicWaveNodeMaterial();
-            material = result.material;
+            ({ material } = result);
             nodeData = result;
         } else {
             material = new THREE.ShaderMaterial({
@@ -3798,7 +4075,11 @@ export default class WolfhourTheme extends BaseTheme {
             }
         }
 
-        const dynamicBloomStrength = this.qualityPreset.bloomStrength + this.effectState.bloomBoost * 0.5;
+        // The bloom swells a little with the heat of play (night.bloom; Reduce flashing holds its
+        // kicks back) while the iris closes, so the added light keeps the night's darks.
+        const dynamicBloomStrength = this.qualityPreset.bloomStrength
+            + this.effectState.bloomBoost * 0.5
+            + (this.qualityPreset.bloomStrength > 0 ? this.night.bloom : 0);
         if (this.bloomPass) {
             this.bloomPass.strength = dynamicBloomStrength;
         }
@@ -3807,6 +4088,7 @@ export default class WolfhourTheme extends BaseTheme {
                 this.postProcessing.updateDynamic?.({
                     time: this.time,
                     bloomStrength: dynamicBloomStrength,
+                    exposure: (this.postProfile.exposure ?? 1) * this.night.iris,
                 });
             } catch (error) {
                 this.disablePostRuntime('updateEffects', error);
@@ -3843,7 +4125,9 @@ export default class WolfhourTheme extends BaseTheme {
                 const progress = elapsed / beam.userData.duration;
                 if (beam.userData.nodeData) {
                     beam.userData.nodeData.uniforms.uTime.value = elapsed;
-                    beam.userData.nodeData.uniforms.uOpacity.value = 1.0 - progress;
+                    // The light gathers for a moment, then fades: it never switches on.
+                    beam.userData.nodeData.uniforms.uOpacity.value = THREE.MathUtils.smoothstep(progress, 0, 0.14)
+                        * (1.0 - progress) ** 1.2;
                     if (beam.userData.nodeData.uniforms.uVolumetricPulse) {
                         beam.userData.nodeData.uniforms.uVolumetricPulse.value = this.effectState.cosmicRiftIntensity;
                     }
@@ -3875,6 +4159,9 @@ export default class WolfhourTheme extends BaseTheme {
     }
 
     updateCosmicWaves() {
+        // The clear's grey ripple gives way as play heats (rapid clears would stack it into a
+        // haze over the valley): the hot night keeps its darks and the sky carries the build.
+        const veil = 0.5 * (1 - 0.65 * THREE.MathUtils.smoothstep(this.night.level, 0.35, 0.8));
         for (let i = this.cosmicWaves.length - 1; i >= 0; i--) {
             const wave = this.cosmicWaves[i];
             const elapsed = this.time - wave.userData.startTime;
@@ -3884,10 +4171,10 @@ export default class WolfhourTheme extends BaseTheme {
                 const progress = elapsed / wave.userData.duration;
                 if (wave.userData.nodeData) {
                     wave.userData.nodeData.uniforms.uTime.value = elapsed;
-                    wave.userData.nodeData.uniforms.uOpacity.value = 0.5 * (1.0 - progress);
+                    wave.userData.nodeData.uniforms.uOpacity.value = veil * (1.0 - progress);
                 } else {
                     wave.material.uniforms.uTime.value = elapsed;
-                    wave.material.uniforms.uOpacity.value = 0.5 * (1.0 - progress);
+                    wave.material.uniforms.uOpacity.value = veil * (1.0 - progress);
                 }
             }
         }
@@ -4076,7 +4363,18 @@ export default class WolfhourTheme extends BaseTheme {
         data.duration = 2.5 + this.random() * 1.5;
         data.startZ = -1800 - this.random() * 500;
         data.direction = this.random() > 0.5 ? 1 : -1;
-        if (Number.isFinite(origin?.x) && Number.isFinite(origin?.y)) {
+        if (payload?.shower === true) {
+            // The shower: shooting stars from one radiant beyond the upper right, all streaking
+            // the same way across the open sky, quicker and longer than the night's own.
+            const cameraX = this.camera?.position?.x ?? 0;
+            const halfWidth = this.camera?.isOrthographicCamera
+                ? Math.abs(this.camera.right) : 900;
+            data.direction = -1;
+            data.startX = cameraX + halfWidth * (-0.15 + this.random() * 1.25);
+            data.startY = 300 + this.random() * 220;
+            data.angle = -0.38 - this.random() * 0.12;
+            data.duration = 1.5 + this.random() * 0.7;
+        } else if (Number.isFinite(origin?.x) && Number.isFinite(origin?.y)) {
             const approachDistance = 420 + this.random() * 280;
             data.startX = origin.x - data.direction * approachDistance;
             data.startY = THREE.MathUtils.clamp(origin.y + 300 + this.random() * 160, 180, 470);
@@ -4088,6 +4386,10 @@ export default class WolfhourTheme extends BaseTheme {
         }
         data.speed = 400 + this.random() * 200;
         data.trailLength = 150 + this.random() * 100;
+        if (payload?.shower === true) {
+            data.speed += 160;
+            data.trailLength += 50;
+        }
 
         if (data.trailSlot >= 0 && this.meteorTrailBatchCompute) {
             this.meteorTrailBatchCompute.releaseSlot(data.trailSlot);
@@ -4322,7 +4624,8 @@ export default class WolfhourTheme extends BaseTheme {
             const i3 = i * 3;
             const angle = this.random() * Math.PI * 2;
             const upAngle = this.random() * Math.PI * 0.6;
-            const speed = 250 + this.random() * 400;
+            // Over the alpine terrain the strike throws snow and ice, not rock: a lower spray.
+            const speed = this.celestialSky ? 150 + this.random() * 230 : 250 + this.random() * 400;
             debrisVelocityArray[i3] = Math.cos(angle) * Math.sin(upAngle) * speed;
             debrisVelocityArray[i3 + 1] = Math.cos(upAngle) * speed + 50;
             debrisVelocityArray[i3 + 2] = Math.sin(angle) * Math.sin(upAngle) * speed * 0.3;
@@ -4391,8 +4694,8 @@ export default class WolfhourTheme extends BaseTheme {
             const i3 = i * 3;
             dustSizeArray[i] = this.celestialSky ? 60 + this.random() * 75 : 100 + this.random() * 120;
             dustPhaseArray[i] = this.random() * Math.PI * 2;
-            dustVelocityArray[i3] = (this.random() - 0.5) * 80;
-            dustVelocityArray[i3 + 1] = this.random() * 40;
+            dustVelocityArray[i3] = this.celestialSky ? 22 + (this.random() - 0.5) * 120 : (this.random() - 0.5) * 80;
+            dustVelocityArray[i3 + 1] = this.random() * (this.celestialSky ? 14 : 40);
             dustVelocityArray[i3 + 2] = this.random() * 20;
         }
         dustGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(dustCount * 3), 3));
@@ -4669,16 +4972,18 @@ export default class WolfhourTheme extends BaseTheme {
         const dustImpactZ = targetZ + 40;
         for (let i = 0; i < dustCount; i += 1) {
             const i3 = i * 3;
-            dustPositions[i3] = targetX + (this.random() - 0.5) * 150;
-            dustPositions[i3 + 1] = targetY + this.random() * 60;
+            dustPositions[i3] = targetX + (this.random() - 0.5) * 170;
+            dustPositions[i3 + 1] = targetY - 15 + this.random() * 45;
             dustPositions[i3 + 2] = dustImpactZ;
         }
         this.syncInstancedParticlePositions(data.dustCloud);
 
+        // The strike's flash lights the snow: held back under Reduce flashing (ADR-0021).
+        const flash = flashScale();
         this.addEffectState({
-            bloomBoost: 0.3,
+            bloomBoost: 0.3 * flash,
             mountainShockwave: 1.5,
-            mountainPulse: 1.0,
+            mountainPulse: 0.4 + 0.6 * flash,
             cameraShake: 0.85 * (this.qualityPreset.cameraShakeScale || 1.0),
             nebulaDefinition: 0.65,
             nebulaColorShift: 0.45,
@@ -4872,6 +5177,7 @@ export default class WolfhourTheme extends BaseTheme {
             }
 
             this.updateNebulas(deltaTime);
+            this.updateSurge();
             this.updateEffects(deltaTime);
             this.celestialSky?.update(this.time, this.effectState);
             this.alpineLandscape?.update(this.time, this.effectState);
@@ -4926,7 +5232,7 @@ export default class WolfhourTheme extends BaseTheme {
                 window.innerWidth / window.innerHeight,
                 this.smoothedPointerX,
                 this.smoothedPointerY,
-                this.effectState.cameraShake,
+                this.effectState.cameraShake + this.night.shake,
                 motion,
             );
             this.celestialSky.applyParallax(this.camera);
@@ -4964,7 +5270,8 @@ export default class WolfhourTheme extends BaseTheme {
         const microBreathe = Math.sin(this.time * 0.14 + 0.5) * 0.055; // ±5.5% zoom
         const breathe = (deepBreathe + tidalBreathe + microBreathe) * motion; // ~±24% peak
 
-        const shakeScale = (this.qualityPreset.cameraShakeScale || 1.0) * this.effectState.cameraShake * motion;
+        const shakeScale = (this.qualityPreset.cameraShakeScale || 1.0)
+            * (this.effectState.cameraShake + this.night.shake) * motion;
         const shakeX = (
             Math.sin(this.time * 51.0)
             + Math.cos(this.time * 83.0) * 0.6
@@ -5379,6 +5686,15 @@ export default class WolfhourTheme extends BaseTheme {
         this.lastReactiveOrigin = null;
         this.reactiveOriginsByPlayer.clear();
         this.comboProgressByPlayer.clear();
+        this.comboTrackers.clear();
+        this.chainProgressByPlayer.clear();
+        this.hardDropPending.clear();
+        this.surge.reset();
+        this.crown.reset();
+        this.gust.reset();
+        Object.keys(this.night).forEach((key) => { this.night[key] = key === 'iris' ? 1 : 0; });
+        this.nextChorusAt = Number.NEGATIVE_INFINITY;
+        this.nextShowerAt = Number.NEGATIVE_INFINITY;
 
         [...this.starBursts, ...this.effectPools.starBurst].forEach((b) => this.disposeObjectResources(b));
         this.starBursts = [];

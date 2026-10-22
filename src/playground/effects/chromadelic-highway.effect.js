@@ -99,7 +99,8 @@ export function create({
     if (placeParam !== null || formParam) {
         world.pinSpectrum(placeParam !== null ? num(params, 'place', 0) : null, { form: formParam || null });
     }
-    if (params.get('airGain') !== null) world.shared.uAirGain.value = num(params, 'airGain', 0.05);
+    // The world writes uAirGain every frame (the heat of play lifts it): set its rest value.
+    if (params.get('airGain') !== null) world.airGain = num(params, 'airGain', 0.05);
     // Agent probes: the live world (uniforms, events) without a reload.
     window.__chromadelic = { world };
 
@@ -139,6 +140,9 @@ export function create({
         else if (ev.name === 'clear') world.onLineClear(ev.lines);
         else if (ev.name === 'tetris') world.onLineClear(4);
         else if (ev.name === 'levelUp') world.onLevelUp(ev.level);
+        else if (ev.name === 'tspin') world.onTSpin(ev.lines);
+        else if (ev.name === 'b2b') world.onB2B();
+        else if (ev.name === 'perfect') world.onPerfectClear();
     };
 
     const size = new THREE.Vector2();

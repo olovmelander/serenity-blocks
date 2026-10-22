@@ -26,6 +26,11 @@ import { sceneSamples } from '../shared/scene-antialias.js';
 
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
+/**
+ * Reduce motion's share of what moves the scene (the wind, the fronts, the startled swallows,
+ * the butterflies' flight and the hurry play puts into them): SummerWorld.setMotion.
+ */
+const REDUCED_MOTION_SHARE = 0.35;
 const BOARD_POLL_S = 0.75;
 const PIXEL_RATIO_CAP = Object.freeze({
     Extreme: 1.5, Ultra: 1.35, High: 1.25, Medium: 1, Low: 0.9, Minimal: 0.75,
@@ -404,8 +409,10 @@ export default class SummerTheme extends BaseTheme {
     }
 
     onPieceLock(payload) {
-        if (!this.effectsAllowed() || !this.lockRipple) return;
-        this.reactions?.onPieceLock(eventDetail(payload));
+        if (!this.effectsAllowed()) return;
+        // With lock effects off the lock still counts: a lock that cleared nothing ends the combo.
+        if (!this.lockRipple) this.reactions?.noteLock?.();
+        else this.reactions?.onPieceLock(eventDetail(payload));
     }
 
     /** T-spins, back-to-backs, perfect clears and level-ups share one gate. */
@@ -531,6 +538,8 @@ export default class SummerTheme extends BaseTheme {
             this.world?.setBoard?.(readSummerBoardRect());
         }
         this.updateCamera(dt);
+        // Reduce motion calms the reactions too, not only the camera.
+        this.world?.setMotion?.(this.reducedMotion || prefersReducedMotion() ? REDUCED_MOTION_SHARE : 1);
         this.world?.update(this.time, dt, frame);
         this.post?.update?.({ ...frame, time: this.time });
     }

@@ -19,8 +19,23 @@
  *   level    the grotto turns one step round its wheel of palettes — and the clock turns it too,
  *            slowly, so its colours keep changing through a long calm game.
  *   four     the Great Bloom. The grotto holds its breath — every light sinks for a quarter of a
- *            second — then the elder mushroom at the heart of the cave erupts: a fountain of
- *            spores to the vault, a ring across the pool, every cap and every jelly at once.
+ *            second (less the hotter play runs: in a fever it only inhales) — then the elder
+ *            mushroom at the heart of the cave erupts: a fountain of spores to the vault, a ring
+ *            across the pool, every cap and every jelly at once.
+ *   b2b      the elder rings twice: a second hard clear in a row sends its own ring across the
+ *            pool from the elder (after the bloom's own, for a back-to-back four).
+ *   perfect  the crown: on the bloom still playing, every cap in the grotto blooms in its own
+ *            colour from the elder outward and keeps it, the jellies and the fairy rings rise,
+ *            the crystals ring twice. Never a second hush.
+ *   cascade  each wave of a cascade rolls out deeper than the last: more fronts, brighter, and
+ *            further toward the caps' second colour, and the crystals ring a little louder each time.
+ *
+ * Play builds (src/themes/shared/gameplay-surge.js): every event adds to what is still lit and
+ * nothing restarts. As the hands stay quick the grotto warms — the glow-worms kindle, the pool's
+ * plankton and the mycelium glow on, the caps keep the colours played through the clears — then
+ * runs hot — the jellies rise, the fairy rings stand, everything beats faster — and in a fever the
+ * elder wakes: it burns in its own spores' light, its heartbeat rolls across the pool as rings of
+ * plankton light, its shafts stream down the cave. When the hands rest it breathes back to calm.
  *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame.
@@ -30,9 +45,13 @@
 
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge } from '../shared/gameplay-surge.js';
+import { Envelope } from './bioluminescence-envelope.js';
 import {
     BIOLUM_PALETTES,
     BLOOM_LIFE,
+    CLEAR_AFTERGLOW,
+    CLEAR_LIVE,
     CLEAR_SLOTS,
     DEG,
     ELDER,
@@ -41,7 +60,9 @@ import {
     LOCK_SLOTS,
     NOISE_SIZE,
     PALETTE_KEYS,
+    RING_FADE,
     RUNNER_FLIGHT,
+    SHOCK_FADE,
     STARSPORE,
     approach,
     bakeNoise,
@@ -49,6 +70,7 @@ import {
     createGrottoUniforms,
     createHeightTexture,
     createNoiseTexture,
+    familyColor,
     jelliesForCombo,
     mulberry32,
     paletteAt,
@@ -99,9 +121,14 @@ export function fovForAspect(aspect) {
 
 /** Seconds the overdrive after the Great Bloom takes to cool to 1/e. */
 export const SURGE_COOL = 3.4;
-/** Seconds a ring / a clear wave stays in the grotto (the shaders skip their loops after). */
+/** Seconds a ring stays in the grotto (the shaders skip their loop after; a wave: CLEAR_LIVE). */
 const RING_LIVE = 5.5;
-const CLEAR_LIVE = 8;
+/** Seconds the crown of a perfect clear keeps every jelly up and every fairy ring standing. */
+const CROWN_HOLD = 5;
+/** How fast the crown's blooms roll out from the elder over the caps (m/s). */
+const CROWN_SPEED = 55;
+/** A back-to-back four's second ring follows the bloom's own by this much. */
+const ECHO_DELAY = 0.35;
 /** Lamp strength per square metre of cap, and the elder's share of it (it is far and huge). */
 const LAMP_GAIN = 3.2;
 /** The lowest cap (metres over the water) a swimmer is sent to. */
@@ -189,9 +216,53 @@ export class BioluminescenceWorld {
             this._palette[key] = [...BIOLUM_PALETTES[0][key]];
         });
         this._post = {
-            heart: this.heart, flash: 0, kick: 0, shafts: 0.12, bloomBoost: 0, exposure: 1,
+            heart: this.heart, flash: 0, kick: 0, shafts: 0.12, bloomBoost: 0, exposure: 1, saturation: 0, deepen: 0,
+        };
+        /**
+         * Everything an event lights adds to what is still lit (bioluminescence-envelope.js, on
+         * src/themes/shared/swell.js): a single after a quad never cuts the quad's light, a chain
+         * rides up instead of starting over at every clear.
+         *   flash / kick  the post's lift and the camera's jolt
+         *   storm         the air stirred (motes, glow-worms, the iris)
+         *   overdrive     the Great Bloom's afterburn (`surge`)
+         *   swell         the light a clear sends up the shafts
+         *   afterglow     what a wave leaves on the water once its slot is wanted for another
+         */
+        this.swells = {
+            flash: new Envelope({ release: 0.25, ceiling: 0.32, knee: 0.18 }),
+            kick: new Envelope({ release: 0.16, ceiling: 1.1, knee: 0.75 }),
+            storm: new Envelope({ release: 1.7, ceiling: 1.8, knee: 1.2 }),
+            overdrive: new Envelope({ release: SURGE_COOL, ceiling: 1.6, knee: 1.05 }),
+            swell: new Envelope({ release: 0.7, ceiling: 1.3, knee: 0.85 }),
+            afterglow: new Envelope({ release: CLEAR_AFTERGLOW, ceiling: 1.2, knee: 0.8 }),
+        };
+        this._swellList = Object.values(this.swells);
+        /** How hot play runs (src/themes/shared/gameplay-surge.js): sampled once a frame. */
+        this.play = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
         };
         this.resetState(0);
+    }
+
+    /** The post's lift now (every flash still lit, summed). */
+    get flash() {
+        return this.swells.flash.valueAt(this.time);
+    }
+
+    /** The camera's jolt now. */
+    get kick() {
+        return this.swells.kick.valueAt(this.time);
+    }
+
+    /** How stirred the air is now. */
+    get storm() {
+        return this.swells.storm.valueAt(this.time);
+    }
+
+    /** The Great Bloom's overdrive now: 0 at rest, 1 as the elder blooms, more for a perfect clear. */
+    get surge() {
+        return this.swells.overdrive.valueAt(this.time);
     }
 
     /** Everything the choreography remembers. */
@@ -199,25 +270,29 @@ export class BioluminescenceWorld {
         this.time = time;
         this.combo = 0;
         this.power = 0;
-        this.surge = 0;
-        this.storm = 0;
+        /** How awake the grotto is: the chain's power, or a quick hand's heat, whichever is more. */
+        this.awake = 0;
         this.level = 1;
-        this.flash = 0;
-        this.kick = 0;
         this.dip = 0;
         this.swirl = 0;
         this.breath = 1;
         this.sprout = 0;
         this.wake = 0.35;
         this.hushUntil = -1;
+        /** How deep the hush goes (1 from cold; shallower the hotter play already runs). */
+        this.hushDepth = 1;
         this.lockCursor = 0;
         this.clearCursor = 0;
-        this.lastClear = { time: -100, lines: 0 };
-        this.pendingKick = { time: Infinity, amount: 0 };
-        this.pendingSurge = { time: Infinity, amount: 0 };
         this.bloomAt = -100;
+        /** When the last perfect clear crowned the grotto. */
+        this.crownAt = -100;
+        /** How many jellies the grotto last asked for (it asks again only when that changes). */
+        this.jellyWant = -1;
+        this._swellList.forEach((swell) => swell.reset());
+        this.play.reset();
+        Object.assign(this.heat, this.play.sample(time));
         this.counts = {
-            locks: 0, clears: 0, blooms: 0, swimmers: 0,
+            locks: 0, clears: 0, blooms: 0, swimmers: 0, crowns: 0,
         };
         // The slow clocks are functions of the world clock until gameplay bends them.
         const motion = this.reducedMotion ? 0.3 : 1;
@@ -232,7 +307,9 @@ export class BioluminescenceWorld {
         if (this.u) {
             for (let i = 0; i < LOCK_SLOTS; i++) this.u.lockA[i].value.set(0, 0, -100, 0);
             for (let i = 0; i < CLEAR_SLOTS; i++) this.u.clearA[i].value.set(-100, 1, 0, 0);
-            this.u.shock.value.set(-100, 0);
+            this.u.shock.value.set(-100, 0, -100, 0);
+            this.u.glowFloor.value = 0;
+            this.u.keep.value = 0;
         }
     }
 
@@ -462,7 +539,9 @@ export class BioluminescenceWorld {
     updateCamera(camera, sim) {
         const t = sim.time;
         const calm = this.reducedMotion ? 0 : 1;
-        const fov = fovForAspect(this.aspect) - this.kick * 0.7 * calm;
+        // The jolt of every event still felt, on a floor that rapid play keeps up (the punch).
+        const kick = Math.min(1, this.kick + this.heat.punch * 0.15);
+        const fov = fovForAspect(this.aspect) - kick * 0.7 * calm;
         if (camera.fov !== fov || camera.near !== REST_RIG.near || camera.far !== REST_RIG.far) {
             camera.fov = fov;
             camera.near = REST_RIG.near;
@@ -474,7 +553,7 @@ export class BioluminescenceWorld {
         const swayY = (Math.sin(t * 0.17 + 0.7) * 0.045 + Math.sin(t * 0.079) * 0.035) * calm;
         const px = (sim.pointerX || 0) * calm;
         const py = (sim.pointerY || 0) * calm;
-        camera.position.set(swayX + px * 0.7, REST_RIG.height + swayY - py * 0.22 - this.kick * 0.04 * calm, 0);
+        camera.position.set(swayX + px * 0.7, REST_RIG.height + swayY - py * 0.22 - kick * 0.04 * calm, 0);
         const yaw = (Math.sin(t * 0.083 + 2.1) * 0.012 - px * 0.03) * calm;
         const pitch = REST_RIG.pitch + (Math.sin(t * 0.097) * 0.006 - py * 0.018) * calm;
         this._look.set(
@@ -608,9 +687,23 @@ export class BioluminescenceWorld {
         return arrive;
     }
 
-    /** Send a ring out over the pool from (x, z) at `time`; `reach` is a fraction of RING_REACH. */
+    /**
+     * Send a ring out over the pool from (x, z) at `time`; `reach` is a fraction of RING_REACH.
+     * It takes the slot with the least light left in it (a ring still on its way counts in full),
+     * so under fast play a ring is only ever replaced once it has all but faded.
+     */
     ring(x, z, time, strength, rgb, reach = 1) {
-        const slot = this.lockCursor % LOCK_SLOTS;
+        let slot = 0;
+        let least = Infinity;
+        for (let i = 0; i < LOCK_SLOTS; i++) {
+            const A = this.u.lockA[i].value;
+            const age = this.time - A.z;
+            const left = A.w * (age > 0 ? Math.exp(-age * RING_FADE) : 1);
+            if (left < least) {
+                least = left;
+                slot = i;
+            }
+        }
         this.lockCursor += 1;
         this.u.lockA[slot].value.set(x, z, time, strength);
         this.u.lockC[slot].value.set(rgb[0] * 1.4, rgb[1] * 1.4, rgb[2] * 1.4, reach);
@@ -688,21 +781,56 @@ export class BioluminescenceWorld {
                 }
             }
         }
-        this.kick = Math.max(this.kick, hardDrop ? 0.5 : 0.1);
-        this.flash = Math.max(this.flash, hardDrop ? 0.1 : 0.02);
+        this.swells.kick.hit(hardDrop ? 0.5 : 0.1, this.time);
+        this.swells.flash.hit(hardDrop ? 0.1 : 0.02, this.time);
+        this.play.lock({ hardDrop }, this.time);
         this.counts.locks += 1;
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`.
+     * The clear slot with the least light left in it (a wave still on its way counts double). The
+     * wave it held has rolled on by then; what it still leaves on the water does not go out with
+     * it but goes on glowing in the pool's memory (`glowFloor`), fading as it would have.
+     */
+    takeClearSlot() {
+        const { u, time } = this;
+        let slot = 0;
+        let least = Infinity;
+        for (let i = 0; i < CLEAR_SLOTS; i++) {
+            const A = u.clearA[i].value;
+            const age = time - A.x;
+            const left = age < 0 ? A.z * 2 : A.z * Math.exp(-age / 2.2);
+            if (left < least) {
+                least = left;
+                slot = i;
+            }
+        }
+        const A = u.clearA[slot].value;
+        const age = time - A.x;
+        if (A.z > 0 && age > 0 && age < CLEAR_LIVE) {
+            this.swells.afterglow.hit(A.z * 0.8 * Math.exp(-Math.max(0, age - 0.3) / CLEAR_AFTERGLOW), time);
+        }
+        this.clearCursor += 1;
+        return slot;
+    }
+
+    /**
+     * Lines cleared. `lines` 1..4; `cascade` the wave's depth in its cascade (1 the first), `combo`
+     * the true combo, `tspin`, `perfect`, `b2b`.
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null,
+        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1,
+        player = 0, screen = null,
     } = {}) {
         const { u: uniforms } = this;
         if (!uniforms || !this.mushrooms) return;
         const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
-        const great = n >= 4 || perfect;
+        const great = n >= 4 || perfect === true;
+        // How deep in its cascade this wave is (0 for the first), and how long the chain runs.
+        const deeper = Math.max(0, Math.min(9, Math.round(Number(cascade) || 1) - 1));
+        const chain = Math.max(0, Math.min(10, Math.round(Number(combo) || 1) - 1));
+        // How hot play ran before this clear.
+        const heat = clamp01(this.heat.level);
         const p = this._palette;
         // One line answers in the plankton's light, two in the caps', three in both and the accent;
         // four in all of them at once (never white: a white wave bleaches every cap it lights).
@@ -711,9 +839,21 @@ export class BioluminescenceWorld {
         else if (n === 1) rgb = [...p.plankton];
         else if (n === 2) rgb = [0, 1, 2].map((c) => p.primary[c] * 0.8 + p.plankton[c] * 0.3);
         else rgb = [0, 1, 2].map((c) => p.primary[c] * 0.5 + p.accent[c] * 0.6 + 0.15);
+        if (deeper > 0) {
+            // A cascade's deeper waves lean further toward the caps' second family: a hue the
+            // first never has, and a neighbour of the grotto's own on every palette (the accent,
+            // across the wheel, would mix with the teal into grey).
+            const lean = Math.min(0.55, 0.14 * deeper);
+            const sp = Math.max(p.secondary[0], p.secondary[1], p.secondary[2], 1e-4);
+            const rp = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
+            rgb = rgb.map((c, k) => (c / rp) * (1 - lean) + (p.secondary[k] / sp) * lean);
+        }
         const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
         rgb = rgb.map((c) => (c / peak) * 0.92 + 0.08);
-        const strength = Math.min(1.5, 0.62 + 0.14 * n + (great ? 0.25 : 0));
+        // Every wave of a cascade rolls out brighter than the last, a long chain's more, and the
+        // hotter play runs the brighter they all are.
+        const own = Math.min(1.5, 0.62 + 0.14 * n + (great ? 0.25 : 0));
+        const strength = Math.min(1.7, own * (1 + 0.07 * Math.min(6, deeper) + 0.02 * chain) * (1 + 0.1 * heat));
         const birth = great ? this.time + HUSH_HOLD : this.time;
 
         // ── The wave leaves the foot of the board ──
@@ -725,14 +865,14 @@ export class BioluminescenceWorld {
             : this.screenToWater(board ? (board.x0 + board.x1) * 0.5 : 0.5, board ? Math.max(board.y1, 0.74) : 0.93);
         const hx = heart.x;
         const hz = heart.z;
-        const slot = this.clearCursor % CLEAR_SLOTS;
-        this.clearCursor += 1;
+        const slot = this.takeClearSlot();
         // Each clear keeps its own origin: a second one must not re-centre a wave still rolling.
         uniforms.heart.value.set(hx, hz);
         uniforms.clearH[slot].value.set(hx, hz);
-        uniforms.clearA[slot].value.set(birth, perfect ? 4 : n, strength, great ? 1 : 0);
+        // One front a line, and a cascade's deeper waves one more, then two.
+        const fronts = Math.min(4, (perfect === true ? 4 : n) + (deeper >= 1 ? 1 : 0) + (deeper >= 4 ? 1 : 0));
+        uniforms.clearA[slot].value.set(birth, fronts, strength, great ? 1 : 0);
         uniforms.clearC[slot].value.set(rgb[0] * 1.25, rgb[1] * 1.25, rgb[2] * 1.25);
-        this.lastClear = { time: birth, lines: n };
 
         // ── Every mushroom breathes out what it holds as the wave passes it ──
         const holders = [];
@@ -747,9 +887,16 @@ export class BioluminescenceWorld {
             const hp = Math.max(held[0], held[1], held[2], 1e-4);
             this.puff(i, held.map((c) => c / hp), passes[i], great ? 2.2 : 1.5, each);
         }
-        this.storm = Math.max(this.storm, Math.min(1.4, 0.3 + 0.14 * n + released * 0.06 + (great ? 0.4 : 0)));
-        this.pendingKick = { time: birth + 0.12, amount: 0.22 + 0.1 * n };
-        this.jellies?.flash(birth + 0.25, 0.6 + 0.15 * n);
+        // Every clear adds to the stir, the jolt, the shafts' light and the jellies' flash still lit.
+        const stir = Math.min(1.4, 0.3 + 0.14 * n + released * 0.06 + (great ? 0.4 : 0)) + 0.08 * deeper;
+        this.swells.storm.hit(stir, this.time);
+        // (A cascade's later waves each jolt less than a clear of their own: they come every 360 ms
+        // and ride on what the ones before left, so the chain still climbs without shaking the frame.)
+        const jolt = deeper > 0 ? 0.12 + 0.02 * Math.min(6, deeper) : 0.22 + 0.1 * n;
+        this.swells.kick.hit(jolt, birth + 0.12);
+        this.swells.flash.hit(jolt * 0.5, birth + 0.12);
+        this.swells.swell.hit(deeper > 0 ? 0.15 + 0.03 * Math.min(6, deeper) : 0.3 + 0.12 * n, birth);
+        this.jellies?.flash(birth + 0.25, deeper > 0 ? 0.3 + 0.05 * Math.min(6, deeper) : 0.6 + 0.15 * n);
 
         // ── The cleared rows leave the card as jets of spores ──
         if (board && card && this.layoutLive && !point) {
@@ -783,25 +930,60 @@ export class BioluminescenceWorld {
             }
         }
 
-        if (great) this.greatBloom(birth, perfect);
+        if (great) this.greatBloom(birth);
         else if (n === 3) this.crystals?.chime?.(birth + 0.1, 0.7);
+        // A cascade rings the crystals, a little louder with every wave.
+        if (deeper > 0) this.crystals?.chime?.(birth + 0.08, Math.min(1.1, 0.3 + 0.12 * deeper));
         if (tspin) {
             // The air itself turns, and the crystals ring.
             this.swirl = 1;
-            this.storm = Math.max(this.storm, 0.85);
+            this.swells.storm.hit(0.55, this.time);
             this.crystals?.chime?.(this.time, 1);
         }
+        // A second hard clear in a row: the elder rings again (after the bloom's own ring for a four).
+        if (b2b === true) this.echo(great ? birth + ECHO_DELAY : birth, great);
+        // A perfect clear: the crown on the bloom.
+        if (perfect === true) this.crown(birth);
+        this.play.clear({
+            lines: n,
+            cascade: deeper + 1,
+            combo: chain + 1,
+            tspin: tspin === true,
+            perfect: perfect === true,
+            b2b: b2b === true,
+        }, birth);
         this.counts.clears += 1;
     }
 
+    /**
+     * One ring from the elder across the pool at `at`: it takes the ring slot with less light left
+     * in it, so a second ring follows the first instead of restarting it.
+     */
+    shockRing(at, strength) {
+        const shock = this.u.shock.value;
+        const left = (born, s) => {
+            const age = this.time - born;
+            return s * (age > 0 ? Math.exp(-age * SHOCK_FADE) : 1);
+        };
+        if (left(shock.z, shock.w) < left(shock.x, shock.y)) {
+            shock.z = at;
+            shock.w = strength;
+        } else {
+            shock.x = at;
+            shock.y = strength;
+        }
+    }
+
     /** Four lines (or a perfect clear): the elder erupts. */
-    greatBloom(birth, perfect) {
-        const { u: uniforms } = this;
+    greatBloom(birth) {
         this.hushUntil = this.time + HUSH_HOLD;
+        // From cold the grotto holds its breath; the hotter play already runs the less of it (a
+        // four in a fever only inhales).
+        this.hushDepth = 1 - 0.82 * clamp01(this.heat.level);
         // The overdrive starts when the elder blooms, not while the grotto holds its breath.
-        this.pendingSurge = { time: birth, amount: perfect ? 1.3 : 1 };
+        this.swells.overdrive.hit(1, birth);
         this.bloomAt = birth;
-        uniforms.shock.value.set(birth, this.reducedMotion ? 0.5 : 1);
+        this.shockRing(birth, this.reducedMotion ? 0.5 : 1);
         this.mushrooms.fire(0, [STARSPORE[0] * 1.3, STARSPORE[1] * 1.3, STARSPORE[2] * 1.3], birth, 1);
         this.jellies?.flash(birth, 1.6);
         this.crystals?.chime?.(birth, 1.2);
@@ -839,13 +1021,97 @@ export class BioluminescenceWorld {
         this.counts.blooms += 1;
     }
 
+    /**
+     * A back-to-back: the elder rings again. Its own ring crosses the pool (after the bloom's for
+     * a four, so a back-to-back four is two rings, one after the other), it flares in the accent's
+     * colour and burns on a moment, and the crystals and the jellies answer.
+     */
+    echo(at, great) {
+        const p = this._palette;
+        const ap = Math.max(p.accent[0], p.accent[1], p.accent[2], 1e-4);
+        this.shockRing(at, (this.reducedMotion ? 0.5 : 1) * (great ? 0.8 : 0.65));
+        const flare = [(p.accent[0] / ap) * 1.1, (p.accent[1] / ap) * 1.1, (p.accent[2] / ap) * 1.1];
+        this.mushrooms.fire(0, flare, at, great ? 0.7 : 1);
+        this.swells.overdrive.hit(great ? 0.2 : 0.3, at);
+        this.swells.kick.hit(0.22, at);
+        this.crystals?.chime?.(at + 0.05, 0.6);
+        this.jellies?.flash(at + 0.1, 0.6);
+    }
+
+    /**
+     * The crown of a perfect clear at `at`, on whatever bloom is still playing: every cap in the
+     * grotto blooms in its own family's colour, from the elder outward over the pool, and keeps
+     * it; the elder flares again and burns hotter; every jelly and every fairy ring rises for a
+     * few seconds; the crystals ring twice. Nothing holds its breath and nothing restarts.
+     */
+    crown(at) {
+        const { mushrooms } = this;
+        this.crownAt = at;
+        this.swells.overdrive.hit(0.3, at);
+        this.jellies?.flash(at + 0.12, 1.1);
+        this.crystals?.chime?.(at + 0.15, 0.9);
+        this.crystals?.chime?.(at + 0.8, 0.7);
+        mushrooms.fire(0, [STARSPORE[0] * 1.2, STARSPORE[1] * 1.2, STARSPORE[2] * 1.2], at + 0.1, 0.9);
+        // Every colour the grotto has: the caps take their families' colours from all round the
+        // wheel of palettes, one turn apart from their neighbours.
+        const phase = this.paletteStep + paletteDrift(this.time);
+        const wheel = BIOLUM_PALETTES.map((_, k) => paletteAt(phase + k));
+        const { list } = mushrooms;
+        for (let i = 1; i < list.length; i++) {
+            const m = list[i];
+            const family = familyColor(wheel[i % wheel.length], m.family ?? 0);
+            const fp = Math.max(family[0], family[1], family[2], 1e-4);
+            const rgb = [(family[0] / fp) * 0.9 + 0.1, (family[1] / fp) * 0.9 + 0.1, (family[2] / fp) * 0.9 + 0.1];
+            const d = Math.hypot(this.drawnX(m) - ELDER.x, m.z - ELDER.z);
+            mushrooms.strike(i, rgb, at + 0.15 + d / CROWN_SPEED, m.kind === 'hero' ? 1.2 : 0.9, this.time);
+        }
+        this.counts.crowns += 1;
+    }
+
+    /**
+     * A perfect clear settled after its clear's last wave (physics sends it on a frame of its
+     * own, ~360 ms later): the crown, layered on the bloom still playing — never a second clear.
+     */
+    onCrown() {
+        if (!this.u || !this.mushrooms) return;
+        this.crown(this.time);
+        this.swells.kick.hit(0.2, this.time);
+        this.swells.flash.hit(0.08, this.time);
+        this.play.crown(this.time);
+    }
+
+    /** A T-spin that cleared nothing: the air turns a little and the crystals answer softly. */
+    onSpin() {
+        if (!this.u) return;
+        this.swirl = Math.max(this.swirl, 0.55);
+        this.swells.storm.hit(0.25, this.time);
+        this.crystals?.chime?.(this.time, 0.45);
+        this.play.spin(this.time);
+    }
+
+    /**
+     * How many jellies are up: as many as the chain raises, or a hot hand does, and all of them
+     * while a crown lasts.
+     */
+    jellyTarget() {
+        const count = this.jellies?.count ?? 0;
+        const byChain = jelliesForCombo(this.combo, count);
+        const byHeat = Math.round(3 + Math.max(0, count - 3) * smooth(0.35, 0.95, this.heat.level));
+        const age = this.time - this.crownAt;
+        const crowned = age >= 0 && age < CROWN_HOLD ? count : 0;
+        return Math.min(count, Math.max(byChain, byHeat, crowned));
+    }
+
     /** The true combo changed (0 = the chain broke). */
     onCombo(combo) {
         const n = Math.max(0, Math.round(Number(combo) || 0));
-        // The chain broke: the grotto lets its breath go.
-        if (n === 0 && this.combo >= 2) this.dip = Math.max(this.dip, 0.28);
+        // The chain broke: the grotto lets its breath go, slowly.
+        if (n === 0 && this.combo >= 2) this.dip = Math.max(this.dip, 0.14);
         this.combo = n;
-        this.jellies?.setTarget(jelliesForCombo(n, this.jellies.count), this.time);
+        if (this.jellies) {
+            this.jellyWant = this.jellyTarget();
+            this.jellies.setTarget(this.jellyWant, this.time);
+        }
     }
 
     /** A new level: the grotto turns one step on round its wheel of palettes. */
@@ -854,10 +1120,11 @@ export class BioluminescenceWorld {
         this.level = Number.isFinite(asked) ? Math.max(1, Math.round(asked)) : 1;
         if (silent) this.applyPalette(1);
         else {
-            this.storm = Math.max(this.storm, 0.75);
-            this.flash = Math.max(this.flash, 0.14);
+            this.swells.storm.hit(0.75, this.time);
+            this.swells.flash.hit(0.14, this.time);
             this.jellies?.flash(this.time, 1);
             this.crystals?.chime?.(this.time + 0.1, 0.8);
+            this.play.levelUp(this.time);
         }
     }
 
@@ -891,8 +1158,17 @@ export class BioluminescenceWorld {
         const p = this._palette;
         const rows = u.lampRows;
         const count = Math.min(EMITTER_MAX, plan.emitters.length);
-        const wake = 1 + this.power * 0.4;
-        const heat = clamp01(this.surge * 0.5);
+        const { heat: { fever }, surge } = this;
+        // Every lamp wakes with the grotto. (Not with the heat of play as such: a lamp lights the
+        // mist too, and a brighter mist is only a haze. The heat shows in what glows.)
+        const wake = 1 + this.awake * 0.4;
+        // The colours a hot chain lets the caps keep burn in the caps; the light they throw stays
+        // mostly the grotto's own (a pink light over teal rock and mist mixes to grey).
+        const tint = 1 - 0.75 * clamp01(u.keep.value);
+        // The elder burns in its own spores' colour while the Great Bloom lasts, and through a fever,
+        // its light throbbing with its heartbeat.
+        const heat = clamp01(surge * 0.5 + fever * 0.35);
+        const heartbeat = 1 + fever * 0.25 * Math.sin(this.pulse * Math.PI * 2);
         for (let k = 0; k < EMITTER_MAX; k++) {
             const pos = rows[k * 2];
             const col = rows[k * 2 + 1];
@@ -922,13 +1198,24 @@ export class BioluminescenceWorld {
                 const held = mushrooms.heldColor(e.source, t, this._rgb2);
                 const mag = Math.max(held[0], held[1], held[2]);
                 if (mag > 1e-3) {
-                    const k2 = Math.min(0.95, mag * 2.2);
+                    const k2 = Math.min(0.95, mag * 2.2) * tint;
                     for (let c = 0; c < 3; c++) rgb[c] += (held[c] / mag - rgb[c]) * k2;
                 }
                 extra = mushrooms.flashAt(e.source, t, this._rgb2);
+                // A bloom flares the lamp; past one bloom's worth (a cap fed on every lock of a
+                // chain) ever more gently, or the mist round it whitens.
+                const most = Math.max(extra[0], extra[1], extra[2]);
+                if (most > 1) {
+                    const soft = (1 + (most - 1) * 0.3) / most;
+                    extra[0] *= soft;
+                    extra[1] *= soft;
+                    extra[2] *= soft;
+                }
             }
-            // The elder burns in its own spores' colour while the Great Bloom lasts.
-            if (k === 0) for (let c = 0; c < 3; c++) rgb[c] += (STARSPORE[c] - rgb[c]) * heat;
+            if (k === 0) {
+                for (let c = 0; c < 3; c++) rgb[c] += (STARSPORE[c] - rgb[c]) * heat;
+                gain *= heartbeat;
+            }
             const flare = extra ? e.gain * LAMP_GAIN * 0.32 * this.breath : 0;
             col.set(
                 rgb[0] * gain + (extra ? extra[0] * flare : 0),
@@ -949,56 +1236,81 @@ export class BioluminescenceWorld {
         const t = this.time;
         const motion = this.reducedMotion ? 0.3 : 1;
 
+        // ── How hot play runs: the shared surge, on the world clock ──
+        for (let i = 0; i < this._swellList.length; i++) this._swellList[i].advance(t);
+        Object.assign(this.heat, this.play.sample(t));
+        const {
+            heat: { level, fever }, surge, storm,
+        } = this;
+
         // ── How awake the grotto is ──
         const target = powerForCombo(this.combo);
         this.power += (target - this.power) * approach(target > this.power ? 2.4 : 0.8, dt);
-        this.surge *= Math.exp(-dt / SURGE_COOL);
-        this.storm *= Math.exp(-dt / 1.7);
-        this.flash *= Math.exp(-dt / 0.25);
-        this.kick *= Math.exp(-dt / 0.16);
-        this.dip *= Math.exp(-dt / 0.35);
+        // A quick hand wakes it too, chain or no chain.
+        this.awake = Math.max(this.power, level * 0.7 + fever * 0.3);
+        this.dip *= Math.exp(-dt / 0.9);
         this.swirl *= Math.exp(-dt / 0.9);
-        if (t >= this.pendingSurge.time) {
-            this.surge = Math.max(this.surge, this.pendingSurge.amount);
-            this.pendingSurge.time = Infinity;
-        }
-        if (t >= this.pendingKick.time) {
-            this.kick = Math.max(this.kick, this.pendingKick.amount);
-            this.flash = Math.max(this.flash, this.pendingKick.amount * 0.5);
-            this.pendingKick.time = Infinity;
-        }
-        const hush = t < this.hushUntil ? 1 : 0;
-        const breathTarget = hush ? 0.12 : 1 - this.dip;
-        this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 14, dt);
+        const hush = t < this.hushUntil ? this.hushDepth : 0;
+        const breathTarget = hush > 0 ? 1 - 0.88 * hush : 1 - this.dip;
+        // It sinks fast into a hush and comes back briskly; a broken chain's breath goes out slowly.
+        let breathRate = 14;
+        if (hush > 0) breathRate = 40;
+        else if (breathTarget < this.breath) breathRate = 3;
+        this.breath += (breathTarget - this.breath) * approach(breathRate, dt);
         if (dt === 0) this.breath = breathTarget;
 
-        // Fairy rings rise with a chain (from its second step) and retreat when it breaks.
-        const sproutTarget = clamp01((this.combo - 1) / 7);
+        // Fairy rings rise with a chain (from its second step) and with a hot hand, and all of them
+        // for a crown; they retreat when it is over.
+        const crowned = t >= this.crownAt && t - this.crownAt < CROWN_HOLD;
+        const sproutTarget = Math.max(
+            clamp01((this.combo - 1) / 7),
+            smooth(0.45, 0.95, level) * 0.7 + fever * 0.3,
+            crowned ? 1 : 0,
+        );
         const rate = sproutTarget > this.sprout ? SPROUT_RISE : SPROUT_FALL;
         this.sprout += Math.sign(sproutTarget - this.sprout) * Math.min(Math.abs(sproutTarget - this.sprout), rate * dt);
         if (dt === 0) this.sprout = sproutTarget;
-        const wakeTarget = Math.min(1, 0.35 + this.power * 0.55 + this.surge * 0.4 + this.storm * 0.15);
+        const wakeTarget = Math.min(
+            1,
+            0.35 + this.awake * 0.55 + surge * 0.4 + storm * 0.15 + level * 0.12 + fever * 0.2,
+        );
         this.wake += (wakeTarget - this.wake) * approach(wakeTarget > this.wake ? 2.5 : 0.6, dt);
+        // The jellies follow the chain, a hot hand and a crown.
+        if (this.jellies) {
+            const want = this.jellyTarget();
+            if (want !== this.jellyWant) {
+                this.jellyWant = want;
+                this.jellies.setTarget(want, t);
+            }
+        }
         this.applyPalette(approach(0.8, dt));
 
-        // ── The slow clocks ──
-        this.pulse += dt * motion * (0.16 + this.power * 0.5 + this.surge * 0.5);
-        this.moteLift += dt * motion * (1 + this.power * 3.5 + this.surge * 5 + this.storm * 2);
+        // ── The slow clocks: the elder's heartbeat quickens with the chain, the bloom and the heat ──
+        this.pulse += dt * motion * (0.16 + this.awake * 0.5 + surge * 0.5 + level * 0.15 + fever * 0.45);
+        this.moteLift += dt * motion * (1 + this.awake * 3.5 + surge * 5 + storm * 2 + fever * 2.5);
 
         // ── Uniforms ──
         let ringsLive = 0;
         for (let i = 0; i < LOCK_SLOTS; i++) {
             if (t - u.lockA[i].value.z < RING_LIVE) ringsLive = 1;
         }
-        let clearLive = 0;
+        // The pool remembers: what waves that have rolled on left on it, the heat of play and, in a
+        // fever, the elder's heartbeat rolling across it.
+        const floor = this.swells.afterglow.valueAt(t) + level * 0.08 + fever * 0.12;
+        const beat = fever * 0.45;
+        let clearLive = floor + beat > 0.004 ? 1 : 0;
         for (let i = 0; i < CLEAR_SLOTS; i++) {
             if (t - u.clearA[i].value.x < CLEAR_LIVE) clearLive = 1;
         }
         u.ringsLive.value = ringsLive;
         u.clearLive.value = clearLive;
+        u.glowFloor.value = floor;
+        u.beatGlow.value = beat;
+        // A hot chain lets the caps keep the colours played when a wave takes them.
+        u.keep.value = smooth(0.3, 0.85, level) * 0.55 + fever * 0.25;
         u.time.value = t;
-        u.power.value = this.power;
-        u.surge.value = this.surge;
+        u.power.value = this.awake;
+        u.surge.value = surge;
         u.breath.value = this.breath;
         u.pulse.value = this.pulse;
         u.moteLift.value = this.moteLift;
@@ -1009,19 +1321,29 @@ export class BioluminescenceWorld {
         PALETTE_KEYS.forEach((key) => {
             u[key].value.set(p[key][0], p[key][1], p[key][2]);
         });
+        this.mushrooms?.update(t);
         this.updateLamps(t);
         this.jellies?.update(t);
+        this.crystals?.update?.(t);
 
         // ── Post ──
-        const sinceClear = t - this.lastClear.time;
-        const swell = sinceClear >= 0 ? Math.exp(-sinceClear / 0.7) * (0.3 + 0.12 * this.lastClear.lines) : 0;
+        const swell = this.swells.swell.valueAt(t);
         const post = this._post;
         post.flash = this.flash;
-        post.kick = this.kick;
-        post.shafts = hush ? 0.03 : 0.1 + this.power * 0.1 + this.surge * 0.75 + swell * 0.12;
-        post.bloomBoost = this.surge * 0.06 + swell * 0.05;
-        // The iris closes as the grotto flares, so its colours survive the surge.
-        post.exposure = 1 / (1 + this.surge * 0.5 + swell * 0.3 + this.power * 0.22 + this.storm * 0.1);
+        // The jolt rides on a floor that rapid play keeps up.
+        post.kick = Math.min(0.9, this.kick + this.heat.punch * 0.15);
+        // The elder's light streams down the cave: with the bloom, the chain and, most, a fever.
+        const shafts = 0.1 + this.awake * 0.1 + surge * 0.75 + swell * 0.12 + level * 0.03 + fever * 0.1;
+        post.shafts = hush > 0 ? shafts + (0.03 - shafts) * hush : shafts;
+        post.bloomBoost = surge * 0.06 + swell * 0.05 + fever * 0.04;
+        // The iris closes a little as the grotto flares, so its colours survive the surge — never
+        // so much that waking it reads darker: the lights themselves get brighter with play.
+        const iris = surge * 0.45 + swell * 0.2 + storm * 0.05 + this.awake * 0.12 + level * 0.12 + fever * 0.12;
+        post.exposure = 1 / (1 + iris);
+        // And the colours deepen the hotter it runs.
+        post.saturation = level * 0.16 + fever * 0.14;
+        // And the shadows sink as the lights rise: the grotto glows brighter, its dark stays dark.
+        post.deepen = level * 0.25 + fever * 0.15;
     }
 
     /** What the post stack reads each frame (a reused object). */
@@ -1044,6 +1366,7 @@ export class BioluminescenceWorld {
             palette: paletteNames(this.palettePhase()).name,
             paletteTurn: { phase: this.paletteStep + paletteDrift(this.time), ...paletteNames(this.paletteStep + paletteDrift(this.time)) },
             counts: { ...this.counts },
+            heat: { level: this.heat.level, fever: this.heat.fever, stage: this.heat.stage },
             held: this.mushrooms ? this.mushrooms.totalHeld(this.time) : 0,
             mushrooms: this.mushrooms ? this.mushrooms.count : 0,
             targets: { left: this.targets.left.length, right: this.targets.right.length },
