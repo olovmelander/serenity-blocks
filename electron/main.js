@@ -593,7 +593,9 @@ function createWindow() {
         return { action: 'deny' };
     });
 
-    const blockUnexpectedNavigation = (event, url) => {
+    // The url argument is deprecated in Electron 44; the event carries it.
+    const blockUnexpectedNavigation = (event, legacyUrl) => {
+        const url = event?.url ?? legacyUrl;
         if (isAllowedAppNavigation(url)) {
             return;
         }

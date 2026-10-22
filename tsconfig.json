@@ -1,5 +1,5 @@
 {
-  "//": "Incremental type-checking harness (remediation Phase 3). No emit — esbuild/Vite still transpiles, so this is type-checking only. Adoption is OPT-IN: checkJs is false, so only files with a `// @ts-check` pragma (plus the shared *.d.ts contracts) are checked. This keeps `npm run typecheck` green from day one; ratchet coverage by adding `// @ts-check` to a module once it is clean, then eventually flip checkJs to true. Start with the pure simulation core + network protocol + event buses, where the snapshot/event shape-drift risk is highest.",
+  "//": "Incremental type-checking harness (remediation Phase 3). No emit — esbuild/Vite still transpiles, so this is type-checking only. Adoption is OPT-IN: checkJs is false, so only files with a `// @ts-check` pragma (plus the shared *.d.ts contracts) are checked. This keeps `npm run typecheck` green from day one; ratchet coverage by adding `// @ts-check` to a module once it is clean, then eventually flip checkJs to true. Start with the pure simulation core + network protocol + event buses, where the snapshot/event shape-drift risk is highest. The program spans all of src/**/*.js (2026-10-22): a `// @ts-check` file outside core/ and events/ was locked by ts-ratchet.json but never checked.",
   "compilerOptions": {
     "target": "es2020",
     "module": "esnext",
@@ -17,8 +17,7 @@
   },
   "include": [
     "src/core/types.d.ts",
-    "src/core/**/*.js",
-    "src/events/**/*.js",
+    "src/**/*.js",
     "src/themes/tornado/**/*.ts"
   ],
   "exclude": [

@@ -5,8 +5,9 @@
  *
  *   node generate-songs.js
  *
- * Each theme has one independent recording. Unassigned legacy MP3s remain on disk
- * for compatibility, but do not become free music or extra collectible tracks.
+ * Each theme has one song: its own recording, or Blood Moon's file under a URL of its own.
+ * Unassigned legacy MP3s remain on disk for compatibility, but do not become free music
+ * or extra collectible tracks.
  * Canonical identity is enforced; other curated metadata survives regeneration.
  */
 
@@ -27,11 +28,15 @@ export function buildSongsManifest(files, existing = []) {
     if (missing.length) {
         throw new Error(`Missing theme recordings: ${missing.map((song) => song.file).join(', ')}`);
     }
-    const existingByFile = new Map(
-        (Array.isArray(existing) ? existing : []).filter((song) => song?.file).map((song) => [song.file, song]),
-    );
+    // Curated metadata follows a song by its URL, or by its file where one song owns that file
+    // (placeholders share Blood Moon's, so a file alone could hand its metadata to all of them).
+    const owners = new Map();
+    THEME_MUSIC_CATALOG.forEach((song) => owners.set(song.file, (owners.get(song.file) || 0) + 1));
+    const entries = (Array.isArray(existing) ? existing : []).filter((song) => song && typeof song === 'object');
+    const byPath = new Map(entries.filter((song) => song.path).map((song) => [song.path, song]));
+    const byFile = new Map(entries.filter((song) => owners.get(song.file) === 1).map((song) => [song.file, song]));
     return THEME_MUSIC_CATALOG.map((song) => ({
-        ...(existingByFile.get(song.file) || {}),
+        ...(byPath.get(song.path) || (owners.get(song.file) === 1 && byFile.get(song.file)) || {}),
         ...song,
     })).sort((a, b) => a.name.localeCompare(b.name, 'en'));
 }

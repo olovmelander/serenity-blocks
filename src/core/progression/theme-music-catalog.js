@@ -39,19 +39,26 @@ const AUTHORED_SONGS = Object.freeze({
     parhelion: ['Ethereal Echoes', 'ethereal-echoes.mp3'],
 });
 
-/** One independent file and one stable selection key for each collectible theme. */
+/** What a theme without a recording of its own plays. */
+const PLACEHOLDER_SOURCE = 'blood-moon.mp3';
+
+/** One stable selection key and one URL for each collectible theme. */
 export const THEME_MUSIC_CATALOG = Object.freeze(THEME_REGISTRY.map((theme) => {
     const authored = AUTHORED_SONGS[theme.id];
     const name = authored?.[0] || theme.displayName;
-    const file = authored?.[1] || `${theme.id}-placeholder-song.mp3`;
+    const file = authored?.[1] || PLACEHOLDER_SOURCE;
     return Object.freeze({
         themeId: theme.id,
         trackKey: theme.id === 'forest' ? DEFAULT_MUSIC_TRACK : name.replace(/\s+/g, ''),
         name,
         file,
-        path: `./assets/music/${file}`,
+        // A placeholder plays the one Blood Moon file under a URL of its own: the player tells
+        // tracks apart by URL (SoundManager.resolveTrackKeyFromUrl), and the query is ignored by
+        // file://, app.asar and static servers. Thirty-two byte-identical 8 MB copies of it
+        // shipped before (2026-10-22). A theme's own recording goes in AUTHORED_SONGS.
+        path: authored ? `./assets/music/${file}` : `./assets/music/${file}?song=${theme.id}`,
         placeholder: !authored,
-        ...(!authored ? { placeholderSource: 'blood-moon.mp3' } : {}),
+        ...(!authored ? { placeholderSource: PLACEHOLDER_SOURCE } : {}),
         ...(theme.id === 'murmuration' ? {
             bpm: 96,
             phraseBeats: 16,
