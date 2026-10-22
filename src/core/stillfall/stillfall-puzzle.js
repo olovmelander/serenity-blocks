@@ -28,7 +28,8 @@ export const STILLFALL_BOARD_HEIGHT = ROWS + HIDDEN_ROWS;
 /** The tallest structure that still leaves the spawn area and room to steer. */
 export const MAX_STRUCTURE_ROWS = ROWS - 6;
 
-export const MAX_SUPPLY = 4;
+/** Five is the most the certifier can prove exhaustively on every CI run (seconds a puzzle). */
+export const MAX_SUPPLY = 5;
 
 /**
  * - waves: one lock sets off a cascade of at least `atLeast` waves
