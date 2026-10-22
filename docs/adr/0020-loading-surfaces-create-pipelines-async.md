@@ -105,7 +105,11 @@ breath guide ("Breathe in / Breathe out") and a progress line driven by the star
 transform/opacity (`.sb-lit--static` shows a still "Preparing your space" instead of the guide).
 The warp's overlay (`boot-aurora-scene.js`) is a soft glow bridging the two halos; the world's
 own opening plays underneath from the handoff. The CSS fallback now plays the same connected
-wordmark arrival as the warp.
+wordmark arrival as the warp. Two conditions keep it connected on a phone without WebGPU (the
+fallback, always the static hold; 2026-10-22): the static/paused gates never hold the exit
+(`.is-warp-out`), whose motion is the handoff itself, and the fallback waits (bounded) for the
+intro's title to exist (`IntroAnimation.titleReady`) before the wordmark leaves; with no title to
+land on, the cover fades out whole instead of leaving its wordmark beside the arriving title.
 
 **2026-10-16 one loading language:** every mode's cover (`cinematic-loading-overlay.js`: Single
 Player, Infinity, Serenity, Online and Local Versus, Odyssey) now speaks the boot loading screen's

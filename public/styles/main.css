@@ -334,8 +334,11 @@ body {
     background: #13284acc;
     outline: none;
 }
-/* A synchronous compile would freeze moving loops mid-frame (startup-ident-hold.js): hold still. */
-.startup-shell:is(.sb-lit--static, .sb-lit--paused) :is(
+/* A synchronous compile would freeze moving loops mid-frame (startup-ident-hold.js): hold still.
+   Never through the exit: that motion is the handoff itself (the wordmark travelling into the
+   title, the cover dissolving). Held there, a phone without WebGPU (always the static hold) kept
+   its wordmark in place beside the arriving title until the cover was removed. */
+.startup-shell:is(.sb-lit--static, .sb-lit--paused):not(.is-warp-out) :is(
     .startup-shell__haze, .startup-shell__motes i, .startup-shell__stars,
     .startup-logo__glow, .startup-logo__name-text, .startup-logo__tile,
     .startup-breath__word, .startup-progress::after

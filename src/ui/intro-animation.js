@@ -166,6 +166,11 @@ export class IntroAnimation {
         // null → the warp makes a 3rd context → blank on heavy themes.
         this._rendererReadyResolve = null;
         this.rendererReady = new Promise((resolve) => { this._rendererReadyResolve = resolve; });
+        // Resolves once the title is in the document: the loading wordmark can only travel into
+        // a title that exists. The renderer settles first and the title is built after it, so on
+        // a phone (no warp; a cold renderer fetch + init) the CSS fallback waits on this one.
+        this._titleReadyResolve = null;
+        this.titleReady = new Promise((resolve) => { this._titleReadyResolve = resolve; });
         // Safety net: never let a deferred title stay hidden if the external reveal trigger
         // is somehow missed (warp error, etc.). Armed HERE, in show()'s synchronous prefix,
         // NOT after createIntroHTML — the boot flow calls postponeTitleSafety() while
@@ -209,11 +214,14 @@ export class IntroAnimation {
      * from any handoff branch (and a safety timer). The WebGPU path calls this once its
      * background is ready, connecting the ident's wordmark to the live title.
      * Interaction can stay locked until the opening animation has cleared.
+     * @returns {boolean} true when the loading wordmark is now travelling into the title; false
+     *   when it cannot (no title yet, no ident, already revealed), and the cover must not run the
+     *   connected exit, or its wordmark would stay where it is beside the title.
      */
     revealTitle(source = 'manual', { deferInteraction = false, connectDurationMs = 0 } = {}) {
         if (this.titleRevealed) {
             if (!deferInteraction && this.isActive) this.enableInteraction();
-            return;
+            return false;
         }
         this.titleRevealed = true;
         this.clearTitleRevealSafety();
@@ -222,10 +230,12 @@ export class IntroAnimation {
         // light leaving the loading logo.
         this.beginWorldOpening(connectDurationMs > 0 ? connectDurationMs : 1280);
         const titleContainer = this.container?.querySelector('.intro-title-container');
+        let connected = false;
         if (titleContainer) {
             if (connectDurationMs > 0) {
                 this.stopWordmarkHandoff?.();
                 this.stopWordmarkHandoff = connectStartupWordmark(titleContainer, connectDurationMs);
+                connected = titleContainer.classList.contains('intro-title-connected');
                 // Begin-input waits until the travelling wordmark has landed as the title.
                 this.interactionLockedUntil = performance.now() + connectDurationMs * 0.86;
             }
@@ -235,6 +245,7 @@ export class IntroAnimation {
         }
 
         if (!deferInteraction) this.enableInteraction();
+        return connected;
     }
 
     /**
@@ -1046,6 +1057,8 @@ export class IntroAnimation {
 
         // Add to body
         document.body.appendChild(this.container);
+        this._titleReadyResolve?.();
+        this._titleReadyResolve = null;
         this.setupMenuLogoLayoutTracking();
         this.syncTitleBounds(performance.now());
         this.installTetrominoPointerListener();
