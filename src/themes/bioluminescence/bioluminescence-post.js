@@ -144,6 +144,10 @@ export class BioluminescencePost {
         this.uKick = uniform(0); // impact, 0..1: widens the fringe
         this.uShafts = uniform(0.2); // spore shafts, 0..1.5
         this.uBloomBoost = uniform(0);
+        /** How much deeper the colours run than the grade's own (the heat of play), 0..~0.3. */
+        this.uSaturation = uniform(0);
+        /** How much the shadows sink as play heats (0..~0.4): the glow grows, the dark stays dark. */
+        this.uDeepen = uniform(0);
 
         this.calmRects = Array.from({ length: CALM_RECTS_MAX }, () => new THREE.Vector4(0, 0, 0, 0));
         this.uCalm = this.calmRects.map((v) => uniform(v));
@@ -305,7 +309,8 @@ export class BioluminescencePost {
             // Deep teal, slightly lifted shadows (damp air in the lens); the lights keep their hues.
             const lo = float(1.0).sub(smoothstep(0.0, 0.3, L));
             T.assign(mix(T, T.mul(vec3(0.84, 1.0, 1.08)).add(vec3(0.0002, 0.0011, 0.0015)), lo.mul(0.6)));
-            T.assign(mix(vec3(blLuma(T)), T, 1.12));
+            T.mulAssign(float(1.0).sub(this.uDeepen.mul(lo)));
+            T.assign(mix(vec3(blLuma(T)), T, this.uSaturation.add(1.12)));
             // Vignette, measured from the frame, a touch heavier in the corners.
             const cv = fromCentre.mul(vec2(this.uAspect.div(1.778), 1.0));
             const vig = smoothstep(0.45, 1.08, length(cv.mul(1.5)));
@@ -344,7 +349,7 @@ export class BioluminescencePost {
 
     /** Per-frame values (all optional). */
     update({
-        heart, flash, kick, bloomBoost, exposure, shafts, time, lamps,
+        heart, flash, kick, bloomBoost, exposure, shafts, time, lamps, saturation, deepen,
     } = {}) {
         if (heart) this.uHeart.value.set(heart.x, heart.y);
         if (lamps) {
@@ -357,6 +362,8 @@ export class BioluminescencePost {
         if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
         if (exposure !== undefined) this.uExposure.value = exposure;
         if (shafts !== undefined) this.uShafts.value = shafts;
+        if (saturation !== undefined) this.uSaturation.value = saturation;
+        if (deepen !== undefined) this.uDeepen.value = deepen;
         if (time !== undefined) this.uTime.value = time;
     }
 
