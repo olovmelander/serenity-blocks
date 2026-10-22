@@ -19,9 +19,15 @@ import { fxaa } from 'three/addons/tsl/display/FXAANode.js';
 import { godrays } from 'three/addons/tsl/display/GodraysNode.js';
 import { bilateralBlur } from 'three/addons/tsl/display/BilateralBlurNode.js';
 import { disposeBloomNodeDeep } from '../shared/bloom-dispose.js';
+import { flashScale } from '../../utils/photosensitivity.js';
+import { FOREST_MOON_FEVER, FOREST_MOON_HOT } from './forest-light.js';
 import { forestTier } from './forest-quality.js';
 
 const BLOOM_STRENGTH = 0.3;
+/** The iris closes from this level of play, by so much per unit of level and of fever. */
+const IRIS = Object.freeze({ from: 0.2, level: 0.1, fever: 0.05 });
+/** The rays' contrast is never pushed past this (beyond it a blocked line of sight goes black). */
+const RAYS_MAX = 1.8;
 const LUMA = vec3(0.2126, 0.7152, 0.0722);
 
 /**
@@ -189,13 +195,26 @@ export class ForestPost {
         }
     }
 
+    /**
+     * One frame of the lens. The event envelopes lift the exposure, the bloom and the beams for a
+     * moment: frame-wide brightenings, so each goes through flashScale() (ADR-0021), and lift less
+     * the hotter play runs (as the moon does, FOREST_MOON_HOT). How hot play runs (`frame.surge`:
+     * level, fever) cuts the moonbeams into sharper rays and closes the iris a little, so the
+     * forest keeps its darks while the fireflies pour light.
+     */
     update(frame = {}) {
-        const moon = Number.isFinite(frame.moon) ? THREE.MathUtils.clamp(frame.moon, 0, 1) : 0;
-        const shafts = Number.isFinite(frame.shafts) ? THREE.MathUtils.clamp(frame.shafts, 0, 1) : 0;
-        this.uExposure.value = this.exposure + moon * 0.06;
-        this.uShafts.value = (1.5 + shafts * 0.9) * this.shaftGain;
-        this.uRays.value = (1 + shafts * 0.8) * this.raysGain;
-        if (this.bloomNode) this.bloomNode.strength.value = (BLOOM_STRENGTH + moon * 0.08) * this.bloomGain;
+        const unit = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
+        const moon = unit(frame.moon);
+        const shafts = unit(frame.shafts);
+        const level = unit(frame.surge?.level);
+        const fever = unit(frame.surge?.fever);
+        const lift = flashScale() * (1 - FOREST_MOON_HOT * level);
+        this.uExposure.value = this.exposure + moon * 0.06 * lift - Math.max(0, level - IRIS.from) * IRIS.level
+            - fever * IRIS.fever;
+        // The moonbeams thin as the moon draws back in a fever (the rays stay cut sharp).
+        this.uShafts.value = (1.5 + shafts * 0.9 * lift) * (1 - FOREST_MOON_FEVER * fever) * this.shaftGain;
+        this.uRays.value = Math.min(RAYS_MAX, 1 + shafts * 0.8 * lift + fever * 0.4) * this.raysGain;
+        if (this.bloomNode) this.bloomNode.strength.value = (BLOOM_STRENGTH + moon * 0.08 * lift) * this.bloomGain;
         if (this.light && this.camera?.isCamera) {
             // Screen position of the moon (uv, y down) for the beam tint.
             const point = this.moonPoint.copy(this.camera.position)

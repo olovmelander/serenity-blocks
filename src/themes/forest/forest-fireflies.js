@@ -15,7 +15,7 @@ import {
     length, mix, normalize, positionGeometry, pow, saturate, sin, uniform, uv, varying, vec3,
 } from 'three/tsl';
 import {
-    FOREST_FIREFLY_DEW, FOREST_SYNC_PHASE_PER_METRE, ForestFireflySim,
+    FOREST_CHORUS, FOREST_FIREFLY_DEW, FOREST_SYNC_PHASE_PER_METRE, ForestFireflySim,
 } from './forest-firefly-sim.js';
 import { FOREST_FIREFLY_COLOUR, FOREST_FIREFLY_HOT } from './forest-light.js';
 
@@ -50,6 +50,11 @@ function wander(seed, t) {
     );
 }
 
+/** TSL twin of forestChorusSwell(). */
+function swell(phase) {
+    return pow(cos(phase.sub(0.2).mul(TAU)).mul(0.5).add(0.5), 6);
+}
+
 function signal(phase) {
     return exp(phase.sub(0.14).div(0.055).pow2().negate())
         .add(exp(phase.sub(0.33).div(0.09).pow2().negate()).mul(0.34));
@@ -72,6 +77,10 @@ export class ForestFireflies {
         this.uBeat = uniform(0);
         this.uBeatRate = uniform(0.3);
         this.uSync = uniform(0);
+        // How bright the chorus's shared flash burns (hot play raises it; the sim's twin).
+        this.uChorus = uniform(FOREST_CHORUS);
+        // How much of the chorus's broad swell rolls through the wood with it (a fever's heartbeat).
+        this.uPulse = uniform(0);
         // Seconds of flight an ambient firefly's trail holds; a waking forest draws longer ones.
         this.uTrail = uniform(1.5);
     }
@@ -83,7 +92,7 @@ export class ForestFireflies {
         const shared = fract(this.uBeat.sub(this.uBeatRate.mul(back)).sub(away.mul(FOREST_SYNC_PHASE_PER_METRE))
             .add(seed.mul(0.05)));
         const joined = saturate(this.uSync.sub(fract(seed.mul(5.3)).mul(0.8)).div(0.2));
-        return mix(signal(own), signal(shared).mul(1.25), joined);
+        return mix(signal(own), signal(shared).mul(this.uChorus).add(swell(shared).mul(this.uPulse)), joined);
     }
 
     build() {
@@ -250,8 +259,11 @@ export class ForestFireflies {
         this.uBeat.value = sim.beat;
         this.uBeatRate.value = Number.isFinite(env.beatRate) ? THREE.MathUtils.clamp(env.beatRate, 0, 3) : 0.3;
         this.uSync.value = sim.sync;
+        this.uChorus.value = sim.chorus;
+        this.uPulse.value = sim.pulse;
         const wake = Number.isFinite(env.sync) ? THREE.MathUtils.clamp(env.sync, 0, 1) : 0;
-        this.uTrail.value = 1.5 + wake * 1.9;
+        // A fever's brighter chorus draws longer trails still.
+        this.uTrail.value = 1.5 + wake * 1.9 + Math.max(0, sim.chorus - FOREST_CHORUS) * 1.2;
         sim.shed(this.light.field);
         this.markDirty();
     }
