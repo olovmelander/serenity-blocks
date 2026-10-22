@@ -67,7 +67,6 @@ import { setGlobalRenderScale, setGlobalAntialias } from './themes/base-theme.js
 import {
     ModalManager,
     setupModalUI,
-    showSettingsModal,
     showGameOverModal,
     showHighScoresModal,
     toggleFullScreen,
@@ -121,7 +120,6 @@ import {
 } from './ui/theme-collection-integration.js';
 
 // Utility imports
-import { initGridCache, clearThemeCaches } from './utils/cache.js';
 import { hexToRgb } from './utils/helpers.js';
 import { performanceMonitor } from './utils/performance-monitor.js';
 import {
