@@ -62,6 +62,8 @@ const {
 } = await import('../../src/core/demo/DemoRecorder.js');
 const {
     INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
+    projectInfinityPresentationCamera,
+    resolveInfinityFollowCameraRow,
 } = await import('../../src/core/infinity-spawn-policy.js');
 const { GameplayHybridEngine } = await import('../../src/core/odyssey/GameplayHybridEngine.js');
 const { OdysseyMode } = await import('../../src/core/game-modes/OdysseyMode.js');
@@ -477,8 +479,11 @@ describe('OdysseyMode fixed-tick loop adapter', () => {
         expect(gameState.playerInput.config).toMatchObject(inputHandling);
     });
 
-    it.each([0, 6, 16])(
-        'matches the legacy tall-board first spawn with %i authored starting rows',
+    // 2026-10-22: the window is the 20 rows shown, framed with the garbage's top at 20 %, and
+    // the first piece enters two rows above it. (The legacy window added the starting rows: with
+    // 16 of them the first piece spawned 16 rows above the view the well opened on.)
+    it.each([0, 6, 16, 30])(
+        'spawns the tall-board first piece just above its opening view with %i starting rows',
         (startingRows) => {
             window.location.search = '?fixedTick=1';
             const { mode } = createMode();
@@ -497,16 +502,16 @@ describe('OdysseyMode fixed-tick loop adapter', () => {
             fillBag(gameState.nextPieces, gameState.randomGenerator);
             spawnPiece(gameState, null, null);
 
-            const virtualVisibleRows = mode.visibleRows + startingRows;
-            const legacyCameraRow = Math.max(
-                0,
-                boardRows + 4 - startingRows - mode.visibleRows,
-            );
-            expect(gameState.infinityVisibleRows).toBe(virtualVisibleRows);
-            expect(gameState.cameraRow).toBe(legacyCameraRow);
-            expect(gameState.cameraCenterRow)
-                .toBe(legacyCameraRow + virtualVisibleRows / 2);
-            expect(gameState.currentPiece?.y).toBe(Math.max(0, legacyCameraRow - 2));
+            const floorView = boardRows + 4 - mode.visibleRows;
+            const garbageTop = boardRows + 4 - startingRows;
+            const view = startingRows
+                ? Math.max(0, Math.min(floorView, garbageTop - 4))
+                : floorView;
+            expect(gameState.infinityVisibleRows).toBe(mode.visibleRows);
+            expect(gameState.cameraRow).toBe(view);
+            expect(gameState.cameraCenterRow).toBe(view + mode.visibleRows / 2);
+            expect(resolveInfinityFollowCameraRow(gameState, mode.visibleRows, null)).toBe(view);
+            expect(gameState.currentPiece?.y).toBe(Math.max(0, view - 2));
         },
     );
 
@@ -553,28 +558,36 @@ describe('OdysseyMode fixed-tick loop adapter', () => {
         expect(session.gameState.simFrame).toBe(0);
     });
 
-    it('does not project a Phaser tall-board camera into fixed simulation state', () => {
+    it('follows a fixed-clock tall well without projecting the camera into the simulation', () => {
+        // The view follows on every clock (2026-10-22: the fixed clock's wells never followed);
+        // the board-anchor simulation owns cameraRow, so the follow moves the view, never it.
         const levelConfig = createLevelConfig({ baseMode: 'infinity', rows: 40 });
         const {
             boardScene, frameRateController, mode, session,
         } = createMode({ fixed: true, levelConfig, needsHybrid: true });
-        session.gameState.infinitySpawnPolicy = INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1;
-        session.gameState.infinityVisibleRows = 26;
-        session.gameState.cameraRow = 18;
-        session.gameState.cameraCenterRow = 31;
+        const { gameState } = session;
+        gameState.infinitySpawnPolicy = INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1;
+        gameState.infinityVisibleRows = 20;
+        gameState.cameraRow = 18;
+        gameState.cameraCenterRow = 31;
+        boardScene.cameraSettings.visibleRows = 20;
         boardScene.cameraSettings.currentTopRow = 33;
-        mode.isTallBoard = true;
-        mode._updateCameraPosition.mockImplementation(() => {
-            session.gameState.cameraRow = boardScene.cameraSettings.currentTopRow;
+        // The scene's own projection (base-board-scene.updateCameraPosition) tries to write it.
+        boardScene.updateCameraPosition = vi.fn((row) => {
+            boardScene.cameraSettings.currentTopRow = row;
+            projectInfinityPresentationCamera(gameState, row, row + 10);
         });
+        mode.boardScene = boardScene;
+        mode.gameState = gameState;
+        mode._updateCameraPosition = OdysseyMode.prototype._updateCameraPosition;
+        mode.isTallBoard = true;
 
         mode._startGameLoop(session);
         frameRateController.callbacks[0].render(100, 0.5);
 
-        expect(mode._updateCameraPosition).not.toHaveBeenCalled();
-        expect(session.gameState.cameraRow).toBe(18);
-        expect(session.gameState.cameraCenterRow).toBe(31);
-        expect(boardScene.cameraSettings.currentTopRow).toBe(33);
+        expect(boardScene.updateCameraPosition).toHaveBeenCalled();
+        expect(gameState.cameraRow).toBe(18);
+        expect(gameState.cameraCenterRow).toBe(31);
     });
 
     it('updates time, victory, and roof state only at a canonical stable boundary', () => {

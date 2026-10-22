@@ -31,12 +31,9 @@ export function startOdysseyGameplayLoop(mode, session, { renderStats = () => {}
         if (boardScene) {
             boardScene.syncFromGameState(gameState);
 
-            // Update camera position for tall boards
-            if (
-                !usesFixedLoop
-                && boardScene.cameraSettings
-                && !boardScene.cameraSettings.manualControl
-            ) {
+            // A tall well's camera follows on every clock: it is presentation only (the
+            // board-anchor spawn never reads it), so the fixed clock's wells follow too.
+            if (boardScene.cameraSettings && !boardScene.cameraSettings.manualControl) {
                 mode._updateCameraPosition();
             }
         }

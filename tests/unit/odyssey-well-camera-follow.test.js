@@ -9,61 +9,115 @@ vi.mock('../../src/rendering/phaser/board-juice.js', () => ({
 }));
 
 import { OdysseyMode } from '../../src/core/game-modes/OdysseyMode.js';
+import {
+    INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
+    projectInfinityPresentationCamera,
+    resolveInfinitySpawnRow,
+} from '../../src/core/infinity-spawn-policy.js';
 
 /**
- * Audit 2026-10-18: the tall-well follow stepped the camera lerp twice in a frame where both
- * the piece follow and the tower follow fired, and stopped a glide dead whenever its threshold
- * (re-checked against the moving camera) flipped. One target per frame, kept until reached.
+ * 2026-10-22: a tall well's camera is the spawn's camera. It used to follow on thresholds of its
+ * own (a piece past 60 % of the view to 30 %, the tower only into the top 40 %), so the view and
+ * the board-anchored spawn drifted apart — in orb 7 every piece spawned ten rows above the view.
+ * It now frames resolveInfinityFollowCameraRow every frame: the tower's top at 20 % of the view
+ * (the window the next piece is anchored to, two rows above it), lowered only while a falling
+ * piece's bottom would pass 80 %.
  */
 describe('Odyssey tall-well camera follow', () => {
-    const BLOCK = 30;
+    const ROWS_SHOWN = 20;
 
     function createMode({
-        rows = 60, highestRow = 60, piece = null, topRow = 0,
+        rows = 60, stackTop = rows, piece = null, topRow = rows - ROWS_SHOWN,
     } = {}) {
         const mode = Object.create(OdysseyMode.prototype);
-        const cameraSettings = {
-            visibleRows: 20, currentTopRow: topRow, targetTopRow: topRow,
+        const board = Array.from({ length: rows }, (_, row) => (
+            Array.from({ length: 10 }, (__, col) => (row >= stackTop && col === 4 ? 'I' : null))
+        ));
+        const gameState = {
+            board,
+            boardGrid: board,
+            currentPiece: piece,
+            isInfinityMode: true,
+            infinitySpawnPolicy: INFINITY_SPAWN_POLICY_BOARD_ANCHOR_V1,
+            infinityVisibleRows: ROWS_SHOWN,
+            cameraRow: 7,
+            cameraCenterRow: 17,
+            piecesPlaced: 3,
         };
+        const cameraSettings = {
+            visibleRows: ROWS_SHOWN, currentTopRow: topRow, targetTopRow: topRow, lerpSpeed: 0.08,
+        };
+        // The scene's own per-call lerp and projection (base-board-scene.updateCameraPosition).
         const scene = {
             cameraSettings,
-            boardConfig: { blockSize: BLOCK },
-            cameras: { main: { scrollY: topRow * BLOCK } },
-            // The scene's own per-call lerp (base-board-scene), at its default speed.
             updateCameraPosition: vi.fn((row) => {
                 cameraSettings.targetTopRow = row;
-                cameraSettings.currentTopRow += (row - cameraSettings.currentTopRow) * 0.08;
-                scene.cameras.main.scrollY = cameraSettings.currentTopRow * BLOCK;
+                cameraSettings.currentTopRow += (row - cameraSettings.currentTopRow) * cameraSettings.lerpSpeed;
+                projectInfinityPresentationCamera(gameState, cameraSettings.currentTopRow);
             }),
         };
         mode.boardScene = scene;
-        mode.visibleRows = 20;
-        mode.gameState = { board: new Array(rows).fill(null), currentPiece: piece };
-        mode._findHighestBlockRow = () => highestRow;
-        return { mode, scene, cameraSettings };
+        mode.visibleRows = ROWS_SHOWN;
+        mode.gameState = gameState;
+        return {
+            mode, scene, cameraSettings, gameState,
+        };
     }
 
-    it('steps the camera once per frame when the piece and the tower both ask', () => {
-        // A piece falls down a shaft beside a tower whose top is near the viewport's top.
-        const { mode, scene } = createMode({
-            topRow: 20, highestRow: 22, piece: { y: 34, shape: [[1], [1]] },
-        });
-        mode._updateCameraPosition();
-        expect(scene.updateCameraPosition).toHaveBeenCalledOnce();
-        // The falling piece wins, as in Infinity.
-        expect(scene.updateCameraPosition.mock.calls[0][0]).toBe(36 - 6);
+    const settle = (mode, frames = 300) => {
+        for (let i = 0; i < frames; i += 1) mode._updateCameraPosition();
+    };
+
+    it('frames the window the next piece spawns into: two rows above the view', () => {
+        const { mode, cameraSettings, gameState } = createMode({ stackTop: 30 });
+        settle(mode);
+        // The tower's top at 20 % of the view...
+        expect(cameraSettings.currentTopRow).toBeCloseTo(30 - 4, 3);
+        // ...and the next piece enters two rows above it, on screen at once.
+        expect(resolveInfinitySpawnRow(gameState)).toBe(Math.round(cameraSettings.currentTopRow) - 2);
     });
 
-    it('keeps gliding to its target after the threshold stops firing', () => {
-        const { mode, scene, cameraSettings } = createMode({ topRow: 0, piece: { y: 20, shape: [[1], [1]] } });
+    it('rests on the floor of an empty well', () => {
+        const { mode, scene } = createMode({ rows: 44 });
         mode._updateCameraPosition();
-        // The piece locks: no rule fires any more, but the glide must not stop mid-way.
-        mode.gameState.currentPiece = null;
-        for (let i = 0; i < 200; i += 1) mode._updateCameraPosition();
-        expect(cameraSettings.currentTopRow).toBeCloseTo(16, 1);
-        expect(mode._wellCameraTarget).toBeNull();
-        const calls = scene.updateCameraPosition.mock.calls.length;
+        expect(scene.updateCameraPosition).toHaveBeenLastCalledWith(24);
+    });
+
+    it('follows a falling piece down only past 80 % of the view, keeping its bottom there', () => {
+        // Above the line: the view stays on the tower.
+        const high = createMode({
+            rows: 80, stackTop: 50, topRow: 46, piece: { y: 52, shape: [[1], [1]] },
+        });
+        high.mode._updateCameraPosition();
+        expect(high.scene.updateCameraPosition).toHaveBeenLastCalledWith(46);
+        // Below it (a soft drop down a shaft): the view lowers so the bottom sits at 80 %.
+        const deep = createMode({ stackTop: 20, topRow: 16, piece: { y: 38, shape: [[1], [1]] } });
+        deep.mode._updateCameraPosition();
+        expect(deep.scene.updateCameraPosition).toHaveBeenLastCalledWith(40 - 16);
+    });
+
+    it('returns home quickly after a deep lock, and glides otherwise', () => {
+        const { mode, cameraSettings, gameState } = createMode({ stackTop: 20, topRow: 30 });
         mode._updateCameraPosition();
-        expect(scene.updateCameraPosition.mock.calls.length).toBe(calls);
+        expect(cameraSettings.lerpSpeed).toBe(0.25);
+        gameState.currentPiece = { y: 30, shape: [[1], [1]] };
+        cameraSettings.currentTopRow = 16;
+        mode._updateCameraPosition();
+        expect(cameraSettings.lerpSpeed).toBe(0.08);
+    });
+
+    it('never writes the simulation camera that the spawn reads', () => {
+        const { mode, cameraSettings, gameState } = createMode({ stackTop: 30, topRow: 40 });
+        settle(mode, 40);
+        expect(cameraSettings.currentTopRow).toBeLessThan(40);
+        expect(gameState.cameraRow).toBe(7);
+        expect(gameState.cameraCenterRow).toBe(17);
+    });
+
+    it('leaves the view to the tower look while it drives the camera', () => {
+        const { mode, scene, cameraSettings } = createMode({ stackTop: 30 });
+        cameraSettings.manualControl = true;
+        mode._updateCameraPosition();
+        expect(scene.updateCameraPosition).not.toHaveBeenCalled();
     });
 });
