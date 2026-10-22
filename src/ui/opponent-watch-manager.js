@@ -3,7 +3,7 @@ import { drawPieceSolid, drawPieceStyledUnified } from '../rendering/canvas/canv
 import { TetrominoStyleManager } from '../rendering/tetromino-style-manager.js';
 import { CanvasBoardEffects } from './effects/canvas-board-effects.js';
 import { eventBus, EVENTS } from '../events/event-bus.js';
-import { escapeAttribute } from '../utils/dom-safety.js';
+import { escapeAttribute, sanitizeCssColor } from '../utils/dom-safety.js';
 import {
     createOutCard, createStatusCard, showOutCard, showStatusCard,
 } from './keystone/out-card.js';
@@ -1025,7 +1025,7 @@ export class OpponentWatchManager {
             el.classList.toggle('spotlighted', on);
             if (on) {
                 // The selection highlight (outline + glow) uses the SELECTED player's colour.
-                const color = this._getPlayerById(id)?.color || '#5eead4';
+                const color = sanitizeCssColor(this._getPlayerById(id)?.color, '#5eead4');
                 el.style.setProperty('--spotlight-color', color);
             } else {
                 el.style.removeProperty('--spotlight-color');
@@ -1390,7 +1390,8 @@ export class OpponentWatchManager {
         div.className = `opponent-mini-board ${startDead ? 'dead' : ''} ${startWaiting ? 'waiting' : ''}`.trim();
         div.dataset.playerId = playerId;
 
-        if (player.color) div.style.setProperty('--player-primary', player.color);
+        // Colours come from peers; only a hex colour may reach CSS (peerColor).
+        if (player.color) div.style.setProperty('--player-primary', sanitizeCssColor(player.color));
         div.innerHTML = `
             <div class="opponent-plate">
                 <span class="opponent-name">${this._escapeHtml(player.name)}</span>
@@ -1422,7 +1423,7 @@ export class OpponentWatchManager {
         // Reflect current spotlight selection on freshly (re)built boards (in the player's colour).
         if (this.spotlightMode && this._spotlightShownId === playerId) {
             div.classList.add('spotlighted');
-            div.style.setProperty('--spotlight-color', player.color || '#5eead4');
+            div.style.setProperty('--spotlight-color', sanitizeCssColor(player.color, '#5eead4'));
         }
 
         return div;
@@ -1555,7 +1556,7 @@ export class OpponentWatchManager {
                 // edge and the next tile from it (keystone-online.css).
                 if (state.color && hud.color !== state.color) {
                     hud.color = state.color;
-                    board.element.style.setProperty('--player-primary', state.color);
+                    board.element.style.setProperty('--player-primary', sanitizeCssColor(state.color));
                 }
 
                 if (garbage) this._updateGarbageMeter(board, state);
@@ -1745,7 +1746,7 @@ export class OpponentWatchManager {
 
         const segments = [];
         lineEntries.forEach((entry) => {
-            const color = entry.color || '#808080';
+            const color = sanitizeCssColor(entry.color, '#808080');
             const last = segments[segments.length - 1];
             if (last && last.color === color) {
                 last.lines += 1;
@@ -2331,7 +2332,7 @@ export function wireSpectatorSpotlight(watchManager, { getPlayerColor } = {}) {
             // clean frame around the board (matching the host/peer board).
             // The watched player's colour: the stylesheet draws the plate's edge and the
             // well's walls from it (keystone-online.css), as on every other board.
-            const color = player?.color || (player?.id && getPlayerColor?.(player.id)) || '#5eead4';
+            const color = sanitizeCssColor(player?.color || (player?.id && getPlayerColor?.(player.id)), '#5eead4');
             playerCardEl?.style.setProperty('--player-primary', color);
             eyeEl?.closest('.spectator-spotlight')?.style.setProperty('--player-primary', color);
         },

@@ -42,7 +42,7 @@ describe('Odyssey shared board presentation', () => {
         expect(scene.setEffectQuality).toHaveBeenCalledWith('Low');
         expect(session.gameState.piecesPlaced).toBe(0);
         expect(session.gameState.currentPiece).toBeNull();
-        expect(session.gameState.settings).toEqual({ reducedMotion: false });
+        expect(session.gameState.settings).toEqual({ reducedMotion: false, reduceFlashing: false });
         owner.dispose();
     });
 

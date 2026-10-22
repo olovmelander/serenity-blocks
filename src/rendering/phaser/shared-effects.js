@@ -556,15 +556,21 @@ export class SharedEffects {
 
     /**
      * Whether to soften aggressive juice (shake/freeze/full-screen flashes) for
-     * accessibility. Honors an explicit game setting and the OS reduced-motion pref.
+     * accessibility: the board's own setting (Odyssey keeps one on its game state),
+     * Settings > Reduce motion, or the OS preference. Only Odyssey writes the game
+     * state's settings, so the live setting must be read too, or the toggle did nothing
+     * on every other board. (Read here, not through themes/shared: that would put the
+     * theme chunk, and three.js with it, on the boot path.)
      * @returns {boolean}
      */
     _reducedMotion() {
         try {
-            if (this.scene?.gameState?.settings?.reducedMotion) return true;
-            if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
-                return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-            }
+            if (this.scene?.gameState?.settings?.reducedMotion === true) return true;
+            if (typeof window === 'undefined') return false;
+            const live = window.settings ?? window.settingsManager?.get?.();
+            if (live?.reducedMotion === true) return true;
+            return typeof window.matchMedia === 'function'
+                && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         } catch (e) {
             // matchMedia unavailable / restricted - fall through to "not reduced"
         }
@@ -573,12 +579,13 @@ export class SharedEffects {
 
     /**
      * Settings > Reduce flashing effects (photosensitivity, ADR-0021): a screen flash becomes a
-     * slow, soft glow. Its own switch, apart from reduced motion.
+     * slow, soft glow. Its own switch, apart from reduced motion. Read live as well as from
+     * the board's own settings, which hold only reduced motion on an Odyssey board.
      * @returns {boolean}
      */
     _reducedFlashing() {
         try {
-            return prefersReducedFlashing(this.scene?.gameState?.settings ?? undefined);
+            return prefersReducedFlashing() || prefersReducedFlashing(this.scene?.gameState?.settings ?? null);
         } catch (e) {
             return false;
         }

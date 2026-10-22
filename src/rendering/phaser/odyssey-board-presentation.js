@@ -17,7 +17,10 @@ export function configureOdysseyBoardPresentation({
         const settings = settingsManager?.get?.() || {};
         const reducedMotion = Boolean(settings.reducedMotion
             || globalThis.window?.matchMedia?.('(prefers-reduced-motion: reduce)').matches);
-        session.gameState.settings = { reducedMotion };
+        // Merged, not replaced: the board's effects read Reduce flashing from here too.
+        session.gameState.settings = {
+            ...session.gameState.settings, reducedMotion, reduceFlashing: settings.reduceFlashing === true,
+        };
         scene.setEffectQuality?.(settings.effectQuality || 'High');
         const juice = getJuice?.();
         if (juice) {
