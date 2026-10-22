@@ -14,15 +14,18 @@
  *
  * The valley is an instrument and these are its strings. A lock sends a wisp into one spire: it
  * flashes from root to point in the piece's colour and KEEPS some of that light (it fades over
- * half a minute). A clear releases everything the valley holds: as the wave passes a spire, its
- * stored colour flares out and is gone. A four-line clear stands a pillar on every point.
+ * half a minute). A clear's wave makes every spire answer as it passes: its stored colour flares
+ * out, and what it keeps depends on how hot play runs — at rest it lets most of it go; in a chain
+ * it keeps it and takes some of the wave's light besides, so the shores fill as the chain builds;
+ * the chain's end and a perfect clear let it all go. A four-line clear stands a pillar on every
+ * point.
  *
  * Per-crystal state lives in four instanced attributes (one interleaved buffer) written only
- * when gameplay happens:
+ * when gameplay happens, at the moment it happens (see advance()):
  *   aStore  rgb = light held at time w            → rgb · e^(−(t − w)/STORE_HOLD), void after cut
- *   aPrev   rgb = what it held before that (also as of w): shown until the wisp arrives at w
+ *   aPrev   rgb = what it held before that (also as of w): shown until w (now always = aStore)
  *   aPulse  rgb = flash colour, w = when it fires → a front running root to point
- *   aAux    (cut time, pillar birth, pillar strength, glint seed)
+ *   aAux    (cut time (never cut now), pillar birth, pillar strength, glint seed)
  * The tip glints and the pillars are two more draws that share these buffers.
  */
 
@@ -78,7 +81,18 @@ import {
     luQuadGeometry,
     luSkyBase,
 } from './lunara-tsl.js';
+import { softCeiling } from '../shared/swell.js';
 
+/** Strikes on their way at once (a quick hand's wisps), and waves crossing the valley at once. */
+const STRIKE_QUEUE = 48;
+const WAVE_SLOTS = 6;
+/**
+ * A spire's flash rises linearly to PULSE_KNEE, then eases toward PULSE_MAX however many hits fold
+ * into it (a quick hand's strikes must not burn the stone white); a pillar stands at most this bright.
+ */
+const PULSE_KNEE = 1.0;
+const PULSE_MAX = 2.2;
+const PILLAR_MAX = 1.8;
 /** Height (0..1) of the shoulder under the point in the unit crystal. */
 const SHOULDER = 0.78;
 /** Corner radii of the unit crystal's six sides: a slightly irregular hexagon. */
@@ -441,73 +455,302 @@ export function createCrystals(u, plan, { count, dispersion = true, pillars = tr
     }
 
     // ── The CPU's twin of what the spires hold ──
-    const storeT0 = new Float32Array(n);
-    const cut = new Float32Array(n).fill(NEVER);
+    //
+    // Everything gameplay does to a spire is written at the moment it happens, in time order: a
+    // strike when its wisp ARRIVES, a wave's touch when its front PASSES. (A spire has one flash;
+    // writing a moment still to come into it would blank the flash still running until then, so a
+    // clear used to put out every spire a lock had just lit until its wave got there.) Strikes and
+    // passes wait in two small queues and advance(t) — once a frame — applies whatever has come
+    // due, folding each into what the spire already shows: its flash keeps what is left of the
+    // last, a pillar still standing stands brighter, and what it holds is only ever added to, let
+    // go of where a wave says so, never cut before the wave reaches it.
+    const storeT0 = new Float64Array(n);
+    let clock = -Infinity;
     const heldAt = (i, time) => {
-        if (time > cut[i]) return 0;
         const k = Math.exp(-(time - storeT0[i]) / STORE_HOLD);
-        // Until the wisp arrives the spire still holds only what it held before.
-        if (time < storeT0[i]) return Math.max(aPrev[i * 3], aPrev[i * 3 + 1], aPrev[i * 3 + 2]) * k;
         return Math.max(aStore[i * 4], aStore[i * 4 + 1], aStore[i * 4 + 2]) * k;
     };
 
-    /**
-     * Light arrives in crystal `i` at `time` (which may be a moment ahead): it flashes in `rgb`
-     * and keeps `amount` of it.
-     */
-    part.strike = (i, rgb, time, amount = 1) => {
-        if (!(i >= 0 && i < n)) return;
-        const o = i * 4;
-        const k = time > cut[i] ? 0 : Math.exp(-(time - storeT0[i]) / STORE_HOLD);
-        const before = [0, 1, 2].map((c) => aStore[o + c] * k);
-        const next = before.map((v, c) => v + rgb[c] * amount * 0.55);
-        const peak = Math.max(next[0], next[1], next[2], 1e-4);
+    /** Set what crystal `i` holds as of `time` (its hue kept under the fill). */
+    const holdInto = (i, r, g, b, time) => {
+        const peak = Math.max(r, g, b, 1e-4);
         const scale = Math.min(1, STORE_MAX / peak);
-        aPrev.set(before, i * 3);
-        aStore.set([next[0] * scale, next[1] * scale, next[2] * scale, time], o);
+        const o = i * 4;
+        aStore[o] = r * scale;
+        aStore[o + 1] = g * scale;
+        aStore[o + 2] = b * scale;
+        aStore[o + 3] = time;
+        aPrev[i * 3] = aStore[o];
+        aPrev[i * 3 + 1] = aStore[o + 1];
+        aPrev[i * 3 + 2] = aStore[o + 2];
         storeT0[i] = time;
-        cut[i] = NEVER;
-        aAux[o] = NEVER;
-        aPulse.set([rgb[0] * amount * 1.6, rgb[1] * amount * 1.6, rgb[2] * amount * 1.6, time], o);
-        touch();
+    };
+
+    /** Fold a flash firing at `time` into the one crystal `i` shows: what is left of it, plus this. */
+    const flashInto = (i, r, g, b, time) => {
+        const o = i * 4;
+        const age = time - aPulse[o + 3];
+        const left = age >= 0 ? Math.exp(-age / PULSE_FADE) : 1;
+        let pr = aPulse[o] * left + r;
+        let pg = aPulse[o + 1] * left + g;
+        let pb = aPulse[o + 2] * left + b;
+        const peak = Math.max(pr, pg, pb, 1e-4);
+        if (peak > PULSE_KNEE) {
+            const k = softCeiling(peak, PULSE_KNEE, PULSE_MAX) / peak;
+            pr *= k;
+            pg *= k;
+            pb *= k;
+        }
+        aPulse[o] = pr;
+        aPulse[o + 1] = pg;
+        aPulse[o + 2] = pb;
+        aPulse[o + 3] = time;
     };
 
     /**
-     * A clear: a wave leaves (hx, hz) at `time` and every crystal answers as it passes — in the
-     * wave's colour, and in whatever colour it was holding, which is then gone.
-     * @returns {{ released: number, passes: Float32Array }}  light let go, and each pass time
+     * Light arrives in crystal `i` at `time`: it flashes in (r, g, b) and keeps `amount` of it —
+     * less the fuller it already is, so a spire a quick hand strikes again and again glows in its
+     * colours instead of burning white.
      */
-    const passes = new Float32Array(n);
-    part.release = (time, hx, hz, rgb, strength = 1, { pillar = 0, squeeze = 1 } = {}) => {
-        let released = 0;
-        for (let i = 0; i < n; i++) {
-            const o = i * 4;
-            const pass = time + clearPassTime(Math.hypot(aBase[o] * squeeze - hx, aBase[o + 2] - hz));
-            passes[i] = pass;
-            const k = pass > cut[i] ? 0 : Math.exp(-(pass - storeT0[i]) / STORE_HOLD);
-            const had = [aStore[o] * k, aStore[o + 1] * k, aStore[o + 2] * k];
-            const amount = Math.max(had[0], had[1], had[2]);
-            released += amount;
-            aPulse.set([
-                had[0] * 2.2 + rgb[0] * strength * 0.3,
-                had[1] * 2.2 + rgb[1] * strength * 0.3,
-                had[2] * 2.2 + rgb[2] * strength * 0.3,
-                pass,
-            ], o);
-            cut[i] = pass;
-            aAux[o] = pass;
-            if (pillar > 0) {
-                aAux[o + 1] = pass;
-                // The tallest spire of each cluster, and one in five of the rest.
-                const c = plan.crystals[i];
-                let stands = 0;
-                if (c.main) stands = 1;
-                else if (c.seed % 5 === 0) stands = 0.4;
-                aAux[o + 2] = pillar * stands * (0.7 + 0.3 * Math.min(1, amount));
+    const applyStrike = (i, r, g, b, time, amount) => {
+        const o = i * 4;
+        const k = Math.exp(-(time - storeT0[i]) / STORE_HOLD);
+        const full = Math.min(1, (Math.max(aStore[o], aStore[o + 1], aStore[o + 2]) * k) / STORE_MAX);
+        const add = amount * 0.55 * (1 - 0.6 * full);
+        holdInto(
+            i,
+            aStore[o] * k + r * add,
+            aStore[o + 1] * k + g * add,
+            aStore[o + 2] * k + b * add,
+            time,
+        );
+        flashInto(i, r * amount * 1.6, g * amount * 1.6, b * amount * 1.6, time);
+    };
+
+    // Strikes on their way: crystal index (-1 = free), arrival, colour, amount.
+    const qIndex = new Int32Array(STRIKE_QUEUE).fill(-1);
+    const qTime = new Float64Array(STRIKE_QUEUE);
+    const qRgb = new Float32Array(STRIKE_QUEUE * 3);
+    const qAmount = new Float32Array(STRIKE_QUEUE);
+    const strikeNow = (q, time) => {
+        applyStrike(qIndex[q], qRgb[q * 3], qRgb[q * 3 + 1], qRgb[q * 3 + 2], time, qAmount[q]);
+        qIndex[q] = -1;
+    };
+
+    // Waves crossing the valley: when each front passes each crystal, and what it does there.
+    const wavePass = new Float64Array(WAVE_SLOTS * n);
+    const passViews = Array.from({ length: WAVE_SLOTS }, (_, w) => wavePass.subarray(w * n, (w + 1) * n));
+    /** Passes up to this time have been applied; a wave is spent once its last pass has. */
+    const waveDone = new Float64Array(WAVE_SLOTS).fill(-Infinity);
+    const waveEnd = new Float64Array(WAVE_SLOTS).fill(-Infinity);
+    // r, g, b, strength, keep, charge, cap, pillar, flare, every-spire pillars, hold
+    const WP = 11;
+    const waveParams = new Float32Array(WAVE_SLOTS * WP);
+
+    /** What wave `w` does to crystal `i` as its front passes at `at`. */
+    const applyPass = (w, i, at) => {
+        const o = i * 4;
+        const p = w * WP;
+        const k = Math.exp(-(at - storeT0[i]) / STORE_HOLD);
+        const hr = aStore[o] * k;
+        const hg = aStore[o + 1] * k;
+        const hb = aStore[o + 2] * k;
+        const amount = Math.max(hr, hg, hb);
+        const R = waveParams[p];
+        const G = waveParams[p + 1];
+        const B = waveParams[p + 2];
+        // It keeps what the wave lets it keep — a share of what it held, never more than a glow
+        // (`hold`) — and lets the rest go: the flare is the light let go, in its own colour, and
+        // a little of the wave's...
+        let keep = waveParams[p + 4];
+        if (amount * keep > waveParams[p + 10]) keep = waveParams[p + 10] / amount;
+        let kr = hr * keep;
+        let kg = hg * keep;
+        let kb = hb * keep;
+        // (What it keeps only glints as the front goes by: every spire answers every wave, and a
+        // cascade's waves come a third of a second apart.)
+        const lift = waveParams[p + 3] * 0.22;
+        const flare = waveParams[p + 8];
+        flashInto(
+            i,
+            (hr - kr) * flare + kr * 0.15 + R * lift,
+            (hg - kg) * flare + kg * 0.15 + G * lift,
+            (hb - kb) * flare + kb * 0.15 + B * lift,
+            at,
+        );
+        // ...and takes some of the wave's light, up to its cap (the clustered spires on the banks
+        // most; the lone ones out on the shelves a little).
+        const c = plan.crystals[i];
+        const bank = c.cluster >= 0 ? 1 : 0.35;
+        const charge = Math.min(waveParams[p + 5] * bank, waveParams[p + 6] * bank - Math.max(kr, kg, kb));
+        if (charge > 0) {
+            kr += R * charge;
+            kg += G * charge;
+            kb += B * charge;
+        }
+        holdInto(i, kr, kg, kb, at);
+        const pillar = waveParams[p + 7];
+        if (pillar > 0) {
+            // The tallest spire of each cluster and one in five of the rest; on a crown, every
+            // spire that held light, as tall as the light it gives up.
+            let stands = 0;
+            if (c.main) stands = 1;
+            else if (waveParams[p + 9] > 0) stands = Math.min(1, amount / 1.2) * (c.seed % 2 === 0 ? 1 : 0.55);
+            else if (c.seed % 5 === 0) stands = 0.4;
+            const tall = pillar * stands * (0.7 + 0.3 * Math.min(1, amount));
+            if (tall > 0) {
+                const age = at - aAux[o + 1];
+                if (age >= 0 && age < PILLAR_LIFE * 0.6 && aAux[o + 2] > 0) {
+                    // Still standing: it burns brighter instead of shooting up again.
+                    aAux[o + 2] = Math.min(PILLAR_MAX, aAux[o + 2] + tall * 0.6);
+                } else {
+                    aAux[o + 1] = at;
+                    aAux[o + 2] = tall;
+                }
             }
         }
+    };
+
+    // What has come due this frame, in time order (strikes coded -1 - slot, passes w * n + i).
+    const dueT = new Float64Array(STRIKE_QUEUE + WAVE_SLOTS * n);
+    const dueRef = new Int32Array(STRIKE_QUEUE + WAVE_SLOTS * n);
+    const order = new Int32Array(STRIKE_QUEUE + WAVE_SLOTS * n);
+
+    /**
+     * Apply everything that has come due by `t` (once a frame, on the world clock), oldest first.
+     * @returns {boolean} whether anything was written
+     */
+    part.advance = (t) => {
+        if (!Number.isFinite(t)) return false;
+        if (!(t >= clock)) {
+            clock = t;
+            return false;
+        }
+        let due = 0;
+        for (let q = 0; q < STRIKE_QUEUE; q++) {
+            if (qIndex[q] >= 0 && qTime[q] <= t) {
+                dueT[due] = qTime[q];
+                dueRef[due] = -1 - q;
+                due += 1;
+            }
+        }
+        for (let w = 0; w < WAVE_SLOTS; w++) {
+            if (!(waveEnd[w] > waveDone[w])) continue;
+            const first = w * n;
+            const done = waveDone[w];
+            for (let i = 0; i < n; i++) {
+                const pass = wavePass[first + i];
+                if (pass > done && pass <= t) {
+                    dueT[due] = pass;
+                    dueRef[due] = first + i;
+                    due += 1;
+                }
+            }
+            waveDone[w] = t;
+        }
+        clock = t;
+        if (due === 0) return false;
+        // Insertion sort: a frame brings a handful.
+        for (let a = 0; a < due; a++) {
+            let b = a - 1;
+            while (b >= 0 && dueT[order[b]] > dueT[a]) {
+                order[b + 1] = order[b];
+                b -= 1;
+            }
+            order[b + 1] = a;
+        }
+        for (let a = 0; a < due; a++) {
+            const ref = dueRef[order[a]];
+            if (ref < 0) strikeNow(-1 - ref, dueT[order[a]]);
+            else applyPass(Math.floor(ref / n), ref % n, dueT[order[a]]);
+        }
         touch();
-        return { released, passes };
+        return true;
+    };
+
+    /**
+     * Light will arrive in crystal `i` at `time` (a wisp's arrival): it flashes in `rgb` and keeps
+     * `amount` of it. Applied at once if that moment has already come.
+     */
+    part.strike = (i, rgb, time, amount = 1) => {
+        if (!(i >= 0 && i < n)) return;
+        if (time <= clock) {
+            applyStrike(i, rgb[0], rgb[1], rgb[2], time, amount);
+            touch();
+            return;
+        }
+        let q = qIndex.indexOf(-1);
+        if (q < 0) {
+            // Full: the strike due first lands now, a moment early, and makes room.
+            q = 0;
+            for (let k = 1; k < STRIKE_QUEUE; k++) if (qTime[k] < qTime[q]) q = k;
+            strikeNow(q, Number.isFinite(clock) ? clock : qTime[q]);
+            touch();
+        }
+        qIndex[q] = i;
+        qTime[q] = time;
+        qRgb[q * 3] = rgb[0];
+        qRgb[q * 3 + 1] = rgb[1];
+        qRgb[q * 3 + 2] = rgb[2];
+        qAmount[q] = amount;
+    };
+
+    /**
+     * A wave leaves (hx, hz) at `time`, and every crystal answers as its front passes: it keeps
+     * `keep` of what it held (at most `hold`), flares in the rest and in the wave's colour, and
+     * takes up to `charge` of the wave's light while it holds less than `cap`. `slow` stretches the front's
+     * travel; `pillar` stands columns on the tallest spires (`every`: on every spire that held light).
+     * @returns {{ released: number, passes: Float64Array }}  light let go (reused object), and
+     *   when the front passes each crystal
+     */
+    const releaseOut = { released: 0, passes: passViews[0] };
+    part.release = (time, hx, hz, rgb, strength = 1, {
+        pillar = 0, squeeze = 1, keep = 0, hold = STORE_MAX, charge = 0, cap = 0, flare = 2.2, slow = 1, every = false,
+    } = {}) => {
+        // A free slot, else the wave that ends first (what it has left to touch lands now).
+        let w = -1;
+        for (let k = 0; k < WAVE_SLOTS; k++) {
+            if (!(waveEnd[k] > waveDone[k])) {
+                w = k;
+                break;
+            }
+        }
+        if (w < 0) {
+            w = 0;
+            for (let k = 1; k < WAVE_SLOTS; k++) if (waveEnd[k] < waveEnd[w]) w = k;
+            const now = Number.isFinite(clock) ? Math.max(clock, time) : time;
+            for (let i = 0; i < n; i++) if (wavePass[w * n + i] > waveDone[w]) applyPass(w, i, now);
+            touch();
+        }
+        const p = w * WP;
+        waveParams[p] = rgb[0];
+        waveParams[p + 1] = rgb[1];
+        waveParams[p + 2] = rgb[2];
+        waveParams[p + 3] = strength;
+        waveParams[p + 4] = Math.max(0, Math.min(1, keep));
+        waveParams[p + 5] = Math.max(0, charge);
+        waveParams[p + 6] = Math.max(0, cap);
+        waveParams[p + 7] = pillar;
+        waveParams[p + 8] = flare;
+        waveParams[p + 9] = every ? 1 : 0;
+        waveParams[p + 10] = Math.max(0, hold);
+        const first = w * n;
+        const kept = waveParams[p + 4];
+        let released = 0;
+        let end = time;
+        for (let i = 0; i < n; i++) {
+            const o = i * 4;
+            const pass = time + clearPassTime(Math.hypot(aBase[o] * squeeze - hx, aBase[o + 2] - hz)) * slow;
+            wavePass[first + i] = pass;
+            if (pass > end) end = pass;
+            const had = heldAt(i, pass);
+            released += had - Math.min(had * kept, hold);
+        }
+        waveDone[w] = -Infinity;
+        waveEnd[w] = end;
+        releaseOut.released = released;
+        releaseOut.passes = passViews[w];
+        return releaseOut;
     };
 
     part.reset = () => {
@@ -519,8 +762,11 @@ export function createCrystals(u, plan, { count, dispersion = true, pillars = tr
             aAux[i * 4 + 1] = -100;
             aAux[i * 4 + 2] = 0;
             storeT0[i] = 0;
-            cut[i] = NEVER;
         }
+        qIndex.fill(-1);
+        waveDone.fill(-Infinity);
+        waveEnd.fill(-Infinity);
+        clock = -Infinity;
         touch();
     };
     part.heldAt = heldAt;
@@ -529,6 +775,17 @@ export function createCrystals(u, plan, { count, dispersion = true, pillars = tr
         let sum = 0;
         for (let i = 0; i < n; i++) sum += heldAt(i, time);
         return sum;
+    };
+    /** The strikes still on their way, as { index, time }, soonest first (allocates: tests, diagnostics). */
+    part.promises = () => {
+        const out = [];
+        for (let q = 0; q < STRIKE_QUEUE; q++) if (qIndex[q] >= 0) out.push({ index: qIndex[q], time: qTime[q] });
+        return out.sort((a, b) => a.time - b.time);
+    };
+    /** Whether any wave is still crossing the valley. */
+    part.wavesLive = () => {
+        for (let w = 0; w < WAVE_SLOTS; w++) if (waveEnd[w] > waveDone[w]) return true;
+        return false;
     };
     part.count = n;
     part.tips = tips;
