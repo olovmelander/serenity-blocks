@@ -339,6 +339,35 @@ describe('OdysseyCameraController path travel', () => {
         expect(ndc.z).toBeGreaterThan(-1);
         expect(ndc.z).toBeLessThan(1);
     });
+
+    it('reports the progress the eased follow eye stands at', () => {
+        // Chapter 6 seats its black hole on the path by this (cosmic-expanse.js), so a scroll's
+        // ease cannot carry the hole ahead of the view: it must name where the eye IS.
+        const { controller, layout } = createRealPathController({ idleAutoDrift: false });
+        const ch6Start = layout.chapterPositions[5];
+        const from = ch6Start + (layout.chapterPositions[6] - ch6Start) * 0.2;
+        controller.setCurrentPosition(from);
+        controller.updateFollowPosition({ direct: true });
+        expect(controller.getFollowProgress()).toBe(from);
+
+        // A scroll: the target runs ahead and the eye eases after the rail.
+        controller.targetPosition = from + 0.02;
+        for (let i = 0; i < 30; i += 1) {
+            controller.updateFollow(1 / 60);
+            const eased = controller.getFollowProgress();
+            expect(eased).toBeGreaterThan(from);
+            expect(eased).toBeLessThan(controller.getCurrentPosition());
+            const atEased = controller.computeFollowFrame(eased).camPos.clone();
+            const atRail = controller.computeFollowFrame(controller.getCurrentPosition()).camPos.clone();
+            const eye = controller.camera.position;
+            expect(eye.distanceTo(atEased)).toBeLessThan(eye.distanceTo(atRail) * 0.1);
+        }
+
+        // A direct move (a teleport's next frame, a glide) puts the eye on the rail again.
+        controller.setCurrentPosition(from + 0.03);
+        controller.update(1 / 60);
+        expect(controller.getFollowProgress()).toBe(from + 0.03);
+    });
 });
 
 describe('Odyssey camera comfort policy', () => {

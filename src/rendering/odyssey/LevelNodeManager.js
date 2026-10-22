@@ -30,6 +30,7 @@ import {
     createFluidInnerTSL,
     createFluidInnerInstancedTSL,
 } from './level-node-manager.tsl.js';
+import { PATH_HORIZON_OPEN, odysseyPathHorizonWeight } from './odyssey-path-horizon.js';
 
 const THEME_ICON_MODULES = import.meta.glob('../../themes/*/*-theme-icon.{png,svg}', {
     import: 'default',
@@ -248,6 +249,7 @@ export class LevelNodeManager {
         this.time = 0;
         this.frameCount = 0;
         this.cameraProgress = 0;
+        this.pathHorizon = PATH_HORIZON_OPEN; // see setPathHorizon
         this.textureLoader = new THREE.TextureLoader();
         this.themeTextureCache = new Map(); // iconUrl -> THREE.Texture
         this.themeTextureLoads = new Map(); // iconUrl -> Promise<THREE.Texture|null>
@@ -416,6 +418,19 @@ export class LevelNodeManager {
 
     setCameraProgress(progress) {
         this.cameraProgress = progress;
+    }
+
+    /**
+     * The path position past which nodes are not drawn (odyssey-path-horizon.js): through chapter
+     * 6 the rail and its nodes vanish into the black hole. Nodes in the taper scale out with the
+     * rail; a change re-uploads the instance buffers.
+     * @param {number} horizon path progress (PATH_HORIZON_OPEN: nothing hidden)
+     */
+    setPathHorizon(horizon) {
+        const next = Number.isFinite(horizon) ? horizon : PATH_HORIZON_OPEN;
+        if (next === this.pathHorizon) return;
+        this.pathHorizon = next;
+        this._markUploadDirty();
     }
 
     _getChapterOneNodeQuench(node) {
@@ -1630,10 +1645,13 @@ export class LevelNodeManager {
             const idx = this.instanceIdMap.get(levelId);
             const distance = Math.abs(node.pathPosition - this.cameraProgress);
             const chapterOneQuench = this._getChapterOneNodeQuench(node);
+            // Past the rail's horizon (it vanishes into the black hole through chapter 6).
+            const horizonWeight = odysseyPathHorizonWeight(node.pathPosition, this.pathHorizon);
 
             // Strict visibility culling
             const isVisible = distance < (UPDATE_PROXIMITY_THRESHOLD * 1.5)
                 && chapterOneQuench < 0.98
+                && horizonWeight > 0.01
                 // Honour the A/B latch: setAllVisible(false) must stay false, or this
                 // per-frame write re-shows the group between the profiler's ~4 Hz ticks
                 // and the measurement silently averages hidden and shown frames.
@@ -1689,7 +1707,7 @@ export class LevelNodeManager {
                 )
                 : 1;
             if (nearScale < 1) nearFadeLive = true;
-            node.group.scale.setScalar(baseScale * hoverScale * quenchScale * nearScale);
+            node.group.scale.setScalar(baseScale * hoverScale * quenchScale * nearScale * horizonWeight);
             if (node.innerMesh) {
                 node.innerMesh.visible = chapterOneQuench < 0.92;
             }
