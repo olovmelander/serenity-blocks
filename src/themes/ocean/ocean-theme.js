@@ -290,6 +290,9 @@ export default class OceanTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
+                // A perfect clear settling on a frame of its own crowns the clear still playing.
+                perfect: (c) => this.world?.onPerfect(c),
+                spin: (c) => this.world?.onSpin(c),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => this.reportLevel(level),
             },

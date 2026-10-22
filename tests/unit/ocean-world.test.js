@@ -191,9 +191,12 @@ describe('Ocean world: a chain calls the large animals', () => {
         world.onCombo(CALLS.whaleFar);
         expect(world.getState().calls.whale).toBe(true);
         expect(world.getState().calls.whaleFar).toBe(true);
-        // A louder call does not turn a whale already on its way round.
+        expect(world.getState().calls.whaleNear).toBe(false);
+        // The far whale finishes her pass, and never keeps the whale over the board away: the top
+        // of the chain brings her in while the far one is still out there.
         world.onCombo(CALLS.whale);
         expect(world.getState().calls.whaleFar).toBe(true);
+        expect(world.getState().calls.whaleNear).toBe(true);
         run(world, camera, PASS_SECONDS.whaleFar + 1);
         world.onCombo(0);
         world.onCombo(CALLS.whale);
@@ -392,5 +395,160 @@ describe('Ocean world: a long session stays sound', () => {
         });
         expect(world.shocks[0].strength).toBeLessThan(0.5);
         run(world, camera, 0.5);
+    });
+});
+
+describe('Ocean world: play builds instead of popping', () => {
+    /** The tray's Fever: twelve clearing locks 0.64 s apart (a T-spin, a four-wave cascade), a quad. */
+    const fever = (world, camera, from, to) => {
+        const plan = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 4];
+        for (let n = from; n < to; n++) {
+            const step = plan[n];
+            const lines = typeof step === 'number' ? step : 2;
+            world.onLock({
+                u: [0.2, 0.8, 0.4, 0.6][n % 4], rows: [19], hardDrop: true, color: pieces[n % 7],
+            });
+            world.onClear({
+                rows: [19, 18, 17, 16].slice(0, lines), lines, tspin: step === 'tspin', combo: n + 1, cascade: 1,
+            });
+            world.onCombo(n + 1);
+            if (step === 'cascade') {
+                for (let w = 2; w <= 4; w++) {
+                    run(world, camera, 0.36);
+                    world.onClear({
+                        rows: [19], lines: 1, combo: n + 1, cascade: w,
+                    });
+                }
+                run(world, camera, 0.2);
+            } else run(world, camera, 0.64);
+        }
+    };
+
+    it('never lets a weak event cut the light of a strong one: a single after a quad, a second quad', () => {
+        const { world, camera } = build();
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        run(world, camera, 1.5);
+        const lit = world.getState().beam;
+        const { surge } = world.getState();
+        expect(lit).toBeGreaterThan(0.9);
+        // A single right after: the great shaft and the overdrive carry on.
+        world.onLock({ u: 0.3, rows: [19], color: pieces[2] });
+        world.onClear({ rows: [19], lines: 1 });
+        run(world, camera, 1 / 60);
+        expect(world.getState().beam).toBeGreaterThanOrEqual(lit * 0.98);
+        expect(world.getState().surge).toBeGreaterThan(surge * 0.98);
+        // A second quad while the shaft stands: it never drops through the hush, the school stays
+        // wound, and the shaft holds longer than the first alone would have.
+        const before = world.getState().surge;
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        for (let i = 0; i < 40; i++) {
+            run(world, camera, 1 / 60);
+            expect(world.getState().beam).toBeGreaterThan(0.9);
+            expect(world.getState().school.vortex).toBeGreaterThan(0.5);
+        }
+        // The overdrive is raised again, never set back.
+        expect(world.getState().surge).toBeGreaterThan(before + 0.15);
+        run(world, camera, VORTEX_HOLD - 1.5);
+        expect(world.getState().beam).toBeGreaterThan(0.5);
+    });
+
+    it('reads a long chain hotter than its first clear, and breathes back to calm when the hands rest', () => {
+        const { world, camera } = build();
+        const hour = world.u.fluor.value;
+        fever(world, camera, 0, 1);
+        const first = {
+            heat: world.getState().heat.level,
+            fluor: world.u.fluor.value,
+            beam: world.u.beam.value.w,
+            vortex: world.getState().school.vortex,
+        };
+        fever(world, camera, 1, 11);
+        const late = world.getState();
+        expect(late.heat.level).toBeGreaterThan(first.heat + 0.4);
+        expect(late.heat.fever).toBeGreaterThan(0.5);
+        expect(late.heat.stage).toBe(3);
+        expect(world.u.fluor.value).toBeGreaterThan(first.fluor + 0.3);
+        // The light comes down over the board and the school winds round it, with no quad yet.
+        expect(late.counts.quads).toBe(0);
+        expect(world.u.beam.value.w).toBeGreaterThan(first.beam + 0.2);
+        expect(late.school.vortex).toBeGreaterThan(first.vortex + 0.3);
+        // Hot play keeps the reef alight: colonies a current passed still hold some of their colour.
+        expect(late.counts.kept).toBeGreaterThan(0);
+        expect(world.stains.some((s) => s.kept && s.release === NEVER)).toBe(true);
+        // The chain breaks: what the reef kept lets go (a release, not a dimming).
+        world.onLock({ u: 0.5, rows: [19], color: pieces[0] });
+        world.onCombo(0);
+        run(world, camera, 0.5);
+        expect(world.getState().breath).toBeCloseTo(1, 2);
+        expect(world.stains.filter((s) => s.kept).every((s) => s.release < NEVER)).toBe(true);
+        run(world, camera, 16, 1 / 30);
+        const rest = world.getState();
+        expect(rest.heat.level).toBeLessThan(0.05);
+        expect(rest.heat.fever).toBe(0);
+        expect(rest.heat.stage).toBe(0);
+        expect(world.u.beam.value.w).toBe(0);
+        expect(rest.school.vortex).toBeLessThan(0.1);
+        expect(world.u.fluor.value).toBeLessThan(hour + 0.05);
+    });
+
+    it('builds each wave of a cascade on the last, and answers a back-to-back with the sea ringing', () => {
+        const { world, camera } = build();
+        const strengths = [];
+        for (let w = 1; w <= 4; w++) {
+            world.onClear({ rows: [19, 18], lines: 2, cascade: w });
+            strengths.push(world.surges[world.surges.length - 1].strength);
+            run(world, camera, 0.36);
+        }
+        for (let i = 1; i < strengths.length; i++) expect(strengths[i]).toBeGreaterThan(strengths[i - 1]);
+        const { world: b2b, camera: eye } = build();
+        b2b.onClear({ rows: [19, 18, 17, 16], lines: 4, b2b: true });
+        expect(b2b.songs.some((s) => Math.abs(s.x) < 1e-6)).toBe(true);
+        expect(b2b.rings.some((r) => r.reach >= 2.5)).toBe(true);
+        run(b2b, eye, 1);
+        expect(b2b.getState().songs).toBeGreaterThan(0);
+    });
+
+    it('crowns a quad with a perfect clear on its own moment: no second clear, no second hush', () => {
+        const { world, camera } = build();
+        world.onLock({ u: 0.2, rows: [19], color: pieces[1] });
+        run(world, camera, 1.2);
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        const { hushUntil } = world;
+        const currents = world.surges.length;
+        run(world, camera, 0.36);
+        world.onLock({ u: 0.8, rows: [12], color: pieces[3] });
+        world.onPerfect();
+        expect(world.hushUntil).toBe(hushUntil);
+        expect(world.surges.length).toBe(currents);
+        expect(world.getState().counts.clears).toBe(1);
+        expect(world.getState().counts.crowns).toBe(1);
+        // The mass spawning: every colony lets go, even the one whose light is still sinking.
+        world.stains.forEach((s) => expect(s.release).toBeLessThan(NEVER));
+        run(world, camera, 0.5);
+        expect(world.u.lift.value).toBeGreaterThan(0.4);
+        expect(world.getState().beam).toBeGreaterThan(0.5);
+    });
+
+    it('answers a T-spin that cleared nothing with a ring where the piece went in', () => {
+        const { world } = build();
+        world.onLock({ u: 0.3, rows: [19], color: pieces[5] });
+        const rings = world.rings.length;
+        const { cursor } = world.pool;
+        world.onSpin();
+        expect(world.rings.length).toBe(rings + 1);
+        expect(world.pool.cursor).toBeGreaterThan(cursor);
+        expect(world.getState().counts.spins).toBe(1);
+        expect(world.getState().counts.clears).toBe(0);
+    });
+
+    it('never refuses the whale a quad calls: one already over the board sings again', () => {
+        const { world, camera } = build();
+        world.onCombo(CALLS.whale);
+        run(world, camera, PASS_SECONDS.whale * 0.5);
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        expect(world.calls.whale.encore).toBeGreaterThan(world.time);
+        run(world, camera, 1.2);
+        expect(world.calls.whale.sangAt).toBe(world.calls.whale.encore);
+        expect(world.songs.some((s) => s.time === world.calls.whale.encore)).toBe(true);
     });
 });

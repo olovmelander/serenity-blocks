@@ -181,6 +181,45 @@ describe('ocean director: intake', () => {
         });
     });
 
+    it('crowns a clear with a perfect clear that settles on a frame of its own, never a second clear', () => {
+        const { director, calls, sink } = makeDirector();
+        const crowns = [];
+        sink.perfect = vi.fn((c) => crowns.push({ ...c }));
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        // Physics settles the perfect clear ~360 ms after the clear's last wave.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(crowns).toEqual([{ player: 0 }]);
+        // A sink that cannot take a crown still hears of it, as a perfect one-line clear.
+        const plain = makeDirector();
+        plain.director.onPerfectClear({ depth: 1 });
+        plain.director.flush();
+        expect(plain.calls.clear).toHaveLength(1);
+        expect(plain.calls.clear[0]).toMatchObject({ lines: 1, perfect: true });
+    });
+
+    it('sends a T-spin that cleared nothing as a spin, not a clear', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.spin = vi.fn();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.lock).toHaveLength(1);
+        expect(calls.clear).toHaveLength(0);
+        expect(sink.spin).toHaveBeenCalledOnce();
+        expect(sink.spin).toHaveBeenCalledWith({ player: 0 });
+        // One with lines rides on its clear instead.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 1 });
+        director.flush();
+        expect(sink.spin).toHaveBeenCalledOnce();
+        expect(calls.clear[0]).toMatchObject({ tspin: true });
+    });
+
     it('turns a meditation click into a clear at a screen position', () => {
         const { director, calls } = makeDirector();
         director.setViewport(1000, 500);
