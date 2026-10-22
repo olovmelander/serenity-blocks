@@ -737,6 +737,9 @@ export function vortexForCombo(combo) {
     return Math.min(6.5, 1.25 + (c - 2) * 0.85);
 }
 
+/** The vortex wears the colours of the chain's last steps, one arm per quarter turn. */
+export const VORTEX_ARMS = 4;
+
 /** How much faster the gas flows for a chain (1 = rest). */
 export const flowForCombo = (combo) => 1 + Math.min(3, vortexForCombo(combo) * 0.42);
 
