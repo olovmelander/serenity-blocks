@@ -18,10 +18,16 @@
  * what the controls reach, to keep the solving landings among them with their real input
  * paths. That skips most of the tree and is what lets four-piece puzzles be certified on
  * every CI run; the answer is the one the full search gives.
+ *
+ * Five pieces on tall towers take three more shortcuts, none of which changes an answer:
+ * locks are resolved by the fast cascade (stillfall-cascade.js, held to the real resolver),
+ * the last piece's rests are judged on the cascade's cells (outcomeAfter), and a landing of
+ * the piece before the last that clears nothing is searched only when some rest of the last
+ * piece then solves (couldSolveAfter).
  */
 
 import {
-    applyPlacement, boardOf, createRun, lineClearingRests, listPlacements, runAfter,
+    boardOf, couldSolveAfter, createRun, lineClearingRests, listPlacements, outcomeAfter, runAfter,
 } from './stillfall-sim.js';
 
 /** @typedef {import('./stillfall-puzzle.js').StillfallPuzzle} StillfallPuzzle */
@@ -57,7 +63,7 @@ export function isStraight(placement) {
 function promisingPlacements(run) {
     if (run.dealt < run.puzzle.supply.length - 1) return listPlacements(run);
     const solving = new Set(lineClearingRests(run, boardOf(run))
-        .filter((rest) => applyPlacement(run, rest).run.outcome === 'solved')
+        .filter((rest) => outcomeAfter(run, rest) === 'solved')
         .map((rest) => rest.footprint));
     if (solving.size === 0) return [];
     return listPlacements(run).filter((placement) => solving.has(placement.footprint));
@@ -88,7 +94,7 @@ export function solvePuzzle(puzzle) {
         }
         let solving = 0;
         for (const placement of promisingPlacements(run)) {
-            solving += search(runAfter(run, placement), [...path, placement]);
+            if (couldSolveAfter(run, placement)) solving += search(runAfter(run, placement), [...path, placement]);
         }
         return solving;
     };
@@ -98,7 +104,7 @@ export function solvePuzzle(puzzle) {
     const promising = new Set(promisingPlacements(start).map((placement) => placement.footprint));
     let winningOpenings = 0;
     for (const placement of openings) {
-        if (!promising.has(placement.footprint)) continue;
+        if (!promising.has(placement.footprint) || !couldSolveAfter(start, placement)) continue;
         if (search(runAfter(start, placement), [placement]) > 0) winningOpenings += 1;
     }
     const straightSolutions = solutions.filter((path) => path.every(isStraight));
@@ -124,7 +130,7 @@ export function solveFrom(run) {
     if (run.outcome === 'solved') return [];
     if (run.outcome !== 'open') return null;
     for (const placement of promisingPlacements(run)) {
-        if (!isStraight(placement)) continue;
+        if (!isStraight(placement) || !couldSolveAfter(run, placement)) continue;
         const rest = solveFrom(runAfter(run, placement));
         if (rest) return [placement, ...rest];
     }

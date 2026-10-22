@@ -3,10 +3,13 @@
  *
  * Search (worker threads, time-boxed; appends one JSON line per candidate):
  *   node scripts/stillfall-search.mjs --out=candidates.jsonl --pieces=3 --minutes=20 --workers=4
- *     [--style=strata|deep|tall] [--goals=single|seal|pair] [--seed=7]
+ *     [--style=strata|deep|tall|tower] [--goals=single|seal|pair] [--seed=7]
  * Rank what a search found (one goal per structure and supply, the hardest):
  *   node scripts/stillfall-search.mjs --rank=candidates.jsonl [--pieces=3] [--goal=waves]
  *     [--has=seal] [--oneWay] [--top=20] [--maxRows=10] [--maxBodies=16] [--lanterns]
+ *
+ * --style=tower builds nine to thirteen nearly full strata of longer bodies (up to fourteen rows
+ * with lanterns), for the five-piece tiers; rank it with --maxRows=14 --maxBodies=26.
  *
  * One piece (--pieces=1) searches for First light: a cascade or lines from two up, or an empty
  * well, with at most a quarter of the openings winning and no relic (Undertow introduces it).
@@ -20,7 +23,8 @@
  *
  * Each candidate is a random structure (rows with one to three gaps, split into bodies, some
  * joined into two-row bodies, lanterns above) and a random supply. Every straight-drop line of
- * play is enumerated once on the real cascade resolver, and every goal is judged on that tree.
+ * play is enumerated once (clears resolved by stillfall-cascade.js, the real resolver's answer
+ * held to it lock for lock), and every goal is judged on that tree.
  * The last piece's landings that complete no row are counted, not resolved: nothing falls
  * without a clear, so no goal can be met by them. A goal is kept when the last piece is
  * needed, every piece matters, at most a tenth of the openings win (two openings for two-piece
@@ -135,12 +139,14 @@ function search(args) {
 async function work() {
     const { buildPuzzle, validatePuzzleDefinition } = await import(core('stillfall/stillfall-puzzle.js'));
     const {
-        createRun, applyPlacement, boardFor, boardOf, cellsOf, runAfter,
+        createRun, boardFor, boardOf, cellsOf, stepAfter,
     } = await import(core('stillfall/stillfall-sim.js'));
     const { SHAPES, COLS, HIDDEN_ROWS } = await import(core('constants.js'));
     const { rotateShapeMatrix } = await import(core('game.js'));
     const { pieces, style, goals: goalKinds } = workerData;
     const deep = style === 'deep';
+    // A tower: nine to thirteen strata of longer bodies, nearly full, with the relic kept.
+    const tower = style === 'tower';
 
     let state = workerData.seed >>> 0 || 1;
     const rand = () => {
@@ -216,19 +222,22 @@ async function work() {
     };
 
     const generate = () => {
-        const [fewest, most] = { deep: [5, 9], tall: [4, 9] }[style] || [2, 7];
+        const [fewest, most] = { deep: [5, 9], tall: [4, 9], tower: [9, 13] }[style] || [2, 7];
         const strata = randint(fewest, most);
         const ids = Array.from({ length: strata }, () => Array(COLS).fill(-1));
         let next = 0;
         for (let y = 0; y < strata; y += 1) {
-            const gapCount = weighted({ deep: [[1, 75], [2, 25]], tall: [[1, 50], [2, 40], [3, 10]] }[style]
-                || [[1, 55], [2, 35], [3, 10]]);
+            const gapCount = weighted({
+                deep: [[1, 75], [2, 25]], tall: [[1, 50], [2, 40], [3, 10]], tower: [[1, 60], [2, 35], [3, 5]],
+            }[style] || [[1, 55], [2, 35], [3, 10]]);
             const gaps = new Set();
             while (gaps.size < gapCount) gaps.add(randint(0, COLS - 1));
             let run = [];
             const flush = () => {
                 for (let i = 0; i < run.length;) {
-                    const length = Math.min(run.length - i, weighted([[1, 8], [2, 25], [3, 30], [4, 25], [5, 12]]));
+                    const length = Math.min(run.length - i, weighted(tower
+                        ? [[2, 10], [3, 30], [4, 35], [5, 25]]
+                        : [[1, 8], [2, 25], [3, 30], [4, 25], [5, 12]]));
                     for (let k = 0; k < length; k += 1) ids[y][run[i + k]] = next;
                     next += 1;
                     i += length;
@@ -241,15 +250,16 @@ async function work() {
             }
             flush();
         }
-        // Some bodies join the one beneath them: two-row bodies of at most six cells.
-        const mergeChance = weighted([[0, 30], [0.12, 40], [0.25, 30]]);
+        // Some bodies join the one beneath them: two-row bodies of at most six cells (eight in a tower).
+        const mergeChance = weighted(tower ? [[0.15, 40], [0.3, 40], [0.45, 20]] : [[0, 30], [0.12, 40], [0.25, 30]]);
+        const mergedMost = tower ? 8 : 6;
         const merged = new Set();
         const sizeOf = (id) => ids.flat().filter((v) => v === id).length;
         for (let y = 0; y < strata - 1; y += 1) {
             for (let x = 0; x < COLS; x += 1) {
                 const a = ids[y][x];
                 const b = ids[y + 1][x];
-                if (a < 0 || b < 0 || a === b || merged.has(a) || merged.has(b) || sizeOf(a) + sizeOf(b) > 6) continue;
+                if (a < 0 || b < 0 || a === b || merged.has(a) || merged.has(b) || sizeOf(a) + sizeOf(b) > mergedMost) continue;
                 if (rand() < mergeChance) {
                     ids.forEach((row) => row.forEach((v, k) => { if (v === a) row[k] = b; }));
                     merged.add(b);
@@ -257,8 +267,10 @@ async function work() {
             }
         }
         // Lanterns: small bodies hanging above the strata, apart from each other.
-        const lanternCount = weighted([[0, 30], [1, 25], [2, 30], [3, 15]]);
-        const lanternRows = lanternCount === 0 ? 0 : randint(2, Math.max(2, Math.min(deep ? 5 : 6, 13 - strata)));
+        // A tower keeps them within the tallest structure (14 rows).
+        let lanternCount = weighted(tower ? [[0, 40], [1, 30], [2, 25], [3, 5]] : [[0, 30], [1, 25], [2, 30], [3, 15]]);
+        if (tower && 14 - strata < 2) lanternCount = 0;
+        const lanternRows = lanternCount === 0 ? 0 : randint(2, Math.max(2, Math.min(deep ? 5 : 6, (tower ? 14 : 13) - strata)));
         const above = Array.from({ length: lanternRows }, () => Array(COLS).fill(-1));
         const shapes = [[[0, 0]], [[0, 0], [1, 0]], [[0, 0], [1, 0], [2, 0]], [[0, 0], [0, 1]], [[0, 0], [1, 0], [0, 1]], [[0, 0], [1, 0], [1, 1]]];
         for (let i = 0; i < lanternCount; i += 1) {
@@ -277,7 +289,7 @@ async function work() {
         const all = [...above, ...ids];
         while (all.length && all[0].every((v) => v < 0)) all.shift();
         if (all.length > 14 || all.length < 2) return null;
-        if (new Set(all.flat().filter((v) => v >= 0)).size > 22) return null;
+        if (new Set(all.flat().filter((v) => v >= 0)).size > (tower ? 26 : 22)) return null;
         // Letters in reading order; bodies with nothing beneath them are lowercase (lanterns).
         const supported = new Set();
         all.forEach((row, y) => row.forEach((v, x) => {
@@ -343,15 +355,10 @@ async function work() {
                     continue;
                 }
                 const step = { piece: placement.shapeKey, rotation: placement.rotation, x: placement.x };
-                if (!clears) {
-                    // Nothing clears: no cascade to resolve (runAfter skips it).
-                    visit(runAfter(run, placement), index, depth + 1, { waves: 0, cleared: 0, placement: step });
-                    continue;
-                }
-                const { run: after, resolution } = applyPlacement(run, placement);
-                visit(after, index, depth + 1, {
-                    waves: resolution.cascadeCount, cleared: resolution.linesClearedThisTurn, placement: step,
-                });
+                // A lock that clears nothing resolves no cascade; one that clears, the fast one
+                // (stillfall-cascade.js, held to the real resolver lock for lock).
+                const { run: after, cascadeCount, linesCleared } = stepAfter(run, placement);
+                visit(after, index, depth + 1, { waves: cascadeCount, cleared: linesCleared, placement: step });
             }
         };
         visit(createRun(open), -1, 0, { waves: 0, cleared: 0, placement: null });
@@ -420,20 +427,24 @@ async function work() {
         };
     };
 
+    /** The largest value over a tree's nodes (a five-piece tree is too big to spread). */
+    const most = (list, value) => list.reduce((best, n) => Math.max(best, value(n)), -Infinity);
+
     /** The goals worth judging on one tree, by the kinds this search asked for. */
     const goalsFor = (nodes, rows, letters, bodyBit) => {
         const tutorial = pieces === 1;
         const later = nodes.filter((n) => n.depth > 0);
-        const maxWaves = Math.max(...nodes.map((n) => n.bestWaves));
-        const maxLines = Math.max(...nodes.map((n) => n.lines));
+        const maxWaves = most(nodes, (n) => n.bestWaves);
+        const maxLines = most(nodes, (n) => n.lines);
         const relics = letters.filter((letter) => !rows[rows.length - 1].includes(letter)
             && later.some((n) => (n.onFloor & bodyBit[letter]) !== 0));
         const seals = letters.filter((letter) => later.some((n) => (n.present & bodyBit[letter]) === 0));
         const goals = [];
         if (goalKinds === 'single') {
-            if (maxWaves >= (deep ? 4 : 3) || (tutorial && maxWaves >= 2)) goals.push({ type: 'waves', atLeast: maxWaves });
-            if (maxWaves >= (deep ? 5 : 4)) goals.push({ type: 'waves', atLeast: maxWaves - 1 });
-            if (maxLines >= (deep ? 5 : 4) || (tutorial && maxLines >= 2)) goals.push({ type: 'lines', atLeast: maxLines });
+            const tall = deep || tower;
+            if (maxWaves >= (tall ? 4 : 3) || (tutorial && maxWaves >= 2)) goals.push({ type: 'waves', atLeast: maxWaves });
+            if (maxWaves >= (tall ? 5 : 4)) goals.push({ type: 'waves', atLeast: maxWaves - 1 });
+            if (maxLines >= (tall ? 5 : 4) || (tutorial && maxLines >= 2)) goals.push({ type: 'lines', atLeast: maxLines });
             if (later.some((n) => n.empty)) goals.push({ type: 'clear-all' });
             if (!deep && !tutorial) relics.forEach((body) => goals.push({ type: 'relic-floor', body }));
             return goals;
@@ -463,9 +474,9 @@ async function work() {
             const { met } = compile(s, bodyBit);
             const holding = later.filter(met);
             if (holding.length === 0) continue;
-            const waves = Math.max(...holding.map((n) => n.bestWaves));
+            const waves = most(holding, (n) => n.bestWaves);
             if (waves >= 3) goals.push({ type: 'all', of: [{ type: 'waves', atLeast: waves }, s] });
-            const lines = Math.max(...holding.map((n) => n.lines));
+            const lines = most(holding, (n) => n.lines);
             if (s.type !== 'clear-all' && lines >= 4) goals.push({ type: 'all', of: [{ type: 'lines', atLeast: lines }, s] });
         }
         // A tree with many bodies offers hundreds of pairs: judge a sample.
