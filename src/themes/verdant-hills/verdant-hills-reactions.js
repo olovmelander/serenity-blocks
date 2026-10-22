@@ -29,9 +29,22 @@
  *   combo/streak  the wind winds around the board; the whirl climbs, tightens and quickens
  *                 as cascades or consecutive clears build, and streamers unfurl in it
  *   t-spin        a spinning ribbon in the colour of the T's kite beside the board
+ *   back-to-back  every kite on its line bows at once and two golden ribbons cross behind
+ *                 the board, more of them the longer the back-to-backs run
  *   perfect clear / level up   the whole day exhales: light, wind, ribbons, wings; a
  *                 perfect clear puts all seven kites in the air
+ *
+ * And it BUILDS (src/themes/shared/gameplay-surge.js): nothing an event starts is restarted
+ * by the next one. Fronts of wind run in three slots, each to the far side of the valley (a
+ * fourth joins the youngest, which carries on stronger); a break in the clouds that is still
+ * crossing is fed (it swells back to its fullest, widens and lingers) instead of closing and
+ * reopening from the left; the light's envelopes add up under rapid clears instead of only
+ * holding the highest. The surge's level and fever ride in every frame (`surge`): the world
+ * spends them (verdant-hills-surge.js), and a fever holds the clouds open over the valley
+ * until it cools. A chain that ends lets its whirl go down the wind; the game ending lets the
+ * front and the sunlight fade rather than vanish. `still` is Reduce motion's share (0..1).
  */
+import { GameplaySurge } from '../shared/gameplay-surge.js';
 import { VERDANT_HILLS_PIECE_KITES } from './verdant-hills-tetrominos.js';
 
 export const VERDANT_HILLS_REACTION_LIMITS = Object.freeze({
@@ -74,13 +87,42 @@ const WHIRL_HOLD_SECONDS = 2.6;
 const WHIRL_RISE_RATE = 3.2;
 const WHIRL_RELEASE_RATE = 0.85;
 const FRONT_SECONDS = 2.6;
+/** Fronts that can cross the valley at once; another joins the youngest still crossing. */
+export const VERDANT_HILLS_FRONT_SLOTS = 3;
+/** How fast a joined front eases to its new strength, and a front lets go when the game ends. */
+const FRONT_EASE = 3;
 const SUNBREAK_SECONDS = 6;
+/** Where on its course the light of a break in the clouds is fullest (sin(π·1.08·p) peaks). */
+const SUNBREAK_PEAK = 0.5 / 1.08;
+/** How fast a fed break swells back toward its fullest (course per second), and how long it holds there. */
+const SUNBREAK_REWIND = 0.22;
+const SUNBREAK_HOLD = 2.4;
+/** How fast a held break crosses the valley, against a plain one. */
+const SUNBREAK_LINGER = 0.45;
+/** How much wider each feed opens it (of the most it can widen). */
+const SUNBREAK_WIDEN = 0.4;
+/** A held or fed break never runs off the far side while it is lit. */
+const SUNBREAK_FAR = 0.995;
+/** A fever holds the clouds open from here, until the pool has crossed this far. */
+const FEVER_SUNBREAK = 0.6;
+const FEVER_SUNBREAK_REACH = 0.8;
+/** How fast the front and the sunlight fade once the game is over (per second). */
+const SETTLE_FADE = 2.2;
+/** What a hit adds to an envelope already lit, of what is left below full. */
+const ACCUMULATE = 0.5;
+/** How fast Reduce motion's share follows the setting (per second). */
+const STILL_RATE = 1;
+/** A back-to-back this long after the last one starts a new run of them. */
+const B2B_RUN_SECONDS = 20;
+/** A chain at least this long lets its whirl go down the wind when it ends. */
+const RELEASE_STREAK = 3;
 // One frame can ask for a gust from a lock, its festival, a clear, a combo, a spin, a perfect
 // clear and a level-up: the queue holds them all.
 const WAVE_QUEUE = 8;
 // The same frame asks for a ribbon from the lock and its festival, two from the clear and a
-// third for four lines, and one each from the spin, the perfect clear and the level-up.
-const STREAK_QUEUE = 16;
+// third for four lines, and one each from the spin, the back-to-back, the perfect clear, the
+// level-up and a chain that ends: the queue holds them all twice over.
+const STREAK_QUEUE = 20;
 const BOARD_COLUMNS = 10;
 const BOARD_VISIBLE_ROWS = 20;
 const BOARD_HIDDEN_ROWS = 4;
@@ -187,14 +229,62 @@ export class VerdantHillsReactions {
         this.fly = new Float32Array(VERDANT_HILLS_KITES);
         /** The jerk on each line when its piece locks. */
         this.tug = new Float32Array(VERDANT_HILLS_KITES);
-        this.front = {
-            active: false, age: 0, direction: 1, strength: 0,
+        /** The fronts of wind crossing the valley (see sweep()). */
+        this.fronts = Array.from({ length: VERDANT_HILLS_FRONT_SLOTS }, () => ({
+            active: false, age: 0, direction: 1, strength: 0, target: 0, serial: -1,
+        }));
+        /**
+         * The pool of sunlight that crosses the hills when the clouds open: `travel` is how far
+         * it has crossed, `glow` where its light stands in its own course (the two go together
+         * until the pool is fed), `hold` how long a feed keeps it at its fullest, `breadth` how
+         * much wider than a plain one it has opened, `fade` what the end of a game has left of it.
+         */
+        this.sunpool = {
+            active: false,
+            age: 0,
+            travel: 0,
+            glow: 0,
+            strength: 0,
+            want: 0,
+            breadth: 0,
+            wide: 0,
+            hold: 0,
+            held: false,
+            fade: 1,
         };
-        /** The pool of sunlight that crosses the hills when the clouds open. */
-        this.sunpool = { active: false, age: 0, strength: 0 };
+        /** How hot play runs: GameplaySurge, read once a frame into `surgeFrame`. */
+        this.surge = new GameplaySurge();
+        this.surgeFrame = {
+            level: 0, fever: 0, stage: 0, punch: 0,
+        };
+        /** Reduce motion's share (0 all of the motion, 1 stilled): a setting, kept across sessions. */
+        this.still = 0;
+        this.stillTarget = 0;
+        this.stillKnown = false;
         // Counts resets, so a consumer can tell a fresh run of serials from a stale one.
         this.epoch = 0;
         this.reset();
+    }
+
+    /** The front most recently sent (or joined), or a resting one. */
+    get front() {
+        let newest = null;
+        for (const front of this.fronts) {
+            if (front.serial >= 0 && (!newest || front.serial > newest.serial)) newest = front;
+        }
+        return newest || this.fronts[0];
+    }
+
+    /**
+     * Reduce motion (Settings or the system): the gusts, ribbons, seed, whirl and kites calm to a
+     * share of their motion. The first call settles at once; later ones ease over a second.
+     */
+    setStill(on) {
+        this.stillTarget = on ? 1 : 0;
+        if (!this.stillKnown) {
+            this.stillKnown = true;
+            this.still = this.stillTarget;
+        }
     }
 
     reset() {
@@ -223,14 +313,35 @@ export class VerdantHillsReactions {
         this.festivalFlash = 0;
         this.festivalArmed = true;
         this.settled = false;
+        this.frontSerial = 0;
+        this.b2bRun = 0;
+        this.b2bAt = -Infinity;
         this.line.fill(0);
         this.fly.fill(0);
         this.tug.fill(0);
         for (const key of ENVELOPE_KEYS) this.envelopes[key] = 0;
-        Object.assign(this.front, {
-            active: false, age: 0, direction: 1, strength: 0,
+        for (const front of this.fronts) {
+            Object.assign(front, {
+                active: false, age: 0, direction: 1, strength: 0, target: 0, serial: -1,
+            });
+        }
+        Object.assign(this.sunpool, {
+            active: false,
+            age: 0,
+            travel: 0,
+            glow: 0,
+            strength: 0,
+            want: 0,
+            breadth: 0,
+            wide: 0,
+            hold: 0,
+            held: false,
+            fade: 1,
         });
-        Object.assign(this.sunpool, { active: false, age: 0, strength: 0 });
+        this.surge.reset();
+        Object.assign(this.surgeFrame, {
+            level: 0, fever: 0, stage: 0, punch: 0,
+        });
         for (const wave of this.waves) Object.assign(wave, { serial: -1, column: 0.5, strength: 0 });
         for (const ribbon of this.streaks) {
             Object.assign(ribbon, {
@@ -276,10 +387,17 @@ export class VerdantHillsReactions {
         return count;
     }
 
+    /**
+     * Light the envelopes. A hit never lowers one, and one already lit takes the stronger of the
+     * two and a share of the other, so rapid clears warm the light step by step (alone, a hit
+     * lights it exactly as high as it asks).
+     */
     excite(values) {
         for (const key of ENVELOPE_KEYS) {
             const value = Number.isFinite(values[key]) ? clamp(values[key], 0, 1) : 0;
-            this.envelopes[key] = Math.max(this.envelopes[key], value);
+            const lit = this.envelopes[key];
+            const high = Math.max(lit, value);
+            this.envelopes[key] = Math.min(1, high + Math.min(lit, value) * ACCUMULATE * (1 - high));
         }
     }
 
@@ -309,24 +427,110 @@ export class VerdantHillsReactions {
         this.whirlHold = WHIRL_HOLD_SECONDS;
     }
 
-    /** Send a front of wind across the valley. It always travels with the wind. */
+    /**
+     * Send a front of wind across the valley. It always travels with the wind, from the upwind
+     * edge, in a slot of its own; with every slot crossing, it joins the youngest front instead,
+     * which carries on and eases up to the stronger of the two and a little more. No front is
+     * ever restarted or cut.
+     */
     sweep(strength) {
-        Object.assign(this.front, {
-            active: true, age: 0, direction: 1, strength: clamp(strength, 0, 1),
-        });
+        const asked = Number.isFinite(strength) ? clamp(strength, 0, 1) : 0;
+        let free = null;
+        let youngest = null;
+        for (const front of this.fronts) {
+            if (!front.active) {
+                if (!free) free = front;
+            } else if (!youngest || front.age < youngest.age) youngest = front;
+        }
+        if (free) {
+            Object.assign(free, {
+                active: true, age: 0, direction: 1, strength: asked, target: asked, serial: this.frontSerial,
+            });
+        } else {
+            youngest.target = Math.min(1, Math.max(youngest.target, asked) + Math.min(youngest.target, asked) * 0.25);
+            youngest.serial = this.frontSerial;
+        }
+        this.frontSerial += 1;
+        return free || youngest;
     }
 
-    /** Open the clouds: a pool of sunlight sets out across the hills. */
+    /**
+     * Open the clouds: a pool of sunlight sets out across the hills. If one is still crossing it
+     * is fed instead: its light swells back to its fullest and holds there a while, it opens
+     * wider and crosses more slowly — it never closes to open again from the left.
+     */
     sunbreak(strength) {
-        Object.assign(this.sunpool, { active: true, age: 0, strength: clamp(strength, 0, 1) });
+        const asked = Number.isFinite(strength) ? clamp(strength, 0, 1) : 0;
+        const pool = this.sunpool;
+        if (!pool.active) {
+            Object.assign(pool, {
+                active: true,
+                age: 0,
+                travel: 0,
+                glow: 0,
+                strength: asked,
+                want: asked,
+                breadth: 0,
+                wide: 0,
+                hold: 0,
+                held: false,
+                fade: 1,
+            });
+            return pool;
+        }
+        // Brighter and wider by easing up (update()): a feed never steps the light.
+        pool.want = Math.max(pool.want, asked);
+        pool.wide = Math.min(1, pool.wide + asked * SUNBREAK_WIDEN);
+        if (asked > 0) {
+            pool.hold = Math.max(pool.hold, SUNBREAK_HOLD);
+            pool.held = true;
+        }
+        return pool;
     }
 
-    /** Claim a free slot, or the one furthest through its life. */
+    /**
+     * The break in the clouds, one frame on. A plain one crosses in six seconds, its light
+     * swelling as the clouds part and gone as it leaves the far hills. A fed one, or one a fever
+     * keeps open, swells back to its fullest and lingers there, crossing slowly; once the hold
+     * and the fever are over it lets go from where it stands. A fever opens one of its own (and
+     * another once that one has crossed). When the game is over it fades where it is.
+     */
+    updateSunpool(dt, fever) {
+        const pool = this.sunpool;
+        const burning = fever >= FEVER_SUNBREAK && !this.settled;
+        if (burning && !pool.active) this.sunbreak(0.5 + 0.5 * fever);
+        if (!pool.active) return;
+        pool.age += dt;
+        const pace = dt / SUNBREAK_SECONDS;
+        const fevered = burning && pool.travel < FEVER_SUNBREAK_REACH;
+        if (fevered) {
+            pool.wide = Math.max(pool.wide, fever * 0.5);
+            pool.held = true;
+        }
+        const ease = 1 - Math.exp(-2 * dt);
+        pool.strength += (pool.want - pool.strength) * ease;
+        pool.breadth += (pool.wide - pool.breadth) * ease;
+        if (pool.hold > 0 || fevered) {
+            pool.glow = pool.glow > SUNBREAK_PEAK
+                ? Math.max(SUNBREAK_PEAK, pool.glow - SUNBREAK_REWIND * dt)
+                : Math.min(SUNBREAK_PEAK, pool.glow + pace);
+            pool.travel = Math.min(SUNBREAK_FAR, pool.travel + pace * SUNBREAK_LINGER);
+        } else {
+            // A plain crossing: its course and its light go together, to the end.
+            pool.glow += pace;
+            pool.travel = pool.held ? Math.min(SUNBREAK_FAR, pool.travel + pace) : pool.travel + pace;
+        }
+        pool.hold = Math.max(0, pool.hold - dt);
+        pool.fade = this.settled ? pool.fade * Math.exp(-SETTLE_FADE * dt) : Math.min(1, pool.fade + SETTLE_FADE * dt);
+        if (pool.glow >= 1 || pool.fade < 0.002) pool.active = false;
+    }
+
+    /** Claim a free slot, or the one with the least left to give (strength × what remains of its life). */
     emit(kind, {
         side = 0, column = 0.5, row = 0.3, strength = 0.5, lines = 0, duration = 1, kite = VERDANT_HILLS_MIXED,
     }) {
         let selected = -1;
-        let furthest = -1;
+        let least = Infinity;
         for (let step = 0; step < this.maxEmitters; step += 1) {
             const index = (this.cursor + step) % this.maxEmitters;
             const emitter = this.emitters[index];
@@ -334,9 +538,9 @@ export class VerdantHillsReactions {
                 selected = index;
                 break;
             }
-            const progress = emitter.age / emitter.duration;
-            if (progress > furthest) {
-                furthest = progress;
+            const left = emitter.strength * (1 - emitter.age / emitter.duration);
+            if (left < least) {
+                least = left;
                 selected = index;
             }
         }
@@ -419,17 +623,55 @@ export class VerdantHillsReactions {
         return true;
     }
 
+    /**
+     * The streak's bookkeeping for a lock, and what play is worth to the surge. A lock that
+     * follows a lock without a clear between them ends the streak; a long one lets its whirl go.
+     */
+    countLock(drop) {
+        if (!this.clearedSinceLock) {
+            if (this.clearStreak >= RELEASE_STREAK) this.letGo(this.clearStreak);
+            this.clearStreak = 0;
+        }
+        this.clearedSinceLock = false;
+        this.surge.lock({ hardDrop: drop > 0 }, this.time);
+    }
+
+    /**
+     * A chain has ended: the whirl lets go and the wind carries what it held down the valley —
+     * one long ribbon over the hills and a gust from the foot of the board, as strong as the
+     * chain was long.
+     */
+    letGo(streak) {
+        const length = clamp((streak - RELEASE_STREAK + 1) / 6, 0, 1);
+        this.streak('great', {
+            side: 0, row: 0.45, strength: 0.55 + 0.4 * length, lines: 1,
+        });
+        this.gust(0.5, 0.7 + 0.8 * length);
+        this.blow(0.06 + 0.1 * length);
+    }
+
+    /**
+     * A lock with the lock ripple switched off: nothing is shown for it, but it still counts —
+     * it ends a streak or carries it on, and it is play the surge hears.
+     */
+    onQuietLock() {
+        if (this.disposed) return false;
+        this.settled = false;
+        const drop = this.pendingDrop;
+        this.pendingDrop = 0;
+        this.countLock(drop);
+        return true;
+    }
+
     onPieceLock(detail = {}) {
         if (this.disposed) return false;
         const payload = unwrap(detail);
         this.settled = false;
-        // A lock that follows a lock without a clear between them ends the streak.
-        if (!this.clearedSinceLock) this.clearStreak = 0;
-        this.clearedSinceLock = false;
         const place = boardPlace(payload);
         const kite = verdantHillsKiteForPiece(payload.piece);
         const drop = this.pendingDrop;
         this.pendingDrop = 0;
+        this.countLock(drop);
         const column = place?.column ?? 0.5;
         const row = place?.row ?? 0.12;
         this.excite({
@@ -471,6 +713,10 @@ export class VerdantHillsReactions {
             this.clearedSinceLock = true;
             this.clearStreak += 1;
         }
+        // Which wave of a cascade this is: each one after the first sends its own front, harder.
+        const wave = positiveCount(event.detail?.cascadeCount, 12) || 1;
+        // The cascade's waves are heard on COMBO (onCombo); a clear is its lines and its streak.
+        this.surge.clear({ lines, combo: this.clearStreak }, this.time);
         const row = clearedRow(event.detail) ?? boardPlace(event.detail)?.row ?? 0.2;
         const four = lines >= 4;
         this.excite({
@@ -500,7 +746,7 @@ export class VerdantHillsReactions {
             side: 1, row, strength: 0.4 + lines * 0.15, lines,
         });
         this.gust(0.5, 0.9 + lines * 0.4);
-        if (lines >= 2) this.sweep(0.3 + lines * 0.17);
+        if (lines >= 2 || wave >= 2) this.sweep(0.3 + lines * 0.17 + (wave - 1) * 0.1);
         if (four) {
             this.emit('rise', {
                 row: 0, strength: 1, lines, duration: 2.8,
@@ -519,6 +765,8 @@ export class VerdantHillsReactions {
         const event = eventArguments(countOrPayload, detail, ['comboCount', 'combo', 'count'], 60);
         if (event.count < 2) return false;
         this.settled = false;
+        // One more wave of a cascade: what a wave adds to the surge (its lines come with LINE_CLEAR).
+        this.surge.wave(this.time);
         const growth = 1 - Math.exp(-(event.count - 1) * 0.22);
         this.excite({
             gust: 0.36 + growth * 0.5,
@@ -541,6 +789,10 @@ export class VerdantHillsReactions {
     onTSpin(detail = {}) {
         if (this.disposed) return false;
         const payload = unwrap(detail);
+        // A spin that cleared nothing is a little of one; one that cleared adds a spin's worth to its clear.
+        if (positiveCount(payload.lineCount, 4) > 0) {
+            this.surge.tspin(this.time);
+        } else this.surge.spin(this.time);
         const place = boardPlace(payload);
         const side = place && place.column >= 0.5 ? 1 : -1;
         const row = place?.row ?? 0.3;
@@ -558,19 +810,40 @@ export class VerdantHillsReactions {
         return true;
     }
 
+    /**
+     * Back-to-back: every kite on its line bows at once, as if the whole sky had been tugged, and
+     * golden ribbons cross behind the board. A run of them escalates: more ribbons, a tighter
+     * whirl and the kites higher with each.
+     */
     onBackToBack() {
         if (this.disposed) return false;
+        this.b2bRun = this.time - this.b2bAt <= B2B_RUN_SECONDS ? this.b2bRun + 1 : 1;
+        this.b2bAt = this.time;
+        const run = Math.min(4, this.b2bRun) - 1;
+        this.surge.b2b(this.time);
         this.excite({
-            warmth: 0.5, glow: 0.7, shafts: 0.45, shimmer: 0.6,
+            warmth: 0.5 + run * 0.08, glow: 0.7 + run * 0.08, shafts: 0.45 + run * 0.08, shimmer: 0.6 + run * 0.1,
         });
-        this.raiseWhirl(Math.max(this.whirlTarget, 0.55));
-        this.raise(0.6);
+        this.raiseWhirl(Math.max(this.whirlTarget, 0.55 + run * 0.1));
+        this.raise(0.6 + run * 0.1);
+        for (let slot = 0; slot < VERDANT_HILLS_KITES; slot += 1) {
+            if (this.line[slot] > 0) this.tug[slot] = 1;
+        }
+        this.streak('gold', {
+            side: 0, row: 0.55, strength: 0.75 + run * 0.08, lines: run + 1,
+        });
         return true;
     }
 
+    /**
+     * A perfect clear crowns the clear it ends (physics sends it a moment after that clear's last
+     * wave): a front of its own beside the clear's, the break in the clouds fed rather than
+     * reopened, every kite in the air.
+     */
     onPerfectClear() {
         if (this.disposed) return false;
         this.settled = false;
+        this.surge.crown(this.time);
         this.excite({
             gust: 0.9, warmth: 1, shafts: 1, glow: 1, shimmer: 1, flock: 1, flutter: 1,
         });
@@ -594,6 +867,7 @@ export class VerdantHillsReactions {
 
     onLevelUp() {
         if (this.disposed) return false;
+        this.surge.levelUp(this.time);
         this.excite({
             gust: 0.6, warmth: 0.55, shafts: 0.6, glow: 0.8, shimmer: 0.8, flock: 0.7, flutter: 0.8,
         });
@@ -607,14 +881,17 @@ export class VerdantHillsReactions {
         return true;
     }
 
-    /** The session ended: let the wind drop, the whirl unwind and the kites come down. */
+    /**
+     * The session ended: let the wind drop, the whirl unwind and the kites come down; the fronts
+     * still crossing and the sunlight fade within a second or so (see update()).
+     */
     onGameOver() {
         if (this.disposed) return false;
         this.whirlTarget = 0;
         this.whirlHold = 0;
         this.clearStreak = 0;
-        this.front.active = false;
-        this.sunpool.active = false;
+        for (const front of this.fronts) front.target = 0;
+        this.sunpool.hold = 0;
         this.line.fill(0);
         // An empty sky can fill for a festival again.
         this.festivalArmed = true;
@@ -671,14 +948,28 @@ export class VerdantHillsReactions {
             this.whirl *= Math.exp(-WHIRL_RELEASE_RATE * dt);
             if (this.whirl < 0.0005) this.whirl = 0;
         }
-        if (this.front.active) {
-            this.front.age += dt;
-            if (this.front.age >= FRONT_SECONDS) this.front.active = false;
+        // How hot play runs, on this clock: the world wears it, and a fever holds the clouds open.
+        const heat = this.surge.sample(this.time);
+        const surge = this.surgeFrame;
+        surge.level = heat.level;
+        surge.fever = heat.fever;
+        surge.stage = heat.stage;
+        surge.punch = heat.punch;
+        const stillStep = STILL_RATE * dt;
+        this.still += clamp(this.stillTarget - this.still, -stillStep, stillStep);
+        // Each front runs to the far side; a joined one eases to its new strength, and once the
+        // game is over every one eases away.
+        const ease = 1 - Math.exp(-FRONT_EASE * dt);
+        for (const front of this.fronts) {
+            if (!front.active) continue;
+            front.age += dt;
+            front.strength += (front.target - front.strength) * ease;
+            if (front.age >= FRONT_SECONDS || (this.settled && front.strength < 0.001)) {
+                front.active = false;
+                front.strength = 0;
+            }
         }
-        if (this.sunpool.active) {
-            this.sunpool.age += dt;
-            if (this.sunpool.age >= SUNBREAK_SECONDS) this.sunpool.active = false;
-        }
+        this.updateSunpool(dt, surge.fever);
         for (const emitter of this.emitters) {
             if (!emitter.active) continue;
             emitter.age = Math.min(emitter.duration, emitter.age + dt);
@@ -690,10 +981,23 @@ export class VerdantHillsReactions {
         return this.getFrame();
     }
 
-    getFrame() {
-        const { front, sunpool } = this;
+    /** One front as the world sees it: where it is across the view, and how hard it pushes there. */
+    static showFront(front) {
         const travel = clamp(front.age / FRONT_SECONDS, 0, 1);
-        const progress = clamp(sunpool.age / SUNBREAK_SECONDS, 0, 1);
+        return {
+            // -1.4 .. 1.4 across the view, downwind.
+            position: travel * 2.8 - 1.4,
+            direction: 1,
+            strength: front.strength * Math.sin(Math.PI * Math.min(1, travel * 1.15)),
+        };
+    }
+
+    getFrame() {
+        const { sunpool } = this;
+        // Every front crossing, the newest (sent or joined) first.
+        const fronts = this.fronts.filter((front) => front.active)
+            .sort((a, b) => b.serial - a.serial)
+            .map(VerdantHillsReactions.showFront);
         return {
             ...this.envelopes,
             epoch: this.epoch,
@@ -711,17 +1015,19 @@ export class VerdantHillsReactions {
             aloft: this.aloft,
             festival: this.festivalFlash,
             festivals: this.festivals,
-            front: front.active ? {
-                // -1.4 .. 1.4 across the view, downwind.
-                position: travel * 2.8 - 1.4,
-                direction: 1,
-                strength: front.strength * Math.sin(Math.PI * Math.min(1, travel * 1.15)),
-            } : null,
+            front: fronts[0] ?? null,
+            fronts,
             sunbreak: sunpool.active ? {
                 // 0 as the clouds open, 1 as the pool of light leaves the far hills.
-                progress,
-                strength: sunpool.strength * Math.max(0, Math.sin(Math.PI * Math.min(1, progress * 1.08))) ** 0.7,
+                progress: sunpool.travel,
+                strength: sunpool.strength * sunpool.fade
+                    * Math.max(0, Math.sin(Math.PI * Math.min(1, sunpool.glow * 1.08))) ** 0.7,
+                // How much wider than a plain break feeds and a fever have opened it (0..1).
+                breadth: sunpool.breadth,
             } : null,
+            // How hot play runs (shared, live: read it, do not keep it).
+            surge: this.surgeFrame,
+            still: this.still,
             waves: this.waves,
             streaks: this.streaks,
             emitters: this.emitters.filter((emitter) => emitter.active).map((emitter) => ({
