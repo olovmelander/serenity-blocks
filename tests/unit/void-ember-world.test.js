@@ -10,12 +10,12 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    HEAT_FLARE, REST_RIG, STOKE_MAX, SURGE_COOL, VOID_EMBER_PARTS, VoidEmberWorld, fovForAspect,
+    HEAT_FLARE, PACE_HEAT, REST_RIG, STOKE_MAX, SURGE_COOL, VOID_EMBER_PARTS, VoidEmberWorld, emberBase, fovForAspect,
 } from '../../src/themes/void-ember/void-ember-world.js';
 import {
     AMBIENT_LOOPS, COMET_SLOTS, COMET_TAIL, EMBER, ERUPT_LIFE, HUSH_HOLD, IMPACT_SLOTS, LOCK_LOOPS, LOOP_LIFE,
-    LOOP_SLOTS, PALETTE_HOME, PALETTE_STEP, REST_HEAT, VOID_PALETTES, WAVE_LIVE, WAVE_SLOTS, emberAnchors,
-    heatForCombo, paletteAt, paletteName, palettePlace, pieceColor,
+    LOOP_SLOTS, PALETTE_HOME, PALETTE_STEP, REST_HEAT, SCAR_LIFE, VOID_PALETTES, WAVE_AFTERGLOW, WAVE_LIVE, WAVE_REACH,
+    WAVE_SHAPE, WAVE_SLOTS, WAVE_TRAVEL, emberAnchors, heatForCombo, paletteAt, paletteName, palettePlace, pieceColor,
 } from '../../src/themes/void-ember/void-ember-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/void-ember/void-ember-quality.js';
 import { ROCK_CLASSES } from '../../src/themes/void-ember/void-ember-belt.js';
@@ -413,7 +413,8 @@ describe('void ember world: a lock is fuel', () => {
             expect(world.stoke).toBeLessThanOrEqual(STOKE_MAX);
         }
         expect(world.stoke).toBeCloseTo(STOKE_MAX, 9);
-        // Stoking alone warms the ember by no more than that.
+        // Locks alone (no chain, no clear) warm the ember by no more than the stoking and the pace
+        // of play: never into a chain's gold.
         let hottest = 0;
         for (let i = 0; i < 240; i++) {
             frame(world, camera, 1 / 60);
@@ -421,7 +422,7 @@ describe('void ember world: a lock is fuel', () => {
             expect(world.stoke).toBeLessThanOrEqual(STOKE_MAX);
         }
         expect(hottest).toBeGreaterThan(REST_HEAT);
-        expect(hottest).toBeLessThanOrEqual(REST_HEAT + STOKE_MAX + 1e-9);
+        expect(hottest).toBeLessThanOrEqual(REST_HEAT + STOKE_MAX + PACE_HEAT + 1e-9);
         run(world, camera, 90, 900);
         expect(world.stoke).toBeLessThan(one / 10);
         expect(world.heat).toBeCloseTo(REST_HEAT, 2);
@@ -687,6 +688,7 @@ describe('void ember world: a clear makes the star let go', () => {
         const { world } = makeWorld();
         const { frame: beam, rows, color } = world.beams.uniforms;
         expect(beam.value.w).toBe(0);
+        world.beams.sets.forEach((set) => expect(set.frame.value.w).toBe(0));
         const t = world.time;
         world.onClear(clear(3, { rows: [19, 12, 5] }));
         const card = cardUnion(world.layout);
@@ -697,9 +699,23 @@ describe('void ember world: a clear makes the star let go', () => {
             boardPoint(board, 0.5, 19).y, boardPoint(board, 0.5, 12).y, boardPoint(board, 0.5, 5).y, -1,
         ]);
         expect(Math.max(...color.value.toArray())).toBeLessThanOrEqual(1 + 1e-9);
-        // A clear that names no rows fires the bottom ones.
+        // A clear that names no rows fires the bottom ones, in the other set of blades: the
+        // first clear's are still leaving the card and run on.
         world.onClear(clear(2, { rows: null }));
-        expect(rows.value.toArray()).toEqual([boardPoint(board, 0.5, 19).y, boardPoint(board, 0.5, 18).y, -1, -1]);
+        const next = world.beams.uniforms;
+        expect(next).not.toBe(world.beams.sets[0]);
+        expect(next.rows.value.toArray()).toEqual([
+            boardPoint(board, 0.5, 19).y, boardPoint(board, 0.5, 18).y, -1, -1,
+        ]);
+        expect(rows.value.toArray()).toEqual([
+            boardPoint(board, 0.5, 19).y, boardPoint(board, 0.5, 12).y, boardPoint(board, 0.5, 5).y, -1,
+        ]);
+        // A third, at once, takes the set with the least left to show: the two-line clear's
+        // blades, dimmer than the three-line clear's, which run on.
+        world.onClear(clear(1, { rows: [7] }));
+        expect(world.beams.uniforms).toBe(next);
+        expect(next.rows.value.x).toBe(boardPoint(board, 0.5, 7).y);
+        expect(rows.value.x).toBe(boardPoint(board, 0.5, 19).y);
     });
 
     it('four lines: the ember holds its breath, then flares at the wave\'s birth', () => {
@@ -774,7 +790,8 @@ describe('void ember world: a clear makes the star let go', () => {
             hottest = Math.max(hottest, world.heat);
             expect(world.u.heat.value).toBe(world.heat);
         }
-        expect(hottest).toBeGreaterThan(heatForCombo(40));
+        // A four's flare goes past anything a chain and the stoking can do on their own.
+        expect(hottest).toBeGreaterThan(emberBase(heatForCombo(40) + STOKE_MAX));
         expect(hottest).toBeLessThanOrEqual(HEAT_FLARE + 1e-9);
     });
 
@@ -818,17 +835,19 @@ describe('void ember world: a clear makes the star let go', () => {
         expect(followed).toBeGreaterThanOrEqual(alone);
     });
 
-    it('a ripple through the picture gives way only to a stronger one', () => {
+    it('a ripple through the picture swells with the next one instead of restarting from the star', () => {
         const { world, camera } = makeWorld();
         world.onClear(clear(4));
         const great = { ...world.spaceRipple };
         expect(great.strength).toBeGreaterThan(0);
         expect(great.birth).toBeGreaterThan(world.time);
         expect(world.getPostState().ripple.strength).toBe(0);
-        // A T-spin inside the hush sends a lesser ring: the great one stays on its way.
+        // A T-spin inside the hush sends a lesser ring: the great one stays on its way, and the
+        // lesser one's energy joins it.
         run(world, camera, HUSH_HOLD / 2);
         world.onClear(clear(2, { tspin: true }));
-        expect(world.spaceRipple).toEqual(great);
+        expect(world.spaceRipple.birth).toBe(great.birth);
+        expect(world.spaceRipple.strength).toBeGreaterThan(great.strength);
         // It leaves the star at its birth and runs outward.
         runPast(world, camera, great.birth, 0.1);
         const ripple = { ...world.getPostState().ripple };
@@ -846,7 +865,7 @@ describe('void ember world: a clear makes the star let go', () => {
 });
 
 describe('void ember world: chains and levels', () => {
-    it('a chain blows the ember up toward heatForCombo, and it cools when the chain breaks', () => {
+    it('a chain blows the ember up toward heatForCombo (eased to gold), and it cools when the chain breaks', () => {
         const { world, camera } = makeWorld();
         expect(world.heat).toBeCloseTo(REST_HEAT, 9);
         const rest = world.getPostState().exposure;
@@ -857,14 +876,14 @@ describe('void ember world: chains and levels', () => {
             expect(world.heat).toBeGreaterThanOrEqual(heat);
             ({ heat } = world);
         }
-        expect(heat).toBeGreaterThan(heatForCombo(4));
-        expect(Math.abs(heat - heatForCombo(5))).toBeLessThan(0.02);
+        expect(heat).toBeGreaterThan(emberBase(heatForCombo(4)));
+        expect(Math.abs(heat - emberBase(heatForCombo(5)))).toBeLessThan(0.02);
         // The iris closes as the ember heats, so its colours survive.
         expect(world.getPostState().exposure).toBeLessThan(rest);
         expect(world.u.iris.value).toBeGreaterThan(1);
         world.onCombo(12);
         run(world, camera, 10);
-        expect(Math.abs(world.heat - heatForCombo(12))).toBeLessThan(0.02);
+        expect(Math.abs(world.heat - emberBase(heatForCombo(12)))).toBeLessThan(0.02);
         expect(world.getState().combo).toBe(12);
 
         world.onCombo(0);
@@ -1233,7 +1252,7 @@ describe('void ember world: the clock', () => {
         expect(world.getState().impacts).toBe(Math.min(IMPACT_SLOTS, drops * 3));
         expect(world.u.impactCount.value).toBeLessThanOrEqual(IMPACT_SLOTS);
         const newest = Math.max(...landings.map((landing) => landing.time));
-        expect(world.u.impacts.array.filter((_, i) => i % 2 === 0).some((mark) => mark.w === newest)).toBe(true);
+        expect(world.u.impacts.array.filter((_, i) => i % 3 === 0).some((mark) => mark.w === newest)).toBe(true);
     });
 
     it('turns the star, boils it and streams the wind faster the hotter it is', () => {
@@ -1527,5 +1546,241 @@ describe('void ember world: aiming at the board', () => {
         world.onLock(lock({ player: 2 }));
         runPast(world, camera, Math.max(...queued(world, 'land').map((landing) => landing.time)));
         expect(standing(world)).toHaveLength(2);
+    });
+});
+
+describe('void ember world: fast play builds instead of popping', () => {
+    /** One clearing hard drop of a chain, as the director hands it over (lock, clear, combo). */
+    const step = (world, n, extra = {}) => {
+        world.onLock(lock({ hardDrop: true, u: (n % 10) / 10 + 0.05 }));
+        world.onClear(clear((n % 3) + 1, { combo: n, ...extra }));
+        world.onCombo(n);
+    };
+    /** A chain of `count` clears 0.64 s apart (the tray's Fever pace). */
+    const chain = (world, camera, count) => {
+        for (let n = 1; n <= count; n++) {
+            frame(world, camera, 1 / 60, () => step(world, n));
+            run(world, camera, 0.62, 37);
+        }
+    };
+    const read = (world) => ({
+        heat: world.heat,
+        reach: world.corona.uniforms.reach.value,
+        emit: world.wind.uniforms.emit.value,
+        streamers: world.wind.uniforms.reach.value,
+        grow: world.u.loopGrow.value,
+        blaze: world.u.blaze.value,
+        level: world.playNow.level,
+        fever: world.playNow.fever,
+    });
+
+    it('a weak event right after a strong one never cuts the light', () => {
+        const light = (script) => {
+            const { world, camera } = makeWorld();
+            world.onClear(clear(4));
+            const out = [];
+            for (let i = 0; i < 150; i++) {
+                frame(world, camera, 1 / 60, () => script(world, i));
+                const post = world.getPostState();
+                out.push([post.flash, post.kick, post.bloomBoost, world.surge, world.gust, world.u.starLight.value.x]);
+            }
+            return out;
+        };
+        const alone = light(() => {});
+        const followed = light((world, i) => {
+            if (i === 30) {
+                world.onLock(lock());
+                world.onClear(clear(1));
+            }
+            if (i === 34) world.onLock(lock());
+        });
+        alone.forEach((row, i) => row.forEach((value, k) => {
+            expect(followed[i][k], `frame ${i}, light ${k}`).toBeGreaterThanOrEqual(value - 1e-9);
+        }));
+    });
+
+    it('a long chain reads hotter than its first clear, lets its crown go at its end, and breathes back', () => {
+        const { world, camera } = makeWorld();
+        chain(world, camera, 1);
+        const first = read(world);
+        chain(world, camera, 12);
+        const hot = read(world);
+        expect(world.playNow.stage).toBe(3); // the fever
+        Object.keys(first).forEach((key) => expect(hot[key], key).toBeGreaterThan(first[key]));
+        // A gold coal, not a white one: only a four's flare goes past what a chain can do.
+        expect(hot.heat).toBeLessThan(HEAT_FLARE);
+        // Every clear of the chain tore loops off, yet the star still holds a crown of them.
+        expect(world.counts.eruptions).toBeGreaterThanOrEqual(2 * 11);
+        expect(standing(world).length).toBeGreaterThan(3);
+        // The hands rest: everything the heat of play had lit falls back.
+        run(world, camera, 12, 240);
+        const rested = read(world);
+        expect(rested.level).toBeLessThan(0.15);
+        expect(rested.fever).toBe(0);
+        expect(world.playNow.stage).toBe(0);
+        expect(rested.grow).toBeLessThan(hot.grow / 4);
+        expect(rested.blaze).toBeLessThan(hot.blaze / 4);
+        expect(rested.streamers).toBeLessThan(hot.streamers);
+        // The chain ends: the crown it kept lets go, and the ember cools toward its rest.
+        const held = standing(world).length;
+        const torn = world.counts.eruptions;
+        world.onCombo(0);
+        expect(world.counts.eruptions - torn).toBe(held);
+        run(world, camera, 2);
+        expect(standing(world)).toEqual([]);
+        run(world, camera, 20, 200);
+        expect(world.heat).toBeLessThan(REST_HEAT + 0.05);
+    });
+
+    it('a cascade builds wave on wave: each one stronger, wider and thicker than the last', () => {
+        const { world, camera } = makeWorld();
+        chain(world, camera, 3);
+        const rows = [];
+        for (let wave = 1; wave <= 4; wave++) {
+            world.onClear(clear(1, { combo: 4, cascade: wave }));
+            rows.push(waveRows(world, (world.waveCursor + WAVE_SLOTS - 1) % WAVE_SLOTS));
+            run(world, camera, 0.36, 22);
+        }
+        for (let k = 1; k < rows.length; k++) {
+            expect(rows[k][0][1], 'strength').toBeGreaterThan(rows[k - 1][0][1]);
+            expect(rows[k][1][3], 'cover').toBeGreaterThan(rows[k - 1][1][3]);
+            expect(rows[k][0][3], 'thickness').toBeGreaterThan(rows[k - 1][0][3]);
+        }
+    });
+
+    it('a wave is only overwritten once its front has left the frame, and its afterglow carries on', () => {
+        // The CPU twin of veWaveLight's summed afterglow at `radii` from the centre, before its knee.
+        const glowAt = (world, radii) => {
+            const far = Math.min(1.6, Math.max(0, (radii - 1) / WAVE_REACH));
+            const pass = WAVE_TRAVEL * far ** (1 / WAVE_SHAPE);
+            let glow = world.carryAt(world.time) * Math.exp(pass / WAVE_AFTERGLOW);
+            for (let i = 0; i < WAVE_SLOTS; i++) {
+                const [birth, strength] = waveRows(world, i)[0];
+                const since = world.time - birth - pass;
+                if (since >= 0 && strength > 0) glow += strength * Math.exp(-since / WAVE_AFTERGLOW);
+            }
+            return glow;
+        };
+        const { world, camera } = makeWorld();
+        // The tray's Fever: a clear every 0.64 s, a four-wave cascade 0.36 s apart in the middle.
+        const gaps = [0.64, 0.64, 0.64, 0.64, 0.64, 0.64, 0.64, 0.64, 0.64, 0.36, 0.36, 0.36, 0.64, 0.64, 0.64];
+        let evictions = 0;
+        gaps.forEach((gap, k) => {
+            const before = [2.5, 4, 8].map((r) => glowAt(world, r));
+            const rows = Array.from({ length: WAVE_SLOTS }, (_, i) => waveRows(world, i)[0]);
+            world.onClear(clear(1, { combo: k + 1 }));
+            const written = (world.waveCursor + WAVE_SLOTS - 1) % WAVE_SLOTS;
+            expect(waveRows(world, written)[0][0]).toBe(world.time);
+            if (rows[written][1] > 0) {
+                evictions += 1;
+                // The wave it replaced had crossed the frame long since.
+                expect(world.time - rows[written][0]).toBeGreaterThan(2.3);
+            }
+            // Where the old wave had passed, the afterglow is just as bright the moment after.
+            [2.5, 4, 8].forEach((r, i) => expect(glowAt(world, r)).toBeCloseTo(before[i], 9));
+            run(world, camera, gap, Math.round(gap * 60));
+        });
+        expect(evictions).toBeGreaterThan(0);
+        expect(world.u.waveCarry.value).toBeGreaterThan(0);
+    });
+
+    it('a late perfect clear crowns the four: no second hush or flare, a ring of flames round the limb', () => {
+        const { world, camera } = makeWorld();
+        world.onClear(clear(4));
+        runPast(world, camera, world.time + HUSH_HOLD + 0.36);
+        const { surge } = world;
+        world.onCrown();
+        expect(world.counts).toMatchObject({ quads: 1, crowns: 1, clears: 1 });
+        expect(queued(world, 'surge')).toEqual([]);
+        const ring = waveRows(world, (world.waveCursor + WAVE_SLOTS - 1) % WAVE_SLOTS);
+        expect(ring[0][0]).toBe(world.time);
+        expect(ring[0][2]).toBe(4); // four fronts
+        expect(ring[1][3]).toBe(1); // round the whole star
+        for (let i = 0; i < 40; i++) {
+            frame(world, camera, 1 / 60);
+            expect(world.breath).toBeGreaterThan(0.95); // no hush
+        }
+        expect(world.surge).toBeLessThan(surge + 0.31);
+        // The crown: prominences in the pieces' coloured flames, standing round the limb.
+        const up = standing(world);
+        expect(up.length).toBeGreaterThanOrEqual(6);
+        const colours = new Set(up.map((slot) => world.loops.slot(slot).rgb.map((c) => c.toFixed(3)).join()));
+        expect(colours.size).toBeGreaterThanOrEqual(4);
+        expect(world.corona.uniforms.fringe.value).toBeGreaterThan(1.5);
+    });
+
+    it('a four deep in a fever inhales instead of blacking out; Reduce flashing keeps a breath of the hush', () => {
+        const deepest = (world, camera, combo) => {
+            world.onClear(clear(4, { combo }));
+            let least = 1;
+            for (let i = 0; i < 30; i++) {
+                frame(world, camera, 1 / 60);
+                least = Math.min(least, world.breath);
+            }
+            return least;
+        };
+        const cold = makeWorld();
+        expect(deepest(cold.world, cold.camera, 1)).toBeLessThan(0.5);
+        const hot = makeWorld();
+        chain(hot.world, hot.camera, 10);
+        expect(deepest(hot.world, hot.camera, 11)).toBeGreaterThan(0.85);
+        const saved = globalThis.window;
+        globalThis.window = { settings: { reduceFlashing: true } };
+        try {
+            const calm = makeWorld();
+            expect(deepest(calm.world, calm.camera, 1)).toBeGreaterThan(0.9);
+            // The flash of an event no longer lifts the light the star casts on its world.
+            const lit = makeWorld();
+            frame(lit.world, lit.camera, 1 / 60);
+            const before = lit.world.u.starLight.value.x;
+            lit.world.levelUp(2);
+            frame(lit.world, lit.camera, 1 / 60);
+            expect(lit.world.u.starLight.value.x - before).toBeLessThan(0.05);
+        } finally {
+            globalThis.window = saved;
+        }
+    });
+
+    it('a back-to-back rings the limb, more with each in a row; an empty T-spin still turns the star', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 1 / 60);
+        const fringe = () => world.corona.uniforms.fringe.value;
+        const rest = fringe();
+        world.onClear(clear(4, { b2b: true }));
+        run(world, camera, 0.4);
+        const once = fringe();
+        expect(once).toBeGreaterThan(rest);
+        run(world, camera, 1);
+        world.onClear(clear(4, { b2b: true }));
+        run(world, camera, 0.4);
+        expect(world.getState().b2bStreak).toBe(2);
+        expect(fringe()).toBeGreaterThan(once);
+        // A plain clear ends the run of back-to-backs.
+        world.onClear(clear(1));
+        expect(world.getState().b2bStreak).toBe(0);
+
+        const empty = makeWorld();
+        empty.world.onSpin();
+        let widest = 0;
+        for (let i = 0; i < 60; i++) {
+            frame(empty.world, empty.camera, 1 / 60);
+            widest = Math.max(widest, Math.abs(empty.world.twist));
+        }
+        expect(widest).toBeGreaterThan(0.005);
+        expect(empty.world.counts.spins).toBe(1);
+    });
+
+    it('a scar lasts as long as its slot is left alone: SCAR_LIFE at an easy pace, short when fast', () => {
+        const { world, camera } = makeWorld();
+        world.onLock(lock());
+        runPast(world, camera, queued(world, 'land')[0].time);
+        expect(world.u.impacts.array[2].x).toBe(SCAR_LIFE);
+        for (let i = 0; i < 8; i++) {
+            world.onLock(lock({ hardDrop: true, u: i / 8 }));
+            run(world, camera, 0.3, 18);
+        }
+        runPast(world, camera, Math.max(world.time, ...queued(world, 'land').map((landing) => landing.time)));
+        const newest = (world.impactCursor - 1) % IMPACT_SLOTS;
+        expect(world.u.impacts.array[newest * 3 + 2].x).toBeLessThan(SCAR_LIFE / 3);
     });
 });

@@ -12,8 +12,8 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    DIAL_MAX, FRESH, HEAD_FADE, JOIN_ARC, REST_RIG, REVEAL, RAINBOW_TERRACES_PARTS, STROKES, STROKE_END, RainbowTerracesWorld, fovForAspect,
-    sprayFill,
+    DIAL_MAX, FRESH, GLORY_RINGS, HEAD_FADE, JOIN_ARC, REST_RIG, REVEAL, RAINBOW_TERRACES_PARTS, STROKES, STROKE_END,
+    RainbowTerracesWorld, UNWIND_SECONDS, fovForAspect, sprayFill,
 } from '../../src/themes/rainbow-terraces/rainbow-terraces-world.js';
 import { cellsFromMatrix, fallPoint, pieceLight } from '../../src/themes/rainbow-terraces/rainbow-terraces-core.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/rainbow-terraces/rainbow-terraces-quality.js';
@@ -1100,18 +1100,19 @@ describe('Rainbow Terraces world: the chain paints the bow', () => {
         expect(world.U.bow.value.w).toBe(DIAL_MAX);
     });
 
-    it('unwinds newest-first at one stroke per 0.35 s when the chain breaks', () => {
+    it('unwinds newest-first at one stroke per UNWIND_SECONDS when the chain breaks (never in a blink)', () => {
         const { world, camera } = makeWorld('Low');
+        expect(UNWIND_SECONDS).toBeGreaterThanOrEqual(0.5);
         world.onCombo(5);
         run(world, camera, 5);
         expect(world.dial).toBe(5);
         world.onCombo(0);
-        run(world, camera, 0.35, 1 / 60);
+        run(world, camera, UNWIND_SECONDS, 1 / 60);
         expect(world.dial).toBeCloseTo(4, 1);
         // The newest strokes go first: stroke 5 is withdrawn, stroke 4 still whole.
         expect(world.U.strokes.array[4].z).toBeLessThan(0.1);
         expect(world.U.strokes.array[3].z).toBeGreaterThan(0.9);
-        run(world, camera, 5 * 0.35 - 0.35 - 0.05, 1 / 60);
+        run(world, camera, 5 * UNWIND_SECONDS - UNWIND_SECONDS - 0.05, 1 / 60);
         expect(world.dial).toBeGreaterThan(0);
         run(world, camera, 0.1, 1 / 60);
         expect(world.dial).toBe(0);
@@ -1126,8 +1127,11 @@ describe('Rainbow Terraces world: the chain paints the bow', () => {
         world.onCombo(0);
         run(world, camera, 3.8);
         expect(world.dial).toBe(4);
-        run(world, camera, 0.3 + 4 * 0.35 + 0.1);
+        // The long-wing keeps station on the bow through the grace, and lands with it.
+        expect(world.flock.longWing).toBe(true);
+        run(world, camera, 0.3 + 4 * UNWIND_SECONDS + 0.1);
         expect(world.dial).toBe(0);
+        expect(world.flock.longWing).toBe(false);
     });
 });
 
@@ -1679,5 +1683,179 @@ describe('Rainbow Terraces world: a long session', () => {
         holdersOf(world).forEach((holder, k) => expect(holder, `holder ${k}`).toBe(holders[k]));
         expect(world.parts.fx.glows).toBe(glows);
         expect(world.lastLock.size).toBe(1);
+    });
+});
+
+describe('Rainbow Terraces world: fast play builds, it never pops', () => {
+    /** The surge's own look of the world now: the falls' width, the bow's light, the jewels. */
+    const look = (world) => ({
+        flow: world.U.flow.value.y,
+        bowGain: world.U.bowGain.value,
+        bowRest: world.U.bowRest.value,
+        jewel: world.jewel,
+        ...world.look,
+    });
+
+    it('feeds a standing glory with a second quad: no second hush, the light never drops, more rings', () => {
+        const { world, camera } = makeWorld('Low');
+        const width = world.U.flow.value.y;
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [19, 18, 17, 16], lines: 4 }));
+        run(world, camera, 2.5, 1 / 30);
+        const hushAt = world.hush.at;
+        const strength = world.U.glory.value.x;
+        expect(strength).toBeGreaterThan(0.9);
+        // A back-to-back quad (and a single on top of it) while it stands.
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [19, 18, 17, 16], lines: 4, b2b: true }));
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [19], lines: 1 }));
+        let least = Infinity;
+        let thinnest = Infinity;
+        const reveal = world.U.glory.value.y;
+        let last = reveal;
+        run(world, camera, 3, 1 / 30, (w) => {
+            least = Math.min(least, w.U.glory.value.x);
+            thinnest = Math.min(thinnest, w.U.flow.value.y);
+            // The glory only grows outward: never back to its first ring.
+            expect(w.U.glory.value.y).toBeGreaterThanOrEqual(last - 1e-9);
+            last = w.U.glory.value.y;
+        });
+        expect(world.hush.at).toBe(hushAt);
+        expect(least).toBeGreaterThan(strength - 1e-6);
+        expect(thinnest).toBeGreaterThan(width * 0.9);
+        // Two more rings out round the antisolar point (each ring the same step out as the first's).
+        expect(world.hush.rings).toBe(6);
+        expect(last - reveal).toBeCloseTo(2 * ((reveal - 1.2) / 4), 6);
+        // It holds on from the second quad: still standing past the first one's hold and fade.
+        run(world, camera, 4.5, 1 / 10);
+        expect(world.time - hushAt).toBeGreaterThan(0.33 + 7.6 + 2);
+        expect(world.U.glory.value.x).toBeGreaterThan(0.9);
+    });
+
+    it('crowns the quad with the late perfect clear: eight rings and the spillway, never a second hush', () => {
+        const { world, camera } = makeWorld('Low');
+        holdMany(world, camera, 4);
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [19, 18, 17, 16], lines: 4 }));
+        run(world, camera, 0.36, 1 / 30);
+        const hushAt = world.hush.at;
+        const crowns = world.effects.crowns.items.filter((r) => r.at > -1e3).length;
+        frame(world, camera, 1 / 30, () => clear(world, {
+            rows: [], lines: 0, perfect: true, crown: true,
+        }));
+        expect(world.hush.at).toBe(hushAt);
+        expect(world.hush.rings).toBe(GLORY_RINGS);
+        // Every held pool crowned by a pillar of its colour.
+        expect(world.effects.crowns.items.filter((r) => r.at > -1e3).length).toBeGreaterThan(crowns);
+        let thinnest = Infinity;
+        run(world, camera, 2.5, 1 / 30, (w) => { thinnest = Math.min(thinnest, w.U.flow.value.y); });
+        expect(thinnest).toBeGreaterThan(0.9);
+        expect(spillways(world)).toHaveLength(1);
+    });
+
+    it('stirs the falls on a T-spin that clears nothing, and a second wring never cuts the first', () => {
+        const { world, camera } = makeWorld('Low');
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [], lines: 0, tspin: true }));
+        const first = world.U.wring.value.toArray();
+        expect(first[1]).toBeGreaterThan(0);
+        expect(world.combo).toBe(0);
+        run(world, camera, 0.5, 1 / 30);
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [18, 17], lines: 2, tspin: true }));
+        const both = world.U.wring.value.toArray();
+        expect(both.slice(0, 2)).toEqual(first.slice(0, 2));
+        expect(both[3]).toBeGreaterThan(first[1]);
+    });
+
+    it('builds each cascade wave on the last, and lets only one colour a line go after the first', () => {
+        const { world, camera } = makeWorld('Low');
+        holdMany(world, camera, 12);
+        run(world, camera, 1);
+        const fronts = (w) => {
+            const rows = w.U.packets.array;
+            const out = [];
+            for (let k = 0; k < PACKET_SLOTS; k++) {
+                if (rows[k * 2 + 1].w === 1 && rows[k * 2].x >= 0) out.push(rows[k * 2].z);
+            }
+            return out;
+        };
+        let held = heldSlots(world).length;
+        const released = [];
+        const widest = [];
+        for (let wave = 1; wave <= 4; wave++) {
+            frame(world, camera, 0.36, () => clear(world, { rows: [19], lines: 1, cascade: wave }));
+            released.push(held - heldSlots(world).length);
+            held = heldSlots(world).length;
+            widest.push(Math.max(...fronts(world)));
+        }
+        expect(released).toEqual([3, 1, 1, 1]);
+        for (let k = 1; k < widest.length; k++) expect(widest[k]).toBeGreaterThan(widest[k - 1]);
+    });
+
+    it('lets a held colour ride down the falls before its pool takes a new one', () => {
+        const { world, camera } = makeWorld('Low');
+        const mid = 0.5;
+        const left = world.poolSlots.filter((p) => p.x < mid).length;
+        const ribbons = (w) => {
+            const rows = w.U.packets.array;
+            let n = 0;
+            for (let k = 0; k < PACKET_SLOTS; k++) if (rows[k * 2 + 1].w === 0 && rows[k * 2].x >= 0) n += 1;
+            return n;
+        };
+        // Every pool on the left lit, then one more lock there: the oldest is refilled, and the
+        // colour it held rides down the falls (a ribbon), never swapped out in place.
+        for (let i = 0; i < left; i++) {
+            frame(world, camera, 0.05, () => lock(world, {
+                silent: true, u: 0.2, rows: [8], color: Object.values(COLORS)[i % 7],
+            }));
+        }
+        expect(heldSlots(world).filter((s) => slotInfo(world, s).x < mid)).toHaveLength(left);
+        const before = ribbons(world);
+        frame(world, camera, 0.05, () => lock(world, {
+            silent: true, u: 0.2, rows: [8], color: COLORS.I,
+        }));
+        expect(ribbons(world)).toBe(before + 1);
+    });
+
+    it('reads a long chain hotter than its first clear, and breathes back to calm when the hands rest', () => {
+        const { world, camera } = makeWorld('Low');
+        run(world, camera, 1, 1 / 30);
+        const rest = look(world);
+        let first = null;
+        for (let n = 1; n <= 12; n++) {
+            frame(world, camera, 1 / 30, () => {
+                lock(world, { hardDrop: true, dropRows: 4 });
+                clear(world, { rows: [19, 18], lines: 1 + (n % 3), combo: n });
+            });
+            if (n === 1) {
+                run(world, camera, 0.3, 1 / 30);
+                first = look(world);
+                run(world, camera, 0.64 - 0.3 - 1 / 30, 1 / 30);
+            } else run(world, camera, 0.64 - 1 / 30, 1 / 30);
+        }
+        const hot = look(world);
+        expect(hot.fever).toBeGreaterThan(0.5);
+        expect(hot.hot).toBeGreaterThan(first.hot);
+        expect(hot.flow).toBeGreaterThan(first.flow);
+        expect(hot.bowGain).toBeGreaterThan(first.bowGain);
+        expect(hot.bowRest).toBeGreaterThan(first.bowRest);
+        expect(hot.jewel).toBeGreaterThan(first.jewel);
+        // The calm look under one clear: the world as it always was.
+        expect(first.warm).toBeLessThan(0.05);
+        expect(first.bowGain).toBeCloseTo(rest.bowGain, 6);
+        world.onCombo(0);
+        run(world, camera, 15, 1 / 10);
+        const calm = look(world);
+        expect(calm.warm).toBe(0);
+        expect(calm.fever).toBeLessThan(1e-3);
+        expect(calm.bowGain).toBeCloseTo(rest.bowGain, 6);
+        expect(calm.flow).toBeCloseTo(rest.flow, 3);
+    });
+
+    it('never cuts the light with a weak event after a strong one: a single after a triple only adds', () => {
+        const { world, camera } = makeWorld('Low');
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [19, 18, 17], lines: 3 }));
+        run(world, camera, 0.4, 1 / 30);
+        const span = world.U.falls.array[FALL_SLOT.span * 3 + 2].z;
+        const { level } = world.heat;
+        frame(world, camera, 1 / 30, () => clear(world, { rows: [19], lines: 1 }));
+        expect(world.U.falls.array[FALL_SLOT.span * 3 + 2].z).toBeGreaterThan(span - 0.05);
+        expect(world.heat.level).toBeGreaterThanOrEqual(level);
     });
 });

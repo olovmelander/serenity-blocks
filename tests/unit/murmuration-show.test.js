@@ -1,7 +1,9 @@
 import {
     describe, expect, it, vi,
 } from 'vitest';
-import { RANDOM_SHAPE_POOL, SwarmShow } from '../../src/themes/murmuration/composition/swarm-show.js';
+import {
+    CHAIN_FIGURES, CHAIN_GRAND_FIGURES, RANDOM_SHAPE_POOL, SwarmShow,
+} from '../../src/themes/murmuration/composition/swarm-show.js';
 import { PALETTE_LEVEL_STEP } from '../../src/themes/murmuration/composition/swarm-palette.js';
 import { IMPULSE_TYPE } from '../../src/themes/murmuration/sim/fluid-particles.js';
 import { SHAPE_NAMES } from '../../src/themes/murmuration/sim/shape-formations.js';
@@ -225,14 +227,27 @@ describe('swarm show: clears', () => {
         expect(show.getState().queued).toBe(0);
     });
 
-    it('lights the sky and the reward pulse for a back-to-back', () => {
+    it('answers a back-to-back with a second, harder ring right behind the first, and a lit sky', () => {
         const plain = makeShow();
         const b2b = makeShow();
         plain.show.clear({ lines: 1, rows: [19] });
         b2b.show.clear({ lines: 1, rows: [19], b2b: true });
         expect(b2b.show.skyFlash).toBeGreaterThan(plain.show.skyFlash);
         expect(b2b.show.fx.rewardPulse).toBeGreaterThan(plain.show.fx.rewardPulse);
+        // The clear's own ring leaves as it always does ...
         expect(b2b.impulses).toEqual(plain.impulses);
+        run(plain.show, 0, 1);
+        run(b2b.show, 0, 1);
+        expect(plain.impulses).toHaveLength(1);
+        // ... and is answered from the same place by a harder, wider, brighter one: back to back.
+        expect(b2b.impulses).toHaveLength(2);
+        const [first, echo] = b2b.impulses;
+        expect(echo.type).toBe(RADIAL);
+        expect(echo.position).toEqual(first.position);
+        expect(echo.strength).toBeGreaterThan(first.strength);
+        expect(echo.wave.width).toBeGreaterThan(first.wave.width);
+        expect(echo.wave.flash).toBeGreaterThan(first.wave.flash);
+        expect(echo.wave.squash).toBe(first.wave.squash);
     });
 
     it('only ever asks the simulation for formations it has', () => {
@@ -271,10 +286,11 @@ describe('swarm show: clears', () => {
         // (A formation that has faded hands the simulation back with 'free'; that is not a figure.)
         const figures = () => sim.setShape.mock.calls.filter(([name]) => name !== 'free');
         const plays = figures();
-        expect(plays.length).toBeGreaterThanOrEqual(6);
-        // Free to be twinned either side of the board, and formed from the ribbons only.
+        expect(plays.length).toBeGreaterThanOrEqual(5);
+        // Free to be twinned either side of the board, and formed in front of dust that keeps
+        // flowing (a long chain's grander figure takes some of it, never all).
         expect(plays.filter(([, opts]) => opts?.layout !== undefined)).toEqual([]);
-        expect(plays.filter(([, opts]) => opts?.keepDust !== true)).toEqual([]);
+        expect(plays.filter(([, opts]) => !(opts?.keepDust > 0))).toEqual([]);
         show.resetSession();
         show.gameOver();
         const [name, heart] = figures().at(-1);
@@ -358,24 +374,104 @@ describe('swarm show: combo', () => {
         expect(impulses).toHaveLength(3);
     });
 
-    it('gathers a formation at four and a firmer, longer one at seven', () => {
+    it('draws one figure at four and grows it as the chain goes on, instead of rolling another', () => {
         const { show, sim, camera } = makeShow();
         show.combo(2);
         show.combo(3);
         expect(sim.setShape).not.toHaveBeenCalled();
         show.combo(4);
         expect(sim.setShape).toHaveBeenCalledTimes(1);
+        expect(CHAIN_FIGURES).toContain(sim.setShape.mock.calls[0][0]);
         expect(camera.dolly).toHaveBeenCalledOnce();
         expect(camera.vertigo).not.toHaveBeenCalled();
         const four = { ...show.shape };
         expect(four.target).toBeGreaterThan(0);
+        // Still forming when the chain runs on: the flock finishes it and grows it.
+        let time = run(show, 0, 0.4);
+        show.combo(5);
+        show.combo(6);
         show.combo(7);
-        expect(sim.setShape).toHaveBeenCalledTimes(2);
+        expect(sim.setShape).toHaveBeenCalledTimes(1);
         expect(camera.vertigo).toHaveBeenCalledOnce();
-        expect(show.shape.name).not.toBe(four.name);
+        expect(show.shape.name).toBe(four.name);
+        expect(show.shape.growth).toBeGreaterThan(0);
         expect(show.shape.target).toBeGreaterThan(four.target);
         expect(show.shape.until).toBeGreaterThan(four.until);
-        expect(show.shape.priority).toBeGreaterThan(four.priority);
+        // Firmer, and larger.
+        time = run(show, time, 1);
+        expect(show.shape.level).toBeGreaterThan(four.target);
+        expect(sim.setShapePose.mock.calls.at(-1)[1]).toBeGreaterThan(1);
+        expect(show.getState().growth).toBe(show.shape.growth);
+        expect(time).toBeGreaterThan(1);
+    });
+
+    it('lets a chain\'s figure become a grander one only once it has formed and held', () => {
+        const { show, sim } = makeShow();
+        show.combo(4);
+        let time = run(show, 0, 0.64);
+        show.combo(5);
+        time = run(show, time, 0.64);
+        show.combo(6);
+        time = run(show, time, 0.64);
+        // Seven, but the figure has not stood long enough yet.
+        show.combo(7);
+        expect(sim.setShape).toHaveBeenCalledTimes(1);
+        const first = sim.setShape.mock.calls[0][0];
+        const grown = show.shape.growth;
+        time = run(show, time, 1.2);
+        show.combo(8);
+        // It had held: now it becomes its grander sibling, keeping what it had grown, and some
+        // of the dust joins it.
+        expect(sim.setShape).toHaveBeenCalledTimes(2);
+        const [grand, opts] = sim.setShape.mock.calls[1];
+        expect(grand).toBe(CHAIN_GRAND_FIGURES[CHAIN_FIGURES.indexOf(first)]);
+        expect(opts.keepDust).toBeGreaterThan(0);
+        expect(opts.keepDust).toBeLessThan(1);
+        expect(show.shape.growth).toBeGreaterThan(grown);
+        expect(show.shape.evolved).toBe(true);
+        // Once: the rest of the chain grows it.
+        for (let n = 9; n <= 12; n += 1) {
+            time = run(show, time, 0.64);
+            show.combo(n);
+        }
+        expect(sim.setShape).toHaveBeenCalledTimes(2);
+        expect(show.shape.growth).toBeGreaterThan(0.8);
+        // The chain breaks: the figure loosens and spreads back into the flow.
+        show.combo(0);
+        run(show, time, 4);
+        expect(show.shape.name).toBe('free');
+    });
+
+    it('folds a lesser figure into the one held instead of dropping it', () => {
+        const { show, sim } = makeShow();
+        show.clear(QUAD);
+        const quad = { ...show.shape };
+        let time = run(show, 0, 1);
+        // A triple during the quad's hold: no new roll; the quad's figure takes its energy.
+        show.clear({ lines: 3, rows: [19, 18, 17] });
+        expect(sim.setShape).toHaveBeenCalledTimes(1);
+        expect(show.shape.name).toBe(quad.name);
+        expect(show.shape.growth).toBeGreaterThan(0);
+        expect(show.shape.target).toBeGreaterThan(quad.target);
+        // A T-spin's knot: the figure pirouettes instead.
+        show.clear({ lines: 2, rows: [19, 18], tspin: true });
+        expect(sim.setShape).toHaveBeenCalledTimes(1);
+        expect(show.shape.spinTarget).toBeCloseTo(Math.PI * 2, 9);
+        time = run(show, time, 2.5);
+        expect(sim.setShapePose.mock.calls.at(-1)[0]).toBeGreaterThan(Math.PI);
+        // Late in its hold, play keeps it a little longer.
+        show.clear({ lines: 3, rows: [19, 18, 17] });
+        expect(show.shape.until).toBeGreaterThan(quad.until);
+        expect(sim.setShape).toHaveBeenCalledTimes(1);
+        expect(time).toBeGreaterThan(2);
+        // Under reduced motion the figure still grows, but nothing spins.
+        const still = makeShow();
+        still.show.reducedMotion = true;
+        still.show.clear(QUAD);
+        run(still.show, 0, 1);
+        still.show.clear({ lines: 2, rows: [19, 18], tspin: true });
+        expect(still.show.shape.growth).toBeGreaterThan(0);
+        expect(still.show.shape.spinTarget).toBe(0);
     });
 });
 
@@ -383,11 +479,14 @@ describe('swarm show: formations', () => {
     it('does not let a lesser moment interrupt a greater one mid-hold', () => {
         const { show, sim } = makeShow();
         expect(show.requestShape('torus', {}, 0.7, 4, 2)).toBe(true);
-        const time = run(show, 0, 2);
+        let time = run(show, 0, 2);
         expect(show.requestShape('star', {}, 0.5, 3, 1)).toBe(false);
         expect(show.shape.name).toBe('torus');
         expect(sim.setShape).toHaveBeenCalledTimes(1);
-        // Its equal may take over once it has arrived.
+        // Its equal waits until it has formed and held ...
+        expect(show.requestShape('helix', {}, 0.6, 1, 2)).toBe(false);
+        time = run(show, time, 1);
+        // ... and then may take over.
         expect(show.requestShape('helix', {}, 0.6, 1, 2)).toBe(true);
         expect(show.shape.name).toBe('helix');
         // Once a hold is over anything may gather, however slight.
@@ -397,7 +496,7 @@ describe('swarm show: formations', () => {
         expect(show.shape).toMatchObject({ name: 'star', target: 0.5, priority: 0 });
     });
 
-    it('never re-rolls a formation that is still arriving, unless something greater calls', () => {
+    it('never abandons a figure before it has formed and held, unless something greater calls', () => {
         const { show, sim } = makeShow();
         expect(show.requestShape('torus', {}, 0.6, 10, 1)).toBe(true);
         let time = run(show, 0, 1);
@@ -406,6 +505,10 @@ describe('swarm show: formations', () => {
         time = run(show, time, 1);
         expect(show.requestShape('cube', {}, 0.6, 10, 2)).toBe(false);
         expect(show.shape.name).toBe('helix');
+        // Formed, but not yet held long enough.
+        time = run(show, time, 1);
+        expect(show.figureHeld()).toBeGreaterThan(0);
+        expect(show.requestShape('cube', {}, 0.6, 10, 2)).toBe(false);
         run(show, time, 1);
         expect(show.requestShape('cube', {}, 0.6, 10, 2)).toBe(true);
         expect(sim.setShape.mock.calls.map(([name]) => name)).toEqual(['torus', 'helix', 'cube']);
@@ -495,6 +598,254 @@ describe('swarm show: formations', () => {
         expect(pair.filter((pick, i) => i > 0 && pick === pair[i - 1])).toEqual([]);
         expect(stuck.pickRandomShape(['ring'])).toBe('ring');
         expect(stuck.pickRandomShape([])).toBeNull();
+    });
+});
+
+describe('swarm show: the build (fast play accumulates instead of popping)', () => {
+    /** The sky and the motes, as the theme hands them over. */
+    function lit() {
+        const slot = (value = 0) => ({ value });
+        const tint = () => ({ value: { setRGB: vi.fn() } });
+        return {
+            visual: {
+                baseExposure: 0.8,
+                uniforms: {
+                    uHeat: slot(), uPalettePhase: slot(), uShapeColor: slot(), uExposure: slot(1), uTurn: slot(1),
+                },
+            },
+            sky: {
+                uniforms: {
+                    uHeat: slot(), uPulse: slot(), uFlash: slot(), uTintA: tint(), uTintB: tint(),
+                },
+            },
+        };
+    }
+
+    /** The tray's Fever: twelve clearing hard drops 0.64 s apart, a T-spin, a cascade, a quad. */
+    const FEVER = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 'quad'];
+    const rows = (lines) => [19, 18, 17, 16].slice(0, lines);
+
+    function playStep(show, step, combo, time) {
+        let t = time;
+        show.lock({ rows: [19], hardDrop: true });
+        if (step === 'quad') {
+            show.clear({ lines: 4, rows: rows(4), combo });
+        } else if (step === 'tspin') {
+            show.clear({
+                lines: 2, rows: rows(2), combo, tspin: true,
+            });
+        } else if (step === 'cascade') {
+            show.clear({
+                lines: 2, rows: rows(2), combo, cascade: 1,
+            });
+        } else {
+            show.clear({ lines: step, rows: rows(step), combo });
+        }
+        show.combo(combo);
+        if (step === 'cascade') {
+            for (let w = 2; w <= 4; w += 1) {
+                t = run(show, t, 0.36);
+                show.clear({
+                    lines: w % 3 === 0 ? 2 : 1, rows: [19], combo, cascade: w,
+                });
+            }
+        }
+        return t;
+    }
+
+    it('never lets a weak moment cut the light a strong one lit', () => {
+        const strong = makeShow();
+        const both = makeShow();
+        strong.show.clear(QUAD);
+        both.show.clear(QUAD);
+        both.show.clear({ lines: 1, rows: [19] });
+        expect(both.show.skyFlash).toBeGreaterThanOrEqual(strong.show.skyFlash);
+        let a = 0;
+        let b = 0;
+        for (const step of [0.1, 0.2, 0.3, 0.5]) {
+            a = run(strong.show, a, step);
+            b = run(both.show, b, step);
+            expect(both.show.skyFlash).toBeGreaterThanOrEqual(strong.show.skyFlash);
+            expect(both.show.fx.bloomPunch).toBeGreaterThanOrEqual(strong.show.fx.bloomPunch);
+        }
+        // A soft lock right after a hard drop only adds to the lens's flick.
+        const hard = makeShow();
+        const twice = makeShow();
+        hard.show.lock({ rows: [19], hardDrop: true });
+        twice.show.lock({ rows: [19], hardDrop: true });
+        twice.show.lock({ rows: [19] });
+        for (const key of PUNCHES) expect(twice.show.fx[key], key).toBeGreaterThan(hard.show.fx[key]);
+        // A quad right after a perfect clear's bloom adds to its sky; it no longer sets it back.
+        const crowned = makeShow();
+        crowned.show.clear({ ...QUAD, perfect: true });
+        const time = run(crowned.show, 0, 0.5);
+        const bloom = crowned.show.skyFlash;
+        crowned.show.clear(QUAD);
+        expect(crowned.show.skyFlash).toBeGreaterThan(bloom);
+        expect(time).toBeGreaterThan(0);
+    });
+
+    it('reads hotter through a long chain than at its first clear, and breathes back once the hands rest', () => {
+        const { visual, sky } = lit();
+        const { show, sim } = makeShow({ visual, sky });
+        let time = playStep(show, FEVER[0], 1, 0);
+        time = run(show, time, 0.3);
+        const first = {
+            gyre: show.simParams.gyre,
+            turbulence: show.simParams.turbulence,
+            heat: show.heat,
+            pace: show.surgeState.level,
+            dip: show.fx.exposureDip,
+            turn: visual.uniforms.uTurn.value,
+            pulse: show.skyPulse,
+            lead: show.flockLead,
+        };
+        time = run(show, time, 0.34);
+        for (let n = 1; n < FEVER.length; n += 1) {
+            time = playStep(show, FEVER[n], n + 1, time);
+            time = run(show, time, 0.64);
+        }
+        // Everything the world wears has climbed with the chain.
+        expect(show.simParams.gyre).toBeGreaterThan(first.gyre * 1.8);
+        expect(show.simParams.turbulence).toBeGreaterThan(first.turbulence);
+        expect(show.heat).toBeGreaterThan(first.heat + 0.6);
+        expect(show.surgeState.level).toBeGreaterThan(first.pace + 0.5);
+        expect(show.surgeState.fever).toBeGreaterThan(0.5);
+        expect(show.surgeState.stage).toBe(3);
+        expect(show.fx.exposureDip).toBeGreaterThan(first.dip);
+        expect(visual.uniforms.uTurn.value).toBeGreaterThan(first.turn);
+        expect(show.flockLead).toBeGreaterThan(first.lead + 1);
+        // One figure, grown (the grander one once it had held), and it has caught the fire.
+        const figures = sim.setShape.mock.calls.filter(([name]) => name !== 'free').map(([name]) => name);
+        expect(figures.length).toBeLessThanOrEqual(2);
+        expect(show.shape.growth).toBeGreaterThan(0.8);
+        expect(show.fire).toBeGreaterThan(0.5);
+        expect(visual.uniforms.uHeat.value).toBeGreaterThan(show.heat * 0.9);
+        expect(first.pulse).toBeGreaterThan(0);
+
+        // The hands rest: the chain breaks, and the world breathes back to calm.
+        show.combo(0);
+        time = run(show, time, 14);
+        const lead = show.flockLead;
+        run(show, time, 1);
+        expect(show.surgeState.level).toBeLessThan(0.05);
+        expect(show.surgeState.stage).toBe(0);
+        expect(show.heat).toBeLessThan(0.05);
+        expect(show.fx.exposureDip).toBeLessThan(0.005);
+        expect(show.simParams.gyre).toBeLessThan(first.gyre * 1.1);
+        expect(show.shape.name).toBe('free');
+        // The flock's clock runs at the show's pace again.
+        expect(show.flockLead - lead).toBeLessThan(0.02);
+    });
+
+    it('sends each wave of a cascade out rounder, wider, faster and brighter than the last', () => {
+        const { show, impulses } = makeShow();
+        let time = 0;
+        for (let w = 1; w <= 4; w += 1) {
+            show.clear({ lines: 1, rows: [19], cascade: w });
+            time = run(show, time, 0.36);
+        }
+        const rings = impulses.filter((impulse) => impulse.type === RADIAL);
+        expect(rings).toHaveLength(4);
+        for (let i = 1; i < rings.length; i += 1) {
+            expect(rings[i].strength).toBeGreaterThan(rings[i - 1].strength);
+            expect(rings[i].wave.speed).toBeGreaterThan(rings[i - 1].wave.speed);
+            expect(rings[i].wave.width).toBeGreaterThan(rings[i - 1].wave.width);
+            expect(rings[i].wave.flash).toBeGreaterThan(rings[i - 1].wave.flash);
+            expect(rings[i].wave.squash).toBeGreaterThan(rings[i - 1].wave.squash);
+            expect(rings[i].wave.squash).toBeLessThanOrEqual(1);
+        }
+    });
+
+    it('runs each ring harder and farther as a fast hand keeps dropping, and warms the swarm a little', () => {
+        const { show, impulses } = makeShow();
+        let time = 0;
+        // The tray's Rush: twenty hard drops 0.3 s apart, every fourth clearing a line or two.
+        for (let n = 0; n < 20; n += 1) {
+            show.lock({ rows: [19], hardDrop: true });
+            if (n % 4 === 3) show.clear({ lines: n % 8 === 3 ? 1 : 2, rows: [19] });
+            time = run(show, time, 0.3);
+        }
+        const locks = impulses.filter((impulse) => impulse.wave && !impulse.wave.squash);
+        const [firstRing] = locks;
+        const last = locks.at(-1);
+        expect(last.strength).toBeGreaterThan(firstRing.strength * 1.2);
+        expect(last.wave.speed).toBeGreaterThan(firstRing.wave.speed);
+        expect(show.heat).toBeGreaterThan(0.05);
+        expect(show.flockLead).toBeGreaterThan(0);
+    });
+
+    it('crowns a perfect clear that arrives on its own: drawn in, a golden bloom, then the chain lets go', () => {
+        const { show, sim, impulses } = makeShow();
+        let time = 0;
+        for (let n = 1; n <= 9; n += 1) {
+            show.clear({ lines: 2, rows: rows(2), combo: n });
+            show.combo(n);
+            time = run(show, time, 0.64);
+        }
+        show.clear({ ...QUAD, combo: 9 });
+        time = run(show, time, 0.36);
+        const before = impulses.length;
+        const figures = sim.setShape.mock.calls.length;
+        show.crown();
+        // Layered on the clear still playing: no second clear's ring at once.
+        expect(impulses).toHaveLength(before);
+        time = run(show, time, 1);
+        const crown = impulses.slice(before);
+        expect(crown.slice(0, 3).every((impulse) => impulse.type === ATTRACTOR)).toBe(true);
+        expect(crown.at(-1).type).toBe(RADIAL);
+        expect(sim.setShape.mock.calls.length).toBe(figures + 1);
+        expect(['lotus', 'snowflake']).toContain(show.shape.name);
+        expect(show.fire).toBeGreaterThan(0.5);
+        const hot = show.heat;
+        expect(hot).toBeGreaterThan(0.8);
+        // The board is empty: the chain is over even before the next lock breaks it.
+        run(show, time, 8);
+        expect(show.comboCount).toBe(9);
+        expect(show.heat).toBeLessThan(hot * 0.4);
+
+        // The same when the perfect clear lands on its clear's own frame, with that clear's step.
+        const same = makeShow();
+        let at = 0;
+        for (let n = 1; n <= 9; n += 1) {
+            same.show.clear({ lines: 2, rows: rows(2), combo: n });
+            same.show.combo(n);
+            at = run(same.show, at, 0.64);
+        }
+        same.show.clear({ ...QUAD, perfect: true, combo: 10 });
+        same.show.combo(10);
+        at = run(same.show, at, 1);
+        const peak = same.show.heat;
+        run(same.show, at, 8);
+        expect(same.show.heat).toBeLessThan(peak * 0.4);
+    });
+
+    it('answers a T-spin that cleared nothing with two small eddies at the piece and a turn of the figure', () => {
+        const locate = vi.fn((detail, row, u, out) => {
+            out.x = 2; out.y = -1; out.z = FOCAL.z;
+            return true;
+        });
+        const { show, impulses } = makeShow({ locate });
+        show.spin({ rows: [18, 19], u: 0.3 });
+        expect(locate).toHaveBeenLastCalledWith({ rows: [18, 19], u: 0.3 }, 18.5, 0.3, expect.any(Object));
+        expect(impulses).toHaveLength(2);
+        const [a, b] = impulses;
+        expect(a.type).toBe(VORTEX);
+        expect(b.type).toBe(VORTEX);
+        expect(a.dir.z * b.dir.z).toBeLessThan(0);
+        expect((a.position.x + b.position.x) / 2).toBeCloseTo(2, 9);
+        // Smaller than a T-spin that cleared lines.
+        const full = makeShow();
+        full.show.clear({ lines: 2, rows: [19, 18], tspin: true });
+        expect(a.strength).toBeLessThan(full.impulses.find((impulse) => impulse.type === VORTEX).strength);
+        expect(show.skyFlash).toBeGreaterThan(0);
+        expect(show.skyFlash).toBeLessThan(full.show.skyFlash);
+        // With a figure held it turns once round.
+        show.requestShape('star', {}, 0.6, 5, 1);
+        show.spin({ rows: [19] });
+        expect(show.shape.spinTarget).toBeCloseTo(Math.PI * 2, 9);
+        run(show, 0, 0.5);
+        expect(show.surgeState.level).toBeGreaterThan(0);
     });
 });
 
@@ -675,7 +1026,9 @@ describe('swarm show: the frame', () => {
         expect(visual.uniforms.uHeat.value).toBeGreaterThan(0);
         expect(visual.uniforms.uPalettePhase.value).toBe(show.palettePhase);
         expect(sky.uniforms.uHeat.value).toBe(show.heat);
-        expect(sky.uniforms.uPulse.value).toBe(show.fx.comboPulse);
+        // The cloud's inner light: the clears' pulse, steadied by the heat of play.
+        expect(sky.uniforms.uPulse.value).toBe(show.skyPulse);
+        expect(show.skyPulse).toBeGreaterThan(0);
         expect(sky.uniforms.uFlash.value).toBe(show.skyFlash);
         expect(sky.uniforms.uFlash.value).toBeGreaterThan(0);
         // The free swarm glows at its base exposure, held back a little while it is hot

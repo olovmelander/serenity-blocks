@@ -34,6 +34,42 @@ const SIDES = Object.freeze(Array.from({ length: 6 }, (_, index) => {
 
 /** Floats per crystal in the packed instance record (see `packCrystal`). */
 export const GEM_STRIDE = 16;
+/** A crystal's pulse of light falls as exp(-PULSE_DECAY · seconds). */
+export const PULSE_DECAY = 1.15;
+/** The most light a stone rings with, however many pulses pile up (a lone pulse peaks near 1.2). */
+export const PULSE_CEILING = 1.35;
+
+/**
+ * Ring a crystal: a pulse of `strength` starting at `at` (seconds; may be ahead of `now`),
+ * joined to what it still rings. Per crystal the state holds one pulse (start, strength) and a
+ * carry (`[3]`): earlier light, kept on the same start and the same decay, so it reads as
+ * `carry · exp(-PULSE_DECAY · (t − start))` at every t — before the start too. Nothing an
+ * earlier pulse lit goes dark when a later one is scheduled, and a weak pulse never cuts a
+ * strong one.
+ * @param {Float32Array|Float64Array} state four floats per crystal: start, strength, growth, carry
+ */
+export function ringCrystal(state, index, at, strength, now = at) {
+    const offset = index * 4;
+    const start = state[offset];
+    const held = state[offset + 1];
+    const carry = state[offset + 3];
+    const hit = Math.max(0, strength);
+    if (start > now && start <= at) {
+        // A pulse already on its way lands first: this one rides with it.
+        state[offset + 1] = Math.min(PULSE_CEILING, held + hit);
+        return;
+    }
+    if (start > at) {
+        // The waiting pulse lands later: this one rings now, through the carry.
+        state[offset + 3] = Math.min(PULSE_CEILING, carry + hit * Math.exp(-(start - at) * PULSE_DECAY));
+        return;
+    }
+    // What still rings carries on under the new pulse, and adds to it.
+    const ringing = (held + carry) * Math.exp(-(at - start) * PULSE_DECAY);
+    state[offset] = at;
+    state[offset + 1] = hit;
+    state[offset + 3] = ringing < 1e-3 ? 0 : Math.min(ringing, Math.max(0, PULSE_CEILING - hit));
+}
 
 /**
  * The canonical solid without its base (the base is always inside rock).
@@ -327,8 +363,11 @@ export function createGemField({
         const small = float(1).sub(smoothstep(0.2, 0.75, girth)).toVar();
         const glow = vLook.y.mul(level).mul(mix(float(1), float(0.32), small)).toVar();
         const age = max(u.time.sub(vPulse.x), 0).toVar();
-        // A pulse may be scheduled ahead (a wave reaches each crystal in turn).
-        const pulse = vPulse.y.mul(exp(age.mul(-1.15))).mul(step(vPulse.x, u.time)).toVar();
+        // A pulse may be scheduled ahead (a wave reaches each crystal in turn). What an earlier
+        // pulse still rings is carried beside it (vLook.w, kept on the same start and decay), so
+        // a wave on its way never puts out a stone that is still ringing.
+        const ring = vPulse.y.mul(exp(age.mul(-PULSE_DECAY))).mul(step(vPulse.x, u.time)).toVar();
+        const pulse = ring.add(vLook.w.mul(exp(min(vPulse.x.sub(u.time), 4).mul(PULSE_DECAY)))).toVar();
         const crest = age.mul(1.9).toVar();
         const breath = cos(u.time.mul(0.55).add(seed.mul(TAU))).mul(0.14).add(0.86).toVar();
 
@@ -346,7 +385,8 @@ export function createGemField({
             // Brightest where the stone leaves the rock, a steady ember higher up.
             const root = exp(closest.y.max(0).mul(-2.6)).mul(1.7).add(0.3);
             const band = exp(closest.y.sub(crest).div(0.17).pow2().negate());
-            const hum = cos(closest.y.mul(size.y).mul(1.7).sub(u.time.mul(3.2))).mul(0.5).add(0.5)
+            // The standing bands climb faster as play heats (the world drives the phase).
+            const hum = cos(closest.y.mul(size.y).mul(1.7).sub(u.humPhase)).mul(0.5).add(0.5)
                 .mul(u.resonance);
             // At rest a slow band of light climbs each stone, out of step with its neighbours.
             const climb = fract(u.time.mul(0.055).add(seed.mul(7.31))).mul(1.5).sub(0.2);
@@ -355,7 +395,7 @@ export function createGemField({
             const middle = start.add(run.mul(reach.mul(0.5)));
             const halo = exp(dot(middle.xz, middle.xz).mul(-2.2)).mul(reach.div(girth)).mul(0.022);
             return filament.mul(root.add(idle).mul(breath).mul(glow).mul(2.6)
-                .add(band.mul(pulse).mul(9))
+                .add(band.mul(ring).mul(9))
                 .add(pulse.mul(2.6))
                 .add(hum.mul(glow).mul(2.2)))
                 .add(halo.mul(glow.add(pulse.mul(2))));
@@ -516,24 +556,26 @@ export function createGemField({
             stateAttribute.needsUpdate = true;
             geometry.instanceCount = used;
         },
-        /** Start a pulse of light at a crystal's root. */
-        pulse(index, time, strength) {
+        /**
+         * A pulse of light at a crystal's root, starting at `time` (it may be ahead of `now`).
+         * It joins whatever the stone still rings instead of restarting it (see `ringCrystal`).
+         */
+        pulse(index, time, strength, now = time) {
             if (!(index >= 0 && index < used)) return;
-            state[index * 4] = time;
-            state[index * 4 + 1] = strength;
+            ringCrystal(state, index, time, strength, now);
             stateAttribute.needsUpdate = true;
         },
         /**
          * A wave of pulses: crystal `i` starts at `time + delays[i]` (seconds). Entries
-         * that are not finite are left alone.
+         * that are not finite are left alone. A stone still ringing keeps its light until the
+         * wave arrives and adds to it.
          */
         pulseWave(time, delays, strength) {
             const limit = Math.min(used, delays.length);
             for (let index = 0; index < limit; index += 1) {
                 const delay = delays[index];
                 if (!(delay >= 0)) continue;
-                state[index * 4] = time + delay;
-                state[index * 4 + 1] = strength;
+                ringCrystal(state, index, time + delay, strength, time);
             }
             stateAttribute.needsUpdate = true;
         },
@@ -542,6 +584,7 @@ export function createGemField({
             for (let index = 0; index < used; index += 1) {
                 state[index * 4] = -1000;
                 state[index * 4 + 1] = 0;
+                state[index * 4 + 3] = 0;
             }
             stateAttribute.needsUpdate = true;
         },

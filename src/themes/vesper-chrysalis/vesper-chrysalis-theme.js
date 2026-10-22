@@ -256,6 +256,8 @@ export default class VesperChrysalisTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
+                crown: (c) => this.world?.onCrown(c),
+                spin: (c) => this.world?.onSpin(c),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => this.reportLevel(level),
             },

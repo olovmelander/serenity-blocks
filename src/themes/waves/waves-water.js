@@ -17,6 +17,8 @@
  *               it is thick, brighter looking toward the sun. Sky and water are the hour's
  *               (U.light): emerald at golden hour, sapphire under the moon;
  *   bars        the long soft bars of light the moving roof lets through onto the face;
+ *   heat        hot play (U.heat, 0 at rest): the bands of light come down a little brighter and
+ *               may add up further where they overlap (one multiply, one clamp);
  *   ribbons     each locked piece's colour, a comet the flow draws up and over;
  *   foam        the streaks drawn up the face, the boil where the lip comes down, the lip's
  *               white edge, torn into fingers.
@@ -33,8 +35,11 @@ import {
     wavesSky,
 } from './waves-tsl.js';
 
-/** Clear sweeps alive at once (each a band of light running down the tube). */
-export const BAND_SLOTS = 4;
+/**
+ * Clear sweeps alive at once (each a band of light running down the tube): enough that a cascade
+ * or a quick chain never takes one still on its way (a new band takes the one furthest down).
+ */
+export const BAND_SLOTS = 8;
 /**
  * A ribbon's light runs round the tube (u, metres of surface a second) far faster than the
  * water, and comes toward the eye (z) more slowly: a stroke over the roof, not a streak past it.
@@ -268,7 +273,8 @@ export function createWater({
             const x = sZ.add(BAND_START).sub(age.mul(BAND_SPEED)).add(phi.mul(row.w)).div(max(row.z, 0.3));
             sweep.addAssign(exp(x.mul(x).negate()).mul(row.y).mul(smoothstep(0.0, 0.08, age)));
         }
-        sweep.assign(min(sweep, 1.0));
+        // Hot play lets the bands that overlap add up further (1 at rest: as they always were).
+        sweep.assign(min(sweep, U.heat.mul(0.15).add(1.0)));
         const sunFacing = clamp(dot(N0, sun).mul(0.55).add(0.45), 0.0, 1.0);
         // Water scatters what enters it: the lip throws no hard shadow into its body.
         const lightIn = vec3(0.8).mul(sunFacing).mul(net.mul(1.1).add(0.55))
@@ -376,12 +382,13 @@ export function createWater({
         colour.addAssign(vec3(0.72, 1.0, 0.94).mul(light.waterTint).mul(ringGleam).mul(0.075));
         // A clear's band of light, caught on every rib of the wall: the sun's colour where the
         // water is thin and the sky comes through it, the sea's own where it is deep.
+        // Hot play: a little brighter.
         const sweepDeep = vec3(0.5, 0.95, 0.8).mul(light.waterTint);
         const sweepThin = vec3(1.0, 0.8, 0.46).mul(light.fireTint);
         colour.addAssign(mix(sweepDeep, sweepThin, thin).mul(sweep)
             .mul(net.mul(0.5).add(rib.b.mul(0.3)).add(0.1))
             .mul(thin.mul(0.7).add(0.55))
-            .mul(0.5));
+            .mul(U.heat.mul(0.15).add(0.5)));
         // The far water goes into the haze of the hour.
         const haze = wavesSky(normalize(vec3(V.x.negate(), 0.012, V.z.negate())), sun, float(0.0), warm, light);
         colour.assign(mix(colour, haze, float(1.0).sub(exp(dist.mul(-1 / 420)))));

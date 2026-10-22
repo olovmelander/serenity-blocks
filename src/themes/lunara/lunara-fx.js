@@ -7,7 +7,7 @@
  *  - Shards: crystal dust. A spire throws a fan of it when a wisp strikes or a clear releases
  *    it: slow, floating streaks that settle onto the water. A ring of preallocated slots.
  *  - Row beams: the cleared rows leave the card as blades of moonlight at their own heights,
- *    drawn in screen space so they line up with the rows exactly.
+ *    drawn in screen space so they line up with the rows exactly (three clears' worth at once).
  *
  * Nothing is created at event time and every pool is always drawn (dormant slots collapse to
  * zero size), so the first frame compiles every pipeline.
@@ -28,6 +28,7 @@ import {
     mix,
     normalize,
     positionGeometry,
+    select,
     sin,
     smoothstep,
     step,
@@ -111,16 +112,26 @@ export function createWisps(u) {
     })();
 
     const part = luPart('LunaraWisps', geometry, material, 40, false);
-    let cursor = 0;
     /**
      * Send a wisp from `from` to `to` (world points), leaving at `time` and taking `flight`
-     * seconds; `lift` bows the arc upward.
+     * seconds; `lift` bows the arc upward. It takes a slot whose wisp has landed, else the one
+     * nearest its stone, so a quick hand's wisps are never pulled out of the air at the start.
      */
     part.launch = ({
         from: p0, to: p1, rgb, time, flight, lift = 2.2, size = 0.3, bow = 0,
     }) => {
-        const slot = cursor % WISP_SLOTS;
-        cursor += 1;
+        let slot = 0;
+        let best = -Infinity;
+        for (let w = 0; w < WISP_SLOTS; w++) {
+            const i = w * WISP_TAIL * 4;
+            const along = (time - aFrom[i + 3]) / (Math.max(aTo[i + 3], 1e-3) * (1 + WISP_LAG));
+            const done = along >= 1 ? 2 : along;
+            if (done > best) {
+                best = done;
+                slot = w;
+            }
+            if (done >= 2) break;
+        }
         const mx = (p0[0] + p1[0]) * 0.5 + bow;
         const my = Math.max(p0[1], p1[1]) + lift;
         const mz = (p0[2] + p1[2]) * 0.5;
@@ -139,7 +150,6 @@ export function createWisps(u) {
     part.reset = () => {
         for (let i = 0; i < count; i++) aFrom[i * 4 + 3] = -100;
         geometry.getAttribute('aFrom').needsUpdate = true;
-        cursor = 0;
     };
     part.count = count;
     return part;
@@ -260,35 +270,54 @@ export const BEAM_ROWS = 4;
 /** Seconds a beam's head takes from the card to the edge of the frame, and its afterglow. */
 export const BEAM_TRAVEL = 0.14;
 export const BEAM_FADE = 0.17;
+/**
+ * Clears whose blades can be in flight at once: a cascade's waves come 0.36 s apart and a set of
+ * blades lives about half a second, so a new clear takes the oldest set and never cuts the last.
+ */
+export const BEAM_SETS = 3;
 
-/** Eight screen-space strips: one from each side of the card for up to four cleared rows. */
+/** Screen-space strips: one from each side of the card for up to four cleared rows, per set. */
 export function createRowBeams(u) {
-    const count = BEAM_ROWS * 2;
-    const aRow = new Float32Array(count * 2);
-    for (let i = 0; i < count; i++) aRow.set([Math.floor(i / 2), i % 2 ? 1 : -1], i * 2);
-    const geometry = luQuadGeometry(count, { aRow: [aRow, 2] });
-    const row = attribute('aRow', 'vec2');
-    const uniforms = {
+    const perSet = BEAM_ROWS * 2;
+    const count = perSet * BEAM_SETS;
+    const aRow = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+        const k = i % perSet;
+        aRow.set([Math.floor(k / 2), k % 2 ? 1 : -1, Math.floor(i / perSet)], i * 3);
+    }
+    const geometry = luQuadGeometry(count, { aRow: [aRow, 3] });
+    const row = attribute('aRow', 'vec3');
+    const sets = Array.from({ length: BEAM_SETS }, () => ({
         /** Screen y (fractions, y down) of up to four rows; < 0 = unused. */
         rows: uniform(new THREE.Vector4(-1, -1, -1, -1)),
         /** (card x0, card x1, birth time, strength) */
         frame: uniform(new THREE.Vector4(0.4, 0.6, -100, 0)),
         color: uniform(new THREE.Vector3(1, 1, 1)),
+    }));
+    /** This strip's set's uniform (vertex stage). */
+    const pick = (key) => {
+        let value = sets[BEAM_SETS - 1][key];
+        for (let k = BEAM_SETS - 2; k >= 0; k--) value = select(row.z.lessThan(k + 0.5), sets[k][key], value);
+        return value;
     };
+    const rows = pick('rows');
+    const frame = pick('frame');
     const material = luFxMaterial('LunaraRowBeams', { depthTest: false });
-    const rowY = mix(mix(uniforms.rows.x, uniforms.rows.y, step(0.5, row.x)), mix(uniforms.rows.z, uniforms.rows.w, step(2.5, row.x)), step(1.5, row.x));
-    const used = step(0.0, rowY).mul(step(0.001, uniforms.frame.w));
+    const rowY = mix(mix(rows.x, rows.y, step(0.5, row.x)), mix(rows.z, rows.w, step(2.5, row.x)), step(1.5, row.x));
+    const used = step(0.0, rowY).mul(step(0.001, frame.w));
     const along = positionGeometry.x.add(0.5);
     // From the card's edge out to the edge of the frame.
-    const edge = mix(uniforms.frame.x, uniforms.frame.y, step(0.0, row.y));
+    const edge = mix(frame.x, frame.y, step(0.0, row.y));
     const end = step(0.0, row.y);
     const sx = mix(edge, end, along);
     const thicknessPx = float(46.0);
     const sy = rowY.add(positionGeometry.y.mul(thicknessPx).div(u.viewport.y));
     material.vertexNode = vec4(sx.mul(2.0).sub(1.0).mul(used), float(1.0).sub(sy.mul(2.0)).mul(used), 0.0, 1.0);
     const vAlong = varying(along, 'luBeamT');
+    const vFrame = varying(frame.zw, 'luBeamFrame');
+    const vColor = varying(pick('color'), 'luBeamColor');
     material.colorNode = Fn(() => {
-        const age = u.time.sub(uniforms.frame.z);
+        const age = u.time.sub(vFrame.x);
         const head = age.div(BEAM_TRAVEL);
         const reached = step(vAlong, head);
         const dy = uv().y.sub(0.5).mul(thicknessPx);
@@ -299,22 +328,33 @@ export function createRowBeams(u) {
         const tip = exp(vAlong.sub(head).mul(vAlong.sub(head)).mul(-150.0)).mul(step(head, 1.25));
         const env = exp(max(age.sub(vAlong.mul(BEAM_TRAVEL)), 0.0).div(-BEAM_FADE)).mul(step(0.0, age));
         const k = core.add(sheath).mul(reached).mul(env).add(core.add(sheath).mul(tip).mul(2.2))
-            .mul(uniforms.frame.w)
+            .mul(vFrame.y)
             .mul(float(1.0).sub(vAlong).mul(float(1.0).sub(vAlong)).mul(0.9)
                 .add(0.1));
-        const col = mix(uniforms.color, vec3(1.0), core.mul(0.3));
+        const col = mix(vColor, vec3(1.0), core.mul(0.3));
         return vec4(col.mul(k).mul(2.4), 0.0);
     })();
     const part = luPart('LunaraRowBeams', geometry, material, 60, false);
-    part.uniforms = uniforms;
-    /** `ys` = screen y of each cleared row; `x0`/`x1` = the card's edges; all in screen fractions. */
+    part.sets = sets;
+    let latest = 0;
+    /** The set fired last (what a single-slot reader sees). */
+    Object.defineProperty(part, 'uniforms', { get: () => sets[latest] });
+    /**
+     * `ys` = screen y of each cleared row; `x0`/`x1` = the card's edges; all in screen fractions.
+     * Takes the set that fired longest ago, so the blades still in flight finish.
+     */
     part.fire = (ys, x0, x1, rgb, time, strength = 1) => {
-        uniforms.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
-        uniforms.frame.value.set(x0, x1, time, strength);
-        uniforms.color.value.set(rgb[0], rgb[1], rgb[2]);
+        let slot = 0;
+        for (let k = 1; k < BEAM_SETS; k++) if (sets[k].frame.value.z < sets[slot].frame.value.z) slot = k;
+        const set = sets[slot];
+        set.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
+        set.frame.value.set(x0, x1, time, strength);
+        set.color.value.set(rgb[0], rgb[1], rgb[2]);
+        latest = slot;
     };
     part.reset = () => {
-        uniforms.frame.value.set(0.4, 0.6, -100, 0);
+        sets.forEach((set) => set.frame.value.set(0.4, 0.6, -100, 0));
+        latest = 0;
     };
     return part;
 }

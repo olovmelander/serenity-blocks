@@ -51,7 +51,10 @@ import {
     RING_SLOTS,
     RING_TAU,
     SKY_HOLD,
+    SKY_LET_GO,
     SKY_SLOTS,
+    STRUM_FADE,
+    STRUM_SLOTS,
     TAU,
     glowDirection,
     moonDirection,
@@ -333,6 +336,9 @@ export const CURTAINS = Object.freeze([
 
 const v3 = (a) => uniform(new THREE.Vector3(a[0], a[1], a[2]));
 
+/** A sky colour's "let go at" while it is held (far past any run's clock; finite for the GPU). */
+export const HELD = 1e7;
+
 /**
  * Every uniform the world's materials share. The world owns the values; materials only read.
  * @param {{ noise: THREE.Texture, shadow: THREE.Texture }} textures
@@ -373,8 +379,15 @@ export function createWinterUniforms(textures) {
         curtains: uniform(new THREE.Vector4(0.3, 0, 0, 0)),
         /** How far the aurora's rays have run (they run faster as the fires rise). */
         auroraRun: uniform(0),
-        /** A clear strums the sky: (birth time, strength). */
-        flare: uniform(new THREE.Vector2(-100, 0)),
+        /** Clears strum the sky: per slot (birth time, strength, half width, speed), STRUM_SLOTS. */
+        strums: [],
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js), as the world spends it on the
+         * snow, the air and the ice: (glitter: how much of the snow and the air's diamond dust is
+         * alight, fever: how far they take the fires' colours, crown: a perfect clear's flash
+         * through all of them, pillar: the column of light that stands over the moon).
+         */
+        heat: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** How far the wind has carried things (metres, xz) and how hard it blows now. */
         windRun: uniform(new THREE.Vector2(0, 0)),
         gale: uniform(0.2),
@@ -392,7 +405,7 @@ export function createWinterUniforms(textures) {
         ringC: [],
         /** Gusts over the snow: (x, z, birth time, strength). */
         gustA: [],
-        /** Colours the sky holds: (bearing as tan, arrival time, strength, spare) + colour. */
+        /** Colours the sky holds: (bearing as tan, arrival time, strength, let go at) + colour. */
         skyA: [],
         skyC: [],
         noiseTex: textures.noise,
@@ -406,8 +419,11 @@ export function createWinterUniforms(textures) {
         u.gustA.push(uniform(new THREE.Vector4(0, 0, -100, 0)));
     }
     for (let i = 0; i < SKY_SLOTS; i++) {
-        u.skyA.push(uniform(new THREE.Vector4(0, -100, 0, 0)));
+        u.skyA.push(uniform(new THREE.Vector4(0, -100, 0, HELD)));
         u.skyC.push(uniform(new THREE.Vector3(1, 1, 1)));
+    }
+    for (let i = 0; i < STRUM_SLOTS; i++) {
+        u.strums.push(uniform(new THREE.Vector4(-100, 0, 0.34, 1.5)));
     }
     u.noise = (st) => texture(u.noiseTex, st);
     return u;
@@ -447,7 +463,9 @@ export const wSkyTint = (u, q, base) => {
         const A = u.skyA[i];
         const age = u.time.sub(A.y);
         const near = exp(wSq(q.sub(A.x).div(0.3)).negate());
-        const w = near.mul(A.z).mul(exp(max(age, 0.0).div(-SKY_HOLD))).mul(step(0.0, age));
+        // (A colour whose slot is wanted for a new one lets go over SKY_LET_GO, never at once.)
+        const letGo = clamp(float(1.0).sub(u.time.sub(A.w).div(SKY_LET_GO)), 0.0, 1.0);
+        const w = near.mul(A.z).mul(exp(max(age, 0.0).div(-SKY_HOLD))).mul(step(0.0, age)).mul(letGo);
         weight = weight.add(w);
         tint = tint.add(u.skyC[i].mul(w));
         flash = flash.add(w.mul(exp(max(age, 0.0).div(-0.7))));
@@ -464,14 +482,22 @@ export const wSkyTint = (u, q, base) => {
  */
 export const wAurora = (u, dir, { count = 3, fine = true } = {}) => {
     const q = dir.x.div(max(dir.z.negate(), 0.2));
-    // A clear strums every sheet outward from the board.
-    const strumAge = u.time.sub(u.flare.x);
-    const strum = exp(wSq(abs(q).sub(strumAge.mul(1.5)).div(0.34)).negate())
-        .mul(u.flare.y).mul(exp(max(strumAge, 0.0).div(-1.4))).mul(step(0.0, strumAge));
+    // A clear strums every sheet outward from the board; a cascade's waves follow one another
+    // out like plucked strings, each deeper one wider and faster.
+    let strum = float(0.0);
+    for (let i = 0; i < STRUM_SLOTS; i++) {
+        const S = u.strums[i];
+        const strumAge = u.time.sub(S.x);
+        strum = strum.add(exp(wSq(abs(q).sub(strumAge.mul(S.w)).div(S.z)).negate())
+            .mul(S.y).mul(exp(max(strumAge, 0.0).div(-STRUM_FADE))).mul(step(0.0, strumAge)));
+    }
     const tinted = wSkyTint(u, q, u.fire);
     // (The fox of light brightens the sky it runs under.)
     const underSpirit = exp(wSq(q.sub(u.spirit.x).div(0.5)).negate()).mul(u.spirit.z);
-    const lift = float(1.0).add(tinted.w.mul(1.5)).add(strum.mul(1.6)).add(underSpirit.mul(1.0));
+    // (Strums that overlap ride up together under a soft ceiling: they pluck the fires, never
+    // blow the whole sky out.)
+    const plucked = strum.div(strum.mul(0.45).add(1.0));
+    const lift = float(1.0).add(tinted.w.mul(1.5)).add(plucked.mul(1.6)).add(underSpirit.mul(1.0));
     let sum = vec3(0.0);
     const energies = [u.curtains.x, u.curtains.y, u.curtains.z, u.curtains.w];
     for (let i = 0; i < Math.min(count, CURTAINS.length); i++) {

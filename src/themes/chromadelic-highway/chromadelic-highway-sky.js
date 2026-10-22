@@ -326,6 +326,9 @@ export function createStarfield({
     const uWaveOrigin = uniform(new THREE.Vector3(0, 0, -1));
     const uWaveTime = uniform(-100);
     const uWaveBoost = uniform(0);
+    // A second wave: a new one never cuts a shell still crossing the sky.
+    const uWaveTime2 = uniform(-100);
+    const uWaveBoost2 = uniform(0);
 
     const material = new THREE.MeshBasicNodeMaterial({
         transparent: true,
@@ -379,13 +382,19 @@ export function createStarfield({
 
         // Twinkle wave from the vanishing point, its gain capped per tier (no knee crossing).
         const dStar = normalize(worldOf().sub(cameraPosition));
-        const phase = uTime.sub(uWaveTime).sub(length(dStar.sub(uWaveOrigin)).div(1.6));
+        const lag = length(dStar.sub(uWaveOrigin)).div(1.6);
+        const phase = uTime.sub(uWaveTime).sub(lag);
+        const phase2 = uTime.sub(uWaveTime2).sub(lag);
         const tierWave = mix(
             mix(float(STAR_TIERS[0].wave), float(STAR_TIERS[1].wave), step(0.5, tierIdx)),
             float(STAR_TIERS[2].wave),
             step(1.5, tierIdx),
         );
-        const pulse = exp(phase.mul(phase).mul(-30.0)).mul(min(uWaveBoost, 1.0)).mul(tierWave);
+        const pulse = min(
+            exp(phase.mul(phase).mul(-30.0)).mul(min(uWaveBoost, 1.0))
+                .add(exp(phase2.mul(phase2).mul(-30.0)).mul(min(uWaveBoost2, 1.0))),
+            1.25,
+        ).mul(tierWave);
         const fieldCol = mix(c.xyz, v3(NEON_CYAN), pulse.mul(0.5).min(0.25));
         const field = fieldCol.mul(value).mul(shape).mul(float(1.0).add(pulse));
 
@@ -421,7 +430,16 @@ export function createStarfield({
         material,
         count: n,
         uniforms: {
-            uTime, uViewportH, uProjScaleY, uBinaryDir, uBinaryFlare, uWaveOrigin, uWaveTime, uWaveBoost,
+            uTime,
+            uViewportH,
+            uProjScaleY,
+            uBinaryDir,
+            uBinaryFlare,
+            uWaveOrigin,
+            uWaveTime,
+            uWaveBoost,
+            uWaveTime2,
+            uWaveBoost2,
         },
         setProjection(viewportHeightPx, projScaleY) {
             if (Number.isFinite(viewportHeightPx) && viewportHeightPx > 0) uViewportH.value = viewportHeightPx;
@@ -432,11 +450,34 @@ export function createStarfield({
             const k = Math.max(0.25, Math.min(1, Number.isFinite(scale) ? scale : 1));
             geometry.instanceCount = 2 + Math.floor(n * k);
         },
-        /** Roll a brightness wave out from `origin` (world direction) starting at `time`. */
+        /**
+         * Roll a brightness wave out from `origin` (world direction) starting at `time`. Two
+         * shells can cross the sky at once: a new one takes a slot whose shell has gone (or the
+         * older one), so a second clear never cuts the first's wave; two at the same instant (a
+         * level-up and its clear) join into one brighter shell. `boost` 0 clears both (a seek).
+         */
         triggerWave(time, origin, boost) {
-            uWaveTime.value = time;
             uWaveOrigin.value.copy(origin).normalize();
-            uWaveBoost.value = boost;
+            if (!(boost > 0)) {
+                uWaveTime.value = time;
+                uWaveBoost.value = 0;
+                uWaveTime2.value = time;
+                uWaveBoost2.value = 0;
+                return;
+            }
+            const slots = [[uWaveTime, uWaveBoost], [uWaveTime2, uWaveBoost2]];
+            for (const [t, b] of slots) {
+                if (b.value > 0 && Math.abs(time - t.value) < 0.1) {
+                    b.value = Math.min(1.2, Math.max(b.value, boost) + 0.5 * Math.min(b.value, boost));
+                    return;
+                }
+            }
+            const gone = (k) => slots[k][1].value <= 0 || time - slots[k][0].value > 1.5;
+            let k = slots[0][0].value <= slots[1][0].value ? 0 : 1;
+            if (gone(0)) k = 0;
+            else if (gone(1)) k = 1;
+            slots[k][0].value = time;
+            slots[k][1].value = boost;
         },
         dispose() {
             geometry.dispose();

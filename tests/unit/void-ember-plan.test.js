@@ -891,7 +891,8 @@ describe('void ember noise', () => {
         const u = createVoidEmberUniforms({ lattice, fbm });
         expect(u.latticeTex).toBe(lattice);
         expect(u.fbmTex).toBe(fbm);
-        expect(u.impacts.array).toHaveLength(core.IMPACT_SLOTS * 2);
+        // (site, birth), (colour, strength), (how long its scar lasts) per impact.
+        expect(u.impacts.array).toHaveLength(core.IMPACT_SLOTS * 3);
         expect(u.waves.array).toHaveLength(core.WAVE_SLOTS * 3);
         expect(u.heat.value).toBe(REST_HEAT);
         expect(u.radius.value).toBe(EMBER.radius);

@@ -179,11 +179,34 @@ export function createSky(u, { cirrus = true } = {}) {
         // (Nothing of it below the horizon: the cloud sea is not always opaque down there.)
         col.addAssign(disc.add(corona).mul(u.breath).mul(smoothstep(-0.03, 0.0, dir.y)));
         // Twenty-two degrees out, the ring that ice in the air draws round a low sun: red on
-        // its inner edge, fading outward. Four lines call it up; a board cleared whole, fully.
+        // its inner edge, fading outward. Four lines call it up; a board cleared whole, fully;
+        // a back-to-back marks it, and a fever holds it up.
         const out = sqrt(a2).sub(0.384);
         const ring = exp(hpSq(out.div(0.011)).negate()).add(exp(max(out, 0.0).mul(-34.0)).mul(step(0.0, out)).mul(0.45));
         const tint = mix(vec3(1.0, 0.5, 0.3), vec3(0.75, 0.9, 1.0), smoothstep(-0.012, 0.03, out));
         col.addAssign(u.sunCol.mul(tint).mul(ring.mul(u.halo).mul(0.16)).mul(smoothstep(0.0, 0.08, dir.y)));
+        // Level with the sun either side of it, 22 degrees off (on the ring while the sun is
+        // low, a little outside it as it climbs), the ice draws two mock suns: red toward the
+        // sun, a pale tail outward. They come with the ring, the brightest of it.
+        const right = vec3(u.sunFlat.y.negate(), 0.0, u.sunFlat.x);
+        const sinEl = u.sunDir.y;
+        const cosEl2 = max(float(1.0).sub(sinEl.mul(sinEl)), 1e-3);
+        const turnCos = clamp(float(Math.cos(0.384)).sub(sinEl.mul(sinEl)).div(cosEl2), -1.0, 1.0);
+        const turnSin = sqrt(float(1.0).sub(turnCos.mul(turnCos)));
+        const cosEl = sqrt(cosEl2);
+        const mockSun = (side) => {
+            const flat = vec3(u.sunFlat.x, 0.0, u.sunFlat.y).mul(turnCos).add(right.mul(turnSin.mul(side)));
+            const at = vec3(flat.x.mul(cosEl), sinEl, flat.z.mul(cosEl));
+            const off = dir.sub(at);
+            const outward = dot(off, right).mul(side);
+            const spot = exp(hpSq(outward.sub(0.004).div(0.008)).add(hpSq(off.y.div(0.014))).negate());
+            const tail = exp(hpSq(off.y.div(0.006)).negate())
+                .mul(exp(max(outward, 0.0).mul(-11.0))).mul(step(0.0, outward));
+            const hue = mix(vec3(1.0, 0.36, 0.16), vec3(1.0, 0.94, 0.82), smoothstep(-0.008, 0.01, outward));
+            return hue.mul(spot.mul(2.2).add(tail.mul(0.45))).mul(step(0.0, dot(dir, at)));
+        };
+        const mock = mockSun(1).add(mockSun(-1)).mul(u.halo.mul(0.6));
+        col.addAssign(u.sunCol.mul(mock).mul(smoothstep(0.0, 0.08, dir.y)));
         return col;
     })();
 

@@ -19,7 +19,7 @@ const I = {
 
 function makeDirector(options = {}) {
     const calls = {
-        lock: [], clear: [], combo: [], levelUp: [],
+        lock: [], clear: [], combo: [], levelUp: [], perfect: [], spin: [],
     };
     const sink = {
         // The director reuses its context objects: a sink must copy what it keeps.
@@ -27,6 +27,8 @@ function makeDirector(options = {}) {
         clear: vi.fn((c) => calls.clear.push({ ...c, rows: [...c.rows], screen: c.screen ? { ...c.screen } : null })),
         combo: vi.fn((n, player) => calls.combo.push([n, player])),
         levelUp: vi.fn((level) => calls.levelUp.push(level)),
+        perfect: vi.fn((c) => calls.perfect.push({ ...c })),
+        spin: vi.fn((c) => calls.spin.push({ ...c })),
     };
     return { director: new GeodeDirector({ sink, ...options }), calls, sink };
 }
@@ -131,6 +133,43 @@ describe('geode director: intake', () => {
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
+        // In the same frame as its clear, the perfect clear rides on it: no crown of its own.
+        expect(calls.perfect).toHaveLength(0);
+    });
+
+    it('crowns the clear still playing with a perfect clear that settles after it, never a clear of its own', () => {
+        const { director, calls } = makeDirector();
+        director.onHardDrop({ piece: I });
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        // Physics settles the perfect clear ~360 ms later, in a tick of its own.
+        director.onPerfectClear({ depth: 4, perfectClearBonus: 1000, player: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.perfect).toEqual([{ player: 0 }]);
+        // The chain is the same chain: no new step, no break.
+        expect(calls.combo).toEqual([[1, 0]]);
+        director.flush();
+        expect(calls.perfect).toHaveLength(1);
+    });
+
+    it('answers a T-spin that clears nothing, alongside its lock', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.lock).toHaveLength(1);
+        expect(calls.clear).toHaveLength(0);
+        expect(calls.spin).toEqual([{ player: 0 }]);
+        // A T-spin that clears lines is carried on its clear instead.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(calls.spin).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true });
     });
 
     it('turns a meditation click into a clear at a screen position', () => {

@@ -22,6 +22,7 @@
 import * as THREE from 'three/webgpu';
 import { RIG } from '../../themes/neon-dusk/neon-dusk-tsl.js';
 import { NeonDuskWorld, readBoardRect } from '../../themes/neon-dusk/neon-dusk-world.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { NeonDuskPost, POST_LOOK } from '../../themes/neon-dusk/neon-dusk-post.js';
 
 export const meta = {
@@ -113,6 +114,9 @@ export function create({
         else if (eventName === 'clear') world.onLineClear(num(params, 'lines', 2));
         else if (eventName === 'tetris') world.onLineClear(4);
         else if (eventName === 'levelUp') world.onLevelUp();
+        else if (eventName === 'perfect') world.onPerfectClear();
+        else if (eventName === 'tspin') world.onTSpin(num(params, 'lines', 0));
+        else if (eventName === 'b2b') world.onB2B(true);
     };
 
     const size = new THREE.Vector2();
@@ -132,7 +136,13 @@ export function create({
     });
     const pushPost = (time) => {
         if (!post) return;
-        post.update({ time, bloomBoost: Math.min(1, world.sunPulse), glitch: world.glitch });
+        post.update({
+            time,
+            bloomBoost: Math.min(1, world.sunPulse),
+            glitch: world.glitch * flashScale(),
+            exposure: world.drive.exposure,
+            bloomGain: world.drive.bloomGain,
+        });
     };
     const step = (time, dt) => {
         world.updateCamera(camera, sim(time, dt));

@@ -22,6 +22,7 @@ import {
     fwidth,
     length,
     max,
+    min,
     mix,
     normalize,
     positionWorld,
@@ -77,15 +78,21 @@ export function createSky(u, opts = {}) {
         const above = smoothstep(-0.0015, 0.0006, e).toVar();
 
         // ── Sunbeams: the shadows of clouds beyond the horizon fan out from the sun across its
-        // glow. Read on a circle round the sun (no seam), drifting very slowly. ──
-        const around = atan(ly, lx);
+        // glow. Read on a circle round the sun (no seam), drifting very slowly; a T-spin turns
+        // the fan (u.beamTurn). The heat of play (u.blaze.x) sharpens it into a crown: the beams
+        // reach further, the gaps between them deepen and the beams themselves burn gold. ──
+        const blaze = u.blaze.x;
+        const around = atan(ly, lx).add(u.beamTurn);
         const ring = vec2(cos(around), sin(around)).mul(3.2).add(vec2(u.time.mul(0.005), 0.0));
         const beamN = nvFbm3(ring);
         const beam = smoothstep(0.25, 0.8, beamN);
         const beamFade = smoothstep(0.0, 0.06, e).mul(smoothstep(0.05, 0.25, ang))
-            .mul(exp(ang.mul(-1.4)));
-        const glow = nvSunGlow(dir, pulse).mul(float(1.0).add(beam.sub(0.5).mul(0.5).mul(beamFade)));
+            .mul(exp(ang.mul(min(blaze, 1.4).mul(0.35).sub(1.4))));
+        const glow = nvSunGlow(dir, pulse)
+            .mul(float(1.0).add(beam.sub(0.5).mul(blaze.mul(0.9).add(0.5)).mul(beamFade)));
         const col = nvSkyGradient(e, sa).add(glow).toVar();
+        // Gold in the beams near the sun, fading before they reach the deep sky.
+        col.addAssign(rgb(0xffa040, 0.9).mul(beam.mul(beam).mul(beamFade).mul(exp(ang.mul(-1.2))).mul(blaze)));
 
         // ── Sun disc: white-gold, softly limb-darkened ──
         const r = ang.div(u.sunRadius);

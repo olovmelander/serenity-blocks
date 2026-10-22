@@ -295,3 +295,50 @@ describe('koi pond composition', () => {
         expect(readLayoutRects(null, win)).toBeNull();
     });
 });
+
+describe('koi pond director: clears with no lines of their own', () => {
+    it('crowns the clear still playing with a perfect clear settled a frame later, never a second clear', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: false, crown: false });
+        // Physics settles the perfect clear ~360 ms after the clear's last wave, in a frame of its own.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
+        expect(calls.clear[1]).toMatchObject({
+            lines: 0, perfect: true, crown: true, rows: [],
+        });
+        // The chain is not counted again.
+        expect(calls.clear[1].combo).toBe(calls.clear[0].combo);
+        expect(calls.combo).toEqual([[1, 0]]);
+        // A perfect clear staged in the same frame as its clear is that clear, perfect: no crown.
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear[2]).toMatchObject({ lines: 4, perfect: true, crown: false });
+        // Nothing is left staged: the next flush says nothing.
+        director.flush();
+        expect(calls.clear).toHaveLength(3);
+    });
+
+    it('resolves a T-spin that clears nothing as a lineless spin that does not move the chain', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.lock).toHaveLength(1);
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({
+            lines: 0, tspin: true, crown: false, perfect: false,
+        });
+        expect(calls.combo).toEqual([]);
+        // A plain lock is still just a lock.
+        director.onPieceLock({ piece: T });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+    });
+});

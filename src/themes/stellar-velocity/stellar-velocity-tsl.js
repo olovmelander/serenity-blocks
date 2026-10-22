@@ -293,6 +293,8 @@ export function createStellarUniforms(textures) {
         /** How much of the frame is the jump's tunnel (0..1), and the clock its streaks run on. */
         jump: uniform(0),
         jumpClock: uniform(0),
+        /** A perfect clear's crown (0 at rest): the tunnel's mouth flares, its threads burn gold. */
+        crown: uniform(0),
         /** A jump shifts the cloud's whole field: we come out somewhere else. */
         shift: uniform(new THREE.Vector3(0, 0, 0)),
         /** How brightly the sun stands (1 at rest; a chain and a jump's afterglow raise it). */

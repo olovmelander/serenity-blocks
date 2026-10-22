@@ -32,6 +32,19 @@ const SPRING_FREQ = 1.4; // Hz — slow, weighty camera feel
 const SPRING_DAMP = 1.0; // Critically damped
 const MAX_FOV_DELTA = 6; // degrees
 const MAX_OFFSET_LEN = 0.5; // units
+// Event offsets and FOV deltas: how fast their targets fall back (1/s; 0.92 a frame at 60 Hz)
+// and how fast the pose follows them (1/s; 0.14 a frame at 60 Hz) — in time, not in frames,
+// so a 120 Hz screen gets the same push-in as a 60 Hz one.
+const EVENT_RETURN = 5.0;
+const EVENT_FOLLOW = 9.05;
+// Rapid taps ride on what is still shaking: the stronger leads and this share of the weaker
+// joins it, under a ceiling (no wild jitter).
+const TAP_JOIN = 0.35;
+const MAX_SHAKE = 0.22; // units
+const MAX_FOV_PUNCH = 4; // degrees
+// A sustained lean toward the swarm (a fever), eased in and out (1/s), at most this far.
+const HOLD_RATE = 1.2;
+const MAX_HOLD = 0.35; // units
 
 // Pointer-driven orbital parallax. The cursor maps to a [-1, 1] NDC range,
 // which we project onto horizontal/vertical arcs around the focal point.
@@ -98,6 +111,11 @@ export class CameraDirector {
         this._shakeAmp = 0;
         this._shakeDecayPerMs = 0;
 
+        // A sustained lean toward the focus (hold()): target and where it is.
+        this._holdTarget = 0;
+        this._hold = 0;
+        this._holdDir = focus.clone().sub(REST_POSITION).normalize();
+
         // Cached look-at vector (reused per frame; no per-frame allocations).
         this._lookAt = new THREE.Vector3();
         this._tmp = new THREE.Vector3();
@@ -111,11 +129,13 @@ export class CameraDirector {
      * @param {number} durationMs - total decay time (typical 80-200)
      */
     shake(amplitude = 0.04, durationMs = 120) {
-        // If a stronger shake is already in flight, keep it; otherwise replace.
-        // Prevents fast lock cascades from accumulating into wild jitter.
-        if (amplitude <= this._shakeAmp) return;
-        this._shakeAmp = amplitude;
-        this._shakeDecayPerMs = amplitude / Math.max(16, durationMs);
+        if (!(amplitude > 0)) return;
+        // A tap during a shake adds to it: the stronger leads and a share of the weaker joins,
+        // under a ceiling — rapid hard drops build a little instead of feeling like one.
+        const now = this._shakeAmp;
+        const next = Math.min(MAX_SHAKE, Math.max(now, amplitude) + Math.min(now, amplitude) * TAP_JOIN);
+        this._shakeAmp = next;
+        this._shakeDecayPerMs = next / Math.max(16, durationMs);
     }
 
     /**
@@ -125,9 +145,26 @@ export class CameraDirector {
      * the combo-vertigo without fighting.
      */
     fovPunch(delta = -1.5) {
-        // Only apply if it's a stronger pull than current pending punch.
-        if (Math.abs(delta) <= Math.abs(this._eventFovDeltaTarget)) return;
-        this._eventFovDeltaTarget = delta;
+        if (!Number.isFinite(delta) || delta === 0) return;
+        const now = this._eventFovDeltaTarget;
+        if (now !== 0 && Math.sign(now) !== Math.sign(delta)) {
+            // The other way: only a stronger pull takes over.
+            if (Math.abs(delta) > Math.abs(now)) this._eventFovDeltaTarget = delta;
+            return;
+        }
+        // The same way: the stronger leads and a share of the weaker joins it, under a ceiling.
+        const a = Math.abs(now);
+        const b = Math.abs(delta);
+        const joined = Math.min(MAX_FOV_PUNCH, Math.max(a, b) + Math.min(a, b) * TAP_JOIN);
+        this._eventFovDeltaTarget = Math.sign(delta) * Math.max(a, b, joined);
+    }
+
+    /**
+     * A sustained lean toward the swarm (world units, 0 = none), eased in and out. The show
+     * holds it through a fever instead of punching at every step.
+     */
+    hold(distance = 0) {
+        this._holdTarget = Math.max(0, Math.min(MAX_HOLD, Number(distance) || 0));
     }
 
     /**
@@ -167,18 +204,23 @@ export class CameraDirector {
         this._targetPos.y += -this._pointerY * POINTER_ORBIT_Y;
         this._targetPos.z += Math.abs(this._pointerY) * POINTER_ORBIT_Z;
 
-        // 3. Event offset — decays back to 0 (8% per frame at 60fps).
-        this._eventOffsetTarget.multiplyScalar(0.92);
-        this._eventOffset.lerp(this._eventOffsetTarget, 0.14);
+        // 3. Event offset — decays back to 0 (8% per frame at 60fps, in time).
+        const settle = Math.exp(-EVENT_RETURN * delta);
+        const follow = 1 - Math.exp(-EVENT_FOLLOW * delta);
+        this._eventOffsetTarget.multiplyScalar(settle);
+        this._eventOffset.lerp(this._eventOffsetTarget, follow);
         // Clamp combined idle + event to MAX_OFFSET_LEN — never disorient the player.
         if (this._eventOffset.lengthSq() > MAX_OFFSET_LEN * MAX_OFFSET_LEN) {
             this._eventOffset.setLength(MAX_OFFSET_LEN);
         }
         this._targetPos.add(this._eventOffset);
+        // The sustained lean (a fever).
+        this._hold += (this._holdTarget - this._hold) * (1 - Math.exp(-HOLD_RATE * delta));
+        if (this._hold > 1e-4) this._targetPos.addScaledVector(this._holdDir, this._hold);
 
         // 4. FOV target — base + event delta, clamped.
-        this._eventFovDeltaTarget *= 0.92;
-        this._eventFovDelta += (this._eventFovDeltaTarget - this._eventFovDelta) * 0.14;
+        this._eventFovDeltaTarget *= settle;
+        this._eventFovDelta += (this._eventFovDeltaTarget - this._eventFovDelta) * follow;
         const clampedFovDelta = Math.max(-MAX_FOV_DELTA, Math.min(MAX_FOV_DELTA, this._eventFovDelta));
         this._targetFov = this.restFov + clampedFovDelta;
 
@@ -272,6 +314,8 @@ export class CameraDirector {
         this._eventOffsetTarget.set(0, 0, 0);
         this._eventFovDelta = 0;
         this._eventFovDeltaTarget = 0;
+        this._hold = 0;
+        this._holdTarget = 0;
         // Reset pointer so re-entering the theme doesn't carry stale cursor state
         this._pointerX = 0;
         this._pointerY = 0;

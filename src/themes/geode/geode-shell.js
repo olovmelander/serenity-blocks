@@ -15,7 +15,9 @@
  *               every wave that passes wakes them.
  *
  * A four-line clear fractures the lining: a network of cracks opens outward from the heart,
- * burning white-gold, and heals.
+ * burning white-gold, and heals (a second one opens over the first while it heals: two are drawn).
+ * A fever holds the same network open: the cracks creep out from the heart as the fever fills,
+ * light pulsing outward along them.
  */
 
 import * as THREE from 'three/webgpu';
@@ -195,8 +197,9 @@ export function createShell(u, plan, { glitter = true, fracture = true } = {}) {
         const deep = max(w.sub(CAVITY.wHeart), 0.0).div(CAVITY.wBands + 0.35 - CAVITY.wHeart);
         const through = exp(deep.mul(-1.7)).mul(fine.mul(0.5).add(0.6)).mul(charge);
         const lit = mix(u.heart, vec3(1.0), 0.35);
-        const agate = ramp.mul(lit).mul(through).mul(1.05)
-            .add(mix(u.heart, vec3(1.0), 0.6).mul(seam).mul(through).mul(0.4))
+        // (back-to-back clears wind the fortification tighter and set its bands blazing: heat.w)
+        const agate = ramp.mul(lit).mul(through).mul(u.heat.w.mul(0.55).add(1.05))
+            .add(mix(u.heart, vec3(1.0), 0.6).mul(seam).mul(through).mul(u.heat.w.mul(0.5).add(0.4)))
             .toVar();
         // A ring passing through lights the bands it crosses; a clear leaves them glowing.
         agate.addAssign(pulse.mul(fine.mul(0.9).add(0.5)).mul(1.3));
@@ -239,6 +242,9 @@ export function createShell(u, plan, { glitter = true, fracture = true } = {}) {
             .add(gdLuma(strike).mul(9.0))
             .add(u.power.mul(0.6))
             .add(u.surge.mul(1.0))
+            // the lining glitters harder the hotter play runs
+            .add(u.heat.x.mul(0.5))
+            .add(u.heat.y.mul(0.9))
             .add(1.0);
         const druzy = rock.add(mix(sparkle, vec3(gdLuma(sparkle)), 0.2).mul(rim).mul(wake).mul(3.4)).toVar();
         druzy.addAssign(pulse.mul(gem.add(0.15)).mul(0.3));
@@ -257,11 +263,9 @@ export function createShell(u, plan, { glitter = true, fracture = true } = {}) {
                 .mul(0.55));
         }
 
-        // ── The fracture ──
+        // ── The fracture (the newest, the one still healing under it, and a fever's veins) ──
         if (fracture) {
             If(u.live.w.greaterThan(0.5), () => {
-                const age = u.time.sub(u.shock.x);
-                const reached = age.div(FRACTURE_TRAVEL).mul(CAVITY.wMax);
                 // Voronoi borders over the wall: F2 − F1 is small along them.
                 const g = vec2(turn.mul(CRACK_ROUND), w.mul(CRACK_ALONG));
                 const id = floor(g);
@@ -281,13 +285,26 @@ export function createShell(u, plan, { glitter = true, fracture = true } = {}) {
                 const gap = f2.sub(f1);
                 const crack = float(1.0).sub(smoothstep(0.008, 0.045, gap));
                 const halo = exp(gap.mul(-14.0)).mul(0.1);
-                const since = max(age.sub(w.div(CAVITY.wMax).mul(FRACTURE_TRAVEL)), 0.0);
-                const open = step(w, reached).mul(exp(since.div(-FRACTURE_HEAL * 0.4)));
-                const head = gdBell(w.sub(reached).div(0.16));
+                /** One fracture (birth, strength): how open its cracks are here, and its running head. */
+                const opened = (shock) => {
+                    const age = u.time.sub(shock.x);
+                    const reached = age.div(FRACTURE_TRAVEL).mul(CAVITY.wMax);
+                    const since = max(age.sub(w.div(CAVITY.wMax).mul(FRACTURE_TRAVEL)), 0.0);
+                    return vec2(
+                        step(w, reached).mul(exp(since.div(-FRACTURE_HEAL * 0.4))).mul(shock.y),
+                        gdBell(w.sub(reached).div(0.16)).mul(shock.y),
+                    );
+                };
+                const a = opened(u.shock);
+                const b = opened(u.shockB);
+                // A fever's veins: open from the heart out to veins.y, light pulsing outward along them.
+                const vein = u.veins.x.mul(float(1.0).sub(smoothstep(u.veins.y.sub(0.12), u.veins.y.add(0.12), w)))
+                    .mul(sin(u.time.mul(2.6).sub(w.mul(13.0)).add(nB.g.mul(4.0))).mul(0.35).add(0.65));
+                const open = a.x.add(b.x).add(vein);
                 const fire = vec3(GEODEFIRE[0], GEODEFIRE[1], GEODEFIRE[2]);
-                col.addAssign(fire.mul(crack.add(halo)).mul(open).mul(u.shock.y).mul(lining.mul(0.85).add(0.15))
+                col.addAssign(fire.mul(crack.add(halo)).mul(open).mul(lining.mul(0.85).add(0.15))
                     .mul(3.6));
-                col.addAssign(mix(fire, gem, 0.3).mul(head).mul(u.shock.y).mul(0.7));
+                col.addAssign(mix(fire, gem, 0.3).mul(a.y.add(b.y)).mul(0.7));
             });
         }
         return col;

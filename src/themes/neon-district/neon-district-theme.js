@@ -10,8 +10,10 @@
  * colour while a shell of light climbs the walls; a clear fires the cleared rows out of the card
  * and brings a wave rushing up the street from the vanishing point; a chain of clears charges
  * the district (a hologram counts it, the trim on the towers climbs like level meters, the city
- * flows faster, the palette warms to gold); and four lines black the district out, bring it back
- * in gold and call a drone-show dragon out of the haze.
+ * flows faster, the palette warms to gold); four lines black the district out, bring it back
+ * in gold and call a drone-show dragon out of the haze; and play that stays hot brings the
+ * storm in over the canyon (a downpour, sheet lightning in the smog) until a perfect clear
+ * breaks it.
  *
  * Content lives in NeonDistrictWorld (neon-district-world.js), shared with the playground effect
  * src/playground/effects/neon-district.effect.js, so what is iterated there ships. This class
@@ -242,6 +244,9 @@ export default class NeonDistrictTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
+                // A perfect clear a frame after its clear crowns it; it is not a second clear.
+                perfect: (c) => this.world?.onPerfect(c),
+                spin: (c) => this.world?.onSpin(c),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => this.world?.levelUp(level),
             },

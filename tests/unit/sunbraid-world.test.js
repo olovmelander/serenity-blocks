@@ -13,7 +13,7 @@ import {
 } from 'vitest';
 import * as THREE from 'three/webgpu';
 import {
-    PHASE0, REST_RIG, SUNBRAID_PARTS, SunbraidWorld, fovForAspect,
+    PHASE0, POST_EVENTS, REST_RIG, SUNBRAID_PARTS, SunbraidWorld, fovForAspect,
 } from '../../src/themes/sunbraid/sunbraid-world.js';
 import {
     BRAID_RATE, PIECE_COLORS, azElOf, sunVector,
@@ -360,7 +360,7 @@ describe('SunbraidWorld: events turn the braid', () => {
         expect(world.getState().white).toBe(0);
     });
 
-    it('opens the suns wider with a chain, counting each step, and eases them back when it breaks', () => {
+    it('draws the suns closer with a chain, counting each step, and eases them back when it breaks', () => {
         const { world } = shared;
         begin(shared);
         world.onCombo(1);
@@ -369,22 +369,23 @@ describe('SunbraidWorld: events turn the braid', () => {
         expect(world.counts.chainSteps).toBe(4);
         expect(world).toMatchObject({ combo: 5, peak: 5 });
         stepTo(shared, START + 4);
-        const open = world.getState().spread;
-        expect(open).toBeGreaterThan(1.2);
-        // The suns stand further from one another.
+        const drawn = world.getState().spread;
+        expect(drawn).toBeLessThan(1 - 3 * BRAID_EVENTS.chain.draw);
+        // The suns stand closer to one another: the triple star spirals in.
         const [a, b] = suns(world);
         const gap = Math.acos(a.dir[0] * b.dir[0] + a.dir[1] * b.dir[1] + a.dir[2] * b.dir[2]);
         begin(shared);
         const [a0, b0] = suns(world);
         const calmGap = Math.acos(a0.dir[0] * b0.dir[0] + a0.dir[1] * b0.dir[1] + a0.dir[2] * b0.dir[2]);
-        expect(gap).toBeGreaterThan(calmGap * 1.2);
+        expect(gap).toBeLessThan(calmGap * (1 - 3 * BRAID_EVENTS.chain.draw));
         // The chain ends: the spread eases back; the peak is remembered.
         for (let n = 2; n <= 5; n++) world.onCombo(n);
         stepTo(shared, START + 4);
         world.onCombo(0);
         expect(world).toMatchObject({ combo: 0, peak: 5 });
         stepTo(shared, START + 4 + 1 / 30);
-        expect(world.getState().spread).toBeLessThan(open);
+        expect(world.getState().spread).toBeGreaterThan(drawn);
+        expect(world.getState().spread).toBeLessThan(drawn + 0.05);
         stepTo(shared, START + 20, 0.25);
         expect(world.getState().spread).toBeCloseTo(1, 3);
     });
@@ -445,13 +446,18 @@ describe('SunbraidWorld: events turn the braid', () => {
         const { noon } = BRAID_EVENTS;
         const mid = START + noon.rise + noon.hold / 2;
         begin(shared);
-        stepTo(shared, mid);
-        const before = suns(world).map((s) => elevation(s.dir));
-        begin(shared);
         world.onClear({ lines: 2, perfect: true });
         expect(world.counts.perfects).toBe(1);
         stepTo(shared, mid);
-        suns(world).forEach((s, k) => expect(elevation(s.dir), `sun ${k}`).toBeCloseTo(before[k] + noon.lift, 6));
+        // The suns stand where the braid puts them (the heat of a perfect clear draws them in and
+        // sinks them a little), lifted by noon's height.
+        const state = world.getState();
+        expect(state.sink).toBeGreaterThan(0);
+        expect(state.sink).toBeLessThan(noon.lift);
+        suns(world).forEach((s, k) => {
+            const unlifted = elevation(sunVector(state.phase, k, world.time, state.spread));
+            expect(elevation(s.dir), `sun ${k}`).toBeCloseTo(unlifted + noon.lift - state.sink, 6);
+        });
         stepTo(shared, START + noon.rise + noon.hold + noon.sink + 0.5);
         const after = suns(world).map((s) => elevation(s.dir));
         begin(shared);
@@ -487,6 +493,132 @@ describe('SunbraidWorld: events turn the braid', () => {
         });
         stepTo(shared, START + 15, 0.25);
         expect(world.u.ribbon.value).toBeLessThan(0.01);
+    });
+});
+
+describe('SunbraidWorld: the build-up of play', () => {
+    /** What the heat lights, as the materials and the post read it. */
+    const glow = (world) => ({
+        blaze: world.u.blaze.value,
+        ribbon: world.u.ribbon.value,
+        mist: world.u.mistDensity.value,
+        glare: world.getPostState().bloomBoost,
+        air: world.getPostState().air,
+        exposure: world.getPostState().exposure,
+        level: world.getState().heat.level,
+    });
+    /** One clearing lock of a chain at the world's clock, as the director delivers it. */
+    const clearing = (world, lines, combo, extra = {}) => {
+        world.onLock({ u: 0.5, rows: [19], hardDrop: true });
+        world.onClear({
+            lines, combo, cascade: 1, ...extra,
+        });
+        world.onCombo(combo);
+    };
+
+    it('never cuts the light with a weak clear after a strong one, or a second four lines on the first', () => {
+        const { world } = shared;
+        begin(shared);
+        world.onClear({ lines: 4, combo: 1 });
+        const c = BRAID_EVENTS.conjunction;
+        stepTo(shared, START + c.close + c.hold * 0.4);
+        let last = glow(world);
+        world.onClear({ lines: 1, combo: 2 }); // a single right after
+        stepTo(shared, world.time + 1 / 30);
+        const after = glow(world);
+        expect(after.blaze).toBeGreaterThanOrEqual(last.blaze - 1e-9);
+        expect(after.glare).toBeGreaterThanOrEqual(last.glare * 0.97);
+        // A second four lines while the suns are joined: the white sun holds, it never splits.
+        world.onClear({ lines: 4, combo: 3 });
+        const holdUntil = world.time + c.hold;
+        last = world.getState();
+        while (world.time < holdUntil - 1 / 30) {
+            stepTo(shared, world.time + 1 / 30);
+            const now = world.getState();
+            expect(now.white, `${world.time.toFixed(2)} s`).toBe(1);
+            expect(now.spread, `${world.time.toFixed(2)} s`).toBe(0);
+            expect(world.getPostState().flash).toBeGreaterThanOrEqual(POST_EVENTS.whiteFlash - 1e-9);
+            last = now;
+        }
+        expect(last.white).toBe(1);
+    });
+
+    it('reads a long chain hotter than its first clear, and breathes back to rest when the hands stop', () => {
+        const { world } = shared;
+        begin(shared);
+        const rest = glow(world);
+        clearing(world, 1, 1);
+        stepTo(shared, world.time + 0.64);
+        const first = glow(world);
+        for (let combo = 2; combo <= 11; combo++) {
+            clearing(world, 1 + (combo % 3), combo, { cascade: combo === 8 ? 3 : 1 });
+            stepTo(shared, world.time + 0.64);
+        }
+        const chain = glow(world);
+        expect(world.getState().heat.stage).toBeGreaterThanOrEqual(2);
+        for (const key of ['blaze', 'ribbon', 'glare', 'level']) {
+            expect(chain[key], key).toBeGreaterThan(first[key] * 1.25);
+        }
+        // The towers' wedges stand a little stronger in the air (a touch: more mist is a veil).
+        expect(chain.mist).toBeGreaterThan(first.mist);
+        expect(chain.air).toBeGreaterThan(first.air);
+        expect(chain.exposure).toBeLessThan(first.exposure); // the iris closes on the added light
+        // The suns stand closer than at rest: the triple star spirals in (the conjunction is still to come).
+        expect(world.getState().spread).toBeLessThan(0.8);
+        expect(world.getState().spread).toBeGreaterThan(0.3);
+        // The hands rest: the chain breaks and the world breathes back to calm.
+        world.onCombo(0);
+        stepTo(shared, world.time + 14, 1 / 15);
+        const calm = glow(world);
+        expect(calm.blaze).toBeCloseTo(rest.blaze, 3);
+        expect(calm.mist).toBeCloseTo(rest.mist, 9);
+        expect(calm.exposure).toBeCloseTo(1, 3);
+        expect(calm.glare).toBeLessThan(0.01);
+        expect(world.getState().spread).toBeCloseTo(1, 2);
+    });
+
+    it('crowns the clear still playing with a late perfect clear: no new clear, the joined sun held longer', () => {
+        const { world } = shared;
+        const c = BRAID_EVENTS.conjunction;
+        begin(shared);
+        world.onClear({ lines: 4, combo: 1 });
+        stepTo(shared, START + 0.36);
+        world.onPerfect({ player: 0 });
+        expect(world.counts).toMatchObject({
+            clears: 1, lines: 4, quads: 1, perfects: 1,
+        });
+        stepTo(shared, START + c.close + c.hold + c.crown * 0.6);
+        expect(world.getState().white).toBe(1);
+        // The crown lifts the suns a little toward noon, and they stay in the frame's sky.
+        stepTo(shared, START + 0.36 + BRAID_EVENTS.noon.rise);
+        expect(world.lift).toBeCloseTo(BRAID_EVENTS.noon.lift, 9);
+    });
+
+    it('answers a T-spin that clears nothing with a small turn and a flicker of the ribbons', () => {
+        const until = START + BRAID_EVENTS.spin.ease + 0.5;
+        const gain = phaseGain((world) => world.onSpin({ player: 0 }), until);
+        expect(gain).toBeCloseTo(BRAID_EVENTS.spin.step, 9);
+        expect(BRAID_EVENTS.spin.step).toBeLessThan(BRAID_EVENTS.twist.step);
+        expect(shared.world.counts).toMatchObject({ tspins: 1, clears: 0 });
+        begin(shared);
+        shared.world.onSpin({ player: 0 });
+        stepTo(shared, START + 0.3);
+        expect(shared.world.u.ribbon.value).toBeGreaterThan(0.1);
+    });
+
+    it('wakes the valley only past casual play: a lock now and then changes nothing', () => {
+        const { world } = shared;
+        begin(shared);
+        const rest = glow(world);
+        for (let i = 0; i < 6; i++) {
+            world.onLock({ u: 0.4, rows: [19] });
+            stepTo(shared, world.time + 1.5);
+        }
+        const casual = glow(world);
+        expect(casual.blaze).toBe(rest.blaze);
+        expect(casual.mist).toBe(rest.mist);
+        expect(casual.exposure).toBe(1);
+        expect(world.getState().spread).toBe(1);
     });
 });
 

@@ -18,10 +18,27 @@
  *            go, and the light streams back to the chrysalis.
  *   combo    the chrysalis HATCHES: for every step of the chain its wings of light unfurl
  *            further to either side of the board — veins first, then the bands, then the eyes
- *            open — and the aurora rises. When the chain breaks the wings fall to dust.
- *   four     the lake holds its breath, then the wings beat once: a ring crosses the sky and
- *            the water, the aurora blazes, every lily flares.
+ *            open — and the aurora rises. When the chain breaks the wings MOULT: they fold
+ *            back from the margin over seconds, fraying, shedding scales, and a new chain
+ *            catches them wherever they stand and lifts them again.
+ *   four     the lake holds its breath (as deep as play is cold: mid-fever it only inhales),
+ *            then the wings beat once: a ring crosses the sky and the water, the aurora
+ *            blazes, every lily flares.
+ *   cascade  every wave of one lock is a deeper swell than the last: more fronts, hotter,
+ *            nearer vesperfire, with a ring under the chrysalis that reaches further each wave.
+ *   b2b      the second difficult clear gilds the wings' veins and rings the silk in gold.
+ *   perfect  a perfect clear that comes after its clear is a crown on it, not a second clear:
+ *            every lily relit in vesperfire from the chrysalis outward, the wings gilded and
+ *            beating, the evening star flaring. No second hush.
  *   level    the evening moves on an hour.
+ *
+ * And the evening builds with the pace of play (src/themes/shared/gameplay-surge.js): calm play
+ * looks as it always has; a quick hand warms it (the chrysalis glows like a lantern, the stars
+ * come out, the lilies keep more of their light through a clear); hot play brings the aurora up
+ * in the wings' own colours, quickens the clouds and the water and pours shafts from the
+ * chrysalis; and a fever makes the wings beat, great slow strokes as if to take off, drawn in
+ * burning lines over a thinning veil, the evening star flaring and the aurora blazing. When the
+ * hands rest it breathes back to dusk.
  *
  * The evening also moves on by itself, whatever the level: an hour every two minutes of the
  * world clock, so the colours of sky, lake and wings are never quite the same twice.
@@ -32,6 +49,7 @@
 
 import * as THREE from 'three/webgpu';
 import {
+    BLOOM_KEEP,
     DEG,
     EYE,
     EYE_COMBO,
@@ -41,15 +59,18 @@ import {
     MOTH_FLIGHT,
     NOISE_SIZE,
     PALETTE_KEYS,
+    RING_FADE,
     RING_LIVE,
     RING_SLOTS,
     SURGE_COOL,
     SWELL_LIVE,
     SWELL_SLOTS,
+    TAU,
     THREAD_PULSES,
     VESPERFIRE,
     VESPER_PALETTES,
     WING_FALL,
+    WING_STEPS,
     approach,
     bakeNoise,
     clamp01,
@@ -63,6 +84,7 @@ import {
     planBlooms,
     planSpires,
     powerForCombo,
+    smooth,
     spireTip,
     swellPassTime,
     wingForCombo,
@@ -82,6 +104,7 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './vesper-chrysalis-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 
 /** The rest camera's lens (the theme builds its camera from it). */
 export const REST_RIG = Object.freeze({
@@ -101,6 +124,23 @@ const PARTS = [
     'sky', 'lake', 'spires', 'reeds', 'chrysalis', 'threads', 'wings', 'blooms', 'moths', 'dust',
     'fireflies', 'blades',
 ];
+
+/** The gold a back-to-back lays in the wings and the silk. */
+const GILT = Object.freeze([1.0, 0.74, 0.36]);
+/** The share of its light a lily keeps through a clear's swell once play runs hot (BLOOM_KEEP when calm). */
+const HOT_KEEP = 0.6;
+/** The wings' slow wingbeat in a fever (strokes a second), and how far it swings (radians). */
+const FEVER_STROKE = 0.42;
+const FEVER_SWING = 0.26;
+/** The share of the span between two showers of scales as the wings fold back. */
+const SHED_STEP = 0.035;
+/** Seconds a new link of a chain holds folding wings where they are: it catches them. */
+const CATCH_HOLD = 0.45;
+/** Seconds a pulse on the silk is counted as running (its light is gone well before). */
+const PULSE_LIFE = 3;
+/** The ring through the frame: seconds it crosses, and seconds its light takes to fall to 1/e. */
+const PRISM_LIVE = 2.2;
+const PRISM_FADE = 0.75;
 
 export class VesperWorld {
     /**
@@ -162,6 +202,22 @@ export class VesperWorld {
             exposure: 1,
             prism: { radius: 0, strength: 0 },
         };
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js), fed from the same events and
+         * clock as everything else; `heat` is its reading as of the last frame that moved.
+         */
+        this.gameplay = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
+        /** The gold a back-to-back lays in the wings' veins: a streak of them deepens it. */
+        this.gild = new Swell({
+            attack: 0.08, release: 2.4, ceiling: 1.2, knee: 0.9,
+        });
+        /** The evening star's flare (a back-to-back, a perfect clear). */
+        this.starFlare = new Swell({
+            attack: 0.12, release: 1.8, ceiling: 2, knee: 1.4,
+        });
         this.resetState(0);
     }
 
@@ -180,8 +236,17 @@ export class VesperWorld {
         this.breath = 1;
         this.wing = 0;
         this.wingFlash = 0;
+        /** When the wings last began to moult, and how far open they stood then. */
         this.fallStart = -100;
         this.fallFrom = 0;
+        /** The wings are folding back (a chain broke) until they reach the chain's step or are caught. */
+        this.moulting = false;
+        /** How hard the folding front frays (u.wing.z), eased in and out. */
+        this.fray = 0;
+        /** Span folded away since the last shower of scales. */
+        this.shed = 0;
+        /** A new link holds folding wings until then. */
+        this.caughtUntil = -100;
         this.beat = 0;
         this.beatKick = 0;
         this.eyeHind = 0;
@@ -190,6 +255,8 @@ export class VesperWorld {
         this.crack = 0;
         this.fed = 0;
         this.hushUntil = -1;
+        /** The breath a four-line clear holds the evening at: deep when play is cold, shallow when hot. */
+        this.hushFloor = 0.14;
         this.ringCursor = 0;
         this.swellCursor = 0;
         this.pulseCursor = 0;
@@ -201,6 +268,15 @@ export class VesperWorld {
         this.moths?.reset();
         this.dust?.reset();
         this.blades?.reset();
+        this.gameplay?.reset();
+        if (this.heat) {
+            this.heat.punch = 0;
+            this.heat.level = 0;
+            this.heat.fever = 0;
+            this.heat.stage = 0;
+        }
+        this.gild?.reset();
+        this.starFlare?.reset();
         this.counts = {
             locks: 0, clears: 0, quads: 0, moths: 0, falls: 0,
         };
@@ -211,6 +287,7 @@ export class VesperWorld {
             for (let i = 0; i < SWELL_SLOTS; i++) this.u.swellA[i].value.set(-100, 1, 0, 0);
             for (let i = 0; i < THREAD_PULSES; i++) this.u.pulseA[i].value.set(-100, 0, 0, 0);
             this.u.fed.value.set(1, 0.7, 0.4, 0);
+            this.u.heat.value.set(0, 0, 0, 0);
         }
     }
 
@@ -372,7 +449,9 @@ export class VesperWorld {
     updateCamera(camera, sim) {
         const t = sim.time;
         const calm = this.reducedMotion ? 0 : 1;
-        const fov = fovForAspect(this.aspect) - this.kick * 0.7 * calm;
+        // Every event's punch rides under the kicks, so a quick hand leans the view in a little.
+        const kick = this.kick + this.heat.punch * 0.22;
+        const fov = fovForAspect(this.aspect) - kick * 0.7 * calm;
         if (camera.fov !== fov || camera.near !== EYE.near || camera.far !== EYE.far) {
             camera.fov = fov;
             camera.near = EYE.near;
@@ -388,7 +467,7 @@ export class VesperWorld {
         camera.position.set(
             EYE.x + swayX + px * 1.5,
             EYE.y + swayY - py * 0.4,
-            EYE.z + swayZ + this.kick * 0.35 * calm,
+            EYE.z + swayZ + kick * 0.35 * calm,
         );
         const yaw = (Math.sin(t * 0.083 + 2.1) * 0.006 + px * 0.018) * calm;
         const pitch = EYE.pitch + (Math.sin(t * 0.097) * 0.003 - py * 0.012) * calm;
@@ -428,20 +507,122 @@ export class VesperWorld {
 
     // ── Gameplay ────────────────────────────────────────────────────────────────
 
+    /**
+     * The ring slot with least left to give now (a ring still to begin counts in full): under fast
+     * play the faintest ring makes way, never one still spreading while a spent one is there.
+     */
+    ringSlot() {
+        let slot = 0;
+        let least = Infinity;
+        for (let i = 0; i < RING_SLOTS; i++) {
+            const A = this.u.ringA[i].value;
+            const age = this.time - A.z;
+            let left = 0;
+            if (age < 0) left = A.w;
+            else if (age < RING_LIVE) left = A.w * Math.exp(-age * RING_FADE);
+            if (left < least) {
+                least = left;
+                slot = i;
+            }
+        }
+        return slot;
+    }
+
     /** Start a ring on the lake at (x, z) at `time`. */
     ring(x, z, time, strength, rgb, reach = 1) {
-        const slot = this.ringCursor % RING_SLOTS;
+        const slot = this.ringSlot();
         this.ringCursor += 1;
         this.u.ringA[slot].value.set(x, z, time, strength);
         this.u.ringC[slot].value.set(rgb[0], rgb[1], rgb[2], reach);
     }
 
-    /** Send light down the silk. side −1 left, +1 right, 0 both. */
+    /** Send light down the silk. side −1 left, +1 right, 0 both. The faintest pulse makes way. */
     threadPulse(time, side, strength, rgb) {
-        const slot = this.pulseCursor % THREAD_PULSES;
+        let slot = 0;
+        let least = Infinity;
+        for (let i = 0; i < THREAD_PULSES; i++) {
+            const A = this.u.pulseA[i].value;
+            const age = this.time - A.x;
+            let left = 0;
+            if (age < 0) left = A.z;
+            else if (age < PULSE_LIFE) left = A.z * (1 - age / PULSE_LIFE);
+            if (left < least) {
+                least = left;
+                slot = i;
+            }
+        }
         this.pulseCursor += 1;
         this.u.pulseA[slot].value.set(time, side, strength, 0);
         this.u.pulseC[slot].value.set(rgb[0], rgb[1], rgb[2]);
+    }
+
+    /**
+     * The swell slot with least left to give now: a spent one first, else the faintest (under a
+     * chain or a cascade, the oldest), never a swell still crossing while a spent one is free.
+     */
+    swellSlot() {
+        let slot = 0;
+        let least = Infinity;
+        for (let i = 0; i < SWELL_SLOTS; i++) {
+            const A = this.u.swellA[i].value;
+            const age = this.time - A.x;
+            let left = 0;
+            if (age < 0) left = A.z;
+            else if (age < SWELL_LIVE) left = A.z * Math.exp(-age * 0.42);
+            if (left < least) {
+                least = left;
+                slot = i;
+            }
+        }
+        return slot;
+    }
+
+    /** A kick and a flash a beat after a clear. One already waiting takes this one with it. */
+    queueKick(time, amount) {
+        const k = this.pendingKick;
+        if (k.time === Infinity) {
+            k.time = time;
+            k.amount = amount;
+            return;
+        }
+        k.amount = Math.min(1.2, Math.max(k.amount, amount) + 0.25 * Math.min(k.amount, amount));
+        k.time = Math.min(k.time, time);
+    }
+
+    /**
+     * The light the lilies let go reaches the chrysalis at `time`. A feed still on its way takes
+     * this one with it (their colours blended by how much each brings): no clear's light is lost.
+     */
+    queueFed(time, amount, rgb) {
+        const f = this.pendingFed;
+        if (f.time === Infinity) {
+            f.time = time;
+            f.amount = amount;
+            f.rgb = rgb;
+            return;
+        }
+        const w = amount / (f.amount + amount);
+        for (let c = 0; c < 3; c++) f.rgb[c] += (rgb[c] - f.rgb[c]) * w;
+        f.amount = Math.min(1, Math.max(f.amount, amount) + 0.35 * Math.min(f.amount, amount));
+        f.time = Math.min(f.time, time);
+    }
+
+    /**
+     * A ring through the frame (the post's prism) from `time`. A fainter one than the ring still
+     * crossing joins it (lifting it a little) instead of starting it over from the chrysalis.
+     */
+    strikeRing(time, strength) {
+        const s = this.shock;
+        const age = time - s.time;
+        let live = 0;
+        if (age < 0) live = s.strength;
+        else if (age < PRISM_LIVE) live = s.strength * Math.exp(-age / PRISM_FADE);
+        if (strength >= live) {
+            this.shock = { time, strength };
+            return;
+        }
+        const lifted = Math.min(1, live + strength * 0.5);
+        s.strength = age > 0 ? lifted * Math.exp(age / PRISM_FADE) : lifted;
     }
 
     /**
@@ -476,6 +657,7 @@ export class VesperWorld {
         this.lockAt(wx, wy, side, rgb, hardDrop);
         this.kick = Math.max(this.kick, hardDrop ? 0.45 : 0.08);
         this.flash = Math.max(this.flash, hardDrop ? 0.08 : 0.015);
+        this.gameplay.lock({ hardDrop }, this.time);
         this.counts.locks += 1;
     }
 
@@ -601,23 +783,35 @@ export class VesperWorld {
         }
     }
 
-    /** Lines cleared. `lines` 1..4; `tspin`, `perfect`. */
+    /**
+     * Lines cleared. `lines` 1..4; `tspin`, `perfect`; `cascade` the wave of one lock's cascade
+     * this is (2.. for the waves after the first: each builds on the last), `b2b` a back-to-back,
+     * `combo` the chain it belongs to.
+     */
     onClear({
         rows = null, lines = 1, perfect = false, tspin = false, player = 0, screen = null,
+        cascade = 1, combo = 0, b2b = false,
     } = {}) {
         const { u: uniforms } = this;
         if (!uniforms) return;
         const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
         const quad = n >= 4 || perfect;
+        // The waves of a cascade after the first: each one deeper, hotter and wider than the last.
+        const deeper = Math.max(0, Math.min(6, Math.round(Number(cascade) || 1) - 1));
+        const { level } = this.heat;
         const p = this._palette;
         let rgb;
         if (quad) rgb = [...VESPERFIRE];
         else if (n === 1) rgb = [...p.wingMid];
         else if (n === 2) rgb = [0, 1, 2].map((c) => p.glow[c] * 0.8 + p.wingRoot[c] * 0.4);
         else rgb = [0, 1, 2].map((c) => p.wingEdge[c] * 0.8 + p.wingMid[c] * 0.3);
+        if (deeper > 0) {
+            const k = Math.min(0.6, deeper * 0.2);
+            rgb = rgb.map((c, i) => c + (VESPERFIRE[i] - c) * k);
+        }
         const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
         rgb = rgb.map((c) => (c / peak) * 0.92 + 0.08);
-        const strength = Math.min(1.5, 0.6 + 0.15 * n + (quad ? 0.3 : 0));
+        const strength = Math.min(1.9, 0.6 + 0.15 * n + (quad ? 0.3 : 0) + 0.15 * deeper);
         let birth = quad ? this.time + HUSH_HOLD : this.time;
         // No two swells share a birth: it is what their releases are known by (two boards can
         // clear in one frame).
@@ -628,17 +822,26 @@ export class VesperWorld {
             }
         }
 
-        const slot = this.swellCursor % SWELL_SLOTS;
+        const slot = this.swellSlot();
         this.swellCursor += 1;
         // A swell the lake stops drawing takes the releases it had still to make with it.
         const replaced = uniforms.swellA[slot].value.x;
         if (this.time - replaced < SWELL_LIVE) this.blooms?.cancel(replaced);
-        uniforms.swellA[slot].value.set(birth, perfect ? 4 : n, strength, quad ? 1 : 0);
+        // A cascade's later waves carry more fronts: the train grows wider wave by wave.
+        uniforms.swellA[slot].value.set(birth, (perfect ? 4 : n) + Math.min(3, deeper), strength, quad ? 1 : 0);
         uniforms.swellC[slot].value.set(rgb[0], rgb[1], rgb[2]);
         this.lastClear = { time: birth, lines: n };
-        this.storm = Math.max(this.storm, Math.min(1.4, 0.3 + 0.16 * n + (quad ? 0.4 : 0)));
-        this.pendingKick = { time: birth + 0.1, amount: 0.2 + 0.1 * n };
-        this.wingFlash = Math.max(this.wingFlash, 0.35 + 0.15 * n);
+        this.storm = Math.max(this.storm, Math.min(1.4, 0.3 + 0.16 * n + (quad ? 0.4 : 0) + 0.1 * deeper));
+        this.queueKick(birth + 0.1, 0.2 + 0.1 * n + 0.05 * deeper);
+        this.wingFlash = Math.max(this.wingFlash, 0.35 + 0.15 * n + 0.1 * deeper);
+        // The pace of play (a four-line clear's lands as its hush lets go).
+        this.gameplay.clear({
+            lines: n, cascade: deeper + 1, combo, tspin, perfect, b2b,
+        }, birth);
+        // The hotter play runs, the more of its light a lily keeps through the swell: a chain
+        // fills the lake with lanterns instead of emptying it at every clear.
+        const keep = BLOOM_KEEP + (HOT_KEEP - BLOOM_KEEP) * smooth(0.2, 0.85, level);
+        const gives = (1 - keep) / (1 - BLOOM_KEEP);
 
         // ── Every lit lily lets its light go as the swell passes, and the light goes home ──
         const { blooms, dust } = this;
@@ -653,10 +856,11 @@ export class VesperWorld {
                 const held = blooms.heldAt(i, pass);
                 if (held < 0.12) continue;
                 const tint = blooms.colourAt(i, pass);
-                blooms.release(i, pass, birth);
+                blooms.release(i, pass, birth, keep);
+                const given = held * gives;
                 dust?.emit({
                     at: [b.x, b.size * 0.6 + 0.3, b.z],
-                    n: Math.round((4 + held * 5) * this.dustShare()),
+                    n: Math.round((4 + given * 5) * this.dustShare()),
                     rgb: tint,
                     time: pass,
                     life: [0.9, 1.5],
@@ -665,17 +869,17 @@ export class VesperWorld {
                     stagger: 0.3,
                     home: DUST_HOME,
                 });
-                released += held;
+                released += given;
                 latest = Math.max(latest, pass);
-                for (let c = 0; c < 3; c++) sum[c] += tint[c] * held;
+                for (let c = 0; c < 3; c++) sum[c] += tint[c] * given;
             }
             if (released > 0) {
                 // The chrysalis takes it in: it glows in what the lake gave back.
-                this.pendingFed = {
-                    time: (birth + latest) * 0.5 + 1.1,
-                    amount: Math.min(1, 0.35 + released * 0.14),
-                    rgb: sum.map((c) => c / released),
-                };
+                this.queueFed(
+                    (birth + latest) * 0.5 + 1.1,
+                    Math.min(1, 0.35 + released * 0.14),
+                    sum.map((c) => c / released),
+                );
             }
             if (perfect) {
                 // A perfect clear relights the whole lake at once.
@@ -693,7 +897,8 @@ export class VesperWorld {
             const list = Array.isArray(rows) && rows.length ? rows : Array.from({ length: n }, (_, i) => 19 - i);
             const ys = [];
             for (let i = 0; i < list.length && i < 4; i++) ys.push(boardPoint(board, 0.5, list[i], this._point).y);
-            this.blades.fire(ys, card.x0, card.x1, rgb, this.time, Math.min(1.4, 0.7 + 0.18 * n));
+            const blade = Math.min(1.8, (0.7 + 0.18 * n) * (1 + 0.2 * deeper));
+            this.blades.fire(ys, card.x0, card.x1, rgb, this.time, blade);
             // Where a blade ends it comes apart into scales.
             const at = [0, 0, 0];
             ys.forEach((y, i) => {
@@ -718,8 +923,12 @@ export class VesperWorld {
 
         if (quad) {
             this.hushUntil = this.time + HUSH_HOLD;
-            this.surge = perfect ? 1.3 : 1;
-            this.shock = { time: birth, strength: this.reducedMotion ? 0.5 : 1 };
+            // As deep as play is cold: from rest the lake holds its breath; in a fever it inhales.
+            this.hushFloor = 0.14 + 0.72 * clamp01(level);
+            // The overdrive builds on what is left of the last one: it is never cut back.
+            const overdrive = perfect ? 1.3 : 1;
+            this.surge = Math.min(1.6, Math.max(this.surge + overdrive * 0.35, overdrive));
+            this.strikeRing(birth, this.reducedMotion ? 0.5 : 1);
             this.ring(HEART[0], HEART[2] + 6, birth, 1.3, rgb, 3.2);
             this.eyeFlash = 1;
             this.beatKick = Math.max(this.beatKick, 1);
@@ -731,18 +940,84 @@ export class VesperWorld {
             }
             this.counts.quads += 1;
         }
+        if (deeper > 0) {
+            // Each wave strikes the water under the chrysalis further out, and the silk rings.
+            this.ring(HEART[0], HEART[2] + 6, birth, 0.6 + 0.15 * deeper, rgb, 1.3 + 0.45 * deeper);
+            this.threadPulse(birth, 0, 0.6 + 0.12 * deeper, rgb);
+            this.beatKick = Math.max(this.beatKick, 0.3 + 0.15 * deeper);
+        }
         if (tspin) {
             this.storm = Math.max(this.storm, 0.85);
             this.beatKick = Math.max(this.beatKick, 0.6);
-            if (!quad) this.shock = { time: this.time, strength: 0.4 };
+            if (!quad) this.strikeRing(this.time, 0.4);
+        }
+        if (b2b) this.backToBack(birth);
+        if (perfect) {
+            this.gild.hit(0.6, birth);
+            this.starFlare.hit(1.2, birth);
         }
         this.counts.clears += 1;
     }
 
     /**
+     * A back-to-back: the second difficult clear lays gold in the wings' veins and bands, rings
+     * the silk in gold and makes the evening star flare. A streak of them deepens the gold.
+     */
+    backToBack(at) {
+        this.gild.hit(1, at);
+        this.starFlare.hit(0.7, at);
+        this.threadPulse(at, 0, 1.2, GILT);
+        this.beatKick = Math.max(this.beatKick, 0.5);
+    }
+
+    /**
+     * A perfect clear that came after its clear (physics settles it ~360 ms after the last wave):
+     * the crown on the clear still playing, never a second clear. No hush, no second swell: every
+     * lily is relit in vesperfire from the chrysalis outward, the wings gild and beat, the evening
+     * star flares, the aurora blazes, and the ring still crossing the frame takes its light.
+     */
+    onCrown() {
+        if (!this.u) return;
+        const t = this.time;
+        this.gameplay.crown(t);
+        const { blooms } = this;
+        if (blooms) {
+            for (let i = 0; i < blooms.count; i++) {
+                const b = blooms.plan[i];
+                blooms.strike(i, VESPERFIRE, t + swellPassTime(b.x, b.z) + 0.45, 1.3);
+            }
+        }
+        this.surge = Math.min(1.6, Math.max(this.surge + 0.45, 1.3));
+        this.storm = Math.max(this.storm, 1);
+        this.eyeFlash = 1;
+        this.wingFlash = Math.max(this.wingFlash, 1.2);
+        this.beatKick = Math.max(this.beatKick, 0.8);
+        this.gild.hit(0.9, t);
+        this.starFlare.hit(1.4, t);
+        this.ring(HEART[0], HEART[2] + 6, t, 1.2, VESPERFIRE, 3.6);
+        this.threadPulse(t, 0, 1.3, VESPERFIRE);
+        this.strikeRing(t, this.reducedMotion ? 0.3 : 0.6);
+    }
+
+    /** A T-spin that cleared nothing: the wings stroke once and the silk rings, softly. */
+    onSpin() {
+        if (!this.u) return;
+        const t = this.time;
+        this.gameplay.spin(t);
+        this.storm = Math.max(this.storm, 0.45);
+        this.beatKick = Math.max(this.beatKick, 0.4);
+        this.wingFlash = Math.max(this.wingFlash, 0.35);
+        this.threadPulse(t, 0, 0.7, this._palette.wingRoot);
+        this.ring(HEART[0], HEART[2] + 6, t, 0.6, this._palette.wingMid, 1.3);
+    }
+
+    /**
      * The true combo changed. A lower number means the chain broke (0), or broke and a new one
-     * has already begun (the game reports a break only with the next lock): either way the
-     * wings that stood fall, and the new chain's are written once they are gone.
+     * has already begun (the game reports a break only with the next lock): either way the wings
+     * that stood begin to MOULT, folding back from the margin over seconds toward the new
+     * chain's step. A link of a new chain catches them wherever they stand (it holds them a
+     * moment), and a step that reaches past them lifts them again: under fast play the wings
+     * breathe with the play instead of vanishing on one piece that cleared nothing.
      */
     onCombo(combo) {
         const n = Math.max(0, Math.round(Number(combo) || 0));
@@ -750,29 +1025,29 @@ export class VesperWorld {
             this.combo = n;
             return;
         }
-        const falling = this.time - this.fallStart < WING_FALL;
-        if (n < this.combo && this.wing > 0.05 && !falling) {
-            // The chain broke: the wings fall to dust.
+        if (n < this.combo && this.wing > 0.05 && !this.moulting) {
+            // The chain broke: the wings begin to moult.
+            this.moulting = true;
             this.fallStart = this.time;
             this.fallFrom = this.wing;
+            this.shed = 0;
             this.dip = Math.max(this.dip, 0.25);
             this.counts.falls += 1;
-            // …shedding their scales from the margin inward as they burn away.
-            this.emitWingDust(0.08, this.wing, 260 * this.dustShare() * (0.4 + this.wing * 0.6), {
-                stagger: WING_FALL * 0.75, vel: [0, -0.3, 0.8], spread: 1.1, scatter: 2.2, life: [2.0, 3.8], size: 0.22,
+            // A shudder runs through them as the chain lets go: a first fall of scales from the margin.
+            this.emitWingDust(this.wing * 0.6, this.wing, 70 * this.dustShare() * (0.4 + this.wing * 0.6), {
+                stagger: 0.6, vel: [0, -0.3, 0.8], spread: 1.1, scatter: 2.2, life: [2.0, 3.8], size: 0.22,
             });
         } else if (n > this.combo) {
             this.threadPulse(this.time, 0, 0.8, this._palette.wingRoot);
-            // (While the old wings are still falling the new ones wait: nothing is written yet.)
-            if (!falling) {
-                this.wingFlash = Math.max(this.wingFlash, 1);
-                this.beatKick = Math.max(this.beatKick, 0.35);
-                // Scales fly where the new band of wing is being written.
-                const was = Math.max(0, this.wing);
-                const next = wingForCombo(n);
-                if (next > was + 0.01) {
-                    this.emitWingDust(was, next, 46 * this.dustShare(), { stagger: 0.55, life: [1.1, 2.2] });
-                }
+            this.wingFlash = Math.max(this.wingFlash, 1);
+            this.beatKick = Math.max(this.beatKick, 0.35);
+            // A link catches folding wings: they hold where they stand a moment.
+            if (this.moulting) this.caughtUntil = this.time + CATCH_HOLD;
+            // Scales fly where the new band of wing is being written.
+            const was = Math.max(0, this.wing);
+            const next = wingForCombo(n);
+            if (next > was + 0.01) {
+                this.emitWingDust(was, next, 46 * this.dustShare(), { stagger: 0.55, life: [1.1, 2.2] });
             }
         }
         this.combo = n;
@@ -787,7 +1062,8 @@ export class VesperWorld {
         else {
             this.storm = Math.max(this.storm, 0.8);
             this.flash = Math.max(this.flash, 0.12);
-            this.shock = { time: this.time, strength: 0.5 };
+            this.strikeRing(this.time, 0.5);
+            this.gameplay.levelUp(this.time);
         }
     }
 
@@ -819,6 +1095,17 @@ export class VesperWorld {
         this.storm *= Math.exp(-dt / 1.7);
         this.flash *= Math.exp(-dt / 0.25);
         this.kick *= Math.exp(-dt / 0.16);
+        // How hot play runs. (A frame of no time moves nothing: the reading stays as it was.)
+        if (dt > 0) {
+            const s = this.gameplay.sample(t);
+            this.heat.punch = s.punch;
+            this.heat.level = s.level;
+            this.heat.fever = s.fever;
+            this.heat.stage = s.stage;
+        }
+        const { level, fever } = this.heat;
+        // Nothing under casual play: the evening only leans in once the hands are quick.
+        const warm = smooth(0.18, 0.8, level);
         this.dip *= Math.exp(-dt / 0.35);
         this.wingFlash *= Math.exp(-dt / 0.45);
         this.eyeFlash *= Math.exp(-dt / 1.4);
@@ -830,46 +1117,74 @@ export class VesperWorld {
             this.pendingKick.time = Infinity;
         }
         if (t >= this.pendingFed.time) {
-            this.fed = Math.max(this.fed, this.pendingFed.amount);
-            u.fed.value.set(this.pendingFed.rgb[0], this.pendingFed.rgb[1], this.pendingFed.rgb[2], this.fed);
-            this.pendingFed.time = Infinity;
+            const f = this.pendingFed;
+            // It joins whatever glow is left: the colour turns toward the new light, it never jumps.
+            const w = this.fed > 0 ? f.amount / (this.fed + f.amount) : 1;
+            const rgb = u.fed.value;
+            rgb.x += (f.rgb[0] - rgb.x) * w;
+            rgb.y += (f.rgb[1] - rgb.y) * w;
+            rgb.z += (f.rgb[2] - rgb.z) * w;
+            this.fed = Math.min(1, Math.max(this.fed, f.amount) + 0.35 * Math.min(this.fed, f.amount));
+            f.time = Infinity;
         }
         this.blooms?.tick(t);
         const hush = t < this.hushUntil ? 1 : 0;
-        const breathTarget = hush ? 0.14 : 1 - this.dip;
+        const breathTarget = hush ? this.hushFloor : 1 - this.dip;
         this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 14, dt);
 
-        // ── The wings: they unfurl a step for every clear of the chain, and fall when it breaks ──
-        const fallAge = t - this.fallStart;
-        const falling = fallAge >= 0 && fallAge < WING_FALL;
-        let fall = 0;
-        if (falling) {
-            fall = clamp01(fallAge / WING_FALL);
-            this.wing = this.fallFrom;
-        } else {
-            if (this.fallStart > -50 && fallAge >= WING_FALL) {
-                this.fallStart = -100;
-                this.wing = 0;
+        // ── The wings: they unfurl a step for every clear of the chain, and moult when it breaks ──
+        const wingTarget = wingForCombo(this.combo);
+        let folding = false;
+        if (this.moulting) {
+            // They fold back at an even pace from the margin, unless a new link is holding them.
+            if (this.wing > wingTarget && t >= this.caughtUntil && dt > 0) {
+                const was = this.wing;
+                this.wing = Math.max(wingTarget, this.wing - dt / WING_FALL);
+                this.shed += was - this.wing;
+                folding = true;
             }
-            const wingTarget = wingForCombo(this.combo);
+            // Folded down to the chain's step, or met by a new chain on its way up: done.
+            if (this.wing <= wingTarget) this.moulting = false;
+        }
+        if (!this.moulting) {
             this.wing += (wingTarget - this.wing) * approach(wingTarget > this.wing ? 3.0 : 6, dt);
             if (Math.abs(wingTarget - this.wing) < 1e-3 && dt > 0) this.wing = wingTarget;
         }
-        const hindOpen = this.combo >= EYE_COMBO.hind || this.eyeFlash > 0.3 ? 1 : 0;
-        const foreOpen = this.combo >= EYE_COMBO.fore || this.eyeFlash > 0.3 ? 1 : 0;
-        this.eyeHind += (hindOpen - this.eyeHind) * approach(hindOpen ? 3.2 : 5, dt);
-        this.eyeFore += (foreOpen - this.eyeFore) * approach(foreOpen ? 3.2 : 5, dt);
+        // The folding front sheds its scales as it goes.
+        if (this.shed >= SHED_STEP || (this.shed > 0 && !folding)) {
+            const v0 = Math.min(1, this.wing * 1.07);
+            const v1 = Math.min(1, (this.wing + this.shed) * 1.07);
+            this.emitWingDust(v0, v1, 200 * this.dustShare() * this.shed, {
+                stagger: 0.25, vel: [0, -0.3, 0.8], spread: 1.1, scatter: 1.4, life: [1.8, 3.4], size: 0.22,
+            });
+            this.shed = 0;
+        }
+        // The front frays while it folds, and knits again when it stops (or is caught).
+        const frayTarget = folding ? 1 : 0;
+        this.fray += (frayTarget - this.fray) * approach(frayTarget > this.fray ? 4 : 2.2, dt);
+        if (frayTarget === 0 && this.fray < 1e-3 && dt > 0) this.fray = 0;
+        // Eyes on wings still standing that wide stay open while they fold; then they close.
+        const standing = this.moulting ? this.wing : 0;
+        const hindOpen = this.combo >= EYE_COMBO.hind || standing >= WING_STEPS[EYE_COMBO.hind]
+            || this.eyeFlash > 0.3 ? 1 : 0;
+        const foreOpen = this.combo >= EYE_COMBO.fore || standing >= WING_STEPS[EYE_COMBO.fore]
+            || this.eyeFlash > 0.3 ? 1 : 0;
+        this.eyeHind += (hindOpen - this.eyeHind) * approach(hindOpen ? 3.2 : 2.5, dt);
+        this.eyeFore += (foreOpen - this.eyeFore) * approach(foreOpen ? 3.2 : 2.5, dt);
         const crackTarget = clamp01(this.combo / 6);
         this.crack += (crackTarget - this.crack) * approach(crackTarget > this.crack ? 2.4 : 0.9, dt);
         this.applyPalette(approach(0.7, dt));
 
-        // ── The slow clock ──
-        this.drift += dt * motion * (1 + this.power * 1.6 + this.surge * 3 + this.storm * 1.2);
-        // A slow stroke, as of something drying its wings; a clear makes them beat.
+        // ── The slow clock: the clouds, the water and the wings quicken as play heats ──
+        this.drift += dt * motion
+            * (1 + this.power * 1.6 + this.surge * 3 + this.storm * 1.2 + warm * 0.6 + fever * 0.7);
+        // A slow stroke, as of something drying its wings; a clear makes them beat; in a fever
+        // they beat by themselves, great slow strokes, as if to take off.
         // (It only ever swings AWAY from the viewer, so the tips never grow past the frame.)
         const slow = Math.sin(this.drift * 0.62) * 0.11 + Math.sin(this.drift * 0.23 + 1.1) * 0.05;
         const stroke = this.beatKick * (1 - Math.cos((1 - this.beatKick) * 7)) * 0.16;
-        this.beat = -((0.16 + slow) + stroke) * motion;
+        const flap = fever * FEVER_SWING * (0.5 - 0.5 * Math.cos(t * TAU * FEVER_STROKE));
+        this.beat = -((0.16 + slow) + stroke + flap) * motion;
 
         // ── Uniforms ──
         let ringsLive = 0;
@@ -898,32 +1213,52 @@ export class VesperWorld {
         u.cloudDrift.value = this.drift * 0.0011;
         u.combo.value = this.combo;
         u.crack.value = this.crack;
-        u.wake.value = clamp01(0.15 + this.power * 0.6 + this.fed * 0.3 + this.surge * 0.3 + this.storm * 0.12);
-        u.night.value = this._night;
+        // A quick hand wakes the chrysalis into a lantern; a fever burns it.
+        u.wake.value = clamp01(0.15 + this.power * 0.6 + this.fed * 0.3 + this.surge * 0.3 + this.storm * 0.12
+            + warm * 0.18 + fever * 0.22);
+        // The evening deepens with the pace: more stars, then the aurora.
+        u.night.value = Math.min(1, this._night + warm * 0.22 + fever * 0.28);
         const restAurora = Math.max(0, this._night - 0.7) * 1.4;
-        u.aurora.value = restAurora + Math.max(0, this.power - 0.45) * 1.3 + this.surge * 1.1 + this.storm * 0.12;
-        u.wing.value.set(this.wing, this.beat, fall, this.wingFlash + this.surge * 0.6);
+        u.aurora.value = restAurora + Math.max(0, this.power - 0.45) * 1.3 + this.surge * 1.1 + this.storm * 0.12
+            + warm * 0.3 + fever * 0.6;
+        u.wing.value.set(this.wing, this.beat, this.fray, this.wingFlash + this.surge * 0.6);
         u.eyes.value.set(this.eyeHind, this.eyeFore, clamp01((this.combo - 8) / 6), this.eyeFlash);
         u.fed.value.w = this.fed;
+        u.heat.value.set(warm, fever, this.gild.valueAt(t), this.starFlare.valueAt(t) + fever * 0.6);
         const p = this._palette;
         PALETTE_KEYS.forEach((key) => {
             u[key].value.set(p[key][0], p[key][1], p[key][2]);
         });
+        if (fever > 0) {
+            // In a fever the aurora takes the wings' own colours.
+            const k = fever * 0.45;
+            const a = p.auroraA;
+            const b = p.auroraB;
+            const m = p.wingMid;
+            const e = p.wingEdge;
+            u.auroraA.value.set(a[0] + (m[0] - a[0]) * k, a[1] + (m[1] - a[1]) * k, a[2] + (m[2] - a[2]) * k);
+            u.auroraB.value.set(b[0] + (e[0] - b[0]) * k, b[1] + (e[1] - b[1]) * k, b[2] + (e[2] - b[2]) * k);
+        }
 
         // ── Post ──
         const sinceClear = t - this.lastClear.time;
         const swell = sinceClear >= 0 ? Math.exp(-sinceClear / 0.7) * (0.3 + 0.12 * this.lastClear.lines) : 0;
         const post = this._post;
-        post.flash = this.flash;
-        post.kick = this.kick;
-        post.shafts = hush ? 0.04 : 0.16 + this.power * 0.5 + swell * 0.3 + this.fed * 0.2 + this.surge * 0.3;
+        // Every event's punch rides under the flash and the kick, so a quick hand never lets them drop.
+        post.flash = this.flash + this.heat.punch * 0.04;
+        post.kick = this.kick + this.heat.punch * 0.22;
+        const shafts = 0.16 + this.power * 0.5 + swell * 0.3 + this.fed * 0.2 + this.surge * 0.3
+            + warm * 0.2 + fever * 0.3;
+        // The hush darkens the shafts as deeply as it holds the breath.
+        post.shafts = hush ? 0.04 + (shafts - 0.04) * ((this.hushFloor - 0.14) / 0.86) : shafts;
         post.bloomBoost = this.surge * 0.1 + swell * 0.1;
-        // The iris closes as the evening flares, so its colours survive the surge.
-        post.exposure = 1 / (1 + this.surge * 0.9 + swell * 0.3 + this.power * 0.2 + this.storm * 0.12);
+        // The iris closes as the evening flares and as play heats, so its colours survive the surge.
+        post.exposure = 1 / (1 + this.surge * 0.9 + swell * 0.3 + this.power * 0.2 + this.storm * 0.12
+            + warm * 0.1 + fever * 0.22);
         const ringAge = t - this.shock.time;
-        const ringOn = ringAge >= 0 && ringAge < 2.2;
+        const ringOn = ringAge >= 0 && ringAge < PRISM_LIVE;
         post.prism.radius = ringOn ? ringAge * 1.25 + 0.02 : 0;
-        post.prism.strength = ringOn ? this.shock.strength * Math.exp(-ringAge / 0.75) : 0;
+        post.prism.strength = ringOn ? Math.min(1, this.shock.strength * Math.exp(-ringAge / PRISM_FADE)) : 0;
     }
 
     /** What the post stack reads each frame (a reused object). */

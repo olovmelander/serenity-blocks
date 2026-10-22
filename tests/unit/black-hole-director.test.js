@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-    BlackHoleDirector, DIRECTOR_LIMITS, luminous, parseColor, resolveClearHeight, resolveLock,
+    BlackHoleDirector, DIRECTOR_LIMITS, luminous, parseColor, resolveClearHeight, resolveLock, vivid,
 } from '../../src/themes/black-hole/black-hole-director.js';
 import { SHAKE } from '../../src/themes/shared/camera-rig.js';
 
@@ -138,7 +138,10 @@ describe('Black Hole director: feeding the hole', () => {
         run(director, duration * 0.2);
         const [hotspot] = active(director.hotspots);
         expect(hotspot.radius).toBeCloseTo(landRadius, 1);
-        expect(hotspot.color).toBe(color);
+        // In the piece's own hue, pushed further from grey so it reads on the gold gas.
+        expect(hotspot.color).toEqual(vivid(color));
+        const spread = (rgb) => Math.max(...rgb) - Math.min(...rgb);
+        expect(spread(hotspot.color)).toBeGreaterThan(spread(color));
         expect(infall.active).toBe(true);
         const ringBefore = director.ringPulse;
         run(director, duration * 0.35);
@@ -180,7 +183,7 @@ describe('Black Hole director: feeding the hole', () => {
         run(hard, 1);
         hard.onPieceLock({ piece: piece() });
         hard.update(STEP);
-        expect(hard.infalls[1].strength).toBeCloseTo(soft.infalls[0].strength, 6);
+        expect(active(hard.infalls).at(-1).strength).toBeCloseTo(soft.infalls[0].strength, 6);
     });
 
     it('keeps the bookkeeping but feeds nothing when the lock effect is switched off', () => {
@@ -280,7 +283,11 @@ describe('Black Hole director: clears, streaks and the jets', () => {
         expect(director.jets).toBeGreaterThan(0.98);
         run(director, 1);
         expect(director.jets).toBe(1);
+        // They fall away over a second or so, rather than blinking out.
         run(director, 2);
+        expect(director.jets).toBeGreaterThan(0);
+        expect(director.jets).toBeLessThan(0.15);
+        run(director, 4);
         expect(director.jets).toBe(0);
     });
 
@@ -391,11 +398,19 @@ describe('Black Hole director: clears, streaks and the jets', () => {
             director.update(STEP);
             expect(director.diskHeat).toBeLessThanOrEqual(1.75);
             expect(director.diskGain).toBeLessThanOrEqual(1.66);
-            expect(director.diskRate).toBeLessThanOrEqual(5.71);
-            expect(director.ringGain).toBeLessThanOrEqual(4.21);
+            expect(director.diskRate).toBeLessThanOrEqual(6.01);
+            expect(director.ringGain).toBeLessThanOrEqual(5.01);
             expect(director.jets).toBeLessThanOrEqual(1);
+            expect(director.jetFlare).toBeLessThanOrEqual(1);
             expect(director.energy).toBeLessThanOrEqual(1);
             expect(director.flash).toBeLessThanOrEqual(1);
+            expect(director.dust).toBeLessThanOrEqual(1);
+            expect(director.iris).toBeLessThanOrEqual(0.151);
+            expect(director.skyGain).toBeGreaterThanOrEqual(0.75);
+            for (const channel of [...director.diskTint, ...director.ringTint]) {
+                expect(channel).toBeGreaterThan(0.5);
+                expect(channel).toBeLessThanOrEqual(1);
+            }
             for (const ripple of director.ripples) expect(ripple.strength).toBeLessThanOrEqual(0.051);
         }
     });

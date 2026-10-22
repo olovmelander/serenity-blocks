@@ -186,7 +186,13 @@ export function create({
     const pushPost = (time) => {
         const sun = world.getSunScreen();
         post?.update({
-            time, sunUV: sun, sunVis: sun.visible, horizonY: sun.horizonY, flash: world.flash ?? 0,
+            time,
+            sunUV: sun,
+            sunVis: sun.visible,
+            horizonY: sun.horizonY,
+            flash: world.flash ?? 0,
+            bloomBoost: world.bloomBoost ?? 0,
+            exposure: world.exposure ?? 1,
         });
     };
     // breach=1: the clock starts when the idle worm of the chosen cycle breaks the sand.

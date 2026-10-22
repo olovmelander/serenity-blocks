@@ -299,14 +299,16 @@ export class FallAtmosphere {
         material.name = 'FallWisps';
         const t = light.uTime;
         const phase = wisp.w.mul(TAU);
-        const stir = light.uGlow.mul(1.6).add(1);
+        // They wander wider and rise as the glow builds: the eased glow (uStir), so an event
+        // draws them out over a moment instead of throwing them a metre in one frame.
+        const stir = light.uStir.mul(1.6).add(1);
         const wander = vec3(
             sin(t.mul(0.31).add(phase)).mul(1.5).add(sin(t.mul(0.83).add(phase.mul(3))).mul(0.3)),
-            sin(t.mul(0.47).add(phase.mul(1.9))).mul(0.6).add(light.uGlow.mul(1.1)),
+            sin(t.mul(0.47).add(phase.mul(1.9))).mul(0.6).add(light.uStir.mul(1.1)),
             cos(t.mul(0.27).add(phase.mul(1.3))).mul(1.5),
         ).mul(stir);
         const breath = sin(t.mul(0.7).add(phase.mul(5))).mul(0.5).add(0.5);
-        const size = breath.mul(0.16).add(0.3).add(light.uGlow.mul(0.2));
+        const size = breath.mul(0.16).add(0.3).add(light.uStir.mul(0.2));
         material.positionNode = positionGeometry.mul(size).add(positionLocal.sub(positionGeometry))
             .add(wisp.xyz).add(wander);
         const radius = length(uv().sub(0.5)).mul(2);

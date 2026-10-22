@@ -23,12 +23,28 @@
  *            dead ahead, then white, amber and red out to the sides.
  *   four     the drive holds its breath — every light sinks for a quarter of a second while
  *            the sky is drawn into the sun — and jumps: a tunnel of light, and then we drop out
- *            in a stretch of the canyon we have not seen, the sun standing bright in it.
+ *            in a stretch of the canyon we have not seen, the sun standing bright in it. The
+ *            hotter play runs the shallower the breath (in a fever it is an inhale), and a four
+ *            that lands while a tunnel is still running keeps it running: one jump, never a
+ *            second hush, never a restart.
+ *   perfect  the crown on the clear still playing: the tunnel stays longer, its mouth flares and
+ *            its threads burn gold, and we arrive with fronts of the same gold.
+ *   cascade  each wave past the first is an afterburner stage: a harder thrust, fronts that run
+ *            faster and bluer, the sky pulled further toward the jump, the sun's corona swelling.
+ *   b2b      the sun's spikes flare gold and a gold front comes down; a second one in a row
+ *            burns brighter still, and a back-to-back jump arrives in gold.
  *   T-spin   the canyon rolls: cloud, stars and hoops wind round the course and spring back.
  *   level    the nebula moves one palette along its line of six, and a slow front of the new
  *            colour comes down the canyon.
  *   time     by itself, with no level change, the nebula drifts along the same line: one
  *            palette every PALETTE_STEP seconds, there and back. The two simply add.
+ *
+ * Play itself builds (src/themes/shared/gameplay-surge.js): calm play looks as it always did.
+ * Warm, the drive takes notice: we run faster, the sun stands brighter. Hot, the course keeps a
+ * wake: every hoop we fly through re-forms at its place, so a chain lines the canyon with rings
+ * in its colours. A fever is top gear: the sky bunched hard into the sun past any chain's reach,
+ * the lens held wide, the rush drawn long, the sun blazing, and the drive's pulse running down
+ * the walls ever faster. When the hands rest, we let off and glide again.
  *
  * Nothing is created at event time: events write numbers into preallocated slots and a small
  * queue of timed moments, so seek(t) plus a fixed-step replay reproduces any frame. The one
@@ -38,15 +54,21 @@
 
 import * as THREE from 'three/webgpu';
 import {
+    AFTERBURN,
+    B2B_GOLD,
     BOLT_FLIGHT,
     CANYON,
+    CROWN_FIRE,
     CRUISE,
     DEG,
     DRIVEFIRE,
     FRONT_END,
     FRONT_SLOTS,
     FRONT_SPEED,
+    FRONT_START,
     GEAR_CHAIN,
+    GEAR_FEVER,
+    GEAR_HEAT,
     GEAR_JUMP,
     HOOP_LIFE,
     HOOP_LIGHTS,
@@ -54,16 +76,18 @@ import {
     HOOP_STAGGER,
     HUSH_HOLD,
     JUMP_AFTERGLOW,
+    JUMP_EXIT,
     JUMP_TUNNEL,
     JUMP_TUNNEL_PERFECT,
     NEBULA_PALETTES,
     PALETTE_HOME,
     PALETTE_KEYS,
+    WARP_CHAIN,
+    WARP_FEVER,
     WARP_JUMP,
     approach,
     bakeCanyonNoise,
     bakeFbm,
-    clamp01,
     courseAnchors,
     createCanyonTexture,
     createFbmTexture,
@@ -84,6 +108,7 @@ import {
     pieceColor,
     smooth,
     supportsFloatTargets,
+    wakeShare,
     warpForCombo,
 } from './stellar-velocity-tsl.js';
 import { tierFor } from './stellar-velocity-quality.js';
@@ -96,6 +121,8 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './stellar-velocity-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell, softCeiling } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import { CANYON_SEED } from './stellar-velocity-bake.js';
 
 /** The rest camera. */
@@ -129,6 +156,14 @@ const TWIST_DAMPING = 4.4;
 const BOLT_DEPTH = 1.5;
 /** How much brighter than its mesh a hoop's light on the cloud is. */
 const HOOP_CAST = 3.4;
+/** A four that lands in a running tunnel keeps it running at least this share of a tunnel more. */
+const JUMP_CHAIN = 0.6;
+/** How fast the shown tunnel may open (it opens in about a tenth of a second) and close (per s). */
+const JUMP_RISE = 12.5;
+const JUMP_FALL = 2;
+/** The fever's pulse down the walls: seconds between two, cold and at full fever. */
+const PULSE_SLOW = 0.8;
+const PULSE_FAST = 0.36;
 
 const PARTS = ['canyon', 'stars', 'motes', 'hoops', 'bolts', 'jets'];
 
@@ -205,12 +240,36 @@ export class StellarVelocityWorld {
             warp: 0,
         };
         this.hoopSlots = Array.from({ length: HOOP_SLOTS }, () => ({
-            birth: -1e6, fired: Infinity, reserved: -1e6, rgb: [1, 1, 1], seed: 0, strength: 0,
+            birth: -1e6, fired: Infinity, reserved: -1e6, rgb: [1, 1, 1], seed: 0, strength: 0, wake: false,
         }));
         this.frontSlots = Array.from({ length: FRONT_SLOTS }, () => ({
             birth: -1e6, speed: 1, rgb: [1, 1, 1], strength: 0, width: 1,
         }));
         this._lit = [];
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js), fed by every lock, clear and
+         * level on the world's own clock: it drives the gear past a chain's, the fever's warp,
+         * the sun, the wake and the pulse.
+         */
+        this.pace = new GameplaySurge();
+        /** The pace as of the last frame (a copy: the sample object is reused). */
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
+        /**
+         * A cascade's afterburner, a back-to-back's gold and a perfect clear's crown: each hit adds
+         * to what is still lit, so a deeper wave burns on the last and a second back-to-back
+         * brighter than the first.
+         */
+        this.afterburn = new Swell({
+            attack: 0.04, release: 1.4, ceiling: 1.6, knee: 1.1,
+        });
+        this.gild = new Swell({
+            attack: 0.06, release: 2.6, ceiling: 1.5, knee: 1,
+        });
+        this.crown = new Swell({
+            attack: 0.08, release: 2.4, ceiling: 1.4, knee: 1,
+        });
         this.resetState(0);
     }
 
@@ -233,10 +292,25 @@ export class StellarVelocityWorld {
         this.twist = 0;
         this.twistVelocity = 0;
         this.hushUntil = -1;
+        /** How deep the breath is held (1 from cold; shallower the hotter play runs). */
+        this.hushDepth = 1;
         this.jumpStart = -100;
         this.jumpLength = JUMP_TUNNEL;
+        /** The tunnel as shown: it follows jumpPhase, but never snaps shut or open. */
+        this.jumpShown = 0;
+        /** A jump about to open (after the hush): when, how long, perfect, back-to-back. */
+        this.leapAt = Infinity;
+        this.leapLength = JUMP_TUNNEL;
+        this.leapPerfect = false;
+        this.leapGold = false;
+        /** When the running tunnel lets us out, and how we arrive. */
+        this.arriveAt = Infinity;
+        this.arrivePerfect = false;
+        this.arriveGold = false;
         this.jumpClock = 0;
         this.jumps = 0;
+        /** The fever's next pulse down the walls. */
+        this.pulseAt = -Infinity;
         this.frontCursor = 0;
         this.lastClear = { time: -100, lines: 0 };
         /** Timed moments still ahead: a bolt's landing, a hoop passing us, a jump, an arrival. */
@@ -253,7 +327,18 @@ export class StellarVelocityWorld {
             slot.fired = Infinity;
             slot.reserved = -1e6;
             slot.strength = 0;
+            slot.wake = false;
         });
+        this.pace?.reset();
+        this.afterburn?.reset();
+        this.gild?.reset();
+        this.crown?.reset();
+        if (this.heat) {
+            this.heat.punch = 0;
+            this.heat.level = 0;
+            this.heat.fever = 0;
+            this.heat.stage = 0;
+        }
         this.frontSlots?.forEach((slot) => {
             slot.birth = -1e6;
             slot.strength = 0;
@@ -436,12 +521,12 @@ export class StellarVelocityWorld {
         // The staged gameplay is flushed between this and update(): it must carry this frame's time.
         this.time = t;
         const calm = this.reducedMotion ? 0 : 1;
-        const phase = jumpPhase(t - this.jumpStart, this.jumpLength);
-        // The lens opens as we gather speed, and wide in a jump.
-        const share = Math.min(1.15, (this.gear - 1) / (GEAR_CHAIN - 1));
+        const phase = this.jumpShown;
+        // The lens opens as we gather speed, wider in a fever (it holds there), and wide in a jump.
+        const share = this.rushShare();
         const fov = Math.min(
             REST_RIG.maxFov + 8,
-            fovForAspect(this.aspect) + (share * 5 + phase * 8 + this.kick * 1.4) * calm,
+            fovForAspect(this.aspect) + (share * 5 + this.heat.fever * 3 + phase * 8 + this.kickShown() * 1.4) * calm,
         );
         if (camera.fov !== fov || camera.near !== REST_RIG.near || camera.far !== REST_RIG.far) {
             camera.fov = fov;
@@ -456,7 +541,7 @@ export class StellarVelocityWorld {
         camera.position.set(
             (Math.sin(t * 0.047) * 0.07 + Math.sin(t * 0.021 + 1.3) * 0.04 + px * 0.06) * calm,
             (Math.sin(t * 0.039 + 0.7) * 0.05 + Math.sin(t * 0.017) * 0.03 - py * 0.04) * calm,
-            this.kick * 0.03 * calm,
+            this.kickShown() * 0.03 * calm,
         );
         const yaw = (Math.sin(t * 0.031 + 2.1) * 0.01 - px * 0.03) * calm;
         const pitch = (Math.sin(t * 0.027) * 0.007 + py * 0.02) * calm;
@@ -467,6 +552,23 @@ export class StellarVelocityWorld {
         applyCameraBreath(camera, t, { scale: this.reducedMotion ? 0 : 1 });
         camera.updateMatrixWorld();
         this._camera = camera;
+    }
+
+    /**
+     * How much of its rush the frame shows (0 at a glide): the lens, the zoom's blur. A chain's
+     * gears fill it to the knee at once; past it only the heat of play takes it on, so the lens
+     * keeps opening through a long chain instead of standing wide from its third clear. A fever
+     * holds it open.
+     */
+    rushShare() {
+        const gears = Math.max(0, (this.gear - 1) / (GEAR_CHAIN - 1));
+        const { level, fever } = this.heat;
+        return softCeiling(gears, 0.6, 0.85 + level * 0.3) + fever * 0.2;
+    }
+
+    /** The kick as shown: its own, riding on the punch of play (rapid locks hold a floor). */
+    kickShown() {
+        return Math.max(this.kick, this.heat.punch * 0.45);
     }
 
     /**
@@ -557,9 +659,12 @@ export class StellarVelocityWorld {
             else if (kind === 'boost') {
                 // As if it had begun at its own moment, whatever frame noticed it.
                 this.boost = Math.min(BOOST_MAX, this.boost + data * Math.exp(-(t - time) / BOOST_COOL));
-            } else if (kind === 'jump') this.enterTunnel(time, data);
-            else if (kind === 'arrive') this.arrive(time, data);
+            }
         }
+        // The jump: one tunnel at a time, its opening and its end kept here (a four in a running
+        // tunnel moves its end, so they cannot wait in the queue).
+        if (this.leapAt <= t) this.enterTunnel(this.leapAt);
+        if (this.arriveAt <= t) this.arrive(this.arriveAt);
     }
 
     /** Light the frame for a moment in a colour (the strongest of what is live wins the tint). */
@@ -583,7 +688,7 @@ export class StellarVelocityWorld {
             const slot = this.hoopSlots[i];
             if (slot.reserved > time) continue;
             if (slot.fired < Infinity && time - slot.fired < 2) continue;
-            const held = slot.fired < Infinity ? 0 : hoopHeld(time - slot.birth) * slot.strength;
+            const held = slot.fired < Infinity ? 0 : hoopHeld(time - slot.birth, slot.wake) * slot.strength;
             // Among the empty ones, the nearest first: the course fills from the camera outward.
             const score = held > 0.004 ? held + 1 : i * 1e-3;
             if (score < least) {
@@ -592,12 +697,21 @@ export class StellarVelocityWorld {
             }
         }
         if (best >= 0) return best;
-        // Every slot is spoken for: take the one whose bolt lands last.
-        let last = 0;
-        for (let i = 1; i < HOOP_SLOTS; i++) {
-            if (this.hoopSlots[i].reserved > this.hoopSlots[last].reserved) last = i;
+        // Every slot is spoken for (a fast chain has them all in flight): take one no bolt is on
+        // its way to, the one that left its place first (it is behind us soonest); failing that,
+        // the one whose bolt lands first, so a hoop that has just opened is never taken.
+        let pick = -1;
+        for (let i = 0; i < HOOP_SLOTS; i++) {
+            const slot = this.hoopSlots[i];
+            if (slot.reserved > time) continue;
+            if (pick < 0 || slot.fired < this.hoopSlots[pick].fired) pick = i;
         }
-        return last;
+        if (pick >= 0) return pick;
+        let first = 0;
+        for (let i = 1; i < HOOP_SLOTS; i++) {
+            if (this.hoopSlots[i].reserved < this.hoopSlots[first].reserved) first = i;
+        }
+        return first;
     }
 
     /** A bolt lands: its hoop opens on the course. */
@@ -610,14 +724,36 @@ export class StellarVelocityWorld {
         hoop.rgb = rgb;
         hoop.strength = strength;
         hoop.seed = seed;
+        hoop.wake = false;
         this.tintFlash(strength > 0.9 ? 0.07 : 0.03, rgb);
+    }
+
+    /**
+     * The front slot a new one takes: a finished one, else the one with the least light still to
+     * bring down the canyon (strength × the share of its run ahead). Never simply the oldest: a
+     * level's slow front or a four's fronts must not be cut by the lock pulses of rapid play.
+     */
+    freeFront(time) {
+        let best = 0;
+        let least = Infinity;
+        for (let i = 0; i < FRONT_SLOTS; i++) {
+            const slot = this.frontSlots[i];
+            const depth = frontDepth(Math.max(0, time - slot.birth), slot.speed);
+            if (slot.strength <= 0 || depth < FRONT_END) return i;
+            const left = slot.strength * ((depth - FRONT_END) / (FRONT_START - FRONT_END));
+            if (left < least) {
+                least = left;
+                best = i;
+            }
+        }
+        return best;
     }
 
     /** A front of light leaves the sun's end of the canyon. */
     front(time, {
         speed, rgb, strength, width,
     }) {
-        const slot = this.frontSlots[this.frontCursor % FRONT_SLOTS];
+        const slot = this.frontSlots[this.freeFront(time)];
         this.frontCursor += 1;
         slot.birth = time;
         slot.speed = speed;
@@ -633,26 +769,114 @@ export class StellarVelocityWorld {
         this.counts.passes += 1;
     }
 
-    /** The tunnel opens. */
-    enterTunnel(time, { length, perfect }) {
-        this.jumpStart = time;
+    /** Seconds in the tunnel for a four (a perfect clear stays longer; reduced motion: short). */
+    tunnelFor(perfect) {
+        if (this.reducedMotion) return 1.1;
+        return perfect ? JUMP_TUNNEL_PERFECT : JUMP_TUNNEL;
+    }
+
+    /** Is a tunnel open at `time`, or still closing behind us? */
+    jumpLive(time) {
+        const since = time - this.jumpStart;
+        return since >= 0 && since < this.jumpLength + JUMP_EXIT;
+    }
+
+    /**
+     * Four lines (or a perfect clear) at `time`: the jump. Returns when the drive fires (after the
+     * hush, or at once when a tunnel is already running). One jump at a time, never restarted:
+     *  - in the hush, the tunnel about to open is made long enough for both;
+     *  - in a running tunnel (or one closing behind us) it runs on: no second hush, the arrival
+     *    moves to its new end;
+     *  - from open flight, the drive holds its breath first, as deep as play is cold.
+     */
+    leap(time, { perfect = false, gold = false } = {}) {
+        const length = this.tunnelFor(perfect);
+        if (this.leapAt < Infinity) {
+            this.leapLength = Math.max(this.leapLength, length);
+            this.leapPerfect = this.leapPerfect || perfect;
+            this.leapGold = this.leapGold || gold;
+            return this.leapAt;
+        }
+        if (this.jumpLive(time)) {
+            this.extendJump(time, length * JUMP_CHAIN, { perfect, gold });
+            return time;
+        }
+        // From cold it holds its breath fully; in a fever it barely pauses for it. Every light
+        // sinking at once is a frame-wide flash in reverse: Reduce flashing keeps little of it.
+        this.hushDepth = (1 - 0.8 * this.heat.level) * flashScale();
+        this.hushUntil = time + HUSH_HOLD;
+        this.leapAt = time + HUSH_HOLD;
+        this.leapLength = length;
+        this.leapPerfect = perfect;
+        this.leapGold = gold;
+        return this.leapAt;
+    }
+
+    /**
+     * The running tunnel runs on: at least `more` seconds from `time` (and a perfect clear's whole
+     * length from its start). Dropping out of it, we dive straight back in (the shown tunnel opens
+     * again from where it stands) and arrive once more at its new end.
+     */
+    extendJump(time, more, { perfect = false, gold = false } = {}) {
+        const since = time - this.jumpStart;
+        const length = Math.max(this.jumpLength, perfect ? this.tunnelFor(true) : 0, since + more);
+        if (since >= this.jumpLength) {
+            // Already out (or on the way): a fresh arrival is owed at the new end.
+            this.arrivePerfect = perfect;
+            this.arriveGold = gold;
+        } else {
+            this.arrivePerfect = this.arrivePerfect || perfect;
+            this.arriveGold = this.arriveGold || gold;
+        }
         this.jumpLength = length;
+        this.arriveAt = this.jumpStart + length;
+    }
+
+    /** The tunnel opens. */
+    enterTunnel(time) {
+        this.jumpStart = time;
+        this.jumpLength = this.leapLength;
+        this.arriveAt = time + this.leapLength;
+        this.arrivePerfect = this.leapPerfect;
+        this.arriveGold = this.leapGold;
+        this.leapAt = Infinity;
         this.tintFlash(0.55);
         this.kick = Math.max(this.kick, 1);
-        this.schedule(time + length, 'arrive', { perfect });
     }
 
     /** We drop out, somewhere else: the cloud's whole field is shifted while nothing can be seen of it. */
-    arrive(time, { perfect }) {
+    arrive(time) {
+        const perfect = this.arrivePerfect;
+        const gold = this.arriveGold;
+        this.arriveAt = Infinity;
+        this.arrivePerfect = false;
+        this.arriveGold = false;
         this.jumps += 1;
         const rand = mulberry32(this.seed + this.jumps * 7919);
         if (this.u) this.u.shift.value.set((rand() - 0.5) * 9, (rand() - 0.5) * 9, rand() * TRAVEL_WRAP);
-        this.surge = Math.max(this.surge, perfect ? 1.3 : 1);
-        this.tintFlash(0.8);
+        let afterglow = 1;
+        let tint = DRIVEFIRE;
+        if (perfect) {
+            afterglow = 1.3;
+            tint = CROWN_FIRE;
+        } else if (gold) {
+            afterglow = 1.15;
+            tint = B2B_GOLD;
+        }
+        this.surge = Math.max(this.surge, afterglow);
+        this.tintFlash(0.8, tint);
         this.kick = Math.max(this.kick, 0.7);
         this.front(time, {
             speed: FRONT_SPEED.clear * 0.6, rgb: [...DRIVEFIRE], strength: 1.5, width: 2.6,
         });
+        if (perfect) {
+            // The crown comes down the new stretch after us: three more fronts of the drive's fire.
+            for (let i = 1; i <= 3; i++) {
+                this.schedule(time + i * 0.16, 'front', {
+                    speed: FRONT_SPEED.clear * (0.7 + 0.1 * i), rgb: [...DRIVEFIRE], strength: 1.2, width: 1.8,
+                });
+            }
+        }
     }
 
     /**
@@ -703,22 +927,34 @@ export class StellarVelocityWorld {
         if (hardDrop) this.schedule(t, 'kick', 0.5);
         // Every piece is a little thrust.
         this.boost = Math.min(BOOST_MAX, this.boost + (hardDrop ? 0.07 : 0.035));
+        this.pace.lock({ hardDrop }, t);
         this.counts.bolts += 1;
         this.counts.locks += 1;
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `tspin`, `perfect`; `rows` = the visible rows that went.
+     * Lines cleared. `lines` 1..4; `tspin`, `perfect`, `b2b`; `cascade` = the wave (1 = the lock's
+     * own clear, 2.. its cascade); `combo` = the chain it belongs to; `rows` = the visible rows
+     * that went.
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null,
+        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, cascade = 1, combo = 1,
+        player = 0, screen = null,
     } = {}) {
         const { u } = this;
         if (!u || !this.bolts) return;
         const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
         const quad = n >= 4 || perfect;
         const t = this.time;
-        const birth = quad ? t + HUSH_HOLD : t;
+        // A cascade's waves past the first: afterburner stages, each on the last.
+        const stage = Math.max(0, Math.min(9, Math.round(Number(cascade) || 1) - 1));
+        const gold = b2b === true;
+        // The jump (its hush first, from open flight; none in a tunnel already running). The
+        // hush's depth reads the heat of play BEFORE this clear's own.
+        const birth = quad ? this.leap(t, { perfect, gold }) : t;
+        this.pace.clear({
+            lines: n, cascade, combo, tspin, perfect, b2b,
+        }, t);
 
         // ── We go through every hoop we have laid, the nearest first ──
         const mixRgb = [0, 0, 0];
@@ -727,7 +963,7 @@ export class StellarVelocityWorld {
         for (let i = 0; i < HOOP_SLOTS; i++) {
             const hoop = this.hoopSlots[i];
             if (hoop.fired < Infinity) continue;
-            const held = hoopHeld(t - hoop.birth) * hoop.strength;
+            const held = hoopHeld(t - hoop.birth, hoop.wake) * hoop.strength;
             if (held < 0.03) continue;
             const depth = hoopDepth(i);
             hoop.fired = birth + fired * HOOP_STAGGER;
@@ -742,19 +978,33 @@ export class StellarVelocityWorld {
             const k = Math.min(0.4, weight / 5);
             rgb = rgb.map((c, i) => c * (1 - k) + (mixRgb[i] / weight) * k);
         }
+        // A cascade's deeper waves burn bluer, as of a faster ship.
+        if (stage > 0) {
+            const k = Math.min(1, 0.3 + stage * 0.22);
+            rgb = rgb.map((c, i) => c * (1 - k) + AFTERBURN[i] * k);
+        }
         const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
         rgb = rgb.map((c) => (c / peak) * 0.96 + 0.04);
 
         // ── A front of light per line comes down the canyon after them ──
+        // Each wave of a cascade sends them faster, stronger and wider than the last.
         const fronts = perfect ? 4 : n;
         const after = birth + fired * HOOP_STAGGER * 0.5;
         for (let i = 0; i < fronts; i++) {
             this.schedule(after + i * 0.13, 'front', {
-                speed: FRONT_SPEED.clear, rgb: [...rgb], strength: 0.42 + 0.06 * n, width: 0.85,
+                speed: FRONT_SPEED.clear * (1 + 0.14 * stage),
+                rgb: [...rgb],
+                strength: 0.42 + 0.06 * n + 0.13 * stage,
+                width: 0.85 + 0.16 * stage,
             });
         }
-        this.schedule(birth, 'boost', 0.42 + 0.2 * n + Math.min(0.55, weight * 0.07));
-        this.schedule(birth + 0.05, 'kick', 0.25 + 0.1 * n);
+        if (stage > 0) this.afterburn.hit(0.32 + 0.12 * stage, birth);
+        // Back-to-back: the sun burns gold and its spikes flare (a second in a row adds to the
+        // first). Not a gold front: the gas answers a front in its own glow, and gold in teal gas
+        // is mud.
+        if (gold) this.gild.hit(1, birth);
+        this.schedule(birth, 'boost', 0.42 + 0.2 * n + Math.min(0.55, weight * 0.07) + 0.12 * stage);
+        this.schedule(birth + 0.05, 'kick', 0.25 + 0.1 * n + 0.08 * stage);
         this.lastClear = { time: birth, lines: n };
 
         // ── The cleared rows leave the card as jets ──
@@ -771,19 +1021,47 @@ export class StellarVelocityWorld {
             this.jets.fire(points, rgb, t, Math.min(1.4, 0.7 + 0.18 * n));
         }
 
-        if (quad) {
-            // The drive holds its breath; then it jumps.
-            this.hushUntil = t + HUSH_HOLD;
-            const tunnel = perfect ? JUMP_TUNNEL_PERFECT : JUMP_TUNNEL;
-            this.schedule(birth, 'jump', { length: this.reducedMotion ? 1.1 : tunnel, perfect });
-            this.counts.quads += 1;
-        }
+        if (quad) this.counts.quads += 1;
         if (tspin) {
             // The canyon rolls round the course and springs back.
             this.twistVelocity += 0.5;
             this.kick = Math.max(this.kick, 0.35);
         }
         this.counts.clears += 1;
+    }
+
+    /**
+     * A perfect clear that settled after its clear (physics sends it ~360 ms after the last
+     * wave): the crown on the clear still playing, never a second clear. A running jump (or the
+     * one about to open) stays the perfect clear's length, its mouth flares, its threads burn
+     * gold, and it arrives with the crown's fronts. With no jump under way, the perfect clear is
+     * its own.
+     */
+    onPerfect() {
+        if (!this.u) return;
+        const t = this.time;
+        this.pace.crown(t);
+        this.crown.hit(1, t);
+        this.tintFlash(0.3, CROWN_FIRE);
+        this.kick = Math.max(this.kick, 0.5);
+        const running = this.leapAt < Infinity || this.jumpLive(t);
+        const birth = this.leap(t, { perfect: true });
+        if (!running) {
+            this.counts.quads += 1;
+            for (let i = 0; i < 4; i++) {
+                this.schedule(birth + i * 0.13, 'front', {
+                    speed: FRONT_SPEED.clear, rgb: [...DRIVEFIRE], strength: 0.8, width: 1,
+                });
+            }
+        }
+    }
+
+    /** A T-spin that cleared nothing: a little roll of the canyon and a nudge. */
+    onSpin() {
+        if (!this.u) return;
+        this.pace.spin(this.time);
+        this.twistVelocity += 0.24;
+        this.kick = Math.max(this.kick, 0.18);
     }
 
     /** The true combo changed (0 = the chain broke). */
@@ -819,6 +1097,7 @@ export class StellarVelocityWorld {
                 speed: FRONT_SPEED.level, rgb: tint.map((c) => (c / peak) * 0.85 + 0.15), strength: 1.2, width: 3.4,
             });
             this.tintFlash(0.12);
+            this.pace.levelUp(this.time);
         }
     }
 
@@ -848,7 +1127,7 @@ export class StellarVelocityWorld {
             let depth = hoopDepth(i);
             let radius = hoopRadius(i);
             if (age >= 0 && age <= HOOP_LIFE && hoop.strength > 0) {
-                light = hoopHeld(age) * hoop.strength;
+                light = hoopHeld(age, hoop.wake) * hoop.strength;
                 // It springs open.
                 radius *= 1 - Math.exp(-age * 7) * Math.cos(age * 10);
                 if (hoop.fired <= t) {
@@ -858,10 +1137,22 @@ export class StellarVelocityWorld {
                     // It flares as it comes, and is gone once it is behind us.
                     light = Math.max(light, 0.45 * hoop.strength) * (1 + 0.9 * Math.min(1, run) ** 2);
                     if (depth < -1.2) {
-                        hoop.birth = -1e6;
+                        // While play runs hot it leaves a wake: a dimmer ring re-forms at its
+                        // place, which the next clear flies through again.
+                        const wake = hoop.strength * wakeShare(this.heat.level);
                         hoop.fired = Infinity;
-                        hoop.strength = 0;
                         light = 0;
+                        if (wake > 0.06 && !this.reducedMotion) {
+                            hoop.birth = t;
+                            hoop.strength = wake;
+                            hoop.wake = true;
+                            depth = hoopDepth(i);
+                            radius = 0;
+                        } else {
+                            hoop.birth = -1e6;
+                            hoop.strength = 0;
+                            hoop.wake = false;
+                        }
                     }
                 }
             }
@@ -874,10 +1165,12 @@ export class StellarVelocityWorld {
         lit.sort((a, b) => rows[a * 2].x - rows[b * 2].x);
         const cast = u.tables.hoopLights;
         const count = Math.min(HOOP_LIGHTS, lit.length);
+        // The hotter play runs, the more of the canyon the hoops light.
+        const castGain = HOOP_CAST * (1 + 0.5 * this.heat.level);
         for (let k = 0; k < count; k++) {
             const a = rows[lit[k] * 2];
             const c = rows[lit[k] * 2 + 1];
-            cast[k * 2].set(a.x, a.y, a.z * HOOP_CAST, 0);
+            cast[k * 2].set(a.x, a.y, a.z * castGain, 0);
             cast[k * 2 + 1].set(c.x, c.y, c.z, 0);
         }
         u.hoopLightCount.value = count;
@@ -918,32 +1211,79 @@ export class StellarVelocityWorld {
         this.dip *= Math.exp(-dt / 0.35);
         this.drain(t);
 
+        // ── How hot play runs ──
+        const sample = this.pace.sample(t);
+        const { heat } = this;
+        heat.punch = sample.punch;
+        heat.level = sample.level;
+        heat.fever = sample.fever;
+        heat.stage = sample.stage;
+        const { level, fever } = heat;
+        const afterburn = this.afterburn.valueAt(t);
+        const gild = this.gild.valueAt(t);
+        const crown = this.crown.valueAt(t);
+
         // ── How fast, and how the sky shows it ──
-        const hush = t < this.hushUntil ? 1 : 0;
-        const phase = jumpPhase(t - this.jumpStart, this.jumpLength);
-        const gearTarget = gearForCombo(this.combo) + this.boost * BOOST_GEAR;
+        const hushing = t < this.hushUntil;
+        const hush = hushing ? this.hushDepth : 0;
+        // The tunnel as shown opens in a tenth of a second and closes over its exit, but a jump
+        // that runs on never snaps it shut or open: it moves from where it stands.
+        const phaseTarget = jumpPhase(t - this.jumpStart, this.jumpLength);
+        this.jumpShown = dt > 0
+            ? Math.min(this.jumpShown + JUMP_RISE * dt, Math.max(this.jumpShown - JUMP_FALL * dt, phaseTarget))
+            : phaseTarget;
+        const phase = this.jumpShown;
+        // The thrust of a clear is all there in casual play; past its knee it is the heat of play
+        // that lets it run on, so a long chain keeps finding gears instead of standing at the top
+        // from its third clear. Heat and a fever add their own: the fever is top gear.
+        const thrust = softCeiling(this.boost, 0.9, 1.3 + level);
+        const gearTarget = gearForCombo(this.combo) + thrust * BOOST_GEAR + level * GEAR_HEAT + fever * GEAR_FEVER;
         this.gear += (gearTarget - this.gear) * approach(gearTarget > this.gear ? 3 : 0.6, dt);
         if (dt === 0 && this.queue.length === 0 && this.boost === 0) this.gear = gearTarget;
         const gear = calm ? 1 + (this.gear - 1) * 0.12 : this.gear + phase * GEAR_JUMP;
         this.speed = CRUISE * gear * (calm ? 0.5 : 1);
         this.distance += this.speed * dt;
-        const spool = Math.max(hush, phase) * WARP_JUMP;
-        const warpTarget = Math.min(
-            WARP_JUMP,
-            Math.max(warpForCombo(this.combo) + Math.min(0.22, this.boost * 0.16) + this.surge * 0.08, spool),
-        ) * (calm ? 0.3 : 1);
+        const spool = Math.max(hushing ? 1 : 0, phase) * WARP_JUMP;
+        // A chain bunches the sky up to WARP_CHAIN at most; a fever past it, and a cascade's
+        // afterburner toward the jump while its waves keep coming; only a jump goes all the way.
+        const chain = Math.min(
+            WARP_CHAIN,
+            warpForCombo(this.combo) + Math.min(0.22, this.boost * 0.16) + this.surge * 0.08,
+        );
+        const pushed = chain + fever * (WARP_FEVER - WARP_CHAIN) + Math.min(0.3, afterburn * 0.2);
+        const warpTarget = Math.min(WARP_JUMP - 0.01, pushed);
+        const warpShown = Math.max(warpTarget, spool) * (calm ? 0.3 : 1);
         let rate = 0.8;
-        if (hush) rate = 10;
-        else if (warpTarget > this.warp) rate = 3.2;
+        if (hushing) rate = 10;
+        else if (warpShown > this.warp) rate = 3.2;
         else if (phase > 0) rate = 2.5;
-        this.warp += (warpTarget - this.warp) * approach(rate, dt);
-        if (dt === 0 && this.queue.length === 0 && this.boost === 0) this.warp = warpTarget;
+        this.warp += (warpShown - this.warp) * approach(rate, dt);
+        if (dt === 0 && this.queue.length === 0 && this.boost === 0) this.warp = warpShown;
         this.jumpClock = (this.jumpClock + dt) % 64;
 
-        const breathTarget = hush ? 0.1 : 1 - this.dip;
-        this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 14, dt);
+        // The hush: from cold every light sinks; in a fever the drive only inhales.
+        const breathTarget = hushing ? 1 - 0.9 * hush : 1 - this.dip;
+        this.breath += (breathTarget - this.breath) * approach(hushing ? 40 : 14, dt);
         if (dt === 0) this.breath = breathTarget;
         this.applyPalette(approach(1.1, dt));
+
+        // ── The fever's pulse: the drive's beat running down the walls, ever faster ──
+        if (fever > 0.15 && phase < 0.5) {
+            if (t >= this.pulseAt) {
+                if (this.pulseAt > -Infinity) {
+                    const p = this._palette.glow;
+                    const gPeak = Math.max(p[0], p[1], p[2], 1e-4);
+                    const k = 0.35 + 0.4 * fever;
+                    this.front(t, {
+                        speed: FRONT_SPEED.clear * (1.1 + 0.4 * fever),
+                        rgb: [0, 1, 2].map((c) => AFTERBURN[c] * k + (p[c] / gPeak) * (1 - k)),
+                        strength: 0.25 + 0.5 * fever,
+                        width: 0.9 + 0.5 * fever,
+                    });
+                }
+                this.pulseAt = t + PULSE_SLOW + (PULSE_FAST - PULSE_SLOW) * fever;
+            }
+        } else this.pulseAt = -Infinity;
 
         // The roll's spring (semi-implicit, in small steps so a long frame cannot blow it up).
         let left = Math.min(dt, 0.1);
@@ -965,13 +1305,23 @@ export class StellarVelocityWorld {
         u.breath.value = this.breath;
         u.jump.value = phase;
         u.jumpClock.value = this.jumpClock;
-        u.sunGain.value = 1 + this.warp * 1.4 + this.surge * 1.6 + this.flash * 1.2;
+        u.crown.value = crown;
+        // The sun stands brighter the hotter play runs and blazes in a fever; a cascade's
+        // afterburner swells its corona, a back-to-back and a crown light it gold.
+        u.sunGain.value = 1 + this.warp * 1.4 + this.surge * 1.6 + this.flash * 1.2
+            + level * 0.2 + fever * 0.55 + afterburn * 0.6 + gild * 0.35 + crown * 0.8;
         const p = this._palette;
+        // A back-to-back and a perfect clear's crown turn the sun gold for a while.
+        const sunGold = Math.min(0.6, gild * 0.5 + crown * 0.4);
         u.glow.value.set(p.glow[0], p.glow[1], p.glow[2]);
         u.deep.value.set(p.deep[0], p.deep[1], p.deep[2]);
         u.accent.value.set(p.accent[0], p.accent[1], p.accent[2]);
         u.dust.value.set(p.dust[0], p.dust[1], p.dust[2]);
-        u.sunCol.value.set(p.sun[0], p.sun[1], p.sun[2]);
+        u.sunCol.value.set(
+            p.sun[0] + (B2B_GOLD[0] - p.sun[0]) * sunGold,
+            p.sun[1] + (B2B_GOLD[1] - p.sun[1]) * sunGold,
+            p.sun[2] + (B2B_GOLD[2] - p.sun[2]) * sunGold,
+        );
         u.skyCol.value.set(p.sky[0], p.sky[1], p.sky[2]);
         u.starTint.value.set(p.star[0], p.star[1], p.star[2]);
         this.writeCourse();
@@ -996,23 +1346,39 @@ export class StellarVelocityWorld {
         }
 
         // ── Post ──
-        const share = clamp01((this.gear - 1) / (GEAR_CHAIN - 1));
+        const share = this.rushShare();
+        const kick = this.kickShown();
         const post = this._post;
         post.flash = this.flash;
         post.flashTint = this.flashTint;
-        post.kick = this.kick;
-        post.rays = hush ? 0.03 : Math.min(0.9, 0.16 + this.warp * 0.45 + this.surge * 0.4 + this.flash * 0.3);
-        post.blur = calm ? 0 : Math.min(1, share * 0.55 + phase * 0.9 + this.kick * 0.12 + hush * 0.5);
-        post.bloomBoost = this.surge * 0.2 + this.flash * 0.3;
-        // The sun's spikes and streak: brighter at speed and after a jump, gone in the tunnel.
-        post.glint = (hush ? 0.15 : 1) * (1 + this.warp * 0.9 + this.surge * 0.7) * (1 - phase * 0.95);
+        post.kick = kick;
+        // The sun's shafts: brighter at speed, with heat, an afterburner and a back-to-back; the
+        // hush puts them out as deep as it holds its breath.
+        const rays = Math.min(
+            0.9,
+            0.16 + this.warp * 0.45 + this.surge * 0.4 + this.flash * 0.3 + level * 0.06 + fever * 0.12
+                + afterburn * 0.12 + gild * 0.18,
+        );
+        post.rays = rays + (0.03 - rays) * hush;
+        post.blur = calm ? 0 : Math.min(1, share * 0.55 + phase * 0.9 + kick * 0.12 + hush * 0.5);
+        post.bloomBoost = this.surge * 0.2 + this.flash * 0.3 + fever * 0.12;
+        // The sun's spikes and streak: brighter at speed, in a fever and after a jump, flaring
+        // gold on a back-to-back, gone in the tunnel.
+        post.glint = (1 - 0.85 * hush) * (1 + this.warp * 0.9 + this.surge * 0.7 + fever * 0.5 + gild * 1.1)
+            * (1 - phase * 0.95);
         const g = p.glow;
         const gPeak = Math.max(g[0], g[1], g[2], 1e-4);
-        for (let c = 0; c < 3; c++) post.glintTint[c] = p.sun[c] * 0.45 + (g[c] / gPeak) * 0.55;
+        const golden = Math.min(0.75, gild * 0.6);
+        for (let c = 0; c < 3; c++) {
+            const tint = p.sun[c] * 0.45 + (g[c] / gPeak) * 0.55;
+            post.glintTint[c] = tint + (B2B_GOLD[c] - tint) * golden;
+        }
         post.jump = phase;
         post.warp = this.warp;
-        // The iris closes as the sky piles up ahead, so the starbow keeps its colours.
-        post.exposure = 1 / (1 + this.warp * 0.2 + this.surge * 0.5 + this.flash * 0.25 + phase * 0.35);
+        // The iris closes as the sky piles up ahead and as play heats, so the starbow keeps its
+        // colours and the deep sky stays deep.
+        post.exposure = 1 / (1 + this.warp * 0.2 + this.surge * 0.5 + this.flash * 0.25 + phase * 0.35
+            + level * 0.08 + fever * 0.32);
         u.iris.value = (1 / post.exposure) ** 0.8;
 
         // Paint the canyon for this frame.
@@ -1042,8 +1408,11 @@ export class StellarVelocityWorld {
             surge: this.surge,
             breath: this.breath,
             twist: this.twist,
-            jump: jumpPhase(this.time - this.jumpStart, this.jumpLength),
+            jump: this.jumpShown,
             jumps: this.jumps,
+            heat: this.heat.level,
+            fever: this.heat.fever,
+            stage: this.heat.stage,
             distance: this.distance,
             level: this.level,
             palette: paletteName(palettePlace(this.levelPlace, this.time)),

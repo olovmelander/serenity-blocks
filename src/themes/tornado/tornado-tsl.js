@@ -125,16 +125,19 @@ export function createNoiseTexture(seed) {
 
 // ── The scene's state ────────────────────────────────────────────────────────────
 
-/** Ribbons of light the funnel can hold at once (one per swallowed piece). */
-export const RIBBONS = 6;
+/**
+ * Ribbons of light the funnel can hold at once (one per swallowed piece): the table's size. A
+ * chain winds them all on; each tier draws up to its own `ribbons` of them (tornado-quality.js).
+ */
+export const RIBBONS = 10;
 /** Gust rings crossing the field at once. */
 export const RINGS = 4;
 /** Flashes inside the cloud at once. */
 export const FLASHES = 3;
-/** Locked pieces whose sparks are in the air at once. */
-export const FLIGHTS = 5;
-/** Lightning channels at once. */
-export const BOLTS = 4;
+/** Locked pieces whose sparks are in the air at once (a quick hand keeps eight aloft). */
+export const FLIGHTS = 8;
+/** Lightning channels at once (a quad's four, and the storm's own at full fury). */
+export const BOLTS = 6;
 
 const rows = (count) => Array.from({ length: count }, () => new THREE.Vector4(0, 0, 0, 0));
 const colour = (r, g, b) => uniform(new THREE.Vector3(r, g, b));
@@ -178,6 +181,8 @@ export function createUniforms() {
         release: uniform(0), // 0..1: the ribbons let go (a clear)
         rays: uniform(0.35), // the sun's shafts under the deck
         shock: uniform(new THREE.Vector4(0, 0, 0, 0)), // the dust front: (radius, strength, 0, 0)
+        /** The chain's colours burning in the wall cloud and the deck's heart (rgb × light, 0 at rest). */
+        charge: uniform(new THREE.Vector3(0, 0, 0)),
 
         sunDir: uniform(new THREE.Vector3(0.5, 0.05, -0.86)),
         sunPower: uniform(15),

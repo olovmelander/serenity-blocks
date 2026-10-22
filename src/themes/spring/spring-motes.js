@@ -42,6 +42,12 @@ export const MOTE_KIND = Object.freeze({
 
 /** How fast the breeze carries what floats off downwind (m/s², the drift grows with age²). */
 const BREEZE_PULL = 0.09;
+/**
+ * A spawn whose turn in the ring finds a mote still in the air looks this many slots further for
+ * the one with the least life left (a busy moment then gives up its glints and spray, which live
+ * a second, before the pollen and down still drifting).
+ */
+export const MOTE_PROBE = 16;
 
 /**
  * One instanced quad per mote. Attributes (written once at spawn):
@@ -56,6 +62,8 @@ export class Motes {
         this.u = u;
         this.count = count;
         this.cursor = 0;
+        /** The theme clock as of the last frame (the world sets it): what is still in the air. */
+        this.now = -Infinity;
         const quad = new THREE.PlaneGeometry(1, 1);
         quad.deleteAttribute('normal');
         quad.deleteAttribute('uv');
@@ -177,13 +185,31 @@ export class Motes {
         return material;
     }
 
+    /** The ring's next slot: its turn, or (when that mote is still in the air) the one near it with the least life left. */
+    nextSlot() {
+        let i = this.cursor;
+        const { now, start, move } = this;
+        if (Number.isFinite(now)) {
+            let left = start[i * 4 + 3] + move[i * 4 + 3] - now;
+            for (let k = 1; k <= MOTE_PROBE && left > 0; k++) {
+                const j = (this.cursor + k) % this.count;
+                const there = start[j * 4 + 3] + move[j * 4 + 3] - now;
+                if (there < left) {
+                    left = there;
+                    i = j;
+                }
+            }
+        }
+        this.cursor = (i + 1) % this.count;
+        return i;
+    }
+
     /** Spawn one mote. `start` and `velocity` in metres and m/s, `born` on the theme clock. */
     spawn({
         x, y, z, vx = 0, vy = 0, vz = 0, born, life = 2, rgb = [1, 1, 1], size = 0.02, kind = MOTE_KIND.pollen,
         seed = 0.5, drift = 0, gravity = 0,
     }) {
-        const i = this.cursor;
-        this.cursor = (this.cursor + 1) % this.count;
+        const i = this.nextSlot();
         this.start.set([x, y, z, born], i * 4);
         this.move.set([vx, vy, vz, life], i * 4);
         this.look.set([rgb[0], rgb[1], rgb[2], size], i * 4);

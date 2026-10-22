@@ -12,12 +12,17 @@
  * own colour from the card's edge, at the piece's height, out over the wheat and into the
  * funnel, which lights a RIBBON of that colour that climbs it and stays for half a minute, while
  * a gust ring in the same colour runs through the stalks under the piece's column (a hard drop
- * throws more and jolts the lens); a clear makes the funnel let its ribbons go (they flare and
- * shoot up into the cloud, which lights from inside) and calls lightning down beside the card,
- * one channel per line, each with a ring through the wheat; a chain of clears is the storm's
- * fury (the funnel thickens and spins up, more debris lifts, the wheat lies down, the cloud
- * winds faster and turns green at its heart); four lines or a perfect clear swell the funnel
- * into a wedge and send a dust front across the field and over the lens; a T-spin spins it up;
+ * throws more and jolts the lens); a clear calls lightning down beside the card, one channel
+ * per line, each with a ring through the wheat, and the first clear of a chain makes the funnel
+ * let its ribbons go (they flare and shoot up into the cloud, which lights from inside); a
+ * chain of clears is the storm's fury and winds the funnel up, every clearing piece's ribbon
+ * kept on it (the funnel thickens and spins up, more debris lifts, the wheat lies down, the
+ * cloud winds faster and turns green at its heart) until the chain ends and the funnel unwinds
+ * them all into the cloud; four lines swell the funnel into a wedge and send a dust front across
+ * the field and over the lens, and a perfect clear crowns it (the gap opens to full light, the
+ * funnel lets everything go); a back-to-back brings channels down either side of the funnel;
+ * the heat of play (shared/gameplay-surge.js) winds the whole storm up to a fever; a T-spin
+ * spins it up;
  * a new level turns the hour (golden hour, ember dusk, green sky, blue hour), which also turns
  * by itself, slowly, with the clock.
  *
@@ -260,6 +265,7 @@ export default class TornadoTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.world?.onLock(c),
                 clear: (c) => this.world?.onClear(c),
+                tspin: () => this.world?.onTSpin?.(),
                 combo: (n, player) => this.reportCombo(n, player),
                 levelUp: (level) => {
                     this.level = level;

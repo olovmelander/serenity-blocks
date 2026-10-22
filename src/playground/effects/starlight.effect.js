@@ -11,6 +11,8 @@
  *                            aim at its rects and the post's calm zones read them
  *   statsHud=0               with board=1: board only, no HUD mock
  *   combo=<n>                hold a combo of n (the shutter open: every star draws a trail)
+ *   heat=<0..1>&fever=<0..1> hold the gameplay surge at this level and fever (the night's
+ *                            build-up: warm ≈ 0.3, hot ≈ 0.6, fever = heat 0.9 + fever 1)
  *   level=<n>                level n's hour and the sky swung n − 1 hours on (the light also
  *                            turns with the clock alone: one hour every 100 s of `t`, resting
  *                            15 s, so t=14 is still on the level's own)
@@ -123,6 +125,15 @@ export function create({
     const world = new StarlightWorld({ scene, quality, capture: true }).build();
     world.bindCamera(camera);
     world.setReducedMotion(params.get('reduce') === '1');
+    if (params.has('heat') || params.has('fever')) {
+        // Hold the surge: the world reads what play would have built up to.
+        const held = {
+            punch: 0, level: num(params, 'heat', 0), fever: num(params, 'fever', 0), stage: 0,
+        };
+        if (held.level >= 0.22) held.stage = held.level >= 0.5 ? 2 : 1;
+        if (held.fever >= 0.55) held.stage = 3;
+        world.gameplay.sample = () => held;
+    }
     const partsParam = params.get('parts');
     if (partsParam) world.showOnlyParts(partsParam.split(',').map((p) => p.trim()));
 

@@ -256,8 +256,23 @@ export class PondSurface {
     plunge(x, z, {
         amp = 0.02, radius = 0.22, rate = 9, foam = 0, time = this.simTime,
     } = {}) {
-        const slot = this.plungers[this.plungerCursor % PLUNGER_SLOTS];
-        this.plungerCursor += 1;
+        // The slot with the least bob left (a spent one first): under rapid play a hard drop's
+        // crown never stops an earlier, stronger plunge mid-train.
+        let pick = this.plungerCursor % PLUNGER_SLOTS;
+        let least = Infinity;
+        for (let k = 0; k < PLUNGER_SLOTS; k += 1) {
+            const i = (this.plungerCursor + k) % PLUNGER_SLOTS;
+            const p = this.plungers[i];
+            const age = time - p.birth;
+            const left = age < PLUNGER_LIFE ? Math.abs(p.amp) * Math.exp(-Math.max(0, age) * 3.4) : 0;
+            if (left < least) {
+                least = left;
+                pick = i;
+                if (left <= 0) break;
+            }
+        }
+        const slot = this.plungers[pick];
+        this.plungerCursor = pick + 1;
         slot.x = x;
         slot.z = z;
         slot.birth = time;

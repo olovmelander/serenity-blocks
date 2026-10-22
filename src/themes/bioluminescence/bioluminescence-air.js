@@ -53,8 +53,10 @@ import {
     blFxMaterial,
     blPart,
     blQuadGeometry,
+    blShockReach,
     mulberry32,
 } from './bioluminescence-tsl.js';
+import { Envelope } from './bioluminescence-envelope.js';
 
 const viewProjection = (world) => cameraProjectionMatrix.mul(cameraViewMatrix).mul(vec4(world, 1.0));
 
@@ -80,9 +82,7 @@ export function createWorms(u, plan, count, threads = 0) {
         const lit = smoothstep(seed.y.sub(0.06), seed.y.add(0.02), u.wake);
         const wink = sin(u.time.mul(seed.x.mul(1.1).add(0.35)).add(seed.x.mul(90.0))).mul(0.5).add(0.5);
         const clear = blClearLight(u, worm.xyz);
-        const shockAge = u.time.sub(u.shock.x);
-        const shock = exp(max(shockAge.sub(length(worm.xz.sub(vec2(ELDER.x, ELDER.z))).mul(0.022)), 0.0).mul(-0.9))
-            .mul(step(0.0, shockAge)).mul(u.shock.y);
+        const shock = blShockReach(u, length(worm.xz.sub(vec2(ELDER.x, ELDER.z))));
         const tone = mix(u.worm, u.primary, step(0.78, fract(seed.x.mul(7.3))));
         return tone.mul(lit.mul(wink.mul(0.6).add(0.4)).mul(u.power.mul(0.6).add(1.0)).mul(u.breath)
             .add(clear.w.mul(0.9).mul(u.breath))
@@ -294,6 +294,8 @@ export function createMotes(u, count, seed = 0x5b0e) {
 /** Seconds a jelly takes to rise out of the pool to its place, and to sink away. */
 export const JELLY_RISE = 2.6;
 export const JELLY_SINK = 1.5;
+/** A jelly flash falls to 1/e in 1/this seconds. */
+export const JELLY_FLASH_FADE = 1.6;
 /** The quad a jelly is painted in, in bell widths: (width, height); the bell sits near the top. */
 const JELLY_QUAD = [2.4, 5.2];
 const NEVER = 1e9;
@@ -319,8 +321,15 @@ export function createJellies(u, plan, count) {
     const home = attribute('aHome', 'vec4');
     const look = attribute('aLook', 'vec2');
     const life = attribute('aLife', 'vec2');
-    /** Every jelly flashes at once: (time, strength). */
-    const flash = uniform(new THREE.Vector2(-100, 0));
+    /**
+     * Every jelly flashes at once: how bright the flash is now. The world's events add to one
+     * swell (a flash that comes while another still burns adds to it, and one scheduled a moment
+     * ahead never darkens what is lit before it arrives); update() writes what it reads.
+     */
+    const flash = uniform(0);
+    const flashSwell = new Envelope({
+        release: 1 / JELLY_FLASH_FADE, ceiling: 1.9, knee: 1.3,
+    });
     const material = blFxMaterial('BioluminescenceJellies');
 
     const seed = look.x;
@@ -349,8 +358,7 @@ export function createJellies(u, plan, count) {
         .add(right.mul(local.x.add(local.y.mul(tilt))).mul(size))
         .add(vec3(0.0, 1.0, 0.0).mul(local.y.mul(size)));
     material.vertexNode = viewProjection(world);
-    const flashAge = u.time.sub(flash.x);
-    const flashEnv = exp(max(flashAge, 0.0).mul(-1.6)).mul(step(0.0, flashAge)).mul(flash.y);
+    const flashEnv = flash;
     const dist = length(cameraPosition.sub(centre));
     const fade = float(1.0).sub(blFogAmount(dist, centre.y).mul(0.85)).mul(alive);
     const tone = u.family(look.y);
@@ -442,18 +450,24 @@ export function createJellies(u, plan, count) {
         part.up = want;
         push();
     };
-    /** Every jelly flashes at `time`. */
+    /** Every jelly flashes at `time` (which may be a moment ahead), on top of any flash still lit. */
     part.flash = (time, strength = 1) => {
-        flash.value.set(time, strength);
+        flashSwell.hit(strength, time);
     };
+    /** How bright the jellies' flash is at `time`. */
+    part.flashAt = (time) => flashSwell.valueAt(time);
     /** Back to rest at `time`: the first three have always been up. */
     part.reset = (time = 0) => {
         for (let i = 0; i < n; i++) aLife.set([i < 3 ? time - 100 : NEVER, NEVER], i * 2);
         part.up = Math.min(3, n);
-        flash.value.set(-100, 0);
+        flashSwell.reset();
+        flash.value = 0;
         push();
     };
-    part.update = () => {};
+    part.update = (time) => {
+        flashSwell.advance(time);
+        flash.value = flashSwell.valueAt(time);
+    };
     part.reset(0);
     return part;
 }

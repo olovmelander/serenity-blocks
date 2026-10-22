@@ -38,9 +38,36 @@ export class GoldenForestSparkDirector {
         this.front = {
             x: 0, width: 22, strength: 0, direction: 1,
         };
+        /** Every front crossing, in world x (the light rig bends the trees under each). */
+        this.frontPool = Array.from({ length: 3 }, () => ({
+            x: 0, width: 22, strength: 0, direction: 1,
+        }));
+        this.fronts = [];
         this.env = {
-            windX: 1, windZ: 0, gust: 0, glow: 0, heat: 0, settled: false, front: null, fields: this.fields,
+            windX: 1,
+            windZ: 0,
+            gust: 0,
+            glow: 0,
+            heat: 0,
+            settled: false,
+            front: null,
+            fronts: this.fronts,
+            fields: this.fields,
+            // How hot play runs, for the ambient fireflies (GoldenForestSparkSim.step).
+            wake: 0,
+            sync: 0,
+            lift: 0,
         };
+    }
+
+    /** A front from the reactions' frame (board terms) in world x, or null if it has no push yet. */
+    placeFront(source, target) {
+        if (!source || !(source.strength > 0.001) || !Number.isFinite(source.position)) return null;
+        const out = target;
+        out.x = source.position * this.stage.halfWidth(60);
+        out.strength = source.strength;
+        out.direction = source.direction;
+        return out;
     }
 
     /**
@@ -277,7 +304,7 @@ export class GoldenForestSparkDirector {
      * Apply one director frame. `wind` is {x, z} from the light rig; returns the
      * environment for GoldenForestSparkSim.step().
      */
-    apply(frame = {}, dt = 0, wind = { x: 1, z: 0 }) {
+    apply(frame = {}, dt = 0, wind = { x: 1, z: 0 }, worn = null) {
         const { fields, stage, ripples } = this;
         fields.length = 0;
         this.follow(frame.epoch);
@@ -328,17 +355,22 @@ export class GoldenForestSparkDirector {
             if (this.groundHeight(spot.x, spot.z) < -0.4) ripples?.add(spot.x, spot.z, 0.3 + this.random() * 0.2);
         }
         const vortex = Number.isFinite(frame.vortex) ? Math.max(0, Math.min(1, frame.vortex)) : 0;
+        const unit = (value) => (Number.isFinite(value) ? Math.max(0, Math.min(1, value)) : 0);
+        const motion = worn && Number.isFinite(worn.motion) ? unit(worn.motion) : 1;
+        const level = unit(worn?.level);
         if (vortex > 0.03) {
             const centre = stage.centre(GOLDEN_FOREST_STAGE_DEPTH, this.point);
             fields.push({
                 kind: 'vortex',
                 x: centre.x,
                 z: centre.z,
-                radius: 2.8 + 0.8 * vortex,
+                // The river banks out wider the hotter play runs.
+                radius: 2.8 + 0.8 * vortex + 0.5 * level,
                 reach: 8,
                 top: 2.2 + 6.5 * vortex,
-                // Radians a second: a slow wheel that quickens as the combo builds.
-                spin: 1.2 + 1.8 * vortex,
+                // Radians a second: a slow wheel that quickens as the combo builds (calmer under
+                // Reduce motion).
+                spin: (1.2 + 1.8 * vortex) * (0.55 + 0.45 * motion),
                 turn: 1,
                 grip: 3,
                 pull: 9,
@@ -355,16 +387,26 @@ export class GoldenForestSparkDirector {
         const { env } = this;
         env.windX = wind.x;
         env.windZ = wind.z;
-        env.gust = Number.isFinite(frame.gust) ? Math.max(0, Math.min(1, frame.gust)) : 0;
+        // The gust the trees wear (eased, calmed by Reduce motion) also carries the sparks.
+        const gust = worn && Number.isFinite(worn.gust) ? worn.gust * motion : frame.gust;
+        env.gust = Number.isFinite(gust) ? Math.max(0, Math.min(1, gust)) : 0;
         env.glow = Number.isFinite(frame.glow) ? frame.glow : 0;
         env.heat = Number.isFinite(frame.heat) ? frame.heat : 0;
         env.settled = frame.settled === true;
-        if (frame.front && frame.front.strength > 0.001) {
-            this.front.x = frame.front.position * stage.halfWidth(60);
-            this.front.strength = frame.front.strength;
-            this.front.direction = frame.front.direction;
-            env.front = this.front;
-        } else env.front = null;
+        env.front = this.placeFront(frame.front, this.front);
+        // Every front crossing (`fronts`), or the one the frame names.
+        const { fronts, frontPool } = this;
+        fronts.length = 0;
+        const crossing = Array.isArray(frame.fronts) ? frame.fronts : [frame.front];
+        for (let i = 0; i < crossing.length && fronts.length < frontPool.length; i += 1) {
+            const placed = this.placeFront(crossing[i], frontPool[fronts.length]);
+            if (placed) fronts.push(placed);
+        }
+        // The fireflies wake as play heats, fall into step once it runs hot, and in a fever
+        // leave the reeds and boughs to climb toward the river.
+        env.wake = level;
+        env.sync = Math.max(0, Math.min(1, (level - 0.35) / 0.45));
+        env.lift = unit(worn?.fever) * 1.1 * motion;
         return env;
     }
 }

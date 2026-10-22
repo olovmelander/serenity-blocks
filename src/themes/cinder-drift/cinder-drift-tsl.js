@@ -208,8 +208,15 @@ export function createChamberUniforms(textures) {
         lift: uniform(0),
         /** The moment the heat texture is true for. */
         heatRef: uniform(0),
-        /** A whirl in the crust (a T-spin): (x, z, birth time, turns). */
+        /**
+         * A whirl in the crust (T-spins): (x, z, the last spin's time, how far it is turned now in radians). The
+         * world winds it up and lets it go on the CPU, so T-spins add to a turn already going.
+         */
         whirl: uniform(new THREE.Vector4(0, 0, -100, 0)),
+        /** Lava standing in the seams between the columns beyond the pressure's own (play, B2B). */
+        rise: uniform(0),
+        /** The afterglow of clear waves whose slots newer waves took: it fades, never drops. */
+        clearCarry: uniform(0),
         // The palette (scene-linear), eased by the world between levels.
         hot: v3(p.hot),
         mid: v3(p.mid),
@@ -333,7 +340,11 @@ export const cdClear = (u, p) => {
         front = front.add(u.clearC[i].mul(f.mul(A.z)));
         glow = glow.add(exp(max(since, 0.0).div(-CLEAR_AFTERGLOW)).mul(live));
     }
-    return vec4(front, glow);
+    // Waves that pile up (a chain, a cascade) glow on past one wave's light, but the pile is
+    // eased: it builds, it never washes the lake out. (An ordinary wave's glow is untouched.)
+    const all = glow.add(u.clearCarry);
+    const over = max(all.sub(0.8), 0.0);
+    return vec4(front, all.min(0.8).add(over.div(over.mul(0.6).add(1.0))));
 };
 
 /** How brightly the chamber's air glows: the lake's own light, lifted by pressure and overdrive. */

@@ -413,3 +413,44 @@ describe('fluid dreams composition', () => {
         expect(layoutsDiffer(base, twoCards)).toBe(true);
     });
 });
+
+describe('fluid dreams director: crowns and empty spins', () => {
+    it('resolves a perfect clear settled after its clear as the crown on it, not a second clear', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: false, crown: false });
+        // ~360 ms later, in a frame of its own
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
+        expect(calls.clear[1]).toMatchObject({ perfect: true, crown: true, rows: [] });
+        expect(calls.lock).toHaveLength(1);
+        // A perfect clear in its clear's own frame rides on that clear.
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.onPerfectClear({ depth: 1 });
+        director.flush();
+        expect(calls.clear[2]).toMatchObject({ lines: 4, perfect: true, crown: false });
+    });
+
+    it('tells the sink of a T-spin that cleared nothing, and only of that', () => {
+        const spins = [];
+        const { director, calls } = makeDirector();
+        director.sink.spin = (c) => spins.push({ ...c });
+        director.onPieceLock({ piece: T, player: 0 });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(spins).toEqual([{ player: 0 }]);
+        expect(calls.clear).toHaveLength(0);
+        expect(calls.lock).toHaveLength(1);
+        // A T-spin that clears lines is a clear, not an empty spin.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(spins).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true });
+    });
+});

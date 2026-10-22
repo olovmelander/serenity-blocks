@@ -17,7 +17,7 @@ import { disposeSakuraAssets, loadSakuraAssets } from './sakura-assets.js';
 import { readSakuraBoardRect } from './sakura-stage.js';
 import { SAKURA_TWILIGHT_TETROMINOS } from './sakura-twilight-tetrominos.js';
 import { SakuraWorld } from './sakura-world.js';
-import { SakuraReactions } from './sakura-reactions.js';
+import { SAKURA_CALM_MOTION, SakuraReactions } from './sakura-reactions.js';
 import { SakuraPost } from './sakura-post.js';
 import { buildWorldBreathing } from '../shared/build-steps.js';
 import { sceneSamples } from '../shared/scene-antialias.js';
@@ -366,6 +366,8 @@ export default class SakuraTwilightTheme extends BaseTheme {
         const motionQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
         const updateMotion = (inGame = window.settings?.reducedMotion) => {
             this.reducedMotion = enabledSetting(inGame, false) || motionQuery?.matches === true;
+            // The garden's reactions are calmed too: the wind, the fronts, the stream, the fox.
+            this.reactions?.setMotion?.(this.reducedMotion ? SAKURA_CALM_MOTION : 1);
             if (this.reducedMotion) {
                 this.pointer.x = 0;
                 this.pointer.y = 0;

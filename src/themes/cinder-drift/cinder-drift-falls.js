@@ -170,15 +170,19 @@ export function createFalls(u, plan) {
         geometry.getAttribute('aB').needsUpdate = true;
         geometry.getAttribute('aT').needsUpdate = true;
     };
-    let fountainCursor = 0;
     let jetCursor = 0;
+    /** When each fountain slot's fountain has fallen (birth + life). */
+    const fountainEnds = new Float64Array(FOUNTAIN_SLOTS).fill(-Infinity);
     /**
      * Stand a fountain on the lake at (x, z) from `time` for `life` seconds, `height` metres tall.
+     * It takes the slot whose fountain falls first (one already down, if any): a clear inside a
+     * standing curtain takes the columns nearest their end, never the newest of it.
      * @returns {number} the slot used
      */
     part.fountain = (spec) => {
-        const slot = fountainCursor % FOUNTAIN_SLOTS;
-        fountainCursor += 1;
+        let slot = 0;
+        for (let i = 1; i < FOUNTAIN_SLOTS; i++) if (fountainEnds[i] < fountainEnds[slot]) slot = i;
+        fountainEnds[slot] = spec.time + spec.life;
         stage(firstFountain + slot, spec);
         return slot;
     };
@@ -192,7 +196,7 @@ export function createFalls(u, plan) {
     part.reset = () => {
         for (let i = firstFountain; i < count; i++) aT[i * 4] = -100;
         geometry.getAttribute('aT').needsUpdate = true;
-        fountainCursor = 0;
+        fountainEnds.fill(-Infinity);
         jetCursor = 0;
     };
     part.count = count;

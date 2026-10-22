@@ -498,3 +498,38 @@ describe('aether tides tetrominos', () => {
         expect(config.ghost).toBeUndefined();
     });
 });
+
+describe('aether tides director: what clears carry no lines of their own', () => {
+    it('resolves a perfect clear settled after its clear as a crown, never a second clear', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [20, 21, 22, 23], cascadeCount: 1 });
+        director.flush();
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
+        expect(calls.clear[0]).toMatchObject({ lines: 4, crown: false });
+        expect(calls.clear[1]).toMatchObject({
+            lines: 0, crown: true, perfect: true, rows: [],
+        });
+    });
+
+    it('a perfect clear in the frame of its clear is that clear, perfect', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [20, 21, 22, 23], cascadeCount: 1 });
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: true, crown: false });
+    });
+
+    it('resolves a T-spin that cleared nothing as a lineless spin', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 0, tspin: true, crown: false });
+    });
+});

@@ -779,3 +779,73 @@ describe('koi school: every koi stays in the water', () => {
         expect(record('played hard: a chain with leaps and frights', HIGH).events.splash).toBeGreaterThan(100);
     });
 });
+
+describe('koi school: the heat of play', () => {
+    it('lets a broken chain slow the ring over seconds instead of braking it in a step', () => {
+        const school = make();
+        run(school, 10);
+        school.setChain(9);
+        run(school, 20);
+        expect(school.charge).toBeCloseTo(1, 2);
+        const fast = mean(Array.from(school.speed));
+        school.setChain(0);
+        run(school, DT);
+        // One step after the break the pull is all but whole, and the pace has not dropped.
+        expect(school.charge).toBeGreaterThan(0.98);
+        expect(mean(Array.from(school.speed))).toBeGreaterThan(fast * 0.9);
+        run(school, 8);
+        expect(school.charge).toBeLessThan(0.02);
+    });
+
+    it('rallies the big fish to the ring as play runs hot, the whole school in a fever, and lets them go', () => {
+        const school = make();
+        run(school, 10);
+        const rest = mean(Array.from(school.speed));
+        const joined = () => range(school.count).filter((i) => school.joined[i] > 0.5);
+        // Warm: no one leaves its lane, but the school quickens and warms from inside.
+        school.setSurge(0.4, 0);
+        run(school, 8);
+        expect(joined()).toEqual([]);
+        expect(Math.min(...school.glow)).toBeGreaterThan(0.05);
+        expect(mean(Array.from(school.speed))).toBeGreaterThan(rest);
+        // Hot: the longest fish rally to the ring without a chain.
+        school.setSurge(0.8, 0);
+        run(school, 8);
+        const leaders = joined();
+        expect(leaders.length).toBeGreaterThan(0);
+        expect(leaders.length).toBeLessThan(school.count / 2);
+        expect(leaders.map((i) => school.fish[i].order).sort((p, q) => p - q)).toEqual(range(leaders.length));
+        // A fever: every koi swims the ring.
+        school.setSurge(1, 1);
+        run(school, 10);
+        expect(joined()).toHaveLength(school.count);
+        // Reduced motion keeps the koi nearer their own pace.
+        const calm = make();
+        calm.setSurge(1, 1, 0.35);
+        expect(calm.quicken).toBeLessThan(school.quicken * 0.5);
+        // The hands rest: back to their lanes, the light gone.
+        school.setSurge(0, 0);
+        run(school, 25);
+        expect(joined()).toEqual([]);
+        expect(Math.max(...school.glow)).toBeLessThan(0.01);
+    });
+
+    it('holds the school only as deep as it is asked: a hot quad barely checks the ring', () => {
+        const deep = make();
+        const shallow = make();
+        run(deep, 12);
+        run(shallow, 12);
+        const before = mean(Array.from(deep.speed));
+        deep.holdBreath(0.34);
+        shallow.holdBreath(0.34, 0.15);
+        run(deep, 0.34);
+        run(shallow, 0.34);
+        expect(mean(Array.from(shallow.speed))).toBeGreaterThan(mean(Array.from(deep.speed)));
+        expect(mean(Array.from(shallow.speed))).toBeGreaterThan(before * 0.7);
+        // A deeper hold asked while one is running is never made shallower.
+        const both = make();
+        both.holdBreath(0.34, 1);
+        both.holdBreath(0.34, 0.2);
+        expect(both.hushDepth).toBe(1);
+    });
+});

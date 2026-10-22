@@ -45,6 +45,12 @@ import {
 import { buildSunfallLife } from './sunfall-life.js';
 
 const DEG = Math.PI / 180;
+/** The sunfall's gold in a fever (linear): a deep late-afternoon gold, never cream. */
+const GILT_CORE = new THREE.Vector3(1.0, 0.62, 0.26);
+const GILT_SCATTER = new THREE.Vector3(1.0, 0.66, 0.3);
+const NO_HEAT = Object.freeze({
+    punch: 0, level: 0, fever: 0, stage: 0,
+});
 
 export class SunfallWorld {
     /** Load the authored assets (resolves to null if `isCurrent` turns false meanwhile). */
@@ -94,6 +100,10 @@ export class SunfallWorld {
         this.pointerX = 0;
         this.pointerY = 0;
         this.customCameraOverride = false;
+        /** The post stack's inputs for this frame (see `_post`). */
+        this.postState = {
+            time: 0, exposure: 1, bloomBoost: 0, flash: 0, flashColour: null,
+        };
 
         this.textures = bakeAllSunfallTextures(this.seed, assets);
         this.u = createSunfallUniforms(this.textures, assets?.manifest);
@@ -334,13 +344,23 @@ export class SunfallWorld {
 
         ['skyZenith', 'skyRim', 'beamCore', 'beamScatter', 'poolSun', 'bounceVault', 'caveShadow', 'mistTint',
             'gourBlue'].forEach((key) => u[key].value.set(...st[key]));
+        // A fever (and the crown) gilds the sunfall: the column and its light burn gold.
+        const gild = snap.gild ?? 0;
+        if (gild > 0) {
+            u.beamCore.value.lerp(GILT_CORE, gild);
+            u.beamScatter.value.lerp(GILT_SCATTER, gild);
+        }
+        u.prism.value = snap.prism ?? 0;
+        u.fingerFloor.value = snap.fingerFloor ?? 0.14;
         u.dripScale.value = wt.dripScale;
         u.mistScale.value = wt.mistScale;
         u.cloudOpacity.value = wt.cloudOpacity;
         u.sprayRate.value = wt.sprayRate;
 
-        // The sun's strength: a closing cloud over the oculus at game over, a lift at zenith.
-        u.sunGain.value = (1 - snap.overCloudClose * 0.82) * (1 + snap.zenithPulse * 0.35);
+        // The sun's strength: a closing cloud over the oculus at game over, a small lift at zenith
+        // (the crown's light is the pool's colours and the bow, not a whiter column).
+        const zenith = snap.zenithPulse;
+        u.sunGain.value = (1 - snap.overCloudClose * 0.82) * (1 + zenith * 0.06);
         u.skyGain.value = 1 - snap.overCloudClose * 0.5;
 
         u.flushPulse.value = snap.flushPulse;
@@ -350,24 +370,33 @@ export class SunfallWorld {
         u.snapPulse.value = snap.snapPulse;
         u.snapU.value = snap.snapU;
         u.snapColor.value.set(...snap.snapColor);
+        u.kick.value.set(snap.kickL ?? 0, snap.kickR ?? 0);
+        u.windClock.value = snap.windClock ?? snap.time;
+        u.windGain.value = snap.windGain ?? 1;
+        u.swiftClock.value = snap.swiftClock ?? snap.time;
+        u.moteGain.value = snap.moteGain ?? 1 + snap.comboLift;
         u.showerPulse.value = snap.showerPulse;
         u.ripenPulse.value = snap.ripenPulse;
         u.ripenRow.value = snap.ripenRow;
         u.ripenCodesPacked.value = snap.ripenCodesPacked;
         u.cataractPulse.value = snap.cataractPulse;
         u.cataractAge.value = snap.cataractAge ?? 99;
+        u.cataractHold.value = snap.cataractHold ?? 0;
         u.rainbowStrength.value = snap.rainbowStrength;
         u.comboLift.value = snap.comboLift;
-        u.comboColumns.value = snap.comboColumns;
+        u.comboColumns.value = snap.comboShafts ?? snap.comboColumns;
         u.sevenfoldPulse.value = snap.sevenfoldPulse;
         u.exhalePulse.value = snap.exhalePulse;
         u.exhaleAge.value = snap.exhaleAge ?? 99;
         u.floodThreads.value = snap.floodThreads;
         u.echoBoost.value = snap.echoBoost;
         u.turningPulse.value = snap.turningPulse;
-        u.zenithPulse.value = snap.zenithPulse;
+        // The crowns round the pool flush in every piece's pigment: the crown's zenith, and a
+        // fever's new growth (it greens back slowly when the hands rest).
+        u.zenithPulse.value = Math.min(1.2, zenith + (snap.poolFlush ?? 0));
         u.overCloudClose.value = snap.overCloudClose;
-        u.wet.value = Math.max(u.wet.value * 0.995, snap.cataractPulse, snap.showerPulse * 0.6);
+        u.wet.value = snap.wet ?? Math.max(snap.cataractPulse, snap.showerPulse * 0.6);
+        this._post(snap);
 
         if (!this.customCameraOverride) this._driveCamera(snap);
         this.camera.updateMatrixWorld(true);
@@ -422,10 +451,29 @@ export class SunfallWorld {
         }
     }
 
+    /**
+     * What the post stack wears this frame (the theme hands it to `SunfallPost.update`). The
+     * light of a payoff lives in the world's own colours (the bow, the pool, the threads), so
+     * the bloom and the exposure flash stay small, and the iris closes a little as play heats
+     * and adds light to the column, keeping the colours saturated and the cave dark.
+     */
+    _post(snap) {
+        const heat = snap.heat || NO_HEAT;
+        const cataract = Math.min(1, snap.cataractPulse);
+        const zenith = snap.zenithPulse;
+        const post = this.postState;
+        post.time = snap.time;
+        post.exposure = 1 - heat.level * 0.04 - heat.fever * 0.06 - zenith * 0.1;
+        post.bloomBoost = cataract * 0.22 + zenith * 0.12 + heat.fever * 0.06;
+        post.flash = cataract * 0.12 + zenith * 0.1;
+        post.flashColour = snap.station.beamCore;
+    }
+
     _driveCamera(snap) {
         const motion = snap.reducedMotion ? 0 : 1;
         const t = snap.time;
         const { rig } = this;
+        const heat = snap.heat || NO_HEAT;
         const drift = [Math.sin(t * 0.157) * 0.6, Math.cos(t * 0.123) * 0.35];
         this.camera.position.set(
             rig.position[0] + (drift[0] + this.pointerX * 1.6) * motion,
@@ -433,11 +481,15 @@ export class SunfallWorld {
             rig.position[2],
         );
         this.camera.rotation.order = 'YXZ';
+        // Each event nods the eye toward the pool (riding on a floor under rapid play).
         this.camera.rotation.set(
-            (rig.pitch + Math.sin(t * 0.091) * 0.25 * motion - this.pointerY * 0.6 * motion) * DEG,
+            (rig.pitch + Math.sin(t * 0.091) * 0.25 * motion - this.pointerY * 0.6 * motion
+                - heat.punch * 0.35 * motion) * DEG,
             (rig.yaw + Math.sin(t * 0.071) * 0.3 * motion - this.pointerX * 0.8 * motion) * DEG,
             0,
         );
+        // The eye leans into the doline as play heats.
+        this.camera.translateZ(-(heat.level * 2 + heat.fever * 3) * motion);
         this.camera.updateMatrixWorld(true);
         // The shared breath every theme carries: it leans toward the doline and back.
         applyCameraBreath(this.camera, t, { distance: 260, scale: motion });

@@ -328,7 +328,7 @@ describe('Vesper Chrysalis theme on its real world', () => {
             locks: 0, clears: 0, quads: 0, moths: 0, falls: 0,
         });
         expect(theme.level).toBe(0);
-        // The reset is soft. Nothing on screen jumps: the wings are still there, to burn away,
+        // The reset is soft. Nothing on screen jumps: the wings are still there, to moult away,
         // shedding their scales; the lilies still hold their light, to fade; the moth flies on,
         // to a lily that will stay shut; the evening stays at its hour.
         expect(first.wing).toBe(open);
@@ -337,12 +337,14 @@ describe('Vesper Chrysalis theme on its real world', () => {
         expect(first.blooms.pending).toEqual([]);
         expect(first.moths.cursor).toBe(moths);
         expect(first.getState()).toMatchObject({ level: 4, palette: VESPER_PALETTES[3].name });
-        stepFrames(theme, Math.round((WING_FALL * 60) / 2));
-        expect(first.u.wing.value.x).toBe(open);
-        expect(first.u.wing.value.z).toBeGreaterThan(0.3);
-        expect(first.u.wing.value.z).toBeLessThan(0.7);
+        // They fold back from the margin, fraying, half way in half the time...
+        stepFrames(theme, Math.round((open * WING_FALL * 60) / 2));
+        expect(first.u.wing.value.x).toBeGreaterThan(open * 0.4);
+        expect(first.u.wing.value.x).toBeLessThan(open * 0.6);
+        expect(first.u.wing.value.z).toBeGreaterThan(0.5);
         expect(first.getState().held).toBeLessThan(lit);
-        stepFrames(theme, Math.round(WING_FALL * 60));
+        // ...and are gone; the fray knits.
+        stepFrames(theme, Math.round(WING_FALL * 60) + 240);
         expect(first.wing).toBe(0);
         expect(first.u.wing.value.z).toBe(0);
         expect(first.getState().held).toBe(0);

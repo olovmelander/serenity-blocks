@@ -117,6 +117,7 @@ function stubSceneBuild(theme) {
         theme.reactions = {
             onHardDrop: vi.fn(),
             onPieceLock: vi.fn(),
+            noteLock: vi.fn(),
             onLineClear: vi.fn(),
             onCombo: vi.fn(),
             onTSpin: vi.fn(),
@@ -571,6 +572,8 @@ describe('Summer gameplay payloads', () => {
         eventBus.emit(EVENTS.PIECE_LOCK, { piece: { x: 1, y: 2 } });
         expect(theme.reactions.onHardDrop).not.toHaveBeenCalled();
         expect(theme.reactions.onPieceLock).not.toHaveBeenCalled();
+        // A lock still counts for the combo (one that cleared nothing ends it), without its petals.
+        expect(theme.reactions.noteLock).toHaveBeenCalledTimes(2);
         // Everything else still answers through the bus.
         eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1 });
         eventBus.emit(EVENTS.COMBO, { comboCount: 3 });
@@ -2207,7 +2210,8 @@ describe('Summer with its real artwork', () => {
 
         // Game over settles the evening; switching effects off empties the air and stills the water at once.
         windowListener('gameOver')();
-        expect(reactions.getFrame().front).toBeNull();
+        // The wind dies: the fronts still crossing ease away rather than snap the meadow upright.
+        expect(reactions.fronts.every((front) => front.target === 0)).toBe(true);
         expect(reactions.getFrame().settled).toBe(true);
         expect(reactions.getFrame().emitters.length).toBeGreaterThan(0);
         theme.update(1 / 60);

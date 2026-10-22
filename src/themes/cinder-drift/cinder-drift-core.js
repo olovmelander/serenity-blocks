@@ -11,9 +11,13 @@
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
-/** Gameplay pulse slots evaluated by the materials. */
+/**
+ * Gameplay pulse slots evaluated by the materials. Clear waves get four, so a chain's waves and a
+ * cascade's land on top of one another instead of the newest erasing one still glowing (the
+ * weakest is the one replaced, and what it still held is carried on: see the world's onClear).
+ */
 export const RING_SLOTS = 6;
-export const CLEAR_SLOTS = 2;
+export const CLEAR_SLOTS = 4;
 /** Ribbons of running lava: the great fall, the fissure streams a chain opens, the fountains. */
 export const STREAM_SLOTS = 6;
 export const FOUNTAIN_SLOTS = 12;

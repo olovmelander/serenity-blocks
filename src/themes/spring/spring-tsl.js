@@ -168,12 +168,19 @@ export const noise3 = (tex, at) => {
 
 // ── The scene's state ─────────────────────────────────────────────────────────────
 
-/** Patches of bloom on the knoll alive at once (one a lock; the oldest is reused). */
+/**
+ * Patches of bloom on the knoll alive at once (one a lock): the most the table holds. A tier's
+ * meadow reads its first `tier.patches` of them, and the world writes only those (a new lock takes
+ * the patch that has closed furthest).
+ */
 export const PATCHES = 8;
 /** Surges (line clears) running down the river at once. */
 export const SURGES = 8;
 
-/** Rows of the `palette` table: the seven flowers' colours (spare: their state). */
+/**
+ * Rows of the `palette` table: the seven flowers' colours, and in w how far the heat of play
+ * opens that kind of flower over the whole knoll (0..1: the kinds the player has been playing).
+ */
 export const PALETTE_ROWS = Object.freeze({ colour: 0, count: 7 });
 /** Rows of the `events` table: two per patch of bloom, one per river surge. */
 export const EVENT_ROWS = Object.freeze({
@@ -187,7 +194,7 @@ const colour = (r, g, b) => uniform(new THREE.Vector3(r, g, b));
 
 /**
  * The uniforms every part reads. Two tables (a stage may bind only twelve uniform buffers):
- *   palette  rows 0..6  the seven flowers (linear r, g, b, spare)
+ *   palette  rows 0..6  the seven flowers (linear r, g, b, how far play opens the kind)
  *   events   per patch  (x, z, born, power) + (flower slot, radius m, spare × 2): a patch of one
  *                       kind of flower bursting into bloom where a lock landed
  *            per surge  (born, power, spare × 2): a wave of white water down the rapids
@@ -210,7 +217,7 @@ export function createUniforms() {
         time: uniform(0),
         /** The cloud deck's drift (metres, integrated on the CPU). */
         wind: uniform(new THREE.Vector2(0, 0)),
-        /** How hard the breeze leans the plants and the trees (1 calm … 1.6 a long chain). */
+        /** How hard the breeze leans the plants and the trees (1 calm … ~2 a long chain in a fever; eased). */
         gust: uniform(1),
 
         eye: uniform(new THREE.Vector3(0, 8.2, 0)),
@@ -264,8 +271,14 @@ export function createUniforms() {
         air: uniform(new THREE.Vector4(0, 0, 0, 0)),
         /** Where the chain's two gyres stand on the knoll: (left x, z, right x, z), from the layout. */
         airGyres: uniform(new THREE.Vector4(-4.6, -8.3, 4.6, -8.3)),
-        /** A clear's breath through the air: (start, power, speed m/s, spare). */
-        airWave: uniform(new THREE.Vector4(-1e6, 0, 0, 0)),
+        /**
+         * Two clears' breaths through the air: (start, power) of one and of the other. Each runs
+         * out from the eye at AIR.breath.speed; a clear soon after a breath set out feeds it, a
+         * later one sends the other (spring-world.js breathe()).
+         */
+        airWave: uniform(new THREE.Vector4(-1e6, 0, -1e6, 0)),
+        /** How bright the spray bow stands in the fall's spray (1 at rest; back-to-back and the heat of play lift it). */
+        bow: uniform(1),
 
         // ── The river ──
         /** The water's own clock (s): integrated on the CPU at the flood's pace. */

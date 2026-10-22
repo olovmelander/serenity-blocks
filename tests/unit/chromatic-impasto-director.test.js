@@ -127,6 +127,41 @@ describe('chromatic impasto director: intake', () => {
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
+        // A perfect clear named with its clear is no crown.
+        expect(calls.clear[0].crown).toBe(false);
+    });
+
+    it('resolves a perfect clear settled after its clear as the crown on it, not a new clear', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        // Physics settles the perfect clear ~360 ms after the last wave, in a frame of its own.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(2);
+        expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: false, crown: false });
+        expect(calls.clear[1]).toMatchObject({ perfect: true, crown: true, rows: [] });
+        // The combo is not counted again for it.
+        expect(calls.clear[1].combo).toBe(calls.clear[0].combo);
+    });
+
+    it('hands a T-spin that cleared nothing to the sink as a spin', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.spin = vi.fn();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(sink.spin).toHaveBeenCalledOnce();
+        expect(sink.spin.mock.calls[0][0]).toMatchObject({ player: 0 });
+        expect(calls.clear).toHaveLength(0);
+        // A T-spin that clears is a clear, not a spin.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 1 });
+        director.flush();
+        expect(sink.spin).toHaveBeenCalledOnce();
+        expect(calls.clear[0]).toMatchObject({ tspin: true, lines: 1 });
     });
 
     it('turns a meditation click into a clear at a screen position', () => {

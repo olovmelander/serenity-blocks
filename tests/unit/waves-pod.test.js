@@ -570,14 +570,42 @@ describe('waves pod: thrown spray', () => {
         expect(thrown(pool)).toHaveLength(count);
         const again = drops(pool).filter((drop) => drop.birth === 50).map((drop) => drop.i).sort((a, b) => a - b);
         expect(again).toEqual([0, 1, 2, 3, 4, 5, 6, count - 5, count - 4, count - 3, count - 2, count - 1]);
-        // Many times round.
+        // Many times round: once every drop is in the air the cursor sweeps on past the drops it
+        // looked at, taking the one nearest its end each time, and the ring never grows.
         pool.swirl(60, 0, { n: count * 3 + 11 });
-        expect(pool.cursor).toBe((7 + count * 3 + 11) % count);
+        expect(Number.isInteger(pool.cursor) && pool.cursor >= 0 && pool.cursor < count).toBe(true);
         expect(thrown(pool)).toHaveLength(count);
         expect(pool.data).toBe(data);
         expect(pool.data).toHaveLength(size);
         expect(pool.count).toBe(count);
         expect(pool.data.every(Number.isFinite)).toBe(true);
+    });
+
+    it('throws new drops over spent ones, skipping a throw still hanging in the air', () => {
+        const pool = makePool('Low');
+        const { count } = pool;
+        const block = count - 300;
+        // A long, slow throw that hangs in the air (a held quad's), then a short crown: the pool is
+        // full and its cursor is back at the start of the throw.
+        pool.throwLip(10, 0, {
+            n: block, delay: 0, flown: 0, life: [6, 6], speed: [0.2, 0.4],
+        });
+        pool.crown(10, 0, 0, -5, { n: 300, life: [0.5, 0.6] });
+        expect(pool.cursor).toBe(0);
+        const hanging = drops(pool).filter((drop) => drop.i < block && pool.remaining(drop.i, 11) > 0)
+            .map((drop) => drop.i);
+        expect(hanging.length).toBeGreaterThan(block * 0.9);
+        // A second later the crown is spent: the next throw skips over the one hanging and takes
+        // the crown's drops, touching at most a drop or two of the throw on its way past.
+        const kept = Array.from(pool.data);
+        pool.crown(11, 0, 0, -5, { n: 250, life: [1, 1] });
+        const stride = pool.data.length / count;
+        const touched = hanging.filter((i) => kept.slice(i * stride, (i + 1) * stride)
+            .some((v, k) => v !== pool.data[i * stride + k]));
+        expect(touched.length).toBeLessThanOrEqual(Math.ceil(block / 256));
+        expect(drops(pool).filter((drop) => drop.birth >= 11)).toHaveLength(250);
+        // Round robin would have thrown all 250 over the hanging throw.
+        expect(touched.length).toBeLessThan(250 / 20);
     });
 
     it('empties on reset, and throws the same drops again after it', () => {

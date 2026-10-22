@@ -21,6 +21,18 @@
  *            pillar stands on every spire, a prismatic ring crosses the sky from the great moon,
  *            its veins fire, and meteors fall.
  *
+ * And it builds with play (src/themes/shared/gameplay-surge.js): nothing restarts, every hit adds
+ * to what is still lit. As the hands quicken the clears stop emptying the shores and start filling
+ * them — each wave leaves some of its light in every spire it passes and the spires keep what
+ * they hold — so a chain lights both banks (and their mirror) in the colours played; the bed's
+ * veins wake, the curtains climb and quicken, the motes rise, the companion hurries round the
+ * great moon. Hot, the moon's veins open and shooting stars come often; in a fever every halo
+ * ring burns, the curtains stand at full, the stones and the moon warm toward moonfire and the
+ * meteors fall like rain. A cascade's waves each run brighter and in the next colour; a
+ * back-to-back is answered by the companion (it blazes rose and lurches on its orbit). A perfect
+ * clear crowns it all — every spire gives up its light as a pillar — and the end of a chain lets
+ * the shores go; then the valley breathes back to its night.
+ *
  * Everything is a function of the world clock and event timestamps (nothing is created at event
  * time), so seek(t) plus a fixed-step replay reproduces any frame.
  *
@@ -30,7 +42,9 @@
 import * as THREE from 'three/webgpu';
 import { texture, uniform } from 'three/tsl';
 import {
+    CLEAR_AFTERGLOW,
     CLEAR_SLOTS,
+    CLEAR_TRAVEL,
     DEG,
     HUSH_HOLD,
     LOCK_SLOTS,
@@ -38,6 +52,7 @@ import {
     MOONFIRE,
     NOISE_SIZE,
     PALETTE_KEYS,
+    RING_FADE,
     TAU,
     WISP_FLIGHT,
     approach,
@@ -66,6 +81,8 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './lunara-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, SURGE_WEIGHTS, Swell } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 /** The rest camera: standing in the flats, looking down the valley and a little up at the sky. */
 export const REST_RIG = Object.freeze({
@@ -96,6 +113,12 @@ export const MIN_TARGET_TIP = 1.2;
 /** Seconds a ring / a clear wave stays in the valley (the shaders skip their loops after). */
 const RING_LIVE = 5.5;
 const CLEAR_LIVE = 8;
+/**
+ * Seconds a clear's wave takes to fade to 1/e once a newer wave has left after it: waves of a
+ * cascade cross the water together, the newest brightest, the older ones handing over (summed at
+ * full strength, four waves' fronts would light the whole range and veil the valley).
+ */
+const WAVE_HANDOFF = 0.45;
 /** The brightest the curtains ever burn (at rest they sit at 0.3). */
 export const AURORA_MAX = 1.45;
 /** Seconds between the valley's own shooting stars. */
@@ -170,6 +193,11 @@ export class LunaraWorld {
         this._point = { x: 0.5, y: 0.5 };
         this._strike = { x: 0, z: -12 };
         this._from = [0, 0, 0];
+        this._tint = [0, 0, 0];
+        this._tone = [0, 0, 0];
+        this.waveStrength = new Float64Array(CLEAR_SLOTS);
+        /** The spires a wave finds holding light (they throw dust as it passes). */
+        this._holders = new Int32Array(14);
         this._palette = {};
         PALETTE_KEYS.forEach((key) => {
             this._palette[key] = [...LUNARA_PALETTES[0][key]];
@@ -177,7 +205,53 @@ export class LunaraWorld {
         this._post = {
             heart: this.heart, flash: 0, kick: 0, shafts: 0.25, bloomBoost: 0, exposure: 1,
         };
+        /**
+         * Envelopes that ACCUMULATE (src/themes/shared/swell.js): a hit adds to what is still lit
+         * and never restarts it, so a weak event after a strong one can only lift the light.
+         *   flash, kick  the post's lift and the lens's impact
+         *   overdrive    a four-line clear's fire (it stacks: a quad after a perfect clear burns on)
+         *   swell        a clear's flood of the moon's shafts and bloom
+         *   twist        the curtains' turn on a T-spin
+         *   companion    the rose moon answering a back-to-back
+         */
+        this.env = {
+            flash: new Swell({ release: 0.25, ceiling: 0.6, knee: 0.35 }),
+            kick: new Swell({ release: 0.16, ceiling: 1.1, knee: 0.6 }),
+            overdrive: new Swell({
+                release: SURGE_COOL, ceiling: 1.9, knee: 1.35, headroom: 1.3,
+            }),
+            swell: new Swell({ release: 0.7, ceiling: 1.1, knee: 0.75 }),
+            twist: new Swell({ release: 0.6, ceiling: 1.6, knee: 1.05 }),
+            companion: new Swell({
+                attack: 0.08, release: 1.6, ceiling: 1.6, knee: 1,
+            }),
+        };
+        /** How hot play runs, and its reading this frame (src/themes/shared/gameplay-surge.js). */
+        this.play = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
         this.resetState(0);
+    }
+
+    /** The lens's impact now. */
+    get kick() {
+        return this.env.kick.valueAt(this.time);
+    }
+
+    /** The post's event lift now. */
+    get flash() {
+        return this.env.flash.valueAt(this.time);
+    }
+
+    /** A four-line clear's overdrive now (0 at rest; a quad is 1, a perfect clear 1.3; they stack). */
+    get surge() {
+        return this.env.overdrive.valueAt(this.time);
+    }
+
+    /** How hard the curtains are turning from a T-spin now. */
+    get twist() {
+        return this.env.twist.valueAt(this.time);
     }
 
     /** Everything the choreography remembers. */
@@ -185,23 +259,36 @@ export class LunaraWorld {
         this.time = time;
         this.combo = 0;
         this.power = 0;
-        this.surge = 0;
         this.storm = 0;
         this.level = 1;
         this.paletteIndex = 0;
-        this.flash = 0;
-        this.kick = 0;
         this.dip = 0;
-        this.twist = 0;
         this.breath = 1;
         this.rings = 0;
         this.veins = 0;
         this.veinsFlare = 0;
         this.hushUntil = -1;
+        /** How deep the hush of the last four-line clear went (1 from rest; shallow when hot). */
+        this.hushDepth = 1;
         this.lockCursor = 0;
         this.clearCursor = 0;
-        this.lastClear = { time: -100, lines: 0 };
-        this.pendingKick = { time: Infinity, amount: 0 };
+        /** The clear slot written last, where the last clear's wave left from, and a quad's fire. */
+        this.clearSlot = 0;
+        this.heartX = 0;
+        this.heartZ = -12;
+        this.quadBirth = -100;
+        /** When the last clear's front passes each spire (a view the waves' slots reuse). */
+        this.passes = null;
+        /** Each clear slot's strength as written (the uniform's own fades as newer waves take over). */
+        this.waveStrength.fill(0);
+        /** Shooting stars owed by hot play (one falls each time this passes 1). */
+        this.meteorHeat = 0;
+        Object.keys(this.env).forEach((key) => this.env[key].reset());
+        this.play.reset();
+        this.heat.punch = 0;
+        this.heat.level = 0;
+        this.heat.fever = 0;
+        this.heat.stage = 0;
         this.counts = {
             locks: 0, clears: 0, quads: 0, wisps: 0,
         };
@@ -487,7 +574,11 @@ export class LunaraWorld {
     updateCamera(camera, sim) {
         const t = sim.time;
         const calm = this.reducedMotion ? 0 : 1;
-        const fov = fovForAspect(this.aspect) - this.kick * 0.8 * calm;
+        // The lens dollies in on an impact (riding on the surge's punch under fast play) and leans
+        // in a little, and stays leant in, the hotter play runs.
+        const impact = this.env.kick.valueAt(t) + this.play.punch.valueAt(t) * 0.18;
+        const lean = this.play.level.valueAt(t) * 0.7 + this.heat.fever * 0.5;
+        const fov = fovForAspect(this.aspect) - (impact * 0.8 + lean) * calm;
         if (camera.fov !== fov || camera.near !== REST_RIG.near || camera.far !== REST_RIG.far) {
             camera.fov = fov;
             camera.near = REST_RIG.near;
@@ -499,7 +590,7 @@ export class LunaraWorld {
         const swayY = (Math.sin(t * 0.19 + 0.7) * 0.05 + Math.sin(t * 0.083) * 0.04) * calm;
         const px = (sim.pointerX || 0) * calm;
         const py = (sim.pointerY || 0) * calm;
-        camera.position.set(swayX + px * 0.8, REST_RIG.height + swayY - py * 0.25 - this.kick * 0.05 * calm, 0);
+        camera.position.set(swayX + px * 0.8, REST_RIG.height + swayY - py * 0.25 - impact * 0.05 * calm, 0);
         const yaw = (Math.sin(t * 0.09 + 2.1) * 0.01 - px * 0.028) * calm;
         const pitch = REST_RIG.pitch + (Math.sin(t * 0.11) * 0.005 - py * 0.016) * calm;
         this._look.set(
@@ -611,12 +702,81 @@ export class LunaraWorld {
         return arrive;
     }
 
-    /** Send a ring out over the flats from (x, z) at `time`; `reach` is a fraction of RING_REACH. */
+    /**
+     * Send a ring out over the flats from (x, z) at `time`; `reach` is a fraction of RING_REACH.
+     * It takes the slot whose ring has faded most (the oldest of equals), so a quick hand's rings
+     * fade out in turn instead of the newest wiping one still running.
+     */
     ring(x, z, time, strength, rgb, reach = 1) {
-        const slot = this.lockCursor % LOCK_SLOTS;
+        const { lockA, lockC } = this.u;
+        let slot = 0;
+        let weakest = Infinity;
+        for (let i = 0; i < LOCK_SLOTS; i++) {
+            const A = lockA[i].value;
+            const age = this.time - A.z;
+            // One still to come (or born this moment) is never the one to go.
+            let left = A.w + 10;
+            if (age > 0) left = age > RING_LIVE ? 0 : A.w * Math.exp(-age * RING_FADE);
+            if (left < weakest - 1e-6 || (left <= weakest + 1e-6 && A.z < lockA[slot].value.z)) {
+                weakest = Math.min(weakest, left);
+                slot = i;
+            }
+        }
         this.lockCursor += 1;
-        this.u.lockA[slot].value.set(x, z, time, strength);
-        this.u.lockC[slot].value.set(rgb[0] * 1.4, rgb[1] * 1.4, rgb[2] * 1.4, reach);
+        lockA[slot].value.set(x, z, time, strength);
+        lockC[slot].value.set(rgb[0] * 1.4, rgb[1] * 1.4, rgb[2] * 1.4, reach);
+    }
+
+    /**
+     * Ring the sky from the great moon. There is one ring: while it is still bright a new one adds
+     * to it (it runs on, brighter) instead of starting over, so a T-spin or a new level right
+     * after a four-line clear never swaps its ring for a smaller one.
+     */
+    shockRing(strength, at) {
+        const shock = this.u?.shock.value;
+        if (!shock || !(strength > 0)) return;
+        const age = at - shock.x;
+        const left = age > 0 ? shock.y * Math.exp(-1.3 * age) : shock.y;
+        if (left > strength * 0.5 && age < 1.6) {
+            const grow = age > 0 ? Math.exp(1.3 * age) : 1;
+            shock.y = Math.min(1.4 * grow, shock.y + strength * 0.6 * grow);
+        } else {
+            shock.set(at, strength);
+        }
+    }
+
+    /** Throw crystal dust off the points of the spires that held light as a wave reaches them. */
+    dustOff(holders, count, passes, rgb, big) {
+        const share = this.shards.count / 512;
+        for (let k = 0; k < count; k++) {
+            const i = holders[k];
+            const c = this.plan.crystals[i];
+            this.shards.emit({
+                x: c.tip[0] - c.x * (1 - this.squeeze),
+                y: c.tip[1],
+                z: c.tip[2],
+                n: Math.round((big ? 22 : 12) * share),
+                rgb,
+                time: passes[i],
+                out: [0.6, 4.5],
+                up: [1.2, 5.5],
+                life: [1.0, 2.2],
+                size: 0.024 + c.height * 0.0024,
+            });
+        }
+    }
+
+    /** Up to 14 spires holding light at `time` (into this._holders); returns how many. */
+    findHolders(time) {
+        const out = this._holders;
+        let count = 0;
+        for (let i = 0; i < this.crystals.count && count < out.length; i++) {
+            if (this.crystals.heldAt(i, time) > 0.12) {
+                out[count] = i;
+                count += 1;
+            }
+        }
+        return count;
     }
 
     /**
@@ -675,31 +835,55 @@ export class LunaraWorld {
                 }
             }
         }
-        this.kick = Math.max(this.kick, hardDrop ? 0.5 : 0.1);
-        this.flash = Math.max(this.flash, hardDrop ? 0.1 : 0.02);
+        this.env.kick.hit(hardDrop ? 0.5 : 0.1, this.time);
+        this.env.flash.hit(hardDrop ? 0.1 : 0.02, this.time);
+        this.play.lock({ hardDrop }, this.time);
         this.counts.locks += 1;
     }
 
     /**
-     * Lines cleared. `lines` 1..4; `combo` = the true consecutive-clear combo; `tspin`, `perfect`.
+     * Lines cleared. `lines` 1..4; `combo` = the true consecutive-clear combo; `cascade` = which
+     * wave of the lock's cascade this is (1 = the first); `tspin`, `perfect`, `b2b`. A clear with
+     * no lines of its own (`lines: 0`) is a perfect clear settled after the clear it crowns
+     * (`crown` or `perfect`) or a T-spin that cleared nothing.
      */
     onClear({
-        rows = null, lines = 1, tspin = false, perfect = false, player = 0, screen = null,
+        rows = null, lines = 1, tspin = false, perfect = false, b2b = false, crown = false,
+        cascade = 1, combo = 1, player = 0, screen = null,
     } = {}) {
         const { u: uniforms } = this;
         if (!uniforms || !this.crystals) return;
+        const lineless = Number(lines) === 0 || crown === true;
+        if (lineless && (perfect || crown)) {
+            this.crownValley();
+            return;
+        }
+        if (lineless && tspin) {
+            this.turnSky();
+            return;
+        }
         const n = Math.max(1, Math.min(4, Math.round(Number(lines) || 1)));
         const quad = n >= 4 || perfect;
+        /** Waves of this lock's cascade before this one: each runs out brighter, in the next colour. */
+        const depth = Math.max(0, Math.min(9, Math.round(Number(cascade) || 1) - 1));
         const p = this._palette;
-        // One line answers in the bed's light, two in the moon's glow, three in both at once.
+        // How hot play ran before this clear (its own heat is added below).
+        const level = this.play.level.valueAt(this.time);
+        const { fever } = this.heat;
+        // One line answers in the bed's light, two in the moon's glow, three in both at once; each
+        // later wave of a cascade in the next of them (the companion's rose is kept for a
+        // back-to-back).
         let rgb;
+        const hue = (n - 1 + depth) % 3;
         if (quad) rgb = [...MOONFIRE];
-        else if (n === 1) rgb = [...p.bed];
-        else if (n === 2) rgb = [0, 1, 2].map((c) => p.glow[c] * 0.8 + p.moon[c] * 0.3);
+        else if (hue === 0) rgb = [...p.bed];
+        else if (hue === 1) rgb = [0, 1, 2].map((c) => p.glow[c] * 0.8 + p.moon[c] * 0.3);
         else rgb = [0, 1, 2].map((c) => p.auroraLow[c] * 0.6 + p.auroraHigh[c] * 0.6 + 0.2);
+        // A back-to-back runs in the companion's colour: the rose moon answers the great one.
+        if (b2b) rgb = rgb.map((c, k) => c * 0.5 + p.companion[k] * 0.65);
         const peak = Math.max(rgb[0], rgb[1], rgb[2], 1e-4);
         rgb = rgb.map((c) => (c / peak) * 0.92 + 0.08);
-        const strength = Math.min(1.5, 0.62 + 0.14 * n + (quad ? 0.25 : 0));
+        const strength = Math.min(1.9, (0.62 + 0.14 * n + (quad ? 0.25 : 0)) * (1 + 0.1 * depth));
         const birth = quad ? this.time + HUSH_HOLD : this.time;
 
         // ── The wave leaves the foot of the board ──
@@ -709,78 +893,182 @@ export class LunaraWorld {
             ? this.screenToFlats(screen.x, Math.max(screen.y, 0.7))
             : this.screenToFlats(board ? (board.x0 + board.x1) * 0.5 : 0.5, board ? Math.max(board.y1, 0.72) : 0.94);
         uniforms.heart.value.set(heart.x, heart.z);
-        const slot = this.clearCursor % CLEAR_SLOTS;
+        this.heartX = heart.x;
+        this.heartZ = heart.z;
+        // The slot whose wave has faded most (the oldest of equals): a cascade's waves cross the
+        // water side by side, and none is wiped mid-valley by the one after it.
+        let slot = 0;
+        let weakest = Infinity;
+        for (let i = 0; i < CLEAR_SLOTS; i++) {
+            const A = uniforms.clearA[i].value;
+            const age = this.time - A.x;
+            let left = A.z;
+            if (age > 0) left = age > CLEAR_LIVE ? 0 : A.z * Math.exp(-age / (CLEAR_TRAVEL + CLEAR_AFTERGLOW));
+            if (left < weakest - 1e-6 || (left <= weakest + 1e-6 && A.x < uniforms.clearA[slot].value.x)) {
+                weakest = Math.min(weakest, left);
+                slot = i;
+            }
+        }
+        this.clearSlot = slot;
         this.clearCursor += 1;
-        uniforms.clearA[slot].value.set(birth, perfect ? 4 : n, strength, quad ? 1 : 0);
+        // A deep wave runs a longer train of fronts.
+        const fronts = perfect ? 4 : Math.min(4, n + (depth >= 2 ? 1 : 0));
+        uniforms.clearA[slot].value.set(birth, fronts, strength, quad ? 1 : 0);
+        this.waveStrength[slot] = strength;
         uniforms.clearC[slot].value.set(rgb[0] * 1.25, rgb[1] * 1.25, rgb[2] * 1.25);
-        this.lastClear = { time: birth, lines: n };
+        this.env.swell.hit(0.3 + 0.12 * n + 0.06 * depth, birth);
 
-        // ── Every spire lets go of what it holds as the wave passes it ──
-        const holders = [];
-        for (let i = 0; i < this.crystals.count && holders.length < 14; i++) {
-            if (this.crystals.heldAt(i, birth) > 0.12) holders.push(i);
-        }
-        const { released, passes } = this.crystals.release(birth, heart.x, heart.z, rgb, strength, {
-            pillar: quad ? 1 : 0, squeeze: this.squeeze,
+        // ── Every spire answers as the wave passes it ──
+        // It flares in what it holds. Cold, it then lets most of that go (as a clear always has) and
+        // takes nothing of the wave; the hotter play runs and the deeper the cascade, the more it
+        // keeps and the more of the wave's own light it takes, so a chain fills both banks with
+        // the colours it plays.
+        // What a spire takes of the wave is its colour at full saturation (pastel light, piled up,
+        // would only wash the banks white), and only ever a glow: the stones keep their darks.
+        const hot = smooth(0.12, 0.6, level);
+        const keep = quad ? 0.15 + 0.6 * hot : Math.min(1, 0.3 + 0.7 * hot + 0.12 * depth);
+        const lo = Math.min(rgb[0], rgb[1], rgb[2]) * 0.8;
+        const span = Math.max(rgb[0], rgb[1], rgb[2]) - lo;
+        for (let c = 0; c < 3; c++) this._tone[c] = (rgb[c] - lo) / Math.max(span, 1e-4);
+        const holders = this.findHolders(birth);
+        const { released, passes } = this.crystals.release(birth, heart.x, heart.z, this._tone, strength, {
+            pillar: quad ? 1 : 0,
+            squeeze: this.squeeze,
+            keep,
+            // The glow a spire keeps rises with the heat: every clear lets go of the light above it.
+            hold: 0.2 + 0.3 * hot + 0.1 * fever,
+            charge: (0.08 * hot + 0.02 * depth) * strength,
+            cap: 0.05 + 0.15 * hot + 0.1 * fever + 0.02 * depth,
         });
-        const share = this.shards.count / 512;
-        for (let k = 0; k < holders.length; k++) {
-            const i = holders[k];
-            const c = this.plan.crystals[i];
-            this.shards.emit({
-                x: c.tip[0] - c.x * (1 - this.squeeze),
-                y: c.tip[1],
-                z: c.tip[2],
-                n: Math.round((quad ? 22 : 12) * share),
-                rgb,
-                time: passes[i],
-                out: [0.6, 4.5],
-                up: [1.2, 5.5],
-                life: [1.0, 2.2],
-                size: 0.024 + c.height * 0.0024,
-            });
-        }
-        this.storm = Math.max(this.storm, Math.min(1.4, 0.3 + 0.14 * n + released * 0.06 + (quad ? 0.4 : 0)));
-        this.pendingKick = { time: birth + 0.12, amount: 0.22 + 0.1 * n };
+        this.dustOff(this._holders, holders, passes, rgb, quad);
+        this.passes = passes;
+        const stir = 0.3 + 0.14 * n + released * 0.06 + (quad ? 0.4 : 0) + depth * 0.08;
+        this.storm = Math.max(this.storm, Math.min(1.4, stir));
+        // The lens takes the hit a beat later, on top of whatever is still ringing.
+        const thump = 0.22 + 0.1 * n + 0.05 * depth;
+        this.env.kick.hit(thump, birth + 0.12);
+        this.env.flash.hit(thump * 0.5, birth + 0.12);
 
         // ── The cleared rows leave the card as blades of moonlight ──
         if (board && card && this.layoutLive && !screen) {
             const list = Array.isArray(rows) && rows.length ? rows : Array.from({ length: n }, (_, i) => 19 - i);
             const ys = [];
             for (let i = 0; i < list.length && i < 4; i++) ys.push(boardPoint(board, 0.5, list[i], this._point).y);
-            this.beams.fire(ys, card.x0, card.x1, rgb, this.time, Math.min(1.4, 0.7 + 0.18 * n));
+            this.beams.fire(ys, card.x0, card.x1, rgb, this.time, Math.min(1.4, (0.7 + 0.18 * n) * (1 + 0.1 * depth)));
         }
 
         if (quad) {
-            // The valley holds its breath, then everything fires.
+            // The valley holds its breath, then everything fires. As deep as play is cold: from
+            // rest it all but goes out; in a fever it only inhales. (Reduce flashing keeps it
+            // shallow: a frame-wide dark is a flash too, ADR-0021.)
             this.hushUntil = this.time + HUSH_HOLD;
-            this.surge = perfect ? 1.3 : 1;
+            this.hushDepth = Math.max(0, 1 - 0.8 * level) * flashScale();
+            this.env.overdrive.hit(perfect ? 1.3 : 1, this.time);
             this.veinsFlare = 1.5;
-            uniforms.shock.value.set(birth, this.reducedMotion ? 0.5 : 1);
+            this.shockRing(this.reducedMotion ? 0.5 : 1, birth);
             this.meteors?.emit({
                 n: Math.round(this.meteors.count * 0.6), time: birth + 0.15, rgb: [1.0, 0.92, 0.8], stagger: 1.7, size: 2.6,
             });
             this.counts.quads += 1;
+            this.quadBirth = birth;
         } else if (n === 3) {
             this.veinsFlare = Math.max(this.veinsFlare, 0.7);
             this.meteors?.emit({
                 n: 3, time: birth + 0.2, rgb: p.moon, stagger: 0.6,
             });
         }
+        if (depth > 0) {
+            // Each wave of a cascade opens the moon's veins wider and, from the third, rings the sky.
+            this.veinsFlare = Math.max(this.veinsFlare, Math.min(1.2, 0.3 + 0.2 * depth));
+            if (depth >= 2) this.shockRing(Math.min(0.5, 0.12 * depth), birth);
+        }
         if (tspin) {
             // The sky itself turns: a small ring from the moon, and the curtains twist.
-            uniforms.shock.value.set(this.time, 0.42);
+            this.shockRing(0.42, this.time);
             this.storm = Math.max(this.storm, 0.85);
-            this.twist = 1;
+            this.env.twist.hit(1, this.time);
         }
+        if (b2b) {
+            // The companion answers: the rose moon blazes and lurches on round the great one, and
+            // stars fall from it. A second back-to-back adds to the first: it blazes brighter.
+            this.env.companion.hit(1, birth);
+            this.shockRing(0.25, birth);
+            const cd = uniforms.companionDir.value;
+            this.meteors?.emit({
+                n: 2, time: birth + 0.1, rgb: p.companion, stagger: 0.5, from: [cd.x, cd.y, cd.z],
+            });
+        }
+        this.play.clear({
+            lines: n, cascade: depth + 1, combo, tspin, perfect, b2b,
+        }, birth);
         this.counts.clears += 1;
+    }
+
+    /**
+     * A perfect clear, settled after the clear it crowns (physics sends it ~0.36 s after the last
+     * wave, in a frame of its own). Not a second clear: no second hush, no second wave on the
+     * water. The valley lets go of everything it holds — every spire that held light gives it up
+     * as a pillar as a slow front reaches it (one still standing burns brighter) — the moonfire
+     * still on the water flares, the moon burns hotter and its veins blaze, the sky's ring runs
+     * on brighter and the rest of the meteors fall.
+     */
+    crownValley() {
+        const { u } = this;
+        // Land on the fire, never before it (a perfect clear inside the hush waits for the breath).
+        const at = Math.max(this.time, this.quadBirth);
+        let live = -1;
+        for (let i = 0; i < CLEAR_SLOTS; i++) {
+            const A = u.clearA[i].value;
+            if (A.w > 0.5 && this.time - A.x < CLEAR_LIVE && (live < 0 || A.x > u.clearA[live].value.x)) live = i;
+        }
+        if (live >= 0) {
+            u.clearA[live].value.y = 4;
+            this.waveStrength[live] = Math.min(1.9, this.waveStrength[live] * 1.35);
+            u.clearA[live].value.z = this.waveStrength[live];
+        }
+        const holders = this.findHolders(at);
+        const { passes } = this.crystals.release(at, this.heartX, this.heartZ, MOONFIRE, 1.2, {
+            pillar: 1.2, every: true, squeeze: this.squeeze, keep: 0, flare: 2.6, slow: 1.25,
+        });
+        this.dustOff(this._holders, holders, passes, MOONFIRE, true);
+        this.env.overdrive.hit(0.5, at);
+        this.env.swell.hit(0.6, at);
+        this.env.flash.hit(0.12, at);
+        this.env.kick.hit(0.3, at);
+        this.veinsFlare = 1.5;
+        this.storm = Math.max(this.storm, 1.2);
+        this.shockRing(this.reducedMotion ? 0.4 : 0.8, at);
+        this.meteors?.emit({
+            n: Math.round(this.meteors.count * 0.4), time: at + 0.1, rgb: [1.0, 0.92, 0.8], stagger: 1.4, size: 2.4,
+        });
+        this.play.clear({ lines: 1, perfect: true }, at);
+    }
+
+    /** A T-spin that cleared nothing: the sky turns a little — the curtains twist, a faint ring leaves the moon. */
+    turnSky() {
+        this.env.twist.hit(0.55, this.time);
+        this.storm = Math.max(this.storm, 0.45);
+        this.shockRing(0.2, this.time);
+        this.play.punch.hit(SURGE_WEIGHTS.punch.tspin, this.time);
+        this.play.level.hit(SURGE_WEIGHTS.heat.tspin * 0.5, this.time);
     }
 
     /** The true combo changed (0 = the chain broke). */
     onCombo(combo) {
         const n = Math.max(0, Math.round(Number(combo) || 0));
-        // The chain broke: the valley lets its breath go.
-        if (n === 0 && this.combo >= 2) this.dip = Math.max(this.dip, 0.28);
+        if (n === 0 && this.combo >= 2) {
+            // The chain broke: the valley lets its breath go. Every spire gives up the light the
+            // chain left in it, in a slow front out from the board (light rising off its point),
+            // and a breath of dark follows — shallow the hotter play ran: the release is the light.
+            this.dip = Math.max(this.dip, 0.28 * (1 - 0.6 * this.play.level.valueAt(this.time)));
+            if (this.crystals && this.shards) {
+                const holders = this.findHolders(this.time);
+                const { passes } = this.crystals.release(this.time, this.heartX, this.heartZ, this._palette.moon, 0.5, {
+                    squeeze: this.squeeze, keep: 0, flare: 2.4, slow: 1.6,
+                });
+                this.dustOff(this._holders, holders, passes, this._palette.moon, false);
+            }
+        }
         this.combo = n;
     }
 
@@ -791,11 +1079,12 @@ export class LunaraWorld {
         if (silent) this.applyPalette(1);
         else {
             this.storm = Math.max(this.storm, 0.75);
-            this.flash = Math.max(this.flash, 0.14);
-            this.u?.shock.value.set(this.time, 0.36);
+            this.env.flash.hit(0.14, this.time);
+            this.shockRing(0.36, this.time);
             this.meteors?.emit({
                 n: 2, time: this.time + 0.3, rgb: LUNARA_PALETTES[this.paletteIndex].moon, stagger: 0.8,
             });
+            this.play.levelUp(this.time);
         }
     }
 
@@ -818,38 +1107,47 @@ export class LunaraWorld {
         this.time = sim.time;
         const t = this.time;
         const motion = this.reducedMotion ? 0.3 : 1;
+        // What has come due in the spires (strikes landing, waves passing), in time order.
+        this.crystals?.advance(t);
 
         // ── The charge ──
         const target = powerForCombo(this.combo);
         this.power += (target - this.power) * approach(target > this.power ? 2.4 : 0.8, dt);
-        this.surge *= Math.exp(-dt / SURGE_COOL);
+        // How hot play runs: the chain charges the valley, and so does the pace of the hands.
+        const heat = this.play.sample(t);
+        this.heat.punch = heat.punch;
+        this.heat.level = heat.level;
+        this.heat.fever = heat.fever;
+        this.heat.stage = heat.stage;
+        const { level, fever } = heat;
+        const drive = Math.min(1.1, this.power + level * 0.35 + fever * 0.2);
+        const { surge, twist } = this;
+        const answer = this.env.companion.valueAt(t);
         this.storm *= Math.exp(-dt / 1.7);
-        this.flash *= Math.exp(-dt / 0.25);
-        this.kick *= Math.exp(-dt / 0.16);
         this.dip *= Math.exp(-dt / 0.35);
-        this.twist *= Math.exp(-dt / 0.6);
         this.veinsFlare *= Math.exp(-dt / 2.4);
-        if (t >= this.pendingKick.time) {
-            this.kick = Math.max(this.kick, this.pendingKick.amount);
-            this.flash = Math.max(this.flash, this.pendingKick.amount * 0.5);
-            this.pendingKick.time = Infinity;
-        }
-        const hush = t < this.hushUntil ? 1 : 0;
-        const breathTarget = hush ? 0.12 : 1 - this.dip;
-        this.breath += (breathTarget - this.breath) * approach(hush ? 40 : 14, dt);
+        const hush = t < this.hushUntil ? this.hushDepth : 0;
+        const breathTarget = hush > 0 ? 1 - 0.88 * hush : 1 - this.dip;
+        this.breath += (breathTarget - this.breath) * approach(hush > 0 ? 40 : 14, dt);
         if (dt === 0) this.breath = breathTarget;
 
-        // One halo ring for every step of the chain past the first; veins from the third.
-        const ringTarget = Math.max(0, Math.min(MAX_RINGS, this.combo - 1));
+        // One halo ring for every step of the chain past the first (all of them in a fever);
+        // veins from the third, wide open in a fever.
+        const ringTarget = Math.max(0, Math.min(MAX_RINGS, Math.max(this.combo - 1, fever * MAX_RINGS)));
         this.rings += (ringTarget - this.rings) * approach(ringTarget > this.rings ? 5 : 1.4, dt);
-        const veinTarget = smooth(0.35, 1.0, this.power) * 0.8;
+        const veinTarget = smooth(0.35, 1.0, drive) * 0.8 + fever * 0.35;
         this.veins += (veinTarget - this.veins) * approach(1.6, dt);
         this.applyPalette(approach(0.8, dt));
 
         // ── The slow clocks ──
-        this.orbit += dt * ORBIT_RATE * (1 + (this.power * 5 + this.surge * 10) * (this.reducedMotion ? 0 : 1));
-        this.auroraDrift += dt * motion * (0.05 + this.power * 0.16 + this.storm * 0.38 + this.surge * 0.3 + this.twist * 1.6);
-        this.moteLift += dt * motion * (1 + this.power * 4 + this.surge * 5 + this.storm * 2);
+        // The companion quickens with the chain and the heat (and lurches on when it answers a
+        // back-to-back); held still under reduced motion.
+        const lean = this.reducedMotion ? 0 : 1;
+        const hurry = this.power * 5 + surge * 10 + Math.max(0, level - 0.15) * 5 + fever * 8 + answer * 22;
+        this.orbit += dt * ORBIT_RATE * (1 + hurry * lean);
+        this.auroraDrift += dt * motion * (0.05 + this.power * 0.16 + this.storm * 0.38 + surge * 0.3 + twist * 1.6
+            + level * 0.14 + fever * 0.3);
+        this.moteLift += dt * motion * (1 + this.power * 4 + surge * 5 + this.storm * 2 + level * 3 + fever * 4);
         this.placeCompanion();
 
         // A shooting star now and then, on the valley's own clock.
@@ -862,6 +1160,22 @@ export class LunaraWorld {
                 });
             }
         }
+        // And as play runs hot, more and more of them: in a fever they fall like rain.
+        const shower = Math.max(0, level - 0.45) * 1.4 + fever * 2.6;
+        if (dt > 0 && this.meteors && shower > 0) {
+            this.meteorHeat = Math.min(3, this.meteorHeat + dt * shower * (this.reducedMotion ? 0.4 : 1));
+            if (this.meteorHeat >= 1) {
+                this.meteorHeat -= 1;
+                const k = clamp01(fever);
+                const m = this._palette.moon;
+                this._tint[0] = m[0] + (MOONFIRE[0] - m[0]) * k;
+                this._tint[1] = m[1] + (MOONFIRE[1] - m[1]) * k;
+                this._tint[2] = m[2] + (MOONFIRE[2] - m[2]) * k;
+                this.meteors.emit({
+                    n: 1, time: t + 0.05, rgb: this._tint, size: 1.8 + fever * 0.8,
+                });
+            }
+        }
 
         // ── Uniforms ──
         let ringsLive = 0;
@@ -870,38 +1184,58 @@ export class LunaraWorld {
         }
         let clearLive = 0;
         for (let i = 0; i < CLEAR_SLOTS; i++) {
-            if (t - u.clearA[i].value.x < CLEAR_LIVE) clearLive = 1;
+            const A = u.clearA[i].value;
+            if (t - A.x < CLEAR_LIVE) clearLive = 1;
+            // A wave hands over to the next one to leave after it: it runs on, fading.
+            let next = Infinity;
+            for (let k = 0; k < CLEAR_SLOTS; k++) {
+                const born = u.clearA[k].value.x;
+                if (k !== i && born > A.x && born < next) next = born;
+            }
+            A.z = this.waveStrength[i] * (t > next ? Math.exp(-(t - next) / WAVE_HANDOFF) : 1);
         }
         u.ringsLive.value = ringsLive;
         u.clearLive.value = clearLive;
         u.time.value = t;
-        u.power.value = this.power;
-        u.surge.value = this.surge;
+        u.power.value = drive;
+        // The stones and the bed burn with a four-line clear's fire, and with a fever's.
+        u.surge.value = surge + fever * 0.2;
         u.breath.value = this.breath;
         // (Capped: a storm on top of a long chain must leave the sky its darks.)
-        u.aurora.value = Math.min(AURORA_MAX, 0.3 + this.power * 0.6 + this.storm * 0.8 + this.surge * 0.35);
+        u.aurora.value = Math.min(AURORA_MAX, 0.3 + this.power * 0.6 + this.storm * 0.8 + surge * 0.35
+            + level * 0.3 + fever * 0.5);
         u.auroraDrift.value = this.auroraDrift;
         u.moteLift.value = this.moteLift;
         u.rings.value = this.rings;
         u.veins.value = Math.max(this.veins, this.veinsFlare);
         const p = this._palette;
-        const heat = clamp01(this.surge * 0.55);
+        // The great moon warms toward moonfire with a four-line clear, and in a fever.
+        const fire = clamp01(surge * 0.55 + fever * 0.3);
         const warm = (key, node, gain = 1) => {
             const c = p[key];
             node.value.set(
-                (c[0] + (MOONFIRE[0] - c[0]) * heat) * gain,
-                (c[1] + (MOONFIRE[1] - c[1]) * heat) * gain,
-                (c[2] + (MOONFIRE[2] - c[2]) * heat) * gain,
+                (c[0] + (MOONFIRE[0] - c[0]) * fire) * gain,
+                (c[1] + (MOONFIRE[1] - c[1]) * fire) * gain,
+                (c[2] + (MOONFIRE[2] - c[2]) * fire) * gain,
             );
         };
         warm('moon', u.moonCol);
-        u.companionCol.value.set(p.companion[0], p.companion[1], p.companion[2]);
+        // The rose companion blazes when it answers a back-to-back.
+        const rose = 1 + answer * 1.4 + fever * 0.15;
+        u.companionCol.value.set(p.companion[0] * rose, p.companion[1] * rose, p.companion[2] * rose);
         u.zenith.value.set(p.zenith[0], p.zenith[1], p.zenith[2]);
-        const lift = 1 + this.power * 0.2 + this.storm * 0.1;
+        // (The haze lifts only a little with the heat: it is what every distance fades into.)
+        const lift = 1 + this.power * 0.2 + this.storm * 0.1 + level * 0.04 + fever * 0.05;
         u.horizon.value.set(p.horizon[0] * lift, p.horizon[1] * lift, p.horizon[2] * lift);
         warm('glow', u.glow, lift);
         u.auroraLow.value.set(p.auroraLow[0], p.auroraLow[1], p.auroraLow[2]);
-        u.auroraHigh.value.set(p.auroraHigh[0], p.auroraHigh[1], p.auroraHigh[2]);
+        // In a fever the curtains' crowns blush toward the companion's rose: the sky has opened.
+        const blush = fever * 0.55;
+        u.auroraHigh.value.set(
+            p.auroraHigh[0] + (p.companion[0] - p.auroraHigh[0]) * blush,
+            p.auroraHigh[1] + (p.companion[1] - p.auroraHigh[1]) * blush,
+            p.auroraHigh[2] + (p.companion[2] - p.auroraHigh[2]) * blush,
+        );
         u.bed.value.set(p.bed[0], p.bed[1], p.bed[2]);
         u.crystal.value.set(p.crystal[0], p.crystal[1], p.crystal[2]);
 
@@ -918,15 +1252,20 @@ export class LunaraWorld {
         }
 
         // ── Post ──
-        const sinceClear = t - this.lastClear.time;
-        const swell = sinceClear >= 0 ? Math.exp(-sinceClear / 0.7) * (0.3 + 0.12 * this.lastClear.lines) : 0;
+        // (A clear's flood of light is frame-wide: Reduce flashing keeps it to a glimmer, ADR-0021.)
+        const swell = this.env.swell.valueAt(t) * flashScale();
         const post = this._post;
         post.flash = this.flash;
-        post.kick = this.kick;
-        post.shafts = hush ? 0.05 : 0.24 + this.power * 0.12 + swell * 0.2;
-        post.bloomBoost = this.surge * 0.1 + swell * 0.1;
-        // The iris closes as the valley flares, so its colours survive the surge.
-        post.exposure = 1 / (1 + this.surge * 0.95 + swell * 0.4 + this.power * 0.24 + this.storm * 0.16);
+        post.kick = this.kick + heat.punch * 0.18;
+        // The moon's shafts stream harder with the charge and the heat; a hush draws them in.
+        const shafts = 0.24 + drive * 0.12 + swell * 0.2 + level * 0.03 + fever * 0.08;
+        const drawn = hush > 0 ? clamp01((1 - this.breath) / 0.88) : 0;
+        post.shafts = shafts + (0.05 - shafts) * drawn;
+        post.bloomBoost = surge * 0.1 + swell * 0.1 + level * 0.04 + fever * 0.08;
+        // The iris closes a little as the valley flares and as play heats, so its colours stay
+        // saturated; most of the build-up is let through, so the valley brightens with play.
+        post.exposure = 1 / (1 + surge * 0.25 + swell * 0.2 + this.power * 0.14 + this.storm * 0.08
+            + level * 0.06 + fever * 0.05);
     }
 
     /** What the post stack reads each frame (a reused object). */
@@ -943,6 +1282,7 @@ export class LunaraWorld {
             surge: this.surge,
             storm: this.storm,
             breath: this.breath,
+            heat: { ...this.heat },
             rings: this.rings,
             veins: Math.max(this.veins, this.veinsFlare),
             level: this.level,

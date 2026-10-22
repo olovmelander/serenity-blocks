@@ -372,6 +372,31 @@ export function createCurls(u, tier, quality = 'High') {
         data.set(rec, slot * STRIDE);
         dirty = true;
     };
+    /**
+     * The event slot a new curl at time t takes: the first spent (or empty) one from the cursor on,
+     * else the one whose curl ends soonest, so a moult's sheets or a Set's curtain never cut a strip
+     * still falling while one nearly gone could make room. Advances the cursor (its count salts
+     * every spawn's hashes).
+     */
+    const take = (t) => {
+        let slot = -1;
+        let soonest = Infinity;
+        for (let k = 0; k < events; k++) {
+            const s = ambient + ((cursor + k) % events);
+            const o = s * STRIDE;
+            const end = data[o + 6] > 0 ? data[o + 3] + data[o + 6] : -Infinity;
+            if (end <= t) {
+                slot = s;
+                break;
+            }
+            if (end < soonest) {
+                soonest = end;
+                slot = s;
+            }
+        }
+        cursor += 1;
+        return slot;
+    };
     const rec = new Float32Array(STRIDE);
     const kill = (slot) => {
         data.fill(0, slot * STRIDE, slot * STRIDE + STRIDE);
@@ -432,8 +457,7 @@ export function createCurls(u, tier, quality = 'High') {
      * its band, then detaches, pops out and tumbles away.
      */
     part.spawnLock = (t, p) => {
-        const slot = ambient + (cursor % events);
-        cursor += 1;
+        const slot = take(t);
         const kind = p.kind || 1;
         const K = kind === 1 ? CURL.lock : CURL.sheet;
         const ox = Math.cos(p.theta);
@@ -455,8 +479,7 @@ export function createCurls(u, tier, quality = 'High') {
     part.spawnFlakes = (t, p, count) => {
         const K = CURL.flake;
         for (let i = 0; i < count; i++) {
-            const slot = ambient + (cursor % events);
-            cursor += 1;
+            const slot = take(t);
             const rng = mulberry32((cursor * 2246822519) >>> 0);
             const theta = p.theta + (rng() - 0.5) * p.spread;
             const ox = Math.cos(theta);
@@ -482,8 +505,7 @@ export function createCurls(u, tier, quality = 'High') {
     part.spawnLeaves = (t, x, y, z, count) => {
         const K = LEAF;
         for (let i = 0; i < count; i++) {
-            const slot = ambient + (cursor % events);
-            cursor += 1;
+            const slot = take(t);
             const rng = mulberry32((cursor * 3266489917) >>> 0);
             const a = rng() * TAU;
             rec.set([
@@ -508,8 +530,7 @@ export function createCurls(u, tier, quality = 'High') {
         for (let i = 0; i < count; i++) {
             const at = pick(i, count);
             if (!at) continue;
-            const slot = ambient + (cursor % events);
-            cursor += 1;
+            const slot = take(t);
             const rng = mulberry32((cursor * 2654435761) >>> 0);
             rec.set([
                 at[0], at[1], at[2], t + ((over * i) / Math.max(1, count - 1)) * (0.85 + 0.3 * rng()),
@@ -533,8 +554,7 @@ export function createCurls(u, tier, quality = 'High') {
             const rng = mulberry32(((cursor + 1) * 2246822519 + i * 3266489917) >>> 0);
             const at = pick(i, rng);
             if (!at) continue;
-            const slot = ambient + (cursor % events);
-            cursor += 1;
+            const slot = take(t);
             rec.set([
                 at[0], at[1], at[2], at[5],
                 at[3], at[4], 10 + 5 * rng(), 0,

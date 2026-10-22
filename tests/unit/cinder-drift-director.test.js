@@ -223,6 +223,49 @@ describe('cinder drift director: intake', () => {
     });
 });
 
+describe('cinder drift director: moments that come on their own', () => {
+    it('sends a perfect clear that comes after its clear as a crown, never as a new clear', () => {
+        const { director, calls } = makeDirector();
+        const crown = vi.fn();
+        director.sink.crown = crown;
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        // Physics sends PERFECT_CLEAR a wave later, in its own frame.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(crown).toHaveBeenCalledTimes(1);
+        expect(crown).toHaveBeenCalledWith(0);
+        // A sink that knows no crown gets the clear it always got.
+        const old = makeDirector();
+        old.director.onPerfectClear({ depth: 4 });
+        old.director.flush();
+        expect(old.calls.clear).toHaveLength(1);
+        expect(old.calls.clear[0]).toMatchObject({ lines: 1, perfect: true });
+    });
+
+    it('sends a T-spin that cleared nothing on its own', () => {
+        const { director, calls } = makeDirector();
+        const tspin = vi.fn();
+        director.sink.tspin = tspin;
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.lock).toHaveLength(1);
+        expect(calls.clear).toHaveLength(0);
+        expect(tspin).toHaveBeenCalledWith(0);
+        // One that cleared lines rides on its clear, as before.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(tspin).toHaveBeenCalledTimes(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true });
+    });
+});
+
 describe('cinder drift director: settings and resets', () => {
     it('drops everything staged, and every combo, when reactions are switched off', () => {
         const { director, calls } = makeDirector();

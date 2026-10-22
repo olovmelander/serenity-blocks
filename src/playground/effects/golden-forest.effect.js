@@ -69,8 +69,10 @@ export function create({
             world.stage.refresh();
             // At 80 px an icon needs deep silhouettes: thinner air and a darker print.
             world.light.uHaze.value = 0.0014;
+            world.light.resting.haze = 0.0014;
             if (post) {
                 post.exposure = 0.74;
+                post.godraysDensity = 0.09;
                 if (post.godraysNode) post.godraysNode.density.value = 0.09;
             }
         }

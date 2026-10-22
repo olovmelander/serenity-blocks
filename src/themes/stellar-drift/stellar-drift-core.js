@@ -57,20 +57,23 @@ export const RIPPLE_SLOTS = 16;
 export const RIPPLE_LIFE = 22;
 export const RIPPLE_SPEED = 0.42;
 export const RIPPLE_SHEAR = 30;
-/** Chimes: a clear's light running out through the whole ring system (one front per line). */
-export const CHIME_SLOTS = 4;
+/**
+ * Chimes: a clear's light running out through the whole ring system (one front per line, and one
+ * more per cascade wave). Enough for three waves of a cascade to ring at once.
+ */
+export const CHIME_SLOTS = 6;
 export const CHIME_TRAVEL = 1.5;
 export const CHIME_FRONT_GAP = 0.17;
 export const CHIME_LIVE = 7;
 /** Jets: a cleared row written round the giant as a streak of light on its own latitude. */
-export const JET_SLOTS = 8;
+export const JET_SLOTS = 12;
 export const JET_SPEED = 2.4;
 export const JET_LIFE = 5.5;
 /**
  * Strikes on the cloud tops: a meteor's fireball, the shock it sends through the cloud, an ember,
  * and a scar with a crescent of ejecta that the band's own wind shears as it lingers.
  */
-export const STRIKE_SLOTS = 8;
+export const STRIKE_SLOTS = 12;
 export const STRIKE_LIFE = 16;
 /** A strike's size on the cloud (radians) for its strength. */
 export const strikeSize = (strength) => 0.035 + strength * 0.03;
@@ -88,8 +91,10 @@ export const METEOR_TRAIN = 1.2;
 export const MOTE_TRAIN = 0.5;
 
 /**
- * The flourishes the larger rewards play on the giant itself (one of each at a time; a new one
- * takes the place of the last). Seconds each lives:
+ * The flourishes the larger rewards play on the giant itself. A new one never wipes one still
+ * running: two surges and two shells can be in flight at once (a new one takes the place of the
+ * one with least light left), and a second cyclone or a second blaze of the strand feeds the one
+ * already burning (stellar-drift-world.js). Seconds each lives (a fed one lives longer):
  *   cyclone   a T-spin winds a storm into the cloud bands, its arms lit in the piece's colour
  *   surge     a chain's milestone sends two arcs of its light racing both ways round the rings
  *   strand    a back-to-back clear sets the rings' outer strand ablaze, braided and knotted
