@@ -6,8 +6,8 @@ import {
     CAPSULE_COUNT, CAPSULE_STRIDE, WOLF_BOUNDS, blendRigs, pawCycle, poseWolf,
 } from '../../src/themes/wolfhour/wolfhour-wolf-rig.js';
 import {
-    ANSWERER, HOWL, PACK, SCOUT, WALK_STRIDE, blinkAt, createWolfhourPack, eventEnvelope, scoutAt,
-    scoutLookout,
+    ANSWER, ANSWERER, HOWL, HOWL_MAX_HOLD, PACK, SCOUT, WALK_STRIDE, blinkAt, createWolfhourPack, eventEnvelope,
+    heldEnvelope, inverseSmooth, rearm, scoutAt, scoutLookout,
 } from '../../src/themes/wolfhour/wolfhour-wolves.js';
 import {
     LIVELY, POUNCE, REPERTOIRES, YOUNG_MOVES, actionFor, behaviourAt, glide, glidePace, postureMove,
@@ -99,6 +99,7 @@ describe('Wolfhour wolves', () => {
     it('howls one after another, then the wolf across the valley answers', () => {
         const pack = own(createWolfhourPack());
         expect(pack.howl(10)).toBe(true);
+        // A second quad while the note sounds is not refused: it holds the note on (no new howl).
         expect(pack.howl(11)).toBe(false);
         const lead = PACK.find((w) => w.name === 'lead');
         const young = PACK.find((w) => w.name === 'young');
@@ -110,8 +111,91 @@ describe('Wolfhour wolves', () => {
         const leadWolf = pack.wolves.find((w) => w.spec.name === 'lead');
         const restMuzzle = poseWolf({ build: 'standing', head: lead.head }).muzzle[1];
         expect(leadWolf.muzzle[1]).toBeGreaterThan(restMuzzle + 6);
-        const done = 10 + ANSWERER.delay + HOWL.rise + HOWL.hold + HOWL.fall + 0.01;
+        // Where the first howl alone would have ended, the held note still sounds...
+        expect(pack.howlLevel(10 + young.delay + HOWL.rise + HOWL.hold + 0.5)).toBe(1);
+        // ...and it ends a full howl after the second quad.
+        const done = 11 + ANSWERER.delay + HOWL.rise + HOWL.hold + HOWL.fall + 0.01;
         expect(pack.howlLevel(done)).toBe(0);
+    });
+
+    it('holds a howl on for rapid quads, up to its longest note, and rises a fresh one under a falling one', () => {
+        const pack = own(createWolfhourPack());
+        expect(pack.howl(10)).toBe(true);
+        const heldTo = 10 + HOWL.rise + HOWL_MAX_HOLD;
+        for (let t = 10.5; t < heldTo - 0.1; t += 0.5) expect(pack.howl(t)).toBe(false);
+        // The note is held, but no longer than HOWL_MAX_HOLD: then the pack draws breath.
+        expect(pack.howlLevel(heldTo - 0.05)).toBe(1);
+        const leadWolf = pack.wolves.find((w) => w.spec.name === 'lead');
+        let previous = null;
+        let largest = 0;
+        let fresh = false;
+        // A quad as the lead's note falls begins a fresh howl under it: its head never jumps.
+        for (let t = heldTo - 0.5; t < heldTo + 3; t += 1 / 60) {
+            if (!fresh && t > heldTo + HOWL.fall * 0.5) {
+                expect(pack.howl(t)).toBe(true);
+                fresh = true;
+            }
+            pack.update(t);
+            if (previous !== null) largest = Math.max(largest, Math.abs(leadWolf.muzzle[1] - previous));
+            previous = leadWolf.muzzle[1];
+        }
+        expect(fresh).toBe(true);
+        expect(largest).toBeLessThan(1.5);
+        expect(pack.howlLevel(heldTo + 2.5)).toBe(1);
+    });
+
+    it('re-arms a held event without a jump: held on while up, risen again from where it is', () => {
+        const timing = { rise: 0.4, hold: 1.6, fall: 0.8 };
+        const slot = { start: -Infinity, holdEnd: -Infinity };
+        expect(rearm(slot, 5, timing)).toBe(true);
+        expect(heldEnvelope(5, slot.start, slot.holdEnd, timing)).toBe(0);
+        expect(rearm(slot, 6, timing)).toBe(false);
+        expect(slot.holdEnd).toBeCloseTo(6 + timing.rise + timing.hold, 9);
+        // Falling: a new one lifts it from exactly where it stands.
+        const t = slot.holdEnd + 0.3;
+        const before = heldEnvelope(t, slot.start, slot.holdEnd, timing);
+        expect(before).toBeGreaterThan(0);
+        expect(before).toBeLessThan(1);
+        expect(rearm(slot, t, timing)).toBe(true);
+        expect(heldEnvelope(t, slot.start, slot.holdEnd, timing)).toBeCloseTo(before, 9);
+        expect(heldEnvelope(t + 0.2, slot.start, slot.holdEnd, timing)).toBeGreaterThan(before);
+        for (const v of [0, 0.1, 0.5, 0.9, 1]) {
+            const x = inverseSmooth(v);
+            expect(x * x * (3 - 2 * x)).toBeCloseTo(v, 9);
+        }
+    });
+
+    it('keeps the pack looking at you through a run of clears instead of turning away and back', () => {
+        const pack = own(createWolfhourPack());
+        const lead = pack.wolves.find((w) => w.spec.name === 'lead');
+        let previous = null;
+        let facing = 0;
+        let frames = 0;
+        for (let frame = 0; frame < 6 * 60; frame++) {
+            const t = 5 + frame / 60;
+            if (frame % 40 === 0 && t < 9) pack.glance(t);
+            pack.update(t);
+            if (t > 5.6 && t < 9.5) {
+                frames += 1;
+                if (lead.uniforms.uEye2.value.z > 0.05) facing += 1;
+            }
+            if (previous !== null) expect(Math.abs(lead.muzzle[1] - previous)).toBeLessThan(1);
+            previous = lead.muzzle[1];
+        }
+        // Both eyes keep catching the moon while it faces you (but for a blink, the look never
+        // broke off between the clears).
+        expect(facing / frames).toBeGreaterThan(0.9);
+    });
+
+    it('lets the wolf across the valley answer a back-to-back clear on its own', () => {
+        const pack = own(createWolfhourPack());
+        pack.answer(20);
+        const far = pack.answerer.wolf;
+        pack.update(20 + ANSWER.rise + 0.2);
+        expect(far.howling).toBe(1);
+        expect(pack.howlLevel(20 + ANSWER.rise + 0.2)).toBe(0);
+        pack.update(20 + ANSWER.rise + ANSWER.hold + ANSWER.fall + 0.05);
+        expect(far.howling).toBe(0);
     });
 
     it('lifts the lead wolf\'s head for a smaller clear', () => {
