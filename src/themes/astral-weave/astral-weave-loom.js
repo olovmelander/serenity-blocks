@@ -10,18 +10,21 @@
  *    when a clear's front runs round the hoop.
  *  - Wefts: one thread per board row, a horizontal chord of the hoop at that row's height. A
  *    lock throws the shuttle across its rows; the thread stays, ringing, until a clear burns it.
+ *    A burning row the tapestry drops before its burn is done finishes it as an ember.
  *  - Warp: anchor threads from the hoop out past the frame, two opposed twists (a hyperboloid),
  *    defocused as they near the camera. A clear's front launches a pulse down each one.
  *  - Hoop, gimbals, pegs, the heart star and the crown flare, and a pool of stateless sparks.
  *
- * All motion is closed-form in the world clock and event timestamps: no compute, no per-frame
- * uploads, nothing created at event time (sparks are written into a ring of dormant slots).
+ * All motion is closed-form in the world clock, a few clocks the world runs faster as play heats
+ * (uFlow, uRun) and event timestamps: no compute, uniforms only per frame, nothing created at
+ * event time (sparks are written into a ring of dormant slots).
  * Thread width is in SCREEN pixels (awRibbonClip), so the weave is as fine at 4K as at 720p.
  */
 
 import * as THREE from 'three/webgpu';
 import {
     Fn,
+    If,
     abs,
     atan,
     attribute,
@@ -76,8 +79,20 @@ export const LOOM_TIERS = Object.freeze({
 });
 
 export const PLUCK_SLOTS = 3;
-export const SWEEP_SLOTS = 4;
+/**
+ * Fronts running round the hoop (a clear sends a pair, a lock or a level-up one). A new front
+ * takes the slot with the least light left, so a cascade's fronts chase each other round the
+ * hoop instead of cutting the last wave's off mid-lap.
+ */
+export const SWEEP_SLOTS = 8;
 export const WEFT_ROWS = 20;
+/**
+ * Burning rows the tapestry has already dropped (the next lock or cascade wave came before the
+ * burn settled): each finishes its burn where it was while the rows above move down.
+ */
+export const EMBER_SLOTS = 6;
+/** Weft threads drawn: one per board row, then the embers. */
+export const WEFT_SLOTS = WEFT_ROWS + EMBER_SLOTS;
 /** Seconds a clear's front takes to run half-way round the hoop (ease-out). */
 export const SWEEP_SECONDS = 1.15;
 /** Seconds the shuttle takes to cross the hoop. */
@@ -92,11 +107,13 @@ const angDist = (a, b) => abs(fract(a.sub(b).div(TAU).add(0.5)).sub(0.5)).mul(TA
 
 /**
  * How brightly something at hoop angle `angle` is lit by the clears' fronts right now: each front
- * starts at its own angle and runs both ways round the hoop, leaving a short afterglow.
+ * starts at its own angle and runs both ways round the hoop, leaving a short afterglow. A slot is
+ * (start angle, start time, gain, light left now): the world fades `w` on the CPU each frame.
+ * On top, the carousel: when play runs hot two lobes of light orbit the hoop (0 at rest).
  */
 function sweepGlow(shared, angle) {
-    const { uTime, uSweep } = shared;
-    let glow = float(0.0);
+    const { uTime, uSweep, uCarousel } = shared;
+    let glow = pow(max(cos(angle.sub(uCarousel.x).mul(2.0)), 0.0), float(10.0)).mul(uCarousel.y);
     for (let i = 0; i < SWEEP_SLOTS; i++) {
         const S = uSweep.element(i);
         const tau = max(uTime.sub(S.y), 0.0);
@@ -105,7 +122,7 @@ function sweepGlow(shared, angle) {
         const d = angDist(angle, S.x).sub(frontA);
         const head = exp(d.mul(d).mul(-70.0));
         const wake = step(d, 0.0).mul(exp(d.mul(1.6))).mul(0.3);
-        glow = glow.add(head.add(wake).mul(S.z).mul(exp(tau.mul(-1.15))));
+        glow = glow.add(head.add(wake).mul(S.w));
     }
     return glow;
 }
@@ -123,7 +140,7 @@ export function createRosette(shared, count, segments) {
     const geometry = awThreadGeometry(count, segments, 4242);
     const material = awFxMaterial('astral-weave-rosette');
     const {
-        uTime, uViewport, uPxScale, uLoomPx, uK, uPhase, uSpin, uHeat, uEnergy, uPluck, uFade,
+        uTime, uViewport, uPxScale, uLoomPx, uK, uPhase, uSpin, uHeat, uEnergy, uPluck, uFade, uFlow,
     } = shared;
     const th = attribute('aThread', 'vec4');
     const t = positionGeometry.x;
@@ -193,11 +210,12 @@ export function createRosette(shared, count, segments) {
             .toVar();
         k.mulAssign(vGlow.mul(7.0).add(1.0));
 
-        // Beads of light on a third of the threads, two to a thread, drifting along it.
+        // Beads of light on a third of the threads, two to a thread, drifting along it. uFlow is
+        // the world's clock run faster by the weave's energy (integrated, so a change of pace
+        // speeds the beads up instead of throwing them along their threads).
         const lenPx = vLen.mul(uLoomPx).div(uPxScale);
-        const flow = mix(float(0.025), float(0.08), vTh.y).mul(uEnergy.mul(1.2).add(1.0))
-            .mul(step(0.5, vTh.z).mul(2.0).sub(1.0));
-        const dx = fract(tt.mul(2.0).sub(uTime.mul(flow)).add(vTh.z)).sub(0.5).mul(lenPx).mul(0.5);
+        const flow = mix(float(0.025), float(0.08), vTh.y).mul(step(0.5, vTh.z).mul(2.0).sub(1.0));
+        const dx = fract(tt.mul(2.0).sub(uFlow.mul(flow)).add(vTh.z)).sub(0.5).mul(lenPx).mul(0.5);
         const bead = exp(dx.mul(dx).add(yPx.mul(yPx)).div(-3.4)).mul(step(0.66, vTh.w));
         k.addAssign(bead.mul(1.5).mul(vGlow.mul(2.0).add(1.0)));
 
@@ -236,18 +254,21 @@ export function createRosette(shared, count, segments) {
 const WEFT_HALF_PX = 9.0;
 
 export function createWefts(shared, segments) {
-    const geometry = awThreadGeometry(WEFT_ROWS, segments, 7711);
+    const geometry = awThreadGeometry(WEFT_SLOTS, segments, 7711);
     const material = awFxMaterial('astral-weave-wefts');
     const {
-        uTime, uViewport, uPxScale, uLoomPx, uHeat, uBoard, uWeftA, uWeftB, uFade,
+        uTime, uViewport, uPxScale, uLoomPx, uHeat, uBoard, uWeftA, uWeftB, uEmber, uFade,
     } = shared;
     const th = attribute('aThread', 'vec4');
     const t = positionGeometry.x;
     const side = positionGeometry.y;
 
-    const row = floor(th.x.mul(WEFT_ROWS).add(0.5));
-    const WA = uWeftA.element(row.toInt()); // birth, strength, direction (±1), hard-drop gain
-    const WB = uWeftB.element(row.toInt()); // clear time, clear strength, lock x, pluck gain
+    const slot = floor(th.x.mul(WEFT_SLOTS).add(0.5));
+    const WA = uWeftA.element(slot.toInt()); // birth, strength, direction (±1), hard-drop gain
+    const WB = uWeftB.element(slot.toInt()); // clear time, clear strength, lock x, pluck gain
+    // Slots past the board rows are embers: they burn at the row they burnt on (uEmber.x).
+    const emberAt = uEmber.element(clamp(slot.sub(WEFT_ROWS), 0.0, EMBER_SLOTS - 1).toInt()).x;
+    const row = mix(slot, emberAt, step(WEFT_ROWS - 0.5, slot));
     const y = uBoard.z.sub(row.add(0.5).mul(uBoard.w));
     const inside = step(abs(y), 0.985);
     const half = sqrt(max(float(1.0).sub(y.mul(y)), 1e-4));
@@ -374,15 +395,16 @@ export function createWarp(shared, pairs, segments) {
         uViewport,
     );
 
-    // The clears' fronts launch a pulse out along each warp thread as they pass its peg.
-    const pulseAge = [];
+    // The clears' fronts launch a pulse out along each warp thread as they pass its peg. The
+    // pulses' ages travel four to a varying (the gains are uniforms): one pair per slot would
+    // overrun the stage's sixteen locations.
+    const ages = [];
     for (let i = 0; i < SWEEP_SLOTS; i++) {
         const S = uSweep.element(i);
-        pulseAge.push({
-            age: uTime.sub(S.y).sub(sweepArrival(angDist(a, S.x))),
-            gain: S.z,
-        });
+        ages.push(uTime.sub(S.y).sub(sweepArrival(angDist(a, S.x))));
     }
+    const packedAges = [];
+    for (let i = 0; i < SWEEP_SLOTS; i += 4) packedAges.push(vec4(ages[i], ages[i + 1], ages[i + 2], ages[i + 3]));
 
     material.colorNode = Fn(() => {
         const st = uv();
@@ -398,9 +420,10 @@ export function createWarp(shared, pairs, segments) {
         // A slow bead drifting in toward the hoop.
         const ph = fract(tt.mul(1.0).add(uTime.mul(mix(float(0.018), float(0.04), vTh.y))).add(vTh.z)).sub(0.5);
         k.addAssign(body.mul(exp(ph.mul(ph).mul(-5200.0))).mul(reach).mul(0.6));
+        const vAges = packedAges.map((p) => vertexStage(p));
         for (let i = 0; i < SWEEP_SLOTS; i++) {
-            const vAge = vertexStage(pulseAge[i].age);
-            const vGain = vertexStage(pulseAge[i].gain);
+            const vAge = vAges[i >> 2][['x', 'y', 'z', 'w'][i & 3]];
+            const vGain = uSweep.element(i).z;
             const d = tt.sub(max(vAge, 0.0).mul(1.25));
             k.addAssign(body.mul(exp(d.mul(d).mul(-260.0))).mul(step(0.0, vAge)).mul(exp(max(vAge, 0.0).mul(-1.5)))
                 .mul(vGain)
@@ -439,7 +462,7 @@ export function createHoop(shared, {
     const geometry = new THREE.PlaneGeometry(2, 2);
     const material = awFxMaterial(name);
     const {
-        uTime, uPxScale, uLoomPx, uSpin, uHeat, uEnergy, uCrown, uFade,
+        uPxScale, uLoomPx, uSpin, uHeat, uEnergy, uCrown, uFade, uRun, uLace,
     } = shared;
     const extent = HOOP_EXTENT * radius;
     material.vertexNode = awLoomClip(vec3(positionGeometry.xy.mul(extent), 0.0));
@@ -457,28 +480,36 @@ export function createHoop(shared, {
         const d1 = r.sub(1.0);
         const rim = float(1.0).sub(smoothstep(1.06, HOOP_EXTENT, r));
         const bloom = exp(d1.mul(d1).mul(-1300.0)).mul(0.11).add(exp(abs(d1).mul(-34.0)).mul(0.03)).mul(rim);
-        // Highlights travelling round the ring.
-        const comets = pow(max(cos(ang.sub(uTime.mul(speed))), 0.0), float(90.0))
-            .add(pow(max(cos(ang.add(uTime.mul(speed * 0.61)).add(2.1)), 0.0), float(140.0)));
+        // Highlights travelling round the ring (uRun: the world's clock, run faster as play heats).
+        const comets = pow(max(cos(ang.sub(uRun.mul(speed))), 0.0), float(90.0))
+            .add(pow(max(cos(ang.add(uRun.mul(speed * 0.61)).add(2.1)), 0.0), float(140.0)));
         const k = line(1.0, 1.25).mul(comets.mul(3.0).add(0.8)).add(bloom).toVar();
         const tint = mix(vec3(0.6, 0.8, 1.0), vec3(1.0, 0.76, 0.4), uHeat).toVar();
         if (main) {
-            const sweep = sweepGlow(shared, ang);
-            // Graduations: 180 minor ticks, 36 major, between the hoop and its outer hairline.
-            const arc = (n) => {
-                const f = fract(ang.sub(uSpin).div(TAU).mul(n)).sub(0.5).mul(TAU / n).mul(r);
-                return exp(f.mul(f).div(px.mul(px).mul(-0.8)));
-            };
-            const minorBand = smoothstep(1.008, 1.013, r).mul(float(1.0).sub(smoothstep(1.027, 1.032, r)));
-            const majorBand = smoothstep(1.008, 1.013, r).mul(float(1.0).sub(smoothstep(1.043, 1.048, r)));
-            const ticks = arc(180).mul(minorBand).mul(0.22).add(arc(36).mul(majorBand).mul(0.5));
-            const crown = exp(angDist(ang, uSpin.add(PI * 0.5)).mul(-5.0)).mul(uCrown);
-            k.mulAssign(sweep.mul(6.0).add(crown.mul(5.0)).add(1.0));
-            k.addAssign(line(1.05, 0.8).mul(0.4).add(line(0.966, 0.7).mul(0.2)).add(ticks)
-                .mul(sweep.mul(3.0).add(1.0)));
+            // Everything the fronts and the crown light lies in the ring's band: the disc inside
+            // and the corners outside skip it (a coherent branch).
+            If(abs(r.sub(1.0)).lessThan(0.14), () => {
+                const sweep = sweepGlow(shared, ang);
+                // Graduations: 180 minor ticks, 36 major, between the hoop and its outer hairline.
+                const arc = (n) => {
+                    const f = fract(ang.sub(uSpin).div(TAU).mul(n)).sub(0.5).mul(TAU / n).mul(r);
+                    return exp(f.mul(f).div(px.mul(px).mul(-0.8)));
+                };
+                const minorBand = smoothstep(1.008, 1.013, r).mul(float(1.0).sub(smoothstep(1.027, 1.032, r)));
+                const majorBand = smoothstep(1.008, 1.013, r).mul(float(1.0).sub(smoothstep(1.043, 1.048, r)));
+                const ticks = arc(180).mul(minorBand).mul(0.22).add(arc(36).mul(majorBand).mul(0.5));
+                const crown = exp(angDist(ang, uSpin.add(PI * 0.5)).mul(-5.0)).mul(uCrown);
+                k.mulAssign(sweep.mul(6.0).add(crown.mul(5.0)).add(1.0));
+                k.addAssign(line(1.05, 0.8).mul(0.4).add(line(0.966, 0.7).mul(0.2)).add(ticks)
+                    .mul(sweep.mul(3.0).add(1.0)));
+                tint.assign(mix(tint, awSpectrum(ang.div(TAU), uHeat), 0.3));
+                tint.assign(mix(tint, vec3(1.0, 0.96, 0.9), clamp(sweep.add(crown), 0.0, 0.75)));
+            });
             k.mulAssign(uEnergy.mul(0.4).add(1.0));
-            tint.assign(mix(tint, awSpectrum(ang.div(TAU), uHeat), 0.3));
-            tint.assign(mix(tint, vec3(1.0, 0.96, 0.9), clamp(sweep.add(crown), 0.0, 0.75)));
+        } else {
+            // A back-to-back laces the gimbals with gold: they burn brighter while it lasts.
+            k.mulAssign(uLace.mul(2.2).add(1.0));
+            tint.assign(mix(tint, vec3(1.0, 0.8, 0.42), clamp(uLace, 0.0, 1.0)));
         }
         return vec4(tint.mul(k).mul(gain).mul(uFade), 0.0);
     })();

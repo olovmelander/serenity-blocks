@@ -134,8 +134,8 @@ function starLayer(p, scale, uPxView, uTime, density) {
 export function createSky(shared, quality = 'High') {
     const tier = SKY_TIERS[quality] || SKY_TIERS.High;
     const {
-        uTime, uAspect, uViewport, uSkyShift, uParallax, uLoom, uLamps, uLampFlare, uHeat, uEnergy, uShock, uCore,
-        noiseTex,
+        uTime, uAspect, uViewport, uSkyShift, uParallax, uLoom, uLamps, uLampFlare, uHeat, uEnergy, uShockR, uShockG,
+        uCore, noiseTex,
     } = shared;
 
     const geometry = new THREE.PlaneGeometry(2, 2);
@@ -292,9 +292,10 @@ export function createSky(shared, quality = 'High') {
         sky.mulAssign(mix(float(0.52), float(1.0), smoothstep(0.86, 1.04, lr)));
         const wash = exp(lr.mul(-2.3)).mul(0.04).add(exp(lr.mul(lr).mul(-9.0)).mul(0.04));
         sky.addAssign(glowTint.mul(wash).mul(uCore).mul(cloud.mul(1.4).add(0.45)));
-        // A clear's shock ring: a thin front of excited gas travelling out from the hoop's heart.
-        const front = lr.sub(uShock.x);
-        const ring = exp(front.mul(front).mul(-150.0)).mul(uShock.y);
+        // The clears' shock rings: thin fronts of excited gas travelling out from the hoop's heart,
+        // up to four at once (a chain sends them out nested, a cascade's deeper waves faster).
+        const front = vec4(lr).sub(uShockR);
+        const ring = dot(exp(front.mul(front).mul(-150.0)), uShockG);
         sky.addAssign(mix(gas.mul(2.4), glowTint, 0.4).mul(ring).mul(cloud.mul(1.5).add(0.08)).mul(0.75));
 
         // Alpha carries the gas (and a breath of interstellar haze) for the post's scattering.

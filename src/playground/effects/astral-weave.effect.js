@@ -143,7 +143,7 @@ export function create({
         time, delta, pointerX: pointer.x, pointerY: pointer.y,
     });
     const pushPost = () => {
-        post?.update({ heart: world.getHeartScreen(), flash: world.flash, kick: world.kick });
+        post?.update(world.getPostState());
     };
     const stepTo = (from, to, dt) => {
         const steps = Math.max(1, Math.round((to - from) / dt));
