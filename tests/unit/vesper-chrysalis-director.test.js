@@ -181,6 +181,51 @@ describe('vesper chrysalis director: intake', () => {
         });
     });
 
+    // Physics settles a perfect clear ~360 ms AFTER the last wave of the clear that made it, in a
+    // frame of its own. It is a crown on that clear, not a one-line clear of its own: replayed as a
+    // clear it would hold the lake's breath a second time and send a second great swell.
+    it('crowns the clear still playing with a perfect clear that comes in a frame of its own', () => {
+        const { director, calls } = makeDirector();
+        const crowns = [];
+        director.sink.crown = vi.fn((c) => crowns.push({ ...c }));
+        director.onPieceLock({ piece: I, player: 1 });
+        director.onLineClear({
+            lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1, player: 1,
+        });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        director.onPerfectClear({ depth: 4, player: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1); // no second clear
+        expect(crowns).toEqual([{ player: 1 }]);
+        // A sink that cannot crown gets the one-line perfect clear it always had.
+        const old = makeDirector();
+        old.director.onPerfectClear({ depth: 4 });
+        old.director.flush();
+        expect(old.calls.clear).toHaveLength(1);
+        expect(old.calls.clear[0]).toMatchObject({ lines: 1, perfect: true });
+    });
+
+    it('tells the sink of a T-spin that cleared nothing, and of nothing else that cleared nothing', () => {
+        const { director, calls } = makeDirector();
+        const spins = [];
+        director.sink.spin = vi.fn((c) => spins.push({ ...c }));
+        director.onPieceLock({ piece: T, player: 2 });
+        director.onTSpin({ lineCount: 0, player: 2 });
+        director.flush();
+        expect(calls.lock).toHaveLength(1);
+        expect(calls.clear).toHaveLength(0);
+        expect(spins).toEqual([{ player: 2 }]);
+        // A T-spin that clears rides on its clear, as before; a plain lock is no spin.
+        director.onPieceLock({ piece: T, player: 2 });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], player: 2 });
+        director.onTSpin({ lineCount: 1, player: 2 });
+        director.onPieceLock({ piece: I });
+        director.flush();
+        expect(spins).toHaveLength(1);
+        expect(calls.clear.at(-1)).toMatchObject({ lines: 1, tspin: true });
+    });
+
     it('turns a meditation click into a clear at a screen position', () => {
         const { director, calls } = makeDirector();
         director.setViewport(1000, 500);
