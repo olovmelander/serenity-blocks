@@ -7,7 +7,8 @@
  * petals out from behind the card, lays down the short-lived force fields that carry them,
  * feeds the flower crown a combo winds around the board, starts the gusts that spread
  * through the grass, and drops rings on the water — where a piece landed, where a petal
- * came down, and now and then where a fish rose.
+ * came down, and now and then where a fish rose. As play runs hot the meadow itself lets go of
+ * its petals and seed into the evening air (drift), most of all in a fever.
  */
 import * as THREE from 'three/webgpu';
 import { SUMMER_PARTICLES } from './summer-petal-sim.js';
@@ -19,6 +20,8 @@ const RISE_WINDOW = 1.5;
 const SEED_WINDOW = 0.3;
 const BOUQUET_WINDOW = 0.7;
 const FLOWER_KINDS = 7;
+/** Fronts of wind the reactions can send across at once (summer-reactions.js). */
+const FRONT_SLOTS = 3;
 /** Where a lake ring opens: metres out from the near shore for the foot of the board, and for its top. */
 const RING_NEAR = 1.5;
 const RING_REACH = 26;
@@ -47,6 +50,8 @@ export class SummerFxDirector {
         this.epoch = null;
         this.crownFeed = 0;
         this.crownTurn = 0;
+        /** Petals and seed the meadow lets go of as play runs hot, owed to the air (drift). */
+        this.driftFeed = 0;
         this.thrown = 0;
         this.fishClock = 3;
         this.point = new THREE.Vector3();
@@ -54,8 +59,21 @@ export class SummerFxDirector {
         this.front = {
             x: 0, width: 20, strength: 0, direction: 1,
         };
+        /** Every front crossing, in world x: one reused slot each, null where none crosses. */
+        this.frontSlots = Array.from({ length: FRONT_SLOTS }, () => ({
+            x: 0, width: 20, strength: 0, direction: 1,
+        }));
         this.env = {
-            windX: 1, windZ: 0, wind: 0.3, gust: 0, glow: 0, heat: 0, settled: false, front: null, fields: this.fields,
+            windX: 1,
+            windZ: 0,
+            wind: 0.3,
+            gust: 0,
+            glow: 0,
+            heat: 0,
+            settled: false,
+            front: null,
+            fronts: Array.from({ length: FRONT_SLOTS }, () => null),
+            fields: this.fields,
         };
     }
 
@@ -67,6 +85,7 @@ export class SummerFxDirector {
     reset() {
         this.fields.length = 0;
         this.crownFeed = 0;
+        this.driftFeed = 0;
         this.fishClock = 3;
     }
 
@@ -251,6 +270,34 @@ export class SummerFxDirector {
         }
     }
 
+    /**
+     * The meadow lets go: petals and seed lift off the flowers all across the view and drift up
+     * into the light on the breeze, slower and higher than a quad's rising meadow.
+     */
+    drift(count, windX, windZ) {
+        const { stage, sim } = this;
+        for (let i = 0; i < count; i += 1) {
+            // Across the whole view, crowded a little toward the near meadow where they read.
+            const down = 0.55 + 0.43 * Math.sqrt(this.random());
+            const spot = stage.ground(this.random(), down, this.groundHeight, this.foot);
+            const floor = this.groundHeight(spot.x, spot.z);
+            if (floor > 0.1) {
+                const seed = this.random() < 0.4;
+                sim.spawn(
+                    spot.x,
+                    floor + 0.3 + 0.7 * this.random(),
+                    spot.z,
+                    (this.random() - 0.5) * 0.8 + windX * 0.7,
+                    1.4 + 2.4 * this.random(),
+                    (this.random() - 0.5) * 0.8 + windZ * 0.7,
+                    {
+                        life: 3.6 + 3 * this.random(), kind: seed ? SEED : PETAL, size: 0.06 + 0.05 * this.random(),
+                    },
+                );
+            }
+        }
+    }
+
     /** Seven kinds picked: the maypole throws the bouquet into the evening. */
     bouquet(emitter) {
         const { sim, maypole } = this;
@@ -360,10 +407,11 @@ export class SummerFxDirector {
     }
 
     /**
-     * Apply one director frame. `wind` is {x, z, strength} from the light rig; returns the
-     * environment for SummerPetalSim.step().
+     * Apply one director frame. `wind` is {x, z, strength} from the light rig and `worn` the
+     * world's reading of play (SummerWorld.wear: level, fever, Reduce motion's share); returns
+     * the environment for SummerPetalSim.step(), with the fronts crossing in world x.
      */
-    apply(frame = {}, dt = 0, wind = { x: 1, z: 0, strength: 0.3 }) {
+    apply(frame = {}, dt = 0, wind = { x: 1, z: 0, strength: 0.3 }, worn = null) {
         const {
             fields, stage, ripples, waves,
         } = this;
@@ -451,12 +499,28 @@ export class SummerFxDirector {
                 this.ring(feed, crown);
             }
         } else this.crownFeed = 0;
+        // As play runs hot the meadow lets go of its petals and seed into the air: a few in hot
+        // play, a steady breath of them in a fever.
+        const level = worn && Number.isFinite(worn.level) ? Math.max(0, Math.min(1, worn.level)) : 0;
+        const fever = worn && Number.isFinite(worn.fever) ? Math.max(0, Math.min(1, worn.fever)) : 0;
+        const motion = worn && Number.isFinite(worn.motion) ? Math.max(0, Math.min(1, worn.motion)) : 1;
+        const breath = Math.max(0, level - 0.3) * 24 + fever * 150;
+        if (breath > 0 && frame.settled !== true) {
+            this.driftFeed += step * breath * this.scale * (0.5 + 0.5 * motion);
+            const count = Math.floor(this.driftFeed);
+            if (count > 0) {
+                this.driftFeed -= count;
+                this.drift(count, Number.isFinite(wind.x) ? wind.x : 1, Number.isFinite(wind.z) ? wind.z : 0);
+            }
+        } else this.driftFeed = 0;
         const { env } = this;
         env.windX = wind.x;
         env.windZ = wind.z;
         env.wind = Number.isFinite(wind.strength) ? wind.strength : 0.3;
         env.gust = Number.isFinite(frame.gust) ? Math.max(0, Math.min(1, frame.gust)) : 0;
-        env.glow = Number.isFinite(frame.glow) ? frame.glow : 0;
+        // The down and petals in the air glow with the evening (play raises its floor: wear()).
+        const glow = worn && Number.isFinite(worn.glow) ? worn.glow : frame.glow;
+        env.glow = Number.isFinite(glow) ? glow : 0;
         env.heat = Number.isFinite(frame.heat) ? frame.heat : 0;
         env.settled = frame.settled === true;
         if (frame.front && frame.front.strength > 0.001) {
@@ -465,6 +529,18 @@ export class SummerFxDirector {
             this.front.direction = frame.front.direction;
             env.front = this.front;
         } else env.front = null;
+        // Every front crossing; a frame that names only one front has that one.
+        const crossing = Array.isArray(frame.fronts) ? frame.fronts : [frame.front];
+        for (let i = 0; i < FRONT_SLOTS; i += 1) {
+            const front = crossing[i];
+            if (front && Number.isFinite(front.position) && front.strength > 0.001) {
+                const slot = this.frontSlots[i];
+                slot.x = front.position * stage.halfWidth(40);
+                slot.strength = front.strength;
+                slot.direction = front.direction;
+                env.fronts[i] = slot;
+            } else env.fronts[i] = null;
+        }
         return env;
     }
 }

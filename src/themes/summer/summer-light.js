@@ -31,6 +31,10 @@ export const SUMMER_WAVE_SPEED = 9;
 const WAVE_LIFE = 4.2;
 /** Flower kinds a piece can excite (seven for the crown, one spare). */
 export const SUMMER_SPECIES_SLOTS = 8;
+/** The breeze off the lake at rest; play freshens it (update()). */
+export const SUMMER_BREEZE = 0.3;
+/** How wide a front of wind is across the meadow, metres. */
+const FRONT_WIDTH = 20;
 
 /**
  * Unit vector from the scene toward the evening sun, which the resting camera sees in the
@@ -148,15 +152,19 @@ export class SummerLight {
         // Wind: a steady breeze off the lake, gusts that roll across the meadow in bands,
         // and a travelling front.
         this.uWindDir = uniform(new THREE.Vector3(0.88, 0, 0.47));
-        this.uWind = uniform(0.3);
+        this.uWind = uniform(SUMMER_BREEZE);
         this.uGust = uniform(0);
-        this.uFront = uniform(new THREE.Vector4(0, 0, 20, 0)); // x, strength, width
+        // Up to three fronts crossing at once (summer-reactions.js): the first in uFront
+        // (x, strength, width), the other two in uFront2 (x, strength, x, strength).
+        this.uFront = uniform(new THREE.Vector4(0, 0, FRONT_WIDTH, 0));
+        this.uFront2 = uniform(new THREE.Vector4(0, 0, 0, 0));
         // Gameplay envelopes shared by every material.
         this.uWarmth = uniform(0);
         this.uGlow = uniform(0);
         // Gusts that spread through the meadow from the foot of the board, and how strongly
         // each kind of flower has just been called on.
-        this.waves = new SummerRings(tier.waves, WAVE_LIFE);
+        // A gust fades as exp(-0.55 age) and thins as it spreads (meadowWind).
+        this.waves = new SummerRings(tier.waves, WAVE_LIFE, 0.55, 0.035 * SUMMER_WAVE_SPEED);
         this.uWaves = uniformArray(this.waves.rings);
         this.species = new Float32Array(SUMMER_SPECIES_SLOTS);
         this.speciesVectors = [new THREE.Vector4(0, 0, 0, 0), new THREE.Vector4(0, 0, 0, 0)];
@@ -287,6 +295,19 @@ export class SummerLight {
         return mix(this.uBounce, this.uSkyLight, normal.y.mul(0.5).add(0.5));
     }
 
+    /** How hard the fronts crossing the view push at world x (TSL): one bell per front. */
+    front(x) {
+        const bell = (at, strength) => exp(x.sub(at).div(this.uFront.z).pow2().negate()).mul(strength);
+        return bell(this.uFront.x, this.uFront.y)
+            .add(bell(this.uFront2.x, this.uFront2.y))
+            .add(bell(this.uFront2.z, this.uFront2.w));
+    }
+
+    /** How hard the fronts push anywhere at all (TSL): the maypole's ribbons fly on it. */
+    frontStrength() {
+        return this.uFront.y.add(this.uFront2.y).add(this.uFront2.w);
+    }
+
     /**
      * World-space wind offset for a point on a tree. `sway` is how far the wind may carry
      * the point (0 at the trunk, 1 at twig tips); `phase` keeps each limb out of step.
@@ -297,7 +318,7 @@ export class SummerLight {
         const t = this.uTime;
         const along = world.x.mul(this.uWindDir.x).add(world.z.mul(this.uWindDir.z));
         const swell = sin(along.mul(0.04).sub(t.mul(0.8)).add(world.x.mul(0.017))).mul(0.5).add(0.5);
-        const front = exp(world.x.sub(this.uFront.x).div(this.uFront.z).pow2().negate()).mul(this.uFront.y);
+        const front = this.front(world.x);
         const force = this.uWind.add(this.uGust.mul(swell.mul(0.7).add(0.65))).add(front);
         const lift = saturate(world.y.sub(base.y).div(height));
         const lean = lift.mul(lift).mul(height).mul(0.012).mul(force)
@@ -328,7 +349,7 @@ export class SummerLight {
             .add(sin(along.mul(0.043).sub(t.mul(0.33)).add(cross.mul(0.013)).add(4.1)).mul(0.8))
             .div(2.4);
         const gust = smoothstep(-0.25, 0.85, band);
-        const front = exp(root.x.sub(this.uFront.x).div(this.uFront.z).pow2().negate()).mul(this.uFront.y);
+        const front = this.front(root.x);
         const force = this.uWind.mul(gust.mul(1.25).add(0.3)).add(this.uGust.mul(gust.add(0.5))).add(front);
         const flutter = sin(t.mul(phase.mul(1.7).add(2.2)).add(phase.mul(40)).add(along.mul(0.6))).mul(0.34)
             .add(sin(t.mul(5.3).add(phase.mul(91))).mul(0.12)).add(0.8);
@@ -359,18 +380,46 @@ export class SummerLight {
         return pick(low, index).add(pick(high, index.sub(4)));
     }
 
-    update(time, frame = {}) {
+    /**
+     * One frame of light and wind. `worn` is the world's reading of the envelopes (the gust and
+     * warmth eased, the floors play has raised, Reduce motion's share: SummerWorld.wear); `fronts`
+     * the fronts crossing, in world x ({ x, strength }). Without them the frame is read as is.
+     */
+    update(time, frame = {}, worn = null, fronts = null) {
         this.uTime.value = Number.isFinite(time) ? Math.max(0, time) : this.uTime.value;
         this.setHour(Number.isFinite(frame.hour) ? frame.hour : 0);
         const clamp01 = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
-        this.uGust.value = clamp01(frame.gust) * 1.5;
-        this.uWarmth.value = clamp01(frame.warmth);
-        this.uGlow.value = clamp01(frame.glow);
-        if (frame.front && Number.isFinite(frame.front.x)) {
-            this.uFront.value.set(frame.front.x, clamp01(frame.front.strength) * 2, 20, 0);
-        } else this.uFront.value.y = 0;
+        const motion = worn && Number.isFinite(worn.motion) ? clamp01(worn.motion) : 1;
+        const level = clamp01(worn?.level);
+        const fever = clamp01(worn?.fever);
+        this.uGust.value = clamp01(worn ? worn.gust : frame.gust) * 1.5 * motion;
+        this.uWarmth.value = clamp01(worn ? worn.warmth : frame.warmth);
+        this.uGlow.value = clamp01(worn ? worn.glow : frame.glow);
+        // The breeze off the lake freshens with play: a quick hand stirs the meadow, a fever
+        // keeps the birches and the maypole's ribbons streaming.
+        this.uWind.value = SUMMER_BREEZE + (level * 0.18 + fever * 0.22) * motion;
+        // The evening deepens toward gold as play runs hot: the low sun burns richer, the sky
+        // and the clouds toward it glow rose-gold, and the freshening wind clears the air so the
+        // far shore stands out instead of milking over. Heat reads as richer colour, not paler.
+        this.deepen(level * 0.35 + fever * 0.6);
+        const at = (index) => {
+            let front = index === 0 ? frame.front : null;
+            if (Array.isArray(fronts)) front = fronts[index];
+            return front && Number.isFinite(front.x) ? front : null;
+        };
+        const push = (front) => (front ? clamp01(front.strength) * 2 * motion : 0);
+        const first = at(0);
+        const second = at(1);
+        const third = at(2);
+        this.uFront.value.set(first ? first.x : 0, push(first), FRONT_WIDTH, 0);
+        this.uFront2.value.set(second ? second.x : 0, push(second), third ? third.x : 0, push(third));
+        // In a fever every flower in the meadow is lit a little, as if the whole field answered.
+        const bloom = clamp01(worn?.bloom);
         const species = Array.isArray(frame.species) || ArrayBuffer.isView(frame.species) ? frame.species : null;
-        for (let i = 0; i < SUMMER_SPECIES_SLOTS; i += 1) this.species[i] = species ? clamp01(species[i]) : 0;
+        for (let i = 0; i < SUMMER_SPECIES_SLOTS; i += 1) {
+            const called = species ? clamp01(species[i]) : 0;
+            this.species[i] = i < SUMMER_SPECIES_SLOTS - 1 ? called + (1 - called) * bloom : called;
+        }
         this.speciesVectors[0].fromArray(this.species, 0);
         this.speciesVectors[1].fromArray(this.species, 4);
         // Pipelines may still be compiling when the first shadow map is drawn; redraw it
@@ -379,6 +428,30 @@ export class SummerLight {
         if (this.shadowFrames < 10 || this.shadowFrames === 45 || this.shadowFrames === 150) {
             this.sun.shadow.needsUpdate = true;
         }
+    }
+
+    /**
+     * Lean the hour's colours (just set by setHour) toward a deeper gold by `amount` (0..1). A
+     * pure function of the hour and the amount: nothing accumulates from frame to frame.
+     */
+    deepen(amount) {
+        const d = Number.isFinite(amount) ? THREE.MathUtils.clamp(amount, 0, 1) : 0;
+        if (d <= 0) return;
+        const tint = (uniformNode, r, g, b) => {
+            const colour = uniformNode.value;
+            colour.r *= 1 + r * d;
+            colour.g *= 1 + g * d;
+            colour.b *= 1 + b * d;
+        };
+        tint(this.uSunColor, 0.06, -0.1, -0.36);
+        tint(this.uSkyToward, 0.12, -0.08, -0.3);
+        tint(this.uSkyAway, 0.08, -0.02, -0.06);
+        tint(this.uCloudGiltToward, 0.15, -0.06, -0.32);
+        tint(this.uCloudBodyToward, 0.1, -0.06, -0.25);
+        tint(this.uCloudBodyAway, 0.06, -0.02, -0.08);
+        tint(this.uHazeWarm, 0.02, -0.12, -0.3);
+        tint(this.uShaftWarm, 0.05, -0.08, -0.25);
+        this.uHaze.value *= 1 - 0.22 * d;
     }
 
     /** Age the gusts in the meadow. */
