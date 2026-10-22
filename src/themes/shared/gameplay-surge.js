@@ -210,6 +210,20 @@ export class GameplaySurge {
         this._add(punch, heat, at);
     }
 
+    /**
+     * A perfect clear settled after its clear's last wave (physics sends it ~360 ms later): the
+     * crown on a clear already counted, worth the perfect clear's own weight only.
+     * @param {number} at seconds
+     */
+    crown(at) {
+        this._add(SURGE_WEIGHTS.punch.perfect, SURGE_WEIGHTS.heat.perfect, at);
+    }
+
+    /** A T-spin that cleared nothing: a little over half a T-spin's worth. @param {number} at seconds */
+    spin(at) {
+        this._add(SURGE_WEIGHTS.punch.tspin * 0.6, SURGE_WEIGHTS.heat.tspin * 0.5, at);
+    }
+
     /** The level rose. @param {number} at seconds */
     levelUp(at) {
         this._add(SURGE_WEIGHTS.punch.levelUp, SURGE_WEIGHTS.heat.levelUp, at);

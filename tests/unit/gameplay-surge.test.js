@@ -246,6 +246,19 @@ describe('GameplaySurge', () => {
         expect(surge.sample(18 * 0.3 + 0.29).punch).toBeGreaterThan(0.15);
     });
 
+    it('a crown (late perfect clear) and a lineless spin add their own weight without a clear', () => {
+        const crowned = new GameplaySurge();
+        crowned.clear({ lines: 4 }, 0);
+        const before = crowned.sample(0.36).punch;
+        crowned.crown(0.36);
+        expect(crowned.sample(0.36).punch).toBeGreaterThan(before + 0.5);
+        const spun = new GameplaySurge();
+        spun.spin(0);
+        const s = spun.sample(0);
+        expect(s.punch).toBeGreaterThan(0.1);
+        expect(s.punch).toBeLessThan(0.35);
+    });
+
     it('perfect clear, T-spin and back-to-back weigh more than the clear alone', () => {
         const base = new GameplaySurge();
         base.clear({ lines: 2 }, 0);
