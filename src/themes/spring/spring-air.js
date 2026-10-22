@@ -13,7 +13,9 @@
  * The game moves the air (the world integrates its clocks and eases its uniforms, spring-world.js):
  *   lock          the air puffs out and up round the patch of bloom the lock opened, and lights
  *   clear         a breath runs out across the valley from the eye: a band that lifts and lights
- *                 the motes as it passes, the stronger the more lines
+ *                 the motes as it passes, the stronger the more lines (a clear soon after feeds
+ *                 the breath still crossing; two can cross at once)
+ *   heat of play  the air stirs with a quick hand as it does with a chain (the world eases it)
  *   chain         the air stirs: it thickens, runs faster down the breeze, wobbles wider, and two
  *                 slow gyres turn it on either side of the card, the faster the longer the chain
  *   back-to-back  the motes sparkle
@@ -80,6 +82,8 @@ export const AIR = Object.freeze({
         reach: 9,
         rest: Object.freeze([-4.6, -8.3, 4.6, -8.3]),
     }),
+    /** A clear's breath: how fast its band runs out from the eye (m/s). */
+    breath: Object.freeze({ speed: 11 }),
 });
 
 const LOG_NEAR = Math.log(AIR.near);
@@ -184,13 +188,18 @@ export class SpringAir {
                 puffLight.addAssign(near);
             });
 
-            // A clear's breath: a band running out from the eye that lifts and lights the air.
-            const waveAge = u.time.sub(u.airWave.x);
+            // Clears' breaths: bands running out from the eye that lift and light the air (two, so
+            // a new one never cuts short the one still crossing).
             const reachNow = length(centre.xz.sub(vec2(EYE.x, EYE.z)));
-            const waveLive = smoothstep(0.0, 0.2, waveAge).mul(float(1.0).sub(smoothstep(3.5, 7.0, waveAge)))
-                .mul(u.airWave.y);
-            const offFront = reachNow.sub(waveAge.mul(u.airWave.z)).div(reachNow.mul(0.12).add(2.0));
-            const band = exp(offFront.mul(offFront).negate()).mul(waveLive);
+            const width = reachNow.mul(0.12).add(2.0);
+            const breath = (start, power) => {
+                const waveAge = u.time.sub(start);
+                const waveLive = smoothstep(0.0, 0.2, waveAge).mul(float(1.0).sub(smoothstep(3.5, 7.0, waveAge)))
+                    .mul(power);
+                const offFront = reachNow.sub(waveAge.mul(AIR.breath.speed)).div(width);
+                return exp(offFront.mul(offFront).negate()).mul(waveLive);
+            };
+            const band = breath(u.airWave.x, u.airWave.y).add(breath(u.airWave.z, u.airWave.w)).toVar();
             centre.addAssign(vec3(0.0, band.mul(1.4), 0.0));
 
             // On screen: at least about a pixel and a half wide, its light spread thinner when it is
