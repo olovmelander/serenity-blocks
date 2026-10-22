@@ -529,6 +529,10 @@ function startLegacyLoop(mode) {
         for (let playerIndex = 0; playerIndex < mode.multiplayerState.numPlayers; playerIndex += 1) {
             const playerState = mode.multiplayerState.players[playerIndex];
             if (!playerState.isAlive || mode.multiplayerState.playerPaused?.[playerIndex]) continue;
+            // lockPiece times a piece's lock bonus on the player's sim clock (game.js). In single
+            // player updateGame advances it; this loop calls processAutoDrop instead, so the clock
+            // stood at 0 and every piece took the full bonus, as if locked at once.
+            playerState.simTimeMs = (Number(playerState.simTimeMs) || 0) + Math.max(0, delta);
             decrementBlindTimers(playerState, delta / 1000);
             if (mode.matchConfig?.isInfinityLMS && !playerState.isProcessingPhysics) {
                 mode._maybeExpandPlayerGrid(playerState, mode.boardScenes[playerIndex]);
@@ -668,18 +672,6 @@ export function captureLocalMultiplayerClock(mode) {
         roundFrames: null,
         roundMs: Math.max(0, now - roundStart),
     });
-}
-
-/** Map MultiPlayerState's internal match winner to the mode result contract. */
-export function resolveLocalMultiplayerMatchResult(multiplayerState) {
-    if (multiplayerState?.isGameOver !== true) return null;
-    const { winner } = multiplayerState;
-    if (Number.isInteger(winner)) return `player${winner + 1}`;
-    const teamMatch = typeof winner === 'string' ? /^Team ([A-Z])$/.exec(winner) : null;
-    if (teamMatch) {
-        return { type: 'team', teamId: teamMatch[1].charCodeAt(0) - 65 };
-    }
-    return 'draw';
 }
 
 /**

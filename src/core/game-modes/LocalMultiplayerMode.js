@@ -36,10 +36,10 @@ import {
     drainLocalMultiplayerRound,
     ownsLocalMultiplayerRound,
     retireLocalMultiplayerRound,
-    resolveLocalMultiplayerMatchResult,
     startLocalMultiplayerModeLoop,
     stopLocalMultiplayerModeLoop,
 } from './local-multiplayer-loop.js';
+import { resolveLocalMatchEnd, resumeClock } from './local-match-rules.js';
 
 const MATCH_START_LOADING_MIN_VISIBLE_MS = 2000;
 /** How long a knock-out and a round won hold the boards before the round ends. */
@@ -422,8 +422,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
         };
         this.teamRoundWins = {};
         this.lastMatchResultClock = null;
+        this._matchEnding = false;
+        this._pausedAt = null;
+        // The last match's final round must not time this one's first (results, BPM/PPM).
+        this.roundStartTime = null;
 
-        this.matchStartTime = Date.now();
+        this.matchStartTime = this._wallNow();
         this.versusRound = 1;
         this.versusHud?.mount();
 
@@ -527,7 +531,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this._setupInputWrappers();
         this._setupLocalBots();
 
-        this.multiplayerState.isPaused = false;
+        // The match clock and the Hot Potato start at "Go", not before the countdown.
+        const playStartedAt = this._wallNow();
+        this.matchStartTime = playStartedAt;
+        this.roundStartTime = playStartedAt;
+        this.multiplayerState.startHotPotatoClock(playStartedAt);
+        // A pause taken during the countdown (Settings, a focus loss) still holds: the loop
+        // runs but waits, and onResume releases it. Play once resumed under the open sheet.
+        this.multiplayerState.isPaused = this.isPaused === true;
         this.multiplayerState.lastTime = performance.now();
         this._startGameLoop();
         // Each human board shows its controls for the first seconds of the match.
@@ -559,9 +570,39 @@ export class LocalMultiplayerMode extends BaseGameMode {
         return this.multiplayerState || null;
     }
 
+    /** The wall clock the match is timed by, read in one place. @private */
+    _wallNow() {
+        return Date.now();
+    }
+
     onPause() {
         super.onPause();
         clearLocalMultiplayerFixedInput(this);
+        if (this.isPaused && !Number.isFinite(this._pausedAt)) this._pausedAt = this._wallNow();
+    }
+
+    onResume() {
+        const pausedAt = this._pausedAt;
+        super.onResume();
+        if (this.isPaused) return;
+        this._pausedAt = null;
+        // A match whose result is on its way stays held.
+        if (this._matchEnding && this.multiplayerState) this.multiplayerState.isPaused = true;
+        if (Number.isFinite(pausedAt)) this._shiftWallClocks(this._wallNow() - pausedAt);
+    }
+
+    /**
+     * A pause stops the match's wall clocks: the time limit, the round's duration (results,
+     * BPM/PPM) and the Hot Potato's countdown.
+     * @param {number} pausedMs
+     * @private
+     */
+    _shiftWallClocks(pausedMs) {
+        if (!(pausedMs > 0)) return;
+        const now = this._wallNow();
+        if (Number.isFinite(this.matchStartTime)) this.matchStartTime = resumeClock(this.matchStartTime, pausedMs, now);
+        if (Number.isFinite(this.roundStartTime)) this.roundStartTime = resumeClock(this.roundStartTime, pausedMs, now);
+        this.multiplayerState?.shiftHotPotatoClock(pausedMs, now);
     }
 
     /**
@@ -736,7 +777,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
         // Update Hot Potato UI indicators (runs every frame for smooth timer)
         if (this.multiplayerState.hotPotato?.enabled) {
-            const potatoState = this.multiplayerState.getHotPotatoState(Date.now());
+            const potatoState = this.multiplayerState.getHotPotatoState(this._wallNow());
             const { holderIndex } = potatoState;
             const { timeRemainingMs } = potatoState;
             const formattedTime = `${(timeRemainingMs / 1000).toFixed(1)}s`;
@@ -768,7 +809,10 @@ export class LocalMultiplayerMode extends BaseGameMode {
         // But ALWAYS update minimaps for smooth animation
         const shouldUpdateText = frameCount % 10 === 0;
 
-        if (shouldUpdateText) this._updateStandingsHUD();
+        if (shouldUpdateText) {
+            this._updateStandingsHUD();
+            this._checkMatchEndMidRound();
+        }
 
         // Update minimaps for infinity mode
         if (this.matchConfig?.isInfinityLMS && this.playerMinimaps.length > 0) {
@@ -845,7 +889,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             ? (Number(this.matchConfig.endConditionValue) || 0) * 60000 : null;
         this.versusHud.update(entries, {
             round: this.versusRound || 1,
-            // The HUD reads the wall clock (as _checkMatchWinCondition times the match).
+            // The HUD reads the wall clock (as _resolveMatchEnd times the match).
             clock: limitMs === null ? null : { limitMs, startedAt: this.matchStartTime },
             teamTotals,
         });
@@ -858,7 +902,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
     _matchTotals() {
         const { numPlayers, players, frags } = this.multiplayerState;
         return Array.from({ length: numPlayers }, (_, i) => {
-            const totals = this.matchStats[`player${i + 1}`] || {};
+            const totals = this.matchStats?.[`player${i + 1}`] || {};
             const playerState = players[i] || {};
             return {
                 frags: (totals.frags || 0) + (frags[i] ?? 0),
@@ -866,21 +910,6 @@ export class LocalMultiplayerMode extends BaseGameMode {
                 lines: (totals.lines || 0) + (playerState.totalLinesCleared || 0),
             };
         });
-    }
-
-    /** The team with the highest match score (a timed team match). @private */
-    _leadingTeamByScore() {
-        const teams = new Set(this.multiplayerState.players.map((_, i) => this._getResolvedTeamId(i)));
-        let leader = null;
-        let best = -1;
-        teams.forEach((teamId) => {
-            const { score } = this._getTeamAggregateStats(teamId);
-            if (score > best) {
-                best = score;
-                leader = teamId;
-            }
-        });
-        return leader;
     }
 
     /**
@@ -1171,7 +1200,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             await new Promise((resolve) => setTimeout(resolve, ROUND_OUTCOME_MS));
             return ownsLocalMultiplayerRound(this, roundOwner);
         };
-        const matchResult = resolveLocalMultiplayerMatchResult(this.multiplayerState);
+        const matchResult = this._resolveMatchEnd();
         if (matchResult !== null) {
             this.multiplayerState.isPaused = true;
             if (await waitForOutcome()) await this._showMatchEnd(matchResult);
@@ -1381,8 +1410,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
 
                     await this.handleRoundEnd(winnerKey, isSelfKill);
                 }
+            } else {
+                // The round goes on, but a frag goal counts kills, not rounds: this one may
+                // have won the match.
+                const matchEnd = this._resolveMatchEnd();
+                if (matchEnd !== null) await this._endMatchMidRound(matchEnd, roundOwner);
             }
-            // If multiple players still alive, DO NOT pause - continue the match
         }
     }
 
@@ -1900,39 +1933,11 @@ export class LocalMultiplayerMode extends BaseGameMode {
         return { score, lines };
     }
 
+    /** A team frag goal, or a match with no rule set, counts rounds won (seven by default). */
     _checkTeamMatchWinCondition(teamId) {
-        if (!this.matchConfig) {
-            return (this.teamRoundWins[teamId] || 0) >= 7;
-        }
-
         const config = this.matchConfig;
-
-        switch (config.endCondition) {
-        case 'frags':
-            return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
-
-        case 'time': {
-            const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
-            return elapsedMinutes >= config.endConditionValue;
-        }
-
-        case 'points': {
-            const targetScore = config.endConditionValue * 1000;
-            const totals = this._getTeamAggregateStats(teamId);
-            return totals.score >= targetScore;
-        }
-
-        case 'lines': {
-            const totals = this._getTeamAggregateStats(teamId);
-            return totals.lines >= config.endConditionValue;
-        }
-
-        case 'never':
-            return false;
-
-        default:
-            return (this.teamRoundWins[teamId] || 0) >= config.endConditionValue;
-        }
+        if (['points', 'lines', 'time', 'never'].includes(config?.endCondition)) return false;
+        return (this.teamRoundWins[teamId] || 0) >= (config?.endConditionValue || 7);
     }
 
     /**
@@ -2021,25 +2026,12 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const winnerName = `Player ${winnerIndex + 1}`;
         const winnerWins = this.roundWins[winner];
 
-        // Check if someone won the match based on win condition
-        const wonMatch = this._checkMatchWinCondition(winner);
-
-        if (wonMatch) {
-            // Frags and time limits go to the leader, not necessarily the round's winner:
-            // the most frags, or the highest score when time runs out (the setup sheet's
-            // rule, and what the plates rank by).
-            let matchWinner = winner;
-            const leaderKey = { frags: 'frags', time: 'score' }[this.matchConfig?.endCondition];
-            if (leaderKey) {
-                let best = -1;
-                this._matchTotals().forEach((totals, i) => {
-                    if (totals[leaderKey] > best) {
-                        best = totals[leaderKey];
-                        matchWinner = `player${i + 1}`;
-                    }
-                });
-            }
-            console.log(`[LocalMultiplayer] ${winnerName} wins the match!`);
+        // The match goes to the leader by its rule, not necessarily this round's winner
+        // (_resolveMatchEnd). With no rule set, seven round wins take it.
+        const matchWinner = this._resolveMatchEnd()
+            ?? (this._checkMatchWinCondition(winner) ? winner : null);
+        if (matchWinner !== null) {
+            console.log(`[LocalMultiplayer] Match over: ${JSON.stringify(matchWinner)}`);
             await this._showMatchEnd(matchWinner);
             return;
         }
@@ -2057,13 +2049,13 @@ export class LocalMultiplayerMode extends BaseGameMode {
         console.log(`[LocalMultiplayer] Round ended! Winner: ${teamName}`);
 
         const teamWins = this._recordTeamRoundWin(teamId);
-        const wonMatch = this._checkTeamMatchWinCondition(teamId);
-
-        if (wonMatch) {
-            // A timed match goes to the team with the highest score, as the setup sheet says.
-            const winnerTeam = this.matchConfig?.endCondition === 'time' ? this._leadingTeamByScore() : teamId;
-            console.log(`[LocalMultiplayer] ${this._getTeamLabel(winnerTeam)} wins the match!`);
-            await this._showMatchEnd({ type: 'team', teamId: winnerTeam });
+        // Points, lines and time go to the leading team (_resolveMatchEnd); a frag goal counts
+        // the rounds a team has won.
+        const matchWinner = this._resolveMatchEnd()
+            ?? (this._checkTeamMatchWinCondition(teamId) ? { type: 'team', teamId } : null);
+        if (matchWinner !== null) {
+            console.log(`[LocalMultiplayer] Match over: ${JSON.stringify(matchWinner)}`);
+            await this._showMatchEnd(matchWinner);
             return;
         }
 
@@ -2073,55 +2065,62 @@ export class LocalMultiplayerMode extends BaseGameMode {
     }
 
     /**
-     * Check if the match win condition has been met
+     * Whether the match is won: by its rule (_resolveMatchEnd), or, with no such rule set,
+     * by round wins (seven by default).
      */
     _checkMatchWinCondition(lastRoundWinner) {
-        if (!this.matchConfig) {
-            // Fallback to old behavior
-            return this.roundWins[lastRoundWinner] >= 7;
-        }
-
+        if (this._resolveMatchEnd() !== null) return true;
         const config = this.matchConfig;
+        if (['frags', 'points', 'lines', 'time', 'never'].includes(config?.endCondition)) return false;
+        return this.roundWins[lastRoundWinner] >= (config?.endConditionValue || 7);
+    }
 
-        switch (config.endCondition) {
-        case 'frags': {
-            const numFragPlayers = config.numPlayers || 2;
-            for (let fi = 0; fi < numFragPlayers; fi++) {
-                const matchKey = `player${fi + 1}`;
-                const cumulative = (this.matchStats[matchKey]?.frags || 0) + (this.multiplayerState.frags[fi] ?? 0);
-                if (cumulative >= config.endConditionValue) return true;
-            }
-            return false;
-        }
+    /**
+     * Whether the match is over by its rule, and who won it (local-match-rules.js), from match
+     * totals: every round so far plus this one (MultiPlayerState counts only the round).
+     * Teams sum their players. A team frag goal counts rounds won and is judged as a round
+     * ends (_handleTeamRoundEnd); Last Standing (Infinity) ends by elimination.
+     * @returns {string | {type: 'team', teamId: number} | null} 'playerN', 'draw', a team, or null
+     * @private
+     */
+    _resolveMatchEnd() {
+        const config = this.matchConfig;
+        if (!config || config.isInfinityLMS || !this.multiplayerState) return null;
+        if (config.isTeamMode && config.endCondition === 'frags') return null;
+        const standings = config.isTeamMode
+            ? [...new Set(this.multiplayerState.players.map((_, i) => this._getResolvedTeamId(i)))]
+                .map((teamId) => ({ ...this._getTeamAggregateStats(teamId), result: { type: 'team', teamId } }))
+            : this._matchTotals().map((totals, i) => ({ ...totals, result: `player${i + 1}` }));
+        return resolveLocalMatchEnd(config, standings, this._wallNow() - this.matchStartTime);
+    }
 
-        case 'time': {
-            const elapsedMinutes = (Date.now() - this.matchStartTime) / 1000 / 60;
-            return elapsedMinutes >= config.endConditionValue;
-        }
+    /**
+     * Time running out, or a points or lines goal met mid-round, ends the match without a
+     * death (they were judged only when someone died). Checked with the standings. @private
+     */
+    _checkMatchEndMidRound() {
+        const condition = this.matchConfig?.endCondition;
+        if (condition !== 'time' && condition !== 'points' && condition !== 'lines') return;
+        if (!this.isRunning || this.isPaused || this._matchEnding || this.multiplayerState?.isPaused !== false) return;
+        const matchEnd = this._resolveMatchEnd();
+        if (matchEnd === null) return;
+        this._endMatchMidRound(matchEnd).catch((error) => {
+            console.error('[LocalMultiplayer] Ending the match failed:', error);
+        });
+    }
 
-        case 'points': {
-            const targetScore = config.endConditionValue * 1000;
-            return this.multiplayerState.players.some((player, playerIndex) => {
-                const matchKey = `player${playerIndex + 1}`;
-                return (this.matchStats[matchKey]?.score || 0) + (player?.score || 0) >= targetScore;
-            });
-        }
-
-        case 'lines': {
-            return this.multiplayerState.players.some((player, playerIndex) => {
-                const matchKey = `player${playerIndex + 1}`;
-                return (this.matchStats[matchKey]?.lines || 0)
-                    + (player?.totalLinesCleared || 0) >= config.endConditionValue;
-            });
-        }
-
-        case 'never':
-            // Never end automatically
-            return false;
-
-        default:
-            return this.roundWins[lastRoundWinner] >= config.endConditionValue;
-        }
+    /**
+     * End the match where it stands: the boards hold for the outcome beat, then the results.
+     * @param {string | {type: 'team', teamId: number}} winner
+     * @param {object | null} [roundOwner]
+     */
+    async _endMatchMidRound(winner, roundOwner = captureLocalMultiplayerRound(this)) {
+        if (!roundOwner || this._matchEnding) return;
+        this._matchEnding = true;
+        this.multiplayerState.isPaused = true;
+        await new Promise((resolve) => { setTimeout(resolve, ROUND_OUTCOME_MS); });
+        if (!ownsLocalMultiplayerRound(this, roundOwner)) return;
+        await this._showMatchEnd(winner);
     }
 
     /**
@@ -2144,7 +2143,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
         const { numPlayers } = this.multiplayerState;
         const roundDuration = retiredRound.clock.usesFixedTiming
             ? retiredRound.clock.roundMs
-            : Date.now() - (this.roundStartTime || this.matchStartTime);
+            : this._wallNow() - (this.roundStartTime || this.matchStartTime);
 
         const accumulatedLog = {};
         for (let i = 0; i < numPlayers; i++) {
@@ -2253,14 +2252,14 @@ export class LocalMultiplayerMode extends BaseGameMode {
         this._syncBoardScenes();
         this._setupLocalBots();
 
-        // Start game loop
-        this.multiplayerState.isPaused = false;
+        // Start the game loop, held while the mode is paused (onResume releases it)
+        this.multiplayerState.isPaused = this.isPaused === true;
         this.multiplayerState.lastTime = performance.now();
         console.log('[LocalMultiplayer] Starting game loop...');
         this._startGameLoop();
 
         console.log('[LocalMultiplayer] New round started!');
-        this.roundStartTime = Date.now();
+        this.roundStartTime = this._wallNow();
     }
 
     /**
@@ -2319,7 +2318,7 @@ export class LocalMultiplayerMode extends BaseGameMode {
             const finalScore = (stats.score || 0) + (current.score || 0);
             const finalLines = (stats.lines || 0) + (current.totalLinesCleared || 0);
             const finalDeaths = (stats.deaths || 0) + (this.multiplayerState.deaths[i] || 0);
-            const frags = this.multiplayerState.frags[i] || 0;
+            const frags = (stats.frags || 0) + (this.multiplayerState.frags[i] || 0);
 
             // Aggregate pieces
             const pieces = { ...stats.pieceCounts };
