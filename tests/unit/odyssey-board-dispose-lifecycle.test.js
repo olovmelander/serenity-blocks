@@ -9,6 +9,10 @@ import {
 import { OdysseyBoardController } from '../../src/rendering/odyssey/OdysseyBoardController.js';
 import { ChapterEnvironmentManager } from '../../src/rendering/odyssey/ChapterEnvironmentManager.js';
 import { GameModeManager } from '../../src/core/game-modes/GameModeManager.js';
+import {
+    keepOdysseyTexture, releaseOdysseyTextures,
+} from '../../src/rendering/odyssey/chapter-environments/shared/odyssey-resident-textures.js';
+import { releaseDisposedRenderer } from '../../src/rendering/webgpu-device-warm.js';
 
 function createCanvas() {
     return {
@@ -271,5 +275,63 @@ describe('GameModeManager failed activation', () => {
 
         expect(manager.currentMode).toBeNull();
         expect(manager.currentModeId).toBeNull();
+    });
+});
+
+// Each Odyssey visit builds a board renderer on the shared warm device. three hooks every
+// renderer to device.lost and never unhooks it, and kept textures hold a listener into the
+// renderer that drew them: about 70-80 MB of VRAM stayed behind per visit (measured on the RTX).
+describe('Odyssey board: nothing of a visit stays on the GPU', () => {
+    beforeEach(() => {
+        vi.stubGlobal('window', { innerHeight: 720, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+        vi.stubGlobal('document', {
+            addEventListener: vi.fn(), removeEventListener: vi.fn(), body: {}, documentElement: {}, elementFromPoint: vi.fn(() => null),
+        });
+        vi.spyOn(console, 'log').mockImplementation(() => {});
+    });
+    afterEach(() => {
+        vi.unstubAllGlobals();
+        vi.restoreAllMocks();
+    });
+
+    it('frees the kept textures and lets go of its renderer once disposed', async () => {
+        const kept = keepOdysseyTexture({ dispose: vi.fn() });
+        const controller = createBoard();
+        const unconfigure = vi.fn();
+        const renderer = Object.assign(controller.renderer, {
+            dispose: vi.fn(() => Promise.resolve()),
+            backend: { context: { unconfigure } },
+            _textures: { big: true },
+        });
+
+        controller.dispose();
+
+        expect(kept.dispose).toHaveBeenCalled();
+        await vi.waitFor(() => expect(unconfigure).toHaveBeenCalledOnce());
+        expect(renderer.backend).toBeNull();
+        expect(renderer._textures).toBeNull();
+        expect(() => renderer.onDeviceLost({ reason: 'unknown' })).not.toThrow();
+        expect(() => renderer.onError({})).not.toThrow();
+    });
+
+    it('releases each kept texture, keeping none out of the registry', () => {
+        const a = { dispose: vi.fn() };
+        const b = { dispose: vi.fn() };
+        expect(keepOdysseyTexture(a)).toBe(a);
+        keepOdysseyTexture(b);
+        expect(keepOdysseyTexture(null)).toBeNull();
+        releaseOdysseyTextures();
+        releaseOdysseyTextures(); // a second board's dispose: textures are disposed again, harmlessly
+        expect(a.dispose).toHaveBeenCalledTimes(2);
+        expect(b.dispose).toHaveBeenCalledTimes(2);
+    });
+
+    it('cuts a disposed renderer loose even with a read-only field or no canvas', () => {
+        const renderer = { backend: null, domElement: {} };
+        Object.defineProperty(renderer, 'fixed', { value: 1, enumerable: true, writable: false });
+        expect(() => releaseDisposedRenderer(renderer)).not.toThrow();
+        expect(renderer.domElement).toBeNull();
+        expect(renderer.fixed).toBe(1);
+        expect(() => releaseDisposedRenderer(null)).not.toThrow();
     });
 });
