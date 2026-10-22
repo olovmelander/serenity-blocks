@@ -10,9 +10,11 @@ import { STEAM_EVENTS } from '../core/steam/steam-config.js';
 // Dev-only: allow ONLINE MP without a real Steam connection so the MOCK transport
 // (BroadcastChannel + localStorage, used in the browser / no-Steam build) can be tested
 // on ONE machine across two browser windows. Enabled by ?localMp=host|join, ?localMpTest=1,
-// or localStorage 'serenity.localMpTest'='1'. The packaged Steam build is unaffected unless
-// the flag is explicitly set.
+// or localStorage 'serenity.localMpTest'='1'. Dev builds only (or a build made with
+// VITE_DEV_HARNESS=1, as src/dev/console-harness.js): in a player's build a URL or a stale
+// localStorage key turned Online Versus on without Steam.
 export function isLocalMpTestMode() {
+    if (!import.meta.env.DEV && import.meta.env.VITE_DEV_HARNESS !== '1') return false;
     try {
         const p = new URLSearchParams(window.location.search);
         if (p.get('localMp') === 'host' || p.get('localMp') === 'join' || p.get('localMp') === 'watch' || p.get('localMp') === 'browse' || p.get('localMpTest') === '1') {

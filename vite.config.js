@@ -72,7 +72,7 @@ const themeIdsByLength = readdirSync(path.resolve(projectRoot, 'src/themes'), { 
   .map((entry) => entry.name)
   .sort((a, b) => b.length - a.length);
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   // Force a canonical-cased root so dev-server module resolution is launch-cwd agnostic.
   root: projectRoot,
   // Harness isolation. The capture/perf harnesses spawn their OWN Vite servers, and two Vite
@@ -83,6 +83,12 @@ export default defineConfig({
   cacheDir: process.env.VITE_CACHE_DIR || undefined,
   // Base public path for assets
   base: './',
+  // A build includes the console test helpers only when made with VITE_DEV_HARNESS=1
+  // (src/dev/console-harness.js). Defined even when unset, so the check folds to false and
+  // the helpers' chunk is left out instead of shipping unreachable.
+  define: {
+    'import.meta.env.VITE_DEV_HARNESS': JSON.stringify(process.env.VITE_DEV_HARNESS || ''),
+  },
   // Ensure Phaser renderer flags are set correctly during dev and build
   plugins: [
     replace({
@@ -249,12 +255,12 @@ export default defineConfig({
     assetsInlineLimit: 4096, // Inline assets smaller than 4kb
     minify: 'esbuild', // Use esbuild for faster builds (terser is slower but smaller)
     target: 'es2020', // Modern browsers for better optimization
-    // Strip console.log and debugger statements in production builds
-    esbuild: {
-      drop: ['debugger'],
-      pure: ['console.debug'],
-    },
   },
+
+  // Production builds drop `debugger` statements and console.debug calls (console.log stays).
+  // This must be the top-level `esbuild` option: Vite has no `build.esbuild`, so the block that
+  // sat there was ignored and both shipped. Dev keeps them.
+  esbuild: command === 'build' ? { drop: ['debugger'], pure: ['console.debug'] } : {},
 
   // Optimize dependencies for faster dev server startup
   optimizeDeps: {
@@ -292,4 +298,4 @@ export default defineConfig({
 
   // Asset handling
   assetsInclude: ['**/*.png', '**/*.jpg', '**/*.jpeg', '**/*.gif', '**/*.svg', '**/*.mp3', '**/*.wav', '**/*.ogg'],
-});
+}));
