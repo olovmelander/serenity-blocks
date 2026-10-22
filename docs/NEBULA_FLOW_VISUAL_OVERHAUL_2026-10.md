@@ -97,6 +97,8 @@ Techniques worth knowing before changing it:
   (`bakeRelief`); the dust's normal takes the gradient of the capsules (whose slope fades out
   toward a pillar's middle — the medial axis is a crease in any distance field) and the relief's
   baked gradient. A finite difference of a bilinearly filtered texture gave blocks and stripes.
+  The billows' slope is the first relief read again two and a half levels up its mip chain
+  (`billowSlope`); the full reads' slope only crisps the skin (see the atmosphere pass below).
 - **Lit from above and behind.** The cluster stands above the frame and a little behind the
   pillars: faces stay dark, what turns toward the light catches it, and a few taps toward the
   cluster through the dust give each billow its own shadow. A thin skin of light burns on every
@@ -129,14 +131,14 @@ Techniques worth knowing before changing it:
 
 Every tier keeps the whole picture and every event (`nebula-flow-quality.js`):
 
-| Tier | Shadow taps | Relief octaves | Fine veils | Far-star layers | Field stars | Ambient young stars | Bloom / shafts |
-|---|---:|---:|---|---:|---:|---:|---|
-| Minimal | 3 | 1 | — | 1 | 60 | 2 | — |
-| Low | 3 | 2 | — | 1 | 90 | 2 | — |
-| Medium | 4 | 2 | yes | 2 | 120 | 3 | yes / 8 taps |
-| High | 5 | 3 | yes | 2 | 150 | 3 | yes / 12 taps |
-| Ultra | 6 | 3 | yes | 2 | 180 | 4 | yes / 14 taps |
-| Extreme | 7 | 3 | yes | 2 | 220 | 4 | yes / 16 taps |
+| Tier | Shadow taps | Relief octaves | Fine veils, near wisps | Lit gas | Far-star layers | Field stars | Ambient young stars | Bloom / shafts |
+|---|---:|---:|---|---|---:|---:|---:|---|
+| Minimal | 3 | 1 | — | — | 1 | 60 | 2 | — |
+| Low | 3 | 2 | — | — | 1 | 90 | 2 | — |
+| Medium | 4 | 2 | yes | yes | 2 | 120 | 3 | yes / 8 taps |
+| High | 5 | 3 | yes | yes | 2 | 150 | 3 | yes / 12 taps |
+| Ultra | 6 | 3 | yes | yes | 2 | 180 | 4 | yes / 14 taps |
+| Extreme | 7 | 3 | yes | yes | 2 | 220 | 4 | yes / 16 taps |
 
 The pixel-ratio cap rises with the tier (0.7 → 1.6), as in the sibling themes.
 
@@ -211,3 +213,59 @@ Playground (`npm run dev:playground`, then `playground.html?effect=nebula-flow&.
 Real game: `?skipIntro=1&unlockAll=1`, then pick Nebula Flow; capture flags `nebulaFlowTime`,
 `nebulaFlowFixedDt`, `nebulaFlowParts=nebula,stars,births,jets,flights,blades`,
 `nebulaFlowFalseColor`, `nebulaFlowForceWebGL` (or `forceWebGL`).
+
+## Atmosphere pass (2026-10-22)
+
+Branch `feature/nebula-flow-atmosphere`. The rebuild was made in a container with no GPU; this
+pass is the first look at it on a real one (an RTX 5080 Laptop, WebGPU and the WebGL2 backend),
+and it changed what that look showed.
+
+![Before and after: the same seeks on origin/main and on the branch](nebula-flow-overhaul/atmosphere-before-after.jpg)
+
+| Seen | Cause | Now |
+|---|---|---|
+| The pillars shaded as crumpled clay | Every octave of the relief's fBm has the same slope (each halves in height and doubles in frequency), so in the normal the finest octaves drew the light | The billows' slope is the first relief read again 2.5 levels up its mip chain (`billowSlope`: a box-filtered chain of a gradient is the gradient of the filtered height); the full reads' slope crisps only the skin; the folds between billows sink by the relief's own height (`fold`) |
+| A pillar was a dark silhouette with a glowing outline | The direct light, self-shadowed, reaches only the dust's outer shell | Light the dust scatters inside itself (`litSoft`, the same taps at a quarter of the extinction) keeps the billows that turn to the cluster lit deep into a face; thin dust passes the cluster's light as a warm band just inside every lit edge (`sheer`, its depth and strength varied by the billows); what shows through thin dust is reddened |
+| Everything on one plane | Nothing stood between the eye and the dust | Gas boils off every lit head and shoulder in streamers toward the cluster (`plume`: one tap of dust back from the light, `upwind`, finds the faces being boiled); a halo in the cavity's colour over every lit edge lifts the dust off the gas; a low haze over the ridge and wisps in front of the pillars (Medium up) move at 1.4 × the dust's parallax |
+| The cavity's gas was a flat pattern | Its glow was density × the cluster's light | Lit as a volume (Medium up): its broad read again a step nearer the cluster, so faces turned to the light are brighter and take its colour, faces turned away sink |
+| A clear's fronts drew grey smoke | The front's light is near white | The gas a front crosses glows in its own hue |
+| A chain's vortex was a twirl filter | The whole turn wound the gas's coordinates; the shear drew every billow into arcs | 55 % of the turn winds the gas (`VORTEX_TURN`), and the gas gathers into two log-spiral arms with dark lanes between, wound the same way and turning with the chain |
+| (while building) four lines washed the right pillar pale | The new plumes and halo flared with a front as the hairline does (× 4) | A front only stirs them (× 1 + 0.8 per front at its band) |
+| The ambient stars' jets were neon dumbbells and a lock's jets lit rods with a hook at each end | A jet was shorter than one knot spacing: a continuous beam with bright caps | Knots spaced so even a short jet carries several, a dim beam between them, softer bow shocks; an ambient star's fainter still |
+| A grainy trail ran down from every bright star | The cluster's shafts dragged every bright pixel's bloom down a jittered march | Only bloom near the cluster emits |
+| Middling stars were soft blobs | The sprite's broad halo (22 % of the light over the sprite) under the bloom | A tight halo: stars are points with the telescope's spikes |
+
+**Cost**, by construction (the RTX was shared with parallel sessions, which makes frame times
+unresolvable; none are quoted). The nursery's WGSL fragment, built by the shader gate's harness:
+
+| Tier | origin/main | this pass | texture reads in the WGSL |
+|---|---:|---:|---|
+| High | 44.4 KB | 53.4 KB | 31 → 39 |
+| Medium | 40.3 KB | 49.5 KB | 26 → 34 |
+| Low | 35.7 KB | 43.2 KB | 22 → 27 |
+| Minimal | 34.4 KB | 42.1 KB | 19 → 24 |
+
+Most of the new reads run only where they show. Near the dust (inside the light branch): one tap
+back from the light (2 reads), the plume's strands (1), and the billows' slope (1, inside the
+normal's narrower branch). The haze reads once below the middle of the frame, the wisps once
+beside the board. In the open cavity above the middle, High and Medium add the lit gas's two reads
+and Low and Minimal add none.
+
+**Verified:**
+
+- Playground, WebGPU (RTX 5080 Laptop) and the WebGL2 backend (`forceWebGL=1`): rest, held stars,
+  a lock, a hard drop, a clear and its freed stars, four lines, chains of 3, 5 and 9, a T-spin,
+  the six palettes, the six tiers, an upright 430 × 932 phone at High and at Low. No console
+  messages beyond the platform's own.
+- The real game (Electron against the dev server): single player, Nebula Flow at High, nine real
+  hard drops. `[NebulaFlow] Scene ready (WebGPU, High)` and no console error.
+
+![The real game on the branch](nebula-flow-overhaul/atmosphere-ingame.jpg)
+
+- `tests/unit/nebula-flow-*.test.js` (210), including the shader gate at High and Minimal on both
+  builders (no implicit-level read in a branch, no var read before it is assigned).
+
+**Not verified:** frame time on either GPU, physical phones, and the Electron theme validator
+(`docs/theme-screenshots/nebula-flow.png` was not regenerated).
+
+**Reproduce:** the queries in the table above; `dbg=diffuse` shows the billows' shading alone.
