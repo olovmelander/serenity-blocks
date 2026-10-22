@@ -72,10 +72,14 @@ const TAU = Math.PI * 2;
  */
 export const GARGANTUA_LOCK = Object.freeze({
     lockDepth: 900,
-    // Screen-anchor bias: the hero rides the upper-centre third, a hair right (the rail owns
-    // the lower centre and climbs into it).
-    upBias: 150,
-    rightBias: 26,
+    // Screen-anchor bias: where the rail runs into the hole. Olov (2026-10-22): "does the path go
+    // in to the center of the black hole now?" At 150 up / 26 right (the upper-centre third) the
+    // rail's drawn end met the shadow 0.8-1.1 shadow radii below its centre, at the rim, all
+    // through chapter 6. Measured on the real path camera, this places the centre on that end
+    // (within ~0.26 radii from p 0.78 to chapter 6's last node), so the rail climbs into the
+    // middle of the hole; chapter 6's seat (OMEN_SPINE_ANCHOR) is solved from it.
+    upBias: 29,
+    rightBias: 4,
     shadowRadius: 132,
 });
 
