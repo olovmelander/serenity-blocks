@@ -17,12 +17,14 @@ const I = {
 
 function makeDirector(options = {}) {
     const calls = {
-        lock: [], clear: [], combo: [], levelUp: [],
+        lock: [], clear: [], combo: [], levelUp: [], perfect: [], spin: [],
     };
     const sink = {
         // The director reuses its context objects: a sink must copy what it keeps.
         lock: vi.fn((c) => calls.lock.push({ ...c, rows: [...c.rows] })),
         clear: vi.fn((c) => calls.clear.push({ ...c, rows: [...c.rows], screen: c.screen ? { ...c.screen } : null })),
+        perfect: vi.fn((c) => calls.perfect.push({ ...c })),
+        spin: vi.fn((c) => calls.spin.push({ ...c })),
         combo: vi.fn((n, player) => calls.combo.push([n, player])),
         levelUp: vi.fn((level) => calls.levelUp.push(level)),
     };
@@ -144,6 +146,37 @@ describe('luminous tides director: intake', () => {
         expect(calls.clear[1]).toMatchObject({
             lines: 1, tspin: false, b2b: false, perfect: false,
         });
+    });
+
+    it('crowns the clear still playing with a perfect clear that settles after it, never a second clear', () => {
+        const { director, calls } = makeDirector();
+        director.onHardDrop({ piece: I, distance: 12 });
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        // Physics sends it once the last wave has settled, in a frame of its own.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: false });
+        expect(calls.perfect).toEqual([{ player: 0, screen: null }]);
+        // It is the chain's own clear: the combo it reported stands.
+        expect(calls.combo).toEqual([[1, 0]]);
+    });
+
+    it('answers a T-spin that cleared nothing on its own, and one that cleared on its clear', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(0);
+        expect(calls.spin).toEqual([{ player: 0, screen: null }]);
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 1, clearedRows: [23], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 1 });
+        director.flush();
+        expect(calls.spin).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 1, tspin: true });
     });
 
     it('turns a meditation click into a clear at a screen position', () => {
