@@ -74,8 +74,9 @@ function createMotes(u, count, rand) {
     const look = attribute('iMoteLook', 'vec4'); // r, g, b, size px
     const t = u.time;
     const ph = mote.w;
-    // Rise slowly through a 40-unit column and wrap; sway sideways a little.
-    const rise = fract(t.mul(0.012).add(ph.mul(0.159))).mul(40.0);
+    // Rise slowly through a 40-unit column and wrap (on the flight clock: the air lifts faster as
+    // play heats); sway sideways a little.
+    const rise = fract(u.flight.mul(0.012).add(ph.mul(0.159))).mul(40.0);
     const pos = vec3(
         mote.x.add(sin(t.mul(0.09).add(ph)).mul(3.0)),
         mote.y.add(rise),
@@ -91,7 +92,7 @@ function createMotes(u, count, rand) {
         const wrapFade = smoothstep(0.0, 0.12, riseT).mul(float(1.0).sub(smoothstep(0.8, 1.0, riseT)));
         const fog = exp(dist.mul(SEA_HAZE * 1.4).negate());
         return look.xyz.mul(glint(local, twinkle.mul(0.5)).mul(twinkle.mul(0.6).add(0.4)).mul(wrapFade).mul(fog)
-            .mul(0.9));
+            .mul(u.moteGlow.mul(0.9)));
     })();
     material.opacityNode = float(1.0);
 
@@ -196,7 +197,7 @@ function createVeils(u, layers) {
             return mix(rgb(0xd9c4e6, 0.95), rgb(0xffe2bc, 1.25), sa).mul(float(1.0).add(u.seaGlow.mul(0.2)));
         })();
         material.opacityNode = Fn(() => {
-            const p = vec2(vu.x.mul(5.0).add(u.time.mul(spec.speed)).add(i * 3.7), vu.y.mul(1.6));
+            const p = vec2(vu.x.mul(5.0).add(u.flight.mul(spec.speed)).add(i * 3.7), vu.y.mul(1.6));
             const n = nvFbm3(p);
             const band = smoothstep(0.0, 0.35, vu.y).mul(float(1.0).sub(smoothstep(0.45, 1.0, vu.y)));
             const sides = smoothstep(0.0, 0.12, vu.x).mul(float(1.0).sub(smoothstep(0.88, 1.0, vu.x)));
@@ -228,6 +229,8 @@ export class NimbusFx {
         this.motes = motes > 0 ? createMotes(u, motes, rand) : null;
         this.sparkles = createSparkles(u, Math.max(1, sparkles));
         this.sparkCursor = 0;
+        /** When each sparkle slot's glint ends (CPU copy): a new glint takes a finished slot. */
+        this.sparkEnd = new Float64Array(this.sparkles.iSpawn.count).fill(-1e6);
         this.veils = veils > 0 ? createVeils(u, veils) : null;
         if (this.motes) this.group.add(this.motes);
         this.group.add(this.sparkles.sprite);
@@ -239,6 +242,31 @@ export class NimbusFx {
     }
 
     /**
+     * The slot for a glint starting at `t0`: the next finished one from the cursor, or, with
+     * every glint still alive, the one closest to its end, so a burst never winks out the glints
+     * of the one before mid-twinkle while older ones linger.
+     */
+    sparkleSlot(t0) {
+        const end = this.sparkEnd;
+        const n = end.length;
+        let best = this.sparkCursor % n;
+        let soonest = Infinity;
+        for (let k = 0; k < n; k += 1) {
+            const i = (this.sparkCursor + k) % n;
+            if (end[i] <= t0) {
+                best = i;
+                break;
+            }
+            if (end[i] < soonest) {
+                soonest = end[i];
+                best = i;
+            }
+        }
+        this.sparkCursor = (best + 1) % n;
+        return best;
+    }
+
+    /**
      * Emit one sparkle: world position/velocity, life (s), THREE.Color, size (px), and its
      * motion (`drag` 1/s, `lift` units/s² upward, `twinkle` rate rad/s, `phase`).
      */
@@ -246,8 +274,8 @@ export class NimbusFx {
         const {
             iSpawn, iVel, iLook, iMotion,
         } = this.sparkles;
-        const i = this.sparkCursor;
-        this.sparkCursor = (i + 1) % iSpawn.count;
+        const i = this.sparkleSlot(t0);
+        this.sparkEnd[i] = t0 + life;
         iSpawn.array.set([px, py, pz, t0], i * 4);
         iVel.array.set([vx, vy, vz, life], i * 4);
         iLook.array.set([color.r, color.g, color.b, sizePx], i * 4);
@@ -260,6 +288,7 @@ export class NimbusFx {
 
     clear() {
         const { iSpawn } = this.sparkles;
+        this.sparkEnd.fill(-1e6);
         for (let i = 0; i < iSpawn.count; i += 1) iSpawn.array[i * 4 + 3] = -1e6;
         iSpawn.clearUpdateRanges();
         iSpawn.needsUpdate = true;
