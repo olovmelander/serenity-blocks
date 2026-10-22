@@ -169,7 +169,7 @@ export class AetherTidesWorld {
         this.hushAt = NEVER;
         this.hushDepth = 1;
         this.flare = new Swell({
-            attack: 0.05, release: 1 / 1.15, ceiling: 1.5, knee: 1,
+            attack: 0.05, release: 1 / 1.15, ceiling: 1.2, knee: 0.9,
         });
         this.starfireAt = NEVER;
         /** The post stack's flash and kick: every hit adds to what is still lit. */
@@ -181,6 +181,12 @@ export class AetherTidesWorld {
          * and in a fever the Tide Stars burn in starfire.
          */
         this.surge = new GameplaySurge();
+        /** Back-to-back: the amber companion answers the Tide Star (a flare of its own). */
+        this.companion = new Swell({
+            attack: 0.06, release: 1.4, ceiling: 1.5, knee: 1,
+        });
+        /** The chain's power, eased: it rises with each step and lets go over a second or two. */
+        this.power = 0;
         /** The surge as of the last frame (the post state reads it). */
         this.heat = this.surge.sample(NEVER);
         /** Palette: what is shown, blending from one index to another. */
@@ -188,8 +194,11 @@ export class AetherTidesWorld {
         this.paletteTo = 0;
         this.paletteAt = NEVER;
         this.palette = {};
+        /** What was on screen when the last blend began: a blend continues from there. */
+        this.paletteFromColors = {};
         PALETTE_KEYS.forEach((key) => {
             this.palette[key] = [0, 0, 0];
+            this.paletteFromColors[key] = [0, 0, 0];
         });
 
         this._p = { x: 0, y: 0 };
@@ -269,12 +278,11 @@ export class AetherTidesWorld {
     /** Write the palette at blend `k` between paletteFrom and paletteTo. */
     applyPalette(k) {
         const count = AETHER_PALETTES.length;
-        const from = AETHER_PALETTES[((this.paletteFrom % count) + count) % count];
         const to = AETHER_PALETTES[((this.paletteTo % count) + count) % count];
         const pal = this.palette;
         for (let i = 0; i < PALETTE_KEYS.length; i += 1) {
             const key = PALETTE_KEYS[i];
-            const a = from[key];
+            const a = this.paletteFromColors[key];
             const b = to[key];
             const o = pal[key];
             o[0] = lerp(a[0], b[0], k);
@@ -378,7 +386,9 @@ export class AetherTidesWorld {
         this.starfireAt = NEVER;
         this.flash.reset();
         this.kick.reset();
+        this.companion.reset();
         this.surge.reset();
+        this.power = 0;
     }
 
     /** Before each fluid step: place what moves by itself, then write the event table. */
@@ -387,7 +397,11 @@ export class AetherTidesWorld {
             events, aspect, tide: U,
         } = this;
         const calm = this.reducedMotion ? 0.5 : 1;
-        const power = powerForCombo(this.combo);
+        // The chain's power climbs with each step and, when the chain breaks, eases off with the
+        // maelstrom instead of dropping the tide's speed and the stars' light in one frame.
+        const aim = powerForCombo(this.combo);
+        this.power += (aim - this.power) * approach(aim > this.power ? 6 : 0.8, SIM_DT);
+        const { power } = this;
         const { level, fever } = this.surge.sample(clock);
 
         // Three slow gyres: the tide. They wander, and their strengths breathe out of step.
@@ -453,8 +467,16 @@ export class AetherTidesWorld {
             swirlRadius: 0.32,
         });
         const b = tideStarPosition(1, clock, aspect, this._p);
+        const answer = this.companion.valueAt(clock);
         events.setWell(WELL_STAR_B, {
-            x: b.x, y: b.y, flow: 0.28, radius: 0.085, swirl: -0.028, drain: 0.4, heat: 0.08, swirlRadius: 0.26,
+            x: b.x,
+            y: b.y,
+            flow: 0.28 + answer * 3.5,
+            radius: 0.085,
+            swirl: -0.028,
+            drain: 0.4,
+            heat: 0.08 + answer * 2.4,
+            swirlRadius: 0.26,
         });
 
         // ── palette ──
@@ -510,8 +532,9 @@ export class AetherTidesWorld {
             this.pointer.y * 0.35 + Math.cos(now * 0.037) * 0.25 * drift - breath.y * (2 / 0.3),
         );
 
-        const power = powerForCombo(this.combo);
+        const { power } = this;
         const flare = this.flareStrength(now);
+        const answer = this.companion.valueAt(now);
         const heat = this.surge.sample(now);
         this.heat = heat;
         const { level, fever } = heat;
@@ -522,7 +545,7 @@ export class AetherTidesWorld {
         // The stars pour more light through the gas the hotter play runs.
         P.starFlux.value.set(
             1 + power * 0.35 + flare * 1.7 + level * 0.45 + fever * 0.55,
-            0.62 + power * 0.2 + flare * 0.3 + level * 0.25 + fever * 0.35,
+            0.62 + power * 0.2 + flare * 0.3 + level * 0.25 + fever * 0.35 + answer * 1.3,
         );
 
         const w = maelstromPosition(now, aspect, this._p);
@@ -890,10 +913,26 @@ export class AetherTidesWorld {
      */
     onClear(c) {
         if (!c || !this.fluid) return;
+        if (c.lines === 0 && c.crown) {
+            this.crown(c);
+            return;
+        }
+        if (c.lines === 0 && c.tspin) {
+            this.spin(c);
+            return;
+        }
         const { aspect, events } = this;
         const lines = Math.max(1, Math.min(4, Math.round(c.lines || (c.rows?.length ?? 1))));
         const grand = lines >= 4 || c.perfect === true;
         const calm = this.reducedMotion ? 0.45 : 1;
+        // A cascade's later waves build on the first: hotter, harder, wider fronts.
+        const depth = Math.max(0, Math.min(9, Math.round(Number(c.cascade) || 1) - 1));
+        const deep = 1 + 0.14 * depth;
+        // …and burn a little hotter (heat whitens the gas: a gentler step than the push).
+        const hotter = 1 + 0.06 * depth;
+        // A chain keeps the stars its locks lit (they brighten instead of burning out); a quad,
+        // a perfect clear or the chain's release sets them all off at once.
+        const chain = Math.round(Number(c.combo) || 1) >= 2 && !grand;
         // A four-line clear holds its breath first.
         const at = this.eventClock + (grand ? HUSH_HOLD : 0);
         if (grand) {
@@ -945,8 +984,8 @@ export class AetherTidesWorld {
                         radius: ch * 0.62,
                         color: plume,
                         deposit: grand ? 0.75 : 0.55,
-                        push: (grand ? 1.5 : 1.1) * calm,
-                        heat: grand ? 4.5 : 3,
+                        push: (grand ? 1.5 : 1.1) * calm * deep,
+                        heat: (grand ? 4.5 : 3) * hotter,
                     });
                     this.fx.table.beam({
                         x0: from, y, x1: to, at: at + lag, color: fire, thickness: ch * 0.2,
@@ -976,13 +1015,13 @@ export class AetherTidesWorld {
             x: heartX,
             y: heartY,
             t0: at,
-            reach,
-            push: (0.5 + 0.2 * lines + (grand ? 0.5 : 0)) * calm,
-            width: 0.055 + 0.008 * lines,
-            heat: 2.6 + 0.9 * lines + (grand ? 1.5 : 0),
+            reach: reach * (1 + 0.04 * depth),
+            push: (0.5 + 0.2 * lines + (grand ? 0.5 : 0)) * calm * deep,
+            width: (0.055 + 0.008 * lines) * (1 + 0.08 * depth),
+            heat: (2.6 + 0.9 * lines + (grand ? 1.5 : 0)) * hotter,
             rough: (1.1 + 0.5 * lines) * calm,
         }, this.eventClock);
-        if (lines >= 3) {
+        if (lines >= 3 || depth >= 1) {
             events.addRing({
                 x: heartX,
                 y: heartY,
@@ -999,15 +1038,10 @@ export class AetherTidesWorld {
         this.burst.y = heartY;
         this.burst.swell.hit((3.2 + 1.5 * lines) * (c.perfect ? 2.4 : 1), at);
 
-        // ── every star the board has lit goes nova as the front reaches it ──
-        for (let i = 0; i < STAR_SLOTS; i += 1) {
-            const s = events.stars[i];
-            if (s.born <= NEVER * 0.5 || s.dies <= at) continue;
-            const pass = at + ringPassTime(Math.hypot(s.x - heartX, s.y - heartY), reach);
-            // A star still in flight opens first, then goes.
-            const when = Math.max(pass, s.born + 0.25);
-            if (when < s.dies) s.dies = when;
-        }
+        // ── every star the board has lit goes nova as the front reaches it (in a chain they
+        // gather and brighten instead, until the quad or the chain's release spends them) ──
+        if (chain) this.kindleStars(0.05);
+        else this.novaStars(heartX, heartY, at, reach);
 
         // ── a four-line clear: the Tide Star answers ──
         if (grand) {
@@ -1026,6 +1060,7 @@ export class AetherTidesWorld {
                 rough: 2.2 * calm,
             }, this.eventClock);
         }
+        if (c.b2b) this.answer(at);
         if (c.tspin) {
             this.twist.at = at;
             this.twist.x = heartX;
@@ -1033,6 +1068,97 @@ export class AetherTidesWorld {
             this.twist.strength = (this.lockCount % 2 === 0 ? 1 : -1) * 4;
         }
         this.strike(0.2 + 0.12 * lines + (grand ? 0.35 : 0), 0.3 + 0.15 * lines + (grand ? 0.4 : 0), at);
+    }
+
+    /**
+     * Every star the board has lit goes nova as a front from (x, y) reaching `reach` passes it;
+     * with `all`, the front carries on to every star, however far.
+     */
+    novaStars(x, y, at, reach, all = false) {
+        const { events } = this;
+        for (let i = 0; i < STAR_SLOTS; i += 1) {
+            const s = events.stars[i];
+            if (s.born <= NEVER * 0.5 || s.dies <= at) continue;
+            const d = Math.hypot(s.x - x, s.y - y);
+            const pass = at + ringPassTime(d, all ? Math.max(reach, d * 1.15) : reach);
+            // A star still in flight opens first, then goes.
+            const when = Math.max(pass, s.born + 0.25);
+            if (when < s.dies) s.dies = when;
+        }
+    }
+
+    /** The chain feeds the stars it has lit: each burns a little brighter, up to a cap. */
+    kindleStars(step) {
+        const { events } = this;
+        const at = this.eventClock;
+        for (let i = 0; i < STAR_SLOTS; i += 1) {
+            const s = events.stars[i];
+            if (s.born <= NEVER * 0.5 || s.dies <= at) continue;
+            s.flux = Math.min(1.7, s.flux + step);
+        }
+    }
+
+    /**
+     * Back-to-back: the amber companion answers the Tide Star. It flares, blows a hollow in the
+     * gas round itself and sends a front of its own across the sky.
+     */
+    answer(at) {
+        const calm = this.reducedMotion ? 0.45 : 1;
+        this.companion.hit(1, at);
+        const star = tideStarPosition(1, at, this.aspect, this._p);
+        const amber = [1, 0.66, 0.32];
+        this.fx.table.burst({
+            x: star.x, y: star.y, at: at + 0.04, color: amber, speed: 1.8 * calm, life: 1.6, size: 1.35,
+        });
+        this.events.addRing({
+            x: star.x,
+            y: star.y,
+            t0: at + 0.04,
+            reach: Math.hypot(this.aspect, 1) * 1.35,
+            push: 0.9 * calm,
+            width: 0.07,
+            heat: 3.8,
+            rough: 1.8 * calm,
+        }, this.eventClock);
+        this.strike(0.25, 0.35, at);
+    }
+
+    /**
+     * The perfect clear, settled after its clear's last wave: a crown on that clear, never a
+     * second one. No hush; the Tide Star's flare is fed (not restarted), the fronts burn in
+     * starfire again, and a great front leaves the Tide Star, spending every star still lit.
+     */
+    crown(c) {
+        const at = this.eventClock;
+        const calm = this.reducedMotion ? 0.45 : 1;
+        const span = Math.hypot(this.aspect, 1);
+        const star = tideStarPosition(0, at, this.aspect, this._p);
+        this.flare.hit(0.55, at);
+        this.starfireAt = at;
+        this.fx.table.burst({
+            x: star.x, y: star.y, at, color: STARFIRE, speed: 2.6 * calm, life: 2.2, size: 1.7,
+        });
+        this.events.addRing({
+            x: star.x, y: star.y, t0: at, reach: span * 1.7, push: 1.4 * calm, width: 0.09, heat: 5, rough: 2.4 * calm,
+        }, this.eventClock);
+        this.novaStars(star.x, star.y, at, span * 1.7, true);
+        const { board } = this.stage(c.player || 0);
+        this.burst.x = (board.x0 + board.x1) * 0.5;
+        this.burst.y = (board.y0 + board.y1) * 0.5;
+        this.burst.swell.hit(12, at);
+        this.surge.clear(c, at);
+        this.strike(0.3, 0.6, at);
+    }
+
+    /** A T-spin that cleared nothing: the tide still turns about the board, gently. */
+    spin(c) {
+        const at = this.eventClock;
+        const { board } = this.stage(c.player || 0);
+        this.twist.at = at;
+        this.twist.x = (board.x0 + board.x1) * 0.5;
+        this.twist.y = (board.y0 + board.y1) * 0.5;
+        this.twist.strength = (this.lockCount % 2 === 0 ? 1 : -1) * 2.4;
+        this.strike(0.08, 0.25, at);
     }
 
     /** The true combo (0 = the chain broke). */
@@ -1107,6 +1233,8 @@ export class AetherTidesWorld {
             heat: 3 + 3 * open,
             rough: 1.6 * calm,
         }, this.eventClock);
+        // Everything the chain lit goes with it.
+        this.novaStars(wx, wy, at, Math.hypot(aspect, 1) * 1.3, true);
         // Two jets along its axis, in the colours it swallowed.
         const { gasB, gasC } = this.palette;
         const axis = 0.9 + at * 0.13;
@@ -1146,7 +1274,15 @@ export class AetherTidesWorld {
             return;
         }
         if (index === this.paletteTo) return;
-        // If a blend is under way it restarts from what is on screen now (close enough: it eases).
+        // A blend under way continues from what is on screen now, never from its old target.
+        for (let i = 0; i < PALETTE_KEYS.length; i += 1) {
+            const key = PALETTE_KEYS[i];
+            const o = this.paletteFromColors[key];
+            const p = this.palette[key];
+            o[0] = p[0];
+            o[1] = p[1];
+            o[2] = p[2];
+        }
         this.paletteFrom = this.paletteTo;
         this.paletteTo = index;
         this.paletteAt = this.eventClock;
@@ -1185,7 +1321,8 @@ export class AetherTidesWorld {
         const { now } = this;
         const flare = this.flareStrength(now);
         const { level, fever } = this.heat;
-        out.flash = this.flash.valueAt(now) + flare * 0.5;
+        // The flare's share of the flash is capped: stacked flares keep their colour.
+        out.flash = this.flash.valueAt(now) + Math.min(1, flare) * 0.45;
         out.kick = this.kick.valueAt(now);
         // The bloom swells a little with the heat of play and holds through a fever (the gas's
         // own glow carries most of it: a haze over everything would wash the colours out).
