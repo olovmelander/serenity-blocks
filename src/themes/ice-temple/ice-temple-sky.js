@@ -280,7 +280,8 @@ export function createAurora(u, count = 4) {
     const misc = attribute('aMisc', 'vec4');
     const s = uv().x;
     const v = uv().y;
-    const t = u.time.mul(misc.z);
+    // The aurora keeps its own clock: it dances faster as play heats (the world sets it).
+    const t = u.auroraClock.mul(misc.z);
     const along = end.sub(start);
     const across = normalize(cross(vec3(0.0, 1.0, 0.0), along));
     // The path meanders, and its meanders travel: the curtain folds and unfolds.
@@ -294,7 +295,7 @@ export function createAurora(u, count = 4) {
     const vV = varying(v, 'itAuroraV');
     const vMisc = varying(misc, 'itAuroraMisc');
     material.colorNode = Fn(() => {
-        const flow = u.time.mul(vMisc.z).mul(0.011);
+        const flow = u.auroraClock.mul(vMisc.z).mul(0.011);
         const lanes = vMisc.y.mul(0.137);
         // Three scales of ray along the curtain: the knots, the rays, the hair-fine striations.
         const coarse = u.noise(vec2(vS.mul(4.2).add(flow), lanes)).r;
@@ -315,7 +316,7 @@ export function createAurora(u, count = 4) {
         const top = float(1.0).sub(smoothstep(0.55, 1.0, vV));
         // Curtains come and go along their length.
         const ends = smoothstep(0.0, 0.1, vS).mul(float(1.0).sub(smoothstep(0.9, 1.0, vS)));
-        const swell = sin(vS.mul(6.0).add(u.time.mul(0.11)).add(vMisc.y)).mul(0.5).add(0.5);
+        const swell = sin(vS.mul(6.0).add(u.auroraClock.mul(0.11)).add(vMisc.y)).mul(0.5).add(0.5);
         // Colour with height: the border's colour, the body's above it, and up the tall rays the
         // fringe's (green, then cyan, then violet on the first level).
         const body = mix(u.auroraA, u.auroraB, smoothstep(0.03, 0.26, vv));
@@ -324,7 +325,9 @@ export function createAurora(u, count = 4) {
         const hem = exp(max(vv, 0.0).mul(-70.0)).mul(rise).mul(ray.mul(1.3).add(0.2));
         colour.assign(mix(colour, vec3(0.86, 1.0, 0.94), itSaturate(hem.mul(ray).mul(1.2)).mul(0.45)));
         // Light runs along the border in waves.
-        const run = sin(vS.mul(38.0).sub(u.time.mul(0.9).mul(vMisc.z.add(0.6))).add(vMisc.y.mul(5.0))).mul(0.5).add(0.5);
+        const run = sin(vS.mul(38.0).sub(u.auroraClock.mul(0.9).mul(vMisc.z.add(0.6))).add(vMisc.y.mul(5.0)))
+            .mul(0.5)
+            .add(0.5);
         const k = rise.mul(fall).mul(top).mul(ray.mul(2.3).add(0.07)).mul(ends)
             .add(hem.mul(run.mul(0.6).add(0.7)).mul(ends).mul(0.9))
             .mul(swell.mul(0.7).add(0.3))
