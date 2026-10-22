@@ -77,6 +77,7 @@ import {
 import { billboardWorld } from './shared/odyssey-tsl-billboard.js';
 import { getLakeNoiseTexture, makeLakeNoiseSampler } from './shared/odyssey-lake-noise-bake.js';
 import { buildTileableNoise3D } from './shared/odyssey-baked-noise.js';
+import { keepOdysseyTexture } from './shared/odyssey-resident-textures.js';
 
 // Lake surface Y (mirrors LAVA_LAKE_Y in earth-core.js). Used for the emissive
 // BLEED on prop bases near the lake line and the lake-distance grounding gradient.
@@ -151,7 +152,7 @@ const EARTH_CORE_BAKE_NOISE = _readEarthCoreBakeFlag();
 const BAKED_NOISE_PERIOD = 10; // world units per texture tile (features/unit = grid/period = 2)
 let _bakedNoiseTex = null;
 function _getBakedNoiseSampler() {
-    if (!_bakedNoiseTex) _bakedNoiseTex = buildTileableNoise3D(96, 20, BAKED_NOISE_PERIOD, 1337);
+    if (!_bakedNoiseTex) _bakedNoiseTex = keepOdysseyTexture(buildTileableNoise3D(96, 20, BAKED_NOISE_PERIOD, 1337));
     const invP = 1 / BAKED_NOISE_PERIOD;
     // Match snoise3's ~[-1,1]: sample R, wrap into [0,1), restore range.
     return (p) => texture3D(_bakedNoiseTex, fract(vec3(p).mul(invP))).r.mul(2.0).sub(1.0);
@@ -161,7 +162,7 @@ function _getBakedNoiseSampler() {
 // Coordinate scale is 1/grid (= 0.05), NOT invP: the bake runs 2 features/unit, noise3's
 // lattice ~1/unit, and the dome's unit-sphere domain would read the doubling as a new look.
 function _getBakedNoise01Sampler() {
-    if (!_bakedNoiseTex) _bakedNoiseTex = buildTileableNoise3D(96, 20, BAKED_NOISE_PERIOD, 1337);
+    if (!_bakedNoiseTex) _bakedNoiseTex = keepOdysseyTexture(buildTileableNoise3D(96, 20, BAKED_NOISE_PERIOD, 1337));
     return (p) => texture3D(_bakedNoiseTex, fract(vec3(p).mul(0.05))).r;
 }
 

@@ -36,6 +36,7 @@ import * as THREE from 'three/webgpu';
 import {
     float, floor, fract, texture3D, vec3,
 } from 'three/tsl';
+import { keepOdysseyTexture } from './odyssey-resident-textures.js';
 
 /** Lattice cells per period on each axis (also the texture's size in texels). */
 export const LATTICE_NOISE_PERIOD = 64;
@@ -83,7 +84,7 @@ export function getLatticeNoiseTexture() {
     texture.generateMipmaps = false;
     texture.unpackAlignment = 1;
     texture.needsUpdate = true;
-    latticeTexture = texture;
+    latticeTexture = keepOdysseyTexture(texture);
     return texture;
 }
 

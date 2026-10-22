@@ -26,7 +26,7 @@ import {
     ODYSSEY_BREACH_P, ODYSSEY_MASSIFS, ODYSSEY_SEA_LEVEL, odysseyWorldHeight,
 } from './world/odyssey-world-height.js';
 import { reportWorldBuildFailure } from './world/world-build-failure-report.js';
-import { warmWebGpuDevice } from '../webgpu-device-warm.js';
+import { releaseDisposedRenderer, warmWebGpuDevice } from '../webgpu-device-warm.js';
 import {
     isWorldVisibleAtProgress,
     worldAtmosphericThin,
@@ -105,6 +105,7 @@ import {
 import { gpuResilience } from '../../utils/gpu-context-resilience.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
 import { registerGpuSurface } from '../../utils/gpu-loss-coordinator.js';
+import { releaseOdysseyTextures } from './chapter-environments/shared/odyssey-resident-textures.js';
 import {
     beginAsyncRenderPipelines, isAsyncRenderPipelinesReady, preloadAsyncRenderPipelines,
 } from '../async-render-pipelines.js';
@@ -5326,10 +5327,16 @@ export class OdysseyBoardController {
             }
         });
 
-        // Dispose renderer
-        Promise.resolve(this.renderer?.dispose()).catch((error) => {
+        // The textures Odyssey modules keep for the process: freed here, or every visit kept
+        // another GPU copy of each, and the dead renderer with them (odyssey-resident-textures.js).
+        releaseOdysseyTextures();
+
+        // Dispose renderer, then let go of it: on the shared warm device three keeps every
+        // renderer reachable from device.lost (webgpu-device-warm.js releaseDisposedRenderer).
+        const { renderer } = this;
+        Promise.resolve(renderer?.dispose()).catch((error) => {
             console.warn('[OdysseyBoardController] Renderer disposal failed:', error);
-        });
+        }).finally(() => releaseDisposedRenderer(renderer));
         this.composer?.dispose?.();
 
         // Remove canvas

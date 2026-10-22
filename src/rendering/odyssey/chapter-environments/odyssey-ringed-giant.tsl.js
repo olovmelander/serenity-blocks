@@ -63,6 +63,7 @@ import {
     GIANT_RINGS,
 } from './odyssey-ringed-giant.js';
 import { latticeNoise3 } from './shared/odyssey-lattice-noise.js';
+import { keepOdysseyTexture } from './shared/odyssey-resident-textures.js';
 
 /** Seconds one flow read takes to run its half-cycle (two reads cross-fade, so shear never winds up). */
 const FLOW_CYCLE = 140;
@@ -100,10 +101,10 @@ export function getRingedGiantTextures() {
     ringTex.colorSpace = THREE.NoColorSpace;
     ringTex.needsUpdate = true;
     textures = {
-        bandColor: bandTexture(bands.colors, bands.size, true),
-        bandFar: bandTexture(bands.far, bands.farSize, true),
-        bandMeta: bandTexture(bands.meta, bands.size, false),
-        ring: ringTex,
+        bandColor: keepOdysseyTexture(bandTexture(bands.colors, bands.size, true)),
+        bandFar: keepOdysseyTexture(bandTexture(bands.far, bands.farSize, true)),
+        bandMeta: keepOdysseyTexture(bandTexture(bands.meta, bands.size, false)),
+        ring: keepOdysseyTexture(ringTex),
         ringSize: ring.size,
         bandSize: bands.size,
     };
