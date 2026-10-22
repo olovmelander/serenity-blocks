@@ -73,7 +73,9 @@ export class GoldenForestAtmosphere {
         // The sun: a clean disc with a hot rim of glare, dimmed where a cloud bar crosses it.
         const radius = Math.cos(THREE.MathUtils.degToRad(GOLDEN_FOREST_SUN_RADIUS_DEGREES));
         const disc = smoothstep(radius - 0.00012, radius + 0.0001, sunward);
-        const glare = pow(sunward, 1400).mul(0.7).add(pow(sunward, 190).mul(0.2));
+        // A perfect clear crowns the treetops: the glare opens into a wide corona (uFlare).
+        const glare = pow(sunward, 1400).mul(0.7).add(pow(sunward, 190).mul(light.uFlare.mul(0.5).add(0.2)))
+            .add(pow(sunward, 36).mul(light.uFlare.mul(0.1)));
         material.colorNode = sky.add(light.uSunColor.mul(disc.mul(3).add(glare))
             .mul(cover.mul(0.45).oneMinus()).mul(light.uWarmth.mul(0.25).add(1)));
         const dome = new THREE.Mesh(this.own(new THREE.SphereGeometry(3000, 48, 24)), material);
@@ -110,7 +112,9 @@ export class GoldenForestAtmosphere {
             material.colorNode = light.uHazeCool.mul(1.25)
                 .add(light.uHazeWarm.mul(sun).mul(pow(sunward, 2).mul(1.3).add(0.16)))
                 .add(light.uHazeWarm.mul(light.uWarmth).mul(0.1));
-            material.opacityNode = smoothstep(0.3, 0.78, billow).mul(band).mul(sides).mul(thickness);
+            // The rising wind of hot play lifts the mist off the water (uClearAir).
+            material.opacityNode = smoothstep(0.3, 0.78, billow).mul(band).mul(sides).mul(thickness)
+                .mul(light.uClearAir.mul(-0.55).add(1));
             const mist = new THREE.Mesh(geometry, material);
             mist.position.set(0, -0.05, z);
             mist.scale.set(420 + -z * 3.2, height, 1);

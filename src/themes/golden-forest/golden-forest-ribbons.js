@@ -94,10 +94,18 @@ export class GoldenForestRibbons {
         return this;
     }
 
-    update(frame = {}) {
-        const level = Number.isFinite(frame.ribbons) ? THREE.MathUtils.clamp(frame.ribbons, 0, 1) : 0;
+    /**
+     * The ribbons answer the river (`frame.ribbons`, `frame.heat`); `worn` (GoldenForestWorld.wear)
+     * adds a fever, which unfurls them across the sky whatever the river does, and a perfect
+     * clear's crown, which ignites every one of them white-gold.
+     */
+    update(frame = {}, worn = null) {
+        const unit = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
+        const fever = unit(worn?.fever);
+        const crown = unit(worn?.crown);
+        const level = Math.max(unit(frame.ribbons), fever * 0.8, crown);
         this.uLevel.value = level;
-        this.uHeat.value = Number.isFinite(frame.heat) ? THREE.MathUtils.clamp(frame.heat, 0, 1) : 0;
+        this.uHeat.value = Math.max(unit(frame.heat), fever * 0.35, crown * 0.9);
         if (this.warmFrames > 0) this.warmFrames -= 1;
         // Also for as long as the theme builds hidden behind the one playing (`warming`, set by it):
         // that build is budgeted per frame and can reach the ribbons after their first frames,

@@ -13,7 +13,11 @@ import {
     texture, uniform, vec2, vec3,
 } from 'three/tsl';
 import { gridShadowFilter } from '../shared/grid-shadow-filter.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
+/** The resting breeze; play raises it (update()). */
+export const GOLDEN_FOREST_BREEZE = 0.24;
+const FRONT_WIDTH = 22;
 const SUN_AZIMUTH = THREE.MathUtils.degToRad(-21);
 const SUN_ELEVATION = THREE.MathUtils.degToRad(11.5);
 const TAU = Math.PI * 2;
@@ -82,12 +86,29 @@ export class GoldenForestLight {
         this.uGroundLevel = uniform(0);
         // Wind: a steady breeze, gusts that roll across the water, and a travelling front.
         this.uWindDir = uniform(new THREE.Vector3(0.92, 0, 0.39));
-        this.uWind = uniform(0.24);
+        this.uWind = uniform(GOLDEN_FOREST_BREEZE);
         this.uGust = uniform(0);
-        this.uFront = uniform(new THREE.Vector4(0, 0, 22, 0)); // x, strength, width
+        // Up to three fronts crossing at once (golden-forest-reactions.js): the first in uFront
+        // (x, strength, width), the other two in uFront2 (x, strength, x, strength).
+        this.uFront = uniform(new THREE.Vector4(0, 0, FRONT_WIDTH, 0));
+        this.uFront2 = uniform(new THREE.Vector4(0, 0, 0, 0));
         // Gameplay envelopes shared by every material.
         this.uWarmth = uniform(0);
         this.uGlow = uniform(0);
+        // The sun flares on the treetops: a perfect clear's crown and a back-to-back's gold.
+        this.uFlare = uniform(0);
+        // The rising wind clears the air: the haze thins and the mist lifts off the water (0..1).
+        this.uClearAir = uniform(0);
+        // The colours the golden hour rests at; hot play deepens them toward sunset (update()).
+        // `haze` is the resting density of the air (a lens may set it, as the icon's does).
+        this.resting = {
+            sun: this.uSunColor.value.clone(),
+            toward: this.uSkyToward.value.clone(),
+            mid: this.uSkyMid.value.clone(),
+            zenith: this.uZenith.value.clone(),
+            hazeWarm: this.uHazeWarm.value.clone(),
+            haze: this.uHaze.value,
+        };
         this.noiseTexture = createNoiseTexture(rng);
 
         this.sun = new THREE.DirectionalLight(0xffffff, 1);
@@ -174,6 +195,14 @@ export class GoldenForestLight {
         return mix(this.uBounce, this.uSkyLight, normal.y.mul(0.5).add(0.5));
     }
 
+    /** How hard the fronts crossing the view push at world x (TSL): one bell per front. */
+    front(x) {
+        const bell = (at, strength) => exp(x.sub(at).div(this.uFront.z).pow2().negate()).mul(strength);
+        return bell(this.uFront.x, this.uFront.y)
+            .add(bell(this.uFront2.x, this.uFront2.y))
+            .add(bell(this.uFront2.z, this.uFront2.w));
+    }
+
     /**
      * World-space wind offset for a point on a tree. `sway` is how far the wind may carry
      * the point (0 at the trunk, 1 at bough tips); `phase` keeps each limb out of step.
@@ -184,7 +213,7 @@ export class GoldenForestLight {
         const t = this.uTime;
         const along = world.x.mul(this.uWindDir.x).add(world.z.mul(this.uWindDir.z));
         const swell = sin(along.mul(0.04).sub(t.mul(0.8)).add(world.x.mul(0.017))).mul(0.5).add(0.5);
-        const front = exp(world.x.sub(this.uFront.x).div(this.uFront.z).pow2().negate()).mul(this.uFront.y);
+        const front = this.front(world.x);
         const force = this.uWind.add(this.uGust.mul(swell.mul(0.7).add(0.65))).add(front);
         const lift = saturate(world.y.sub(base.y).div(height));
         const lean = lift.mul(lift).mul(height).mul(0.012).mul(force)
@@ -199,15 +228,70 @@ export class GoldenForestLight {
         return vec3(this.uWindDir.x.mul(push), bob.sub(limb.abs().mul(0.2)), this.uWindDir.z.mul(push));
     }
 
-    update(time, frame = {}) {
+    /**
+     * One frame of light and wind. `worn` is the world's reading of the envelopes (eased gust and
+     * warmth, how hot play runs, Reduce motion's share: GoldenForestWorld.wear); `fronts` the
+     * fronts crossing, in world x ({ x, strength }).
+     */
+    update(time, frame = {}, worn = null, fronts = null) {
         this.uTime.value = Number.isFinite(time) ? Math.max(0, time) : this.uTime.value;
         const clamp01 = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
-        this.uGust.value = clamp01(frame.gust) * 1.6;
-        this.uWarmth.value = clamp01(frame.warmth);
-        this.uGlow.value = clamp01(frame.glow);
-        if (frame.front && Number.isFinite(frame.front.x)) {
-            this.uFront.value.set(frame.front.x, clamp01(frame.front.strength) * 2.2, 22, 0);
-        } else this.uFront.value.y = 0;
+        const motion = worn && Number.isFinite(worn.motion) ? clamp01(worn.motion) : 1;
+        const level = clamp01(worn?.level);
+        const fever = clamp01(worn?.fever);
+        this.uGust.value = clamp01(worn ? worn.gust : frame.gust) * 1.6 * motion;
+        this.uWarmth.value = clamp01(worn ? worn.warmth : frame.warmth);
+        // The fireflies, the motes and the rings' gold glow brighter the hotter play runs.
+        this.uGlow.value = clamp01(clamp01(frame.glow) + level * 0.18 + fever * 0.12);
+        // The evening wind rises with play: a steady hand stirs the forest, a fever bends it.
+        this.uWind.value = GOLDEN_FOREST_BREEZE + (level * 0.2 + fever * 0.24) * motion;
+        const crown = Number.isFinite(worn?.crown) ? Math.max(0, worn.crown) : 0;
+        const gold = Number.isFinite(worn?.gold) ? Math.max(0, worn.gold) : 0;
+        // A brightening of the sun's disc and glare: a flash, so Reduce flashing holds it back.
+        this.uFlare.value = Math.min(1.4, crown * 0.9 + gold * 0.3) * flashScale();
+        // The golden hour deepens as play runs hot: the sun sinks into molten orange, the sky's
+        // low band burns redder and the zenith darkens, so heat reads as richer colour, not paler.
+        // The wind it raises clears the air, so the far shore stands out instead of milking over.
+        const deepen = level * 0.45 + fever * 0.55;
+        const { resting } = this;
+        this.uSunColor.value.setRGB(
+            resting.sun.r + deepen * 0.4,
+            resting.sun.g - deepen * 0.5,
+            resting.sun.b - deepen * 0.26,
+        );
+        this.uSkyToward.value.setRGB(
+            resting.toward.r + deepen * 0.1,
+            resting.toward.g - deepen * 0.18,
+            resting.toward.b - deepen * 0.06,
+        );
+        this.uSkyMid.value.setRGB(
+            resting.mid.r + deepen * 0.04,
+            resting.mid.g - deepen * 0.03,
+            resting.mid.b - deepen * 0.01,
+        );
+        this.uZenith.value.setRGB(
+            resting.zenith.r - deepen * 0.015,
+            resting.zenith.g - deepen * 0.025,
+            resting.zenith.b,
+        );
+        this.uHazeWarm.value.setRGB(
+            resting.hazeWarm.r,
+            resting.hazeWarm.g - deepen * 0.12,
+            resting.hazeWarm.b - deepen * 0.05,
+        );
+        this.uClearAir.value = deepen;
+        this.uHaze.value = resting.haze * (1 - deepen * 0.3);
+        const at = (index) => {
+            let front = index === 0 ? frame.front : null;
+            if (Array.isArray(fronts)) front = fronts[index];
+            return front && Number.isFinite(front.x) ? front : null;
+        };
+        const push = (front) => (front ? clamp01(front.strength) * 2.2 * motion : 0);
+        const first = at(0);
+        const second = at(1);
+        const third = at(2);
+        this.uFront.value.set(first ? first.x : 0, push(first), FRONT_WIDTH, 0);
+        this.uFront2.value.set(second ? second.x : 0, push(second), third ? third.x : 0, push(third));
         // Pipelines may still be compiling when the first shadow map is drawn; redraw it
         // over the first frames so no late tree is missing from the static map.
         this.shadowFrames += 1;

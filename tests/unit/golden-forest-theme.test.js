@@ -98,6 +98,7 @@ function stubSceneBuild(theme) {
             update: vi.fn(),
             prepareCamera: vi.fn(),
             setBoard: vi.fn(),
+            setMotion: vi.fn(),
             resetEffects: vi.fn(),
             dispose: vi.fn(),
         };
@@ -1268,6 +1269,8 @@ describe('Golden Forest board tracking and camera', () => {
         expect(camera.position.y - rest.y).toBeCloseTo(0.22, 2);
         expect(camera.position.z).toBe(rest.z);
         expect(theme.restPosition.equals(rest)).toBe(true);
+        // The world moves in full: wind, fronts, the flock and the river.
+        expect(theme.world.setMotion).toHaveBeenLastCalledWith(1);
         // It eases there rather than jumping.
         move({ clientX: 0, clientY: 900, pointerType: 'mouse' });
         theme.update(1 / 60);
@@ -1294,6 +1297,8 @@ describe('Golden Forest board tracking and camera', () => {
         windowListener('pointermove')({ clientX: 1440, clientY: 0, pointerType: 'mouse' });
         for (let frame = 0; frame < 30; frame++) theme.update(1 / 60);
         expect(camera.position.equals(rest)).toBe(true);
+        // ... and the wind, the fronts, the startled flock and the river's turn are calmed too.
+        expect(theme.world.setMotion).toHaveBeenLastCalledWith(0.35);
     });
 
     it('re-frames through the world on a real resize only, and rests the camera where the world put it', async () => {
@@ -1771,8 +1776,10 @@ describe('Golden Forest with its real artwork', () => {
         eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 1, perfectClearBonus: 800 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
         const frame = reactions.getFrame();
+        // The perfect clear crowns the quad still pouring off the water instead of raising a
+        // second lake: one rise, and the crown and the B2B's gold on the frame.
         expect(frame.emitters.map((emitter) => emitter.kind).sort())
-            .toEqual(['clear', 'clear', 'combo', 'lock', 'rise', 'rise', 'spin', 'splash']);
+            .toEqual(['clear', 'clear', 'combo', 'lock', 'rise', 'spin', 'splash']);
         expect(frame.front).not.toBeNull();
         expect(frame.flock).toBe(1);
         expect(frame.emitters.find((emitter) => emitter.kind === 'lock')).toMatchObject({ side: -1 });
@@ -1799,7 +1806,8 @@ describe('Golden Forest with its real artwork', () => {
 
         // Game over settles the lake; switching effects off empties the air and stills the water at once.
         windowListener('gameOver')();
-        expect(reactions.getFrame().front).toBeNull();
+        // The wind dies away (the front still crossing eases out rather than snapping back).
+        expect(reactions.fronts.every((front) => front.target === 0)).toBe(true);
         expect(reactions.getFrame().settled).toBe(true);
         expect(reactions.getFrame().emitters.length).toBeGreaterThan(0);
         theme.update(1 / 60);
