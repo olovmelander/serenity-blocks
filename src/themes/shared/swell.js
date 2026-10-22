@@ -216,6 +216,41 @@ export class Swell {
         return softCeiling(this.rawAt(now), this.knee, this.ceiling);
     }
 
+    /**
+     * The whole state as plain numbers, for a theme that rebuilds in place (a quality change, a
+     * lost device) and carries on mid-surge. Infinity is written as null (JSON has no Infinity).
+     */
+    exportState() {
+        const num = (v) => (Number.isFinite(v) ? v : null);
+        return {
+            slow: this.slow,
+            fast: this.fast,
+            t0: num(this.t0),
+            present: num(this.present),
+            pendingAt: Array.from(this.pendingAt, num),
+            pendingAmount: Array.from(this.pendingAmount),
+        };
+    }
+
+    /** Take up a state exportState() wrote (anything missing or malformed reads as at rest). */
+    importState(o) {
+        this.reset();
+        if (!o || typeof o !== 'object') return;
+        const finite = (v, fallback) => (Number.isFinite(v) ? v : fallback);
+        this.slow = Math.max(0, finite(o.slow, 0));
+        this.fast = Math.max(0, finite(o.fast, 0));
+        this.t0 = finite(o.t0, -Infinity);
+        this.present = finite(o.present, -Infinity);
+        for (let i = 0; i < PENDING; i += 1) {
+            const amount = finite(o.pendingAmount?.[i], 0);
+            const at = finite(o.pendingAt?.[i], Infinity);
+            if (amount > 0 && at < Infinity) {
+                this.pendingAt[i] = at;
+                this.pendingAmount[i] = amount;
+            }
+        }
+    }
+
     /** Forget everything. */
     reset() {
         this.slow = 0;

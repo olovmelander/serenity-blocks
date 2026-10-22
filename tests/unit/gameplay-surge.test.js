@@ -325,6 +325,27 @@ describe('GameplaySurge', () => {
         expect(rest.stage).toBe(0);
     });
 
+    it('carries its whole state through exportState / importState (a rebuild in place), via JSON', () => {
+        const a = new GameplaySurge();
+        const script = chainScript(8);
+        script.push([6.5, 'clear', { lines: 4 }]);
+        run(a, script, 5.2);
+        // Hits still waiting (ahead of the present) are carried too.
+        const copy = new GameplaySurge();
+        copy.importState(JSON.parse(JSON.stringify(a.exportState())));
+        for (let t = 5.2; t < 12; t += 1 / 60) {
+            const x = { ...a.sample(t) };
+            const y = copy.sample(t);
+            expect(y.level).toBeCloseTo(x.level, 9);
+            expect(y.fever).toBeCloseTo(x.fever, 9);
+            expect(y.punch).toBeCloseTo(x.punch, 9);
+            expect(y.stage).toBe(x.stage);
+        }
+        const rest = new GameplaySurge();
+        rest.importState(null);
+        expect(rest.sample(1).level).toBe(0);
+    });
+
     it('sample() reuses one object and is a pure function of the events and the time', () => {
         const a = new GameplaySurge();
         const b = new GameplaySurge();
