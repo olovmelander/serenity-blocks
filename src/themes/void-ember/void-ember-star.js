@@ -29,6 +29,7 @@ import {
     int,
     length,
     max,
+    min,
     mix,
     normalize,
     positionGeometry,
@@ -154,8 +155,11 @@ export function createPhotosphere(u, { detail = 3, segments = 96 } = {}) {
         Loop({
             start: int(0), end: u.impactCount, type: 'int', condition: '<', name: 'hit',
         }, ({ hit }) => {
-            const A = u.impacts.element(hit.mul(2));
-            const C = u.impacts.element(hit.mul(2).add(1));
+            const A = u.impacts.element(hit.mul(3));
+            const C = u.impacts.element(hit.mul(3).add(1));
+            // Each scar lasts as long as its slot is expected to be left alone: a slow hand's
+            // marks linger, a fast one's fade before the next strike needs the slot.
+            const life = max(u.impacts.element(hit.mul(3).add(2)).x, 0.05);
             const age = max(u.time.sub(A.w), 0.0).toVar();
             const born = step(A.w, u.time).mul(C.w);
             // Chord from the site: the same as the arc while it is small.
@@ -164,7 +168,7 @@ export function createPhotosphere(u, { detail = 3, segments = 96 } = {}) {
             const front = d.sub(age.mul(IMPACT_SPEED));
             const ring = veBell(front.div(age.mul(0.06).add(0.08))).mul(exp(age.mul(-IMPACT_FADE)));
             const rim = veBell(front.div(age.mul(0.012).add(0.022))).mul(exp(age.mul(-IMPACT_FADE)));
-            const scar = exp(d.mul(d).mul(-46.0)).mul(exp(age.div(-7.0)));
+            const scar = exp(d.mul(d).mul(-46.0)).mul(exp(age.div(life).negate()));
             T.addAssign(ring.mul(0.4).add(scar.mul(0.3)).add(flash.mul(0.5)).mul(born));
             // White-hot where it struck and the piece's colour round it; the ripple itself is the
             // star's own fire brightening, with only a breath of that colour at its front.
@@ -182,7 +186,9 @@ export function createPhotosphere(u, { detail = 3, segments = 96 } = {}) {
         T.addAssign(mu.mul(mu).mul(0.15).mul(blown).mul(float(1.0).sub(crust)));
         const light = veGlow(T).mul(mu.pow(0.7).mul(0.74).add(0.26));
         const col = veBlackbody(T).mul(light).add(struck.mul(mu.mul(0.6).add(0.4))).toVar();
-        return vec4(col.mul(u.breath), 1.0);
+        // The star is the one light the iris must not dim with everything else: a hot star
+        // shines as a hot star, while what it lights keeps its darks (1 at rest).
+        return vec4(col.mul(u.breath).mul(u.iris.pow(0.25)), 1.0);
     })();
 
     const part = vePart('VoidEmberPhotosphere', geometry, material, 0);
@@ -209,6 +215,8 @@ export function createCorona(u, { detail = 2 } = {}) {
         /** How far the streamers reach (0..1) and how bright the whole corona is. */
         reach: uniform(0.3),
         gain: uniform(0.4),
+        /** The fringe of fire at the limb (1 at rest): a back-to-back or a perfect clear rings it. */
+        fringe: uniform(1),
     };
 
     // A sheet through the star's centre, square to the line of sight.
@@ -253,11 +261,12 @@ export function createCorona(u, { detail = 2 } = {}) {
         const inner = exp(out.mul(mix(float(12.0), float(9.0), uniforms.reach)).negate());
         const far = float(1.0).div(float(1.0).add(out.mul(mix(float(3.4), float(1.25), uniforms.reach))).pow(3.0));
         const body = inner.mul(stream.mul(0.6).add(0.4)).mul(0.6).add(far.mul(stream).mul(uniforms.reach.mul(2.2).add(0.14)));
-        const k = body.mul(uniforms.gain).add(fringe.mul(0.5))
+        const k = body.mul(uniforms.gain).add(fringe.mul(uniforms.fringe.mul(0.5)))
             .mul(smoothstep(0.93, 1.0, b))
             .mul(float(1.0).sub(smoothstep(reach * 0.62, reach * 0.98, b)));
         // Hot at the limb, cooling as it thins.
-        const T = heat.mul(0.92).add(0.12).sub(out.mul(0.085)).add(stream.mul(0.07));
+        // (Gold at the hottest: a corona burning white would wash the frame round the star.)
+        const T = min(heat.mul(0.92).add(0.12), 0.86).sub(out.mul(0.085)).add(stream.mul(0.07));
         const col = veBlackbody(T).mul(k);
         return vec4(col.mul(u.breath), 0.0);
     })();

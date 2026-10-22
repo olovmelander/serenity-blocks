@@ -60,8 +60,9 @@ export function createSky(u, { layers = 3, dust = true } = {}) {
         // Angle from the ember, in its own apparent radii.
         const away = length(dir.sub(u.starDir)).div(u.starSize).toVar();
         // What is not lit by the ember (the void itself, its cold dust, the far stars) is
-        // raised as the iris closes, so the sky does not go black behind a white-hot star.
-        const keep = u.iris.pow(0.72).toVar();
+        // raised a little as the iris closes, so the sky does not go black behind a hot star; not
+        // all the way back, so the void stays the dark the fire burns in.
+        const keep = u.iris.pow(0.3).toVar();
         const col = u.voidCol.mul(g.y.mul(0.25).add(1.0)).mul(keep).toVar();
 
         const density = float(0.0).toVar();

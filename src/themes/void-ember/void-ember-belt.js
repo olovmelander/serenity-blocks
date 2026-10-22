@@ -208,7 +208,7 @@ export function createRocks(u, cls, count, seed, { cracks = true } = {}) {
         col.addAssign(u.starLight.mul(graze.mul(graze).mul(graze).mul(day).mul(fall)
             .mul(0.05)));
         // What little the void gives the night side.
-        col.addAssign(u.fill.mul(N.y.mul(0.35).add(0.65)).mul(albedo.x.mul(8.0)).mul(u.iris.pow(0.72)));
+        col.addAssign(u.fill.mul(N.y.mul(0.35).add(0.65)).mul(albedo.x.mul(8.0)).mul(u.iris.pow(0.45)));
         // Backlit: a stone between the eye and the star wears a thin rim of its light, where the
         // dust on its edges scatters it on toward the eye (without it, a flat cut-out).
         // (The star is large seen from the belt: "behind" is a wide cone. The edge is read from the
@@ -225,7 +225,9 @@ export function createRocks(u, cls, count, seed, { cracks = true } = {}) {
             // Hairlines between the stone's own plates (the star's baked plates, read along the
             // stone's own directions and mirrored per stone), not blotches of value noise.
             const near = float(1.0).sub(smoothstep(2.1, 3.6, vSeed.z)).mul(max(u.heat.sub(0.4), 0.0)).mul(1.5);
-            const fire = vWave.w.mul(0.8).add(near).toVar();
+            // In hot play the whole belt wakes: every stone's fractures glow, each its own amount.
+            const fire = vWave.w.mul(0.8).add(near).add(u.blaze.mul(vSeed.x.mul(0.7).add(0.3)))
+                .toVar();
             If(fire.greaterThan(0.004), () => {
                 const flip = vec3(
                     step(0.5, fract(vSeed.y.mul(1.7))),
@@ -236,7 +238,9 @@ export function createRocks(u, cls, count, seed, { cracks = true } = {}) {
                 // Only some plates' borders carry fire: a few fractures, not a crazed glaze.
                 const crack = float(1.0).sub(smoothstep(0.0, 0.06, shards.x))
                     .mul(smoothstep(0.5, 0.8, shards.y.add(vSeed.x.mul(0.25))));
-                col.addAssign(veBlackbody(fire.mul(0.45).add(0.3)).mul(crack.mul(fire).mul(3.2)));
+                // (Gold at the hottest, never white: a burning belt keeps its colour.)
+                const f = min(fire, 2.0);
+                col.addAssign(veBlackbody(min(f.mul(0.45).add(0.3), 0.88)).mul(crack.mul(f).mul(3.2)));
             });
         }
         return vec4(col.mul(u.breath.mul(0.75).add(0.25)), 1.0);
@@ -356,7 +360,7 @@ export function createDustRing(u, { detail = 2 } = {}) {
         // And a breath of the void's own cold light, which is what the far side of the ring
         // shows: each level's palette is read in it.
         const cold = mix(u.dustA, u.dustB, lanes.x).mul(smoothstep(2.3, 3.7, r).mul(0.2).add(0.035))
-            .mul(u.iris.pow(0.72));
+            .mul(u.iris.pow(0.45));
         const light = u.skyLight.mul(fall).mul(phase).mul(0.27).add(cold)
             .toVar();
         If(u.wavesLive.greaterThan(0.5), () => {
