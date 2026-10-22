@@ -22,9 +22,17 @@
  *   release  the Set: the gaps close and a curtain of curls falls, sized by the chain's peak.
  *   B2B      the Sunshower: rain in the light and wet, glistening bark while the chain lives.
  *   T-spin   the Unwinding: a helical strip unwinds like an apple peel; amber beads well up.
- *   perfect  the Floor: the mist drains and the forest floor shows for the first time.
+ *   perfect  the Floor: the mist drains and the forest floor shows for the first time; settled
+ *            after its clear, it is the crown on that clear (the canopy flares), never a new one.
  *   level    the Climb: the walkway rises a storey (12 m) and the giants slide down past us.
  *   over     Mistfall: the mist rises past the camera; a new run brings the morning back.
+ *
+ * And the grove builds with play (GROVE_SURGE, the shared GameplaySurge): nothing restarts under
+ * fast play (a second Moult re-strips from the top, a second Floor holds the mist down, a gap
+ * shutting reopens from where it stands, a ring cleared again re-blazes), and the heat of play
+ * opens the canopy: warm, the wind and the bark's clocks quicken; hot, the gaps' pools and beams
+ * widen and pour more light while the iris closes a little; in a fever the sun turns gold and
+ * leaves pour from the crowns. When the hands rest it all breathes back.
  *
  * The parts are built from a registry (PART_BUILDERS); a part not built yet is simply absent.
  * Nothing is created at event time: events write numbers into preallocated state, so seek(t)
@@ -34,10 +42,14 @@
 
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 import {
     DEG,
     CURL,
     FLOOR,
+    GROVE_SURGE,
+    smootherInverse,
     LIANA,
     MEDITATION,
     LIGHT_WHEEL,
@@ -238,6 +250,12 @@ const AGE_BIAS_RATE = 0.05;
 const AGE_BIAS_CAP = 1.2;
 /** Group clocks wrap here (float precision in the bark's age maths). */
 const CLOCK_WRAP = 65536;
+/** The Moult's iris closes with this time constant when a new front asks it to (never a jump). */
+const IRIS_CLOSE = 0.12;
+/** What motion the surge spends keeps of itself under reduced motion. */
+const REDUCED_SURGE = 0.35;
+/** The Moult's sheets a second (or a fed) four-line clear pours, of a first one's. */
+const MOULT_SHEETS = Object.freeze({ fresh: 1, again: 0.5, fed: 0.3 });
 
 function emptyCounts() {
     return {
@@ -251,6 +269,8 @@ function emptyCounts() {
         chainSteps: 0,
         releases: 0,
         b2bSteps: 0,
+        spins: 0,
+        crowns: 0,
         levelUps: 0,
         gameOvers: 0,
         mornings: 0,
@@ -387,6 +407,27 @@ export class RainbarkWorld {
             project: (x, y, z) => projectRest(this._lens, x, y, z, this._curlScene.eyeY, this._proj),
             inCardBand: (sx) => sx > this._cardBand[0] && sx < this._cardBand[1],
         };
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js) and what the grove spends it on
+         * (GROVE_SURGE): `heat` is the frame's reading. Every beat also dips the walkway (`kick`); a
+         * perfect clear flares the canopy (`crownLight`); a back-to-back clear bursts the Sunshower
+         * (`shower`). Each accumulates: a beat adds to what is still lit, never restarts it.
+         */
+        this.surge = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
+        this.kick = new Swell({
+            attack: 0.04, release: 0.22, ceiling: 1, knee: 0.7,
+        });
+        this.crownLight = new Swell({
+            attack: GROVE_SURGE.crown.rise, release: GROVE_SURGE.crown.release, ceiling: 1.2, knee: 0.9,
+        });
+        this.shower = new Swell({
+            attack: GROVE_SURGE.shower.rise, release: GROVE_SURGE.shower.release, ceiling: 1, knee: 0.7,
+        });
+        this._gold = hexToLinear(GROVE_SURGE.goldColor);
+        this._sunRgb = [0, 0, 0];
         this.resetState(0);
     }
 
@@ -416,8 +457,13 @@ export class RainbarkWorld {
         this.lastLock.at = -1e6;
         this.lastClear.at = -1e6;
         this.lastRelease = { at: -1e6, peak: 0 };
-        /** When the latest Great Moult began. */
+        /**
+         * When the latest fresh Great Moult began (a second one inside it never moves it), how young
+         * the near groups stood when it did, and the Moult's iris as shown (eased shut, never jumped).
+         */
         this.moultAt = -1e6;
+        this._youngFrom = 0;
+        this.irisEnv = 0;
         /** Meditation's clicks: when the last one peeled, and how many have. */
         this._lastClick = -1e6;
         this._clicks = 0;
@@ -434,6 +480,22 @@ export class RainbarkWorld {
         this.windBoost = 1;
         /** The four group clocks (Elder, Sisters, R1/R2, far): integrated, a chain quickens them. */
         this.clocks = [time % CLOCK_WRAP, time % CLOCK_WRAP, time % CLOCK_WRAP, time % CLOCK_WRAP];
+        /**
+         * How far the canopy's wind has run ahead of the clock (seconds): the heat of play runs it
+         * faster, integrated, so the flecks race over the bark and never jump.
+         */
+        this.windLead = 0;
+        /** The fever's leaves owed (whole leaves fall in threes) and the station they fall from next. */
+        this._leafDebt = 0;
+        this._leafTurn = 0;
+        this.surge.reset();
+        this.kick.reset();
+        this.crownLight.reset();
+        this.shower.reset();
+        this.heat.punch = 0;
+        this.heat.level = 0;
+        this.heat.fever = 0;
+        this.heat.stage = 0;
         this.counts = emptyCounts();
         this.events.reset();
         this.parts.curls?.reset();
@@ -740,13 +802,35 @@ export class RainbarkWorld {
         return lerp(m.from, m.to, smooth(0, 1, (t - m.start) / m.length));
     }
 
-    /** Settle a finished climb into the rest state (its end is where heightAt already is). */
+    /**
+     * Settle a finished climb into the rest state (its end is where heightAt already is). A level
+     * that came while it was in flight rises on from here.
+     */
     settleClimb(t) {
         const c = this.climb;
         if (!c || t < c.start + Math.max(c.length, c.zoneLength)) return;
         this.camY = c.to;
         this.zone = c.zoneTo;
         this.climb = null;
+        if (c.next) this.beginClimb(c.next, t, t);
+    }
+
+    /** A Climb from where the walkway stands at `t` to level `lv`'s storey, starting at `start`. */
+    beginClimb(lv, t, start) {
+        const to = climbHeight(lv);
+        const from = this.heightAt(t);
+        const now = this.zoneAt(t);
+        const still = this.reducedMotion || to < from;
+        this.climb = {
+            from,
+            to,
+            start,
+            length: still ? 0 : CLIMB_TIME,
+            zoneFrom: now.mix < 0.5 ? now.a : now.b,
+            zoneTo: zoneIndex(lv),
+            zoneLength: this.reducedMotion ? CLIMB_FADE : CLIMB_TIME,
+            next: 0,
+        };
     }
 
     // ── Camera ──────────────────────────────────────────────────────────────────
@@ -772,6 +856,13 @@ export class RainbarkWorld {
         // The staged gameplay is flushed between this and update(): it must carry this frame's time.
         this.time = sim.time;
         this.pose(camera, sim.time, sim.pointerX, this.reducedMotion ? 0 : 1);
+        // Every beat dips the walkway a few centimetres (they ride on one another; none under
+        // reduced motion).
+        const dip = this.reducedMotion ? 0 : this.kick.valueAt(sim.time) * GROVE_SURGE.kick;
+        if (dip > 1e-5) {
+            camera.position.y -= dip;
+            camera.updateMatrixWorld();
+        }
         // The shared breath (shared/camera-breath.js) on top of the rig's own: off under reduced motion.
         if (applyCameraBreath(camera, sim.time, { scale: this.reducedMotion ? 0 : 1 })) camera.updateMatrixWorld();
         this._camera = camera;
@@ -808,8 +899,12 @@ export class RainbarkWorld {
         // The Peel: a band of the piece's own bark bared on its lane, at its rows; a hard drop
         // tears it off whole and knocks the trunk.
         const peel = rows ? this.peelTarget(L.player, L.u, L.rowTop, L.rowBottom, L.code, L.hardDrop) : null;
+        // The heat of play: a lock barely moves it, a quick hand warms it.
+        this.surge.lock(L, t);
+        this.kick.hit(L.hardDrop ? 0.3 + 0.3 * Math.min(1, L.distance / KNOCK.reach) : 0.15, t);
         if (peel) {
-            this.events.peel(t, peel);
+            // (The bark keeps the score: while play runs hot more bands stand on the lane.)
+            this.events.peel(t, peel, PEEL.held + 4 * this.heat.level);
             const { curls } = this.parts;
             if (curls) {
                 // The strip rolls up along the front, then lets go and tumbles into the mist.
@@ -900,11 +995,21 @@ export class RainbarkWorld {
         return p;
     }
 
-    /** Lines cleared: the Shed (four: the Great Moult; perfect: the Floor). Copy what is kept. */
+    /**
+     * Lines cleared: the Shed (four: the Great Moult; perfect: the Floor too). A perfect clear
+     * settled after its clear (`crown`, or one with no rows of its own) is the crown on the clear
+     * still playing: the Floor opens and the canopy flares, nothing is cleared again. Copy what is
+     * kept.
+     */
     onClear(context = {}) {
         if (!this.u) return;
         const t = this.time;
         const C = this.lastClear;
+        const hasRows = Array.isArray(context.rows) && context.rows.length > 0;
+        if (context.crown === true || (context.perfect === true && !hasRows && !context.screen)) {
+            this.crown(t);
+            return;
+        }
         const lines = Math.max(1, Math.min(4, Math.round(Number(context.lines) || 1)));
         C.at = t;
         C.player = Number(context.player) || 0;
@@ -932,28 +1037,76 @@ export class RainbarkWorld {
             this.clickPeel(t, C.screen);
             return;
         }
-        // A perfect clear arrives on a frame of its own with no rows: the Floor.
-        if (C.perfect) this.floorAt = t;
-        else if (lines >= 4) this.moultStart(t);
+        // The heat of play (a cascade's deeper waves and a long chain weigh more), and the beat.
+        this.surge.clear(C, t);
+        this.kick.hit(0.3 + 0.1 * lines + 0.08 * Math.min(6, C.cascade - 1), t);
+        // A back-to-back clear bursts the Sunshower: more of the drops fall at once, more for every
+        // step of the run (this.b2b is the run before this clear).
+        if (C.b2b) {
+            const S = GROVE_SURGE.shower;
+            this.shower.hit(S.amount * (1 + S.perStep * Math.min(3, this.b2b)), t);
+        }
+        // A perfect clear in its own clear's frame: the Floor opens over the clear.
+        if (C.perfect) this.openFloor(t);
+        if (lines >= 4) this.moultStart(t);
         else if (C.tspin) this.unwind(t, C);
         else this.shed(t, C);
     }
 
     /**
-     * The Unwinding (HELIX): a T-spin's helix on the T's side, from its top row down, one turn a
-     * line; the freed strip falls as a corkscrew ribbon.
+     * The crown (a perfect clear settled after its clear's last wave): the Floor opens (or, open
+     * already, holds) and the canopy flares open over the clear still playing.
      */
-    unwind(t, C) {
+    crown(t) {
+        this.counts.perfects += 1;
+        this.counts.crowns += 1;
+        this.openFloor(t);
+        this.surge.crown(t);
+        this.crownLight.hit(1, t);
+        this.kick.hit(0.5, t);
+    }
+
+    /**
+     * The Floor: the mist drains. Open already, it never snaps back up to start again: holding,
+     * the hold starts over; on its way back, it drains again from where it stands.
+     */
+    openFloor(t) {
+        const age = t - this.floorAt;
+        const now = floorEnvelope(age);
+        if (!(now > 0)) this.floorAt = t;
+        else if (age >= FLOOR.drain) this.floorAt = t - FLOOR.drain * smootherInverse(now);
+    }
+
+    /**
+     * A T-spin that cleared nothing: half a turn of the Unwinding at the T, healing again in a few
+     * seconds (it marks the spin, not the level).
+     */
+    onSpin(context = {}) {
+        if (!this.u) return;
+        const t = this.time;
+        this.counts.spins += 1;
+        this.surge.spin(t);
+        this.kick.hit(0.25, t);
+        const h = this.unwind(t, { player: Number(context.player) || 0 }, 0.5);
+        if (h) h.kill = t + HELIX.unwind + 1;
+    }
+
+    /**
+     * The Unwinding (HELIX): a T-spin's helix on the T's side, from its top row down, one turn a
+     * line (`turns` instead, when given); the freed strip falls as a corkscrew ribbon. Returns the
+     * helix's slot (or null).
+     */
+    unwind(t, C, turns = 0) {
         const near = this.parts.trunks?.near;
-        if (!near) return;
+        if (!near) return null;
         const { lanes, placements } = this.band;
         const L = this.lastLock;
         const useSister = L.u >= 0.5 && placements[1].show;
         const lane = useSister ? lanes[1] : lanes[0];
         const slot = lane.code - 1;
-        if (!near.live(slot)) return;
+        if (!near.live(slot)) return null;
         const board = boardFor(this.layout, C.player);
-        if (!board) return;
+        if (!board) return null;
         const offset = slot * TRUNK_STRIDE;
         const lens = restLens(this.aspect, this._lens);
         const eyeY = this.heightAt(t);
@@ -963,12 +1116,12 @@ export class RainbarkWorld {
         const h = this._helix;
         h.code = lane.code;
         h.yTop = yTop;
-        h.turns = Math.max(1, Math.min(3, C.lines));
+        h.turns = turns > 0 ? turns : Math.max(1, Math.min(3, C.lines));
         h.pitch = useSister ? HELIX.pitch.sister : HELIX.pitch.elder;
         h.theta = theta;
         h.width = useSister ? HELIX.width.sister : HELIX.width.elder;
-        const at = t + (this.reducedMotion ? 0 : 0);
-        this.events.helix(at, h);
+        const at = t;
+        const made = this.events.helix(at, h);
         // The freed strip: a long corkscrew ribbon dropping away once it has unwound.
         const { curls } = this.parts;
         if (curls) {
@@ -989,6 +1142,7 @@ export class RainbarkWorld {
             s.kind = 6;
             curls.spawnLock(at, s);
         }
+        return made;
     }
 
     /**
@@ -1055,7 +1209,9 @@ export class RainbarkWorld {
     /**
      * The Shed (SHED): each cleared row, lowest first, girdles the Elder and Sister One across
      * their visible arcs at its height, and its bark falls away in sheet pieces; a double girdles
-     * the R1 trunks too (fainter, a beat later); a triple shakes sheets off the grove behind.
+     * the R1 trunks too (fainter, a beat later; its lowest two rows); a triple shakes sheets off the
+     * grove behind. A cascade climbs the bole: each deeper wave girdles the near pair a ring higher,
+     * sheds more sheets, and from its third a curtain falls, wider wave by wave.
      */
     shed(t, C) {
         const near = this.parts.trunks?.near;
@@ -1065,17 +1221,21 @@ export class RainbarkWorld {
         const lens = restLens(this.aspect, this._lens);
         const eyeY = this.heightAt(t);
         const rowH = (board.y1 - board.y0) / BOARD_GRID.rows;
-        const sheets = SHED.sheets[this.quality] ?? SHED.sheets.High;
-        const trunks = C.lines >= 2 ? [[1, 1, 0], [2, 1, 0], [4, SHED.second, SHED.secondDelay], [5, SHED.second, SHED.secondDelay]]
+        const deeper = Math.max(0, Math.min(5, C.cascade - 1));
+        const sheets = (SHED.sheets[this.quality] ?? SHED.sheets.High) + deeper;
+        const trunks = C.lines >= 2 && deeper === 0
+            ? [[1, 1, 0], [2, 1, 0], [4, SHED.second, SHED.secondDelay], [5, SHED.second, SHED.secondDelay]]
             : [[1, 1, 0], [2, 1, 0]];
         for (let r = 0; r < C.rows.length; r++) {
             const row = C.rows[r];
             const codes = C.rowCodes;
             const lo = codes.length >= r * 10 + 10 ? packCodes(codes, r * 10) : packCodes([7, 7, 7, 7, 7]);
             const hi = codes.length >= r * 10 + 10 ? packCodes(codes, r * 10 + 5) : packCodes([7, 7, 7, 7, 7]);
-            const syC = board.y0 + rowH * (row + 0.5);
+            // (A deeper wave a ring higher up the bole per wave, never above the board's top row.)
+            const syC = Math.max(board.y0 + rowH * 0.5, board.y0 + rowH * (row + 0.5 - deeper * SHED.rows * 1.15));
             for (let k = 0; k < trunks.length; k++) {
                 const [code, strength, delay] = trunks[k];
+                if (code > 2 && r >= 2) continue;
                 const slot = code - 1;
                 if (!this.band.placements[Math.min(code - 1, 4)]?.show && code <= 5) continue;
                 if (!near.live(slot)) continue;
@@ -1105,6 +1265,7 @@ export class RainbarkWorld {
             }
         }
         if (C.lines >= 3) this.curtain(t + 0.3, 1 + Math.ceil(SHED.triple / SET.per) * C.lines);
+        else if (deeper >= 2) this.curtain(t + 0.2, deeper);
     }
 
     /** A ring's bark, falling away in `n` sheet pieces across its arc (kind 5 pages). */
@@ -1150,11 +1311,18 @@ export class RainbarkWorld {
      * ruby, violet, maroon) along it, and the near groups come back younger.
      */
     moultStart(t) {
-        this.events.startMoult(t);
-        this.moultAt = t;
+        const kind = this.events.startMoult(t);
+        if (kind === 'fresh') {
+            // (The near groups stand younger from a second in; until then, as young as they were.)
+            this._youngFrom = this.youngAt(t);
+            this.moultAt = t;
+        }
         const { curls } = this.parts;
         if (!curls || !this._emitters.length) return;
-        const count = Math.min(MOULT.sheets[this.quality] ?? MOULT.sheets.High, Math.floor(curls.events * 0.8));
+        // (A second Moult feeds the first: fewer sheets, so the first's still falling stay.)
+        const share = MOULT_SHEETS[kind] ?? 1;
+        const most = Math.min(MOULT.sheets[this.quality] ?? MOULT.sheets.High, Math.floor(curls.events * 0.8));
+        const count = Math.floor(most * share);
         const eyeY = this.heightAt(t);
         const ages = [0.52, 0.66, 0.79, 0.885];
         curls.spawnMoult(t, count, (i, rng) => {
@@ -1196,6 +1364,9 @@ export class RainbarkWorld {
                     this.shakeLeaves(i, this.gapOpen[i]);
                     k += 1;
                 } else if (this.gapClose[i] < Infinity) {
+                    // (Shutting: it opens again from where it stands, never snapped back open.)
+                    const stands = this.gapOpenAt(i, t);
+                    this.gapOpen[i] = t - GAP.open * smootherInverse(stands);
                     this.gapClose[i] = Infinity;
                 }
             }
@@ -1208,9 +1379,10 @@ export class RainbarkWorld {
             for (let i = 0; i < this.gapOpen.length; i++) {
                 if (this.gapOpen[i] < Infinity && this.gapClose[i] === Infinity) open = i + 1;
             }
+            // (A slow dusk of the canopy: one after another, the last opened first.)
             for (let i = 0; i < open; i++) {
                 if (this.gapOpen[i] < Infinity && this.gapClose[i] === Infinity) {
-                    this.gapClose[i] = t + (open - 1 - i) * GAP.stagger;
+                    this.gapClose[i] = t + (open - 1 - i) * GAP.setStagger;
                 }
             }
             this.curtain(t, this.peak);
@@ -1244,7 +1416,13 @@ export class RainbarkWorld {
         const lens = restLens(this.aspect, this._lens);
         const L = this._sun;
         const k = Math.max(L[1], 0.2);
-        const radius = eyeY >= GAP.high ? GAP.radius[1] : GAP.radius[0];
+        // The canopy opens with play: every gap's pool and beam wider as the heat rises, wider again
+        // for every link past the seven gaps, and as a perfect clear flares it.
+        const G = GROVE_SURGE;
+        const { level, fever } = this.heat;
+        const wide = 1 + G.gap[0] * level + G.gap[1] * fever + G.gapLink * Math.max(0, Math.min(8, this.combo - 8))
+            + G.crown.gap * this.crownLight.valueAt(this.time);
+        const radius = (eyeY >= GAP.high ? GAP.radius[1] : GAP.radius[0]) * wide;
         for (let i = 0; i < gaps.length; i++) {
             let code = table[i][0];
             const sy = table[i][1];
@@ -1376,19 +1554,15 @@ export class RainbarkWorld {
             return;
         }
         this.counts.levelUps += 1;
-        const from = this.heightAt(t);
-        const now = this.zoneAt(t);
-        const zoneFrom = now.mix < 0.5 ? now.a : now.b;
-        const still = this.reducedMotion || to < from;
-        this.climb = {
-            from,
-            to,
-            start: Math.max(t, this.lastClear.at + CLIMB_DELAY),
-            length: still ? 0 : CLIMB_TIME,
-            zoneFrom,
-            zoneTo,
-            zoneLength: this.reducedMotion ? CLIMB_FADE : CLIMB_TIME,
-        };
+        this.surge.levelUp(t);
+        // A level inside a Climb already rising (its zone crossfading) waits for it: the next rises
+        // on from where this one ends, never snapping the zone to the nearer end.
+        const c = this.climb;
+        if (c && t >= c.start && t < c.start + Math.max(c.length, c.zoneLength)) {
+            c.next = lv;
+            return;
+        }
+        this.beginClimb(lv, t, Math.max(t, this.lastClear.at + CLIMB_DELAY));
     }
 
     /** Prime the session state a capture asks for: minutes since it began, curls shed so far. */
@@ -1411,23 +1585,40 @@ export class RainbarkWorld {
         this.time = sim.time;
         const t = this.time;
         this.sessionAge += dt;
+        // How hot play runs (one reading a frame, on the clock the beats were stamped with).
+        const heat = this.surge.sample(t);
+        this.heat.punch = heat.punch;
+        this.heat.level = heat.level;
+        this.heat.fever = heat.fever;
+        this.heat.stage = heat.stage;
+        const { level, fever } = heat;
+        const G = GROVE_SURGE;
+        const moves = this.reducedMotion ? REDUCED_SURGE : 1;
         // Quickening: while a chain lives the bark's clocks run fast (eased, integrated: a rate that
-        // changes never jumps the phase); the canopy's wind blows further from ×QUICKEN.gust.
+        // changes never jumps the phase); the canopy's wind blows further from ×QUICKEN.gust. The
+        // heat of play quickens every clock a little too, so a quick hand is seen without a chain.
+        const hot = (G.quicken[0] * level + G.quicken[1] * fever) * moves;
         for (let g = 0; g < 4; g++) {
-            const target = quickenRate(g, this.combo);
+            const target = Math.max(quickenRate(g, this.combo), 1 + QUICKEN.share[g] * hot);
             const tau = target > this.rates[g] ? QUICKEN.rise : QUICKEN.fall;
             this.rates[g] += (target - this.rates[g]) * approach(1 / tau, dt);
             this.clocks[g] = (this.clocks[g] + dt * this.rates[g]) % CLOCK_WRAP;
         }
+        // The canopy's wind runs faster as play heats (integrated: the flecks race, never jump).
+        this.windLead += Math.min(dt, 0.25) * (G.wind[0] * level + G.wind[1] * fever) * moves;
         // The Sunshower: rain eases in with the back-to-back run and out when it breaks; the
-        // grove wets quickly and dries slowly.
+        // grove wets quickly and dries slowly. A back-to-back clear bursts it.
         const rainTo = this.b2b / 3;
         const step = dt / (rainTo > this.rain ? RAIN.fadeIn : RAIN.fadeOut);
         this.rain = rainTo > this.rain ? Math.min(rainTo, this.rain + step) : Math.max(rainTo, this.rain - step);
-        const wetTo = RAIN.wet[Math.max(0, Math.min(3, this.b2b))];
+        const burst = this.shower.valueAt(t);
+        const wetTo = Math.max(RAIN.wet[Math.max(0, Math.min(3, this.b2b))], burst * RAIN.wet[3]);
         this.wet += (wetTo - this.wet) * approach(wetTo > this.wet ? 1 : 1 / RAIN.dry, dt);
         const windTo = this.combo >= QUICKEN.gust ? QUICKEN.wind : 1;
         this.windBoost += (windTo - this.windBoost) * approach(1 / QUICKEN.windTau, dt);
+        // The crown's flare of the canopy (a frame-wide lift of the light: Reduce flashing keeps a
+        // trace of it).
+        const flare = this.crownLight.valueAt(t) * flashScale();
 
         // ── Where the walkway is, which zone, and how high the mist stands ──
         const camY = this.heightAt(t);
@@ -1473,19 +1664,24 @@ export class RainbarkWorld {
         const sway = SUN_DRIFT * -Math.cos((TAU * t) / TIDE_PERIOD);
         const sun = sunDirection(lerp(za.sunElevation, zb.sunElevation, k), SUN_AZIMUTH + sway, this._sun);
         u.sunDir.value.set(sun[0], sun[1], sun[2]);
-        this.writeFlecks(t, camY, k, clockA.fleckGain * (1 - fall), sun[1]);
+        // The canopy opens with play: more of the sun comes through (the flecks, the pools, the
+        // beams, the motes and the drops all read it), more again as a perfect clear flares it.
+        const pour = 1 + G.fleck[0] * level + G.fleck[1] * fever + G.crown.fleck * flare;
+        this.writeFlecks(t + this.windLead, camY, k, clockA.fleckGain * (1 - fall) * pour, sun[1]);
         const drift = mistDrift(t, this._drift);
         u.mistDrift.value.set(drift[0], drift[1], drift[2]);
         lightWheelAt(t, this._wheel);
         this.writePalette(zm, fall);
         this.writeBark(clockA);
+        // (The bark gleams with play, and with every beat.)
+        u.sheenK.value *= 1 + G.sheen[0] * level + G.sheen[1] * fever + 0.15 * heat.punch;
         // The board's marks: the live slots of every block, compacted, and their counts.
         this.solveStations(camY);
         const live = this.events.write(u.tables.events, t);
         u.peelCount.value = live.peels;
         u.knockCount.value = live.knocks;
         u.girdleCount.value = live.girdles;
-        u.rain.value = this.rain;
+        u.rain.value = Math.min(1, this.rain + burst);
         u.wet.value = this.wet;
         u.rainLength.value = this.reducedMotion ? 0.5 : 1;
         u.helixCount.value = live.helices;
@@ -1502,6 +1698,7 @@ export class RainbarkWorld {
             S.canopyY = u.canopyY.value;
             restLens(this.aspect, this._lens);
             curls.updateAmbient(t, S);
+            this.pourLeaves(t, dt, fever * (1 - fall));
             curls.commit();
         }
 
@@ -1523,17 +1720,73 @@ export class RainbarkWorld {
         const W = this._wheel;
         post.exposure *= lerp(1, lerp(LIGHT_WHEEL.moods[W.a].exposure, LIGHT_WHEEL.moods[W.b].exposure, W.mix), 1 - fall);
         // The Great Moult's naked First Skin is held under the shoulder by the iris (MOULT.iris
-        // stops at most; it rises with the bared skin and decays as the colour climbs back).
-        const mt = t - this.moultAt;
-        const env = mt >= 0 && mt < 20
-            ? smoother((mt - MOULT.creak - 0.2) / MOULT.rise) * (mt < MOULT.ripenAt ? 1 : Math.exp(-(mt - MOULT.ripenAt) / MOULT.decay)) : 0;
-        post.iris = 2 ** (-MOULT.iris * env);
+        // stops at most; it rises with the bared skin and decays as the colour climbs back). A
+        // second front closes it again, eased (never a jump of the whole frame).
+        const env = this.moultIris(t);
+        this.irisEnv = env > this.irisEnv ? this.irisEnv + (env - this.irisEnv) * approach(1 / IRIS_CLOSE, dt) : env;
+        // As play heats the iris closes a little too (the larger of the two, never both), so the
+        // light the canopy pours stands out of a shade that stays deep.
+        const surgeStops = (G.iris[0] * Math.max(0, level - 0.2) + G.iris[1] * fever) * (1 - fall);
+        post.iris = 2 ** -Math.max(MOULT.iris * this.irisEnv, surgeStops);
         // (The Floor lifts the frame a little, slowly: FLOOR.lift stops at most.)
         post.exposure *= 2 ** (FLOOR.lift * floorEnvelope(t - this.floorAt));
         u.exposure.value = post.exposure * post.iris;
-        post.sat = lerp(lerp(za.sat, zb.sat, k), MISTFALL.sat, fall);
+        const deepen = (G.sat[0] * level + G.sat[1] * fever) * (1 - fall);
+        post.sat = lerp(lerp(za.sat, zb.sat, k), MISTFALL.sat, fall) * (1 + deepen);
         post.bloomBoost = 0;
         u.iris.value = 1 / post.iris;
+    }
+
+    /**
+     * The Moult's iris envelope at t (0 … 1): rising with the bared skin from when this showing
+     * began, held while the latest front's First Skin stands, decaying as its colour climbs back.
+     */
+    moultIris(t) {
+        const m = this.events.moult;
+        if (!m.active) return 0;
+        const rise = smoother((t - m.start - MOULT.creak - 0.2) / MOULT.rise);
+        const since = t - m.t1;
+        return rise * (since < MOULT.ripenAt ? 1 : Math.exp(-(since - MOULT.ripenAt) / MOULT.decay));
+    }
+
+    /** How young the near groups stand at t after the latest fresh Moult (0 … 1, MOULT.relax). */
+    youngAt(t) {
+        const since = t - this.moultAt;
+        if (since < 1) return this._youngFrom;
+        return 1 - smoother((since - 1) / MOULT.relax);
+    }
+
+    /**
+     * The fever's leaves: while it lasts, leaves pour down from the crowns over the open gaps (the
+     * canopy tossing), `amount` (0 … 1) of GROVE_SURGE.leaves a second per event curl slot, three
+     * at a time, station after station.
+     */
+    pourLeaves(t, dt, amount) {
+        const { curls } = this.parts;
+        if (!curls || !(amount > 0.02)) {
+            this._leafDebt = 0;
+            return;
+        }
+        const calm = this.reducedMotion ? 0.5 : 1;
+        this._leafDebt += Math.min(dt, 0.25) * amount * GROVE_SURGE.leaves * curls.events * calm;
+        const stations = this._stations;
+        for (let guard = 0; this._leafDebt >= 3 && guard < 4; guard++) {
+            this._leafDebt -= 3;
+            // (Over a gap the chain has opened if there is one, else any station on the lanes.)
+            let pick = -1;
+            for (let k = 0; k < stations.length && pick < 0; k++) {
+                const i = (this._leafTurn + k) % stations.length;
+                if (stations[i].ok && this.events.gaps[i].open > 0.3) pick = i;
+            }
+            for (let k = 0; k < stations.length && pick < 0; k++) {
+                const i = (this._leafTurn + k) % stations.length;
+                if (stations[i].ok) pick = i;
+            }
+            this._leafTurn += 1;
+            if (pick < 0) continue;
+            const st = stations[pick];
+            curls.spawnLeaves(t, st.x, st.y, st.z, 3);
+        }
     }
 
     /**
@@ -1562,16 +1815,20 @@ export class RainbarkWorld {
         const M = this._mistRgb;
         const c = this._rgb;
         const pearl = lerp(lerp(ZONES[zm.a].pearl, ZONES[zm.b].pearl, zm.mix), MISTFALL.pearl, fall);
-        // The light wheel's moods tint the zone's colours (none under Mistfall's grey).
+        // The light wheel's moods tint the zone's colours (none under Mistfall's grey); a fever
+        // turns the sunlit air gold (GROVE_SURGE.air).
         const W = this._wheel;
         const moodA = LIGHT_WHEEL.moods[W.a].tint;
         const moodB = LIGHT_WHEEL.moods[W.b].tint;
+        const gold = this.heat.fever * (1 - fall);
         for (let i = 0; i < ZONE_COLOR_KEYS.length; i++) {
             const key = ZONE_COLOR_KEYS[i];
             const tA = moodA[key];
             const tB = moodB[key];
+            const air = GROVE_SURGE.air[key];
             for (let ch = 0; ch < 3; ch++) {
-                const tint = lerp(lerp(tA ? tA[ch] : 1, tB ? tB[ch] : 1, W.mix), 1, fall);
+                const mood = lerp(lerp(tA ? tA[ch] : 1, tB ? tB[ch] : 1, W.mix), 1, fall);
+                const tint = mood * (air ? lerp(1, air[ch], gold) : 1);
                 c[ch] = lerp(lerp(A[key][ch], B[key][ch], zm.mix), M[key][ch], fall) * tint;
             }
             table[PALETTE_ROWS[key]].set(c[0], c[1], c[2], key === 'hazeShade' ? pearl : 1);
@@ -1588,9 +1845,12 @@ export class RainbarkWorld {
     /**
      * The sun's light: the Bole's strength, SUN_WHITE (a tenth) white and the rest the zone's fleck
      * colour (which makes the Bole's own sun: SUN_BOLE), so a fleck on the cool slate still lands
-     * cream-gold (warm on cool, §2.1).
+     * cream-gold (warm on cool, §2.1). In a fever it turns gold (GROVE_SURGE.gold).
      */
-    writeSun(fleck) {
+    writeSun(zoneFleck) {
+        const gold = GROVE_SURGE.gold * this.heat.fever;
+        const fleck = this._sunRgb;
+        for (let ch = 0; ch < 3; ch++) fleck[ch] = lerp(zoneFleck[ch], this._gold[ch], gold);
         const peak = Math.max(1e-4, fleck[0], fleck[1], fleck[2]);
         const k = SUN_BOLE[0];
         const w = SUN_WHITE;
@@ -1612,8 +1872,7 @@ export class RainbarkWorld {
         const bias = this.ageBias();
         // After a Great Moult the near groups stand younger (MOULT.bias), relaxing back to the
         // grove's drift over MOULT.relax seconds (set once its new skin is bared, never seen jump).
-        const since = this.time - this.moultAt;
-        const young = since >= 1 ? 1 - smoother((since - 1) / MOULT.relax) : 0;
+        const young = this.youngAt(this.time);
         const nearBias = lerp(bias, MOULT.bias, young);
         u.ageBias.value.set(nearBias, nearBias, nearBias, bias);
         if (!(Math.abs(bias - this._meanBias) < 2e-3) || !(Math.abs(nearBias - this._meanNear) < 2e-3)) {
@@ -1664,6 +1923,9 @@ export class RainbarkWorld {
             pitch: pitchForAspect(this.aspect),
             counts: { ...this.counts },
             marks: { ...this.events.counts, moult: this.events.moult.active },
+            surge: {
+                level: this.heat.level, fever: this.heat.fever, stage: this.heat.stage, punch: this.heat.punch,
+            },
             rain: this.rain,
             wet: this.wet,
             drain: this.u ? this.u.drain.value : 0,

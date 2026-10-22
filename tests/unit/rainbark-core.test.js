@@ -541,16 +541,16 @@ describe('Rainbark core: the Climb, the tide and the sun', () => {
 });
 
 describe('Rainbark core: the shared tables', () => {
-    it('lays the event table out in its blocks, under its 112 rows', () => {
+    it('lays the event table out in its blocks, under its 124 rows', () => {
         let at = 0;
         Object.keys(EVENT_SLOTS).forEach((block) => {
             expect(EVENT_ROWS[block], block).toBe(at);
             at += EVENT_SLOTS[block] * EVENT_ROWS_PER[block];
         });
-        expect(EVENT_ROWS.used).toBe(108);
-        expect(EVENT_ROWS.total).toBe(112);
+        expect(EVENT_ROWS.used).toBe(120);
+        expect(EVENT_ROWS.total).toBe(124);
         expect(EVENT_SLOTS).toMatchObject({
-            peels: 16, girdles: 12, helices: 6, knocks: 4, gaps: 7, moult: 1,
+            peels: 16, girdles: 16, helices: 6, knocks: 4, gaps: 7, moult: 1,
         });
     });
 

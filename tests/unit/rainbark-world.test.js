@@ -15,7 +15,7 @@ import {
     HERO_TRUNKS, MISTFALL, PALETTE_ROWS, STOREY, TIDE_PERIOD, TRUNK_STRIDE, TWIN_TRUNKS, ZONES, climbHeight, groupMean,
     mistDrift, mistOnset, recordAxis, sunDirection, tideClock,
 } from '../../src/themes/rainbark/rainbark-core.js';
-import { SUN_BOLE } from '../../src/themes/rainbark/rainbark-tsl.js';
+import { EVENT_ROWS, SUN_BOLE } from '../../src/themes/rainbark/rainbark-tsl.js';
 import { QUALITY, QUALITY_NAMES } from '../../src/themes/rainbark/rainbark-quality.js';
 import { cardUnion, fallbackLayout, trunkBand } from '../../src/themes/rainbark/rainbark-composition.js';
 import { IMPOSTOR_RANKS } from '../../src/themes/rainbark/rainbark-sky.js';
@@ -130,7 +130,7 @@ describe('Rainbark world: the contract the theme calls', () => {
         const { world } = makeWorld();
         const arrays = Object.values(world.u).filter((v) => v?.isArrayBufferNode);
         expect(arrays).toHaveLength(2);
-        expect(world.u.tables.events).toHaveLength(112);
+        expect(world.u.tables.events).toHaveLength(EVENT_ROWS.total);
         expect(world.u.palette).toBeTruthy();
         expect(world.u.events).toBeTruthy();
         world.dispose();

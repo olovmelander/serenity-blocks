@@ -107,14 +107,22 @@ describe('Rainbark events: the table writer', () => {
         expect(ev.peels).toHaveLength(0);
     });
 
-    it('knocks a trunk at most once per KNOCK.gap (a newer one restarts its slot)', () => {
+    it('knocks a trunk at most once per KNOCK.gap (a newer one feeds its gleam, never restarts it)', () => {
         const ev = new RainbarkEvents();
-        ev.knock(0, 1, 50, 1);
-        ev.knock(KNOCK.gap * 0.5, 1, 52, 1);
+        ev.knock(0, 1, 50, 0.5);
+        ev.knock(KNOCK.gap * 0.5, 1, 52, 0.5);
         expect(ev.knocks).toHaveLength(1);
-        expect(ev.knocks[0].y0).toBe(52);
-        ev.knock(KNOCK.gap * 0.6, 2, 50, 1);
+        // (The gleam already running up the trunk never jumps back down to the new impact.)
+        expect(ev.knocks[0].y0).toBe(50);
+        expect(ev.knocks[0].t0).toBe(0);
+        expect(ev.knocks[0].strength).toBeGreaterThan(0.5);
+        // A later one runs up behind it while it finishes.
+        ev.knock(KNOCK.gap * 1.2, 1, 53, 0.5);
         expect(ev.knocks).toHaveLength(2);
+        expect(ev.knocks[0].t0).toBe(0);
+        // Another trunk has its own.
+        ev.knock(KNOCK.gap * 1.25, 2, 50, 1);
+        expect(ev.knocks).toHaveLength(3);
         ev.prune(10);
         expect(ev.knocks).toHaveLength(0);
     });
@@ -276,7 +284,9 @@ describe('Rainbark events: the beats in the world', () => {
         step(world, camera, 1 / 30, () => world.onCombo(0));
         // The last opened shuts first.
         expect(world.gapClose[3]).toBeLessThan(world.gapClose[0]);
-        run(world, camera, 4 * GAP.stagger + GAP.close + 0.2);
+        // (A slow dusk: one after another.)
+        expect(world.gapClose[0] - world.gapClose[3]).toBeCloseTo(3 * GAP.setStagger, 6);
+        run(world, camera, 3 * GAP.setStagger + GAP.close + 0.2);
         expect(world.u.gapCount.value).toBe(0);
         expect(world.counts.releases).toBe(1);
     });
@@ -289,7 +299,10 @@ describe('Rainbark events: the beats in the world', () => {
         run(b.world, b.camera, 4 + 1 / 30);
         expect(a.world.clocks[0]).toBeGreaterThan(b.world.clocks[0] + 4);
         step(a.world, a.camera, 1 / 30, () => a.world.onCombo(0));
-        run(a.world, a.camera, 3);
+        // (Eased back, never snapped: a second after the break it still runs fast.)
+        run(a.world, a.camera, 1);
+        expect(a.world.rates[0]).toBeGreaterThan(2);
+        run(a.world, a.camera, 8 * QUICKEN.fall);
         expect(a.world.rates[0]).toBeCloseTo(1, 2);
         // The Set: the quickened bark's sheen dips while it sets, and comes back.
         expect(a.world.lastRelease.peak).toBe(QUICKEN.cap);
