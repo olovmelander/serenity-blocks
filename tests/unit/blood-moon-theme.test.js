@@ -78,6 +78,8 @@ function runtime() {
         setReducedMotion: vi.fn(),
         setEffectsEnabled: vi.fn(),
         cue: vi.fn(),
+        setCombo: vi.fn(),
+        noteLock: vi.fn(),
         dispose: vi.fn(),
         getDiagnostics: vi.fn(() => ({ loaded: true })),
     };
@@ -291,6 +293,43 @@ describe('Blood Moon production lifecycle', () => {
         expect(scene.setReducedMotion).toHaveBeenLastCalledWith(true);
         expect(scene.setEffectsEnabled).toHaveBeenLastCalledWith(false);
         expect(win.count('settingsChanged')).toBe(1);
+    });
+
+    it('answers hard drops and back-to-back, and counts the true combo from locks and clears', async () => {
+        const value = theme();
+        const { scene } = allocation();
+        await value.createScene();
+        value.setupListeners();
+        eventBus.emit(EVENTS.HARD_DROP, { distance: 12 });
+        expect(scene.cue).toHaveBeenLastCalledWith('hardDrop', { distance: 12 });
+        eventBus.emit(EVENTS.B2B, { active: true });
+        expect(scene.cue).toHaveBeenLastCalledWith('b2b', { active: true });
+
+        // Three clearing locks: 1, 2, 3 (a cascade's second wave is depth, not a step).
+        for (let i = 0; i < 3; i++) {
+            eventBus.emit(EVENTS.PIECE_LOCK, { piece: {} });
+            eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1 });
+        }
+        expect(scene.noteLock).toHaveBeenCalledTimes(3);
+        expect(scene.setCombo.mock.calls.map(([combo]) => combo)).toEqual([1, 2, 3]);
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1, cascadeCount: 2 });
+        expect(scene.setCombo).toHaveBeenLastCalledWith(3);
+        // A lock that clears nothing breaks the chain; the next clear starts it again.
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: {} });
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: {} });
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 2 });
+        expect(scene.setCombo).toHaveBeenLastCalledWith(1);
+
+        // With the lock ripple off the lock's light is silent, but the chain is still counted.
+        eventBus.emit(EVENTS.SETTINGS_CHANGED, { settings: { pieceLockRipple: false } });
+        const cues = scene.cue.mock.calls.length;
+        eventBus.emit(EVENTS.HARD_DROP, {});
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: {} });
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 1 });
+        expect(scene.cue.mock.calls.slice(cues).map(([kind]) => kind)).toEqual(['clear']);
+        expect(scene.setCombo).toHaveBeenLastCalledWith(2);
+        win.dispatch('gameOver');
+        expect(scene.setCombo).toHaveBeenLastCalledWith(0);
     });
 
     it('rebuilds content on quality updates with payload precedence and coalesces the rebuild', async () => {
