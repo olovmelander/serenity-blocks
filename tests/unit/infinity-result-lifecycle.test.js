@@ -294,6 +294,11 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
         const replacementSession = mode._activeSession;
         const spawnCount = moduleMocks.spawnPiece.mock.calls.length;
         const refreshCount = mode._refreshNextQueue.mock.calls.length;
+        const replacementCamera = mode._playCamera;
+        const heldBeat = {
+            kind: 'landing', top: 40, startedAt: 0, arrivedAt: null, holdMs: 280, settledAt: null,
+        };
+        replacementCamera.beat = heldBeat;
 
         oldRefresh();
         oldPhysicsCallbacks.onHardDrop({ distance: 8 });
@@ -314,8 +319,10 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
         expect(replacementSession.gameState.hitStopRemaining).toBe(0);
         expect(replacementSession.gameState.infinityStats.maxComboDepth).toBe(0);
         expect(replacementSession.gameState.infinityStats.maxComboComplexity).toBe(0);
-        expect(mode.lastDropWasHard).toBe(false);
-        expect(mode.suppressFollowUntilLock).toBe(false);
+        // The old run's hard drop is no input to the new run's camera.
+        expect(replacementCamera).not.toBeNull();
+        expect(mode._playCamera).toBe(replacementCamera);
+        expect(replacementCamera.beat).toBe(heldBeat);
         expect(mode.isRunning).toBe(true);
         expect(mode._activeSession).toBe(replacementSession);
     });
@@ -452,7 +459,7 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
         expect(window.dispatchEvent).not.toHaveBeenCalled();
     });
 
-    it('owns exploration pause/resume exactly once and fences delayed camera restore', async () => {
+    it('owns exploration pause/resume exactly once and hands the view back to the play camera', async () => {
         vi.useFakeTimers();
         try {
             const { frameRateController, mode } = createMode();
@@ -482,15 +489,17 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
             expect(session.gameState.isPaused).toBe(false);
             expect(frameRateController.resumeHybridLoop).toHaveBeenCalledOnce();
             expect(boardScene.disableManualCameraControl).toHaveBeenCalledOnce();
-            expect(boardScene.updateCameraPosition).toHaveBeenCalledWith(19);
+            // The play camera takes the view home from rest on its own spring: no jump, no lerp
+            // policy written into the scene, no timer left to restore one.
+            expect(boardScene.updateCameraPosition).not.toHaveBeenCalled();
+            expect(boardScene.cameraSettings.lerpSpeed).toBe(0.08);
+            expect(mode._playCamera.velocity).toBe(0);
+            expect(mode._playCamera.beat).toBeNull();
+            expect(vi.getTimerCount()).toBe(0);
             // The ascent hears that the look is over (its sky, sound and signal go home).
             expect(mode.ascent.onExplorationEnded).toHaveBeenCalledOnce();
 
-            // A later exploration invalidates the first return timer, so it
-            // cannot restore an obsolete lerp policy into the same scene.
             expect(await mode._beginExploration()).toBe(true);
-            vi.advanceTimersByTime(400);
-            expect(boardScene.cameraSettings.lerpSpeed).toBe(0.15);
             expect(frameRateController.pauseHybridLoop).toHaveBeenCalledTimes(2);
         } finally {
             vi.useRealTimers();
@@ -578,38 +587,20 @@ describe('Infinity captured-session lifecycle and result compatibility', () => {
         }
     });
 
-    it('does not let a delayed top-area snap mutate a replacement session scene', async () => {
-        vi.useFakeTimers();
-        try {
-            const { mode } = createMode();
-            await startSession(mode);
-            const firstScene = {
-                cameraSettings: { lerpSpeed: 0.08, visibleRows: 20 },
-                updateCameraPosition: vi.fn(),
-            };
-            mode.boardScene = firstScene;
-            mode._findHighestBlockRow = vi.fn(() => 10);
+    it('gives every run its own play camera and retires it on stop', async () => {
+        const { mode } = createMode();
+        await startSession(mode);
+        const firstCamera = mode._playCamera;
+        expect(firstCamera).not.toBeNull();
+        firstCamera.velocity = 12;
 
-            mode._snapCameraToTopArea();
+        await mode.onStop();
+        expect(mode._playCamera).toBeNull();
 
-            expect(firstScene.cameraSettings.lerpSpeed).toBe(0.25);
-            expect(firstScene.updateCameraPosition).toHaveBeenCalledOnce();
-
-            await mode.onStop();
-            await startSession(mode);
-            const replacementScene = {
-                cameraSettings: { lerpSpeed: 0.37, visibleRows: 20 },
-                updateCameraPosition: vi.fn(),
-            };
-            mode.boardScene = replacementScene;
-
-            vi.advanceTimersByTime(300);
-
-            expect(replacementScene.cameraSettings.lerpSpeed).toBe(0.37);
-            expect(firstScene.cameraSettings.lerpSpeed).toBe(0.25);
-        } finally {
-            vi.useRealTimers();
-        }
+        await startSession(mode);
+        expect(mode._playCamera).not.toBe(firstCamera);
+        expect(mode._playCamera.velocity).toBe(0);
+        expect(mode._playCamera.beat).toBeNull();
     });
 
     it('restores legacy input wrappers on stop and keeps the ascent\'s wheel session-local', async () => {
