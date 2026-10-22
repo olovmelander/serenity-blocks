@@ -21,15 +21,27 @@
  *   clear       for every line the oldest lantern on the water lifts off, and the evening wind
  *               carries it away toward the place the sun goes down; a 22-degree halo blooms
  *               round the sun (the moon at night) and the sun's road on the sea flares.
- *   T-spin      the lanterns that lift go up turning round where they rose.
+ *   T-spin      the lanterns that lift go up turning round where they rose (one that clears
+ *               nothing still sends the oldest lantern up turning).
+ *   cascade     each wave lifts more than the last, and feeds the halo, the fire and the road.
+ *   back-to-back  sun dogs: two mock suns stand on the halo either side of the light.
  *   four lines  every lantern on the water lifts at once, the sky fires, and the sun, if it is
- *               low, shows the green flash.
- *   perfect     the same, and the sky stays on fire a while.
+ *               low, shows the green flash (a second quad holds it, never restarts it).
+ *   perfect     the crown on the clear: whatever is still afloat lifts, the great 46-degree halo
+ *               rings the light with sun dogs on the near one, the whole flock comes.
  *   combo       a chain sets the sky on fire: the clouds burn brighter and further across the
  *               sky with every clear held, the sea's road with them; from three a flock crosses
- *               the light, from five it is a great one.
+ *               the light and every clear after calls more birds into it.
  *   level up    the day runs on an eighth of itself: the sun, the moon and the stars are seen
  *               to run across the sky.
+ *
+ * Nothing restarts: every halo, flare, flash and kick is a Swell (shared/swell.js) that a new
+ * event adds to; a halo still standing takes the new light where it is, a flock in the air takes
+ * the newcomers. And the world builds with play (shared/gameplay-surge.js): as the hands quicken
+ * the cloud catches fire and burns from gold to ember and rose under a deepening sky, the deck
+ * streams faster toward the light, the lanterns burn brighter and the road on the sea blazes; in
+ * a fever the halo stands round the light with its sun dogs and the great halo rings the sky.
+ * When the hands rest it all breathes back to the evening it was.
  *
  * And the clock turns the same day by itself (sunset-hours.js: one day in DAY_SECONDS, lingering
  * at dawn and dusk), in every mode, the ones that never level included.
@@ -37,6 +49,7 @@
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell, softCeiling } from '../shared/gameplay-surge.js';
 import {
     DEG, EYE_HEIGHT, approach, azElDirection, clamp01, discSquash, lerp, mulberry32, pieceLight, seaHeight, smooth,
 } from './sunset-core.js';
@@ -68,10 +81,36 @@ export const MOON_RADIUS = 1.2;
 
 /** Seconds a ring stays on the water. */
 const RING_LIFE = 7;
-/** A clear's halo: how long it takes to run out to its place, its radius (degrees), how long it lasts. */
+/** A clear's halo: how long it takes to run out to its place, and its radius (degrees). */
 const HALO_RISE = 1.1;
 const HALO_RADIUS = 22;
-const HALO_LIFE = 4.2;
+/** The great halo's radius (degrees), and its width as a cosine (as wide as the 22° one is). */
+const GREAT_RADIUS = 46;
+const GREAT_WIDTH = (0.0075 * Math.sin(GREAT_RADIUS * DEG)) / Math.sin(HALO_RADIUS * DEG) + 0.0012;
+/** Below this a halo has faded: the next one runs out from the disc again. */
+const HALO_GONE = 0.04;
+/** The green flash holds this long after a four-line clear (a second one holds it longer). */
+const GREEN_HOLD = 1.6;
+
+/**
+ * The sky burning with play: what the hour's colours lean toward at full heat (multipliers on
+ * HOUR_COLOURS rows). The cloud goes from gold to ember, the high cloud to rose, the shade of a
+ * cloud to dusky rose, and the zenith deepens so the darks stay dark under the fire.
+ */
+const EMBER = Object.freeze([
+    ['cloudLit', [1.14, 0.74, 0.5]],
+    ['cloudRim', [1.12, 0.84, 0.6]],
+    ['cirrus', [1.12, 0.72, 0.8]],
+    ['cloudShade', [1.0, 0.8, 0.9]],
+    ['cloudDeep', [0.95, 0.78, 0.9]],
+    // The broad glow round the light deepens without brightening: it must not wash the frame.
+    ['midSun', [1.0, 0.78, 0.66]],
+    ['horizonSun', [1.0, 0.76, 0.6]],
+    ['sunAureole', [1.0, 0.82, 0.68]],
+    ['zenithSun', [0.8, 0.7, 0.92]],
+    ['zenithFar', [0.8, 0.7, 0.92]],
+    ['midFar', [0.92, 0.78, 0.92]],
+].map(([name, rgb]) => Object.freeze([HOUR_COLOURS.indexOf(name), ...rgb])));
 /** A splash's drops fall back within this long. */
 const DROP_LIFE = 0.9;
 /** The trail a light leaves in flight: points, and seconds between them. */
@@ -179,9 +218,14 @@ export class SunsetWorld {
             /** The cloud streets run toward this (xz, unit), and how far the deck has drifted. */
             street: uniform(new THREE.Vector2(0, -1)),
             drift: uniform(new THREE.Vector2(0, 0)),
-            /** A clear's halo: (cosine of its radius, its width as a cosine, its strength), and its centre. */
-            pulse: uniform(new THREE.Vector3(1, 0.02, 0)),
+            /**
+             * A clear's halo: (cosine of its radius, its width as a cosine, its strength, its sun
+             * dogs), and its centre.
+             */
+            pulse: uniform(new THREE.Vector4(1, 0.02, 0, 0)),
             pulseDir: uniform(new THREE.Vector3(0, 0, -1)),
+            /** The great halo round the same light: (cosine of its radius, width, strength). */
+            greatHalo: uniform(new THREE.Vector3(Math.cos(GREAT_RADIUS * DEG), GREAT_WIDTH, 0)),
             /** The green flash (0..1). */
             green: uniform(0),
             /** A clear flares the sun (0 at rest). */
@@ -211,15 +255,12 @@ export class SunsetWorld {
             combo: 0,
             level: 1,
             fire: 0,
-            fireKick: 0,
-            glint: 0,
-            flare: 0,
-            flash: 0,
+            /** The green flash as shown (eased), and until when a four-line clear holds it up. */
             green: 0,
-            greenAge: 10,
-            pulseAt: -100,
-            pulseStrength: 0,
-            flockAt: -100,
+            greenUntil: -100,
+            /** When the halo standing now ran out from the disc, and whether round the moon. */
+            haloFrom: -100,
+            haloMoon: false,
             flockSize: 0,
             pitch: null,
             locks: 0,
@@ -227,6 +268,45 @@ export class SunsetWorld {
             lifted: 0,
             flocks: 0,
         };
+        /**
+         * Every event's light ADDS to what is still lit (shared/swell.js), so a single after a
+         * quad lifts the light instead of cutting it: the post's flash, the kick a clear gives the
+         * fire in the sky, the sun's road, the sun's flare, the 22-degree halo, its sun dogs and the
+         * great halo.
+         */
+        this.fx = {
+            flash: new Swell({ release: 0.25, ceiling: 0.6, knee: 0.4 }),
+            fireKick: new Swell({
+                attack: 0.12, release: 1 / 0.45, ceiling: 0.8, knee: 0.55, headroom: 1.3,
+            }),
+            glint: new Swell({ release: 1 / 0.9, ceiling: 2.5, knee: 1.6 }),
+            flare: new Swell({ release: 1 / 1.3, ceiling: 1.5, knee: 1 }),
+            halo: new Swell({
+                attack: 0.3, release: 1.2, ceiling: 0.75, knee: 0.5, headroom: 1.3,
+            }),
+            dogs: new Swell({
+                attack: 0.4, release: 2.4, ceiling: 1.2, knee: 0.85,
+            }),
+            great: new Swell({
+                attack: 0.8, release: 3.4, ceiling: 1.1, knee: 0.8,
+            }),
+        };
+        /**
+         * How hot play runs (shared/gameplay-surge.js), sampled once a frame on the world's clock:
+         * the sky burns from gold to ember and rose, the deck streams in faster, the lanterns and
+         * the road burn brighter, and in a fever the halos stand round the light.
+         */
+        this.surge = new GameplaySurge();
+        this.heat = this.surge.sample(-100);
+        /** 0..1: how far the hour's colours lean toward the ember (EMBER). */
+        this.ember = 0;
+        /** The halo the heat holds up (added to the clears' own), for sendPulse to see. */
+        this.haloHeld = 0;
+        /** The cloud deck's own clock: it runs faster as play heats. */
+        this.driftClock = 0;
+        /** How much brighter the flames burn with the heat: afloat, and rising. */
+        this.lampBoost = 1;
+        this.airBoost = 1;
         this.sunScreen = { x: 0.25, y: 0.5, visible: 0 };
         this._point = { x: 0.5, y: 0.5 };
         this._landing = { x: 0.5, y: 0.9 };
@@ -309,9 +389,23 @@ export class SunsetWorld {
     seek(time) {
         this.time = Math.max(0, time);
         this.clock = this.time;
+        this.driftClock = this.clock;
         this.resetSession();
+        // A seek starts from a still evening. (A new run does not: what still glows from the
+        // last one, the fire and the halos, breathes out on its own.)
+        const s = this.state;
+        s.fire = 0;
+        s.green = 0;
+        s.greenUntil = -100;
+        s.haloFrom = -100;
+        s.haloMoon = false;
+        Object.values(this.fx).forEach((swell) => swell.reset());
+        this.surge.reset();
+        this.heat = this.surge.sample(-100);
+        this.ember = 0;
+        this.haloHeld = 0;
         this.restoreDay(0);
-        this.state.pitch = null;
+        s.pitch = null;
         this.setAz = this.frame.setAz;
         this.riseAz = this.frame.riseAz;
         this.applyHour();
@@ -325,15 +419,6 @@ export class SunsetWorld {
         const s = this.state;
         s.combo = 0;
         s.level = 1;
-        s.fire = 0;
-        s.fireKick = 0;
-        s.glint = 0;
-        s.flare = 0;
-        s.flash = 0;
-        s.green = 0;
-        s.pulseAt = -100;
-        s.pulseStrength = 0;
-        s.flockAt = -100;
         s.flockSize = 0;
         s.locks = 0;
         s.clears = 0;
@@ -409,17 +494,30 @@ export class SunsetWorld {
         return pieceLight(color, [1, 0.72, 0.36]);
     }
 
-    /** A ring on the water at (x, z), born at `at` (it may be in the future). */
+    /**
+     * A ring on the water at (x, z), born at `at` (it may be in the future). When the table is
+     * full the ring with the least left in it makes room (the one nearly run out, never one still
+     * running strong, so a burst of rings cannot wipe the water).
+     */
     addRing(x, z, at, strength, rgb, light) {
         const cap = this.ringRows.length / 2;
+        let slot = this.ringCount;
         if (this.ringCount >= cap) {
-            for (let i = 2; i < this.ringCount * 2; i += 1) this.ringRows[i - 2].copy(this.ringRows[i]);
-            this.ringCount -= 1;
+            let least = Infinity;
+            for (let i = 0; i < this.ringCount; i += 1) {
+                const row = this.ringRows[i * 2];
+                const left = row.w * (1 - Math.max(0, this.clock - row.z) / RING_LIFE);
+                if (left < least) {
+                    least = left;
+                    slot = i;
+                }
+            }
+        } else {
+            this.ringCount += 1;
         }
-        const k = this.ringCount * 2;
+        const k = slot * 2;
         this.ringRows[k].set(x, z, at, strength);
         this.ringRows[k + 1].set(rgb[0], rgb[1], rgb[2], light);
-        this.ringCount += 1;
     }
 
     /** A crown of `n` drops thrown up from (x, z) at `at`, in the light `rgb`. */
@@ -443,12 +541,25 @@ export class SunsetWorld {
         }
     }
 
-    /** A halo blooms round the sun (the moon by night). */
+    /**
+     * A halo blooms round the sun (the moon by night). Its light ADDS to a halo still standing,
+     * which keeps its place: only one that has faded runs out from the disc again.
+     */
     sendPulse(strength) {
         const s = this.state;
-        s.pulseAt = this.clock;
-        s.pulseStrength = Math.max(strength, s.pulseStrength * Math.exp(-(this.clock - s.pulseAt)));
-        this.U.pulseDir.value.copy(this.light.moonKey > 0.5 ? this.U.moon.value : this.U.sun.value);
+        const standing = this.fx.halo.rawAt(this.clock) + this.haloHeld;
+        if (this.clock - s.haloFrom > HALO_RISE && standing < HALO_GONE) {
+            s.haloFrom = this.clock;
+            s.haloMoon = this.light.moonKey > 0.5;
+        }
+        this.fx.halo.hit(strength, this.clock);
+    }
+
+    /** The green flash, if the sun is low enough to show one; a second one holds it on longer. */
+    greenFlash() {
+        if (this.U.sunUp.value > 0.05 && this.U.sunLow.value > 0.4) {
+            this.state.greenUntil = Math.max(this.state.greenUntil, this.clock + GREEN_HOLD);
+        }
     }
 
     // ── events ──────────────────────────────────────────────────────────────────
@@ -499,42 +610,97 @@ export class SunsetWorld {
         this.addRing(to.x, to.z, record.t0, hard ? 1.7 : 1, rgb, hard ? 1.6 : 1);
         if (hard) {
             this.splash(to.x, to.z, record.t0, Math.round(this.tier.drops / 14), rgb);
-            s.flash = Math.max(s.flash, 0.06);
+            this.fx.flash.hit(0.06, this.clock);
         }
+        this.surge.lock(c, this.clock);
     }
 
     /** Lines cleared: { player, rows, lines, combo, cascade, tspin, perfect, b2b, screen }. */
     onClear(c) {
         const s = this.state;
+        const at = this.clock;
         s.clears += 1;
         const lines = Math.max(1, Math.min(4, Math.round(Number(c.lines)) || 1));
         const big = lines >= 4 || c.perfect === true;
-        // Lanterns go up: one a line, more in a chain, all of them for four lines.
+        // A cascade's waves (360 ms apart) each build on the last: more lanterns, sooner, a
+        // fuller halo, more fire, a brighter road.
+        const wave = Math.max(0, Math.min(9, Math.round(Number(c.cascade) || 1) - 1));
+        const swell = 1 + wave * 0.22;
+        // Lanterns go up: one a line, more in a chain and with every wave, all of them for four lines.
         const chain = Math.min(3, Math.floor(Math.max(0, s.combo - 1) / 2));
-        const count = big ? this.pool.capacity : lines + chain;
+        const count = big ? this.pool.capacity : lines + chain + wave;
         const lifted = this._lifted;
         lifted.length = 0;
-        const went = this.pool.lift(this.clock, count, {
-            gap: big ? 0.16 : 0.32, spiral: c.tspin ? 1.25 : 0, out: lifted,
+        const went = this.pool.lift(at, count, {
+            gap: (big ? 0.16 : 0.32) / swell, spiral: c.tspin ? 1.25 : 0, out: lifted,
         });
         s.lifted += went;
-        // Each leaves a ring where it rose from the water.
-        for (let i = 0; i < lifted.length; i += 1) {
+        // Each leaves a ring where it rose from the water (a quad's first few only: the rest
+        // would crowd every lock's ring off the water).
+        const rings = Math.min(lifted.length, Math.max(2, Math.ceil(this.ringRows.length / 4)));
+        for (let i = 0; i < rings; i += 1) {
             const r = lifted[i];
-            this.addRing(r.xr, r.zr, r.tr, 1.2, r.rgb, 0.8);
+            this.addRing(r.xr, r.zr, r.tr, 1.2 * Math.min(1.6, swell), r.rgb, 0.8);
         }
-        this.sendPulse(0.5 + lines * 0.18);
-        s.glint = Math.min(2.5, s.glint + 0.6 + lines * 0.3);
-        s.flare = Math.min(1.5, s.flare + 0.35 + lines * 0.15);
-        s.fireKick = Math.min(1, s.fireKick + 0.18 + lines * 0.1);
-        s.flash = Math.max(s.flash, 0.08 + lines * 0.05);
+        this.sendPulse((0.5 + lines * 0.1) * swell);
+        this.fx.glint.hit((0.6 + lines * 0.3) * swell, at);
+        this.fx.flare.hit((0.35 + lines * 0.15) * Math.min(1.5, swell), at);
+        this.fx.fireKick.hit((0.18 + lines * 0.1) * swell, at);
+        this.fx.flash.hit(0.08 + lines * 0.05, at);
+        // The second difficult clear in a row: sun dogs stand on the halo either side of the light.
+        if (c.b2b) this.fx.dogs.hit(1, at);
         if (big) {
-            s.fireKick = 1;
-            s.flash = Math.max(s.flash, 0.4);
-            s.green = this.U.sunUp.value > 0.05 && this.U.sunLow.value > 0.4 ? 1 : 0;
-            s.greenAge = 0;
-            if (c.perfect) this.sendFlock(this.parts.birds?.count ?? 0);
+            this.fx.fireKick.hit(0.5, at);
+            this.fx.flash.hit(0.2, at);
+            this.greenFlash();
         }
+        if (c.perfect) this.crownMoment(at);
+        this.surge.clear(c, at);
+    }
+
+    /**
+     * A perfect clear, settled after its clear (sunset-director.js): the crown on the clear still
+     * playing, never a second one.
+     */
+    onCrown() {
+        this.crownMoment(this.clock);
+        this.surge.crown(this.clock);
+    }
+
+    /**
+     * The crown: whatever is still afloat lifts, the great halo rings the light with sun dogs on
+     * the near halo, the sun flares and its road blazes, the green flash (if the sun is low) is
+     * held on, and the whole flock comes.
+     */
+    crownMoment(at) {
+        const lifted = this._lifted;
+        lifted.length = 0;
+        this.state.lifted += this.pool.lift(at, this.pool.capacity, { gap: 0.12, out: lifted });
+        for (let i = 0; i < Math.min(2, lifted.length); i += 1) {
+            const r = lifted[i];
+            this.addRing(r.xr, r.zr, r.tr, 1.4, r.rgb, 0.9);
+        }
+        this.sendPulse(0.45);
+        this.fx.great.hit(1, at);
+        this.fx.dogs.hit(0.8, at);
+        this.fx.flare.hit(0.8, at);
+        this.fx.glint.hit(1.2, at);
+        this.fx.fireKick.hit(0.35, at);
+        this.fx.flash.hit(0.12, at);
+        this.greenFlash();
+        this.sendFlock(this.parts.birds?.count ?? 0);
+    }
+
+    /** A T-spin that cleared nothing: the oldest lantern on the water goes up turning. */
+    onSpin() {
+        const at = this.clock;
+        const lifted = this._lifted;
+        lifted.length = 0;
+        this.state.lifted += this.pool.lift(at, 1, { spiral: 1.25, out: lifted });
+        if (lifted.length) this.addRing(lifted[0].xr, lifted[0].zr, lifted[0].tr, 1.2, lifted[0].rgb, 0.8);
+        this.fx.flare.hit(0.2, at);
+        this.fx.glint.hit(0.3, at);
+        this.surge.spin(at);
     }
 
     /** The longest chain any board is holding (0 = it broke). */
@@ -545,11 +711,13 @@ export class SunsetWorld {
         s.combo = next;
     }
 
-    /** Send a flock of `n` birds across the light. */
+    /**
+     * Call `n` birds across the light. A flock still on its way in takes them (the skein grows
+     * with the chain); one called later sets out beside it. Nothing is refused, nothing restarted.
+     */
     sendFlock(n) {
         const s = this.state;
-        if (!this.parts.birds || n <= 0 || this.clock - s.flockAt < 6) return;
-        s.flockAt = this.clock;
+        if (!this.parts.birds || n <= 0) return;
         s.flockSize = n;
         s.flocks += 1;
         const target = this.light.moonKey > 0.5 ? this.U.moon.value : this.U.sun.value;
@@ -567,6 +735,7 @@ export class SunsetWorld {
         if (silent) {
             this.restoreDay((next - 1) * LEVEL_SECONDS);
         } else if (next > s.level) {
+            this.surge.levelUp(this.clock);
             day.from = this.dayOffset();
             day.to += (next - s.level) * LEVEL_SECONDS;
             day.at = this.clock;
@@ -616,6 +785,15 @@ export class SunsetWorld {
         for (let i = 0; i < HOUR_COLOURS.length; i += 1) {
             const colour = light[HOUR_COLOURS[i]];
             this.lightRows[i].set(colour[0], colour[1], colour[2], 0);
+        }
+        // The sky burning with play: the hour's cloud and air lean toward the ember.
+        const { ember } = this;
+        if (ember > 0) {
+            for (let i = 0; i < EMBER.length; i += 1) {
+                const e = EMBER[i];
+                const v = this.lightRows[e[0]];
+                v.set(v.x * lerp(1, e[1], ember), v.y * lerp(1, e[2], ember), v.z * lerp(1, e[3], ember), 0);
+            }
         }
         U.stars.value = light.stars;
         U.cover.value = light.cover;
@@ -683,43 +861,71 @@ export class SunsetWorld {
         const { U } = this;
         const s = this.state;
         this.clock += dt;
-        U.time.value = this.clock;
+        const now = this.clock;
+        U.time.value = now;
+        // How hot play runs (once a frame, on the clock the events are stamped with).
+        const heat = this.surge.sample(now);
+        this.heat = heat;
+        const { level, fever, punch } = heat;
+        // The hour's colours lean toward the ember as play heats (less under the moon, whose
+        // cloud is silver): nothing in casual play, the whole sky in a fever.
+        this.ember = clamp01(0.25 * smooth(0.3, 0.9, level) + 0.75 * fever ** 1.3) * (1 - 0.5 * this.light.moonKey);
         // The places the sky sets and rises follow the frame (a board arriving, a resize).
         const k = approach(0.9, dt);
         this.setAz += (this.frame.setAz - this.setAz) * k;
         this.riseAz += (this.frame.riseAz - this.riseAz) * k;
         this.applyHour();
 
-        // Rings run their course.
-        while (this.ringCount > 0 && this.clock - this.ringRows[0].z > RING_LIFE) {
-            for (let i = 2; i < this.ringCount * 2; i += 1) this.ringRows[i - 2].copy(this.ringRows[i]);
-            this.ringCount -= 1;
+        // Rings run their course (the table is in no order: the spent ones are packed out).
+        let live = 0;
+        for (let i = 0; i < this.ringCount; i += 1) {
+            if (now - this.ringRows[i * 2].z > RING_LIFE) continue;
+            if (live !== i) {
+                this.ringRows[live * 2].copy(this.ringRows[i * 2]);
+                this.ringRows[live * 2 + 1].copy(this.ringRows[i * 2 + 1]);
+            }
+            live += 1;
         }
+        this.ringCount = live;
 
-        // The fire in the sky: the chain holds it, each clear kicks it.
+        // The fire in the sky: the chain holds it, each clear kicks it (the kicks add up), and the
+        // heat of play lays a floor under both that a fever lifts past where a chain alone goes.
+        const { fx } = this;
         const held = fireForCombo(s.combo);
         s.fire += (held - s.fire) * approach(held > s.fire ? 1.4 : 0.35, dt);
-        s.fireKick *= Math.exp(-0.45 * dt);
-        U.skyFire.value = clamp01(s.fire + s.fireKick);
-        s.glint *= Math.exp(-0.9 * dt);
-        s.flare *= Math.exp(-1.3 * dt);
-        U.flare.value = s.flare;
-        U.glint.value = s.glint + s.fire * 0.6;
-        s.flash *= Math.exp(-4 * dt);
-        s.greenAge += dt;
-        U.green.value = s.green * smooth(0, 0.25, s.greenAge) * (1 - smooth(1.6, 2.8, s.greenAge));
-        // The halo: it runs out from the disc to its place, holds, and fades.
-        const pAge = this.clock - s.pulseAt;
-        if (pAge >= 0 && pAge < HALO_LIFE) {
-            const reach = (0.15 + 0.85 * smooth(0, HALO_RISE, pAge)) * HALO_RADIUS * DEG;
-            const strength = s.pulseStrength * smooth(0, 0.25, pAge) * (1 - smooth(HALO_RISE, HALO_LIFE, pAge));
-            const width = (0.0075 * Math.sin(reach)) / Math.sin(HALO_RADIUS * DEG) + 0.0012;
-            U.pulse.value.set(Math.cos(reach), width, strength);
-        } else {
-            U.pulse.value.z = 0;
-        }
-        // The cloud deck drifts in toward the sun.
-        U.drift.value.set(-this.clock * 0.0011, this.clock * 0.00023);
+        U.skyFire.value = softCeiling(s.fire + fx.fireKick.valueAt(now) + 0.15 * level + 0.35 * fever, 1, 1.4);
+        U.flare.value = fx.flare.valueAt(now) + 0.3 * fever;
+        // The sun's road: each clear flares it, a chain and the heat of play keep it burning, and
+        // every lock and drop sets it shimmering.
+        U.glint.value = fx.glint.valueAt(now) + s.fire * 0.6 + 0.3 * level + 0.5 * fever + 0.4 * punch;
+        // The green flash: up within a quarter of a second, held, then away over a second or so.
+        const green = now < s.greenUntil ? 1 : 0;
+        s.green += (green - s.green) * approach(green > s.green ? 9 : 2.4, dt);
+        if (green === 0 && s.green < 1e-3) s.green = 0;
+        U.green.value = s.green;
+        // The halo: it runs out from the disc to its place and stands as long as it is lit. The
+        // heat of play holds it up; a fever puts the sun dogs on it and the great halo round it.
+        this.haloHeld = 0.2 * smooth(0.3, 0.9, level) + 0.45 * fever;
+        const halo = fx.halo.valueAt(now);
+        if (halo + this.haloHeld < HALO_GONE && now - s.haloFrom > HALO_RISE) s.haloMoon = this.light.moonKey > 0.5;
+        const reach = (0.15 + 0.85 * smooth(0, HALO_RISE, now - s.haloFrom)) * HALO_RADIUS * DEG;
+        const width = (0.0075 * Math.sin(reach)) / Math.sin(HALO_RADIUS * DEG) + 0.0012;
+        U.pulse.value.set(
+            Math.cos(reach),
+            width,
+            softCeiling(halo + this.haloHeld, 0.9, 1.3),
+            softCeiling(fx.dogs.valueAt(now) + 0.35 * fever, 0.8, 1.2),
+        );
+        U.greatHalo.value.z = softCeiling(fx.great.valueAt(now) + 0.55 * fever, 0.8, 1.1);
+        U.pulseDir.value.copy(s.haloMoon ? U.moon.value : U.sun.value);
+        // The cloud deck drifts in toward the sun, faster as play heats: the evening wind rises.
+        const still = this.reducedMotion ? 0.25 : 1;
+        this.driftClock += dt * (1 + still * (0.8 * level + 1.4 * fever));
+        U.drift.value.set(-this.driftClock * 0.0011, this.driftClock * 0.00023);
+        // The lanterns burn brighter with the heat (a lock's hit kicks the ones afloat), and the
+        // ones rising into a burning sky brighter still.
+        this.lampBoost = 1 + 0.22 * level + 0.3 * fever + 0.25 * punch;
+        this.airBoost = 1 + 0.3 * level + 0.6 * fever;
 
         this.updateLanterns(camera);
         this.parts.birds.update(this.clock);
@@ -779,18 +985,20 @@ export class SunsetWorld {
                 }
                 continue;
             }
-            lanterns.push(st.x, st.y, st.z, st.tiltX, st.tiltZ, st.scale, r.rgb, st.glow, r.seed);
+            const air = st.phase === 'air';
+            // The heat of play: every flame burns brighter, the rising ones most.
+            const glow = st.glow * (air ? this.airBoost : this.lampBoost);
+            lanterns.push(st.x, st.y, st.z, st.tiltX, st.tiltZ, st.scale, r.rgb, glow, r.seed);
             // The halo round its flame: a soft glow a little larger than the lantern.
             const fy = st.y + 0.26 * st.scale;
-            const air = st.phase === 'air';
-            const halo = st.glow * 0.42;
+            const halo = glow * 0.42;
             glows.push(st.x, fy, st.z, air ? 0.75 : 0.62, r.rgb[0] * halo, r.rgb[1] * halo, r.rgb[2] * halo);
             const dx = st.x - eye.x;
             const dz = st.z - eye.z;
             const far = Math.hypot(dx, dz);
-            const score = (st.glow / (1 + far * 0.03)) * (fy < 40 ? 1 : 0.25);
+            const score = (glow / (1 + far * 0.03)) * (fy < 40 ? 1 : 0.25);
             lamps.push({
-                x: st.x, y: fy, z: st.z, glow: st.glow, rgb: r.rgb, score,
+                x: st.x, y: fy, z: st.z, glow, rgb: r.rgb, score,
             });
         }
         // The drops of a splash: thrown up, falling back.
@@ -828,20 +1036,26 @@ export class SunsetWorld {
 
     /** What the post stack should know this frame. */
     getPostState() {
-        const s = this.state;
         const L = this.light;
+        const now = this.clock;
+        const { level, fever } = this.heat;
+        // Past 1 the fire burns hotter in the cloud only: the lens takes no more of it.
+        const fire = Math.min(1, this.U.skyFire.value);
         return {
-            flash: s.flash,
-            bloomBoost: this.U.skyFire.value * 0.4 + s.glint * 0.1,
-            warm: this.U.skyFire.value,
+            flash: this.fx.flash.valueAt(now),
+            bloomBoost: fire * 0.4 + this.fx.glint.valueAt(now) * 0.1,
+            warm: fire,
             sunX: this.sunScreen.x,
             sunY: this.sunScreen.y,
-            shafts: this.sunScreen.visible * (0.42 + this.U.skyFire.value * 0.4),
+            // The light stands in the air as the sky burns.
+            shafts: this.sunScreen.visible * (0.42 + fire * 0.4 + fever * 0.15),
             // Copies: the hour's arrays are rewritten every frame.
             shaftTint: [L.shaft[0], L.shaft[1], L.shaft[2]],
             gradeShadow: [L.gradeShadow[0], L.gradeShadow[1], L.gradeShadow[2]],
             gradeLight: [L.gradeLight[0], L.gradeLight[1], L.gradeLight[2]],
-            exposure: L.exposure,
+            // An iris: it closes a little as play heats, so the burning sky stays deep in colour
+            // instead of washing toward white.
+            exposure: L.exposure * (1 - 0.07 * level - 0.06 * fever),
         };
     }
 
@@ -874,6 +1088,12 @@ export class SunsetWorld {
             lamps: this._lampCount ?? 0,
             fire: this.U.skyFire.value,
             green: this.U.green.value,
+            halo: this.U.pulse.value.z,
+            haloReach: Math.acos(Math.min(1, this.U.pulse.value.x)) / DEG,
+            sunDogs: this.U.pulse.value.w,
+            greatHalo: this.U.greatHalo.value.z,
+            ember: this.ember,
+            heat: { ...this.heat },
             locks: s.locks,
             clears: s.clears,
             lifted: s.lifted,
