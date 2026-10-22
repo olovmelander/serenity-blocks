@@ -50,12 +50,13 @@ import {
 
 /**
  * A space telescope's point-spread pattern at q (units of the sprite's half-size): a core, a
- * halo, three long spikes at 90°, 30° and 150°, and a short, faint horizontal one.
+ * halo, three long spikes at 90°, 30° and 150°, and a short, faint horizontal one. The halo is
+ * tight (with the bloom on top, a broad one made every middling star a soft blob).
  */
 export function spikes(q, sharp) {
     const r2 = dot(q, q);
     const core = exp(r2.mul(sharp).negate());
-    const halo = exp(r2.mul(9.0).negate()).mul(0.22).add(float(0.04).div(r2.mul(160.0).add(1.0)));
+    const halo = exp(r2.mul(22.0).negate()).mul(0.13).add(float(0.035).div(r2.mul(260.0).add(1.0)));
     let rays = float(0);
     const lines = [[0, 1, 1.0], [0.866, 0.5, 0.85], [-0.866, 0.5, 0.85], [1, 0, 0.32]];
     lines.forEach(([dx, dy, w]) => {
