@@ -743,17 +743,71 @@ describe('fluid dreams choreography: clears', () => {
         expect(choreo.isBusy()).toBe(false);
     });
 
-    it('keeps at most WAVE_SLOTS packets, the newest among them', () => {
+    it('keeps at most WAVE_SLOTS packets and never deletes a crest mid-sea: a full pool swells one', () => {
         const { choreo } = make();
+        const twin = make().choreo; // the same clears, stopping once the small slots are full
         const origins = [];
+        // Every slot but the last (kept for four lines and the Drop's impact) for small clears.
+        const small = WAVE_SLOTS - 1;
         for (let i = 0; i < WAVE_SLOTS * 2 + 1; i++) {
             origins.push([i - 3, -9 - i * 0.5]);
             choreo.clear({ origin: origins[i], lines: 1 + (i % 3) });
+            if (i < small) twin.clear({ origin: origins[i], lines: 1 + (i % 3) });
             run(choreo, DT);
-            expect(choreo.counts.waves).toBe(Math.min(i + 1, WAVE_SLOTS));
+            run(twin, DT);
+            expect(choreo.counts.waves).toBe(Math.min(i + 1, small));
         }
-        expect(rowAt(choreo, 'waves', origins[origins.length - 1])).toBeTruthy();
-        expect(rowAt(choreo, 'waves', origins[0])).toBeUndefined();
+        // The newest ones joined the youngest packet still running: it swells instead...
+        run(choreo, 0.3);
+        run(twin, 0.3);
+        const youngest = origins[small - 1];
+        expect(rowAt(choreo, 'waves', youngest)[0].w).toBeGreaterThan(rowAt(twin, 'waves', youngest)[0].w * 1.5);
+        // ...and the first packet is still running out through the sea: nothing was cut to make room.
+        for (let i = 0; i < small; i++) expect(rowAt(choreo, 'waves', origins[i]), `packet ${i}`).toBeTruthy();
+        // A four-line clear still gets a packet of its own.
+        const quad = [9, -14];
+        choreo.clear({ origin: quad, lines: 4 });
+        run(choreo, HUSH_HOLD + DT * 2);
+        expect(choreo.counts.waves).toBe(WAVE_SLOTS);
+        expect(rowAt(choreo, 'waves', quad)).toBeTruthy();
+        expect(problem(choreo)).toBeNull();
+    });
+
+    it('swells one packet from a burst of clears in one place, and runs each wave of a cascade deeper', () => {
+        // Two clears a breath apart from one board: one packet, taller than one clear's.
+        const one = make().choreo;
+        const two = make().choreo;
+        const origin = [...one.scene.foot];
+        one.clear({ origin, lines: 2 });
+        two.clear({ origin, lines: 2 });
+        run(two, 0.1);
+        run(one, 0.1);
+        two.clear({ origin, lines: 2 });
+        run(one, 0.5);
+        run(two, 0.5);
+        expect(two.counts.waves).toBe(1);
+        expect(rowAt(two, 'waves', origin)[0].w).toBeGreaterThan(rowAt(one, 'waves', origin)[0].w * 1.2);
+        // A cascade: each wave (0.36 s apart) is a packet of its own, taller and brighter than
+        // the wave before it was at the same age.
+        const { choreo } = make();
+        const heights = [];
+        const lights = [];
+        for (let wave = 1; wave <= 4; wave++) {
+            const at = choreo.time;
+            choreo.clear({ origin, lines: 1, cascade: wave });
+            run(choreo, 0.2);
+            const rows = rowsOf(choreo, 'waves');
+            const [place, shape] = rows.reduce((a, b) => (Math.abs(a[0].z - clearRadius(choreo.time - at))
+                < Math.abs(b[0].z - clearRadius(choreo.time - at)) ? a : b));
+            heights.push(place.w);
+            lights.push(shape.z);
+            run(choreo, 0.16);
+        }
+        expect(choreo.counts.waves).toBe(4);
+        for (let i = 1; i < heights.length; i++) {
+            expect(heights[i], `wave ${i + 1}`).toBeGreaterThan(heights[i - 1]);
+            expect(lights[i], `wave ${i + 1}`).toBeGreaterThan(lights[i - 1]);
+        }
         expect(problem(choreo)).toBeNull();
     });
 
@@ -1100,8 +1154,8 @@ describe('fluid dreams choreography: clears', () => {
         expect(threadOn(choreo)).toBe(true);
         const stilled = settle(choreo);
         expect(stilled).toBeLessThan(30);
-        // The sea finds its motion again.
-        run(choreo, 4);
+        // The sea finds its motion again (and the heat the perfect clear raised has breathed out).
+        run(choreo, 12);
         run(twin, choreo.time - twin.time);
         expect(choreo.swell).toBeCloseTo(twin.swell, 2);
     });
@@ -1260,9 +1314,10 @@ describe('fluid dreams choreography: budgets and time', () => {
             run(choreo, FLIGHT_TIME / 5, check);
         }
         run(choreo, 8, check);
-        // The flood did fill the pools: the limits were reached, never passed.
+        // The flood did fill the pools: the limits were reached, never passed (small clears leave
+        // the last packet slot to four lines and the Drop's impact, and none came).
         expect(most.rings).toBe(RING_SLOTS);
-        expect(most.waves).toBe(WAVE_SLOTS);
+        expect(most.waves).toBe(WAVE_SLOTS - 1);
         expect(most.dye).toBeGreaterThan(DYE_SLOTS / 2); // (colour landing in colour joins it)
         expect(most.dye).toBeLessThanOrEqual(DYE_SLOTS);
         expect(most.left).toBeGreaterThan(1);
@@ -1800,5 +1855,241 @@ describe('fluid dreams choreography: continuity', () => {
         }
         expect(most).toBeGreaterThan(4);
         expect(short).toBe(0);
+    });
+});
+
+describe('fluid dreams choreography: play builds instead of popping', () => {
+    /**
+     * A chain as the tray's Fever plays it: a hard-dropped clear every 0.64 s, growing, with a
+     * four-wave cascade near its end.
+     */
+    const chain = (choreo, { clears = 12, each } = {}) => {
+        const plan = [1, 1, 2, 1, 2, 2, 3, 2, 2, 2, 3, 4];
+        for (let n = 0; n < clears; n++) {
+            lockBeside(choreo, n % 2 ? 1 : -1, { hardDrop: true });
+            const lines = plan[n % plan.length];
+            choreo.clear({ origin: [...choreo.scene.foot], lines, combo: n + 1 });
+            choreo.setCombo(n + 1);
+            if (n === 9) {
+                for (let wave = 2; wave <= 4; wave++) {
+                    run(choreo, 0.36, each);
+                    choreo.clear({
+                        origin: [...choreo.scene.foot], lines: 1, cascade: wave, combo: n + 1,
+                    });
+                }
+            }
+            run(choreo, 0.64, each);
+        }
+    };
+
+    it('never cuts the light: a single after a four-line impact only adds to it', () => {
+        const { choreo } = make();
+        const twin = make().choreo;
+        for (const c of [choreo, twin]) {
+            c.clear({ origin: [...c.scene.foot], lines: 4 });
+            run(c, HUSH_HOLD + PLUNGE.fall + 2 * DT);
+        }
+        expect(choreo.flash).toBeGreaterThan(0.5);
+        // A weak clear right after the strong one.
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 1 });
+        for (let i = 0; i < 90; i++) {
+            run(choreo, DT);
+            run(twin, DT);
+            for (const key of ['flash', 'kick', 'skyFlash']) {
+                expect(choreo[key], `${key}, frame ${i}`).toBeGreaterThanOrEqual(twin[key] - 1e-12);
+            }
+        }
+    });
+
+    it('reads a long chain hotter than its first clear, and breathes back when the hands rest', () => {
+        const { choreo } = make();
+        const twin = make().choreo;
+        chain(twin, { clears: 1 });
+        const first = {
+            heat: { ...twin.heat }, swell: twin.swell, r: twin.hero.r, glow: twin.stem.glow, waist: twin.stem.waist,
+        };
+        let { level } = choreo.heat;
+        let drops = 0;
+        chain(choreo, {
+            clears: 11,
+            each: (c) => {
+                // the heat of play climbs through the chain; it never falls back mid-chain
+                if (c.heat.level < level - 0.02) drops += 1;
+                ({ level } = c.heat);
+            },
+        });
+        expect(drops).toBe(0);
+        expect(choreo.heat.level).toBeGreaterThan(first.heat.level + 0.4);
+        expect(choreo.heat.fever).toBeGreaterThan(0.5);
+        expect(choreo.heat.stage).toBe(3);
+        expect(choreo.swell).toBeGreaterThan(first.swell);
+        expect(choreo.hero.r).toBeGreaterThan(first.r);
+        expect(choreo.stem.glow).toBeGreaterThan(first.glow);
+        expect(choreo.stem.waist).toBeGreaterThan(first.waist);
+        expect(choreo.sheen).toBeGreaterThan(0);
+        // The hands rest: it breathes back to calm.
+        choreo.setCombo(0);
+        run(choreo, 20);
+        expect(choreo.heat.level).toBeLessThan(0.05);
+        expect(choreo.heat.fever).toBe(0);
+        expect(choreo.heat.stage).toBe(0);
+        expect(choreo.sheen).toBeLessThan(0.01);
+        expect(problem(choreo)).toBeNull();
+    });
+
+    it('holds its breath less before a four-line clear the hotter play runs', () => {
+        const cold = make().choreo;
+        const hot = make().choreo;
+        chain(hot, { clears: 9 });
+        for (const c of [cold, hot]) c.clear({ origin: [...c.scene.foot], lines: 4 });
+        let coldHush = 0;
+        let hotHush = 0;
+        for (let i = 0; i < Math.round(HUSH_HOLD / DT); i++) {
+            run(cold, DT);
+            run(hot, DT);
+            coldHush = Math.max(coldHush, cold.hush);
+            hotHush = Math.max(hotHush, hot.hush);
+        }
+        expect(coldHush).toBeGreaterThan(0.9);
+        expect(hotHush).toBeGreaterThan(0.05); // it still inhales
+        expect(hotHush).toBeLessThan(coldHush * 0.6);
+    });
+
+    it('crowns a four-line clear with its late perfect clear: no second packet or hush, glass after the crown', () => {
+        const { choreo, bursts } = make();
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 4 });
+        const crownAt = choreo.plunge.t0 + choreo.plunge.fall + 1.6;
+        run(choreo, 0.36);
+        const { waves } = choreo.counts;
+        const most = Math.max(choreo.hush, choreo.hushDepth);
+        choreo.perfectCrown();
+        expect(choreo.isBusy()).toBe(true);
+        let glassBefore = 0;
+        let hushAfter = 0;
+        run(choreo, crownAt - choreo.time - DT, () => {
+            glassBefore = Math.max(glassBefore, choreo.glass.level);
+            hushAfter = Math.max(hushAfter, choreo.hush);
+        });
+        // The plunge plays out untouched: no glass during the fall and the crown, no second hush.
+        expect(glassBefore).toBe(0);
+        expect(hushAfter).toBeLessThanOrEqual(most + 1e-9);
+        expect(kinds(bursts, 'crown')).toHaveLength(1);
+        // The perfect clear sent no packet of its own (only the impact's came meanwhile).
+        expect(choreo.counts.waves).toBeLessThanOrEqual(waves + 1);
+        // Then the sea turns to glass, and the double ring opens as the four-line ring lets go.
+        let ring = 0;
+        run(choreo, 2, () => {
+            ring = Math.max(ring, choreo.prism.strength);
+        });
+        expect(choreo.glass.level).toBeGreaterThan(0.9);
+        expect(ring).toBeGreaterThan(0);
+        expect(settle(choreo)).toBeLessThan(30);
+        expect(choreo.glass.level).toBe(0);
+        // A late perfect clear with nothing down turns the sea to glass at once.
+        const calm = make().choreo;
+        calm.perfectCrown();
+        run(calm, 1);
+        expect(calm.glass.level).toBeGreaterThan(0.9);
+    });
+
+    it('holds the glass on a second perfect clear instead of breaking it back to waves', () => {
+        const { choreo } = make();
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 2, perfect: true });
+        run(choreo, 3);
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 2, perfect: true });
+        let least = 1;
+        run(choreo, 3, () => {
+            least = Math.min(least, choreo.glass.level);
+        });
+        expect(least).toBeGreaterThan(0.95);
+    });
+
+    it('winds the funnel deeper on a second T-spin, and turns it a little on one that clears nothing', () => {
+        const { choreo } = make();
+        const twin = make().choreo;
+        for (const c of [choreo, twin]) {
+            c.clear({ origin: [...c.scene.foot], lines: 2, tspin: true });
+            run(c, 1.2);
+        }
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 1, tspin: true });
+        let deeper = 0;
+        for (let i = 0; i < 120; i++) {
+            run(choreo, DT);
+            run(twin, DT);
+            // never back to flat and wound up again: it only deepens
+            expect(choreo.vortex.depth).toBeGreaterThanOrEqual(twin.vortex.depth - 1e-9);
+            deeper = Math.max(deeper, choreo.vortex.depth - twin.vortex.depth);
+        }
+        expect(deeper).toBeGreaterThan(0.2);
+        // A T-spin that cleared nothing: a smaller turn, but a turn.
+        const small = make().choreo;
+        const full = make().choreo;
+        small.spinNoLines();
+        full.clear({ origin: [...full.scene.foot], lines: 2, tspin: true });
+        run(small, 0.5);
+        run(full, 0.5);
+        expect(small.vortex.depth).toBeGreaterThan(0);
+        expect(small.vortex.depth).toBeLessThan(full.vortex.depth);
+        expect(small.heat.punch).toBeGreaterThan(0);
+        expect(settle(small)).toBeLessThan(30);
+        expect(small.vortex.depth).toBe(0);
+    });
+
+    it('answers a back-to-back: the kin flare and ring the sea, and the packet runs twice', () => {
+        const { choreo } = make();
+        const twin = make().choreo;
+        for (const c of [choreo, twin]) run(c, 0.2);
+        choreo.clear({
+            origin: [...choreo.scene.foot], lines: 2, tspin: true, b2b: true,
+        });
+        twin.clear({ origin: [...twin.scene.foot], lines: 2, tspin: true });
+        run(choreo, 0.5);
+        run(twin, 0.5);
+        const kinGlow = (c) => ballsOf(c, GROUP_KIN)[0].glow;
+        expect(kinGlow(choreo)).toBeGreaterThan(kinGlow(twin) + 0.5);
+        expect(choreo.counts.waves).toBe(2);
+        expect(twin.counts.waves).toBe(1);
+        expect(choreo.counts.rings).toBeGreaterThanOrEqual(twin.counts.rings + 3);
+        expect(choreo.heat.punch).toBeGreaterThan(twin.heat.punch);
+        // A second back-to-back burns on what the first left.
+        run(choreo, 0.9);
+        const left = kinGlow(choreo);
+        choreo.clear({
+            origin: [...choreo.scene.foot], lines: 2, tspin: true, b2b: true,
+        });
+        run(choreo, 0.3);
+        expect(kinGlow(choreo)).toBeGreaterThan(left);
+        expect(problem(choreo)).toBeNull();
+    });
+
+    it('gathers the satellites in as the Drop falls, and buds them again once its crown is down', () => {
+        const { choreo } = make();
+        choreo.setCombo(5);
+        run(choreo, 4);
+        expect(satellites(choreo)).toBe(5);
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 4 });
+        run(choreo, HUSH_HOLD + choreo.plunge.fall * 0.5);
+        // Half way down they are still there, drawing in (not gone in a tenth of a second).
+        expect(satellites(choreo)).toBe(5);
+        expect(choreo.satGrow[0]).toBeGreaterThan(0.3);
+        expect(choreo.satGrow[0]).toBeLessThan(1);
+        run(choreo, choreo.plunge.t0 + choreo.plunge.total + 1 - choreo.time);
+        expect(satellites(choreo)).toBe(5);
+    });
+
+    it('feeds the crater when a second four-line clear lands while the Drop is down', () => {
+        const { choreo } = make();
+        const twin = make().choreo;
+        for (const c of [choreo, twin]) {
+            c.clear({ origin: [...c.scene.foot], lines: 4 });
+            run(c, HUSH_HOLD + c.plunge.fall + 0.5);
+        }
+        const { surge } = twin;
+        choreo.clear({ origin: [...choreo.scene.foot], lines: 4 });
+        run(choreo, HUSH_HOLD + 0.1);
+        run(twin, HUSH_HOLD + 0.1);
+        expect(choreo.surge).toBeGreaterThan(twin.surge + 0.2);
+        expect(twin.surge).toBeLessThan(surge);
+        expect(choreo.counts.rings).toBeGreaterThan(twin.counts.rings);
     });
 });
