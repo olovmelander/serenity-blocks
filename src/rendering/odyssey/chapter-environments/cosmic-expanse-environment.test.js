@@ -63,10 +63,11 @@ describe('Cosmic Expanse chapter environment (creative plan ch6)', () => {
 
         // The omen stays AHEAD of the camera down the corridor for the whole chapter. Since
         // 2026-10-19 it no longer marches (owner: "locked on the spine path instead of drifting
-        // towards it"): it hangs at ONE place on the rail's line (OMEN_SPINE_ANCHOR). Since the
-        // 2026-10-20 overhaul ("I want them to be placed in space on 1 place") it also keeps ONE
-        // size — chapter 7's at the lock — and grows on screen only as the camera closes on it.
-        // Screen placement is guarded with the real camera in
+        // towards it"). Since the 2026-10-20 overhaul ("I want them to be placed in space on 1
+        // place") it also keeps ONE size — chapter 7's at the lock — and grows on screen only as
+        // the camera closes on it. With a live camera it rides the path (resolveOmenPathPlace,
+        // 2026-10-22); this headless call has none, so it waits at its hand-over seat on the
+        // rail's line (OMEN_SPINE_ANCHOR). The ride is guarded with the real camera in
         // tests/unit/odyssey-ch6-hero-framing.test.js.
         expect(ahead(entry)).toBeGreaterThan(400);
         expect(blackHole.position.distanceTo(entry)).toBeLessThan(1e-6);
