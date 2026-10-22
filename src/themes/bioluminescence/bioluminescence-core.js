@@ -11,9 +11,20 @@
 export const TAU = Math.PI * 2;
 export const DEG = Math.PI / 180;
 
-/** Gameplay pulse slots evaluated by the materials. */
+/**
+ * Gameplay pulse slots evaluated by the materials. A new event takes the slot with the least
+ * light left in it (never simply the oldest), so under fast play a ring or a wave is only ever
+ * replaced once it has all but faded. Five clear waves: a cascade's waves (360 ms apart) and a
+ * long chain's clears each roll all the way across the pool before their slot is wanted again;
+ * the shaders skip a slot whose wave has gone, so a quiet pool costs what two slots did.
+ */
 export const LOCK_SLOTS = 8;
-export const CLEAR_SLOTS = 2;
+export const CLEAR_SLOTS = 5;
+/** Seconds a clear wave stays in the grotto (the shaders skip its slot after). */
+export const CLEAR_LIVE = 8;
+/** The Great Bloom's ring over the pool: two slots, so a second ring follows the first. */
+export const SHOCK_SPEED = 34;
+export const SHOCK_FADE = 0.9;
 /** Light-swimmers in the water at once (a lock sends one, a hard drop three). */
 export const RUNNER_SLOTS = 12;
 /** Motes in one swimmer's wake. */

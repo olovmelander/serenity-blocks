@@ -344,11 +344,16 @@ export function createUniforms() {
         /** Perfect clear: the sea's calm (0 wind … 1 glass) and where the returning breeze stands. */
         calm: uniform(0),
         calmFront: uniform(0),
-        /** The wind on the water (0..1.5): ripple strength, the fleet's heel. */
+        /** The wind on the water (1 at rest … ~2 in a long hot chain): ripple strength, the fleet's heel. */
         breeze: uniform(1),
         /** Back-to-back: the lighthouse (strength 0..1, beam). */
         beacon: uniform(new THREE.Vector2(0, 0)),
-        /** A four-line clear's flare on the wet rock (0..1). */
+        /** The flare on the wet rock (a four-line clear ~1; stacked quads, waves and the crown up to ~1.6). */
         rebound: uniform(0),
+        /**
+         * How hot play runs (shared/gameplay-surge.js): (level 0..1, fever 0..1, the spinnakers'
+         * glow, the gold the wet risen rock takes on).
+         */
+        heat: uniform(new THREE.Vector4(0, 0, 0, 0)),
     };
 }

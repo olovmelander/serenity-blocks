@@ -551,3 +551,168 @@ describe('StarlightWorld: a session', () => {
         expect(world.getPostState()).toHaveProperty('ripple');
     });
 });
+
+describe('StarlightWorld: play builds the night instead of popping', () => {
+    const quad = (world) => world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+
+    it('never takes a fireball\'s light back: a single after it adds, a second great clear flies beside it', () => {
+        const { world, camera } = makeWorld();
+        quad(world);
+        step(world, camera, START + 0.1, START + 0.7, 1 / 60);
+        const first = world.fireballs[0];
+        expect(first.on).toBe(true);
+        const { surge } = world;
+        const lit = world.u.flash.value.w;
+        // A weak clear right after the quad only adds to what is lit.
+        world.onClear({ rows: [19], lines: 1 });
+        step(world, camera, START + 0.7, START + 0.7 + 1 / 60, 1 / 60);
+        expect(world.surge).toBeGreaterThan(surge);
+        expect(world.u.flash.value.w).toBeGreaterThanOrEqual(lit);
+        // A second great clear while the first ball is still in the air: the first keeps its
+        // light all the way down (it used to jump back to a new start at nothing), and lands.
+        quad(world);
+        let t = START + 0.7 + 1 / 60;
+        let last = world.u.flash.value.w;
+        const landedAt = first.t0 + first.duration;
+        while (t < landedAt - 1 / 60) {
+            step(world, camera, t, t + 1 / 60, 1 / 60);
+            t += 1 / 60;
+            expect(world.u.flash.value.w).toBeGreaterThanOrEqual(last - 1e-9);
+            last = world.u.flash.value.w;
+        }
+        expect(world.fireballs.filter((ball) => ball.on)).toHaveLength(2);
+        expect(world.u.flashB.value.w).toBeGreaterThan(0);
+        step(world, camera, t, t + 0.3, 1 / 60);
+        expect(first.landed).toBe(true);
+        expect(world.getPostState().ripple.strength).toBeGreaterThan(0);
+        // …and so does the second; then both lights are out.
+        step(world, camera, t + 0.3, t + 6);
+        expect(world.fireballs[1].landed).toBe(true);
+        expect(world.fireball).toBeNull();
+        expect(world.u.flash.value.w).toBe(0);
+        expect(world.u.flashB.value.w).toBe(0);
+    });
+
+    it('crowns the clear still playing on a late perfect clear: no new figure, the fireball swells', () => {
+        const { world, camera } = makeWorld();
+        lock(world);
+        quad(world);
+        step(world, camera, START + 0.1, START + 0.46);
+        const begun = world.figureCount;
+        const waiting = world.scheduled.length;
+        const ball = world.fireball;
+        const power = world.ballPower(ball, world.time);
+        world.onCrown();
+        expect(world.figureCount).toBe(begun);
+        expect(world.current).toBeNull();
+        // A storm from the radiant and every figure flaring are on their way.
+        expect(world.scheduled.length).toBeGreaterThanOrEqual(waiting + 9);
+        step(world, camera, START + 0.46, START + 1.1);
+        expect(world.fireballs.filter((b) => b.on)).toHaveLength(1);
+        expect(world.ballPower(ball, world.time)).toBeGreaterThan(power);
+        expect(world.figures.filter((f) => f.on).every((f) => f.flare > 0.5)).toBe(true);
+        // With no fireball in the air the crown sends one.
+        const alone = makeWorld();
+        alone.world.onCrown();
+        step(alone.world, alone.camera, START + 0.1, START + 0.5);
+        expect(alone.world.fireball).toBeTruthy();
+    });
+
+    it('re-colours a lit star when its mote arrives, never putting it out first', () => {
+        const { world, camera } = makeWorld();
+        lock(world);
+        const figure = world.current;
+        let t = START + 0.1;
+        for (let i = 1; i < figure.stars.length; i += 1) {
+            step(world, camera, t, t + 0.5);
+            t += 0.5;
+            lock(world, i);
+        }
+        step(world, camera, t, t + 1);
+        t += 1;
+        expect(litStars(figure)).toBe(figure.stars.length);
+        const glint = vi.spyOn(world.stars, 'setGlint');
+        lock(world, 99, { color: '#ff3366' });
+        // Nothing is re-kindled ahead of its mote: the star keeps shining in its old colour.
+        expect(glint).not.toHaveBeenCalled();
+        expect(litStars(figure)).toBe(figure.stars.length);
+        step(world, camera, t, t + 1);
+        expect(glint).toHaveBeenCalledOnce();
+        expect(glint.mock.calls[0][4]).toBeLessThanOrEqual(world.time);
+    });
+
+    it('reads hotter through a long chain than on its first clear, and breathes back at rest', () => {
+        const { world, camera } = makeWorld();
+        let t = START + 0.1;
+        let first = null;
+        const read = () => ({
+            exposure: world.u.exposure.value,
+            fever: world.u.fever.value,
+            tint: world.u.tint.value,
+            blaze: world.blaze,
+            iris: world.getPostState().exposure,
+        });
+        for (let n = 0; n < 12; n += 1) {
+            lock(world, n, { hardDrop: true });
+            world.onClear({ rows: [19, 18], lines: 1 + (n % 3), combo: n + 1 });
+            world.onCombo(n + 1);
+            step(world, camera, t, t + 0.64);
+            t += 0.64;
+            if (n === 0) first = read();
+        }
+        const peak = read();
+        expect(peak.exposure).toBeGreaterThan(first.exposure * 2);
+        expect(peak.exposure).toBeGreaterThan(EXPOSURE_MAX); // the fever stretches the arcs
+        expect(peak.fever).toBeGreaterThan(0.5);
+        expect(peak.tint).toBeGreaterThan(first.tint + 0.3);
+        expect(peak.blaze).toBeGreaterThan(first.blaze + 0.2);
+        expect(peak.iris).toBeLessThan(first.iris); // the iris closes: colours, not haze
+        expect(world.heat.stage).toBe(3);
+        // The hands rest: the heat breathes out over a few seconds (the chain's own shutter
+        // stays open until a lock breaks it, as it always has).
+        step(world, camera, t, t + 12);
+        expect(world.heat.level).toBeLessThan(0.1);
+        expect(world.u.fever.value).toBe(0);
+        expect(world.u.tint.value).toBeLessThan(0.05);
+        expect(world.blaze).toBeLessThan(0.02);
+        expect(world.u.exposure.value).toBeLessThanOrEqual(EXPOSURE_MAX * 1.03);
+    });
+
+    it('builds a cascade wave on the last, answers a back-to-back with a pair, a bare T-spin with a turn', () => {
+        const shallow = makeWorld();
+        shallow.world.onClear({ rows: [19], lines: 1, cascade: 2 });
+        const deep = makeWorld();
+        deep.world.onClear({ rows: [19], lines: 1, cascade: 4 });
+        expect(deep.world.turnDebt).toBeGreaterThan(shallow.world.turnDebt);
+        expect(deep.world.scheduled.length).toBeGreaterThan(shallow.world.scheduled.length);
+
+        const plain = makeWorld();
+        plain.world.onClear({ rows: [19, 18], lines: 2 });
+        step(plain.world, plain.camera, START + 0.1, START + 0.5);
+        const b2b = makeWorld();
+        b2b.world.onClear({ rows: [19, 18], lines: 2, b2b: true });
+        step(b2b.world, b2b.camera, START + 0.1, START + 0.5);
+        expect(b2b.world.getState().streaks).toBe(plain.world.getState().streaks + 2);
+
+        const { world, camera } = makeWorld();
+        const debt = world.turnDebt;
+        world.onSpin();
+        expect(world.turnDebt).toBeGreaterThan(debt);
+        step(world, camera, START + 0.1, START + 0.2);
+        expect(world.heat.punch).toBeGreaterThan(0);
+    });
+
+    it('lets the weakest ring give way when rapid locks fill the lake', () => {
+        const { world, camera } = makeWorld();
+        let t = START + 0.1;
+        for (let i = 0; i <= RINGS; i += 1) {
+            lock(world, i);
+            step(world, camera, t, t + 0.1);
+            t += 0.1;
+        }
+        // The first ring (the faintest by now) made room; every later one is still spreading.
+        const starts = world.rings.map((ring) => ring.t0).sort((a, b) => a - b);
+        expect(starts[0]).toBeGreaterThan(START + 0.1);
+        expect(liveRings(world)).toBe(RINGS);
+    });
+});

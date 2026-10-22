@@ -8,7 +8,8 @@
  * each pending slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, screen })
+ *   sink.spin({ player })      a T-spin that cleared nothing
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *
@@ -21,8 +22,13 @@
  * column and stains the wave behind it (`u`, the middle one of `rows`, `hardDrop`, `color`); a
  * clear makes the lip throw and sends a band of light down the tube for each of its `lines`
  * (`tspin` adds a wheel of spray, four lines or `perfect` hold the wave's clock); the combo holds
- * the barrel open and calls the dolphins. The wave reads the chain from sink.combo, so a clear's
- * own `combo`, `cascade` and `b2b` go unused here.
+ * the barrel open and calls the dolphins. The wave reads the chain from sink.combo; a clear's
+ * `cascade` (each wave of a cascade comes deeper and wider than the last) and `b2b` (a set wave
+ * rolls through the tube) it reads off the clear.
+ *
+ * A perfect clear is settled by physics AFTER its clear's last wave (~360 ms later, in a frame of
+ * its own): it then resolves as a clear with `crown: true` and no rows of its own, the crown on the
+ * clear still playing, never a new one-line clear (the wave would throw, band and hold again).
  *
  * Combo: the bus's COMBO event carries the CASCADE DEPTH of one lock, never a combo (ADR-0011).
  * The true consecutive-clear combo is derived here with one ComboTracker per player; an explicit
@@ -85,6 +91,7 @@ function createSlot() {
         tspin: false,
         perfect: false,
         b2b: false,
+        crown: false,
         hasPosition: false,
         posX: 0,
         posY: 0,
@@ -107,6 +114,7 @@ function clearPending(slot) {
     slot.tspin = false;
     slot.perfect = false;
     slot.b2b = false;
+    slot.crown = false;
     slot.hasPosition = false;
 }
 
@@ -193,7 +201,9 @@ function capturePosition(slot, payload) {
 export class WavesDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, combo?: Function, levelUp?: Function },
+     *   sink?: {
+     *     lock?: Function, clear?: Function, spin?: Function, combo?: Function, levelUp?: Function,
+     *   },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -211,8 +221,18 @@ export class WavesDirector {
             player: 0, rows: [], u: 0.5, hardDrop: false, color: null, screen: null,
         };
         this._clear = {
-            player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
+            player: 0,
+            rows: [],
+            lines: 1,
+            combo: 1,
+            cascade: 1,
+            tspin: false,
+            perfect: false,
+            b2b: false,
+            crown: false,
+            screen: null,
         };
+        this._spin = { player: 0 };
         this._screen = { x: 0.5, y: 0.5 };
     }
 
@@ -304,6 +324,7 @@ export class WavesDirector {
             captureClearRows(slot, payload, lines);
         }
         slot.cascade = Math.max(slot.cascade, cascade);
+        slot.crown = false;
         slot.tracker.noteLineClear();
         if (Number.isFinite(payload.comboCount)) {
             slot.explicitCombo = Math.max(slot.explicitCombo, Math.trunc(Number(payload.comboCount)));
@@ -328,6 +349,7 @@ export class WavesDirector {
             slot.explicitCombo = Math.max(slot.explicitCombo, count);
             capturePosition(slot, payload);
             if (slot.lines === 0) slot.lines = 1;
+            slot.crown = false;
         } else if (slot.lines > 0) {
             slot.cascade = Math.max(slot.cascade, count);
         }
@@ -343,6 +365,7 @@ export class WavesDirector {
         slot.tspin = true;
         const lines = Math.max(0, Math.min(MAX_ROWS, Math.trunc(finite(payload.lineCount, 0))));
         if (lines > slot.lines) slot.lines = lines;
+        if (lines > 0) slot.crown = false;
         return true;
     }
 
@@ -362,7 +385,11 @@ export class WavesDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
+        if (slot.lines === 0) {
+            // Settled after the clear's last wave: the crown on that clear, not a clear of its own.
+            slot.lines = 1;
+            slot.crown = true;
+        }
         return true;
     }
 
@@ -423,8 +450,13 @@ export class WavesDirector {
                 c.tspin = slot.tspin;
                 c.perfect = slot.perfect;
                 c.b2b = slot.b2b;
+                c.crown = slot.crown;
                 c.screen = screen;
                 sink.clear(c);
+            } else if (slot.lines === 0 && slot.tspin && sink?.spin) {
+                // A T-spin that cleared nothing still turns the water a little.
+                this._spin.player = slot.player;
+                sink.spin(this._spin);
             }
             clearPending(slot);
         }

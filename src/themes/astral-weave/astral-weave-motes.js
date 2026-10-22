@@ -15,10 +15,12 @@ import {
     Fn,
     attribute,
     cos,
+    dot,
     exp,
     float,
     length,
     max,
+    min,
     mix,
     positionGeometry,
     sin,
@@ -75,7 +77,7 @@ export function createMotes(shared, count) {
     });
     const material = awFxMaterial('astral-weave-motes');
     const {
-        uTime, uAspect, uViewport, uParallax, uLoom, uShock, uHeat, uEnergy, uFade,
+        uTime, uAspect, uViewport, uParallax, uLoom, uShockR, uShockG, uHeat, uEnergy, uFade,
     } = shared;
     const mote = attribute('aMote', 'vec4');
     const depth = mote.z;
@@ -92,11 +94,11 @@ export function createMotes(shared, count) {
     const sizePx = mix(float(26.0), float(118.0), depth).mul(uViewport.y.div(1080.0));
     material.vertexNode = vec4(centre.add(positionGeometry.xy.mul(sizePx).mul(2.0).div(uViewport)), 0.5, 1.0);
 
-    // The clear's shock ring, measured from the hoop's heart in hoop radii, lights it as it passes.
+    // The clears' shock rings, measured from the hoop's heart in hoop radii, light it as they pass.
     const view = vec2(centre.x.mul(uAspect).mul(0.5), centre.y.mul(0.5));
     const lr = length(view.sub(uLoom.xy)).div(max(uLoom.z, 1e-3));
-    const front = lr.sub(uShock.x);
-    const struck = exp(front.mul(front).mul(-14.0)).mul(uShock.y);
+    const front = vec4(lr).sub(uShockR);
+    const struck = min(dot(exp(front.mul(front).mul(-14.0)), uShockG), 1.2);
 
     material.colorNode = Fn(() => {
         const st = uv().sub(0.5).mul(2.0);

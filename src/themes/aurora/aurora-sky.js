@@ -233,7 +233,6 @@ export class AuroraSky {
         const u = this.uniforms;
         const slots = Math.max(1, this.preset.meteorSlots);
         this.meteorSlots = slots;
-        this.meteorCursor = 0;
         // start direction + launch time; end direction + duration; brightness, tail, width, warmth
         this.meteorStart = Array.from({ length: slots }, () => new THREE.Vector4(0, 1, 0, -100));
         this.meteorEnd = Array.from({ length: slots }, () => new THREE.Vector4(0, 1, 0, 1));
@@ -284,16 +283,37 @@ export class AuroraSky {
         this.group.add(mesh);
     }
 
+    /** Fraction of its flight a slot's meteor has flown at `time` (1 or more: the slot is free). */
+    meteorProgress(slot, time) {
+        const age = time - this.meteorStart[slot].w;
+        return age < 0 ? 0 : age / this.meteorEnd[slot].w;
+    }
+
+    /** Whether a meteor can start at `time` without cutting one still in flight. */
+    hasFreeMeteorSlot(time) {
+        for (let slot = 0; slot < this.meteorSlots; slot += 1) {
+            if (this.meteorProgress(slot, time) >= 1) return true;
+        }
+        return false;
+    }
+
     /**
-     * Launch a meteor between two sky directions (unit vectors as [x, y, z]).
-     * Reuses the oldest slot; allocates nothing.
+     * Launch a meteor between two sky directions (unit vectors as [x, y, z]). Takes a free
+     * slot, or else the meteor furthest through its flight; allocates nothing.
      */
     launchMeteor(time, from, to, {
         duration = 0.8, brightness = 1.6, tail = 0.34, width = 0.0032, warmth = 0,
     } = {}) {
         if (this.disposed) return false;
-        const slot = this.meteorCursor;
-        this.meteorCursor = (slot + 1) % this.meteorSlots;
+        let slot = 0;
+        let furthest = -1;
+        for (let i = 0; i < this.meteorSlots; i += 1) {
+            const progress = this.meteorProgress(i, time);
+            if (progress > furthest) {
+                furthest = progress;
+                slot = i;
+            }
+        }
         this.meteorStart[slot].set(from[0], from[1], from[2], time);
         this.meteorEnd[slot].set(to[0], to[1], to[2], Math.max(0.15, duration));
         this.meteorLook[slot].set(brightness, tail, width, warmth);
@@ -302,7 +322,6 @@ export class AuroraSky {
 
     resetMeteors() {
         for (const slot of this.meteorStart) slot.w = -100;
-        this.meteorCursor = 0;
     }
 
     /** Keep the dome centred on the camera so the sky sits at infinity. */

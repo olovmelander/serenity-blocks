@@ -202,6 +202,38 @@ describe('stellar velocity director: intake', () => {
         expect(calls.clear[0].screen).toEqual({ x: 0.25, y: 0.8 });
     });
 
+    it('a perfect clear that settles after its clear is its crown, never a second clear', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.perfect = vi.fn((c) => calls.order.push(`perfect:${c.player}`));
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        // Physics sends it ~360 ms later, in a tick of its own.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0].perfect).toBe(false);
+        expect(sink.perfect).toHaveBeenCalledTimes(1);
+        expect(calls.order).toContain('perfect:0');
+        // A sink without a crown hears nothing of it (and nothing breaks).
+        const bare = makeDirector();
+        bare.director.onPerfectClear({ depth: 1 });
+        expect(() => bare.director.flush()).not.toThrow();
+        expect(bare.calls.clear).toHaveLength(0);
+    });
+
+    it('a T-spin that clears nothing still reaches the sink, as a spin', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.spin = vi.fn();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.lock).toHaveLength(1);
+        expect(calls.clear).toHaveLength(0);
+        expect(sink.spin).toHaveBeenCalledTimes(1);
+        expect(sink.spin.mock.calls[0][0]).toMatchObject({ player: 0 });
+    });
+
     it('keeps each local-multiplayer board\'s combo to itself', () => {
         const { director, calls } = makeDirector();
         director.onPieceLock({ piece: I, player: 1 });

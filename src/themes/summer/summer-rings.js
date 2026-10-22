@@ -10,11 +10,26 @@
 import * as THREE from 'three/webgpu';
 
 export class SummerRings {
-    constructor(count = 8, life = 9) {
+    /**
+     * @param {number} count slots
+     * @param {number} life seconds a ring lasts
+     * @param {number} fade how fast its shader fades it (amplitude × exp(-fade · age)): the lake's
+     *   rings 0.42, the meadow's gusts 0.55
+     * @param {number} spread how much thinner it runs as it widens (÷ (1 + spread · age))
+     */
+    constructor(count = 8, life = 9, fade = 0.42, spread = 0) {
         this.count = Math.max(1, Math.floor(count));
         this.life = life;
+        this.fade = Number.isFinite(fade) && fade >= 0 ? fade : 0.42;
+        this.spread = Number.isFinite(spread) && spread >= 0 ? spread : 0;
         this.rings = Array.from({ length: this.count }, () => new THREE.Vector4(0, 0, 0, 0));
         this.cursor = 0;
+    }
+
+    /** What is left of a ring as its shader draws it: its strength, fading as it ages. */
+    energy(ring) {
+        if (!(ring.w > 0)) return 0;
+        return (ring.w * Math.exp(-this.fade * ring.z)) / (1 + this.spread * ring.z);
     }
 
     reset() {
@@ -22,25 +37,33 @@ export class SummerRings {
         this.cursor = 0;
     }
 
-    /** Start a ring at a point; replaces a free slot or the oldest ring. */
+    /**
+     * Start a ring at a point in a free slot, else in place of the ring with the least left of
+     * it, so a broad clear ring still spreading is never cut for a petal's touch. A new ring
+     * weaker than every ring still spreading is the one let go (returns null).
+     */
     add(x, z, strength = 1) {
         if (!Number.isFinite(x) || !Number.isFinite(z) || !(strength > 0)) return null;
         let selected = -1;
-        let oldest = -1;
+        let weakest = Infinity;
         for (let step = 0; step < this.count; step += 1) {
             const index = (this.cursor + step) % this.count;
             const ring = this.rings[index];
             if (ring.w <= 0) {
                 selected = index;
+                weakest = 0;
                 break;
             }
-            if (ring.z > oldest) {
-                oldest = ring.z;
+            const energy = this.energy(ring);
+            if (energy < weakest) {
+                weakest = energy;
                 selected = index;
             }
         }
+        const value = Math.min(3, strength);
+        if (value < weakest) return null;
         this.cursor = (selected + 1) % this.count;
-        return this.rings[selected].set(x, z, 0, Math.min(3, strength));
+        return this.rings[selected].set(x, z, 0, value);
     }
 
     update(dt) {

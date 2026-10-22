@@ -20,11 +20,32 @@
  *            turns one step (it also turns by itself, one hour every HOUR_SECONDS: deep night →
  *            airglow → first light → afterglow → zodiacal → blue hour → round again).
  *
+ * Every answer adds to what is still in the sky; none restarts it. Two fireballs can be up at
+ * once, each with its own light on the air and the lake, and each lands (a third great clear
+ * swells the one in flight). A cascade's waves each sweep the pole further and ring the lake
+ * wider than the last; a back-to-back sends a pair of amber shooting stars side by side; a
+ * T-spin that cleared nothing gives the sky a small turn; the late perfect clear is the CROWN on
+ * the clear still playing (a storm from the radiant in the colours played, every figure flaring,
+ * the fireball in flight swelling), never a clear of its own.
+ *
+ * And the night builds with play (src/themes/shared/gameplay-surge.js), in its own terms:
+ *   calm   as it always was.
+ *   warm   the pace itself opens the exposure a little, the shower quickens, the motes run
+ *          brighter and the rings ring harder, the kept figures glow.
+ *   hot    the trails turn to their stars' own colours (embers, golds, blues) and stretch, the
+ *          figures' lines take the colours of the pieces that lit their stars.
+ *   fever  the mirror of the night: the trails sweep long arcs round the pole while the faint
+ *          dust gives way to the bright (the sky stays dark between them), the lake goes glassy
+ *          and doubles them, the constellations blaze in the colours of play and a storm falls
+ *          from the radiant in those colours; a fireball burns as a green bolide, not a white
+ *          blot. When the hands rest it all breathes back over a few seconds.
+ *
  * Everything is a function of the night's clock and the events' start times, so a seek() that
  * replays the same events gives the same frame.
  */
 import * as THREE from 'three/webgpu';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
     DEG,
     EXPOSURE_MAX,
@@ -58,6 +79,7 @@ import {
     shutterFor,
     skyToWorld,
     slerp,
+    smooth01,
     worldToSky,
 } from './starlight-core.js';
 import { tierFor } from './starlight-quality.js';
@@ -104,6 +126,21 @@ const FIGURE_SPAN = 0.105;
 const FIGURE_LEAVE = 2.6;
 /** Screen columns a shooting star may start in (the card and the HUD rule some out). */
 const METEOR_COLUMNS = Object.freeze([0.05, 0.11, 0.18, 0.25, 0.32, 0.38, 0.62, 0.69, 0.76, 0.83, 0.9, 0.96]);
+/** Fireballs up at once (a great clear on the heels of another); a third swells the latest. */
+const FIREBALLS = 2;
+/** Seconds a fireball takes to cross, and its light lingers after it lands. */
+const FIREBALL_FLIGHT = 1.45;
+const FIREBALL_AFTER = 2.4;
+/** Seconds the light a fireball is fed takes to swell in. */
+const FIREBALL_FEED = 0.35;
+/** The colours of the pieces last played: a fever's shooting stars fall in them. */
+const PLAYED = 6;
+/** A back-to-back's answer: a pair of amber shooting stars side by side. */
+const TWIN_RGB = Object.freeze([1.0, 0.62, 0.2]);
+/** How far apart the pair runs, radians. */
+const TWIN_GAP = 0.014;
+/** Each cascade wave past the first whirls the sky this much further than the last. */
+const CASCADE_SWING = 3 * DEG;
 
 export class StarlightWorld {
     /**
@@ -158,7 +195,47 @@ export class StarlightWorld {
         this.poleScreenX = WORLD.poleScreenX;
         this.poleBeside = true;
         this.composed = false;
+        /** How hot play runs, and what it read this frame (copied: the surge reuses its sample). */
+        this.gameplay = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
+        /** The Milky Way's swell on a clear: every clear adds to what is still lit. */
+        this.surgeSwell = new Swell({
+            release: 1.7, ceiling: 1, knee: 0.55, headroom: 1.4,
+        });
+        this.fireballs = Array.from({ length: FIREBALLS }, () => ({
+            on: false,
+            from: [0, 0, 0],
+            to: [0, 0, 0],
+            t0: 0,
+            duration: FIREBALL_FLIGHT,
+            power: 0,
+            boostFrom: 0,
+            boostTo: 0,
+            boostAt: 0,
+            streak: -1,
+            streakEnd: 0,
+            landed: false,
+        }));
+        this._flashes = [this.u.flash.value, this.u.flashB.value];
+        this.played = new Float32Array(PLAYED * 3);
+        this.playedCount = 0;
+        this._bolide = [0.7, 1.0, 0.9];
+        this._spark = [0, 0, 0];
+        this._lineRgb = [0, 0, 0];
+        this._landing = { x: 0.5, y: 0.5, front: true };
         this.resetState(0);
+    }
+
+    /** The live fireball that flew last, or null (both lights are in `fireballs`). */
+    get fireball() {
+        let last = null;
+        for (let i = 0; i < FIREBALLS; i += 1) {
+            const ball = this.fireballs[i];
+            if (ball.on && (!last || ball.t0 > last.t0)) last = ball;
+        }
+        return last;
     }
 
     /** The night at rest at `time`: the shutter closed, no figure begun, nothing in the air. */
@@ -174,10 +251,28 @@ export class StarlightWorld {
         this.turnDebt = 0;
         this.spin = 0;
         this.surge = 0;
+        this.surgeSwell.reset();
+        this.gameplay.reset();
+        this.heat.punch = 0;
+        this.heat.level = 0;
+        this.heat.fever = 0;
+        this.heat.stage = 0;
+        /** How far the long exposure is open: the chain's shutter, or the pace of play's own. */
+        this.open = 0;
+        this.blaze = 0;
+        this.tint = 0;
         this.shake = 0;
         this.kick = 0;
         this.lensFlash = 0;
-        this.fireball = null;
+        this.fireballs.forEach((ball) => {
+            ball.on = false;
+            ball.power = 0;
+            ball.boostFrom = 0;
+            ball.boostTo = 0;
+            ball.streak = -1;
+            ball.landed = false;
+        });
+        this.playedCount = 0;
         this.nextMeteor = time + 9;
         this.scheduled = [];
         this.order = figureOrder(20261011);
@@ -212,6 +307,7 @@ export class StarlightWorld {
         // The last row is the catalogue's own glints: always lit, never flared.
         u.tables.figures[FIGURES_KEPT].set(1, 0, 0, 0);
         u.flash.value.set(0, 1, 0, 0);
+        u.flashB.value.set(0, 1, 0, 0);
         if (this.stars) {
             for (let slot = 0; slot < FIGURES_KEPT; slot += 1) this.clearFigure(slot);
         }
@@ -446,7 +542,24 @@ export class StarlightWorld {
     ring(x, z, rgb, {
         speed = 4.5, life = 2.6, strength = 0.9, width = 0.3,
     } = {}) {
-        const slot = this.rings[this.cursor.ring % RINGS];
+        // A ring that has run out if there is one; else the one with the least light left, so
+        // rapid locks never wipe a ring off the lake mid-spread.
+        let slot = null;
+        let least = Infinity;
+        for (let i = 0; i < RINGS; i += 1) {
+            const r = this.rings[(this.cursor.ring + i) % RINGS];
+            const age = this.time - r.t0;
+            if (!r.on || age >= r.life) {
+                slot = r;
+                break;
+            }
+            const left = 1 - Math.max(0, age) / r.life;
+            const energy = r.strength * left * left;
+            if (energy < least) {
+                least = energy;
+                slot = r;
+            }
+        }
         this.cursor.ring += 1;
         slot.on = true;
         slot.t0 = this.time;
@@ -466,13 +579,20 @@ export class StarlightWorld {
         kind = STREAK.meteor, start = this.time, duration = 0.5, rgb = DEFAULT_SPARK, power = 1,
         tail = 0.5, width = 2.4, bow = 0, life = 0.3,
     } = {}) {
-        // Take the slot that has been dark the longest.
+        // A dark slot after the cursor; when every one is in the air, the one nearest its end
+        // (never one that has just set off: a lock's mote always reaches its star).
         let index = this.cursor.streak % STREAKS;
+        let soonest = Infinity;
         for (let i = 0; i < STREAKS; i += 1) {
             const candidate = (this.cursor.streak + i) % STREAKS;
-            if (this.streakEnds[candidate] <= this.time) {
+            const end = this.streakEnds[candidate];
+            if (end <= this.time) {
                 index = candidate;
                 break;
+            }
+            if (end < soonest) {
+                soonest = end;
+                index = candidate;
             }
         }
         this.cursor.streak = index + 1;
@@ -485,8 +605,12 @@ export class StarlightWorld {
         return index;
     }
 
-    /** A shooting star through free sky, away from the shower's radiant. */
-    meteor(power = 1) {
+    /**
+     * A shooting star through free sky, away from the shower's radiant: in the hour's meteor
+     * colour unless given one, `pace` times as fast, and with a `twin` running beside it that far
+     * apart (radians) when asked.
+     */
+    meteor(power = 1, { rgb = null, pace = 1, twin = 0 } = {}) {
         const layout = this.layoutNow();
         const card = cardUnion(layout);
         const { hud } = layout;
@@ -522,20 +646,111 @@ export class StarlightWorld {
             if (to[1] > 0.07) break;
             run *= 0.65;
         }
-        const colour = this._palette.meteor || DEFAULT_SPARK;
-        this.streak(from, to, {
+        const colour = rgb || this._palette.meteor || DEFAULT_SPARK;
+        const shape = {
             kind: STREAK.meteor,
-            duration: 0.45 + this.rand() * 0.35,
+            duration: (0.45 + this.rand() * 0.35) / Math.max(0.5, pace),
             rgb: colour,
             power: (1.0 + this.rand() * 0.7) * power,
             tail: 0.55,
             width: 3.0 + this.rand() * 1.5,
             life: 0.3,
-        });
+        };
+        this.streak(from, to, shape);
+        if (twin > 0) {
+            // Its twin: the same path moved across it, side by side all the way.
+            let nx = from[1] * to[2] - from[2] * to[1];
+            let ny = from[2] * to[0] - from[0] * to[2];
+            let nz = from[0] * to[1] - from[1] * to[0];
+            const nn = Math.hypot(nx, ny, nz) || 1;
+            nx = (nx / nn) * twin;
+            ny = (ny / nn) * twin;
+            nz = (nz / nn) * twin;
+            const shift = (d) => {
+                const out = [d[0] + nx, d[1] + ny, d[2] + nz];
+                const n = Math.hypot(out[0], out[1], out[2]);
+                return [out[0] / n, out[1] / n, out[2] / n];
+            };
+            this.streak(shift(from), shift(to), shape);
+        }
     }
 
-    /** The fireball of a great clear: across the whole sky, and the train it leaves. */
+    /** Remember a played piece's colour (the fever's shooting stars fall in them). */
+    notePlayed(rgb) {
+        const at = (this.playedCount % PLAYED) * 3;
+        this.played[at] = rgb[0];
+        this.played[at + 1] = rgb[1];
+        this.played[at + 2] = rgb[2];
+        this.playedCount += 1;
+    }
+
+    /** The colour of the piece played `back` pieces ago (cycling), else the hour's meteor. */
+    playedColour(back = 0) {
+        const kept = Math.min(this.playedCount, PLAYED);
+        if (kept === 0) return this._palette.meteor || DEFAULT_SPARK;
+        const i = (((this.playedCount - 1 - back) % kept) + kept) % kept;
+        const out = this._spark;
+        out[0] = this.played[i * 3];
+        out[1] = this.played[i * 3 + 1];
+        out[2] = this.played[i * 3 + 2];
+        return out;
+    }
+
+    /** A fireball's strength at `time`: its own, and what it has been fed, swelling in. */
+    ballPower(ball, time) {
+        const fed = ball.boostFrom + (ball.boostTo - ball.boostFrom) * smooth01((time - ball.boostAt) / FIREBALL_FEED);
+        return ball.power + fed;
+    }
+
+    /** The light a fireball throws at `time`: rising as it comes in, dying where it landed. */
+    ballLight(ball, time) {
+        const age = time - ball.t0;
+        if (!ball.on || age < 0) return 0;
+        const flown = clamp01(age / ball.duration);
+        const landed = Math.max(0, age - ball.duration);
+        const rise = Math.sin(Math.min(1, flown * 1.4) * Math.PI * 0.5);
+        return rise * Math.exp(-landed / 0.5) * this.ballPower(ball, time);
+    }
+
+    /**
+     * Feed the fireball still in the air that flew last: it swells (over FIREBALL_FEED) and lands
+     * the harder. False when none is in the air.
+     */
+    feedFireball(amount, at = this.time) {
+        let young = null;
+        for (let i = 0; i < FIREBALLS; i += 1) {
+            const ball = this.fireballs[i];
+            if (ball.on && at - ball.t0 < ball.duration && (!young || ball.t0 > young.t0)) young = ball;
+        }
+        if (!young) return false;
+        const now = this.ballPower(young, at) - young.power;
+        young.boostFrom = now;
+        young.boostTo = Math.min(1.6, now + amount);
+        young.boostAt = at;
+        return true;
+    }
+
+    /**
+     * The fireball of a great clear: across the whole sky, and the train it leaves. It takes a
+     * free slot (or one whose light is all but spent); with both still bright it feeds the one in
+     * the air instead, so no fireball's light is ever cut off and every one lands.
+     */
     fireballAcross(power = 1) {
+        let ball = null;
+        let spent = null;
+        for (let i = 0; i < FIREBALLS; i += 1) {
+            const candidate = this.fireballs[i];
+            if (!candidate.on) {
+                ball = candidate;
+                break;
+            }
+            if (!spent || this.ballLight(candidate, this.time) < this.ballLight(spent, this.time)) spent = candidate;
+        }
+        if (!ball) {
+            if (this.ballLight(spent, this.time) < 0.1 && this.time - spent.t0 > spent.duration) ball = spent;
+            else if (this.feedFireball(0.5 * power)) return;
+            else ball = spent;
+        }
         const leftward = this.rand() < 0.5;
         const a = this.screenRay(leftward ? 0.97 : 0.03, 0.05, this._ray);
         const from = [a.x, a.y, a.z];
@@ -545,11 +760,14 @@ export class StarlightWorld {
         to[0] /= n;
         to[1] /= n;
         to[2] /= n;
-        const colour = this._palette.meteor || DEFAULT_SPARK;
-        const duration = 1.45;
-        this.streak(from, to, {
+        // The hour's meteor colour, deepening toward a green bolide as play heats.
+        const colour = this._bolide;
+        const duration = FIREBALL_FLIGHT;
+        const index = this.streak(from, to, {
             kind: STREAK.fireball, duration, rgb: colour, power: 5.6 * power, tail: 0.2, width: 16, life: 0.3,
         });
+        ball.streak = index;
+        ball.streakEnd = this.streakEnds[index];
         // It sheds pieces: three small ones on almost its own path, each dying sooner.
         for (let i = 0; i < 3; i += 1) {
             const part = [0, 0, 0];
@@ -574,9 +792,18 @@ export class StarlightWorld {
         this.streak(from, to, {
             kind: 3, duration, rgb: colour, power: 1.1 * power, tail: 1, width: 5.5, life: TRAIN_LIFE,
         });
-        this.fireball = {
-            from, to, t0: this.time, duration, power,
-        };
+        ball.on = true;
+        for (let k = 0; k < 3; k += 1) {
+            ball.from[k] = from[k];
+            ball.to[k] = to[k];
+        }
+        ball.t0 = this.time;
+        ball.duration = duration;
+        ball.power = power;
+        ball.boostFrom = 0;
+        ball.boostTo = 0;
+        ball.boostAt = this.time;
+        ball.landed = false;
     }
 
     /** A free slot for a new figure (the oldest finished one makes room if there is none). */
@@ -596,11 +823,16 @@ export class StarlightWorld {
         // One slot is always kept back for the next figure.
         if (oldest && (kept >= FIGURES_KEPT - 1 || !free)) oldest.leaving = this.time;
         if (free) return free;
-        // Every slot is still fading: put the faintest one out now.
-        let faintest = this.figures[0];
+        // Every slot is still on: put out the one furthest gone, a figure already leaving before
+        // any that is still kept.
+        let faintest = null;
         this.figures.forEach((figure) => {
-            if (figure !== this.current && figure.light < faintest.light) faintest = figure;
+            if (figure === this.current) return;
+            const leaving = figure.leaving >= 0;
+            const was = faintest && faintest.leaving >= 0;
+            if (!faintest || (leaving && !was) || (leaving === was && figure.light < faintest.light)) faintest = figure;
         });
+        faintest = faintest || this.figures[0];
         this.clearFigure(faintest.slot);
         return faintest;
     }
@@ -714,10 +946,10 @@ export class StarlightWorld {
             d[2] /= n;
             worldToSky(this.frame, d, sky);
             return {
-                rho: sky[0], theta: sky[1] - this.skyAngle, weight, at: Infinity,
+                rho: sky[0], theta: sky[1] - this.skyAngle, weight, at: Infinity, rgb: [1, 1, 1],
             };
         });
-        figure.lines = def.lines.map(([a, b]) => ({ a, b }));
+        figure.lines = def.lines.map(([a, b]) => ({ a, b, when: 0 }));
         this.current = figure;
         return figure;
     }
@@ -726,6 +958,9 @@ export class StarlightWorld {
     kindle(figure, index, at, rgb, gain = 1) {
         const star = figure.stars[index];
         star.at = Math.min(star.at, at);
+        star.rgb[0] = rgb[0];
+        star.rgb[1] = rgb[1];
+        star.rgb[2] = rgb[2];
         const weight = clamp((0.34 + 0.44 * star.weight) * gain, 0.05, 0.96);
         this.stars?.setGlint(
             figure.slot * FIGURE_STARS + index,
@@ -738,22 +973,32 @@ export class StarlightWorld {
         );
     }
 
+    /** Line `k` of a figure to the stars' table, in the colours of the two stars it joins. */
+    writeLine(figure, k) {
+        const line = figure.lines[k];
+        const a = figure.stars[line.a];
+        const b = figure.stars[line.b];
+        this.stars?.setLine(figure.slot * FIGURE_LINES + k, a, b, line.when, figure.slot, a.rgb, b.rgb);
+    }
+
     /** Draw the figure's next `count` lines from `at` on (their stars are lit if they are not). */
     drawLines(figure, count, at) {
-        const light = this._palette.line || DEFAULT_SPARK;
+        // A star a line lights takes the hour's line colour; as play heats, the colours played.
+        const hour = this._palette.line || DEFAULT_SPARK;
+        let light = hour;
+        if (this.tint > 0) {
+            const played = this.playedColour(0);
+            light = this._lineRgb;
+            for (let c = 0; c < 3; c += 1) light[c] = hour[c] + (played[c] - hour[c]) * this.tint;
+        }
         let drawn = 0;
         while (drawn < count && figure.drawn < figure.lines.length) {
             const line = figure.lines[figure.drawn];
             const when = at + drawn * 0.14;
             if (figure.stars[line.a].at === Infinity) this.kindle(figure, line.a, when - 0.05, light);
             if (figure.stars[line.b].at === Infinity) this.kindle(figure, line.b, when + 0.4, light);
-            this.stars?.setLine(
-                figure.slot * FIGURE_LINES + figure.drawn,
-                figure.stars[line.a],
-                figure.stars[line.b],
-                when,
-                figure.slot,
-            );
+            line.when = when;
+            this.writeLine(figure, figure.drawn);
             figure.drawn += 1;
             drawn += 1;
         }
@@ -761,9 +1006,11 @@ export class StarlightWorld {
             // Finished: it flares, stays in the sky and turns with it; the next lock begins another.
             figure.done = at + drawn * 0.14 + 0.5;
             const finished = figure;
+            const { serial } = figure;
             this.schedule(figure.done, () => {
-                finished.flare = 1;
-                this.surge = Math.max(this.surge, 0.35);
+                if (finished.serial !== serial || !finished.on) return;
+                finished.flare = Math.max(finished.flare, 1);
+                this.surgeSwell.hit(0.3, this.time);
             });
             if (this.current === figure) this.current = null;
         }
@@ -778,13 +1025,18 @@ export class StarlightWorld {
         let row = 0;
         for (let i = 0; i < rows.length; i += 1) row += rows[i];
         const at = boardPoint(board, c.u ?? 0.5, row / rows.length);
-        const rgb = this.colourOf(c.color);
+        const rgb = this.colourOf(c.color).slice();
         const hard = c.hardDrop === true;
         const figure = this.current || this.beginFigure();
+        this.gameplay.lock(c, this.time);
+        this.notePlayed(rgb);
+        // The quicker the hand, the brighter the river of motes and the harder the lake rings.
+        const pace = this.heat.level;
 
         // The star this piece becomes: the figure's next, or one already lit that takes its colour.
         let index = figure.stars.findIndex((star) => star.at === Infinity);
-        if (index < 0) {
+        const revisit = index < 0;
+        if (revisit) {
             index = figure.revisit % figure.stars.length;
             figure.revisit += 1;
         }
@@ -811,26 +1063,42 @@ export class StarlightWorld {
             kind: STREAK.mote,
             duration: flight,
             rgb,
-            power: hard ? 1.5 : 1.05,
+            power: (hard ? 1.5 : 1.05) * (1 + 0.5 * pace),
             tail: 0.26,
-            width: hard ? 4.4 : 3.4,
+            width: (hard ? 4.4 : 3.4) * (1 + 0.25 * pace),
             bow: (where.x < sx ? 1 : -1) * 0.045,
             life: 0.05,
         });
-        star.at = Infinity; // lit again by this piece when its mote arrives
-        this.kindle(figure, index, this.time + flight, rgb, hard ? 1.12 : 1);
+        const arrival = this.time + flight;
+        const gain = hard ? 1.12 : 1;
+        if (revisit) {
+            // A star already lit keeps shining in its old colour until the mote arrives, then
+            // flares up in the new one (its lines take the colour with it): it never goes dark.
+            const { serial } = figure;
+            this.schedule(arrival, () => {
+                if (figure.serial !== serial || !figure.on) return;
+                this.kindle(figure, index, arrival, rgb, gain);
+                for (let k = 0; k < figure.drawn; k += 1) {
+                    const line = figure.lines[k];
+                    if (line.a === index || line.b === index) this.writeLine(figure, k);
+                }
+            });
+        } else {
+            this.kindle(figure, index, arrival, rgb, gain);
+        }
 
         // A ring on the lake under the piece's column, out where the water meets the card's
         // foot: it opens behind the card and its arcs run out on both sides of it.
         const az = this.azimuthOf(c.screen ? sx : at.x);
         const footX = this._pos.x + Math.sin(az) * RING_RANGE;
         const footZ = this._pos.z - Math.cos(az) * RING_RANGE;
+        const ring = 1 + 0.6 * pace;
         this.ring(footX, footZ, rgb, hard
             ? {
-                speed: 4.6, life: 3.0, strength: 1.3, width: 1.0,
+                speed: 4.6, life: 3.0, strength: 1.3 * ring, width: 1.0 * (1 + 0.3 * pace),
             }
             : {
-                speed: 3.2, life: 2.6, strength: 0.85, width: 0.7,
+                speed: 3.2, life: 2.6, strength: 0.85 * ring, width: 0.7 * (1 + 0.3 * pace),
             });
         if (hard) {
             this.shake = Math.max(this.shake, 0.0028);
@@ -839,30 +1107,107 @@ export class StarlightWorld {
     }
 
     onClear(c = {}) {
+        const at = this.time;
         const lines = clamp(Math.round(c.lines || 1), 1, 4);
-        const big = lines >= 4 || c.perfect === true;
+        const perfect = c.perfect === true;
+        const big = lines >= 4 || perfect;
+        // How deep in a cascade this wave is (0: its first): each wave builds on the last.
+        const depth = clamp(Math.round(c.cascade || 1), 1, 10) - 1;
+        this.gameplay.clear(c, at);
         const figure = this.current || this.beginFigure();
-        this.drawLines(figure, big ? FIGURE_LINES : lines * LINES_PER_ROW, this.time + 0.05);
+        this.drawLines(figure, big ? FIGURE_LINES : lines * LINES_PER_ROW, at + 0.05);
 
         if (big) {
-            this.schedule(this.time + 0.12, () => this.fireballAcross(c.perfect ? 1.25 : 1));
-            this.surge = 1;
+            this.schedule(at + 0.12, () => this.fireballAcross(perfect ? 1.25 : 1));
+            this.surgeSwell.hit(0.85, at);
             this.shake = Math.max(this.shake, 0.004);
-            if (c.perfect) {
-                // A storm from the radiant, and every figure in the sky answers.
-                for (let i = 0; i < 9; i += 1) {
-                    this.schedule(this.time + 0.3 + i * 0.16, () => this.meteor(1.15));
-                }
-                this.figures.forEach((kept) => {
-                    if (kept.on) this.schedule(this.time + 0.5, () => { kept.flare = Math.max(kept.flare, 0.9); });
-                });
-            }
+            // A perfect clear in the same frame as its lines: the crown rides on this clear.
+            if (perfect) this.crown(at, { fireball: false });
         } else {
-            for (let i = 0; i < lines; i += 1) this.schedule(this.time + 0.08 + i * 0.15, () => this.meteor());
-            this.surge = Math.max(this.surge, 0.14 * lines);
+            // A shooting star for every row, and one more for every wave past the first: each
+            // wave's brighter and quicker than the last.
+            const count = Math.min(6, lines + depth);
+            const power = 1 + 0.22 * depth;
+            const pace = 1 + 0.15 * depth;
+            const gap = 0.15 / (1 + 0.25 * depth);
+            for (let i = 0; i < count; i += 1) this.schedule(at + 0.08 + i * gap, () => this.meteor(power, { pace }));
+            this.surgeSwell.hit(0.08 * lines + 0.05 * depth, at);
         }
+        if (depth > 0) {
+            // A cascade sweeps the pole: each wave whirls the sky further than the last (the
+            // whirl draws its own trails), and the lake rings wider under the board.
+            this.turnDebt += CASCADE_SWING * depth;
+            this.waveRing(c, depth);
+        }
+        if (c.b2b) this.twin(at);
         if (c.tspin) this.turnDebt += TSPIN_SWING;
-        this.kick = Math.max(this.kick, 0.25 + lines * 0.14);
+        this.kick = Math.max(this.kick, 0.25 + lines * 0.14 + 0.06 * depth);
+    }
+
+    /** A cascade wave's ring on the lake under the board: wider, stronger and quicker the deeper. */
+    waveRing(c, depth) {
+        const layout = this.layoutNow();
+        const board = boardFor(layout, c.player) || layout.cards[0];
+        const sx = c.screen ? c.screen.x : (board.x0 + board.x1) * 0.5;
+        const az = this.azimuthOf(sx);
+        this.ring(
+            this._pos.x + Math.sin(az) * RING_RANGE,
+            this._pos.z - Math.cos(az) * RING_RANGE,
+            this._palette.line || DEFAULT_SPARK,
+            {
+                speed: 4.2 + 0.8 * depth, life: 2.8, strength: 0.7 + 0.25 * depth, width: 0.9 + 0.35 * depth,
+            },
+        );
+    }
+
+    /**
+     * Back-to-back: a pair of amber shooting stars side by side from the radiant, and the figure
+     * being drawn (or the last one finished) flares again.
+     */
+    twin(at) {
+        this.schedule(at + 0.1, () => this.meteor(1.35, { rgb: TWIN_RGB, twin: TWIN_GAP }));
+        let figure = this.current;
+        if (!figure) {
+            this.figures.forEach((kept) => {
+                if (kept.on && kept.leaving < 0 && (!figure || kept.serial > figure.serial)) figure = kept;
+            });
+        }
+        if (figure) figure.flare = Math.max(figure.flare, 0.7);
+    }
+
+    /**
+     * The crown of a perfect clear: a storm from the radiant in the colours played, every figure
+     * in the sky flaring, and (`fireball`) the fireball still in the air swelling, or one sent if
+     * none is up.
+     */
+    crown(at, { fireball = true } = {}) {
+        for (let i = 0; i < 9; i += 1) {
+            this.schedule(at + 0.3 + i * 0.16, () => this.meteor(1.15, { rgb: this.playedColour(i) }));
+        }
+        this.figures.forEach((kept) => {
+            if (!kept.on) return;
+            const { serial } = kept;
+            this.schedule(at + 0.5, () => {
+                if (kept.serial === serial && kept.on) kept.flare = Math.max(kept.flare, 1);
+            });
+        });
+        if (fireball && !this.feedFireball(0.35, at)) this.schedule(at + 0.12, () => this.fireballAcross(1.15));
+        this.surgeSwell.hit(0.35, at);
+        this.kick = Math.max(this.kick, 0.6);
+    }
+
+    /** The late perfect clear (alone in its frame): the crown on the clear still playing. */
+    onCrown() {
+        this.gameplay.crown(this.time);
+        this.crown(this.time, { fireball: true });
+    }
+
+    /** A T-spin that cleared nothing: the sky gives a small turn and the figure twinkles. */
+    onSpin() {
+        this.gameplay.spin(this.time);
+        this.turnDebt += TSPIN_SWING * 0.4;
+        if (this.current) this.current.flare = Math.max(this.current.flare, 0.35);
+        this.kick = Math.max(this.kick, 0.18);
     }
 
     /** The true combo (0 = the chain broke). */
@@ -885,7 +1230,8 @@ export class StarlightWorld {
         this.level = next;
         this.turnDebt += HOUR_SWING;
         this.schedule(this.time + 0.1, () => this.meteor(1.3));
-        this.surge = Math.max(this.surge, 0.45);
+        this.surgeSwell.hit(0.45, this.time);
+        this.gameplay.levelUp(this.time);
     }
 
     // ── frame ───────────────────────────────────────────────────────────────────
@@ -926,9 +1272,12 @@ export class StarlightWorld {
             shape.set(r.x, r.z, 0.6 + r.speed * age, r.strength * left * left * Math.min(1, age / 0.12));
             tables.rings[i * 2 + 1].set(r.rgb[0], r.rgb[1], r.rgb[2], r.width + age * 0.2);
         }
+        // Kept figures glow with play: in a fever they blaze, each breathing on its own beat.
+        const beat = this.reduced ? 0.1 : 0.3;
         for (let i = 0; i < FIGURES_KEPT; i += 1) {
             const figure = this.figures[i];
-            tables.figures[i].set(figure.on ? figure.light : 0, figure.flare, 0, 0);
+            const blaze = this.blaze * (1 + beat * Math.sin(time * 1.9 + i * 1.7));
+            tables.figures[i].set(figure.on ? figure.light : 0, figure.flare + blaze, 0, 0);
         }
     }
 
@@ -947,11 +1296,23 @@ export class StarlightWorld {
             }
         }
 
-        // The chain opens the shutter quickly and lets it close slowly.
+        // How hot play runs (copied: the surge reuses its sample object).
+        const sample = this.gameplay.sample(time);
+        const { heat } = this;
+        heat.punch = sample.punch;
+        heat.level = sample.level;
+        heat.fever = sample.fever;
+        heat.stage = sample.stage;
+        const { level, fever } = heat;
+
+        // The chain opens the shutter quickly and lets it close slowly; a quick hand opens the
+        // exposure a little by itself (nothing under casual play), so the pace draws trails too.
         const opening = this.shutterTarget > this.shutter;
         this.shutter += (this.shutterTarget - this.shutter) * approach(opening ? 1.4 : 0.42, dt);
+        this.open = Math.max(this.shutter, 0.45 * smooth01((level - 0.22) / 0.63));
+        const { open } = this;
         this.hourShift += ((this.level - 1) - this.hourShift) * approach(0.35, dt);
-        this.surge *= Math.exp(-dt / 1.7);
+        this.surge = this.surgeSwell.valueAt(time);
         this.shake *= Math.exp(-dt / 0.35);
         this.kick *= Math.exp(-dt / 0.3);
         this.lensFlash *= Math.exp(-dt / 0.3);
@@ -961,15 +1322,27 @@ export class StarlightWorld {
         const step = this.turnDebt * approach(1.5, dt);
         this.turnDebt -= step;
         if (dt > 0) this.spin = step / dt;
-        this.skyAngle += dt * SKY_RATE * (1 + this.shutter * 3) + step;
+        this.skyAngle += dt * SKY_RATE * (1 + open * 3) + step;
         const k = this.capture ? 1 : approach(1.2, dt);
         this.poleAz += (this.poleAzTarget - this.poleAz) * k;
         this.writeSky();
         const calm = this.reduced ? 0.35 : 1;
         u.time.value = time;
-        u.shutter.value = this.shutter;
-        u.exposure.value = (EXPOSURE_MAX * this.shutter + Math.min(0.3, Math.abs(this.spin) * 0.8)) * calm;
-        u.surge.value = this.surge;
+        u.shutter.value = open;
+        // Heat stretches the trails past the chain's longest: a fever sweeps long arcs round the pole.
+        // (Less on a tier with few segments a trail: a long arc there would show its corners.)
+        const stretch = 1 + 0.3 * level + 0.8 * Math.min(1, this.tier.segments / 14) * fever;
+        u.exposure.value = (EXPOSURE_MAX * open * stretch + Math.min(0.3, Math.abs(this.spin) * 0.8)) * calm;
+        // The Milky Way swells on a clear, less in a fever: the arcs and the figures carry its light.
+        u.surge.value = this.surge * (1 - 0.6 * fever);
+        u.heat.value = level;
+        u.fever.value = fever;
+        // The lines take the colours of the stars they join as play heats; a fever stills the lake.
+        this.tint = clamp01(smooth01((level - 0.25) / 0.45) * 0.65 + fever * 0.35);
+        u.tint.value = this.tint;
+        u.still.value = 1 - 0.7 * fever;
+        // The kept figures glow warm, then blaze in a fever (writeTables breathes it per figure).
+        this.blaze = 0.12 * smooth01((level - 0.22) / 0.5) + 0.6 * fever;
         // A star is one quad until it has a trail to draw.
         this.stars?.setTrailing(u.exposure.value > 1e-4);
 
@@ -994,52 +1367,82 @@ export class StarlightWorld {
             figure.flare *= Math.exp(-dt / 1.3);
         }
 
-        // The shower: a sporadic meteor now and then, many while the shutter is open.
+        // The shower: a sporadic meteor now and then, many while the exposure is open, and in a
+        // fever a storm from the radiant in the colours played.
         if (time >= this.nextMeteor) {
-            this.meteor();
-            const rate = (1 / 24) * (1 + this.shutter * 13);
-            this.nextMeteor = time + Math.max(0.35, -Math.log(1 - this.rand() * 0.999) / rate);
+            const storm = fever * (this.reduced ? 0.4 : 1);
+            const coloured = this.playedCount > 0 && storm + level > 0.05
+                && this.rand() < storm * 0.85 + level * 0.15;
+            this.meteor(1 + 0.5 * storm, coloured
+                ? { rgb: this.playedColour(Math.floor(this.rand() * PLAYED)) } : undefined);
+            const rate = (1 / 24) * (1 + open * 13) * (1 + level * 1.5 + storm * 6);
+            this.nextMeteor = time + Math.max(0.35 - 0.22 * storm, -Math.log(1 - this.rand() * 0.999) / rate);
         }
 
-        // The fireball's light follows its head, then dies where it landed.
+        // The fireball's colour: the hour's meteor, a deeper green the hotter play runs.
+        const meteorRgb = this._palette.meteor || DEFAULT_SPARK;
+        const grey = meteorRgb[0] * 0.2126 + meteorRgb[1] * 0.7152 + meteorRgb[2] * 0.0722;
+        const vivid = 1 + 1.1 * level;
+        for (let c = 0; c < 3; c += 1) this._bolide[c] = Math.max(0, grey + (meteorRgb[c] - grey) * vivid);
+        u.bolide.value.set(this._bolide[0], this._bolide[1], this._bolide[2]);
+
+        // Each fireball's light follows its head, then dies where it landed; every one lands.
         const post = this._post;
-        const ball = this.fireball;
-        if (ball) {
+        let lens = 0;
+        let first = null;
+        let ripple = 0;
+        for (let i = 0; i < FIREBALLS; i += 1) {
+            const ball = this.fireballs[i];
+            const out = this._flashes[i];
+            if (!ball.on) {
+                out.w = 0;
+                continue;
+            }
             const age = time - ball.t0;
-            const flown = clamp01(age / ball.duration);
-            const head = slerp(ball.from, ball.to, flown, this._dir);
+            const head = slerp(ball.from, ball.to, clamp01(age / ball.duration), this._dir);
             const landed = Math.max(0, age - ball.duration);
-            const rise = Math.sin(Math.min(1, flown * 1.4) * Math.PI * 0.5);
-            const power = age < 0 ? 0 : rise * Math.exp(-landed / 0.5) * ball.power;
-            u.flash.value.set(head[0], head[1], head[2], power * flashScale());
-            this.lensFlash = Math.max(this.lensFlash, Math.min(1, power * 0.22));
-            const at = this.screenOf(ball.to);
+            const power = this.ballLight(ball, time);
+            const strength = this.ballPower(ball, time);
+            out.set(head[0], head[1], head[2], power * flashScale());
+            lens += power;
+            // The ball itself swells with what it has been fed (its slot, if still its own).
+            if (ball.streak >= 0 && this.streakEnds[ball.streak] === ball.streakEnd) {
+                u.tables.streaks[ball.streak * 4 + 2].w = 5.6 * strength;
+            }
+            if (landed > 0 && !ball.landed) {
+                ball.landed = true;
+                this.shake = Math.max(this.shake, 0.006);
+            }
+            const at = this.screenOf(ball.to, this._landing);
             if (landed > 0 && landed < 2.2 && at.front) {
-                post.ripple.x = at.x;
-                post.ripple.y = at.y;
-                post.ripple.radius = landed * 0.6;
-                post.ripple.strength = this.reduced ? 0 : (1 - landed / 2.2) ** 1.5 * ball.power;
-                if (landed - dt <= 0) this.shake = Math.max(this.shake, 0.006);
-            } else {
-                post.ripple.strength = 0;
+                // One lens breath: a second landing feeds the ring already running.
+                ripple += this.reduced ? 0 : (1 - landed / 2.2) ** 1.5 * strength;
+                if (!first || ball.t0 < first.t0) {
+                    first = ball;
+                    post.ripple.x = at.x;
+                    post.ripple.y = at.y;
+                    post.ripple.radius = landed * 0.6;
+                }
             }
-            if (landed > 2.4) {
-                this.fireball = null;
-                u.flash.value.w = 0;
+            if (landed > FIREBALL_AFTER) {
+                ball.on = false;
+                ball.streak = -1;
+                out.w = 0;
             }
-        } else {
-            u.flash.value.w = 0;
-            post.ripple.strength = 0;
         }
+        this.lensFlash = Math.max(this.lensFlash, Math.min(1, lens * 0.22));
+        post.ripple.strength = first ? Math.min(1.6, ripple) : 0;
 
         this.applyPalette();
         this.writeTables();
         if (camera) this.sky?.update(camera);
 
         post.flash = this.lensFlash;
-        post.kick = this.kick;
-        post.bloomBoost = this.surge * 0.5 + this.shutter * 0.2;
-        post.exposure = 1 - 0.18 * clamp01(this.lensFlash);
+        // Every event's punch rides on a floor under rapid play: the lens fringe never flickers out.
+        post.kick = Math.max(this.kick, heat.punch * 0.3);
+        post.bloomBoost = this.surge * 0.3 * (1 - 0.5 * fever) + open * 0.15;
+        // The iris closes a little as play heats, so the colours stay saturated and the night dark.
+        post.exposure = 1 - 0.18 * clamp01(this.lensFlash) - 0.05 * level - 0.14 * fever;
     }
 
     getPostState() {
@@ -1084,6 +1487,11 @@ export class StarlightWorld {
             stars: this.catalog?.count ?? 0,
             poleScreenX: this.poleScreenX,
             poleBeside: this.poleBeside,
+            heat: this.heat.level,
+            fever: this.heat.fever,
+            stage: this.heat.stage,
+            open: this.open,
+            fireballs: this.fireballs.filter((ball) => ball.on).length,
         };
     }
 

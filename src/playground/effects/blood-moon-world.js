@@ -17,6 +17,12 @@
  *
  * Exposure: everything the night shows is multiplied by U.exposure (the moon's own light by
  * U.moonGain), so when the sliver appears the frame stops down as a camera would.
+ *
+ * Hot play (blood-moon-state.js `crescendo`) moves four numbers, all 0 at rest: U.blood (the
+ * moon's face saturates toward crimson and glows from within, most at the limb), U.bloodSky (a
+ * crimson glow spreads round the moon and along the horizon, the airglow warms), U.agitation
+ * (the film of water stirs: more wind, deeper rings, the moon's reflection breaks into a road)
+ * and U.volcanoHeat (an ember wakes in the crater, an under-lit plume leans off the summit).
  */
 import * as THREE from 'three/webgpu';
 import {
@@ -190,7 +196,8 @@ export function createWorldMaterial(U, maps, tier) {
                 .add(sin(P.x.mul(-0.6).add(P.y.mul(3.1)).sub(U.time.mul(1.3))).mul(0.6)),
             sin(P.y.mul(2.3).sub(P.x.mul(0.4)).add(U.time.mul(1.1)).add(sin(P.x.mul(0.31)).mul(2)))
                 .add(sin(P.y.mul(-0.8).add(P.x.mul(2.6)).add(U.time.mul(0.7))).mul(0.6)),
-        ).mul(0.00045).mul(windFade).toVar();
+        ).mul(U.agitation.mul(3.5).add(1).mul(0.00045)).mul(windFade).toVar();
+        const ringAmp = U.agitation.mul(0.5).add(1).mul(0.022).toVar();
         const ringSlope = vec2(0).toVar();
         const ringLight = float(0).toVar();
         Loop({
@@ -205,10 +212,11 @@ export function createWorldMaterial(U, maps, tier) {
                 .mul(smoothstep(0, 0.15, row.z))
                 .toVar();
             const wave = sin(ahead.mul(5.5)).mul(env);
-            ringSlope.addAssign(rel.div(max(dist, 0.001)).mul(wave.mul(0.022)));
+            ringSlope.addAssign(rel.div(max(dist, 0.001)).mul(wave.mul(ringAmp)));
             ringLight.addAssign(env.mul(sin(ahead.mul(5.5).add(1.2)).mul(0.5).add(0.5)));
         });
-        const slope = clamp(wind.add(ringSlope), -0.035, 0.035);
+        const slopeCap = U.agitation.mul(0.8).add(1).mul(0.035).toVar();
+        const slope = clamp(wind.add(ringSlope), slopeCap.negate(), slopeCap);
         const waterNormal = normalize(vec3(slope.x.negate(), 1, slope.y.negate())).toVar();
         const mirrored = reflect(view, waterNormal).toVar();
         const up = normalize(vec3(mirrored.x, max(mirrored.y, 0.0004), mirrored.z));
@@ -227,9 +235,13 @@ export function createWorldMaterial(U, maps, tier) {
         air.addAssign(U.moonLight.mul(vec3(0.3, 0.55, 1)).mul(1.6)
             .mul(exp(toMoon.sub(1).mul(2.2)).mul(0.7).add(0.3))
             .mul(float(1).sub(high.mul(0.55))));
-        // A low band of airglow, warmest under the moon.
+        // A low band of airglow, warmest under the moon; it warms as play heats.
         air.addAssign(vec3(0.024, 0.006, 0.008).mul(exp(abs(el).mul(-30))).mul(U.exposure)
-            .mul(exp(toMoon.sub(1).mul(1.4)).mul(0.6).add(0.4)));
+            .mul(exp(toMoon.sub(1).mul(1.4)).mul(0.6).add(0.4))
+            .mul(U.bloodSky.mul(1.2).add(1)));
+        // The blood-red sky: a crimson glow spreading round the moon and low along the range.
+        air.addAssign(vec3(0.06, 0.0026, 0.0052).mul(U.bloodSky).mul(U.exposure)
+            .mul(exp(toMoon.sub(1).mul(11)).mul(0.75).add(exp(abs(el).mul(-12)).mul(0.22))));
 
         // The far range, and a volcano with snow on its shoulders, to the right of the board.
         // Several summits in any width of view, so a narrow portrait frame still sees a range.
@@ -336,6 +348,13 @@ export function createWorldMaterial(U, maps, tier) {
             .mul(z.mul(0.18).add(0.82));
         const lit = lunarLight(length(pc.sub(U.shadow)));
         const moon = lit.mul(albedo.mul(1.5)).mul(shade).mul(U.moonGain).toVar();
+        // The moon fills with blood: hot play saturates its face toward crimson and lights it
+        // from within, most at the limb (the only white light stays the sliver's).
+        const drain = U.blood.mul(-0.32).add(1);
+        const edge = float(1).sub(z);
+        const limb = edge.mul(edge).mul(0.9).add(0.25);
+        const within = vec3(1, 0.035, 0.02).mul(U.blood.mul(U.exposure).mul(0.55)).mul(albedo.mul(0.6).add(0.4));
+        moon.assign(moon.mul(vec3(U.blood.mul(0.45).add(1), drain, drain)).add(within.mul(limb)));
         // The aureole: the moon's light scattered in our own air, close round its limb.
         const rim = max(r.sub(1), 0).toVar();
         const aureole = U.moonLight.mul(WORLD.moonK).mul(exp(rim.mul(-5.5)).mul(0.016)
@@ -344,6 +363,21 @@ export function createWorldMaterial(U, maps, tier) {
             .mul(step(0, toMoon));
 
         const sky = mix(night, mountains, land).add(aureole).toVar();
+        // The volcano wakes with the game: an ember in its crater and a plume, lit from below,
+        // leaning off the summit. Skipped outright while it sleeps.
+        If(U.volcanoHeat.greaterThan(0.002), () => {
+            const across = az.sub(U.volcanoAz).div(U.volcanoWidth).toVar();
+            // The ember sits in the crater's notch, on the lip; the plume rises from it.
+            const crater = exp(across.div(0.045).pow2().negate())
+                .mul(exp(el.sub(U.volcanoHeight.mul(0.83)).div(U.volcanoHeight.mul(0.04)).pow2().negate()));
+            const rise = max(el.sub(U.volcanoHeight.mul(0.85)), 0).div(U.volcanoHeight).toVar();
+            const plume = exp(across.sub(rise.mul(0.5)).div(rise.mul(0.35).add(0.04)).pow2().negate())
+                .mul(exp(rise.mul(-1.6))).mul(smoothstep(0, 0.04, rise));
+            sky.addAssign(vec3(1, 0.08, 0.02).mul(crater.mul(0.9)).add(vec3(0.55, 0.06, 0.035).mul(plume.mul(0.22)))
+                .mul(U.volcanoHeat)
+                .mul(U.exposure.mul(0.6).add(0.4))
+                .mul(step(0, d.y)));
+        });
         sky.assign(mix(sky, moon, disc.mul(float(1).sub(land))));
 
         // ── The flat: crust lit by the moon, water mirroring the sky ──
@@ -365,9 +399,11 @@ export function createWorldMaterial(U, maps, tier) {
         const water = sky.mul(fresnel).add(bed.mul(float(1).sub(fresnel)));
         const crustShare = crust.mul(float(1).sub(min(ringLight, 1).mul(0.3)));
         const flatColour = mix(water, crustLit, crustShare).toVar();
-        // A ring's crests catch the moon: red in totality, silver when the sliver shows.
+        // A ring's crests catch the moon: red in totality, silver when the sliver shows. Where
+        // many rings cross, the crests saturate instead of summing into a sheet of light.
+        const crests = ringLight.sub(max(ringLight.sub(0.8), 0).mul(0.75));
         flatColour.addAssign(U.moonLight.mul(WORLD.moonK * 0.4).add(vec3(0.03, 0.002, 0.003).mul(U.exposure))
-            .mul(ringLight));
+            .mul(crests));
         // The far flat dissolves into the horizon's air.
         const haze = float(1).sub(exp(t.mul(-0.00018)));
         flatColour.assign(mix(flatColour, horizon.mul(U.exposure).mul(0.7), haze.mul(0.5)));

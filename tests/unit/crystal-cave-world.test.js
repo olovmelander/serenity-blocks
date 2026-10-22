@@ -5,7 +5,9 @@ import {
 import * as THREE from 'three/webgpu';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { parseCrystalCaveCavern } from '../../src/themes/crystal-cave/crystal-cave-assets.js';
-import { GEM_STRIDE, createGemGeometry, packCrystal } from '../../src/themes/crystal-cave/crystal-cave-gems.js';
+import {
+    GEM_STRIDE, PULSE_CEILING, PULSE_DECAY, createGemGeometry, packCrystal, ringCrystal,
+} from '../../src/themes/crystal-cave/crystal-cave-gems.js';
 import { FAMILY_COUNT, GEM_FAMILIES, createCaveNoiseTexture } from '../../src/themes/crystal-cave/crystal-cave-light.js';
 import { QUALITY_PRESETS } from '../../src/themes/crystal-cave/crystal-cave-quality.js';
 import { CrystalCaveReactions } from '../../src/themes/crystal-cave/crystal-cave-reactions.js';
@@ -48,6 +50,9 @@ function play(world, director, seconds, hz = 60) {
 const piece = (type, x, y = 20) => ({
     type, x, y, shape: [[1, 1, 1], [0, 1, 0]],
 });
+
+/** The brightest wave shell the rock draws (one per wave in flight). */
+const waveLight = (world) => Math.max(...world.rock.controls.waveStrengths.value.toArray());
 
 describe('Crystal Cave gem geometry and records', () => {
     it('builds the canonical crystal: six shaft faces and six termination faces, outward facing', () => {
@@ -111,6 +116,46 @@ describe('Crystal Cave gem geometry and records', () => {
         expect(values.size).toBeGreaterThan(100);
         first.dispose();
         second.dispose();
+    });
+});
+
+describe('Crystal Cave crystal pulses', () => {
+    /** What the shader shows: the pulse once it has started, plus the carry on the same clock. */
+    const shown = (state, t) => {
+        const [start, strength, , carry] = state;
+        const ring = t >= start ? strength * Math.exp(-(t - start) * PULSE_DECAY) : 0;
+        return ring + carry * Math.exp(Math.min(start - t, 4) * PULSE_DECAY);
+    };
+
+    it('adds a weak pulse to a strong one still ringing instead of cutting it', () => {
+        const state = new Float64Array([-1000, 0, 1, 0]);
+        ringCrystal(state, 0, 0, 1.2, 0);
+        const before = shown(state, 0.2);
+        ringCrystal(state, 0, 0.2, 0.3, 0.2);
+        expect(shown(state, 0.2)).toBeGreaterThan(before);
+        expect(shown(state, 0.2)).toBeCloseTo(Math.min(before + 0.3, PULSE_CEILING), 4);
+        // However many pile up, a stone rings no brighter than the ceiling.
+        for (let index = 0; index < 40; index += 1) ringCrystal(state, 0, 0.2 + index * 0.1, 1.2, 0.2 + index * 0.1);
+        const last = 0.2 + 39 * 0.1;
+        expect(shown(state, last)).toBeLessThanOrEqual(PULSE_CEILING + 1e-6);
+        expect(shown(state, last)).toBeGreaterThan(1.2);
+    });
+
+    it('keeps a ringing stone lit while a wave is on its way, then adds the wave to it', () => {
+        const state = new Float64Array([-1000, 0, 1, 0]);
+        ringCrystal(state, 0, 0, 1.15, 0);
+        const ringing = (t) => 1.15 * Math.exp(-t * PULSE_DECAY);
+        // At 0.3 s a wave is sent that reaches this stone 1.2 s later.
+        ringCrystal(state, 0, 1.5, 0.9, 0.3);
+        for (const t of [0.3, 0.8, 1.49]) expect(shown(state, t)).toBeCloseTo(ringing(t), 4);
+        expect(shown(state, 1.5)).toBeCloseTo(ringing(1.5) + 0.9, 4);
+        // A pulse now, before the wave lands, rings now and the wave still lands on time.
+        ringCrystal(state, 0, 1.0, 0.5, 1.0);
+        expect(shown(state, 1.0)).toBeCloseTo(ringing(1.0) + 0.5, 4);
+        expect(shown(state, 1.5)).toBeGreaterThan(0.9 + ringing(1.5));
+        // A second wave behind the first rides with it.
+        ringCrystal(state, 0, 1.7, 0.3, 1.1);
+        expect(state[1]).toBeCloseTo(1.2, 5);
     });
 });
 
@@ -274,7 +319,7 @@ describe('Crystal Cave world', () => {
         play(world, director, 2.4);
         expect(world.getDiagnostics().grown).toBe(3);
         expect(world.light.uniforms.energy.value).toBeGreaterThan(0);
-        expect(world.rock.controls.waveStrength.value).toBeGreaterThan(0);
+        expect(waveLight(world)).toBeGreaterThan(0);
         director.onLineClear({ lineCount: 1 });
         play(world, director, 2.4);
         expect(world.getDiagnostics().grown).toBe(4);
@@ -319,7 +364,61 @@ describe('Crystal Cave world', () => {
         expect(lit()).toBe(world.lattice.length);
         director.onPieceLock({ piece: piece('T', 3) });
         director.onPieceLock({ piece: piece('T', 3) });
-        play(world, director, 3.5);
+        // The chain's links let go at once, one by one; the few the heat of play woke follow as
+        // the hall cools.
+        play(world, director, 2);
+        expect(lit()).toBeLessThan(world.lattice.length / 2);
+        play(world, director, 4);
+        expect(lit()).toBe(0);
+    });
+
+    it('spends a long chain\'s heat on the hall and breathes back when the hands rest', () => {
+        const { world } = build('High');
+        const director = new CrystalCaveReactions();
+        const read = () => ({
+            gain: world.rock.controls.gain.value,
+            sky: world.rock.controls.skyGain.value,
+            worms: world.air.controls.worms.value,
+            shaft: world.air.controls.shaft.value,
+            lamps: world.airLight.uniforms.gain.value,
+            resonance: world.light.uniforms.resonance.value,
+            family: Math.min(...world.light.uniforms.familyLevel.array),
+        });
+        play(world, director, 0.5);
+        const rest = read();
+        let first = null;
+        for (let step = 1; step <= 12; step += 1) {
+            director.onHardDrop({ distance: 16 });
+            director.onPieceLock({ piece: piece('IOTSZJL'[step % 7], step % 8) });
+            director.onLineClear({ lineCount: 1 + (step % 3), clearedRows: [22, 23], cascadeCount: 1 });
+            play(world, director, 0.64);
+            if (step === 1) first = read();
+        }
+        const hot = read();
+        expect(hot.gain).toBeGreaterThan(first.gain * 1.04);
+        expect(hot.worms).toBeGreaterThan(first.worms + 0.5);
+        expect(hot.shaft).toBeGreaterThan(first.shaft);
+        // The halos in the damp air hold back so the air between the stones stays dark.
+        expect(hot.lamps).toBeLessThan(first.lamps);
+        expect(hot.resonance).toBeGreaterThan(first.resonance + 0.3);
+        expect(hot.family).toBeGreaterThan(first.family);
+        // The lattice is complete and the far end of the hall is lit.
+        const linked = world.lattice.filter((_link, index) => world.effects.beamLevelOf(index) > 0.5);
+        expect(linked.length).toBe(world.lattice.length);
+        expect(world.getDiagnostics().activeSparks).toBeGreaterThan(40);
+        // The chain breaks: the links let go one by one, not all at once.
+        director.onPieceLock({ piece: piece('O', 2) });
+        director.onPieceLock({ piece: piece('O', 2) });
+        const lit = () => world.lattice.filter((_link, index) => world.effects.beamLevelOf(index) > 0.6).length;
+        play(world, director, 0.9);
+        expect(lit()).toBeGreaterThan(0);
+        expect(lit()).toBeLessThan(world.lattice.length);
+        play(world, director, 14);
+        const calm = read();
+        expect(calm.gain).toBeCloseTo(rest.gain, 2);
+        expect(calm.lamps).toBeCloseTo(rest.lamps, 1);
+        expect(calm.worms).toBeLessThan(0.05);
+        expect(calm.resonance).toBeLessThan(0.02);
         expect(lit()).toBe(0);
     });
 
@@ -370,7 +469,7 @@ describe('Crystal Cave world', () => {
                 world.getDiagnostics().activeSparks,
                 [...sparks.getAttribute('iPlace').array.slice(0, 48)].map((value) => Math.round(value * 1e4)),
                 world.sites.map((site) => Math.round(site.growth * 1e4)),
-                world.rock.controls.waveRadius.value,
+                world.rock.controls.waves.map((shell) => shell.value.toArray()),
             ]);
         };
         const first = run();
@@ -388,7 +487,7 @@ describe('Crystal Cave world', () => {
         const diagnostics = world.getDiagnostics();
         expect(diagnostics.activeSparks).toBe(0);
         expect(diagnostics.grown).toBe(0);
-        expect(world.rock.controls.waveStrength.value).toBe(0);
+        expect(waveLight(world)).toBe(0);
         expect([...world.light.uniforms.familyLevel.array]).toEqual([1, 1, 1, 1, 1]);
         world.lattice.forEach((_link, index) => expect(world.effects.beamLevelOf(index)).toBe(0));
     });

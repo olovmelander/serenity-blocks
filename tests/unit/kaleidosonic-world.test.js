@@ -522,7 +522,7 @@ describe('KaleidosonicWorld: clears sound harmonics and refold the temple', () =
         });
     });
 
-    it('refolds the temple one step a clear (two for a long chain), springing to each shape in turn', () => {
+    it('refolds the temple one step a clear on its own, springing to each shape of the cycle in turn', () => {
         withWorld((w) => {
             const { world } = w;
             begin(w);
@@ -534,17 +534,64 @@ describe('KaleidosonicWorld: clears sound harmonics and refold the temple', () =
                 expect(world.u.shape.value.x).toBeLessThanOrEqual(TEMPLE.sMax);
             });
             expect(world.u.shape.value.x).toBeCloseTo(REFOLDS[1], 3);
-            world.onClear({ lines: 1, combo: 5 });
-            expect(world.refoldIndex).toBe(3);
-            stepTo(w, world.time + TIMING.refold * 3);
-            expect(world.u.shape.value.x).toBeCloseTo(REFOLDS[3], 3);
             // The walk loops round the refolds.
-            for (let i = 0; i < REFOLDS.length - 3; i++) world.onClear({ lines: 1, combo: 1 });
+            for (let i = 1; i < REFOLDS.length; i++) world.onClear({ lines: 1, combo: 1 });
             stepTo(w, world.time + TIMING.refold * 3);
             expect(world.refoldIndex % REFOLDS.length).toBe(0);
             expect(world.u.shape.value.x).toBeCloseTo(REFOLDS[0], 3);
             // Its detail is the tier's at most, whatever the trance asks.
             expect(world.u.shape.value.y).toBeLessThanOrEqual(world.tier.folds);
+        });
+    });
+
+    // Under fast play the cycle churned: every link of a chain sprang the temple to another shape
+    // and round again. A chain climbs instead: one way, a smaller step each link, never back.
+    it('climbs one way through a chain (a cascade wave half a link), deepening the shape, never cycling back', () => {
+        withWorld((w) => {
+            const { world } = w;
+            begin(w);
+            world.onClear({ lines: 1, combo: 1 });
+            const base = world.refoldTarget;
+            expect(base).toBe(REFOLDS[1]);
+            const lo = Math.min(...REFOLDS);
+            const hi = Math.max(...REFOLDS);
+            // toward the strongest inversion of the range (the halls close in, their lace lit)
+            const far = hi;
+            const targets = [base];
+            const steps = [];
+            for (let n = 2; n <= 12; n++) {
+                world.onClear({ lines: 1 + (n % 3), combo: n });
+                targets.push(world.refoldTarget);
+                steps.push(Math.abs(targets.at(-1) - targets.at(-2)));
+                stepTo(w, world.time + 0.64);
+            }
+            // The cycle is not walked; the target moves one way, by less each link, toward the far end.
+            expect(world.refoldIndex).toBe(1);
+            for (let k = 1; k < targets.length; k++) {
+                expect(Math.sign(targets[k] - targets[k - 1])).toBe(Math.sign(far - base));
+                expect(Math.abs(targets[k] - far)).toBeLessThan(Math.abs(targets[k - 1] - far));
+            }
+            for (let k = 1; k < steps.length; k++) expect(steps[k]).toBeLessThan(steps[k - 1]);
+            expect(Math.abs(targets.at(-1) - far)).toBeLessThan(Math.abs(base - far) * 0.15);
+            // A cascade's later wave climbs half a link.
+            const before = world.refoldTarget;
+            world.onClear({ lines: 1, combo: 12, cascade: 2 });
+            const half = world.refoldTarget - before;
+            const mid = world.refoldTarget;
+            world.onClear({ lines: 1, combo: 13 });
+            expect(Math.abs(half)).toBeGreaterThan(0);
+            expect(Math.abs(half)).toBeLessThan(Math.abs(world.refoldTarget - mid));
+            // The spring follows: within the refolds' range all the way.
+            stepTo(w, world.time + TIMING.refold * 3, 1 / 30, () => {
+                expect(world.u.shape.value.x).toBeGreaterThanOrEqual(lo - 1e-9);
+                expect(world.u.shape.value.x).toBeLessThanOrEqual(hi + 1e-9);
+            });
+            expect(world.u.shape.value.x).toBeCloseTo(world.refoldTarget, 3);
+            // The chain ends; the next clear on its own steps round the cycle again.
+            world.onCombo(0);
+            world.onClear({ lines: 1, combo: 1 });
+            expect(world.refoldIndex).toBe(2);
+            expect(world.refoldTarget).toBe(REFOLDS[2]);
         });
     });
 
@@ -630,14 +677,23 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
                 ({ trance } = world);
             }
             expect(world.u.state.value.x).toBe(world.trance);
-            // A broken chain lets them go: eased out, not snapped.
+            // A broken chain lets them go: eased out, not snapped, stage by stage the reverse of how
+            // they opened (the twelve first, the mirror last), so only one is ever half-open.
             world.onCombo(0);
-            stepTo(w, world.time + TIMING.foldOut * 0.5);
-            world.folds.forEach((v) => {
-                expect(v).toBeGreaterThan(0);
-                expect(v).toBeLessThan(1);
+            const halfOpen = [false, false, false];
+            const closedAt = [0, 0, 0];
+            const from = world.time;
+            stepTo(w, from + TIMING.foldOut + 0.1, 1 / 30, (t) => {
+                const open = world.folds.filter((v) => v > 0.2 && v < 0.8).length;
+                expect(open).toBeLessThanOrEqual(1);
+                world.folds.forEach((v, k) => {
+                    if (v > 0 && v < 1) halfOpen[k] = true;
+                    if (v === 0 && !closedAt[k]) closedAt[k] = t - from;
+                });
             });
-            stepTo(w, world.time + TIMING.foldOut * 0.5 + 0.1);
+            expect(halfOpen).toEqual([true, true, true]);
+            expect(closedAt[2]).toBeLessThan(closedAt[1]);
+            expect(closedAt[1]).toBeLessThan(closedAt[0]);
             expect(world.folds).toEqual([0, 0, 0]);
             expect(world.trance).toBeLessThan(trance);
         });
@@ -661,7 +717,7 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
         });
     });
 
-    it('rolls the eye a full turn on a T-spin, once, and comes back level', () => {
+    it('rolls the eye a full turn on a T-spin and comes back level; one mid-roll spins it a turn further', () => {
         withWorld((w) => {
             const { world, camera } = w;
             begin(w);
@@ -670,12 +726,54 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
             expect(world.counts.tspins).toBe(1);
             stepTo(w, START + TIMING.roll * 0.5);
             expect(Math.abs(camera.rotation.z)).toBeGreaterThan(0.5);
-            // A second T-spin mid-roll does not start it over.
-            const { rollAt } = world;
-            world.onTSpin();
-            expect(world.rollAt).toBe(rollAt);
             stepTo(w, START + TIMING.roll + 0.05);
             expect(camera.rotation.z).toBeCloseTo(levelRoll(w), 12);
+            // A second T-spin mid-roll is not dropped: the roll carries on without a jump, one
+            // turn further, and lands level.
+            begin(w);
+            world.onClear({ lines: 2, combo: 1, tspin: true });
+            stepTo(w, START + TIMING.roll * 0.5);
+            const { angle, speed } = { ...world.rollState(world.time) };
+            world.onTSpin();
+            expect(world.counts.tspins).toBe(2);
+            const again = world.rollState(world.time);
+            expect(again.angle).toBeCloseTo(angle, 12);
+            expect(again.speed).toBeCloseTo(speed, 12);
+            expect(world.rollTo).toBeCloseTo(2 * TAU, 12);
+            let last = angle;
+            let largest = 0;
+            stepTo(w, world.rollAt + world.rollDur - 0.02, 1 / 60, () => {
+                const now = world.rollState(world.time).angle;
+                largest = Math.max(largest, Math.abs(now - last));
+                last = now;
+            });
+            expect(last).toBeGreaterThan(2 * TAU - 0.1);
+            expect(largest).toBeLessThan(0.25);
+            stepTo(w, world.rollAt + world.rollDur + 0.05);
+            expect(camera.rotation.z).toBeCloseTo(levelRoll(w), 12);
+        });
+    });
+
+    it('rocks the eye a little on a T-spin that clears nothing, and settles level', () => {
+        withWorld((w) => {
+            const { world, camera } = w;
+            begin(w);
+            world.onClear({ lines: 0, combo: 1, tspin: true });
+            expect(world.counts).toMatchObject({ tspins: 1, clears: 0 });
+            let peak = 0;
+            stepTo(w, START + world.rollDur + 0.05, 1 / 60, () => {
+                peak = Math.max(peak, Math.abs(world.rollState(world.time).angle));
+            });
+            expect(peak).toBeGreaterThan(0.1);
+            expect(peak).toBeLessThan(0.5);
+            expect(camera.rotation.z).toBeCloseTo(levelRoll(w), 12);
+            // A small chord sounds in the T's colour; nothing refolds.
+            expect(world.refoldIndex).toBe(0);
+            begin(w);
+            world.onClear({ lines: 0, combo: 1, tspin: true });
+            stepTo(w, START + 0.2);
+            const [chord] = harmonicRows(world);
+            chord.rgb.forEach((v, i) => expect(v).toBeCloseTo(hexToLinear(PIECE_COLORS[PIECE_CODE.T])[i], 9));
         });
     });
 
@@ -764,19 +862,26 @@ describe('KaleidosonicWorld: the chain folds the lens', () => {
         });
     });
 
-    it('flashes at most once in a short while, however many flashing clears land', () => {
+    it('flashes at most once in a short while, folding what lands inside the gap into the core\'s glow', () => {
         withWorld((w) => {
             const { world } = w;
             begin(w);
+            // A quad and its perfect clear in one frame share one flash (the larger).
             world.onClear({ lines: 4, combo: 1, perfect: true });
-            expect(world.flash).toBeCloseTo(0.6, 12);
+            expect(world.flash.valueAt(world.time)).toBeCloseTo(0.6, 12);
             stepTo(w, START + 0.1);
-            const fading = world.flash;
+            const fading = world.flash.valueAt(world.time);
+            const glow = world.glow.rawAt(world.time + 0.3);
             world.onClear({ lines: 4, combo: 2 });
-            expect(world.flash).toBe(fading);
+            // No second flash this soon (ADR-0021), but its light is not dropped: the core glows.
+            expect(world.flash.valueAt(world.time)).toBe(fading);
+            expect(world.glow.rawAt(world.time + 0.3)).toBeGreaterThan(glow + 0.3);
             stepTo(w, START + 0.4);
+            const later = world.flash.valueAt(world.time);
             world.onClear({ lines: 4, combo: 3 });
-            expect(world.flash).toBeCloseTo(0.6, 12);
+            // Past the gap a new flash adds to what is still lit: it never cuts it.
+            expect(world.flash.valueAt(world.time)).toBeGreaterThan(later);
+            expect(world.flash.valueAt(world.time)).toBeGreaterThanOrEqual(0.6);
         });
     });
 
@@ -994,7 +1099,7 @@ describe('KaleidosonicWorld: the composition round the card', () => {
                 player: 2, u: 0.5, rows: [10], color: PIECE_COLORS[1], shape: 'T',
             });
             expect(site).toHaveBeenCalledWith(0.5, 10, 2);
-            const slot = world.strikes[(world.strikeCursor - 1 + STRIKES) % STRIKES];
+            const slot = world.strikes.reduce((a, b) => (b.seq > a.seq ? b : a));
             const struck = onScreen(world, [slot.x, slot.y, slot.z]);
             expect(struck.x).toBeGreaterThan(cards[1].x0);
             expect(struck.x).toBeLessThan(cards[1].x1);
@@ -1220,7 +1325,10 @@ describe('KaleidosonicWorld: determinism and state', () => {
                 for (const v of [w, other]) stepTo(v, t);
                 expect(other.world.u.shape.value.x).toBeCloseTo(w.world.u.shape.value.x, 6);
                 expect(other.world.u.lensS.value.toArray()).toEqual(w.world.u.lensS.value.toArray());
-                expect(other.world.u.state.value.x).toBeCloseTo(w.world.u.state.value.x, 12);
+                // (the trance as carried: the heat of play that also lights the veins is not part of
+                // a session, as the spring's speed is not; a rebuilt world warms again with play)
+                expect(other.world.trance).toBeCloseTo(w.world.trance, 12);
+                expect(other.world.u.state.value.x).toBeCloseTo(other.world.trance, 12);
                 expect(other.world.moodPlace()).toBeCloseTo(w.world.moodPlace(), 12);
             } finally {
                 other.world.dispose();
@@ -1398,6 +1506,191 @@ describe('KaleidosonicWorld: the light (the light map and the gem\'s beams)', ()
         const half = Math.acos(1 - Math.log(2) / BEAM_K) * (180 / Math.PI);
         expect(half).toBeGreaterThan(5);
         expect(half).toBeLessThan(15);
+    });
+});
+
+// Fast play builds instead of popping (docs/THEME_EVENT_SURGE_2026-10.md): every envelope an event
+// lights adds to what still rings, the harmonics take the faintest slot, a chain climbs, the heat
+// of play stages a crescendo, a perfect clear settled after its clear crowns it, and the hands
+// resting let the temple breathe back.
+describe('KaleidosonicWorld: fast play builds, it never pops', () => {
+    /** The tray's Fever, as the director hands it to the world: twelve clearing locks 0.64 s apart. */
+    const fever = (w, each = null) => {
+        const { world } = w;
+        const plan = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 4];
+        plan.forEach((step, n) => {
+            if (n > 0) stepTo(w, world.time + 0.64, 1 / 60, each);
+            const combo = n + 1;
+            world.onLock({
+                u: (n % 5) / 4, rows: [18], color: PIECE_COLORS[n % 7], shape: PIECE_ORDER[n % 7], hardDrop: true,
+            });
+            if (step === 'tspin') world.onClear({ lines: 2, combo, tspin: true });
+            else if (step === 'cascade') {
+                world.onClear({ lines: 2, combo });
+                for (let wave = 2; wave <= 4; wave++) {
+                    world.onCombo(combo);
+                    stepTo(w, world.time + 0.36, 1 / 60, each);
+                    world.onClear({ lines: wave % 3 === 0 ? 2 : 1, combo, cascade: wave });
+                }
+            } else world.onClear({ lines: step, combo });
+            world.onCombo(combo);
+        });
+    };
+
+    it('never cuts the light when a weak event lands right after a strong one', () => {
+        withWorld((w) => {
+            const { world } = w;
+            begin(w);
+            world.onClear({ lines: 4, combo: 1, rowCodes: rowsOf(4, PIECE_CODE.I) });
+            stepTo(w, START + 0.1);
+            const read = () => ({
+                ring: world.u.state.value.y,
+                core: world.u.heartState.value.w,
+                flash: world.getPostState().flash,
+                shells: world.u.counts.value.y,
+            });
+            const strong = read();
+            // a single and a soft lock on the next frames: nothing the quad lit goes out
+            world.onClear({ lines: 1, combo: 2 });
+            world.onLock({
+                u: 0.5, rows: [19], color: PIECE_COLORS[1], shape: 'T',
+            });
+            stepTo(w, START + 0.1 + 1 / 60);
+            const after = read();
+            expect(after.ring).toBeGreaterThanOrEqual(strong.ring * 0.97);
+            expect(after.core).toBeGreaterThanOrEqual(strong.core * 0.97);
+            expect(after.flash).toBeGreaterThanOrEqual(strong.flash * 0.9);
+            expect(after.shells).toBe(strong.shells + 1);
+        });
+    });
+
+    it('fills the core with a cascade\'s harmonics, each wave a finer overtone, none cut while it still rings', () => {
+        withWorld((w) => {
+            const { world } = w;
+            begin(w);
+            world.onClear({ lines: 2, combo: 1 });
+            let cut = 0;
+            for (let wave = 2; wave <= 10; wave++) {
+                stepTo(w, world.time + 0.36);
+                const before = world.harmonics.map((h) => world.harmonicLight(h, world.time));
+                world.onClear({ lines: 1, combo: 1, cascade: wave });
+                // the slot taken was the faintest, and what light it still had joined the new shell
+                const taken = world.harmonics.findIndex((h) => h.birth === world.time);
+                expect(before[taken]).toBe(Math.min(...before));
+                if (before[taken] > 0.25) cut += 1;
+            }
+            expect(cut).toBe(0);
+            stepTo(w, world.time + 0.1);
+            const rows = harmonicRows(world);
+            expect(rows).toHaveLength(HARMONICS);
+            // a later wave rings finer shells than the first wave of its lines
+            expect(Math.max(...rows.map((h) => h.mode))).toBeGreaterThan(2);
+        });
+    });
+
+    it('reads a long chain hotter than its first clear, and breathes back once the hands rest', () => {
+        withWorld((w) => {
+            const { world } = w;
+            begin(w);
+            const read = () => {
+                const post = world.getPostState();
+                return {
+                    level: world.heat.level,
+                    fever: world.heat.fever,
+                    drone: world.u.heartState.value.y,
+                    floors: world.u.state.value.z,
+                    exposure: post.exposure,
+                    saturation: post.saturation,
+                };
+            };
+            const rest = read();
+            world.onLock({
+                u: 0.2, rows: [18], color: PIECE_COLORS[0], shape: 'I', hardDrop: true,
+            });
+            world.onClear({ lines: 1, combo: 1 });
+            world.onCombo(1);
+            stepTo(w, START + 0.5);
+            const first = read();
+            begin(w);
+            const turns = [];
+            let lastTurn = world.turn;
+            fever(w, () => {
+                turns.push(world.turn - lastTurn);
+                lastTurn = world.turn;
+            });
+            stepTo(w, world.time + 0.3);
+            const peak = read();
+            // the crescendo: the heat of play in full voice, the drone humming with no back-to-back,
+            // the floors' figures blazing, the colours richer, the iris closed a little
+            expect(peak.level).toBeGreaterThan(0.8);
+            expect(peak.fever).toBeGreaterThan(0.8);
+            expect(world.heat.stage).toBe(3);
+            expect(peak.drone).toBeGreaterThan(first.drone + 0.4);
+            expect(peak.floors).toBeGreaterThan(first.floors + 0.3);
+            expect(peak.saturation).toBeGreaterThan(first.saturation + 0.1);
+            expect(peak.exposure).toBeLessThan(first.exposure * 0.92);
+            // the kaleidoscope wheels faster late in the chain than once its six sectors first stood open
+            const opened = turns.findIndex((v) => v > 0);
+            expect(Math.max(...turns.slice(-30))).toBeGreaterThan(turns[opened + 70] * 1.2);
+            // the hands rest: the chain lets go and the temple breathes back
+            world.onCombo(0);
+            stepTo(w, world.time + 9, 1 / 30);
+            const calm = read();
+            expect(calm.level).toBeLessThan(0.1);
+            expect(calm.fever).toBe(0);
+            expect(calm.drone).toBeLessThan(0.05);
+            expect(calm.floors).toBeLessThan(0.05);
+            expect(calm.exposure).toBeCloseTo(rest.exposure, 1);
+            expect(world.folds).toEqual([0, 0, 0]);
+        });
+    });
+
+    it('crowns the clear still ringing with a perfect clear settled after it: no second clear, no second flash', () => {
+        withWorld((w) => {
+            const { world } = w;
+            begin(w);
+            world.onClear({ lines: 4, combo: 3, rowCodes: rowsOf(4, PIECE_CODE.I) });
+            stepTo(w, START + 0.36);
+            const counts = { ...world.counts };
+            const { refoldTarget } = world;
+            const flash = world.flash.valueAt(world.time);
+            const glow = world.glow.rawAt(world.time + 0.5);
+            world.onClear({
+                lines: 0, combo: 3, perfect: true, crown: true, rowCodes: [],
+            });
+            expect(world.counts).toMatchObject({
+                clears: counts.clears, quads: counts.quads, perfects: counts.perfects + 1,
+            });
+            expect(world.refoldTarget).toBe(refoldTarget);
+            expect(world.flash.valueAt(world.time)).toBe(flash);
+            expect(world.glow.rawAt(world.time + 0.5)).toBeGreaterThan(glow + 0.5);
+            stepTo(w, world.time + 0.2);
+            // the whole chord in the core's own colour, at the top overtone; the mandala holds
+            const top = harmonicRows(world).find((h) => h.age < 0.25);
+            expect(top.mode).toBe(Math.max(...harmonicRows(world).map((h) => h.mode)));
+            expect(top.mode).toBeGreaterThan(4);
+            expect(world.mandala).toBeGreaterThan(0.4);
+            expect(world.u.state.value.w).toBeLessThan(flash);
+        });
+    });
+
+    it('answers a back-to-back with the octave a beat later, in the core\'s colour', () => {
+        withWorld((w) => {
+            const { world } = w;
+            begin(w);
+            world.onClear({
+                lines: 4, combo: 1, b2b: true, rowCodes: rowsOf(4, PIECE_CODE.I),
+            });
+            stepTo(w, START + 0.05);
+            expect(world.u.counts.value.y).toBe(1);
+            stepTo(w, START + 0.25);
+            const rows = harmonicRows(world).sort((a, b) => b.age - a.age);
+            expect(rows).toHaveLength(2);
+            expect(rows[1].mode).toBe(rows[0].mode * 2);
+            expect(rows[0].age - rows[1].age).toBeCloseTo(0.14, 6);
+            const { heart } = MOODS[moodMix(world.moodPlace()).from];
+            rows[1].rgb.forEach((v, i) => expect(v).toBeCloseTo(heart[i] / Math.max(...heart), 9));
+        });
     });
 });
 

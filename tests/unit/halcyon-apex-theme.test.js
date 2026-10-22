@@ -45,7 +45,8 @@ const mocks = vi.hoisted(() => {
     };
     const WORLD_CALLS = [
         'build', 'bindCamera', 'showOnlyParts', 'setViewport', 'setLayout', 'setReducedMotion', 'seek',
-        'resetSession', 'updateCamera', 'update', 'onLock', 'onClear', 'onCombo', 'levelUp', 'dispose',
+        'resetSession', 'updateCamera', 'update', 'onLock', 'onClear', 'onCrown', 'onSpin', 'onCombo', 'levelUp',
+        'dispose',
     ];
     const POST_CALLS = ['update', 'setCalmRects', 'setSize', 'render', 'dispose'];
     state.recordWorld = (actual) => ({
@@ -620,6 +621,30 @@ describe('Halcyon Apex theme: one node renderer on both backends', () => {
         expect(post.render).toHaveBeenCalledOnce();
         expect(callOrder(world.update)).toBeLessThan(callOrder(post.update, 0));
         expect(callOrder(post.update)).toBeLessThan(callOrder(post.render));
+    });
+
+    it('crowns a four-line clear with the perfect clear that settles after it; turns on a bare T-spin', async () => {
+        const { theme } = await startTheme({ quality: 'High' });
+        const { world } = theme;
+        eventBus.emit(EVENTS.HARD_DROP, { piece: I, distance: 12 });
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: I });
+        eventBus.emit(EVENTS.LINE_CLEAR, { lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        theme.stepFrame(16);
+        expect(world.onClear).toHaveBeenCalledOnce();
+        // Physics settles the perfect clear a moment later, in a frame of its own: a crown on
+        // the clear still playing, never a second clear.
+        eventBus.emit(EVENTS.PERFECT_CLEAR, { depth: 4 });
+        theme.stepFrame(32);
+        expect(world.onClear).toHaveBeenCalledOnce();
+        expect(world.onCrown).toHaveBeenCalledOnce();
+        expect(world.getState().counts).toMatchObject({ clears: 1, quads: 1, crowns: 1 });
+        // A T-spin that cleared nothing still turns the sanctuary a little.
+        eventBus.emit(EVENTS.PIECE_LOCK, { piece: T });
+        eventBus.emit(EVENTS.TSPIN, { lineCount: 0 });
+        theme.stepFrame(48);
+        expect(world.onSpin).toHaveBeenCalledOnce();
+        expect(world.onClear).toHaveBeenCalledOnce();
+        expect(world.twist).toBeGreaterThan(0);
     });
 
     it('lifts the sanctuary to the longest chain on any board', async () => {

@@ -56,6 +56,7 @@ import {
 import {
     CANYON,
     CANYON_CODE_PEAK,
+    CROWN_FIRE,
     FRONT_SLOTS,
     HOOP_LIGHTS,
     TAU,
@@ -430,9 +431,13 @@ export function createCanyon(u, {
             // course, its third colour in streaks, and starlight in the threads.
             const lane = mix(u.glow, u.deep.mul(1.5), smoothstep(0.38, 0.62, a1.b)).mul(3.2);
             const tint = mix(lane, u.accent.mul(1.8), smoothstep(0.62, 0.86, a2.b));
+            // A perfect clear crowns the jump: the mouth flares and the threads burn gold.
+            const crown = min(u.crown, 1.0);
             const mouth = u.sunCol.mul(float(1.0).div(float(1.0).add(off.mul(off).mul(220.0)))).mul(1.5)
-                .add(u.glow.mul(float(1.0).div(float(1.0).add(off.mul(off).mul(12.0)))).mul(0.55));
-            const walls = tint.mul(ropes.mul(2.4)).add(mix(tint, u.sunCol, 0.6).mul(threads.mul(6.0)))
+                .add(u.glow.mul(float(1.0).div(float(1.0).add(off.mul(off).mul(12.0)))).mul(0.55))
+                .mul(crown.mul(1.1).add(1.0));
+            const thread = mix(tint, mix(u.sunCol, vec3(...CROWN_FIRE), crown), crown.mul(0.3).add(0.6));
+            const walls = tint.mul(ropes.mul(2.4)).add(thread.mul(threads.mul(crown.mul(6.0).add(6.0))))
                 .mul(wallness.mul(0.92).add(0.08));
             out.assign(mix(out, walls.add(mouth), u.jump));
         });

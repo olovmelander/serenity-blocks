@@ -8,9 +8,14 @@
  * each pending slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
+ *
+ * Two clears carry no lines of their own. Physics settles a perfect clear ~360 ms AFTER the
+ * clear's last wave, in a frame of its own: a PERFECT_CLEAR with nothing staged resolves as
+ * `crown: true, perfect: true, lines: 0`, a crown on the clear still playing, never a second
+ * clear. And a T-spin that clears nothing resolves as `tspin: true, lines: 0`.
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
  * fraction of the board width; `color` is the piece's colour (a CSS hex string) or null. `screen`
@@ -80,6 +85,7 @@ function createSlot() {
         explicitCombo: -1,
         tspin: false,
         perfect: false,
+        crown: false,
         b2b: false,
         hasPosition: false,
         posX: 0,
@@ -104,6 +110,7 @@ function clearPending(slot) {
     slot.explicitCombo = -1;
     slot.tspin = false;
     slot.perfect = false;
+    slot.crown = false;
     slot.b2b = false;
     slot.hasPosition = false;
 }
@@ -209,7 +216,16 @@ export class StillwaterDirector {
             player: 0, rows: [], u: 0.5, hardDrop: false, color: null, screen: null,
         };
         this._clear = {
-            player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
+            player: 0,
+            rows: [],
+            lines: 1,
+            combo: 1,
+            cascade: 1,
+            tspin: false,
+            perfect: false,
+            b2b: false,
+            crown: false,
+            screen: null,
         };
         this._screen = { x: 0.5, y: 0.5 };
     }
@@ -361,7 +377,8 @@ export class StillwaterDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
+        // Settled after the clear's last wave: a crown on that clear, not a clear of its own.
+        if (slot.lines === 0) slot.crown = true;
         return true;
     }
 
@@ -433,7 +450,9 @@ export class StillwaterDirector {
             c.screen = null;
             sink.lock(c);
         }
-        if (slot.lines > 0 && sink?.clear) {
+        // (A crown, or a T-spin that cleared nothing, comes with no lines.)
+        const lineless = slot.lines === 0 && (slot.crown || slot.tspin);
+        if ((slot.lines > 0 || lineless) && sink?.clear) {
             const c = this._clear;
             c.player = slot.player;
             c.rows.length = 0;
@@ -444,6 +463,7 @@ export class StillwaterDirector {
             c.tspin = slot.tspin;
             c.perfect = slot.perfect;
             c.b2b = slot.b2b;
+            c.crown = slot.lines === 0 && slot.crown;
             c.screen = screen;
             sink.clear(c);
         }

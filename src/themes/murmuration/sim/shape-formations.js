@@ -293,37 +293,32 @@ function fillRing(arr, n, opts = {}) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// Tetromino "+" cross — square boss formation (game-themed).
-// opts: { armLength=5.5, thickness=1.6 }
+// Tetromino — one T piece (game-themed), drawn as ONE SOLID SHAPE: its four cells abut with
+// no gap or seam between them, so the swarm fills a single T, not four squares.
+// opts: { cellSize=3.2, depth=1.3 }
 // ──────────────────────────────────────────────────────────────────────────
+const T_PIECE = Object.freeze([-1, 0.5, 0, 0.5, 1, 0.5, 0, -0.5]);
+
 function fillTetromino(arr, n, opts = {}) {
-    const L = opts.armLength ?? 5.5;
-    const th = opts.thickness ?? 1.6;
-    // Plus-sign made of 5 unit squares
+    const cell = opts.cellSize ?? 3.2;
+    const depth = opts.depth ?? 1.3;
     for (let i = 0; i < n; i += 1) {
         const i4 = i * 4;
-        const segment = i % 5;
-        const u = (((i * GOLDEN_RATIO_F) % 1) - 0.5) * 2;
-        const v = (((i * 0.31415) % 1) - 0.5) * 2;
-        // Each segment is a square of side `th`, positioned at one of 5 spots
-        let cx = 0; let cy = 0;
-        switch (segment) {
-        case 0: cx = 0; cy = 0; break; // center
-        case 1: cx = L; cy = 0; break; // right arm
-        case 2: cx = -L; cy = 0; break; // left arm
-        case 3: cx = 0; cy = L; break; // top arm
-        default: cx = 0; cy = -L; break; // bottom arm
-        }
-        arr[i4] = cx + u * th;
-        arr[i4 + 1] = cy + v * th;
-        arr[i4 + 2] = (((i * 0.71) % 1) - 0.5) * th * 0.8;
+        const c = (i % 4) * 2;
+        // Each cell spans its whole pitch, so neighbours meet edge to edge.
+        const u = ((i * GOLDEN_RATIO_F) % 1) - 0.5;
+        const v = ((i * 0.31415) % 1) - 0.5;
+        arr[i4] = (T_PIECE[c] + u) * cell;
+        arr[i4 + 1] = (T_PIECE[c + 1] + v) * cell;
+        arr[i4 + 2] = (((i * 0.71) % 1) - 0.5) * depth;
         arr[i4 + 3] = 1;
     }
 }
 
 // ──────────────────────────────────────────────────────────────────────────
-// TetrominoSet - all 7 unique tetrominoes spread across the screen.
-// opts: { cellSize=1.15, cellFill=0.9, depth=0.8 }
+// TetrominoSet - all 7 unique tetrominoes spread across the screen, each ONE SOLID SHAPE: its
+// cells fill their whole pitch (cellFill 1), so no gap or seam shows between them.
+// opts: { cellSize=1.15, cellFill=1, depth=0.8 }
 // ──────────────────────────────────────────────────────────────────────────
 const TETROMINO_SET_PIECES = Object.freeze([
     Object.freeze([-1.5, 0, -0.5, 0, 0.5, 0, 1.5, 0]), // I
@@ -347,7 +342,7 @@ const TETROMINO_SET_LAYOUT = Object.freeze([
 
 function fillTetrominoSet(arr, n, opts = {}) {
     const cellSize = opts.cellSize ?? 1.15;
-    const cellFill = opts.cellFill ?? 0.9;
+    const cellFill = opts.cellFill ?? 1;
     const depth = opts.depth ?? 0.8;
     const pieceCount = TETROMINO_SET_PIECES.length;
     for (let i = 0; i < n; i += 1) {

@@ -81,6 +81,9 @@ const billboard = (u, view, size) => {
 
 // ── The pool ────────────────────────────────────────────────────────────────────
 
+/** Slots ahead of the pool's cursor a new mote looks through for one that is spent. */
+const PROBE = 6;
+
 /**
  * @param {object} u
  * @param {number} count
@@ -218,8 +221,27 @@ export function createPool(u, count) {
         const many = Math.max(0, Math.min(n, Math.round(amount)));
         const code = POOL_MODES[kind] ?? 0;
         for (let k = 0; k < many; k++) {
-            const i = part.cursor % n;
-            part.cursor += 1;
+            // The next slot that is spent by the time this mote appears, or, if the few ahead are
+            // all still alive, the one with the least life left: a quick lock's sparks never cut
+            // short the reef's slow spawning (beads live for many seconds).
+            let i = part.cursor % n;
+            let skip = 0;
+            let least = Infinity;
+            for (let s = 0; s < PROBE; s++) {
+                const j = (part.cursor + s) % n;
+                const left = birth[j * 4 + 3] + motion[j * 4 + 3] - time;
+                if (left <= 0) {
+                    i = j;
+                    skip = s;
+                    break;
+                }
+                if (left < least) {
+                    least = left;
+                    i = j;
+                    skip = s;
+                }
+            }
+            part.cursor += skip + 1;
             const o = i * 4;
             const ox = at[0] + (rand() - 0.5) * 2 * scatter;
             const oy = at[1] + (rand() - 0.5) * 2 * scatter * (kind === 'bubble' ? 0.3 : 1);

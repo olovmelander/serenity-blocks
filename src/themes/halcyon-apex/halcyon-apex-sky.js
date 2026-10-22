@@ -8,8 +8,9 @@
  * a step toward the sun), thin edges near the sun burn gold, and its far side keeps the dawn's
  * blue.
  *
- * Gameplay: a chain of clears clears the air (the decks thin and brighten); a four-line clear
- * sends a ring of light out over the sky from the Apex.
+ * Gameplay: a chain of clears (and play that runs hot) clears the air (the decks thin and
+ * brighten); a four-line clear sends a ring of light out over the sky from the Apex, and a second
+ * ring (the perfect clear's crown, a back-to-back) opens beside it without cutting the first.
  */
 
 import * as THREE from 'three/webgpu';
@@ -150,18 +151,23 @@ export function createSky(u, opts = {}) {
                 .mul(u.breath));
         });
 
-        // ── A four-line clear: a ring of light opens over the sky from the Apex ──
-        const age = u.time.sub(u.shock.x);
+        // ── A four-line clear: a ring of light opens over the sky from the Apex. Two of them, so
+        //    a second one (a perfect clear's crown, a back-to-back, a level) opens beside the
+        //    first instead of pulling it back to the Apex ──
         const toApex = normalize(u.apexPos.sub(cameraPosition));
         const angle = acos(clamp(dot(dir, toApex), -1.0, 1.0));
-        const front = age.mul(SHOCK_SPEED);
-        const ringLight = haBell(angle.sub(front).div(float(0.035).add(front.mul(0.05)))).mul(exp(age.mul(-1.5))).mul(step(0.0, age))
-            .mul(u.shock.y);
-        const wash = float(1.0).sub(smoothstep(0.0, 0.4, angle.sub(front).abs())).mul(exp(age.mul(-2.2))).mul(step(0.0, age))
-            .mul(u.shock.y);
-        col.addAssign(mix(u.ley, vec3(1.0, 0.92, 0.78), 0.55).mul(ringLight.mul(2.2).add(wash.mul(0.07))));
-        // The overdrive lifts the whole dawn.
-        col.mulAssign(u.surge.mul(0.22).add(1.0));
+        const shockRing = (birth, strength) => {
+            const age = u.time.sub(birth);
+            const front = age.mul(SHOCK_SPEED);
+            const live = step(0.0, age).mul(strength);
+            const ringLight = haBell(angle.sub(front).div(float(0.035).add(front.mul(0.05)))).mul(exp(age.mul(-1.5)));
+            const wash = float(1.0).sub(smoothstep(0.0, 0.4, angle.sub(front).abs())).mul(exp(age.mul(-2.2)));
+            return ringLight.mul(2.2).add(wash.mul(0.07)).mul(live);
+        };
+        const rings = shockRing(u.shock.x, u.shock.y).add(shockRing(u.shock.z, u.shock.w));
+        col.addAssign(mix(u.ley, vec3(1.0, 0.92, 0.78), 0.55).mul(rings));
+        // (The overdrive no longer lifts the whole dawn: a four-line clear's light is its pillars'
+        // and its rings', so the sky keeps its depth at the payoff.)
         return col;
     })();
 

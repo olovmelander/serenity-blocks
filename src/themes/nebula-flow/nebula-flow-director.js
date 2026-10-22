@@ -10,6 +10,8 @@
  *   sink.lock({ player, rows, u, hardDrop, color, shape, cells, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
+ *   sink.crown({ player })     a perfect clear that settled after its clear (no rows of its own)
+ *   sink.spin({ player })      a T-spin that cleared nothing
  *   sink.levelUp(level)
  *
  * What the nursery (NebulaFlowWorld) does with each of them:
@@ -25,7 +27,10 @@
  *            of the piece that made it; at 0 the vortex lets go.
  *   four     (lines 4, or a perfect clear) the nursery holds its breath, then the great star is
  *            born in the head of the tallest pillar.
- *   T-spin   the whole flow twists round the board and springs back.
+ *   T-spin   the whole flow twists round the board and springs back (a little, clearing nothing).
+ *   crown    physics sends PERFECT_CLEAR ~360 ms after the clear's last wave, in a frame of its
+ *            own: it crowns the great star that clear kindled — never a second clear (with no
+ *            sink.crown it falls back to a one-line perfect clear, as before).
  *   level    the nursery moves one palette along its line.
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
@@ -118,6 +123,8 @@ function createSlot() {
         tspin: false,
         perfect: false,
         b2b: false,
+        /** A perfect clear with no rows of its own this frame (the crown on an earlier clear). */
+        crown: false,
         hasPosition: false,
         posX: 0,
         posY: 0,
@@ -142,6 +149,7 @@ function clearPending(slot) {
     slot.tspin = false;
     slot.perfect = false;
     slot.b2b = false;
+    slot.crown = false;
     slot.hasPosition = false;
 }
 
@@ -257,6 +265,7 @@ export class NebulaFlowDirector {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
         };
         this._screen = { x: 0.5, y: 0.5 };
+        this._moment = { player: 0 };
     }
 
     /**
@@ -405,7 +414,7 @@ export class NebulaFlowDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
+        if (slot.lines === 0) slot.crown = true;
         return true;
     }
 
@@ -459,6 +468,18 @@ export class NebulaFlowDirector {
                 } else c.cells = null;
                 c.screen = null;
                 sink.lock(c);
+            }
+            // a perfect clear alone (it settled after its clear's last wave): the crown on it
+            if (slot.crown && slot.lines === 0) {
+                if (sink?.crown) {
+                    this._moment.player = slot.player;
+                    sink.crown(this._moment);
+                } else slot.lines = 1;
+            }
+            // a T-spin that cleared nothing
+            if (slot.tspin && slot.lines === 0 && sink?.spin) {
+                this._moment.player = slot.player;
+                sink.spin(this._moment);
             }
             if (slot.lines > 0 && sink?.clear) {
                 const c = this._clear;

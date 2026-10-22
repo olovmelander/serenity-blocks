@@ -254,6 +254,47 @@ describe('voltage storm bolts: firing into the table', () => {
         expect(fresh.fire(bolt({ kind: 'arc' }))).toBe(BOLT_RANGES.arc[0]);
     });
 
+    it('never cuts a bolt off in flight while a slot of its kind is done or nearer its end', () => {
+        const { table } = makeTable();
+        const [from, to] = BOLT_RANGES.arc;
+        const size = to - from;
+        // Every arc slot alight; the fourth one's arc is short and over first.
+        const short = { leader: 0.02, strokes: 1 };
+        const long = { leader: 0.5, strokes: 6 };
+        for (let i = 0; i < size; i++) table.fire(bolt({ kind: 'arc', time: 0, ...(i === 3 ? short : long) }));
+        const over = strokeLife(strokePlan(1, short)) + 0.05;
+        // The turn has come round to the first slot, still alight: the new arc takes the spent one.
+        expect(table.fire(bolt({ kind: 'arc', time: over, now: over }))).toBe(from + 3);
+        // With every slot alight, the oldest goes: here, the one fired first.
+        for (let i = 0; i < size; i++) {
+            if (i !== 3) {
+                table.fire(bolt({
+                    kind: 'arc', time: 0.1 + i * 0.01, now: over, ...long,
+                }));
+            }
+        }
+        const births = table.slots.slice(from, to).map((slot) => slot.birth);
+        const oldest = births.indexOf(Math.min(...births));
+        expect(oldest).not.toBe(3);
+        expect(table.fire(bolt({ kind: 'arc', time: over, now: over }))).toBe(from + oldest);
+    });
+
+    it('sums the light of the bolts that find no row, so the world can carry it instead of losing it', () => {
+        const { table } = makeTable();
+        for (let i = 0; i < 10; i++) {
+            table.fire(bolt({ kind: i < 5 ? 'strike' : 'crawler', time: 0, power: 0.4 + i * 0.05 }));
+        }
+        const all = table.update(0.2, FLASH_SLOTS).length;
+        const lights = table.update(0.2, 3);
+        expect(lights).toHaveLength(3);
+        expect(table.spill.k).toBeGreaterThan(0);
+        expect(all).toBeGreaterThan(3);
+        // Nothing spills when everything fits.
+        table.update(0.2, FLASH_SLOTS);
+        if (all < FLASH_SLOTS) expect(table.spill.k).toBe(0);
+        for (const channel of ['r', 'g', 'b']) expect(table.spill[channel]).toBeGreaterThanOrEqual(0);
+    });
+
     it('pins a bolt to the slot it names, without taking a turn', () => {
         const { table } = makeTable();
         const [from, to] = BOLT_RANGES.chain;

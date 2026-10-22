@@ -40,7 +40,7 @@ import {
 } from 'three/tsl';
 
 import {
-    CAGE, DEG, ECHO_SLOTS, PULSAR, PUFF_SLOTS, TAU,
+    CAGE, DEG, ECHO_SLOTS, PULSAR, PUFF_SLOTS, SMOKE, TAU,
 } from './cosmic-noir-core.js';
 
 export * from './cosmic-noir-core.js';
@@ -197,6 +197,8 @@ export function createNoirUniforms(textures) {
         /** One beam's direction now (the other is its opposite). */
         beam: uniform(new THREE.Vector3(1, 0, 0)),
         beamGain: uniform(PULSAR.beamGain),
+        /** The smoke's forward scatter (Henyey–Greenstein g): PULSAR.forward at rest. */
+        forward: uniform(PULSAR.forward),
         coreGain: uniform(PULSAR.coreGain),
         /** The cage's turn (radians, integrated) and the share of a pitch a slat covers. */
         cageTurn: uniform(0),
@@ -207,6 +209,11 @@ export function createNoirUniforms(textures) {
         curl: uniform(new THREE.Vector3(0, 0, 0)),
         /** The faint light the smoke shows by everywhere (starlight). */
         ambient: uniform(0.005),
+        /**
+         * The thin haze everywhere in the envelope (SMOKE.haze at rest): locks fill the room with
+         * smoke and hot play thickens it, so the beams become solid blades.
+         */
+        haze: uniform(SMOKE.haze),
         /** The pulsar's own point as seen: how much of it the cage lets through, and the glare when a beam looks at us. */
         coreSeen: uniform(1),
         glare: uniform(0),

@@ -276,20 +276,33 @@ export function createStellarDriftUniforms(textures, sizes) {
         events: uniformArray(Array.from({ length: EVENT_ROWS.total }, idle), 'vec4'),
         counts: uniform(new THREE.Vector4(0, 0, 0, 0)),
         bolts: uniform(0),
-        // The flourishes (stellar-drift-core.js), one of each at a time.
-        /** A T-spin's cyclone: (longitude in the giant's frame, latitude, birth, power). */
+        // The flourishes (stellar-drift-core.js): two surges and two shells may run at once; the
+        // cyclone and the strand are fed by a second reward, so the world hands their light.
+        /** A T-spin's cyclone: (longitude in the giant's frame, latitude, birth, light now). */
         cyclone: uniform(new THREE.Vector4(0, 0, -1000, 0)),
         /** Its colour, and which way it winds (±1). */
         cycloneTint: uniform(new THREE.Vector4(1, 1, 1, 1)),
         /** A surge round the rings: (bearing it leaves, how far round it has run, power, breadth), and its colour. */
         surge: uniform(new THREE.Vector4(0, 0, 0, 0)),
         surgeTint: uniform(new THREE.Vector3(1, 1, 1)),
-        /** The outer strand ablaze: (birth, power, seed, _), and its colour. */
+        /** A second surge still running when the newest left. */
+        surgeB: uniform(new THREE.Vector4(0, 0, 0, 0)),
+        surgeTintB: uniform(new THREE.Vector3(1, 1, 1)),
+        /** The outer strand ablaze: (birth, light now, seed, _), and its colour. */
         strand: uniform(new THREE.Vector4(-1000, 0, 0, 0)),
         strandTint: uniform(new THREE.Vector3(1, 0.9, 0.7)),
         /** A shell of light thrown off the giant: (birth, power, _, _), and its colour. */
         shock: uniform(new THREE.Vector4(-1000, 0, 0, 0)),
         shockTint: uniform(new THREE.Vector3(1, 0.9, 0.7)),
+        /** A second shell still running when the newest left. */
+        shockB: uniform(new THREE.Vector4(-1000, 0, 0, 0)),
+        shockTintB: uniform(new THREE.Vector3(1, 0.9, 0.7)),
+        /**
+         * How hot play runs, as the giant wears it (src/themes/shared/gameplay-surge.js): (how
+         * tightly its ovals are wound, 1 at rest; the glow in their hearts; the plasma corona
+         * along its limb; _).
+         */
+        drive: uniform(new THREE.Vector4(1, 0, 0, 0)),
         latticeTex: textures.lattice,
         fbmTex: textures.fbm,
         ringTex: textures.rings,

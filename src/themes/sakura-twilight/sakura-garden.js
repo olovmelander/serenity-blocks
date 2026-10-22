@@ -9,7 +9,7 @@
  */
 import * as THREE from 'three/webgpu';
 import {
-    attribute, cameraPosition, color, dot, exp, instancedBufferAttribute, length, mix, normalize, positionLocal,
+    attribute, cameraPosition, color, dot, instancedBufferAttribute, length, mix, normalize, positionLocal,
     positionWorld, pow, saturate, sin, smoothstep, uv, varying, vec3, vec4,
 } from 'three/tsl';
 import {
@@ -237,8 +237,8 @@ export class SakuraGarden {
         const t = light.uTime;
         const world0 = positionLocal;
         const along = world0.x.mul(light.uWindDir.x).add(world0.z.mul(light.uWindDir.z));
-        const front = exp(world0.x.sub(light.uFront.x).div(light.uFront.z).pow2().negate()).mul(light.uFront.y);
-        const force = light.uWind.add(light.uGust).add(front);
+        // (Every front crossing the garden bends it: sakura-light.js front().)
+        const force = light.uWind.add(light.uGust).add(light.front(world0.x));
         const bend = sin(t.mul(1.7).add(along.mul(0.6)).add(look.x.mul(TAU))).mul(0.6).add(0.5)
             .mul(force)
             .mul(st.x.mul(st.x))

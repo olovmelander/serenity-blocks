@@ -29,12 +29,14 @@ const I = {
 
 function makeDirector(options = {}) {
     const calls = {
-        lock: [], clear: [], combo: [], levelUp: [],
+        lock: [], clear: [], crown: [], spin: [], combo: [], levelUp: [],
     };
     const sink = {
         // The director reuses its context objects: a sink must copy what it keeps.
         lock: vi.fn((c) => calls.lock.push({ ...c, rows: [...c.rows] })),
         clear: vi.fn((c) => calls.clear.push({ ...c, rows: [...c.rows], screen: c.screen ? { ...c.screen } : null })),
+        crown: vi.fn((c) => calls.crown.push({ ...c })),
+        spin: vi.fn((c) => calls.spin.push({ ...c })),
         combo: vi.fn((n, player) => calls.combo.push([n, player])),
         levelUp: vi.fn((level) => calls.levelUp.push(level)),
     };
@@ -166,6 +168,42 @@ describe('halcyon apex director: intake', () => {
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
+    });
+
+    it('crowns the clear with a perfect clear that settles in a later frame, instead of a second clear', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        // ~360 ms later, in its own frame.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.crown).toEqual([{ player: 0, screen: null }]);
+        // The chain is not touched by it.
+        expect(calls.combo).toEqual([[1, 0]]);
+        // Once.
+        director.flush();
+        expect(calls.crown).toHaveLength(1);
+    });
+
+    it('answers a T-spin that cleared nothing, and only that one', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.lock).toHaveLength(1);
+        expect(calls.clear).toHaveLength(0);
+        expect(calls.spin).toEqual([{ player: 0, screen: null }]);
+        // A T-spin that clears rides on its clear, not as a bare spin.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0].tspin).toBe(true);
+        expect(calls.spin).toHaveLength(1);
     });
 
     it('turns a meditation click into a clear at a screen position', () => {

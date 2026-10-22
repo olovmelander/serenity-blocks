@@ -94,8 +94,11 @@ export function getFluidBudget(qualityName, options = {}) {
     return budget;
 }
 
-// Max simultaneous impulses. When all are busy the weakest is replaced.
+// Max simultaneous impulses. A ring that has run out past the swarm frees its slot; when all
+// are busy the weakest is replaced.
 export const MAX_IMPULSES = 8;
+/** A ring this many half-widths of the swarm out (plus three of its own widths) has left it. */
+const WAVE_SPENT_REACH = 1.8;
 
 export const IMPULSE_TYPE = Object.freeze({
     RADIAL: 0, // outward push from origin
@@ -785,9 +788,13 @@ export class FluidParticleSim {
     pushImpulse(position, strength, dir, type = IMPULSE_TYPE.RADIAL, wave = null) {
         let slot = -1;
         let weakest = Infinity;
+        // A ring keeps its strength long after it has crossed the swarm: once it is out past
+        // every mote its slot is free, so a new ring never evicts one still crossing.
+        const spentAt = this.uExtent.value.x * WAVE_SPENT_REACH;
         for (let i = 0; i < MAX_IMPULSES; i += 1) {
             const { w } = this._impulsePositions[i].value;
-            if (w < 0.01) { slot = i; break; }
+            const ring = this._impulseWaves[i].value;
+            if (w < 0.01 || (ring.y > 0 && ring.x - ring.y * 3 > spentAt)) { slot = i; break; }
             if (w < weakest) { weakest = w; slot = i; }
         }
         this._impulsePositions[slot].value.set(position.x, position.y, position.z, strength);
@@ -876,7 +883,8 @@ export class FluidParticleSim {
      * @param {string} shapeName  a name from shape-formations.js ('free' releases)
      * @param {object} [opts]     shape options, plus `jitter` (world units, default 0.14),
      *                            `layout: 'center'` to keep one centred figure on a wide frame,
-     *                            and `keepDust: true` to leave the dust motes in the flow
+     *                            and `keepDust: true` to leave the dust motes in the flow (a
+     *                            share 0..1 leaves that share of them; the rest join the figure)
      * @returns {boolean} false when the shape is unknown
      */
     setShape(shapeName, opts = {}) {
@@ -918,12 +926,13 @@ export class FluidParticleSim {
         const jitter = (opts.jitter ?? 0.14) * Math.max(0.45, fit);
         // With `keepDust` the dust between the ribbons stays in the flow: the figure
         // forms in front of a swarm that is still moving, instead of emptying the frame.
-        const dustStays = opts.keepDust === true;
-        const ambient = this.uAmbient.value;
+        // A share keeps that much of the dust flowing; the rest joins the figure.
+        const keep = opts.keepDust === true ? 1 : Math.max(0, Math.min(1, Number(opts.keepDust) || 0));
+        const flowing = this.uAmbient.value * keep;
         const seeds = this.colorData;
         for (let i = 0; i < this.count; i += 1) {
             const j = i * 4;
-            if (dustStays && seeds[j + 1] <= ambient) targets[j + 3] = 0;
+            if (keep > 0 && seeds[j + 1] <= flowing) targets[j + 3] = 0;
             const a = hash01(i * 0.731 + 1.3) * TAU;
             const b = hash01(i * 1.913 + 7.7) * 2 - 1;
             const rad = Math.cbrt(hash01(i * 3.117 + 4.1)) * jitter;

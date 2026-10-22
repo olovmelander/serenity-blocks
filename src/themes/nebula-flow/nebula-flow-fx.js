@@ -256,16 +256,27 @@ export function createBlades(u) {
         return vec4(rgb, 0);
     })();
     const part = nfPart('blades', geometry, material, 18);
-    let cursor = 0;
-    /** A blade at a row's height out of both sides of a card (nursery units). */
+    /**
+     * A blade at a row's height out of both sides of a card (nursery units). It takes a spent
+     * slot, else the one that started longest ago: quick clears and a cascade's waves never cut
+     * short a blade still crossing while an older one is there to give.
+     */
     part.fire = (y, time, left, right, rgb, strength = 1) => {
-        const i = cursor % BLADE_SLOTS;
-        cursor += 1;
+        let i = 0;
+        let oldest = Infinity;
+        for (let k = 0; k < BLADE_SLOTS; k += 1) {
+            const start = table[k * 2].y;
+            const spent = !(table[k * 2 + 1].w > 0) || time - start > BLADE_LIFE;
+            const order = spent ? -Infinity : start;
+            if (order < oldest) {
+                oldest = order;
+                i = k;
+            }
+        }
         table[i * 2].set(y, time, left, right);
         table[i * 2 + 1].set(rgb[0], rgb[1], rgb[2], strength);
     };
     part.reset = () => {
-        cursor = 0;
         for (let i = 0; i < BLADE_SLOTS; i += 1) {
             table[i * 2].set(0, -10, -100, 0);
             table[i * 2 + 1].set(0, 0, 0, 0);

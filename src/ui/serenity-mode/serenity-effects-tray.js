@@ -9,6 +9,7 @@
  *     Cascades     [3 waves] [6 waves] [10 waves]
  *     Chains       [Combo ×5] [Back-to-back]
  *     Moments      [T-spin] [Perfect clear] [Level up]
+ *     Build-up     [Rush] [Fever]
  *     ← → another theme · E closes
  *
  * On a wide screen it stands at the right edge, clear of the middle where the board would be

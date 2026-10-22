@@ -38,13 +38,29 @@
  *               firefly flashes at once. A perfect clear opens a second whorl and rings the moon.
  *   level up    the night moves one step along the wheel of six (moonlit-greenhouse-core.js
  *               NIGHTS); the clock alone drifts it there too, and the moon drifts with the clock.
+ *   back-to-back the moon answers: its beams blaze through the glass and a ring of moonlight runs
+ *               out over the panes from the moon itself (higher and wider for each in a row).
+ *   cascade     each wave's fronts run brighter and faster than the last, turning to the canal's
+ *               glow, and release more fireflies.
+ *
+ * Nothing restarts: every flash, jolt, flood and turn ADDS to what is still lit or moving
+ * (src/themes/shared/swell.js), and the house remembers how hot play runs
+ * (src/themes/shared/gameplay-surge.js, sampled once a frame in update()). Calm, it is the house
+ * at rest. Warm, it takes notice: more of the swarm comes out, the lanterns burn up, the clears
+ * leave their blooms open so the beds fill with colour. Hot, it is alive with the player: the
+ * fireflies start pulsing together, the fronds stir, the beams stand out in the mist. Fever, the
+ * house sings: the swarm flashes as one, and on every beat a front of the canal's glow rolls down
+ * the glass with it while the moss pulses up the columns, the lanterns blaze and the sky clears
+ * to its stars. The quad then only inhales (its hush is as deep as play is cold), the Queen opens
+ * and the full garden gives up all its pollen at once; the perfect clear crowns her. When the
+ * hands rest it all breathes back to the quiet house.
  */
 import * as THREE from 'three/webgpu';
 import { uniform, uniformArray } from 'three/tsl';
 import {
-    ARC, DEG, EYE, FLOOR, GLAZING, HOUSE, MOON_RADIUS, NIGHTS, NIGHT_COLOURS, NIGHT_SECONDS, TIMING, approach, clamp,
-    clamp01, groundAt, houseExit, lerp, moonDrift, mossForCombo, mulberry32, nightAt, pieceLight, skyDirection, smooth,
-    swarmFlash, swarmForCombo, syncForCombo,
+    ARC, DEG, EYE, FLASH, FLOOR, GLAZING, HOUSE, MOON_RADIUS, NIGHTS, NIGHT_COLOURS, NIGHT_SECONDS, TIMING, approach,
+    clamp, clamp01, groundAt, houseExit, lerp, moonDrift, mossForCombo, mulberry32, nightAt, pieceLight, skyDirection,
+    smooth, swarmFlash, swarmForCombo, syncForCombo, vaultHeightAt,
 } from './moonlit-greenhouse-core.js';
 import { tierFor } from './moonlit-greenhouse-quality.js';
 import { LANTERN_FLAME_DROP, palmCrownCentre, planGarden } from './moonlit-greenhouse-plan.js';
@@ -61,12 +77,14 @@ import {
 } from './moonlit-greenhouse-flora.js';
 import { createPads, createReeds, createWater } from './moonlit-greenhouse-pond.js';
 import {
-    createDew, createFireflies, createMoths, createMotes, turnOfTheAirAt,
+    DEW, createDew, createFireflies, createMoths, createMotes, dropFall, turnOfTheAirAt,
 } from './moonlit-greenhouse-air.js';
 import { createBlooms, createQueen } from './moonlit-greenhouse-blooms.js';
 import { createGlows } from './moonlit-greenhouse-glows.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import { drainSteps } from '../shared/build-steps.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
+import { flashScale } from '../../utils/photosensitivity.js';
 
 export { REST_RIG, fovForAspect };
 
@@ -112,6 +130,48 @@ const STREAM_FLIERS = 9;
 const STREAM_LINGER = 2.4;
 /** Pollen a released bloom gives up. */
 const POLLEN_MOTES = 7;
+/** Shares of the tier's glows the cleared rows' fireflies and the pollen may hold. */
+const FLIER_SHARE = 0.45;
+const POLLEN_SHARE = 0.3;
+/**
+ * Over this share of their budget the oldest fireflies or pollen fade out over FADE_OUT seconds
+ * instead of vanishing mid-flight.
+ */
+const SOFT_SHARE = 0.8;
+const FADE_OUT = 0.35;
+/** A time no event reaches. */
+const NEVER = Infinity;
+
+/** How far round (radians) a T-spin turns the air, and how many turns can run at once. */
+const TURN_ANGLE = Math.PI * 1.2;
+const TURN_SLOTS = 3;
+/** A T-spin that cleared nothing turns it this share of that. */
+const SPIN_TURN = 0.4;
+
+/**
+ * How long a hard drop's curtain of dew takes to come down: its last drop's release (the shake,
+ * and the curtain loosened outward from the middle), its fall from under the ridge to the canal,
+ * and its splash. A curtain still falling is never restarted (see shakeDew).
+ */
+const DEW_SPAN = DEW.shake + 0.15
+    + dropFall(vaultHeightAt(0) - 0.2, FLOOR.canal.water, DEW.terminal[0], 0, DEW.kick[0]).lands + DEW.splash;
+/** What each hard drop on a falling curtain adds to its glitter (up to DEW.most). */
+const DEW_ADD = 0.15;
+
+/**
+ * Past `soft` × `most` the oldest in `list` (oldest first) begin to fade (fadeAt = now); past
+ * `most` the oldest go at once (the glows' buffer is the hard limit).
+ */
+function cull(list, most, now) {
+    if (list.length > most) list.splice(0, list.length - most);
+    const over = list.length - Math.floor(most * SOFT_SHARE);
+    for (let i = 0; i < over; i += 1) {
+        if (list[i].fadeAt > now) list[i].fadeAt = now;
+    }
+}
+
+/** How much of a fade-out started at `fadeAt` is left at `now` (1 before it starts). */
+const fadeLeft = (fadeAt, now) => (now <= fadeAt ? 1 : 1 - smooth(0, FADE_OUT, now - fadeAt));
 
 const tmpRay = new THREE.Vector3();
 const tmpV = new THREE.Vector3();
@@ -169,7 +229,7 @@ export class MoonlitGreenhouseWorld {
         this.lanternRowsV = Array.from({ length: 8 }, () => new THREE.Vector4(0, -100, 0, 0));
         this.bloomRowsV = Array.from({ length: 16 }, () => new THREE.Vector4(0, -100, 0, 0));
         this.ringRowsV = Array.from({ length: this.tier.rings * 2 }, () => new THREE.Vector4(0, 0, -100, 0));
-        this.waveRowsV = Array.from({ length: 12 }, () => new THREE.Vector4(0, 0, -100, 0));
+        this.waveRowsV = Array.from({ length: 16 }, () => new THREE.Vector4(0, 0, -100, 0));
         this.crownRowsV = Array.from({ length: this.tier.crowns * 2 }, () => new THREE.Vector4(0, -100, 0, 1));
         this.U = {
             time: uniform(0),
@@ -198,6 +258,8 @@ export class MoonlitGreenhouseWorld {
             sync: uniform(0),
             swarm: uniform(0.42),
             fireflyGlow: uniform(0),
+            /** How bright the swarm burns: 1 at rest, more as play heats (see update()). */
+            swarmGain: uniform(1),
             moss: uniform(0),
             mossGlow: uniform(0),
             gust: uniform(0),
@@ -222,8 +284,33 @@ export class MoonlitGreenhouseWorld {
         this.seeds = [];
         /** Fireflies released by cleared rows: { from, ctrl, to, t0, t1, rgb, seed }. */
         this.fliers = [];
-        /** Pollen rising from released blooms: { x, y, z, t0, rgb, seed }. */
+        /** Pollen rising from released blooms: { x, y, z, t0, rgb, seed, fadeAt }. */
         this.pollen = [];
+        /** The turns of the air in flight (T-spins): when each began and what share of a turn. */
+        this.turns = Array.from({ length: TURN_SLOTS }, () => ({ at: -100, amp: 0 }));
+        /**
+         * Envelopes that ACCUMULATE (src/themes/shared/swell.js): a new event adds to what is
+         * still lit and never restarts it. The post flash; the lens's jolt on a hard drop; the
+         * moonlight flooding the panes (four lines, a perfect clear); the moon's answer to a
+         * back-to-back.
+         */
+        this.flash = new Swell({ release: 0.25, ceiling: 0.45, knee: 0.3 });
+        this.kick = new Swell({ release: 1 / 9, ceiling: 1.6, knee: 1.1 });
+        this.flood = new Swell({
+            attack: 0.15, release: 1.4, ceiling: 1.15, knee: 0.85,
+        });
+        this.moonCall = new Swell({
+            attack: 0.08, release: 1.8, ceiling: 1.8, knee: 1.2,
+        });
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js), fed by the events below and
+         * sampled once a frame on the world's clock: the house wakes with it (see update()).
+         */
+        this.surge = new GameplaySurge();
+        this.heat = this.surge.sample(-100);
+        /** Where the eye sees the moon through the glazing (along the house, metres of arc). */
+        this.moonPane = { along: -30, s: ARC.length };
+        this._tint = [1, 1, 1];
         this.state = {
             combo: 0,
             level: 1,
@@ -232,18 +319,20 @@ export class MoonlitGreenhouseWorld {
             swarm: swarmForCombo(0),
             lanternKick: 0,
             gust: 0,
-            flash: 0,
-            kick: 0,
             hushAt: -100,
+            hushDepth: 1,
             queenAt: -100,
             queenSpinAt: -100,
             perfectAt: -100,
-            floodAt: -100,
             queenPerfect: false,
-            turnAt: -100,
+            turnBase: 0,
             turnSign: 1,
             dewAt: -100,
-            dewStrength: 0,
+            dewGain: 0,
+            dewShown: 0,
+            dewNextAt: NEVER,
+            dewNextGain: 0,
+            beat: -1,
             locks: 0,
             clears: 0,
             blooms: 0,
@@ -400,13 +489,17 @@ export class MoonlitGreenhouseWorld {
         this.clock = this.time;
         this.rand = mulberry32(this.seed);
         this.resetSession();
-        // What a run left eased (the chain's gauges, the turn's way, the crowns picked) goes too:
-        // a seek is the world at `time` with no history.
+        // What a run left eased (the chain's gauges, the turn's way, the crowns picked, the heat
+        // of play) goes too: a seek is the world at `time` with no history.
         const s = this.state;
         s.sync = 0;
         s.moss = 0;
         s.swarm = swarmForCombo(0);
         s.turnSign = 1;
+        s.turnBase = 0;
+        s.beat = -1;
+        this.surge.reset();
+        this.heat = this.surge.sample(this.clock);
         this._crownMoon?.set(0, -1, 0);
         this.night.from = 0;
         this.night.to = 0;
@@ -430,17 +523,24 @@ export class MoonlitGreenhouseWorld {
         s.level = 1;
         s.lanternKick = 0;
         s.gust = 0;
-        s.flash = 0;
-        s.kick = 0;
         s.hushAt = -100;
+        s.hushDepth = 1;
         s.queenAt = -100;
         s.queenSpinAt = -100;
         s.perfectAt = -100;
-        s.floodAt = -100;
         s.queenPerfect = false;
-        s.turnAt = -100;
         s.dewAt = -100;
-        s.dewStrength = 0;
+        s.dewGain = 0;
+        s.dewShown = 0;
+        s.dewNextAt = NEVER;
+        s.dewNextGain = 0;
+        this.flash.reset();
+        this.kick.reset();
+        this.flood.reset();
+        this.moonCall.reset();
+        // Nothing turning (the angle so far stays: with nothing turning it moves nothing). The
+        // heat of play is not reset here: it breathes out by itself.
+        for (let i = 0; i < this.turns.length; i += 1) this.turns[i].amp = 0;
         s.locks = 0;
         s.clears = 0;
         s.blooms = 0;
@@ -479,9 +579,9 @@ export class MoonlitGreenhouseWorld {
         const sway = still * (Math.sin(t * 0.17) * 0.6 + Math.sin(t * 0.11 + 1.3) * 0.4);
         const px = still * (sim.pointerX || 0);
         const py = still * (sim.pointerY || 0);
-        // A hard drop shudders the house: a small jolt of the lens that dies in a few tenths.
-        s.kick *= Math.exp(-9 * Math.max(0, sim.delta));
-        const jolt = still * s.kick * Math.sin(t * 41) * 0.28;
+        // A hard drop shudders the house: a small jolt of the lens that dies in a few tenths
+        // (rapid drops add to the jolt still running instead of restarting it).
+        const jolt = still * this.kick.valueAt(this.clock) * Math.sin(t * 41) * 0.28;
         const yaw = (sway * 0.35 + px * 1.4) * DEG;
         const pitch = (s.pitch + breathe * 0.12 - py * 0.8 + jolt) * DEG;
         camera.position.set(EYE.x + px * 0.16 + sway * 0.03, EYE.y + breathe * 0.015, EYE.z);
@@ -568,25 +668,86 @@ export class MoonlitGreenhouseWorld {
 
     // ── tables ──────────────────────────────────────────────────────────────────
 
-    /** A ring on the canal at (x, z), born at `at` (it may be in the future). */
+    /**
+     * A ring on the canal at (x, z), born at `at` (it may be in the future). The table full, the
+     * ring with the least of its run left makes way (the faintest), never one just born.
+     */
     addRing(x, z, at, strength, rgb, light) {
         const cap = this.ringRowsV.length / 2;
+        let k = this.ringCount * 2;
         if (this.ringCount >= cap) {
-            for (let i = 2; i < this.ringCount * 2; i += 1) this.ringRowsV[i - 2].copy(this.ringRowsV[i]);
-            this.ringCount -= 1;
-        }
-        const k = this.ringCount * 2;
+            let least = Infinity;
+            for (let i = 0; i < this.ringCount; i += 1) {
+                const row = this.ringRowsV[i * 2];
+                const left = row.w * clamp01(1 - (this.clock - row.z) / TIMING.ringLife);
+                if (left < least) {
+                    least = left;
+                    k = i * 2;
+                }
+            }
+        } else this.ringCount += 1;
         this.ringRowsV[k].set(x, z, at, strength);
         this.ringRowsV[k + 1].set(rgb[0], rgb[1], rgb[2], light);
-        this.ringCount += 1;
     }
 
-    /** A wave of moonlight across the glazing from (along, s) on the vault, born at `at`. */
+    /**
+     * A wave of moonlight across the glazing from (along, s) on the vault, born at `at`. The
+     * table full, the front with the least light left makes way (the faintest, far down the
+     * glass), never the newest.
+     */
     addWave(along, s, at, strength, rgb, speed = TIMING.paneWave) {
-        if (this.waves.length >= this.waveRowsV.length / 2) this.waves.shift();
-        this.waves.push({
-            along, s, at, strength, rgb: [rgb[0], rgb[1], rgb[2]], speed,
-        });
+        let wave = null;
+        if (this.waves.length >= this.waveRowsV.length / 2) {
+            let least = Infinity;
+            for (let i = 0; i < this.waves.length; i += 1) {
+                const v = this.waves[i];
+                const left = v.strength * Math.exp(-0.45 * Math.max(0, this.clock - v.at));
+                if (left < least) {
+                    least = left;
+                    wave = v;
+                }
+            }
+        } else {
+            wave = { rgb: [0, 0, 0] };
+            this.waves.push(wave);
+        }
+        wave.along = along;
+        wave.s = s;
+        wave.at = at;
+        wave.strength = strength;
+        wave.rgb[0] = rgb[0];
+        wave.rgb[1] = rgb[1];
+        wave.rgb[2] = rgb[2];
+        wave.speed = speed;
+    }
+
+    /**
+     * The moon rings: a front of moonlight runs out across the glazing from the moon's own pane,
+     * and a fainter one of the canal's glow behind it (a back-to-back, a perfect clear's crown).
+     */
+    ringMoon(at, strength) {
+        const { along, s } = this.moonPane;
+        this.addWave(along, s, at, strength, this.light.moonlight, TIMING.paneWave * 0.6);
+        this.addWave(along, s, at + 0.32, strength * 0.6, this.light.glow, TIMING.paneWave * 0.6);
+    }
+
+    /**
+     * Pollen from the blooms in `released` ({ x, y, z, rgb, at }), as much as the budget holds:
+     * fewer motes a bloom when a whole garden gives up its pollen at once, the oldest fading out
+     * past the budget instead of vanishing.
+     */
+    givePollen(released) {
+        const most = Math.floor(this.tier.glows * POLLEN_SHARE);
+        const motes = Math.max(3, Math.min(POLLEN_MOTES, Math.floor(most / Math.max(1, released.length))));
+        for (let i = 0; i < released.length; i += 1) {
+            const b = released[i];
+            for (let k = 0; k < motes; k += 1) {
+                this.pollen.push({
+                    x: b.x, y: b.y, z: b.z, t0: b.at + k * 0.05, rgb: b.rgb, seed: this.rand(), fadeAt: NEVER,
+                });
+            }
+        }
+        cull(this.pollen, most, this.clock);
     }
 
     // ── events ──────────────────────────────────────────────────────────────────
@@ -658,40 +819,86 @@ export class MoonlitGreenhouseWorld {
         });
         if (onWater) this.addRing(at.x, at.z, t1, hard ? 1.6 : 1, rgb, hard ? 1.4 : 1);
         if (hard) {
-            s.dewAt = this.clock;
-            s.dewStrength = 1;
-            s.flash = Math.max(s.flash, 0.05);
+            this.shakeDew();
+            this.flash.hit(0.05, this.clock);
             s.gust = Math.min(1, s.gust + 0.25);
-            s.kick = 1;
+            this.kick.hit(1, this.clock);
         }
+        this.surge.lock(c, this.clock);
     }
 
-    /** Lines cleared: { player, rows, lines, combo, cascade, tspin, perfect, b2b, screen }. */
+    /**
+     * A hard drop shakes dew loose from the glass. A curtain still coming down is never
+     * restarted (its drops would vanish mid-fall): it glitters brighter, and the next curtain
+     * follows it down as soon as it has landed, so rapid hard drops keep a heavier rain coming.
+     * The hotter play runs, the brighter each curtain.
+     */
+    shakeDew() {
+        const s = this.state;
+        const t = this.clock;
+        const gain = 1 + 0.35 * this.heat.level;
+        if (s.dewNextAt === NEVER && t - s.dewAt >= DEW_SPAN) {
+            s.dewAt = t;
+            s.dewGain = gain;
+            s.dewShown = gain;
+            return;
+        }
+        s.dewGain = Math.min(DEW.most, s.dewGain + DEW_ADD);
+        if (s.dewNextAt === NEVER) {
+            s.dewNextAt = s.dewAt + DEW_SPAN;
+            s.dewNextGain = gain;
+        } else s.dewNextGain = Math.min(DEW.most, s.dewNextGain + DEW_ADD);
+    }
+
+    /**
+     * Lines cleared: { player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, screen }.
+     * A clear with no lines of its own (moonlit-greenhouse-director.js) is a perfect clear's crown
+     * on the clear still playing, a T-spin that cleared nothing, or a lone back-to-back.
+     */
     onClear(c) {
         if (!this.camera) return;
         const s = this.state;
+        if (!(Math.round(Number(c.lines)) > 0)) {
+            if (c.crown === true) this.crown();
+            else if (c.tspin === true) this.spin();
+            if (c.b2b === true) this.answerB2B();
+            return;
+        }
         s.clears += 1;
         const lines = Math.max(1, Math.min(4, Math.round(Number(c.lines)) || 1));
         const big = lines >= 4 || c.perfect === true;
-        // Four lines while the Queen is still open: she stays open (no second hush), the panes
-        // flood again; otherwise the house holds its breath first.
-        const queenAlive = this.queenAlive();
-        const delay = big && !queenAlive ? TIMING.hush : 0;
+        // How deep in a cascade this wave is, and the chain it belongs to.
+        const depth = Math.max(1, Math.min(10, Math.round(Number(c.cascade)) || 1));
+        const chainLength = Math.max(1, Math.round(Number(c.combo ?? s.combo)) || 1);
+        const { level } = this.heat;
+        // Four lines while the Queen is still open (or about to open): she stays open, no second
+        // hush, the panes flood again; otherwise the house holds its breath first.
+        const qAge = this.clock - s.queenAt;
+        const pending = qAge < 0;
+        const awake = qAge >= 0 && qAge < QUEEN_LIFE;
+        let delay = 0;
+        if (big) {
+            if (pending) delay = -qAge;
+            else if (!awake) delay = TIMING.hush;
+        }
         const layout = this.aimLayout();
         const board = boardFor(layout, c.player || 0);
         const card = board ? cardFor(layout, board) || board : null;
         const rows = c.rows?.length ? c.rows : [19];
         const night = this.light;
-        // Each cleared row releases a ribbon of fireflies from both edges of the card.
+        // Each cleared row releases a ribbon of fireflies from both edges of the card: more of
+        // them and brighter for each wave of a cascade, brighter down a chain and in hot play.
         if (card && board) {
             const p = this.camera.position;
+            const fliers = STREAM_FLIERS + Math.min(4, depth - 1);
+            const gain = (1 + 0.15 * (depth - 1)) * (1 + 0.04 * Math.min(chainLength - 1, 10)) * (1 + 0.25 * level);
             for (let r = 0; r < Math.min(4, rows.length); r += 1) {
                 boardPoint(board, 0.5, rows[r], this._point);
                 for (const side of [-1, 1]) {
                     const ex = side < 0 ? card.x0 : card.x1;
                     const ray = this.screenRay(ex, this._point.y, tmpV);
                     const from = { x: p.x + ray.x * 3.4, y: p.y + ray.y * 3.4, z: p.z + ray.z * 3.4 };
-                    for (let k = 0; k < STREAM_FLIERS; k += 1) {
+                    for (let k = 0; k < fliers; k += 1) {
                         const to = {
                             x: side * lerp(3.2, 6.2, this.rand()),
                             y: lerp(0.8, 4.2, this.rand()),
@@ -710,66 +917,173 @@ export class MoonlitGreenhouseWorld {
                             t0,
                             t1: t0 + TIMING.streamFlight * lerp(0.75, 1.25, this.rand()),
                             seed: this.rand(),
+                            gain,
+                            fadeAt: NEVER,
                         });
                     }
                 }
             }
-            const most = this.tier.glows * 0.45;
-            if (this.fliers.length > most) this.fliers.splice(0, this.fliers.length - most);
+            cull(this.fliers, Math.floor(this.tier.glows * FLIER_SHARE), this.clock);
         }
         // A wave of moonlight runs across the glazing, one front a line, from the ridge above the
-        // card toward the eye.
+        // card toward the eye. A cascade's fronts run brighter and faster wave by wave and turn
+        // to the canal's glow; a chain lifts them a little.
+        const lift = 1 + 0.22 * (depth - 1) + 0.03 * Math.min(chainLength - 1, 10);
+        const pace = TIMING.paneWave * (1 + 0.07 * Math.min(depth - 1, 6));
+        const deep = Math.min(1, 0.25 * (depth - 1));
+        const tint = this._tint;
         for (let i = 0; i < lines; i += 1) {
             const at = this.clock + i * 0.24 + delay;
-            const tint = i % 2 === 0 ? night.moonlight : night.glow;
-            this.addWave(-30, ARC.length, at, (big ? 1.4 : 0.8) + lines * 0.15, tint);
+            const base = i % 2 === 0 ? night.moonlight : night.glow;
+            tint[0] = lerp(base[0], night.glow[0], deep);
+            tint[1] = lerp(base[1], night.glow[1], deep);
+            tint[2] = lerp(base[2], night.glow[2], deep);
+            this.addWave(-30, ARC.length, at, ((big ? 1.4 : 0.8) + lines * 0.15) * lift, tint, pace);
         }
-        // The oldest blooms give up their pollen and close: one a line, more in a chain, all of
-        // them for four lines.
-        const chain = Math.min(3, Math.floor(Math.max(0, (c.combo ?? s.combo) - 1) / 2));
-        const count = big ? Infinity : lines + chain;
+        // The blooms give up their pollen. Four lines: the Queen opens and then the whole garden
+        // gives its pollen up at once, every bloom closing. Otherwise the oldest close, one a line
+        // and more in a chain; the hotter play runs the more of them stay open and give their
+        // pollen anyway, so a quick hand fills the beds with colour instead of emptying them as
+        // fast as it plants them.
         const released = this._released;
         released.length = 0;
-        this.parts.blooms?.release?.(count, this.clock + (big ? delay + 0.3 : 0.1), released);
-        s.released += released.length;
-        for (let i = 0; i < released.length; i += 1) {
-            const b = released[i];
-            for (let k = 0; k < POLLEN_MOTES; k += 1) {
-                this.pollen.push({
-                    x: b.x, y: b.y, z: b.z, t0: b.at + k * 0.05, rgb: b.rgb, seed: this.rand(),
-                });
-            }
+        if (big) {
+            this.parts.blooms?.release?.(Infinity, this.clock + delay + 0.3, released);
+            s.released += released.length;
+        } else {
+            const chain = Math.min(3, Math.floor((chainLength - 1) / 2));
+            const due = lines + chain;
+            const close = Math.round(due * (1 - smooth(0.15, 0.6, level)));
+            this.parts.blooms?.release?.(close, this.clock + 0.1, released);
+            s.released += released.length;
+            this.parts.blooms?.pollinate?.(due - close, this.clock + 0.1, released);
         }
-        const pollenMost = Math.floor(this.tier.glows * 0.3);
-        if (this.pollen.length > pollenMost) this.pollen.splice(0, this.pollen.length - pollenMost);
-        s.lanternKick = Math.min(1.5, s.lanternKick + 0.25 + lines * 0.1);
-        s.flash = Math.max(s.flash, 0.04 + lines * 0.03);
+        this.givePollen(released);
+        s.lanternKick = Math.min(1.5, s.lanternKick + 0.25 + lines * 0.1 + 0.05 * (depth - 1));
+        this.flash.hit(0.04 + lines * 0.03, this.clock + delay);
         if (c.tspin) {
-            s.turnAt = this.clock;
-            s.turnSign = this.rand() < 0.5 ? -1 : 1;
+            this.turnAir(1);
             s.gust = Math.min(1.2, s.gust + 0.6);
         }
+        if (c.b2b === true) this.answerB2B();
         if (big) {
-            if (queenAlive) {
+            if (awake || pending) {
                 // Reopen from wherever she is (closing, or still opening), never snapping: her
                 // opening curves pick up where they are, her turning (queenSpinAt) runs on, and a
-                // perfect clear's second whorl unfurls from now.
-                s.queenAt = this.clock - openingAge(this.U.queen.value.x);
+                // perfect clear's second whorl unfurls from now. One still waiting opens on time.
+                if (awake) s.queenAt = this.clock - openingAge(this.U.queen.value.x);
                 if (c.perfect === true && !s.queenPerfect) {
                     s.queenPerfect = true;
-                    s.perfectAt = this.clock;
+                    s.perfectAt = Math.max(this.clock, s.queenAt);
                 }
-                s.floodAt = this.clock;
+                this.flood.hit(0.8, Math.max(this.clock, s.queenAt));
             } else {
+                // The house holds its breath: as deep as play is cold (four lines from rest go
+                // dark, four lines mid-fever only inhale), shallower under Reduce flashing.
                 s.hushAt = this.clock;
+                s.hushDepth = (1 - 0.8 * level) * flashScale();
                 s.queenAt = this.clock + TIMING.hush;
                 s.queenSpinAt = s.queenAt;
                 s.queenPerfect = c.perfect === true;
                 s.perfectAt = s.queenAt;
-                s.floodAt = s.queenAt;
+                this.flood.hit(1, s.queenAt);
             }
             s.queens += 1;
         }
+        this.surge.clear(c, this.clock + delay);
+    }
+
+    /**
+     * A T-spin's turn of the air (`amp` a share of a full turn). It never restarts the turn in
+     * flight: each runs its own course and they add, the air going on round the same way while
+     * any is moving; a fresh turn may go either way.
+     */
+    turnAir(amp) {
+        const s = this.state;
+        const t = this.clock;
+        const sign = this.rand() < 0.5 ? -1 : 1;
+        let free = null;
+        let oldest = null;
+        let moving = false;
+        for (let i = 0; i < this.turns.length; i += 1) {
+            const turn = this.turns[i];
+            if (turn.amp > 0 && t - turn.at >= TIMING.turn) this.foldTurn(turn);
+            if (turn.amp > 0) {
+                moving = true;
+                if (!oldest || turn.at < oldest.at) oldest = turn;
+            } else if (!free) free = turn;
+        }
+        if (!moving) s.turnSign = sign;
+        if (!free) {
+            // Three turns already: the oldest keeps how far it has carried the air, and starts again.
+            s.turnBase += s.turnSign * TURN_ANGLE * oldest.amp * smooth(0, TIMING.turn, t - oldest.at);
+            free = oldest;
+        }
+        free.at = t;
+        // (Under reduced motion the air only stirs.)
+        free.amp = amp * (this.reducedMotion ? 0.35 : 1);
+    }
+
+    /** A turn that has run its course leaves its angle in the base (wrapped: only its sine and cosine count). */
+    foldTurn(turn) {
+        const s = this.state;
+        s.turnBase = (s.turnBase + s.turnSign * TURN_ANGLE * turn.amp) % (Math.PI * 2);
+        turn.amp = 0;
+    }
+
+    /** A T-spin that cleared nothing: a small turn of the air and a breath through the fronds. */
+    spin() {
+        this.turnAir(SPIN_TURN);
+        this.state.gust = Math.min(1.2, this.state.gust + 0.3);
+        this.surge.spin(this.clock);
+    }
+
+    /**
+     * A perfect clear settled after the clear's last wave (the director's crown): the crowning
+     * moment on the clear still playing, never a second hush. The Queen's second whorl unfurls as
+     * she opens (from now, if she already is), the moon wears its corona, every firefly flashes
+     * once more and the moon rings over the glass. With no Queen awake (a perfect clear on a
+     * smaller clear) she opens at once, with no hush, and the garden gives up its pollen.
+     */
+    crown() {
+        const s = this.state;
+        const t = this.clock;
+        const qAge = t - s.queenAt;
+        if (qAge >= 0 && qAge < QUEEN_LIFE) {
+            s.queenAt = t - openingAge(this.U.queen.value.x);
+        } else if (qAge >= QUEEN_LIFE) {
+            s.queenAt = t;
+            s.queenSpinAt = t;
+            s.queenPerfect = false;
+            s.queens += 1;
+            const released = this._released;
+            released.length = 0;
+            this.parts.blooms?.release?.(Infinity, t + 0.3, released);
+            s.released += released.length;
+            this.givePollen(released);
+        }
+        const at = Math.max(t, s.queenAt);
+        if (!s.queenPerfect) {
+            s.queenPerfect = true;
+            s.perfectAt = at;
+        }
+        this.flood.hit(0.4, at);
+        this.flash.hit(0.06, at);
+        this.ringMoon(at, 1.8);
+        this.surge.crown(t);
+    }
+
+    /**
+     * Back-to-back: the moon answers. Its beams through the glass blaze and its light runs
+     * stronger through the house (moonCall: U.moonLight and the post's shafts), and a ring of
+     * moonlight runs out over the panes from the moon's own pane. A second back-to-back while
+     * the first still burns lifts it higher and rings wider.
+     */
+    answerB2B() {
+        const t = this.clock;
+        const burning = this.moonCall.valueAt(t);
+        this.moonCall.hit(1, t);
+        this.ringMoon(t, 1.3 + 0.6 * burning);
     }
 
     /** Whether the Queen of the Night is anywhere in her life (opening, open or closing). */
@@ -798,6 +1112,7 @@ export class MoonlitGreenhouseWorld {
         if (!silent) {
             const next = nightAt(night.to + this.clock / NIGHT_SECONDS, {});
             this.addWave(-24, ARC.length, this.clock + 0.4, 1.4, next.glow, TIMING.paneWave * 0.55);
+            this.surge.levelUp(this.clock);
         }
     }
 
@@ -823,8 +1138,10 @@ export class MoonlitGreenhouseWorld {
             const colour = light[NIGHT_COLOURS[i]];
             this.nightRows[i].set(colour[0], colour[1], colour[2], 0);
         }
-        U.stars.value = light.stars;
-        U.cloud.value = light.cloud;
+        // A fever clears the sky: the cloud thins and the stars come out over the glass.
+        const { fever } = this.heat;
+        U.stars.value = light.stars * (1 + 0.8 * fever);
+        U.cloud.value = light.cloud * (1 - 0.7 * fever);
     }
 
     /** Point the moon where the frame wants it (through the rest lens) plus the clock's drift. */
@@ -863,6 +1180,8 @@ export class MoonlitGreenhouseWorld {
         // The bay the eye sees it through keeps its blind up: the moon is never behind the laths.
         const seen = houseExit(rest.position, m, this._exit);
         U.moonBay.value.set(seen.wall ? -1000 : Math.floor(seen.along / GLAZING.ribEvery), seen.side);
+        this.moonPane.along = seen.along;
+        this.moonPane.s = seen.s;
         // Where it stands in the live lens (the glass draws the disc in the image plane).
         if (camera) {
             tmpV.copy(m).multiplyScalar(100).add(camera.position).project(camera);
@@ -918,28 +1237,40 @@ export class MoonlitGreenhouseWorld {
         this.clock += dt;
         const t = this.clock;
         U.time.value = t;
+        // How hot play runs (src/themes/shared/gameplay-surge.js): the acts the house plays.
+        const heat = this.surge.sample(t);
+        this.heat = heat;
+        const { level, fever, punch } = heat;
+        const warm = smooth(0.12, 0.5, level);
+        const hot = smooth(0.4, 0.85, level);
+        // What only moves (the fronds' sway) is stilled under reduced motion; light is not.
+        const calm = this.reducedMotion ? 0.3 : 1;
         this.applyNight();
         this.placeMoon(camera);
         this.pickCrowns();
         U.cloudDrift.value.set(t * 0.0021, -t * 0.0009);
+        const beat = swarmFlash(t);
 
-        // The chain: the fireflies fall into step, the swarm thickens, the moss climbs.
+        // The chain: the fireflies fall into step, the swarm thickens, the moss climbs. The heat
+        // of play does it too, in its own measure: a quick hand calls more of the swarm out and
+        // starts it pulsing together, a fever brings it into step and the moss up the columns.
+        // In a fever the moss pulses with the swarm's flash.
         const { combo } = s;
-        const sync = syncForCombo(combo);
+        const sync = Math.max(syncForCombo(combo), 0.35 * hot + 0.55 * fever);
         s.sync += (sync - s.sync) * approach(sync > s.sync ? 1.1 : 0.45, dt);
-        const moss = mossForCombo(combo);
+        const moss = Math.max(mossForCombo(combo), 1.2 * hot + (HOUSE.spring + 1) * fever);
         s.moss += (moss - s.moss) * approach(moss > s.moss ? 1.6 : 0.3, dt);
-        const swarm = swarmForCombo(combo);
+        const swarm = Math.max(swarmForCombo(combo), clamp01(0.42 + 0.22 * warm + 0.2 * hot + 0.16 * fever));
         s.swarm += (swarm - s.swarm) * approach(0.8, dt);
         U.sync.value = s.sync;
         U.moss.value = s.moss;
-        U.mossGlow.value = clamp01(s.moss / 1.2);
+        U.mossGlow.value = clamp01(s.moss / 1.2) * (1 + 0.15 * hot) + fever * (0.25 + 0.6 * beat);
         U.swarm.value = s.swarm;
 
-        // The hush and the Queen of the Night.
+        // The hush (as deep as it was made: see onClear) and the Queen of the Night.
         const hushAge = t - s.hushAt;
         const hush = hushAge >= 0 && hushAge < TIMING.hush + 1.2
-            ? smooth(0, 0.12, hushAge) * (1 - smooth(TIMING.hush, TIMING.hush + 0.9, hushAge))
+            ? smooth(0, 0.12, hushAge) * (1 - smooth(TIMING.hush, TIMING.hush + 0.9, hushAge)) * s.hushDepth
             : 0;
         U.hush.value = hush;
         const qAge = t - s.queenAt;
@@ -956,20 +1287,28 @@ export class MoonlitGreenhouseWorld {
         // reopen); w the second whorl, eased in over an opening rather than switched on.
         const perfect = s.queenPerfect ? smooth(0, TIMING.queenOpen, t - s.perfectAt) : 0;
         U.queen.value.set(open, glow, s.queenSpinAt, perfect);
-        const fAge = t - s.floodAt;
-        const flood = fAge >= 0 && fAge < 3.5 ? smooth(0, 0.35, fAge) * (1 - smooth(0.6, 3.5, fAge)) : 0;
+        const flood = this.flood.valueAt(t);
         U.flood.value = flood;
-        U.moonCover.value = clamp01(hush * 0.9 + this.light.cloud * 0.05);
-        U.moonLight.value = (1 - hush * 0.8) * (1 + flood * 0.6);
+        U.moonCover.value = clamp01(hush * 0.9 + U.cloud.value * 0.05);
+        // The moon answers a back-to-back; in a fever it yields a little to the house's own
+        // lights (the swarm, the moss, the lanterns, the singing glass), so the night stays dark
+        // between them.
+        const call = this.moonCall.valueAt(t);
+        U.moonLight.value = (1 - hush * 0.8) * (1 + flood * 0.6) * (1 - 0.12 * fever + 0.22 * call);
 
         // The fireflies' light in the garden: the swarm's mean flash (in step it pulses with the
-        // swarm's own flash, so the garden brightens as they do).
-        const beat = swarmFlash(t);
-        U.fireflyGlow.value = (s.swarm * (0.35 + s.sync * beat * 1.4) + flood * 1.5) * (1 - hush);
+        // swarm's own flash, so the garden brightens as they do), warmer as play heats.
+        U.fireflyGlow.value = (s.swarm * (0.35 + s.sync * beat * 1.4) + flood * 1.5) * (1 - hush)
+            * (1 + 0.25 * warm + 0.3 * fever);
+        // The swarm itself burns brighter as play heats (the flood is its own blaze).
+        U.swarmGain.value = 1 + (0.2 * warm + 0.25 * hot + 0.4 * fever) * (1 - 0.6 * Math.min(1, flood));
 
-        // The lanterns burn up with a chain and a clear, and flicker.
+        // The lanterns burn up with a chain and a clear, and with the heat of play (blazing in a
+        // fever), and flicker; every event's kick lifts them a moment.
         s.lanternKick *= Math.exp(-0.7 * dt);
-        U.lanternGain.value = this.light.lanterns * (1 + s.sync * 0.35 + s.lanternKick * 0.5) * (1 - hush * 0.85);
+        U.lanternGain.value = this.light.lanterns
+            * (1 + s.sync * 0.35 + s.lanternKick * 0.5 + 0.12 * warm + 0.18 * hot + 0.3 * fever + 0.1 * punch)
+            * (1 - hush * 0.85);
         for (let i = 0; i < this.litLanterns.length; i += 1) {
             const l = this.litLanterns[i];
             const flicker = 1 + Math.sin(t * (7.1 + l.seed * 3) + l.seed * 40) * 0.04
@@ -977,13 +1316,54 @@ export class MoonlitGreenhouseWorld {
             this.lanternRowsV[i].w = flicker;
         }
 
-        // The turn of the air (T-spin), the gusts, the dew.
-        const turnAge = t - s.turnAt;
-        const turning = turnAge >= 0 && turnAge < TIMING.turn ? Math.sin(Math.PI * smooth(0, TIMING.turn, turnAge)) : 0;
-        U.turn.value.set(s.turnSign * Math.PI * 1.2 * smooth(0, TIMING.turn, Math.max(0, turnAge)), turning, 0, -9);
+        // The turns of the air (T-spins) add: the angle runs on from what the finished turns
+        // left, and the air is held as long as any is turning.
+        for (let i = 0; i < this.turns.length; i += 1) {
+            const turn = this.turns[i];
+            if (turn.amp > 0 && t - turn.at >= TIMING.turn) this.foldTurn(turn);
+        }
+        let angle = s.turnBase;
+        let turning = 0;
+        for (let i = 0; i < this.turns.length; i += 1) {
+            const turn = this.turns[i];
+            if (turn.amp <= 0) continue;
+            const k = smooth(0, TIMING.turn, Math.max(0, t - turn.at));
+            angle += s.turnSign * TURN_ANGLE * turn.amp * k;
+            turning += turn.amp * Math.sin(Math.PI * k);
+        }
+        turning = Math.min(1, turning);
+        U.turn.value.set(angle, turning, 0, -9);
+        // The gusts, and the fronds stirring in a rising air as play heats.
         s.gust *= Math.exp(-0.9 * dt);
-        U.gust.value = clamp01(s.gust + turning * 0.6 + flood * 0.3);
-        U.dew.value.set(s.dewAt, s.dewStrength, 0, 0);
+        U.gust.value = clamp01(s.gust + turning * 0.6 + flood * 0.3 + calm * (0.1 * hot + 0.22 * fever));
+        // The dew: the curtain falling, and the next one when it has landed.
+        if (t >= s.dewNextAt) {
+            s.dewAt = s.dewNextAt;
+            s.dewGain = s.dewNextGain;
+            s.dewShown = s.dewNextGain;
+            s.dewNextAt = NEVER;
+        }
+        s.dewShown += (s.dewGain - s.dewShown) * approach(5, dt);
+        U.dew.value.set(s.dewAt, s.dewShown, 0, 0);
+
+        // The glass sings in a fever: on every beat of the swarm's flash a front of the canal's
+        // glow rolls down the vault from far down the house, so the glass, the fireflies and the
+        // moss flash as one (hot play starts it, faintly).
+        const beatIndex = Math.floor(t / FLASH.beat);
+        if (beatIndex !== s.beat) {
+            const sing = 0.8 * hot + 1.5 * fever;
+            if (s.beat >= 0 && sing > 0.1) {
+                // Every other beat the front carries the fireflies' own gold-green.
+                const { glow: canal, firefly } = this.light;
+                const k = beatIndex % 2 === 0 ? 0 : 0.5;
+                const tint = this._tint;
+                tint[0] = lerp(canal[0], firefly[0], k);
+                tint[1] = lerp(canal[1], firefly[1], k);
+                tint[2] = lerp(canal[2], firefly[2], k);
+                this.addWave(-44, ARC.length, beatIndex * FLASH.beat, sing, tint, TIMING.paneWave * 0.8);
+            }
+            s.beat = beatIndex;
+        }
 
         // Rings run their course (a hard drop's ring can be born before an earlier soft one's, so
         // every row is checked, not only the first).
@@ -998,21 +1378,21 @@ export class MoonlitGreenhouseWorld {
         }
         this.ringCount = kept;
         U.ringCount.value = this.ringCount;
-        // Waves across the glazing.
+        // Waves across the glazing (those that have run their course leave the table).
         let w = 0;
         const reach = 90;
         for (let i = 0; i < this.waves.length; i += 1) {
             const v = this.waves[i];
             const age = t - v.at;
             if (age > reach / v.speed) continue;
+            this.waves[w] = v;
             this.waveRowsV[w * 2].set(v.along, v.s, v.at, v.strength);
             this.waveRowsV[w * 2 + 1].set(v.rgb[0], v.rgb[1], v.rgb[2], v.speed);
             w += 1;
         }
-        while (this.waves.length && t - this.waves[0].at > reach / this.waves[0].speed) this.waves.shift();
+        this.waves.length = w;
         U.paneWaveCount.value = w;
 
-        s.flash *= Math.exp(-4 * dt);
         this.parts.blooms?.update?.(this);
         this.updateBloomLights(camera);
         this.updateGlows(camera);
@@ -1097,7 +1477,7 @@ export class MoonlitGreenhouseWorld {
             const f = this.fliers[i];
             const age = t - f.t0;
             const life = f.t1 - f.t0 + STREAM_LINGER;
-            if (age > life) {
+            if (age > life || t - f.fadeAt > FADE_OUT) {
                 this.fliers.splice(i, 1);
                 continue;
             }
@@ -1105,7 +1485,7 @@ export class MoonlitGreenhouseWorld {
             const s = clamp01(age / (f.t1 - f.t0));
             arcPoint(f.from, f.ctrl, f.to, 1 - (1 - s) * (1 - s), this._seedP);
             const blink = 0.55 + 0.45 * Math.sin(t * (5 + f.seed * 4) + f.seed * 30);
-            const k = 2.4 * blink * (1 - smooth(life - 1.2, life, age)) * dim;
+            const k = 2.4 * blink * (1 - smooth(life - 1.2, life, age)) * dim * f.gain * fadeLeft(f.fadeAt, t);
             // A T-spin's turn of the air carries them as it carries the swarm.
             const q = turnOfTheAirAt(
                 this._seedP.x,
@@ -1130,7 +1510,7 @@ export class MoonlitGreenhouseWorld {
         for (let i = this.pollen.length - 1; i >= 0; i -= 1) {
             const p = this.pollen[i];
             const age = t - p.t0;
-            if (age > rise) {
+            if (age > rise || t - p.fadeAt > FADE_OUT) {
                 this.pollen.splice(i, 1);
                 continue;
             }
@@ -1138,7 +1518,7 @@ export class MoonlitGreenhouseWorld {
             const s = age / rise;
             const a = p.seed * 40 + age * (0.6 + p.seed);
             const r = 0.15 + s * 0.9;
-            const k = (smooth(0, 0.3, age) * (1 - smooth(0.6, 1, s))) * 2.2 * dim;
+            const k = (smooth(0, 0.3, age) * (1 - smooth(0.6, 1, s))) * 2.2 * dim * fadeLeft(p.fadeAt, t);
             const tint = 0.65;
             const q = turnOfTheAirAt(
                 p.x + Math.cos(a) * r,
@@ -1167,14 +1547,22 @@ export class MoonlitGreenhouseWorld {
         const L = this.light;
         const o = this._post;
         const hush = this.U.hush.value;
-        o.exposure = L.exposure * (1 - hush * 0.25);
-        o.flash = s.flash + this.U.flood.value * 0.25;
-        o.bloomBoost = s.sync * 0.25 + this.U.flood.value * 0.6 + this.U.queen.value.y * 0.4;
+        const flood = this.U.flood.value;
+        const { level, fever, punch } = this.heat;
+        const hot = smooth(0.4, 0.85, level);
+        const call = this.moonCall.valueAt(this.clock);
+        // An iris: it closes a little as play heats and the light it adds rises, so the colours
+        // stay saturated and the night stays dark between the lights.
+        o.exposure = (L.exposure * (1 - hush * 0.25))
+            / (1 + 0.05 * level + 0.08 * fever + 0.05 * call + 0.15 * Math.min(1, flood) * level);
+        o.flash = this.flash.valueAt(this.clock) + flood * 0.25 + punch * 0.04;
+        o.bloomBoost = s.sync * 0.25 + flood * 0.6 + this.U.queen.value.y * 0.4 + 0.06 * level + 0.1 * fever;
         o.moonX = this.moonScreen.x;
         o.moonY = this.moonScreen.y;
         o.moonVisible = this.moonScreen.visible;
-        // The march already reads U.moonLight; this is the look's own strength.
-        o.shafts = 1;
+        // The march already reads U.moonLight; this is the look's own strength: the beams stand
+        // out a little in the mist as play heats, and blaze when the moon answers a back-to-back.
+        o.shafts = 1 + 0.05 * hot + 0.1 * fever + 0.45 * call;
         o.hush = hush;
         o.flood = this.U.flood.value;
         o.gradeShadow[0] = L.gradeShadow[0];
@@ -1217,6 +1605,10 @@ export class MoonlitGreenhouseWorld {
             blooms: s.blooms,
             released: s.released,
             queens: s.queens,
+            surge: {
+                level: this.heat.level, fever: this.heat.fever, stage: this.heat.stage,
+            },
+            turn: this.U.turn.value.y,
             layoutLive: !!this.layout,
             moon: { ...this.moonScreen },
             counts: {

@@ -20,6 +20,10 @@ import { forestGroundHeight } from './forest-terrain.js';
 
 const TAU = Math.PI * 2;
 const HALO_DEGREES = 22;
+/** Stars asked for that may wait their turn, the breath between two, and how much faster a fever's fall. */
+const MAX_PENDING_STARS = 4;
+const STAR_GAP = 0.12;
+const SHOWER = 11;
 // z of each mist bank (far to near), how high above the floor it stands, and how thick it lies.
 const MIST_BANKS = [
     [-250, 16, 0.62], [-170, 12, 0.56], [-112, 9, 0.5], [-66, 6.5, 0.4], [-34, 4.2, 0.3],
@@ -49,6 +53,10 @@ export class ForestSky {
         this.uMeteor = uniform(new THREE.Vector2(0, 0)); // progress, strength
         this.meteor = { active: false, age: 0, life: 0.9 };
         this.meteorClock = 9 + rng() * 14;
+        // Stars the game asked for that are still to fall (they fall one after another, never
+        // cutting short the one in the sky), and the breath between two of them.
+        this.pendingStars = 0;
+        this.starGap = 0;
     }
 
     own(resource) {
@@ -159,12 +167,17 @@ export class ForestSky {
         }
         const limb = pow(depth, 0.45).mul(0.6).add(0.4);
         const moonFace = face.mul(light.uMoonFace).mul(limb).mul(2.7);
-        // Glare hugging the limb, a wide soft aureole, and the faint ring ice lays 22° out.
+        // Glare hugging the limb, a wide soft aureole, and the faint ring ice lays 22° out, which
+        // a back-to-back lights silver with a warm inner edge (uHalo).
         const beyond = max(angle.sub(radius), 0);
         const glare = light.uMoonFace.mul(vec3(1.0, 0.979, 0.951)).mul(exp(beyond.mul(-34)).mul(0.5))
             .add(light.uAureole.mul(exp(beyond.mul(-7.5)).mul(0.1)));
-        const ring = exp(angle.sub(THREE.MathUtils.degToRad(HALO_DEGREES)).div(0.016).pow2().negate());
-        const halo = vec3(0.7, 0.85, 1.05).mul(ring).mul(light.uMoonGain.sub(0.72).max(0).mul(0.05));
+        const offRing = angle.sub(THREE.MathUtils.degToRad(HALO_DEGREES));
+        const ring = exp(offRing.div(0.016).pow2().negate());
+        const warm = exp(offRing.add(0.012).div(0.01).pow2().negate());
+        const ice = light.uMoonGain.sub(0.72).max(0).mul(0.05).add(light.uHalo.mul(0.3));
+        const halo = vec3(0.7, 0.85, 1.05).mul(ring).mul(ice)
+            .add(vec3(1.0, 0.78, 0.42).mul(warm).mul(light.uHalo.mul(0.18)));
         const veiled = cover.mul(0.5).oneMinus();
         material.colorNode = mix(sky, moonFace.mul(light.uMoonGain.mul(0.5).add(0.5)), inside.mul(veiled))
             .add(glare.mul(light.uMoonGain).mul(inside.oneMinus()).mul(veiled))
@@ -283,19 +296,33 @@ export class ForestSky {
         this.meteor.active = false;
         this.uMeteor.value.set(0, 0);
         this.starSerial = undefined;
+        this.pendingStars = 0;
+        this.starGap = 0;
     }
 
-    /** `frame.stars` counts the falling stars the game has asked for; one also falls now and then. */
+    /**
+     * `frame.stars` counts the falling stars the game has asked for: each falls in turn, after the
+     * one in the sky. One also falls now and then, and in a fever (`frame.surge.fever`) the clock
+     * runs many times faster: stars fall through the moonbeams every second or two.
+     */
     update(dt, frame = {}) {
         const step = Number.isFinite(dt) ? Math.max(0, dt) : 0;
         if (Number.isFinite(frame.stars) && frame.stars !== this.starSerial) {
-            if (this.starSerial !== undefined && frame.stars > this.starSerial) this.shoot(1.3);
+            if (this.starSerial !== undefined && frame.stars > this.starSerial) {
+                this.pendingStars = Math.min(MAX_PENDING_STARS, this.pendingStars + frame.stars - this.starSerial);
+            }
             this.starSerial = frame.stars;
         }
-        this.meteorClock -= step;
+        this.starGap = Math.max(0, this.starGap - step);
+        if (this.pendingStars > 0 && !this.meteor.active && this.starGap <= 0) {
+            this.pendingStars -= 1;
+            this.shoot(1.3);
+        }
+        const fever = Number.isFinite(frame.surge?.fever) ? THREE.MathUtils.clamp(frame.surge.fever, 0, 1) : 0;
+        this.meteorClock -= step * (1 + fever * SHOWER);
         if (this.meteorClock <= 0 && !this.meteor.active && frame.settled !== true) {
             this.meteorClock = 14 + this.rng() * 22;
-            this.shoot(0.7);
+            this.shoot(0.7 + fever * 0.4);
         }
         if (this.meteor.active) {
             this.meteor.age += step;
@@ -303,6 +330,7 @@ export class ForestSky {
             if (progress >= 1) {
                 this.meteor.active = false;
                 this.uMeteor.value.set(0, 0);
+                this.starGap = STAR_GAP;
             } else {
                 const flare = Math.sin(Math.PI * Math.min(1, progress * 1.1));
                 this.uMeteor.value.set(progress, flare * this.meteor.strength);

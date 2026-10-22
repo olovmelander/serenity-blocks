@@ -19,6 +19,7 @@ import * as THREE from 'three/webgpu';
 import { BaseTheme } from '../base-theme.js';
 import { resolveTargetFps } from '../theme-frame-pacer.js';
 import { eventBus, EVENTS } from '../../events/event-bus.js';
+import { ComboTracker } from '../../core/combo-tracker.js';
 import { NIMBUS_VEIL_TETROMINOS } from './nimbus-veil-tetrominos.js';
 import { RIG } from './nimbus-veil-tsl.js';
 import {
@@ -62,11 +63,13 @@ export default class NimbusVeilTheme extends BaseTheme {
         this.smoothedPointerX = 0;
         this.smoothedPointerY = 0;
         this.sunUv = new THREE.Vector2(0.25, 0.5);
+        /** The true consecutive-clear combo (the bus's COMBO is a cascade's depth, ADR-0011). */
+        this.comboTracker = new ComboTracker();
         this._sim = {
             time: 0, delta: 0, pointerX: 0, pointerY: 0,
         };
         this._postParams = {
-            time: 0, sun: this.sunUv, sunVis: 0, bloomBoost: 0,
+            time: 0, sun: this.sunUv, sunVis: 0, bloomBoost: 0, rays: 1, exposure: 1,
         };
 
         this.layoutWatch = null;
@@ -341,17 +344,48 @@ export default class NimbusVeilTheme extends BaseTheme {
 
     setupEventListeners() {
         this.clearEventUnsubscribers();
-        // Nimbus has always reacted unless background effects are switched off.
-        const reactive = () => this.isActive && window.settings?.backgroundComboEffects !== false;
+        // Nimbus has always reacted unless background effects are switched off; a paused
+        // (parked) theme's clock stands still, so nothing is queued onto it.
+        const reactive = () => this.isActive && !this.isPaused
+            && window.settings?.backgroundComboEffects !== false;
+        const finite = (value, fallback) => (Number.isFinite(value) ? value : fallback);
 
         const lockUnsub = eventBus.on(EVENTS.PIECE_LOCK, () => {
-            if (reactive()) this.world?.onPieceLock();
+            if (!this.isActive) return;
+            // The true combo is bookkeeping, never gated by a visual setting (combo-tracker.js).
+            // What this lock carries in: the chain it may extend (0 once one broke).
+            const chain = this.comboTracker.notePieceLocked();
+            if (reactive()) this.world?.onPieceLock({ chain });
+        });
+        // Same tick as, and just before, the PIECE_LOCK of the same piece.
+        const hardDropUnsub = eventBus.on(EVENTS.HARD_DROP, () => {
+            if (reactive()) this.world?.onHardDrop?.();
         });
         const clearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (reactive()) this.world?.onLineClear(data?.lineCount ?? 1);
+            if (!this.isActive) return;
+            const before = this.comboTracker.combo;
+            const combo = this.comboTracker.noteLineClear();
+            if (!reactive()) return;
+            this.world?.onLineClear(finite(data?.lineCount, 1), {
+                cascade: finite(data?.cascadeCount, 1),
+                combo,
+                chainStep: combo > before,
+            });
         });
+        // COMBO carries the CASCADE DEPTH of one lock (ADR-0011), never the combo.
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
-            if (reactive()) this.world?.onCombo(data?.comboCount ?? 0);
+            if (reactive()) this.world?.onCombo(finite(data?.comboCount, 0));
+        });
+        // After the LINE_CLEAR of the same lock (or alone, for a T-spin that cleared nothing).
+        const tspinUnsub = eventBus.on(EVENTS.TSPIN, (data) => {
+            if (reactive()) this.world?.onTSpin?.(finite(data?.lineCount, 0));
+        });
+        const b2bUnsub = eventBus.on(EVENTS.B2B, (data) => {
+            if (reactive() && data?.active !== false) this.world?.onB2B?.();
+        });
+        // Settles ~360 ms after the clear's last wave: a crown on that clear, never a new one.
+        const perfectUnsub = eventBus.on(EVENTS.PERFECT_CLEAR, () => {
+            if (reactive()) this.world?.onPerfectClear?.();
         });
         const levelUnsub = eventBus.on(EVENTS.LEVEL_UP, () => {
             if (reactive()) this.world?.onLevelUp();
@@ -367,8 +401,12 @@ export default class NimbusVeilTheme extends BaseTheme {
         window.addEventListener('resize', onResize);
         this.eventUnsubscribers.push(
             lockUnsub,
+            hardDropUnsub,
             clearUnsub,
             comboUnsub,
+            tspinUnsub,
+            b2bUnsub,
+            perfectUnsub,
             levelUnsub,
             () => window.removeEventListener('pointermove', onPointerMove),
             () => window.removeEventListener('resize', onResize),
@@ -432,7 +470,10 @@ export default class NimbusVeilTheme extends BaseTheme {
             const pp = this._postParams;
             pp.time = this.time;
             pp.sunVis = this.world.getSunScreen(this.camera, this.sunUv);
-            pp.bloomBoost = Math.min(1, this.world.sunPulse);
+            const state = this.world.postState();
+            pp.bloomBoost = state.bloomBoost;
+            pp.rays = state.rays;
+            pp.exposure = state.exposure;
             this.postProcessing.update(pp);
             this.postProcessing.render();
         } else if (this.passThrough) {

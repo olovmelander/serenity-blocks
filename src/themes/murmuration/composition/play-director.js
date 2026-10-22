@@ -10,6 +10,10 @@
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
+ *   sink.crown({ player })     a PERFECT_CLEAR that came after its clear's frame (physics sends it
+ *                              ~360 ms after the last wave): the crown on the clear already shown,
+ *                              not a new one. A sink without `crown` gets a one-line perfect clear.
+ *   sink.spin({ player, rows, u })  a T-spin that cleared no lines (where the piece locked)
  *   sink.levelUp(level)
  *
  * `rows` are VISIBLE board rows (0 = the top row, 19 = the floor); `u` is the lock's column as a
@@ -204,6 +208,8 @@ export class SwarmPlayDirector {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
         };
         this._screen = { x: 0.5, y: 0.5 };
+        this._crown = { player: 0 };
+        this._spin = { player: 0, rows: [], u: 0.5 };
     }
 
     /**
@@ -352,7 +358,6 @@ export class SwarmPlayDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -379,6 +384,10 @@ export class SwarmPlayDirector {
     }
 
     resolve(slot, sink) {
+        // A perfect clear on its own is the crown on the clear before it; a sink that knows no
+        // crowns gets it as a one-line perfect clear, as it always did.
+        const crownOnly = slot.pending && slot.lines === 0 && slot.perfect;
+        if (crownOnly && !sink?.crown) slot.lines = 1;
         const combo = Math.max(slot.tracker.combo, slot.lines > 0 ? Math.max(1, slot.explicitCombo) : 0);
         if (slot.pending) {
             let screen = null;
@@ -415,6 +424,16 @@ export class SwarmPlayDirector {
                 c.b2b = slot.b2b;
                 c.screen = screen;
                 sink.clear(c);
+            } else if (slot.perfect && sink?.crown) {
+                this._crown.player = slot.player;
+                sink.crown(this._crown);
+            } else if (slot.tspin && sink?.spin) {
+                const c = this._spin;
+                c.player = slot.player;
+                c.rows.length = 0;
+                for (let r = 0; r < slot.lockRowCount; r += 1) c.rows.push(slot.lockRows[r]);
+                c.u = slot.lockU;
+                sink.spin(c);
             }
             clearPending(slot);
         }

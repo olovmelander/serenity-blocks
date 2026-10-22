@@ -16,7 +16,11 @@ import {
 } from 'three/tsl';
 
 const TAU = Math.PI * 2;
+/** The steady evening breeze; hot play freshens it (update()). */
+export const SAKURA_BREEZE = 0.24;
 export const SAKURA_RING_SLOTS = 6;
+/** How long a ring is worth keeping (its light has fallen under a few percent by then). */
+const RING_LIFE = 6;
 export const SAKURA_RING_SPEED = 13;
 /** Frames after the shadows were framed on which the static map is drawn again. */
 const SHADOW_REDRAWS = new Set([45, 150, 300, 600, 1200]);
@@ -81,11 +85,14 @@ export class SakuraLight {
         this.uHaze = uniform(0.0018);
         this.uMist = uniform(0.003);
         this.uWaterLevel = uniform(0);
-        // Wind: a steady breeze, gusts that roll across the garden, and a travelling front.
+        // Wind: a steady breeze, gusts that roll across the garden, and up to three travelling
+        // fronts (SakuraReactions' slots): the first in uFront (x, strength, width), the other
+        // two in uFront2 (x, strength, x, strength).
         this.uWindDir = uniform(new THREE.Vector3(0.96, 0, 0.28));
-        this.uWind = uniform(0.24);
+        this.uWind = uniform(SAKURA_BREEZE);
         this.uGust = uniform(0);
         this.uFront = uniform(new THREE.Vector4(0, 0, 14, 0)); // x, strength, width
+        this.uFront2 = uniform(new THREE.Vector4(0, 0, 0, 0));
         // Gameplay envelopes shared by every material.
         this.uGlow = uniform(0);
         this.uSpirit = uniform(0);
@@ -268,17 +275,43 @@ export class SakuraLight {
         return { band: sum.x, wave: sum.y, push: sum.zw };
     }
 
-    /** Start a ring at world (x, z). Reuses the oldest slot; allocates nothing. */
+    /**
+     * Start a ring at world (x, z). It takes a spent slot, else the one with the least light left
+     * (strength × its fade), so a lock's small ring never cuts a quad's still spreading across the
+     * lake. Allocates nothing.
+     */
     ring(x, z, strength) {
         if (!(strength > 0) || !Number.isFinite(x) || !Number.isFinite(z)) return false;
-        this.ringData[this.ringCursor].set(x, z, this.uTime.value, Math.min(1.6, strength));
-        this.ringCursor = (this.ringCursor + 1) % SAKURA_RING_SLOTS;
+        const now = this.uTime.value;
+        let slot = this.ringCursor;
+        let least = Infinity;
+        for (let step = 0; step < SAKURA_RING_SLOTS; step += 1) {
+            const index = (this.ringCursor + step) % SAKURA_RING_SLOTS;
+            const ring = this.ringData[index];
+            const age = now - ring.z;
+            const left = age >= RING_LIFE || age < 0 ? 0 : ring.w * Math.exp(-age * 0.55);
+            if (left < least) {
+                least = left;
+                slot = index;
+                if (left === 0) break;
+            }
+        }
+        this.ringData[slot].set(x, z, now, Math.min(1.6, strength));
+        this.ringCursor = (slot + 1) % SAKURA_RING_SLOTS;
         return true;
     }
 
     resetRings() {
         this.ringData.forEach((ring) => ring.set(0, 0, -1000, 0));
         this.ringCursor = 0;
+    }
+
+    /** How hard the fronts crossing the garden push at world x (TSL): one bell per front. */
+    front(x) {
+        const bell = (at, strength) => exp(x.sub(at).div(this.uFront.z).pow2().negate()).mul(strength);
+        return bell(this.uFront.x, this.uFront.y)
+            .add(bell(this.uFront2.x, this.uFront2.y))
+            .add(bell(this.uFront2.z, this.uFront2.w));
     }
 
     /**
@@ -291,8 +324,7 @@ export class SakuraLight {
         const t = this.uTime;
         const along = world.x.mul(this.uWindDir.x).add(world.z.mul(this.uWindDir.z));
         const swell = sin(along.mul(0.05).sub(t.mul(0.85)).add(world.x.mul(0.021))).mul(0.5).add(0.5);
-        const front = exp(world.x.sub(this.uFront.x).div(this.uFront.z).pow2().negate()).mul(this.uFront.y);
-        const force = this.uWind.add(this.uGust.mul(swell.mul(0.7).add(0.65))).add(front);
+        const force = this.uWind.add(this.uGust.mul(swell.mul(0.7).add(0.65))).add(this.front(world.x));
         const lift = saturate(world.y.sub(base.y).div(height));
         const lean = lift.mul(lift).mul(height).mul(0.011).mul(force)
             .mul(sin(t.mul(0.55).add(treePhase.mul(TAU))).mul(0.35).add(0.75));
@@ -305,16 +337,41 @@ export class SakuraLight {
         return vec3(this.uWindDir.x.mul(push), bob.sub(limb.abs().mul(0.15)), this.uWindDir.z.mul(push));
     }
 
+    /**
+     * `frame` is the reactions' frame (with `front`, the strongest front in world x, and `fronts`,
+     * every front crossing, from SakuraPetalDirector). The boughs bend under `sway` (the gust on
+     * its spring) when it is given, else the gust itself.
+     *
+     * How hot play runs (`level`, `fever`) is the night the garden wears: the breeze freshens,
+     * the paper lanterns burn up and the blossom glows from within, and in a fever the festival
+     * lanterns blaze. The lanterns' answer to each event is a little smaller then, so the sustained
+     * light carries the build instead of every lock pulsing the whole garden.
+     */
     update(time, frame = {}) {
         this.uTime.value = Number.isFinite(time) ? Math.max(0, time) : this.uTime.value;
         const clamp01 = (value) => (Number.isFinite(value) ? THREE.MathUtils.clamp(value, 0, 1) : 0);
-        this.uGust.value = clamp01(frame.gust) * 1.6;
-        this.uGlow.value = clamp01(frame.glow);
+        const level = clamp01(frame.level);
+        const fever = clamp01(frame.fever);
+        const motion = Number.isFinite(frame.motion) ? clamp01(frame.motion) : 1;
+        const hush = clamp01(frame.hush);
+        this.uGust.value = clamp01(Number.isFinite(frame.sway) ? frame.sway : frame.gust) * 1.6;
+        this.uWind.value = SAKURA_BREEZE + (0.07 * level + 0.06 * fever) * motion * (1 - hush);
+        this.uGlow.value = clamp01(Math.max(clamp01(frame.glow), 0.3 * level + 0.35 * fever));
         this.uSpirit.value = clamp01(frame.spirit);
-        this.uLampGain.value = (1 + clamp01(frame.lanterns) * 0.7) * (1 - clamp01(frame.hush) * 0.7);
-        if (frame.front && Number.isFinite(frame.front.x)) {
-            this.uFront.value.set(frame.front.x, clamp01(frame.front.strength) * 2.2, 14, 0);
-        } else this.uFront.value.y = 0;
+        this.uLampGain.value = (1 + clamp01(frame.lanterns) * 0.7 * (1 - 0.35 * level)
+            + 0.3 * level + 0.35 * fever) * (1 - hush * 0.7);
+        const fronts = Array.isArray(frame.fronts) && frame.fronts.length ? frame.fronts : null;
+        const at = (index) => {
+            let front = index === 0 ? frame.front : null;
+            if (fronts) front = fronts[index];
+            return front && Number.isFinite(front.x) ? front : null;
+        };
+        const first = at(0);
+        const second = at(1);
+        const third = at(2);
+        const push = (front) => (front ? clamp01(front.strength) * 2.2 : 0);
+        this.uFront.value.set(first ? first.x : 0, push(first), 14, 0);
+        this.uFront2.value.set(second ? second.x : 0, push(second), third ? third.x : 0, push(third));
         // Pipelines may still be compiling when the first shadow map is drawn; redraw it
         // over the first frames so no late tree is missing from the static map. In the game
         // the prewarm compiles asynchronously and skips what is not ready, so on a busy machine

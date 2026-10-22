@@ -1059,40 +1059,79 @@ describe('waves world: chains', () => {
         expect(world.getState().combo).toBe(2);
     });
 
-    it('calls the dolphins as the chain grows, and not again until they have had their moment', () => {
+    it('grows the pod with the chain: a call is never dropped, the next dolphin follows the last', () => {
         const { camera, world } = makeWorld('High');
+        const leaps = () => world.getState().leaps;
         const one = chainFor(1);
         const two = chainFor(2);
         expect(two).toBeGreaterThan(one);
         // Short of a chain that calls them: nobody.
         if (one > 1) {
             world.onCombo(one - 1);
-            expect(world.getState().leaps).toBe(0);
+            expect(leaps()).toBe(0);
         }
         world.onCombo(one);
-        expect(world.getState().leaps).toBe(1);
+        expect(leaps()).toBe(1);
         const [first] = world.pod.arcs;
         expect(first.active).toBe(true);
         expect(first.t0).toBeGreaterThan(world.clock); // it breaks the surface in a moment, not this frame
-        // The chain grows at once: the pod has just been called, so it is not called again...
+        // The chain grows at once: the pod grows with it (the call is not dropped), the new dolphin
+        // breaking the surface after the first, not on top of it.
         world.onCombo(two);
-        expect(world.getState()).toMatchObject({ leaps: 1, combo: two });
-        // ...and holding the chain, or letting it slip, calls nobody either.
-        run(world, camera, 30);
+        expect(world.getState()).toMatchObject({ leaps: leapersFor(two), combo: two });
+        const second = world.pod.arcs.find((arc) => arc.active && arc !== first);
+        expect(second.t0).toBeGreaterThan(first.t0 + 0.3);
+        // Holding the chain, or letting it slip and climb back, calls nobody: the pod is already
+        // the size the chain is worth.
         world.onCombo(two);
         world.onCombo(one);
-        expect(world.getState().leaps).toBe(1);
-        // Later, a longer chain calls as many as its length is worth.
         world.onCombo(two);
-        expect(world.getState().leaps).toBe(1 + Math.min(leapersFor(two), world.pod.count));
-        run(world, camera, 30);
-        const most = chainFor(leapersFor(1000));
-        world.onCombo(most);
-        expect(world.getState().leaps).toBe(1 + leapersFor(two) + Math.min(leapersFor(most), world.pod.count));
-        // A broken chain calls nobody.
+        expect(leaps()).toBe(leapersFor(two));
+        // Back in the sea, and the chain broken: nobody.
         run(world, camera, 30);
         world.onCombo(0);
-        expect(world.getState().leaps).toBe(1 + leapersFor(two) + Math.min(leapersFor(most), world.pod.count));
+        expect(world.getState()).toMatchObject({ leaps: leapersFor(two), airborne: 0, owed: 0 });
+        // A long chain at a quick hand's pace: every step that is worth another dolphin sends one,
+        // and the pod in the air grows to what the chain is worth.
+        let most = 0;
+        let combo = 0;
+        run(world, camera, 12 * 0.72, (i) => {
+            if (i % Math.round(0.72 / DT) === 1 && combo < 12) world.onCombo((combo += 1));
+            most = Math.max(most, world.getState().airborne);
+        });
+        expect(combo).toBe(12);
+        expect(most).toBe(Math.min(leapersFor(12), world.pod.count));
+        expect(leaps()).toBeGreaterThanOrEqual(leapersFor(two) + leapersFor(12));
+        expect(world.getState().owed).toBe(0);
+    });
+
+    it('brings the whole pod for a perfect clear just after a leap: it waits for the dolphins in the air', () => {
+        const { camera, world } = makeWorld('Minimal');
+        world.onCombo(chainFor(leapersFor(1000)));
+        expect(world.pod.live()).toBe(world.pod.count);
+        run(world, camera, 0.5);
+        const before = world.getState().leaps;
+        const original = world.pod.leap.bind(world.pod);
+        const fromTheAir = [];
+        const leap = vi.spyOn(world.pod, 'leap').mockImplementation((time, open, options) => {
+            const arc = world.pod.arcs[options.slot];
+            if (arc.active && !arc.landed) fromTheAir.push(options.slot);
+            return original(time, open, options);
+        });
+        world.onClear({ rows: [19, 18, 17, 16], lines: 4, perfect: true });
+        // Every dolphin is in the air: the call waits; none is taken out of it.
+        expect(leap).not.toHaveBeenCalled();
+        expect(world.getState()).toMatchObject({ leaps: before, owed: world.pod.count });
+        run(world, camera, 30);
+        // Nothing in the air was thrown again before it was back in the sea.
+        expect(fromTheAir).toEqual([]);
+        // As each came down it went again: the whole pod, the first of them across the sun.
+        expect(world.getState()).toMatchObject({ leaps: before + world.pod.count, owed: 0 });
+        expect(leap).toHaveBeenCalledTimes(world.pod.count);
+        expect(leap.mock.calls[0][2]).toMatchObject({ hero: true });
+        expect(leap.mock.calls.slice(1).every((call) => call[2].hero === false)).toBe(true);
+        const starts = leap.mock.calls.map((call) => call[0]);
+        expect(starts.every((t, i) => i === 0 || t >= starts[i - 1] + 0.6 - 1e-9)).toBe(true);
     });
 
     it('never calls more dolphins than its tier has', () => {
@@ -1167,6 +1206,300 @@ describe('waves world: chains', () => {
         // It leaves the water ahead of the eye and beyond where the lip comes down.
         expect(-hero.z).toBeGreaterThan(landingDistance(world.U.open.value));
         expect(hero.x).toBeGreaterThan(axisOffset(-hero.z));
+    });
+});
+
+describe('waves world: play builds, it never pops', () => {
+    /** What the world shows that heat moves, as plain numbers. */
+    const lit = (world) => {
+        const post = world.getPostState();
+        return {
+            glow: world.U.glow.value,
+            warm: world.U.warm.value,
+            tear: world.U.tear.value,
+            ripple: world.U.ripple.value,
+            heat: world.U.heat.value,
+            swell: world.U.bulge.value.w,
+            open: world.U.open.value,
+            shafts: post.shafts,
+            bloom: post.bloomBoost,
+            exposure: post.exposure,
+        };
+    };
+
+    it('never cuts the light for a weak clear right after a strong one', () => {
+        const strong = makeWorld('Low');
+        const both = makeWorld('Low');
+        for (const { world } of [strong, both]) {
+            world.onClear({ rows: [19, 18, 17], lines: 3 });
+        }
+        run(strong.world, strong.camera, 0.25);
+        run(both.world, both.camera, 0.25);
+        const before = lit(both.world);
+        both.world.onClear({ rows: [19], lines: 1 });
+        frame(both.world, both.camera, DT);
+        frame(strong.world, strong.camera, DT);
+        // The single adds to what the triple still lights: never less than before it, nor than the
+        // triple alone, for as long as either is lit.
+        expect(both.world.U.glow.value).toBeGreaterThanOrEqual(before.glow);
+        expect(both.world.U.tear.value).toBeGreaterThanOrEqual(strong.world.U.tear.value);
+        let wrong = 0;
+        for (let i = 0; i < 180; i++) {
+            frame(both.world, both.camera, DT);
+            frame(strong.world, strong.camera, DT);
+            if (both.world.U.glow.value < strong.world.U.glow.value - 1e-12) wrong += 1;
+            if (both.world.getPostState().bloomBoost < strong.world.getPostState().bloomBoost - 1e-12) wrong += 1;
+        }
+        expect(wrong).toBe(0);
+    });
+
+    it('reads a long chain hotter than its first clear, and breathes back to rest when the hands rest', () => {
+        const { camera, world } = makeWorld('High');
+        const rest = lit(world);
+        let combo = 0;
+        const clear = (lines, extra = {}) => {
+            world.onLock({
+                u: 0.5, rows: [19], hardDrop: true, color: '#7eeeff',
+            });
+            world.onClear({
+                rows: [19, 18, 17, 16].slice(0, lines), lines, combo: (combo += 1), ...extra,
+            });
+            world.onCombo(combo);
+        };
+        clear(1);
+        run(world, camera, 0.6);
+        const first = lit(world);
+        expect(world.getState().stage).toBe(0);
+        // A quick hand: a clear every 0.64 s, a T-spin and a cascade among them.
+        for (const lines of [1, 2, 1, 2, 2, 3, 2, 2, 3, 2, 3]) {
+            run(world, camera, 0.04);
+            clear(lines, lines === 3 ? { tspin: combo === 6 } : {});
+            if (combo === 9) {
+                for (let wave = 2; wave <= 4; wave++) {
+                    run(world, camera, 0.36);
+                    world.onClear({
+                        rows: [19], lines: 1, combo, cascade: wave,
+                    });
+                }
+            }
+            run(world, camera, 0.6);
+        }
+        const hot = lit(world);
+        const state = world.getState();
+        // The world has taken notice: hotter, golder, wilder, the iris a little closed.
+        expect(state.stage).toBeGreaterThanOrEqual(2);
+        expect(state.fever).toBeGreaterThan(0);
+        expect(hot.heat).toBeGreaterThan(first.heat + 0.3);
+        expect(hot.glow).toBeGreaterThan(first.glow);
+        expect(hot.warm).toBeGreaterThan(first.warm);
+        expect(hot.tear).toBeGreaterThan(first.tear);
+        expect(hot.ripple).toBeGreaterThan(first.ripple);
+        expect(hot.swell).toBeGreaterThan(first.swell);
+        expect(hot.shafts).toBeGreaterThan(first.shafts);
+        expect(hot.exposure).toBeLessThan(first.exposure);
+        expect(state.leaps).toBeGreaterThanOrEqual(leapersFor(combo));
+        // Everything stays in range.
+        expect(hot.glow).toBeLessThanOrEqual(1.6);
+        expect(hot.warm).toBeLessThanOrEqual(1);
+        expect(hot.tear).toBeLessThanOrEqual(1);
+        expect(hot.heat).toBeLessThanOrEqual(1);
+        expect(hot.ripple).toBeLessThanOrEqual(1.5);
+        // The hands rest (the next piece clears nothing): the wave breathes back over a few
+        // seconds, never at once.
+        world.onCombo(0);
+        frame(world, camera, DT);
+        expect(world.U.heat.value).toBeGreaterThan(hot.heat * 0.5);
+        run(world, camera, 2);
+        expect(world.U.heat.value).toBeGreaterThan(0);
+        expect(world.U.heat.value).toBeLessThan(hot.heat);
+        run(world, camera, 20);
+        expect(world.getState()).toMatchObject({ stage: 0, fever: 0 });
+        const after = lit(world);
+        expect(after.heat).toBe(0);
+        expect(after.ripple).toBe(1);
+        expect(after.swell).toBeLessThan(1e-4);
+        expect(after.exposure).toBe(world.light.exposure);
+        expect(rest.heat).toBe(0);
+        expect(after.glow).toBeLessThan(1e-3);
+        expect(after.open).toBeLessThan(1e-3);
+    });
+
+    it('crowns a quad with a perfect clear settled after it: no second throw, band or hold, the hold drawn out', () => {
+        const crowned = makeWorld('High');
+        const quad = makeWorld('High');
+        for (const { world } of [crowned, quad]) world.onClear({ rows: [19, 18, 17, 16], lines: 4 });
+        run(crowned.world, crowned.camera, 0.36);
+        run(quad.world, quad.camera, 0.36);
+        const { world } = crowned;
+        const throwLip = vi.spyOn(world.spray, 'throwLip');
+        const bands = liveBands(world);
+        const { holdAge } = world.state;
+        const { clears } = world.getState();
+        world.onClear({
+            rows: [], lines: 1, perfect: true, crown: true,
+        });
+        // Nothing of the quad's answer again: its bands, its great throw and its hold stand.
+        expect(liveBands(world)).toEqual(bands);
+        expect(throwLip).toHaveBeenCalledOnce(); // a veil of beads, a fraction of the great throw
+        expect(throwLip.mock.calls[0][2].n).toBeLessThan(world.spray.count / 4);
+        expect(throwLip.mock.calls[0][2].prism).toBeGreaterThan(0.5);
+        expect(world.state.holdAge).toBe(holdAge);
+        expect(world.getState()).toMatchObject({ clears, holding: true, leaps: world.pod.count });
+        // The hold is drawn out: the crowned wave has lost more time than the quad alone...
+        run(world, crowned.camera, HOLD_SECONDS + 2);
+        run(quad.world, quad.camera, HOLD_SECONDS + 2);
+        expect(world.clock).toBeLessThan(quad.world.clock - 0.3);
+        // ...and gold poured through the lip, then let go.
+        expect(world.getState().holding).toBe(false);
+        run(world, crowned.camera, 10);
+        expect(world.U.heat.value).toBeLessThan(1e-3);
+    });
+
+    it('draws a hold out when another quad lands in it, never starting it again: the clock never lurches', () => {
+        const { camera, world } = makeWorld('Low');
+        world.onClear({ lines: 4 });
+        // Into the hold's letting go, then four lines again.
+        run(world, camera, HOLD_SECONDS - 0.35);
+        const clocks = [];
+        run(world, camera, 0.1, () => clocks.push(world.clock));
+        world.onClear({ lines: 4 });
+        expect(world.getState().holding).toBe(true);
+        run(world, camera, HOLD_SECONDS + 1, () => clocks.push(world.clock));
+        clocks.push(world.clock);
+        const steps = clocks.slice(1).map((c, i) => c - clocks[i]);
+        // No step is more than a little faster or slower than the one before it...
+        const jolts = steps.slice(1).filter((step, i) => Math.abs(step - steps[i]) > 0.15 * DT);
+        expect(jolts).toEqual([]);
+        // ...and the second quad slowed it down again before it let go.
+        expect(Math.min(...steps.slice(8))).toBeLessThan(0.3 * DT);
+        expect(world.getState().holding).toBe(false);
+    });
+
+    it('answers a back-to-back with a set wave through the tube; another grows it, never starts it again', () => {
+        const { camera, world } = makeWorld('Low');
+        const bulge = world.U.bulge.value;
+        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        frame(world, camera, DT);
+        expect(world.getState().setWave).toBe(false);
+        world.onClear({
+            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+        });
+        frame(world, camera, DT);
+        expect(world.getState().setWave).toBe(true);
+        run(world, camera, 1);
+        const { x } = bulge;
+        const { setHeight } = world.state;
+        world.onClear({
+            rows: [19, 18], lines: 2, tspin: true, b2b: true,
+        });
+        frame(world, camera, DT);
+        // On down the tube from where it was, and taller.
+        expect(bulge.x).toBeGreaterThan(x);
+        expect(world.state.setHeight).toBeGreaterThan(setHeight);
+        // A level-up while it runs grows it too.
+        world.levelUp(3);
+        frame(world, camera, DT);
+        expect(bulge.x).toBeGreaterThan(x);
+        let last = bulge.x;
+        let back = 0;
+        run(world, camera, 8, () => {
+            if (bulge.y > 0 && bulge.x < last - 1e-9) back += 1;
+            if (bulge.y > 0) last = bulge.x;
+        });
+        expect(back).toBe(0);
+        expect(world.state.setHeight).toBeLessThan(0.2);
+    });
+
+    it('shows a T-spin that cleared nothing: a small screw of light and a little wheel of spray', () => {
+        const { camera, world } = makeWorld('Low');
+        const wheel = vi.spyOn(world.spray, 'swirl');
+        world.onSpin({ player: 0 });
+        expect(wheel).toHaveBeenCalledOnce();
+        expect(wheel.mock.calls[0][2].n).toBeLessThan(world.spray.count / 5);
+        const bands = liveBands(world);
+        expect(bands).toHaveLength(1);
+        expect(bands[0][3]).not.toBe(0); // a screw
+        expect(bands[0][1]).toBeLessThan(0.75); // softer than any clear's
+        expect(world.getState()).toMatchObject({ clears: 0, holding: false });
+        run(world, camera, 0.5);
+        expect(world.U.tear.value).toBeGreaterThan(0);
+        expect(world.getState().heat).toBeGreaterThan(0);
+    });
+
+    it('builds each wave of a cascade on the last: wider, brighter bands and a bigger throw', () => {
+        const { world } = makeWorld('Low');
+        const throwLip = vi.spyOn(world.spray, 'throwLip');
+        const waves = [1, 2, 3, 4].map((cascade) => {
+            world.resetSession();
+            world.onClear({ rows: [19], lines: 1, cascade });
+            const [band] = liveBands(world);
+            return { strength: band[1], width: band[2], n: throwLip.mock.calls[throwLip.mock.calls.length - 1][2].n };
+        });
+        for (let i = 1; i < waves.length; i++) {
+            expect(waves[i].strength).toBeGreaterThan(waves[i - 1].strength);
+            expect(waves[i].width).toBeGreaterThan(waves[i - 1].width);
+            expect(waves[i].n).toBeGreaterThan(waves[i - 1].n);
+        }
+    });
+
+    it('never takes a band still on its way down the tube while a row is free; when none is, the furthest down', () => {
+        const { camera, world } = makeWorld('Low');
+        world.onClear({ rows: [19, 18, 17], lines: 3 });
+        run(world, camera, 0.6);
+        world.onClear({ rows: [19, 18, 17], lines: 3 });
+        run(world, camera, 0.6);
+        world.onClear({ rows: [19, 18], lines: 2 });
+        const full = bySlotless(liveBands(world));
+        expect(full).toHaveLength(BAND_SLOTS);
+        // Every band of the three clears is on its way: none was taken by a later one.
+        expect(new Set(full.map((band) => band[0])).size).toBe(BAND_SLOTS);
+        run(world, camera, 0.6);
+        world.onClear({ rows: [19], lines: 1 });
+        const next = bySlotless(liveBands(world));
+        expect(next).toHaveLength(BAND_SLOTS);
+        // The one taken was the furthest down the tube; the rest are as they were.
+        expect(next.map((band) => band[0])).not.toContain(full[0][0]);
+        expect(next.slice(0, BAND_SLOTS - 1)).toEqual(full.slice(1));
+    });
+
+    it('lets a full table\'s oldest ring and ribbon fade before a new one takes their row', () => {
+        const { camera, world } = makeWorld('Minimal');
+        const { rings: most } = world.tier;
+        for (let i = 0; i < most; i++) {
+            world.onLock({ u: 0.1 + i * 0.1, rows: [19] });
+            run(world, camera, 0.05);
+        }
+        const [oldest, next] = rings(world);
+        run(world, camera, 0.3);
+        // Full: the oldest is fading; the others keep their strength.
+        expect(rings(world)[0][3]).toBeLessThan(oldest[3] * 0.5);
+        expect(rings(world)[1][3]).toBe(next[3]);
+        expect(rings(world)[0][2]).toBe(oldest[2]);
+    });
+
+    it('never drops a stain\'s rain when every drip is waiting: it joins the one falling nearest it', () => {
+        const { camera, world } = makeWorld('Medium');
+        let column = null;
+        for (const u of [0.1, 0.3, 0.5, 0.7, 0.9]) {
+            const before = world.dripCount;
+            world.onLock({ u, rows: [14], color: '#ff2020' });
+            if (world.dripCount > before) {
+                column = u;
+                break;
+            }
+        }
+        expect(column).not.toBeNull();
+        while (world.dripCount < world.drips.length) world.onLock({ u: column, rows: [14], color: '#ff2020' });
+        const drops = world.drips.reduce((n, drip) => n + drip.n, 0);
+        world.onLock({ u: column, rows: [14], color: '#2040ff' });
+        expect(world.dripCount).toBe(world.drips.length);
+        expect(world.drips.reduce((n, drip) => n + drip.n, 0)).toBeGreaterThan(drops);
+        // Blue joined red somewhere.
+        expect(world.drips.some((drip) => drip.rgb[2] > drip.rgb[1] + 0.05)).toBe(true);
+        const rain = vi.spyOn(world.spray, 'throwLip');
+        run(world, camera, 20);
+        expect(world.dripCount).toBe(0);
+        expect(rain.mock.calls.filter((call) => call[2].rgb !== undefined).length).toBeGreaterThan(0);
     });
 });
 

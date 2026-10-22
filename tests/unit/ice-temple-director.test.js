@@ -19,7 +19,7 @@ const I = {
 
 function makeDirector(options = {}) {
     const calls = {
-        lock: [], clear: [], combo: [], levelUp: [],
+        lock: [], clear: [], combo: [], levelUp: [], crown: [], spin: [],
     };
     const sink = {
         // The director reuses its context objects: a sink must copy what it keeps.
@@ -27,6 +27,8 @@ function makeDirector(options = {}) {
         clear: vi.fn((c) => calls.clear.push({ ...c, rows: [...c.rows], screen: c.screen ? { ...c.screen } : null })),
         combo: vi.fn((n, player) => calls.combo.push([n, player])),
         levelUp: vi.fn((level) => calls.levelUp.push(level)),
+        crown: vi.fn((c) => calls.crown.push({ ...c })),
+        spin: vi.fn((c) => calls.spin.push({ ...c })),
     };
     return { director: new IceTempleDirector({ sink, ...options }), calls, sink };
 }
@@ -127,6 +129,34 @@ describe('ice temple director: intake', () => {
         });
         // An inactive B2B is not one.
         expect(director.onB2B({ active: false })).toBe(false);
+    });
+
+    it('crowns the clear still playing when the perfect clear comes in a frame of its own', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        // Physics sends PERFECT_CLEAR ~360 ms after the clear's last wave, alone.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1); // never a second, one-line clear
+        expect(calls.crown).toEqual([{ player: 0 }]);
+        expect(calls.combo).toEqual([[1, 0]]); // the chain is the clear's, untouched
+        // A sink that cannot crown still hears it, as before: a one-line perfect clear.
+        const old = new IceTempleDirector({ sink: { clear: vi.fn() } });
+        old.onPerfectClear({ depth: 1 });
+        old.flush();
+        expect(old.sink.clear).toHaveBeenCalledWith(expect.objectContaining({ lines: 1, perfect: true }));
+    });
+
+    it('answers a T-spin that cleared nothing with a spin, not a clear', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toHaveLength(0);
+        expect(calls.spin).toEqual([{ player: 0 }]);
+        expect(calls.lock).toHaveLength(1);
     });
 
     it('turns a meditation click into a clear at a screen position', () => {

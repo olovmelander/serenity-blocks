@@ -243,7 +243,9 @@ describe('PaintedAgesWorld clears', () => {
         world.onClear({ lines: 4, rowCodes: Array.from({ length: 40 }, (_, i) => i % 7), combo: 1 });
         expect(world.counts.quads).toBe(1);
         expect(world.floodAt).toBe(world.time);
-        expect(world.tables.waveCount).toBe(WAVES); // the rainbow tide fills the table, never more
+        // The rainbow tide (six colours) joins the quad's own four row bands: it never deletes them.
+        expect(world.tables.waveCount).toBe(10);
+        expect(world.tables.waveCount).toBeLessThanOrEqual(WAVES);
         stepTo(world, camera, world.time + 1 / 30);
         expect(world.getPostState().flash).toBeGreaterThan(0.2);
         stepTo(world, camera, world.time + 1);
@@ -597,6 +599,216 @@ describe('PaintedAgesWorld state', () => {
         expect(world.u.waveCount.value).toBe(0);
         expect(world.u.tables.ribbons.every((row) => row.toArray().every((v) => v === 0))).toBe(true);
         expect(world.u.tables.waves.every((row) => row.toArray().every((v) => v === 0))).toBe(true);
+    });
+});
+
+describe('PaintedAgesWorld build-up (the heat of play)', () => {
+    /** One step of a fast chain: a hard-dropped lock that clears, as the director sends it. */
+    function chainStep(world, n, lines = 1 + (n % 3)) {
+        world.onLock({
+            u: (n % 9) / 8, rows: [19], color: PIECE_COLORS[n % 7], hardDrop: true, distance: 12,
+        });
+        const codes = rowsOf(...Array.from({ length: lines }, (_, k) => (n + k) % 7));
+        world.onClear({
+            lines, rowCodes: codes, combo: n, cascade: 1,
+        });
+        world.onCombo(n);
+    }
+
+    /** What the world wears: the knobs the heat of play turns (the light relative to the hour's). */
+    const wears = (world) => {
+        const post = world.getPostState();
+        return {
+            glow: world.u.strataGlow.value,
+            paint: world.u.paint.value,
+            river: world.u.flood.value.y,
+            sheen: world.u.sheen.value,
+            burn: world.u.glow.value.x / world.light.glow[0],
+            air: world.u.haze.value.x / world.light.haze[0],
+            iris: post.exposure / world.light.exposure,
+            saturation: post.saturation,
+            fever: world.heat.fever,
+            nod: world.nod,
+            zoom: world.zoom,
+            wet: world.u.wet.value,
+        };
+    };
+
+    it('builds through a long chain, then breathes back to calm and keeps the wet rock', () => {
+        const { world, camera } = makeWorld();
+        const rest = wears(world);
+        chainStep(world, 1);
+        stepTo(world, camera, world.time + 0.64);
+        const first = wears(world);
+        // The first clear barely moves the world: calm play looks as it always did.
+        expect(first.glow).toBeLessThan(0.02);
+        expect(first.paint).toBe(0);
+        expect(first.fever).toBe(0);
+        expect(first.burn).toBeLessThan(1.05);
+        for (let n = 2; n <= 12; n++) {
+            chainStep(world, n);
+            stepTo(world, camera, world.time + 0.64);
+        }
+        const late = wears(world);
+        // Twelve clears later it is in a fever, and everything the build-up turns is higher.
+        expect(late.fever).toBeGreaterThan(0.4);
+        expect(late.glow).toBeGreaterThan(first.glow + 0.2);
+        expect(late.paint).toBeGreaterThan(0.1);
+        expect(late.river).toBeGreaterThan(0.15);
+        expect(late.sheen).toBeGreaterThan(first.sheen);
+        expect(late.air).toBeLessThan(first.air - 0.1); // the storm's gloom takes the air
+        expect(late.saturation).toBeGreaterThan(first.saturation);
+        expect(late.iris).toBeLessThan(first.iris); // the iris closes as the land kindles
+        expect(late.zoom).toBeGreaterThan(0.2); // the view leans in
+        // The hands rest: the world breathes back; the rock stays wet and dries slowly.
+        stepTo(world, camera, world.time + 12);
+        const after = wears(world);
+        expect(after.fever).toBe(0);
+        expect(after.glow).toBeLessThan(0.01);
+        expect(after.paint).toBeLessThan(0.01);
+        expect(after.river).toBeLessThan(0.01);
+        expect(after.zoom).toBeLessThan(0.05);
+        expect(after.nod).toBeLessThan(0.05);
+        expect(after.burn).toBeCloseTo(rest.burn, 2);
+        expect(after.air).toBeCloseTo(rest.air, 2);
+        expect(after.iris).toBeCloseTo(rest.iris, 2);
+        expect(after.wet).toBeGreaterThan(0.3);
+        // Reduced motion keeps the view still through the same chain.
+        const calm = makeWorld();
+        calm.world.setReducedMotion(true);
+        for (let n = 1; n <= 12; n++) {
+            chainStep(calm.world, n);
+            stepTo(calm.world, calm.camera, calm.world.time + 0.64);
+        }
+        expect(calm.world.heat.fever).toBeGreaterThan(0.4);
+        expect(calm.world.nod).toBe(0);
+        expect(calm.world.zoom).toBe(0);
+        expect(calm.camera.fov).toBe(fovForAspect(16 / 9));
+    });
+
+    it('never cuts the light when a weaker hit follows a strong one', () => {
+        const { world, camera } = makeWorld();
+        const trace = [];
+        const run = (seconds) => {
+            const end = world.time + seconds;
+            while (world.time < end - 1e-9) {
+                stepTo(world, camera, world.time + 1 / 30);
+                const [front, river] = world.u.flood.value.toArray();
+                const [bow, second] = world.u.bow.value.toArray();
+                trace.push({
+                    t: world.time, flash: world.getPostState().flash, front, river, bow, second,
+                });
+            }
+        };
+        const quad = () => world.onClear({ lines: 4, rowCodes: rowsOf(0, 1, 2, 3), combo: 1 });
+        quad();
+        run(0.3);
+        // A single right after the quad.
+        world.onLock({ u: 0.4, rows: [19], color: PIECE_COLORS[2] });
+        world.onClear({ lines: 1, rowCodes: rowsOf(2), combo: 2 });
+        run(1.5);
+        // A second quad while the flood still runs, then the perfect clear's double bow.
+        quad();
+        run(1);
+        world.onClear({ lines: 4, perfect: true });
+        const crowned = world.time;
+        run(3);
+        // A chain of four breaks: its single bow joins the double one instead of replacing it.
+        world.onCombo(3);
+        world.onCombo(4);
+        world.onCombo(0);
+        expect(world.counts.releases).toBe(1);
+        run(3);
+        for (let i = 1; i < trace.length; i++) {
+            const a = trace[i - 1];
+            const b = trace[i];
+            // The flash only ever falls at its own pace; a new hit can only add to it.
+            const fallen = a.flash * Math.exp(-(b.t - a.t) / 0.32);
+            expect(b.flash, `flash at ${b.t.toFixed(2)}`).toBeGreaterThanOrEqual(fallen - 1e-4);
+            // The flood's front never snaps back up the river while there is water in it.
+            if (a.river > 0.005) expect(b.front, `front at ${b.t.toFixed(2)}`).toBeGreaterThanOrEqual(a.front);
+            if (a.t >= crowned) {
+                expect(b.bow, `bow at ${b.t.toFixed(2)}`).toBeGreaterThanOrEqual(a.bow - 1e-9);
+                expect(b.second).toBe(1);
+            }
+        }
+        expect(trace[trace.length - 1].bow).toBeGreaterThan(0.9);
+        // The quad's own row bands were never deleted by its tide: both quads' bands are there.
+        expect(world.counts.quads).toBe(2);
+    });
+
+    it('builds each wave of a cascade on the last, and answers a back-to-back with mica', () => {
+        const { world, camera } = makeWorld();
+        for (let depth = 1; depth <= 4; depth++) {
+            world.onClear({
+                lines: 1, rowCodes: rowsOf(depth), combo: 1, cascade: depth,
+            });
+        }
+        for (let i = 1; i < 4; i++) {
+            const [a0, a1] = wave(world, i - 1);
+            const [b0, b1] = wave(world, i);
+            expect(b0.x).toBeLessThan(a0.x); // it rises from deeper
+            expect(b0.y).toBeGreaterThan(a0.y); // faster
+            expect(b0.w).toBeGreaterThan(a0.w); // brighter
+            expect(b1.w).toBeGreaterThan(a1.w); // wider
+        }
+        // A back-to-back clear: brighter bands with a glint of mica, and the rock flares.
+        const plain = makeWorld();
+        plain.world.onClear({ lines: 4, rowCodes: rowsOf(0, 1, 2, 3), combo: 1 });
+        world.tables.reset();
+        world.onClear({
+            lines: 4, rowCodes: rowsOf(0, 1, 2, 3), combo: 1, b2b: true,
+        });
+        expect(wave(world, 0)[0].w).toBeGreaterThan(wave(plain.world, 0)[0].w);
+        stepTo(world, camera, world.time + 0.3);
+        stepTo(plain.world, plain.camera, plain.world.time + 0.3);
+        expect(world.u.sheen.value).toBeGreaterThan(plain.world.u.sheen.value + 0.3);
+    });
+
+    it('shows a T-spin that cleared nothing as a small dust devil', () => {
+        const { world, camera } = makeWorld();
+        const before = world.motes.cursor;
+        world.onSpin({ u: 0.3, color: PIECE_COLORS[1] });
+        expect(world.counts.tspins).toBe(1);
+        expect(world.motes.cursor).not.toBe(before);
+        stepTo(world, camera, world.time + 0.5);
+        expect(world.heat.level).toBeGreaterThan(0);
+    });
+
+    it('keeps the rain to its share of the motes, so the pigment and the dust devil survive it', () => {
+        const { world, camera } = makeWorld();
+        const { motes } = world;
+        world.onTSpin({ u: 0.2 });
+        const kindAt = (i) => Math.round(motes.kind[i * 4]);
+        const devils = () => Array.from({ length: motes.count }, (_, i) => i).filter((i) => kindAt(i) === 3);
+        const spun = devils();
+        expect(spun.length).toBeGreaterThan(0);
+        for (let n = 1; n <= 9; n++) world.onCombo(n);
+        stepTo(world, camera, world.time + 3);
+        const rain = Array.from({ length: motes.count }, (_, i) => i).filter((i) => kindAt(i) === 2);
+        expect(rain.length).toBeGreaterThan(0); // it rains at the eye
+        expect(rain.every((i) => i >= motes.pigmentSlots)).toBe(true);
+        expect(devils()).toEqual(spun);
+    });
+
+    it('gives up the faintest band when the table is full, never one still bright', () => {
+        const { world } = makeWorld();
+        const t = world.time;
+        world.tables.addWave({
+            g0: 0, climb: 60, time: t, power: 0.1, rgb: [1, 0, 0],
+        });
+        for (let i = 1; i < WAVES; i++) {
+            world.tables.addWave({
+                g0: i, climb: 60, time: t, power: 2, rgb: [0, 1, 0],
+            });
+        }
+        world.tables.addWave({
+            g0: 99, climb: 60, time: t, power: 2, rgb: [0, 0, 1],
+        });
+        expect(world.tables.waveCount).toBe(WAVES);
+        const powers = Array.from({ length: WAVES }, (_, i) => wave(world, i)[0].w);
+        expect(powers.every((p) => p === 2)).toBe(true); // the faint red band went
+        expect(Array.from({ length: WAVES }, (_, i) => wave(world, i)[0].x)).toContain(99);
     });
 });
 

@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import {
+    afterEach, describe, expect, it, vi,
+} from 'vitest';
 
 import {
     ARC_MODE,
@@ -17,7 +19,8 @@ import {
     resolveOpticsTierCaps,
     screenYToPillarV,
 } from '../../src/themes/parhelion/sim/parhelion-optics-state.js';
-import { CUE } from '../../src/themes/parhelion/sim/parhelion-reaction-director.js';
+import { CUE, ReactionDirector } from '../../src/themes/parhelion/sim/parhelion-reaction-director.js';
+import { REDUCED_FLASH_SCALE } from '../../src/utils/photosensitivity.js';
 import {
     DEFAULT_LAYOUT,
     MEASURED_VIEWPORTS,
@@ -720,13 +723,26 @@ describe('Parhelion resonance, level and ambient life (§7.4, §8)', () => {
         let out = state.update(0, 0);
         expect(out.k1[0]).toBe(0);
         expect(out.dogTint).toBe(0);
-        state.setResonance(1);
+        // The tiers spread over the chain: a little at combo 2, full by combo 9.
+        state.setResonance(0.2);
+        out = state.update(0, 0);
+        expect(out.dogTint).toBeGreaterThan(0);
+        expect(out.dogTint).toBeLessThan(0.5);
+        expect(out.k1[0]).toBe(0);
+        state.setResonance(0.9);
         out = state.update(0, 0);
         expect(out.dogTint).toBe(1);
         expect(out.k1[0]).toBeCloseTo(0.9, 6);
         expect(out.k0[2]).toBeCloseTo(idle.k0[2] + 0.78, 6);
         expect(out.k1[2]).toBeCloseTo(0.7, 6);
         expect(out.density).toBeCloseTo(idle.density + 0.15, 6);
+        expect(out.crossArm).toBe(0);
+        // Past ten the Sun Cross stands on top for as long as the chain lives.
+        state.setResonance(1);
+        out = state.update(0, 0);
+        expect(out.crossArm).toBeCloseTo(1.2 * 0.55, 6);
+        expect(out.k1[0]).toBeCloseTo(0.9 + 0.55, 6);
+        expect(out.k0[2]).toBeCloseTo(idle.k0[2] + 0.78 + 0.98 * 0.55, 6);
         const low = createState('Low');
         low.setResonance(1);
         const lowOut = low.update(0, 0);
@@ -903,5 +919,203 @@ describe('Parhelion keeps the board sanctuary (§7.3: nothing reactive spawns in
         expect(out.arcCount).toBe(ARC_SLOT.STATION_A + 1);
         expect(Math.abs(out.arcs[ARC_SLOT.STATION_A * 4])).toBeGreaterThan(Math.PI - 0.1);
         expect(out.arcs[ARC_SLOT.STATION_A * 4 + 1]).toBeCloseTo(0.5, 6);
+    });
+});
+
+describe('Parhelion builds with play (src/themes/shared/gameplay-surge.js)', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    /** Director + optics on one clock, the heat sampled every frame as the runtime does. */
+    function rig() {
+        const state = createState('High', { mode: 'serenity', aspect: 16 / 9 });
+        let now = 0;
+        const director = new ReactionDirector({
+            sink: {
+                cue: (c) => state.applyCue(c, now),
+                count: (n) => state.applyCount(n, now),
+                resonance: (r) => state.setResonance(r),
+                levelUp: (n) => state.setLevel(n, now),
+            },
+        });
+        const piece = {
+            shapeKey: 'I', x: 3, y: 23, shape: [[1, 1, 1, 1]],
+        };
+        const step = (dt = FRAME) => {
+            now += dt;
+            director.update(dt);
+            state.sampleHeat(now);
+            return state.update(now, dt);
+        };
+        const rest = (seconds) => {
+            let out = null;
+            for (let i = 0; i < Math.round(seconds / FRAME); i++) out = step();
+            return out;
+        };
+        const clear = (lines = 1) => {
+            director.onHardDrop({ piece, distance: 14 });
+            director.onPieceLock({ piece });
+            director.onLineClear({ lineCount: lines, clearedRows: [23] });
+            return step();
+        };
+        return {
+            state, director, step, rest, clear,
+        };
+    }
+
+    it('reads a long chain hotter than its first clear, the full display in a fever, then breathes back', () => {
+        const game = rig();
+        const atRest = snapshot(game.rest(1));
+        game.clear(1);
+        const first = snapshot(game.rest(0.3));
+        // After one clear the display is as designed: no fever arcs, no standing cross.
+        expect(first.k1[2]).toBe(0);
+        expect(first.crossArm).toBe(0);
+        expect(game.state.heat.stage).toBeLessThanOrEqual(1);
+        for (let link = 1; link < 12; link++) {
+            game.rest(0.64 - FRAME);
+            game.clear(link % 3 === 0 ? 3 : 2);
+        }
+        const peak = snapshot(game.rest(0.3));
+        expect(game.state.heat.stage).toBe(3); // fever
+        expect(peak.k0[1]).toBeGreaterThan(first.k0[1] + 0.8); // the hounds blaze
+        expect(peak.dogTail).toBeGreaterThan(first.dogTail + 0.5); // with comet tails
+        expect(peak.k1[2]).toBeGreaterThan(0.6); // Lowitz arcs
+        expect(peak.k1[0]).toBeGreaterThan(1.2); // the crown
+        expect(peak.k0[2]).toBeGreaterThan(first.k0[2] + 1); // the parhelic line
+        expect(peak.density).toBeGreaterThan(first.density + 0.25); // the dust thickens
+        expect(peak.crossArm).toBeGreaterThan(0.5); // the Sun Cross stands
+        expect(peak.warmth).toBeGreaterThan(atRest.warmth); // the light runs golden
+        expect(peak.exposure).toBeLessThan(1); // the iris closes a little
+
+        // A lock that clears nothing ends the chain; the hands rest: back to the calm disgame.
+        game.director.onPieceLock({
+            piece: {
+                shapeKey: 'O', x: 0, y: 2, shape: [[1, 1], [1, 1]],
+            },
+        });
+        const calm = snapshot(game.rest(12));
+        expect(game.state.heat.stage).toBe(0);
+        expect(calm.k1[2]).toBeCloseTo(atRest.k1[2], 2);
+        expect(calm.k1[0]).toBeCloseTo(atRest.k1[0], 2);
+        expect(calm.crossArm).toBeCloseTo(0, 2);
+        expect(calm.dogTail).toBeCloseTo(1, 2);
+        expect(calm.exposure).toBeCloseTo(1, 3);
+    });
+
+    it('never cuts the light when a weak beat follows a strong one', () => {
+        // A perfect clear's long Lumen hold, then a cascade's eight waves on the same channels.
+        const alone = createState();
+        const busy = createState();
+        const t0 = 2;
+        alone.applyCue(makeCue({ kind: CUE.PERFECT, lines: 4 }), t0);
+        busy.applyCue(makeCue({ kind: CUE.PERFECT, lines: 4 }), t0);
+        const waves = [];
+        for (let w = 2; w <= 9; w++) {
+            waves.push({
+                t: t0 + 0.5 + (w - 2) * 0.36,
+                cue: makeCue({
+                    kind: CUE.CLEAR, lines: 1, cascade: w, depth: w,
+                }),
+            });
+        }
+        let next = 0;
+        for (let i = 0; i < 300; i++) {
+            const t = t0 + i * FRAME;
+            while (next < waves.length && waves[next].t <= t) {
+                busy.applyCue(waves[next].cue, waves[next].t);
+                next += 1;
+            }
+            const a = alone.update(t, FRAME);
+            const b = busy.update(t, FRAME);
+            expect(b.k0[0]).toBeGreaterThanOrEqual(a.k0[0] - 1e-6); // the ring
+            expect(b.dogFlare[0]).toBeGreaterThanOrEqual(a.dogFlare[0] - 1e-6); // the hounds
+            expect(b.dogTail).toBeGreaterThanOrEqual(a.dogTail - 1e-6);
+        }
+
+        // A clear right after a quad still raises its hound pillar, lit on from the quad's.
+        const quad = createState();
+        quad.applyCue(makeCue({ kind: CUE.QUAD, lines: 4 }), 1);
+        const standing = (t) => {
+            const p = quad.out.pillars;
+            const age = t - p[0];
+            const life = p[3];
+            return p[1] * smoothstep(0, 0.15, age) * (1 - smoothstep(life * 0.55, life, age));
+        };
+        const before = standing(2.4);
+        expect(before).toBeGreaterThan(0.1);
+        quad.applyCue(makeCue({ kind: CUE.CLEAR, lines: 2 }), 2.4);
+        expect(standing(2.4)).toBeGreaterThanOrEqual(before);
+        expect(standing(3.2)).toBeGreaterThan(0.3); // still standing for the new clear
+    });
+
+    it('feeds the Sun Cross with every clear of the chain past ten instead of dropping it', () => {
+        const state = createState();
+        state.setResonance(1);
+        state.applyCue(makeCue({ kind: CUE.APEX, lines: 2, combo: 10 }), 1);
+        const opened = state.update(1.7, FRAME).crossArm;
+        // The 11th and 12th clears inside the cooldown keep their beat and grow the cross.
+        state.applyCue(makeCue({
+            kind: CUE.CLEAR, lines: 3, combo: 11, apex: true,
+        }), 1.7);
+        state.applyCue(makeCue({
+            kind: CUE.QUAD, lines: 4, combo: 12, apex: true,
+        }), 2.4);
+        const fed = state.update(2.7, FRAME).crossArm;
+        expect(fed).toBeGreaterThan(opened);
+        // The chain ends: the cross lets go over a few seconds, it never snaps off.
+        state.setResonance(0);
+        const later = state.update(4, FRAME).crossArm;
+        expect(later).toBeGreaterThan(0.2);
+        expect(later).toBeLessThan(fed);
+        expect(state.update(14, FRAME).crossArm).toBeLessThan(0.02);
+    });
+
+    it('keeps a lit trail of stations under rapid locks instead of cutting the oldest', () => {
+        const state = createState();
+        for (let i = 0; i < 4; i++) state.applyCue(makeCue({ kind: CUE.LOCK, lockCount: i + 1 }), 1 + i * 0.3);
+        const out = state.update(1.95, FRAME);
+        let lit = 0;
+        for (let i = 0; i < out.arcCount; i++) if (out.arcs[i * 4 + 1] > 0.01) lit += 1;
+        expect(lit).toBe(4);
+    });
+
+    it('lets a lone perfect clear crown the quad still climbing, with a shallow hush in a fever', () => {
+        const state = createState();
+        state.applyCue(makeCue({ kind: CUE.QUAD, lines: 4 }), 1);
+        state.applyCue(makeCue({ kind: CUE.PERFECT, lines: 4, crown: true }), 1.36);
+        // The reveal lands on the quad's meet (+0.85 s), not 0.35 s after the late perfect.
+        expect(state.hushBirth).toBeCloseTo(1 + PARHELION_TIMING.quadMeet - PARHELION_TIMING.reveal, 9);
+
+        // In a fever the hush only inhales.
+        const cold = createState();
+        const hot = createState();
+        hot.heat.level = 1;
+        cold.applyCue(makeCue({ kind: CUE.PERFECT, lines: 4 }), 1);
+        hot.applyCue(makeCue({ kind: CUE.PERFECT, lines: 4 }), 1);
+        expect(cold.update(1.3, FRAME).k1[3]).toBeLessThan(0.6);
+        expect(hot.update(1.3, FRAME).k1[3]).toBeGreaterThan(0.85);
+    });
+
+    it('holds frame-wide flashes back under Reduce flashing (ADR-0021)', () => {
+        const flashes = (reduce) => {
+            vi.stubGlobal('window', { settings: { reduceFlashing: reduce } });
+            const state = createState();
+            state.applyCue(makeCue({ kind: CUE.QUAD, lines: 4 }), 1);
+            const out = state.update(1 + PARHELION_TIMING.quadMeet + 0.08, FRAME);
+            return {
+                ringFlash: out.ringFlash,
+                prism: out.prism,
+                kick: out.bloomKick,
+                rim: out.rim - PARHELION_OPTICS_IDLE.rim,
+            };
+        };
+        const full = flashes(false);
+        const reduced = flashes(true);
+        expect(full.ringFlash).toBeGreaterThan(0.3);
+        for (const key of Object.keys(full)) {
+            expect(reduced[key], key).toBeCloseTo(full[key] * REDUCED_FLASH_SCALE, 5);
+        }
     });
 });

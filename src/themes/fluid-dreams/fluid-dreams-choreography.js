@@ -12,18 +12,31 @@
  *            hits harder);
  *   clear    a wave packet leaves the foot of the board, one crest per line; every stain it
  *            crosses flares and lets go, and a bead of that light climbs the thread into the
- *            Great Drop, which swells and takes the colour;
+ *            Great Drop, which swells and takes the colour (each wave of a cascade runs deeper,
+ *            wider and brighter than the one before);
  *   combo    the Drop buds one satellite per step of the chain and the whole sea charges;
- *   T-spin   the sea under the Drop winds into a funnel;
- *   four lines   the sea holds its breath, the Drop lets go of its thread and falls (or, when the
- *            world gives it a new home, leaps there in an arc and dives in): a crown of liquid
- *            stands up round the crater, a ring of split light crosses the sky, and the Drop is
- *            lifted back into the air on the column that follows, and hangs there;
- *   perfect  the sea turns to glass and a double ring opens overhead.
+ *   T-spin   the sea under the Drop winds into a funnel (a second one winds it deeper; a T-spin
+ *            that clears nothing still turns it a little);
+ *   B2B      the kin answer: they flare in dreamfire and ring the sea, and the clear's packet
+ *            runs twice;
+ *   four lines   the sea holds its breath (less the hotter play runs), the Drop lets go of its
+ *            thread and falls (or, when the world gives it a new home, leaps there in an arc and
+ *            dives in): a crown of liquid stands up round the crater, a ring of split light
+ *            crosses the sky, and the Drop is lifted back into the air on the column that
+ *            follows, and hangs there (a second four lines while it is down feeds the crater);
+ *   perfect  the sea turns to glass and a double ring opens overhead; settled after a four-line
+ *            clear it is the crown on that clear: the glass waits for the plunge's crown.
+ *
+ * Play builds (src/themes/shared/gameplay-surge.js): every hit adds to what is still lit, and the
+ * heat of play swells the sea, fattens the Great Drop, spins its ink, thickens and lights its
+ * thread; in a fever the film on every drop rolls through its colours, the satellites and the kin
+ * burn, and the sea pours up the thread in a stream of beads (the world lights the veins and burns
+ * the sea line with the same numbers). When the hands rest it all breathes back to calm.
  *
  * Everything here is a function of the event history and the clock, stepped with the frame's
  * delta, so a seek + replay reproduces a frame exactly.
  */
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import {
     CLEAR_REACH,
     CLEAR_SHAPE,
@@ -78,6 +91,22 @@ const SQUEEZE = 0.05;
 /** How briskly the kin follow their anchor across the sea (rad/s of a critically damped follow). */
 const KIN_DRIFT = 0.8;
 const WHITE = Object.freeze([1, 1, 1]);
+/**
+ * A packet that leaves the same place (within FOLD_REACH metres) less than FOLD_GAP seconds after
+ * another joins it: a burst of clears from one board swells one packet instead of filling the
+ * pool. (A cascade's waves, 0.36 s apart, each run as a packet of their own.)
+ */
+const FOLD_GAP = 0.3;
+const FOLD_REACH = 1;
+/** A packet weaker than this share of what it started with is all but gone: its slot may go. */
+const WAVE_SPENT = 0.12;
+/** The tallest a packet stands at its start (metres): the march stays conservative. */
+const WAVE_TALLEST = 0.85;
+/** A cascade wave past the first: this much more power each, up to CASCADE_MOST waves deep. */
+const CASCADE_STEP = 0.16;
+const CASCADE_MOST = 8;
+/** Packet height at its start for `lines` crests at `power`. */
+const packetHeight = (lines, power) => (0.26 + 0.07 * lines) * power;
 
 function rows(count) {
     return Array.from({ length: count }, () => ({
@@ -157,9 +186,31 @@ export class FluidChoreography {
         this.random = mulberry32(90210);
         this.reducedMotion = false;
         this._tmp = [0, 0, 0];
+        this._kinTint = [0, 0, 0];
         /** Where the kin float now (they drift to their anchor when it moves); null = at it. */
         this.kinAt = null;
         this.kinDrift = [0, 0, 0];
+        /** Where each of the three kin floats this frame, [x, z] (a back-to-back rings the sea there). */
+        this.kinSpots = [[0, 0], [0, 0], [0, 0]];
+
+        // Every hit adds to what is still lit (src/themes/shared/swell.js): a single after a
+        // four-line clear never cuts its light, and a burst of play rides up instead of strobing.
+        this._flash = new Swell({ release: 0.28, ceiling: 1, knee: 0.6 });
+        this._kick = new Swell({ release: 0.22, ceiling: 1.2, knee: 0.8 });
+        this._sky = new Swell({ release: 0.9, ceiling: 1, knee: 0.6 });
+        /** The funnel a T-spin winds: a second T-spin winds it deeper instead of starting it over. */
+        this._twist = new Swell({
+            attack: 0.2, release: 1.3, ceiling: 1.5, knee: 1,
+        });
+        /** The kin's dreamfire on a back-to-back: the next one in the run burns on what is left. */
+        this._kinFlare = new Swell({
+            attack: 0.08, release: 2.2, ceiling: 1.6, knee: 1,
+        });
+        /** How hot play runs (src/themes/shared/gameplay-surge.js), and its last reading. */
+        this.play = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
         this.reset();
     }
 
@@ -175,18 +226,35 @@ export class FluidChoreography {
         this.flash = 0;
         this.kick = 0;
         this.hush = 0;
+        /** How deep the next hush goes (1 from cold; shallow when play already runs hot). */
+        this.hushDepth = 1;
         this.gulp = 0;
         this.gulpTarget = 0;
         this.fed = [0, 0, 0];
         this.fedAmount = 0;
         this.spin = 0;
+        /** The film's sustained shift with the heat of play (added to filmShift for the material). */
+        this.sheen = 0;
+        /** Counts the beads a fever sends up the thread. */
+        this.beadClock = 0;
+        this.kinFlare = 0;
         this.satGrow = new Float32Array(HERO.satellites);
         this.flights = Array.from({ length: FLIGHT_SLOTS }, () => ({ active: false }));
         this.jets = Array.from({ length: JET_SLOTS }, () => ({ active: false }));
         this.ringPool = Array.from({ length: RING_SLOTS }, () => ({ active: false, t0: -1e9 }));
         this.dyePool = Array.from({ length: DYE_SLOTS }, () => ({ active: false, t0: -1e9 }));
         this.wavePool = Array.from({ length: WAVE_SLOTS }, () => ({ active: false, t0: -1e9 }));
-        this.gulps = [{ at: Infinity }, { at: Infinity }];
+        this.gulps = [{ at: Infinity, amp: 0, extra: 0 }, { at: Infinity, amp: 0, extra: 0 }];
+        this._flash.reset();
+        this._kick.reset();
+        this._sky.reset();
+        this._twist.reset();
+        this._kinFlare.reset();
+        this.play.reset();
+        this.heat.punch = 0;
+        this.heat.level = 0;
+        this.heat.fever = 0;
+        this.heat.stage = 0;
         // `from`: where the Drop hung when the clear came; `reach`: how far it travels to its home
         this.plunge = {
             active: false,
@@ -199,9 +267,18 @@ export class FluidChoreography {
             reach: 0,
             fall: PLUNGE.fall,
             total: PLUNGE.total,
+            /** What a second four-line clear while it is down adds to the impact still to come. */
+            boost: 0,
         };
         this.twist = { active: false, t0: 0 };
-        this.glass = { active: false, t0: 0 };
+        /**
+         * The sea as glass: from `t0` it eases to glass and holds until `until`, then lets go; a
+         * second perfect clear holds it longer instead of breaking it back to waves. Its ring of
+         * light keeps its own clock (`ringT0`).
+         */
+        this.glass = {
+            active: false, t0: 0, until: 0, level: 0, ringT0: -Infinity,
+        };
         this.dripCycle = null;
         this.idleBead = -1;
         this.random = mulberry32(90210);
@@ -211,6 +288,7 @@ export class FluidChoreography {
         this.prism.t0 = 0;
         this.vortex.depth = 0;
         this.vortex.arms = 0;
+        this.vortex.phase = 0;
     }
 
     setReducedMotion(reduced) {
@@ -240,9 +318,25 @@ export class FluidChoreography {
             const side = dx < 0 ? -1 : 1;
             this._flight(from, [to[0] + side * 1.9, to[1] - 1.6], color, 0.7, 0.07, true);
             this._flight(from, [to[0] - side * 1.3, to[1] + 1.4], color, 0.6, 0.12, true);
-            this.kick = Math.max(this.kick, 0.35);
+            this._strike(0, 0.35, 0);
         }
         this.filmShift += hardDrop ? 0.09 : 0.05;
+        this.play.lock({ hardDrop }, this.time);
+    }
+
+    /**
+     * A flash and a kick for the post stack and a breath of light in the sky, added to whatever
+     * is still lit (never restarting it), from `delay` seconds on.
+     */
+    _strike(flash, kick, sky, delay = 0) {
+        const at = this.time + delay;
+        if (flash > 0) this._flash.hit(flash, at);
+        if (kick > 0) this._kick.hit(kick, at);
+        if (sky > 0) this._sky.hit(sky, at);
+        // (the numbers the world reads stand up at once, as they did before they accumulated)
+        this.flash = this._flash.valueAt(this.time);
+        this.kick = this._kick.valueAt(this.time);
+        this.skyFlash = this._sky.valueAt(this.time);
     }
 
     _flight(from, to, color, power, delay, minor = false) {
@@ -275,70 +369,221 @@ export class FluidChoreography {
      * Lines cleared. `origin` is the sea point under the board the packet leaves from; `site`
      * (four lines only) is where the Great Drop will hang afterwards, [x, y, z]: it leaps there
      * and dives in, and the scene's hero anchor moves there. Without one it falls where it hangs.
-     * @param {{ origin: number[], lines: number, tspin?: boolean, perfect?: boolean, site?: number[] }} clear
+     * `cascade` is the deepest wave of the lock's cascade this clear is (1 = its first), `combo`
+     * the true chain it extends, `b2b` a back-to-back difficult clear.
+     * @param {{ origin: number[], lines: number, tspin?: boolean, perfect?: boolean, site?: number[],
+     *   cascade?: number, combo?: number, b2b?: boolean }} clear
      * @returns {boolean} true when this clear sent the Drop down (a four-line clear that arrives
-     *     while it is still down only sends its wave)
+     *     while it is still down feeds the crater instead)
      */
     clear({
-        origin, lines, tspin = false, perfect = false, site = null,
+        origin, lines, tspin = false, perfect = false, site = null, cascade = 1, combo = 1, b2b = false,
     }) {
         const n = Math.max(1, Math.min(4, Math.round(lines)));
         const { time } = this;
         const quad = n >= 4;
-        this._wave(origin[0], origin[1], n, quad ? 1.25 : 1, quad ? HUSH_HOLD : 0);
+        const hold = quad ? HUSH_HOLD : 0;
+        // Each wave of a cascade runs deeper than the last: more power, a crest more every four
+        // waves, a fuller bead, a harder hit.
+        const deeper = Math.max(0, Math.min(CASCADE_MOST, Math.round(Number(cascade) || 1) - 1));
+        const power = (quad ? 1.25 : 1) * (1 + CASCADE_STEP * deeper);
+        this._wave(origin[0], origin[1], n + deeper * 0.25, power, hold, { major: quad });
         // every stain the packet crosses flares and lets go
         for (let i = 0; i < this.dyePool.length; i += 1) {
             const s = this.dyePool[i];
             if (!s.active || s.releaseAt < Infinity) continue;
             const dist = Math.hypot(s.x - origin[0], s.z - origin[1]);
-            s.releaseAt = time + (quad ? HUSH_HOLD : 0) + clearPassTime(dist);
+            s.releaseAt = time + hold + clearPassTime(dist);
         }
         // a bead of light climbs the thread when the packet reaches its foot
         const toFoot = Math.hypot(this.stem.x - origin[0], this.stem.z - origin[1]);
-        this._gulp(time + clearPassTime(toFoot) + (quad ? HUSH_HOLD : 0), 0.22 + n * 0.08);
-        this.flash = Math.max(this.flash, 0.25 + n * 0.12);
-        this.kick = Math.max(this.kick, 0.2 + n * 0.12);
-        this.filmShift += 0.06 * n;
+        this._gulp(time + clearPassTime(toFoot) + hold, 0.22 + n * 0.08 + deeper * 0.03);
+        this._strike(0.25 + n * 0.12 + deeper * 0.03, 0.2 + n * 0.12 + deeper * 0.04, 0);
+        this.filmShift += 0.06 * n + 0.03 * deeper;
+        if (quad) {
+            // From cold the sea holds its breath fully; in a fever it barely pauses for it.
+            const p = this.plunge;
+            const down = p.active && time - p.t0 < p.total - 0.8;
+            if (!down) this.hushDepth = 1 - 0.75 * this.heat.level;
+        }
         const plunged = quad && this._startPlunge(site);
-        if (tspin) {
-            this.twist.active = true;
-            this.twist.t0 = time;
-        }
+        if (tspin) this._wind(1 + 0.12 * n);
+        if (b2b) this._backToBack(origin, n, power, hold);
         if (perfect) {
-            // (after four lines the sea turns to glass once the crown has gone up)
-            this.glass.active = true;
-            this.glass.t0 = time + (quad ? HUSH_HOLD + this.plunge.fall + 1.6 : 0);
+            // (with the Drop going down, the sea turns to glass once the crown has gone up)
+            const p = this.plunge;
+            this._glassFrom(p.active ? Math.max(time, p.t0 + p.fall + 1.6) : time);
         }
+        this.play.clear({
+            lines: n, cascade: deeper + 1, combo, tspin, perfect, b2b,
+        }, time + hold);
         return plunged;
     }
 
-    _wave(x, z, lines, power, delay) {
-        let slot = this.wavePool.find((w) => !w.active);
-        if (!slot) slot = this.wavePool.reduce((a, b) => (a.t0 < b.t0 ? a : b));
-        slot.active = true;
-        slot.t0 = this.time + delay;
-        slot.x = x;
-        slot.z = z;
-        slot.lines = lines;
-        slot.power = power;
+    /**
+     * A perfect clear settled after its clear's last wave (physics sends it ~360 ms later, in a
+     * frame of its own): the crown on the clear still playing, never a clear of its own. The sea
+     * turns to glass once the plunge's crown has gone up (at once when nothing is down), the
+     * double ring opens as the four-line ring lets go, and what the sea holds climbs the thread.
+     */
+    perfectCrown() {
+        const { time } = this;
+        const p = this.plunge;
+        const at = p.active ? Math.max(time, p.t0 + p.fall + 1.6) : time + 0.1;
+        this._glassFrom(at);
+        // the sea's light goes up the thread as the glass forms, and the Drop takes it
+        this._gulp(at, 0.5);
+        this._strike(0, 0, 0.45, at - time);
+        this.fedAmount = Math.min(1.3, this.fedAmount + 0.3);
+        this.play.crown(time);
     }
 
+    /** The sea under the Drop winds into a funnel, deeper for what is still turning. */
+    _wind(amount) {
+        this._twist.hit(amount, this.time);
+        this.twist.active = true;
+        this.twist.t0 = this.time;
+    }
+
+    /** The sea turns to glass from `at`, or, already glass, holds longer. */
+    _glassFrom(at) {
+        const g = this.glass;
+        const ringDone = this.time - g.ringT0 > 5.4;
+        if (!g.active) {
+            g.active = true;
+            g.level = 0;
+            g.t0 = at;
+            g.until = at + 3.6;
+        } else {
+            g.t0 = Math.min(g.t0, at);
+            g.until = Math.max(g.until, at + 3.6);
+        }
+        if (ringDone) g.ringT0 = at;
+    }
+
+    /**
+     * A T-spin that cleared nothing: the sea under the Drop turns a little, a ring opens round
+     * the thread's foot, and the film catches it.
+     */
+    spinNoLines() {
+        const { time } = this;
+        this._wind(0.45);
+        this._ring(this.stem.x, this.stem.z, 0.1, 13, this.heroTint, 0, true);
+        this._strike(0.08, 0.16, 0);
+        this.filmShift += 0.07;
+        this.play.spin(time);
+    }
+
+    /**
+     * A back-to-back: the kin answer the Great Drop — they flare in dreamfire (a run of them
+     * burns on what the last one left) and each rings the sea — and the packet runs twice.
+     */
+    _backToBack(origin, lines, power, hold) {
+        this._wave(origin[0], origin[1], lines, power * 0.8, hold + 0.22, { fold: false });
+        this._kinFlare.hit(1, this.time + hold);
+        for (let i = 0; i < this.kinSpots.length; i += 1) {
+            const [x, z] = this.kinSpots[i];
+            this._ring(x, z, 0.16 - i * 0.03, 15, DREAMFIRE, hold + 0.08 + i * 0.13);
+        }
+        this._strike(0, 0.15, 0.25, hold);
+    }
+
+    /**
+     * A packet from (x, z), `delay` seconds from now. One leaving where another left a breath ago
+     * joins it; when every slot but the big packets' is taken (or every one, for a big packet), a
+     * packet all but run out gives up its slot, and otherwise this one joins the youngest still
+     * running — a crest is never deleted mid-sea.
+     * @param {{ major?: boolean, fold?: boolean }} [options] major: four lines or the Drop's
+     *     impact; fold: false keeps it a packet of its own (a back-to-back's second run)
+     */
+    _wave(x, z, lines, power, delay, { major = false, fold = true } = {}) {
+        const at = this.time + delay;
+        const pool = this.wavePool;
+        const most = (lns) => WAVE_TALLEST / packetHeight(lns, 1);
+        let live = 0;
+        let free = null;
+        let youngest = null;
+        let weakest = null;
+        let weakestLeft = Infinity;
+        let joins = null;
+        for (let i = 0; i < pool.length; i += 1) {
+            const w = pool[i];
+            if (!w.active) {
+                if (!free) free = w;
+                continue;
+            }
+            live += 1;
+            if (!youngest || w.t0 > youngest.t0) youngest = w;
+            const left = this._waveLeft(w);
+            if (left < weakestLeft) {
+                weakestLeft = left;
+                weakest = w;
+            }
+            if (fold && Math.abs(at - w.t0) < FOLD_GAP && Math.hypot(w.x - x, w.z - z) < FOLD_REACH
+                && (!joins || w.t0 > joins.t0)) joins = w;
+        }
+        if (!joins) {
+            let slot = live < WAVE_SLOTS - (major ? 0 : 1) ? free : null;
+            if (!slot && weakest && (major || weakestLeft < WAVE_SPENT)) slot = weakest;
+            if (slot) {
+                slot.active = true;
+                slot.t0 = at;
+                slot.x = x;
+                slot.z = z;
+                slot.lines = Math.min(5, lines);
+                slot.linesTarget = slot.lines;
+                slot.power = Math.min(power, most(slot.lines));
+                slot.powerTarget = slot.power;
+                return;
+            }
+            joins = youngest;
+        }
+        // It joins a packet already running: that one swells (eased in, never a step).
+        joins.linesTarget = Math.min(5, Math.max(joins.linesTarget, lines) + 0.2);
+        joins.powerTarget = Math.min(most(joins.linesTarget), joins.powerTarget + power * 0.5);
+    }
+
+    /** What is left of a packet, as a share of how high it started (1 while it has not left). */
+    _waveLeft(w) {
+        const age = this.time - w.t0;
+        if (age <= 0) return 1;
+        const life = CLEAR_TRAVEL * 1.25;
+        return Math.max(0, 1 - age / life) ** 2;
+    }
+
+    /** A bead of light up the thread at `at`; with both beads taken it rides with the later one. */
     _gulp(at, amp) {
-        const slot = this.gulps[0].at <= this.gulps[1].at ? this.gulps[1] : this.gulps[0];
-        const free = this.gulps.find((g) => g.at === Infinity) || slot;
-        free.at = at;
-        free.amp = amp;
+        const free = this.gulps.find((g) => g.at === Infinity);
+        if (free) {
+            free.at = at;
+            free.amp = amp;
+            free.extra = 0;
+            return;
+        }
+        const later = this.gulps[0].at >= this.gulps[1].at ? this.gulps[0] : this.gulps[1];
+        if (later.at > this.time) {
+            // not climbing yet: it climbs fuller
+            later.amp = Math.min(0.75, later.amp + amp * 0.6);
+            later.at = Math.min(later.at, Math.max(at, this.time));
+        } else {
+            // already climbing: the Drop swallows more when it arrives, the bead keeps its size
+            later.extra += amp;
+        }
     }
 
     _startPlunge(site) {
         const p = this.plunge;
-        // a second four-line clear while the Drop is still down only sends its wave
-        if (p.active && this.time - p.t0 < p.total - 0.8) return false;
+        // a second four-line clear while the Drop is still down feeds the crater instead
+        if (p.active && this.time - p.t0 < p.total - 0.8) {
+            this._feedPlunge();
+            return false;
+        }
         p.active = true;
         p.t0 = this.time + HUSH_HOLD;
         p.impact = false;
         p.rain = -1;
         p.shed = -1;
+        p.boost = 0;
         // it leaves from where it hangs, and comes up where it will hang next
         const home = this.scene.hero;
         for (let i = 0; i < 3; i += 1) {
@@ -351,6 +596,33 @@ export class FluidChoreography {
         return true;
     }
 
+    /**
+     * A four-line clear while the Drop is down (a back-to-back Tetris): no second hush, no second
+     * fall. Before the impact it lands harder; after it, the crater answers again — rings of
+     * dreamfire, the overdrive climbs, the rain thickens.
+     */
+    _feedPlunge() {
+        const p = this.plunge;
+        if (!p.impact) {
+            p.boost = Math.min(1, p.boost + 0.5);
+            return;
+        }
+        const [x, z] = p.at;
+        this._ring(x, z, 0.26, 40, DREAMFIRE, HUSH_HOLD);
+        this._ring(x, z, 0.16, 30, DREAMFIRE, HUSH_HOLD + 0.3);
+        this.surge = Math.min(1.3, this.surge + 0.45);
+        this._strike(0.4, 0.5, 0.3, HUSH_HOLD);
+        this._burst('splash', x, 0.2, z, DREAMFIRE, 2.4);
+    }
+
+    /**
+     * The lens's kick at `time`: the events' own kick and a share of every hit of play. A pure
+     * reading (the camera is aimed before the frame's update, and a held clock holds it still).
+     */
+    kickAt(time) {
+        return this._kick.valueAt(time) + this.play.punch.valueAt(time) * 0.2;
+    }
+
     /** The true combo (0 = the chain broke). */
     setCombo(combo) {
         this.combo = Math.max(0, Math.round(Number(combo) || 0));
@@ -359,9 +631,9 @@ export class FluidChoreography {
     /** A new level: a soft packet from the foot of the board and a breath of light. */
     levelUp() {
         this._wave(this.scene.foot[0], this.scene.foot[1], 2, 0.7, 0);
-        this.flash = Math.max(this.flash, 0.5);
-        this.skyFlash = Math.max(this.skyFlash, 0.7);
+        this._strike(0.5, 0, 0.7);
         this.filmShift += 0.2;
+        this.play.levelUp(this.time);
     }
 
     /** `spare`: a ring that is only decoration is dropped when the pool is full. */
@@ -433,34 +705,62 @@ export class FluidChoreography {
 
         // ── scalars ──
         const power = powerForCombo(this.combo);
-        this.charge += (power - this.charge) * approach(power > this.charge ? 3.2 : 0.9, dt);
+        // (a broken chain's glow drains over a couple of seconds, not at once)
+        this.charge += (power - this.charge) * approach(power > this.charge ? 3.2 : 0.6, dt);
         this.surge *= Math.exp(-dt / 2.2);
-        this.flash *= Math.exp(-dt / 0.28);
-        this.kick *= Math.exp(-dt / 0.22);
-        this.skyFlash *= Math.exp(-dt / 0.9);
+        this.flash = this._flash.valueAt(time);
+        this.kick = this._kick.valueAt(time);
+        this.skyFlash = this._sky.valueAt(time);
+        this.kinFlare = this._kinFlare.valueAt(time);
         this.filmShift *= Math.exp(-dt / 1.3);
         this.gulpTarget *= Math.exp(-dt / 0.55);
         this.gulp += (this.gulpTarget - this.gulp) * approach(9, dt);
         this.fedAmount *= Math.exp(-dt / 14);
-        this.spin += dt * (0.22 + this.charge * 0.5 + this.surge * 0.6) * calm;
+
+        // ── the heat of play: calm, warm, hot, fever ──
+        const heat = this.play.sample(time);
+        this.heat.punch = heat.punch;
+        this.heat.level = heat.level;
+        this.heat.fever = heat.fever;
+        this.heat.stage = heat.stage;
+        const { level, fever } = heat;
+        // the lobes turn faster inside the Drop the hotter play runs
+        this.spin += dt * (0.22 + this.charge * 0.5 + this.surge * 0.6 + level * 0.3 + fever * 0.45) * calm;
+        // the film on every drop leans with the heat, and in a fever rolls through its colours
+        this.sheen = level * 0.08 + fever * (0.16 + 0.1 * calm * Math.sin(time * 0.9));
 
         const p = this.plunge;
         const pt = p.active ? time - p.t0 : -1; // < 0 during the hush
         const hushing = p.active && pt < 0;
-        this.hush += ((hushing ? 1 : 0) - this.hush) * approach(hushing ? 14 : 4, dt);
-        const glassAge = this.glass.active ? time - this.glass.t0 : -1;
-        if (this.glass.active && glassAge > 5.5) this.glass.active = false;
-        const glass = this.glass.active ? smooth(0, 0.5, glassAge) * (1 - smooth(3.6, 5.5, glassAge)) : 0;
-        const swellTarget = (1 + this.charge * 0.35 + this.surge * 0.3) * (1 - this.hush * 0.85)
-            * (1 - glass * 0.94) * calm;
+        this.hush += ((hushing ? this.hushDepth : 0) - this.hush) * approach(hushing ? 14 : 4, dt);
+        const g = this.glass;
+        if (g.active) {
+            const on = time >= g.t0 && time < g.until;
+            g.level += ((on ? 1 : 0) - g.level) * approach(on ? 6 : 1.9, dt);
+            if (!on && time >= g.until && g.level < 0.004) {
+                g.active = false;
+                g.level = 0;
+            }
+        }
+        const glass = g.level;
+        // the sea heaves harder as play heats, and in a fever rolls in one body
+        const swellTarget = (1 + this.charge * 0.35 + this.surge * 0.3 + level * 0.15 + fever * 0.2)
+            * (1 - this.hush * 0.85) * (1 - glass * 0.94) * calm;
         this.swell += (swellTarget - this.swell) * approach(5, dt);
+
+        // in a fever the sea pours up the thread in a stream of beads
+        if (fever > 0 && !p.active) {
+            const before = Math.floor(this.beadClock);
+            this.beadClock += dt * fever * 1.4;
+            if (Math.floor(this.beadClock) !== before) this._gulp(time, 0.1 + 0.1 * fever);
+        }
 
         this.live.fill(0);
         this._updateHero(time, dt, palette, pt, calm);
         this._updateKin(time, dt, palette, calm);
         this._updateFlights(time);
         this._updateJets(time);
-        this._updateSea(time, glass);
+        this._updateSea(time, glass, dt);
         this._writeBounds();
     }
 
@@ -514,14 +814,18 @@ export class FluidChoreography {
                 bead.y = -10;
                 bead.amp = 0;
                 if (age >= 0.95 && g.at !== Infinity) {
-                    // it arrives: the Drop swallows
-                    this.gulpTarget = Math.min(1.6, this.gulpTarget + g.amp * 2.2);
+                    // it arrives: the Drop swallows (with whatever rode up with it)
+                    this.gulpTarget = Math.min(1.6, this.gulpTarget + (g.amp + g.extra) * 2.2);
                     g.at = Infinity;
+                    g.extra = 0;
                 }
             }
         }
 
-        const swellR = 1 + HERO.swell * this.charge + this.gulp * 0.07;
+        // It grows on what it is fed: a chain charges it, every bead it swallows swells it, and
+        // the heat of play fattens it (a fever most).
+        const { level, fever } = this.heat;
+        const swellR = 1 + HERO.swell * this.charge + this.gulp * 0.07 + level * 0.05 + fever * 0.09;
         let R = HERO.radius * scale * swellR;
         // Where it hangs at rest. A plunge leaves from where it hung when the clear came and comes
         // up at its home, the same place unless the clear gave it a new one, so nothing jumps.
@@ -534,7 +838,8 @@ export class FluidChoreography {
         let spread = 1; // how far the lobes stand out of the core
         let stemOn = 1;
         let stemFoot = 0.8;
-        let stemWaist = 0.1 + this.charge * 0.14 + this.surge * 0.12;
+        // (the thread thickens to carry more as play heats)
+        let stemWaist = 0.1 + this.charge * 0.14 + this.surge * 0.12 + level * 0.04 + fever * 0.07;
         let crownAge = -1;
 
         if (p.active) {
@@ -607,10 +912,11 @@ export class FluidChoreography {
         stem.foot = stemFoot * scale;
         stem.top = R * 0.26;
         stem.off = stemOn > 0 && cy > R * 0.3 ? 0 : 9;
-        stem.glow = this.charge * 0.25 + this.surge * 0.3;
+        stem.glow = this.charge * 0.25 + this.surge * 0.3 + level * 0.2 + fever * 0.35;
 
         // ── the body: a core and lobes turning through it, joined by a soft union of their own ──
-        const glow = this.charge * 0.08 + this.surge * 0.2 + this.gulp * 0.1;
+        // (a little: light of its own makes it less of a window, and a fever's Drop went milky)
+        const glow = this.charge * 0.08 + this.surge * 0.2 + this.gulp * 0.1 + level * 0.03 + fever * 0.05;
         const tint = this.heroTint;
         // The union swells what it joins by about blend·ln(overlap); the balls are drawn smaller
         // by that much, and the rest is taken back out as a bias on the distance.
@@ -640,14 +946,15 @@ export class FluidChoreography {
         }
 
         // ── satellites: one buds off for every step of the chain ──
-        // (a falling Drop takes them with it at once: the crown needs their room in the table)
-        const falling = p.active && pt >= 0;
-        const want = falling ? 0 : Math.min(this.maxSatellites, this.combo);
+        // (a falling Drop gathers them in as it falls, and they bud again once its crown has gone
+        // down: the crown needs their room in the table; a broken chain lets them go slowly)
+        const down = p.active && pt >= 0 && crownAge < PLUNGE.crown;
+        const want = down ? 0 : Math.min(this.maxSatellites, this.combo);
         for (let j = 0; j < HERO.satellites; j += 1) {
             const target = j < want ? 1 : 0;
             const g = this.satGrow[j];
-            let rate = target > g ? 2.6 : 1.6;
-            if (falling) rate = 12;
+            let rate = target > g ? 2.6 : 0.8;
+            if (down) rate = 4;
             this.satGrow[j] = g + (target - g) * approach(rate, dt);
             const grow = this.satGrow[j];
             if (grow < 0.02 || cy < R) continue;
@@ -660,7 +967,7 @@ export class FluidChoreography {
             const hue = [palette.inkA, palette.inkB, palette.sun][j % 3];
             const c = mix3([0, 0, 0], hue, WHITE, 0.12);
             const sr = (0.42 + (j % 4) * 0.08) * scale * grow;
-            this._put(GROUP_HERO, cx + ox, cy + oy, cz + oz, sr, c, 0.7 + this.charge * 0.8);
+            this._put(GROUP_HERO, cx + ox, cy + oy, cz + oz, sr, c, 0.7 + this.charge * 0.8 + fever * 0.6);
         }
 
         // ── the crown: a wall of liquid stands up round the crater, draws into points, and each
@@ -708,20 +1015,21 @@ export class FluidChoreography {
             }
         }
 
-        // ── the funnel a T-spin winds ──
+        // ── the funnel a T-spin winds (a second one winds it deeper; it turns on, never restarts) ──
         const tw = this.twist;
         const { vortex } = this;
         if (tw.active) {
-            const age = time - tw.t0;
-            const env = smooth(0, 0.35, age) * (1 - smooth(1.5, 2.8, age));
+            const raw = this._twist.valueAt(time);
+            const env = Math.min(1.3, raw);
             vortex.x = sc.hero[0];
             vortex.z = sc.hero[2];
             vortex.depth = 1.15 * env * scale;
             vortex.radius = 4.6 * scale;
             vortex.arms = 0.55 * env;
-            vortex.phase = age * 7.5;
+            vortex.phase += dt * 7.5;
             this.spin += dt * 2.4 * env;
-            if (age > 2.8) {
+            // let go once it has wound up and run down to nothing worth drawing
+            if (raw < 0.02 && time - tw.t0 > 0.5) {
                 tw.active = false;
                 vortex.depth = 0;
                 vortex.arms = 0;
@@ -732,15 +1040,16 @@ export class FluidChoreography {
     /** The Great Drop meets the sea. */
     _impact(x, z, R) {
         const fire = DREAMFIRE;
-        this.surge = 1.0;
-        this.flash = 1;
-        this.kick = 1;
-        this.skyFlash = 0.7;
+        // (a second four-line clear on its way down makes it land harder)
+        const { boost } = this.plunge;
+        this.surge = Math.min(1.3, Math.max(this.surge, 1.0 + boost * 0.3));
+        this._strike(1, 1 + boost * 0.2, 0.7);
         this.prism.t0 = this.time;
         this.prism.on = true;
         this._ring(x, z, 0.34, 46, fire);
         this._ring(x, z, 0.2, 34, fire, 0.35);
-        this._wave(x, z, 4, 1.5, 0);
+        if (boost > 0) this._ring(x, z, 0.24, 52, fire, 0.7);
+        this._wave(x, z, 4, 1.5 + boost * 0.3, 0, { major: true });
         this._burst('crown', x, 0.2, z, fire, R);
         // everything the sea was holding goes up with it
         for (let i = 0; i < this.dyePool.length; i += 1) {
@@ -776,9 +1085,15 @@ export class FluidChoreography {
             [kx + 3.3 * s, ky + 2.5 * s + bob(0.43, 2.1), kz + 2.2, 0.95 * s, c1],
             [kx - 2.5 * s, ky - 1.5 * s + bob(0.37, 4.2), kz + 3.4, 0.62 * s, c0],
         ];
+        // A back-to-back's answer: the kin flare in dreamfire (a fever keeps them warm too).
+        const flare = this.kinFlare;
+        const glow = 0.06 + this.charge * 0.2 + flare * 1.3 + this.heat.fever * 0.25;
         for (let i = 0; i < bodies.length; i += 1) {
             const b = bodies[i];
-            this._put(GROUP_KIN, b[0], b[1], b[2], b[3], b[4], 0.06 + this.charge * 0.2);
+            this.kinSpots[i][0] = b[0];
+            this.kinSpots[i][1] = b[2];
+            const tint = flare > 0.001 ? mix3(this._kinTint, b[4], DREAMFIRE, Math.min(1, flare) * 0.55) : b[4];
+            this._put(GROUP_KIN, b[0], b[1], b[2], b[3], tint, glow);
         }
         // one of them lets a drip go every few seconds
         const period = 5.6;
@@ -901,7 +1216,7 @@ export class FluidChoreography {
 
     // ── the sea's tables ────────────────────────────────────────────────────────
 
-    _updateSea(time, glass) {
+    _updateSea(time, glass, dt) {
         const t = this.tables;
         // ring trains
         let n = 0;
@@ -968,11 +1283,14 @@ export class FluidChoreography {
         }
         this.counts.dye = n;
 
-        // wave packets
+        // wave packets (one another packet joined swells to its new height over a few frames)
         n = 0;
+        const join = approach(5, dt);
         for (let i = 0; i < this.wavePool.length; i += 1) {
             const w = this.wavePool[i];
             if (!w.active) continue;
+            w.power += (w.powerTarget - w.power) * join;
+            w.lines += (w.linesTarget - w.lines) * join;
             const age = time - w.t0;
             if (age < 0) continue;
             const life = CLEAR_TRAVEL * 1.25;
@@ -1009,13 +1327,13 @@ export class FluidChoreography {
             if (age > 5) pr.on = false;
         }
         let glassRing = 0;
-        if (this.glass.active) {
-            const age = time - this.glass.t0;
-            glassRing = 1.1 * smooth(0, 0.6, age) * (1 - smooth(3.4, 5.4, age)) * (1 - owned);
+        const ringAge = time - this.glass.ringT0;
+        if (ringAge >= 0 && ringAge < 5.4) {
+            glassRing = 1.1 * smooth(0, 0.6, ringAge) * (1 - smooth(3.4, 5.4, ringAge)) * (1 - owned);
         }
         if (glassRing > quad) {
             // a perfect clear's own ring: wide, pale and slow
-            pr.radius = 0.5 + (time - this.glass.t0) * 0.12;
+            pr.radius = 0.5 + ringAge * 0.12;
             pr.width = 0.07;
             pr.strength = glassRing;
         } else {

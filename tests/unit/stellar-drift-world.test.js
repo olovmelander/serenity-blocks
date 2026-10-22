@@ -468,10 +468,12 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
             expect(state.strikes).toBeLessThanOrEqual(STRIKE_SLOTS);
             expect(state.bolts).toBeLessThanOrEqual(BOLT_SLOTS);
         }
-        // Everything queued comes due: nothing waits for ever.
+        // Everything queued comes due: nothing waits for ever. (Play that hot leaves the giant's
+        // own meteors still falling for a while, so one may be on its way: never an overdue one.)
         world.onCombo(0);
         run(world, camera, 4, 240);
-        expect(world.getState().queued).toBe(0);
+        expect(world.getState().queued).toBeLessThanOrEqual(2);
+        expect(world.queue.every((moment) => moment.time > world.time)).toBe(true);
         world.u.events.array.forEach((v) => {
             [v.x, v.y, v.z, v.w].forEach((n) => expect(Number.isFinite(n)).toBe(true));
         });
@@ -520,6 +522,185 @@ describe('stellar drift world: a clear, a chain, a storm', () => {
         // Session reset also restores eligibility for the same milestone.
         clear(world, { combo: 5 });
         expect(played(world).surge).toBe(1);
+        world.dispose();
+    });
+});
+
+describe('stellar drift world: it builds with play instead of popping', () => {
+    /** The tray's Fever, as the director hands it on: twelve clearing hard drops, 0.64 s apart. */
+    const PLAN = [1, 1, 2, 1, 2, 2, 3, 'tspin', 2, 'cascade', 3, 'quad'];
+    const LINES = { tspin: 2, cascade: 2, quad: 4 };
+    function fever(world, camera, sample = () => {}) {
+        PLAN.forEach((step, n) => {
+            if (n > 0) run(world, camera, 0.64, 20);
+            const combo = n + 1;
+            const lines = LINES[step] ?? step;
+            const rows = [19, 18, 17, 16].slice(0, lines);
+            frame(world, camera, 1 / 60, () => {
+                lock(world, { hardDrop: true, rows: [19, 18] });
+                clear(world, {
+                    rows, lines, combo, tspin: step === 'tspin', color: COLORS[['I', 'O', 'L', 'T', 'S'][n % 5]],
+                });
+            });
+            if (step === 'cascade') {
+                for (let wave = 2; wave <= 4; wave++) {
+                    run(world, camera, 0.36, 11);
+                    frame(world, camera, 1 / 60, () => clear(world, {
+                        rows: [19], lines: 1, combo, cascade: wave,
+                    }));
+                }
+            }
+            sample(n, step);
+        });
+        // The perfect clear settles a beat after the quad's last wave, in a frame of its own.
+        run(world, camera, 0.36, 11);
+        frame(world, camera, 1 / 60, () => clear(world, {
+            rows: [], lines: 0, combo: PLAN.length, perfect: true,
+        }));
+    }
+
+    it('lets a weak flourish join a strong one still running instead of wiping it', () => {
+        const { world, camera } = makeWorld();
+        // A four-line clear's shell, then a level-up's softer one a beat later.
+        frame(world, camera, 1 / 60, () => clear(world, { rows: [19, 18, 17, 16], lines: 4 }));
+        run(world, camera, 0.2, 12);
+        const quadShell = { ...world.u.shock.value };
+        frame(world, camera, 1 / 60, () => world.levelUp(2));
+        // Both shells are in flight: the quad's is untouched and the new one went beside it.
+        const shells = [world.u.shock.value, world.u.shockB.value];
+        expect(shells.some((v) => v.x === quadShell.x && v.y === quadShell.y)).toBe(true);
+        expect(shells.every((v) => v.y > 0 && world.time - v.x < 1)).toBe(true);
+        // Two milestones of a chain a second apart: both surges race round the rings at once.
+        frame(world, camera, 1 / 60, () => clear(world, { combo: 3 }));
+        run(world, camera, 0.8, 24);
+        frame(world, camera, 1 / 60, () => clear(world, { combo: 5 }));
+        run(world, camera, 0.3, 9);
+        expect(world.u.surge.value.z).toBeGreaterThan(0.05);
+        expect(world.u.surgeB.value.z).toBeGreaterThan(0.05);
+        // A second T-spin feeds the storm still turning: it stays where it is and only gains.
+        frame(world, camera, 1 / 60, () => clear(world, { rows: [19, 18], lines: 2, tspin: true }));
+        run(world, camera, 1.5, 45);
+        const storm = { ...world.u.cyclone.value };
+        frame(world, camera, 1 / 60, () => clear(world, { rows: [], lines: 0, tspin: true }));
+        run(world, camera, 0.1, 3);
+        expect(world.u.cyclone.value.x).toBe(storm.x);
+        expect(world.u.cyclone.value.z).toBe(storm.z);
+        expect(world.u.cyclone.value.w).toBeGreaterThan(storm.w * 0.97);
+        expect(played(world).cyclone).toBe(2);
+        // A back-to-back while the strand still burns feeds it: no gap in its light.
+        frame(world, camera, 1 / 60, () => clear(world, { rows: [19, 18], lines: 2, b2b: true }));
+        run(world, camera, 0.8, 24);
+        const before = world.u.strand.value.y;
+        const phase = world.u.strand.value.x;
+        let least = Infinity;
+        frame(world, camera, 1 / 60, () => clear(world, { rows: [19, 18], lines: 2, b2b: true }));
+        for (let i = 0; i < 30; i++) {
+            frame(world, camera, 1 / 60);
+            least = Math.min(least, world.u.strand.value.y);
+        }
+        expect(least).toBeGreaterThan(before * 0.85);
+        expect(world.u.strand.value.x).toBe(phase);
+        world.dispose();
+    });
+
+    it('never cuts a bright chime for a new one while a faded one can go', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 1 / 60, () => clear(world, { rows: [19], lines: 1 }));
+        const old = world.chimes.items.find((item) => item.live);
+        run(world, camera, 3, 60);
+        for (let i = 0; i < CHIME_SLOTS - 1; i++) {
+            frame(world, camera, 1 / 60, () => clear(world, { rows: [19], lines: 1 }));
+        }
+        const bright = world.chimes.items.filter((item) => item.live && item !== old).map((item) => item.birth);
+        frame(world, camera, 1 / 60, () => clear(world, { rows: [19], lines: 1 }));
+        // The faded one gave up its slot; every bright one is still ringing.
+        const ringing = world.chimes.items.filter((item) => item.live).map((item) => item.birth);
+        bright.forEach((birth) => expect(ringing).toContain(birth));
+        world.dispose();
+    });
+
+    it('reads a long chain hotter than its first clear, and the fever as its own act', () => {
+        const { world, camera } = makeWorld();
+        const rest = {
+            glow: world.u.ringGlow.value.x,
+            spokes: world.u.ringGlow.value.y,
+            corona: world.u.drive.value.z,
+            plume: world.u.plume.value,
+            fov: camera.fov,
+        };
+        expect(rest.corona).toBe(0);
+        const reads = [];
+        fever(world, camera, () => reads.push({
+            glow: world.u.ringGlow.value.x,
+            spokes: world.u.ringGlow.value.y,
+            corona: world.u.drive.value.z,
+            wind: world.u.drive.value.x,
+            plume: world.u.plume.value,
+            exposure: world.getPostState().exposure,
+            stage: world.getState().heat.stage,
+        }));
+        const first = reads[0];
+        const late = reads[reads.length - 2];
+        // The first clear barely moves the world; late in the chain it is in full voice.
+        expect(first.corona).toBeLessThan(0.05);
+        expect(late.glow).toBeGreaterThan(first.glow);
+        expect(late.spokes).toBeGreaterThan(first.spokes);
+        expect(late.corona).toBeGreaterThan(0.3);
+        expect(late.wind).toBeGreaterThan(1.2);
+        expect(late.plume).toBeGreaterThan(first.plume);
+        expect(late.stage).toBeGreaterThanOrEqual(2);
+        expect(Math.max(...reads.map((r) => r.stage))).toBe(3);
+        // The iris closes as the heat adds light (and is open at rest).
+        expect(late.exposure).toBeLessThan(first.exposure);
+        expect(camera.fov).toBeLessThan(rest.fov);
+        world.dispose();
+    });
+
+    it('crowns a late perfect clear on the clear still playing, without a second clear', () => {
+        const { world, camera } = makeWorld();
+        frame(world, camera, 1 / 60, () => clear(world, { rows: [19, 18, 17, 16], lines: 4, combo: 1 }));
+        run(world, camera, 0.36, 11);
+        const { clears, quads } = world.counts;
+        const { jets } = live(world);
+        const quadShell = world.flourish.shock;
+        const quadBirth = quadShell.birth;
+        const glowBefore = world.u.ringGlow.value.x;
+        frame(world, camera, 1 / 60, () => clear(world, {
+            rows: [], lines: 0, combo: 1, perfect: true,
+        }));
+        run(world, camera, 0.2, 6);
+        expect(world.counts).toMatchObject({ clears, quads, perfects: 1 });
+        // No stray row is written round the giant.
+        expect(live(world).jets).toBeLessThanOrEqual(jets);
+        // The quad's shell runs on, and the crown's gold one goes beside it.
+        expect(world.lanes.shock.some((f) => f.birth === quadBirth)).toBe(true);
+        expect(world.flourish.shock.birth).toBeGreaterThan(quadBirth);
+        expect(played(world)).toMatchObject({ crown: 1, shock: 2, strand: 1 });
+        // Every ringlet gilded: the rings' colour leans to gold and their glow lifts.
+        expect(world.u.ringGlow.value.x).toBeGreaterThan(glowBefore);
+        expect(world.u.accent.value.x).toBeGreaterThan(world.u.accent.value.z);
+        world.dispose();
+    });
+
+    it('breathes back to rest when the hands rest', () => {
+        const { world, camera } = makeWorld();
+        const rest = {
+            glow: world.u.ringGlow.value.x, plume: world.u.plume.value, fov: camera.fov,
+        };
+        fever(world, camera);
+        world.onCombo(12);
+        run(world, camera, 0.5, 15);
+        const peak = world.u.drive.value.z;
+        world.onCombo(0);
+        run(world, camera, 14, 280);
+        expect(peak).toBeGreaterThan(0.2);
+        expect(world.u.drive.value.z).toBeLessThan(0.02);
+        expect(world.u.drive.value.x).toBeCloseTo(1, 2);
+        expect(world.u.ringGlow.value.x).toBeLessThan(rest.glow + 0.05);
+        expect(world.u.plume.value).toBeLessThan(rest.plume + 0.15);
+        expect(world.getPostState().exposure).toBeCloseTo(1, 2);
+        expect(camera.fov).toBeCloseTo(rest.fov, 1);
+        expect(world.getState().heat.stage).toBe(0);
         world.dispose();
     });
 });

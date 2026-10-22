@@ -93,8 +93,6 @@ const NEVER = -1e6;
 export class FxTable {
     constructor() {
         this.data = new Float32Array(FX_ROWS * 4);
-        this.burstCursor = 0;
-        this.beamCursor = 0;
         this.echoCursor = 0;
         this.reset();
     }
@@ -104,17 +102,39 @@ export class FxTable {
         for (let i = 0; i < BURST_SLOTS; i += 1) this.data[(ROW_BURST + i * BURST_ROWS) * 4 + 2] = NEVER;
         for (let i = 0; i < BEAM_SLOTS; i += 1) this.data[(ROW_BEAM + i * BEAM_ROWS) * 4 + 3] = NEVER;
         for (let i = 0; i < ECHO_SLOTS; i += 1) this.data[(ROW_ECHO + i * ECHO_ROWS) * 4 + 2] = NEVER;
-        this.burstCursor = 0;
-        this.beamCursor = 0;
         this.echoCursor = 0;
+    }
+
+    /**
+     * The slot to write next: one that is spent (or never used), else the one nearest its end, so
+     * a busy sky gives up its faintest light rather than a front still in flight.
+     * @param {number} row first row of the kind
+     * @param {number} rows rows per slot
+     * @param {number} slots slots of the kind
+     * @param {number} atIndex the float holding the start time
+     * @param {number} lifeIndex the float holding the life (-1: every slot lives `life`)
+     * @param {number} life
+     */
+    endingFirst(row, rows, slots, atIndex, lifeIndex, life) {
+        const d = this.data;
+        let best = 0;
+        let bestEnd = Infinity;
+        for (let i = 0; i < slots; i += 1) {
+            const o = (row + i * rows) * 4;
+            const end = d[o + atIndex] + (lifeIndex >= 0 ? d[o + lifeIndex] : life);
+            if (end < bestEnd) {
+                bestEnd = end;
+                best = i;
+            }
+        }
+        return best;
     }
 
     /** @returns {number} the slot written */
     burst({
         x, y, at, color, speed = 0.5, dirX = 0, dirY = 0, aim = 0, life = 0.9, size = 1,
     }) {
-        const slot = this.burstCursor;
-        this.burstCursor = (slot + 1) % BURST_SLOTS;
+        const slot = this.endingFirst(ROW_BURST, BURST_ROWS, BURST_SLOTS, 2, 10, 0);
         const o = (ROW_BURST + slot * BURST_ROWS) * 4;
         const d = this.data;
         const length = Math.hypot(dirX, dirY);
@@ -137,8 +157,7 @@ export class FxTable {
     beam({
         x0, y, x1, at, color, thickness,
     }) {
-        const slot = this.beamCursor;
-        this.beamCursor = (slot + 1) % BEAM_SLOTS;
+        const slot = this.endingFirst(ROW_BEAM, BEAM_ROWS, BEAM_SLOTS, 3, -1, BEAM_LIFE);
         const o = (ROW_BEAM + slot * BEAM_ROWS) * 4;
         const d = this.data;
         d[o] = x0;

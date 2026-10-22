@@ -303,6 +303,11 @@ export function createStillwaterUniforms(textures) {
         lilies: uniform(new THREE.Vector2(0, 0)),
         /** The moon's shafts between the trunks (0..1.5). */
         shafts: uniform(0.35),
+        /**
+         * How hot play runs: (level 0..1, the tarnfire 0..1: a fever of play, or a perfect clear's
+         * crown, spreading the heart's gold through the water and the mist on it).
+         */
+        heat: uniform(new THREE.Vector2(0, 0)),
         // ── Events ──
         /** How many (rings, strokes, wisps) are live: the loops over the tables stop there. */
         counts: uniform(new THREE.Vector4(0, 0, 0, 0)),

@@ -188,7 +188,7 @@ describe('Sunbraid braid: nudges (a lock, a T-spin, a level)', () => {
 describe('Sunbraid braid: a chain', () => {
     const { chain } = BRAID_EVENTS;
 
-    it('turns the suns faster and opens the spread with each step, up to its cap; a break eases both back', () => {
+    it('turns the suns faster and draws them closer with each step, toward its cap; a break eases both back', () => {
         const braid = stepTo(braidAt(0, P0), 2);
         braid.setCombo(1); // a chain of one is no chain
         stepTo(braid, 6);
@@ -198,25 +198,32 @@ describe('Sunbraid braid: a chain', () => {
         stepTo(braid, 6 + 10 * chain.ease);
         const three = { rate: rateOf(braid), spread: braid.spreadNow() };
         expect(three.rate / BRAID_RATE).toBeCloseTo(1 + 2 * chain.rate, 3);
-        expect(three.spread).toBeCloseTo(1 + 2 * chain.open, 3);
+        expect(three.spread).toBeCloseTo(1 - 2 * chain.draw, 3);
         braid.setCombo(6);
         stepTo(braid, braid.time + 10 * chain.ease);
         expect(rateOf(braid)).toBeGreaterThan(three.rate);
-        expect(braid.spreadNow()).toBeGreaterThan(three.spread);
-        // The cap: a chain past it turns no faster.
-        braid.setCombo(chain.cap + 1);
-        stepTo(braid, braid.time + 10 * chain.ease);
-        const capped = { rate: rateOf(braid), spread: braid.spreadNow() };
-        braid.setCombo(chain.cap + 30);
-        stepTo(braid, braid.time + 10 * chain.ease);
-        expect(rateOf(braid) / capped.rate).toBeCloseTo(1, 4);
-        expect(braid.spreadNow()).toBeCloseTo(capped.spread, 4);
+        expect(braid.spreadNow()).toBeLessThan(three.spread);
+        // Past the knee every step still counts, less and less, and the cap is never passed: a
+        // ten-chain reads hotter than a seven-chain, and no chain turns faster than the cap allows.
+        const at = (combo) => {
+            braid.setCombo(combo);
+            stepTo(braid, braid.time + 10 * chain.ease);
+            return { rate: rateOf(braid), spread: braid.spreadNow() };
+        };
+        const knee = at(chain.knee + 1);
+        const ten = at(chain.knee + 4);
+        const far = at(chain.knee + 60);
+        expect(ten.rate).toBeGreaterThan(knee.rate);
+        expect(ten.spread).toBeLessThan(knee.spread);
+        expect(far.rate).toBeGreaterThan(ten.rate);
+        expect(far.rate / BRAID_RATE).toBeLessThanOrEqual(1 + chain.cap * chain.rate + 1e-9);
+        expect(far.spread).toBeGreaterThanOrEqual(1 - BRAID_EVENTS.draw.most - 1e-9);
         // The chain breaks: both ease back, never snapping.
         braid.setCombo(0);
         const before = braid.spreadNow();
         braid.step(braid.time + DT, DT);
-        expect(braid.spreadNow()).toBeLessThan(before);
-        expect(braid.spreadNow()).toBeGreaterThan(before - 0.1);
+        expect(braid.spreadNow()).toBeGreaterThan(before);
+        expect(braid.spreadNow()).toBeLessThan(before + 0.1);
         stepTo(braid, braid.time + 12 * chain.ease);
         expect(braid.spreadNow()).toBeCloseTo(1, 3);
         expect(rateOf(braid) / BRAID_RATE).toBeCloseTo(1, 3);
@@ -366,14 +373,129 @@ describe('Sunbraid braid: four lines, one white sun', () => {
         expect(braid.whiteNow()).toBe(0);
     });
 
-    it('closes a chain\'s open spread too: the suns still meet in one point', () => {
+    it('closes a chain\'s drawn spread too: the suns still meet in one point', () => {
         const braid = braidAt(0, P0);
         braid.setCombo(6);
         stepTo(braid, 8);
-        expect(braid.spreadNow()).toBeGreaterThan(1);
+        expect(braid.spreadNow()).toBeLessThan(1);
         braid.conjoin(8);
         stepTo(braid, 8 + holdStart + 0.1);
         expect(braid.spreadNow()).toBe(0);
+    });
+});
+
+describe('Sunbraid braid: answers build, never restart', () => {
+    const c = BRAID_EVENTS.conjunction;
+
+    /** Spread and whiteness every frame from the braid's clock to `until`, with `act(braid, t)` per frame. */
+    function track(braid, until, act = () => {}) {
+        const out = [];
+        while (braid.time < until - 1e-9) {
+            const t = braid.time + DT;
+            act(braid, t);
+            braid.step(t, DT);
+            out.push({ t, spread: braid.spreadNow(), white: braid.whiteNow() });
+        }
+        return out;
+    }
+    /** The most a frame may move the spread: the widest part at its own pace, never a jump. */
+    const PART_STEP = (c.widest * 1.6 * DT) / c.part;
+    /** The most a frame may move the whiteness: its fade at its own pace. */
+    const WHITE_STEP = (1.6 * DT) / (c.part * 0.8);
+    const worstJump = (frames, key) => frames.reduce(
+        (worst, f, i) => (i ? Math.max(worst, Math.abs(f[key] - frames[i - 1][key])) : 0),
+        0,
+    );
+
+    it('holds the one white sun when four lines land again while the suns are joined, and parts them wider', () => {
+        const braid = stepTo(braidAt(0, P0), 2);
+        braid.conjoin(2);
+        const second = 2 + c.close + c.hold * 0.6;
+        let fed = false;
+        const frames = track(braid, 2 + 3 * c.close + 2 * c.hold + c.part + c.settle + 1, (b, t) => {
+            if (!fed && t >= second) {
+                b.conjoin(t);
+                fed = true;
+            }
+        });
+        // Never split back into three coloured suns: from the join on, one white sun until a full
+        // hold after the second four lines.
+        frames.filter((f) => f.t >= 2 + c.close && f.t < second + c.hold).forEach((f) => {
+            expect(f.white, `${f.t.toFixed(3)} s`).toBe(1);
+            expect(f.spread, `${f.t.toFixed(3)} s`).toBe(0);
+        });
+        expect(worstJump(frames, 'spread')).toBeLessThan(PART_STEP);
+        expect(worstJump(frames, 'white')).toBeLessThan(WHITE_STEP);
+        // The second parts them wider than one alone would, then they settle.
+        const widest = Math.max(...frames.map((f) => f.spread));
+        expect(widest).toBeGreaterThan(c.wide + c.wideStep * 0.9);
+        expect(widest).toBeLessThanOrEqual(c.widest + 1e-9);
+        expect(frames[frames.length - 1].spread).toBe(1);
+    });
+
+    it('draws the suns back in from where they stand when four lines land while they part', () => {
+        for (const late of [c.close + c.hold + c.part * 0.5, c.close + c.hold + c.part + c.settle * 0.4]) {
+            const braid = stepTo(braidAt(0, P0), 2);
+            braid.conjoin(2);
+            let fed = false;
+            const frames = track(braid, 2 + late + c.close + c.hold + c.part + c.settle + 1, (b, t) => {
+                if (!fed && t >= 2 + late) {
+                    b.conjoin(t);
+                    fed = true;
+                }
+            });
+            expect(worstJump(frames, 'spread'), `at ${late}`).toBeLessThan(PART_STEP);
+            expect(worstJump(frames, 'white'), `at ${late}`).toBeLessThan(WHITE_STEP);
+            // And they do meet again.
+            expect(frames.some((f) => f.t > 2 + late && f.white === 1 && f.spread === 0)).toBe(true);
+        }
+    });
+
+    it('crowns a joined sun with a longer hold, and lifts the suns from wherever an earlier crown has them', () => {
+        const braid = stepTo(braidAt(0, P0), 2);
+        braid.conjoin(2);
+        braid.crown(2 + 0.36);
+        stepTo(braid, 2 + c.close + c.hold + c.crown * 0.5);
+        expect(braid.whiteNow()).toBe(1); // still joined past a plain hold
+        const { noon } = BRAID_EVENTS;
+        // A second perfect clear while the first's climb is under way: no drop, a climb on.
+        let last = braid.liftNow();
+        stepTo(braid, braid.time + 0.5);
+        braid.crown(braid.time);
+        for (let i = 0; i < 300; i++) {
+            braid.step(braid.time + DT, DT);
+            const lift = braid.liftNow();
+            expect(lift).toBeGreaterThanOrEqual(last - 1e-9);
+            expect(lift).toBeLessThanOrEqual(noon.lift + 1e-12);
+            last = lift;
+        }
+    });
+
+    it('lets a weak breath never cut a strong one: the slot that gives way is the one with least to give', () => {
+        const braid = braidAt(0, P0);
+        braid.breathe(3, 0); // a deep one, just drawn in
+        for (let i = 1; i <= 8; i++) braid.breathe(1, 0.01 * i);
+        stepTo(braid, BRAID_EVENTS.breath.in);
+        // The triple's breath is still there: deeper than any number of singles alone would make it.
+        const singles = braidAt(0, P0);
+        for (let i = 1; i <= 8; i++) singles.breathe(1, 0.01 * i);
+        stepTo(singles, BRAID_EVENTS.breath.in);
+        expect(braid.spreadNow()).toBeLessThan(singles.spreadNow());
+    });
+
+    it('turns no faster and draws no closer than the chain and the heat allow; the conjunction frees the draw', () => {
+        const braid = stepTo(braidAt(0, P0), 1);
+        braid.setCombo(40);
+        braid.pull = 5;
+        stepTo(braid, 1 + 12 * BRAID_EVENTS.chain.ease);
+        expect(braid.spreadNow()).toBeCloseTo(1 - BRAID_EVENTS.draw.most, 3);
+        // The suns part wide: the draw is let go and they open past rest.
+        braid.conjoin(braid.time);
+        const t0 = braid.time;
+        stepTo(braid, t0 + c.close + c.hold + c.part);
+        expect(braid.spreadNow()).toBeCloseTo(c.wide, 6);
+        stepTo(braid, t0 + c.close + c.hold + c.part + c.settle + 0.5);
+        expect(braid.spreadNow()).toBeCloseTo(1 - BRAID_EVENTS.draw.most, 3);
     });
 });
 
@@ -460,7 +582,7 @@ describe('Sunbraid braid: determinism and snapshots', () => {
             phase: 0.25 + BRAID_RATE * 7, spread: 1, white: 0, dusk: 0,
         });
         expect(braid).toMatchObject({
-            time: 7, combo: 0, chainRate: 0, chainOpen: 0, base: 0,
+            time: 7, combo: 0, chainRate: 0, chainDraw: 0, base: 0, pull: 0,
         });
         expect(braid.tweens.every((tw) => !tw.live)).toBe(true);
         expect(braid.breaths.every((b) => !b.live)).toBe(true);

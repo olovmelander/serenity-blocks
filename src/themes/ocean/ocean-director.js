@@ -9,6 +9,10 @@
  *
  *   sink.lock({ player, rows, u, hardDrop, color, screen })
  *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, screen })
+ *   sink.perfect({ player })   a perfect clear on a frame of its own (it settles after its clear's
+ *                              last wave): the crown on the clear already sent, never a new clear.
+ *                              A sink without it is sent a clear of one line with `perfect` instead.
+ *   sink.spin({ player })      a T-spin that cleared nothing (a clear carries `tspin` instead)
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.levelUp(level)
  *
@@ -191,7 +195,10 @@ function capturePosition(slot, payload) {
 export class OceanDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, combo?: Function, levelUp?: Function },
+     *   sink?: {
+     *     lock?: Function, clear?: Function, perfect?: Function, spin?: Function, combo?: Function,
+     *     levelUp?: Function,
+     *   },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -212,6 +219,8 @@ export class OceanDirector {
             player: 0, rows: [], lines: 1, combo: 1, cascade: 1, tspin: false, perfect: false, b2b: false, screen: null,
         };
         this._screen = { x: 0.5, y: 0.5 };
+        /** What a crown (sink.perfect) and a spin with no clear (sink.spin) carry. */
+        this._crown = { player: 0 };
     }
 
     /**
@@ -361,7 +370,9 @@ export class OceanDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
+        // On its own frame it is the crown on a clear already sent (sink.perfect); only a sink
+        // that cannot take a crown is sent a clear of one line instead.
+        if (slot.lines === 0 && typeof this.sink?.perfect !== 'function') slot.lines = 1;
         return true;
     }
 
@@ -446,6 +457,11 @@ export class OceanDirector {
             c.b2b = slot.b2b;
             c.screen = screen;
             sink.clear(c);
+        } else if (slot.lines === 0 && sink) {
+            const c = this._crown;
+            c.player = slot.player;
+            if (slot.perfect && sink.perfect) sink.perfect(c);
+            if (slot.tspin && sink.spin) sink.spin(c);
         }
     }
 

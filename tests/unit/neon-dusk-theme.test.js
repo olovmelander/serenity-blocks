@@ -93,7 +93,7 @@ describe('neon-dusk theme wiring', () => {
         eventBus.emit(EVENTS.COMBO, { comboCount: 4 });
         eventBus.emit(EVENTS.LEVEL_UP, { level: 2 });
         expect(world.onPieceLock).toHaveBeenCalledWith(piece);
-        expect(world.onLineClear).toHaveBeenCalledWith(3);
+        expect(world.onLineClear).toHaveBeenCalledWith(3, { cascade: 1 });
         expect(world.onCombo).toHaveBeenCalledWith(4);
         expect(world.onLevelUp).toHaveBeenCalledTimes(1);
 
@@ -210,8 +210,10 @@ describe('neon-dusk world', () => {
         world.onPieceLock({ type: 'T', x: 1, rotation: 0 });
         const { iCell } = world.fx.tiles;
         const live = [];
+        // The cells ride the floor's scroll: z is stored at a scroll run of 0.
+        const run = world.u.scrollRun.value;
         for (let i = 0; i < iCell.count; i += 1) {
-            if (iCell.array[i * 4 + 2] > -1e5) live.push([iCell.array[i * 4], iCell.array[i * 4 + 1]]);
+            if (iCell.array[i * 4 + 2] > -1e5) live.push([iCell.array[i * 4], iCell.array[i * 4 + 1] + run]);
         }
         expect(live).toHaveLength(4);
         const S = GRID_SPACING;

@@ -121,15 +121,20 @@ export class BlackHolePost {
      * @param {object} frame
      * @param {number} frame.energy 0…1 — how wound-up the scene is
      * @param {number} frame.flash 0…1 — a brief lift on impacts
+     * @param {number} [frame.iris] 0…0.25 — exposure given back as play heats, so the hotter
+     *   gas keeps its colour instead of washing toward white
      * @param {Array<{x:number,y:number,radius:number,strength:number}>} [frame.ripples]
      */
     update(frame = {}) {
         if (this.disposed) return;
         const energy = bounded(frame.energy);
         const flash = bounded(frame.flash) * flashScale();
-        this.uExposure.value = EXPOSURE + flash * 0.07;
+        const iris = bounded(frame.iris, 0.25);
+        this.uExposure.value = EXPOSURE + flash * 0.07 - iris;
         this.uWarmth.value = energy;
-        if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + energy * 0.07 + flash * 0.05;
+        // The bloom barely rises with the heat: the gas, the ring and the jets carry the light
+        // themselves, and a haze over everything would wash their colours out.
+        if (this.bloomNode) this.bloomNode.strength.value = BLOOM_STRENGTH + energy * 0.035 + flash * 0.05;
         const ripples = frame.ripples || [];
         for (let slot = 0; slot < RIPPLE_SLOTS; slot += 1) {
             const ripple = ripples[slot];

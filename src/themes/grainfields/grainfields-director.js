@@ -8,7 +8,8 @@
  * theme's frame — resolves each slot into at most one `lock` and one `clear` for the sink:
  *
  *   sink.lock({ player, rows, u, hardDrop, distance, color, shape, cells, screen })
- *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, rowCodes, screen })
+ *   sink.clear({ player, rows, lines, combo, cascade, tspin, perfect, b2b, crown, rowCodes, screen })
+ *   sink.spin({ player, u })   a T-spin that cleared nothing (`u` the lock's column, as for a lock)
  *   sink.combo(n, player)      the true combo, whenever it changes (0 = the chain broke)
  *   sink.b2b(level, player)    the live back-to-back level (0..4), whenever it changes
  *   sink.levelUp(level)
@@ -47,6 +48,11 @@
  * (online play delivers clears late) picks the chain back up. If two locks share a frame and the
  * second starts a new chain (1 -> 0 -> 1), the sink is still told of the break: combo(0), then
  * combo(1).
+ *
+ * Perfect clear: physics settles it AFTER its clear's last wave, in a frame of its own. It then
+ * resolves as a clear with `crown: true`, `perfect: true` and no rows: the crown on the clear still
+ * playing, never a new one-line clear (a sink would otherwise answer a second clear for it). A
+ * perfect clear that lands in its clear's own frame rides on that clear (`crown` false).
  *
  * Back-to-back: the game sends B2B on each difficult clear (four lines or a T-spin) after the
  * first, and never says when the run ends. Each B2B steps the level (at most 4); a wave-1 clear
@@ -147,6 +153,8 @@ function createSlot() {
         tspin: false,
         perfect: false,
         b2b: false,
+        /** A perfect clear on a frame of its own: the crown on the clear before it. */
+        crown: false,
         hasPosition: false,
         posX: 0,
         posY: 0,
@@ -197,6 +205,7 @@ function clearPending(slot) {
     slot.tspin = false;
     slot.perfect = false;
     slot.b2b = false;
+    slot.crown = false;
     slot.hasPosition = false;
     slot.stash = 0;
 }
@@ -455,7 +464,10 @@ function capturePosition(slot, payload) {
 export class GrainfieldsDirector {
     /**
      * @param {{
-     *   sink?: { lock?: Function, clear?: Function, combo?: Function, b2b?: Function, levelUp?: Function },
+     *   sink?: {
+     *     lock?: Function, clear?: Function, spin?: Function, combo?: Function, b2b?: Function,
+     *     levelUp?: Function,
+     *   },
      *   enabled?: boolean, lockRipple?: boolean,
      * }} [options]
      */
@@ -490,9 +502,11 @@ export class GrainfieldsDirector {
             tspin: false,
             perfect: false,
             b2b: false,
+            crown: false,
             rowCodes: [],
             screen: null,
         };
+        this._spin = { player: 0, u: 0.5 };
         this._screen = { x: 0.5, y: 0.5 };
     }
 
@@ -599,6 +613,8 @@ export class GrainfieldsDirector {
         if (Array.isArray(rows)) wellCollapse(slot, rows);
         slot.lines = Math.max(slot.lines, lines);
         slot.waves += 1;
+        // A clear of its own: a perfect clear staged before it in this frame rides on it.
+        slot.crown = false;
         slot.cascade = Math.max(slot.cascade, cascade);
         // A clear that turns up after its lock's frame (online play) picks the chain back up.
         slot.breakSent = false;
@@ -627,6 +643,7 @@ export class GrainfieldsDirector {
             slot.explicitCombo = Math.max(slot.explicitCombo, count);
             capturePosition(slot, payload);
             if (slot.lines === 0) slot.lines = 1;
+            slot.crown = false;
         } else if (slot.waves > 0 && slot.explicitCombo >= 0) {
             slot.explicitCombo = Math.max(slot.explicitCombo, count);
         } else if (slot.waves > 0) {
@@ -648,6 +665,7 @@ export class GrainfieldsDirector {
         slot.b2bCandidate = false;
         const lines = Math.max(0, Math.min(MAX_ROWS, Math.trunc(finite(payload.lineCount, 0))));
         if (lines > slot.lines) slot.lines = lines;
+        if (lines > 0) slot.crown = false;
         return true;
     }
 
@@ -670,7 +688,11 @@ export class GrainfieldsDirector {
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
+        if (slot.lines === 0) {
+            // Settled after its clear's last wave: the crown on that clear, not a clear of its own.
+            slot.lines = 1;
+            slot.crown = true;
+        }
         slot.wellStamp.fill(0);
         return true;
     }
@@ -780,8 +802,15 @@ export class GrainfieldsDirector {
             c.tspin = slot.tspin;
             c.perfect = slot.perfect;
             c.b2b = slot.b2b;
+            c.crown = slot.crown;
             c.screen = screen;
             sink.clear(c);
+        } else if (slot.lines === 0 && slot.tspin && sink?.spin) {
+            // A T-spin that cleared nothing still turns a little wind where the piece fell.
+            const c = this._spin;
+            c.player = slot.player;
+            c.u = slot.lockU;
+            sink.spin(c);
         }
     }
 

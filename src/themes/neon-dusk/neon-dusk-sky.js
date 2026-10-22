@@ -70,20 +70,25 @@ export const ndSunColor = /* @__PURE__ */ Fn(([v]) => {
 
 /**
  * The sun's slits: open bands across the lower face, widening toward the base and sliding slowly
- * down it. `v` = vertical position on the disc, `fw` = its pixel footprint. 1 = face, 0 = slit.
+ * down it. `v` = vertical position on the disc, `fw` = its pixel footprint, `phase` = how far
+ * they have slid (in stripes: SLITS.speed a second at rest, the world quickens it as play
+ * heats). 1 = face, 0 = slit.
  */
 export const SLITS = Object.freeze({
     top: 0.34, period: 0.16, widest: 0.6, speed: 0.07,
 });
-export const ndSunSlits = (v, fw, time) => {
+export const ndSunSlits = (v, fw, phase) => {
     const k = 1 / SLITS.period;
     const open = clamp(float(SLITS.top).sub(v).div(SLITS.top + 0.62), 0.0, 1.0);
     const gap = pow(open, 0.85).mul(SLITS.widest);
-    const stripe = fract(v.mul(k).add(time.mul(SLITS.speed)));
+    const stripe = fract(v.mul(k).add(phase));
     const fs = max(fw.mul(k), 1e-4);
     const face = smoothstep(gap.sub(fs), gap.add(fs), stripe);
     return mix(float(1.0), face, step(0.002, gap));
 };
+
+/** A perfect clear's crown: the whole disc burns one saturated gold. */
+export const SUN_CROWN = rgb(0xffa21e, 1.3);
 
 /** Gaussian ring at r for slot P = (radius, 1/width, energy, 0). */
 const ringTerm = (r, P) => {
@@ -223,12 +228,14 @@ export function createSky(u, opts = {}) {
         const band = exp(abs(e).mul(-30.0)).mul(exp(abs(lx).mul(-1.8))).mul(0.5).mul(facing);
         col.addAssign(rgb(0xff2a7a).mul(wide).add(rgb(0xff6a2e).mul(halo)).add(rgb(0xff5a5e).mul(band)));
 
-        // ── The sun: a banded gradient disc, its slits widening toward the base ──
+        // ── The sun: a banded gradient disc, its slits widening toward the base. As play heats
+        // the face burns toward its gold crown; a perfect clear closes the slits (the crown) ──
         const discMask = float(1.0).sub(smoothstep(float(1.0).sub(fwR), float(1.0).add(fwR), r))
             .mul(facing).mul(above)
             .toVar();
-        const slit = ndSunSlits(v, fwV, u.time);
-        const sunCol = ndSunColor(v).mul(float(1.0).add(pulse.mul(0.45))).toVar();
+        const slit = mix(ndSunSlits(v, fwV, u.slitPhase), float(1.0), u.crown);
+        const sunCol = mix(ndSunColor(v.add(u.sunHeat.mul(0.25))), SUN_CROWN, u.crown.mul(0.6))
+            .mul(float(1.0).add(pulse.mul(0.45))).toVar();
         col.assign(mix(col, sunCol, discMask.mul(slit)));
 
         // ── Stratus bars: thin lenses of cloud lying along the horizon, broken along their
@@ -275,7 +282,8 @@ export function createSky(u, opts = {}) {
         }
 
         // ── Hologram halos: three pixel-thin dashed circles racing out of the sun's rim, with
-        // a faint glow behind them (line clears, big combos, level up) ──
+        // a faint glow behind them (line clears, big combos, level up; a T-spin's wheel round,
+        // P.w turning the dashes) ──
         const theta = atan(sd.y, sd.x);
         const thin = max(fwR.mul(1.3), 0.01);
         const holo = (P, segs, spin) => {
@@ -284,20 +292,22 @@ export function createSky(u, opts = {}) {
                 return exp(d.mul(d).negate()).mul(a);
             };
             const lines = lineAt(P.x, 1.0).add(lineAt(P.x.mul(1.07), 0.55)).add(lineAt(P.x.mul(1.14), 0.3));
-            const dash = smoothstep(0.3, 0.42, fract(theta.mul(segs / 6.2832).add(P.x.mul(spin))));
+            const dash = smoothstep(0.3, 0.42, fract(theta.mul(segs / 6.2832).add(P.x.mul(spin)).add(P.w)));
             return lines.mul(mix(float(0.2), float(1.0), dash)).add(ringTerm(r, P).mul(0.12)).mul(P.z);
         };
         // Event layers run only while an event is live: a uniform branch, so the whole draw
         // takes the same side and the idle sky skips them.
-        If(u.holo0.z.add(u.holo1.z).greaterThan(0.0), () => {
+        If(u.holo0.z.add(u.holo1.z).add(u.holo2.z).greaterThan(0.0), () => {
             const rings = rgb(0x39f0ff, 2.4).mul(holo(u.holo0, 48.0, 0.25))
-                .add(rgb(0xff5ad8, 2.4).mul(holo(u.holo1, 36.0, -0.25)));
+                .add(rgb(0xff5ad8, 2.4).mul(holo(u.holo1, 36.0, -0.25)))
+                .add(rgb(0xb46bff, 2.6).mul(holo(u.holo2, 42.0, 0.25)));
             col.addAssign(rings.mul(facing).mul(above));
         });
 
-        // ── Shooting stars (combos, and now and then at rest) ──
-        If(min(u.shoot0.w, u.shoot1.w).lessThan(1.0), () => {
-            const stars = shootingStar(az, e, u.shoot0, fwA).add(shootingStar(az, e, u.shoot1, fwA));
+        // ── Shooting stars (combos, a meteor shower in a fever, and now and then at rest) ──
+        If(min(min(u.shoot0.w, u.shoot1.w), u.shoot2.w).lessThan(1.0), () => {
+            const stars = shootingStar(az, e, u.shoot0, fwA).add(shootingStar(az, e, u.shoot1, fwA))
+                .add(shootingStar(az, e, u.shoot2, fwA));
             col.addAssign(rgb(0xd8f4ff, 3.0).mul(min(stars, 1.0)).mul(above));
         });
 

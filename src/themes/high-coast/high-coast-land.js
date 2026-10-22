@@ -471,8 +471,10 @@ export function createLandMaterial(u, t, tier) {
             albedo.assign(mix(albedo, albedo.mul(face.z.mul(0.3).add(0.85)), cliffy));
             albedo.assign(mix(albedo, c3(ROCK.ink), face.y.mul(cliffy).mul(0.7).mul(smoothstep(4.0, 12.0, P.y))));
         });
-        // Wet rock is darker and its colour deeper.
-        albedo.assign(mix(albedo, mix(vec3(hcLuma(albedo)), albedo, 1.25).mul(0.6), wet.mul(0.8)));
+        // Wet rock is darker and its colour deeper (deeper still as play heats: the risen band's
+        // darks under its gold).
+        const gold = u.heat.w.min(1.0).toVar();
+        albedo.assign(mix(albedo, mix(vec3(hcLuma(albedo)), albedo, 1.25).mul(0.6), wet.mul(gold.mul(0.14).add(0.8))));
 
         // ── Light ──
         const L = u.sunDir;
@@ -499,19 +501,23 @@ export function createLandMaterial(u, t, tier) {
             const spec = dot(n, hv).clamp(0.0, 1.0);
             const s2 = spec.mul(spec);
             const s8 = s2.mul(s2).mul(s2).mul(s2);
-            const glint = s8.mul(s8).mul(1.4).add(s8.mul(0.18)).add(s2.mul(0.02));
+            // (The rebound's flare also lifts the broad lobe a little: the whole risen band gleams.)
+            const glint = s8.mul(s8).mul(1.4).add(s8.mul(0.18)).add(s2.mul(u.rebound.mul(0.015).add(0.02)));
             lit.addAssign(u.sun.mul(glint).mul(wet).mul(shadow).mul(clouds)
                 .mul(u.sunUp)
-                .mul(u.rebound.mul(1.5).add(1.0))
+                .mul(u.rebound.mul(1.5).add(1.0).add(u.heat.w.mul(0.6)))
                 .mul(float(1.0).sub(cliffy.mul(0.8))));
-            // The film of water mirrors the sky (and, fresh from the sea, gleams a while).
+            // The film of water mirrors the sky (and, fresh from the sea, gleams a while). As play
+            // heats the film takes the low sun's gold instead of the pale horizon (about as bright,
+            // deeper), gathered in the pools: the crowns between stay dark.
             const film = float(1.0).sub(dot(view, n).clamp(0.0, 1.0)).pow(3.0).mul(0.22)
                 .add(0.02)
                 .add(u.drain.mul(0.18));
             // Water stands in the rock's hollows and runs off its crowns: the film is patchy.
             const pools = smoothstep(0.4, 0.62, texture(t.noise, xz.div(40.0).add(vec2(0.37, 0.19))).r);
-            lit.addAssign(u.horizon.mul(0.35).add(u.glow.mul(0.25)).mul(film).mul(wet)
-                .mul(pools.mul(0.75).add(0.25)));
+            const sheen = mix(u.horizon.mul(0.35).add(u.glow.mul(0.25)), u.glow.mul(0.4), gold.mul(0.85));
+            lit.addAssign(sheen.mul(film).mul(wet)
+                .mul(pools.mul(gold.mul(0.45).add(0.75)).add(float(0.25).sub(gold.mul(0.18)))));
             // Seawater running off the risen rock: white threads down the steeper faces.
             If(u.drain.greaterThan(0.01), () => {
                 const across = dot(xz, vec2(0.83, 0.56)).mul(1.7);

@@ -163,16 +163,19 @@ export const ATMOSPHERE_LOOK = Object.freeze({
     }),
 });
 
-/** Dust banks: world units per noise cell, cells drifted per second, height-haze multiplier range. */
+/**
+ * Dust banks: world units per noise cell and the height-haze multiplier range. Their drift (noise
+ * cells) is the world's uBankDrift: 0.006 cells a second at rest, integrated, so a storm drives
+ * the banks faster across the erg without ever jumping them.
+ */
 const DUST_BANK_SCALE = 850;
-const DUST_BANK_DRIFT = 0.006;
 const DUST_BANK_RANGE = Object.freeze([0.3, 2.7]);
 
 /**
  * Build the atmosphere graph helpers from the shared uniform nodes:
  *   u = { uSunA, uSunB, uSunLightA, uSunLightB, uZenith, uUpper, uHorizonWarm, uHorizonCool,
  *         uFog (x: distance density, y: height density, z: height falloff, w: max amount),
- *         uTime, uWindDir, noiseTex (the drifting dust banks) }
+ *         uBankDrift, uWindDir, noiseTex (the drifting dust banks) }
  * All helpers are plain JS graph builders: each material evaluates them once.
  */
 export function createAtmosphere(u) {
@@ -220,7 +223,7 @@ export function createAtmosphere(u) {
      */
     const dustBanks = (worldPos) => {
         const mid = mix(cameraPosition.xz, worldPos.xz, 0.7);
-        const p = mid.div(DUST_BANK_SCALE).sub(u.uWindDir.mul(u.uTime.mul(DUST_BANK_DRIFT)));
+        const p = mid.div(DUST_BANK_SCALE).sub(u.uWindDir.mul(u.uBankDrift));
         const n = ssTexNoise(u.noiseTex, p.add(vec2(23.1, 7.7)));
         return smoothstep(0.3, 0.75, n.x.mul(0.65).add(n.y.mul(0.35)));
     };

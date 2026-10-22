@@ -159,6 +159,16 @@ export const HUSH_HOLD = 0.22;
 export const SURGE_COOL = 3.4;
 /** Seconds an avalanche takes to run its track. */
 export const AVALANCHE_RUN = 9;
+/**
+ * Avalanches that can run at once: a second slide starts beside one still coming down instead
+ * of snatching it back to the top of the face.
+ */
+export const AVALANCHE_SLOTS = 2;
+/**
+ * Clears' light running down the mountain at once. A clear every two-thirds of a second (a
+ * quick chain) never has to cut a wave off halfway down the face to start the next one.
+ */
+export const WAVE_SLOTS = 3;
 
 /** The wind (m/s, +X is downwind) at rest; gusts and the chain raise it. */
 export const WIND = Object.freeze({ x: 9, y: 0.6, z: -3.2 });

@@ -8,7 +8,9 @@
  * and catches light on every arris.
  *
  * The crystals are the grotto's bells. A T-spin, three lines or the Great Bloom makes them
- * chime: a front of light runs root to point through every stone and splits into colours.
+ * chime: a front of light runs root to point through every stone and splits into colours. A
+ * chime that comes while another still rings adds to it: its front runs again from the roots
+ * while the stones stay lit, so a cascade rings them in sequence, louder each time.
  */
 
 import * as THREE from 'three/webgpu';
@@ -23,7 +25,6 @@ import {
     dFdx,
     dFdy,
     dot,
-    exp,
     float,
     fwidth,
     max,
@@ -49,6 +50,7 @@ import {
     blLockLight,
     blPart,
 } from './bioluminescence-tsl.js';
+import { Envelope } from './bioluminescence-envelope.js';
 
 /** Height (0..1) of the shoulder under the point in the unit crystal. */
 const SHOULDER = 0.78;
@@ -57,6 +59,8 @@ const CORNERS = [1.0, 0.86, 1.04, 0.9, 1.0, 0.84];
 /** Seconds a chime's front takes root to point, and its ring-down. */
 const CHIME_RISE = 0.34;
 const CHIME_FADE = 1.1;
+/** Chimes waiting for their moment (a chime may be called a moment ahead). */
+const CHIME_PENDING = 3;
 
 function unitCrystal() {
     const positions = [];
@@ -117,8 +121,14 @@ export function createCrystals(u, plan, { count }) {
     const axis = attribute('aAxis', 'vec4');
     const look = attribute('aLook', 'vec4');
     const facet = attribute('aFacet', 'vec2');
-    /** The chime: (birth time, strength). */
-    const chime = uniform(new THREE.Vector2(-100, 0));
+    /**
+     * The chime: (when the latest front left the roots, how loud the stones ring now, 1 while a
+     * front runs over stones still lit by an earlier one). The world's chimes add to one swell;
+     * update() writes what it reads.
+     */
+    const chime = uniform(new THREE.Vector3(-100, 0, 0));
+    const ringing = new Envelope({ release: CHIME_FADE, ceiling: 1.5, knee: 1.1 });
+    const fronts = new Float64Array(CHIME_PENDING).fill(Infinity);
 
     // They stand in the water: an upright screen draws them nearer the middle with the courts.
     const root = vec3(base.x.mul(u.squeeze), base.y, base.z);
@@ -196,8 +206,9 @@ export function createCrystals(u, plan, { count }) {
         // ── The chime: a front of light root to point, split into colours ──
         const age = u.time.sub(chime.x);
         const rise = age.div(CHIME_RISE);
-        const env = exp(max(age, 0.0).div(-CHIME_FADE)).mul(step(0.0, age)).mul(chime.y);
-        const band = blBell(t.sub(rise).div(0.3)).add(step(rise, 1.6).oneMinus().mul(0.35));
+        const env = chime.y;
+        // The front, and behind it the whole stone, held lit (at once, when it was still lit).
+        const band = blBell(t.sub(rise).div(0.3)).add(max(step(rise, 1.6).oneMinus(), chime.z).mul(0.35));
         const split = vec3(
             sin(facet.x.mul(2.4).add(t.mul(7.0)).add(rnd.mul(9.0))),
             sin(facet.x.mul(2.4).add(t.mul(7.0)).add(rnd.mul(9.0)).add(2.1)),
@@ -228,12 +239,45 @@ export function createCrystals(u, plan, { count }) {
     const part = blPart('BioluminescenceCrystals', geometry, material, -29);
     part.count = n;
     part.uniforms = { chime };
-    /** Ring every crystal at `time` (which may be a moment ahead). */
+    /** Ring every crystal at `time` (which may be a moment ahead), on top of any ring still sounding. */
     part.chime = (time, strength = 1) => {
-        chime.value.set(time, strength);
+        if (!(strength > 0) || !Number.isFinite(time)) return;
+        ringing.hit(strength, time);
+        // Its front waits for its moment (the queue is short: a full one keeps the latest).
+        let slot = fronts.indexOf(Infinity);
+        if (slot < 0) {
+            slot = 0;
+            for (let k = 1; k < CHIME_PENDING; k++) if (fronts[k] < fronts[slot]) slot = k;
+        }
+        fronts[slot] = time;
+    };
+    /** How loud the stones ring at `time`. */
+    part.ringAt = (time) => ringing.valueAt(time);
+    /** When the latest front that has left the roots by now left them. */
+    part.update = (time) => {
+        ringing.advance(time);
+        let due = -Infinity;
+        for (let k = 0; k < CHIME_PENDING; k++) {
+            if (fronts[k] <= time) {
+                due = Math.max(due, fronts[k]);
+                fronts[k] = Infinity;
+            }
+        }
+        if (due > -Infinity) {
+            // Were the stones still lit (as last shown) when this front set off? Then they stay lit
+            // behind it. One still on its way up leaves the hold as it was; from silence, a fresh
+            // sweep from the roots.
+            const before = chime.value.y;
+            if (!(before > 0.05)) chime.value.z = 0;
+            else if (due - chime.value.x > CHIME_RISE * 1.6) chime.value.z = 1;
+            chime.value.x = due;
+        }
+        chime.value.y = ringing.valueAt(time);
     };
     part.reset = () => {
-        chime.value.set(-100, 0);
+        ringing.reset();
+        fronts.fill(Infinity);
+        chime.value.set(-100, 0, 0);
     };
     return part;
 }

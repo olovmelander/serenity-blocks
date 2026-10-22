@@ -22,6 +22,7 @@ import { HITS, LIGHTS } from '../../src/themes/pyrestorm/pyrestorm-tsl.js';
 import { QUALITY_NAMES, tierFor } from '../../src/themes/pyrestorm/pyrestorm-quality.js';
 import { BOMB } from '../../src/themes/pyrestorm/pyrestorm-fire.js';
 import { fallbackLayout, outsideKeepOut } from '../../src/themes/pyrestorm/pyrestorm-composition.js';
+import { REDUCED_FLASH_SCALE } from '../../src/utils/photosensitivity.js';
 
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 120_000 });
 
@@ -434,9 +435,15 @@ describe('PyrestormWorld clears', () => {
         }
         expect(world.blastAt).toBe(first);
         expect(world.counts.quads).toBe(6);
+        // The quads inside the gap are not dropped: one blast waits for the gap, stronger than the first.
+        expect(world.blastDue).toBeCloseTo(first + FLASH_GAP, 9);
         stepTo(world, camera, first + FLASH_GAP + 0.05);
+        expect(world.blastAt).toBeCloseTo(first + FLASH_GAP, 9);
+        expect(world.blastPower).toBeGreaterThan(1);
+        expect(world.getPostState().flash).toBeGreaterThan(0);
         quad();
         expect(world.blastAt).toBeGreaterThan(first);
+        expect(world.blastAt).toBeLessThan(world.time);
     });
 
     it.each([1, 2, 3, 4])('schedules one ground bolt per line on a clear of %i (three and the discharge for four), staggered', (lines) => {
@@ -946,6 +953,187 @@ describe('PyrestormWorld state', () => {
         expect(world.counts.gameOvers).toBe(1);
         // The flash a big moment gives is small: never more than half the frame's light.
         expect(post.flash).toBeLessThanOrEqual(0.5);
+    });
+});
+
+describe('PyrestormWorld builds with play', () => {
+    const hardDrop = (world, k = 0) => world.onLock({
+        u: (k % 10) / 9, rows: [19], color: PIECE_COLORS[k % 7], cells: T_CELLS, hardDrop: true, distance: 18,
+    });
+    /** A chain like the tray's Fever: a hard-dropped clearing lock every 0.64 s, the combo climbing. */
+    function chain(world, camera, steps, sample) {
+        for (let n = 1; n <= steps; n++) {
+            hardDrop(world, n);
+            world.onClear({
+                lines: 1 + (n % 3), rows: [19, 18, 17].slice(0, 1 + (n % 3)), combo: n,
+            });
+            world.onCombo(n);
+            stepTo(world, camera, world.time + 0.64);
+            sample?.(n);
+        }
+    }
+
+    it.each(['Minimal', 'High'])('never cuts a bomb mid-arc under fast hard drops (%s)', (quality) => {
+        const { world, camera } = makeWorld({ quality });
+        const thrown = watchSpawns(world);
+        const perDrop = [];
+        for (let k = 0; k < 30; k++) {
+            thrown.length = 0;
+            hardDrop(world, k);
+            perDrop.push(thrown.filter((b) => b.kind === BOMB.bomb).length);
+            stepTo(world, camera, world.time + 0.3);
+        }
+        stepTo(world, camera, world.time + 8);
+        // Every bomb thrown flew its whole arc and every ember it promised lay where it landed...
+        expect(world.bombs.cut).toBe(0);
+        // ...while the pool was full (sparks and cooling embers gave way) and later bursts threw fewer.
+        expect(world.bombs.evicted).toBeGreaterThan(0);
+        expect(Math.min(...perDrop.slice(10))).toBeGreaterThan(0);
+        expect(Math.min(...perDrop.slice(10))).toBeLessThan(perDrop[0]);
+    });
+
+    it('never cuts the light with a weak event after a strong one', () => {
+        const a = makeWorld();
+        const b = makeWorld();
+        for (const { world } of [a, b]) world.onClear({ lines: 4, rows: [19, 18, 17, 16], combo: 1 });
+        stepTo(a.world, a.camera, a.world.time + 0.1);
+        stepTo(b.world, b.camera, b.world.time + 0.1);
+        // One world answers a plain lock and a single on top of the quad; the other lets it play.
+        b.world.onLock({ u: 0.5, rows: [19], color: PIECE_COLORS[0] });
+        b.world.onClear({ lines: 1, rows: [19], combo: 2 });
+        for (let k = 0; k < 90; k++) {
+            stepTo(a.world, a.camera, a.world.time + 1 / 30);
+            stepTo(b.world, b.camera, b.world.time + 1 / 30);
+            const label = `frame ${k}`;
+            expect(b.world.u.burst.value, label).toBeGreaterThanOrEqual(a.world.u.burst.value - 1e-9);
+            expect(b.world.u.fountain.value, label).toBeGreaterThanOrEqual(a.world.u.fountain.value - 1e-9);
+            expect(b.world.getPostState().flash, label).toBeGreaterThanOrEqual(a.world.getPostState().flash - 1e-9);
+        }
+    });
+
+    it('builds through a long chain: the fountain, the rivers, the crust and the storm all climb into a fever', () => {
+        const { world, camera } = makeWorld();
+        const rest = {
+            fountain: world.u.fountain.value, lavaHeat: world.u.lavaHeat.value, tremor: world.u.tremor.value,
+        };
+        const at = {};
+        chain(world, camera, 12, (n) => {
+            if (n === 1 || n === 12) {
+                at[n] = {
+                    fountain: world.u.fountain.value,
+                    lavaHeat: world.u.lavaHeat.value,
+                    tremor: world.u.tremor.value,
+                    charge: world.charge,
+                    exposure: world.getPostState().exposure,
+                    stage: world.play.stage,
+                };
+            }
+        });
+        expect(at[12].fountain).toBeGreaterThan(at[1].fountain + 0.5);
+        expect(at[12].lavaHeat).toBeGreaterThan(at[1].lavaHeat * 1.08);
+        expect(at[12].tremor).toBeGreaterThan(at[1].tremor + 0.1);
+        expect(at[12].charge).toBeGreaterThan(at[1].charge);
+        // The iris closes as the fire adds light, so the colours hold.
+        expect(at[12].exposure).toBeLessThan(at[1].exposure);
+        expect(at[12].stage).toBe(3);
+        // In the fever the storm breaks: strokes onto the plain with no clear to throw them.
+        const { bolts } = world.counts;
+        stepTo(world, camera, world.time + 2);
+        expect(world.counts.bolts).toBeGreaterThan(bolts);
+        // The hands rest: the mountain breathes back to how it was.
+        world.onLock({ u: 0.5, rows: [19], color: PIECE_COLORS[0] });
+        world.onCombo(0);
+        stepTo(world, camera, world.time + 20);
+        expect(world.play.stage).toBe(0);
+        expect(world.u.fountain.value).toBeLessThan(rest.fountain + 0.08);
+        expect(world.u.lavaHeat.value).toBeLessThan(world.light.lavaHeat * 1.01);
+        expect(world.u.tremor.value).toBeLessThan(0.02);
+        expect(world.getPostState().exposure).toBeGreaterThan(0.99);
+    });
+
+    it('builds a cascade wave on wave: each strikes harder than the last', () => {
+        const { world } = makeWorld();
+        const power = (cascade) => {
+            world.queue.forEach((q) => { q.at = Infinity; });
+            world.onClear({
+                lines: 1, rows: [19], combo: 1, cascade,
+            });
+            const bolts = world.queue.filter((q) => q.at < Infinity && q.kind === 'bolt');
+            return { strokes: bolts.length, power: Math.max(...bolts.map((q) => q.c)) };
+        };
+        const waves = [1, 2, 3, 4, 5].map(power);
+        for (let k = 1; k < waves.length; k++) expect(waves[k].power).toBeGreaterThan(waves[k - 1].power);
+        expect(waves[4].strokes).toBeGreaterThan(waves[0].strokes);
+    });
+
+    it('crowns the clear still playing on a late perfect clear: no second blast, the charge spent', () => {
+        const { world, camera } = makeWorld();
+        chain(world, camera, 6);
+        world.onClear({ lines: 4, rows: [19, 18, 17, 16], combo: 7 });
+        const blast = world.blastAt;
+        const { clears } = world.counts;
+        stepTo(world, camera, world.time + 0.36);
+        // The director's perfect clear: a later frame, one line, no rows of its own.
+        world.onClear({
+            lines: 1, rows: [], combo: 7, perfect: true,
+        });
+        expect(world.counts.clears).toBe(clears);
+        expect(world.counts.perfects).toBe(1);
+        expect(world.blastAt).toBe(blast);
+        expect(world.blastDue).toBe(Infinity);
+        const charged = world.charge;
+        expect(charged).toBeGreaterThan(0.3);
+        stepTo(world, camera, world.time + 1.5);
+        // The crown's discharge spent the storm: it falls quiet and does not charge again at once.
+        expect(world.charge).toBeLessThan(charged * 0.5);
+        expect(world.u.sheet.value.y).toBeGreaterThan(0);
+    });
+
+    it('answers a T-spin that cleared nothing with a small ring, and stacks a second ring above the first', () => {
+        const { world, camera } = makeWorld();
+        world.onLock({
+            u: 0.5, rows: [19], color: PIECE_COLORS[2], tspin: true,
+        });
+        expect(world.counts.tspins).toBe(1);
+        stepTo(world, camera, world.time + 0.5);
+        const small = world.getState().eventPuffs;
+        expect(small).toBeGreaterThan(0);
+        const spawned = [];
+        const spawn = world.smoke.spawn.bind(world.smoke);
+        vi.spyOn(world.smoke, 'spawn').mockImplementation((p) => {
+            spawned.push(p);
+            return spawn(p);
+        });
+        const ringBase = () => Math.min(...spawned.filter((p) => p.kind === 2).map((p) => p.y));
+        world.onClear({
+            lines: 2, rows: [19, 18], combo: 1, tspin: true,
+        });
+        const first = ringBase();
+        spawned.length = 0;
+        stepTo(world, camera, world.time + 1);
+        world.onClear({
+            lines: 2, rows: [19, 18], combo: 2, tspin: true,
+        });
+        expect(ringBase()).toBeGreaterThan(first);
+    });
+
+    it('holds the shock front, the sheet and the crater flash back under Reduce flashing', () => {
+        const run = (reduce) => {
+            vi.stubGlobal('window', { settings: { reduceFlashing: reduce } });
+            const { world, camera } = makeWorld();
+            world.onClear({ lines: 4, rows: [19, 18, 17, 16], combo: 1 });
+            world.onClear({ lines: 4, perfect: true });
+            stepTo(world, camera, world.time + 0.3);
+            const out = { shock: world.u.shock.value.y, sheet: world.u.sheet.value.y };
+            vi.unstubAllGlobals();
+            return out;
+        };
+        const full = run(false);
+        const held = run(true);
+        expect(full.shock).toBeGreaterThan(0);
+        expect(full.sheet).toBeGreaterThan(0);
+        expect(held.shock).toBeCloseTo(full.shock * REDUCED_FLASH_SCALE, 6);
+        expect(held.sheet).toBeCloseTo(full.sheet * REDUCED_FLASH_SCALE, 6);
     });
 });
 

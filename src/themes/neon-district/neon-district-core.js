@@ -18,9 +18,14 @@ export const STREET = Object.freeze({
     plinth: 5.6,
 });
 
-/** Gameplay pulse slots evaluated by the materials. */
+/**
+ * Gameplay pulse slots evaluated by the materials. A new event takes the slot with the least
+ * light left in it (never one whose wave is still running up the street while another has
+ * passed): four clear slots hold a four-wave cascade (waves 360 ms apart, 1.1 s up the street)
+ * with every front intact.
+ */
 export const LOCK_SLOTS = 4;
-export const CLEAR_SLOTS = 2;
+export const CLEAR_SLOTS = 4;
 
 /** Lock shell: radius R·(1 − e^(−age/τ)), a shell LOCK_SHELL_WIDTH thick, fading at LOCK_FADE /s. */
 export const LOCK_REACH = 30;

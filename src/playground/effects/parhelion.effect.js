@@ -775,6 +775,7 @@ export function create(ctx) {
             }
         }
         post?.setBloomKick(out.bloomKick);
+        post?.setExposure(out.exposure);
         // Reduced motion: the optics state's camera breath scale (0.3) damps the rig's float.
         cameraRig.breatheScale = CAMERA_RIG.BREATHE_SCALE * out.breathScale;
         shake.yaw = out.shake.yawDeg * DEG;
@@ -787,6 +788,8 @@ export function create(ctx) {
             optics.applyCue(pulseCue, t - pulseAge);
             pulsePending = false;
         }
+        // The heat of play, once a frame on this clock (a seek holds the fever: GameplaySurge).
+        optics.sampleHeat(t);
         let out;
         if (seeking) {
             optics.seek(t);

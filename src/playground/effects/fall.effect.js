@@ -73,7 +73,7 @@ export function create({
         world?.update(time, dt, frame);
         post?.update(frame);
     };
-    // ?event=lock|drop|clear|double|triple|tetris|combo|streak|spin|perfect|level, placed
+    // ?event=lock|drop|clear|double|triple|tetris|combo|streak|spin|perfect|b2b|level, placed
     // with ?col=0..9 and ?row=0..19 (0 is the top visible row).
     const fire = (event) => {
         const column = Number(params.get('col') ?? 1);
@@ -99,6 +99,7 @@ export function create({
             }
         } else if (event === 'spin') reactions.onTSpin({ piece });
         else if (event === 'perfect') reactions.onPerfectClear();
+        else if (event === 'b2b') reactions.onBackToBack();
         else if (event === 'level') reactions.onLevelUp();
     };
     const seek = (time) => {

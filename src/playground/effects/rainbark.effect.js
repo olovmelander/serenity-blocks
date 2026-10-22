@@ -207,6 +207,7 @@ export function create({
         sink: {
             lock: (c) => world.onLock(c),
             clear: (c) => world.onClear(c),
+            spin: (c) => world.onSpin(c),
             combo: (n) => world.onCombo(Math.max(n, holdCombo)),
             b2b: (level) => world.onB2B(Math.max(level, holdB2B)),
             levelUp: (lv) => world.levelUp(lv),

@@ -30,17 +30,36 @@ export const MOTE_KIND = Object.freeze({
 });
 
 /**
+ * The share of the pool the rain may hold. A chain's rain would otherwise fill the whole pool every
+ * few seconds and wipe the pigment puffs and a T-spin's dust devil exactly when play is richest;
+ * the rain has its own ring at the end of the buffer and the world caps its rate to fit it.
+ */
+export const RAIN_SHARE = 0.4;
+/** How far ahead of its cursor the pigment ring looks for a spent or fading slot to reuse. */
+const LOOK_AHEAD = 12;
+
+/**
  * One instanced quad per mote. Attributes (written once at spawn):
  *   aStart  (x, y, z, born)       aMove  (vx, vy, vz, life)
  *   aLook   (r, g, b, size m)     aKind  (kind, seed, swirl radius, rise accel)
  * Motion: p = start + v·age + ½·(0, rise, 0)·age², plus a curl (dust drifts and turns), or for a
  * dust devil a helix about the start point; rain falls straight and stretches along its fall.
+ *
+ * Two rings share the buffer: rain cycles through its own `rainSlots` at the end; everything else
+ * (pigment dust, sparks, the dust devil) through the rest, where a new mote takes a spent slot
+ * near the cursor, or else the one closest to the end of its life (the faintest), never a mote
+ * that has just risen.
  */
 export class Motes {
     constructor(u, count = 2048) {
         this.u = u;
         this.count = count;
+        this.rainSlots = Math.max(1, Math.floor(count * RAIN_SHARE));
+        this.pigmentSlots = Math.max(1, count - this.rainSlots);
         this.cursor = 0;
+        this.rainCursor = 0;
+        /** The present on the theme clock (set by the world before it spawns). */
+        this.now = -Infinity;
         const quad = new THREE.PlaneGeometry(1, 1);
         quad.deleteAttribute('normal');
         quad.deleteAttribute('uv');
@@ -151,8 +170,13 @@ export class Motes {
     spawn({
         x, y, z, vx = 0, vy = 0, vz = 0, born, life = 3, rgb = [1, 1, 1], size = 1, kind = MOTE_KIND.dust, seed = Math.random(), swirl = 0, rise = 0,
     }) {
-        const i = this.cursor;
-        this.cursor = (this.cursor + 1) % this.count;
+        let i;
+        if (kind === MOTE_KIND.rain) {
+            i = this.pigmentSlots + this.rainCursor;
+            this.rainCursor = (this.rainCursor + 1) % this.rainSlots;
+        } else {
+            i = this.claim();
+        }
         this.start.set([x, y, z, born], i * 4);
         this.move.set([vx, vy, vz, life], i * 4);
         this.look.set([rgb[0], rgb[1], rgb[2], size], i * 4);
@@ -163,6 +187,38 @@ export class Motes {
         return i;
     }
 
+    /**
+     * A pigment slot for a new mote: the first spent one within LOOK_AHEAD of the cursor, else the
+     * one there with the least of its life left (the faintest). A mote born ahead of the present
+     * (a dust devil rises over a few seconds) has all of its life left.
+     */
+    claim() {
+        const n = this.pigmentSlots;
+        const { now } = this;
+        let best = this.cursor;
+        if (!Number.isFinite(now)) {
+            this.cursor = (best + 1) % n;
+            return best;
+        }
+        let least = Infinity;
+        for (let k = 0; k < LOOK_AHEAD && k < n; k++) {
+            const j = (this.cursor + k) % n;
+            const born = this.start[j * 4 + 3];
+            const life = this.move[j * 4 + 3];
+            const left = (born + life - now) / Math.max(1e-3, life);
+            if (left <= 0) {
+                best = j;
+                break;
+            }
+            if (left < least) {
+                least = left;
+                best = j;
+            }
+        }
+        this.cursor = (best + 1) % n;
+        return best;
+    }
+
     /** Kill every mote (a seek, a new session). */
     clear() {
         for (let i = 0; i < this.count; i++) this.start[i * 4 + 3] = -1e6;
@@ -170,6 +226,7 @@ export class Motes {
         this.dirtyTo = this.count - 1;
         this.dirty = true;
         this.cursor = 0;
+        this.rainCursor = 0;
     }
 
     /** Upload what was written since the last frame (whole buffers: partial updates are unreliable). */

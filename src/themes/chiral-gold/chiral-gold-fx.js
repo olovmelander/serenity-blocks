@@ -402,21 +402,30 @@ export function createSparks(u, count) {
 // ── Blades ──────────────────────────────────────────────────────────────────────
 
 export const BLADE_ROWS = 4;
+/**
+ * Two banks of blades: a clear fires into the bank whose blades have burned out the most, so a
+ * cascade's next wave never cuts the last one's blades off in flight.
+ */
+export const BLADE_BANKS = 2;
 /** Seconds a blade's head takes from the board to the tower, and its afterglow. */
 export const BLADE_TRAVEL = 0.14;
 export const BLADE_FADE = 0.42;
 
 /**
- * Eight screen-space strips: one from each side of the card for up to four cleared rows. A blade
- * leaves the card level and arrives at the tower level, rising between: an S, not a ruled line.
+ * Screen-space strips: one from each side of the card for up to four cleared rows, in two banks.
+ * A blade leaves the card level and arrives at the tower level, rising between: an S, not a ruled
+ * line.
  */
 export function createBlades(u) {
-    const count = BLADE_ROWS * 2;
-    const aRow = new Float32Array(count * 2);
-    for (let i = 0; i < count; i++) aRow.set([Math.floor(i / 2), i % 2 ? 1 : -1], i * 2);
-    const geometry = cgStripGeometry(count, 28, { aRow: [aRow, 2] });
-    const row = attribute('aRow', 'vec2');
-    const uniforms = {
+    const count = BLADE_ROWS * 2 * BLADE_BANKS;
+    const aRow = new Float32Array(count * 3);
+    for (let i = 0; i < count; i++) {
+        const inBank = i % (BLADE_ROWS * 2);
+        aRow.set([Math.floor(inBank / 2), inBank % 2 ? 1 : -1, Math.floor(i / (BLADE_ROWS * 2))], i * 3);
+    }
+    const geometry = cgStripGeometry(count, 28, { aRow: [aRow, 3] });
+    const row = attribute('aRow', 'vec3');
+    const bankUniforms = () => ({
         /** Screen y (fractions, y down) of up to four rows; < 0 = unused. */
         rows: uniform(new THREE.Vector4(-1, -1, -1, -1)),
         /** Screen y each of those rows reaches its tower at. */
@@ -425,16 +434,23 @@ export function createBlades(u) {
         frame: uniform(new THREE.Vector4(0.4, 0.6, -100, 0)),
         /** Screen x (fractions) the left and right blades run out to: the towers' near sides. */
         reach: uniform(new THREE.Vector2(0.18, 0.82)),
-    };
+    });
+    const banks = Array.from({ length: BLADE_BANKS }, bankUniforms);
     const material = cgFxMaterial('ChiralGoldBlades', { depthTest: false });
+    const second = step(0.5, row.z);
+    const bank = (key) => mix(banks[0][key], banks[1][key], second);
+    const rowsU = bank('rows');
+    const endsU = bank('ends');
+    const frameU = bank('frame');
+    const reachU = bank('reach');
     const pick = (v) => mix(mix(v.x, v.y, step(0.5, row.x)), mix(v.z, v.w, step(2.5, row.x)), step(1.5, row.x));
-    const rowY = pick(uniforms.rows);
-    const endY = pick(uniforms.ends);
-    const used = step(0.0, rowY).mul(step(0.001, uniforms.frame.w));
+    const rowY = pick(rowsU);
+    const endY = pick(endsU);
+    const used = step(0.0, rowY).mul(step(0.001, frameU.w));
     const along = positionGeometry.x.add(0.5);
     const right = step(0.0, row.y);
-    const edge = mix(uniforms.frame.x, uniforms.frame.y, right);
-    const end = mix(uniforms.reach.x, uniforms.reach.y, right);
+    const edge = mix(frameU.x, frameU.y, right);
+    const end = mix(reachU.x, reachU.y, right);
     const sx = mix(edge, end, along);
     const thicknessPx = u.viewport.y.mul(0.036);
     const rise = along.mul(along).mul(float(3.0).sub(along.mul(2.0)));
@@ -442,9 +458,11 @@ export function createBlades(u) {
     material.vertexNode = vec4(sx.mul(2.0).sub(1.0).mul(used), float(1.0).sub(sy.mul(2.0)).mul(used), 0.0, 1.0);
     const vAlong = varying(along, 'cgBladeT');
     const vStagger = varying(row.x.mul(0.035), 'cgBladeLag');
+    const vBirth = varying(frameU.z, 'cgBladeBirth');
+    const vStrength = varying(frameU.w, 'cgBladeGain');
     material.colorNode = Fn(() => {
         // The rows go one after another, top to bottom, a breath apart.
-        const age = u.time.sub(uniforms.frame.z).sub(vStagger);
+        const age = u.time.sub(vBirth).sub(vStagger);
         const head = age.div(BLADE_TRAVEL);
         const reached = step(vAlong, head);
         const dy = uv().y.sub(0.5).mul(36.0);
@@ -458,24 +476,39 @@ export function createBlades(u) {
         const shiver = u.noise(vec2(vAlong.mul(3.0).sub(u.time.mul(1.3)), age.mul(0.9))).r.mul(0.7).add(0.5);
         const k = core.add(glow).mul(reached).mul(env).mul(shiver)
             .add(core.add(glow.mul(1.6)).mul(tip).mul(2.4))
-            .mul(uniforms.frame.w);
+            .mul(vStrength);
         const col = mix(u.glow, vec3(1.0, 0.95, 0.82), core.mul(0.85));
         return vec4(col.mul(k).mul(3.0).mul(u.emit), 0.0);
     })();
     const part = cgPart('ChiralGoldBlades', geometry, material, 60, false);
-    part.uniforms = uniforms;
+    part.banks = banks;
+    /** The first bank (the one a fresh hall fires first). */
+    part.uniforms = banks[0];
+    /** The bank fired last. */
+    part.last = banks[0];
+    /** How much light a bank's blades still give at `time` (its strength, faded since its birth). */
+    const left = (b, time) => {
+        const f = b.frame.value;
+        const age = time - f.z;
+        return age < 0 ? f.w : f.w * Math.exp(-Math.max(0, age - BLADE_TRAVEL) / BLADE_FADE);
+    };
     /**
      * `ys` = screen y of each cleared row and `ends` = where it meets the towers; `x0`/`x1` = the
-     * card's edges; all in screen fractions.
+     * card's edges; all in screen fractions. Fires into the bank with the least light left.
      */
     part.fire = (ys, ends, x0, x1, reachL, reachR, time, strength = 1) => {
-        uniforms.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
-        uniforms.ends.value.set(ends[0] ?? -1, ends[1] ?? -1, ends[2] ?? -1, ends[3] ?? -1);
-        uniforms.frame.value.set(x0, x1, time, strength);
-        uniforms.reach.value.set(reachL, reachR);
+        let target = banks[0];
+        for (let i = 1; i < banks.length; i++) if (left(banks[i], time) < left(target, time)) target = banks[i];
+        target.rows.value.set(ys[0] ?? -1, ys[1] ?? -1, ys[2] ?? -1, ys[3] ?? -1);
+        target.ends.value.set(ends[0] ?? -1, ends[1] ?? -1, ends[2] ?? -1, ends[3] ?? -1);
+        target.frame.value.set(x0, x1, time, strength);
+        target.reach.value.set(reachL, reachR);
+        part.last = target;
+        return target;
     };
     part.reset = () => {
-        uniforms.frame.value.set(0.4, 0.6, -100, 0);
+        banks.forEach((b) => b.frame.value.set(0.4, 0.6, -100, 0));
+        part.last = banks[0];
     };
     return part;
 }
@@ -602,7 +635,7 @@ export function createBraid(u, count) {
     const tint = mix(u.alloyA, u.alloyC, a.y);
     const vLight = varying(
         tint.mul(glint.mul(8.0).add(0.05))
-            .add(mix(u.glow, vec3(1.0, 0.92, 0.76), 0.25).mul(hot).mul(1.3))
+            .add(mix(u.glow, vec3(1.0, 0.92, 0.76), 0.12).mul(hot).mul(1.0))
             .mul(fade).mul(u.aurum.y)
             .mul(u.emit),
         'cgBraid',

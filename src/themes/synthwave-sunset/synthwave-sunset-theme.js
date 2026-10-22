@@ -39,6 +39,30 @@ import {
 
 const LAYOUT_POLL_MS = 1000;
 const LAYOUT_DEBOUNCE_MS = 150;
+/** Cascade waves one frame can hold apart (more, after a stall, join the last). */
+const STAGED_WAVES = 4;
+
+/**
+ * One frame's gameplay events, gathered as they arrive and handed to the world at the top of the
+ * next frame: the lock (and whether it was hard-dropped), each clear wave's lines and cascade
+ * depth, a T-spin, a back-to-back, a perfect clear, level-ups.
+ */
+function createStage() {
+    return {
+        lock: null,
+        hardDrop: false,
+        waves: 0,
+        waveLines: new Array(STAGED_WAVES).fill(0),
+        waveDepth: new Array(STAGED_WAVES).fill(0),
+        /** The cascade depth a COMBO announced for the wave that follows it. */
+        nextDepth: 0,
+        cascade: 0,
+        tspin: false,
+        b2b: false,
+        perfect: false,
+        levelUps: 0,
+    };
+}
 
 export default class SynthwaveSunsetTheme extends BaseTheme {
     constructor() {
@@ -70,16 +94,14 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             time: 0, delta: 0, pointerX: 0, pointerY: 0,
         };
         this._postParams = {
-            time: 0, sun: this.sunUv, sunVis: 0, bloomBoost: 0,
+            time: 0, sun: this.sunUv, sunVis: 0, bloomBoost: 0, exposure: 1,
         };
 
         this.layoutWatch = null;
         this.appliedBoard = undefined;
         this.eventUnsubscribers = [];
         this.combo = new ComboTracker();
-        this.staged = {
-            lock: null, lines: 0, cascade: 0, levelUps: 0,
-        };
+        this.staged = createStage();
 
         this.dynamicResolution = {
             enabled: true,
@@ -144,9 +166,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         this.currentQuality = this.getGraphicsQuality();
         this.time = 0;
         this.combo = new ComboTracker();
-        this.staged = {
-            lock: null, lines: 0, cascade: 0, levelUps: 0,
-        };
+        this.staged = createStage();
         this.lastFrameTime = null;
         this.baselineFrames = [];
         const drs = this.dynamicResolution;
@@ -363,19 +383,54 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
         // Only the local board drives the world (a rival's or a second player's board does not).
         const local = (data) => data?.player === undefined || data.player === 1;
         const stage = this.staged;
+        // The true combo is bookkeeping, not decoration (src/core/combo-tracker.js): it follows
+        // every local lock and clear whatever the setting, so reactions switched on mid-run pick
+        // the chain up where it really stands. Only what reaches the world is gated.
         const lockUnsub = eventBus.on(EVENTS.PIECE_LOCK, (data) => {
-            if (!reactive() || !local(data)) return;
+            if (!this.isActive || !local(data)) return;
             this.combo.notePieceLocked();
-            stage.lock = data?.piece ?? {};
+            if (reactive()) stage.lock = data?.piece ?? {};
         });
         const clearUnsub = eventBus.on(EVENTS.LINE_CLEAR, (data) => {
-            if (!reactive() || !local(data)) return;
+            if (!this.isActive || !local(data)) return;
             this.combo.noteLineClear();
-            stage.lines += Math.max(1, Math.min(4, data?.lineCount ?? 1));
+            if (!reactive()) return;
+            // Each wave reaches the world as its own clear, with its cascade depth (the payload's,
+            // or the COMBO that announced it).
+            const lines = Math.max(1, Math.min(4, Number(data?.lineCount) || 1));
+            const depth = Math.max(1, Number(data?.cascadeCount) || 1, stage.nextDepth);
+            stage.nextDepth = 0;
+            const i = Math.min(stage.waves, STAGED_WAVES - 1);
+            if (stage.waves >= STAGED_WAVES) {
+                stage.waveLines[i] = Math.max(stage.waveLines[i], lines);
+                stage.waveDepth[i] = Math.max(stage.waveDepth[i], depth);
+                return;
+            }
+            stage.waveLines[i] = lines;
+            stage.waveDepth[i] = depth;
+            stage.waves += 1;
         });
         const comboUnsub = eventBus.on(EVENTS.COMBO, (data) => {
             if (!reactive() || !local(data)) return;
-            stage.cascade = Math.max(stage.cascade, data?.comboCount ?? 0);
+            const depth = Number(data?.comboCount) || 0;
+            stage.cascade = Math.max(stage.cascade, depth);
+            stage.nextDepth = Math.max(stage.nextDepth, depth);
+        });
+        const hardDropUnsub = eventBus.on(EVENTS.HARD_DROP, (data) => {
+            if (!reactive() || !local(data)) return;
+            stage.hardDrop = true;
+        });
+        const tspinUnsub = eventBus.on(EVENTS.TSPIN, (data) => {
+            if (!reactive() || !local(data)) return;
+            stage.tspin = true;
+        });
+        const b2bUnsub = eventBus.on(EVENTS.B2B, (data) => {
+            if (!reactive() || !local(data) || data?.active === false) return;
+            stage.b2b = true;
+        });
+        const perfectUnsub = eventBus.on(EVENTS.PERFECT_CLEAR, (data) => {
+            if (!reactive() || !local(data)) return;
+            stage.perfect = true;
         });
         const levelUnsub = eventBus.on(EVENTS.LEVEL_UP, (data) => {
             if (!reactive() || !local(data)) return;
@@ -394,6 +449,10 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             lockUnsub,
             clearUnsub,
             comboUnsub,
+            hardDropUnsub,
+            tspinUnsub,
+            b2bUnsub,
+            perfectUnsub,
             levelUnsub,
             () => window.removeEventListener('pointermove', onPointerMove),
             () => window.removeEventListener('resize', onResize),
@@ -459,6 +518,7 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
             pp.time = this.time;
             pp.sunVis = this.world.getSunScreen(this.camera, this.sunUv);
             pp.bloomBoost = Math.min(1, this.world.bloomBoost);
+            pp.exposure = this.world.exposure ?? 1;
             this.postProcessing.update(pp);
             this.postProcessing.render();
         } else if (this.passThrough) {
@@ -470,24 +530,42 @@ export default class SynthwaveSunsetTheme extends BaseTheme {
     }
 
     /**
-     * Hand the frame's staged events to the world: the level, the lock, its lines (one LINE_CLEAR
-     * per wave, so cascades add shells), then the true combo — 0 when this lock cleared nothing
+     * Hand the frame's staged events to the world: the level, the lock (hard-dropped or not),
+     * each clear wave with its cascade depth and the true combo (the lock's own wave carries its
+     * T-spin and back-to-back), a T-spin that cleared nothing, the perfect clear (its own crown,
+     * never a new clear), then the true combo for the coaster — 0 when this lock cleared nothing
      * after a chain.
      */
     flushEvents() {
         const stage = this.staged;
         if (!this.world) return;
-        if (stage.levelUps > 0) this.world.onLevelUp();
-        if (stage.lock) this.world.onPieceLock(stage.lock);
-        if (stage.lines > 0) this.world.onLineClear(stage.lines);
-        if (stage.cascade > 0) this.world.onCombo(stage.cascade);
+        const { world } = this;
+        const { combo } = this.combo;
+        if (stage.levelUps > 0) world.onLevelUp();
+        if (stage.lock) world.onPieceLock(stage.lock, { hardDrop: stage.hardDrop });
+        for (let i = 0; i < stage.waves; i += 1) {
+            world.onLineClear(stage.waveLines[i], {
+                cascade: stage.waveDepth[i],
+                combo,
+                tspin: i === 0 && stage.tspin,
+                b2b: i === 0 && stage.b2b,
+            });
+        }
+        if (stage.tspin && stage.waves === 0) world.onTSpin?.(0);
+        if (stage.perfect) world.onPerfectClear?.();
+        if (stage.cascade > 0) world.onCombo(stage.cascade);
         // ComboTracker resets on the NEXT lock; a lock with no clear in its own tick breaks the
         // chain now (lock and clear are emitted together), so the coaster lets go on time.
-        if (stage.lock && stage.lines === 0) this.world.onChain(0);
-        else if (stage.lines > 0) this.world.onChain(this.combo.combo);
+        if (stage.lock && stage.waves === 0) world.onChain(0);
+        else if (stage.waves > 0) world.onChain(combo);
         stage.lock = null;
-        stage.lines = 0;
+        stage.hardDrop = false;
+        stage.waves = 0;
+        stage.nextDepth = 0;
         stage.cascade = 0;
+        stage.tspin = false;
+        stage.b2b = false;
+        stage.perfect = false;
         stage.levelUps = 0;
     }
 

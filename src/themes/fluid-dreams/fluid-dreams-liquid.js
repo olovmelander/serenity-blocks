@@ -107,6 +107,11 @@ export function createLiquidUniforms(tables, noise) {
         viewport: uniform(new THREE.Vector2(1920, 1080)),
         sprayGain: uniform(1),
         moteGain: uniform(1),
+        /**
+         * Seconds of the motes' own climb: the world advances it faster as the sea charges, so they
+         * rise faster without leaping (time × a changing rate moved every mote at once).
+         */
+        moteClock: uniform(0),
         /** Radians one pixel subtends: picks the ripple texture's mip, sizes the stars. */
         pixelAngle: uniform(0.001),
         /** Two rows per ball: (x, y, z, radius), (r, g, b, glow). */
@@ -169,6 +174,12 @@ export function createLiquidUniforms(tables, noise) {
         /** The film on every drop: (strength, thickness shift µm, -, -). */
         film: uniform(new THREE.Vector4(1, 0, 0, 0)),
         skyFlash: uniform(0),
+        /**
+         * The heat of play (src/themes/shared/gameplay-surge.js): (level, fever, -, -). The veins
+         * in the sea burn with it (a fever sets them alight), the ink in the sky and in the drops
+         * a little.
+         */
+        heat: uniform(new THREE.Vector4(0, 0, 0, 0)),
     };
 }
 
@@ -340,7 +351,9 @@ export function createLiquidMaterial({
         const band = smoothstep(0.02, 0.3, ay).mul(float(1.0).sub(smoothstep(0.7, 1.0, ay).mul(0.45)));
         const dens = smoothstep(0.44, 0.86, n1.mul(0.62).add(n2.mul(0.5))).mul(band);
         const hue = mix(mix(u.inkA, u.inkB, smoothstep(0.3, 0.68, n2)), u.inkC, smoothstep(0.5, 0.9, n1).mul(0.55));
-        c.addAssign(hue.mul(dens).mul(u.charge.mul(0.7).add(0.5).add(u.surge.mul(0.4))));
+        c.addAssign(hue.mul(dens).mul(u.charge.mul(0.7).add(0.5).add(u.surge.mul(0.4))
+            .add(u.heat.x.mul(0.12))
+            .add(u.heat.y.mul(0.2))));
 
         if (full) {
             if (stars) {
@@ -719,7 +732,10 @@ export function createLiquidMaterial({
                 const room = float(1.0).sub(smoothstep(1.8, 3.6, vLod));
                 const veinHue = mix(u.glow, u.inkC, smoothstep(0.3, 0.75, marble));
                 const veinLight = veinHue.mul(thread.mul(room).mul(shimmer))
-                    .mul(u.charge.mul(1.1).add(u.surge.mul(0.6)).add(1.0).mul(VEINS.GAIN));
+                    .mul(u.charge.mul(1.1).add(u.surge.mul(0.6)).add(1.0)
+                        .add(u.heat.x.mul(0.7))
+                        .add(u.heat.y.mul(1.8))
+                        .mul(VEINS.GAIN));
                 seaLocal.assign(u.deep.mul(ndv.mul(0.9).add(0.35))
                     .add(veinLight)
                     .add(stain.mul(veins).mul(shimmer))
@@ -769,7 +785,9 @@ export function createLiquidMaterial({
                     u.inkC,
                     smoothstep(0.55, 0.9, i1).mul(0.6),
                 );
-                const ink = hue.mul(dens).mul(back3.mul(0.6).add(0.7).add(u.charge.mul(1.1)).add(u.surge));
+                const ink = hue.mul(dens).mul(back3.mul(0.6).add(0.7).add(u.charge.mul(1.1)).add(u.surge)
+                    .add(u.heat.x.mul(0.25))
+                    .add(u.heat.y.mul(0.45)));
 
                 // Liquid carrying light of its own is less of a window: a lock's droplet reads
                 // as its colour against the dark sea and against the sun alike.

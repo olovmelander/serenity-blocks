@@ -500,6 +500,22 @@ export const GUST_SPEED = 30;
 /** Colours the sky can be holding at once, and how long one lasts (seconds to 1/e). */
 export const SKY_SLOTS = 6;
 export const SKY_HOLD = 22;
+/**
+ * Seconds a held colour takes to let go when its slot is wanted for a new one. Shorter than the
+ * sparks take to rise (SPARK_RISE × 0.7), so the new colour arrives just as the old has gone: a
+ * bearing's hue never snaps from one piece's to the next.
+ */
+export const SKY_LET_GO = 1.2;
+
+/**
+ * Strums the sky can carry at once: a clear sends one outward from the board along every sheet,
+ * and a cascade's waves send theirs after it like plucked strings. Each is (birth, strength,
+ * half width in bearing tan, speed in bearing tan a second); it fades to 1/e over STRUM_FADE.
+ */
+export const STRUM_SLOTS = 4;
+export const STRUM_FADE = 1.4;
+export const STRUM_WIDTH = 0.34;
+export const STRUM_SPEED = 1.5;
 /** Seconds a spark takes from the snow to the sky. */
 export const SPARK_RISE = 2.6;
 

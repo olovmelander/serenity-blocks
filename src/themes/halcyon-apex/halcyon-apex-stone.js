@@ -46,7 +46,7 @@ import {
     SITE,
     haAtmosphere,
     haBell,
-    haClearLight,
+    haClearLightLive,
     haFresnel,
     haHash21,
     haLockLight,
@@ -187,7 +187,7 @@ export function createStoneMaterial(u, opts = {}) {
         lit.addAssign(mirror.mul(wet).mul(haFresnel(dot(V, n).negate(), 0.03)).mul(0.6));
 
         // ── Gameplay light passing over the stone ──
-        const clear = haClearLight(u, p).mul(u.clearLive);
+        const clear = haClearLightLive(u, p);
         lit.addAssign(clear.rgb.mul(albedo).mul(0.7).add(albedo.mul(clear.w).mul(u.ley).mul(0.09)));
         lit.addAssign(haLockLight(u, p).mul(albedo).mul(u.ringsLive).mul(exp(max(p.y, 0.0).mul(-0.4)))
             .mul(1.2));
@@ -225,7 +225,7 @@ export function createLeyMaterial(u) {
         // The light creeps up the line toward its crystal.
         const creep = sin(s.mul(0.21).sub(u.time.mul(1.7))).mul(0.5).add(0.5);
         const idle = mix(float(0.55), float(1.5), creep.mul(creep)).mul(u.power.mul(1.6).add(1.0));
-        const clear = haClearLight(u, p).mul(u.clearLive);
+        const clear = haClearLightLive(u, p);
         const line = u.ley.mul(idle.add(pulse.w.mul(2.2)).add(clear.w.mul(0.8))).add(pulse.rgb.mul(7.0)).add(clear.rgb.mul(2.0))
             .mul(core);
         // A rune sleeps until a pulse crosses it.

@@ -566,6 +566,13 @@ describe('Black Hole event wiring', () => {
         expect(uniforms.wave.array[0].x).toBeCloseTo(director.waves[0].radius, 6);
         expect(uniforms.diskHeat.value).toBe(director.diskHeat);
         expect(uniforms.ringGain.value).toBe(director.ringGain);
+        expect(uniforms.diskTint.value.toArray()).toEqual(director.diskTint);
+        expect(uniforms.ringTint.value.toArray()).toEqual(director.ringTint);
+        expect(uniforms.diskTint.value.z).toBeLessThan(1);
+        expect(uniforms.skyGain.value).toBe(director.skyGain);
+        expect(uniforms.nebulaGain.value).toBe(director.nebulaGain);
+        expect(matter.uniforms.jetFlare.value).toBe(director.jetFlare);
+        expect(matter.uniforms.surge.value).toBe(director.dust);
         expect(matter.jets.visible).toBe(true);
         expect(matter.sparks.visible).toBe(true);
         expect(matter.burstData.clock[0].x).toBeGreaterThanOrEqual(0);

@@ -154,7 +154,7 @@ export function ringRadius(age, reach = 1) {
 }
 
 /** A clear's swells: fronts that cross the tarn outward from over its heart, behind the card. */
-export const STROKE_SLOTS = 4;
+export const STROKE_SLOTS = 6;
 export const STROKE_SPEED = 7.5;
 export const STROKE_GAP = 1.9;
 export const STROKE_LIVE = 6;

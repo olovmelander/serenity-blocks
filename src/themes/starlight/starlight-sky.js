@@ -257,10 +257,15 @@ export function createSky({ u, noise, tier }) {
         const milky = light.mul(u.bandPower).mul(u.surge.mul(0.75).add(1.0)).mul(through).mul(0.215);
         const sky = air.add(milky).toVar();
 
-        // A fireball lights the air round it, and all of it a little.
-        const near = max(dot(d, u.flash.xyz), 0.0);
-        const lit2 = pow(near, 60.0).mul(0.2).add(pow(near, 14.0).mul(0.012)).add(0.0012);
-        sky.addAssign(u.meteor.mul(u.flash.w).mul(lit2));
+        // A fireball lights the air round it (a tight lobe: the light stays its own, it never tints
+        // a third of the sky), and all of it a little. Two can be up at once (a great clear on the
+        // heels of another): each keeps its own light until it has landed.
+        const fireLight = (flash) => {
+            const near = max(dot(d, flash.xyz), 0.0);
+            return pow(near, 60.0).mul(0.2).add(pow(near, 40.0).mul(0.012)).add(0.0012)
+                .mul(flash.w);
+        };
+        sky.addAssign(u.bolide.mul(fireLight(u.flash).add(fireLight(u.flashB))));
 
         // The zodiacal light: a cone of sunlit dust leaning up off the right-hand horizon along the
         // ecliptic, wide and warm at its foot, narrowing and fading as it climbs.
@@ -298,7 +303,7 @@ export function createSky({ u, noise, tier }) {
                 nearHill.assign(max(nearHill, woods(noise, d, az, crest.x, u.texel.mul(0.8))));
             });
             // A fireball lights their faces for the moment it is up.
-            const lightning = u.meteor.mul(u.flash.w).mul(0.006);
+            const lightning = u.bolide.mul(u.flash.w.add(u.flashB.w)).mul(0.006);
             const haze = u.horizon.mul(0.2).add(u.ridge).add(lightning.mul(1.6));
             sky.assign(mix(sky, haze, farHill));
             sky.assign(mix(sky, u.ridge.add(lightning), nearHill));

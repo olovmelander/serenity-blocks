@@ -285,7 +285,7 @@ export class HalcyonApexPost {
         if (heart) this.uHeart.value.set(heart.x, heart.y);
         if (flash !== undefined) this.uFlash.value = flash * flashScale();
         if (kick !== undefined) this.uKick.value = kick;
-        if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost;
+        if (bloomBoost !== undefined) this.uBloomBoost.value = bloomBoost * flashScale();
         if (exposure !== undefined) this.uExposure.value = exposure;
         if (shafts !== undefined) this.uShafts.value = shafts;
         if (time !== undefined) this.uTime.value = time;

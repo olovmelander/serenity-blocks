@@ -207,8 +207,21 @@ export function createSparks(u, count) {
         const rand = mulberry32(0x51a7 + bursts * 7919);
         bursts += 1;
         const total = Math.min(Math.max(0, Math.round(n)), count);
+        // A spark takes the next one that has burnt out; only when every spark is still in the
+        // air does a big discharge take the oldest (so while the pool has room one burst never
+        // eats another in flight).
+        let full = false;
         for (let j = 0; j < total; j++) {
-            const i = cursor % count;
+            let i = cursor % count;
+            if (!full) {
+                let k = 0;
+                while (k < count && aBirth[i * 4 + 3] + aVel[i * 4 + 3] > time) {
+                    cursor += 1;
+                    i = cursor % count;
+                    k += 1;
+                }
+                if (k === count) full = true;
+            }
             cursor += 1;
             const bearing = rand() * TAU;
             const speed = out[0] + (out[1] - out[0]) * rand() ** 1.7;

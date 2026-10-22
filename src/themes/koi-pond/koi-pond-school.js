@@ -11,6 +11,9 @@
  *   setChain(n)     a chain of clears: one fish after another leaves its lane for a single
  *                   ring round the board, all the same way, faster with every step;
  *   holdBreath      a four-line clear holds the school still for a breath; shine() lights it.
+ *   setSurge        how hot play runs (src/themes/shared/gameplay-surge.js): the pond quickens,
+ *                   the koi warm from inside, and as play runs hot the big fish rally to the
+ *                   ring round the board without a chain; in a fever the whole school whirls.
  *
  * Whatever is asked of it, a fish never leaves water it can swim in: a step that would carry it
  * onto the bank, into a rock or out of the pond is not taken, and a leap is only launched from
@@ -109,7 +112,15 @@ export class KoiSchool {
         this.fish = [];
         this.events = [];
         this.chain = 0;
+        /** The chain's pull on the ring's pace, eased (a broken chain lets the ring slow, not brake). */
+        this.charge = 0;
         this.hush = 0;
+        /** How far the school holds still in a hush: 1 from cold, much less when play runs hot. */
+        this.hushDepth = 1;
+        /** The surge's share (setSurge): the school's part of the ring, its warmth, its quickening. */
+        this.rally = 0;
+        this.warmth = 0;
+        this.quicken = 0;
         this.time = 0;
         this.leapCursor = 0;
         this._point = { x: 0, z: 0 };
@@ -267,7 +278,12 @@ export class KoiSchool {
         }
         this.events.length = 0;
         this.chain = 0;
+        this.charge = 0;
         this.hush = 0;
+        this.hushDepth = 1;
+        this.rally = 0;
+        this.warmth = 0;
+        this.quicken = 0;
         this.time = time;
         this.leapCursor = 0;
     }
@@ -319,8 +335,27 @@ export class KoiSchool {
         for (let i = 0; i < this.count; i += 1) this.glow[i] = Math.max(this.glow[i], amount);
     }
 
-    /** Hold the school still for `seconds` (the breath before a four-line clear answers). */
-    holdBreath(seconds) {
+    /**
+     * How hot play runs (the shared surge's level and fever, 0..1). `motion` scales the
+     * quickening (reduced motion: the koi keep nearer their own pace).
+     */
+    setSurge(level, fever, motion = 1) {
+        const l = clamp01(Number(level) || 0);
+        const f = clamp01(Number(fever) || 0);
+        // Hot play draws the big fish to the ring; a fever draws the whole school.
+        this.rally = clamp01(clamp01((l - 0.45) / 0.45) * 0.4 + f * 0.62);
+        // Warm play lights them faintly from inside, the rim first.
+        this.warmth = smooth(0.2, 0.75, l) * 0.3 + f * 0.12;
+        this.quicken = (l * 0.3 + f * 0.15) * clamp01(motion);
+    }
+
+    /**
+     * Hold the school still for `seconds` (the breath before a four-line clear answers), as
+     * deep as `depth` (1: all but still; a quad in a hot run barely checks the ring's pace).
+     */
+    holdBreath(seconds, depth = 1) {
+        const d = clamp01(Number.isFinite(depth) ? depth : 1);
+        this.hushDepth = this.hush > 0 ? Math.max(this.hushDepth, d) : d;
         this.hush = Math.max(this.hush, seconds);
     }
 
@@ -425,8 +460,12 @@ export class KoiSchool {
         this.time += dt;
         const t = this.time;
         this.hush = Math.max(0, this.hush - dt);
-        const held = this.hush > 0 ? 1 : 0;
-        const charge = clamp01(this.chain / 9);
+        const held = this.hush > 0 ? this.hushDepth : 0;
+        // The chain's pull on the pace eases in and (slower) out: when the chain breaks the ring
+        // slows over a couple of seconds before the fish peel off, instead of braking in a step.
+        const pull = clamp01(this.chain / 9);
+        this.charge += (pull - this.charge) * approach(pull > this.charge ? 2.2 : 0.6, dt);
+        const charge = Math.max(this.charge, this.rally);
         const point = this._point;
 
         for (let i = 0; i < this.count; i += 1) {
@@ -438,14 +477,16 @@ export class KoiSchool {
             const need = KoiSchool.need(f.length);
 
             // ── Does this fish swim the chain's ring yet? The big ones first. ──
-            const wants = this.chain >= 2 && f.order < (this.chain - 1) * (this.count / 7) ? 1 : 0;
+            const chained = this.chain >= 2 && f.order < (this.chain - 1) * (this.count / 7);
+            const wants = chained || f.order < this.rally * this.count ? 1 : 0;
             this.joined[i] += (wants - this.joined[i]) * approach(wants ? 1.6 : 0.7, dt);
             const joined = smooth(0, 1, this.joined[i]);
-            const glowTarget = wants ? 0.25 + charge * 0.9 : 0;
+            // (A fish on the ring burns with what pulls it there; one still in its lane only warms.)
+            const glowTarget = wants ? 0.25 + charge * 0.9 : this.warmth;
             this.glow[i] += (glowTarget - this.glow[i]) * approach(glowTarget > this.glow[i] ? 2.2 : 0.55, dt);
 
             // ── The lane: head for a point a little way on along the loop ──
-            const pace = f.cruise * f.laneRate * (1 + joined * (0.5 + charge * 1.5));
+            const pace = f.cruise * f.laneRate * (1 + joined * (0.5 + charge * 1.5)) * (1 + this.quicken);
             const ahead = this.aim(i, joined, point);
             let wantX = ahead.x - this.x[i];
             let wantZ = ahead.z - this.z[i];

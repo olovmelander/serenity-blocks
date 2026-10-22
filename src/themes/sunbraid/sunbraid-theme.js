@@ -263,6 +263,9 @@ export default class SunbraidTheme extends BaseTheme {
             sink: {
                 lock: (c) => this.sendWorld('onLock', c),
                 clear: (c) => this.sendWorld('onClear', c),
+                // A late perfect clear crowns the clear still playing; a T-spin with no clear turns a little.
+                perfect: (c) => this.sendWorld('onPerfect', c),
+                spin: (c) => this.sendWorld('onSpin', c),
                 combo: (n, player) => this.reportCombo(n, player),
                 b2b: (level, player) => this.reportB2B(level, player),
                 levelUp: (level) => {
@@ -288,7 +291,7 @@ export default class SunbraidTheme extends BaseTheme {
         if (sessionState) this.world.importSessionState(sessionState);
         this.pendingSessionState = null;
         const pending = this.pendingWorldCalls.splice(0);
-        for (const { method, args } of pending) this.world[method](...args);
+        for (const { method, args } of pending) this.world[method]?.(...args);
         // Settings changed during the rebuild apply to the restored state, so disabling
         // reactions cannot be undone by importing the former world's chain afterwards.
         this.applyReactionSettings(null);
@@ -446,7 +449,7 @@ export default class SunbraidTheme extends BaseTheme {
 
     /** Keep owned copies in arrival order: director contexts are pooled and reused next tick. */
     sendWorld(method, ...args) {
-        if (this.world) return this.world[method](...args);
+        if (this.world) return this.world[method]?.(...args);
         if (!this.director) return undefined;
         if (this.pendingWorldCalls.length < MAX_PENDING_WORLD_CALLS) {
             this.pendingWorldCalls.push({ method, args: structuredClone(args) });

@@ -27,6 +27,23 @@
  *            ember → gold → jade → azure → violet → rose → round again, and the solar cycle
  *            with it, from the long wings of a quiet sun to the round crown of an active one.
  *
+ * Nothing restarts under fast play (src/themes/shared/gameplay-surge.js): the corona's swell, the
+ * chromosphere's flash, the lens's kick and shake and a T-spin's twist are Swells, so every hit
+ * adds to what is still lit; the necklace ADDS pearls to the one still turning (a cascade lights
+ * more and more of the limb until it closes into a ring); a second diamond feeds the one still
+ * burning (the moon stays slid off, the glare flares again) instead of snapping the moon back;
+ * two CMEs may be in the air at once. A cascade's deeper waves add more beads, a brighter flash
+ * and stronger rings, and the third throws off a CME; a back-to-back throws twin CMEs either side
+ * of the crown; a perfect clear settled after its clear is the CROWN on it (the diamond held and
+ * re-flared, the necklace closed into a full ring), never a second clear.
+ *
+ * The heat of play builds totality: warm, the corona swells and reaches further and the
+ * chromosphere's pink rim brightens; hot, the sun wakes (new streamers sprout round the crown),
+ * the 360° sunset on the horizon and the alpenglow on the far shore burn, the newest prominences
+ * stand as a crown the clears no longer spend, the stars come out; fever is deep totality: the
+ * sky darkens overhead, the necklace turns faster and the crown of coloured flux ropes rings the
+ * black sun. The quad's diamond ring is the release: daylight floods back for a breath.
+ *
  * Everything is a function of the clock and the events' start times, so a seek() that replays
  * the same events gives the same frame.
  */
@@ -77,6 +94,7 @@ import {
     boardFor, boardPoint, cardUnion, fallbackLayout,
 } from './solar-eclipse-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 import { flashScale } from '../../utils/photosensitivity.js';
 
 export const REST_RIG = Object.freeze({
@@ -109,6 +127,20 @@ const DIAMOND_CLOSE = 1.5;
 /** A T-spin's twist of the corona (radians at the limb) and how it rings down. */
 const TWIST = 1.0;
 const TWIST_DECAY = 1.5;
+/** Below this the twist has rung down (radians). */
+const TWIST_REST = 0.002;
+/**
+ * The necklace: the most pearls round the limb at once (a ring), how fast it turns (radians a
+ * second, at rest), how bright a clear's light reads per unit of its swell, below what light it
+ * has gone out (the next clear starts a new one at a new angle) and below what it is not drawn.
+ */
+const BEADS_MAX = 12;
+const BEAD_SPIN = 2.7;
+const BEAD_GAIN = 1.2;
+const BEADS_LIVE = 0.15;
+const BEADS_OUT = 0.03;
+/** How fast a new bead splits off the first and slides into its place (per second). */
+const BEAD_SPLIT = 5;
 /**
  * Where a four-line clear's diamond breaks through and its CME leaves (position angles): beside
  * the card the CME climbs into the open sky up and away from the card (the frame above the sun is
@@ -128,6 +160,31 @@ const RING = Object.freeze({
 });
 /** How bright the diamond's glitter path burns on the water, per unit of its glare. */
 const GLINT_POWER = 5.5;
+
+/** Where smooth01 reads `s` (0..1): its inverse, by bisection. */
+function unsmooth01(s) {
+    if (!(s > 0)) return 0;
+    if (s >= 1) return 1;
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 24; i += 1) {
+        const mid = (lo + hi) * 0.5;
+        if (smooth01(mid) < s) lo = mid;
+        else hi = mid;
+    }
+    return (lo + hi) * 0.5;
+}
+
+/**
+ * How far the moon has slid off the limb for a diamond ({ openAt, closeAt }) at `time`: it opens
+ * over DIAMOND_OPEN from `openAt`, holds, and closes over DIAMOND_CLOSE from `closeAt`.
+ */
+export function diamondSwing(ring, time) {
+    if (!ring) return 0;
+    const open = smooth01((time - ring.openAt) / DIAMOND_OPEN);
+    const close = 1 - smooth01((time - ring.closeAt) / DIAMOND_CLOSE);
+    return Math.min(open, close);
+}
 
 export class SolarEclipseWorld {
     /**
@@ -196,6 +253,43 @@ export class SolarEclipseWorld {
         this.sunBeside = true;
         this.freeShare = 0.3;
         this.composed = false;
+        /**
+         * Every reaction ACCUMULATES (src/themes/shared/swell.js): a hit adds to what is still lit
+         * and never restarts it, so a single after a quad lifts the light instead of cutting it.
+         *   corona   the corona's swell on a lock's landing and a clear (u.surge)
+         *   flashes  the chromosphere's flash (u.flash; `flash` is its reading this frame)
+         *   shake    the lens's shake (radians); kick the post's fringe
+         *   twist    a T-spin's twist of the corona (× TWIST radians), wound in, ringing down
+         *   burst    the diamond's flare as the light breaks through (each re-flare adds)
+         *   beads    the necklace's light (× BEAD_GAIN)
+         */
+        this.corona = new Swell({ release: 1.6, ceiling: 0.62, knee: 0.38 });
+        this.flashes = new Swell({ release: 0.9, ceiling: 1.2, knee: 1.0 });
+        /** The chromosphere's flash as it burns this frame (the swell's reading). */
+        this.flash = 0;
+        this.shake = new Swell({ release: 0.35, ceiling: 0.0034, knee: 0.0024 });
+        this.kick = new Swell({ release: 0.3, ceiling: 1.1, knee: 0.7 });
+        this.twist = new Swell({
+            attack: 0.3, release: TWIST_DECAY, ceiling: 1.8, knee: 1.2,
+        });
+        this.burst = new Swell({
+            attack: 0.1, release: 0.2, ceiling: 1.6, knee: 1.0,
+        });
+        this.beadLight = new Swell({
+            attack: 0.04, release: 1.9, ceiling: 1.25, knee: 0.9,
+        });
+        /** The necklace: its turn (radians), when it began, the pearls it holds and those shown. */
+        this.necklace = {
+            angle: 0, at: -100, count: 0, shown: 0,
+        };
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js): totality deepens with it.
+         * `heat` is its reading as of the last frame (events read it, the post state too).
+         */
+        this.surge = new GameplaySurge();
+        this.heat = {
+            punch: 0, level: 0, fever: 0, stage: 0,
+        };
         this.resetState(0);
     }
 
@@ -208,12 +302,24 @@ export class SolarEclipseWorld {
         this.exposureTarget = 0;
         this.level = 1;
         this.hourShift = 0;
-        this.surge = 0;
+        this.corona.reset();
+        this.flashes.reset();
         this.flash = 0;
-        this.shake = 0;
-        this.kick = 0;
+        this.shake.reset();
+        this.kick.reset();
+        this.twist.reset();
+        this.burst.reset();
+        this.beadLight.reset();
+        this.necklace.angle = 0;
+        this.necklace.at = -100;
+        this.necklace.count = 0;
+        this.necklace.shown = 0;
+        this.surge.reset();
+        this.heat.punch = 0;
+        this.heat.level = 0;
+        this.heat.fever = 0;
+        this.heat.stage = 0;
         this.diamond = null;
-        this.tspinAt = -1000;
         this.scheduled = [];
         this.prominences = Array.from({ length: PROMINENCES }, () => ({
             on: false,
@@ -242,6 +348,8 @@ export class SolarEclipseWorld {
         u.bands.value = 0;
         u.beads.value.set(0, -100, 0, 0);
         u.cme.value.set(0, -100, 0, 0.6);
+        u.cme2.value.set(0, -100, 0, 0.6);
+        u.twist.value = 0;
         u.diamond.value.set(1, 0, 0, 0);
         u.daylight.value = 0;
     }
@@ -446,9 +554,10 @@ export class SolarEclipseWorld {
         if (!still) {
             yaw = Math.sin(t * 0.041) * 0.0035 + Math.sin(t * 0.017 + 1.3) * 0.002 - (sim.pointerX || 0) * 0.008;
             pitch += Math.sin(t * 0.029 + 0.7) * 0.0018 - (sim.pointerY || 0) * 0.005;
-            if (this.shake > 1e-4) {
-                yaw += this.shake * Math.sin(t * 57.3) * Math.cos(t * 21.1);
-                pitch += this.shake * Math.sin(t * 43.9 + 1.0);
+            const shake = this.shake.valueAt(t);
+            if (shake > 1e-4) {
+                yaw += shake * Math.sin(t * 57.3) * Math.cos(t * 21.1);
+                pitch += shake * Math.sin(t * 43.9 + 1.0);
             }
         }
         const fov = this.fov();
@@ -524,17 +633,25 @@ export class SolarEclipseWorld {
         return rgb;
     }
 
-    /** A mote from one world direction to another (unit, three numbers each). */
+    /**
+     * A mote from one world direction to another (unit, three numbers each): a free slot, else
+     * the mote nearest its landing (never one just leaving the card).
+     */
     streak(from, to, {
         start = this.time, duration = 0.8, rgb = DEFAULT_SPARK, power = 1, tail = 0.3, width = 3.6, bow = 0,
     } = {}) {
         const slots = this.fx?.count ?? STREAKS;
-        let index = this.cursor.streak % slots;
+        let index = -1;
+        let soonest = 0;
         for (let i = 0; i < slots; i += 1) {
             const candidate = (this.cursor.streak + i) % slots;
             if (this.streakEnds[candidate] <= this.time) {
                 index = candidate;
                 break;
+            }
+            if (index < 0 || this.streakEnds[candidate] < soonest) {
+                soonest = this.streakEnds[candidate];
+                index = candidate;
             }
         }
         this.cursor.streak = index + 1;
@@ -651,47 +768,65 @@ export class SolarEclipseWorld {
             bow: (sy > where.y ? -1 : 1) * 0.04,
         });
 
+        // The hotter play runs, the taller and brighter the flux ropes the board raises.
+        const { level } = this.heat;
         const shape = prominenceShape(this.rand(), hard);
         this.raise(this.takeSlot(), {
             angle,
             kind: shape.kind,
             halfWidth: shape.halfWidth,
-            height: shape.height,
+            height: shape.height * (1 + 0.3 * level),
             rgb,
-            power: hard ? 1.35 : 1,
+            power: (hard ? 1.35 : 1) * (1 + 0.2 * level),
             born: this.time + flight * 0.92,
             seed: this.rand(),
         });
-        this.schedule(this.time + flight, () => {
-            this.surge = Math.max(this.surge, hard ? 0.22 : 0.1);
-        });
+        // The corona swells as the mote lands: rapid locks ride it up, never restart it.
+        this.corona.hit(hard ? 0.12 : 0.06, this.time + flight);
         if (hard) {
-            this.shake = Math.max(this.shake, 0.0016);
-            this.kick = Math.max(this.kick, 0.45);
+            this.shake.hit(0.0013, this.time);
+            this.kick.hit(0.32, this.time);
         }
+        this.surge.lock(c, this.time);
     }
 
     onClear(c = {}) {
+        if (c.crown === true) {
+            this.crown();
+            return;
+        }
         const lines = clamp(Math.round(c.lines || 1), 1, 4);
         const big = lines >= 4 || c.perfect === true;
+        // Waves past the first of a cascade: each builds on the last.
+        const wave = clamp(Math.round(c.cascade || 1), 1, 12) - 1;
         const { time } = this;
+        const aim = this.sunBeside ? BESIDE : ABOVE;
 
-        // A necklace of beads round the black sun, one bead per line.
-        this.u.beads.value.set(limbAngleFor(0.5) + this.rand() * TAU, time + 0.04, big ? 6 : lines, big ? 1.3 : 1);
-        this.flash = Math.max(this.flash, 0.45 + lines * 0.12);
-        this.surge = Math.max(this.surge, 0.18 * lines);
+        // Beads round the black sun, one per line, ADDED to the necklace still turning: a cascade's
+        // deeper waves add more and burn brighter, until the necklace closes into a ring.
+        // The necklace closes into a full ring only in a fever or a deep cascade (a quad brings it
+        // whole).
+        const most = big ? BEADS_MAX : Math.min(BEADS_MAX, 6 + Math.round(6 * this.heat.fever) + wave);
+        const pearls = big ? 6 : lines + Math.min(2, wave);
+        this.addBeads(pearls, (big ? 1.3 : 1) + Math.min(0.6, wave * 0.15), time + 0.04, most);
+        this.flashes.hit((0.45 + lines * 0.12) * (1 + 0.15 * Math.min(wave, 4)), time);
+        this.corona.hit(0.14 * lines + 0.06 * Math.min(wave, 6), time);
 
-        // The oldest prominences erupt: two per line, every one on a great clear.
+        // The oldest prominences erupt: two per line, every one on a great clear. The hotter play
+        // runs, the more of the newest stand: a crown of coloured flux ropes that thickens through
+        // a long chain instead of being spent clear by clear (a quad still erupts it whole).
         const held = this.prominences
             .filter((p) => p.on && p.erupts > 1e5 && p.born <= time && p.kind !== KIND.jet)
             .sort((a, b) => a.serial - b.serial);
-        const wanted = big ? held.length : Math.min(held.length, lines * 2);
+        const keep = big ? 0 : Math.floor(this.heat.level * 6 + this.heat.fever * 2);
+        const wanted = big ? held.length : Math.min(Math.max(0, held.length - keep), lines * 2);
         for (let i = 0; i < wanted; i += 1) {
             held[i].erupts = time + 0.12 + i * 0.11;
             held[i].fades = Math.min(held[i].fades, held[i].erupts + ERUPTION_SECONDS + 0.5);
         }
-        // With too few held, white jets run out from the limb instead.
-        for (let i = wanted; i < lines; i += 1) {
+        // With too few held, white jets run out from the limb instead (never in place of the crown
+        // the heat keeps standing).
+        for (let i = held.length; i < lines; i += 1) {
             const angle = limbAngleFor(this.rand()) + (this.rand() - 0.5) * 0.3;
             const born = time + 0.08 + i * 0.12;
             const slot = this.takeSlot();
@@ -709,11 +844,12 @@ export class SolarEclipseWorld {
             slot.fades = born + ERUPTION_SECONDS;
         }
 
-        // A ring dropped into the sun's own reflection.
+        // A ring dropped into the sun's own reflection: a deeper wave drops a stronger one.
         const echo = this.reflectionPoint(0, 0);
         if (echo) {
             const [ex, ez] = echo;
-            this.ripple(ex, ez, { strength: big ? RING.great : RING.clear + RING.line * (lines - 1) });
+            const deeper = 1 + 0.3 * Math.min(wave, 5);
+            this.ripple(ex, ez, { strength: (big ? RING.great : RING.clear + RING.line * (lines - 1)) * deeper });
             if (big) this.ripple(ex, ez, { strength: RING.great * 0.7, start: time + 0.55 });
             if (c.tspin) {
                 this.ripple(ex, ez, {
@@ -723,32 +859,135 @@ export class SolarEclipseWorld {
         }
 
         if (big) {
-            const power = c.perfect ? 1.3 : 1;
-            const aim = this.sunBeside ? BESIDE : ABOVE;
+            // A back-to-back's diamond burns brighter than the first.
+            const power = (c.perfect ? 1.3 : 1) * (c.b2b ? 1.15 : 1);
             this.schedule(time + 0.14, () => this.diamondRing(aim.diamond + (this.rand() - 0.5) * 0.5, power));
             this.schedule(time + 0.5, () => this.ejection(aim.cme + (this.rand() - 0.5) * 0.5, power));
-            this.surge = 1;
-            this.shake = Math.max(this.shake, 0.0026);
+            this.corona.hit(0.7, time);
+            this.shake.hit(0.0022, time);
             if (c.perfect) {
-                this.flash = 1.4;
-                this.schedule(time + 1.1, () => {
-                    this.u.beads.value.set(this.rand() * TAU, this.time, 6, 1.4);
-                });
+                this.flashes.hit(0.9, time);
+                this.schedule(time + 1.1, () => this.addBeads(6, 1.4, this.time));
+            }
+        } else if (wave >= 2 && wave % 3 === 2) {
+            // The third wave of a cascade (and every third after it) throws off mass.
+            const power = 0.7 + 0.08 * wave;
+            this.schedule(time + 0.3, () => this.ejection(aim.cme + (this.rand() - 0.5) * 0.9, power));
+        }
+        if (c.b2b) {
+            // Back-to-back: twin ejections, either side of the crown, and the corona flares.
+            const twin = Math.PI - aim.cme;
+            this.schedule(time + 0.62, () => this.ejection(twin + (this.rand() - 0.5) * 0.3, 1.1));
+            if (!big) this.schedule(time + 0.5, () => this.ejection(aim.cme + (this.rand() - 0.5) * 0.3, 1.1));
+            this.flashes.hit(0.35, time);
+            this.corona.hit(0.35, time);
+        }
+        if (c.tspin) this.twist.hit(1, time);
+        this.kick.hit(0.15 + lines * 0.1 + 0.05 * Math.min(wave, 4), time);
+        this.surge.clear(c, time);
+    }
+
+    /**
+     * A perfect clear settled after its clear's last wave: the CROWN on the clear still playing,
+     * never a second one. The diamond burns on (held and re-flared; it breaks through now if the
+     * clear brought none), the necklace closes into a full ring of pearls, the chromosphere and
+     * the corona flare, and the mirror takes one great ring.
+     */
+    crown() {
+        const { time } = this;
+        const aim = this.sunBeside ? BESIDE : ABOVE;
+        this.schedule(time + 0.05, () => this.diamondRing(aim.diamond + (this.rand() - 0.5) * 0.5, 1.3));
+        this.schedule(time + 0.35, () => this.addBeads(BEADS_MAX, 1.4, this.time));
+        this.flashes.hit(0.8, time);
+        this.corona.hit(0.5, time);
+        this.kick.hit(0.25, time);
+        const echo = this.reflectionPoint(0, 0);
+        if (echo) this.ripple(echo[0], echo[1], { strength: RING.great * 0.8, start: time + 0.1 });
+        this.surge.crown(time);
+    }
+
+    /** A T-spin that cleared nothing: a smaller twist of the corona and a whirl in the mirror. */
+    onSpin() {
+        const { time } = this;
+        this.twist.hit(0.5, time);
+        const echo = this.reflectionPoint(0, 0);
+        if (echo) {
+            this.ripple(echo[0], echo[1], {
+                strength: RING.whirl * 0.6, kind: 1, turn: this.reduced ? 1.2 : 2.6, start: time + 0.05,
+            });
+        }
+        this.kick.hit(0.12, time);
+        this.surge.spin(time);
+    }
+
+    /**
+     * Pearls added to the necklace: to the one still turning, at its own angle (a bead splits off
+     * the first and slides into place), or a new necklace at a new angle once the last has gone out.
+     */
+    addBeads(count, power, at, most = BEADS_MAX) {
+        const k = this.necklace;
+        const room = Math.min(BEADS_MAX, most);
+        // Read where the new pearls join it, so a clear a frame after another finds its beads.
+        if (this.beadLight.valueAt(Math.max(this.time, at)) * BEAD_GAIN < BEADS_LIVE) {
+            k.angle = limbAngleFor(0.5) + this.rand() * TAU;
+            k.at = at;
+            k.count = Math.min(room, count);
+            k.shown = k.count;
+        } else {
+            k.count = Math.max(k.count, Math.min(room, k.count + count));
+        }
+        this.beadLight.hit(power, at);
+    }
+
+    /**
+     * The diamond ring at `angle`. While one still burns it is FED, never restarted: the moon stays
+     * slid off the limb it left (or slides back off from where it stands as it closes), the glare
+     * flares again and the hold lasts on; the power can only rise.
+     */
+    diamondRing(angle, power = 1) {
+        const { time } = this;
+        const ring = this.diamond;
+        if (ring && time < ring.closeAt + DIAMOND_CLOSE) {
+            if (time > ring.closeAt) {
+                // Closing: reopen from where the moon stands now.
+                ring.openAt = time - DIAMOND_OPEN * unsmooth01(diamondSwing(ring, time));
+            }
+            ring.closeAt = Math.max(ring.closeAt, Math.max(ring.openAt + DIAMOND_OPEN, time) + DIAMOND_HOLD);
+            ring.power = Math.max(ring.power, power);
+        } else {
+            this.diamond = {
+                bornAt: time,
+                openAt: time,
+                closeAt: time + DIAMOND_OPEN + DIAMOND_HOLD,
+                angle,
+                power,
+                shown: power,
+                spin: 0.35 + this.rand() * 0.5,
+            };
+        }
+        this.burst.hit(power, time + DIAMOND_OPEN * 0.55);
+        this.shake.hit(0.0014, time);
+    }
+
+    /**
+     * A coronal mass ejection: two may be in the air at once, so a new one takes a free slot or
+     * the one that has faded most, never cutting one still leaving the limb.
+     */
+    ejection(angle, power = 1) {
+        const { time, u } = this;
+        let pick = u.cme.value;
+        let least = Infinity;
+        const slots = [u.cme.value, u.cme2.value];
+        for (let i = 0; i < slots.length; i += 1) {
+            const s = slots[i];
+            const age = time - s.y;
+            const left = s.z > 0.001 && age >= 0 && age < 8 ? s.z * Math.exp(-age / 2.8) : 0;
+            if (left < least) {
+                least = left;
+                pick = s;
             }
         }
-        if (c.tspin) this.tspinAt = time;
-        this.kick = Math.max(this.kick, 0.2 + lines * 0.12);
-    }
-
-    diamondRing(angle, power = 1) {
-        this.diamond = {
-            t0: this.time, angle, power, spin: 0.35 + this.rand() * 0.5,
-        };
-        this.shake = Math.max(this.shake, 0.0022);
-    }
-
-    ejection(angle, power = 1) {
-        this.u.cme.value.set(angle, this.time, power, 0.62 + power * 0.18);
+        pick.set(angle, time, power, 0.62 + power * 0.18);
     }
 
     /** The true combo (0 = the chain broke). */
@@ -766,11 +1005,12 @@ export class SolarEclipseWorld {
             return;
         }
         this.level = next;
-        this.flash = Math.max(this.flash, 1);
-        this.surge = Math.max(this.surge, 0.5);
-        this.u.beads.value.set(this.rand() * TAU, this.time + 0.05, 2, 1.1);
+        this.flashes.hit(1, this.time);
+        this.corona.hit(0.5, this.time);
+        this.addBeads(2, 1.1, this.time + 0.05);
         const echo = this.reflectionPoint(0, 0);
         if (echo) this.ripple(echo[0], echo[1], { strength: RING.level });
+        this.surge.levelUp(this.time);
     }
 
     // ── frame ───────────────────────────────────────────────────────────────────
@@ -825,23 +1065,34 @@ export class SolarEclipseWorld {
         const { u } = this;
         const { time } = this;
 
-        // Staged events whose moment has come.
-        if (this.scheduled.length) {
-            const due = this.scheduled.filter((s) => s.time <= time);
-            if (due.length) {
-                this.scheduled = this.scheduled.filter((s) => s.time > time);
-                due.sort((a, b) => a.time - b.time).forEach((s) => s.run());
+        // Staged events whose moment has come, earliest first (nothing allocated a frame).
+        for (;;) {
+            const list = this.scheduled;
+            let first = -1;
+            for (let i = 0; i < list.length; i += 1) {
+                if (list[i].time <= time && (first < 0 || list[i].time < list[first].time)) first = i;
             }
+            if (first < 0) break;
+            const due = list[first];
+            list[first] = list[list.length - 1];
+            list.pop();
+            due.run();
         }
+
+        // How hot play runs: totality deepens with it.
+        const sample = this.surge.sample(time);
+        const { heat } = this;
+        heat.punch = sample.punch;
+        heat.level = sample.level;
+        heat.fever = sample.fever;
+        heat.stage = sample.stage;
+        const { level, fever } = heat;
+        const fs = flashScale();
 
         // The chain opens the exposure quickly and lets it close slowly.
         const opening = this.exposureTarget > this.exposure;
         this.exposure += (this.exposureTarget - this.exposure) * approach(opening ? 1.3 : 0.4, dt);
         this.hourShift += ((this.level - 1) - this.hourShift) * approach(0.35, dt);
-        this.surge *= Math.exp(-dt / 1.6);
-        this.flash *= Math.exp(-dt / 0.9);
-        this.shake *= Math.exp(-dt / 0.35);
-        this.kick *= Math.exp(-dt / 0.3);
 
         // The sun eases to where the composition wants it.
         const k = this.capture ? 1 : approach(1.2, dt);
@@ -853,70 +1104,102 @@ export class SolarEclipseWorld {
         const moon = moonWander(time, this._moon);
         let swing = 0;
         let glare = 0;
+        let power = 1;
+        if (this.diamond && time > this.diamond.closeAt + DIAMOND_CLOSE) this.diamond = null;
         const ring = this.diamond;
         if (ring) {
-            const age = time - ring.t0;
-            if (age > DIAMOND_OPEN + DIAMOND_HOLD + DIAMOND_CLOSE) {
-                this.diamond = null;
-            } else {
-                const open = smooth01(age / DIAMOND_OPEN);
-                const close = 1 - smooth01((age - DIAMOND_OPEN - DIAMOND_HOLD) / DIAMOND_CLOSE);
-                swing = Math.min(open, close);
-                const burst = Math.exp(-(((age - DIAMOND_OPEN * 0.9) / 0.22) ** 2)) * 0.6;
-                glare = (swing ** 1.5 + burst) * ring.power;
-                const ax = Math.cos(ring.angle);
-                const ay = Math.sin(ring.angle);
-                // Away from the bead, so the limb opens there.
-                moon[0] = moon[0] * (1 - swing) - ax * MOON.diamond * swing;
-                moon[1] = moon[1] * (1 - swing) - ay * MOON.diamond * swing;
-                u.diamond.value.set(ax * 0.995, ay * 0.995, glare, ring.spin);
-                const bead = this.sunPoint(ax * 0.995, ay * 0.995);
-                u.glint.value.set(bead[0], bead[1], bead[2], glare * GLINT_POWER);
-                // Shadow bands race over the salt as the light breaks through and as it goes.
-                u.bands.value = this.reduced ? 0 : clamp01(swing * 1.6) * (1 - 0.5 * clamp01(swing ** 4));
-                const at = this.screenOf(this.sunPoint(ax, ay));
-                const post = this._post;
-                post.ripple.x = at.x;
-                post.ripple.y = at.y;
-                post.ripple.radius = Math.max(0, age - DIAMOND_OPEN * 0.8) * 0.55;
-                post.ripple.strength = this.reduced ? 0 : swing * ring.power;
-            }
-        }
-        if (!this.diamond) {
+            // A diamond fed while it burns brightens over a moment, never in one frame.
+            ring.shown += (ring.power - ring.shown) * approach(5, dt);
+            power = ring.shown;
+            swing = diamondSwing(ring, time);
+            glare = swing ** 1.5 * power + this.burst.valueAt(time) * 0.6;
+            const ax = Math.cos(ring.angle);
+            const ay = Math.sin(ring.angle);
+            // Away from the bead, so the limb opens there.
+            moon[0] = moon[0] * (1 - swing) - ax * MOON.diamond * swing;
+            moon[1] = moon[1] * (1 - swing) - ay * MOON.diamond * swing;
+            u.diamond.value.set(ax * 0.995, ay * 0.995, glare, ring.spin);
+            const bead = this.sunPoint(ax * 0.995, ay * 0.995);
+            u.glint.value.set(bead[0], bead[1], bead[2], glare * GLINT_POWER);
+            // Shadow bands race over the salt as the light breaks through and as it goes.
+            u.bands.value = this.reduced ? 0 : clamp01(swing * 1.6) * (1 - 0.5 * clamp01(swing ** 4));
+            const at = this.screenOf(this.sunPoint(ax, ay));
+            const post = this._post;
+            post.ripple.x = at.x;
+            post.ripple.y = at.y;
+            // From the first break-through: a re-flare never pulls the ripple back in.
+            post.ripple.radius = Math.max(0, time - ring.bornAt - DIAMOND_OPEN * 0.8) * 0.55;
+            post.ripple.strength = this.reduced ? 0 : swing * power;
+        } else {
             u.diamond.value.z = 0;
             u.glint.value.w = 0;
             u.bands.value = 0;
             this._post.ripple.strength = 0;
         }
-        u.moon.value.set(moon[0], moon[1], MOON.ratio, this.exposure);
-        u.daylight.value = clamp01(swing * 0.75 * (ring?.power ?? 1));
+        // Daylight floods the whole sky for the diamond's breath: a frame-wide flash (ADR-0021).
+        u.daylight.value = clamp01(swing * 0.75 * power) * fs;
 
-        // A T-spin's twist rings down.
-        const tAge = time - this.tspinAt;
-        u.twist.value = tAge >= 0 && tAge < 6
-            ? TWIST * Math.sin(Math.min(1, tAge / 0.35) * Math.PI * 0.5)
-                * Math.exp(-Math.max(0, tAge - 0.35) / TWIST_DECAY)
-                * (this.reduced ? 0.4 : 1)
-            : 0;
+        // The heat opens the exposure a little by itself (a quick hand with no chain still brings
+        // the outer corona and the first stars out); the chain opens it all the way.
+        const open = 0.22 * level + 0.3 * fever;
+        const exposure = 1 - (1 - this.exposure) * (1 - open);
+        u.moon.value.set(moon[0], moon[1], MOON.ratio, exposure);
+
+        // A T-spin's twist rings down; another winds it further instead of starting again.
+        const twist = this.twist.valueAt(time) * TWIST;
+        u.twist.value = twist > TWIST_REST ? twist * (this.reduced ? 0.4 : 1) : 0;
+
+        // The necklace turns (faster the hotter play runs) and a new bead slides into its place.
+        const { necklace } = this;
+        const beads = this.beadLight.valueAt(time) * BEAD_GAIN;
+        if (beads < BEADS_OUT) {
+            u.beads.value.w = 0;
+        } else {
+            const split = (necklace.count - necklace.shown) * approach(BEAD_SPLIT, dt);
+            necklace.shown = Math.min(necklace.count, necklace.shown + split);
+            // It turns faster the hotter play runs (not under reduced motion: its own pace, as ever).
+            const quick = this.reduced ? 0 : 0.5 * level + 0.5 * fever;
+            necklace.angle = wrapAngle(necklace.angle + dt * BEAD_SPIN * (1 + quick));
+            // Many pearls are finer ones: the ring they close into glows, never glares.
+            const fine = 1 + 0.07 * Math.max(0, necklace.shown - 6);
+            u.beads.value.set(necklace.angle, necklace.at, necklace.shown, beads / fine);
+        }
 
         u.time.value = time;
         u.axis.value = axisAt(time);
         u.umbraAz.value = umbraAzAt(time);
-        u.exposure.value = this.exposure;
-        // A chain stills the water to glass.
-        u.glass.value = clamp01(this.exposure * 1.2);
-        u.surge.value = this.surge;
-        u.flash.value = this.flash * flashScale();
+        u.exposure.value = exposure;
+        // A chain stills the water to glass (a fever all the way).
+        u.glass.value = clamp01(this.exposure * 1.2 + 0.3 * fever);
+        // The corona's swell: every lock's landing and every clear add to it; the heat holds it up.
+        const corona = this.corona.valueAt(time);
+        const swollen = corona + 0.06 * level + 0.08 * fever;
+        u.surge.value = swollen;
+        // The chromosphere's pink rim: each flash adds to what still burns (scaled under Reduce
+        // flashing); the heat lifts it slowly by itself, a glow rather than a flash.
+        this.flash = this.flashes.valueAt(time);
+        u.flash.value = this.flash * flashScale() + 0.12 * level + 0.2 * fever;
 
-        this.applyPalette();
+        const p = this.applyPalette();
+        // Totality deepens with the heat: the sun wakes (new streamers sprout round its crown), the
+        // sunset all round the horizon and the alpenglow on the far shore burn, the stars come
+        // out, and in a fever the sky darkens overhead.
+        u.cycle.value = Math.min(1, p.cycle + 0.18 * level + 0.25 * fever);
+        u.glow.value.multiplyScalar(1 + 0.3 * level + 0.4 * fever);
+        u.alpenPower.value = p.alpenPower * (1 + 0.6 * level + 0.8 * fever);
+        u.starPower.value = p.starPower * (1 + 0.8 * fever);
+        u.zenith.value.multiplyScalar(1 - 0.4 * fever);
+        u.mid.value.multiplyScalar(1 - 0.25 * fever);
         this.writeTables();
         if (camera) this.sky?.update(camera);
 
         const post = this._post;
         post.flash = clamp01(glare * 0.5);
-        post.kick = this.kick;
-        post.bloomBoost = this.surge * 0.45 + this.exposure * 0.2 + Math.min(1, glare) * 0.4;
-        post.exposure = 1 - 0.3 * clamp01(glare);
+        post.kick = this.kick.valueAt(time) + heat.punch * 0.15;
+        post.bloomBoost = corona * 0.3 + exposure * 0.2 + Math.min(1, glare) * 0.4 * fs
+            + 0.04 * level + 0.08 * fever;
+        // The iris closes on the glare, and a little as the heat adds light, so colours stay deep.
+        post.exposure = 1 - 0.3 * clamp01(glare) - 0.06 * level - 0.1 * fever;
         const centre = this.sunPoint(moon[0], moon[1]);
         const disc = this.screenOf(centre);
         const radius = MOON.ratio / Math.max(1e-6, u.pxR.value);
@@ -933,14 +1216,14 @@ export class SolarEclipseWorld {
         post.echo.x = echo.x;
         post.echo.y = echo.y;
         post.echo.radius = echo.front && centre[1] > 0 ? radius : 0;
-        post.echo.matte = 0.9 * (1 - 0.65 * clamp01(glare)) * (1 - 0.4 * clamp01(this.surge));
+        post.echo.matte = 0.9 * (1 - 0.65 * clamp01(glare)) * (1 - 0.4 * clamp01(swollen));
         // The horizon straight ahead, where the water begins; a chain stills it to glass.
-        const level = this._level;
+        const ahead = this._level;
         const lf = Math.hypot(this._fwd.x, this._fwd.z) || 1;
-        level[0] = this._fwd.x / lf;
-        level[1] = 0;
-        level[2] = this._fwd.z / lf;
-        post.water.horizon = this.screenOf(level, this._echoScreen).y;
+        ahead[0] = this._fwd.x / lf;
+        ahead[1] = 0;
+        ahead[2] = this._fwd.z / lf;
+        post.water.horizon = this.screenOf(ahead, this._echoScreen).y;
         post.water.stir = 1 - 0.75 * u.glass.value;
     }
 
@@ -982,6 +1265,10 @@ export class SolarEclipseWorld {
             ripples,
             glass: this.u.glass.value,
             diamond: this.diamond ? Math.round(this.u.diamond.value.z * 100) / 100 : 0,
+            beads: Math.round(this.necklace.shown * 100) / 100,
+            heat: Math.round(this.heat.level * 100) / 100,
+            fever: Math.round(this.heat.fever * 100) / 100,
+            stage: this.heat.stage,
             sunScreenX: this.sunScreenX,
             sunScreenY: this.sunScreenY,
             sunBeside: this.sunBeside,

@@ -27,6 +27,8 @@ import { goldenForestBakes } from './golden-forest-bakes.js';
 const INIT_TIMEOUT_MS = 5500;
 const MAX_DELTA_S = 0.05;
 const BOARD_POLL_S = 0.75;
+/** What the wind and the creatures keep of their motion under Reduce motion. */
+const REDUCED_MOTION_SHARE = 0.35;
 const PIXEL_RATIO_CAP = Object.freeze({
     Extreme: 1.5, Ultra: 1.35, High: 1.25, Medium: 1, Low: 0.9, Minimal: 0.75,
 });
@@ -521,6 +523,9 @@ export default class GoldenForestTheme extends BaseTheme {
             this.world?.setBoard?.(readGoldenForestBoardRect());
         }
         this.updateCamera(dt);
+        // Reduce motion stills the camera (updateCamera) and calms the wind, the fronts, the
+        // startled flock and the river's turn to a share of themselves.
+        this.world?.setMotion?.(this.reducedMotion || prefersReducedMotion() ? REDUCED_MOTION_SHARE : 1);
         this.world?.update(this.time, dt, frame);
         this.post?.update?.({ ...frame, time: this.time });
     }

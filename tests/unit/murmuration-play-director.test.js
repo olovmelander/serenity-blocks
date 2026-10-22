@@ -243,6 +243,56 @@ describe('swarm play director: intake', () => {
         expect(calls.clear[3]).toMatchObject({ lines: 1, perfect: true });
     });
 
+    it('crowns a perfect clear that settles after its clear, instead of making it a new one', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.crown = vi.fn((c) => calls.crown.push({ ...c }));
+        calls.crown = [];
+        // The quad, then (physics: ~360 ms later, in a frame of its own) the perfect clear.
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: false });
+        expect(calls.crown).toEqual([{ player: 0 }]);
+        // The combo it reports is the chain's, unchanged by the crown.
+        expect(calls.combo).toEqual([[1, 0]]);
+        // On the clear's own frame it rides on the clear, as before.
+        director.onPieceLock({ piece: I });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        expect(calls.clear[1]).toMatchObject({ lines: 4, perfect: true });
+        expect(calls.crown).toHaveLength(1);
+    });
+
+    it('answers a T-spin that cleared nothing where the piece locked', () => {
+        const { director, calls, sink } = makeDirector();
+        calls.spin = [];
+        sink.spin = vi.fn((c) => calls.spin.push({ ...c, rows: [...c.rows] }));
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.lock).toHaveLength(1);
+        expect(calls.clear).toHaveLength(0);
+        expect(calls.spin).toHaveLength(1);
+        expect(calls.spin[0]).toMatchObject({ player: 0, rows: calls.lock[0].rows, u: calls.lock[0].u });
+        // A T-spin that clears lines is a clear, not a spin.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22] });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(calls.spin).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true });
+        // A sink without `spin` hears nothing more than the lock.
+        const plain = makeDirector();
+        plain.director.onPieceLock({ piece: T });
+        plain.director.onTSpin({ lineCount: 0 });
+        expect(() => plain.director.flush()).not.toThrow();
+        expect(plain.calls.clear).toHaveLength(0);
+    });
+
     it('turns a meditation click into a clear at a screen position', () => {
         const { director, calls } = makeDirector();
         director.setViewport(1000, 500);

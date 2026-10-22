@@ -13,7 +13,7 @@ import {
 } from '../../src/themes/solar-eclipse/solar-eclipse-world.js';
 import {
     DEG, ERUPTION_SECONDS, HOUR_SECONDS, KIND, MIRROR, MOON, PALETTES, PROMINENCES, PROMINENCE_LIFE, WORLD,
-    limbAngleFor, highestCrest, RIDGE_SPAN, umbraAzAt,
+    limbAngleFor, highestCrest, paletteAt, RIDGE_SPAN, umbraAzAt,
 } from '../../src/themes/solar-eclipse/solar-eclipse-core.js';
 import { STREAKS } from '../../src/themes/solar-eclipse/solar-eclipse-tsl.js';
 import { cardUnion, fallbackLayout } from '../../src/themes/solar-eclipse/solar-eclipse-composition.js';
@@ -235,7 +235,7 @@ describe('SolarEclipseWorld: a lock raises a prominence', () => {
         const { world } = makeWorld();
         for (let i = 0; i < 10; i += 1) lock(world, i);
         const soft = Math.max(...lit(world).map((p) => p.height));
-        const kickBefore = world.kick;
+        const kickBefore = world.kick.valueAt(world.time);
         world.onLock({
             rows: [19], u: 0.4, hardDrop: true, color: '#ffffff',
         });
@@ -243,8 +243,8 @@ describe('SolarEclipseWorld: a lock raises a prominence', () => {
         expect(hard.kind).toBe(KIND.arch);
         expect(hard.power).toBeGreaterThan(1);
         expect(hard.height).toBeGreaterThan(soft * 0.6);
-        expect(world.kick).toBeGreaterThan(kickBefore);
-        expect(world.shake).toBeGreaterThan(0);
+        expect(world.kick.valueAt(world.time)).toBeGreaterThan(kickBefore);
+        expect(world.shake.valueAt(world.time)).toBeGreaterThan(0);
     });
 
     it('holds no more prominences than the limb has room for, and lets the oldest go', () => {
@@ -279,10 +279,10 @@ describe('SolarEclipseWorld: a clear', () => {
     it('sends a necklace of one bead per line round the limb and flashes the chromosphere', () => {
         const { world, camera } = makeWorld();
         world.onClear({ rows: [19, 18], lines: 2 });
+        step(world, camera, world.time, world.time + 0.1);
         const beads = world.u.beads.value;
         expect(beads.z).toBe(2);
         expect(beads.w).toBeGreaterThan(0);
-        step(world, camera, world.time, world.time + 0.1);
         expect(world.u.flash.value).toBeGreaterThan(0.3);
         expect(world.u.surge.value).toBeGreaterThan(0.2);
     });
@@ -355,9 +355,12 @@ describe('SolarEclipseWorld: a clear', () => {
         world.onClear({
             rows: [19, 18, 17, 16], lines: 4, perfect: true,
         });
-        expect(world.flash).toBeGreaterThan(1);
-        step(world, camera, world.time, world.time + 1.3, 1 / 60);
+        expect(world.flashes.valueAt(world.time)).toBeGreaterThan(1);
+        step(world, camera, world.time, world.time + 0.5, 1 / 60);
         expect(world.u.beads.value.z).toBe(6);
+        // The second necklace joins the first: more pearls round the limb, never a restart.
+        step(world, camera, world.time, world.time + 0.8, 1 / 60);
+        expect(world.u.beads.value.z).toBeGreaterThan(6);
         expect(world.u.diamond.value.z).toBeGreaterThan(0);
     });
 
@@ -580,7 +583,7 @@ describe('SolarEclipseWorld: the light of the hour', () => {
     it('adds a level\'s step on top of where the clock has carried it, and flashes the limb', () => {
         const { world, camera } = makeWorld('Low', { start: 5 });
         world.levelUp(2);
-        expect(world.flash).toBeGreaterThanOrEqual(1);
+        expect(world.flashes.valueAt(world.time)).toBeGreaterThanOrEqual(1);
         step(world, camera, world.time, world.time + 12, 0.25);
         expect(world.getState().palette).toBe(PALETTES[1].name);
         expect(world.getState().level).toBe(2);
@@ -590,7 +593,169 @@ describe('SolarEclipseWorld: the light of the hour', () => {
         const { world } = makeWorld('Low', { start: 5 });
         world.levelUp(4, { silent: true });
         expect(world.getState().palette).toBe(PALETTES[3].name);
-        expect(world.flash).toBe(0);
+        expect(world.flashes.valueAt(world.time)).toBe(0);
+    });
+});
+
+/** The knobs the gameplay lights, read as the frame draws them. */
+const lightOf = (world) => ({
+    corona: world.u.surge.value,
+    flash: world.u.flash.value,
+    beads: world.u.beads.value.w,
+    glare: world.u.diamond.value.z,
+    daylight: world.u.daylight.value,
+});
+const QUAD = { rows: [19, 18, 17, 16], lines: 4 };
+
+describe('SolarEclipseWorld: fast play builds instead of restarting', () => {
+    it('never cuts the light when a single follows a quad', () => {
+        const strong = makeWorld('Low', { width: 1920, height: 1080 });
+        const both = makeWorld('Low', { width: 1920, height: 1080 });
+        [strong, both].forEach(({ world }) => world.onClear(QUAD));
+        [strong, both].forEach(({ world, camera }) => step(world, camera, world.time, world.time + 0.3, 1 / 60));
+        const { angle } = both.world.necklace;
+        const pearls = both.world.necklace.count;
+        both.world.onClear({ rows: [19], lines: 1 });
+        for (let i = 0; i < 120; i += 1) {
+            [strong, both].forEach(({ world, camera }) => step(world, camera, world.time, world.time + 1 / 60, 1 / 60));
+            const a = lightOf(strong.world);
+            const b = lightOf(both.world);
+            Object.keys(a).forEach((key) => expect(b[key], key).toBeGreaterThanOrEqual(a[key] - 1e-9));
+            if (i === 0) {
+                // The necklace keeps turning where it was and keeps every pearl it had.
+                expect(Math.abs(both.world.necklace.angle - angle)).toBeLessThan(0.2);
+                expect(both.world.necklace.count).toBeGreaterThanOrEqual(pearls);
+            }
+        }
+    });
+
+    it('feeds the diamond still burning: the moon never snaps back over the limb it slid off', () => {
+        [1.0, 2.0].forEach((gap) => {
+            const { world, camera } = makeWorld('Low', { width: 1920, height: 1080 });
+            world.onClear(QUAD);
+            step(world, camera, world.time, world.time + gap, 1 / 60);
+            const { x, y } = world.u.diamond.value;
+            const born = world.diamond.bornAt;
+            let last = Math.hypot(world.u.moon.value.x, world.u.moon.value.y);
+            world.onClear(QUAD);
+            for (let i = 0; i < 60; i += 1) {
+                step(world, camera, world.time, world.time + 1 / 60, 1 / 60);
+                const off = Math.hypot(world.u.moon.value.x, world.u.moon.value.y);
+                // It may slide further off; it never jumps back (the moon's own wander aside).
+                expect(off).toBeGreaterThan(last - MOON.wander * 0.2);
+                last = off;
+                expect(world.u.diamond.value.x).toBeCloseTo(x, 6);
+                expect(world.u.diamond.value.y).toBeCloseTo(y, 6);
+                expect(world.diamond.bornAt).toBe(born);
+            }
+            expect(world.u.diamond.value.z).toBeGreaterThan(0.5);
+        });
+    });
+
+    it('crowns a quad with the late perfect clear: the diamond burns on and the necklace closes', () => {
+        const { world, camera } = makeWorld('Low', { width: 1920, height: 1080 });
+        for (let i = 0; i < 5; i += 1) lock(world, i);
+        step(world, camera, world.time, world.time + 1.2);
+        world.onClear(QUAD);
+        step(world, camera, world.time, world.time + 0.36, 1 / 60);
+        const born = world.diamond.bornAt;
+        const { erupting } = world.getState();
+        let glare = world.u.diamond.value.z;
+        world.onClear({
+            rows: [], lines: 1, perfect: true, crown: true,
+        });
+        // No second sweep of eruptions or jets, no second CME, no restart.
+        expect(world.getState().erupting).toBe(erupting);
+        for (let i = 0; i < 40; i += 1) {
+            step(world, camera, world.time, world.time + 1 / 60, 1 / 60);
+            expect(world.u.diamond.value.z).toBeGreaterThan(glare * 0.85);
+            glare = world.u.diamond.value.z;
+        }
+        expect(world.diamond.bornAt).toBe(born);
+        step(world, camera, world.time, world.time + 0.6, 1 / 60);
+        expect(world.getState().beads).toBeCloseTo(12, 0);
+        expect(world.diamond).not.toBeNull();
+    });
+
+    it('builds each cascade wave on the last: more pearls, stronger rings, and the third throws off mass', () => {
+        const { world, camera } = makeWorld();
+        const counts = [];
+        const rings = [];
+        for (let wave = 1; wave <= 4; wave += 1) {
+            const t = world.time;
+            world.onClear({ rows: [19], lines: 1, cascade: wave });
+            rings.push(dropped(world, t)[0].w);
+            step(world, camera, world.time, world.time + 0.36, 1 / 60);
+            counts.push(world.necklace.count);
+        }
+        for (let i = 1; i < 4; i += 1) {
+            expect(counts[i]).toBeGreaterThan(counts[i - 1]);
+            expect(rings[i]).toBeGreaterThan(rings[i - 1]);
+        }
+        expect(world.u.cme.value.z + world.u.cme2.value.z).toBeGreaterThan(0);
+    });
+
+    it('answers a back-to-back with twin CMEs either side of the crown', () => {
+        const { world, camera } = makeWorld('Low', { width: 1920, height: 1080 });
+        world.onClear({ ...QUAD, b2b: true });
+        step(world, camera, world.time, world.time + 0.8, 1 / 60);
+        const a = world.u.cme.value;
+        const b = world.u.cme2.value;
+        expect(a.z).toBeGreaterThan(0);
+        expect(b.z).toBeGreaterThan(0);
+        expect(Math.abs(Math.cos(a.x) - Math.cos(b.x))).toBeGreaterThan(0.5);
+        // A plain quad sends one.
+        const plain = makeWorld('Low', { width: 1920, height: 1080 });
+        plain.world.onClear(QUAD);
+        step(plain.world, plain.camera, plain.world.time, plain.world.time + 0.8, 1 / 60);
+        expect(plain.world.u.cme2.value.z).toBe(0);
+    });
+
+    it('still turns the corona for a T-spin that cleared nothing, and winds a second twist on the first', () => {
+        const { world, camera } = makeWorld();
+        world.onSpin({ player: 0 });
+        step(world, camera, world.time, world.time + 0.6, 1 / 60);
+        const one = world.u.twist.value;
+        expect(one).toBeGreaterThan(0.2);
+        expect(world.getState().ripples).toBeGreaterThan(0);
+        world.onClear({ rows: [19, 18], lines: 2, tspin: true });
+        step(world, camera, world.time, world.time + 1 / 60, 1 / 60);
+        expect(world.u.twist.value).toBeGreaterThanOrEqual(one * 0.95);
+        step(world, camera, world.time, world.time + 0.6, 1 / 60);
+        expect(world.u.twist.value).toBeGreaterThan(one);
+    });
+
+    it('burns hotter through a long chain than at its first clear, then breathes back at rest', () => {
+        const { world, camera } = makeWorld('Low', { width: 1920, height: 1080 });
+        const read = () => ({
+            alpen: world.u.alpenPower.value / paletteAt(world.wheel()).alpenPower,
+            cycle: world.u.cycle.value - paletteAt(world.wheel()).cycle,
+            corona: world.u.surge.value,
+            flash: world.u.flash.value,
+            stars: world.u.exposure.value,
+            pearls: world.necklace.count,
+        });
+        let first = null;
+        for (let n = 0; n < 11; n += 1) {
+            lock(world, n, { hardDrop: true });
+            world.onClear({ rows: [19, 18], lines: 1 + (n % 3) });
+            world.onCombo(n + 1);
+            step(world, camera, world.time, world.time + 0.64, 1 / 60);
+            if (n === 0) first = read();
+        }
+        const late = read();
+        Object.keys(first).forEach((key) => expect(late[key], key).toBeGreaterThan(first[key]));
+        expect(world.getState().stage).toBe(3);
+        // The newest flux ropes stand as a crown the clears no longer spend.
+        expect(world.getState().prominences).toBeGreaterThanOrEqual(4);
+        // The hands rest (and the chain breaks): the heat falls away and the light of the hour returns.
+        world.onCombo(0);
+        step(world, camera, world.time, world.time + 14, 0.1);
+        expect(world.getState().stage).toBe(0);
+        expect(world.heat.level).toBeLessThan(0.05);
+        expect(world.u.alpenPower.value / paletteAt(world.wheel()).alpenPower).toBeLessThan(1.04);
+        expect(world.u.beads.value.w).toBe(0);
+        expect(world.u.surge.value).toBeLessThan(0.05);
     });
 });
 

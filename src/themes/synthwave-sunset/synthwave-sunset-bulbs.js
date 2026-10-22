@@ -22,6 +22,7 @@ import {
     fract,
     length,
     max,
+    min,
     mix,
     modelViewMatrix,
     positionGeometry,
@@ -102,7 +103,9 @@ export function createBulbField(u, rows, opts = {}) {
         const t = u.time;
         const seed = swHash11(idx.add(cAttr.x.mul(97.0)).add(pAttr.x.mul(0.37)));
         const twinkle = sin(t.mul(float(1.8).add(seed.mul(1.6))).add(seed.mul(60.0))).mul(0.1).add(0.9);
-        const chase = smoothstep(0.7, 1.0, fract(idx.div(n).mul(5.0).sub(t.mul(0.35)))).mul(0.9).add(0.55);
+        // The chase runs on the midway's clock, which quickens as play heats.
+        const pace = u.chaseTime ?? t;
+        const chase = smoothstep(0.7, 1.0, fract(idx.div(n).mul(5.0).sub(pace.mul(0.35)))).mul(0.9).add(0.55);
         const sparkle = smoothstep(0.93, 1.0, fract(t.mul(0.6).add(seed.mul(17.0)))).mul(1.6).add(0.75);
         const level = select(program.lessThan(0.5), twinkle, select(
             program.lessThan(1.5),
@@ -113,13 +116,17 @@ export function createBulbField(u, rows, opts = {}) {
         const powered = smoothstep(float(1.0).sub(u.pierPower), float(1.0).sub(u.pierPower).add(0.04), iAttr.z);
         const col = cAttr.xyz.mul(level).mul(powered).toVar();
         if (u.coasterMeter) {
-            // The coaster: bulbs from the lift's foot up to the train burn lemon (the chain's
-            // meter); on a ride a fast chase races round the track.
+            // The coaster: bulbs from the lift's foot up to the meter burn lemon (the chain's
+            // meter, as bright as its charge: it drains when the chain lets go, never snaps
+            // dark); on a ride a fast chase races round the track.
             const isTrack = step(3.5, program);
             const tt = iAttr.z;
+            const charge = u.coasterCharge ?? float(1.0);
             const lifted = step(u.coasterFoot, tt).mul(step(tt, u.coasterMeter)).mul(step(0.01, u.coasterMeter));
             const race = smoothstep(0.75, 1.0, fract(idx.div(n).mul(9.0).sub(t.mul(2.6)))).mul(u.coasterRide);
-            const trackCol = mix(cAttr.xyz.mul(chase), linearLemon.mul(4.0), lifted).add(cAttr.xyz.mul(race.mul(3.0)));
+            const lemon = linearLemon.mul(max(charge, 1.0).mul(4.0));
+            const trackCol = mix(cAttr.xyz.mul(chase), lemon, lifted.mul(min(charge, 1.0)))
+                .add(cAttr.xyz.mul(race.mul(3.0)));
             col.assign(mix(col, trackCol, isTrack));
         }
         return col.mul(shape).mul(dim).mul(iAttr.w).mul(u.pierGlow)

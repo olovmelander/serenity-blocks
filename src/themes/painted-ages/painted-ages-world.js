@@ -24,6 +24,17 @@
  *               bed of light climbs the land
  *   game over   dusk falls and the lanterns light; morning returns with the next run
  *
+ * Everything gameplay lights ACCUMULATES (src/themes/shared/gameplay-surge.js): a new band joins
+ * the ones still climbing (the faintest gives way when the table is full), a second bow or flood
+ * or painted sky carries on from what is showing, and the heat of play builds the badlands' own
+ * crescendo. Calm play looks as it always did. A quick hand stirs the world (the deck's wind
+ * quickens, the sun burns brighter, the ribbons run further); a hot chain brings the storm in
+ * dark over a land that starts to glow; and in a fever the painted beds burn in their own
+ * pigments under the storm, a tide of colour climbing every hill, the clouds catch the colours,
+ * the river runs full with the latest rows' paint and the view leans in. A perfect clear crowns
+ * it (the whole sky painted, a double bow), the chain's break releases the bow over a soaked land
+ * that dries for TIMING.dry, and when the hands rest the world breathes back to calm.
+ *
  * Lifecycle: `await PaintedAgesWorld.prepare(quality, { signal })` reads the baked fields and
  * builds the land's mesh in slices; `new PaintedAgesWorld({ ..., prepared }).build()` makes the
  * scene objects; each frame `updateCamera` → `update` → `prerender(renderer)` → the post renders.
@@ -55,6 +66,7 @@ import { createShadowPass } from './painted-ages-shadow.js';
 import { createSky } from './painted-ages-sky.js';
 import { cardUnion, fallbackLayout } from './painted-ages-composition.js';
 import { applyCameraBreath } from '../shared/camera-breath.js';
+import { GameplaySurge, Swell } from '../shared/gameplay-surge.js';
 
 export const PAINTED_AGES_PARTS = Object.freeze(['land', 'sky', 'props', 'cumulus', 'poplars', 'motes']);
 export const REST_RIG = Object.freeze({ near: RIG.near, far: RIG.far });
@@ -69,8 +81,50 @@ export const RECORD_TOP = 150;
 /** Session scalars a rebuild in place carries over. */
 const SNAPSHOT = Object.freeze([
     'time', 'level', 'combo', 'peak', 'b2b', 'wetLevel', 'showerPower', 'showerFront', 'bowAt', 'bowStrength', 'bowSecond',
-    'perfectAt', 'duskFrom', 'duskTarget', 'duskAt', 'sheenLevel', 'floodAt', 'depositAt', 'lastLockAt',
+    'bowSince', 'bowSecondShown', 'perfectAt', 'duskFrom', 'duskTarget', 'duskAt', 'sheenLevel', 'floodAt', 'floodEnd',
+    'floodFront', 'depositAt', 'settleFrom', 'freshRows', 'lastLockAt', 'windDrift', 'nod', 'zoom', 'warmth', 'floodHead',
 ]);
+/** A rain streak's life (s): it falls from above the eye to below it. */
+const RAIN_LIFE = 6;
+/** The bow fades in over this long (s); a painted sky over PAINT_IN. */
+const BOW_IN = 2.2;
+const PAINT_IN = 1.5;
+/** Where the flood's front starts (metres along the river) and how fast it runs (m/s). */
+const FLOOD_SOURCE = RIVER_LENGTH - 2900;
+const FLOOD_SPEED = 950;
+/** The most record beds that glow together while a chain lays them down. */
+const FRESH_ROWS = 8;
+/** The glint a back-to-back clear's bands carry (linear). */
+const MICA = [1.3, 1.15, 0.85];
+
+/** Where smooth(0, 1, x) reaches v (its inverse on [0, 1]): to pick a fade up where it stands. */
+function unsmooth(v) {
+    const c = clamp(v, 0, 1);
+    return 0.5 - Math.sin(Math.asin(1 - 2 * c) / 3);
+}
+
+/** A swell's whole state (src/themes/shared/swell.js), for a rebuild in place. */
+const swellState = (swell) => ({
+    slow: swell.slow,
+    fast: swell.fast,
+    t0: swell.t0,
+    present: swell.present,
+    pendingAt: Array.from(swell.pendingAt),
+    pendingAmount: Array.from(swell.pendingAmount),
+});
+
+function loadSwell(swell, state) {
+    if (!state) return;
+    swell.slow = state.slow;
+    swell.fast = state.fast;
+    swell.t0 = state.t0;
+    swell.present = state.present;
+    if (state.pendingAt?.length === swell.pendingAt.length) swell.pendingAt.set(state.pendingAt);
+    if (state.pendingAmount?.length === swell.pendingAmount.length) swell.pendingAmount.set(state.pendingAmount);
+}
+
+/** How hot play ran, so a rebuilt world carries the heat on instead of dropping it. */
+const SURGE_SCALARS = Object.freeze(['shown', 'shownAt', 'fever', 'feverAt', 'stage']);
 
 /** Everything heavy a world needs once the fields are read: the mesh and the field textures. */
 function* prepareSteps(quality, fields) {
@@ -168,6 +222,21 @@ export class PaintedAgesWorld {
         this.overrides = { hour: null, recordTop: null };
         this.random = mulberry32(seed ^ 0x51ab);
         this.tables = new EventTables(this.u);
+        /**
+         * How hot play runs (src/themes/shared/gameplay-surge.js), sampled once a frame on the
+         * world's clock: `heat` is the latest sample (the camera reads the last frame's).
+         */
+        this.surge = new GameplaySurge();
+        this.heat = this.surge.sample(0);
+        /** The frame-wide flash of a quad or a perfect clear: every hit adds to what is still lit. */
+        this.flash = new Swell({ release: 0.32, ceiling: 0.6, knee: 0.4 });
+        /** A back-to-back clear's flare of mica on the rock (on top of the run's held sheen). */
+        this.sheenKick = new Swell({
+            attack: 0.08, release: 1.6, ceiling: 1.2, knee: 0.8,
+        });
+        /** The river's four lanes of pigment: the latest cleared rows' colours (a flood carries them). */
+        this.floodLanes = new Float64Array(12);
+        this.floodHead = 0;
         this.resetState(0);
     }
 
@@ -183,8 +252,10 @@ export class PaintedAgesWorld {
         this.showerPower = 0;
         this.showerFront = 9000;
         this.bowAt = -1e6;
+        this.bowSince = -1e6;
         this.bowStrength = 0;
         this.bowSecond = 0;
+        this.bowSecondShown = 0;
         this.perfectAt = -1e6;
         this.duskFrom = 0;
         this.duskTarget = 0;
@@ -192,11 +263,24 @@ export class PaintedAgesWorld {
         this.dusk = 0;
         this.sheenLevel = 0;
         this.floodAt = -1e6;
+        this.floodEnd = -1e6;
+        this.floodFront = FLOOD_SOURCE;
+        this.riverPower = 0;
         this.depositAt = -1e6;
+        this.settleFrom = 0;
+        this.freshRows = 1;
         this.lastLockAt = -1e6;
         this.rainCarry = 0;
+        this.windDrift = 0;
+        this.nod = 0;
+        this.zoom = 0;
+        this.warmth = 0;
         this.tables.reset();
         this.motes?.clear();
+        this.surge.reset();
+        this.heat = this.surge.sample(time);
+        this.flash.reset();
+        this.sheenKick.reset();
     }
 
     build() {
@@ -294,7 +378,11 @@ export class PaintedAgesWorld {
         camera.position.set(EYE.x, EYE.y, EYE.z);
         const move = this.reducedMotion ? 0 : 1;
         const yaw = rig.yaw + move * (Math.sin((TAU * time) / 71) * 0.35 + clamp(pointerX, -1, 1) * 0.8);
-        const pitch = rig.pitch + move * (Math.sin((TAU * time) / 53) * 0.12 - clamp(pointerY, -1, 1) * 0.25);
+        // Play moves the view: each hit nods it toward the land (riding on a floor under a quick
+        // hand), and in a fever it leans in over the valley (update() eases both).
+        const pitch = rig.pitch
+            + move * (Math.sin((TAU * time) / 53) * 0.12 - clamp(pointerY, -1, 1) * 0.25 - this.nod);
+        if (move && this.zoom > 0) camera.fov = rig.fov * (1 - 0.045 * this.zoom);
         camera.rotation.set(pitch * DEG, -yaw * DEG, 0, 'YXZ');
         camera.updateProjectionMatrix();
         camera.updateMatrixWorld();
@@ -449,6 +537,7 @@ export class PaintedAgesWorld {
         count = 16, spread = 2, rise = 2.5, size = 1.8, life = 3, kind = MOTE_KIND.dust, delay = 0,
     } = {}) {
         if (!this.motes) return;
+        this.motes.now = this.time;
         const r = this.random;
         for (let i = 0; i < count; i++) {
             const a = r() * TAU;
@@ -481,6 +570,7 @@ export class PaintedAgesWorld {
         const hard = Boolean(context.hardDrop);
         if (hard) this.counts.hardDrops++;
         this.lastLockAt = this.time;
+        this.surge.lock(context, this.time);
         if (this.duskTarget > 0) this.onSessionStart();
         const rows = Array.isArray(context.rows) && context.rows.length ? context.rows : [14];
         const row = rows.reduce((a, b) => a + b, 0) / rows.length;
@@ -489,23 +579,29 @@ export class PaintedAgesWorld {
         const rgb = this.pigment(context.color);
         const g = this.gAt(p.x, p.y, p.z);
         const drop = clamp((context.distance || 0) / 18, 0, 1);
+        // A quick hand's ribbons burn brighter and run further (nothing changes under casual play).
+        const pace = this.warmth;
         this.tables.addRibbon({
             x: p.x,
             z: p.z,
             g,
             time: this.time,
             rgb,
-            power: hard ? 6.0 + drop * 2 : 4.4,
+            power: (hard ? 6.0 + drop * 2 : 4.4) * (1 + 0.35 * pace),
             half: hard ? 5.0 : 3.6,
-            speed: hard ? 270 : 175,
-            reach: hard ? 1500 : 950,
+            speed: (hard ? 270 : 175) * (1 + 0.25 * pace),
+            reach: (hard ? 1500 : 950) * (1 + 0.45 * pace),
             kind: hard ? 1 : 0,
             life: hard ? 3.8 : 3.4,
         });
         // Pigment dust where it landed; spread with the distance (a far point needs larger motes).
         const scale = clamp(p.distance / 250, 0.5, 6);
         this.puff(p, rgb, {
-            count: hard ? 70 : 40, spread: 3 * scale, rise: 3 * scale, size: 1.5 * scale, life: 3.4,
+            count: Math.round((hard ? 70 : 40) * (1 + 0.4 * pace)),
+            spread: 3 * scale,
+            rise: 3 * scale,
+            size: 1.5 * scale,
+            life: 3.4,
         });
         if (hard) {
             this.puff(p, rgb, {
@@ -516,29 +612,50 @@ export class PaintedAgesWorld {
 
     onClear(context = {}) {
         if (this.disposed) return;
-        if (context.perfect) {
+        const codes = context.rowCodes || [];
+        // A perfect clear settles after its clear's last wave, on its own (no rows): it crowns the
+        // clear still playing rather than replaying one. One that carries its rows is both.
+        if (context.perfect && codes.length < 10) {
             this.onPerfect();
             return;
         }
         const lines = clamp(Math.round(context.lines || 1), 1, 4);
         this.counts.clears++;
         this.counts.lines += lines;
-        const codes = context.rowCodes || [];
         const t = this.time;
         // The rows go into the record, the newest on top.
         for (let k = 0; k < lines; k++) {
             const rowCodes = codes.length >= (k + 1) * 10 ? codes.slice(k * 10, k * 10 + 10) : null;
             this.record.deposit(rowCodes, { time: t + k * TIMING.rowStagger });
         }
-        this.depositAt = t;
-        // A band of light per row climbs the strata, in that row's colours.
-        const strength = 2.4 + Math.min(4, Math.max(0, (context.combo || 1) - 1)) * 0.3;
+        this.deposited(lines, t);
+        // A band of light per row climbs the strata, in that row's colours. A long chain keeps
+        // brightening them; each wave of a cascade rises from deeper in the land, brighter, wider
+        // and faster than the one before; a back-to-back clear's bands carry a glint of mica.
+        const combo = Math.max(1, Math.round(context.combo || 1));
+        const depth = clamp(Math.round(context.cascade || 1), 1, 10) - 1;
+        const b2b = context.b2b === true;
+        const strength = 2.4 + Math.min(4, combo - 1) * 0.3 + Math.min(6, Math.max(0, combo - 5)) * 0.12
+            + depth * 0.35 + (b2b ? 0.5 : 0);
         for (let k = 0; k < lines; k++) {
-            const rgb = this.rowColour(codes, k);
+            const rgb = this.rowColour(codes, k).slice();
+            this.feedRiver(rgb);
+            if (b2b) for (let c = 0; c < 3; c++) rgb[c] += (MICA[c] - rgb[c]) * 0.35;
             this.tables.addWave({
-                g0: -130 - k * 11, climb: 120, time: t + k * TIMING.rowStagger, power: strength, rgb: rgb.slice(), half: 3.4, life: 4.2,
+                g0: -130 - k * 11 - depth * 24,
+                climb: 120 * (1 + 0.18 * depth),
+                time: t + k * TIMING.rowStagger,
+                power: strength,
+                rgb,
+                half: 3.4 * (1 + 0.08 * depth),
+                life: 4.2,
             });
         }
+        if (b2b) {
+            // The mica flares, higher the longer the run (it settles back to the run's own sheen).
+            this.sheenKick.hit(0.45 + 0.12 * Math.min(4, this.b2b + 1), t);
+        }
+        this.surge.clear(context, t);
         // Pigment rises off the hills beside the card.
         const r = this.random;
         for (let s = 0; s < 3 + lines * 2; s++) {
@@ -550,13 +667,37 @@ export class PaintedAgesWorld {
                 count: 22, spread: 3.5 * scale, rise: 4 * scale, size: 1.7 * scale, life: 4.4, delay: s * 0.05,
             });
         }
-        if (lines === 4) this.onQuad(codes);
+        if (lines === 4) this.onQuad();
         if (context.tspin) this.onTSpin(context);
+        if (context.perfect) this.onPerfect({ counted: true });
         if (context.combo > this.combo) this.onCombo(context.combo);
     }
 
+    /**
+     * `beds` new beds were laid on the record at `time`. The stack slides down by them from where
+     * it stands (a cascade's next row never cuts the last slide short), and the newest beds glow
+     * together while the glow lasts (a chain lights the crown bed by bed).
+     */
+    deposited(beds, time) {
+        const age = time - this.depositAt;
+        const settle = this.settleFrom * (1 - smooth(0, TIMING.settle, age));
+        const fresh = 1 - smooth(0.2, 3.5, age);
+        this.settleFrom = Math.min(8, settle + beds);
+        this.freshRows = fresh > 0.05 ? Math.min(FRESH_ROWS, this.freshRows + beds) : beds;
+        this.depositAt = time;
+    }
+
+    /** A cleared row's pigment joins the river's four lanes (what a flood carries down). */
+    feedRiver(rgb) {
+        const k = this.floodHead * 3;
+        this.floodHead = (this.floodHead + 1) % 4;
+        this.floodLanes[k] = rgb[0];
+        this.floodLanes[k + 1] = rgb[1];
+        this.floodLanes[k + 2] = rgb[2];
+    }
+
     /** Four lines: a rainbow tide through every bed and a flash flood down the river. */
-    onQuad(codes) {
+    onQuad() {
         this.counts.quads++;
         const t = this.time;
         for (let k = 0; k < 6; k++) {
@@ -564,26 +705,44 @@ export class PaintedAgesWorld {
                 g0: -480 - k * 14, climb: 190, time: t + 0.15 + k * 0.08, power: 1.3, rgb: PIECE_LINEAR[k].slice(), half: 3.2, life: 4.6,
             });
         }
-        this.floodAt = t;
-        const rgb = [0, 0, 0];
-        for (let k = 0; k < 4; k++) {
-            const row = this.rowColour(codes, k);
-            this.u.tables.floodRows[k].set(row[0], row[1], row[2], 0);
-            for (let c = 0; c < 3; c++) rgb[c] += row[c] * 0.25;
+        // A flood still running runs on, swollen again (its front never snaps back to the source);
+        // its four rows' pigments (fed to the river by the clear) ease in down the current.
+        if (this.quadFlood(t) > 0.01) {
+            this.floodEnd = Math.max(this.floodEnd, t + TIMING.floodDrain);
+        } else {
+            this.floodAt = t;
+            this.floodEnd = t + TIMING.floodDrain;
         }
-        this.u.floodColour.value.set(rgb[0], rgb[1], rgb[2]);
-        this._post.flashKick = 1;
+        this.flash.hit(0.5 * this.flashRoom(t), t);
     }
 
-    onTSpin(context = {}) {
+    /**
+     * How much of a frame-wide flash the moment still has room for: all of it from cold, half in
+     * a fever (the land is already alight; a full flash would only wash its colours out).
+     */
+    flashRoom(time) {
+        return 1 - 0.5 * this.surge.level.valueAt(time);
+    }
+
+    /** Four lines' flash flood: how much of the river it holds at `time`. */
+    quadFlood(time) {
+        const age = time - this.floodAt;
+        if (age < 0) return 0;
+        return smooth(0, 0.4, age) * (1 - smooth(this.floodEnd - 5, this.floodEnd, time));
+    }
+
+    onTSpin(context = {}, share = 1) {
         this.counts.tspins++;
         // On the valley floor at a middle distance, on the side the T locked on.
         const p = this.landSite(context.u ?? (this.random() < 0.5 ? 0.2 : 0.8), 18.5);
         if (!p || !this.motes) return;
         const rgb = this.pigment(context.color || PIECE_COLORS[1]);
         const r = this.random;
-        const scale = clamp(p.distance / 200, 0.8, 5);
-        for (let i = 0; i < 520; i++) {
+        const scale = clamp(p.distance / 200, 0.8, 5) * (0.6 + 0.4 * share);
+        // Never more than a share of the pigment ring, so the devil leaves the puffs around it be.
+        const count = Math.min(Math.round(520 * share), Math.floor(this.motes.pigmentSlots * 0.45 * share));
+        this.motes.now = this.time;
+        for (let i = 0; i < count; i++) {
             const tint = r() * 0.55;
             this.motes.spawn({
                 x: p.x,
@@ -592,8 +751,8 @@ export class PaintedAgesWorld {
                 vx: 0,
                 vy: (6 + r() * 12) * scale,
                 vz: 0,
-                born: this.time + r() * 2.4,
-                life: 4 + r() * 4,
+                born: this.time + r() * 2.4 * (0.5 + 0.5 * share),
+                life: (4 + r() * 4) * (0.6 + 0.4 * share),
                 rgb: [rgb[0] * (1 - tint) + DUST[0] * tint, rgb[1] * (1 - tint) + DUST[1] * tint, rgb[2] * (1 - tint) + DUST[2] * tint],
                 size: (1.6 + r() * 2.4) * scale,
                 kind: MOTE_KIND.devil,
@@ -603,17 +762,64 @@ export class PaintedAgesWorld {
         }
     }
 
-    onPerfect() {
+    /**
+     * The crown: the clouds take the mineral colours, seven bands climb every bed, a double bow.
+     * Layered on whatever is still playing: a painted sky or a bow already up carries on from
+     * where it stands. `counted`: the clear that carried it already told the surge.
+     */
+    onPerfect({ counted = false } = {}) {
         this.counts.perfects++;
-        this.perfectAt = this.time;
+        // Picked up where the painted sky stands (in full, its hold starts over).
+        this.perfectAt = this.time - PAINT_IN * unsmooth(this.paintAt(this.time));
         for (let k = 0; k < 7; k++) {
             this.tables.addWave({
                 g0: -420 - k * 20, climb: 170, time: this.time + k * 0.22, power: 1.6, rgb: PIECE_LINEAR[k].slice(), half: 3.6, life: 5,
             });
         }
+        this.raiseBow(1, 1);
+        this.flash.hit(0.3 * this.flashRoom(this.time), this.time);
+        if (!counted) this.surge.crown(this.time);
+    }
+
+    /** A T-spin that cleared nothing: a small dust devil on the valley floor. */
+    onSpin(context = {}) {
+        if (this.disposed) return;
+        this.onTSpin(context || {}, 0.3);
+        this.surge.spin(this.time);
+    }
+
+    /** The painted sky of a perfect clear at `time` (in over PAINT_IN, held, then let go). */
+    paintAt(time) {
+        const age = time - this.perfectAt;
+        const { perfectHold, perfectFade } = TIMING;
+        return smooth(0, PAINT_IN, age) * (1 - smooth(perfectHold, perfectHold + perfectFade, age));
+    }
+
+    /** How much of a bow raised `age` seconds ago shows: in over BOW_IN, held, gone by bowLife. */
+    bowLive(age) {
+        return smooth(0, BOW_IN, age) * (1 - smooth(TIMING.bowLife - 7, TIMING.bowLife, age));
+    }
+
+    /**
+     * Raise the bow over the valley. There is one bow: raised while one still shows, it carries on
+     * from what is on screen (never weaker; its fade-in picked up where it stands; a secondary
+     * already lit stays lit), so a chain's break right after a perfect clear's double bow, or a
+     * perfect clear during a chain's bow, only ever adds to it.
+     */
+    raiseBow(strength, second) {
+        const shown = this.bowStrength * this.bowLive(this.time - this.bowAt);
+        if (shown > 0.005) {
+            const target = Math.max(strength, shown);
+            this.bowAt = this.time - BOW_IN * unsmooth(shown / target);
+            this.bowStrength = target;
+            this.bowSecond = Math.max(this.bowSecond, second);
+            return;
+        }
         this.bowAt = this.time;
-        this.bowStrength = 1;
-        this.bowSecond = 1;
+        this.bowSince = this.time;
+        this.bowStrength = strength;
+        this.bowSecond = second;
+        this.bowSecondShown = second;
     }
 
     onCombo(value) {
@@ -623,9 +829,7 @@ export class PaintedAgesWorld {
         if (n === 0 && this.peak >= 4) {
             this.counts.releases++;
             // The shower passes: a rainbow over the valley, doubled after a long chain.
-            this.bowAt = this.time;
-            this.bowStrength = clamp(0.55 + (this.peak - 4) * 0.15, 0.55, 1.1);
-            this.bowSecond = this.peak >= 7 ? 1 : 0;
+            this.raiseBow(clamp(0.55 + (this.peak - 4) * 0.15, 0.55, 1.1), this.peak >= 7 ? 1 : 0);
         }
         this.combo = n;
         this.peak = n === 0 ? 0 : Math.max(this.peak, n);
@@ -650,7 +854,8 @@ export class PaintedAgesWorld {
                 g0: -460, climb: 150, time, power: 1.5, rgb: [1.25, 1.05, 0.72], half: 1.8, life: 5.4,
             });
             this.record.deposit(null, { time, tuff: true });
-            this.depositAt = time;
+            this.deposited(1, time);
+            this.surge.levelUp(time);
         }
     }
 
@@ -660,7 +865,7 @@ export class PaintedAgesWorld {
         this.duskTarget = 1;
         this.duskAt = this.time;
         this.record.deposit(null, { time: this.time, tuff: true });
-        this.depositAt = this.time;
+        this.deposited(1, this.time);
     }
 
     onSessionStart() {
@@ -697,6 +902,18 @@ export class PaintedAgesWorld {
         this.time = Number.isFinite(sim.time) ? sim.time : this.time;
         const { time, u } = this;
         const dt = Math.max(0, Math.min(0.25, sim.delta || 0));
+        // How hot play runs: once a frame, on the world's clock. Under casual play `warmth` and
+        // `hot` stay near 0, so the badlands look as they always have.
+        const heat = this.surge.sample(time);
+        this.heat = heat;
+        const { punch, level, fever } = heat;
+        const warmth = smooth(0.15, 0.55, level);
+        const hot = smooth(0.45, 0.85, level);
+        this.warmth = warmth;
+        const motion = this.reducedMotion ? 0 : 1;
+        // The view: a nod with every hit (eased in over a few frames), a lean in through a fever.
+        this.nod += (motion * (0.5 * punch + 0.7 * fever) - this.nod) * approach(14, dt);
+        this.zoom += (motion * fever - this.zoom) * approach(1.2, dt);
         // Dusk at game over, morning after.
         this.dusk = this.duskFrom + (this.duskTarget - this.duskFrom)
             * smooth(0, this.duskTarget ? TIMING.dusk : TIMING.dawn, time - this.duskAt);
@@ -709,13 +926,21 @@ export class PaintedAgesWorld {
         u.sun.value.set(L.sun[0], L.sun[1], L.sun[2]);
         u.fill.value.set(L.fill[0], L.fill[1], L.fill[2]);
         u.bounce.value.set(L.bounce[0], L.bounce[1], L.bounce[2]);
-        u.zenith.value.set(L.zenith[0], L.zenith[1], L.zenith[2]);
-        u.horizon.value.set(L.horizon[0], L.horizon[1], L.horizon[2]);
-        u.glow.value.set(L.glow[0], L.glow[1], L.glow[2]);
-        u.haze.value.set(L.haze[0], L.haze[1], L.haze[2]);
-        u.mist.value.set(L.mist[0], L.mist[1], L.mist[2]);
+        // A hot chain's storm and a fever's gloom dim the sky and the air (the haze the far hills
+        // sit in), so the kindled land burns against the dark; calm play leaves them as they are.
+        const gloom = 1 - 0.12 * hot * this.showerPower - 0.3 * fever;
+        u.zenith.value.set(L.zenith[0] * gloom, L.zenith[1] * gloom, L.zenith[2] * gloom);
+        u.horizon.value.set(L.horizon[0] * gloom, L.horizon[1] * gloom, L.horizon[2] * gloom);
+        // The sun's glow warms with a quick hand; in a fever the storm's gloom takes the air
+        // round it too, and only the sun itself (the post's shafts) breaks through brighter.
+        const burn = (1 + 0.15 * warmth) * (1 - 0.25 * fever);
+        u.glow.value.set(L.glow[0] * burn, L.glow[1] * burn, L.glow[2] * burn);
+        u.haze.value.set(L.haze[0] * gloom, L.haze[1] * gloom, L.haze[2] * gloom);
+        u.mist.value.set(L.mist[0] * gloom, L.mist[1] * gloom, L.mist[2] * gloom);
         u.cloudLit.value.set(L.cloudLit[0], L.cloudLit[1], L.cloudLit[2]);
-        const storm = 1 - 0.55 * this.showerPower;
+        // The storm darkens the clouds' undersides; in a fever it gathers darker still over the
+        // glowing land.
+        const storm = 1 - 0.55 * this.showerPower - 0.18 * fever;
         u.cloudShade.value.set(L.cloudShade[0] * storm, L.cloudShade[1] * storm, L.cloudShade[2] * (storm + 0.08));
         u.snow.value.set(L.snow[0], L.snow[1], L.snow[2]);
         u.hazeDensity.value = L.hazeDensity;
@@ -724,8 +949,11 @@ export class PaintedAgesWorld {
         u.lamps.value = Math.max(1 - smooth(-2, 10, L.el), this.dusk);
         u.dusk.value = this.dusk;
         u.time.value = time;
-        // The deck drifts with a constant wind (closed form: the clock times a constant).
-        u.wind.value.set(time * 9.5, time * -3.2);
+        // The deck drifts with the wind: the clock times a constant, plus what play adds (a quick
+        // hand raises a breeze, a fever a gale: the clouds' shadows race across the land).
+        this.windDrift += dt * (1.4 * warmth + 2.4 * fever) * (this.reducedMotion ? 0.3 : 1);
+        const drift = time + this.windDrift;
+        u.wind.value.set(drift * 9.5, drift * -3.2);
 
         // The chain's shower: it walks in from the horizon as the chain grows, and passes when it breaks.
         const asked = this.combo >= 2 ? clamp(0.18 + (this.combo - 2) * 0.17, 0, 1) : 0;
@@ -740,34 +968,49 @@ export class PaintedAgesWorld {
         u.showerFront.value = this.showerFront;
         u.showerPower.value = this.showerPower;
         // The storm closes the sky over the chain.
-        u.cloudCover.value = 0.32 + 0.45 * this.showerPower;
-        // The bow.
-        const bowAge = time - this.bowAt;
-        const bowLive = smooth(0, 2.2, bowAge) * (1 - smooth(TIMING.bowLife - 7, TIMING.bowLife, bowAge));
-        u.bow.value.set(this.bowStrength * bowLive, this.bowSecond, bowAge);
-        // Perfect clear: the painted sky.
-        const pAge = time - this.perfectAt;
-        u.paint.value = smooth(0, 1.5, pAge) * (1 - smooth(TIMING.perfectHold, TIMING.perfectHold + TIMING.perfectFade, pAge));
-        // Back-to-back: the rock glints.
+        u.cloudCover.value = 0.32 + 0.45 * this.showerPower + 0.08 * fever;
+        // The bow (its age counts from when it first showed: a bow carried on never re-fades).
+        this.bowSecondShown += (this.bowSecond - this.bowSecondShown) * approach(0.9, dt);
+        u.bow.value.set(this.bowStrength * this.bowLive(time - this.bowAt), this.bowSecondShown, time - this.bowSince);
+        // Perfect clear: the painted sky; a fever lets the clouds catch some of the land's colours.
+        this.perfectPaint = this.paintAt(time);
+        u.paint.value = Math.max(this.perfectPaint, 0.22 * fever);
+        // Back-to-back: the rock glints (a b2b clear flares it); a fever sets the mica glittering.
         this.sheenLevel += (this.b2b / 4 - this.sheenLevel) * approach(1.5, dt);
-        u.sheen.value = this.sheenLevel;
-        // Four lines: the flood's front runs down the river, then the water drains.
-        const fAge = time - this.floodAt;
-        const fLive = smooth(0, 0.4, fAge) * (1 - smooth(TIMING.floodDrain - 5, TIMING.floodDrain, fAge));
-        u.flood.value.set(RIVER_LENGTH - 2900 + Math.max(0, fAge) * 950, fLive);
-        // The record: the newest beds crown the high ground; a new row slides the stack down.
+        u.sheen.value = Math.min(1.6, this.sheenLevel + this.sheenKick.valueAt(time) + 0.25 * fever);
+        // The river: four lines' flood, or a fever swelling it with the latest rows' paint. Its
+        // front runs down the course while there is water to carry and returns to the source
+        // only once the river has drained; its pigments ease toward the latest rows' (a new quad
+        // never recolours a running flood at a stroke).
+        const river = Math.max(this.quadFlood(time), 0.5 * fever);
+        if (river > 0.005 || this.riverPower > 0.005) {
+            this.floodFront = Math.min(this.floodFront + FLOOD_SPEED * dt, RIVER_LENGTH + 4000);
+        } else {
+            this.floodFront = FLOOD_SOURCE;
+        }
+        this.easeRiver(this.riverPower > 0.005 ? approach(1.2, dt) : 1);
+        this.riverPower = river;
+        u.flood.value.set(this.floodFront, river);
+        // The record: the newest beds crown the high ground; new rows slide the stack down.
         u.recordHead.value = this.record.head;
         u.recordCount.value = Math.min(RECORD_SHOWN, this.record.total);
         u.recordTop.value = this.overrides.recordTop ?? RECORD_TOP;
-        u.settle.value = 1 - smooth(0, TIMING.settle, time - this.depositAt);
+        u.settle.value = this.settleFrom * (1 - smooth(0, TIMING.settle, time - this.depositAt));
         u.fresh.value = 1 - smooth(0.2, 3.5, time - this.depositAt);
+        u.freshRows.value = this.freshRows;
+        // The heat of play kindles the painted beds: a faint glow on a hot hand, the showpiece in
+        // a fever (a tide of each bed's own pigment climbing the hills).
+        u.strataGlow.value = 0.08 * hot + 0.5 * fever;
         if (this._recordVersion !== this.record.version && this.textures) {
             this.textures.record.needsUpdate = true;
             this._recordVersion = this.record.version;
         }
         // Rain at the eye once the shower has walked in.
         if (this.motes && this.showerPower > 0.45 && this.showerFront < 900 && !this.reducedMotion) {
-            this.rainCarry += dt * 260 * this.showerPower;
+            // The rain keeps to its own share of the pool (painted-ages-motes.js): its rate is
+            // capped so each streak lives out its fall before its slot comes round again.
+            this.rainCarry += dt * Math.min(260 * this.showerPower, (0.95 * this.motes.rainSlots) / RAIN_LIFE);
+            this.motes.now = time;
             const r = this.random;
             while (this.rainCarry >= 1) {
                 this.rainCarry -= 1;
@@ -781,7 +1024,7 @@ export class PaintedAgesWorld {
                     vy: -11,
                     vz: 0.6,
                     born: time,
-                    life: 6,
+                    life: RAIN_LIFE,
                     rgb: [0.7, 0.75, 0.85],
                     size: 0.05 + d * 0.0006,
                     kind: MOTE_KIND.rain,
@@ -800,20 +1043,43 @@ export class PaintedAgesWorld {
             u.tanHalfFov.value = Math.tan(camera.fov * DEG * 0.5);
             u.pixelAngle.value = (2 * u.tanHalfFov.value) / Math.max(1, this.viewportHeight || 1080);
         }
-        this.updatePost(camera, dt);
+        this.updatePost(camera);
         for (const part of this.partList) part.update?.(time, dt);
     }
 
-    updatePost(camera, dt) {
+    /** Ease the river's pigments toward its four lanes by `k` (1: at once, the river was dry). */
+    easeRiver(k) {
+        const lanes = this.floodLanes;
+        const rows = this.u.tables.floodRows;
+        let r = 0;
+        let g = 0;
+        let b = 0;
+        for (let lane = 0; lane < 4; lane++) {
+            const row = rows[lane];
+            row.x += (lanes[lane * 3] - row.x) * k;
+            row.y += (lanes[lane * 3 + 1] - row.y) * k;
+            row.z += (lanes[lane * 3 + 2] - row.z) * k;
+            r += row.x * 0.25;
+            g += row.y * 0.25;
+            b += row.z * 0.25;
+        }
+        this.u.floodColour.value.set(r, g, b);
+    }
+
+    updatePost(camera) {
         const post = this._post;
         const L = this.light;
-        post.exposure = L.exposure;
+        const { punch, fever } = this.heat;
+        const { warmth } = this;
+        // The iris closes a little as play heats (the beds glow and the sun burns brighter), so
+        // the colours stay deep instead of washing out; the wet rock and the heat saturate them.
+        post.exposure = L.exposure * (1 - 0.05 * warmth - 0.1 * fever);
         post.shaftColour = L.glow;
-        post.saturation = 1.0 + this.wetLevel * 0.14;
-        post.bloomBoost = Math.min(1, this.showerPower * 0.2 + this.sheenLevel * 0.3 + (this.u.paint.value || 0) * 0.4);
-        // A flash on four lines.
-        post.flashKick = Math.max(0, (post.flashKick || 0) - dt * 1.6);
-        post.flash = post.flashKick * post.flashKick * 0.5;
+        post.saturation = 1.0 + this.wetLevel * 0.14 + 0.05 * warmth + 0.08 * fever;
+        post.bloomBoost = Math.min(1, this.showerPower * 0.2 + this.sheenLevel * 0.3 + (this.perfectPaint || 0) * 0.4
+            + 0.04 * warmth + 0.04 * fever);
+        // A flash on four lines and on a perfect clear (accumulating: a second never cuts the first).
+        post.flash = this.flash.valueAt(this.time);
         post.flashColour = L.glow;
         post.sun.strength = 0;
         if (camera) {
@@ -824,8 +1090,10 @@ export class PaintedAgesWorld {
             post.sun.y = 0.5 - this._sunScreen.y * 0.5;
             const margin = Math.max(Math.abs(post.sun.x - 0.5), Math.abs(post.sun.y - 0.5));
             post.sun.onScreen = inFront ? 1 - smooth(0.5, 0.9, margin) : 0;
+            // The sun breaks through brighter as play heats, and flares with each hit.
             post.sun.strength = post.sun.onScreen * L.sunUp * smooth(-1, 6, L.el) * (1 - smooth(14, 32, L.el))
-                * (1 + this.bowStrength * 0.3 * (this.u.bow.value.x > 0 ? 1 : 0));
+                * (1 + this.bowStrength * 0.3 * (this.u.bow.value.x > 0 ? 1 : 0))
+                * (1 + 0.3 * warmth + 0.7 * fever + 0.5 * punch);
         }
     }
 
@@ -856,6 +1124,7 @@ export class PaintedAgesWorld {
             dusk: this.dusk,
             ribbons: this.tables.ribbonCount,
             waves: this.tables.waveCount,
+            surge: { level: this.heat.level, fever: this.heat.fever, stage: this.heat.stage },
             recordRows: this.record.total,
             recordHead: this.record.head,
             reducedMotion: this.reducedMotion,
@@ -874,6 +1143,14 @@ export class PaintedAgesWorld {
             flood: {
                 colour: this.u.floodColour.value.toArray(),
                 rows: this.u.tables.floodRows.map((v) => v.toArray()),
+                lanes: Array.from(this.floodLanes),
+            },
+            heat: {
+                punch: swellState(this.surge.punch),
+                level: swellState(this.surge.level),
+                ...Object.fromEntries(SURGE_SCALARS.map((key) => [key, this.surge[key]])),
+                flash: swellState(this.flash),
+                sheenKick: swellState(this.sheenKick),
             },
             record: {
                 total: this.record.total,
@@ -894,7 +1171,19 @@ export class PaintedAgesWorld {
         this.counts = { ...emptyCounts(), ...state.counts };
         if (state.flood) {
             this.u.floodColour.value.fromArray(state.flood.colour);
-            state.flood.rows.forEach((row, k) => this.u.tables.floodRows[k]?.fromArray(row));
+            state.flood.rows.forEach((row, k) => {
+                if (!this.u.tables.floodRows[k]) return;
+                this.u.tables.floodRows[k].fromArray(row);
+                for (let c = 0; c < 3; c++) this.floodLanes[k * 3 + c] = row[c];
+            });
+            if (state.flood.lanes?.length === this.floodLanes.length) this.floodLanes.set(state.flood.lanes);
+        }
+        if (state.heat) {
+            loadSwell(this.surge.punch, state.heat.punch);
+            loadSwell(this.surge.level, state.heat.level);
+            for (const key of SURGE_SCALARS) if (state.heat[key] !== undefined) this.surge[key] = state.heat[key];
+            loadSwell(this.flash, state.heat.flash);
+            loadSwell(this.sheenKick, state.heat.sheenKick);
         }
         const r = state.record;
         this.record.data.set(r.data);

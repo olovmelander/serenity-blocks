@@ -10,13 +10,19 @@
  * of liquid is; this class stands the picture up for the screen's shape, aims the board's events
  * through the live camera (a lock's droplet leaves the card where the piece locked and lands in
  * the sea beside it), eases the level palettes, and hands the post stack its numbers.
+ *
+ * The heat of play (the choreography's GameplaySurge, src/themes/shared/gameplay-surge.js) is
+ * spent here on what the whole picture wears: the veins, the ink and the motes brighten with it,
+ * the viewer afloat rides a heavier swell, a fever burns the sea line deeper in its own hue and
+ * warms the dream sun, and the iris closes a little as the light rises so the colours stay
+ * saturated and the deep stays deep.
  */
 import * as THREE from 'three/webgpu';
 
 import { applyCameraBreath } from '../shared/camera-breath.js';
 import {
-    DEG, DREAMFIRE, FLUID_PALETTES, HERO, PALETTE_KEYS, SMOOTH_K, approach, clamp01, lerp, mulberry32, pieceColor,
-    sceneAnchors,
+    DEG, DREAMFIRE, FEVER_DUSK, FEVER_HORIZON, FLUID_PALETTES, HERO, PALETTE_KEYS, SMOOTH_K, approach, clamp01, lerp,
+    mulberry32, pieceColor, sceneAnchors,
 } from './fluid-dreams-core.js';
 import { bakeNoise, createNoiseTexture } from './fluid-dreams-tsl.js';
 import { createLiquidMaterial, createLiquidMesh, createLiquidUniforms } from './fluid-dreams-liquid.js';
@@ -163,14 +169,21 @@ export class FluidDreamsWorld {
         this.level = 1;
         this.paletteIndex = 0;
         this.palette = {};
+        /** The palette as drawn: the level's, eased, with a fever's burn on the sea line and the sun. */
+        this.shown = {};
         PALETTE_KEYS.forEach((key) => {
             this.palette[key] = FLUID_PALETTES[0][key].slice();
+            this.shown[key] = FLUID_PALETTES[0][key].slice();
         });
+        /** The motes' own clock: they rise faster as the sea charges, without leaping when it does. */
+        this.moteClock = 0;
         this.heart = { x: 0.7, y: 0.56 };
         this._post = {
             heart: this.heart, flash: 0, kick: 0, bloomBoost: 0, exposure: 1, shafts: 0.35,
         };
         this._camera = null;
+        /** Where updateCamera stood the camera's height this frame (the heave rides on it). */
+        this._restY = Number.NaN;
         this._ray = new THREE.Vector3();
         this._look = new THREE.Vector3();
         this._right = new THREE.Vector3();
@@ -425,7 +438,8 @@ export class FluidDreamsWorld {
     updateCamera(camera, sim) {
         const t = sim.time;
         const calm = this.reducedMotion ? 0 : 1;
-        const kick = this.choreo?.kick ?? 0;
+        // (read at this frame's time: a clock that holds still holds the lens still)
+        const kick = this.choreo?.kickAt(t) ?? 0;
         const fov = fovForAspect(this.aspect) - kick * 0.7 * calm;
         if (camera.fov !== fov || camera.near !== REST_RIG.near || camera.far !== REST_RIG.far) {
             camera.fov = fov;
@@ -452,6 +466,7 @@ export class FluidDreamsWorld {
         applyCameraBreath(camera, t, { scale: calm });
         camera.updateMatrixWorld();
         this._camera = camera;
+        this._restY = camera.position.y;
         // The dream sun on screen: where the shafts come from.
         if (this.u) {
             this._ray.copy(this.u.sunDir.value).multiplyScalar(1000).add(camera.position).project(camera);
@@ -532,10 +547,19 @@ export class FluidDreamsWorld {
         });
     }
 
-    /** @param {{ player?: number, rows: number[], lines: number, tspin?: boolean, perfect?: boolean }} clear */
+    /**
+     * `crown`: a perfect clear settled after its clear's last wave (the director's own frame for
+     * it): the crown on the clear still playing, never a clear of its own.
+     * @param {{ player?: number, rows: number[], lines: number, tspin?: boolean, perfect?: boolean,
+     *   cascade?: number, combo?: number, b2b?: boolean, crown?: boolean }} clear
+     */
     onClear(clear) {
         const cam = this._camera;
         if (!cam || !this.choreo) return;
+        if (clear.crown === true) {
+            this.choreo.perfectCrown();
+            return;
+        }
         const board = boardFor(this.layout, clear.player ?? 0);
         const lines = Math.max(1, Math.min(4, Math.round(clear.lines || 1)));
         let origin = this.choreo.scene.foot;
@@ -555,6 +579,9 @@ export class FluidDreamsWorld {
             tspin: clear.tspin === true,
             perfect: clear.perfect === true,
             site: site ? this.sitePoint(site, this._site) : null,
+            cascade: clear.cascade,
+            combo: clear.combo,
+            b2b: clear.b2b === true,
         });
         if (plunged && site) {
             this.site = site;
@@ -590,6 +617,11 @@ export class FluidDreamsWorld {
         }
     }
 
+    /** A T-spin that cleared nothing: the sea under the Drop turns a little. */
+    onSpin() {
+        this.choreo?.spinNoLines();
+    }
+
     /** The longest chain any board is holding (0 = broken). */
     onCombo(combo) {
         this.choreo?.setCombo(combo);
@@ -623,6 +655,7 @@ export class FluidDreamsWorld {
         this.siteRandom = mulberry32(0x5173);
         this.compose();
         this.levelUp(1, { silent: true });
+        this.moteClock = Math.max(0, time);
     }
 
     /**
@@ -634,19 +667,33 @@ export class FluidDreamsWorld {
         if (!u || !choreo) return;
         const dt = sim.delta;
 
-        // the level's palette, eased
+        // the level's palette, eased; a fever burns the sea line deeper and warms the sun (last
+        // frame's fever: it moves by a few hundredths a frame at most)
         const target = FLUID_PALETTES[this.paletteIndex];
         const k = approach(2.2, dt);
+        const { fever } = choreo.heat;
         PALETTE_KEYS.forEach((key) => {
             const cur = this.palette[key];
             const to = target[key];
             cur[0] += (to[0] - cur[0]) * k;
             cur[1] += (to[1] - cur[1]) * k;
             cur[2] += (to[2] - cur[2]) * k;
-            u[key].value.set(cur[0], cur[1], cur[2]);
+            const shown = this.shown[key];
+            const lean = FEVER_DUSK[key];
+            const w = lean ? lean[1] * fever : 0;
+            for (let c = 0; c < 3; c += 1) shown[c] = w > 0 ? lerp(cur[c], lean[0][c], w) : cur[c];
+            if (key === 'horizon' && fever > 0) {
+                // the sea line burns deeper in its own hue (never toward grey or white)
+                const grey = (cur[0] + cur[1] + cur[2]) / 3;
+                const lift = 1 + FEVER_HORIZON.lift * fever;
+                const sat = 1 + FEVER_HORIZON.saturate * fever;
+                for (let c = 0; c < 3; c += 1) shown[c] = Math.max(0, (grey + (cur[c] - grey) * sat) * lift);
+            }
+            u[key].value.set(shown[0], shown[1], shown[2]);
         });
 
-        choreo.update(sim.time, dt, this.palette);
+        choreo.update(sim.time, dt, this.shown);
+        const { level, punch } = choreo.heat;
 
         u.time.value = sim.time;
         u.counts.value.set(choreo.counts.rings, choreo.counts.dye, choreo.counts.waves, 0);
@@ -664,11 +711,29 @@ export class FluidDreamsWorld {
         u.swell.value = choreo.swell;
         u.charge.value = choreo.charge;
         u.surge.value = choreo.surge;
+        // The heat of play: the veins in the sea burn with it (a fever sets them alight), the ink
+        // in the sky and in the drops and the motes a little.
+        u.heat.value.set(level, choreo.heat.fever, 0, 0);
         u.prism.value.set(prism.radius, prism.strength, prism.width, 0);
-        u.film.value.set(1, choreo.filmShift, 0, 0);
+        u.film.value.set(1, choreo.filmShift + choreo.sheen, 0, 0);
+        // A world-side flash (ADR-0021): Reduce flashing scales it with the post's own.
         u.skyFlash.value = choreo.skyFlash * flashScale();
+        this.moteClock += dt * (1 + choreo.charge * 1.6 + level * 0.6 + choreo.heat.fever * 0.8);
+        u.moteClock.value = this.moteClock;
 
         if (camera) {
+            // Afloat on a sea that heaves harder as play heats: the viewer rides it (once the
+            // frame's heat is known; from where updateCamera stood it, so it never accumulates).
+            if (camera === this._camera && Number.isFinite(this._restY)) {
+                const calm = this.reducedMotion ? 0 : 1;
+                const t = sim.time;
+                const heave = (Math.sin(t * 0.53) * 0.06 * level + Math.sin(t * 0.71 + 1.1) * 0.09 * choreo.heat.fever)
+                    * calm;
+                if (camera.position.y !== this._restY + heave) {
+                    camera.position.y = this._restY + heave;
+                    camera.updateMatrixWorld();
+                }
+            }
             this.parts.liquid.mesh.position.copy(camera.position);
             this.parts.liquid.mesh.updateMatrixWorld();
             u.pixelAngle.value = (2 * Math.tan((camera.fov * DEG) / 2)) / this.viewport.height;
@@ -681,12 +746,15 @@ export class FluidDreamsWorld {
         const post = this._post;
         // reduced motion: no lens jump, and a flash is a breath of light, not a strobe
         post.flash = choreo.flash * (this.reducedMotion ? 0.3 : 1);
-        post.kick = this.reducedMotion ? 0 : choreo.kick;
+        post.kick = this.reducedMotion ? 0 : choreo.kick + punch * 0.15;
         // The surge's share of the glare is half what it was: at 0.8 and 0.6 the bloom and the
         // shafts out of the dream sun poured a milky veil over the half of the frame the crown
-        // stands in, and hid it.
-        post.bloomBoost = choreo.charge * 0.5 + choreo.surge * 0.4;
-        post.exposure = 1 - choreo.hush * 0.2;
+        // stands in, and hid it. The heat of play adds little here: its light is in the sea.
+        post.bloomBoost = choreo.charge * 0.5 + choreo.surge * 0.4 + level * 0.08 + choreo.heat.fever * 0.1;
+        // An iris: it closes a little as play heats and as the overdrive flares, so the colours
+        // survive the surge and the deep stays deep.
+        post.exposure = 1 - choreo.hush * 0.2 - Math.max(0, level - 0.2) * 0.1 - choreo.heat.fever * 0.06
+            - choreo.surge * 0.08 - post.flash * flashScale() * 0.1;
         post.shafts = 0.35 + choreo.charge * 0.35 + choreo.surge * 0.3;
     }
 

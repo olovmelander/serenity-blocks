@@ -1,12 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { FALL_REACTION_LIMITS, FallReactions } from '../../src/themes/fall/fall-reactions.js';
+import {
+    FALL_FRONT_SLOTS, FALL_REACTION_LIMITS, FALL_REDUCED_MOTION, FallReactions,
+} from '../../src/themes/fall/fall-reactions.js';
 
 const ENVELOPES = ['gust', 'warmth', 'shafts', 'glow'];
-const EMITTER_KINDS = ['lock', 'clear', 'shower', 'combo', 'spin'];
+/** What the surge of play asks of the grove: every one 0..1, all at rest when play is. */
+const GROVE = ['breeze', 'storm', 'ripen', 'turn'];
+const EMITTER_KINDS = ['lock', 'clear', 'shower', 'combo', 'spin', 'twin', 'crown'];
 const EMITTER_KEYS = ['active', 'age', 'column', 'duration', 'id', 'kind', 'lines', 'progress', 'row', 'seed',
     'serial', 'side', 'strength'];
 const REST_FRAME = Object.freeze({
-    gust: 0, warmth: 0, shafts: 0, glow: 0, vortex: 0, heat: 0, streak: 0, front: null, emitters: [],
+    gust: 0,
+    warmth: 0,
+    shafts: 0,
+    glow: 0,
+    vortex: 0,
+    heat: 0,
+    streak: 0,
+    front: null,
+    fronts: [],
+    surge: {
+        punch: 0, level: 0, fever: 0, stage: 0,
+    },
+    breeze: 0,
+    storm: 0,
+    ripen: 0,
+    turn: 0,
+    crown: 0,
+    motion: 1,
+    emitters: [],
 });
 const MALFORMED_COUNTS = [NaN, Infinity, -Infinity, -5, 0, 0.8, '', ' ', 'garbage', null, false, true, [], [4], {},
     { lineCount: [] }, Symbol('count'), 4n];
@@ -44,14 +66,25 @@ function frameProblems(frame, capacity = Infinity) {
     const problems = [];
     const check = (condition, message) => { if (!condition) problems.push(message); };
     const unit = (value) => Number.isFinite(value) && value >= 0 && value <= 1;
-    for (const key of [...ENVELOPES, 'vortex', 'heat']) check(unit(frame[key]), `${key} = ${String(frame[key])}`);
+    for (const key of [...ENVELOPES, ...GROVE, 'vortex', 'heat', 'motion']) {
+        check(unit(frame[key]), `${key} = ${String(frame[key])}`);
+    }
+    check(Number.isFinite(frame.crown) && frame.crown >= 0 && frame.crown <= 1.2, `crown = ${String(frame.crown)}`);
+    for (const key of ['punch', 'level', 'fever']) check(frame.surge[key] >= 0, `surge.${key} = ${frame.surge[key]}`);
+    check([0, 1, 2, 3].includes(frame.surge.stage), `surge.stage = ${frame.surge.stage}`);
     check(Number.isInteger(frame.streak) && frame.streak >= 0, `streak = ${String(frame.streak)}`);
-    if (frame.front !== null) {
-        const { front } = frame;
+    check(frame.fronts.length <= FALL_FRONT_SLOTS, `${frame.fronts.length} fronts`);
+    check((frame.front === null) === (frame.fronts.length === 0), 'front without fronts');
+    for (const front of [frame.front, ...frame.fronts]) {
+        if (front === null) continue;
         check(Object.keys(front).sort().join() === 'direction,position,strength', `front keys ${Object.keys(front)}`);
         check(Number.isFinite(front.position), `front.position = ${front.position}`);
-        check(front.direction === 1 || front.direction === -1, `front.direction = ${front.direction}`);
+        // Every front travels downwind.
+        check(front.direction === 1, `front.direction = ${front.direction}`);
         check(unit(front.strength), `front.strength = ${front.strength}`);
+    }
+    if (frame.front) {
+        check(frame.fronts.every((front) => front.strength <= frame.front.strength), 'front is not the strongest');
     }
     check(frame.emitters.length <= capacity, `${frame.emitters.length} emitters exceed ${capacity}`);
     check(new Set(frame.emitters.map((emitter) => emitter.id)).size === frame.emitters.length, 'duplicate ids');
@@ -404,19 +437,64 @@ describe('Fall reaction director', () => {
             expect(peak).toBeGreaterThan(0);
         });
 
-        it('alternates the direction of successive fronts and restarts each one upwind', () => {
+        it('never restarts or reverses a front: a quick sweep joins it, a later one rolls in behind', () => {
             const reactions = create();
             reactions.onLineClear(2);
-            const first = advance(reactions, 0.3).front;
-            reactions.onLineClear(3);
-            const second = reactions.frame.front;
-            reactions.onLevelUp();
-            const third = reactions.frame.front;
-            expect(second.direction).toBe(-first.direction);
-            expect(third.direction).toBe(first.direction);
-            for (const front of [second, third]) {
-                expect(front.position * front.direction).toBeLessThan(0);
-                expect(front.position * front.direction).toBeLessThan(first.position * first.direction);
+            // A sweep a moment later joins the front just set out: still one, a little stronger.
+            const joined = create();
+            joined.onLineClear(2);
+            advance(joined, 0.1);
+            advance(reactions, 0.1);
+            joined.onLineClear(2);
+            expect(joined.frame.fronts).toHaveLength(1);
+            expect(joined.frame.fronts[0].position).toBe(reactions.frame.fronts[0].position);
+            expect(advance(joined, 0.3).front.strength).toBeGreaterThan(advance(reactions, 0.3).front.strength);
+
+            // Later sweeps roll in behind it, downwind like it, while it carries on where it was.
+            const train = create();
+            train.onLineClear(2);
+            const first = advance(train, 0.4).fronts[0];
+            train.onLineClear(3);
+            const [lead, second] = train.frame.fronts;
+            expect(lead.position).toBe(first.position);
+            expect(second.direction).toBe(first.direction);
+            expect(second.position).toBeLessThan(lead.position);
+            advance(train, 0.4);
+            train.onLevelUp();
+            expect(train.frame.fronts).toHaveLength(3);
+            // With every slot crossing, another sweep joins the youngest: nothing is cut.
+            advance(train, 0.4);
+            const full = train.frame.fronts.map((front) => front.position);
+            train.onLineClear(4);
+            expect(train.frame.fronts.map((front) => front.position)).toEqual(full);
+            // Each runs to the end of its crossing, in order.
+            let previous = train.frame.fronts.length;
+            for (let frame = 0; frame < 60 * 4; frame++) {
+                const { fronts } = train.update(1 / 60);
+                expect(fronts.length).toBeLessThanOrEqual(previous);
+                fronts.forEach((front) => expect(front.direction).toBe(1));
+                previous = fronts.length;
+                expectBounded(train.frame, train.maxEmitters);
+            }
+            expect(train.frame.fronts).toEqual([]);
+        });
+
+        it('sends a front on every wave of a cascade, each a little stronger than the last', () => {
+            const reactions = create();
+            reactions.onPieceLock();
+            reactions.onLineClear(2, { cascadeCount: 1 });
+            const strengths = [];
+            for (let wave = 2; wave <= 4; wave++) {
+                advance(reactions, 0.36);
+                reactions.onCombo(wave);
+                reactions.onLineClear(1, { cascadeCount: wave });
+                const youngest = reactions.fronts.filter((front) => front.active)
+                    .reduce((young, front) => (front.age < young.age ? front : young));
+                strengths.push(youngest.target);
+            }
+            expect(reactions.frame.fronts.length).toBeGreaterThanOrEqual(3);
+            for (let index = 1; index < strengths.length; index++) {
+                expect(strengths[index]).toBeGreaterThan(strengths[index - 1]);
             }
         });
     });
@@ -690,16 +768,22 @@ describe('Fall reaction director', () => {
             expectBounded(reactions.frame, reactions.maxEmitters);
         });
 
-        it('lets a back-to-back warm the light and wind the vortex without throwing leaves', () => {
+        it('answers a back-to-back from the two great trees, warming the light and winding the vortex', () => {
             const reactions = create();
             expect(reactions.onBackToBack({ active: true })).toBe(true);
             const { frame } = reactions;
-            expect(frame.emitters).toEqual([]);
+            expect(frame.emitters.map((emitter) => emitter.kind)).toEqual(['twin']);
             expect(frame.front).toBeNull();
             for (const key of ['warmth', 'shafts', 'glow']) expect(frame[key]).toBeGreaterThan(0);
             expect(frame.gust).toBe(0);
             expect(advance(reactions, 0.5).vortex).toBeGreaterThan(0);
             expectBounded(reactions.frame, reactions.maxEmitters);
+            // A second back-to-back in a row: the trees let go more than the first time.
+            advance(reactions, 0.9);
+            reactions.onBackToBack();
+            const twins = emittersOf(reactions.frame, 'twin');
+            expect(twins).toHaveLength(2);
+            expect(twins[1].strength).toBeGreaterThan(twins[0].strength);
         });
 
         it('makes the whole grove exhale on a perfect clear', () => {
@@ -708,7 +792,7 @@ describe('Fall reaction director', () => {
             expect(perfect.onPerfectClear({ depth: 4 })).toBe(true);
             tetris.onLineClear(4);
             const { frame } = perfect;
-            expect(frame.emitters.map((emitter) => emitter.kind)).toEqual(['shower']);
+            expect(frame.emitters.map((emitter) => emitter.kind)).toEqual(['shower', 'crown']);
             expect(frame.front).not.toBeNull();
             for (const key of ENVELOPES) expect(frame[key]).toBeGreaterThanOrEqual(tetris.frame[key]);
             const shower = emittersOf(tetris.frame, 'shower')[0];
@@ -717,7 +801,39 @@ describe('Fall reaction director', () => {
             const wound = advance(perfect, 0.5);
             expect(wound.vortex).toBeGreaterThan(0);
             expect(wound.front.strength).toBeGreaterThan(0);
+            // The sun bursts through: the crown rises over a moment, then lets go.
+            expect(wound.crown).toBeGreaterThan(0.5);
+            expect(advance(perfect, 3).crown).toBeLessThan(wound.crown * 0.2);
             expectBounded(wound, perfect.maxEmitters);
+        });
+
+        it('crowns the clear still playing instead of replaying it, and lets the vortex go', () => {
+            const chain = () => {
+                const reactions = create();
+                for (let lock = 0; lock < 8; lock++) {
+                    reactions.onHardDrop({ distance: 16 });
+                    reactions.onPieceLock({ piece: cell(lock % 10, 22) });
+                    reactions.onLineClear(lock === 7 ? 4 : 2);
+                    advance(reactions, 0.64);
+                }
+                return reactions;
+            };
+            const crowned = chain();
+            const plain = chain();
+            expect(emittersOf(crowned.frame, 'shower')).toHaveLength(1);
+            const fronts = crowned.frame.fronts.length;
+            advance(crowned, 0.36 - 0.64 + 0.64);
+            advance(plain, 0.36);
+            expect(crowned.onPerfectClear({ depth: 4 })).toBe(true);
+            // No second canopy shower, no second front: the crown is its own moment.
+            expect(emittersOf(crowned.frame, 'shower')).toHaveLength(1);
+            expect(emittersOf(crowned.frame, 'crown')).toHaveLength(1);
+            expect(crowned.frame.fronts.length).toBeLessThanOrEqual(Math.max(fronts, 1));
+            // The column flares and lets go: well before a plain hold would have run out it unwinds.
+            const held = advance(plain, 1.5).vortex;
+            const released = advance(crowned, 1.5).vortex;
+            expect(released).toBeLessThan(held);
+            expectBounded(crowned.frame, crowned.maxEmitters);
         });
 
         it('sweeps a front through the forest on a level up without spending an emitter', () => {
@@ -750,7 +866,9 @@ describe('Fall reaction director', () => {
             expect(before.emitters.length).toBeGreaterThan(0);
             ended.onGameOver();
             // Only the wind is released; light and emitters finish on their own.
-            expect(ended.frame).toEqual({ ...before, streak: 0, front: null });
+            expect(ended.frame).toEqual({
+                ...before, streak: 0, front: null, fronts: [],
+            });
             expect(ended.vortexTarget).toBe(0);
             let previous = before.vortex;
             expect(playing.update(1 / 60).vortex).toBeGreaterThanOrEqual(before.vortex);
@@ -827,7 +945,8 @@ describe('Fall reaction director', () => {
 
         it('decays every envelope exponentially per second', () => {
             const reactions = create();
-            reactions.onPerfectClear();
+            // Below the soft knee one event's light falls away as a pure exponential.
+            reactions.onLineClear(1);
             const start = reactions.frame;
             const half = advance(reactions, 0.5);
             const whole = advance(reactions, 0.5);
@@ -914,21 +1033,26 @@ describe('Fall reaction director', () => {
             expect(after.slice(1)).toEqual(before.slice(1));
         });
 
-        it('reclaims the emitter furthest through its own life, not the one that started first', () => {
+        it('reclaims the emitter with the least work left, so no jet or shower is cut mid-blow', () => {
             const reactions = create('Minimal');
             reactions.onPerfectClear();
             reactions.update(0.1);
             reactions.onTSpin();
             reactions.update(0.1);
             reactions.onCombo(5);
-            reactions.update(0.1);
-            reactions.onPieceLock();
-            reactions.update(0.2);
+            reactions.update(0.3);
             const before = reactions.frame.emitters;
-            expect(before.map((emitter) => emitter.kind)).toEqual(['shower', 'spin', 'combo', 'lock']);
+            expect(before.map((emitter) => emitter.kind)).toEqual(['shower', 'crown', 'spin', 'combo']);
+            // The combo is not the furthest through its life: the old rule would have cut the spiral.
             const progress = before.map((emitter) => emitter.progress);
-            const furthest = progress.indexOf(Math.max(...progress));
-            expect(progress.filter((value) => value === progress[furthest])).toHaveLength(1);
+            expect(progress.indexOf(Math.max(...progress))).not.toBe(3);
+            // The combo's ring was thrown the frame it came; the shower, the crown's burst and the
+            // spiral are still at work.
+            const furthest = before.findIndex((emitter) => emitter.kind === 'combo');
+            expect(FallReactions.remainingWork(before[furthest])).toBe(0);
+            for (const [index, emitter] of before.entries()) {
+                if (index !== furthest) expect(FallReactions.remainingWork(emitter)).toBeGreaterThan(0);
+            }
             reactions.onPieceLock();
             const after = reactions.frame.emitters;
             after.forEach((emitter, index) => {
@@ -967,6 +1091,125 @@ describe('Fall reaction director', () => {
                 reactions.update(0.05);
             }
             expect(serials).toEqual([...Array(12).keys()]);
+        });
+    });
+
+    describe('building with play', () => {
+        /** One clearing lock of a quick hand: hard-dropped, `lines` cleared. */
+        const clearingLock = (reactions, lines = 1, column = 4) => {
+            reactions.onHardDrop({ distance: 16 });
+            reactions.onPieceLock({ piece: cell(column, 22) });
+            reactions.onLineClear(lines, { clearedRows: [23], cascadeCount: 1 });
+        };
+        /** The tray's Fever, near enough: twelve clearing locks 0.64 s apart, bigger as they go. */
+        const chain = (reactions) => {
+            [1, 1, 2, 1, 2, 2, 3, 2, 2, 3, 3, 4].forEach((lines, index) => {
+                if (index > 0) advance(reactions, 0.64);
+                clearingLock(reactions, lines, index % 10);
+            });
+            return reactions.frame;
+        };
+
+        it('never lets a weak event right after a strong one cut the light', () => {
+            const quad = create();
+            const both = create();
+            quad.onLineClear(4);
+            both.onLineClear(4);
+            advance(quad, 0.2);
+            advance(both, 0.2);
+            both.onPieceLock({ piece: cell(2, 22) });
+            for (const key of ENVELOPES) expect(both.frame[key]).toBeGreaterThanOrEqual(quad.frame[key]);
+            for (let frame = 0; frame < 90; frame++) {
+                const alone = quad.update(1 / 60);
+                const added = both.update(1 / 60);
+                for (const key of ENVELOPES) expect(added[key]).toBeGreaterThanOrEqual(alone[key] - 1e-12);
+            }
+        });
+
+        it('lets rapid events build the light instead of repeating the first one', () => {
+            const once = create();
+            const rapid = create();
+            clearingLock(once, 1);
+            for (let lock = 0; lock < 6; lock++) {
+                if (lock > 0) advance(rapid, 0.3);
+                clearingLock(rapid, 1);
+            }
+            for (const key of ENVELOPES) expect(rapid.frame[key]).toBeGreaterThan(once.frame[key]);
+            for (const key of ENVELOPES) expect(rapid.frame[key]).toBeLessThanOrEqual(1);
+        });
+
+        it('reads a long chain hotter than its first clear, then breathes back to the quiet afternoon', () => {
+            const first = create();
+            clearingLock(first, 1);
+            const opening = advance(first, 0.3);
+            const reactions = create();
+            const peak = chain(reactions);
+            expect(peak.streak).toBe(12);
+            expect(peak.surge.level).toBeGreaterThan(opening.surge.level + 0.4);
+            expect(peak.surge.fever).toBeGreaterThan(0.5);
+            expect(peak.surge.stage).toBe(3);
+            for (const key of GROVE) {
+                expect(peak[key]).toBeGreaterThan(opening[key] + 0.3);
+                expect(peak[key]).toBeLessThanOrEqual(1);
+            }
+            // The column has climbed and the leaves the game throws burn at their edges.
+            expect(peak.vortex).toBeGreaterThan(0.8);
+            expect(peak.heat).toBeGreaterThan(0.5);
+            // Casual play leaves the grove as it was.
+            for (const key of GROVE) expect(opening[key]).toBeLessThan(0.05);
+            // The hands rest: everything eases back, nothing snaps.
+            let previous = peak;
+            for (let frame = 0; frame < 60 * 14; frame++) {
+                const now = reactions.update(1 / 60);
+                // (The last clear's warmth still rises for a moment before the release.)
+                if (frame > 60) {
+                    for (const key of ['ripen', 'turn']) expect(now[key]).toBeLessThanOrEqual(previous[key] + 1e-9);
+                }
+                for (const key of GROVE) expect(Math.abs(now[key] - previous[key])).toBeLessThan(0.05);
+                previous = now;
+            }
+            expect(previous.surge.level).toBeLessThan(0.05);
+            expect(previous.surge.stage).toBe(0);
+            for (const key of [...GROVE, 'vortex', 'heat']) expect(previous[key]).toBeLessThan(0.01);
+        });
+
+        it('builds each wave of a cascade on the last', () => {
+            const reactions = create();
+            reactions.onPieceLock({ piece: cell(4, 22) });
+            reactions.onLineClear(1, { clearedRows: [23], cascadeCount: 1 });
+            const jets = [emittersOf(reactions.frame, 'clear')[0].strength];
+            for (let wave = 2; wave <= 4; wave++) {
+                advance(reactions, 0.36);
+                reactions.onCombo(wave);
+                reactions.onLineClear(1, { clearedRows: [23], cascadeCount: wave });
+                jets.push(emittersOf(reactions.frame, 'clear').at(-1).strength);
+            }
+            for (let index = 1; index < jets.length; index++) expect(jets[index]).toBeGreaterThan(jets[index - 1]);
+            // A cascade is one step of the combo, however deep.
+            expect(reactions.frame.streak).toBe(1);
+        });
+
+        it('answers a T-spin that clears nothing with the spiral and a little warmth of play', () => {
+            const reactions = create();
+            reactions.onPieceLock({ piece: cell(4, 22) });
+            reactions.onTSpin({ lineCount: 0, piece: cell(4, 22) });
+            expect(emittersOf(reactions.frame, 'spin')).toHaveLength(1);
+            const lockOnly = create();
+            lockOnly.onPieceLock({ piece: cell(4, 22) });
+            expect(advance(reactions, 0.5).surge.level).toBeGreaterThan(advance(lockOnly, 0.5).surge.level);
+        });
+
+        it('calms the motion of the build under reduced motion and keeps its light', () => {
+            const full = create();
+            const calm = create();
+            calm.motion = FALL_REDUCED_MOTION;
+            const a = chain(full);
+            const b = chain(calm);
+            expect(b.motion).toBe(FALL_REDUCED_MOTION);
+            expect(b.breeze).toBeLessThan(a.breeze * 0.5);
+            expect(b.storm).toBeLessThan(a.storm);
+            for (const key of [...ENVELOPES, 'ripen', 'turn']) expect(b[key]).toBeCloseTo(a[key], 12);
+            expectBounded(b, calm.maxEmitters);
         });
     });
 

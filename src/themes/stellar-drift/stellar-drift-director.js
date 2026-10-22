@@ -20,7 +20,10 @@
  * Order inside one flush: a slot's lock, then its clear, then its combo. A clear therefore
  * reaches the sink BEFORE the combo it raised: read the chain a clear belongs to from the clear's
  * own `combo`, never from the last sink.combo() call.
- * A zero-line T-spin also reaches `clear`, with lines = 0 and the unchanged combo.
+ * A zero-line T-spin also reaches `clear`, with lines = 0 and the unchanged combo. So does a
+ * perfect clear that settles on its own (physics sends it ~360 ms after its clear's last wave, in
+ * a frame of its own): lines = 0, no rows, `perfect` — the crown on a clear already played, never
+ * a clear of its own.
  *
  * Combo: the bus's COMBO event carries the CASCADE DEPTH of one lock, never a combo (ADR-0011).
  * The true consecutive-clear combo is derived here with one ComboTracker per player; an explicit
@@ -370,13 +373,16 @@ export class StellarDriftDirector {
         return true;
     }
 
+    /**
+     * Usually a frame after the clear it crowns: it stages no lines of its own (a staged clear in
+     * the same frame carries it).
+     */
     onPerfectClear(event) {
         if (!this.enabled) return false;
         const slot = this.slotFor(event || EMPTY);
         if (!slot) return false;
         slot.pending = true;
         slot.perfect = true;
-        if (slot.lines === 0) slot.lines = 1;
         return true;
     }
 
@@ -426,13 +432,14 @@ export class StellarDriftDirector {
                 c.screen = null;
                 sink.lock(c);
             }
-            if ((slot.lines > 0 || slot.tspin) && sink?.clear) {
+            if ((slot.lines > 0 || slot.tspin || slot.perfect) && sink?.clear) {
                 const c = this._clear;
                 c.player = slot.player;
                 c.rows.length = 0;
                 for (let r = 0; r < slot.clearRowCount; r += 1) c.rows.push(slot.clearRows[r]);
                 c.lines = slot.lines;
-                // A zero-line T-spin has its own flourish, but does not start a clearing chain.
+                // A zero-line T-spin has its own flourish, and a perfect clear settling after its
+                // clear its own crown, but neither starts a clearing chain.
                 c.combo = slot.lines > 0 ? Math.max(1, combo) : combo;
                 c.cascade = slot.cascade;
                 c.tspin = slot.tspin;

@@ -35,7 +35,7 @@ import {
     DEG,
     TAU,
     haAtmosphere,
-    haClearLight,
+    haClearLightLive,
     haFogAmount,
     haPart,
     haSkyFog,
@@ -343,7 +343,7 @@ function createLandMaterial(u, { caster }) {
         const through = max(dot(V, u.sunDir), 0.0);
         col.addAssign(u.sun.mul(albedo).mul(through.mul(through).mul(through)).mul(isLeaf).mul(lit)
             .mul(0.3));
-        const clear = haClearLight(u, p).mul(u.clearLive);
+        const clear = haClearLightLive(u, p);
         col.addAssign(clear.rgb.mul(albedo).mul(1.2));
         if (!caster) {
             // ── The far ranges: snow on the high faces that look up, mist in the valleys ──

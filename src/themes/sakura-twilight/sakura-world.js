@@ -247,7 +247,7 @@ export class SakuraWorld {
         this.foxes.update(dt, frame);
         const env = this.director.apply(frame, dt, { x: direction.x, z: direction.z, strength: light.uWind.value });
         this.foxes.kicks.forEach((kick) => env.fields.push(kick));
-        light.update(time, { ...frame, front: env.front });
+        light.update(time, { ...frame, front: env.front, fronts: env.fronts });
         this.petals.update(dt, env, frame.heat);
         this.sky.update(frame);
         this.spirits.update(time, frame);
