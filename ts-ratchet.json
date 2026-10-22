@@ -96,6 +96,7 @@
     "src/ui/infinity/ascent/ascent-tints.js",
     "src/ui/infinity/ascent/tower-flight.js",
     "src/ui/infinity/ascent/tower-memory.js",
+    "src/ui/infinity/infinity-play-camera.js",
     "src/ui/local-versus-layout.js",
     "src/ui/online-versus-hud.js",
     "src/ui/online-versus-layout.js",
