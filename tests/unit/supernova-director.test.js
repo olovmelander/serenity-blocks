@@ -129,6 +129,46 @@ describe('supernova director: intake', () => {
         expect(director.onB2B({ active: false })).toBe(false);
     });
 
+    it('crowns the clear already sent with a perfect clear that settles in a frame of its own', () => {
+        const crowned = makeDirector();
+        crowned.sink.crown = vi.fn();
+        const plain = makeDirector();
+        for (const { director } of [crowned, plain]) {
+            director.onPieceLock({ piece: I });
+            director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+            director.flush();
+            // Physics settles the perfect clear ~360 ms after the clear's last wave.
+            director.onPerfectClear({ depth: 4 });
+            director.flush();
+        }
+        // A sink that can crown is told to: one clear, then the crown, never a second clear.
+        expect(crowned.calls.clear).toHaveLength(1);
+        expect(crowned.calls.clear[0]).toMatchObject({ lines: 4, perfect: false });
+        expect(crowned.sink.crown).toHaveBeenCalledTimes(1);
+        expect(crowned.sink.crown).toHaveBeenCalledWith(0);
+        // A sink that cannot hears it as it always has: a one-line perfect clear.
+        expect(plain.calls.clear).toHaveLength(2);
+        expect(plain.calls.clear[1]).toMatchObject({ lines: 1, perfect: true });
+    });
+
+    it('turns the star a little for a T-spin that cleared nothing, and only for that', () => {
+        const { director, calls, sink } = makeDirector();
+        sink.spin = vi.fn();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(sink.spin).toHaveBeenCalledTimes(1);
+        expect(calls.clear).toEqual([]);
+        expect(calls.lock).toHaveLength(1);
+        // One that clears is a clear with the T-spin on it.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        expect(sink.spin).toHaveBeenCalledTimes(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 2, tspin: true });
+    });
+
     it('turns a meditation click into a clear at a screen position', () => {
         const { director, calls } = makeDirector();
         director.setViewport(1000, 500);
