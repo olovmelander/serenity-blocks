@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import {
     afterEach, describe, expect, it, vi,
 } from 'vitest';
@@ -461,5 +462,21 @@ describe('setIdentArming', () => {
         setup();
         expect(() => setIdentArming(true)).not.toThrow();
         expect(() => setIdentArming(false)).not.toThrow();
+    });
+});
+
+describe('the hold never holds the exit', () => {
+    const css = readFileSync(new URL('../../public/styles/main.css', import.meta.url), 'utf8')
+        .replace(/\r\n/g, '\n');
+
+    it('releases its pause once the wordmark starts travelling into the title', () => {
+        // A phone without WebGPU always gets the static hold: paused through the exit, its wordmark
+        // stayed where it was beside the arriving title until the cover was removed.
+        const at = css.indexOf('.startup-shell:is(.sb-lit--static, .sb-lit--paused)');
+        expect(at).toBeGreaterThan(-1);
+        const rule = css.slice(at, css.indexOf('}', at));
+        expect(rule).toMatch(/animation-play-state:\s*paused\s*!important/);
+        expect(rule.slice(0, rule.indexOf('{'))).toContain(':not(.is-warp-out)');
+        expect(css).toMatch(/\.startup-shell\.is-warp-out \.startup-logo__name-text \{[^}]*sb-wordmark-connect/);
     });
 });
