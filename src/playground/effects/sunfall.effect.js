@@ -237,13 +237,9 @@ export function create({
         world.setPointer(pointer.x, pointer.y);
         world.applySnapshot(snap);
         applyCameraLens();
-        post?.update({
-            exposure: isIcon ? 0.78 : 1.0,
-            time: snap.time,
-            bloomBoost: snap.cataractPulse * 0.45 + snap.zenithPulse * 0.55 + snap.turningPulse * 0.3,
-            flash: snap.zenithPulse * 0.4 + snap.cataractPulse * 0.25,
-            flashColour: snap.station.beamCore,
-        });
+        // What the game hands the post stack (sunfall-world.js `_post`), the icon a stop darker.
+        const state = world.postState;
+        post?.update({ ...state, exposure: isIcon ? 0.78 : state.exposure });
     };
 
     const seekTo = (targetTime) => {

@@ -51,14 +51,13 @@ function swayAt(u, t, phase, side) {
     // Its rest shape: a lean away from the vault and two slow curves, from the phase.
     const lean = vec3(sin(phase.mul(3.1)).mul(2.2), 0.0, cos(phase.mul(2.3)).mul(1.4)).mul(t.mul(t));
     const curve = vec3(sin(t.mul(2.6).add(phase)).mul(0.9), 0.0, sin(t.mul(1.7).add(phase.mul(1.9))).mul(0.6)).mul(t);
-    const wind = sin(u.time.mul(0.55).add(phase).add(t.mul(2.2))).mul(0.55)
-        .add(sin(u.time.mul(1.3).add(phase.mul(1.7)).add(t.mul(5.0))).mul(0.12));
-    const amp = t.mul(t).mul(1.5);
-    // A lock or a Snap kicks the strands on its own side: a damped wave down the strand.
-    const lockSide = select(u.flushU.lessThan(0.5), float(-1.0), float(1.0));
-    const snapSide = select(u.snapU.lessThan(0.5), float(-1.0), float(1.0));
-    const kick = u.flushPulse.mul(0.25).mul(clamp(lockSide.mul(side), 0.0, 1.0))
-        .add(u.snapPulse.mul(0.8).mul(clamp(snapSide.mul(side), 0.0, 1.0)));
+    // The cave's breath, on a clock that quickens and a sway that widens as play heats.
+    const wind = sin(u.windClock.mul(0.55).add(phase).add(t.mul(2.2))).mul(0.55)
+        .add(sin(u.windClock.mul(1.3).add(phase.mul(1.7)).add(t.mul(5.0))).mul(0.12));
+    const amp = t.mul(t).mul(1.5).mul(u.windGain);
+    // Locks and Snaps kick the strands on their own side: a damped wave down the strand. Each
+    // side keeps its own kick, so alternating locks sway both curtains (the lianas, side 0, none).
+    const kick = select(side.lessThan(-0.5), u.kick.x, select(side.greaterThan(0.5), u.kick.y, float(0.0)));
     const wave = sin(t.mul(9.0).sub(u.time.mul(11.0))).mul(kick).mul(t);
     return vec3(amp.mul(wind).add(wave), 0.0, amp.mul(wind).mul(0.4).add(wave.mul(0.3))).add(lean).add(curve);
 }
