@@ -34,6 +34,7 @@ import { SnapshotInterpolator } from '../network/snapshot-interpolation.js';
 // Central registry reader (src/core/flags.js, Phase 0.6) — replaces the former
 // local readOnlineNetFlag clone; identical URL → localStorage → default semantics.
 import { readFlag as readOnlineNetFlag } from '../flags.js';
+import { sanitizeCssColor } from '../../utils/dom-safety.js';
 import {
     configureOnlineFixedInput,
     installOnlineFixedGamepadAdapter,
@@ -2217,16 +2218,13 @@ export class OnlineMultiplayerMode extends BaseGameMode {
 
         const segments = [];
         lineEntries.forEach((entry) => {
-            const color = entry.color || this._getPlayerColor(entry.attackerId) || '#808080';
+            // Peer-supplied; only a hex colour may reach `background` (peerColor).
+            const color = sanitizeCssColor(entry.color || this._getPlayerColor(entry.attackerId), '#808080');
             const last = segments[segments.length - 1];
             if (last && last.attackerId === entry.attackerId && last.color === color) {
                 last.lines += 1;
             } else {
-                segments.push({
-                    attackerId: entry.attackerId,
-                    color,
-                    lines: 1,
-                });
+                segments.push({ attackerId: entry.attackerId, color, lines: 1 });
             }
         });
 

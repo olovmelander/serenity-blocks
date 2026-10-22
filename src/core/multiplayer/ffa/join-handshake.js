@@ -154,6 +154,35 @@ function noteJoinNonce(game, steamId, nonce) {
     return previous !== undefined && previous !== nonce;
 }
 
+/** A real client restart takes seconds; one sender's rejoins are served at most this often. */
+export const REJOIN_MIN_INTERVAL_MS = 2000;
+
+/**
+ * Send a rejoining roster member the roster and its resync. Each rejoin broadcasts the
+ * roster to everyone, so a client rotating join nonces made the host flood every peer:
+ * one is served at once, and any more inside the interval are folded into one served
+ * when it ends.
+ * @param {any} game
+ * @param {string} steamId
+ */
+export function serveRejoin(game, steamId) {
+    game._rejoinCooldowns ??= new Map();
+    const cooling = game._rejoinCooldowns.get(steamId);
+    if (cooling) {
+        cooling.again = true;
+        return;
+    }
+    game.broadcastPlayerList();
+    routeFfaResync(game, steamId, 'rejoin');
+    const cooldown = { again: false };
+    game._rejoinCooldowns.set(steamId, cooldown);
+    setTimeout(() => {
+        game._rejoinCooldowns.delete(steamId);
+        if (!cooldown.again || game._disposed) return;
+        if (game.players.has(steamId) || game.spectators.has(steamId)) serveRejoin(game, steamId);
+    }, REJOIN_MIN_INTERVAL_MS);
+}
+
 /** @param {any} game @param {any} registry */
 export function registerJoinHandshakeHandlers(game, registry) {
     registry.register(MessageTypes.NET_HELLO, (msg) => {
@@ -209,10 +238,7 @@ export function registerJoinHandshakeHandlers(game, registry) {
             // A roster member announcing with a NEW join nonce restarted its client
             // before the host noticed it was gone. It holds no roster or match state,
             // so a bare WELCOME would leave it waiting forever: treat it as a reconnect.
-            if (rejoined) {
-                game.broadcastPlayerList();
-                routeFfaResync(game, msg.from, 'rejoin');
-            }
+            if (rejoined) serveRejoin(game, msg.from);
             return;
         }
 

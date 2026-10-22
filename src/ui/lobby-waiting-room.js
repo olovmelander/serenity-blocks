@@ -567,7 +567,7 @@ export class LobbyWaitingRoom {
         });
 
         // Empty seats up to max capacity, so the grid always reads as N/max
-        const maxPlayers = parseInt(this.gameState.matchConfig?.maxPlayers, 10) || players.length || 8;
+        const maxPlayers = Math.min(8, parseInt(this.gameState.matchConfig?.maxPlayers, 10) || players.length || 8);
         for (let i = players.length; i < maxPlayers; i++) {
             const slot = document.createElement('div');
             slot.className = 'lobby-player-card empty-slot';
