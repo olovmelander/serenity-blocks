@@ -34,7 +34,6 @@ import {
 } from './fx/fx-moments.js';
 import { wellGarbageColor } from './well-board-style.js';
 import { prefersReducedFlashing } from '../../utils/photosensitivity.js';
-import { prefersReducedMotion } from '../../themes/shared/reduced-motion.js';
 
 // Constants
 const RIPPLE_PARTICLE_LIFESPAN = 650;
@@ -560,12 +559,18 @@ export class SharedEffects {
      * accessibility: the board's own setting (Odyssey keeps one on its game state),
      * Settings > Reduce motion, or the OS preference. Only Odyssey writes the game
      * state's settings, so the live setting must be read too, or the toggle did nothing
-     * on every other board.
+     * on every other board. (Read here, not through themes/shared: that would put the
+     * theme chunk, and three.js with it, on the boot path.)
      * @returns {boolean}
      */
     _reducedMotion() {
         try {
-            return this.scene?.gameState?.settings?.reducedMotion === true || prefersReducedMotion();
+            if (this.scene?.gameState?.settings?.reducedMotion === true) return true;
+            if (typeof window === 'undefined') return false;
+            const live = window.settings ?? window.settingsManager?.get?.();
+            if (live?.reducedMotion === true) return true;
+            return typeof window.matchMedia === 'function'
+                && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
         } catch (e) {
             // matchMedia unavailable / restricted - fall through to "not reduced"
         }
