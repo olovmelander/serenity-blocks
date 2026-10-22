@@ -143,7 +143,7 @@ export class GameplaySurge {
             attack: 0, release: punchRelease, ceiling: punchCeiling, knee: 0.7, headroom: 1.25,
         });
         this.level = new Swell({
-            attack: levelAttack, release: levelRelease, ceiling: 1, knee: 0.6, headroom: 1.3,
+            attack: levelAttack, release: levelRelease, ceiling: 1, knee: 0.6, headroom: 1.15,
         });
         this.riseRate = Math.max(1e-3, riseRate);
         /** The level as shown: it climbs at most `riseRate` a second (see sample()). */

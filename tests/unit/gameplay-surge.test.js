@@ -74,6 +74,26 @@ describe('Swell', () => {
         expect(s.valueAt(end + 4)).toBeLessThan(0.05);
     });
 
+    it('at its bound, a new hit never steps the reading down (attack or not), and the frenzy lets go', () => {
+        [0, 0.2].forEach((attack) => {
+            const s = new Swell({
+                attack, release: 1, ceiling: 1, knee: 0.6, headroom: 1.2,
+            });
+            let last = 0;
+            for (let f = 0; f < 6 * 60; f += 1) {
+                const t = f / 60;
+                if (f % 12 === 0) s.hit(0.6, t);
+                const v = s.rawAt(t);
+                expect(v).toBeLessThanOrEqual(1.2 + 1e-9);
+                // Between hits it only falls at its own pace; at a hit it never drops.
+                expect(v).toBeGreaterThanOrEqual(last * Math.exp(-1 / 60) - 1e-9);
+                last = v;
+            }
+            // Bounded memory: a few releases after the frenzy it is nearly gone.
+            expect(s.rawAt(6 + 4)).toBeLessThan(0.05);
+        });
+    });
+
     it('waits for a hit scheduled ahead, and is the same whatever order it is read in', () => {
         const s = new Swell({ attack: 0.1, release: 1 });
         s.hit(0.5, 0);
@@ -197,7 +217,7 @@ describe('GameplaySurge', () => {
         expect(SURGE_STAGES[hot.stage]).toBe('hot');
 
         const fever = run(new GameplaySurge(), chainScript(), 8);
-        expect(fever.level).toBeGreaterThan(0.9);
+        expect(fever.level).toBeGreaterThan(0.8);
         expect(fever.fever).toBeGreaterThan(0.7);
         expect(SURGE_STAGES[fever.stage]).toBe('fever');
     });
