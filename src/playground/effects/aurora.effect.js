@@ -101,7 +101,10 @@ export function create({
     };
     const frame = (time, dt) => {
         world.update(time, dt);
-        post.update({ activity: world.director.activity, surge: world.director.surge });
+        const { director } = world;
+        post.update({
+            activity: director.activity, surge: director.surge, heat: director.heatLevel, fever: director.heatFever,
+        });
     };
 
     let sought = null;

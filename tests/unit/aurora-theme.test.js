@@ -50,7 +50,7 @@ function createTheme() {
         theme.scene = { clear: vi.fn() };
         theme.camera = new THREE.PerspectiveCamera(55, 1, 0.5, 12000);
         const director = {
-            activity: 0.4, surge: 0.1,
+            activity: 0.4, surge: 0.1, heatLevel: 0.3, heatFever: 0.2,
         };
         for (const handler of ['onHardDrop', 'onPieceLock', 'onLineClear', 'onCascade', 'onTSpin',
             'onBackToBack', 'onPerfectClear', 'onLevelUp', 'calm']) director[handler] = vi.fn();
@@ -192,7 +192,9 @@ describe('Aurora theme lifecycle', () => {
         expect(time).toBeGreaterThanOrEqual(0);
         expect(delta).toBeLessThanOrEqual(0.05);
         expect(pointer).toBe(theme.pointer);
-        expect(theme.post.update).toHaveBeenLastCalledWith({ activity: 0.4, surge: 0.1 });
+        expect(theme.post.update).toHaveBeenLastCalledWith({
+            activity: 0.4, surge: 0.1, heat: 0.3, fever: 0.2,
+        });
 
         const frames = theme.world.update.mock.calls.length;
         document.hidden = true;
