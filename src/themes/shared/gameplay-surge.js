@@ -25,7 +25,7 @@
  *
  *   punch  fast (instant rise, ~0.5 s fall): every event's hit, for flashes, kicks, shakes.
  *          Under rapid locks it rides on a floor rather than flickering to zero.
- *   level  the heat of play (0..1; rises over ~0.35 s, falls over ~3.5 s): what the world
+ *   level  the heat of play (0..1; climbs at most 0.22 a second, falls over ~3.5 s): what the world
  *          wears — bloom, exposure, saturation, wind, the creatures' excitement. A lock
  *          alone barely moves it; a steady hand warms it; a combo chain fills it.
  *   fever  the slow tide (0..1; fills over ~4 s of hot play, empties over ~2.5 s once it
@@ -128,6 +128,7 @@ export class GameplaySurge {
      * @param {number} [options.feverRise] seconds the fever takes to fill from nothing at full heat
      * @param {number} [options.feverFall] seconds it takes to empty once play has cooled
      * @param {number} [options.punchCeiling] the punch's soft ceiling (a frame-wide flash scale)
+     * @param {number} [options.riseRate] the most the level may climb per second (it falls freely)
      */
     constructor({
         punchRelease = 0.5,
@@ -136,6 +137,7 @@ export class GameplaySurge {
         feverRise = 4,
         feverFall = 2.5,
         punchCeiling = 1,
+        riseRate = 0.22,
     } = {}) {
         this.punch = new Swell({
             attack: 0, release: punchRelease, ceiling: punchCeiling, knee: 0.7, headroom: 1.25,
@@ -143,6 +145,10 @@ export class GameplaySurge {
         this.level = new Swell({
             attack: levelAttack, release: levelRelease, ceiling: 1, knee: 0.6, headroom: 1.3,
         });
+        this.riseRate = Math.max(1e-3, riseRate);
+        /** The level as shown: it climbs at most `riseRate` a second (see sample()). */
+        this.shown = 0;
+        this.shownAt = Number.NaN;
         this.feverRise = Math.max(1e-3, feverRise);
         this.feverFall = Math.max(1e-3, feverFall);
         /** The fever follows the level it is sampled at (see sample()). */
@@ -222,7 +228,16 @@ export class GameplaySurge {
     sample(now) {
         const s = this._sample;
         s.punch = this.punch.valueAt(now);
-        s.level = this.level.valueAt(now);
+        // The level climbs no faster than `riseRate` a second, so a burst of play builds over
+        // seconds instead of saturating in two clears; it falls with the swell. A clock that
+        // stood still, went back or jumped lands on the swell (captures and seeks repeat).
+        const level = this.level.valueAt(now);
+        const step = now - this.shownAt;
+        this.shownAt = now;
+        this.shown = step > 0 && step <= 0.5 && level > this.shown
+            ? Math.min(level, this.shown + step * this.riseRate)
+            : level;
+        s.level = this.shown;
         const dt = now - this.feverAt;
         this.feverAt = now;
         if (dt > 0 && dt <= 0.5) {
@@ -242,6 +257,8 @@ export class GameplaySurge {
     reset() {
         this.punch.reset();
         this.level.reset();
+        this.shown = 0;
+        this.shownAt = Number.NaN;
         this.fever = 0;
         this.feverAt = Number.NaN;
         this.stage = 0;
