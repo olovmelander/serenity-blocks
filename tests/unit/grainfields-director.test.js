@@ -43,7 +43,7 @@ const {
 
 function makeDirector(options = {}) {
     const calls = {
-        lock: [], clear: [], combo: [], b2b: [], levelUp: [], order: [],
+        lock: [], clear: [], spin: [], combo: [], b2b: [], levelUp: [], order: [],
     };
     const sink = {
         // The director reuses its context objects: a sink must copy what it keeps.
@@ -56,6 +56,10 @@ function makeDirector(options = {}) {
             calls.clear.push({
                 ...c, rows: [...c.rows], rowCodes: [...c.rowCodes], screen: c.screen ? { ...c.screen } : null,
             });
+        }),
+        spin: vi.fn((c) => {
+            calls.order.push('spin');
+            calls.spin.push({ ...c });
         }),
         combo: vi.fn((n, player) => {
             calls.order.push('combo');
@@ -301,8 +305,48 @@ describe('grainfields director: intake', () => {
         expect(calls.clear[1]).toMatchObject({
             lines: 1, rows: [], rowCodes: [], perfect: true, screen: null,
         });
+        // The crown on the quad still playing, not a clear of its own (the quad was not one).
+        expect(calls.clear[1].crown).toBe(true);
+        expect(calls.clear[0].crown).toBe(false);
         // Its frame has no lock in it: the chain stands.
         expect(calls.combo).toEqual([[1, 0]]);
+    });
+
+    it('lets a perfect clear that lands in its clear\'s own frame ride on that clear, uncrowned', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: I });
+        director.onPerfectClear({ depth: 4 });
+        director.onLineClear({ lineCount: 4, clearedRows: [23, 22, 21, 20], cascadeCount: 1 });
+        director.flush();
+        expect(calls.clear).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ lines: 4, perfect: true, crown: false });
+        // And the crown never outlives its frame.
+        director.onPerfectClear({ depth: 4 });
+        director.flush();
+        clearingLock(director, I, [23]);
+        director.flush();
+        expect(calls.clear.map((c) => c.crown)).toEqual([false, true, false]);
+    });
+
+    it('tells the sink of a T-spin that cleared nothing, where the piece locked, and of no other', () => {
+        const { director, calls } = makeDirector();
+        director.onPieceLock({ piece: T });
+        director.onTSpin({ lineCount: 0 });
+        director.flush();
+        expect(calls.clear).toEqual([]);
+        expect(calls.spin).toHaveLength(1);
+        expect(calls.spin[0]).toMatchObject({ player: 0 });
+        expect(calls.spin[0].u).toBeCloseTo(calls.lock[0].u, 9);
+        expect(calls.order.slice(0, 2)).toEqual(['lock', 'spin']);
+        // A T-spin that clears rides on its clear; a lock with no T-spin turns nothing.
+        director.onPieceLock({ piece: T });
+        director.onLineClear({ lineCount: 2, clearedRows: [23, 22], cascadeCount: 1 });
+        director.onTSpin({ lineCount: 2 });
+        director.flush();
+        director.onPieceLock({ piece: I });
+        director.flush();
+        expect(calls.spin).toHaveLength(1);
+        expect(calls.clear[0]).toMatchObject({ tspin: true, lines: 2 });
     });
 
     it('turns a meditation click into a clear at a screen position', () => {
@@ -876,7 +920,7 @@ describe('grainfields director: settings and resets', () => {
         expect(director.onPerfectClear({ depth: 1 })).toBe(false);
         director.flush();
         expect(calls).toEqual({
-            lock: [], clear: [], combo: [], b2b: [], levelUp: [], order: [],
+            lock: [], clear: [], spin: [], combo: [], b2b: [], levelUp: [], order: [],
         });
         expect(director.slots.every((slot) => !slot.assigned)).toBe(true);
     });
